@@ -189,7 +189,6 @@ type DB struct {
 
 	logger log.Logger
 
-	//
 	validStamp postage.ValidStampFn
 }
 
@@ -215,7 +214,8 @@ type Options struct {
 	// DisableSeeksCompaction toggles the seek driven compactions feature on leveldb
 	// and is passed on to shed.
 	DisableSeeksCompaction bool
-
+	// Stamp validator for reserve sampler
+	ValidStamp postage.ValidStampFn
 	// MetricsPrefix defines a prefix for metrics names.
 	MetricsPrefix string
 	Tags          *tags.Tags
@@ -281,7 +281,7 @@ func safeInit(rootPath, sharkyBasePath string, db *DB) error {
 // New returns a new DB.  All fields and indexes are initialized
 // and possible conflicts with schema from existing database is checked.
 // One goroutine for writing batches is created.
-func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger log.Logger, validStamp postage.ValidStampFn) (db *DB, err error) {
+func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger log.Logger) (db *DB, err error) {
 	if o == nil {
 		// default options
 		o = &Options{
@@ -312,7 +312,7 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 		reserveEvictionWorkerDone: make(chan struct{}),
 		metrics:                   newMetrics(),
 		logger:                    logger.WithName(loggerName).Register(),
-		validStamp:                validStamp,
+		validStamp:                o.ValidStamp,
 	}
 	if db.cacheCapacity == 0 {
 		db.cacheCapacity = defaultCacheCapacity

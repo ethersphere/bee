@@ -14,8 +14,10 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/bmtpool"
+	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/shed"
+	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"go.uber.org/atomic"
@@ -199,10 +201,16 @@ func (db *DB) ReserveSample(
 			}
 			_, err = db.validStamp(chunk, stampData)
 			if err == nil {
-				insert(item.transformedAddress)
+
+				if !soc.Valid(chunk) && !cac.Valid(chunk) {
+					insert(item.transformedAddress)
+				} else {
+					logger.Info("data invalid for chunk address", chunk.Address())
+				}
 			} else {
 				logger.Info("invalid stamp for chunk", chunk.Address(), err)
 			}
+
 		}
 	}
 
