@@ -70,7 +70,6 @@ func New(stateStore storage.StateStorer, topology topology.Driver, reserveState 
 		logger:       logger.WithName(loggerName).Register(),
 		syncPeers:    make([]map[string]*syncPeer, bins),
 		quit:         make(chan struct{}),
-		wg:           sync.WaitGroup{},
 
 		bins: bins,
 	}
@@ -132,14 +131,14 @@ func (p *Puller) manage(warmupTime time.Duration) {
 					delete(peersDisconnected, addr.ByteString())
 				} else {
 					// outside of neighborhood, prune peer
-					p.disconnectPeer(addr.ByteString(), po)
+					p.disconnectPeer(addr, po)
 				}
 
 				return false, false, nil
 			}, topology.Filter{Reachable: true})
 
-			for addr, peer := range peersDisconnected {
-				p.disconnectPeer(addr, peer.po)
+			for _, peer := range peersDisconnected {
+				p.disconnectPeer(peer.address, peer.po)
 			}
 
 			p.recalcPeers(ctx, syncRadius)
@@ -151,15 +150,15 @@ func (p *Puller) manage(warmupTime time.Duration) {
 
 // disconnectPeer cancels all existing syncing and removes the peer entry from the syncing map.
 // Must be called under lock.
-func (p *Puller) disconnectPeer(peerAddr string, po uint8) {
+func (p *Puller) disconnectPeer(addr swarm.Address, po uint8) {
 	loggerV2 := p.logger
 
-	loggerV2.Debug("puller disconnect cleanup peer", "peer_address", peerAddr, "proximity_order", po)
-	if peer, ok := p.syncPeers[po][peerAddr]; ok {
+	loggerV2.Debug("puller disconnect cleanup peer", "peer_address", addr, "proximity_order", po)
+	if peer, ok := p.syncPeers[po][addr.ByteString()]; ok {
 		peer.gone()
 
 	}
-	delete(p.syncPeers[po], peerAddr)
+	delete(p.syncPeers[po], addr.ByteString())
 }
 
 // recalcPeers starts or stops syncing process for peers per bin depending on the current sync radius.
@@ -228,10 +227,9 @@ func (p *Puller) syncPeerBin(ctx context.Context, peer *syncPeer, bin uint8, cur
 func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uint8, cur uint64) {
 	loggerV2 := p.logger
 
-	defer func() {
-		p.wg.Done()
-		p.metrics.HistWorkerDoneCounter.Inc()
-	}()
+	defer p.wg.Done()
+	defer p.metrics.HistWorkerDoneCounter.Inc()
+
 	loggerV2.Debug("histSyncWorker starting", "peer_address", peer, "bin", bin, "cursor", cur)
 	for {
 		p.metrics.HistWorkerIterCounter.Inc()
