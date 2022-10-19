@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"strconv"
 	"testing"
 	"time"
 
@@ -143,19 +144,6 @@ func TestPostageCreateStamp(t *testing.T) {
 		)
 	})
 
-	t.Run("invalid depth", func(t *testing.T) {
-		t.Parallel()
-
-		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
-
-		jsonhttptest.Request(t, ts, http.MethodPost, "/stamps/1000/ab", http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
-				Code:    http.StatusBadRequest,
-				Message: "invalid depth",
-			}),
-		)
-	})
-
 	t.Run("depth less than bucket depth", func(t *testing.T) {
 		t.Parallel()
 
@@ -173,19 +161,6 @@ func TestPostageCreateStamp(t *testing.T) {
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
 				Message: "invalid depth",
-			}),
-		)
-	})
-
-	t.Run("invalid balance", func(t *testing.T) {
-		t.Parallel()
-
-		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
-
-		jsonhttptest.Request(t, ts, http.MethodPost, "/stamps/abcd/2", http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
-				Code:    http.StatusBadRequest,
-				Message: "invalid postage amount",
 			}),
 		)
 	})
@@ -405,7 +380,6 @@ func TestPostageGetStamps(t *testing.T) {
 			}),
 		)
 	})
-
 }
 
 // TestGetAllBatches tests that the endpoint that returns all living
@@ -478,30 +452,6 @@ func TestPostageGetStamp(t *testing.T) {
 			}),
 		)
 	})
-	t.Run("bad request", func(t *testing.T) {
-		t.Parallel()
-
-		badBatch := []byte{0, 1, 2}
-
-		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps/"+hex.EncodeToString(badBatch), http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
-				Code:    http.StatusBadRequest,
-				Message: "invalid batchID",
-			}),
-		)
-	})
-	t.Run("bad request", func(t *testing.T) {
-		t.Parallel()
-
-		badBatch := []byte{0, 1, 2, 4}
-
-		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps/"+hex.EncodeToString(badBatch), http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
-				Code:    http.StatusBadRequest,
-				Message: "invalid batchID",
-			}),
-		)
-	})
 }
 
 func TestPostageGetBuckets(t *testing.T) {
@@ -524,30 +474,6 @@ func TestPostageGetBuckets(t *testing.T) {
 				BucketDepth:      si.BucketDepth(),
 				BucketUpperBound: si.BucketUpperBound(),
 				Buckets:          buckets,
-			}),
-		)
-	})
-	t.Run("bad batch", func(t *testing.T) {
-		t.Parallel()
-
-		badBatch := []byte{0, 1, 2}
-
-		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps/"+hex.EncodeToString(badBatch)+"/buckets", http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
-				Code:    http.StatusBadRequest,
-				Message: "invalid batchID",
-			}),
-		)
-	})
-	t.Run("bad batch", func(t *testing.T) {
-		t.Parallel()
-
-		badBatch := []byte{0, 1, 2, 4}
-
-		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps/"+hex.EncodeToString(badBatch)+"/buckets", http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
-				Code:    http.StatusBadRequest,
-				Message: "invalid batchID",
 			}),
 		)
 	})
@@ -719,34 +645,6 @@ func TestPostageTopUpStamp(t *testing.T) {
 		)
 	})
 
-	t.Run("invalid batch id", func(t *testing.T) {
-		t.Parallel()
-
-		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
-
-		jsonhttptest.Request(t, ts, http.MethodPatch, "/stamps/topup/abcd/2", http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
-				Code:    http.StatusBadRequest,
-				Message: "invalid batchID",
-			}),
-		)
-	})
-
-	t.Run("invalid amount", func(t *testing.T) {
-		t.Parallel()
-
-		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
-
-		wrongURL := fmt.Sprintf("/stamps/topup/%s/amount", batchOkStr)
-
-		jsonhttptest.Request(t, ts, http.MethodPatch, wrongURL, http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
-				Code:    http.StatusBadRequest,
-				Message: "invalid postage amount",
-			}),
-		)
-	})
-
 	t.Run("gas limit header", func(t *testing.T) {
 		t.Parallel()
 
@@ -871,34 +769,6 @@ func TestPostageDiluteStamp(t *testing.T) {
 		})
 
 		jsonhttptest.Request(t, ts, http.MethodPatch, diluteBatch(batchOkStr, newBatchDepth), http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
-				Code:    http.StatusBadRequest,
-				Message: "invalid depth",
-			}),
-		)
-	})
-
-	t.Run("invalid batch id", func(t *testing.T) {
-		t.Parallel()
-
-		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
-
-		jsonhttptest.Request(t, ts, http.MethodPatch, "/stamps/dilute/abcd/2", http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
-				Code:    http.StatusBadRequest,
-				Message: "invalid batchID",
-			}),
-		)
-	})
-
-	t.Run("invalid depth", func(t *testing.T) {
-		t.Parallel()
-
-		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
-
-		wrongURL := fmt.Sprintf("/stamps/dilute/%s/depth", batchOkStr)
-
-		jsonhttptest.Request(t, ts, http.MethodPatch, wrongURL, http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
 				Message: "invalid depth",
@@ -1050,5 +920,374 @@ func TestPostageAccessHandler(t *testing.T) {
 				<-done
 			})
 		}
+	}
+}
+
+//nolint:tparallel
+func Test_postageCreateHandler_invalidInputs(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+
+	tests := []struct {
+		name   string
+		amount string
+		depth  string
+		want   jsonhttp.StatusResponse
+	}{{
+		name:   "amount - invalid value",
+		amount: "a",
+		depth:  "1",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "amount",
+					Error: "invalid value",
+				},
+			},
+		},
+	}, {
+		name:   "depth - invalid value",
+		amount: "1",
+		depth:  "a",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "depth",
+					Error: strconv.ErrSyntax.Error(),
+				},
+			},
+		},
+	}}
+
+	//nolint:paralleltest
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			jsonhttptest.Request(t, client, http.MethodPost, "/stamps/"+tc.amount+"/"+tc.depth, tc.want.Code,
+				jsonhttptest.WithExpectedJSONResponse(tc.want),
+			)
+		})
+	}
+}
+
+func Test_postageGetStampsHandler_invalidInputs(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+
+	tests := []struct {
+		name string
+		all  string
+		want jsonhttp.StatusResponse
+	}{{
+		name: "all - invalid value",
+		all:  "123",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid query params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "all",
+					Error: strconv.ErrSyntax.Error(),
+				},
+			},
+		},
+	}}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			jsonhttptest.Request(t, client, http.MethodGet, "/stamps?all="+tc.all, tc.want.Code,
+				jsonhttptest.WithExpectedJSONResponse(tc.want),
+			)
+		})
+	}
+}
+
+func Test_postageGetStampBucketsHandler_invalidInputs(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+
+	tests := []struct {
+		name    string
+		batchID string
+		want    jsonhttp.StatusResponse
+	}{{
+		name:    "batch_id - odd hex string",
+		batchID: "123",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "batch_id",
+					Error: api.ErrHexLength.Error(),
+				},
+			},
+		},
+	}, {
+		name:    "batch_id - invalid hex character",
+		batchID: "123G",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "batch_id",
+					Error: api.HexInvalidByteError('G').Error(),
+				},
+			},
+		},
+	}, {
+		name:    "batch_id - invalid length",
+		batchID: "1234",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "batch_id",
+					Error: "want len:32",
+				},
+			},
+		},
+	}}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			jsonhttptest.Request(t, client, http.MethodGet, "/stamps/"+tc.batchID+"/buckets", tc.want.Code,
+				jsonhttptest.WithExpectedJSONResponse(tc.want),
+			)
+		})
+	}
+}
+
+func Test_postageGetStampHandler_invalidInputs(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+
+	tests := []struct {
+		name    string
+		batchID string
+		want    jsonhttp.StatusResponse
+	}{{
+		name:    "batch_id - odd hex string",
+		batchID: "123",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "batch_id",
+					Error: api.ErrHexLength.Error(),
+				},
+			},
+		},
+	}, {
+		name:    "batch_id - invalid hex character",
+		batchID: "123G",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "batch_id",
+					Error: api.HexInvalidByteError('G').Error(),
+				},
+			},
+		},
+	}, {
+		name:    "batch_id - invalid length",
+		batchID: "1234",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "batch_id",
+					Error: "want len:32",
+				},
+			},
+		},
+	}}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			jsonhttptest.Request(t, client, http.MethodGet, "/stamps/"+tc.batchID, tc.want.Code,
+				jsonhttptest.WithExpectedJSONResponse(tc.want),
+			)
+		})
+	}
+}
+
+//nolint:tparallel
+func Test_postageTopUpHandler_invalidInputs(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+
+	tests := []struct {
+		name    string
+		batchID string
+		amount  string
+		want    jsonhttp.StatusResponse
+	}{{
+		name:    "batch_id - odd hex string",
+		batchID: "123",
+		amount:  "1",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "batch_id",
+					Error: api.ErrHexLength.Error(),
+				},
+			},
+		},
+	}, {
+		name:    "batch_id - invalid hex character",
+		batchID: "123G",
+		amount:  "1",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "batch_id",
+					Error: api.HexInvalidByteError('G').Error(),
+				},
+			},
+		},
+	}, {
+		name:    "batch_id - invalid length",
+		batchID: "1234",
+		amount:  "1",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "batch_id",
+					Error: "want len:32",
+				},
+			},
+		},
+	}, {
+		name:    "amount - invalid value",
+		batchID: hex.EncodeToString([]byte{31: 0}),
+		amount:  "a",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "amount",
+					Error: "invalid value",
+				},
+			},
+		},
+	}}
+
+	//nolint:paralleltest
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			jsonhttptest.Request(t, client, http.MethodPatch, "/stamps/topup/"+tc.batchID+"/"+tc.amount, tc.want.Code,
+				jsonhttptest.WithExpectedJSONResponse(tc.want),
+			)
+		})
+	}
+}
+
+//nolint:tparallel
+func Test_postageDiluteHandler_invalidInputs(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+
+	tests := []struct {
+		name    string
+		batchID string
+		depth   string
+		want    jsonhttp.StatusResponse
+	}{{
+		name:    "batch_id - odd hex string",
+		batchID: "123",
+		depth:   "1",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "batch_id",
+					Error: api.ErrHexLength.Error(),
+				},
+			},
+		},
+	}, {
+		name:    "batch_id - invalid hex character",
+		batchID: "123G",
+		depth:   "1",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "batch_id",
+					Error: api.HexInvalidByteError('G').Error(),
+				},
+			},
+		},
+	}, {
+		name:    "batch_id - invalid length",
+		batchID: "1234",
+		depth:   "1",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "batch_id",
+					Error: "want len:32",
+				},
+			},
+		},
+	}, {
+		name:    "depth - invalid syntax",
+		batchID: hex.EncodeToString([]byte{31: 0}),
+		depth:   "a",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "depth",
+					Error: strconv.ErrSyntax.Error(),
+				},
+			},
+		},
+	}}
+
+	//nolint:paralleltest
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			jsonhttptest.Request(t, client, http.MethodPatch, "/stamps/dilute/"+tc.batchID+"/"+tc.depth, tc.want.Code,
+				jsonhttptest.WithExpectedJSONResponse(tc.want),
+			)
+		})
 	}
 }

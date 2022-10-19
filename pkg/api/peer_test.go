@@ -79,16 +79,6 @@ func TestConnect(t *testing.T) {
 		)
 	})
 
-	t.Run("get method not allowed", func(t *testing.T) {
-		t.Parallel()
-		jsonhttptest.Request(t, testServer, http.MethodGet, "/connect"+underlay, http.StatusMethodNotAllowed,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Code:    http.StatusMethodNotAllowed,
-				Message: http.StatusText(http.StatusMethodNotAllowed),
-			}),
-		)
-	})
-
 	t.Run("error - add peer", func(t *testing.T) {
 		t.Parallel()
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
@@ -159,17 +149,6 @@ func TestDisconnect(t *testing.T) {
 		)
 	})
 
-	t.Run("invalid peer address", func(t *testing.T) {
-		t.Parallel()
-
-		jsonhttptest.Request(t, testServer, http.MethodDelete, "/peers/invalid-address", http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Code:    http.StatusBadRequest,
-				Message: "invalid peer address",
-			}),
-		)
-	})
-
 	t.Run("error", func(t *testing.T) {
 		t.Parallel()
 
@@ -199,17 +178,6 @@ func TestPeer(t *testing.T) {
 		jsonhttptest.Request(t, testServer, http.MethodGet, "/peers", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(api.PeersResponse{
 				Peers: []api.Peer{{Address: overlay}},
-			}),
-		)
-	})
-
-	t.Run("get method not allowed", func(t *testing.T) {
-		t.Parallel()
-
-		jsonhttptest.Request(t, testServer, http.MethodPost, "/peers", http.StatusMethodNotAllowed,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Code:    http.StatusMethodNotAllowed,
-				Message: http.StatusText(http.StatusMethodNotAllowed),
 			}),
 		)
 	})
@@ -251,4 +219,89 @@ func TestBlocklistedPeersErr(t *testing.T) {
 				Message: "get blocklisted peers failed",
 			}),
 	)
+}
+
+func Test_peerConnectHandler_invalidInputs(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+
+	tests := []struct {
+		name         string
+		multiAddress string
+		want         jsonhttp.StatusResponse
+	}{{
+		name:         "multi-address - invalid value",
+		multiAddress: "ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59a",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "multi-address",
+					Error: "failed to parse multiaddr \"/ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59a\": unknown protocol ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59a",
+				},
+			},
+		},
+	}}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			jsonhttptest.Request(t, client, http.MethodPost, "/connect/"+tc.multiAddress, tc.want.Code,
+				jsonhttptest.WithExpectedJSONResponse(tc.want),
+			)
+		})
+	}
+}
+
+func Test_peerDisconnectHandler_invalidInputs(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+
+	tests := []struct {
+		name    string
+		address string
+		want    jsonhttp.StatusResponse
+	}{{
+		name:    "address - odd hex string",
+		address: "123",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "address",
+					Error: api.ErrHexLength.Error(),
+				},
+			},
+		},
+	}, {
+		name:    "address - invalid hex character",
+		address: "123G",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "address",
+					Error: api.HexInvalidByteError('G').Error(),
+				},
+			},
+		},
+	}}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			jsonhttptest.Request(t, client, http.MethodDelete, "/peers/"+tc.address, tc.want.Code,
+				jsonhttptest.WithExpectedJSONResponse(tc.want),
+			)
+		})
+	}
 }

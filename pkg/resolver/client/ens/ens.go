@@ -36,8 +36,8 @@ var (
 	ErrFailedToConnect = errors.New("failed to connect")
 	// ErrResolveFailed denotes that a name could not be resolved.
 	ErrResolveFailed = errors.New("resolve failed")
-	// errNotImplemented denotes that the function has not been implemented.
-	errNotImplemented = errors.New("function not implemented")
+	// ErrNotImplemented denotes that the function has not been implemented.
+	ErrNotImplemented = errors.New("function not implemented")
 	// errNameNotRegistered denotes that the name is not registered.
 	errNameNotRegistered = errors.New("name is not registered")
 )
@@ -76,7 +76,7 @@ func NewClient(endpoint string, opts ...Option) (client.Interface, error) {
 
 	// Establish a connection to the ENS.
 	if c.connectFn == nil {
-		return nil, fmt.Errorf("connectFn: %w", errNotImplemented)
+		return nil, fmt.Errorf("connectFn: %w", ErrNotImplemented)
 	}
 	ethCl, registry, err := c.connectFn(c.endpoint, c.contractAddr)
 	if err != nil {
@@ -109,7 +109,7 @@ func (c *Client) Endpoint() string {
 // Resolve implements the resolver.Client interface.
 func (c *Client) Resolve(name string) (Address, error) {
 	if c.resolveFn == nil {
-		return swarm.ZeroAddress, fmt.Errorf("resolveFn: %w", errNotImplemented)
+		return swarm.ZeroAddress, fmt.Errorf("resolveFn: %w", ErrNotImplemented)
 	}
 
 	hash, err := c.resolveFn(c.registry, common.HexToAddress(c.contractAddr), name)

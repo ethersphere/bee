@@ -19,33 +19,34 @@ type pingpongResponse struct {
 }
 
 func (s *Service) pingpongHandler(w http.ResponseWriter, r *http.Request) {
-	peerID := mux.Vars(r)["peer-id"]
-	ctx := r.Context()
+	logger := s.logger.WithName("post_pinpong").Build()
 
-	span, logger, ctx := s.tracer.StartSpanFromContext(ctx, "pingpong-api", s.logger)
-	defer span.Finish()
-
-	address, err := swarm.ParseHexAddress(peerID)
-	if err != nil {
-		logger.Debug("pingpong: parse peer address string failed", "string", peerID, "error", err)
-		jsonhttp.BadRequest(w, "invalid peer address")
+	paths := struct {
+		Address swarm.Address `map:"address" validate:"required"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
 		return
 	}
 
-	rtt, err := s.pingpong.Ping(ctx, address, "ping")
+	ctx := r.Context()
+	span, logger, ctx := s.tracer.StartSpanFromContext(ctx, "pingpong-api", logger)
+	defer span.Finish()
+
+	rtt, err := s.pingpong.Ping(ctx, paths.Address, "ping")
 	if err != nil {
-		logger.Debug("pingpong: ping failed", "peer_address", address, "error", err)
+		logger.Debug("pingpong: ping failed", "peer_address", paths.Address, "error", err)
 		if errors.Is(err, p2p.ErrPeerNotFound) {
 			jsonhttp.NotFound(w, "peer not found")
 			return
 		}
 
-		logger.Error(nil, "pingpong: ping failed", "peer_address", address)
+		logger.Error(nil, "pingpong: ping failed", "peer_address", paths.Address)
 		jsonhttp.InternalServerError(w, "pingpong: ping failed")
 		return
 	}
 
-	logger.Info("pingpong: ping succeeded", "peer_address", address)
+	logger.Info("pingpong: ping succeeded", "peer_address", paths.Address)
 	jsonhttp.OK(w, pingpongResponse{
 		RTT: rtt.String(),
 	})

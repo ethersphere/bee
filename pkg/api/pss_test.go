@@ -202,26 +202,6 @@ func TestPssSend(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Run("err - bad targets", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/to/badtarget?recipient="+recipient, http.StatusBadRequest,
-			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "target is not valid hex string",
-				Code:    http.StatusBadRequest,
-			}),
-		)
-
-		// If this test needs to be modified (most probably because the max target length changed)
-		// the please verify that SwarmCommon.yaml -> components -> PssTarget also reflects the correct value
-		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/to/123456789abcdf?recipient="+recipient, http.StatusBadRequest,
-			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "hex string target exceeds max length of 6",
-				Code:    http.StatusBadRequest,
-			}),
-		)
-	})
-
 	t.Run("err - bad batch", func(t *testing.T) {
 		hexbatch := hex.EncodeToString(batchInvalid)
 		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/to/12", http.StatusBadRequest,
@@ -408,6 +388,58 @@ func newPssTest(t *testing.T, o opts) (pss.Interface, *ecdsa.PublicKey, *websock
 		WsPingPeriod: o.pingPeriod,
 	})
 	return pss, &privkey.PublicKey, cl, listener
+}
+
+func Test_pssPostHandler_invalidInputs(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _ := newTestServer(t, testServerOptions{})
+
+	tests := []struct {
+		name    string
+		topic   string
+		targets string
+		want    jsonhttp.StatusResponse
+	}{{
+		name:    "targets - odd length hex string",
+		topic:   "test_topic",
+		targets: "1",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "target",
+					Error: api.ErrHexLength.Error(),
+				},
+			},
+		},
+	}, {
+		name:    "targets - odd length hex string",
+		topic:   "test_topic",
+		targets: "1G",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "target",
+					Error: api.HexInvalidByteError('G').Error(),
+				},
+			},
+		},
+	}}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/"+tc.topic+"/"+tc.targets, tc.want.Code,
+				jsonhttptest.WithExpectedJSONResponse(tc.want),
+			)
+		})
+	}
 }
 
 type pssSendFn func(context.Context, pss.Targets, swarm.Chunk) error

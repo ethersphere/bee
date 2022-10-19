@@ -21,7 +21,7 @@ type welcomeMessageResponse struct {
 	WelcomeMesssage string `json:"welcomeMessage"`
 }
 
-func (s *Service) getWelcomeMessageHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) getWelcomeMessageHandler(w http.ResponseWriter, _ *http.Request) {
 	val := s.p2p.GetWelcomeMessage()
 	jsonhttp.OK(w, welcomeMessageResponse{
 		WelcomeMesssage: val,
@@ -29,17 +29,19 @@ func (s *Service) getWelcomeMessageHandler(w http.ResponseWriter, r *http.Reques
 }
 
 func (s *Service) setWelcomeMessageHandler(w http.ResponseWriter, r *http.Request) {
+	logger := s.logger.WithName("post_welcome_message").Build()
+
 	var data welcomeMessageRequest
 	err := json.NewDecoder(r.Body).Decode(&data)
 	if err != nil {
-		s.logger.Debug("welcome message post: failed to read body", "error", err)
+		logger.Debug("failed to read body", "error", err)
 		jsonhttp.BadRequest(w, err)
 		return
 	}
 
 	if err := s.p2p.SetWelcomeMessage(data.WelcomeMesssage); err != nil {
-		s.logger.Debug("welcome message post: set welcome message failed", "error", err)
-		s.logger.Error(nil, "welcome message post: set welcome message failed")
+		logger.Debug("set welcome message failed", "error", err)
+		logger.Error(nil, "set welcome message failed")
 		jsonhttp.InternalServerError(w, err)
 		return
 	}

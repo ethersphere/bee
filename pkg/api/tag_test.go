@@ -84,16 +84,7 @@ func TestTags(t *testing.T) {
 		)
 	})
 
-	t.Run("get invalid tags", func(t *testing.T) {
-		// invalid tag
-		jsonhttptest.Request(t, client, http.MethodGet, tagsResource+"/foobar", http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "invalid id",
-				Code:    http.StatusBadRequest,
-			}),
-		)
-
-		// non-existent tag
+	t.Run("get non-existent tag", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodDelete, tagsWithIdResource(uint32(333)), http.StatusNotFound,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "tag not present",
@@ -216,15 +207,7 @@ func TestTags(t *testing.T) {
 		)
 	})
 
-	t.Run("delete tag error", func(t *testing.T) {
-		// try to delete invalid tag
-		jsonhttptest.Request(t, client, http.MethodDelete, tagsResource+"/foobar", http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "invalid id",
-				Code:    http.StatusBadRequest,
-			}),
-		)
-
+	t.Run("delete non-existent tag", func(t *testing.T) {
 		// try to delete non-existent tag
 		jsonhttptest.Request(t, client, http.MethodDelete, tagsWithIdResource(uint32(333)), http.StatusNotFound,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
@@ -256,16 +239,7 @@ func TestTags(t *testing.T) {
 		)
 	})
 
-	t.Run("done split error", func(t *testing.T) {
-		// invalid tag
-		jsonhttptest.Request(t, client, http.MethodPatch, tagsResource+"/foobar", http.StatusBadRequest,
-			jsonhttptest.WithJSONRequestBody(api.TagResponse{}),
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "invalid id",
-				Code:    http.StatusBadRequest,
-			}),
-		)
-
+	t.Run("done split non-existent tag", func(t *testing.T) {
 		// non-existent tag
 		jsonhttptest.Request(t, client, http.MethodPatch, tagsWithIdResource(uint32(333)), http.StatusNotFound,
 			jsonhttptest.WithJSONRequestBody(api.TagResponse{}),
@@ -415,6 +389,45 @@ func TestTags(t *testing.T) {
 		}
 		tagValueTest(t, id, 3, 3, 1, 0, 0, 3, swarm.ZeroAddress, client)
 	})
+}
+
+func Test_tagHandlers_invalidInputs(t *testing.T) {
+	t.Parallel()
+
+	client, _, _, _ := newTestServer(t, testServerOptions{})
+
+	tests := []struct {
+		name  string
+		tagID string
+		want  jsonhttp.StatusResponse
+	}{{
+		name:  "id - invalid value",
+		tagID: "a",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "id",
+					Error: strconv.ErrSyntax.Error(),
+				},
+			},
+		},
+	}}
+
+	for _, method := range []string{http.MethodGet, http.MethodDelete, http.MethodPatch} {
+		method := method
+		for _, tc := range tests {
+			tc := tc
+			t.Run(method+" "+tc.name, func(t *testing.T) {
+				t.Parallel()
+
+				jsonhttptest.Request(t, client, method, "/tags/"+tc.tagID, tc.want.Code,
+					jsonhttptest.WithExpectedJSONResponse(tc.want),
+				)
+			})
+		}
+	}
 }
 
 // isTagFoundInResponse verifies that the tag id is found in the supplied HTTP headers

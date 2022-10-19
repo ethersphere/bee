@@ -20,26 +20,29 @@ type peerConnectResponse struct {
 }
 
 func (s *Service) peerConnectHandler(w http.ResponseWriter, r *http.Request) {
-	str := "/" + mux.Vars(r)["multi-address"]
-	addr, err := multiaddr.NewMultiaddr(str)
-	if err != nil {
-		s.logger.Debug("peer connect: parse multiaddress string failed", "string", str, "error", err)
-		jsonhttp.BadRequest(w, err)
+	logger := s.logger.WithValues("post_connect").Build()
+
+	mux.Vars(r)["multi-address"] = "/" + mux.Vars(r)["multi-address"]
+	paths := struct {
+		MultiAddress multiaddr.Multiaddr `map:"multi-address" validate:"required"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
 		return
 	}
 
-	bzzAddr, err := s.p2p.Connect(r.Context(), addr)
+	bzzAddr, err := s.p2p.Connect(r.Context(), paths.MultiAddress)
 	if err != nil {
-		s.logger.Debug("peer connect: p2p connect failed", "addresses", addr, "error", err)
-		s.logger.Error(nil, "peer connect: p2p connect failed", "addresses", addr)
+		logger.Debug("p2p connect failed", "addresses", paths.MultiAddress, "error", err)
+		logger.Error(nil, "p2p connect failed", "addresses", paths.MultiAddress)
 		jsonhttp.InternalServerError(w, err)
 		return
 	}
 
 	if err := s.topologyDriver.Connected(r.Context(), p2p.Peer{Address: bzzAddr.Overlay}, true); err != nil {
 		_ = s.p2p.Disconnect(bzzAddr.Overlay, "failed to notify topology")
-		s.logger.Debug("peer connect: connect to peer failed", "addresses", addr, "error", err)
-		s.logger.Error(nil, "peer connect: connect to peer failed", "addresses", addr)
+		logger.Debug("connect to peer failed", "addresses", paths.MultiAddress, "error", err)
+		logger.Error(nil, "connect to peer failed", "addresses", paths.MultiAddress)
 		jsonhttp.InternalServerError(w, err)
 		return
 	}
@@ -50,21 +53,23 @@ func (s *Service) peerConnectHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) peerDisconnectHandler(w http.ResponseWriter, r *http.Request) {
-	addr := mux.Vars(r)["address"]
-	swarmAddr, err := swarm.ParseHexAddress(addr)
-	if err != nil {
-		s.logger.Debug("peer disconnect: parse address string failed", "string", addr, "error", err)
-		jsonhttp.BadRequest(w, "invalid peer address")
+	logger := s.logger.WithValues("delete_peer").Build()
+
+	paths := struct {
+		Address swarm.Address `map:"address" validate:"required"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
 		return
 	}
 
-	if err := s.p2p.Disconnect(swarmAddr, "user requested disconnect"); err != nil {
-		s.logger.Debug("peer disconnect: p2p disconnect failed", "peer_address", swarmAddr, "error", err)
+	if err := s.p2p.Disconnect(paths.Address, "user requested disconnect"); err != nil {
+		logger.Debug("p2p disconnect failed", "peer_address", paths.Address, "error", err)
 		if errors.Is(err, p2p.ErrPeerNotFound) {
 			jsonhttp.BadRequest(w, "peer not found")
 			return
 		}
-		s.logger.Error(nil, "peer disconnect: p2p disconnect failed", "peer_address", swarmAddr)
+		logger.Error(nil, "p2p disconnect failed", "peer_address", paths.Address)
 		jsonhttp.InternalServerError(w, err)
 		return
 	}
@@ -82,16 +87,18 @@ type peersResponse struct {
 	Peers []Peer `json:"peers"`
 }
 
-func (s *Service) peersHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) peersHandler(w http.ResponseWriter, _ *http.Request) {
 	jsonhttp.OK(w, peersResponse{
 		Peers: mapPeers(s.p2p.Peers()),
 	})
 }
 
-func (s *Service) blocklistedPeersHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) blocklistedPeersHandler(w http.ResponseWriter, _ *http.Request) {
+	logger := s.logger.WithValues("get_blocklist").Build()
+
 	peers, err := s.p2p.BlocklistedPeers()
 	if err != nil {
-		s.logger.Debug("blocklisted peers: get blocklisted peers failed", "error", err)
+		logger.Debug("get blocklisted peers failed", "error", err)
 		jsonhttp.InternalServerError(w, "get blocklisted peers failed")
 		return
 	}

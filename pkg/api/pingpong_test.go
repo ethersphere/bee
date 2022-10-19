@@ -64,17 +64,6 @@ func TestPingpong(t *testing.T) {
 		)
 	})
 
-	t.Run("invalid peer address", func(t *testing.T) {
-		t.Parallel()
-
-		jsonhttptest.Request(t, ts, http.MethodPost, "/pingpong/invalid-address", http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Code:    http.StatusBadRequest,
-				Message: "invalid peer address",
-			}),
-		)
-	})
-
 	t.Run("error", func(t *testing.T) {
 		t.Parallel()
 
@@ -85,15 +74,53 @@ func TestPingpong(t *testing.T) {
 			}),
 		)
 	})
+}
 
-	t.Run("get method not allowed", func(t *testing.T) {
-		t.Parallel()
+func Test_pingpongHandler_invalidInputs(t *testing.T) {
+	t.Parallel()
 
-		jsonhttptest.Request(t, ts, http.MethodGet, "/pingpong/"+peerID.String(), http.StatusMethodNotAllowed,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Code:    http.StatusMethodNotAllowed,
-				Message: http.StatusText(http.StatusMethodNotAllowed),
-			}),
-		)
-	})
+	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+
+	tests := []struct {
+		name    string
+		address string
+		want    jsonhttp.StatusResponse
+	}{{
+		name:    "address - odd hex string",
+		address: "123",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "address",
+					Error: api.ErrHexLength.Error(),
+				},
+			},
+		},
+	}, {
+		name:    "address - invalid hex character",
+		address: "123G",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusBadRequest,
+			Message: "invalid path params",
+			Reasons: []jsonhttp.Reason{
+				{
+					Field: "address",
+					Error: api.HexInvalidByteError('G').Error(),
+				},
+			},
+		},
+	}}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			jsonhttptest.Request(t, client, http.MethodPost, "/pingpong/"+tc.address, tc.want.Code,
+				jsonhttptest.WithExpectedJSONResponse(tc.want),
+			)
+		})
+	}
 }

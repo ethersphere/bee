@@ -14,17 +14,19 @@ import (
 )
 
 func (s *Service) hasChunkHandler(w http.ResponseWriter, r *http.Request) {
-	str := mux.Vars(r)["address"]
-	addr, err := swarm.ParseHexAddress(str)
-	if err != nil {
-		s.logger.Debug("has chunk: parse chunk address string failed", "string", str, "error", err)
-		jsonhttp.BadRequest(w, "bad address")
+	logger := s.logger.WithName("get_chunk").Build()
+
+	paths := struct {
+		Address swarm.Address `map:"address" validate:"required"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
 		return
 	}
 
-	has, err := s.storer.Has(r.Context(), addr)
+	has, err := s.storer.Has(r.Context(), paths.Address)
 	if err != nil {
-		s.logger.Debug("has chunk: has chunk failed", "chunk_address", addr, "error", err)
+		logger.Debug("has chunk failed", "chunk_address", paths.Address, "error", err)
 		jsonhttp.BadRequest(w, err)
 		return
 	}
@@ -37,17 +39,19 @@ func (s *Service) hasChunkHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) removeChunk(w http.ResponseWriter, r *http.Request) {
-	str := mux.Vars(r)["address"]
-	addr, err := swarm.ParseHexAddress(str)
-	if err != nil {
-		s.logger.Debug("remove chunk: parse chunk address string failed", "string", str, "error", err)
-		jsonhttp.BadRequest(w, "bad address")
+	logger := s.logger.WithName("delete_chunk").Build()
+
+	paths := struct {
+		Address swarm.Address `map:"address" validate:"required"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
 		return
 	}
 
-	has, err := s.storer.Has(r.Context(), addr)
+	has, err := s.storer.Has(r.Context(), paths.Address)
 	if err != nil {
-		s.logger.Debug("remove chunk: has chunk failed", "chunk_address", addr, "error", err)
+		logger.Debug("has chunk failed", "chunk_address", paths.Address, "error", err)
 		jsonhttp.BadRequest(w, err)
 		return
 	}
@@ -57,9 +61,9 @@ func (s *Service) removeChunk(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = s.storer.Set(r.Context(), storage.ModeSetRemove, addr)
+	err = s.storer.Set(r.Context(), storage.ModeSetRemove, paths.Address)
 	if err != nil {
-		s.logger.Debug("remove chunk: remove chunk failed", "chunk_address", addr, "error", err)
+		logger.Debug("remove chunk failed", "chunk_address", paths.Address, "error", err)
 		jsonhttp.InternalServerError(w, err)
 		return
 	}
