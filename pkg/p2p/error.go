@@ -27,7 +27,7 @@ const (
 )
 
 // ConnectionBackoffError indicates that connection calls will not be executed until `tryAfter` timetamp.
-// The reason is provided in the wrappped error.
+// The reason is provided in the wrapped error.
 type ConnectionBackoffError struct {
 	tryAfter time.Time
 	err      error

@@ -38,8 +38,8 @@ import (
 const loggerName = "kademlia"
 
 const (
-	maxConnAttempts     = 1 // when there is maxConnAttempts failed connect calls for a given peer it is considered non-connectable
-	maxBootNodeAttempts = 3 // how many attempts to dial to boot-nodes before giving up
+	maxConnAttempts     = 12 // when there is maxConnAttempts failed connect calls for a given peer it is considered non-connectable
+	maxBootNodeAttempts = 3  // how many attempts to dial to boot-nodes before giving up
 
 	addPeerBatchSize = 500
 
@@ -186,10 +186,11 @@ type Kad struct {
 	commonBinPrefixes [][]swarm.Address     // list of address prefixes for each bin
 	connectedPeers    *pslice.PSlice        // a slice of peers sorted and indexed by po, indexes kept in `bins`
 	knownPeers        *pslice.PSlice        // both are po aware slice of addresses
-	depth             uint8                 // current neighborhood depth
-	storageRadius     uint8                 // storage area of responsibility
-	depthMu           sync.RWMutex          // protect depth changes
-	manageC           chan struct{}         // trigger the manage forever loop to connect to new peers
+	connRetryBackoff  map[string]uint64
+	depth             uint8         // current neighborhood depth
+	storageRadius     uint8         // storage area of responsibility
+	depthMu           sync.RWMutex  // protect depth changes
+	manageC           chan struct{} // trigger the manage forever loop to connect to new peers
 	peerSig           []chan struct{}
 	peerSigMtx        sync.Mutex
 	logger            log.Logger // logger
@@ -1011,7 +1012,13 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 	case err != nil:
 		k.logger.Debug("could not connect to peer", "peer_address", peer, "error", err)
 
-		retryTime := time.Now().Add(k.opt.TimeToRetry)
+		if k.connRetryBackoff[peer.String()] == 0 {
+			k.connRetryBackoff[peer.String()] = 1
+		} else {
+			k.connRetryBackoff[peer.String()] *= 2
+		}
+
+		retryTime := time.Now().Add(k.opt.TimeToRetry * time.Duration(k.connRetryBackoff[peer.String()]))
 		var e *p2p.ConnectionBackoffError
 		failedAttempts := 0
 		if errors.As(err, &e) {
@@ -1043,6 +1050,8 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 		_ = k.p2p.Disconnect(i.Overlay, errOverlayMismatch.Error())
 		return errOverlayMismatch
 	}
+
+	k.connRetryBackoff[peer.String()] = 0
 
 	return k.Announce(ctx, peer, true)
 }
