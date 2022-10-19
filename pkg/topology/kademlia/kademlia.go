@@ -240,6 +240,7 @@ func New(
 		commonBinPrefixes: make([][]swarm.Address, int(swarm.MaxBins)),
 		connectedPeers:    pslice.New(int(swarm.MaxBins), base),
 		knownPeers:        pslice.New(int(swarm.MaxBins), base),
+		connRetryBackoff:  make(map[string]uint64),
 		manageC:           make(chan struct{}, 1),
 		waitNext:          waitnext.New(),
 		logger:            logger.WithName(loggerName).Register(),
