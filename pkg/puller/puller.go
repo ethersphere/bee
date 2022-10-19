@@ -139,7 +139,7 @@ func (p *Puller) manage(warmupTime time.Duration) {
 // disconnectPeer cancels all existing syncing and removes the peer entry from the syncing map.
 // Must be called under lock.
 func (p *Puller) disconnectPeer(peerAddr swarm.Address, po uint8) {
-	loggerV2 := p.logger.V(2).Register()
+	loggerV2 := p.logger
 
 	loggerV2.Debug("puller disconnect cleanup peer", "peer_address", peerAddr, "proximity_order", po)
 	if peer, ok := p.syncPeers[po][peerAddr.ByteString()]; ok {
@@ -152,7 +152,7 @@ func (p *Puller) disconnectPeer(peerAddr swarm.Address, po uint8) {
 // recalcPeers starts or stops syncing process for peers per bin depending on the current sync radius.
 // Must be called under lock.
 func (p *Puller) recalcPeers(ctx context.Context, syncRadius uint8) (dontSync bool) {
-	loggerV2 := p.logger.V(2).Register()
+	loggerV2 := p.logger
 
 	for bin, peers := range p.syncPeers {
 
@@ -213,7 +213,7 @@ func (p *Puller) syncPeerBin(ctx context.Context, peer *syncPeer, bin uint8, cur
 }
 
 func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uint8, cur uint64) {
-	loggerV2 := p.logger.V(2).Register()
+	loggerV2 := p.logger
 
 	defer func() {
 		p.wg.Done()
@@ -271,7 +271,7 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 }
 
 func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uint8, cur uint64) {
-	loggerV2 := p.logger.V(2).Register()
+	loggerV2 := p.logger
 
 	defer p.wg.Done()
 	loggerV2.Debug("liveSyncWorker starting", "peer_address", peer, "bin", bin, "cursor", cur)
@@ -307,13 +307,12 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 
 		top, ruid, err := p.syncer.SyncInterval(ctx, peer, bin, from, pullsync.MaxCursor)
 		if err != nil {
-			if ruid == 0 {
-				p.metrics.LiveWorkerErrCounter.Inc()
-			}
+			p.metrics.LiveWorkerErrCounter.Inc()
 
 			if errors.Is(err, context.Canceled) {
 				loggerV2.Debug("liveSyncWorker context canceled", "peer_address", peer, "bin", bin, "from", from, "error", err)
 				sleep = true
+				p.metrics.LiveWorkerErrCancellationCounter.Inc()
 				continue
 			}
 
