@@ -238,6 +238,11 @@ func newTestDB(tb testing.TB, o *Options) *DB {
 			return nil
 		}
 	}
+	if o.ValidStamp == nil {
+		o.ValidStamp = func(_ swarm.Chunk, stampBytes []byte) (chunk swarm.Chunk, err error) {
+			return nil, nil
+		}
+	}
 	logger := log.Noop
 	db, err := New("", baseKey, nil, o, logger)
 	if err != nil {
