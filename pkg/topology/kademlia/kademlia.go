@@ -427,6 +427,7 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 		case errors.Is(err, addressbook.ErrNotFound):
 			k.logger.Debug("empty address book entry for peer", "peer_address", peer.addr)
 			k.knownPeers.Remove(peer.addr)
+			delete(k.connRetryBackoff, peer.String())
 			return
 		case err != nil:
 			k.logger.Debug("failed to get address book entry for peer", "peer_address", peer.addr, "error", err)
@@ -436,6 +437,7 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 		remove := func(peer *peerConnInfo) {
 			k.waitNext.Remove(peer.addr)
 			k.knownPeers.Remove(peer.addr)
+			delete(k.connRetryBackoff, peer.String())
 			if err := k.addressBook.Remove(peer.addr); err != nil {
 				k.logger.Debug("could not remove peer from addressbook", "peer_address", peer.addr)
 			}
@@ -1036,6 +1038,7 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 		if (k.connectedPeers.Length() > 0 && quickPrune) || failedAttempts >= maxConnAttempts {
 			k.waitNext.Remove(peer)
 			k.knownPeers.Remove(peer)
+			delete(k.connRetryBackoff, peer.String())
 			if err := k.addressBook.Remove(peer); err != nil {
 				k.logger.Debug("could not remove peer from addressbook", "peer_address", peer)
 			}
@@ -1147,6 +1150,9 @@ func (k *Kad) AnnounceTo(ctx context.Context, addressee, peer swarm.Address, ful
 // This does not guarantee that a connection will immediately
 // be made to the peer.
 func (k *Kad) AddPeers(addrs ...swarm.Address) {
+	for for _, n := range addrs {
+		k.connRetryBackoff[n.String()] = 0
+	}
 	k.knownPeers.Add(addrs...)
 	k.notifyManageLoop()
 }
@@ -1235,6 +1241,7 @@ func (k *Kad) onConnected(ctx context.Context, addr swarm.Address) error {
 		return err
 	}
 
+	k.connRetryBackoff[addr.String()] = 0
 	k.knownPeers.Add(addr)
 	k.connectedPeers.Add(addr)
 
