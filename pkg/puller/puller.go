@@ -142,6 +142,8 @@ func (p *Puller) manage(warmupTime time.Duration) {
 
 			p.recalcPeers(ctx, syncRadius)
 
+			p.syncPeersMtx.Unlock()
+
 		case <-p.quit:
 			return
 		}
