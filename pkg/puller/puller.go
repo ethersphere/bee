@@ -109,6 +109,14 @@ func (p *Puller) manage(warmupTime time.Duration) {
 
 			p.syncPeersMtx.Lock()
 
+			// peersDisconnected is used to mark and prune peers that are no longer connected.
+			peersDisconnected := make(map[string]*syncPeer)
+			for _, bin := range p.syncPeers {
+				for addr, peer := range bin {
+					peersDisconnected[addr] = peer
+				}
+			}
+
 			neighborhoodDepth := p.topology.NeighborhoodDepth()
 			syncRadius := p.reserveState.GetReserveState().StorageRadius
 
@@ -116,19 +124,23 @@ func (p *Puller) manage(warmupTime time.Duration) {
 				if po >= neighborhoodDepth {
 					// add peer to sync
 					if _, ok := p.syncPeers[po][addr.ByteString()]; !ok {
-						p.syncPeers[po][addr.ByteString()] = newSyncPeer(addr, p.bins)
+						p.syncPeers[po][addr.ByteString()] = newSyncPeer(addr, po, p.bins)
 					}
+					// remove from disconnected list as the peer is still connected
+					delete(peersDisconnected, addr.ByteString())
 				} else {
-					// outside of neighborhood
-					p.disconnectPeer(addr, po)
+					// outside of neighborhood, prune peer
+					p.disconnectPeer(addr.ByteString(), po)
 				}
 
 				return false, false, nil
 			}, topology.Filter{Reachable: true})
 
-			p.recalcPeers(ctx, syncRadius)
+			for addr, peer := range peersDisconnected {
+				p.disconnectPeer(addr, peer.po)
+			}
 
-			p.syncPeersMtx.Unlock()
+			p.recalcPeers(ctx, syncRadius)
 
 		case <-p.quit:
 			return
@@ -138,15 +150,15 @@ func (p *Puller) manage(warmupTime time.Duration) {
 
 // disconnectPeer cancels all existing syncing and removes the peer entry from the syncing map.
 // Must be called under lock.
-func (p *Puller) disconnectPeer(peerAddr swarm.Address, po uint8) {
+func (p *Puller) disconnectPeer(peerAddr string, po uint8) {
 	loggerV2 := p.logger
 
 	loggerV2.Debug("puller disconnect cleanup peer", "peer_address", peerAddr, "proximity_order", po)
-	if peer, ok := p.syncPeers[po][peerAddr.ByteString()]; ok {
+	if peer, ok := p.syncPeers[po][peerAddr]; ok {
 		peer.gone()
 
 	}
-	delete(p.syncPeers[po], peerAddr.ByteString())
+	delete(p.syncPeers[po], peerAddr)
 }
 
 // recalcPeers starts or stops syncing process for peers per bin depending on the current sync radius.
@@ -310,7 +322,7 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			p.metrics.LiveWorkerErrCounter.Inc()
 
 			if errors.Is(err, context.Canceled) {
-				loggerV2.Debug("liveSyncWorker context canceled", "peer_address", peer, "bin", bin, "from", from, "error", err)
+				loggerV2.Debug("liveSyncWorker sync interval context canceled", "peer_address", peer, "bin", bin, "from", from, "error", err)
 				sleep = true
 				p.metrics.LiveWorkerErrCancellationCounter.Inc()
 				continue
@@ -412,13 +424,14 @@ func peerIntervalKey(peer swarm.Address, bin uint8) string {
 type syncPeer struct {
 	address        swarm.Address
 	binCancelFuncs map[uint8]func() // slice of context cancel funcs for historical sync. index is bin
+	po             uint8
 
 	cursors []uint64
 
 	sync.Mutex
 }
 
-func newSyncPeer(addr swarm.Address, bins uint8) *syncPeer {
+func newSyncPeer(addr swarm.Address, po, bins uint8) *syncPeer {
 	return &syncPeer{
 		address:        addr,
 		binCancelFuncs: make(map[uint8]func(), bins),
