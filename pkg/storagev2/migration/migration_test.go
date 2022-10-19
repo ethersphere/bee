@@ -1,26 +1,33 @@
-package migration
+// Copyright 2022 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+package migration_test
 
 import (
 	"encoding/binary"
 	"errors"
-	"strings"
-	"testing"
-
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/storagev2/inmemstore"
+	"github.com/ethersphere/bee/pkg/storagev2/migration"
+	"github.com/ethersphere/bee/pkg/storagev2/storagetest"
+	"math"
+	"math/rand"
+	"strings"
+	"testing"
 )
 
 func TestGetSetVersion(t *testing.T) {
 	t.Parallel()
 
-	t.Run("GetVersion", func(t *testing.T) {
+	t.Run("Version", func(t *testing.T) {
 		t.Parallel()
 
 		s := inmemstore.New()
 
-		gotVersion, err := GetVersion(s)
+		gotVersion, err := migration.Version(s)
 		if err != nil {
-			t.Errorf("GetVersion should succeed, %v", err)
+			t.Errorf("Version() unexpected error: %v", err)
 		}
 		if gotVersion != 0 {
 			t.Errorf("expect version to be 0, got %v", gotVersion)
@@ -34,17 +41,17 @@ func TestGetSetVersion(t *testing.T) {
 
 		const version = 10
 
-		err := SetVersion(s, version)
+		err := migration.SetVersion(s, version)
 		if err != nil {
-			t.Errorf("SetVersion should succeed, %v", err)
+			t.Errorf("SetVersion() unexpected error: %v", err)
 		}
 
-		gotVersion, err := GetVersion(s)
+		gotVersion, err := migration.Version(s)
 		if err != nil {
-			t.Errorf("GetVersion should succeed, %v", err)
+			t.Errorf("Version() unexpected error: %v", err)
 		}
 		if gotVersion != version {
-			t.Errorf("expect version to be %d", version)
+			t.Errorf("expect version to be %d, got %d", version, gotVersion)
 		}
 	})
 }
@@ -57,12 +64,17 @@ func TestValidateVersions(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		input   StepsMap
+		input   migration.Steps
 		wantErr bool
 	}{
 		{
+			name:    "empty",
+			input:   migration.Steps{},
+			wantErr: true,
+		},
+		{
 			name: "missing version 3",
-			input: StepsMap{
+			input: migration.Steps{
 				1: func(s storage.Store) error {
 					return s.Put(objT1)
 				},
@@ -77,7 +89,7 @@ func TestValidateVersions(t *testing.T) {
 		},
 		{
 			name: "not missing",
-			input: StepsMap{
+			input: migration.Steps{
 				1: func(s storage.Store) error {
 					return s.Put(objT1)
 				},
@@ -92,7 +104,7 @@ func TestValidateVersions(t *testing.T) {
 		},
 		{
 			name: "desc order versions",
-			input: StepsMap{
+			input: migration.Steps{
 				3: func(s storage.Store) error {
 					return s.Put(objT1)
 				},
@@ -107,7 +119,7 @@ func TestValidateVersions(t *testing.T) {
 		},
 		{
 			name: "desc order version missing",
-			input: StepsMap{
+			input: migration.Steps{
 				4: func(s storage.Store) error {
 					return s.Put(objT1)
 				},
@@ -125,8 +137,8 @@ func TestValidateVersions(t *testing.T) {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			if err := ValidateVersions(tt.input); (err != nil) != tt.wantErr {
-				t.Errorf("ValidateVersions() error = %v, wantErr %v", err, tt.wantErr)
+			if err := migration.ValidateVersions(tt.input); (err != nil) != tt.wantErr {
+				t.Errorf("ValidateVersions() unexpected error: %v, wantErr : %v", err, tt.wantErr)
 			}
 		})
 	}
@@ -141,7 +153,7 @@ func TestMigrate(t *testing.T) {
 	t.Run("migration: 0 to 3", func(t *testing.T) {
 		t.Parallel()
 
-		steps := StepsMap{
+		steps := migration.Steps{
 			1: func(s storage.Store) error {
 				return s.Put(objT1)
 			},
@@ -155,13 +167,13 @@ func TestMigrate(t *testing.T) {
 
 		s := inmemstore.New()
 
-		if err := Migrate(s, steps); err != nil {
-			t.Errorf("Migrate() error = %v", err)
+		if err := migration.Migrate(s, steps); err != nil {
+			t.Errorf("Migrate() unexpected error: %v", err)
 		}
 
-		newVersion, err := GetVersion(s)
+		newVersion, err := migration.Version(s)
 		if err != nil {
-			t.Errorf("GetVersion() error = %v", err)
+			t.Errorf("Version() unexpected error: %v", err)
 		}
 		if newVersion != 3 {
 			t.Errorf("new version = %v must be 3", newVersion)
@@ -173,7 +185,7 @@ func TestMigrate(t *testing.T) {
 	t.Run("migration: 5 to 8", func(t *testing.T) {
 		t.Parallel()
 
-		steps := StepsMap{
+		steps := migration.Steps{
 			8: func(s storage.Store) error {
 				return s.Put(objT1)
 			},
@@ -187,18 +199,18 @@ func TestMigrate(t *testing.T) {
 
 		s := inmemstore.New()
 
-		err := SetVersion(s, 5)
+		err := migration.SetVersion(s, 5)
 		if err != nil {
-			t.Errorf("SetVersion() error = %v", err)
+			t.Errorf("SetVersion() unexpected error: %v", err)
 		}
 
-		if err := Migrate(s, steps); err != nil {
-			t.Errorf("Migrate() error = %v", err)
+		if err := migration.Migrate(s, steps); err != nil {
+			t.Errorf("Migrate() unexpected error: %v", err)
 		}
 
-		newVersion, err := GetVersion(s)
+		newVersion, err := migration.Version(s)
 		if err != nil {
-			t.Errorf("GetVersion() error = %v", err)
+			t.Errorf("Version() unexpected error: %v", err)
 		}
 		if newVersion != 8 {
 			t.Errorf("new version = %v must be 8", newVersion)
@@ -213,6 +225,55 @@ func assertObjectExists(t *testing.T, s storage.Store, keys ...storage.Key) {
 		if isExist, _ := s.Has(key); !isExist {
 			t.Errorf("key = %v doesn't exists", key)
 		}
+	}
+}
+
+func TestTagIDAddressItem_MarshalAndUnmarshal(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		test *storagetest.ItemMarshalAndUnmarshalTest
+	}{
+		{
+			name: "zero values",
+			test: &storagetest.ItemMarshalAndUnmarshalTest{
+				Item:    &migration.StorageVersionItem{},
+				Factory: func() storage.Item { return new(migration.StorageVersionItem) },
+			},
+		},
+		{
+			name: "max value",
+			test: &storagetest.ItemMarshalAndUnmarshalTest{
+				Item:    &migration.StorageVersionItem{Version: math.MaxUint64},
+				Factory: func() storage.Item { return new(migration.StorageVersionItem) },
+			},
+		},
+		{
+			name: "invalid size",
+			test: &storagetest.ItemMarshalAndUnmarshalTest{
+				Item: &storagetest.ItemStub{
+					MarshalBuf:   []byte{0xFF},
+					UnmarshalBuf: []byte{0xFF},
+				},
+				Factory:      func() storage.Item { return new(migration.StorageVersionItem) },
+				UnmarshalErr: migration.ErrStorageVersionItemUnmarshalInvalidSize,
+			},
+		},
+		{
+			name: "random value",
+			test: &storagetest.ItemMarshalAndUnmarshalTest{
+				Item:    &migration.StorageVersionItem{Version: rand.Uint64()},
+				Factory: func() storage.Item { return new(migration.StorageVersionItem) },
+			},
+		}}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			storagetest.TestItemMarshalAndUnmarshal(t, tc.test)
+		})
 	}
 }
 
