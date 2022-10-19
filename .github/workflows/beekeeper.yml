@@ -365,6 +365,7 @@ jobs:
           echo RUN_TYPE="MERGE RUN" >> $GITHUB_ENV
       - name: Trigger Bee Factory latest build
         uses: peter-evans/repository-dispatch@v1
+        if: github.ref == 'refs/heads/master'
         with:
           token: ${{ secrets.GHA_PAT_BASIC }}
           repository: ethersphere/bee-factory
