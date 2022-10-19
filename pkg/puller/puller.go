@@ -105,6 +105,8 @@ func (p *Puller) manage(warmupTime time.Duration) {
 
 	for {
 		select {
+		case <-p.quit:
+			return
 		case <-c:
 
 			p.syncPeersMtx.Lock()
@@ -143,9 +145,6 @@ func (p *Puller) manage(warmupTime time.Duration) {
 			p.recalcPeers(ctx, syncRadius)
 
 			p.syncPeersMtx.Unlock()
-
-		case <-p.quit:
-			return
 		}
 	}
 }
@@ -237,9 +236,6 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 	for {
 		p.metrics.HistWorkerIterCounter.Inc()
 		select {
-		case <-p.quit:
-			loggerV2.Debug("histSyncWorker quitting on shutdown", "peer_address", peer, "bin", bin, "cursor", cur)
-			return
 		case <-ctx.Done():
 			loggerV2.Debug("histSyncWorker context cancelled", "peer_address", peer, "bin", bin, "cursor", cur)
 			return
@@ -298,9 +294,6 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 
 		if sleep {
 			select {
-			case <-p.quit:
-				loggerV2.Debug("liveSyncWorker quit on shutdown", "peer_address", peer, "bin", bin, "cursor", cur)
-				return
 			case <-ctx.Done():
 				loggerV2.Debug("liveSyncWorker context cancelled", "peer_address", peer, "bin", bin, "cursor", cur)
 				return
@@ -310,9 +303,6 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 		}
 
 		select {
-		case <-p.quit:
-			loggerV2.Debug("liveSyncWorker quit on shutdown", "peer_address", peer, "bin", bin, "cursor", cur)
-			return
 		case <-ctx.Done():
 			loggerV2.Debug("liveSyncWorker context cancelled", "peer_address", peer, "bin", bin, "cursor", cur)
 			return
