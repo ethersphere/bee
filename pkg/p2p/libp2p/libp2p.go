@@ -42,6 +42,7 @@ import (
 	"github.com/libp2p/go-libp2p-core/peerstore"
 	protocol "github.com/libp2p/go-libp2p-core/protocol"
 	"github.com/libp2p/go-libp2p-peerstore/pstoremem"
+	rcmgr "github.com/libp2p/go-libp2p-resource-manager"
 	lp2pswarm "github.com/libp2p/go-libp2p-swarm"
 	goyamux "github.com/libp2p/go-libp2p-yamux"
 	autonat "github.com/libp2p/go-libp2p/p2p/host/autonat"
@@ -172,12 +173,28 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	var natManager basichost.NATManager
 
+	limiter := rcmgr.NewDynamicLimiter(rcmgr.DefaultLimits)
+
+	limiter.SystemLimits.WithMemoryLimit(0.125, 1<<29, 1<<30)
+	in, out := 100, 150
+	limiter.DefaultPeerLimits = limiter.SystemLimits.WithStreamLimit(in, out, in+out)
+
+	limiter.DefaultServicePeerLimits = limiter.SystemLimits.WithStreamLimit(in, out, in+out)
+	limiter.DefaultProtocolPeerLimits = limiter.SystemLimits.WithStreamLimit(in, out, in+out)
+	limiter.ConnLimits = limiter.SystemLimits.WithStreamLimit(in, out, in+out)
+
+	rmgr, err := rcmgr.NewResourceManager(limiter)
+	if err != nil {
+		return nil, err
+	}
+
 	opts := []libp2p.Option{
 		libp2p.ListenAddrStrings(listenAddrs...),
 		security,
 		// Use dedicated peerstore instead the global DefaultPeerstore
 		libp2p.Peerstore(libp2pPeerstore),
 		libp2p.UserAgent(userAgent()),
+		libp2p.ResourceManager(rmgr),
 	}
 
 	if o.NATAddr == "" {

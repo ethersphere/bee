@@ -33,7 +33,7 @@ require (
 	github.com/miekg/dns v1.1.48 // indirect
 	github.com/multiformats/go-multiaddr v0.5.0
 	github.com/multiformats/go-multiaddr-dns v0.3.1
-	github.com/multiformats/go-multistream v0.3.0
+	github.com/multiformats/go-multistream v0.3.1
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/pelletier/go-toml v1.8.0 // indirect
 	github.com/prometheus/client_golang v1.12.1
@@ -55,7 +55,7 @@ require (
 	golang.org/x/crypto v0.0.0-20220411220226-7b82a4e95df4
 	golang.org/x/net v0.0.0-20220418201149-a630d4f3e7a2
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
-	golang.org/x/sys v0.0.0-20220412211240-33da011f77ad
+	golang.org/x/sys v0.0.0-20220422013727-9388b58f7150
 	golang.org/x/term v0.0.0-20210927222741-03fcf44c2211
 	golang.org/x/time v0.0.0-20210220033141-f8bda1e9f3ba
 	google.golang.org/protobuf v1.28.0 // indirect
@@ -115,13 +115,13 @@ require (
 	github.com/libp2p/go-cidranger v1.1.0 // indirect
 	github.com/libp2p/go-conn-security-multistream v0.3.0 // indirect
 	github.com/libp2p/go-flow-metrics v0.0.3 // indirect
-	github.com/libp2p/go-libp2p-asn-util v0.1.0 // indirect
+	github.com/libp2p/go-libp2p-asn-util v0.2.0 // indirect
 	github.com/libp2p/go-libp2p-blankhost v0.3.0 // indirect
 	github.com/libp2p/go-libp2p-nat v0.1.0 // indirect
 	github.com/libp2p/go-libp2p-noise v0.4.0 // indirect
 	github.com/libp2p/go-libp2p-pnet v0.2.0 // indirect
 	github.com/libp2p/go-libp2p-quic-transport v0.17.0 // indirect
-	github.com/libp2p/go-libp2p-resource-manager v0.2.1 // indirect
+	github.com/libp2p/go-libp2p-resource-manager v0.3.0 // indirect
 	github.com/libp2p/go-libp2p-testing v0.9.2 // indirect
 	github.com/libp2p/go-libp2p-tls v0.4.1 // indirect
 	github.com/libp2p/go-libp2p-transport-upgrader v0.7.1 // indirect
@@ -129,7 +129,7 @@ require (
 	github.com/libp2p/go-nat v0.1.0 // indirect
 	github.com/libp2p/go-netroute v0.2.0 // indirect
 	github.com/libp2p/go-openssl v0.0.7 // indirect
-	github.com/libp2p/go-reuseport v0.1.0 // indirect
+	github.com/libp2p/go-reuseport v0.2.0 // indirect
 	github.com/libp2p/go-reuseport-transport v0.1.0 // indirect
 	github.com/libp2p/go-stream-muxer-multistream v0.4.0 // indirect
 	github.com/libp2p/go-yamux/v3 v3.1.2 // indirect
