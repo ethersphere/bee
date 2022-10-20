@@ -5,16 +5,17 @@
 package kademlia
 
 var (
-	PruneOversaturatedBinsFunc = func(k *Kad) func(uint8) {
+	TimeToRetry                 = &timeToRetry
+	SaturationPeers             = &saturationPeers
+	OverSaturationPeers         = &overSaturationPeers
+	BootnodeOverSaturationPeers = &bootNodeOverSaturationPeers
+	LowWaterMark                = &nnLowWatermark
+	PruneOversaturatedBinsFunc  = func(k *Kad) func(uint8) {
 		return k.pruneOversaturatedBins
 	}
 	GenerateCommonBinPrefixes = generateCommonBinPrefixes
-)
-
-const (
-	DefaultBitSuffixLength     = defaultBitSuffixLength
-	DefaultSaturationPeers     = defaultSaturationPeers
-	DefaultOverSaturationPeers = defaultOverSaturationPeers
+	PeerPingPollTime          = &peerPingPollTime
+	BitSuffixLength           = defaultBitSuffixLength
 )
 
 type PeerFilterFunc = peerFilterFunc

@@ -14,8 +14,8 @@ import (
 	"github.com/ethersphere/bee/pkg/topology/kademlia/internal/waitnext"
 )
 
+// nolint:paralleltest
 func TestSet(t *testing.T) {
-	t.Parallel()
 
 	waitNext := waitnext.New()
 
