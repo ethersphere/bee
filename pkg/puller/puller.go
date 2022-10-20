@@ -129,11 +129,7 @@ func (p *Puller) manage(ctx context.Context, warmupTime time.Duration) {
 					}
 					// remove from disconnected list as the peer is still connected
 					delete(peersDisconnected, addr.ByteString())
-				} else {
-					// outside of neighborhood, prune peer
-					p.disconnectPeer(addr, po)
 				}
-
 				return false, false, nil
 			}, topology.Filter{Reachable: true})
 
