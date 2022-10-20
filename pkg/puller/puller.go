@@ -274,8 +274,8 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			return
 		}
 		if syncErr != nil {
-			p.logger.Error(err, "histSyncWorker syncing interval failed", "peer_address", peer, "bin", bin, "cursor", cur, "start", s, "topmost", top)
-			continue
+			p.metrics.HistWorkerErrCounter.Inc()
+			p.logger.Error(syncErr, "histSyncWorker syncing interval failed", "peer_address", peer, "bin", bin, "cursor", cur, "start", s, "topmost", top)
 		}
 
 		loggerV2.Debug("histSyncWorker pulled", "bin", bin, "start", s, "topmost", top, "peer_address", peer)
@@ -325,9 +325,8 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 
 		if syncErr != nil {
 			p.metrics.LiveWorkerErrCounter.Inc()
-			p.logger.Error(err, "liveSyncWorker sync error", "peer_address", peer, "bin", bin, "from", from, "topmost", top)
+			p.logger.Error(syncErr, "liveSyncWorker sync error", "peer_address", peer, "bin", bin, "from", from, "topmost", top)
 			sleep = true
-			continue
 		}
 
 		loggerV2.Debug("liveSyncWorker pulled bin", "bin", bin, "from", from, "topmost", top, "peer_address", peer)
