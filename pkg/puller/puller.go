@@ -29,7 +29,7 @@ const loggerName = "puller"
 
 var errCursorsLength = errors.New("cursors length mismatch")
 
-const DefaultSyncSleepDur = time.Minute * 5
+const DefaultSyncSleepDur = time.Second * 5
 
 type Options struct {
 	Bins uint8
