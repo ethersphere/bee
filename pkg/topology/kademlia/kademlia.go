@@ -1423,9 +1423,15 @@ func (k *Kad) NeighborhoodDepth() uint8 {
 }
 
 // IsBalanced returns if Kademlia is balanced to bin.
+// nolint:forbidigo
 func (k *Kad) IsBalanced(bin uint8) bool {
+	start := time.Now()
+
 	k.depthMu.RLock()
-	defer k.depthMu.RUnlock()
+	defer func() {
+		fmt.Printf("IsBalanced(%d): took %v; depth: %d\n", bin, time.Since(start), k.depth)
+		k.depthMu.RUnlock()
+	}()
 
 	if int(bin) > len(k.commonBinPrefixes) {
 		return false
