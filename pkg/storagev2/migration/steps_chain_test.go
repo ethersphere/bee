@@ -26,7 +26,7 @@ func TestNewStepsChain(t *testing.T) {
 		valForRemoval := i
 		var stepFn migration.StepFn
 
-		// We create two types of step functions, each should have eqvivalent
+		// We create two types of step functions, each should have equivalent
 		// behavior where each should remove only one element from store
 		if i%2 == 0 {
 			stepFn = migration.NewStepOnIndex(
@@ -36,12 +36,12 @@ func TestNewStepsChain(t *testing.T) {
 				},
 				migration.WithItemDeleteFn(func(i storage.Item) bool {
 					ii := i.(*item)
-					return ii.val == valForRemoval
+					return ii.id == valForRemoval
 				}),
 			)
 		} else {
 			stepFn = func(s storage.Store) error {
-				return s.Delete(&item{val: valForRemoval})
+				return s.Delete(&item{id: valForRemoval})
 			}
 		}
 
