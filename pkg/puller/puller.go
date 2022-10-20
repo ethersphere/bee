@@ -230,9 +230,23 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 	defer p.wg.Done()
 	defer p.metrics.HistWorkerDoneCounter.Inc()
 
-	loggerV2.Debug("histSyncWorker starting", "peer_address", peer, "bin", bin, "cursor", cur)
+	sleep := false
+
+	p.logger.Debug("histSyncWorker starting", "peer_address", peer, "bin", bin, "cursor", cur)
+
 	for {
 		p.metrics.HistWorkerIterCounter.Inc()
+
+		if sleep {
+			select {
+			case <-ctx.Done():
+				loggerV2.Debug("histSyncWorker context cancelled", "peer_address", peer, "bin", bin, "cursor", cur)
+				return
+			case <-time.After(syncSleepDur):
+			}
+			sleep = false
+		}
+
 		select {
 		case <-ctx.Done():
 			loggerV2.Debug("histSyncWorker context cancelled", "peer_address", peer, "bin", bin, "cursor", cur)
@@ -243,37 +257,27 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 		s, _, _, err := p.nextPeerInterval(peer, bin)
 		if err != nil {
 			p.metrics.HistWorkerErrCounter.Inc()
-			p.logger.Debug("histSyncWorker nextPeerInterval failed", "error", err)
+			p.logger.Error(err, "histSyncWorker nextPeerInterval failed")
 			return
 		}
-		if s > cur {
-			loggerV2.Debug("histSyncWorker syncing finished", "bin", bin, "cursor", cur)
-			return
-		}
-		top, ruid, err := p.syncer.SyncInterval(ctx, peer, bin, s, cur)
-		if err != nil {
-			loggerV2.Debug("histSyncWorker syncing interval failed", "peer_address", peer, "bin", bin, "cursor", cur, "error", err)
-			if ruid == 0 {
-				p.metrics.HistWorkerErrCounter.Inc()
-			}
 
-			// since we use bin context cancellation to cancel interval
-			// sync operations, the context can be expired here, causing us
-			// to try to send a message with an expired context, which is
-			// bound to fail.
-			ctxC, cancelC := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancelC()
-			if err := p.syncer.CancelRuid(ctxC, peer, ruid); err != nil {
-				loggerV2.Debug("histSyncWorker cancel ruid failed", "error", err)
-			}
+		if s > cur {
+			p.logger.Debug("histSyncWorker syncing finished", "bin", bin, "cursor", cur)
 			return
 		}
+		top, _, syncErr := p.syncer.SyncInterval(ctx, peer, bin, s, cur)
+
 		err = p.addPeerInterval(peer, bin, s, top)
 		if err != nil {
 			p.metrics.HistWorkerErrCounter.Inc()
-			p.logger.Error(err, "could not persist interval for peer, quitting...", "peer_address", peer)
+			p.logger.Error(err, "histSyncWorker could not persist interval for peer, quitting...", "peer_address", peer)
 			return
 		}
+		if syncErr != nil {
+			p.logger.Error(err, "histSyncWorker syncing interval failed", "peer_address", peer, "bin", bin, "cursor", cur, "start", s, "topmost", top)
+			continue
+		}
+
 		loggerV2.Debug("histSyncWorker pulled", "bin", bin, "start", s, "topmost", top, "peer_address", peer)
 	}
 }
@@ -282,7 +286,7 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 	loggerV2 := p.logger
 
 	defer p.wg.Done()
-	loggerV2.Debug("liveSyncWorker starting", "peer_address", peer, "bin", bin, "cursor", cur)
+	p.logger.Debug("liveSyncWorker starting", "peer_address", peer, "bin", bin, "cursor", cur)
 	from := cur + 1
 
 	sleep := false
@@ -307,39 +311,25 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 		default:
 		}
 
-		top, ruid, err := p.syncer.SyncInterval(ctx, peer, bin, from, pullsync.MaxCursor)
-		if err != nil {
-			p.metrics.LiveWorkerErrCounter.Inc()
-
-			if errors.Is(err, context.Canceled) {
-				loggerV2.Debug("liveSyncWorker sync interval context canceled", "peer_address", peer, "bin", bin, "from", from, "error", err)
-				sleep = true
-				p.metrics.LiveWorkerErrCancellationCounter.Inc()
-				continue
-			}
-
-			loggerV2.Debug("liveSyncWorker exit on sync error", "peer_address", peer, "bin", bin, "from", from, "error", err)
-			// since we use bin context cancellation to cancel interval
-			// sync operations, the context can be expired here, causing us
-			// to try to send a message with an expired context, which is
-			// bound to fail.
-			ctxC, cancelC := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancelC()
-			if err := p.syncer.CancelRuid(ctxC, peer, ruid); err != nil {
-				loggerV2.Debug("histSyncWorker cancel ruid failed", "error", err)
-			}
-			return
-		}
+		top, _, syncErr := p.syncer.SyncInterval(ctx, peer, bin, from, pullsync.MaxCursor)
 		if top == math.MaxUint64 {
 			p.metrics.MaxUintErrCounter.Inc()
 			return
 		}
-		err = p.addPeerInterval(peer, bin, from, top)
+		err := p.addPeerInterval(peer, bin, from, top)
 		if err != nil {
 			p.metrics.LiveWorkerErrCounter.Inc()
 			p.logger.Error(err, "liveSyncWorker exit on add peer interval", "peer_address", peer, "bin", bin, "from", from, "error", err)
 			return
 		}
+
+		if syncErr != nil {
+			p.metrics.LiveWorkerErrCounter.Inc()
+			p.logger.Error(err, "liveSyncWorker sync error", "peer_address", peer, "bin", bin, "from", from, "topmost", top)
+			sleep = true
+			continue
+		}
+
 		loggerV2.Debug("liveSyncWorker pulled bin", "bin", bin, "from", from, "topmost", top, "peer_address", peer)
 
 		from = top + 1
