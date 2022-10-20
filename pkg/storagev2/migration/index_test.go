@@ -70,21 +70,14 @@ func TestNewStepOnIndex(t *testing.T) {
 				ii := i.(*item)
 				return ii.val <= 9
 			}),
+			migration.WithOpPerBatch(3),
 		)
 
 		if err := stepFn(store); err != nil {
 			t.Fatalf("step migration should successed: %v", err)
 		}
 
-		afterStepCount, err := store.Count(&item{})
-		if err != nil {
-			t.Fatalf("count should successed: %v", err)
-		}
-
-		expectedCount := populateItemsCount - 10
-		if afterStepCount != expectedCount {
-			t.Fatalf("step migration should remove items; expected count: %d, have count %d", expectedCount, afterStepCount)
-		}
+		assertItemsInRange(t, store, 10, populateItemsCount)
 	})
 
 	t.Run("update items", func(t *testing.T) {
@@ -110,6 +103,7 @@ func TestNewStepOnIndex(t *testing.T) {
 
 				return nil, false
 			}),
+			migration.WithOpPerBatch(3),
 		)
 
 		if err := stepFn(store); err != nil {
@@ -122,8 +116,9 @@ func TestNewStepOnIndex(t *testing.T) {
 	t.Run("delete and update items", func(t *testing.T) {
 		t.Parallel()
 
+		const populateItemsCount = 100
 		store := inmemstore.New()
-		populateStore(t, store, 100)
+		populateStore(t, store, populateItemsCount)
 
 		step := migration.NewStepOnIndex(
 			storage.Query{
@@ -145,25 +140,107 @@ func TestNewStepOnIndex(t *testing.T) {
 
 				return nil, false
 			}),
+			migration.WithOpPerBatch(3),
 		)
 
 		if err := step(store); err != nil {
 			t.Fatalf("step migration should successed: %v", err)
 		}
 
-		assertItemsInRange(t, store, 0, 90)
+		assertItemsInRange(t, store, 0, populateItemsCount-10)
 	})
+
+	t.Run("update with ID change", func(t *testing.T) {
+		t.Parallel()
+
+		const populateItemsCount = 100
+		store := inmemstore.New()
+		populateStore(t, store, populateItemsCount)
+
+		step := migration.NewStepOnIndex(
+			storage.Query{
+				Factory:       newItemFactory,
+				ItemAttribute: storage.QueryItem,
+			},
+			migration.WithItemUpdaterFn(func(i storage.Item) (storage.Item, bool) {
+				ii := i.(*item)
+				ii.id += 1
+				return ii, true
+			}),
+			migration.WithOpPerBatch(3),
+		)
+
+		if err := step(store); err == nil {
+			t.Fatalf("step migration should fail")
+		}
+
+		assertItemsInRange(t, store, 0, populateItemsCount)
+	})
+}
+
+func TestStepIndex_BatchSize(t *testing.T) {
+	t.Parallel()
+
+	const populateItemsCount = 128
+	for i := 1; i <= 2*populateItemsCount; i <<= 1 {
+		i := i
+		t.Run(fmt.Sprintf("callback called once per item, with batch size: %d", i), func(t *testing.T) {
+			t.Parallel()
+
+			store := inmemstore.New()
+			populateStore(t, store, populateItemsCount)
+
+			deleteItemCallMap := make(map[int]struct{})
+			updateItemCallMap := make(map[int]struct{})
+
+			stepFn := migration.NewStepOnIndex(
+				storage.Query{
+					Factory:       newItemFactory,
+					ItemAttribute: storage.QueryItem,
+				},
+				migration.WithItemDeleteFn(func(i storage.Item) bool {
+					ii := i.(*item)
+					if _, ok := deleteItemCallMap[ii.id]; ok {
+						t.Fatalf("delete should be called once")
+					}
+					deleteItemCallMap[ii.id] = struct{}{}
+
+					return ii.id < 10
+				}),
+				migration.WithItemUpdaterFn(func(i storage.Item) (storage.Item, bool) {
+					ii := i.(*item)
+					if _, ok := updateItemCallMap[ii.id]; ok {
+						t.Fatalf("update should be called once")
+					}
+					updateItemCallMap[ii.id] = struct{}{}
+
+					return ii, true
+				}),
+				migration.WithOpPerBatch(i),
+			)
+
+			if err := stepFn(store); err != nil {
+				t.Fatalf("step migration should successed: %v", err)
+			}
+
+			opsExpected := (2 * populateItemsCount) - 10
+			opsGot := len(updateItemCallMap) + len(deleteItemCallMap)
+			if opsExpected != opsGot {
+				t.Fatalf("updated and deleted items should add up to totat: got %d, want %d", opsGot, opsExpected)
+			}
+		})
+	}
 }
 
 func TestOptions(t *testing.T) {
 	t.Parallel()
 
-	items := []*item{nil, {val: 1}, {val: 2}}
+	items := []*item{nil, {id: 1}, {id: 2}}
 
 	t.Run("new options", func(t *testing.T) {
 		t.Parallel()
 
-		opts := migration.NewOptions()
+		opts := migration.DefaultOptions()
 		if opts == nil {
 			t.Fatalf("options should not be nil")
 		}
@@ -187,13 +264,17 @@ func TestOptions(t *testing.T) {
 				t.Fatalf("updateFn should always return false")
 			}
 		}
+
+		if opts.OpPerBatch() <= 10 {
+			t.Fatalf("default opPerBatch value is to small")
+		}
 	})
 
 	t.Run("delete option apply", func(t *testing.T) {
 		t.Parallel()
 
 		itemC := make(chan storage.Item, 1)
-		opts := migration.NewOptions()
+		opts := migration.DefaultOptions()
 
 		deleteFn := func(i storage.Item) bool {
 			itemC <- i
@@ -213,7 +294,7 @@ func TestOptions(t *testing.T) {
 		t.Parallel()
 
 		itemC := make(chan storage.Item, 1)
-		opts := migration.NewOptions()
+		opts := migration.DefaultOptions()
 
 		updateFn := func(i storage.Item) (storage.Item, bool) {
 			itemC <- i
@@ -228,13 +309,24 @@ func TestOptions(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("opPerBatch option apply", func(t *testing.T) {
+		t.Parallel()
+
+		const opPerBetch = 3
+		opts := migration.DefaultOptions()
+		opts.ApplyAll(migration.WithOpPerBatch(opPerBetch))
+		if opts.OpPerBatch() != opPerBetch {
+			t.Fatalf("have %d, want %d", opts.OpPerBatch(), opPerBetch)
+		}
+	})
 }
 
 func populateStore(t *testing.T, s storage.Store, count int) {
 	t.Helper()
 
 	for i := 0; i < count; i++ {
-		item := &item{val: i}
+		item := &item{id: i, val: i}
 		if err := s.Put(item); err != nil {
 			t.Fatalf("populate store should successed: %v", err)
 		}
@@ -272,21 +364,24 @@ func assertItemsInRange(t *testing.T, s storage.Store, from, to int) {
 }
 
 type item struct {
+	id  int
 	val int
 }
 
 func newItemFactory() storage.Item { return &item{} }
 
-func (i *item) ID() string        { return strconv.Itoa(i.val) }
+func (i *item) ID() string        { return strconv.Itoa(i.id) }
 func (i *item) Namespace() string { return "migration-test" }
 
 func (i *item) Marshal() ([]byte, error) {
-	buf := make([]byte, 8)
+	buf := make([]byte, 16)
+	binary.LittleEndian.PutUint64(buf, uint64(i.id))
 	binary.LittleEndian.PutUint64(buf, uint64(i.val))
 	return buf, nil
 }
 
 func (i *item) Unmarshal(d []byte) error {
+	i.id = int(binary.LittleEndian.Uint64(d))
 	i.val = int(binary.LittleEndian.Uint64(d))
 	return nil
 }
