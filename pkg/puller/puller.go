@@ -29,7 +29,7 @@ const loggerName = "puller"
 
 var errCursorsLength = errors.New("cursors length mismatch")
 
-const syncSleepDur = time.Minute * 5
+const DefaultSyncSleepDur = time.Minute * 5
 
 type Options struct {
 	Bins uint8
@@ -51,10 +51,12 @@ type Puller struct {
 
 	wg sync.WaitGroup
 
+	syncSleepDur time.Duration
+
 	bins uint8 // how many bins do we support
 }
 
-func New(stateStore storage.StateStorer, topology topology.Driver, reserveState postage.ReserveStateGetter, pullSync pullsync.Interface, logger log.Logger, o Options, warmupTime time.Duration) *Puller {
+func New(stateStore storage.StateStorer, topology topology.Driver, reserveState postage.ReserveStateGetter, pullSync pullsync.Interface, logger log.Logger, o Options, warmupTime time.Duration, syncSleepDur time.Duration) *Puller {
 	var (
 		bins uint8 = swarm.MaxBins
 	)
@@ -70,8 +72,8 @@ func New(stateStore storage.StateStorer, topology topology.Driver, reserveState 
 		metrics:      newMetrics(),
 		logger:       logger.WithName(loggerName).Register(),
 		syncPeers:    make([]map[string]*syncPeer, bins),
-
-		bins: bins,
+		syncSleepDur: syncSleepDur,
+		bins:         bins,
 	}
 
 	for i := uint8(0); i < bins; i++ {
@@ -238,7 +240,7 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			case <-ctx.Done():
 				loggerV2.Debug("histSyncWorker context cancelled", "peer_address", peer, "bin", bin, "cursor", cur)
 				return
-			case <-time.After(syncSleepDur):
+			case <-time.After(p.syncSleepDur):
 			}
 			sleep = false
 		}
@@ -296,7 +298,7 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			case <-ctx.Done():
 				loggerV2.Debug("liveSyncWorker context cancelled", "peer_address", peer, "bin", bin, "cursor", cur)
 				return
-			case <-time.After(syncSleepDur):
+			case <-time.After(p.syncSleepDur):
 			}
 			sleep = false
 		}

@@ -447,6 +447,44 @@ func TestDepthChange(t *testing.T) {
 	}
 }
 
+// TestContinueSyncing adds a single peer with PO 0 to hist and live sync only a peer
+// to test that when SyncInterval returns an error, the syncing does not terminate.
+func TestContinueSyncing(t *testing.T) {
+	t.Parallel()
+
+	var (
+		addr = test.RandomAddress()
+	)
+
+	puller, _, kad, pullsync := newPuller(opts{
+		kad: []mockk.Option{
+			mockk.WithEachPeerRevCalls(mockk.AddrTuple{Addr: addr, PO: 0}),
+			mockk.WithDepth(0),
+		},
+		pullSync: []mockps.Option{
+			mockps.WithCursors([]uint64{1}),
+			mockps.WithSyncError(errors.New("sync error"))},
+		bins:         1,
+		syncRadius:   0,
+		syncSleepDur: time.Millisecond * 10,
+	})
+	defer puller.Close()
+	defer pullsync.Close()
+
+	time.Sleep(100 * time.Millisecond)
+	kad.Trigger()
+	time.Sleep(100 * time.Millisecond)
+
+	calls := pullsync.LiveSyncCalls(addr)
+
+	// expected calls should ideally be exactly 10,
+	// but we allow some time for the goroutines to run
+	// by reducing the minimum expected calls to 5
+	if len(calls) < 5 || len(calls) > 10 {
+		t.Fatalf("unexpected amount of calls, got %d", len(calls))
+	}
+}
+
 func checkIntervals(t *testing.T, s storage.StateStorer, addr swarm.Address, expInterval string, bin uint8) {
 	t.Helper()
 	key := puller.PeerIntervalKey(addr, bin)
@@ -618,10 +656,11 @@ func waitLiveSyncCalledTimes(t *testing.T, ps *mockps.PullSyncMock, addr swarm.A
 }
 
 type opts struct {
-	pullSync   []mockps.Option
-	kad        []mockk.Option
-	bins       uint8
-	syncRadius uint8
+	pullSync     []mockps.Option
+	kad          []mockk.Option
+	bins         uint8
+	syncRadius   uint8
+	syncSleepDur time.Duration
 }
 
 func newPuller(ops opts) (*puller.Puller, storage.StateStorer, *mockk.Mock, *mockps.PullSyncMock) {
@@ -635,7 +674,7 @@ func newPuller(ops opts) (*puller.Puller, storage.StateStorer, *mockk.Mock, *moc
 	o := puller.Options{
 		Bins: ops.bins,
 	}
-	return puller.New(s, kad, rs, ps, logger, o, 0), s, kad, ps
+	return puller.New(s, kad, rs, ps, logger, o, 0, ops.syncSleepDur), s, kad, ps
 }
 
 type c struct {

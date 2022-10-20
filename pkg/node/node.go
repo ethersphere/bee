@@ -931,7 +931,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 
 	var pullerService *puller.Puller
 	if o.FullNodeMode && !o.BootnodeMode {
-		pullerService = puller.New(stateStore, kad, batchStore, pullSyncProtocol, logger, puller.Options{}, warmupTime)
+		pullerService = puller.New(stateStore, kad, batchStore, pullSyncProtocol, logger, puller.Options{}, warmupTime, puller.DefaultSyncSleepDur)
 		b.pullerCloser = pullerService
 	}
 
