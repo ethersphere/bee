@@ -2134,19 +2134,17 @@ func isIn(addr swarm.Address, addrs []swarm.Address) bool {
 func waitBalanced(t *testing.T, k *kademlia.Kad, bin uint8) {
 	t.Helper()
 
-	timeout := time.After(3 * time.Second)
+	timeout := time.After(5 * time.Second)
 	for {
 		select {
 		case <-timeout:
 			t.Fatalf("timed out waiting to be balanced for bin: %d", int(bin))
 		default:
+			if k.IsBalanced(bin) {
+				return
+			}
+			time.Sleep(50 * time.Millisecond)
 		}
-
-		if balanced := k.IsBalanced(bin); balanced {
-			return
-		}
-
-		time.Sleep(50 * time.Millisecond)
 	}
 }
 
