@@ -18,7 +18,6 @@ import (
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/file/loadsave"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/manifest"
@@ -173,12 +172,8 @@ func TestFeed_Post(t *testing.T) {
 	t.Run("postage", func(t *testing.T) {
 		t.Run("err - bad batch", func(t *testing.T) {
 			hexbatch := hex.EncodeToString(batchInvalid)
-			jsonhttptest.Request(t, client, http.MethodPost, url, http.StatusNotFound,
-				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
-				jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-					Message: "batch id not found",
-					Code:    http.StatusNotFound,
-				}))
+			jsonhttptest.Request(t, client, http.MethodPost, url, http.StatusBadRequest,
+				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch))
 		})
 
 		t.Run("ok - batch zeros", func(t *testing.T) {

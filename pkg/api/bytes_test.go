@@ -255,7 +255,7 @@ func TestBytesInvalidStamp(t *testing.T) {
 
 	t.Run("upload, invalid postage batch", func(t *testing.T) {
 		chunkAddr := swarm.MustParseHexAddress(expHash)
-		jsonhttptest.Request(t, client, http.MethodPost, resource, http.StatusNotFound,
+		jsonhttptest.Request(t, client, http.MethodPost, resource, http.StatusBadRequest,
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, "wrong header"),
 			jsonhttptest.WithRequestBody(bytes.NewReader(content)),
