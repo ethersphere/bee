@@ -119,8 +119,14 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		mtx.Unlock()
 
 		if round-1 == sampleRound { // the sample has to come from previous round to be able to commit it
+			a.metrics.CommitPhase.Inc()
+			a.metrics.AllPhaseEvents.Inc()
+			a.metrics.AllContractCalls.Inc()
 			obf, err := a.commit(ctx, storageRadius, reserveSample)
 			if err != nil {
+				a.metrics.PhasesErrors.All.Inc()
+				a.metrics.AllContractCallErrors.Inc()
+				a.metrics.PhasesErrors.Commit.Inc()
 				a.logger.Error(err, "commit")
 			} else {
 				mtx.Lock()
@@ -160,8 +166,14 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		mtx.Unlock()
 
 		if round == commitRound { // reveal requires the obfuscationKey from the same round
+			a.metrics.RevealPhase.Inc()
+			a.metrics.AllPhaseEvents.Inc()
+			a.metrics.AllContractCalls.Inc()
 			err := a.reveal(ctx, storageRadius, reserveSample, obfuscationKey)
 			if err != nil {
+				a.metrics.AllContractCallErrors.Inc()
+				a.metrics.PhasesErrors.All.Inc()
+				a.metrics.PhasesErrors.Reveal.Inc()
 				a.logger.Error(err, "reveal")
 			} else {
 				mtx.Lock()
@@ -228,8 +240,10 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		case <-time.After(blockTime * time.Duration(checkEvery)):
 		}
 
+		a.metrics.BackendCalls.Inc()
 		block, err := a.backend.BlockNumber(context.Background())
 		if err != nil {
+			a.metrics.BackendErrors.Inc()
 			a.logger.Error(err, "getting block number")
 			continue
 		}
@@ -270,23 +284,32 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 }
 
 func (a *Agent) reveal(ctx context.Context, storageRadius uint8, sample, obfuscationKey []byte) error {
-	a.metrics.RevealPhase.Inc()
 	return a.contract.Reveal(ctx, storageRadius, sample, obfuscationKey)
 }
 
 func (a *Agent) claim(ctx context.Context) error {
-
 	a.metrics.ClaimPhase.Inc()
+	// event claimPhase was processed
+	a.metrics.AllPhaseEvents.Inc()
+	a.metrics.AllContractCalls.Inc()
 
 	isWinner, err := a.contract.IsWinner(ctx)
 	if err != nil {
+		a.metrics.PhasesErrors.All.Inc()
+		a.metrics.PhasesErrors.Winner.Inc()
+		a.metrics.AllContractCallErrors.Inc()
 		return err
 	}
 
 	if isWinner {
 		a.metrics.Winner.Inc()
+		a.metrics.AllPhaseEvents.Inc()
+		a.metrics.AllContractCalls.Inc()
 		err = a.contract.Claim(ctx)
 		if err != nil {
+			a.metrics.AllContractCallErrors.Inc()
+			a.metrics.PhasesErrors.Claim.Inc()
+			a.metrics.PhasesErrors.All.Inc()
 			return fmt.Errorf("error claiming win: %w", err)
 		} else {
 			a.logger.Info("claimed win")
@@ -308,29 +331,40 @@ func (a *Agent) play(ctx context.Context) (uint8, []byte, error) {
 
 	storageRadius := a.reserve.GetReserveState().StorageRadius
 
+	a.metrics.AllContractCalls.Inc()
 	isPlaying, err := a.contract.IsPlaying(ctx, storageRadius)
 	if !isPlaying || err != nil {
+		a.metrics.AllContractCallErrors.Inc()
+		a.metrics.PhasesErrors.All.Inc()
+		a.metrics.PhasesErrors.NeighborhoodSelected.Inc()
 		return 0, nil, err
 	}
 
+	a.metrics.AllPhaseEvents.Inc()
 	a.logger.Info("neighbourhood chosen")
 	a.metrics.NeighborhoodSelected.Inc()
 
+	a.metrics.AllContractCalls.Inc()
 	salt, err := a.contract.ReserveSalt(ctx)
 	if err != nil {
+		a.metrics.AllContractCallErrors.Inc()
 		return 0, nil, err
 	}
 
 	t := time.Now()
+	a.metrics.BackendCalls.Inc()
 	block, err := a.backend.BlockNumber(ctx)
 	if err != nil {
+		a.metrics.BackendErrors.Inc()
 		return 0, nil, err
 	}
 
 	previousRoundNumber := (block / a.blocksPerRound) - 1
 
+	a.metrics.BackendCalls.Inc()
 	timeLimiterBlock, err := a.backend.HeaderByNumber(ctx, new(big.Int).SetUint64(previousRoundNumber*a.blocksPerRound))
 	if err != nil {
+		a.metrics.BackendErrors.Inc()
 		return 0, nil, err
 	}
 
@@ -346,9 +380,6 @@ func (a *Agent) play(ctx context.Context) (uint8, []byte, error) {
 }
 
 func (a *Agent) commit(ctx context.Context, storageRadius uint8, sample []byte) ([]byte, error) {
-
-	a.metrics.CommitPhase.Inc()
-
 	key := make([]byte, swarm.HashSize)
 	if _, err := io.ReadFull(rand.Reader, key); err != nil {
 		return nil, err
