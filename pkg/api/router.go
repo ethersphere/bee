@@ -173,7 +173,6 @@ func (s *Service) mountAPI() {
 	handle("/bytes", jsonhttp.MethodHandler{
 		"POST": web.ChainHandlers(
 			s.contentLengthMetricMiddleware(),
-			s.validateHeaderValues("bytes upload", []headerDescriptor{swarmPostageBatchIdHeader}),
 			s.newTracingHandler("bytes-upload"),
 			web.FinalHandlerFunc(s.bytesUploadHandler),
 		),
@@ -193,14 +192,12 @@ func (s *Service) mountAPI() {
 
 	handle("/chunks", jsonhttp.MethodHandler{
 		"POST": web.ChainHandlers(
-			s.validateHeaderValues("chunks upload", []headerDescriptor{swarmPostageBatchIdHeader}),
 			jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkWithSpanSize),
 			web.FinalHandlerFunc(s.chunkUploadHandler),
 		),
 	})
 
 	handle("/chunks/stream", web.ChainHandlers(
-		s.validateHeaderValues("chunks stream upload", []headerDescriptor{swarmPostageBatchIdHeader}),
 		s.newTracingHandler("chunks-stream-upload"),
 		web.FinalHandlerFunc(s.chunkUploadStreamHandler),
 	))
@@ -213,7 +210,6 @@ func (s *Service) mountAPI() {
 
 	handle("/soc/{owner}/{id}", jsonhttp.MethodHandler{
 		"POST": web.ChainHandlers(
-			s.validateHeaderValues("soc", []headerDescriptor{swarmPostageBatchIdHeader}),
 			jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkWithSpanSize),
 			web.FinalHandlerFunc(s.socUploadHandler),
 		),
@@ -222,7 +218,6 @@ func (s *Service) mountAPI() {
 	handle("/feeds/{owner}/{topic}", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.feedGetHandler),
 		"POST": web.ChainHandlers(
-			s.validateHeaderValues("feed", []headerDescriptor{swarmPostageBatchIdHeader}),
 			jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkWithSpanSize),
 			web.FinalHandlerFunc(s.feedPostHandler),
 		),
@@ -231,7 +226,6 @@ func (s *Service) mountAPI() {
 	handle("/bzz", jsonhttp.MethodHandler{
 		"POST": web.ChainHandlers(
 			s.contentLengthMetricMiddleware(),
-			s.validateHeaderValues("bzz-upload", []headerDescriptor{swarmPostageBatchIdHeader}),
 			s.newTracingHandler("bzz-upload"),
 			web.FinalHandlerFunc(s.bzzUploadHandler),
 		),
@@ -254,7 +248,6 @@ func (s *Service) mountAPI() {
 	handle("/pss/send/{topic}/{targets}", web.ChainHandlers(
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"POST": web.ChainHandlers(
-				s.validateHeaderValues("pss send", []headerDescriptor{swarmPostageBatchIdHeader}),
 				jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkSize),
 				web.FinalHandlerFunc(s.pssPostHandler),
 			),
@@ -444,7 +437,7 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 		handle("/chequebook/cashout/{peer}", jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.swapCashoutStatusHandler),
 			"POST": web.ChainHandlers(
-				s.validateHeaderValues("swap cashout", nil),
+				s.gasConfigMiddleware("swap cashout"),
 				web.FinalHandlerFunc(s.swapCashoutHandler),
 			),
 		})
@@ -461,14 +454,14 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 
 		handle("/chequebook/deposit", jsonhttp.MethodHandler{
 			"POST": web.ChainHandlers(
-				s.validateHeaderValues("chequebook deposit", nil),
+				s.gasConfigMiddleware("chequebook deposit"),
 				web.FinalHandlerFunc(s.chequebookDepositHandler),
 			),
 		})
 
 		handle("/chequebook/withdraw", jsonhttp.MethodHandler{
 			"POST": web.ChainHandlers(
-				s.validateHeaderValues("chequebook withdraw", nil),
+				s.gasConfigMiddleware("chequebook withdraw"),
 				web.FinalHandlerFunc(s.chequebookWithdrawHandler),
 			),
 		})
@@ -504,7 +497,7 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 	handle("/stamps/{amount}/{depth}", web.ChainHandlers(
 		s.postageAccessHandler,
 		s.postageSyncStatusCheckHandler,
-		s.validateHeaderValues("create batch", nil),
+		s.gasConfigMiddleware("create batch"),
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"POST": http.HandlerFunc(s.postageCreateHandler),
 		})),
@@ -513,7 +506,7 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 	handle("/stamps/topup/{batch_id}/{amount}", web.ChainHandlers(
 		s.postageAccessHandler,
 		s.postageSyncStatusCheckHandler,
-		s.validateHeaderValues("topup batch", nil),
+		s.gasConfigMiddleware("topup batch"),
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"PATCH": http.HandlerFunc(s.postageTopUpHandler),
 		})),
@@ -522,7 +515,7 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 	handle("/stamps/dilute/{batch_id}/{depth}", web.ChainHandlers(
 		s.postageAccessHandler,
 		s.postageSyncStatusCheckHandler,
-		s.validateHeaderValues("dilute batch", nil),
+		s.gasConfigMiddleware("dilute batch"),
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"PATCH": http.HandlerFunc(s.postageDiluteHandler),
 		})),
@@ -554,7 +547,7 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 
 	handle("/stake/deposit/{amount}", web.ChainHandlers(
 		s.stakingAccessHandler,
-		s.validateHeaderValues("deposit stake", nil),
+		s.gasConfigMiddleware("deposit stake"),
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"POST": http.HandlerFunc(s.stakingDepositHandler),
 		})),
