@@ -48,13 +48,13 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		logger.Error(nil, "get putter failed")
 		switch {
 		case errors.Is(err, errBatchUnusable) || errors.Is(err, postage.ErrNotUsable):
-			jsonhttp.UnprocessableEntity(w, "batch not usable yet")
+			jsonhttp.UnprocessableEntity(w, "batch not usable yet or does not exist")
 		case errors.Is(err, postage.ErrNotFound):
 			jsonhttp.NotFound(w, "batch with id not found")
 		case errors.Is(err, errInvalidPostageBatch):
 			jsonhttp.BadRequest(w, "invalid batch id")
 		default:
-			jsonhttp.InternalServerError(w, nil)
+			jsonhttp.BadRequest(w, nil)
 		}
 		return
 	}
@@ -63,7 +63,12 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debug("get or create tag failed", "error", err)
 		logger.Error(nil, "get or create tag failed")
-		jsonhttp.InternalServerError(w, "cannot get or create tag")
+		switch {
+		case errors.Is(err, tags.ErrNotFound):
+			jsonhttp.NotFound(w, "tag not found")
+		default:
+			jsonhttp.InternalServerError(w, "cannot get or create tag")
+		}
 		return
 	}
 
@@ -74,7 +79,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 			if err != nil {
 				logger.Debug("increment tag failed", "error", err)
 				logger.Error(nil, "increment tag failed")
-				jsonhttp.InternalServerError(w, "increment tag")
+				jsonhttp.InternalServerError(w, "increment tag failed")
 				return
 			}
 		}
