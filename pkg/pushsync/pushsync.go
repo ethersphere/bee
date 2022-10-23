@@ -200,6 +200,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 		if closer {
 
+			span.LogKV("closer", closer)
 			ps.metrics.HandlerReplication.Inc()
 
 			var err error
