@@ -193,6 +193,7 @@ func (s *Service) mountAPI() {
 	handle("/chunks", jsonhttp.MethodHandler{
 		"POST": web.ChainHandlers(
 			jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkWithSpanSize),
+			s.newTracingHandler("chunks-upload"),
 			web.FinalHandlerFunc(s.chunkUploadHandler),
 		),
 	})
@@ -298,6 +299,7 @@ func (s *Service) mountAPI() {
 			web.FinalHandlerFunc(s.stewardshipGetHandler),
 		),
 		"PUT": web.ChainHandlers(
+			s.newTracingHandler("stewardship-put"),
 			web.FinalHandlerFunc(s.stewardshipPutHandler),
 		),
 	})
@@ -321,14 +323,12 @@ func (s *Service) mountAPI() {
 	if s.Restricted {
 		handle("/auth", jsonhttp.MethodHandler{
 			"POST": web.ChainHandlers(
-				s.newTracingHandler("auth"),
 				jsonhttp.NewMaxBodyBytesHandler(512),
 				web.FinalHandlerFunc(s.authHandler),
 			),
 		})
 		handle("/refresh", jsonhttp.MethodHandler{
 			"POST": web.ChainHandlers(
-				s.newTracingHandler("auth"),
 				jsonhttp.NewMaxBodyBytesHandler(512),
 				web.FinalHandlerFunc(s.refreshHandler),
 			),

@@ -35,6 +35,7 @@ type Op struct {
 	Chunk  swarm.Chunk
 	Err    chan error
 	Direct bool
+	Ctx    context.Context
 }
 
 type OpChan <-chan *Op
@@ -102,12 +103,9 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 	}
 
 	var (
-		cctx, cancel      = context.WithCancel(context.Background())
-		mtx               sync.Mutex
-		wg                sync.WaitGroup
-		span, logger, ctx = tracer.StartSpanFromContext(cctx, "pusher-sync-batch", s.logger)
-		loggerV1          = logger.V(1).Build()
-		timer             = time.NewTimer(traceDuration)
+		ctx, cancel = context.WithCancel(context.Background())
+		logger      = s.logger.V(1).Build()
+		timer       = time.NewTimer(traceDuration)
 	)
 
 	// inflight.set handles the backpressure for the maximum amount of inflight chunks
@@ -122,15 +120,10 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 		}
 	}()
 
-	ctxLogger := func() (context.Context, log.Logger) {
-		mtx.Lock()
-		defer mtx.Unlock()
-		return ctx, logger
-	}
+	var wg sync.WaitGroup
 
 	push := func(op *Op) {
 		s.metrics.TotalToPush.Inc()
-		ctx, logger := ctxLogger()
 		startTime := time.Now()
 		wg.Add(1)
 		go func() {
@@ -138,7 +131,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 				wg.Done()
 				<-s.sem
 			}()
-			if err := s.pushChunk(ctx, op.Chunk, logger, op.Direct); err != nil {
+			if err := s.pushChunk(op.Ctx, op.Chunk, logger, op.Direct); err != nil {
 				// warning: ugly flow control
 				// if errc is set it means we are in a direct push,
 				// we therefore communicate the error into the channel
@@ -150,7 +143,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 				repeat()
 				s.metrics.TotalErrors.Inc()
 				s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())
-				loggerV1.Debug("cannot push chunk", "chunk_address", op.Chunk.Address(), "error", err)
+				logger.Debug("cannot push chunk", "chunk_address", op.Chunk.Address(), "error", err)
 				return
 			}
 			if op.Err != nil {
@@ -166,12 +159,6 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 			case <-s.quit:
 				return
 			case <-timer.C:
-				// reset the span
-				mtx.Lock()
-				span.Finish()
-				span, logger, ctx = tracer.StartSpanFromContext(cctx, "pusher-sync-batch", s.logger)
-				loggerV1 = logger.V(1).Build()
-				mtx.Unlock()
 			}
 		}
 	}()

@@ -23,6 +23,7 @@ import (
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/util/ioutil"
 	"github.com/gorilla/mux"
+	"github.com/opentracing/opentracing-go"
 )
 
 type bytesPostResponse struct {
@@ -88,6 +89,20 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// Add the tag to the context
 	ctx := sctx.SetTag(r.Context(), tag)
 	p := requestPipelineFn(putter, r)
+
+	span, logger, ctx := s.tracer.StartSpanFromContext(ctx, "bytes-upload-handler", s.logger, opentracing.Tags{
+		"host":        s.overlay,
+		"bee-mode":    s.beeMode,
+		"tag":         tag.Uid,
+		"tag-created": created,
+	})
+	defer func() {
+		if err != nil {
+			span.LogKV("error", err)
+		}
+		span.Finish()
+	}()
+
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	pr := ioutil.TimeoutReader(ctx, r.Body, time.Minute, func(n uint64) {
@@ -107,6 +122,9 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+
+	span.LogKV("address", address)
+
 	if err = wait(); err != nil {
 		logger.Debug("sync chunks failed", "error", err)
 		logger.Error(nil, "sync chunks failed")

@@ -19,6 +19,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/gorilla/mux"
+	"github.com/opentracing/opentracing-go"
 
 	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/file/joiner"
@@ -116,6 +117,19 @@ func (s *Service) fileUploadHandler(logger log.Logger, w http.ResponseWriter, r 
 	ctx := sctx.SetTag(r.Context(), tag)
 	p := requestPipelineFn(storer, r)
 
+	span, logger, ctx := s.tracer.StartSpanFromContext(ctx, "bzz-upload-handler", s.logger, opentracing.Tags{
+		"host":        s.overlay,
+		"bee-mode":    s.beeMode.String(),
+		"tag":         tag.Uid,
+		"tag-created": created,
+	})
+	defer func() {
+		if err != nil {
+			span.LogKV("error", err)
+		}
+		span.Finish()
+	}()
+
 	// first store the file and get its reference
 	fr, err := p(ctx, r.Body)
 	if err != nil {
@@ -129,6 +143,8 @@ func (s *Service) fileUploadHandler(logger log.Logger, w http.ResponseWriter, r 
 		}
 		return
 	}
+
+	span.LogKV("address", fr)
 
 	// If filename is still empty, use the file hash as the filename
 	if queries.FileName == "" {
@@ -224,6 +240,7 @@ func (s *Service) fileUploadHandler(logger log.Logger, w http.ResponseWriter, r 
 		return
 	}
 	logger.Debug("store", "manifest_reference", manifestReference)
+	span.LogKV("reference", manifestReference)
 
 	if created {
 		_, err = tag.DoneSplit(manifestReference)

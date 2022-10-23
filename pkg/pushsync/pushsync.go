@@ -163,8 +163,17 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	chunk := swarm.NewChunk(swarm.NewAddress(ch.Address), ch.Data)
 	chunkAddress := chunk.Address()
 
-	span, logger, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, opentracing.Tag{Key: "address", Value: chunkAddress.String()})
-	defer span.Finish()
+	span, logger, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, opentracing.Tags{
+		"address":   chunkAddress,
+		"host":      ps.address,
+		"full-node": p.FullNode,
+	})
+	defer func() {
+		if err != nil {
+			span.LogKV("error", err)
+		}
+		span.Finish()
+	}()
 
 	stamp := new(postage.Stamp)
 	// attaching the stamp is required becase pushToClosest expects a chunk with a stamp
@@ -186,7 +195,10 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	// if the peer is closer to the chunk, AND it's a full node, we were selected for replication. Return early.
 	if p.FullNode {
-		if closer, _ := p.Address.Closer(chunkAddress, ps.address); closer {
+		closer, _ := p.Address.Closer(chunkAddress, ps.address)
+		span.LogKV("closer", closer)
+
+		if closer {
 
 			ps.metrics.HandlerReplication.Inc()
 
@@ -199,9 +211,6 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 			ctxd, canceld := context.WithTimeout(context.Background(), replicationTTL)
 			defer canceld()
-
-			span, _, ctxd := ps.tracer.StartSpanFromContext(ctxd, "pushsync-replication-storage", ps.logger, opentracing.Tag{Key: "address", Value: chunkAddress.String()})
-			defer span.Finish()
 
 			realClosestPeer, err := ps.topologyDriver.ClosestPeer(chunk.Address(), false, topology.Filter{Reachable: true})
 			if err == nil {
@@ -334,9 +343,19 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 	}, nil
 }
 
-func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bool, originAddr swarm.Address) (*pb.Receipt, error) {
-	span, logger, ctx := ps.tracer.StartSpanFromContext(ctx, "push-closest", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
-	defer span.Finish()
+func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bool, originAddr swarm.Address) (rc *pb.Receipt, err error) {
+	span, logger, ctx := ps.tracer.StartSpanFromContext(ctx, "push-closest", ps.logger, opentracing.Tags{
+		"address":     ch.Address(),
+		"origin-addr": originAddr,
+		"origin":      origin,
+	})
+	defer func() {
+		if err != nil {
+			span.LogKV("error", err)
+		}
+		span.Finish()
+	}()
+
 	defer ps.skipList.PruneExpired()
 
 	var (
@@ -499,6 +518,19 @@ func (ps *PushSync) pushPeer(ctx context.Context, resultChan chan<- receiptResul
 		pushed  bool
 		now     = time.Now()
 	)
+
+	span, _, ctx := ps.tracer.StartFollowerSpan(ctx, "push-to-peer", ps.logger, opentracing.Tags{
+		"address": ch.Address(),
+		"peer":    peer,
+		"origin":  origin,
+	})
+	defer func() {
+		span.LogKV("pushed", pushed)
+		if err != nil {
+			span.LogKV("error", err)
+		}
+		span.Finish()
+	}()
 
 	defer func() {
 		select {

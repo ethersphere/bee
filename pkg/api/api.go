@@ -849,7 +849,7 @@ func (p *pushStamperPutter) Put(ctx context.Context, mode storage.ModePut, chs .
 				// from the api here so that the putter knows not to keep on sending stuff
 				// and just returns an error... or?
 			PUSH:
-				p.c <- &pusher.Op{Chunk: ch, Err: errc, Direct: true}
+				p.c <- &pusher.Op{Chunk: ch, Err: errc, Direct: true, Ctx: ctx}
 				select {
 				case err := <-errc:
 					// if we're the closest one we will store the chunk and return no error
