@@ -46,7 +46,16 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debug("get putter failed", "error", err)
 		logger.Error(nil, "get putter failed")
-		jsonhttp.BadRequest(w, nil)
+		switch {
+		case errors.Is(err, errBatchUnusable) || errors.Is(err, postage.ErrNotUsable):
+			jsonhttp.UnprocessableEntity(w, "batch not usable yet")
+		case errors.Is(err, postage.ErrNotFound):
+			jsonhttp.NotFound(w, "batch with id not found")
+		case errors.Is(err, errInvalidPostageBatch):
+			jsonhttp.BadRequest(w, "invalid batch id")
+		default:
+			jsonhttp.InternalServerError(w, nil)
+		}
 		return
 	}
 
