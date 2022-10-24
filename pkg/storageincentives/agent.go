@@ -119,10 +119,8 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		mtx.Unlock()
 
 		if round-1 == sampleRound { // the sample has to come from previous round to be able to commit it
-			a.metrics.CommitPhase.Inc()
 			obf, err := a.commit(ctx, storageRadius, reserveSample)
 			if err != nil {
-				a.metrics.ErrCommit.Inc()
 				a.logger.Error(err, "commit")
 			} else {
 				mtx.Lock()
@@ -162,10 +160,8 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		mtx.Unlock()
 
 		if round == commitRound { // reveal requires the obfuscationKey from the same round
-			a.metrics.RevealPhase.Inc()
 			err := a.reveal(ctx, storageRadius, reserveSample, obfuscationKey)
 			if err != nil {
-				a.metrics.ErrReveal.Inc()
 				a.logger.Error(err, "reveal")
 			} else {
 				mtx.Lock()
@@ -276,7 +272,12 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 }
 
 func (a *Agent) reveal(ctx context.Context, storageRadius uint8, sample, obfuscationKey []byte) error {
-	return a.contract.Reveal(ctx, storageRadius, sample, obfuscationKey)
+	a.metrics.RevealPhase.Inc()
+	err := a.contract.Reveal(ctx, storageRadius, sample, obfuscationKey)
+	if err != nil {
+		a.metrics.ErrReveal.Inc()
+	}
+	return err
 }
 
 func (a *Agent) claim(ctx context.Context) error {
@@ -358,6 +359,8 @@ func (a *Agent) play(ctx context.Context) (uint8, []byte, error) {
 }
 
 func (a *Agent) commit(ctx context.Context, storageRadius uint8, sample []byte) ([]byte, error) {
+	a.metrics.CommitPhase.Inc()
+
 	key := make([]byte, swarm.HashSize)
 	if _, err := io.ReadFull(rand.Reader, key); err != nil {
 		return nil, err
@@ -370,6 +373,7 @@ func (a *Agent) commit(ctx context.Context, storageRadius uint8, sample []byte) 
 
 	err = a.contract.Commit(ctx, obfuscatedHash)
 	if err != nil {
+		a.metrics.ErrCommit.Inc()
 		return nil, err
 	}
 
