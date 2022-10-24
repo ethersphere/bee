@@ -477,6 +477,16 @@ func TestPostageGetBuckets(t *testing.T) {
 			}),
 		)
 	})
+
+	t.Run("batch not found", func(t *testing.T) {
+		t.Parallel()
+
+		mpNotFound := mockpost.New()
+		tsNotFound, _, _, _ := newTestServer(t, testServerOptions{Post: mpNotFound, DebugAPI: true})
+
+		jsonhttptest.Request(t, tsNotFound, http.MethodGet, "/stamps/"+batchOkStr+"/buckets", http.StatusNotFound)
+	})
+
 }
 
 func TestReserveState(t *testing.T) {

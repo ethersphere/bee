@@ -282,6 +282,7 @@ func (s *Service) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.R
 		default:
 			jsonhttp.InternalServerError(w, "get issuer failed")
 		}
+		return
 	}
 
 	b := issuer.Buckets()
