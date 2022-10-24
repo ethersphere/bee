@@ -18,19 +18,19 @@ import (
 )
 
 type Cache struct {
-	p2p.StreamerDisconnecter
+	sd    p2p.StreamerDisconnecter
 	sf    singleflight.Group
 	cache sync.Map // "${overlay}/swarm/pushsync/1.1.0/pushsync" -> *CachedStream{}
 }
 
 func New(sd p2p.StreamerDisconnecter) *Cache {
 	return &Cache{
-		StreamerDisconnecter: sd,
+		sd: sd,
 	}
 }
 
 func (s *Cache) NetworkStatus() p2p.NetworkStatus {
-	return s.StreamerDisconnecter.NetworkStatus()
+	return s.sd.NetworkStatus()
 }
 
 func (s *Cache) Disconnect(overlay swarm.Address, reason string) error {
@@ -49,7 +49,7 @@ func (s *Cache) Disconnect(overlay swarm.Address, reason string) error {
 	// full close every stream
 	for _, key := range keys {
 		_, _, _ = s.sf.Do(context.Background(), key, func(ctx context.Context) (res interface{}, err error) {
-			mapStream, found := s.cache.LoadAndDelete(addressKey)
+			mapStream, found := s.cache.LoadAndDelete(key)
 			if !found {
 				return
 			}
@@ -62,12 +62,12 @@ func (s *Cache) Disconnect(overlay swarm.Address, reason string) error {
 		})
 	}
 
-	return s.StreamerDisconnecter.Disconnect(overlay, reason)
+	return s.sd.Disconnect(overlay, reason)
 }
 
 func (s *Cache) Blocklist(overlay swarm.Address, duration time.Duration, reason string) error {
 	// TODO update cache here?
-	return s.StreamerDisconnecter.Blocklist(overlay, duration, reason)
+	return s.sd.Blocklist(overlay, duration, reason)
 }
 
 func (s *Cache) NewStream(ctx context.Context, address swarm.Address, h p2p.Headers, protocol, version, stream string) (p2p.Stream, error) {
@@ -78,7 +78,7 @@ func (s *Cache) NewStream(ctx context.Context, address swarm.Address, h p2p.Head
 	res, _, err := s.sf.Do(ctx, sfKey, func(ctx context.Context) (interface{}, error) {
 		cachedStream, found := s.cache.Load(sfKey)
 		if !found {
-			newStream, err := s.StreamerDisconnecter.NewStream(ctx, address, h, protocol, version, stream)
+			newStream, err := s.sd.NewStream(ctx, address, h, protocol, version, stream)
 			if err != nil {
 				return nil, err
 			}
