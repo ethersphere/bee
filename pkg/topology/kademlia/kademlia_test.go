@@ -2136,17 +2136,18 @@ func spinLock(t *testing.T, timeout time.Duration, cond func() bool) error {
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 
+	condCheckTicker := time.NewTicker(time.Millisecond * 50)
+	defer condCheckTicker.Stop()
+
 	for {
 		select {
 		case <-timer.C:
 			return errors.New("timed out waiting for condition")
 
-		default:
+		case <-condCheckTicker.C:
 			if cond() {
 				return nil
 			}
 		}
-
-		time.Sleep(time.Millisecond * 50)
 	}
 }
