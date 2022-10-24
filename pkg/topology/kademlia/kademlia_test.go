@@ -40,7 +40,7 @@ func init() {
 	rand.Seed(time.Now().UnixNano())
 }
 
-const spinLockWaitTime = time.Second * 12
+const spinLockWaitTime = time.Minute
 
 var nonConnectableAddress, _ = ma.NewMultiaddr(underlayBase + "16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkA")
 
