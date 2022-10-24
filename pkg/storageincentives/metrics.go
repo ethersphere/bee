@@ -103,31 +103,31 @@ func newMetrics() metrics {
 		ErrReveal: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "revealPhase_errors",
+			Name:      "reveal_phase_errors",
 			Help:      "total reveal phase errors while processing",
 		}),
 		ErrCommit: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "commitPhase_errors",
+			Name:      "commit_phase_errors",
 			Help:      "total commit phase errors while processing",
 		}),
 		ErrClaim: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "claimPhase_errors",
+			Name:      "claim_phase_errors",
 			Help:      "total claim phase errors while processing",
 		}),
 		ErrWinner: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "winPhase_errors",
+			Name:      "win_phase_errors",
 			Help:      "total win phase while processing",
 		}),
 		ErrCheckIsPlaying: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "neighborhoodSelected_errors",
+			Name:      "is_playing_errors",
 			Help:      "total neighborhood selected errors while processing",
 		}),
 	}
