@@ -10,11 +10,6 @@ import (
 )
 
 type metrics struct {
-	// aggregate events handled
-	AllPhaseEvents        prometheus.Counter
-	AllContractCalls      prometheus.Counter
-	AllContractCallErrors prometheus.Counter
-
 	// phase gauge and counter
 	CurrentPhase         prometheus.Gauge
 	RevealPhase          prometheus.Counter
@@ -30,16 +25,11 @@ type metrics struct {
 	BackendErrors prometheus.Counter
 
 	// metrics for err processing
-	PhasesErrors phasesErrors
-}
-
-type phasesErrors struct {
-	Reveal               prometheus.Counter
-	Commit               prometheus.Counter
-	Claim                prometheus.Counter
-	Winner               prometheus.Counter
-	NeighborhoodSelected prometheus.Counter
-	All                  prometheus.Counter
+	ErrReveal         prometheus.Counter
+	ErrCommit         prometheus.Counter
+	ErrClaim          prometheus.Counter
+	ErrWinner         prometheus.Counter
+	ErrCheckIsPlaying prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -95,25 +85,6 @@ func newMetrics() metrics {
 			Help:      "Current round calculated from the block height.",
 		}),
 
-		// aggregate events handled
-		AllPhaseEvents: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "events_processed",
-			Help:      "total events processed",
-		}),
-		AllContractCalls: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "contractCalls_processed",
-			Help:      "total contract calls processed",
-		}),
-		AllContractCallErrors: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "contractCallErrors_processed",
-			Help:      "total contract call errors processed",
-		}),
 		// total call
 		BackendCalls: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
@@ -129,44 +100,36 @@ func newMetrics() metrics {
 		}),
 
 		// phase errors
-		PhasesErrors: phasesErrors{
-			Reveal: prometheus.NewCounter(prometheus.CounterOpts{
-				Namespace: m.Namespace,
-				Subsystem: subsystem,
-				Name:      "revealPhase_errors",
-				Help:      "total reveal phase errors while processing",
-			}),
-			Commit: prometheus.NewCounter(prometheus.CounterOpts{
-				Namespace: m.Namespace,
-				Subsystem: subsystem,
-				Name:      "commitPhase_errors",
-				Help:      "total commit phase errors while processing",
-			}),
-			Claim: prometheus.NewCounter(prometheus.CounterOpts{
-				Namespace: m.Namespace,
-				Subsystem: subsystem,
-				Name:      "claimPhase_errors",
-				Help:      "total claim phase errors while processing",
-			}),
-			Winner: prometheus.NewCounter(prometheus.CounterOpts{
-				Namespace: m.Namespace,
-				Subsystem: subsystem,
-				Name:      "winPhase_errors",
-				Help:      "total win phase while processing",
-			}),
-			NeighborhoodSelected: prometheus.NewCounter(prometheus.CounterOpts{
-				Namespace: m.Namespace,
-				Subsystem: subsystem,
-				Name:      "neighborhoodSelected_errors",
-				Help:      "total neighborhood selected errors while processing",
-			}),
-			All: prometheus.NewCounter(prometheus.CounterOpts{
-				Namespace: m.Namespace,
-				Subsystem: subsystem,
-				Name:      "event_errors",
-				Help:      "total event errors while processing",
-			}),
-		},
+		ErrReveal: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "revealPhase_errors",
+			Help:      "total reveal phase errors while processing",
+		}),
+		ErrCommit: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "commitPhase_errors",
+			Help:      "total commit phase errors while processing",
+		}),
+		ErrClaim: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "claimPhase_errors",
+			Help:      "total claim phase errors while processing",
+		}),
+		ErrWinner: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "winPhase_errors",
+			Help:      "total win phase while processing",
+		}),
+		ErrCheckIsPlaying: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "neighborhoodSelected_errors",
+			Help:      "total neighborhood selected errors while processing",
+		}),
 	}
 }
 

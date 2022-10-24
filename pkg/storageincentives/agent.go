@@ -120,13 +120,9 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 		if round-1 == sampleRound { // the sample has to come from previous round to be able to commit it
 			a.metrics.CommitPhase.Inc()
-			a.metrics.AllPhaseEvents.Inc()
-			a.metrics.AllContractCalls.Inc()
 			obf, err := a.commit(ctx, storageRadius, reserveSample)
 			if err != nil {
-				a.metrics.PhasesErrors.All.Inc()
-				a.metrics.AllContractCallErrors.Inc()
-				a.metrics.PhasesErrors.Commit.Inc()
+				a.metrics.ErrCommit.Inc()
 				a.logger.Error(err, "commit")
 			} else {
 				mtx.Lock()
@@ -167,13 +163,9 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 		if round == commitRound { // reveal requires the obfuscationKey from the same round
 			a.metrics.RevealPhase.Inc()
-			a.metrics.AllPhaseEvents.Inc()
-			a.metrics.AllContractCalls.Inc()
 			err := a.reveal(ctx, storageRadius, reserveSample, obfuscationKey)
 			if err != nil {
-				a.metrics.AllContractCallErrors.Inc()
-				a.metrics.PhasesErrors.All.Inc()
-				a.metrics.PhasesErrors.Reveal.Inc()
+				a.metrics.ErrReveal.Inc()
 				a.logger.Error(err, "reveal")
 			} else {
 				mtx.Lock()
@@ -290,26 +282,18 @@ func (a *Agent) reveal(ctx context.Context, storageRadius uint8, sample, obfusca
 func (a *Agent) claim(ctx context.Context) error {
 	a.metrics.ClaimPhase.Inc()
 	// event claimPhase was processed
-	a.metrics.AllPhaseEvents.Inc()
-	a.metrics.AllContractCalls.Inc()
 
 	isWinner, err := a.contract.IsWinner(ctx)
 	if err != nil {
-		a.metrics.PhasesErrors.All.Inc()
-		a.metrics.PhasesErrors.Winner.Inc()
-		a.metrics.AllContractCallErrors.Inc()
+		a.metrics.ErrWinner.Inc()
 		return err
 	}
 
 	if isWinner {
 		a.metrics.Winner.Inc()
-		a.metrics.AllPhaseEvents.Inc()
-		a.metrics.AllContractCalls.Inc()
 		err = a.contract.Claim(ctx)
 		if err != nil {
-			a.metrics.AllContractCallErrors.Inc()
-			a.metrics.PhasesErrors.Claim.Inc()
-			a.metrics.PhasesErrors.All.Inc()
+			a.metrics.ErrClaim.Inc()
 			return fmt.Errorf("error claiming win: %w", err)
 		} else {
 			a.logger.Info("claimed win")
@@ -331,23 +315,17 @@ func (a *Agent) play(ctx context.Context) (uint8, []byte, error) {
 
 	storageRadius := a.reserve.GetReserveState().StorageRadius
 
-	a.metrics.AllContractCalls.Inc()
 	isPlaying, err := a.contract.IsPlaying(ctx, storageRadius)
 	if !isPlaying || err != nil {
-		a.metrics.AllContractCallErrors.Inc()
-		a.metrics.PhasesErrors.All.Inc()
-		a.metrics.PhasesErrors.NeighborhoodSelected.Inc()
+		a.metrics.ErrCheckIsPlaying.Inc()
 		return 0, nil, err
 	}
 
-	a.metrics.AllPhaseEvents.Inc()
 	a.logger.Info("neighbourhood chosen")
 	a.metrics.NeighborhoodSelected.Inc()
 
-	a.metrics.AllContractCalls.Inc()
 	salt, err := a.contract.ReserveSalt(ctx)
 	if err != nil {
-		a.metrics.AllContractCallErrors.Inc()
 		return 0, nil, err
 	}
 
