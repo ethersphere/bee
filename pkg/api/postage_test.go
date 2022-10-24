@@ -242,7 +242,7 @@ func TestPostageCreateStamp(t *testing.T) {
 
 		jsonhttptest.Request(t, ts, http.MethodPost, createBatch(initialBalance, depth, label), http.StatusServiceUnavailable,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
-				Message: "postage: syncing failed",
+				Message: "syncing failed",
 				Code:    503,
 			}),
 		)
