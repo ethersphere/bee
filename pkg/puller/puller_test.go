@@ -485,6 +485,53 @@ func TestContinueSyncing(t *testing.T) {
 	}
 }
 
+func TestPeerGone(t *testing.T) {
+	t.Parallel()
+
+	var (
+		addr = test.RandomAddress()
+	)
+
+	p, _, kad, pullsync := newPuller(opts{
+		kad: []mockk.Option{
+			mockk.WithEachPeerRevCalls(mockk.AddrTuple{Addr: addr, PO: 0}),
+			mockk.WithDepth(0),
+		},
+		pullSync: []mockps.Option{
+			mockps.WithCursors([]uint64{1}),
+		},
+		bins:         1,
+		syncRadius:   0,
+		syncSleepDur: time.Millisecond * 10,
+	})
+	defer p.Close()
+	defer pullsync.Close()
+
+	time.Sleep(100 * time.Millisecond)
+	kad.Trigger()
+	time.Sleep(100 * time.Millisecond)
+
+	beforeCalls := pullsync.LiveSyncCalls(addr)
+
+	if len(beforeCalls) != 1 {
+		t.Fatalf("unexpected amount of calls, got %d, want 1", len(beforeCalls))
+	}
+
+	kad.ResetPeers()
+	kad.Trigger()
+	time.Sleep(100 * time.Millisecond)
+
+	afterCalls := pullsync.LiveSyncCalls(addr)
+
+	if len(beforeCalls) != len(afterCalls) {
+		t.Fatalf("unexpected new calls to sync interval, expected 0, got %d", len(afterCalls)-len(beforeCalls))
+	}
+
+	if puller.IsSyncing(p, addr) {
+		t.Fatalf("peer is syncing but shouldnt")
+	}
+}
+
 func checkIntervals(t *testing.T, s storage.StateStorer, addr swarm.Address, expInterval string, bin uint8) {
 	t.Helper()
 	key := puller.PeerIntervalKey(addr, bin)
