@@ -128,7 +128,7 @@ func (c *contract) Commit(ctx context.Context, obfusHash []byte) error {
 		To:          &c.incentivesContractAddress,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 3_000_000),
+		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 1_000_000),
 		Value:       big.NewInt(0),
 		Description: "commit transaction",
 	}
@@ -149,8 +149,8 @@ func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommit
 	request := &transaction.TxRequest{
 		To:          &c.incentivesContractAddress,
 		Data:        callData,
-		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 3_000_000),
+		GasPrice:    new(big.Int).Div(new(big.Int).Mul(sctx.GetGasPrice(ctx), big.NewInt(15)), big.NewInt(10)),
+		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 1_000_000),
 		Value:       big.NewInt(0),
 		Description: "reveal transaction",
 	}
