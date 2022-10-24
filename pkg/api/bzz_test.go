@@ -691,7 +691,7 @@ func Test_bzzDownloadHandler_invalidInputs(t *testing.T) {
 	}
 }
 
-func TestInvalidParams(t *testing.T) {
+func TestInvalidBzzParams(t *testing.T) {
 	t.Parallel()
 
 	var (
