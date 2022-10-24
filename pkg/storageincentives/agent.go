@@ -228,8 +228,10 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		case <-time.After(blockTime * time.Duration(checkEvery)):
 		}
 
+		a.metrics.BackendCalls.Inc()
 		block, err := a.backend.BlockNumber(context.Background())
 		if err != nil {
+			a.metrics.BackendErrors.Inc()
 			a.logger.Error(err, "getting block number")
 			continue
 		}
@@ -271,15 +273,20 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 func (a *Agent) reveal(ctx context.Context, storageRadius uint8, sample, obfuscationKey []byte) error {
 	a.metrics.RevealPhase.Inc()
-	return a.contract.Reveal(ctx, storageRadius, sample, obfuscationKey)
+	err := a.contract.Reveal(ctx, storageRadius, sample, obfuscationKey)
+	if err != nil {
+		a.metrics.ErrReveal.Inc()
+	}
+	return err
 }
 
 func (a *Agent) claim(ctx context.Context) error {
-
 	a.metrics.ClaimPhase.Inc()
+	// event claimPhase was processed
 
 	isWinner, err := a.contract.IsWinner(ctx)
 	if err != nil {
+		a.metrics.ErrWinner.Inc()
 		return err
 	}
 
@@ -287,6 +294,7 @@ func (a *Agent) claim(ctx context.Context) error {
 		a.metrics.Winner.Inc()
 		err = a.contract.Claim(ctx)
 		if err != nil {
+			a.metrics.ErrClaim.Inc()
 			return fmt.Errorf("error claiming win: %w", err)
 		} else {
 			a.logger.Info("claimed win")
@@ -310,6 +318,7 @@ func (a *Agent) play(ctx context.Context) (uint8, []byte, error) {
 
 	isPlaying, err := a.contract.IsPlaying(ctx, storageRadius)
 	if !isPlaying || err != nil {
+		a.metrics.ErrCheckIsPlaying.Inc()
 		return 0, nil, err
 	}
 
@@ -322,15 +331,19 @@ func (a *Agent) play(ctx context.Context) (uint8, []byte, error) {
 	}
 
 	t := time.Now()
+	a.metrics.BackendCalls.Inc()
 	block, err := a.backend.BlockNumber(ctx)
 	if err != nil {
+		a.metrics.BackendErrors.Inc()
 		return 0, nil, err
 	}
 
 	previousRoundNumber := (block / a.blocksPerRound) - 1
 
+	a.metrics.BackendCalls.Inc()
 	timeLimiterBlock, err := a.backend.HeaderByNumber(ctx, new(big.Int).SetUint64(previousRoundNumber*a.blocksPerRound))
 	if err != nil {
+		a.metrics.BackendErrors.Inc()
 		return 0, nil, err
 	}
 
@@ -346,7 +359,6 @@ func (a *Agent) play(ctx context.Context) (uint8, []byte, error) {
 }
 
 func (a *Agent) commit(ctx context.Context, storageRadius uint8, sample []byte) ([]byte, error) {
-
 	a.metrics.CommitPhase.Inc()
 
 	key := make([]byte, swarm.HashSize)
@@ -361,6 +373,7 @@ func (a *Agent) commit(ctx context.Context, storageRadius uint8, sample []byte) 
 
 	err = a.contract.Commit(ctx, obfuscatedHash)
 	if err != nil {
+		a.metrics.ErrCommit.Inc()
 		return nil, err
 	}
 
