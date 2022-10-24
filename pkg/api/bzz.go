@@ -161,7 +161,12 @@ func (s *Service) fileUploadHandler(logger log.Logger, w http.ResponseWriter, r 
 	if err != nil {
 		logger.Debug("create manifest failed", "file_name", queries.FileName, "error", err)
 		logger.Error(nil, "create manifest failed", "file_name", queries.FileName)
-		jsonhttp.InternalServerError(w, "create manifest failed")
+		switch {
+		case errors.Is(err, manifest.ErrInvalidManifestType):
+			jsonhttp.BadRequest(w, "create manifest failed")
+		default:
+			jsonhttp.InternalServerError(w, nil)
+		}
 		return
 	}
 

@@ -706,6 +706,7 @@ func TestInvalidParams(t *testing.T) {
 	)
 
 	t.Run("batch unusable", func(t *testing.T) {
+		t.Parallel()
 		tr := tarFiles(t, []f{
 			{
 				data: []byte("robots text"),
@@ -734,6 +735,7 @@ func TestInvalidParams(t *testing.T) {
 	})
 
 	t.Run("batch exists", func(t *testing.T) {
+		t.Parallel()
 		tr := tarFiles(t, []f{
 			{
 				data: []byte("robots text"),
@@ -762,6 +764,7 @@ func TestInvalidParams(t *testing.T) {
 	})
 
 	t.Run("batch not found", func(t *testing.T) {
+		t.Parallel()
 		tr := tarFiles(t, []f{
 			{
 				data: []byte("robots text"),
