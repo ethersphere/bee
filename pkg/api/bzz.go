@@ -50,10 +50,12 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		logger.Debug("putter failed", "error", err)
 		logger.Error(nil, "putter failed")
 		switch {
+		case errors.Is(err, errBatchUnusable) || errors.Is(err, postage.ErrNotUsable):
+			jsonhttp.UnprocessableEntity(w, "batch not usable yet or does not exist")
 		case errors.Is(err, postage.ErrNotFound):
-			jsonhttp.BadRequest(w, "batch not found")
-		case errors.Is(err, postage.ErrNotUsable):
-			jsonhttp.BadRequest(w, "batch not usable yet")
+			jsonhttp.NotFound(w, "batch with id not found")
+		case errors.Is(err, errInvalidPostageBatch):
+			jsonhttp.BadRequest(w, "invalid batch id")
 		default:
 			jsonhttp.BadRequest(w, nil)
 		}
@@ -88,7 +90,12 @@ func (s *Service) fileUploadHandler(logger log.Logger, w http.ResponseWriter, r 
 	if err != nil {
 		logger.Debug("get or create tag failed", "error", err)
 		logger.Error(nil, "get or create tag failed")
-		jsonhttp.InternalServerError(w, "get or create tag failed")
+		switch {
+		case errors.Is(err, tags.ErrNotFound):
+			jsonhttp.NotFound(w, "tag not found")
+		default:
+			jsonhttp.InternalServerError(w, "cannot get or create tag")
+		}
 		return
 	}
 
@@ -154,7 +161,12 @@ func (s *Service) fileUploadHandler(logger log.Logger, w http.ResponseWriter, r 
 	if err != nil {
 		logger.Debug("create manifest failed", "file_name", queries.FileName, "error", err)
 		logger.Error(nil, "create manifest failed", "file_name", queries.FileName)
-		jsonhttp.InternalServerError(w, "create manifest failed")
+		switch {
+		case errors.Is(err, manifest.ErrInvalidManifestType):
+			jsonhttp.BadRequest(w, "create manifest failed")
+		default:
+			jsonhttp.InternalServerError(w, nil)
+		}
 		return
 	}
 
@@ -283,7 +295,7 @@ FETCH:
 	)
 	if err != nil {
 		logger.Debug("bzz download: not manifest", "address", address, "error", err)
-		logger.Error(nil, "bzz download: not manifest")
+		logger.Error(nil, "not manifest")
 		jsonhttp.NotFound(w, nil)
 		return
 	}
@@ -443,13 +455,13 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			logger.Debug("api download: not found ", "address", reference, "error", err)
-			logger.Error(nil, "api download: not found")
+			logger.Error(nil, "not found")
 			jsonhttp.NotFound(w, nil)
 			return
 		}
 		logger.Debug("api download: unexpected error", "address", reference, "error", err)
 		logger.Error(nil, "api download: unexpected error")
-		jsonhttp.InternalServerError(w, "api download: joiner failed")
+		jsonhttp.InternalServerError(w, "joiner failed")
 		return
 	}
 

@@ -7,6 +7,7 @@ package api_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"mime"
@@ -23,6 +24,7 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/manifest"
 	pinning "github.com/ethersphere/bee/pkg/pinning/mock"
+	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -687,4 +689,163 @@ func Test_bzzDownloadHandler_invalidInputs(t *testing.T) {
 			)
 		})
 	}
+}
+
+func TestInvalidBzzParams(t *testing.T) {
+	t.Parallel()
+
+	var (
+		fileUploadResource = "/bzz"
+		storerMock         = smock.NewStorer()
+		statestoreMock     = statestore.NewStateStore()
+		pinningMock        = pinning.NewServiceMock()
+		logger             = log.Noop
+		existsFn           = func(id []byte) (bool, error) {
+			return false, errors.New("error")
+		}
+	)
+
+	t.Run("batch unusable", func(t *testing.T) {
+		t.Parallel()
+
+		tr := tarFiles(t, []f{
+			{
+				data: []byte("robots text"),
+				name: "robots.txt",
+				dir:  "",
+				header: http.Header{
+					"Content-Type": {"text/plain; charset=utf-8"},
+				},
+			},
+		})
+		clientBatchUnusable, _, _, _ := newTestServer(t, testServerOptions{
+			Storer:     storerMock,
+			Pinning:    pinningMock,
+			Tags:       tags.NewTags(statestoreMock, logger),
+			Logger:     logger,
+			Post:       mockpost.New(mockpost.WithAcceptAll()),
+			BatchStore: mockbatchstore.New(),
+		})
+		jsonhttptest.Request(t, clientBatchUnusable, http.MethodPost, fileUploadResource, http.StatusUnprocessableEntity,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestBody(tr),
+			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
+		)
+
+	})
+
+	t.Run("batch exists", func(t *testing.T) {
+		t.Parallel()
+
+		tr := tarFiles(t, []f{
+			{
+				data: []byte("robots text"),
+				name: "robots.txt",
+				dir:  "",
+				header: http.Header{
+					"Content-Type": {"text/plain; charset=utf-8"},
+				},
+			},
+		})
+		clientBatchExists, _, _, _ := newTestServer(t, testServerOptions{
+			Storer:     storerMock,
+			Pinning:    pinningMock,
+			Tags:       tags.NewTags(statestoreMock, logger),
+			Logger:     logger,
+			Post:       mockpost.New(mockpost.WithAcceptAll()),
+			BatchStore: mockbatchstore.New(mockbatchstore.WithExistsFunc(existsFn)),
+		})
+		jsonhttptest.Request(t, clientBatchExists, http.MethodPost, fileUploadResource, http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestBody(tr),
+			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
+		)
+
+	})
+
+	t.Run("batch not found", func(t *testing.T) {
+		t.Parallel()
+
+		tr := tarFiles(t, []f{
+			{
+				data: []byte("robots text"),
+				name: "robots.txt",
+				dir:  "",
+				header: http.Header{
+					"Content-Type": {"text/plain; charset=utf-8"},
+				},
+			},
+		})
+		clientBatchExists, _, _, _ := newTestServer(t, testServerOptions{
+			Storer:  storerMock,
+			Pinning: pinningMock,
+			Tags:    tags.NewTags(statestoreMock, logger),
+			Logger:  logger,
+			Post:    mockpost.New(),
+		})
+		jsonhttptest.Request(t, clientBatchExists, http.MethodPost, fileUploadResource, http.StatusNotFound,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestBody(tr),
+			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
+		)
+	})
+
+	t.Run("upload, invalid tag", func(t *testing.T) {
+		t.Parallel()
+
+		tr := tarFiles(t, []f{
+			{
+				data: []byte("robots text"),
+				name: "robots.txt",
+				dir:  "",
+				header: http.Header{
+					"Content-Type": {"text/plain; charset=utf-8"},
+				},
+			},
+		})
+		clientInvalidTag, _, _, _ := newTestServer(t, testServerOptions{
+			Storer: storerMock,
+			Logger: logger,
+			Post:   mockpost.New(mockpost.WithAcceptAll()),
+		})
+
+		jsonhttptest.Request(t, clientInvalidTag, http.MethodPost, fileUploadResource, http.StatusInternalServerError,
+			jsonhttptest.WithRequestHeader(api.SwarmTagHeader, "tag"),
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestBody(tr),
+			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar))
+	})
+
+	t.Run("upload, tag not found", func(t *testing.T) {
+		t.Parallel()
+
+		tr := tarFiles(t, []f{
+			{
+				data: []byte("robots text"),
+				name: "robots.txt",
+				dir:  "",
+				header: http.Header{
+					"Content-Type": {"text/plain; charset=utf-8"},
+				},
+			},
+		})
+		tag := tags.NewTags(statestore.NewStateStore(), log.Noop)
+		clientTagExists, _, _, _ := newTestServer(t, testServerOptions{
+			Tags:   tag,
+			Storer: storerMock,
+			Logger: logger,
+			Post:   mockpost.New(mockpost.WithAcceptAll()),
+		})
+
+		jsonhttptest.Request(t, clientTagExists, http.MethodPost, fileUploadResource, http.StatusNotFound,
+			jsonhttptest.WithRequestHeader(api.SwarmTagHeader, strconv.FormatUint(uint64(tag.TagUidFunc()), 10)),
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestBody(tr),
+			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar))
+	})
 }

@@ -176,7 +176,7 @@ func TestFeed_Post(t *testing.T) {
 			jsonhttptest.Request(t, client, http.MethodPost, url, http.StatusBadRequest,
 				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
 				jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-					Message: "invalid postage batch id",
+					Message: "invalid batch id",
 					Code:    http.StatusBadRequest,
 				}))
 		})

@@ -7,12 +7,14 @@ package api_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/log"
 	pinning "github.com/ethersphere/bee/pkg/pinning/mock"
+	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 
@@ -258,4 +260,73 @@ func Test_chunkHandlers_invalidInputs(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestInvalidChunkParams(t *testing.T) {
+	t.Parallel()
+
+	var (
+		chunksEndpoint = "/chunks"
+		chunk          = testingc.GenerateTestRandomChunk()
+		storerMock     = mock.NewStorer()
+		statestoreMock = statestore.NewStateStore()
+		pinningMock    = pinning.NewServiceMock()
+		logger         = log.Noop
+		existsFn       = func(id []byte) (bool, error) {
+			return false, errors.New("error")
+		}
+	)
+
+	t.Run("batch unusable", func(t *testing.T) {
+		t.Parallel()
+
+		clientBatchUnusable, _, _, _ := newTestServer(t, testServerOptions{
+			Storer:     storerMock,
+			Pinning:    pinningMock,
+			Tags:       tags.NewTags(statestoreMock, logger),
+			Logger:     logger,
+			Post:       mockpost.New(mockpost.WithAcceptAll()),
+			BatchStore: mockbatchstore.New(),
+		})
+		jsonhttptest.Request(t, clientBatchUnusable, http.MethodPost, chunksEndpoint, http.StatusUnprocessableEntity,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
+		)
+	})
+
+	t.Run("batch exists", func(t *testing.T) {
+		t.Parallel()
+
+		clientBatchExists, _, _, _ := newTestServer(t, testServerOptions{
+			Storer:     storerMock,
+			Pinning:    pinningMock,
+			Tags:       tags.NewTags(statestoreMock, logger),
+			Logger:     logger,
+			Post:       mockpost.New(mockpost.WithAcceptAll()),
+			BatchStore: mockbatchstore.New(mockbatchstore.WithExistsFunc(existsFn)),
+		})
+		jsonhttptest.Request(t, clientBatchExists, http.MethodPost, chunksEndpoint, http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
+		)
+	})
+
+	t.Run("batch not found", func(t *testing.T) {
+		t.Parallel()
+
+		clientBatchNotFound, _, _, _ := newTestServer(t, testServerOptions{
+			Storer:  storerMock,
+			Pinning: pinningMock,
+			Tags:    tags.NewTags(statestoreMock, logger),
+			Logger:  logger,
+			Post:    mockpost.New(),
+		})
+		jsonhttptest.Request(t, clientBatchNotFound, http.MethodPost, chunksEndpoint, http.StatusNotFound,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
+		)
+	})
 }

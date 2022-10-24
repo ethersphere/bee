@@ -50,12 +50,6 @@ func (s *Service) processUploadRequest(
 	if err != nil {
 		logger.Debug("putter failed", "error", err)
 		logger.Error(nil, "putter failed")
-		switch {
-		case errors.Is(err, postage.ErrNotFound):
-			return nil, nil, nil, nil, errors.New("batch not found")
-		case errors.Is(err, postage.ErrNotUsable):
-			return nil, nil, nil, nil, errors.New("batch not usable")
-		}
 		return nil, nil, nil, nil, err
 	}
 
@@ -67,7 +61,18 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	ctx, tag, putter, wait, err := s.processUploadRequest(logger, r)
 	if err != nil {
-		jsonhttp.BadRequest(w, err.Error())
+		switch {
+		case errors.Is(err, tags.ErrNotFound):
+			jsonhttp.NotFound(w, "tag not found")
+		case errors.Is(err, errBatchUnusable) || errors.Is(err, postage.ErrNotUsable):
+			jsonhttp.UnprocessableEntity(w, "batch not usable yet or does not exist")
+		case errors.Is(err, postage.ErrNotFound):
+			jsonhttp.NotFound(w, "batch with id not found")
+		case errors.Is(err, errInvalidPostageBatch):
+			jsonhttp.BadRequest(w, "invalid batch id")
+		default:
+			jsonhttp.BadRequest(w, nil)
+		}
 		return
 	}
 
@@ -149,7 +154,7 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 				s.logger.Debug("chunk upload: pin deletion failed", "chunk_address", chunk.Address(), "error", err)
 				s.logger.Error(nil, "chunk upload: pin deletion failed")
 			}
-			jsonhttp.InternalServerError(w, "chunk upload: creation of pin failed")
+			jsonhttp.InternalServerError(w, "creation of pin failed")
 			return
 		}
 	}
@@ -157,7 +162,7 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err = wait(); err != nil {
 		s.logger.Debug("chunk upload: sync chunk failed", "error", err)
 		s.logger.Error(nil, "chunk upload: sync chunk failed")
-		jsonhttp.InternalServerError(w, "chunk upload: sync failed")
+		jsonhttp.InternalServerError(w, "sync failed")
 		return
 	}
 

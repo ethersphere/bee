@@ -6,7 +6,6 @@ package mock
 
 import (
 	"bytes"
-	"errors"
 	"math/big"
 	"sync"
 
@@ -96,7 +95,7 @@ func (m *mockPostage) GetStampIssuer(id []byte) (*postage.StampIssuer, error) {
 
 	i, exists := m.issuersMap[string(id)]
 	if !exists {
-		return nil, errors.New("stampissuer not found")
+		return nil, postage.ErrNotFound
 	}
 	return i, nil
 }

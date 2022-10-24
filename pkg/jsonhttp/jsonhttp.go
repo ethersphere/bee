@@ -269,6 +269,11 @@ func Teapot(w http.ResponseWriter, response interface{}) {
 	Respond(w, http.StatusTeapot, response)
 }
 
+// UnprocessableEntity writes a response with status code 422.
+func UnprocessableEntity(w http.ResponseWriter, response interface{}) {
+	Respond(w, http.StatusUnprocessableEntity, response)
+}
+
 // UpgradeRequired writes a response with status code 426.
 func UpgradeRequired(w http.ResponseWriter, response interface{}) {
 	Respond(w, http.StatusUpgradeRequired, response)
