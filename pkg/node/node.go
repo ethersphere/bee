@@ -153,7 +153,7 @@ type Options struct {
 	ResolverConnectionCfgs        []multiresolver.ConnectionConfig
 	RetrievalCaching              bool
 	BootnodeMode                  bool
-	SwapEndpoint                  string
+	BlockchainRpcEndpoint         string
 	SwapFactoryAddress            string
 	SwapLegacyFactoryAddresses    []string
 	SwapInitialDeposit            string
@@ -269,7 +269,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		erc20Service       erc20.Service
 	)
 
-	chainEnabled := isChainEnabled(o, o.SwapEndpoint, logger)
+	chainEnabled := isChainEnabled(o, o.BlockchainRpcEndpoint, logger)
 
 	var batchStore postage.Storer = new(postage.NoOpBatchStore)
 	var unreserveFn func([]byte, uint8) (uint64, error)
@@ -289,7 +289,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		p2pCtx,
 		logger,
 		stateStore,
-		o.SwapEndpoint,
+		o.BlockchainRpcEndpoint,
 		o.ChainID,
 		signer,
 		o.BlockTime,
