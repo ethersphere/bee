@@ -141,9 +141,9 @@ func TestDisconnect(t *testing.T) {
 	t.Run("unknown", func(t *testing.T) {
 		t.Parallel()
 
-		jsonhttptest.Request(t, testServer, http.MethodDelete, "/peers/"+unknownAddress.String(), http.StatusBadRequest,
+		jsonhttptest.Request(t, testServer, http.MethodDelete, "/peers/"+unknownAddress.String(), http.StatusNotFound,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Code:    http.StatusBadRequest,
+				Code:    http.StatusNotFound,
 				Message: "peer not found",
 			}),
 		)

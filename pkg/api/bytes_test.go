@@ -148,7 +148,7 @@ func TestBytes(t *testing.T) {
 	t.Run("internal error", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodGet, resource+"/abcd", http.StatusInternalServerError,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "api download: joiner failed",
+				Message: "joiner failed",
 				Code:    http.StatusInternalServerError,
 			}),
 		)
@@ -171,14 +171,6 @@ func TestBytesInvalidStamp(t *testing.T) {
 		existsFn          = func(id []byte) (bool, error) {
 			return retBool, retErr
 		}
-		client, _, _, _ = newTestServer(t, testServerOptions{
-			Storer:     storerMock,
-			Tags:       tags.NewTags(statestore.NewStateStore(), log.Noop),
-			Pinning:    pinningMock,
-			Logger:     logger,
-			Post:       mockpost.New(mockpost.WithAcceptAll()),
-			BatchStore: mockbatchstore.New(mockbatchstore.WithExistsFunc(existsFn)),
-		})
 	)
 
 	g := mockbytes.New(0, mockbytes.MockTypeStandard).WithModulus(255)
@@ -187,9 +179,18 @@ func TestBytesInvalidStamp(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Run("upload, batch doesn't exist", func(t *testing.T) {
+	t.Run("upload, batch not found", func(t *testing.T) {
+		clientBatchNotExists, _, _, _ := newTestServer(t, testServerOptions{
+			Storer:     storerMock,
+			Tags:       tags.NewTags(statestore.NewStateStore(), log.Noop),
+			Pinning:    pinningMock,
+			Logger:     logger,
+			Post:       mockpost.New(),
+			BatchStore: mockbatchstore.New(mockbatchstore.WithExistsFunc(existsFn)),
+		})
 		chunkAddr := swarm.MustParseHexAddress(expHash)
-		jsonhttptest.Request(t, client, http.MethodPost, resource, http.StatusBadRequest,
+
+		jsonhttptest.Request(t, clientBatchNotExists, http.MethodPost, resource, http.StatusNotFound,
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(content)),
@@ -216,6 +217,15 @@ func TestBytesInvalidStamp(t *testing.T) {
 	retErr = errors.New("err happened")
 
 	t.Run("upload, batch exists error", func(t *testing.T) {
+		client, _, _, _ := newTestServer(t, testServerOptions{
+			Storer:     storerMock,
+			Tags:       tags.NewTags(statestore.NewStateStore(), log.Noop),
+			Pinning:    pinningMock,
+			Logger:     logger,
+			Post:       mockpost.New(mockpost.WithAcceptAll()),
+			BatchStore: mockbatchstore.New(mockbatchstore.WithExistsFunc(existsFn)),
+		})
+
 		chunkAddr := swarm.MustParseHexAddress(expHash)
 		jsonhttptest.Request(t, client, http.MethodPost, resource, http.StatusBadRequest,
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
@@ -231,6 +241,58 @@ func TestBytesInvalidStamp(t *testing.T) {
 			t.Fatal("storer check root chunk address: have ont; want none")
 		}
 	})
+
+	t.Run("upload, batch unusable", func(t *testing.T) {
+		clientBatchUnusable, _, _, _ := newTestServer(t, testServerOptions{
+			Storer:     storerMock,
+			Tags:       tags.NewTags(statestore.NewStateStore(), log.Noop),
+			Pinning:    pinningMock,
+			Logger:     logger,
+			Post:       mockpost.New(mockpost.WithAcceptAll()),
+			BatchStore: mockbatchstore.New(),
+		})
+
+		jsonhttptest.Request(t, clientBatchUnusable, http.MethodPost, resource, http.StatusUnprocessableEntity,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestBody(bytes.NewReader(content)),
+		)
+	})
+
+	t.Run("upload, invalid tag", func(t *testing.T) {
+		clientInvalidTag, _, _, _ := newTestServer(t, testServerOptions{
+			Storer:  storerMock,
+			Pinning: pinningMock,
+			Logger:  logger,
+			Post:    mockpost.New(mockpost.WithAcceptAll()),
+		})
+
+		jsonhttptest.Request(t, clientInvalidTag, http.MethodPost, resource, http.StatusInternalServerError,
+			jsonhttptest.WithRequestHeader(api.SwarmTagHeader, "tag"),
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestBody(bytes.NewReader(content)),
+		)
+	})
+
+	t.Run("upload, tag not found", func(t *testing.T) {
+		tag := tags.NewTags(statestore.NewStateStore(), log.Noop)
+		clientTagExists, _, _, _ := newTestServer(t, testServerOptions{
+			Tags:    tag,
+			Storer:  storerMock,
+			Pinning: pinningMock,
+			Logger:  logger,
+			Post:    mockpost.New(mockpost.WithAcceptAll()),
+		})
+
+		jsonhttptest.Request(t, clientTagExists, http.MethodPost, resource, http.StatusNotFound,
+			jsonhttptest.WithRequestHeader(api.SwarmTagHeader, strconv.FormatUint(uint64(tag.TagUidFunc()), 10)),
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestBody(bytes.NewReader(content)),
+		)
+	})
+
 }
 
 func Test_bytesUploadHandler_invalidInputs(t *testing.T) {

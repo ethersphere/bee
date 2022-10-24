@@ -43,7 +43,7 @@ func (s *Service) postageSyncStatusCheckHandler(h http.Handler) http.Handler {
 		if err != nil {
 			s.logger.Debug("postage access: syncing failed", "error", err)
 			s.logger.Error(nil, "postage access: syncing failed")
-			jsonhttp.ServiceUnavailable(w, "postage: syncing failed")
+			jsonhttp.ServiceUnavailable(w, "syncing failed")
 			return
 		}
 		if !done {
@@ -274,7 +274,14 @@ func (s *Service) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.R
 	if err != nil {
 		logger.Debug("get stamp issuer: get issuer failed", "batch_id", hexBatchID, "error", err)
 		logger.Error(nil, "get stamp issuer: get issuer failed")
-		jsonhttp.BadRequest(w, "cannot get batch")
+		switch {
+		case errors.Is(err, postage.ErrNotUsable):
+			jsonhttp.BadRequest(w, "batch not usable")
+		case errors.Is(err, postage.ErrNotFound):
+			jsonhttp.NotFound(w, "cannot get batch")
+		default:
+			jsonhttp.InternalServerError(w, "get issuer failed")
+		}
 		return
 	}
 

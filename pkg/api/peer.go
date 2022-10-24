@@ -66,7 +66,7 @@ func (s *Service) peerDisconnectHandler(w http.ResponseWriter, r *http.Request) 
 	if err := s.p2p.Disconnect(paths.Address, "user requested disconnect"); err != nil {
 		logger.Debug("p2p disconnect failed", "peer_address", paths.Address, "error", err)
 		if errors.Is(err, p2p.ErrPeerNotFound) {
-			jsonhttp.BadRequest(w, "peer not found")
+			jsonhttp.NotFound(w, "peer not found")
 			return
 		}
 		logger.Error(nil, "p2p disconnect failed", "peer_address", paths.Address)

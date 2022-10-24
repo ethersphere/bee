@@ -61,8 +61,12 @@ func (s *Service) dirUploadHandler(logger log.Logger, w http.ResponseWriter, r *
 	if err != nil {
 		logger.Debug("get or create tag failed", "error", err)
 		logger.Error(nil, "get or create tag failed")
-		jsonhttp.InternalServerError(w, "get or create tag failed")
-		return
+		switch {
+		case errors.Is(err, tags.ErrNotFound):
+			jsonhttp.NotFound(w, "tag not found")
+		default:
+			jsonhttp.InternalServerError(w, "cannot get or create tag")
+		}
 	}
 
 	// Add the tag to the context
