@@ -451,6 +451,58 @@ func TestDirs(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("upload, invalid tag", func(t *testing.T) {
+		tr := tarFiles(t, []f{
+			{
+				data: []byte("robots text"),
+				name: "robots.txt",
+				dir:  "",
+				header: http.Header{
+					"Content-Type": {"text/plain; charset=utf-8"},
+				},
+			},
+		})
+		clientInvalidTag, _, _, _ := newTestServer(t, testServerOptions{
+			Storer: storer,
+			Logger: logger,
+			Post:   mockpost.New(mockpost.WithAcceptAll()),
+		})
+
+		jsonhttptest.Request(t, clientInvalidTag, http.MethodPost, dirUploadResource, http.StatusInternalServerError,
+			jsonhttptest.WithRequestHeader(api.SwarmTagHeader, "tag"),
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestBody(tr),
+			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar))
+	})
+
+	t.Run("upload, tag not found", func(t *testing.T) {
+		tr := tarFiles(t, []f{
+			{
+				data: []byte("robots text"),
+				name: "robots.txt",
+				dir:  "",
+				header: http.Header{
+					"Content-Type": {"text/plain; charset=utf-8"},
+				},
+			},
+		})
+		tag := tags.NewTags(statestore.NewStateStore(), log.Noop)
+		clientTagExists, _, _, _ := newTestServer(t, testServerOptions{
+			Tags:   tag,
+			Storer: storer,
+			Logger: logger,
+			Post:   mockpost.New(mockpost.WithAcceptAll()),
+		})
+
+		jsonhttptest.Request(t, clientTagExists, http.MethodPost, dirUploadResource, http.StatusNotFound,
+			jsonhttptest.WithRequestHeader(api.SwarmTagHeader, strconv.FormatUint(uint64(tag.TagUidFunc()), 10)),
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestBody(tr),
+			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar))
+	})
 }
 
 func TestEmtpyDir(t *testing.T) {
