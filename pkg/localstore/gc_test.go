@@ -119,7 +119,7 @@ func testDBCollectGarbageWorker(t *testing.T) {
 		}
 	}
 
-	t.Run("pull index count", newItemsCountTest(db.pullIndex, int(gcTarget)))
+	t.Run("pull index count", newItemsCountTest(db.pullIndex, 0))
 
 	t.Run("postage index count", newItemsCountTest(db.postageIndexIndex, int(gcTarget)))
 
@@ -231,7 +231,7 @@ func TestPinGC(t *testing.T) {
 
 	t.Run("pin Index count", newItemsCountTest(db.pinIndex, pinChunksCount))
 
-	t.Run("pull index count", newItemsCountTest(db.pullIndex, int(gcTarget)+pinChunksCount))
+	t.Run("pull index count", newItemsCountTest(db.pullIndex, pinChunksCount))
 
 	t.Run("postage index count", newItemsCountTest(db.postageIndexIndex, int(gcTarget)+pinChunksCount))
 
@@ -441,7 +441,7 @@ func TestDB_collectGarbageWorker_withRequests(t *testing.T) {
 		t.Errorf("total collected chunks %v, want %v", totalCollectedCount, wantTotalCollectedCount)
 	}
 
-	t.Run("pull index count", newItemsCountTest(db.pullIndex, int(gcTarget)))
+	t.Run("pull index count", newItemsCountTest(db.pullIndex, 0))
 
 	t.Run("postage index count", newItemsCountTest(db.postageIndexIndex, int(gcTarget)))
 
@@ -910,7 +910,7 @@ func TestGC_NoEvictDirty(t *testing.T) {
 		}
 	}
 
-	t.Run("pull index count", newItemsCountTest(db.pullIndex, int(gcTarget)))
+	t.Run("pull index count", newItemsCountTest(db.pullIndex, 0))
 
 	t.Run("postage index count", newItemsCountTest(db.postageIndexIndex, int(gcTarget)))
 
@@ -1088,7 +1088,7 @@ func TestReserveEvictionWorker(t *testing.T) {
 			break
 		}
 	}
-	t.Run("pull index count", newItemsCountTest(db.pullIndex, chunkCount))
+	t.Run("pull index count", newItemsCountTest(db.pullIndex, chunkCount-1))
 
 	t.Run("postage index count", newItemsCountTest(db.postageIndexIndex, chunkCount))
 

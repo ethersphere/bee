@@ -547,6 +547,10 @@ func (db *DB) preserveOrCache(batch *leveldb.Batch, item shed.Item, forcePin, fo
 	if err != nil {
 		return 0, 0, err
 	}
+	err = db.pullIndex.DeleteInBatch(batch, item)
+	if err != nil {
+		return 0, 0, err
+	}
 	gcSizeChange++
 
 	return gcSizeChange, 0, nil

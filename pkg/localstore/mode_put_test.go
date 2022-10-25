@@ -215,7 +215,7 @@ func TestModePutSync(t *testing.T) {
 				binIDs[po]++
 
 				newRetrieveIndexesTestWithAccess(db, ch, wantTimestamp, wantTimestamp)(t)
-				newPullIndexTest(db, ch, binIDs[po], nil)(t)
+				newPullIndexTest(db, ch, binIDs[po], leveldb.ErrNotFound)(t)
 				newPinIndexTest(db, ch, leveldb.ErrNotFound)(t)
 				newIndexGCSizeTest(db)(t)
 			}
@@ -643,6 +643,8 @@ func TestModePut_ImmutableStamp(t *testing.T) {
 	stamp := postagetesting.MustNewStamp()
 	ts := time.Now().Unix()
 
+	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return false }))
+
 	for _, modeTc1 := range putModes {
 		for _, modeTc2 := range putModes {
 			for _, tc := range []struct {
@@ -685,7 +687,7 @@ func TestModePut_ImmutableStamp(t *testing.T) {
 					newItemsCountTest(db.postageChunksIndex, 1)(t)
 					newItemsCountTest(db.postageRadiusIndex, 1)(t)
 					newItemsCountTest(db.postageIndexIndex, 1)(t)
-					if modeTc1 != storage.ModePutRequestCache {
+					if modeTc1 != storage.ModePutRequestCache && modeTc1 != storage.ModePutSync {
 						newItemsCountTest(db.pullIndex, 1)(t)
 					}
 

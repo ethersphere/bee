@@ -101,31 +101,31 @@ func TestPinIndexes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runCountsTest(t, "setSync", db, 1, 1, 0, 1, 0, 1)
+	runCountsTest(t, "setSync", db, 1, 1, 0, 0, 0, 1)
 
 	err = db.Set(ctx, storage.ModeSetPin, addr)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runCountsTest(t, "setPin", db, 1, 1, 0, 1, 1, 0)
+	runCountsTest(t, "setPin", db, 1, 1, 0, 0, 1, 0)
 
 	err = db.Set(ctx, storage.ModeSetPin, addr)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runCountsTest(t, "setPin 2", db, 1, 1, 0, 1, 1, 0)
+	runCountsTest(t, "setPin 2", db, 1, 1, 0, 0, 1, 0)
 
 	err = db.Set(ctx, storage.ModeSetUnpin, addr)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runCountsTest(t, "setUnPin", db, 1, 1, 0, 1, 1, 0)
+	runCountsTest(t, "setUnPin", db, 1, 1, 0, 0, 1, 0)
 
 	err = db.Set(ctx, storage.ModeSetUnpin, addr)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runCountsTest(t, "setUnPin 2", db, 1, 1, 0, 1, 0, 1)
+	runCountsTest(t, "setUnPin 2", db, 1, 1, 0, 0, 0, 1)
 
 }
 
@@ -190,7 +190,7 @@ func TestPinIndexesSync(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runCountsTest(t, "setUnPin", db, 1, 1, 0, 1, 0, 1)
+	runCountsTest(t, "setUnPin", db, 1, 1, 0, 0, 0, 1)
 }
 
 func runCountsTest(t *testing.T, name string, db *DB, r, a, push, pull, pin, gc int) {
