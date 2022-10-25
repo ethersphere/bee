@@ -373,6 +373,7 @@ FETCH:
 		logger.Error(nil, "bzz download: invalid path")
 
 		if errors.Is(err, manifest.ErrNotFound) {
+
 			if !strings.HasSuffix(pathVar, "/") {
 				// check for directory
 				dirPath := pathVar + "/"
