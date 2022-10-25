@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"sync"
@@ -15,6 +16,7 @@ const cacheEntrySize = 3 * swarm.HashSize
 var (
 	errMarshalCacheEntryInvalidAddress = errors.New("marshal: cacheEntry invalid address")
 	errUnmarshalCacheEntryInvalidSize  = errors.New("unmarshal: cacheEntry invalid size")
+	errUnmarshalCacheStateInvalidSize  = errors.New("unmarshal: cacheState invalid size")
 )
 
 type cacheEntry struct {
@@ -51,6 +53,8 @@ func (c *cacheEntry) Unmarshal(buf []byte) error {
 	return nil
 }
 
+const cacheStateSize = 2*swarm.HashSize + 8
+
 type cacheState struct {
 	Start swarm.Address
 	End   swarm.Address
@@ -61,9 +65,25 @@ func (cacheState) Namespace() string { return "state" }
 
 func (cacheState) ID() string { return "e" }
 
-func (c *cacheState) Marshal() ([]byte, error) { return nil, nil }
+func (c *cacheState) Marshal() ([]byte, error) {
+	entryBuf := make([]byte, cacheStateSize)
+	copy(entryBuf[:swarm.HashSize], c.Start.Bytes())
+	copy(entryBuf[swarm.HashSize:2*swarm.HashSize], c.End.Bytes())
+	binary.LittleEndian.PutUint64(entryBuf[2*swarm.HashSize:], c.Count)
+	return entryBuf, nil
+}
 
-func (c *cacheState) Unmarshal(buf []byte) error { return nil }
+func (c *cacheState) Unmarshal(buf []byte) error {
+	if len(buf) != cacheStateSize {
+		return errUnmarshalCacheStateInvalidSize
+	}
+	newEntry := new(cacheState)
+	newEntry.Start = swarm.NewAddress(append(make([]byte, 0, swarm.HashSize), buf[swarm.HashSize:]...))
+	newEntry.End = swarm.NewAddress(append(make([]byte, 0, swarm.HashSize), buf[swarm.HashSize:2*swarm.HashSize]...))
+	newEntry.Count = binary.LittleEndian.Uint64(buf[2*swarm.HashSize:])
+	*c = *newEntry
+	return nil
+}
 
 // Cache is the part of the localstore which keeps track of the chunks that are not
 // part of the reserve but are potentially useful to store for obtaining bandwidth
