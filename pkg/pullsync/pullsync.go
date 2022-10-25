@@ -184,15 +184,20 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		return offer.Topmost, ru.Ruid, nil
 	}
 
+	topmost = offer.Topmost
+	ruid = ru.Ruid
+
 	var (
 		bvLen      = len(offer.Hashes) / swarm.HashSize
 		wantChunks = make(map[string]struct{})
 		ctr        = 0
+		have       bool
 	)
 
 	bv, err := bitvector.New(bvLen)
 	if err != nil {
-		return 0, ru.Ruid, fmt.Errorf("new bitvector: %w", err)
+		err = fmt.Errorf("new bitvector: %w", err)
+		return
 	}
 
 	for i := 0; i < len(offer.Hashes); i += swarm.HashSize {
@@ -200,13 +205,15 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		if a.Equal(swarm.ZeroAddress) {
 			// i'd like to have this around to see we don't see any of these in the logs
 			s.logger.Error(nil, "syncer got a zero address hash on offer")
-			return 0, ru.Ruid, fmt.Errorf("zero address on offer")
+			err = fmt.Errorf("zero address on offer")
+			return
 		}
 		s.metrics.Offered.Inc()
 		s.metrics.DbOps.Inc()
-		have, err := s.storage.Has(ctx, a)
+		have, err = s.storage.Has(ctx, a)
 		if err != nil {
-			return 0, ru.Ruid, fmt.Errorf("storage has: %w", err)
+			err = fmt.Errorf("storage has: %w", err)
+			return
 		}
 		if !have {
 			wantChunks[a.String()] = struct{}{}
@@ -218,7 +225,8 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 
 	wantMsg := &pb.Want{BitVector: bv.Bytes()}
 	if err = w.WriteMsgWithContext(ctx, wantMsg); err != nil {
-		return 0, ru.Ruid, fmt.Errorf("write want: %w", err)
+		err = fmt.Errorf("write want: %w", err)
+		return
 	}
 
 	// if ctr is zero, it means we don't want any chunk in the batch
@@ -241,7 +249,8 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		if _, ok := wantChunks[addr.String()]; !ok {
 			// this is fatal for the entire batch, return the
 			// error and don't write the partial batch.
-			return 0, ru.Ruid, ErrUnsolicitedChunk
+			err = ErrUnsolicitedChunk
+			return
 		}
 
 		delete(wantChunks, addr.String())
@@ -258,7 +267,8 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		} else if !soc.Valid(chunk) {
 			// this is fatal for the entire batch, return the
 			// error and don't write the partial batch.
-			return 0, ru.Ruid, swarm.ErrInvalidChunk
+			err = swarm.ErrInvalidChunk
+			return
 		}
 		chunksToPut = append(chunksToPut, chunk)
 	}
@@ -269,20 +279,17 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		s.metrics.DbOps.Inc()
 		ctx, cancel := context.WithTimeout(ctx, storagePutTimeout)
 		defer cancel()
+
 		if ierr := s.storage.Put(ctx, storage.ModePutSync, chunksToPut...); ierr != nil {
 			if err != nil {
 				ierr = fmt.Errorf(", sync err: %w", err)
 			}
-			return 0, ru.Ruid, fmt.Errorf("delivery put: %w", ierr)
+			err = fmt.Errorf("delivery put: %w", ierr)
+			return
 		}
 	}
-	// there might have been an error in the for loop above,
-	// return it if it indeed happened
-	if err != nil {
-		return 0, ru.Ruid, err
-	}
 
-	return offer.Topmost, ru.Ruid, nil
+	return
 }
 
 // handler handles an incoming request to sync an interval
