@@ -149,7 +149,7 @@ func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommit
 	request := &transaction.TxRequest{
 		To:          &c.incentivesContractAddress,
 		Data:        callData,
-		GasPrice:    new(big.Int).Div(new(big.Int).Mul(sctx.GetGasPrice(ctx), big.NewInt(15)), big.NewInt(10)),
+		GasPrice:    new(big.Int).Div(new(big.Int).Mul(sctx.GetGasPrice(ctx), big.NewInt(15)), big.NewInt(10)), // increase gasprice to 150% suggested to ensure timely reveal
 		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 1_000_000),
 		Value:       big.NewInt(0),
 		Description: "reveal transaction",
