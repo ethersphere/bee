@@ -719,9 +719,10 @@ func newPuller(ops opts) (*puller.Puller, storage.StateStorer, *mockk.Mock, *moc
 	rs := &reserveStateGetter{rs: postage.ReserveState{StorageRadius: ops.syncRadius}}
 
 	o := puller.Options{
-		Bins: ops.bins,
+		Bins:         ops.bins,
+		SyncSleepDur: ops.syncSleepDur,
 	}
-	return puller.New(s, kad, rs, ps, logger, o, 0, ops.syncSleepDur), s, kad, ps
+	return puller.New(s, kad, rs, ps, logger, o, 0), s, kad, ps
 }
 
 type c struct {

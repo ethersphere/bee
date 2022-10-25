@@ -32,7 +32,8 @@ var errCursorsLength = errors.New("cursors length mismatch")
 const DefaultSyncSleepDur = time.Minute
 
 type Options struct {
-	Bins uint8
+	Bins         uint8
+	SyncSleepDur time.Duration
 }
 
 type Puller struct {
@@ -56,7 +57,7 @@ type Puller struct {
 	bins uint8 // how many bins do we support
 }
 
-func New(stateStore storage.StateStorer, topology topology.Driver, reserveState postage.ReserveStateGetter, pullSync pullsync.Interface, logger log.Logger, o Options, warmupTime time.Duration, syncSleepDur time.Duration) *Puller {
+func New(stateStore storage.StateStorer, topology topology.Driver, reserveState postage.ReserveStateGetter, pullSync pullsync.Interface, logger log.Logger, o Options, warmupTime time.Duration) *Puller {
 	var (
 		bins uint8 = swarm.MaxBins
 	)
@@ -72,7 +73,7 @@ func New(stateStore storage.StateStorer, topology topology.Driver, reserveState 
 		metrics:      newMetrics(),
 		logger:       logger.WithName(loggerName).Register(),
 		syncPeers:    make([]map[string]*syncPeer, bins),
-		syncSleepDur: syncSleepDur,
+		syncSleepDur: o.SyncSleepDur,
 		bins:         bins,
 	}
 
