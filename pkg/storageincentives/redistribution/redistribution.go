@@ -110,7 +110,7 @@ func (c *contract) Claim(ctx context.Context) error {
 		Value:       big.NewInt(0),
 		Description: "claim win transaction",
 	}
-	err = c.sendAndWaitWithBoost(ctx, request, 10)
+	err = c.sendAndWait(ctx, request)
 	if err != nil {
 		return fmt.Errorf("claim: %w", err)
 	}
@@ -132,7 +132,7 @@ func (c *contract) Commit(ctx context.Context, obfusHash []byte) error {
 		Value:       big.NewInt(0),
 		Description: "commit transaction",
 	}
-	err = c.sendAndWaitWithBoost(ctx, request, 10)
+	err = c.sendAndWait(ctx, request)
 	if err != nil {
 		return fmt.Errorf("commit: obfusHash %v overlay %v: %w", common.BytesToHash(obfusHash), common.BytesToHash(c.overlay.Bytes()), err)
 	}
