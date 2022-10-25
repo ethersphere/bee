@@ -59,6 +59,7 @@ const (
 	defaultLowWaterMark                = 3 // the number of peers in consecutive deepest bins that constitute as nearest neighbours
 	defaultSaturationPeers             = 8
 	defaultOverSaturationPeers         = 20
+	defaultManageLoopInterval          = 15 * time.Second
 	defaultBootNodeOverSaturationPeers = 20
 	defaultShortRetry                  = 30 * time.Second
 	defaultTimeToRetry                 = 2 * defaultShortRetry
@@ -96,6 +97,7 @@ type Options struct {
 	BitSuffixLength             *int
 	TimeToRetry                 *time.Duration
 	ShortRetry                  *time.Duration
+	ManageLoopInterval          *time.Duration
 	SaturationPeers             *int
 	OverSaturationPeers         *int
 	BootnodeOverSaturationPeers *int
@@ -116,6 +118,7 @@ type kadOptions struct {
 
 	TimeToRetry                 time.Duration
 	ShortRetry                  time.Duration
+	ManageLoopInterval          time.Duration
 	PeerPingPollTime            time.Duration
 	BitSuffixLength             int // additional depth of common prefix for bin
 	SaturationPeers             int
@@ -136,6 +139,7 @@ func newKadOptions(o Options) kadOptions {
 		ReachabilityFunc: o.ReachabilityFunc,
 		IgnoreRadius:     o.IgnoreRadius,
 		// copy or use default
+		ManageLoopInterval:          defaultValDuration(o.ManageLoopInterval, defaultManageLoopInterval),
 		TimeToRetry:                 defaultValDuration(o.TimeToRetry, defaultTimeToRetry),
 		ShortRetry:                  defaultValDuration(o.ShortRetry, defaultShortRetry),
 		PeerPingPollTime:            defaultValDuration(o.PeerPingPollTime, defaultPeerPingPollTime),
@@ -187,6 +191,7 @@ type Kad struct {
 	connectedPeers    *pslice.PSlice        // a slice of peers sorted and indexed by po, indexes kept in `bins`
 	knownPeers        *pslice.PSlice        // both are po aware slice of addresses
 	connRetryBackoff  map[string]uint64     //
+	connRetryBackMtx  sync.RWMutex          //
 	depth             uint8                 // current neighborhood depth
 	storageRadius     uint8                 // storage area of responsibility
 	depthMu           sync.RWMutex          // protect depth changes
@@ -428,7 +433,9 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 		case errors.Is(err, addressbook.ErrNotFound):
 			k.logger.Debug("empty address book entry for peer", "peer_address", peer.addr)
 			k.knownPeers.Remove(peer.addr)
+			k.connRetryBackMtx.Lock()
 			delete(k.connRetryBackoff, peer.addr.String())
+			k.connRetryBackMtx.Unlock()
 			return
 		case err != nil:
 			k.logger.Debug("failed to get address book entry for peer", "peer_address", peer.addr, "error", err)
@@ -438,10 +445,12 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 		remove := func(peer *peerConnInfo) {
 			k.waitNext.Remove(peer.addr)
 			k.knownPeers.Remove(peer.addr)
-			delete(k.connRetryBackoff, peer.addr.String())
 			if err := k.addressBook.Remove(peer.addr); err != nil {
 				k.logger.Debug("could not remove peer from addressbook", "peer_address", peer.addr)
 			}
+			k.connRetryBackMtx.Lock()
+			delete(k.connRetryBackoff, peer.addr.String())
+			k.connRetryBackMtx.Unlock()
 		}
 
 		switch err = k.connect(ctx, peer.addr, bzzAddr.Underlay); {
@@ -609,7 +618,7 @@ func (k *Kad) manage() {
 		select {
 		case <-k.quit:
 			return
-		case <-time.After(15 * time.Second):
+		case <-time.After(k.opt.ManageLoopInterval):
 			k.notifyManageLoop()
 		case <-k.manageC:
 			start := time.Now()
@@ -1015,14 +1024,19 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 	case err != nil:
 		k.logger.Debug("could not connect to peer", "peer_address", peer, "error", err)
 
+		k.connRetryBackMtx.Lock()
 		if k.connRetryBackoff[peer.String()] == 0 {
 			k.connRetryBackoff[peer.String()] = 1
 		} else {
 			k.connRetryBackoff[peer.String()] *= 2
 		}
 
-		retryTime := time.Now().Add(k.opt.TimeToRetry * time.Duration(k.connRetryBackoff[peer.String()]))
+		var retryTime time.Time
 		var e *p2p.ConnectionBackoffError
+
+		multiplier := k.connRetryBackoff[peer.String()]
+		k.connRetryBackMtx.Unlock()
+
 		failedAttempts := 0
 		if errors.As(err, &e) {
 			retryTime = e.TryAfter()
@@ -1030,6 +1044,8 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 			failedAttempts = k.waitNext.Attempts(peer)
 			failedAttempts++
 		}
+
+		retryTime = time.Now().Add(k.opt.TimeToRetry * time.Duration(multiplier))
 
 		k.metrics.TotalOutboundConnectionFailedAttempts.Inc()
 		k.collector.Record(peer, im.IncSessionConnectionRetry())
@@ -1039,7 +1055,9 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 		if (k.connectedPeers.Length() > 0 && quickPrune) || failedAttempts >= maxConnAttempts {
 			k.waitNext.Remove(peer)
 			k.knownPeers.Remove(peer)
+			k.connRetryBackMtx.Lock()
 			delete(k.connRetryBackoff, peer.String())
+			k.connRetryBackMtx.Unlock()
 			if err := k.addressBook.Remove(peer); err != nil {
 				k.logger.Debug("could not remove peer from addressbook", "peer_address", peer)
 			}
@@ -1055,7 +1073,9 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 		return errOverlayMismatch
 	}
 
+	k.connRetryBackMtx.Lock()
 	k.connRetryBackoff[peer.String()] = 0
+	k.connRetryBackMtx.Unlock()
 
 	return k.Announce(ctx, peer, true)
 }
@@ -1151,9 +1171,11 @@ func (k *Kad) AnnounceTo(ctx context.Context, addressee, peer swarm.Address, ful
 // This does not guarantee that a connection will immediately
 // be made to the peer.
 func (k *Kad) AddPeers(addrs ...swarm.Address) {
+	k.connRetryBackMtx.Lock()
 	for _, n := range addrs {
 		k.connRetryBackoff[n.String()] = 0
 	}
+	k.connRetryBackMtx.Unlock()
 	k.knownPeers.Add(addrs...)
 	k.notifyManageLoop()
 }
@@ -1242,7 +1264,9 @@ func (k *Kad) onConnected(ctx context.Context, addr swarm.Address) error {
 		return err
 	}
 
+	k.connRetryBackMtx.Lock()
 	k.connRetryBackoff[addr.String()] = 0
+	k.connRetryBackMtx.Unlock()
 	k.knownPeers.Add(addr)
 	k.connectedPeers.Add(addr)
 
@@ -1264,7 +1288,18 @@ func (k *Kad) Disconnected(peer p2p.Peer) {
 
 	k.connectedPeers.Remove(peer.Address)
 
-	k.waitNext.SetTryAfter(peer.Address, time.Now().Add(k.opt.TimeToRetry))
+	k.connRetryBackMtx.Lock()
+	if k.connRetryBackoff[peer.Address.String()] == 0 {
+		k.connRetryBackoff[peer.Address.String()] = 1
+	} else {
+		k.connRetryBackoff[peer.Address.String()] *= 2
+	}
+
+	multiplier := k.connRetryBackoff[peer.Address.String()]
+
+	k.connRetryBackMtx.Unlock()
+
+	k.waitNext.SetTryAfter(peer.Address, time.Now().Add(k.opt.TimeToRetry*time.Duration(multiplier)))
 
 	k.metrics.TotalInboundDisconnections.Inc()
 	k.collector.Record(peer.Address, im.PeerLogOut(time.Now()))
@@ -1509,10 +1544,6 @@ func (k *Kad) NeighborhoodDepth() uint8 {
 func (k *Kad) IsBalanced(bin uint8) bool {
 	k.depthMu.RLock()
 	defer k.depthMu.RUnlock()
-
-	if int(bin) > len(k.commonBinPrefixes) {
-		return false
-	}
 
 	// for each pseudo address
 	for i := range k.commonBinPrefixes[bin] {

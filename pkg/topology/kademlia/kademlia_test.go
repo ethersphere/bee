@@ -484,10 +484,13 @@ func TestManageWithBalancing(t *testing.T) {
 			return f(bin, peers, connected, filter)
 		}
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			SaturationFunc:   saturationFunc,
-			SaturationPeers:  ptrInt(4),
-			BitSuffixLength:  ptrInt(2),
-			ReachabilityFunc: func(_ swarm.Address) bool { return false },
+			SaturationFunc:     saturationFunc,
+			SaturationPeers:    ptrInt(4),
+			BitSuffixLength:    ptrInt(2),
+			ReachabilityFunc:   func(_ swarm.Address) bool { return false },
+			ManageLoopInterval: ptrDuration(15 * time.Millisecond),
+			ShortRetry:         ptrDuration(time.Duration(5)),
+			TimeToRetry:        ptrDuration(time.Duration(10)),
 		})
 	)
 
@@ -503,7 +506,7 @@ func TestManageWithBalancing(t *testing.T) {
 	defer kad.Close()
 
 	// add peers for bin '0', enough to have balanced connections
-	for i := 0; i < 20; i++ {
+	for i := 0; i < 32; i++ {
 		addr := test.RandomAddressAt(base, 0)
 		addOne(t, signer, kad, ab, addr)
 	}
@@ -512,7 +515,7 @@ func TestManageWithBalancing(t *testing.T) {
 
 	// add peers for other bins, enough to have balanced connections
 	for i := 1; i <= int(swarm.MaxPO); i++ {
-		for j := 0; j < 20; j++ {
+		for j := 0; j < 32; j++ {
 			addr := test.RandomAddressAt(base, i)
 			addOne(t, signer, kad, ab, addr)
 		}
@@ -898,7 +901,9 @@ func TestAddressBookPrune(t *testing.T) {
 	var (
 		conns, failedConns       int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, &failedConns, kademlia.Options{
-			TimeToRetry: ptrDuration(20 * time.Millisecond),
+			TimeToRetry:        ptrDuration(time.Duration(1)),
+			ShortRetry:         ptrDuration(time.Duration(1)),
+			ManageLoopInterval: ptrDuration(time.Duration(10)),
 		})
 	)
 
@@ -918,7 +923,7 @@ func TestAddressBookPrune(t *testing.T) {
 	// add non connectable peer, check connection and failed connection counters
 	kad.AddPeers(nonConnPeer.Overlay)
 	waitCounter(t, &conns, 0)
-	waitCounter(t, &failedConns, 1)
+	waitCounter(t, &failedConns, 13)
 
 	_, err = ab.Get(nonConnPeer.Overlay)
 	if !errors.Is(err, addressbook.ErrNotFound) {
@@ -969,7 +974,9 @@ func TestAddressBookQuickPrune(t *testing.T) {
 	var (
 		conns, failedConns       int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, &failedConns, kademlia.Options{
-			TimeToRetry: ptrDuration(50 * time.Millisecond),
+			ShortRetry:         ptrDuration(25),
+			TimeToRetry:        ptrDuration(50),
+			ManageLoopInterval: ptrDuration(50),
 		})
 	)
 
@@ -997,7 +1004,7 @@ func TestAddressBookQuickPrune(t *testing.T) {
 	// add non connectable peer, check connection and failed connection counters
 	kad.AddPeers(nonConnPeer.Overlay)
 	waitCounter(t, &conns, 0)
-	waitCounter(t, &failedConns, 1)
+	waitCounter(t, &failedConns, 13)
 
 	_, err = ab.Get(nonConnPeer.Overlay)
 	if !errors.Is(err, addressbook.ErrNotFound) {
