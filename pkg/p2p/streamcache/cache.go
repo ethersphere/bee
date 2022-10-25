@@ -56,7 +56,7 @@ func (s *Cache) Disconnect(overlay swarm.Address, reason string) error {
 
 			stream := mapStream.(*CachedStream)
 
-			_ = stream.Stream.FullClose() // TODO bubble up the error?
+			_ = stream.stream.FullClose() // TODO bubble up the error?
 
 			return
 		})
@@ -83,7 +83,7 @@ func (s *Cache) NewStream(ctx context.Context, address swarm.Address, h p2p.Head
 				return nil, err
 			}
 
-			cachedStream = &CachedStream{Stream: newStream}
+			cachedStream = &CachedStream{stream: newStream}
 			s.cache.Store(sfKey, cachedStream)
 
 			return cachedStream, nil
