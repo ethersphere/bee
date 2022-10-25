@@ -16,6 +16,12 @@ import (
 
 var _ pullsync.Interface = (*PullSyncMock)(nil)
 
+func WithSyncError(err error) Option {
+	return optionFunc(func(p *PullSyncMock) {
+		p.syncErr = err
+	})
+}
+
 func WithCursors(v []uint64) Option {
 	return optionFunc(func(p *PullSyncMock) {
 		p.cursors = v
@@ -80,6 +86,7 @@ func NewReply(bin uint8, from, top uint64, block bool) SyncReply {
 type PullSyncMock struct {
 	mtx             sync.Mutex
 	syncCalls       []SyncCall
+	syncErr         error
 	cursors         []uint64
 	getCursorsPeers []swarm.Address
 	autoReply       bool
@@ -107,6 +114,7 @@ func NewPullSync(opts ...Option) *PullSyncMock {
 }
 
 func (p *PullSyncMock) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (topmost uint64, ruid uint32, err error) {
+
 	isLive := to == math.MaxUint64
 
 	call := SyncCall{
@@ -119,6 +127,10 @@ func (p *PullSyncMock) SyncInterval(ctx context.Context, peer swarm.Address, bin
 	p.mtx.Lock()
 	p.syncCalls = append(p.syncCalls, call)
 	p.mtx.Unlock()
+
+	if p.syncErr != nil {
+		return 0, 0, p.syncErr
+	}
 
 	if isLive && p.lateReply {
 		p.lateCond.L.Lock()

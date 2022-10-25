@@ -111,13 +111,15 @@ func TestSyncFlow_PeerWithinDepth_Live(t *testing.T) {
 		expLiveCalls []c    // expected live sync calls
 	}{
 		{
-			name: "cursor 0, 1 chunk on live", cursors: []uint64{0, 0},
+			name:         "cursor 0, 1 chunk on live",
+			cursors:      []uint64{0, 0},
 			intervals:    "[[1 1]]",
 			liveReplies:  []uint64{1},
 			expLiveCalls: []c{call(1, 1, max), call(1, 2, max)},
 		},
 		{
-			name: "cursor 0 - calls 1-1, 2-5, 6-10", cursors: []uint64{0, 0},
+			name:         "cursor 0 - calls 1-1, 2-5, 6-10",
+			cursors:      []uint64{0, 0},
 			intervals:    "[[1 10]]",
 			liveReplies:  []uint64{1, 5, 10},
 			expLiveCalls: []c{call(1, 1, max), call(1, 2, max), call(1, 6, max), call(1, 11, max)},
@@ -445,6 +447,91 @@ func TestDepthChange(t *testing.T) {
 	}
 }
 
+// TestContinueSyncing adds a single peer with PO 0 to hist and live sync only a peer
+// to test that when SyncInterval returns an error, the syncing does not terminate.
+func TestContinueSyncing(t *testing.T) {
+	t.Parallel()
+
+	var (
+		addr = test.RandomAddress()
+	)
+
+	puller, _, kad, pullsync := newPuller(opts{
+		kad: []mockk.Option{
+			mockk.WithEachPeerRevCalls(mockk.AddrTuple{Addr: addr, PO: 0}),
+			mockk.WithDepth(0),
+		},
+		pullSync: []mockps.Option{
+			mockps.WithCursors([]uint64{1}),
+			mockps.WithSyncError(errors.New("sync error"))},
+		bins:         1,
+		syncRadius:   0,
+		syncSleepDur: time.Millisecond * 10,
+	})
+	defer puller.Close()
+	defer pullsync.Close()
+
+	time.Sleep(100 * time.Millisecond)
+	kad.Trigger()
+	time.Sleep(100 * time.Millisecond)
+
+	calls := pullsync.LiveSyncCalls(addr)
+
+	// expected calls should ideally be exactly 10,
+	// but we allow some time for the goroutines to run
+	// by reducing the minimum expected calls to 5
+	if len(calls) < 5 || len(calls) > 10 {
+		t.Fatalf("unexpected amount of calls, got %d", len(calls))
+	}
+}
+
+func TestPeerGone(t *testing.T) {
+	t.Parallel()
+
+	var (
+		addr = test.RandomAddress()
+	)
+
+	p, _, kad, pullsync := newPuller(opts{
+		kad: []mockk.Option{
+			mockk.WithEachPeerRevCalls(mockk.AddrTuple{Addr: addr, PO: 0}),
+			mockk.WithDepth(0),
+		},
+		pullSync: []mockps.Option{
+			mockps.WithCursors([]uint64{1}),
+		},
+		bins:         1,
+		syncRadius:   0,
+		syncSleepDur: time.Millisecond * 10,
+	})
+	defer p.Close()
+	defer pullsync.Close()
+
+	time.Sleep(100 * time.Millisecond)
+	kad.Trigger()
+	time.Sleep(100 * time.Millisecond)
+
+	beforeCalls := pullsync.LiveSyncCalls(addr)
+
+	if len(beforeCalls) != 1 {
+		t.Fatalf("unexpected amount of calls, got %d, want 1", len(beforeCalls))
+	}
+
+	kad.ResetPeers()
+	kad.Trigger()
+	time.Sleep(100 * time.Millisecond)
+
+	afterCalls := pullsync.LiveSyncCalls(addr)
+
+	if len(beforeCalls) != len(afterCalls) {
+		t.Fatalf("unexpected new calls to sync interval, expected 0, got %d", len(afterCalls)-len(beforeCalls))
+	}
+
+	if puller.IsSyncing(p, addr) {
+		t.Fatalf("peer is syncing but shouldnt")
+	}
+}
+
 func checkIntervals(t *testing.T, s storage.StateStorer, addr swarm.Address, expInterval string, bin uint8) {
 	t.Helper()
 	key := puller.PeerIntervalKey(addr, bin)
@@ -616,10 +703,11 @@ func waitLiveSyncCalledTimes(t *testing.T, ps *mockps.PullSyncMock, addr swarm.A
 }
 
 type opts struct {
-	pullSync   []mockps.Option
-	kad        []mockk.Option
-	bins       uint8
-	syncRadius uint8
+	pullSync     []mockps.Option
+	kad          []mockk.Option
+	bins         uint8
+	syncRadius   uint8
+	syncSleepDur time.Duration
 }
 
 func newPuller(ops opts) (*puller.Puller, storage.StateStorer, *mockk.Mock, *mockps.PullSyncMock) {
@@ -631,7 +719,8 @@ func newPuller(ops opts) (*puller.Puller, storage.StateStorer, *mockk.Mock, *moc
 	rs := &reserveStateGetter{rs: postage.ReserveState{StorageRadius: ops.syncRadius}}
 
 	o := puller.Options{
-		Bins: ops.bins,
+		Bins:         ops.bins,
+		SyncSleepDur: ops.syncSleepDur,
 	}
 	return puller.New(s, kad, rs, ps, logger, o, 0), s, kad, ps
 }

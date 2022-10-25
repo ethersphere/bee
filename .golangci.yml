@@ -23,7 +23,6 @@ linters:
     - importas
     - ineffassign
     - misspell
-    - nakedret
     - nilerr
     - noctx
     - paralleltest
