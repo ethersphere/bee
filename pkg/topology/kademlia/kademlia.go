@@ -1037,6 +1037,8 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 		multiplier := k.connRetryBackoff[peer.String()]
 		k.connRetryBackMtx.Unlock()
 
+		retryTime = time.Now().Add(k.opt.TimeToRetry * time.Duration(multiplier))
+
 		failedAttempts := 0
 		if errors.As(err, &e) {
 			retryTime = e.TryAfter()
@@ -1044,8 +1046,6 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 			failedAttempts = k.waitNext.Attempts(peer)
 			failedAttempts++
 		}
-
-		retryTime = time.Now().Add(k.opt.TimeToRetry * time.Duration(multiplier))
 
 		k.metrics.TotalOutboundConnectionFailedAttempts.Inc()
 		k.collector.Record(peer, im.IncSessionConnectionRetry())
