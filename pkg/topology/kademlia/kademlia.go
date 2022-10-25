@@ -239,7 +239,7 @@ func New(
 		commonBinPrefixes: make([][]swarm.Address, int(swarm.MaxBins)),
 		connectedPeers:    pslice.New(int(swarm.MaxBins), base),
 		knownPeers:        pslice.New(int(swarm.MaxBins), base),
-		manageC:           make(chan struct{}, 1),
+		manageC:           make(chan struct{}, 10),
 		waitNext:          waitnext.New(),
 		logger:            logger.WithName(loggerName).Register(),
 		bootnode:          opt.BootnodeMode,
@@ -554,8 +554,8 @@ func (k *Kad) manage() {
 	// The wg makes sure that we wait for all the connection attempts,
 	// spun up by goroutines, to finish before we try the boot-nodes.
 	var wg sync.WaitGroup
-	neighbourhoodChan := make(chan *peerConnInfo)
-	balanceChan := make(chan *peerConnInfo)
+	neighbourhoodChan := make(chan *peerConnInfo, 1000)
+	balanceChan := make(chan *peerConnInfo, 1000)
 	go k.connectionAttemptsHandler(ctx, &wg, neighbourhoodChan, balanceChan)
 
 	k.wg.Add(1)
@@ -605,7 +605,7 @@ func (k *Kad) manage() {
 		select {
 		case <-k.quit:
 			return
-		case <-time.After(15 * time.Second):
+		case <-time.After(time.Second * 5):
 			k.notifyManageLoop()
 		case <-k.manageC:
 			start := time.Now()
@@ -1493,7 +1493,7 @@ func (k *Kad) IsBalanced(bin uint8) bool {
 	k.depthMu.RLock()
 	defer k.depthMu.RUnlock()
 
-	if int(bin) > len(k.commonBinPrefixes) {
+	if int(bin) >= len(k.commonBinPrefixes) {
 		return false
 	}
 
