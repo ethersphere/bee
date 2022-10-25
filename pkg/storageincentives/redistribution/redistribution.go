@@ -110,7 +110,7 @@ func (c *contract) Claim(ctx context.Context) error {
 		Value:       big.NewInt(0),
 		Description: "claim win transaction",
 	}
-	err = c.sendAndWait(ctx, request)
+	err = c.sendAndWaitWithBoost(ctx, request, 10)
 	if err != nil {
 		return fmt.Errorf("claim: %w", err)
 	}
@@ -132,7 +132,7 @@ func (c *contract) Commit(ctx context.Context, obfusHash []byte) error {
 		Value:       big.NewInt(0),
 		Description: "commit transaction",
 	}
-	err = c.sendAndWait(ctx, request)
+	err = c.sendAndWaitWithBoost(ctx, request, 10)
 	if err != nil {
 		return fmt.Errorf("commit: obfusHash %v overlay %v: %w", common.BytesToHash(obfusHash), common.BytesToHash(c.overlay.Bytes()), err)
 	}
@@ -149,12 +149,12 @@ func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommit
 	request := &transaction.TxRequest{
 		To:          &c.incentivesContractAddress,
 		Data:        callData,
-		GasPrice:    new(big.Int).Div(new(big.Int).Mul(sctx.GetGasPrice(ctx), big.NewInt(15)), big.NewInt(10)), // increase gasprice to 150% suggested to ensure timely reveal
+		GasPrice:    sctx.GetGasPrice(ctx),
 		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 1_000_000),
 		Value:       big.NewInt(0),
 		Description: "reveal transaction",
 	}
-	err = c.sendAndWait(ctx, request)
+	err = c.sendAndWaitWithBoost(ctx, request, 50)
 	if err != nil {
 		return fmt.Errorf("reveal: storageDepth %d reserveCommitmentHash %v RandomNonce %v: %w", storageDepth, common.BytesToHash(reserveCommitmentHash), common.BytesToHash(RandomNonce), err)
 	}
@@ -180,6 +180,23 @@ func (c *contract) ReserveSalt(ctx context.Context) ([]byte, error) {
 	}
 	salt := results[0].([32]byte)
 	return salt[:], nil
+}
+
+func (c *contract) sendAndWaitWithBoost(ctx context.Context, request *transaction.TxRequest, boostPercent uint64) error {
+	txHash, err := c.txService.SendWithBoost(ctx, request, boostPercent)
+	if err != nil {
+		return err
+	}
+
+	receipt, err := c.txService.WaitForReceipt(ctx, txHash)
+	if err != nil {
+		return err
+	}
+
+	if receipt.Status == 0 {
+		return transaction.ErrTransactionReverted
+	}
+	return nil
 }
 
 // sendAndWait simulates a transaction based on tx request and waits until the tx is either mined or ctx is cancelled.
