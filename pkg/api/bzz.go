@@ -363,7 +363,7 @@ FETCH:
 		}
 		logger.Debug("bzz download: address not found or incorrect", "address", address, "path", pathVar)
 		logger.Error(nil, "address not found or incorrect")
-		http.NotFound(w, r)
+		jsonhttp.NotFound(w, "address not found or incorrect")
 		return
 	}
 
