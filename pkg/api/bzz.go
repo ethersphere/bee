@@ -369,8 +369,7 @@ FETCH:
 		logger.Error(nil, "bzz download: invalid path")
 
 		if errors.Is(err, manifest.ErrNotFound) {
-
-			if !strings.HasPrefix(pathVar, "/") {
+			if !strings.HasSuffix(pathVar, "/") {
 				// check for directory
 				dirPath := pathVar + "/"
 				exists, err := m.HasPrefix(ctx, dirPath)
