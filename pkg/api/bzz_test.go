@@ -848,4 +848,20 @@ func TestInvalidBzzParams(t *testing.T) {
 			jsonhttptest.WithRequestBody(tr),
 			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar))
 	})
+
+	t.Run("address not found", func(t *testing.T) {
+		t.Parallel()
+
+		client, _, _, _ := newTestServer(t, testServerOptions{
+			Storer:  storerMock,
+			Pinning: pinningMock,
+			Tags:    tags.NewTags(statestoreMock, logger),
+			Logger:  logger,
+			Post:    mockpost.New(mockpost.WithAcceptAll()),
+		})
+
+		address := "f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b"
+		jsonhttptest.Request(t, client, http.MethodGet, fmt.Sprintf("/bzz/%s/", address), http.StatusNotFound)
+	})
+
 }
