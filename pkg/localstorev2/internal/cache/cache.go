@@ -2,11 +2,19 @@ package cache
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
+)
+
+const cacheEntrySize = 3 * swarm.HashSize
+
+var (
+	errMarshalCacheEntryInvalidAddress = errors.New("marshal: cacheEntry invalid address")
+	errUnmarshalCacheEntryInvalidSize  = errors.New("unmarshal: cacheEntry invalid size")
 )
 
 type cacheEntry struct {
@@ -19,9 +27,29 @@ func (cacheEntry) Namespace() string { return "entry" }
 
 func (c *cacheEntry) ID() string { return c.Address.ByteString() }
 
-func (c *cacheEntry) Marshal() ([]byte, error) { return nil, nil }
+func (c *cacheEntry) Marshal() ([]byte, error) {
+	entryBuf := make([]byte, cacheEntrySize)
+	if c.Address.IsZero() {
+		return nil, errMarshalCacheEntryInvalidAddress
+	}
+	copy(entryBuf[:swarm.HashSize], c.Address.Bytes())
+	copy(entryBuf[swarm.HashSize:2*swarm.HashSize], c.Prev.Bytes())
+	copy(entryBuf[2*swarm.HashSize:], c.Next.Bytes())
+	return entryBuf, nil
+}
 
-func (c *cacheEntry) Unmarshal(buf []byte) error { return nil }
+func (c *cacheEntry) Unmarshal(buf []byte) error {
+	if len(buf) == cacheEntrySize {
+		return errUnmarshalCacheEntryInvalidSize
+	}
+	newEntry := new(cacheEntry)
+	newEntry.Address = swarm.NewAddress(append(make([]byte, 0, swarm.HashSize), buf[:swarm.HashSize]...))
+	newEntry.Prev = swarm.NewAddress(append(make([]byte, 0, swarm.HashSize), buf[swarm.HashSize:2*swarm.HashSize]...))
+	newEntry.Next = swarm.NewAddress(append(make([]byte, 0, swarm.HashSize), buf[2*swarm.HashSize:]...))
+	*c = *newEntry
+
+	return nil
+}
 
 type cacheState struct {
 	Start swarm.Address
@@ -37,13 +65,27 @@ func (c *cacheState) Marshal() ([]byte, error) { return nil, nil }
 
 func (c *cacheState) Unmarshal(buf []byte) error { return nil }
 
-type cache struct {
+// Cache is the part of the localstore which keeps track of the chunks that are not
+// part of the reserve but are potentially useful to store for obtaining bandwidth
+// incentives. In order to avoid GC we will only keep track of a fixed no. of chunks
+// as part of the cache and evict a chunk as soon as we go above capacity. In order
+// to achieve this we will use some additional cache state in-mem and stored on disk
+// to create a double-ended queue. The typical operations required here would be
+// a pushBack which adds an item to the end and popFront, which removed the first item.
+// The different operations:
+// 1. New item will be added to the end.
+// 2. Item pushed to end on access.
+// 3. Removal happens from the front.
+type Cache struct {
 	mtx      sync.Mutex
 	state    *cacheState
 	capacity uint64
 }
 
-func New(store storage.Store, capacity uint64) (*cache, error) {
+// New creates a new Cache component with the specified capacity. The store is used
+// here only to read the initial state of the cache before shutdown if there was
+// any.
+func New(store storage.Store, capacity uint64) (*Cache, error) {
 	state := &cacheState{}
 	err := store.Get(state)
 	if err != nil {
@@ -53,71 +95,94 @@ func New(store storage.Store, capacity uint64) (*cache, error) {
 	if capacity < state.Count {
 	}
 
-	return &cache{state: state, capacity: capacity}, nil
+	return &Cache{state: state, capacity: capacity}, nil
 }
 
-func (c *cache) popFront(
+// popFront will pop the first item in the queue. It will update the cache state so
+// should be called under lock. The state will not be updated to DB here as there
+// could be more changes involved, so the caller has to take care of updating the
+// cache state.
+func (c *Cache) popFront(
 	ctx context.Context,
 	store storage.Store,
 	chStore storage.ChunkStore,
 ) error {
+	// read the first entry.
 	expiredEntry := &cacheEntry{Address: c.state.Start}
 	err := store.Get(expiredEntry)
 	if err != nil {
 		return err
 	}
 
-	c.state.Start = expiredEntry.Next
-
-	err = store.Delete(expiredEntry)
-	if err != nil {
-		return err
-	}
+	// remove the chunk.
 	err = chStore.Delete(ctx, expiredEntry.Address)
 	if err != nil {
 		return err
 	}
 
+	// delete the item.
+	err = store.Delete(expiredEntry)
+	if err != nil {
+		return err
+	}
+
+	// update new front.
+	c.state.Start = expiredEntry.Next
+
 	return nil
 }
 
-func (c *cache) pushBack(
+// pushBack will add the new entry to the end of the queue. It will update the state
+// so again should be called under lock. Also, we could pushBack an entry which is
+// already existing, in which case a duplicate chunk Put operation need not be done.
+// The state will not be updated to DB here as there could be more potential changes.
+func (c *Cache) pushBack(
 	ctx context.Context,
 	newEntry *cacheEntry,
 	chunk swarm.Chunk,
 	store storage.Store,
 	chStore storage.ChunkStore,
 ) error {
+	// read the last entry.
 	entry := &cacheEntry{Address: c.state.End}
 	err := store.Get(entry)
 	if err != nil {
 		return err
 	}
 
+	// update the pointers.
 	entry.Next = newEntry.Address
 	newEntry.Prev = entry.Address
 
+	// add the new chunk to chunkstore if requested.
+	if chunk != nil {
+		_, err = chStore.Put(ctx, chunk)
+		if err != nil {
+			return err
+		}
+	}
+
+	// add the new item.
 	err = store.Put(newEntry)
 	if err != nil {
 		return err
 	}
 
+	// update the old last entry.
 	err = store.Put(entry)
 	if err != nil {
 		return err
 	}
 
+	// update state.
 	c.state.End = newEntry.Address
-
-	_, err = chStore.Put(ctx, chunk)
-	if err != nil {
-		return err
-	}
 
 	return nil
 }
 
-func (c *cache) Putter(store storage.Store, chStore storage.ChunkStore) storage.Putter {
+// Putter returns a Storage.Putter instance which adds the chunk to the underlying
+// chunkstore and also adds a Cache entry for the chunk.
+func (c *Cache) Putter(store storage.Store, chStore storage.ChunkStore) storage.Putter {
 	return storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) (bool, error) {
 		c.mtx.Lock()
 		defer c.mtx.Unlock()
@@ -128,17 +193,20 @@ func (c *cache) Putter(store storage.Store, chStore storage.ChunkStore) storage.
 			return false, err
 		}
 
-		// if chunk is already part of cache, return found
+		// if chunk is already part of cache, return found.
 		if found {
 			return true, nil
 		}
 
+		// if we are here, this is a new chunk which should be added. Add it to
+		// the end.
 		err = c.pushBack(ctx, newEntry, chunk, store, chStore)
 		if err != nil {
 			return false, err
 		}
 
 		if c.state.Count == c.capacity {
+			// if we reach the full capacity, remove the first element.
 			err = c.popFront(ctx, store, chStore)
 			if err != nil {
 				return false, err
@@ -155,23 +223,32 @@ func (c *cache) Putter(store storage.Store, chStore storage.ChunkStore) storage.
 	})
 }
 
-func (c *cache) Getter(store storage.Store, chStore storage.ChunkStore) storage.Getter {
+// Getter returns a Storage.Getter instance which checks if the chunks accessed are
+// part of cache it will update the cache queue. If the operation to update the
+// cache indexes fail, we need to fail the operation as this should signal the user
+// of this getter to rollback the operation.
+func (c *Cache) Getter(store storage.Store, chStore storage.ChunkStore) storage.Getter {
 	return storage.GetterFunc(func(ctx context.Context, address swarm.Address) (swarm.Chunk, error) {
 		ch, err := chStore.Get(ctx, address)
 		if err != nil {
 			return nil, err
 		}
 
+		// check if there is an entry in Cache. As this is the download path, we do
+		// a best-effort operation. So in case of any error we return the chunk.
 		entry := &cacheEntry{Address: address}
 		err = store.Get(entry)
 		if err != nil {
 			return ch, nil
 		}
 
+		oldState := *c.state
+
 		err = func() error {
 			c.mtx.Lock()
 			defer c.mtx.Unlock()
 
+			// if the chunk is already the last return early.
 			if c.state.End.Equal(address) {
 				return nil
 			}
@@ -179,6 +256,7 @@ func (c *cache) Getter(store storage.Store, chStore storage.ChunkStore) storage.
 			prev := &cacheEntry{Address: entry.Prev}
 			next := &cacheEntry{Address: entry.Next}
 
+			// if it is the first chunk, we dont need to update the prev entry.
 			if !c.state.Start.Equal(address) {
 				err = store.Get(prev)
 				if err != nil {
@@ -191,23 +269,27 @@ func (c *cache) Getter(store storage.Store, chStore storage.ChunkStore) storage.
 				return err
 			}
 
+			// move the chunk to the end due to the access. Dont send duplicate
+			// chunk put operation.
 			err = c.pushBack(ctx, entry, nil, store, chStore)
 			if err != nil {
 				return err
 			}
 
+			// if this is first chunk we dont need to update both the prev or the
+			// next.
 			if !c.state.Start.Equal(address) {
 				prev.Next = next.Address
 				err = store.Put(prev)
 				if err != nil {
 					return err
 				}
-			}
 
-			next.Prev = prev.Address
-			err = store.Put(next)
-			if err != nil {
-				return err
+				next.Prev = prev.Address
+				err = store.Put(next)
+				if err != nil {
+					return err
+				}
 			}
 
 			if c.state.Start.Equal(address) {
@@ -217,7 +299,10 @@ func (c *cache) Getter(store storage.Store, chStore storage.ChunkStore) storage.
 			return store.Put(c.state)
 		}()
 		if err != nil {
-			// log error
+			// we need to return error here as this operation is generally guarded
+			// by some sort of trasaction. These updates need to be reverted.
+			*c.state = oldState
+			return nil, fmt.Errorf("failed updating cache indexes: %w", err)
 		}
 
 		return ch, nil
