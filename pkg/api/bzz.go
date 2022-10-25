@@ -374,7 +374,7 @@ FETCH:
 
 		if errors.Is(err, manifest.ErrNotFound) {
 
-			if !strings.HasSuffix(pathVar, "/") {
+			if !strings.HasPrefix(pathVar, "/") {
 				// check for directory
 				dirPath := pathVar + "/"
 				exists, err := m.HasPrefix(ctx, dirPath)
