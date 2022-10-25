@@ -401,6 +401,10 @@ func (db *DB) setUnpin(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange i
 	if err != nil {
 		return 0, err
 	}
+	err = db.pullIndex.DeleteInBatch(batch, item)
+	if err != nil {
+		return 0, err
+	}
 
 	gcSizeChange++
 	return gcSizeChange, nil

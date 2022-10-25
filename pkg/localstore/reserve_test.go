@@ -73,7 +73,7 @@ func TestDB_ReserveGC_AllOutOfRadius(t *testing.T) {
 		}
 	}
 
-	t.Run("pull index count", newItemsCountTest(db.pullIndex, int(gcTarget)))
+	t.Run("pull index count", newItemsCountTest(db.pullIndex, 0))
 
 	t.Run("postage chunks index count", newItemsCountTest(db.postageChunksIndex, int(gcTarget)))
 
@@ -362,7 +362,8 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 			break
 		}
 	}
-	t.Run("pull index count", newItemsCountTest(db.pullIndex, chunkCount+90-10))
+	// pullIndex count should be equal to the reserve
+	t.Run("pull index count", newItemsCountTest(db.pullIndex, 90))
 
 	t.Run("postage chunks index count", newItemsCountTest(db.postageChunksIndex, chunkCount+90-10))
 
@@ -559,7 +560,7 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 			break
 		}
 	}
-	t.Run("pull index count", newItemsCountTest(db.pullIndex, chunkCount+90-10))
+	t.Run("pull index count", newItemsCountTest(db.pullIndex, 90))
 
 	t.Run("postage chunks index count", newItemsCountTest(db.postageChunksIndex, chunkCount+90-10))
 
@@ -799,8 +800,7 @@ func TestDB_ReserveGC_BatchedUnreserve(t *testing.T) {
 
 	t.Run("reserve size", reserveSizeTest(db, 0))
 
-	// chunks are still part of cache so these indexes would not be removed
-	t.Run("pull index count", newItemsCountTest(db.pullIndex, 90))
+	t.Run("pull index count", newItemsCountTest(db.pullIndex, 0))
 
 	t.Run("postage chunks index count", newItemsCountTest(db.postageChunksIndex, 90))
 
