@@ -77,16 +77,11 @@ type Syncer struct {
 	validStamp postage.ValidStampFn
 	rate       *rate.Rate
 
-	// ctx    context.Context
-	// cancel func()
-
 	Interface
 	io.Closer
 }
 
 func New(streamer p2p.Streamer, storage pullstorage.Storer, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger log.Logger) *Syncer {
-
-	// ctx, cancel := context.WithCancel(context.Background())
 
 	return &Syncer{
 		streamer:   streamer,
@@ -98,8 +93,6 @@ func New(streamer p2p.Streamer, storage pullstorage.Storer, unwrap func(swarm.Ch
 		wg:         sync.WaitGroup{},
 		quit:       make(chan struct{}),
 		rate:       rate.New(rateWindowSize),
-		// ctx:        ctx,
-		// cancel:     cancel,
 	}
 }
 
