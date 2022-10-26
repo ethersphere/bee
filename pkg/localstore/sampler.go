@@ -88,7 +88,7 @@ func (db *DB) ReserveSample(
 			}
 		}, &shed.IterateOptions{
 			StartFrom: &shed.Item{
-				Address: generateAddressAt(db.baseKey, int(storageDepth)),
+				Address: db.addressInBin(storageDepth).Bytes(),
 			},
 		})
 		if err != nil {
