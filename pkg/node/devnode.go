@@ -405,12 +405,21 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 
 	apiService := api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, mockTransaction, batchStore, api.DevMode, true, true, chainBackend, o.CORSAllowedOrigins)
 
-	apiService.Configure(signer, authenticator, tracer, api.Options{
+	chunkC := apiService.Configure(signer, authenticator, tracer, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
 		WsPingPeriod:       60 * time.Second,
 		Restricted:         o.Restricted,
 	}, debugOpts, 1, erc20)
-
+	go func() {
+		for {
+			if ch := <-chunkC; ch != nil {
+				if ch.Direct {
+					ch.Err <- api.ErrDevNodeNotSupported
+					return
+				}
+			}
+		}
+	}()
 	apiService.MountAPI()
 	apiService.SetProbe(probe)
 
