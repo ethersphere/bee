@@ -65,11 +65,12 @@ require (
 	resenje.org/web v0.4.3
 )
 
-require github.com/libp2p/go-libp2p-yamux v0.9.1
+require github.com/libp2p/go-libp2p-yamux v0.9.1 // indirect
 
 require (
 	github.com/go-playground/validator/v10 v10.11.1
 	github.com/ipfs/go-cid v0.1.0
+	github.com/libp2p/go-libp2p-resource-manager v0.3.0
 	github.com/multiformats/go-multihash v0.1.0
 )
 
@@ -121,7 +122,6 @@ require (
 	github.com/libp2p/go-libp2p-noise v0.4.0 // indirect
 	github.com/libp2p/go-libp2p-pnet v0.2.0 // indirect
 	github.com/libp2p/go-libp2p-quic-transport v0.17.0 // indirect
-	github.com/libp2p/go-libp2p-resource-manager v0.3.0 // indirect
 	github.com/libp2p/go-libp2p-testing v0.9.2 // indirect
 	github.com/libp2p/go-libp2p-tls v0.4.1 // indirect
 	github.com/libp2p/go-libp2p-transport-upgrader v0.7.1 // indirect

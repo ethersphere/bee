@@ -44,7 +44,6 @@ import (
 	"github.com/libp2p/go-libp2p-peerstore/pstoremem"
 	rcmgr "github.com/libp2p/go-libp2p-resource-manager"
 	lp2pswarm "github.com/libp2p/go-libp2p-swarm"
-	goyamux "github.com/libp2p/go-libp2p-yamux"
 	autonat "github.com/libp2p/go-libp2p/p2p/host/autonat"
 	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	libp2pping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
@@ -73,12 +72,6 @@ const (
 
 	defaultHeadersRWTimeout = 10 * time.Second
 )
-
-// nolint:gochecknoinits
-func init() {
-	goyamux.DefaultTransport.AcceptBacklog = 1024
-	goyamux.DefaultTransport.MaxIncomingStreams = 5000
-}
 
 type Service struct {
 	ctx               context.Context
@@ -176,7 +169,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	limiter := rcmgr.NewDynamicLimiter(rcmgr.DefaultLimits)
 
 	limiter.SystemLimits.WithMemoryLimit(0.125, 1<<29, 1<<30)
-	in, out := 100, 150
+	in, out := 500, 1500
 	limiter.DefaultPeerLimits = limiter.SystemLimits.WithStreamLimit(in, out, in+out)
 
 	limiter.DefaultServicePeerLimits = limiter.SystemLimits.WithStreamLimit(in, out, in+out)

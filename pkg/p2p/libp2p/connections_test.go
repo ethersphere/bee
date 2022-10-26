@@ -209,7 +209,7 @@ func TestStreamsMaxIncomingLimit(t *testing.T) {
 	expectPeers(t, s2, overlay1)
 	expectPeersEventually(t, s1, overlay2)
 
-	maxIncomingStreams := 100
+	maxIncomingStreams := 500
 
 	overflowStreamCount := maxIncomingStreams / 4
 
