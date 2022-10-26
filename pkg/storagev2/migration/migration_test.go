@@ -7,14 +7,15 @@ package migration_test
 import (
 	"encoding/binary"
 	"errors"
+	"math"
+	"math/rand"
+	"strconv"
+	"testing"
+
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/storagev2/inmemstore"
 	"github.com/ethersphere/bee/pkg/storagev2/migration"
 	"github.com/ethersphere/bee/pkg/storagev2/storagetest"
-	"math"
-	"math/rand"
-	"strings"
-	"testing"
 )
 
 var (
@@ -62,9 +63,9 @@ func TestGetSetVersion(t *testing.T) {
 
 func TestValidateVersions(t *testing.T) {
 	t.Parallel()
-	objT1 := &obj1{Id: "aaa", SomeInt: 1}
-	objT2 := &obj1{Id: "bbb", SomeInt: 2}
-	objT3 := &obj1{Id: "ccc", SomeInt: 3}
+	objT1 := &obj{id: 111, val: 1}
+	objT2 := &obj{id: 222, val: 2}
+	objT3 := &obj{id: 333, val: 3}
 
 	tests := []struct {
 		name    string
@@ -150,9 +151,9 @@ func TestValidateVersions(t *testing.T) {
 
 func TestMigrate(t *testing.T) {
 	t.Parallel()
-	objT1 := &obj1{Id: "aaa", SomeInt: 1}
-	objT2 := &obj1{Id: "bbb", SomeInt: 2}
-	objT3 := &obj1{Id: "ccc", SomeInt: 3}
+	objT1 := &obj{id: 111, val: 1}
+	objT2 := &obj{id: 222, val: 2}
+	objT3 := &obj{id: 333, val: 3}
 
 	t.Run("migration: 0 to 3", func(t *testing.T) {
 		t.Parallel()
@@ -317,28 +318,28 @@ func TestTagIDAddressItem_MarshalAndUnmarshal(t *testing.T) {
 	}
 }
 
-type obj1 struct {
-	Id      string
-	SomeInt uint64
+type obj struct {
+	id  int
+	val int
 }
 
-func (obj1) Namespace() string { return "obj1" }
+func newObjFactory() storage.Item { return &obj{} }
 
-func (o *obj1) ID() string { return o.Id }
+func (obj) Namespace() string { return "obj" }
+func (o *obj) ID() string     { return strconv.Itoa(o.id) }
 
-// ID is 32 bytes
-func (o *obj1) Marshal() ([]byte, error) {
-	buf := make([]byte, 40)
-	copy(buf[:32], []byte(o.Id))
-	binary.LittleEndian.PutUint64(buf[32:], o.SomeInt)
+func (o *obj) Marshal() ([]byte, error) {
+	buf := make([]byte, 16)
+	binary.LittleEndian.PutUint64(buf, uint64(o.id))
+	binary.LittleEndian.PutUint64(buf, uint64(o.val))
 	return buf, nil
 }
 
-func (o *obj1) Unmarshal(buf []byte) error {
-	if len(buf) < 40 {
+func (o *obj) Unmarshal(buf []byte) error {
+	if len(buf) != 16 {
 		return errors.New("invalid length")
 	}
-	o.Id = strings.TrimRight(string(buf[:32]), string([]byte{0}))
-	o.SomeInt = binary.LittleEndian.Uint64(buf[32:])
+	o.id = int(binary.LittleEndian.Uint64(buf))
+	o.val = int(binary.LittleEndian.Uint64(buf))
 	return nil
 }
