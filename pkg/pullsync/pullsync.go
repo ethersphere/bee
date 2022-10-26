@@ -296,7 +296,6 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
 	loggerV2 := s.logger.V(2).Register()
 
-	r := protobuf.NewReader(stream)
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
@@ -304,6 +303,10 @@ func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (er
 			_ = stream.FullClose()
 		}
 	}()
+
+	r := protobuf.NewReader(stream)
+	defer r.Close()
+
 	var ru pb.Ruid
 	if err := r.ReadMsgWithContext(ctx, &ru); err != nil {
 		return fmt.Errorf("send ruid: %w", err)
@@ -394,7 +397,6 @@ func (s *Syncer) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (er
 		}
 	}
 
-	time.Sleep(50 * time.Millisecond) // because of test, getting EOF w/o
 	return nil
 }
 
