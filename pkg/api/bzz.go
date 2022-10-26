@@ -361,6 +361,10 @@ FETCH:
 				return
 			}
 		}
+		logger.Debug("bzz download: address not found or incorrect", "address", address, "path", pathVar)
+		logger.Error(nil, "address not found or incorrect")
+		jsonhttp.NotFound(w, "address not found or incorrect")
+		return
 	}
 
 	me, err := m.Lookup(ctx, pathVar)
