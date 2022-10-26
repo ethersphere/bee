@@ -479,8 +479,8 @@ func TestContinueSyncing(t *testing.T) {
 
 	// expected calls should ideally be exactly 10,
 	// but we allow some time for the goroutines to run
-	// by reducing the minimum expected calls to 5
-	if len(calls) < 5 || len(calls) > 10 {
+	// by reducing the minimum expected calls to 2
+	if len(calls) < 2 || len(calls) > 10 {
 		t.Fatalf("unexpected amount of calls, got %d", len(calls))
 	}
 }
