@@ -184,7 +184,7 @@ func TestStepIndex_BatchSize(t *testing.T) {
 	const populateItemsCount = 128
 	for i := 1; i <= 2*populateItemsCount; i <<= 1 {
 		i := i
-		t.Run(fmt.Sprintf("callback called once per item, with batch size: %d", i), func(t *testing.T) {
+		t.Run(fmt.Sprintf("callback called once per item with batch size: %d", i), func(t *testing.T) {
 			t.Parallel()
 
 			store := inmemstore.New()
