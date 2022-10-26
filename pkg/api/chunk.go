@@ -161,8 +161,14 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err = wait(); err != nil {
 		s.logger.Debug("chunk upload: sync chunk failed", "error", err)
-		s.logger.Error(nil, "chunk upload: sync chunk failed")
-		jsonhttp.InternalServerError(w, "sync failed")
+		switch {
+		case errors.Is(err, ErrDevNodeNotSupported):
+			s.logger.Error(nil, "chunk upload: direct upload not supported in dev mode")
+			jsonhttp.BadRequest(w, "dev mode does not support this operation")
+		default:
+			s.logger.Error(nil, "chunk upload: sync chunk failed")
+			jsonhttp.InternalServerError(w, "sync failed")
+		}
 		return
 	}
 

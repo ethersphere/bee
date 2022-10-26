@@ -72,6 +72,7 @@ type DevBee struct {
 	errorLogWriter   io.Writer
 	apiServer        *http.Server
 	debugAPIServer   *http.Server
+	quitChunk        chan bool
 }
 
 type DevOptions struct {
@@ -405,12 +406,23 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 
 	apiService := api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, mockTransaction, batchStore, api.DevMode, true, true, chainBackend, o.CORSAllowedOrigins)
 
-	apiService.Configure(signer, authenticator, tracer, api.Options{
+	chunkC := apiService.Configure(signer, authenticator, tracer, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
 		WsPingPeriod:       60 * time.Second,
 		Restricted:         o.Restricted,
 	}, debugOpts, 1, erc20)
-
+	go func() {
+		for {
+			select {
+			case ch := <-chunkC:
+				if ch.Direct {
+					ch.Err <- api.ErrDevNodeNotSupported
+				}
+			case <-b.quitChunk:
+				return
+			}
+		}
+	}()
 	apiService.MountAPI()
 	apiService.SetProbe(probe)
 
@@ -462,6 +474,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 func (b *DevBee) Shutdown() error {
 	var mErr error
 
+	b.quitChunk <- true
 	tryClose := func(c io.Closer, errMsg string) {
 		if c == nil {
 			return
