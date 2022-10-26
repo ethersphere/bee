@@ -81,7 +81,6 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
 	loggerV1 := s.logger.V(1).Register()
 
-	r := protobuf.NewReader(stream)
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
@@ -89,6 +88,9 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 			_ = stream.FullClose()
 		}
 	}()
+
+	r := protobuf.NewReader(stream)
+	defer r.Close()
 
 	var req pb.AnnouncePaymentThreshold
 	if err := r.ReadMsgWithContext(ctx, &req); err != nil {

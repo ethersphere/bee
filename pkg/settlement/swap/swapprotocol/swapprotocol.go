@@ -108,7 +108,6 @@ func (s *Service) init(ctx context.Context, p p2p.Peer) error {
 }
 
 func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
-	r := protobuf.NewReader(stream)
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
@@ -116,6 +115,9 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 			_ = stream.FullClose()
 		}
 	}()
+
+	r := protobuf.NewReader(stream)
+	defer r.Close()
 
 	var req pb.EmitCheque
 	if err := r.ReadMsgWithContext(ctx, &req); err != nil {

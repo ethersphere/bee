@@ -535,7 +535,6 @@ func (s *Syncer) CancelRuid(ctx context.Context, peer swarm.Address, ruid uint32
 func (s *Syncer) cancelHandler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
 	loggerV2 := s.logger.V(2).Register()
 
-	r := protobuf.NewReader(stream)
 	var c pb.Cancel
 	defer func() {
 		if err != nil {
@@ -545,6 +544,9 @@ func (s *Syncer) cancelHandler(ctx context.Context, p p2p.Peer, stream p2p.Strea
 			_ = stream.FullClose()
 		}
 	}()
+
+	r := protobuf.NewReader(stream)
+	defer r.Close()
 
 	if err := r.ReadMsgWithContext(ctx, &c); err != nil {
 		return fmt.Errorf("read cancel: %w", err)
