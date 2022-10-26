@@ -8,8 +8,9 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"sort"
+
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 )
 
 type (
