@@ -35,7 +35,7 @@ var (
 	//TODO: add correct redistribution addresses
 
 	// redistribution contract
-	goerliRedistributionAddress = common.HexToAddress("0xF4963031E8b9f9659CB6ed35E53c031D76480EAD")
+	goerliRedistributionAddress = common.HexToAddress("0xCAbD7BC71F0dff43a2aa2AFC1b80f0be94Fd571E")
 	xdaiRedistributionAddress   = common.HexToAddress("0xECD2CFfE749A0F8F0a4f136E98C49De0Ee527c1F")
 )
 
