@@ -40,6 +40,8 @@ func init() {
 	rand.Seed(time.Now().UnixNano())
 }
 
+const spinLockWaitTime = time.Second * 3
+
 var nonConnectableAddress, _ = ma.NewMultiaddr(underlayBase + "16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkA")
 
 // TestNeighborhoodDepth tests that the kademlia depth changes correctly
@@ -2020,15 +2022,16 @@ func add(t *testing.T, signer beeCrypto.Signer, k *kademlia.Kad, ab addressbook.
 
 func kDepth(t *testing.T, k *kademlia.Kad, d int) {
 	t.Helper()
+
 	var depth int
-	for i := 0; i < 50; i++ {
+	err := spinLock(t, spinLockWaitTime, func() bool {
 		depth = int(k.NeighborhoodDepth())
-		if depth == d {
-			return
-		}
-		time.Sleep(50 * time.Millisecond)
+		return depth == d
+	})
+	if err != nil {
+		t.Fatalf("timed out waiting for depth. want %d got %d", d, depth)
 	}
-	t.Fatalf("timed out waiting for depth. want %d got %d", d, depth)
+
 }
 
 func waitConn(t *testing.T, conns *int32) {
@@ -2041,54 +2044,46 @@ func waitConn(t *testing.T, conns *int32) {
 func waitCounter(t *testing.T, conns *int32, exp int32) {
 	t.Helper()
 	var got int32
-	if exp == 0 {
-		// sleep for some time before checking for a 0.
-		// this gives some time for unwanted counter increments happen
 
-		time.Sleep(50 * time.Millisecond)
-	}
-	for i := 0; i < 50; i++ {
+	err := spinLock(t, spinLockWaitTime, func() bool {
 		if got = atomic.LoadInt32(conns); got == exp {
 			atomic.StoreInt32(conns, 0)
-			return
+			return true
 		}
-		time.Sleep(50 * time.Millisecond)
+		return false
+	})
+	if err != nil {
+		t.Fatalf("timed out waiting for counter to reach expected value. got %d want %d", got, exp)
 	}
-	t.Fatalf("timed out waiting for counter to reach expected value. got %d want %d", got, exp)
 }
 
 func waitPeers(t *testing.T, k *kademlia.Kad, peers int) {
 	t.Helper()
 
-	timeout := time.After(3 * time.Second)
-	for {
-		select {
-		case <-timeout:
-			t.Fatal("timed out waiting for peers")
-		default:
-		}
+	err := spinLock(t, spinLockWaitTime, func() bool {
 		i := 0
 		_ = k.EachPeer(func(_ swarm.Address, _ uint8) (bool, bool, error) {
 			i++
 			return false, false, nil
 		}, topology.Filter{})
-		if i == peers {
-			return
-		}
-		time.Sleep(50 * time.Millisecond)
+		return i == peers
+	})
+	if err != nil {
+		t.Fatal("timed out waiting for peers")
 	}
 }
 
 // wait for discovery BroadcastPeers to happen
 func waitBcast(t *testing.T, d *mock.Discovery, pivot swarm.Address, addrs ...swarm.Address) {
 	t.Helper()
-	time.Sleep(50 * time.Millisecond)
-	for i := 0; i < 50; i++ {
+
+	err := spinLock(t, spinLockWaitTime, func() bool {
 		if d.Broadcasts() > 0 {
 			recs, ok := d.AddresseeRecords(pivot)
 			if !ok {
-				t.Fatal("got no records for pivot")
+				return false
 			}
+
 			oks := 0
 			for _, a := range addrs {
 				if !isIn(a, recs) {
@@ -2097,13 +2092,13 @@ func waitBcast(t *testing.T, d *mock.Discovery, pivot swarm.Address, addrs ...sw
 				oks++
 			}
 
-			if oks == len(addrs) {
-				return
-			}
+			return oks == len(addrs)
 		}
-		time.Sleep(50 * time.Millisecond)
+		return false
+	})
+	if err != nil {
+		t.Fatalf("timed out waiting for broadcast to happen")
 	}
-	t.Fatalf("timed out waiting for broadcast to happen")
 }
 
 func isIn(addr swarm.Address, addrs []swarm.Address) bool {
@@ -2119,19 +2114,11 @@ func isIn(addr swarm.Address, addrs []swarm.Address) bool {
 func waitBalanced(t *testing.T, k *kademlia.Kad, bin uint8) {
 	t.Helper()
 
-	timeout := time.After(3 * time.Second)
-	for {
-		select {
-		case <-timeout:
-			t.Fatalf("timed out waiting to be balanced for bin: %d", int(bin))
-		default:
-		}
-
-		if balanced := k.IsBalanced(bin); balanced {
-			return
-		}
-
-		time.Sleep(50 * time.Millisecond)
+	err := spinLock(t, spinLockWaitTime, func() bool {
+		return k.IsBalanced(bin)
+	})
+	if err != nil {
+		t.Fatalf("timed out waiting to be balanced for bin: %d", int(bin))
 	}
 }
 
@@ -2141,4 +2128,26 @@ func ptrInt(v int) *int {
 
 func ptrDuration(v time.Duration) *time.Duration {
 	return &v
+}
+
+func spinLock(t *testing.T, timeout time.Duration, cond func() bool) error {
+	t.Helper()
+
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+
+	condCheckTicker := time.NewTicker(time.Millisecond * 50)
+	defer condCheckTicker.Stop()
+
+	for {
+		select {
+		case <-timer.C:
+			return errors.New("timed out waiting for condition")
+
+		case <-condCheckTicker.C:
+			if cond() {
+				return nil
+			}
+		}
+	}
 }
