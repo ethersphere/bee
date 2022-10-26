@@ -72,6 +72,7 @@ type DevBee struct {
 	errorLogWriter   io.Writer
 	apiServer        *http.Server
 	debugAPIServer   *http.Server
+	quitErrPusher    chan struct{}
 }
 
 type DevOptions struct {
@@ -107,6 +108,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 	b = &DevBee{
 		errorLogWriter: sink,
 		tracerCloser:   tracerCloser,
+		quitErrPusher:  make(chan struct{}),
 	}
 
 	stateStore, err := leveldb.NewInMemoryStateStore(logger)
@@ -405,12 +407,24 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 
 	apiService := api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, mockTransaction, batchStore, api.DevMode, true, true, chainBackend, o.CORSAllowedOrigins)
 
-	apiService.Configure(signer, authenticator, tracer, api.Options{
+	chunkC := apiService.Configure(signer, authenticator, tracer, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
 		WsPingPeriod:       60 * time.Second,
 		Restricted:         o.Restricted,
 	}, debugOpts, 1, erc20)
-
+	// this sends signal to the pusher that direct upload is not supported in dev mode
+	go func() {
+		for {
+			select {
+			case ch := <-chunkC:
+				if ch.Direct {
+					ch.Err <- api.ErrDevNodeNotSupported
+				}
+			case <-b.quitErrPusher:
+				return
+			}
+		}
+	}()
 	apiService.MountAPI()
 	apiService.SetProbe(probe)
 
@@ -443,7 +457,6 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		Handler:           apiService,
 		ErrorLog:          stdlog.New(b.errorLogWriter, "", 0),
 	}
-
 	go func() {
 		logger.Info("starting api server", "address", apiListener.Addr())
 
@@ -462,6 +475,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 func (b *DevBee) Shutdown() error {
 	var mErr error
 
+	close(b.quitErrPusher)
 	tryClose := func(c io.Closer, errMsg string) {
 		if c == nil {
 			return
