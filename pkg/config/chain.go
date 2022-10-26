@@ -31,7 +31,7 @@ var (
 	xdaiStakingAddress   = common.HexToAddress("0x52e86336210bB8F1FDe11EB8bc664a20AfC0a614")
 
 	// redistribution contract
-	goerliRedistributionAddress = common.HexToAddress("0x52afef6E33308668806d48F286bb92271b3D9180")
+	goerliRedistributionAddress = common.HexToAddress("0x2e4ccEb9a88bcfbC7779Fa693714783A345c1343")
 	xdaiRedistributionAddress   = common.HexToAddress("0xECD2CFfE749A0F8F0a4f136E98C49De0Ee527c1F")
 )
 
