@@ -55,6 +55,10 @@ func newReader(r ggio.Reader) Reader {
 	return Reader{Reader: r}
 }
 
+func (r *Reader) Close() {
+	r.Close()
+}
+
 func (r Reader) ReadMsgWithContext(ctx context.Context, msg proto.Message) error {
 	errChan := make(chan error, 1)
 	go func() {
