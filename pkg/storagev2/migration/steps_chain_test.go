@@ -31,17 +31,17 @@ func TestNewStepsChain(t *testing.T) {
 		if i%2 == 0 {
 			stepFn = migration.NewStepOnIndex(
 				storage.Query{
-					Factory:       newItemFactory,
+					Factory:       newObjFactory,
 					ItemAttribute: storage.QueryItem,
 				},
 				migration.WithItemDeleteFn(func(i storage.Item) bool {
-					ii := i.(*item)
-					return ii.id == valForRemoval
+					o := i.(*obj)
+					return o.id == valForRemoval
 				}),
 			)
 		} else {
 			stepFn = func(s storage.Store) error {
-				return s.Delete(&item{id: valForRemoval})
+				return s.Delete(&obj{id: valForRemoval})
 			}
 		}
 
@@ -53,7 +53,7 @@ func TestNewStepsChain(t *testing.T) {
 		t.Fatalf("step migration should successed: %v", err)
 	}
 
-	afterStepCount, err := store.Count(&item{})
+	afterStepCount, err := store.Count(&obj{})
 	if err != nil {
 		t.Fatalf("count should successed: %v", err)
 	}

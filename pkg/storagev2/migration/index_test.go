@@ -5,10 +5,8 @@
 package migration_test
 
 import (
-	"encoding/binary"
 	"fmt"
 	"reflect"
-	"strconv"
 	"testing"
 
 	storage "github.com/ethersphere/bee/pkg/storagev2"
@@ -28,11 +26,11 @@ func TestNewStepOnIndex(t *testing.T) {
 
 		stepFn := migration.NewStepOnIndex(
 			storage.Query{
-				Factory: newItemFactory,
+				Factory: newObjFactory,
 			},
 		)
 
-		initialCount, err := store.Count(&item{})
+		initialCount, err := store.Count(&obj{})
 		if err != nil {
 			t.Fatalf("count should successed: %v", err)
 		}
@@ -44,7 +42,7 @@ func TestNewStepOnIndex(t *testing.T) {
 			t.Fatalf("step migration should successed: %v", err)
 		}
 
-		afterStepCount, err := store.Count(&item{})
+		afterStepCount, err := store.Count(&obj{})
 		if err != nil {
 			t.Fatalf("count should successed: %v", err)
 		}
@@ -63,12 +61,12 @@ func TestNewStepOnIndex(t *testing.T) {
 
 		stepFn := migration.NewStepOnIndex(
 			storage.Query{
-				Factory:       newItemFactory,
+				Factory:       newObjFactory,
 				ItemAttribute: storage.QueryItem,
 			},
 			migration.WithItemDeleteFn(func(i storage.Item) bool {
-				ii := i.(*item)
-				return ii.val <= 9
+				o := i.(*obj)
+				return o.val <= 9
 			}),
 			migration.WithOpPerBatch(3),
 		)
@@ -90,15 +88,15 @@ func TestNewStepOnIndex(t *testing.T) {
 
 		stepFn := migration.NewStepOnIndex(
 			storage.Query{
-				Factory:       newItemFactory,
+				Factory:       newObjFactory,
 				ItemAttribute: storage.QueryItem,
 			},
 			// translate values from  [0 ... populateItemsCount) to [minVal ... populateItemsCount + minval)
 			migration.WithItemUpdaterFn(func(i storage.Item) (storage.Item, bool) {
-				ii := i.(*item)
-				if ii.val < minVal {
-					ii.val += populateItemsCount
-					return ii, true
+				o := i.(*obj)
+				if o.val < minVal {
+					o.val += populateItemsCount
+					return o, true
 				}
 
 				return nil, false
@@ -122,20 +120,20 @@ func TestNewStepOnIndex(t *testing.T) {
 
 		step := migration.NewStepOnIndex(
 			storage.Query{
-				Factory:       newItemFactory,
+				Factory:       newObjFactory,
 				ItemAttribute: storage.QueryItem,
 			},
 			// remove first 10 items
 			migration.WithItemDeleteFn(func(i storage.Item) bool {
-				ii := i.(*item)
-				return ii.val < 10
+				o := i.(*obj)
+				return o.val < 10
 			}),
 			// translate values from [90-100) to [0-10) range
 			migration.WithItemUpdaterFn(func(i storage.Item) (storage.Item, bool) {
-				ii := i.(*item)
-				if ii.val >= 90 {
-					ii.val -= 90
-					return ii, true
+				o := i.(*obj)
+				if o.val >= 90 {
+					o.val -= 90
+					return o, true
 				}
 
 				return nil, false
@@ -159,13 +157,13 @@ func TestNewStepOnIndex(t *testing.T) {
 
 		step := migration.NewStepOnIndex(
 			storage.Query{
-				Factory:       newItemFactory,
+				Factory:       newObjFactory,
 				ItemAttribute: storage.QueryItem,
 			},
 			migration.WithItemUpdaterFn(func(i storage.Item) (storage.Item, bool) {
-				ii := i.(*item)
-				ii.id += 1
-				return ii, true
+				o := i.(*obj)
+				o.id += 1
+				return o, true
 			}),
 			migration.WithOpPerBatch(3),
 		)
@@ -195,26 +193,26 @@ func TestStepIndex_BatchSize(t *testing.T) {
 
 			stepFn := migration.NewStepOnIndex(
 				storage.Query{
-					Factory:       newItemFactory,
+					Factory:       newObjFactory,
 					ItemAttribute: storage.QueryItem,
 				},
 				migration.WithItemDeleteFn(func(i storage.Item) bool {
-					ii := i.(*item)
-					if _, ok := deleteItemCallMap[ii.id]; ok {
+					o := i.(*obj)
+					if _, ok := deleteItemCallMap[o.id]; ok {
 						t.Fatalf("delete should be called once")
 					}
-					deleteItemCallMap[ii.id] = struct{}{}
+					deleteItemCallMap[o.id] = struct{}{}
 
-					return ii.id < 10
+					return o.id < 10
 				}),
 				migration.WithItemUpdaterFn(func(i storage.Item) (storage.Item, bool) {
-					ii := i.(*item)
-					if _, ok := updateItemCallMap[ii.id]; ok {
+					o := i.(*obj)
+					if _, ok := updateItemCallMap[o.id]; ok {
 						t.Fatalf("update should be called once")
 					}
-					updateItemCallMap[ii.id] = struct{}{}
+					updateItemCallMap[o.id] = struct{}{}
 
-					return ii, true
+					return o, true
 				}),
 				migration.WithOpPerBatch(i),
 			)
@@ -235,7 +233,7 @@ func TestStepIndex_BatchSize(t *testing.T) {
 func TestOptions(t *testing.T) {
 	t.Parallel()
 
-	items := []*item{nil, {id: 1}, {id: 2}}
+	items := []*obj{nil, {id: 1}, {id: 2}}
 
 	t.Run("new options", func(t *testing.T) {
 		t.Parallel()
@@ -326,7 +324,7 @@ func populateStore(t *testing.T, s storage.Store, count int) {
 	t.Helper()
 
 	for i := 0; i < count; i++ {
-		item := &item{id: i, val: i}
+		item := &obj{id: i, val: i}
 		if err := s.Put(item); err != nil {
 			t.Fatalf("populate store should successed: %v", err)
 		}
@@ -336,7 +334,7 @@ func populateStore(t *testing.T, s storage.Store, count int) {
 func assertItemsInRange(t *testing.T, s storage.Store, from, to int) {
 	t.Helper()
 
-	count, err := s.Count(&item{})
+	count, err := s.Count(&obj{})
 	if err != nil {
 		t.Fatalf("count should successed: %v", err)
 	}
@@ -346,13 +344,13 @@ func assertItemsInRange(t *testing.T, s storage.Store, from, to int) {
 
 	err = s.Iterate(
 		storage.Query{
-			Factory:       newItemFactory,
+			Factory:       newObjFactory,
 			ItemAttribute: storage.QueryItem,
 		},
 		func(r storage.Result) (bool, error) {
-			ii := r.Entry.(*item)
-			if ii.val < from || ii.val >= to {
-				return true, fmt.Errorf("item not in expected range: val %d", ii.val)
+			o := r.Entry.(*obj)
+			if o.val < from || o.val >= to {
+				return true, fmt.Errorf("item not in expected range: val %d", o.val)
 			}
 			return false, nil
 		},
@@ -361,27 +359,4 @@ func assertItemsInRange(t *testing.T, s storage.Store, from, to int) {
 		t.Fatalf("populate store should successed: %v", err)
 	}
 
-}
-
-type item struct {
-	id  int
-	val int
-}
-
-func newItemFactory() storage.Item { return &item{} }
-
-func (i *item) ID() string        { return strconv.Itoa(i.id) }
-func (i *item) Namespace() string { return "migration-test" }
-
-func (i *item) Marshal() ([]byte, error) {
-	buf := make([]byte, 16)
-	binary.LittleEndian.PutUint64(buf, uint64(i.id))
-	binary.LittleEndian.PutUint64(buf, uint64(i.val))
-	return buf, nil
-}
-
-func (i *item) Unmarshal(d []byte) error {
-	i.id = int(binary.LittleEndian.Uint64(d))
-	i.val = int(binary.LittleEndian.Uint64(d))
-	return nil
 }
