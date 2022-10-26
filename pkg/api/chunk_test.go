@@ -330,3 +330,34 @@ func TestInvalidChunkParams(t *testing.T) {
 		)
 	})
 }
+
+// // TestDirectChunkUpload tests that the direct upload endpoint give correct error message in dev mode
+func TestDirectChunkUpload(t *testing.T) {
+	t.Parallel()
+	var (
+		chunksEndpoint  = "/chunks"
+		chunk           = testingc.GenerateTestRandomChunk()
+		statestoreMock  = statestore.NewStateStore()
+		logger          = log.Noop
+		tag             = tags.NewTags(statestoreMock, logger)
+		storerMock      = mock.NewStorer()
+		pinningMock     = pinning.NewServiceMock()
+		client, _, _, _ = newTestServer(t, testServerOptions{
+			Storer:  storerMock,
+			Pinning: pinningMock,
+			Tags:    tag,
+			Post:    mockpost.New(mockpost.WithAcceptAll()),
+			beeMode: api.DevMode,
+		})
+	)
+
+	jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusBadRequest,
+		jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "false"),
+		jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+		jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
+		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+			Message: api.ErrDevNodeNotSupported.Error(),
+			Code:    http.StatusBadRequest,
+		}),
+	)
+}

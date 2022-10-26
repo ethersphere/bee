@@ -144,6 +144,8 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.NotFound(w, "batch with id not found")
 		case errors.Is(err, errInvalidPostageBatch):
 			jsonhttp.BadRequest(w, "invalid batch id")
+		case errors.Is(err, ErrDevNodeNotSupported):
+			jsonhttp.BadRequest(w, ErrDevNodeNotSupported)
 		default:
 			jsonhttp.BadRequest(w, nil)
 		}

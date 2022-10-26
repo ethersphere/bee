@@ -113,6 +113,7 @@ var (
 	errFileStore            = errors.New("could not store file")
 	errInvalidPostageBatch  = errors.New("invalid postage batch id")
 	errBatchUnusable        = errors.New("batch not usable")
+	ErrDevNodeNotSupported  = errors.New("dev node not supported")
 )
 
 type Service struct {
@@ -780,6 +781,9 @@ func (s *Service) newStamperPutter(r *http.Request) (storage.Storer, func() erro
 		return nil, noopWaitFn, fmt.Errorf("request deferred: %w", err)
 	}
 
+	if !deferred && s.beeMode == DevMode {
+		return nil, noopWaitFn, ErrDevNodeNotSupported
+	}
 	exists, err := s.batchStore.Exists(batch)
 	if err != nil {
 		return nil, noopWaitFn, fmt.Errorf("batch exists: %w", err)

@@ -865,3 +865,46 @@ func TestInvalidBzzParams(t *testing.T) {
 	})
 
 }
+
+// TestDirectUploadBzz tests that the direct upload endpoint give correct error message in dev mode
+func TestDirectUploadBzz(t *testing.T) {
+	t.Parallel()
+
+	var (
+		fileUploadResource = "/bzz"
+		storerMock         = smock.NewStorer()
+		statestoreMock     = statestore.NewStateStore()
+		pinningMock        = pinning.NewServiceMock()
+		logger             = log.Noop
+	)
+
+	tr := tarFiles(t, []f{
+		{
+			data: []byte("robots text"),
+			name: "robots.txt",
+			dir:  "",
+			header: http.Header{
+				"Content-Type": {"text/plain; charset=utf-8"},
+			},
+		},
+	})
+	clientBatchUnusable, _, _, _ := newTestServer(t, testServerOptions{
+		Storer:     storerMock,
+		Pinning:    pinningMock,
+		Tags:       tags.NewTags(statestoreMock, logger),
+		Logger:     logger,
+		Post:       mockpost.New(mockpost.WithAcceptAll()),
+		BatchStore: mockbatchstore.New(),
+		beeMode:    api.DevMode,
+	})
+	jsonhttptest.Request(t, clientBatchUnusable, http.MethodPost, fileUploadResource, http.StatusBadRequest,
+		jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "false"),
+		jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+		jsonhttptest.WithRequestBody(tr),
+		jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
+		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+			Message: api.ErrDevNodeNotSupported.Error(),
+			Code:    http.StatusBadRequest,
+		}),
+	)
+}
