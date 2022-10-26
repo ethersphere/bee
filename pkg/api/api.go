@@ -113,6 +113,7 @@ var (
 	errFileStore            = errors.New("could not store file")
 	errInvalidPostageBatch  = errors.New("invalid postage batch id")
 	errBatchUnusable        = errors.New("batch not usable")
+	ErrDevNodeNotSupported  = errors.New("dev node not supported")
 )
 
 type Service struct {
@@ -858,6 +859,9 @@ func (p *pushStamperPutter) Put(ctx context.Context, mode storage.ModePut, chs .
 							return err
 						}
 						return nil
+					}
+					if errors.Is(err, ErrDevNodeNotSupported) {
+						return err
 					}
 					if err == nil {
 						return nil
