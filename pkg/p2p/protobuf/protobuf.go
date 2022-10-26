@@ -36,7 +36,7 @@ func ReadMessages(r io.Reader, newMessage func() Message) (m []Message, err erro
 	pr := NewReader(r)
 	for {
 		msg := newMessage()
-		if err := pr.ReadMsg(msg); err != nil {
+		if err := pr.reader.ReadMsg(msg); err != nil {
 			if errors.Is(err, io.EOF) {
 				break
 			}
@@ -48,11 +48,11 @@ func ReadMessages(r io.Reader, newMessage func() Message) (m []Message, err erro
 }
 
 type Reader struct {
-	ggio.Reader
+	reader ggio.Reader
 }
 
 func newReader(r ggio.Reader) Reader {
-	return Reader{Reader: r}
+	return Reader{reader: r}
 }
 
 func (r *Reader) Close() {
@@ -62,7 +62,7 @@ func (r *Reader) Close() {
 func (r Reader) ReadMsgWithContext(ctx context.Context, msg proto.Message) error {
 	errChan := make(chan error, 1)
 	go func() {
-		errChan <- r.ReadMsg(msg)
+		errChan <- r.reader.ReadMsg(msg)
 	}()
 
 	select {
