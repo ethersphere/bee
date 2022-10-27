@@ -1545,6 +1545,10 @@ func (k *Kad) IsBalanced(bin uint8) bool {
 	k.depthMu.RLock()
 	defer k.depthMu.RUnlock()
 
+	if int(bin) >= len(k.commonBinPrefixes) {
+		return false
+	}
+
 	// for each pseudo address
 	for i := range k.commonBinPrefixes[bin] {
 		pseudoAddr := k.commonBinPrefixes[bin][i]
