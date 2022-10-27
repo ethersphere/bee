@@ -54,11 +54,12 @@ func newTestSvc(
 func TestDepthMonitorService(t *testing.T) {
 	t.Parallel()
 
-	waitForDepth := func(t *testing.T, svc *depthmonitor.Service, depth uint8, timeout time.Duration) {
+	const depthWaitTimeout = time.Second * 3
+	waitForDepth := func(t *testing.T, svc *depthmonitor.Service, depth uint8) {
 		t.Helper()
 		start := time.Now()
 		for {
-			if time.Since(start) >= timeout {
+			if time.Since(start) >= depthWaitTimeout {
 				t.Fatalf("timed out waiting for depth expected %d found %d", depth, svc.StorageDepth())
 			}
 			if svc.StorageDepth() != depth {
@@ -84,7 +85,7 @@ func TestDepthMonitorService(t *testing.T) {
 
 		bs := mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{Radius: 3}))
 		svc := newTestSvc(nil, nil, nil, nil, bs, 100*time.Millisecond, depthmonitor.DefaultWakeupInterval)
-		waitForDepth(t, svc, 3, time.Second)
+		waitForDepth(t, svc, 3)
 		err := svc.Close()
 		if err != nil {
 			t.Fatal(err)
@@ -105,11 +106,11 @@ func TestDepthMonitorService(t *testing.T) {
 		svc := newTestSvc(topo, nil, reserve, nil, bs, 100*time.Millisecond, depthMonitorWakeUpInterval)
 		svc.SetMinimumRadius(0)
 
-		waitForDepth(t, svc, 3, time.Second)
+		waitForDepth(t, svc, 3)
 		// simulate huge eviction to trigger manage worker
 		reserve.setSize(1000)
 
-		waitForDepth(t, svc, 1, time.Second)
+		waitForDepth(t, svc, 1)
 		if topo.getStorageDepth() != 1 {
 			t.Fatal("topology depth not updated")
 		}
@@ -176,7 +177,7 @@ func TestDepthMonitorService(t *testing.T) {
 
 		svc := newTestSvc(topo, nil, reserve, nil, bs, 100*time.Millisecond, depthMonitorWakeUpInterval)
 
-		waitForDepth(t, svc, 3, time.Second)
+		waitForDepth(t, svc, 3)
 
 		svc.SetStorageRadius(5)
 		if svc.StorageDepth() != 5 {
