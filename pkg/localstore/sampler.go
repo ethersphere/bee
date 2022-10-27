@@ -201,7 +201,7 @@ func (db *DB) ReserveSample(
 			}
 			_, err = db.validStamp(chunk, stampData)
 			if err == nil {
-				if !soc.Valid(chunk) && !cac.Valid(chunk) {
+				if !cac.Valid(chunk) && !soc.Valid(chunk) {
 					logger.Info("data invalid for chunk address", chunk.Address())
 				} else {
 					insert(item.transformedAddress)
