@@ -53,19 +53,13 @@ func signerMockForTransaction(t *testing.T, signedTx *types.Transaction, sender 
 				t.Fatalf("signing transaction with wrong value. wanted %d, got %d", signedTx.Value(), transaction.Value())
 			}
 			if chainID.Cmp(signerChainID) != 0 {
-				t.Fatalf("signing transaction with wrong chainID. wanted %d, got %d", signerChainID, chainID)
-			}
-			if transaction.ChainId().Cmp(signedTx.ChainId()) != 0 {
-				t.Fatalf("signing transaction with wrong chainID. wanted %d, got %d", signedTx.ChainId(), transaction.ChainId())
+				t.Fatalf("signing transaction with wrong chainID. wanted %d, got %d", signerChainID, transaction.ChainId())
 			}
 			if transaction.Gas() != signedTx.Gas() {
 				t.Fatalf("signing transaction with wrong gas. wanted %d, got %d", signedTx.Gas(), transaction.Gas())
 			}
-			if transaction.GasFeeCap().Cmp(signedTx.GasFeeCap()) != 0 {
-				t.Fatalf("signing transaction with wrong gasfeecap. wanted %d, got %d", signedTx.GasFeeCap(), transaction.GasFeeCap())
-			}
-			if transaction.GasTipCap().Cmp(signedTx.GasTipCap()) != 0 {
-				t.Fatalf("signing transaction with wrong gastipcap. wanted %d, got %d", signedTx.GasTipCap(), transaction.GasTipCap())
+			if transaction.GasPrice().Cmp(signedTx.GasPrice()) != 0 {
+				t.Fatalf("signing transaction with wrong gasprice. wanted %d, got %d", signedTx.GasPrice(), transaction.GasPrice())
 			}
 
 			if transaction.Nonce() != signedTx.Nonce() {
@@ -94,6 +88,8 @@ func TestTransactionSend(t *testing.T) {
 	chainID := big.NewInt(5)
 
 	t.Run("send", func(t *testing.T) {
+		t.Parallel()
+
 		signedTx := types.NewTx(&types.DynamicFeeTx{
 			ChainID:   chainID,
 			Nonce:     nonce,
@@ -335,6 +331,8 @@ func TestTransactionSend(t *testing.T) {
 	})
 
 	t.Run("send_no_nonce", func(t *testing.T) {
+		t.Parallel()
+
 		signedTx := types.NewTx(&types.DynamicFeeTx{
 			ChainID:   chainID,
 			Nonce:     nonce,
@@ -644,6 +642,8 @@ func TestTransactionCancel(t *testing.T) {
 	}
 
 	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+
 		cancelTx := types.NewTx(&types.DynamicFeeTx{
 			ChainID:   chainID,
 			Nonce:     nonce,
