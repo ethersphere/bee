@@ -179,6 +179,13 @@ func TestCache(t *testing.T) {
 			}
 		})
 
+		t.Run("new cache retains state", func(t *testing.T) {
+			c2, err := cache.New(st, 10)
+			if err != nil {
+				t.Fatal(err)
+			}
+			verifyCacheState(t, c2, chunks[0].Address(), chunks[len(chunks)-1].Address(), uint64(len(chunks)))
+		})
 	})
 }
 
