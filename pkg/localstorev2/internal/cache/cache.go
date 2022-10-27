@@ -1,12 +1,14 @@
 package cache
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"sync"
 
+	"github.com/ethersphere/bee/pkg/localstorev2/internal"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -18,6 +20,21 @@ var (
 	errUnmarshalCacheEntryInvalidSize  = errors.New("unmarshal: cacheEntry invalid size")
 	errUnmarshalCacheStateInvalidSize  = errors.New("unmarshal: cacheState invalid size")
 )
+
+func getAddressOrZero(buf []byte) swarm.Address {
+	emptyAddr := make([]byte, swarm.HashSize)
+	if bytes.Equal(buf, emptyAddr) {
+		return swarm.ZeroAddress
+	}
+	return swarm.NewAddress(append(make([]byte, 0, swarm.HashSize), buf...))
+}
+
+func addressBytesOrZero(addr swarm.Address) []byte {
+	if addr.IsZero() {
+		return make([]byte, swarm.HashSize)
+	}
+	return addr.Bytes()
+}
 
 type cacheEntry struct {
 	Address swarm.Address
@@ -35,19 +52,19 @@ func (c *cacheEntry) Marshal() ([]byte, error) {
 		return nil, errMarshalCacheEntryInvalidAddress
 	}
 	copy(entryBuf[:swarm.HashSize], c.Address.Bytes())
-	copy(entryBuf[swarm.HashSize:2*swarm.HashSize], c.Prev.Bytes())
-	copy(entryBuf[2*swarm.HashSize:], c.Next.Bytes())
+	copy(entryBuf[swarm.HashSize:2*swarm.HashSize], addressBytesOrZero(c.Prev))
+	copy(entryBuf[2*swarm.HashSize:], addressBytesOrZero(c.Next))
 	return entryBuf, nil
 }
 
 func (c *cacheEntry) Unmarshal(buf []byte) error {
-	if len(buf) == cacheEntrySize {
+	if len(buf) != cacheEntrySize {
 		return errUnmarshalCacheEntryInvalidSize
 	}
 	newEntry := new(cacheEntry)
 	newEntry.Address = swarm.NewAddress(append(make([]byte, 0, swarm.HashSize), buf[:swarm.HashSize]...))
-	newEntry.Prev = swarm.NewAddress(append(make([]byte, 0, swarm.HashSize), buf[swarm.HashSize:2*swarm.HashSize]...))
-	newEntry.Next = swarm.NewAddress(append(make([]byte, 0, swarm.HashSize), buf[2*swarm.HashSize:]...))
+	newEntry.Prev = getAddressOrZero(buf[swarm.HashSize : 2*swarm.HashSize])
+	newEntry.Next = getAddressOrZero(buf[2*swarm.HashSize:])
 	*c = *newEntry
 
 	return nil
@@ -67,8 +84,8 @@ func (cacheState) ID() string { return "e" }
 
 func (c *cacheState) Marshal() ([]byte, error) {
 	entryBuf := make([]byte, cacheStateSize)
-	copy(entryBuf[:swarm.HashSize], c.Start.Bytes())
-	copy(entryBuf[swarm.HashSize:2*swarm.HashSize], c.End.Bytes())
+	copy(entryBuf[:swarm.HashSize], addressBytesOrZero(c.Start))
+	copy(entryBuf[swarm.HashSize:2*swarm.HashSize], addressBytesOrZero(c.End))
 	binary.LittleEndian.PutUint64(entryBuf[2*swarm.HashSize:], c.Count)
 	return entryBuf, nil
 }
@@ -78,8 +95,8 @@ func (c *cacheState) Unmarshal(buf []byte) error {
 		return errUnmarshalCacheStateInvalidSize
 	}
 	newEntry := new(cacheState)
-	newEntry.Start = swarm.NewAddress(append(make([]byte, 0, swarm.HashSize), buf[swarm.HashSize:]...))
-	newEntry.End = swarm.NewAddress(append(make([]byte, 0, swarm.HashSize), buf[swarm.HashSize:2*swarm.HashSize]...))
+	newEntry.Start = getAddressOrZero(buf[:swarm.HashSize])
+	newEntry.End = getAddressOrZero(buf[swarm.HashSize : 2*swarm.HashSize])
 	newEntry.Count = binary.LittleEndian.Uint64(buf[2*swarm.HashSize:])
 	*c = *newEntry
 	return nil
@@ -105,14 +122,37 @@ type Cache struct {
 // New creates a new Cache component with the specified capacity. The store is used
 // here only to read the initial state of the cache before shutdown if there was
 // any.
-func New(store storage.Store, capacity uint64) (*Cache, error) {
+func New(storg internal.Storage, capacity uint64) (*Cache, error) {
 	state := &cacheState{}
-	err := store.Get(state)
-	if err != nil {
+	err := storg.Store().Get(state)
+	if err != nil && !errors.Is(err, storage.ErrNotFound) {
 		return nil, fmt.Errorf("failed reading cache state: %w", err)
 	}
 
 	if capacity < state.Count {
+		entry := &cacheEntry{Address: state.Start}
+		var i uint64
+		for i = 0; i < (state.Count - capacity); i++ {
+			err = storg.Store().Get(entry)
+			if err != nil {
+				return nil, fmt.Errorf("failed reading cache entry %s: %w", state.Start, err)
+			}
+			err = storg.ChunkStore().Delete(storg.Ctx(), entry.Address)
+			if err != nil {
+				return nil, fmt.Errorf("failed deleting chunk %s: %w", entry.Address, err)
+			}
+			err = storg.Store().Delete(entry)
+			if err != nil {
+				return nil, fmt.Errorf("failed deleting cache entry item: %w", err)
+			}
+			entry.Address = entry.Next
+			state.Start = entry.Next.Clone()
+			state.Count--
+		}
+		err = storg.Store().Put(state)
+		if err != nil {
+			return nil, fmt.Errorf("failed updating state: %w", err)
+		}
 	}
 
 	return &Cache{state: state, capacity: capacity}, nil
@@ -147,7 +187,7 @@ func (c *Cache) popFront(
 	}
 
 	// update new front.
-	c.state.Start = expiredEntry.Next
+	c.state.Start = expiredEntry.Next.Clone()
 
 	return nil
 }
@@ -171,8 +211,8 @@ func (c *Cache) pushBack(
 	}
 
 	// update the pointers.
-	entry.Next = newEntry.Address
-	newEntry.Prev = entry.Address
+	entry.Next = newEntry.Address.Clone()
+	newEntry.Prev = entry.Address.Clone()
 
 	// add the new chunk to chunkstore if requested.
 	if chunk != nil {
@@ -195,7 +235,7 @@ func (c *Cache) pushBack(
 	}
 
 	// update state.
-	c.state.End = newEntry.Address
+	c.state.End = newEntry.Address.Clone()
 
 	return nil
 }
@@ -218,11 +258,24 @@ func (c *Cache) Putter(store storage.Store, chStore storage.ChunkStore) storage.
 			return true, nil
 		}
 
-		// if we are here, this is a new chunk which should be added. Add it to
-		// the end.
-		err = c.pushBack(ctx, newEntry, chunk, store, chStore)
-		if err != nil {
-			return false, err
+		if c.state.Count != 0 {
+			// if we are here, this is a new chunk which should be added. Add it to
+			// the end.
+			err = c.pushBack(ctx, newEntry, chunk, store, chStore)
+			if err != nil {
+				return false, err
+			}
+		} else {
+			_, err = chStore.Put(ctx, chunk)
+			if err != nil {
+				return false, err
+			}
+			err = store.Put(newEntry)
+			if err != nil {
+				return false, err
+			}
+			c.state.Start = newEntry.Address.Clone()
+			c.state.End = newEntry.Address.Clone()
 		}
 
 		if c.state.Count == c.capacity {
@@ -299,13 +352,13 @@ func (c *Cache) Getter(store storage.Store, chStore storage.ChunkStore) storage.
 			// if this is first chunk we dont need to update both the prev or the
 			// next.
 			if !c.state.Start.Equal(address) {
-				prev.Next = next.Address
+				prev.Next = next.Address.Clone()
 				err = store.Put(prev)
 				if err != nil {
 					return err
 				}
 
-				next.Prev = prev.Address
+				next.Prev = prev.Address.Clone()
 				err = store.Put(next)
 				if err != nil {
 					return err
@@ -313,7 +366,7 @@ func (c *Cache) Getter(store storage.Store, chStore storage.ChunkStore) storage.
 			}
 
 			if c.state.Start.Equal(address) {
-				c.state.Start = next.Address
+				c.state.Start = next.Address.Clone()
 			}
 
 			return store.Put(c.state)
