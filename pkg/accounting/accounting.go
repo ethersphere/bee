@@ -365,7 +365,8 @@ func (c *creditAction) Apply() error {
 	c.accounting.metrics.CreditEventsCount.Inc()
 
 	if c.price.Cmp(c.accountingPeer.reservedBalance) > 0 {
-		c.accounting.logger.Error(ErrOverRelease, "for peer %v")
+		c.accounting.logger.Debug(ErrOverRelease.Error(), "peer", c.peer, "error", ErrOverRelease)
+		c.accounting.logger.Error(nil, ErrOverRelease.Error())
 		c.accountingPeer.reservedBalance.SetUint64(0)
 	} else {
 		c.accountingPeer.reservedBalance.Sub(c.accountingPeer.reservedBalance, c.price)
@@ -380,7 +381,8 @@ func (c *creditAction) Apply() error {
 		if increasedExpectedDebtReduced.Cmp(c.accountingPeer.earlyPayment) > 0 {
 			err = c.accounting.settle(c.peer, c.accountingPeer)
 			if err != nil {
-				c.accounting.logger.Error(err, "failed to settle with credited peer", c.peer)
+				c.accounting.logger.Debug("failed to settle with credited peer", "peer", c.peer, "error", err)
+				c.accounting.logger.Error(nil, "failed to settle with credited peer")
 			}
 		}
 
@@ -423,7 +425,8 @@ func (c *creditAction) Apply() error {
 	if increasedExpectedDebtReduced.Cmp(c.accountingPeer.earlyPayment) > 0 {
 		err = c.accounting.settle(c.peer, c.accountingPeer)
 		if err != nil {
-			c.accounting.logger.Error(err, "failed to settle with credited peer", c.peer)
+			c.accounting.logger.Debug("failed to settle with credited peer", "peer", c.peer, "error", err)
+			c.accounting.logger.Error(nil, "failed to settle with credited peer")
 		}
 	}
 
@@ -439,6 +442,7 @@ func (c *creditAction) Cleanup() {
 	defer c.accountingPeer.lock.Unlock()
 
 	if c.price.Cmp(c.accountingPeer.reservedBalance) > 0 {
+		c.accounting.logger.Debug("attempting to release more balance than was reserved for peer", "peer", c.peer)
 		c.accounting.logger.Error(nil, "attempting to release more balance than was reserved for peer")
 		c.accountingPeer.reservedBalance.SetUint64(0)
 	} else {
@@ -670,7 +674,8 @@ func (a *Accounting) notifyPaymentThresholdUpgrade(peer swarm.Address, accountin
 	// announce new payment threshold to peer
 	err := a.pricing.AnnouncePaymentThreshold(context.Background(), peer, accountingPeer.paymentThresholdForPeer)
 	if err != nil {
-		a.logger.Error(err, "announcing increased payment threshold", "value", accountingPeer.paymentThresholdForPeer, "peer", peer)
+		a.logger.Debug("announcing increased payment threshold", "value", accountingPeer.paymentThresholdForPeer, "peer", peer, "error", err)
+		a.logger.Error(nil, "announcing increased payment threshold")
 	}
 }
 
@@ -987,7 +992,8 @@ func (a *Accounting) NotifyPaymentSent(peer swarm.Address, amount *big.Int, rece
 	currentBalance, err := a.Balance(peer)
 	if err != nil {
 		if !errors.Is(err, ErrPeerNoBalance) {
-			a.logger.Error(err, "notify payment sent; failed to load balance")
+			a.logger.Debug("notify payment sent; failed to persist balance", "error", err)
+			a.logger.Error(nil, "notify payment sent; failed to persist balance")
 			return
 		}
 	}
@@ -999,7 +1005,8 @@ func (a *Accounting) NotifyPaymentSent(peer swarm.Address, amount *big.Int, rece
 
 	err = a.store.Put(peerBalanceKey(peer), nextBalance)
 	if err != nil {
-		a.logger.Error(err, "notify payment sent; failed to persist balance")
+		a.logger.Debug("notify payment sent; failed to persist balance", "error", err)
+		a.logger.Error(nil, "notify payment sent; failed to persist balance")
 		return
 	}
 
@@ -1133,7 +1140,8 @@ func (a *Accounting) NotifyRefreshmentSent(peer swarm.Address, attemptedAmount, 
 			a.metrics.AccountingDisconnectsEnforceRefreshCount.Inc()
 			_ = a.blocklist(peer, 1, "failed to refresh")
 		}
-		a.logger.Error(receivedError, "notifyrefreshmentsent failed to refresh")
+		a.logger.Debug("notifyrefreshmentsent failed to refresh", "error", receivedError)
+		a.logger.Error(nil, "notifyrefreshmentsent failed to refresh")
 		return
 	}
 
@@ -1159,7 +1167,8 @@ func (a *Accounting) NotifyRefreshmentSent(peer swarm.Address, attemptedAmount, 
 	// compare received refreshment amount to expectation
 	if expectedAllowance.Cmp(amount) > 0 {
 		// if expectation is not met, blocklist peer
-		a.logger.Error(ErrEnforceRefresh, "pseudosettle peer", peer, "accepted lower payment than expected")
+		a.logger.Debug("accepted lower payment than expected", "pseudosettle peer", peer.String(), "error", ErrEnforceRefresh)
+		a.logger.Error(nil, "accepted lower payment than expected")
 		a.metrics.ErrRefreshmentBelowExpected.Inc()
 		_ = a.blocklist(peer, 1, "failed to meet expectation for allowance")
 		return
@@ -1169,7 +1178,8 @@ func (a *Accounting) NotifyRefreshmentSent(peer swarm.Address, attemptedAmount, 
 	currentBalance, err := a.Balance(peer)
 	if err != nil {
 		if !errors.Is(err, ErrPeerNoBalance) {
-			a.logger.Error(err, "notifyrefreshmentsent failed to get balance")
+			a.logger.Debug("notifyrefreshmentsent failed to get balance", "error", err)
+			a.logger.Error(nil, "notifyrefreshmentsent failed to get balance")
 			return
 		}
 	}
@@ -1178,7 +1188,8 @@ func (a *Accounting) NotifyRefreshmentSent(peer swarm.Address, attemptedAmount, 
 
 	err = a.store.Put(peerBalanceKey(peer), newBalance)
 	if err != nil {
-		a.logger.Error(err, "notifyrefreshmentsent failed to persist balance")
+		a.logger.Debug("notifyrefreshmentsent failed to persist balance", "error", err)
+		a.logger.Error(nil, "notifyrefreshmentsent failed to persist balance")
 		return
 	}
 
@@ -1461,11 +1472,13 @@ func (a *Accounting) Connect(peer swarm.Address, fullNode bool) {
 
 	err := a.store.Put(peerBalanceKey(peer), zero)
 	if err != nil {
-		a.logger.Error(err, "failed to persist balance")
+		a.logger.Debug("failed to persist balance", "error", err)
+		a.logger.Error(nil, "failed to persist balance")
 	}
 
 	err = a.store.Put(peerSurplusBalanceKey(peer), zero)
 	if err != nil {
+		a.logger.Debug("failed to persist surplus balance", "error", err)
 		a.logger.Error(err, "failed to persist surplus balance")
 	}
 }
