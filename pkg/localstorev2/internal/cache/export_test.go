@@ -1,6 +1,9 @@
 package cache
 
-import "github.com/ethersphere/bee/pkg/swarm"
+import (
+	storage "github.com/ethersphere/bee/pkg/storagev2"
+	"github.com/ethersphere/bee/pkg/swarm"
+)
 
 type (
 	CacheEntry = cacheEntry
@@ -17,8 +20,34 @@ func (c *Cache) State() (swarm.Address, swarm.Address, uint64) {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
-	start := swarm.NewAddress(append(make([]byte, 0, swarm.HashSize), c.state.Start.Bytes()...))
-	end := swarm.NewAddress(append(make([]byte, 0, swarm.HashSize), c.state.End.Bytes()...))
+	start := c.state.Start.Clone()
+	end := c.state.Start.Clone()
 
 	return start, end, c.state.Count
+}
+
+func (c *Cache) IterateOldToNew(
+	st storage.Store,
+	start, end swarm.Address,
+	iterateFn func(ch swarm.Address) (bool, error),
+) error {
+
+	currentAddr := start
+	for !currentAddr.Equal(end) {
+		entry := &cacheEntry{Address: currentAddr}
+		err := st.Get(entry)
+		if err != nil {
+			return err
+		}
+		stop, err := iterateFn(entry.Address)
+		if err != nil {
+			return err
+		}
+		if stop {
+			return nil
+		}
+		currentAddr = entry.Next
+	}
+
+	return nil
 }

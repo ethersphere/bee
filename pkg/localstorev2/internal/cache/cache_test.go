@@ -2,6 +2,7 @@ package cache_test
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"testing"
 
@@ -186,6 +187,43 @@ func TestCache(t *testing.T) {
 			}
 			verifyCacheState(t, c2, chunks[0].Address(), chunks[len(chunks)-1].Address(), uint64(len(chunks)))
 		})
+
+		t.Run("add over capacity", func(t *testing.T) {
+			chunks2 := chunktest.GenerateTestRandomChunks(10)
+			for idx, ch := range chunks2 {
+				found, err := c.Putter(st.Store(), st.ChunkStore()).Put(context.TODO(), ch)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if found {
+					t.Fatalf("expected chunk %s to not be found", ch.Address())
+				}
+				if idx == len(chunks)-1 {
+					verifyCacheState(t, c, chunks2[0].Address(), chunks2[idx].Address(), 10)
+				} else {
+					verifyCacheState(t, c, chunks[idx+1].Address(), chunks2[idx].Address(), 10)
+				}
+			}
+		})
+	})
+
+	t.Run("getter", func(t *testing.T) {
+		st := &testStorage{
+			store:   inmem.New(),
+			chStore: inmemchunkstore.New(),
+		}
+		c, err := cache.New(st, 10)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		chunks := chunktest.GenerateTestRandomChunks(10)
+
+		// this should have no effect on ordering
+		t.Run("add and get last", func(t *testing.T) {
+
+		})
+
 	})
 }
 
@@ -209,5 +247,35 @@ func verifyCacheState(
 
 	if expCount != count {
 		t.Fatalf("unexpected count, exp: %d found: %d", expCount, count)
+	}
+}
+
+func verifyCacheOrder(
+	t *testing.T,
+	c *cache.Cache,
+	st storage.Store,
+	addrs ...swarm.Address,
+) {
+	t.Helper()
+
+	start, end, count := c.State()
+
+	if uint64(len(addrs)) != count {
+		t.Fatalf("unexpected count, exp: %d found: %d", count, len(addrs))
+	}
+
+	idx := 0
+	err := c.IterateOldToNew(st, start, end, func(entry swarm.Address) (bool, error) {
+		if !addrs[idx].Equal(entry) {
+			return true, fmt.Errorf(
+				"incorrect order of cache items, idx: %d exp: %s found: %s",
+				idx, addrs[idx], entry,
+			)
+		}
+		idx++
+		return false, nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
