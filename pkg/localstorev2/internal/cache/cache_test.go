@@ -221,7 +221,25 @@ func TestCache(t *testing.T) {
 
 		// this should have no effect on ordering
 		t.Run("add and get last", func(t *testing.T) {
+			for idx, ch := range chunks {
+				found, err := c.Putter(st.Store(), st.ChunkStore()).Put(context.TODO(), ch)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if found {
+					t.Fatalf("expected chunk %s to not be found", ch.Address())
+				}
 
+				readChunk, err := c.Getter(st.Store(), st.ChunkStore()).Get(context.TODO(), ch.Address())
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !readChunk.Equal(ch) {
+					t.Fatalf("incorrect chunk: %s", ch.Address())
+				}
+				verifyCacheState(t, c, chunks[0].Address(), chunks[idx].Address(), uint64(idx+1))
+				verifyCacheOrder(t, c, st.Store(), chunks[:idx]...)
+			}
 		})
 
 	})
@@ -254,22 +272,22 @@ func verifyCacheOrder(
 	t *testing.T,
 	c *cache.Cache,
 	st storage.Store,
-	addrs ...swarm.Address,
+	chs ...swarm.Chunk,
 ) {
 	t.Helper()
 
 	start, end, count := c.State()
 
-	if uint64(len(addrs)) != count {
-		t.Fatalf("unexpected count, exp: %d found: %d", count, len(addrs))
+	if uint64(len(chs)) != count {
+		t.Fatalf("unexpected count, exp: %d found: %d", count, len(chs))
 	}
 
 	idx := 0
 	err := c.IterateOldToNew(st, start, end, func(entry swarm.Address) (bool, error) {
-		if !addrs[idx].Equal(entry) {
+		if !chs[idx].Address().Equal(entry) {
 			return true, fmt.Errorf(
 				"incorrect order of cache items, idx: %d exp: %s found: %s",
-				idx, addrs[idx], entry,
+				idx, chs[idx].Address(), entry,
 			)
 		}
 		idx++
