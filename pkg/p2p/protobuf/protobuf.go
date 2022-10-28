@@ -78,11 +78,19 @@ func (r Reader) ReadMsgWithContext(ctx context.Context, msg proto.Message) error
 }
 
 type Writer struct {
-	ggio.Writer
+	writer ggio.WriteCloser
 }
 
-func newWriter(r ggio.Writer) Writer {
-	return Writer{Writer: r}
+func newWriter(w ggio.WriteCloser) Writer {
+	return Writer{writer: w}
+}
+
+func (r *Writer) Close() {
+	r.writer.Close()
+}
+
+func (w *Writer) WriteMsg(msg proto.Message) error {
+	return w.writer.WriteMsg(msg)
 }
 
 func (w Writer) WriteMsgWithContext(ctx context.Context, msg proto.Message) error {
