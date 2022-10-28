@@ -1067,7 +1067,7 @@ func TestClosestPeer(t *testing.T) {
 	}
 	defer kad.Close()
 
-	pk, _ := beeCrypto.GenerateSecp256k1Key()
+	pk, _ := beeCrypto.GenerateSecp256r1Key()
 	for _, v := range connectedPeers {
 		addOne(t, beeCrypto.NewDefaultSigner(pk), kad, ab, v.Address)
 	}
@@ -1486,7 +1486,7 @@ func TestLatency(t *testing.T) {
 	}
 	defer kad.Close()
 
-	pk, _ := beeCrypto.GenerateSecp256k1Key()
+	pk, _ := beeCrypto.GenerateSecp256r1Key()
 	signer := beeCrypto.NewDefaultSigner(pk)
 	addOne(t, signer, kad, ab, p1)
 
@@ -1810,7 +1810,7 @@ func newTestKademliaWithAddrDiscovery(
 		}
 	})
 	var (
-		pk, _  = beeCrypto.GenerateSecp256k1Key()                    // random private key
+		pk, _  = beeCrypto.GenerateSecp256r1Key()                    // random private key
 		signer = beeCrypto.NewDefaultSigner(pk)                      // signer
 		ab     = addressbook.New(mockstate.NewStateStore())          // address book
 		p2p    = p2pMock(ab, signer, connCounter, failedConnCounter) // p2p mock

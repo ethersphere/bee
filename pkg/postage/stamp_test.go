@@ -64,7 +64,7 @@ func TestStampIndexMarshalling(t *testing.T) {
 }
 
 func TestValidStamp(t *testing.T) {
-	privKey, err := crypto.GenerateSecp256k1Key()
+	privKey, err := crypto.GenerateSecp256r1Key()
 	if err != nil {
 		t.Fatal(err)
 	}

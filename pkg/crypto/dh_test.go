@@ -19,13 +19,13 @@ import (
 func TestECDHCorrect(t *testing.T) {
 	t.Parallel()
 
-	key0, err := crypto.GenerateSecp256k1Key()
+	key0, err := crypto.GenerateSecp256r1Key()
 	if err != nil {
 		t.Fatal(err)
 	}
 	dh0 := crypto.NewDH(key0)
 
-	key1, err := crypto.GenerateSecp256k1Key()
+	key1, err := crypto.GenerateSecp256r1Key()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,7 +58,7 @@ func TestSharedKey(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	privKey, err := crypto.DecodeSecp256k1PrivateKey(data)
+	privKey, err := crypto.DecodeSecp256r1PrivateKey(data)
 	if err != nil {
 		t.Fatal(err)
 	}

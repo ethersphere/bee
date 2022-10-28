@@ -14,17 +14,17 @@ import (
 	"github.com/ethersphere/bee/pkg/crypto"
 )
 
-func TestGenerateSecp256k1Key(t *testing.T) {
+func TestGenerateSecp256r1Key(t *testing.T) {
 	t.Parallel()
 
-	k1, err := crypto.GenerateSecp256k1Key()
+	k1, err := crypto.GenerateSecp256r1Key()
 	if err != nil {
 		t.Fatal(err)
 	}
 	if k1 == nil {
 		t.Fatal("nil key")
 	}
-	k2, err := crypto.GenerateSecp256k1Key()
+	k2, err := crypto.GenerateSecp256r1Key()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +40,7 @@ func TestGenerateSecp256k1Key(t *testing.T) {
 func TestNewAddress(t *testing.T) {
 	t.Parallel()
 
-	k, err := crypto.GenerateSecp256k1Key()
+	k, err := crypto.GenerateSecp256r1Key()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,23 +55,6 @@ func TestNewAddress(t *testing.T) {
 	_, err = crypto.NewOverlayAddress(k.PublicKey, 1, nil)
 	if !errors.Is(err, crypto.ErrBadHashLength) {
 		t.Fatalf("expected %v, got %v", crypto.ErrBadHashLength, err)
-	}
-}
-
-func TestEncodeSecp256k1PrivateKey(t *testing.T) {
-	t.Parallel()
-
-	k1, err := crypto.GenerateSecp256k1Key()
-	if err != nil {
-		t.Fatal(err)
-	}
-	d := crypto.EncodeSecp256k1PrivateKey(k1)
-	k2, err := crypto.DecodeSecp256k1PrivateKey(d)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(k1.D.Bytes(), k2.D.Bytes()) {
-		t.Fatal("encoded and decoded keys are not equal")
 	}
 }
 
@@ -123,7 +106,7 @@ func TestNewEthereumAddress(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	privKey, err := crypto.DecodeSecp256k1PrivateKey(privKeyBytes)
+	privKey, err := crypto.DecodeSecp256r1PrivateKey(privKeyBytes)
 	if err != nil {
 		t.Fatal(err)
 	}

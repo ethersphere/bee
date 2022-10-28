@@ -58,11 +58,11 @@ func TestHandshake(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	privateKey1, err := crypto.GenerateSecp256k1Key()
+	privateKey1, err := crypto.GenerateSecp256r1Key()
 	if err != nil {
 		t.Fatal(err)
 	}
-	privateKey2, err := crypto.GenerateSecp256k1Key()
+	privateKey2, err := crypto.GenerateSecp256r1Key()
 	if err != nil {
 		t.Fatal(err)
 	}

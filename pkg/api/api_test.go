@@ -125,7 +125,7 @@ type testServerOptions struct {
 
 func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.Conn, string, *chanStorer) {
 	t.Helper()
-	pk, _ := crypto.GenerateSecp256k1Key()
+	pk, _ := crypto.GenerateSecp256r1Key()
 	signer := crypto.NewDefaultSigner(pk)
 
 	if o.Logger == nil {
@@ -363,7 +363,7 @@ func TestParseName(t *testing.T) {
 				}))
 		}
 
-		pk, _ := crypto.GenerateSecp256k1Key()
+		pk, _ := crypto.GenerateSecp256r1Key()
 		signer := crypto.NewDefaultSigner(pk)
 
 		s := api.New(pk.PublicKey, pk.PublicKey, common.Address{}, log, nil, nil, 1, false, false, nil, []string{"*"})

@@ -27,7 +27,7 @@ func BenchmarkFinder(b *testing.B) {
 				b.Fatal(err)
 			}
 
-			pk, _ := crypto.GenerateSecp256k1Key()
+			pk, _ := crypto.GenerateSecp256r1Key()
 			signer := crypto.NewDefaultSigner(pk)
 
 			updater, err := epochs.NewUpdater(storer, signer, topic)

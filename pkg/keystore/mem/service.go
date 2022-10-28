@@ -46,7 +46,7 @@ func (s *Service) Key(name, password string) (pk *ecdsa.PrivateKey, created bool
 
 	k, ok := s.m[name]
 	if !ok {
-		pk, err := crypto.GenerateSecp256k1Key()
+		pk, err := crypto.GenerateSecp256r1Key()
 		if err != nil {
 			return nil, false, fmt.Errorf("generate secp256k1 key: %w", err)
 		}

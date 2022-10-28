@@ -76,7 +76,7 @@ func TestSignChequeIntegration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	privKey, err := crypto.DecodeSecp256k1PrivateKey(data)
+	privKey, err := crypto.DecodeSecp256r1PrivateKey(data)
 	if err != nil {
 		t.Fatal(err)
 	}

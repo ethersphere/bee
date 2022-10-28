@@ -41,7 +41,7 @@ func BenchmarkWrap(b *testing.B) {
 	}
 	topic := pss.NewTopic("topic")
 	msg := []byte("this is my scariest")
-	key, err := crypto.GenerateSecp256k1Key()
+	key, err := crypto.GenerateSecp256r1Key()
 	if err != nil {
 		b.Fatal(err)
 	}

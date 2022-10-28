@@ -36,7 +36,7 @@ func (ms MockSOC) Chunk() swarm.Chunk {
 func GenerateMockSOC(t *testing.T, data []byte) *MockSOC {
 	t.Helper()
 
-	privKey, err := crypto.GenerateSecp256k1Key()
+	privKey, err := crypto.GenerateSecp256r1Key()
 	if err != nil {
 		t.Fatal(err)
 	}

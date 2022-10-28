@@ -41,7 +41,7 @@ func (s *Service) addressesHandler(w http.ResponseWriter, r *http.Request) {
 		Overlay:      s.overlay,
 		Underlay:     underlay,
 		Ethereum:     s.ethereumAddress,
-		PublicKey:    hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&s.publicKey)),
-		PSSPublicKey: hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&s.pssPublicKey)),
+		PublicKey:    hex.EncodeToString(crypto.EncodeSecp256r1PublicKey(&s.publicKey)),
+		PSSPublicKey: hex.EncodeToString(crypto.EncodeSecp256r1PublicKey(&s.pssPublicKey)),
 	})
 }

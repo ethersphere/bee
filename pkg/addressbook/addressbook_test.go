@@ -42,7 +42,7 @@ func run(t *testing.T, f bookFunc) {
 		t.Fatal(err)
 	}
 
-	pk, err := crypto.GenerateSecp256k1Key()
+	pk, err := crypto.GenerateSecp256r1Key()
 	if err != nil {
 		t.Fatal(err)
 	}

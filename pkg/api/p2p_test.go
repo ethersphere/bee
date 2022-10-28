@@ -23,11 +23,11 @@ import (
 func TestAddresses(t *testing.T) {
 	t.Parallel()
 
-	privateKey, err := crypto.GenerateSecp256k1Key()
+	privateKey, err := crypto.GenerateSecp256r1Key()
 	if err != nil {
 		t.Fatal(err)
 	}
-	pssPrivateKey, err := crypto.GenerateSecp256k1Key()
+	pssPrivateKey, err := crypto.GenerateSecp256r1Key()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,8 +58,8 @@ func TestAddresses(t *testing.T) {
 				Overlay:      &overlay,
 				Underlay:     addresses,
 				Ethereum:     ethereumAddress,
-				PublicKey:    hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&privateKey.PublicKey)),
-				PSSPublicKey: hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&pssPrivateKey.PublicKey)),
+				PublicKey:    hex.EncodeToString(crypto.EncodeSecp256r1PublicKey(&privateKey.PublicKey)),
+				PSSPublicKey: hex.EncodeToString(crypto.EncodeSecp256r1PublicKey(&pssPrivateKey.PublicKey)),
 			}),
 		)
 	})

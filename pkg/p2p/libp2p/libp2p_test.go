@@ -38,7 +38,7 @@ type libp2pServiceOpts struct {
 func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.Service, overlay swarm.Address) {
 	t.Helper()
 
-	swarmKey, err := crypto.GenerateSecp256k1Key()
+	swarmKey, err := crypto.GenerateSecp256r1Key()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +62,7 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 	}
 
 	if o.PrivateKey == nil {
-		libp2pKey, err := crypto.GenerateSecp256k1Key()
+		libp2pKey, err := crypto.GenerateSecp256r1Key()
 		if err != nil {
 			t.Fatal(err)
 		}

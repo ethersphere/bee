@@ -126,7 +126,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		return nil, fmt.Errorf("batchstore: %w", err)
 	}
 
-	mockKey, err := crypto.GenerateSecp256k1Key()
+	mockKey, err := crypto.GenerateSecp256r1Key()
 	if err != nil {
 		return nil, err
 	}

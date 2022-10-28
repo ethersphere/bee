@@ -64,7 +64,10 @@ type kdfParams struct {
 }
 
 func encryptKey(k *ecdsa.PrivateKey, password string) ([]byte, error) {
-	data := crypto.EncodeSecp256k1PrivateKey(k)
+	data, err := crypto.EncodeSecp256r1PrivateKey(k)
+	if err != nil {
+		return nil, err
+	}
 	kc, err := encryptData(data, []byte(password))
 	if err != nil {
 		return nil, err

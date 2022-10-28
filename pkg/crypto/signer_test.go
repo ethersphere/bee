@@ -22,7 +22,7 @@ func TestDefaultSigner(t *testing.T) {
 	t.Parallel()
 
 	testBytes := []byte("test string")
-	privKey, err := crypto.GenerateSecp256k1Key()
+	privKey, err := crypto.GenerateSecp256r1Key()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,7 +80,7 @@ func TestDefaultSignerEthereumAddress(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	privKey, err := crypto.DecodeSecp256k1PrivateKey(data)
+	privKey, err := crypto.DecodeSecp256r1PrivateKey(data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestDefaultSignerSignTx(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	privKey, err := crypto.DecodeSecp256k1PrivateKey(data)
+	privKey, err := crypto.DecodeSecp256r1PrivateKey(data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -183,7 +183,7 @@ func TestDefaultSignerTypedData(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	privKey, err := crypto.DecodeSecp256k1PrivateKey(data)
+	privKey, err := crypto.DecodeSecp256r1PrivateKey(data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -213,7 +213,7 @@ func TestRecoverEIP712(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	privKey, err := crypto.DecodeSecp256k1PrivateKey(data)
+	privKey, err := crypto.DecodeSecp256r1PrivateKey(data)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +245,7 @@ func TestDefaultSignerDeterministic(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	privKey, err := crypto.DecodeSecp256k1PrivateKey(data)
+	privKey, err := crypto.DecodeSecp256r1PrivateKey(data)
 	if err != nil {
 		t.Fatal(err)
 	}

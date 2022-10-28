@@ -64,7 +64,7 @@ func TestHandlerRateLimit(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		pk, err := crypto.GenerateSecp256k1Key()
+		pk, err := crypto.GenerateSecp256r1Key()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -130,7 +130,7 @@ func TestBroadcastPeers(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		pk, err := crypto.GenerateSecp256k1Key()
+		pk, err := crypto.GenerateSecp256r1Key()
 		if err != nil {
 			t.Fatal(err)
 		}

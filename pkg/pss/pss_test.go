@@ -38,7 +38,7 @@ func TestSend(t *testing.T) {
 	targets := pss.Targets([]pss.Target{target})
 	payload := []byte("some payload")
 	topic := pss.NewTopic("topic")
-	privkey, err := crypto.GenerateSecp256k1Key()
+	privkey, err := crypto.GenerateSecp256r1Key()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -76,7 +76,7 @@ type topicMessage struct {
 // TestDeliver verifies that registering a handler on pss for a given topic and then submitting a trojan chunk with said topic to it
 // results in the execution of the expected handler func
 func TestDeliver(t *testing.T) {
-	privkey, err := crypto.GenerateSecp256k1Key()
+	privkey, err := crypto.GenerateSecp256r1Key()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,7 +129,7 @@ func TestDeliver(t *testing.T) {
 // TestRegister verifies that handler funcs are able to be registered correctly in pss
 func TestRegister(t *testing.T) {
 
-	privkey, err := crypto.GenerateSecp256k1Key()
+	privkey, err := crypto.GenerateSecp256r1Key()
 	if err != nil {
 		t.Fatal(err)
 	}

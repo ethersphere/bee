@@ -50,7 +50,7 @@ func TestNewClefSigner(t *testing.T) {
 	ethAddress := common.HexToAddress("0x31415b599f636129AD03c196cef9f8f8b184D5C7")
 	testSignature := make([]byte, 65)
 
-	key, err := crypto.GenerateSecp256k1Key()
+	key, err := crypto.GenerateSecp256r1Key()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -111,7 +111,7 @@ func TestNewClefSignerSpecificAccount(t *testing.T) {
 	wantedAddress := common.HexToAddress("0x41415b599f636129AD03c196cef9f8f8b184D5C7")
 	testSignature := make([]byte, 65)
 
-	key, err := crypto.GenerateSecp256k1Key()
+	key, err := crypto.GenerateSecp256r1Key()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +214,7 @@ func (m *mockRpc) Call(result interface{}, method string, args ...interface{}) e
 func TestClefTypedData(t *testing.T) {
 	t.Parallel()
 
-	key, err := crypto.GenerateSecp256k1Key()
+	key, err := crypto.GenerateSecp256r1Key()
 	if err != nil {
 		t.Fatal(err)
 	}

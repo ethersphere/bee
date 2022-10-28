@@ -82,7 +82,7 @@ func TestSendChunkToSyncWithTag(t *testing.T) {
 	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
 	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
 
-	key, _ := crypto.GenerateSecp256k1Key()
+	key, _ := crypto.GenerateSecp256r1Key()
 	signer := crypto.NewDefaultSigner(key)
 
 	pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
@@ -139,7 +139,7 @@ func TestSendChunkToPushSyncWithoutTag(t *testing.T) {
 	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
 	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
 
-	key, _ := crypto.GenerateSecp256k1Key()
+	key, _ := crypto.GenerateSecp256r1Key()
 	signer := crypto.NewDefaultSigner(key)
 
 	pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
@@ -184,7 +184,7 @@ func TestSendChunkToPushSyncViaApiChannel(t *testing.T) {
 	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
 	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
 
-	key, _ := crypto.GenerateSecp256k1Key()
+	key, _ := crypto.GenerateSecp256r1Key()
 	signer := crypto.NewDefaultSigner(key)
 
 	pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
@@ -303,7 +303,7 @@ func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {
 	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
 	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
 
-	key, _ := crypto.GenerateSecp256k1Key()
+	key, _ := crypto.GenerateSecp256r1Key()
 	signer := crypto.NewDefaultSigner(key)
 
 	pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
@@ -352,7 +352,7 @@ func TestPusherRetryShallow(t *testing.T) {
 	var (
 		pivotPeer   = swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
 		closestPeer = swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
-		key, _      = crypto.GenerateSecp256k1Key()
+		key, _      = crypto.GenerateSecp256r1Key()
 		signer      = crypto.NewDefaultSigner(key)
 		callCount   = int32(0)
 	)
@@ -403,7 +403,7 @@ func TestChunkWithInvalidStampSkipped(t *testing.T) {
 	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
 	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
 
-	key, _ := crypto.GenerateSecp256k1Key()
+	key, _ := crypto.GenerateSecp256r1Key()
 	signer := crypto.NewDefaultSigner(key)
 
 	pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {

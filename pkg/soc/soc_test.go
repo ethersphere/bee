@@ -183,7 +183,7 @@ func TestChunkErrorWithoutOwner(t *testing.T) {
 func TestSign(t *testing.T) {
 	t.Parallel()
 
-	privKey, err := crypto.GenerateSecp256k1Key()
+	privKey, err := crypto.GenerateSecp256r1Key()
 	if err != nil {
 		t.Fatal(err)
 	}

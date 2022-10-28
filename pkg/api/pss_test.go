@@ -180,7 +180,7 @@ func TestPssSend(t *testing.T) {
 		receivedTargets pss.Targets
 		done            bool
 
-		privk, _       = crypto.GenerateSecp256k1Key()
+		privk, _       = crypto.GenerateSecp256r1Key()
 		publicKeyBytes = (*btcec.PublicKey)(&privk.PublicKey).SerializeCompressed()
 
 		sendFn = func(ctx context.Context, targets pss.Targets, chunk swarm.Chunk) error {
@@ -427,7 +427,7 @@ type opts struct {
 func newPssTest(t *testing.T, o opts) (pss.Interface, *ecdsa.PublicKey, *websocket.Conn, string) {
 	t.Helper()
 
-	privkey, err := crypto.GenerateSecp256k1Key()
+	privkey, err := crypto.GenerateSecp256r1Key()
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -49,7 +49,7 @@ func TestFinderBasic(t *testing.T, finderf func(storage.Getter, *feeds.Feed) fee
 		t.Fatal(err)
 	}
 
-	pk, _ := crypto.GenerateSecp256k1Key()
+	pk, _ := crypto.GenerateSecp256r1Key()
 	signer := crypto.NewDefaultSigner(pk)
 
 	updater, err := updaterf(storer, signer, topic)
@@ -119,7 +119,7 @@ func TestFinderIntervals(t *testing.T, nextf func() (bool, int64), finderf func(
 	if err != nil {
 		t.Fatal(err)
 	}
-	pk, _ := crypto.GenerateSecp256k1Key()
+	pk, _ := crypto.GenerateSecp256r1Key()
 	signer := crypto.NewDefaultSigner(pk)
 
 	updater, err := updaterf(storer, signer, topic)

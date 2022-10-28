@@ -24,7 +24,7 @@ func TestBzzAddress(t *testing.T) {
 
 	nonce := common.HexToHash("0x2").Bytes()
 
-	privateKey1, err := crypto.GenerateSecp256k1Key()
+	privateKey1, err := crypto.GenerateSecp256r1Key()
 	if err != nil {
 		t.Fatal(err)
 	}

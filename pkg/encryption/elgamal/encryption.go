@@ -27,7 +27,7 @@ func New(key *ecdsa.PrivateKey, pub *ecdsa.PublicKey, salt []byte, padding int, 
 // this involves generating an ephemeral key pair the public part of which is returned
 // as it is needed for the counterparty to decrypt
 func NewEncryptor(pub *ecdsa.PublicKey, salt []byte, padding int, hashfunc func() hash.Hash) (encryption.Encrypter, *ecdsa.PublicKey, error) {
-	privKey, err := crypto.GenerateSecp256k1Key()
+	privKey, err := crypto.GenerateSecp256r1Key()
 	if err != nil {
 		return nil, nil, err
 	}
