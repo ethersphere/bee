@@ -111,6 +111,12 @@ func WithSendFunc(f func(ctx context.Context, request *transaction.TxRequest) (t
 	})
 }
 
+func WithSendWithBoostFunc(f func(ctx context.Context, request *transaction.TxRequest, boostPercent uint64) (txHash common.Hash, err error)) Option {
+	return optionFunc(func(s *transactionServiceMock) {
+		s.sendWithBoost = f
+	})
+}
+
 func WithWaitForReceiptFunc(f func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error)) Option {
 	return optionFunc(func(s *transactionServiceMock) {
 		s.waitForReceipt = f
