@@ -113,7 +113,7 @@ func NewPullSync(opts ...Option) *PullSyncMock {
 	return s
 }
 
-func (p *PullSyncMock) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (topmost uint64, ruid uint32, err error) {
+func (p *PullSyncMock) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (topmost uint64, err error) {
 
 	isLive := to == math.MaxUint64
 
@@ -129,7 +129,7 @@ func (p *PullSyncMock) SyncInterval(ctx context.Context, peer swarm.Address, bin
 	p.mtx.Unlock()
 
 	if p.syncErr != nil {
-		return 0, 0, p.syncErr
+		return 0, p.syncErr
 	}
 
 	if isLive && p.lateReply {
@@ -141,9 +141,9 @@ func (p *PullSyncMock) SyncInterval(ctx context.Context, peer swarm.Address, bin
 
 		select {
 		case <-p.quit:
-			return 0, 1, context.Canceled
+			return 0, context.Canceled
 		case <-ctx.Done():
-			return 0, 1, ctx.Err()
+			return 0, ctx.Err()
 		default:
 		}
 
@@ -162,12 +162,12 @@ func (p *PullSyncMock) SyncInterval(ctx context.Context, peer swarm.Address, bin
 			if sr.block {
 				select {
 				case <-p.quit:
-					return 0, 1, context.Canceled
+					return 0, context.Canceled
 				case <-ctx.Done():
-					return 0, 1, ctx.Err()
+					return 0, ctx.Err()
 				}
 			}
-			return sr.topmost, 0, nil
+			return sr.topmost, nil
 		}
 		panic(fmt.Sprintf("bin %d from %d to %d", bin, from, to))
 	}
@@ -175,7 +175,7 @@ func (p *PullSyncMock) SyncInterval(ctx context.Context, peer swarm.Address, bin
 	if isLive && p.blockLiveSync {
 		// don't respond, wait for quit
 		<-p.quit
-		return 0, 1, context.Canceled
+		return 0, context.Canceled
 	}
 	if isLive && len(p.liveSyncReplies) > 0 {
 		p.mtx.Lock()
@@ -184,12 +184,12 @@ func (p *PullSyncMock) SyncInterval(ctx context.Context, peer swarm.Address, bin
 			<-p.quit
 			// when shutting down, onthe puller side we cancel the context going into the pullsync protocol request
 			// this results in SyncInterval returning with a context cancelled error
-			return 0, 0, context.Canceled
+			return 0, context.Canceled
 		}
 		v := p.liveSyncReplies[p.liveSyncCalls]
 		p.liveSyncCalls++
 		p.mtx.Unlock()
-		return v, 1, nil
+		return v, nil
 	}
 
 	if p.autoReply {
@@ -198,9 +198,9 @@ func (p *PullSyncMock) SyncInterval(ctx context.Context, peer swarm.Address, bin
 		if t > to {
 			t = to
 		}
-		return t, 1, nil
+		return t, nil
 	}
-	return to, 1, nil
+	return to, nil
 }
 
 func (p *PullSyncMock) GetCursors(_ context.Context, peer swarm.Address) ([]uint64, error) {
