@@ -245,9 +245,9 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		p := block % blocksPerRound
 		if p < blocksPerPhase {
 			currentPhase = commit // [0, 37]
-		} else if p >= blocksPerPhase && p <= 2*blocksPerPhase { // [38, 76]
+		} else if p >= blocksPerPhase && p < 2*blocksPerPhase { // [38, 76]
 			currentPhase = reveal
-		} else if p > 2*blocksPerPhase {
+		} else if p >= 2*blocksPerPhase {
 			currentPhase = claim // (76, 152)
 		}
 
