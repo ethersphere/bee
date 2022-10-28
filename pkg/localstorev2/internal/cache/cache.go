@@ -132,7 +132,8 @@ func New(storg internal.Storage, capacity uint64) (*Cache, error) {
 	if capacity < state.Count {
 		entry := &cacheEntry{Address: state.Start}
 		var i uint64
-		for i = 0; i < (state.Count - capacity); i++ {
+		itemsToRemove := state.Count - capacity
+		for i = 0; i < itemsToRemove; i++ {
 			err = storg.Store().Get(entry)
 			if err != nil {
 				return nil, fmt.Errorf("failed reading cache entry %s: %w", state.Start, err)

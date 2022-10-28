@@ -2,6 +2,7 @@ package cache_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"testing"
@@ -177,6 +178,7 @@ func TestCache(t *testing.T) {
 					t.Fatalf("expected chunk %s to not be found", ch.Address())
 				}
 				verifyCacheState(t, c, chunks[0].Address(), chunks[idx].Address(), uint64(idx+1))
+				verifyCacheOrder(t, c, st.Store(), chunks[:idx+1]...)
 			}
 		})
 
@@ -186,10 +188,12 @@ func TestCache(t *testing.T) {
 				t.Fatal(err)
 			}
 			verifyCacheState(t, c2, chunks[0].Address(), chunks[len(chunks)-1].Address(), uint64(len(chunks)))
+			verifyCacheOrder(t, c2, st.Store(), chunks...)
 		})
 
+		chunks2 := chunktest.GenerateTestRandomChunks(10)
+
 		t.Run("add over capacity", func(t *testing.T) {
-			chunks2 := chunktest.GenerateTestRandomChunks(10)
 			for idx, ch := range chunks2 {
 				found, err := c.Putter(st.Store(), st.ChunkStore()).Put(context.TODO(), ch)
 				if err != nil {
@@ -200,10 +204,21 @@ func TestCache(t *testing.T) {
 				}
 				if idx == len(chunks)-1 {
 					verifyCacheState(t, c, chunks2[0].Address(), chunks2[idx].Address(), 10)
+					verifyCacheOrder(t, c, st.Store(), chunks2...)
 				} else {
 					verifyCacheState(t, c, chunks[idx+1].Address(), chunks2[idx].Address(), 10)
+					verifyCacheOrder(t, c, st.Store(), append(chunks[idx+1:], chunks2[:idx+1]...)...)
 				}
 			}
+		})
+
+		t.Run("new with lower capacity", func(t *testing.T) {
+			c2, err := cache.New(st, 5)
+			if err != nil {
+				t.Fatal(err)
+			}
+			verifyCacheState(t, c2, chunks2[5].Address(), chunks2[len(chunks)-1].Address(), 5)
+			verifyCacheOrder(t, c2, st.Store(), chunks2[5:]...)
 		})
 	})
 
@@ -265,6 +280,35 @@ func TestCache(t *testing.T) {
 			verifyCacheOrder(t, c, st.Store(), newOrder...)
 		})
 
+		t.Run("not in chunkstore returns error", func(t *testing.T) {
+			for i := 0; i < 5; i++ {
+				unknownChunk := chunktest.GenerateTestRandomChunk()
+				_, err := c.Getter(st.Store(), st.ChunkStore()).Get(context.TODO(), unknownChunk.Address())
+				if !errors.Is(err, storage.ErrNotFound) {
+					t.Fatalf("expected error not found for chunk %s", unknownChunk.Address())
+				}
+			}
+		})
+
+		t.Run("not in cache doest affect state", func(t *testing.T) {
+			start, end, count := c.State()
+
+			for i := 0; i < 5; i++ {
+				extraChunk := chunktest.GenerateTestRandomChunk()
+				_, err := st.ChunkStore().Put(context.TODO(), extraChunk)
+				if err != nil {
+					t.Fatal(err)
+				}
+				readChunk, err := c.Getter(st.Store(), st.ChunkStore()).Get(context.TODO(), extraChunk.Address())
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !readChunk.Equal(extraChunk) {
+					t.Fatalf("incorrect chunk: %s", extraChunk.Address())
+				}
+				verifyCacheState(t, c, start, end, count)
+			}
+		})
 	})
 }
 
