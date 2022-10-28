@@ -75,6 +75,26 @@ func TestEncodeSecp256k1PrivateKey(t *testing.T) {
 	}
 }
 
+func TestEncodeSecp256r1PrivateKey(t *testing.T) {
+	t.Parallel()
+
+	k1, err := crypto.GenerateSecp256r1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := crypto.EncodeSecp256r1PrivateKey(k1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	k2, err := crypto.DecodeSecp256r1PrivateKey(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(k1.D.Bytes(), k2.D.Bytes()) {
+		t.Fatal("encoded and decoded keys are not equal")
+	}
+}
+
 func TestSecp256k1PrivateKeyFromBytes(t *testing.T) {
 	t.Parallel()
 

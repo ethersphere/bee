@@ -190,7 +190,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		)
 	}
 
-	if o.PrivateKey != nil { // TODO fixme
+	if o.PrivateKey != nil {
 		myKey, _, err := crypto.ECDSAKeyPairFromKey(o.PrivateKey)
 		if err != nil {
 			return nil, err

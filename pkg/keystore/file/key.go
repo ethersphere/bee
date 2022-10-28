@@ -93,7 +93,7 @@ func decryptKey(data []byte, password string) (*ecdsa.PrivateKey, error) {
 	if err != nil {
 		return nil, err
 	}
-	return crypto.DecodeSecp256k1PrivateKey(d)
+	return crypto.DecodeSecp256r1PrivateKey(d)
 }
 
 func encryptData(data, password []byte) (*keyCripto, error) {

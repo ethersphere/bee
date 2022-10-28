@@ -49,9 +49,9 @@ func (s *Service) Key(name, password string) (pk *ecdsa.PrivateKey, created bool
 	}
 	if len(data) == 0 {
 		var err error
-		pk, err = crypto.GenerateSecp256k1Key()
+		pk, err = crypto.GenerateSecp256r1Key()
 		if err != nil {
-			return nil, false, fmt.Errorf("generate secp256k1 key: %w", err)
+			return nil, false, fmt.Errorf("generate secp256r1 key: %w", err)
 		}
 
 		d, err := encryptKey(pk, password)

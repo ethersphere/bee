@@ -8,6 +8,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/x509"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -60,9 +61,20 @@ func GenerateSecp256k1Key() (*ecdsa.PrivateKey, error) {
 	return ecdsa.GenerateKey(btcec.S256(), rand.Reader)
 }
 
+// GenerateSecp256k1Key generates an ECDSA private key using
+// secp256k1 elliptic curve.
+func GenerateSecp256r1Key() (*ecdsa.PrivateKey, error) {
+	return ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+}
+
 // EncodeSecp256k1PrivateKey encodes raw ECDSA private key.
 func EncodeSecp256k1PrivateKey(k *ecdsa.PrivateKey) []byte {
 	return (*btcec.PrivateKey)(k).Serialize()
+}
+
+// EncodeSecp256k1PrivateKey encodes raw ECDSA private key.
+func EncodeSecp256r1PrivateKey(k *ecdsa.PrivateKey) ([]byte, error) {
+	return x509.MarshalECPrivateKey(k)
 }
 
 // EncodeSecp256k1PublicKey encodes raw ECDSA public key in a 33-byte compressed format.
@@ -79,6 +91,11 @@ func DecodeSecp256k1PrivateKey(data []byte) (*ecdsa.PrivateKey, error) {
 	return (*ecdsa.PrivateKey)(privk), nil
 }
 
+// DecodeSecp256k1PrivateKey decodes raw ECDSA private key.
+func DecodeSecp256r1PrivateKey(data []byte) (*ecdsa.PrivateKey, error) {
+	return x509.ParseECPrivateKey(data)
+}
+
 // Secp256k1PrivateKeyFromBytes returns an ECDSA private key based on
 // the byte slice.
 func Secp256k1PrivateKeyFromBytes(data []byte) *ecdsa.PrivateKey {
@@ -92,7 +109,7 @@ func NewEthereumAddress(p ecdsa.PublicKey) ([]byte, error) {
 	if p.X == nil || p.Y == nil {
 		return nil, errors.New("invalid public key")
 	}
-	pubBytes := elliptic.Marshal(btcec.S256(), p.X, p.Y)
+	pubBytes := elliptic.Marshal(elliptic.P256(), p.X, p.Y)
 	pubHash, err := LegacyKeccak256(pubBytes[1:])
 	if err != nil {
 		return nil, err
