@@ -238,8 +238,31 @@ func TestCache(t *testing.T) {
 					t.Fatalf("incorrect chunk: %s", ch.Address())
 				}
 				verifyCacheState(t, c, chunks[0].Address(), chunks[idx].Address(), uint64(idx+1))
-				verifyCacheOrder(t, c, st.Store(), chunks[:idx]...)
+				verifyCacheOrder(t, c, st.Store(), chunks[:idx+1]...)
 			}
+		})
+
+		// getting the chunks in reverse order should reverse the ordering in the cache
+		// at the end
+		t.Run("get reverse order", func(t *testing.T) {
+			var newOrder []swarm.Chunk
+			for idx := len(chunks) - 1; idx >= 0; idx-- {
+				readChunk, err := c.Getter(st.Store(), st.ChunkStore()).Get(context.TODO(), chunks[idx].Address())
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !readChunk.Equal(chunks[idx]) {
+					t.Fatalf("incorrect chunk: %s", chunks[idx].Address())
+				}
+				if idx == 0 {
+					// once we access the first entry, the top will change
+					verifyCacheState(t, c, chunks[9].Address(), chunks[idx].Address(), 10)
+				} else {
+					verifyCacheState(t, c, chunks[0].Address(), chunks[idx].Address(), 10)
+				}
+				newOrder = append(newOrder, chunks[idx])
+			}
+			verifyCacheOrder(t, c, st.Store(), newOrder...)
 		})
 
 	})
@@ -294,6 +317,6 @@ func verifyCacheOrder(
 		return false, nil
 	})
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("failed at index %d err %s", idx, err)
 	}
 }

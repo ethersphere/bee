@@ -329,19 +329,6 @@ func (c *Cache) Getter(store storage.Store, chStore storage.ChunkStore) storage.
 			prev := &cacheEntry{Address: entry.Prev}
 			next := &cacheEntry{Address: entry.Next}
 
-			// if it is the first chunk, we dont need to update the prev entry.
-			if !c.state.Start.Equal(address) {
-				err = store.Get(prev)
-				if err != nil {
-					return err
-				}
-			}
-
-			err = store.Get(next)
-			if err != nil {
-				return err
-			}
-
 			// move the chunk to the end due to the access. Dont send duplicate
 			// chunk put operation.
 			err = c.pushBack(ctx, entry, nil, store, chStore)
@@ -352,6 +339,14 @@ func (c *Cache) Getter(store storage.Store, chStore storage.ChunkStore) storage.
 			// if this is first chunk we dont need to update both the prev or the
 			// next.
 			if !c.state.Start.Equal(address) {
+				err = store.Get(prev)
+				if err != nil {
+					return err
+				}
+				err = store.Get(next)
+				if err != nil {
+					return err
+				}
 				prev.Next = next.Address.Clone()
 				err = store.Put(prev)
 				if err != nil {

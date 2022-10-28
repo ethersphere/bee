@@ -21,7 +21,7 @@ func (c *Cache) State() (swarm.Address, swarm.Address, uint64) {
 	defer c.mtx.Unlock()
 
 	start := c.state.Start.Clone()
-	end := c.state.Start.Clone()
+	end := c.state.End.Clone()
 
 	return start, end, c.state.Count
 }
