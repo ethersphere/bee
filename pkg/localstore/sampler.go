@@ -14,7 +14,10 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/bmtpool"
+	"github.com/ethersphere/bee/pkg/cac"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/shed"
+	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"go.uber.org/atomic"
@@ -32,6 +35,11 @@ type sampleStat struct {
 	IterationDuration atomic.Int64
 	GetDuration       atomic.Int64
 	HmacrDuration     atomic.Int64
+}
+
+type sampleEntry struct {
+	transformedAddress swarm.Address
+	chunkItem          shed.Item
 }
 
 func (s *sampleStat) String() string {
@@ -100,7 +108,7 @@ func (db *DB) ReserveSample(
 	})
 
 	// Phase 2: Get the chunk data and calculate transformed hash
-	sampleItemChan := make(chan swarm.Address)
+	sampleItemChan := make(chan sampleEntry)
 	const workers = 6
 	for i := 0; i < workers; i++ {
 		g.Go(func() error {
@@ -132,7 +140,7 @@ func (db *DB) ReserveSample(
 				stat.HmacrDuration.Add(time.Since(hmacrStart).Nanoseconds())
 
 				select {
-				case sampleItemChan <- swarm.NewAddress(taddr):
+				case sampleItemChan <- sampleEntry{transformedAddress: swarm.NewAddress(taddr), chunkItem: chItem}:
 					// continue
 				case <-ctx.Done():
 					return ctx.Err()
@@ -180,8 +188,28 @@ func (db *DB) ReserveSample(
 		} else {
 			currentMaxAddr = swarm.NewAddress(make([]byte, 32))
 		}
-		if le(item.Bytes(), currentMaxAddr.Bytes()) || len(sampleItems) < sampleSize {
-			insert(item)
+		if le(item.transformedAddress.Bytes(), currentMaxAddr.Bytes()) || len(sampleItems) < sampleSize {
+
+			chunk := swarm.NewChunk(swarm.NewAddress(item.chunkItem.Address), item.chunkItem.Data)
+
+			stamp := postage.NewStamp(item.chunkItem.BatchID, item.chunkItem.Index, item.chunkItem.Timestamp, item.chunkItem.Sig)
+
+			stampData, err := stamp.MarshalBinary()
+			if err != nil {
+				logger.Info("error marshaling stamp for chunk", chunk.Address(), err)
+				continue
+			}
+			_, err = db.validStamp(chunk, stampData)
+			if err == nil {
+				if !cac.Valid(chunk) && !soc.Valid(chunk) {
+					logger.Info("data invalid for chunk address", chunk.Address())
+				} else {
+					insert(item.transformedAddress)
+				}
+			} else {
+				logger.Info("invalid stamp for chunk", chunk.Address(), err)
+			}
+
 		}
 	}
 

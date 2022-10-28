@@ -31,7 +31,7 @@ func TestReserveSampler(t *testing.T) {
 
 	for po := 0; po < maxPO; po++ {
 		for i := 0; i < chunkCountPerPO; i++ {
-			ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), po).WithBatch(0, 3, 2, false)
+			ch := generateValidRandomChunkAt(swarm.NewAddress(db.baseKey), po).WithBatch(0, 3, 2, false)
 			// override stamp timestamp to be before the consensus timestamp
 			ch = ch.WithStamp(postagetesting.MustNewStampWithTimestamp(timeVar - 1))
 			chs = append(chs, ch)

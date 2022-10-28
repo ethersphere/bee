@@ -72,6 +72,27 @@ func GenerateTestRandomChunkAt(target swarm.Address, po int) swarm.Chunk {
 	return swarm.NewChunk(addr, data).WithStamp(stamp)
 }
 
+// GenerateTestRandomChunkAt generates an invalid (!) chunk with address of proximity order po wrt target.
+func GenerateValidRandomChunkAt(target swarm.Address, po int) swarm.Chunk {
+	data := make([]byte, swarm.ChunkSize)
+
+	var ch swarm.Chunk
+	var err error
+	for {
+		_, _ = rand.Read(data)
+		ch, err = cac.New(data)
+		if err != nil {
+			continue
+		}
+		if swarm.Proximity(ch.Address().Bytes(), target.Bytes()) > uint8(po) {
+			break
+		}
+	}
+
+	stamp := postagetesting.MustNewStamp()
+	return ch.WithStamp(stamp)
+}
+
 // FixtureChunk gets a pregenerated content-addressed chunk and
 // panics if one is not found.
 func FixtureChunk(prefix string) swarm.Chunk {

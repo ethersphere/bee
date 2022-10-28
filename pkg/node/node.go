@@ -644,6 +644,9 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		logger.Info("using datadir", "path", o.DataDir)
 		path = filepath.Join(o.DataDir, "localstore")
 	}
+
+	validStamp := postage.ValidStamp(batchStore)
+
 	lo := &localstore.Options{
 		Capacity:               o.CacheCapacity,
 		ReserveCapacity:        uint64(batchstore.Capacity),
@@ -652,6 +655,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		BlockCacheCapacity:     o.DBBlockCacheCapacity,
 		WriteBufferSize:        o.DBWriteBufferSize,
 		DisableSeeksCompaction: o.DBDisableSeeksCompaction,
+		ValidStamp:             validStamp,
 	}
 
 	storer, err := localstore.New(path, swarmAddress.Bytes(), stateStore, lo, logger)
@@ -661,7 +665,6 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	b.localstoreCloser = storer
 	unreserveFn = storer.UnreserveBatch
 
-	validStamp := postage.ValidStamp(batchStore)
 	post, err := postage.NewService(stateStore, batchStore, chainID)
 	if err != nil {
 		return nil, fmt.Errorf("postage service load: %w", err)
