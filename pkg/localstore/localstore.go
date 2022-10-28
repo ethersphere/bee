@@ -188,6 +188,8 @@ type DB struct {
 	metrics metrics
 
 	logger log.Logger
+
+	validStamp postage.ValidStampFn
 }
 
 // Options struct holds optional parameters for configuring DB.
@@ -212,7 +214,8 @@ type Options struct {
 	// DisableSeeksCompaction toggles the seek driven compactions feature on leveldb
 	// and is passed on to shed.
 	DisableSeeksCompaction bool
-
+	// Stamp validator for reserve sampler
+	ValidStamp postage.ValidStampFn
 	// MetricsPrefix defines a prefix for metrics names.
 	MetricsPrefix string
 	Tags          *tags.Tags
@@ -309,6 +312,7 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 		reserveEvictionWorkerDone: make(chan struct{}),
 		metrics:                   newMetrics(),
 		logger:                    logger.WithName(loggerName).Register(),
+		validStamp:                o.ValidStamp,
 	}
 	if db.cacheCapacity == 0 {
 		db.cacheCapacity = defaultCacheCapacity
