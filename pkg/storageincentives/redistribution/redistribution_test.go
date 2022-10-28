@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/transaction"
@@ -26,6 +27,7 @@ func TestRedistribution(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
+	ctx = sctx.SetGasPrice(ctx, big.NewInt(100))
 	owner := swarm.MustParseHexAddress("f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b")
 	redistributionAddress := common.HexToAddress("ffff")
 	//nonce := common.BytesToHash(make([]byte, 32))

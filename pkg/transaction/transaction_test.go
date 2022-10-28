@@ -208,6 +208,126 @@ func TestTransactionSend(t *testing.T) {
 		}
 	})
 
+	t.Run("sendWithBoost", func(t *testing.T) {
+		t.Parallel()
+
+		signedTx := types.NewTx(&types.LegacyTx{
+			Nonce:    nonce,
+			To:       &recipient,
+			Value:    value,
+			Gas:      estimatedGasLimit,
+			GasPrice: big.NewInt(0).Div(new(big.Int).Mul(suggestedGasPrice, big.NewInt(15)), big.NewInt(10)),
+			Data:     txData,
+		})
+		request := &transaction.TxRequest{
+			To:    &recipient,
+			Data:  txData,
+			Value: value,
+		}
+		store := storemock.NewStateStore()
+		err := store.Put(nonceKey(sender), nonce)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		transactionService, err := transaction.NewService(logger,
+			backendmock.New(
+				backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+					if tx != signedTx {
+						t.Fatal("not sending signed transaction")
+					}
+					return nil
+				}),
+				backendmock.WithEstimateGasFunc(func(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error) {
+					if !bytes.Equal(call.To.Bytes(), recipient.Bytes()) {
+						t.Fatalf("estimating with wrong recipient. wanted %x, got %x", recipient, call.To)
+					}
+					if !bytes.Equal(call.Data, txData) {
+						t.Fatal("estimating with wrong data")
+					}
+					return estimatedGasLimit, nil
+				}),
+				backendmock.WithSuggestGasPriceFunc(func(ctx context.Context) (*big.Int, error) {
+					return suggestedGasPrice, nil
+				}),
+				backendmock.WithPendingNonceAtFunc(func(ctx context.Context, account common.Address) (uint64, error) {
+					return nonce - 1, nil
+				}),
+			),
+			signerMockForTransaction(t, signedTx, sender, chainID),
+			store,
+			chainID,
+			monitormock.New(
+				monitormock.WithWatchTransactionFunc(func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
+					return nil, nil, nil
+				}),
+			),
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer transactionService.Close()
+
+		txHash, err := transactionService.SendWithBoost(context.Background(), request, 50)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !bytes.Equal(txHash.Bytes(), signedTx.Hash().Bytes()) {
+			t.Fatal("returning wrong transaction hash")
+		}
+
+		var storedNonce uint64
+		err = store.Get(nonceKey(sender), &storedNonce)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if storedNonce != nonce+1 {
+			t.Fatalf("nonce not stored correctly: want %d, got %d", nonce+1, storedNonce)
+		}
+
+		storedTransaction, err := transactionService.StoredTransaction(txHash)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if storedTransaction.To == nil || *storedTransaction.To != recipient {
+			t.Fatalf("got wrong recipient in stored transaction. wanted %x, got %x", recipient, storedTransaction.To)
+		}
+
+		if !bytes.Equal(storedTransaction.Data, request.Data) {
+			t.Fatalf("got wrong data in stored transaction. wanted %x, got %x", request.Data, storedTransaction.Data)
+		}
+
+		if storedTransaction.Description != request.Description {
+			t.Fatalf("got wrong description in stored transaction. wanted %x, got %x", request.Description, storedTransaction.Description)
+		}
+
+		if storedTransaction.GasLimit != estimatedGasLimit {
+			t.Fatalf("got wrong gas limit in stored transaction. wanted %d, got %d", estimatedGasLimit, storedTransaction.GasLimit)
+		}
+
+		if new(big.Int).Div(new(big.Int).Mul(suggestedGasPrice, big.NewInt(15)), big.NewInt(10)).Cmp(storedTransaction.GasPrice) != 0 {
+			t.Fatalf("got wrong gas price in stored transaction. wanted %d, got %d", suggestedGasPrice, storedTransaction.GasPrice)
+		}
+
+		if storedTransaction.Nonce != nonce {
+			t.Fatalf("got wrong nonce in stored transaction. wanted %d, got %d", nonce, storedTransaction.Nonce)
+		}
+
+		pending, err := transactionService.PendingTransactions()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(pending) != 1 {
+			t.Fatalf("expected one pending transaction, got %d", len(pending))
+		}
+
+		if pending[0] != txHash {
+			t.Fatalf("got wrong pending transaction. wanted %x, got %x", txHash, pending[0])
+		}
+	})
+
 	t.Run("send_no_nonce", func(t *testing.T) {
 		t.Parallel()
 

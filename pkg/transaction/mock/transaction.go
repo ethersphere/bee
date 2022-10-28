@@ -19,6 +19,7 @@ import (
 
 type transactionServiceMock struct {
 	send                 func(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error)
+	sendWithBoost        func(ctx context.Context, request *transaction.TxRequest, boostPercent uint64) (txHash common.Hash, err error)
 	waitForReceipt       func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error)
 	watchSentTransaction func(txHash common.Hash) (chan types.Receipt, chan error, error)
 	call                 func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error)
@@ -31,6 +32,13 @@ type transactionServiceMock struct {
 func (m *transactionServiceMock) Send(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
 	if m.send != nil {
 		return m.send(ctx, request)
+	}
+	return common.Hash{}, errors.New("not implemented")
+}
+
+func (m *transactionServiceMock) SendWithBoost(ctx context.Context, request *transaction.TxRequest, boostPercent uint64) (txHash common.Hash, err error) {
+	if m.sendWithBoost != nil {
+		return m.sendWithBoost(ctx, request, boostPercent)
 	}
 	return common.Hash{}, errors.New("not implemented")
 }
