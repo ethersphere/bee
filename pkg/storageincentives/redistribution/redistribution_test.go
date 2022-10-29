@@ -249,7 +249,7 @@ func TestRedistribution(t *testing.T) {
 		}
 		contract := redistribution.New(owner, log.Noop,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
+				transactionMock.WithSendWithBoostFunc(func(ctx context.Context, request *transaction.TxRequest, _ uint64) (txHash common.Hash, err error) {
 					if *request.To == redistributionAddress {
 						if !bytes.Equal(expectedCallData[:32], request.Data[:32]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
