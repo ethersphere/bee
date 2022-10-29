@@ -18,6 +18,8 @@ import (
 	"github.com/ethersphere/bee/pkg/topology/depthmonitor"
 )
 
+const depthMonitorWakeUpInterval = 10 * time.Millisecond
+
 func newTestSvc(
 	t depthmonitor.Topology,
 	s depthmonitor.SyncReporter,
@@ -84,7 +86,7 @@ func TestDepthMonitorService(t *testing.T) {
 		t.Parallel()
 
 		bs := mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{Radius: 3}))
-		svc := newTestSvc(nil, nil, nil, nil, bs, 100*time.Millisecond, depthmonitor.DefaultWakeupInterval)
+		svc := newTestSvc(nil, nil, nil, nil, bs, 0, depthmonitor.DefaultWakeupInterval)
 		waitForDepth(t, svc, 3)
 		err := svc.Close()
 		if err != nil {
@@ -95,25 +97,19 @@ func TestDepthMonitorService(t *testing.T) {
 	t.Run("depth decrease due to under utilization", func(t *testing.T) {
 		t.Parallel()
 
-		const depthMonitorWakeUpInterval = 200 * time.Millisecond
-
 		topo := &mockTopology{peers: 1}
 		// >50% utilized reserve
 		reserve := &mockReserveReporter{size: 26000, capacity: 50000}
 
 		bs := mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{Radius: 3}))
 
-		svc := newTestSvc(topo, nil, reserve, nil, bs, 100*time.Millisecond, depthMonitorWakeUpInterval)
-		svc.SetMinimumRadius(0)
+		svc := newTestSvc(topo, nil, reserve, nil, bs, 0, depthMonitorWakeUpInterval)
 
 		waitForDepth(t, svc, 3)
 		// simulate huge eviction to trigger manage worker
 		reserve.setSize(1000)
 
-		waitForDepth(t, svc, 1)
-		if topo.getStorageDepth() != 1 {
-			t.Fatal("topology depth not updated")
-		}
+		waitForDepth(t, svc, 0)
 		err := svc.Close()
 		if err != nil {
 			t.Fatal(err)
@@ -123,16 +119,14 @@ func TestDepthMonitorService(t *testing.T) {
 	t.Run("depth doesnt change due to non-zero pull rate", func(t *testing.T) {
 		t.Parallel()
 
-		const depthMonitorWakeUpInterval = 200 * time.Millisecond
-
 		// under utilized reserve
 		reserve := &mockReserveReporter{size: 10000, capacity: 50000}
 		bs := mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{Radius: 3}))
 		syncer := &mockSyncReporter{rate: 10}
 
-		svc := newTestSvc(nil, syncer, reserve, nil, bs, 100*time.Millisecond, depthMonitorWakeUpInterval)
+		svc := newTestSvc(nil, syncer, reserve, nil, bs, 0, depthMonitorWakeUpInterval)
 
-		time.Sleep(2 * time.Second)
+		time.Sleep(time.Second)
 		// ensure that after few cycles of the adaptation period, the depth hasn't changed
 		if svc.StorageDepth() != 3 {
 			t.Fatal("found drop in depth")
@@ -146,15 +140,13 @@ func TestDepthMonitorService(t *testing.T) {
 	t.Run("depth doesnt change for utilized reserve", func(t *testing.T) {
 		t.Parallel()
 
-		const depthMonitorWakeUpInterval = 200 * time.Millisecond
-
 		// >50% utilized reserve
 		reserve := &mockReserveReporter{size: 25001, capacity: 50000}
 		bs := mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{Radius: 3}))
 
-		svc := newTestSvc(nil, nil, reserve, nil, bs, 100*time.Millisecond, depthMonitorWakeUpInterval)
+		svc := newTestSvc(nil, nil, reserve, nil, bs, 0, depthMonitorWakeUpInterval)
 
-		time.Sleep(2 * time.Second)
+		time.Sleep(time.Second)
 		// ensure the depth hasnt changed
 		if svc.StorageDepth() != 3 {
 			t.Fatal("found drop in depth")
@@ -168,14 +160,12 @@ func TestDepthMonitorService(t *testing.T) {
 	t.Run("radius setter handler", func(t *testing.T) {
 		t.Parallel()
 
-		const depthMonitorWakeUpInterval = 200 * time.Millisecond
-
 		topo := &mockTopology{connDepth: 3}
 		bs := mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{Radius: 3}))
 		// >50% utilized reserve
 		reserve := &mockReserveReporter{size: 25001, capacity: 50000}
 
-		svc := newTestSvc(topo, nil, reserve, nil, bs, 100*time.Millisecond, depthMonitorWakeUpInterval)
+		svc := newTestSvc(topo, nil, reserve, nil, bs, 0, depthMonitorWakeUpInterval)
 
 		waitForDepth(t, svc, 3)
 
