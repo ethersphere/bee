@@ -18,7 +18,6 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
 	"github.com/ethersphere/bee/pkg/swarm"
 	ma "github.com/multiformats/go-multiaddr"
-	"golang.org/x/sync/errgroup"
 )
 
 func TestRecorder(t *testing.T) {
@@ -173,12 +172,10 @@ func TestRecorder_fullcloseWithRemoteClose(t *testing.T) {
 }
 
 func TestRecorder_fullcloseWithoutRemoteClose(t *testing.T) {
-	streamtest.SetFullCloseTimeout(500 * time.Millisecond)
-	defer streamtest.ResetFullCloseTimeout()
 	recorder := streamtest.New(
 		streamtest.WithProtocols(
 			newTestProtocol(func(_ context.Context, peer p2p.Peer, stream p2p.Stream) error {
-				// don't close the stream here to initiate timeout
+				// don't close the stream here
 				// just try to read the message that it terminated with
 				// a new line character
 				_, err := bufio.NewReader(stream).ReadString('\n')
@@ -205,7 +202,7 @@ func TestRecorder_fullcloseWithoutRemoteClose(t *testing.T) {
 	}
 
 	err := request(context.Background(), recorder, swarm.ZeroAddress)
-	if !errors.Is(err, streamtest.ErrStreamFullcloseTimeout) {
+	if err != nil {
 		t.Fatal(err)
 	}
 
@@ -231,14 +228,6 @@ func TestRecorder_multipleParallelFullCloseAndClose(t *testing.T) {
 					return err
 				}
 
-				var g errgroup.Group
-				g.Go(stream.Close)
-				g.Go(stream.FullClose)
-
-				if err := g.Wait(); err != nil {
-					return err
-				}
-
 				return stream.FullClose()
 			}),
 		),
@@ -258,15 +247,7 @@ func TestRecorder_multipleParallelFullCloseAndClose(t *testing.T) {
 			return fmt.Errorf("flush: %w", err)
 		}
 
-		var g errgroup.Group
-		g.Go(stream.Close)
-		g.Go(stream.FullClose)
-
-		if err := g.Wait(); err != nil {
-			return err
-		}
-
-		return nil
+		return stream.FullClose()
 	}
 
 	err := request(context.Background(), recorder, swarm.ZeroAddress)
@@ -392,9 +373,9 @@ func TestRecorder_resetAfterPartialWrite(t *testing.T) {
 			return err
 		}
 
-		// stream should be closed and read should return EOF
-		if _, err := rw.ReadString('\n'); !errors.Is(err, io.EOF) {
-			return fmt.Errorf("got error %v, want %w", err, io.EOF)
+		// stream should be closed and read should return streamtest.ErrStreamClosed
+		if _, err := rw.ReadString('\n'); !errors.Is(err, streamtest.ErrStreamClosed) {
+			return fmt.Errorf("got error %v, want %w", err, streamtest.ErrStreamClosed)
 		}
 
 		return nil
