@@ -5,6 +5,7 @@
 package crypto
 
 import (
+	"bytes"
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
@@ -135,7 +136,7 @@ func (d *defaultSigner) SignTypedData(typedData *eip712.TypedData) ([]byte, erro
 
 // sign the provided hash and convert it to the ethereum (r,s,v) format.
 func (d *defaultSigner) sign(sighash []byte, isCompressedKey bool) ([]byte, error) {
-	signature, err := btcec.SignCompact(btcec.S256(), (*btcec.PrivateKey)(d.key), sighash, false)
+	signature, err := ecdsa.SignASN1(bytes.NewReader(sighash), d.key, sighash)
 	if err != nil {
 		return nil, err
 	}
