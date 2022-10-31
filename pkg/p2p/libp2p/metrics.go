@@ -68,13 +68,13 @@ func newMetrics() metrics {
 		Libp2pCreatedStreamCount: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "libp2p_created_stream_count",
+			Name:      "library_reported_created_stream_count",
 			Help:      "Number of initiated outgoing libp2p streams reported by the library.",
 		}),
 		Libp2pClosedStreamCount: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "libp2p_closed_stream_count",
+			Name:      "library_reported_closed_stream_count",
 			Help:      "Number of closed outgoing libp2p streams reported by the library.",
 		}),
 		HandledStreamCount: prometheus.NewCounter(prometheus.CounterOpts{
