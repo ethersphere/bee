@@ -196,18 +196,18 @@ func (db *DB) ReserveSample(
 
 			stampData, err := stamp.MarshalBinary()
 			if err != nil {
-				logger.Debug("error marshaling stamp for chunk", "address", chunk.Address(), "error", err)
+				logger.Debug("error marshaling stamp for chunk", "chunk_address", chunk.Address(), "error", err)
 				continue
 			}
 			_, err = db.validStamp(chunk, stampData)
 			if err == nil {
 				if !cac.Valid(chunk) && !soc.Valid(chunk) {
-					logger.Debug("data invalid for chunk address", "address", chunk.Address())
+					logger.Debug("data invalid for chunk address", "chunk_address", chunk.Address())
 				} else {
 					insert(item.transformedAddress)
 				}
 			} else {
-				logger.Info("invalid stamp for chunk", "address", chunk.Address(), "error", err)
+				logger.Info("invalid stamp for chunk", "chunk_address", chunk.Address(), "error", err)
 			}
 
 		}
@@ -232,7 +232,7 @@ func (db *DB) ReserveSample(
 		Items: sampleItems,
 		Hash:  swarm.NewAddress(hash),
 	}
-	logger.Info("sampler done", "stats", stat.String(), "sample", sample)
+	logger.Info("sampler done", "stats", stat, "sample", sample)
 
 	return sample, nil
 }
