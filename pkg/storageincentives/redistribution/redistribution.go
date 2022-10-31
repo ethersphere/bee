@@ -29,7 +29,7 @@ type Contract interface {
 	IsPlaying(context.Context, uint8) (bool, error)
 	IsWinner(context.Context) (bool, error)
 	Claim(context.Context) error
-	Commit(context.Context, []byte) error
+	Commit(context.Context, []byte, *big.Int) error
 	Reveal(context.Context, uint8, []byte, []byte) error
 }
 
@@ -119,8 +119,8 @@ func (c *contract) Claim(ctx context.Context) error {
 }
 
 // Commit submits the obfusHash hash by sending a transaction to the blockchain.
-func (c *contract) Commit(ctx context.Context, obfusHash []byte) error {
-	callData, err := redistributionContractABI.Pack("commit", common.BytesToHash(obfusHash), common.BytesToHash(c.overlay.Bytes()))
+func (c *contract) Commit(ctx context.Context, obfusHash []byte, round *big.Int) error {
+	callData, err := redistributionContractABI.Pack("commit", common.BytesToHash(obfusHash), common.BytesToHash(c.overlay.Bytes()), round)
 	if err != nil {
 		return err
 	}
