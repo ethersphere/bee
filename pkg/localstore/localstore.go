@@ -207,6 +207,7 @@ type DB struct {
 	metrics         metrics
 	logger          log.Logger
 	validStamp      postage.ValidStampFn
+	batchStore      postage.Storer
 	// following fields are used to synchronize sampling and reserve eviction
 	samplerStop    *sync.Once
 	samplerSignal  chan struct{}
@@ -237,6 +238,8 @@ type Options struct {
 	DisableSeeksCompaction bool
 	// Stamp validator for reserve sampler
 	ValidStamp postage.ValidStampFn
+	//
+	BatchStore postage.Storer
 	// MetricsPrefix defines a prefix for metrics names.
 	MetricsPrefix string
 	Tags          *tags.Tags
@@ -294,6 +297,7 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 		logger:                    logger.WithName(loggerName).Register(),
 		validStamp:                o.ValidStamp,
 		lock:                      multex.New(),
+		batchStore:                o.BatchStore,
 	}
 	if db.cacheCapacity == 0 {
 		db.cacheCapacity = defaultCacheCapacity

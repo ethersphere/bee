@@ -815,7 +815,7 @@ func (m *mockMonitor) IsFullySynced() bool {
 
 type mockSampler struct{}
 
-func (m *mockSampler) ReserveSample(context.Context, []byte, uint8, uint64) (storage.Sample, error) {
+func (m *mockSampler) ReserveSample(context.Context, []byte, uint8, uint64, *big.Int) (storage.Sample, error) {
 	return storage.Sample{
 		Hash: test.RandomAddress(),
 	}, nil

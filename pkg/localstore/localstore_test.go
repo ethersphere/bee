@@ -30,6 +30,8 @@ import (
 
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
+	batchstoremock "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
+	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -242,6 +244,13 @@ func newTestDB(tb testing.TB, o *Options) *DB {
 		o.ValidStamp = func(_ swarm.Chunk, stampBytes []byte) (chunk swarm.Chunk, err error) {
 			return nil, nil
 		}
+	}
+	if o.BatchStore == nil {
+		b := postagetesting.MustNewBatch(postagetesting.WithValue(20000))
+		existsFn := func(id []byte) (bool, error) {
+			return true, nil
+		}
+		o.BatchStore = batchstoremock.New(batchstoremock.WithBatch(b), batchstoremock.WithExistsFunc(existsFn))
 	}
 	logger := log.Noop
 	db, err := New("", baseKey, nil, o, logger)

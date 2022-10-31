@@ -11,6 +11,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"math/big"
 	"sync"
 	"time"
 
@@ -29,6 +30,7 @@ const sampleSize = 8
 
 var errDbClosed = errors.New("database closed")
 var errSamplerStopped = errors.New("sampler stopped due to ongoing evictions")
+var errSamplerStoppedI = errors.New("sampler stopped due to batchStore iteration error")
 
 type sampleStat struct {
 	TotalIterated      atomic.Int64
@@ -78,6 +80,7 @@ func (db *DB) ReserveSample(
 	anchor []byte,
 	storageRadius uint8,
 	consensusTime uint64, // nanoseconds
+	minimumBalance *big.Int,
 ) (storage.Sample, error) {
 
 	g, ctx := errgroup.WithContext(ctx)
@@ -86,6 +89,12 @@ func (db *DB) ReserveSample(
 	logger := db.logger.WithName("sampler").V(1).Register()
 
 	t := time.Now()
+	excludedBatchIDs, err := db.batchStore.GetBatchIDsExpiringUntil(minimumBalance)
+	if err != nil {
+		logger.Error(err, "error getting minimum balance based excluded batchIDs")
+		return storage.Sample{}, fmt.Errorf("sampler: failed creating sample: %w", errSamplerStoppedI)
+	}
+
 	// signal start of sampling to see if we get any evictions during the sampler
 	// run
 	db.startSampling()
@@ -207,6 +216,11 @@ func (db *DB) ReserveSample(
 			validStart := time.Now()
 
 			chunk := swarm.NewChunk(swarm.NewAddress(item.chunkItem.Address), item.chunkItem.Data)
+
+			if _, found := excludedBatchIDs[string(item.chunkItem.BatchID)]; found {
+				logger.Debug("excluded chunk with batch balance below minimum", "chunk_address", chunk.Address())
+				continue
+			}
 
 			stamp := postage.NewStamp(
 				item.chunkItem.BatchID,
