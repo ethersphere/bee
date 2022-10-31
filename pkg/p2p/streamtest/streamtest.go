@@ -21,8 +21,6 @@ var (
 	ErrStreamNotSupported     = errors.New("stream not supported")
 	ErrStreamClosed           = errors.New("stream closed")
 	ErrStreamFullcloseTimeout = errors.New("fullclose timeout")
-	fullCloseTimeout          = fullCloseTimeoutDefault // timeout of fullclose
-	fullCloseTimeoutDefault   = 5 * time.Second         // default timeout used for helper function to reset timeout when changed
 
 	noopMiddleware = func(f p2p.HandlerFunc) p2p.HandlerFunc {
 		return f
