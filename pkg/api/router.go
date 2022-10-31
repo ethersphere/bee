@@ -545,7 +545,7 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 		web.FinalHandlerFunc(s.healthHandler),
 	))
 
-	handle("/stake/deposit/{amount}", web.ChainHandlers(
+	handle("/stake/{amount}", web.ChainHandlers(
 		s.stakingAccessHandler,
 		s.gasConfigMiddleware("deposit stake"),
 		web.FinalHandler(jsonhttp.MethodHandler{
