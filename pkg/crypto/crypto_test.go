@@ -65,7 +65,10 @@ func TestEncodeSecp256k1PrivateKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	d := crypto.EncodeSecp256k1PrivateKey(k1)
+	d, err := crypto.EncodeSecp256k1PrivateKey(k1)
+	if err != nil {
+		t.Fatal(err)
+	}
 	k2, err := crypto.DecodeSecp256k1PrivateKey(d)
 	if err != nil {
 		t.Fatal(err)
