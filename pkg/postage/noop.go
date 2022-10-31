@@ -52,3 +52,8 @@ func (b *NoOpBatchStore) SetStorageRadiusSetter(StorageRadiusSetter) {}
 func (b *NoOpBatchStore) Unreserve(UnreserveIteratorFn) error { return nil }
 
 func (b *NoOpBatchStore) Reset() error { return nil }
+
+func (b *NoOpBatchStore) GetBatchIDsExpiringUntil(*big.Int) (map[string]bool, error) {
+	emptyMap := make(map[string]bool)
+	return emptyMap, nil
+}

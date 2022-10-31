@@ -35,6 +35,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math"
+	"math/big"
 
 	"github.com/ethersphere/bee/pkg/postage"
 )
@@ -122,6 +123,36 @@ func (s *store) cleanup() error {
 	}
 
 	return nil
+}
+
+func (s *store) GetBatchIDsExpiringUntil(until *big.Int) (map[string]bool, error) {
+
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+
+	exclude := make(map[string]bool)
+
+	err := s.store.Iterate(valueKeyPrefix, func(key, value []byte) (stop bool, err error) {
+
+		b, err := s.get(valueKeyToID(key))
+		if err != nil {
+			return false, err
+		}
+
+		// batches whose balance is below the total cumulative payout
+		if b.Value.Cmp(until) < 0 {
+			exclude[string(b.ID)] = true
+		} else {
+			return true, nil // stop early as an optimization at first value above the total cumulative payout
+		}
+
+		return false, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return exclude, nil
 }
 
 // computeRadius calculates the radius by using the sum of all batch depths

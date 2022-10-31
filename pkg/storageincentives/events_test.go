@@ -21,23 +21,23 @@ func TestClose(t *testing.T) {
 	done2 := make(chan struct{})
 	done3 := make(chan struct{})
 
-	ev.On(1, func(ctx context.Context, pt storageincentives.PhaseType) {
+	ev.On(1, func(ctx context.Context, bl uint64, pt storageincentives.PhaseType) {
 		<-ctx.Done()
 		close(done1)
 	})
 
-	ev.On(1, func(ctx context.Context, pt storageincentives.PhaseType) {
+	ev.On(1, func(ctx context.Context, bl uint64, pt storageincentives.PhaseType) {
 		<-ctx.Done()
 		close(done2)
 	})
 
-	ev.On(2, func(ctx context.Context, pt storageincentives.PhaseType) {
+	ev.On(2, func(ctx context.Context, bl uint64, pt storageincentives.PhaseType) {
 		<-ctx.Done()
 		close(done3)
 	})
 
-	ev.Publish(1)
-	ev.Publish(2)
+	ev.Publish(1, 0)
+	ev.Publish(2, 0)
 
 	ev.Close()
 
@@ -70,25 +70,25 @@ func TestPhaseCancel(t *testing.T) {
 	defer ev.Close()
 
 	// ensure no panics occur on an empty publish
-	ev.Publish(0)
+	ev.Publish(0, 0)
 
-	ev.On(1, func(ctx context.Context, pt storageincentives.PhaseType) {
+	ev.On(1, func(ctx context.Context, bl uint64, pt storageincentives.PhaseType) {
 		<-ctx.Done()
 		close(done1)
 	})
 
-	ev.On(2, func(ctx context.Context, pt storageincentives.PhaseType) {
+	ev.On(2, func(ctx context.Context, bl uint64, pt storageincentives.PhaseType) {
 		<-ctx.Done()
 		close(done2)
 	})
 
-	ev.On(3, func(ctx context.Context, pt storageincentives.PhaseType) {
+	ev.On(3, func(ctx context.Context, bl uint64, pt storageincentives.PhaseType) {
 		ev.Cancel(1, 2)
 	})
 
-	ev.Publish(1)
-	ev.Publish(2)
-	ev.Publish(3)
+	ev.Publish(1, 0)
+	ev.Publish(2, 0)
+	ev.Publish(3, 0)
 
 	select {
 	case <-done1:

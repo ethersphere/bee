@@ -69,6 +69,10 @@ type Agent struct {
 	quit                   chan struct{}
 	wg                     sync.WaitGroup
 	state                  *RedistributionState
+	latestPriceMtx         sync.Mutex
+	latestPriceBlock       uint64
+	latestPrice            *big.Int
+	latestTotalPayout      *big.Int
 }
 
 func New(overlay swarm.Address, ethAddress common.Address, backend ChainBackend, logger log.Logger, monitor Monitor, contract redistribution.Contract, batchExpirer postagecontract.PostageBatchExpirer, redistributionStatuser staking.RedistributionStatuser, radius postage.RadiusChecker, sampler storage.Sampler, blockTime time.Duration, blocksPerRound, blocksPerPhase uint64, stateStore storage.StateStorer, erc20Service erc20.Service, tranService transaction.Service) (*Agent, error) {
@@ -85,6 +89,8 @@ func New(overlay swarm.Address, ethAddress common.Address, backend ChainBackend,
 		sampler:                sampler,
 		quit:                   make(chan struct{}),
 		redistributionStatuser: redistributionStatuser,
+		latestPrice:            big.NewInt(0),
+		latestTotalPayout:      big.NewInt(0),
 	}
 
 	state, err := NewRedistributionState(logger, ethAddress, stateStore, erc20Service, tranService)
@@ -149,20 +155,21 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	}
 
 	// when the sample finishes, if we are in the commit phase, run commit
-	phaseEvents.On(sampleEnd, func(ctx context.Context, previous PhaseType) {
+	phaseEvents.On(sampleEnd, func(ctx context.Context, block uint64, previous PhaseType) {
 		if previous == commit {
 			commitF(ctx)
 		}
 	})
 
 	// when we enter the commit phase, if the sample is already finished, run commit
-	phaseEvents.On(commit, func(ctx context.Context, previous PhaseType) {
+	phaseEvents.On(commit, func(ctx context.Context, block uint64, previous PhaseType) {
 		if previous == sampleEnd {
 			commitF(ctx)
 		}
 	})
 
-	phaseEvents.On(reveal, func(ctx context.Context, _ PhaseType) {
+	phaseEvents.On(reveal, func(ctx context.Context, block uint64, _ PhaseType) {
+
 		// cancel previous executions of the commit and sample phases
 		phaseEvents.Cancel(commit, sample, sampleEnd)
 
@@ -185,9 +192,21 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 				a.logger.Debug("revealed the sample with the obfuscation key")
 			}
 		}
+
+		cs := a.radius.GetChainState()
+		a.latestPriceMtx.Lock()
+		a.latestPriceBlock = cs.Block
+		if cs.CurrentPrice != nil {
+			a.latestPrice = new(big.Int).Set(cs.CurrentPrice)
+		}
+		if cs.TotalAmount != nil {
+			a.latestTotalPayout = new(big.Int).Set(cs.TotalAmount)
+		}
+		a.latestPriceMtx.Unlock()
+
 	})
 
-	phaseEvents.On(claim, func(ctx context.Context, _ PhaseType) {
+	phaseEvents.On(claim, func(ctx context.Context, block uint64, _ PhaseType) {
 
 		phaseEvents.Cancel(reveal)
 
@@ -204,13 +223,13 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		}
 	})
 
-	phaseEvents.On(sample, func(ctx context.Context, _ PhaseType) {
+	phaseEvents.On(sample, func(ctx context.Context, block uint64, _ PhaseType) {
 
 		mtx.Lock()
 		round := round
 		mtx.Unlock()
 
-		sr, smpl, err := a.play(ctx, round)
+		sr, smpl, err := a.play(ctx, round, block)
 		if err != nil {
 			a.logger.Error(err, "make sample")
 		} else if smpl != nil {
@@ -222,7 +241,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 			mtx.Unlock()
 		}
 
-		phaseEvents.Publish(sampleEnd)
+		phaseEvents.Publish(sampleEnd, block)
 	})
 
 	var (
@@ -284,9 +303,9 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 				a.state.SetFrozen(isFrozen, round)
 			}
 
-			phaseEvents.Publish(currentPhase)
+			phaseEvents.Publish(currentPhase, block)
 			if currentPhase == claim {
-				phaseEvents.Publish(sample) // trigger sample along side the claim phase
+				phaseEvents.Publish(sample, block) // trigger sample along side the claim phase
 			}
 		}
 		prevPhase = currentPhase
@@ -352,7 +371,7 @@ func (a *Agent) claim(ctx context.Context, round uint64) error {
 	return nil
 }
 
-func (a *Agent) play(ctx context.Context, round uint64) (uint8, []byte, error) {
+func (a *Agent) play(ctx context.Context, round uint64, block uint64) (uint8, []byte, error) {
 
 	status, err := a.state.Status()
 	if err != nil {
@@ -408,7 +427,17 @@ func (a *Agent) play(ctx context.Context, round uint64) (uint8, []byte, error) {
 		return 0, nil, err
 	}
 
-	sample, err := a.sampler.ReserveSample(ctx, salt, storageRadius, uint64(timeLimiter))
+	nextRoundNumber := (block / a.blocksPerRound) + 1
+	nextRoundBeginningBlock := nextRoundNumber * a.blocksPerRound
+
+	a.latestPriceMtx.Lock()
+
+	difference := nextRoundBeginningBlock - a.latestPriceBlock
+	minimumBalance := new(big.Int).Add(a.latestTotalPayout, new(big.Int).Mul(a.latestPrice, big.NewInt(int64(difference))))
+
+	a.latestPriceMtx.Unlock()
+
+	sample, err := a.sampler.ReserveSample(ctx, salt, storageRadius, uint64(timeLimiter), minimumBalance)
 	if err != nil {
 		return 0, nil, err
 	}

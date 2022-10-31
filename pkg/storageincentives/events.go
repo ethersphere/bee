@@ -43,7 +43,7 @@ type events struct {
 }
 
 type event struct {
-	funcs  []func(context.Context, PhaseType)
+	funcs  []func(context.Context, uint64, PhaseType)
 	ctx    context.Context
 	cancel context.CancelFunc
 }
@@ -54,7 +54,7 @@ func newEvents() *events {
 	}
 }
 
-func (e *events) On(phase PhaseType, f func(context.Context, PhaseType)) {
+func (e *events) On(phase PhaseType, f func(context.Context, uint64, PhaseType)) {
 	e.mtx.Lock()
 	defer e.mtx.Unlock()
 
@@ -66,13 +66,13 @@ func (e *events) On(phase PhaseType, f func(context.Context, PhaseType)) {
 	e.ev[phase].funcs = append(e.ev[phase].funcs, f)
 }
 
-func (e *events) Publish(phase PhaseType) {
+func (e *events) Publish(phase PhaseType, block uint64) {
 	e.mtx.Lock()
 	defer e.mtx.Unlock()
 
 	if ev, ok := e.ev[phase]; ok {
 		for _, v := range ev.funcs {
-			go v(ev.ctx, e.previous)
+			go v(ev.ctx, block, e.previous)
 		}
 	}
 	e.previous = phase

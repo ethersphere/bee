@@ -252,6 +252,11 @@ func (bs *BatchStore) ResetCalls() int {
 	return bs.resetCallCount
 }
 
+func (bs *BatchStore) GetBatchIDsExpiringUntil(*big.Int) (map[string]bool, error) {
+	emptyMap := make(map[string]bool)
+	return emptyMap, nil
+}
+
 type MockEventUpdater struct {
 	inProgress bool
 	err        error

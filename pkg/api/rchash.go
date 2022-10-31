@@ -5,6 +5,7 @@
 package api
 
 import (
+	"math/big"
 	"net/http"
 	"time"
 
@@ -35,7 +36,7 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 	}
 
 	start := time.Now()
-	sample, err := s.storer.ReserveSample(r.Context(), []byte(paths.Anchor), paths.Depth, uint64(start.UnixNano()))
+	sample, err := s.storer.ReserveSample(r.Context(), []byte(paths.Anchor), paths.Depth, uint64(start.UnixNano()), big.NewInt(0))
 	if err != nil {
 		logger.Error(err, "reserve commitment hasher: failed generating sample")
 		jsonhttp.InternalServerError(w, "failed generating sample")

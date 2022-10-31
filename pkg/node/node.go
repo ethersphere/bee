@@ -621,6 +621,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		WriteBufferSize:        o.DBWriteBufferSize,
 		DisableSeeksCompaction: o.DBDisableSeeksCompaction,
 		ValidStamp:             validStamp,
+		BatchStore:             batchStore,
 	}
 
 	storer, err := localstore.New(path, swarmAddress.Bytes(), stateStore, lo, logger)
