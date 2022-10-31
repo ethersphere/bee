@@ -24,7 +24,7 @@ func TestDepositStake(t *testing.T) {
 
 	minStake := big.NewInt(100000000000000000).String()
 	depositStake := func(amount string) string {
-		return fmt.Sprintf("/stake/deposit/%s", amount)
+		return fmt.Sprintf("/stake/%s", amount)
 	}
 
 	t.Run("ok", func(t *testing.T) {
@@ -161,7 +161,7 @@ func Test_stakingDepositHandler_invalidInputs(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			jsonhttptest.Request(t, client, http.MethodPost, "/stake/deposit/"+tc.amount, tc.want.Code,
+			jsonhttptest.Request(t, client, http.MethodPost, "/stake/"+tc.amount, tc.want.Code,
 				jsonhttptest.WithExpectedJSONResponse(tc.want),
 			)
 		})

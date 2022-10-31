@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  version: 3.2.0
+  version: 3.3.0
   title: Bee API
   description: "A list of the currently provided Interfaces to interact with the swarm, implementing file operations and sending messages"
 
@@ -1901,7 +1901,7 @@ paths:
         default:
           description: Default response
 
-  "/stake/deposit/{amount}":
+  "/stake/{amount}":
         post:
           summary: Deposit some amount for staking.
           description: Be aware, this endpoint creates an on-chain transactions and transfers BZZ from the node's Ethereum account and hence directly manipulates the wallet balance.
