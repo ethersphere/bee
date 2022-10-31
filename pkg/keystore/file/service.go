@@ -9,8 +9,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-
-	"github.com/ethersphere/bee/pkg/crypto"
 )
 
 // Service is the file-based keystore.Service implementation.
@@ -40,7 +38,7 @@ func (s *Service) Exists(name string) (bool, error) {
 	return true, nil
 }
 
-func (s *Service) Key(name, password string) (pk *ecdsa.PrivateKey, created bool, err error) {
+func (s *Service) Key(name, password string, generateFunc func() (*ecdsa.PrivateKey, error), encodeFunc func(k *ecdsa.PrivateKey) ([]byte, error), decodeFunc func(data []byte) (*ecdsa.PrivateKey, error)) (pk *ecdsa.PrivateKey, created bool, err error) {
 	filename := s.keyFilename(name)
 
 	data, err := os.ReadFile(filename)
@@ -49,12 +47,12 @@ func (s *Service) Key(name, password string) (pk *ecdsa.PrivateKey, created bool
 	}
 	if len(data) == 0 {
 		var err error
-		pk, err = crypto.GenerateSecp256k1Key()
+		pk, err = generateFunc()
 		if err != nil {
 			return nil, false, fmt.Errorf("generate secp256k1 key: %w", err)
 		}
 
-		d, err := encryptKey(pk, password)
+		d, err := encryptKey(pk, password, encodeFunc)
 		if err != nil {
 			return nil, false, err
 		}
@@ -68,7 +66,7 @@ func (s *Service) Key(name, password string) (pk *ecdsa.PrivateKey, created bool
 		return pk, true, nil
 	}
 
-	pk, err = decryptKey(data, password)
+	pk, err = decryptKey(data, password, decodeFunc)
 	if err != nil {
 		return nil, false, err
 	}

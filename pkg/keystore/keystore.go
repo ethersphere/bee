@@ -19,7 +19,7 @@ type Service interface {
 	// the provided password. If the private key does not exists it creates
 	// a new one with a name and the password, and returns with created set
 	// to true.
-	Key(name, password string) (k *ecdsa.PrivateKey, created bool, err error)
+	Key(name, password string, generateFunc func() (*ecdsa.PrivateKey, error), encodeFunc func(k *ecdsa.PrivateKey) ([]byte, error), decodeFunc func(data []byte) (*ecdsa.PrivateKey, error)) (pk *ecdsa.PrivateKey, created bool, err error)
 	// Exists returns true if the key with specified name exists.
 	Exists(name string) (bool, error)
 }
