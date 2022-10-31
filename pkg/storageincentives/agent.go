@@ -240,15 +240,13 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		round = block / blocksPerRound
 		a.metrics.Round.Set(float64(round))
 
-		// TODO: to be changed for the mainnet
-		// compute the current phase
 		p := block % blocksPerRound
 		if p < blocksPerPhase {
 			currentPhase = commit // [0, 37]
-		} else if p >= blocksPerPhase && p < 2*blocksPerPhase { // [38, 76]
+		} else if p >= blocksPerPhase && p < 2*blocksPerPhase { // [38, 75]
 			currentPhase = reveal
 		} else if p >= 2*blocksPerPhase {
-			currentPhase = claim // (76, 152)
+			currentPhase = claim // [76, 151]
 		}
 
 		// write the current phase only once
@@ -331,23 +329,11 @@ func (a *Agent) play(ctx context.Context) (uint8, []byte, error) {
 	}
 
 	t := time.Now()
-	a.metrics.BackendCalls.Inc()
-	block, err := a.backend.BlockNumber(ctx)
+
+	timeLimiter, err := a.getPreviousRoundTime(ctx)
 	if err != nil {
-		a.metrics.BackendErrors.Inc()
 		return 0, nil, err
 	}
-
-	previousRoundNumber := (block / a.blocksPerRound) - 1
-
-	a.metrics.BackendCalls.Inc()
-	timeLimiterBlock, err := a.backend.HeaderByNumber(ctx, new(big.Int).SetUint64(previousRoundNumber*a.blocksPerRound))
-	if err != nil {
-		a.metrics.BackendErrors.Inc()
-		return 0, nil, err
-	}
-
-	timeLimiter := time.Duration(timeLimiterBlock.Time) * time.Second / time.Nanosecond
 
 	sample, err := a.sampler.ReserveSample(ctx, salt, storageRadius, uint64(timeLimiter))
 	if err != nil {
@@ -356,6 +342,27 @@ func (a *Agent) play(ctx context.Context) (uint8, []byte, error) {
 	a.metrics.SampleDuration.Set(time.Since(t).Seconds())
 
 	return storageRadius, sample.Hash.Bytes(), nil
+}
+
+func (a *Agent) getPreviousRoundTime(ctx context.Context) (time.Duration, error) {
+
+	a.metrics.BackendCalls.Inc()
+	block, err := a.backend.BlockNumber(ctx)
+	if err != nil {
+		a.metrics.BackendErrors.Inc()
+		return 0, err
+	}
+
+	previousRoundBlockNumber := ((block / a.blocksPerRound) - 1) * a.blocksPerRound
+
+	a.metrics.BackendCalls.Inc()
+	timeLimiterBlock, err := a.backend.HeaderByNumber(ctx, new(big.Int).SetUint64(previousRoundBlockNumber))
+	if err != nil {
+		a.metrics.BackendErrors.Inc()
+		return 0, err
+	}
+
+	return time.Duration(timeLimiterBlock.Time) * time.Second / time.Nanosecond, nil
 }
 
 func (a *Agent) commit(ctx context.Context, storageRadius uint8, sample []byte) ([]byte, error) {
