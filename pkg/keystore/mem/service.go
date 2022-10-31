@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/keystore"
 )
 
@@ -40,13 +39,13 @@ func (s *Service) Exists(name string) (bool, error) {
 
 }
 
-func (s *Service) Key(name, password string) (pk *ecdsa.PrivateKey, created bool, err error) {
+func (s *Service) Key(name, password string, generateFunc func() (*ecdsa.PrivateKey, error), encodeFunc func(k *ecdsa.PrivateKey) ([]byte, error), decodeFunc func(data []byte) (*ecdsa.PrivateKey, error)) (pk *ecdsa.PrivateKey, created bool, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	k, ok := s.m[name]
 	if !ok {
-		pk, err := crypto.GenerateSecp256k1Key()
+		pk, err := generateFunc()
 		if err != nil {
 			return nil, false, fmt.Errorf("generate secp256k1 key: %w", err)
 		}
