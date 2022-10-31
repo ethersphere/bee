@@ -23,7 +23,7 @@ require (
 	github.com/ipfs/go-log/v2 v2.5.1 // indirect
 	github.com/kardianos/service v1.2.0
 	github.com/koron/go-ssdp v0.0.3 // indirect
-	github.com/libp2p/go-libp2p v0.23.0
+	github.com/libp2p/go-libp2p v0.23.2
 	github.com/miekg/dns v1.1.50 // indirect
 	github.com/multiformats/go-multiaddr v0.7.0
 	github.com/multiformats/go-multiaddr-dns v0.3.1
@@ -112,7 +112,7 @@ require (
 	github.com/libp2p/go-openssl v0.1.0 // indirect
 	github.com/libp2p/go-reuseport v0.2.0 // indirect
 	github.com/libp2p/go-yamux/v4 v4.0.0 // indirect
-	github.com/lucas-clemente/quic-go v0.29.0 // indirect
+	github.com/lucas-clemente/quic-go v0.29.1 // indirect
 	github.com/magiconair/properties v1.8.1 // indirect
 	github.com/marten-seemann/qtls-go1-18 v0.1.2 // indirect
 	github.com/marten-seemann/qtls-go1-19 v0.1.0 // indirect
