@@ -16,6 +16,11 @@ const redistributionABIv0_0_0 = `[
         "internalType": "address",
         "name": "postageContract",
         "type": "address"
+      },
+      {
+        "internalType": "address",
+        "name": "oracleContract",
+        "type": "address"
       }
     ],
     "stateMutability": "nonpayable",
@@ -259,6 +264,19 @@ const redistributionABIv0_0_0 = `[
   },
   {
     "inputs": [],
+    "name": "OracleContract",
+    "outputs": [
+      {
+        "internalType": "contract PriceOracle",
+        "name": "",
+        "type": "address"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  },
+  {
+    "inputs": [],
     "name": "PAUSER_ROLE",
     "outputs": [
       {
@@ -314,6 +332,11 @@ const redistributionABIv0_0_0 = `[
         "internalType": "bytes32",
         "name": "_overlay",
         "type": "bytes32"
+      },
+      {
+        "internalType": "uint256",
+        "name": "_roundNumber",
+        "type": "uint256"
       }
     ],
     "name": "commit",
