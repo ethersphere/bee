@@ -7,7 +7,6 @@ package pullsync_test
 import (
 	"context"
 	"errors"
-	"io"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/log"
@@ -208,7 +207,7 @@ func TestGetCursorsError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error but got none")
 	}
-	if !errors.Is(err, io.EOF) {
+	if !errors.Is(err, streamtest.ErrStreamClosed) {
 		t.Fatalf("expect error '%v' but got '%v'", e, err)
 	}
 }
