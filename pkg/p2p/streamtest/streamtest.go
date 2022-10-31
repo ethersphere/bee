@@ -7,6 +7,7 @@ package streamtest
 import (
 	"context"
 	"errors"
+	"io"
 	"sync"
 	"testing"
 	"time"
@@ -17,10 +18,9 @@ import (
 )
 
 var (
-	ErrRecordsNotFound        = errors.New("records not found")
-	ErrStreamNotSupported     = errors.New("stream not supported")
-	ErrStreamClosed           = errors.New("stream closed")
-	ErrStreamFullcloseTimeout = errors.New("fullclose timeout")
+	ErrRecordsNotFound    = errors.New("records not found")
+	ErrStreamNotSupported = errors.New("stream not supported")
+	ErrStreamClosed       = errors.New("stream closed")
 
 	noopMiddleware = func(f p2p.HandlerFunc) p2p.HandlerFunc {
 		return f
@@ -145,7 +145,7 @@ func (r *Recorder) NewStream(ctx context.Context, addr swarm.Address, h p2p.Head
 		streamIn.responseHeaders = streamOut.headers
 		// do not cancel it with the client stream context
 		err := handler(context.Background(), p2p.Peer{Address: r.base, FullNode: r.fullNode}, streamIn)
-		if err != nil {
+		if err != nil && !errors.Is(err, io.EOF) {
 			record.setErr(err)
 		}
 	}()
@@ -334,7 +334,7 @@ func (r *record) Read(p []byte) (n int, err error) {
 	for r.c == r.bytesSize() {
 		_, ok := <-r.dataSigC
 		if !ok {
-			return 0, ErrStreamClosed
+			return 0, io.EOF
 		}
 	}
 
