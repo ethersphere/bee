@@ -39,21 +39,26 @@ func (s *Service) Exists(name string) (bool, error) {
 
 }
 
+func (s *Service) SetKey(name, password string, generateFunc func() (*ecdsa.PrivateKey, error), encodeFunc func(k *ecdsa.PrivateKey) ([]byte, error)) (*ecdsa.PrivateKey, error) {
+	pk, err := generateFunc()
+	if err != nil {
+		return nil, fmt.Errorf("generate secp256k1 key: %w", err)
+	}
+	s.m[name] = key{
+		pk:       pk,
+		password: password,
+	}
+	return pk, nil
+}
+
 func (s *Service) Key(name, password string, generateFunc func() (*ecdsa.PrivateKey, error), encodeFunc func(k *ecdsa.PrivateKey) ([]byte, error), decodeFunc func(data []byte) (*ecdsa.PrivateKey, error)) (pk *ecdsa.PrivateKey, created bool, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	k, ok := s.m[name]
 	if !ok {
-		pk, err := generateFunc()
-		if err != nil {
-			return nil, false, fmt.Errorf("generate secp256k1 key: %w", err)
-		}
-		s.m[name] = key{
-			pk:       pk,
-			password: password,
-		}
-		return pk, true, nil
+		pk, err := s.SetKey(name, password, generateFunc, encodeFunc)
+		return pk, true, err
 	}
 
 	if k.password != password {
