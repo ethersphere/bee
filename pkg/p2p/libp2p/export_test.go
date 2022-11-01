@@ -22,6 +22,10 @@ func (s *Service) NewStreamForPeerID(peerID libp2ppeer.ID, protocolName, protoco
 	return s.newStreamForPeerID(context.Background(), peerID, protocolName, protocolVersion, streamName)
 }
 
+func (s *Service) WrapStream(ns network.Stream) *stream {
+	return newStream(ns, s.metrics)
+}
+
 func (s *Service) Host() host.Host {
 	return s.host
 }

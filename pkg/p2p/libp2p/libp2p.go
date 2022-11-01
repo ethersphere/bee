@@ -329,6 +329,10 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	connMetricNotify := newConnMetricNotify(s.metrics)
 	h.Network().Notify(peerRegistry) // update peer registry on network events
 	h.Network().Notify(connMetricNotify)
+
+	streamNotify := newStreamNotifier(s.metrics)
+	h.Network().Notify(streamNotify)
+
 	return s, nil
 }
 
@@ -374,7 +378,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	}
 
 	peerID := stream.Conn().RemotePeer()
-	handshakeStream := NewStream(stream)
+	handshakeStream := newStream(stream, s.metrics)
 	i, err := s.handshakeService.Handle(s.ctx, handshakeStream, stream.Conn().RemoteMultiaddr(), peerID)
 	if err != nil {
 		s.logger.Debug("stream handler: handshake: handle failed", "peer_id", peerID, "error", err)
@@ -543,7 +547,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 				return
 			}
 
-			stream := newStream(streamlibp2p)
+			stream := newStream(streamlibp2p, s.metrics)
 
 			// exchange headers
 			ctx, cancel := context.WithTimeout(s.ctx, s.HeadersRWTimeout)
@@ -706,7 +710,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 		return nil, fmt.Errorf("connect new stream: %w", err)
 	}
 
-	handshakeStream := NewStream(stream)
+	handshakeStream := newStream(stream, s.metrics)
 	i, err := s.handshakeService.Handshake(ctx, handshakeStream, stream.Conn().RemoteMultiaddr(), stream.Conn().RemotePeer())
 	if err != nil {
 		_ = handshakeStream.Reset()
@@ -893,7 +897,7 @@ func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers 
 		return nil, fmt.Errorf("new stream for peerid: %w", err)
 	}
 
-	stream := newStream(streamlibp2p)
+	stream := newStream(streamlibp2p, s.metrics)
 
 	// tracing: add span context header
 	if headers == nil {
@@ -1091,6 +1095,25 @@ type connectionNotifier struct {
 
 func (c *connectionNotifier) Connected(_ network.Network, _ network.Conn) {
 	c.metrics.HandledConnectionCount.Inc()
+}
+
+func newStreamNotifier(m metrics) *streamNotifier {
+	return &streamNotifier{
+		metrics:  m,
+		Notifiee: new(network.NoopNotifiee),
+	}
+}
+
+type streamNotifier struct {
+	metrics metrics
+	network.Notifiee
+}
+
+func (sn *streamNotifier) OpenedStream(network.Network, network.Stream) {
+	sn.metrics.Libp2pCreatedStreamCount.Inc()
+}
+func (sn *streamNotifier) ClosedStream(network.Network, network.Stream) {
+	sn.metrics.Libp2pClosedStreamCount.Inc()
 }
 
 // isNetworkOrHostUnreachableError determines based on the
