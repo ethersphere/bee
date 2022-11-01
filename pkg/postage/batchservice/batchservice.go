@@ -206,7 +206,7 @@ func (svc *batchService) UpdatePrice(price *big.Int, txHash common.Hash) error {
 		return fmt.Errorf("update checksum: %w", err)
 	}
 
-	svc.logger.Debug("updated chain price", "new_price", price, "txHash", txHash, "tx_checksum", sum)
+	svc.logger.Debug("updated chain price", "new_price", price, "tx_hash", txHash, "tx_checksum", sum)
 	return nil
 }
 
