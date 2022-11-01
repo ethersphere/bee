@@ -44,6 +44,7 @@ import (
 	autonat "github.com/libp2p/go-libp2p/p2p/host/autonat"
 	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
+	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	goyamux "github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	lp2pswarm "github.com/libp2p/go-libp2p/p2p/net/swarm"
 	libp2pping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
@@ -171,6 +172,13 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, err
 	}
 
+	limiter := rcmgr.NewFixedLimiter(rcmgr.InfiniteLimits)
+
+	rm, err := rcmgr.NewResourceManager(limiter)
+	if err != nil {
+		return nil, err
+	}
+
 	var natManager basichost.NATManager
 
 	opts := []libp2p.Option{
@@ -179,6 +187,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		// Use dedicated peerstore instead the global DefaultPeerstore
 		libp2p.Peerstore(libp2pPeerstore),
 		libp2p.UserAgent(userAgent()),
+		libp2p.ResourceManager(rm),
 	}
 
 	if o.NATAddr == "" {

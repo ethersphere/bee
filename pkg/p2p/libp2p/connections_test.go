@@ -159,7 +159,7 @@ func TestLightPeerLimit(t *testing.T) {
 // errors.
 func TestStreamsMaxIncomingLimit(t *testing.T) {
 	t.Parallel()
-	t.Skip("libp2p upgrade")
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
