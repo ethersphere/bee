@@ -94,9 +94,15 @@ func EncodeSecp256r1PrivateKey(k *ecdsa.PrivateKey) ([]byte, error) {
 	return x509.MarshalECPrivateKey(k)
 }
 
+var ErrX509Parse = errors.New("parse x509 key")
+
 // DecodeSecp256k1PrivateKey decodes raw ECDSA private key.
 func DecodeSecp256r1PrivateKey(data []byte) (*ecdsa.PrivateKey, error) {
-	return x509.ParseECPrivateKey(data)
+	pk, err := x509.ParseECPrivateKey(data)
+	if err != nil {
+		return nil, fmt.Errorf("%v: %w", err, ErrX509Parse)
+	}
+	return pk, nil
 }
 
 // Secp256k1PrivateKeyFromBytes returns an ECDSA private key based on

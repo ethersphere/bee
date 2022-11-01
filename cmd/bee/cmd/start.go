@@ -480,7 +480,18 @@ func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config
 	// use secp256r1 for libp2p as requires specific elliptic curve implementations only
 	libp2pPrivateKey, created, err := keystore.Key("libp2p", password, crypto.GenerateSecp256r1Key, crypto.EncodeSecp256r1PrivateKey, crypto.DecodeSecp256r1PrivateKey)
 	if err != nil {
-		return nil, fmt.Errorf("libp2p key: %w", err)
+		if !errors.Is(err, crypto.ErrX509Parse) {
+			return nil, fmt.Errorf("libp2p key: %w", err)
+		}
+
+		logger.Info("migrating the libp2p keys...")
+
+		libp2pPrivateKey, err = keystore.SetKey("libp2p", password, crypto.GenerateSecp256r1Key, crypto.EncodeSecp256r1PrivateKey)
+		if err != nil {
+			return nil, fmt.Errorf("set libp2p key: %w", err)
+		}
+
+		created = true
 	}
 	if created {
 		logger.Debug("new libp2p key created")
