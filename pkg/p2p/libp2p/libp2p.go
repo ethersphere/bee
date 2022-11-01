@@ -635,7 +635,7 @@ func (s *Service) Blocklist(overlay swarm.Address, duration time.Duration, reaso
 	}
 	s.metrics.BlocklistedPeerCount.Inc()
 
-	_ = s.Disconnect(overlay, "blocklisting peer")
+	_ = s.Disconnect(overlay, reason)
 	return nil
 }
 
