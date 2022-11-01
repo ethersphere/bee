@@ -22,4 +22,6 @@ type Service interface {
 	Key(name, password string, generateFunc func() (*ecdsa.PrivateKey, error), encodeFunc func(k *ecdsa.PrivateKey) ([]byte, error), decodeFunc func(data []byte) (*ecdsa.PrivateKey, error)) (pk *ecdsa.PrivateKey, created bool, err error)
 	// Exists returns true if the key with specified name exists.
 	Exists(name string) (bool, error)
+	// SetKey
+	SetKey(name, password string, generateFunc func() (*ecdsa.PrivateKey, error), encodeFunc func(k *ecdsa.PrivateKey) ([]byte, error)) (*ecdsa.PrivateKey, error)
 }
