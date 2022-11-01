@@ -176,6 +176,9 @@ func TestReplicateBeforeReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Give some time for accounting goroutines to finish.
+	time.Sleep(time.Millisecond * 100)
+
 	balance, err := pivotAccounting.Balance(closestPeer)
 	if err != nil {
 		t.Fatal(err)
@@ -592,9 +595,6 @@ func TestHandler(t *testing.T) {
 		t.Fatal("invalid receipt")
 	}
 
-	// In pivot peer,  intercept the incoming delivery chunk from the trigger peer and check for correctness
-	waitOnRecordAndTest(t, pivotPeer, pivotRecorder, chunk.Address(), chunk.Data())
-
 	// Pivot peer will forward the chunk to its closest peer. Intercept the incoming stream from pivot node and check
 	// for the correctness of the chunk
 	waitOnRecordAndTest(t, closestPeer, closestRecorder, chunk.Address(), chunk.Data())
@@ -604,6 +604,9 @@ func TestHandler(t *testing.T) {
 
 	// In the received stream, check if a receipt is sent from pivot peer and check for its correctness.
 	waitOnRecordAndTest(t, pivotPeer, pivotRecorder, chunk.Address(), nil)
+
+	// In pivot peer,  intercept the incoming delivery chunk from the trigger peer and check for correctness
+	waitOnRecordAndTest(t, pivotPeer, pivotRecorder, chunk.Address(), chunk.Data())
 
 	balance, err := triggerAccounting.Balance(pivotPeer)
 	if err != nil {
