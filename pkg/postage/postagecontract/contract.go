@@ -271,6 +271,8 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 
 func (c *postageContract) TopUpBatch(ctx context.Context, batchID []byte, topUpAmount *big.Int) error {
 
+	// use ExpireBatches()
+
 	batch, err := c.postageStorer.Get(batchID)
 	if err != nil {
 		return err
@@ -305,7 +307,18 @@ func (c *postageContract) TopUpBatch(ctx context.Context, batchID []byte, topUpA
 	return ErrBatchTopUp
 }
 
+/*
+func (c *postageContract) ExpireBatches(ctx context.Context) error {
+	count := stampContract.expiredCount()
+	for i := 0; i < count; i += 100 {
+		stampContract.expireLimited(100) // 100 is not exact, it's just an upper bound
+	}
+}
+*/
+
 func (c *postageContract) DiluteBatch(ctx context.Context, batchID []byte, newDepth uint8) error {
+
+	// use ExpireBatches()
 
 	batch, err := c.postageStorer.Get(batchID)
 	if err != nil {
