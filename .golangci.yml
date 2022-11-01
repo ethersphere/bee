@@ -75,9 +75,6 @@ issues:
       path: pkg/postage
     - linters:
         - paralleltest
-      path: pkg/pushsync
-    - linters:
-        - paralleltest
       path: pkg/log
     - linters:
         - paralleltest
