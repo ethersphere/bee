@@ -58,6 +58,7 @@ var (
 // TestPushClosest inserts a chunk as uploaded chunk in db. This triggers sending a chunk to the closest node
 // and expects a receipt. The message are intercepted in the outgoing stream to check for correctness.
 func TestPushClosest(t *testing.T) {
+	t.Parallel()
 	// chunk data to upload
 	chunk := testingc.FixtureChunk("7000")
 
@@ -115,6 +116,7 @@ func TestPushClosest(t *testing.T) {
 // Also the storer node initiates a pushsync to N closest nodes of the chunk as it's sending back the receipt.
 // The second storer should only store it and not forward it. The balance of all nodes is tested.
 func TestReplicateBeforeReceipt(t *testing.T) {
+	t.Parallel()
 
 	// chunk data to upload
 	chunk := testingc.FixtureChunk("7000") // base 0111
@@ -213,6 +215,7 @@ func TestReplicateBeforeReceipt(t *testing.T) {
 // PushChunkToClosest tests the sending of chunk to closest peer from the origination source perspective.
 // it also checks wether the tags are incremented properly if they are present
 func TestPushChunkToClosest(t *testing.T) {
+	t.Parallel()
 	// chunk data to upload
 	chunk := testingc.FixtureChunk("7000")
 
@@ -299,6 +302,7 @@ func TestPushChunkToClosest(t *testing.T) {
 }
 
 func TestPushChunkToNextClosest(t *testing.T) {
+	t.Parallel()
 
 	// chunk data to upload
 	chunk := testingc.FixtureChunk("7000")
@@ -426,6 +430,7 @@ func TestPushChunkToNextClosest(t *testing.T) {
 }
 
 func TestPushChunkToClosestErrorAttemptRetry(t *testing.T) {
+	t.Parallel()
 
 	// chunk data to upload
 	chunk := testingc.FixtureChunk("7000")
@@ -559,6 +564,7 @@ func TestPushChunkToClosestErrorAttemptRetry(t *testing.T) {
 //
 // Chunk moves from   TriggerPeer -> PivotPeer -> ClosestPeer
 func TestHandler(t *testing.T) {
+	t.Parallel()
 	// chunk data to upload
 	chunk := testingc.FixtureChunk("7000")
 
@@ -643,6 +649,7 @@ func TestHandler(t *testing.T) {
 }
 
 func TestSignsReceipt(t *testing.T) {
+	t.Parallel()
 
 	// chunk data to upload
 	chunk := testingc.FixtureChunk("7000")
@@ -688,6 +695,7 @@ func TestSignsReceipt(t *testing.T) {
 }
 
 func TestPeerSkipList(t *testing.T) {
+	t.Parallel()
 	skipList := pushsync.NewPeerSkipList()
 
 	addr1 := testingc.GenerateTestRandomChunk().Address()
@@ -709,6 +717,7 @@ func TestPeerSkipList(t *testing.T) {
 }
 
 func TestPushChunkToClosestSkipError(t *testing.T) {
+	t.Parallel()
 
 	// chunk data to upload
 	chunk := testingc.FixtureChunk("7000")
