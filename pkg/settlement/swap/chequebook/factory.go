@@ -87,7 +87,7 @@ func (c *factory) Deploy(ctx context.Context, issuer common.Address, defaultHard
 		Description: "chequebook deployment",
 	}
 
-	txHash, err := c.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
+	txHash, err := c.transactionService.Send(ctx, request, 0)
 	if err != nil {
 		return common.Hash{}, err
 	}

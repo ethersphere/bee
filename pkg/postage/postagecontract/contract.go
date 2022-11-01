@@ -96,7 +96,7 @@ func (c *postageContract) sendApproveTransaction(ctx context.Context, amount *bi
 		GasLimit:    65000,
 		Value:       big.NewInt(0),
 		Description: approveDescription,
-	}, transaction.DefaultTipBoostPercent)
+	}, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +123,7 @@ func (c *postageContract) sendTransaction(ctx context.Context, callData []byte, 
 		Description: desc,
 	}
 
-	txHash, err := c.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
+	txHash, err := c.transactionService.Send(ctx, request, 0)
 	if err != nil {
 		return nil, err
 	}
