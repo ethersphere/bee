@@ -317,8 +317,8 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	h.Network().Notify(peerRegistry) // update peer registry on network events
 	h.Network().Notify(connMetricNotify)
 
-	streamMetricNotify := newStreamMetricNotify(s.metrics)
-	h.Network().Notify(streamMetricNotify)
+	streamNotify := newStreamNotifier(s.metrics)
+	h.Network().Notify(streamNotify)
 
 	return s, nil
 }
@@ -1084,7 +1084,7 @@ func (c *connectionNotifier) Connected(_ network.Network, _ network.Conn) {
 	c.metrics.HandledConnectionCount.Inc()
 }
 
-func newStreamMetricNotify(m metrics) *streamNotifier {
+func newStreamNotifier(m metrics) *streamNotifier {
 	return &streamNotifier{
 		metrics:  m,
 		Notifiee: new(network.NoopNotifiee),
