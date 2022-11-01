@@ -149,7 +149,7 @@ func (s *cashoutService) CashCheque(ctx context.Context, chequebook, recipient c
 		Description: "cheque cashout",
 	}
 
-	txHash, err := s.transactionService.Send(ctx, request)
+	txHash, err := s.transactionService.Send(ctx, request, 0)
 	if err != nil {
 		return common.Hash{}, err
 	}

@@ -54,7 +54,7 @@ func TestCreateBatch(t *testing.T) {
 			postageStampAddress,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ uint64) (txHash common.Hash, err error) {
 					if *request.To == bzzTokenAddress {
 						return txHashApprove, nil
 					} else if *request.To == postageStampAddress {
@@ -244,7 +244,7 @@ func TestTopUpBatch(t *testing.T) {
 			postageStampAddress,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ uint64) (txHash common.Hash, err error) {
 					if *request.To == bzzTokenAddress {
 						return txHashApprove, nil
 					} else if *request.To == postageStampAddress {
@@ -400,7 +400,7 @@ func TestDiluteBatch(t *testing.T) {
 			postageStampAddress,
 			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ uint64) (txHash common.Hash, err error) {
 					if *request.To == postageStampAddress {
 						if !bytes.Equal(expectedCallData[:64], request.Data[:64]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
