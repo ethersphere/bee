@@ -349,7 +349,6 @@ func (a *Agent) play(ctx context.Context) (uint8, []byte, error) {
 }
 
 func (a *Agent) getPreviousRoundTime(ctx context.Context) (time.Duration, error) {
-
 	a.metrics.BackendCalls.Inc()
 	block, err := a.backend.BlockNumber(ctx)
 	if err != nil {
