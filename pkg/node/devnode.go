@@ -379,7 +379,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		Pseudosettle:     pseudoset,
 		Swap:             mockSwap,
 		Chequebook:       mockChequebook,
-		BlockTime:        big.NewInt(2),
+		BlockTime:        time.Second * 2,
 		Tags:             tagService,
 		Storer:           storer,
 		Resolver:         mockResolver,

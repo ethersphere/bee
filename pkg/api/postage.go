@@ -13,6 +13,7 @@ import (
 	"math"
 	"math/big"
 	"net/http"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/bigint"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -441,7 +442,7 @@ func (s *Service) estimateBatchTTL(batch *postage.Batch) (int64, error) {
 		pricePerBlock     = state.CurrentPrice
 	)
 	ttl := new(big.Int).Sub(normalizedBalance, cumulativePayout)
-	ttl = ttl.Mul(ttl, s.blockTime)
+	ttl = ttl.Mul(ttl, big.NewInt(int64(s.blockTime/time.Second)))
 	ttl = ttl.Div(ttl, pricePerBlock)
 
 	return ttl.Int64(), nil

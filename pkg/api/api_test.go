@@ -108,7 +108,7 @@ type testServerOptions struct {
 	PublicKey       ecdsa.PublicKey
 	PSSPublicKey    ecdsa.PublicKey
 	EthereumAddress common.Address
-	BlockTime       *big.Int
+	BlockTime       time.Duration
 	P2P             *p2pmock.Service
 	Pingpong        pingpong.Interface
 	TopologyOpts    []topologymock.Option
