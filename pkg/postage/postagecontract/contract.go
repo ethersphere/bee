@@ -313,13 +313,13 @@ func (c *postageContract) TopUpBatch(ctx context.Context, batchID []byte, topUpA
 func (c *postageContract) ExpireBatches(ctx context.Context) error {
 	count, err := c.countExpiredBatches(ctx)
 	if err != nil {
-		return err
+		return fmt.Errorf("count expired batches: %w", err)
 	}
 
 	for i := 0; i < int(count.Int64()); i += 100 {
 		err := c.expireLimitedBatches(ctx, big.NewInt(100))
 		if err != nil {
-			return err
+			return fmt.Errorf("expire batches: %w", err)
 		}
 	}
 	return nil
