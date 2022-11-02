@@ -70,7 +70,7 @@ jobs:
       - name: Install beekeeper
         run: |
           export PATH=$(pwd):$PATH
-          timeout ${TIMEOUT} make beekeeper BEEKEEPER_INSTALL_DIR=$(pwd)
+          timeout ${TIMEOUT} make beekeeper BEEKEEPER_INSTALL_DIR=/usr/local/bin
           mv ~/.beekeeper.yaml .beekeeper.yaml
           mv ~/.beekeeper/local.yaml local.yaml
       - uses: actions/upload-artifact@v3
