@@ -172,7 +172,14 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, err
 	}
 
-	limiter := rcmgr.NewFixedLimiter(rcmgr.InfiniteLimits)
+	cfg := rcmgr.InfiniteLimits
+
+	in, out := 10_000, 30_000
+	cfg.ProtocolPeerDefault.Streams = in + out
+	cfg.ProtocolPeerDefault.StreamsInbound = in
+	cfg.ProtocolPeerDefault.StreamsOutbound = out
+
+	limiter := rcmgr.NewFixedLimiter(cfg)
 
 	rm, err := rcmgr.NewResourceManager(limiter)
 	if err != nil {
