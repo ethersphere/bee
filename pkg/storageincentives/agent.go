@@ -286,6 +286,11 @@ func (a *Agent) claim(ctx context.Context) error {
 	a.metrics.ClaimPhase.Inc()
 	// event claimPhase was processed
 
+	err := a.postagecontract.ExpireBatches(ctx)
+	if err != nil {
+		return err
+	}
+
 	isWinner, err := a.contract.IsWinner(ctx)
 	if err != nil {
 		a.metrics.ErrWinner.Inc()
