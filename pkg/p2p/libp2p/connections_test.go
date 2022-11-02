@@ -26,7 +26,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
-	goyamux "github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 
 	libp2pm "github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/event"
@@ -159,6 +158,8 @@ func TestLightPeerLimit(t *testing.T) {
 func TestStreamsMaxIncomingLimit(t *testing.T) {
 	t.Parallel()
 
+	maxIncomingStreams := 5000
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -167,6 +168,7 @@ func TestStreamsMaxIncomingLimit(t *testing.T) {
 	}})
 	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
 
+	streams := make([]p2p.Stream, 0)
 	testProtocolSpec := p2p.ProtocolSpec{
 		Name:    testProtocolName,
 		Version: testProtocolVersion,
@@ -174,13 +176,13 @@ func TestStreamsMaxIncomingLimit(t *testing.T) {
 			{
 				Name: testStreamName,
 				Handler: func(ctx context.Context, p p2p.Peer, s p2p.Stream) error {
+					streams = append(streams, s)
 					return nil
 				},
 			},
 		},
 	}
 
-	streams := make([]p2p.Stream, 0)
 	t.Cleanup(func() {
 		for _, s := range streams {
 			if err := s.Reset(); err != nil {
@@ -190,11 +192,10 @@ func TestStreamsMaxIncomingLimit(t *testing.T) {
 	})
 
 	testProtocolClient := func() error {
-		s, err := s2.NewStream(ctx, overlay1, nil, testProtocolName, testProtocolVersion, testStreamName)
+		_, err := s2.NewStream(ctx, overlay1, nil, testProtocolName, testProtocolVersion, testStreamName)
 		if err != nil {
 			return err
 		}
-		streams = append(streams, s)
 		// do not close or rest the stream in defer in order to keep the stream active
 		return nil
 	}
@@ -210,30 +211,28 @@ func TestStreamsMaxIncomingLimit(t *testing.T) {
 	expectPeers(t, s2, overlay1)
 	expectPeersEventually(t, s1, overlay2)
 
-	maxIncomingStreams := goyamux.DefaultTransport.MaxIncomingStreams
-
 	overflowStreamCount := maxIncomingStreams / 4
 
 	// create streams over the limit
 
-	for i := uint32(0); i < maxIncomingStreams+overflowStreamCount; i++ {
+	for i := 0; i < maxIncomingStreams+overflowStreamCount; i++ {
 		err := testProtocolClient()
 		if i < maxIncomingStreams {
 			if err != nil {
 				t.Errorf("test protocol client %v: %v", i, err)
 			}
 		} else {
-			if !errors.Is(err, network.ErrReset) {
-				t.Errorf("test protocol client %v error %v, want %v", i, err, network.ErrReset)
+			if err == nil {
+				t.Errorf("test protocol client %v got nil error", i)
 			}
 		}
 	}
 
-	if uint32(len(streams)) != maxIncomingStreams {
-		t.Errorf("got %v streams, want %v", uint32(len(streams)), maxIncomingStreams)
+	if len(streams) != maxIncomingStreams {
+		t.Errorf("got %v streams, want %v", len(streams), maxIncomingStreams)
 	}
 
-	closeStreamCount := uint32(len(streams) / 2)
+	closeStreamCount := len(streams) / 2
 
 	// close random streams to validate new streams creation
 
@@ -247,27 +246,27 @@ func TestStreamsMaxIncomingLimit(t *testing.T) {
 		streams = append(streams[:n], streams[n+1:]...)
 	}
 
-	if maxIncomingStreams-uint32(len(streams)) != closeStreamCount {
-		t.Errorf("got %v closed streams, want %v", maxIncomingStreams-uint32(len(streams)), closeStreamCount)
+	if maxIncomingStreams-len(streams) != closeStreamCount {
+		t.Errorf("got %v closed streams, want %v", maxIncomingStreams-len(streams), closeStreamCount)
 	}
 
 	// create new streams
 
-	for i := uint32(0); i < closeStreamCount+overflowStreamCount; i++ {
+	for i := 0; i < closeStreamCount+overflowStreamCount; i++ {
 		err := testProtocolClient()
 		if i < closeStreamCount {
 			if err != nil {
 				t.Errorf("test protocol client %v: %v", i, err)
 			}
 		} else {
-			if !errors.Is(err, network.ErrReset) {
-				t.Errorf("test protocol client %v error %v, want %v", i, err, network.ErrReset)
+			if err == nil {
+				t.Errorf("test protocol client %v got nil error", i)
 			}
 		}
 	}
 
-	if uint32(len(streams)) != maxIncomingStreams {
-		t.Errorf("got %v streams, want %v", uint32(len(streams)), maxIncomingStreams)
+	if len(streams) != maxIncomingStreams {
+		t.Errorf("got %v streams, want %v", len(streams), maxIncomingStreams)
 	}
 
 	expectPeers(t, s2, overlay1)
