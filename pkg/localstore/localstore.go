@@ -637,7 +637,11 @@ func (db *DB) safeInit(rootPath, sharkyBasePath string) error {
 		return os.WriteFile(path, []byte{}, 0644)
 	}
 
-	db.logger.Warning("localstore sharky .DIRTY file exists: starting recovery due to previous dirty exit")
+	defer func(t time.Time) {
+		db.logger.Info("localstore sharky recovery finished", "time", time.Since(t))
+	}(time.Now())
+
+	db.logger.Info("localstore sharky .DIRTY file exists: starting recovery due to previous dirty exit")
 
 	locOrErr, err := recovery(db)
 	if err != nil {
