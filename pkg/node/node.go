@@ -1028,7 +1028,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		Pseudosettle:     pseudosettleService,
 		Swap:             swapService,
 		Chequebook:       chequebookService,
-		BlockTime:        big.NewInt(int64(o.BlockTime)),
+		BlockTime:        o.BlockTime,
 		Tags:             tagService,
 		Storer:           ns,
 		Resolver:         multiResolver,

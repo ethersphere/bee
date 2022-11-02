@@ -166,7 +166,7 @@ type Service struct {
 	swap        swap.Interface
 	transaction transaction.Service
 	lightNodes  *lightnode.Container
-	blockTime   *big.Int
+	blockTime   time.Duration
 
 	postageSem       *semaphore.Weighted
 	stakingSem       *semaphore.Weighted
@@ -207,7 +207,7 @@ type ExtraOptions struct {
 	Pseudosettle     settlement.Interface
 	Swap             swap.Interface
 	Chequebook       chequebook.Service
-	BlockTime        *big.Int
+	BlockTime        time.Duration
 	Tags             *tags.Tags
 	Storer           storage.Storer
 	Resolver         resolver.Interface
