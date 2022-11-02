@@ -262,7 +262,7 @@ func TestPostageGetStamps(t *testing.T) {
 		t.Parallel()
 
 		bs := mock.New(mock.WithChainState(cs), mock.WithBatch(b))
-		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: mp, BatchStore: bs, BlockTime: big.NewInt(2)})
+		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: mp, BatchStore: bs, BlockTime: 2 * time.Second})
 
 		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampsResponse{
@@ -290,7 +290,7 @@ func TestPostageGetStamps(t *testing.T) {
 		t.Parallel()
 
 		bsForNonExistingBatch := mock.New(mock.WithChainState(cs))
-		tsForNonExistingBatch, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: mp, BatchStore: bsForNonExistingBatch, BlockTime: big.NewInt(2)})
+		tsForNonExistingBatch, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: mp, BatchStore: bsForNonExistingBatch, BlockTime: 2 * time.Second})
 
 		jsonhttptest.Request(t, tsForNonExistingBatch, http.MethodGet, "/stamps", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampsResponse{Stamps: []api.PostageStampResponse{}}),
@@ -327,7 +327,7 @@ func TestPostageGetStamps(t *testing.T) {
 		emp.HandleStampExpiry(eb.ID)
 		ecs := &postage.ChainState{Block: 10, TotalAmount: big.NewInt(15), CurrentPrice: big.NewInt(12)}
 		ebs := mock.New(mock.WithChainState(ecs))
-		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: emp, BatchStore: ebs, BlockTime: big.NewInt(2)})
+		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: emp, BatchStore: ebs, BlockTime: 2 * time.Second})
 
 		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps?all=true", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampsResponse{
@@ -361,7 +361,7 @@ func TestPostageGetStamps(t *testing.T) {
 		emp.HandleStampExpiry(eb.ID)
 		ecs := &postage.ChainState{Block: 10, TotalAmount: big.NewInt(15), CurrentPrice: big.NewInt(12)}
 		ebs := mock.New(mock.WithChainState(ecs))
-		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: emp, BatchStore: ebs, BlockTime: big.NewInt(2)})
+		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: emp, BatchStore: ebs, BlockTime: 2 * time.Second})
 
 		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps/"+hex.EncodeToString(eb.ID), http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampResponse{
@@ -393,7 +393,7 @@ func TestGetAllBatches(t *testing.T) {
 	mp := mockpost.New(mockpost.WithIssuer(si))
 	cs := &postage.ChainState{Block: 10, TotalAmount: big.NewInt(5), CurrentPrice: big.NewInt(2)}
 	bs := mock.New(mock.WithChainState(cs), mock.WithBatch(b))
-	ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: mp, BatchStore: bs, BlockTime: big.NewInt(2)})
+	ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: mp, BatchStore: bs, BlockTime: 2 * time.Second})
 
 	oneBatch := struct {
 		Batches []api.PostageBatchResponse `json:"batches"`
@@ -431,7 +431,7 @@ func TestPostageGetStamp(t *testing.T) {
 	mp := mockpost.New(mockpost.WithIssuer(si))
 	cs := &postage.ChainState{Block: 10, TotalAmount: big.NewInt(5), CurrentPrice: big.NewInt(2)}
 	bs := mock.New(mock.WithChainState(cs), mock.WithBatch(b))
-	ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: mp, BatchStore: bs, BlockTime: big.NewInt(2)})
+	ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: mp, BatchStore: bs, BlockTime: 2 * time.Second})
 
 	t.Run("ok", func(t *testing.T) {
 		t.Parallel()
