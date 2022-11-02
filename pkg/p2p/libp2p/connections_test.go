@@ -169,6 +169,8 @@ func TestStreamsMaxIncomingLimit(t *testing.T) {
 	}})
 	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
 
+	var smu sync.Mutex
+
 	streams := make([]p2p.Stream, 0)
 	testProtocolSpec := p2p.ProtocolSpec{
 		Name:    testProtocolName,
@@ -177,6 +179,9 @@ func TestStreamsMaxIncomingLimit(t *testing.T) {
 			{
 				Name: testStreamName,
 				Handler: func(ctx context.Context, p p2p.Peer, s p2p.Stream) error {
+					smu.Lock()
+					defer smu.Unlock()
+
 					streams = append(streams, s)
 					return nil
 				},
