@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -41,17 +42,18 @@ type Monitor interface {
 }
 
 type Agent struct {
-	logger         log.Logger
-	metrics        metrics
-	backend        ChainBackend
-	blocksPerRound uint64
-	monitor        Monitor
-	contract       redistribution.Contract
-	reserve        postage.Storer
-	sampler        storage.Sampler
-	overlay        swarm.Address
-	quit           chan struct{}
-	wg             sync.WaitGroup
+	logger          log.Logger
+	metrics         metrics
+	backend         ChainBackend
+	blocksPerRound  uint64
+	monitor         Monitor
+	contract        redistribution.Contract
+	postagecontract postagecontract.Interface
+	reserve         postage.Storer
+	sampler         storage.Sampler
+	overlay         swarm.Address
+	quit            chan struct{}
+	wg              sync.WaitGroup
 }
 
 func New(
@@ -60,21 +62,23 @@ func New(
 	logger log.Logger,
 	monitor Monitor,
 	contract redistribution.Contract,
+	postageContract postagecontract.Interface,
 	reserve postage.Storer,
 	sampler storage.Sampler,
 	blockTime time.Duration, blocksPerRound, blocksPerPhase uint64) *Agent {
 
 	s := &Agent{
-		overlay:        overlay,
-		metrics:        newMetrics(),
-		backend:        backend,
-		logger:         logger.WithName(loggerName).Register(),
-		contract:       contract,
-		reserve:        reserve,
-		monitor:        monitor,
-		blocksPerRound: blocksPerRound,
-		sampler:        sampler,
-		quit:           make(chan struct{}),
+		overlay:         overlay,
+		metrics:         newMetrics(),
+		backend:         backend,
+		logger:          logger.WithName(loggerName).Register(),
+		contract:        contract,
+		postagecontract: postageContract,
+		reserve:         reserve,
+		monitor:         monitor,
+		blocksPerRound:  blocksPerRound,
+		sampler:         sampler,
+		quit:            make(chan struct{}),
 	}
 
 	s.wg.Add(1)

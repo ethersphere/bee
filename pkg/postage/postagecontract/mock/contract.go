@@ -12,9 +12,24 @@ import (
 )
 
 type contractMock struct {
-	createBatch func(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) ([]byte, error)
-	topupBatch  func(ctx context.Context, id []byte, amount *big.Int) error
-	diluteBatch func(ctx context.Context, id []byte, newDepth uint8) error
+	createBatch          func(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) ([]byte, error)
+	topupBatch           func(ctx context.Context, id []byte, amount *big.Int) error
+	diluteBatch          func(ctx context.Context, id []byte, newDepth uint8) error
+	expireBatches        func(ctx context.Context) error
+	countExpiredBatches  func(ctx context.Context) (*big.Int, error)
+	expireLimitedBatches func(ctx context.Context, count *big.Int) error
+}
+
+func (c *contractMock) ExpireBatches(ctx context.Context) error {
+	return c.expireBatches(ctx)
+}
+
+func (c *contractMock) CountExpiredBatches(ctx context.Context) (*big.Int, error) {
+	return c.countExpiredBatches(ctx)
+}
+
+func (c *contractMock) ExpireLimitedBatches(ctx context.Context, count *big.Int) error {
+	return c.expireLimitedBatches(ctx, count)
 }
 
 func (c *contractMock) CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) ([]byte, error) {

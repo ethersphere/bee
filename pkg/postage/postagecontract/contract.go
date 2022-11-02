@@ -49,6 +49,9 @@ type Interface interface {
 	CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) ([]byte, error)
 	TopUpBatch(ctx context.Context, batchID []byte, topupBalance *big.Int) error
 	DiluteBatch(ctx context.Context, batchID []byte, newDepth uint8) error
+	ExpireBatches(ctx context.Context) error
+	CountExpiredBatches(ctx context.Context) (*big.Int, error)
+	ExpireLimitedBatches(ctx context.Context, count *big.Int) error
 }
 
 type postageContract struct {
@@ -270,8 +273,10 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 }
 
 func (c *postageContract) TopUpBatch(ctx context.Context, batchID []byte, topUpAmount *big.Int) error {
-
-	// use ExpireBatches()
+	err := c.ExpireBatches(ctx)
+	if err != nil {
+		return err
+	}
 
 	batch, err := c.postageStorer.Get(batchID)
 	if err != nil {
@@ -307,18 +312,68 @@ func (c *postageContract) TopUpBatch(ctx context.Context, batchID []byte, topUpA
 	return ErrBatchTopUp
 }
 
-/*
 func (c *postageContract) ExpireBatches(ctx context.Context) error {
-	count := stampContract.expiredCount()
-	for i := 0; i < count; i += 100 {
-		stampContract.expireLimited(100) // 100 is not exact, it's just an upper bound
+	count, err := c.CountExpiredBatches(ctx)
+	if err != nil {
+		return err
 	}
+	for i := new(big.Int).Set(big.NewInt(1)); i.Cmp(count) <= 0; i.Add(i, big.NewInt(100)) {
+		err := c.ExpireLimitedBatches(ctx, big.NewInt(100))
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
-*/
+
+func (c *postageContract) CountExpiredBatches(ctx context.Context) (*big.Int, error) {
+	callData, err := postageStampABI.Pack("countExpiry")
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := c.transactionService.Call(ctx, &transaction.TxRequest{
+		To:   &c.postageContractAddress,
+		Data: callData,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	results, err := postageStampABI.Unpack("countExpiry", result)
+	if err != nil {
+		return nil, err
+	}
+	return abi.ConvertType(results[0], new(big.Int)).(*big.Int), nil
+}
+
+func (c *postageContract) ExpireLimitedBatches(ctx context.Context, count *big.Int) error {
+	callData, err := postageStampABI.Pack("expireLimited", count)
+	if err != nil {
+		return err
+	}
+
+	result, err := c.transactionService.Call(ctx, &transaction.TxRequest{
+		To:   &c.postageContractAddress,
+		Data: callData,
+	})
+	if err != nil {
+		return err
+	}
+
+	_, err = postageStampABI.Unpack("countExpiry", result)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
 
 func (c *postageContract) DiluteBatch(ctx context.Context, batchID []byte, newDepth uint8) error {
-
-	// use ExpireBatches()
+	err := c.ExpireBatches(ctx)
+	if err != nil {
+		return err
+	}
 
 	batch, err := c.postageStorer.Get(batchID)
 	if err != nil {
@@ -388,6 +443,18 @@ func LookupERC20Address(ctx context.Context, transactionService transaction.Serv
 }
 
 type noOpPostageContract struct{}
+
+func (m *noOpPostageContract) ExpireBatches(ctx context.Context) error {
+	return ErrChainDisabled
+}
+
+func (m *noOpPostageContract) CountExpiredBatches(ctx context.Context) (*big.Int, error) {
+	return nil, ErrChainDisabled
+}
+
+func (m *noOpPostageContract) ExpireLimitedBatches(ctx context.Context, count *big.Int) error {
+	return ErrChainDisabled
+}
 
 func (m *noOpPostageContract) CreateBatch(context.Context, *big.Int, uint8, bool, string) ([]byte, error) {
 	return nil, ErrChainDisabled
