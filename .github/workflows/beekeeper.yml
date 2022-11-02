@@ -5,15 +5,15 @@ on:
     types: [trigger-beekeeper, beekeeper]
   pull_request:
     branches:
-      - '**'
+      - "**"
 
 env:
   K3S_VERSION: "v1.20.15+k3s1"
   REPLICA: 3
   RUN_TYPE: "PR RUN"
   SETUP_CONTRACT_IMAGE_TAG: "0.2.0"
-  BEELOCAL_BRANCH: "main"
-  BEEKEEPER_BRANCH: "master"
+  BEELOCAL_BRANCH: "update-k3s"
+  BEEKEEPER_BRANCH: "wip_update-dependencies-2"
   BEEKEEPER_METRICS_ENABLED: false
   REACHABILITY_OVERRIDE_PUBLIC: true
   BATCHFACTOR_OVERRIDE_PUBLIC: 2
@@ -70,7 +70,8 @@ jobs:
       - name: Install beekeeper
         run: |
           export PATH=$(pwd):$PATH
-          timeout ${TIMEOUT} make beekeeper BEEKEEPER_INSTALL_DIR=$(pwd)
+          timeout ${TIMEOUT} make beekeeper BEEKEEPER_INSTALL_DIR=/usr/local/bin
+          mv /usr/local/bin/beekeeper beekeeper
           mv ~/.beekeeper.yaml .beekeeper.yaml
           mv ~/.beekeeper/local.yaml local.yaml
       - uses: actions/upload-artifact@v3
@@ -98,7 +99,7 @@ jobs:
           path: |
             /tmp/k3s-${{ env.K3S_VERSION }}-v3
           key: k3s-${{ env.K3S_VERSION }}-v3
-      - name: 'Download Artifact'
+      - name: "Download Artifact"
         uses: actions/download-artifact@v3
         with:
           name: temp-artifacts
@@ -199,7 +200,7 @@ jobs:
           path: |
             /tmp/k3s-${{ env.K3S_VERSION }}-v3
           key: k3s-${{ env.K3S_VERSION }}-v3
-      - name: 'Download Artifact'
+      - name: "Download Artifact"
         uses: actions/download-artifact@v3
         with:
           name: temp-artifacts
@@ -264,7 +265,7 @@ jobs:
           path: |
             /tmp/k3s-${{ env.K3S_VERSION }}-v3
           key: k3s-${{ env.K3S_VERSION }}-v3
-      - name: 'Download Artifact'
+      - name: "Download Artifact"
         uses: actions/download-artifact@v3
         with:
           name: temp-artifacts
@@ -321,7 +322,7 @@ jobs:
     needs: [beekeeper, beekeeper-si, beekeeper-clef]
     runs-on: ubuntu-latest
     steps:
-      - name: 'Download Artifact'
+      - name: "Download Artifact"
         uses: actions/download-artifact@v3
         with:
           name: temp-artifacts
