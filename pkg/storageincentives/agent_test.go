@@ -92,8 +92,8 @@ func TestAgent(t *testing.T) {
 				incrementBy: tc.incrementBy,
 				block:       tc.blocksPerRound}
 			contract := &mockContract{}
-			postage := contractMock.New()
-			service := createService(addr, backend, contract, postage, uint64(tc.blocksPerRound), uint64(tc.blocksPerPhase))
+			postageContract := contractMock.New()
+			service := createService(addr, backend, contract, postageContract, uint64(tc.blocksPerRound), uint64(tc.blocksPerPhase))
 
 			<-wait
 
