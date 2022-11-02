@@ -16,6 +16,8 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
+	"github.com/ethersphere/bee/pkg/postage/postagecontract"
+	contractMock "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storageincentives"
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
@@ -92,8 +94,8 @@ func TestAgent(t *testing.T) {
 				incrementBy: tc.incrementBy,
 				block:       tc.blocksPerRound}
 			contract := &mockContract{t: t, baseAddr: addr}
-
-			service := createService(addr, backend, contract, uint64(tc.blocksPerRound), uint64(tc.blocksPerPhase))
+			postage := contractMock.New()
+			service := createService(addr, backend, contract, postage, uint64(tc.blocksPerRound), uint64(tc.blocksPerPhase))
 
 			<-wait
 
@@ -121,6 +123,7 @@ func createService(
 	addr swarm.Address,
 	backend storageincentives.ChainBackend,
 	contract redistribution.Contract,
+	postagecontract postagecontract.Interface,
 	blocksPerRound uint64,
 	blocksPerPhase uint64) *storageincentives.Agent {
 
@@ -130,6 +133,7 @@ func createService(
 		log.Noop,
 		&mockMonitor{},
 		contract,
+		postagecontract,
 		mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})),
 		&mockSampler{},
 		time.Millisecond*10, blocksPerRound, blocksPerPhase,
