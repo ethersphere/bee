@@ -50,8 +50,6 @@ type Interface interface {
 	TopUpBatch(ctx context.Context, batchID []byte, topupBalance *big.Int) error
 	DiluteBatch(ctx context.Context, batchID []byte, newDepth uint8) error
 	ExpireBatches(ctx context.Context) error
-	CountExpiredBatches(ctx context.Context) (*big.Int, error)
-	ExpireLimitedBatches(ctx context.Context, count *big.Int) error
 }
 
 type postageContract struct {
@@ -313,12 +311,13 @@ func (c *postageContract) TopUpBatch(ctx context.Context, batchID []byte, topUpA
 }
 
 func (c *postageContract) ExpireBatches(ctx context.Context) error {
-	count, err := c.CountExpiredBatches(ctx)
+	count, err := c.countExpiredBatches(ctx)
 	if err != nil {
 		return err
 	}
-	for i := new(big.Int).Set(big.NewInt(1)); i.Cmp(count) <= 0; i.Add(i, big.NewInt(100)) {
-		err := c.ExpireLimitedBatches(ctx, big.NewInt(100))
+
+	for i := 0; i < int(count.Int64()); i += 100 {
+		err := c.expireLimitedBatches(ctx, big.NewInt(100))
 		if err != nil {
 			return err
 		}
@@ -326,7 +325,7 @@ func (c *postageContract) ExpireBatches(ctx context.Context) error {
 	return nil
 }
 
-func (c *postageContract) CountExpiredBatches(ctx context.Context) (*big.Int, error) {
+func (c *postageContract) countExpiredBatches(ctx context.Context) (*big.Int, error) {
 	callData, err := postageStampABI.Pack("countExpiry")
 	if err != nil {
 		return nil, err
@@ -347,7 +346,7 @@ func (c *postageContract) CountExpiredBatches(ctx context.Context) (*big.Int, er
 	return abi.ConvertType(results[0], new(big.Int)).(*big.Int), nil
 }
 
-func (c *postageContract) ExpireLimitedBatches(ctx context.Context, count *big.Int) error {
+func (c *postageContract) expireLimitedBatches(ctx context.Context, count *big.Int) error {
 	callData, err := postageStampABI.Pack("expireLimited", count)
 	if err != nil {
 		return err
@@ -445,14 +444,6 @@ func LookupERC20Address(ctx context.Context, transactionService transaction.Serv
 type noOpPostageContract struct{}
 
 func (m *noOpPostageContract) ExpireBatches(ctx context.Context) error {
-	return ErrChainDisabled
-}
-
-func (m *noOpPostageContract) CountExpiredBatches(ctx context.Context) (*big.Int, error) {
-	return nil, ErrChainDisabled
-}
-
-func (m *noOpPostageContract) ExpireLimitedBatches(ctx context.Context, count *big.Int) error {
 	return ErrChainDisabled
 }
 
