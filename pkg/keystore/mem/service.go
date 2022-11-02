@@ -42,7 +42,7 @@ func (s *Service) Exists(name string) (bool, error) {
 func (s *Service) SetKey(name, password string, generateFunc func() (*ecdsa.PrivateKey, error), encodeFunc func(k *ecdsa.PrivateKey) ([]byte, error)) (*ecdsa.PrivateKey, error) {
 	pk, err := generateFunc()
 	if err != nil {
-		return nil, fmt.Errorf("generate secp256k1 key: %w", err)
+		return nil, fmt.Errorf("generate key: %w", err)
 	}
 	s.m[name] = key{
 		pk:       pk,

@@ -45,7 +45,6 @@ import (
 	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
-	goyamux "github.com/libp2p/go-libp2p/p2p/muxer/yamux"
 	lp2pswarm "github.com/libp2p/go-libp2p/p2p/net/swarm"
 	libp2pping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
@@ -74,12 +73,6 @@ const (
 
 	defaultHeadersRWTimeout = 10 * time.Second
 )
-
-// nolint:gochecknoinits
-func init() {
-	goyamux.DefaultTransport.AcceptBacklog = 1024
-	goyamux.DefaultTransport.MaxIncomingStreams = 5000
-}
 
 type Service struct {
 	ctx               context.Context
@@ -174,16 +167,10 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	cfg := rcmgr.InfiniteLimits
 
-	in, out := 10_000, 30_000
-	cfg.ProtocolDefault.Streams = in + out
-	cfg.ProtocolDefault.StreamsInbound = in
-	cfg.ProtocolDefault.StreamsOutbound = out
-
-	// limiter.DefaultPeerLimits = limiter.SystemLimits         //.WithStreamLimit(in, out, in+out)
-	// limiter.DefaultServicePeerLimits = limiter.SystemLimits  //.WithStreamLimit(in, out, in+out)
-	// limiter.DefaultProtocolPeerLimits = limiter.SystemLimits //.WithStreamLimit(in, out, in+out)
-	// limiter.DefaultProtocolLimits = limiter.SystemLimits     //.WithStreamLimit(in, out, in+out)
-	// limiter.ConnLimits = limiter.SystemLimits                //.WithStreamLimit(in, out, in+out)
+	in, out := 5_000, 10_000
+	cfg.ProtocolPeerDefault.Streams = in + out
+	cfg.ProtocolPeerDefault.StreamsInbound = in
+	cfg.ProtocolPeerDefault.StreamsOutbound = out
 
 	limiter := rcmgr.NewFixedLimiter(cfg)
 
@@ -212,7 +199,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		)
 	}
 
-	if o.PrivateKey != nil { // TODO fixme
+	if o.PrivateKey != nil {
 		myKey, _, err := crypto.ECDSAKeyPairFromKey(o.PrivateKey)
 		if err != nil {
 			return nil, err
