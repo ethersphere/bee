@@ -237,7 +237,7 @@ func TestStreamsMaxIncomingLimit(t *testing.T) {
 	// close random streams to validate new streams creation
 
 	random := rand.New(rand.NewSource(time.Now().UnixNano()))
-	for i := 0; i < int(closeStreamCount); i++ {
+	for i := 0; i < closeStreamCount; i++ {
 		n := random.Intn(len(streams))
 		if err := streams[n].Reset(); err != nil {
 			t.Error(err)
