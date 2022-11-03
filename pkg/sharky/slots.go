@@ -5,7 +5,6 @@
 package sharky
 
 import (
-	"fmt"
 	"io"
 	"sync"
 )
@@ -71,7 +70,6 @@ func (sl *slots) Use(slot uint32) {
 
 	diff := int(slot/8) - len(sl.data)
 	if diff >= 0 {
-		fmt.Println("EXTENDING INSIDE USE")
 		sl.extend(diff + 1)
 	}
 
