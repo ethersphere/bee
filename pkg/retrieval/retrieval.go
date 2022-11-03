@@ -156,6 +156,8 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr, sourcePeerAddr swarm.
 
 		retry()
 
+		inflight := 0
+
 		for retrievedErrorsLeft > 0 {
 
 			select {
@@ -173,16 +175,25 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr, sourcePeerAddr swarm.
 				defer span.Finish()
 
 				s.metrics.PeerRequestCounter.Inc()
+
+				inflight++
+
 				go func() {
 					ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
 					defer cancel()
 					s.retrieveChunk(ctx, done, resultC, addr, sp, origin)
 				}()
 			case res := <-resultC:
+
+				inflight--
+
 				if errors.Is(res.err, topology.ErrNotFound) {
 					if sp.OverdraftListEmpty() { // no peer is available, and none skipped due to overdraft errors
 						loggerV1.Debug("no peers left to retry", "chunk_address", addr)
-						return nil, storage.ErrNotFound
+						if inflight == 0 {
+							return nil, storage.ErrNotFound
+						}
+						continue
 					}
 					// there are overdrafted peers, so we want to retry with them again, let ticker trigger another retry
 					sp.ResetOverdraft()
