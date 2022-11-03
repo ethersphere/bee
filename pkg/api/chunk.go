@@ -70,6 +70,8 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.NotFound(w, "batch with id not found")
 		case errors.Is(err, errInvalidPostageBatch):
 			jsonhttp.BadRequest(w, "invalid batch id")
+		case errors.Is(err, errUnsupportedDevNodeOperation):
+			jsonhttp.BadRequest(w, errUnsupportedDevNodeOperation)
 		default:
 			jsonhttp.BadRequest(w, nil)
 		}
@@ -161,8 +163,14 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err = wait(); err != nil {
 		s.logger.Debug("chunk upload: sync chunk failed", "error", err)
-		s.logger.Error(nil, "chunk upload: sync chunk failed")
-		jsonhttp.InternalServerError(w, "sync failed")
+		switch {
+		case errors.Is(err, errUnsupportedDevNodeOperation):
+			s.logger.Error(err, "chunk upload: direct upload not supported in dev mode")
+			jsonhttp.BadRequest(w, "dev mode does not support this operation")
+		default:
+			s.logger.Error(err, "chunk upload: sync chunk failed")
+			jsonhttp.InternalServerError(w, "sync failed")
+		}
 		return
 	}
 

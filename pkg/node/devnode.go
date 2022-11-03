@@ -410,7 +410,6 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		WsPingPeriod:       60 * time.Second,
 		Restricted:         o.Restricted,
 	}, debugOpts, 1, erc20)
-
 	apiService.MountAPI()
 	apiService.SetProbe(probe)
 
@@ -443,7 +442,6 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		Handler:           apiService,
 		ErrorLog:          stdlog.New(b.errorLogWriter, "", 0),
 	}
-
 	go func() {
 		logger.Info("starting api server", "address", apiListener.Addr())
 

@@ -105,14 +105,15 @@ const (
 )
 
 var (
-	errInvalidNameOrAddress = errors.New("invalid name or bzz address")
-	errNoResolver           = errors.New("no resolver connected")
-	errInvalidRequest       = errors.New("could not validate request")
-	errInvalidContentType   = errors.New("invalid content-type")
-	errDirectoryStore       = errors.New("could not store directory")
-	errFileStore            = errors.New("could not store file")
-	errInvalidPostageBatch  = errors.New("invalid postage batch id")
-	errBatchUnusable        = errors.New("batch not usable")
+	errInvalidNameOrAddress        = errors.New("invalid name or bzz address")
+	errNoResolver                  = errors.New("no resolver connected")
+	errInvalidRequest              = errors.New("could not validate request")
+	errInvalidContentType          = errors.New("invalid content-type")
+	errDirectoryStore              = errors.New("could not store directory")
+	errFileStore                   = errors.New("could not store file")
+	errInvalidPostageBatch         = errors.New("invalid postage batch id")
+	errBatchUnusable               = errors.New("batch not usable")
+	errUnsupportedDevNodeOperation = errors.New("operation not supported in dev mode")
 )
 
 type Service struct {
@@ -780,6 +781,9 @@ func (s *Service) newStamperPutter(r *http.Request) (storage.Storer, func() erro
 		return nil, noopWaitFn, fmt.Errorf("request deferred: %w", err)
 	}
 
+	if !deferred && s.beeMode == DevMode {
+		return nil, noopWaitFn, errUnsupportedDevNodeOperation
+	}
 	exists, err := s.batchStore.Exists(batch)
 	if err != nil {
 		return nil, noopWaitFn, fmt.Errorf("batch exists: %w", err)

@@ -124,6 +124,7 @@ type testServerOptions struct {
 	BackendOpts []backendmock.Option
 	Erc20Opts   []erc20mock.Option
 	ChainID     int64
+	beeMode     api.BeeNodeMode
 }
 
 func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.Conn, string, *chanStorer) {
@@ -193,8 +194,11 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		SyncStatus:       o.SyncStatus,
 		Staking:          o.StakingContract,
 	}
-
-	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.Logger, transaction, o.BatchStore, api.FullMode, true, true, backend, o.CORSAllowedOrigins)
+	// by default bee mode is set to full mode
+	if o.beeMode == api.LightMode {
+		o.beeMode = api.FullMode
+	}
+	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.Logger, transaction, o.BatchStore, o.beeMode, true, true, backend, o.CORSAllowedOrigins)
 
 	s.SetP2P(o.P2P)
 	s.SetSwarmAddress(&o.Overlay)
