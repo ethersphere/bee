@@ -64,6 +64,15 @@ require (
 )
 
 require (
+	github.com/go-kit/log v0.2.1 // indirect
+	github.com/go-logfmt/logfmt v0.5.1 // indirect
+	github.com/golang/groupcache v0.0.0-20210331224755-41bb18bfe9da // indirect
+	github.com/prometheus/statsd_exporter v0.22.7 // indirect
+	go.opencensus.io v0.23.0 // indirect
+)
+
+require (
+	contrib.go.opencensus.io/exporter/prometheus v0.4.2
 	github.com/Knetic/govaluate v3.0.1-0.20171022003610-9aa49832a739+incompatible // indirect
 	github.com/StackExchange/wmi v0.0.0-20210224194228-fe8f1750fd46 // indirect
 	github.com/benbjohnson/clock v1.3.0 // indirect

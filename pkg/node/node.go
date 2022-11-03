@@ -591,6 +591,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		FullNode:        o.FullNodeMode,
 		Nonce:           nonce,
 		ValidateOverlay: chainEnabled,
+		Registry:        debugService.MetricsRegistry(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)
