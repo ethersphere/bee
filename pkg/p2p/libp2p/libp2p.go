@@ -53,6 +53,12 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multistream"
 	"go.uber.org/atomic"
+
+	ocprom "contrib.go.opencensus.io/exporter/prometheus"
+	m2 "github.com/ethersphere/bee/pkg/metrics"
+	rcmgrObs "github.com/libp2p/go-libp2p/p2p/host/resource-manager/obs"
+	"github.com/prometheus/client_golang/prometheus"
+	"go.opencensus.io/stats/view"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -122,6 +128,7 @@ type Options struct {
 	ValidateOverlay  bool
 	hostFactory      func(...libp2p.Option) (host.Host, error)
 	HeadersRWTimeout time.Duration
+	Registry         *prometheus.Registry
 }
 
 func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, logger log.Logger, tracer *tracing.Tracer, o Options) (*Service, error) {
@@ -174,7 +181,18 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	limiter := rcmgr.NewFixedLimiter(cfg)
 
-	rm, err := rcmgr.NewResourceManager(limiter)
+	view.Register(rcmgrObs.DefaultViews...)
+	ocprom.NewExporter(ocprom.Options{
+		Namespace: m2.Namespace,
+		Registry:  o.Registry,
+	})
+
+	str, err := rcmgrObs.NewStatsTraceReporter()
+	if err != nil {
+		return nil, err
+	}
+
+	rm, err := rcmgr.NewResourceManager(limiter, rcmgr.WithTraceReporter(str))
 	if err != nil {
 		return nil, err
 	}

@@ -627,6 +627,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		FullNode:        o.FullNodeMode,
 		Nonce:           nonce,
 		ValidateOverlay: chainEnabled,
+		Registry:        debugService.MetricsRegistry(),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)
