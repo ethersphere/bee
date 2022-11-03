@@ -2086,7 +2086,7 @@ func waitBcast(t *testing.T, d *mock.Discovery, pivot swarm.Address, addrs ...sw
 
 			oks := 0
 			for _, a := range addrs {
-				if !isIn(a, recs) {
+				if !swarm.AddressSliceContains(recs, a) {
 					t.Fatalf("address %s not found in discovery records: %s", a, addrs)
 				}
 				oks++
@@ -2099,15 +2099,6 @@ func waitBcast(t *testing.T, d *mock.Discovery, pivot swarm.Address, addrs ...sw
 	if err != nil {
 		t.Fatalf("timed out waiting for broadcast to happen")
 	}
-}
-
-func isIn(addr swarm.Address, addrs []swarm.Address) bool {
-	for _, v := range addrs {
-		if v.Equal(addr) {
-			return true
-		}
-	}
-	return false
 }
 
 // waitBalanced waits for kademlia to be balanced for specified bin.
