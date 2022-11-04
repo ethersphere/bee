@@ -148,7 +148,7 @@ func TestTransactionSend(t *testing.T) {
 		}
 		defer transactionService.Close()
 
-		txHash, err := transactionService.Send(context.Background(), request)
+		txHash, err := transactionService.Send(context.Background(), request, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -268,7 +268,7 @@ func TestTransactionSend(t *testing.T) {
 		}
 		defer transactionService.Close()
 
-		txHash, err := transactionService.SendWithBoost(context.Background(), request, 50)
+		txHash, err := transactionService.Send(context.Background(), request, 50)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -380,7 +380,7 @@ func TestTransactionSend(t *testing.T) {
 		}
 		defer transactionService.Close()
 
-		txHash, err := transactionService.Send(context.Background(), request)
+		txHash, err := transactionService.Send(context.Background(), request, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -455,7 +455,7 @@ func TestTransactionSend(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		txHash, err := transactionService.Send(context.Background(), request)
+		txHash, err := transactionService.Send(context.Background(), request, 0)
 		if err != nil {
 			t.Fatal(err)
 		}

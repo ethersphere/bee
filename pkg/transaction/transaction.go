@@ -70,10 +70,8 @@ type StoredTransaction struct {
 // limit and nonce management.
 type Service interface {
 	io.Closer
-	// Send creates a transaction based on the request and sends it.
-	Send(ctx context.Context, request *TxRequest) (txHash common.Hash, err error)
-	// SendWithBoost creates a transaction based on the request (with gasprice increased by provided percentage) and sends it.
-	SendWithBoost(ctx context.Context, request *TxRequest, boostPercent uint64) (txHash common.Hash, err error)
+	// Send creates a transaction based on the request (with gasprice increased by provided percentage) and sends it.
+	Send(ctx context.Context, request *TxRequest, boost int) (txHash common.Hash, err error)
 	// Call simulate a transaction based on the request.
 	Call(ctx context.Context, request *TxRequest) (result []byte, err error)
 	// WaitForReceipt waits until either the transaction with the given hash has been mined or the context is cancelled.
@@ -142,7 +140,7 @@ func NewService(logger log.Logger, backend Backend, signer crypto.Signer, store 
 }
 
 // Send creates and signs a transaction based on the request and sends it.
-func (t *transactionService) Send(ctx context.Context, request *TxRequest) (txHash common.Hash, err error) {
+func (t *transactionService) Send(ctx context.Context, request *TxRequest, boostPercent int) (txHash common.Hash, err error) {
 	loggerV1 := t.logger.V(1).Register()
 
 	t.lock.Lock()
@@ -153,67 +151,7 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest) (txHa
 		return common.Hash{}, err
 	}
 
-	tx, err := t.prepareTransaction(ctx, request, nonce)
-	if err != nil {
-		return common.Hash{}, err
-	}
-
-	signedTx, err := t.signer.SignTx(tx, t.chainID)
-	if err != nil {
-		return common.Hash{}, err
-	}
-
-	loggerV1.Debug("sending transaction", "tx", signedTx.Hash(), "nonce", nonce)
-
-	err = t.backend.SendTransaction(ctx, signedTx)
-	if err != nil {
-		return common.Hash{}, err
-	}
-
-	err = t.putNonce(nonce + 1)
-	if err != nil {
-		return common.Hash{}, err
-	}
-
-	txHash = signedTx.Hash()
-
-	err = t.store.Put(storedTransactionKey(txHash), StoredTransaction{
-		To:          signedTx.To(),
-		Data:        signedTx.Data(),
-		GasPrice:    signedTx.GasPrice(),
-		GasLimit:    signedTx.Gas(),
-		Value:       signedTx.Value(),
-		Nonce:       signedTx.Nonce(),
-		Created:     time.Now().Unix(),
-		Description: request.Description,
-	})
-	if err != nil {
-		return common.Hash{}, err
-	}
-
-	err = t.store.Put(pendingTransactionKey(txHash), struct{}{})
-	if err != nil {
-		return common.Hash{}, err
-	}
-
-	t.waitForPendingTx(txHash)
-
-	return signedTx.Hash(), nil
-}
-
-// Send creates and signs a transaction based on the request and sends it.
-func (t *transactionService) SendWithBoost(ctx context.Context, request *TxRequest, boostPercent uint64) (txHash common.Hash, err error) {
-	loggerV1 := t.logger.V(1).Register()
-
-	t.lock.Lock()
-	defer t.lock.Unlock()
-
-	nonce, err := t.nextNonce(ctx)
-	if err != nil {
-		return common.Hash{}, err
-	}
-
-	tx, err := t.prepareBoostedTransaction(ctx, request, nonce, boostPercent)
+	tx, err := t.prepareTransaction(ctx, request, nonce, boostPercent)
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -316,47 +254,7 @@ func (t *transactionService) StoredTransaction(txHash common.Hash) (*StoredTrans
 }
 
 // prepareTransaction creates a signable transaction based on a request.
-func (t *transactionService) prepareTransaction(ctx context.Context, request *TxRequest, nonce uint64) (tx *types.Transaction, err error) {
-	var gasLimit uint64
-	if request.GasLimit == 0 {
-		gasLimit, err = t.backend.EstimateGas(ctx, ethereum.CallMsg{
-			From: t.sender,
-			To:   request.To,
-			Data: request.Data,
-		})
-		if err != nil {
-			return nil, err
-		}
-
-		gasLimit += gasLimit / 5 // add 20% on top
-
-	} else {
-		gasLimit = request.GasLimit
-	}
-
-	gasPrice := request.GasPrice
-	if gasPrice == nil {
-		gasPrice, err = t.backend.SuggestGasPrice(ctx)
-		if err != nil {
-			return nil, err
-		}
-	}
-	if gasPrice.Cmp(minGasPrice) < 0 {
-		return nil, ErrGasPriceTooLow
-	}
-
-	return types.NewTx(&types.LegacyTx{
-		Nonce:    nonce,
-		To:       request.To,
-		Value:    request.Value,
-		Gas:      gasLimit,
-		GasPrice: gasPrice,
-		Data:     request.Data,
-	}), nil
-}
-
-// prepareTransaction creates a signable transaction based on a request.
-func (t *transactionService) prepareBoostedTransaction(ctx context.Context, request *TxRequest, nonce uint64, boostPercent uint64) (tx *types.Transaction, err error) {
+func (t *transactionService) prepareTransaction(ctx context.Context, request *TxRequest, nonce uint64, boostPercent int) (tx *types.Transaction, err error) {
 	var gasLimit uint64
 	if request.GasLimit == 0 {
 		gasLimit, err = t.backend.EstimateGas(ctx, ethereum.CallMsg{
