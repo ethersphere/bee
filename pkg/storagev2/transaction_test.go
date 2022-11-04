@@ -14,7 +14,11 @@ import (
 )
 
 func TestTxState(t *testing.T) {
+	t.Parallel()
+
 	t.Run("lifecycle-normal", func(t *testing.T) {
+		t.Parallel()
+
 		ctx, cancel := context.WithCancel(context.Background())
 		t.Cleanup(cancel)
 
@@ -32,7 +36,7 @@ func TestTxState(t *testing.T) {
 		})
 
 		func() {
-			for timer := time.NewTimer(2 * timeout); ; {
+			for timer := time.NewTimer(5 * timeout); ; {
 				select {
 				case <-txs.AwaitDone():
 					if !timer.Stop() {
@@ -62,6 +66,8 @@ func TestTxState(t *testing.T) {
 	})
 
 	t.Run("lifecycle-done-by-parent-ctx", func(t *testing.T) {
+		t.Parallel()
+
 		ctx, cancel := context.WithCancel(context.Background())
 		t.Cleanup(cancel)
 
@@ -79,7 +85,7 @@ func TestTxState(t *testing.T) {
 		})
 
 		func() {
-			for timer := time.NewTimer(2 * timeout); ; {
+			for timer := time.NewTimer(5 * timeout); ; {
 				select {
 				case <-txs.AwaitDone():
 					if !timer.Stop() {
