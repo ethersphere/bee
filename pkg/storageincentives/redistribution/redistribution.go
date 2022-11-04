@@ -110,7 +110,7 @@ func (c *contract) Claim(ctx context.Context) error {
 		Value:       big.NewInt(0),
 		Description: "claim win transaction",
 	}
-	err = c.sendAndWait(ctx, request)
+	err = c.sendAndWait(ctx, request, 50)
 	if err != nil {
 		return fmt.Errorf("claim: %w", err)
 	}
@@ -132,7 +132,7 @@ func (c *contract) Commit(ctx context.Context, obfusHash []byte) error {
 		Value:       big.NewInt(0),
 		Description: "commit transaction",
 	}
-	err = c.sendAndWait(ctx, request)
+	err = c.sendAndWait(ctx, request, 50)
 	if err != nil {
 		return fmt.Errorf("commit: obfusHash %v overlay %v: %w", common.BytesToHash(obfusHash), common.BytesToHash(c.overlay.Bytes()), err)
 	}
@@ -154,7 +154,7 @@ func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommit
 		Value:       big.NewInt(0),
 		Description: "reveal transaction",
 	}
-	err = c.sendAndWaitWithBoost(ctx, request, 50)
+	err = c.sendAndWait(ctx, request, 50)
 	if err != nil {
 		return fmt.Errorf("reveal: storageDepth %d reserveCommitmentHash %v RandomNonce %v: %w", storageDepth, common.BytesToHash(reserveCommitmentHash), common.BytesToHash(RandomNonce), err)
 	}
@@ -182,26 +182,8 @@ func (c *contract) ReserveSalt(ctx context.Context) ([]byte, error) {
 	return salt[:], nil
 }
 
-func (c *contract) sendAndWaitWithBoost(ctx context.Context, request *transaction.TxRequest, boostPercent uint64) error {
-	txHash, err := c.txService.SendWithBoost(ctx, request, boostPercent)
-	if err != nil {
-		return err
-	}
-
-	receipt, err := c.txService.WaitForReceipt(ctx, txHash)
-	if err != nil {
-		return err
-	}
-
-	if receipt.Status == 0 {
-		return transaction.ErrTransactionReverted
-	}
-	return nil
-}
-
-// sendAndWait simulates a transaction based on tx request and waits until the tx is either mined or ctx is cancelled.
-func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest) error {
-	txHash, err := c.txService.Send(ctx, request)
+func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest, boostPercent int) error {
+	txHash, err := c.txService.Send(ctx, request, boostPercent)
 	if err != nil {
 		return err
 	}
