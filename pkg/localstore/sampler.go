@@ -42,7 +42,7 @@ type sampleEntry struct {
 	chunkItem          shed.Item
 }
 
-func (s *sampleStat) String() string {
+func (s sampleStat) String() string {
 
 	seconds := int64(time.Second)
 
