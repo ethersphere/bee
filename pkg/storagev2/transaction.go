@@ -64,8 +64,6 @@ type TxState struct {
 	done int32
 }
 
-// TODO: consider some TxState method private.
-
 // AwaitDone returns a channel that blocks until the context
 // in TxState is canceled or the transaction is done.
 func (tx *TxState) AwaitDone() <-chan struct{} {
@@ -118,12 +116,14 @@ func NewTxState(ctx context.Context) *TxState {
 }
 
 var _ Store = (*TxStoreBase)(nil)
+var _ Batcher = (*TxStoreBase)(nil)
 
 // TxStoreBase implements the Store interface where
 // the operations are guarded by a transaction.
 type TxStoreBase struct {
 	*TxState
 	Store
+	Batcher
 }
 
 // Close implements the Store interface.
@@ -188,6 +188,14 @@ func (s *TxStoreBase) Delete(item Item) error {
 		return err
 	}
 	return s.Store.Delete(item)
+}
+
+// Batch implements the Batcher interface.
+func (s *TxStoreBase) Batch(context.Context) (Batch, error) {
+	if val, ok := s.Store.(Batcher); ok {
+		return val.Batch(context.Background())
+	}
+	return nil, ErrBatchNotSupported
 }
 
 var _ ChunkStore = (*TxChunkStoreBase)(nil)

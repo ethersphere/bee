@@ -13,7 +13,13 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-func TestBatchedStore(t *testing.T, bs storage.BatchedStore) {
+// BatchedStore is a store that provides batch operations.
+type BatchedStore interface {
+	storage.Store
+	storage.Batcher
+}
+
+func TestBatchedStore(t *testing.T, bs BatchedStore) {
 	item := &obj1{Id: "id", SomeInt: 1, Buf: []byte("data")}
 
 	t.Run("duplicates are rejected", func(t *testing.T) {

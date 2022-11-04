@@ -10,19 +10,27 @@ import (
 	"github.com/hashicorp/go-multierror"
 )
 
+// Repository is a collection of stores that provides a unified interface
+// to access them. Access to all stores can be guarded by a transaction.
 type Repository struct {
 	indexStore TxStore
 	chunkStore TxChunkStore
 }
 
-func (r *Repository) IndexStore() Store {
-	return r.indexStore
+// IndexStore returns a Store and a BatchedStore.Batch function that can be
+// used to create a new batch.Operations invoked on the BatchedStore are not
+// guarded by the current transaction.
+func (r *Repository) IndexStore() (Store, func(context.Context) (Batch, error)) {
+	return r.indexStore, r.indexStore.(Batcher).Batch
 }
 
+// ChunkStore returns a chunk store.
 func (r *Repository) ChunkStore() ChunkStore {
 	return r.chunkStore
 }
 
+// NewTx returns a new transaction that guards all the Repository
+// stores. The transaction must be committed or rolled back.
 func (r *Repository) NewTx(ctx context.Context) (repository *Repository, commit func() error, rollback func() error) {
 	tx := NewTxState(ctx)
 
