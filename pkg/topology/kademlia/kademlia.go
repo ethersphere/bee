@@ -1181,13 +1181,7 @@ func (k *Kad) binReachablePeers(bin uint8) (peers []swarm.Address) {
 
 func isStaticPeer(staticNodes []swarm.Address) func(overlay swarm.Address) bool {
 	return func(overlay swarm.Address) bool {
-		for _, addr := range staticNodes {
-			if addr.Equal(overlay) {
-				return true
-			}
-		}
-		return false
-
+		return swarm.AddressSliceContains(staticNodes, overlay)
 	}
 }
 

@@ -241,12 +241,7 @@ func (p *PullSyncMock) LiveSyncCalls(peer swarm.Address) (res []SyncCall) {
 func (p *PullSyncMock) CursorsCalls(peer swarm.Address) bool {
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
-	for _, v := range p.getCursorsPeers {
-		if v.Equal(peer) {
-			return true
-		}
-	}
-	return false
+	return swarm.AddressSliceContains(p.getCursorsPeers, peer)
 }
 
 func (p *PullSyncMock) TriggerChange() {
