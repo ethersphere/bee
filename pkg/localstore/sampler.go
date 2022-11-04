@@ -42,7 +42,7 @@ type sampleEntry struct {
 	chunkItem          shed.Item
 }
 
-func (s *sampleStat) String() string {
+func (s sampleStat) String() string {
 
 	seconds := int64(time.Second)
 
@@ -232,7 +232,7 @@ func (db *DB) ReserveSample(
 		Items: sampleItems,
 		Hash:  swarm.NewAddress(hash),
 	}
-	logger.Info("sampler done", "stats", &stat, "sample", sample)
+	logger.Info("sampler done", "stats", stat, "sample", sample)
 
 	return sample, nil
 }
