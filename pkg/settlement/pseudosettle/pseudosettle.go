@@ -188,7 +188,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 			_ = stream.Reset()
 			s.metrics.ReceivedPseudoSettlementsErrors.Inc()
 		} else {
-			go stream.FullClose()
+			stream.FullClose()
 		}
 	}()
 	var req pb.Payment
