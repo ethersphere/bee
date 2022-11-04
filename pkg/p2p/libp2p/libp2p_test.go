@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
+	"github.com/ethersphere/bee/pkg/spinlock"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
@@ -128,16 +129,13 @@ func expectPeersEventually(t *testing.T, s *libp2p.Service, addrs ...swarm.Addre
 	t.Helper()
 
 	var peers []p2p.Peer
-	for i := 0; i < 100; i++ {
+	err := spinlock.Wait(time.Second, func() bool {
 		peers = s.Peers()
-		if len(peers) == len(addrs) {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
+		return len(peers) == len(addrs)
 
-	if len(peers) != len(addrs) {
-		t.Fatalf("got peers %v, want %v", len(peers), len(addrs))
+	})
+	if err != nil {
+		t.Fatalf("timed out waiting for peers, got  %v, want %v", len(peers), len(addrs))
 	}
 
 	sort.Slice(addrs, func(i, j int) bool {

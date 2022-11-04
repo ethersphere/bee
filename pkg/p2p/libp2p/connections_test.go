@@ -20,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
+	"github.com/ethersphere/bee/pkg/spinlock"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
@@ -142,14 +143,12 @@ func TestLightPeerLimit(t *testing.T) {
 		}
 	}
 
-	for i := 0; i < 20; i++ {
-		if cnt := container.Count(); cnt == limit {
-			return
-		}
-		time.Sleep(50 * time.Millisecond)
+	err := spinlock.Wait(time.Second, func() bool {
+		return container.Count() == limit
+	})
+	if err != nil {
+		t.Fatal("timed out waiting for correct number of lightnodes")
 	}
-
-	t.Fatal("timed out waiting for correct number of lightnodes")
 }
 
 // TestStreamsMaxIncomingLimit validates that a session between peers can
@@ -1027,10 +1026,11 @@ func TestUserAgentLogging(t *testing.T) {
 	}
 
 	// wait for logs to be written to buffers
-	for t := time.Now().Add(10 * time.Second); time.Now().Before(t); time.Sleep(50 * time.Microsecond) {
-		if s1Logs.Len() > 0 && s2Logs.Len() > 0 {
-			break
-		}
+	err = spinlock.Wait(time.Second*10, func() bool {
+		return s1Logs.Len() > 0 && s2Logs.Len() > 0
+	})
+	if err != nil {
+		t.Fatal("timed out waiting for logs to be written")
 	}
 
 	testUserAgentLogLine(t, s1Logs, "(inbound)")
@@ -1191,16 +1191,15 @@ func expectZeroAddress(t *testing.T, addrs ...swarm.Address) {
 
 func waitAddrSet(t *testing.T, addr *swarm.Address, mtx *sync.Mutex, exp swarm.Address) {
 	t.Helper()
-	for i := 0; i < 20; i++ {
+
+	err := spinlock.Wait(time.Second, func() bool {
 		mtx.Lock()
-		if addr.Equal(exp) {
-			mtx.Unlock()
-			return
-		}
-		mtx.Unlock()
-		time.Sleep(10 * time.Millisecond)
+		defer mtx.Unlock()
+		return addr.Equal(exp)
+	})
+	if err != nil {
+		t.Fatal("timed out waiting for address to be set")
 	}
-	t.Fatal("timed out waiting for address to be set")
 }
 
 func checkAddressbook(t *testing.T, ab addressbook.Getter, overlay swarm.Address, underlay ma.Multiaddr) {

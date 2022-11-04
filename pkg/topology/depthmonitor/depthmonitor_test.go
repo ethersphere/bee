@@ -12,6 +12,7 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
+	"github.com/ethersphere/bee/pkg/spinlock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
@@ -56,19 +57,14 @@ func newTestSvc(
 func TestDepthMonitorService(t *testing.T) {
 	t.Parallel()
 
-	const depthWaitTimeout = time.Second * 3
 	waitForDepth := func(t *testing.T, svc *depthmonitor.Service, depth uint8) {
 		t.Helper()
-		start := time.Now()
-		for {
-			if time.Since(start) >= depthWaitTimeout {
-				t.Fatalf("timed out waiting for depth expected %d found %d", depth, svc.StorageDepth())
-			}
-			if svc.StorageDepth() != depth {
-				time.Sleep(100 * time.Millisecond)
-				continue
-			}
-			break
+
+		err := spinlock.Wait(time.Second*3, func() bool {
+			return svc.StorageDepth() == depth
+		})
+		if err != nil {
+			t.Fatalf("timed out waiting for depth expected %d found %d", depth, svc.StorageDepth())
 		}
 	}
 
