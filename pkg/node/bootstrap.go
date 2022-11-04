@@ -36,6 +36,7 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/pkg/shed"
+	"github.com/ethersphere/bee/pkg/spinlock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/inmemstore"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -200,7 +201,7 @@ func bootstrapNode(
 		return nil, err
 	}
 
-	if !waitPeers(kad) {
+	if err := waitPeers(kad); err != nil {
 		return nil, errors.New("timed out waiting for kademlia peers")
 	}
 
@@ -273,19 +274,16 @@ func bootstrapNode(
 }
 
 // wait till some peers are connected. returns true if all is ok
-func waitPeers(kad *kademlia.Kad) bool {
-	for i := 0; i < 60; i++ {
-		items := 0
+func waitPeers(kad *kademlia.Kad) error {
+	const minPeersCount = 25
+	return spinlock.WaitWithInterval(time.Minute, time.Second, func() bool {
+		count := 0
 		_ = kad.EachPeer(func(_ swarm.Address, _ uint8) (bool, bool, error) {
-			items++
+			count++
 			return false, false, nil
 		}, topology.Filter{})
-		if items >= 25 {
-			return true
-		}
-		time.Sleep(time.Second)
-	}
-	return false
+		return count >= minPeersCount
+	})
 }
 
 type noopPinger struct{}
