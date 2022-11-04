@@ -117,7 +117,7 @@ func TestSendChunkToSyncWithTag(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = spinlock.Wait(t, spinTimeout, func() bool {
+	err = spinlock.Wait(spinTimeout, func() bool {
 		return checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer) == nil
 	})
 	if err != nil {
@@ -160,7 +160,7 @@ func TestSendChunkToPushSyncWithoutTag(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = spinlock.Wait(t, spinTimeout, func() bool {
+	err = spinlock.Wait(spinTimeout, func() bool {
 		return checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer) == nil
 	})
 	if err != nil {
@@ -198,7 +198,7 @@ func TestSendChunkToPushSyncViaApiChannel(t *testing.T) {
 
 	apiC <- &pusher.Op{Chunk: chunk}
 
-	err := spinlock.Wait(t, spinTimeout, func() bool {
+	err := spinlock.Wait(spinTimeout, func() bool {
 		return checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer) == nil
 	})
 	if err != nil {
@@ -262,7 +262,7 @@ func TestSendChunkAndReceiveInvalidReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = spinlock.Wait(t, spinTimeout, func() bool {
+	err = spinlock.Wait(spinTimeout, func() bool {
 		return checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer) == nil
 	})
 	if err == nil {
@@ -303,7 +303,7 @@ func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = spinlock.Wait(t, time.Second, func() bool {
+	err = spinlock.Wait(time.Second, func() bool {
 		return checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer) == nil
 	})
 	if err == nil {
@@ -348,7 +348,7 @@ func TestPusherRetryShallow(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = spinlock.Wait(t, spinTimeout, func() bool {
+	err = spinlock.Wait(spinTimeout, func() bool {
 		c := int(atomic.LoadInt32(&callCount))
 		return c == retryCount
 	})
@@ -391,7 +391,7 @@ func TestChunkWithInvalidStampSkipped(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = spinlock.Wait(t, spinTimeout, func() bool {
+	err = spinlock.Wait(spinTimeout, func() bool {
 		return checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer) == nil
 	})
 	if err != nil {

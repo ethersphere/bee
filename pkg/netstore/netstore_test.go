@@ -16,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/netstore"
 	"github.com/ethersphere/bee/pkg/postage"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
+	"github.com/ethersphere/bee/pkg/spinlock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
@@ -194,22 +195,23 @@ func TestInvalidPostageStamp(t *testing.T) {
 	}
 }
 
-func waitAndGetChunk(t *testing.T, store storage.Storer, addr swarm.Address, mode storage.ModeGet) swarm.Chunk {
+func waitAndGetChunk(t *testing.T, store storage.Storer, addr swarm.Address, mode storage.ModeGet) (chunk swarm.Chunk) {
 	t.Helper()
 
-	start := time.Now()
-	for {
-		time.Sleep(time.Millisecond * 10)
-
+	err := spinlock.Wait(time.Second*3, func() bool {
 		d, err := store.Get(context.Background(), mode, addr)
 		if err != nil {
-			if time.Since(start) > 3*time.Second {
-				t.Fatal("waited 3 secs for background put operation", err)
-			}
-		} else {
-			return d
+			return false
 		}
+
+		chunk = d
+		return true
+	})
+	if err != nil {
+		t.Fatal("timed out wating on chunk")
 	}
+
+	return
 }
 
 // returns a mock retrieval protocol, a mock local storage and a netstore

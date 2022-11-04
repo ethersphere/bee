@@ -6,16 +6,13 @@ package spinlock
 
 import (
 	"errors"
-	"testing"
 	"time"
 )
 
 var ErrTimedOut = errors.New("timed out waiting for condition")
 
 // Wait blocks execution until condition is satisfied or until it times out.
-func Wait(t *testing.T, timeoutDur time.Duration, cond func() bool) error {
-	t.Helper()
-
+func Wait(timeoutDur time.Duration, cond func() bool) error {
 	timeout := time.NewTimer(timeoutDur)
 	defer timeout.Stop()
 

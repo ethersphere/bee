@@ -311,7 +311,7 @@ func expectOverlaysEventually(t *testing.T, exporter ab.Interface, wantOverlays 
 		}
 	)
 
-	err = spinlock.Wait(t, spinTimeout, func() bool {
+	err = spinlock.Wait(spinTimeout, func() bool {
 		overlays, err = exporter.Overlays()
 		if err != nil {
 			t.Fatal(err)
@@ -350,7 +350,7 @@ func expectBzzAddresessEventually(t *testing.T, exporter ab.Interface, wantBzzAd
 		}
 	)
 
-	err = spinlock.Wait(t, spinTimeout, func() bool {
+	err = spinlock.Wait(spinTimeout, func() bool {
 		addresses, err = exporter.Addresses()
 		if err != nil {
 			t.Fatal(err)

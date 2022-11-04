@@ -18,7 +18,7 @@ func TestWait(t *testing.T) {
 	t.Run("timed out", func(t *testing.T) {
 		t.Parallel()
 
-		err := spinlock.Wait(t, time.Millisecond*20, func() bool { return false })
+		err := spinlock.Wait(time.Millisecond*20, func() bool { return false })
 		if !errors.Is(err, spinlock.ErrTimedOut) {
 			t.Fatal("expecting to time out")
 		}
@@ -29,7 +29,7 @@ func TestWait(t *testing.T) {
 
 		spinStartTime := time.Now()
 		condCallCount := 0
-		err := spinlock.Wait(t, time.Millisecond*200, func() bool {
+		err := spinlock.Wait(time.Millisecond*200, func() bool {
 			condCallCount++
 			return time.Since(spinStartTime) >= time.Millisecond*100
 		})
