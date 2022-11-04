@@ -13,7 +13,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// ErrTxDone is returned by any opCode that is performed on
+// ErrTxDone is returned by any operation that is performed on
 // a transaction that has already been committed or rolled back.
 var ErrTxDone = errors.New("storage: transaction has already been committed or rolled back")
 

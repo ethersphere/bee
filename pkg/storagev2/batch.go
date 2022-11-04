@@ -4,7 +4,14 @@
 
 package storage
 
-import "context"
+import (
+	"context"
+	"errors"
+)
+
+// ErrBatchCommitted is returned by any operation that is
+// performed on a batch that has already been committed.
+var ErrBatchCommitted = errors.New("storage: batch has already been committed")
 
 // Batch provides set of operations that are batched.
 type Batch interface {
@@ -12,7 +19,7 @@ type Batch interface {
 	Put(Item) error
 
 	// Delete adds a new delete operation to the batch.
-	Delete(Key) error
+	Delete(Item) error
 
 	// Commit commits the batch.
 	Commit() error
