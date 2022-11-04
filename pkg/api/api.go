@@ -829,7 +829,7 @@ func (p *pushStamperPutter) Put(ctx context.Context, mode storage.ModePut, chs .
 		if err != nil {
 			return nil, err
 		}
-		if has || containsChunk(c.Address(), chs[:i]...) {
+		if has || containsChunk(c.Address(), chs[:i]) {
 			exists[i] = true
 			continue
 		}
@@ -899,7 +899,7 @@ func (p *stamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...sw
 		if err != nil {
 			return nil, err
 		}
-		if has || containsChunk(c.Address(), chs[:i]...) {
+		if has || containsChunk(c.Address(), chs[:i]) {
 			exists[i] = true
 			continue
 		}
@@ -971,13 +971,8 @@ func requestCalculateNumberOfChunks(r *http.Request) int64 {
 
 // containsChunk returns true if the chunk with a specific address
 // is present in the provided chunk slice.
-func containsChunk(addr swarm.Address, chs ...swarm.Chunk) bool {
-	for _, c := range chs {
-		if addr.Equal(c.Address()) {
-			return true
-		}
-	}
-	return false
+func containsChunk(addr swarm.Address, chunks []swarm.Chunk) bool {
+	return swarm.FindChunkIdxWithAddress(chunks, addr) != -1
 }
 
 func noopWaitFn() error {

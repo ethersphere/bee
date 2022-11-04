@@ -52,13 +52,7 @@ func (s *List) AddOverdraft(address swarm.Address) {
 		return
 	}
 
-	for i, a := range s.addresses {
-		if a.Equal(address) {
-			s.addresses = append(s.addresses[:i], s.addresses[i+1:]...)
-			break
-		}
-	}
-
+	s.addresses = swarm.AddressSliceRemove(s.addresses, address)
 	s.overdraftAddresses = append(s.overdraftAddresses, address)
 }
 

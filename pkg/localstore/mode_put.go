@@ -116,7 +116,7 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 	)
 
 	putChunk := func(ch swarm.Chunk, index int, putOp func(shed.Item) (bool, int64, int64, error)) (bool, int64, int64, error) {
-		if containsChunk(ch.Address(), chs[:index]...) {
+		if containsChunk(ch.Address(), chs[:index]) {
 			return true, 0, 0, nil
 		}
 		item := chunkToItem(ch)
@@ -572,13 +572,8 @@ func (db *DB) incBinID(binIDs map[uint8]uint64, po uint8) (id uint64, err error)
 
 // containsChunk returns true if the chunk with a specific address
 // is present in the provided chunk slice.
-func containsChunk(addr swarm.Address, chs ...swarm.Chunk) bool {
-	for _, c := range chs {
-		if addr.Equal(c.Address()) {
-			return true
-		}
-	}
-	return false
+func containsChunk(addr swarm.Address, chs []swarm.Chunk) bool {
+	return swarm.FindChunkIdxWithAddress(chs, addr) != -1
 }
 
 func later(previous, current shed.Item) bool {

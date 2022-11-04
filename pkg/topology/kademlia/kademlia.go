@@ -1333,11 +1333,8 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, filter topology.
 	}
 
 	err := k.EachPeerRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
-
-		for _, a := range skipPeers {
-			if a.Equal(peer) {
-				return false, false, nil
-			}
+		if swarm.AddressSliceContains(skipPeers, peer) {
+			return false, false, nil
 		}
 
 		if closest.IsZero() {

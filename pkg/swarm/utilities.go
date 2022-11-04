@@ -5,10 +5,30 @@
 package swarm
 
 func AddressSliceContains(addrs []Address, a Address) bool {
-	for _, v := range addrs {
-		if a.Equal(v) {
-			return true
+	return FindAddressIdx(addrs, a) != -1
+}
+
+func AddressSliceRemove(addrs []Address, a Address) []Address {
+	if i := FindAddressIdx(addrs, a); i != -1 {
+		addrs = append(addrs[:i], addrs[i+1:]...)
+	}
+	return addrs
+}
+
+func FindAddressIdx(addrs []Address, a Address) int {
+	for i, v := range addrs {
+		if v.Equal(a) {
+			return i
 		}
 	}
-	return false
+	return -1
+}
+
+func FindChunkIdxWithAddress(chunks []Chunk, a Address) int {
+	for i, c := range chunks {
+		if a.Equal(c.Address()) {
+			return i
+		}
+	}
+	return -1
 }

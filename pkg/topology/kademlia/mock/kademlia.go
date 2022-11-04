@@ -139,12 +139,8 @@ func (m *Mock) Disconnected(peer p2p.Peer) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
-	for i, addr := range m.peers {
-		if addr.Equal(peer.Address) {
-			m.peers = append(m.peers[:i], m.peers[i+1:]...)
-			break
-		}
-	}
+	m.peers = swarm.AddressSliceRemove(m.peers, peer.Address)
+
 	m.Trigger()
 }
 
