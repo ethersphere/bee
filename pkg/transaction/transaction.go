@@ -71,7 +71,7 @@ type StoredTransaction struct {
 type Service interface {
 	io.Closer
 	// Send creates a transaction based on the request (with gasprice increased by provided percentage) and sends it.
-	Send(ctx context.Context, request *TxRequest, boost int) (txHash common.Hash, err error)
+	Send(ctx context.Context, request *TxRequest, priceBoostPercent int) (txHash common.Hash, err error)
 	// Call simulate a transaction based on the request.
 	Call(ctx context.Context, request *TxRequest) (result []byte, err error)
 	// WaitForReceipt waits until either the transaction with the given hash has been mined or the context is cancelled.
@@ -140,7 +140,7 @@ func NewService(logger log.Logger, backend Backend, signer crypto.Signer, store 
 }
 
 // Send creates and signs a transaction based on the request and sends it.
-func (t *transactionService) Send(ctx context.Context, request *TxRequest, boostPercent int) (txHash common.Hash, err error) {
+func (t *transactionService) Send(ctx context.Context, request *TxRequest, priceBoostPercent int) (txHash common.Hash, err error) {
 	loggerV1 := t.logger.V(1).Register()
 
 	t.lock.Lock()
@@ -151,7 +151,7 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest, boost
 		return common.Hash{}, err
 	}
 
-	tx, err := t.prepareTransaction(ctx, request, nonce, boostPercent)
+	tx, err := t.prepareTransaction(ctx, request, nonce, priceBoostPercent)
 	if err != nil {
 		return common.Hash{}, err
 	}
