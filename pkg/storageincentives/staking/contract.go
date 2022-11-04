@@ -79,7 +79,7 @@ func (s *contract) sendApproveTransaction(ctx context.Context, amount *big.Int) 
 		GasLimit:    65000,
 		Value:       big.NewInt(0),
 		Description: approveDescription,
-	})
+	}, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +106,7 @@ func (s *contract) sendTransaction(ctx context.Context, callData []byte, desc st
 		Description: desc,
 	}
 
-	txHash, err := s.transactionService.Send(ctx, request)
+	txHash, err := s.transactionService.Send(ctx, request, 0)
 	if err != nil {
 		return nil, err
 	}
