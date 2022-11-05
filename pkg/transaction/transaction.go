@@ -43,6 +43,8 @@ var (
 
 // minGasPrice determines the minimum gas price
 // threshold (in wei) for the creation of a transaction.
+const defaultBoostPercent = 10
+
 var minGasPrice = big.NewInt(1000)
 
 // TxRequest describes a request for a transaction that can be executed.
@@ -272,25 +274,28 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 		gasLimit = request.GasLimit
 	}
 
-	gasPrice := request.GasPrice
-	if gasPrice == nil {
-		gasPriceSuggested, err := t.backend.SuggestGasPrice(ctx)
-		gasPrice = new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(boostPercent)+100), gasPriceSuggested), big.NewInt(100))
-		if err != nil {
-			return nil, err
-		}
+	// gasPrice := request.GasPrice
+	gasPriceSuggested, err := t.backend.SuggestGasPrice(ctx)
+	if err != nil {
+		return nil, err
 	}
+	if boostPercent == 0 {
+		boostPercent = defaultBoostPercent
+	}
+	gasPrice := new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(boostPercent)+100), gasPriceSuggested), big.NewInt(100))
 	if gasPrice.Cmp(minGasPrice) < 0 {
 		return nil, ErrGasPriceTooLow
 	}
 
-	return types.NewTx(&types.LegacyTx{
-		Nonce:    nonce,
-		To:       request.To,
-		Value:    request.Value,
-		Gas:      gasLimit,
-		GasPrice: gasPrice,
-		Data:     request.Data,
+	return types.NewTx(&types.DynamicFeeTx{
+		Nonce:     nonce,
+		ChainID:   t.chainID,
+		To:        request.To,
+		Value:     request.Value,
+		Gas:       gasLimit,
+		GasTipCap: gasPrice,
+		GasFeeCap: gasPrice,
+		Data:      request.Data,
 	}), nil
 }
 
