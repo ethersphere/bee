@@ -14,6 +14,7 @@ import (
 	inmem "github.com/ethersphere/bee/pkg/storagev2/inmemstore"
 	"github.com/ethersphere/bee/pkg/storagev2/storagetest"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/google/go-cmp/cmp"
 )
 
 func TestCacheStateItem(t *testing.T) {
@@ -32,7 +33,7 @@ func TestCacheStateItem(t *testing.T) {
 		name: "zero and non-zero 1",
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
 			Item: &cache.CacheState{
-				End: swarm.NewAddress(storagetest.MaxAddressBytes[:]),
+				Tail: swarm.NewAddress(storagetest.MaxAddressBytes[:]),
 			},
 			Factory: func() storage.Item { return new(cache.CacheState) },
 		},
@@ -40,7 +41,7 @@ func TestCacheStateItem(t *testing.T) {
 		name: "zero and non-zero 2",
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
 			Item: &cache.CacheState{
-				Start: swarm.NewAddress(storagetest.MaxAddressBytes[:]),
+				Head: swarm.NewAddress(storagetest.MaxAddressBytes[:]),
 			},
 			Factory: func() storage.Item { return new(cache.CacheState) },
 		},
@@ -48,8 +49,8 @@ func TestCacheStateItem(t *testing.T) {
 		name: "max values",
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
 			Item: &cache.CacheState{
-				Start: swarm.NewAddress(storagetest.MaxAddressBytes[:]),
-				End:   swarm.NewAddress(storagetest.MaxAddressBytes[:]),
+				Head:  swarm.NewAddress(storagetest.MaxAddressBytes[:]),
+				Tail:  swarm.NewAddress(storagetest.MaxAddressBytes[:]),
 				Count: math.MaxUint64,
 			},
 			Factory: func() storage.Item { return new(cache.CacheState) },
@@ -150,10 +151,11 @@ func TestCache(t *testing.T) {
 			store:   inmem.New(),
 			chStore: inmemchunkstore.New(),
 		}
-		_, err := cache.New(st, 10)
+		c, err := cache.New(st, 10)
 		if err != nil {
 			t.Fatal(err)
 		}
+		verifyCacheState(t, c, swarm.ZeroAddress, swarm.ZeroAddress, 0)
 	})
 
 	t.Run("putter", func(t *testing.T) {
@@ -290,8 +292,8 @@ func TestCache(t *testing.T) {
 			}
 		})
 
-		t.Run("not in cache doest affect state", func(t *testing.T) {
-			start, end, count := c.State()
+		t.Run("not in cache doesnt affect state", func(t *testing.T) {
+			state := c.State()
 
 			for i := 0; i < 5; i++ {
 				extraChunk := chunktest.GenerateTestRandomChunk()
@@ -306,7 +308,7 @@ func TestCache(t *testing.T) {
 				if !readChunk.Equal(extraChunk) {
 					t.Fatalf("incorrect chunk: %s", extraChunk.Address())
 				}
-				verifyCacheState(t, c, start, end, count)
+				verifyCacheState(t, c, state.Head, state.Tail, state.Count)
 			}
 		})
 	})
@@ -320,18 +322,11 @@ func verifyCacheState(
 ) {
 	t.Helper()
 
-	start, end, count := c.State()
+	state := c.State()
+	expState := cache.CacheState{Head: expStart, Tail: expEnd, Count: expCount}
 
-	if !start.Equal(expStart) {
-		t.Fatalf("unexpected start, exp: %s found: %s", expStart, start)
-	}
-
-	if !end.Equal(expEnd) {
-		t.Fatalf("unexpected end, exp: %s found: %s", expEnd, end)
-	}
-
-	if expCount != count {
-		t.Fatalf("unexpected count, exp: %d found: %d", expCount, count)
+	if !cmp.Equal(expState, state) {
+		t.Fatalf("state mismatch (-want +have):\n%s", cmp.Diff(expState, state))
 	}
 }
 
@@ -343,14 +338,14 @@ func verifyCacheOrder(
 ) {
 	t.Helper()
 
-	start, end, count := c.State()
+	state := c.State()
 
-	if uint64(len(chs)) != count {
-		t.Fatalf("unexpected count, exp: %d found: %d", count, len(chs))
+	if uint64(len(chs)) != state.Count {
+		t.Fatalf("unexpected count, exp: %d found: %d", state.Count, len(chs))
 	}
 
 	idx := 0
-	err := c.IterateOldToNew(st, start, end, func(entry swarm.Address) (bool, error) {
+	err := c.IterateOldToNew(st, state.Head, state.Tail, func(entry swarm.Address) (bool, error) {
 		if !chs[idx].Address().Equal(entry) {
 			return true, fmt.Errorf(
 				"incorrect order of cache items, idx: %d exp: %s found: %s",

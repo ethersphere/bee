@@ -16,14 +16,14 @@ var (
 	ErrUnmarshalCacheEntryInvalidSize  = errUnmarshalCacheEntryInvalidSize
 )
 
-func (c *Cache) State() (swarm.Address, swarm.Address, uint64) {
+func (c *Cache) State() CacheState {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
-	start := c.state.Start.Clone()
-	end := c.state.End.Clone()
+	start := c.state.Head.Clone()
+	end := c.state.Tail.Clone()
 
-	return start, end, c.state.Count
+	return cacheState{Head: start, Tail: end, Count: c.state.Count}
 }
 
 func (c *Cache) IterateOldToNew(
