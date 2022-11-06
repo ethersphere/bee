@@ -494,14 +494,14 @@ func TestPeerGone(t *testing.T) {
 
 	p, _, kad, pullsync := newPuller(opts{
 		kad: []mockk.Option{
-			mockk.WithEachPeerRevCalls(mockk.AddrTuple{Addr: addr, PO: 0}),
+			mockk.WithEachPeerRevCalls(mockk.AddrTuple{Addr: addr, PO: 1}),
 			mockk.WithDepth(0),
 		},
 		pullSync: []mockps.Option{
-			mockps.WithCursors([]uint64{1}),
+			mockps.WithCursors([]uint64{1, 1}),
 		},
-		bins:         1,
-		syncRadius:   0,
+		bins:         2,
+		syncRadius:   1,
 		syncSleepDur: time.Millisecond * 10,
 	})
 	defer p.Close()

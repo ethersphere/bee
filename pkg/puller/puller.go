@@ -167,23 +167,23 @@ func (p *Puller) recalcPeers(ctx context.Context, syncRadius uint8) {
 
 		for _, peer := range peers {
 
+			peer.Lock()
+
 			if bin < int(syncRadius) {
 				peer.cancelBins(uint8(bin))
-				continue
+			} else {
+				err := p.syncPeer(ctx, peer, syncRadius)
+				if err != nil {
+					loggerV2.Error(err, "recalc peers sync failed", "bin", bin, "peer", peer.address)
+				}
 			}
 
-			err := p.syncPeer(ctx, peer, syncRadius)
-			if err != nil {
-				loggerV2.Error(err, "recalc peers sync failed", "bin", bin, "peer", peer.address)
-			}
+			peer.Unlock()
 		}
 	}
 }
 
 func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, syncRadius uint8) error {
-	peer.Lock()
-	defer peer.Unlock()
-
 	if peer.cursors == nil {
 		cursors, err := p.syncer.GetCursors(ctx, peer.address)
 		if err != nil {
@@ -409,6 +409,7 @@ type syncPeer struct {
 func newSyncPeer(addr swarm.Address, po, bins uint8) *syncPeer {
 	return &syncPeer{
 		address:        addr,
+		po:             po,
 		binCancelFuncs: make(map[uint8]func(), bins),
 	}
 }
