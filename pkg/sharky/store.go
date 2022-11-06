@@ -66,7 +66,6 @@ func New(basedir fs.FS, shardCnt int, maxDataSize int) (*Store, error) {
 	return store, nil
 }
 
-// Close closes each shard and return incidental errors from each shard
 func (s *Store) Close() error {
 	close(s.quit)
 
