@@ -144,7 +144,7 @@ func (s *cashoutService) CashCheque(ctx context.Context, chequebook, recipient c
 		To:          &chequebook,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 300000),
+		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 300_000),
 		Value:       big.NewInt(0),
 		Description: "cheque cashout",
 	}

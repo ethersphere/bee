@@ -106,7 +106,7 @@ func (c *contract) Claim(ctx context.Context) error {
 		To:          &c.incentivesContractAddress,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 9_000_000),
+		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 1_000_000),
 		Value:       big.NewInt(0),
 		Description: "claim win transaction",
 	}
