@@ -90,7 +90,7 @@ func (d *defaultSigner) Sign(data []byte) (signature []byte, err error) {
 
 // SignTx signs an ethereum transaction.
 func (d *defaultSigner) SignTx(transaction *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
-	txSigner := types.NewEIP155Signer(chainID)
+	txSigner := types.NewLondonSigner(chainID)
 	hash := txSigner.Hash(transaction).Bytes()
 	// isCompressedKey is false here so we get the expected v value (27 or 28)
 	signature, err := d.sign(hash, false)

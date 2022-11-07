@@ -147,6 +147,17 @@ func (b *wrappedBackend) SuggestGasPrice(ctx context.Context) (*big.Int, error) 
 	return gasPrice, nil
 }
 
+func (b *wrappedBackend) SuggestGasTipCap(ctx context.Context) (*big.Int, error) {
+	b.metrics.TotalRPCCalls.Inc()
+	b.metrics.SuggestGasPriceCalls.Inc()
+	gasTipCap, err := b.backend.SuggestGasTipCap(ctx)
+	if err != nil {
+		b.metrics.TotalRPCErrors.Inc()
+		return nil, err
+	}
+	return gasTipCap, nil
+}
+
 func (b *wrappedBackend) EstimateGas(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error) {
 	b.metrics.TotalRPCCalls.Inc()
 	b.metrics.EstimateGasCalls.Inc()
