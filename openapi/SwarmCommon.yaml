@@ -655,6 +655,10 @@ components:
           $ref: "#/components/schemas/BigInt"
         gasLimit:
           type: integer
+        gasTipCap:
+          $ref: "#/components/schemas/BigInt"
+        gasFeeCap:
+          $ref: "#/components/schemas/BigInt"
         data:
           type: string
         created:
