@@ -323,7 +323,7 @@ func TestPeerDisconnected(t *testing.T) {
 	kad.Trigger()
 	time.Sleep(50 * time.Millisecond)
 
-	if puller.IsSyncing(p, addr) {
+	if p.IsSyncing(addr) {
 		t.Fatalf("peer is syncing but shouldnt")
 	}
 }
@@ -530,7 +530,7 @@ func TestPeerGone(t *testing.T) {
 		t.Fatalf("unexpected new calls to sync interval, expected 0, got %d", len(afterCalls)-len(beforeCalls))
 	}
 
-	if puller.IsSyncing(p, addr) {
+	if p.IsSyncing(addr) {
 		t.Fatalf("peer is syncing but shouldnt")
 	}
 }
