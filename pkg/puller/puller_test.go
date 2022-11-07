@@ -413,15 +413,18 @@ func TestDepthChange(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
+			var syncRadius uint8
+			if len(tc.binsSyncing) > 0 {
+				syncRadius = tc.binsSyncing[0]
+			}
+
 			puller, st, kad, pullsync := newPuller(opts{
 				kad: []mockk.Option{
-					mockk.WithEachPeerRevCalls(
-						mockk.AddrTuple{Addr: addr, PO: 3},
-					), mockk.WithDepthCalls(tc.depths...),
+					mockk.WithEachPeerRevCalls(mockk.AddrTuple{Addr: addr, PO: 3}), mockk.WithDepthCalls(tc.depths...),
 				},
 				pullSync:   []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithLateSyncReply(tc.syncReplies...)},
 				bins:       5,
-				syncRadius: tc.depths[len(tc.depths)-1],
+				syncRadius: syncRadius,
 			})
 			defer puller.Close()
 			defer pullsync.Close()
@@ -433,7 +436,7 @@ func TestDepthChange(t *testing.T) {
 				time.Sleep(100 * time.Millisecond)
 			}
 			pullsync.TriggerChange()
-			time.Sleep(100 * time.Millisecond)
+			time.Sleep(time.Second)
 
 			// check the intervals
 			for _, b := range tc.binsSyncing {
