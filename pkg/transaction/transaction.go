@@ -43,7 +43,7 @@ var (
 
 // minGasPrice determines the minimum gas price
 // threshold (in wei) for the creation of a transaction.
-var minGasPrice = big.NewInt(1000)
+const DefaultTipBoostPercent = 20
 
 // TxRequest describes a request for a transaction that can be executed.
 type TxRequest struct {
@@ -71,7 +71,7 @@ type StoredTransaction struct {
 type Service interface {
 	io.Closer
 	// Send creates a transaction based on the request (with gasprice increased by provided percentage) and sends it.
-	Send(ctx context.Context, request *TxRequest, priceBoostPercent int) (txHash common.Hash, err error)
+	Send(ctx context.Context, request *TxRequest, tipCapBoostPercent int) (txHash common.Hash, err error)
 	// Call simulate a transaction based on the request.
 	Call(ctx context.Context, request *TxRequest) (result []byte, err error)
 	// WaitForReceipt waits until either the transaction with the given hash has been mined or the context is cancelled.
@@ -140,7 +140,7 @@ func NewService(logger log.Logger, backend Backend, signer crypto.Signer, store 
 }
 
 // Send creates and signs a transaction based on the request and sends it.
-func (t *transactionService) Send(ctx context.Context, request *TxRequest, priceBoostPercent int) (txHash common.Hash, err error) {
+func (t *transactionService) Send(ctx context.Context, request *TxRequest, tipCapBoostPercent int) (txHash common.Hash, err error) {
 	loggerV1 := t.logger.V(1).Register()
 
 	t.lock.Lock()
@@ -151,7 +151,7 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest, price
 		return common.Hash{}, err
 	}
 
-	tx, err := t.prepareTransaction(ctx, request, nonce, priceBoostPercent)
+	tx, err := t.prepareTransaction(ctx, request, nonce, tipCapBoostPercent)
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -254,7 +254,7 @@ func (t *transactionService) StoredTransaction(txHash common.Hash) (*StoredTrans
 }
 
 // prepareTransaction creates a signable transaction based on a request.
-func (t *transactionService) prepareTransaction(ctx context.Context, request *TxRequest, nonce uint64, boostPercent int) (tx *types.Transaction, err error) {
+func (t *transactionService) prepareTransaction(ctx context.Context, request *TxRequest, nonce uint64, tipPercent int) (tx *types.Transaction, err error) {
 	var gasLimit uint64
 	if request.GasLimit == 0 {
 		gasLimit, err = t.backend.EstimateGas(ctx, ethereum.CallMsg{
@@ -272,25 +272,43 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 		gasLimit = request.GasLimit
 	}
 
+	/*
+		Transactions are EIP 1559 dynamic transactions where there are three fee related fields:
+			1. base fee is the price that will be burned as part of the transaction.
+			2. max fee is the max price we are willing to spend as gas price.
+			3. max priority fee is max price want to give to the miner to prioritize the transaction.
+		as an example:
+		if base fee is 15, max fee is 20, and max priority is 3, gas price will be 15 + 3 = 18
+		if base is 15, max fee is 20, and max priority fee is 10,
+		gas price will be 15 + 10 = 25, but since 25 > 20, gas price is 20.
+		notice that gas price does not exceed 20 as defined by max fee.
+	*/
+
 	gasPrice := request.GasPrice
 	if gasPrice == nil {
-		gasPriceSuggested, err := t.backend.SuggestGasPrice(ctx)
-		gasPrice = new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(boostPercent)+100), gasPriceSuggested), big.NewInt(100))
+		gasPrice, err = t.backend.SuggestGasPrice(ctx)
 		if err != nil {
 			return nil, err
 		}
 	}
-	if gasPrice.Cmp(minGasPrice) < 0 {
-		return nil, ErrGasPriceTooLow
+
+	gasTipCap, err := t.backend.SuggestGasTipCap(ctx)
+	if err != nil {
+		return nil, err
 	}
 
-	return types.NewTx(&types.LegacyTx{
-		Nonce:    nonce,
-		To:       request.To,
-		Value:    request.Value,
-		Gas:      gasLimit,
-		GasPrice: gasPrice,
-		Data:     request.Data,
+	gasTipCap = new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(tipPercent)+100), gasTipCap), big.NewInt(100))
+	gasFeeCap := new(big.Int).Add(gasTipCap, gasPrice)
+
+	return types.NewTx(&types.DynamicFeeTx{
+		Nonce:     nonce,
+		ChainID:   t.chainID,
+		To:        request.To,
+		Value:     request.Value,
+		Gas:       gasLimit,
+		GasTipCap: gasTipCap,
+		GasFeeCap: gasFeeCap,
+		Data:      request.Data,
 	}), nil
 }
 
@@ -385,13 +403,15 @@ func (t *transactionService) ResendTransaction(ctx context.Context, txHash commo
 		return err
 	}
 
-	tx := types.NewTx(&types.LegacyTx{
-		Nonce:    storedTransaction.Nonce,
-		To:       storedTransaction.To,
-		Value:    storedTransaction.Value,
-		Gas:      storedTransaction.GasLimit,
-		GasPrice: storedTransaction.GasPrice,
-		Data:     storedTransaction.Data,
+	tx := types.NewTx(&types.DynamicFeeTx{
+		Nonce:     storedTransaction.Nonce,
+		ChainID:   t.chainID,
+		To:        storedTransaction.To,
+		Value:     storedTransaction.Value,
+		Gas:       storedTransaction.GasLimit,
+		GasTipCap: storedTransaction.GasPrice,
+		GasFeeCap: storedTransaction.GasPrice,
+		Data:      storedTransaction.Data,
 	})
 
 	signedTx, err := t.signer.SignTx(tx, t.chainID)
@@ -425,13 +445,15 @@ func (t *transactionService) CancelTransaction(ctx context.Context, originalTxHa
 		return common.Hash{}, ErrGasPriceTooLow
 	}
 
-	signedTx, err := t.signer.SignTx(types.NewTx(&types.LegacyTx{
-		Nonce:    storedTransaction.Nonce,
-		To:       &t.sender,
-		Value:    big.NewInt(0),
-		Gas:      21000,
-		GasPrice: gasPrice,
-		Data:     []byte{},
+	signedTx, err := t.signer.SignTx(types.NewTx(&types.DynamicFeeTx{
+		Nonce:     storedTransaction.Nonce,
+		ChainID:   t.chainID,
+		To:        &t.sender,
+		Value:     big.NewInt(0),
+		Gas:       21000,
+		GasTipCap: gasPrice,
+		GasFeeCap: gasPrice,
+		Data:      []byte{},
 	}), t.chainID)
 	if err != nil {
 		return common.Hash{}, err

@@ -19,6 +19,7 @@ type backendMock struct {
 	codeAt             func(ctx context.Context, contract common.Address, blockNumber *big.Int) ([]byte, error)
 	sendTransaction    func(ctx context.Context, tx *types.Transaction) error
 	suggestGasPrice    func(ctx context.Context) (*big.Int, error)
+	suggestGasTipCap   func(ctx context.Context) (*big.Int, error)
 	estimateGas        func(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error)
 	transactionReceipt func(ctx context.Context, txHash common.Hash) (*types.Receipt, error)
 	pendingNonceAt     func(ctx context.Context, account common.Address) (uint64, error)
@@ -130,6 +131,9 @@ func (m *backendMock) NonceAt(ctx context.Context, account common.Address, block
 }
 
 func (m *backendMock) SuggestGasTipCap(ctx context.Context) (*big.Int, error) {
+	if m.suggestGasPrice != nil {
+		return m.suggestGasTipCap(ctx)
+	}
 	return nil, errors.New("not implemented")
 }
 
@@ -178,6 +182,12 @@ func WithPendingNonceAtFunc(f func(ctx context.Context, account common.Address) 
 func WithSuggestGasPriceFunc(f func(ctx context.Context) (*big.Int, error)) Option {
 	return optionFunc(func(s *backendMock) {
 		s.suggestGasPrice = f
+	})
+}
+
+func WithSuggestGasTipCapFunc(f func(ctx context.Context) (*big.Int, error)) Option {
+	return optionFunc(func(s *backendMock) {
+		s.suggestGasTipCap = f
 	})
 }
 
