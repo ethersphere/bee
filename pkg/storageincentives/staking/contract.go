@@ -106,7 +106,7 @@ func (s *contract) sendTransaction(ctx context.Context, callData []byte, desc st
 		Description: desc,
 	}
 
-	txHash, err := s.transactionService.Send(ctx, request, 0)
+	txHash, err := s.transactionService.Send(ctx, request, transaction.DefaultTipPercent)
 	if err != nil {
 		return nil, err
 	}
