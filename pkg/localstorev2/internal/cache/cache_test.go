@@ -135,22 +135,37 @@ func TestCacheEntryItem(t *testing.T) {
 type testStorage struct {
 	store   storage.Store
 	chStore storage.ChunkStore
+	putFn   func(storage.Item) error
 }
 
 func (testStorage) Ctx() context.Context { return context.TODO() }
 
 func (t *testStorage) Store() storage.Store {
-	return t.store
+	return &wrappedStore{Store: t.store, putFn: t.putFn}
 }
 
 func (t *testStorage) ChunkStore() storage.ChunkStore {
 	return t.chStore
 }
 
+type wrappedStore struct {
+	storage.Store
+	putFn func(storage.Item) error
+}
+
+func (w *wrappedStore) Put(i storage.Item) error {
+	if w.putFn != nil {
+		return w.putFn(i)
+	}
+	return w.Store.Put(i)
+}
+
 func TestCache(t *testing.T) {
 	t.Parallel()
 
 	t.Run("fresh new cache", func(t *testing.T) {
+		t.Parallel()
+
 		st := &testStorage{
 			store:   inmem.New(),
 			chStore: inmemchunkstore.New(),
@@ -163,6 +178,8 @@ func TestCache(t *testing.T) {
 	})
 
 	t.Run("putter", func(t *testing.T) {
+		t.Parallel()
+
 		st := &testStorage{
 			store:   inmem.New(),
 			chStore: inmemchunkstore.New(),
@@ -216,6 +233,7 @@ func TestCache(t *testing.T) {
 					verifyCacheOrder(t, c, st.Store(), append(chunks[idx+1:], chunks2[:idx+1]...)...)
 				}
 			}
+			verifyChunksDeleted(t, st.ChunkStore(), chunks...)
 		})
 
 		t.Run("new with lower capacity", func(t *testing.T) {
@@ -225,10 +243,13 @@ func TestCache(t *testing.T) {
 			}
 			verifyCacheState(t, c2, chunks2[5].Address(), chunks2[len(chunks)-1].Address(), 5)
 			verifyCacheOrder(t, c2, st.Store(), chunks2[5:]...)
+			verifyChunksDeleted(t, st.ChunkStore(), chunks[:5]...)
 		})
 	})
 
 	t.Run("getter", func(t *testing.T) {
+		t.Parallel()
+
 		st := &testStorage{
 			store:   inmem.New(),
 			chStore: inmemchunkstore.New(),
@@ -316,6 +337,62 @@ func TestCache(t *testing.T) {
 			}
 		})
 	})
+	t.Run("handle error", func(t *testing.T) {
+		t.Parallel()
+
+		st := &testStorage{
+			store:   inmem.New(),
+			chStore: inmemchunkstore.New(),
+		}
+		c, err := cache.New(st, 10)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		chunks := chunktest.GenerateTestRandomChunks(5)
+
+		for _, ch := range chunks {
+			found, err := c.Putter(st.Store(), st.ChunkStore()).Put(context.TODO(), ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if found {
+				t.Fatalf("expected chunk %s to not be found", ch.Address())
+			}
+		}
+		// return error for state update, which occurs at the end of Get/Put operations
+		retErr := errors.New("dummy error")
+		st.putFn = func(i storage.Item) error {
+			if i.Namespace() == "cacheState" {
+				return retErr
+			}
+			return st.store.Put(i)
+		}
+
+		// on error the cache expects the overarching transactions to clean itself up
+		// and undo any store updates. So here we only want to ensure the state is
+		// reverted to correct one.
+		t.Run("put error handling", func(t *testing.T) {
+			newChunk := chunktest.GenerateTestRandomChunk()
+			_, err := c.Putter(st.Store(), st.ChunkStore()).Put(context.TODO(), newChunk)
+			if !errors.Is(err, retErr) {
+				t.Fatalf("expected error %v during put, found %v", retErr, err)
+			}
+
+			// state should be preserved on failure
+			verifyCacheState(t, c, chunks[0].Address(), chunks[4].Address(), 5)
+		})
+
+		t.Run("get error handling", func(t *testing.T) {
+			_, err := c.Getter(st.Store(), st.ChunkStore()).Get(context.TODO(), chunks[2].Address())
+			if !errors.Is(err, retErr) {
+				t.Fatalf("expected error %v during get, found %v", retErr, err)
+			}
+
+			// state should be preserved on failure
+			verifyCacheState(t, c, chunks[0].Address(), chunks[4].Address(), 5)
+		})
+	})
 }
 
 func verifyCacheState(
@@ -361,5 +438,27 @@ func verifyCacheOrder(
 	})
 	if err != nil {
 		t.Fatalf("failed at index %d err %s", idx, err)
+	}
+}
+
+func verifyChunksDeleted(
+	t *testing.T,
+	chStore storage.ChunkStore,
+	chs ...swarm.Chunk,
+) {
+	t.Helper()
+
+	for _, ch := range chs {
+		found, err := chStore.Has(context.TODO(), ch.Address())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if found {
+			t.Fatalf("chunk %s expected to not be found but exists", ch.Address())
+		}
+		_, err = chStore.Get(context.TODO(), ch.Address())
+		if !errors.Is(err, storage.ErrNotFound) {
+			t.Fatalf("expected error %v but found %v", storage.ErrNotFound, err)
+		}
 	}
 }
