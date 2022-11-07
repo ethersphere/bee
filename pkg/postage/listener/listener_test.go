@@ -290,7 +290,6 @@ func TestListener(t *testing.T) {
 		l := listener.New(c, logger, mf, postageStampAddress, 1, 50*time.Millisecond, 0*time.Second)
 		<-l.Listen(0, ev, nil)
 
-		time.Sleep(time.Millisecond * 100)
 		select {
 		case <-c.C:
 		case <-time.After(5 * time.Second):
@@ -315,7 +314,6 @@ func TestListener(t *testing.T) {
 			t.Fatal("timed out waiting for block number update")
 		}
 
-		time.Sleep(time.Millisecond * 100)
 		select {
 		case <-c.C:
 		case <-time.After(time.Second * 5):

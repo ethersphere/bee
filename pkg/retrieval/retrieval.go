@@ -306,7 +306,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 		if err != nil {
 			_ = stream.Reset()
 		} else {
-			go stream.FullClose()
+			_ = stream.FullClose()
 		}
 	}()
 
