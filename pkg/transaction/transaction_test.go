@@ -34,7 +34,7 @@ func signerMockForTransaction(t *testing.T, signedTx *types.Transaction, sender 
 
 	return signermock.New(
 		signermock.WithSignTxFunc(func(transaction *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
-			if transaction.Type() != 0 {
+			if transaction.Type() != 2 {
 				t.Fatalf("wrong transaction type. wanted 0, got %d", transaction.Type())
 			}
 			if signedTx.To() == nil {

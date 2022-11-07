@@ -334,7 +334,7 @@ func (s *service) Withdraw(ctx context.Context, amount *big.Int) (hash common.Ha
 		Description: fmt.Sprintf("chequebook withdrawal of %d BZZ", amount),
 	}
 
-	txHash, err := s.transactionService.Send(ctx, request, 0)
+	txHash, err := s.transactionService.Send(ctx, request, transaction.DefaultTipPercent)
 	if err != nil {
 		return common.Hash{}, err
 	}
