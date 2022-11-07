@@ -14,7 +14,7 @@ var (
 	xdaiChainID   = int64(100)
 	// start block
 	// replace this with
-	goerliStartBlock = uint64(7865424)
+	goerliStartBlock = uint64(7590423)
 	xdaiStartBlock   = uint64(24180961)
 	// factory address
 	goerliContractAddress      = common.HexToAddress("0x0c9de531dcb38b758fe8a2c163444a5e54ee0db2")
