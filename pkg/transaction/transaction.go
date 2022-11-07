@@ -274,6 +274,17 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 		gasLimit = request.GasLimit
 	}
 
+	/* Transactions are EIP 1559 dynamic transactions where there are three fee related fields:
+		1. base fee is the price that will be burned as part of the transaction.
+		2. max fee is the max price we are willing to spend as gas price.
+		3. max priority fee is max price want to give to the miner to prioritize the transaction.
+	as an example:
+	if base fee is 15, max fee is 20, and max priority is 3, gas price will be 15 + 3 = 18
+	if base is 15, max fee is 20, and max priority fee is 10,
+	gas price will be 15 + 10 = 25, but since 25 > 20, gas price is 20.
+	notice that gas price does not exceed 20 as defined by max fee.
+	*/
+
 	gasPrice := request.GasPrice
 	if gasPrice == nil {
 		gasPrice, err = t.backend.SuggestGasPrice(ctx)
@@ -292,7 +303,7 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 		To:        request.To,
 		Value:     request.Value,
 		Gas:       gasLimit,
-		GasTipCap: gasPrice,
+		GasTipCap: gasPrice, // here we can use the same gas price as gas fee cap provides an upperbound
 		GasFeeCap: gasPrice,
 		Data:      request.Data,
 	}), nil
