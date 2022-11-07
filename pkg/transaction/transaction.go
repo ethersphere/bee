@@ -51,6 +51,8 @@ type TxRequest struct {
 	Data        []byte          // transaction data
 	GasPrice    *big.Int        // gas price or nil if suggested gas price should be used
 	GasLimit    uint64          // gas limit or 0 if it should be estimated
+	GasTipCap   *big.Int        // adds a tip for the miner for prioritizing transaction
+	GasFeeCap   *big.Int        // adds a cap to maximum fee user is willing to pay
 	Value       *big.Int        // amount of wei to send
 	Description string          // optional description
 }
@@ -60,6 +62,8 @@ type StoredTransaction struct {
 	Data        []byte          // transaction data
 	GasPrice    *big.Int        // used gas price
 	GasLimit    uint64          // used gas limit
+	GasTipCap   *big.Int        // adds a tip for the miner for prioritizing transaction
+	GasFeeCap   *big.Int        // adds a cap to maximum fee user is willing to pay
 	Value       *big.Int        // amount of wei to send
 	Nonce       uint64          // used nonce
 	Created     int64           // creation timestamp
@@ -180,6 +184,8 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest, boost
 		Data:        signedTx.Data(),
 		GasPrice:    signedTx.GasPrice(),
 		GasLimit:    signedTx.Gas(),
+		GasTipCap:   signedTx.GasTipCap(),
+		GasFeeCap:   signedTx.GasFeeCap(),
 		Value:       signedTx.Value(),
 		Nonce:       signedTx.Nonce(),
 		Created:     time.Now().Unix(),
@@ -277,10 +283,12 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 		if err != nil {
 			return nil, err
 		}
-		if boostPercent != 0 {
-			request.GasPrice = new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(boostPercent)+100), request.GasPrice), big.NewInt(100))
-		}
 	}
+
+	if boostPercent != 0 {
+		request.GasPrice = new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(boostPercent)+100), request.GasPrice), big.NewInt(100))
+	}
+
 	if request.GasPrice.Cmp(minGasPrice) < 0 {
 		return nil, ErrGasPriceTooLow
 	}
@@ -291,7 +299,7 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 		To:        request.To,
 		Value:     request.Value,
 		Gas:       gasLimit,
-		GasTipCap: request.GasPrice,
+		GasTipCap: nil,
 		GasFeeCap: request.GasPrice,
 		Data:      request.Data,
 	}), nil
