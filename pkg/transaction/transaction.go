@@ -58,7 +58,7 @@ type StoredTransaction struct {
 	To          *common.Address // recipient of the transaction
 	Data        []byte          // transaction data
 	GasPrice    *big.Int        // used gas price
-	GasTipBoost int             // percantage used to boost the priority fee (eg: tip)
+	GasTipBoost int             // percentage used to boost the priority fee (eg: tip)
 	GasLimit    uint64          // used gas limit
 	Value       *big.Int        // amount of wei to send
 	Nonce       uint64          // used nonce
