@@ -291,10 +291,10 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 		if err != nil {
 			return nil, err
 		}
+		gasPrice = new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(tipPercent)+100), gasPrice), big.NewInt(100))
 	} else if gasPrice.Cmp(minGasPrice) < 0 {
 		return nil, ErrGasPriceTooLow
 	}
-	gasPrice = new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(tipPercent)+100), gasPrice), big.NewInt(100))
 
 	return types.NewTx(&types.DynamicFeeTx{
 		Nonce:     nonce,
