@@ -31,7 +31,6 @@ func nonceKey(sender common.Address) string {
 
 func signerMockForTransaction(t *testing.T, signedTx *types.Transaction, sender common.Address, signerChainID *big.Int) crypto.Signer {
 	t.Helper()
-
 	return signermock.New(
 		signermock.WithSignTxFunc(func(transaction *types.Transaction, chainID *big.Int) (*types.Transaction, error) {
 			if transaction.Type() != 2 {
@@ -135,6 +134,9 @@ func TestTransactionSend(t *testing.T) {
 				backendmock.WithPendingNonceAtFunc(func(ctx context.Context, account common.Address) (uint64, error) {
 					return nonce - 1, nil
 				}),
+				backendmock.WithSuggestGasTipCapFunc(func(ctx context.Context) (*big.Int, error) {
+					return big.NewInt(0), nil
+				}),
 			),
 			signerMockForTransaction(t, signedTx, sender, chainID),
 			store,
@@ -213,7 +215,10 @@ func TestTransactionSend(t *testing.T) {
 	t.Run("sendWithBoost", func(t *testing.T) {
 		t.Parallel()
 
-		price := big.NewInt(0).Div(new(big.Int).Mul(suggestedGasPrice, big.NewInt(15)), big.NewInt(10))
+		price := big.NewInt(0).Div(new(big.Int).Mul(suggestedGasPrice, big.NewInt(25)), big.NewInt(10))
+
+		// tip is the same as suggestedGasPrice and boost is 50%
+		// so final gas price will be 2.5x suggestedGasPrice
 
 		signedTx := types.NewTx(&types.DynamicFeeTx{
 			ChainID:   chainID,
@@ -221,7 +226,7 @@ func TestTransactionSend(t *testing.T) {
 			To:        &recipient,
 			Value:     value,
 			Gas:       estimatedGasLimit,
-			GasTipCap: price,
+			GasTipCap: suggestedGasPrice,
 			GasFeeCap: price,
 			Data:      txData,
 		})
@@ -258,6 +263,9 @@ func TestTransactionSend(t *testing.T) {
 				}),
 				backendmock.WithPendingNonceAtFunc(func(ctx context.Context, account common.Address) (uint64, error) {
 					return nonce - 1, nil
+				}),
+				backendmock.WithSuggestGasTipCapFunc(func(ctx context.Context) (*big.Int, error) {
+					return suggestedGasPrice, nil
 				}),
 			),
 			signerMockForTransaction(t, signedTx, sender, chainID),
@@ -313,8 +321,8 @@ func TestTransactionSend(t *testing.T) {
 			t.Fatalf("got wrong gas limit in stored transaction. wanted %d, got %d", estimatedGasLimit, storedTransaction.GasLimit)
 		}
 
-		if new(big.Int).Div(new(big.Int).Mul(suggestedGasPrice, big.NewInt(15)), big.NewInt(10)).Cmp(storedTransaction.GasPrice) != 0 {
-			t.Fatalf("got wrong gas price in stored transaction. wanted %d, got %d", suggestedGasPrice, storedTransaction.GasPrice)
+		if want := new(big.Int).Div(new(big.Int).Mul(suggestedGasPrice, big.NewInt(25)), big.NewInt(10)); want.Cmp(storedTransaction.GasPrice) != 0 {
+			t.Fatalf("got wrong gas price in stored transaction. wanted %d, got %d", want, storedTransaction.GasPrice)
 		}
 
 		if storedTransaction.Nonce != nonce {
@@ -376,6 +384,9 @@ func TestTransactionSend(t *testing.T) {
 				}),
 				backendmock.WithPendingNonceAtFunc(func(ctx context.Context, account common.Address) (uint64, error) {
 					return nonce, nil
+				}),
+				backendmock.WithSuggestGasTipCapFunc(func(ctx context.Context) (*big.Int, error) {
+					return big.NewInt(0), nil
 				}),
 			),
 			signerMockForTransaction(t, signedTx, sender, chainID),
@@ -454,6 +465,9 @@ func TestTransactionSend(t *testing.T) {
 				}),
 				backendmock.WithPendingNonceAtFunc(func(ctx context.Context, account common.Address) (uint64, error) {
 					return nextNonce, nil
+				}),
+				backendmock.WithSuggestGasTipCapFunc(func(ctx context.Context) (*big.Int, error) {
+					return big.NewInt(0), nil
 				}),
 			),
 			signerMockForTransaction(t, signedTx, sender, chainID),
