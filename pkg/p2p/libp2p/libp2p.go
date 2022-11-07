@@ -357,10 +357,10 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	select {
 	case <-s.ready:
 	case <-s.halt:
-		go func() { _ = stream.Reset() }()
+		_ = stream.Reset()
 		return
 	case <-s.ctx.Done():
-		go func() { _ = stream.Reset() }()
+		_ = stream.Reset()
 		return
 	}
 

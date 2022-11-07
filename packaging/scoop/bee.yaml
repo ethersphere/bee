@@ -58,8 +58,8 @@ password-file: ./password
 # swap-factory-address: ""
 ## legacy swap factory addresses
 # swap-legacy-factory-addresses: ""
-## initial deposit if deploying a new chequebook (default 10000000000000000)
-# swap-initial-deposit: 10000000000000000
+## initial deposit if deploying a new chequebook (default 0)
+# swap-initial-deposit: 0
 ## gas price in wei to use for deployment and funding (default "")
 # swap-deployment-gas-price: ""
 ## enable tracing
