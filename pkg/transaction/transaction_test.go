@@ -90,13 +90,15 @@ func TestTransactionSend(t *testing.T) {
 	t.Run("send", func(t *testing.T) {
 		t.Parallel()
 
-		signedTx := types.NewTx(&types.LegacyTx{
-			Nonce:    nonce,
-			To:       &recipient,
-			Value:    value,
-			Gas:      estimatedGasLimit,
-			GasPrice: suggestedGasPrice,
-			Data:     txData,
+		signedTx := types.NewTx(&types.DynamicFeeTx{
+			ChainID:   chainID,
+			Nonce:     nonce,
+			To:        &recipient,
+			Value:     value,
+			Gas:       estimatedGasLimit,
+			GasTipCap: suggestedGasPrice,
+			GasFeeCap: suggestedGasPrice,
+			Data:      txData,
 		})
 		request := &transaction.TxRequest{
 			To:       &recipient,
@@ -211,13 +213,17 @@ func TestTransactionSend(t *testing.T) {
 	t.Run("sendWithBoost", func(t *testing.T) {
 		t.Parallel()
 
-		signedTx := types.NewTx(&types.LegacyTx{
-			Nonce:    nonce,
-			To:       &recipient,
-			Value:    value,
-			Gas:      estimatedGasLimit,
-			GasPrice: big.NewInt(0).Div(new(big.Int).Mul(suggestedGasPrice, big.NewInt(15)), big.NewInt(10)),
-			Data:     txData,
+		price := big.NewInt(0).Div(new(big.Int).Mul(suggestedGasPrice, big.NewInt(15)), big.NewInt(10))
+
+		signedTx := types.NewTx(&types.DynamicFeeTx{
+			ChainID:   chainID,
+			Nonce:     nonce,
+			To:        &recipient,
+			Value:     value,
+			Gas:       estimatedGasLimit,
+			GasTipCap: price,
+			GasFeeCap: price,
+			Data:      txData,
 		})
 		request := &transaction.TxRequest{
 			To:    &recipient,
@@ -331,13 +337,15 @@ func TestTransactionSend(t *testing.T) {
 	t.Run("send_no_nonce", func(t *testing.T) {
 		t.Parallel()
 
-		signedTx := types.NewTx(&types.LegacyTx{
-			Nonce:    nonce,
-			To:       &recipient,
-			Value:    value,
-			Gas:      estimatedGasLimit,
-			GasPrice: suggestedGasPrice,
-			Data:     txData,
+		signedTx := types.NewTx(&types.DynamicFeeTx{
+			ChainID:   chainID,
+			Nonce:     nonce,
+			To:        &recipient,
+			Value:     value,
+			Gas:       estimatedGasLimit,
+			GasTipCap: suggestedGasPrice,
+			GasFeeCap: suggestedGasPrice,
+			Data:      txData,
 		})
 		request := &transaction.TxRequest{
 			To:    &recipient,
@@ -403,13 +411,15 @@ func TestTransactionSend(t *testing.T) {
 		t.Parallel()
 
 		nextNonce := nonce + 5
-		signedTx := types.NewTx(&types.LegacyTx{
-			Nonce:    nextNonce,
-			To:       &recipient,
-			Value:    value,
-			Gas:      estimatedGasLimit,
-			GasPrice: suggestedGasPrice,
-			Data:     txData,
+		signedTx := types.NewTx(&types.DynamicFeeTx{
+			ChainID:   chainID,
+			Nonce:     nextNonce,
+			To:        &recipient,
+			Value:     value,
+			Gas:       estimatedGasLimit,
+			GasTipCap: suggestedGasPrice,
+			GasFeeCap: suggestedGasPrice,
+			Data:      txData,
 		})
 		request := &transaction.TxRequest{
 			To:    &recipient,
@@ -550,13 +560,15 @@ func TestTransactionResend(t *testing.T) {
 	store := storemock.NewStateStore()
 	defer store.Close()
 
-	signedTx := types.NewTx(&types.LegacyTx{
-		Nonce:    nonce,
-		To:       &recipient,
-		Value:    value,
-		Gas:      gasLimit,
-		GasPrice: gasPrice,
-		Data:     data,
+	signedTx := types.NewTx(&types.DynamicFeeTx{
+		ChainID:   chainID,
+		Nonce:     nonce,
+		To:        &recipient,
+		Value:     value,
+		Gas:       gasLimit,
+		GasTipCap: gasPrice,
+		GasFeeCap: gasPrice,
+		Data:      data,
 	})
 
 	err := store.Put(transaction.StoredTransactionKey(signedTx.Hash()), transaction.StoredTransaction{
@@ -611,13 +623,15 @@ func TestTransactionCancel(t *testing.T) {
 	store := storemock.NewStateStore()
 	t.Cleanup(func() { store.Close() })
 
-	signedTx := types.NewTx(&types.LegacyTx{
-		Nonce:    nonce,
-		To:       &recipient,
-		Value:    value,
-		Gas:      gasLimit,
-		GasPrice: gasPrice,
-		Data:     data,
+	signedTx := types.NewTx(&types.DynamicFeeTx{
+		ChainID:   chainID,
+		Nonce:     nonce,
+		To:        &recipient,
+		Value:     value,
+		Gas:       gasLimit,
+		GasTipCap: gasPrice,
+		GasFeeCap: gasPrice,
+		Data:      data,
 	})
 	err := store.Put(transaction.StoredTransactionKey(signedTx.Hash()), transaction.StoredTransaction{
 		Nonce:    nonce,
@@ -634,13 +648,17 @@ func TestTransactionCancel(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		t.Parallel()
 
-		cancelTx := types.NewTx(&types.LegacyTx{
-			Nonce:    nonce,
-			To:       &recipient,
-			Value:    big.NewInt(0),
-			Gas:      21000,
-			GasPrice: new(big.Int).Add(gasPrice, big.NewInt(1)),
-			Data:     []byte{},
+		price := new(big.Int).Add(gasPrice, big.NewInt(1))
+
+		cancelTx := types.NewTx(&types.DynamicFeeTx{
+			ChainID:   chainID,
+			Nonce:     nonce,
+			To:        &recipient,
+			Value:     big.NewInt(0),
+			Gas:       21000,
+			GasTipCap: price,
+			GasFeeCap: price,
+			Data:      []byte{},
 		})
 
 		transactionService, err := transaction.NewService(logger,
@@ -676,13 +694,15 @@ func TestTransactionCancel(t *testing.T) {
 		t.Parallel()
 
 		customGasPrice := big.NewInt(5)
-		cancelTx := types.NewTx(&types.LegacyTx{
-			Nonce:    nonce,
-			To:       &recipient,
-			Value:    big.NewInt(0),
-			Gas:      21000,
-			GasPrice: customGasPrice,
-			Data:     []byte{},
+		cancelTx := types.NewTx(&types.DynamicFeeTx{
+			ChainID:   chainID,
+			Nonce:     nonce,
+			To:        &recipient,
+			Value:     big.NewInt(0),
+			Gas:       21000,
+			GasTipCap: customGasPrice,
+			GasFeeCap: customGasPrice,
+			Data:      []byte{},
 		})
 
 		transactionService, err := transaction.NewService(logger,
@@ -719,13 +739,15 @@ func TestTransactionCancel(t *testing.T) {
 		t.Parallel()
 
 		customGasPrice := big.NewInt(0)
-		cancelTx := types.NewTx(&types.LegacyTx{
-			Nonce:    nonce,
-			To:       &recipient,
-			Value:    big.NewInt(0),
-			Gas:      21000,
-			GasPrice: customGasPrice,
-			Data:     []byte{},
+		cancelTx := types.NewTx(&types.DynamicFeeTx{
+			ChainID:   chainID,
+			Nonce:     nonce,
+			To:        &recipient,
+			Value:     big.NewInt(0),
+			Gas:       21000,
+			GasTipCap: customGasPrice,
+			GasFeeCap: customGasPrice,
+			Data:      []byte{},
 		})
 
 		transactionService, err := transaction.NewService(logger,
