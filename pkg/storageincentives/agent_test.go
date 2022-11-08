@@ -89,7 +89,7 @@ func TestAgent(t *testing.T) {
 				},
 				incrementBy: tc.incrementBy,
 				block:       tc.blocksPerRound}
-			contract := &mockContract{t: t, baseAddr: addr}
+			contract := &mockContract{}
 
 			service := createService(addr, backend, contract, uint64(tc.blocksPerRound), uint64(tc.blocksPerPhase))
 
@@ -219,12 +219,8 @@ const (
 )
 
 type mockContract struct {
-	baseAddr swarm.Address
-
 	callsList []contractCall
-
-	t   *testing.T
-	mtx sync.Mutex
+	mtx       sync.Mutex
 }
 
 func (m *mockContract) ReserveSalt(context.Context) ([]byte, error) {
