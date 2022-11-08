@@ -1669,7 +1669,7 @@ func TestAccountingReconnectBeforeAllowed(t *testing.T) {
 	paymentThresholdInRefreshmentSeconds := new(big.Int).Div(testPaymentThreshold, big.NewInt(testRefreshRate)).Uint64()
 
 	f := func(s swarm.Address, t time.Duration, reason string) error {
-		if reason != "disconnected" {
+		if reason != "accounting disconnect" {
 			return errInvalidReason
 		}
 		blocklistTime = int64(t.Seconds())
@@ -1743,7 +1743,7 @@ func TestAccountingResetBalanceAfterReconnect(t *testing.T) {
 	paymentThresholdInRefreshmentSeconds := new(big.Int).Div(testPaymentThreshold, big.NewInt(testRefreshRate)).Uint64()
 
 	f := func(s swarm.Address, t time.Duration, reason string) error {
-		if reason != "disconnected" {
+		if reason != "accounting disconnect" {
 			return errInvalidReason
 		}
 		blocklistTime = int64(t.Seconds())
