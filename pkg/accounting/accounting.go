@@ -365,7 +365,7 @@ func (c *creditAction) Apply() error {
 	c.accounting.metrics.CreditEventsCount.Inc()
 
 	if c.price.Cmp(c.accountingPeer.reservedBalance) > 0 {
-		c.accounting.logger.Error(nil, ErrOverRelease.Error(), "peer_address", c.peer)
+		c.accounting.logger.Error(nil, "attempting to release more balance than was reserved for peer", "peer_address", c.peer)
 		c.accountingPeer.reservedBalance.SetUint64(0)
 	} else {
 		c.accountingPeer.reservedBalance.Sub(c.accountingPeer.reservedBalance, c.price)
@@ -439,7 +439,7 @@ func (c *creditAction) Cleanup() {
 	defer c.accountingPeer.lock.Unlock()
 
 	if c.price.Cmp(c.accountingPeer.reservedBalance) > 0 {
-		c.accounting.logger.Error(nil, ErrOverRelease.Error(), "peer_address", c.peer)
+		c.accounting.logger.Error(nil, "allowance expectation refused", "peer_address", c.peer)
 		c.accountingPeer.reservedBalance.SetUint64(0)
 	} else {
 		c.accountingPeer.reservedBalance.Sub(c.accountingPeer.reservedBalance, c.price)
@@ -1159,7 +1159,7 @@ func (a *Accounting) NotifyRefreshmentSent(peer swarm.Address, attemptedAmount, 
 	// compare received refreshment amount to expectation
 	if expectedAllowance.Cmp(amount) > 0 {
 		// if expectation is not met, blocklist peer
-		a.logger.Error(nil, ErrEnforceRefresh.Error(), "pseudosettle peer", peer)
+		a.logger.Error(nil, "allowance expectation refused", "pseudosettle peer", peer)
 		a.metrics.ErrRefreshmentBelowExpected.Inc()
 		_ = a.blocklist(peer, 1, "failed to meet expectation for allowance")
 		return
