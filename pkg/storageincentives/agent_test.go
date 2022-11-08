@@ -208,7 +208,7 @@ func (c contractCall) String() string {
 	case claimCall:
 		return "claimCall"
 	}
-	return "unkown"
+	return "unknown"
 }
 
 const (
