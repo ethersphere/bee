@@ -213,13 +213,19 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	var (
 		prevPhase    PhaseType = -1
 		currentPhase PhaseType
+		checkEvery   uint64 = 1
 	)
+
+	// optimization, we do not need to check the phase change at every new block
+	if blocksPerPhase > 10 {
+		checkEvery = 5
+	}
 
 	for {
 		select {
 		case <-a.quit:
 			return
-		case <-time.After(blockTime):
+		case <-time.After(blockTime * time.Duration(checkEvery)):
 		}
 
 		a.metrics.BackendCalls.Inc()
