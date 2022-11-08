@@ -260,7 +260,12 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 		if err != nil {
 			p.metrics.HistWorkerErrCounter.Inc()
 			p.logger.Error(err, "histSyncWorker syncing interval failed", "peer_address", peer, "bin", bin, "cursor", cur, "start", s, "topmost", top)
-			sleep = true
+			// we did not receive an offer from the peer
+			// this is due to a connection error, read interval timing out, or peer disconnecting
+			// as such only for this case the sync sleeps before a new attempt
+			if top == 0 {
+				sleep = true
+			}
 		}
 
 		err = p.addPeerInterval(peer, bin, s, top)
