@@ -40,8 +40,6 @@ var (
 	ErrAlreadyImported     = errors.New("already imported")
 )
 
-// minGasPrice determines the minimum gas price
-// threshold (in wei) for the creation of a transaction.
 const DefaultTipBoostPercent = 20
 
 // TxRequest describes a request for a transaction that can be executed.
