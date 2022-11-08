@@ -9,7 +9,7 @@ wget -q https://raw.githubusercontent.com/ethersphere/bee/master/packaging/docke
 ```
 Set all configuration variables inside `.env`
 
-`clef` is configured with `CLEF_CHAINID=5` for goerli
+`clef` is configured with `CLEF_CHAINID=10200` for chiado
 
 If you want to run node in full mode, set `BEE_FULL_NODE=true`
 
