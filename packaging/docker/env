@@ -2,8 +2,8 @@
 
 ### CLEF
 
-## chain id to use for signing (100=mainnet(xdai), 5=testnet(goerli)) (default: 12345)
-CLEF_CHAINID=5
+## chain id to use for signing (100=mainnet(xdai), 10200=testnet(chiado)) (default: 12345)
+CLEF_CHAINID=10200
 
 ### BEE
 
