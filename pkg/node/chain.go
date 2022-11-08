@@ -399,6 +399,9 @@ func (m noOpChainBackend) PendingNonceAt(context.Context, common.Address) (uint6
 func (m noOpChainBackend) SuggestGasPrice(context.Context) (*big.Int, error) {
 	panic("chain no op: SuggestGasPrice")
 }
+func (m noOpChainBackend) SuggestGasTipCap(context.Context) (*big.Int, error) {
+	panic("chain no op: SuggestGasPrice")
+}
 func (m noOpChainBackend) EstimateGas(context.Context, ethereum.CallMsg) (uint64, error) {
 	panic("chain no op: EstimateGas")
 }

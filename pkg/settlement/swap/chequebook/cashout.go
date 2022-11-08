@@ -144,12 +144,12 @@ func (s *cashoutService) CashCheque(ctx context.Context, chequebook, recipient c
 		To:          &chequebook,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 300000),
+		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 300_000),
 		Value:       big.NewInt(0),
 		Description: "cheque cashout",
 	}
 
-	txHash, err := s.transactionService.Send(ctx, request, 0)
+	txHash, err := s.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
 	if err != nil {
 		return common.Hash{}, err
 	}
