@@ -476,7 +476,7 @@ func TestContinueSyncing(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 	kad.Trigger()
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(time.Second)
 
 	calls := pullsync.LiveSyncCalls(addr)
 
