@@ -365,7 +365,7 @@ func (c *creditAction) Apply() error {
 	c.accounting.metrics.CreditEventsCount.Inc()
 
 	if c.price.Cmp(c.accountingPeer.reservedBalance) > 0 {
-		c.accounting.logger.Error(ErrOverRelease, "for peer %v")
+		c.accounting.logger.Error(nil, "attempting to release more balance than was reserved for peer", "peer_address", c.peer)
 		c.accountingPeer.reservedBalance.SetUint64(0)
 	} else {
 		c.accountingPeer.reservedBalance.Sub(c.accountingPeer.reservedBalance, c.price)
@@ -380,7 +380,7 @@ func (c *creditAction) Apply() error {
 		if increasedExpectedDebtReduced.Cmp(c.accountingPeer.earlyPayment) > 0 {
 			err = c.accounting.settle(c.peer, c.accountingPeer)
 			if err != nil {
-				c.accounting.logger.Error(err, "failed to settle with credited peer", c.peer)
+				c.accounting.logger.Error(err, "failed to settle with credited peer", "peer_address", c.peer)
 			}
 		}
 
@@ -423,7 +423,7 @@ func (c *creditAction) Apply() error {
 	if increasedExpectedDebtReduced.Cmp(c.accountingPeer.earlyPayment) > 0 {
 		err = c.accounting.settle(c.peer, c.accountingPeer)
 		if err != nil {
-			c.accounting.logger.Error(err, "failed to settle with credited peer", c.peer)
+			c.accounting.logger.Error(err, "failed to settle with credited peer", "peer_address", c.peer)
 		}
 	}
 
@@ -439,7 +439,7 @@ func (c *creditAction) Cleanup() {
 	defer c.accountingPeer.lock.Unlock()
 
 	if c.price.Cmp(c.accountingPeer.reservedBalance) > 0 {
-		c.accounting.logger.Error(nil, "attempting to release more balance than was reserved for peer")
+		c.accounting.logger.Error(nil, "attempting to release more balance than was reserved for peer", "peer_address", c.peer)
 		c.accountingPeer.reservedBalance.SetUint64(0)
 	} else {
 		c.accountingPeer.reservedBalance.Sub(c.accountingPeer.reservedBalance, c.price)
@@ -670,7 +670,7 @@ func (a *Accounting) notifyPaymentThresholdUpgrade(peer swarm.Address, accountin
 	// announce new payment threshold to peer
 	err := a.pricing.AnnouncePaymentThreshold(context.Background(), peer, accountingPeer.paymentThresholdForPeer)
 	if err != nil {
-		a.logger.Error(err, "announcing increased payment threshold", "value", accountingPeer.paymentThresholdForPeer, "peer", peer)
+		a.logger.Error(err, "announcing increased payment threshold", "value", accountingPeer.paymentThresholdForPeer, "peer_address", peer)
 	}
 }
 
@@ -987,7 +987,7 @@ func (a *Accounting) NotifyPaymentSent(peer swarm.Address, amount *big.Int, rece
 	currentBalance, err := a.Balance(peer)
 	if err != nil {
 		if !errors.Is(err, ErrPeerNoBalance) {
-			a.logger.Error(err, "notify payment sent; failed to load balance")
+			a.logger.Error(err, "notify payment sent; failed to persist balance")
 			return
 		}
 	}
@@ -995,7 +995,7 @@ func (a *Accounting) NotifyPaymentSent(peer swarm.Address, amount *big.Int, rece
 	// Get nextBalance by increasing current balance with price
 	nextBalance := new(big.Int).Add(currentBalance, amount)
 
-	loggerV1.Debug("registering payment sent", "peer", peer, "amount", amount, "new_balance", nextBalance)
+	loggerV1.Debug("registering payment sent", "peer_address", peer, "amount", amount, "new_balance", nextBalance)
 
 	err = a.store.Put(peerBalanceKey(peer), nextBalance)
 	if err != nil {
@@ -1159,7 +1159,7 @@ func (a *Accounting) NotifyRefreshmentSent(peer swarm.Address, attemptedAmount, 
 	// compare received refreshment amount to expectation
 	if expectedAllowance.Cmp(amount) > 0 {
 		// if expectation is not met, blocklist peer
-		a.logger.Error(ErrEnforceRefresh, "pseudosettle peer", peer, "accepted lower payment than expected")
+		a.logger.Error(nil, "accepted lower payment than expected", "pseudosettle peer", peer)
 		a.metrics.ErrRefreshmentBelowExpected.Inc()
 		_ = a.blocklist(peer, 1, "failed to meet expectation for allowance")
 		return
@@ -1185,7 +1185,7 @@ func (a *Accounting) NotifyRefreshmentSent(peer swarm.Address, attemptedAmount, 
 	// update originated balance
 	err = a.decreaseOriginatedBalanceTo(peer, newBalance)
 	if err != nil {
-		a.logger.Warning("accounting: notifyrefreshmentsent failed to decrease originated balance: %v", err)
+		a.logger.Warning("accounting: notifyrefreshmentsent failed to decrease originated balance", "error", err)
 	}
 
 }
