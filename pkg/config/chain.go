@@ -43,10 +43,6 @@ var (
 		Staking:         common.HexToAddress("0x52e86336210bB8F1FDe11EB8bc664a20AfC0a614"),
 		Redistribution:  common.HexToAddress("0xECD2CFfE749A0F8F0a4f136E98C49De0Ee527c1F"),
 	}
-
-	chiadoCfg = ChainConfig{
-		ChainID: 10200,
-	}
 )
 
 var (
