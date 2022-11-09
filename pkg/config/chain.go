@@ -9,7 +9,7 @@ import (
 )
 
 type ChainConfig struct {
-	ChainID         int
+	ChainID         int64
 	StartBlock      uint64
 	LegacyFactories []common.Address
 	PostageStamp    common.Address
@@ -45,11 +45,16 @@ var (
 	}
 )
 
+var (
+	MainnetChainID = xdaiCfg.ChainID
+	TestnetChainID = goerliCfg.ChainID
+)
+
 func GetChainConfig(chainID int64) (ChainConfig, bool) {
 	switch chainID {
-	case int64(goerliCfg.ChainID):
+	case goerliCfg.ChainID:
 		return goerliCfg, true
-	case int64(xdaiCfg.ChainID):
+	case xdaiCfg.ChainID:
 		return xdaiCfg, true
 	default:
 		return ChainConfig{}, false

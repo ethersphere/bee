@@ -22,6 +22,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethersphere/bee"
+	chaincfg "github.com/ethersphere/bee/pkg/config"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/crypto/clef"
 	"github.com/ethersphere/bee/pkg/keystore"
@@ -475,11 +476,11 @@ func getConfigByNetworkID(networkID uint64, defaultBlockTimeInSeconds uint64) *n
 	case 1:
 		config.bootNodes = []string{"/dnsaddr/mainnet.ethswarm.org"}
 		config.blockTime = 5 * time.Second
-		config.chainID = 100
+		config.chainID = chaincfg.MainnetChainID
 	case 5: //staging
-		config.chainID = 5
+		config.chainID = chaincfg.TestnetChainID
 	case 10: //test
-		config.chainID = 5
+		config.chainID = chaincfg.TestnetChainID
 	default: //will use the value provided by the chain
 		config.chainID = -1
 	}
