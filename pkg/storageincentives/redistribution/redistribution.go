@@ -110,7 +110,7 @@ func (c *contract) Claim(ctx context.Context) error {
 		Value:       big.NewInt(0),
 		Description: "claim win transaction",
 	}
-	err = c.sendAndWait(ctx, request, 0)
+	err = c.sendAndWait(ctx, request, 50)
 	if err != nil {
 		return fmt.Errorf("claim: %w", err)
 	}
@@ -132,7 +132,7 @@ func (c *contract) Commit(ctx context.Context, obfusHash []byte) error {
 		Value:       big.NewInt(0),
 		Description: "commit transaction",
 	}
-	err = c.sendAndWait(ctx, request, 0)
+	err = c.sendAndWait(ctx, request, 50)
 	if err != nil {
 		return fmt.Errorf("commit: obfusHash %v overlay %v: %w", common.BytesToHash(obfusHash), common.BytesToHash(c.overlay.Bytes()), err)
 	}
@@ -182,8 +182,7 @@ func (c *contract) ReserveSalt(ctx context.Context) ([]byte, error) {
 	return salt[:], nil
 }
 
-// sendAndWait simulates a transaction based on tx request and waits until the tx is either mined or ctx is cancelled.
-func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest, boostPercent uint64) error {
+func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest, boostPercent int) error {
 	txHash, err := c.txService.Send(ctx, request, boostPercent)
 	if err != nil {
 		return err
