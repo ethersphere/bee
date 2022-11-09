@@ -48,7 +48,7 @@ type TxRequest struct {
 	Data        []byte          // transaction data
 	GasPrice    *big.Int        // gas price or nil if suggested gas price should be used
 	GasLimit    uint64          // gas limit or 0 if it should be estimated
-	GasTipCap   *big.Int        // adds a tip for the miner for prioritizing transaction
+	GasTipBoost int             // adds a tip for the miner for prioritizing transaction
 	GasFeeCap   *big.Int        // adds a cap to maximum fee user is willing to pay
 	Value       *big.Int        // amount of wei to send
 	Description string          // optional description
@@ -59,7 +59,7 @@ type StoredTransaction struct {
 	Data        []byte          // transaction data
 	GasPrice    *big.Int        // used gas price
 	GasLimit    uint64          // used gas limit
-	GasTipCap   *big.Int        // adds a tip for the miner for prioritizing transaction
+	GasTipBoost int             // adds a tip for the miner for prioritizing transaction
 	GasFeeCap   *big.Int        // adds a cap to maximum fee user is willing to pay
 	Value       *big.Int        // amount of wei to send
 	Nonce       uint64          // used nonce
@@ -181,7 +181,7 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest, tipCa
 		Data:        signedTx.Data(),
 		GasPrice:    signedTx.GasPrice(),
 		GasLimit:    signedTx.Gas(),
-		GasTipCap:   signedTx.GasTipCap(),
+		GasTipBoost: tipCapBoostPercent,
 		GasFeeCap:   signedTx.GasFeeCap(),
 		Value:       signedTx.Value(),
 		Nonce:       signedTx.Nonce(),
@@ -419,7 +419,7 @@ func (t *transactionService) ResendTransaction(ctx context.Context, txHash commo
 		return err
 	}
 
-	gasFeeCap, gasTipCap, err := t.suggestedFeeAndTip(ctx, sctx.GetGasPrice(ctx), storedTransaction.GasTipCap)
+	gasFeeCap, gasTipCap, err := t.suggestedFeeAndTip(ctx, sctx.GetGasPrice(ctx), storedTransaction.GasTipBoost)
 	if err != nil {
 		return err
 	}
@@ -459,7 +459,7 @@ func (t *transactionService) CancelTransaction(ctx context.Context, originalTxHa
 		return common.Hash{}, err
 	}
 
-	gasFeeCap, gasTipCap, err := t.suggestedFeeAndTip(ctx, sctx.GetGasPrice(ctx), storedTransaction.GasTipCap)
+	gasFeeCap, gasTipCap, err := t.suggestedFeeAndTip(ctx, sctx.GetGasPrice(ctx), storedTransaction.GasTipBoost)
 	if err != nil {
 		return common.Hash{}, err
 	}
