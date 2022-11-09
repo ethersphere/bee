@@ -8,9 +8,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
-	"strings"
 
-	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/sctx"
@@ -18,9 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/transaction"
 )
 
-var (
-	redistributionContractABI = parseABI(redistributionABIv0_0_0)
-)
+var redistributionContractABI = transaction.ParseABIUnchecked(redistributionABIv0_0_0)
 
 const loggerName = "redistributionContract"
 
@@ -209,12 +205,4 @@ func (c *contract) callTx(ctx context.Context, callData []byte) ([]byte, error) 
 		return nil, err
 	}
 	return result, nil
-}
-
-func parseABI(json string) abi.ABI {
-	cabi, err := abi.JSON(strings.NewReader(json))
-	if err != nil {
-		panic(fmt.Sprintf("error creating ABI for redistribution redistributioncontract: %v", err))
-	}
-	return cabi
 }
