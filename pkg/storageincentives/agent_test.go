@@ -245,7 +245,7 @@ func (m *mockContract) Claim(context.Context) error {
 	return nil
 }
 
-func (m *mockContract) Commit(context.Context, []byte) error {
+func (m *mockContract) Commit(context.Context, []byte, *big.Int) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, commitCall)
