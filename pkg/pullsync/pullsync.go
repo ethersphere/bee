@@ -303,11 +303,15 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 		return fmt.Errorf("read get range: %w", err)
 	}
 
+	s.logger.Debug("make offer start", "bin", rn.Bin, "from", rn.From, "to", rn.To, "peer", p.Address)
+
 	// make an offer to the upstream peer in return for the requested range
 	offer, _, err := s.makeOffer(ctx, rn)
 	if err != nil {
 		return fmt.Errorf("make offer: %w", err)
 	}
+
+	s.logger.Debug("make offer end", "bin", rn.Bin, "from", rn.From, "topmost", offer.Topmost, "peer", p.Address)
 
 	// recreate the reader to allow the first one to be garbage collected
 	// before the makeOffer function call, to reduce the total memory allocated
