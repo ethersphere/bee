@@ -37,7 +37,6 @@ func TestWallet(t *testing.T) {
 					return big.NewInt(2000000000000000000), nil
 				}),
 			},
-			ChainID: 1,
 		})
 
 		jsonhttptest.Request(t, srv, http.MethodGet, "/wallet", http.StatusOK,
