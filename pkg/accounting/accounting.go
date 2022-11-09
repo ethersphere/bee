@@ -1532,7 +1532,7 @@ func (a *Accounting) Disconnect(peer swarm.Address) {
 			disconnectFor = int64(10)
 		}
 		accountingPeer.connected = false
-		_ = a.p2p.Blocklist(peer, time.Duration(disconnectFor)*time.Second, "disconnected")
+		_ = a.p2p.Blocklist(peer, time.Duration(disconnectFor)*time.Second, "accounting disconnect")
 		a.metrics.AccountingDisconnectsReconnectCount.Inc()
 	}
 }
