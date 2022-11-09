@@ -29,7 +29,7 @@ const loggerName = "puller"
 
 var errCursorsLength = errors.New("cursors length mismatch")
 
-const DefaultSyncErrorSleepDur = time.Second * 5
+const DefaultSyncSleepDur = time.Minute
 
 type Options struct {
 	Bins         uint8
@@ -52,7 +52,7 @@ type Puller struct {
 
 	wg sync.WaitGroup
 
-	syncErrorSleepDur time.Duration
+	syncSleepDur time.Duration
 
 	bins uint8 // how many bins do we support
 }
@@ -66,15 +66,15 @@ func New(stateStore storage.StateStorer, topology topology.Driver, reserveState 
 	}
 
 	p := &Puller{
-		statestore:        stateStore,
-		topology:          topology,
-		reserveState:      reserveState,
-		syncer:            pullSync,
-		metrics:           newMetrics(),
-		logger:            logger.WithName(loggerName).Register(),
-		syncPeers:         make([]map[string]*syncPeer, bins),
-		syncErrorSleepDur: o.SyncSleepDur,
-		bins:              bins,
+		statestore:   stateStore,
+		topology:     topology,
+		reserveState: reserveState,
+		syncer:       pullSync,
+		metrics:      newMetrics(),
+		logger:       logger.WithName(loggerName).Register(),
+		syncPeers:    make([]map[string]*syncPeer, bins),
+		syncSleepDur: o.SyncSleepDur,
+		bins:         bins,
 	}
 
 	for i := uint8(0); i < bins; i++ {
@@ -233,7 +233,7 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			case <-ctx.Done():
 				loggerV2.Debug("histSyncWorker context cancelled", "peer_address", peer, "bin", bin, "cursor", cur)
 				return
-			case <-time.After(p.syncErrorSleepDur):
+			case <-time.After(p.syncSleepDur):
 			}
 			sleep = false
 		}
@@ -260,12 +260,7 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 		if err != nil {
 			p.metrics.HistWorkerErrCounter.Inc()
 			p.logger.Error(err, "histSyncWorker syncing interval failed", "peer_address", peer, "bin", bin, "cursor", cur, "start", s, "topmost", top)
-			// we did not receive an offer from the peer
-			// this is due to a connection error, read interval timing out, or peer disconnecting
-			// as such only for this case the sync sleeps before a new attempt
-			if top == 0 {
-				sleep = true
-			}
+			sleep = true
 		}
 
 		err = p.addPeerInterval(peer, bin, s, top)
@@ -296,7 +291,7 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			case <-ctx.Done():
 				loggerV2.Debug("liveSyncWorker context cancelled", "peer_address", peer, "bin", bin, "cursor", cur)
 				return
-			case <-time.After(p.syncErrorSleepDur):
+			case <-time.After(p.syncSleepDur):
 			}
 			sleep = false
 		}
