@@ -119,7 +119,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		mtx.Unlock()
 
 		if round-1 == sampleRound { // the sample has to come from previous round to be able to commit it
-			obf, err := a.commit(ctx, storageRadius, reserveSample)
+			obf, err := a.commit(ctx, storageRadius, reserveSample, round)
 			if err != nil {
 				a.logger.Error(err, "commit")
 			} else {
@@ -365,7 +365,7 @@ func (a *Agent) getPreviousRoundTime(ctx context.Context) (time.Duration, error)
 	return time.Duration(timeLimiterBlock.Time) * time.Second / time.Nanosecond, nil
 }
 
-func (a *Agent) commit(ctx context.Context, storageRadius uint8, sample []byte) ([]byte, error) {
+func (a *Agent) commit(ctx context.Context, storageRadius uint8, sample []byte, round uint64) ([]byte, error) {
 	a.metrics.CommitPhase.Inc()
 
 	key := make([]byte, swarm.HashSize)
@@ -378,7 +378,7 @@ func (a *Agent) commit(ctx context.Context, storageRadius uint8, sample []byte) 
 		return nil, err
 	}
 
-	err = a.contract.Commit(ctx, obfuscatedHash)
+	err = a.contract.Commit(ctx, obfuscatedHash, big.NewInt(int64(round)))
 	if err != nil {
 		a.metrics.ErrCommit.Inc()
 		return nil, err

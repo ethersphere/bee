@@ -30,7 +30,7 @@ var (
 		},
 		PriceOracle:    common.HexToAddress("0x0c9de531dcb38b758fe8a2c163444a5e54ee0db2"),
 		Staking:        common.HexToAddress("0x18391158435582D5bE5ac1640ab5E2825F68d3a4"),
-		Redistribution: common.HexToAddress("0x2e4ccEb9a88bcfbC7779Fa693714783A345c1343"),
+		Redistribution: common.HexToAddress("0x7d5ff32e744340ab26873d05e019a0d27fe4716f"),
 	}
 
 	xdaiCfg = ChainConfig{
