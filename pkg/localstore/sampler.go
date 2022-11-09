@@ -71,7 +71,7 @@ func (s sampleStat) String() string {
 func (db *DB) ReserveSample(
 	ctx context.Context,
 	anchor []byte,
-	storageDepth uint8,
+	storageRadius uint8,
 	consensusTime uint64, // nanoseconds
 ) (storage.Sample, error) {
 
@@ -79,6 +79,8 @@ func (db *DB) ReserveSample(
 	addrChan := make(chan swarm.Address)
 	var stat sampleStat
 	logger := db.logger.WithName("sampler").V(1).Register()
+
+	db.logger.Info("starting reserve sample", "storage_radius", storageRadius, "consensus_time_ns", consensusTime)
 
 	// Phase 1: Iterate chunk addresses
 	g.Go(func() error {
@@ -96,7 +98,7 @@ func (db *DB) ReserveSample(
 			}
 		}, &shed.IterateOptions{
 			StartFrom: &shed.Item{
-				Address: db.addressInBin(storageDepth).Bytes(),
+				Address: db.addressInBin(storageRadius).Bytes(),
 			},
 		})
 		if err != nil {
@@ -207,7 +209,7 @@ func (db *DB) ReserveSample(
 					insert(item.transformedAddress)
 				}
 			} else {
-				logger.Info("invalid stamp for chunk", "chunk_address", chunk.Address(), "error", err)
+				logger.Debug("invalid stamp for chunk", "chunk_address", chunk.Address(), "error", err)
 			}
 
 		}
