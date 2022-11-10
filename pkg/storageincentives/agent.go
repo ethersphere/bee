@@ -254,7 +254,6 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		}
 
 		// write the current phase only once
-
 		if currentPhase != prevPhase {
 
 			a.metrics.CurrentPhase.Set(float64(currentPhase))
@@ -284,7 +283,6 @@ func (a *Agent) reveal(ctx context.Context, storageRadius uint8, sample, obfusca
 
 func (a *Agent) claim(ctx context.Context) error {
 	a.metrics.ClaimPhase.Inc()
-	// event claimPhase was processed
 
 	err := a.batchExpirer.ExpireBatches(ctx)
 	if err != nil {
@@ -315,7 +313,6 @@ func (a *Agent) claim(ctx context.Context) error {
 
 func (a *Agent) play(ctx context.Context) (uint8, []byte, error) {
 
-	// get depthmonitor fully synced indicator
 	ready := a.monitor.IsFullySynced()
 	if !ready {
 		return 0, nil, nil
@@ -324,8 +321,10 @@ func (a *Agent) play(ctx context.Context) (uint8, []byte, error) {
 	storageRadius := a.reserve.GetReserveState().StorageRadius
 
 	isPlaying, err := a.contract.IsPlaying(ctx, storageRadius)
-	if !isPlaying || err != nil {
+	if err != nil {
 		a.metrics.ErrCheckIsPlaying.Inc()
+	}
+	if !isPlaying || err != nil {
 		return 0, nil, err
 	}
 

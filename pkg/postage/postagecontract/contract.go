@@ -356,12 +356,12 @@ func (c *postageContract) hasExpired(ctx context.Context) (bool, error) {
 }
 
 func (c *postageContract) expireLimitedBatches(ctx context.Context) error {
-	callData, err := postageStampABI.Pack("expireLimited", big.NewInt(20))
+	callData, err := postageStampABI.Pack("expireLimited", big.NewInt(50))
 	if err != nil {
 		return err
 	}
 
-	_, err = c.sendTransaction(sctx.SetGasLimit(ctx, 500_000), callData, "expire limited batches")
+	_, err = c.sendTransaction(sctx.SetGasLimit(ctx, 1_100_000), callData, "expire limited batches")
 	if err != nil {
 		return fmt.Errorf("expire limited batches: %w", err)
 	}
