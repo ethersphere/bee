@@ -92,7 +92,9 @@ func TestAgent(t *testing.T) {
 				incrementBy: tc.incrementBy,
 				block:       tc.blocksPerRound}
 			contract := &mockContract{}
-			postageContract := contractMock.New()
+			postageContract := contractMock.New(contractMock.WithExpiresBatchesFunc(func(ctx context.Context) error {
+				return nil
+			}))
 			service := createService(addr, backend, contract, postageContract, uint64(tc.blocksPerRound), uint64(tc.blocksPerPhase))
 
 			<-wait
@@ -148,7 +150,7 @@ func createService(
 	addr swarm.Address,
 	backend storageincentives.ChainBackend,
 	contract redistribution.Contract,
-	postagecontract postagecontract.Interface,
+	postagecontract postagecontract.PostageBatchExpirer,
 	blocksPerRound uint64,
 	blocksPerPhase uint64) *storageincentives.Agent {
 
