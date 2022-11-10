@@ -273,7 +273,7 @@ func TestIntervalChunks_Localstore(t *testing.T) {
 			t.Parallel()
 
 			base, db := newTestDB(t, nil)
-			ps := pullstorage.New(db)
+			ps := pullstorage.New(db, log.Noop)
 
 			var chunks []swarm.Chunk
 
@@ -576,7 +576,7 @@ func newPullStorage(t *testing.T, o ...mock.Option) (pullstorage.Storer, *mock.M
 	t.Helper()
 
 	db := mock.NewStorer(o...)
-	ps := pullstorage.New(db)
+	ps := pullstorage.New(db, log.Noop)
 
 	return ps, db
 }
