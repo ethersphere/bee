@@ -22,7 +22,7 @@ type ChainConfig struct {
 var (
 	goerliCfg = ChainConfig{
 		ChainID:        5,
-		PostageStamp:   common.HexToAddress("0x78b3c2f8da6d8607b79670ebcc03a21d582a41f0"),
+		PostageStamp:   common.HexToAddress("0x7aac0f092f7b961145900839ed6d54b1980f200c"),
 		StartBlock:     uint64(7590423),
 		CurrentFactory: common.HexToAddress("0x73c412512E1cA0be3b89b77aB3466dA6A1B9d273"),
 		LegacyFactories: []common.Address{
