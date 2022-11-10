@@ -489,6 +489,8 @@ func (t *transactionService) CancelTransaction(ctx context.Context, originalTxHa
 		Data:        signedTx.Data(),
 		GasPrice:    signedTx.GasPrice(),
 		GasLimit:    signedTx.Gas(),
+		GasFeeCap:   signedTx.GasFeeCap(),
+		GasTipBoost: storedTransaction.GasTipBoost,
 		Value:       signedTx.Value(),
 		Nonce:       signedTx.Nonce(),
 		Created:     time.Now().Unix(),
