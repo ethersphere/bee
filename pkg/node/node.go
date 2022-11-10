@@ -673,10 +673,9 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	batchStore.SetBatchExpiryHandler(post)
 
 	var (
-		postageContractService postagecontract.Interface
-		batchExpirer           postagecontract.PostageBatchExpirer
-		batchSvc               postage.EventUpdater
-		eventListener          postage.Listener
+		postageContract postagecontract.Interface
+		batchSvc        postage.EventUpdater
+		eventListener   postage.Listener
 	)
 
 	var postageSyncStart uint64 = 0
@@ -708,7 +707,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		return nil, err
 	}
 
-	postageContractService = postagecontract.New(
+	postageContract = postagecontract.New(
 		overlayEthAddress,
 		postageContractAddress,
 		erc20Address,
@@ -989,7 +988,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 			}
 
 			redistributionContract := redistribution.New(swarmAddress, logger, transactionService, redistributionAddress)
-			agent = storageincentives.New(swarmAddress, chainBackend, logger, depthMonitor, redistributionContract, batchExpirer, batchStore, storer, o.BlockTime, storageincentives.DefaultBlocksPerRound, storageincentives.DefaultBlocksPerPhase)
+			agent = storageincentives.New(swarmAddress, chainBackend, logger, depthMonitor, redistributionContract, postageContract, batchStore, storer, o.BlockTime, storageincentives.DefaultBlocksPerRound, storageincentives.DefaultBlocksPerPhase)
 			b.storageIncetivesCloser = agent
 		}
 	}
@@ -1038,7 +1037,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		Pinning:          pinningService,
 		FeedFactory:      feedFactory,
 		Post:             post,
-		PostageContract:  postageContractService,
+		PostageContract:  postageContract,
 		Staking:          stakingContract,
 		Steward:          steward,
 		SyncStatus:       syncStatusFn,
