@@ -7,6 +7,7 @@ package inmemchunkstore
 import (
 	"bytes"
 	"context"
+	"errors"
 	"sync"
 
 	storage "github.com/ethersphere/bee/pkg/storagev2"
@@ -30,7 +31,15 @@ func New() *ChunkStore {
 }
 
 func (c *ChunkStore) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
-	return c.GetWithStamp(ctx, addr, nil)
+	ch, err := c.GetWithStamp(ctx, addr, nil)
+	if errors.Is(err, storage.ErrNoStampsForChunk) {
+		c.lock.Lock()
+		defer c.lock.Unlock()
+
+		data := c.chunks[addr.ByteString()]
+		return makeChunk(data.chunk, nil), nil
+	}
+	return ch, err
 }
 
 func (c *ChunkStore) GetWithStamp(_ context.Context, addr swarm.Address, batchID []byte) (swarm.Chunk, error) {
