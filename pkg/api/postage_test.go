@@ -247,6 +247,36 @@ func TestPostageCreateStamp(t *testing.T) {
 			}),
 		)
 	})
+	t.Run("with expires batches", func(t *testing.T) {
+		t.Parallel()
+
+		contract := contractMock.New(
+			contractMock.WithExpiresBatchesFunc(func(ctx context.Context) error {
+				return nil
+			}), contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string) ([]byte, error) {
+				if ib.Cmp(big.NewInt(initialBalance)) != 0 {
+					return nil, fmt.Errorf("called with wrong initial balance. wanted %d, got %d", initialBalance, ib)
+				}
+				if d != depth {
+					return nil, fmt.Errorf("called with wrong depth. wanted %d, got %d", depth, d)
+				}
+				if l != label {
+					return nil, fmt.Errorf("called with wrong label. wanted %s, got %s", label, l)
+				}
+				return batchID, nil
+			}),
+		)
+		ts, _, _, _ := newTestServer(t, testServerOptions{
+			DebugAPI:        true,
+			PostageContract: contract,
+		})
+
+		jsonhttptest.Request(t, ts, http.MethodPost, createBatch(initialBalance, depth, label), http.StatusCreated,
+			jsonhttptest.WithExpectedJSONResponse(&api.PostageCreateResponse{
+				BatchID: batchID,
+			}),
+		)
+	})
 }
 
 func TestPostageGetStamps(t *testing.T) {
