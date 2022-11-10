@@ -48,7 +48,6 @@ type TxRequest struct {
 	Data        []byte          // transaction data
 	GasPrice    *big.Int        // gas price or nil if suggested gas price should be used
 	GasLimit    uint64          // gas limit or 0 if it should be estimated
-	GasTipBoost int             // adds a tip for the miner for prioritizing transaction
 	GasFeeCap   *big.Int        // adds a cap to maximum fee user is willing to pay
 	Value       *big.Int        // amount of wei to send
 	Description string          // optional description
