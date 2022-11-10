@@ -247,6 +247,7 @@ func TestPostageCreateStamp(t *testing.T) {
 			}),
 		)
 	})
+
 	t.Run("with expires batches", func(t *testing.T) {
 		t.Parallel()
 
