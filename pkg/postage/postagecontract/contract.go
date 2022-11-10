@@ -49,7 +49,10 @@ type Interface interface {
 	CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) ([]byte, error)
 	TopUpBatch(ctx context.Context, batchID []byte, topupBalance *big.Int) error
 	DiluteBatch(ctx context.Context, batchID []byte, newDepth uint8) error
-	ExpireBatches(ctx context.Context) error
+}
+
+type PostageBatchExpirer interface {
+	ExpireBatches(context.Context) error
 }
 
 type postageContract struct {
@@ -311,24 +314,25 @@ func (c *postageContract) TopUpBatch(ctx context.Context, batchID []byte, topUpA
 }
 
 func (c *postageContract) ExpireBatches(ctx context.Context) error {
-	count, err := c.countExpiredBatches(ctx)
+	hasExpired, err := c.hasExpired(ctx)
 	if err != nil {
 		return fmt.Errorf("count expired batches: %w", err)
 	}
 
-	for i := 0; i < int(count.Int64()); i += 100 {
+	if hasExpired {
 		err := c.expireLimitedBatches(ctx, big.NewInt(100))
 		if err != nil {
 			return fmt.Errorf("expire batches: %w", err)
 		}
 	}
+
 	return nil
 }
 
-func (c *postageContract) countExpiredBatches(ctx context.Context) (*big.Int, error) {
-	callData, err := postageStampABI.Pack("countExpiry")
+func (c *postageContract) hasExpired(ctx context.Context) (bool, error) {
+	callData, err := postageStampABI.Pack("hasExpired")
 	if err != nil {
-		return nil, err
+		return false, err
 	}
 
 	result, err := c.transactionService.Call(ctx, &transaction.TxRequest{
@@ -336,14 +340,14 @@ func (c *postageContract) countExpiredBatches(ctx context.Context) (*big.Int, er
 		Data: callData,
 	})
 	if err != nil {
-		return nil, err
+		return false, err
 	}
 
-	results, err := postageStampABI.Unpack("countExpiry", result)
+	results, err := postageStampABI.Unpack("hasExpired", result)
 	if err != nil {
-		return nil, err
+		return false, err
 	}
-	return abi.ConvertType(results[0], new(big.Int)).(*big.Int), nil
+	return results[0].(bool), nil
 }
 
 func (c *postageContract) expireLimitedBatches(ctx context.Context, count *big.Int) error {
@@ -443,7 +447,7 @@ func LookupERC20Address(ctx context.Context, transactionService transaction.Serv
 
 type noOpPostageContract struct{}
 
-func (m *noOpPostageContract) ExpireBatches(ctx context.Context) error {
+func (m *noOpPostageContract) ExpireBatches(context.Context) error {
 	return ErrChainDisabled
 }
 

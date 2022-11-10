@@ -42,18 +42,18 @@ type Monitor interface {
 }
 
 type Agent struct {
-	logger          log.Logger
-	metrics         metrics
-	backend         ChainBackend
-	blocksPerRound  uint64
-	monitor         Monitor
-	contract        redistribution.Contract
-	postagecontract postagecontract.Interface
-	reserve         postage.Storer
-	sampler         storage.Sampler
-	overlay         swarm.Address
-	quit            chan struct{}
-	wg              sync.WaitGroup
+	logger         log.Logger
+	metrics        metrics
+	backend        ChainBackend
+	blocksPerRound uint64
+	monitor        Monitor
+	contract       redistribution.Contract
+	batchExpirer   postagecontract.PostageBatchExpirer
+	reserve        postage.Storer
+	sampler        storage.Sampler
+	overlay        swarm.Address
+	quit           chan struct{}
+	wg             sync.WaitGroup
 }
 
 func New(
@@ -62,23 +62,23 @@ func New(
 	logger log.Logger,
 	monitor Monitor,
 	contract redistribution.Contract,
-	postageContract postagecontract.Interface,
+	batchExpirer postagecontract.PostageBatchExpirer,
 	reserve postage.Storer,
 	sampler storage.Sampler,
 	blockTime time.Duration, blocksPerRound, blocksPerPhase uint64) *Agent {
 
 	s := &Agent{
-		overlay:         overlay,
-		metrics:         newMetrics(),
-		backend:         backend,
-		logger:          logger.WithName(loggerName).Register(),
-		contract:        contract,
-		postagecontract: postageContract,
-		reserve:         reserve,
-		monitor:         monitor,
-		blocksPerRound:  blocksPerRound,
-		sampler:         sampler,
-		quit:            make(chan struct{}),
+		overlay:        overlay,
+		metrics:        newMetrics(),
+		backend:        backend,
+		logger:         logger.WithName(loggerName).Register(),
+		contract:       contract,
+		batchExpirer:   batchExpirer,
+		reserve:        reserve,
+		monitor:        monitor,
+		blocksPerRound: blocksPerRound,
+		sampler:        sampler,
+		quit:           make(chan struct{}),
 	}
 
 	s.wg.Add(1)
@@ -286,7 +286,7 @@ func (a *Agent) claim(ctx context.Context) error {
 	a.metrics.ClaimPhase.Inc()
 	// event claimPhase was processed
 
-	err := a.postagecontract.ExpireBatches(ctx)
+	err := a.batchExpirer.ExpireBatches(ctx)
 	if err != nil {
 		return err
 	}
