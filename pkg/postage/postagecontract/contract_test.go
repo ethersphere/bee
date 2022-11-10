@@ -711,8 +711,10 @@ func TestBatchExpirer(t *testing.T) {
 		expectedFalseRes := big.NewInt(0)
 		counter := 0
 		expectedCallDataForExpireLimitedBatches, err := postagecontract.PostageStampABI.Pack("expireLimited", big.NewInt(1000))
+		if err != nil {
+			t.Fatal(err)
+		}
 		expectedCallDataForExpiredBatches, err := postagecontract.PostageStampABI.Pack("expiredBatchesExist")
-
 		if err != nil {
 			t.Fatal(err)
 		}
