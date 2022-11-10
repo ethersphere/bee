@@ -89,7 +89,7 @@ func New(
 
 func (c *postageContract) ExpireBatches(ctx context.Context) error {
 	for {
-		exists, err := c.expiredBatches(ctx)
+		exists, err := c.expiredBatchesExists(ctx)
 		if err != nil {
 			return fmt.Errorf("expired batches exist: %w", err)
 		}
@@ -97,7 +97,7 @@ func (c *postageContract) ExpireBatches(ctx context.Context) error {
 			break
 		}
 
-		err = c.expireLimitedBatches(ctx, big.NewInt(1000))
+		err = c.expireLimitedBatches(ctx, big.NewInt(50))
 		if err != nil {
 			return fmt.Errorf("expire limited batches: %w", err)
 		}
@@ -105,7 +105,7 @@ func (c *postageContract) ExpireBatches(ctx context.Context) error {
 	return nil
 }
 
-func (c *postageContract) expiredBatches(ctx context.Context) (bool, error) {
+func (c *postageContract) expiredBatchesExists(ctx context.Context) (bool, error) {
 	callData, err := postageStampABI.Pack("expiredBatchesExist")
 	if err != nil {
 		return false, err
@@ -132,15 +132,7 @@ func (c *postageContract) expireLimitedBatches(ctx context.Context, count *big.I
 		return err
 	}
 
-	result, err := c.transactionService.Call(ctx, &transaction.TxRequest{
-		To:   &c.postageContractAddress,
-		Data: callData,
-	})
-	if err != nil {
-		return err
-	}
-
-	_, err = postageStampABI.Unpack("expireLimited", result)
+	_, err = c.sendTransaction(sctx.SetGasLimit(ctx, 1_100_000), callData, "expire limited batches")
 	if err != nil {
 		return err
 	}
