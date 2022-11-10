@@ -208,6 +208,8 @@ func (c *postageContract) getBalance(ctx context.Context) (*big.Int, error) {
 
 func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) ([]byte, error) {
 
+	fmt.Println("USING POSTAGE CONTRACT ADDRESS", c.postageContractAddress)
+
 	if depth <= BucketDepth {
 		return nil, ErrInvalidDepth
 	}
