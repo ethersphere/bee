@@ -10,7 +10,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/sctx"
-	"github.com/ethersphere/bee/pkg/storage"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 )
@@ -19,15 +19,14 @@ var errInvalidData = errors.New("store: invalid data")
 
 type storeWriter struct {
 	l    storage.Putter
-	mode storage.ModePut
 	ctx  context.Context
 	next pipeline.ChainWriter
 }
 
 // NewStoreWriter returns a storeWriter. It just writes the given data
 // to a given storage.Putter.
-func NewStoreWriter(ctx context.Context, l storage.Putter, mode storage.ModePut, next pipeline.ChainWriter) pipeline.ChainWriter {
-	return &storeWriter{ctx: ctx, l: l, mode: mode, next: next}
+func NewStoreWriter(ctx context.Context, l storage.Putter, next pipeline.ChainWriter) pipeline.ChainWriter {
+	return &storeWriter{ctx: ctx, l: l, next: next}
 }
 
 func (w *storeWriter) ChainWrite(p *pipeline.PipeWriteArgs) error {
@@ -45,7 +44,7 @@ func (w *storeWriter) ChainWrite(p *pipeline.PipeWriteArgs) error {
 	} else {
 		c = swarm.NewChunk(swarm.NewAddress(p.Ref), p.Data)
 	}
-	seen, err := w.l.Put(w.ctx, w.mode, c)
+	seen, err := w.l.Put(w.ctx, c)
 	if err != nil {
 		return err
 	}
@@ -54,7 +53,7 @@ func (w *storeWriter) ChainWrite(p *pipeline.PipeWriteArgs) error {
 		if err != nil {
 			return err
 		}
-		if seen[0] {
+		if seen {
 			err := tag.Inc(tags.StateSeen)
 			if err != nil {
 				return err

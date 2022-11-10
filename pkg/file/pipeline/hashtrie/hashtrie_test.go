@@ -14,8 +14,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file/pipeline/bmt"
 	"github.com/ethersphere/bee/pkg/file/pipeline/hashtrie"
 	"github.com/ethersphere/bee/pkg/file/pipeline/store"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/mock"
+	"github.com/ethersphere/bee/pkg/storagev2/inmemchunkstore"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -23,7 +22,6 @@ var (
 	addr swarm.Address
 	span []byte
 	ctx  = context.Background()
-	mode = storage.ModePutUpload
 )
 
 func init() {
@@ -89,9 +87,9 @@ func TestLevels(t *testing.T) {
 		},
 	} {
 		t.Run(tc.desc, func(t *testing.T) {
-			s := mock.NewStorer()
+			s := inmemchunkstore.New()
 			pf := func() pipeline.ChainWriter {
-				lsw := store.NewStoreWriter(ctx, s, mode, nil)
+				lsw := store.NewStoreWriter(ctx, s, nil)
 				return bmt.NewBmtWriter(lsw)
 			}
 
@@ -110,7 +108,7 @@ func TestLevels(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			rootch, err := s.Get(ctx, storage.ModeGetRequest, swarm.NewAddress(ref))
+			rootch, err := s.Get(ctx, swarm.NewAddress(ref))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -130,9 +128,9 @@ func TestLevels_TrieFull(t *testing.T) {
 		chunkSize = 128
 		hashSize  = 32
 		writes    = 16384 // this is to get a balanced trie
-		s         = mock.NewStorer()
+		s         = inmemchunkstore.New()
 		pf        = func() pipeline.ChainWriter {
-			lsw := store.NewStoreWriter(ctx, s, mode, nil)
+			lsw := store.NewStoreWriter(ctx, s, nil)
 			return bmt.NewBmtWriter(lsw)
 		}
 
@@ -172,9 +170,9 @@ func TestRegression(t *testing.T) {
 		hashSize  = 32
 		writes    = 67100000 / 4096
 		span      = make([]byte, 8)
-		s         = mock.NewStorer()
+		s         = inmemchunkstore.New()
 		pf        = func() pipeline.ChainWriter {
-			lsw := store.NewStoreWriter(ctx, s, mode, nil)
+			lsw := store.NewStoreWriter(ctx, s, nil)
 			return bmt.NewBmtWriter(lsw)
 		}
 		ht = hashtrie.NewHashTrieWriter(chunkSize, branching, hashSize, pf)
@@ -194,7 +192,7 @@ func TestRegression(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rootch, err := s.Get(ctx, storage.ModeGetRequest, swarm.NewAddress(ref))
+	rootch, err := s.Get(ctx, swarm.NewAddress(ref))
 	if err != nil {
 		t.Fatal(err)
 	}

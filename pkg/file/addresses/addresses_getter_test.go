@@ -15,34 +15,33 @@ import (
 	"github.com/ethersphere/bee/pkg/file/addresses"
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	filetest "github.com/ethersphere/bee/pkg/file/testing"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/mock"
+	"github.com/ethersphere/bee/pkg/storagev2/inmemchunkstore"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 func TestAddressesGetterIterateChunkAddresses(t *testing.T) {
-	store := mock.NewStorer()
+	store := inmemchunkstore.New()
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 
 	// create root chunk with 2 references and the referenced data chunks
 	rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*2, swarm.SectionSize*2)
-	_, err := store.Put(ctx, storage.ModePutUpload, rootChunk)
+	_, err := store.Put(ctx, rootChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	firstAddress := swarm.NewAddress(rootChunk.Data()[8 : swarm.SectionSize+8])
 	firstChunk := filetest.GenerateTestRandomFileChunk(firstAddress, swarm.ChunkSize, swarm.ChunkSize)
-	_, err = store.Put(ctx, storage.ModePutUpload, firstChunk)
+	_, err = store.Put(ctx, firstChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	secondAddress := swarm.NewAddress(rootChunk.Data()[swarm.SectionSize+8:])
 	secondChunk := filetest.GenerateTestRandomFileChunk(secondAddress, swarm.ChunkSize, swarm.ChunkSize)
-	_, err = store.Put(ctx, storage.ModePutUpload, secondChunk)
+	_, err = store.Put(ctx, secondChunk)
 	if err != nil {
 		t.Fatal(err)
 	}

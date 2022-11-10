@@ -14,8 +14,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/splitter"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/mock"
+	"github.com/ethersphere/bee/pkg/storagev2/inmemchunkstore"
 	"github.com/ethersphere/bee/pkg/swarm"
 	mockbytes "gitlab.com/nolash/go-mockbytes"
 )
@@ -24,8 +23,8 @@ import (
 // the amounts of bytes written does not match the data length passed to the method.
 func TestSplitIncomplete(t *testing.T) {
 	testData := make([]byte, 42)
-	store := mock.NewStorer()
-	s := splitter.NewSimpleSplitter(store, storage.ModePutUpload)
+	store := inmemchunkstore.New()
+	s := splitter.NewSimpleSplitter(store)
 
 	testDataReader := file.NewSimpleReadCloser(testData)
 	_, err := s.Split(context.Background(), testDataReader, 41, false)
@@ -43,8 +42,8 @@ func TestSplitSingleChunk(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	store := mock.NewStorer()
-	s := splitter.NewSimpleSplitter(store, storage.ModePutUpload)
+	store := inmemchunkstore.New()
+	s := splitter.NewSimpleSplitter(store)
 
 	testDataReader := file.NewSimpleReadCloser(testData)
 	resultAddress, err := s.Split(context.Background(), testDataReader, int64(len(testData)), false)
@@ -58,7 +57,7 @@ func TestSplitSingleChunk(t *testing.T) {
 		t.Fatalf("expected %v, got %v", testHashAddress, resultAddress)
 	}
 
-	_, err = store.Get(context.Background(), storage.ModeGetRequest, resultAddress)
+	_, err = store.Get(context.TODO(), resultAddress)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,8 +74,8 @@ func TestSplitThreeLevels(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	store := mock.NewStorer()
-	s := splitter.NewSimpleSplitter(store, storage.ModePutUpload)
+	store := inmemchunkstore.New()
+	s := splitter.NewSimpleSplitter(store)
 
 	testDataReader := file.NewSimpleReadCloser(testData)
 	resultAddress, err := s.Split(context.Background(), testDataReader, int64(len(testData)), false)
@@ -90,12 +89,12 @@ func TestSplitThreeLevels(t *testing.T) {
 		t.Fatalf("expected %v, got %v", testHashAddress, resultAddress)
 	}
 
-	_, err = store.Get(context.Background(), storage.ModeGetRequest, resultAddress)
+	_, err = store.Get(context.TODO(), resultAddress)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	rootChunk, err := store.Get(context.Background(), storage.ModeGetRequest, resultAddress)
+	rootChunk, err := store.Get(context.TODO(), resultAddress)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,7 +103,7 @@ func TestSplitThreeLevels(t *testing.T) {
 	for i := 0; i < swarm.ChunkSize; i += swarm.SectionSize {
 		dataAddressBytes := rootData[i : i+swarm.SectionSize]
 		dataAddress := swarm.NewAddress(dataAddressBytes)
-		_, err := store.Get(context.Background(), storage.ModeGetRequest, dataAddress)
+		_, err := store.Get(context.TODO(), dataAddress)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -115,8 +114,8 @@ func TestSplitThreeLevels(t *testing.T) {
 // individual write sizes at the source of the data.
 func TestUnalignedSplit(t *testing.T) {
 	var (
-		storer    storage.Storer = mock.NewStorer()
-		chunkPipe                = file.NewChunkPipe()
+		storer    = inmemchunkstore.New()
+		chunkPipe = file.NewChunkPipe()
 	)
 
 	// test vector taken from pkg/file/testing/vector.go
@@ -133,7 +132,7 @@ func TestUnalignedSplit(t *testing.T) {
 	}
 
 	// perform the split in a separate thread
-	sp := splitter.NewSimpleSplitter(storer, storage.ModePutUpload)
+	sp := splitter.NewSimpleSplitter(storer)
 	ctx := context.Background()
 	doneC := make(chan swarm.Address)
 	errC := make(chan error)
@@ -226,8 +225,8 @@ func BenchmarkSplitter(b *testing.B) {
 func benchmarkSplitter(b *testing.B, count int) {
 	b.StopTimer()
 
-	m := mock.NewStorer()
-	s := splitter.NewSimpleSplitter(m, storage.ModePutUpload)
+	m := inmemchunkstore.New()
+	s := splitter.NewSimpleSplitter(m)
 	data := make([]byte, count)
 	_, err := rand.Read(data)
 	if err != nil {

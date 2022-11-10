@@ -15,14 +15,13 @@ import (
 
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	test "github.com/ethersphere/bee/pkg/file/testing"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/mock"
+	"github.com/ethersphere/bee/pkg/storagev2/inmemchunkstore"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 func TestPartialWrites(t *testing.T) {
-	m := mock.NewStorer()
-	p := builder.NewPipelineBuilder(context.Background(), m, storage.ModePutUpload, false)
+	m := inmemchunkstore.New()
+	p := builder.NewPipelineBuilder(context.TODO(), m, false)
 	_, _ = p.Write([]byte("hello "))
 	_, _ = p.Write([]byte("world"))
 
@@ -37,8 +36,8 @@ func TestPartialWrites(t *testing.T) {
 }
 
 func TestHelloWorld(t *testing.T) {
-	m := mock.NewStorer()
-	p := builder.NewPipelineBuilder(context.Background(), m, storage.ModePutUpload, false)
+	m := inmemchunkstore.New()
+	p := builder.NewPipelineBuilder(context.TODO(), m, false)
 
 	data := []byte("hello world")
 	_, err := p.Write(data)
@@ -58,8 +57,8 @@ func TestHelloWorld(t *testing.T) {
 
 // TestEmpty tests that a hash is generated for an empty file.
 func TestEmpty(t *testing.T) {
-	m := mock.NewStorer()
-	p := builder.NewPipelineBuilder(context.Background(), m, storage.ModePutUpload, false)
+	m := inmemchunkstore.New()
+	p := builder.NewPipelineBuilder(context.Background(), m, false)
 
 	data := []byte{}
 	_, err := p.Write(data)
@@ -81,8 +80,8 @@ func TestAllVectors(t *testing.T) {
 	for i := 1; i <= 20; i++ {
 		data, expect := test.GetVector(t, i)
 		t.Run(fmt.Sprintf("data length %d, vector %d", len(data), i), func(t *testing.T) {
-			m := mock.NewStorer()
-			p := builder.NewPipelineBuilder(context.Background(), m, storage.ModePutUpload, false)
+			m := inmemchunkstore.New()
+			p := builder.NewPipelineBuilder(context.TODO(), m, false)
 
 			_, err := p.Write(data)
 			if err != nil {
@@ -142,8 +141,8 @@ func BenchmarkPipeline(b *testing.B) {
 func benchmarkPipeline(b *testing.B, count int) {
 	b.StopTimer()
 
-	m := mock.NewStorer()
-	p := builder.NewPipelineBuilder(context.Background(), m, storage.ModePutUpload, false)
+	m := inmemchunkstore.New()
+	p := builder.NewPipelineBuilder(context.TODO(), m, false)
 	data := make([]byte, count)
 	_, err := rand.Read(data)
 	if err != nil {

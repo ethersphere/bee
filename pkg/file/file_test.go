@@ -16,8 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	test "github.com/ethersphere/bee/pkg/file/testing"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/mock"
+	"github.com/ethersphere/bee/pkg/storagev2/inmemchunkstore"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -43,8 +42,8 @@ func testSplitThenJoin(t *testing.T) {
 	var (
 		paramstring = strings.Split(t.Name(), "/")
 		dataIdx, _  = strconv.ParseInt(paramstring[1], 10, 0)
-		store       = mock.NewStorer()
-		p           = builder.NewPipelineBuilder(context.Background(), store, storage.ModePutUpload, false)
+		store       = inmemchunkstore.New()
+		p           = builder.NewPipelineBuilder(context.TODO(), store, false)
 		data, _     = test.GetVector(t, int(dataIdx))
 	)
 

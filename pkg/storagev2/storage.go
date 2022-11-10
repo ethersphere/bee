@@ -65,6 +65,8 @@ var ErrInvalidQuery = errors.New("storage: invalid query")
 
 var ErrNotFound = errors.New("storage: not found")
 
+var ErrReferenceLength = errors.New("invalid reference length")
+
 // Query denotes the iteration attributes.
 type Query struct {
 	// Factory is a constructor passed by client
