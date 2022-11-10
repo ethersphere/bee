@@ -674,6 +674,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 
 	var (
 		postageContractService postagecontract.Interface
+		batchExpirer           postagecontract.PostageBatchExpirer
 		batchSvc               postage.EventUpdater
 		eventListener          postage.Listener
 	)
@@ -988,7 +989,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 			}
 
 			redistributionContract := redistribution.New(swarmAddress, logger, transactionService, redistributionAddress)
-			agent = storageincentives.New(swarmAddress, chainBackend, logger, depthMonitor, redistributionContract, postageContractService, batchStore, storer, o.BlockTime, storageincentives.DefaultBlocksPerRound, storageincentives.DefaultBlocksPerPhase)
+			agent = storageincentives.New(swarmAddress, chainBackend, logger, depthMonitor, redistributionContract, batchExpirer, batchStore, storer, o.BlockTime, storageincentives.DefaultBlocksPerRound, storageincentives.DefaultBlocksPerPhase)
 			b.storageIncetivesCloser = agent
 		}
 	}
