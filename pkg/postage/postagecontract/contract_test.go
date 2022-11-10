@@ -541,6 +541,8 @@ func newDiluteEvent(postageContractAddress common.Address, batch *postage.Batch)
 }
 
 func TestBatchExpirer(t *testing.T) {
+	t.Parallel()
+
 	ctx := context.Background()
 	bzzTokenAddress := common.HexToAddress("eeee")
 	postageContractAddress := common.HexToAddress("ffff")
@@ -655,6 +657,8 @@ func TestBatchExpirer(t *testing.T) {
 	})
 
 	t.Run("correct and incorrect call data", func(t *testing.T) {
+		t.Parallel()
+
 		_, err := postagecontract.PostageStampABI.Pack("expiredBatchesExist")
 		if err != nil {
 			t.Fatal(err)
