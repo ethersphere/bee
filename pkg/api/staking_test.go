@@ -7,6 +7,7 @@ package api_test
 import (
 	"context"
 	"fmt"
+	"github.com/ethersphere/bee/pkg/bigint"
 	"math/big"
 	"net/http"
 	"testing"
@@ -115,7 +116,7 @@ func TestGetStake(t *testing.T) {
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, StakingContract: contract})
 		jsonhttptest.Request(t, ts, http.MethodGet, "/stake", http.StatusOK,
-			jsonhttptest.WithExpectedJSONResponse(&api.GetStakeResponse{StakedAmount: big.NewInt(1)}))
+			jsonhttptest.WithExpectedJSONResponse(&api.GetStakeResponse{StakedAmount: &bigint.BigInt{big.NewInt(1)}}))
 	})
 
 	t.Run("with error", func(t *testing.T) {
