@@ -10,10 +10,13 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"resenje.org/singleflight"
 )
+
+const loggerName = "pullstorage"
 
 var (
 	_ Storer = (*PullStorer)(nil)
@@ -46,14 +49,16 @@ type Storer interface {
 type PullStorer struct {
 	storage.Storer
 	intervalsSF singleflight.Group
+	logger      log.Logger
 	metrics     metrics
 }
 
 // New returns a new pullstorage Storer instance.
-func New(storer storage.Storer) *PullStorer {
+func New(storer storage.Storer, logger log.Logger) *PullStorer {
 	return &PullStorer{
 		Storer:  storer,
 		metrics: newMetrics(),
+		logger:  logger.WithName(loggerName).Register(),
 	}
 }
 
@@ -115,6 +120,7 @@ func (s *PullStorer) IntervalChunks(ctx context.Context, bin uint8, from, to uin
 			case <-ctx.Done():
 				return nil, ctx.Err()
 			case <-timerC:
+				s.logger.Debug("batch timeout timer triggered")
 				// return batch if new chunks are not received after some time
 				break LOOP
 			}
@@ -132,6 +138,7 @@ func (s *PullStorer) IntervalChunks(ctx context.Context, bin uint8, from, to uin
 			// end of interval reached. no more chunks so interval is complete
 			// return requested `to`. it could be that len(chs) == 0 if the interval
 			// is empty
+			s.logger.Debug("no more batches from the subscription", "to", to, "topmost", topmost)
 			topmost = to
 		}
 
