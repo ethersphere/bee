@@ -111,6 +111,21 @@ func TestIntervalChunks(t *testing.T) {
 	}
 }
 
+func TestIntervalChunksTimeout(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 0)
+	defer cancel()
+	<-ctx.Done()
+
+	ps, _ := newPullStorage(t)
+
+	_, _, err := ps.IntervalChunks(ctx, 0, 0, 0, limit)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal(err)
+	}
+}
+
 // Get some descriptor from the chunk channel, then block for a while
 // then add more chunks to the subscribe pull iterator and make sure the loop
 // exits correctly.

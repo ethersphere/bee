@@ -50,6 +50,7 @@ var (
 
 const (
 	storagePutTimeout = 5 * time.Second
+	makeOfferTimeout  = 5 * time.Minute
 )
 
 // how many maximum chunks in a batch
@@ -355,6 +356,10 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 
 // makeOffer tries to assemble an offer for a given requested interval.
 func (s *Syncer) makeOffer(ctx context.Context, rn pb.GetRange) (o *pb.Offer, addrs []swarm.Address, err error) {
+
+	ctx, cancel := context.WithTimeout(ctx, makeOfferTimeout)
+	defer cancel()
+
 	chs, top, err := s.storage.IntervalChunks(ctx, uint8(rn.Bin), rn.From, rn.To, maxPage)
 	if err != nil {
 		return o, nil, err
