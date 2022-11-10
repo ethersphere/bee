@@ -44,6 +44,11 @@ func TestCreateBatch(t *testing.T) {
 		batchID := common.HexToHash("dddd")
 		postageMock := postageMock.New()
 
+		expectedCallDataForExpireLimitedBatches, err := postagecontract.PostageStampABI.Pack("expireLimited", big.NewInt(50))
+		if err != nil {
+			t.Fatal("expected error")
+		}
+
 		expectedCallData, err := postagecontract.PostageStampABI.Pack("createBatch", owner, initialBalance, depth, postagecontract.BucketDepth, common.Hash{}, false)
 		if err != nil {
 			t.Fatal(err)
@@ -58,6 +63,9 @@ func TestCreateBatch(t *testing.T) {
 					if *request.To == bzzTokenAddress {
 						return txHashApprove, nil
 					} else if *request.To == postageStampAddress {
+						if bytes.Equal(expectedCallDataForExpireLimitedBatches[:32], request.Data[:32]) {
+							return txHashApprove, nil
+						}
 						if !bytes.Equal(expectedCallData[:100], request.Data[:100]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
 						}
@@ -102,7 +110,6 @@ func TestCreateBatch(t *testing.T) {
 								}
 							}
 						}
-						return expectedRes.FillBytes(make([]byte, 32)), nil
 					}
 					return nil, errors.New("unexpected call")
 				}),
@@ -414,6 +421,13 @@ func TestDiluteBatch(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+
+		expectedCallDataForExpireLimitedBatches, err := postagecontract.PostageStampABI.Pack("expireLimited", big.NewInt(50))
+		if err != nil {
+			t.Fatal("expected error")
+		}
+
+		txHashApprove := common.HexToHash("abb0")
 		counter := 0
 		contract := postagecontract.New(
 			owner,
@@ -422,6 +436,9 @@ func TestDiluteBatch(t *testing.T) {
 			transactionMock.New(
 				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
 					if *request.To == postageStampAddress {
+						if bytes.Equal(expectedCallDataForExpireLimitedBatches[:32], request.Data[:32]) {
+							return txHashApprove, nil
+						}
 						if !bytes.Equal(expectedCallData[:64], request.Data[:64]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
 						}
@@ -435,6 +452,11 @@ func TestDiluteBatch(t *testing.T) {
 							Logs: []*types.Log{
 								newDiluteEvent(postageStampAddress, batch),
 							},
+							Status: 1,
+						}, nil
+					}
+					if txHash == txHashApprove {
+						return &types.Receipt{
 							Status: 1,
 						}, nil
 					}
@@ -576,9 +598,14 @@ func TestBatchExpirer(t *testing.T) {
 								}
 							}
 						}
-						return expectedRes.FillBytes(make([]byte, 32)), nil
 					}
 					return nil, errors.New("unexpected call")
+				}), transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, i int) (txHash common.Hash, err error) {
+					return common.Hash{}, nil
+				}), transactionMock.WithWaitForReceiptFunc(func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
+					return &types.Receipt{
+						Status: 1,
+					}, nil
 				}),
 			),
 			postageMock,
@@ -707,13 +734,15 @@ func TestBatchExpirer(t *testing.T) {
 								}
 							}
 						}
-						if bytes.Equal(expectedCallDataForExpireLimitedBatches[:32], request.Data[:32]) {
-							{
-								return nil, fmt.Errorf("some error")
-							}
-						}
 					}
 					return nil, errors.New("unexpected call")
+				}), transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, i int) (txHash common.Hash, err error) {
+					if *request.To == postageContractAddress {
+						if bytes.Equal(expectedCallDataForExpireLimitedBatches[:32], request.Data[:32]) {
+							return txHash, fmt.Errorf("some error")
+						}
+					}
+					return txHash, errors.New("unexpected call")
 				}),
 			),
 			postageMock,
@@ -795,7 +824,7 @@ func TestBatchExpirer(t *testing.T) {
 		}
 	})
 
-	t.Run("unpack err for expire limited batches", func(t *testing.T) {
+	t.Run("tx err for expire limited batches", func(t *testing.T) {
 		t.Parallel()
 		expectedRes := big.NewInt(1)
 		expectedFalseRes := big.NewInt(0)
@@ -822,9 +851,14 @@ func TestBatchExpirer(t *testing.T) {
 								}
 							}
 						}
-						return []byte("someWrongData"), nil
 					}
 					return nil, errors.New("unexpected call")
+				}), transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, i int) (txHash common.Hash, err error) {
+					return common.Hash{}, nil
+				}), transactionMock.WithWaitForReceiptFunc(func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
+					return &types.Receipt{
+						Status: 0,
+					}, nil
 				}),
 			),
 			postageMock,
