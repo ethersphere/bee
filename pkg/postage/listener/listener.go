@@ -233,7 +233,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 
 	l.logger.Debug("batch factor", "value", batchFactor)
 
-	synced := make(chan error)
+	synced := make(chan error, 1)
 	closeOnce := new(sync.Once)
 	paged := make(chan struct{}, 1)
 	paged <- struct{}{}
@@ -341,7 +341,9 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 			l.logger.Error(err, "failed syncing event listener; shutting down node error")
 		}
 		closeOnce.Do(func() { synced <- err })
-		l.syncingStopped.Signal() // trigger shutdown in start.go
+		if l.syncingStopped != nil {
+			l.syncingStopped.Signal() // trigger shutdown in start.go
+		}
 	}()
 
 	return synced
@@ -349,8 +351,8 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 
 func (l *listener) Close() error {
 	close(l.quit)
-	done := make(chan struct{})
 
+	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		l.wg.Wait()

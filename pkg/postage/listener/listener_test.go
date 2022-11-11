@@ -60,7 +60,7 @@ func TestListener(t *testing.T) {
 			depth:            100,
 		}
 
-		ev, evC := newEventUpdaterMock()
+		ev := newEventUpdaterMock()
 		mf := newMockFilterer(
 			WithFilterLogEvents(
 				c.toLog(496),
@@ -78,16 +78,17 @@ func TestListener(t *testing.T) {
 			backoffTime,
 		)
 		<-l.Listen(context.Background(), 0, ev, nil)
+		defer l.Close()
 
 		select {
-		case e := <-evC:
+		case e := <-ev.eventC:
 			e.(blockNumberCall).compareF(t, blockNumber-uint64(listener.TailSize)) // event args should be equal
 		case <-time.After(timeout):
 			t.Fatal("timed out waiting for block number update")
 		}
 
 		select {
-		case e := <-evC:
+		case e := <-ev.eventC:
 			e.(createArgs).compareF(t, c) // event args should be equal
 		case <-time.After(timeout):
 			t.Fatal("timed out waiting for event")
@@ -101,7 +102,7 @@ func TestListener(t *testing.T) {
 			normalisedBalance: big.NewInt(1),
 		}
 
-		ev, evC := newEventUpdaterMock()
+		ev := newEventUpdaterMock()
 		mf := newMockFilterer(
 			WithFilterLogEvents(
 				topup.toLog(496),
@@ -119,15 +120,17 @@ func TestListener(t *testing.T) {
 		)
 		<-l.Listen(context.Background(), 0, ev, nil)
 
+		defer l.Close()
+
 		select {
-		case e := <-evC:
+		case e := <-ev.eventC:
 			e.(blockNumberCall).compareF(t, blockNumber-uint64(listener.TailSize)) // event args should be equal
 		case <-time.After(timeout):
 			t.Fatal("timed out waiting for block number update")
 		}
 
 		select {
-		case e := <-evC:
+		case e := <-ev.eventC:
 			e.(topupArgs).compareF(t, topup) // event args should be equal
 		case <-time.After(timeout):
 			t.Fatal("timed out waiting for event")
@@ -141,7 +144,7 @@ func TestListener(t *testing.T) {
 			normalisedBalance: big.NewInt(2),
 		}
 
-		ev, evC := newEventUpdaterMock()
+		ev := newEventUpdaterMock()
 		mf := newMockFilterer(
 			WithFilterLogEvents(
 				depthIncrease.toLog(496),
@@ -159,15 +162,17 @@ func TestListener(t *testing.T) {
 		)
 		<-l.Listen(context.Background(), 0, ev, nil)
 
+		defer l.Close()
+
 		select {
-		case e := <-evC:
+		case e := <-ev.eventC:
 			e.(blockNumberCall).compareF(t, blockNumber-uint64(listener.TailSize)) // event args should be equal
 		case <-time.After(timeout):
 			t.Fatal("timed out waiting for block number update")
 		}
 
 		select {
-		case e := <-evC:
+		case e := <-ev.eventC:
 			e.(depthArgs).compareF(t, depthIncrease) // event args should be equal
 		case <-time.After(timeout):
 			t.Fatal("timed out waiting for event")
@@ -179,7 +184,7 @@ func TestListener(t *testing.T) {
 			price: big.NewInt(500),
 		}
 
-		ev, evC := newEventUpdaterMock()
+		ev := newEventUpdaterMock()
 		mf := newMockFilterer(
 			WithFilterLogEvents(
 				priceUpdate.toLog(496),
@@ -196,15 +201,17 @@ func TestListener(t *testing.T) {
 			backoffTime,
 		)
 		<-l.Listen(context.Background(), 0, ev, nil)
+		defer l.Close()
+
 		select {
-		case e := <-evC:
+		case e := <-ev.eventC:
 			e.(blockNumberCall).compareF(t, blockNumber-uint64(listener.TailSize)) // event args should be equal
 		case <-time.After(timeout):
 			t.Fatal("timed out waiting for block number update")
 		}
 
 		select {
-		case e := <-evC:
+		case e := <-ev.eventC:
 			e.(priceArgs).compareF(t, priceUpdate) // event args should be equal
 		case <-time.After(timeout):
 			t.Fatal("timed out waiting for event")
@@ -236,7 +243,7 @@ func TestListener(t *testing.T) {
 			price: big.NewInt(500),
 		}
 
-		ev, evC := newEventUpdaterMock()
+		ev := newEventUpdaterMock()
 		mf := newMockFilterer(
 			WithFilterLogEvents(
 				c.toLog(495),
@@ -258,60 +265,62 @@ func TestListener(t *testing.T) {
 		)
 		<-l.Listen(context.Background(), 0, ev, nil)
 
+		defer l.Close()
+
 		select {
-		case e := <-evC:
+		case e := <-ev.eventC:
 			e.(blockNumberCall).compareF(t, 495) // event args should be equal
 		case <-time.After(timeout):
 			t.Fatal("timed out waiting for block number update")
 		}
 
 		select {
-		case e := <-evC:
+		case e := <-ev.eventC:
 			e.(createArgs).compareF(t, c) // event args should be equal
 		case <-time.After(timeout):
 			t.Fatal("timed out waiting for event")
 		}
 		select {
-		case e := <-evC:
+		case e := <-ev.eventC:
 			e.(blockNumberCall).compareF(t, 496) // event args should be equal
 		case <-time.After(timeout):
 			t.Fatal("timed out waiting for block number update")
 		}
 		select {
-		case e := <-evC:
+		case e := <-ev.eventC:
 			e.(topupArgs).compareF(t, topup) // event args should be equal
 		case <-time.After(timeout):
 			t.Fatal("timed out waiting for event")
 		}
 		select {
-		case e := <-evC:
+		case e := <-ev.eventC:
 			e.(blockNumberCall).compareF(t, 497) // event args should be equal
 		case <-time.After(timeout):
 			t.Fatal("timed out waiting for block number update")
 		}
 
 		select {
-		case e := <-evC:
+		case e := <-ev.eventC:
 			e.(depthArgs).compareF(t, depthIncrease) // event args should be equal
 		case <-time.After(timeout):
 			t.Fatal("timed out waiting for event")
 		}
 		select {
-		case e := <-evC:
+		case e := <-ev.eventC:
 			e.(blockNumberCall).compareF(t, 498) // event args should be equal
 		case <-time.After(timeout):
 			t.Fatal("timed out waiting for block number update")
 		}
 
 		select {
-		case e := <-evC:
+		case e := <-ev.eventC:
 			e.(priceArgs).compareF(t, priceUpdate)
 		case <-time.After(timeout):
 			t.Fatal("timed out waiting for event")
 		}
 
 		select {
-		case e := <-evC:
+		case e := <-ev.eventC:
 			e.(blockNumberCall).compareF(t, toBatchBlock(blockNumber-uint64(listener.TailSize))) // event args should be equal
 		case <-time.After(timeout):
 			t.Fatal("timed out waiting for block number update")
@@ -320,10 +329,11 @@ func TestListener(t *testing.T) {
 
 	t.Run("do not shutdown on error event", func(t *testing.T) {
 		blockNumber := uint64(500)
-		ev, evC := newEventUpdaterMock()
+		ev := newEventUpdaterMock()
 		mf := newMockFilterer(
 			WithBlockNumberErrorOnce(errors.New("dummy error"), blockNumber),
 		)
+
 		l := listener.New(
 			nil,
 			log.Noop,
@@ -335,9 +345,10 @@ func TestListener(t *testing.T) {
 			0,
 		)
 		<-l.Listen(context.Background(), 0, ev, nil)
+		defer l.Close()
 
 		select {
-		case e := <-evC:
+		case e := <-ev.eventC:
 			e.(blockNumberCall).compareF(t, toBatchBlock(blockNumber-uint64(listener.TailSize))) // event args should be equal
 		case <-time.After(timeout):
 			t.Fatal("timed out waiting for block number update")
@@ -345,11 +356,12 @@ func TestListener(t *testing.T) {
 	})
 
 	t.Run("shutdown on stalling", func(t *testing.T) {
-		ev, _ := newEventUpdaterMock()
+		ev := newEventUpdaterMock()
 		mf := newMockFilterer(
 			WithBlockNumberError(errors.New("dummy error")),
 		)
 		c := util.NewSignaler()
+
 		l := listener.New(
 			c,
 			log.Noop,
@@ -361,6 +373,7 @@ func TestListener(t *testing.T) {
 			0,
 		)
 		<-l.Listen(context.Background(), 0, ev, nil)
+		defer l.Close()
 
 		select {
 		case <-c.C:
@@ -371,11 +384,12 @@ func TestListener(t *testing.T) {
 
 	t.Run("shutdown on processing error", func(t *testing.T) {
 		blockNumber := uint64(500)
-		ev, evC := newEventUpdaterMockWithBlockNumberUpdateError(errors.New("err"))
+		ev := newEventUpdaterMockWithBlockNumberUpdateError(errors.New("err"))
 		mf := newMockFilterer(
 			WithBlockNumber(blockNumber),
 		)
 		c := util.NewSignaler()
+
 		l := listener.New(c,
 			log.Noop,
 			mf,
@@ -386,9 +400,10 @@ func TestListener(t *testing.T) {
 			backoffTime,
 		)
 		<-l.Listen(context.Background(), 0, ev, nil)
+		defer l.Close()
 
 		select {
-		case e := <-evC:
+		case e := <-ev.eventC:
 			e.(blockNumberCall).compareF(t, toBatchBlock(blockNumber-uint64(listener.TailSize))) // event args should be equal
 		case <-time.After(timeout):
 			t.Fatal("timed out waiting for block number update")
@@ -403,7 +418,7 @@ func TestListener(t *testing.T) {
 }
 
 func TestListenerBatchState(t *testing.T) {
-	ev, evC := newEventUpdaterMock()
+	ev := newEventUpdaterMock()
 	mf := newMockFilterer()
 
 	create := createArgs{
@@ -452,7 +467,7 @@ func TestListenerBatchState(t *testing.T) {
 			select {
 			case <-stop:
 				return
-			case e := <-evC:
+			case e := <-ev.eventC:
 				noOfEvents++
 				switch ev := e.(type) {
 				case blockNumberCall:
@@ -500,6 +515,7 @@ func TestListenerBatchState(t *testing.T) {
 		backoffTime,
 	)
 	l.Listen(context.Background(), snapshot.LastBlockNumber+1, ev, snapshot)
+	defer l.Close()
 
 	defer close(stop)
 
@@ -515,19 +531,19 @@ func TestListenerBatchState(t *testing.T) {
 	}
 }
 
-func newEventUpdaterMock() (*updater, chan interface{}) {
-	c := make(chan interface{})
+func newEventUpdaterMock() *updater {
+	c := make(chan interface{}, 1)
 	return &updater{
 		eventC: c,
-	}, c
+	}
 }
 
-func newEventUpdaterMockWithBlockNumberUpdateError(err error) (*updater, chan interface{}) {
-	c := make(chan interface{})
+func newEventUpdaterMockWithBlockNumberUpdateError(err error) *updater {
+	c := make(chan interface{}, 1)
 	return &updater{
 		eventC:                 c,
 		blockNumberUpdateError: err,
-	}, c
+	}
 }
 
 type updater struct {
