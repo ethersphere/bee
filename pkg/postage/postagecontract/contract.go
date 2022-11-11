@@ -209,6 +209,7 @@ func (c *postageContract) getBalance(ctx context.Context) (*big.Int, error) {
 func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) ([]byte, error) {
 
 	if depth <= BucketDepth {
+		fmt.Printf("========== MIN DEPTH ======== %d\n", BucketDepth)
 		return nil, ErrInvalidDepth
 	}
 
