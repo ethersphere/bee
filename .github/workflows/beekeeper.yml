@@ -11,9 +11,9 @@ env:
   K3S_VERSION: "v1.20.15+k3s1"
   REPLICA: 3
   RUN_TYPE: "PR RUN"
-  SETUP_CONTRACT_IMAGE_TAG: "0.9.1"
+  SETUP_CONTRACT_IMAGE_TAG: "0.9.4"
   BEELOCAL_BRANCH: "main"
-  BEEKEEPER_BRANCH: "cifix"
+  BEEKEEPER_BRANCH: "master"
   BEEKEEPER_METRICS_ENABLED: false
   REACHABILITY_OVERRIDE_PUBLIC: true
   BATCHFACTOR_OVERRIDE_PUBLIC: 2
@@ -58,10 +58,13 @@ jobs:
           mv dist/bee bee-0
       - name: Apply patches and build - 1
         run: |
+          patch pkg/postage/postagecontract/contract.go .github/patches/postagecontract.patch
+          patch pkg/postage/service.go .github/patches/postageservice.patch
           make binary
           mv dist/bee bee-1
       - name: Apply patches and build - 2
         run: |
+          patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve_gc.patch
           make binary
           mv dist/bee bee-2
       - name: Install beekeeper
@@ -286,6 +289,9 @@ jobs:
       - name: Test pingpong
         id: pingpong
         run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-gc --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done'
+      - name: Test gc
+        id: gc-chunk
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-gc --checks=ci-gc
       - name: Debug workflow if failed
         if: failure()
         run: |
