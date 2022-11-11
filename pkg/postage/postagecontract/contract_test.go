@@ -44,11 +44,16 @@ func TestCreateBatch(t *testing.T) {
 		batchID := common.HexToHash("dddd")
 		postageMock := postageMock.New()
 
+		expectedCallDataForExpireLimitedBatches, err := postagecontract.PostageStampABI.Pack("expireLimited", big.NewInt(50))
+		if err != nil {
+			t.Fatal("expected error")
+		}
+
 		expectedCallData, err := postagecontract.PostageStampABI.Pack("createBatch", owner, initialBalance, depth, postagecontract.BucketDepth, common.Hash{}, false)
 		if err != nil {
 			t.Fatal(err)
 		}
-
+		counter := 0
 		contract := postagecontract.New(
 			owner,
 			postageStampAddress,
@@ -58,6 +63,9 @@ func TestCreateBatch(t *testing.T) {
 					if *request.To == bzzTokenAddress {
 						return txHashApprove, nil
 					} else if *request.To == postageStampAddress {
+						if bytes.Equal(expectedCallDataForExpireLimitedBatches[:32], request.Data[:32]) {
+							return txHashApprove, nil
+						}
 						if !bytes.Equal(expectedCallData[:100], request.Data[:100]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
 						}
@@ -83,6 +91,25 @@ func TestCreateBatch(t *testing.T) {
 				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
 					if *request.To == bzzTokenAddress {
 						return totalAmount.FillBytes(make([]byte, 32)), nil
+					}
+					if *request.To == postageStampAddress {
+						expectedCallDataForExpiredBatches, err := postagecontract.PostageStampABI.Pack("expiredBatchesExist")
+						if err != nil {
+							t.Fatal(err)
+						}
+						expectedRes := big.NewInt(1)
+						expectedFalseRes := big.NewInt(0)
+						if bytes.Equal(expectedCallDataForExpiredBatches[:32], request.Data[:32]) {
+							{
+								if counter > 1 {
+									return expectedFalseRes.FillBytes(make([]byte, 32)), nil
+								}
+								for {
+									counter++
+									return expectedRes.FillBytes(make([]byte, 32)), nil
+								}
+							}
+						}
 					}
 					return nil, errors.New("unexpected call")
 				}),
@@ -395,6 +422,13 @@ func TestDiluteBatch(t *testing.T) {
 			t.Fatal(err)
 		}
 
+		expectedCallDataForExpireLimitedBatches, err := postagecontract.PostageStampABI.Pack("expireLimited", big.NewInt(50))
+		if err != nil {
+			t.Fatal("expected error")
+		}
+
+		txHashApprove := common.HexToHash("abb0")
+		counter := 0
 		contract := postagecontract.New(
 			owner,
 			postageStampAddress,
@@ -402,6 +436,9 @@ func TestDiluteBatch(t *testing.T) {
 			transactionMock.New(
 				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
 					if *request.To == postageStampAddress {
+						if bytes.Equal(expectedCallDataForExpireLimitedBatches[:32], request.Data[:32]) {
+							return txHashApprove, nil
+						}
 						if !bytes.Equal(expectedCallData[:64], request.Data[:64]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
 						}
@@ -418,7 +455,35 @@ func TestDiluteBatch(t *testing.T) {
 							Status: 1,
 						}, nil
 					}
+					if txHash == txHashApprove {
+						return &types.Receipt{
+							Status: 1,
+						}, nil
+					}
 					return nil, errors.New("unknown tx hash")
+				}),
+				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
+					if *request.To == postageStampAddress {
+						expectedCallDataForExpiredBatches, err := postagecontract.PostageStampABI.Pack("expiredBatchesExist")
+						if err != nil {
+							t.Fatal(err)
+						}
+						expectedRes := big.NewInt(1)
+						expectedFalseRes := big.NewInt(0)
+						if bytes.Equal(expectedCallDataForExpiredBatches[:32], request.Data[:32]) {
+							{
+								if counter > 1 {
+									return expectedFalseRes.FillBytes(make([]byte, 32)), nil
+								}
+								for {
+									counter++
+									return expectedRes.FillBytes(make([]byte, 32)), nil
+								}
+							}
+						}
+						return expectedRes.FillBytes(make([]byte, 32)), nil
+					}
+					return nil, errors.New("unexpected call")
 				}),
 			),
 			postageMock,
@@ -495,4 +560,318 @@ func newDiluteEvent(postageContractAddress common.Address, batch *postage.Batch)
 		Topics:      []common.Hash{postagecontract.BatchDiluteTopic, common.BytesToHash(batch.ID)},
 		BlockNumber: batch.Start + 1,
 	}
+}
+
+func TestBatchExpirer(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	bzzTokenAddress := common.HexToAddress("eeee")
+	postageContractAddress := common.HexToAddress("ffff")
+	postageMock := postageMock.New()
+	owner := common.HexToAddress("abcd")
+
+	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+		expectedRes := big.NewInt(1)
+		expectedFalseRes := big.NewInt(0)
+		counter := 0
+		expectedCallDataForExpiredBatches, err := postagecontract.PostageStampABI.Pack("expiredBatchesExist")
+		if err != nil {
+			t.Fatal(err)
+		}
+		contract := postagecontract.New(
+			owner,
+			postageContractAddress,
+			bzzTokenAddress,
+			transactionMock.New(
+				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
+					if *request.To == postageContractAddress {
+						if bytes.Equal(expectedCallDataForExpiredBatches[:32], request.Data[:32]) {
+							{
+								if counter > 1 {
+									return expectedFalseRes.FillBytes(make([]byte, 32)), nil
+								}
+								for {
+									counter++
+									return expectedRes.FillBytes(make([]byte, 32)), nil
+								}
+							}
+						}
+					}
+					return nil, errors.New("unexpected call")
+				}), transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, i int) (txHash common.Hash, err error) {
+					return common.Hash{}, nil
+				}), transactionMock.WithWaitForReceiptFunc(func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
+					return &types.Receipt{
+						Status: 1,
+					}, nil
+				}),
+			),
+			postageMock,
+			postagestoreMock.New(),
+			true,
+		)
+
+		err = contract.ExpireBatches(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+	})
+
+	t.Run("wrong call data for expired batches exist", func(t *testing.T) {
+		t.Parallel()
+		expectedCallDataForExpireLimitedBatches, err := postagecontract.PostageStampABI.Pack("expireLimited", big.NewInt(2))
+		if err != nil {
+			t.Fatal("expected error")
+		}
+		contract := postagecontract.New(
+			owner,
+			postageContractAddress,
+			bzzTokenAddress,
+			transactionMock.New(
+				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
+					if *request.To == postageContractAddress {
+						if !bytes.Equal(expectedCallDataForExpireLimitedBatches[:32], request.Data[:32]) {
+							return nil, fmt.Errorf("wrong call data")
+						}
+					}
+					return nil, errors.New("unexpected call")
+				}),
+			),
+			postageMock,
+			postagestoreMock.New(),
+			true,
+		)
+
+		err = contract.ExpireBatches(ctx)
+		if err == nil {
+			t.Fatal("expected error")
+		}
+
+	})
+
+	t.Run("wrong call data for expired limited batches", func(t *testing.T) {
+		t.Parallel()
+		expectedCallDataForExpireLimitedBatches, err := postagecontract.PostageStampABI.Pack("expiredBatchesExist")
+		if err != nil {
+			t.Fatal("expected error")
+		}
+		contract := postagecontract.New(
+			owner,
+			postageContractAddress,
+			bzzTokenAddress,
+			transactionMock.New(
+				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
+					if *request.To == postageContractAddress {
+						if !bytes.Equal(expectedCallDataForExpireLimitedBatches[:32], request.Data[:32]) {
+							return nil, fmt.Errorf("wrong call data")
+						}
+					}
+					return nil, errors.New("unexpected call")
+				}),
+			),
+			postageMock,
+			postagestoreMock.New(),
+			true,
+		)
+
+		err = contract.ExpireBatches(ctx)
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+
+	t.Run("correct and incorrect call data", func(t *testing.T) {
+		t.Parallel()
+
+		_, err := postagecontract.PostageStampABI.Pack("expiredBatchesExist")
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = postagecontract.PostageStampABI.Pack("expireLimited", big.NewInt(2))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = postagecontract.PostageStampABI.Pack("expiredBatchesExist", "someVal")
+		if err == nil {
+			t.Fatal("expected error")
+		}
+		_, err = postagecontract.PostageStampABI.Pack("expireLimited")
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+
+	t.Run("wrong result for expire limited batches", func(t *testing.T) {
+		t.Parallel()
+		expectedRes := big.NewInt(1)
+		expectedFalseRes := big.NewInt(0)
+		counter := 0
+		expectedCallDataForExpireLimitedBatches, err := postagecontract.PostageStampABI.Pack("expireLimited", big.NewInt(1000))
+		if err != nil {
+			t.Fatal(err)
+		}
+		expectedCallDataForExpiredBatches, err := postagecontract.PostageStampABI.Pack("expiredBatchesExist")
+		if err != nil {
+			t.Fatal(err)
+		}
+		contract := postagecontract.New(
+			owner,
+			postageContractAddress,
+			bzzTokenAddress,
+			transactionMock.New(
+				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
+					if *request.To == postageContractAddress {
+						if bytes.Equal(expectedCallDataForExpiredBatches[:32], request.Data[:32]) {
+							{
+								if counter > 1 {
+									return expectedFalseRes.FillBytes(make([]byte, 32)), nil
+								}
+								for {
+									counter++
+									return expectedRes.FillBytes(make([]byte, 32)), nil
+								}
+							}
+						}
+					}
+					return nil, errors.New("unexpected call")
+				}), transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, i int) (txHash common.Hash, err error) {
+					if *request.To == postageContractAddress {
+						if bytes.Equal(expectedCallDataForExpireLimitedBatches[:32], request.Data[:32]) {
+							return txHash, fmt.Errorf("some error")
+						}
+					}
+					return txHash, errors.New("unexpected call")
+				}),
+			),
+			postageMock,
+			postagestoreMock.New(),
+			true,
+		)
+
+		err = contract.ExpireBatches(ctx)
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+
+	t.Run("wrong result for expired batches exist", func(t *testing.T) {
+		t.Parallel()
+		expectedCallDataForExpiredBatches, err := postagecontract.PostageStampABI.Pack("expiredBatchesExist")
+		if err != nil {
+			t.Fatal(err)
+		}
+		contract := postagecontract.New(
+			owner,
+			postageContractAddress,
+			bzzTokenAddress,
+			transactionMock.New(
+				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
+					if *request.To == postageContractAddress {
+						if bytes.Equal(expectedCallDataForExpiredBatches[:32], request.Data[:32]) {
+							{
+								return nil, fmt.Errorf("some error")
+							}
+						}
+					}
+					return nil, errors.New("unexpected call")
+				}),
+			),
+			postageMock,
+			postagestoreMock.New(),
+			true,
+		)
+
+		err = contract.ExpireBatches(ctx)
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+
+	t.Run("unpack err for expired batches exist", func(t *testing.T) {
+		t.Parallel()
+		expectedRes := big.NewInt(1)
+		expectedCallDataForExpiredBatches, err := postagecontract.PostageStampABI.Pack("expiredBatchesExist")
+		if err != nil {
+			t.Fatal(err)
+		}
+		contract := postagecontract.New(
+			owner,
+			postageContractAddress,
+			bzzTokenAddress,
+			transactionMock.New(
+				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
+					if *request.To == postageContractAddress {
+						if bytes.Equal(expectedCallDataForExpiredBatches[:32], request.Data[:32]) {
+							{
+								return []byte("someWrongData"), nil
+							}
+						}
+						return expectedRes.FillBytes(make([]byte, 32)), nil
+					}
+					return nil, errors.New("unexpected call")
+				}),
+			),
+			postageMock,
+			postagestoreMock.New(),
+			true,
+		)
+
+		err = contract.ExpireBatches(ctx)
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+
+	t.Run("tx err for expire limited batches", func(t *testing.T) {
+		t.Parallel()
+		expectedRes := big.NewInt(1)
+		expectedFalseRes := big.NewInt(0)
+		counter := 0
+		expectedCallDataForExpiredBatches, err := postagecontract.PostageStampABI.Pack("expiredBatchesExist")
+		if err != nil {
+			t.Fatal(err)
+		}
+		contract := postagecontract.New(
+			owner,
+			postageContractAddress,
+			bzzTokenAddress,
+			transactionMock.New(
+				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
+					if *request.To == postageContractAddress {
+						if bytes.Equal(expectedCallDataForExpiredBatches[:32], request.Data[:32]) {
+							{
+								if counter > 1 {
+									return expectedFalseRes.FillBytes(make([]byte, 32)), nil
+								}
+								for {
+									counter++
+									return expectedRes.FillBytes(make([]byte, 32)), nil
+								}
+							}
+						}
+					}
+					return nil, errors.New("unexpected call")
+				}), transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, i int) (txHash common.Hash, err error) {
+					return common.Hash{}, nil
+				}), transactionMock.WithWaitForReceiptFunc(func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
+					return &types.Receipt{
+						Status: 0,
+					}, nil
+				}),
+			),
+			postageMock,
+			postagestoreMock.New(),
+			true,
+		)
+
+		err = contract.ExpireBatches(ctx)
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+
 }

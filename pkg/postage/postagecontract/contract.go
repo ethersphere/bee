@@ -18,14 +18,13 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/transaction"
-	"github.com/ethersphere/go-storage-incentives-abi/postageabi"
 	"github.com/ethersphere/go-sw3-abi/sw3abi"
 )
 
 var (
 	BucketDepth = uint8(16)
 
-	postageStampABI   = parseABI(postageabi.PostageStampABIv0_3_0)
+	postageStampABI   = parseABI(PostageABI)
 	erc20ABI          = parseABI(sw3abi.ERC20ABIv0_3_1)
 	batchCreatedTopic = postageStampABI.Events["BatchCreated"].ID
 	batchTopUpTopic   = postageStampABI.Events["BatchTopUp"].ID
@@ -49,6 +48,11 @@ type Interface interface {
 	CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) ([]byte, error)
 	TopUpBatch(ctx context.Context, batchID []byte, topupBalance *big.Int) error
 	DiluteBatch(ctx context.Context, batchID []byte, newDepth uint8) error
+	PostageBatchExpirer
+}
+
+type PostageBatchExpirer interface {
+	ExpireBatches(ctx context.Context) error
 }
 
 type postageContract struct {
@@ -81,6 +85,59 @@ func New(
 		postageService:         postageService,
 		postageStorer:          postageStorer,
 	}
+}
+
+func (c *postageContract) ExpireBatches(ctx context.Context) error {
+	for {
+		exists, err := c.expiredBatchesExists(ctx)
+		if err != nil {
+			return fmt.Errorf("expired batches exist: %w", err)
+		}
+		if !exists {
+			break
+		}
+
+		err = c.expireLimitedBatches(ctx, big.NewInt(50))
+		if err != nil {
+			return fmt.Errorf("expire limited batches: %w", err)
+		}
+	}
+	return nil
+}
+
+func (c *postageContract) expiredBatchesExists(ctx context.Context) (bool, error) {
+	callData, err := postageStampABI.Pack("expiredBatchesExist")
+	if err != nil {
+		return false, err
+	}
+
+	result, err := c.transactionService.Call(ctx, &transaction.TxRequest{
+		To:   &c.postageContractAddress,
+		Data: callData,
+	})
+	if err != nil {
+		return false, err
+	}
+
+	results, err := postageStampABI.Unpack("expiredBatchesExist", result)
+	if err != nil {
+		return false, err
+	}
+	return results[0].(bool), nil
+}
+
+func (c *postageContract) expireLimitedBatches(ctx context.Context, count *big.Int) error {
+	callData, err := postageStampABI.Pack("expireLimited", count)
+	if err != nil {
+		return err
+	}
+
+	_, err = c.sendTransaction(sctx.SetGasLimit(ctx, 1_100_000), callData, "expire limited batches")
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (c *postageContract) sendApproveTransaction(ctx context.Context, amount *big.Int) (*types.Receipt, error) {
@@ -222,6 +279,11 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 		return nil, ErrInsufficientFunds
 	}
 
+	err = c.ExpireBatches(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	_, err = c.sendApproveTransaction(ctx, totalAmount)
 	if err != nil {
 		return nil, err
@@ -316,6 +378,11 @@ func (c *postageContract) DiluteBatch(ctx context.Context, batchID []byte, newDe
 		return fmt.Errorf("new depth should be greater: %w", ErrInvalidDepth)
 	}
 
+	err = c.ExpireBatches(ctx)
+	if err != nil {
+		return err
+	}
+
 	receipt, err := c.sendDiluteTransaction(ctx, batch.ID, newDepth)
 	if err != nil {
 		return err
@@ -383,5 +450,9 @@ func (m *noOpPostageContract) TopUpBatch(context.Context, []byte, *big.Int) erro
 	return ErrChainDisabled
 }
 func (m *noOpPostageContract) DiluteBatch(context.Context, []byte, uint8) error {
+	return ErrChainDisabled
+}
+
+func (m *noOpPostageContract) ExpireBatches(context.Context) error {
 	return ErrChainDisabled
 }
