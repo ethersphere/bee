@@ -50,6 +50,7 @@ var (
 
 const (
 	storagePutTimeout = 5 * time.Second
+	makeOfferTimeout  = 5 * time.Minute
 )
 
 // how many maximum chunks in a batch
@@ -303,11 +304,16 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 		return fmt.Errorf("read get range: %w", err)
 	}
 
+	s.logger.Debug("make offer start", "bin", rn.Bin, "from", rn.From, "to", rn.To, "peer_address", p.Address)
+	t := time.Now()
+
 	// make an offer to the upstream peer in return for the requested range
 	offer, _, err := s.makeOffer(ctx, rn)
 	if err != nil {
 		return fmt.Errorf("make offer: %w", err)
 	}
+
+	s.logger.Debug("make offer end", "bin", rn.Bin, "from", rn.From, "topmost", offer.Topmost, "peer_address", p.Address, "duration", time.Since(t))
 
 	// recreate the reader to allow the first one to be garbage collected
 	// before the makeOffer function call, to reduce the total memory allocated
@@ -350,6 +356,10 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 
 // makeOffer tries to assemble an offer for a given requested interval.
 func (s *Syncer) makeOffer(ctx context.Context, rn pb.GetRange) (o *pb.Offer, addrs []swarm.Address, err error) {
+
+	ctx, cancel := context.WithTimeout(ctx, makeOfferTimeout)
+	defer cancel()
+
 	chs, top, err := s.storage.IntervalChunks(ctx, uint8(rn.Bin), rn.From, rn.To, maxPage)
 	if err != nil {
 		return o, nil, err

@@ -6,6 +6,7 @@ package api
 
 import (
 	"errors"
+	"github.com/ethersphere/bee/pkg/bigint"
 	"math/big"
 	"net/http"
 
@@ -29,7 +30,7 @@ func (s *Service) stakingAccessHandler(h http.Handler) http.Handler {
 }
 
 type getStakeResponse struct {
-	StakedAmount *big.Int `json:"stakedAmount"`
+	StakedAmount *bigint.BigInt `json:"stakedAmount"`
 }
 
 func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) {
@@ -82,5 +83,5 @@ func (s *Service) getStakedAmountHandler(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	jsonhttp.OK(w, getStakeResponse{StakedAmount: stakedAmount})
+	jsonhttp.OK(w, getStakeResponse{StakedAmount: bigint.Wrap(stakedAmount)})
 }

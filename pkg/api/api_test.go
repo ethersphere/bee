@@ -123,7 +123,6 @@ type testServerOptions struct {
 
 	BackendOpts []backendmock.Option
 	Erc20Opts   []erc20mock.Option
-	ChainID     int64
 	beeMode     api.BeeNodeMode
 }
 

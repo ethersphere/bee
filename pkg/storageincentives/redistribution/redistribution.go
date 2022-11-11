@@ -8,9 +8,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
-	"strings"
 
-	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/sctx"
@@ -18,9 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/transaction"
 )
 
-var (
-	redistributionContractABI = parseABI(redistributionABIv0_0_0)
-)
+var redistributionContractABI = transaction.ParseABIUnchecked(redistributionABIv0_0_0)
 
 const loggerName = "redistributionContract"
 
@@ -29,7 +25,7 @@ type Contract interface {
 	IsPlaying(context.Context, uint8) (bool, error)
 	IsWinner(context.Context) (bool, error)
 	Claim(context.Context) error
-	Commit(context.Context, []byte) error
+	Commit(context.Context, []byte, *big.Int) error
 	Reveal(context.Context, uint8, []byte, []byte) error
 }
 
@@ -106,7 +102,7 @@ func (c *contract) Claim(ctx context.Context) error {
 		To:          &c.incentivesContractAddress,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 1_000_000),
+		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 500_000),
 		Value:       big.NewInt(0),
 		Description: "claim win transaction",
 	}
@@ -119,8 +115,8 @@ func (c *contract) Claim(ctx context.Context) error {
 }
 
 // Commit submits the obfusHash hash by sending a transaction to the blockchain.
-func (c *contract) Commit(ctx context.Context, obfusHash []byte) error {
-	callData, err := redistributionContractABI.Pack("commit", common.BytesToHash(obfusHash), common.BytesToHash(c.overlay.Bytes()))
+func (c *contract) Commit(ctx context.Context, obfusHash []byte, round *big.Int) error {
+	callData, err := redistributionContractABI.Pack("commit", common.BytesToHash(obfusHash), common.BytesToHash(c.overlay.Bytes()), round)
 	if err != nil {
 		return err
 	}
@@ -128,7 +124,7 @@ func (c *contract) Commit(ctx context.Context, obfusHash []byte) error {
 		To:          &c.incentivesContractAddress,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 1_000_000),
+		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 500_000),
 		Value:       big.NewInt(0),
 		Description: "commit transaction",
 	}
@@ -150,7 +146,7 @@ func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommit
 		To:          &c.incentivesContractAddress,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 1_000_000),
+		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 500_000),
 		Value:       big.NewInt(0),
 		Description: "reveal transaction",
 	}
@@ -209,12 +205,4 @@ func (c *contract) callTx(ctx context.Context, callData []byte) ([]byte, error) 
 		return nil, err
 	}
 	return result, nil
-}
-
-func parseABI(json string) abi.ABI {
-	cabi, err := abi.JSON(strings.NewReader(json))
-	if err != nil {
-		panic(fmt.Sprintf("error creating ABI for redistribution redistributioncontract: %v", err))
-	}
-	return cabi
 }

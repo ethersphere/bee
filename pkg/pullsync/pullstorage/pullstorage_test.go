@@ -111,6 +111,21 @@ func TestIntervalChunks(t *testing.T) {
 	}
 }
 
+func TestIntervalChunksTimeout(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 0)
+	defer cancel()
+	<-ctx.Done()
+
+	ps, _ := newPullStorage(t)
+
+	_, _, err := ps.IntervalChunks(ctx, 0, 0, 0, limit)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatal(err)
+	}
+}
+
 // Get some descriptor from the chunk channel, then block for a while
 // then add more chunks to the subscribe pull iterator and make sure the loop
 // exits correctly.
@@ -273,7 +288,7 @@ func TestIntervalChunks_Localstore(t *testing.T) {
 			t.Parallel()
 
 			base, db := newTestDB(t, nil)
-			ps := pullstorage.New(db)
+			ps := pullstorage.New(db, log.Noop)
 
 			var chunks []swarm.Chunk
 
@@ -576,7 +591,7 @@ func newPullStorage(t *testing.T, o ...mock.Option) (pullstorage.Storer, *mock.M
 	t.Helper()
 
 	db := mock.NewStorer(o...)
-	ps := pullstorage.New(db)
+	ps := pullstorage.New(db, log.Noop)
 
 	return ps, db
 }

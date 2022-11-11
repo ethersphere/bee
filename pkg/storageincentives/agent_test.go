@@ -21,12 +21,10 @@ import (
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
-	"go.uber.org/atomic"
 )
 
 func TestAgent(t *testing.T) {
 	t.Parallel()
-	t.Skip() // waiting for a fix after reveal & claim phases length changes
 
 	tests := []struct {
 		name           string
@@ -34,41 +32,41 @@ func TestAgent(t *testing.T) {
 		blocksPerPhase float64
 		incrementBy    float64
 		limit          float64
-		expectedCalls  int
+		expectedCalls  bool
 	}{{
 		name:           "3 blocks per phase, same block number returns twice",
 		blocksPerRound: 9,
 		blocksPerPhase: 3,
 		incrementBy:    1,
-		expectedCalls:  10,
+		expectedCalls:  true,
 		limit:          108, // computed with blocksPerRound * (exptectedCalls + 2)
 	}, {
 		name:           "3 blocks per phase, block number returns every block",
 		blocksPerRound: 9,
 		blocksPerPhase: 3,
 		incrementBy:    1,
-		expectedCalls:  10,
+		expectedCalls:  true,
 		limit:          108,
 	}, {
 		name:           "3 blocks per phase, block number returns every other block",
 		blocksPerRound: 9,
 		blocksPerPhase: 3,
 		incrementBy:    2,
-		expectedCalls:  10,
+		expectedCalls:  true,
 		limit:          108,
 	}, {
 		name:           "no expected calls - block number returns late after each phase",
 		blocksPerRound: 9,
 		blocksPerPhase: 3,
 		incrementBy:    6,
-		expectedCalls:  0,
+		expectedCalls:  false,
 		limit:          108,
 	}, {
 		name:           "4 blocks per phase, block number returns every other block",
 		blocksPerRound: 12,
 		blocksPerPhase: 4,
 		incrementBy:    2,
-		expectedCalls:  10,
+		expectedCalls:  true,
 		limit:          144,
 	},
 	}
@@ -91,22 +89,49 @@ func TestAgent(t *testing.T) {
 				},
 				incrementBy: tc.incrementBy,
 				block:       tc.blocksPerRound}
-			contract := &mockContract{t: t, baseAddr: addr}
+			contract := &mockContract{}
 
 			service := createService(addr, backend, contract, uint64(tc.blocksPerRound), uint64(tc.blocksPerPhase))
 
 			<-wait
 
-			if int(contract.commitCalls.Load()) != tc.expectedCalls {
-				t.Fatalf("got %d, want %d", contract.commitCalls.Load(), tc.expectedCalls)
+			if !tc.expectedCalls {
+				if len(contract.callsList) > 0 {
+					t.Fatal("got unexpected calls")
+				} else {
+					err := service.Close()
+					if err != nil {
+						t.Fatal(err)
+					}
+
+					return
+				}
 			}
 
-			if int(contract.revealCalls.Load()) != tc.expectedCalls {
-				t.Fatalf("got %d, want %d", contract.revealCalls.Load(), tc.expectedCalls)
+			assertOrder := func(t *testing.T, want, got contractCall) {
+				t.Helper()
+				if want != got {
+					t.Fatalf("expected call %s, got %s", want, got)
+				}
 			}
 
-			if int(contract.isWinnerCalls.Load()) != tc.expectedCalls {
-				t.Fatalf("got %d, want %d", contract.isWinnerCalls.Load(), tc.expectedCalls)
+			contract.mtx.Lock()
+			defer contract.mtx.Unlock()
+
+			prevCall := contract.callsList[0]
+
+			for i := 1; i < len(contract.callsList); i++ {
+
+				switch contract.callsList[i] {
+				case isWinnerCall:
+					assertOrder(t, revealCall, prevCall)
+				case revealCall:
+					assertOrder(t, commitCall, prevCall)
+				case commitCall:
+					assertOrder(t, isWinnerCall, prevCall)
+				}
+
+				prevCall = contract.callsList[i]
 			}
 
 			err := service.Close()
@@ -170,21 +195,32 @@ func (m *mockMonitor) IsFullySynced() bool {
 	return true
 }
 
+type contractCall int
+
+func (c contractCall) String() string {
+	switch c {
+	case isWinnerCall:
+		return "isWinnerCall"
+	case revealCall:
+		return "revealCall"
+	case commitCall:
+		return "commitCall"
+	case claimCall:
+		return "claimCall"
+	}
+	return "unknown"
+}
+
 const (
-	isWinnerCall = iota
+	isWinnerCall contractCall = iota
 	revealCall
 	commitCall
+	claimCall
 )
 
 type mockContract struct {
-	baseAddr      swarm.Address
-	commitCalls   atomic.Int32
-	revealCalls   atomic.Int32
-	isWinnerCalls atomic.Int32
-
-	t            *testing.T
-	previousCall int
-	mtx          sync.Mutex
+	callsList []contractCall
+	mtx       sync.Mutex
 }
 
 func (m *mockContract) ReserveSalt(context.Context) ([]byte, error) {
@@ -198,38 +234,32 @@ func (m *mockContract) IsPlaying(context.Context, uint8) (bool, error) {
 func (m *mockContract) IsWinner(context.Context) (bool, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
-	m.isWinnerCalls.Inc()
-	if m.previousCall != revealCall {
-		m.t.Fatal("previous call must be reveal")
-	}
-	m.previousCall = isWinnerCall
+	m.callsList = append(m.callsList, isWinnerCall)
 	return false, nil
 }
 
 func (m *mockContract) Claim(context.Context) error {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	m.callsList = append(m.callsList, claimCall)
 	return nil
 }
 
-func (m *mockContract) Commit(context.Context, []byte) error {
+func (m *mockContract) Commit(context.Context, []byte, *big.Int) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
-	m.commitCalls.Inc()
-	m.previousCall = commitCall
+	m.callsList = append(m.callsList, commitCall)
 	return nil
 }
 
 func (m *mockContract) Reveal(context.Context, uint8, []byte, []byte) error {
-	m.t.Helper()
-	m.revealCalls.Inc()
-	if m.previousCall != commitCall {
-		m.t.Fatal("previous call must be commit")
-	}
-	m.previousCall = revealCall
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	m.callsList = append(m.callsList, revealCall)
 	return nil
 }
 
-type mockSampler struct {
-}
+type mockSampler struct{}
 
 func (m *mockSampler) ReserveSample(context.Context, []byte, uint8, uint64) (storage.Sample, error) {
 	return storage.Sample{
