@@ -39,24 +39,19 @@ func TestChunkPipe(t *testing.T) {
 			t.Parallel()
 
 			buf := file.NewChunkPipe()
-			sizeC := make(chan int, 255)
-			errC := make(chan error, 1)
+			sizeC := make(chan int, 16)
+			errC := make(chan error, 16)
 			go func() {
 				data := make([]byte, swarm.ChunkSize)
 				for {
 					// get buffered chunkpipe read
 					c, err := buf.Read(data)
+					errC <- err
+
 					sizeC <- c
-					if err != nil {
-						close(sizeC)
-						errC <- err
-						return
-					}
 
 					// only the last read should be smaller than chunk size
 					if c < swarm.ChunkSize {
-						close(sizeC)
-						errC <- nil
 						return
 					}
 				}
@@ -93,11 +88,9 @@ func TestChunkPipe(t *testing.T) {
 					if readTotal == writeTotal {
 						return
 					}
-				case err = <-errC:
-					if err != nil {
-						if !errors.Is(err, io.EOF) {
-							t.Fatal(err)
-						}
+				case err := <-errC:
+					if err != nil && !errors.Is(err, io.EOF) {
+						t.Fatal(err)
 					}
 				}
 			}
@@ -147,7 +140,6 @@ func TestCopyBuffer(t *testing.T) {
 		t.Run(fmt.Sprintf("buf_%-4d/data_size_%d", tc.readBufferSize, tc.dataSize), func(t *testing.T) {
 			t.Parallel()
 
-			// https://golang.org/doc/faq#closures_and_goroutines
 			readBufferSize := tc.readBufferSize
 			dataSize := tc.dataSize
 
@@ -158,31 +150,24 @@ func TestCopyBuffer(t *testing.T) {
 			chunkPipe := file.NewChunkPipe()
 
 			// destination
-			sizeC := make(chan int)
-			dataC := make(chan []byte)
+			sizeC := make(chan int, 1)
+			dataC := make(chan []byte, 1)
 			go reader(t, readBufferSize, chunkPipe, sizeC, dataC)
 
 			// source
-			errC := make(chan error, 1)
+			errC := make(chan error, 16)
 			go func() {
 				src := bytes.NewReader(srcBytes)
 
 				buf := make([]byte, swarm.ChunkSize)
 				c, err := io.CopyBuffer(chunkPipe, src, buf)
-				if err != nil {
-					errC <- err
-				}
+				errC <- err
 
 				if c != int64(dataSize) {
 					errC <- errors.New("read count mismatch")
 				}
 
-				err = chunkPipe.Close()
-				if err != nil {
-					errC <- err
-				}
-
-				close(errC)
+				errC <- chunkPipe.Close()
 			}()
 
 			// receive the writes
@@ -194,9 +179,10 @@ func TestCopyBuffer(t *testing.T) {
 			for {
 				select {
 				case c := <-sizeC:
+					d := <-dataC
+					readData = append(readData, d...)
 					readTotal += c
 					if readTotal == expected {
-
 						// check received content
 						if !bytes.Equal(srcBytes, readData) {
 							t.Fatal("invalid byte content received")
@@ -204,13 +190,9 @@ func TestCopyBuffer(t *testing.T) {
 
 						return
 					}
-				case d := <-dataC:
-					readData = append(readData, d...)
 				case err := <-errC:
-					if err != nil {
-						if !errors.Is(err, io.EOF) {
-							t.Fatal(err)
-						}
+					if err != nil && !errors.Is(err, io.EOF) {
+						t.Fatal(err)
 					}
 				}
 			}
@@ -234,8 +216,8 @@ func reader(t *testing.T, bufferSize int, r io.Reader, c chan int, cd chan []byt
 
 		b := make([]byte, n)
 		copy(b, buf)
-		cd <- b
 
 		c <- n
+		cd <- b
 	}
 }
