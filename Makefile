@@ -5,7 +5,7 @@ GOLANGCI_LINT_VERSION ?= v1.49.0
 GOGOPROTOBUF ?= protoc-gen-gogofaster
 GOGOPROTOBUF_VERSION ?= v1.3.1
 BEEKEEPER_INSTALL_DIR ?= $(GOBIN)
-BEEKEEPER_USE_SUDO ?= true
+BEEKEEPER_USE_SUDO ?= false
 BEEKEEPER_CLUSTER ?= local
 BEELOCAL_BRANCH ?= main
 BEEKEEPER_BRANCH ?= cifix
@@ -51,13 +51,13 @@ beekeeper:
 ifeq ($(BEEKEEPER_BRANCH), master)
 	curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/master/scripts/install.sh | BEEKEEPER_INSTALL_DIR=$(BEEKEEPER_INSTALL_DIR) USE_SUDO=$(BEEKEEPER_USE_SUDO) bash
 else
-	git clone -b $(BEEKEEPER_BRANCH) https://github.com/ethersphere/beekeeper.git && cd beekeeper && mkdir -p $(BEEKEEPER_INSTALL_DIR) && make binary
+	git clone -b $(BEEKEEPER_BRANCH) https://github.com/ethersphere/beekeeper.git && mv beekeeper beekeeper_src && cd beekeeper_src && mkdir -p $(BEEKEEPER_INSTALL_DIR) && make binary
 ifeq ($(BEEKEEPER_USE_SUDO), true)
-	sudo mv beekeeper/dist/beekeeper $(BEEKEEPER_INSTALL_DIR)
+	sudo mv beekeeper_src/dist/beekeeper $(BEEKEEPER_INSTALL_DIR)
 else
-	mv beekeeper/dist/beekeeper $(BEEKEEPER_INSTALL_DIR)
+	mv beekeeper_src/dist/beekeeper $(BEEKEEPER_INSTALL_DIR)
 endif
-	rm -rf beekeeper
+	rm -rf beekeeper_src
 endif
 	test -f ~/.beekeeper.yaml || curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/$(BEEKEEPER_BRANCH)/config/beekeeper-local.yaml -o ~/.beekeeper.yaml
 	mkdir -p ~/.beekeeper && curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/$(BEEKEEPER_BRANCH)/config/local.yaml -o ~/.beekeeper/local.yaml
