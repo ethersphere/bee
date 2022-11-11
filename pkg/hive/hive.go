@@ -90,7 +90,7 @@ func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, network
 		inLimiter:         ratelimit.New(limitRate, limitBurst),
 		outLimiter:        ratelimit.New(limitRate, limitBurst),
 		quit:              make(chan struct{}),
-		peersChan:         make(chan pb.Peers),
+		peersChan:         make(chan pb.Peers, 32),
 		sem:               semaphore.NewWeighted(int64(31)),
 		lru:               lruCache,
 		bootnode:          bootnode,
