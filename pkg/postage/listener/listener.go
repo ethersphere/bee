@@ -66,7 +66,8 @@ type listener struct {
 	blockTime time.Duration
 
 	postageStampAddress common.Address
-	quit                chan struct{}
+	ctx                 context.Context
+	ctxCancel           context.CancelFunc
 	wg                  sync.WaitGroup
 	metrics             metrics
 	stallingTimeout     time.Duration
@@ -83,13 +84,15 @@ func New(
 	stallingTimeout time.Duration,
 	backoffTime time.Duration,
 ) postage.Listener {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &listener{
 		syncingStopped:      syncingStopped,
 		logger:              logger.WithName(loggerName).Register(),
 		ev:                  ev,
 		blockTime:           blockTime,
 		postageStampAddress: postageStampAddress,
-		quit:                make(chan struct{}),
+		ctx:                 ctx,
+		ctxCancel:           cancel,
 		metrics:             newMetrics(),
 		stallingTimeout:     stallingTimeout,
 		backoffTime:         backoffTime,
@@ -178,12 +181,6 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 }
 
 func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *postage.ChainSnapshot) <-chan error {
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		<-l.quit
-		cancel()
-	}()
-
 	processEvents := func(events []types.Log, to uint64) error {
 		if err := updater.TransactionStart(); err != nil {
 			return err
@@ -232,8 +229,7 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *
 
 	l.logger.Debug("batch factor", "value", batchFactor)
 
-	synced := make(chan error)
-	closeOnce := new(sync.Once)
+	synced := make(chan error, 1)
 	paged := make(chan struct{}, 1)
 	paged <- struct{}{}
 
@@ -266,13 +262,13 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *
 			case <-paged:
 				// if we paged then it means there's more things to sync on
 			case <-time.After(expectedWaitTime):
-			case <-l.quit:
+			case <-l.ctx.Done():
 				return nil
 			}
 			start := time.Now()
 
 			l.metrics.BackendCalls.Inc()
-			to, err := l.ev.BlockNumber(ctx)
+			to, err := l.ev.BlockNumber(l.ctx)
 			if err != nil {
 				l.metrics.BackendErrors.Inc()
 				l.logger.Warning("could not get block number", "error", err)
@@ -302,11 +298,11 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *
 				paged <- struct{}{}
 				to = from + blockPage - 1
 			} else {
-				closeOnce.Do(func() { synced <- nil })
+				synced <- nil
 			}
 			l.metrics.BackendCalls.Inc()
 
-			events, err := l.ev.FilterLogs(ctx, l.filterQuery(big.NewInt(int64(from)), big.NewInt(int64(to))))
+			events, err := l.ev.FilterLogs(l.ctx, l.filterQuery(big.NewInt(int64(from)), big.NewInt(int64(to))))
 			if err != nil {
 				l.metrics.BackendErrors.Inc()
 				l.logger.Warning("could not get logs", "error", err)
@@ -335,17 +331,19 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *
 			}
 			l.logger.Error(err, "failed syncing event listener; shutting down node error")
 		}
-		closeOnce.Do(func() { synced <- err })
-		l.syncingStopped.Signal() // trigger shutdown in start.go
+		synced <- err
+		if l.syncingStopped != nil {
+			l.syncingStopped.Signal() // trigger shutdown in start.go
+		}
 	}()
 
 	return synced
 }
 
 func (l *listener) Close() error {
-	close(l.quit)
-	done := make(chan struct{})
+	l.ctxCancel()
 
+	done := make(chan struct{})
 	go func() {
 		defer close(done)
 		l.wg.Wait()
