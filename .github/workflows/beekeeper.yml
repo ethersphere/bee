@@ -58,13 +58,13 @@ jobs:
           mv dist/bee bee-0
       - name: Apply patches and build - 1
         run: |
-        #  patch pkg/postage/postagecontract/contract.go .github/patches/postagecontract.patch
-        #  patch pkg/postage/service.go .github/patches/postageservice.patch
+          # patch pkg/postage/postagecontract/contract.go .github/patches/postagecontract.patch
+          # patch pkg/postage/service.go .github/patches/postageservice.patch
           make binary
           mv dist/bee bee-1
       - name: Apply patches and build - 2
         run: |
-        #  patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve_gc.patch
+          # patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve_gc.patch
           make binary
           mv dist/bee bee-2
       - name: Install beekeeper
