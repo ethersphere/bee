@@ -50,6 +50,7 @@ func TestHandlerRateLimit(t *testing.T) {
 	streamer := streamtest.New()
 	// create a hive server that handles the incoming stream
 	server, _ := hive.New(streamer, addressbookclean, networkID, false, true, logger)
+	defer server.Close()
 
 	serverAddress := test.RandomAddress()
 
@@ -93,6 +94,7 @@ func TestHandlerRateLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer client.Close()
 
 	rec, err := serverRecorder.Records(serverAddress, "hive", "1.0.0", "peers")
 	if err != nil {
@@ -254,6 +256,7 @@ func TestBroadcastPeers(t *testing.T) {
 			}
 			// create a hive server that handles the incoming stream
 			server, _ := hive.New(streamer, addressbookclean, networkID, false, true, logger)
+			defer server.Close()
 
 			// setup the stream recorder to record stream data
 			recorder := streamtest.New(
@@ -265,6 +268,7 @@ func TestBroadcastPeers(t *testing.T) {
 			if err := client.BroadcastPeers(context.Background(), tc.addresee, tc.peers...); err != nil {
 				t.Fatal(err)
 			}
+			defer client.Close()
 
 			// get a record for this stream
 			records, err := recorder.Records(tc.addresee, "hive", "1.0.0", "peers")

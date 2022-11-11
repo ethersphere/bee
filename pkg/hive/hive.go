@@ -66,7 +66,8 @@ type Service struct {
 	inLimiter         *ratelimit.Limiter
 	outLimiter        *ratelimit.Limiter
 	clearMtx          sync.Mutex
-	quit              chan struct{}
+	ctx               context.Context
+	ctxCancel         context.CancelFunc
 	wg                sync.WaitGroup
 	peersChan         chan pb.Peers
 	sem               *semaphore.Weighted
@@ -81,6 +82,8 @@ func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, network
 		return nil, err
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+
 	svc := &Service{
 		streamer:          streamer,
 		logger:            logger.WithName(loggerName).Register(),
@@ -89,8 +92,9 @@ func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, network
 		metrics:           newMetrics(),
 		inLimiter:         ratelimit.New(limitRate, limitBurst),
 		outLimiter:        ratelimit.New(limitRate, limitBurst),
-		quit:              make(chan struct{}),
-		peersChan:         make(chan pb.Peers),
+		ctx:               ctx,
+		ctxCancel:         cancel,
+		peersChan:         make(chan pb.Peers, 32),
 		sem:               semaphore.NewWeighted(int64(31)),
 		lru:               lruCache,
 		bootnode:          bootnode,
@@ -137,7 +141,7 @@ func (s *Service) BroadcastPeers(ctx context.Context, addressee swarm.Address, p
 		}
 
 		select {
-		case <-s.quit:
+		case <-s.ctx.Done():
 			return ErrShutdownInProgress
 		default:
 		}
@@ -157,7 +161,7 @@ func (s *Service) SetAddPeersHandler(h func(addr ...swarm.Address)) {
 }
 
 func (s *Service) Close() error {
-	close(s.quit)
+	s.ctxCancel()
 
 	stopped := make(chan struct{})
 	go func() {
@@ -252,7 +256,7 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 
 	select {
 	case s.peersChan <- peersReq:
-	case <-s.quit:
+	case <-s.ctx.Done():
 		return errors.New("failed to process peers, shutting down hive")
 	}
 
@@ -260,7 +264,6 @@ func (s *Service) peersHandler(ctx context.Context, peer p2p.Peer, stream p2p.St
 }
 
 func (s *Service) disconnect(peer p2p.Peer) error {
-
 	s.clearMtx.Lock()
 	defer s.clearMtx.Unlock()
 
@@ -271,28 +274,21 @@ func (s *Service) disconnect(peer p2p.Peer) error {
 }
 
 func (s *Service) startCheckPeersHandler() {
-	ctx, cancel := context.WithCancel(context.Background())
 	s.wg.Add(1)
 	go func() {
 		defer s.wg.Done()
-		<-s.quit
-		cancel()
-	}()
 
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
 		for {
 			select {
-			case <-ctx.Done():
+			case <-s.ctx.Done():
 				return
 			case newPeers := <-s.peersChan:
 				s.wg.Add(1)
 				go func() {
 					defer s.wg.Done()
-					cctx, cancel := context.WithTimeout(ctx, batchValidationTimeout)
+					ctx, cancel := context.WithTimeout(s.ctx, batchValidationTimeout)
 					defer cancel()
-					s.checkAndAddPeers(cctx, newPeers)
+					s.checkAndAddPeers(ctx, newPeers)
 				}()
 			}
 		}
