@@ -16,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
+	contractMock "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storageincentives"
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
@@ -149,12 +150,17 @@ func createService(
 	blocksPerRound uint64,
 	blocksPerPhase uint64) *storageincentives.Agent {
 
+	postageContract := contractMock.New(contractMock.WithExpiresBatchesFunc(func(context.Context) error {
+		return nil
+	}))
+
 	return storageincentives.New(
 		addr,
 		backend,
 		log.Noop,
 		&mockMonitor{},
 		contract,
+		postageContract,
 		mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})),
 		&mockSampler{},
 		time.Millisecond*10, blocksPerRound, blocksPerPhase,
