@@ -24,7 +24,7 @@ import (
 	"github.com/ethersphere/bee/pkg/pushsync/pb"
 	"github.com/ethersphere/bee/pkg/skippeers"
 	"github.com/ethersphere/bee/pkg/soc"
-	"github.com/ethersphere/bee/pkg/storage"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
@@ -100,7 +100,23 @@ type receiptResult struct {
 	err      error
 }
 
-func New(address swarm.Address, blockHash []byte, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, tagger *tags.Tags, isFullNode bool, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger log.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer, warmupTime time.Duration) *PushSync {
+func New(
+	address swarm.Address,
+	blockHash []byte,
+	streamer p2p.StreamerDisconnecter,
+	storer storage.Putter,
+	topology topology.Driver,
+	tagger *tags.Tags,
+	isFullNode bool,
+	unwrap func(swarm.Chunk),
+	validStamp postage.ValidStampFn,
+	logger log.Logger,
+	accounting accounting.Interface,
+	pricer pricer.Interface,
+	signer crypto.Signer,
+	tracer *tracing.Tracer,
+	warmupTime time.Duration,
+) *PushSync {
 	ps := &PushSync{
 		address:        address,
 		blockHash:      blockHash,
@@ -217,7 +233,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 				return fmt.Errorf("pushsync replication invalid stamp: %w", err)
 			}
 
-			_, err = ps.storer.Put(ctxd, storage.ModePutSync, chunk)
+			_, err = ps.storer.Put(ctxd, chunk)
 			if err != nil {
 				return fmt.Errorf("chunk store: %w", err)
 			}
@@ -254,7 +270,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 				logger.Warning("forwarder, invalid stamp for chunk", "chunk_address", chunkAddress)
 				return
 			}
-			_, err = ps.storer.Put(ctx, storage.ModePutSync, verifiedChunk)
+			_, err = ps.storer.Put(ctx, verifiedChunk)
 			if err != nil {
 				logger.Warning("within depth peer's attempt to store chunk failed", "chunk_address", verifiedChunk.Address(), "error", err)
 			}
@@ -271,7 +287,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 				return fmt.Errorf("pushsync storer invalid stamp: %w", err)
 			}
 
-			_, err = ps.storer.Put(ctx, storage.ModePutSync, chunk)
+			_, err = ps.storer.Put(ctx, chunk)
 			if err != nil {
 				return fmt.Errorf("chunk store: %w", err)
 			}

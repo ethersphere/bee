@@ -25,9 +25,9 @@ import (
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/pushsync/pb"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/bee/pkg/storage"
-	mocks "github.com/ethersphere/bee/pkg/storage/mock"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
+	"github.com/ethersphere/bee/pkg/storagev2/inmemchunkstore"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
@@ -171,7 +171,7 @@ func TestReplicateBeforeReceipt(t *testing.T) {
 	// this intercepts the incoming receipt message
 	waitOnRecordAndTest(t, secondPeer, secondRecorder, chunk.Address(), nil)
 
-	_, err = storerEmpty.Get(context.Background(), storage.ModeGetSync, chunk.Address())
+	_, err = storerEmpty.Get(context.Background(), chunk.Address())
 	if !errors.Is(err, storage.ErrNotFound) {
 		t.Fatal(err)
 	}
@@ -798,17 +798,17 @@ func TestPushChunkToClosestSkipError(t *testing.T) {
 	}
 }
 
-func createPushSyncNode(t *testing.T, addr swarm.Address, prices pricerParameters, recorder *streamtest.Recorder, unwrap func(swarm.Chunk), signer crypto.Signer, mockOpts ...mock.Option) (*pushsync.PushSync, *mocks.MockStorer, *tags.Tags, accounting.Interface) {
+func createPushSyncNode(t *testing.T, addr swarm.Address, prices pricerParameters, recorder *streamtest.Recorder, unwrap func(swarm.Chunk), signer crypto.Signer, mockOpts ...mock.Option) (*pushsync.PushSync, storage.ChunkStore, *tags.Tags, accounting.Interface) {
 	t.Helper()
 	mockAccounting := accountingmock.NewAccounting()
 	ps, mstorer, ts := createPushSyncNodeWithAccounting(t, addr, prices, recorder, unwrap, signer, mockAccounting, mockOpts...)
 	return ps, mstorer, ts, mockAccounting
 }
 
-func createPushSyncNodeWithAccounting(t *testing.T, addr swarm.Address, prices pricerParameters, recorder *streamtest.Recorder, unwrap func(swarm.Chunk), signer crypto.Signer, acct accounting.Interface, mockOpts ...mock.Option) (*pushsync.PushSync, *mocks.MockStorer, *tags.Tags) {
+func createPushSyncNodeWithAccounting(t *testing.T, addr swarm.Address, prices pricerParameters, recorder *streamtest.Recorder, unwrap func(swarm.Chunk), signer crypto.Signer, acct accounting.Interface, mockOpts ...mock.Option) (*pushsync.PushSync, storage.ChunkStore, *tags.Tags) {
 	t.Helper()
 	logger := log.Noop
-	storer := mocks.NewStorer()
+	storer := inmemchunkstore.New()
 
 	mockTopology := mock.NewTopologyDriver(mockOpts...)
 	mockStatestore := statestore.NewStateStore()
