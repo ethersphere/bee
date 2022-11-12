@@ -15,8 +15,8 @@ import (
 	"github.com/ethersphere/bee/pkg/pushsync"
 	psmock "github.com/ethersphere/bee/pkg/pushsync/mock"
 	"github.com/ethersphere/bee/pkg/steward"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/mock"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
+	"github.com/ethersphere/bee/pkg/storagev2/inmemchunkstore"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/traversal"
@@ -27,9 +27,9 @@ func TestSteward(t *testing.T) {
 		ctx            = context.Background()
 		chunks         = 1000
 		data           = make([]byte, chunks*4096) //1k chunks
-		store          = mock.NewStorer()
+		store          = inmemchunkstore.New()
 		traverser      = traversal.New(store)
-		loggingStorer  = &loggingStore{Storer: store}
+		loggingStorer  = &loggingStore{ChunkStore: store}
 		traversedAddrs = make(map[string]struct{})
 		mu             sync.Mutex
 		fn             = func(_ context.Context, ch swarm.Chunk) (*pushsync.Receipt, error) {
@@ -49,7 +49,7 @@ func TestSteward(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	pipe := builder.NewPipelineBuilder(ctx, loggingStorer, storage.ModePutUpload, false)
+	pipe := builder.NewPipelineBuilder(ctx, loggingStorer, false)
 	addr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data))
 	if err != nil {
 		t.Fatal(err)
@@ -83,9 +83,9 @@ func TestSteward_ErrWantSelf(t *testing.T) {
 		ctx           = context.Background()
 		chunks        = 10
 		data          = make([]byte, chunks*4096)
-		store         = mock.NewStorer()
+		store         = inmemchunkstore.New()
 		traverser     = traversal.New(store)
-		loggingStorer = &loggingStore{Storer: store}
+		loggingStorer = &loggingStore{ChunkStore: store}
 		fn            = func(_ context.Context, ch swarm.Chunk) (*pushsync.Receipt, error) {
 			return nil, topology.ErrWantSelf
 		}
@@ -100,7 +100,7 @@ func TestSteward_ErrWantSelf(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	pipe := builder.NewPipelineBuilder(ctx, loggingStorer, storage.ModePutUpload, false)
+	pipe := builder.NewPipelineBuilder(ctx, loggingStorer, false)
 	addr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data))
 	if err != nil {
 		t.Fatal(err)
@@ -113,17 +113,15 @@ func TestSteward_ErrWantSelf(t *testing.T) {
 }
 
 type loggingStore struct {
-	storage.Storer
+	storage.ChunkStore
 	addrs []swarm.Address
 }
 
-func (ls *loggingStore) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
-	for _, c := range chs {
-		ls.addrs = append(ls.addrs, c.Address())
-	}
-	return ls.Storer.Put(ctx, mode, chs...)
+func (ls *loggingStore) Put(ctx context.Context, ch swarm.Chunk) (exist bool, err error) {
+	ls.addrs = append(ls.addrs, ch.Address())
+	return ls.ChunkStore.Put(ctx, ch)
 }
 
 func (ls *loggingStore) RetrieveChunk(ctx context.Context, addr, sourceAddr swarm.Address) (chunk swarm.Chunk, err error) {
-	return ls.Get(ctx, storage.ModeGetRequest, addr)
+	return ls.Get(ctx, addr)
 }

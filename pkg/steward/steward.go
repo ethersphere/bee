@@ -13,7 +13,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/retrieval"
-	"github.com/ethersphere/bee/pkg/storage"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/traversal"
@@ -58,7 +58,7 @@ func (s *steward) Reupload(ctx context.Context, root swarm.Address) error {
 	sem := make(chan struct{}, parallelPush)
 	eg, _ := errgroup.WithContext(ctx)
 	fn := func(addr swarm.Address) error {
-		c, err := s.getter.Get(ctx, storage.ModeGetSync, addr)
+		c, err := s.getter.Get(ctx, addr)
 		if err != nil {
 			return err
 		}
@@ -108,11 +108,11 @@ type netGetter struct {
 }
 
 // Get implements the storage Getter.Get interface.
-func (ng *netGetter) Get(ctx context.Context, _ storage.ModeGet, addr swarm.Address) (swarm.Chunk, error) {
+func (ng *netGetter) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
 	return ng.retrieval.RetrieveChunk(ctx, addr, swarm.ZeroAddress)
 }
 
 // Put implements the storage Putter.Put interface.
-func (ng *netGetter) Put(_ context.Context, _ storage.ModePut, _ ...swarm.Chunk) ([]bool, error) {
-	return nil, errors.New("operation is not supported")
+func (ng *netGetter) Put(_ context.Context, _ swarm.Chunk) (bool, error) {
+	return false, errors.New("operation is not supported")
 }
