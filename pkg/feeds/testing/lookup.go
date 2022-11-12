@@ -17,20 +17,20 @@ import (
 
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/mock"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
+	"github.com/ethersphere/bee/pkg/storagev2/inmemchunkstore"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 type Timeout struct {
-	storage.Storer
+	storage.ChunkStore
 }
 
 var searchTimeout = 30 * time.Millisecond
 
 // Get overrides the mock storer and introduces latency
-func (t *Timeout) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Address) (swarm.Chunk, error) {
-	ch, err := t.Storer.Get(ctx, mode, addr)
+func (t *Timeout) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
+	ch, err := t.ChunkStore.Get(ctx, addr)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			time.Sleep(searchTimeout)
@@ -42,7 +42,7 @@ func (t *Timeout) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Addr
 }
 
 func TestFinderBasic(t *testing.T, finderf func(storage.Getter, *feeds.Feed) feeds.Lookup, updaterf func(putter storage.Putter, signer crypto.Signer, topic []byte) (feeds.Updater, error)) {
-	storer := &Timeout{mock.NewStorer()}
+	storer := &Timeout{inmemchunkstore.New()}
 	topicStr := "testtopic"
 	topic, err := crypto.LegacyKeccak256([]byte(topicStr))
 	if err != nil {
@@ -113,7 +113,7 @@ func TestFinderFixIntervals(t *testing.T, nextf func() (bool, int64), finderf fu
 
 func TestFinderIntervals(t *testing.T, nextf func() (bool, int64), finderf func(storage.Getter, *feeds.Feed) feeds.Lookup, updaterf func(putter storage.Putter, signer crypto.Signer, topic []byte) (feeds.Updater, error)) {
 
-	storer := &Timeout{mock.NewStorer()}
+	storer := &Timeout{inmemchunkstore.New()}
 	topicStr := "testtopic"
 	topic, err := crypto.LegacyKeccak256([]byte(topicStr))
 	if err != nil {
