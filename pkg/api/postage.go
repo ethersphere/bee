@@ -68,6 +68,7 @@ func (b hexByte) MarshalJSON() ([]byte, error) {
 
 type postageCreateResponse struct {
 	BatchID hexByte `json:"batchID"`
+	TxHash  string  `json:"txHash"`
 }
 
 func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
@@ -90,7 +91,7 @@ func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	batchID, err := s.postageContract.CreateBatch(
+	txHash, batchID, err := s.postageContract.CreateBatch(
 		r.Context(),
 		paths.Amount,
 		paths.Depth,
@@ -124,6 +125,7 @@ func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 
 	jsonhttp.Created(w, &postageCreateResponse{
 		BatchID: batchID,
+		TxHash:  txHash,
 	})
 }
 
@@ -461,7 +463,7 @@ func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	hexBatchID := hex.EncodeToString(paths.BatchID)
 
-	err := s.postageContract.TopUpBatch(r.Context(), paths.BatchID, paths.Amount)
+	_, err := s.postageContract.TopUpBatch(r.Context(), paths.BatchID, paths.Amount)
 	if err != nil {
 		if errors.Is(err, postagecontract.ErrInsufficientFunds) {
 			logger.Debug("topup batch: out of funds", "batch_id", hexBatchID, "amount", paths.Amount, "error", err)
@@ -499,7 +501,7 @@ func (s *Service) postageDiluteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	hexBatchID := hex.EncodeToString(paths.BatchID)
 
-	err := s.postageContract.DiluteBatch(r.Context(), paths.BatchID, paths.Depth)
+	_, err := s.postageContract.DiluteBatch(r.Context(), paths.BatchID, paths.Depth)
 	if err != nil {
 		if errors.Is(err, postagecontract.ErrInvalidDepth) {
 			logger.Debug("dilute batch: invalid depth", "error", err)

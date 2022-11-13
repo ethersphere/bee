@@ -37,6 +37,7 @@ func TestPostageCreateStamp(t *testing.T) {
 	initialBalance := int64(1000)
 	depth := uint8(1)
 	label := "label"
+	txHash := "0x1234"
 	createBatch := func(amount int64, depth uint8, label string) string {
 		return fmt.Sprintf("/stamps/%d/%d?label=%s", amount, depth, label)
 	}
@@ -45,17 +46,17 @@ func TestPostageCreateStamp(t *testing.T) {
 		t.Parallel()
 
 		contract := contractMock.New(
-			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string) ([]byte, error) {
+			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string) (string, []byte, error) {
 				if ib.Cmp(big.NewInt(initialBalance)) != 0 {
-					return nil, fmt.Errorf("called with wrong initial balance. wanted %d, got %d", initialBalance, ib)
+					return "", nil, fmt.Errorf("called with wrong initial balance. wanted %d, got %d", initialBalance, ib)
 				}
 				if d != depth {
-					return nil, fmt.Errorf("called with wrong depth. wanted %d, got %d", depth, d)
+					return "", nil, fmt.Errorf("called with wrong depth. wanted %d, got %d", depth, d)
 				}
 				if l != label {
-					return nil, fmt.Errorf("called with wrong label. wanted %s, got %s", label, l)
+					return "", nil, fmt.Errorf("called with wrong label. wanted %s, got %s", label, l)
 				}
-				return batchID, nil
+				return txHash, batchID, nil
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
@@ -73,20 +74,20 @@ func TestPostageCreateStamp(t *testing.T) {
 		t.Parallel()
 
 		contract := contractMock.New(
-			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string) ([]byte, error) {
+			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string) (string, []byte, error) {
 				if ib.Cmp(big.NewInt(initialBalance)) != 0 {
-					return nil, fmt.Errorf("called with wrong initial balance. wanted %d, got %d", initialBalance, ib)
+					return "", nil, fmt.Errorf("called with wrong initial balance. wanted %d, got %d", initialBalance, ib)
 				}
 				if d != depth {
-					return nil, fmt.Errorf("called with wrong depth. wanted %d, got %d", depth, d)
+					return "", nil, fmt.Errorf("called with wrong depth. wanted %d, got %d", depth, d)
 				}
 				if l != label {
-					return nil, fmt.Errorf("called with wrong label. wanted %s, got %s", label, l)
+					return "", nil, fmt.Errorf("called with wrong label. wanted %s, got %s", label, l)
 				}
 				if sctx.GetGasPrice(ctx).Cmp(big.NewInt(10000)) != 0 {
-					return nil, fmt.Errorf("called with wrong gas price. wanted %d, got %d", 10000, sctx.GetGasPrice(ctx))
+					return "", nil, fmt.Errorf("called with wrong gas price. wanted %d, got %d", 10000, sctx.GetGasPrice(ctx))
 				}
-				return batchID, nil
+				return txHash, batchID, nil
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
@@ -106,8 +107,8 @@ func TestPostageCreateStamp(t *testing.T) {
 		t.Parallel()
 
 		contract := contractMock.New(
-			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string) ([]byte, error) {
-				return nil, errors.New("err")
+			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string) (string, []byte, error) {
+				return "", nil, errors.New("err")
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
@@ -127,8 +128,8 @@ func TestPostageCreateStamp(t *testing.T) {
 		t.Parallel()
 
 		contract := contractMock.New(
-			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string) ([]byte, error) {
-				return nil, postagecontract.ErrInsufficientFunds
+			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string) (string, []byte, error) {
+				return "", nil, postagecontract.ErrInsufficientFunds
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
@@ -148,8 +149,8 @@ func TestPostageCreateStamp(t *testing.T) {
 		t.Parallel()
 
 		contract := contractMock.New(
-			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string) ([]byte, error) {
-				return nil, postagecontract.ErrInvalidDepth
+			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string) (string, []byte, error) {
+				return "", nil, postagecontract.ErrInvalidDepth
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
@@ -170,9 +171,9 @@ func TestPostageCreateStamp(t *testing.T) {
 
 		var immutable bool
 		contract := contractMock.New(
-			contractMock.WithCreateBatchFunc(func(ctx context.Context, _ *big.Int, _ uint8, i bool, _ string) ([]byte, error) {
+			contractMock.WithCreateBatchFunc(func(ctx context.Context, _ *big.Int, _ uint8, i bool, _ string) (string, []byte, error) {
 				immutable = i
-				return batchID, nil
+				return txHash, batchID, nil
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
@@ -196,12 +197,12 @@ func TestPostageCreateStamp(t *testing.T) {
 		t.Parallel()
 
 		contract := contractMock.New(
-			contractMock.WithCreateBatchFunc(func(ctx context.Context, _ *big.Int, _ uint8, _ bool, _ string) ([]byte, error) {
+			contractMock.WithCreateBatchFunc(func(ctx context.Context, _ *big.Int, _ uint8, _ bool, _ string) (string, []byte, error) {
 				gasLimit := sctx.GetGasLimit(ctx)
 				if gasLimit != 2000000 {
 					t.Fatalf("want 2000000, got %d", gasLimit)
 				}
-				return batchID, nil
+				return "", batchID, nil
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
@@ -552,6 +553,7 @@ func TestChainState(t *testing.T) {
 func TestPostageTopUpStamp(t *testing.T) {
 	t.Parallel()
 
+	txHash := "0x1234"
 	topupAmount := int64(1000)
 	topupBatch := func(id string, amount int64) string {
 		return fmt.Sprintf("/stamps/topup/%s/%d", id, amount)
@@ -561,14 +563,14 @@ func TestPostageTopUpStamp(t *testing.T) {
 		t.Parallel()
 
 		contract := contractMock.New(
-			contractMock.WithTopUpBatchFunc(func(ctx context.Context, id []byte, ib *big.Int) error {
+			contractMock.WithTopUpBatchFunc(func(ctx context.Context, id []byte, ib *big.Int) (string, error) {
 				if !bytes.Equal(id, batchOk) {
-					return errors.New("incorrect batch ID in call")
+					return "", errors.New("incorrect batch ID in call")
 				}
 				if ib.Cmp(big.NewInt(topupAmount)) != 0 {
-					return fmt.Errorf("called with wrong topup amount. wanted %d, got %d", topupAmount, ib)
+					return "", fmt.Errorf("called with wrong topup amount. wanted %d, got %d", topupAmount, ib)
 				}
-				return nil
+				return txHash, nil
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
@@ -587,17 +589,17 @@ func TestPostageTopUpStamp(t *testing.T) {
 		t.Parallel()
 
 		contract := contractMock.New(
-			contractMock.WithTopUpBatchFunc(func(ctx context.Context, id []byte, ib *big.Int) error {
+			contractMock.WithTopUpBatchFunc(func(ctx context.Context, id []byte, ib *big.Int) (string, error) {
 				if !bytes.Equal(id, batchOk) {
-					return errors.New("incorrect batch ID in call")
+					return "", errors.New("incorrect batch ID in call")
 				}
 				if ib.Cmp(big.NewInt(topupAmount)) != 0 {
-					return fmt.Errorf("called with wrong topup amount. wanted %d, got %d", topupAmount, ib)
+					return "", fmt.Errorf("called with wrong topup amount. wanted %d, got %d", topupAmount, ib)
 				}
 				if sctx.GetGasPrice(ctx).Cmp(big.NewInt(10000)) != 0 {
-					return fmt.Errorf("called with wrong gas price. wanted %d, got %d", 10000, sctx.GetGasPrice(ctx))
+					return "", fmt.Errorf("called with wrong gas price. wanted %d, got %d", 10000, sctx.GetGasPrice(ctx))
 				}
-				return nil
+				return "", nil
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
@@ -617,8 +619,8 @@ func TestPostageTopUpStamp(t *testing.T) {
 		t.Parallel()
 
 		contract := contractMock.New(
-			contractMock.WithTopUpBatchFunc(func(ctx context.Context, id []byte, ib *big.Int) error {
-				return errors.New("err")
+			contractMock.WithTopUpBatchFunc(func(ctx context.Context, id []byte, ib *big.Int) (string, error) {
+				return "", errors.New("err")
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
@@ -638,8 +640,8 @@ func TestPostageTopUpStamp(t *testing.T) {
 		t.Parallel()
 
 		contract := contractMock.New(
-			contractMock.WithTopUpBatchFunc(func(ctx context.Context, id []byte, ib *big.Int) error {
-				return postagecontract.ErrInsufficientFunds
+			contractMock.WithTopUpBatchFunc(func(ctx context.Context, id []byte, ib *big.Int) (string, error) {
+				return "", postagecontract.ErrInsufficientFunds
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
@@ -659,11 +661,11 @@ func TestPostageTopUpStamp(t *testing.T) {
 		t.Parallel()
 
 		contract := contractMock.New(
-			contractMock.WithTopUpBatchFunc(func(ctx context.Context, id []byte, ib *big.Int) error {
+			contractMock.WithTopUpBatchFunc(func(ctx context.Context, id []byte, ib *big.Int) (string, error) {
 				if sctx.GetGasLimit(ctx) != 10000 {
-					return fmt.Errorf("called with wrong gas price. wanted %d, got %d", 10000, sctx.GetGasLimit(ctx))
+					return "", fmt.Errorf("called with wrong gas price. wanted %d, got %d", 10000, sctx.GetGasLimit(ctx))
 				}
-				return nil
+				return txHash, nil
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
@@ -683,6 +685,7 @@ func TestPostageTopUpStamp(t *testing.T) {
 func TestPostageDiluteStamp(t *testing.T) {
 	t.Parallel()
 
+	txHash := "0x1234"
 	newBatchDepth := uint8(17)
 	diluteBatch := func(id string, depth uint8) string {
 		return fmt.Sprintf("/stamps/dilute/%s/%d", id, depth)
@@ -692,14 +695,14 @@ func TestPostageDiluteStamp(t *testing.T) {
 		t.Parallel()
 
 		contract := contractMock.New(
-			contractMock.WithDiluteBatchFunc(func(ctx context.Context, id []byte, newDepth uint8) error {
+			contractMock.WithDiluteBatchFunc(func(ctx context.Context, id []byte, newDepth uint8) (string, error) {
 				if !bytes.Equal(id, batchOk) {
-					return errors.New("incorrect batch ID in call")
+					return "", errors.New("incorrect batch ID in call")
 				}
 				if newDepth != newBatchDepth {
-					return fmt.Errorf("called with wrong depth. wanted %d, got %d", newBatchDepth, newDepth)
+					return "", fmt.Errorf("called with wrong depth. wanted %d, got %d", newBatchDepth, newDepth)
 				}
-				return nil
+				return txHash, nil
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
@@ -718,17 +721,17 @@ func TestPostageDiluteStamp(t *testing.T) {
 		t.Parallel()
 
 		contract := contractMock.New(
-			contractMock.WithDiluteBatchFunc(func(ctx context.Context, id []byte, newDepth uint8) error {
+			contractMock.WithDiluteBatchFunc(func(ctx context.Context, id []byte, newDepth uint8) (string, error) {
 				if !bytes.Equal(id, batchOk) {
-					return errors.New("incorrect batch ID in call")
+					return "", errors.New("incorrect batch ID in call")
 				}
 				if newDepth != newBatchDepth {
-					return fmt.Errorf("called with wrong depth. wanted %d, got %d", newBatchDepth, newDepth)
+					return "", fmt.Errorf("called with wrong depth. wanted %d, got %d", newBatchDepth, newDepth)
 				}
 				if sctx.GetGasPrice(ctx).Cmp(big.NewInt(10000)) != 0 {
-					return fmt.Errorf("called with wrong gas price. wanted %d, got %d", 10000, sctx.GetGasPrice(ctx))
+					return "", fmt.Errorf("called with wrong gas price. wanted %d, got %d", 10000, sctx.GetGasPrice(ctx))
 				}
-				return nil
+				return txHash, nil
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
@@ -748,8 +751,8 @@ func TestPostageDiluteStamp(t *testing.T) {
 		t.Parallel()
 
 		contract := contractMock.New(
-			contractMock.WithDiluteBatchFunc(func(ctx context.Context, id []byte, newDepth uint8) error {
-				return errors.New("err")
+			contractMock.WithDiluteBatchFunc(func(ctx context.Context, id []byte, newDepth uint8) (string, error) {
+				return "", errors.New("err")
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
@@ -769,8 +772,8 @@ func TestPostageDiluteStamp(t *testing.T) {
 		t.Parallel()
 
 		contract := contractMock.New(
-			contractMock.WithDiluteBatchFunc(func(ctx context.Context, id []byte, newDepth uint8) error {
-				return postagecontract.ErrInvalidDepth
+			contractMock.WithDiluteBatchFunc(func(ctx context.Context, id []byte, newDepth uint8) (string, error) {
+				return "", postagecontract.ErrInvalidDepth
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
@@ -790,11 +793,11 @@ func TestPostageDiluteStamp(t *testing.T) {
 		t.Parallel()
 
 		contract := contractMock.New(
-			contractMock.WithDiluteBatchFunc(func(ctx context.Context, _ []byte, _ uint8) error {
+			contractMock.WithDiluteBatchFunc(func(ctx context.Context, _ []byte, _ uint8) (string, error) {
 				if sctx.GetGasLimit(ctx) != 10000 {
-					return fmt.Errorf("called with wrong gas price. wanted %d, got %d", 10000, sctx.GetGasLimit(ctx))
+					return "", fmt.Errorf("called with wrong gas price. wanted %d, got %d", 10000, sctx.GetGasLimit(ctx))
 				}
-				return nil
+				return txHash, nil
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{
@@ -897,17 +900,17 @@ func TestPostageAccessHandler(t *testing.T) {
 
 				wait, done := make(chan struct{}), make(chan struct{})
 				contract := contractMock.New(
-					contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string) ([]byte, error) {
+					contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string) (string, []byte, error) {
 						<-wait
-						return batchOk, nil
+						return "", batchOk, nil
 					}),
-					contractMock.WithTopUpBatchFunc(func(ctx context.Context, id []byte, ib *big.Int) error {
+					contractMock.WithTopUpBatchFunc(func(ctx context.Context, id []byte, ib *big.Int) (string, error) {
 						<-wait
-						return nil
+						return "", nil
 					}),
-					contractMock.WithDiluteBatchFunc(func(ctx context.Context, id []byte, newDepth uint8) error {
+					contractMock.WithDiluteBatchFunc(func(ctx context.Context, id []byte, newDepth uint8) (string, error) {
 						<-wait
-						return nil
+						return "", nil
 					}),
 				)
 

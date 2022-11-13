@@ -255,7 +255,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 	post := mockPost.New()
 	postageContract := mockPostContract.New(
 		mockPostContract.WithCreateBatchFunc(
-			func(ctx context.Context, amount *big.Int, depth uint8, immutable bool, label string) ([]byte, error) {
+			func(ctx context.Context, amount *big.Int, depth uint8, immutable bool, label string) (string, []byte, error) {
 				id := postagetesting.MustNewID()
 				batch := &postage.Batch{
 					ID:        id,
@@ -267,23 +267,23 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 
 				err := batchStore.Save(batch)
 				if err != nil {
-					return nil, err
+					return "", nil, err
 				}
 
 				stampIssuer := postage.NewStampIssuer(label, string(overlayEthAddress.Bytes()), id, amount, batch.Depth, 0, 0, immutable)
 				_ = post.Add(stampIssuer)
 
-				return id, nil
+				return "", id, nil
 			},
 		),
 		mockPostContract.WithTopUpBatchFunc(
-			func(ctx context.Context, batchID []byte, topupAmount *big.Int) error {
-				return postagecontract.ErrNotImplemented
+			func(ctx context.Context, batchID []byte, topupAmount *big.Int) (string, error) {
+				return "", postagecontract.ErrNotImplemented
 			},
 		),
 		mockPostContract.WithDiluteBatchFunc(
-			func(ctx context.Context, batchID []byte, newDepth uint8) error {
-				return postagecontract.ErrNotImplemented
+			func(ctx context.Context, batchID []byte, newDepth uint8) (string, error) {
+				return "", postagecontract.ErrNotImplemented
 			},
 		),
 	)
