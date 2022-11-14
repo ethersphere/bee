@@ -317,10 +317,7 @@ type delayedWriter struct {
 }
 
 func (d delayedWriter) Write(p []byte) (n int, err error) {
-	interval := d.delay / 100
-	for i := 0; i < 100; i++ {
-		time.Sleep(interval)
-	}
+	time.Sleep(d.delay)
 	return d.w.Write(p)
 }
 
@@ -334,10 +331,7 @@ type delayedReader struct {
 }
 
 func (d delayedReader) Read(p []byte) (n int, err error) {
-	interval := d.delay / 100
-	for i := 0; i < 100; i++ {
-		time.Sleep(interval)
-	}
+	time.Sleep(d.delay)
 	return d.r.Read(p)
 }
 
