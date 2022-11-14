@@ -61,12 +61,10 @@ type BlockHeightContractFilterer interface {
 }
 
 type listener struct {
-	logger    log.Logger
-	ev        BlockHeightContractFilterer
-	blockTime time.Duration
-
+	logger              log.Logger
+	ev                  BlockHeightContractFilterer
+	blockTime           time.Duration
 	postageStampAddress common.Address
-	ctx                 context.Context
 	ctxCancel           context.CancelFunc
 	wg                  sync.WaitGroup
 	metrics             metrics
@@ -84,15 +82,12 @@ func New(
 	stallingTimeout time.Duration,
 	backoffTime time.Duration,
 ) postage.Listener {
-	ctx, cancel := context.WithCancel(context.Background())
 	return &listener{
 		syncingStopped:      syncingStopped,
 		logger:              logger.WithName(loggerName).Register(),
 		ev:                  ev,
 		blockTime:           blockTime,
 		postageStampAddress: postageStampAddress,
-		ctx:                 ctx,
-		ctxCancel:           cancel,
 		metrics:             newMetrics(),
 		stallingTimeout:     stallingTimeout,
 		backoffTime:         backoffTime,
@@ -181,6 +176,9 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 }
 
 func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *postage.ChainSnapshot) <-chan error {
+	ctx, cancel := context.WithCancel(context.Background())
+	l.ctxCancel = cancel
+
 	processEvents := func(events []types.Log, to uint64) error {
 		if err := updater.TransactionStart(); err != nil {
 			return err
@@ -262,13 +260,13 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *
 			case <-paged:
 				// if we paged then it means there's more things to sync on
 			case <-time.After(expectedWaitTime):
-			case <-l.ctx.Done():
+			case <-ctx.Done():
 				return nil
 			}
 			start := time.Now()
 
 			l.metrics.BackendCalls.Inc()
-			to, err := l.ev.BlockNumber(l.ctx)
+			to, err := l.ev.BlockNumber(ctx)
 			if err != nil {
 				l.metrics.BackendErrors.Inc()
 				l.logger.Warning("could not get block number", "error", err)
@@ -302,7 +300,7 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *
 			}
 			l.metrics.BackendCalls.Inc()
 
-			events, err := l.ev.FilterLogs(l.ctx, l.filterQuery(big.NewInt(int64(from)), big.NewInt(int64(to))))
+			events, err := l.ev.FilterLogs(ctx, l.filterQuery(big.NewInt(int64(from)), big.NewInt(int64(to))))
 			if err != nil {
 				l.metrics.BackendErrors.Inc()
 				l.logger.Warning("could not get logs", "error", err)
@@ -341,7 +339,9 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *
 }
 
 func (l *listener) Close() error {
-	l.ctxCancel()
+	if cancel := l.ctxCancel; cancel != nil {
+		cancel()
+	}
 
 	done := make(chan struct{})
 	go func() {
