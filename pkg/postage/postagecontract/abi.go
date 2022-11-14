@@ -2,24 +2,14 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package redistribution
+package postagecontract
 
-const redistributionABIv0_0_0 = `[
+const PostageABI = `[
    {
       "inputs":[
          {
             "internalType":"address",
-            "name":"staking",
-            "type":"address"
-         },
-         {
-            "internalType":"address",
-            "name":"postageContract",
-            "type":"address"
-         },
-         {
-            "internalType":"address",
-            "name":"oracleContract",
+            "name":"_bzzToken",
             "type":"address"
          }
       ],
@@ -30,58 +20,99 @@ const redistributionABIv0_0_0 = `[
       "anonymous":false,
       "inputs":[
          {
-            "indexed":false,
-            "internalType":"uint256",
-            "name":"_count",
-            "type":"uint256"
-         }
-      ],
-      "name":"CountCommits",
-      "type":"event"
-   },
-   {
-      "anonymous":false,
-      "inputs":[
-         {
-            "indexed":false,
-            "internalType":"uint256",
-            "name":"_count",
-            "type":"uint256"
-         }
-      ],
-      "name":"CountReveals",
-      "type":"event"
-   },
-   {
-      "anonymous":false,
-      "inputs":[
-         {
-            "indexed":false,
-            "internalType":"string",
-            "name":"l",
-            "type":"string"
-         }
-      ],
-      "name":"Log",
-      "type":"event"
-   },
-   {
-      "anonymous":false,
-      "inputs":[
-         {
-            "indexed":false,
-            "internalType":"string",
-            "name":"l",
-            "type":"string"
+            "indexed":true,
+            "internalType":"bytes32",
+            "name":"batchId",
+            "type":"bytes32"
          },
          {
             "indexed":false,
-            "internalType":"bytes32",
-            "name":"b",
-            "type":"bytes32"
+            "internalType":"uint256",
+            "name":"totalAmount",
+            "type":"uint256"
+         },
+         {
+            "indexed":false,
+            "internalType":"uint256",
+            "name":"normalisedBalance",
+            "type":"uint256"
+         },
+         {
+            "indexed":false,
+            "internalType":"address",
+            "name":"owner",
+            "type":"address"
+         },
+         {
+            "indexed":false,
+            "internalType":"uint8",
+            "name":"depth",
+            "type":"uint8"
+         },
+         {
+            "indexed":false,
+            "internalType":"uint8",
+            "name":"bucketDepth",
+            "type":"uint8"
+         },
+         {
+            "indexed":false,
+            "internalType":"bool",
+            "name":"immutableFlag",
+            "type":"bool"
          }
       ],
-      "name":"LogBytes32",
+      "name":"BatchCreated",
+      "type":"event"
+   },
+   {
+      "anonymous":false,
+      "inputs":[
+         {
+            "indexed":true,
+            "internalType":"bytes32",
+            "name":"batchId",
+            "type":"bytes32"
+         },
+         {
+            "indexed":false,
+            "internalType":"uint8",
+            "name":"newDepth",
+            "type":"uint8"
+         },
+         {
+            "indexed":false,
+            "internalType":"uint256",
+            "name":"normalisedBalance",
+            "type":"uint256"
+         }
+      ],
+      "name":"BatchDepthIncrease",
+      "type":"event"
+   },
+   {
+      "anonymous":false,
+      "inputs":[
+         {
+            "indexed":true,
+            "internalType":"bytes32",
+            "name":"batchId",
+            "type":"bytes32"
+         },
+         {
+            "indexed":false,
+            "internalType":"uint256",
+            "name":"topupAmount",
+            "type":"uint256"
+         },
+         {
+            "indexed":false,
+            "internalType":"uint256",
+            "name":"normalisedBalance",
+            "type":"uint256"
+         }
+      ],
+      "name":"BatchTopUp",
       "type":"event"
    },
    {
@@ -95,6 +126,19 @@ const redistributionABIv0_0_0 = `[
          }
       ],
       "name":"Paused",
+      "type":"event"
+   },
+   {
+      "anonymous":false,
+      "inputs":[
+         {
+            "indexed":false,
+            "internalType":"uint256",
+            "name":"price",
+            "type":"uint256"
+         }
+      ],
+      "name":"PriceUpdate",
       "type":"event"
    },
    {
@@ -177,76 +221,12 @@ const redistributionABIv0_0_0 = `[
       "inputs":[
          {
             "indexed":false,
-            "internalType":"bytes32",
-            "name":"hash",
-            "type":"bytes32"
-         },
-         {
-            "indexed":false,
-            "internalType":"uint8",
-            "name":"depth",
-            "type":"uint8"
-         }
-      ],
-      "name":"TruthSelected",
-      "type":"event"
-   },
-   {
-      "anonymous":false,
-      "inputs":[
-         {
-            "indexed":false,
             "internalType":"address",
             "name":"account",
             "type":"address"
          }
       ],
       "name":"Unpaused",
-      "type":"event"
-   },
-   {
-      "anonymous":false,
-      "inputs":[
-         {
-            "components":[
-               {
-                  "internalType":"address",
-                  "name":"owner",
-                  "type":"address"
-               },
-               {
-                  "internalType":"bytes32",
-                  "name":"overlay",
-                  "type":"bytes32"
-               },
-               {
-                  "internalType":"uint256",
-                  "name":"stake",
-                  "type":"uint256"
-               },
-               {
-                  "internalType":"uint256",
-                  "name":"stakeDensity",
-                  "type":"uint256"
-               },
-               {
-                  "internalType":"bytes32",
-                  "name":"hash",
-                  "type":"bytes32"
-               },
-               {
-                  "internalType":"uint8",
-                  "name":"depth",
-                  "type":"uint8"
-               }
-            ],
-            "indexed":false,
-            "internalType":"struct Redistribution.Reveal",
-            "name":"winner",
-            "type":"tuple"
-         }
-      ],
-      "name":"WinnerSelected",
       "type":"event"
    },
    {
@@ -264,12 +244,12 @@ const redistributionABIv0_0_0 = `[
    },
    {
       "inputs":[],
-      "name":"OracleContract",
+      "name":"DEPTH_ORACLE_ROLE",
       "outputs":[
          {
-            "internalType":"contract PriceOracle",
+            "internalType":"bytes32",
             "name":"",
-            "type":"address"
+            "type":"bytes32"
          }
       ],
       "stateMutability":"view",
@@ -290,68 +270,12 @@ const redistributionABIv0_0_0 = `[
    },
    {
       "inputs":[],
-      "name":"PostageContract",
+      "name":"PRICE_ORACLE_ROLE",
       "outputs":[
-         {
-            "internalType":"contract PostageStamp",
-            "name":"",
-            "type":"address"
-         }
-      ],
-      "stateMutability":"view",
-      "type":"function"
-   },
-   {
-      "inputs":[],
-      "name":"Stakes",
-      "outputs":[
-         {
-            "internalType":"contract StakeRegistry",
-            "name":"",
-            "type":"address"
-         }
-      ],
-      "stateMutability":"view",
-      "type":"function"
-   },
-   {
-      "inputs":[],
-      "name":"claim",
-      "outputs":[],
-      "stateMutability":"nonpayable",
-      "type":"function"
-   },
-   {
-      "inputs":[
          {
             "internalType":"bytes32",
-            "name":"_obfuscatedHash",
-            "type":"bytes32"
-         },
-         {
-            "internalType":"bytes32",
-            "name":"_overlay",
-            "type":"bytes32"
-         },
-         {
-            "internalType":"uint256",
-            "name":"_roundNumber",
-            "type":"uint256"
-         }
-      ],
-      "name":"commit",
-      "outputs":[],
-      "stateMutability":"nonpayable",
-      "type":"function"
-   },
-   {
-      "inputs":[],
-      "name":"currentClaimRound",
-      "outputs":[
-         {
-            "internalType":"uint256",
             "name":"",
-            "type":"uint256"
+            "type":"bytes32"
          }
       ],
       "stateMutability":"view",
@@ -359,12 +283,12 @@ const redistributionABIv0_0_0 = `[
    },
    {
       "inputs":[],
-      "name":"currentCommitRound",
+      "name":"REDISTRIBUTOR_ROLE",
       "outputs":[
          {
-            "internalType":"uint256",
+            "internalType":"bytes32",
             "name":"",
-            "type":"uint256"
+            "type":"bytes32"
          }
       ],
       "stateMutability":"view",
@@ -373,133 +297,32 @@ const redistributionABIv0_0_0 = `[
    {
       "inputs":[
          {
-            "internalType":"uint256",
-            "name":"",
-            "type":"uint256"
-         }
-      ],
-      "name":"currentCommits",
-      "outputs":[
-         {
             "internalType":"bytes32",
-            "name":"overlay",
+            "name":"",
             "type":"bytes32"
-         },
-         {
-            "internalType":"address",
-            "name":"owner",
-            "type":"address"
-         },
-         {
-            "internalType":"uint256",
-            "name":"stake",
-            "type":"uint256"
-         },
-         {
-            "internalType":"bytes32",
-            "name":"obfuscatedHash",
-            "type":"bytes32"
-         },
-         {
-            "internalType":"bool",
-            "name":"revealed",
-            "type":"bool"
          }
       ],
-      "stateMutability":"view",
-      "type":"function"
-   },
-   {
-      "inputs":[],
-      "name":"currentPhaseClaim",
-      "outputs":[
-         {
-            "internalType":"bool",
-            "name":"",
-            "type":"bool"
-         }
-      ],
-      "stateMutability":"view",
-      "type":"function"
-   },
-   {
-      "inputs":[],
-      "name":"currentPhaseCommit",
-      "outputs":[
-         {
-            "internalType":"bool",
-            "name":"",
-            "type":"bool"
-         }
-      ],
-      "stateMutability":"view",
-      "type":"function"
-   },
-   {
-      "inputs":[],
-      "name":"currentPhaseReveal",
-      "outputs":[
-         {
-            "internalType":"bool",
-            "name":"",
-            "type":"bool"
-         }
-      ],
-      "stateMutability":"view",
-      "type":"function"
-   },
-   {
-      "inputs":[],
-      "name":"currentRevealRound",
-      "outputs":[
-         {
-            "internalType":"uint256",
-            "name":"",
-            "type":"uint256"
-         }
-      ],
-      "stateMutability":"view",
-      "type":"function"
-   },
-   {
-      "inputs":[
-         {
-            "internalType":"uint256",
-            "name":"",
-            "type":"uint256"
-         }
-      ],
-      "name":"currentReveals",
+      "name":"batches",
       "outputs":[
          {
             "internalType":"address",
             "name":"owner",
             "type":"address"
-         },
-         {
-            "internalType":"bytes32",
-            "name":"overlay",
-            "type":"bytes32"
-         },
-         {
-            "internalType":"uint256",
-            "name":"stake",
-            "type":"uint256"
-         },
-         {
-            "internalType":"uint256",
-            "name":"stakeDensity",
-            "type":"uint256"
-         },
-         {
-            "internalType":"bytes32",
-            "name":"hash",
-            "type":"bytes32"
          },
          {
             "internalType":"uint8",
             "name":"depth",
             "type":"uint8"
+         },
+         {
+            "internalType":"bool",
+            "name":"immutableFlag",
+            "type":"bool"
+         },
+         {
+            "internalType":"uint256",
+            "name":"normalisedBalance",
+            "type":"uint256"
          }
       ],
       "stateMutability":"view",
@@ -507,7 +330,96 @@ const redistributionABIv0_0_0 = `[
    },
    {
       "inputs":[],
-      "name":"currentRound",
+      "name":"bzzToken",
+      "outputs":[
+         {
+            "internalType":"address",
+            "name":"",
+            "type":"address"
+         }
+      ],
+      "stateMutability":"view",
+      "type":"function"
+   },
+   {
+      "inputs":[
+         {
+            "internalType":"address",
+            "name":"_owner",
+            "type":"address"
+         },
+         {
+            "internalType":"uint256",
+            "name":"_initialBalancePerChunk",
+            "type":"uint256"
+         },
+         {
+            "internalType":"uint8",
+            "name":"_depth",
+            "type":"uint8"
+         },
+         {
+            "internalType":"uint8",
+            "name":"_bucketDepth",
+            "type":"uint8"
+         },
+         {
+            "internalType":"bytes32",
+            "name":"_batchId",
+            "type":"bytes32"
+         },
+         {
+            "internalType":"bool",
+            "name":"_immutable",
+            "type":"bool"
+         }
+      ],
+      "name":"copyBatch",
+      "outputs":[],
+      "stateMutability":"nonpayable",
+      "type":"function"
+   },
+   {
+      "inputs":[
+         {
+            "internalType":"address",
+            "name":"_owner",
+            "type":"address"
+         },
+         {
+            "internalType":"uint256",
+            "name":"_initialBalancePerChunk",
+            "type":"uint256"
+         },
+         {
+            "internalType":"uint8",
+            "name":"_depth",
+            "type":"uint8"
+         },
+         {
+            "internalType":"uint8",
+            "name":"_bucketDepth",
+            "type":"uint8"
+         },
+         {
+            "internalType":"bytes32",
+            "name":"_nonce",
+            "type":"bytes32"
+         },
+         {
+            "internalType":"bool",
+            "name":"_immutable",
+            "type":"bool"
+         }
+      ],
+      "name":"createBatch",
+      "outputs":[],
+      "stateMutability":"nonpayable",
+      "type":"function"
+   },
+   {
+      "inputs":[],
+      "name":"currentTotalOutPayment",
       "outputs":[
          {
             "internalType":"uint256",
@@ -520,57 +432,38 @@ const redistributionABIv0_0_0 = `[
    },
    {
       "inputs":[],
-      "name":"currentRoundAnchor",
+      "name":"empty",
       "outputs":[
          {
-            "internalType":"bytes32",
-            "name":"returnVal",
-            "type":"bytes32"
-         }
-      ],
-      "stateMutability":"view",
-      "type":"function"
-   },
-   {
-      "inputs":[],
-      "name":"currentRoundReveals",
-      "outputs":[
-         {
-            "components":[
-               {
-                  "internalType":"address",
-                  "name":"owner",
-                  "type":"address"
-               },
-               {
-                  "internalType":"bytes32",
-                  "name":"overlay",
-                  "type":"bytes32"
-               },
-               {
-                  "internalType":"uint256",
-                  "name":"stake",
-                  "type":"uint256"
-               },
-               {
-                  "internalType":"uint256",
-                  "name":"stakeDensity",
-                  "type":"uint256"
-               },
-               {
-                  "internalType":"bytes32",
-                  "name":"hash",
-                  "type":"bytes32"
-               },
-               {
-                  "internalType":"uint8",
-                  "name":"depth",
-                  "type":"uint8"
-               }
-            ],
-            "internalType":"struct Redistribution.Reveal[]",
+            "internalType":"bool",
             "name":"",
-            "type":"tuple[]"
+            "type":"bool"
+         }
+      ],
+      "stateMutability":"view",
+      "type":"function"
+   },
+   {
+      "inputs":[
+         {
+            "internalType":"uint256",
+            "name":"limit",
+            "type":"uint256"
+         }
+      ],
+      "name":"expireLimited",
+      "outputs":[],
+      "stateMutability":"nonpayable",
+      "type":"function"
+   },
+   {
+      "inputs":[],
+      "name":"expiredBatchesExist",
+      "outputs":[
+         {
+            "internalType":"bool",
+            "name":"",
+            "type":"bool"
          }
       ],
       "stateMutability":"view",
@@ -578,7 +471,7 @@ const redistributionABIv0_0_0 = `[
    },
    {
       "inputs":[],
-      "name":"currentSeed",
+      "name":"firstBatchId",
       "outputs":[
          {
             "internalType":"bytes32",
@@ -654,77 +547,23 @@ const redistributionABIv0_0_0 = `[
       "inputs":[
          {
             "internalType":"bytes32",
-            "name":"A",
-            "type":"bytes32"
-         },
-         {
-            "internalType":"bytes32",
-            "name":"B",
+            "name":"_batchId",
             "type":"bytes32"
          },
          {
             "internalType":"uint8",
-            "name":"minimum",
+            "name":"_newDepth",
             "type":"uint8"
          }
       ],
-      "name":"inProximity",
-      "outputs":[
-         {
-            "internalType":"bool",
-            "name":"",
-            "type":"bool"
-         }
-      ],
-      "stateMutability":"pure",
-      "type":"function"
-   },
-   {
-      "inputs":[
-         {
-            "internalType":"bytes32",
-            "name":"overlay",
-            "type":"bytes32"
-         },
-         {
-            "internalType":"uint8",
-            "name":"depth",
-            "type":"uint8"
-         }
-      ],
-      "name":"isParticipatingInUpcomingRound",
-      "outputs":[
-         {
-            "internalType":"bool",
-            "name":"",
-            "type":"bool"
-         }
-      ],
-      "stateMutability":"view",
-      "type":"function"
-   },
-   {
-      "inputs":[
-         {
-            "internalType":"bytes32",
-            "name":"_overlay",
-            "type":"bytes32"
-         }
-      ],
-      "name":"isWinner",
-      "outputs":[
-         {
-            "internalType":"bool",
-            "name":"",
-            "type":"bool"
-         }
-      ],
-      "stateMutability":"view",
+      "name":"increaseDepth",
+      "outputs":[],
+      "stateMutability":"nonpayable",
       "type":"function"
    },
    {
       "inputs":[],
-      "name":"minimumStake",
+      "name":"lastExpiryBalance",
       "outputs":[
          {
             "internalType":"uint256",
@@ -737,15 +576,48 @@ const redistributionABIv0_0_0 = `[
    },
    {
       "inputs":[],
-      "name":"nextSeed",
+      "name":"lastPrice",
       "outputs":[
          {
-            "internalType":"bytes32",
+            "internalType":"uint256",
             "name":"",
-            "type":"bytes32"
+            "type":"uint256"
          }
       ],
       "stateMutability":"view",
+      "type":"function"
+   },
+   {
+      "inputs":[],
+      "name":"lastUpdatedBlock",
+      "outputs":[
+         {
+            "internalType":"uint256",
+            "name":"",
+            "type":"uint256"
+         }
+      ],
+      "stateMutability":"view",
+      "type":"function"
+   },
+   {
+      "inputs":[],
+      "name":"minimumBatchDepth",
+      "outputs":[
+         {
+            "internalType":"uint8",
+            "name":"",
+            "type":"uint8"
+         }
+      ],
+      "stateMutability":"view",
+      "type":"function"
+   },
+   {
+      "inputs":[],
+      "name":"pause",
+      "outputs":[],
+      "stateMutability":"nonpayable",
       "type":"function"
    },
    {
@@ -756,6 +628,38 @@ const redistributionABIv0_0_0 = `[
             "internalType":"bool",
             "name":"",
             "type":"bool"
+         }
+      ],
+      "stateMutability":"view",
+      "type":"function"
+   },
+   {
+      "inputs":[],
+      "name":"pot",
+      "outputs":[
+         {
+            "internalType":"uint256",
+            "name":"",
+            "type":"uint256"
+         }
+      ],
+      "stateMutability":"view",
+      "type":"function"
+   },
+   {
+      "inputs":[
+         {
+            "internalType":"bytes32",
+            "name":"_batchId",
+            "type":"bytes32"
+         }
+      ],
+      "name":"remainingBalance",
+      "outputs":[
+         {
+            "internalType":"uint256",
+            "name":"",
+            "type":"uint256"
          }
       ],
       "stateMutability":"view",
@@ -783,34 +687,6 @@ const redistributionABIv0_0_0 = `[
       "inputs":[
          {
             "internalType":"bytes32",
-            "name":"_overlay",
-            "type":"bytes32"
-         },
-         {
-            "internalType":"uint8",
-            "name":"_depth",
-            "type":"uint8"
-         },
-         {
-            "internalType":"bytes32",
-            "name":"_hash",
-            "type":"bytes32"
-         },
-         {
-            "internalType":"bytes32",
-            "name":"_revealNonce",
-            "type":"bytes32"
-         }
-      ],
-      "name":"reveal",
-      "outputs":[],
-      "stateMutability":"nonpayable",
-      "type":"function"
-   },
-   {
-      "inputs":[
-         {
-            "internalType":"bytes32",
             "name":"role",
             "type":"bytes32"
          },
@@ -826,16 +702,29 @@ const redistributionABIv0_0_0 = `[
       "type":"function"
    },
    {
-      "inputs":[],
-      "name":"roundLength",
-      "outputs":[
+      "inputs":[
+         {
+            "internalType":"uint8",
+            "name":"min",
+            "type":"uint8"
+         }
+      ],
+      "name":"setMinimumBatchDepth",
+      "outputs":[],
+      "stateMutability":"nonpayable",
+      "type":"function"
+   },
+   {
+      "inputs":[
          {
             "internalType":"uint256",
-            "name":"",
+            "name":"_price",
             "type":"uint256"
          }
       ],
-      "stateMutability":"view",
+      "name":"setPrice",
+      "outputs":[],
+      "stateMutability":"nonpayable",
       "type":"function"
    },
    {
@@ -858,38 +747,64 @@ const redistributionABIv0_0_0 = `[
       "type":"function"
    },
    {
+      "inputs":[
+         {
+            "internalType":"bytes32",
+            "name":"_batchId",
+            "type":"bytes32"
+         },
+         {
+            "internalType":"uint256",
+            "name":"_topupAmountPerChunk",
+            "type":"uint256"
+         }
+      ],
+      "name":"topUp",
+      "outputs":[],
+      "stateMutability":"nonpayable",
+      "type":"function"
+   },
+   {
+      "inputs":[
+         {
+            "internalType":"uint256",
+            "name":"amount",
+            "type":"uint256"
+         }
+      ],
+      "name":"topupPot",
+      "outputs":[],
+      "stateMutability":"nonpayable",
+      "type":"function"
+   },
+   {
       "inputs":[],
-      "name":"winner",
+      "name":"totalPot",
       "outputs":[
          {
-            "internalType":"address",
-            "name":"owner",
-            "type":"address"
-         },
-         {
-            "internalType":"bytes32",
-            "name":"overlay",
-            "type":"bytes32"
-         },
+            "internalType":"uint256",
+            "name":"",
+            "type":"uint256"
+         }
+      ],
+      "stateMutability":"nonpayable",
+      "type":"function"
+   },
+   {
+      "inputs":[],
+      "name":"unPause",
+      "outputs":[],
+      "stateMutability":"nonpayable",
+      "type":"function"
+   },
+   {
+      "inputs":[],
+      "name":"validChunkCount",
+      "outputs":[
          {
             "internalType":"uint256",
-            "name":"stake",
+            "name":"",
             "type":"uint256"
-         },
-         {
-            "internalType":"uint256",
-            "name":"stakeDensity",
-            "type":"uint256"
-         },
-         {
-            "internalType":"bytes32",
-            "name":"hash",
-            "type":"bytes32"
-         },
-         {
-            "internalType":"uint8",
-            "name":"depth",
-            "type":"uint8"
          }
       ],
       "stateMutability":"view",
@@ -898,35 +813,14 @@ const redistributionABIv0_0_0 = `[
    {
       "inputs":[
          {
-            "internalType":"bytes32",
-            "name":"_overlay",
-            "type":"bytes32"
-         },
-         {
-            "internalType":"uint8",
-            "name":"_depth",
-            "type":"uint8"
-         },
-         {
-            "internalType":"bytes32",
-            "name":"_hash",
-            "type":"bytes32"
-         },
-         {
-            "internalType":"bytes32",
-            "name":"revealNonce",
-            "type":"bytes32"
+            "internalType":"address",
+            "name":"beneficiary",
+            "type":"address"
          }
       ],
-      "name":"wrapCommit",
-      "outputs":[
-         {
-            "internalType":"bytes32",
-            "name":"",
-            "type":"bytes32"
-         }
-      ],
-      "stateMutability":"pure",
+      "name":"withdraw",
+      "outputs":[],
+      "stateMutability":"nonpayable",
       "type":"function"
    }
 ]`
