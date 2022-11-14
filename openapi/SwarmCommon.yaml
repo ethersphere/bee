@@ -657,6 +657,8 @@ components:
           type: integer
         gasTipCap:
           $ref: "#/components/schemas/BigInt"
+        gasTipBoost:
+          type: integer
         gasFeeCap:
           $ref: "#/components/schemas/BigInt"
         data:

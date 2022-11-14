@@ -31,12 +31,13 @@ func TestTransactionStoredTransaction(t *testing.T) {
 	data := common.Hex2Bytes(dataStr)
 	created := int64(1616451040)
 	recipient := common.HexToAddress("fffe")
-	gasPrice := big.NewInt(23)
+	gasPrice := big.NewInt(12)
 	gasLimit := uint64(200)
 	value := big.NewInt(50)
 	nonce := uint64(12)
 	description := "test"
 	gasTipBoost := 10
+	gasTipCap := new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(gasTipBoost)+100), gasPrice), big.NewInt(100))
 	t.Run("found", func(t *testing.T) {
 		t.Parallel()
 
@@ -52,6 +53,7 @@ func TestTransactionStoredTransaction(t *testing.T) {
 						GasLimit:    gasLimit,
 						GasFeeCap:   gasPrice,
 						GasTipBoost: gasTipBoost,
+						GasTipCap:   gasTipCap,
 						Value:       value,
 						Nonce:       nonce,
 						Description: description,
@@ -69,7 +71,8 @@ func TestTransactionStoredTransaction(t *testing.T) {
 				GasPrice:        bigint.Wrap(gasPrice),
 				GasLimit:        gasLimit,
 				GasFeeCap:       bigint.Wrap(gasPrice),
-				GasTipCap:       bigint.Wrap(big.NewInt(int64(gasTipBoost))),
+				GasTipCap:       bigint.Wrap(gasTipCap),
+				GasTipBoost:     gasTipBoost,
 				Value:           bigint.Wrap(value),
 				Nonce:           nonce,
 				Description:     description,
@@ -129,6 +132,7 @@ func TestTransactionList(t *testing.T) {
 			GasPrice:    big.NewInt(12),
 			GasLimit:    5345,
 			GasTipBoost: 10,
+			GasTipCap:   new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(10)+100), big.NewInt(12)), big.NewInt(100)),
 			GasFeeCap:   big.NewInt(12),
 			Value:       big.NewInt(4),
 			Nonce:       3,
@@ -141,6 +145,7 @@ func TestTransactionList(t *testing.T) {
 			Data:        []byte{3, 2, 3, 4},
 			GasPrice:    big.NewInt(42),
 			GasTipBoost: 10,
+			GasTipCap:   new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(10)+100), big.NewInt(42)), big.NewInt(100)),
 			GasFeeCap:   big.NewInt(42),
 			GasLimit:    53451,
 			Value:       big.NewInt(41),
@@ -170,7 +175,8 @@ func TestTransactionList(t *testing.T) {
 					Nonce:           storedTransactions[txHash1].Nonce,
 					GasPrice:        bigint.Wrap(storedTransactions[txHash1].GasPrice),
 					GasLimit:        storedTransactions[txHash1].GasLimit,
-					GasTipCap:       bigint.Wrap(big.NewInt(int64(10))),
+					GasTipCap:       bigint.Wrap(storedTransactions[txHash1].GasTipCap),
+					GasTipBoost:     storedTransactions[txHash1].GasTipBoost,
 					GasFeeCap:       bigint.Wrap(storedTransactions[txHash1].GasPrice),
 					Data:            hexutil.Encode(storedTransactions[txHash1].Data),
 					Created:         time.Unix(storedTransactions[txHash1].Created, 0),
@@ -183,7 +189,8 @@ func TestTransactionList(t *testing.T) {
 					Nonce:           storedTransactions[txHash2].Nonce,
 					GasPrice:        bigint.Wrap(storedTransactions[txHash2].GasPrice),
 					GasLimit:        storedTransactions[txHash2].GasLimit,
-					GasTipCap:       bigint.Wrap(big.NewInt(int64(10))),
+					GasTipCap:       bigint.Wrap(storedTransactions[txHash2].GasTipCap),
+					GasTipBoost:     storedTransactions[txHash2].GasTipBoost,
 					GasFeeCap:       bigint.Wrap(storedTransactions[txHash2].GasPrice),
 					Data:            hexutil.Encode(storedTransactions[txHash2].Data),
 					Created:         time.Unix(storedTransactions[txHash2].Created, 0),

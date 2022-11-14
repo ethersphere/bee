@@ -59,6 +59,7 @@ type StoredTransaction struct {
 	GasPrice    *big.Int        // used gas price
 	GasLimit    uint64          // used gas limit
 	GasTipBoost int             // adds a tip for the miner for prioritizing transaction
+	GasTipCap   *big.Int        // adds a cap to the tip
 	GasFeeCap   *big.Int        // adds a cap to maximum fee user is willing to pay
 	Value       *big.Int        // amount of wei to send
 	Nonce       uint64          // used nonce
@@ -181,6 +182,7 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest, tipCa
 		GasPrice:    signedTx.GasPrice(),
 		GasLimit:    signedTx.Gas(),
 		GasTipBoost: tipCapBoostPercent,
+		GasTipCap:   signedTx.GasTipCap(),
 		GasFeeCap:   signedTx.GasFeeCap(),
 		Value:       signedTx.Value(),
 		Nonce:       signedTx.Nonce(),
@@ -490,6 +492,7 @@ func (t *transactionService) CancelTransaction(ctx context.Context, originalTxHa
 		GasLimit:    signedTx.Gas(),
 		GasFeeCap:   signedTx.GasFeeCap(),
 		GasTipBoost: storedTransaction.GasTipBoost,
+		GasTipCap:   signedTx.GasTipCap(),
 		Value:       signedTx.Value(),
 		Nonce:       signedTx.Nonce(),
 		Created:     time.Now().Unix(),
