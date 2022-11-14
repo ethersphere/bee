@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"sync"
 
 	"github.com/ethersphere/bee/pkg/p2p"
 	ggio "github.com/gogo/protobuf/io"
@@ -48,17 +49,32 @@ func ReadMessages(r io.Reader, newMessage func() Message) (m []Message, err erro
 }
 
 type Reader struct {
-	ggio.Reader
+	r  ggio.ReadCloser
+	wg *sync.WaitGroup
 }
 
-func newReader(r ggio.Reader) Reader {
-	return Reader{Reader: r}
+func newReader(r ggio.ReadCloser) Reader {
+	return Reader{
+		r:  r,
+		wg: &sync.WaitGroup{},
+	}
+}
+
+func (r Reader) Close() error {
+	defer r.wg.Wait()
+	return r.r.Close()
+}
+
+func (r Reader) ReadMsg(msg proto.Message) error {
+	return r.r.ReadMsg(msg)
 }
 
 func (r Reader) ReadMsgWithContext(ctx context.Context, msg proto.Message) error {
 	errChan := make(chan error, 1)
+	r.wg.Add(1)
 	go func() {
-		errChan <- r.ReadMsg(msg)
+		errChan <- r.r.ReadMsg(msg)
+		r.wg.Done()
 	}()
 
 	select {
@@ -70,17 +86,32 @@ func (r Reader) ReadMsgWithContext(ctx context.Context, msg proto.Message) error
 }
 
 type Writer struct {
-	ggio.Writer
+	w  ggio.WriteCloser
+	wg *sync.WaitGroup
 }
 
-func newWriter(r ggio.Writer) Writer {
-	return Writer{Writer: r}
+func newWriter(w ggio.WriteCloser) Writer {
+	return Writer{
+		w:  w,
+		wg: &sync.WaitGroup{},
+	}
+}
+
+func (w Writer) Close() error {
+	defer w.wg.Wait()
+	return w.w.Close()
+}
+
+func (w Writer) WriteMsg(msg proto.Message) error {
+	return w.w.WriteMsg(msg)
 }
 
 func (w Writer) WriteMsgWithContext(ctx context.Context, msg proto.Message) error {
 	errChan := make(chan error, 1)
+	w.wg.Add(1)
 	go func() {
 		errChan <- w.WriteMsg(msg)
+		w.wg.Done()
 	}()
 
 	select {

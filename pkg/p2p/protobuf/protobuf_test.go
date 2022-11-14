@@ -35,11 +35,7 @@ func TestReader_ReadMsg(t *testing.T) {
 		{
 			name: "NewWriterAndReader",
 			readerFunc: func() protobuf.Reader {
-				_, r := protobuf.NewWriterAndReader(
-					newNoopWriteCloser(
-						newMessageReader(messages, 0),
-					),
-				)
+				_, r := protobuf.NewWriterAndReader(newNoopWriteCloser(newMessageReader(messages, 0)))
 				return r
 			},
 		},
@@ -49,6 +45,8 @@ func TestReader_ReadMsg(t *testing.T) {
 			t.Parallel()
 
 			r := tc.readerFunc()
+			defer r.Close()
+
 			var msg pb.Message
 			for i := 0; i < len(messages); i++ {
 				err := r.ReadMsg(&msg)
@@ -74,6 +72,8 @@ func TestReader_ReadMsg(t *testing.T) {
 func TestReader_timeout(t *testing.T) {
 	t.Parallel()
 
+	const delay = 500 * time.Millisecond
+
 	messages := []string{"first", "second", "third"}
 
 	for _, tc := range []struct {
@@ -83,17 +83,13 @@ func TestReader_timeout(t *testing.T) {
 		{
 			name: "NewReader",
 			readerFunc: func() protobuf.Reader {
-				return protobuf.NewReader(newMessageReader(messages, 500*time.Millisecond))
+				return protobuf.NewReader(newMessageReader(messages, delay))
 			},
 		},
 		{
 			name: "NewWriterAndReader",
 			readerFunc: func() protobuf.Reader {
-				_, r := protobuf.NewWriterAndReader(
-					newNoopWriteCloser(
-						newMessageReader(messages, 500*time.Millisecond),
-					),
-				)
+				_, r := protobuf.NewWriterAndReader(newNoopWriteCloser(newMessageReader(messages, delay)))
 				return r
 			},
 		},
@@ -102,39 +98,38 @@ func TestReader_timeout(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			t.Run("WithContext", func(t *testing.T) {
-				t.Parallel()
+			r := tc.readerFunc()
+			defer r.Close()
 
-				r := tc.readerFunc()
+			for i := 0; i < len(messages); i++ {
+				var want string
 				var msg pb.Message
-				for i := 0; i < len(messages); i++ {
-					var timeout time.Duration
-					if i == 0 {
-						timeout = 1000 * time.Millisecond
-					} else {
-						timeout = 10 * time.Millisecond
-					}
-					ctx, cancel := context.WithTimeout(context.Background(), timeout)
-					defer cancel()
-					err := r.ReadMsgWithContext(ctx, &msg)
-					if i == 0 {
-						if err != nil {
-							t.Parallel()
-							t.Fatal(err)
-						}
-					} else {
-						if !errors.Is(err, context.DeadlineExceeded) {
-							t.Fatalf("got error %v, want %v", err, context.DeadlineExceeded)
-						}
-						break
-					}
-					want := messages[i]
-					got := msg.Text
-					if got != want {
-						t.Errorf("got message %q, want %q", got, want)
-					}
+				var timeout time.Duration
+				if i == 0 {
+					timeout = delay * 2
+				} else {
+					timeout = delay / 50
 				}
-			})
+				ctx, cancel := context.WithTimeout(context.Background(), timeout)
+				defer cancel()
+				err := r.ReadMsgWithContext(ctx, &msg)
+				if i == 0 {
+					if err != nil {
+						t.Fatal(err)
+					}
+					want = messages[i]
+				} else {
+					if !errors.Is(err, context.DeadlineExceeded) {
+						t.Fatalf("got error %v, want %v", err, context.DeadlineExceeded)
+					}
+					want = ""
+				}
+
+				got := msg.Text
+				if got != want {
+					t.Errorf("got message %q, want %q", got, want)
+				}
+			}
 		})
 	}
 }
@@ -169,6 +164,7 @@ func TestWriter(t *testing.T) {
 			t.Parallel()
 
 			w, msgs := tc.writerFunc()
+			defer w.Close()
 
 			for _, m := range messages {
 				if err := w.WriteMsg(&pb.Message{
@@ -188,6 +184,8 @@ func TestWriter(t *testing.T) {
 func TestWriter_timeout(t *testing.T) {
 	messages := []string{"first", "second", "third"}
 
+	const delay = 500 * time.Millisecond
+
 	for _, tc := range []struct {
 		name       string
 		writerFunc func() (protobuf.Writer, <-chan string)
@@ -195,14 +193,14 @@ func TestWriter_timeout(t *testing.T) {
 		{
 			name: "NewWriter",
 			writerFunc: func() (protobuf.Writer, <-chan string) {
-				w, msgs := newMessageWriter(500 * time.Millisecond)
+				w, msgs := newMessageWriter(delay)
 				return protobuf.NewWriter(w), msgs
 			},
 		},
 		{
 			name: "NewWriterAndReader",
 			writerFunc: func() (protobuf.Writer, <-chan string) {
-				w, msgs := newMessageWriter(500 * time.Millisecond)
+				w, msgs := newMessageWriter(delay)
 				writer, _ := protobuf.NewWriterAndReader(newNoopReadCloser(w))
 				return writer, msgs
 			},
@@ -210,38 +208,39 @@ func TestWriter_timeout(t *testing.T) {
 	} {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			t.Run("WithContext", func(t *testing.T) {
-				t.Parallel()
+			t.Parallel()
 
-				w, msgs := tc.writerFunc()
+			w, msgs := tc.writerFunc()
+			defer w.Close()
 
-				for i, m := range messages {
-					var timeout time.Duration
-					if i == 0 {
-						timeout = 1000 * time.Millisecond
-					} else {
-						timeout = 10 * time.Millisecond
-					}
-					ctx, cancel := context.WithTimeout(context.Background(), timeout)
-					defer cancel()
-					err := w.WriteMsgWithContext(ctx, &pb.Message{
-						Text: m,
-					})
-					if i == 0 {
-						if err != nil {
-							t.Fatal(err)
-						}
-					} else {
-						if !errors.Is(err, context.DeadlineExceeded) {
-							t.Fatalf("got error %v, want %v", err, context.DeadlineExceeded)
-						}
-						break
-					}
-					if got := <-msgs; got != m {
-						t.Fatalf("got message %q, want %q", got, m)
-					}
+			for i, m := range messages {
+				var timeout time.Duration
+				if i == 0 {
+					timeout = delay * 2
+				} else {
+					timeout = delay / 50
 				}
-			})
+				ctx, cancel := context.WithTimeout(context.Background(), timeout)
+				defer cancel()
+
+				err := w.WriteMsgWithContext(ctx, &pb.Message{
+					Text: m,
+				})
+				if i == 0 {
+					if err != nil {
+						t.Fatal(err)
+					}
+				} else {
+					if !errors.Is(err, context.DeadlineExceeded) {
+						t.Fatalf("got error %v, want %v", err, context.DeadlineExceeded)
+					}
+					continue
+				}
+			}
+
+			if got := <-msgs; got != messages[0] {
+				t.Fatalf("got message %q, want %q", got, messages[0])
+			}
 		})
 	}
 }
@@ -268,7 +267,7 @@ func TestReadMessages(t *testing.T) {
 	}
 }
 
-func newMessageReader(messages []string, delay time.Duration) io.Reader {
+func newMessageReader(messages []string, delay time.Duration) io.ReadCloser {
 	r, pipe := io.Pipe()
 	w := protobuf.NewWriter(pipe)
 
@@ -276,11 +275,11 @@ func newMessageReader(messages []string, delay time.Duration) io.Reader {
 		for _, m := range messages {
 			if err := w.WriteMsg(&pb.Message{
 				Text: m,
-			}); err != nil {
+			}); err != nil && !errors.Is(err, io.ErrClosedPipe) {
 				panic(err)
 			}
 		}
-		if err := pipe.Close(); err != nil {
+		if err := w.Close(); err != nil {
 			panic(err)
 		}
 	}()
@@ -288,16 +287,16 @@ func newMessageReader(messages []string, delay time.Duration) io.Reader {
 	return delayedReader{r: r, delay: delay}
 }
 
-func newMessageWriter(delay time.Duration) (w io.Writer, messages <-chan string) {
+func newMessageWriter(delay time.Duration) (w io.WriteCloser, messages <-chan string) {
 	pipe, w := io.Pipe()
 	r := protobuf.NewReader(pipe)
-	msgs := make(chan string)
+	msgs := make(chan string, 16)
 
 	go func() {
 		defer close(msgs)
 
-		var msg pb.Message
 		for {
+			var msg pb.Message
 			err := r.ReadMsg(&msg)
 			if err != nil {
 				if errors.Is(err, io.EOF) {
@@ -308,89 +307,112 @@ func newMessageWriter(delay time.Duration) (w io.Writer, messages <-chan string)
 			msgs <- msg.Text
 		}
 	}()
+
 	return delayedWriter{w: w, delay: delay}, msgs
 }
 
 type delayedWriter struct {
-	w     io.Writer
+	w     io.WriteCloser
 	delay time.Duration
 }
 
 func (d delayedWriter) Write(p []byte) (n int, err error) {
-	time.Sleep(d.delay)
+	interval := d.delay / 100
+	for i := 0; i < 100; i++ {
+		time.Sleep(interval)
+	}
 	return d.w.Write(p)
 }
 
+func (d delayedWriter) Close() error {
+	return d.w.Close()
+}
+
 type delayedReader struct {
-	r     io.Reader
+	r     io.ReadCloser
 	delay time.Duration
 }
 
 func (d delayedReader) Read(p []byte) (n int, err error) {
-	time.Sleep(d.delay)
+	interval := d.delay / 100
+	for i := 0; i < 100; i++ {
+		time.Sleep(interval)
+	}
 	return d.r.Read(p)
 }
 
+func (d delayedReader) Close() error {
+	return d.r.Close()
+}
+
 type noopWriteCloser struct {
-	io.Reader
+	r io.ReadCloser
 }
 
-func newNoopWriteCloser(r io.Reader) noopWriteCloser {
-	return noopWriteCloser{Reader: r}
+func newNoopWriteCloser(r io.ReadCloser) noopWriteCloser {
+	return noopWriteCloser{r: r}
 }
 
-func (noopWriteCloser) Write(p []byte) (n int, err error) {
+func (r noopWriteCloser) Read(p []byte) (n int, err error) {
+	return r.r.Read(p)
+}
+
+func (w noopWriteCloser) Write(p []byte) (n int, err error) {
 	return 0, nil
 }
 
-func (noopWriteCloser) Headers() p2p.Headers {
+func (w noopWriteCloser) Headers() p2p.Headers {
 	return nil
 }
 
-func (noopWriteCloser) ResponseHeaders() p2p.Headers {
+func (w noopWriteCloser) ResponseHeaders() p2p.Headers {
 	return nil
 }
 
-func (noopWriteCloser) Close() error {
+func (w noopWriteCloser) Close() error {
+	return w.r.Close()
+}
+
+func (w noopWriteCloser) FullClose() error {
 	return nil
 }
 
-func (noopWriteCloser) FullClose() error {
-	return nil
-}
-
-func (noopWriteCloser) Reset() error {
+func (w noopWriteCloser) Reset() error {
 	return nil
 }
 
 type noopReadCloser struct {
-	io.Writer
+	w io.WriteCloser
 }
 
-func newNoopReadCloser(w io.Writer) noopReadCloser {
-	return noopReadCloser{Writer: w}
+func newNoopReadCloser(w io.WriteCloser) noopReadCloser {
+	return noopReadCloser{w: w}
 }
 
-func (noopReadCloser) Read(p []byte) (n int, err error) {
+func (r noopReadCloser) Read(p []byte) (n int, err error) {
 	return 0, nil
 }
 
-func (noopReadCloser) Headers() p2p.Headers {
+func (r noopReadCloser) Write(p []byte) (n int, err error) {
+	return r.w.Write(p)
+}
+
+func (r noopReadCloser) Headers() p2p.Headers {
 	return nil
 }
 
-func (noopReadCloser) ResponseHeaders() p2p.Headers {
+func (r noopReadCloser) ResponseHeaders() p2p.Headers {
 	return nil
 }
 
-func (noopReadCloser) Close() error {
+func (r noopReadCloser) Close() error {
+	return r.w.Close()
+}
+
+func (r noopReadCloser) FullClose() error {
 	return nil
 }
 
-func (noopReadCloser) FullClose() error {
-	return nil
-}
-
-func (noopReadCloser) Reset() error {
+func (r noopReadCloser) Reset() error {
 	return nil
 }
