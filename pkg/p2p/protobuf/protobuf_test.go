@@ -182,6 +182,8 @@ func TestWriter(t *testing.T) {
 }
 
 func TestWriter_timeout(t *testing.T) {
+	t.Parallel()
+
 	messages := []string{"first", "second", "third"}
 
 	const delay = 500 * time.Millisecond
