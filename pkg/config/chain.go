@@ -27,10 +27,10 @@ var (
 		LegacyFactories: []common.Address{
 			common.HexToAddress("0xf0277caffea72734853b834afc9892461ea18474"),
 		},
-		PostageStamp:           common.HexToAddress("0x7aac0f092f7b961145900839ed6d54b1980f200c"),
+		PostageStamp:           common.HexToAddress("0xf0a7e63f72a73bd339a7ee814aefa80995e532a0"),
 		PostageStampStartBlock: uint64(7590423),
-		Staking:                common.HexToAddress("0x18391158435582D5bE5ac1640ab5E2825F68d3a4"),
-		Redistribution:         common.HexToAddress("0x7d5ff32e744340ab26873d05e019a0d27fe4716f"),
+		Staking:                common.HexToAddress("0x39fc8db5d43c68379155b41451aa38190faa3498"),
+		Redistribution:         common.HexToAddress("0x3174ed554247b3457922aecfcbdb17db123e519c"),
 	}
 
 	xdaiCfg = ChainConfig{
