@@ -67,6 +67,7 @@ func TestPostageCreateStamp(t *testing.T) {
 		jsonhttptest.Request(t, ts, http.MethodPost, createBatch(initialBalance, depth, label), http.StatusCreated,
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageCreateResponse{
 				BatchID: batchID,
+				TxHash:  txHash,
 			}),
 		)
 	})
@@ -99,6 +100,7 @@ func TestPostageCreateStamp(t *testing.T) {
 			jsonhttptest.WithRequestHeader("Gas-Price", "10000"),
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageCreateResponse{
 				BatchID: batchID,
+				TxHash:  txHash,
 			}),
 		)
 	})
@@ -185,6 +187,7 @@ func TestPostageCreateStamp(t *testing.T) {
 			jsonhttptest.WithRequestHeader("Immutable", "true"),
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageCreateResponse{
 				BatchID: batchID,
+				TxHash:  txHash,
 			}),
 		)
 
