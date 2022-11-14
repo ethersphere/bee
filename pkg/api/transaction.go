@@ -32,6 +32,9 @@ type transactionInfo struct {
 	Nonce           uint64          `json:"nonce"`
 	GasPrice        *bigint.BigInt  `json:"gasPrice"`
 	GasLimit        uint64          `json:"gasLimit"`
+	GasTipBoost     int             `json:"gasTipBoost"`
+	GasTipCap       *bigint.BigInt  `json:"gasTipCap"`
+	GasFeeCap       *bigint.BigInt  `json:"gasFeeCap"`
 	Data            string          `json:"data"`
 	Created         time.Time       `json:"created"`
 	Description     string          `json:"description"`
@@ -69,6 +72,9 @@ func (s *Service) transactionListHandler(w http.ResponseWriter, _ *http.Request)
 			Nonce:           storedTransaction.Nonce,
 			GasPrice:        bigint.Wrap(storedTransaction.GasPrice),
 			GasLimit:        storedTransaction.GasLimit,
+			GasFeeCap:       bigint.Wrap(storedTransaction.GasFeeCap),
+			GasTipCap:       bigint.Wrap(storedTransaction.GasTipCap),
+			GasTipBoost:     storedTransaction.GasTipBoost,
 			Data:            hexutil.Encode(storedTransaction.Data),
 			Created:         time.Unix(storedTransaction.Created, 0),
 			Description:     storedTransaction.Description,
@@ -111,6 +117,9 @@ func (s *Service) transactionDetailHandler(w http.ResponseWriter, r *http.Reques
 		Nonce:           storedTransaction.Nonce,
 		GasPrice:        bigint.Wrap(storedTransaction.GasPrice),
 		GasLimit:        storedTransaction.GasLimit,
+		GasFeeCap:       bigint.Wrap(storedTransaction.GasFeeCap),
+		GasTipCap:       bigint.Wrap(storedTransaction.GasTipCap),
+		GasTipBoost:     storedTransaction.GasTipBoost,
 		Data:            hexutil.Encode(storedTransaction.Data),
 		Created:         time.Unix(storedTransaction.Created, 0),
 		Description:     storedTransaction.Description,
