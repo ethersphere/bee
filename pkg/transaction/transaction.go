@@ -48,6 +48,7 @@ type TxRequest struct {
 	Data        []byte          // transaction data
 	GasPrice    *big.Int        // gas price or nil if suggested gas price should be used
 	GasLimit    uint64          // gas limit or 0 if it should be estimated
+	GasFeeCap   *big.Int        // adds a cap to maximum fee user is willing to pay
 	Value       *big.Int        // amount of wei to send
 	Description string          // optional description
 }
@@ -56,8 +57,10 @@ type StoredTransaction struct {
 	To          *common.Address // recipient of the transaction
 	Data        []byte          // transaction data
 	GasPrice    *big.Int        // used gas price
-	GasTipBoost int             // percentage used to boost the priority fee (eg: tip)
 	GasLimit    uint64          // used gas limit
+	GasTipBoost int             // adds a tip for the miner for prioritizing transaction
+	GasTipCap   *big.Int        // adds a cap to the tip
+	GasFeeCap   *big.Int        // adds a cap to maximum fee user is willing to pay
 	Value       *big.Int        // amount of wei to send
 	Nonce       uint64          // used nonce
 	Created     int64           // creation timestamp
@@ -177,8 +180,10 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest, tipCa
 		To:          signedTx.To(),
 		Data:        signedTx.Data(),
 		GasPrice:    signedTx.GasPrice(),
-		GasTipBoost: tipCapBoostPercent,
 		GasLimit:    signedTx.Gas(),
+		GasTipBoost: tipCapBoostPercent,
+		GasTipCap:   signedTx.GasTipCap(),
+		GasFeeCap:   signedTx.GasFeeCap(),
 		Value:       signedTx.Value(),
 		Nonce:       signedTx.Nonce(),
 		Created:     time.Now().Unix(),
@@ -485,6 +490,9 @@ func (t *transactionService) CancelTransaction(ctx context.Context, originalTxHa
 		Data:        signedTx.Data(),
 		GasPrice:    signedTx.GasPrice(),
 		GasLimit:    signedTx.Gas(),
+		GasFeeCap:   signedTx.GasFeeCap(),
+		GasTipBoost: storedTransaction.GasTipBoost,
+		GasTipCap:   signedTx.GasTipCap(),
 		Value:       signedTx.Value(),
 		Nonce:       signedTx.Nonce(),
 		Created:     time.Now().Unix(),

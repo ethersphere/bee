@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 2.2.0
+  version: 2.3.0
   title: Common Data Types
   description: |
     \*****bzzz*****
@@ -655,6 +655,12 @@ components:
           $ref: "#/components/schemas/BigInt"
         gasLimit:
           type: integer
+        gasTipCap:
+          $ref: "#/components/schemas/BigInt"
+        gasTipBoost:
+          type: integer
+        gasFeeCap:
+          $ref: "#/components/schemas/BigInt"
         data:
           type: string
         created:
