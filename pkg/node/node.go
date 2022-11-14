@@ -681,7 +681,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	var postageSyncStart uint64 = 0
 
 	chainCfg, found := config.GetChainConfig(chainID)
-	postageContractAddress, startBlock := chainCfg.PostageStamp, chainCfg.StartBlock
+	postageContractAddress, startBlock := chainCfg.PostageStamp, chainCfg.PostageStampStartBlock
 	if o.PostageContractAddress != "" {
 		if !common.IsHexAddress(o.PostageContractAddress) {
 			return nil, errors.New("malformed postage stamp address")
