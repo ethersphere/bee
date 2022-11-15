@@ -28,7 +28,7 @@ var (
 			common.HexToAddress("0xf0277caffea72734853b834afc9892461ea18474"),
 		},
 		PostageStamp:           common.HexToAddress("0xf0a7e63f72a73bd339a7ee814aefa80995e532a0"),
-		PostageStampStartBlock: uint64(7590423),
+		PostageStampStartBlock: uint64(7951994),
 		Staking:                common.HexToAddress("0x39fc8db5d43c68379155b41451aa38190faa3498"),
 		Redistribution:         common.HexToAddress("0x3174ed554247b3457922aecfcbdb17db123e519c"),
 	}
