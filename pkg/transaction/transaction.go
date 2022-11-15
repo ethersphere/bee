@@ -478,7 +478,7 @@ func (t *transactionService) CancelTransaction(ctx context.Context, originalTxHa
 		ChainID:   t.chainID,
 		To:        &t.sender,
 		Value:     big.NewInt(0),
-		Gas:       storedTransaction.GasLimit,
+		Gas:       21000,
 		GasTipCap: storedTransaction.GasTipCap,
 		GasFeeCap: storedTransaction.GasFeeCap,
 		Data:      []byte{},
