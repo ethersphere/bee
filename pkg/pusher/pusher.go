@@ -343,8 +343,6 @@ func (s *Service) Close() error {
 	s.logger.Info("pusher shutting down")
 	close(s.quit)
 
-	// s.wg.Wait()
-
 	// Wait for chunks worker to finish
 	select {
 	case <-s.chunksWorkerQuitC:
