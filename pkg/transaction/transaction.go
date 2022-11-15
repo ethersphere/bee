@@ -465,6 +465,14 @@ func (t *transactionService) CancelTransaction(ctx context.Context, originalTxHa
 		return common.Hash{}, err
 	}
 
+	if gasFeeCap.Cmp(storedTransaction.GasFeeCap) <= 0 {
+		gasFeeCap = new(big.Int).Add(storedTransaction.GasFeeCap, big.NewInt(1))
+	}
+
+	if gasTipCap.Cmp(storedTransaction.GasTipCap) <= 0 {
+		gasTipCap = new(big.Int).Add(storedTransaction.GasTipCap, big.NewInt(1))
+	}
+
 	signedTx, err := t.signer.SignTx(types.NewTx(&types.DynamicFeeTx{
 		Nonce:     storedTransaction.Nonce,
 		ChainID:   t.chainID,
