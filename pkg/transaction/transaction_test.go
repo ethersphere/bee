@@ -658,12 +658,14 @@ func TestTransactionCancel(t *testing.T) {
 		Data:      data,
 	})
 	err := store.Put(transaction.StoredTransactionKey(signedTx.Hash()), transaction.StoredTransaction{
-		Nonce:    nonce,
-		To:       &recipient,
-		Data:     data,
-		GasPrice: gasFee,
-		GasLimit: gasLimit,
-		Value:    value,
+		Nonce:     nonce,
+		To:        &recipient,
+		Data:      data,
+		GasPrice:  gasFee,
+		GasLimit:  gasLimit,
+		GasFeeCap: gasFee,
+		GasTipCap: gasTip,
+		Value:     value,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -678,8 +680,8 @@ func TestTransactionCancel(t *testing.T) {
 			To:        &recipient,
 			Value:     big.NewInt(0),
 			Gas:       21000,
-			GasTipCap: gasTip,
-			GasFeeCap: gasFee,
+			GasTipCap: big.NewInt(0).Add(gasTip, big.NewInt(1)),
+			GasFeeCap: big.NewInt(0).Add(gasFee, big.NewInt(1)),
 			Data:      []byte{},
 		})
 
@@ -722,7 +724,6 @@ func TestTransactionCancel(t *testing.T) {
 		t.Parallel()
 
 		customGasPrice := big.NewInt(5)
-		customGasFee := new(big.Int).Add(customGasPrice, gasTip)
 
 		cancelTx := types.NewTx(&types.DynamicFeeTx{
 			ChainID:   chainID,
@@ -730,7 +731,7 @@ func TestTransactionCancel(t *testing.T) {
 			To:        &recipient,
 			Value:     big.NewInt(0),
 			Gas:       21000,
-			GasFeeCap: customGasFee,
+			GasFeeCap: big.NewInt(0).Add(gasFee, big.NewInt(1)),
 			GasTipCap: gasTip,
 			Data:      []byte{},
 		})
