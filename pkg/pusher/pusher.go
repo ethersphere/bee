@@ -177,7 +177,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 	}()
 
 	// fan-in channel
-	cc := make(chan *Op)
+	cc := make(chan *Op, 16)
 
 	go func() {
 		for ch := range chunks {
@@ -204,9 +204,10 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 		select {
 		case apiC := <-s.smugler:
 			go func() {
-				for op := range apiC {
+				for {
 					select {
-					case cc <- op:
+					case op := <-apiC:
+						cc <- op
 					case <-s.quit:
 						return
 					}
@@ -341,6 +342,8 @@ func (s *Service) AddFeed(c <-chan *Op) {
 func (s *Service) Close() error {
 	s.logger.Info("pusher shutting down")
 	close(s.quit)
+
+	// s.wg.Wait()
 
 	// Wait for chunks worker to finish
 	select {
