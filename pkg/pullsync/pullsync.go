@@ -120,7 +120,7 @@ func (s *Syncer) Protocol() p2p.ProtocolSpec {
 // provide less chunks than requested.
 func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (uint64, error) {
 	isLiveSync := to == MaxCursor
-	loggerV2 := s.logger.V(2).Register()
+	// loggerV2 := s.logger.V(2).Register()
 
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
@@ -129,7 +129,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
-			loggerV2.Debug("error syncing peer", "peer_address", peer, "bin", bin, "from", from, "to", to, "error", err)
+			s.logger.Debug("error syncing peer", "peer_address", peer, "bin", bin, "from", from, "to", to, "error", err)
 		} else {
 			stream.FullClose()
 		}
@@ -285,16 +285,11 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 		return fmt.Errorf("read get range: %w", err)
 	}
 
-	s.logger.Debug("make offer start", "bin", rn.Bin, "from", rn.From, "to", rn.To, "peer_address", p.Address)
-	t := time.Now()
-
 	// make an offer to the upstream peer in return for the requested range
 	offer, _, err := s.makeOffer(ctx, rn)
 	if err != nil {
 		return fmt.Errorf("make offer: %w", err)
 	}
-
-	s.logger.Debug("make offer end", "bin", rn.Bin, "from", rn.From, "topmost", offer.Topmost, "peer_address", p.Address, "duration", time.Since(t))
 
 	// recreate the reader to allow the first one to be garbage collected
 	// before the makeOffer function call, to reduce the total memory allocated
