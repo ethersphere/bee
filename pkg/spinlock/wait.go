@@ -28,6 +28,9 @@ func WaitWithInterval(timeoutDur, checkIntervalDur time.Duration, cond func() bo
 	for {
 		select {
 		case <-timeout.C:
+			if cond() {
+				return nil
+			}
 			return ErrTimedOut
 
 		case <-condCheckTicker.C:
