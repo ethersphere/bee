@@ -460,18 +460,22 @@ func (t *transactionService) CancelTransaction(ctx context.Context, originalTxHa
 		return common.Hash{}, err
 	}
 
-	gasFeeCap, gasTipCap, err := t.suggestedFeeAndTip(ctx, sctx.GetGasPrice(ctx), storedTransaction.GasTipBoost)
+	gasFeeCap, gasTipCap, err := t.suggestedFeeAndTip(ctx, sctx.GetGasPrice(ctx), 0)
 	if err != nil {
 		return common.Hash{}, err
 	}
 
 	if gasFeeCap.Cmp(storedTransaction.GasFeeCap) <= 0 {
-		gasFeeCap = new(big.Int).Add(storedTransaction.GasFeeCap, big.NewInt(1))
+		gasFeeCap = storedTransaction.GasFeeCap
 	}
 
 	if gasTipCap.Cmp(storedTransaction.GasTipCap) <= 0 {
-		gasTipCap = new(big.Int).Add(storedTransaction.GasTipCap, big.NewInt(1))
+		gasTipCap = storedTransaction.GasTipCap
 	}
+
+	gasTipCap = new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(10)+100), gasTipCap), big.NewInt(100))
+
+	gasFeeCap.Add(gasFeeCap, gasTipCap)
 
 	signedTx, err := t.signer.SignTx(types.NewTx(&types.DynamicFeeTx{
 		Nonce:     storedTransaction.Nonce,
