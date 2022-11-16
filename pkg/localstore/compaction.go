@@ -15,7 +15,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-func (db *DB) Defrag(ctx context.Context, sharkyBasePath string) error {
+func (db *DB) Compact(ctx context.Context, sharkyBasePath string) error {
 
 	s, err := sharky.NewCompaction(sharkyBasePath, sharkyNoOfShards, swarm.SocMaxChunkSize)
 	if err != nil {
