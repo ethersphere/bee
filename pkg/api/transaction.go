@@ -183,8 +183,8 @@ func (s *Service) transactionCancelHandler(w http.ResponseWriter, r *http.Reques
 
 	txHash, err := s.transaction.CancelTransaction(ctx, paths.Hash)
 	if err != nil {
-		logger.Debug("cancel transaction failed", "tx_hash", txHash, "error", err)
-		logger.Error(nil, "cancel transaction failed", "tx_hash", txHash)
+		logger.Debug("cancel transaction failed", "tx_hash", paths.Hash, "error", err, "canceled_tx_hash", txHash)
+		logger.Error(nil, "cancel transaction failed", "tx_hash", paths.Hash)
 		if errors.Is(err, transaction.ErrUnknownTransaction) {
 			jsonhttp.NotFound(w, errUnknownTransaction)
 		} else if errors.Is(err, transaction.ErrAlreadyImported) {
