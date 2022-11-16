@@ -445,6 +445,8 @@ func (t *transactionService) ResendTransaction(ctx context.Context, txHash commo
 		return errors.New("transaction hash changed")
 	}
 
+	t.logger.Debug("resend transaction", "nonce", storedTransaction.Nonce)
+
 	err = t.backend.SendTransaction(t.ctx, signedTx)
 	if err != nil {
 		if strings.Contains(err.Error(), "already imported") {
@@ -486,6 +488,8 @@ func (t *transactionService) CancelTransaction(ctx context.Context, originalTxHa
 	if err != nil {
 		return common.Hash{}, err
 	}
+
+	t.logger.Debug("cancel transaction", "nonce", storedTransaction.Nonce)
 
 	err = t.backend.SendTransaction(t.ctx, signedTx)
 	if err != nil {
