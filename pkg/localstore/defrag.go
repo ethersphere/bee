@@ -8,8 +8,6 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
-	"os"
-	"path"
 
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/sharky"
@@ -19,19 +17,7 @@ import (
 
 func (db *DB) Defrag(ctx context.Context, sharkyBasePath string) error {
 
-	// truncate free slot files
-	for i := 0; i < sharkyNoOfShards; i++ {
-		ffile, err := os.Create(path.Join(sharkyBasePath, fmt.Sprintf("free_%03d", i)))
-		if err != nil {
-			return err
-		}
-		err = ffile.Close()
-		if err != nil {
-			return err
-		}
-	}
-
-	s, err := sharky.New(&dirFS{basedir: sharkyBasePath}, sharkyNoOfShards, swarm.SocMaxChunkSize)
+	s, err := sharky.NewCompaction(sharkyBasePath, sharkyNoOfShards, swarm.SocMaxChunkSize)
 	if err != nil {
 		return err
 	}
@@ -104,5 +90,9 @@ func (db *DB) Defrag(ctx context.Context, sharkyBasePath string) error {
 		return false, retrievalDataIndex.Put(item)
 	}, nil)
 
-	return err
+	if err != nil {
+		return err
+	}
+
+	return s.Close()
 }
