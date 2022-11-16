@@ -671,6 +671,9 @@ func TestTransactionCancel(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	gasTipCap := new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(10)+100), gasTip), big.NewInt(100))
+	gasFeeCap := new(big.Int).Add(gasFee, gasTipCap)
+
 	t.Run("ok", func(t *testing.T) {
 		t.Parallel()
 
@@ -680,8 +683,8 @@ func TestTransactionCancel(t *testing.T) {
 			To:        &recipient,
 			Value:     big.NewInt(0),
 			Gas:       21000,
-			GasTipCap: big.NewInt(0).Add(gasTip, big.NewInt(1)),
-			GasFeeCap: big.NewInt(0).Add(gasFee, big.NewInt(1)),
+			GasTipCap: gasTipCap,
+			GasFeeCap: gasFeeCap,
 			Data:      []byte{},
 		})
 
@@ -731,7 +734,7 @@ func TestTransactionCancel(t *testing.T) {
 			To:        &recipient,
 			Value:     big.NewInt(0),
 			Gas:       21000,
-			GasFeeCap: big.NewInt(0).Add(gasFee, big.NewInt(1)),
+			GasFeeCap: gasFeeCap,
 			GasTipCap: gasTip,
 			Data:      []byte{},
 		})
