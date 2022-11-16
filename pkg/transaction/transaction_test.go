@@ -733,7 +733,7 @@ func TestTransactionCancel(t *testing.T) {
 			To:        &recipient,
 			Value:     big.NewInt(0),
 			Gas:       21000,
-			GasFeeCap: big.NewInt(0).Add(gasFee, big.NewInt(1)),
+			GasFeeCap: gasFee,
 			GasTipCap: gasTip,
 			Data:      []byte{},
 		})
