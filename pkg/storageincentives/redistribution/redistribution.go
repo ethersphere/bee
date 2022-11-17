@@ -146,7 +146,7 @@ func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommit
 		To:          &c.incentivesContractAddress,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 500_000),
+		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 1_000_000),
 		Value:       big.NewInt(0),
 		Description: "reveal transaction",
 	}

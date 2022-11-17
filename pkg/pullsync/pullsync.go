@@ -118,9 +118,9 @@ func (s *Syncer) Protocol() p2p.ProtocolSpec {
 // It returns the BinID of highest chunk that was synced from the given interval.
 // If the requested interval is too large, the downstream peer has the liberty to
 // provide less chunks than requested.
-func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (topmost uint64, err error) {
+func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (uint64, error) {
 	isLiveSync := to == MaxCursor
-	loggerV2 := s.logger.V(2).Register()
+	// loggerV2 := s.logger.V(2).Register()
 
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
@@ -129,7 +129,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
-			loggerV2.Debug("error syncing peer", "peer_address", peer, "bin", bin, "from", from, "to", to, "error", err)
+			s.logger.Debug("error syncing peer", "peer_address", peer, "bin", bin, "from", from, "to", to, "error", err)
 		} else {
 			stream.FullClose()
 		}
@@ -157,7 +157,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		return offer.Topmost, nil
 	}
 
-	topmost = offer.Topmost
+	topmost := offer.Topmost
 
 	var (
 		bvLen      = len(offer.Hashes) / swarm.HashSize
@@ -168,24 +168,21 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 
 	bv, err := bitvector.New(bvLen)
 	if err != nil {
-		err = fmt.Errorf("new bitvector: %w", err)
-		return
+		return topmost, fmt.Errorf("new bitvector: %w", err)
 	}
 
 	for i := 0; i < len(offer.Hashes); i += swarm.HashSize {
 		a := swarm.NewAddress(offer.Hashes[i : i+swarm.HashSize])
 		if a.Equal(swarm.ZeroAddress) {
 			// i'd like to have this around to see we don't see any of these in the logs
-			s.logger.Error(nil, "syncer got a zero address hash on offer")
-			err = fmt.Errorf("zero address on offer")
-			return
+			s.logger.Debug("syncer got a zero address hash on offer")
+			continue
 		}
 		s.metrics.Offered.Inc()
 		s.metrics.DbOps.Inc()
 		have, err = s.storage.Has(ctx, a)
 		if err != nil {
-			err = fmt.Errorf("storage has: %w", err)
-			return
+			s.logger.Debug("storage has", "error", err)
 		}
 		if !have {
 			wantChunks[a.String()] = struct{}{}
@@ -197,32 +194,21 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 
 	wantMsg := &pb.Want{BitVector: bv.Bytes()}
 	if err = w.WriteMsgWithContext(ctx, wantMsg); err != nil {
-		err = fmt.Errorf("write want: %w", err)
-		return
+		return topmost, fmt.Errorf("write want: %w", err)
 	}
 
-	// if ctr is zero, it means we don't want any chunk in the batch
-	// thus, the following loop will not get executed and the method
-	// returns immediately with the topmost value on the offer, which
-	// will seal the interval and request the next one
-	err = nil
 	var chunksToPut []swarm.Chunk
 
 	for ; ctr > 0; ctr-- {
 		var delivery pb.Delivery
 		if err = r.ReadMsgWithContext(ctx, &delivery); err != nil {
-			// this is not a fatal error and we should write
-			// a partial batch if some chunks have been received.
-			err = fmt.Errorf("read delivery: %w", err)
-			break
+			return topmost, fmt.Errorf("read delivery: %w", err)
 		}
 
 		addr := swarm.NewAddress(delivery.Address)
 		if _, ok := wantChunks[addr.String()]; !ok {
-			// this is fatal for the entire batch, return the
-			// error and don't write the partial batch.
-			err = ErrUnsolicitedChunk
-			return
+			s.logger.Debug("want chunks", "error", ErrUnsolicitedChunk)
+			continue
 		}
 
 		delete(wantChunks, addr.String())
@@ -237,13 +223,12 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		if cac.Valid(chunk) {
 			go s.unwrap(chunk)
 		} else if !soc.Valid(chunk) {
-			// this is fatal for the entire batch, return the
-			// error and don't write the partial batch.
-			err = swarm.ErrInvalidChunk
-			return
+			s.logger.Debug("valid chunk", "error", swarm.ErrInvalidChunk)
+			continue
 		}
 		chunksToPut = append(chunksToPut, chunk)
 	}
+
 	if len(chunksToPut) > 0 {
 		if !isLiveSync {
 			s.rate.Add(len(chunksToPut))
@@ -252,16 +237,12 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		ctx, cancel := context.WithTimeout(ctx, storagePutTimeout)
 		defer cancel()
 
-		if ierr := s.storage.Put(ctx, storage.ModePutSync, chunksToPut...); ierr != nil {
-			if err != nil {
-				ierr = fmt.Errorf(", sync err: %w", err)
-			}
-			err = fmt.Errorf("delivery put: %w", ierr)
-			return
+		if err := s.storage.Put(ctx, storage.ModePutSync, chunksToPut...); err != nil {
+			return topmost, fmt.Errorf("delivery put: %w", err)
 		}
 	}
 
-	return
+	return topmost, nil
 }
 
 // handler handles an incoming request to sync an interval
@@ -304,16 +285,11 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 		return fmt.Errorf("read get range: %w", err)
 	}
 
-	s.logger.Debug("make offer start", "bin", rn.Bin, "from", rn.From, "to", rn.To, "peer_address", p.Address)
-	t := time.Now()
-
 	// make an offer to the upstream peer in return for the requested range
 	offer, _, err := s.makeOffer(ctx, rn)
 	if err != nil {
 		return fmt.Errorf("make offer: %w", err)
 	}
-
-	s.logger.Debug("make offer end", "bin", rn.Bin, "from", rn.From, "topmost", offer.Topmost, "peer_address", p.Address, "duration", time.Since(t))
 
 	// recreate the reader to allow the first one to be garbage collected
 	// before the makeOffer function call, to reduce the total memory allocated
