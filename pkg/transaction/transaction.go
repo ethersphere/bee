@@ -141,7 +141,7 @@ func NewService(logger log.Logger, backend Backend, signer crypto.Signer, store 
 }
 
 // Send creates and signs a transaction based on the request and sends it.
-func (t *transactionService) Send(ctx context.Context, request *TxRequest, tipCapBoostPercent int) (txHash common.Hash, err error) {
+func (t *transactionService) Send(ctx context.Context, request *TxRequest, boostPercent int) (txHash common.Hash, err error) {
 	loggerV1 := t.logger.V(1).Register()
 
 	t.lock.Lock()
@@ -152,7 +152,7 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest, tipCa
 		return common.Hash{}, err
 	}
 
-	tx, err := t.prepareTransaction(ctx, request, nonce, tipCapBoostPercent)
+	tx, err := t.prepareTransaction(ctx, request, nonce, boostPercent)
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -181,7 +181,7 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest, tipCa
 		Data:        signedTx.Data(),
 		GasPrice:    signedTx.GasPrice(),
 		GasLimit:    signedTx.Gas(),
-		GasTipBoost: tipCapBoostPercent,
+		GasTipBoost: boostPercent,
 		GasTipCap:   signedTx.GasTipCap(),
 		GasFeeCap:   signedTx.GasFeeCap(),
 		Value:       signedTx.Value(),
@@ -258,7 +258,7 @@ func (t *transactionService) StoredTransaction(txHash common.Hash) (*StoredTrans
 }
 
 // prepareTransaction creates a signable transaction based on a request.
-func (t *transactionService) prepareTransaction(ctx context.Context, request *TxRequest, nonce uint64, tipBoostPercent int) (tx *types.Transaction, err error) {
+func (t *transactionService) prepareTransaction(ctx context.Context, request *TxRequest, nonce uint64, boostPercent int) (tx *types.Transaction, err error) {
 	var gasLimit uint64
 	if request.GasLimit == 0 {
 		gasLimit, err = t.backend.EstimateGas(ctx, ethereum.CallMsg{
@@ -288,7 +288,7 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 		notice that gas price does not exceed 20 as defined by max fee.
 	*/
 
-	gasFeeCap, gasTipCap, err := t.suggestedFeeAndTip(ctx, request.GasPrice, tipBoostPercent)
+	gasFeeCap, gasTipCap, err := t.suggestedFeeAndTip(ctx, request.GasPrice, boostPercent)
 	if err != nil {
 		return nil, err
 	}
@@ -305,7 +305,7 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 	}), nil
 }
 
-func (t *transactionService) suggestedFeeAndTip(ctx context.Context, gasPrice *big.Int, tipBoostPercent int) (*big.Int, *big.Int, error) {
+func (t *transactionService) suggestedFeeAndTip(ctx context.Context, gasPrice *big.Int, boostPercent int) (*big.Int, *big.Int, error) {
 	var err error
 
 	if gasPrice == nil {
@@ -320,7 +320,8 @@ func (t *transactionService) suggestedFeeAndTip(ctx context.Context, gasPrice *b
 		return nil, nil, err
 	}
 
-	gasTipCap = new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(tipBoostPercent)+100), gasTipCap), big.NewInt(100))
+	gasTipCap = new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(boostPercent)+100), gasTipCap), big.NewInt(100))
+	gasPrice = new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(boostPercent)+100), gasPrice), big.NewInt(100))
 	gasFeeCap := new(big.Int).Add(gasTipCap, gasPrice)
 
 	t.logger.Debug("prepare transaction", "gas_price", gasPrice, "gas_max_fee", gasFeeCap, "gas_max_tip", gasTipCap)
