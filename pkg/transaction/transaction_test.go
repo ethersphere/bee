@@ -216,7 +216,8 @@ func TestTransactionSend(t *testing.T) {
 		t.Parallel()
 
 		tip := big.NewInt(0).Div(new(big.Int).Mul(suggestedGasTip, big.NewInt(15)), big.NewInt(10))
-		fee := new(big.Int).Add(tip, suggestedGasPrice)
+		fee := big.NewInt(0).Div(new(big.Int).Mul(suggestedGasPrice, big.NewInt(15)), big.NewInt(10))
+		fee = fee.Add(fee, tip)
 		// tip is the same as suggestedGasPrice and boost is 50%
 		// so final gas price will be 2.5x suggestedGasPrice
 
