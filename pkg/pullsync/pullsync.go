@@ -120,7 +120,7 @@ func (s *Syncer) Protocol() p2p.ProtocolSpec {
 // provide less chunks than requested.
 func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (uint64, error) {
 	isLiveSync := to == MaxCursor
-	// loggerV2 := s.logger.V(2).Register()
+	loggerV2 := s.logger.V(2).Register()
 
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
@@ -129,7 +129,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
-			s.logger.Debug("error syncing peer", "peer_address", peer, "bin", bin, "from", from, "to", to, "error", err)
+			loggerV2.Debug("error syncing peer", "peer_address", peer, "bin", bin, "from", from, "to", to, "error", err)
 		} else {
 			stream.FullClose()
 		}
@@ -175,14 +175,14 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		a := swarm.NewAddress(offer.Hashes[i : i+swarm.HashSize])
 		if a.Equal(swarm.ZeroAddress) {
 			// i'd like to have this around to see we don't see any of these in the logs
-			s.logger.Debug("syncer got a zero address hash on offer")
+			loggerV2.Debug("syncer got a zero address hash on offer")
 			continue
 		}
 		s.metrics.Offered.Inc()
 		s.metrics.DbOps.Inc()
 		have, err = s.storage.Has(ctx, a)
 		if err != nil {
-			s.logger.Debug("storage has", "error", err)
+			loggerV2.Debug("storage has", "error", err)
 		}
 		if !have {
 			wantChunks[a.String()] = struct{}{}
@@ -207,7 +207,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 
 		addr := swarm.NewAddress(delivery.Address)
 		if _, ok := wantChunks[addr.String()]; !ok {
-			s.logger.Debug("want chunks", "error", ErrUnsolicitedChunk)
+			loggerV2.Debug("want chunks", "error", ErrUnsolicitedChunk)
 			continue
 		}
 
@@ -216,14 +216,14 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 
 		chunk := swarm.NewChunk(addr, delivery.Data)
 		if chunk, err = s.validStamp(chunk, delivery.Stamp); err != nil {
-			s.logger.Debug("unverified stamp", "error", err)
+			loggerV2.Debug("unverified stamp", "error", err)
 			continue
 		}
 
 		if cac.Valid(chunk) {
 			go s.unwrap(chunk)
 		} else if !soc.Valid(chunk) {
-			s.logger.Debug("valid chunk", "error", swarm.ErrInvalidChunk)
+			loggerV2.Debug("valid chunk", "error", swarm.ErrInvalidChunk)
 			continue
 		}
 		chunksToPut = append(chunksToPut, chunk)
