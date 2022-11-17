@@ -64,6 +64,7 @@ func New(storer storage.Storer, logger log.Logger) *PullStorer {
 
 // IntervalChunks collects chunk for a requested interval.
 func (s *PullStorer) IntervalChunks(ctx context.Context, bin uint8, from, to uint64, limit int) ([]swarm.Address, uint64, error) {
+	loggerV2 := s.logger.V(2).Register()
 
 	type result struct {
 		chs     []swarm.Address
@@ -120,7 +121,7 @@ func (s *PullStorer) IntervalChunks(ctx context.Context, bin uint8, from, to uin
 			case <-ctx.Done():
 				return nil, ctx.Err()
 			case <-timerC:
-				s.logger.Debug("batch timeout timer triggered")
+				loggerV2.Debug("batch timeout timer triggered")
 				// return batch if new chunks are not received after some time
 				break LOOP
 			}
@@ -138,7 +139,7 @@ func (s *PullStorer) IntervalChunks(ctx context.Context, bin uint8, from, to uin
 			// end of interval reached. no more chunks so interval is complete
 			// return requested `to`. it could be that len(chs) == 0 if the interval
 			// is empty
-			s.logger.Debug("no more batches from the subscription", "to", to, "topmost", topmost)
+			loggerV2.Debug("no more batches from the subscription", "to", to, "topmost", topmost)
 			topmost = to
 		}
 
