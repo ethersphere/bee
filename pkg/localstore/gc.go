@@ -388,7 +388,7 @@ func (db *DB) evictReserve() (totalEvicted uint64, done bool, err error) {
 		totalTimeMetric(db.metrics.TotalTimeEvictReserve, start)
 	}(time.Now())
 
-	target = db.reserveCapacity
+	target = db.reserveEvictionTarget()
 
 	db.batchMu.Lock()
 	defer db.batchMu.Unlock()
@@ -396,6 +396,7 @@ func (db *DB) evictReserve() (totalEvicted uint64, done bool, err error) {
 	var reserveSizeStart uint64
 	if db.radiusFunc != nil {
 		reserveSizeStart, err = db.ComputeReserveSize(db.radiusFunc())
+		target = db.reserveCapacity
 	} else {
 		reserveSizeStart, err = db.reserveSize.Get()
 	}
