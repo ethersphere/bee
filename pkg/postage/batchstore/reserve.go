@@ -188,41 +188,26 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 
 	var (
 		updates []*postage.Batch
+		stopped = false
 	)
-
-	batchesCount := 0
-	skippedBatches := 0
 
 	err := s.store.Iterate(valueKeyPrefix, func(key, value []byte) (bool, error) {
 
 		id := valueKeyToID(key)
-
-		batchesCount++
 
 		b, err := s.get(id)
 		if err != nil {
 			return false, err
 		}
 
-		// skip eviction and try the next batch if the batch storage radius is higher than the global storage radius.
-		if b.StorageRadius > s.rs.StorageRadius {
-			skippedBatches++
-			return false, nil
-		}
+		s.logger.Debug("unreserve callback", "batch_id", hex.EncodeToString(id), "storage_radius", s.rs.StorageRadius, "batch_storage_radius", b.StorageRadius)
 
-		s.logger.Debug("unreserve callback", "batch_id", hex.EncodeToString(id), "batch_storage_radius", b.StorageRadius)
-
-		stopped, err := cb(id, b.StorageRadius)
+		stopped, err = cb(id, s.rs.StorageRadius)
 		if err != nil {
 			return false, err
 		}
 
-		// each call of Unreseve means that the eviction of chunks is required to recover storage space, as such,
-		// the storage radius of the batch is inreased so that future Unreserve calls will
-		// evict higher PO chunks of the batch. When the storage radius of a batch becomes higher than
-		// the global storage radius, other batches are attempted for eviction.
-		b.StorageRadius++
-
+		b.StorageRadius = s.rs.StorageRadius
 		updates = append(updates, b)
 
 		return stopped, nil
@@ -234,15 +219,18 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 	for _, u := range updates {
 		err := s.store.Put(batchKey(u.ID), u)
 		if err != nil {
-			s.logger.Warning("unreserve failed", "error", err)
+			s.logger.Warning("unreserve put updated batch failed", "error", err)
 		}
 	}
 
-	// a full iteration has occurred AND all batches were skipped (meaning current storage radius is too low), increase global storage radius
-	if batchesCount > 0 && batchesCount == skippedBatches && s.rs.StorageRadius < s.rs.Radius {
+	// a full iteration has occurred (meaning current storage radius is too low), increase global storage radius
+	if !stopped && s.rs.StorageRadius < s.rs.Radius {
 		s.rs.StorageRadius++
 		s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
 		s.logger.Debug("new storage radius", "reserve_state_storage_radius", s.rs.StorageRadius)
+		if s.storageRadiusSetter != nil {
+			s.storageRadiusSetter.SetStorageRadius(s.rs.StorageRadius)
+		}
 		return s.store.Put(reserveStateKey, s.rs)
 	}
 

@@ -5,6 +5,7 @@
 package batchstore_test
 
 import (
+	"fmt"
 	"math/big"
 	"testing"
 
@@ -328,12 +329,12 @@ func TestUnreserveAndLowerStorageRadius(t *testing.T) {
 		}
 
 		state := store.GetReserveState()
+		fmt.Println(wantStorageRadius, state.StorageRadius)
 
 		if state.StorageRadius != wantStorageRadius {
 			t.Fatalf("got storage radius %d, want %d", state.StorageRadius, wantStorageRadius)
 		}
 
-		_ = store.Unreserve(cb)
 		_ = store.Unreserve(cb)
 	}
 
