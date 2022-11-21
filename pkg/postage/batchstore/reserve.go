@@ -207,8 +207,10 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 			return false, err
 		}
 
-		b.StorageRadius = s.rs.StorageRadius
-		updates = append(updates, b)
+		if b.StorageRadius != s.rs.StorageRadius {
+			b.StorageRadius = s.rs.StorageRadius
+			updates = append(updates, b)
+		}
 
 		return stopped, nil
 	})
