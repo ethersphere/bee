@@ -658,6 +658,9 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		WriteBufferSize:        o.DBWriteBufferSize,
 		DisableSeeksCompaction: o.DBDisableSeeksCompaction,
 		ValidStamp:             validStamp,
+		RadiusFunc: func() uint8 {
+			return batchStore.GetReserveState().StorageRadius
+		},
 	}
 
 	storer, err := localstore.New(path, swarmAddress.Bytes(), stateStore, lo, logger)
