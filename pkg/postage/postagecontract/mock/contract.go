@@ -6,27 +6,28 @@ package mock
 
 import (
 	"context"
+	"github.com/ethereum/go-ethereum/common"
 	"math/big"
 
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 )
 
 type contractMock struct {
-	createBatch   func(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) (string, []byte, error)
-	topupBatch    func(ctx context.Context, id []byte, amount *big.Int) (string, error)
-	diluteBatch   func(ctx context.Context, id []byte, newDepth uint8) (string, error)
+	createBatch   func(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) (common.Hash, []byte, error)
+	topupBatch    func(ctx context.Context, id []byte, amount *big.Int) (common.Hash, error)
+	diluteBatch   func(ctx context.Context, id []byte, newDepth uint8) (common.Hash, error)
 	expireBatches func(ctx context.Context) error
 }
 
-func (c *contractMock) CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) (string, []byte, error) {
+func (c *contractMock) CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) (common.Hash, []byte, error) {
 	return c.createBatch(ctx, initialBalance, depth, immutable, label)
 }
 
-func (c *contractMock) TopUpBatch(ctx context.Context, batchID []byte, topUpBalance *big.Int) (string, error) {
-	return c.topupBatch(ctx, batchID, topUpBalance)
+func (c *contractMock) TopUpBatch(ctx context.Context, batchID []byte, topupBalance *big.Int) (common.Hash, error) {
+	return c.topupBatch(ctx, batchID, topupBalance)
 }
 
-func (c *contractMock) DiluteBatch(ctx context.Context, batchID []byte, newDepth uint8) (string, error) {
+func (c *contractMock) DiluteBatch(ctx context.Context, batchID []byte, newDepth uint8) (common.Hash, error) {
 	return c.diluteBatch(ctx, batchID, newDepth)
 }
 
@@ -48,19 +49,19 @@ func New(opts ...Option) postagecontract.Interface {
 	return bs
 }
 
-func WithCreateBatchFunc(f func(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) (string, []byte, error)) Option {
+func WithCreateBatchFunc(f func(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) (common.Hash, []byte, error)) Option {
 	return func(m *contractMock) {
 		m.createBatch = f
 	}
 }
 
-func WithTopUpBatchFunc(f func(ctx context.Context, batchID []byte, amount *big.Int) (string, error)) Option {
+func WithTopUpBatchFunc(f func(ctx context.Context, batchID []byte, amount *big.Int) (common.Hash, error)) Option {
 	return func(m *contractMock) {
 		m.topupBatch = f
 	}
 }
 
-func WithDiluteBatchFunc(f func(ctx context.Context, batchID []byte, newDepth uint8) (string, error)) Option {
+func WithDiluteBatchFunc(f func(ctx context.Context, batchID []byte, newDepth uint8) (common.Hash, error)) Option {
 	return func(m *contractMock) {
 		m.diluteBatch = f
 	}
