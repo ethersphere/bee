@@ -182,7 +182,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		s.metrics.DbOps.Inc()
 		have, err = s.storage.Has(ctx, a)
 		if err != nil {
-			loggerV2.Debug("storage has", "error", err)
+			s.logger.Debug("storage has", "error", err)
 		}
 		if !have {
 			wantChunks[a.String()] = struct{}{}
@@ -207,7 +207,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 
 		addr := swarm.NewAddress(delivery.Address)
 		if _, ok := wantChunks[addr.String()]; !ok {
-			loggerV2.Debug("want chunks", "error", ErrUnsolicitedChunk)
+			s.logger.Debug("want chunks", "error", ErrUnsolicitedChunk)
 			continue
 		}
 
@@ -223,7 +223,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		if cac.Valid(chunk) {
 			go s.unwrap(chunk)
 		} else if !soc.Valid(chunk) {
-			loggerV2.Debug("valid chunk", "error", swarm.ErrInvalidChunk)
+			s.logger.Debug("valid chunk", "error", swarm.ErrInvalidChunk)
 			continue
 		}
 		chunksToPut = append(chunksToPut, chunk)
@@ -238,7 +238,11 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		defer cancel()
 
 		if err := s.storage.Put(ctx, storage.ModePutSync, chunksToPut...); err != nil {
-			return topmost, fmt.Errorf("delivery put: %w", err)
+			if errors.Is(err, context.DeadlineExceeded) {
+				return topmost, fmt.Errorf("delivery put: %w", err)
+			} else {
+				s.logger.Debug("delivery put", "error", err)
+			}
 		}
 	}
 

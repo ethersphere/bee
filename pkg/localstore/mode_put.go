@@ -455,7 +455,7 @@ func (db *DB) putSync(batch *leveldb.Batch, loc *releaseLocations, binIDs map[ui
 		}
 		_, err = db.setRemove(batch, previous, true)
 		if err != nil {
-			return false, 0, 0, err
+			return false, 0, 0, fmt.Errorf("set remove: %w", err)
 		}
 
 		previousIdx, err := db.retrievalDataIndex.Get(previous)
@@ -511,7 +511,7 @@ func (db *DB) putSync(batch *leveldb.Batch, loc *releaseLocations, binIDs map[ui
 
 	gcSizeChangeNew, reserveSizeChangeNew, err := db.preserveOrCache(batch, item, false, false)
 	if err != nil {
-		return false, 0, 0, err
+		return false, 0, 0, fmt.Errorf("preserve or cache: %w", err)
 	}
 
 	return false, gcSizeChange + gcSizeChangeNew, reserveSizeChange + reserveSizeChangeNew, nil
@@ -563,7 +563,7 @@ func (db *DB) incBinID(binIDs map[uint8]uint64, po uint8) (id uint64, err error)
 	if _, ok := binIDs[po]; !ok {
 		binIDs[po], err = db.binIDs.Get(uint64(po))
 		if err != nil {
-			return 0, err
+			return 0, fmt.Errorf("inc bin ID: %w", err)
 		}
 	}
 	binIDs[po]++
