@@ -334,7 +334,6 @@ func TestUnreserveAndLowerStorageRadius(t *testing.T) {
 		}
 
 		_ = store.Unreserve(cb)
-		_ = store.Unreserve(cb)
 	}
 
 	// add some batches to increase the radius by one
