@@ -119,7 +119,7 @@ func TestCreateBatch(t *testing.T) {
 			true,
 		)
 
-		returnedID, err := contract.CreateBatch(ctx, initialBalance, depth, false, label)
+		_, returnedID, err := contract.CreateBatch(ctx, initialBalance, depth, false, label)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -151,7 +151,7 @@ func TestCreateBatch(t *testing.T) {
 			true,
 		)
 
-		_, err := contract.CreateBatch(ctx, initialBalance, depth, false, label)
+		_, _, err := contract.CreateBatch(ctx, initialBalance, depth, false, label)
 		if !errors.Is(err, postagecontract.ErrInvalidDepth) {
 			t.Fatalf("expected error %v. got %v", postagecontract.ErrInvalidDepth, err)
 		}
@@ -178,7 +178,7 @@ func TestCreateBatch(t *testing.T) {
 			true,
 		)
 
-		_, err := contract.CreateBatch(ctx, initialBalance, depth, false, label)
+		_, _, err := contract.CreateBatch(ctx, initialBalance, depth, false, label)
 		if !errors.Is(err, postagecontract.ErrInsufficientFunds) {
 			t.Fatalf("expected error %v. got %v", postagecontract.ErrInsufficientFunds, err)
 		}
@@ -309,7 +309,7 @@ func TestTopUpBatch(t *testing.T) {
 			true,
 		)
 
-		err = contract.TopUpBatch(ctx, batch.ID, topupBalance)
+		_, err = contract.TopUpBatch(ctx, batch.ID, topupBalance)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -336,7 +336,7 @@ func TestTopUpBatch(t *testing.T) {
 			true,
 		)
 
-		err := contract.TopUpBatch(ctx, postagetesting.MustNewID(), topupBalance)
+		_, err := contract.TopUpBatch(ctx, postagetesting.MustNewID(), topupBalance)
 		if !errors.Is(err, errNotFound) {
 			t.Fatal("expected error on topup of non existent batch")
 		}
@@ -364,7 +364,7 @@ func TestTopUpBatch(t *testing.T) {
 			true,
 		)
 
-		err := contract.TopUpBatch(ctx, batch.ID, topupBalance)
+		_, err := contract.TopUpBatch(ctx, batch.ID, topupBalance)
 		if !errors.Is(err, postagecontract.ErrInsufficientFunds) {
 			t.Fatalf("expected error %v. got %v", postagecontract.ErrInsufficientFunds, err)
 		}
@@ -491,7 +491,7 @@ func TestDiluteBatch(t *testing.T) {
 			true,
 		)
 
-		err = contract.DiluteBatch(ctx, batch.ID, newDepth)
+		_, err = contract.DiluteBatch(ctx, batch.ID, newDepth)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -518,7 +518,7 @@ func TestDiluteBatch(t *testing.T) {
 			true,
 		)
 
-		err := contract.DiluteBatch(ctx, postagetesting.MustNewID(), uint8(17))
+		_, err := contract.DiluteBatch(ctx, postagetesting.MustNewID(), uint8(17))
 		if !errors.Is(err, errNotFound) {
 			t.Fatal("expected error on topup of non existent batch")
 		}
@@ -539,7 +539,7 @@ func TestDiluteBatch(t *testing.T) {
 			true,
 		)
 
-		err := contract.DiluteBatch(ctx, batch.ID, batch.Depth-1)
+		_, err := contract.DiluteBatch(ctx, batch.ID, batch.Depth-1)
 		if !errors.Is(err, postagecontract.ErrInvalidDepth) {
 			t.Fatalf("expected error %v. got %v", postagecontract.ErrInvalidDepth, err)
 		}
