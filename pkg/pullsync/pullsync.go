@@ -186,7 +186,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 			continue
 		}
 		if !have {
-			wantChunks[a.String()] = struct{}{}
+			wantChunks[a.ByteString()] = struct{}{}
 			ctr++
 			s.metrics.Wanted.Inc()
 			bv.Set(i / swarm.HashSize)
@@ -207,12 +207,12 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		}
 
 		addr := swarm.NewAddress(delivery.Address)
-		if _, ok := wantChunks[addr.String()]; !ok {
+		if _, ok := wantChunks[addr.ByteString()]; !ok {
 			s.logger.Debug("want chunks", "error", ErrUnsolicitedChunk)
 			continue
 		}
 
-		delete(wantChunks, addr.String())
+		delete(wantChunks, addr.ByteString())
 		s.metrics.Delivered.Inc()
 
 		chunk := swarm.NewChunk(addr, delivery.Data)
