@@ -139,11 +139,6 @@ func (db *DB) unpinBatchChunks(id []byte, bin uint8) (uint64, error) {
 				return 0, err
 			}
 		}
-		if reserveSizeChange > 0 {
-			if err := db.incReserveSizeInBatch(batch, -int64(reserveSizeChange)); err != nil {
-				return 0, err
-			}
-		}
 		if err := db.shed.WriteBatch(batch); err != nil {
 			return 0, err
 		}

@@ -628,7 +628,6 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 
 	// start garbage collection worker
 	go db.collectGarbageWorker()
-	go db.reserveEvictionWorker()
 	return db, nil
 }
 

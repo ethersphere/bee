@@ -17,6 +17,7 @@
 package localstore
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -242,7 +243,7 @@ func (db *DB) collectGarbage() (evicted uint64, done bool, err error) {
 	}
 
 	for _, loc := range locations {
-		err = db.sharky.Release(db.ctx, loc)
+		err = db.sharky.Release(context.Background(), loc)
 		if err != nil {
 			db.logger.Warning("failed releasing sharky location", "location", loc)
 		}
@@ -271,16 +272,6 @@ func (db *DB) reserveEvictionTarget() (target uint64) {
 func (db *DB) triggerGarbageCollection() {
 	select {
 	case db.collectGarbageTrigger <- struct{}{}:
-	case <-db.close:
-	default:
-	}
-}
-
-// triggerGarbageCollection signals collectGarbageWorker
-// to call collectGarbage.
-func (db *DB) triggerReserveEviction() {
-	select {
-	case db.reserveEvictionTrigger <- struct{}{}:
 	case <-db.close:
 	default:
 	}
@@ -319,63 +310,6 @@ func (db *DB) incGCSizeInBatch(batch *leveldb.Batch, change int64) (err error) {
 		db.triggerGarbageCollection()
 	}
 	return nil
-}
-
-// incReserveSizeInBatch changes reserveSize field value
-// by change which can be negative. This function
-// must be called under batchMu lock.
-func (db *DB) incReserveSizeInBatch(batch *leveldb.Batch, change int64) (err error) {
-	if change == 0 {
-		return nil
-	}
-	reserveSize, err := db.reserveSize.Get()
-	if err != nil && !errors.Is(err, leveldb.ErrNotFound) {
-		return err
-	}
-
-	var newSize uint64
-	if change > 0 {
-		newSize = reserveSize + uint64(change)
-	} else {
-		// 'change' is an int64 and is negative
-		// a conversion is needed with correct sign
-		c := uint64(-change)
-		if c > reserveSize {
-			// protect uint64 undeflow
-			return nil
-		}
-		newSize = reserveSize - c
-	}
-	db.reserveSize.PutInBatch(batch, newSize)
-	db.metrics.ReserveSize.Set(float64(newSize))
-	// trigger garbage collection if we reached the capacity
-	if newSize >= db.reserveCapacity {
-		db.triggerReserveEviction()
-	}
-	return nil
-}
-
-func (db *DB) reserveEvictionWorker() {
-	defer close(db.reserveEvictionWorkerDone)
-	for {
-		select {
-		case <-db.reserveEvictionTrigger:
-			evictedCount, done, err := db.evictReserve()
-			if err != nil {
-				db.logger.Error(err, "evict reserve failed")
-			}
-
-			if !done {
-				db.triggerReserveEviction()
-			}
-
-			if testHookEviction != nil {
-				testHookEviction(evictedCount)
-			}
-		case <-db.close:
-			return
-		}
-	}
 }
 
 func (db *DB) evictReserve() (totalEvicted uint64, done bool, err error) {
