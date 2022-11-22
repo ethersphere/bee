@@ -183,6 +183,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		have, err = s.storage.Has(ctx, a)
 		if err != nil {
 			s.logger.Debug("storage has", "error", err)
+			continue
 		}
 		if !have {
 			wantChunks[a.String()] = struct{}{}
