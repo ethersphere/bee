@@ -35,7 +35,7 @@ var (
 )
 
 type Contract interface {
-	DepositStake(ctx context.Context, stakedAmount *big.Int) error
+	DepositStake(ctx context.Context, stakedAmount *big.Int) (common.Hash, error)
 	GetStake(ctx context.Context) (*big.Int, error)
 }
 
@@ -159,37 +159,43 @@ func (s *contract) getStake(ctx context.Context, overlay swarm.Address) (*big.In
 	return abi.ConvertType(results[0], new(big.Int)).(*big.Int), nil
 }
 
-func (s *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) error {
+func (s *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) (txHash common.Hash, err error) {
 	prevStakedAmount, err := s.GetStake(ctx)
 	if err != nil {
-		return err
+		return
 	}
 
 	if len(prevStakedAmount.Bits()) == 0 {
 		if stakedAmount.Cmp(MinimumStakeAmount) == -1 {
-			return ErrInsufficientStakeAmount
+			err = ErrInsufficientStakeAmount
+			return
 		}
 	}
 
 	balance, err := s.getBalance(ctx)
 	if err != nil {
-		return err
+		return
 	}
 
 	if balance.Cmp(stakedAmount) < 0 {
-		return ErrInsufficientFunds
+		err = ErrInsufficientFunds
+		return
 	}
 
-	_, err = s.sendApproveTransaction(ctx, stakedAmount)
+	receipt, err := s.sendApproveTransaction(ctx, stakedAmount)
 	if err != nil {
-		return err
+		if receipt != nil {
+			txHash = receipt.TxHash
+		}
+		return
 	}
 
-	_, err = s.sendDepositStakeTransaction(ctx, s.owner, stakedAmount, s.overlayNonce)
+	receipt, err = s.sendDepositStakeTransaction(ctx, s.owner, stakedAmount, s.overlayNonce)
+	txHash = receipt.TxHash
 	if err != nil {
-		return err
+		return
 	}
-	return nil
+	return
 }
 
 func (s *contract) GetStake(ctx context.Context) (*big.Int, error) {
