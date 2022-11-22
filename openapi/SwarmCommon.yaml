@@ -675,14 +675,16 @@ components:
     WalletResponse:
       type: object
       properties:
-        bzz:
+        bzzBalance:
           $ref: "#/components/schemas/BigInt"
-        xDai:
+        nativeTokenBalance:
           $ref: "#/components/schemas/BigInt"
         chainID:
-            type: integer
-        contractAddress:
-            $ref: "#/components/schemas/EthereumAddress"
+          type: integer
+        chequebookContractAddress:
+          $ref: "#/components/schemas/EthereumAddress"
+        walletAddress:
+          $ref: "#/components/schemas/EthereumAddress"
 
     PendingTransactionsResponse:
       type: object
