@@ -81,7 +81,7 @@ func TestDepositStake(t *testing.T) {
 				})),
 			nonce)
 
-		err = contract.DepositStake(ctx, stakedAmount)
+		_, err = contract.DepositStake(ctx, stakedAmount)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -135,7 +135,7 @@ func TestDepositStake(t *testing.T) {
 				})),
 			nonce)
 
-		err = contract.DepositStake(ctx, stakedAmount)
+		_, err = contract.DepositStake(ctx, stakedAmount)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -167,7 +167,7 @@ func TestDepositStake(t *testing.T) {
 				})),
 			nonce)
 
-		err := contract.DepositStake(ctx, big.NewInt(0))
+		_, err := contract.DepositStake(ctx, big.NewInt(0))
 		if !errors.Is(err, staking2.ErrInsufficientStakeAmount) {
 			t.Fatal(fmt.Errorf("wanted %w, got %v", staking2.ErrInsufficientStakeAmount, err))
 		}
@@ -192,7 +192,7 @@ func TestDepositStake(t *testing.T) {
 				})),
 			nonce)
 
-		err := contract.DepositStake(ctx, big.NewInt(100000000000000000))
+		_, err := contract.DepositStake(ctx, big.NewInt(100000000000000000))
 		if !errors.Is(err, staking2.ErrInsufficientFunds) {
 			t.Fatal(fmt.Errorf("wanted %w, got %v", staking2.ErrInsufficientFunds, err))
 		}
@@ -217,7 +217,7 @@ func TestDepositStake(t *testing.T) {
 				})),
 			nonce)
 
-		err := contract.DepositStake(ctx, big.NewInt(100000000000000000))
+		_, err := contract.DepositStake(ctx, big.NewInt(100000000000000000))
 		if !errors.Is(err, staking2.ErrInsufficientFunds) {
 			t.Fatal(fmt.Errorf("wanted %w, got %v", staking2.ErrInsufficientStakeAmount, err))
 		}
@@ -248,7 +248,7 @@ func TestDepositStake(t *testing.T) {
 				})),
 			nonce)
 
-		err := contract.DepositStake(ctx, stakedAmount)
+		_, err := contract.DepositStake(ctx, stakedAmount)
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -290,7 +290,7 @@ func TestDepositStake(t *testing.T) {
 				})),
 			nonce)
 
-		err = contract.DepositStake(ctx, stakedAmount)
+		_, err = contract.DepositStake(ctx, stakedAmount)
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -344,7 +344,7 @@ func TestDepositStake(t *testing.T) {
 				})),
 			nonce)
 
-		err = contract.DepositStake(ctx, stakedAmount)
+		_, err = contract.DepositStake(ctx, stakedAmount)
 		if !errors.Is(err, transaction.ErrTransactionReverted) {
 			t.Fatalf("expeted %v, got %v", transaction.ErrTransactionReverted, err)
 		}
@@ -396,7 +396,7 @@ func TestDepositStake(t *testing.T) {
 				})),
 			nonce)
 
-		err = contract.DepositStake(ctx, stakedAmount)
+		_, err = contract.DepositStake(ctx, stakedAmount)
 		if err == nil {
 			t.Fatalf("expected error")
 		}
@@ -415,7 +415,7 @@ func TestDepositStake(t *testing.T) {
 				})),
 			nonce)
 
-		err := contract.DepositStake(ctx, stakedAmount)
+		_, err := contract.DepositStake(ctx, stakedAmount)
 		if err == nil {
 			t.Fatalf("expected error")
 		}
