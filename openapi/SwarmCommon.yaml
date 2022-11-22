@@ -385,6 +385,8 @@ components:
       properties:
         batchID:
           $ref: "#/components/schemas/BatchID"
+        txHash:
+          $ref: "#/components/schemas/TransactionHash"
 
     Response:
       type: object
