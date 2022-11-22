@@ -241,9 +241,8 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		if err := s.storage.Put(ctx, storage.ModePutSync, chunksToPut...); err != nil {
 			if errors.Is(err, context.DeadlineExceeded) {
 				return topmost, fmt.Errorf("delivery put: %w", err)
-			} else {
-				s.logger.Debug("delivery put", "error", err)
 			}
+			s.logger.Debug("delivery put", "error", err)
 		}
 	}
 

@@ -485,7 +485,7 @@ func (db *DB) putSync(batch *leveldb.Batch, loc *releaseLocations, binIDs map[ui
 	item.StoreTimestamp = now()
 	item.BinID, err = db.incBinID(binIDs, db.po(swarm.NewAddress(item.Address)))
 	if err != nil {
-		return false, 0, 0, err
+		return false, 0, 0, fmt.Errorf("inc bin ID: %w", err)
 	}
 	err = db.retrievalDataIndex.PutInBatch(batch, item)
 	if err != nil {
@@ -563,7 +563,7 @@ func (db *DB) incBinID(binIDs map[uint8]uint64, po uint8) (id uint64, err error)
 	if _, ok := binIDs[po]; !ok {
 		binIDs[po], err = db.binIDs.Get(uint64(po))
 		if err != nil {
-			return 0, fmt.Errorf("inc bin ID: %w", err)
+			return 0, err
 		}
 	}
 	binIDs[po]++
