@@ -1309,7 +1309,9 @@ func TestReserveEvictionWorkerWithRadius(t *testing.T) {
 
 	t.Run("pull index count", newItemsCountTest(db.pullIndex, chunkCount))
 
-	t.Run("gc index count", newItemsCountTest(db.gcIndex, 10))
+	// so GC could have been triggered or not. As this is not essential for the test
+	// we just ensure the gcIndexes are consistent.
+	t.Run("gc size", newIndexGCSizeTest(db))
 
 	t.Run("11-20 chunks should be accessible", func(t *testing.T) {
 		for _, a := range addrs[10:] {
