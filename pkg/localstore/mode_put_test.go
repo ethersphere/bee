@@ -336,10 +336,11 @@ func TestModePutSyncUpload_SameIndex(t *testing.T) {
 	}
 
 	newItemsCountTest(db.retrievalDataIndex, 1)(t)
-	newPullIndexTest(db, chunks[1], binIDs[db.po(chunks[1].Address())], nil)(t)
+	newPullIndexTest(db, chunks[1], binIDs[db.po(chunks[1].Address())], leveldb.ErrNotFound)(t)
 	newPinIndexTest(db, chunks[0], leveldb.ErrNotFound)(t)
-	newPinIndexTest(db, chunks[1], nil)(t)
-	newItemsCountTest(db.pullIndex, 1)(t)
+	newPinIndexTest(db, chunks[1], leveldb.ErrNotFound)(t)
+	newItemsCountTest(db.pullIndex, 0)(t)
+	newItemsCountTest(db.pushIndex, 0)(t)
 	newItemsCountTest(db.postageIndexIndex, 1)(t)
 	newIndexGCSizeTest(db)(t)
 }
