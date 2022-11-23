@@ -78,7 +78,7 @@ func (s *Service) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.BadRequest(w, "invalid postage batch id")
 		return
 	}
-	i, err := s.post.GetStampIssuer(batch)
+	i, save, err := s.post.GetStampIssuer(batch)
 	if err != nil {
 		logger.Debug("get postage batch issuer failed", "batch_id", hex.EncodeToString(batch), "error", err)
 		logger.Error(nil, "get postage batch issuer failed")
@@ -92,6 +92,8 @@ func (s *Service) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	defer save()
+
 	stamper := postage.NewStamper(i, s.signer)
 
 	err = s.pss.Send(r.Context(), topic, payload, stamper, queries.Recipient, targets)

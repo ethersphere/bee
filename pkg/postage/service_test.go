@@ -99,7 +99,7 @@ func TestGetStampIssuer(t *testing.T) {
 	}
 	t.Run("found", func(t *testing.T) {
 		for _, id := range ids[1:4] {
-			st, err := ps.GetStampIssuer(id)
+			st, _, err := ps.GetStampIssuer(id)
 			if err != nil {
 				t.Fatalf("expected no error, got %v", err)
 			}
@@ -109,14 +109,14 @@ func TestGetStampIssuer(t *testing.T) {
 		}
 	})
 	t.Run("not found", func(t *testing.T) {
-		_, err := ps.GetStampIssuer(ids[0])
+		_, _, err := ps.GetStampIssuer(ids[0])
 		if !errors.Is(err, postage.ErrNotFound) {
 			t.Fatalf("expected ErrNotFound, got %v", err)
 		}
 	})
 	t.Run("not usable", func(t *testing.T) {
 		for _, id := range ids[4:] {
-			_, err := ps.GetStampIssuer(id)
+			_, _, err := ps.GetStampIssuer(id)
 			if !errors.Is(err, postage.ErrNotUsable) {
 				t.Fatalf("expected ErrNotUsable, got %v", err)
 			}
@@ -130,7 +130,7 @@ func TestGetStampIssuer(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		st, err := ps.GetStampIssuer(b.ID)
+		st, _, err := ps.GetStampIssuer(b.ID)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -140,7 +140,7 @@ func TestGetStampIssuer(t *testing.T) {
 	})
 	t.Run("topup", func(t *testing.T) {
 		ps.HandleTopUp(ids[1], big.NewInt(10))
-		_, err := ps.GetStampIssuer(ids[1])
+		_, _, err := ps.GetStampIssuer(ids[1])
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -150,7 +150,7 @@ func TestGetStampIssuer(t *testing.T) {
 	})
 	t.Run("dilute", func(t *testing.T) {
 		ps.HandleDepthIncrease(ids[2], 17)
-		_, err := ps.GetStampIssuer(ids[2])
+		_, _, err := ps.GetStampIssuer(ids[2])
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}

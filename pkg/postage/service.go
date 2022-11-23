@@ -33,7 +33,7 @@ var (
 type Service interface {
 	Add(*StampIssuer) error
 	StampIssuers() []*StampIssuer
-	GetStampIssuer([]byte) (*StampIssuer, error)
+	GetStampIssuer([]byte) (*StampIssuer, func(), error)
 	IssuerUsable(*StampIssuer) bool
 	BatchEventListener
 	BatchExpiryHandler
@@ -162,28 +162,33 @@ func (ps *service) IssuerUsable(st *StampIssuer) bool {
 }
 
 // GetStampIssuer finds a stamp issuer by batch ID.
-func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, error) {
+func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, func(), error) {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
 	for _, st := range ps.issuers {
 		if bytes.Equal(batchID, st.data.BatchID) {
 			if !ps.IssuerUsable(st) {
-				return nil, ErrNotUsable
+				return nil, nil, ErrNotUsable
 			}
-			return st, nil
+			return st, func() { _ = ps.save() }, nil
 		}
 	}
-	return nil, ErrNotFound
+	return nil, nil, ErrNotFound
 }
 
 // Close saves all the active stamp issuers to statestore.
-func (ps *service) Close() error {
+func (ps *service) save() error {
 	for i, st := range ps.issuers {
 		if err := ps.store.Put(ps.keyForIndex(i), st); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// Close saves all the active stamp issuers to statestore.
+func (ps *service) Close() error {
+	return ps.save()
 }
 
 // keyForIndex returns the statestore key for an issuer

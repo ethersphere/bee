@@ -120,7 +120,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	i, err := s.post.GetStampIssuer(batch)
+	i, save, err := s.post.GetStampIssuer(batch)
 	if err != nil {
 		logger.Debug("get postage batch issuer failed", "batch_id", hex.EncodeToString(batch), "error", err)
 		logger.Error(nil, "get postage batch issue")
@@ -134,6 +134,8 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+	defer save()
+
 	stamper := postage.NewStamper(i, s.signer)
 	stamp, err := stamper.Stamp(sch.Address())
 	if err != nil {
