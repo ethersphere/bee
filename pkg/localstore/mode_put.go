@@ -66,19 +66,6 @@ func (r *releaseLocations) add(loc sharky.Location) {
 // slice. This is the same behaviour as if the same chunks are passed one by one
 // in multiple put method calls.
 func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, retErr error) {
-	// this is an optimization that tries to optimize on already existing chunks
-	// not needing to acquire batchMu. This is in order to reduce lock contention
-	// when chunks are retried across the network for whatever reason.
-	if len(chs) == 1 && mode != storage.ModePutRequestPin && mode != storage.ModePutUploadPin {
-		has, err := db.retrievalDataIndex.Has(chunkToItem(chs[0]))
-		if err != nil {
-			return nil, fmt.Errorf("initial has check: %w", err)
-		}
-		if has {
-			return []bool{true}, nil
-		}
-	}
-
 	// protect parallel updates
 	db.batchMu.Lock()
 	defer db.batchMu.Unlock()

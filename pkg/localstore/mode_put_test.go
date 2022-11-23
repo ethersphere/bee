@@ -46,7 +46,7 @@ var putModes = []storage.ModePut{
 
 // TestModePutRequest validates ModePutRequest index values on the provided DB.
 func TestModePutRequest(t *testing.T) {
-	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return false }))
+	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return true }))
 	for _, tc := range multiChunkTestCases {
 		t.Run(tc.name, func(t *testing.T) {
 			db := newTestDB(t, nil)
@@ -77,7 +77,7 @@ func TestModePutRequest(t *testing.T) {
 					newRetrieveIndexesTestWithAccess(db, ch, wantTimestamp, wantTimestamp)(t)
 				}
 
-				newItemsCountTest(db.gcIndex, tc.count)(t)
+				newItemsCountTest(db.gcIndex, 0)(t)
 				newItemsCountTest(db.pullIndex, tc.count)(t)
 				newItemsCountTest(db.postageIndexIndex, tc.count)(t)
 				newIndexGCSizeTest(db)(t)
@@ -98,7 +98,7 @@ func TestModePutRequest(t *testing.T) {
 					newRetrieveIndexesTestWithAccess(db, ch, storeTimestamp, storeTimestamp)(t)
 				}
 
-				newItemsCountTest(db.gcIndex, tc.count)(t)
+				newItemsCountTest(db.gcIndex, 0)(t)
 				newItemsCountTest(db.pullIndex, tc.count)(t)
 				newItemsCountTest(db.postageIndexIndex, tc.count)(t)
 				newIndexGCSizeTest(db)(t)
@@ -215,13 +215,13 @@ func TestModePutSync(t *testing.T) {
 				binIDs[po]++
 
 				newRetrieveIndexesTestWithAccess(db, ch, wantTimestamp, wantTimestamp)(t)
-				newPullIndexTest(db, ch, binIDs[po], leveldb.ErrNotFound)(t)
-				newPinIndexTest(db, ch, leveldb.ErrNotFound)(t)
+				newPullIndexTest(db, ch, binIDs[po], nil)(t)
+				newPinIndexTest(db, ch, nil)(t)
 				newIndexGCSizeTest(db)(t)
 			}
 			newItemsCountTest(db.postageChunksIndex, tc.count)(t)
 			newItemsCountTest(db.postageIndexIndex, tc.count)(t)
-			newItemsCountTest(db.gcIndex, tc.count)(t)
+			newItemsCountTest(db.gcIndex, 0)(t)
 			newIndexGCSizeTest(db)(t)
 		})
 	}

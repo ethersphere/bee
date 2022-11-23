@@ -178,3 +178,15 @@ func (db *DB) ComputeReserveSize(startPO uint8) (uint64, error) {
 
 	return count, err
 }
+
+// SetReserveSize will update the localstore reserve size as calculated by the
+// depthmonitor using the updated storage depth
+func (db *DB) SetReserveSize(size uint64) error {
+	err := db.reserveSize.Put(size)
+	if err == nil {
+		if size > db.reserveCapacity {
+			db.triggerReserveEviction()
+		}
+	}
+	return err
+}

@@ -19,6 +19,7 @@ package localstore
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/sharky"
@@ -170,6 +171,7 @@ func (db *DB) collectGarbage() (evicted uint64, done bool, err error) {
 	// get rid of dirty entries
 	for _, item := range candidates {
 		if swarm.NewAddress(item.Address).MemberOf(db.dirtyAddresses) {
+			fmt.Println("skipping", swarm.NewAddress(item.Address))
 			continue
 		}
 
@@ -182,6 +184,7 @@ func (db *DB) collectGarbage() (evicted uint64, done bool, err error) {
 		// the target since the gc size always is bound to change even if to a minor degree in the time between
 		// candidate collection and the mutex acquisition.
 		if gcSize-totalChunksEvicted <= target {
+			fmt.Println("stopping", totalChunksEvicted, gcSize, target)
 			done = true
 			break
 		}
@@ -218,10 +221,6 @@ func (db *DB) collectGarbage() (evicted uint64, done bool, err error) {
 			return 0, false, err
 		}
 		err = db.postageChunksIndex.DeleteInBatch(batch, item)
-		if err != nil {
-			return 0, false, err
-		}
-		err = db.postageIndexIndex.DeleteInBatch(batch, item)
 		if err != nil {
 			return 0, false, err
 		}
@@ -311,6 +310,38 @@ func (db *DB) incGCSizeInBatch(batch *leveldb.Batch, change int64) (err error) {
 	return nil
 }
 
+func (db *DB) reserveEvictionWorker() {
+	defer close(db.reserveEvictionWorkerDone)
+	for {
+		select {
+		case <-db.reserveEvictionTrigger:
+			evictedCount, done, err := db.evictReserve()
+			if err != nil {
+				db.logger.Error(err, "evict reserve failed")
+			}
+
+			if !done {
+				db.triggerReserveEviction()
+			}
+
+			if testHookEviction != nil {
+				testHookEviction(evictedCount)
+			}
+		case <-db.close:
+			return
+		}
+	}
+}
+
+func (db *DB) triggerReserveEviction() {
+	select {
+	case db.reserveEvictionTrigger <- struct{}{}:
+	case <-db.close:
+	default:
+	}
+
+}
+
 func (db *DB) evictReserve() (totalEvicted uint64, done bool, err error) {
 	var target uint64
 	db.metrics.EvictReserveCounter.Inc()
@@ -321,22 +352,18 @@ func (db *DB) evictReserve() (totalEvicted uint64, done bool, err error) {
 		totalTimeMetric(db.metrics.TotalTimeEvictReserve, start)
 	}(time.Now())
 
-	target = db.reserveEvictionTarget()
-
 	db.batchMu.Lock()
 	defer db.batchMu.Unlock()
 
-	var reserveSizeStart uint64
-	if db.radiusFunc != nil {
-		reserveSizeStart, err = db.ComputeReserveSize(db.radiusFunc())
-		target = db.reserveCapacity
-	} else {
-		reserveSizeStart, err = db.reserveSize.Get()
-	}
+	target = db.reserveCapacity
+
+	reserveSizeStart, err := db.reserveSize.Get()
 	if err != nil {
 		return 0, false, err
 	}
-	db.logger.Debug("gc: reserve eviction", "reserveSizeStart", reserveSizeStart, "target", target)
+
+	db.logger.Debug("gc: reserve eviction", "reserve-size-start", reserveSizeStart, "target", target)
+
 	if reserveSizeStart <= target {
 		return 0, true, nil
 	}

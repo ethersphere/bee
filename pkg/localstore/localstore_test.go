@@ -690,7 +690,7 @@ func TestDBDebugIndexes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	testIndexCounts(t, 1, 1, 0, 0, 1, 0, indexCounts)
+	testIndexCounts(t, 1, 0, 0, 0, 1, 0, indexCounts)
 
 	// set the chunk for pinning and expect the index count to grow
 	err = db.Set(ctx, storage.ModeSetPin, ch.Address())
@@ -704,5 +704,17 @@ func TestDBDebugIndexes(t *testing.T) {
 	}
 
 	// assert that there's a pin and gc exclude entry now
+	testIndexCounts(t, 1, 0, 0, 1, 1, 0, indexCounts)
+
+	_, err = db.Put(ctx, storage.ModePutSync, ch)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	indexCounts, err = db.DebugIndices()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	testIndexCounts(t, 1, 1, 0, 1, 1, 0, indexCounts)
 }
