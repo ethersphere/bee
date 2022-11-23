@@ -41,18 +41,7 @@ var (
 	// transaction on garbage collection.
 	gcBatchSize uint64 = 10_000
 
-	// reserveCollectionRatio is the ratio of the cache to evict from
-	// the reserve every time it hits the limit. If the cache size is
-	// 1000 chunks then we will evict 500 chunks from the reserve, this is
-	// not to overwhelm the cache with too many chunks which it will flush
-	// anyway.
-	reserveCollectionRatio = 0.5
-	// reserveEvictionBatch limits the number of chunks collected in
-	// a single reserve eviction run.
 	reserveEvictionBatch uint64 = 200
-	// maxPurgeablePercentageOfReserve is a ceiling of size of the reserve
-	// to evict in case the cache size is bigger than the reserve
-	maxPurgeablePercentageOfReserve = 0.1
 )
 
 // collectGarbageWorker is a long running function that waits for
@@ -255,15 +244,6 @@ func (db *DB) collectGarbage() (evicted uint64, done bool, err error) {
 // target value, calculated from db.capacity and gcTargetRatio.
 func (db *DB) gcTarget() (target uint64) {
 	return uint64(float64(db.cacheCapacity) * gcTargetRatio)
-}
-
-func (db *DB) reserveEvictionTarget() (target uint64) {
-	targetCache := db.reserveCapacity - uint64(float64(db.cacheCapacity)*reserveCollectionRatio)
-	targetCeiling := db.reserveCapacity - uint64(float64(db.reserveCapacity)*maxPurgeablePercentageOfReserve)
-	if targetCeiling > targetCache {
-		return targetCeiling
-	}
-	return targetCache
 }
 
 // triggerGarbageCollection signals collectGarbageWorker
