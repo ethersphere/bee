@@ -176,7 +176,7 @@ func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, func(), error) 
 	return nil, nil, ErrNotFound
 }
 
-// Close saves all the active stamp issuers to statestore.
+// Save saves all the active stamp issuers to statestore.
 func (ps *service) save() error {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
@@ -188,7 +188,6 @@ func (ps *service) save() error {
 	return nil
 }
 
-// Close saves all the active stamp issuers to statestore.
 func (ps *service) Close() error {
 	return ps.save()
 }
