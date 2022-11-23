@@ -137,7 +137,7 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration) {
 		s.lastRSize.Store(currentSize)
 
 		rate := s.syncer.Rate()
-		s.logger.Debug("depthmonitor: state", "current size", currentSize, "radius", reserveState.StorageRadius, "chunks/sec rate", rate)
+		s.logger.Info("depthmonitor: state", "current size", currentSize, "radius", reserveState.StorageRadius, "chunks/sec rate", rate)
 
 		// we have crossed 50% utilization
 		if currentSize > halfCapacity {
