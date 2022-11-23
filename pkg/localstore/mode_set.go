@@ -319,7 +319,7 @@ func (db *DB) setPin(batch *leveldb.Batch, item shed.Item) (gcSizeChange int64, 
 			item.AccessTimestamp = i.AccessTimestamp
 			i, err = db.retrievalDataIndex.Get(item)
 			if err != nil {
-				return 0, err
+				return 0, fmt.Errorf("set pin: retrieval data: %w", err)
 			}
 			item.StoreTimestamp = i.StoreTimestamp
 			item.BinID = i.BinID
