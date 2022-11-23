@@ -41,9 +41,9 @@ func TestWallet(t *testing.T) {
 
 		jsonhttptest.Request(t, srv, http.MethodGet, "/wallet", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(api.WalletResponse{
-				BZZ:     bigint.Wrap(big.NewInt(10000000000000000)),
-				XDai:    bigint.Wrap(big.NewInt(2000000000000000000)),
-				ChainID: 1,
+				BZZ:         bigint.Wrap(big.NewInt(10000000000000000)),
+				NativeToken: bigint.Wrap(big.NewInt(2000000000000000000)),
+				ChainID:     1,
 			}),
 		)
 	})

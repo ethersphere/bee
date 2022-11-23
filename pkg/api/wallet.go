@@ -13,16 +13,17 @@ import (
 )
 
 type walletResponse struct {
-	BZZ             *bigint.BigInt `json:"bzz"`             // the BZZ balance of the wallet associated with the eth address of the node
-	XDai            *bigint.BigInt `json:"xDai"`            // the xDai balance of the wallet associated with the eth address of the node
-	ChainID         int64          `json:"chainID"`         // the id of the block chain
-	ContractAddress common.Address `json:"contractAddress"` // the address of the chequebook contract
+	BZZ                       *bigint.BigInt `json:"bzzBalance"`                // the BZZ balance of the wallet associated with the eth address of the node
+	NativeToken               *bigint.BigInt `json:"nativeTokenBalance"`        // the native token balance of the wallet associated with the eth address of the node
+	ChainID                   int64          `json:"chainID"`                   // the id of the blockchain
+	ChequebookContractAddress common.Address `json:"chequebookContractAddress"` // the address of the chequebook contract
+	WalletAddress             common.Address `json:"walletAddress"`             // the address of the bee wallet
 }
 
 func (s *Service) walletHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("get_wallet").Build()
 
-	xdai, err := s.chainBackend.BalanceAt(r.Context(), s.ethereumAddress, nil)
+	nativeToken, err := s.chainBackend.BalanceAt(r.Context(), s.ethereumAddress, nil)
 	if err != nil {
 		logger.Debug("unable to acquire balance from the chain backend", "error", err)
 		logger.Error(nil, "unable to acquire balance from the chain backend")
@@ -39,9 +40,10 @@ func (s *Service) walletHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonhttp.OK(w, walletResponse{
-		BZZ:             bigint.Wrap(bzz),
-		XDai:            bigint.Wrap(xdai),
-		ChainID:         s.chainID,
-		ContractAddress: s.chequebook.Address(),
+		BZZ:                       bigint.Wrap(bzz),
+		NativeToken:               bigint.Wrap(nativeToken),
+		ChainID:                   s.chainID,
+		ChequebookContractAddress: s.chequebook.Address(),
+		WalletAddress:             s.ethereumAddress,
 	})
 }
