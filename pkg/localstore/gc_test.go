@@ -121,7 +121,7 @@ func testDBCollectGarbageWorker(t *testing.T) {
 
 	t.Run("pull index count", newItemsCountTest(db.pullIndex, 0))
 
-	t.Run("postage index count", newItemsCountTest(db.postageIndexIndex, chunkCount))
+	t.Run("postage index count", newItemsCountTest(db.postageIndexIndex, int(gcTarget)))
 
 	t.Run("gc index count", newItemsCountTest(db.gcIndex, int(gcTarget)))
 
@@ -234,7 +234,7 @@ func TestPinGC(t *testing.T) {
 	// the pinned chunks will not be added to pullSync index
 	t.Run("pull index count", newItemsCountTest(db.pullIndex, 0))
 
-	t.Run("postage index count", newItemsCountTest(db.postageIndexIndex, chunkCount))
+	t.Run("postage index count", newItemsCountTest(db.postageIndexIndex, int(gcTarget)+pinChunksCount))
 
 	t.Run("postage chunks count", newItemsCountTest(db.postageChunksIndex, int(gcTarget)+pinChunksCount))
 
@@ -446,7 +446,7 @@ func TestDB_collectGarbageWorker_withRequests(t *testing.T) {
 
 	t.Run("pull index count", newItemsCountTest(db.pullIndex, 0))
 
-	t.Run("postage index count", newItemsCountTest(db.postageIndexIndex, int(db.cacheCapacity)))
+	t.Run("postage index count", newItemsCountTest(db.postageIndexIndex, int(gcTarget)))
 
 	t.Run("postage chunks count", newItemsCountTest(db.postageChunksIndex, int(gcTarget)))
 
@@ -917,7 +917,7 @@ func TestGC_NoEvictDirty(t *testing.T) {
 
 	t.Run("pull index count", newItemsCountTest(db.pullIndex, 0))
 
-	t.Run("postage index count", newItemsCountTest(db.postageIndexIndex, chunkCount))
+	t.Run("postage index count", newItemsCountTest(db.postageIndexIndex, int(gcTarget)))
 
 	t.Run("postage chunks count", newItemsCountTest(db.postageChunksIndex, int(gcTarget)))
 
@@ -1180,7 +1180,7 @@ func TestReserveEvictionWorker(t *testing.T) {
 	t.Run("pull index count", newItemsCountTest(db.pullIndex, chunkCount-1))
 
 	// postage index will not be deleted
-	t.Run("postage index count", newItemsCountTest(db.postageIndexIndex, chunkCount*2))
+	t.Run("postage index count", newItemsCountTest(db.postageIndexIndex, chunkCount+8))
 
 	// this is deleted on chunk removal
 	t.Run("postage chunks count", newItemsCountTest(db.postageChunksIndex, chunkCount+8))

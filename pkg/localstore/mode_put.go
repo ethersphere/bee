@@ -31,8 +31,8 @@ import (
 )
 
 var (
-	ErrOverwrite    = errors.New("index already exists - double issuance on immutable batch")
-	ErrOverwriteNew = errors.New("index already exists with newer timestamp - double issuance on batch")
+	ErrOverwriteImmutable = errors.New("index already exists - double issuance on immutable batch")
+	ErrOverwrite          = errors.New("index already exists with newer timestamp - double issuance on batch")
 )
 
 // Put stores Chunks to database and depending
@@ -255,12 +255,12 @@ func (db *DB) checkAndRemoveStampIndex(
 		return 0, fmt.Errorf("failed reading postageIndexIndex: %w", err)
 	}
 	if item.Immutable {
-		return 0, ErrOverwrite
+		return 0, ErrOverwriteImmutable
 	}
 	// if a chunk is found with the same postage stamp index,
 	// replace it with the new one only if timestamp is later
 	if !later(previous, item) {
-		return 0, ErrOverwriteNew
+		return 0, ErrOverwrite
 	}
 
 	// remove older chunk

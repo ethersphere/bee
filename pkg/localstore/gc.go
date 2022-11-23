@@ -19,7 +19,6 @@ package localstore
 import (
 	"context"
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/sharky"
@@ -171,7 +170,6 @@ func (db *DB) collectGarbage() (evicted uint64, done bool, err error) {
 	// get rid of dirty entries
 	for _, item := range candidates {
 		if swarm.NewAddress(item.Address).MemberOf(db.dirtyAddresses) {
-			fmt.Println("skipping", swarm.NewAddress(item.Address))
 			continue
 		}
 
@@ -184,7 +182,6 @@ func (db *DB) collectGarbage() (evicted uint64, done bool, err error) {
 		// the target since the gc size always is bound to change even if to a minor degree in the time between
 		// candidate collection and the mutex acquisition.
 		if gcSize-totalChunksEvicted <= target {
-			fmt.Println("stopping", totalChunksEvicted, gcSize, target)
 			done = true
 			break
 		}
@@ -217,6 +214,10 @@ func (db *DB) collectGarbage() (evicted uint64, done bool, err error) {
 			return 0, false, err
 		}
 		err = db.gcIndex.DeleteInBatch(batch, item)
+		if err != nil {
+			return 0, false, err
+		}
+		err = db.postageIndexIndex.DeleteInBatch(batch, storedItem)
 		if err != nil {
 			return 0, false, err
 		}

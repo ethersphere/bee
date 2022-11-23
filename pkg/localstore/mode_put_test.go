@@ -256,7 +256,7 @@ func TestModePutUpload(t *testing.T) {
 				binIDs[po]++
 
 				newRetrieveIndexesTest(db, ch, wantTimestamp, 0)(t)
-				newPullIndexTest(db, ch, binIDs[po], nil)(t)
+				newPullIndexTest(db, ch, binIDs[po], leveldb.ErrNotFound)(t)
 				newPushIndexTest(db, ch, wantTimestamp, nil)(t)
 				newPinIndexTest(db, ch, leveldb.ErrNotFound)(t)
 			}
@@ -374,7 +374,7 @@ func TestModePutUploadPin(t *testing.T) {
 				binIDs[po]++
 
 				newRetrieveIndexesTest(db, ch, wantTimestamp, 0)(t)
-				newPullIndexTest(db, ch, binIDs[po], nil)(t)
+				newPullIndexTest(db, ch, binIDs[po], leveldb.ErrNotFound)(t)
 				newPushIndexTest(db, ch, wantTimestamp, nil)(t)
 				newPinIndexTest(db, ch, nil)(t)
 			}
@@ -490,6 +490,7 @@ func TestModePutUpload_parallel(t *testing.T) {
 // The test assumes that chunk fall into the reserve part of
 // the store.
 func TestModePut_sameChunk(t *testing.T) {
+	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return true }))
 	for _, tc := range multiChunkTestCases {
 		t.Run(tc.name, func(t *testing.T) {
 			chunks := generateTestRandomChunks(tc.count)
@@ -508,7 +509,7 @@ func TestModePut_sameChunk(t *testing.T) {
 				},
 				{
 					name:      "ModePutRequestPin",
-					mode:      storage.ModePutRequest,
+					mode:      storage.ModePutRequestPin,
 					pullIndex: true,
 					pushIndex: false,
 				},
@@ -521,7 +522,7 @@ func TestModePut_sameChunk(t *testing.T) {
 				{
 					name:      "ModePutUpload",
 					mode:      storage.ModePutUpload,
-					pullIndex: true,
+					pullIndex: false,
 					pushIndex: true,
 				},
 				{
@@ -612,7 +613,7 @@ func TestModePut_SameStamp(t *testing.T) {
 						t.Fatal(err)
 					}
 					_, err = db.Put(ctx, modeTc2, tc.discardChunk)
-					if err != nil {
+					if !errors.Is(err, ErrOverwrite) {
 						t.Fatal(err)
 					}
 
@@ -620,9 +621,6 @@ func TestModePut_SameStamp(t *testing.T) {
 					newItemsCountTest(db.postageChunksIndex, 1)(t)
 					newItemsCountTest(db.postageRadiusIndex, 1)(t)
 					newItemsCountTest(db.postageIndexIndex, 1)(t)
-					if modeTc1 != storage.ModePutRequestCache {
-						newItemsCountTest(db.pullIndex, 1)(t)
-					}
 
 					_, err = db.Get(ctx, storage.ModeGetLookup, tc.persistChunk.Address())
 					if err != nil {
@@ -680,7 +678,7 @@ func TestModePut_ImmutableStamp(t *testing.T) {
 						t.Fatal(err)
 					}
 					_, err = db.Put(ctx, modeTc2, tc.discardChunk)
-					if !errors.Is(err, ErrOverwrite) {
+					if !errors.Is(err, ErrOverwriteImmutable) {
 						t.Fatalf("expected overwrite error on immutable stamp got %v", err)
 					}
 
@@ -688,9 +686,6 @@ func TestModePut_ImmutableStamp(t *testing.T) {
 					newItemsCountTest(db.postageChunksIndex, 1)(t)
 					newItemsCountTest(db.postageRadiusIndex, 1)(t)
 					newItemsCountTest(db.postageIndexIndex, 1)(t)
-					if modeTc1 != storage.ModePutRequestCache && modeTc1 != storage.ModePutSync {
-						newItemsCountTest(db.pullIndex, 1)(t)
-					}
 
 					_, err = db.Get(ctx, storage.ModeGetLookup, tc.persistChunk.Address())
 					if err != nil {

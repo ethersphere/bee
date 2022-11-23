@@ -95,7 +95,7 @@ func TestPinIndexes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runCountsTest(t, "putUpload", db, 1, 0, 1, 1, 0, 0)
+	runCountsTest(t, "putUpload", db, 1, 0, 1, 0, 0, 0)
 
 	err = db.Set(ctx, storage.ModeSetSync, addr)
 	if err != nil {
@@ -148,49 +148,129 @@ func TestPinIndexesSync(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	runCountsTest(t, "putUpload", db, 1, 0, 1, 1, 0, 0)
+	runCountsTest(t, "putUpload", db, 1, 0, 1, 0, 0, 0)
 
 	err = db.Set(ctx, storage.ModeSetPin, addr)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runCountsTest(t, "setPin", db, 1, 0, 1, 1, 1, 0)
+	runCountsTest(t, "setPin", db, 1, 0, 1, 0, 1, 0)
 
 	err = db.Set(ctx, storage.ModeSetPin, addr)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runCountsTest(t, "setPin 2", db, 1, 0, 1, 1, 1, 0)
+	runCountsTest(t, "setPin 2", db, 1, 0, 1, 0, 1, 0)
 
 	err = db.Set(ctx, storage.ModeSetUnpin, addr)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runCountsTest(t, "setUnPin", db, 1, 0, 1, 1, 1, 0)
+	runCountsTest(t, "setUnPin", db, 1, 0, 1, 0, 1, 0)
 
 	err = db.Set(ctx, storage.ModeSetUnpin, addr)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runCountsTest(t, "setUnPin 2", db, 1, 0, 1, 1, 0, 0)
+	runCountsTest(t, "setUnPin 2", db, 1, 0, 1, 0, 0, 0)
 
 	err = db.Set(ctx, storage.ModeSetPin, addr)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runCountsTest(t, "setPin 3", db, 1, 0, 1, 1, 1, 0)
+	runCountsTest(t, "setPin 3", db, 1, 0, 1, 0, 1, 0)
 
 	err = db.Set(ctx, storage.ModeSetSync, addr)
 	if err != nil {
 		t.Fatal(err)
 	}
-	runCountsTest(t, "setSync", db, 1, 1, 0, 1, 1, 0)
+	runCountsTest(t, "setSync", db, 1, 1, 0, 0, 1, 0)
 
 	err = db.Set(ctx, storage.ModeSetUnpin, addr)
 	if err != nil {
 		t.Fatal(err)
 	}
 	runCountsTest(t, "setUnPin", db, 1, 1, 0, 0, 0, 1)
+}
+
+func TestPinIndexesPutSync(t *testing.T) {
+	ctx := context.Background()
+	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return false }))
+
+	db := newTestDB(t, &Options{
+		Capacity: 150,
+	})
+
+	ch := generateTestRandomChunk()
+	// call unreserve on the batch with radius 0 so that
+	// localstore is aware of the batch and the chunk can
+	// be inserted into the database
+	unreserveChunkBatch(t, db, 0, ch)
+
+	addr := ch.Address()
+	_, err := db.Put(ctx, storage.ModePutSync, ch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCountsTest(t, "putSync", db, 1, 1, 0, 1, 1, 0)
+
+	err = db.Set(ctx, storage.ModeSetPin, addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCountsTest(t, "setPin 2", db, 1, 1, 0, 1, 1, 0)
+
+	err = db.Set(ctx, storage.ModeSetUnpin, addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCountsTest(t, "setUnPin", db, 1, 1, 0, 1, 1, 0)
+
+	err = db.Set(ctx, storage.ModeSetUnpin, addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCountsTest(t, "setUnPin 2", db, 1, 1, 0, 0, 0, 1)
+}
+
+func TestPinIndexesPutRequest(t *testing.T) {
+	ctx := context.Background()
+	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return true }))
+
+	db := newTestDB(t, &Options{
+		Capacity: 150,
+	})
+
+	ch := generateTestRandomChunk()
+	// call unreserve on the batch with radius 0 so that
+	// localstore is aware of the batch and the chunk can
+	// be inserted into the database
+	unreserveChunkBatch(t, db, 0, ch)
+
+	addr := ch.Address()
+	_, err := db.Put(ctx, storage.ModePutRequest, ch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCountsTest(t, "putRequest", db, 1, 1, 0, 1, 1, 0)
+
+	err = db.Set(ctx, storage.ModeSetPin, addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCountsTest(t, "setPin 2", db, 1, 1, 0, 1, 1, 0)
+
+	err = db.Set(ctx, storage.ModeSetUnpin, addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCountsTest(t, "setUnPin", db, 1, 1, 0, 1, 1, 0)
+
+	err = db.Set(ctx, storage.ModeSetUnpin, addr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCountsTest(t, "setUnPin 2", db, 1, 1, 0, 0, 0, 1)
 }
 
 func runCountsTest(t *testing.T, name string, db *DB, r, a, push, pull, pin, gc int) {
