@@ -178,6 +178,8 @@ func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, func(), error) 
 
 // Close saves all the active stamp issuers to statestore.
 func (ps *service) save() error {
+	ps.lock.Lock()
+	defer ps.lock.Unlock()
 	for i, st := range ps.issuers {
 		if err := ps.store.Put(ps.keyForIndex(i), st); err != nil {
 			return err
