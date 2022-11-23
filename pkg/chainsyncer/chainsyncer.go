@@ -99,7 +99,7 @@ func New(backend transaction.Backend, p prover, peerIterator topology.EachPeerer
 }
 
 func (c *ChainSyncer) manage() {
-	loggerV1 := c.logger.V(1).Register()
+	loggerV2 := c.logger.V(2).Register()
 
 	defer c.wg.Done()
 	var (
@@ -150,18 +150,18 @@ func (c *ChainSyncer) manage() {
 				defer wg.Done()
 				hash, err := c.prove.Prove(cctx, peer, blockHeight)
 				if err != nil {
-					c.logger.Info("failed to prove block", "peer", peer, "block", blockHeight, "elapsed", time.Since(start), "error", err)
+					c.logger.Debug("failed to prove block", "peer", peer, "block", blockHeight, "elapsed", time.Since(start), "error", err)
 					c.metrics.PeerErrors.Inc()
 					c.blocker.Flag(peer)
 					return
 				}
 				if !bytes.Equal(blockHash, hash) {
-					c.logger.Info("failed to prove block", "peer", peer, "block", blockHeight, "elapsed", time.Since(start), "want hash", blockHash, "have hash", hash)
+					c.logger.Debug("failed to prove block", "peer", peer, "block", blockHeight, "elapsed", time.Since(start), "want hash", blockHash, "have hash", hash)
 					c.metrics.InvalidProofs.Inc()
 					c.blocker.Flag(peer)
 					return
 				}
-				loggerV1.Debug("block successfully proved", "peer", peer, "block", blockHeight, "elapsed", time.Since(start))
+				loggerV2.Debug("block successfully proved", "peer", peer, "block", blockHeight, "elapsed", time.Since(start))
 				c.metrics.SyncedPeers.Inc()
 				c.blocker.Unflag(peer)
 				atomic.AddInt32(&positives, 1)
