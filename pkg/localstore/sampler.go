@@ -24,7 +24,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-const sampleSize = 16
+const sampleSize = 8
 
 var errDbClosed = errors.New("database closed")
 
