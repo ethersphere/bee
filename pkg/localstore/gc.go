@@ -188,13 +188,12 @@ func (db *DB) collectGarbage() (evicted uint64, done bool, err error) {
 
 		totalChunksEvicted++
 
-		i, err := db.retrievalDataIndex.Get(item)
+		storedItem, err := db.retrievalDataIndex.Get(item)
 		if err != nil {
 			return 0, false, err
 		}
-		item.Location = i.Location
 
-		db.metrics.GCStoreTimeStamps.Set(float64(item.StoreTimestamp))
+		db.metrics.GCStoreTimeStamps.Set(float64(storedItem.StoreTimestamp))
 		db.metrics.GCStoreAccessTimeStamps.Set(float64(item.AccessTimestamp))
 
 		// delete from retrieve, pull, gc
@@ -206,7 +205,7 @@ func (db *DB) collectGarbage() (evicted uint64, done bool, err error) {
 		if err != nil {
 			return 0, false, err
 		}
-		err = db.pushIndex.DeleteInBatch(batch, item)
+		err = db.pushIndex.DeleteInBatch(batch, storedItem)
 		if err != nil {
 			return 0, false, err
 		}
@@ -226,7 +225,7 @@ func (db *DB) collectGarbage() (evicted uint64, done bool, err error) {
 		if err != nil {
 			return 0, false, err
 		}
-		loc, err := sharky.LocationFromBinary(item.Location)
+		loc, err := sharky.LocationFromBinary(storedItem.Location)
 		if err != nil {
 			return 0, false, err
 		}

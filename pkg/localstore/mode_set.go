@@ -217,7 +217,7 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange in
 	} else {
 		item.AccessTimestamp = i1.AccessTimestamp
 	}
-	return db.preserveOrCache(batch, item, false, false)
+	return db.addToCache(batch, item)
 }
 
 // setRemove removes the chunk by updating indexes:
