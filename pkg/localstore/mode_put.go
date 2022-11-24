@@ -269,6 +269,12 @@ func (db *DB) checkAndRemoveStampIndex(
 	// remove older chunk
 	previousIdx, err := db.retrievalDataIndex.Get(previous)
 	if err != nil {
+		if errors.Is(err, leveldb.ErrNotFound) {
+			// currently there are stale postageIndexIndex entries in the localstore
+			// due to a bug found recently. This error is mainly ignored as the
+			// chunk is already gone and the index is overwritten.
+			return 0, nil
+		}
 		return 0, fmt.Errorf("could not fetch previous item: %w", err)
 	}
 
@@ -336,6 +342,15 @@ func (db *DB) putRequest(
 	}
 
 	if withinRadiusFn(db, item) {
+		found, err := db.pullIndex.Has(item)
+		if err != nil {
+			return 0, err
+		}
+		if found {
+			// this means it could be a duplicate put request. Dont update the
+			// pin counter.
+			return 0, nil
+		}
 		err = db.pullIndex.PutInBatch(batch, item)
 		if err != nil {
 			return 0, err
@@ -427,6 +442,15 @@ func (db *DB) putSync(
 		}
 	}
 
+	found, err := db.pullIndex.Has(item)
+	if err != nil {
+		return 0, err
+	}
+	if found {
+		// this means it could be a duplicate put request. Dont update the
+		// pin counter.
+		return 0, nil
+	}
 	// if this is an existing chunk being Put with ModeSync, we just need to add
 	// the pullIndex and pin it
 	err = db.pullIndex.PutInBatch(batch, item)
