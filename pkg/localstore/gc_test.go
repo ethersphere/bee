@@ -1080,7 +1080,7 @@ func TestReserveEvictionWorker(t *testing.T) {
 	select {
 	case c := <-testHookEvictionChan:
 		if c != 1 {
-			t.Fatal("expected eviction of 1 chunk, found %d", c)
+			t.Fatalf("expected eviction of 1 chunk, found %d", c)
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("eviction timeout")
