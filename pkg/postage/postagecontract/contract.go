@@ -97,7 +97,7 @@ func (c *postageContract) ExpireBatches(ctx context.Context) error {
 			break
 		}
 
-		err = c.expireLimitedBatches(ctx, big.NewInt(50))
+		err = c.expireLimitedBatches(ctx, big.NewInt(25))
 		if err != nil {
 			return fmt.Errorf("expire limited batches: %w", err)
 		}
@@ -132,7 +132,7 @@ func (c *postageContract) expireLimitedBatches(ctx context.Context, count *big.I
 		return err
 	}
 
-	_, err = c.sendTransaction(sctx.SetGasLimit(ctx, 1_100_000), callData, "expire limited batches")
+	_, err = c.sendTransaction(ctx, callData, "expire limited batches")
 	if err != nil {
 		return err
 	}
@@ -175,7 +175,7 @@ func (c *postageContract) sendTransaction(ctx context.Context, callData []byte, 
 		To:          &c.postageContractAddress,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 1_000_000),
+		GasLimit:    sctx.GetGasLimit(ctx),
 		Value:       big.NewInt(0),
 		Description: desc,
 	}
