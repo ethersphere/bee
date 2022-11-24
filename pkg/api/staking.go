@@ -32,6 +32,9 @@ func (s *Service) stakingAccessHandler(h http.Handler) http.Handler {
 type getStakeResponse struct {
 	StakedAmount *bigint.BigInt `json:"stakedAmount"`
 }
+type stakeDepositResponse struct {
+	TxHash string `json:"txhash"`
+}
 
 func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("post_stake_deposit").Build()
@@ -44,7 +47,7 @@ func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	err := s.stakingContract.DepositStake(r.Context(), paths.Amount)
+	txHash, err := s.stakingContract.DepositStake(r.Context(), paths.Amount)
 	if err != nil {
 		if errors.Is(err, staking.ErrInsufficientStakeAmount) {
 			logger.Debug("insufficient stake amount", "minimum_stake", staking.MinimumStakeAmount, "error", err)
@@ -69,7 +72,9 @@ func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) 
 		jsonhttp.InternalServerError(w, "cannot stake")
 		return
 	}
-	jsonhttp.OK(w, nil)
+	jsonhttp.OK(w, stakeDepositResponse{
+		TxHash: txHash.String(),
+	})
 }
 
 func (s *Service) getStakedAmountHandler(w http.ResponseWriter, r *http.Request) {
