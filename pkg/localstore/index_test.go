@@ -45,7 +45,7 @@ func TestDB_pullIndex(t *testing.T) {
 	for i := 0; i < chunkCount; i++ {
 		ch := generateTestRandomChunk()
 
-		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
+		_, err := db.Put(context.Background(), storage.ModePutSync, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -104,8 +104,9 @@ func TestDB_gcIndex(t *testing.T) {
 		}
 	}
 
-	// check if all chunks are stored
-	newItemsCountTest(db.pullIndex, chunkCount)(t)
+	newItemsCountTest(db.pullIndex, 0)(t)
+
+	newItemsCountTest(db.pushIndex, chunkCount)(t)
 
 	// check that chunks are not collectable for garbage
 	newItemsCountTest(db.gcIndex, 0)(t)

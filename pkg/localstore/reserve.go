@@ -126,11 +126,6 @@ func (db *DB) unpinBatchChunks(id []byte, bin uint8) (uint64, error) {
 				return 0, err
 			}
 		}
-		if reserveSizeChange > 0 {
-			if err := db.incReserveSizeInBatch(batch, -int64(reserveSizeChange)); err != nil {
-				return 0, err
-			}
-		}
 		if err := db.shed.WriteBatch(batch); err != nil {
 			return 0, err
 		}
@@ -152,6 +147,11 @@ func withinRadius(db *DB, item shed.Item) bool {
 	return po >= item.Radius
 }
 
+// ReserveCapacity returns the configured capacity
+func (db *DB) ReserveCapacity() uint64 {
+	return db.reserveCapacity
+}
+
 // ComputeReserveSize iterates on the pull index to count all chunks
 // starting at some proximity order with an generated address whose PO
 // is used as a starting prefix by the index.
@@ -167,6 +167,25 @@ func (db *DB) ComputeReserveSize(startPO uint8) (uint64, error) {
 			Address: db.addressInBin(startPO).Bytes(),
 		},
 	})
+	if err == nil {
+		err = db.setReserveSize(count)
+		if err != nil {
+			return 0, fmt.Errorf("failed setting reserve size: %w", err)
+		}
+	}
 
 	return count, err
+}
+
+// SetReserveSize will update the localstore reserve size as calculated by the
+// depthmonitor using the updated storage depth
+func (db *DB) setReserveSize(size uint64) error {
+	err := db.reserveSize.Put(size)
+	if err != nil {
+		return fmt.Errorf("failed updating reserve size: %w", err)
+	}
+	if size > db.reserveCapacity {
+		db.triggerReserveEviction()
+	}
+	return nil
 }
