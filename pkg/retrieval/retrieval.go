@@ -143,7 +143,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr, sourcePeerAddr swarm.
 		var (
 			peerAttempt  int
 			peersResults int
-			resultC      = make(chan retrievalResult)
+			resultC      = make(chan retrievalResult, 32)
 		)
 
 		requestAttempt := 0
