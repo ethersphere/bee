@@ -284,11 +284,6 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 
 	t.Run("reserve size", reserveSizeTest(db, uint64(chunkCount), 2))
 
-	err := db.SetReserveSize(uint64(chunkCount))
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	var evicted uint64
 	for {
 		select {
@@ -316,11 +311,6 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 	}
 
 	t.Run("reserve size", reserveSizeTest(db, 180, 2))
-
-	err = db.SetReserveSize(uint64(180))
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	evicted = 0
 	for {
@@ -472,11 +462,6 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 
 	t.Run("reserve size", reserveSizeTest(db, 100, 2))
 
-	err := db.SetReserveSize(uint64(100))
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	var evicted uint64
 	for {
 		select {
@@ -512,11 +497,6 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 	}
 
 	t.Run("reserve size", reserveSizeTest(db, 180, 2))
-
-	err = db.SetReserveSize(uint64(180))
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	evicted = 0
 	for {
@@ -653,11 +633,9 @@ func TestReserveSize(t *testing.T) {
 				Capacity:        100,
 				ReserveCapacity: 100,
 			})
-			chs []swarm.Chunk
 		)
 		for i := 0; i < chunkCount; i++ {
 			ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
-			chs = append(chs, ch)
 			_, err := db.Put(context.Background(), storage.ModePutRequest, ch)
 			if err != nil {
 				t.Fatal(err)
@@ -764,12 +742,7 @@ func TestDB_ReserveGC_BatchedUnreserve(t *testing.T) {
 		}
 	}
 
-	t.Run("reserve size", reserveSizeTest(db, 0, 100))
-
-	err := db.SetReserveSize(100)
-	if err != nil {
-		t.Fatal(err)
-	}
+	t.Run("reserve size", reserveSizeTest(db, 100, 0))
 
 	select {
 	case <-testHookEvictChan:

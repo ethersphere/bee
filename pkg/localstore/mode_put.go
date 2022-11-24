@@ -124,6 +124,9 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 			}
 			committedLocations = append(committedLocations, l)
 			item.Location, err = l.MarshalBinary()
+			if err != nil {
+				return false, 0, fmt.Errorf("failed serializing sharky location: %w", err)
+			}
 
 			gcChangeNew, err := putOp(item, false)
 			return false, gcChangeNew + gcChange, err
@@ -271,12 +274,12 @@ func (db *DB) checkAndRemoveStampIndex(
 
 	gcSizeChange, err := db.setRemove(batch, previousIdx, true)
 	if err != nil {
-		return 0, err
+		return 0, fmt.Errorf("setRemove on double issuance: %w", err)
 	}
 
 	l, err := sharky.LocationFromBinary(previousIdx.Location)
 	if err != nil {
-		return 0, fmt.Errorf("failed getting localtion: %w", err)
+		return 0, fmt.Errorf("failed getting location: %w", err)
 	}
 	loc.add(l)
 
