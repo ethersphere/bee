@@ -287,7 +287,7 @@ func (s *Service) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.R
 		}
 		return
 	}
-	defer save()
+	defer func() { _ = save() }()
 
 	b := issuer.Buckets()
 	resp := postageStampBucketsResponse{

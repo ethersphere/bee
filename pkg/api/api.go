@@ -801,15 +801,16 @@ func (s *Service) newStamperPutter(r *http.Request) (storage.Storer, func() erro
 	if deferred {
 		p, err := newStoringStamperPutter(s.storer, issuer, s.signer, batch)
 		wait := func() error {
-			save()
-			return nil
+			return save()
 		}
 		return p, wait, err
 	}
 	p, err := newPushStamperPutter(s.storer, issuer, s.signer, batch, s.chunkPushC)
 
 	wait := func() error {
-		save()
+		if err := save(); err != nil {
+			return err
+		}
 		return p.eg.Wait()
 	}
 

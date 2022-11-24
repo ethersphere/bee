@@ -85,9 +85,9 @@ func (m *mockPostage) StampIssuers() []*postage.StampIssuer {
 	return issuers
 }
 
-func (m *mockPostage) GetStampIssuer(id []byte) (*postage.StampIssuer, func(), error) {
+func (m *mockPostage) GetStampIssuer(id []byte) (*postage.StampIssuer, func() error, error) {
 	if m.acceptAll {
-		return postage.NewStampIssuer("test fallback", "test identity", id, big.NewInt(3), 24, 6, 1000, true), func() {}, nil
+		return postage.NewStampIssuer("test fallback", "test identity", id, big.NewInt(3), 24, 6, 1000, true), func() error { return nil }, nil
 	}
 
 	m.issuerLock.Lock()
@@ -97,7 +97,7 @@ func (m *mockPostage) GetStampIssuer(id []byte) (*postage.StampIssuer, func(), e
 	if !exists {
 		return nil, nil, postage.ErrNotFound
 	}
-	return i, func() {}, nil
+	return i, func() error { return nil }, nil
 }
 
 func (m *mockPostage) IssuerUsable(_ *postage.StampIssuer) bool {

@@ -106,7 +106,7 @@ func TestGetStampIssuer(t *testing.T) {
 			if err != nil {
 				t.Fatalf("expected no error, got %v", err)
 			}
-			save()
+			_ = save()
 			if st.Label() != string(id) {
 				t.Fatalf("wrong issuer returned")
 			}

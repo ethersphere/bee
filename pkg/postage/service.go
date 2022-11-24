@@ -33,7 +33,7 @@ var (
 type Service interface {
 	Add(*StampIssuer) error
 	StampIssuers() []*StampIssuer
-	GetStampIssuer([]byte) (*StampIssuer, func(), error)
+	GetStampIssuer([]byte) (*StampIssuer, func() error, error)
 	IssuerUsable(*StampIssuer) bool
 	BatchEventListener
 	BatchExpiryHandler
@@ -162,7 +162,7 @@ func (ps *service) IssuerUsable(st *StampIssuer) bool {
 }
 
 // GetStampIssuer finds a stamp issuer by batch ID.
-func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, func(), error) {
+func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, func() error, error) {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
 	for _, st := range ps.issuers {
@@ -170,7 +170,7 @@ func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, func(), error) 
 			if !ps.IssuerUsable(st) {
 				return nil, nil, ErrNotUsable
 			}
-			return st, func() { _ = ps.save() }, nil
+			return st, func() error { return ps.save() }, nil
 		}
 	}
 	return nil, nil, ErrNotFound
