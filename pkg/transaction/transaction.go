@@ -270,7 +270,7 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 			return nil, err
 		}
 
-		gasLimit += gasLimit / 5 // add 20% on top
+		gasLimit += gasLimit / 4 // add 25% on top
 
 	} else {
 		gasLimit = request.GasLimit
