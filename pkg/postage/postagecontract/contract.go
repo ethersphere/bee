@@ -286,9 +286,8 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 		return
 	}
 
-	receipt, err := c.sendApproveTransaction(ctx, totalAmount)
+	_, err = c.sendApproveTransaction(ctx, totalAmount)
 	if err != nil {
-		txHash = receipt.TxHash
 		return
 	}
 
@@ -298,7 +297,7 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 		return
 	}
 
-	receipt, err = c.sendCreateBatchTransaction(ctx, c.owner, initialBalance, depth, common.BytesToHash(nonce), immutable)
+	receipt, err := c.sendCreateBatchTransaction(ctx, c.owner, initialBalance, depth, common.BytesToHash(nonce), immutable)
 	if err != nil {
 		return
 	}
@@ -352,13 +351,12 @@ func (c *postageContract) TopUpBatch(ctx context.Context, batchID []byte, topupB
 		return
 	}
 
-	receipt, err := c.sendApproveTransaction(ctx, totalAmount)
+	_, err = c.sendApproveTransaction(ctx, totalAmount)
 	if err != nil {
-		txHash = receipt.TxHash
 		return
 	}
 
-	receipt, err = c.sendTopUpBatchTransaction(ctx, batch.ID, topupBalance)
+	receipt, err := c.sendTopUpBatchTransaction(ctx, batch.ID, topupBalance)
 	if err != nil {
 		txHash = receipt.TxHash
 		return
