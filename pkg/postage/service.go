@@ -170,7 +170,7 @@ func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, func() error, e
 			if !ps.IssuerUsable(st) {
 				return nil, nil, ErrNotUsable
 			}
-			return st, func() error { return ps.save() }, nil
+			return st, ps.save, nil
 		}
 	}
 	return nil, nil, ErrNotFound
