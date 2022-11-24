@@ -97,7 +97,7 @@ func (c *postageContract) ExpireBatches(ctx context.Context) error {
 			break
 		}
 
-		err = c.expireLimitedBatches(ctx, big.NewInt(50))
+		err = c.expireLimitedBatches(ctx, big.NewInt(40))
 		if err != nil {
 			return fmt.Errorf("expire limited batches: %w", err)
 		}
