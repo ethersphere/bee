@@ -158,7 +158,7 @@ func (f *asyncFinder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, 
 		return nil, nil, &index{uint64(after)}, nil
 	}
 	// if chunk exists construct an initial interval with base=0
-	c := make(chan *result)
+	c := make(chan *result, 32)
 	i := newInterval(0)
 	i.found = &result{ch, nil, 0, 0}
 
@@ -236,7 +236,7 @@ func (f *asyncFinder) at(ctx context.Context, at int64, min int, i *interval, c 
 }
 
 func (f *asyncFinder) asyncGet(ctx context.Context, at int64, index uint64) <-chan swarm.Chunk {
-	c := make(chan swarm.Chunk)
+	c := make(chan swarm.Chunk, 1)
 	go func() {
 		defer close(c)
 		ch, err := f.get(ctx, at, index)
