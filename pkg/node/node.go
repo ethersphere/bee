@@ -278,7 +278,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 
 	if chainEnabled {
 		var evictFn = func(b []byte) error {
-			_, err := unreserveFn(b, swarm.MaxPO+1)
+			_, err := unreserveFn(b, swarm.MaxBins)
 			return err
 		}
 		batchStore, err = batchstore.New(stateStore, evictFn, logger)

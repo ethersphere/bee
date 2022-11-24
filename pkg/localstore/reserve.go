@@ -25,7 +25,7 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) (evicted uint64, err error
 		reserveSizeChange uint64
 	)
 
-	evictBatch := radius == swarm.MaxPO+1
+	evictBatch := radius == swarm.MaxBins
 	if evictBatch {
 		if err := db.postageRadiusIndex.Delete(item); err != nil {
 			return 0, err
