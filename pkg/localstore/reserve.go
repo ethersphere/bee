@@ -194,10 +194,11 @@ func (db *DB) ComputeReserveSize(startPO uint8) (uint64, error) {
 // depthmonitor using the updated storage depth
 func (db *DB) setReserveSize(size uint64) error {
 	err := db.reserveSize.Put(size)
-	if err == nil {
-		if size > db.reserveCapacity {
-			db.triggerReserveEviction()
-		}
+	if err != nil {
+		return fmt.Errorf("failed updating reserve size: %w", err)
 	}
-	return err
+	if size > db.reserveCapacity {
+		db.triggerReserveEviction()
+	}
+	return nil
 }

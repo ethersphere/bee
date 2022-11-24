@@ -343,7 +343,7 @@ func (db *DB) evictReserve() (totalEvicted uint64, done bool, err error) {
 		return 0, false, err
 	}
 
-	db.logger.Debug("gc: reserve eviction", "reserve-size-start", reserveSizeStart, "target", target)
+	db.logger.Debug("gc: reserve eviction", "reserve_size_start", reserveSizeStart, "target", target)
 
 	if reserveSizeStart <= target {
 		return 0, true, nil
