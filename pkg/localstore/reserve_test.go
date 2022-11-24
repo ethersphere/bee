@@ -397,7 +397,7 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 }
 
 // TestDB_ReserveGC_EvictMaxPO tests that when unreserving a batch at
-// swarm.MaxPO+1 results in the correct behaviour.
+// swarm.MaxBins results in the correct behaviour.
 func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 
 	var (
@@ -447,7 +447,7 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 			if stop {
 				return nil
 			}
-			stop, err = f(item, swarm.MaxPO+1)
+			stop, err = f(item, swarm.MaxBins)
 			if err != nil {
 				return err
 			}
