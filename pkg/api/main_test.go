@@ -13,8 +13,6 @@ import (
 func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(
 		m,
-		goleak.IgnoreTopFunction("net/http.(*persistConn).readLoop"),
-		goleak.IgnoreTopFunction("net/http.(*persistConn).writeLoop"),
 		goleak.IgnoreTopFunction("github.com/rjeczalik/notify.(*nonrecursiveTree).dispatch"),
 		goleak.IgnoreTopFunction("github.com/rjeczalik/notify.(*nonrecursiveTree).internal"),
 	)
