@@ -149,7 +149,7 @@ func (s *Service) pumpWs(conn *websocket.Conn, t string) {
 	defer s.wsWg.Done()
 
 	var (
-		dataC  = make(chan []byte)
+		dataC  = make(chan []byte, 32)
 		gone   = make(chan struct{})
 		topic  = pss.NewTopic(t)
 		ticker = time.NewTicker(s.WsPingPeriod)

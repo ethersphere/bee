@@ -198,6 +198,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		o.beeMode = api.FullMode
 	}
 	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.Logger, transaction, o.BatchStore, o.beeMode, true, true, backend, o.CORSAllowedOrigins)
+	t.Cleanup(closeHandleError(t, s.Close))
 
 	s.SetP2P(o.P2P)
 	s.SetSwarmAddress(&o.Overlay)
@@ -207,8 +208,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	noOpTracer, tracerCloser, _ := tracing.NewTracer(&tracing.Options{
 		Enabled: false,
 	})
-
-	t.Cleanup(func() { _ = tracerCloser.Close() })
+	t.Cleanup(closeHandleError(t, tracerCloser.Close))
 
 	chC := s.Configure(signer, o.Authenticator, noOpTracer, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
@@ -276,6 +276,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		if err != nil {
 			t.Fatalf("dial: %v. url %v", err, u.String())
 		}
+		t.Cleanup(closeHandleError(t, conn.Close))
 	}
 
 	if o.PreventRedirect {
@@ -621,6 +622,14 @@ func TestPostageDirectAndDeferred(t *testing.T) {
 				t.Fatal("chunk was not expected to be present in store")
 			}
 		})
+	}
+}
+
+func closeHandleError(t *testing.T, closeFn func() error) func() {
+	return func() {
+		if err := closeFn(); err != nil {
+			t.Fatalf("failed to gracefully close: %s", err)
+		}
 	}
 }
 

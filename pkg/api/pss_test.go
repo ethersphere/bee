@@ -127,6 +127,7 @@ func TestPssWebsocketMultiHandler(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial: %v. url %v", err, u.String())
 	}
+	t.Cleanup(closeHandleError(t, cl2.Close))
 
 	err = cl.SetReadDeadline(time.Now().Add(longTimeout))
 	if err != nil {
@@ -373,10 +374,10 @@ func newPssTest(t *testing.T, o opts) (pss.Interface, *ecdsa.PublicKey, *websock
 	if err != nil {
 		t.Fatal(err)
 	}
-	var (
-		logger = log.Noop
-		pss    = pss.New(privkey, logger)
-	)
+
+	pss := pss.New(privkey, log.Noop)
+	t.Cleanup(closeHandleError(t, pss.Close))
+
 	if o.pingPeriod == 0 {
 		o.pingPeriod = 10 * time.Second
 	}
@@ -384,9 +385,10 @@ func newPssTest(t *testing.T, o opts) (pss.Interface, *ecdsa.PublicKey, *websock
 		Pss:          pss,
 		WsPath:       "/pss/subscribe/testtopic",
 		Storer:       mock.NewStorer(),
-		Logger:       logger,
+		Logger:       log.Noop,
 		WsPingPeriod: o.pingPeriod,
 	})
+
 	return pss, &privkey.PublicKey, cl, listener
 }
 
