@@ -182,15 +182,12 @@ func (s *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) (txH
 		return
 	}
 
-	receipt, err := s.sendApproveTransaction(ctx, stakedAmount)
-	if receipt != nil {
-		txHash = receipt.TxHash
-	}
+	_, err = s.sendApproveTransaction(ctx, stakedAmount)
 	if err != nil {
 		return
 	}
 
-	receipt, err = s.sendDepositStakeTransaction(ctx, s.owner, stakedAmount, s.overlayNonce)
+	receipt, err := s.sendDepositStakeTransaction(ctx, s.owner, stakedAmount, s.overlayNonce)
 	if receipt != nil {
 		txHash = receipt.TxHash
 	}

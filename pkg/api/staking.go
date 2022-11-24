@@ -50,24 +50,24 @@ func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) 
 	txHash, err := s.stakingContract.DepositStake(r.Context(), paths.Amount)
 	if err != nil {
 		if errors.Is(err, staking.ErrInsufficientStakeAmount) {
-			logger.Debug("insufficient stake amount", "minimum_stake", staking.MinimumStakeAmount, "txHash", txHash, "error", err)
+			logger.Debug("insufficient stake amount", "minimum_stake", staking.MinimumStakeAmount, "error", err)
 			logger.Error(nil, "insufficient stake amount")
 			jsonhttp.BadRequest(w, "insufficient stake amount")
 			return
 		}
 		if errors.Is(err, staking.ErrNotImplemented) {
-			logger.Debug("not implemented", "txHash", txHash, "error", err)
+			logger.Debug("not implemented", "error", err)
 			logger.Error(nil, "not implemented")
 			jsonhttp.NotImplemented(w, "not implemented")
 			return
 		}
 		if errors.Is(err, staking.ErrInsufficientFunds) {
-			logger.Debug("out of funds", "txHash", txHash, "error", err)
+			logger.Debug("out of funds", "error", err)
 			logger.Error(nil, "out of funds")
 			jsonhttp.BadRequest(w, "out of funds")
 			return
 		}
-		logger.Debug("deposit failed", "txHash", txHash, "error", err)
+		logger.Debug("deposit failed", "error", err)
 		logger.Error(nil, "deposit failed")
 		jsonhttp.InternalServerError(w, "cannot stake")
 		return
