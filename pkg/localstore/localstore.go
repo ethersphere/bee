@@ -190,6 +190,7 @@ type DB struct {
 	logger log.Logger
 
 	validStamp postage.ValidStampFn
+	radiusFunc func() uint8
 }
 
 // Options struct holds optional parameters for configuring DB.
@@ -219,6 +220,7 @@ type Options struct {
 	// MetricsPrefix defines a prefix for metrics names.
 	MetricsPrefix string
 	Tags          *tags.Tags
+	RadiusFunc    func() uint8
 }
 
 type memFS struct {
@@ -272,6 +274,7 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 		metrics:                   newMetrics(),
 		logger:                    logger.WithName(loggerName).Register(),
 		validStamp:                o.ValidStamp,
+		radiusFunc:                o.RadiusFunc,
 	}
 	if db.cacheCapacity == 0 {
 		db.cacheCapacity = defaultCacheCapacity

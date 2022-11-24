@@ -344,7 +344,6 @@ func TestPeerDisconnected(t *testing.T) {
 // the tested unit.
 func TestDepthChange(t *testing.T) {
 	t.Parallel()
-	t.Skip("flaky test - needs to be rewritten with a simpler interface")
 
 	var (
 		addr     = test.RandomAddress()
@@ -437,7 +436,7 @@ func TestDepthChange(t *testing.T) {
 				time.Sleep(100 * time.Millisecond)
 			}
 			pullsync.TriggerChange()
-			time.Sleep(time.Second)
+			time.Sleep(100 * time.Millisecond)
 
 			// check the intervals
 			for _, b := range tc.binsSyncing {
