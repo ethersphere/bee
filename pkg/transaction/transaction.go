@@ -270,7 +270,7 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 			return nil, err
 		}
 
-		gasLimit += gasLimit / 5 // add 20% on top
+		gasLimit += gasLimit / 4 // add 25% on top
 
 	} else {
 		gasLimit = request.GasLimit
@@ -313,6 +313,7 @@ func (t *transactionService) suggestedFeeAndTip(ctx context.Context, gasPrice *b
 		if err != nil {
 			return nil, nil, err
 		}
+		gasPrice = new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(boostPercent)+100), gasPrice), big.NewInt(100))
 	}
 
 	gasTipCap, err := t.backend.SuggestGasTipCap(ctx)
@@ -321,7 +322,6 @@ func (t *transactionService) suggestedFeeAndTip(ctx context.Context, gasPrice *b
 	}
 
 	gasTipCap = new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(boostPercent)+100), gasTipCap), big.NewInt(100))
-	gasPrice = new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(boostPercent)+100), gasPrice), big.NewInt(100))
 	gasFeeCap := new(big.Int).Add(gasTipCap, gasPrice)
 
 	t.logger.Debug("prepare transaction", "gas_price", gasPrice, "gas_max_fee", gasFeeCap, "gas_max_tip", gasTipCap)
