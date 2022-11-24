@@ -214,6 +214,13 @@ func TestPinIndexesPutSync(t *testing.T) {
 	}
 	runCountsTest(t, "putSync", db, 1, 1, 0, 1, 1, 0)
 
+	// duplicates should have no effect
+	_, err = db.Put(ctx, storage.ModePutSync, ch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCountsTest(t, "putSync", db, 1, 1, 0, 1, 1, 0)
+
 	err = db.Set(ctx, storage.ModeSetPin, addr)
 	if err != nil {
 		t.Fatal(err)
@@ -249,6 +256,13 @@ func TestPinIndexesPutRequest(t *testing.T) {
 
 	addr := ch.Address()
 	_, err := db.Put(ctx, storage.ModePutRequest, ch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCountsTest(t, "putRequest", db, 1, 1, 0, 1, 1, 0)
+
+	// duplicate should have no effect
+	_, err = db.Put(ctx, storage.ModePutRequest, ch)
 	if err != nil {
 		t.Fatal(err)
 	}
