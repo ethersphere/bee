@@ -79,15 +79,15 @@ func (db *DB) set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Addr
 	case storage.ModeSetRemove:
 		for _, addr := range addrs {
 			item := addressToItem(addr)
-			item, err = db.retrievalDataIndex.Get(item)
+			storedItem, err := db.retrievalDataIndex.Get(item)
 			if err != nil {
 				return err
 			}
-			c, err := db.setRemove(batch, item, true)
+			c, err := db.setRemove(batch, storedItem, true)
 			if err != nil {
 				return err
 			}
-			l, err := sharky.LocationFromBinary(item.Location)
+			l, err := sharky.LocationFromBinary(storedItem.Location)
 			if err != nil {
 				return err
 			}

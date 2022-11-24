@@ -273,6 +273,7 @@ func (db *DB) checkAndRemoveStampIndex(
 			// currently there are stale postageIndexIndex entries in the localstore
 			// due to a bug found recently. This error is mainly ignored as the
 			// chunk is already gone and the index is overwritten.
+			db.logger.Debug("old postage stamp index missing", "Address", swarm.NewAddress(previous.Address))
 			return 0, nil
 		}
 		return 0, fmt.Errorf("could not fetch previous item: %w", err)
