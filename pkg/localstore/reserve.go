@@ -5,6 +5,7 @@
 package localstore
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 
@@ -21,49 +22,35 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) (evicted uint64, err error
 		item = shed.Item{
 			BatchID: id,
 		}
-		batch             = new(leveldb.Batch)
-		oldRadius         uint8
 		reserveSizeChange uint64
 	)
 
-	i, err := db.postageRadiusIndex.Get(item)
-	if err != nil {
-		if !errors.Is(err, leveldb.ErrNotFound) {
+	evictBatch := radius == swarm.MaxPO+1
+	if evictBatch {
+		if err := db.postageRadiusIndex.Delete(item); err != nil {
 			return 0, err
 		}
-		oldRadius = 0
-	} else {
-		oldRadius = i.Radius
 	}
 
 	// iterate over chunk in bins
-	for bin := oldRadius; bin < radius; bin++ {
+	for bin := uint8(0); bin < radius; bin++ {
 		rSizeChange, err := db.unpinBatchChunks(id, bin)
 		if err != nil {
+			db.logger.Debug("unreserve batch", "batch", hex.EncodeToString(id), "bin", bin, "error", err)
 			return 0, err
 		}
 		reserveSizeChange += rSizeChange
 		item.Radius = bin
-		if err := db.postageRadiusIndex.PutInBatch(batch, item); err != nil {
-			return 0, err
-		}
-		if bin == swarm.MaxPO {
-			if err := db.postageRadiusIndex.DeleteInBatch(batch, item); err != nil {
+		if !evictBatch {
+			if err := db.postageRadiusIndex.Put(item); err != nil {
 				return 0, err
 			}
 		}
-		if err := db.shed.WriteBatch(batch); err != nil {
-			return 0, err
-		}
-		batch = new(leveldb.Batch)
 	}
 
-	if radius != swarm.MaxPO+1 {
+	if !evictBatch {
 		item.Radius = radius
-		if err := db.postageRadiusIndex.PutInBatch(batch, item); err != nil {
-			return 0, err
-		}
-		if err := db.shed.WriteBatch(batch); err != nil {
+		if err := db.postageRadiusIndex.Put(item); err != nil {
 			return 0, err
 		}
 	}
