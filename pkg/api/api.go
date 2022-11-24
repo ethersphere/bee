@@ -799,13 +799,10 @@ func (s *Service) newStamperPutter(r *http.Request) (storage.Storer, func() erro
 	}
 
 	if deferred {
-		p, err := newStoringStamperPutter(s.storer, issuer, s.signer, batch)
-		wait := func() error {
-			return save()
-		}
-		return p, wait, err
+		p, err := newStoringStamperPutter(s.storer, issuer, s.signer)
+		return p, save, err
 	}
-	p, err := newPushStamperPutter(s.storer, issuer, s.signer, batch, s.chunkPushC)
+	p, err := newPushStamperPutter(s.storer, issuer, s.signer, s.chunkPushC)
 
 	wait := func() error {
 		if err := save(); err != nil {
@@ -825,7 +822,7 @@ type pushStamperPutter struct {
 	sem     chan struct{}
 }
 
-func newPushStamperPutter(s storage.Storer, i *postage.StampIssuer, signer crypto.Signer, batch []byte, cc chan *pusher.Op) (*pushStamperPutter, error) {
+func newPushStamperPutter(s storage.Storer, i *postage.StampIssuer, signer crypto.Signer, cc chan *pusher.Op) (*pushStamperPutter, error) {
 	stamper := postage.NewStamper(i, signer)
 	return &pushStamperPutter{Storer: s, stamper: stamper, c: cc, sem: make(chan struct{}, uploadSem)}, nil
 }
@@ -887,7 +884,7 @@ type stamperPutter struct {
 	stamper postage.Stamper
 }
 
-func newStoringStamperPutter(s storage.Storer, i *postage.StampIssuer, signer crypto.Signer, batch []byte) (*stamperPutter, error) {
+func newStoringStamperPutter(s storage.Storer, i *postage.StampIssuer, signer crypto.Signer) (*stamperPutter, error) {
 	stamper := postage.NewStamper(i, signer)
 	return &stamperPutter{Storer: s, stamper: stamper}, nil
 }

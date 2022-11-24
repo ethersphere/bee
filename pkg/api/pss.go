@@ -92,7 +92,11 @@ func (s *Service) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	defer func() { _ = save() }()
+	defer func() {
+		if err := save(); err != nil {
+			s.logger.Debug("stamp issuer save", "error", err)
+		}
+	}()
 
 	stamper := postage.NewStamper(i, s.signer)
 
