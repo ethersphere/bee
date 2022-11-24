@@ -626,6 +626,8 @@ func TestPostageDirectAndDeferred(t *testing.T) {
 }
 
 func closeHandleError(t *testing.T, closeFn func() error) func() {
+	t.Helper()
+
 	return func() {
 		if err := closeFn(); err != nil {
 			t.Fatalf("failed to gracefully close: %s", err)
