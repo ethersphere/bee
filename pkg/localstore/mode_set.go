@@ -365,6 +365,10 @@ func (db *DB) setUnpin(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange i
 	item.StoreTimestamp = i.StoreTimestamp
 	item.BinID = i.BinID
 	item.BatchID = i.BatchID
+	err = db.pullIndex.DeleteInBatch(batch, item)
+	if err != nil {
+		return 0, err
+	}
 	_, err = db.pushIndex.Get(item)
 	switch {
 	case err == nil:
@@ -391,10 +395,6 @@ func (db *DB) setUnpin(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange i
 		item.AccessTimestamp = i.AccessTimestamp
 	}
 	err = db.gcIndex.PutInBatch(batch, item)
-	if err != nil {
-		return 0, err
-	}
-	err = db.pullIndex.DeleteInBatch(batch, item)
 	if err != nil {
 		return 0, err
 	}
