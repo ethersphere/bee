@@ -466,11 +466,6 @@ func (db *DB) addToCache(
 	batch *leveldb.Batch,
 	item shed.Item,
 ) (int64, error) {
-
-	err := db.pullIndex.DeleteInBatch(batch, item)
-	if err != nil {
-		return 0, err
-	}
 	// add new entry to gc index ONLY if it is not present in pinIndex
 	ok, err := db.pinIndex.Has(item)
 	if err != nil {
@@ -488,6 +483,10 @@ func (db *DB) addToCache(
 		return 0, nil
 	}
 	err = db.gcIndex.PutInBatch(batch, item)
+	if err != nil {
+		return 0, err
+	}
+	err = db.pullIndex.DeleteInBatch(batch, item)
 	if err != nil {
 		return 0, err
 	}
