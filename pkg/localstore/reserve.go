@@ -172,6 +172,7 @@ func (db *DB) ComputeReserveSize(startPO uint8) (uint64, error) {
 		if err != nil {
 			return 0, fmt.Errorf("failed setting reserve size: %w", err)
 		}
+		db.metrics.ReserveSize.Set(float64(count))
 	}
 
 	return count, err
