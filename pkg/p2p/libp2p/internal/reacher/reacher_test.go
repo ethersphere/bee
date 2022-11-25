@@ -26,6 +26,8 @@ var defaultOptions = reacher.Options{
 }
 
 func TestPingSuccess(t *testing.T) {
+	t.Parallel()
+
 	done := make(chan struct{})
 
 	for _, tc := range []struct {
