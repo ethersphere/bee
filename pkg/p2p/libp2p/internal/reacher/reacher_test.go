@@ -28,23 +28,23 @@ var defaultOptions = reacher.Options{
 func TestPingSuccess(t *testing.T) {
 	t.Parallel()
 
-	done := make(chan struct{})
-
 	for _, tc := range []struct {
 		name          string
 		pingFunc      func(context.Context, ma.Multiaddr) (time.Duration, error)
-		reachableFunc func(addr swarm.Address, got p2p.ReachabilityStatus)
+		reachableFunc func(chan struct{}) func(addr swarm.Address, got p2p.ReachabilityStatus)
 	}{
 		{
 			name: "ping success",
 			pingFunc: func(context.Context, ma.Multiaddr) (time.Duration, error) {
 				return 0, nil
 			},
-			reachableFunc: func(addr swarm.Address, got p2p.ReachabilityStatus) {
-				if got != p2p.ReachabilityStatusPublic {
-					t.Fatalf("got %v, want %v", got, p2p.ReachabilityStatusPublic)
+			reachableFunc: func(done chan struct{}) func(addr swarm.Address, got p2p.ReachabilityStatus) {
+				return func(addr swarm.Address, got p2p.ReachabilityStatus) {
+					if got != p2p.ReachabilityStatusPublic {
+						t.Fatalf("got %v, want %v", got, p2p.ReachabilityStatusPublic)
+					}
+					done <- struct{}{}
 				}
-				done <- struct{}{}
 			},
 		},
 		{
@@ -52,16 +52,21 @@ func TestPingSuccess(t *testing.T) {
 			pingFunc: func(context.Context, ma.Multiaddr) (time.Duration, error) {
 				return 0, errors.New("test error")
 			},
-			reachableFunc: func(addr swarm.Address, got p2p.ReachabilityStatus) {
-				if got != p2p.ReachabilityStatusPrivate {
-					t.Fatalf("got %v, want %v", got, p2p.ReachabilityStatusPrivate)
+			reachableFunc: func(done chan struct{}) func(addr swarm.Address, got p2p.ReachabilityStatus) {
+				return func(addr swarm.Address, got p2p.ReachabilityStatus) {
+					if got != p2p.ReachabilityStatusPrivate {
+						t.Fatalf("got %v, want %v", got, p2p.ReachabilityStatusPrivate)
+					}
+					done <- struct{}{}
 				}
-				done <- struct{}{}
 			},
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			mock := newMock(tc.pingFunc, tc.reachableFunc)
+			t.Parallel()
+
+			done := make(chan struct{})
+			mock := newMock(tc.pingFunc, tc.reachableFunc(done))
 
 			r := reacher.New(mock, mock, &defaultOptions)
 			defer r.Close()
