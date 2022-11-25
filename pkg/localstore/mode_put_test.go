@@ -613,7 +613,10 @@ func TestModePut_SameStamp(t *testing.T) {
 						t.Fatal(err)
 					}
 					_, err = db.Put(ctx, modeTc2, tc.discardChunk)
-					if !errors.Is(err, ErrOverwrite) {
+					if modeTc2 != storage.ModePutSync && !errors.Is(err, ErrOverwrite) {
+						t.Fatal(err)
+					}
+					if modeTc2 == storage.ModePutSync && err != nil {
 						t.Fatal(err)
 					}
 
