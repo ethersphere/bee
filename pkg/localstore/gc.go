@@ -180,6 +180,9 @@ func (db *DB) collectGarbage() (evicted uint64, done bool, err error) {
 		storedItem, err := db.retrievalDataIndex.Get(item)
 		if err != nil {
 			if errors.Is(err, leveldb.ErrNotFound) {
+				if err = db.gcIndex.DeleteInBatch(batch, item); err != nil {
+					return 0, false, err
+				}
 				continue
 			}
 			return 0, false, err
