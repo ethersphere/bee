@@ -116,6 +116,13 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 			// This is a new chunk so add to sharky. Also check for double issuance.
 			gcChange, err := db.checkAndRemoveStampIndex(item, batch, releaseLocs)
 			if err != nil {
+				if errors.Is(err, ErrOverwrite) && mode == storage.ModePutSync {
+					// if the chunk is overwriting a newer valid chunk for the
+					// same postage index, ignore it and dont return error so that
+					// syncing can continue
+					db.logger.Warning("postage stamp index exists, ignoring chunk", "chunk_address", ch.Address())
+					return false, 0, nil
+				}
 				return false, 0, err
 			}
 			l, err := db.sharky.Write(ctx, item.Data)
