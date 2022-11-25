@@ -11,15 +11,17 @@ import (
 
 // metrics groups sharky related prometheus counters.
 type metrics struct {
-	TotalWriteCalls      prometheus.Counter
-	TotalWriteCallsErr   prometheus.Counter
-	TotalReadCalls       prometheus.Counter
-	TotalReadCallsErr    prometheus.Counter
-	TotalReleaseCalls    prometheus.Counter
-	TotalReleaseCallsErr prometheus.Counter
-	ShardCount           prometheus.Gauge
-	CurrentShardSize     *prometheus.GaugeVec
-	ShardFragmentation   *prometheus.GaugeVec
+	TotalWriteCalls        prometheus.Counter
+	TotalWriteCallsErr     prometheus.Counter
+	TotalReadCalls         prometheus.Counter
+	TotalReadCallsErr      prometheus.Counter
+	TotalReleaseCalls      prometheus.Counter
+	TotalReleaseCallsErr   prometheus.Counter
+	ShardCount             prometheus.Gauge
+	CurrentShardSize       *prometheus.GaugeVec
+	ShardFragmentation     *prometheus.GaugeVec
+	LastAllocatedShardSlot *prometheus.GaugeVec
+	LastReleasedShardSlot  *prometheus.GaugeVec
 }
 
 // newMetrics is a convenient constructor for creating new metrics.
@@ -88,6 +90,24 @@ The total fragmentation of the files on disc for current shard. This is obtained
 between actual lengths of chunks and the length of slot.
 			`,
 			}, []string{"shard_fragmentation"},
+		),
+		LastAllocatedShardSlot: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "last_allocated_shard_slot",
+				Help:      "The slot no of the last allocated entry per shard",
+			},
+			[]string{"shard_slot_no"},
+		),
+		LastReleasedShardSlot: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "last_released_shard_slot",
+				Help:      "The slot no of the last released slot",
+			},
+			[]string{"shard_slot_no"},
 		),
 	}
 }
