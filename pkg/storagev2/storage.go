@@ -93,6 +93,7 @@ func (q Query) Validate() error {
 // that can marshal themselves into valid Item.
 type Marshaler interface {
 	Marshal() ([]byte, error)
+	// Values() []interface{}
 }
 
 // Unmarshaler is the interface implemented by types
@@ -123,7 +124,11 @@ type Item interface {
 // Store contains the interfaces required for the Data Abstraction Layer.
 type Store interface {
 	io.Closer
+	store
+	NewTransaction() (Transaction, error)
+}
 
+type store interface {
 	// Get unmarshalls object with the given Item.Key.ID into the given Item.
 	Get(Item) error
 
@@ -146,4 +151,9 @@ type Store interface {
 
 	// Delete removes the given Item form the store.
 	Delete(Item) error
+}
+
+type Transaction interface {
+	store
+	Commit() error
 }

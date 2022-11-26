@@ -10,7 +10,7 @@ import (
 	"sync"
 
 	"github.com/armon/go-radix"
-	"github.com/ethersphere/bee/pkg/storagev2"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/hashicorp/go-multierror"
 )
 
@@ -229,4 +229,45 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 
 func (s *Store) Close() error {
 	return nil
+}
+
+type noOpTrx struct {
+	store *Store
+}
+
+// Delete implements the storage.Store interface.
+func (s *Store) NewTransaction() (storage.Transaction, error) {
+	return &noOpTrx{store: s}, nil
+}
+
+func (t *noOpTrx) Commit() error {
+	return nil
+}
+
+func (t *noOpTrx) Get(item storage.Item) error {
+	return t.store.Get(item)
+}
+
+func (t *noOpTrx) Has(k storage.Key) (bool, error) {
+	return t.store.Has(k)
+}
+
+func (t *noOpTrx) GetSize(k storage.Key) (int, error) {
+	return t.store.GetSize(k)
+}
+
+func (t *noOpTrx) Iterate(q storage.Query, fn storage.IterateFn) error {
+	return t.store.Iterate(q, fn)
+}
+
+func (t *noOpTrx) Count(key storage.Key) (int, error) {
+	return t.store.Count(key)
+}
+
+func (t *noOpTrx) Put(item storage.Item) error {
+	return t.store.Put(item)
+}
+
+func (t *noOpTrx) Delete(item storage.Item) error {
+	return t.store.Delete(item)
 }

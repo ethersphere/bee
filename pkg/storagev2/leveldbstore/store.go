@@ -17,7 +17,7 @@ import (
 	ldbStorage "github.com/syndtr/goleveldb/leveldb/storage"
 	"github.com/syndtr/goleveldb/leveldb/util"
 
-	"github.com/ethersphere/bee/pkg/storagev2"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 )
 
 const separator = "/"
@@ -244,4 +244,54 @@ func (s *Store) Delete(item storage.Item) error {
 	defer s.closeLk.RUnlock()
 
 	return s.db.Delete(key(item), &opt.WriteOptions{Sync: true})
+}
+
+type trx struct {
+	store *Store
+	t     *leveldb.Transaction
+}
+
+func (s *Store) NewTransaction() (storage.Transaction, error) {
+	t, err := s.db.OpenTransaction()
+	if err != nil {
+		return nil, err
+	}
+
+	return &trx{
+		store: s,
+		t:     t,
+	}, nil
+}
+
+func (t *trx) Commit() error {
+	return t.t.Commit()
+}
+
+func (t *trx) Get(item storage.Item) error {
+	return t.store.Get(item)
+}
+
+func (t *trx) Has(k storage.Key) (bool, error) {
+	return t.store.Has(k)
+}
+
+func (t *trx) GetSize(k storage.Key) (int, error) {
+	return t.store.GetSize(k)
+}
+
+func (t *trx) Iterate(q storage.Query, fn storage.IterateFn) error {
+	return t.store.Iterate(q, fn)
+}
+
+func (t *trx) Count(key storage.Key) (int, error) {
+	return t.store.Count(key)
+
+}
+
+func (t *trx) Put(item storage.Item) error {
+	return t.store.Put(item)
+}
+
+func (t *trx) Delete(item storage.Item) error {
+	return t.store.Delete(item)
 }
