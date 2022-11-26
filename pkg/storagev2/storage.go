@@ -79,6 +79,8 @@ type Query struct {
 
 	// Filters represent further constraints on the iteration.
 	Filters []Filter
+
+	Prefix []byte
 }
 
 // Validate checks if the query is a valid query.
@@ -124,11 +126,11 @@ type Item interface {
 // Store contains the interfaces required for the Data Abstraction Layer.
 type Store interface {
 	io.Closer
-	store
-	NewTransaction() (Transaction, error)
+	// Storage
+	NewTransaction(bool) (Transaction, error)
 }
 
-type store interface {
+type Storage interface {
 	// Get unmarshalls object with the given Item.Key.ID into the given Item.
 	Get(Item) error
 
@@ -154,6 +156,6 @@ type store interface {
 }
 
 type Transaction interface {
-	store
+	Storage
 	Commit() error
 }
