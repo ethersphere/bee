@@ -228,6 +228,7 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *
 	l.logger.Debug("batch factor", "value", batchFactor)
 
 	synced := make(chan error, 1)
+	closeOnce := new(sync.Once)
 	paged := make(chan struct{}, 1)
 	paged <- struct{}{}
 
@@ -296,7 +297,7 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *
 				paged <- struct{}{}
 				to = from + blockPage - 1
 			} else {
-				synced <- nil
+				closeOnce.Do(func() { synced <- nil })
 			}
 			l.metrics.BackendCalls.Inc()
 
@@ -329,7 +330,7 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *
 			}
 			l.logger.Error(err, "failed syncing event listener; shutting down node error")
 		}
-		synced <- err
+		closeOnce.Do(func() { synced <- nil })
 		if l.syncingStopped != nil {
 			l.syncingStopped.Signal() // trigger shutdown in start.go
 		}
