@@ -61,10 +61,11 @@ type metrics struct {
 	GCStoreTimeStamps       prometheus.Gauge
 	GCStoreAccessTimeStamps prometheus.Gauge
 
-	ReserveSize              prometheus.Gauge
-	EvictReserveCounter      prometheus.Counter
-	EvictReserveErrorCounter prometheus.Counter
-	TotalTimeEvictReserve    prometheus.Counter
+	ReserveSize                  prometheus.Gauge
+	EvictReserveCounter          prometheus.Counter
+	EvictReserveErrorCounter     prometheus.Counter
+	EvictReserveCollectedCounter prometheus.Counter
+	TotalTimeEvictReserve        prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -372,6 +373,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "evict_reserve_err_count",
 			Help:      "number of times evict reserve got an error",
+		}),
+		EvictReserveCollectedCounter: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "evict_reserve_collected_count",
+			Help:      "number of chunks that have been evicted from reserve",
 		}),
 		TotalTimeEvictReserve: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
