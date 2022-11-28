@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -47,6 +48,7 @@ type Agent struct {
 	blocksPerRound uint64
 	monitor        Monitor
 	contract       redistribution.Contract
+	batchExpirer   postagecontract.PostageBatchExpirer
 	reserve        postage.Storer
 	sampler        storage.Sampler
 	overlay        swarm.Address
@@ -60,6 +62,7 @@ func New(
 	logger log.Logger,
 	monitor Monitor,
 	contract redistribution.Contract,
+	batchExpirer postagecontract.PostageBatchExpirer,
 	reserve postage.Storer,
 	sampler storage.Sampler,
 	blockTime time.Duration, blocksPerRound, blocksPerPhase uint64) *Agent {
@@ -70,6 +73,7 @@ func New(
 		backend:        backend,
 		logger:         logger.WithName(loggerName).Register(),
 		contract:       contract,
+		batchExpirer:   batchExpirer,
 		reserve:        reserve,
 		monitor:        monitor,
 		blocksPerRound: blocksPerRound,
@@ -281,6 +285,11 @@ func (a *Agent) reveal(ctx context.Context, storageRadius uint8, sample, obfusca
 func (a *Agent) claim(ctx context.Context) error {
 	a.metrics.ClaimPhase.Inc()
 	// event claimPhase was processed
+
+	err := a.batchExpirer.ExpireBatches(ctx)
+	if err != nil {
+		return err
+	}
 
 	isWinner, err := a.contract.IsWinner(ctx)
 	if err != nil {

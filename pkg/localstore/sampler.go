@@ -24,7 +24,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-const sampleSize = 16
+const sampleSize = 8
 
 var errDbClosed = errors.New("database closed")
 
@@ -47,7 +47,7 @@ func (s sampleStat) String() string {
 	seconds := int64(time.Second)
 
 	return fmt.Sprintf(
-		"Total: %d NotFound: %d New Ignored: %d Iteration Duration: %d secs GetDuration: %d secs HmacrDuration: %d",
+		"Chunks: %d NotFound: %d New Ignored: %d Iteration Duration: %d secs GetDuration: %d secs HmacrDuration: %d",
 		s.TotalIterated.Load(),
 		s.NotFound.Load(),
 		s.NewIgnored.Load(),
@@ -80,7 +80,7 @@ func (db *DB) ReserveSample(
 	var stat sampleStat
 	logger := db.logger.WithName("sampler").V(1).Register()
 
-	db.logger.Info("starting reserve sample", "storage_radius", storageRadius, "consensus_time_ns", consensusTime)
+	t := time.Now()
 
 	// Phase 1: Iterate chunk addresses
 	g.Go(func() error {
@@ -234,7 +234,8 @@ func (db *DB) ReserveSample(
 		Items: sampleItems,
 		Hash:  swarm.NewAddress(hash),
 	}
-	logger.Info("sampler done", "stats", stat, "sample", sample)
+
+	logger.Info("sampler done", "duration", time.Since(t), "storage_radius", storageRadius, "consensus_time_ns", consensusTime, "stats", stat, "sample", sample)
 
 	return sample, nil
 }
