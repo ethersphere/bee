@@ -6,8 +6,15 @@ package localstore_test
 
 import (
 	"testing"
+
+	"go.uber.org/goleak"
 )
 
 func TestMain(m *testing.M) {
-	// goleak.VerifyTestMain(m)
+	goleak.VerifyTestMain(
+		m,
+		// leveldb implementation does not wait for all goroutines
+		// to finishin when DB gets closed.
+		goleak.IgnoreTopFunction("github.com/syndtr/goleveldb/leveldb.(*DB).mpoolDrain"),
+	)
 }
