@@ -16,4 +16,4 @@ func TestMain(m *testing.M) {
 		goleak.IgnoreTopFunction("github.com/rjeczalik/notify.(*nonrecursiveTree).dispatch"),
 		goleak.IgnoreTopFunction("github.com/rjeczalik/notify.(*nonrecursiveTree).internal"),
 	)
-}
+)
