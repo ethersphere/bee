@@ -6,8 +6,14 @@ package node_test
 
 import (
 	"testing"
+
+	"go.uber.org/goleak"
 )
 
 func TestMain(m *testing.M) {
-	// goleak.VerifyTestMain(m)
+	goleak.VerifyTestMain(
+		m,
+		goleak.IgnoreTopFunction("github.com/rjeczalik/notify.(*nonrecursiveTree).dispatch"),
+		goleak.IgnoreTopFunction("github.com/rjeczalik/notify.(*nonrecursiveTree).internal"),
+	)
 }
