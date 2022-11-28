@@ -103,6 +103,8 @@ func (p *Puller) manage(ctx context.Context, warmupTime time.Duration) {
 
 	p.logger.Info("puller: warmup period complete, worker starting.")
 
+	var prevRadius uint8
+
 	for {
 		select {
 		case <-ctx.Done():
@@ -121,6 +123,12 @@ func (p *Puller) manage(ctx context.Context, warmupTime time.Duration) {
 
 			neighborhoodDepth := p.topology.NeighborhoodDepth()
 			syncRadius := p.reserveState.GetReserveState().StorageRadius
+
+			// if the radius decreases, we must fully resync the bin
+			if syncRadius < prevRadius {
+				p.resetInterval(syncRadius)
+			}
+			prevRadius = syncRadius
 
 			_ = p.topology.EachPeerRev(func(addr swarm.Address, po uint8) (stop, jumpToNext bool, err error) {
 				if po >= neighborhoodDepth {
@@ -352,6 +360,12 @@ func (p *Puller) addPeerInterval(peer swarm.Address, bin uint8, start, end uint6
 	return p.statestore.Put(peerStreamKey, i)
 }
 
+func (p *Puller) resetInterval(bin uint8) error {
+	return p.statestore.Iterate(binIntervalKey(bin), func(key, _ []byte) (stop bool, err error) {
+		return false, p.statestore.Delete(string(key))
+	})
+}
+
 func (p *Puller) nextPeerInterval(peer swarm.Address, bin uint8) (start, end uint64, empty bool, err error) {
 
 	i, err := p.getOrCreateInterval(peer, bin)
@@ -383,8 +397,11 @@ func (p *Puller) getOrCreateInterval(peer swarm.Address, bin uint8) (*intervalst
 }
 
 func peerIntervalKey(peer swarm.Address, bin uint8) string {
-	k := fmt.Sprintf("sync|%s|%d", peer.ByteString(), bin)
-	return k
+	return fmt.Sprintf("sync|%d|%s", bin, peer.ByteString())
+}
+
+func binIntervalKey(bin uint8) string {
+	return fmt.Sprintf("sync|%d", bin)
 }
 
 type syncPeer struct {
