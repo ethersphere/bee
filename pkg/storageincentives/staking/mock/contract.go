@@ -6,17 +6,18 @@ package mock
 
 import (
 	"context"
+	"github.com/ethereum/go-ethereum/common"
 	"math/big"
 
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 )
 
 type stakingContractMock struct {
-	depositStake func(ctx context.Context, stakedAmount *big.Int) error
+	depositStake func(ctx context.Context, stakedAmount *big.Int) (common.Hash, error)
 	getStake     func(ctx context.Context) (*big.Int, error)
 }
 
-func (s *stakingContractMock) DepositStake(ctx context.Context, stakedAmount *big.Int) error {
+func (s *stakingContractMock) DepositStake(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
 	return s.depositStake(ctx, stakedAmount)
 }
 
@@ -38,7 +39,7 @@ func New(opts ...Option) staking.Contract {
 	return bs
 }
 
-func WithDepositStake(f func(ctx context.Context, stakedAmount *big.Int) error) Option {
+func WithDepositStake(f func(ctx context.Context, stakedAmount *big.Int) (common.Hash, error)) Option {
 	return func(mock *stakingContractMock) {
 		mock.depositStake = f
 	}

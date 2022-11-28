@@ -68,6 +68,7 @@ func (b hexByte) MarshalJSON() ([]byte, error) {
 
 type postageCreateResponse struct {
 	BatchID hexByte `json:"batchID"`
+	TxHash  string  `json:"txHash"`
 }
 
 func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
@@ -90,7 +91,7 @@ func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	batchID, err := s.postageContract.CreateBatch(
+	txHash, batchID, err := s.postageContract.CreateBatch(
 		r.Context(),
 		paths.Amount,
 		paths.Depth,
@@ -124,6 +125,7 @@ func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 
 	jsonhttp.Created(w, &postageCreateResponse{
 		BatchID: batchID,
+		TxHash:  txHash.String(),
 	})
 }
 
@@ -271,7 +273,7 @@ func (s *Service) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.R
 	}
 	hexBatchID := hex.EncodeToString(paths.BatchID)
 
-	issuer, err := s.post.GetStampIssuer(paths.BatchID)
+	issuer, save, err := s.post.GetStampIssuer(paths.BatchID)
 	if err != nil {
 		logger.Debug("get stamp issuer: get issuer failed", "batch_id", hexBatchID, "error", err)
 		logger.Error(nil, "get stamp issuer: get issuer failed")
@@ -285,6 +287,11 @@ func (s *Service) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.R
 		}
 		return
 	}
+	defer func() {
+		if err := save(); err != nil {
+			s.logger.Debug("stamp issuer save", "error", err)
+		}
+	}()
 
 	b := issuer.Buckets()
 	resp := postageStampBucketsResponse{
@@ -461,7 +468,7 @@ func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	hexBatchID := hex.EncodeToString(paths.BatchID)
 
-	err := s.postageContract.TopUpBatch(r.Context(), paths.BatchID, paths.Amount)
+	txHash, err := s.postageContract.TopUpBatch(r.Context(), paths.BatchID, paths.Amount)
 	if err != nil {
 		if errors.Is(err, postagecontract.ErrInsufficientFunds) {
 			logger.Debug("topup batch: out of funds", "batch_id", hexBatchID, "amount", paths.Amount, "error", err)
@@ -483,6 +490,7 @@ func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 
 	jsonhttp.Accepted(w, &postageCreateResponse{
 		BatchID: paths.BatchID,
+		TxHash:  txHash.String(),
 	})
 }
 
@@ -499,7 +507,7 @@ func (s *Service) postageDiluteHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	hexBatchID := hex.EncodeToString(paths.BatchID)
 
-	err := s.postageContract.DiluteBatch(r.Context(), paths.BatchID, paths.Depth)
+	txHash, err := s.postageContract.DiluteBatch(r.Context(), paths.BatchID, paths.Depth)
 	if err != nil {
 		if errors.Is(err, postagecontract.ErrInvalidDepth) {
 			logger.Debug("dilute batch: invalid depth", "error", err)
@@ -508,7 +516,7 @@ func (s *Service) postageDiluteHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if errors.Is(err, postagecontract.ErrNotImplemented) {
-			logger.Debug("dilute batch: not implemented", "error", err)
+			logger.Debug("dilute batch: not implemented", "error")
 			logger.Error(nil, "dilute batch: not implemented")
 			jsonhttp.NotImplemented(w, nil)
 			return
@@ -521,5 +529,6 @@ func (s *Service) postageDiluteHandler(w http.ResponseWriter, r *http.Request) {
 
 	jsonhttp.Accepted(w, &postageCreateResponse{
 		BatchID: paths.BatchID,
+		TxHash:  txHash.String(),
 	})
 }

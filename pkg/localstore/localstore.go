@@ -677,14 +677,6 @@ func (db *DB) safeInit(rootPath, sharkyBasePath string) error {
 	return nil
 }
 
-func (db *DB) ReserveSize() (uint64, error) {
-	return db.reserveSize.Get()
-}
-
-func (db *DB) ReserveCapacity() uint64 {
-	return db.reserveCapacity
-}
-
 // Close closes the underlying database.
 func (db *DB) Close() error {
 	close(db.close)
