@@ -306,6 +306,7 @@ func (db *DB) reserveEvictionWorker() {
 			if err != nil {
 				db.logger.Error(err, "evict reserve failed")
 			}
+			db.metrics.EvictReserveCollectedCounter.Add(float64(evictedCount))
 
 			if !done {
 				db.triggerReserveEviction()

@@ -73,10 +73,9 @@ var unpinBatchSize = 10000
 func (db *DB) unpinBatchChunks(id []byte, bin uint8) (uint64, error) {
 	loggerV1 := db.logger.V(1).Register()
 	var (
-		batch                  = new(leveldb.Batch)
-		gcSizeChange           int64 // number to add or subtract from gcSize and reserveSize
-		reserveSizeChange      uint64
-		totalReserveSizeChange uint64
+		batch             = new(leveldb.Batch)
+		gcSizeChange      int64 // number to add or subtract from gcSize and reserveSize
+		totalGCSizeChange int64
 	)
 	unpin := func(item shed.Item) (stop bool, err error) {
 		addr := swarm.NewAddress(item.Address)
@@ -88,13 +87,6 @@ func (db *DB) unpinBatchChunks(id []byte, bin uint8) (uint64, error) {
 			// this is possible when we are resyncing chain data after
 			// a dirty shutdown
 			loggerV1.Debug("unreserve set unpin chunk failed", "chunk", addr, "error", err)
-		} else {
-			// we need to do this because a user might pin a chunk on top of
-			// the reserve pinning. when we unpin due to an unreserve call, then
-			// we should logically deduct the chunk anyway from the reserve size
-			// otherwise the reserve size leaks, since c returned from setUnpin
-			// will be zero.
-			reserveSizeChange++
 		}
 
 		gcSizeChange += c
@@ -130,16 +122,15 @@ func (db *DB) unpinBatchChunks(id []byte, bin uint8) (uint64, error) {
 			return 0, err
 		}
 		batch = new(leveldb.Batch)
+		totalGCSizeChange += gcSizeChange
 		gcSizeChange = 0
-		totalReserveSizeChange += reserveSizeChange
-		reserveSizeChange = 0
 
 		if !more {
 			break
 		}
 	}
 
-	return totalReserveSizeChange, nil
+	return uint64(totalGCSizeChange), nil
 }
 
 func withinRadius(db *DB, item shed.Item) bool {
