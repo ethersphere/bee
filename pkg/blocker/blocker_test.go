@@ -9,13 +9,12 @@ import (
 	"testing"
 	"time"
 
-	"go.uber.org/goleak"
-
-	"github.com/ethersphere/bee/pkg/blocker"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
+
+	"github.com/ethersphere/bee/pkg/blocker"
 )
 
 const (
@@ -36,8 +35,6 @@ func TestMain(m *testing.M) {
 	*blocker.SequencerResolution = sequencerResolution
 
 	os.Exit(m.Run())
-
-	goleak.VerifyTestMain(m)
 }
 
 func TestBlocksAfterFlagTimeout(t *testing.T) {
