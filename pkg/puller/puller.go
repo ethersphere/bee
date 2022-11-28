@@ -126,7 +126,10 @@ func (p *Puller) manage(ctx context.Context, warmupTime time.Duration) {
 
 			// if the radius decreases, we must fully resync the bin
 			if syncRadius < prevRadius {
-				p.resetInterval(syncRadius)
+				err := p.resetInterval(syncRadius)
+				if err != nil {
+					p.logger.Error(err, "reset lower sync radius")
+				}
 			}
 			prevRadius = syncRadius
 
