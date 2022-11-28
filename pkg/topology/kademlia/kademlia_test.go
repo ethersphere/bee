@@ -1438,6 +1438,7 @@ func TestLatency(t *testing.T) {
 	}
 	t.Cleanup(closeHandler(t, kad.Close))
 
+
 	pk, _ := beeCrypto.GenerateSecp256k1Key()
 	signer := beeCrypto.NewDefaultSigner(pk)
 	addOne(t, signer, kad, ab, p1)
