@@ -271,12 +271,14 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 
 	chainEnabled := isChainEnabled(o, o.BlockchainRpcEndpoint, logger)
 
+	logger.Info("using network id", "network_id", networkID)
+
 	var batchStore postage.Storer = new(postage.NoOpBatchStore)
 	var unreserveFn func([]byte, uint8) (uint64, error)
 
 	if chainEnabled {
 		var evictFn = func(b []byte) error {
-			_, err := unreserveFn(b, swarm.MaxPO+1)
+			_, err := unreserveFn(b, swarm.MaxBins)
 			return err
 		}
 		batchStore, err = batchstore.New(stateStore, evictFn, logger)
@@ -681,7 +683,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	var postageSyncStart uint64 = 0
 
 	chainCfg, found := config.GetChainConfig(chainID)
-	postageContractAddress, startBlock := chainCfg.PostageStamp, chainCfg.StartBlock
+	postageContractAddress, startBlock := chainCfg.PostageStamp, chainCfg.PostageStampStartBlock
 	if o.PostageContractAddress != "" {
 		if !common.IsHexAddress(o.PostageContractAddress) {
 			return nil, errors.New("malformed postage stamp address")
@@ -927,7 +929,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	pusherService := pusher.New(networkID, storer, kad, pushSyncProtocol, validStamp, tagService, logger, tracer, warmupTime, pusher.DefaultRetryCount)
 	b.pusherCloser = pusherService
 
-	pullStorage := pullstorage.New(storer)
+	pullStorage := pullstorage.New(storer, logger)
 
 	pullSyncProtocol := pullsync.New(p2ps, pullStorage, pssService.TryUnwrap, validStamp, logger)
 	b.pullSyncCloser = pullSyncProtocol
@@ -988,7 +990,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 			}
 
 			redistributionContract := redistribution.New(swarmAddress, logger, transactionService, redistributionAddress)
-			agent = storageincentives.New(swarmAddress, chainBackend, logger, depthMonitor, redistributionContract, batchStore, storer, o.BlockTime, storageincentives.DefaultBlocksPerRound, storageincentives.DefaultBlocksPerPhase)
+			agent = storageincentives.New(swarmAddress, chainBackend, logger, depthMonitor, redistributionContract, postageContractService, batchStore, storer, o.BlockTime, storageincentives.DefaultBlocksPerRound, storageincentives.DefaultBlocksPerPhase)
 			b.storageIncetivesCloser = agent
 		}
 	}
