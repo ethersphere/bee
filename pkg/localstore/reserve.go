@@ -5,6 +5,7 @@
 package localstore
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 
@@ -21,49 +22,35 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) (evicted uint64, err error
 		item = shed.Item{
 			BatchID: id,
 		}
-		batch             = new(leveldb.Batch)
-		oldRadius         uint8
 		reserveSizeChange uint64
 	)
 
-	i, err := db.postageRadiusIndex.Get(item)
-	if err != nil {
-		if !errors.Is(err, leveldb.ErrNotFound) {
+	evictBatch := radius == swarm.MaxBins
+	if evictBatch {
+		if err := db.postageRadiusIndex.Delete(item); err != nil {
 			return 0, err
 		}
-		oldRadius = 0
-	} else {
-		oldRadius = i.Radius
 	}
 
 	// iterate over chunk in bins
-	for bin := oldRadius; bin < radius; bin++ {
+	for bin := uint8(0); bin < radius; bin++ {
 		rSizeChange, err := db.unpinBatchChunks(id, bin)
 		if err != nil {
+			db.logger.Debug("unreserve batch", "batch", hex.EncodeToString(id), "bin", bin, "error", err)
 			return 0, err
 		}
 		reserveSizeChange += rSizeChange
 		item.Radius = bin
-		if err := db.postageRadiusIndex.PutInBatch(batch, item); err != nil {
-			return 0, err
-		}
-		if bin == swarm.MaxPO {
-			if err := db.postageRadiusIndex.DeleteInBatch(batch, item); err != nil {
+		if !evictBatch {
+			if err := db.postageRadiusIndex.Put(item); err != nil {
 				return 0, err
 			}
 		}
-		if err := db.shed.WriteBatch(batch); err != nil {
-			return 0, err
-		}
-		batch = new(leveldb.Batch)
 	}
 
-	if radius != swarm.MaxPO+1 {
+	if !evictBatch {
 		item.Radius = radius
-		if err := db.postageRadiusIndex.PutInBatch(batch, item); err != nil {
-			return 0, err
-		}
-		if err := db.shed.WriteBatch(batch); err != nil {
+		if err := db.postageRadiusIndex.Put(item); err != nil {
 			return 0, err
 		}
 	}
@@ -139,11 +126,6 @@ func (db *DB) unpinBatchChunks(id []byte, bin uint8) (uint64, error) {
 				return 0, err
 			}
 		}
-		if reserveSizeChange > 0 {
-			if err := db.incReserveSizeInBatch(batch, -int64(reserveSizeChange)); err != nil {
-				return 0, err
-			}
-		}
 		if err := db.shed.WriteBatch(batch); err != nil {
 			return 0, err
 		}
@@ -165,6 +147,11 @@ func withinRadius(db *DB, item shed.Item) bool {
 	return po >= item.Radius
 }
 
+// ReserveCapacity returns the configured capacity
+func (db *DB) ReserveCapacity() uint64 {
+	return db.reserveCapacity
+}
+
 // ComputeReserveSize iterates on the pull index to count all chunks
 // starting at some proximity order with an generated address whose PO
 // is used as a starting prefix by the index.
@@ -180,6 +167,26 @@ func (db *DB) ComputeReserveSize(startPO uint8) (uint64, error) {
 			Address: db.addressInBin(startPO).Bytes(),
 		},
 	})
+	if err == nil {
+		err = db.setReserveSize(count)
+		if err != nil {
+			return 0, fmt.Errorf("failed setting reserve size: %w", err)
+		}
+		db.metrics.ReserveSize.Set(float64(count))
+	}
 
 	return count, err
+}
+
+// SetReserveSize will update the localstore reserve size as calculated by the
+// depthmonitor using the updated storage depth
+func (db *DB) setReserveSize(size uint64) error {
+	err := db.reserveSize.Put(size)
+	if err != nil {
+		return fmt.Errorf("failed updating reserve size: %w", err)
+	}
+	if size > db.reserveCapacity {
+		db.triggerReserveEviction()
+	}
+	return nil
 }
