@@ -43,7 +43,7 @@ func TestReserveSampler(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Run("reserve size", reserveSizeTest(db, chunkCountPerPO*maxPO, 0))
+	t.Run("reserve size", reserveSizeTest(db, chunkCountPerPO*maxPO))
 
 	var sample1 storage.Sample
 
@@ -80,7 +80,7 @@ func TestReserveSampler(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Run("reserve size", reserveSizeTest(db, 2*chunkCountPerPO*maxPO, 0))
+	t.Run("reserve size", reserveSizeTest(db, 2*chunkCountPerPO*maxPO))
 
 	// Now we generate another sample with the older timestamp. This should give us
 	// the exact same sample, ensuring that none of the later chunks were considered.

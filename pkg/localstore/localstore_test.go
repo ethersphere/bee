@@ -496,11 +496,11 @@ func newIndexGCSizeTest(db *DB) func(t *testing.T) {
 
 // reserveSizeTest checks that the reserveSize scalar is equal
 // to the expected value.
-func reserveSizeTest(db *DB, want uint64, depth uint8) func(t *testing.T) {
+func reserveSizeTest(db *DB, want uint64) func(t *testing.T) {
 	return func(t *testing.T) {
 		t.Helper()
 
-		got, err := db.ComputeReserveSize(depth)
+		got, err := db.ComputeReserveSize()
 		if err != nil {
 			t.Fatal(err)
 		}
