@@ -16,5 +16,6 @@ func TestMain(m *testing.M) {
 		goleak.IgnoreTopFunction("github.com/rjeczalik/notify.(*nonrecursiveTree).dispatch"),
 		goleak.IgnoreTopFunction("github.com/rjeczalik/notify.(*nonrecursiveTree).internal"),
 		goleak.IgnoreTopFunction("github.com/ipfs/go-log/writer.(*MirrorWriter).logRoutine"),
+		goleak.IgnoreTopFunction("github.com/libp2p/go-cidranger/net.NetworkNumber.LeastCommonBitPosition"),
 	)
 }
