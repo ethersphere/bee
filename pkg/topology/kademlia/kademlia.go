@@ -1643,6 +1643,12 @@ func (k *Kad) Halt() {
 
 // Close shuts down kademlia.
 func (k *Kad) Close() error {
+	select {
+	case <-k.quit:
+		return nil
+	default:
+	}
+
 	k.logger.Info("kademlia shutting down")
 	close(k.quit)
 	_ = k.blocker.Close()

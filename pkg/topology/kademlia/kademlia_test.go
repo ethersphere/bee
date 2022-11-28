@@ -985,11 +985,7 @@ func TestClosestPeer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		if err := metricsDB.Close(); err != nil {
-			t.Fatal(err)
-		}
-	})
+	t.Cleanup(closeHandler(t, metricsDB.Close))
 
 	_ = waitPeers
 	t.Skip("disabled due to kademlia inconsistencies hotfix")
@@ -1021,9 +1017,7 @@ func TestClosestPeer(t *testing.T) {
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		kad.Close()
-	})
+	t.Cleanup(closeHandler(t, kad.Close))
 
 	pk, _ := beeCrypto.GenerateSecp256k1Key()
 	for _, v := range connectedPeers {
@@ -1431,11 +1425,7 @@ func TestLatency(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		if err := metricsDB.Close(); err != nil {
-			t.Fatal(err)
-		}
-	})
+	t.Cleanup(closeHandler(t, metricsDB.Close))
 
 	kad, err := kademlia.New(base, ab, disc, p2pMock(ab, nil, nil, nil), ppm, metricsDB, logger, kademlia.Options{
 		PeerPingPollTime: ptrDuration(1 * time.Second),
@@ -1446,9 +1436,7 @@ func TestLatency(t *testing.T) {
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		kad.Close()
-	})
+	t.Cleanup(closeHandler(t, kad.Close))
 
 	pk, _ := beeCrypto.GenerateSecp256k1Key()
 	signer := beeCrypto.NewDefaultSigner(pk)
@@ -1599,9 +1587,7 @@ func TestAnnounceBgBroadcast(t *testing.T) {
 
 	// All background broadcasts will be cancelled on Close. Ensure that the BroadcastPeers
 	// call gets the context cancellation
-	if err := kad.Close(); err != nil {
-		t.Fatal(err)
-	}
+	closeHandler(t, kad.Close)()
 
 	select {
 	case <-bgDone:
@@ -1753,6 +1739,16 @@ func TestIteratorOpts(t *testing.T) {
 	})
 }
 
+func closeHandler(t *testing.T, closeFn func() error) func() {
+	t.Helper()
+
+	return func() {
+		if err := closeFn(); err != nil {
+			t.Fatalf("failed to gracefully close: %s", err)
+		}
+	}
+}
+
 type boolgen struct {
 	src       rand.Source
 	cache     int64
@@ -1849,11 +1845,8 @@ func newTestKademliaWithAddrDiscovery(
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		if err := metricsDB.Close(); err != nil {
-			t.Fatal(err)
-		}
-	})
+	t.Cleanup(closeHandler(t, metricsDB.Close))
+
 	var (
 		pk, _  = beeCrypto.GenerateSecp256k1Key()                    // random private key
 		signer = beeCrypto.NewDefaultSigner(pk)                      // signer
@@ -1868,9 +1861,7 @@ func newTestKademliaWithAddrDiscovery(
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		kad.Close()
-	})
+	t.Cleanup(closeHandler(t, kad.Close))
 
 	p2p.SetPickyNotifier(kad)
 
