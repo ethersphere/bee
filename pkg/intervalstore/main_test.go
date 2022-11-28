@@ -6,7 +6,7 @@ package intervalstore_test
 
 import (
 	"testing"
-  
+
 	"go.uber.org/goleak"
 )
 
