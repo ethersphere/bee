@@ -5,13 +5,13 @@ on:
     types: [trigger-beekeeper, beekeeper]
   pull_request:
     branches:
-      - '**'
+      - "**"
 
 env:
-  K3S_VERSION: "v1.20.15+k3s1"
+  K3S_VERSION: "v1.21.14+k3s1"
   REPLICA: 3
   RUN_TYPE: "PR RUN"
-  SETUP_CONTRACT_IMAGE_TAG: "0.2.0"
+  SETUP_CONTRACT_IMAGE_TAG: "0.9.4"
   BEELOCAL_BRANCH: "main"
   BEEKEEPER_BRANCH: "master"
   BEEKEEPER_METRICS_ENABLED: false
@@ -58,13 +58,13 @@ jobs:
           mv dist/bee bee-0
       - name: Apply patches and build - 1
         run: |
-          patch pkg/postage/postagecontract/contract.go .github/patches/postagecontract.patch
-          patch pkg/postage/service.go .github/patches/postageservice.patch
+          # patch pkg/postage/postagecontract/contract.go .github/patches/postagecontract.patch
+          # patch pkg/postage/service.go .github/patches/postageservice.patch
           make binary
           mv dist/bee bee-1
       - name: Apply patches and build - 2
         run: |
-          patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve_gc.patch
+          # patch pkg/postage/batchstore/reserve.go .github/patches/postagereserve_gc.patch
           make binary
           mv dist/bee bee-2
       - name: Install beekeeper
@@ -98,7 +98,7 @@ jobs:
           path: |
             /tmp/k3s-${{ env.K3S_VERSION }}-v3
           key: k3s-${{ env.K3S_VERSION }}-v3
-      - name: 'Download Artifact'
+      - name: "Download Artifact"
         uses: actions/download-artifact@v3
         with:
           name: temp-artifacts
@@ -111,8 +111,7 @@ jobs:
           sudo mv beekeeper /usr/local/bin/beekeeper
       - name: Prepare local cluster
         run: |
-          timeout ${TIMEOUT} make beelocal OPTS='ci skip-vet'
-          timeout ${TIMEOUT} make beelocal ACTION=add-hosts
+          timeout ${TIMEOUT} make beelocal OPTS='ci skip-vet' ACTION=prepare
       - name: Set kube config
         run: |
           mkdir -p ~/.kube
@@ -199,7 +198,7 @@ jobs:
           path: |
             /tmp/k3s-${{ env.K3S_VERSION }}-v3
           key: k3s-${{ env.K3S_VERSION }}-v3
-      - name: 'Download Artifact'
+      - name: "Download Artifact"
         uses: actions/download-artifact@v3
         with:
           name: temp-artifacts
@@ -212,8 +211,7 @@ jobs:
           sudo mv beekeeper /usr/local/bin/beekeeper
       - name: Prepare testing cluster (Node connection and clef enabled)
         run: |
-          timeout ${TIMEOUT} make beelocal OPTS='ci skip-vet'
-          timeout ${TIMEOUT} make beelocal ACTION=add-hosts
+          timeout ${TIMEOUT} make beelocal OPTS='ci skip-vet' ACTION=prepare
       - name: Set kube config
         run: |
           mkdir -p ~/.kube
@@ -264,7 +262,7 @@ jobs:
           path: |
             /tmp/k3s-${{ env.K3S_VERSION }}-v3
           key: k3s-${{ env.K3S_VERSION }}-v3
-      - name: 'Download Artifact'
+      - name: "Download Artifact"
         uses: actions/download-artifact@v3
         with:
           name: temp-artifacts
@@ -277,21 +275,21 @@ jobs:
           sudo mv beekeeper /usr/local/bin/beekeeper
       - name: Prepare testing cluster (storage incentives setup)
         run: |
-          timeout ${TIMEOUT} make beelocal OPTS='ci skip-vet'
+          timeout ${TIMEOUT} make beelocal OPTS='ci skip-vet' ACTION=prepare
       - name: Set kube config
         run: |
           mkdir -p ~/.kube
           cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
       - name: Set testing cluster (storage incentives setup)
         run: |
-          timeout ${TIMEOUT} make beelocal ACTION=add-hosts
           timeout ${TIMEOUT} make deploylocal BEEKEEPER_CLUSTER=local-gc
       - name: Test pingpong
         id: pingpong
         run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-gc --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done'
-      - name: Test gc
-        id: gc-chunk
-        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-gc --checks=ci-gc
+      # GC test requires custom patches which no longer work with the contract
+      # - name: Test gc
+      #   id: gc-chunk
+      #   run: timeout ${TIMEOUT} beekeeper check --cluster-name local-gc --checks=ci-gc
       - name: Debug workflow if failed
         if: failure()
         run: |
@@ -321,7 +319,7 @@ jobs:
     needs: [beekeeper, beekeeper-si, beekeeper-clef]
     runs-on: ubuntu-latest
     steps:
-      - name: 'Download Artifact'
+      - name: "Download Artifact"
         uses: actions/download-artifact@v3
         with:
           name: temp-artifacts

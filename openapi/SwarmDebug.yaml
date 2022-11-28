@@ -1019,6 +1019,44 @@ paths:
         default:
           description: Default response
 
+  "/stake/{amount}":
+    post:
+      summary: Deposit some amount for staking.
+      description: Be aware, this endpoint creates an on-chain transactions and transfers BZZ from the node's Ethereum account and hence directly manipulates the wallet balance.
+      tags:
+        - Staking
+      parameters:
+        - in: path
+          name: amount
+          schema:
+            type: string
+          description: Amount of BZZ added that will be deposited for staking.
+        - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
+      responses:
+        "200":
+          $ref: "SwarmCommon.yaml#/components/schemas/StakeDepositResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+
+  "/stake":
+    get:
+      summary: Get the staked amount.
+      description: This endpoint fetches the staked amount from the blockchain.
+      tags:
+        - Staking
+      responses:
+        "200":
+          $ref: "SwarmCommon.yaml#/components/schemas/GetStakeResponse"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+
   "/loggers":
     get:
       summary: Get all available loggers.

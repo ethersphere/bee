@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	chaincfg "github.com/ethersphere/bee/pkg/config"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
@@ -89,7 +90,7 @@ func checkBalance(
 			} else {
 				logger.Warning("cannot continue until there is at least min BZZ available on address", "min_bzz_amount", neededERC20, "address", overlayEthAddress)
 			}
-			if chainId == 5 {
+			if chainId == chaincfg.TestnetChainID {
 				logger.Warning("learn how to fund your node by visiting our docs at https://docs.ethswarm.org/docs/installation/fund-your-node")
 			}
 			select {

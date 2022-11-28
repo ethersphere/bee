@@ -29,7 +29,7 @@ const loggerName = "puller"
 
 var errCursorsLength = errors.New("cursors length mismatch")
 
-const DefaultSyncErrorSleepDur = time.Second * 5
+const DefaultSyncErrorSleepDur = time.Second * 30
 
 type Options struct {
 	Bins         uint8
@@ -148,7 +148,7 @@ func (p *Puller) manage(ctx context.Context, warmupTime time.Duration) {
 // disconnectPeer cancels all existing syncing and removes the peer entry from the syncing map.
 // Must be called under lock.
 func (p *Puller) disconnectPeer(addr swarm.Address, po uint8) {
-	loggerV2 := p.logger
+	loggerV2 := p.logger.V(2).Register()
 
 	loggerV2.Debug("puller disconnect cleanup peer", "peer_address", addr, "proximity_order", po)
 	if peer, ok := p.syncPeers[po][addr.ByteString()]; ok {
@@ -161,8 +161,6 @@ func (p *Puller) disconnectPeer(addr swarm.Address, po uint8) {
 // recalcPeers starts or stops syncing process for peers per bin depending on the current sync radius.
 // Must be called under lock.
 func (p *Puller) recalcPeers(ctx context.Context, syncRadius uint8) {
-	loggerV2 := p.logger
-
 	for _, peers := range p.syncPeers {
 		for _, peer := range peers {
 			peer.Lock()
@@ -171,7 +169,7 @@ func (p *Puller) recalcPeers(ctx context.Context, syncRadius uint8) {
 			}
 			err := p.syncPeer(ctx, peer, syncRadius)
 			if err != nil {
-				loggerV2.Error(err, "recalc peers sync failed", "bin", syncRadius, "peer", peer.address)
+				p.logger.Error(err, "recalc peers sync failed", "bin", syncRadius, "peer", peer.address)
 			}
 			peer.Unlock()
 		}
@@ -216,14 +214,14 @@ func (p *Puller) syncPeerBin(ctx context.Context, peer *syncPeer, bin uint8, cur
 }
 
 func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uint8, cur uint64) {
-	loggerV2 := p.logger
+	loggerV2 := p.logger.V(2).Register()
 
 	defer p.wg.Done()
 	defer p.metrics.HistWorkerDoneCounter.Inc()
 
 	sleep := false
 
-	p.logger.Debug("histSyncWorker starting", "peer_address", peer, "bin", bin, "cursor", cur)
+	loggerV2.Debug("histSyncWorker starting", "peer_address", peer, "bin", bin, "cursor", cur)
 
 	for {
 		p.metrics.HistWorkerIterCounter.Inc()
@@ -248,7 +246,7 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 		s, _, _, err := p.nextPeerInterval(peer, bin)
 		if err != nil {
 			p.metrics.HistWorkerErrCounter.Inc()
-			p.logger.Error(err, "histSyncWorker nextPeerInterval failed")
+			p.logger.Error(err, "histSyncWorker nextPeerInterval failed, quitting...")
 			return
 		}
 		if s > cur {
@@ -259,29 +257,24 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 		if err != nil {
 			p.metrics.HistWorkerErrCounter.Inc()
 			p.logger.Error(err, "histSyncWorker syncing interval failed", "peer_address", peer, "bin", bin, "cursor", cur, "start", s, "topmost", top)
-		}
-		if top == 0 {
-			// we did not receive an offer from the peer
-			// this is due to a connection error, read interval timing out, or peer disconnecting
-			// as such only for this case the sync sleeps before a new attempt
 			sleep = true
-		} else {
-			err = p.addPeerInterval(peer, bin, s, top)
-			if err != nil {
-				p.metrics.HistWorkerErrCounter.Inc()
-				p.logger.Error(err, "histSyncWorker could not persist interval for peer, quitting...", "peer_address", peer)
-				return
-			}
-			loggerV2.Debug("histSyncWorker pulled", "bin", bin, "start", s, "topmost", top, "peer_address", peer)
+			continue
 		}
+		err = p.addPeerInterval(peer, bin, s, top)
+		if err != nil {
+			p.metrics.HistWorkerErrCounter.Inc()
+			p.logger.Error(err, "histSyncWorker could not persist interval for peer, quitting...", "peer_address", peer)
+			return
+		}
+		loggerV2.Debug("histSyncWorker pulled", "bin", bin, "start", s, "topmost", top, "peer_address", peer)
 	}
 }
 
 func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uint8, cur uint64) {
-	loggerV2 := p.logger
+	loggerV2 := p.logger.V(2).Register()
 
 	defer p.wg.Done()
-	p.logger.Debug("liveSyncWorker starting", "peer_address", peer, "bin", bin, "cursor", cur)
+	loggerV2.Debug("liveSyncWorker starting", "peer_address", peer, "bin", bin, "cursor", cur)
 	from := cur + 1
 
 	sleep := false
@@ -310,26 +303,22 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 		if err != nil {
 			p.metrics.LiveWorkerErrCounter.Inc()
 			p.logger.Error(err, "liveSyncWorker sync error", "peer_address", peer, "bin", bin, "from", from, "topmost", top)
+			sleep = true
+			continue
 		}
 		if top == math.MaxUint64 {
 			p.metrics.MaxUintErrCounter.Inc()
-			p.logger.Error(nil, "liveSyncWorker max uint64 encountered", "peer_address", peer, "bin", bin, "from", from, "topmost", top)
+			p.logger.Error(nil, "liveSyncWorker max uint64 encountered, quitting", "peer_address", peer, "bin", bin, "from", from, "topmost", top)
 			return
-		} else if top == 0 {
-			// we did not receive an offer from the peer
-			// this is due to a connection error, read interval timing out, or peer disconnecting
-			// as such only for this case the sync sleeps before a new attempt
-			sleep = true
-		} else {
-			err = p.addPeerInterval(peer, bin, from, top)
-			if err != nil {
-				p.metrics.LiveWorkerErrCounter.Inc()
-				p.logger.Error(err, "liveSyncWorker exit on add peer interval", "peer_address", peer, "bin", bin, "from", from, "error", err)
-				return
-			}
-			loggerV2.Debug("liveSyncWorker pulled bin", "bin", bin, "from", from, "topmost", top, "peer_address", peer)
-			from = top + 1
 		}
+		err = p.addPeerInterval(peer, bin, from, top)
+		if err != nil {
+			p.metrics.LiveWorkerErrCounter.Inc()
+			p.logger.Error(err, "liveSyncWorker exit on add peer interval, quitting", "peer_address", peer, "bin", bin, "from", from, "error", err)
+			return
+		}
+		loggerV2.Debug("liveSyncWorker pulled bin", "bin", bin, "from", from, "topmost", top, "peer_address", peer)
+		from = top + 1
 	}
 }
 
