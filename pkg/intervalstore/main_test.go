@@ -6,6 +6,7 @@ package intervalstore_test
 
 import (
 	"testing"
+<<<<<<< HEAD
 
 	"go.uber.org/goleak"
 )
@@ -17,4 +18,10 @@ func TestMain(m *testing.M) {
 		// to finishin when DB gets closed.
 		goleak.IgnoreTopFunction("github.com/syndtr/goleveldb/leveldb.(*DB).mpoolDrain"),
 	)
+=======
+)
+
+func TestMain(m *testing.M) {
+	// goleak.VerifyTestMain(m)
+>>>>>>> 0bea564f... feat: add go leak check (#3516)
 }
