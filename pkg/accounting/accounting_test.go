@@ -55,13 +55,13 @@ func TestMutex(t *testing.T) {
 	t.Run("locked mutex can not be locked again", func(t *testing.T) {
 		t.Parallel()
 
-		m := accounting.NewMutex()
-		m.Lock()
-
 		var (
-			c  chan struct{}
+			m  = accounting.NewMutex()
+			c  = make(chan struct{}, 1)
 			wg sync.WaitGroup
 		)
+
+		m.Lock()
 
 		wg.Add(1)
 		go func() {
@@ -77,6 +77,9 @@ func TestMutex(t *testing.T) {
 			t.Error("not expected to acquire the lock")
 		case <-time.After(time.Millisecond):
 		}
+
+		m.Unlock()
+		<-c
 	})
 
 	t.Run("can lock after release", func(t *testing.T) {
