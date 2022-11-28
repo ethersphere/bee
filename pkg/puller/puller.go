@@ -383,7 +383,7 @@ func (p *Puller) getOrCreateInterval(peer swarm.Address, bin uint8) (*intervalst
 }
 
 func peerIntervalKey(peer swarm.Address, bin uint8) string {
-	k := fmt.Sprintf("%s|%d", peer.String(), bin)
+	k := fmt.Sprintf("sync|%s|%d", peer.ByteString(), bin)
 	return k
 }
 
