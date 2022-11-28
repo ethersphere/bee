@@ -278,7 +278,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 
 	if chainEnabled {
 		var evictFn = func(b []byte) error {
-			_, err := unreserveFn(b, swarm.MaxPO+1)
+			_, err := unreserveFn(b, swarm.MaxBins)
 			return err
 		}
 		batchStore, err = batchstore.New(stateStore, evictFn, logger)
@@ -658,9 +658,6 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		WriteBufferSize:        o.DBWriteBufferSize,
 		DisableSeeksCompaction: o.DBDisableSeeksCompaction,
 		ValidStamp:             validStamp,
-		RadiusFunc: func() uint8 {
-			return batchStore.GetReserveState().StorageRadius
-		},
 	}
 
 	storer, err := localstore.New(path, swarmAddress.Bytes(), stateStore, lo, logger)
