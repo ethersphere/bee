@@ -1863,6 +1863,7 @@ func newTestKademliaWithAddrDiscovery(
 	}
 	t.Cleanup(closeHandler(t, kad.Close))
 
+
 	p2p.SetPickyNotifier(kad)
 
 	return base, kad, ab, disc, signer

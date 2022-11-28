@@ -302,7 +302,7 @@ func TestIntervalChunks_Localstore(t *testing.T) {
 			}
 
 			ctx := context.Background()
-			_, err := db.Put(ctx, storage.ModePutUpload, chunks...)
+			_, err := db.Put(ctx, storage.ModePutSync, chunks...)
 			if err != nil {
 				t.Fatal(err)
 			}
