@@ -6,17 +6,10 @@ package accounting_test
 
 import (
 	"testing"
-<<<<<<< HEAD
 
 	"go.uber.org/goleak"
 )
 
 func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(m)
-=======
-)
-
-func TestMain(m *testing.M) {
-	// goleak.VerifyTestMain(m)
->>>>>>> 0bea564f... feat: add go leak check (#3516)
 }
