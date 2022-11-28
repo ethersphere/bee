@@ -144,20 +144,11 @@ func (db *DB) ReserveCapacity() uint64 {
 }
 
 // ComputeReserveSize iterates on the pull index to count all chunks
-// starting at some proximity order with an generated address whose PO
-// is used as a starting prefix by the index.
-func (db *DB) ComputeReserveSize(startPO uint8) (uint64, error) {
+func (db *DB) ComputeReserveSize() (uint64, error) {
 
-	var count uint64
+	c, err := db.pullIndex.Count()
+	count := uint64(c)
 
-	err := db.pullIndex.Iterate(func(item shed.Item) (stop bool, err error) {
-		count++
-		return false, nil
-	}, &shed.IterateOptions{
-		StartFrom: &shed.Item{
-			Address: db.addressInBin(startPO).Bytes(),
-		},
-	})
 	if err == nil {
 		err = db.setReserveSize(count)
 		if err != nil {
