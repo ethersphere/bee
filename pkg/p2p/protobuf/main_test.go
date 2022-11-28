@@ -18,4 +18,4 @@ func TestMain(m *testing.M) {
 		goleak.IgnoreTopFunction("io.(*pipe).write"),
 		goleak.IgnoreTopFunction("github.com/ethersphere/bee/pkg/p2p/protobuf_test.newMessageWriter.func1"),
 	)
-}
+)
