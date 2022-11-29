@@ -44,6 +44,12 @@ func (f PutterFunc) Put(ctx context.Context, chunk swarm.Chunk) (bool, error) {
 	return f(ctx, chunk)
 }
 
+type GetterFunc func(context.Context, swarm.Address) (swarm.Chunk, error)
+
+func (f GetterFunc) Get(ctx context.Context, address swarm.Address) (swarm.Chunk, error) {
+	return f(ctx, address)
+}
+
 type IterateChunkFn func(swarm.Chunk) (stop bool, err error)
 
 // ChunkGetterDeleter is a storage that provides
