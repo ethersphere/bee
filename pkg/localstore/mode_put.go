@@ -269,8 +269,8 @@ func (db *DB) checkAndRemoveStampIndex(
 	}
 	// if a chunk is found with the same postage stamp index,
 	// replace it with the new one only if timestamp is later
-	if !later(previous, item) {
-		return 0, ErrOverwrite
+	if prev, cur := timestamps(previous, item); prev > cur {
+		return 0, fmt.Errorf("prev %d new %d: %w", prev, cur, err)
 	}
 
 	// remove older chunk
@@ -526,8 +526,8 @@ func containsChunk(addr swarm.Address, chs ...swarm.Chunk) bool {
 	return false
 }
 
-func later(previous, current shed.Item) bool {
+func timestamps(previous, current shed.Item) (uint64, uint64) {
 	pts := binary.BigEndian.Uint64(previous.Timestamp)
 	cts := binary.BigEndian.Uint64(current.Timestamp)
-	return cts > pts
+	return pts, cts
 }
