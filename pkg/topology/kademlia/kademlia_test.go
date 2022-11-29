@@ -1475,6 +1475,10 @@ func TestBootnodeProtectedNodes(t *testing.T) {
 		})
 	)
 
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
 	// Add maximum accepted number of peers up until bin 5 without problems
 	for i := 0; i < 6; i++ {
 		for j := 0; j < overSaturationPeers; j++ {
@@ -1679,6 +1683,10 @@ func TestIteratorOpts(t *testing.T) {
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{})
 		randBool                 = &boolgen{src: rand.NewSource(time.Now().UnixNano())}
 	)
+
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 
 	for i := 0; i < 6; i++ {
 		for j := 0; j < 4; j++ {
