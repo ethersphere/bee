@@ -1075,7 +1075,7 @@ func TestReserveEvictionWorker(t *testing.T) {
 		mtx.Unlock()
 	}
 
-	t.Run("reserve size", reserveSizeTest(db, 11))
+	t.Run("reserve size", reserveSizeTest(db, 11, 2))
 
 	select {
 	case c := <-testHookEvictionChan:
@@ -1120,7 +1120,7 @@ func TestReserveEvictionWorker(t *testing.T) {
 		mtx.Unlock()
 	}
 
-	t.Run("reserve size", reserveSizeTest(db, 21))
+	t.Run("reserve size", reserveSizeTest(db, 21, 2))
 
 	var evictCount uint64
 	for {
@@ -1150,7 +1150,7 @@ func TestReserveEvictionWorker(t *testing.T) {
 		}
 	}
 
-	t.Run("reserve size", reserveSizeTest(db, 10))
+	t.Run("reserve size", reserveSizeTest(db, 10, 0))
 
 	t.Run("pull index count", newItemsCountTest(db.pullIndex, chunkCount-1))
 

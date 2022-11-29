@@ -81,7 +81,7 @@ func TestDB_ReserveGC_AllOutOfRadius(t *testing.T) {
 
 	t.Run("gc size", newIndexGCSizeTest(db))
 
-	t.Run("reserve size", reserveSizeTest(db, 0))
+	t.Run("reserve size", reserveSizeTest(db, 0, 0))
 
 	// the first synced chunk should be removed
 	t.Run("get the first synced chunk", func(t *testing.T) {
@@ -185,8 +185,7 @@ func TestDB_ReserveGC_AllWithinRadius(t *testing.T) {
 
 	t.Run("gc size", newIndexGCSizeTest(db))
 
-	// t.Run("reserve size", reserveSizeTest(db, 150, 2))
-	t.Run("reserve size", reserveSizeTest(db, 150))
+	t.Run("reserve size", reserveSizeTest(db, 150, 2))
 
 	t.Run("all chunks should be accessible", func(t *testing.T) {
 		for _, a := range addrs {
@@ -283,8 +282,7 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 		mtx.Unlock()
 	}
 
-	// t.Run("reserve size", reserveSizeTest(db, uint64(chunkCount), 2))
-	t.Run("reserve size", reserveSizeTest(db, uint64(chunkCount)))
+	t.Run("reserve size", reserveSizeTest(db, uint64(chunkCount), 2))
 
 	var evicted uint64
 	for {
@@ -312,8 +310,7 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 		mtx.Unlock()
 	}
 
-	// t.Run("reserve size", reserveSizeTest(db, 180, 2))
-	t.Run("reserve size", reserveSizeTest(db, 180))
+	t.Run("reserve size", reserveSizeTest(db, 180, 2))
 
 	evicted = 0
 	for {
@@ -357,8 +354,7 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 
 	t.Run("gc size", newIndexGCSizeTest(db))
 
-	// t.Run("reserve size", reserveSizeTest(db, 90, 2))
-	t.Run("reserve size", reserveSizeTest(db, 90))
+	t.Run("reserve size", reserveSizeTest(db, 90, 2))
 
 	t.Run("first ten unreserved chunks should not be accessible", func(t *testing.T) {
 		for _, a := range addrs[:10] {
@@ -464,7 +460,7 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 		mtx.Unlock()
 	}
 
-	t.Run("reserve size", reserveSizeTest(db, 100))
+	t.Run("reserve size", reserveSizeTest(db, 100, 2))
 
 	var evicted uint64
 	for {
@@ -500,7 +496,7 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 		mtx.Unlock()
 	}
 
-	t.Run("reserve size", reserveSizeTest(db, 180))
+	t.Run("reserve size", reserveSizeTest(db, 180, 2))
 
 	evicted = 0
 	for {
@@ -541,7 +537,7 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 
 	t.Run("gc size", newIndexGCSizeTest(db))
 
-	t.Run("reserve size", reserveSizeTest(db, 90))
+	t.Run("reserve size", reserveSizeTest(db, 90, 0))
 
 	t.Run("first ten unreserved chunks should not be accessible", func(t *testing.T) {
 		for _, a := range addrs[:10] {
@@ -583,7 +579,7 @@ func TestReserveSize(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Run("reserve size", reserveSizeTest(db, 10))
+		t.Run("reserve size", reserveSizeTest(db, 10, 0))
 	})
 
 	t.Run("variadic put upload then set sync", func(t *testing.T) {
@@ -604,13 +600,13 @@ func TestReserveSize(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Run("reserve size", reserveSizeTest(db, 0))
+		t.Run("reserve size", reserveSizeTest(db, 0, 0))
 
 		err = db.Set(context.Background(), storage.ModeSetSync, addrs...)
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Run("reserve size", reserveSizeTest(db, 0))
+		t.Run("reserve size", reserveSizeTest(db, 0, 0))
 	})
 
 	t.Run("sequencial put sync", func(t *testing.T) {
@@ -627,7 +623,7 @@ func TestReserveSize(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		t.Run("reserve size", reserveSizeTest(db, 10))
+		t.Run("reserve size", reserveSizeTest(db, 10, 0))
 	})
 
 	t.Run("sequencial put request", func(t *testing.T) {
@@ -645,7 +641,7 @@ func TestReserveSize(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		t.Run("reserve size", reserveSizeTest(db, 10))
+		t.Run("reserve size", reserveSizeTest(db, 10, 0))
 	})
 }
 
@@ -673,22 +669,16 @@ func TestComputeReserveSize(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Run("reserve size", reserveSizeTest(db, chunkCountPerPO*maxPO))
+	t.Run("reserve size", reserveSizeTest(db, chunkCountPerPO*maxPO, 0))
 
 	for po := 0; po < maxPO; po++ {
-		got, err := db.ComputeReserveSize()
+		got, err := db.ComputeReserveSize(uint8(po))
 		if err != nil {
 			t.Fatal(err)
 		}
 		want := (maxPO - po) * chunkCountPerPO
 		if got != uint64(want) {
 			t.Fatalf("compute reserve size mismatch, po %d, got %d, want %d", po, got, want)
-		}
-		for _, c := range chs {
-			_, err := db.UnreserveBatch(c.Stamp().BatchID(), uint8(po+1))
-			if err != nil {
-				t.Fatal(err)
-			}
 		}
 	}
 }
@@ -752,7 +742,7 @@ func TestDB_ReserveGC_BatchedUnreserve(t *testing.T) {
 		}
 	}
 
-	t.Run("reserve size", reserveSizeTest(db, 100))
+	t.Run("reserve size", reserveSizeTest(db, 100, 0))
 
 	select {
 	case <-testHookEvictChan:
@@ -765,7 +755,7 @@ func TestDB_ReserveGC_BatchedUnreserve(t *testing.T) {
 		t.Fatal("gc timeout")
 	}
 
-	t.Run("reserve size", reserveSizeTest(db, 0))
+	t.Run("reserve size", reserveSizeTest(db, 0, 0))
 
 	t.Run("pull index count", newItemsCountTest(db.pullIndex, 0))
 

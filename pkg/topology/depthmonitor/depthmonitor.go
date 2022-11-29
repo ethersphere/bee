@@ -30,7 +30,7 @@ const defaultMinimumRadius uint8 = 0
 // pledged by the node to the network.
 type ReserveReporter interface {
 	// Current size of the reserve.
-	ComputeReserveSize() (uint64, error)
+	ComputeReserveSize(uint8) (uint64, error)
 	// Capacity of the reserve that is configured.
 	ReserveCapacity() uint64
 }
@@ -127,7 +127,7 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration) {
 
 		reserveState := s.bs.GetReserveState()
 
-		currentSize, err := s.reserve.ComputeReserveSize()
+		currentSize, err := s.reserve.ComputeReserveSize(reserveState.StorageRadius)
 		if err != nil {
 			s.logger.Error(err, "depthmonitor: failed reading reserve size")
 			continue
