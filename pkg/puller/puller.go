@@ -400,11 +400,11 @@ func (p *Puller) getOrCreateInterval(peer swarm.Address, bin uint8) (*intervalst
 }
 
 func peerIntervalKey(peer swarm.Address, bin uint8) string {
-	return fmt.Sprintf("sync|%d|%s", bin, peer.ByteString())
+	return fmt.Sprintf("sync|%03d|%s", bin, peer.ByteString())
 }
 
 func binIntervalKey(bin uint8) string {
-	return fmt.Sprintf("sync|%d", bin)
+	return fmt.Sprintf("sync|%03d", bin)
 }
 
 type syncPeer struct {
