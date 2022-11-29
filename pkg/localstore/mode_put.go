@@ -270,7 +270,7 @@ func (db *DB) checkAndRemoveStampIndex(
 	// if a chunk is found with the same postage stamp index,
 	// replace it with the new one only if timestamp is later
 	if prev, cur := timestamps(previous, item); prev > cur {
-		return 0, fmt.Errorf("prev %d new %d: %w", prev, cur, err)
+		return 0, fmt.Errorf("prev %d new %d: %w", prev, cur, ErrOverwrite)
 	}
 
 	// remove older chunk
