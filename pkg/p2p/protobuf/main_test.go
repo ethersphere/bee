@@ -14,8 +14,8 @@ func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(
 		m,
 		goleak.IgnoreTopFunction("time.Sleep"),
-		goleak.IgnoreTopFunction("io.(*pipe).read"),
-		goleak.IgnoreTopFunction("io.(*pipe).write"),
+		goleak.IgnoreTopFunction("io.(*pipe).Read"),
+		goleak.IgnoreTopFunction("io.(*pipe).Write"),
 		goleak.IgnoreTopFunction("github.com/ethersphere/bee/pkg/p2p/protobuf_test.newMessageWriter.func1"),
 	)
 }
