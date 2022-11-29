@@ -19,6 +19,7 @@ package localstore
 import (
 	"context"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"time"
@@ -120,7 +121,6 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 					// if the chunk is overwriting a newer valid chunk for the
 					// same postage index, ignore it and dont return error so that
 					// syncing can continue
-					db.logger.Warning("postage stamp index exists, ignoring chunk", "chunk_address", ch.Address())
 					return false, 0, nil
 				}
 				return false, 0, err
@@ -269,8 +269,9 @@ func (db *DB) checkAndRemoveStampIndex(
 	}
 	// if a chunk is found with the same postage stamp index,
 	// replace it with the new one only if timestamp is later
-	if prev, cur := timestamps(previous, item); prev > cur {
-		return 0, fmt.Errorf("prev %d new %d: %w", prev, cur, ErrOverwrite)
+	if prev, cur := timestamps(previous, item); prev >= cur {
+		db.logger.Warning("postage stamp index exists, ignoring chunk", "prev", prev, "cur", cur, "chunk_address", hex.EncodeToString(item.Address))
+		return 0, ErrOverwrite
 	}
 
 	// remove older chunk
@@ -527,7 +528,5 @@ func containsChunk(addr swarm.Address, chs ...swarm.Chunk) bool {
 }
 
 func timestamps(previous, current shed.Item) (uint64, uint64) {
-	pts := binary.BigEndian.Uint64(previous.Timestamp)
-	cts := binary.BigEndian.Uint64(current.Timestamp)
-	return pts, cts
+	return binary.BigEndian.Uint64(previous.Timestamp), binary.BigEndian.Uint64(current.Timestamp)
 }
