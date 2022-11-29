@@ -13,6 +13,7 @@ import (
 	"time"
 
 	storage "github.com/ethersphere/bee/pkg/storagev2"
+	"github.com/ethersphere/bee/pkg/swarm"
 	//"github.com/ethersphere/bee/pkg/storagev2/leveldbstore"
 )
 
@@ -56,9 +57,9 @@ func initStore(t *testing.T, store storage.Store, objects ...*object) {
 	}
 }
 
-// checkFinishedTxInvariants check if all the store operations behave
+// checkTxStoreFinishedTxInvariants check if all the store operations behave
 // as expected after the transaction has been committed or rolled back.
-func checkFinishedTxInvariants(t *testing.T, store storage.TxStore) {
+func checkTxStoreFinishedTxInvariants(t *testing.T, store storage.TxStore) {
 	t.Helper()
 
 	o007 := &object{id: "007", data: []byte("Hello, World!")}
@@ -101,13 +102,13 @@ func checkFinishedTxInvariants(t *testing.T, store storage.TxStore) {
 	}
 }
 
-// TestTxStore provides correctness testsuite for TxStore interface.
+// TestTxStore provides correctness testsuite for storage.TxStore interface.
 func TestTxStore(t *testing.T, store storage.TxStore) {
 	t.Helper()
 
 	t.Cleanup(func() {
 		var closed int32
-		time.AfterFunc(time.Millisecond, func() {
+		time.AfterFunc(100*time.Millisecond, func() {
 			if atomic.LoadInt32(&closed) == 0 {
 				t.Fatal("store did not close")
 			}
@@ -128,7 +129,7 @@ func TestTxStore(t *testing.T, store storage.TxStore) {
 			t.Fatalf("Commit(): unexpected error: %v", err)
 		}
 
-		checkFinishedTxInvariants(t, tx)
+		checkTxStoreFinishedTxInvariants(t, tx)
 	})
 
 	t.Run("commit", func(t *testing.T) {
@@ -157,7 +158,7 @@ func TestTxStore(t *testing.T, store storage.TxStore) {
 				}
 			}
 
-			checkFinishedTxInvariants(t, tx)
+			checkTxStoreFinishedTxInvariants(t, tx)
 		})
 
 		t.Run("delete existing objects", func(t *testing.T) {
@@ -175,11 +176,11 @@ func TestTxStore(t *testing.T, store storage.TxStore) {
 			for _, o := range objects {
 				have := store.Get(&object{id: o.id})
 				if !errors.Is(have, want) {
-					t.Fatalf("Get(%q): want: %v; have: %v", o.id, want, have)
+					t.Fatalf("Get(%q):\n\thave: %v\n\twant: %v", o.id, want, have)
 				}
 			}
 
-			checkFinishedTxInvariants(t, tx)
+			checkTxStoreFinishedTxInvariants(t, tx)
 		})
 	})
 
@@ -193,7 +194,7 @@ func TestTxStore(t *testing.T, store storage.TxStore) {
 			t.Fatalf("Rollback(): unexpected error: %v", err)
 		}
 
-		checkFinishedTxInvariants(t, tx)
+		checkTxStoreFinishedTxInvariants(t, tx)
 	})
 
 	t.Run("rollback added objects", func(t *testing.T) {
@@ -217,11 +218,11 @@ func TestTxStore(t *testing.T, store storage.TxStore) {
 		for _, o := range objects {
 			have := store.Get(&object{id: o.id})
 			if !errors.Is(have, want) {
-				t.Fatalf("Get(%q): want: %v; have: %v", o.id, want, have)
+				t.Fatalf("Get(%q):\n\thave: %v\n\twant: %v", o.id, want, have)
 			}
 		}
 
-		checkFinishedTxInvariants(t, tx)
+		checkTxStoreFinishedTxInvariants(t, tx)
 	})
 
 	t.Run("rollback removed objects", func(t *testing.T) {
@@ -261,6 +262,222 @@ func TestTxStore(t *testing.T, store storage.TxStore) {
 			}
 		}
 
-		checkFinishedTxInvariants(t, tx)
+		checkTxStoreFinishedTxInvariants(t, tx)
+	})
+}
+
+// initChunkStore initializes the given store with the given chunks.
+func initChunkStore(t *testing.T, store storage.ChunkStore, chunks ...swarm.Chunk) {
+	t.Helper()
+
+	ctx := context.Background()
+	for _, chunk := range chunks {
+		if _, err := store.Put(ctx, chunk); err != nil {
+			t.Fatalf("Put(%q): unexpected error: %v", chunk.Address(), err)
+		}
+	}
+}
+
+// checkTxChunkStoreFinishedTxInvariants check if all the store operations behave
+// as expected after the transaction has been committed or rolled back.
+func checkTxChunkStoreFinishedTxInvariants(t *testing.T, store storage.TxChunkStore) {
+	t.Helper()
+
+	ctx := context.Background()
+	want := storage.ErrTxDone
+	o007 := swarm.NewChunk(swarm.NewAddress([]byte("007")), []byte("Hello, World!"))
+
+	if chunk, have := store.Get(ctx, o007.Address()); !errors.Is(have, want) || chunk != nil {
+		t.Fatalf("Get(...)\n\thave: %v, %v\n\twant: <nil>, %v", chunk, have, want)
+	}
+
+	if _, have := store.Put(ctx, o007); !errors.Is(have, want) {
+		t.Fatalf("Put(...):\n\thave: %v\n\twant: %v", have, want)
+	}
+
+	if have := store.Delete(ctx, o007.Address()); !errors.Is(have, want) {
+		t.Fatalf("Delete(...):\n\thave: %v\n\twant: %v", have, want)
+	}
+
+	if _, have := store.Has(ctx, swarm.ZeroAddress); !errors.Is(have, want) {
+		t.Fatalf("Has(...):\n\thave: %v\n\twant: %v", have, want)
+	}
+
+	if have := store.Iterate(ctx, func(_ swarm.Chunk) (stop bool, err error) {
+		return false, nil
+	}); !errors.Is(have, want) {
+		t.Fatalf("Iterate(...):\n\thave: %v\n\twant: %v", have, want)
+	}
+
+	if have, want := store.Commit(), storage.ErrTxDone; !errors.Is(have, want) {
+		t.Fatalf("Commit():\n\thave: %v\n\twant: %v", have, want)
+	}
+
+	if have, want := store.Rollback(), storage.ErrTxDone; !errors.Is(have, want) {
+		t.Fatalf("Rollback():\n\thave: %v\n\twant: %v", have, want)
+	}
+}
+
+// TestTxChunkStore provides correctness testsuite for storage.TxChunkStore interface.
+func TestTxChunkStore(t *testing.T, store storage.TxChunkStore) {
+	t.Helper()
+
+	t.Cleanup(func() {
+		var closed int32
+		time.AfterFunc(100*time.Millisecond, func() {
+			if atomic.LoadInt32(&closed) == 0 {
+				t.Fatal("store did not close")
+			}
+		})
+		if err := store.Close(); err != nil {
+			t.Fatalf("Close(): unexpected error: %v", err)
+		}
+		atomic.StoreInt32(&closed, 1)
+	})
+
+	t.Run("commit empty", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
+
+		tx := store.NewTx(storage.NewTxState(ctx))
+
+		if err := tx.Commit(); err != nil {
+			t.Fatalf("Commit(): unexpected error: %v", err)
+		}
+
+		checkTxChunkStoreFinishedTxInvariants(t, tx)
+	})
+
+	t.Run("commit", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
+
+		chunks := []swarm.Chunk{
+			swarm.NewChunk(swarm.NewAddress([]byte("0001")), []byte("data1")),
+			swarm.NewChunk(swarm.NewAddress([]byte("0002")), []byte("data2")),
+			swarm.NewChunk(swarm.NewAddress([]byte("0003")), []byte("data3")),
+		}
+
+		t.Run("add new chunks", func(t *testing.T) {
+			tx := store.NewTx(storage.NewTxState(ctx))
+
+			initChunkStore(t, tx, chunks...)
+
+			if err := tx.Commit(); err != nil {
+				t.Fatalf("Commit(): unexpected error: %v", err)
+			}
+
+			for _, want := range chunks {
+				have, err := store.Get(context.Background(), want.Address())
+				if err != nil {
+					t.Fatalf("Get(%q): unexpected error: %v", want.Address(), err)
+				}
+				if !have.Equal(want) {
+					t.Fatalf("Get(%q): \n\thave: %v\n\twant: %v", want.Address(), have, want)
+				}
+			}
+
+			checkTxChunkStoreFinishedTxInvariants(t, tx)
+		})
+
+		t.Run("delete existing chunks", func(t *testing.T) {
+			tx := store.NewTx(storage.NewTxState(ctx))
+
+			for _, chunk := range chunks {
+				if err := tx.Delete(context.Background(), chunk.Address()); err != nil {
+					t.Fatalf("Delete(%q): unexpected error: %v", chunk.Address(), err)
+				}
+			}
+			if err := tx.Commit(); err != nil {
+				t.Fatalf("Commit(): unexpected error: %v", err)
+			}
+			want := storage.ErrNotFound
+			for _, ch := range chunks {
+				chunk, have := store.Get(context.Background(), ch.Address())
+				if !errors.Is(have, want) || chunk != nil {
+					t.Fatalf("Get(...)\n\thave: %v, %v\n\twant: <nil>, %v", chunk, have, want)
+				}
+			}
+
+			checkTxChunkStoreFinishedTxInvariants(t, tx)
+		})
+	})
+
+	t.Run("rollback empty", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
+
+		tx := store.NewTx(storage.NewTxState(ctx))
+
+		if err := tx.Rollback(); err != nil {
+			t.Fatalf("Rollback(): unexpected error: %v", err)
+		}
+
+		checkTxChunkStoreFinishedTxInvariants(t, tx)
+	})
+
+	t.Run("rollback added chunks", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
+
+		tx := store.NewTx(storage.NewTxState(ctx))
+
+		chunks := []swarm.Chunk{
+			swarm.NewChunk(swarm.NewAddress([]byte("0001")), []byte("data1")),
+			swarm.NewChunk(swarm.NewAddress([]byte("0002")), []byte("data2")),
+			swarm.NewChunk(swarm.NewAddress([]byte("0003")), []byte("data3")),
+		}
+		initChunkStore(t, tx, chunks...)
+
+		if err := tx.Rollback(); err != nil {
+			t.Fatalf("Rollback(): unexpected error: %v", err)
+		}
+
+		want := storage.ErrNotFound
+		for _, ch := range chunks {
+			chunk, have := store.Get(context.Background(), ch.Address())
+			if !errors.Is(have, want) || chunk != nil {
+				t.Fatalf("Get(...)\n\thave: %v, %v\n\twant: <nil>, %v", chunk, have, want)
+			}
+		}
+
+		checkTxChunkStoreFinishedTxInvariants(t, tx)
+	})
+
+	t.Run("rollback removed chunks", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
+
+		tx := store.NewTx(storage.NewTxState(ctx))
+		chunks := []swarm.Chunk{
+			swarm.NewChunk(swarm.NewAddress([]byte("0001")), []byte("data1")),
+			swarm.NewChunk(swarm.NewAddress([]byte("0002")), []byte("data2")),
+			swarm.NewChunk(swarm.NewAddress([]byte("0003")), []byte("data3")),
+		}
+		initChunkStore(t, tx, chunks...)
+		if err := tx.Commit(); err != nil {
+			t.Fatalf("Commit(): unexpected error: %v", err)
+		}
+
+		tx = store.NewTx(storage.NewTxState(ctx))
+		for _, ch := range chunks {
+			if err := tx.Delete(context.Background(), ch.Address()); err != nil {
+				t.Fatalf("Delete(%q): unexpected error: %v", ch.Address(), err)
+			}
+		}
+		if err := tx.Rollback(); err != nil {
+			t.Fatalf("Rollback(): unexpected error: %v", err)
+		}
+		for _, want := range chunks {
+			have, err := store.Get(context.Background(), want.Address())
+			if err != nil {
+				t.Fatalf("Get(%q): unexpected error: %v", want.Address(), err)
+			}
+			if !have.Equal(want) {
+				t.Fatalf("Get(%q): \n\thave: %v\n\twant: %v", want.Address(), have, want)
+			}
+		}
+
+		checkTxChunkStoreFinishedTxInvariants(t, tx)
 	})
 }

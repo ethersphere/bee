@@ -12,5 +12,7 @@ import (
 )
 
 func TestTxStore(t *testing.T) {
+	t.Parallel()
+
 	storagetest.TestTxStore(t, inmemstore.NewTxStore(inmemstore.New()))
 }

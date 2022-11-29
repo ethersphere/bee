@@ -114,5 +114,3 @@ func TestTxState(t *testing.T) {
 		}
 	})
 }
-
-// TODO: test TxStoreBase and TxChunkStoreBase.
