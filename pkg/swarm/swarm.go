@@ -117,11 +117,9 @@ func (x Address) Closer(a Address, y Address) (bool, error) {
 	return cmp == 1, err
 }
 
-// Clone returns deep clone of the Address.
+// Clone returns a new swarm address which is a copy of this one.
 func (a Address) Clone() Address {
-	b := make([]byte, len(a.b))
-	copy(b, a.b)
-	return NewAddress(b)
+	return NewAddress(append(make([]byte, 0, HashSize), a.Bytes()...))
 }
 
 // ZeroAddress is the address that has no value.
