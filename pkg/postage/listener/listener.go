@@ -330,7 +330,7 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *
 			}
 			l.logger.Error(err, "failed syncing event listener; shutting down node error")
 		}
-		closeOnce.Do(func() { synced <- nil })
+		closeOnce.Do(func() { synced <- err })
 		if l.syncingStopped != nil {
 			l.syncingStopped.Signal() // trigger shutdown in start.go
 		}
