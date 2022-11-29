@@ -17,14 +17,12 @@ type Repository struct {
 	chunkStore TxChunkStore
 }
 
-// IndexStore returns a Store and a BatchedStore.Batch function that can be
-// used to create a new batch.Operations invoked on the BatchedStore are not
-// guarded by the current transaction.
-func (r *Repository) IndexStore() (Store, func(context.Context) (Batch, error)) {
-	return r.indexStore, r.indexStore.(Batcher).Batch
+// IndexStore returns Store.
+func (r *Repository) IndexStore() Store {
+	return r.indexStore
 }
 
-// ChunkStore returns a chunk store.
+// ChunkStore returns ChunkStore.
 func (r *Repository) ChunkStore() ChunkStore {
 	return r.chunkStore
 }
