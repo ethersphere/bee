@@ -406,8 +406,8 @@ func verifyCacheState(
 	state := c.State()
 	expState := cache.CacheState{Head: expStart, Tail: expEnd, Count: expCount}
 
-	if !cmp.Equal(expState, state) {
-		t.Fatalf("state mismatch (-want +have):\n%s", cmp.Diff(expState, state))
+	if diff := cmp.Diff(expState, state); diff != "" {
+		t.Fatalf("state mismatch (-want +have):\n%s", diff)
 	}
 }
 
