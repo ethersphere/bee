@@ -118,7 +118,70 @@ func TestTxStore(t *testing.T, store storage.TxStore) {
 		atomic.StoreInt32(&closed, 1)
 	})
 
-	// TODO: commit tests
+	t.Run("commit empty", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
+
+		tx := store.NewTx(storage.NewTxState(ctx))
+
+		if err := tx.Commit(); err != nil {
+			t.Fatalf("Commit(): unexpected error: %v", err)
+		}
+
+		checkFinishedTxInvariants(t, tx)
+	})
+
+	t.Run("commit", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
+
+		objects := []*object{
+			{id: "0001", data: []byte("data1")},
+			{id: "0002", data: []byte("data2")},
+			{id: "0003", data: []byte("data3")},
+		}
+
+		t.Run("add new objects", func(t *testing.T) {
+			tx := store.NewTx(storage.NewTxState(ctx))
+
+			initStore(t, tx, objects...)
+
+			if err := tx.Commit(); err != nil {
+				t.Fatalf("Commit(): unexpected error: %v", err)
+			}
+
+			for _, o := range objects {
+				err := store.Get(&object{id: o.id})
+				if err != nil {
+					t.Fatalf("Get(%q): unexpected error: %v", o.id, err)
+				}
+			}
+
+			checkFinishedTxInvariants(t, tx)
+		})
+
+		t.Run("delete existing objects", func(t *testing.T) {
+			tx := store.NewTx(storage.NewTxState(ctx))
+
+			for _, o := range objects {
+				if err := tx.Delete(o); err != nil {
+					t.Fatalf("Delete(%q): unexpected error: %v", o.id, err)
+				}
+			}
+			if err := tx.Commit(); err != nil {
+				t.Fatalf("Commit(): unexpected error: %v", err)
+			}
+			want := storage.ErrNotFound
+			for _, o := range objects {
+				have := store.Get(&object{id: o.id})
+				if !errors.Is(have, want) {
+					t.Fatalf("Get(%q): want: %v; have: %v", o.id, want, have)
+				}
+			}
+
+			checkFinishedTxInvariants(t, tx)
+		})
+	})
 
 	t.Run("rollback empty", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())

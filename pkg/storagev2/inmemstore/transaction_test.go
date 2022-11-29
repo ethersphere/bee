@@ -7,10 +7,10 @@ package inmemstore_test
 import (
 	"testing"
 
-	inmem "github.com/ethersphere/bee/pkg/storagev2/inmemstore"
+	"github.com/ethersphere/bee/pkg/storagev2/inmemstore"
 	"github.com/ethersphere/bee/pkg/storagev2/storagetest"
 )
 
 func TestTxStore(t *testing.T) {
-	storagetest.TestTxStore(t, inmem.NewTxStore(inmem.New()))
+	storagetest.TestTxStore(t, inmemstore.NewTxStore(inmemstore.New()))
 }
