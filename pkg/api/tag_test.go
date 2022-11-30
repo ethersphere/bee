@@ -135,7 +135,7 @@ func TestTags(t *testing.T) {
 		if err != nil {
 			t.Fatalf("dial: %v. url %v", err, u.String())
 		}
-		t.Cleanup(closeHandleError(t, wsConn.Close))
+		cleanupCloser(t, wsConn)
 
 		for i := 0; i < 5; i++ {
 			ch := testingc.GenerateTestRandomChunk()
