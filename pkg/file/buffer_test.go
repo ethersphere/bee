@@ -142,17 +142,13 @@ func TestCopyBuffer(t *testing.T) {
 
 			readBufferSize := tc.readBufferSize
 			dataSize := tc.dataSize
-
+			chunkPipe := file.NewChunkPipe()
 			srcBytes := make([]byte, dataSize)
-
 			rand.Read(srcBytes)
 
-			chunkPipe := file.NewChunkPipe()
-
 			// destination
-			sizeC := make(chan int, 1)
-			dataC := make(chan []byte, 1)
-			go reader(t, readBufferSize, chunkPipe, sizeC, dataC)
+			resultC := make(chan readResult, 1)
+			go reader(t, readBufferSize, chunkPipe, resultC)
 
 			// source
 			errC := make(chan error, 16)
@@ -178,16 +174,14 @@ func TestCopyBuffer(t *testing.T) {
 			readData := []byte{}
 			for {
 				select {
-				case c := <-sizeC:
-					d := <-dataC
-					readData = append(readData, d...)
-					readTotal += c
+				case res := <-resultC:
+					readData = append(readData, res.data...)
+					readTotal += res.n
 					if readTotal == expected {
 						// check received content
 						if !bytes.Equal(srcBytes, readData) {
 							t.Fatal("invalid byte content received")
 						}
-
 						return
 					}
 				case err := <-errC:
@@ -200,24 +194,28 @@ func TestCopyBuffer(t *testing.T) {
 	}
 }
 
-func reader(t *testing.T, bufferSize int, r io.Reader, c chan int, cd chan []byte) {
+type readResult struct {
+	data []byte
+	n    int
+}
+
+func reader(t *testing.T, bufferSize int, r io.Reader, c chan<- readResult) {
 	t.Helper()
 
 	var buf = make([]byte, bufferSize)
 	for {
 		n, err := r.Read(buf)
 		if errors.Is(err, io.EOF) {
-			c <- 0
+			c <- readResult{n: n}
 			break
 		}
 		if err != nil {
 			t.Errorf("read: %v", err)
 		}
 
-		b := make([]byte, n)
-		copy(b, buf)
+		data := make([]byte, n)
+		copy(data, buf)
 
-		c <- n
-		cd <- b
+		c <- readResult{n: n, data: data}
 	}
 }
