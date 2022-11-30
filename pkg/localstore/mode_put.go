@@ -270,7 +270,7 @@ func (db *DB) checkAndRemoveStampIndex(
 	// if a chunk is found with the same postage stamp index,
 	// replace it with the new one only if timestamp is later
 	if prev, cur := timestamps(previous, item); prev >= cur {
-		db.logger.Warning("postage stamp index exists, ignoring chunk", "prev", prev, "cur", cur, "chunk_address", hex.EncodeToString(item.Address))
+		db.logger.Warning("postage stamp index exists", "prev", prev, "cur", cur, "chunk_address", hex.EncodeToString(item.Address))
 		return 0, ErrOverwrite
 	}
 
