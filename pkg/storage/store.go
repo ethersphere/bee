@@ -165,6 +165,10 @@ type Hasser interface {
 	HasMulti(ctx context.Context, addrs ...swarm.Address) (yes []bool, err error)
 }
 
+type ReserveHasser interface {
+	HasReserve(ctx context.Context, addr swarm.Address) (yes bool, err error)
+}
+
 type PullSubscriber interface {
 	SubscribePull(ctx context.Context, bin uint8, since, until uint64) (c <-chan Descriptor, closed <-chan struct{}, stop func())
 }
