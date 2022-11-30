@@ -29,12 +29,13 @@ const sampleSize = 8
 var errDbClosed = errors.New("database closed")
 
 type sampleStat struct {
-	TotalIterated     atomic.Int64
-	NotFound          atomic.Int64
-	NewIgnored        atomic.Int64
-	IterationDuration atomic.Int64
-	GetDuration       atomic.Int64
-	HmacrDuration     atomic.Int64
+	TotalIterated      atomic.Int64
+	NotFound           atomic.Int64
+	NewIgnored         atomic.Int64
+	IterationDuration  atomic.Int64
+	GetDuration        atomic.Int64
+	HmacrDuration      atomic.Int64
+	ValidStampDuration atomic.Int64
 }
 
 type sampleEntry struct {
@@ -47,13 +48,14 @@ func (s sampleStat) String() string {
 	seconds := int64(time.Second)
 
 	return fmt.Sprintf(
-		"Chunks: %d NotFound: %d New Ignored: %d Iteration Duration: %d secs GetDuration: %d secs HmacrDuration: %d",
+		"Chunks: %d NotFound: %d New Ignored: %d Iteration Duration: %d secs GetDuration: %d secs HmacrDuration: %d ValidStampDuration: %d",
 		s.TotalIterated.Load(),
 		s.NotFound.Load(),
 		s.NewIgnored.Load(),
 		s.IterationDuration.Load()/seconds,
 		s.GetDuration.Load()/seconds,
 		s.HmacrDuration.Load()/seconds,
+		s.ValidStampDuration.Load()/seconds,
 	)
 }
 
@@ -192,6 +194,8 @@ func (db *DB) ReserveSample(
 		}
 		if le(item.transformedAddress.Bytes(), currentMaxAddr.Bytes()) || len(sampleItems) < sampleSize {
 
+			validStart := time.Now()
+
 			chunk := swarm.NewChunk(swarm.NewAddress(item.chunkItem.Address), item.chunkItem.Data)
 
 			stamp := postage.NewStamp(item.chunkItem.BatchID, item.chunkItem.Index, item.chunkItem.Timestamp, item.chunkItem.Sig)
@@ -211,6 +215,8 @@ func (db *DB) ReserveSample(
 			} else {
 				logger.Debug("invalid stamp for chunk", "chunk_address", chunk.Address(), "error", err)
 			}
+
+			stat.ValidStampDuration.Add(time.Since(validStart).Nanoseconds())
 
 		}
 	}
