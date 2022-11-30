@@ -366,11 +366,11 @@ func TestBinReset(t *testing.T) {
 	kad.Trigger()
 	time.Sleep(100 * time.Millisecond)
 
-	if err := s.Get(fmt.Sprintf("sync|1|%s", addr.ByteString()), nil); errors.Is(err, storage.ErrNotFound) {
+	if err := s.Get(fmt.Sprintf("sync|001|%s", addr.ByteString()), nil); errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("got error %v, want %v", err, storage.ErrNotFound)
 	}
 
-	if err := s.Get(fmt.Sprintf("sync|0|%s", addr.ByteString()), nil); !errors.Is(err, storage.ErrNotFound) {
+	if err := s.Get(fmt.Sprintf("sync|000|%s", addr.ByteString()), nil); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("got error %v, want %v", err, storage.ErrNotFound)
 	}
 }
