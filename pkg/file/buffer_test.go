@@ -167,23 +167,22 @@ func TestCopyBuffer(t *testing.T) {
 			}()
 
 			// receive the writes
-			// err may or may not be EOF, depending on whether writes end on
-			// chunk boundary
-			expected := dataSize
-			readTotal := 0
+			// err may or may not be EOF, depending on whether writes end on chunk boundary
 			readData := []byte{}
 			for {
 				select {
-				case res := <-resultC:
-					readData = append(readData, res.data...)
-					readTotal += res.n
-					if readTotal == expected {
-						// check received content
+				case res, ok := <-resultC:
+					if !ok {
+						// when resultC is closed (there is no more data to read)
+						// assert if read data is same as source
 						if !bytes.Equal(srcBytes, readData) {
 							t.Fatal("invalid byte content received")
 						}
+
 						return
 					}
+
+					readData = append(readData, res.data...)
 				case err := <-errC:
 					if err != nil && !errors.Is(err, io.EOF) {
 						t.Fatal(err)
@@ -202,13 +201,16 @@ type readResult struct {
 func reader(t *testing.T, bufferSize int, r io.Reader, c chan<- readResult) {
 	t.Helper()
 
+	defer close(c)
+
 	var buf = make([]byte, bufferSize)
 	for {
 		n, err := r.Read(buf)
 		if errors.Is(err, io.EOF) {
 			c <- readResult{n: n}
-			break
+			return
 		}
+
 		if err != nil {
 			t.Errorf("read: %v", err)
 		}
