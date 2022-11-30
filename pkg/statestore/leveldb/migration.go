@@ -45,11 +45,10 @@ const (
 	dBSchemaBatchStoreV2    = "batchstoreV2"
 	dBSchemaBatchStoreV3    = "batchstoreV3"
 	dBSchemaBatchStoreV4    = "batchstoreV4"
-	dBSchemaInterval        = "interval"
 )
 
 var (
-	dbSchemaCurrent = dBSchemaInterval
+	dbSchemaCurrent = dBSchemaBatchStoreV4
 )
 
 type migration struct {
@@ -71,11 +70,6 @@ var schemaMigrations = []migration{
 	{name: dBSchemaBatchStoreV2, fn: migrateBatchstoreV2},
 	{name: dBSchemaBatchStoreV3, fn: migrateBatchstore},
 	{name: dBSchemaBatchStoreV4, fn: migrateBatchstore},
-	{name: dBSchemaInterval, fn: nuke},
-}
-
-func nuke(s *Store) error {
-	return s.Nuke(false)
 }
 
 func migrateFB(s *Store) error {
@@ -338,14 +332,14 @@ func deleteKeys(s *Store, keys []string) error {
 
 // Nuke the store so that only the bare essential entries are
 // left. Careful!
-func (s *Store) Nuke(removeStamps bool) error {
+func (s *Store) Nuke(forgetStamps bool) error {
 	var (
 		keys               []string
 		prefixesToPreserve = []string{"accounting", "pseudosettle", "swap", "non-mineable-overlay", "overlayV2_nonce"}
 		err                error
 	)
 
-	if !removeStamps {
+	if !forgetStamps {
 		prefixesToPreserve = append(prefixesToPreserve, "postage")
 	}
 
