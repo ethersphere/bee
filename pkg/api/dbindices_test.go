@@ -38,7 +38,7 @@ func TestDBIndices(t *testing.T) {
 			},
 		})
 
-		// We expect a list of items unordered by peer:
+		// We expect a list of items unordered
 		var got map[string]int
 		jsonhttptest.Request(t, testServer, http.MethodGet, "/dbindices", http.StatusOK,
 			jsonhttptest.WithUnmarshalJSONResponse(&got),
