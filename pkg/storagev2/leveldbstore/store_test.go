@@ -12,7 +12,7 @@ import (
 	"github.com/syndtr/goleveldb/leveldb/opt"
 )
 
-func TestStoreTestSuite(t *testing.T) {
+func TestStore(t *testing.T) {
 	t.Parallel()
 
 	store, err := leveldbstore.New(t.TempDir(), nil)

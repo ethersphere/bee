@@ -6,25 +6,38 @@ package inmemstore
 
 import (
 	"context"
-	"errors"
+	"fmt"
 	"sync"
 
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 )
 
-type batchOp struct {
-	delete bool
-	item   storage.Item
+// batchOp represents a batch operations.
+type batchOp interface {
+	Item() storage.Item
 }
 
+// batchOpBase is a base type for batch operations holding data.
+type batchOpBase struct{ item storage.Item }
+
+// Item implements batchOp interface Item method.
+func (b batchOpBase) Item() storage.Item { return b.item }
+
+type (
+	batchOpPut    struct{ batchOpBase }
+	batchOpDelete struct{ batchOpBase }
+)
+
 type Batch struct {
-	mu    sync.Mutex
-	ctx   context.Context
+	ctx context.Context
+
+	mu    sync.Mutex // mu guards batch, ops, and done.
 	ops   map[string]batchOp
 	store *Store
 	done  bool
 }
 
+// Batch implements storage.BatchedStore interface Batch method.
 func (s *Store) Batch(ctx context.Context) (storage.Batch, error) {
 	return &Batch{
 		ctx:   ctx,
@@ -33,50 +46,43 @@ func (s *Store) Batch(ctx context.Context) (storage.Batch, error) {
 	}, nil
 }
 
+// Put implements storage.Batch interface Put method.
 func (i *Batch) Put(item storage.Item) error {
-	if i.ctx.Err() != nil {
-		return i.ctx.Err()
+	if err := i.ctx.Err(); err != nil {
+		return err
 	}
 
 	i.mu.Lock()
-	defer i.mu.Unlock()
-
-	key := getKeyString(item)
-
-	i.ops[key] = batchOp{
-		item: item,
-	}
+	i.ops[key(item)] = batchOpPut{batchOpBase{item: item}}
+	i.mu.Unlock()
 
 	return nil
 }
 
-func (i *Batch) Delete(key storage.Key) error {
-	if i.ctx.Err() != nil {
-		return i.ctx.Err()
+// Delete implements storage.Batch interface Delete method.
+func (i *Batch) Delete(item storage.Item) error {
+	if err := i.ctx.Err(); err != nil {
+		return err
 	}
 
 	i.mu.Lock()
-	defer i.mu.Unlock()
-
-	sKey := getKeyString(key)
-
-	i.ops[sKey] = batchOp{
-		delete: true,
-	}
+	i.ops[key(item)] = batchOpDelete{batchOpBase{item: item}}
+	i.mu.Unlock()
 
 	return nil
 }
 
+// Commit implements storage.Batch interface Commit method.
 func (i *Batch) Commit() error {
-	if i.ctx.Err() != nil {
-		return i.ctx.Err()
+	if err := i.ctx.Err(); err != nil {
+		return err
 	}
 
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
 	if i.done {
-		return errors.New("already committed")
+		return storage.ErrBatchCommitted
 	}
 
 	defer func() { i.done = true }()
@@ -84,15 +90,19 @@ func (i *Batch) Commit() error {
 	i.store.mu.Lock()
 	defer i.store.mu.Unlock()
 
-	for key, ops := range i.ops {
-		if ops.delete {
-			if err := i.store.delete(key); err != nil {
-				return err
+	for _, ops := range i.ops {
+		switch op := ops.(type) {
+		case batchOpPut:
+			err := i.store.put(op.Item())
+			if err != nil {
+				return fmt.Errorf("unable to put item %s: %w", key(op.Item()), err)
 			}
-			continue
-		}
-		if err := i.store.put(ops.item); err != nil {
-			return err
+		case batchOpDelete:
+			err := i.store.delete(op.Item())
+			if err != nil {
+				return fmt.Errorf("unable to delete item %s: %w", key(op.Item()), err)
+			}
+
 		}
 	}
 
