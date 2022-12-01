@@ -36,6 +36,7 @@ type sampleStat struct {
 	GetDuration        atomic.Int64
 	HmacrDuration      atomic.Int64
 	ValidStampDuration atomic.Int64
+	TimeToLock         atomic.Int64
 }
 
 type sampleEntry struct {
@@ -48,7 +49,8 @@ func (s sampleStat) String() string {
 	seconds := int64(time.Second)
 
 	return fmt.Sprintf(
-		"Chunks: %d NotFound: %d New Ignored: %d Iteration Duration: %d secs GetDuration: %d secs HmacrDuration: %d ValidStampDuration: %d",
+		"Chunks: %d NotFound: %d New Ignored: %d Iteration Duration: %d secs GetDuration: %d secs"+
+			" HmacrDuration: %d secs ValidStampDuration: %d secs TimeToLock: %d secs",
 		s.TotalIterated.Load(),
 		s.NotFound.Load(),
 		s.NewIgnored.Load(),
@@ -56,6 +58,7 @@ func (s sampleStat) String() string {
 		s.GetDuration.Load()/seconds,
 		s.HmacrDuration.Load()/seconds,
 		s.ValidStampDuration.Load()/seconds,
+		s.TimeToLock.Load()/seconds,
 	)
 }
 
@@ -83,6 +86,11 @@ func (db *DB) ReserveSample(
 	logger := db.logger.WithName("sampler").V(1).Register()
 
 	t := time.Now()
+
+	// protect the DB from any updates till we finish creating the sample
+	db.batchMu.Lock()
+	defer db.batchMu.Unlock()
+	stat.TimeToLock.Add(time.Since(t).Nanoseconds())
 
 	// Phase 1: Iterate chunk addresses
 	g.Go(func() error {
@@ -198,7 +206,12 @@ func (db *DB) ReserveSample(
 
 			chunk := swarm.NewChunk(swarm.NewAddress(item.chunkItem.Address), item.chunkItem.Data)
 
-			stamp := postage.NewStamp(item.chunkItem.BatchID, item.chunkItem.Index, item.chunkItem.Timestamp, item.chunkItem.Sig)
+			stamp := postage.NewStamp(
+				item.chunkItem.BatchID,
+				item.chunkItem.Index,
+				item.chunkItem.Timestamp,
+				item.chunkItem.Sig,
+			)
 
 			stampData, err := stamp.MarshalBinary()
 			if err != nil {

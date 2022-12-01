@@ -361,7 +361,7 @@ func (db *DB) evictReserve() (totalEvicted uint64, done bool, err error) {
 	totalCallbacks := 0
 	err = db.unreserveFunc(func(batchID []byte, radius uint8) (bool, error) {
 		totalCallbacks++
-		e, err := db.UnreserveBatch(batchID, radius)
+		e, err := db.unreserveBatch(batchID, radius)
 		if err != nil {
 			return true, err
 		}

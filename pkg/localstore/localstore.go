@@ -184,12 +184,9 @@ type DB struct {
 	// underlaying leveldb to prevent possible panics from
 	// iterators
 	subscriptionsWG sync.WaitGroup
-
-	metrics metrics
-
-	logger log.Logger
-
-	validStamp postage.ValidStampFn
+	metrics         metrics
+	logger          log.Logger
+	validStamp      postage.ValidStampFn
 }
 
 // Options struct holds optional parameters for configuring DB.
