@@ -18,9 +18,11 @@ package localstore
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/syndtr/goleveldb/leveldb"
 )
 
 // Has returns true if the chunk is stored in database.
@@ -34,6 +36,20 @@ func (db *DB) Has(ctx context.Context, addr swarm.Address) (bool, error) {
 		db.metrics.ModeHasFailure.Inc()
 	}
 	return has, err
+}
+
+// Has returns true if the chunk is stored in database.
+func (db *DB) HasReserve(ctx context.Context, addr swarm.Address) (bool, error) {
+
+	item, err := db.retrievalDataIndex.Get(addressToItem(addr))
+	if err != nil {
+		if errors.Is(err, leveldb.ErrNotFound) {
+			return false, nil
+		}
+		return false, err
+	}
+
+	return db.pullIndex.Has(item)
 }
 
 // HasMulti returns a slice of booleans which represent if the provided chunks

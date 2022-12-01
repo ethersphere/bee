@@ -177,3 +177,12 @@ func (s *PullStorer) Put(ctx context.Context, mode storage.ModePut, chs ...swarm
 	_, err := s.Storer.Put(ctx, mode, chs...)
 	return err
 }
+
+// Put chunks.
+func (s *PullStorer) Has(ctx context.Context, addr swarm.Address) (bool, error) {
+	rstore, ok := s.Storer.(storage.ReserveHasser)
+	if ok {
+		return rstore.HasReserve(ctx, addr)
+	}
+	return s.Storer.Has(ctx, addr)
+}
