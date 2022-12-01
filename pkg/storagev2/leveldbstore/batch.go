@@ -6,7 +6,6 @@ package leveldbstore
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 
@@ -14,6 +13,7 @@ import (
 	ldb "github.com/syndtr/goleveldb/leveldb"
 )
 
+// Batch implements storage.BatchedStore interface Batch method.
 func (s *Store) Batch(ctx context.Context) (storage.Batch, error) {
 	return &Batch{
 		ctx:   ctx,
@@ -23,63 +23,60 @@ func (s *Store) Batch(ctx context.Context) (storage.Batch, error) {
 }
 
 type Batch struct {
-	mu  sync.Mutex
 	ctx context.Context
 
+	mu    sync.Mutex // mu guards batch and done.
 	batch *ldb.Batch
-
 	store *Store
 	done  bool
 }
 
+// Put implements storage.Batch interface Put method.
 func (i *Batch) Put(item storage.Item) error {
-	if i.ctx.Err() != nil {
-		return i.ctx.Err()
+	if err := i.ctx.Err(); err != nil {
+		return err
 	}
 
-	key := []byte(item.Namespace() + separator + item.ID())
-	value, err := item.Marshal()
+	val, err := item.Marshal()
 	if err != nil {
-		return fmt.Errorf("failed serializing: %w", err)
+		return fmt.Errorf("unable to marshal item: %w", err)
 	}
 
 	i.mu.Lock()
-	defer i.mu.Unlock()
-
-	i.batch.Put(key, value)
+	i.batch.Put(key(item), val)
+	i.mu.Unlock()
 
 	return nil
 }
 
-func (i *Batch) Delete(key storage.Key) error {
-	if i.ctx.Err() != nil {
-		return i.ctx.Err()
+// Delete implements storage.Batch interface Delete method.
+func (i *Batch) Delete(item storage.Item) error {
+	if err := i.ctx.Err(); err != nil {
+		return err
 	}
 
-	dbKey := []byte(key.Namespace() + separator + key.ID())
-
 	i.mu.Lock()
-	defer i.mu.Unlock()
-
-	i.batch.Delete(dbKey)
+	i.batch.Delete(key(item))
+	i.mu.Unlock()
 
 	return nil
 }
 
+// Commit implements storage.Batch interface Commit method.
 func (i *Batch) Commit() error {
-	if i.ctx.Err() != nil {
-		return i.ctx.Err()
+	if err := i.ctx.Err(); err != nil {
+		return err
 	}
 
 	i.mu.Lock()
 	defer i.mu.Unlock()
 
 	if i.done {
-		return errors.New("already committed")
+		return storage.ErrBatchCommitted
 	}
 
 	if err := i.store.db.Write(i.batch, nil); err != nil {
-		return fmt.Errorf("commit batch: %w", err)
+		return fmt.Errorf("unable to commit batch: %w", err)
 	}
 
 	i.done = true
