@@ -29,7 +29,7 @@ func New() *Store {
 	return &Store{st: radix.New()}
 }
 
-func getKeyString(i storage.Key) string {
+func key(i storage.Key) string {
 	return strings.Join([]string{i.Namespace(), i.ID()}, separator)
 }
 
@@ -38,10 +38,8 @@ func idFromKey(pfx, key string) string {
 }
 
 func (s *Store) Get(i storage.Item) error {
-	key := getKeyString(i)
-
 	s.mu.RLock()
-	val, found := s.st.Get(key)
+	val, found := s.st.Get(key(i))
 	s.mu.RUnlock()
 	if !found {
 		return storage.ErrNotFound
@@ -56,20 +54,16 @@ func (s *Store) Get(i storage.Item) error {
 }
 
 func (s *Store) Has(k storage.Key) (bool, error) {
-	key := getKeyString(k)
-
 	s.mu.RLock()
-	_, found := s.st.Get(key)
+	_, found := s.st.Get(key(k))
 	s.mu.RUnlock()
 
 	return found, nil
 }
 
 func (s *Store) GetSize(k storage.Key) (int, error) {
-	key := getKeyString(k)
-
 	s.mu.RLock()
-	val, found := s.st.Get(key)
+	val, found := s.st.Get(key(k))
 	s.mu.RUnlock()
 	if !found {
 		return 0, storage.ErrNotFound
@@ -79,52 +73,31 @@ func (s *Store) GetSize(k storage.Key) (int, error) {
 }
 
 func (s *Store) Put(i storage.Item) error {
-	key := getKeyString(i)
-
-	val, err := i.Marshal()
-	if err != nil {
-		return fmt.Errorf("failed marshaling item: %w", err)
-	}
-
 	s.mu.Lock()
-	s.st.Insert(key, val)
-	s.mu.Unlock()
-
-	return nil
+	defer s.mu.Unlock()
+	return s.put(i)
 }
 
-// for batching purpose
 func (s *Store) put(i storage.Item) error {
-	key := getKeyString(i)
-
 	val, err := i.Marshal()
 	if err != nil {
 		return fmt.Errorf("failed marshaling item: %w", err)
 	}
 
-	s.st.Insert(key, val)
-
+	s.st.Insert(key(i), val)
 	return nil
 }
 
 func (s *Store) Delete(i storage.Item) error {
-	key := getKeyString(i)
-
 	s.mu.Lock()
-	_, deleted := s.st.Delete(key)
-	s.mu.Unlock()
-	if !deleted {
-		return storage.ErrNotFound
-	}
-	return nil
+	defer s.mu.Unlock()
+	return s.delete(i)
 }
 
-// for batching purpose
-func (s *Store) delete(key string) error {
-	if _, deleted := s.st.Delete(key); !deleted {
+func (s *Store) delete(i storage.Item) error {
+	if _, deleted := s.st.Delete(key(i)); !deleted {
 		return storage.ErrNotFound
 	}
-
 	return nil
 }
 
