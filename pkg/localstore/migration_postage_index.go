@@ -23,7 +23,7 @@ func migrateDeadPostageIndex(db *DB) error {
 	db.logger.Info("starting dead-postage-index migration")
 	start := time.Now()
 
-	retrievalDataIndex, err := db.shed.NewIndex("Address->StoreTimestamp|BinID|BatchID|BatchIndex|Sig|Data", shed.IndexFuncs{
+	retrievalDataIndex, err := db.shed.NewIndex("Address->StoreTimestamp|BinID|BatchID|BatchIndex|Sig|Location", shed.IndexFuncs{
 		EncodeKey: func(fields shed.Item) (key []byte, err error) {
 			return fields.Address, nil
 		},
@@ -40,8 +40,9 @@ func migrateDeadPostageIndex(db *DB) error {
 				return nil, err
 			}
 			copy(b[16:], stamp)
-			value = append(b, fields.Data...)
+			value = append(b, fields.Location...)
 			return value, nil
+
 		},
 		DecodeValue: func(keyItem shed.Item, value []byte) (e shed.Item, err error) {
 			e.StoreTimestamp = int64(binary.BigEndian.Uint64(value[8:16]))
@@ -54,7 +55,7 @@ func migrateDeadPostageIndex(db *DB) error {
 			e.Index = stamp.Index()
 			e.Timestamp = stamp.Timestamp()
 			e.Sig = stamp.Sig()
-			e.Data = value[headerSize:]
+			e.Location = value[headerSize:]
 			return e, nil
 		},
 	})
@@ -130,6 +131,6 @@ func migrateDeadPostageIndex(db *DB) error {
 		}
 	}
 
-	db.logger.Info("migration dead-postage-index done", "elapsed", time.Since(start), "no_of_cleaned_entried", totalCleanedUpEntries)
+	db.logger.Info("migration dead-postage-index done", "elapsed", time.Since(start), "no_of_cleaned_entries", totalCleanedUpEntries)
 	return nil
 }
