@@ -22,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
+	"go.uber.org/atomic"
 )
 
 func TestAgent(t *testing.T) {
@@ -29,10 +30,10 @@ func TestAgent(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		blocksPerRound float64
-		blocksPerPhase float64
-		incrementBy    float64
-		limit          float64
+		blocksPerRound uint64
+		blocksPerPhase uint64
+		incrementBy    uint64
+		limit          uint64
 		expectedCalls  bool
 	}{{
 		name:           "3 blocks per phase, same block number returns twice",
@@ -81,18 +82,18 @@ func TestAgent(t *testing.T) {
 			addr := test.RandomAddress()
 
 			backend := &mockchainBackend{
-				limit: tc.limit,
+				limit: atomic.NewUint64(tc.limit),
 				limitCallback: func() {
 					select {
 					case wait <- struct{}{}:
 					default:
 					}
 				},
-				incrementBy: tc.incrementBy,
-				block:       tc.blocksPerRound}
+				incrementBy: atomic.NewUint64(tc.incrementBy),
+				block:       atomic.NewUint64(tc.blocksPerRound)}
 			contract := &mockContract{}
 
-			service := createService(addr, backend, contract, uint64(tc.blocksPerRound), uint64(tc.blocksPerPhase))
+			service := createService(addr, backend, contract, tc.blocksPerRound, tc.blocksPerPhase)
 
 			<-wait
 
@@ -168,18 +169,20 @@ func createService(
 }
 
 type mockchainBackend struct {
-	incrementBy   float64
-	block         float64
-	limit         float64
+	incrementBy   *atomic.Uint64
+	block         *atomic.Uint64
+	limit         *atomic.Uint64
 	limitCallback func()
 }
 
 func (m *mockchainBackend) BlockNumber(context.Context) (uint64, error) {
 
-	ret := uint64(m.block)
+	ret := m.block.Load()
+	lim := m.limit.Load()
+	inc := m.incrementBy.Load()
 
-	if m.limit == 0 || m.block+m.incrementBy < m.limit {
-		m.block += m.incrementBy
+	if lim == 0 || ret+inc < lim {
+		m.block.Add(inc)
 	} else if m.limitCallback != nil {
 		m.limitCallback()
 		return 0, errors.New("reached limit")
