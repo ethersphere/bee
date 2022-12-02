@@ -7,6 +7,7 @@ package localstore
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -763,6 +764,83 @@ func TestDB_ReserveGC_BatchedUnreserve(t *testing.T) {
 
 	// we use the same batch for all chunks
 	t.Run("postage radius index count", newItemsCountTest(db.postageRadiusIndex, 1))
+
+	// all chunks would land into the gcIndex
+	t.Run("gc index count", newItemsCountTest(db.gcIndex, 90))
+
+	t.Run("gc size", newIndexGCSizeTest(db))
+}
+
+func TestDB_ReserveGC_EvictBatch(t *testing.T) {
+	chunkCount := 100
+
+	var closed chan struct{}
+	testHookCollectGarbageChan := make(chan uint64)
+	t.Cleanup(setTestHookCollectGarbage(func(collectedCount uint64) {
+		if collectedCount == 0 {
+			return
+		}
+		select {
+		case testHookCollectGarbageChan <- collectedCount:
+		case <-closed:
+		}
+	}))
+
+	stamp := postagetesting.MustNewStamp()
+
+	db := newTestDB(t, &Options{
+		Capacity:        100,
+		ReserveCapacity: 100,
+	})
+	closed = db.close
+
+	// generate chunks with the same batch and depth to trigger larger eviction
+	genChunk := func() swarm.Chunk {
+		newStamp := postagetesting.MustNewBatchStamp(stamp.BatchID())
+		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2)
+		return ch.WithBatch(2, 3, 2, false).WithStamp(newStamp)
+	}
+
+	for i := 0; i < chunkCount; i++ {
+		ch := genChunk()
+		_, err := db.Put(context.Background(), storage.ModePutSync, ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Run("reserve size", reserveSizeTest(db, 100, 0))
+
+	err := db.EvictBatch(stamp.BatchID())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("reserve size", reserveSizeTest(db, 0, 0))
+
+	gcTarget := db.gcTarget()
+
+	for {
+		select {
+		case <-testHookCollectGarbageChan:
+		case <-time.After(10 * time.Second):
+			t.Fatal("gc timeout")
+		}
+
+		gcSize, err := db.gcSize.Get()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if gcSize == gcTarget {
+			break
+		}
+		fmt.Println(gcSize)
+	}
+
+	t.Run("postage chunks index count", newItemsCountTest(db.postageChunksIndex, 90))
+
+	// batch is evicted
+	t.Run("postage radius index count", newItemsCountTest(db.postageRadiusIndex, 0))
 
 	// all chunks would land into the gcIndex
 	t.Run("gc index count", newItemsCountTest(db.gcIndex, 90))
