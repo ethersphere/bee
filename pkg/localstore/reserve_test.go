@@ -7,7 +7,6 @@ package localstore
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -834,7 +833,6 @@ func TestDB_ReserveGC_EvictBatch(t *testing.T) {
 		if gcSize == gcTarget {
 			break
 		}
-		fmt.Println(gcSize)
 	}
 
 	t.Run("postage chunks index count", newItemsCountTest(db.postageChunksIndex, 90))
