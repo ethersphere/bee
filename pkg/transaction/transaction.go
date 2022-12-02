@@ -44,13 +44,14 @@ const DefaultTipBoostPercent = 20
 
 // TxRequest describes a request for a transaction that can be executed.
 type TxRequest struct {
-	To          *common.Address // recipient of the transaction
-	Data        []byte          // transaction data
-	GasPrice    *big.Int        // gas price or nil if suggested gas price should be used
-	GasLimit    uint64          // gas limit or 0 if it should be estimated
-	GasFeeCap   *big.Int        // adds a cap to maximum fee user is willing to pay
-	Value       *big.Int        // amount of wei to send
-	Description string          // optional description
+	To                   *common.Address // recipient of the transaction
+	Data                 []byte          // transaction data
+	GasPrice             *big.Int        // gas price or nil if suggested gas price should be used
+	GasLimit             uint64          // gas limit or 0 if it should be estimated
+	MinEstimatedGasLimit uint64          // minimum gas limit to use if the gas limit was estimated; it will not apply when this value is 0 or when GasLimit is not 0
+	GasFeeCap            *big.Int        // adds a cap to maximum fee user is willing to pay
+	Value                *big.Int        // amount of wei to send
+	Description          string          // optional description
 }
 
 type StoredTransaction struct {
@@ -271,7 +272,9 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 		}
 
 		gasLimit += gasLimit / 4 // add 25% on top
-
+		if gasLimit < request.MinEstimatedGasLimit {
+			gasLimit = request.MinEstimatedGasLimit
+		}
 	} else {
 		gasLimit = request.GasLimit
 	}
