@@ -99,12 +99,13 @@ func (c *contract) Claim(ctx context.Context) error {
 		return err
 	}
 	request := &transaction.TxRequest{
-		To:          &c.incentivesContractAddress,
-		Data:        callData,
-		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    sctx.GetGasLimit(ctx),
-		Value:       big.NewInt(0),
-		Description: "claim win transaction",
+		To:                   &c.incentivesContractAddress,
+		Data:                 callData,
+		GasPrice:             sctx.GetGasPrice(ctx),
+		GasLimit:             sctx.GetGasLimit(ctx),
+		MinEstimatedGasLimit: 500_000,
+		Value:                big.NewInt(0),
+		Description:          "claim win transaction",
 	}
 	err = c.sendAndWait(ctx, request, 50)
 	if err != nil {
@@ -121,12 +122,13 @@ func (c *contract) Commit(ctx context.Context, obfusHash []byte, round *big.Int)
 		return err
 	}
 	request := &transaction.TxRequest{
-		To:          &c.incentivesContractAddress,
-		Data:        callData,
-		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    sctx.GetGasLimit(ctx),
-		Value:       big.NewInt(0),
-		Description: "commit transaction",
+		To:                   &c.incentivesContractAddress,
+		Data:                 callData,
+		GasPrice:             sctx.GetGasPrice(ctx),
+		GasLimit:             sctx.GetGasLimit(ctx),
+		MinEstimatedGasLimit: 500_000,
+		Value:                big.NewInt(0),
+		Description:          "commit transaction",
 	}
 	err = c.sendAndWait(ctx, request, 50)
 	if err != nil {
@@ -143,12 +145,13 @@ func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommit
 		return err
 	}
 	request := &transaction.TxRequest{
-		To:          &c.incentivesContractAddress,
-		Data:        callData,
-		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    sctx.GetGasLimit(ctx),
-		Value:       big.NewInt(0),
-		Description: "reveal transaction",
+		To:                   &c.incentivesContractAddress,
+		Data:                 callData,
+		GasPrice:             sctx.GetGasPrice(ctx),
+		GasLimit:             sctx.GetGasLimit(ctx),
+		MinEstimatedGasLimit: 500_000,
+		Value:                big.NewInt(0),
+		Description:          "reveal transaction",
 	}
 	err = c.sendAndWait(ctx, request, 50)
 	if err != nil {
