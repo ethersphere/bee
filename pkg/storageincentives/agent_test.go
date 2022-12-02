@@ -172,9 +172,12 @@ type mockchainBackend struct {
 	block         float64
 	limit         float64
 	limitCallback func()
+	lock          sync.Mutex
 }
 
 func (m *mockchainBackend) BlockNumber(context.Context) (uint64, error) {
+	m.lock.Lock()
+	defer m.lock.Unlock()
 
 	ret := uint64(m.block)
 
