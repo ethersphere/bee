@@ -143,12 +143,13 @@ func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommit
 		return err
 	}
 	request := &transaction.TxRequest{
-		To:          &c.incentivesContractAddress,
-		Data:        callData,
-		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    sctx.GetGasLimit(ctx),
-		Value:       big.NewInt(0),
-		Description: "reveal transaction",
+		To:                   &c.incentivesContractAddress,
+		Data:                 callData,
+		GasPrice:             sctx.GetGasPrice(ctx),
+		GasLimit:             sctx.GetGasLimit(ctx),
+		MinEstimatedGasLimit: 500_000,
+		Value:                big.NewInt(0),
+		Description:          "reveal transaction",
 	}
 	err = c.sendAndWait(ctx, request, 50)
 	if err != nil {
