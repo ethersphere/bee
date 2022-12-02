@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -19,6 +20,8 @@ type testStorer struct {
 	storage.Storer
 	indicesFunc func() (map[string]int, error)
 }
+
+var _ api.StorageIndexDebugger = (*testStorer)(nil)
 
 func (t *testStorer) DebugIndices() (map[string]int, error) {
 	return t.indicesFunc()
