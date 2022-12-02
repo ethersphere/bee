@@ -277,7 +277,13 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	var evictFn func([]byte) error
 
 	if chainEnabled {
-		batchStore, err = batchstore.New(stateStore, evictFn, logger)
+		batchStore, err = batchstore.New(
+			stateStore,
+			func(id []byte) error {
+				return evictFn(id)
+			},
+			logger,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("batchstore: %w", err)
 		}
