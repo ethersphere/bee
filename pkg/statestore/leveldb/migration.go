@@ -45,10 +45,11 @@ const (
 	dBSchemaBatchStoreV2    = "batchstoreV2"
 	dBSchemaBatchStoreV3    = "batchstoreV3"
 	dBSchemaBatchStoreV4    = "batchstoreV4"
+	dBSchemaInterval        = "interval"
 )
 
 var (
-	dbSchemaCurrent = dBSchemaBatchStoreV4
+	dbSchemaCurrent = dBSchemaInterval
 )
 
 type migration struct {
@@ -70,6 +71,7 @@ var schemaMigrations = []migration{
 	{name: dBSchemaBatchStoreV2, fn: migrateBatchstoreV2},
 	{name: dBSchemaBatchStoreV3, fn: migrateBatchstore},
 	{name: dBSchemaBatchStoreV4, fn: migrateBatchstore},
+	{name: dBSchemaInterval, fn: noOpMigration},
 }
 
 func migrateFB(s *Store) error {
@@ -90,7 +92,10 @@ func migrateBatchstoreV2(s *Store) error {
 			return err
 		}
 	}
+	return nil
+}
 
+func noOpMigration(s *Store) error {
 	return nil
 }
 
