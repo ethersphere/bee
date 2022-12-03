@@ -12,18 +12,15 @@ import (
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/mock"
 )
 
-type testStorer struct {
-	storage.Storer
+type testIndexDebugger struct {
 	indicesFunc func() (map[string]int, error)
 }
 
-var _ api.StorageIndexDebugger = (*testStorer)(nil)
+var _ api.StorageIndexDebugger = (*testIndexDebugger)(nil)
 
-func (t *testStorer) DebugIndices() (map[string]int, error) {
+func (t *testIndexDebugger) DebugIndices() (map[string]int, error) {
 	return t.indicesFunc()
 }
 
@@ -39,8 +36,7 @@ func TestDBIndices(t *testing.T) {
 		}
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
 			DebugAPI: true,
-			Storer: &testStorer{
-				Storer:      mock.NewStorer(),
+			IndexDebugger: &testIndexDebugger{
 				indicesFunc: func() (map[string]int, error) { return expectedIndices, nil },
 			},
 		})
@@ -61,8 +57,7 @@ func TestDBIndices(t *testing.T) {
 		t.Parallel()
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
 			DebugAPI: true,
-			Storer: &testStorer{
-				Storer:      mock.NewStorer(),
+			IndexDebugger: &testIndexDebugger{
 				indicesFunc: func() (map[string]int, error) { return nil, errors.New("dummy error") },
 			},
 		})
@@ -78,7 +73,6 @@ func TestDBIndices(t *testing.T) {
 		t.Parallel()
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
 			DebugAPI: true,
-			Storer:   mock.NewStorer(),
 		})
 
 		jsonhttptest.Request(t, testServer, http.MethodGet, "/dbindices", http.StatusNotImplemented,

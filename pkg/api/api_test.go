@@ -103,6 +103,7 @@ type testServerOptions struct {
 	Restricted         bool
 	DirectUpload       bool
 	Probe              *api.Probe
+	IndexDebugger      api.StorageIndexDebugger
 
 	Overlay         swarm.Address
 	PublicKey       ecdsa.PublicKey
@@ -192,6 +193,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		Steward:          o.Steward,
 		SyncStatus:       o.SyncStatus,
 		Staking:          o.StakingContract,
+		IndexDebugger:    o.IndexDebugger,
 	}
 	// by default bee mode is set to full mode
 	if o.beeMode == api.LightMode {
