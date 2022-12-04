@@ -81,20 +81,34 @@ func (sl *slots) Next() uint32 {
 	sl.mtx.Lock()
 	defer sl.mtx.Unlock()
 
-	sl.head = sl.next()
+	_, sl.head = sl.next(true)
 
 	return sl.head
 }
 
-func (sl *slots) next() uint32 {
+// Next returns the lowest free slot.
+func (sl *slots) Fragmented() (bool, uint32) {
+	sl.mtx.Lock()
+	defer sl.mtx.Unlock()
+
+	reachedEnd, slot := sl.next(false)
+
+	return !reachedEnd, slot
+}
+
+func (sl *slots) next(extend bool) (bool, uint32) {
 	for i := sl.head; i < sl.size(); i++ {
 		if sl.data[i/8]&(1<<(i%8)) > 0 { // first 1 bit
-			return i
+			return false, i
 		}
 	}
-	// no free slot was found, extend by 1 byte
-	sl.extend(1)
-	return sl.next()
+	if extend {
+		// no free slot was found, extend by 1 byte
+		sl.extend(1)
+		return sl.next(true)
+	}
+
+	return true, 0
 }
 
 // extend adapts the slots to an extended size shard

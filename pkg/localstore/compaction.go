@@ -5,7 +5,6 @@
 package localstore
 
 import (
-	"context"
 	"encoding/binary"
 	"fmt"
 
@@ -15,7 +14,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-func (db *DB) Compact(ctx context.Context, sharkyBasePath string) error {
+func (db *DB) Compact(sharkyBasePath string) error {
 
 	s, err := sharky.NewCompaction(sharkyBasePath, sharkyNoOfShards, swarm.SocMaxChunkSize)
 	if err != nil {
@@ -65,22 +64,26 @@ func (db *DB) Compact(ctx context.Context, sharkyBasePath string) error {
 
 	err = retrievalDataIndex.Iterate(func(item shed.Item) (stop bool, err error) {
 
-		loc, err := sharky.LocationFromBinary(item.Location)
+		oldLoc, err := sharky.LocationFromBinary(item.Location)
 		if err != nil {
 			return false, fmt.Errorf("location from binary: %w", err)
 		}
 
-		err = db.sharky.Read(loc, buf)
+		err = db.sharky.Read(oldLoc, buf)
 		if err != nil {
 			return false, fmt.Errorf("read from sharky: %w", err)
 		}
 
-		loc, err = s.Write(ctx, buf[:loc.Length])
+		updated, newLoc, err := s.Write(oldLoc, buf[:oldLoc.Length])
 		if err != nil {
 			return false, fmt.Errorf("write to sharky: %w", err)
 		}
 
-		lb, err := loc.MarshalBinary()
+		if !updated {
+			return false, nil
+		}
+
+		lb, err := newLoc.MarshalBinary()
 		if err != nil {
 			return false, fmt.Errorf("location marshall binary: %w", err)
 		}

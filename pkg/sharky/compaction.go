@@ -5,7 +5,6 @@
 package sharky
 
 import (
-	"context"
 	"fmt"
 	"os"
 	"path"
@@ -15,9 +14,10 @@ import (
 
 // Recovery allows disaster recovery.
 type Compaction struct {
-	s        *Store
-	shardCnt int
-	dataSize int
+	s         *Store
+	shardCnt  int
+	dataSize  int
+	shardPool map[uint8]*shard
 }
 
 func NewCompaction(dir string, shardCnt int, datasize int) (*Compaction, error) {
@@ -30,7 +30,7 @@ func NewCompaction(dir string, shardCnt int, datasize int) (*Compaction, error) 
 			return nil, err
 		}
 
-		ffile, err := os.Create(path.Join(dir, fmt.Sprintf("free_%03d", i)))
+		ffile, err := os.OpenFile(path.Join(dir, fmt.Sprintf("free_%03d", i)), os.O_RDONLY, 0666)
 		if err != nil {
 			return nil, err
 		}
@@ -44,15 +44,44 @@ func NewCompaction(dir string, shardCnt int, datasize int) (*Compaction, error) 
 		return nil, err
 	}
 
-	return &Compaction{s, shardCnt, datasize}, nil
+	c := &Compaction{s, shardCnt, datasize, make(map[uint8]*shard)}
+
+	for i, shard := range s.shards {
+		c.shardPool[uint8(i)] = shard
+	}
+
+	return c, nil
+
 }
 
-// Use marks a location as used (not free).
-func (c *Compaction) Write(ctx context.Context, data []byte) (Location, error) {
-	return c.s.Write(ctx, data)
+func (c *Compaction) Write(oldLoc Location, data []byte) (bool, Location, error) {
+
+	if shard, ok := c.shardPool[oldLoc.Shard]; !ok {
+		return false, Location{}, nil
+	} else {
+		fragmented, freeSlot := shard.slots.Fragmented()
+
+		if !fragmented {
+			delete(c.shardPool, oldLoc.Shard)
+			return false, Location{}, nil
+		}
+
+		if oldLoc.Slot > freeSlot {
+			newLoc, err := shard.write(data, freeSlot)
+			if err != nil {
+				return false, Location{}, err
+			}
+
+			shard.slots.Use(freeSlot)
+			shard.slots.Free(oldLoc.Slot)
+
+			return true, newLoc, nil
+		}
+
+		return false, Location{}, nil
+	}
 }
 
-// Close closes data and free slots files of the recovery (without saving).
 func (r *Compaction) Close() error {
 	err := new(multierror.Error)
 
