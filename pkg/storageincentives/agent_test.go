@@ -173,12 +173,9 @@ type mockchainBackend struct {
 	block         *atomic.Uint64
 	limit         *atomic.Uint64
 	limitCallback func()
-	lock          sync.Mutex
 }
 
 func (m *mockchainBackend) BlockNumber(context.Context) (uint64, error) {
-	m.lock.Lock()
-	defer m.lock.Unlock()
 
 	ret := m.block.Load()
 	lim := m.limit.Load()
