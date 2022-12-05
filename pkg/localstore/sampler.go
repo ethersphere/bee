@@ -27,6 +27,7 @@ import (
 const sampleSize = 8
 
 var errDbClosed = errors.New("database closed")
+var errSamplerStopped = errors.New("sampler stopped due to ongoing evictions")
 
 type sampleStat struct {
 	TotalIterated      atomic.Int64
@@ -86,15 +87,20 @@ func (db *DB) ReserveSample(
 	logger := db.logger.WithName("sampler").V(1).Register()
 
 	t := time.Now()
+	// signal start of sampling to see if we get any evictions during the sampler
+	// run
+	db.startSampling()
 
 	// Phase 1: Iterate chunk addresses
 	g.Go(func() error {
 		defer close(addrChan)
 		iterationStart := time.Now()
 
-		// protect the DB from any updates till we finish creating the sample
-		db.lock.Lock(ReserveLock)
-		defer db.lock.Unlock(ReserveLock)
+		// this is a slightly relaxed lock. GC operations are allowed during this
+		// as we dont care about the gcIndex. This lock only prevents evictions and
+		// put/set operations related to the reserve.
+		db.lock.Lock(Reserve)
+		defer db.lock.Unlock(Reserve)
 		stat.TimeToLock.Add(time.Since(t).Nanoseconds())
 
 		err := db.pullIndex.Iterate(func(item shed.Item) (bool, error) {
@@ -159,6 +165,11 @@ func (db *DB) ReserveSample(
 					return ctx.Err()
 				case <-db.close:
 					return errDbClosed
+				case <-db.samplerStop:
+					db.lock.Lock(Sampling)
+					db.samplerStop = nil
+					db.lock.Unlock(Sampling)
+					return errSamplerStopped
 				}
 			}
 
@@ -263,4 +274,20 @@ func (db *DB) ReserveSample(
 // less function uses the byte compare to check for lexicographic ordering
 func le(a, b []byte) bool {
 	return bytes.Compare(a, b) == -1
+}
+
+func (db *DB) startSampling() {
+	db.lock.Lock(Sampling)
+	defer db.lock.Unlock(Sampling)
+
+	db.samplerStop = make(chan struct{})
+}
+
+func (db *DB) stopSamplingIfStarted() {
+	db.lock.Lock(Sampling)
+	defer db.lock.Unlock(Sampling)
+
+	if db.samplerStop != nil {
+		close(db.samplerStop)
+	}
 }

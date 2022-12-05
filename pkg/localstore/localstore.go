@@ -187,6 +187,8 @@ type DB struct {
 	metrics         metrics
 	logger          log.Logger
 	validStamp      postage.ValidStampFn
+	// sampler stop is used to synchronize the reserve eviction and sampling process
+	samplerStop chan struct{}
 }
 
 // Options struct holds optional parameters for configuring DB.

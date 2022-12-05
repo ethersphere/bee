@@ -129,8 +129,8 @@ func (db *DB) updateGCItems(items ...shed.Item) {
 // only Address and Data fields with non zero values,
 // which is ensured by the get function.
 func (db *DB) updateGC(item shed.Item) (err error) {
-	db.lock.Lock(GCLock)
-	defer db.lock.Unlock(GCLock)
+	db.lock.Lock(GC)
+	defer db.lock.Unlock(GC)
 
 	if db.gcRunning {
 		db.dirtyAddresses = append(db.dirtyAddresses, swarm.NewAddress(item.Address))

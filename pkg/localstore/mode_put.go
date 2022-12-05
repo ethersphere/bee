@@ -68,13 +68,13 @@ func (r *releaseLocations) add(loc sharky.Location) {
 // in multiple put method calls.
 func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, retErr error) {
 	// protect parallel updates
-	db.lock.Lock(GCLock)
+	db.lock.Lock(GC)
 	if db.gcRunning {
 		for _, ch := range chs {
 			db.dirtyAddresses = append(db.dirtyAddresses, ch.Address())
 		}
 	}
-	db.lock.Unlock(GCLock)
+	db.lock.Unlock(GC)
 
 	batch := new(leveldb.Batch)
 
@@ -180,8 +180,8 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 		}
 
 	case storage.ModePutUpload, storage.ModePutUploadPin:
-		db.lock.Lock(UploadLock)
-		defer db.lock.Unlock(UploadLock)
+		db.lock.Lock(Upload)
+		defer db.lock.Unlock(Upload)
 
 		for i, ch := range chs {
 			pin := mode == storage.ModePutUploadPin

@@ -3,10 +3,11 @@ package localstore
 import "resenje.org/multex"
 
 const (
-	UploadLock  string = "upload"
-	ReserveLock        = "reserve"
-	GCLock             = "gc"
-	Write              = "write"
+	Upload   string = "upload"
+	Reserve         = "reserve"
+	GC              = "gc"
+	Write           = "write"
+	Sampling        = "sampling"
 )
 
 type storeLock struct {
@@ -21,20 +22,20 @@ func newStoreLock() storeLock {
 
 func (s *storeLock) Lock(lk string) {
 	switch lk {
-	case UploadLock, ReserveLock, GCLock:
-		s.Multex.Lock(lk)
 	case Write:
-		s.Multex.Lock(ReserveLock)
-		s.Multex.Lock(GCLock)
+		s.Multex.Lock(Reserve)
+		s.Multex.Lock(GC)
+	default:
+		s.Multex.Lock(lk)
 	}
 }
 
 func (s *storeLock) Unlock(lk string) {
 	switch lk {
-	case UploadLock, ReserveLock, GCLock:
-		s.Multex.Unlock(lk)
 	case Write:
-		s.Multex.Unlock(ReserveLock)
-		s.Multex.Unlock(GCLock)
+		s.Multex.Unlock(Reserve)
+		s.Multex.Unlock(GC)
+	default:
+		s.Multex.Unlock(lk)
 	}
 }

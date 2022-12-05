@@ -49,11 +49,11 @@ func (db *DB) Set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Addr
 // chunks represented by provided addresses.
 func (db *DB) set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Address) (err error) {
 	// protect parallel updates
-	db.lock.Lock(GCLock)
+	db.lock.Lock(GC)
 	if db.gcRunning {
 		db.dirtyAddresses = append(db.dirtyAddresses, addrs...)
 	}
-	db.lock.Unlock(GCLock)
+	db.lock.Unlock(GC)
 
 	batch := new(leveldb.Batch)
 	var committedLocations []sharky.Location
@@ -68,8 +68,8 @@ func (db *DB) set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Addr
 	switch mode {
 
 	case storage.ModeSetSync:
-		db.lock.Lock(GCLock)
-		defer db.lock.Unlock(GCLock)
+		db.lock.Lock(GC)
+		defer db.lock.Unlock(GC)
 
 		for _, addr := range addrs {
 			c, err := db.setSync(batch, addr)
@@ -102,8 +102,8 @@ func (db *DB) set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Addr
 		}
 
 	case storage.ModeSetPin:
-		db.lock.Lock(GCLock)
-		defer db.lock.Unlock(GCLock)
+		db.lock.Lock(GC)
+		defer db.lock.Unlock(GC)
 
 		for _, addr := range addrs {
 			item := addressToItem(addr)
@@ -114,8 +114,8 @@ func (db *DB) set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Addr
 			gcSizeChange += c
 		}
 	case storage.ModeSetUnpin:
-		db.lock.Lock(GCLock)
-		defer db.lock.Unlock(GCLock)
+		db.lock.Lock(GC)
+		defer db.lock.Unlock(GC)
 
 		for _, addr := range addrs {
 			c, err := db.setUnpin(batch, addr)
