@@ -269,6 +269,7 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 		metrics:                   newMetrics(),
 		logger:                    logger.WithName(loggerName).Register(),
 		validStamp:                o.ValidStamp,
+		lock:                      newStoreLock(),
 	}
 	if db.cacheCapacity == 0 {
 		db.cacheCapacity = defaultCacheCapacity

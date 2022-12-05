@@ -10,7 +10,13 @@ const (
 )
 
 type storeLock struct {
-	multex.Multex
+	*multex.Multex
+}
+
+func newStoreLock() storeLock {
+	return storeLock{
+		Multex: multex.New(),
+	}
 }
 
 func (s *storeLock) Lock(lk string) {
