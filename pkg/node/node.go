@@ -1043,6 +1043,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		Staking:          stakingContract,
 		Steward:          steward,
 		SyncStatus:       syncStatusFn,
+		IndexDebugger:    storer,
 	}
 
 	if o.APIAddr != "" {
