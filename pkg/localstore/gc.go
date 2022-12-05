@@ -340,8 +340,9 @@ func (db *DB) evictReserve() (totalEvicted uint64, done bool, err error) {
 		totalTimeMetric(db.metrics.TotalTimeEvictReserve, start)
 	}(time.Now())
 
-	db.lock.Lock(ReserveLock)
-	defer db.lock.Unlock(ReserveLock)
+	// reserve eviction affects the reserve indexes as well as the GC indexes
+	db.lock.Lock(Write)
+	defer db.lock.Unlock(Write)
 
 	target = db.reserveCapacity
 

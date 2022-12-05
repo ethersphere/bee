@@ -15,14 +15,17 @@ import (
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
+// EvictBatch will evict all chunks associated with the batch from the reserve. This
+// is used by batch store for expirations.
 func (db *DB) EvictBatch(id []byte) error {
 	db.metrics.BatchEvictCounter.Inc()
 	defer func(start time.Time) {
 		totalTimeMetric(db.metrics.TotalTimeBatchEvict, start)
 	}(time.Now())
 
-	db.lock.Lock(ReserveLock)
-	defer db.lock.Unlock(ReserveLock)
+	// EvictBatch will affect the reserve as well as GC indexes
+	db.lock.Lock(Write)
+	defer db.lock.Unlock(Write)
 
 	evicted, err := db.unreserveBatch(id, swarm.MaxBins)
 	if err != nil {
