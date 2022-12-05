@@ -21,8 +21,8 @@ func (db *DB) EvictBatch(id []byte) error {
 		totalTimeMetric(db.metrics.TotalTimeBatchEvict, start)
 	}(time.Now())
 
-	db.batchMu.Lock()
-	defer db.batchMu.Unlock()
+	db.lock.Lock(ReserveLock)
+	defer db.lock.Unlock(ReserveLock)
 
 	evicted, err := db.unreserveBatch(id, swarm.MaxBins)
 	if err != nil {

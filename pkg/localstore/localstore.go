@@ -154,7 +154,7 @@ type DB struct {
 	// baseKey is the overlay address
 	baseKey []byte
 
-	batchMu sync.Mutex
+	lock storeLock
 
 	// gcRunning is true while GC is running. it is
 	// used to avoid touching dirty gc index entries

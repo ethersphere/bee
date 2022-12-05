@@ -87,15 +87,16 @@ func (db *DB) ReserveSample(
 
 	t := time.Now()
 
-	// protect the DB from any updates till we finish creating the sample
-	db.batchMu.Lock()
-	defer db.batchMu.Unlock()
-	stat.TimeToLock.Add(time.Since(t).Nanoseconds())
-
 	// Phase 1: Iterate chunk addresses
 	g.Go(func() error {
 		defer close(addrChan)
 		iterationStart := time.Now()
+
+		// protect the DB from any updates till we finish creating the sample
+		db.lock.Lock(ReserveLock)
+		defer db.lock.Unlock(ReserveLock)
+		stat.TimeToLock.Add(time.Since(t).Nanoseconds())
+
 		err := db.pullIndex.Iterate(func(item shed.Item) (bool, error) {
 			select {
 			case addrChan <- swarm.NewAddress(item.Address):

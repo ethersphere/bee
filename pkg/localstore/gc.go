@@ -94,15 +94,15 @@ func (db *DB) collectGarbage() (evicted uint64, done bool, err error) {
 	target := db.gcTarget()
 
 	// tell the localstore to start logging dirty addresses
-	db.batchMu.Lock()
+	db.lock.Lock(GCLock)
 	db.gcRunning = true
-	db.batchMu.Unlock()
+	db.lock.Unlock(GCLock)
 
 	defer func() {
-		db.batchMu.Lock()
+		db.lock.Lock(GCLock)
 		db.gcRunning = false
 		db.dirtyAddresses = nil
-		db.batchMu.Unlock()
+		db.lock.Unlock(GCLock)
 	}()
 
 	gcSize, err := db.gcSize.Get()
@@ -142,9 +142,9 @@ func (db *DB) collectGarbage() (evicted uint64, done bool, err error) {
 	}
 
 	// protect database from changing idexes and gcSize
-	db.batchMu.Lock()
+	db.lock.Lock(GCLock)
 	defer totalTimeMetric(db.metrics.TotalTimeGCLock, time.Now())
-	defer db.batchMu.Unlock()
+	defer db.lock.Unlock(GCLock)
 
 	// refresh gcSize value, since it might have
 	// changed in the meanwhile
@@ -340,8 +340,8 @@ func (db *DB) evictReserve() (totalEvicted uint64, done bool, err error) {
 		totalTimeMetric(db.metrics.TotalTimeEvictReserve, start)
 	}(time.Now())
 
-	db.batchMu.Lock()
-	defer db.batchMu.Unlock()
+	db.lock.Lock(ReserveLock)
+	defer db.lock.Unlock(ReserveLock)
 
 	target = db.reserveCapacity
 
