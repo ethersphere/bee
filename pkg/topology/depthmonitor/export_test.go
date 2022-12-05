@@ -13,7 +13,3 @@ func (s *Service) SetStorageRadius(r uint8) {
 		return r
 	})
 }
-
-func (s *Service) SetMinimumRadius(radius uint8) {
-	s.minimumRadius = radius
-}

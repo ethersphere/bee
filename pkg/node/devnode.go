@@ -159,6 +159,9 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 			Created:     1,
 			Data:        []byte{1, 2, 3, 4},
 			GasPrice:    big.NewInt(12),
+			GasTipBoost: 10,
+			GasFeeCap:   big.NewInt(12),
+			GasTipCap:   new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(10)+100), big.NewInt(12)), big.NewInt(100)),
 			GasLimit:    5345,
 			Value:       big.NewInt(4),
 			Nonce:       3,
@@ -255,7 +258,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 	post := mockPost.New()
 	postageContract := mockPostContract.New(
 		mockPostContract.WithCreateBatchFunc(
-			func(ctx context.Context, amount *big.Int, depth uint8, immutable bool, label string) ([]byte, error) {
+			func(ctx context.Context, amount *big.Int, depth uint8, immutable bool, label string) (common.Hash, []byte, error) {
 				id := postagetesting.MustNewID()
 				batch := &postage.Batch{
 					ID:        id,
@@ -267,23 +270,23 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 
 				err := batchStore.Save(batch)
 				if err != nil {
-					return nil, err
+					return common.Hash{}, nil, err
 				}
 
 				stampIssuer := postage.NewStampIssuer(label, string(overlayEthAddress.Bytes()), id, amount, batch.Depth, 0, 0, immutable)
 				_ = post.Add(stampIssuer)
 
-				return id, nil
+				return common.Hash{}, id, nil
 			},
 		),
 		mockPostContract.WithTopUpBatchFunc(
-			func(ctx context.Context, batchID []byte, topupAmount *big.Int) error {
-				return postagecontract.ErrNotImplemented
+			func(ctx context.Context, batchID []byte, topupAmount *big.Int) (common.Hash, error) {
+				return common.Hash{}, postagecontract.ErrNotImplemented
 			},
 		),
 		mockPostContract.WithDiluteBatchFunc(
-			func(ctx context.Context, batchID []byte, newDepth uint8) error {
-				return postagecontract.ErrNotImplemented
+			func(ctx context.Context, batchID []byte, newDepth uint8) (common.Hash, error) {
+				return common.Hash{}, postagecontract.ErrNotImplemented
 			},
 		),
 	)
@@ -367,8 +370,8 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 	mockSteward := new(mockSteward.Steward)
 
 	mockStaking := stakingContractMock.New(
-		stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int) error {
-			return staking.ErrNotImplemented
+		stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
+			return common.Hash{}, staking.ErrNotImplemented
 		}))
 
 	debugOpts := api.ExtraOptions{
@@ -379,7 +382,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		Pseudosettle:     pseudoset,
 		Swap:             mockSwap,
 		Chequebook:       mockChequebook,
-		BlockTime:        big.NewInt(2),
+		BlockTime:        time.Second * 2,
 		Tags:             tagService,
 		Storer:           storer,
 		Resolver:         mockResolver,
@@ -410,7 +413,6 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		WsPingPeriod:       60 * time.Second,
 		Restricted:         o.Restricted,
 	}, debugOpts, 1, erc20)
-
 	apiService.MountAPI()
 	apiService.SetProbe(probe)
 
@@ -443,7 +445,6 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		Handler:           apiService,
 		ErrorLog:          stdlog.New(b.errorLogWriter, "", 0),
 	}
-
 	go func() {
 		logger.Info("starting api server", "address", apiListener.Addr())
 

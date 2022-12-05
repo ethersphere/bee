@@ -58,7 +58,7 @@ func TestIncoming_WantEmptyInterval(t *testing.T) {
 		psClient, clientDb = newPullSync(recorder)
 	)
 
-	topmost, _, err := psClient.SyncInterval(context.Background(), swarm.ZeroAddress, 1, 0, 5)
+	topmost, err := psClient.SyncInterval(context.Background(), swarm.ZeroAddress, 1, 0, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,7 +82,7 @@ func TestIncoming_WantNone(t *testing.T) {
 		psClient, clientDb = newPullSync(recorder, mock.WithChunks(chunks...))
 	)
 
-	topmost, _, err := psClient.SyncInterval(context.Background(), swarm.ZeroAddress, 0, 0, 5)
+	topmost, err := psClient.SyncInterval(context.Background(), swarm.ZeroAddress, 0, 0, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func TestIncoming_WantOne(t *testing.T) {
 		psClient, clientDb = newPullSync(recorder, mock.WithChunks(someChunks(1, 2, 3, 4)...))
 	)
 
-	topmost, _, err := psClient.SyncInterval(context.Background(), swarm.ZeroAddress, 0, 0, 5)
+	topmost, err := psClient.SyncInterval(context.Background(), swarm.ZeroAddress, 0, 0, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +131,7 @@ func TestIncoming_WantAll(t *testing.T) {
 		psClient, clientDb = newPullSync(recorder)
 	)
 
-	topmost, _, err := psClient.SyncInterval(context.Background(), swarm.ZeroAddress, 0, 0, 5)
+	topmost, err := psClient.SyncInterval(context.Background(), swarm.ZeroAddress, 0, 0, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,9 +162,9 @@ func TestIncoming_UnsolicitedChunk(t *testing.T) {
 		psClient, _ = newPullSync(recorder)
 	)
 
-	_, _, err := psClient.SyncInterval(context.Background(), swarm.ZeroAddress, 0, 0, 5)
-	if !errors.Is(err, pullsync.ErrUnsolicitedChunk) {
-		t.Fatalf("expected ErrUnsolicitedChunk but got %v", err)
+	_, err := psClient.SyncInterval(context.Background(), swarm.ZeroAddress, 0, 0, 5)
+	if err != nil {
+		t.Fatalf("expected nil but got %v", err)
 	}
 }
 

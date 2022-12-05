@@ -8,9 +8,7 @@ import (
 	"context"
 	"fmt"
 	"math/big"
-	"strings"
 
-	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/sctx"
@@ -18,9 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/transaction"
 )
 
-var (
-	redistributionContractABI = parseABI(redistributionABIv0_0_0)
-)
+var redistributionContractABI = transaction.ParseABIUnchecked(redistributionABIv0_0_0)
 
 const loggerName = "redistributionContract"
 
@@ -29,7 +25,7 @@ type Contract interface {
 	IsPlaying(context.Context, uint8) (bool, error)
 	IsWinner(context.Context) (bool, error)
 	Claim(context.Context) error
-	Commit(context.Context, []byte) error
+	Commit(context.Context, []byte, *big.Int) error
 	Reveal(context.Context, uint8, []byte, []byte) error
 }
 
@@ -103,14 +99,15 @@ func (c *contract) Claim(ctx context.Context) error {
 		return err
 	}
 	request := &transaction.TxRequest{
-		To:          &c.incentivesContractAddress,
-		Data:        callData,
-		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 9_000_000),
-		Value:       big.NewInt(0),
-		Description: "claim win transaction",
+		To:                   &c.incentivesContractAddress,
+		Data:                 callData,
+		GasPrice:             sctx.GetGasPrice(ctx),
+		GasLimit:             sctx.GetGasLimit(ctx),
+		MinEstimatedGasLimit: 500_000,
+		Value:                big.NewInt(0),
+		Description:          "claim win transaction",
 	}
-	err = c.sendAndWait(ctx, request)
+	err = c.sendAndWait(ctx, request, 50)
 	if err != nil {
 		return fmt.Errorf("claim: %w", err)
 	}
@@ -119,20 +116,21 @@ func (c *contract) Claim(ctx context.Context) error {
 }
 
 // Commit submits the obfusHash hash by sending a transaction to the blockchain.
-func (c *contract) Commit(ctx context.Context, obfusHash []byte) error {
-	callData, err := redistributionContractABI.Pack("commit", common.BytesToHash(obfusHash), common.BytesToHash(c.overlay.Bytes()))
+func (c *contract) Commit(ctx context.Context, obfusHash []byte, round *big.Int) error {
+	callData, err := redistributionContractABI.Pack("commit", common.BytesToHash(obfusHash), common.BytesToHash(c.overlay.Bytes()), round)
 	if err != nil {
 		return err
 	}
 	request := &transaction.TxRequest{
-		To:          &c.incentivesContractAddress,
-		Data:        callData,
-		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 3_000_000),
-		Value:       big.NewInt(0),
-		Description: "commit transaction",
+		To:                   &c.incentivesContractAddress,
+		Data:                 callData,
+		GasPrice:             sctx.GetGasPrice(ctx),
+		GasLimit:             sctx.GetGasLimit(ctx),
+		MinEstimatedGasLimit: 500_000,
+		Value:                big.NewInt(0),
+		Description:          "commit transaction",
 	}
-	err = c.sendAndWait(ctx, request)
+	err = c.sendAndWait(ctx, request, 50)
 	if err != nil {
 		return fmt.Errorf("commit: obfusHash %v overlay %v: %w", common.BytesToHash(obfusHash), common.BytesToHash(c.overlay.Bytes()), err)
 	}
@@ -147,14 +145,15 @@ func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommit
 		return err
 	}
 	request := &transaction.TxRequest{
-		To:          &c.incentivesContractAddress,
-		Data:        callData,
-		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 3_000_000),
-		Value:       big.NewInt(0),
-		Description: "reveal transaction",
+		To:                   &c.incentivesContractAddress,
+		Data:                 callData,
+		GasPrice:             sctx.GetGasPrice(ctx),
+		GasLimit:             sctx.GetGasLimit(ctx),
+		MinEstimatedGasLimit: 500_000,
+		Value:                big.NewInt(0),
+		Description:          "reveal transaction",
 	}
-	err = c.sendAndWait(ctx, request)
+	err = c.sendAndWait(ctx, request, 50)
 	if err != nil {
 		return fmt.Errorf("reveal: storageDepth %d reserveCommitmentHash %v RandomNonce %v: %w", storageDepth, common.BytesToHash(reserveCommitmentHash), common.BytesToHash(RandomNonce), err)
 	}
@@ -182,9 +181,8 @@ func (c *contract) ReserveSalt(ctx context.Context) ([]byte, error) {
 	return salt[:], nil
 }
 
-// sendAndWait simulates a transaction based on tx request and waits until the tx is either mined or ctx is cancelled.
-func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest) error {
-	txHash, err := c.txService.Send(ctx, request)
+func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest, boostPercent int) error {
+	txHash, err := c.txService.Send(ctx, request, boostPercent)
 	if err != nil {
 		return err
 	}
@@ -210,12 +208,4 @@ func (c *contract) callTx(ctx context.Context, callData []byte) ([]byte, error) 
 		return nil, err
 	}
 	return result, nil
-}
-
-func parseABI(json string) abi.ABI {
-	cabi, err := abi.JSON(strings.NewReader(json))
-	if err != nil {
-		panic(fmt.Sprintf("error creating ABI for redistribution redistributioncontract: %v", err))
-	}
-	return cabi
 }

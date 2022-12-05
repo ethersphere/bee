@@ -105,14 +105,15 @@ const (
 )
 
 var (
-	errInvalidNameOrAddress = errors.New("invalid name or bzz address")
-	errNoResolver           = errors.New("no resolver connected")
-	errInvalidRequest       = errors.New("could not validate request")
-	errInvalidContentType   = errors.New("invalid content-type")
-	errDirectoryStore       = errors.New("could not store directory")
-	errFileStore            = errors.New("could not store file")
-	errInvalidPostageBatch  = errors.New("invalid postage batch id")
-	errBatchUnusable        = errors.New("batch not usable")
+	errInvalidNameOrAddress        = errors.New("invalid name or bzz address")
+	errNoResolver                  = errors.New("no resolver connected")
+	errInvalidRequest              = errors.New("could not validate request")
+	errInvalidContentType          = errors.New("invalid content-type")
+	errDirectoryStore              = errors.New("could not store directory")
+	errFileStore                   = errors.New("could not store file")
+	errInvalidPostageBatch         = errors.New("invalid postage batch id")
+	errBatchUnusable               = errors.New("batch not usable")
+	errUnsupportedDevNodeOperation = errors.New("operation not supported in dev mode")
 )
 
 type Service struct {
@@ -135,6 +136,7 @@ type Service struct {
 	probe           *Probe
 	metricsRegistry *prometheus.Registry
 	stakingContract staking.Contract
+	indexDebugger   StorageIndexDebugger
 	Options
 
 	http.Handler
@@ -166,7 +168,7 @@ type Service struct {
 	swap        swap.Interface
 	transaction transaction.Service
 	lightNodes  *lightnode.Container
-	blockTime   *big.Int
+	blockTime   time.Duration
 
 	postageSem       *semaphore.Weighted
 	stakingSem       *semaphore.Weighted
@@ -207,7 +209,7 @@ type ExtraOptions struct {
 	Pseudosettle     settlement.Interface
 	Swap             swap.Interface
 	Chequebook       chequebook.Service
-	BlockTime        *big.Int
+	BlockTime        time.Duration
 	Tags             *tags.Tags
 	Storer           storage.Storer
 	Resolver         resolver.Interface
@@ -220,6 +222,7 @@ type ExtraOptions struct {
 	Staking          staking.Contract
 	Steward          steward.Interface
 	SyncStatus       func() (bool, error)
+	IndexDebugger    StorageIndexDebugger
 }
 
 func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger log.Logger, transaction transaction.Service, batchStore postage.Storer, beeMode BeeNodeMode, chequebookEnabled bool, swapEnabled bool, chainBackend transaction.Backend, cors []string) *Service {
@@ -282,6 +285,7 @@ func (s *Service) Configure(signer crypto.Signer, auth auth.Authenticator, trace
 	s.postageContract = e.PostageContract
 	s.steward = e.Steward
 	s.stakingContract = e.Staking
+	s.indexDebugger = e.IndexDebugger
 
 	s.pingpong = e.Pingpong
 	s.topologyDriver = e.TopologyDriver
@@ -780,12 +784,15 @@ func (s *Service) newStamperPutter(r *http.Request) (storage.Storer, func() erro
 		return nil, noopWaitFn, fmt.Errorf("request deferred: %w", err)
 	}
 
+	if !deferred && s.beeMode == DevMode {
+		return nil, noopWaitFn, errUnsupportedDevNodeOperation
+	}
 	exists, err := s.batchStore.Exists(batch)
 	if err != nil {
 		return nil, noopWaitFn, fmt.Errorf("batch exists: %w", err)
 	}
 
-	issuer, err := s.post.GetStampIssuer(batch)
+	issuer, save, err := s.post.GetStampIssuer(batch)
 	if err != nil {
 		return nil, noopWaitFn, fmt.Errorf("stamp issuer: %w", err)
 	}
@@ -795,11 +802,19 @@ func (s *Service) newStamperPutter(r *http.Request) (storage.Storer, func() erro
 	}
 
 	if deferred {
-		p, err := newStoringStamperPutter(s.storer, s.post, s.signer, batch)
-		return p, noopWaitFn, err
+		p, err := newStoringStamperPutter(s.storer, issuer, s.signer)
+		return p, save, err
 	}
-	p, err := newPushStamperPutter(s.storer, s.post, s.signer, batch, s.chunkPushC)
-	return p, p.eg.Wait, err
+	p, err := newPushStamperPutter(s.storer, issuer, s.signer, s.chunkPushC)
+
+	wait := func() error {
+		if err := save(); err != nil {
+			return err
+		}
+		return p.eg.Wait()
+	}
+
+	return p, wait, err
 }
 
 type pushStamperPutter struct {
@@ -810,12 +825,7 @@ type pushStamperPutter struct {
 	sem     chan struct{}
 }
 
-func newPushStamperPutter(s storage.Storer, post postage.Service, signer crypto.Signer, batch []byte, cc chan *pusher.Op) (*pushStamperPutter, error) {
-	i, err := post.GetStampIssuer(batch)
-	if err != nil {
-		return nil, fmt.Errorf("stamp issuer: %w", err)
-	}
-
+func newPushStamperPutter(s storage.Storer, i *postage.StampIssuer, signer crypto.Signer, cc chan *pusher.Op) (*pushStamperPutter, error) {
 	stamper := postage.NewStamper(i, signer)
 	return &pushStamperPutter{Storer: s, stamper: stamper, c: cc, sem: make(chan struct{}, uploadSem)}, nil
 }
@@ -877,12 +887,7 @@ type stamperPutter struct {
 	stamper postage.Stamper
 }
 
-func newStoringStamperPutter(s storage.Storer, post postage.Service, signer crypto.Signer, batch []byte) (*stamperPutter, error) {
-	i, err := post.GetStampIssuer(batch)
-	if err != nil {
-		return nil, fmt.Errorf("stamp issuer: %w", err)
-	}
-
+func newStoringStamperPutter(s storage.Storer, i *postage.StampIssuer, signer crypto.Signer) (*stamperPutter, error) {
 	stamper := postage.NewStamper(i, signer)
 	return &stamperPutter{Storer: s, stamper: stamper}, nil
 }

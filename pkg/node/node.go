@@ -271,12 +271,14 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 
 	chainEnabled := isChainEnabled(o, o.BlockchainRpcEndpoint, logger)
 
+	logger.Info("using network id", "network_id", networkID)
+
 	var batchStore postage.Storer = new(postage.NoOpBatchStore)
 	var unreserveFn func([]byte, uint8) (uint64, error)
 
 	if chainEnabled {
 		var evictFn = func(b []byte) error {
-			_, err := unreserveFn(b, swarm.MaxPO+1)
+			_, err := unreserveFn(b, swarm.MaxBins)
 			return err
 		}
 		batchStore, err = batchstore.New(stateStore, evictFn, logger)
@@ -644,6 +646,9 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		logger.Info("using datadir", "path", o.DataDir)
 		path = filepath.Join(o.DataDir, "localstore")
 	}
+
+	validStamp := postage.ValidStamp(batchStore)
+
 	lo := &localstore.Options{
 		Capacity:               o.CacheCapacity,
 		ReserveCapacity:        uint64(batchstore.Capacity),
@@ -652,6 +657,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		BlockCacheCapacity:     o.DBBlockCacheCapacity,
 		WriteBufferSize:        o.DBWriteBufferSize,
 		DisableSeeksCompaction: o.DBDisableSeeksCompaction,
+		ValidStamp:             validStamp,
 	}
 
 	storer, err := localstore.New(path, swarmAddress.Bytes(), stateStore, lo, logger)
@@ -661,7 +667,6 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	b.localstoreCloser = storer
 	unreserveFn = storer.UnreserveBatch
 
-	validStamp := postage.ValidStamp(batchStore)
 	post, err := postage.NewService(stateStore, batchStore, chainID)
 	if err != nil {
 		return nil, fmt.Errorf("postage service load: %w", err)
@@ -678,7 +683,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	var postageSyncStart uint64 = 0
 
 	chainCfg, found := config.GetChainConfig(chainID)
-	postageContractAddress, startBlock := chainCfg.PostageStamp, chainCfg.StartBlock
+	postageContractAddress, startBlock := chainCfg.PostageStamp, chainCfg.PostageStampStartBlock
 	if o.PostageContractAddress != "" {
 		if !common.IsHexAddress(o.PostageContractAddress) {
 			return nil, errors.New("malformed postage stamp address")
@@ -924,14 +929,14 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	pusherService := pusher.New(networkID, storer, kad, pushSyncProtocol, validStamp, tagService, logger, tracer, warmupTime, pusher.DefaultRetryCount)
 	b.pusherCloser = pusherService
 
-	pullStorage := pullstorage.New(storer)
+	pullStorage := pullstorage.New(storer, logger)
 
 	pullSyncProtocol := pullsync.New(p2ps, pullStorage, pssService.TryUnwrap, validStamp, logger)
 	b.pullSyncCloser = pullSyncProtocol
 
 	var pullerService *puller.Puller
 	if o.FullNodeMode && !o.BootnodeMode {
-		pullerService = puller.New(stateStore, kad, batchStore, pullSyncProtocol, logger, puller.Options{}, warmupTime)
+		pullerService = puller.New(stateStore, kad, batchStore, pullSyncProtocol, logger, puller.Options{SyncSleepDur: puller.DefaultSyncErrorSleepDur}, warmupTime)
 		b.pullerCloser = pullerService
 	}
 
@@ -985,7 +990,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 			}
 
 			redistributionContract := redistribution.New(swarmAddress, logger, transactionService, redistributionAddress)
-			agent = storageincentives.New(swarmAddress, chainBackend, logger, depthMonitor, redistributionContract, batchStore, storer, o.BlockTime, storageincentives.DefaultBlocksPerRound, storageincentives.DefaultBlocksPerPhase)
+			agent = storageincentives.New(swarmAddress, chainBackend, logger, depthMonitor, redistributionContract, postageContractService, batchStore, storer, o.BlockTime, storageincentives.DefaultBlocksPerRound, storageincentives.DefaultBlocksPerPhase)
 			b.storageIncetivesCloser = agent
 		}
 	}
@@ -1025,7 +1030,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		Pseudosettle:     pseudosettleService,
 		Swap:             swapService,
 		Chequebook:       chequebookService,
-		BlockTime:        big.NewInt(int64(o.BlockTime)),
+		BlockTime:        o.BlockTime,
 		Tags:             tagService,
 		Storer:           ns,
 		Resolver:         multiResolver,
@@ -1038,6 +1043,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		Staking:          stakingContract,
 		Steward:          steward,
 		SyncStatus:       syncStatusFn,
+		IndexDebugger:    storer,
 	}
 
 	if o.APIAddr != "" {

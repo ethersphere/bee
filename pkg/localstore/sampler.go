@@ -14,38 +14,48 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/bmtpool"
+	"github.com/ethersphere/bee/pkg/cac"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/shed"
+	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
 )
 
-const sampleSize = 16
+const sampleSize = 8
 
 var errDbClosed = errors.New("database closed")
 
 type sampleStat struct {
-	TotalIterated     atomic.Int64
-	NotFound          atomic.Int64
-	NewIgnored        atomic.Int64
-	IterationDuration atomic.Int64
-	GetDuration       atomic.Int64
-	HmacrDuration     atomic.Int64
+	TotalIterated      atomic.Int64
+	NotFound           atomic.Int64
+	NewIgnored         atomic.Int64
+	IterationDuration  atomic.Int64
+	GetDuration        atomic.Int64
+	HmacrDuration      atomic.Int64
+	ValidStampDuration atomic.Int64
 }
 
-func (s *sampleStat) String() string {
+type sampleEntry struct {
+	transformedAddress swarm.Address
+	chunkItem          shed.Item
+}
+
+func (s sampleStat) String() string {
 
 	seconds := int64(time.Second)
 
 	return fmt.Sprintf(
-		"Total: %d NotFound: %d New Ignored: %d Iteration Duration: %d secs GetDuration: %d secs HmacrDuration: %d",
+		"Chunks: %d NotFound: %d New Ignored: %d Iteration Duration: %d secs GetDuration: %d secs HmacrDuration: %d ValidStampDuration: %d",
 		s.TotalIterated.Load(),
 		s.NotFound.Load(),
 		s.NewIgnored.Load(),
 		s.IterationDuration.Load()/seconds,
 		s.GetDuration.Load()/seconds,
 		s.HmacrDuration.Load()/seconds,
+		s.ValidStampDuration.Load()/seconds,
 	)
 }
 
@@ -63,7 +73,7 @@ func (s *sampleStat) String() string {
 func (db *DB) ReserveSample(
 	ctx context.Context,
 	anchor []byte,
-	storageDepth uint8,
+	storageRadius uint8,
 	consensusTime uint64, // nanoseconds
 ) (storage.Sample, error) {
 
@@ -71,6 +81,8 @@ func (db *DB) ReserveSample(
 	addrChan := make(chan swarm.Address)
 	var stat sampleStat
 	logger := db.logger.WithName("sampler").V(1).Register()
+
+	t := time.Now()
 
 	// Phase 1: Iterate chunk addresses
 	g.Go(func() error {
@@ -88,7 +100,7 @@ func (db *DB) ReserveSample(
 			}
 		}, &shed.IterateOptions{
 			StartFrom: &shed.Item{
-				Address: generateAddressAt(db.baseKey, int(storageDepth)),
+				Address: db.addressInBin(storageRadius).Bytes(),
 			},
 		})
 		if err != nil {
@@ -100,7 +112,7 @@ func (db *DB) ReserveSample(
 	})
 
 	// Phase 2: Get the chunk data and calculate transformed hash
-	sampleItemChan := make(chan swarm.Address)
+	sampleItemChan := make(chan sampleEntry)
 	const workers = 6
 	for i := 0; i < workers; i++ {
 		g.Go(func() error {
@@ -132,7 +144,7 @@ func (db *DB) ReserveSample(
 				stat.HmacrDuration.Add(time.Since(hmacrStart).Nanoseconds())
 
 				select {
-				case sampleItemChan <- swarm.NewAddress(taddr):
+				case sampleItemChan <- sampleEntry{transformedAddress: swarm.NewAddress(taddr), chunkItem: chItem}:
 					// continue
 				case <-ctx.Done():
 					return ctx.Err()
@@ -180,8 +192,32 @@ func (db *DB) ReserveSample(
 		} else {
 			currentMaxAddr = swarm.NewAddress(make([]byte, 32))
 		}
-		if le(item.Bytes(), currentMaxAddr.Bytes()) || len(sampleItems) < sampleSize {
-			insert(item)
+		if le(item.transformedAddress.Bytes(), currentMaxAddr.Bytes()) || len(sampleItems) < sampleSize {
+
+			validStart := time.Now()
+
+			chunk := swarm.NewChunk(swarm.NewAddress(item.chunkItem.Address), item.chunkItem.Data)
+
+			stamp := postage.NewStamp(item.chunkItem.BatchID, item.chunkItem.Index, item.chunkItem.Timestamp, item.chunkItem.Sig)
+
+			stampData, err := stamp.MarshalBinary()
+			if err != nil {
+				logger.Debug("error marshaling stamp for chunk", "chunk_address", chunk.Address(), "error", err)
+				continue
+			}
+			_, err = db.validStamp(chunk, stampData)
+			if err == nil {
+				if !cac.Valid(chunk) && !soc.Valid(chunk) {
+					logger.Debug("data invalid for chunk address", "chunk_address", chunk.Address())
+				} else {
+					insert(item.transformedAddress)
+				}
+			} else {
+				logger.Debug("invalid stamp for chunk", "chunk_address", chunk.Address(), "error", err)
+			}
+
+			stat.ValidStampDuration.Add(time.Since(validStart).Nanoseconds())
+
 		}
 	}
 
@@ -204,7 +240,8 @@ func (db *DB) ReserveSample(
 		Items: sampleItems,
 		Hash:  swarm.NewAddress(hash),
 	}
-	logger.Info("Sampler done", "Stats", stat.String(), "Sample", sample)
+
+	logger.Info("sampler done", "duration", time.Since(t), "storage_radius", storageRadius, "consensus_time_ns", consensusTime, "stats", stat, "sample", sample)
 
 	return sample, nil
 }

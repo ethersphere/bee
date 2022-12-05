@@ -145,6 +145,13 @@ func (s *Service) mountTechnicalDebug() {
 		httpaccess.NewHTTPAccessSuppressLogHandler(),
 		web.FinalHandlerFunc(s.healthHandler),
 	))
+
+	s.router.Handle("/dbindices", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			httpaccess.NewHTTPAccessSuppressLogHandler(),
+			web.FinalHandlerFunc(s.dbIndicesHandler),
+		),
+	})
 }
 
 func (s *Service) mountAPI() {
@@ -545,7 +552,7 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 		web.FinalHandlerFunc(s.healthHandler),
 	))
 
-	handle("/stake/deposit/{amount}", web.ChainHandlers(
+	handle("/stake/{amount}", web.ChainHandlers(
 		s.stakingAccessHandler,
 		s.gasConfigMiddleware("deposit stake"),
 		web.FinalHandler(jsonhttp.MethodHandler{

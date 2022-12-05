@@ -16,6 +16,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/transaction"
@@ -26,6 +27,7 @@ func TestRedistribution(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
+	ctx = sctx.SetGasPrice(ctx, big.NewInt(100))
 	owner := swarm.MustParseHexAddress("f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b")
 	redistributionAddress := common.HexToAddress("ffff")
 	//nonce := common.BytesToHash(make([]byte, 32))
@@ -136,7 +138,7 @@ func TestRedistribution(t *testing.T) {
 		}
 		contract := redistribution.New(owner, log.Noop,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
 					if *request.To == redistributionAddress {
 						if !bytes.Equal(expectedCallData[:32], request.Data[:32]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -171,7 +173,7 @@ func TestRedistribution(t *testing.T) {
 		}
 		contract := redistribution.New(owner, log.Noop,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
 					if *request.To == redistributionAddress {
 						if !bytes.Equal(expectedCallData[:32], request.Data[:32]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -202,13 +204,13 @@ func TestRedistribution(t *testing.T) {
 		var obfus [32]byte
 		testobfus := common.Hex2Bytes("hash")
 		copy(obfus[:], testobfus)
-		expectedCallData, err := redistribution.RedistributionContractABI.Pack("commit", obfus, common.BytesToHash(owner.Bytes()))
+		expectedCallData, err := redistribution.RedistributionContractABI.Pack("commit", obfus, common.BytesToHash(owner.Bytes()), big.NewInt(0))
 		if err != nil {
 			t.Fatal(err)
 		}
 		contract := redistribution.New(owner, log.Noop,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
 					if *request.To == redistributionAddress {
 						if !bytes.Equal(expectedCallData[:32], request.Data[:32]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -228,7 +230,7 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionAddress)
 
-		err = contract.Commit(ctx, testobfus)
+		err = contract.Commit(ctx, testobfus, big.NewInt(0))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -247,7 +249,7 @@ func TestRedistribution(t *testing.T) {
 		}
 		contract := redistribution.New(owner, log.Noop,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, _ int) (txHash common.Hash, err error) {
 					if *request.To == redistributionAddress {
 						if !bytes.Equal(expectedCallData[:32], request.Data[:32]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -323,13 +325,13 @@ func TestRedistribution(t *testing.T) {
 	t.Run("invalid call data", func(t *testing.T) {
 		t.Parallel()
 
-		expectedCallData, err := redistribution.RedistributionContractABI.Pack("commit", common.BytesToHash(common.Hex2Bytes("some hash")), common.BytesToHash(common.Hex2Bytes("some address")))
+		expectedCallData, err := redistribution.RedistributionContractABI.Pack("commit", common.BytesToHash(common.Hex2Bytes("some hash")), common.BytesToHash(common.Hex2Bytes("some address")), big.NewInt(0))
 		if err != nil {
 			t.Fatal(err)
 		}
 		contract := redistribution.New(owner, log.Noop,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
 					if *request.To == redistributionAddress {
 						if !bytes.Equal(expectedCallData[:], request.Data[:]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -341,7 +343,7 @@ func TestRedistribution(t *testing.T) {
 			),
 			redistributionAddress)
 
-		err = contract.Commit(ctx, common.Hex2Bytes("hash"))
+		err = contract.Commit(ctx, common.Hex2Bytes("hash"), big.NewInt(0))
 		if err == nil {
 			t.Fatal("expected error")
 		}

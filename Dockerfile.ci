@@ -1,0 +1,15 @@
+FROM cgr.dev/chainguard/busybox:latest
+
+USER root
+
+RUN addgroup --system bee --gid 998; \
+    adduser -S -G bee -u 998 -D -h /home/bee bee; \
+    mkdir -p /home/bee/.bee && chown 998:998 /home/bee/.bee
+
+COPY bee /bee
+
+EXPOSE 1633 1634 1635
+USER bee
+WORKDIR /home/bee
+
+ENTRYPOINT ["/bee"]

@@ -18,14 +18,13 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/transaction"
-	"github.com/ethersphere/go-storage-incentives-abi/postageabi"
 	"github.com/ethersphere/go-sw3-abi/sw3abi"
 )
 
 var (
 	BucketDepth = uint8(16)
 
-	postageStampABI   = parseABI(postageabi.PostageStampABIv0_3_0)
+	postageStampABI   = parseABI(PostageABI)
 	erc20ABI          = parseABI(sw3abi.ERC20ABIv0_3_1)
 	batchCreatedTopic = postageStampABI.Events["BatchCreated"].ID
 	batchTopUpTopic   = postageStampABI.Events["BatchTopUp"].ID
@@ -46,9 +45,14 @@ var (
 )
 
 type Interface interface {
-	CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) ([]byte, error)
-	TopUpBatch(ctx context.Context, batchID []byte, topupBalance *big.Int) error
-	DiluteBatch(ctx context.Context, batchID []byte, newDepth uint8) error
+	CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) (common.Hash, []byte, error)
+	TopUpBatch(ctx context.Context, batchID []byte, topupBalance *big.Int) (common.Hash, error)
+	DiluteBatch(ctx context.Context, batchID []byte, newDepth uint8) (common.Hash, error)
+	PostageBatchExpirer
+}
+
+type PostageBatchExpirer interface {
+	ExpireBatches(ctx context.Context) error
 }
 
 type postageContract struct {
@@ -83,6 +87,59 @@ func New(
 	}
 }
 
+func (c *postageContract) ExpireBatches(ctx context.Context) error {
+	for {
+		exists, err := c.expiredBatchesExists(ctx)
+		if err != nil {
+			return fmt.Errorf("expired batches exist: %w", err)
+		}
+		if !exists {
+			break
+		}
+
+		err = c.expireLimitedBatches(ctx, big.NewInt(25))
+		if err != nil {
+			return fmt.Errorf("expire limited batches: %w", err)
+		}
+	}
+	return nil
+}
+
+func (c *postageContract) expiredBatchesExists(ctx context.Context) (bool, error) {
+	callData, err := postageStampABI.Pack("expiredBatchesExist")
+	if err != nil {
+		return false, err
+	}
+
+	result, err := c.transactionService.Call(ctx, &transaction.TxRequest{
+		To:   &c.postageContractAddress,
+		Data: callData,
+	})
+	if err != nil {
+		return false, err
+	}
+
+	results, err := postageStampABI.Unpack("expiredBatchesExist", result)
+	if err != nil {
+		return false, err
+	}
+	return results[0].(bool), nil
+}
+
+func (c *postageContract) expireLimitedBatches(ctx context.Context, count *big.Int) error {
+	callData, err := postageStampABI.Pack("expireLimited", count)
+	if err != nil {
+		return err
+	}
+
+	_, err = c.sendTransaction(ctx, callData, "expire limited batches")
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (c *postageContract) sendApproveTransaction(ctx context.Context, amount *big.Int) (*types.Receipt, error) {
 	callData, err := erc20ABI.Pack("approve", c.postageContractAddress, amount)
 	if err != nil {
@@ -96,7 +153,7 @@ func (c *postageContract) sendApproveTransaction(ctx context.Context, amount *bi
 		GasLimit:    65000,
 		Value:       big.NewInt(0),
 		Description: approveDescription,
-	})
+	}, transaction.DefaultTipBoostPercent)
 	if err != nil {
 		return nil, err
 	}
@@ -118,12 +175,12 @@ func (c *postageContract) sendTransaction(ctx context.Context, callData []byte, 
 		To:          &c.postageContractAddress,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 9_000_000),
+		GasLimit:    sctx.GetGasLimit(ctx),
 		Value:       big.NewInt(0),
 		Description: desc,
 	}
 
-	txHash, err := c.transactionService.Send(ctx, request)
+	txHash, err := c.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
 	if err != nil {
 		return nil, err
 	}
@@ -206,47 +263,55 @@ func (c *postageContract) getBalance(ctx context.Context) (*big.Int, error) {
 	return abi.ConvertType(results[0], new(big.Int)).(*big.Int), nil
 }
 
-func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) ([]byte, error) {
+func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) (txHash common.Hash, batchID []byte, err error) {
 
 	if depth <= BucketDepth {
-		return nil, ErrInvalidDepth
+		err = ErrInvalidDepth
+		return
 	}
 
 	totalAmount := big.NewInt(0).Mul(initialBalance, big.NewInt(int64(1<<depth)))
 	balance, err := c.getBalance(ctx)
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	if balance.Cmp(totalAmount) < 0 {
-		return nil, ErrInsufficientFunds
+		err = ErrInsufficientFunds
+		return
+	}
+
+	err = c.ExpireBatches(ctx)
+	if err != nil {
+		return
 	}
 
 	_, err = c.sendApproveTransaction(ctx, totalAmount)
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	nonce := make([]byte, 32)
 	_, err = rand.Read(nonce)
 	if err != nil {
-		return nil, err
+		return
 	}
 
 	receipt, err := c.sendCreateBatchTransaction(ctx, c.owner, initialBalance, depth, common.BytesToHash(nonce), immutable)
 	if err != nil {
-		return nil, err
+		return
 	}
-
+	txHash = receipt.TxHash
 	for _, ev := range receipt.Logs {
 		if ev.Address == c.postageContractAddress && len(ev.Topics) > 0 && ev.Topics[0] == batchCreatedTopic {
 			var createdEvent batchCreatedEvent
 			err = transaction.ParseEvent(&postageStampABI, "BatchCreated", &createdEvent, *ev)
+
 			if err != nil {
-				return nil, err
+				return
 			}
 
-			batchID := createdEvent.BatchId[:]
+			batchID = createdEvent.BatchId[:]
 			err = c.postageService.Add(postage.NewStampIssuer(
 				label,
 				c.owner.Hex(),
@@ -259,75 +324,84 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 			))
 
 			if err != nil {
-				return nil, err
+				return
 			}
-
-			return createdEvent.BatchId[:], nil
+			return
 		}
 	}
-
-	return nil, ErrBatchCreate
+	err = ErrBatchCreate
+	return
 }
 
-func (c *postageContract) TopUpBatch(ctx context.Context, batchID []byte, topUpAmount *big.Int) error {
+func (c *postageContract) TopUpBatch(ctx context.Context, batchID []byte, topupBalance *big.Int) (txHash common.Hash, err error) {
 
 	batch, err := c.postageStorer.Get(batchID)
 	if err != nil {
-		return err
+		return
 	}
 
-	totalAmount := big.NewInt(0).Mul(topUpAmount, big.NewInt(int64(1<<batch.Depth)))
+	totalAmount := big.NewInt(0).Mul(topupBalance, big.NewInt(int64(1<<batch.Depth)))
 	balance, err := c.getBalance(ctx)
 	if err != nil {
-		return err
+		return
 	}
 
 	if balance.Cmp(totalAmount) < 0 {
-		return ErrInsufficientFunds
+		err = ErrInsufficientFunds
+		return
 	}
 
 	_, err = c.sendApproveTransaction(ctx, totalAmount)
 	if err != nil {
-		return err
+		return
 	}
 
-	receipt, err := c.sendTopUpBatchTransaction(ctx, batch.ID, topUpAmount)
+	receipt, err := c.sendTopUpBatchTransaction(ctx, batch.ID, topupBalance)
 	if err != nil {
-		return err
+		txHash = receipt.TxHash
+		return
 	}
 
 	for _, ev := range receipt.Logs {
 		if ev.Address == c.postageContractAddress && len(ev.Topics) > 0 && ev.Topics[0] == batchTopUpTopic {
-			return nil
+			txHash = receipt.TxHash
+			return
 		}
 	}
 
-	return ErrBatchTopUp
+	err = ErrBatchTopUp
+	return
 }
 
-func (c *postageContract) DiluteBatch(ctx context.Context, batchID []byte, newDepth uint8) error {
+func (c *postageContract) DiluteBatch(ctx context.Context, batchID []byte, newDepth uint8) (txHash common.Hash, err error) {
 
 	batch, err := c.postageStorer.Get(batchID)
 	if err != nil {
-		return err
+		return
 	}
 
 	if batch.Depth > newDepth {
-		return fmt.Errorf("new depth should be greater: %w", ErrInvalidDepth)
+		err = fmt.Errorf("new depth should be greater: %w", ErrInvalidDepth)
+		return
+	}
+
+	err = c.ExpireBatches(ctx)
+	if err != nil {
+		return
 	}
 
 	receipt, err := c.sendDiluteTransaction(ctx, batch.ID, newDepth)
 	if err != nil {
-		return err
+		return
 	}
-
+	txHash = receipt.TxHash
 	for _, ev := range receipt.Logs {
 		if ev.Address == c.postageContractAddress && len(ev.Topics) > 0 && ev.Topics[0] == batchDiluteTopic {
-			return nil
+			return
 		}
 	}
-
-	return ErrBatchDilute
+	err = ErrBatchDilute
+	return
 }
 
 type batchCreatedEvent struct {
@@ -376,12 +450,16 @@ func LookupERC20Address(ctx context.Context, transactionService transaction.Serv
 
 type noOpPostageContract struct{}
 
-func (m *noOpPostageContract) CreateBatch(context.Context, *big.Int, uint8, bool, string) ([]byte, error) {
-	return nil, ErrChainDisabled
+func (m *noOpPostageContract) CreateBatch(context.Context, *big.Int, uint8, bool, string) (common.Hash, []byte, error) {
+	return common.Hash{}, nil, nil
 }
-func (m *noOpPostageContract) TopUpBatch(context.Context, []byte, *big.Int) error {
-	return ErrChainDisabled
+func (m *noOpPostageContract) TopUpBatch(context.Context, []byte, *big.Int) (common.Hash, error) {
+	return common.Hash{}, ErrChainDisabled
 }
-func (m *noOpPostageContract) DiluteBatch(context.Context, []byte, uint8) error {
+func (m *noOpPostageContract) DiluteBatch(context.Context, []byte, uint8) (common.Hash, error) {
+	return common.Hash{}, ErrChainDisabled
+}
+
+func (m *noOpPostageContract) ExpireBatches(context.Context) error {
 	return ErrChainDisabled
 }

@@ -56,6 +56,8 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.NotFound(w, "batch with id not found")
 		case errors.Is(err, errInvalidPostageBatch):
 			jsonhttp.BadRequest(w, "invalid batch id")
+		case errors.Is(err, errUnsupportedDevNodeOperation):
+			jsonhttp.BadRequest(w, errUnsupportedDevNodeOperation)
 		default:
 			jsonhttp.BadRequest(w, nil)
 		}
@@ -361,6 +363,10 @@ FETCH:
 				return
 			}
 		}
+		logger.Debug("bzz download: address not found or incorrect", "address", address, "path", pathVar)
+		logger.Error(nil, "address not found or incorrect")
+		jsonhttp.NotFound(w, "address not found or incorrect")
+		return
 	}
 
 	me, err := m.Lookup(ctx, pathVar)

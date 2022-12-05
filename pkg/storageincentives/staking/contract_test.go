@@ -45,7 +45,7 @@ func TestDepositStake(t *testing.T) {
 
 		contract := staking2.New(addr, owner, stakingAddress, bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
 					if *request.To == bzzTokenAddress {
 						return txHashApprove, nil
 					}
@@ -81,7 +81,7 @@ func TestDepositStake(t *testing.T) {
 				})),
 			nonce)
 
-		err = contract.DepositStake(ctx, stakedAmount)
+		_, err = contract.DepositStake(ctx, stakedAmount)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -99,7 +99,7 @@ func TestDepositStake(t *testing.T) {
 
 		contract := staking2.New(addr, owner, stakingAddress, bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
 					if *request.To == bzzTokenAddress {
 						return txHashApprove, nil
 					}
@@ -135,7 +135,7 @@ func TestDepositStake(t *testing.T) {
 				})),
 			nonce)
 
-		err = contract.DepositStake(ctx, stakedAmount)
+		_, err = contract.DepositStake(ctx, stakedAmount)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -167,7 +167,7 @@ func TestDepositStake(t *testing.T) {
 				})),
 			nonce)
 
-		err := contract.DepositStake(ctx, big.NewInt(0))
+		_, err := contract.DepositStake(ctx, big.NewInt(0))
 		if !errors.Is(err, staking2.ErrInsufficientStakeAmount) {
 			t.Fatal(fmt.Errorf("wanted %w, got %v", staking2.ErrInsufficientStakeAmount, err))
 		}
@@ -192,7 +192,7 @@ func TestDepositStake(t *testing.T) {
 				})),
 			nonce)
 
-		err := contract.DepositStake(ctx, big.NewInt(100000000000000000))
+		_, err := contract.DepositStake(ctx, big.NewInt(100000000000000000))
 		if !errors.Is(err, staking2.ErrInsufficientFunds) {
 			t.Fatal(fmt.Errorf("wanted %w, got %v", staking2.ErrInsufficientFunds, err))
 		}
@@ -217,7 +217,7 @@ func TestDepositStake(t *testing.T) {
 				})),
 			nonce)
 
-		err := contract.DepositStake(ctx, big.NewInt(100000000000000000))
+		_, err := contract.DepositStake(ctx, big.NewInt(100000000000000000))
 		if !errors.Is(err, staking2.ErrInsufficientFunds) {
 			t.Fatal(fmt.Errorf("wanted %w, got %v", staking2.ErrInsufficientStakeAmount, err))
 		}
@@ -231,7 +231,7 @@ func TestDepositStake(t *testing.T) {
 
 		contract := staking2.New(addr, owner, stakingAddress, bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
 					if *request.To == bzzTokenAddress {
 						return common.Hash{}, errors.New("send transaction failed")
 					}
@@ -248,7 +248,7 @@ func TestDepositStake(t *testing.T) {
 				})),
 			nonce)
 
-		err := contract.DepositStake(ctx, stakedAmount)
+		_, err := contract.DepositStake(ctx, stakedAmount)
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -267,7 +267,7 @@ func TestDepositStake(t *testing.T) {
 
 		contract := staking2.New(addr, owner, stakingAddress, bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
 					if *request.To == bzzTokenAddress {
 						if !bytes.Equal(expectedCallData[:], request.Data[:]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
@@ -290,7 +290,7 @@ func TestDepositStake(t *testing.T) {
 				})),
 			nonce)
 
-		err = contract.DepositStake(ctx, stakedAmount)
+		_, err = contract.DepositStake(ctx, stakedAmount)
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -308,7 +308,7 @@ func TestDepositStake(t *testing.T) {
 
 		contract := staking2.New(addr, owner, stakingAddress, bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
 					if *request.To == bzzTokenAddress {
 						return txHashApprove, nil
 					}
@@ -318,7 +318,7 @@ func TestDepositStake(t *testing.T) {
 						}
 						return txHashDeposited, nil
 					}
-					return common.Hash{}, errors.New("sent to wrong contract")
+					return txHashDeposited, errors.New("sent to wrong contract")
 				}),
 				transactionMock.WithWaitForReceiptFunc(func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
 					if txHash == txHashDeposited {
@@ -344,7 +344,7 @@ func TestDepositStake(t *testing.T) {
 				})),
 			nonce)
 
-		err = contract.DepositStake(ctx, stakedAmount)
+		_, err = contract.DepositStake(ctx, stakedAmount)
 		if !errors.Is(err, transaction.ErrTransactionReverted) {
 			t.Fatalf("expeted %v, got %v", transaction.ErrTransactionReverted, err)
 		}
@@ -362,7 +362,7 @@ func TestDepositStake(t *testing.T) {
 
 		contract := staking2.New(addr, owner, stakingAddress, bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
 					if *request.To == bzzTokenAddress {
 						return txHashApprove, nil
 					}
@@ -396,7 +396,7 @@ func TestDepositStake(t *testing.T) {
 				})),
 			nonce)
 
-		err = contract.DepositStake(ctx, stakedAmount)
+		_, err = contract.DepositStake(ctx, stakedAmount)
 		if err == nil {
 			t.Fatalf("expected error")
 		}
@@ -415,7 +415,7 @@ func TestDepositStake(t *testing.T) {
 				})),
 			nonce)
 
-		err := contract.DepositStake(ctx, stakedAmount)
+		_, err := contract.DepositStake(ctx, stakedAmount)
 		if err == nil {
 			t.Fatalf("expected error")
 		}

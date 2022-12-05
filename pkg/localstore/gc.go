@@ -17,6 +17,7 @@
 package localstore
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -40,18 +41,7 @@ var (
 	// transaction on garbage collection.
 	gcBatchSize uint64 = 10_000
 
-	// reserveCollectionRatio is the ratio of the cache to evict from
-	// the reserve every time it hits the limit. If the cache size is
-	// 1000 chunks then we will evict 500 chunks from the reserve, this is
-	// not to overwhelm the cache with too many chunks which it will flush
-	// anyway.
-	reserveCollectionRatio = 0.5
-	// reserveEvictionBatch limits the number of chunks collected in
-	// a single reserve eviction run.
 	reserveEvictionBatch uint64 = 200
-	// maxPurgeablePercentageOfReserve is a ceiling of size of the reserve
-	// to evict in case the cache size is bigger than the reserve
-	maxPurgeablePercentageOfReserve = 0.1
 )
 
 // collectGarbageWorker is a long running function that waits for
@@ -187,13 +177,18 @@ func (db *DB) collectGarbage() (evicted uint64, done bool, err error) {
 
 		totalChunksEvicted++
 
-		i, err := db.retrievalDataIndex.Get(item)
+		storedItem, err := db.retrievalDataIndex.Get(item)
 		if err != nil {
+			if errors.Is(err, leveldb.ErrNotFound) {
+				if err = db.gcIndex.DeleteInBatch(batch, item); err != nil {
+					return 0, false, err
+				}
+				continue
+			}
 			return 0, false, err
 		}
-		item.Location = i.Location
 
-		db.metrics.GCStoreTimeStamps.Set(float64(item.StoreTimestamp))
+		db.metrics.GCStoreTimeStamps.Set(float64(storedItem.StoreTimestamp))
 		db.metrics.GCStoreAccessTimeStamps.Set(float64(item.AccessTimestamp))
 
 		// delete from retrieve, pull, gc
@@ -205,7 +200,7 @@ func (db *DB) collectGarbage() (evicted uint64, done bool, err error) {
 		if err != nil {
 			return 0, false, err
 		}
-		err = db.pushIndex.DeleteInBatch(batch, item)
+		err = db.pushIndex.DeleteInBatch(batch, storedItem)
 		if err != nil {
 			return 0, false, err
 		}
@@ -217,15 +212,15 @@ func (db *DB) collectGarbage() (evicted uint64, done bool, err error) {
 		if err != nil {
 			return 0, false, err
 		}
+		err = db.postageIndexIndex.DeleteInBatch(batch, storedItem)
+		if err != nil {
+			return 0, false, err
+		}
 		err = db.postageChunksIndex.DeleteInBatch(batch, item)
 		if err != nil {
 			return 0, false, err
 		}
-		err = db.postageIndexIndex.DeleteInBatch(batch, item)
-		if err != nil {
-			return 0, false, err
-		}
-		loc, err := sharky.LocationFromBinary(item.Location)
+		loc, err := sharky.LocationFromBinary(storedItem.Location)
 		if err != nil {
 			return 0, false, err
 		}
@@ -242,7 +237,7 @@ func (db *DB) collectGarbage() (evicted uint64, done bool, err error) {
 	}
 
 	for _, loc := range locations {
-		err = db.sharky.Release(db.ctx, loc)
+		err = db.sharky.Release(context.Background(), loc)
 		if err != nil {
 			db.logger.Warning("failed releasing sharky location", "location", loc)
 		}
@@ -257,30 +252,11 @@ func (db *DB) gcTarget() (target uint64) {
 	return uint64(float64(db.cacheCapacity) * gcTargetRatio)
 }
 
-func (db *DB) reserveEvictionTarget() (target uint64) {
-	targetCache := db.reserveCapacity - uint64(float64(db.cacheCapacity)*reserveCollectionRatio)
-	targetCeiling := db.reserveCapacity - uint64(float64(db.reserveCapacity)*maxPurgeablePercentageOfReserve)
-	if targetCeiling > targetCache {
-		return targetCeiling
-	}
-	return targetCache
-}
-
 // triggerGarbageCollection signals collectGarbageWorker
 // to call collectGarbage.
 func (db *DB) triggerGarbageCollection() {
 	select {
 	case db.collectGarbageTrigger <- struct{}{}:
-	case <-db.close:
-	default:
-	}
-}
-
-// triggerGarbageCollection signals collectGarbageWorker
-// to call collectGarbage.
-func (db *DB) triggerReserveEviction() {
-	select {
-	case db.reserveEvictionTrigger <- struct{}{}:
 	case <-db.close:
 	default:
 	}
@@ -321,40 +297,6 @@ func (db *DB) incGCSizeInBatch(batch *leveldb.Batch, change int64) (err error) {
 	return nil
 }
 
-// incReserveSizeInBatch changes reserveSize field value
-// by change which can be negative. This function
-// must be called under batchMu lock.
-func (db *DB) incReserveSizeInBatch(batch *leveldb.Batch, change int64) (err error) {
-	if change == 0 {
-		return nil
-	}
-	reserveSize, err := db.reserveSize.Get()
-	if err != nil && !errors.Is(err, leveldb.ErrNotFound) {
-		return err
-	}
-
-	var newSize uint64
-	if change > 0 {
-		newSize = reserveSize + uint64(change)
-	} else {
-		// 'change' is an int64 and is negative
-		// a conversion is needed with correct sign
-		c := uint64(-change)
-		if c > reserveSize {
-			// protect uint64 undeflow
-			return nil
-		}
-		newSize = reserveSize - c
-	}
-	db.reserveSize.PutInBatch(batch, newSize)
-	db.metrics.ReserveSize.Set(float64(newSize))
-	// trigger garbage collection if we reached the capacity
-	if newSize >= db.reserveCapacity {
-		db.triggerReserveEviction()
-	}
-	return nil
-}
-
 func (db *DB) reserveEvictionWorker() {
 	defer close(db.reserveEvictionWorkerDone)
 	for {
@@ -364,6 +306,7 @@ func (db *DB) reserveEvictionWorker() {
 			if err != nil {
 				db.logger.Error(err, "evict reserve failed")
 			}
+			db.metrics.EvictReserveCollectedCounter.Add(float64(evictedCount))
 
 			if !done {
 				db.triggerReserveEviction()
@@ -378,6 +321,15 @@ func (db *DB) reserveEvictionWorker() {
 	}
 }
 
+func (db *DB) triggerReserveEviction() {
+	select {
+	case db.reserveEvictionTrigger <- struct{}{}:
+	case <-db.close:
+	default:
+	}
+
+}
+
 func (db *DB) evictReserve() (totalEvicted uint64, done bool, err error) {
 	var target uint64
 	db.metrics.EvictReserveCounter.Inc()
@@ -387,13 +339,19 @@ func (db *DB) evictReserve() (totalEvicted uint64, done bool, err error) {
 		}
 		totalTimeMetric(db.metrics.TotalTimeEvictReserve, start)
 	}(time.Now())
-	target = db.reserveEvictionTarget()
+
 	db.batchMu.Lock()
 	defer db.batchMu.Unlock()
+
+	target = db.reserveCapacity
+
 	reserveSizeStart, err := db.reserveSize.Get()
 	if err != nil {
 		return 0, false, err
 	}
+
+	db.logger.Debug("gc: reserve eviction", "reserve_size_start", reserveSizeStart, "target", target)
+
 	if reserveSizeStart <= target {
 		return 0, true, nil
 	}

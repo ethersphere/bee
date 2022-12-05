@@ -5,6 +5,7 @@
 package localstore
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 
@@ -21,49 +22,35 @@ func (db *DB) UnreserveBatch(id []byte, radius uint8) (evicted uint64, err error
 		item = shed.Item{
 			BatchID: id,
 		}
-		batch             = new(leveldb.Batch)
-		oldRadius         uint8
 		reserveSizeChange uint64
 	)
 
-	i, err := db.postageRadiusIndex.Get(item)
-	if err != nil {
-		if !errors.Is(err, leveldb.ErrNotFound) {
+	evictBatch := radius == swarm.MaxBins
+	if evictBatch {
+		if err := db.postageRadiusIndex.Delete(item); err != nil {
 			return 0, err
 		}
-		oldRadius = 0
-	} else {
-		oldRadius = i.Radius
 	}
 
 	// iterate over chunk in bins
-	for bin := oldRadius; bin < radius; bin++ {
+	for bin := uint8(0); bin < radius; bin++ {
 		rSizeChange, err := db.unpinBatchChunks(id, bin)
 		if err != nil {
+			db.logger.Debug("unreserve batch", "batch", hex.EncodeToString(id), "bin", bin, "error", err)
 			return 0, err
 		}
 		reserveSizeChange += rSizeChange
 		item.Radius = bin
-		if err := db.postageRadiusIndex.PutInBatch(batch, item); err != nil {
-			return 0, err
-		}
-		if bin == swarm.MaxPO {
-			if err := db.postageRadiusIndex.DeleteInBatch(batch, item); err != nil {
+		if !evictBatch {
+			if err := db.postageRadiusIndex.Put(item); err != nil {
 				return 0, err
 			}
 		}
-		if err := db.shed.WriteBatch(batch); err != nil {
-			return 0, err
-		}
-		batch = new(leveldb.Batch)
 	}
 
-	if radius != swarm.MaxPO+1 {
+	if !evictBatch {
 		item.Radius = radius
-		if err := db.postageRadiusIndex.PutInBatch(batch, item); err != nil {
-			return 0, err
-		}
-		if err := db.shed.WriteBatch(batch); err != nil {
+		if err := db.postageRadiusIndex.Put(item); err != nil {
 			return 0, err
 		}
 	}
@@ -86,10 +73,9 @@ var unpinBatchSize = 10000
 func (db *DB) unpinBatchChunks(id []byte, bin uint8) (uint64, error) {
 	loggerV1 := db.logger.V(1).Register()
 	var (
-		batch                  = new(leveldb.Batch)
-		gcSizeChange           int64 // number to add or subtract from gcSize and reserveSize
-		reserveSizeChange      uint64
-		totalReserveSizeChange uint64
+		batch             = new(leveldb.Batch)
+		gcSizeChange      int64 // number to add or subtract from gcSize and reserveSize
+		totalGCSizeChange int64
 	)
 	unpin := func(item shed.Item) (stop bool, err error) {
 		addr := swarm.NewAddress(item.Address)
@@ -101,13 +87,6 @@ func (db *DB) unpinBatchChunks(id []byte, bin uint8) (uint64, error) {
 			// this is possible when we are resyncing chain data after
 			// a dirty shutdown
 			loggerV1.Debug("unreserve set unpin chunk failed", "chunk", addr, "error", err)
-		} else {
-			// we need to do this because a user might pin a chunk on top of
-			// the reserve pinning. when we unpin due to an unreserve call, then
-			// we should logically deduct the chunk anyway from the reserve size
-			// otherwise the reserve size leaks, since c returned from setUnpin
-			// will be zero.
-			reserveSizeChange++
 		}
 
 		gcSizeChange += c
@@ -139,30 +118,29 @@ func (db *DB) unpinBatchChunks(id []byte, bin uint8) (uint64, error) {
 				return 0, err
 			}
 		}
-		if reserveSizeChange > 0 {
-			if err := db.incReserveSizeInBatch(batch, -int64(reserveSizeChange)); err != nil {
-				return 0, err
-			}
-		}
 		if err := db.shed.WriteBatch(batch); err != nil {
 			return 0, err
 		}
 		batch = new(leveldb.Batch)
+		totalGCSizeChange += gcSizeChange
 		gcSizeChange = 0
-		totalReserveSizeChange += reserveSizeChange
-		reserveSizeChange = 0
 
 		if !more {
 			break
 		}
 	}
 
-	return totalReserveSizeChange, nil
+	return uint64(totalGCSizeChange), nil
 }
 
 func withinRadius(db *DB, item shed.Item) bool {
 	po := db.po(swarm.NewAddress(item.Address))
 	return po >= item.Radius
+}
+
+// ReserveCapacity returns the configured capacity
+func (db *DB) ReserveCapacity() uint64 {
+	return db.reserveCapacity
 }
 
 // ComputeReserveSize iterates on the pull index to count all chunks
@@ -177,27 +155,29 @@ func (db *DB) ComputeReserveSize(startPO uint8) (uint64, error) {
 		return false, nil
 	}, &shed.IterateOptions{
 		StartFrom: &shed.Item{
-			Address: generateAddressAt(db.baseKey, int(startPO)),
+			Address: db.addressInBin(startPO).Bytes(),
 		},
 	})
+	if err == nil {
+		err = db.setReserveSize(count)
+		if err != nil {
+			return 0, fmt.Errorf("failed setting reserve size: %w", err)
+		}
+		db.metrics.ReserveSize.Set(float64(count))
+	}
 
 	return count, err
 }
 
-func generateAddressAt(baseBytes []byte, prox int) []byte {
-
-	addr := make([]byte, 32)
-
-	for po := 0; po < prox; po++ {
-		index := po % 8
-		if baseBytes[po/8]&(1<<(7-index)) > 0 { // if baseBytes bit is 1
-			addr[po/8] |= 1 << (7 - index) // set addr bit to 1
-		}
+// SetReserveSize will update the localstore reserve size as calculated by the
+// depthmonitor using the updated storage depth
+func (db *DB) setReserveSize(size uint64) error {
+	err := db.reserveSize.Put(size)
+	if err != nil {
+		return fmt.Errorf("failed updating reserve size: %w", err)
 	}
-
-	if baseBytes[prox/8]&(1<<(7-(prox%8))) == 0 { // if baseBytes PO bit is zero
-		addr[prox/8] |= 1 << (7 - (prox % 8)) // set addr bit to 1
+	if size > db.reserveCapacity {
+		db.triggerReserveEviction()
 	}
-
-	return addr
+	return nil
 }

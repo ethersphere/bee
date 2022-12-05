@@ -18,7 +18,7 @@ import (
 )
 
 type transactionServiceMock struct {
-	send                 func(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error)
+	send                 func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error)
 	waitForReceipt       func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error)
 	watchSentTransaction func(txHash common.Hash) (chan types.Receipt, chan error, error)
 	call                 func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error)
@@ -28,9 +28,9 @@ type transactionServiceMock struct {
 	cancelTransaction    func(ctx context.Context, originalTxHash common.Hash) (common.Hash, error)
 }
 
-func (m *transactionServiceMock) Send(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
+func (m *transactionServiceMock) Send(ctx context.Context, request *transaction.TxRequest, boostPercent int) (txHash common.Hash, err error) {
 	if m.send != nil {
-		return m.send(ctx, request)
+		return m.send(ctx, request, boostPercent)
 	}
 	return common.Hash{}, errors.New("not implemented")
 }
@@ -97,7 +97,7 @@ type optionFunc func(*transactionServiceMock)
 
 func (f optionFunc) apply(r *transactionServiceMock) { f(r) }
 
-func WithSendFunc(f func(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error)) Option {
+func WithSendFunc(f func(context.Context, *transaction.TxRequest, int) (txHash common.Hash, err error)) Option {
 	return optionFunc(func(s *transactionServiceMock) {
 		s.send = f
 	})
@@ -203,7 +203,7 @@ func WithABICall(abi *abi.ABI, to common.Address, result []byte, method string, 
 
 func WithABISend(abi *abi.ABI, txHash common.Hash, expectedAddress common.Address, expectedValue *big.Int, method string, params ...interface{}) Option {
 	return optionFunc(func(s *transactionServiceMock) {
-		s.send = func(ctx context.Context, request *transaction.TxRequest) (common.Hash, error) {
+		s.send = func(ctx context.Context, request *transaction.TxRequest, boost int) (common.Hash, error) {
 			data, err := abi.Pack(method, params...)
 			if err != nil {
 				return common.Hash{}, err

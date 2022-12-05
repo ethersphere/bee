@@ -18,12 +18,9 @@ import (
 )
 
 var (
-	ErrRecordsNotFound        = errors.New("records not found")
-	ErrStreamNotSupported     = errors.New("stream not supported")
-	ErrStreamClosed           = errors.New("stream closed")
-	ErrStreamFullcloseTimeout = errors.New("fullclose timeout")
-	fullCloseTimeout          = fullCloseTimeoutDefault // timeout of fullclose
-	fullCloseTimeoutDefault   = 5 * time.Second         // default timeout used for helper function to reset timeout when changed
+	ErrRecordsNotFound    = errors.New("records not found")
+	ErrStreamNotSupported = errors.New("stream not supported")
+	ErrStreamClosed       = errors.New("stream closed")
 
 	noopMiddleware = func(f p2p.HandlerFunc) p2p.HandlerFunc {
 		return f
@@ -109,6 +106,7 @@ func (r *Recorder) NewStream(ctx context.Context, addr swarm.Address, h p2p.Head
 			return nil, err
 		}
 	}
+
 	recordIn := newRecord()
 	recordOut := newRecord()
 	streamOut := newStream(recordIn, recordOut)
@@ -246,6 +244,8 @@ type stream struct {
 	out             *record
 	headers         p2p.Headers
 	responseHeaders p2p.Headers
+	closed          bool
+	lock            sync.Mutex
 }
 
 func newStream(in, out *record) *stream {
@@ -253,10 +253,18 @@ func newStream(in, out *record) *stream {
 }
 
 func (s *stream) Read(p []byte) (int, error) {
+	if s.Closed() {
+		return 0, ErrStreamClosed
+	}
+
 	return s.out.Read(p)
 }
 
 func (s *stream) Write(p []byte) (int, error) {
+	if s.Closed() {
+		return 0, ErrStreamClosed
+	}
+
 	return s.in.Write(p)
 }
 
@@ -269,110 +277,114 @@ func (s *stream) ResponseHeaders() p2p.Headers {
 }
 
 func (s *stream) Close() error {
-	return s.in.Close()
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	if s.closed {
+		return ErrStreamClosed
+	}
+
+	s.closed = true
+	s.in.close()
+
+	return nil
+}
+
+func (s *stream) Closed() bool {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	return s.closed
 }
 
 func (s *stream) FullClose() error {
-	if err := s.Close(); err != nil {
-		_ = s.Reset()
-		return err
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	if s.closed {
+		return ErrStreamClosed
 	}
 
-	waitStart := time.Now()
+	s.closed = true
+	s.in.close()
+	s.out.close()
 
-	for {
-		if s.out.Closed() {
-			return nil
-		}
-
-		if time.Since(waitStart) >= fullCloseTimeout {
-			return ErrStreamFullcloseTimeout
-		}
-
-		time.Sleep(10 * time.Millisecond)
-	}
+	return nil
 }
 
 func (s *stream) Reset() (err error) {
-	if err := s.in.Close(); err != nil {
-		_ = s.out.Close()
-		return err
-	}
-
-	return s.out.Close()
+	return s.FullClose()
 }
 
 type record struct {
-	b       []byte
-	c       int
-	closed  bool
-	closeMu sync.RWMutex
-	cond    *sync.Cond
+	b        []byte
+	c        int
+	lock     sync.Mutex
+	dataSigC chan struct{}
+	closed   bool
 }
 
 func newRecord() *record {
 	return &record{
-		cond: sync.NewCond(new(sync.Mutex)),
+		dataSigC: make(chan struct{}, 16),
 	}
 }
 
 func (r *record) Read(p []byte) (n int, err error) {
-	r.cond.L.Lock()
-	defer r.cond.L.Unlock()
-
-	for r.c == len(r.b) && !r.Closed() {
-		r.cond.Wait()
+	for r.c == r.bytesSize() {
+		_, ok := <-r.dataSigC
+		if !ok {
+			return 0, io.EOF
+		}
 	}
+
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
 	end := r.c + len(p)
 	if end > len(r.b) {
 		end = len(r.b)
 	}
 	n = copy(p, r.b[r.c:end])
 	r.c += n
-	if r.Closed() {
-		err = io.EOF
-	}
 
-	return n, err
+	return n, nil
 }
 
 func (r *record) Write(p []byte) (int, error) {
-	r.cond.L.Lock()
-	defer r.cond.L.Unlock()
-	if r.Closed() {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+
+	if r.closed {
 		return 0, ErrStreamClosed
 	}
 
-	defer r.cond.Signal()
-
 	r.b = append(r.b, p...)
+	r.dataSigC <- struct{}{}
+
 	return len(p), nil
 }
 
-func (r *record) Close() error {
-	r.cond.L.Lock()
-	defer r.cond.L.Unlock()
+func (r *record) close() {
+	r.lock.Lock()
+	defer r.lock.Unlock()
 
-	defer r.cond.Broadcast()
+	if r.closed {
+		return
+	}
 
-	r.closeMu.Lock()
 	r.closed = true
-	r.closeMu.Unlock()
-
-	return nil
-}
-
-func (r *record) Closed() bool {
-	r.closeMu.RLock()
-	defer r.closeMu.RUnlock()
-	return r.closed
+	close(r.dataSigC)
 }
 
 func (r *record) bytes() []byte {
-	r.cond.L.Lock()
-	defer r.cond.L.Unlock()
-
 	return r.b
+}
+
+func (r *record) bytesSize() int {
+	r.lock.Lock()
+	defer r.lock.Unlock()
+	return len(r.b)
 }
 
 type Option interface {

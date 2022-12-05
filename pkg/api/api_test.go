@@ -103,12 +103,13 @@ type testServerOptions struct {
 	Restricted         bool
 	DirectUpload       bool
 	Probe              *api.Probe
+	IndexDebugger      api.StorageIndexDebugger
 
 	Overlay         swarm.Address
 	PublicKey       ecdsa.PublicKey
 	PSSPublicKey    ecdsa.PublicKey
 	EthereumAddress common.Address
-	BlockTime       *big.Int
+	BlockTime       time.Duration
 	P2P             *p2pmock.Service
 	Pingpong        pingpong.Interface
 	TopologyOpts    []topologymock.Option
@@ -123,7 +124,7 @@ type testServerOptions struct {
 
 	BackendOpts []backendmock.Option
 	Erc20Opts   []erc20mock.Option
-	ChainID     int64
+	beeMode     api.BeeNodeMode
 }
 
 func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.Conn, string, *chanStorer) {
@@ -192,9 +193,13 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		Steward:          o.Steward,
 		SyncStatus:       o.SyncStatus,
 		Staking:          o.StakingContract,
+		IndexDebugger:    o.IndexDebugger,
 	}
-
-	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.Logger, transaction, o.BatchStore, api.FullMode, true, true, backend, o.CORSAllowedOrigins)
+	// by default bee mode is set to full mode
+	if o.beeMode == api.LightMode {
+		o.beeMode = api.FullMode
+	}
+	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.Logger, transaction, o.BatchStore, o.beeMode, true, true, backend, o.CORSAllowedOrigins)
 
 	s.SetP2P(o.P2P)
 	s.SetSwarmAddress(&o.Overlay)
@@ -546,28 +551,30 @@ func TestOptions(t *testing.T) {
 func TestPostageDirectAndDeferred(t *testing.T) {
 	t.Parallel()
 
-	var (
-		mockStorer               = mock.NewStorer()
-		mockStatestore           = statestore.NewStateStore()
-		logger                   = log.Noop
-		mp                       = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))
-		client, _, _, chanStorer = newTestServer(t, testServerOptions{
-			Storer:       mockStorer,
-			Tags:         tags.NewTags(mockStatestore, logger),
-			Logger:       logger,
-			Post:         mp,
-			DirectUpload: true,
-		})
+	options := testServerOptions{
+		Storer: mock.NewStorer(),
+		Tags:   tags.NewTags(statestore.NewStateStore(), log.Noop),
+		Logger: log.Noop,
+		Post: mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer(
+			"",
+			"",
+			batchOk,
+			big.NewInt(3),
+			11,
+			10,
+			1000,
+			true,
+		))),
+		DirectUpload: true,
+	}
 
-		endpoints = []string{
-			"bytes", "bzz", "chunks",
-		}
-	)
-	for _, endpoint := range endpoints {
+	for _, endpoint := range []string{"bytes", "bzz", "chunks"} {
 		endpoint := endpoint
-		t.Run(endpoint+": deferred", func(t *testing.T) {
+
+		t.Run(endpoint+" deferred", func(t *testing.T) {
 			t.Parallel()
 
+			client, _, _, chanStorer := newTestServer(t, options)
 			hexbatch := hex.EncodeToString(batchOk)
 			chunk := testingc.GenerateTestRandomChunk()
 			var responseBytes []byte
@@ -584,16 +591,18 @@ func TestPostageDirectAndDeferred(t *testing.T) {
 			if err := json.Unmarshal(responseBytes, &body); err != nil {
 				t.Fatal("unmarshal response body:", err)
 			}
-			if found, _ := mockStorer.Has(context.Background(), body.Reference); !found {
+			if found, _ := options.Storer.Has(context.Background(), body.Reference); !found {
 				t.Fatal("chunk not found in the store")
 			}
 			if found, _ := chanStorer.Has(context.Background(), body.Reference); found {
 				t.Fatal("chunk was not expected to be present in direct channel")
 			}
 		})
-		t.Run(endpoint+": direct upload", func(t *testing.T) {
+
+		t.Run(endpoint+" direct upload", func(t *testing.T) {
 			t.Parallel()
 
+			client, _, _, chanStorer := newTestServer(t, options)
 			hexbatch := hex.EncodeToString(batchOk)
 			chunk := testingc.GenerateTestRandomChunk()
 			var responseBytes []byte
@@ -614,7 +623,7 @@ func TestPostageDirectAndDeferred(t *testing.T) {
 			if found, _ := chanStorer.Has(context.Background(), body.Reference); !found {
 				t.Fatal("chunk not received through the direct channel")
 			}
-			if found, _ := mockStorer.Has(context.Background(), body.Reference); found {
+			if found, _ := options.Storer.Has(context.Background(), body.Reference); found {
 				t.Fatal("chunk was not expected to be present in store")
 			}
 		})

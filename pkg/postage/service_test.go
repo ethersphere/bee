@@ -5,8 +5,10 @@
 package postage_test
 
 import (
+	"bytes"
 	crand "crypto/rand"
 	"errors"
+	"fmt"
 	"io"
 	"math/big"
 	"testing"
@@ -66,13 +68,14 @@ func TestSaveLoad(t *testing.T) {
 
 func TestGetStampIssuer(t *testing.T) {
 	store := storemock.NewStateStore()
+	chainID := int64(0)
 	testChainState := postagetesting.NewChainState()
 	if testChainState.Block < uint64(postage.BlockThreshold) {
 		testChainState.Block += uint64(postage.BlockThreshold + 1)
 	}
 	validBlockNumber := testChainState.Block - uint64(postage.BlockThreshold+1)
 	pstore := pstoremock.New(pstoremock.WithChainState(testChainState))
-	ps, err := postage.NewService(store, pstore, int64(0))
+	ps, err := postage.NewService(store, pstore, chainID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,24 +102,37 @@ func TestGetStampIssuer(t *testing.T) {
 	}
 	t.Run("found", func(t *testing.T) {
 		for _, id := range ids[1:4] {
-			st, err := ps.GetStampIssuer(id)
+			st, save, err := ps.GetStampIssuer(id)
 			if err != nil {
 				t.Fatalf("expected no error, got %v", err)
 			}
+			_ = save()
 			if st.Label() != string(id) {
 				t.Fatalf("wrong issuer returned")
 			}
 		}
+
+		// check if the save() call persisted the stamp issuers
+		for i, id := range ids[1:4] {
+			issuer := new(postage.StampIssuer)
+			err := store.Get(fmt.Sprintf("postage%d%d", chainID, i), issuer)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !bytes.Equal(id, issuer.ID()) {
+				t.Fatalf("got id %s, want id %s", issuer.ID(), id)
+			}
+		}
 	})
 	t.Run("not found", func(t *testing.T) {
-		_, err := ps.GetStampIssuer(ids[0])
+		_, _, err := ps.GetStampIssuer(ids[0])
 		if !errors.Is(err, postage.ErrNotFound) {
 			t.Fatalf("expected ErrNotFound, got %v", err)
 		}
 	})
 	t.Run("not usable", func(t *testing.T) {
 		for _, id := range ids[4:] {
-			_, err := ps.GetStampIssuer(id)
+			_, _, err := ps.GetStampIssuer(id)
 			if !errors.Is(err, postage.ErrNotUsable) {
 				t.Fatalf("expected ErrNotUsable, got %v", err)
 			}
@@ -130,7 +146,7 @@ func TestGetStampIssuer(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		st, err := ps.GetStampIssuer(b.ID)
+		st, _, err := ps.GetStampIssuer(b.ID)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -140,7 +156,7 @@ func TestGetStampIssuer(t *testing.T) {
 	})
 	t.Run("topup", func(t *testing.T) {
 		ps.HandleTopUp(ids[1], big.NewInt(10))
-		_, err := ps.GetStampIssuer(ids[1])
+		_, _, err := ps.GetStampIssuer(ids[1])
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -150,7 +166,7 @@ func TestGetStampIssuer(t *testing.T) {
 	})
 	t.Run("dilute", func(t *testing.T) {
 		ps.HandleDepthIncrease(ids[2], 17)
-		_, err := ps.GetStampIssuer(ids[2])
+		_, _, err := ps.GetStampIssuer(ids[2])
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}

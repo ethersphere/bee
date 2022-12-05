@@ -6,7 +6,9 @@ package puller_test
 
 import (
 	"errors"
+	"fmt"
 	"math"
+	"sync"
 	"testing"
 	"time"
 
@@ -48,9 +50,9 @@ func TestOneSync(t *testing.T) {
 				mockk.AddrTuple{Addr: addr, PO: 1},
 			), mockk.WithDepth(1),
 		},
-		pullSync:   []mockps.Option{mockps.WithCursors(cursors), mockps.WithLiveSyncReplies(liveReplies...)},
-		bins:       3,
-		syncRadius: 1,
+		pullSync:     []mockps.Option{mockps.WithCursors(cursors), mockps.WithLiveSyncReplies(liveReplies...)},
+		bins:         3,
+		reserveState: &reserveStateGetter{rs: postage.ReserveState{StorageRadius: 1}},
 	})
 	defer puller.Close()
 	defer pullsync.Close()
@@ -80,9 +82,9 @@ func TestNoSyncOutsideDepth(t *testing.T) {
 				mockk.AddrTuple{Addr: addr2, PO: 1},
 			), mockk.WithDepth(2),
 		},
-		pullSync:   []mockps.Option{mockps.WithCursors(cursors), mockps.WithLiveSyncReplies(liveReplies...)},
-		bins:       3,
-		syncRadius: 2,
+		pullSync:     []mockps.Option{mockps.WithCursors(cursors), mockps.WithLiveSyncReplies(liveReplies...)},
+		bins:         3,
+		reserveState: &reserveStateGetter{rs: postage.ReserveState{StorageRadius: 2}},
 	})
 	defer puller.Close()
 	defer pullsync.Close()
@@ -111,13 +113,15 @@ func TestSyncFlow_PeerWithinDepth_Live(t *testing.T) {
 		expLiveCalls []c    // expected live sync calls
 	}{
 		{
-			name: "cursor 0, 1 chunk on live", cursors: []uint64{0, 0},
+			name:         "cursor 0, 1 chunk on live",
+			cursors:      []uint64{0, 0},
 			intervals:    "[[1 1]]",
 			liveReplies:  []uint64{1},
 			expLiveCalls: []c{call(1, 1, max), call(1, 2, max)},
 		},
 		{
-			name: "cursor 0 - calls 1-1, 2-5, 6-10", cursors: []uint64{0, 0},
+			name:         "cursor 0 - calls 1-1, 2-5, 6-10",
+			cursors:      []uint64{0, 0},
 			intervals:    "[[1 10]]",
 			liveReplies:  []uint64{1, 5, 10},
 			expLiveCalls: []c{call(1, 1, max), call(1, 2, max), call(1, 6, max), call(1, 11, max)},
@@ -133,9 +137,9 @@ func TestSyncFlow_PeerWithinDepth_Live(t *testing.T) {
 						mockk.AddrTuple{Addr: addr, PO: 1},
 					), mockk.WithDepth(1),
 				},
-				pullSync:   []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithLiveSyncReplies(tc.liveReplies...)},
-				bins:       2,
-				syncRadius: 1,
+				pullSync:     []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithLiveSyncReplies(tc.liveReplies...)},
+				bins:         2,
+				reserveState: &reserveStateGetter{rs: postage.ReserveState{StorageRadius: 1}},
 			})
 			t.Cleanup(func() {
 				pullsync.Close()
@@ -215,9 +219,9 @@ func TestSyncFlow_PeerWithinDepth_Historical(t *testing.T) {
 						mockk.AddrTuple{Addr: addr, PO: 1},
 					), mockk.WithDepth(1),
 				},
-				pullSync:   []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithAutoReply(), mockps.WithLiveSyncBlock()},
-				bins:       2,
-				syncRadius: 1,
+				pullSync:     []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithAutoReply(), mockps.WithLiveSyncBlock()},
+				bins:         2,
+				reserveState: &reserveStateGetter{rs: postage.ReserveState{StorageRadius: 1}},
 			})
 			defer puller.Close()
 			defer pullsync.Close()
@@ -268,9 +272,9 @@ func TestSyncFlow_PeerWithinDepth_Live2(t *testing.T) {
 						mockk.AddrTuple{Addr: addr, PO: 3}, // po is 3, depth is 2, so we're in depth
 					), mockk.WithDepth(2),
 				},
-				pullSync:   []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithLateSyncReply(tc.liveReplies...)},
-				bins:       5,
-				syncRadius: 2,
+				pullSync:     []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithLateSyncReply(tc.liveReplies...)},
+				bins:         5,
+				reserveState: &reserveStateGetter{rs: postage.ReserveState{StorageRadius: 2}},
 			})
 			defer puller.Close()
 			defer pullsync.Close()
@@ -303,9 +307,9 @@ func TestPeerDisconnected(t *testing.T) {
 				mockk.AddrTuple{Addr: addr, PO: 1},
 			), mockk.WithDepthCalls(2, 2, 2), // peer moved from out of depth to depth
 		},
-		pullSync:   []mockps.Option{mockps.WithCursors(cursors), mockps.WithLiveSyncBlock()},
-		bins:       5,
-		syncRadius: 2,
+		pullSync:     []mockps.Option{mockps.WithCursors(cursors), mockps.WithLiveSyncBlock()},
+		bins:         5,
+		reserveState: &reserveStateGetter{rs: postage.ReserveState{StorageRadius: 2}},
 	})
 	t.Cleanup(func() {
 		pullsync.Close()
@@ -323,6 +327,51 @@ func TestPeerDisconnected(t *testing.T) {
 
 	if puller.IsSyncing(p, addr) {
 		t.Fatalf("peer is syncing but shouldnt")
+	}
+}
+
+func TestBinReset(t *testing.T) {
+	t.Parallel()
+
+	var (
+		addr        = test.RandomAddress()
+		cursors     = []uint64{1000, 1000, 1000}
+		liveReplies = []uint64{1001}
+	)
+
+	rs := &reserveStateGetter{rs: postage.ReserveState{StorageRadius: 1}}
+
+	puller, s, kad, pullsync := newPuller(opts{
+		kad: []mockk.Option{
+			mockk.WithEachPeerRevCalls(
+				mockk.AddrTuple{Addr: addr, PO: 1},
+			),
+			mockk.WithDepth(1),
+		},
+		pullSync:     []mockps.Option{mockps.WithCursors(cursors), mockps.WithLiveSyncReplies(liveReplies...)},
+		bins:         3,
+		reserveState: rs,
+	})
+	defer puller.Close()
+	defer pullsync.Close()
+	time.Sleep(100 * time.Millisecond)
+
+	kad.Trigger()
+
+	waitCursorsCalled(t, pullsync, addr, false)
+	waitSyncCalled(t, pullsync, addr, false)
+
+	rs.setRadius(0)
+	kad.ResetPeers()
+	kad.Trigger()
+	time.Sleep(100 * time.Millisecond)
+
+	if err := s.Get(fmt.Sprintf("sync|001|%s", addr.ByteString()), nil); errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("got error %v, want %v", err, storage.ErrNotFound)
+	}
+
+	if err := s.Get(fmt.Sprintf("sync|000|%s", addr.ByteString()), nil); !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("got error %v, want %v", err, storage.ErrNotFound)
 	}
 }
 
@@ -411,15 +460,18 @@ func TestDepthChange(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
+			var syncRadius uint8
+			if len(tc.binsSyncing) > 0 {
+				syncRadius = tc.binsSyncing[0]
+			}
+
 			puller, st, kad, pullsync := newPuller(opts{
 				kad: []mockk.Option{
-					mockk.WithEachPeerRevCalls(
-						mockk.AddrTuple{Addr: addr, PO: 3},
-					), mockk.WithDepthCalls(tc.depths...),
+					mockk.WithEachPeerRevCalls(mockk.AddrTuple{Addr: addr, PO: 3}), mockk.WithDepthCalls(tc.depths...),
 				},
-				pullSync:   []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithLateSyncReply(tc.syncReplies...)},
-				bins:       5,
-				syncRadius: tc.depths[len(tc.depths)-1],
+				pullSync:     []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithLateSyncReply(tc.syncReplies...)},
+				bins:         5,
+				reserveState: &reserveStateGetter{rs: postage.ReserveState{StorageRadius: syncRadius}},
 			})
 			defer puller.Close()
 			defer pullsync.Close()
@@ -442,6 +494,91 @@ func TestDepthChange(t *testing.T) {
 				checkNotFound(t, st, addr, b)
 			}
 		})
+	}
+}
+
+// TestContinueSyncing adds a single peer with PO 0 to hist and live sync only a peer
+// to test that when SyncInterval returns an error, the syncing does not terminate.
+func TestContinueSyncing(t *testing.T) {
+	t.Parallel()
+
+	var (
+		addr = test.RandomAddress()
+	)
+
+	puller, _, kad, pullsync := newPuller(opts{
+		kad: []mockk.Option{
+			mockk.WithEachPeerRevCalls(mockk.AddrTuple{Addr: addr, PO: 0}),
+			mockk.WithDepth(0),
+		},
+		pullSync: []mockps.Option{
+			mockps.WithCursors([]uint64{1}),
+			mockps.WithSyncError(errors.New("sync error"))},
+		bins:         1,
+		reserveState: &reserveStateGetter{rs: postage.ReserveState{StorageRadius: 0}},
+		syncSleepDur: time.Millisecond * 10,
+	})
+	defer puller.Close()
+	defer pullsync.Close()
+
+	time.Sleep(100 * time.Millisecond)
+	kad.Trigger()
+	time.Sleep(time.Second)
+
+	calls := pullsync.LiveSyncCalls(addr)
+
+	// expected calls should ideally be exactly 100,
+	// but we allow some time for the goroutines to run
+	// by reducing the minimum expected calls to 2
+	if len(calls) < 2 || len(calls) > 100 {
+		t.Fatalf("unexpected amount of calls, got %d", len(calls))
+	}
+}
+
+func TestPeerGone(t *testing.T) {
+	t.Parallel()
+
+	var (
+		addr = test.RandomAddress()
+	)
+
+	p, _, kad, pullsync := newPuller(opts{
+		kad: []mockk.Option{
+			mockk.WithEachPeerRevCalls(mockk.AddrTuple{Addr: addr, PO: 1}),
+			mockk.WithDepth(0),
+		},
+		pullSync: []mockps.Option{
+			mockps.WithCursors([]uint64{1, 1}),
+		},
+		bins:         2,
+		reserveState: &reserveStateGetter{rs: postage.ReserveState{StorageRadius: 1}},
+		syncSleepDur: time.Millisecond * 10,
+	})
+	defer p.Close()
+	defer pullsync.Close()
+
+	time.Sleep(100 * time.Millisecond)
+	kad.Trigger()
+	time.Sleep(100 * time.Millisecond)
+
+	beforeCalls := pullsync.LiveSyncCalls(addr)
+
+	if len(beforeCalls) != 1 {
+		t.Fatalf("unexpected amount of calls, got %d, want 1", len(beforeCalls))
+	}
+
+	kad.ResetPeers()
+	kad.Trigger()
+	time.Sleep(100 * time.Millisecond)
+
+	afterCalls := pullsync.LiveSyncCalls(addr)
+
+	if len(beforeCalls) != len(afterCalls) {
+		t.Fatalf("unexpected new calls to sync interval, expected 0, got %d", len(afterCalls)-len(beforeCalls))
+	}
+
+	if puller.IsSyncing(p, addr) {
+		t.Fatalf("peer is syncing but shouldnt")
 	}
 }
 
@@ -616,10 +753,11 @@ func waitLiveSyncCalledTimes(t *testing.T, ps *mockps.PullSyncMock, addr swarm.A
 }
 
 type opts struct {
-	pullSync   []mockps.Option
-	kad        []mockk.Option
-	bins       uint8
-	syncRadius uint8
+	pullSync     []mockps.Option
+	kad          []mockk.Option
+	bins         uint8
+	reserveState *reserveStateGetter
+	syncSleepDur time.Duration
 }
 
 func newPuller(ops opts) (*puller.Puller, storage.StateStorer, *mockk.Mock, *mockps.PullSyncMock) {
@@ -628,12 +766,11 @@ func newPuller(ops opts) (*puller.Puller, storage.StateStorer, *mockk.Mock, *moc
 	kad := mockk.NewMockKademlia(ops.kad...)
 	logger := log.Noop
 
-	rs := &reserveStateGetter{rs: postage.ReserveState{StorageRadius: ops.syncRadius}}
-
 	o := puller.Options{
-		Bins: ops.bins,
+		Bins:         ops.bins,
+		SyncSleepDur: ops.syncSleepDur,
 	}
-	return puller.New(s, kad, rs, ps, logger, o, 0), s, kad, ps
+	return puller.New(s, kad, ops.reserveState, ps, logger, o, 0), s, kad, ps
 }
 
 type c struct {
@@ -642,9 +779,18 @@ type c struct {
 }
 
 type reserveStateGetter struct {
-	rs postage.ReserveState
+	mtx sync.Mutex
+	rs  postage.ReserveState
 }
 
-func (r *reserveStateGetter) GetReserveState() *postage.ReserveState {
-	return &r.rs
+func (rs *reserveStateGetter) GetReserveState() *postage.ReserveState {
+	rs.mtx.Lock()
+	defer rs.mtx.Unlock()
+	return &rs.rs
+}
+
+func (rs *reserveStateGetter) setRadius(r uint8) {
+	rs.mtx.Lock()
+	defer rs.mtx.Unlock()
+	rs.rs.StorageRadius = r
 }

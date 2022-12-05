@@ -188,6 +188,8 @@ type DB struct {
 	metrics metrics
 
 	logger log.Logger
+
+	validStamp postage.ValidStampFn
 }
 
 // Options struct holds optional parameters for configuring DB.
@@ -212,7 +214,8 @@ type Options struct {
 	// DisableSeeksCompaction toggles the seek driven compactions feature on leveldb
 	// and is passed on to shed.
 	DisableSeeksCompaction bool
-
+	// Stamp validator for reserve sampler
+	ValidStamp postage.ValidStampFn
 	// MetricsPrefix defines a prefix for metrics names.
 	MetricsPrefix string
 	Tags          *tags.Tags
@@ -232,47 +235,6 @@ type dirFS struct {
 
 func (d *dirFS) Open(path string) (fs.File, error) {
 	return os.OpenFile(filepath.Join(d.basedir, path), os.O_RDWR|os.O_CREATE, 0644)
-}
-
-func safeInit(rootPath, sharkyBasePath string, db *DB) error {
-	// create if needed
-	path := filepath.Join(rootPath, sharkyDirtyFileName)
-	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
-		// missing lock file implies a clean exit then create the file and return
-		return os.WriteFile(path, []byte{}, 0644)
-	}
-	locOrErr, err := recovery(db)
-	if err != nil {
-		return err
-	}
-
-	recoverySharky, err := sharky.NewRecovery(sharkyBasePath, sharkyNoOfShards, swarm.SocMaxChunkSize)
-	if err != nil {
-		return err
-	}
-
-	for l := range locOrErr {
-		if l.err != nil {
-			return l.err
-		}
-
-		err = recoverySharky.Add(l.loc)
-		if err != nil {
-			return err
-		}
-	}
-
-	err = recoverySharky.Save()
-	if err != nil {
-		return err
-	}
-
-	err = recoverySharky.Close()
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 // New returns a new DB.  All fields and indexes are initialized
@@ -309,6 +271,7 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 		reserveEvictionWorkerDone: make(chan struct{}),
 		metrics:                   newMetrics(),
 		logger:                    logger.WithName(loggerName).Register(),
+		validStamp:                o.ValidStamp,
 	}
 	if db.cacheCapacity == 0 {
 		db.cacheCapacity = defaultCacheCapacity
@@ -357,7 +320,7 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 		}
 		sharkyBase = &dirFS{basedir: sharkyBasePath}
 
-		err = safeInit(path, sharkyBasePath, db)
+		err = db.safeInit(path, sharkyBasePath)
 		if err != nil {
 			return nil, fmt.Errorf("safe sharky initialization failed: %w", err)
 		}
@@ -666,12 +629,52 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 	return db, nil
 }
 
-func (db *DB) ReserveSize() (uint64, error) {
-	return db.reserveSize.Get()
-}
+func (db *DB) safeInit(rootPath, sharkyBasePath string) error {
+	// create if needed
+	path := filepath.Join(rootPath, sharkyDirtyFileName)
+	if _, err := os.Stat(path); errors.Is(err, fs.ErrNotExist) {
+		// missing lock file implies a clean exit then create the file and return
+		return os.WriteFile(path, []byte{}, 0644)
+	}
 
-func (db *DB) ReserveCapacity() uint64 {
-	return db.reserveCapacity
+	defer func(t time.Time) {
+		db.logger.Info("localstore sharky recovery finished", "time", time.Since(t))
+	}(time.Now())
+
+	db.logger.Info("localstore sharky .DIRTY file exists: starting recovery due to previous dirty exit")
+
+	locOrErr, err := recovery(db)
+	if err != nil {
+		return err
+	}
+
+	recoverySharky, err := sharky.NewRecovery(sharkyBasePath, sharkyNoOfShards, swarm.SocMaxChunkSize)
+	if err != nil {
+		return err
+	}
+
+	for l := range locOrErr {
+		if l.err != nil {
+			return l.err
+		}
+
+		err = recoverySharky.Add(l.loc)
+		if err != nil {
+			return err
+		}
+	}
+
+	err = recoverySharky.Save()
+	if err != nil {
+		return err
+	}
+
+	err = recoverySharky.Close()
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // Close closes the underlying database.

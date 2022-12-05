@@ -33,8 +33,7 @@ var (
 )
 
 const (
-	dbSchemaKey = "statestore_schema"
-
+	dbSchemaKey             = "statestore_schema"
 	dbSchemaGrace           = "grace"
 	dbSchemaDrain           = "drain"
 	dbSchemaCleanInterval   = "clean-interval"
@@ -45,10 +44,12 @@ const (
 	dBSchemaBatchStore      = "batchstore"
 	dBSchemaBatchStoreV2    = "batchstoreV2"
 	dBSchemaBatchStoreV3    = "batchstoreV3"
+	dBSchemaBatchStoreV4    = "batchstoreV4"
+	dBSchemaInterval        = "interval"
 )
 
 var (
-	dbSchemaCurrent = dBSchemaBatchStoreV3
+	dbSchemaCurrent = dBSchemaInterval
 )
 
 type migration struct {
@@ -69,6 +70,8 @@ var schemaMigrations = []migration{
 	{name: dBSchemaBatchStore, fn: migrateBatchstore},
 	{name: dBSchemaBatchStoreV2, fn: migrateBatchstoreV2},
 	{name: dBSchemaBatchStoreV3, fn: migrateBatchstore},
+	{name: dBSchemaBatchStoreV4, fn: migrateBatchstore},
+	{name: dBSchemaInterval, fn: noOpMigration},
 }
 
 func migrateFB(s *Store) error {
@@ -89,7 +92,10 @@ func migrateBatchstoreV2(s *Store) error {
 			return err
 		}
 	}
+	return nil
+}
 
+func noOpMigration(s *Store) error {
 	return nil
 }
 

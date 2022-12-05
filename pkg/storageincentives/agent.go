@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -47,6 +48,7 @@ type Agent struct {
 	blocksPerRound uint64
 	monitor        Monitor
 	contract       redistribution.Contract
+	batchExpirer   postagecontract.PostageBatchExpirer
 	reserve        postage.Storer
 	sampler        storage.Sampler
 	overlay        swarm.Address
@@ -60,6 +62,7 @@ func New(
 	logger log.Logger,
 	monitor Monitor,
 	contract redistribution.Contract,
+	batchExpirer postagecontract.PostageBatchExpirer,
 	reserve postage.Storer,
 	sampler storage.Sampler,
 	blockTime time.Duration, blocksPerRound, blocksPerPhase uint64) *Agent {
@@ -70,6 +73,7 @@ func New(
 		backend:        backend,
 		logger:         logger.WithName(loggerName).Register(),
 		contract:       contract,
+		batchExpirer:   batchExpirer,
 		reserve:        reserve,
 		monitor:        monitor,
 		blocksPerRound: blocksPerRound,
@@ -119,7 +123,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		mtx.Unlock()
 
 		if round-1 == sampleRound { // the sample has to come from previous round to be able to commit it
-			obf, err := a.commit(ctx, storageRadius, reserveSample)
+			obf, err := a.commit(ctx, storageRadius, reserveSample, round)
 			if err != nil {
 				a.logger.Error(err, "commit")
 			} else {
@@ -240,15 +244,13 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		round = block / blocksPerRound
 		a.metrics.Round.Set(float64(round))
 
-		// TODO: to be changed for the mainnet
-		// compute the current phase
 		p := block % blocksPerRound
 		if p < blocksPerPhase {
 			currentPhase = commit // [0, 37]
-		} else if p >= blocksPerPhase && p <= 2*blocksPerPhase { // [38, 76]
+		} else if p >= blocksPerPhase && p < 2*blocksPerPhase { // [38, 75]
 			currentPhase = reveal
-		} else if p > 2*blocksPerPhase {
-			currentPhase = claim // (76, 152)
+		} else if p >= 2*blocksPerPhase {
+			currentPhase = claim // [76, 151]
 		}
 
 		// write the current phase only once
@@ -283,6 +285,11 @@ func (a *Agent) reveal(ctx context.Context, storageRadius uint8, sample, obfusca
 func (a *Agent) claim(ctx context.Context) error {
 	a.metrics.ClaimPhase.Inc()
 	// event claimPhase was processed
+
+	err := a.batchExpirer.ExpireBatches(ctx)
+	if err != nil {
+		return err
+	}
 
 	isWinner, err := a.contract.IsWinner(ctx)
 	if err != nil {
@@ -331,23 +338,11 @@ func (a *Agent) play(ctx context.Context) (uint8, []byte, error) {
 	}
 
 	t := time.Now()
-	a.metrics.BackendCalls.Inc()
-	block, err := a.backend.BlockNumber(ctx)
+
+	timeLimiter, err := a.getPreviousRoundTime(ctx)
 	if err != nil {
-		a.metrics.BackendErrors.Inc()
 		return 0, nil, err
 	}
-
-	previousRoundNumber := (block / a.blocksPerRound) - 1
-
-	a.metrics.BackendCalls.Inc()
-	timeLimiterBlock, err := a.backend.HeaderByNumber(ctx, new(big.Int).SetUint64(previousRoundNumber*a.blocksPerRound))
-	if err != nil {
-		a.metrics.BackendErrors.Inc()
-		return 0, nil, err
-	}
-
-	timeLimiter := time.Duration(timeLimiterBlock.Time) * time.Second / time.Nanosecond
 
 	sample, err := a.sampler.ReserveSample(ctx, salt, storageRadius, uint64(timeLimiter))
 	if err != nil {
@@ -358,7 +353,28 @@ func (a *Agent) play(ctx context.Context) (uint8, []byte, error) {
 	return storageRadius, sample.Hash.Bytes(), nil
 }
 
-func (a *Agent) commit(ctx context.Context, storageRadius uint8, sample []byte) ([]byte, error) {
+func (a *Agent) getPreviousRoundTime(ctx context.Context) (time.Duration, error) {
+
+	a.metrics.BackendCalls.Inc()
+	block, err := a.backend.BlockNumber(ctx)
+	if err != nil {
+		a.metrics.BackendErrors.Inc()
+		return 0, err
+	}
+
+	previousRoundBlockNumber := ((block / a.blocksPerRound) - 1) * a.blocksPerRound
+
+	a.metrics.BackendCalls.Inc()
+	timeLimiterBlock, err := a.backend.HeaderByNumber(ctx, new(big.Int).SetUint64(previousRoundBlockNumber))
+	if err != nil {
+		a.metrics.BackendErrors.Inc()
+		return 0, err
+	}
+
+	return time.Duration(timeLimiterBlock.Time) * time.Second / time.Nanosecond, nil
+}
+
+func (a *Agent) commit(ctx context.Context, storageRadius uint8, sample []byte, round uint64) ([]byte, error) {
 	a.metrics.CommitPhase.Inc()
 
 	key := make([]byte, swarm.HashSize)
@@ -371,7 +387,7 @@ func (a *Agent) commit(ctx context.Context, storageRadius uint8, sample []byte) 
 		return nil, err
 	}
 
-	err = a.contract.Commit(ctx, obfuscatedHash)
+	err = a.contract.Commit(ctx, obfuscatedHash, big.NewInt(int64(round)))
 	if err != nil {
 		a.metrics.ErrCommit.Inc()
 		return nil, err

@@ -14,14 +14,6 @@ message Ack {
   repeated uint64 Cursors = 1;
 }
 
-message Ruid {
-  uint32 Ruid = 1;
-}
-
-message Cancel {
-  uint32 Ruid = 1;
-}
-
 message GetRange {
   int32 Bin = 1;
   uint64 From = 2;

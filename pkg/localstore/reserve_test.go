@@ -44,11 +44,7 @@ func TestDB_ReserveGC_AllOutOfRadius(t *testing.T) {
 
 	for i := 0; i < chunkCount; i++ {
 		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(5, 3, 2, false)
-		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
-		if err != nil {
-			t.Fatal(err)
-		}
-		err = db.Set(context.Background(), storage.ModeSetSync, ch.Address())
+		_, err := db.Put(context.Background(), storage.ModePutRequest, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -73,7 +69,7 @@ func TestDB_ReserveGC_AllOutOfRadius(t *testing.T) {
 		}
 	}
 
-	t.Run("pull index count", newItemsCountTest(db.pullIndex, int(gcTarget)))
+	t.Run("pull index count", newItemsCountTest(db.pullIndex, 0))
 
 	t.Run("postage chunks index count", newItemsCountTest(db.postageChunksIndex, int(gcTarget)))
 
@@ -85,7 +81,7 @@ func TestDB_ReserveGC_AllOutOfRadius(t *testing.T) {
 
 	t.Run("gc size", newIndexGCSizeTest(db))
 
-	t.Run("reserve size", reserveSizeTest(db, 0))
+	t.Run("reserve size", reserveSizeTest(db, 0, 0))
 
 	// the first synced chunk should be removed
 	t.Run("get the first synced chunk", func(t *testing.T) {
@@ -163,11 +159,7 @@ func TestDB_ReserveGC_AllWithinRadius(t *testing.T) {
 
 	for i := 0; i < chunkCount; i++ {
 		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
-		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
-		if err != nil {
-			t.Fatal(err)
-		}
-		err = db.Set(context.Background(), storage.ModeSetSync, ch.Address())
+		_, err := db.Put(context.Background(), storage.ModePutSync, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -193,7 +185,7 @@ func TestDB_ReserveGC_AllWithinRadius(t *testing.T) {
 
 	t.Run("gc size", newIndexGCSizeTest(db))
 
-	t.Run("reserve size", reserveSizeTest(db, 150))
+	t.Run("reserve size", reserveSizeTest(db, 150, 2))
 
 	t.Run("all chunks should be accessible", func(t *testing.T) {
 		for _, a := range addrs {
@@ -270,7 +262,7 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 		Capacity: 100,
 		// once reaching 150 in the reserve, we will evict
 		// half the size of the cache from the reserve, so 50 chunks
-		ReserveCapacity: 100,
+		ReserveCapacity: 90,
 		UnreserveFunc:   unres,
 	})
 	closed = db.close
@@ -280,11 +272,7 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 	// the cache. gc of the cache is still not triggered
 	for i := 0; i < chunkCount; i++ {
 		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
-		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
-		if err != nil {
-			t.Fatal(err)
-		}
-		err = db.Set(context.Background(), storage.ModeSetSync, ch.Address())
+		_, err := db.Put(context.Background(), storage.ModePutSync, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -294,22 +282,17 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 		mtx.Unlock()
 	}
 
-	// wait for the first eviction to finish, otherwise
-	// we collect some of the next chunks that get added
-	// which results in inconsistencies
-	evictTarget := db.reserveEvictionTarget()
+	t.Run("reserve size", reserveSizeTest(db, uint64(chunkCount), 2))
 
+	var evicted uint64
 	for {
 		select {
-		case <-testHookEvictChan:
+		case c := <-testHookEvictChan:
+			evicted += c
 		case <-time.After(10 * time.Second):
 			t.Fatal("collect garbage timeout")
 		}
-		resSize, err := db.reserveSize.Get()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if resSize == evictTarget {
+		if evicted == 10 {
 			break
 		}
 	}
@@ -317,11 +300,7 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 	// insert another 90, this will trigger gc
 	for i := 0; i < 90; i++ {
 		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
-		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
-		if err != nil {
-			t.Fatal(err)
-		}
-		err = db.Set(context.Background(), storage.ModeSetSync, ch.Address())
+		_, err := db.Put(context.Background(), storage.ModePutSync, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -331,17 +310,17 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 		mtx.Unlock()
 	}
 
+	t.Run("reserve size", reserveSizeTest(db, 180, 2))
+
+	evicted = 0
 	for {
 		select {
-		case <-testHookEvictChan:
+		case c := <-testHookEvictChan:
+			evicted += c
 		case <-time.After(10 * time.Second):
 			t.Fatal("collect garbage timeout")
 		}
-		resSize, err := db.reserveSize.Get()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if resSize == evictTarget {
+		if evicted == 90 {
 			break
 		}
 	}
@@ -362,7 +341,8 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 			break
 		}
 	}
-	t.Run("pull index count", newItemsCountTest(db.pullIndex, chunkCount+90-10))
+	// pullIndex count should be equal to the reserve
+	t.Run("pull index count", newItemsCountTest(db.pullIndex, 90))
 
 	t.Run("postage chunks index count", newItemsCountTest(db.postageChunksIndex, chunkCount+90-10))
 
@@ -374,7 +354,7 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 
 	t.Run("gc size", newIndexGCSizeTest(db))
 
-	t.Run("reserve size", reserveSizeTest(db, 90))
+	t.Run("reserve size", reserveSizeTest(db, 90, 2))
 
 	t.Run("first ten unreserved chunks should not be accessible", func(t *testing.T) {
 		for _, a := range addrs[:10] {
@@ -396,7 +376,7 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 }
 
 // TestDB_ReserveGC_EvictMaxPO tests that when unreserving a batch at
-// swarm.MaxPO+1 results in the correct behaviour.
+// swarm.MaxBins results in the correct behaviour.
 func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 
 	var (
@@ -446,7 +426,7 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 			if stop {
 				return nil
 			}
-			stop, err = f(item, swarm.MaxPO+1)
+			stop, err = f(item, swarm.MaxBins)
 			if err != nil {
 				return err
 			}
@@ -461,7 +441,7 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 		Capacity: 100,
 		// once reaching 100 in the reserve, we will evict
 		// half the size of the cache from the reserve, so 50 chunks
-		ReserveCapacity: 100,
+		ReserveCapacity: 90,
 		UnreserveFunc:   unres,
 	})
 
@@ -470,11 +450,7 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 	// put the first chunkCount chunks within radius
 	for i := 0; i < chunkCount; i++ {
 		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
-		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
-		if err != nil {
-			t.Fatal(err)
-		}
-		err = db.Set(context.Background(), storage.ModeSetSync, ch.Address())
+		_, err := db.Put(context.Background(), storage.ModePutSync, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -484,22 +460,17 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 		mtx.Unlock()
 	}
 
-	// wait for the first eviction to finish, otherwise
-	// we collect some of the next chunks that get added
-	// which results in inconsistencies
-	evictTarget := db.reserveEvictionTarget()
+	t.Run("reserve size", reserveSizeTest(db, 100, 2))
 
+	var evicted uint64
 	for {
 		select {
-		case <-testHookEvictChan:
+		case c := <-testHookEvictChan:
+			evicted += c
 		case <-time.After(10 * time.Second):
 			t.Fatal("collect garbage timeout")
 		}
-		resSize, err := db.reserveSize.Get()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if resSize == evictTarget {
+		if evicted == 10 {
 			break
 		}
 	}
@@ -515,11 +486,7 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 
 	for i := 0; i < 90; i++ {
 		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
-		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
-		if err != nil {
-			t.Fatal(err)
-		}
-		err = db.Set(context.Background(), storage.ModeSetSync, ch.Address())
+		_, err := db.Put(context.Background(), storage.ModePutSync, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -528,17 +495,18 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 		addrs = append(addrs, ch.Address())
 		mtx.Unlock()
 	}
+
+	t.Run("reserve size", reserveSizeTest(db, 180, 2))
+
+	evicted = 0
 	for {
 		select {
-		case <-testHookEvictChan:
+		case c := <-testHookEvictChan:
+			evicted += c
 		case <-time.After(10 * time.Second):
 			t.Fatal("collect garbage timeout")
 		}
-		resSize, err := db.reserveSize.Get()
-		if err != nil {
-			t.Fatal(err)
-		}
-		if resSize == evictTarget {
+		if evicted == 90 {
 			break
 		}
 	}
@@ -559,7 +527,7 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 			break
 		}
 	}
-	t.Run("pull index count", newItemsCountTest(db.pullIndex, chunkCount+90-10))
+	t.Run("pull index count", newItemsCountTest(db.pullIndex, 90))
 
 	t.Run("postage chunks index count", newItemsCountTest(db.postageChunksIndex, chunkCount+90-10))
 
@@ -569,7 +537,7 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 
 	t.Run("gc size", newIndexGCSizeTest(db))
 
-	t.Run("reserve size", reserveSizeTest(db, 90))
+	t.Run("reserve size", reserveSizeTest(db, 90, 0))
 
 	t.Run("first ten unreserved chunks should not be accessible", func(t *testing.T) {
 		for _, a := range addrs[:10] {
@@ -611,7 +579,7 @@ func TestReserveSize(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Run("reserve size", reserveSizeTest(db, 10))
+		t.Run("reserve size", reserveSizeTest(db, 10, 0))
 	})
 
 	t.Run("variadic put upload then set sync", func(t *testing.T) {
@@ -632,13 +600,13 @@ func TestReserveSize(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Run("reserve size", reserveSizeTest(db, 0))
+		t.Run("reserve size", reserveSizeTest(db, 0, 0))
 
 		err = db.Set(context.Background(), storage.ModeSetSync, addrs...)
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Run("reserve size", reserveSizeTest(db, 10))
+		t.Run("reserve size", reserveSizeTest(db, 0, 0))
 	})
 
 	t.Run("sequencial put sync", func(t *testing.T) {
@@ -655,33 +623,25 @@ func TestReserveSize(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		t.Run("reserve size", reserveSizeTest(db, 10))
+		t.Run("reserve size", reserveSizeTest(db, 10, 0))
 	})
 
-	t.Run("sequencial put upload then set sync", func(t *testing.T) {
+	t.Run("sequencial put request", func(t *testing.T) {
+		t.Cleanup(setWithinRadiusFunc(func(*DB, shed.Item) bool { return true }))
 		var (
 			db = newTestDB(t, &Options{
 				Capacity:        100,
 				ReserveCapacity: 100,
 			})
-			chs []swarm.Chunk
 		)
 		for i := 0; i < chunkCount; i++ {
 			ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
-			chs = append(chs, ch)
-			_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
+			_, err := db.Put(context.Background(), storage.ModePutRequest, ch)
 			if err != nil {
 				t.Fatal(err)
 			}
 		}
-		t.Run("reserve size", reserveSizeTest(db, 0))
-		for _, ch := range chs {
-			err := db.Set(context.Background(), storage.ModeSetSync, ch.Address())
-			if err != nil {
-				t.Fatal(err)
-			}
-		}
-		t.Run("reserve size", reserveSizeTest(db, 10))
+		t.Run("reserve size", reserveSizeTest(db, 10, 0))
 	})
 }
 
@@ -709,7 +669,7 @@ func TestComputeReserveSize(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Run("reserve size", reserveSizeTest(db, chunkCountPerPO*maxPO))
+	t.Run("reserve size", reserveSizeTest(db, chunkCountPerPO*maxPO, 0))
 
 	for po := 0; po < maxPO; po++ {
 		got, err := db.ComputeReserveSize(uint8(po))
@@ -762,7 +722,7 @@ func TestDB_ReserveGC_BatchedUnreserve(t *testing.T) {
 
 	db := newTestDB(t, &Options{
 		Capacity:        100,
-		ReserveCapacity: 100,
+		ReserveCapacity: 50,
 		UnreserveFunc:   unres,
 	})
 	closed = db.close
@@ -776,15 +736,13 @@ func TestDB_ReserveGC_BatchedUnreserve(t *testing.T) {
 
 	for i := 0; i < chunkCount; i++ {
 		ch := genChunk()
-		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
-		if err != nil {
-			t.Fatal(err)
-		}
-		err = db.Set(context.Background(), storage.ModeSetSync, ch.Address())
+		_, err := db.Put(context.Background(), storage.ModePutSync, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
+
+	t.Run("reserve size", reserveSizeTest(db, 100, 0))
 
 	select {
 	case <-testHookEvictChan:
@@ -797,10 +755,9 @@ func TestDB_ReserveGC_BatchedUnreserve(t *testing.T) {
 		t.Fatal("gc timeout")
 	}
 
-	t.Run("reserve size", reserveSizeTest(db, 0))
+	t.Run("reserve size", reserveSizeTest(db, 0, 0))
 
-	// chunks are still part of cache so these indexes would not be removed
-	t.Run("pull index count", newItemsCountTest(db.pullIndex, 90))
+	t.Run("pull index count", newItemsCountTest(db.pullIndex, 0))
 
 	t.Run("postage chunks index count", newItemsCountTest(db.postageChunksIndex, 90))
 

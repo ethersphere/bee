@@ -31,7 +31,7 @@ func TestReserveSampler(t *testing.T) {
 
 	for po := 0; po < maxPO; po++ {
 		for i := 0; i < chunkCountPerPO; i++ {
-			ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), po).WithBatch(0, 3, 2, false)
+			ch := generateValidRandomChunkAt(swarm.NewAddress(db.baseKey), po).WithBatch(0, 3, 2, false)
 			// override stamp timestamp to be before the consensus timestamp
 			ch = ch.WithStamp(postagetesting.MustNewStampWithTimestamp(timeVar - 1))
 			chs = append(chs, ch)
@@ -43,7 +43,7 @@ func TestReserveSampler(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Run("reserve size", reserveSizeTest(db, chunkCountPerPO*maxPO))
+	t.Run("reserve size", reserveSizeTest(db, chunkCountPerPO*maxPO, 0))
 
 	var sample1 storage.Sample
 
@@ -80,7 +80,7 @@ func TestReserveSampler(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Run("reserve size", reserveSizeTest(db, 2*chunkCountPerPO*maxPO))
+	t.Run("reserve size", reserveSizeTest(db, 2*chunkCountPerPO*maxPO, 0))
 
 	// Now we generate another sample with the older timestamp. This should give us
 	// the exact same sample, ensuring that none of the later chunks were considered.
