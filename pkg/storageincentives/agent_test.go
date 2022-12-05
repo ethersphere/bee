@@ -22,7 +22,6 @@ import (
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
-	"go.uber.org/atomic"
 )
 
 func TestAgent(t *testing.T) {
@@ -82,15 +81,15 @@ func TestAgent(t *testing.T) {
 			addr := test.RandomAddress()
 
 			backend := &mockchainBackend{
-				limit: atomic.NewUint64(tc.limit),
+				limit: tc.limit,
 				limitCallback: func() {
 					select {
 					case wait <- struct{}{}:
 					default:
 					}
 				},
-				incrementBy: atomic.NewUint64(tc.incrementBy),
-				block:       atomic.NewUint64(tc.blocksPerRound)}
+				incrementBy: tc.incrementBy,
+				block:       tc.blocksPerRound}
 			contract := &mockContract{}
 
 			service := createService(addr, backend, contract, tc.blocksPerRound, tc.blocksPerPhase)
@@ -169,20 +168,23 @@ func createService(
 }
 
 type mockchainBackend struct {
-	incrementBy   *atomic.Uint64
-	block         *atomic.Uint64
-	limit         *atomic.Uint64
+	mu            sync.Mutex
+	incrementBy   uint64
+	block         uint64
+	limit         uint64
 	limitCallback func()
 }
 
 func (m *mockchainBackend) BlockNumber(context.Context) (uint64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
-	ret := m.block.Load()
-	lim := m.limit.Load()
-	inc := m.incrementBy.Load()
+	ret := m.block
+	lim := m.limit
+	inc := m.incrementBy
 
 	if lim == 0 || ret+inc < lim {
-		m.block.Add(inc)
+		m.block += inc
 	} else if m.limitCallback != nil {
 		m.limitCallback()
 		return 0, errors.New("reached limit")
