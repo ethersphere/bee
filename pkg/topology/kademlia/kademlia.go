@@ -190,8 +190,8 @@ type Kad struct {
 	commonBinPrefixes [][]swarm.Address     // list of address prefixes for each bin
 	connectedPeers    *pslice.PSlice        // a slice of peers sorted and indexed by po, indexes kept in `bins`
 	knownPeers        *pslice.PSlice        // both are po aware slice of addresses
-	connRetryBackoff  map[string]uint64     //
-	connRetryBackMtx  sync.RWMutex          //
+	retryBackoff      map[string]int64      //
+	retryBackoffMtx   sync.Mutex            //
 	depth             uint8                 // current neighborhood depth
 	storageRadius     uint8                 // storage area of responsibility
 	depthMu           sync.RWMutex          // protect depth changes
@@ -245,7 +245,7 @@ func New(
 		commonBinPrefixes: make([][]swarm.Address, int(swarm.MaxBins)),
 		connectedPeers:    pslice.New(int(swarm.MaxBins), base),
 		knownPeers:        pslice.New(int(swarm.MaxBins), base),
-		connRetryBackoff:  make(map[string]uint64),
+		retryBackoff:      make(map[string]int64),
 		manageC:           make(chan struct{}, 1),
 		waitNext:          waitnext.New(),
 		logger:            logger.WithName(loggerName).Register(),
@@ -433,9 +433,7 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 		case errors.Is(err, addressbook.ErrNotFound):
 			k.logger.Debug("empty address book entry for peer", "peer_address", peer.addr)
 			k.knownPeers.Remove(peer.addr)
-			k.connRetryBackMtx.Lock()
-			delete(k.connRetryBackoff, peer.addr.String())
-			k.connRetryBackMtx.Unlock()
+			k.clearRetryBackoff(peer.addr)
 			return
 		case err != nil:
 			k.logger.Debug("failed to get address book entry for peer", "peer_address", peer.addr, "error", err)
@@ -448,9 +446,7 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 			if err := k.addressBook.Remove(peer.addr); err != nil {
 				k.logger.Debug("could not remove peer from addressbook", "peer_address", peer.addr)
 			}
-			k.connRetryBackMtx.Lock()
-			delete(k.connRetryBackoff, peer.addr.String())
-			k.connRetryBackMtx.Unlock()
+			k.clearRetryBackoff(peer.addr)
 		}
 
 		switch err = k.connect(ctx, peer.addr, bzzAddr.Underlay); {
@@ -1024,20 +1020,11 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 	case err != nil:
 		k.logger.Debug("could not connect to peer", "peer_address", peer, "error", err)
 
-		k.connRetryBackMtx.Lock()
-		if k.connRetryBackoff[peer.String()] == 0 {
-			k.connRetryBackoff[peer.String()] = 1
-		} else {
-			k.connRetryBackoff[peer.String()] *= 2
-		}
-
 		var retryTime time.Time
 		var e *p2p.ConnectionBackoffError
 
-		multiplier := k.connRetryBackoff[peer.String()]
-		k.connRetryBackMtx.Unlock()
-
-		retryTime = time.Now().Add(k.opt.TimeToRetry * time.Duration(multiplier))
+		backoffMultiplier := k.retryBackoffMultiplier(peer)
+		retryTime = time.Now().Add(k.opt.TimeToRetry * time.Duration(backoffMultiplier))
 
 		failedAttempts := 0
 		if errors.As(err, &e) {
@@ -1055,9 +1042,8 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 		if (k.connectedPeers.Length() > 0 && quickPrune) || failedAttempts >= maxConnAttempts {
 			k.waitNext.Remove(peer)
 			k.knownPeers.Remove(peer)
-			k.connRetryBackMtx.Lock()
-			delete(k.connRetryBackoff, peer.String())
-			k.connRetryBackMtx.Unlock()
+			k.clearRetryBackoff(peer)
+
 			if err := k.addressBook.Remove(peer); err != nil {
 				k.logger.Debug("could not remove peer from addressbook", "peer_address", peer)
 			}
@@ -1073,9 +1059,7 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 		return errOverlayMismatch
 	}
 
-	k.connRetryBackMtx.Lock()
-	k.connRetryBackoff[peer.String()] = 0
-	k.connRetryBackMtx.Unlock()
+	k.clearRetryBackoff(peer)
 
 	return k.Announce(ctx, peer, true)
 }
@@ -1171,11 +1155,6 @@ func (k *Kad) AnnounceTo(ctx context.Context, addressee, peer swarm.Address, ful
 // This does not guarantee that a connection will immediately
 // be made to the peer.
 func (k *Kad) AddPeers(addrs ...swarm.Address) {
-	k.connRetryBackMtx.Lock()
-	for _, n := range addrs {
-		k.connRetryBackoff[n.String()] = 0
-	}
-	k.connRetryBackMtx.Unlock()
 	k.knownPeers.Add(addrs...)
 	k.notifyManageLoop()
 }
@@ -1264,9 +1243,7 @@ func (k *Kad) onConnected(ctx context.Context, addr swarm.Address) error {
 		return err
 	}
 
-	k.connRetryBackMtx.Lock()
-	k.connRetryBackoff[addr.String()] = 0
-	k.connRetryBackMtx.Unlock()
+	k.clearRetryBackoff(addr)
 	k.knownPeers.Add(addr)
 	k.connectedPeers.Add(addr)
 
@@ -1288,18 +1265,8 @@ func (k *Kad) Disconnected(peer p2p.Peer) {
 
 	k.connectedPeers.Remove(peer.Address)
 
-	k.connRetryBackMtx.Lock()
-	if k.connRetryBackoff[peer.Address.String()] == 0 {
-		k.connRetryBackoff[peer.Address.String()] = 1
-	} else {
-		k.connRetryBackoff[peer.Address.String()] *= 2
-	}
-
-	multiplier := k.connRetryBackoff[peer.Address.String()]
-
-	k.connRetryBackMtx.Unlock()
-
-	k.waitNext.SetTryAfter(peer.Address, time.Now().Add(k.opt.TimeToRetry*time.Duration(multiplier)))
+	backoffMultiplier := k.retryBackoffMultiplier(peer.Address)
+	k.waitNext.SetTryAfter(peer.Address, time.Now().Add(k.opt.TimeToRetry*time.Duration(backoffMultiplier)))
 
 	k.metrics.TotalInboundDisconnections.Inc()
 	k.collector.Record(peer.Address, im.PeerLogOut(time.Now()))
@@ -1756,6 +1723,26 @@ func randomSubset(addrs []swarm.Address, count int) ([]swarm.Address, error) {
 	}
 
 	return addrs[:count], nil
+}
+
+func (k *Kad) clearRetryBackoff(addr swarm.Address) {
+	k.retryBackoffMtx.Lock()
+	delete(k.retryBackoff, addr.String())
+	k.retryBackoffMtx.Unlock()
+}
+
+func (k *Kad) retryBackoffMultiplier(addr swarm.Address) int64 {
+	k.retryBackoffMtx.Lock()
+	defer k.retryBackoffMtx.Unlock()
+
+	key := addr.String()
+	if k.retryBackoff[key] == 0 {
+		k.retryBackoff[key] = 1
+	} else {
+		k.retryBackoff[key] *= 2
+	}
+
+	return k.retryBackoff[key]
 }
 
 func (k *Kad) randomPeer(bin uint8) (swarm.Address, error) {
