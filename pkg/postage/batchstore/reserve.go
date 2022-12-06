@@ -105,7 +105,10 @@ func (s *store) cleanup() error {
 	}
 
 	for _, b := range evictions {
-
+		err := s.evictFn(b.ID)
+		if err != nil {
+			return fmt.Errorf("evict batch %x: %w", b.ID, err)
+		}
 		err = s.store.Delete(valueKey(b.Value, b.ID))
 		if err != nil {
 			return fmt.Errorf("delete value key for batch %x: %w", b.ID, err)
@@ -113,13 +116,6 @@ func (s *store) cleanup() error {
 		err = s.store.Delete(batchKey(b.ID))
 		if err != nil {
 			return fmt.Errorf("delete batch %x: %w", b.ID, err)
-		}
-		// first remove the batch from the batchstore as if a sampling process is
-		// started, these chunks will not be considered in the sample and they can
-		// be safely evicted in the background.
-		err := s.evictFn(b.ID)
-		if err != nil {
-			return fmt.Errorf("evict batch %x: %w", b.ID, err)
 		}
 		if s.batchExpiry != nil {
 			s.batchExpiry.HandleStampExpiry(b.ID)
