@@ -179,10 +179,7 @@ func TestReserveSamplerStop(t *testing.T) {
 	go func() {
 		<-startWait
 		// this will trigger the eviction
-		_, err := db.ComputeReserveSize(0)
-		if err != nil {
-			t.Fatal(err)
-		}
+		_, _ = db.ComputeReserveSize(0)
 		<-testHookEvictionChan
 		close(waitChan)
 	}()
