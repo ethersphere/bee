@@ -77,10 +77,6 @@ func New(stateStore storage.StateStorer, topology topology.Driver, reserveState 
 		bins:              bins,
 	}
 
-	// for i := uint8(0); i < bins; i++ {
-	// 	p.syncPeers[i] = make(map[string]*syncPeer)
-	// }
-
 	ctx, cancel := context.WithCancel(context.Background())
 	p.cancel = cancel
 
