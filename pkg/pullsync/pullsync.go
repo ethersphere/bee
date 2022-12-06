@@ -231,6 +231,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 	}
 
 	if len(chunksToPut) > 0 {
+		s.metrics.LastReceived.WithLabelValues(fmt.Sprintf("%d", bin)).Set(float64(time.Now().Unix()))
 		if !isLiveSync {
 			s.rate.Add(len(chunksToPut))
 		}
