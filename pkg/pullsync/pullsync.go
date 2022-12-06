@@ -231,7 +231,6 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 	}
 
 	if len(chunksToPut) > 0 {
-		s.metrics.LastReceived.WithLabelValues(fmt.Sprintf("%d", bin)).Set(float64(time.Now().Unix()))
 		if !isLiveSync {
 			s.rate.Add(len(chunksToPut))
 		}
@@ -242,6 +241,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		if err := s.storage.Put(ctx, storage.ModePutSync, chunksToPut...); err != nil {
 			return topmost, fmt.Errorf("delivery put: %w", err)
 		}
+		s.metrics.LastReceived.WithLabelValues(fmt.Sprintf("%d", bin)).Set(float64(time.Now().Unix()))
 	}
 
 	return topmost, nil
