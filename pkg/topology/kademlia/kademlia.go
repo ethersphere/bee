@@ -38,8 +38,7 @@ import (
 const loggerName = "kademlia"
 
 const (
-	maxConnAttempts     = 13 // when there is maxConnAttempts failed connect calls for a given peer it is considered non-connectable
-	maxBootNodeAttempts = 3  // how many attempts to dial to boot-nodes before giving up
+	maxBootNodeAttempts = 3 // how many attempts to dial to boot-nodes before giving up
 
 	addPeerBatchSize = 500
 
@@ -55,6 +54,7 @@ const (
 
 // Default option values
 const (
+	defaultMaxConnAttempts             = 9 // when there is maxConnAttempts failed connect calls for a given peer it is considered non-connectable
 	defaultBitSuffixLength             = 4 // the number of bits used to create pseudo addresses for balancing
 	defaultLowWaterMark                = 3 // the number of peers in consecutive deepest bins that constitute as nearest neighbours
 	defaultSaturationPeers             = 8
@@ -62,7 +62,7 @@ const (
 	defaultManageLoopInterval          = 15 * time.Second
 	defaultBootNodeOverSaturationPeers = 20
 	defaultShortRetry                  = 30 * time.Second
-	defaultTimeToRetry                 = 2 * defaultShortRetry
+	defaultTimeToRetry                 = time.Second
 	defaultBroadcastBinSize            = 4
 	defaultPeerPingPollTime            = 10 * time.Second // how often to ping a peer
 )
@@ -94,6 +94,7 @@ type Options struct {
 	ReachabilityFunc peerFilterFunc
 	IgnoreRadius     bool
 
+	MaxConnAttempts             *int
 	BitSuffixLength             *int
 	TimeToRetry                 *time.Duration
 	ShortRetry                  *time.Duration
@@ -116,6 +117,7 @@ type kadOptions struct {
 	ReachabilityFunc peerFilterFunc
 	IgnoreRadius     bool
 
+	MaxConnAttempts             int
 	TimeToRetry                 time.Duration
 	ShortRetry                  time.Duration
 	ManageLoopInterval          time.Duration
@@ -139,6 +141,7 @@ func newKadOptions(o Options) kadOptions {
 		ReachabilityFunc: o.ReachabilityFunc,
 		IgnoreRadius:     o.IgnoreRadius,
 		// copy or use default
+		MaxConnAttempts:             defaultValInt(o.MaxConnAttempts, defaultMaxConnAttempts),
 		ManageLoopInterval:          defaultValDuration(o.ManageLoopInterval, defaultManageLoopInterval),
 		TimeToRetry:                 defaultValDuration(o.TimeToRetry, defaultTimeToRetry),
 		ShortRetry:                  defaultValDuration(o.ShortRetry, defaultShortRetry),
@@ -1020,11 +1023,9 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 	case err != nil:
 		k.logger.Debug("could not connect to peer", "peer_address", peer, "error", err)
 
-		var retryTime time.Time
 		var e *p2p.ConnectionBackoffError
-
-		backoffMultiplier := k.retryBackoffMultiplier(peer)
-		retryTime = time.Now().Add(k.opt.TimeToRetry * time.Duration(backoffMultiplier))
+		backoffMultiplier := k.increasRetryBackoff(peer)
+		retryTime := time.Now().Add(k.opt.TimeToRetry * time.Duration(backoffMultiplier))
 
 		failedAttempts := 0
 		if errors.As(err, &e) {
@@ -1039,7 +1040,7 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 
 		ss := k.collector.Inspect(peer)
 		quickPrune := (ss == nil || ss.HasAtMaxOneConnectionAttempt()) && isNetworkError(err)
-		if (k.connectedPeers.Length() > 0 && quickPrune) || failedAttempts >= maxConnAttempts {
+		if (k.connectedPeers.Length() > 0 && quickPrune) || failedAttempts >= k.opt.MaxConnAttempts {
 			k.waitNext.Remove(peer)
 			k.knownPeers.Remove(peer)
 			k.clearRetryBackoff(peer)
@@ -1265,7 +1266,7 @@ func (k *Kad) Disconnected(peer p2p.Peer) {
 
 	k.connectedPeers.Remove(peer.Address)
 
-	backoffMultiplier := k.retryBackoffMultiplier(peer.Address)
+	backoffMultiplier := k.increasRetryBackoff(peer.Address)
 	k.waitNext.SetTryAfter(peer.Address, time.Now().Add(k.opt.TimeToRetry*time.Duration(backoffMultiplier)))
 
 	k.metrics.TotalInboundDisconnections.Inc()
@@ -1725,13 +1726,16 @@ func randomSubset(addrs []swarm.Address, count int) ([]swarm.Address, error) {
 	return addrs[:count], nil
 }
 
+// clearRetryBackoff clears backoff multiplier for supplied address
 func (k *Kad) clearRetryBackoff(addr swarm.Address) {
 	k.retryBackoffMtx.Lock()
 	delete(k.retryBackoff, addr.String())
 	k.retryBackoffMtx.Unlock()
 }
 
-func (k *Kad) retryBackoffMultiplier(addr swarm.Address) int64 {
+// increasRetryBackoff exponentially increases retry backoff multiplier for supplied address
+// and returns current value
+func (k *Kad) increasRetryBackoff(addr swarm.Address) int64 {
 	k.retryBackoffMtx.Lock()
 	defer k.retryBackoffMtx.Unlock()
 

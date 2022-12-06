@@ -491,8 +491,8 @@ func TestManageWithBalancing(t *testing.T) {
 			BitSuffixLength:    ptrInt(2),
 			ReachabilityFunc:   func(_ swarm.Address) bool { return false },
 			ManageLoopInterval: ptrDuration(15 * time.Millisecond),
-			ShortRetry:         ptrDuration(time.Duration(5)),
-			TimeToRetry:        ptrDuration(time.Duration(10)),
+			ShortRetry:         ptrDuration(5 * time.Millisecond),
+			TimeToRetry:        ptrDuration(5 * time.Millisecond),
 		})
 	)
 
@@ -891,12 +891,15 @@ func TestBackoff(t *testing.T) {
 func TestAddressBookPrune(t *testing.T) {
 	t.Parallel()
 
+	const maxConnAttempts = 6
+
 	var (
 		conns, failedConns       int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, &failedConns, kademlia.Options{
-			TimeToRetry:        ptrDuration(time.Duration(1)),
-			ShortRetry:         ptrDuration(time.Duration(1)),
-			ManageLoopInterval: ptrDuration(time.Duration(10)),
+			MaxConnAttempts:    ptrInt(maxConnAttempts),
+			TimeToRetry:        ptrDuration(1 * time.Millisecond),
+			ShortRetry:         ptrDuration(1 * time.Millisecond),
+			ManageLoopInterval: ptrDuration(10 * time.Millisecond),
 		})
 	)
 
@@ -916,7 +919,7 @@ func TestAddressBookPrune(t *testing.T) {
 	// add non connectable peer, check connection and failed connection counters
 	kad.AddPeers(nonConnPeer.Overlay)
 	waitCounter(t, &conns, 0)
-	waitCounter(t, &failedConns, 13)
+	waitCounter(t, &failedConns, maxConnAttempts)
 
 	_, err = ab.Get(nonConnPeer.Overlay)
 	if !errors.Is(err, addressbook.ErrNotFound) {
@@ -964,12 +967,15 @@ func TestAddressBookPrune(t *testing.T) {
 func TestAddressBookQuickPrune(t *testing.T) {
 	t.Parallel()
 
+	const maxConnAttempts = 6
+
 	var (
 		conns, failedConns       int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, &failedConns, kademlia.Options{
-			ShortRetry:         ptrDuration(25),
-			TimeToRetry:        ptrDuration(50),
-			ManageLoopInterval: ptrDuration(50),
+			MaxConnAttempts:    ptrInt(maxConnAttempts),
+			ShortRetry:         ptrDuration(25 * time.Millisecond),
+			TimeToRetry:        ptrDuration(50 * time.Millisecond),
+			ManageLoopInterval: ptrDuration(50 * time.Millisecond),
 		})
 	)
 
@@ -997,7 +1003,7 @@ func TestAddressBookQuickPrune(t *testing.T) {
 	// add non connectable peer, check connection and failed connection counters
 	kad.AddPeers(nonConnPeer.Overlay)
 	waitCounter(t, &conns, 0)
-	waitCounter(t, &failedConns, 13)
+	waitCounter(t, &failedConns, maxConnAttempts)
 
 	_, err = ab.Get(nonConnPeer.Overlay)
 	if !errors.Is(err, addressbook.ErrNotFound) {
