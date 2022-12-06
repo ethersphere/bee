@@ -89,7 +89,7 @@ func (db *DB) ReserveSample(
 	// signal start of sampling to see if we get any evictions during the sampler
 	// run
 	db.startSampling()
-	defer db.stopSamplingIfRunning()
+	defer db.resetSamplingState()
 
 	// Phase 1: Iterate chunk addresses
 	g.Go(func() error {
@@ -159,10 +159,6 @@ func (db *DB) ReserveSample(
 				case <-db.close:
 					return errDbClosed
 				case <-db.samplerSignal:
-					db.lock.Lock(lockKeySampling)
-					db.samplerStop = nil
-					db.samplerSignal = nil
-					db.lock.Unlock(lockKeySampling)
 					return errSamplerStopped
 				}
 			}
@@ -290,4 +286,12 @@ func (db *DB) stopSamplingIfRunning() {
 	if db.samplerStop != nil {
 		db.samplerStop.Do(func() { close(db.samplerSignal) })
 	}
+}
+
+func (db *DB) resetSamplingState() {
+	db.lock.Lock(lockKeySampling)
+	defer db.lock.Unlock(lockKeySampling)
+
+	db.samplerStop = nil
+	db.samplerSignal = nil
 }
