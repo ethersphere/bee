@@ -68,13 +68,13 @@ func (r *releaseLocations) add(loc sharky.Location) {
 // in multiple put method calls.
 func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, retErr error) {
 	// protect parallel updates
-	db.lock.Lock(GC)
+	db.lock.Lock(lockKeyGC)
 	if db.gcRunning {
 		for _, ch := range chs {
 			db.dirtyAddresses = append(db.dirtyAddresses, ch.Address())
 		}
 	}
-	db.lock.Unlock(GC)
+	db.lock.Unlock(lockKeyGC)
 
 	batch := new(leveldb.Batch)
 
@@ -163,9 +163,6 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 
 	switch mode {
 	case storage.ModePutRequest, storage.ModePutRequestPin, storage.ModePutRequestCache:
-		db.lock.Lock(Write)
-		defer db.lock.Unlock(Write)
-
 		for i, ch := range chs {
 			pin := mode == storage.ModePutRequestPin     // force pin in this mode
 			cache := mode == storage.ModePutRequestCache // force cache
@@ -179,10 +176,10 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 			gcSizeChange += c
 		}
 
-	case storage.ModePutUpload, storage.ModePutUploadPin:
-		db.lock.Lock(Upload)
-		defer db.lock.Unlock(Upload)
+		db.lock.Lock(lockKeyGC)
+		defer db.lock.Unlock(lockKeyGC)
 
+	case storage.ModePutUpload, storage.ModePutUploadPin:
 		for i, ch := range chs {
 			pin := mode == storage.ModePutUploadPin
 			exists, c, err := putChunk(ch, i, func(item shed.Item, exists bool) (int64, error) {
@@ -200,10 +197,10 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 			gcSizeChange += c
 		}
 
-	case storage.ModePutSync:
-		db.lock.Lock(Write)
-		defer db.lock.Unlock(Write)
+		db.lock.Lock(lockKeyUpload)
+		defer db.lock.Unlock(lockKeyUpload)
 
+	case storage.ModePutSync:
 		for i, ch := range chs {
 			exists, c, err := putChunk(ch, i, func(item shed.Item, exists bool) (int64, error) {
 				return db.putSync(batch, binIDs, item, exists)
@@ -219,6 +216,9 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 			}
 			gcSizeChange += c
 		}
+
+		db.lock.Lock(lockKeyGC)
+		defer db.lock.Unlock(lockKeyGC)
 
 	default:
 		return nil, ErrInvalidMode

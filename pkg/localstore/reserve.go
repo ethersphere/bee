@@ -24,8 +24,10 @@ func (db *DB) EvictBatch(id []byte) error {
 	}(time.Now())
 
 	// EvictBatch will affect the reserve as well as GC indexes
-	db.lock.Lock(Write)
-	defer db.lock.Unlock(Write)
+	db.lock.Lock(lockKeyGC)
+	defer db.lock.Unlock(lockKeyGC)
+
+	db.stopSamplingIfRunning()
 
 	evicted, err := db.unreserveBatch(id, swarm.MaxBins)
 	if err != nil {

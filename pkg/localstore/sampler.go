@@ -11,6 +11,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/bmtpool"
@@ -37,7 +38,6 @@ type sampleStat struct {
 	GetDuration        atomic.Int64
 	HmacrDuration      atomic.Int64
 	ValidStampDuration atomic.Int64
-	TimeToLock         atomic.Int64
 }
 
 type sampleEntry struct {
@@ -51,7 +51,7 @@ func (s sampleStat) String() string {
 
 	return fmt.Sprintf(
 		"Chunks: %d NotFound: %d New Ignored: %d Iteration Duration: %d secs GetDuration: %d secs"+
-			" HmacrDuration: %d secs ValidStampDuration: %d secs TimeToLock: %d secs",
+			" HmacrDuration: %d secs ValidStampDuration: %d secs",
 		s.TotalIterated.Load(),
 		s.NotFound.Load(),
 		s.NewIgnored.Load(),
@@ -59,7 +59,6 @@ func (s sampleStat) String() string {
 		s.GetDuration.Load()/seconds,
 		s.HmacrDuration.Load()/seconds,
 		s.ValidStampDuration.Load()/seconds,
-		s.TimeToLock.Load()/seconds,
 	)
 }
 
@@ -90,18 +89,12 @@ func (db *DB) ReserveSample(
 	// signal start of sampling to see if we get any evictions during the sampler
 	// run
 	db.startSampling()
+	defer db.stopSamplingIfRunning()
 
 	// Phase 1: Iterate chunk addresses
 	g.Go(func() error {
 		defer close(addrChan)
 		iterationStart := time.Now()
-
-		// this is a slightly relaxed lock. GC operations are allowed during this
-		// as we dont care about the gcIndex. This lock only prevents evictions and
-		// put/set operations related to the reserve.
-		db.lock.Lock(Reserve)
-		defer db.lock.Unlock(Reserve)
-		stat.TimeToLock.Add(time.Since(t).Nanoseconds())
 
 		err := db.pullIndex.Iterate(func(item shed.Item) (bool, error) {
 			select {
@@ -165,10 +158,11 @@ func (db *DB) ReserveSample(
 					return ctx.Err()
 				case <-db.close:
 					return errDbClosed
-				case <-db.samplerStop:
-					db.lock.Lock(Sampling)
+				case <-db.samplerSignal:
+					db.lock.Lock(lockKeySampling)
 					db.samplerStop = nil
-					db.lock.Unlock(Sampling)
+					db.samplerSignal = nil
+					db.lock.Unlock(lockKeySampling)
 					return errSamplerStopped
 				}
 			}
@@ -242,11 +236,14 @@ func (db *DB) ReserveSample(
 			}
 
 			stat.ValidStampDuration.Add(time.Since(validStart).Nanoseconds())
-
 		}
 	}
 
 	if err := g.Wait(); err != nil {
+		db.metrics.SamplerFailedRuns.Inc()
+		if errors.Is(err, errSamplerStopped) {
+			db.metrics.SamplerStopped.Inc()
+		}
 		return storage.Sample{}, fmt.Errorf("sampler: failed creating sample: %w", err)
 	}
 
@@ -256,6 +253,7 @@ func (db *DB) ReserveSample(
 	for _, s := range sampleItems {
 		_, err := hasher.Write(s.Bytes())
 		if err != nil {
+			db.metrics.SamplerFailedRuns.Inc()
 			return storage.Sample{}, fmt.Errorf("sampler: failed creating root hash of sample: %w", err)
 		}
 	}
@@ -266,6 +264,7 @@ func (db *DB) ReserveSample(
 		Hash:  swarm.NewAddress(hash),
 	}
 
+	db.metrics.SamplerSuccessfulRuns.Inc()
 	logger.Info("sampler done", "duration", time.Since(t), "storage_radius", storageRadius, "consensus_time_ns", consensusTime, "stats", stat, "sample", sample)
 
 	return sample, nil
@@ -277,17 +276,18 @@ func le(a, b []byte) bool {
 }
 
 func (db *DB) startSampling() {
-	db.lock.Lock(Sampling)
-	defer db.lock.Unlock(Sampling)
+	db.lock.Lock(lockKeySampling)
+	defer db.lock.Unlock(lockKeySampling)
 
-	db.samplerStop = make(chan struct{})
+	db.samplerStop = new(sync.Once)
+	db.samplerSignal = make(chan struct{})
 }
 
-func (db *DB) stopSamplingIfStarted() {
-	db.lock.Lock(Sampling)
-	defer db.lock.Unlock(Sampling)
+func (db *DB) stopSamplingIfRunning() {
+	db.lock.Lock(lockKeySampling)
+	defer db.lock.Unlock(lockKeySampling)
 
 	if db.samplerStop != nil {
-		close(db.samplerStop)
+		db.samplerStop.Do(func() { close(db.samplerSignal) })
 	}
 }

@@ -94,15 +94,15 @@ func (db *DB) collectGarbage() (evicted uint64, done bool, err error) {
 	target := db.gcTarget()
 
 	// tell the localstore to start logging dirty addresses
-	db.lock.Lock(GC)
+	db.lock.Lock(lockKeyGC)
 	db.gcRunning = true
-	db.lock.Unlock(GC)
+	db.lock.Unlock(lockKeyGC)
 
 	defer func() {
-		db.lock.Lock(GC)
+		db.lock.Lock(lockKeyGC)
 		db.gcRunning = false
 		db.dirtyAddresses = nil
-		db.lock.Unlock(GC)
+		db.lock.Unlock(lockKeyGC)
 	}()
 
 	gcSize, err := db.gcSize.Get()
@@ -142,9 +142,9 @@ func (db *DB) collectGarbage() (evicted uint64, done bool, err error) {
 	}
 
 	// protect database from changing idexes and gcSize
-	db.lock.Lock(GC)
+	db.lock.Lock(lockKeyGC)
 	defer totalTimeMetric(db.metrics.TotalTimeGCLock, time.Now())
-	defer db.lock.Unlock(GC)
+	defer db.lock.Unlock(lockKeyGC)
 
 	// refresh gcSize value, since it might have
 	// changed in the meanwhile
@@ -341,8 +341,8 @@ func (db *DB) evictReserve() (totalEvicted uint64, done bool, err error) {
 	}(time.Now())
 
 	// reserve eviction affects the reserve indexes as well as the GC indexes
-	db.lock.Lock(Write)
-	defer db.lock.Unlock(Write)
+	db.lock.Lock(lockKeyGC)
+	defer db.lock.Unlock(lockKeyGC)
 
 	target = db.reserveCapacity
 
@@ -357,13 +357,14 @@ func (db *DB) evictReserve() (totalEvicted uint64, done bool, err error) {
 		return 0, true, nil
 	}
 
+	// if we start evicting chunks from the reserve during sampling, we should
+	// fail the sampling process and not participate in the current round.
+	db.stopSamplingIfRunning()
+
 	// if we dont get any entries at all then there's no use
 	// of triggering subsequent runs in case we're not done
 	totalCallbacks := 0
 	err = db.unreserveFunc(func(batchID []byte, radius uint8) (bool, error) {
-		// if we start evicting chunks from the reserve during sampling, we should
-		// fail the sampling process and not participate in the current round.
-		db.stopSamplingIfStarted()
 
 		totalCallbacks++
 		e, err := db.unreserveBatch(batchID, radius)
