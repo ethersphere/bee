@@ -5,6 +5,5 @@
 package staking
 
 var (
-	StakingABI = stakingABI
-	Erc20ABI   = erc20ABI
+	Erc20ABI = erc20ABI
 )

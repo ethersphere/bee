@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -17,14 +16,14 @@ import (
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/transaction"
+	"github.com/ethersphere/bee/pkg/util/abiutil"
 	"github.com/ethersphere/go-sw3-abi/sw3abi"
 )
 
 var (
 	MinimumStakeAmount = big.NewInt(100000000000000000)
 
-	erc20ABI   = parseABI(sw3abi.ERC20ABIv0_3_1)
-	stakingABI = parseABI(ABIv0_0_0)
+	erc20ABI = abiutil.MustParseABI(sw3abi.ERC20ABIv0_3_1)
 
 	ErrInsufficientStakeAmount = errors.New("insufficient stake amount")
 	ErrInsufficientFunds       = errors.New("insufficient token balance")
@@ -43,6 +42,7 @@ type contract struct {
 	overlay                swarm.Address
 	owner                  common.Address
 	stakingContractAddress common.Address
+	stakingContractABI     abi.ABI
 	bzzTokenAddress        common.Address
 	transactionService     transaction.Service
 	overlayNonce           common.Hash
@@ -52,6 +52,7 @@ func New(
 	overlay swarm.Address,
 	owner common.Address,
 	stakingContractAddress common.Address,
+	stakingContractABI abi.ABI,
 	bzzTokenAddress common.Address,
 	transactionService transaction.Service,
 	nonce common.Hash,
@@ -60,20 +61,21 @@ func New(
 		overlay:                overlay,
 		owner:                  owner,
 		stakingContractAddress: stakingContractAddress,
+		stakingContractABI:     stakingContractABI,
 		bzzTokenAddress:        bzzTokenAddress,
 		transactionService:     transactionService,
 		overlayNonce:           nonce,
 	}
 }
 
-func (s *contract) sendApproveTransaction(ctx context.Context, amount *big.Int) (*types.Receipt, error) {
-	callData, err := erc20ABI.Pack("approve", s.stakingContractAddress, amount)
+func (c *contract) sendApproveTransaction(ctx context.Context, amount *big.Int) (*types.Receipt, error) {
+	callData, err := erc20ABI.Pack("approve", c.stakingContractAddress, amount)
 	if err != nil {
 		return nil, err
 	}
 
-	txHash, err := s.transactionService.Send(ctx, &transaction.TxRequest{
-		To:          &s.bzzTokenAddress,
+	txHash, err := c.transactionService.Send(ctx, &transaction.TxRequest{
+		To:          &c.bzzTokenAddress,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
 		GasLimit:    65000,
@@ -84,7 +86,7 @@ func (s *contract) sendApproveTransaction(ctx context.Context, amount *big.Int) 
 		return nil, err
 	}
 
-	receipt, err := s.transactionService.WaitForReceipt(ctx, txHash)
+	receipt, err := c.transactionService.WaitForReceipt(ctx, txHash)
 	if err != nil {
 		return nil, err
 	}
@@ -96,9 +98,9 @@ func (s *contract) sendApproveTransaction(ctx context.Context, amount *big.Int) 
 	return receipt, nil
 }
 
-func (s *contract) sendTransaction(ctx context.Context, callData []byte, desc string) (*types.Receipt, error) {
+func (c *contract) sendTransaction(ctx context.Context, callData []byte, desc string) (*types.Receipt, error) {
 	request := &transaction.TxRequest{
-		To:          &s.stakingContractAddress,
+		To:          &c.stakingContractAddress,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
 		GasLimit:    sctx.GetGasLimit(ctx),
@@ -106,12 +108,12 @@ func (s *contract) sendTransaction(ctx context.Context, callData []byte, desc st
 		Description: desc,
 	}
 
-	txHash, err := s.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
+	txHash, err := c.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
 	if err != nil {
 		return nil, err
 	}
 
-	receipt, err := s.transactionService.WaitForReceipt(ctx, txHash)
+	receipt, err := c.transactionService.WaitForReceipt(ctx, txHash)
 	if err != nil {
 		return nil, err
 	}
@@ -123,13 +125,13 @@ func (s *contract) sendTransaction(ctx context.Context, callData []byte, desc st
 	return receipt, nil
 }
 
-func (s *contract) sendDepositStakeTransaction(ctx context.Context, owner common.Address, stakedAmount *big.Int, nonce common.Hash) (*types.Receipt, error) {
-	callData, err := stakingABI.Pack("depositStake", owner, nonce, stakedAmount)
+func (c *contract) sendDepositStakeTransaction(ctx context.Context, owner common.Address, stakedAmount *big.Int, nonce common.Hash) (*types.Receipt, error) {
+	callData, err := c.stakingContractABI.Pack("depositStake", owner, nonce, stakedAmount)
 	if err != nil {
 		return nil, err
 	}
 
-	receipt, err := s.sendTransaction(ctx, callData, depositStakeDescription)
+	receipt, err := c.sendTransaction(ctx, callData, depositStakeDescription)
 	if err != nil {
 		return nil, fmt.Errorf("deposit stake: stakedAmount %d: %w", stakedAmount, err)
 	}
@@ -137,30 +139,30 @@ func (s *contract) sendDepositStakeTransaction(ctx context.Context, owner common
 	return receipt, nil
 }
 
-func (s *contract) getStake(ctx context.Context, overlay swarm.Address) (*big.Int, error) {
+func (c *contract) getStake(ctx context.Context, overlay swarm.Address) (*big.Int, error) {
 	var overlayAddr [32]byte
 	copy(overlayAddr[:], overlay.Bytes())
-	callData, err := stakingABI.Pack("stakeOfOverlay", overlayAddr)
+	callData, err := c.stakingContractABI.Pack("stakeOfOverlay", overlayAddr)
 	if err != nil {
 		return nil, err
 	}
-	result, err := s.transactionService.Call(ctx, &transaction.TxRequest{
-		To:   &s.stakingContractAddress,
+	result, err := c.transactionService.Call(ctx, &transaction.TxRequest{
+		To:   &c.stakingContractAddress,
 		Data: callData,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("get stake: overlayAddress %d: %w", overlay, err)
 	}
 
-	results, err := stakingABI.Unpack("stakeOfOverlay", result)
+	results, err := c.stakingContractABI.Unpack("stakeOfOverlay", result)
 	if err != nil {
 		return nil, err
 	}
 	return abi.ConvertType(results[0], new(big.Int)).(*big.Int), nil
 }
 
-func (s *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) (txHash common.Hash, err error) {
-	prevStakedAmount, err := s.GetStake(ctx)
+func (c *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) (txHash common.Hash, err error) {
+	prevStakedAmount, err := c.GetStake(ctx)
 	if err != nil {
 		return
 	}
@@ -172,7 +174,7 @@ func (s *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) (txH
 		}
 	}
 
-	balance, err := s.getBalance(ctx)
+	balance, err := c.getBalance(ctx)
 	if err != nil {
 		return
 	}
@@ -182,34 +184,34 @@ func (s *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) (txH
 		return
 	}
 
-	_, err = s.sendApproveTransaction(ctx, stakedAmount)
+	_, err = c.sendApproveTransaction(ctx, stakedAmount)
 	if err != nil {
 		return
 	}
 
-	receipt, err := s.sendDepositStakeTransaction(ctx, s.owner, stakedAmount, s.overlayNonce)
+	receipt, err := c.sendDepositStakeTransaction(ctx, c.owner, stakedAmount, c.overlayNonce)
 	if receipt != nil {
 		txHash = receipt.TxHash
 	}
 	return
 }
 
-func (s *contract) GetStake(ctx context.Context) (*big.Int, error) {
-	stakedAmount, err := s.getStake(ctx, s.overlay)
+func (c *contract) GetStake(ctx context.Context) (*big.Int, error) {
+	stakedAmount, err := c.getStake(ctx, c.overlay)
 	if err != nil {
 		return nil, fmt.Errorf("staking contract: failed to get stake: %w", err)
 	}
 	return stakedAmount, nil
 }
 
-func (s *contract) getBalance(ctx context.Context) (*big.Int, error) {
-	callData, err := erc20ABI.Pack("balanceOf", s.owner)
+func (c *contract) getBalance(ctx context.Context) (*big.Int, error) {
+	callData, err := erc20ABI.Pack("balanceOf", c.owner)
 	if err != nil {
 		return nil, err
 	}
 
-	result, err := s.transactionService.Call(ctx, &transaction.TxRequest{
-		To:   &s.bzzTokenAddress,
+	result, err := c.transactionService.Call(ctx, &transaction.TxRequest{
+		To:   &c.bzzTokenAddress,
 		Data: callData,
 	})
 	if err != nil {
@@ -221,12 +223,4 @@ func (s *contract) getBalance(ctx context.Context) (*big.Int, error) {
 		return nil, err
 	}
 	return abi.ConvertType(results[0], new(big.Int)).(*big.Int), nil
-}
-
-func parseABI(json string) abi.ABI {
-	cabi, err := abi.JSON(strings.NewReader(json))
-	if err != nil {
-		panic(fmt.Sprintf("error creating ABI for staking contract: %v", err))
-	}
-	return cabi
 }

@@ -14,6 +14,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/transaction"
+	"github.com/ethersphere/bee/pkg/util/abiutil"
 	"github.com/ethersphere/go-sw3-abi/sw3abi"
 	"golang.org/x/net/context"
 )
@@ -23,7 +24,7 @@ var (
 	ErrNotDeployedByFactory = errors.New("chequebook not deployed by factory")
 	errDecodeABI            = errors.New("could not decode abi data")
 
-	factoryABI                  = transaction.ParseABIUnchecked(sw3abi.SimpleSwapFactoryABIv0_4_0)
+	factoryABI                  = abiutil.MustParseABI(sw3abi.SimpleSwapFactoryABIv0_4_0)
 	simpleSwapDeployedEventType = factoryABI.Events["SimpleSwapDeployed"]
 )
 
