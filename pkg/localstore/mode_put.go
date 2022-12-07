@@ -461,7 +461,7 @@ func (db *DB) putSync(
 
 	// if we try to add a new item at a lesser radius than the last known eviction
 	// radius of the batch, we should not add the chunk to reserve, but to cache
-	if !withinRadius(db, item) {
+	if !withinRadiusFn(db, item) {
 		return db.addToCache(batch, item)
 	}
 
