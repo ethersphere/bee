@@ -7,13 +7,10 @@ package transaction
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math/big"
-	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/log"
@@ -129,13 +126,4 @@ func WaitBlockAfterTransaction(ctx context.Context, backend Backend, pollingInte
 			return nil, errors.New("context timeout")
 		}
 	}
-}
-
-// ParseABIUnchecked will parse a valid json abi. Only use this with string constants known to be correct.
-func ParseABIUnchecked(json string) abi.ABI {
-	cabi, err := abi.JSON(strings.NewReader(json))
-	if err != nil {
-		panic(fmt.Sprintf("error creating ABI for contract: %v", err))
-	}
-	return cabi
 }
