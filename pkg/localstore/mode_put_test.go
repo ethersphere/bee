@@ -187,7 +187,7 @@ func TestModePutRequestCache(t *testing.T) {
 
 // TestModePutSync validates ModePutSync index values on the provided DB.
 func TestModePutSync(t *testing.T) {
-	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return false }))
+	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return true }))
 	for _, tc := range multiChunkTestCases {
 		t.Run(tc.name, func(t *testing.T) {
 			db := newTestDB(t, nil)

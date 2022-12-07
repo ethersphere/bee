@@ -11,6 +11,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/syndtr/goleveldb/leveldb"
 )
 
 func TestPinCounter(t *testing.T) {
@@ -195,7 +196,7 @@ func TestPinIndexesSync(t *testing.T) {
 
 func TestPinIndexesPutSync(t *testing.T) {
 	ctx := context.Background()
-	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return false }))
+	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return true }))
 
 	db := newTestDB(t, &Options{
 		Capacity: 150,
@@ -238,6 +239,40 @@ func TestPinIndexesPutSync(t *testing.T) {
 		t.Fatal(err)
 	}
 	runCountsTest(t, "setUnPin 2", db, 1, 1, 0, 0, 0, 1)
+}
+
+func TestPinIndexesPutSyncOutOfDepth(t *testing.T) {
+	ctx := context.Background()
+	t.Cleanup(setWithinRadiusFunc(func(_ *DB, _ shed.Item) bool { return false }))
+
+	db := newTestDB(t, &Options{
+		Capacity: 150,
+	})
+
+	ch := generateTestRandomChunk()
+	// call unreserve on the batch with radius 0 so that
+	// localstore is aware of the batch and the chunk can
+	// be inserted into the database
+	unreserveChunkBatch(t, db, 0, ch)
+
+	addr := ch.Address()
+	_, err := db.Put(ctx, storage.ModePutSync, ch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCountsTest(t, "putSync", db, 1, 1, 0, 0, 0, 1)
+
+	// duplicates should have no effect
+	_, err = db.Put(ctx, storage.ModePutSync, ch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runCountsTest(t, "putSync", db, 1, 1, 0, 0, 0, 1)
+
+	err = db.Set(ctx, storage.ModeSetUnpin, addr)
+	if !errors.Is(err, leveldb.ErrNotFound) {
+		t.Fatalf("expected not found error, got %v", err)
+	}
 }
 
 func TestPinIndexesPutRequest(t *testing.T) {

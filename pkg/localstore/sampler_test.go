@@ -14,6 +14,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/postage"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
+	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
@@ -111,6 +112,8 @@ func TestReserveSamplerStop(t *testing.T) {
 	)
 	startWait, waitChan := make(chan struct{}), make(chan struct{})
 	doneWaiting := false
+
+	t.Cleanup(setWithinRadiusFunc(func(*DB, shed.Item) bool { return true }))
 
 	testHookEvictionChan := make(chan uint64)
 	t.Cleanup(setTestHookEviction(func(count uint64) {
