@@ -10,12 +10,12 @@ import (
 )
 
 type metrics struct {
-	Offered       prometheus.Counter  // number of chunks offered
-	Wanted        prometheus.Counter  // number of chunks wanted
-	Delivered     prometheus.Counter  // number of chunk deliveries
-	DbOps         prometheus.Counter  // number of db ops
-	DuplicateRuid prometheus.Counter  // number of duplicate RUID requests we got
-	LastReceived  prometheus.GaugeVec // last timestamp of the received chunks per bin
+	Offered       prometheus.Counter   // number of chunks offered
+	Wanted        prometheus.Counter   // number of chunks wanted
+	Delivered     prometheus.Counter   // number of chunk deliveries
+	DbOps         prometheus.Counter   // number of db ops
+	DuplicateRuid prometheus.Counter   // number of duplicate RUID requests we got
+	LastReceived  *prometheus.GaugeVec // last timestamp of the received chunks per bin
 }
 
 func newMetrics() metrics {
@@ -52,7 +52,7 @@ func newMetrics() metrics {
 			Name:      "duplicate_ruids",
 			Help:      "Total duplicate RUIDs.",
 		}),
-		LastReceived: *prometheus.NewGaugeVec(
+		LastReceived: prometheus.NewGaugeVec(
 			prometheus.GaugeOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
