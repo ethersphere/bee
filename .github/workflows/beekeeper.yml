@@ -11,9 +11,9 @@ env:
   K3S_VERSION: "v1.21.14+k3s1"
   REPLICA: 3
   RUN_TYPE: "PR RUN"
-  SETUP_CONTRACT_IMAGE_TAG: "0.9.4"
+  SETUP_CONTRACT_IMAGE_TAG: "0.9.6"
   BEELOCAL_BRANCH: "main"
-  BEEKEEPER_BRANCH: "master"
+  BEEKEEPER_BRANCH: "staking_test"
   BEEKEEPER_METRICS_ENABLED: false
   REACHABILITY_OVERRIDE_PUBLIC: true
   BATCHFACTOR_OVERRIDE_PUBLIC: 2
@@ -119,6 +119,9 @@ jobs:
       - name: Set local cluster
         run: |
           timeout ${TIMEOUT} make deploylocal BEEKEEPER_CLUSTER=local-dns
+      - name: Test staking
+        id: stake
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks ci-stake
       - name: Test pingpong
         id: pingpong
         run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done'
