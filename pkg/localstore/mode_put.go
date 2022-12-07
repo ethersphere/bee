@@ -139,6 +139,13 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 			return false, gcChangeNew + gcChange, err
 		}
 
+		// if access index is present, fill it as it is required for GC operations
+		accessIdx, err := db.retrievalAccessIndex.Get(storedItem)
+		if err != nil && !errors.Is(err, leveldb.ErrNotFound) {
+			return false, 0, err
+		}
+		storedItem.AccessTimestamp = accessIdx.AccessTimestamp
+
 		gcChange, err := putOp(storedItem, true)
 		if err != nil {
 			return false, 0, err
@@ -163,6 +170,9 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 
 	switch mode {
 	case storage.ModePutRequest, storage.ModePutRequestPin, storage.ModePutRequestCache:
+		db.lock.Lock(lockKeyGC)
+		defer db.lock.Unlock(lockKeyGC)
+
 		for i, ch := range chs {
 			pin := mode == storage.ModePutRequestPin     // force pin in this mode
 			cache := mode == storage.ModePutRequestCache // force cache
@@ -176,10 +186,10 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 			gcSizeChange += c
 		}
 
-		db.lock.Lock(lockKeyGC)
-		defer db.lock.Unlock(lockKeyGC)
-
 	case storage.ModePutUpload, storage.ModePutUploadPin:
+		db.lock.Lock(lockKeyUpload)
+		defer db.lock.Unlock(lockKeyUpload)
+
 		for i, ch := range chs {
 			pin := mode == storage.ModePutUploadPin
 			exists, c, err := putChunk(ch, i, func(item shed.Item, exists bool) (int64, error) {
@@ -197,10 +207,10 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 			gcSizeChange += c
 		}
 
-		db.lock.Lock(lockKeyUpload)
-		defer db.lock.Unlock(lockKeyUpload)
-
 	case storage.ModePutSync:
+		db.lock.Lock(lockKeyGC)
+		defer db.lock.Unlock(lockKeyGC)
+
 		for i, ch := range chs {
 			exists, c, err := putChunk(ch, i, func(item shed.Item, exists bool) (int64, error) {
 				return db.putSync(batch, binIDs, item, exists)
@@ -216,9 +226,6 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 			}
 			gcSizeChange += c
 		}
-
-		db.lock.Lock(lockKeyGC)
-		defer db.lock.Unlock(lockKeyGC)
 
 	default:
 		return nil, ErrInvalidMode
@@ -461,7 +468,7 @@ func (db *DB) putSync(
 
 	// if we try to add a new item at a lesser radius than the last known eviction
 	// radius of the batch, we should not add the chunk to reserve, but to cache
-	if !withinRadius(db, item) {
+	if !withinRadiusFn(db, item) {
 		return db.addToCache(batch, item)
 	}
 
