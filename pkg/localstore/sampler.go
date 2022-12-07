@@ -11,6 +11,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/bmtpool"
@@ -27,6 +28,7 @@ import (
 const sampleSize = 8
 
 var errDbClosed = errors.New("database closed")
+var errSamplerStopped = errors.New("sampler stopped due to ongoing evictions")
 
 type sampleStat struct {
 	TotalIterated      atomic.Int64
@@ -48,7 +50,8 @@ func (s sampleStat) String() string {
 	seconds := int64(time.Second)
 
 	return fmt.Sprintf(
-		"Chunks: %d NotFound: %d New Ignored: %d Iteration Duration: %d secs GetDuration: %d secs HmacrDuration: %d ValidStampDuration: %d",
+		"Chunks: %d NotFound: %d New Ignored: %d Iteration Duration: %d secs GetDuration: %d secs"+
+			" HmacrDuration: %d secs ValidStampDuration: %d secs",
 		s.TotalIterated.Load(),
 		s.NotFound.Load(),
 		s.NewIgnored.Load(),
@@ -83,11 +86,16 @@ func (db *DB) ReserveSample(
 	logger := db.logger.WithName("sampler").V(1).Register()
 
 	t := time.Now()
+	// signal start of sampling to see if we get any evictions during the sampler
+	// run
+	db.startSampling()
+	defer db.resetSamplingState()
 
 	// Phase 1: Iterate chunk addresses
 	g.Go(func() error {
 		defer close(addrChan)
 		iterationStart := time.Now()
+
 		err := db.pullIndex.Iterate(func(item shed.Item) (bool, error) {
 			select {
 			case addrChan <- swarm.NewAddress(item.Address):
@@ -150,6 +158,8 @@ func (db *DB) ReserveSample(
 					return ctx.Err()
 				case <-db.close:
 					return errDbClosed
+				case <-db.samplerSignal:
+					return errSamplerStopped
 				}
 			}
 
@@ -198,7 +208,12 @@ func (db *DB) ReserveSample(
 
 			chunk := swarm.NewChunk(swarm.NewAddress(item.chunkItem.Address), item.chunkItem.Data)
 
-			stamp := postage.NewStamp(item.chunkItem.BatchID, item.chunkItem.Index, item.chunkItem.Timestamp, item.chunkItem.Sig)
+			stamp := postage.NewStamp(
+				item.chunkItem.BatchID,
+				item.chunkItem.Index,
+				item.chunkItem.Timestamp,
+				item.chunkItem.Sig,
+			)
 
 			stampData, err := stamp.MarshalBinary()
 			if err != nil {
@@ -217,11 +232,14 @@ func (db *DB) ReserveSample(
 			}
 
 			stat.ValidStampDuration.Add(time.Since(validStart).Nanoseconds())
-
 		}
 	}
 
 	if err := g.Wait(); err != nil {
+		db.metrics.SamplerFailedRuns.Inc()
+		if errors.Is(err, errSamplerStopped) {
+			db.metrics.SamplerStopped.Inc()
+		}
 		return storage.Sample{}, fmt.Errorf("sampler: failed creating sample: %w", err)
 	}
 
@@ -231,6 +249,7 @@ func (db *DB) ReserveSample(
 	for _, s := range sampleItems {
 		_, err := hasher.Write(s.Bytes())
 		if err != nil {
+			db.metrics.SamplerFailedRuns.Inc()
 			return storage.Sample{}, fmt.Errorf("sampler: failed creating root hash of sample: %w", err)
 		}
 	}
@@ -241,6 +260,7 @@ func (db *DB) ReserveSample(
 		Hash:  swarm.NewAddress(hash),
 	}
 
+	db.metrics.SamplerSuccessfulRuns.Inc()
 	logger.Info("sampler done", "duration", time.Since(t), "storage_radius", storageRadius, "consensus_time_ns", consensusTime, "stats", stat, "sample", sample)
 
 	return sample, nil
@@ -249,4 +269,29 @@ func (db *DB) ReserveSample(
 // less function uses the byte compare to check for lexicographic ordering
 func le(a, b []byte) bool {
 	return bytes.Compare(a, b) == -1
+}
+
+func (db *DB) startSampling() {
+	db.lock.Lock(lockKeySampling)
+	defer db.lock.Unlock(lockKeySampling)
+
+	db.samplerStop = new(sync.Once)
+	db.samplerSignal = make(chan struct{})
+}
+
+func (db *DB) stopSamplingIfRunning() {
+	db.lock.Lock(lockKeySampling)
+	defer db.lock.Unlock(lockKeySampling)
+
+	if db.samplerStop != nil {
+		db.samplerStop.Do(func() { close(db.samplerSignal) })
+	}
+}
+
+func (db *DB) resetSamplingState() {
+	db.lock.Lock(lockKeySampling)
+	defer db.lock.Unlock(lockKeySampling)
+
+	db.samplerStop = nil
+	db.samplerSignal = nil
 }
