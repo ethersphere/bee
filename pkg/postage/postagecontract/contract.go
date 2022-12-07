@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -18,17 +17,14 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/transaction"
+	"github.com/ethersphere/bee/pkg/util/abiutil"
 	"github.com/ethersphere/go-sw3-abi/sw3abi"
 )
 
 var (
 	BucketDepth = uint8(16)
 
-	postageStampABI   = parseABI(PostageABI)
-	erc20ABI          = parseABI(sw3abi.ERC20ABIv0_3_1)
-	batchCreatedTopic = postageStampABI.Events["BatchCreated"].ID
-	batchTopUpTopic   = postageStampABI.Events["BatchTopUp"].ID
-	batchDiluteTopic  = postageStampABI.Events["BatchDepthIncrease"].ID
+	erc20ABI = abiutil.MustParseABI(sw3abi.ERC20ABIv0_3_1)
 
 	ErrBatchCreate       = errors.New("batch creation failed")
 	ErrInsufficientFunds = errors.New("insufficient token balance")
@@ -58,15 +54,22 @@ type PostageBatchExpirer interface {
 type postageContract struct {
 	owner                  common.Address
 	postageContractAddress common.Address
+	postageContractABI     abi.ABI
 	bzzTokenAddress        common.Address
 	transactionService     transaction.Service
 	postageService         postage.Service
 	postageStorer          postage.Storer
+
+	// Cached postage stamp contract event topics.
+	batchCreatedTopic common.Hash
+	batchTopUpTopic   common.Hash
+	batchDiluteTopic  common.Hash
 }
 
 func New(
-	owner,
-	postageContractAddress,
+	owner common.Address,
+	postageContractAddress common.Address,
+	postageContractABI abi.ABI,
 	bzzTokenAddress common.Address,
 	transactionService transaction.Service,
 	postageService postage.Service,
@@ -80,10 +83,15 @@ func New(
 	return &postageContract{
 		owner:                  owner,
 		postageContractAddress: postageContractAddress,
+		postageContractABI:     postageContractABI,
 		bzzTokenAddress:        bzzTokenAddress,
 		transactionService:     transactionService,
 		postageService:         postageService,
 		postageStorer:          postageStorer,
+
+		batchCreatedTopic: postageContractABI.Events["BatchCreated"].ID,
+		batchTopUpTopic:   postageContractABI.Events["BatchTopUp"].ID,
+		batchDiluteTopic:  postageContractABI.Events["BatchDepthIncrease"].ID,
 	}
 }
 
@@ -106,7 +114,7 @@ func (c *postageContract) ExpireBatches(ctx context.Context) error {
 }
 
 func (c *postageContract) expiredBatchesExists(ctx context.Context) (bool, error) {
-	callData, err := postageStampABI.Pack("expiredBatchesExist")
+	callData, err := c.postageContractABI.Pack("expiredBatchesExist")
 	if err != nil {
 		return false, err
 	}
@@ -119,7 +127,7 @@ func (c *postageContract) expiredBatchesExists(ctx context.Context) (bool, error
 		return false, err
 	}
 
-	results, err := postageStampABI.Unpack("expiredBatchesExist", result)
+	results, err := c.postageContractABI.Unpack("expiredBatchesExist", result)
 	if err != nil {
 		return false, err
 	}
@@ -127,7 +135,7 @@ func (c *postageContract) expiredBatchesExists(ctx context.Context) (bool, error
 }
 
 func (c *postageContract) expireLimitedBatches(ctx context.Context, count *big.Int) error {
-	callData, err := postageStampABI.Pack("expireLimited", count)
+	callData, err := c.postageContractABI.Pack("expireLimited", count)
 	if err != nil {
 		return err
 	}
@@ -199,7 +207,7 @@ func (c *postageContract) sendTransaction(ctx context.Context, callData []byte, 
 
 func (c *postageContract) sendCreateBatchTransaction(ctx context.Context, owner common.Address, initialBalance *big.Int, depth uint8, nonce common.Hash, immutable bool) (*types.Receipt, error) {
 
-	callData, err := postageStampABI.Pack("createBatch", owner, initialBalance, depth, BucketDepth, nonce, immutable)
+	callData, err := c.postageContractABI.Pack("createBatch", owner, initialBalance, depth, BucketDepth, nonce, immutable)
 	if err != nil {
 		return nil, err
 	}
@@ -214,7 +222,7 @@ func (c *postageContract) sendCreateBatchTransaction(ctx context.Context, owner 
 
 func (c *postageContract) sendTopUpBatchTransaction(ctx context.Context, batchID []byte, topUpAmount *big.Int) (*types.Receipt, error) {
 
-	callData, err := postageStampABI.Pack("topUp", common.BytesToHash(batchID), topUpAmount)
+	callData, err := c.postageContractABI.Pack("topUp", common.BytesToHash(batchID), topUpAmount)
 	if err != nil {
 		return nil, err
 	}
@@ -229,7 +237,7 @@ func (c *postageContract) sendTopUpBatchTransaction(ctx context.Context, batchID
 
 func (c *postageContract) sendDiluteTransaction(ctx context.Context, batchID []byte, newDepth uint8) (*types.Receipt, error) {
 
-	callData, err := postageStampABI.Pack("increaseDepth", common.BytesToHash(batchID), newDepth)
+	callData, err := c.postageContractABI.Pack("increaseDepth", common.BytesToHash(batchID), newDepth)
 	if err != nil {
 		return nil, err
 	}
@@ -303,9 +311,9 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 	}
 	txHash = receipt.TxHash
 	for _, ev := range receipt.Logs {
-		if ev.Address == c.postageContractAddress && len(ev.Topics) > 0 && ev.Topics[0] == batchCreatedTopic {
+		if ev.Address == c.postageContractAddress && len(ev.Topics) > 0 && ev.Topics[0] == c.batchCreatedTopic {
 			var createdEvent batchCreatedEvent
-			err = transaction.ParseEvent(&postageStampABI, "BatchCreated", &createdEvent, *ev)
+			err = transaction.ParseEvent(&c.postageContractABI, "BatchCreated", &createdEvent, *ev)
 
 			if err != nil {
 				return
@@ -363,7 +371,7 @@ func (c *postageContract) TopUpBatch(ctx context.Context, batchID []byte, topupB
 	}
 
 	for _, ev := range receipt.Logs {
-		if ev.Address == c.postageContractAddress && len(ev.Topics) > 0 && ev.Topics[0] == batchTopUpTopic {
+		if ev.Address == c.postageContractAddress && len(ev.Topics) > 0 && ev.Topics[0] == c.batchTopUpTopic {
 			txHash = receipt.TxHash
 			return
 		}
@@ -396,7 +404,7 @@ func (c *postageContract) DiluteBatch(ctx context.Context, batchID []byte, newDe
 	}
 	txHash = receipt.TxHash
 	for _, ev := range receipt.Logs {
-		if ev.Address == c.postageContractAddress && len(ev.Topics) > 0 && ev.Topics[0] == batchDiluteTopic {
+		if ev.Address == c.postageContractAddress && len(ev.Topics) > 0 && ev.Topics[0] == c.batchDiluteTopic {
 			return
 		}
 	}
@@ -412,40 +420,6 @@ type batchCreatedEvent struct {
 	Depth             uint8
 	BucketDepth       uint8
 	ImmutableFlag     bool
-}
-
-func parseABI(json string) abi.ABI {
-	cabi, err := abi.JSON(strings.NewReader(json))
-	if err != nil {
-		panic(fmt.Sprintf("error creating ABI for postage contract: %v", err))
-	}
-	return cabi
-}
-
-func LookupERC20Address(ctx context.Context, transactionService transaction.Service, postageContractAddress common.Address, chainEnabled bool) (common.Address, error) {
-	if !chainEnabled {
-		return common.Address{}, nil
-	}
-
-	callData, err := postageStampABI.Pack("bzzToken")
-	if err != nil {
-		return common.Address{}, err
-	}
-
-	request := &transaction.TxRequest{
-		To:       &postageContractAddress,
-		Data:     callData,
-		GasPrice: nil,
-		GasLimit: 0,
-		Value:    big.NewInt(0),
-	}
-
-	data, err := transactionService.Call(ctx, request)
-	if err != nil {
-		return common.Address{}, err
-	}
-
-	return common.BytesToAddress(data), nil
 }
 
 type noOpPostageContract struct{}

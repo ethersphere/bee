@@ -111,9 +111,9 @@ func InitChequebookFactory(
 	var currentFactory common.Address
 	var legacyFactories []common.Address
 
-	chainCfg, found := config.GetChainConfig(chainID)
+	chainCfg, found := config.GetByChainID(chainID)
 
-	foundFactory, foundLegacyFactories := chainCfg.CurrentFactory, chainCfg.LegacyFactories
+	foundFactory, foundLegacyFactories := chainCfg.CurrentFactoryAddress, chainCfg.LegacyFactoryAddresses
 	if factoryAddress == "" {
 		if !found {
 			return nil, fmt.Errorf("no known factory address for this network (chain id: %d)", chainID)
@@ -244,8 +244,8 @@ func InitSwap(
 
 	var currentPriceOracleAddress common.Address
 	if priceOracleAddress == "" {
-		chainCfg, found := config.GetChainConfig(chainID)
-		currentPriceOracleAddress = chainCfg.SwapPriceOracle
+		chainCfg, found := config.GetByChainID(chainID)
+		currentPriceOracleAddress = chainCfg.SwapPriceOracleAddress
 		if !found {
 			return nil, nil, errors.New("no known price oracle address for this network")
 		}

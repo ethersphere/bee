@@ -90,7 +90,7 @@ func checkBalance(
 			} else {
 				logger.Warning("cannot continue until there is at least min BZZ available on address", "min_bzz_amount", neededERC20, "address", overlayEthAddress)
 			}
-			if chainId == chaincfg.TestnetChainID {
+			if chainId == chaincfg.Testnet.ChainID {
 				logger.Warning("learn how to fund your node by visiting our docs at https://docs.ethswarm.org/docs/installation/fund-your-node")
 			}
 			select {
