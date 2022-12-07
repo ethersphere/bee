@@ -972,7 +972,7 @@ func setTestHookGCIteratorDone(h func()) (reset func()) {
 func unreserveChunkBatch(t *testing.T, db *DB, radius uint8, chs ...swarm.Chunk) {
 	t.Helper()
 	for _, ch := range chs {
-		_, err := db.UnreserveBatch(ch.Stamp().BatchID(), radius)
+		_, err := db.unreserveBatch(ch.Stamp().BatchID(), radius)
 		if err != nil {
 			t.Fatal(err)
 		}

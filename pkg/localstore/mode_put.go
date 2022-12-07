@@ -68,13 +68,13 @@ func (r *releaseLocations) add(loc sharky.Location) {
 // in multiple put method calls.
 func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, retErr error) {
 	// protect parallel updates
-	db.batchMu.Lock()
-	defer db.batchMu.Unlock()
+	db.lock.Lock(lockKeyGC)
 	if db.gcRunning {
 		for _, ch := range chs {
 			db.dirtyAddresses = append(db.dirtyAddresses, ch.Address())
 		}
 	}
+	db.lock.Unlock(lockKeyGC)
 
 	batch := new(leveldb.Batch)
 
@@ -176,6 +176,9 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 			gcSizeChange += c
 		}
 
+		db.lock.Lock(lockKeyGC)
+		defer db.lock.Unlock(lockKeyGC)
+
 	case storage.ModePutUpload, storage.ModePutUploadPin:
 		for i, ch := range chs {
 			pin := mode == storage.ModePutUploadPin
@@ -189,11 +192,13 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 			if !exists {
 				// chunk is new so, trigger subscription feeds
 				// after the batch is successfully written
-				triggerPullFeed[db.po(ch.Address())] = struct{}{}
 				triggerPushFeed = true
 			}
 			gcSizeChange += c
 		}
+
+		db.lock.Lock(lockKeyUpload)
+		defer db.lock.Unlock(lockKeyUpload)
 
 	case storage.ModePutSync:
 		for i, ch := range chs {
@@ -211,6 +216,9 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 			}
 			gcSizeChange += c
 		}
+
+		db.lock.Lock(lockKeyGC)
+		defer db.lock.Unlock(lockKeyGC)
 
 	default:
 		return nil, ErrInvalidMode

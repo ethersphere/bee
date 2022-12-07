@@ -8,16 +8,42 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
+// EvictBatch will evict all chunks associated with the batch from the reserve. This
+// is used by batch store for expirations.
+func (db *DB) EvictBatch(id []byte) error {
+	db.metrics.BatchEvictCounter.Inc()
+	defer func(start time.Time) {
+		totalTimeMetric(db.metrics.TotalTimeBatchEvict, start)
+	}(time.Now())
+
+	// EvictBatch will affect the reserve as well as GC indexes
+	db.lock.Lock(lockKeyGC)
+	defer db.lock.Unlock(lockKeyGC)
+
+	db.stopSamplingIfRunning()
+
+	evicted, err := db.unreserveBatch(id, swarm.MaxBins)
+	if err != nil {
+		db.metrics.BatchEvictErrorCounter.Inc()
+		return fmt.Errorf("failed evict batch: %w", err)
+	}
+
+	db.metrics.BatchEvictCollectedCounter.Add(float64(evicted))
+	db.logger.Debug("evict batch", "batch_id", swarm.NewAddress(id), "evicted_count", evicted)
+	return nil
+}
+
 // UnreserveBatch atomically unpins chunks of a batch in proximity order upto and including po.
 // Unpinning will result in all chunks with pincounter 0 to be put in the gc index
 // so if a chunk was only pinned by the reserve, unreserving it  will make it gc-able.
-func (db *DB) UnreserveBatch(id []byte, radius uint8) (evicted uint64, err error) {
+func (db *DB) unreserveBatch(id []byte, radius uint8) (evicted uint64, err error) {
 	var (
 		item = shed.Item{
 			BatchID: id,
