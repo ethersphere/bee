@@ -921,8 +921,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 
 	pinningService := pinning.NewService(storer, stateStore, traversalService)
 
-	pushsyncIncludeSelf := o.FullNodeMode && !o.BootnodeMode
-	pushSyncProtocol := pushsync.New(swarmAddress, nonce, p2ps, storer, kad, tagService, pushsyncIncludeSelf, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
+	pushSyncProtocol := pushsync.New(swarmAddress, nonce, p2ps, storer, kad, tagService, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
 
 	// set the pushSyncer in the PSS
 	pssService.SetPushSyncer(pushSyncProtocol)
