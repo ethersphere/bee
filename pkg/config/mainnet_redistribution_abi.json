@@ -1,15 +1,19 @@
-// Copyright 2021 The Swarm Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style
-// license that can be found in the LICENSE file.
-
-package postagecontract
-
-const PostageABI = `[
+[
    {
       "inputs":[
          {
             "internalType":"address",
-            "name":"_bzzToken",
+            "name":"staking",
+            "type":"address"
+         },
+         {
+            "internalType":"address",
+            "name":"postageContract",
+            "type":"address"
+         },
+         {
+            "internalType":"address",
+            "name":"oracleContract",
             "type":"address"
          }
       ],
@@ -20,99 +24,26 @@ const PostageABI = `[
       "anonymous":false,
       "inputs":[
          {
-            "indexed":true,
-            "internalType":"bytes32",
-            "name":"batchId",
-            "type":"bytes32"
-         },
-         {
             "indexed":false,
             "internalType":"uint256",
-            "name":"totalAmount",
+            "name":"_count",
             "type":"uint256"
-         },
-         {
-            "indexed":false,
-            "internalType":"uint256",
-            "name":"normalisedBalance",
-            "type":"uint256"
-         },
-         {
-            "indexed":false,
-            "internalType":"address",
-            "name":"owner",
-            "type":"address"
-         },
-         {
-            "indexed":false,
-            "internalType":"uint8",
-            "name":"depth",
-            "type":"uint8"
-         },
-         {
-            "indexed":false,
-            "internalType":"uint8",
-            "name":"bucketDepth",
-            "type":"uint8"
-         },
-         {
-            "indexed":false,
-            "internalType":"bool",
-            "name":"immutableFlag",
-            "type":"bool"
          }
       ],
-      "name":"BatchCreated",
+      "name":"CountCommits",
       "type":"event"
    },
    {
       "anonymous":false,
       "inputs":[
          {
-            "indexed":true,
-            "internalType":"bytes32",
-            "name":"batchId",
-            "type":"bytes32"
-         },
-         {
-            "indexed":false,
-            "internalType":"uint8",
-            "name":"newDepth",
-            "type":"uint8"
-         },
-         {
             "indexed":false,
             "internalType":"uint256",
-            "name":"normalisedBalance",
+            "name":"_count",
             "type":"uint256"
          }
       ],
-      "name":"BatchDepthIncrease",
-      "type":"event"
-   },
-   {
-      "anonymous":false,
-      "inputs":[
-         {
-            "indexed":true,
-            "internalType":"bytes32",
-            "name":"batchId",
-            "type":"bytes32"
-         },
-         {
-            "indexed":false,
-            "internalType":"uint256",
-            "name":"topupAmount",
-            "type":"uint256"
-         },
-         {
-            "indexed":false,
-            "internalType":"uint256",
-            "name":"normalisedBalance",
-            "type":"uint256"
-         }
-      ],
-      "name":"BatchTopUp",
+      "name":"CountReveals",
       "type":"event"
    },
    {
@@ -126,19 +57,6 @@ const PostageABI = `[
          }
       ],
       "name":"Paused",
-      "type":"event"
-   },
-   {
-      "anonymous":false,
-      "inputs":[
-         {
-            "indexed":false,
-            "internalType":"uint256",
-            "name":"price",
-            "type":"uint256"
-         }
-      ],
-      "name":"PriceUpdate",
       "type":"event"
    },
    {
@@ -221,12 +139,76 @@ const PostageABI = `[
       "inputs":[
          {
             "indexed":false,
+            "internalType":"bytes32",
+            "name":"hash",
+            "type":"bytes32"
+         },
+         {
+            "indexed":false,
+            "internalType":"uint8",
+            "name":"depth",
+            "type":"uint8"
+         }
+      ],
+      "name":"TruthSelected",
+      "type":"event"
+   },
+   {
+      "anonymous":false,
+      "inputs":[
+         {
+            "indexed":false,
             "internalType":"address",
             "name":"account",
             "type":"address"
          }
       ],
       "name":"Unpaused",
+      "type":"event"
+   },
+   {
+      "anonymous":false,
+      "inputs":[
+         {
+            "components":[
+               {
+                  "internalType":"address",
+                  "name":"owner",
+                  "type":"address"
+               },
+               {
+                  "internalType":"bytes32",
+                  "name":"overlay",
+                  "type":"bytes32"
+               },
+               {
+                  "internalType":"uint256",
+                  "name":"stake",
+                  "type":"uint256"
+               },
+               {
+                  "internalType":"uint256",
+                  "name":"stakeDensity",
+                  "type":"uint256"
+               },
+               {
+                  "internalType":"bytes32",
+                  "name":"hash",
+                  "type":"bytes32"
+               },
+               {
+                  "internalType":"uint8",
+                  "name":"depth",
+                  "type":"uint8"
+               }
+            ],
+            "indexed":false,
+            "internalType":"struct Redistribution.Reveal",
+            "name":"winner",
+            "type":"tuple"
+         }
+      ],
+      "name":"WinnerSelected",
       "type":"event"
    },
    {
@@ -244,12 +226,12 @@ const PostageABI = `[
    },
    {
       "inputs":[],
-      "name":"DEPTH_ORACLE_ROLE",
+      "name":"OracleContract",
       "outputs":[
          {
-            "internalType":"bytes32",
+            "internalType":"contract PriceOracle",
             "name":"",
-            "type":"bytes32"
+            "type":"address"
          }
       ],
       "stateMutability":"view",
@@ -270,12 +252,12 @@ const PostageABI = `[
    },
    {
       "inputs":[],
-      "name":"PRICE_ORACLE_ROLE",
+      "name":"PostageContract",
       "outputs":[
          {
-            "internalType":"bytes32",
+            "internalType":"contract PostageStamp",
             "name":"",
-            "type":"bytes32"
+            "type":"address"
          }
       ],
       "stateMutability":"view",
@@ -283,12 +265,68 @@ const PostageABI = `[
    },
    {
       "inputs":[],
-      "name":"REDISTRIBUTOR_ROLE",
+      "name":"Stakes",
       "outputs":[
          {
-            "internalType":"bytes32",
+            "internalType":"contract StakeRegistry",
             "name":"",
+            "type":"address"
+         }
+      ],
+      "stateMutability":"view",
+      "type":"function"
+   },
+   {
+      "inputs":[],
+      "name":"claim",
+      "outputs":[],
+      "stateMutability":"nonpayable",
+      "type":"function"
+   },
+   {
+      "inputs":[
+         {
+            "internalType":"bytes32",
+            "name":"_obfuscatedHash",
             "type":"bytes32"
+         },
+         {
+            "internalType":"bytes32",
+            "name":"_overlay",
+            "type":"bytes32"
+         },
+         {
+            "internalType":"uint256",
+            "name":"_roundNumber",
+            "type":"uint256"
+         }
+      ],
+      "name":"commit",
+      "outputs":[],
+      "stateMutability":"nonpayable",
+      "type":"function"
+   },
+   {
+      "inputs":[],
+      "name":"currentClaimRound",
+      "outputs":[
+         {
+            "internalType":"uint256",
+            "name":"",
+            "type":"uint256"
+         }
+      ],
+      "stateMutability":"view",
+      "type":"function"
+   },
+   {
+      "inputs":[],
+      "name":"currentCommitRound",
+      "outputs":[
+         {
+            "internalType":"uint256",
+            "name":"",
+            "type":"uint256"
          }
       ],
       "stateMutability":"view",
@@ -297,12 +335,103 @@ const PostageABI = `[
    {
       "inputs":[
          {
-            "internalType":"bytes32",
+            "internalType":"uint256",
             "name":"",
-            "type":"bytes32"
+            "type":"uint256"
          }
       ],
-      "name":"batches",
+      "name":"currentCommits",
+      "outputs":[
+         {
+            "internalType":"bytes32",
+            "name":"overlay",
+            "type":"bytes32"
+         },
+         {
+            "internalType":"address",
+            "name":"owner",
+            "type":"address"
+         },
+         {
+            "internalType":"uint256",
+            "name":"stake",
+            "type":"uint256"
+         },
+         {
+            "internalType":"bytes32",
+            "name":"obfuscatedHash",
+            "type":"bytes32"
+         },
+         {
+            "internalType":"bool",
+            "name":"revealed",
+            "type":"bool"
+         }
+      ],
+      "stateMutability":"view",
+      "type":"function"
+   },
+   {
+      "inputs":[],
+      "name":"currentPhaseClaim",
+      "outputs":[
+         {
+            "internalType":"bool",
+            "name":"",
+            "type":"bool"
+         }
+      ],
+      "stateMutability":"view",
+      "type":"function"
+   },
+   {
+      "inputs":[],
+      "name":"currentPhaseCommit",
+      "outputs":[
+         {
+            "internalType":"bool",
+            "name":"",
+            "type":"bool"
+         }
+      ],
+      "stateMutability":"view",
+      "type":"function"
+   },
+   {
+      "inputs":[],
+      "name":"currentPhaseReveal",
+      "outputs":[
+         {
+            "internalType":"bool",
+            "name":"",
+            "type":"bool"
+         }
+      ],
+      "stateMutability":"view",
+      "type":"function"
+   },
+   {
+      "inputs":[],
+      "name":"currentRevealRound",
+      "outputs":[
+         {
+            "internalType":"uint256",
+            "name":"",
+            "type":"uint256"
+         }
+      ],
+      "stateMutability":"view",
+      "type":"function"
+   },
+   {
+      "inputs":[
+         {
+            "internalType":"uint256",
+            "name":"",
+            "type":"uint256"
+         }
+      ],
+      "name":"currentReveals",
       "outputs":[
          {
             "internalType":"address",
@@ -310,18 +439,41 @@ const PostageABI = `[
             "type":"address"
          },
          {
+            "internalType":"bytes32",
+            "name":"overlay",
+            "type":"bytes32"
+         },
+         {
+            "internalType":"uint256",
+            "name":"stake",
+            "type":"uint256"
+         },
+         {
+            "internalType":"uint256",
+            "name":"stakeDensity",
+            "type":"uint256"
+         },
+         {
+            "internalType":"bytes32",
+            "name":"hash",
+            "type":"bytes32"
+         },
+         {
             "internalType":"uint8",
             "name":"depth",
             "type":"uint8"
-         },
-         {
-            "internalType":"bool",
-            "name":"immutableFlag",
-            "type":"bool"
-         },
+         }
+      ],
+      "stateMutability":"view",
+      "type":"function"
+   },
+   {
+      "inputs":[],
+      "name":"currentRound",
+      "outputs":[
          {
             "internalType":"uint256",
-            "name":"normalisedBalance",
+            "name":"",
             "type":"uint256"
          }
       ],
@@ -330,101 +482,12 @@ const PostageABI = `[
    },
    {
       "inputs":[],
-      "name":"bzzToken",
+      "name":"currentRoundAnchor",
       "outputs":[
-         {
-            "internalType":"address",
-            "name":"",
-            "type":"address"
-         }
-      ],
-      "stateMutability":"view",
-      "type":"function"
-   },
-   {
-      "inputs":[
-         {
-            "internalType":"address",
-            "name":"_owner",
-            "type":"address"
-         },
-         {
-            "internalType":"uint256",
-            "name":"_initialBalancePerChunk",
-            "type":"uint256"
-         },
-         {
-            "internalType":"uint8",
-            "name":"_depth",
-            "type":"uint8"
-         },
-         {
-            "internalType":"uint8",
-            "name":"_bucketDepth",
-            "type":"uint8"
-         },
          {
             "internalType":"bytes32",
-            "name":"_batchId",
+            "name":"returnVal",
             "type":"bytes32"
-         },
-         {
-            "internalType":"bool",
-            "name":"_immutable",
-            "type":"bool"
-         }
-      ],
-      "name":"copyBatch",
-      "outputs":[],
-      "stateMutability":"nonpayable",
-      "type":"function"
-   },
-   {
-      "inputs":[
-         {
-            "internalType":"address",
-            "name":"_owner",
-            "type":"address"
-         },
-         {
-            "internalType":"uint256",
-            "name":"_initialBalancePerChunk",
-            "type":"uint256"
-         },
-         {
-            "internalType":"uint8",
-            "name":"_depth",
-            "type":"uint8"
-         },
-         {
-            "internalType":"uint8",
-            "name":"_bucketDepth",
-            "type":"uint8"
-         },
-         {
-            "internalType":"bytes32",
-            "name":"_nonce",
-            "type":"bytes32"
-         },
-         {
-            "internalType":"bool",
-            "name":"_immutable",
-            "type":"bool"
-         }
-      ],
-      "name":"createBatch",
-      "outputs":[],
-      "stateMutability":"nonpayable",
-      "type":"function"
-   },
-   {
-      "inputs":[],
-      "name":"currentTotalOutPayment",
-      "outputs":[
-         {
-            "internalType":"uint256",
-            "name":"",
-            "type":"uint256"
          }
       ],
       "stateMutability":"view",
@@ -432,46 +495,52 @@ const PostageABI = `[
    },
    {
       "inputs":[],
-      "name":"empty",
+      "name":"currentRoundReveals",
       "outputs":[
          {
-            "internalType":"bool",
+            "components":[
+               {
+                  "internalType":"address",
+                  "name":"owner",
+                  "type":"address"
+               },
+               {
+                  "internalType":"bytes32",
+                  "name":"overlay",
+                  "type":"bytes32"
+               },
+               {
+                  "internalType":"uint256",
+                  "name":"stake",
+                  "type":"uint256"
+               },
+               {
+                  "internalType":"uint256",
+                  "name":"stakeDensity",
+                  "type":"uint256"
+               },
+               {
+                  "internalType":"bytes32",
+                  "name":"hash",
+                  "type":"bytes32"
+               },
+               {
+                  "internalType":"uint8",
+                  "name":"depth",
+                  "type":"uint8"
+               }
+            ],
+            "internalType":"struct Redistribution.Reveal[]",
             "name":"",
-            "type":"bool"
+            "type":"tuple[]"
          }
       ],
       "stateMutability":"view",
       "type":"function"
    },
    {
-      "inputs":[
-         {
-            "internalType":"uint256",
-            "name":"limit",
-            "type":"uint256"
-         }
-      ],
-      "name":"expireLimited",
-      "outputs":[],
-      "stateMutability":"nonpayable",
-      "type":"function"
-   },
-   {
       "inputs":[],
-      "name":"expiredBatchesExist",
-      "outputs":[
-         {
-            "internalType":"bool",
-            "name":"",
-            "type":"bool"
-         }
-      ],
-      "stateMutability":"view",
-      "type":"function"
-   },
-   {
-      "inputs":[],
-      "name":"firstBatchId",
+      "name":"currentSeed",
       "outputs":[
          {
             "internalType":"bytes32",
@@ -547,82 +616,64 @@ const PostageABI = `[
       "inputs":[
          {
             "internalType":"bytes32",
-            "name":"_batchId",
+            "name":"A",
+            "type":"bytes32"
+         },
+         {
+            "internalType":"bytes32",
+            "name":"B",
             "type":"bytes32"
          },
          {
             "internalType":"uint8",
-            "name":"_newDepth",
+            "name":"minimum",
             "type":"uint8"
          }
       ],
-      "name":"increaseDepth",
-      "outputs":[],
-      "stateMutability":"nonpayable",
-      "type":"function"
-   },
-   {
-      "inputs":[],
-      "name":"lastExpiryBalance",
+      "name":"inProximity",
       "outputs":[
          {
-            "internalType":"uint256",
+            "internalType":"bool",
             "name":"",
-            "type":"uint256"
+            "type":"bool"
          }
       ],
-      "stateMutability":"view",
+      "stateMutability":"pure",
       "type":"function"
    },
    {
-      "inputs":[],
-      "name":"lastPrice",
-      "outputs":[
+      "inputs":[
          {
-            "internalType":"uint256",
-            "name":"",
-            "type":"uint256"
-         }
-      ],
-      "stateMutability":"view",
-      "type":"function"
-   },
-   {
-      "inputs":[],
-      "name":"lastUpdatedBlock",
-      "outputs":[
-         {
-            "internalType":"uint256",
-            "name":"",
-            "type":"uint256"
-         }
-      ],
-      "stateMutability":"view",
-      "type":"function"
-   },
-   {
-      "inputs":[],
-      "name":"minimumBatchDepth",
-      "outputs":[
+            "internalType":"bytes32",
+            "name":"overlay",
+            "type":"bytes32"
+         },
          {
             "internalType":"uint8",
-            "name":"",
+            "name":"depth",
             "type":"uint8"
+         }
+      ],
+      "name":"isParticipatingInUpcomingRound",
+      "outputs":[
+         {
+            "internalType":"bool",
+            "name":"",
+            "type":"bool"
          }
       ],
       "stateMutability":"view",
       "type":"function"
    },
    {
-      "inputs":[],
-      "name":"pause",
-      "outputs":[],
-      "stateMutability":"nonpayable",
-      "type":"function"
-   },
-   {
-      "inputs":[],
-      "name":"paused",
+      "inputs":[
+         {
+            "internalType":"bytes32",
+            "name":"_overlay",
+            "type":"bytes32"
+         }
+      ],
+      "name":"isWinner",
       "outputs":[
          {
             "internalType":"bool",
@@ -635,7 +686,7 @@ const PostageABI = `[
    },
    {
       "inputs":[],
-      "name":"pot",
+      "name":"minimumStake",
       "outputs":[
          {
             "internalType":"uint256",
@@ -647,19 +698,26 @@ const PostageABI = `[
       "type":"function"
    },
    {
-      "inputs":[
+      "inputs":[],
+      "name":"nextSeed",
+      "outputs":[
          {
             "internalType":"bytes32",
-            "name":"_batchId",
+            "name":"",
             "type":"bytes32"
          }
       ],
-      "name":"remainingBalance",
+      "stateMutability":"view",
+      "type":"function"
+   },
+   {
+      "inputs":[],
+      "name":"paused",
       "outputs":[
          {
-            "internalType":"uint256",
+            "internalType":"bool",
             "name":"",
-            "type":"uint256"
+            "type":"bool"
          }
       ],
       "stateMutability":"view",
@@ -687,6 +745,34 @@ const PostageABI = `[
       "inputs":[
          {
             "internalType":"bytes32",
+            "name":"_overlay",
+            "type":"bytes32"
+         },
+         {
+            "internalType":"uint8",
+            "name":"_depth",
+            "type":"uint8"
+         },
+         {
+            "internalType":"bytes32",
+            "name":"_hash",
+            "type":"bytes32"
+         },
+         {
+            "internalType":"bytes32",
+            "name":"_revealNonce",
+            "type":"bytes32"
+         }
+      ],
+      "name":"reveal",
+      "outputs":[],
+      "stateMutability":"nonpayable",
+      "type":"function"
+   },
+   {
+      "inputs":[
+         {
+            "internalType":"bytes32",
             "name":"role",
             "type":"bytes32"
          },
@@ -702,29 +788,16 @@ const PostageABI = `[
       "type":"function"
    },
    {
-      "inputs":[
-         {
-            "internalType":"uint8",
-            "name":"min",
-            "type":"uint8"
-         }
-      ],
-      "name":"setMinimumBatchDepth",
-      "outputs":[],
-      "stateMutability":"nonpayable",
-      "type":"function"
-   },
-   {
-      "inputs":[
+      "inputs":[],
+      "name":"roundLength",
+      "outputs":[
          {
             "internalType":"uint256",
-            "name":"_price",
+            "name":"",
             "type":"uint256"
          }
       ],
-      "name":"setPrice",
-      "outputs":[],
-      "stateMutability":"nonpayable",
+      "stateMutability":"view",
       "type":"function"
    },
    {
@@ -747,64 +820,38 @@ const PostageABI = `[
       "type":"function"
    },
    {
-      "inputs":[
+      "inputs":[],
+      "name":"winner",
+      "outputs":[
+         {
+            "internalType":"address",
+            "name":"owner",
+            "type":"address"
+         },
          {
             "internalType":"bytes32",
-            "name":"_batchId",
+            "name":"overlay",
             "type":"bytes32"
          },
          {
             "internalType":"uint256",
-            "name":"_topupAmountPerChunk",
+            "name":"stake",
             "type":"uint256"
-         }
-      ],
-      "name":"topUp",
-      "outputs":[],
-      "stateMutability":"nonpayable",
-      "type":"function"
-   },
-   {
-      "inputs":[
+         },
          {
             "internalType":"uint256",
-            "name":"amount",
+            "name":"stakeDensity",
             "type":"uint256"
-         }
-      ],
-      "name":"topupPot",
-      "outputs":[],
-      "stateMutability":"nonpayable",
-      "type":"function"
-   },
-   {
-      "inputs":[],
-      "name":"totalPot",
-      "outputs":[
+         },
          {
-            "internalType":"uint256",
-            "name":"",
-            "type":"uint256"
-         }
-      ],
-      "stateMutability":"nonpayable",
-      "type":"function"
-   },
-   {
-      "inputs":[],
-      "name":"unPause",
-      "outputs":[],
-      "stateMutability":"nonpayable",
-      "type":"function"
-   },
-   {
-      "inputs":[],
-      "name":"validChunkCount",
-      "outputs":[
+            "internalType":"bytes32",
+            "name":"hash",
+            "type":"bytes32"
+         },
          {
-            "internalType":"uint256",
-            "name":"",
-            "type":"uint256"
+            "internalType":"uint8",
+            "name":"depth",
+            "type":"uint8"
          }
       ],
       "stateMutability":"view",
@@ -813,14 +860,35 @@ const PostageABI = `[
    {
       "inputs":[
          {
-            "internalType":"address",
-            "name":"beneficiary",
-            "type":"address"
+            "internalType":"bytes32",
+            "name":"_overlay",
+            "type":"bytes32"
+         },
+         {
+            "internalType":"uint8",
+            "name":"_depth",
+            "type":"uint8"
+         },
+         {
+            "internalType":"bytes32",
+            "name":"_hash",
+            "type":"bytes32"
+         },
+         {
+            "internalType":"bytes32",
+            "name":"revealNonce",
+            "type":"bytes32"
          }
       ],
-      "name":"withdraw",
-      "outputs":[],
-      "stateMutability":"nonpayable",
+      "name":"wrapCommit",
+      "outputs":[
+         {
+            "internalType":"bytes32",
+            "name":"",
+            "type":"bytes32"
+         }
+      ],
+      "stateMutability":"pure",
       "type":"function"
    }
-]`
+]

@@ -9,14 +9,13 @@ import (
 	"fmt"
 	"math/big"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/transaction"
 )
-
-var redistributionContractABI = transaction.ParseABIUnchecked(redistributionABIv0_0_0)
 
 const loggerName = "redistributionContract"
 
@@ -34,6 +33,7 @@ type contract struct {
 	logger                    log.Logger
 	txService                 transaction.Service
 	incentivesContractAddress common.Address
+	incentivesContractABI     abi.ABI
 }
 
 func New(
@@ -41,20 +41,20 @@ func New(
 	logger log.Logger,
 	txService transaction.Service,
 	incentivesContractAddress common.Address,
+	incentivesContractABI abi.ABI,
 ) Contract {
-
-	c := &contract{
+	return &contract{
 		overlay:                   overlay,
 		logger:                    logger.WithName(loggerName).Register(),
 		txService:                 txService,
 		incentivesContractAddress: incentivesContractAddress,
+		incentivesContractABI:     incentivesContractABI,
 	}
-	return c
 }
 
 // IsPlaying checks if the overlay is participating in the upcoming round.
 func (c *contract) IsPlaying(ctx context.Context, depth uint8) (bool, error) {
-	callData, err := redistributionContractABI.Pack("isParticipatingInUpcomingRound", common.BytesToHash(c.overlay.Bytes()), depth)
+	callData, err := c.incentivesContractABI.Pack("isParticipatingInUpcomingRound", common.BytesToHash(c.overlay.Bytes()), depth)
 	if err != nil {
 		return false, err
 	}
@@ -64,7 +64,7 @@ func (c *contract) IsPlaying(ctx context.Context, depth uint8) (bool, error) {
 		return false, fmt.Errorf("IsPlaying: overlay %v depth %d: %w", common.BytesToHash(c.overlay.Bytes()), depth, err)
 	}
 
-	results, err := redistributionContractABI.Unpack("isParticipatingInUpcomingRound", result)
+	results, err := c.incentivesContractABI.Unpack("isParticipatingInUpcomingRound", result)
 	if err != nil {
 		return false, fmt.Errorf("IsPlaying: results %v: %w", results, err)
 	}
@@ -74,7 +74,7 @@ func (c *contract) IsPlaying(ctx context.Context, depth uint8) (bool, error) {
 
 // IsWinner checks if the overlay is winner by sending a transaction to blockchain.
 func (c *contract) IsWinner(ctx context.Context) (isWinner bool, err error) {
-	callData, err := redistributionContractABI.Pack("isWinner", common.BytesToHash(c.overlay.Bytes()))
+	callData, err := c.incentivesContractABI.Pack("isWinner", common.BytesToHash(c.overlay.Bytes()))
 	if err != nil {
 		return false, err
 	}
@@ -84,7 +84,7 @@ func (c *contract) IsWinner(ctx context.Context) (isWinner bool, err error) {
 		return false, fmt.Errorf("IsWinner: overlay %v : %w", common.BytesToHash(c.overlay.Bytes()), err)
 	}
 
-	results, err := redistributionContractABI.Unpack("isWinner", result)
+	results, err := c.incentivesContractABI.Unpack("isWinner", result)
 	if err != nil {
 		return false, fmt.Errorf("IsWinner: results %v : %w", results, err)
 	}
@@ -94,7 +94,7 @@ func (c *contract) IsWinner(ctx context.Context) (isWinner bool, err error) {
 
 // Claim sends a transaction to blockchain if a win is claimed.
 func (c *contract) Claim(ctx context.Context) error {
-	callData, err := redistributionContractABI.Pack("claim")
+	callData, err := c.incentivesContractABI.Pack("claim")
 	if err != nil {
 		return err
 	}
@@ -117,7 +117,7 @@ func (c *contract) Claim(ctx context.Context) error {
 
 // Commit submits the obfusHash hash by sending a transaction to the blockchain.
 func (c *contract) Commit(ctx context.Context, obfusHash []byte, round *big.Int) error {
-	callData, err := redistributionContractABI.Pack("commit", common.BytesToHash(obfusHash), common.BytesToHash(c.overlay.Bytes()), round)
+	callData, err := c.incentivesContractABI.Pack("commit", common.BytesToHash(obfusHash), common.BytesToHash(c.overlay.Bytes()), round)
 	if err != nil {
 		return err
 	}
@@ -140,7 +140,7 @@ func (c *contract) Commit(ctx context.Context, obfusHash []byte, round *big.Int)
 
 // Reveal submits the storageDepth, reserveCommitmentHash and RandomNonce in a transaction to blockchain.
 func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommitmentHash []byte, RandomNonce []byte) error {
-	callData, err := redistributionContractABI.Pack("reveal", common.BytesToHash(c.overlay.Bytes()), storageDepth, common.BytesToHash(reserveCommitmentHash), common.BytesToHash(RandomNonce))
+	callData, err := c.incentivesContractABI.Pack("reveal", common.BytesToHash(c.overlay.Bytes()), storageDepth, common.BytesToHash(reserveCommitmentHash), common.BytesToHash(RandomNonce))
 	if err != nil {
 		return err
 	}
@@ -163,7 +163,7 @@ func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommit
 
 // ReserveSalt provides the current round anchor by transacting on the blockchain.
 func (c *contract) ReserveSalt(ctx context.Context) ([]byte, error) {
-	callData, err := redistributionContractABI.Pack("currentRoundAnchor")
+	callData, err := c.incentivesContractABI.Pack("currentRoundAnchor")
 	if err != nil {
 		return nil, err
 	}
@@ -173,7 +173,7 @@ func (c *contract) ReserveSalt(ctx context.Context) ([]byte, error) {
 		return nil, err
 	}
 
-	results, err := redistributionContractABI.Unpack("currentRoundAnchor", result)
+	results, err := c.incentivesContractABI.Unpack("currentRoundAnchor", result)
 	if err != nil {
 		return nil, err
 	}

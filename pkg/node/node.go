@@ -23,10 +23,12 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/addressbook"
@@ -271,8 +273,6 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 
 	chainEnabled := isChainEnabled(o, o.BlockchainRpcEndpoint, logger)
 
-	logger.Info("using network id", "network_id", networkID)
-
 	var batchStore postage.Storer = new(postage.NoOpBatchStore)
 	var evictFn func([]byte) error
 
@@ -302,6 +302,8 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		return nil, fmt.Errorf("init chain: %w", err)
 	}
 	b.ethClientCloser = chainBackend.Close
+
+	logger.Info("using chain with network network", "chain_id", chainID, "network_id", networkID)
 
 	if o.ChainID != -1 && o.ChainID != chainID {
 		return nil, fmt.Errorf("connected to wrong ethereum network; network chainID %d; configured chainID %d", chainID, o.ChainID)
@@ -677,20 +679,20 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	batchStore.SetBatchExpiryHandler(post)
 
 	var (
-		postageContractService postagecontract.Interface
-		batchSvc               postage.EventUpdater
-		eventListener          postage.Listener
+		postageStampContractService postagecontract.Interface
+		batchSvc                    postage.EventUpdater
+		eventListener               postage.Listener
 	)
 
 	var postageSyncStart uint64 = 0
 
-	chainCfg, found := config.GetChainConfig(chainID)
-	postageContractAddress, startBlock := chainCfg.PostageStamp, chainCfg.PostageStampStartBlock
+	chainCfg, found := config.GetByChainID(chainID)
+	postageStampContractAddress, startBlock := chainCfg.PostageStampAddress, chainCfg.PostageStampStartBlock
 	if o.PostageContractAddress != "" {
 		if !common.IsHexAddress(o.PostageContractAddress) {
 			return nil, errors.New("malformed postage stamp address")
 		}
-		postageContractAddress = common.HexToAddress(o.PostageContractAddress)
+		postageStampContractAddress = common.HexToAddress(o.PostageContractAddress)
 	} else if !found {
 		return nil, errors.New("no known postage stamp addresses for this network")
 	}
@@ -698,28 +700,34 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		postageSyncStart = startBlock
 	}
 
-	eventListener = listener.New(b.syncingStopped, logger, chainBackend, postageContractAddress, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
+	postageStampContractABI, err := abi.JSON(strings.NewReader(chainCfg.PostageStampABI))
+	if err != nil {
+		return nil, fmt.Errorf("unable to parse postage stamp ABI: %w", err)
+	}
+
+	bzzTokenAddress, err := postagecontract.LookupERC20Address(p2pCtx, transactionService, postageStampContractAddress, postageStampContractABI, chainEnabled)
+	if err != nil {
+		return nil, err
+	}
+
+	postageStampContractService = postagecontract.New(
+		overlayEthAddress,
+		postageStampContractAddress,
+		postageStampContractABI,
+		bzzTokenAddress,
+		transactionService,
+		post,
+		batchStore,
+		chainEnabled,
+	)
+
+	eventListener = listener.New(b.syncingStopped, logger, chainBackend, postageStampContractAddress, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
 	b.listenerCloser = eventListener
 
 	batchSvc, err = batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync)
 	if err != nil {
 		return nil, err
 	}
-
-	erc20Address, err := postagecontract.LookupERC20Address(p2pCtx, transactionService, postageContractAddress, chainEnabled)
-	if err != nil {
-		return nil, err
-	}
-
-	postageContractService = postagecontract.New(
-		overlayEthAddress,
-		postageContractAddress,
-		erc20Address,
-		transactionService,
-		post,
-		batchStore,
-		chainEnabled,
-	)
 
 	if natManager := p2ps.NATManager(); natManager != nil {
 		// wait for nat manager to init
@@ -916,7 +924,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	pssService := pss.New(pssPrivateKey, logger)
 	b.pssCloser = pssService
 
-	var ns storage.Storer = netstore.New(storer, validStamp, retrieve, logger)
+	ns := netstore.New(storer, validStamp, retrieve, logger)
 	b.nsCloser = ns
 
 	traversalService := traversal.New(ns)
@@ -965,15 +973,20 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		return nil, fmt.Errorf("pullsync protocol: %w", err)
 	}
 
-	stakingAddress := chainCfg.Staking
+	stakingContractAddress := chainCfg.StakingAddress
 	if o.StakingContractAddress != "" {
 		if !common.IsHexAddress(o.StakingContractAddress) {
 			return nil, errors.New("malformed staking contract address")
 		}
-		stakingAddress = common.HexToAddress(o.StakingContractAddress)
+		stakingContractAddress = common.HexToAddress(o.StakingContractAddress)
 	}
 
-	stakingContract := staking.New(swarmAddress, overlayEthAddress, stakingAddress, erc20Address, transactionService, common.BytesToHash(nonce))
+	stakingContractABI, err := abi.JSON(strings.NewReader(chainCfg.StakingABI))
+	if err != nil {
+		return nil, fmt.Errorf("unable to parse staking ABI: %w", err)
+	}
+
+	stakingContract := staking.New(swarmAddress, overlayEthAddress, stakingContractAddress, stakingContractABI, bzzTokenAddress, transactionService, common.BytesToHash(nonce))
 
 	var agent *storageincentives.Agent
 	if o.FullNodeMode {
@@ -983,16 +996,20 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 
 		if !o.BootnodeMode && o.EnableStorageIncentives {
 
-			redistributionAddress := chainCfg.Redistribution
+			redistributionContractAddress := chainCfg.RedistributionAddress
 			if o.RedistributionContractAddress != "" {
 				if !common.IsHexAddress(o.RedistributionContractAddress) {
 					return nil, errors.New("malformed redistribution contract address")
 				}
-				redistributionAddress = common.HexToAddress(o.RedistributionContractAddress)
+				redistributionContractAddress = common.HexToAddress(o.RedistributionContractAddress)
+			}
+			redistributionContractABI, err := abi.JSON(strings.NewReader(chainCfg.RedistributionABI))
+			if err != nil {
+				return nil, fmt.Errorf("unable to parse redistribution ABI: %w", err)
 			}
 
-			redistributionContract := redistribution.New(swarmAddress, logger, transactionService, redistributionAddress)
-			agent = storageincentives.New(swarmAddress, chainBackend, logger, depthMonitor, redistributionContract, postageContractService, batchStore, storer, o.BlockTime, storageincentives.DefaultBlocksPerRound, storageincentives.DefaultBlocksPerPhase)
+			redistributionContract := redistribution.New(swarmAddress, logger, transactionService, redistributionContractAddress, redistributionContractABI)
+			agent = storageincentives.New(swarmAddress, chainBackend, logger, depthMonitor, redistributionContract, postageStampContractService, batchStore, storer, o.BlockTime, storageincentives.DefaultBlocksPerRound, storageincentives.DefaultBlocksPerPhase)
 			b.storageIncetivesCloser = agent
 		}
 	}
@@ -1041,7 +1058,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		Pinning:          pinningService,
 		FeedFactory:      feedFactory,
 		Post:             post,
-		PostageContract:  postageContractService,
+		PostageContract:  postageStampContractService,
 		Staking:          stakingContract,
 		Steward:          steward,
 		SyncStatus:       syncStatusFn,

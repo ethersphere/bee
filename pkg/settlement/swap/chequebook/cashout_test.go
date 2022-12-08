@@ -14,14 +14,14 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	chequestoremock "github.com/ethersphere/bee/pkg/settlement/swap/chequestore/mock"
 	storemock "github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/bee/pkg/transaction/backendmock"
 	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
+	"github.com/ethersphere/bee/pkg/util/abiutil"
 	"github.com/ethersphere/go-sw3-abi/sw3abi"
 )
 
 var (
-	chequebookABI          = transaction.ParseABIUnchecked(sw3abi.ERC20SimpleSwapABIv0_3_1)
+	chequebookABI          = abiutil.MustParseABI(sw3abi.ERC20SimpleSwapABIv0_3_1)
 	chequeCashedEventType  = chequebookABI.Events["ChequeCashed"]
 	chequeBouncedEventType = chequebookABI.Events["ChequeBounced"]
 )
