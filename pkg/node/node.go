@@ -946,7 +946,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	pushSyncProtocolSpec := pushSyncProtocol.Protocol()
 	pullSyncProtocolSpec := pullSyncProtocol.Protocol()
 
-	if o.FullNodeMode {
+	if o.FullNodeMode && !o.BootnodeMode {
 		logger.Info("starting in full mode")
 	} else {
 		logger.Info("starting in light mode")

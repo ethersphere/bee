@@ -87,7 +87,7 @@ type PushSync struct {
 	tracer         *tracing.Tracer
 	validStamp     postage.ValidStampFn
 	signer         crypto.Signer
-	isFullNode     bool
+	includeSelf    bool
 	warmupPeriod   time.Time
 	skipList       *peerSkipList
 }
@@ -100,7 +100,7 @@ type receiptResult struct {
 	err      error
 }
 
-func New(address swarm.Address, nonce []byte, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, tagger *tags.Tags, isFullNode bool, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger log.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer, warmupTime time.Duration) *PushSync {
+func New(address swarm.Address, nonce []byte, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, tagger *tags.Tags, includeSelf bool, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger log.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer, warmupTime time.Duration) *PushSync {
 	ps := &PushSync{
 		address:        address,
 		nonce:          nonce,
@@ -108,7 +108,7 @@ func New(address swarm.Address, nonce []byte, streamer p2p.StreamerDisconnecter,
 		storer:         storer,
 		topologyDriver: topology,
 		tagger:         tagger,
-		isFullNode:     isFullNode,
+		includeSelf:    includeSelf,
 		unwrap:         unwrap,
 		logger:         logger.WithName(loggerName).Register(),
 		accounting:     accounting,
@@ -351,7 +351,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	}
 
 	var (
-		includeSelf = ps.isFullNode
+		includeSelf = ps.includeSelf
 		skipPeers   = new(skippeers.List)
 	)
 
