@@ -274,14 +274,16 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	logger.Info("using network id", "network_id", networkID)
 
 	var batchStore postage.Storer = new(postage.NoOpBatchStore)
-	var unreserveFn func([]byte, uint8) (uint64, error)
+	var evictFn func([]byte) error
 
 	if chainEnabled {
-		var evictFn = func(b []byte) error {
-			_, err := unreserveFn(b, swarm.MaxBins)
-			return err
-		}
-		batchStore, err = batchstore.New(stateStore, evictFn, logger)
+		batchStore, err = batchstore.New(
+			stateStore,
+			func(id []byte) error {
+				return evictFn(id)
+			},
+			logger,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("batchstore: %w", err)
 		}
@@ -665,7 +667,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		return nil, fmt.Errorf("localstore: %w", err)
 	}
 	b.localstoreCloser = storer
-	unreserveFn = storer.UnreserveBatch
+	evictFn = storer.EvictBatch
 
 	post, err := postage.NewService(stateStore, batchStore, chainID)
 	if err != nil {
@@ -1043,6 +1045,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		Staking:          stakingContract,
 		Steward:          steward,
 		SyncStatus:       syncStatusFn,
+		IndexDebugger:    storer,
 	}
 
 	if o.APIAddr != "" {

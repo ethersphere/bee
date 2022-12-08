@@ -105,7 +105,6 @@ func (s *store) cleanup() error {
 	}
 
 	for _, b := range evictions {
-
 		err := s.evictFn(b.ID)
 		if err != nil {
 			return fmt.Errorf("evict batch %x: %w", b.ID, err)

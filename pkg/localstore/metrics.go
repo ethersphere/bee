@@ -66,6 +66,15 @@ type metrics struct {
 	EvictReserveErrorCounter     prometheus.Counter
 	EvictReserveCollectedCounter prometheus.Counter
 	TotalTimeEvictReserve        prometheus.Counter
+
+	BatchEvictCounter          prometheus.Counter
+	BatchEvictErrorCounter     prometheus.Counter
+	BatchEvictCollectedCounter prometheus.Counter
+	TotalTimeBatchEvict        prometheus.Counter
+
+	SamplerSuccessfulRuns prometheus.Counter
+	SamplerFailedRuns     prometheus.Counter
+	SamplerStopped        prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -385,6 +394,48 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "evict_reserve_total_time",
 			Help:      "total time spent evicting from reserve",
+		}),
+		BatchEvictCounter: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "batch_evict_count",
+			Help:      "number of times the evict batch was invoked",
+		}),
+		BatchEvictErrorCounter: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "batch_evict_err_count",
+			Help:      "number of times evict batch got an error",
+		}),
+		BatchEvictCollectedCounter: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "batch_evict_collected_count",
+			Help:      "number of chunks that have been evicted for the batch expirations",
+		}),
+		TotalTimeBatchEvict: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "batch_evict_total_time",
+			Help:      "total time spent evicting batches",
+		}),
+		SamplerSuccessfulRuns: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "sampler_successful_runs_count",
+			Help:      "number of times the sampler ran successfully",
+		}),
+		SamplerFailedRuns: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "sampler_failed_runs_count",
+			Help:      "number of times sampler failed",
+		}),
+		SamplerStopped: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "sampler_stopped_count",
+			Help:      "number of times sampler was stopped due to evictions",
 		}),
 	}
 }

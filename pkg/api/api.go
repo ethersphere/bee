@@ -136,6 +136,7 @@ type Service struct {
 	probe           *Probe
 	metricsRegistry *prometheus.Registry
 	stakingContract staking.Contract
+	indexDebugger   StorageIndexDebugger
 	Options
 
 	http.Handler
@@ -221,6 +222,7 @@ type ExtraOptions struct {
 	Staking          staking.Contract
 	Steward          steward.Interface
 	SyncStatus       func() (bool, error)
+	IndexDebugger    StorageIndexDebugger
 }
 
 func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger log.Logger, transaction transaction.Service, batchStore postage.Storer, beeMode BeeNodeMode, chequebookEnabled bool, swapEnabled bool, chainBackend transaction.Backend, cors []string) *Service {
@@ -283,6 +285,7 @@ func (s *Service) Configure(signer crypto.Signer, auth auth.Authenticator, trace
 	s.postageContract = e.PostageContract
 	s.steward = e.Steward
 	s.stakingContract = e.Staking
+	s.indexDebugger = e.IndexDebugger
 
 	s.pingpong = e.Pingpong
 	s.topologyDriver = e.TopologyDriver

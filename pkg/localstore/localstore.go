@@ -41,6 +41,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/afero"
 	"github.com/syndtr/goleveldb/leveldb"
+	"resenje.org/multex"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -70,6 +71,23 @@ var (
 const (
 	sharkyNoOfShards    = 32
 	sharkyDirtyFileName = ".DIRTY"
+)
+
+const (
+	// lockKeyUpload is used to guard against parallel updates during upload. These
+	// updates are made to mainly the pushIndex and doesnt involve the GC or Reserve
+	// indexes. Hence this lock is separated to allow GC/Reserve operations to continue
+	// along with uploads.
+	lockKeyUpload string = "upload"
+	// lockKeyGC is used to guard against parallel updates to the gcIndex and gcSize.
+	// The gcSize is a counter maintained for the gcIndex and hence parallel updates
+	// here need to be prevented. The reserve and GC locks are separated as the gcIndex
+	// and pullIndex are now mutually exclusive. So there are operations that could
+	// happen in parallel. This is slightly better than having a global lock.
+	lockKeyGC string = "gc"
+	// lockKeySampling is used to synchronize the sampler stopping process if evictions
+	// start during sampling.
+	lockKeySampling string = "sampling"
 )
 
 // DB is the local store implementation and holds
@@ -154,7 +172,7 @@ type DB struct {
 	// baseKey is the overlay address
 	baseKey []byte
 
-	batchMu sync.Mutex
+	lock *multex.Multex
 
 	// gcRunning is true while GC is running. it is
 	// used to avoid touching dirty gc index entries
@@ -184,12 +202,12 @@ type DB struct {
 	// underlaying leveldb to prevent possible panics from
 	// iterators
 	subscriptionsWG sync.WaitGroup
-
-	metrics metrics
-
-	logger log.Logger
-
-	validStamp postage.ValidStampFn
+	metrics         metrics
+	logger          log.Logger
+	validStamp      postage.ValidStampFn
+	// following fields are used to synchronize sampling and reserve eviction
+	samplerStop   *sync.Once
+	samplerSignal chan struct{}
 }
 
 // Options struct holds optional parameters for configuring DB.
@@ -272,6 +290,7 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 		metrics:                   newMetrics(),
 		logger:                    logger.WithName(loggerName).Register(),
 		validStamp:                o.ValidStamp,
+		lock:                      multex.New(),
 	}
 	if db.cacheCapacity == 0 {
 		db.cacheCapacity = defaultCacheCapacity

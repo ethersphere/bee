@@ -29,10 +29,10 @@ func TestAgent(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		blocksPerRound float64
-		blocksPerPhase float64
-		incrementBy    float64
-		limit          float64
+		blocksPerRound uint64
+		blocksPerPhase uint64
+		incrementBy    uint64
+		limit          uint64
 		expectedCalls  bool
 	}{{
 		name:           "3 blocks per phase, same block number returns twice",
@@ -92,7 +92,7 @@ func TestAgent(t *testing.T) {
 				block:       tc.blocksPerRound}
 			contract := &mockContract{}
 
-			service := createService(addr, backend, contract, uint64(tc.blocksPerRound), uint64(tc.blocksPerPhase))
+			service := createService(addr, backend, contract, tc.blocksPerRound, tc.blocksPerPhase)
 
 			<-wait
 
@@ -168,18 +168,23 @@ func createService(
 }
 
 type mockchainBackend struct {
-	incrementBy   float64
-	block         float64
-	limit         float64
+	mu            sync.Mutex
+	incrementBy   uint64
+	block         uint64
+	limit         uint64
 	limitCallback func()
 }
 
 func (m *mockchainBackend) BlockNumber(context.Context) (uint64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 
-	ret := uint64(m.block)
+	ret := m.block
+	lim := m.limit
+	inc := m.incrementBy
 
-	if m.limit == 0 || m.block+m.incrementBy < m.limit {
-		m.block += m.incrementBy
+	if lim == 0 || ret+inc < lim {
+		m.block += inc
 	} else if m.limitCallback != nil {
 		m.limitCallback()
 		return 0, errors.New("reached limit")
