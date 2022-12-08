@@ -12,7 +12,7 @@ env:
   REPLICA: 3
   RUN_TYPE: "PR RUN"
   SETUP_CONTRACT_IMAGE_TAG: "0.9.4"
-  BEELOCAL_BRANCH: "push-sync-disabled-for-bootnodes"
+  BEELOCAL_BRANCH: "main"
   BEEKEEPER_BRANCH: "feat-bootnode-as-lightnode"
   BEEKEEPER_METRICS_ENABLED: false
   REACHABILITY_OVERRIDE_PUBLIC: true
