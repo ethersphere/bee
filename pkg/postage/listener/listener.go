@@ -7,10 +7,8 @@ package listener
 import (
 	"context"
 	"errors"
-	"fmt"
 	"math/big"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -23,7 +21,6 @@ import (
 	"github.com/ethersphere/bee/pkg/postage/batchservice"
 	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/bee/pkg/util"
-	"github.com/ethersphere/go-storage-incentives-abi/postageabi"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -42,16 +39,6 @@ var (
 )
 
 var (
-	postageStampABI = parseABI(postageabi.PostageStampABIv0_3_0)
-	// batchCreatedTopic is the postage contract's batch created event topic
-	batchCreatedTopic = postageStampABI.Events["BatchCreated"].ID
-	// batchTopupTopic is the postage contract's batch topup event topic
-	batchTopupTopic = postageStampABI.Events["BatchTopUp"].ID
-	// batchDepthIncreaseTopic is the postage contract's batch dilution event topic
-	batchDepthIncreaseTopic = postageStampABI.Events["BatchDepthIncrease"].ID
-	// priceUpdateTopic is the postage contract's price update event topic
-	priceUpdateTopic = postageStampABI.Events["PriceUpdate"].ID
-
 	ErrPostageSyncingStalled = errors.New("postage syncing stalled")
 )
 
@@ -65,34 +52,48 @@ type listener struct {
 	ev        BlockHeightContractFilterer
 	blockTime time.Duration
 
-	postageStampAddress common.Address
-	quit                chan struct{}
-	wg                  sync.WaitGroup
-	metrics             metrics
-	stallingTimeout     time.Duration
-	backoffTime         time.Duration
-	syncingStopped      *util.Signaler
+	postageStampContractAddress common.Address
+	postageStampContractABI     abi.ABI
+	quit                        chan struct{}
+	wg                          sync.WaitGroup
+	metrics                     metrics
+	stallingTimeout             time.Duration
+	backoffTime                 time.Duration
+	syncingStopped              *util.Signaler
+
+	// Cached postage stamp contract event topics.
+	batchCreatedTopic       common.Hash
+	batchTopUpTopic         common.Hash
+	batchDepthIncreaseTopic common.Hash
+	priceUpdateTopic        common.Hash
 }
 
 func New(
 	syncingStopped *util.Signaler,
 	logger log.Logger,
 	ev BlockHeightContractFilterer,
-	postageStampAddress common.Address,
+	postageStampContractAddress common.Address,
+	postageStampContractABI abi.ABI,
 	blockTime time.Duration,
 	stallingTimeout time.Duration,
 	backoffTime time.Duration,
 ) postage.Listener {
 	return &listener{
-		syncingStopped:      syncingStopped,
-		logger:              logger.WithName(loggerName).Register(),
-		ev:                  ev,
-		blockTime:           blockTime,
-		postageStampAddress: postageStampAddress,
-		quit:                make(chan struct{}),
-		metrics:             newMetrics(),
-		stallingTimeout:     stallingTimeout,
-		backoffTime:         backoffTime,
+		syncingStopped:              syncingStopped,
+		logger:                      logger.WithName(loggerName).Register(),
+		ev:                          ev,
+		blockTime:                   blockTime,
+		postageStampContractAddress: postageStampContractAddress,
+		postageStampContractABI:     postageStampContractABI,
+		quit:                        make(chan struct{}),
+		metrics:                     newMetrics(),
+		stallingTimeout:             stallingTimeout,
+		backoffTime:                 backoffTime,
+
+		batchCreatedTopic:       postageStampContractABI.Events["BatchCreated"].ID,
+		batchTopUpTopic:         postageStampContractABI.Events["BatchTopUp"].ID,
+		batchDepthIncreaseTopic: postageStampContractABI.Events["BatchDepthIncrease"].ID,
+		priceUpdateTopic:        postageStampContractABI.Events["PriceUpdate"].ID,
 	}
 }
 
@@ -101,14 +102,14 @@ func (l *listener) filterQuery(from, to *big.Int) ethereum.FilterQuery {
 		FromBlock: from,
 		ToBlock:   to,
 		Addresses: []common.Address{
-			l.postageStampAddress,
+			l.postageStampContractAddress,
 		},
 		Topics: [][]common.Hash{
 			{
-				batchCreatedTopic,
-				batchTopupTopic,
-				batchDepthIncreaseTopic,
-				priceUpdateTopic,
+				l.batchCreatedTopic,
+				l.batchTopUpTopic,
+				l.batchDepthIncreaseTopic,
+				l.priceUpdateTopic,
 			},
 		},
 	}
@@ -117,9 +118,9 @@ func (l *listener) filterQuery(from, to *big.Int) ethereum.FilterQuery {
 func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error {
 	defer l.metrics.EventsProcessed.Inc()
 	switch e.Topics[0] {
-	case batchCreatedTopic:
+	case l.batchCreatedTopic:
 		c := &batchCreatedEvent{}
-		err := transaction.ParseEvent(&postageStampABI, "BatchCreated", c, e)
+		err := transaction.ParseEvent(&l.postageStampContractABI, "BatchCreated", c, e)
 		if err != nil {
 			return err
 		}
@@ -134,9 +135,9 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 			c.ImmutableFlag,
 			e.TxHash,
 		)
-	case batchTopupTopic:
+	case l.batchTopUpTopic:
 		c := &batchTopUpEvent{}
-		err := transaction.ParseEvent(&postageStampABI, "BatchTopUp", c, e)
+		err := transaction.ParseEvent(&l.postageStampContractABI, "BatchTopUp", c, e)
 		if err != nil {
 			return err
 		}
@@ -147,9 +148,9 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 			c.NormalisedBalance,
 			e.TxHash,
 		)
-	case batchDepthIncreaseTopic:
+	case l.batchDepthIncreaseTopic:
 		c := &batchDepthIncreaseEvent{}
-		err := transaction.ParseEvent(&postageStampABI, "BatchDepthIncrease", c, e)
+		err := transaction.ParseEvent(&l.postageStampContractABI, "BatchDepthIncrease", c, e)
 		if err != nil {
 			return err
 		}
@@ -160,9 +161,9 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 			c.NormalisedBalance,
 			e.TxHash,
 		)
-	case priceUpdateTopic:
+	case l.priceUpdateTopic:
 		c := &priceUpdateEvent{}
-		err := transaction.ParseEvent(&postageStampABI, "PriceUpdate", c, e)
+		err := transaction.ParseEvent(&l.postageStampContractABI, "PriceUpdate", c, e)
 		if err != nil {
 			return err
 		}
@@ -357,14 +358,6 @@ func (l *listener) Close() error {
 		return errors.New("postage listener closed with running goroutines")
 	}
 	return nil
-}
-
-func parseABI(json string) abi.ABI {
-	cabi, err := abi.JSON(strings.NewReader(json))
-	if err != nil {
-		panic(fmt.Sprintf("error creating ABI for postage contract: %v", err))
-	}
-	return cabi
 }
 
 type batchCreatedEvent struct {
