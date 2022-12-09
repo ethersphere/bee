@@ -35,7 +35,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math"
-	"time"
 
 	"github.com/ethersphere/bee/pkg/postage"
 )
@@ -174,16 +173,8 @@ func (s *store) computeRadius() error {
 // Unreserve is implementation of postage.Storer interface Unreserve method.
 func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 
-	defer func(t time.Time) {
-		s.metrics.UnreserveDuration.WithLabelValues("true").Observe(time.Since(t).Seconds())
-	}(time.Now())
-
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
-
-	defer func(t time.Time) {
-		s.metrics.UnreserveDuration.WithLabelValues("false").Observe(time.Since(t).Seconds())
-	}(time.Now())
 
 	var (
 		updates []*postage.Batch
