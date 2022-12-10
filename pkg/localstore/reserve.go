@@ -23,6 +23,11 @@ func (db *DB) EvictBatch(id []byte) error {
 		totalTimeMetric(db.metrics.TotalTimeBatchEvict, start)
 	}(time.Now())
 
+	// Only one reserve eviction process should happen at a time to prevent lock
+	// contention between batchstore and localstore functions.
+	db.lock.Lock(lockKeyReserveEviction)
+	defer db.lock.Unlock(lockKeyReserveEviction)
+
 	// EvictBatch will affect the reserve as well as GC indexes
 	db.lock.Lock(lockKeyGC)
 	defer db.lock.Unlock(lockKeyGC)
