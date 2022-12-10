@@ -646,8 +646,6 @@ func TestReserveSize(t *testing.T) {
 }
 
 func TestComputeReserveSize(t *testing.T) {
-	t.Parallel()
-
 	const chunkCountPerPO = 10
 	const maxPO = 10
 	var chs []swarm.Chunk
