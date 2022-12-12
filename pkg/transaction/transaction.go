@@ -438,7 +438,7 @@ func (t *transactionService) filterPendingTransactions(ctx context.Context, txHa
 	for _, txHash := range txHashes {
 		_, isPending, err := t.backend.TransactionByHash(ctx, txHash)
 
-		// When error occurres consider transaction as pending (so this transaction won't be filterd out),
+		// When error occurres consider transaction as pending (so this transaction won't be filtered out),
 		// unless it was not found
 		if err != nil {
 			if errors.Is(err, ethereum.NotFound) {
