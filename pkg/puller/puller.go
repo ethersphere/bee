@@ -29,7 +29,10 @@ const loggerName = "puller"
 
 var errCursorsLength = errors.New("cursors length mismatch")
 
-const DefaultSyncErrorSleepDur = time.Second * 30
+const (
+	DefaultSyncErrorSleepDur = time.Second * 30
+	recalcPeersDur           = time.Minute * 5
+)
 
 type Options struct {
 	Bins         uint8
@@ -101,51 +104,60 @@ func (p *Puller) manage(ctx context.Context, warmupTime time.Duration) {
 
 	var prevRadius uint8
 
+	onChange := func() {
+		p.syncPeersMtx.Lock()
+
+		// peersDisconnected is used to mark and prune peers that are no longer connected.
+		peersDisconnected := make(map[string]*syncPeer)
+		for _, peer := range p.syncPeers {
+			peersDisconnected[peer.address.ByteString()] = peer
+		}
+
+		neighborhoodDepth := p.topology.NeighborhoodDepth()
+		syncRadius := p.reserveState.GetReserveState().StorageRadius
+
+		// if the radius decreases, we must fully resync the bin
+		if syncRadius < prevRadius {
+			err := p.resetInterval(syncRadius)
+			if err != nil {
+				p.logger.Error(err, "reset lower sync radius")
+			}
+		}
+		prevRadius = syncRadius
+
+		_ = p.topology.EachPeerRev(func(addr swarm.Address, po uint8) (stop, jumpToNext bool, err error) {
+			if po >= neighborhoodDepth {
+				// add peer to sync
+				if _, ok := p.syncPeers[addr.ByteString()]; !ok {
+					p.syncPeers[addr.ByteString()] = newSyncPeer(addr, p.bins)
+				}
+				// remove from disconnected list as the peer is still connected
+				delete(peersDisconnected, addr.ByteString())
+			}
+			return false, false, nil
+		}, topology.Filter{Reachable: true})
+
+		for _, peer := range peersDisconnected {
+			p.disconnectPeer(peer.address)
+		}
+
+		p.recalcPeers(ctx, syncRadius)
+
+		p.syncPeersMtx.Unlock()
+	}
+
+	tick := time.NewTicker(recalcPeersDur)
+	defer tick.Stop()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
+		case <-tick.C:
+			onChange()
 		case <-c:
-
-			p.syncPeersMtx.Lock()
-
-			// peersDisconnected is used to mark and prune peers that are no longer connected.
-			peersDisconnected := make(map[string]*syncPeer)
-			for _, peer := range p.syncPeers {
-				peersDisconnected[peer.address.ByteString()] = peer
-			}
-
-			neighborhoodDepth := p.topology.NeighborhoodDepth()
-			syncRadius := p.reserveState.GetReserveState().StorageRadius
-
-			// if the radius decreases, we must fully resync the bin
-			if syncRadius < prevRadius {
-				err := p.resetInterval(syncRadius)
-				if err != nil {
-					p.logger.Error(err, "reset lower sync radius")
-				}
-			}
-			prevRadius = syncRadius
-
-			_ = p.topology.EachPeerRev(func(addr swarm.Address, po uint8) (stop, jumpToNext bool, err error) {
-				if po >= neighborhoodDepth {
-					// add peer to sync
-					if _, ok := p.syncPeers[addr.ByteString()]; !ok {
-						p.syncPeers[addr.ByteString()] = newSyncPeer(addr, p.bins)
-					}
-					// remove from disconnected list as the peer is still connected
-					delete(peersDisconnected, addr.ByteString())
-				}
-				return false, false, nil
-			}, topology.Filter{Reachable: true})
-
-			for _, peer := range peersDisconnected {
-				p.disconnectPeer(peer.address)
-			}
-
-			p.recalcPeers(ctx, syncRadius)
-
-			p.syncPeersMtx.Unlock()
+			tick.Reset(recalcPeersDur)
+			onChange()
 		}
 	}
 }
