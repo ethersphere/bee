@@ -29,7 +29,10 @@ const loggerName = "puller"
 
 var errCursorsLength = errors.New("cursors length mismatch")
 
-const DefaultSyncErrorSleepDur = time.Second * 30
+const (
+	DefaultSyncErrorSleepDur = time.Second * 30
+	recalcPeersDur           = time.Minute * 5
+)
 
 type Options struct {
 	Bins         uint8
@@ -143,7 +146,7 @@ func (p *Puller) manage(ctx context.Context, warmupTime time.Duration) {
 		p.syncPeersMtx.Unlock()
 	}
 
-	tick := time.NewTicker(5 * time.Minute)
+	tick := time.NewTicker(recalcPeersDur)
 	defer tick.Stop()
 
 	for {
@@ -153,6 +156,7 @@ func (p *Puller) manage(ctx context.Context, warmupTime time.Duration) {
 		case <-tick.C:
 			onChange()
 		case <-c:
+			tick.Reset(recalcPeersDur)
 			onChange()
 		}
 	}
