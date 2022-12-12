@@ -26,6 +26,8 @@ func TestReserveSampler(t *testing.T) {
 	const maxPO = 10
 	var chs []swarm.Chunk
 
+	t.Cleanup(setValidChunkFunc(func(swarm.Chunk) bool { return true }))
+
 	db := newTestDB(t, &Options{
 		Capacity:        1000,
 		ReserveCapacity: 1000,
@@ -35,7 +37,7 @@ func TestReserveSampler(t *testing.T) {
 
 	for po := 0; po < maxPO; po++ {
 		for i := 0; i < chunkCountPerPO; i++ {
-			ch := generateValidRandomChunkAt(swarm.NewAddress(db.baseKey), po).WithBatch(0, 3, 2, false)
+			ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), po).WithBatch(0, 3, 2, false)
 			// override stamp timestamp to be before the consensus timestamp
 			ch = ch.WithStamp(postagetesting.MustNewStampWithTimestamp(timeVar - 1))
 			chs = append(chs, ch)
@@ -166,7 +168,7 @@ func TestReserveSamplerStop(t *testing.T) {
 
 	for po := 0; po < maxPO; po++ {
 		for i := 0; i < chunkCountPerPO; i++ {
-			ch := generateValidRandomChunkAt(swarm.NewAddress(db.baseKey), po).WithBatch(2, 3, 2, false)
+			ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), po).WithBatch(2, 3, 2, false)
 			mtx.Lock()
 			chs = append(chs, ch)
 			batchIDs = append(batchIDs, ch.Stamp().BatchID())

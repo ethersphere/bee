@@ -542,6 +542,13 @@ func setWithinRadiusFunc(h func(*DB, shed.Item) bool) (reset func()) {
 	return reset
 }
 
+func setValidChunkFunc(h func(swarm.Chunk) bool) (reset func()) {
+	current := validChunkFn
+	reset = func() { validChunkFn = current }
+	validChunkFn = h
+	return reset
+}
+
 // TestSetTestHookCollectGarbage tests if setTestHookCollectGarbage changes
 // testHookCollectGarbage function correctly and if its reset function
 // resets the original function.
