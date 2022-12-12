@@ -130,15 +130,27 @@ func NewService(logger log.Logger, backend Backend, signer crypto.Signer, store 
 		monitor: monitor,
 	}
 
-	pendingTxs, err := t.PendingTransactions()
+	err = t.waitForAllPendingTx()
 	if err != nil {
 		return nil, err
 	}
+
+	return t, nil
+}
+
+func (t *transactionService) waitForAllPendingTx() error {
+	pendingTxs, err := t.PendingTransactions()
+	if err != nil {
+		return err
+	}
+
+	pendingTxs = t.filterPendingTransactions(t.ctx, pendingTxs)
+
 	for _, txHash := range pendingTxs {
 		t.waitForPendingTx(txHash)
 	}
 
-	return t, nil
+	return nil
 }
 
 // Send creates and signs a transaction based on the request and sends it.
@@ -416,6 +428,39 @@ func (t *transactionService) PendingTransactions() ([]common.Hash, error) {
 		return nil, err
 	}
 	return txHashes, nil
+}
+
+// filterPendingTransactions will filter supplied transaction hashes removing those that are not pending anymore.
+// Removed transactions will be also removed from store.
+func (t *transactionService) filterPendingTransactions(ctx context.Context, txHashes []common.Hash) []common.Hash {
+	result := make([]common.Hash, 0, len(txHashes))
+
+	for _, txHash := range txHashes {
+		_, isPending, err := t.backend.TransactionByHash(ctx, txHash)
+
+		// When error occurres consider transaction as pending (so this transaction won't be filtered out),
+		// unless it was not found
+		if err != nil {
+			if errors.Is(err, ethereum.NotFound) {
+				t.logger.Error(err, "pending transactions not found", "tx", txHash)
+
+				isPending = false
+			} else {
+				isPending = true
+			}
+		}
+
+		if isPending {
+			result = append(result, txHash)
+		} else {
+			err := t.store.Delete(pendingTransactionKey(txHash))
+			if err != nil {
+				t.logger.Error(err, "error while unregistering transaction as pending", "tx", txHash)
+			}
+		}
+	}
+
+	return result
 }
 
 func (t *transactionService) ResendTransaction(ctx context.Context, txHash common.Hash) error {
