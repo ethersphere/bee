@@ -302,11 +302,24 @@ func (db *DB) reserveEvictionWorker() {
 	for {
 		select {
 		case <-db.reserveEvictionTrigger:
+			db.lock.Lock(lockKeyBatchExpiry)
+			expiredBatches := db.expiredBatches
+			db.expiredBatches = nil
+			db.lock.Unlock(lockKeyBatchExpiry)
+
+			if expiredBatches != nil && len(expiredBatches) > 0 {
+				for _, batch := range expiredBatches {
+					err := db.evictBatch(batch)
+					if err != nil {
+						db.logger.Error(err, "expire batch from reserve failed")
+					}
+				}
+			}
+
 			evictedCount, done, err := db.evictReserve()
 			if err != nil {
 				db.logger.Error(err, "evict reserve failed")
 			}
-			db.metrics.EvictReserveCollectedCounter.Add(float64(evictedCount))
 
 			if !done {
 				db.triggerReserveEviction()
@@ -339,11 +352,6 @@ func (db *DB) evictReserve() (totalEvicted uint64, done bool, err error) {
 		}
 		totalTimeMetric(db.metrics.TotalTimeEvictReserve, start)
 	}(time.Now())
-
-	// Only one reserve eviction process should happen at a time to prevent lock
-	// contention between batchstore and localstore functions.
-	db.lock.Lock(lockKeyReserveEviction)
-	defer db.lock.Unlock(lockKeyReserveEviction)
 
 	// reserve eviction affects the reserve indexes as well as the GC indexes
 	db.lock.Lock(lockKeyGC)
@@ -401,6 +409,7 @@ func (db *DB) evictReserve() (totalEvicted uint64, done bool, err error) {
 		done = true
 	}
 
+	db.metrics.EvictReserveCollectedCounter.Add(float64(totalEvicted))
 	return totalEvicted, done, nil
 }
 
