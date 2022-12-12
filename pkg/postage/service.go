@@ -171,8 +171,6 @@ func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, func() error, e
 				return nil, nil, ErrNotUsable
 			}
 			return st, func() error {
-				ps.lock.Lock()
-				defer ps.lock.Unlock()
 				return ps.save(i, st)
 			}, nil
 		}
@@ -180,8 +178,7 @@ func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, func() error, e
 	return nil, nil, ErrNotFound
 }
 
-// save saves all the active stamp issuers to statestore.
-// Service mutex must be locked.
+// save persists the specified stamp issuer to the statestore.
 func (ps *service) save(i int, st *StampIssuer) error {
 	st.bucketMu.Lock()
 	defer st.bucketMu.Unlock()
