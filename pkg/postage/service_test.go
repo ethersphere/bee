@@ -146,12 +146,16 @@ func TestGetStampIssuer(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		st, _, err := ps.GetStampIssuer(b.ID)
+		st, sv, err := ps.GetStampIssuer(b.ID)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 		if st.Label() != "recovered" {
 			t.Fatal("wrong issuer returned")
+		}
+		err = sv()
+		if err != nil {
+			t.Fatal(err)
 		}
 	})
 	t.Run("topup", func(t *testing.T) {
