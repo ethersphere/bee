@@ -821,7 +821,7 @@ func TestDB_ReserveGC_EvictBatch(t *testing.T) {
 	}
 
 	select {
-	case <-testHookCollectGarbageChan:
+	case <-testHookEvictChan:
 	case <-time.After(10 * time.Second):
 		t.Fatal("reserve eviction timeout")
 	}
@@ -832,7 +832,7 @@ func TestDB_ReserveGC_EvictBatch(t *testing.T) {
 
 	for {
 		select {
-		case <-testHookEvictChan:
+		case <-testHookCollectGarbageChan:
 		case <-time.After(10 * time.Second):
 			t.Fatal("gc timeout")
 		}
