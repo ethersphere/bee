@@ -772,6 +772,13 @@ func TestDB_ReserveGC_EvictBatch(t *testing.T) {
 	chunkCount := 100
 
 	var closed chan struct{}
+	testHookEvictChan := make(chan uint64)
+	t.Cleanup(setTestHookEviction(func(collectedCount uint64) {
+		select {
+		case testHookEvictChan <- collectedCount:
+		case <-closed:
+		}
+	}))
 	testHookCollectGarbageChan := make(chan uint64)
 	t.Cleanup(setTestHookCollectGarbage(func(collectedCount uint64) {
 		if collectedCount == 0 {
@@ -813,13 +820,19 @@ func TestDB_ReserveGC_EvictBatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	select {
+	case <-testHookCollectGarbageChan:
+	case <-time.After(10 * time.Second):
+		t.Fatal("reserve eviction timeout")
+	}
+
 	t.Run("reserve size", reserveSizeTest(db, 0, 0))
 
 	gcTarget := db.gcTarget()
 
 	for {
 		select {
-		case <-testHookCollectGarbageChan:
+		case <-testHookEvictChan:
 		case <-time.After(10 * time.Second):
 			t.Fatal("gc timeout")
 		}
