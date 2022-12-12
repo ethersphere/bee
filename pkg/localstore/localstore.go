@@ -88,12 +88,8 @@ const (
 	// lockKeySampling is used to synchronize the sampler stopping process if evictions
 	// start during sampling.
 	lockKeySampling string = "sampling"
-	// lockKeyReserveEviction is used to allow only 1 reserve eviction process to run
-	// at a time. This is required as the batch expirations need the GC lock to evict
-	// chunks and if the reserveEvictionWorker is running during this time, it could
-	// be holding the GC lock while waiting on the batchstore lock held by batch
-	// expiration (evictFn).
-	lockKeyReserveEviction string = "reserve-eviction"
+	//lockKeyBatchExpiry is used to prevent parallel updates to the expiredBatches in localstore
+	lockKeyBatchExpiry string = "batch-expiry"
 )
 
 // DB is the local store implementation and holds
@@ -212,8 +208,9 @@ type DB struct {
 	logger          log.Logger
 	validStamp      postage.ValidStampFn
 	// following fields are used to synchronize sampling and reserve eviction
-	samplerStop   *sync.Once
-	samplerSignal chan struct{}
+	samplerStop    *sync.Once
+	samplerSignal  chan struct{}
+	expiredBatches [][]byte
 }
 
 // Options struct holds optional parameters for configuring DB.
