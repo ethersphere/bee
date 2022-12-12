@@ -307,7 +307,7 @@ func (db *DB) reserveEvictionWorker() {
 			db.expiredBatches = nil
 			db.lock.Unlock(lockKeyBatchExpiry)
 
-			if expiredBatches != nil && len(expiredBatches) > 0 {
+			if len(expiredBatches) > 0 {
 				for _, batch := range expiredBatches {
 					err := db.evictBatch(batch)
 					if err != nil {
