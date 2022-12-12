@@ -88,6 +88,12 @@ const (
 	// lockKeySampling is used to synchronize the sampler stopping process if evictions
 	// start during sampling.
 	lockKeySampling string = "sampling"
+	// lockKeyReserveEviction is used to allow only 1 reserve eviction process to run
+	// at a time. This is required as the batch expirations need the GC lock to evict
+	// chunks and if the reserveEvictionWorker is running during this time, it could
+	// be holding the GC lock while waiting on the batchstore lock held by batch
+	// expiration (evictFn).
+	lockKeyReserveEviction string = "reserve-eviction"
 )
 
 // DB is the local store implementation and holds
