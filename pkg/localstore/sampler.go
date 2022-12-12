@@ -222,7 +222,7 @@ func (db *DB) ReserveSample(
 			}
 			_, err = db.validStamp(chunk, stampData)
 			if err == nil {
-				if !cac.Valid(chunk) && !soc.Valid(chunk) {
+				if !validChunkFn(chunk) {
 					logger.Debug("data invalid for chunk address", "chunk_address", chunk.Address())
 				} else {
 					insert(item.transformedAddress)
@@ -294,4 +294,13 @@ func (db *DB) resetSamplingState() {
 
 	db.samplerStop = nil
 	db.samplerSignal = nil
+}
+
+var validChunkFn func(swarm.Chunk) bool
+
+func validChunk(ch swarm.Chunk) bool {
+	if !cac.Valid(ch) && !soc.Valid(ch) {
+		return false
+	}
+	return true
 }

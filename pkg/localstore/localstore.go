@@ -319,6 +319,10 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 		withinRadiusFn = withinRadius
 	}
 
+	if validChunkFn == nil {
+		validChunkFn = validChunk
+	}
+
 	db.shed, err = shed.NewDB(path, shedOpts)
 	if err != nil {
 		return nil, err
