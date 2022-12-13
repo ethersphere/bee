@@ -29,6 +29,8 @@ type ChainConfig struct {
 	// General.
 	ChainID                int64
 	PostageStampStartBlock uint64
+	NativeTokenSymbol      string
+	SwarmTokenSymbol       string
 
 	// Addresses.
 	StakingAddress         common.Address
@@ -48,6 +50,8 @@ var (
 	Testnet = ChainConfig{
 		ChainID:                abi.TestnetChainID,
 		PostageStampStartBlock: abi.TestnetPostageStampBlockNumber,
+		NativeTokenSymbol:      "ETH",
+		SwarmTokenSymbol:       "gBZZ",
 
 		StakingAddress:         common.HexToAddress(abi.TestnetStakingAddress),
 		PostageStampAddress:    common.HexToAddress(abi.TestnetPostageStampStampAddress),
@@ -66,6 +70,8 @@ var (
 	Mainnet = ChainConfig{
 		ChainID:                100,
 		PostageStampStartBlock: uint64(24180961),
+		NativeTokenSymbol:      "ETH",
+		SwarmTokenSymbol:       "BZZ",
 
 		StakingAddress:         common.HexToAddress("0x52e86336210bB8F1FDe11EB8bc664a20AfC0a614"),
 		PostageStampAddress:    common.HexToAddress("0xa9c84e9ccC0A0bC9B8C8E948F24E024bC2607c9A"),
@@ -87,6 +93,8 @@ func GetByChainID(chainID int64) (ChainConfig, bool) {
 		return Mainnet, true
 	default:
 		return ChainConfig{
+			NativeTokenSymbol: "ETH",
+			SwarmTokenSymbol:  "BZZ",
 			StakingABI:        abi.TestnetStakingABI,
 			PostageStampABI:   abi.TestnetPostageStampStampABI,
 			RedistributionABI: abi.TestnetRedistributionABI,
