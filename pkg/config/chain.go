@@ -42,6 +42,10 @@ type ChainConfig struct {
 	StakingABI        string
 	PostageStampABI   string
 	RedistributionABI string
+
+	// Token symbols
+	NativeTokenSymbol string
+	SwarmTokenSymbol  string
 }
 
 var (
@@ -61,6 +65,9 @@ var (
 		StakingABI:        abi.TestnetStakingABI,
 		PostageStampABI:   abi.TestnetPostageStampStampABI,
 		RedistributionABI: abi.TestnetRedistributionABI,
+
+		NativeTokenSymbol: "ETH",
+		SwarmTokenSymbol:  "gBZZ",
 	}
 
 	Mainnet = ChainConfig{
@@ -76,6 +83,9 @@ var (
 		StakingABI:        MainnetStakingABI,
 		PostageStampABI:   MainnetPostageStampABI,
 		RedistributionABI: MainnetRedistributionABI,
+
+		NativeTokenSymbol: "ETH",
+		SwarmTokenSymbol:  "BZZ",
 	}
 )
 
@@ -90,6 +100,8 @@ func GetByChainID(chainID int64) (ChainConfig, bool) {
 			StakingABI:        abi.TestnetStakingABI,
 			PostageStampABI:   abi.TestnetPostageStampStampABI,
 			RedistributionABI: abi.TestnetRedistributionABI,
+			NativeTokenSymbol: "ETH",
+			SwarmTokenSymbol:  "BZZ",
 		}, false
 	}
 }
