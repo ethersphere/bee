@@ -109,21 +109,23 @@ func (s *store) SetStorageRadius(f func(uint8) uint8) error {
 		return ErrStorageRadiusExceeds
 	}
 
-	s.rs.StorageRadius = newRadius
+	if newRadius != oldRadius {
+		s.rs.StorageRadius = newRadius
 
-	if s.storageRadiusSetter != nil {
-		s.storageRadiusSetter.SetStorageRadius(newRadius)
-	}
-
-	s.metrics.StorageRadius.Set(float64(newRadius))
-
-	if newRadius < oldRadius {
-		if err := s.lowerBatchStorageRadius(); err != nil {
-			s.logger.Error(err, "batchstore: lower batch storage radius")
+		if s.storageRadiusSetter != nil {
+			s.storageRadiusSetter.SetStorageRadius(newRadius)
 		}
+
+		s.metrics.StorageRadius.Set(float64(newRadius))
+
+		if err := s.setBatchStorageRadius(); err != nil {
+			s.logger.Error(err, "batchstore: set batch storage radius")
+		}
+
+		return s.store.Put(reserveStateKey, s.rs)
 	}
 
-	return s.store.Put(reserveStateKey, s.rs)
+	return nil
 }
 
 func (s *store) GetChainState() *postage.ChainState {
