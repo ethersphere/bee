@@ -115,6 +115,8 @@ func (svc *batchService) Create(id, owner []byte, totalAmout, normalisedBalance 
 		Depth:       depth,
 		BucketDepth: bucketDepth,
 		Immutable:   immutable,
+		// use the latest eviction radius and not 0 for new batches
+		StorageRadius: svc.storer.GetReserveState().StorageRadius,
 	}
 
 	err := svc.storer.Save(batch)
