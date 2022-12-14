@@ -65,6 +65,7 @@ const (
 	optionNameSwapDeploymentGasPrice     = "swap-deployment-gas-price"
 	optionNameFullNode                   = "full-node"
 	optionNamePostageContractAddress     = "postage-stamp-address"
+	optionNamePostageContractStartBlock  = "postage-stamp-start-block"
 	optionNamePriceOracleAddress         = "price-oracle-address"
 	optionNameRedistributionAddress      = "redistribution-address"
 	optionNameStakingAddress             = "staking-address"
