@@ -210,6 +210,7 @@ func (c *command) initStartCmd() (err error) {
 				Transaction:                   c.config.GetString(optionNameTransactionHash),
 				BlockHash:                     c.config.GetString(optionNameBlockHash),
 				PostageContractAddress:        c.config.GetString(optionNamePostageContractAddress),
+				PostageContractStartBlock:     c.config.GetUint64(optionNamePostageContractStartBlock),
 				PriceOracleAddress:            c.config.GetString(optionNamePriceOracleAddress),
 				RedistributionContractAddress: c.config.GetString(optionNameRedistributionAddress),
 				StakingContractAddress:        c.config.GetString(optionNameStakingAddress),

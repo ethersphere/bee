@@ -65,6 +65,7 @@ const (
 	optionNameSwapDeploymentGasPrice     = "swap-deployment-gas-price"
 	optionNameFullNode                   = "full-node"
 	optionNamePostageContractAddress     = "postage-stamp-address"
+	optionNamePostageContractStartBlock  = "postage-stamp-start-block"
 	optionNamePriceOracleAddress         = "price-oracle-address"
 	optionNameRedistributionAddress      = "redistribution-address"
 	optionNameStakingAddress             = "staking-address"
@@ -262,6 +263,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNameChequebookEnable, true, "enable chequebook")
 	cmd.Flags().Bool(optionNameFullNode, false, "cause the node to start in full mode")
 	cmd.Flags().String(optionNamePostageContractAddress, "", "postage stamp contract address")
+	cmd.Flags().Uint64(optionNamePostageContractStartBlock, 0, "postage stamp contract start block number")
 	cmd.Flags().String(optionNamePriceOracleAddress, "", "price oracle contract address")
 	cmd.Flags().String(optionNameRedistributionAddress, "", "redistribution contract address")
 	cmd.Flags().String(optionNameStakingAddress, "", "staking contract address")
