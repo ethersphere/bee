@@ -692,6 +692,9 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 			return nil, errors.New("malformed postage stamp address")
 		}
 		postageStampContractAddress = common.HexToAddress(o.PostageContractAddress)
+		if o.PostageContractStartBlock == 0 {
+			return nil, errors.New("postage contract start block option not provided")
+		}
 		postageSyncStart = o.PostageContractStartBlock
 	} else if !found {
 		return nil, errors.New("no known postage stamp addresses for this network")
