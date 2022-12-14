@@ -8,7 +8,7 @@ require (
 	github.com/coreos/go-semver v0.3.0
 	github.com/ethereum/go-ethereum v1.10.18
 	github.com/ethersphere/go-price-oracle-abi v0.1.0
-	github.com/ethersphere/go-storage-incentives-abi v0.4.0-rc3
+	github.com/ethersphere/go-storage-incentives-abi v0.4.0-rc4
 	github.com/ethersphere/go-sw3-abi v0.4.0
 	github.com/ethersphere/langos v1.0.0
 	github.com/gogo/protobuf v1.3.2
