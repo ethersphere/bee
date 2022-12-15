@@ -165,6 +165,7 @@ type Options struct {
 	Transaction                   string
 	BlockHash                     string
 	PostageContractAddress        string
+	PostageContractStartBlock     uint64
 	StakingContractAddress        string
 	PriceOracleAddress            string
 	RedistributionContractAddress string
@@ -684,20 +685,19 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		eventListener               postage.Listener
 	)
 
-	var postageSyncStart uint64 = 0
-
 	chainCfg, found := config.GetByChainID(chainID)
-	postageStampContractAddress, startBlock := chainCfg.PostageStampAddress, chainCfg.PostageStampStartBlock
+	postageStampContractAddress, postageSyncStart := chainCfg.PostageStampAddress, chainCfg.PostageStampStartBlock
 	if o.PostageContractAddress != "" {
 		if !common.IsHexAddress(o.PostageContractAddress) {
 			return nil, errors.New("malformed postage stamp address")
 		}
 		postageStampContractAddress = common.HexToAddress(o.PostageContractAddress)
+		if o.PostageContractStartBlock == 0 {
+			return nil, errors.New("postage contract start block option not provided")
+		}
+		postageSyncStart = o.PostageContractStartBlock
 	} else if !found {
 		return nil, errors.New("no known postage stamp addresses for this network")
-	}
-	if found {
-		postageSyncStart = startBlock
 	}
 
 	postageStampContractABI, err := abi.JSON(strings.NewReader(chainCfg.PostageStampABI))

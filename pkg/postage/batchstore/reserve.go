@@ -162,7 +162,7 @@ func (s *store) computeRadius() error {
 	// in the edge case that the new radius is lower because total commitment has decreased, the global storage radius has to be readjusted
 	if s.rs.Radius < s.rs.StorageRadius {
 		s.rs.StorageRadius = s.rs.Radius
-		if err := s.lowerBatchStorageRadius(); err != nil {
+		if err := s.setBatchStorageRadius(); err != nil {
 			s.logger.Error(err, "batchstore: lower batch storage radius")
 		}
 	}
@@ -229,9 +229,9 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 	return nil
 }
 
-// lowerBatchStorageRadius lowers the storage radius of batches to the current storage radius.
+// setBatchStorageRadius set the storage radius of batches to the current storage radius.
 // Must be called under lock.
-func (s *store) lowerBatchStorageRadius() error {
+func (s *store) setBatchStorageRadius() error {
 
 	var updates []*postage.Batch
 
@@ -243,9 +243,9 @@ func (s *store) lowerBatchStorageRadius() error {
 			return false, err
 		}
 
-		if b.StorageRadius > s.rs.StorageRadius {
+		if b.StorageRadius != s.rs.StorageRadius {
+			s.logger.Debug("adjust batch storage radius", "batch_id", hex.EncodeToString(b.ID), "old_batch_radius", b.StorageRadius, "new_batch_radius", s.rs.StorageRadius)
 			b.StorageRadius = s.rs.StorageRadius
-			s.logger.Debug("lowering storage radius", "batch_id", hex.EncodeToString(b.ID), "old_batch_storage_radius", b.StorageRadius, "new_batch_storage_radius", s.rs.StorageRadius)
 			updates = append(updates, b)
 		}
 

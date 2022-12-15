@@ -249,8 +249,6 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 
 // handler handles an incoming request to sync an interval
 func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
-	loggerV2 := s.logger.V(2).Register()
-
 	select {
 	case <-s.quit:
 		return nil
@@ -265,7 +263,6 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 			_ = stream.FullClose()
 		}
 	}()
-	loggerV2.Debug("peer pulling", "peer_address", p.Address)
 
 	ctx, cancel := context.WithCancel(streamCtx)
 	defer cancel()
