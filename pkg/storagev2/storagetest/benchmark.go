@@ -308,7 +308,7 @@ func doWriteChunk(b *testing.B, db storage.ChunkStore, g entryGenerator) {
 	for i := 0; i < b.N; i++ {
 		addr := swarm.MustParseHexAddress(string(g.Key(i)))
 		chunk := swarm.NewChunk(addr, g.Value(i))
-		if _, err := db.Put(context.Background(), chunk); err != nil {
+		if err := db.Put(context.Background(), chunk); err != nil {
 			b.Fatalf("write key '%s': %v", string(g.Key(i)), err)
 		}
 	}
