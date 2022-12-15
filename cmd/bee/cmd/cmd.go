@@ -283,7 +283,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameTokenEncryptionKey, "", "admin username to get the security token")
 	cmd.Flags().String(optionNameAdminPasswordHash, "", "bcrypt hash of the admin password to get the security token")
 	cmd.Flags().Bool(optionNameUsePostageSnapshot, false, "bootstrap node using postage snapshot from the network")
-	cmd.Flags().Bool(optionNameStorageIncentivesEnable, false, "enable storage incentives feature")
+	cmd.Flags().Bool(optionNameStorageIncentivesEnable, true, "enable storage incentives feature")
 
 }
 
