@@ -36,6 +36,10 @@ type stakeDepositResponse struct {
 	TxHash string `json:"txhash"`
 }
 
+type deleteStakeResponse struct {
+	TxHash string `json:"txhash"`
+}
+
 func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("post_stake_deposit").Build()
 
@@ -89,4 +93,24 @@ func (s *Service) getStakedAmountHandler(w http.ResponseWriter, r *http.Request)
 	}
 
 	jsonhttp.OK(w, getStakeResponse{StakedAmount: bigint.Wrap(stakedAmount)})
+}
+
+func (s *Service) deleteStakeHandler(w http.ResponseWriter, r *http.Request) {
+	logger := s.logger.WithName("delete_stake").Build()
+
+	txHash, err := s.stakingContract.DeleteStake(r.Context())
+	if err != nil {
+		if errors.Is(err, staking.ErrInsufficientStake) {
+			logger.Debug("insufficient stake", "overlayAddr", s.overlay, "error", err)
+			logger.Error(nil, "insufficient stake")
+			jsonhttp.BadRequest(w, "insufficient stake to delete")
+			return
+		}
+		logger.Debug("delete stake failed", "error", err)
+		logger.Error(nil, "delete stake failed")
+		jsonhttp.InternalServerError(w, "cannot delete stake")
+		return
+	}
+
+	jsonhttp.OK(w, deleteStakeResponse{TxHash: txHash.String()})
 }
