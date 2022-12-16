@@ -100,6 +100,7 @@ type (
 	BucketData                        = bucketData
 	WalletResponse                    = walletResponse
 	GetStakeResponse                  = getStakeResponse
+	WithdrawAllStakeResponse          = withdrawAllStakeResponse
 )
 
 var (

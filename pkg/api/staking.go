@@ -97,7 +97,7 @@ func (s *Service) getStakedAmountHandler(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Service) withdrawAllStakeHandler(w http.ResponseWriter, r *http.Request) {
-	logger := s.logger.WithName("withdraw_all_stake").Build()
+	logger := s.logger.WithName("delete_withdraw_all_stake").Build()
 
 	txHash, err := s.stakingContract.WithdrawAllStake(r.Context())
 	if err != nil {

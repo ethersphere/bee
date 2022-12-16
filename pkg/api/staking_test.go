@@ -186,7 +186,8 @@ func TestWithdrawAllStake(t *testing.T) {
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, StakingContract: contract})
-		jsonhttptest.Request(t, ts, http.MethodDelete, "/stake", http.StatusOK)
+		jsonhttptest.Request(t, ts, http.MethodDelete, "/stake", http.StatusOK, jsonhttptest.WithExpectedJSONResponse(
+			&api.WithdrawAllStakeResponse{TxHash: txHash.String()}))
 	})
 
 	t.Run("with invalid stake amount", func(t *testing.T) {

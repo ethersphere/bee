@@ -162,42 +162,46 @@ func (c *contract) getStake(ctx context.Context, overlay swarm.Address) (*big.In
 	if err != nil {
 		return nil, err
 	}
+
+	if len(results) == 0 {
+		return nil, errors.New("unexpected empty results")
+	}
+
 	return abi.ConvertType(results[0], new(big.Int)).(*big.Int), nil
 }
 
-func (c *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) (txHash common.Hash, err error) {
+func (c *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
 	prevStakedAmount, err := c.GetStake(ctx)
 	if err != nil {
-		return
+		return common.Hash{}, err
 	}
 
 	if len(prevStakedAmount.Bits()) == 0 {
 		if stakedAmount.Cmp(MinimumStakeAmount) == -1 {
-			err = ErrInsufficientStakeAmount
-			return
+			return common.Hash{}, ErrInsufficientStakeAmount
 		}
 	}
 
 	balance, err := c.getBalance(ctx)
 	if err != nil {
-		return
+		return common.Hash{}, err
 	}
 
 	if balance.Cmp(stakedAmount) < 0 {
-		err = ErrInsufficientFunds
-		return
+		return common.Hash{}, ErrInsufficientFunds
 	}
 
 	_, err = c.sendApproveTransaction(ctx, stakedAmount)
 	if err != nil {
-		return
+		return common.Hash{}, err
 	}
 
 	receipt, err := c.sendDepositStakeTransaction(ctx, c.owner, stakedAmount, c.overlayNonce)
-	if receipt != nil {
-		txHash = receipt.TxHash
+	if err != nil {
+		return common.Hash{}, err
 	}
-	return
+
+	return receipt.TxHash, nil
 }
 
 func (c *contract) GetStake(ctx context.Context) (*big.Int, error) {
@@ -226,6 +230,11 @@ func (c *contract) getBalance(ctx context.Context) (*big.Int, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if len(results) == 0 {
+		return nil, errors.New("unexpected empty results")
+	}
+
 	return abi.ConvertType(results[0], new(big.Int)).(*big.Int), nil
 }
 
@@ -235,8 +244,7 @@ func (c *contract) WithdrawAllStake(ctx context.Context) (txHash common.Hash, er
 		return
 	}
 	if !isPaused {
-		err = ErrNotPaused
-		return
+		return common.Hash{}, ErrNotPaused
 	}
 
 	stakedAmount, err := c.getStake(ctx, c.overlay)
@@ -245,20 +253,22 @@ func (c *contract) WithdrawAllStake(ctx context.Context) (txHash common.Hash, er
 	}
 
 	if stakedAmount.Cmp(big.NewInt(0)) <= 0 {
-		err = ErrInsufficientStake
-		return
+		return common.Hash{}, ErrInsufficientStake
 	}
 
 	_, err = c.sendApproveTransaction(ctx, stakedAmount)
 	if err != nil {
-		return
+		return common.Hash{}, err
 	}
 
 	receipt, err := c.withdrawFromStake(ctx, stakedAmount)
+	if err != nil {
+		return common.Hash{}, err
+	}
 	if receipt != nil {
 		txHash = receipt.TxHash
 	}
-	return
+	return txHash, nil
 }
 
 func (c *contract) withdrawFromStake(ctx context.Context, stakedAmount *big.Int) (*types.Receipt, error) {
@@ -295,6 +305,10 @@ func (c *contract) paused(ctx context.Context) (bool, error) {
 	results, err := c.stakingContractABI.Unpack("paused", result)
 	if err != nil {
 		return false, err
+	}
+
+	if len(results) == 0 {
+		return false, errors.New("unexpected empty results")
 	}
 
 	return results[0].(bool), nil
