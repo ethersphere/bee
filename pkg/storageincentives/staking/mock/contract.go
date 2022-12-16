@@ -6,8 +6,9 @@ package mock
 
 import (
 	"context"
-	"github.com/ethereum/go-ethereum/common"
 	"math/big"
+
+	"github.com/ethereum/go-ethereum/common"
 
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 )
@@ -15,6 +16,7 @@ import (
 type stakingContractMock struct {
 	depositStake func(ctx context.Context, stakedAmount *big.Int) (common.Hash, error)
 	getStake     func(ctx context.Context) (*big.Int, error)
+	deleteStake  func(ctx context.Context) (common.Hash, error)
 }
 
 func (s *stakingContractMock) DepositStake(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
@@ -23,6 +25,10 @@ func (s *stakingContractMock) DepositStake(ctx context.Context, stakedAmount *bi
 
 func (s *stakingContractMock) GetStake(ctx context.Context) (*big.Int, error) {
 	return s.getStake(ctx)
+}
+
+func (s *stakingContractMock) DeleteStake(ctx context.Context) (common.Hash, error) {
+	return s.deleteStake(ctx)
 }
 
 // Option is a an option passed to New
@@ -48,5 +54,11 @@ func WithDepositStake(f func(ctx context.Context, stakedAmount *big.Int) (common
 func WithGetStake(f func(ctx context.Context) (*big.Int, error)) Option {
 	return func(mock *stakingContractMock) {
 		mock.getStake = f
+	}
+}
+
+func WithDeleteStake(f func(ctx context.Context) (common.Hash, error)) Option {
+	return func(mock *stakingContractMock) {
+		mock.deleteStake = f
 	}
 }
