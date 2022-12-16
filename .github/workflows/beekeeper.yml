@@ -351,14 +351,3 @@ jobs:
           repository: ethersphere/bee-factory
           event-type: build-images
           client-payload: '{"tag": "latest"}'
-      - name: Set IMAGE_DIGEST variable
-        if: github.ref == 'refs/heads/master' && github.event.action != 'beekeeper' && success()
-        run: echo "IMAGE_DIGEST=$(docker inspect --format='{{index .RepoDigests 0}}' ethersphere/bee:latest | cut -d'@' -f 2 | tr -d '\n')" >> $GITHUB_ENV
-      - name: Trigger ArgoCD
-        if: github.ref == 'refs/heads/master' && github.event.action != 'beekeeper' && success()
-        uses: peter-evans/repository-dispatch@v2
-        with:
-          token: ${{ secrets.GHA_PAT_BASIC }}
-          repository: ethersphere/bee-argo
-          event-type: trigger-argo
-          client-payload: '{"ref": "${{ github.ref }}", "sha": "${{ github.sha }}", "digest": "${{ env.IMAGE_DIGEST }}"}'
