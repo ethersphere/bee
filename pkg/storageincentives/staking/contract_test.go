@@ -957,7 +957,6 @@ func TestDeleteStake(t *testing.T) {
 		)
 
 		_, err = contract.DeleteStake(ctx)
-		fmt.Println(err)
 		if err == nil {
 			t.Fatal(err)
 		}
