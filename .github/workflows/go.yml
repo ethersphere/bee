@@ -31,9 +31,6 @@ jobs:
       # make sure that line endings are not converted on windows
       # as gofmt linter will report that they need to be changed
       run: git config --global core.autocrlf false
-    - name: Commit linting
-      if: matrix.os == 'ubuntu-latest' && github.ref != 'refs/heads/master'
-      uses: wagoid/commitlint-github-action@v5
     - name: Build
       run: make build
     - name: Test with race detector (Ubuntu and MacOS)
@@ -48,11 +45,16 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
     - name: Setup Go
       uses: actions/setup-go@v3
       with:
         cache: false
         go-version-file: go.mod
+    - name: Commit linting
+      if: github.ref != 'refs/heads/master'
+      uses: wagoid/commitlint-github-action@v5
     - name: GolangCI-Lint
       uses: golangci/golangci-lint-action@v3
       with:
