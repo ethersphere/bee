@@ -118,7 +118,11 @@ test-integration:
 
 .PHONY: test
 test:
-	$(GO) test -v -failfast ./...
+ifdef cover
+	$(GO) test -failfast -coverprofile=cover.out -v ./...
+else
+	$(GO) test -failfast -v ./...
+endif
 
 .PHONY: build
 build: CGO_ENABLED=0
