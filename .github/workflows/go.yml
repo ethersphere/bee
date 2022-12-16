@@ -54,7 +54,6 @@ jobs:
         cache: false
         go-version-file: go.mod
     - name: GolangCI-Lint
-      if: matrix.os == 'ubuntu-latest'
       uses: golangci/golangci-lint-action@v3
       with:
         skip-cache: false
