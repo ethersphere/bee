@@ -636,7 +636,7 @@ func TestGetStake(t *testing.T) {
 	})
 }
 
-func TestDeleteStake(t *testing.T) {
+func TestWithdrawStake(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
