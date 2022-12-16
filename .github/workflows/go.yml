@@ -84,7 +84,7 @@ jobs:
     name: Trigger Beekeeper
     runs-on: ubuntu-latest
     needs: [build, golangci-lint, coverage]
-    if: github.ref == 'refs/heads/master' && matrix.os == 'ubuntu-latest' && success()
+    if: github.ref == 'refs/heads/master'
     steps:
     - name: Checkout
       uses: actions/checkout@v3
