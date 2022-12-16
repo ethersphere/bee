@@ -1066,7 +1066,7 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
       responses:
         "200":
-          $ref: "SwarmCommon.yaml#/components/schemas/DeleteStakeResponse"
+          $ref: "SwarmCommon.yaml#/components/schemas/WithdrawAllStakeResponse"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "500":

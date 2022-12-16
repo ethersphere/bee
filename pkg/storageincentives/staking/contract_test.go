@@ -715,7 +715,7 @@ func TestDeleteStake(t *testing.T) {
 			nonce,
 		)
 
-		_, err = contract.DeleteStake(ctx)
+		_, err = contract.WithdrawAllStake(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -749,7 +749,7 @@ func TestDeleteStake(t *testing.T) {
 			nonce,
 		)
 
-		_, err = contract.DeleteStake(ctx)
+		_, err = contract.WithdrawAllStake(ctx)
 		if !errors.Is(err, staking.ErrNotPaused) {
 			t.Fatal(err)
 		}
@@ -793,7 +793,7 @@ func TestDeleteStake(t *testing.T) {
 			nonce,
 		)
 
-		_, err = contract.DeleteStake(ctx)
+		_, err = contract.WithdrawAllStake(ctx)
 		if !errors.Is(err, staking.ErrInsufficientStake) {
 			t.Fatal(err)
 		}
@@ -883,7 +883,7 @@ func TestDeleteStake(t *testing.T) {
 			nonce,
 		)
 
-		_, err = contract.DeleteStake(ctx)
+		_, err = contract.WithdrawAllStake(ctx)
 		if err == nil {
 			t.Fatal(err)
 		}
@@ -956,7 +956,7 @@ func TestDeleteStake(t *testing.T) {
 			nonce,
 		)
 
-		_, err = contract.DeleteStake(ctx)
+		_, err = contract.WithdrawAllStake(ctx)
 		if err == nil {
 			t.Fatal(err)
 		}
@@ -988,7 +988,7 @@ func TestDeleteStake(t *testing.T) {
 			nonce,
 		)
 
-		_, err = contract.DeleteStake(ctx)
+		_, err = contract.WithdrawAllStake(ctx)
 		if err == nil {
 			t.Fatal(err)
 		}
@@ -1030,7 +1030,7 @@ func TestDeleteStake(t *testing.T) {
 			nonce,
 		)
 
-		_, err = contract.DeleteStake(ctx)
+		_, err = contract.WithdrawAllStake(ctx)
 		if err == nil {
 			t.Fatal(err)
 		}

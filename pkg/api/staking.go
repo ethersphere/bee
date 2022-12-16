@@ -6,9 +6,10 @@ package api
 
 import (
 	"errors"
-	"github.com/ethersphere/bee/pkg/bigint"
 	"math/big"
 	"net/http"
+
+	"github.com/ethersphere/bee/pkg/bigint"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
@@ -36,7 +37,7 @@ type stakeDepositResponse struct {
 	TxHash string `json:"txhash"`
 }
 
-type deleteStakeResponse struct {
+type withdrawAllStakeResponse struct {
 	TxHash string `json:"txhash"`
 }
 
@@ -95,22 +96,22 @@ func (s *Service) getStakedAmountHandler(w http.ResponseWriter, r *http.Request)
 	jsonhttp.OK(w, getStakeResponse{StakedAmount: bigint.Wrap(stakedAmount)})
 }
 
-func (s *Service) deleteStakeHandler(w http.ResponseWriter, r *http.Request) {
-	logger := s.logger.WithName("delete_stake").Build()
+func (s *Service) withdrawAllStakeHandler(w http.ResponseWriter, r *http.Request) {
+	logger := s.logger.WithName("withdraw_all_stake").Build()
 
-	txHash, err := s.stakingContract.DeleteStake(r.Context())
+	txHash, err := s.stakingContract.WithdrawAllStake(r.Context())
 	if err != nil {
 		if errors.Is(err, staking.ErrInsufficientStake) {
 			logger.Debug("insufficient stake", "overlayAddr", s.overlay, "error", err)
 			logger.Error(nil, "insufficient stake")
-			jsonhttp.BadRequest(w, "insufficient stake to delete")
+			jsonhttp.BadRequest(w, "insufficient stake to withdraw")
 			return
 		}
 		logger.Debug("delete stake failed", "error", err)
-		logger.Error(nil, "delete stake failed")
-		jsonhttp.InternalServerError(w, "cannot delete stake")
+		logger.Error(nil, "withdraw stake failed")
+		jsonhttp.InternalServerError(w, "cannot withdraw stake")
 		return
 	}
 
-	jsonhttp.OK(w, deleteStakeResponse{TxHash: txHash.String()})
+	jsonhttp.OK(w, withdrawAllStakeResponse{TxHash: txHash.String()})
 }

@@ -172,7 +172,7 @@ func Test_stakingDepositHandler_invalidInputs(t *testing.T) {
 	}
 }
 
-func TestDeleteStake(t *testing.T) {
+func TestWithdrawAllStake(t *testing.T) {
 	t.Parallel()
 
 	txHash := common.HexToHash("0x1234")
@@ -181,7 +181,7 @@ func TestDeleteStake(t *testing.T) {
 		t.Parallel()
 
 		contract := stakingContractMock.New(
-			stakingContractMock.WithDeleteStake(func(ctx context.Context) (common.Hash, error) {
+			stakingContractMock.WithWithdrawAllStake(func(ctx context.Context) (common.Hash, error) {
 				return txHash, nil
 			}),
 		)
@@ -193,20 +193,20 @@ func TestDeleteStake(t *testing.T) {
 		t.Parallel()
 
 		contract := stakingContractMock.New(
-			stakingContractMock.WithDeleteStake(func(ctx context.Context) (common.Hash, error) {
+			stakingContractMock.WithWithdrawAllStake(func(ctx context.Context) (common.Hash, error) {
 				return common.Hash{}, staking.ErrInsufficientStake
 			}),
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, StakingContract: contract})
 		jsonhttptest.Request(t, ts, http.MethodDelete, "/stake", http.StatusBadRequest,
-			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusBadRequest, Message: "insufficient stake to delete"}))
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusBadRequest, Message: "insufficient stake to withdraw"}))
 	})
 
 	t.Run("internal error", func(t *testing.T) {
 		t.Parallel()
 
 		contract := stakingContractMock.New(
-			stakingContractMock.WithDeleteStake(func(ctx context.Context) (common.Hash, error) {
+			stakingContractMock.WithWithdrawAllStake(func(ctx context.Context) (common.Hash, error) {
 				return common.Hash{}, fmt.Errorf("some error")
 			}),
 		)
@@ -219,7 +219,7 @@ func TestDeleteStake(t *testing.T) {
 		t.Parallel()
 
 		contract := stakingContractMock.New(
-			stakingContractMock.WithDeleteStake(func(ctx context.Context) (common.Hash, error) {
+			stakingContractMock.WithWithdrawAllStake(func(ctx context.Context) (common.Hash, error) {
 				gasLimit := sctx.GetGasLimit(ctx)
 				if gasLimit != 2000000 {
 					t.Fatalf("want 2000000, got %d", gasLimit)
