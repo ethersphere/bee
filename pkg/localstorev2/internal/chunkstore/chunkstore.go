@@ -250,7 +250,7 @@ func (c *chunkStoreWrapper) Has(_ context.Context, addr swarm.Address) (bool, er
 	return c.store.Has(&retrievalIndexItem{Address: addr})
 }
 
-func (c *chunkStoreWrapper) Put(ctx context.Context, ch swarm.Chunk) (bool, error) {
+func (c *chunkStoreWrapper) Put(ctx context.Context, ch swarm.Chunk) error {
 	var (
 		rIdx  = &retrievalIndexItem{Address: ch.Address()}
 		loc   sharky.Location
@@ -263,13 +263,13 @@ func (c *chunkStoreWrapper) Put(ctx context.Context, ch swarm.Chunk) (bool, erro
 		// in sharky and create the new indexes.
 		loc, err = c.sharky.Write(ctx, ch.Data())
 		if err != nil {
-			return false, fmt.Errorf("chunk store: write to sharky failed: %w", err)
+			return fmt.Errorf("chunk store: write to sharky failed: %w", err)
 		}
 		rIdx.Location = loc
 		rIdx.Timestamp = uint64(time.Now().Unix())
 		found = false
 	case err != nil:
-		return false, fmt.Errorf("chunk store: failed to read: %w", err)
+		return fmt.Errorf("chunk store: failed to read: %w", err)
 	}
 
 	rIdx.RefCnt++
@@ -288,13 +288,13 @@ func (c *chunkStoreWrapper) Put(ctx context.Context, ch swarm.Chunk) (bool, erro
 	}()
 
 	if err != nil && !found {
-		return false, multierror.Append(
+		return multierror.Append(
 			err,
 			c.sharky.Release(context.Background(), loc),
 		)
 	}
 
-	return found, nil
+	return nil
 }
 
 func (c *chunkStoreWrapper) Delete(ctx context.Context, addr swarm.Address) error {

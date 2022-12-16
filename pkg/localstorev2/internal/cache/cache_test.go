@@ -193,12 +193,9 @@ func TestCache(t *testing.T) {
 
 		t.Run("add till full", func(t *testing.T) {
 			for idx, ch := range chunks {
-				found, err := c.Putter(st.Store(), st.ChunkStore()).Put(context.TODO(), ch)
+				err := c.Putter(st.Store(), st.ChunkStore()).Put(context.TODO(), ch)
 				if err != nil {
 					t.Fatal(err)
-				}
-				if found {
-					t.Fatalf("expected chunk %s to not be found", ch.Address())
 				}
 				verifyCacheState(t, c, chunks[0].Address(), chunks[idx].Address(), uint64(idx+1))
 				verifyCacheOrder(t, c, st.Store(), chunks[:idx+1]...)
@@ -218,12 +215,9 @@ func TestCache(t *testing.T) {
 
 		t.Run("add over capacity", func(t *testing.T) {
 			for idx, ch := range chunks2 {
-				found, err := c.Putter(st.Store(), st.ChunkStore()).Put(context.TODO(), ch)
+				err := c.Putter(st.Store(), st.ChunkStore()).Put(context.TODO(), ch)
 				if err != nil {
 					t.Fatal(err)
-				}
-				if found {
-					t.Fatalf("expected chunk %s to not be found", ch.Address())
 				}
 				if idx == len(chunks)-1 {
 					verifyCacheState(t, c, chunks2[0].Address(), chunks2[idx].Address(), 10)
@@ -264,12 +258,9 @@ func TestCache(t *testing.T) {
 		// this should have no effect on ordering
 		t.Run("add and get last", func(t *testing.T) {
 			for idx, ch := range chunks {
-				found, err := c.Putter(st.Store(), st.ChunkStore()).Put(context.TODO(), ch)
+				err := c.Putter(st.Store(), st.ChunkStore()).Put(context.TODO(), ch)
 				if err != nil {
 					t.Fatal(err)
-				}
-				if found {
-					t.Fatalf("expected chunk %s to not be found", ch.Address())
 				}
 
 				readChunk, err := c.Getter(st.Store(), st.ChunkStore()).Get(context.TODO(), ch.Address())
@@ -322,7 +313,7 @@ func TestCache(t *testing.T) {
 
 			for i := 0; i < 5; i++ {
 				extraChunk := chunktest.GenerateTestRandomChunk()
-				_, err := st.ChunkStore().Put(context.TODO(), extraChunk)
+				err := st.ChunkStore().Put(context.TODO(), extraChunk)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -352,12 +343,9 @@ func TestCache(t *testing.T) {
 		chunks := chunktest.GenerateTestRandomChunks(5)
 
 		for _, ch := range chunks {
-			found, err := c.Putter(st.Store(), st.ChunkStore()).Put(context.TODO(), ch)
+			err := c.Putter(st.Store(), st.ChunkStore()).Put(context.TODO(), ch)
 			if err != nil {
 				t.Fatal(err)
-			}
-			if found {
-				t.Fatalf("expected chunk %s to not be found", ch.Address())
 			}
 		}
 		// return error for state update, which occurs at the end of Get/Put operations
@@ -374,7 +362,7 @@ func TestCache(t *testing.T) {
 		// reverted to correct one.
 		t.Run("put error handling", func(t *testing.T) {
 			newChunk := chunktest.GenerateTestRandomChunk()
-			_, err := c.Putter(st.Store(), st.ChunkStore()).Put(context.TODO(), newChunk)
+			err := c.Putter(st.Store(), st.ChunkStore()).Put(context.TODO(), newChunk)
 			if !errors.Is(err, retErr) {
 				t.Fatalf("expected error %v during put, found %v", retErr, err)
 			}
