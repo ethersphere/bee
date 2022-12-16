@@ -212,7 +212,7 @@ func TestWithdrawAllStake(t *testing.T) {
 		)
 		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, StakingContract: contract})
 		jsonhttptest.Request(t, ts, http.MethodDelete, "/stake", http.StatusInternalServerError)
-		jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusInternalServerError, Message: "cannot delete stake"})
+		jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{Code: http.StatusInternalServerError, Message: "cannot withdraw stake"})
 	})
 
 	t.Run("gas limit header", func(t *testing.T) {

@@ -107,7 +107,7 @@ func (s *Service) withdrawAllStakeHandler(w http.ResponseWriter, r *http.Request
 			jsonhttp.BadRequest(w, "insufficient stake to withdraw")
 			return
 		}
-		logger.Debug("delete stake failed", "error", err)
+		logger.Debug("withdraw stake failed", "error", err)
 		logger.Error(nil, "withdraw stake failed")
 		jsonhttp.InternalServerError(w, "cannot withdraw stake")
 		return
