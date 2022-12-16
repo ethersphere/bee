@@ -14,9 +14,9 @@ import (
 )
 
 type stakingContractMock struct {
-	depositStake func(ctx context.Context, stakedAmount *big.Int) (common.Hash, error)
-	getStake     func(ctx context.Context) (*big.Int, error)
-	deleteStake  func(ctx context.Context) (common.Hash, error)
+	depositStake     func(ctx context.Context, stakedAmount *big.Int) (common.Hash, error)
+	getStake         func(ctx context.Context) (*big.Int, error)
+	withdrawAllStake func(ctx context.Context) (common.Hash, error)
 }
 
 func (s *stakingContractMock) DepositStake(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
@@ -27,8 +27,8 @@ func (s *stakingContractMock) GetStake(ctx context.Context) (*big.Int, error) {
 	return s.getStake(ctx)
 }
 
-func (s *stakingContractMock) DeleteStake(ctx context.Context) (common.Hash, error) {
-	return s.deleteStake(ctx)
+func (s *stakingContractMock) WithdrawAllStake(ctx context.Context) (common.Hash, error) {
+	return s.withdrawAllStake(ctx)
 }
 
 // Option is a an option passed to New
@@ -57,8 +57,8 @@ func WithGetStake(f func(ctx context.Context) (*big.Int, error)) Option {
 	}
 }
 
-func WithDeleteStake(f func(ctx context.Context) (common.Hash, error)) Option {
+func WithWithdrawAllStake(f func(ctx context.Context) (common.Hash, error)) Option {
 	return func(mock *stakingContractMock) {
-		mock.deleteStake = f
+		mock.withdrawAllStake = f
 	}
 }

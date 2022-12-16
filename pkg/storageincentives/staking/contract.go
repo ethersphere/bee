@@ -39,7 +39,7 @@ var (
 type Contract interface {
 	DepositStake(ctx context.Context, stakedAmount *big.Int) (common.Hash, error)
 	GetStake(ctx context.Context) (*big.Int, error)
-	DeleteStake(ctx context.Context) (common.Hash, error)
+	WithdrawAllStake(ctx context.Context) (common.Hash, error)
 }
 
 type contract struct {
@@ -229,7 +229,7 @@ func (c *contract) getBalance(ctx context.Context) (*big.Int, error) {
 	return abi.ConvertType(results[0], new(big.Int)).(*big.Int), nil
 }
 
-func (c *contract) DeleteStake(ctx context.Context) (txHash common.Hash, err error) {
+func (c *contract) WithdrawAllStake(ctx context.Context) (txHash common.Hash, err error) {
 	isPaused, err := c.paused(ctx)
 	if err != nil {
 		return

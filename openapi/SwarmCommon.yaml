@@ -592,7 +592,7 @@ components:
             txHash:
                $ref: "#/components/schemas/TransactionHash"
 
-    DeleteStakeResponse:
+    WithdrawAllStakeResponse:
               type: object
               properties:
                 txHash:
