@@ -27,15 +27,19 @@ var (
 
 	ErrInsufficientStakeAmount = errors.New("insufficient stake amount")
 	ErrInsufficientFunds       = errors.New("insufficient token balance")
+	ErrInsufficientStake       = errors.New("insufficient stake")
 	ErrNotImplemented          = errors.New("not implemented")
+	ErrNotPaused               = errors.New("contract is not paused")
 
-	approveDescription      = "Approve tokens for stake deposit operations"
-	depositStakeDescription = "Deposit Stake"
+	approveDescription       = "Approve tokens for stake deposit operations"
+	depositStakeDescription  = "Deposit Stake"
+	withdrawStakeDescription = "Withdraw stake"
 )
 
 type Contract interface {
 	DepositStake(ctx context.Context, stakedAmount *big.Int) (common.Hash, error)
 	GetStake(ctx context.Context) (*big.Int, error)
+	WithdrawAllStake(ctx context.Context) (common.Hash, error)
 }
 
 type contract struct {
@@ -158,42 +162,46 @@ func (c *contract) getStake(ctx context.Context, overlay swarm.Address) (*big.In
 	if err != nil {
 		return nil, err
 	}
+
+	if len(results) == 0 {
+		return nil, errors.New("unexpected empty results")
+	}
+
 	return abi.ConvertType(results[0], new(big.Int)).(*big.Int), nil
 }
 
-func (c *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) (txHash common.Hash, err error) {
+func (c *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
 	prevStakedAmount, err := c.GetStake(ctx)
 	if err != nil {
-		return
+		return common.Hash{}, err
 	}
 
 	if len(prevStakedAmount.Bits()) == 0 {
 		if stakedAmount.Cmp(MinimumStakeAmount) == -1 {
-			err = ErrInsufficientStakeAmount
-			return
+			return common.Hash{}, ErrInsufficientStakeAmount
 		}
 	}
 
 	balance, err := c.getBalance(ctx)
 	if err != nil {
-		return
+		return common.Hash{}, err
 	}
 
 	if balance.Cmp(stakedAmount) < 0 {
-		err = ErrInsufficientFunds
-		return
+		return common.Hash{}, ErrInsufficientFunds
 	}
 
 	_, err = c.sendApproveTransaction(ctx, stakedAmount)
 	if err != nil {
-		return
+		return common.Hash{}, err
 	}
 
 	receipt, err := c.sendDepositStakeTransaction(ctx, c.owner, stakedAmount, c.overlayNonce)
-	if receipt != nil {
-		txHash = receipt.TxHash
+	if err != nil {
+		return common.Hash{}, err
 	}
-	return
+
+	return receipt.TxHash, nil
 }
 
 func (c *contract) GetStake(ctx context.Context) (*big.Int, error) {
@@ -222,5 +230,86 @@ func (c *contract) getBalance(ctx context.Context) (*big.Int, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if len(results) == 0 {
+		return nil, errors.New("unexpected empty results")
+	}
+
 	return abi.ConvertType(results[0], new(big.Int)).(*big.Int), nil
+}
+
+func (c *contract) WithdrawAllStake(ctx context.Context) (txHash common.Hash, err error) {
+	isPaused, err := c.paused(ctx)
+	if err != nil {
+		return
+	}
+	if !isPaused {
+		return common.Hash{}, ErrNotPaused
+	}
+
+	stakedAmount, err := c.getStake(ctx, c.overlay)
+	if err != nil {
+		return
+	}
+
+	if stakedAmount.Cmp(big.NewInt(0)) <= 0 {
+		return common.Hash{}, ErrInsufficientStake
+	}
+
+	_, err = c.sendApproveTransaction(ctx, stakedAmount)
+	if err != nil {
+		return common.Hash{}, err
+	}
+
+	receipt, err := c.withdrawFromStake(ctx, stakedAmount)
+	if err != nil {
+		return common.Hash{}, err
+	}
+	if receipt != nil {
+		txHash = receipt.TxHash
+	}
+	return txHash, nil
+}
+
+func (c *contract) withdrawFromStake(ctx context.Context, stakedAmount *big.Int) (*types.Receipt, error) {
+	var overlayAddr [32]byte
+	copy(overlayAddr[:], c.overlay.Bytes())
+
+	callData, err := c.stakingContractABI.Pack("withdrawFromStake", overlayAddr, stakedAmount)
+	if err != nil {
+		return nil, err
+	}
+
+	receipt, err := c.sendTransaction(ctx, callData, withdrawStakeDescription)
+	if err != nil {
+		return nil, fmt.Errorf("withdraw stake: stakedAmount %d: %w", stakedAmount, err)
+	}
+
+	return receipt, nil
+}
+
+func (c *contract) paused(ctx context.Context) (bool, error) {
+	callData, err := c.stakingContractABI.Pack("paused")
+	if err != nil {
+		return false, err
+	}
+
+	result, err := c.transactionService.Call(ctx, &transaction.TxRequest{
+		To:   &c.stakingContractAddress,
+		Data: callData,
+	})
+	if err != nil {
+		return false, err
+	}
+
+	results, err := c.stakingContractABI.Unpack("paused", result)
+	if err != nil {
+		return false, err
+	}
+
+	if len(results) == 0 {
+		return false, errors.New("unexpected empty results")
+	}
+
+	return results[0].(bool), nil
 }
