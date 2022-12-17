@@ -34,10 +34,10 @@ jobs:
       uses: mxschmitt/action-tmate@v3
     - name: Test with race detector (Ubuntu and MacOS)
       if: matrix.os != 'windows-latest'
-      run: make test-race
+      run: make test-race-ci
     - name: Test without race detector (Windows)
       if: matrix.os == 'windows-latest'
-      run: make test
+      run: make test-ci
   golangci-lint:
     name: GolangCI-Lint
     runs-on: ubuntu-latest
