@@ -135,7 +135,7 @@ else
 endif
 
 .PHONY: build
-build: CGO_ENABLED=0
+build: export CGO_ENABLED=0
 build:
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" ./...
 
