@@ -128,15 +128,15 @@ jobs:
       - name: Set local cluster
         run: |
           timeout ${TIMEOUT} make deploylocal BEEKEEPER_CLUSTER=local-dns
-      - name: Test staking
-        id: stake
-        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks ci-stake
       - name: Test pingpong
         id: pingpong
         run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done'
       - name: Test fullconnectivity
         id: fullconnectivity
         run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns --checks=ci-full-connectivity; do echo "waiting for full connectivity..."; sleep .3; done'
+      - name: Test staking
+        id: stake
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks ci-stake
       - name: Test settlements
         id: settlements
         run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-settlements
