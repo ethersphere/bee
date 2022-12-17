@@ -29,9 +29,6 @@ jobs:
         go-version-file: go.mod
     - name: Build
       run: make build
-    - name: Setup tmate session
-      if: matrix.os == 'ubuntu-latest'
-      uses: mxschmitt/action-tmate@v3
     - name: Test with race detector (Ubuntu and MacOS)
       if: matrix.os != 'windows-latest'
       run: make test-race-ci
