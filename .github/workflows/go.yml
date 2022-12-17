@@ -70,7 +70,7 @@ jobs:
     - name: Test whitespaces and code coverage
       run: |
         make check-whitespace
-        make cover=1 test
+        make cover=1 test-ci
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
       with:
