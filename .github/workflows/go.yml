@@ -67,6 +67,13 @@ jobs:
       with:
         cache: false
         go-version-file: go.mod
+    - name: Cache Go Modules
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-coverage-${{ hashFiles('**/go.sum') }}
     - name: Test whitespaces and code coverage
       run: |
         make check-whitespace
