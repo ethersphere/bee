@@ -27,12 +27,11 @@ jobs:
       with:
         cache: true
         go-version-file: go.mod
-    - name: Set git to use LF
-      # make sure that line endings are not converted on windows
-      # as gofmt linter will report that they need to be changed
-      run: git config --global core.autocrlf false
     - name: Build
       run: make build
+    - name: Setup tmate session
+      if: matrix.os == 'ubuntu-latest'
+      uses: mxschmitt/action-tmate@v3
     - name: Test with race detector (Ubuntu and MacOS)
       if: matrix.os != 'windows-latest'
       run: make test-race
