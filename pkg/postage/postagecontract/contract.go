@@ -131,6 +131,11 @@ func (c *postageContract) expiredBatchesExists(ctx context.Context) (bool, error
 	if err != nil {
 		return false, err
 	}
+
+	if len(results) == 0 {
+		return false, errors.New("unexpected empty results")
+	}
+
 	return results[0].(bool), nil
 }
 
@@ -268,46 +273,49 @@ func (c *postageContract) getBalance(ctx context.Context) (*big.Int, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if len(results) == 0 {
+		return nil, errors.New("unexpected empty results")
+	}
+
 	return abi.ConvertType(results[0], new(big.Int)).(*big.Int), nil
 }
 
 func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) (txHash common.Hash, batchID []byte, err error) {
 
 	if depth <= BucketDepth {
-		err = ErrInvalidDepth
-		return
+		return common.Hash{}, nil, ErrInvalidDepth
 	}
 
 	totalAmount := big.NewInt(0).Mul(initialBalance, big.NewInt(int64(1<<depth)))
 	balance, err := c.getBalance(ctx)
 	if err != nil {
-		return
+		return common.Hash{}, nil, err
 	}
 
 	if balance.Cmp(totalAmount) < 0 {
-		err = ErrInsufficientFunds
-		return
+		return common.Hash{}, nil, ErrInsufficientFunds
 	}
 
 	err = c.ExpireBatches(ctx)
 	if err != nil {
-		return
+		return common.Hash{}, nil, err
 	}
 
 	_, err = c.sendApproveTransaction(ctx, totalAmount)
 	if err != nil {
-		return
+		return common.Hash{}, nil, err
 	}
 
 	nonce := make([]byte, 32)
 	_, err = rand.Read(nonce)
 	if err != nil {
-		return
+		return common.Hash{}, nil, err
 	}
 
 	receipt, err := c.sendCreateBatchTransaction(ctx, c.owner, initialBalance, depth, common.BytesToHash(nonce), immutable)
 	if err != nil {
-		return
+		return common.Hash{}, nil, err
 	}
 	txHash = receipt.TxHash
 	for _, ev := range receipt.Logs {
@@ -316,7 +324,7 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 			err = transaction.ParseEvent(&c.postageStampContractABI, "BatchCreated", &createdEvent, *ev)
 
 			if err != nil {
-				return
+				return common.Hash{}, nil, err
 			}
 
 			batchID = createdEvent.BatchId[:]
@@ -332,20 +340,19 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 			))
 
 			if err != nil {
-				return
+				return common.Hash{}, nil, err
 			}
-			return
+			return txHash, batchID, nil
 		}
 	}
-	err = ErrBatchCreate
-	return
+	return common.Hash{}, nil, ErrBatchCreate
 }
 
 func (c *postageContract) TopUpBatch(ctx context.Context, batchID []byte, topupBalance *big.Int) (txHash common.Hash, err error) {
 
 	batch, err := c.postageStorer.Get(batchID)
 	if err != nil {
-		return
+		return common.Hash{}, err
 	}
 
 	totalAmount := big.NewInt(0).Mul(topupBalance, big.NewInt(int64(1<<batch.Depth)))
@@ -355,61 +362,56 @@ func (c *postageContract) TopUpBatch(ctx context.Context, batchID []byte, topupB
 	}
 
 	if balance.Cmp(totalAmount) < 0 {
-		err = ErrInsufficientFunds
-		return
+		return common.Hash{}, ErrInsufficientFunds
 	}
 
 	_, err = c.sendApproveTransaction(ctx, totalAmount)
 	if err != nil {
-		return
+		return common.Hash{}, err
 	}
 
 	receipt, err := c.sendTopUpBatchTransaction(ctx, batch.ID, topupBalance)
 	if err != nil {
 		txHash = receipt.TxHash
-		return
+		return txHash, err
 	}
 
 	for _, ev := range receipt.Logs {
 		if ev.Address == c.postageStampContractAddress && len(ev.Topics) > 0 && ev.Topics[0] == c.batchTopUpTopic {
 			txHash = receipt.TxHash
-			return
+			return txHash, err
 		}
 	}
-
-	err = ErrBatchTopUp
-	return
+	return txHash, ErrBatchTopUp
 }
 
 func (c *postageContract) DiluteBatch(ctx context.Context, batchID []byte, newDepth uint8) (txHash common.Hash, err error) {
 
 	batch, err := c.postageStorer.Get(batchID)
 	if err != nil {
-		return
+		return common.Hash{}, err
 	}
 
 	if batch.Depth > newDepth {
-		err = fmt.Errorf("new depth should be greater: %w", ErrInvalidDepth)
-		return
+		return common.Hash{}, fmt.Errorf("new depth should be greater: %w", ErrInvalidDepth)
 	}
 
 	err = c.ExpireBatches(ctx)
 	if err != nil {
-		return
+		return common.Hash{}, err
 	}
 
 	receipt, err := c.sendDiluteTransaction(ctx, batch.ID, newDepth)
 	if err != nil {
-		return
+		return common.Hash{}, err
 	}
 	txHash = receipt.TxHash
 	for _, ev := range receipt.Logs {
 		if ev.Address == c.postageStampContractAddress && len(ev.Topics) > 0 && ev.Topics[0] == c.batchDepthIncreaseTopic {
-			return
+			return txHash, nil
 		}
 	}
-	err = ErrBatchDilute
-	return
+	return common.Hash{}, ErrBatchDilute
 }
 
 type batchCreatedEvent struct {
