@@ -11,18 +11,6 @@ import (
 	"github.com/ethersphere/go-storage-incentives-abi/abi"
 )
 
-// TODO: replace this with proper values once the contracts are deployed to the mainnet.
-var (
-	//go:embed mainnet_staking_abi.json
-	MainnetStakingABI string
-
-	//go:embed mainnet_postagestamp_abi.json
-	MainnetPostageStampABI string
-
-	//go:embed mainnet_redistribution_abi.json
-	MainnetRedistributionABI string
-)
-
 // TODO: consider adding BzzAddress (also as a cmd param) to the ChainConfig and remove the postagecontract.LookupERC20Address function.
 
 type ChainConfig struct {
@@ -68,20 +56,20 @@ var (
 	}
 
 	Mainnet = ChainConfig{
-		ChainID:                100,
-		PostageStampStartBlock: uint64(24180961),
+		ChainID:                abi.MainnetChainID,
+		PostageStampStartBlock: abi.MainnetPostageStampBlockNumber,
 		NativeTokenSymbol:      "ETH",
 		SwarmTokenSymbol:       "BZZ",
 
-		StakingAddress:         common.HexToAddress("0x52e86336210bB8F1FDe11EB8bc664a20AfC0a614"),
-		PostageStampAddress:    common.HexToAddress("0xa9c84e9ccC0A0bC9B8C8E948F24E024bC2607c9A"),
-		RedistributionAddress:  common.HexToAddress("0xECD2CFfE749A0F8F0a4f136E98C49De0Ee527c1F"),
+		StakingAddress:         common.HexToAddress(abi.MainnetStakingAddress),
+		PostageStampAddress:    common.HexToAddress(abi.MainnetPostageStampStampAddress),
+		RedistributionAddress:  common.HexToAddress(abi.MainnetRedistributionAddress),
 		SwapPriceOracleAddress: common.HexToAddress("0x0FDc5429C50e2a39066D8A94F3e2D2476fcc3b85"),
 		CurrentFactoryAddress:  common.HexToAddress("0xc2d5a532cf69aa9a1378737d8ccdef884b6e7420"),
 
-		StakingABI:        MainnetStakingABI,
-		PostageStampABI:   MainnetPostageStampABI,
-		RedistributionABI: MainnetRedistributionABI,
+		StakingABI:        abi.MainnetStakingABI,
+		PostageStampABI:   abi.MainnetPostageStampStampABI,
+		RedistributionABI: abi.MainnetRedistributionABI,
 	}
 )
 
