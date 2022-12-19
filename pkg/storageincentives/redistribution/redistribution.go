@@ -6,6 +6,7 @@ package redistribution
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 
@@ -69,6 +70,10 @@ func (c *contract) IsPlaying(ctx context.Context, depth uint8) (bool, error) {
 		return false, fmt.Errorf("IsPlaying: results %v: %w", results, err)
 	}
 
+	if len(results) == 0 {
+		return false, errors.New("unexpected empty results")
+	}
+
 	return results[0].(bool), nil
 }
 
@@ -87,6 +92,10 @@ func (c *contract) IsWinner(ctx context.Context) (isWinner bool, err error) {
 	results, err := c.incentivesContractABI.Unpack("isWinner", result)
 	if err != nil {
 		return false, fmt.Errorf("IsWinner: results %v : %w", results, err)
+	}
+
+	if len(results) == 0 {
+		return false, errors.New("unexpected empty results")
 	}
 
 	return results[0].(bool), nil
@@ -177,6 +186,11 @@ func (c *contract) ReserveSalt(ctx context.Context) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	if len(results) == 0 {
+		return nil, errors.New("unexpected empty results")
+	}
+
 	salt := results[0].([32]byte)
 	return salt[:], nil
 }
