@@ -33,6 +33,8 @@ var (
 	ErrBatchDilute       = errors.New("batch dilute failed")
 	ErrChainDisabled     = errors.New("chain disabled")
 	ErrNotImplemented    = errors.New("not implemented")
+	ErrTypecasting       = errors.New("typecasting failed")
+	ErrUnexpectedResults = errors.New("unexpected empty results")
 
 	approveDescription     = "Approve tokens for postage operations"
 	createBatchDescription = "Postage batch creation"
@@ -133,10 +135,15 @@ func (c *postageContract) expiredBatchesExists(ctx context.Context) (bool, error
 	}
 
 	if len(results) == 0 {
-		return false, errors.New("unexpected empty results")
+		return false, ErrUnexpectedResults
 	}
 
-	return results[0].(bool), nil
+	exists, ok := results[0].(bool)
+	if !ok {
+		return false, ErrTypecasting
+	}
+
+	return exists, nil
 }
 
 func (c *postageContract) expireLimitedBatches(ctx context.Context, count *big.Int) error {
@@ -275,10 +282,15 @@ func (c *postageContract) getBalance(ctx context.Context) (*big.Int, error) {
 	}
 
 	if len(results) == 0 {
-		return nil, errors.New("unexpected empty results")
+		return nil, ErrUnexpectedResults
 	}
 
-	return abi.ConvertType(results[0], new(big.Int)).(*big.Int), nil
+	balance, ok := abi.ConvertType(results[0], new(big.Int)).(*big.Int)
+	if !ok {
+		return nil, ErrTypecasting
+	}
+
+	return balance, nil
 }
 
 func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) (txHash common.Hash, batchID []byte, err error) {
@@ -345,7 +357,7 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 			return txHash, batchID, nil
 		}
 	}
-	return common.Hash{}, nil, ErrBatchCreate
+	return txHash, nil, ErrBatchCreate
 }
 
 func (c *postageContract) TopUpBatch(ctx context.Context, batchID []byte, topupBalance *big.Int) (txHash common.Hash, err error) {
@@ -411,7 +423,7 @@ func (c *postageContract) DiluteBatch(ctx context.Context, batchID []byte, newDe
 			return txHash, nil
 		}
 	}
-	return common.Hash{}, ErrBatchDilute
+	return txHash, ErrBatchDilute
 }
 
 type batchCreatedEvent struct {

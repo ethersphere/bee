@@ -20,6 +20,11 @@ import (
 
 const loggerName = "redistributionContract"
 
+var (
+	ErrTypecasting       = errors.New("typecasting failed")
+	ErrUnexpectedResults = errors.New("unexpected empty results")
+)
+
 type Contract interface {
 	ReserveSalt(context.Context) ([]byte, error)
 	IsPlaying(context.Context, uint8) (bool, error)
@@ -71,10 +76,15 @@ func (c *contract) IsPlaying(ctx context.Context, depth uint8) (bool, error) {
 	}
 
 	if len(results) == 0 {
-		return false, errors.New("unexpected empty results")
+		return false, ErrUnexpectedResults
 	}
 
-	return results[0].(bool), nil
+	isPlaying, ok := results[0].(bool)
+	if !ok {
+		return false, ErrTypecasting
+	}
+
+	return isPlaying, nil
 }
 
 // IsWinner checks if the overlay is winner by sending a transaction to blockchain.
@@ -95,10 +105,14 @@ func (c *contract) IsWinner(ctx context.Context) (isWinner bool, err error) {
 	}
 
 	if len(results) == 0 {
-		return false, errors.New("unexpected empty results")
+		return false, ErrUnexpectedResults
 	}
 
-	return results[0].(bool), nil
+	isWinner, ok := results[0].(bool)
+	if !ok {
+		return false, ErrTypecasting
+	}
+	return isWinner, nil
 }
 
 // Claim sends a transaction to blockchain if a win is claimed.
@@ -188,10 +202,13 @@ func (c *contract) ReserveSalt(ctx context.Context) ([]byte, error) {
 	}
 
 	if len(results) == 0 {
-		return nil, errors.New("unexpected empty results")
+		return nil, ErrUnexpectedResults
 	}
 
-	salt := results[0].([32]byte)
+	salt, ok := results[0].([32]byte)
+	if !ok {
+		return nil, ErrTypecasting
+	}
 	return salt[:], nil
 }
 
