@@ -324,7 +324,7 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 			err = transaction.ParseEvent(&c.postageStampContractABI, "BatchCreated", &createdEvent, *ev)
 
 			if err != nil {
-				return common.Hash{}, nil, err
+				return txHash, nil, err
 			}
 
 			batchID = createdEvent.BatchId[:]
@@ -340,7 +340,7 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 			))
 
 			if err != nil {
-				return common.Hash{}, nil, err
+				return txHash, nil, err
 			}
 			return txHash, batchID, nil
 		}
@@ -358,7 +358,7 @@ func (c *postageContract) TopUpBatch(ctx context.Context, batchID []byte, topupB
 	totalAmount := big.NewInt(0).Mul(topupBalance, big.NewInt(int64(1<<batch.Depth)))
 	balance, err := c.getBalance(ctx)
 	if err != nil {
-		return
+		return common.Hash{}, err
 	}
 
 	if balance.Cmp(totalAmount) < 0 {
