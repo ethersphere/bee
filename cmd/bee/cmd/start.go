@@ -164,14 +164,14 @@ func (c *command) initStartCmd() (err error) {
 				return errors.New("static nodes can only be configured on bootnodes")
 			}
 
-			interruptChannel := make(chan struct{})
+			interruptC := make(chan struct{})
 
 			swapEndpoint := c.config.GetString(optionNameSwapEndpoint)
 			blockchainRpcEndpoint := c.config.GetString(optionNameBlockchainRpcEndpoint)
 			if swapEndpoint != "" {
 				blockchainRpcEndpoint = swapEndpoint
 			}
-			b, err := node.NewBee(interruptChannel, c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
+			b, err := node.NewBee(interruptC, c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
 				DataDir:                       c.config.GetString(optionNameDataDir),
 				CacheCapacity:                 c.config.GetUint64(optionNameCacheCapacity),
 				DBOpenFilesLimit:              c.config.GetUint64(optionNameDBOpenFilesLimit),
@@ -240,14 +240,17 @@ func (c *command) initStartCmd() (err error) {
 					select {
 					case <-sysInterruptChannel:
 						logger.Debug("received interrupt signal")
-						close(interruptChannel)
 					case <-b.SyncingStopped():
 					}
 
-					logger.Info("shutting down")
+					logger.Info("shutting down...")
 				},
 				stop: func() {
-					// Shutdown
+					// Whenever program is being stoppend we need to close
+					// interruptC beforehand so that node could be stopped via Shutdown method
+					close(interruptC)
+
+					// Shutdown node
 					done := make(chan struct{})
 					go func() {
 						defer close(done)
@@ -259,11 +262,12 @@ func (c *command) initStartCmd() (err error) {
 
 					// If shutdown function is blocking too long,
 					// allow process termination by receiving another signal.
+					shutdownTimeout := time.Second * 5
 					select {
-					case <-sysInterruptChannel:
-						logger.Debug("received interrupt signal")
-						close(interruptChannel)
+					case <-time.After(shutdownTimeout):
+						logger.Info("node shutdown terminated after timeout")
 					case <-done:
+						logger.Info("node shutdown gracefully")
 					}
 				},
 			}
