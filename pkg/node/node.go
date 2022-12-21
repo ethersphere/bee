@@ -20,7 +20,6 @@ import (
 	"math/big"
 	"net"
 	"net/http"
-	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -197,7 +196,7 @@ const (
 	mainnetNetworkID              = uint64(1)                 //
 )
 
-func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger log.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
+func NewBee(interruptC chan struct{}, addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger log.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
 		Endpoint:    o.TracingEndpoint,
@@ -510,7 +509,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		limit := math.Pow(2, 34)
 		for prox := uint8(0); prox < swarm.MaxPO && j < uint64(limit); j++ {
 			select {
-			case <-sysInterrupt:
+			case <-interruptC:
 				return nil, errors.New("interrupted while finding new overlay")
 			default:
 			}
@@ -794,7 +793,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	if batchSvc != nil && chainEnabled {
 		logger.Info("waiting to sync postage contract data, this may take a while... more info available in Debug loglevel")
 		if o.FullNodeMode {
-			err = batchSvc.Start(postageSyncStart, initBatchState, interrupt)
+			err = batchSvc.Start(postageSyncStart, initBatchState, interruptC)
 			syncStatus.Store(true)
 			if err != nil {
 				syncErr.Store(err)
@@ -808,7 +807,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		} else {
 			go func() {
 				logger.Info("started postage contract data sync in the background...")
-				err := batchSvc.Start(postageSyncStart, initBatchState, interrupt)
+				err := batchSvc.Start(postageSyncStart, initBatchState, interruptC)
 				syncStatus.Store(true)
 				if err != nil {
 					syncErr.Store(err)

@@ -164,11 +164,6 @@ func (c *command) initStartCmd() (err error) {
 				return errors.New("static nodes can only be configured on bootnodes")
 			}
 
-			// Wait for termination or interrupt signals.
-			// We want to clean up things at the end.
-			sysInterruptChannel := make(chan os.Signal, 1)
-			signal.Notify(sysInterruptChannel, syscall.SIGINT, syscall.SIGTERM)
-
 			interruptChannel := make(chan struct{})
 
 			swapEndpoint := c.config.GetString(optionNameSwapEndpoint)
@@ -176,7 +171,7 @@ func (c *command) initStartCmd() (err error) {
 			if swapEndpoint != "" {
 				blockchainRpcEndpoint = swapEndpoint
 			}
-			b, err := node.NewBee(interruptChannel, sysInterruptChannel, c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
+			b, err := node.NewBee(interruptChannel, c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
 				DataDir:                       c.config.GetString(optionNameDataDir),
 				CacheCapacity:                 c.config.GetUint64(optionNameCacheCapacity),
 				DBOpenFilesLimit:              c.config.GetUint64(optionNameDBOpenFilesLimit),
@@ -234,6 +229,11 @@ func (c *command) initStartCmd() (err error) {
 				return err
 			}
 
+			// Wait for termination or interrupt signals.
+			// We want to clean up things at the end.
+			sysInterruptChannel := make(chan os.Signal, 1)
+			signal.Notify(sysInterruptChannel, syscall.SIGINT, syscall.SIGTERM)
+
 			p := &program{
 				start: func() {
 					// Block main goroutine until it is interrupted or stopped
@@ -262,6 +262,7 @@ func (c *command) initStartCmd() (err error) {
 					select {
 					case <-sysInterruptChannel:
 						logger.Debug("received interrupt signal")
+						close(interruptChannel)
 					case <-done:
 					}
 				},
