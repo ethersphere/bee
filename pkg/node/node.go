@@ -206,6 +206,7 @@ func NewBee(interruptC chan struct{}, addr string, publicKey *ecdsa.PublicKey, s
 		return nil, fmt.Errorf("tracer: %w", err)
 	}
 
+	bootstrapFinishedC := make(chan interface{})
 	p2pCtx, p2pCancel := context.WithCancel(context.Background())
 	defer func() {
 		// if there's been an error on this function
@@ -213,6 +214,21 @@ func NewBee(interruptC chan struct{}, addr string, publicKey *ecdsa.PublicKey, s
 		// incoming connections will not be possible
 		if err != nil {
 			p2pCancel()
+		}
+
+		close(bootstrapFinishedC)
+	}()
+
+	// Start goroutine to cancel p2pCtx when interrupt is received
+	go func() {
+		select {
+		case <-bootstrapFinishedC:
+			return
+		case <-p2pCtx.Done():
+			return
+		case <-interruptC:
+			p2pCancel()
+			return
 		}
 	}()
 
