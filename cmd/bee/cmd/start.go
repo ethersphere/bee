@@ -251,7 +251,7 @@ func (c *command) initStartCmd() (err error) {
 					logger.Info("shutting down...")
 				},
 				stop: func() {
-					// Whenever program is being stoppend we need to close
+					// Whenever program is being stopped we need to close
 					// interruptC beforehand so that node could be stopped via Shutdown method
 					select {
 					case <-interruptC:
