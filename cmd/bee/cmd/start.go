@@ -6,6 +6,7 @@ package cmd
 
 import (
 	"bytes"
+	"context"
 	"crypto/ecdsa"
 	_ "embed"
 	"encoding/hex"
@@ -164,7 +165,7 @@ func (c *command) initStartCmd() (err error) {
 				return errors.New("static nodes can only be configured on bootnodes")
 			}
 
-			interruptC := make(chan struct{})
+			ctx, cancel := context.WithCancel(context.Background())
 			go func() {
 				// Wait for termination or interrupt signals.
 				// We want to clean up things at the end.
@@ -172,7 +173,7 @@ func (c *command) initStartCmd() (err error) {
 				signal.Notify(sysInterruptChannel, syscall.SIGINT, syscall.SIGTERM)
 
 				<-sysInterruptChannel
-				close(interruptC)
+				cancel()
 			}()
 
 			swapEndpoint := c.config.GetString(optionNameSwapEndpoint)
@@ -181,7 +182,7 @@ func (c *command) initStartCmd() (err error) {
 				blockchainRpcEndpoint = swapEndpoint
 			}
 
-			b, err := node.NewBee(interruptC, c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
+			b, err := node.NewBee(ctx, c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
 				DataDir:                       c.config.GetString(optionNameDataDir),
 				CacheCapacity:                 c.config.GetUint64(optionNameCacheCapacity),
 				DBOpenFilesLimit:              c.config.GetUint64(optionNameDBOpenFilesLimit),
@@ -243,7 +244,7 @@ func (c *command) initStartCmd() (err error) {
 				start: func() {
 					// Block main goroutine until it is interrupted or stopped
 					select {
-					case <-interruptC:
+					case <-ctx.Done():
 						logger.Debug("received interrupt signal")
 					case <-b.SyncingStopped():
 						logger.Debug("syncing has stopped")
@@ -254,11 +255,7 @@ func (c *command) initStartCmd() (err error) {
 				stop: func() {
 					// Whenever program is being stopped we need to close
 					// interruptC beforehand so that node could be stopped via Shutdown method
-					select {
-					case <-interruptC:
-					default:
-						close(interruptC)
-					}
+					cancel()
 
 					// Shutdown node
 					done := make(chan struct{})

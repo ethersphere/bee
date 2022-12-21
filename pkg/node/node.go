@@ -196,7 +196,7 @@ const (
 	mainnetNetworkID              = uint64(1)                 //
 )
 
-func NewBee(interruptC chan struct{}, addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger log.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
+func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger log.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
 		Endpoint:    o.TracingEndpoint,
@@ -206,25 +206,12 @@ func NewBee(interruptC chan struct{}, addr string, publicKey *ecdsa.PublicKey, s
 		return nil, fmt.Errorf("tracer: %w", err)
 	}
 
-	bootstrapFinishedC := make(chan interface{})
-	ctx, ctxCancel := context.WithCancel(context.Background())
+	ctx, ctxCancel := context.WithCancel(ctx)
 	defer func() {
 		// if there's been an error on this function
 		// we'd like to cancel the p2p context so that
 		// incoming connections will not be possible
 		if err != nil {
-			ctxCancel()
-		}
-
-		close(bootstrapFinishedC)
-	}()
-
-	// Start goroutine to cancel p2pCtx when interrupt is received
-	go func() {
-		select {
-		case <-bootstrapFinishedC:
-		case <-ctx.Done():
-		case <-interruptC:
 			ctxCancel()
 		}
 	}()
@@ -522,7 +509,7 @@ func NewBee(interruptC chan struct{}, addr string, publicKey *ecdsa.PublicKey, s
 		limit := math.Pow(2, 34)
 		for prox := uint8(0); prox < swarm.MaxPO && j < uint64(limit); j++ {
 			select {
-			case <-interruptC:
+			case <-ctx.Done():
 				return nil, errors.New("interrupted while finding new overlay")
 			default:
 			}
