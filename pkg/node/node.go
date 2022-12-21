@@ -223,12 +223,9 @@ func NewBee(interruptC chan struct{}, addr string, publicKey *ecdsa.PublicKey, s
 	go func() {
 		select {
 		case <-bootstrapFinishedC:
-			return
 		case <-p2pCtx.Done():
-			return
 		case <-interruptC:
 			p2pCancel()
-			return
 		}
 	}()
 
