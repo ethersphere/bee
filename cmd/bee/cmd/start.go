@@ -171,10 +171,8 @@ func (c *command) initStartCmd() (err error) {
 				sysInterruptChannel := make(chan os.Signal, 1)
 				signal.Notify(sysInterruptChannel, syscall.SIGINT, syscall.SIGTERM)
 
-				select {
-				case <-sysInterruptChannel:
-					close(interruptC)
-				}
+				<-sysInterruptChannel
+				close(interruptC)
 			}()
 
 			swapEndpoint := c.config.GetString(optionNameSwapEndpoint)
