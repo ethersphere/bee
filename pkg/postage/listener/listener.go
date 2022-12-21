@@ -178,8 +178,8 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 	}
 }
 
-func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *postage.ChainSnapshot) <-chan error {
-	ctx, cancel := context.WithCancel(context.Background())
+func (l *listener) Listen(ctx context.Context, from uint64, updater postage.EventUpdater, initState *postage.ChainSnapshot) <-chan error {
+	ctx, cancel := context.WithCancel(ctx)
 	go func() {
 		<-l.quit
 		cancel()

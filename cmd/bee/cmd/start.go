@@ -180,6 +180,7 @@ func (c *command) initStartCmd() (err error) {
 			if swapEndpoint != "" {
 				blockchainRpcEndpoint = swapEndpoint
 			}
+
 			b, err := node.NewBee(interruptC, c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
 				DataDir:                       c.config.GetString(optionNameDataDir),
 				CacheCapacity:                 c.config.GetUint64(optionNameCacheCapacity),

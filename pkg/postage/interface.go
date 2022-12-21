@@ -5,6 +5,7 @@
 package postage
 
 import (
+	"context"
 	"io"
 	"math/big"
 
@@ -20,7 +21,7 @@ type EventUpdater interface {
 	UpdateDepth(id []byte, depth uint8, normalisedBalance *big.Int, txHash common.Hash) error
 	UpdatePrice(price *big.Int, txHash common.Hash) error
 	UpdateBlockNumber(blockNumber uint64) error
-	Start(startBlock uint64, initState *ChainSnapshot, interrupt chan struct{}) error
+	Start(ctx context.Context, startBlock uint64, initState *ChainSnapshot) error
 
 	TransactionStart() error
 	TransactionEnd() error
@@ -100,7 +101,7 @@ type StorageRadiusSetter interface {
 // Listener provides a blockchain event iterator.
 type Listener interface {
 	io.Closer
-	Listen(from uint64, updater EventUpdater, initState *ChainSnapshot) <-chan error
+	Listen(ctx context.Context, from uint64, updater EventUpdater, initState *ChainSnapshot) <-chan error
 }
 
 type BatchEventListener interface {
