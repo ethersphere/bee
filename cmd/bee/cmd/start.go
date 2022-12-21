@@ -165,6 +165,17 @@ func (c *command) initStartCmd() (err error) {
 			}
 
 			interruptC := make(chan struct{})
+			go func() {
+				// Wait for termination or interrupt signals.
+				// We want to clean up things at the end.
+				sysInterruptChannel := make(chan os.Signal, 1)
+				signal.Notify(sysInterruptChannel, syscall.SIGINT, syscall.SIGTERM)
+
+				select {
+				case <-sysInterruptChannel:
+					close(interruptC)
+				}
+			}()
 
 			swapEndpoint := c.config.GetString(optionNameSwapEndpoint)
 			blockchainRpcEndpoint := c.config.GetString(optionNameBlockchainRpcEndpoint)
@@ -229,18 +240,14 @@ func (c *command) initStartCmd() (err error) {
 				return err
 			}
 
-			// Wait for termination or interrupt signals.
-			// We want to clean up things at the end.
-			sysInterruptChannel := make(chan os.Signal, 1)
-			signal.Notify(sysInterruptChannel, syscall.SIGINT, syscall.SIGTERM)
-
 			p := &program{
 				start: func() {
 					// Block main goroutine until it is interrupted or stopped
 					select {
-					case <-sysInterruptChannel:
+					case <-interruptC:
 						logger.Debug("received interrupt signal")
 					case <-b.SyncingStopped():
+						logger.Debug("syncing has stopped")
 					}
 
 					logger.Info("shutting down...")
@@ -248,7 +255,11 @@ func (c *command) initStartCmd() (err error) {
 				stop: func() {
 					// Whenever program is being stoppend we need to close
 					// interruptC beforehand so that node could be stopped via Shutdown method
-					close(interruptC)
+					select {
+					case <-interruptC:
+					default:
+						close(interruptC)
+					}
 
 					// Shutdown node
 					done := make(chan struct{})
