@@ -107,6 +107,7 @@ type Service struct {
 	reacher           p2p.Reacher
 	networkStatus     atomic.Int32
 	HeadersRWTimeout  time.Duration
+	autoNAT           autonat.AutoNAT
 }
 
 type lightnodes interface {
@@ -236,7 +237,8 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	// If you want to help other peers to figure out if they are behind
 	// NATs, you can launch the server-side of AutoNAT too (AutoRelay
 	// already runs the client)
-	if _, err = autonat.New(h, options...); err != nil {
+	var autoNAT autonat.AutoNAT
+	if autoNAT, err = autonat.New(h, options...); err != nil {
 		return nil, fmt.Errorf("autonat: %w", err)
 	}
 
@@ -295,6 +297,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		halt:              make(chan struct{}),
 		lightNodes:        lightNodes,
 		HeadersRWTimeout:  o.HeadersRWTimeout,
+		autoNAT:           autoNAT,
 	}
 
 	peerRegistry.setDisconnecter(s)
@@ -505,8 +508,11 @@ func (s *Service) handleIncoming(stream network.Stream) {
 
 func (s *Service) SetPickyNotifier(n p2p.PickyNotifier) {
 	s.handshakeService.SetPicker(n)
-	s.reacher = reacher.New(s, n, nil)
 	s.notifier = n
+	if s.reacher != nil {
+		s.reacher.Close()
+	}
+	s.reacher = reacher.New(s, n, nil)
 }
 
 func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
@@ -937,6 +943,16 @@ func (s *Service) Close() error {
 	}
 	if err := s.pingDialer.Close(); err != nil {
 		return err
+	}
+	if s.reacher != nil {
+		if err := s.reacher.Close(); err != nil {
+			return err
+		}
+	}
+	if s.autoNAT != nil {
+		if err := s.autoNAT.Close(); err != nil {
+			return err
+		}
 	}
 
 	return s.host.Close()
