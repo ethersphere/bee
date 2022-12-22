@@ -218,19 +218,19 @@ func ChunkGetterDeleter(s internal.Storage, tagID uint64) storage.ChunkGetterDel
 
 // ChunkPutter returns a storage.Putter which will store the given chunk.
 func ChunkPutter(s internal.Storage, tagID uint64) (storage.Putter, error) {
-	return storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) (bool, error) {
+	return storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
 		tai := &tagIDAddressItem{
 			Address: chunk.Address(),
 			TagID:   tagID,
 		}
 		switch exists, err := s.Store().Has(tai); {
 		case err != nil:
-			return false, fmt.Errorf("store has item %q call failed: %w", tai, err)
+			return fmt.Errorf("store has item %q call failed: %w", tai, err)
 		case exists:
-			return true, nil
+			return nil
 		}
 		if err := s.Store().Put(tai); err != nil {
-			return false, fmt.Errorf("store put item %q call failed: %w", tai, err)
+			return fmt.Errorf("store put item %q call failed: %w", tai, err)
 		}
 
 		pi := &pushItem{
@@ -239,12 +239,12 @@ func ChunkPutter(s internal.Storage, tagID uint64) (storage.Putter, error) {
 			TagID:     tagID,
 		}
 		if err := s.Store().Put(pi); err != nil {
-			return false, fmt.Errorf("store put item %q call failed: %w", pi, err)
+			return fmt.Errorf("store put item %q call failed: %w", pi, err)
 		}
-		exists, err := s.ChunkStore().Put(ctx, chunk)
+		err := s.ChunkStore().Put(ctx, chunk)
 		if err != nil {
-			return false, fmt.Errorf("chunk store put chunk %q call failed: %w", chunk.Address(), err)
+			return fmt.Errorf("chunk store put chunk %q call failed: %w", chunk.Address(), err)
 		}
-		return exists, nil // TODO: revisit the exists return value!
+		return nil
 	}), nil
 }

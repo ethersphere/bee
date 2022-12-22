@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/ethersphere/bee/pkg/storagev2"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/hashicorp/go-multierror"
 )
@@ -50,8 +50,8 @@ type TxChunkStore struct {
 }
 
 // Put implements the Store interface.
-func (s *TxChunkStore) Put(ctx context.Context, chunk swarm.Chunk) (exists bool, err error) {
-	exists, err = s.TxChunkStoreBase.Put(ctx, chunk)
+func (s *TxChunkStore) Put(ctx context.Context, chunk swarm.Chunk) (err error) {
+	err = s.TxChunkStoreBase.Put(ctx, chunk)
 	if err == nil {
 		s.opsMu.Lock()
 		s.ops = append(s.ops, op{putOp, chunk.Address(), func() error {
@@ -59,7 +59,7 @@ func (s *TxChunkStore) Put(ctx context.Context, chunk swarm.Chunk) (exists bool,
 		}})
 		s.opsMu.Unlock()
 	}
-	return exists, err
+	return err
 }
 
 // Delete implements the Store interface.
@@ -72,8 +72,7 @@ func (s *TxChunkStore) Delete(ctx context.Context, addr swarm.Address) error {
 	if err == nil {
 		s.opsMu.Lock()
 		s.ops = append(s.ops, op{deleteOp, addr, func() error {
-			_, err := s.TxChunkStoreBase.ChunkStore.Put(ctx, chunk)
-			return err
+			return s.TxChunkStoreBase.ChunkStore.Put(ctx, chunk)
 		}})
 		s.opsMu.Unlock()
 	}

@@ -162,13 +162,13 @@ type collectionPutter struct {
 	closed     bool
 }
 
-func (c *collectionPutter) Put(ctx context.Context, ch swarm.Chunk) (bool, error) {
+func (c *collectionPutter) Put(ctx context.Context, ch swarm.Chunk) error {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
 	// do not allow any Puts after putter was closed
 	if c.closed {
-		return false, errPutterAlreadyClosed
+		return errPutterAlreadyClosed
 	}
 
 	c.collection.Stat.Total++
@@ -179,26 +179,26 @@ func (c *collectionPutter) Put(ctx context.Context, ch swarm.Chunk) (bool, error
 	collectionChunk := &pinChunkItem{UUID: c.collection.UUID, Addr: ch.Address()}
 	found, err := c.st.Store().Has(collectionChunk)
 	if err != nil {
-		return false, fmt.Errorf("pin store: failed to check chunk: %w", err)
+		return fmt.Errorf("pin store: failed to check chunk: %w", err)
 	}
 	if found {
 		// If we already have this chunk in the current collection, don't add it
 		// again.
 		c.collection.Stat.DupInCollection++
-		return true, nil
+		return nil
 	}
 
 	err = c.st.Store().Put(collectionChunk)
 	if err != nil {
-		return false, fmt.Errorf("pin store: failed putting collection chunk: %w", err)
+		return fmt.Errorf("pin store: failed putting collection chunk: %w", err)
 	}
 
-	_, err = c.st.ChunkStore().Put(ctx, ch)
+	err = c.st.ChunkStore().Put(ctx, ch)
 	if err != nil {
-		return false, fmt.Errorf("pin store: failled putting chunk: %w", err)
+		return fmt.Errorf("pin store: failled putting chunk: %w", err)
 	}
 
-	return false, nil
+	return nil
 }
 
 func (c *collectionPutter) Close() error {

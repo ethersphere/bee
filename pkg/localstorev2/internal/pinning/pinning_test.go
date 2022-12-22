@@ -81,21 +81,15 @@ func TestPinStore(t *testing.T) {
 					t.Fatal(err)
 				}
 				for _, ch := range append(tc.uniqueChunks, tc.root) {
-					exists, err := putter.Put(context.TODO(), ch)
+					err := putter.Put(context.TODO(), ch)
 					if err != nil {
 						t.Fatal(err)
-					}
-					if exists {
-						t.Fatal("chunk should not exist")
 					}
 				}
-				for idx, ch := range tc.dupChunks {
-					exists, err := putter.Put(context.TODO(), ch)
+				for _, ch := range tc.dupChunks {
+					err := putter.Put(context.TODO(), ch)
 					if err != nil {
 						t.Fatal(err)
-					}
-					if !exists && idx != 0 {
-						t.Fatal("chunk should exist")
 					}
 				}
 				err = putter.Close()
@@ -237,13 +231,9 @@ func TestPinStore(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		exists, err := putter.Put(context.TODO(), root)
+		err = putter.Put(context.TODO(), root)
 		if err != nil {
 			t.Fatal(err)
-		}
-
-		if exists {
-			t.Fatalf("expected chunk to not exists %s", root.Address())
 		}
 
 		err = putter.Close()
@@ -251,7 +241,7 @@ func TestPinStore(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		_, err = putter.Put(context.TODO(), chunktest.GenerateTestRandomChunk())
+		err = putter.Put(context.TODO(), chunktest.GenerateTestRandomChunk())
 		if !errors.Is(err, pinstore.ErrPutterAlreadyClosed) {
 			t.Fatalf("unexpected error during Put, want: %v, got: %v", pinstore.ErrPutterAlreadyClosed, err)
 		}
@@ -324,6 +314,7 @@ func TestPinCollectionItem_MarshalAndUnmarshal(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
+		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
