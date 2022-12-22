@@ -32,12 +32,7 @@ func (c *command) initStartDevCmd() (err error) {
 				return fmt.Errorf("new logger: %w", err)
 			}
 
-			isWindowsService, err := isWindowsService()
-			if err != nil {
-				return fmt.Errorf("failed to determine if we are running in service: %w", err)
-			}
-
-			if isWindowsService {
+			if c.isWindowsService {
 				var err error
 				logger, err = createWindowsEventLogger(serviceName, logger)
 				if err != nil {
@@ -118,7 +113,7 @@ func (c *command) initStartDevCmd() (err error) {
 				},
 			}
 
-			if isWindowsService {
+			if c.isWindowsService {
 				s, err := service.New(p, &service.Config{
 					Name:        serviceName,
 					DisplayName: "Bee",

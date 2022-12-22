@@ -6,6 +6,7 @@ package batchservice
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -238,7 +239,7 @@ func (svc *batchService) TransactionEnd() error {
 
 var ErrInterruped = errors.New("postage sync interrupted")
 
-func (svc *batchService) Start(startBlock uint64, initState *postage.ChainSnapshot, interrupt chan struct{}) (err error) {
+func (svc *batchService) Start(ctx context.Context, startBlock uint64, initState *postage.ChainSnapshot) (err error) {
 	dirty := false
 	err = svc.stateStore.Get(dirtyDBKey, &dirty)
 	if err != nil && !errors.Is(err, storage.ErrNotFound) {
@@ -271,14 +272,9 @@ func (svc *batchService) Start(startBlock uint64, initState *postage.ChainSnapsh
 		startBlock = initState.LastBlockNumber
 	}
 
-	syncedChan := svc.listener.Listen(startBlock+1, svc, initState)
+	syncedChan := svc.listener.Listen(ctx, startBlock+1, svc, initState)
 
-	select {
-	case err = <-syncedChan:
-		return err
-	case <-interrupt:
-		return ErrInterruped
-	}
+	return <-syncedChan
 }
 
 // updateChecksum updates the batchservice checksum once an event gets

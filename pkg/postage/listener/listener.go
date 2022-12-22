@@ -178,8 +178,8 @@ func (l *listener) processEvent(e types.Log, updater postage.EventUpdater) error
 	}
 }
 
-func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *postage.ChainSnapshot) <-chan error {
-	ctx, cancel := context.WithCancel(context.Background())
+func (l *listener) Listen(ctx context.Context, from uint64, updater postage.EventUpdater, initState *postage.ChainSnapshot) <-chan error {
+	ctx, cancel := context.WithCancel(ctx)
 	go func() {
 		<-l.quit
 		cancel()
@@ -267,14 +267,18 @@ func (l *listener) Listen(from uint64, updater postage.EventUpdater, initState *
 			case <-paged:
 				// if we paged then it means there's more things to sync on
 			case <-time.After(expectedWaitTime):
-			case <-l.quit:
-				return nil
+			case <-ctx.Done():
+				return context.Canceled
 			}
 			start := time.Now()
 
 			l.metrics.BackendCalls.Inc()
 			to, err := l.ev.BlockNumber(ctx)
 			if err != nil {
+				if errors.Is(err, context.Canceled) {
+					return nil
+				}
+
 				l.metrics.BackendErrors.Inc()
 				l.logger.Warning("could not get block number", "error", err)
 				lastConfirmedBlock = 0

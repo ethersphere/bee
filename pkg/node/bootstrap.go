@@ -62,6 +62,7 @@ const (
 )
 
 func bootstrapNode(
+	ctx context.Context,
 	addr string,
 	swarmAddress swarm.Address,
 	nonce []byte,
@@ -91,10 +92,10 @@ func bootstrapNode(
 		return nil, fmt.Errorf("tracer: %w", err)
 	}
 
-	p2pCtx, p2pCancel := context.WithCancel(context.Background())
+	p2pCtx, p2pCancel := context.WithCancel(ctx)
 
 	b := &Bee{
-		p2pCancel:    p2pCancel,
+		ctxCancel:    p2pCancel,
 		tracerCloser: tracerCloser,
 	}
 
@@ -218,7 +219,7 @@ func bootstrapNode(
 			time.Sleep(retryWait)
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		ctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 
 		snapshotReference, err = getLatestSnapshot(ctx, ns, snapshotFeed)
@@ -237,7 +238,7 @@ func bootstrapNode(
 			time.Sleep(retryWait)
 		}
 
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		ctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 
 		reader, l, err = joiner.New(ctx, ns, snapshotReference)
