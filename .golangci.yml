@@ -31,7 +31,6 @@ linters:
     - promlinter
     - staticcheck
     - thelper
-    - tparallel
     - typecheck
     - unconvert
     - unused
@@ -51,6 +50,9 @@ linters-settings:
       Copyright {{date}} The Swarm Authors. All rights reserved.
       Use of this source code is governed by a BSD-style
       license that can be found in the LICENSE file.
+  paralleltest:
+    # Ignore missing calls to `t.Parallel()` and only report incorrect uses of `t.Parallel()`.
+    ignore-missing: true
 issues:
   exclude-rules:
     - linters:
@@ -66,19 +68,3 @@ issues:
     - linters:
         - dogsled
       path: pkg/api/(.+)_test\.go # temporally disable dogsled in api test files
-      # temporally disable paralleltest in following packages
-    - linters:
-        - paralleltest
-      path: pkg/localstore
-    - linters:
-        - paralleltest
-      path: pkg/postage
-    - linters:
-        - paralleltest
-      path: pkg/log
-    - linters:
-        - paralleltest
-      path: pkg/statestore
-    - linters:
-        - paralleltest
-      path: pkg/p2p

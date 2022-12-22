@@ -15,7 +15,7 @@ var ErrItemIDShouldntChange = errors.New("item.ID shouldn't be changing after up
 type (
 	// ItemDeleteFn is callback function called in migration step
 	// to check if Item should be removed in this step.
-	ItemDeleteFn func(storage.Item) (delete bool)
+	ItemDeleteFn func(storage.Item) (deleted bool)
 
 	// ItemUpdateFn is callback function called in migration step
 	// to check if Item should be updated in this step.
