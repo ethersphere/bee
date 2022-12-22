@@ -267,7 +267,7 @@ func applyPolicies(e *casbin.Enforcer) error {
 		{"maintainer", "/stamps/*/*", "POST"},
 		{"maintainer", "/stamps/topup/*/*", "PATCH"},
 		{"maintainer", "/stamps/dilute/*/*", "PATCH"},
-		{"maintainer", "/stake", "GET"},
+		{"maintainer", "/stake", "(GET)|(DELETE)"},
 		{"maintainer", "/stake/*", "POST"},
 		{"maintainer", "/addresses", "GET"},
 		{"maintainer", "/blocklist", "GET"},
