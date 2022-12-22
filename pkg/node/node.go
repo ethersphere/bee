@@ -20,7 +20,6 @@ import (
 	"math/big"
 	"net"
 	"net/http"
-	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -97,7 +96,7 @@ const LoggerName = "node"
 type Bee struct {
 	p2pService               io.Closer
 	p2pHalter                p2p.Halter
-	p2pCancel                context.CancelFunc
+	ctxCancel                context.CancelFunc
 	apiCloser                io.Closer
 	apiServer                *http.Server
 	debugAPIServer           *http.Server
@@ -197,7 +196,7 @@ const (
 	mainnetNetworkID              = uint64(1)                 //
 )
 
-func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger log.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
+func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger log.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
 		Endpoint:    o.TracingEndpoint,
@@ -207,13 +206,13 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		return nil, fmt.Errorf("tracer: %w", err)
 	}
 
-	p2pCtx, p2pCancel := context.WithCancel(context.Background())
+	ctx, ctxCancel := context.WithCancel(ctx)
 	defer func() {
 		// if there's been an error on this function
 		// we'd like to cancel the p2p context so that
 		// incoming connections will not be possible
 		if err != nil {
-			p2pCancel()
+			ctxCancel()
 		}
 	}()
 
@@ -229,7 +228,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	})
 
 	b = &Bee{
-		p2pCancel:      p2pCancel,
+		ctxCancel:      ctxCancel,
 		errorLogWriter: sink,
 		tracerCloser:   tracerCloser,
 		syncingStopped: util.NewSignaler(),
@@ -291,7 +290,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	}
 
 	chainBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err = InitChain(
-		p2pCtx,
+		ctx,
 		logger,
 		stateStore,
 		o.BlockchainRpcEndpoint,
@@ -413,14 +412,14 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	}
 
 	// Sync the with the given Ethereum backend:
-	isSynced, _, err := transaction.IsSynced(p2pCtx, chainBackend, maxDelay)
+	isSynced, _, err := transaction.IsSynced(ctx, chainBackend, maxDelay)
 	if err != nil {
 		return nil, fmt.Errorf("is synced: %w", err)
 	}
 	if !isSynced {
 		logger.Info("waiting to sync with the Ethereum backend")
 
-		err := transaction.WaitSynced(p2pCtx, logger, chainBackend, maxDelay)
+		err := transaction.WaitSynced(ctx, logger, chainBackend, maxDelay)
 		if err != nil {
 			return nil, fmt.Errorf("waiting backend sync: %w", err)
 		}
@@ -439,11 +438,11 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 			return nil, err
 		}
 
-		if err = chequebookFactory.VerifyBytecode(p2pCtx); err != nil {
+		if err = chequebookFactory.VerifyBytecode(ctx); err != nil {
 			return nil, fmt.Errorf("factory fail: %w", err)
 		}
 
-		erc20Address, err := chequebookFactory.ERC20Address(p2pCtx)
+		erc20Address, err := chequebookFactory.ERC20Address(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("factory fail: %w", err)
 		}
@@ -452,7 +451,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 
 		if o.ChequebookEnable && chainEnabled {
 			chequebookService, err = InitChequebookService(
-				p2pCtx,
+				ctx,
 				logger,
 				stateStore,
 				signer,
@@ -510,7 +509,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		limit := math.Pow(2, 34)
 		for prox := uint8(0); prox < swarm.MaxPO && j < uint64(limit); j++ {
 			select {
-			case <-sysInterrupt:
+			case <-ctx.Done():
 				return nil, errors.New("interrupted while finding new overlay")
 			default:
 			}
@@ -601,6 +600,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		start := time.Now()
 		logger.Info("cold postage start detected. fetching postage stamp snapshot from swarm")
 		initBatchState, err = bootstrapNode(
+			ctx,
 			addr,
 			swarmAddress,
 			nonce,
@@ -626,7 +626,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		}
 	}
 
-	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
+	p2ps, err := libp2p.New(ctx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
 		PrivateKey:      libp2pPrivateKey,
 		NATAddr:         o.NATAddr,
 		EnableWS:        o.EnableWS,
@@ -705,7 +705,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		return nil, fmt.Errorf("unable to parse postage stamp ABI: %w", err)
 	}
 
-	bzzTokenAddress, err := postagecontract.LookupERC20Address(p2pCtx, transactionService, postageStampContractAddress, postageStampContractABI, chainEnabled)
+	bzzTokenAddress, err := postagecontract.LookupERC20Address(ctx, transactionService, postageStampContractAddress, postageStampContractABI, chainEnabled)
 	if err != nil {
 		return nil, err
 	}
@@ -794,7 +794,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	if batchSvc != nil && chainEnabled {
 		logger.Info("waiting to sync postage contract data, this may take a while... more info available in Debug loglevel")
 		if o.FullNodeMode {
-			err = batchSvc.Start(postageSyncStart, initBatchState, interrupt)
+			err = batchSvc.Start(ctx, postageSyncStart, initBatchState)
 			syncStatus.Store(true)
 			if err != nil {
 				syncErr.Store(err)
@@ -808,7 +808,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		} else {
 			go func() {
 				logger.Info("started postage contract data sync in the background...")
-				err := batchSvc.Start(postageSyncStart, initBatchState, interrupt)
+				err := batchSvc.Start(ctx, postageSyncStart, initBatchState)
 				syncStatus.Store(true)
 				if err != nil {
 					syncErr.Store(err)
@@ -1176,7 +1176,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		debugService.MountDebug(false)
 	}
 
-	if err := kad.Start(p2pCtx); err != nil {
+	if err := kad.Start(ctx); err != nil {
 		return nil, err
 	}
 
@@ -1275,7 +1275,7 @@ func (b *Bee) Shutdown() error {
 		tryClose(b.accountingCloser, "accounting")
 	}()
 
-	b.p2pCancel()
+	b.ctxCancel()
 	go func() {
 		defer wg.Done()
 		tryClose(b.pullSyncCloser, "pull sync")

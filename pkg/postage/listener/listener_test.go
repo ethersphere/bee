@@ -77,7 +77,7 @@ func TestListener(t *testing.T) {
 			stallingTimeout,
 			backoffTime,
 		)
-		<-l.Listen(0, ev, nil)
+		<-l.Listen(context.Background(), 0, ev, nil)
 
 		select {
 		case e := <-evC:
@@ -117,7 +117,7 @@ func TestListener(t *testing.T) {
 			stallingTimeout,
 			backoffTime,
 		)
-		<-l.Listen(0, ev, nil)
+		<-l.Listen(context.Background(), 0, ev, nil)
 
 		select {
 		case e := <-evC:
@@ -157,7 +157,7 @@ func TestListener(t *testing.T) {
 			stallingTimeout,
 			backoffTime,
 		)
-		<-l.Listen(0, ev, nil)
+		<-l.Listen(context.Background(), 0, ev, nil)
 
 		select {
 		case e := <-evC:
@@ -195,7 +195,7 @@ func TestListener(t *testing.T) {
 			stallingTimeout,
 			backoffTime,
 		)
-		<-l.Listen(0, ev, nil)
+		<-l.Listen(context.Background(), 0, ev, nil)
 		select {
 		case e := <-evC:
 			e.(blockNumberCall).compareF(t, blockNumber-uint64(listener.TailSize)) // event args should be equal
@@ -256,7 +256,7 @@ func TestListener(t *testing.T) {
 			stallingTimeout,
 			backoffTime,
 		)
-		<-l.Listen(0, ev, nil)
+		<-l.Listen(context.Background(), 0, ev, nil)
 
 		select {
 		case e := <-evC:
@@ -334,7 +334,7 @@ func TestListener(t *testing.T) {
 			stallingTimeout,
 			0,
 		)
-		<-l.Listen(0, ev, nil)
+		<-l.Listen(context.Background(), 0, ev, nil)
 
 		select {
 		case e := <-evC:
@@ -360,7 +360,7 @@ func TestListener(t *testing.T) {
 			50*time.Millisecond,
 			0,
 		)
-		<-l.Listen(0, ev, nil)
+		<-l.Listen(context.Background(), 0, ev, nil)
 
 		select {
 		case <-c.C:
@@ -385,7 +385,7 @@ func TestListener(t *testing.T) {
 			stallingTimeout,
 			backoffTime,
 		)
-		<-l.Listen(0, ev, nil)
+		<-l.Listen(context.Background(), 0, ev, nil)
 
 		select {
 		case e := <-evC:
@@ -499,7 +499,7 @@ func TestListenerBatchState(t *testing.T) {
 		stallingTimeout,
 		backoffTime,
 	)
-	l.Listen(snapshot.LastBlockNumber+1, ev, snapshot)
+	l.Listen(context.Background(), snapshot.LastBlockNumber+1, ev, snapshot)
 
 	defer close(stop)
 
@@ -578,9 +578,12 @@ func (u *updater) UpdateBlockNumber(blockNumber uint64) error {
 	return u.blockNumberUpdateError
 }
 
-func (u *updater) Start(uint64, *postage.ChainSnapshot, chan struct{}) error { return nil }
-func (u *updater) TransactionStart() error                                   { return nil }
-func (u *updater) TransactionEnd() error                                     { return nil }
+func (u *updater) Start(ctx context.Context, bno uint64, cs *postage.ChainSnapshot) error {
+	return nil
+}
+
+func (u *updater) TransactionStart() error { return nil }
+func (u *updater) TransactionEnd() error   { return nil }
 
 type mockFilterer struct {
 	filterLogEvents      []types.Log
