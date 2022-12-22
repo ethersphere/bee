@@ -92,7 +92,7 @@ func (r *reacher) manage() {
 
 	defer r.wg.Done()
 
-	c := make(chan *peer)
+	c := make(chan *peer, 32)
 	defer close(c)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -259,6 +259,12 @@ func (r *reacher) Disconnected(overlay swarm.Address) {
 
 // Close stops the worker. Must be called once.
 func (r *reacher) Close() error {
+	select {
+	case <-r.quit:
+		return nil
+	default:
+	}
+
 	close(r.quit)
 	r.wg.Wait()
 	return nil

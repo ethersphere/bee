@@ -114,6 +114,7 @@ type ReachableNotifier interface {
 type Reacher interface {
 	Connected(swarm.Address, ma.Multiaddr)
 	Disconnected(swarm.Address)
+	Close() error
 }
 
 type ReachabilityUpdater interface {
