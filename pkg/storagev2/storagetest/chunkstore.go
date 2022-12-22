@@ -22,24 +22,18 @@ func TestChunkStore(t *testing.T, st storage.ChunkStore) {
 
 	t.Run("put chunks", func(t *testing.T) {
 		for _, ch := range testChunks {
-			exists, err := st.Put(context.TODO(), ch)
+			err := st.Put(context.TODO(), ch)
 			if err != nil {
 				t.Fatalf("failed putting new chunk: %v", err)
-			}
-			if exists {
-				t.Fatalf("expected chunk to not exist: %s", ch.Address())
 			}
 		}
 	})
 
 	t.Run("put existing chunks", func(t *testing.T) {
 		for _, ch := range testChunks {
-			exists, err := st.Put(context.TODO(), ch)
+			err := st.Put(context.TODO(), ch)
 			if err != nil {
 				t.Fatalf("failed putting new chunk: %v", err)
-			}
-			if !exists {
-				t.Fatalf("expected chunk to exist: %s", ch.Address())
 			}
 		}
 	})
@@ -152,6 +146,8 @@ func TestChunkStore(t *testing.T, st storage.ChunkStore) {
 }
 
 func RunChunkStoreBenchmarkTests(b *testing.B, s storage.ChunkStore) {
+	b.Helper()
+
 	b.Run("WriteSequential", func(b *testing.B) {
 		BenchmarkChunkStoreWriteSequential(b, s)
 	})
@@ -188,14 +184,20 @@ func RunChunkStoreBenchmarkTests(b *testing.B, s storage.ChunkStore) {
 }
 
 func BenchmarkChunkStoreWriteSequential(b *testing.B, s storage.ChunkStore) {
+	b.Helper()
+
 	doWriteChunk(b, s, newSequentialEntryGenerator(b.N))
 }
 
 func BenchmarkChunkStoreWriteRandom(b *testing.B, s storage.ChunkStore) {
+	b.Helper()
+
 	doWriteChunk(b, s, newFullRandomEntryGenerator(0, b.N))
 }
 
 func BenchmarkChunkStoreReadSequential(b *testing.B, s storage.ChunkStore) {
+	b.Helper()
+
 	g := newSequentialKeyGenerator(b.N)
 	doWriteChunk(b, s, newFullRandomEntryGenerator(0, b.N))
 	resetBenchmark(b)
@@ -203,6 +205,8 @@ func BenchmarkChunkStoreReadSequential(b *testing.B, s storage.ChunkStore) {
 }
 
 func BenchmarkChunkStoreReadRandom(b *testing.B, s storage.ChunkStore) {
+	b.Helper()
+
 	g := newRandomKeyGenerator(b.N)
 	doWriteChunk(b, s, newFullRandomEntryGenerator(0, b.N))
 	resetBenchmark(b)
@@ -210,12 +214,16 @@ func BenchmarkChunkStoreReadRandom(b *testing.B, s storage.ChunkStore) {
 }
 
 func BenchmarkChunkStoreReadRandomMissing(b *testing.B, s storage.ChunkStore) {
+	b.Helper()
+
 	g := newRandomMissingKeyGenerator(b.N)
 	resetBenchmark(b)
 	doReadChunk(b, s, g, true)
 }
 
 func BenchmarkChunkStoreReadReverse(b *testing.B, db storage.ChunkStore) {
+	b.Helper()
+
 	g := newReversedKeyGenerator(newSequentialKeyGenerator(b.N))
 	doWriteChunk(b, db, newFullRandomEntryGenerator(0, b.N))
 	resetBenchmark(b)
@@ -223,6 +231,8 @@ func BenchmarkChunkStoreReadReverse(b *testing.B, db storage.ChunkStore) {
 }
 
 func BenchmarkChunkStoreReadHot(b *testing.B, s storage.ChunkStore) {
+	b.Helper()
+
 	k := maxInt((b.N+99)/100, 1)
 	g := newRoundKeyGenerator(newRandomKeyGenerator(k))
 	doWriteChunk(b, s, newFullRandomEntryGenerator(0, b.N))
@@ -231,6 +241,8 @@ func BenchmarkChunkStoreReadHot(b *testing.B, s storage.ChunkStore) {
 }
 
 func BenchmarkChunkStoreIterateSequential(b *testing.B, s storage.ChunkStore) {
+	b.Helper()
+
 	var counter int
 	_ = s.Iterate(context.Background(), func(c swarm.Chunk) (stop bool, err error) {
 		counter++
@@ -242,13 +254,19 @@ func BenchmarkChunkStoreIterateSequential(b *testing.B, s storage.ChunkStore) {
 }
 
 func BenchmarkChunkStoreIterateReverse(b *testing.B, s storage.ChunkStore) {
+	b.Helper()
+
 	b.Skip("not implemented")
 }
 
 func BenchmarkChunkStoreDeleteRandom(b *testing.B, s storage.ChunkStore) {
+	b.Helper()
+
 	doDeleteChunk(b, s, newFullRandomEntryGenerator(0, b.N))
 }
 
 func BenchmarkChunkStoreDeleteSequential(b *testing.B, s storage.ChunkStore) {
+	b.Helper()
+
 	doDeleteChunk(b, s, newSequentialEntryGenerator(b.N))
 }
