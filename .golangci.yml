@@ -82,3 +82,9 @@ issues:
     - linters:
         - paralleltest
       path: pkg/p2p
+    - linters:
+        - paralleltest
+      path: pkg/storagev2
+    - linters:
+        - paralleltest
+      path: pkg/localstorev2

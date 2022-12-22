@@ -286,16 +286,22 @@ func doDelete(b *testing.B, db storage.Store, g keyGenerator) {
 }
 
 func resetBenchmark(b *testing.B) {
+	b.Helper()
+
 	runtime.GC()
 	b.ResetTimer()
 }
 
 func populate(b *testing.B, db storage.Store) {
+	b.Helper()
+
 	doWrite(b, db, newFullRandomEntryGenerator(0, b.N))
 }
 
 // chunk
 func doDeleteChunk(b *testing.B, db storage.ChunkStore, g keyGenerator) {
+	b.Helper()
+
 	for i := 0; i < b.N; i++ {
 		addr := swarm.MustParseHexAddress(string(g.Key(i)))
 		if err := db.Delete(context.Background(), addr); err != nil {
@@ -305,6 +311,8 @@ func doDeleteChunk(b *testing.B, db storage.ChunkStore, g keyGenerator) {
 }
 
 func doWriteChunk(b *testing.B, db storage.ChunkStore, g entryGenerator) {
+	b.Helper()
+
 	for i := 0; i < b.N; i++ {
 		addr := swarm.MustParseHexAddress(string(g.Key(i)))
 		chunk := swarm.NewChunk(addr, g.Value(i))
@@ -315,6 +323,8 @@ func doWriteChunk(b *testing.B, db storage.ChunkStore, g entryGenerator) {
 }
 
 func doReadChunk(b *testing.B, db storage.ChunkStore, g keyGenerator, allowNotFound bool) {
+	b.Helper()
+
 	for i := 0; i < b.N; i++ {
 		key := string(g.Key(i))
 		addr := swarm.MustParseHexAddress(key)

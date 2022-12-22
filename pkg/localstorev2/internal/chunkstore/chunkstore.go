@@ -57,8 +57,7 @@ func (retrievalIndexItem) Namespace() string { return "retrievalIdx" }
 func (r *retrievalIndexItem) ID() string { return r.Address.ByteString() }
 
 // Stored in bytes as:
-// |--Address--|--Timestamp--|--Location--|--RefCnt--|
-//      32            8            7           1
+// |--Address(32)--|--Timestamp(8)--|--Location(7)--|--RefCnt(1)--|
 func (r *retrievalIndexItem) Marshal() ([]byte, error) {
 	if r.Address.IsZero() {
 		return nil, errMarshalInvalidRetrievalIndexAddress
@@ -116,8 +115,7 @@ func (c *chunkStampItem) ID() string {
 // Address is not part of the payload which is stored, as Address is part of the prefix,
 // hence already known before querying this object. This will be reused during unmarshaling.
 // Stored in bytes as
-// |--BatchID--|--Index--|--Timestamp--|--Signature--|
-//      32          8           8             65
+// |--BatchID(32)--|--Index(8)--|--Timestamp(8)--|--Signature(65)--|
 func (c *chunkStampItem) Marshal() ([]byte, error) {
 	// The address is not part of the payload, but it is used to create the namespace
 	// so it is better if we check that the address is correctly set here before it

@@ -340,7 +340,10 @@ func (c *Cache) Getter(store storage.Store, chStore storage.ChunkStore) storage.
 		entry := &cacheEntry{Address: address}
 		err = store.Get(entry)
 		if err != nil {
-			return ch, nil
+			if errors.Is(err, storage.ErrNotFound) {
+				return ch, nil
+			}
+			return nil, err
 		}
 
 		c.mtx.Lock()
