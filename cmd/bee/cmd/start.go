@@ -83,9 +83,9 @@ func (c *command) initStartCmd() (err error) {
 			// ctx is global context of bee node; which is canceled after interrupt signal is received.
 			ctx, cancel := context.WithCancel(context.Background())
 			sysInterruptChannel := make(chan os.Signal, 1)
-			go func() {
-				signal.Notify(sysInterruptChannel, syscall.SIGINT, syscall.SIGTERM)
+			signal.Notify(sysInterruptChannel, syscall.SIGINT, syscall.SIGTERM)
 
+			go func() {
 				select {
 				case <-sysInterruptChannel:
 					logger.Info("received interrupt signal")
