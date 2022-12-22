@@ -2,15 +2,19 @@ name: Go
 
 on:
   push:
+    paths-ignore:
+      - packaging/**
     branches:
       - 'master'
   pull_request:
+    paths-ignore:
+      - packaging/**
     branches:
       - '**'
 
 jobs:
   build:
-    name: Build
+    name: Build and Test
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -18,56 +22,84 @@ jobs:
     steps:
     - name: Checkout
       uses: actions/checkout@v3
-      with:
-        fetch-depth: 0
     - name: Setup Go
-      if: matrix.os == 'ubuntu-latest'
-      uses: actions/setup-go@v3
-      with:
-        cache: false
-        go-version-file: go.mod
-    - name: Setup Go
-      if: matrix.os == 'macos-latest' || matrix.os == 'windows-latest'
       uses: actions/setup-go@v3
       with:
         cache: true
         go-version-file: go.mod
-    - name: Set git to use LF
-      # make sure that line endings are not converted on windows
-      # as gofmt linter will report that they need to be changed
-      run: git config --global core.autocrlf false
+    - name: Build
+      run: make build
+    - name: Test with race detector (Ubuntu and MacOS)
+      if: matrix.os != 'windows-latest'
+      run: make test-race-ci
+    - name: Test without race detector (Windows)
+      if: matrix.os == 'windows-latest'
+      run: make test-ci
+  golangci-lint:
+    name: GolangCI-Lint
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+    - name: Setup Go
+      uses: actions/setup-go@v3
+      with:
+        cache: false
+        go-version-file: go.mod
     - name: Commit linting
-      if: matrix.os == 'ubuntu-latest' && github.ref != 'refs/heads/master'
+      if: github.ref != 'refs/heads/master'
       uses: wagoid/commitlint-github-action@v5
     - name: GolangCI-Lint
-      if: matrix.os == 'ubuntu-latest'
       uses: golangci/golangci-lint-action@v3
       with:
         skip-cache: false
         version: v1.49
-    - name: Build
-      run: make build
-    - name: Test whitespaces, race detector & code coverage
-      if: matrix.os == 'ubuntu-latest'
-      # only generate code coverage profile on ubuntu
+  coverage:
+    name: Coverage Report
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+    - name: Setup Go
+      uses: actions/setup-go@v3
+      with:
+        cache: false
+        go-version-file: go.mod
+    - name: Cache Go Modules
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-coverage-${{ hashFiles('**/go.sum') }}
+    - name: Test whitespaces and code coverage
       run: |
         make check-whitespace
-        make cover=1 test-race
-    - name: Test with race detector (MacOS)
-      if: matrix.os == 'macos-latest'
-      run: make test-race
-    - name: Test without race detector (Windows)
-      if: matrix.os == 'windows-latest'
-      run: make test
+        make cover=1 test-ci
     - name: Upload coverage to Codecov
-      if: matrix.os == 'ubuntu-latest'
       uses: codecov/codecov-action@v3
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         fail_ci_if_error: true
         files: ./cover.out
+  trigger-beekeeper:
+    name: Trigger Beekeeper
+    runs-on: ubuntu-latest
+    needs: [build, golangci-lint, coverage]
+    if: github.ref == 'refs/heads/master'
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v3
+      with:
+        fetch-depth: 0
+    - name: Setup Go
+      uses: actions/setup-go@v3
+      with:
+        cache: false
+        go-version-file: go.mod
     - name: Trigger Beekeeper
-      if: github.ref == 'refs/heads/master' && matrix.os == 'ubuntu-latest' && success()
       uses: peter-evans/repository-dispatch@v2
       with:
         token: ${{ secrets.GHA_PAT_BASIC }}

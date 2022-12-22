@@ -12,11 +12,12 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/transaction"
+	"github.com/ethersphere/bee/pkg/util/abiutil"
 	"github.com/ethersphere/go-sw3-abi/sw3abi"
 )
 
 var (
-	erc20ABI = transaction.ParseABIUnchecked(sw3abi.ERC20ABIv0_3_1)
+	erc20ABI = abiutil.MustParseABI(sw3abi.ERC20ABIv0_3_1)
 )
 
 type transferEvent struct {

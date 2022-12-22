@@ -258,10 +258,9 @@ func newTestDB(tb testing.TB, o *Options) *DB {
 }
 
 var (
-	generateTestRandomChunk    = chunktesting.GenerateTestRandomChunk
-	generateTestRandomChunks   = chunktesting.GenerateTestRandomChunks
-	generateTestRandomChunkAt  = chunktesting.GenerateTestRandomChunkAt
-	generateValidRandomChunkAt = chunktesting.GenerateValidRandomChunkAt
+	generateTestRandomChunk   = chunktesting.GenerateTestRandomChunk
+	generateTestRandomChunks  = chunktesting.GenerateTestRandomChunks
+	generateTestRandomChunkAt = chunktesting.GenerateTestRandomChunkAt
 )
 
 // chunkAddresses return chunk addresses of provided chunks.
@@ -496,11 +495,11 @@ func newIndexGCSizeTest(db *DB) func(t *testing.T) {
 
 // reserveSizeTest checks that the reserveSize scalar is equal
 // to the expected value.
-func reserveSizeTest(db *DB, want uint64) func(t *testing.T) {
+func reserveSizeTest(db *DB, want uint64, depth uint8) func(t *testing.T) {
 	return func(t *testing.T) {
 		t.Helper()
 
-		got, err := db.reserveSize.Get()
+		got, err := db.ComputeReserveSize(depth)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -690,7 +689,7 @@ func TestDBDebugIndexes(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	testIndexCounts(t, 1, 1, 0, 0, 1, 0, indexCounts)
+	testIndexCounts(t, 1, 0, 0, 0, 1, 0, indexCounts)
 
 	// set the chunk for pinning and expect the index count to grow
 	err = db.Set(ctx, storage.ModeSetPin, ch.Address())
@@ -704,5 +703,17 @@ func TestDBDebugIndexes(t *testing.T) {
 	}
 
 	// assert that there's a pin and gc exclude entry now
+	testIndexCounts(t, 1, 0, 0, 1, 1, 0, indexCounts)
+
+	_, err = db.Put(ctx, storage.ModePutSync, ch)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	indexCounts, err = db.DebugIndices()
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	testIndexCounts(t, 1, 1, 0, 1, 1, 0, indexCounts)
 }

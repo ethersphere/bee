@@ -20,13 +20,14 @@ import (
 	"math/big"
 	"net"
 	"net/http"
-	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/addressbook"
@@ -95,7 +96,7 @@ const LoggerName = "node"
 type Bee struct {
 	p2pService               io.Closer
 	p2pHalter                p2p.Halter
-	p2pCancel                context.CancelFunc
+	ctxCancel                context.CancelFunc
 	apiCloser                io.Closer
 	apiServer                *http.Server
 	debugAPIServer           *http.Server
@@ -163,6 +164,7 @@ type Options struct {
 	Transaction                   string
 	BlockHash                     string
 	PostageContractAddress        string
+	PostageContractStartBlock     uint64
 	StakingContractAddress        string
 	PriceOracleAddress            string
 	RedistributionContractAddress string
@@ -194,7 +196,7 @@ const (
 	mainnetNetworkID              = uint64(1)                 //
 )
 
-func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger log.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
+func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger log.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
 		Endpoint:    o.TracingEndpoint,
@@ -204,13 +206,13 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		return nil, fmt.Errorf("tracer: %w", err)
 	}
 
-	p2pCtx, p2pCancel := context.WithCancel(context.Background())
+	ctx, ctxCancel := context.WithCancel(ctx)
 	defer func() {
 		// if there's been an error on this function
 		// we'd like to cancel the p2p context so that
 		// incoming connections will not be possible
 		if err != nil {
-			p2pCancel()
+			ctxCancel()
 		}
 	}()
 
@@ -226,7 +228,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	})
 
 	b = &Bee{
-		p2pCancel:      p2pCancel,
+		ctxCancel:      ctxCancel,
 		errorLogWriter: sink,
 		tracerCloser:   tracerCloser,
 		syncingStopped: util.NewSignaler(),
@@ -272,21 +274,23 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	chainEnabled := isChainEnabled(o, o.BlockchainRpcEndpoint, logger)
 
 	var batchStore postage.Storer = new(postage.NoOpBatchStore)
-	var unreserveFn func([]byte, uint8) (uint64, error)
+	var evictFn func([]byte) error
 
 	if chainEnabled {
-		var evictFn = func(b []byte) error {
-			_, err := unreserveFn(b, swarm.MaxPO+1)
-			return err
-		}
-		batchStore, err = batchstore.New(stateStore, evictFn, logger)
+		batchStore, err = batchstore.New(
+			stateStore,
+			func(id []byte) error {
+				return evictFn(id)
+			},
+			logger,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("batchstore: %w", err)
 		}
 	}
 
 	chainBackend, overlayEthAddress, chainID, transactionMonitor, transactionService, err = InitChain(
-		p2pCtx,
+		ctx,
 		logger,
 		stateStore,
 		o.BlockchainRpcEndpoint,
@@ -298,6 +302,8 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		return nil, fmt.Errorf("init chain: %w", err)
 	}
 	b.ethClientCloser = chainBackend.Close
+
+	logger.Info("using chain with network network", "chain_id", chainID, "network_id", networkID)
 
 	if o.ChainID != -1 && o.ChainID != chainID {
 		return nil, fmt.Errorf("connected to wrong ethereum network; network chainID %d; configured chainID %d", chainID, o.ChainID)
@@ -406,14 +412,14 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	}
 
 	// Sync the with the given Ethereum backend:
-	isSynced, _, err := transaction.IsSynced(p2pCtx, chainBackend, maxDelay)
+	isSynced, _, err := transaction.IsSynced(ctx, chainBackend, maxDelay)
 	if err != nil {
 		return nil, fmt.Errorf("is synced: %w", err)
 	}
 	if !isSynced {
 		logger.Info("waiting to sync with the Ethereum backend")
 
-		err := transaction.WaitSynced(p2pCtx, logger, chainBackend, maxDelay)
+		err := transaction.WaitSynced(ctx, logger, chainBackend, maxDelay)
 		if err != nil {
 			return nil, fmt.Errorf("waiting backend sync: %w", err)
 		}
@@ -432,11 +438,11 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 			return nil, err
 		}
 
-		if err = chequebookFactory.VerifyBytecode(p2pCtx); err != nil {
+		if err = chequebookFactory.VerifyBytecode(ctx); err != nil {
 			return nil, fmt.Errorf("factory fail: %w", err)
 		}
 
-		erc20Address, err := chequebookFactory.ERC20Address(p2pCtx)
+		erc20Address, err := chequebookFactory.ERC20Address(ctx)
 		if err != nil {
 			return nil, fmt.Errorf("factory fail: %w", err)
 		}
@@ -445,7 +451,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 
 		if o.ChequebookEnable && chainEnabled {
 			chequebookService, err = InitChequebookService(
-				p2pCtx,
+				ctx,
 				logger,
 				stateStore,
 				signer,
@@ -503,7 +509,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		limit := math.Pow(2, 34)
 		for prox := uint8(0); prox < swarm.MaxPO && j < uint64(limit); j++ {
 			select {
-			case <-sysInterrupt:
+			case <-ctx.Done():
 				return nil, errors.New("interrupted while finding new overlay")
 			default:
 			}
@@ -594,6 +600,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		start := time.Now()
 		logger.Info("cold postage start detected. fetching postage stamp snapshot from swarm")
 		initBatchState, err = bootstrapNode(
+			ctx,
 			addr,
 			swarmAddress,
 			nonce,
@@ -619,7 +626,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		}
 	}
 
-	p2ps, err := libp2p.New(p2pCtx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
+	p2ps, err := libp2p.New(ctx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
 		PrivateKey:      libp2pPrivateKey,
 		NATAddr:         o.NATAddr,
 		EnableWS:        o.EnableWS,
@@ -663,7 +670,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		return nil, fmt.Errorf("localstore: %w", err)
 	}
 	b.localstoreCloser = storer
-	unreserveFn = storer.UnreserveBatch
+	evictFn = storer.EvictBatch
 
 	post, err := postage.NewService(stateStore, batchStore, chainID)
 	if err != nil {
@@ -673,49 +680,54 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	batchStore.SetBatchExpiryHandler(post)
 
 	var (
-		postageContractService postagecontract.Interface
-		batchSvc               postage.EventUpdater
-		eventListener          postage.Listener
+		postageStampContractService postagecontract.Interface
+		batchSvc                    postage.EventUpdater
+		eventListener               postage.Listener
 	)
 
-	var postageSyncStart uint64 = 0
-
-	chainCfg, found := config.GetChainConfig(chainID)
-	postageContractAddress, startBlock := chainCfg.PostageStamp, chainCfg.StartBlock
+	chainCfg, found := config.GetByChainID(chainID)
+	postageStampContractAddress, postageSyncStart := chainCfg.PostageStampAddress, chainCfg.PostageStampStartBlock
 	if o.PostageContractAddress != "" {
 		if !common.IsHexAddress(o.PostageContractAddress) {
 			return nil, errors.New("malformed postage stamp address")
 		}
-		postageContractAddress = common.HexToAddress(o.PostageContractAddress)
+		postageStampContractAddress = common.HexToAddress(o.PostageContractAddress)
+		if o.PostageContractStartBlock == 0 {
+			return nil, errors.New("postage contract start block option not provided")
+		}
+		postageSyncStart = o.PostageContractStartBlock
 	} else if !found {
 		return nil, errors.New("no known postage stamp addresses for this network")
 	}
-	if found {
-		postageSyncStart = startBlock
+
+	postageStampContractABI, err := abi.JSON(strings.NewReader(chainCfg.PostageStampABI))
+	if err != nil {
+		return nil, fmt.Errorf("unable to parse postage stamp ABI: %w", err)
 	}
 
-	eventListener = listener.New(b.syncingStopped, logger, chainBackend, postageContractAddress, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
+	bzzTokenAddress, err := postagecontract.LookupERC20Address(ctx, transactionService, postageStampContractAddress, postageStampContractABI, chainEnabled)
+	if err != nil {
+		return nil, err
+	}
+
+	postageStampContractService = postagecontract.New(
+		overlayEthAddress,
+		postageStampContractAddress,
+		postageStampContractABI,
+		bzzTokenAddress,
+		transactionService,
+		post,
+		batchStore,
+		chainEnabled,
+	)
+
+	eventListener = listener.New(b.syncingStopped, logger, chainBackend, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
 	b.listenerCloser = eventListener
 
 	batchSvc, err = batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync)
 	if err != nil {
 		return nil, err
 	}
-
-	erc20Address, err := postagecontract.LookupERC20Address(p2pCtx, transactionService, postageContractAddress, chainEnabled)
-	if err != nil {
-		return nil, err
-	}
-
-	postageContractService = postagecontract.New(
-		overlayEthAddress,
-		postageContractAddress,
-		erc20Address,
-		transactionService,
-		post,
-		batchStore,
-		chainEnabled,
-	)
 
 	if natManager := p2ps.NATManager(); natManager != nil {
 		// wait for nat manager to init
@@ -782,7 +794,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	if batchSvc != nil && chainEnabled {
 		logger.Info("waiting to sync postage contract data, this may take a while... more info available in Debug loglevel")
 		if o.FullNodeMode {
-			err = batchSvc.Start(postageSyncStart, initBatchState, interrupt)
+			err = batchSvc.Start(ctx, postageSyncStart, initBatchState)
 			syncStatus.Store(true)
 			if err != nil {
 				syncErr.Store(err)
@@ -796,7 +808,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		} else {
 			go func() {
 				logger.Info("started postage contract data sync in the background...")
-				err := batchSvc.Start(postageSyncStart, initBatchState, interrupt)
+				err := batchSvc.Start(ctx, postageSyncStart, initBatchState)
 				syncStatus.Store(true)
 				if err != nil {
 					syncErr.Store(err)
@@ -912,7 +924,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	pssService := pss.New(pssPrivateKey, logger)
 	b.pssCloser = pssService
 
-	var ns storage.Storer = netstore.New(storer, validStamp, retrieve, logger)
+	ns := netstore.New(storer, validStamp, retrieve, logger)
 	b.nsCloser = ns
 
 	traversalService := traversal.New(ns)
@@ -927,14 +939,14 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	pusherService := pusher.New(networkID, storer, kad, pushSyncProtocol, validStamp, tagService, logger, tracer, warmupTime, pusher.DefaultRetryCount)
 	b.pusherCloser = pusherService
 
-	pullStorage := pullstorage.New(storer)
+	pullStorage := pullstorage.New(storer, logger)
 
 	pullSyncProtocol := pullsync.New(p2ps, pullStorage, pssService.TryUnwrap, validStamp, logger)
 	b.pullSyncCloser = pullSyncProtocol
 
 	var pullerService *puller.Puller
 	if o.FullNodeMode && !o.BootnodeMode {
-		pullerService = puller.New(stateStore, kad, batchStore, pullSyncProtocol, logger, puller.Options{SyncSleepDur: puller.DefaultSyncSleepDur}, warmupTime)
+		pullerService = puller.New(stateStore, kad, batchStore, pullSyncProtocol, logger, puller.Options{SyncSleepDur: puller.DefaultSyncErrorSleepDur}, warmupTime)
 		b.pullerCloser = pullerService
 	}
 
@@ -942,7 +954,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 	pushSyncProtocolSpec := pushSyncProtocol.Protocol()
 	pullSyncProtocolSpec := pullSyncProtocol.Protocol()
 
-	if o.FullNodeMode {
+	if o.FullNodeMode && !o.BootnodeMode {
 		logger.Info("starting in full mode")
 	} else {
 		logger.Info("starting in light mode")
@@ -961,15 +973,20 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		return nil, fmt.Errorf("pullsync protocol: %w", err)
 	}
 
-	stakingAddress := chainCfg.Staking
+	stakingContractAddress := chainCfg.StakingAddress
 	if o.StakingContractAddress != "" {
 		if !common.IsHexAddress(o.StakingContractAddress) {
 			return nil, errors.New("malformed staking contract address")
 		}
-		stakingAddress = common.HexToAddress(o.StakingContractAddress)
+		stakingContractAddress = common.HexToAddress(o.StakingContractAddress)
 	}
 
-	stakingContract := staking.New(swarmAddress, overlayEthAddress, stakingAddress, erc20Address, transactionService, common.BytesToHash(nonce))
+	stakingContractABI, err := abi.JSON(strings.NewReader(chainCfg.StakingABI))
+	if err != nil {
+		return nil, fmt.Errorf("unable to parse staking ABI: %w", err)
+	}
+
+	stakingContract := staking.New(swarmAddress, overlayEthAddress, stakingContractAddress, stakingContractABI, bzzTokenAddress, transactionService, common.BytesToHash(nonce))
 
 	var agent *storageincentives.Agent
 	if o.FullNodeMode {
@@ -979,16 +996,20 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 
 		if !o.BootnodeMode && o.EnableStorageIncentives {
 
-			redistributionAddress := chainCfg.Redistribution
+			redistributionContractAddress := chainCfg.RedistributionAddress
 			if o.RedistributionContractAddress != "" {
 				if !common.IsHexAddress(o.RedistributionContractAddress) {
 					return nil, errors.New("malformed redistribution contract address")
 				}
-				redistributionAddress = common.HexToAddress(o.RedistributionContractAddress)
+				redistributionContractAddress = common.HexToAddress(o.RedistributionContractAddress)
+			}
+			redistributionContractABI, err := abi.JSON(strings.NewReader(chainCfg.RedistributionABI))
+			if err != nil {
+				return nil, fmt.Errorf("unable to parse redistribution ABI: %w", err)
 			}
 
-			redistributionContract := redistribution.New(swarmAddress, logger, transactionService, redistributionAddress)
-			agent = storageincentives.New(swarmAddress, chainBackend, logger, depthMonitor, redistributionContract, batchStore, storer, o.BlockTime, storageincentives.DefaultBlocksPerRound, storageincentives.DefaultBlocksPerPhase)
+			redistributionContract := redistribution.New(swarmAddress, logger, transactionService, redistributionContractAddress, redistributionContractABI)
+			agent = storageincentives.New(swarmAddress, chainBackend, logger, depthMonitor, redistributionContract, postageStampContractService, batchStore, storer, o.BlockTime, storageincentives.DefaultBlocksPerRound, storageincentives.DefaultBlocksPerPhase)
 			b.storageIncetivesCloser = agent
 		}
 	}
@@ -1037,10 +1058,11 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		Pinning:          pinningService,
 		FeedFactory:      feedFactory,
 		Post:             post,
-		PostageContract:  postageContractService,
+		PostageContract:  postageStampContractService,
 		Staking:          stakingContract,
 		Steward:          steward,
 		SyncStatus:       syncStatusFn,
+		IndexDebugger:    storer,
 	}
 
 	if o.APIAddr != "" {
@@ -1154,7 +1176,7 @@ func NewBee(interrupt chan struct{}, sysInterrupt chan os.Signal, addr string, p
 		debugService.MountDebug(false)
 	}
 
-	if err := kad.Start(p2pCtx); err != nil {
+	if err := kad.Start(ctx); err != nil {
 		return nil, err
 	}
 
@@ -1253,7 +1275,7 @@ func (b *Bee) Shutdown() error {
 		tryClose(b.accountingCloser, "accounting")
 	}()
 
-	b.p2pCancel()
+	b.ctxCancel()
 	go func() {
 		defer wg.Done()
 		tryClose(b.pullSyncCloser, "pull sync")

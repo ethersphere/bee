@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"math/big"
 	"sync"
-	"time"
 
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
@@ -35,7 +34,7 @@ type evictFn func(batchID []byte) error
 
 // store implements postage.Storer
 type store struct {
-	mtx sync.Mutex
+	mtx sync.RWMutex
 
 	store storage.StateStorer // State store backend to persist batches.
 	cs    *postage.ChainState // the chain state
@@ -89,8 +88,8 @@ func New(st storage.StateStorer, ev evictFn, logger log.Logger) (postage.Storer,
 
 func (s *store) GetReserveState() *postage.ReserveState {
 
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
 
 	return &postage.ReserveState{
 		Radius:        s.rs.Radius,
@@ -99,6 +98,7 @@ func (s *store) GetReserveState() *postage.ReserveState {
 }
 
 func (s *store) SetStorageRadius(f func(uint8) uint8) error {
+
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
@@ -109,21 +109,23 @@ func (s *store) SetStorageRadius(f func(uint8) uint8) error {
 		return ErrStorageRadiusExceeds
 	}
 
-	s.rs.StorageRadius = newRadius
+	if newRadius != oldRadius {
+		s.rs.StorageRadius = newRadius
 
-	if s.storageRadiusSetter != nil {
-		s.storageRadiusSetter.SetStorageRadius(newRadius)
-	}
-
-	s.metrics.StorageRadius.Set(float64(newRadius))
-
-	if newRadius < oldRadius {
-		if err := s.lowerBatchStorageRadius(); err != nil {
-			s.logger.Error(err, "batchstore: lower batch storage radius")
+		if s.storageRadiusSetter != nil {
+			s.storageRadiusSetter.SetStorageRadius(newRadius)
 		}
+
+		s.metrics.StorageRadius.Set(float64(newRadius))
+
+		if err := s.setBatchStorageRadius(); err != nil {
+			s.logger.Error(err, "batchstore: set batch storage radius")
+		}
+
+		return s.store.Put(reserveStateKey, s.rs)
 	}
 
-	return s.store.Put(reserveStateKey, s.rs)
+	return nil
 }
 
 func (s *store) GetChainState() *postage.ChainState {
@@ -132,17 +134,8 @@ func (s *store) GetChainState() *postage.ChainState {
 
 // Get returns a batch from the batchstore with the given ID.
 func (s *store) Get(id []byte) (*postage.Batch, error) {
-
-	defer func(t time.Time) {
-		s.metrics.GetDuration.WithLabelValues("true").Observe(time.Since(t).Seconds())
-	}(time.Now())
-
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-
-	defer func(t time.Time) {
-		s.metrics.GetDuration.WithLabelValues("false").Observe(time.Since(t).Seconds())
-	}(time.Now())
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
 
 	return s.get(id)
 }
@@ -160,18 +153,8 @@ func (s *store) get(id []byte) (*postage.Batch, error) {
 
 // Exists is implementation of postage.Storer interface Exists method.
 func (s *store) Exists(id []byte) (bool, error) {
-
-	defer func(t time.Time) {
-		s.metrics.ExistsDuration.WithLabelValues("true").Observe(time.Since(t).Seconds())
-	}(time.Now())
-
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-
-	defer func(t time.Time) {
-		s.metrics.ExistsDuration.WithLabelValues("false").Observe(time.Since(t).Seconds())
-	}(time.Now())
-
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
 	switch err := s.store.Get(batchKey(id), new(postage.Batch)); {
 	case err == nil:
 		return true, nil
@@ -184,9 +167,8 @@ func (s *store) Exists(id []byte) (bool, error) {
 
 // Iterate is implementation of postage.Storer interface Iterate method.
 func (s *store) Iterate(cb func(*postage.Batch) (bool, error)) error {
-
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
 
 	return s.store.Iterate(batchKeyPrefix, func(key, value []byte) (bool, error) {
 		b := &postage.Batch{}
@@ -200,16 +182,9 @@ func (s *store) Iterate(cb func(*postage.Batch) (bool, error)) error {
 // Save is implementation of postage.Storer interface Save method.
 // This method has side effects; it also updates the radius of the node if successful.
 func (s *store) Save(batch *postage.Batch) error {
-	defer func(t time.Time) {
-		s.metrics.SaveDuration.WithLabelValues("true").Observe(time.Since(t).Seconds())
-	}(time.Now())
 
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
-
-	defer func(t time.Time) {
-		s.metrics.SaveDuration.WithLabelValues("false").Observe(time.Since(t).Seconds())
-	}(time.Now())
 
 	switch err := s.store.Get(batchKey(batch.ID), new(postage.Batch)); {
 	case errors.Is(err, storage.ErrNotFound):

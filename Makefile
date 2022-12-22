@@ -12,12 +12,6 @@ BEEKEEPER_BRANCH ?= master
 REACHABILITY_OVERRIDE_PUBLIC ?= false
 BATCHFACTOR_OVERRIDE_PUBLIC ?= 5
 
-GO_MIN_VERSION ?= "1.17"
-GO_BUILD_VERSION ?= "1.17.2"
-GO_MOD_ENABLED_VERSION ?= "1.12"
-GO_MOD_VERSION ?= "$(shell go mod edit -print | awk '/^go[ \t]+[0-9]+\.[0-9]+(\.[0-9]+)?[ \t]*$$/{print $$2}')"
-GO_SYSTEM_VERSION ?= "$(shell go version | awk '{ gsub(/go/, "", $$3); print $$3 }')"
-
 BEE_API_VERSION ?= "$(shell grep '^  version:' openapi/Swarm.yaml | awk '{print $$2}')"
 BEE_DEBUG_API_VERSION ?= "$(shell grep '^  version:' openapi/SwarmDebug.yaml | awk '{print $$2}')"
 
@@ -38,7 +32,7 @@ LDFLAGS ?= -s -w \
 all: build lint test-race binary
 
 .PHONY: binary
-binary: CGO_ENABLED=0
+binary: export CGO_ENABLED=0
 binary: dist FORCE
 	$(GO) version
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" -o dist/bee ./cmd/bee
@@ -51,13 +45,13 @@ beekeeper:
 ifeq ($(BEEKEEPER_BRANCH), master)
 	curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/master/scripts/install.sh | BEEKEEPER_INSTALL_DIR=$(BEEKEEPER_INSTALL_DIR) USE_SUDO=$(BEEKEEPER_USE_SUDO) bash
 else
-	git clone -b $(BEEKEEPER_BRANCH) https://github.com/ethersphere/beekeeper.git && cd beekeeper && mkdir -p $(BEEKEEPER_INSTALL_DIR) && make binary
+	git clone -b $(BEEKEEPER_BRANCH) https://github.com/ethersphere/beekeeper.git && mv beekeeper beekeeper_src && cd beekeeper_src && mkdir -p $(BEEKEEPER_INSTALL_DIR) && make binary
 ifeq ($(BEEKEEPER_USE_SUDO), true)
-	sudo mv beekeeper/dist/beekeeper $(BEEKEEPER_INSTALL_DIR)
+	sudo mv beekeeper_src/dist/beekeeper $(BEEKEEPER_INSTALL_DIR)
 else
-	mv beekeeper/dist/beekeeper $(BEEKEEPER_INSTALL_DIR)
+	mv beekeeper_src/dist/beekeeper $(BEEKEEPER_INSTALL_DIR)
 endif
-	rm -rf beekeeper
+	rm -rf beekeeper_src
 endif
 	test -f ~/.beekeeper.yaml || curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/$(BEEKEEPER_BRANCH)/config/beekeeper-local.yaml -o ~/.beekeeper.yaml
 	mkdir -p ~/.beekeeper && curl -sSfL https://raw.githubusercontent.com/ethersphere/beekeeper/$(BEEKEEPER_BRANCH)/config/local.yaml -o ~/.beekeeper/local.yaml
@@ -112,25 +106,38 @@ else
 	$(GO) test -race -failfast -v ./...
 endif
 
+.PHONY: test-race-ci
+test-race-ci:
+ifdef cover
+	$(GO) test -race -coverprofile=cover.out -v ./...
+else
+	$(GO) test -race -v ./...
+endif
+
 .PHONY: test-integration
 test-integration:
 	$(GO) test -tags=integration -v ./...
 
 .PHONY: test
 test:
-	$(GO) test -v -failfast ./...
+ifdef cover
+	$(GO) test -failfast -coverprofile=cover.out -v ./...
+else
+	$(GO) test -failfast -v ./...
+endif
+
+.PHONY: test-ci
+test-ci:
+ifdef cover
+	$(GO) test -coverprofile=cover.out -v ./...
+else
+	$(GO) test -v ./...
+endif
 
 .PHONY: build
-build: CGO_ENABLED=0
-build: check-version
+build: export CGO_ENABLED=0
 build:
 	$(GO) build -trimpath -ldflags "$(LDFLAGS)" ./...
-
-.PHONY: check-version
-check-version:
-	[ ${GO_SYSTEM_VERSION} \< ${GO_MOD_ENABLED_VERSION} ] && echo "The version of Golang on the system (${GO_SYSTEM_VERSION}) is too old and does not support go modules. Please use at least ${GO_MIN_VERSION}." && exit 1; exit 0
-	[ ${GO_SYSTEM_VERSION} \< ${GO_MIN_VERSION} ] && echo "The version of Golang on the system (${GO_SYSTEM_VERSION}) is below the minimum required version (${GO_MIN_VERSION}) and therefore will not build correctly." && exit 1; exit 0
-	if ! expr ${GO_BUILD_VERSION} : ^${GO_MOD_VERSION} 1>/dev/null; then echo "The version of Golang mod (${GO_MOD_VERSION}) does not match required version (${GO_BUILD_VERSION})." && exit 1; fi
 
 .PHONY: githooks
 githooks:

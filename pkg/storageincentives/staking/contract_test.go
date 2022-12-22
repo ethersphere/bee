@@ -14,18 +14,22 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	staking2 "github.com/ethersphere/bee/pkg/storageincentives/staking"
+	chaincfg "github.com/ethersphere/bee/pkg/config"
+	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/transaction"
 	transactionMock "github.com/ethersphere/bee/pkg/transaction/mock"
+	"github.com/ethersphere/bee/pkg/util/abiutil"
 )
+
+var stakingContractABI = abiutil.MustParseABI(chaincfg.Testnet.StakingABI)
 
 func TestDepositStake(t *testing.T) {
 	t.Parallel()
 
 	ctx := context.Background()
 	owner := common.HexToAddress("abcd")
-	stakingAddress := common.HexToAddress("ffff")
+	stakingContractAddress := common.HexToAddress("ffff")
 	bzzTokenAddress := common.HexToAddress("eeee")
 	nonce := common.BytesToHash(make([]byte, 32))
 	txHashDeposited := common.HexToHash("c3a7")
@@ -38,18 +42,23 @@ func TestDepositStake(t *testing.T) {
 
 		totalAmount := big.NewInt(100000000000000000)
 		prevStake := big.NewInt(0)
-		expectedCallData, err := staking2.StakingABI.Pack("depositStake", common.BytesToHash(owner.Bytes()), nonce, stakedAmount)
+		expectedCallData, err := stakingContractABI.Pack("depositStake", common.BytesToHash(owner.Bytes()), nonce, stakedAmount)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		contract := staking2.New(addr, owner, stakingAddress, bzzTokenAddress,
+		contract := staking.New(
+			addr,
+			owner,
+			stakingContractAddress,
+			stakingContractABI,
+			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
 					if *request.To == bzzTokenAddress {
 						return txHashApprove, nil
 					}
-					if *request.To == stakingAddress {
+					if *request.To == stakingContractAddress {
 						if !bytes.Equal(expectedCallData[:100], request.Data[:100]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
 						}
@@ -74,14 +83,16 @@ func TestDepositStake(t *testing.T) {
 					if *request.To == bzzTokenAddress {
 						return totalAmount.FillBytes(make([]byte, 32)), nil
 					}
-					if *request.To == stakingAddress {
+					if *request.To == stakingContractAddress {
 						return prevStake.FillBytes(make([]byte, 32)), nil
 					}
 					return nil, errors.New("unexpected call")
-				})),
-			nonce)
+				}),
+			),
+			nonce,
+		)
 
-		err = contract.DepositStake(ctx, stakedAmount)
+		_, err = contract.DepositStake(ctx, stakedAmount)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -92,18 +103,23 @@ func TestDepositStake(t *testing.T) {
 
 		totalAmount := big.NewInt(100000000000000000)
 		prevStake := big.NewInt(2)
-		expectedCallData, err := staking2.StakingABI.Pack("depositStake", common.BytesToHash(owner.Bytes()), nonce, big.NewInt(100000000000000000))
+		expectedCallData, err := stakingContractABI.Pack("depositStake", common.BytesToHash(owner.Bytes()), nonce, big.NewInt(100000000000000000))
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		contract := staking2.New(addr, owner, stakingAddress, bzzTokenAddress,
+		contract := staking.New(
+			addr,
+			owner,
+			stakingContractAddress,
+			stakingContractABI,
+			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
 					if *request.To == bzzTokenAddress {
 						return txHashApprove, nil
 					}
-					if *request.To == stakingAddress {
+					if *request.To == stakingContractAddress {
 						if !bytes.Equal(expectedCallData[:100], request.Data[:100]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
 						}
@@ -128,14 +144,16 @@ func TestDepositStake(t *testing.T) {
 					if *request.To == bzzTokenAddress {
 						return totalAmount.FillBytes(make([]byte, 32)), nil
 					}
-					if *request.To == stakingAddress {
+					if *request.To == stakingContractAddress {
 						return prevStake.FillBytes(make([]byte, 32)), nil
 					}
 					return nil, errors.New("unexpected call")
-				})),
-			nonce)
+				}),
+			),
+			nonce,
+		)
 
-		err = contract.DepositStake(ctx, stakedAmount)
+		_, err = contract.DepositStake(ctx, stakedAmount)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -154,22 +172,29 @@ func TestDepositStake(t *testing.T) {
 		totalAmount := big.NewInt(102400)
 		prevStake := big.NewInt(0)
 
-		contract := staking2.New(addr, owner, stakingAddress, bzzTokenAddress,
+		contract := staking.New(
+			addr,
+			owner,
+			stakingContractAddress,
+			stakingContractABI,
+			bzzTokenAddress,
 			transactionMock.New(
 				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
 					if *request.To == bzzTokenAddress {
 						return totalAmount.FillBytes(make([]byte, 32)), nil
 					}
-					if *request.To == stakingAddress {
+					if *request.To == stakingContractAddress {
 						return prevStake.FillBytes(make([]byte, 32)), nil
 					}
 					return nil, errors.New("unexpected call")
-				})),
-			nonce)
+				}),
+			),
+			nonce,
+		)
 
-		err := contract.DepositStake(ctx, big.NewInt(0))
-		if !errors.Is(err, staking2.ErrInsufficientStakeAmount) {
-			t.Fatal(fmt.Errorf("wanted %w, got %v", staking2.ErrInsufficientStakeAmount, err))
+		_, err := contract.DepositStake(ctx, big.NewInt(0))
+		if !errors.Is(err, staking.ErrInsufficientStakeAmount) {
+			t.Fatal(fmt.Errorf("wanted %w, got %v", staking.ErrInsufficientStakeAmount, err))
 		}
 	})
 
@@ -179,22 +204,29 @@ func TestDepositStake(t *testing.T) {
 		totalAmount := big.NewInt(0)
 		prevStake := big.NewInt(0)
 
-		contract := staking2.New(addr, owner, stakingAddress, bzzTokenAddress,
+		contract := staking.New(
+			addr,
+			owner,
+			stakingContractAddress,
+			stakingContractABI,
+			bzzTokenAddress,
 			transactionMock.New(
 				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
 					if *request.To == bzzTokenAddress {
 						return totalAmount.FillBytes(make([]byte, 32)), nil
 					}
-					if *request.To == stakingAddress {
+					if *request.To == stakingContractAddress {
 						return prevStake.FillBytes(make([]byte, 32)), nil
 					}
 					return nil, errors.New("unexpected call")
-				})),
-			nonce)
+				}),
+			),
+			nonce,
+		)
 
-		err := contract.DepositStake(ctx, big.NewInt(100000000000000000))
-		if !errors.Is(err, staking2.ErrInsufficientFunds) {
-			t.Fatal(fmt.Errorf("wanted %w, got %v", staking2.ErrInsufficientFunds, err))
+		_, err := contract.DepositStake(ctx, big.NewInt(100000000000000000))
+		if !errors.Is(err, staking.ErrInsufficientFunds) {
+			t.Fatal(fmt.Errorf("wanted %w, got %v", staking.ErrInsufficientFunds, err))
 		}
 	})
 
@@ -204,22 +236,29 @@ func TestDepositStake(t *testing.T) {
 		totalAmount := big.NewInt(0)
 		prevStake := big.NewInt(0)
 
-		contract := staking2.New(addr, owner, stakingAddress, bzzTokenAddress,
+		contract := staking.New(
+			addr,
+			owner,
+			stakingContractAddress,
+			stakingContractABI,
+			bzzTokenAddress,
 			transactionMock.New(
 				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
 					if *request.To == bzzTokenAddress {
 						return totalAmount.FillBytes(make([]byte, 32)), nil
 					}
-					if *request.To == stakingAddress {
+					if *request.To == stakingContractAddress {
 						return prevStake.FillBytes(make([]byte, 32)), nil
 					}
 					return nil, errors.New("unexpected call")
-				})),
-			nonce)
+				}),
+			),
+			nonce,
+		)
 
-		err := contract.DepositStake(ctx, big.NewInt(100000000000000000))
-		if !errors.Is(err, staking2.ErrInsufficientFunds) {
-			t.Fatal(fmt.Errorf("wanted %w, got %v", staking2.ErrInsufficientStakeAmount, err))
+		_, err := contract.DepositStake(ctx, big.NewInt(100000000000000000))
+		if !errors.Is(err, staking.ErrInsufficientFunds) {
+			t.Fatal(fmt.Errorf("wanted %w, got %v", staking.ErrInsufficientStakeAmount, err))
 		}
 	})
 
@@ -229,9 +268,14 @@ func TestDepositStake(t *testing.T) {
 		totalAmount := big.NewInt(102400)
 		prevStake := big.NewInt(0)
 
-		contract := staking2.New(addr, owner, stakingAddress, bzzTokenAddress,
+		contract := staking.New(
+			addr,
+			owner,
+			stakingContractAddress,
+			stakingContractABI,
+			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
 					if *request.To == bzzTokenAddress {
 						return common.Hash{}, errors.New("send transaction failed")
 					}
@@ -241,14 +285,16 @@ func TestDepositStake(t *testing.T) {
 					if *request.To == bzzTokenAddress {
 						return totalAmount.FillBytes(make([]byte, 32)), nil
 					}
-					if *request.To == stakingAddress {
+					if *request.To == stakingContractAddress {
 						return prevStake.FillBytes(make([]byte, 32)), nil
 					}
 					return nil, errors.New("unexpected call")
-				})),
-			nonce)
+				}),
+			),
+			nonce,
+		)
 
-		err := contract.DepositStake(ctx, stakedAmount)
+		_, err := contract.DepositStake(ctx, stakedAmount)
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -260,21 +306,26 @@ func TestDepositStake(t *testing.T) {
 		totalAmount := big.NewInt(102400)
 		prevStake := big.NewInt(0)
 		expectedStakeAmount := big.NewInt(100)
-		expectedCallData, err := staking2.Erc20ABI.Pack("approve", stakingAddress, expectedStakeAmount)
+		expectedCallData, err := staking.Erc20ABI.Pack("approve", stakingContractAddress, expectedStakeAmount)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		contract := staking2.New(addr, owner, stakingAddress, bzzTokenAddress,
+		contract := staking.New(
+			addr,
+			owner,
+			stakingContractAddress,
+			stakingContractABI,
+			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
 					if *request.To == bzzTokenAddress {
 						if !bytes.Equal(expectedCallData[:], request.Data[:]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
 						}
 						return txHashApprove, nil
 					}
-					if *request.To == stakingAddress {
+					if *request.To == stakingContractAddress {
 						return txHashDeposited, nil
 					}
 					return common.Hash{}, errors.New("sent to wrong contract")
@@ -283,14 +334,16 @@ func TestDepositStake(t *testing.T) {
 					if *request.To == bzzTokenAddress {
 						return totalAmount.FillBytes(make([]byte, 32)), nil
 					}
-					if *request.To == stakingAddress {
+					if *request.To == stakingContractAddress {
 						return prevStake.FillBytes(make([]byte, 32)), nil
 					}
 					return nil, errors.New("unexpected call")
-				})),
-			nonce)
+				}),
+			),
+			nonce,
+		)
 
-		err = contract.DepositStake(ctx, stakedAmount)
+		_, err = contract.DepositStake(ctx, stakedAmount)
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -301,24 +354,29 @@ func TestDepositStake(t *testing.T) {
 
 		totalAmount := big.NewInt(100000000000000000)
 		prevStake := big.NewInt(0)
-		expectedCallData, err := staking2.Erc20ABI.Pack("approve", stakingAddress, stakedAmount)
+		expectedCallData, err := staking.Erc20ABI.Pack("approve", stakingContractAddress, stakedAmount)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		contract := staking2.New(addr, owner, stakingAddress, bzzTokenAddress,
+		contract := staking.New(
+			addr,
+			owner,
+			stakingContractAddress,
+			stakingContractABI,
+			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
 					if *request.To == bzzTokenAddress {
 						return txHashApprove, nil
 					}
-					if *request.To == stakingAddress {
+					if *request.To == stakingContractAddress {
 						if !bytes.Equal(expectedCallData[:100], request.Data[:100]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
 						}
 						return txHashDeposited, nil
 					}
-					return common.Hash{}, errors.New("sent to wrong contract")
+					return txHashDeposited, errors.New("sent to wrong contract")
 				}),
 				transactionMock.WithWaitForReceiptFunc(func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
 					if txHash == txHashDeposited {
@@ -337,14 +395,16 @@ func TestDepositStake(t *testing.T) {
 					if *request.To == bzzTokenAddress {
 						return totalAmount.FillBytes(make([]byte, 32)), nil
 					}
-					if *request.To == stakingAddress {
+					if *request.To == stakingContractAddress {
 						return prevStake.FillBytes(make([]byte, 32)), nil
 					}
 					return nil, errors.New("unexpected call")
-				})),
-			nonce)
+				}),
+			),
+			nonce,
+		)
 
-		err = contract.DepositStake(ctx, stakedAmount)
+		_, err = contract.DepositStake(ctx, stakedAmount)
 		if !errors.Is(err, transaction.ErrTransactionReverted) {
 			t.Fatalf("expeted %v, got %v", transaction.ErrTransactionReverted, err)
 		}
@@ -355,18 +415,23 @@ func TestDepositStake(t *testing.T) {
 
 		totalAmount := big.NewInt(102400)
 		prevStake := big.NewInt(0)
-		expectedCallData, err := staking2.Erc20ABI.Pack("approve", stakingAddress, stakedAmount)
+		expectedCallData, err := staking.Erc20ABI.Pack("approve", stakingContractAddress, stakedAmount)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		contract := staking2.New(addr, owner, stakingAddress, bzzTokenAddress,
+		contract := staking.New(
+			addr,
+			owner,
+			stakingContractAddress,
+			stakingContractABI,
+			bzzTokenAddress,
 			transactionMock.New(
-				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest) (txHash common.Hash, err error) {
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
 					if *request.To == bzzTokenAddress {
 						return txHashApprove, nil
 					}
-					if *request.To == stakingAddress {
+					if *request.To == stakingContractAddress {
 						if !bytes.Equal(expectedCallData[:100], request.Data[:100]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
 						}
@@ -389,14 +454,16 @@ func TestDepositStake(t *testing.T) {
 					if *request.To == bzzTokenAddress {
 						return totalAmount.FillBytes(make([]byte, 32)), nil
 					}
-					if *request.To == stakingAddress {
+					if *request.To == stakingContractAddress {
 						return prevStake.FillBytes(make([]byte, 32)), nil
 					}
 					return nil, errors.New("unexpected call")
-				})),
-			nonce)
+				}),
+			),
+			nonce,
+		)
 
-		err = contract.DepositStake(ctx, stakedAmount)
+		_, err = contract.DepositStake(ctx, stakedAmount)
 		if err == nil {
 			t.Fatalf("expected error")
 		}
@@ -405,17 +472,24 @@ func TestDepositStake(t *testing.T) {
 	t.Run("transaction error in call", func(t *testing.T) {
 		t.Parallel()
 
-		contract := staking2.New(addr, owner, stakingAddress, bzzTokenAddress,
+		contract := staking.New(
+			addr,
+			owner,
+			stakingContractAddress,
+			stakingContractABI,
+			bzzTokenAddress,
 			transactionMock.New(
 				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
-					if *request.To == stakingAddress {
+					if *request.To == stakingContractAddress {
 						return nil, errors.New("some error")
 					}
 					return nil, errors.New("unexpected call")
-				})),
-			nonce)
+				}),
+			),
+			nonce,
+		)
 
-		err := contract.DepositStake(ctx, stakedAmount)
+		_, err := contract.DepositStake(ctx, stakedAmount)
 		if err == nil {
 			t.Fatalf("expected error")
 		}
@@ -436,12 +510,17 @@ func TestGetStake(t *testing.T) {
 		t.Parallel()
 
 		prevStake := big.NewInt(0)
-		expectedCallData, err := staking2.StakingABI.Pack("stakeOfOverlay", common.BytesToHash(addr.Bytes()))
+		expectedCallData, err := stakingContractABI.Pack("stakeOfOverlay", common.BytesToHash(addr.Bytes()))
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		contract := staking2.New(addr, owner, stakingAddress, bzzTokenAddress,
+		contract := staking.New(
+			addr,
+			owner,
+			stakingAddress,
+			stakingContractABI,
+			bzzTokenAddress,
 			transactionMock.New(
 				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
 					if *request.To == stakingAddress {
@@ -451,8 +530,10 @@ func TestGetStake(t *testing.T) {
 						return prevStake.FillBytes(make([]byte, 32)), nil
 					}
 					return nil, errors.New("unexpected call")
-				})),
-			nonce)
+				}),
+			),
+			nonce,
+		)
 
 		stakedAmount, err := contract.GetStake(ctx)
 		if err != nil {
@@ -465,12 +546,17 @@ func TestGetStake(t *testing.T) {
 
 	t.Run("error with unpacking", func(t *testing.T) {
 		t.Parallel()
-		expectedCallData, err := staking2.StakingABI.Pack("stakeOfOverlay", common.BytesToHash(addr.Bytes()))
+		expectedCallData, err := stakingContractABI.Pack("stakeOfOverlay", common.BytesToHash(addr.Bytes()))
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		contract := staking2.New(addr, owner, stakingAddress, bzzTokenAddress,
+		contract := staking.New(
+			addr,
+			owner,
+			stakingAddress,
+			stakingContractABI,
+			bzzTokenAddress,
 			transactionMock.New(
 				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
 					if *request.To == stakingAddress {
@@ -480,8 +566,10 @@ func TestGetStake(t *testing.T) {
 						return []byte{}, nil
 					}
 					return nil, errors.New("unexpected call")
-				})),
-			nonce)
+				}),
+			),
+			nonce,
+		)
 
 		_, err = contract.GetStake(ctx)
 		if err == nil {
@@ -493,12 +581,17 @@ func TestGetStake(t *testing.T) {
 		t.Parallel()
 
 		prevStake := big.NewInt(0)
-		expectedCallData, err := staking2.StakingABI.Pack("stakeOfOverlay", common.BytesToHash(owner.Bytes()))
+		expectedCallData, err := stakingContractABI.Pack("stakeOfOverlay", common.BytesToHash(owner.Bytes()))
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		contract := staking2.New(addr, owner, stakingAddress, bzzTokenAddress,
+		contract := staking.New(
+			addr,
+			owner,
+			stakingAddress,
+			stakingContractABI,
+			bzzTokenAddress,
 			transactionMock.New(
 				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
 					if *request.To == stakingAddress {
@@ -508,8 +601,10 @@ func TestGetStake(t *testing.T) {
 						return prevStake.FillBytes(make([]byte, 32)), nil
 					}
 					return nil, errors.New("unexpected call")
-				})),
-			nonce)
+				}),
+			),
+			nonce,
+		)
 
 		_, err = contract.GetStake(ctx)
 		if err == nil {
@@ -520,16 +615,424 @@ func TestGetStake(t *testing.T) {
 	t.Run("transaction error", func(t *testing.T) {
 		t.Parallel()
 
-		contract := staking2.New(addr, owner, stakingAddress, bzzTokenAddress,
+		contract := staking.New(
+			addr,
+			owner,
+			stakingAddress,
+			stakingContractABI,
+			bzzTokenAddress,
 			transactionMock.New(
 				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
 					return nil, errors.New("some error")
-				})),
-			nonce)
+				}),
+			),
+			nonce,
+		)
 
 		_, err := contract.GetStake(ctx)
 		if err == nil {
 			t.Fatal("expected error")
+		}
+	})
+}
+
+func TestWithdrawStake(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	owner := common.HexToAddress("abcd")
+	stakingContractAddress := common.HexToAddress("ffff")
+	bzzTokenAddress := common.HexToAddress("eeee")
+	nonce := common.BytesToHash(make([]byte, 32))
+	stakedAmount := big.NewInt(100000000000000000)
+	addr := swarm.MustParseHexAddress("f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b")
+	txHashApprove := common.HexToHash("abb0")
+
+	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+		txHashWithdrawn := common.HexToHash("c3a1")
+		expected := big.NewInt(1)
+
+		expectedCallDataForPaused, err := stakingContractABI.Pack("paused")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		expectedCallDataForWithdraw, err := stakingContractABI.Pack("withdrawFromStake", common.BytesToHash(addr.Bytes()), stakedAmount)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		expectedCallDataForGetStake, err := stakingContractABI.Pack("stakeOfOverlay", common.BytesToHash(addr.Bytes()))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		contract := staking.New(
+			addr,
+			owner,
+			stakingContractAddress,
+			stakingContractABI,
+			bzzTokenAddress,
+			transactionMock.New(
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+					if *request.To == bzzTokenAddress {
+						return txHashApprove, nil
+					}
+					if *request.To == stakingContractAddress {
+						if !bytes.Equal(expectedCallDataForWithdraw[:], request.Data[:]) {
+							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallDataForWithdraw, request.Data)
+						}
+						return txHashWithdrawn, nil
+					}
+					return common.Hash{}, errors.New("sent to wrong contract")
+				}),
+				transactionMock.WithWaitForReceiptFunc(func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
+					if txHash == txHashApprove {
+						return &types.Receipt{
+							Status: 1,
+						}, nil
+					}
+					if txHash == txHashWithdrawn {
+						return &types.Receipt{
+							Status: 1,
+						}, nil
+					}
+					return nil, errors.New("unknown tx hash")
+				}),
+				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
+					if *request.To == stakingContractAddress {
+						if bytes.Equal(expectedCallDataForPaused[:], request.Data[:]) {
+							return expected.FillBytes(make([]byte, 32)), nil
+						}
+						if bytes.Equal(expectedCallDataForGetStake[:64], request.Data[:64]) {
+							return stakedAmount.FillBytes(make([]byte, 32)), nil
+						}
+					}
+					return nil, errors.New("unexpected call")
+				}),
+			),
+			nonce,
+		)
+
+		_, err = contract.WithdrawAllStake(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("is paused", func(t *testing.T) {
+		t.Parallel()
+		expected := big.NewInt(0)
+
+		expectedCallDataForPaused, err := stakingContractABI.Pack("paused")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		contract := staking.New(
+			addr,
+			owner,
+			stakingContractAddress,
+			stakingContractABI,
+			bzzTokenAddress,
+			transactionMock.New(
+				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
+					if *request.To == stakingContractAddress {
+						if bytes.Equal(expectedCallDataForPaused[:], request.Data[:]) {
+							return expected.FillBytes(make([]byte, 32)), nil
+						}
+					}
+					return nil, errors.New("unexpected call")
+				}),
+			),
+			nonce,
+		)
+
+		_, err = contract.WithdrawAllStake(ctx)
+		if !errors.Is(err, staking.ErrNotPaused) {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("has no stake", func(t *testing.T) {
+		t.Parallel()
+		expected := big.NewInt(1)
+
+		expectedCallDataForPaused, err := stakingContractABI.Pack("paused")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		invalidStakedAmount := big.NewInt(0)
+
+		expectedCallDataForGetStake, err := stakingContractABI.Pack("stakeOfOverlay", common.BytesToHash(addr.Bytes()))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		contract := staking.New(
+			addr,
+			owner,
+			stakingContractAddress,
+			stakingContractABI,
+			bzzTokenAddress,
+			transactionMock.New(
+				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
+					if *request.To == stakingContractAddress {
+						if bytes.Equal(expectedCallDataForPaused[:], request.Data[:]) {
+							return expected.FillBytes(make([]byte, 32)), nil
+						}
+						if bytes.Equal(expectedCallDataForGetStake[:64], request.Data[:64]) {
+							return invalidStakedAmount.FillBytes(make([]byte, 32)), nil
+						}
+					}
+					return nil, errors.New("unexpected call")
+				}),
+			),
+			nonce,
+		)
+
+		_, err = contract.WithdrawAllStake(ctx)
+		if !errors.Is(err, staking.ErrInsufficientStake) {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("invalid call data", func(t *testing.T) {
+		t.Parallel()
+		_, err := stakingContractABI.Pack("paused", addr)
+		if err == nil {
+			t.Fatal(err)
+		}
+		_, err = stakingContractABI.Pack("withdrawFromStake", stakedAmount)
+		if err == nil {
+			t.Fatal(err)
+		}
+
+		_, err = stakingContractABI.Pack("stakeOfOverlay", stakedAmount)
+		if err == nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("send tx failed", func(t *testing.T) {
+		t.Parallel()
+		txHashWithdrawn := common.HexToHash("c3a1")
+		expected := big.NewInt(1)
+
+		expectedCallDataForPaused, err := stakingContractABI.Pack("paused")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		expectedCallDataForWithdraw, err := stakingContractABI.Pack("withdrawFromStake", common.BytesToHash(addr.Bytes()), stakedAmount)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		expectedCallDataForGetStake, err := stakingContractABI.Pack("stakeOfOverlay", common.BytesToHash(addr.Bytes()))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		contract := staking.New(
+			addr,
+			owner,
+			stakingContractAddress,
+			stakingContractABI,
+			bzzTokenAddress,
+			transactionMock.New(
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+					if *request.To == bzzTokenAddress {
+						return txHashApprove, nil
+					}
+					if *request.To == stakingContractAddress {
+						if !bytes.Equal(expectedCallDataForWithdraw[:], request.Data[:]) {
+							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallDataForWithdraw, request.Data)
+						}
+						return common.Hash{}, errors.New("send tx failed")
+					}
+					return common.Hash{}, errors.New("sent to wrong contract")
+				}),
+				transactionMock.WithWaitForReceiptFunc(func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
+					if txHash == txHashApprove {
+						return &types.Receipt{
+							Status: 1,
+						}, nil
+					}
+					if txHash == txHashWithdrawn {
+						return &types.Receipt{
+							Status: 1,
+						}, nil
+					}
+					return nil, errors.New("unknown tx hash")
+				}),
+				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
+					if *request.To == stakingContractAddress {
+						if bytes.Equal(expectedCallDataForPaused[:], request.Data[:]) {
+							return expected.FillBytes(make([]byte, 32)), nil
+						}
+						if bytes.Equal(expectedCallDataForGetStake[:64], request.Data[:64]) {
+							return stakedAmount.FillBytes(make([]byte, 32)), nil
+						}
+					}
+					return nil, errors.New("unexpected call")
+				}),
+			),
+			nonce,
+		)
+
+		_, err = contract.WithdrawAllStake(ctx)
+		if err == nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("tx reverted", func(t *testing.T) {
+		t.Parallel()
+		txHashWithdrawn := common.HexToHash("c3a1")
+		expected := big.NewInt(1)
+
+		expectedCallDataForPaused, err := stakingContractABI.Pack("paused")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		expectedCallDataForGetStake, err := stakingContractABI.Pack("stakeOfOverlay", common.BytesToHash(addr.Bytes()))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		expectedCallDataForWithdraw, err := stakingContractABI.Pack("withdrawFromStake", common.BytesToHash(addr.Bytes()), stakedAmount)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		contract := staking.New(
+			addr,
+			owner,
+			stakingContractAddress,
+			stakingContractABI,
+			bzzTokenAddress,
+			transactionMock.New(
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+					if *request.To == bzzTokenAddress {
+						return txHashApprove, nil
+					}
+					if *request.To == stakingContractAddress {
+						if !bytes.Equal(expectedCallDataForWithdraw[:], request.Data[:]) {
+							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallDataForWithdraw, request.Data)
+						}
+						return txHashWithdrawn, nil
+					}
+					return common.Hash{}, errors.New("sent to wrong contract")
+				}),
+				transactionMock.WithWaitForReceiptFunc(func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
+					if txHash == txHashApprove {
+						return &types.Receipt{
+							Status: 1,
+						}, nil
+					}
+					if txHash == txHashWithdrawn {
+						return &types.Receipt{
+							Status: 0,
+						}, nil
+					}
+					return nil, errors.New("unknown tx hash")
+				}),
+				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
+					if *request.To == stakingContractAddress {
+						if bytes.Equal(expectedCallDataForPaused[:], request.Data[:]) {
+							return expected.FillBytes(make([]byte, 32)), nil
+						}
+						if bytes.Equal(expectedCallDataForGetStake[:64], request.Data[:64]) {
+							return stakedAmount.FillBytes(make([]byte, 32)), nil
+						}
+					}
+					return nil, errors.New("unexpected call")
+				}),
+			),
+			nonce,
+		)
+
+		_, err = contract.WithdrawAllStake(ctx)
+		if err == nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("is paused with err", func(t *testing.T) {
+		t.Parallel()
+		expectedCallDataForPaused, err := stakingContractABI.Pack("paused")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		contract := staking.New(
+			addr,
+			owner,
+			stakingContractAddress,
+			stakingContractABI,
+			bzzTokenAddress,
+			transactionMock.New(
+				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
+					if *request.To == stakingContractAddress {
+						if bytes.Equal(expectedCallDataForPaused[:], request.Data[:]) {
+							return nil, fmt.Errorf("some error")
+						}
+					}
+					return nil, errors.New("unexpected call")
+				}),
+			),
+			nonce,
+		)
+
+		_, err = contract.WithdrawAllStake(ctx)
+		if err == nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("get stake with err", func(t *testing.T) {
+		t.Parallel()
+		expected := big.NewInt(1)
+
+		expectedCallDataForPaused, err := stakingContractABI.Pack("paused")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		expectedCallDataForGetStake, err := stakingContractABI.Pack("stakeOfOverlay", common.BytesToHash(addr.Bytes()))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		contract := staking.New(
+			addr,
+			owner,
+			stakingContractAddress,
+			stakingContractABI,
+			bzzTokenAddress,
+			transactionMock.New(
+				transactionMock.WithCallFunc(func(ctx context.Context, request *transaction.TxRequest) (result []byte, err error) {
+					if *request.To == stakingContractAddress {
+						if bytes.Equal(expectedCallDataForPaused[:], request.Data[:]) {
+							return expected.FillBytes(make([]byte, 32)), nil
+						}
+						if bytes.Equal(expectedCallDataForGetStake[:64], request.Data[:64]) {
+							return nil, fmt.Errorf("some error")
+						}
+					}
+					return nil, errors.New("unexpected call")
+				}),
+			),
+			nonce,
+		)
+
+		_, err = contract.WithdrawAllStake(ctx)
+		if err == nil {
+			t.Fatal(err)
 		}
 	})
 }

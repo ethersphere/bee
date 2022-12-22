@@ -139,7 +139,7 @@ func (s *Service) AnnouncePaymentThreshold(ctx context.Context, peer swarm.Addre
 		if err != nil {
 			_ = stream.Reset()
 		} else {
-			go stream.FullClose()
+			stream.FullClose()
 		}
 	}()
 

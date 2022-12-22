@@ -49,11 +49,11 @@ func (db *DB) Set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Addr
 // chunks represented by provided addresses.
 func (db *DB) set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Address) (err error) {
 	// protect parallel updates
-	db.batchMu.Lock()
-	defer db.batchMu.Unlock()
+	db.lock.Lock(lockKeyGC)
 	if db.gcRunning {
 		db.dirtyAddresses = append(db.dirtyAddresses, addrs...)
 	}
+	db.lock.Unlock(lockKeyGC)
 
 	batch := new(leveldb.Batch)
 	var committedLocations []sharky.Location
@@ -61,43 +61,48 @@ func (db *DB) set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Addr
 	// variables that provide information for operations
 	// to be done after write batch function successfully executes
 	var (
-		gcSizeChange      int64 // number to add or subtract from gcSize
-		reserveSizeChange int64 // number of items to add or subtract from reserveSize
+		gcSizeChange int64 // number to add or subtract from gcSize
 	)
 	triggerPullFeed := make(map[uint8]struct{}) // signal pull feed subscriptions to iterate
 
 	switch mode {
 
 	case storage.ModeSetSync:
+		db.lock.Lock(lockKeyGC)
+		defer db.lock.Unlock(lockKeyGC)
+
 		for _, addr := range addrs {
-			c, r, err := db.setSync(batch, addr)
+			c, err := db.setSync(batch, addr)
 			if err != nil {
 				return err
 			}
 			gcSizeChange += c
-			reserveSizeChange += r
 		}
-
 	case storage.ModeSetRemove:
+		db.lock.Lock(lockKeyGC)
+		defer db.lock.Unlock(lockKeyGC)
+
 		for _, addr := range addrs {
 			item := addressToItem(addr)
-			item, err = db.retrievalDataIndex.Get(item)
+			storedItem, err := db.retrievalDataIndex.Get(item)
 			if err != nil {
 				return err
 			}
-			c, err := db.setRemove(batch, item, true)
+			c, err := db.setRemove(batch, storedItem, true)
 			if err != nil {
 				return err
 			}
-			l, err := sharky.LocationFromBinary(item.Location)
+			l, err := sharky.LocationFromBinary(storedItem.Location)
 			if err != nil {
 				return err
 			}
 			committedLocations = append(committedLocations, l)
 			gcSizeChange += c
 		}
-
 	case storage.ModeSetPin:
+		db.lock.Lock(lockKeyGC)
+		defer db.lock.Unlock(lockKeyGC)
+
 		for _, addr := range addrs {
 			item := addressToItem(addr)
 			c, err := db.setPin(batch, item)
@@ -107,6 +112,9 @@ func (db *DB) set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Addr
 			gcSizeChange += c
 		}
 	case storage.ModeSetUnpin:
+		db.lock.Lock(lockKeyGC)
+		defer db.lock.Unlock(lockKeyGC)
+
 		for _, addr := range addrs {
 			c, err := db.setUnpin(batch, addr)
 			if err != nil {
@@ -119,11 +127,6 @@ func (db *DB) set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Addr
 	}
 
 	err = db.incGCSizeInBatch(batch, gcSizeChange)
-	if err != nil {
-		return err
-	}
-
-	err = db.incReserveSizeInBatch(batch, reserveSizeChange)
 	if err != nil {
 		return err
 	}
@@ -153,7 +156,7 @@ func (db *DB) set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Addr
 //   - update to gc index happens given item does not exist in pin index
 //
 // Provided batch is updated.
-func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange, reserveSizeChange int64, err error) {
+func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange int64, err error) {
 	item := addressToItem(addr)
 
 	// need to get access timestamp here as it is not
@@ -169,11 +172,11 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange, r
 			// if it is there
 			err = db.pushIndex.DeleteInBatch(batch, item)
 			if err != nil {
-				return 0, 0, err
+				return 0, err
 			}
-			return 0, 0, nil
+			return 0, nil
 		}
-		return 0, 0, err
+		return 0, err
 	}
 	item.StoreTimestamp = i.StoreTimestamp
 	item.BinID = i.BinID
@@ -189,7 +192,7 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange, r
 			// but this function is called with ModeSetSync
 			db.logger.Debug("chunk not found in push index", "address", addr)
 		} else {
-			return 0, 0, err
+			return 0, err
 		}
 	}
 	if err == nil && db.tags != nil && i.Tag != 0 {
@@ -201,30 +204,30 @@ func (db *DB) setSync(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange, r
 		} else {
 			err = t.Inc(tags.StateSynced)
 			if err != nil {
-				return 0, 0, err
+				return 0, err
 			}
 		}
 	}
 
 	err = db.pushIndex.DeleteInBatch(batch, item)
 	if err != nil {
-		return 0, 0, err
+		return 0, err
 	}
 
 	i1, err := db.retrievalAccessIndex.Get(item)
 	if err != nil {
 		if !errors.Is(err, leveldb.ErrNotFound) {
-			return 0, 0, err
+			return 0, err
 		}
 		item.AccessTimestamp = now()
 		err := db.retrievalAccessIndex.PutInBatch(batch, item)
 		if err != nil {
-			return 0, 0, err
+			return 0, err
 		}
 	} else {
 		item.AccessTimestamp = i1.AccessTimestamp
 	}
-	return db.preserveOrCache(batch, item, false, false)
+	return db.addToCache(batch, item)
 }
 
 // setRemove removes the chunk by updating indexes:
@@ -319,7 +322,7 @@ func (db *DB) setPin(batch *leveldb.Batch, item shed.Item) (gcSizeChange int64, 
 			item.AccessTimestamp = i.AccessTimestamp
 			i, err = db.retrievalDataIndex.Get(item)
 			if err != nil {
-				return 0, err
+				return 0, fmt.Errorf("set pin: retrieval data: %w", err)
 			}
 			item.StoreTimestamp = i.StoreTimestamp
 			item.BinID = i.BinID
@@ -406,6 +409,5 @@ func (db *DB) setUnpin(batch *leveldb.Batch, addr swarm.Address) (gcSizeChange i
 		return 0, err
 	}
 
-	gcSizeChange++
-	return gcSizeChange, nil
+	return 1, nil
 }

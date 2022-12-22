@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 2.2.0
+  version: 3.0.0
   title: Common Data Types
   description: |
     \*****bzzz*****
@@ -385,6 +385,8 @@ components:
       properties:
         batchID:
           $ref: "#/components/schemas/BatchID"
+        txHash:
+          $ref: "#/components/schemas/TransactionHash"
 
     Response:
       type: object
@@ -584,6 +586,18 @@ components:
         stakedAmount:
            $ref: "#/components/schemas/BigInt"
 
+    StakeDepositResponse:
+          type: object
+          properties:
+            txHash:
+               $ref: "#/components/schemas/TransactionHash"
+
+    WithdrawAllStakeResponse:
+              type: object
+              properties:
+                txHash:
+                   $ref: "#/components/schemas/TransactionHash"
+
     SwarmOnlyReference:
       oneOf:
         - $ref: "#/components/schemas/SwarmAddress"
@@ -655,6 +669,12 @@ components:
           $ref: "#/components/schemas/BigInt"
         gasLimit:
           type: integer
+        gasTipCap:
+          $ref: "#/components/schemas/BigInt"
+        gasTipBoost:
+          type: integer
+        gasFeeCap:
+          $ref: "#/components/schemas/BigInt"
         data:
           type: string
         created:
@@ -667,14 +687,16 @@ components:
     WalletResponse:
       type: object
       properties:
-        bzz:
+        bzzBalance:
           $ref: "#/components/schemas/BigInt"
-        xDai:
+        nativeTokenBalance:
           $ref: "#/components/schemas/BigInt"
         chainID:
-            type: integer
-        contractAddress:
-            $ref: "#/components/schemas/EthereumAddress"
+          type: integer
+        chequebookContractAddress:
+          $ref: "#/components/schemas/EthereumAddress"
+        walletAddress:
+          $ref: "#/components/schemas/EthereumAddress"
 
     PendingTransactionsResponse:
       type: object

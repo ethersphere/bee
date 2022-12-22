@@ -35,7 +35,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math"
-	"time"
 
 	"github.com/ethersphere/bee/pkg/postage"
 )
@@ -105,7 +104,6 @@ func (s *store) cleanup() error {
 	}
 
 	for _, b := range evictions {
-
 		err := s.evictFn(b.ID)
 		if err != nil {
 			return fmt.Errorf("evict batch %x: %w", b.ID, err)
@@ -164,7 +162,7 @@ func (s *store) computeRadius() error {
 	// in the edge case that the new radius is lower because total commitment has decreased, the global storage radius has to be readjusted
 	if s.rs.Radius < s.rs.StorageRadius {
 		s.rs.StorageRadius = s.rs.Radius
-		if err := s.lowerBatchStorageRadius(); err != nil {
+		if err := s.setBatchStorageRadius(); err != nil {
 			s.logger.Error(err, "batchstore: lower batch storage radius")
 		}
 	}
@@ -175,55 +173,34 @@ func (s *store) computeRadius() error {
 // Unreserve is implementation of postage.Storer interface Unreserve method.
 func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 
-	defer func(t time.Time) {
-		s.metrics.UnreserveDuration.WithLabelValues("true").Observe(time.Since(t).Seconds())
-	}(time.Now())
-
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
-	defer func(t time.Time) {
-		s.metrics.UnreserveDuration.WithLabelValues("false").Observe(time.Since(t).Seconds())
-	}(time.Now())
-
 	var (
 		updates []*postage.Batch
+		stopped = false
 	)
-
-	batchesCount := 0
-	skippedBatches := 0
 
 	err := s.store.Iterate(valueKeyPrefix, func(key, value []byte) (bool, error) {
 
 		id := valueKeyToID(key)
-
-		batchesCount++
 
 		b, err := s.get(id)
 		if err != nil {
 			return false, err
 		}
 
-		// skip eviction and try the next batch if the batch storage radius is higher than the global storage radius.
-		if b.StorageRadius > s.rs.StorageRadius {
-			skippedBatches++
-			return false, nil
-		}
+		s.logger.Debug("unreserve callback", "batch_id", hex.EncodeToString(id), "storage_radius", s.rs.StorageRadius, "batch_storage_radius", b.StorageRadius)
 
-		s.logger.Debug("unreserve callback", "batch_id", hex.EncodeToString(id), "batch_storage_radius", b.StorageRadius)
-
-		stopped, err := cb(id, b.StorageRadius)
+		stopped, err = cb(id, s.rs.StorageRadius)
 		if err != nil {
 			return false, err
 		}
 
-		// each call of Unreseve means that the eviction of chunks is required to recover storage space, as such,
-		// the storage radius of the batch is inreased so that future Unreserve calls will
-		// evict higher PO chunks of the batch. When the storage radius of a batch becomes higher than
-		// the global storage radius, other batches are attempted for eviction.
-		b.StorageRadius++
-
-		updates = append(updates, b)
+		if b.StorageRadius != s.rs.StorageRadius {
+			b.StorageRadius = s.rs.StorageRadius
+			updates = append(updates, b)
+		}
 
 		return stopped, nil
 	})
@@ -234,24 +211,27 @@ func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
 	for _, u := range updates {
 		err := s.store.Put(batchKey(u.ID), u)
 		if err != nil {
-			s.logger.Warning("unreserve failed", "error", err)
+			s.logger.Warning("unreserve put updated batch failed", "error", err)
 		}
 	}
 
-	// a full iteration has occurred AND all batches were skipped (meaning current storage radius is too low), increase global storage radius
-	if batchesCount > 0 && batchesCount == skippedBatches && s.rs.StorageRadius < s.rs.Radius {
+	// a full iteration has occurred (meaning current storage radius is too low), increase global storage radius
+	if !stopped && s.rs.StorageRadius < s.rs.Radius {
 		s.rs.StorageRadius++
 		s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
 		s.logger.Debug("new storage radius", "reserve_state_storage_radius", s.rs.StorageRadius)
+		if s.storageRadiusSetter != nil {
+			s.storageRadiusSetter.SetStorageRadius(s.rs.StorageRadius)
+		}
 		return s.store.Put(reserveStateKey, s.rs)
 	}
 
 	return nil
 }
 
-// lowerBatchStorageRadius lowers the storage radius of batches to the current storage radius.
+// setBatchStorageRadius set the storage radius of batches to the current storage radius.
 // Must be called under lock.
-func (s *store) lowerBatchStorageRadius() error {
+func (s *store) setBatchStorageRadius() error {
 
 	var updates []*postage.Batch
 
@@ -263,9 +243,9 @@ func (s *store) lowerBatchStorageRadius() error {
 			return false, err
 		}
 
-		if b.StorageRadius > s.rs.StorageRadius {
+		if b.StorageRadius != s.rs.StorageRadius {
+			s.logger.Debug("adjust batch storage radius", "batch_id", hex.EncodeToString(b.ID), "old_batch_radius", b.StorageRadius, "new_batch_radius", s.rs.StorageRadius)
 			b.StorageRadius = s.rs.StorageRadius
-			s.logger.Debug("lowering storage radius", "batch_id", hex.EncodeToString(b.ID), "old_batch_storage_radius", b.StorageRadius, "new_batch_storage_radius", s.rs.StorageRadius)
 			updates = append(updates, b)
 		}
 

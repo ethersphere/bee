@@ -139,7 +139,6 @@ func TestFeed_Post(t *testing.T) {
 		})
 		url = fmt.Sprintf("/feeds/%s/%s?type=%s", ownerString, topic, "sequence")
 	)
-
 	t.Run("ok", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, url, http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
@@ -196,6 +195,35 @@ func TestFeed_Post(t *testing.T) {
 		})
 	})
 
+}
+
+// TestDirectUploadFeed tests that the direct upload endpoint give correct error message in dev mode
+func TestDirectUploadFeed(t *testing.T) {
+	t.Parallel()
+	var (
+		mockStatestore  = statestore.NewStateStore()
+		logger          = log.Noop
+		tag             = tags.NewTags(mockStatestore, logger)
+		topic           = "aabbcc"
+		mp              = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))
+		mockStorer      = mock.NewStorer()
+		client, _, _, _ = newTestServer(t, testServerOptions{
+			Storer:  mockStorer,
+			Tags:    tag,
+			Logger:  logger,
+			Post:    mp,
+			beeMode: api.DevMode,
+		})
+		url = fmt.Sprintf("/feeds/%s/%s?type=%s", ownerString, topic, "sequence")
+	)
+	jsonhttptest.Request(t, client, http.MethodPost, url, http.StatusBadRequest,
+		jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "false"),
+		jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+			Message: api.ErrUnsupportedDevNodeOperation.Error(),
+			Code:    http.StatusBadRequest,
+		}),
+	)
 }
 
 type factoryMock struct {

@@ -8,7 +8,6 @@ import (
 	"context"
 	"fmt"
 	"math/big"
-	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
@@ -18,10 +17,6 @@ import (
 	"github.com/ethersphere/bee/pkg/transaction"
 )
 
-var (
-	redistributionContractABI = parseABI(redistributionABIv0_0_0)
-)
-
 const loggerName = "redistributionContract"
 
 type Contract interface {
@@ -29,7 +24,7 @@ type Contract interface {
 	IsPlaying(context.Context, uint8) (bool, error)
 	IsWinner(context.Context) (bool, error)
 	Claim(context.Context) error
-	Commit(context.Context, []byte) error
+	Commit(context.Context, []byte, *big.Int) error
 	Reveal(context.Context, uint8, []byte, []byte) error
 }
 
@@ -38,6 +33,7 @@ type contract struct {
 	logger                    log.Logger
 	txService                 transaction.Service
 	incentivesContractAddress common.Address
+	incentivesContractABI     abi.ABI
 }
 
 func New(
@@ -45,20 +41,20 @@ func New(
 	logger log.Logger,
 	txService transaction.Service,
 	incentivesContractAddress common.Address,
+	incentivesContractABI abi.ABI,
 ) Contract {
-
-	c := &contract{
+	return &contract{
 		overlay:                   overlay,
 		logger:                    logger.WithName(loggerName).Register(),
 		txService:                 txService,
 		incentivesContractAddress: incentivesContractAddress,
+		incentivesContractABI:     incentivesContractABI,
 	}
-	return c
 }
 
 // IsPlaying checks if the overlay is participating in the upcoming round.
 func (c *contract) IsPlaying(ctx context.Context, depth uint8) (bool, error) {
-	callData, err := redistributionContractABI.Pack("isParticipatingInUpcomingRound", common.BytesToHash(c.overlay.Bytes()), depth)
+	callData, err := c.incentivesContractABI.Pack("isParticipatingInUpcomingRound", common.BytesToHash(c.overlay.Bytes()), depth)
 	if err != nil {
 		return false, err
 	}
@@ -68,7 +64,7 @@ func (c *contract) IsPlaying(ctx context.Context, depth uint8) (bool, error) {
 		return false, fmt.Errorf("IsPlaying: overlay %v depth %d: %w", common.BytesToHash(c.overlay.Bytes()), depth, err)
 	}
 
-	results, err := redistributionContractABI.Unpack("isParticipatingInUpcomingRound", result)
+	results, err := c.incentivesContractABI.Unpack("isParticipatingInUpcomingRound", result)
 	if err != nil {
 		return false, fmt.Errorf("IsPlaying: results %v: %w", results, err)
 	}
@@ -78,7 +74,7 @@ func (c *contract) IsPlaying(ctx context.Context, depth uint8) (bool, error) {
 
 // IsWinner checks if the overlay is winner by sending a transaction to blockchain.
 func (c *contract) IsWinner(ctx context.Context) (isWinner bool, err error) {
-	callData, err := redistributionContractABI.Pack("isWinner", common.BytesToHash(c.overlay.Bytes()))
+	callData, err := c.incentivesContractABI.Pack("isWinner", common.BytesToHash(c.overlay.Bytes()))
 	if err != nil {
 		return false, err
 	}
@@ -88,7 +84,7 @@ func (c *contract) IsWinner(ctx context.Context) (isWinner bool, err error) {
 		return false, fmt.Errorf("IsWinner: overlay %v : %w", common.BytesToHash(c.overlay.Bytes()), err)
 	}
 
-	results, err := redistributionContractABI.Unpack("isWinner", result)
+	results, err := c.incentivesContractABI.Unpack("isWinner", result)
 	if err != nil {
 		return false, fmt.Errorf("IsWinner: results %v : %w", results, err)
 	}
@@ -98,19 +94,20 @@ func (c *contract) IsWinner(ctx context.Context) (isWinner bool, err error) {
 
 // Claim sends a transaction to blockchain if a win is claimed.
 func (c *contract) Claim(ctx context.Context) error {
-	callData, err := redistributionContractABI.Pack("claim")
+	callData, err := c.incentivesContractABI.Pack("claim")
 	if err != nil {
 		return err
 	}
 	request := &transaction.TxRequest{
-		To:          &c.incentivesContractAddress,
-		Data:        callData,
-		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 9_000_000),
-		Value:       big.NewInt(0),
-		Description: "claim win transaction",
+		To:                   &c.incentivesContractAddress,
+		Data:                 callData,
+		GasPrice:             sctx.GetGasPrice(ctx),
+		GasLimit:             sctx.GetGasLimit(ctx),
+		MinEstimatedGasLimit: 500_000,
+		Value:                big.NewInt(0),
+		Description:          "claim win transaction",
 	}
-	err = c.sendAndWait(ctx, request)
+	err = c.sendAndWait(ctx, request, 50)
 	if err != nil {
 		return fmt.Errorf("claim: %w", err)
 	}
@@ -119,20 +116,21 @@ func (c *contract) Claim(ctx context.Context) error {
 }
 
 // Commit submits the obfusHash hash by sending a transaction to the blockchain.
-func (c *contract) Commit(ctx context.Context, obfusHash []byte) error {
-	callData, err := redistributionContractABI.Pack("commit", common.BytesToHash(obfusHash), common.BytesToHash(c.overlay.Bytes()))
+func (c *contract) Commit(ctx context.Context, obfusHash []byte, round *big.Int) error {
+	callData, err := c.incentivesContractABI.Pack("commit", common.BytesToHash(obfusHash), common.BytesToHash(c.overlay.Bytes()), round)
 	if err != nil {
 		return err
 	}
 	request := &transaction.TxRequest{
-		To:          &c.incentivesContractAddress,
-		Data:        callData,
-		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 1_000_000),
-		Value:       big.NewInt(0),
-		Description: "commit transaction",
+		To:                   &c.incentivesContractAddress,
+		Data:                 callData,
+		GasPrice:             sctx.GetGasPrice(ctx),
+		GasLimit:             sctx.GetGasLimit(ctx),
+		MinEstimatedGasLimit: 500_000,
+		Value:                big.NewInt(0),
+		Description:          "commit transaction",
 	}
-	err = c.sendAndWait(ctx, request)
+	err = c.sendAndWait(ctx, request, 50)
 	if err != nil {
 		return fmt.Errorf("commit: obfusHash %v overlay %v: %w", common.BytesToHash(obfusHash), common.BytesToHash(c.overlay.Bytes()), err)
 	}
@@ -142,19 +140,20 @@ func (c *contract) Commit(ctx context.Context, obfusHash []byte) error {
 
 // Reveal submits the storageDepth, reserveCommitmentHash and RandomNonce in a transaction to blockchain.
 func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommitmentHash []byte, RandomNonce []byte) error {
-	callData, err := redistributionContractABI.Pack("reveal", common.BytesToHash(c.overlay.Bytes()), storageDepth, common.BytesToHash(reserveCommitmentHash), common.BytesToHash(RandomNonce))
+	callData, err := c.incentivesContractABI.Pack("reveal", common.BytesToHash(c.overlay.Bytes()), storageDepth, common.BytesToHash(reserveCommitmentHash), common.BytesToHash(RandomNonce))
 	if err != nil {
 		return err
 	}
 	request := &transaction.TxRequest{
-		To:          &c.incentivesContractAddress,
-		Data:        callData,
-		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 1_000_000),
-		Value:       big.NewInt(0),
-		Description: "reveal transaction",
+		To:                   &c.incentivesContractAddress,
+		Data:                 callData,
+		GasPrice:             sctx.GetGasPrice(ctx),
+		GasLimit:             sctx.GetGasLimit(ctx),
+		MinEstimatedGasLimit: 500_000,
+		Value:                big.NewInt(0),
+		Description:          "reveal transaction",
 	}
-	err = c.sendAndWaitWithBoost(ctx, request, 50)
+	err = c.sendAndWait(ctx, request, 50)
 	if err != nil {
 		return fmt.Errorf("reveal: storageDepth %d reserveCommitmentHash %v RandomNonce %v: %w", storageDepth, common.BytesToHash(reserveCommitmentHash), common.BytesToHash(RandomNonce), err)
 	}
@@ -164,7 +163,7 @@ func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommit
 
 // ReserveSalt provides the current round anchor by transacting on the blockchain.
 func (c *contract) ReserveSalt(ctx context.Context) ([]byte, error) {
-	callData, err := redistributionContractABI.Pack("currentRoundAnchor")
+	callData, err := c.incentivesContractABI.Pack("currentRoundAnchor")
 	if err != nil {
 		return nil, err
 	}
@@ -174,7 +173,7 @@ func (c *contract) ReserveSalt(ctx context.Context) ([]byte, error) {
 		return nil, err
 	}
 
-	results, err := redistributionContractABI.Unpack("currentRoundAnchor", result)
+	results, err := c.incentivesContractABI.Unpack("currentRoundAnchor", result)
 	if err != nil {
 		return nil, err
 	}
@@ -182,26 +181,8 @@ func (c *contract) ReserveSalt(ctx context.Context) ([]byte, error) {
 	return salt[:], nil
 }
 
-func (c *contract) sendAndWaitWithBoost(ctx context.Context, request *transaction.TxRequest, boostPercent uint64) error {
-	txHash, err := c.txService.SendWithBoost(ctx, request, boostPercent)
-	if err != nil {
-		return err
-	}
-
-	receipt, err := c.txService.WaitForReceipt(ctx, txHash)
-	if err != nil {
-		return err
-	}
-
-	if receipt.Status == 0 {
-		return transaction.ErrTransactionReverted
-	}
-	return nil
-}
-
-// sendAndWait simulates a transaction based on tx request and waits until the tx is either mined or ctx is cancelled.
-func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest) error {
-	txHash, err := c.txService.Send(ctx, request)
+func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest, boostPercent int) error {
+	txHash, err := c.txService.Send(ctx, request, boostPercent)
 	if err != nil {
 		return err
 	}
@@ -227,12 +208,4 @@ func (c *contract) callTx(ctx context.Context, callData []byte) ([]byte, error) 
 		return nil, err
 	}
 	return result, nil
-}
-
-func parseABI(json string) abi.ABI {
-	cabi, err := abi.JSON(strings.NewReader(json))
-	if err != nil {
-		panic(fmt.Sprintf("error creating ABI for redistribution redistributioncontract: %v", err))
-	}
-	return cabi
 }

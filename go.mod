@@ -8,7 +8,7 @@ require (
 	github.com/coreos/go-semver v0.3.0
 	github.com/ethereum/go-ethereum v1.10.18
 	github.com/ethersphere/go-price-oracle-abi v0.1.0
-	github.com/ethersphere/go-storage-incentives-abi v0.3.0
+	github.com/ethersphere/go-storage-incentives-abi v0.4.0
 	github.com/ethersphere/go-sw3-abi v0.4.0
 	github.com/ethersphere/langos v1.0.0
 	github.com/gogo/protobuf v1.3.2
@@ -73,6 +73,7 @@ require (
 	github.com/ipfs/go-cid v0.0.7
 	github.com/libp2p/go-libp2p-yamux v0.6.0
 	github.com/multiformats/go-multihash v0.0.15
+	resenje.org/multex v0.1.0
 )
 
 require (

@@ -65,6 +65,7 @@ const (
 	optionNameSwapDeploymentGasPrice     = "swap-deployment-gas-price"
 	optionNameFullNode                   = "full-node"
 	optionNamePostageContractAddress     = "postage-stamp-address"
+	optionNamePostageContractStartBlock  = "postage-stamp-start-block"
 	optionNamePriceOracleAddress         = "price-oracle-address"
 	optionNameRedistributionAddress      = "redistribution-address"
 	optionNameStakingAddress             = "staking-address"
@@ -92,11 +93,12 @@ func init() {
 }
 
 type command struct {
-	root           *cobra.Command
-	config         *viper.Viper
-	passwordReader passwordReader
-	cfgFile        string
-	homeDir        string
+	root             *cobra.Command
+	config           *viper.Viper
+	passwordReader   passwordReader
+	cfgFile          string
+	homeDir          string
+	isWindowsService bool
 }
 
 type option func(*command)
@@ -127,6 +129,10 @@ func newCommand(opts ...option) (c *command, err error) {
 	}
 
 	c.initGlobalFlags()
+
+	if err := c.initCommandVariables(); err != nil {
+		return nil, err
+	}
 
 	if err := c.initStartCmd(); err != nil {
 		return nil, err
@@ -174,6 +180,17 @@ func Execute() (err error) {
 func (c *command) initGlobalFlags() {
 	globalFlags := c.root.PersistentFlags()
 	globalFlags.StringVar(&c.cfgFile, "config", "", "config file (default is $HOME/.bee.yaml)")
+}
+
+func (c *command) initCommandVariables() error {
+	isWindowsService, err := isWindowsService()
+	if err != nil {
+		return fmt.Errorf("failed to determine if we are running in service: %w", err)
+	}
+
+	c.isWindowsService = isWindowsService
+
+	return nil
 }
 
 func (c *command) initConfig() (err error) {
@@ -257,11 +274,12 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameBlockchainRpcEndpoint, "", "rpc blockchain endpoint")
 	cmd.Flags().String(optionNameSwapFactoryAddress, "", "swap factory addresses")
 	cmd.Flags().StringSlice(optionNameSwapLegacyFactoryAddresses, nil, "legacy swap factory addresses")
-	cmd.Flags().String(optionNameSwapInitialDeposit, "10000000000000000", "initial deposit if deploying a new chequebook")
+	cmd.Flags().String(optionNameSwapInitialDeposit, "0", "initial deposit if deploying a new chequebook")
 	cmd.Flags().Bool(optionNameSwapEnable, true, "enable swap")
 	cmd.Flags().Bool(optionNameChequebookEnable, true, "enable chequebook")
 	cmd.Flags().Bool(optionNameFullNode, false, "cause the node to start in full mode")
 	cmd.Flags().String(optionNamePostageContractAddress, "", "postage stamp contract address")
+	cmd.Flags().Uint64(optionNamePostageContractStartBlock, 0, "postage stamp contract start block number")
 	cmd.Flags().String(optionNamePriceOracleAddress, "", "price oracle contract address")
 	cmd.Flags().String(optionNameRedistributionAddress, "", "redistribution contract address")
 	cmd.Flags().String(optionNameStakingAddress, "", "staking contract address")
@@ -281,8 +299,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameTokenEncryptionKey, "", "admin username to get the security token")
 	cmd.Flags().String(optionNameAdminPasswordHash, "", "bcrypt hash of the admin password to get the security token")
 	cmd.Flags().Bool(optionNameUsePostageSnapshot, false, "bootstrap node using postage snapshot from the network")
-	cmd.Flags().Bool(optionNameStorageIncentivesEnable, false, "enable storage incentives feature")
-
+	cmd.Flags().Bool(optionNameStorageIncentivesEnable, true, "enable storage incentives feature")
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {

@@ -16,16 +16,23 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	chaincfg "github.com/ethersphere/bee/pkg/config"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/listener"
 	"github.com/ethersphere/bee/pkg/util"
+	"github.com/ethersphere/bee/pkg/util/abiutil"
 )
 
-var hash common.Hash = common.HexToHash("ff6ec1ed9250a6952fabac07c6eb103550dc65175373eea432fd115ce8bb2246")
-var addr common.Address = common.HexToAddress("abcdef")
+var (
+	hash = common.HexToHash("ff6ec1ed9250a6952fabac07c6eb103550dc65175373eea432fd115ce8bb2246")
+	addr = common.HexToAddress("abcdef")
+)
 
-var postageStampAddress common.Address = common.HexToAddress("eeee")
+var (
+	postageStampContractAddress = common.HexToAddress("eeee")
+	postageStampContractABI     = abiutil.MustParseABI(chaincfg.Testnet.PostageStampABI)
+)
 
 const (
 	stallingTimeout = 5 * time.Second
@@ -37,9 +44,11 @@ func toBatchBlock(block uint64) uint64 {
 }
 
 func TestListener(t *testing.T) {
-	logger := log.Noop
-	blockNumber := uint64(500)
-	timeout := 5 * time.Second
+	const (
+		blockNumber = uint64(500)
+		timeout     = 5 * time.Second
+	)
+
 	// test that when the listener gets a certain event
 	// then we would like to assert the appropriate EventUpdater method was called
 	t.Run("create event", func(t *testing.T) {
@@ -58,8 +67,17 @@ func TestListener(t *testing.T) {
 			),
 		)
 
-		l := listener.New(nil, logger, mf, postageStampAddress, 1, stallingTimeout, backoffTime)
-		<-l.Listen(0, ev, nil)
+		l := listener.New(
+			nil,
+			log.Noop,
+			mf,
+			postageStampContractAddress,
+			postageStampContractABI,
+			1,
+			stallingTimeout,
+			backoffTime,
+		)
+		<-l.Listen(context.Background(), 0, ev, nil)
 
 		select {
 		case e := <-evC:
@@ -89,8 +107,17 @@ func TestListener(t *testing.T) {
 				topup.toLog(496),
 			),
 		)
-		l := listener.New(nil, logger, mf, postageStampAddress, 1, stallingTimeout, backoffTime)
-		<-l.Listen(0, ev, nil)
+		l := listener.New(
+			nil,
+			log.Noop,
+			mf,
+			postageStampContractAddress,
+			postageStampContractABI,
+			1,
+			stallingTimeout,
+			backoffTime,
+		)
+		<-l.Listen(context.Background(), 0, ev, nil)
 
 		select {
 		case e := <-evC:
@@ -120,8 +147,17 @@ func TestListener(t *testing.T) {
 				depthIncrease.toLog(496),
 			),
 		)
-		l := listener.New(nil, logger, mf, postageStampAddress, 1, stallingTimeout, backoffTime)
-		<-l.Listen(0, ev, nil)
+		l := listener.New(
+			nil,
+			log.Noop,
+			mf,
+			postageStampContractAddress,
+			postageStampContractABI,
+			1,
+			stallingTimeout,
+			backoffTime,
+		)
+		<-l.Listen(context.Background(), 0, ev, nil)
 
 		select {
 		case e := <-evC:
@@ -149,8 +185,17 @@ func TestListener(t *testing.T) {
 				priceUpdate.toLog(496),
 			),
 		)
-		l := listener.New(nil, logger, mf, postageStampAddress, 1, stallingTimeout, backoffTime)
-		<-l.Listen(0, ev, nil)
+		l := listener.New(
+			nil,
+			log.Noop,
+			mf,
+			postageStampContractAddress,
+			postageStampContractABI,
+			1,
+			stallingTimeout,
+			backoffTime,
+		)
+		<-l.Listen(context.Background(), 0, ev, nil)
 		select {
 		case e := <-evC:
 			e.(blockNumberCall).compareF(t, blockNumber-uint64(listener.TailSize)) // event args should be equal
@@ -201,8 +246,17 @@ func TestListener(t *testing.T) {
 			),
 			WithBlockNumber(blockNumber),
 		)
-		l := listener.New(nil, logger, mf, postageStampAddress, 1, stallingTimeout, backoffTime)
-		<-l.Listen(0, ev, nil)
+		l := listener.New(
+			nil,
+			log.Noop,
+			mf,
+			postageStampContractAddress,
+			postageStampContractABI,
+			1,
+			stallingTimeout,
+			backoffTime,
+		)
+		<-l.Listen(context.Background(), 0, ev, nil)
 
 		select {
 		case e := <-evC:
@@ -270,8 +324,17 @@ func TestListener(t *testing.T) {
 		mf := newMockFilterer(
 			WithBlockNumberErrorOnce(errors.New("dummy error"), blockNumber),
 		)
-		l := listener.New(nil, logger, mf, postageStampAddress, 1, stallingTimeout, 0*time.Second)
-		<-l.Listen(0, ev, nil)
+		l := listener.New(
+			nil,
+			log.Noop,
+			mf,
+			postageStampContractAddress,
+			postageStampContractABI,
+			1,
+			stallingTimeout,
+			0,
+		)
+		<-l.Listen(context.Background(), 0, ev, nil)
 
 		select {
 		case e := <-evC:
@@ -287,10 +350,18 @@ func TestListener(t *testing.T) {
 			WithBlockNumberError(errors.New("dummy error")),
 		)
 		c := util.NewSignaler()
-		l := listener.New(c, logger, mf, postageStampAddress, 1, 50*time.Millisecond, 0*time.Second)
-		<-l.Listen(0, ev, nil)
+		l := listener.New(
+			c,
+			log.Noop,
+			mf,
+			postageStampContractAddress,
+			postageStampContractABI,
+			1,
+			50*time.Millisecond,
+			0,
+		)
+		<-l.Listen(context.Background(), 0, ev, nil)
 
-		time.Sleep(time.Millisecond * 100)
 		select {
 		case <-c.C:
 		case <-time.After(5 * time.Second):
@@ -305,8 +376,16 @@ func TestListener(t *testing.T) {
 			WithBlockNumber(blockNumber),
 		)
 		c := util.NewSignaler()
-		l := listener.New(c, logger, mf, postageStampAddress, 1, stallingTimeout, backoffTime)
-		<-l.Listen(0, ev, nil)
+		l := listener.New(c,
+			log.Noop,
+			mf,
+			postageStampContractAddress,
+			postageStampContractABI,
+			1,
+			stallingTimeout,
+			backoffTime,
+		)
+		<-l.Listen(context.Background(), 0, ev, nil)
 
 		select {
 		case e := <-evC:
@@ -315,7 +394,6 @@ func TestListener(t *testing.T) {
 			t.Fatal("timed out waiting for block number update")
 		}
 
-		time.Sleep(time.Millisecond * 100)
 		select {
 		case <-c.C:
 		case <-time.After(time.Second * 5):
@@ -325,7 +403,6 @@ func TestListener(t *testing.T) {
 }
 
 func TestListenerBatchState(t *testing.T) {
-	logger := log.Noop
 	ev, evC := newEventUpdaterMock()
 	mf := newMockFilterer()
 
@@ -412,8 +489,17 @@ func TestListenerBatchState(t *testing.T) {
 		}
 	}()
 
-	l := listener.New(nil, logger, mf, postageStampAddress, 1, stallingTimeout, backoffTime)
-	l.Listen(snapshot.LastBlockNumber+1, ev, snapshot)
+	l := listener.New(
+		nil,
+		log.Noop,
+		mf,
+		postageStampContractAddress,
+		postageStampContractABI,
+		1,
+		stallingTimeout,
+		backoffTime,
+	)
+	l.Listen(context.Background(), snapshot.LastBlockNumber+1, ev, snapshot)
 
 	defer close(stop)
 
@@ -492,9 +578,12 @@ func (u *updater) UpdateBlockNumber(blockNumber uint64) error {
 	return u.blockNumberUpdateError
 }
 
-func (u *updater) Start(uint64, *postage.ChainSnapshot, chan struct{}) error { return nil }
-func (u *updater) TransactionStart() error                                   { return nil }
-func (u *updater) TransactionEnd() error                                     { return nil }
+func (u *updater) Start(ctx context.Context, bno uint64, cs *postage.ChainSnapshot) error {
+	return nil
+}
+
+func (u *updater) TransactionStart() error { return nil }
+func (u *updater) TransactionEnd() error   { return nil }
 
 type mockFilterer struct {
 	filterLogEvents      []types.Log
@@ -617,14 +706,15 @@ func (c createArgs) compareF(t *testing.T, want createArgs) {
 }
 
 func (c createArgs) toLog(blockNumber uint64) types.Log {
-	b, err := listener.PostageStampABI.Events["BatchCreated"].Inputs.NonIndexed().Pack(c.amount, c.normalisedAmount, common.BytesToAddress(c.owner), c.bucketDepth, c.depth, c.immutable)
+	event := postageStampContractABI.Events["BatchCreated"]
+	b, err := event.Inputs.NonIndexed().Pack(c.amount, c.normalisedAmount, common.BytesToAddress(c.owner), c.bucketDepth, c.depth, c.immutable)
 	if err != nil {
 		panic(err)
 	}
 	return types.Log{
 		Data:        b,
 		BlockNumber: blockNumber,
-		Topics:      []common.Hash{listener.BatchCreatedTopic, common.BytesToHash(c.id)}, // 1st item is the function sig digest, 2nd is always the batch id
+		Topics:      []common.Hash{event.ID, common.BytesToHash(c.id)}, // 1st item is the function sig digest, 2nd is always the batch id
 	}
 }
 
@@ -653,14 +743,15 @@ func (ta topupArgs) compareF(t *testing.T, want topupArgs) {
 }
 
 func (ta topupArgs) toLog(blockNumber uint64) types.Log {
-	b, err := listener.PostageStampABI.Events["BatchTopUp"].Inputs.NonIndexed().Pack(ta.amount, ta.normalisedBalance)
+	event := postageStampContractABI.Events["BatchTopUp"]
+	b, err := event.Inputs.NonIndexed().Pack(ta.amount, ta.normalisedBalance)
 	if err != nil {
 		panic(err)
 	}
 	return types.Log{
 		Data:        b,
 		BlockNumber: blockNumber,
-		Topics:      []common.Hash{listener.BatchTopupTopic, common.BytesToHash(ta.id)}, // 1st item is the function sig digest, 2nd is always the batch id
+		Topics:      []common.Hash{event.ID, common.BytesToHash(ta.id)}, // 1st item is the function sig digest, 2nd is always the batch id
 	}
 }
 
@@ -692,14 +783,15 @@ func (d depthArgs) compareF(t *testing.T, want depthArgs) {
 }
 
 func (d depthArgs) toLog(blockNumber uint64) types.Log {
-	b, err := listener.PostageStampABI.Events["BatchDepthIncrease"].Inputs.NonIndexed().Pack(d.depth, d.normalisedBalance)
+	event := postageStampContractABI.Events["BatchDepthIncrease"]
+	b, err := event.Inputs.NonIndexed().Pack(d.depth, d.normalisedBalance)
 	if err != nil {
 		panic(err)
 	}
 	return types.Log{
 		Data:        b,
 		BlockNumber: blockNumber,
-		Topics:      []common.Hash{listener.BatchDepthIncreaseTopic, common.BytesToHash(d.id)}, // 1st item is the function sig digest, 2nd is always the batch id
+		Topics:      []common.Hash{event.ID, common.BytesToHash(d.id)}, // 1st item is the function sig digest, 2nd is always the batch id
 	}
 }
 
@@ -723,14 +815,15 @@ func (p priceArgs) compareF(t *testing.T, want priceArgs) {
 }
 
 func (p priceArgs) toLog(blockNumber uint64) types.Log {
-	b, err := listener.PostageStampABI.Events["PriceUpdate"].Inputs.NonIndexed().Pack(p.price)
+	event := postageStampContractABI.Events["PriceUpdate"]
+	b, err := event.Inputs.NonIndexed().Pack(p.price)
 	if err != nil {
 		panic(err)
 	}
 	return types.Log{
 		Data:        b,
 		BlockNumber: blockNumber,
-		Topics:      []common.Hash{listener.PriceUpdateTopic},
+		Topics:      []common.Hash{event.ID},
 	}
 }
 

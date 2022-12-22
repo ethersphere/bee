@@ -11,6 +11,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/bmtpool"
@@ -24,17 +25,19 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-const sampleSize = 16
+const sampleSize = 8
 
 var errDbClosed = errors.New("database closed")
+var errSamplerStopped = errors.New("sampler stopped due to ongoing evictions")
 
 type sampleStat struct {
-	TotalIterated     atomic.Int64
-	NotFound          atomic.Int64
-	NewIgnored        atomic.Int64
-	IterationDuration atomic.Int64
-	GetDuration       atomic.Int64
-	HmacrDuration     atomic.Int64
+	TotalIterated      atomic.Int64
+	NotFound           atomic.Int64
+	NewIgnored         atomic.Int64
+	IterationDuration  atomic.Int64
+	GetDuration        atomic.Int64
+	HmacrDuration      atomic.Int64
+	ValidStampDuration atomic.Int64
 }
 
 type sampleEntry struct {
@@ -42,18 +45,20 @@ type sampleEntry struct {
 	chunkItem          shed.Item
 }
 
-func (s *sampleStat) String() string {
+func (s sampleStat) String() string {
 
 	seconds := int64(time.Second)
 
 	return fmt.Sprintf(
-		"Total: %d NotFound: %d New Ignored: %d Iteration Duration: %d secs GetDuration: %d secs HmacrDuration: %d",
+		"Chunks: %d NotFound: %d New Ignored: %d Iteration Duration: %d secs GetDuration: %d secs"+
+			" HmacrDuration: %d secs ValidStampDuration: %d secs",
 		s.TotalIterated.Load(),
 		s.NotFound.Load(),
 		s.NewIgnored.Load(),
 		s.IterationDuration.Load()/seconds,
 		s.GetDuration.Load()/seconds,
 		s.HmacrDuration.Load()/seconds,
+		s.ValidStampDuration.Load()/seconds,
 	)
 }
 
@@ -71,7 +76,7 @@ func (s *sampleStat) String() string {
 func (db *DB) ReserveSample(
 	ctx context.Context,
 	anchor []byte,
-	storageDepth uint8,
+	storageRadius uint8,
 	consensusTime uint64, // nanoseconds
 ) (storage.Sample, error) {
 
@@ -80,10 +85,17 @@ func (db *DB) ReserveSample(
 	var stat sampleStat
 	logger := db.logger.WithName("sampler").V(1).Register()
 
+	t := time.Now()
+	// signal start of sampling to see if we get any evictions during the sampler
+	// run
+	db.startSampling()
+	defer db.resetSamplingState()
+
 	// Phase 1: Iterate chunk addresses
 	g.Go(func() error {
 		defer close(addrChan)
 		iterationStart := time.Now()
+
 		err := db.pullIndex.Iterate(func(item shed.Item) (bool, error) {
 			select {
 			case addrChan <- swarm.NewAddress(item.Address):
@@ -96,7 +108,7 @@ func (db *DB) ReserveSample(
 			}
 		}, &shed.IterateOptions{
 			StartFrom: &shed.Item{
-				Address: db.addressInBin(storageDepth).Bytes(),
+				Address: db.addressInBin(storageRadius).Bytes(),
 			},
 		})
 		if err != nil {
@@ -146,6 +158,8 @@ func (db *DB) ReserveSample(
 					return ctx.Err()
 				case <-db.close:
 					return errDbClosed
+				case <-db.samplerSignal:
+					return errSamplerStopped
 				}
 			}
 
@@ -190,9 +204,16 @@ func (db *DB) ReserveSample(
 		}
 		if le(item.transformedAddress.Bytes(), currentMaxAddr.Bytes()) || len(sampleItems) < sampleSize {
 
+			validStart := time.Now()
+
 			chunk := swarm.NewChunk(swarm.NewAddress(item.chunkItem.Address), item.chunkItem.Data)
 
-			stamp := postage.NewStamp(item.chunkItem.BatchID, item.chunkItem.Index, item.chunkItem.Timestamp, item.chunkItem.Sig)
+			stamp := postage.NewStamp(
+				item.chunkItem.BatchID,
+				item.chunkItem.Index,
+				item.chunkItem.Timestamp,
+				item.chunkItem.Sig,
+			)
 
 			stampData, err := stamp.MarshalBinary()
 			if err != nil {
@@ -201,19 +222,24 @@ func (db *DB) ReserveSample(
 			}
 			_, err = db.validStamp(chunk, stampData)
 			if err == nil {
-				if !cac.Valid(chunk) && !soc.Valid(chunk) {
+				if !validChunkFn(chunk) {
 					logger.Debug("data invalid for chunk address", "chunk_address", chunk.Address())
 				} else {
 					insert(item.transformedAddress)
 				}
 			} else {
-				logger.Info("invalid stamp for chunk", "chunk_address", chunk.Address(), "error", err)
+				logger.Debug("invalid stamp for chunk", "chunk_address", chunk.Address(), "error", err)
 			}
 
+			stat.ValidStampDuration.Add(time.Since(validStart).Nanoseconds())
 		}
 	}
 
 	if err := g.Wait(); err != nil {
+		db.metrics.SamplerFailedRuns.Inc()
+		if errors.Is(err, errSamplerStopped) {
+			db.metrics.SamplerStopped.Inc()
+		}
 		return storage.Sample{}, fmt.Errorf("sampler: failed creating sample: %w", err)
 	}
 
@@ -223,6 +249,7 @@ func (db *DB) ReserveSample(
 	for _, s := range sampleItems {
 		_, err := hasher.Write(s.Bytes())
 		if err != nil {
+			db.metrics.SamplerFailedRuns.Inc()
 			return storage.Sample{}, fmt.Errorf("sampler: failed creating root hash of sample: %w", err)
 		}
 	}
@@ -232,7 +259,9 @@ func (db *DB) ReserveSample(
 		Items: sampleItems,
 		Hash:  swarm.NewAddress(hash),
 	}
-	logger.Info("sampler done", "stats", stat, "sample", sample)
+
+	db.metrics.SamplerSuccessfulRuns.Inc()
+	logger.Info("sampler done", "duration", time.Since(t), "storage_radius", storageRadius, "consensus_time_ns", consensusTime, "stats", stat, "sample", sample)
 
 	return sample, nil
 }
@@ -240,4 +269,38 @@ func (db *DB) ReserveSample(
 // less function uses the byte compare to check for lexicographic ordering
 func le(a, b []byte) bool {
 	return bytes.Compare(a, b) == -1
+}
+
+func (db *DB) startSampling() {
+	db.lock.Lock(lockKeySampling)
+	defer db.lock.Unlock(lockKeySampling)
+
+	db.samplerStop = new(sync.Once)
+	db.samplerSignal = make(chan struct{})
+}
+
+func (db *DB) stopSamplingIfRunning() {
+	db.lock.Lock(lockKeySampling)
+	defer db.lock.Unlock(lockKeySampling)
+
+	if db.samplerStop != nil {
+		db.samplerStop.Do(func() { close(db.samplerSignal) })
+	}
+}
+
+func (db *DB) resetSamplingState() {
+	db.lock.Lock(lockKeySampling)
+	defer db.lock.Unlock(lockKeySampling)
+
+	db.samplerStop = nil
+	db.samplerSignal = nil
+}
+
+var validChunkFn func(swarm.Chunk) bool
+
+func validChunk(ch swarm.Chunk) bool {
+	if !cac.Valid(ch) && !soc.Valid(ch) {
+		return false
+	}
+	return true
 }

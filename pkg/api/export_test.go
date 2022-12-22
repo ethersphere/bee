@@ -36,8 +36,9 @@ var (
 )
 
 var (
-	ErrNoResolver           = errNoResolver
-	ErrInvalidNameOrAddress = errInvalidNameOrAddress
+	ErrNoResolver                  = errNoResolver
+	ErrInvalidNameOrAddress        = errInvalidNameOrAddress
+	ErrUnsupportedDevNodeOperation = errUnsupportedDevNodeOperation
 )
 
 var (
@@ -99,6 +100,7 @@ type (
 	BucketData                        = bucketData
 	WalletResponse                    = walletResponse
 	GetStakeResponse                  = getStakeResponse
+	WithdrawAllStakeResponse          = withdrawAllStakeResponse
 )
 
 var (

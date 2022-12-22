@@ -13,11 +13,12 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/transaction"
+	"github.com/ethersphere/bee/pkg/util/abiutil"
 	"github.com/ethersphere/go-sw3-abi/sw3abi"
 )
 
 var (
-	erc20ABI     = transaction.ParseABIUnchecked(sw3abi.ERC20ABIv0_3_1)
+	erc20ABI     = abiutil.MustParseABI(sw3abi.ERC20ABIv0_3_1)
 	errDecodeABI = errors.New("could not decode abi data")
 )
 
@@ -83,7 +84,7 @@ func (c *erc20Service) Transfer(ctx context.Context, address common.Address, val
 		Description: "token transfer",
 	}
 
-	txHash, err := c.transactionService.Send(ctx, request)
+	txHash, err := c.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
 	if err != nil {
 		return common.Hash{}, err
 	}

@@ -8,10 +8,12 @@ import (
 	"context"
 	"crypto/rand"
 	"errors"
+	"fmt"
 	"math/big"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	chaincfg "github.com/ethersphere/bee/pkg/config"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
@@ -82,23 +84,30 @@ func checkBalance(
 
 			neededETH := new(big.Float).Quo(new(big.Float).SetInt(minimumEth), ethSmallUnit)
 
+			ccfg, _ := chaincfg.GetByChainID(chainId)
+			swarmTokenName := ccfg.SwarmTokenSymbol
+			nativeTokenName := ccfg.NativeTokenSymbol
+
 			if insufficientETH && insufficientERC20 {
-				logger.Warning("cannot continue until there is at least min xDAI (for Gas) and at least min BZZ bridged on the xDAI network available on address", "min_xdai_amount", neededETH, "min_bzz_amount", neededERC20, "address", overlayEthAddress)
+				msg := fmt.Sprintf("cannot continue until there is at least min %s (for Gas) and at least min %s available on address", nativeTokenName, swarmTokenName)
+				logger.Warning(msg, "min_xdai_amount", neededETH, "min_bzz_amount", neededERC20, "address", overlayEthAddress)
 			} else if insufficientETH {
-				logger.Warning("cannot continue until there is at least min xDAI (for Gas) available on address", "min_xdai_amount", neededETH, "address", overlayEthAddress)
+				msg := fmt.Sprintf("cannot continue until there is at least min %s (for Gas) available on address", nativeTokenName)
+				logger.Warning(msg, "min_xdai_amount", neededETH, "address", overlayEthAddress)
 			} else {
-				logger.Warning("cannot continue until there is at least min BZZ available on address", "min_bzz_amount", neededERC20, "address", overlayEthAddress)
+				msg := fmt.Sprintf("cannot continue until there is at least min %s available on address", swarmTokenName)
+				logger.Warning(msg, "min_bzz_amount", neededERC20, "address", overlayEthAddress)
 			}
-			if chainId == 5 {
+			if chainId == chaincfg.Testnet.ChainID {
 				logger.Warning("learn how to fund your node by visiting our docs at https://docs.ethswarm.org/docs/installation/fund-your-node")
 			}
 			select {
 			case <-time.After(balanceCheckBackoffDuration):
 			case <-timeoutCtx.Done():
 				if insufficientERC20 {
-					return errors.New("insufficient BZZ for initial deposit")
+					return fmt.Errorf("insufficient %s for initial deposit", swarmTokenName)
 				} else {
-					return errors.New("insufficient ETH for initial deposit")
+					return fmt.Errorf("insufficient %s for initial deposit", nativeTokenName)
 				}
 			}
 			continue
