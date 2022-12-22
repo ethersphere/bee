@@ -226,7 +226,7 @@ func TestChunkGetterDeleter(t *testing.T) {
 	// Initialize the store before the tests.
 	chunks := chunktest.GenerateTestRandomChunks(10)
 	for _, chunk := range chunks {
-		if _, err := putter.Put(ctx, chunk.WithTagID(uint32(tagID))); err != nil {
+		if err := putter.Put(ctx, chunk.WithTagID(uint32(tagID))); err != nil {
 			t.Fatalf("putter.Put(...): unexpected error: %v", err)
 		}
 	}
@@ -305,22 +305,16 @@ func TestChunkPutter(t *testing.T) {
 	for _, chunk := range chunktest.GenerateTestRandomChunks(10) {
 		t.Run(fmt.Sprintf("chunk %s", chunk.Address()), func(t *testing.T) {
 			t.Run("put new chunk", func(t *testing.T) {
-				exists, err := putter.Put(context.TODO(), chunk)
+				err := putter.Put(context.TODO(), chunk)
 				if err != nil {
 					t.Fatalf("Put(...): unexpected error: %v", err)
-				}
-				if exists {
-					t.Fatal("Put(...): chunk should not exist")
 				}
 			})
 
 			t.Run("put existing chunk", func(t *testing.T) {
-				exists, err := putter.Put(context.TODO(), chunk)
+				err := putter.Put(context.TODO(), chunk)
 				if err != nil {
 					t.Fatalf("Put(...): unexpected error: %v", err)
-				}
-				if !exists {
-					t.Fatal("Put(...): chunk should exist")
 				}
 			})
 

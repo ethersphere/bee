@@ -272,7 +272,7 @@ func initChunkStore(t *testing.T, store storage.ChunkStore, chunks ...swarm.Chun
 
 	ctx := context.Background()
 	for _, chunk := range chunks {
-		if _, err := store.Put(ctx, chunk); err != nil {
+		if err := store.Put(ctx, chunk); err != nil {
 			t.Fatalf("Put(%q): unexpected error: %v", chunk.Address(), err)
 		}
 	}
@@ -291,7 +291,7 @@ func checkTxChunkStoreFinishedTxInvariants(t *testing.T, store storage.TxChunkSt
 		t.Fatalf("Get(...)\n\thave: %v, %v\n\twant: <nil>, %v", chunk, have, want)
 	}
 
-	if _, have := store.Put(ctx, o007); !errors.Is(have, want) {
+	if have := store.Put(ctx, o007); !errors.Is(have, want) {
 		t.Fatalf("Put(...):\n\thave: %v\n\twant: %v", have, want)
 	}
 
