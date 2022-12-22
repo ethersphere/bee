@@ -82,13 +82,16 @@ func (c *command) initStartCmd() (err error) {
 
 			// ctx is global context of bee node; which is canceled after interrupt signal is received.
 			ctx, cancel := context.WithCancel(context.Background())
+			sysInterruptChannel := make(chan os.Signal, 1)
 			go func() {
-				sysInterruptChannel := make(chan os.Signal, 1)
 				signal.Notify(sysInterruptChannel, syscall.SIGINT, syscall.SIGTERM)
 
-				<-sysInterruptChannel
-				logger.Info("received interrupt signal")
-				cancel()
+				select {
+				case <-sysInterruptChannel:
+					logger.Info("received interrupt signal")
+					cancel()
+				case <-ctx.Done():
+				}
 			}()
 
 			// Building bee node can take up some time (because node.NewBee(...) is compute have function )
@@ -144,8 +147,8 @@ func (c *command) initStartCmd() (err error) {
 					// If shutdown function is blocking too long,
 					// allow process termination by receiving another signal.
 					select {
-					case <-time.After(time.Second * 10):
-						logger.Info("node shutdown terminated after timeout")
+					case <-sysInterruptChannel:
+						logger.Info("node shutdown terminated")
 					case <-done:
 						logger.Info("node shutdown")
 					}
