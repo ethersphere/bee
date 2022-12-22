@@ -22,9 +22,8 @@ type Getter interface {
 
 // Putter is the interface that wraps the basic Put method.
 type Putter interface {
-	// Put a chunk into the store alongside with its postage stamp. No duplicates
-	// are allowed. It returns `exists=true` In case the chunk already exists.
-	Put(context.Context, swarm.Chunk) (exists bool, err error)
+	// Put a chunk into the store alongside with its postage stamp.
+	Put(context.Context, swarm.Chunk) error
 }
 
 // Deleter is the interface that wraps the basic Delete method.
@@ -37,10 +36,10 @@ type Deleter interface {
 // ChunkStore as Putter interface. If f is a function
 // with the appropriate signature, PutterFunc(f) is a
 // Putter that calls f.
-type PutterFunc func(context.Context, swarm.Chunk) (bool, error)
+type PutterFunc func(context.Context, swarm.Chunk) error
 
 // Put calls f(ctx, chunk).
-func (f PutterFunc) Put(ctx context.Context, chunk swarm.Chunk) (bool, error) {
+func (f PutterFunc) Put(ctx context.Context, chunk swarm.Chunk) error {
 	return f(ctx, chunk)
 }
 
