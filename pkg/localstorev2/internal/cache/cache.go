@@ -230,7 +230,7 @@ func (c *Cache) pushBack(
 
 	// add the new chunk to chunkstore if requested.
 	if chunk != nil {
-		_, err = chStore.Put(ctx, chunk)
+		err = chStore.Put(ctx, chunk)
 		if err != nil {
 			return fmt.Errorf("failed to add chunk to chunkstore %s: %w", chunk.Address(), err)
 		}
@@ -257,16 +257,16 @@ func (c *Cache) pushBack(
 // Putter returns a Storage.Putter instance which adds the chunk to the underlying
 // chunkstore and also adds a Cache entry for the chunk.
 func (c *Cache) Putter(store storage.Store, chStore storage.ChunkStore) storage.Putter {
-	return storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) (bool, error) {
+	return storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
 		newEntry := &cacheEntry{Address: chunk.Address()}
 		found, err := store.Has(newEntry)
 		if err != nil {
-			return false, err
+			return err
 		}
 
 		// if chunk is already part of cache, return found.
 		if found {
-			return true, nil
+			return nil
 		}
 
 		c.mtx.Lock()
@@ -288,7 +288,7 @@ func (c *Cache) Putter(store storage.Store, chStore storage.ChunkStore) storage.
 				}
 			} else {
 				// first entry
-				_, err = chStore.Put(ctx, chunk)
+				err = chStore.Put(ctx, chunk)
 				if err != nil {
 					return fmt.Errorf("failed adding chunk %s to chunkstore: %w", chunk.Address(), err)
 				}
@@ -317,10 +317,10 @@ func (c *Cache) Putter(store storage.Store, chStore storage.ChunkStore) storage.
 		}()
 		if err != nil {
 			*c.state = oldState
-			return false, fmt.Errorf("cache put: %w", err)
+			return fmt.Errorf("cache put: %w", err)
 		}
 
-		return false, nil
+		return nil
 	})
 }
 
@@ -340,7 +340,10 @@ func (c *Cache) Getter(store storage.Store, chStore storage.ChunkStore) storage.
 		entry := &cacheEntry{Address: address}
 		err = store.Get(entry)
 		if err != nil {
-			return ch, nil
+			if errors.Is(err, storage.ErrNotFound) {
+				return ch, nil
+			}
+			return nil, err
 		}
 
 		c.mtx.Lock()
