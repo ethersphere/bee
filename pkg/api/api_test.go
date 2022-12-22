@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -200,6 +201,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		o.beeMode = api.FullMode
 	}
 	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.Logger, transaction, o.BatchStore, o.beeMode, true, true, backend, o.CORSAllowedOrigins)
+	cleanupCloser(t, s)
 
 	s.SetP2P(o.P2P)
 	s.SetSwarmAddress(&o.Overlay)
@@ -209,8 +211,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	noOpTracer, tracerCloser, _ := tracing.NewTracer(&tracing.Options{
 		Enabled: false,
 	})
-
-	t.Cleanup(func() { _ = tracerCloser.Close() })
+	cleanupCloser(t, tracerCloser)
 
 	chC := s.Configure(signer, o.Authenticator, noOpTracer, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
@@ -278,6 +279,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		if err != nil {
 			t.Fatalf("dial: %v. url %v", err, u.String())
 		}
+		cleanupCloser(t, conn)
 	}
 
 	if o.PreventRedirect {
@@ -628,6 +630,16 @@ func TestPostageDirectAndDeferred(t *testing.T) {
 			}
 		})
 	}
+}
+
+func cleanupCloser(t *testing.T, c io.Closer) {
+	t.Helper()
+
+	t.Cleanup(func() {
+		if err := c.Close(); err != nil {
+			t.Fatalf("failed to gracefully close %s: %s", reflect.TypeOf(c), err)
+		}
+	})
 }
 
 type chanStorer struct {
