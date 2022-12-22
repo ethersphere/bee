@@ -267,14 +267,18 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 			case <-paged:
 				// if we paged then it means there's more things to sync on
 			case <-time.After(expectedWaitTime):
-			case <-l.quit:
-				return nil
+			case <-ctx.Done():
+				return context.Canceled
 			}
 			start := time.Now()
 
 			l.metrics.BackendCalls.Inc()
 			to, err := l.ev.BlockNumber(ctx)
 			if err != nil {
+				if errors.Is(err, context.Canceled) {
+					return nil
+				}
+
 				l.metrics.BackendErrors.Inc()
 				l.logger.Warning("could not get block number", "error", err)
 				lastConfirmedBlock = 0
