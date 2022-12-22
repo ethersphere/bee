@@ -8,7 +8,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/ethersphere/bee/pkg/storagev2"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -28,9 +28,9 @@ func (c *ChunkStore) Get(_ context.Context, addr swarm.Address) (swarm.Chunk, er
 	return val.(swarm.Chunk), nil
 }
 
-func (c *ChunkStore) Put(_ context.Context, ch swarm.Chunk) (bool, error) {
-	_, loaded := c.chunks.LoadOrStore(ch.Address().ByteString(), ch)
-	return loaded, nil
+func (c *ChunkStore) Put(_ context.Context, ch swarm.Chunk) error {
+	c.chunks.Store(ch.Address().ByteString(), ch)
+	return nil
 }
 
 func (c *ChunkStore) Has(_ context.Context, addr swarm.Address) (bool, error) {
