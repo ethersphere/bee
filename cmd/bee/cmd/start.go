@@ -253,8 +253,8 @@ func (c *command) initStartCmd() (err error) {
 					logger.Info("shutting down...")
 				},
 				stop: func() {
-					// Whenever program is being stopped we need to close
-					// interruptC beforehand so that node could be stopped via Shutdown method
+					// Whenever program is being stopped we need to cancel main context
+					// beforehand so that node could be stopped via Shutdown method
 					cancel()
 
 					// Shutdown node
