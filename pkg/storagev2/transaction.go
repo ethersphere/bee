@@ -214,9 +214,9 @@ func (s *TxChunkStoreBase) Get(ctx context.Context, address swarm.Address) (swar
 }
 
 // Put implements the ChunkStore interface.
-func (s *TxChunkStoreBase) Put(ctx context.Context, chunk swarm.Chunk) (bool, error) {
+func (s *TxChunkStoreBase) Put(ctx context.Context, chunk swarm.Chunk) error {
 	if err := s.IsDone(); err != nil {
-		return false, err
+		return err
 	}
 	return s.ChunkStore.Put(ctx, chunk)
 }
