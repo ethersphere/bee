@@ -19,7 +19,7 @@ import (
 )
 
 var (
-	stepErr = errors.New("step error")
+	errStep = errors.New("step error")
 )
 
 func TestGetSetVersion(t *testing.T) {
@@ -232,7 +232,7 @@ func TestMigrate(t *testing.T) {
 				return s.Put(objT1)
 			},
 			7: func(s storage.Store) error {
-				return stepErr
+				return errStep
 			},
 			6: func(s storage.Store) error {
 				return s.Put(objT3)
@@ -246,7 +246,7 @@ func TestMigrate(t *testing.T) {
 			t.Errorf("SetVersion() unexpected error: %v", err)
 		}
 
-		if err := migration.Migrate(s, steps); err != nil && !errors.Is(err, stepErr) {
+		if err := migration.Migrate(s, steps); err != nil && !errors.Is(err, errStep) {
 			t.Errorf("Migrate() unexpected error: %v", err)
 		}
 
