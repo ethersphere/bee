@@ -9,10 +9,12 @@ func AddressSliceContains(addrs []Address, a Address) bool {
 }
 
 func AddressSliceRemove(addrs []Address, a Address) []Address {
-	if i := FindAddressIdx(addrs, a); i != -1 {
-		addrs = append(addrs[:i], addrs[i+1:]...)
+	i := FindAddressIdx(addrs, a)
+	if i == -1 {
+		return addrs
 	}
-	return addrs
+
+	return append(addrs[:i], addrs[i+1:]...)
 }
 
 func FindAddressIdx(addrs []Address, a Address) int {
@@ -26,7 +28,7 @@ func FindAddressIdx(addrs []Address, a Address) int {
 
 func FindChunkIdxWithAddress(chunks []Chunk, a Address) int {
 	for i, c := range chunks {
-		if a.Equal(c.Address()) {
+		if c != nil && a.Equal(c.Address()) {
 			return i
 		}
 	}
