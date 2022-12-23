@@ -5,11 +5,18 @@
 package abiutil
 
 import (
+	"errors"
 	"fmt"
 	"math/big"
+	"reflect"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
+)
+
+var (
+	ErrTypecasting  = errors.New("typecasting failed")
+	ErrEmptyResults = errors.New("empty results")
 )
 
 // MustParseABI parses is the same as calling abi.JSON
@@ -34,12 +41,7 @@ func ConvertType(in interface{}, proto interface{}) (out interface{}, err error)
 	return
 }
 
-func UnpackBigInt(d abi.ABI, result []byte, name string) (*big.Int, error) {
-	values, err := d.Unpack(name, result)
-	if err != nil {
-		return nil, fmt.Errorf("failed to unpack %v name: %v", name, err)
-	}
-
+func UnpackBigInt(values []interface{}) (*big.Int, error) {
 	// values should have at least one value
 	if len(values) == 0 {
 		return nil, fmt.Errorf("unexpected empty results")
@@ -51,4 +53,32 @@ func UnpackBigInt(d abi.ABI, result []byte, name string) (*big.Int, error) {
 	}
 
 	return val.(*big.Int), nil
+}
+
+func UnpackBool(values []interface{}) (bool, error) {
+	// values should have at least one value
+	if len(values) == 0 {
+		return false, fmt.Errorf("unexpected empty results")
+	}
+
+	value, ok := values[0].(bool)
+	if !ok {
+		return false, ErrTypecasting
+	}
+
+	return value, nil
+}
+
+func UnpackBytes(values []interface{}) ([]byte, error) {
+	// values should have at least one value
+	if len(values) == 0 {
+		return nil, fmt.Errorf("unexpected empty results")
+	}
+	fmt.Println(reflect.TypeOf(values[0]))
+	value, ok := values[0].([32]byte)
+	if !ok {
+		return nil, ErrTypecasting
+	}
+
+	return value[:], nil
 }
