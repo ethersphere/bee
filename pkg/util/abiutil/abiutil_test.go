@@ -5,6 +5,7 @@
 package abiutil
 
 import (
+	"math/big"
 	"strings"
 	"testing"
 )
@@ -22,4 +23,59 @@ func TestMustParseABI(t *testing.T) {
 	}()
 
 	MustParseABI("invalid abi")
+}
+
+func TestUnpackBigInt(t *testing.T) {
+	t.Parallel()
+	resultBigInt := []interface{}{big.NewInt(10)}
+	resultBool := []interface{}{true}
+	resultBytes := []interface{}{[32]uint8{}}
+
+	t.Run("bigint ok", func(t *testing.T) {
+		t.Parallel()
+		_, err := UnpackBigInt(resultBigInt)
+		if err != nil {
+			t.Fatal("unexpected error:", err)
+		}
+	})
+
+	t.Run("bool ok", func(t *testing.T) {
+		t.Parallel()
+		_, err := UnpackBool(resultBool)
+		if err != nil {
+			t.Fatal("unexpected error:", err)
+		}
+	})
+
+	t.Run("bytes ok", func(t *testing.T) {
+		t.Parallel()
+		_, err := UnpackBytes(resultBytes)
+		if err != nil {
+			t.Fatal("unexpected error:", err)
+		}
+	})
+
+	t.Run("bigint fail", func(t *testing.T) {
+		t.Parallel()
+		_, err := UnpackBigInt(resultBytes)
+		if err == nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("bool fail", func(t *testing.T) {
+		t.Parallel()
+		_, err := UnpackBool(resultBigInt)
+		if err == nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("bytes fail", func(t *testing.T) {
+		t.Parallel()
+		_, err := UnpackBytes(resultBool)
+		if err == nil {
+			t.Fatal(err)
+		}
+	})
 }

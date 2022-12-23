@@ -165,16 +165,7 @@ func (c *contract) getStake(ctx context.Context, overlay swarm.Address) (*big.In
 		return nil, err
 	}
 
-	if len(results) == 0 {
-		return nil, ErrUnexpectedResults
-	}
-
-	stake, ok := abi.ConvertType(results[0], new(big.Int)).(*big.Int)
-	if !ok {
-		return nil, ErrTypecasting
-	}
-
-	return stake, nil
+	return abiutil.UnpackBigInt(results)
 }
 
 func (c *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
@@ -319,14 +310,5 @@ func (c *contract) paused(ctx context.Context) (bool, error) {
 		return false, err
 	}
 
-	if len(results) == 0 {
-		return false, ErrUnexpectedResults
-	}
-
-	isPaused, ok := results[0].(bool)
-	if !ok {
-		return false, ErrTypecasting
-	}
-
-	return isPaused, nil
+	return abiutil.UnpackBool(results)
 }
