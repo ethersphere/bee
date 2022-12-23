@@ -68,8 +68,8 @@ func makeAddress(t *testing.T) bzz.Address {
 	}
 }
 
-func randomBytes(t *testing.T, len int) []byte {
-	buf := make([]byte, len)
+func randomBytes(t *testing.T, size int) []byte {
+	buf := make([]byte, size)
 	_, err := rand.Read(buf)
 	if err != nil {
 		t.Fatal(err.Error())
