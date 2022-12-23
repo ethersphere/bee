@@ -34,3 +34,7 @@ func FindChunkIdxWithAddress(chunks []Chunk, a Address) int {
 	}
 	return -1
 }
+
+func ChunksSliceContainsAddress(chunks []Chunk, a Address) bool {
+	return FindChunkIdxWithAddress(chunks, a) != -1
+}
