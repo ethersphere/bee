@@ -64,7 +64,7 @@ func TestOneSync(t *testing.T) {
 
 	waitSyncCalled(t, pullsync, addr, false)
 
-	checkHistSyncing(t, puller)
+	checkHistSyncingCount(t, puller, 0)
 }
 
 func TestNoSyncOutsideDepth(t *testing.T) {
@@ -100,7 +100,7 @@ func TestNoSyncOutsideDepth(t *testing.T) {
 	waitSyncCalled(t, pullsync, addr, true)
 	waitSyncCalled(t, pullsync, addr2, true)
 
-	checkHistSyncing(t, puller)
+	checkHistSyncingCount(t, puller, 0)
 }
 
 func TestSyncFlow_PeerWithinDepth_Live(t *testing.T) {
@@ -161,7 +161,7 @@ func TestSyncFlow_PeerWithinDepth_Live(t *testing.T) {
 			// check the intervals
 			checkIntervals(t, st, addr, tc.intervals, 1)
 
-			checkHistSyncing(t, puller)
+			checkHistSyncingCount(t, puller, 0)
 		})
 	}
 }
@@ -245,7 +245,7 @@ func TestSyncFlow_PeerWithinDepth_Historical(t *testing.T) {
 			// check the intervals
 			checkIntervals(t, st, addr, tc.intervals, 1)
 
-			checkHistSyncing(t, puller)
+			checkHistSyncingCount(t, puller, 0)
 		})
 	}
 }
@@ -300,7 +300,7 @@ func TestSyncFlow_PeerWithinDepth_Live2(t *testing.T) {
 			// check the intervals
 			checkIntervals(t, st, addr, tc.intervals, 2)
 
-			checkHistSyncing(t, puller)
+			checkHistSyncingCount(t, puller, 0)
 		})
 	}
 }
@@ -338,7 +338,7 @@ func TestPeerDisconnected(t *testing.T) {
 	if puller.IsSyncing(p, addr) {
 		t.Fatalf("peer is syncing but shouldnt")
 	}
-	checkHistSyncing(t, p)
+	checkHistSyncingCount(t, p, 0)
 }
 
 func TestBinReset(t *testing.T) {
@@ -385,7 +385,7 @@ func TestBinReset(t *testing.T) {
 		t.Fatalf("got error %v, want %v", err, storage.ErrNotFound)
 	}
 
-	checkHistSyncing(t, puller)
+	checkHistSyncingCount(t, puller, 0)
 }
 
 // TestDepthChange tests that puller reacts correctly to
@@ -507,7 +507,7 @@ func TestDepthChange(t *testing.T) {
 				checkNotFound(t, st, addr, b)
 			}
 
-			checkHistSyncing(t, puller)
+			checkHistSyncingCount(t, puller, 0)
 		})
 	}
 }
@@ -598,11 +598,6 @@ func TestPeerGone(t *testing.T) {
 		t.Fatalf("peer is syncing but shouldnt")
 	}
 
-	checkHistSyncing(t, p)
-}
-
-func checkHistSyncing(t *testing.T, p *puller.Puller) {
-	t.Helper()
 	checkHistSyncingCount(t, p, 0)
 }
 
