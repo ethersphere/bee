@@ -35,9 +35,9 @@ type ReserveReporter interface {
 	ReserveCapacity() uint64
 }
 
-// SyncReporter interface needs to be implemented by the syncing component of the node (pullsync).
+// SyncReporter interface needs to be implemented by the syncing component of the node (puller).
 type SyncReporter interface {
-	// Rate of syncing in terms of chunks/sec.
+	// Number of active historical syncing jobs.
 	ActiveHistoricalSyncing() uint64
 }
 
