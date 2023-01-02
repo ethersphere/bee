@@ -77,7 +77,7 @@ func New(
 	blockTime time.Duration,
 	stallingTimeout time.Duration,
 	backoffTime time.Duration,
-) postage.Listener {
+) *listener {
 	return &listener{
 		syncingStopped:              syncingStopped,
 		logger:                      logger.WithName(loggerName).Register(),
