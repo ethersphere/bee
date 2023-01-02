@@ -1138,10 +1138,8 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		if bs, ok := batchStore.(metrics.Collector); ok {
 			debugService.MustRegisterMetrics(bs.Metrics()...)
 		}
-		if eventListener != nil {
-			if ls, ok := eventListener.(metrics.Collector); ok {
-				debugService.MustRegisterMetrics(ls.Metrics()...)
-			}
+		if ls, ok := eventListener.(metrics.Collector); ok {
+			debugService.MustRegisterMetrics(ls.Metrics()...)
 		}
 		if pssServiceMetrics, ok := pssService.(metrics.Collector); ok {
 			debugService.MustRegisterMetrics(pssServiceMetrics.Metrics()...)
