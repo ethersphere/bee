@@ -181,11 +181,14 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	limiter := rcmgr.NewFixedLimiter(cfg)
 
-	view.Register(rcmgrObs.DefaultViews...)
-	ocprom.NewExporter(ocprom.Options{
+	_ = view.Register(rcmgrObs.DefaultViews...)
+	_, err = ocprom.NewExporter(ocprom.Options{
 		Namespace: m2.Namespace,
 		Registry:  o.Registry,
 	})
+	if err != nil {
+		return nil, err
+	}
 
 	str, err := rcmgrObs.NewStatsTraceReporter()
 	if err != nil {
