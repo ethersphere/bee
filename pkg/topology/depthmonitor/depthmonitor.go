@@ -38,7 +38,7 @@ type ReserveReporter interface {
 // SyncReporter interface needs to be implemented by the syncing component of the node (pullsync).
 type SyncReporter interface {
 	// Rate of syncing in terms of chunks/sec.
-	Rate() float64
+	ActiveHistoricalSyncing() uint64
 }
 
 // Topology interface encapsulates the functionality required by the topology component
@@ -136,7 +136,7 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration) {
 		// save last calculated reserve size
 		s.lastRSize.Store(currentSize)
 
-		rate := s.syncer.Rate()
+		rate := s.syncer.ActiveHistoricalSyncing()
 		s.logger.Info("depthmonitor: state", "current size", currentSize, "radius", reserveState.StorageRadius, "chunks/sec rate", rate)
 
 		// we have crossed 50% utilization
@@ -161,7 +161,7 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration) {
 }
 
 func (s *Service) IsFullySynced() bool {
-	return s.syncer.Rate() == 0 && s.lastRSize.Load() > s.reserve.ReserveCapacity()/2
+	return s.syncer.ActiveHistoricalSyncing() == 0 && s.lastRSize.Load() > s.reserve.ReserveCapacity()/2
 }
 
 func (s *Service) Close() error {
