@@ -33,7 +33,6 @@ linters:
     - typecheck
     - unconvert
     - unused
-    - wastedassign
 
 linters-settings:
   govet:
