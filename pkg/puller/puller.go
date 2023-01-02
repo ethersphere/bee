@@ -22,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
+	"go.uber.org/atomic"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -58,6 +59,8 @@ type Puller struct {
 	syncErrorSleepDur time.Duration
 
 	bins uint8 // how many bins do we support
+
+	activeHistoricalSyncing *atomic.Uint64
 }
 
 func New(stateStore storage.StateStorer, topology topology.Driver, reserveState postage.ReserveStateGetter, pullSync pullsync.Interface, logger log.Logger, o Options, warmupTime time.Duration) *Puller {
@@ -69,15 +72,16 @@ func New(stateStore storage.StateStorer, topology topology.Driver, reserveState 
 	}
 
 	p := &Puller{
-		statestore:        stateStore,
-		topology:          topology,
-		reserveState:      reserveState,
-		syncer:            pullSync,
-		metrics:           newMetrics(),
-		logger:            logger.WithName(loggerName).Register(),
-		syncPeers:         make(map[string]*syncPeer),
-		syncErrorSleepDur: o.SyncSleepDur,
-		bins:              bins,
+		statestore:              stateStore,
+		topology:                topology,
+		reserveState:            reserveState,
+		syncer:                  pullSync,
+		metrics:                 newMetrics(),
+		logger:                  logger.WithName(loggerName).Register(),
+		syncPeers:               make(map[string]*syncPeer),
+		syncErrorSleepDur:       o.SyncSleepDur,
+		bins:                    bins,
+		activeHistoricalSyncing: atomic.NewUint64(0),
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -86,6 +90,10 @@ func New(stateStore storage.StateStorer, topology topology.Driver, reserveState 
 	p.wg.Add(1)
 	go p.manage(ctx, warmupTime)
 	return p
+}
+
+func (p *Puller) ActiveHistoricalSyncing() uint64 {
+	return p.activeHistoricalSyncing.Load()
 }
 
 func (p *Puller) manage(ctx context.Context, warmupTime time.Duration) {
@@ -221,6 +229,7 @@ func (p *Puller) syncPeerBin(ctx context.Context, peer *syncPeer, bin uint8, cur
 	peer.setBinCancel(cancel, bin)
 	if cur > 0 {
 		p.wg.Add(1)
+		p.activeHistoricalSyncing.Inc()
 		go p.histSyncWorker(binCtx, peer.address, bin, cur)
 	}
 	// start live
@@ -233,6 +242,7 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 
 	defer p.wg.Done()
 	defer p.metrics.HistWorkerDoneCounter.Inc()
+	defer p.activeHistoricalSyncing.Dec()
 
 	sleep := false
 

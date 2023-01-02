@@ -63,6 +63,8 @@ func TestOneSync(t *testing.T) {
 	waitCursorsCalled(t, pullsync, addr, false)
 
 	waitSyncCalled(t, pullsync, addr, false)
+
+	checkHistSyncing(t, puller)
 }
 
 func TestNoSyncOutsideDepth(t *testing.T) {
@@ -97,6 +99,8 @@ func TestNoSyncOutsideDepth(t *testing.T) {
 
 	waitSyncCalled(t, pullsync, addr, true)
 	waitSyncCalled(t, pullsync, addr2, true)
+
+	checkHistSyncing(t, puller)
 }
 
 func TestSyncFlow_PeerWithinDepth_Live(t *testing.T) {
@@ -156,6 +160,8 @@ func TestSyncFlow_PeerWithinDepth_Live(t *testing.T) {
 
 			// check the intervals
 			checkIntervals(t, st, addr, tc.intervals, 1)
+
+			checkHistSyncing(t, puller)
 		})
 	}
 }
@@ -238,6 +244,8 @@ func TestSyncFlow_PeerWithinDepth_Historical(t *testing.T) {
 
 			// check the intervals
 			checkIntervals(t, st, addr, tc.intervals, 1)
+
+			checkHistSyncing(t, puller)
 		})
 	}
 }
@@ -291,6 +299,8 @@ func TestSyncFlow_PeerWithinDepth_Live2(t *testing.T) {
 
 			// check the intervals
 			checkIntervals(t, st, addr, tc.intervals, 2)
+
+			checkHistSyncing(t, puller)
 		})
 	}
 }
@@ -328,6 +338,7 @@ func TestPeerDisconnected(t *testing.T) {
 	if puller.IsSyncing(p, addr) {
 		t.Fatalf("peer is syncing but shouldnt")
 	}
+	checkHistSyncing(t, p)
 }
 
 func TestBinReset(t *testing.T) {
@@ -373,6 +384,8 @@ func TestBinReset(t *testing.T) {
 	if err := s.Get(fmt.Sprintf("sync|000|%s", addr.ByteString()), nil); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("got error %v, want %v", err, storage.ErrNotFound)
 	}
+
+	checkHistSyncing(t, puller)
 }
 
 // TestDepthChange tests that puller reacts correctly to
@@ -493,6 +506,8 @@ func TestDepthChange(t *testing.T) {
 			for _, b := range tc.binsNotSyncing {
 				checkNotFound(t, st, addr, b)
 			}
+
+			checkHistSyncing(t, puller)
 		})
 	}
 }
@@ -526,6 +541,8 @@ func TestContinueSyncing(t *testing.T) {
 	time.Sleep(time.Second)
 
 	calls := pullsync.LiveSyncCalls(addr)
+
+	checkHistSyncingCount(t, puller, 1)
 
 	// expected calls should ideally be exactly 100,
 	// but we allow some time for the goroutines to run
@@ -579,6 +596,20 @@ func TestPeerGone(t *testing.T) {
 
 	if puller.IsSyncing(p, addr) {
 		t.Fatalf("peer is syncing but shouldnt")
+	}
+
+	checkHistSyncing(t, p)
+}
+
+func checkHistSyncing(t *testing.T, p *puller.Puller) {
+	t.Helper()
+	checkHistSyncingCount(t, p, 0)
+}
+
+func checkHistSyncingCount(t *testing.T, p *puller.Puller, c uint64) {
+	t.Helper()
+	if p.ActiveHistoricalSyncing() != c {
+		t.Fatalf("got %d active historical syncing, want %d", p.ActiveHistoricalSyncing(), c)
 	}
 }
 
