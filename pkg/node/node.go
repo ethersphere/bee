@@ -10,13 +10,10 @@ package node
 import (
 	"context"
 	"crypto/ecdsa"
-	"encoding/binary"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
 	stdlog "log"
-	"math"
 	"math/big"
 	"net"
 	"net/http"
@@ -69,7 +66,6 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap/priceoracle"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/steward"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storageincentives"
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
@@ -490,45 +486,6 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 	nonce, nonceExists, err := overlayNonceExists(stateStore)
 	if err != nil {
 		return nil, fmt.Errorf("check presence of nonce: %w", err)
-	}
-	if !nonceExists {
-		nonce = make([]byte, 32)
-	}
-
-	existingOverlay, err := GetExistingOverlay(stateStore)
-	if err != nil {
-		if !errors.Is(err, storage.ErrNotFound) {
-			return nil, fmt.Errorf("get existing overlay: %w", err)
-		}
-		logger.Warning("existing overlay", "error", err)
-	}
-
-	if err == nil && o.FullNodeMode && !nonceExists {
-		newOverlayCandidate := swarm.ZeroAddress
-		j := uint64(0)
-		limit := math.Pow(2, 34)
-		for prox := uint8(0); prox < swarm.MaxPO && j < uint64(limit); j++ {
-			select {
-			case <-ctx.Done():
-				return nil, errors.New("interrupted while finding new overlay")
-			default:
-			}
-			binary.LittleEndian.PutUint64(nonce, j)
-			if (j/1000000)*1000000 == j {
-				logger.Debug("finding new overlay corresponding to previous overlay with nonce", "nonce", hex.EncodeToString(nonce))
-			}
-			newOverlayCandidate, err = crypto.NewOverlayAddress(*pubKey, networkID, nonce)
-			if err == nil {
-				prox = swarm.Proximity(existingOverlay.Bytes(), newOverlayCandidate.Bytes())
-			} else {
-				logger.Debug("error finding new overlay", "nonce", hex.EncodeToString(nonce), "error", err)
-			}
-		}
-
-		foundProximity := swarm.Proximity(existingOverlay.Bytes(), newOverlayCandidate.Bytes())
-		if foundProximity < swarm.MaxPO {
-			return nil, fmt.Errorf("mining new overlay address failed")
-		}
 	}
 
 	swarmAddress, err := crypto.NewOverlayAddress(*pubKey, networkID, nonce)
