@@ -98,8 +98,8 @@ func TestDepthMonitorService(t *testing.T) {
 		t.Parallel()
 
 		topo := &mockTopology{peers: 1}
-		// >50% utilized reserve
-		reserve := &mockReserveReporter{size: 26000, capacity: 50000}
+		// >40% utilized reserve
+		reserve := &mockReserveReporter{size: 20001, capacity: 50000}
 
 		bs := mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{Radius: 3}))
 
@@ -140,8 +140,8 @@ func TestDepthMonitorService(t *testing.T) {
 	t.Run("depth doesnt change for utilized reserve", func(t *testing.T) {
 		t.Parallel()
 
-		// >50% utilized reserve
-		reserve := &mockReserveReporter{size: 25001, capacity: 50000}
+		// >40% utilized reserve
+		reserve := &mockReserveReporter{size: 20001, capacity: 50000}
 		bs := mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{Radius: 3}))
 
 		svc := newTestSvc(nil, nil, reserve, nil, bs, 0, depthMonitorWakeUpInterval)
@@ -162,8 +162,8 @@ func TestDepthMonitorService(t *testing.T) {
 
 		topo := &mockTopology{connDepth: 3}
 		bs := mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{Radius: 3}))
-		// >50% utilized reserve
-		reserve := &mockReserveReporter{size: 25001, capacity: 50000}
+		// >40% utilized reserve
+		reserve := &mockReserveReporter{size: 20001, capacity: 50000}
 
 		svc := newTestSvc(topo, nil, reserve, nil, bs, 0, depthMonitorWakeUpInterval)
 

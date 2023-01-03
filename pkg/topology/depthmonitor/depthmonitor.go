@@ -116,7 +116,7 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration) {
 	case <-time.After(warmupTime):
 	}
 
-	halfCapacity := s.reserve.ReserveCapacity() / 2
+	targetSize := s.reserve.ReserveCapacity() * 4 / 10 // 40% of the capacity
 
 	for {
 		select {
@@ -139,8 +139,7 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration) {
 		rate := s.syncer.Rate()
 		s.logger.Info("depthmonitor: state", "current size", currentSize, "radius", reserveState.StorageRadius, "chunks/sec rate", rate)
 
-		// we have crossed 50% utilization
-		if currentSize > halfCapacity {
+		if currentSize > targetSize {
 			continue
 		}
 
@@ -161,7 +160,7 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration) {
 }
 
 func (s *Service) IsFullySynced() bool {
-	return s.syncer.Rate() == 0 && s.lastRSize.Load() > s.reserve.ReserveCapacity()/2
+	return s.syncer.Rate() == 0 && s.lastRSize.Load() > s.reserve.ReserveCapacity()*4/10
 }
 
 func (s *Service) Close() error {
