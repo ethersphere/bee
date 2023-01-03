@@ -136,15 +136,15 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration) {
 		// save last calculated reserve size
 		s.lastRSize.Store(currentSize)
 
-		rate := s.syncer.ActiveHistoricalSyncing()
-		s.logger.Info("depthmonitor: state", "current size", currentSize, "radius", reserveState.StorageRadius, "chunks/sec rate", rate)
+		syncCount := s.syncer.ActiveHistoricalSyncing()
+		s.logger.Info("depthmonitor: state", "current size", currentSize, "radius", reserveState.StorageRadius, "sync_count", syncCount)
 
 		if currentSize > targetSize {
 			continue
 		}
 
 		// if historical syncing rate is at zero, we proactively decrease the storage radius to allow nodes to widen their neighbourhoods
-		if rate == 0 && s.topology.PeersCount(topologyDriver.Filter{}) != 0 {
+		if syncCount == 0 && s.topology.PeersCount(topologyDriver.Filter{}) != 0 {
 			err = s.bs.SetStorageRadius(func(radius uint8) uint8 {
 				if radius > s.minimumRadius {
 					radius--
