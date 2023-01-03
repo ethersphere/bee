@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
-	"reflect"
 	"strings"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -41,7 +40,7 @@ func ConvertType(in interface{}, proto interface{}) (out interface{}, err error)
 	return
 }
 
-func UnpackBigInt(values []interface{}) (*big.Int, error) {
+func ConvertBigInt(values []interface{}) (*big.Int, error) {
 	// values should have at least one value
 	if len(values) == 0 {
 		return nil, ErrEmptyResults
@@ -69,12 +68,11 @@ func UnpackBool(values []interface{}) (bool, error) {
 	return value, nil
 }
 
-func UnpackBytes(values []interface{}) ([]byte, error) {
+func UnpackBytes32(values []interface{}) ([]byte, error) {
 	// values should have at least one value
 	if len(values) == 0 {
 		return nil, ErrEmptyResults
 	}
-	fmt.Println(reflect.TypeOf(values[0]))
 	value, ok := values[0].([32]byte)
 	if !ok {
 		return nil, ErrTypecasting

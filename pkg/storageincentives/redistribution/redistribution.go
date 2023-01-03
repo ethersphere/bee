@@ -179,7 +179,7 @@ func (c *contract) ReserveSalt(ctx context.Context) ([]byte, error) {
 		return nil, err
 	}
 
-	return abiutil.UnpackBytes(results)
+	return abiutil.UnpackBytes32(results)
 }
 
 func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest, boostPercent int) (common.Hash, error) {

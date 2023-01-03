@@ -170,7 +170,7 @@ func (c *contract) getStake(ctx context.Context, overlay swarm.Address) (*big.In
 		return nil, err
 	}
 
-	return abiutil.UnpackBigInt(results)
+	return abiutil.ConvertBigInt(results)
 }
 
 func (c *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
