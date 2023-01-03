@@ -25,7 +25,7 @@ func TestMustParseABI(t *testing.T) {
 	MustParseABI("invalid abi")
 }
 
-func TestUnpackBigInt(t *testing.T) {
+func TestUnpack(t *testing.T) {
 	t.Parallel()
 	resultBigInt := []interface{}{big.NewInt(10)}
 	resultBool := []interface{}{true}
@@ -33,7 +33,7 @@ func TestUnpackBigInt(t *testing.T) {
 
 	t.Run("bigint ok", func(t *testing.T) {
 		t.Parallel()
-		_, err := UnpackBigInt(resultBigInt)
+		_, err := ConvertBigInt(resultBigInt)
 		if err != nil {
 			t.Fatal("unexpected error:", err)
 		}
@@ -49,7 +49,7 @@ func TestUnpackBigInt(t *testing.T) {
 
 	t.Run("bytes ok", func(t *testing.T) {
 		t.Parallel()
-		_, err := UnpackBytes(resultBytes)
+		_, err := UnpackBytes32(resultBytes)
 		if err != nil {
 			t.Fatal("unexpected error:", err)
 		}
@@ -57,7 +57,7 @@ func TestUnpackBigInt(t *testing.T) {
 
 	t.Run("bigint fail", func(t *testing.T) {
 		t.Parallel()
-		_, err := UnpackBigInt(resultBytes)
+		_, err := ConvertBigInt(resultBytes)
 		if err == nil {
 			t.Fatal(err)
 		}
@@ -73,7 +73,7 @@ func TestUnpackBigInt(t *testing.T) {
 
 	t.Run("bytes fail", func(t *testing.T) {
 		t.Parallel()
-		_, err := UnpackBytes(resultBool)
+		_, err := UnpackBytes32(resultBool)
 		if err == nil {
 			t.Fatal(err)
 		}

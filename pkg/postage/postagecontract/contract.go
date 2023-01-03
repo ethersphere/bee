@@ -270,7 +270,7 @@ func (c *postageContract) getBalance(ctx context.Context) (*big.Int, error) {
 		return nil, err
 	}
 
-	return abiutil.UnpackBigInt(results)
+	return abiutil.ConvertBigInt(results)
 }
 
 func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) (txHash common.Hash, batchID []byte, err error) {
