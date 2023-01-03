@@ -44,7 +44,7 @@ func ConvertType(in interface{}, proto interface{}) (out interface{}, err error)
 func UnpackBigInt(values []interface{}) (*big.Int, error) {
 	// values should have at least one value
 	if len(values) == 0 {
-		return nil, fmt.Errorf("unexpected empty results")
+		return nil, ErrEmptyResults
 	}
 
 	val, err := ConvertType(values[0], new(big.Int))
@@ -58,7 +58,7 @@ func UnpackBigInt(values []interface{}) (*big.Int, error) {
 func UnpackBool(values []interface{}) (bool, error) {
 	// values should have at least one value
 	if len(values) == 0 {
-		return false, fmt.Errorf("unexpected empty results")
+		return false, ErrEmptyResults
 	}
 
 	value, ok := values[0].(bool)
@@ -72,7 +72,7 @@ func UnpackBool(values []interface{}) (bool, error) {
 func UnpackBytes(values []interface{}) ([]byte, error) {
 	// values should have at least one value
 	if len(values) == 0 {
-		return nil, fmt.Errorf("unexpected empty results")
+		return nil, ErrEmptyResults
 	}
 	fmt.Println(reflect.TypeOf(values[0]))
 	value, ok := values[0].([32]byte)
