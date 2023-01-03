@@ -5,6 +5,7 @@
 package internal
 
 import (
+	"bytes"
 	"context"
 
 	storage "github.com/ethersphere/bee/pkg/storagev2"
@@ -23,4 +24,20 @@ type Storage interface {
 type PutterCloserWithReference interface {
 	storage.Putter
 	Close(swarm.Address) error
+}
+
+var emptyAddr = make([]byte, swarm.HashSize)
+
+func AddressOrZero(buf []byte) swarm.Address {
+	if bytes.Equal(buf, emptyAddr) {
+		return swarm.ZeroAddress
+	}
+	return swarm.NewAddress(append(make([]byte, 0, swarm.HashSize), buf...))
+}
+
+func AddressBytesOrZero(addr swarm.Address) []byte {
+	if addr.IsZero() {
+		return make([]byte, swarm.HashSize)
+	}
+	return addr.Bytes()
 }

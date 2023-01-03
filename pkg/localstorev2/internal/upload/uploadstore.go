@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"path"
+	"strconv"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/localstorev2/internal"
@@ -19,67 +20,6 @@ import (
 
 // now returns the current time.Time; used in testing.
 var now = time.Now
-
-var (
-	// errTagIDAddressItemMarshalAddressIsZero is returned when trying
-	// to marshal a tagIDAddressItem with an address that is zero.
-	errTagIDAddressItemMarshalAddressIsZero = errors.New("marshal tagIDAddressItem: address is zero")
-
-	// errTagIDAddressItemUnmarshalInvalidSize is returned when trying
-	// to unmarshal buffer that is not of size tagIDAddressItemSize.
-	errTagIDAddressItemUnmarshalInvalidSize = errors.New("unmarshal tagIDAddressItem: invalid size")
-)
-
-// tagIDAddressItemSize is the size of a marshaled tagIDAddressItem.
-const tagIDAddressItemSize = swarm.HashSize + 8
-
-var _ storage.Item = (*tagIDAddressItem)(nil)
-
-// tagIDAddressItem is an store.Item that stores addresses of already seen chunks.
-type tagIDAddressItem struct {
-	TagID   uint64
-	Address swarm.Address
-}
-
-// ID implements the storage.Item interface.
-func (i tagIDAddressItem) ID() string {
-	return i.Address.ByteString()
-}
-
-// Namespace implements the storage.Item interface.
-func (i tagIDAddressItem) Namespace() string {
-	return fmt.Sprintf("TagIDAddressItem/%d", i.TagID)
-}
-
-// Marshal implements the storage.Item interface.
-// If the Address is zero, an error is returned.
-func (i tagIDAddressItem) Marshal() ([]byte, error) {
-	if i.Address.IsZero() {
-		return nil, errTagIDAddressItemMarshalAddressIsZero
-	}
-	buf := make([]byte, tagIDAddressItemSize)
-	binary.LittleEndian.PutUint64(buf, i.TagID)
-	copy(buf[8:], i.Address.Bytes())
-	return buf, nil
-}
-
-// Unmarshal implements the storage.Item interface.
-// If the buffer is not of size pushItemSize, an error is returned.
-func (i *tagIDAddressItem) Unmarshal(bytes []byte) error {
-	if len(bytes) != tagIDAddressItemSize {
-		return errTagIDAddressItemUnmarshalInvalidSize
-	}
-	ni := new(tagIDAddressItem)
-	ni.TagID = binary.LittleEndian.Uint64(bytes)
-	ni.Address = swarm.NewAddress(append(make([]byte, 0, swarm.HashSize), bytes[8:]...))
-	*i = *ni
-	return nil
-}
-
-// String implements the fmt.Stringer interface.
-func (i tagIDAddressItem) String() string {
-	return path.Join(i.Namespace(), i.ID())
-}
 
 var (
 	// errPushItemMarshalAddressIsZero is returned when trying
@@ -147,85 +87,158 @@ func (i pushItem) String() string {
 	return path.Join(i.Namespace(), i.ID())
 }
 
-var _ storage.ChunkGetterDeleter = (*getterDeleter)(nil)
+var (
+	// errTagIDAddressItemMarshalAddressIsZero is returned when trying
+	// to marshal a tagItem with an address that is zero.
+	errTagItemMarshalAddressIsZero = errors.New("marshal tagItem: address is zero")
 
-// getterDeleter is a storage.ChunkGetterDeleter
-// that restricts its operation to the specific tagID.
-type getterDeleter struct {
-	storage internal.Storage
-	tagID   uint64
+	// errTagIDAddressItemUnmarshalInvalidSize is returned when trying
+	// to unmarshal buffer that is not of size tagItemSize.
+	errTagItemUnmarshalInvalidSize = errors.New("unmarshal tagItem: invalid size")
+)
+
+// tagItemSize is the size of a marshaled tagItem.
+const tagItemSize = swarm.HashSize + 8*8
+
+var _ storage.Item = (*tagItem)(nil)
+
+// tagItem is an store.Item that stores addresses of already seen chunks.
+type tagItem struct {
+	TagID     uint64        // unique identifier for the tag
+	Total     uint64        // total no of chunks associated with this tag as calculated by user
+	Split     uint64        // total no of chunks processed by the splitter for hashing
+	Seen      uint64        // total no of chunks already seen
+	Stored    uint64        // total no of chunks stored locally on the node
+	Sent      uint64        // total no of chunks sent to the neighbourhood
+	Synced    uint64        // total no of chunks synced with proof
+	Address   swarm.Address // swarm.Address associated with this tag
+	StartedAt int64         // start timestamp
 }
 
-// Get implements the storage.Getter interface.
-// The given chunk address has to refer to a chunk
-// which has TagID set to the tagID of this getterDeleter,
-// otherwise storage.ErrNotFound will be returned.
-func (gd *getterDeleter) Get(ctx context.Context, address swarm.Address) (swarm.Chunk, error) {
-	if err := gd.has(address); err != nil {
-		return nil, err
-	}
-
-	chunk, err := gd.storage.ChunkStore().Get(ctx, address)
-	if err != nil {
-		return nil, fmt.Errorf("chunk store get chunk %q call failed: %w", address, err)
-	}
-	return chunk.WithTagID(uint32(gd.tagID)), nil
+// ID implements the storage.Item interface.
+func (i tagItem) ID() string {
+	return strconv.FormatUint(i.TagID, 10)
 }
 
-// Delete implements the storage.Deleter interface.
-// The given chunk address has to refer to a chunk
-// which has TagID set to the tagID of this getterDeleter,
-// otherwise storage.ErrNotFound will be returned.
-func (gd *getterDeleter) Delete(ctx context.Context, address swarm.Address) error {
-	if err := gd.has(address); err != nil {
-		return err
-	}
+// Namespace implements the storage.Item interface.
+func (i tagItem) Namespace() string {
+	return "tagItem"
+}
 
-	if err := gd.storage.ChunkStore().Delete(ctx, address); err != nil {
-		return fmt.Errorf("chunk store delete chunk %q call failed: %w", address, err)
-	}
+// Marshal implements the storage.Item interface.
+func (i tagItem) Marshal() ([]byte, error) {
+	buf := make([]byte, tagItemSize)
+	binary.LittleEndian.PutUint64(buf, i.TagID)
+	binary.LittleEndian.PutUint64(buf[8:], i.Total)
+	binary.LittleEndian.PutUint64(buf[16:], i.Split)
+	binary.LittleEndian.PutUint64(buf[24:], i.Seen)
+	binary.LittleEndian.PutUint64(buf[32:], i.Stored)
+	binary.LittleEndian.PutUint64(buf[40:], i.Sent)
+	binary.LittleEndian.PutUint64(buf[48:], i.Synced)
+	copy(buf[56:], internal.AddressBytesOrZero(i.Address))
+	binary.LittleEndian.PutUint64(buf[56+swarm.HashSize:], uint64(i.StartedAt))
+	return buf, nil
+}
 
-	tai := &tagIDAddressItem{
-		TagID:   gd.tagID,
-		Address: address,
+// Unmarshal implements the storage.Item interface.
+// If the buffer is not of size tagItemSize, an error is returned.
+func (i *tagItem) Unmarshal(bytes []byte) error {
+	if len(bytes) != tagItemSize {
+		return errTagItemUnmarshalInvalidSize
 	}
-	if err := gd.storage.Store().Delete(tai); err != nil {
-		return fmt.Errorf("store delete item %q call failed: %w", tai, err)
-	}
+	ni := new(tagItem)
+	ni.TagID = binary.LittleEndian.Uint64(bytes)
+	ni.Total = binary.LittleEndian.Uint64(bytes[8:])
+	ni.Split = binary.LittleEndian.Uint64(bytes[16:])
+	ni.Seen = binary.LittleEndian.Uint64(bytes[24:])
+	ni.Stored = binary.LittleEndian.Uint64(bytes[32:])
+	ni.Sent = binary.LittleEndian.Uint64(bytes[40:])
+	ni.Synced = binary.LittleEndian.Uint64(bytes[48:])
+	ni.Address = internal.AddressOrZero(bytes[56 : 56+swarm.HashSize])
+	ni.StartedAt = int64(binary.LittleEndian.Uint64(bytes[56+swarm.HashSize:]))
+	*i = *ni
 	return nil
 }
 
-// has checks if the given address has the tagID of this getterDeleter.
-func (gd *getterDeleter) has(address swarm.Address) error {
-	tai := &tagIDAddressItem{
-		Address: address,
-		TagID:   gd.tagID,
+// String implements the fmt.Stringer interface.
+func (i tagItem) String() string {
+	return path.Join(i.Namespace(), i.ID())
+}
+
+var (
+	// errTagIDAddressItemMarshalAddressIsZero is returned when trying
+	// to marshal a uploadItem with an address that is zero.
+	errUploadItemMarshalAddressIsZero = errors.New("marshal uploadItem: address is zero")
+
+	// errTagIDAddressItemUnmarshalInvalidSize is returned when trying
+	// to unmarshal buffer that is not of size uploadItemSize.
+	errUploadItemUnmarshalInvalidSize = errors.New("unmarshal uploadItem: invalid size")
+)
+
+// uploadItemSize is the size of a marshaled uploadItem.
+const uploadItemSize = swarm.HashSize + 8
+
+var _ storage.Item = (*uploadItem)(nil)
+
+// uploadItem is an store.Item that stores addresses of already seen chunks.
+type uploadItem struct {
+	Address swarm.Address
+	TagID   uint64
+	Synced  int64
+}
+
+// ID implements the storage.Item interface.
+func (i uploadItem) ID() string {
+	return i.Address.ByteString()
+}
+
+// Namespace implements the storage.Item interface.
+func (i uploadItem) Namespace() string {
+	return "UploadItem"
+}
+
+// Marshal implements the storage.Item interface.
+// If the Address is zero, an error is returned.
+func (i uploadItem) Marshal() ([]byte, error) {
+	if i.Address.IsZero() {
+		return nil, errUploadItemMarshalAddressIsZero
 	}
-	switch exists, err := gd.storage.Store().Has(tai); {
-	case err != nil:
-		return fmt.Errorf("store has item %q call failed: %w", tai, err)
-	case !exists:
-		return storage.ErrNotFound
+	buf := make([]byte, uploadItemSize)
+	copy(buf, i.Address.Bytes())
+	binary.LittleEndian.PutUint64(buf[swarm.HashSize:], i.TagID)
+	binary.LittleEndian.PutUint64(buf[swarm.HashSize+8:], uint64(i.Synced))
+	return buf, nil
+}
+
+// Unmarshal implements the storage.Item interface.
+// If the buffer is not of size pushItemSize, an error is returned.
+func (i *uploadItem) Unmarshal(bytes []byte) error {
+	if len(bytes) != uploadItemSize {
+		return errUploadItemUnmarshalInvalidSize
 	}
+	ni := new(uploadItem)
+	ni.Address = internal.AddressOrZero(bytes[:swarm.HashSize])
+	ni.TagID = binary.LittleEndian.Uint64(bytes[swarm.HashSize:])
+	ni.Synced = int64(binary.LittleEndian.Uint64(bytes[swarm.HashSize+8:]))
+	*i = *ni
 	return nil
 }
 
-// ChunkGetterDeleter returns a storage.ChunkGetterDeleter
-// that restricts its operation to the given tagID.
-func ChunkGetterDeleter(s internal.Storage, tagID uint64) storage.ChunkGetterDeleter {
-	return &getterDeleter{storage: s, tagID: tagID}
+// String implements the fmt.Stringer interface.
+func (i uploadItem) String() string {
+	return path.Join(i.Namespace(), i.ID())
 }
 
 // ChunkPutter returns a storage.Putter which will store the given chunk.
 func ChunkPutter(s internal.Storage, tagID uint64) (storage.Putter, error) {
 	return storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
-		tai := &tagIDAddressItem{
+		ui := &uploadItem{
 			Address: chunk.Address(),
 			TagID:   tagID,
 		}
-		switch exists, err := s.Store().Has(tai); {
+		switch exists, err := s.Store().Has(ui); {
 		case err != nil:
-			return fmt.Errorf("store has item %q call failed: %w", tai, err)
+			return fmt.Errorf("store has item %q call failed: %w", ui, err)
 		case exists:
 			return nil
 		}
