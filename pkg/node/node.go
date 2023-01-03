@@ -991,7 +991,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 	var agent *storageincentives.Agent
 	if o.FullNodeMode {
 
-		depthMonitor := depthmonitor.New(kad, pullSyncProtocol, storer, batchStore, logger, warmupTime, depthmonitor.DefaultWakeupInterval)
+		depthMonitor := depthmonitor.New(kad, pullerService, storer, batchStore, logger, warmupTime, depthmonitor.DefaultWakeupInterval)
 		b.depthMonitorCloser = depthMonitor
 
 		if !o.BootnodeMode && o.EnableStorageIncentives {

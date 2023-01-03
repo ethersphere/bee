@@ -23,7 +23,6 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pullsync/pb"
 	"github.com/ethersphere/bee/pkg/pullsync/pullstorage"
-	"github.com/ethersphere/bee/pkg/rate"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -38,8 +37,6 @@ const (
 	streamName       = "pullsync"
 	cursorStreamName = "cursors"
 	cancelStreamName = "cancel"
-
-	rateWindowSize = 5 * time.Minute // rate tracker window size
 )
 
 const MaxCursor = math.MaxUint64
@@ -76,7 +73,6 @@ type Syncer struct {
 	wg         sync.WaitGroup
 	unwrap     func(swarm.Chunk)
 	validStamp postage.ValidStampFn
-	rate       *rate.Rate
 
 	Interface
 	io.Closer
@@ -93,7 +89,6 @@ func New(streamer p2p.Streamer, storage pullstorage.Storer, unwrap func(swarm.Ch
 		logger:     logger.WithName(loggerName).Register(),
 		wg:         sync.WaitGroup{},
 		quit:       make(chan struct{}),
-		rate:       rate.New(rateWindowSize),
 	}
 }
 
@@ -119,7 +114,6 @@ func (s *Syncer) Protocol() p2p.ProtocolSpec {
 // If the requested interval is too large, the downstream peer has the liberty to
 // provide less chunks than requested.
 func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (uint64, error) {
-	isLiveSync := to == MaxCursor
 	loggerV2 := s.logger.V(2).Register()
 
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
@@ -231,9 +225,6 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 	}
 
 	if len(chunksToPut) > 0 {
-		if !isLiveSync {
-			s.rate.Add(len(chunksToPut))
-		}
 		s.metrics.DbOps.Inc()
 		ctx, cancel := context.WithTimeout(ctx, storagePutTimeout)
 		defer cancel()
@@ -432,10 +423,6 @@ func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Strea
 	}
 
 	return nil
-}
-
-func (s *Syncer) Rate() float64 {
-	return s.rate.Rate()
 }
 
 func (s *Syncer) Close() error {
