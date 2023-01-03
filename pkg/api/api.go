@@ -120,6 +120,7 @@ type Service struct {
 	auth            auth.Authenticator
 	tags            *tags.Tags
 	storer          storage.Storer
+	stateStorer     storage.StateStorer
 	resolver        resolver.Interface
 	pss             pss.Interface
 	traversal       traversal.Traverser
@@ -225,7 +226,7 @@ type ExtraOptions struct {
 	IndexDebugger    StorageIndexDebugger
 }
 
-func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger log.Logger, transaction transaction.Service, batchStore postage.Storer, beeMode BeeNodeMode, chequebookEnabled bool, swapEnabled bool, chainBackend transaction.Backend, cors []string) *Service {
+func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger log.Logger, transaction transaction.Service, batchStore postage.Storer, stateStorer storage.StateStorer, beeMode BeeNodeMode, chequebookEnabled bool, swapEnabled bool, chainBackend transaction.Backend, cors []string) *Service {
 	s := new(Service)
 
 	s.CORSAllowedOrigins = cors
@@ -239,6 +240,7 @@ func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address
 	s.ethereumAddress = ethereumAddress
 	s.transaction = transaction
 	s.batchStore = batchStore
+	s.stateStorer = stateStorer
 	s.chainBackend = chainBackend
 	s.metricsRegistry = newDebugMetrics()
 	s.preMapHooks = map[string]func(v string) (string, error){

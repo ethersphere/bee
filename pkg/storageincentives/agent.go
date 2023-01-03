@@ -50,10 +50,21 @@ type Agent struct {
 	contract       redistribution.Contract
 	batchExpirer   postagecontract.PostageBatchExpirer
 	reserve        postage.Storer
+	nodeState      storage.StateStorer
 	sampler        storage.Sampler
 	overlay        swarm.Address
 	quit           chan struct{}
 	wg             sync.WaitGroup
+	nodeStatus     NodeStatus
+}
+
+// NodeStatus provide internal status of the nodes in the redistribution game
+type NodeStatus struct {
+	State  string `json:"state"`
+	Round  uint64 `json:"round"`
+	Block  uint64 `json:"block"`
+	Reward string `json:"reward"`
+	Fees   string `json:"fees"`
 }
 
 func New(
@@ -65,7 +76,7 @@ func New(
 	batchExpirer postagecontract.PostageBatchExpirer,
 	reserve postage.Storer,
 	sampler storage.Sampler,
-	blockTime time.Duration, blocksPerRound, blocksPerPhase uint64) *Agent {
+	blockTime time.Duration, blocksPerRound, blocksPerPhase uint64, nodeState storage.StateStorer) *Agent {
 
 	s := &Agent{
 		overlay:        overlay,
@@ -79,6 +90,8 @@ func New(
 		blocksPerRound: blocksPerRound,
 		sampler:        sampler,
 		quit:           make(chan struct{}),
+		nodeStatus:     NodeStatus{},
+		nodeState:      nodeState,
 	}
 
 	s.wg.Add(1)
@@ -88,7 +101,7 @@ func New(
 }
 
 // start polls the current block number, calculates, and publishes only once the current phase.
-// Each round is blocksPerRound long and is divided in to three blocksPerPhase long phases: commit, reveal, claim.
+// Each round is blocksPerRound long and is divided into three blocksPerPhase long phases: commit, reveal, claim.
 // The sample phase is triggered upon entering the claim phase and may run until the end of the commit phase.
 // If our neighborhood is selected to participate, a sample is created during the sample phase. In the commit phase,
 // the sample is submitted, and in the reveal phase, the obfuscation key from the commit phase is submitted.
@@ -261,6 +274,10 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 			a.logger.Info("entering phase", "phase", currentPhase.String(), "round", round, "block", block)
 
+			a.nodeStatus.Block = block
+			a.nodeStatus.State = currentPhase.String()
+			a.nodeStatus.Round = round
+
 			phaseEvents.Publish(currentPhase)
 			if currentPhase == claim {
 				phaseEvents.Publish(sample) // trigger sample along side the claim phase
@@ -298,6 +315,7 @@ func (a *Agent) claim(ctx context.Context) error {
 	}
 
 	if isWinner {
+		a.nodeStatus.State = winner.String()
 		a.metrics.Winner.Inc()
 		err = a.contract.Claim(ctx)
 		if err != nil {
@@ -422,4 +440,13 @@ func (s *Agent) wrapCommit(storageRadius uint8, sample []byte, key []byte) ([]by
 	data = append(data, key...)
 
 	return crypto.LegacyKeccak256(data)
+}
+
+// setNodeStatus sets the internal node status
+func (s *Agent) setNodeStatus(status NodeStatus) {
+	s.nodeStatus = status
+}
+
+func (s *Agent) saveStatus() {
+	s.nodeState.Put("redistribution_state_"+s.overlay.String(), s.nodeStatus)
 }
