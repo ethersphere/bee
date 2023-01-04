@@ -68,13 +68,13 @@ func (si *StampIssuer) inc(addr swarm.Address) ([]byte, error) {
 	b := toBucket(si.BucketDepth(), addr)
 	bucketCount := si.data.Buckets[b]
 
-	reachedMaxBucketCount := bucketCount == 1<<(si.Depth()-si.BucketDepth())
+	if bucketCount == si.BucketUpperBound() {
+		if si.ImmutableFlag() {
+			return nil, ErrBucketFull
+		}
 
-	if !si.ImmutableFlag() && reachedMaxBucketCount {
 		bucketCount = 0
 		si.data.Buckets[b] = 0
-	} else if reachedMaxBucketCount {
-		return nil, ErrBucketFull
 	}
 
 	si.data.Buckets[b]++
