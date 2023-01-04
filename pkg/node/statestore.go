@@ -69,7 +69,7 @@ func overlayNonceExists(s storage.StateStorer) ([]byte, bool, error) {
 	overlayNonce := make([]byte, 32)
 	if err := s.Get(OverlayNonce, &overlayNonce); err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			return nil, false, nil
+			return overlayNonce, false, nil
 		}
 		return nil, false, err
 	}
