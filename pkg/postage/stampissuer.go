@@ -64,15 +64,24 @@ func NewStampIssuer(label, keyID string, batchID []byte, batchAmount *big.Int, b
 func (si *StampIssuer) inc(addr swarm.Address) ([]byte, error) {
 	si.bucketMu.Lock()
 	defer si.bucketMu.Unlock()
+
 	b := toBucket(si.BucketDepth(), addr)
 	bucketCount := si.data.Buckets[b]
-	if bucketCount == 1<<(si.Depth()-si.BucketDepth()) {
+
+	reachedMaxBucketCount := bucketCount == 1<<(si.Depth()-si.BucketDepth())
+
+	if !si.ImmutableFlag() && reachedMaxBucketCount {
+		bucketCount = 0
+		si.data.Buckets[b] = 0
+	} else if reachedMaxBucketCount {
 		return nil, ErrBucketFull
 	}
+
 	si.data.Buckets[b]++
 	if si.data.Buckets[b] > si.data.MaxBucketCount {
 		si.data.MaxBucketCount = si.data.Buckets[b]
 	}
+
 	return indexToBytes(b, bucketCount), nil
 }
 
