@@ -40,6 +40,7 @@ func ConvertType(in interface{}, proto interface{}) (out interface{}, err error)
 	return
 }
 
+// ConvertBigInt converts a value to a big int in safe way by handling unintended failures in conversion.
 func ConvertBigInt(values []interface{}) (*big.Int, error) {
 	// values should have at least one value
 	if len(values) == 0 {
@@ -54,6 +55,7 @@ func ConvertBigInt(values []interface{}) (*big.Int, error) {
 	return val.(*big.Int), nil
 }
 
+// UnpackBool unpacks a value to a boolean in safe way by handling unintended failures in conversion.
 func UnpackBool(values []interface{}) (bool, error) {
 	// values should have at least one value
 	if len(values) == 0 {
@@ -68,6 +70,7 @@ func UnpackBool(values []interface{}) (bool, error) {
 	return value, nil
 }
 
+// UnpackBytes32 unpacks a value to a byte array in safe way by handling unintended failures in conversion.
 func UnpackBytes32(values []interface{}) ([]byte, error) {
 	// values should have at least one value
 	if len(values) == 0 {
