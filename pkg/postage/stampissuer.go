@@ -156,8 +156,7 @@ func (si *StampIssuer) BucketDepth() uint8 {
 }
 
 // BucketUpperBound returns the maximum number of collisions
-// possible in a bucket given the batch's depth and bucket
-// depth.
+// possible in a bucket given the batch's depth and bucket depth.
 func (si *StampIssuer) BucketUpperBound() uint32 {
 	return 1 << (si.Depth() - si.BucketDepth())
 }
