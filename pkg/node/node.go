@@ -695,7 +695,11 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		case <-natManager.Ready():
 			// this is magic sleep to give NAT time to sync the mappings
 			// this is a hack, kind of alchemy and should be improved
-			time.Sleep(3 * time.Second)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(3 * time.Second):
+			}
 			logger.Debug("NAT manager initialized")
 		case <-time.After(10 * time.Second):
 			logger.Warning("NAT manager init timeout")
