@@ -21,11 +21,6 @@ require (
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/hashicorp/golang-lru v0.5.5-0.20210104140557-80c98217689d
 	github.com/ipfs/go-cid v0.0.7
-<<<<<<< HEAD
-=======
-	github.com/ipfs/go-log v1.0.5 // indirect
-	github.com/ipfs/go-log/v2 v2.3.0 // indirect
->>>>>>> bdb5e8be (feat: add go leak check (#3516))
 	github.com/kardianos/service v1.2.0
 	github.com/libp2p/go-eventbus v0.2.1
 	github.com/libp2p/go-libp2p v0.16.0
@@ -51,11 +46,7 @@ require (
 	github.com/wealdtech/go-ens/v3 v3.5.1
 	gitlab.com/nolash/go-mockbytes v0.0.7
 	go.uber.org/atomic v1.9.0
-<<<<<<< HEAD
-=======
-	go.uber.org/goleak v1.2.0
-	go.uber.org/multierr v1.7.0 // indirect
->>>>>>> bdb5e8be (feat: add go leak check (#3516))
+	go.uber.org/goleak v1.1.10
 	golang.org/x/crypto v0.0.0-20220214200702-86341886e292
 	golang.org/x/net v0.0.0-20211112202133-69e39bad7dc2
 	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c
@@ -162,14 +153,10 @@ require (
 	github.com/shirou/gopsutil v3.21.5+incompatible // indirect
 	github.com/smartystreets/assertions v1.1.1 // indirect
 	github.com/spacemonkeygo/spacelog v0.0.0-20180420211403-2296661a0572 // indirect
-<<<<<<< HEAD
 	github.com/spf13/cast v1.3.1 // indirect
 	github.com/spf13/jwalterweatherman v1.1.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stretchr/testify v1.7.0 // indirect
-=======
-	github.com/stretchr/testify v1.8.0 // indirect
->>>>>>> bdb5e8be (feat: add go leak check (#3516))
 	github.com/subosito/gotenv v1.2.0 // indirect
 	github.com/tklauser/go-sysconf v0.3.6 // indirect
 	github.com/tklauser/numcpus v0.2.2 // indirect
@@ -179,6 +166,7 @@ require (
 	github.com/whyrusleeping/multiaddr-filter v0.0.0-20160516205228-e903e4adabd7 // indirect
 	go.uber.org/multierr v1.7.0 // indirect
 	go.uber.org/zap v1.19.0 // indirect
+	golang.org/x/lint v0.0.0-20200302205851-738671d3881b // indirect
 	golang.org/x/mod v0.6.0-dev.0.20211013180041-c96bc1413d57 // indirect
 	golang.org/x/text v0.3.7 // indirect
 	golang.org/x/tools v0.1.8-0.20211029000441-d6a9af8af023 // indirect
