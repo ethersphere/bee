@@ -48,7 +48,7 @@ func ConvertBigInt(values []interface{}) (*big.Int, error) {
 
 	val, err := ConvertType(values[0], new(big.Int))
 	if err != nil {
-		return nil, fmt.Errorf("failed to convert type to big.Int: %v", err)
+		return nil, fmt.Errorf("failed to convert type to big.Int: %w", err)
 	}
 
 	return val.(*big.Int), nil
