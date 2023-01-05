@@ -690,6 +690,8 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		// wait for nat manager to init
 		logger.Debug("initializing NAT manager")
 		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		case <-natManager.Ready():
 			// this is magic sleep to give NAT time to sync the mappings
 			// this is a hack, kind of alchemy and should be improved
