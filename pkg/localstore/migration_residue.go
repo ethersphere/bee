@@ -142,6 +142,9 @@ func migrateResidue(db *DB) error {
 		}
 		return false, nil
 	}, nil)
+	if err != nil {
+		return err
+	}
 
 	err = db.shed.WriteBatch(updateBatch)
 	if err != nil {
