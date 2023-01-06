@@ -60,11 +60,11 @@ type Agent struct {
 
 // NodeStatus provide internal status of the nodes in the redistribution game
 type NodeStatus struct {
-	State  string `json:"state"`
-	Round  uint64 `json:"round"`
-	Block  uint64 `json:"block"`
-	Reward string `json:"reward"`
-	Fees   string `json:"fees"`
+	State  string   `json:"state"`
+	Round  uint64   `json:"round"`
+	Block  uint64   `json:"block"`
+	Reward string   `json:"reward"`
+	Fees   *big.Int `json:"fees"`
 }
 
 func New(
@@ -267,22 +267,20 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		}
 
 		// write the current phase only once
-
 		if currentPhase != prevPhase {
 
 			a.metrics.CurrentPhase.Set(float64(currentPhase))
 
 			a.logger.Info("entering phase", "phase", currentPhase.String(), "round", round, "block", block)
 
-			a.nodeStatus.Block = block
-			a.nodeStatus.State = currentPhase.String()
-			a.nodeStatus.Round = round
-
 			phaseEvents.Publish(currentPhase)
 			if currentPhase == claim {
 				phaseEvents.Publish(sample) // trigger sample along side the claim phase
 			}
 		}
+		a.nodeStatus.Block = block
+		a.nodeStatus.State = currentPhase.String()
+		a.nodeStatus.Round = round
 
 		prevPhase = currentPhase
 
@@ -293,6 +291,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 func (a *Agent) reveal(ctx context.Context, storageRadius uint8, sample, obfuscationKey []byte) error {
 	a.metrics.RevealPhase.Inc()
 	err := a.contract.Reveal(ctx, storageRadius, sample, obfuscationKey)
+	a.setNodeStatusFee(a.contract.GetFee())
 	if err != nil {
 		a.metrics.ErrReveal.Inc()
 	}
@@ -318,6 +317,7 @@ func (a *Agent) claim(ctx context.Context) error {
 		a.nodeStatus.State = winner.String()
 		a.metrics.Winner.Inc()
 		err = a.contract.Claim(ctx)
+		a.setNodeStatusFee(a.contract.GetFee())
 		if err != nil {
 			a.metrics.ErrClaim.Inc()
 			return fmt.Errorf("error claiming win: %w", err)
@@ -410,7 +410,7 @@ func (a *Agent) commit(ctx context.Context, storageRadius uint8, sample []byte, 
 		a.metrics.ErrCommit.Inc()
 		return nil, err
 	}
-
+	a.setNodeStatusFee(a.contract.GetFee())
 	return key, nil
 }
 
@@ -443,10 +443,12 @@ func (s *Agent) wrapCommit(storageRadius uint8, sample []byte, key []byte) ([]by
 }
 
 // setNodeStatus sets the internal node status
-func (s *Agent) setNodeStatus(status NodeStatus) {
-	s.nodeStatus = status
+func (s *Agent) setNodeStatusFee(fee *big.Int) {
+	if fee != nil {
+		s.nodeStatus.Fees = s.nodeStatus.Fees.Add(s.nodeStatus.Fees, fee)
+	}
 }
 
 func (s *Agent) saveStatus() {
-	s.nodeState.Put("redistribution_state_"+s.overlay.String(), s.nodeStatus)
+	s.nodeState.Put(fmt.Sprintf("%s%x", "redistribution_state_", s.overlay.String()), s.nodeStatus)
 }

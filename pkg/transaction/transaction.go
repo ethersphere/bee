@@ -92,6 +92,8 @@ type Service interface {
 	ResendTransaction(ctx context.Context, txHash common.Hash) error
 	// CancelTransaction cancels a previously sent transaction by double-spending its nonce with zero-transfer one
 	CancelTransaction(ctx context.Context, originalTxHash common.Hash) (common.Hash, error)
+	// GetAccumulativeFee returns fee of transaction
+	GetAccumulativeFee() *big.Int
 }
 
 type transactionService struct {
@@ -100,13 +102,14 @@ type transactionService struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	logger  log.Logger
-	backend Backend
-	signer  crypto.Signer
-	sender  common.Address
-	store   storage.StateStorer
-	chainID *big.Int
-	monitor Monitor
+	logger          log.Logger
+	backend         Backend
+	signer          crypto.Signer
+	sender          common.Address
+	store           storage.StateStorer
+	chainID         *big.Int
+	monitor         Monitor
+	AccumulativeFee *big.Int
 }
 
 // NewService creates a new transaction service.
@@ -151,6 +154,13 @@ func (t *transactionService) waitForAllPendingTx() error {
 	}
 
 	return nil
+}
+func (t *transactionService) setAccumulativeFee(in *big.Int) {
+	t.AccumulativeFee = in
+}
+
+func (t *transactionService) GetAccumulativeFee() *big.Int {
+	return t.AccumulativeFee
 }
 
 // Send creates and signs a transaction based on the request and sends it.
@@ -307,6 +317,9 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 	if err != nil {
 		return nil, err
 	}
+
+	// transaction fee
+	t.setAccumulativeFee(gasTipCap.Add(gasTipCap, gasFeeCap.Mul(gasFeeCap, big.NewInt(int64(gasLimit)))))
 
 	return types.NewTx(&types.DynamicFeeTx{
 		Nonce:     nonce,
