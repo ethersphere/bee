@@ -7,6 +7,7 @@ package storageincentives_test
 import (
 	"context"
 	"errors"
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"math/big"
 	"sync"
 	"testing"
@@ -164,6 +165,7 @@ func createService(
 		mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})),
 		&mockSampler{},
 		time.Millisecond*10, blocksPerRound, blocksPerPhase,
+		statestore.NewStateStore(),
 	)
 }
 
@@ -232,6 +234,10 @@ const (
 type mockContract struct {
 	callsList []contractCall
 	mtx       sync.Mutex
+}
+
+func (m *mockContract) GetFee() *big.Int {
+	return nil
 }
 
 func (m *mockContract) ReserveSalt(context.Context) ([]byte, error) {

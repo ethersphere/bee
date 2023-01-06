@@ -26,6 +26,7 @@ type Contract interface {
 	Claim(context.Context) error
 	Commit(context.Context, []byte, *big.Int) error
 	Reveal(context.Context, uint8, []byte, []byte) error
+	GetFee() *big.Int
 }
 
 type contract struct {
@@ -34,6 +35,7 @@ type contract struct {
 	txService                 transaction.Service
 	incentivesContractAddress common.Address
 	incentivesContractABI     abi.ABI
+	accumulativeFee           *big.Int
 }
 
 func New(
@@ -49,6 +51,7 @@ func New(
 		txService:                 txService,
 		incentivesContractAddress: incentivesContractAddress,
 		incentivesContractABI:     incentivesContractABI,
+		accumulativeFee:           big.NewInt(0),
 	}
 }
 
@@ -186,7 +189,7 @@ func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxReque
 	if err != nil {
 		return err
 	}
-
+	c.SetFee(c.txService.GetAccumulativeFee())
 	receipt, err := c.txService.WaitForReceipt(ctx, txHash)
 	if err != nil {
 		return err
@@ -208,4 +211,12 @@ func (c *contract) callTx(ctx context.Context, callData []byte) ([]byte, error) 
 		return nil, err
 	}
 	return result, nil
+}
+
+func (c *contract) SetFee(in *big.Int) {
+	c.accumulativeFee = in
+}
+
+func (c *contract) GetFee() *big.Int {
+	return c.accumulativeFee
 }
