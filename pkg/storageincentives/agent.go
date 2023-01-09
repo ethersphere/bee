@@ -63,6 +63,7 @@ type Agent struct {
 	nodeStatus     NodeStatus
 	erc20Service   erc20.Service
 	initialBalance *big.Int // current balance of the node before starting the round
+	mtx            sync.Mutex
 }
 
 // NodeStatus provide internal status of the nodes in the redistribution game
@@ -97,7 +98,7 @@ func New(
 		blocksPerRound: blocksPerRound,
 		sampler:        sampler,
 		quit:           make(chan struct{}),
-		nodeStatus:     NodeStatus{},
+		//nodeStatus:     NodeStatus{},
 		nodeState:      nodeState,
 		erc20Service:   erc20Service,
 		initialBalance: big.NewInt(0),
@@ -304,13 +305,15 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 				phaseEvents.Publish(sample) // trigger sample along side the claim phase
 			}
 		}
+
+		prevPhase = currentPhase
+		mtx.Unlock()
+		a.mtx.Lock()
 		a.nodeStatus.Block = block
 		a.nodeStatus.State = currentPhase.String()
 		a.nodeStatus.Round = round
+		a.mtx.Unlock()
 		a.saveStatus()
-		prevPhase = currentPhase
-
-		mtx.Unlock()
 	}
 }
 
@@ -343,7 +346,9 @@ func (a *Agent) claim(ctx context.Context) error {
 	}
 
 	if isWinner {
+		a.mtx.Lock()
 		a.nodeStatus.State = winner.String()
+		a.mtx.Unlock()
 		a.metrics.Winner.Inc()
 		err = a.contract.Claim(ctx)
 		a.setNodeStatusFee(a.contract.GetFee())
@@ -461,11 +466,11 @@ func (a *Agent) Close() error {
 	}
 }
 
-func (s *Agent) wrapCommit(storageRadius uint8, sample []byte, key []byte) ([]byte, error) {
+func (a *Agent) wrapCommit(storageRadius uint8, sample []byte, key []byte) ([]byte, error) {
 
 	storageRadiusByte := []byte{storageRadius}
 
-	data := append(s.overlay.Bytes(), storageRadiusByte...)
+	data := append(a.overlay.Bytes(), storageRadiusByte...)
 	data = append(data, sample...)
 	data = append(data, key...)
 
@@ -473,26 +478,30 @@ func (s *Agent) wrapCommit(storageRadius uint8, sample []byte, key []byte) ([]by
 }
 
 // setNodeStatus sets the internal node status
-func (s *Agent) setNodeStatusFee(fee *big.Int) {
+func (a *Agent) setNodeStatusFee(fee *big.Int) {
+	a.mtx.Lock()
+	defer a.mtx.Unlock()
 	if fee != nil {
-		s.nodeStatus.Fees = s.nodeStatus.Fees.Add(s.nodeStatus.Fees, fee)
+		a.nodeStatus.Fees = a.nodeStatus.Fees.Add(a.nodeStatus.Fees, fee)
 	}
 }
 
 // calculateWinnerReward calculates the reward for the winner
-func (s *Agent) calculateWinnerReward() {
+func (a *Agent) calculateWinnerReward() {
 	// get latest balance
-	currentBalance := s.GetBalance()
+	currentBalance := a.GetBalance()
 	if currentBalance != nil {
-		s.nodeStatus.Reward = currentBalance.Sub(currentBalance, s.initialBalance)
+		a.nodeStatus.Reward = currentBalance.Sub(currentBalance, a.initialBalance)
 	}
 }
 
 // saveStatus saves the node status to the database
-func (s *Agent) saveStatus() {
-	err := s.nodeState.Put(fmt.Sprintf("%s%x", redistributionStatusKey, s.overlay.String()), s.nodeStatus)
+func (a *Agent) saveStatus() {
+	a.mtx.Lock()
+	defer a.mtx.Unlock()
+	err := a.nodeState.Put(fmt.Sprintf("%s%x", redistributionStatusKey, a.overlay.String()), a.nodeStatus)
 	if err != nil {
-		s.logger.Error(err, "error saving node status")
+		a.logger.Error(err, "error saving node status")
 		return
 	}
 }

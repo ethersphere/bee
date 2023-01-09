@@ -134,6 +134,6 @@ func newMetrics() metrics {
 }
 
 // TODO: register metric
-func (s *Agent) Metrics() []prometheus.Collector {
-	return m.PrometheusCollectorsFromFields(s.metrics)
+func (a *Agent) Metrics() []prometheus.Collector {
+	return m.PrometheusCollectorsFromFields(a.metrics)
 }
