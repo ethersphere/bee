@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
+	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 	"io"
 	"math"
 	"math/big"
@@ -54,6 +55,8 @@ type Agent struct {
 	monitor        Monitor
 	contract       redistribution.Contract
 	batchExpirer   postagecontract.PostageBatchExpirer
+	reward         postagecontract.RedistributionReward
+	stake          staking.RedistributionStatus
 	reserve        postage.Storer
 	nodeState      storage.StateStorer
 	sampler        storage.Sampler
@@ -62,7 +65,6 @@ type Agent struct {
 	wg             sync.WaitGroup
 	nodeStatus     NodeStatus
 	erc20Service   erc20.Service
-	initialBalance *big.Int // current balance of the node before starting the round
 	mtx            sync.Mutex
 }
 
@@ -82,11 +84,13 @@ func New(
 	monitor Monitor,
 	contract redistribution.Contract,
 	batchExpirer postagecontract.PostageBatchExpirer,
+	reward postagecontract.RedistributionReward,
+	stake staking.RedistributionStatus,
 	reserve postage.Storer,
 	sampler storage.Sampler,
 	blockTime time.Duration, blocksPerRound, blocksPerPhase uint64, nodeState storage.StateStorer, erc20Service erc20.Service) *Agent {
 
-	s := &Agent{
+	a := &Agent{
 		overlay:        overlay,
 		metrics:        newMetrics(),
 		backend:        backend,
@@ -98,32 +102,17 @@ func New(
 		blocksPerRound: blocksPerRound,
 		sampler:        sampler,
 		quit:           make(chan struct{}),
-		//nodeStatus:     NodeStatus{},
+		nodeStatus:     NodeStatus{},
+		reward:         reward,
 		nodeState:      nodeState,
 		erc20Service:   erc20Service,
-		initialBalance: big.NewInt(0),
+		stake:          stake,
 	}
 
-	s.wg.Add(1)
-	go s.start(blockTime, blocksPerRound, blocksPerPhase)
+	a.wg.Add(1)
+	go a.start(blockTime, a.blocksPerRound, blocksPerPhase)
 
-	return s
-}
-
-func (a *Agent) SetBalance() {
-	balance, err := a.erc20Service.BalanceOf(context.Background(), common.HexToAddress(a.overlay.String()))
-	if err != nil {
-		return
-	}
-	a.initialBalance.Set(balance)
-}
-
-func (a *Agent) GetBalance() *big.Int {
-	balance, err := a.erc20Service.BalanceOf(context.Background(), common.HexToAddress(a.overlay.String()))
-	if err != nil {
-		return nil
-	}
-	return balance
+	return a
 }
 
 // start polls the current block number, calculates, and publishes only once the current phase.
@@ -134,8 +123,6 @@ func (a *Agent) GetBalance() *big.Int {
 // Next, in the claim phase, we check if we've won, and the cycle repeats. The cycle must occur in the length of one round.
 func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase uint64) {
 
-	// set current balance of the node to calculate the reward
-	a.SetBalance()
 	defer a.wg.Done()
 
 	var (
@@ -350,9 +337,13 @@ func (a *Agent) claim(ctx context.Context) error {
 		a.nodeStatus.State = winner.String()
 		a.mtx.Unlock()
 		a.metrics.Winner.Inc()
+		err := a.calculateWinnerReward()
+		if err != nil {
+			a.logger.Info("calculate winner reward", "err", err)
+		}
 		err = a.contract.Claim(ctx)
 		a.setNodeStatusFee(a.contract.GetFee())
-		a.calculateWinnerReward()
+
 		if err != nil {
 			a.metrics.ErrClaim.Inc()
 			return fmt.Errorf("error claiming win: %w", err)
@@ -375,6 +366,16 @@ func (a *Agent) play(ctx context.Context) (uint8, []byte, error) {
 	}
 
 	storageRadius := a.reserve.GetReserveState().StorageRadius
+
+	// true if frozen
+	isFrozen, err := a.stake.IsFrozen(ctx)
+	if err != nil {
+		a.logger.Info("error checking if stake is frozen", "err", err)
+	}
+	if isFrozen {
+		a.nodeStatus.State = frozen.String()
+		a.saveStatus()
+	}
 
 	isPlaying, err := a.contract.IsPlaying(ctx, storageRadius)
 	if !isPlaying || err != nil {
@@ -487,12 +488,9 @@ func (a *Agent) setNodeStatusFee(fee *big.Int) {
 }
 
 // calculateWinnerReward calculates the reward for the winner
-func (a *Agent) calculateWinnerReward() {
-	// get latest balance
-	currentBalance := a.GetBalance()
-	if currentBalance != nil {
-		a.nodeStatus.Reward = currentBalance.Sub(currentBalance, a.initialBalance)
-	}
+func (a *Agent) calculateWinnerReward() (err error) {
+	a.nodeStatus.Reward, err = a.reward.GetReward(context.Background(), common.HexToAddress(a.overlay.String()))
+	return
 }
 
 // saveStatus saves the node status to the database
@@ -504,4 +502,14 @@ func (a *Agent) saveStatus() {
 		a.logger.Error(err, "error saving node status")
 		return
 	}
+}
+
+// GetStatus returns the node status
+func (a *Agent) GetStatus() (status NodeStatus, err error) {
+	err = a.nodeState.Get(fmt.Sprintf("%s%x", redistributionStatusKey, a.overlay.String()), status)
+	if err != nil {
+		a.logger.Error(err, "error saving node status")
+		return
+	}
+	return
 }

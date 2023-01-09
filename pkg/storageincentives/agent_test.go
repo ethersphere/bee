@@ -10,6 +10,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	erc20mock "github.com/ethersphere/bee/pkg/settlement/swap/erc20/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
+	"github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
 	"math/big"
 	"sync"
 	"testing"
@@ -155,6 +156,13 @@ func createService(
 
 	postageContract := contractMock.New(contractMock.WithExpiresBatchesFunc(func(context.Context) error {
 		return nil
+	}),
+		contractMock.WithGetRewardFunc(func(context.Context, common.Address) (*big.Int, error) {
+			return nil, nil
+		}),
+	)
+	stakingContract := mock.New(mock.WithIsFrozen(func(context.Context) (bool, error) {
+		return true, nil
 	}))
 	var erc20 = erc20mock.New(
 		erc20mock.WithBalanceOfFunc(func(ctx context.Context, address common.Address) (*big.Int, error) {
@@ -171,6 +179,8 @@ func createService(
 		&mockMonitor{},
 		contract,
 		postageContract,
+		postageContract,
+		stakingContract,
 		mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})),
 		&mockSampler{},
 		time.Millisecond*10, blocksPerRound, blocksPerPhase,

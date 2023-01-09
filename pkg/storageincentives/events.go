@@ -18,6 +18,7 @@ const (
 	sample
 	sampleEnd
 	winner
+	frozen
 )
 
 func (p PhaseType) String() string {
@@ -34,6 +35,8 @@ func (p PhaseType) String() string {
 		return "sampleEnd"
 	case winner:
 		return "winner"
+	case frozen:
+		return "frozen"
 	default:
 		return "unknown"
 	}

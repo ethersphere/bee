@@ -17,6 +17,7 @@ type contractMock struct {
 	topupBatch    func(ctx context.Context, id []byte, amount *big.Int) (common.Hash, error)
 	diluteBatch   func(ctx context.Context, id []byte, newDepth uint8) (common.Hash, error)
 	expireBatches func(ctx context.Context) error
+	getReward     func(ctx context.Context, contractAddress common.Address) (*big.Int, error)
 }
 
 func (c *contractMock) CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) (common.Hash, []byte, error) {
@@ -33,6 +34,10 @@ func (c *contractMock) DiluteBatch(ctx context.Context, batchID []byte, newDepth
 
 func (c *contractMock) ExpireBatches(ctx context.Context) error {
 	return c.expireBatches(ctx)
+}
+
+func (c *contractMock) GetReward(ctx context.Context, contractAddress common.Address) (*big.Int, error) {
+	return c.getReward(ctx, contractAddress)
 }
 
 // Option is a an option passed to New
@@ -70,5 +75,10 @@ func WithDiluteBatchFunc(f func(ctx context.Context, batchID []byte, newDepth ui
 func WithExpiresBatchesFunc(f func(ctx context.Context) error) Option {
 	return func(m *contractMock) {
 		m.expireBatches = f
+	}
+}
+func WithGetRewardFunc(f func(ctx context.Context, contractAddress common.Address) (*big.Int, error)) Option {
+	return func(m *contractMock) {
+		m.getReward = f
 	}
 }
