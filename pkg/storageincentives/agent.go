@@ -479,6 +479,7 @@ func (s *Agent) setNodeStatusFee(fee *big.Int) {
 	}
 }
 
+// calculateWinnerReward calculates the reward for the winner
 func (s *Agent) calculateWinnerReward() {
 	// get latest balance
 	currentBalance := s.GetBalance()
@@ -487,6 +488,11 @@ func (s *Agent) calculateWinnerReward() {
 	}
 }
 
+// saveStatus saves the node status to the database
 func (s *Agent) saveStatus() {
-	s.nodeState.Put(fmt.Sprintf("%s%x", redistributionStatusKey, s.overlay.String()), s.nodeStatus)
+	err := s.nodeState.Put(fmt.Sprintf("%s%x", redistributionStatusKey, s.overlay.String()), s.nodeStatus)
+	if err != nil {
+		s.logger.Error(err, "error saving node status")
+		return
+	}
 }
