@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ethersphere/bee/pkg/storageincentives"
 	"io"
 	"math"
 	"math/big"
@@ -182,6 +183,8 @@ type Service struct {
 
 	preMapHooks map[string]func(v string) (string, error)
 	validate    *validator.Validate
+
+	redistributionAgent *storageincentives.Agent
 }
 
 func (s *Service) SetP2P(p2p p2p.DebugService) {
@@ -193,6 +196,12 @@ func (s *Service) SetP2P(p2p p2p.DebugService) {
 func (s *Service) SetSwarmAddress(addr *swarm.Address) {
 	if s != nil {
 		s.overlay = addr
+	}
+}
+
+func (s *Service) SetRedistributionAgent(redistributionAgent *storageincentives.Agent) {
+	if s != nil {
+		s.redistributionAgent = redistributionAgent
 	}
 }
 
@@ -261,7 +270,6 @@ func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address
 		}
 		return name
 	})
-
 	return s
 }
 

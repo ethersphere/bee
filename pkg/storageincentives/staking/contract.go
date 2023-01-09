@@ -40,6 +40,11 @@ type Contract interface {
 	DepositStake(ctx context.Context, stakedAmount *big.Int) (common.Hash, error)
 	GetStake(ctx context.Context) (*big.Int, error)
 	WithdrawAllStake(ctx context.Context) (common.Hash, error)
+	RedistributionStatus
+}
+
+type RedistributionStatus interface {
+	IsFrozen(ctx context.Context) (bool, error)
 }
 
 type contract struct {
@@ -312,4 +317,34 @@ func (c *contract) paused(ctx context.Context) (bool, error) {
 	}
 
 	return results[0].(bool), nil
+}
+
+func (c *contract) IsFrozen(ctx context.Context) (bool, error) {
+	callData, err := c.stakingContractABI.Pack("overlayNotFrozen")
+	if err != nil {
+		return false, err
+	}
+
+	result, err := c.transactionService.Call(ctx, &transaction.TxRequest{
+		To:   &c.stakingContractAddress,
+		Data: callData,
+	})
+	if err != nil {
+		return false, err
+	}
+
+	results, err := c.stakingContractABI.Unpack("overlayNotFrozen", result)
+	if err != nil {
+		return false, err
+	}
+
+	if len(results) == 0 {
+		return false, errors.New("unexpected empty results")
+	}
+	// true if overlay is not frozen
+	if results[0].(bool) {
+		return false, nil
+	}
+	// false if overlay is frozen
+	return true, nil
 }
