@@ -155,8 +155,14 @@ func (t *transactionService) waitForAllPendingTx() error {
 
 	return nil
 }
-func (t *transactionService) setAccumulativeFee(in *big.Int) {
-	t.AccumulativeFee = in
+func (t *transactionService) setAccumulativeFee(gasTipCap, gasFeeCap *big.Int, gasLimit uint64) {
+	gasTip := big.NewInt(0)
+	gasFee := big.NewInt(0)
+	if gasTipCap != nil {
+		*gasTip = *gasTipCap
+	}
+	*gasFee = *gasFeeCap
+	t.AccumulativeFee = gasTipCap.Add(gasTip, gasFee.Mul(gasFee, big.NewInt(int64(gasLimit))))
 }
 
 func (t *transactionService) GetAccumulativeFee() *big.Int {
@@ -319,7 +325,7 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 	}
 
 	// transaction fee
-	t.setAccumulativeFee(gasTipCap.Add(gasTipCap, gasFeeCap.Mul(gasFeeCap, big.NewInt(int64(gasLimit)))))
+	t.setAccumulativeFee(gasTipCap, gasTipCap, gasLimit)
 
 	return types.NewTx(&types.DynamicFeeTx{
 		Nonce:     nonce,
