@@ -191,7 +191,6 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	})
 
 	phaseEvents.On(reveal, func(ctx context.Context, _ PhaseType) {
-
 		// cancel previous executions of the commit and sample phases
 		phaseEvents.Cancel(commit, sample, sampleEnd)
 
@@ -308,7 +307,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		a.nodeStatus.Block = block
 		a.nodeStatus.State = currentPhase.String()
 		a.nodeStatus.Round = round
-
+		a.saveStatus()
 		prevPhase = currentPhase
 
 		mtx.Unlock()
@@ -326,6 +325,9 @@ func (a *Agent) reveal(ctx context.Context, storageRadius uint8, sample, obfusca
 }
 
 func (a *Agent) claim(ctx context.Context) error {
+	defer func() {
+		a.saveStatus()
+	}()
 	a.metrics.ClaimPhase.Inc()
 	// event claimPhase was processed
 
