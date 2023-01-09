@@ -9,6 +9,8 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"io"
 	"math"
 	"math/big"
@@ -25,7 +27,10 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-const loggerName = "storageincentives"
+const (
+	loggerName              = "storageincentives"
+	redistributionStatusKey = "redistribution_state_"
+)
 
 const (
 	DefaultBlocksPerRound = 152
@@ -56,6 +61,8 @@ type Agent struct {
 	quit           chan struct{}
 	wg             sync.WaitGroup
 	nodeStatus     NodeStatus
+	erc20Service   erc20.Service
+	initialBalance *big.Int // current balance of the node before starting the round
 }
 
 // NodeStatus provide internal status of the nodes in the redistribution game
@@ -63,7 +70,7 @@ type NodeStatus struct {
 	State  string   `json:"state"`
 	Round  uint64   `json:"round"`
 	Block  uint64   `json:"block"`
-	Reward string   `json:"reward"`
+	Reward *big.Int `json:"reward"`
 	Fees   *big.Int `json:"fees"`
 }
 
@@ -76,7 +83,7 @@ func New(
 	batchExpirer postagecontract.PostageBatchExpirer,
 	reserve postage.Storer,
 	sampler storage.Sampler,
-	blockTime time.Duration, blocksPerRound, blocksPerPhase uint64, nodeState storage.StateStorer) *Agent {
+	blockTime time.Duration, blocksPerRound, blocksPerPhase uint64, nodeState storage.StateStorer, erc20Service erc20.Service) *Agent {
 
 	s := &Agent{
 		overlay:        overlay,
@@ -92,12 +99,30 @@ func New(
 		quit:           make(chan struct{}),
 		nodeStatus:     NodeStatus{},
 		nodeState:      nodeState,
+		erc20Service:   erc20Service,
+		initialBalance: big.NewInt(0),
 	}
 
 	s.wg.Add(1)
 	go s.start(blockTime, blocksPerRound, blocksPerPhase)
 
 	return s
+}
+
+func (a *Agent) SetBalance() {
+	balance, err := a.erc20Service.BalanceOf(context.Background(), common.HexToAddress(a.overlay.String()))
+	if err != nil {
+		return
+	}
+	a.initialBalance.Set(balance)
+}
+
+func (a *Agent) GetBalance() *big.Int {
+	balance, err := a.erc20Service.BalanceOf(context.Background(), common.HexToAddress(a.overlay.String()))
+	if err != nil {
+		return nil
+	}
+	return balance
 }
 
 // start polls the current block number, calculates, and publishes only once the current phase.
@@ -108,6 +133,8 @@ func New(
 // Next, in the claim phase, we check if we've won, and the cycle repeats. The cycle must occur in the length of one round.
 func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase uint64) {
 
+	// set current balance of the node to calculate the reward
+	a.SetBalance()
 	defer a.wg.Done()
 
 	var (
@@ -318,6 +345,7 @@ func (a *Agent) claim(ctx context.Context) error {
 		a.metrics.Winner.Inc()
 		err = a.contract.Claim(ctx)
 		a.setNodeStatusFee(a.contract.GetFee())
+		a.calculateWinnerReward()
 		if err != nil {
 			a.metrics.ErrClaim.Inc()
 			return fmt.Errorf("error claiming win: %w", err)
@@ -449,6 +477,14 @@ func (s *Agent) setNodeStatusFee(fee *big.Int) {
 	}
 }
 
+func (s *Agent) calculateWinnerReward() {
+	// get latest balance
+	currentBalance := s.GetBalance()
+	if currentBalance != nil {
+		s.nodeStatus.Reward = currentBalance.Sub(currentBalance, s.initialBalance)
+	}
+}
+
 func (s *Agent) saveStatus() {
-	s.nodeState.Put(fmt.Sprintf("%s%x", "redistribution_state_", s.overlay.String()), s.nodeStatus)
+	s.nodeState.Put(fmt.Sprintf("%s%x", redistributionStatusKey, s.overlay.String()), s.nodeStatus)
 }
