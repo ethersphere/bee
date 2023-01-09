@@ -7,6 +7,8 @@ package storageincentives_test
 import (
 	"context"
 	"errors"
+	"github.com/ethereum/go-ethereum/common"
+	erc20mock "github.com/ethersphere/bee/pkg/settlement/swap/erc20/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"math/big"
 	"sync"
@@ -154,7 +156,14 @@ func createService(
 	postageContract := contractMock.New(contractMock.WithExpiresBatchesFunc(func(context.Context) error {
 		return nil
 	}))
-
+	var erc20 = erc20mock.New(
+		erc20mock.WithBalanceOfFunc(func(ctx context.Context, address common.Address) (*big.Int, error) {
+			return big.NewInt(0), nil
+		}),
+		erc20mock.WithTransferFunc(func(ctx context.Context, address common.Address, value *big.Int) (common.Hash, error) {
+			return common.Hash{}, nil
+		}),
+	)
 	return storageincentives.New(
 		addr,
 		backend,
@@ -166,6 +175,7 @@ func createService(
 		&mockSampler{},
 		time.Millisecond*10, blocksPerRound, blocksPerPhase,
 		statestore.NewStateStore(),
+		erc20,
 	)
 }
 
