@@ -45,10 +45,15 @@ type Interface interface {
 	TopUpBatch(ctx context.Context, batchID []byte, topupBalance *big.Int) (common.Hash, error)
 	DiluteBatch(ctx context.Context, batchID []byte, newDepth uint8) (common.Hash, error)
 	PostageBatchExpirer
+	RedistributionReward
 }
 
 type PostageBatchExpirer interface {
 	ExpireBatches(ctx context.Context) error
+}
+
+type RedistributionReward interface {
+	GetReward(ctx context.Context, contractAddress common.Address) (reward *big.Int, err error)
 }
 
 type postageContract struct {
@@ -412,6 +417,28 @@ func (c *postageContract) DiluteBatch(ctx context.Context, batchID []byte, newDe
 	return
 }
 
+// GetReward returns the reward
+func (c *postageContract) GetReward(ctx context.Context, contractAddress common.Address) (reward *big.Int, err error) {
+	callData, err := erc20ABI.Pack("totalPot")
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := c.transactionService.Call(ctx, &transaction.TxRequest{
+		To:   &contractAddress,
+		Data: callData,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	results, err := erc20ABI.Unpack("totalPot", result)
+	if err != nil {
+		return nil, err
+	}
+	return abi.ConvertType(results[0], new(big.Int)).(*big.Int), nil
+}
+
 type batchCreatedEvent struct {
 	BatchId           [32]byte
 	TotalAmount       *big.Int
@@ -436,6 +463,9 @@ func (m *noOpPostageContract) DiluteBatch(context.Context, []byte, uint8) (commo
 
 func (m *noOpPostageContract) ExpireBatches(context.Context) error {
 	return ErrChainDisabled
+}
+func (m *noOpPostageContract) GetReward(ctx context.Context, contractAddress common.Address) (reward *big.Int, err error) {
+	return nil, ErrChainDisabled
 }
 
 func LookupERC20Address(ctx context.Context, transactionService transaction.Service, postageStampContractAddress common.Address, postageStampContractABI abi.ABI, chainEnabled bool) (common.Address, error) {
