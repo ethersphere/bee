@@ -373,7 +373,9 @@ func (a *Agent) play(ctx context.Context) (uint8, []byte, error) {
 		a.logger.Info("error checking if stake is frozen", "err", err)
 	}
 	if isFrozen {
+		a.mtx.Lock()
 		a.nodeStatus.State = frozen.String()
+		a.mtx.Unlock()
 		a.saveStatus()
 	}
 
