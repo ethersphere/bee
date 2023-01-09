@@ -189,7 +189,7 @@ func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxReque
 	if err != nil {
 		return err
 	}
-	c.SetFee(c.txService.GetAccumulativeFee())
+	c.setFee(c.txService.GetAccumulativeFee())
 	receipt, err := c.txService.WaitForReceipt(ctx, txHash)
 	if err != nil {
 		return err
@@ -213,7 +213,7 @@ func (c *contract) callTx(ctx context.Context, callData []byte) ([]byte, error) 
 	return result, nil
 }
 
-func (c *contract) SetFee(in *big.Int) {
+func (c *contract) setFee(in *big.Int) {
 	c.accumulativeFee = in
 }
 
