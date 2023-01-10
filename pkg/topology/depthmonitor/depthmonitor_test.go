@@ -12,6 +12,7 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
+	"github.com/ethersphere/bee/pkg/spinlock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
@@ -56,19 +57,14 @@ func newTestSvc(
 func TestDepthMonitorService(t *testing.T) {
 	t.Parallel()
 
-	const depthWaitTimeout = time.Second * 3
 	waitForDepth := func(t *testing.T, svc *depthmonitor.Service, depth uint8) {
 		t.Helper()
-		start := time.Now()
-		for {
-			if time.Since(start) >= depthWaitTimeout {
-				t.Fatalf("timed out waiting for depth expected %d found %d", depth, svc.StorageDepth())
-			}
-			if svc.StorageDepth() != depth {
-				time.Sleep(100 * time.Millisecond)
-				continue
-			}
-			break
+
+		err := spinlock.Wait(time.Second*3, func() bool {
+			return svc.StorageDepth() == depth
+		})
+		if err != nil {
+			t.Fatalf("timed out waiting for depth expected %d found %d", depth, svc.StorageDepth())
 		}
 	}
 
@@ -98,8 +94,8 @@ func TestDepthMonitorService(t *testing.T) {
 		t.Parallel()
 
 		topo := &mockTopology{peers: 1}
-		// >50% utilized reserve
-		reserve := &mockReserveReporter{size: 26000, capacity: 50000}
+		// >40% utilized reserve
+		reserve := &mockReserveReporter{size: 20001, capacity: 50000}
 
 		bs := mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{Radius: 3}))
 
@@ -140,8 +136,8 @@ func TestDepthMonitorService(t *testing.T) {
 	t.Run("depth doesnt change for utilized reserve", func(t *testing.T) {
 		t.Parallel()
 
-		// >50% utilized reserve
-		reserve := &mockReserveReporter{size: 25001, capacity: 50000}
+		// >40% utilized reserve
+		reserve := &mockReserveReporter{size: 20001, capacity: 50000}
 		bs := mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{Radius: 3}))
 
 		svc := newTestSvc(nil, nil, reserve, nil, bs, 0, depthMonitorWakeUpInterval)
@@ -162,8 +158,8 @@ func TestDepthMonitorService(t *testing.T) {
 
 		topo := &mockTopology{connDepth: 3}
 		bs := mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{Radius: 3}))
-		// >50% utilized reserve
-		reserve := &mockReserveReporter{size: 25001, capacity: 50000}
+		// >40% utilized reserve
+		reserve := &mockReserveReporter{size: 20001, capacity: 50000}
 
 		svc := newTestSvc(topo, nil, reserve, nil, bs, 0, depthMonitorWakeUpInterval)
 
@@ -216,10 +212,10 @@ func (m *mockTopology) getStorageDepth() uint8 {
 }
 
 type mockSyncReporter struct {
-	rate float64
+	rate uint64
 }
 
-func (m *mockSyncReporter) Rate() float64 {
+func (m *mockSyncReporter) ActiveHistoricalSyncing() uint64 {
 	return m.rate
 }
 

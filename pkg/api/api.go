@@ -802,16 +802,16 @@ func (s *Service) newStamperPutter(r *http.Request) (storage.Storer, func() erro
 	}
 
 	if deferred {
-		p, err := newStoringStamperPutter(s.storer, issuer, s.signer)
-		return p, save, err
+		p := newStoringStamperPutter(s.storer, issuer, s.signer)
+		return p, save, nil
 	}
-	p, err := newPushStamperPutter(s.storer, issuer, s.signer, s.chunkPushC)
+	p := newPushStamperPutter(s.storer, issuer, s.signer, s.chunkPushC)
 
 	wait := func() error {
 		if err := save(); err != nil {
 			return err
 		}
-		return p.eg.Wait()
+		return p.Wait()
 	}
 
 	return p, wait, err
@@ -825,9 +825,13 @@ type pushStamperPutter struct {
 	sem     chan struct{}
 }
 
-func newPushStamperPutter(s storage.Storer, i *postage.StampIssuer, signer crypto.Signer, cc chan *pusher.Op) (*pushStamperPutter, error) {
+func newPushStamperPutter(s storage.Storer, i *postage.StampIssuer, signer crypto.Signer, cc chan *pusher.Op) *pushStamperPutter {
 	stamper := postage.NewStamper(i, signer)
-	return &pushStamperPutter{Storer: s, stamper: stamper, c: cc, sem: make(chan struct{}, uploadSem)}, nil
+	return &pushStamperPutter{Storer: s, stamper: stamper, c: cc, sem: make(chan struct{}, uploadSem)}
+}
+
+func (p *pushStamperPutter) Wait() error {
+	return p.eg.Wait()
 }
 
 func (p *pushStamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exists []bool, err error) {
@@ -848,38 +852,38 @@ func (p *pushStamperPutter) Put(ctx context.Context, mode storage.ModePut, chs .
 			return nil, err
 		}
 
-		func(ch swarm.Chunk) {
-			p.sem <- struct{}{}
-			p.eg.Go(func() error {
-				defer func() {
-					<-p.sem
-				}()
-				errc := make(chan error, 1)
-				// note: shutdown might be tricky, we need to pass the quit channel
-				// from the api here so that the putter knows not to keep on sending stuff
-				// and just returns an error... or?
-			PUSH:
-				p.c <- &pusher.Op{Chunk: ch, Err: errc, Direct: true}
-				select {
-				case err := <-errc:
-					// if we're the closest one we will store the chunk and return no error
-					if errors.Is(err, topology.ErrWantSelf) {
-						if _, err := p.Storer.Put(ctx, storage.ModePutSync, ch); err != nil {
-							return err
-						}
-						return nil
-					}
-					if err == nil {
-						return nil
-					}
-					goto PUSH
-				case <-ctx.Done():
-					return ctx.Err()
-				}
-			})
-		}(c.WithStamp(stamp))
+		p.putChunk(ctx, c.WithStamp(stamp))
 	}
 	return exists, nil
+}
+
+func (p *pushStamperPutter) putChunk(ctx context.Context, ch swarm.Chunk) {
+	p.sem <- struct{}{}
+	p.eg.Go(func() error {
+		defer func() {
+			<-p.sem
+		}()
+
+		for {
+			errc := make(chan error, 1)
+			p.c <- &pusher.Op{Chunk: ch, Err: errc, Direct: true}
+
+			select {
+			case err := <-errc:
+				// if we're the closest one we will store the chunk
+				if errors.Is(err, topology.ErrWantSelf) {
+					_, err := p.Storer.Put(ctx, storage.ModePutSync, ch)
+					return err
+				}
+				if err == nil {
+					return nil
+				}
+
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+	})
 }
 
 type stamperPutter struct {
@@ -887,9 +891,9 @@ type stamperPutter struct {
 	stamper postage.Stamper
 }
 
-func newStoringStamperPutter(s storage.Storer, i *postage.StampIssuer, signer crypto.Signer) (*stamperPutter, error) {
+func newStoringStamperPutter(s storage.Storer, i *postage.StampIssuer, signer crypto.Signer) *stamperPutter {
 	stamper := postage.NewStamper(i, signer)
-	return &stamperPutter{Storer: s, stamper: stamper}, nil
+	return &stamperPutter{Storer: s, stamper: stamper}
 }
 
 func (p *stamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exists []bool, err error) {

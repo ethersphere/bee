@@ -35,10 +35,10 @@ type ReserveReporter interface {
 	ReserveCapacity() uint64
 }
 
-// SyncReporter interface needs to be implemented by the syncing component of the node (pullsync).
+// SyncReporter interface needs to be implemented by the syncing component of the node (puller).
 type SyncReporter interface {
-	// Rate of syncing in terms of chunks/sec.
-	Rate() float64
+	// Number of active historical syncing jobs.
+	ActiveHistoricalSyncing() uint64
 }
 
 // Topology interface encapsulates the functionality required by the topology component
@@ -116,7 +116,7 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration) {
 	case <-time.After(warmupTime):
 	}
 
-	halfCapacity := s.reserve.ReserveCapacity() / 2
+	targetSize := s.reserve.ReserveCapacity() * 4 / 10 // 40% of the capacity
 
 	for {
 		select {
@@ -136,16 +136,15 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration) {
 		// save last calculated reserve size
 		s.lastRSize.Store(currentSize)
 
-		rate := s.syncer.Rate()
-		s.logger.Info("depthmonitor: state", "current size", currentSize, "radius", reserveState.StorageRadius, "chunks/sec rate", rate)
+		syncCount := s.syncer.ActiveHistoricalSyncing()
+		s.logger.Info("depthmonitor: state", "current size", currentSize, "radius", reserveState.StorageRadius, "sync_count", syncCount)
 
-		// we have crossed 50% utilization
-		if currentSize > halfCapacity {
+		if currentSize > targetSize {
 			continue
 		}
 
 		// if historical syncing rate is at zero, we proactively decrease the storage radius to allow nodes to widen their neighbourhoods
-		if rate == 0 && s.topology.PeersCount(topologyDriver.Filter{}) != 0 {
+		if syncCount == 0 && s.topology.PeersCount(topologyDriver.Filter{}) != 0 {
 			err = s.bs.SetStorageRadius(func(radius uint8) uint8 {
 				if radius > s.minimumRadius {
 					radius--
@@ -161,7 +160,7 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration) {
 }
 
 func (s *Service) IsFullySynced() bool {
-	return s.syncer.Rate() == 0 && s.lastRSize.Load() > s.reserve.ReserveCapacity()/2
+	return s.syncer.ActiveHistoricalSyncing() == 0 && s.lastRSize.Load() > s.reserve.ReserveCapacity()*4/10
 }
 
 func (s *Service) Close() error {
