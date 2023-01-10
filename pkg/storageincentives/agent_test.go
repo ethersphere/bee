@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"github.com/ethereum/go-ethereum/common"
-	erc20mock "github.com/ethersphere/bee/pkg/settlement/swap/erc20/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
 	"math/big"
@@ -164,29 +163,8 @@ func createService(
 	stakingContract := mock.New(mock.WithIsFrozen(func(context.Context) (bool, error) {
 		return true, nil
 	}))
-	var erc20 = erc20mock.New(
-		erc20mock.WithBalanceOfFunc(func(ctx context.Context, address common.Address) (*big.Int, error) {
-			return big.NewInt(0), nil
-		}),
-		erc20mock.WithTransferFunc(func(ctx context.Context, address common.Address, value *big.Int) (common.Hash, error) {
-			return common.Hash{}, nil
-		}),
-	)
-	return storageincentives.New(
-		addr,
-		backend,
-		log.Noop,
-		&mockMonitor{},
-		contract,
-		postageContract,
-		postageContract,
-		stakingContract,
-		mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})),
-		&mockSampler{},
-		time.Millisecond*10, blocksPerRound, blocksPerPhase,
-		statestore.NewStateStore(),
-		erc20,
-	)
+
+	return storageincentives.New(addr, backend, log.Noop, &mockMonitor{}, contract, postageContract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), &mockSampler{}, time.Millisecond*10, blocksPerRound, blocksPerPhase, statestore.NewStateStore())
 }
 
 type mockchainBackend struct {
