@@ -233,7 +233,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 
 	l.logger.Debug("batch factor", "value", batchFactor)
 
-	synced := make(chan error, 1)
+	synced := make(chan error)
 	closeOnce := new(sync.Once)
 	paged := make(chan struct{}, 1)
 	paged <- struct{}{}

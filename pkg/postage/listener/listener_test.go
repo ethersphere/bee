@@ -532,16 +532,14 @@ func TestListenerBatchState(t *testing.T) {
 }
 
 func newEventUpdaterMock() *updater {
-	c := make(chan interface{}, 1)
 	return &updater{
-		eventC: c,
+		eventC: make(chan interface{}, 1),
 	}
 }
 
 func newEventUpdaterMockWithBlockNumberUpdateError(err error) *updater {
-	c := make(chan interface{}, 1)
 	return &updater{
-		eventC:                 c,
+		eventC:                 make(chan interface{}, 1),
 		blockNumberUpdateError: err,
 	}
 }
