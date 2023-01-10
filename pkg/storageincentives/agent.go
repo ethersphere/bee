@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 	"io"
 	"math"
@@ -64,7 +63,6 @@ type Agent struct {
 	quit           chan struct{}
 	wg             sync.WaitGroup
 	nodeStatus     NodeStatus
-	erc20Service   erc20.Service
 	mtx            sync.Mutex
 }
 
@@ -77,18 +75,7 @@ type NodeStatus struct {
 	Fees   *big.Int `json:"fees"`
 }
 
-func New(
-	overlay swarm.Address,
-	backend ChainBackend,
-	logger log.Logger,
-	monitor Monitor,
-	contract redistribution.Contract,
-	batchExpirer postagecontract.PostageBatchExpirer,
-	reward postagecontract.RedistributionReward,
-	stake staking.RedistributionStatus,
-	reserve postage.Storer,
-	sampler storage.Sampler,
-	blockTime time.Duration, blocksPerRound, blocksPerPhase uint64, nodeState storage.StateStorer, erc20Service erc20.Service) *Agent {
+func New(overlay swarm.Address, backend ChainBackend, logger log.Logger, monitor Monitor, contract redistribution.Contract, batchExpirer postagecontract.PostageBatchExpirer, reward postagecontract.RedistributionReward, stake staking.RedistributionStatus, reserve postage.Storer, sampler storage.Sampler, blockTime time.Duration, blocksPerRound, blocksPerPhase uint64, nodeState storage.StateStorer) *Agent {
 
 	a := &Agent{
 		overlay:        overlay,
@@ -105,7 +92,6 @@ func New(
 		nodeStatus:     NodeStatus{},
 		reward:         reward,
 		nodeState:      nodeState,
-		erc20Service:   erc20Service,
 		stake:          stake,
 	}
 
