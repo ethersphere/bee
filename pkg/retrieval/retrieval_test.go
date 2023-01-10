@@ -16,6 +16,7 @@ import (
 
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
 	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/spinlock"
 	"github.com/ethersphere/bee/pkg/topology"
 
 	"github.com/ethersphere/bee/pkg/log"
@@ -254,14 +255,12 @@ func TestRetrieveChunk(t *testing.T) {
 		if !bytes.Equal(got.Data(), chunk.Data()) {
 			t.Fatalf("got data %x, want %x", got.Data(), chunk.Data())
 		}
-		gots := false
-		for i := 0; i < 100; i++ {
-			if gots, _ = forwarderStore.Has(context.Background(), chunk.Address()); gots {
-				break
-			}
-			time.Sleep(10 * time.Millisecond)
-		}
-		if !gots {
+
+		err = spinlock.Wait(time.Second, func() bool {
+			gots, _ := forwarderStore.Has(context.Background(), chunk.Address())
+			return gots
+		})
+		if err != nil {
 			t.Fatalf("forwarder did not cache chunk")
 		}
 	})
@@ -507,15 +506,11 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 		if !bytes.Equal(got.Data(), chunk.Data()) {
 			t.Fatalf("got data %x, want %x", got.Data(), chunk.Data())
 		}
-		has := false
-		for i := 0; i < 10; i++ {
-			has, _ = serverStorer1.Has(context.Background(), chunk.Address())
-			if has {
-				break
-			}
-			time.Sleep(100 * time.Millisecond)
-		}
-		if !has {
+		err = spinlock.Wait(time.Second, func() bool {
+			has, _ := serverStorer1.Has(context.Background(), chunk.Address())
+			return has
+		})
+		if err != nil {
 			t.Fatalf("forwarder node does not have chunk")
 		}
 	})

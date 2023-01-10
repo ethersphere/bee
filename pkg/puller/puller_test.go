@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/puller"
 	mockps "github.com/ethersphere/bee/pkg/pullsync/mock"
+	"github.com/ethersphere/bee/pkg/spinlock"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -640,29 +641,28 @@ func checkNotFound(t *testing.T, s storage.StateStorer, addr swarm.Address, bin 
 
 func waitCheckCalls(t *testing.T, expCalls []c, callsFn func(swarm.Address) []mockps.SyncCall, addr swarm.Address) {
 	t.Helper()
-	for i := 0; i < 10; i++ {
-		time.Sleep(50 * time.Millisecond)
-		calls := callsFn(addr)
-		if l := len(calls); l != len(expCalls) {
-			t.Log(l, len(expCalls), "continue")
-			continue
-		}
-		// check the calls
-		for i, v := range expCalls {
-			if b := calls[i].Bin; b != v.b {
-				t.Errorf("bin mismatch. got %d want %d index %d", b, v.b, i)
-			}
-			if f := calls[i].From; f != v.f {
-				t.Errorf("from mismatch. got %d want %d index %d", f, v.f, i)
-			}
-			if tt := calls[i].To; tt != v.t {
-				t.Errorf("to mismatch. got %d want %d index %d", tt, v.t, i)
-			}
-		}
-		return
+
+	var calls []mockps.SyncCall
+	err := spinlock.Wait(time.Second, func() bool {
+		calls = callsFn(addr)
+		return len(calls) == len(expCalls)
+	})
+	if err != nil {
+		t.Fatalf("expected %d calls but got %d. calls: %v", len(expCalls), len(calls), calls)
 	}
-	calls := callsFn(addr)
-	t.Fatalf("expected %d calls but got %d. calls: %v", len(expCalls), len(calls), calls)
+
+	// check the calls
+	for i, v := range expCalls {
+		if b := calls[i].Bin; b != v.b {
+			t.Errorf("bin mismatch. got %d want %d index %d", b, v.b, i)
+		}
+		if f := calls[i].From; f != v.f {
+			t.Errorf("from mismatch. got %d want %d index %d", f, v.f, i)
+		}
+		if tt := calls[i].To; tt != v.t {
+			t.Errorf("to mismatch. got %d want %d index %d", tt, v.t, i)
+		}
+	}
 }
 
 // this is needed since there are several goroutines checking the calls,
@@ -693,89 +693,85 @@ func checkCallsUnordered(t *testing.T, expCalls []c, calls []mockps.SyncCall) {
 // waitCursorsCalled waits until GetCursors are called on the given address.
 func waitCursorsCalled(t *testing.T, ps *mockps.PullSyncMock, addr swarm.Address, invert bool) {
 	t.Helper()
-	for i := 0; i < 20; i++ {
-		if v := ps.CursorsCalls(addr); v {
+
+	err := spinlock.Wait(time.Second, func() bool {
+		v := ps.CursorsCalls(addr)
+		if v {
 			if invert {
 				t.Fatal("got a call to sync to a peer but shouldnt")
 			} else {
-				return
+				return true
 			}
 		}
-
-		time.Sleep(50 * time.Millisecond)
+		return false
+	})
+	if err != nil && !invert {
+		t.Fatal("timed out waiting for cursors")
 	}
-	if invert {
-		return
-	}
-	t.Fatal("timed out waiting for cursors")
 }
 
 // waitLiveSyncCalled waits until SyncInterval is called on the address given.
 func waitLiveSyncCalled(t *testing.T, ps *mockps.PullSyncMock, addr swarm.Address, invert bool) {
 	t.Helper()
-	for i := 0; i < 15; i++ {
+
+	err := spinlock.Wait(time.Second, func() bool {
 		v := ps.LiveSyncCalls(addr)
 		if len(v) > 0 {
 			if invert {
 				t.Fatal("got a call to sync to a peer but shouldnt")
 			} else {
-				return
+				return true
 			}
 		}
-
-		time.Sleep(50 * time.Millisecond)
+		return false
+	})
+	if err != nil && !invert {
+		t.Fatal("timed out waiting for sync")
 	}
-	if invert {
-		return
-	}
-	t.Fatal("timed out waiting for sync")
 }
 
 // waitSyncCalled waits until SyncInterval is called on the address given.
 func waitSyncCalled(t *testing.T, ps *mockps.PullSyncMock, addr swarm.Address, invert bool) {
 	t.Helper()
-	for i := 0; i < 15; i++ {
+
+	err := spinlock.Wait(time.Second, func() bool {
 		v := ps.SyncCalls(addr)
 		if len(v) > 0 {
 			if invert {
 				t.Fatal("got a call to sync to a peer but shouldnt")
 			} else {
-				return
+				return true
 			}
 		}
-
-		time.Sleep(50 * time.Millisecond)
+		return false
+	})
+	if err != nil && !invert {
+		t.Fatal("timed out waiting for sync")
 	}
-	if invert {
-		return
-	}
-	t.Fatal("timed out waiting for sync")
 }
 
 func waitSyncCalledTimes(t *testing.T, ps *mockps.PullSyncMock, addr swarm.Address, times int) {
 	t.Helper()
-	for i := 0; i < 15; i++ {
-		v := ps.SyncCalls(addr)
-		if len(v) == times {
-			return
-		}
 
-		time.Sleep(50 * time.Millisecond)
+	err := spinlock.Wait(time.Second, func() bool {
+		v := ps.SyncCalls(addr)
+		return len(v) == times
+	})
+	if err != nil {
+		t.Fatal("timed out waiting for sync")
 	}
-	t.Fatal("timed out waiting for sync")
 }
 
 func waitLiveSyncCalledTimes(t *testing.T, ps *mockps.PullSyncMock, addr swarm.Address, times int) {
 	t.Helper()
-	for i := 0; i < 15; i++ {
-		v := ps.LiveSyncCalls(addr)
-		if len(v) == times {
-			return
-		}
 
-		time.Sleep(50 * time.Millisecond)
+	err := spinlock.Wait(time.Second, func() bool {
+		v := ps.LiveSyncCalls(addr)
+		return len(v) == times
+	})
+	if err != nil {
+		t.Fatal("timed out waiting for sync")
 	}
-	t.Fatal("timed out waiting for sync")
 }
 
 type opts struct {

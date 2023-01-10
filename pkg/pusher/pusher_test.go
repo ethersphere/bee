@@ -13,20 +13,21 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+
 	"github.com/ethersphere/bee/pkg/crypto"
+	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/bee/pkg/topology"
-
-	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	pushsyncmock "github.com/ethersphere/bee/pkg/pushsync/mock"
+	"github.com/ethersphere/bee/pkg/spinlock"
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
+	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/mock"
 )
 
@@ -116,7 +117,7 @@ func TestSendChunkToSyncWithTag(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = spinLock(t, spinTimeout, func() bool {
+	err = spinlock.Wait(spinTimeout, func() bool {
 		return checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer) == nil
 	})
 	if err != nil {
@@ -159,7 +160,7 @@ func TestSendChunkToPushSyncWithoutTag(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = spinLock(t, spinTimeout, func() bool {
+	err = spinlock.Wait(spinTimeout, func() bool {
 		return checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer) == nil
 	})
 	if err != nil {
@@ -197,7 +198,7 @@ func TestSendChunkToPushSyncViaApiChannel(t *testing.T) {
 
 	apiC <- &pusher.Op{Chunk: chunk}
 
-	err := spinLock(t, spinTimeout, func() bool {
+	err := spinlock.Wait(spinTimeout, func() bool {
 		return checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer) == nil
 	})
 	if err != nil {
@@ -261,7 +262,7 @@ func TestSendChunkAndReceiveInvalidReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = spinLock(t, spinTimeout, func() bool {
+	err = spinlock.Wait(spinTimeout, func() bool {
 		return checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer) == nil
 	})
 	if err == nil {
@@ -302,7 +303,7 @@ func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = spinLock(t, time.Second, func() bool {
+	err = spinlock.Wait(time.Second, func() bool {
 		return checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer) == nil
 	})
 	if err == nil {
@@ -347,7 +348,7 @@ func TestPusherRetryShallow(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = spinLock(t, spinTimeout, func() bool {
+	err = spinlock.Wait(spinTimeout, func() bool {
 		c := int(atomic.LoadInt32(&callCount))
 		return c == retryCount
 	})
@@ -390,7 +391,7 @@ func TestChunkWithInvalidStampSkipped(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = spinLock(t, spinTimeout, func() bool {
+	err = spinlock.Wait(spinTimeout, func() bool {
 		return checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer) == nil
 	})
 	if err != nil {
@@ -453,27 +454,4 @@ func checkIfModeSet(addr swarm.Address, mode storage.ModeSet, storer *Store) err
 		return errors.New("Chunk not synced")
 	}
 	return nil
-}
-
-type spinLockCondition func() bool
-
-func spinLock(t *testing.T, timeout time.Duration, cond spinLockCondition) error {
-	t.Helper()
-
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-
-	for {
-		select {
-		case <-timer.C:
-			return errors.New("timed out waiting for condition")
-
-		default:
-			if cond() {
-				return nil
-			}
-		}
-
-		time.Sleep(time.Millisecond * 100)
-	}
 }

@@ -16,7 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/shed"
 	ma "github.com/multiformats/go-multiaddr"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
@@ -27,6 +26,8 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
 	pingpongmock "github.com/ethersphere/bee/pkg/pingpong/mock"
+	"github.com/ethersphere/bee/pkg/shed"
+	"github.com/ethersphere/bee/pkg/spinlock"
 	mockstate "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
@@ -2024,14 +2025,13 @@ func kDepth(t *testing.T, k *kademlia.Kad, d int) {
 	t.Helper()
 
 	var depth int
-	err := spinLock(t, spinLockWaitTime, func() bool {
+	err := spinlock.Wait(spinLockWaitTime, func() bool {
 		depth = int(k.NeighborhoodDepth())
 		return depth == d
 	})
 	if err != nil {
 		t.Fatalf("timed out waiting for depth. want %d got %d", d, depth)
 	}
-
 }
 
 func waitConn(t *testing.T, conns *int32) {
@@ -2045,7 +2045,7 @@ func waitCounter(t *testing.T, conns *int32, exp int32) {
 	t.Helper()
 	var got int32
 
-	err := spinLock(t, spinLockWaitTime, func() bool {
+	err := spinlock.Wait(spinLockWaitTime, func() bool {
 		if got = atomic.LoadInt32(conns); got == exp {
 			atomic.StoreInt32(conns, 0)
 			return true
@@ -2060,7 +2060,7 @@ func waitCounter(t *testing.T, conns *int32, exp int32) {
 func waitPeers(t *testing.T, k *kademlia.Kad, peers int) {
 	t.Helper()
 
-	err := spinLock(t, spinLockWaitTime, func() bool {
+	err := spinlock.Wait(spinLockWaitTime, func() bool {
 		i := 0
 		_ = k.EachPeer(func(_ swarm.Address, _ uint8) (bool, bool, error) {
 			i++
@@ -2077,7 +2077,7 @@ func waitPeers(t *testing.T, k *kademlia.Kad, peers int) {
 func waitBcast(t *testing.T, d *mock.Discovery, pivot swarm.Address, addrs ...swarm.Address) {
 	t.Helper()
 
-	err := spinLock(t, spinLockWaitTime, func() bool {
+	err := spinlock.Wait(spinLockWaitTime, func() bool {
 		if d.Broadcasts() > 0 {
 			recs, ok := d.AddresseeRecords(pivot)
 			if !ok {
@@ -2114,7 +2114,7 @@ func isIn(addr swarm.Address, addrs []swarm.Address) bool {
 func waitBalanced(t *testing.T, k *kademlia.Kad, bin uint8) {
 	t.Helper()
 
-	err := spinLock(t, spinLockWaitTime, func() bool {
+	err := spinlock.Wait(spinLockWaitTime, func() bool {
 		return k.IsBalanced(bin)
 	})
 	if err != nil {
@@ -2128,26 +2128,4 @@ func ptrInt(v int) *int {
 
 func ptrDuration(v time.Duration) *time.Duration {
 	return &v
-}
-
-func spinLock(t *testing.T, timeout time.Duration, cond func() bool) error {
-	t.Helper()
-
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-
-	condCheckTicker := time.NewTicker(time.Millisecond * 50)
-	defer condCheckTicker.Stop()
-
-	for {
-		select {
-		case <-timer.C:
-			return errors.New("timed out waiting for condition")
-
-		case <-condCheckTicker.C:
-			if cond() {
-				return nil
-			}
-		}
-	}
 }
