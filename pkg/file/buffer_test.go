@@ -39,19 +39,16 @@ func TestChunkPipe(t *testing.T) {
 			t.Parallel()
 
 			buf := file.NewChunkPipe()
-			sizeC := make(chan int, 16)
-			errC := make(chan error, 16)
+			readResultC := make(chan readResult, 16)
 			go func() {
 				data := make([]byte, swarm.ChunkSize)
 				for {
 					// get buffered chunkpipe read
-					c, err := buf.Read(data)
-					errC <- err
-
-					sizeC <- c
+					n, err := buf.Read(data)
+					readResultC <- readResult{n: n, err: err}
 
 					// only the last read should be smaller than chunk size
-					if c < swarm.ChunkSize {
+					if n < swarm.ChunkSize {
 						return
 					}
 				}
@@ -81,17 +78,14 @@ func TestChunkPipe(t *testing.T) {
 			// err may or may not be EOF, depending on whether writes end on
 			// chunk boundary
 			readTotal := 0
-			for {
-				select {
-				case c := <-sizeC:
-					readTotal += c
-					if readTotal == writeTotal {
-						return
-					}
-				case err := <-errC:
-					if err != nil && !errors.Is(err, io.EOF) {
-						t.Fatal(err)
-					}
+			for res := range readResultC {
+				if res.err != nil && !errors.Is(res.err, io.EOF) {
+					t.Fatal(res.err)
+				}
+
+				readTotal += res.n
+				if readTotal == writeTotal {
+					return
 				}
 			}
 		})
@@ -196,6 +190,7 @@ func TestCopyBuffer(t *testing.T) {
 type readResult struct {
 	data []byte
 	n    int
+	err  error
 }
 
 func reader(t *testing.T, bufferSize int, r io.Reader, c chan<- readResult) {
