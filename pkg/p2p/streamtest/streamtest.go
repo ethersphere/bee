@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/spinlock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -187,26 +188,25 @@ func (r *Recorder) Records(addr swarm.Address, protocolName, protocolVersio, str
 // that _no_ messages arrive during this time period.
 func (r *Recorder) WaitRecords(t *testing.T, addr swarm.Address, proto, version, stream string, msgs, timeoutSec int) []*Record {
 	t.Helper()
-	wait := 10 * time.Millisecond
-	iters := int((time.Duration(timeoutSec) * time.Second) / wait)
 
-	for i := 0; i < iters; i++ {
-		recs, _ := r.Records(addr, proto, version, stream)
+	var recs []*Record
+	err := spinlock.Wait(time.Second*time.Duration(timeoutSec), func() bool {
+		recs, _ = r.Records(addr, proto, version, stream)
 		if l := len(recs); l > msgs {
 			t.Fatalf("too many records. want %d got %d", msgs, l)
 		} else if msgs > 0 && l == msgs {
-			return recs
+			return true
 		}
+		return false
 		// we can be here if msgs == 0 && l == 0
 		// or msgs = x && l < x, both cases are fine
 		// and we should continue waiting
-
-		time.Sleep(wait)
-	}
-	if msgs > 0 {
+	})
+	if err != nil && msgs > 0 {
 		t.Fatal("timed out while waiting for records")
 	}
-	return nil
+
+	return recs
 }
 
 type Record struct {
