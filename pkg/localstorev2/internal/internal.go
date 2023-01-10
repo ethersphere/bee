@@ -16,7 +16,13 @@ import (
 type Storage interface {
 	Ctx() context.Context
 	Store() storage.Store
-	ChunkStore() storage.ChunkStore
+	ChunkStore() ChunkStore
+}
+
+type ChunkStore interface {
+	storage.ChunkStore
+	storage.GetterWithStamp
+	storage.DeleterWithStamp
 }
 
 // PutterCloserWithReference provides a Putter which can be closed with a root

@@ -17,7 +17,18 @@ type Getter interface {
 	// Get a chunk by its swarm.Address. Returns the chunk associated with
 	// the address alongside with its postage stamp, or a storage.ErrNotFound
 	// if the chunk is not found.
+	// If the chunk has multiple stamps, then the first stamp is returned in this
+	// query. In order to deterministically get the stamp, use the GetterWithStamp
+	// interface.
 	Get(context.Context, swarm.Address) (swarm.Chunk, error)
+}
+
+// GetterWithStamp is the interface that provides a way to specify a postage
+// stamp to filter the Get query. This is required as we will support multiple stamps
+// on a chunk. As a result some components would need to query chunk and provide
+// the stamp to return by using the argument.
+type GetterWithStamp interface {
+	GetWithStamp(context.Context, swarm.Address, []byte) (swarm.Chunk, error)
 }
 
 // Putter is the interface that wraps the basic Put method.
@@ -26,10 +37,20 @@ type Putter interface {
 	Put(context.Context, swarm.Chunk) error
 }
 
-// Deleter is the interface that wraps the basic Delete method.
+// Deleter is the interface that wraps the basic Delete method. This delete will
+// remove all the stamps associated with the chunk. To delete based on stamps,
+// use the DeleterWithStamp interface.
 type Deleter interface {
 	// Delete a chunk by the given swarm.Address.
 	Delete(context.Context, swarm.Address) error
+}
+
+// DeleterWithStamp provides a way to Delete a chunk by specifying the stamp
+// associated with this deletion. If the chunk has other stamps, then it is expected
+// that only the stamp association will be deleted and chunk will be kept in the
+// chunkstore.
+type DeleterWithStamp interface {
+	DeleteWithStamp(context.Context, swarm.Address, []byte) error
 }
 
 // PutterFunc type is an adapter to allow the use of

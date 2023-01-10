@@ -25,14 +25,16 @@ var (
 	// errPushItemMarshalAddressIsZero is returned when trying
 	// to marshal a pushItem with an address that is zero.
 	errPushItemMarshalAddressIsZero = errors.New("marshal pushItem: address is zero")
-
+	// errPushItemMarshalBatchInvalid is returned when trying to
+	// marshal a pushItem with invalid batch
+	errPushItemMarshalBatchInvalid = errors.New("marshal pushItem: batch is invalid")
 	// errPushItemUnmarshalInvalidSize is returned when trying
 	// to unmarshal buffer that is not of size pushItemSize.
 	errPushItemUnmarshalInvalidSize = errors.New("unmarshal pushItem: invalid size")
 )
 
 // pushItemSize is the size of a marshaled pushItem.
-const pushItemSize = 8 + swarm.HashSize + 8
+const pushItemSize = 8 + 2*swarm.HashSize + 8
 
 var _ storage.Item = (*pushItem)(nil)
 
@@ -42,12 +44,13 @@ var _ storage.Item = (*pushItem)(nil)
 type pushItem struct {
 	Timestamp int64
 	Address   swarm.Address
+	BatchID   []byte
 	TagID     uint64
 }
 
 // ID implements the storage.Item interface.
 func (i pushItem) ID() string {
-	return fmt.Sprintf("%d/%s", i.Timestamp, i.Address.ByteString())
+	return fmt.Sprintf("%d/%s/%s", i.Timestamp, i.Address.ByteString(), string(i.BatchID))
 }
 
 // Namespace implements the storage.Item interface.
@@ -61,10 +64,14 @@ func (i pushItem) Marshal() ([]byte, error) {
 	if i.Address.IsZero() {
 		return nil, errPushItemMarshalAddressIsZero
 	}
+	if len(i.BatchID) != swarm.HashSize {
+		return nil, errPushItemMarshalBatchInvalid
+	}
 	buf := make([]byte, pushItemSize)
 	binary.LittleEndian.PutUint64(buf, uint64(i.Timestamp))
 	copy(buf[8:], i.Address.Bytes())
-	binary.LittleEndian.PutUint64(buf[8+swarm.HashSize:], i.TagID)
+	copy(buf[8+swarm.HashSize:8+2*swarm.HashSize], i.BatchID)
+	binary.LittleEndian.PutUint64(buf[8+2*swarm.HashSize:], i.TagID)
 	return buf, nil
 }
 
@@ -77,7 +84,8 @@ func (i *pushItem) Unmarshal(bytes []byte) error {
 	ni := new(pushItem)
 	ni.Timestamp = int64(binary.LittleEndian.Uint64(bytes))
 	ni.Address = swarm.NewAddress(append(make([]byte, 0, swarm.HashSize), bytes[8:8+swarm.HashSize]...))
-	ni.TagID = binary.LittleEndian.Uint64(bytes[8+swarm.HashSize:])
+	ni.BatchID = append(make([]byte, 0, swarm.HashSize), bytes[8+swarm.HashSize:8+2*swarm.HashSize]...)
+	ni.TagID = binary.LittleEndian.Uint64(bytes[8+2*swarm.HashSize:])
 	*i = *ni
 	return nil
 }
@@ -88,24 +96,19 @@ func (i pushItem) String() string {
 }
 
 var (
-	// errTagIDAddressItemMarshalAddressIsZero is returned when trying
-	// to marshal a tagItem with an address that is zero.
-	errTagItemMarshalAddressIsZero = errors.New("marshal tagItem: address is zero")
-
 	// errTagIDAddressItemUnmarshalInvalidSize is returned when trying
 	// to unmarshal buffer that is not of size tagItemSize.
 	errTagItemUnmarshalInvalidSize = errors.New("unmarshal tagItem: invalid size")
 )
 
 // tagItemSize is the size of a marshaled tagItem.
-const tagItemSize = swarm.HashSize + 8*8
+const tagItemSize = swarm.HashSize + 7*8
 
 var _ storage.Item = (*tagItem)(nil)
 
 // tagItem is an store.Item that stores addresses of already seen chunks.
 type tagItem struct {
 	TagID     uint64        // unique identifier for the tag
-	Total     uint64        // total no of chunks associated with this tag as calculated by user
 	Split     uint64        // total no of chunks processed by the splitter for hashing
 	Seen      uint64        // total no of chunks already seen
 	Stored    uint64        // total no of chunks stored locally on the node
@@ -129,14 +132,13 @@ func (i tagItem) Namespace() string {
 func (i tagItem) Marshal() ([]byte, error) {
 	buf := make([]byte, tagItemSize)
 	binary.LittleEndian.PutUint64(buf, i.TagID)
-	binary.LittleEndian.PutUint64(buf[8:], i.Total)
-	binary.LittleEndian.PutUint64(buf[16:], i.Split)
-	binary.LittleEndian.PutUint64(buf[24:], i.Seen)
-	binary.LittleEndian.PutUint64(buf[32:], i.Stored)
-	binary.LittleEndian.PutUint64(buf[40:], i.Sent)
-	binary.LittleEndian.PutUint64(buf[48:], i.Synced)
-	copy(buf[56:], internal.AddressBytesOrZero(i.Address))
-	binary.LittleEndian.PutUint64(buf[56+swarm.HashSize:], uint64(i.StartedAt))
+	binary.LittleEndian.PutUint64(buf[8:], i.Split)
+	binary.LittleEndian.PutUint64(buf[16:], i.Seen)
+	binary.LittleEndian.PutUint64(buf[24:], i.Stored)
+	binary.LittleEndian.PutUint64(buf[32:], i.Sent)
+	binary.LittleEndian.PutUint64(buf[40:], i.Synced)
+	copy(buf[48:], internal.AddressBytesOrZero(i.Address))
+	binary.LittleEndian.PutUint64(buf[48+swarm.HashSize:], uint64(i.StartedAt))
 	return buf, nil
 }
 
@@ -148,14 +150,13 @@ func (i *tagItem) Unmarshal(bytes []byte) error {
 	}
 	ni := new(tagItem)
 	ni.TagID = binary.LittleEndian.Uint64(bytes)
-	ni.Total = binary.LittleEndian.Uint64(bytes[8:])
-	ni.Split = binary.LittleEndian.Uint64(bytes[16:])
-	ni.Seen = binary.LittleEndian.Uint64(bytes[24:])
-	ni.Stored = binary.LittleEndian.Uint64(bytes[32:])
-	ni.Sent = binary.LittleEndian.Uint64(bytes[40:])
-	ni.Synced = binary.LittleEndian.Uint64(bytes[48:])
-	ni.Address = internal.AddressOrZero(bytes[56 : 56+swarm.HashSize])
-	ni.StartedAt = int64(binary.LittleEndian.Uint64(bytes[56+swarm.HashSize:]))
+	ni.Split = binary.LittleEndian.Uint64(bytes[8:])
+	ni.Seen = binary.LittleEndian.Uint64(bytes[16:])
+	ni.Stored = binary.LittleEndian.Uint64(bytes[24:])
+	ni.Sent = binary.LittleEndian.Uint64(bytes[32:])
+	ni.Synced = binary.LittleEndian.Uint64(bytes[40:])
+	ni.Address = internal.AddressOrZero(bytes[48 : 48+swarm.HashSize])
+	ni.StartedAt = int64(binary.LittleEndian.Uint64(bytes[48+swarm.HashSize:]))
 	*i = *ni
 	return nil
 }
@@ -166,47 +167,42 @@ func (i tagItem) String() string {
 }
 
 var (
-	// errTagIDAddressItemMarshalAddressIsZero is returned when trying
-	// to marshal a uploadItem with an address that is zero.
-	errUploadItemMarshalAddressIsZero = errors.New("marshal uploadItem: address is zero")
-
 	// errTagIDAddressItemUnmarshalInvalidSize is returned when trying
 	// to unmarshal buffer that is not of size uploadItemSize.
 	errUploadItemUnmarshalInvalidSize = errors.New("unmarshal uploadItem: invalid size")
 )
 
 // uploadItemSize is the size of a marshaled uploadItem.
-const uploadItemSize = swarm.HashSize + 8
+const uploadItemSize = 3 * 8
 
 var _ storage.Item = (*uploadItem)(nil)
 
 // uploadItem is an store.Item that stores addresses of already seen chunks.
 type uploadItem struct {
-	Address swarm.Address
-	TagID   uint64
-	Synced  int64
+	Address  swarm.Address
+	BatchID  []byte
+	TagID    uint64
+	Uploaded int64
+	Synced   int64
 }
 
 // ID implements the storage.Item interface.
 func (i uploadItem) ID() string {
-	return i.Address.ByteString()
+	return string(i.BatchID)
 }
 
 // Namespace implements the storage.Item interface.
 func (i uploadItem) Namespace() string {
-	return "UploadItem"
+	return path.Join("UploadItem", i.Address.ByteString())
 }
 
 // Marshal implements the storage.Item interface.
 // If the Address is zero, an error is returned.
 func (i uploadItem) Marshal() ([]byte, error) {
-	if i.Address.IsZero() {
-		return nil, errUploadItemMarshalAddressIsZero
-	}
 	buf := make([]byte, uploadItemSize)
-	copy(buf, i.Address.Bytes())
-	binary.LittleEndian.PutUint64(buf[swarm.HashSize:], i.TagID)
-	binary.LittleEndian.PutUint64(buf[swarm.HashSize+8:], uint64(i.Synced))
+	binary.LittleEndian.PutUint64(buf, i.TagID)
+	binary.LittleEndian.PutUint64(buf[8:], uint64(i.Uploaded))
+	binary.LittleEndian.PutUint64(buf[16:], uint64(i.Synced))
 	return buf, nil
 }
 
@@ -217,9 +213,9 @@ func (i *uploadItem) Unmarshal(bytes []byte) error {
 		return errUploadItemUnmarshalInvalidSize
 	}
 	ni := new(uploadItem)
-	ni.Address = internal.AddressOrZero(bytes[:swarm.HashSize])
-	ni.TagID = binary.LittleEndian.Uint64(bytes[swarm.HashSize:])
-	ni.Synced = int64(binary.LittleEndian.Uint64(bytes[swarm.HashSize+8:]))
+	ni.TagID = binary.LittleEndian.Uint64(bytes[:8])
+	ni.Uploaded = int64(binary.LittleEndian.Uint64(bytes[8:16]))
+	ni.Synced = int64(binary.LittleEndian.Uint64(bytes[16:]))
 	*i = *ni
 	return nil
 }
@@ -229,35 +225,183 @@ func (i uploadItem) String() string {
 	return path.Join(i.Namespace(), i.ID())
 }
 
-// ChunkPutter returns a storage.Putter which will store the given chunk.
-func ChunkPutter(s internal.Storage, tagID uint64) (storage.Putter, error) {
-	return storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
-		ui := &uploadItem{
-			Address: chunk.Address(),
-			TagID:   tagID,
-		}
-		switch exists, err := s.Store().Has(ui); {
-		case err != nil:
-			return fmt.Errorf("store has item %q call failed: %w", ui, err)
-		case exists:
-			return nil
-		}
-		if err := s.Store().Put(tai); err != nil {
-			return fmt.Errorf("store put item %q call failed: %w", tai, err)
-		}
+type uploadPutter struct {
+	tag *tagItem
+	s   internal.Storage
+}
 
-		pi := &pushItem{
-			Timestamp: now().Unix(),
-			Address:   chunk.Address(),
-			TagID:     tagID,
-		}
-		if err := s.Store().Put(pi); err != nil {
-			return fmt.Errorf("store put item %q call failed: %w", pi, err)
-		}
-		err := s.ChunkStore().Put(ctx, chunk)
-		if err != nil {
-			return fmt.Errorf("chunk store put chunk %q call failed: %w", chunk.Address(), err)
-		}
+func NewPutter(s internal.Storage, tagId uint64) internal.PutterCloserWithReference {
+	return &uploadPutter{
+		tag: &tagItem{TagID: tagId, StartedAt: now().Unix()},
+		s:   s,
+	}
+}
+
+// Put operation will do the following:
+// 1. If upload store has already seen this chunk, it will update the tag and return
+// 2. For a new chunk it will add:
+//    a. uploadItem entry to keep track of this chunk.
+//    b. pushItem entry to make it available for PushSubscriber
+//    c. add chunk to the chunkstore till it is synced
+func (u *uploadPutter) Put(ctx context.Context, chunk swarm.Chunk) error {
+	u.tag.Split++
+
+	// Check if upload store has already seen this chunk
+	ui := &uploadItem{
+		Address: chunk.Address(),
+		BatchID: chunk.Stamp().BatchID(),
+	}
+	switch exists, err := u.s.Store().Has(ui); {
+	case err != nil:
+		return fmt.Errorf("store has item %q call failed: %w", ui, err)
+	case exists:
+		u.tag.Seen++
 		return nil
-	}), nil
+	}
+
+	if err := u.s.ChunkStore().Put(ctx, chunk); err != nil {
+		return fmt.Errorf("chunk store put chunk %q call failed: %w", chunk.Address(), err)
+	}
+
+	ui.Uploaded = now().Unix()
+	ui.TagID = u.tag.TagID
+
+	if err := u.s.Store().Put(ui); err != nil {
+		return fmt.Errorf("store put item %q call failed: %w", ui, err)
+	}
+
+	pi := &pushItem{
+		Timestamp: ui.Uploaded,
+		Address:   chunk.Address(),
+		BatchID:   chunk.Stamp().BatchID(),
+		TagID:     u.tag.TagID,
+	}
+	if err := u.s.Store().Put(pi); err != nil {
+		return fmt.Errorf("store put item %q call failed: %w", pi, err)
+	}
+
+	return nil
+}
+
+// Close provides the CloseWithReference interface where the session can be associated
+// with a swarm reference. This can be useful while keeping track of uploads through
+// the tags. It will update the tag. This will be filled with the Split and Seen count
+// by the Putter.
+func (u *uploadPutter) Close(addr swarm.Address) error {
+	if !addr.IsZero() {
+		u.tag.Address = addr.Clone()
+	}
+
+	err := u.s.Store().Put(u.tag)
+	if err != nil {
+		return fmt.Errorf("failed storing tag: %w", err)
+	}
+
+	return nil
+}
+
+type pushReporter struct {
+	s internal.Storage
+}
+
+func NewPushReporter(s internal.Storage) *pushReporter {
+	return &pushReporter{s: s}
+}
+
+// Sent is used by the pusher component to notify about successful push of chunk from
+// the node. A chunk could be retried on failure so, this sent count is maintained to
+// understand how many attempts were made by the node while pushing. The attempts are
+// registered only when an actual request was sent from this node.
+func (p *pushReporter) Sent(chunk swarm.Chunk) error {
+	ui := &uploadItem{
+		Address: chunk.Address(),
+		BatchID: chunk.Stamp().BatchID(),
+	}
+
+	err := p.s.Store().Get(ui)
+	if err != nil {
+		return fmt.Errorf("failed to read uploadItem %s: %w", ui, err)
+	}
+
+	ti := &tagItem{
+		TagID: ui.TagID,
+	}
+
+	err = p.s.Store().Get(ti)
+	if err != nil {
+		return fmt.Errorf("failed getting tag: %w", err)
+	}
+
+	ti.Sent++
+	err = p.s.Store().Put(ti)
+	if err != nil {
+		return fmt.Errorf("failed updating tag: %w", err)
+	}
+
+	return nil
+}
+
+// Synced is used by the pusher component to notify that the chunk is synced to the
+// network. This is reported when a valid receipt was received after the chunk was
+// pushed. Once the chunk is synced, the chunk is deleted from the upload store as
+// we no longer need to keep track of this chunk. It could potentially be saved by
+// some other component. The uploadItem is kept around to have information about
+// the chunk, which can be used for debug functionality. These need to have a separate
+// cleanup process.
+func (p *pushReporter) Synced(chunk swarm.Chunk) error {
+	ui := &uploadItem{
+		Address: chunk.Address(),
+		BatchID: chunk.Stamp().BatchID(),
+	}
+
+	err := p.s.Store().Get(ui)
+	if err != nil {
+		return fmt.Errorf("failed to read upload item %s: %w", ui, err)
+	}
+
+	pi := &pushItem{
+		Timestamp: ui.Uploaded,
+		Address:   chunk.Address(),
+		BatchID:   chunk.Stamp().BatchID(),
+	}
+
+	err = p.s.Store().Get(pi)
+	if err != nil {
+		return fmt.Errorf("failed reading pushItem: %w", err)
+	}
+
+	err = p.s.Store().Delete(pi)
+	if err != nil {
+		return fmt.Errorf("failed deleting pushItem %s: %w", pi, err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	err = p.s.ChunkStore().DeleteWithStamp(ctx, chunk.Address(), chunk.Stamp().BatchID())
+	if err != nil {
+		return fmt.Errorf("failed deleting chunk %s: %w", chunk.Address(), err)
+	}
+
+	ui.Synced = now().Unix()
+	err = p.s.Store().Put(ui)
+	if err != nil {
+		return fmt.Errorf("failed updating uploadItem %s: %w", ui, err)
+	}
+
+	ti := &tagItem{
+		TagID: ui.TagID,
+	}
+
+	err = p.s.Store().Get(ti)
+	if err != nil {
+		return fmt.Errorf("failed getting tag: %w", err)
+	}
+
+	ti.Synced++
+	err = p.s.Store().Put(ti)
+	if err != nil {
+		return fmt.Errorf("failed updating tag: %w", err)
+	}
+	return nil
 }
