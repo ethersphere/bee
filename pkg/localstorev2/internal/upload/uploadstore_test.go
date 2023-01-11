@@ -17,8 +17,6 @@ import (
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/upload"
 	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
-	"github.com/ethersphere/bee/pkg/storagev2/inmemchunkstore"
-	"github.com/ethersphere/bee/pkg/storagev2/inmemstore"
 	"github.com/ethersphere/bee/pkg/storagev2/storagetest"
 	"github.com/ethersphere/bee/pkg/swarm"
 	swarmtesting "github.com/ethersphere/bee/pkg/swarm/test"
@@ -320,22 +318,7 @@ func TestUploadItem_MarshalAndUnmarshal(t *testing.T) {
 func TestChunkPutter(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-
-	ts := &testStorage{
-		ctx:        ctx,
-		indexStore: inmemstore.New(),
-		chunkStore: &chunkStore{inmemchunkstore.New()},
-	}
-	t.Cleanup(func() {
-		if err := ts.Store().Close(); err != nil {
-			t.Errorf("Storage().Close(): unexpected error: %v", err)
-		}
-		if err := ts.ChunkStore().Close(); err != nil {
-			t.Errorf("ChunkStore().Close(): unexpected error: %v", err)
-		}
-	})
+	ts := internal.NewTestStorage(t)
 
 	const tagID = 1
 	putter, err := upload.NewPutter(ts, tagID)
@@ -440,22 +423,7 @@ func TestChunkPutter(t *testing.T) {
 func TestChunkReporter(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-
-	ts := &testStorage{
-		ctx:        ctx,
-		indexStore: inmemstore.New(),
-		chunkStore: &chunkStore{inmemchunkstore.New()},
-	}
-	t.Cleanup(func() {
-		if err := ts.Store().Close(); err != nil {
-			t.Errorf("Storage().Close(): unexpected error: %v", err)
-		}
-		if err := ts.ChunkStore().Close(); err != nil {
-			t.Errorf("ChunkStore().Close(): unexpected error: %v", err)
-		}
-	})
+	ts := internal.NewTestStorage(t)
 
 	const tagID = 1
 	putter, err := upload.NewPutter(ts, tagID)

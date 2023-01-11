@@ -9,9 +9,9 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"io"
 	"sync"
 
+	"github.com/ethersphere/bee/pkg/localstorev2/internal"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/google/uuid"
@@ -120,45 +120,22 @@ func (p *pinChunkItem) Unmarshal(_ []byte) error {
 	return nil
 }
 
-// PutterCloser implements the storage.Putter as well as an io.Closer. The Putter
-// should be closed for a successful operation.
-type PutterCloser interface {
-	storage.Putter
-	io.Closer
-}
-
-// Storage interface is the functionality required from the underlying storage to
-// achieve the pinstore functionality. This allows us to do stateless operations
-// here.
-type Storage interface {
-	Ctx() context.Context
-	Store() storage.Store
-	ChunkStore() storage.ChunkStore
-}
-
 // NewCollection returns a putter wrapped around the passed storage.
 // The putter will add the chunk to Chunk store if it doesnt exists within this collection.
 // It will create a new UUID for the collection which can be used to iterate on all the chunks
 // that are part of this collection. The root pin is only updated on successful close of this
 // Putter.
-func NewCollection(st Storage, root swarm.Address) (PutterCloser, error) {
-
-	collection := &pinCollectionItem{Addr: root, UUID: newUUID()}
-	found, err := st.Store().Has(collection)
-	if err != nil {
-		return nil, fmt.Errorf("pin store: failed checking collection: %w", err)
+func NewCollection(st internal.Storage) internal.PutterCloserWithReference {
+	return &collectionPutter{
+		collection: &pinCollectionItem{UUID: newUUID()},
+		st:         st,
 	}
-	if found {
-		return nil, fmt.Errorf("pin store: root %s already exists", root)
-	}
-
-	return &collectionPutter{collection: collection, st: st}, nil
 }
 
 type collectionPutter struct {
 	mtx        sync.Mutex
 	collection *pinCollectionItem
-	st         Storage
+	st         internal.Storage
 	closed     bool
 }
 
@@ -201,11 +178,12 @@ func (c *collectionPutter) Put(ctx context.Context, ch swarm.Chunk) error {
 	return nil
 }
 
-func (c *collectionPutter) Close() error {
+func (c *collectionPutter) Close(root swarm.Address) error {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
 	// Save the root pin reference.
+	c.collection.Addr = root
 	err := c.st.Store().Put(c.collection)
 	if err != nil {
 		return fmt.Errorf("pin store: failed updating collection: %w", err)
@@ -245,7 +223,7 @@ func Pins(st storage.Store) ([]swarm.Address, error) {
 
 // DeletePin will delete the root pin and all the chunks that are part of this
 // collection.
-func DeletePin(st Storage, root swarm.Address) error {
+func DeletePin(st internal.Storage, root swarm.Address) error {
 	collection := &pinCollectionItem{Addr: root}
 	err := st.Store().Get(collection)
 	if err != nil {

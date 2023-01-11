@@ -11,11 +11,10 @@ import (
 	"math"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/localstorev2/internal"
 	pinstore "github.com/ethersphere/bee/pkg/localstorev2/internal/pinning"
 	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
-	"github.com/ethersphere/bee/pkg/storagev2/inmemchunkstore"
-	inmem "github.com/ethersphere/bee/pkg/storagev2/inmemstore"
 	storagetest "github.com/ethersphere/bee/pkg/storagev2/storagetest"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -25,17 +24,6 @@ type pinningCollection struct {
 	uniqueChunks []swarm.Chunk
 	dupChunks    []swarm.Chunk
 }
-
-type testStorage struct {
-	store   storage.Store
-	chStore storage.ChunkStore
-}
-
-func (testStorage) Ctx() context.Context { return context.TODO() }
-
-func (t *testStorage) Store() storage.Store { return t.store }
-
-func (t *testStorage) ChunkStore() storage.ChunkStore { return t.chStore }
 
 func TestPinStore(t *testing.T) {
 
@@ -68,18 +56,12 @@ func TestPinStore(t *testing.T) {
 		tests = append(tests, c)
 	}
 
-	st := &testStorage{
-		store:   inmem.New(),
-		chStore: inmemchunkstore.New(),
-	}
+	st := internal.NewTestStorage(t)
 
 	t.Run("create new collections", func(t *testing.T) {
 		for tCount, tc := range tests {
 			t.Run(fmt.Sprintf("create collection %d", tCount), func(t *testing.T) {
-				putter, err := pinstore.NewCollection(st, tc.root.Address())
-				if err != nil {
-					t.Fatal(err)
-				}
+				putter := pinstore.NewCollection(st)
 				for _, ch := range append(tc.uniqueChunks, tc.root) {
 					err := putter.Put(context.TODO(), ch)
 					if err != nil {
@@ -92,7 +74,7 @@ func TestPinStore(t *testing.T) {
 						t.Fatal(err)
 					}
 				}
-				err = putter.Close()
+				err := putter.Close(tc.root.Address())
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -226,17 +208,14 @@ func TestPinStore(t *testing.T) {
 
 	t.Run("error after close", func(t *testing.T) {
 		root := chunktest.GenerateTestRandomChunk()
-		putter, err := pinstore.NewCollection(st, root.Address())
+		putter := pinstore.NewCollection(st)
+
+		err := putter.Put(context.TODO(), root)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		err = putter.Put(context.TODO(), root)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		err = putter.Close()
+		err = putter.Close(root.Address())
 		if err != nil {
 			t.Fatal(err)
 		}
