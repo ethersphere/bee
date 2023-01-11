@@ -11,6 +11,7 @@ import (
 	"math"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/localstorev2/internal"
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/cache"
 	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
@@ -136,8 +137,20 @@ func TestCacheEntryItem(t *testing.T) {
 
 type testStorage struct {
 	store   storage.Store
-	chStore storage.ChunkStore
+	chStore *chunkStore
 	putFn   func(storage.Item) error
+}
+
+type chunkStore struct {
+	storage.ChunkStore
+}
+
+func (c *chunkStore) GetWithStamp(ctx context.Context, address swarm.Address, _ []byte) (swarm.Chunk, error) {
+	return c.Get(ctx, address)
+}
+
+func (c *chunkStore) DeleteWithStamp(ctx context.Context, address swarm.Address, _ []byte) error {
+	return c.Delete(ctx, address)
 }
 
 func (testStorage) Ctx() context.Context { return context.TODO() }
@@ -146,7 +159,7 @@ func (t *testStorage) Store() storage.Store {
 	return &wrappedStore{Store: t.store, putFn: t.putFn}
 }
 
-func (t *testStorage) ChunkStore() storage.ChunkStore {
+func (t *testStorage) ChunkStore() internal.ChunkStore {
 	return t.chStore
 }
 
@@ -170,7 +183,7 @@ func TestCache(t *testing.T) {
 
 		st := &testStorage{
 			store:   inmem.New(),
-			chStore: inmemchunkstore.New(),
+			chStore: &chunkStore{inmemchunkstore.New()},
 		}
 		c, err := cache.New(st, 10)
 		if err != nil {
@@ -184,7 +197,7 @@ func TestCache(t *testing.T) {
 
 		st := &testStorage{
 			store:   inmem.New(),
-			chStore: inmemchunkstore.New(),
+			chStore: &chunkStore{inmemchunkstore.New()},
 		}
 		c, err := cache.New(st, 10)
 		if err != nil {
@@ -248,7 +261,7 @@ func TestCache(t *testing.T) {
 
 		st := &testStorage{
 			store:   inmem.New(),
-			chStore: inmemchunkstore.New(),
+			chStore: &chunkStore{inmemchunkstore.New()},
 		}
 		c, err := cache.New(st, 10)
 		if err != nil {
@@ -335,7 +348,7 @@ func TestCache(t *testing.T) {
 
 		st := &testStorage{
 			store:   inmem.New(),
-			chStore: inmemchunkstore.New(),
+			chStore: &chunkStore{inmemchunkstore.New()},
 		}
 		c, err := cache.New(st, 10)
 		if err != nil {

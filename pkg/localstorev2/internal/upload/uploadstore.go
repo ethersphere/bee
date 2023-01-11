@@ -262,11 +262,11 @@ func NewPutter(s internal.Storage, tagId uint64) (internal.PutterCloserWithRefer
 }
 
 // Put operation will do the following:
-// 1. If upload store has already seen this chunk, it will update the tag and return
-// 2. For a new chunk it will add:
-//    a. uploadItem entry to keep track of this chunk.
-//    b. pushItem entry to make it available for PushSubscriber
-//    c. add chunk to the chunkstore till it is synced
+// 1.If upload store has already seen this chunk, it will update the tag and return
+// 2.For a new chunk it will add:
+// - uploadItem entry to keep track of this chunk.
+// - b.pushItem entry to make it available for PushSubscriber
+// - c.add chunk to the chunkstore till it is synced
 func (u *uploadPutter) Put(ctx context.Context, chunk swarm.Chunk) error {
 	u.mtx.Lock()
 	defer u.mtx.Unlock()
