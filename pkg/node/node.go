@@ -907,10 +907,37 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 	pullSyncProtocol := pullsync.New(p2ps, pullStorage, pssService.TryUnwrap, validStamp, logger)
 	b.pullSyncCloser = pullSyncProtocol
 
-	var pullerService *puller.Puller
+	var (
+		pullerService *puller.Puller
+		agent         *storageincentives.Agent
+	)
+
 	if o.FullNodeMode && !o.BootnodeMode {
 		pullerService = puller.New(stateStore, kad, batchStore, pullSyncProtocol, logger, puller.Options{SyncSleepDur: puller.DefaultSyncErrorSleepDur}, warmupTime)
 		b.pullerCloser = pullerService
+
+		depthMonitor := depthmonitor.New(kad, pullerService, storer, batchStore, logger, warmupTime, depthmonitor.DefaultWakeupInterval)
+		b.depthMonitorCloser = depthMonitor
+
+		if o.EnableStorageIncentives {
+
+			redistributionContractAddress := chainCfg.RedistributionAddress
+			if o.RedistributionContractAddress != "" {
+				if !common.IsHexAddress(o.RedistributionContractAddress) {
+					return nil, errors.New("malformed redistribution contract address")
+				}
+				redistributionContractAddress = common.HexToAddress(o.RedistributionContractAddress)
+			}
+			redistributionContractABI, err := abi.JSON(strings.NewReader(chainCfg.RedistributionABI))
+			if err != nil {
+				return nil, fmt.Errorf("unable to parse redistribution ABI: %w", err)
+			}
+
+			redistributionContract := redistribution.New(swarmAddress, logger, transactionService, redistributionContractAddress, redistributionContractABI)
+			agent = storageincentives.New(swarmAddress, chainBackend, logger, depthMonitor, redistributionContract, postageStampContractService, batchStore, storer, o.BlockTime, storageincentives.DefaultBlocksPerRound, storageincentives.DefaultBlocksPerPhase)
+			b.storageIncetivesCloser = agent
+		}
+
 	}
 
 	retrieveProtocolSpec := retrieve.Protocol()
@@ -948,34 +975,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 	if err != nil {
 		return nil, fmt.Errorf("unable to parse staking ABI: %w", err)
 	}
-
 	stakingContract := staking.New(swarmAddress, overlayEthAddress, stakingContractAddress, stakingContractABI, bzzTokenAddress, transactionService, common.BytesToHash(nonce))
-
-	var agent *storageincentives.Agent
-	if o.FullNodeMode {
-
-		depthMonitor := depthmonitor.New(kad, pullerService, storer, batchStore, logger, warmupTime, depthmonitor.DefaultWakeupInterval)
-		b.depthMonitorCloser = depthMonitor
-
-		if !o.BootnodeMode && o.EnableStorageIncentives {
-
-			redistributionContractAddress := chainCfg.RedistributionAddress
-			if o.RedistributionContractAddress != "" {
-				if !common.IsHexAddress(o.RedistributionContractAddress) {
-					return nil, errors.New("malformed redistribution contract address")
-				}
-				redistributionContractAddress = common.HexToAddress(o.RedistributionContractAddress)
-			}
-			redistributionContractABI, err := abi.JSON(strings.NewReader(chainCfg.RedistributionABI))
-			if err != nil {
-				return nil, fmt.Errorf("unable to parse redistribution ABI: %w", err)
-			}
-
-			redistributionContract := redistribution.New(swarmAddress, logger, transactionService, redistributionContractAddress, redistributionContractABI)
-			agent = storageincentives.New(swarmAddress, chainBackend, logger, depthMonitor, redistributionContract, postageStampContractService, batchStore, storer, o.BlockTime, storageincentives.DefaultBlocksPerRound, storageincentives.DefaultBlocksPerPhase)
-			b.storageIncetivesCloser = agent
-		}
-	}
 
 	multiResolver := multiresolver.NewMultiResolver(
 		multiresolver.WithConnectionConfigs(o.ResolverConnectionCfgs),
