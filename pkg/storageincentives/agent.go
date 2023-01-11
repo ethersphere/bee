@@ -79,7 +79,6 @@ type NodeStatus struct {
 }
 
 func New(overlay swarm.Address, backend ChainBackend, logger log.Logger, monitor Monitor, contract redistribution.Contract, batchExpirer postagecontract.PostageBatchExpirer, stake staking.RedistributionStatus, reserve postage.Storer, sampler storage.Sampler, blockTime time.Duration, blocksPerRound, blocksPerPhase uint64, nodeState storage.StateStorer, erc20Service erc20.Service) *Agent {
-
 	a := &Agent{
 		overlay:        overlay,
 		metrics:        newMetrics(),
@@ -112,7 +111,7 @@ func New(overlay swarm.Address, backend ChainBackend, logger log.Logger, monitor
 // the sample is submitted, and in the reveal phase, the obfuscation key from the commit phase is submitted.
 // Next, in the claim phase, we check if we've won, and the cycle repeats. The cycle must occur in the length of one round.
 func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase uint64) {
-
+	defer fmt.Println("Starting storage incentives", a.overlay.String())
 	defer a.wg.Done()
 
 	var (
@@ -327,7 +326,10 @@ func (a *Agent) claim(ctx context.Context) error {
 		a.nodeStatus.State = winner.String()
 		a.mtx.Unlock()
 		a.metrics.Winner.Inc()
-		a.SetBalance()
+		err := a.setBalance()
+		if err != nil {
+			a.logger.Info("could not set balance", "err", err)
+		}
 
 		err = a.contract.Claim(ctx)
 		a.calculateWinnerReward()
@@ -482,11 +484,15 @@ func (a *Agent) setNodeStatusFee(fee *big.Int) {
 }
 
 // calculateWinnerReward calculates the reward for the winner
-func (a *Agent) calculateWinnerReward() {
-	currentBalance := a.GetBalance()
+func (a *Agent) calculateWinnerReward() error {
+	currentBalance, err := a.erc20Service.BalanceOf(context.Background(), common.HexToAddress(a.overlay.String()))
+	if err != nil {
+		return err
+	}
 	if currentBalance != nil {
 		a.nodeStatus.Reward = currentBalance.Sub(currentBalance, a.initialBalance)
 	}
+	return nil
 }
 
 // saveStatus saves the node status to the database
@@ -501,29 +507,16 @@ func (a *Agent) saveStatus() {
 }
 
 // GetStatus returns the node status
-func (a *Agent) GetStatus() (NodeStatus, error) {
-	var status NodeStatus
-	fmt.Println("get status", fmt.Sprintf("%s%x", redistributionStatusKey, a.overlay.String()))
-	err := a.nodeState.Get(fmt.Sprintf("%s%x", redistributionStatusKey, a.overlay.String()), status)
-	if err != nil {
-		a.logger.Error(err, "error fetching node status")
-		return status, err
-	}
-	return status, nil
+func (a *Agent) GetStatus() (status NodeStatus, err error) {
+	return status, a.nodeState.Get(fmt.Sprintf("%s%x", redistributionStatusKey, a.overlay.String()), &status)
 }
 
-func (a *Agent) SetBalance() {
-	balance, err := a.erc20Service.BalanceOf(context.Background(), common.HexToAddress(a.overlay.String()))
+func (a *Agent) setBalance() error {
+	// get current balance
+	currentBalance, err := a.erc20Service.BalanceOf(context.Background(), common.HexToAddress(a.overlay.String()))
 	if err != nil {
-		return
+		return err
 	}
-	a.initialBalance.Set(balance)
-}
-
-func (a *Agent) GetBalance() *big.Int {
-	balance, err := a.erc20Service.BalanceOf(context.Background(), common.HexToAddress(a.overlay.String()))
-	if err != nil {
-		return nil
-	}
-	return balance
+	a.initialBalance.Set(currentBalance)
+	return nil
 }

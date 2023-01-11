@@ -173,6 +173,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	settlement := swapmock.New(o.SwapOpts...)
 	chequebook := chequebookmock.NewChequebook(o.ChequebookOpts...)
 	ln := lightnode.NewContainer(o.Overlay)
+
 	transaction := transactionmock.New(o.TransactionOpts...)
 
 	storeRecipient := statestore.NewStateStore()
@@ -211,9 +212,9 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.Logger, transaction, o.BatchStore, o.beeMode, true, true, backend, o.CORSAllowedOrigins)
 
 	s.SetP2P(o.P2P)
-	s.SetSwarmAddress(&o.Overlay)
-	o.redistributionAgent = createRedistributionAgentService(o.Overlay, backend, nil, 12, 4, o.StateStorer, erc20)
 
+	o.redistributionAgent = createRedistributionAgentService(o.Overlay, nil, o.StateStorer, erc20)
+	s.SetSwarmAddress(&o.Overlay)
 	s.SetRedistributionAgent(o.redistributionAgent)
 	s.SetProbe(o.Probe)
 
@@ -719,11 +720,9 @@ func (c *chanStorer) Close() error {
 
 func createRedistributionAgentService(
 	addr swarm.Address,
-	backend storageincentives.ChainBackend,
-	contract redistribution.Contract,
-	blocksPerRound uint64,
-	blocksPerPhase uint64, storer storage.StateStorer, erc20Service erc20.Service) *storageincentives.Agent {
-
+	contract redistribution.Contract, storer storage.StateStorer, erc20Service erc20.Service) *storageincentives.Agent {
+	var blocksPerRound uint64 = 12
+	var blocksPerPhase uint64 = 4
 	postageContract := contractMock.New(contractMock.WithExpiresBatchesFunc(func(context.Context) error {
 		return nil
 	}),
@@ -732,7 +731,7 @@ func createRedistributionAgentService(
 		return true, nil
 	}))
 	wait := make(chan struct{})
-	backend = &mockchainBackend{
+	backend := &mockchainBackend{
 		limit: 144,
 		limitCallback: func() {
 			select {
@@ -743,6 +742,7 @@ func createRedistributionAgentService(
 		incrementBy: 2,
 		block:       blocksPerRound}
 	contract = &mockContract{}
+
 	return storageincentives.New(addr, backend, log.Noop, nil, contract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), nil, time.Millisecond*10, blocksPerRound, blocksPerPhase, storer, erc20Service)
 }
 
