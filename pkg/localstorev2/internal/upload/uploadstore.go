@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"path"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/localstorev2/internal"
@@ -167,6 +168,12 @@ func (i tagItem) String() string {
 }
 
 var (
+	// errUploadItemMarshalAddressIsZero is returned when trying
+	// to marshal a uploadItem with an address that is zero.
+	errUploadItemMarshalAddressIsZero = errors.New("marshal uploadItem: address is zero")
+	// errUploadItemMarshalBatchInvalid is returned when trying to
+	// marshal a uploadItem with invalid batch
+	errUploadItemMarshalBatchInvalid = errors.New("marshal uploadItem: batch is invalid")
 	// errTagIDAddressItemUnmarshalInvalidSize is returned when trying
 	// to unmarshal buffer that is not of size uploadItemSize.
 	errUploadItemUnmarshalInvalidSize = errors.New("unmarshal uploadItem: invalid size")
@@ -199,6 +206,15 @@ func (i uploadItem) Namespace() string {
 // Marshal implements the storage.Item interface.
 // If the Address is zero, an error is returned.
 func (i uploadItem) Marshal() ([]byte, error) {
+	// Address and BatchID are not part of the marshaled payload. But they are used
+	// in they key and hence are required. The Marshaling is done when item is to
+	// be stored, so we return errors for these cases.
+	if i.Address.IsZero() {
+		return nil, errUploadItemMarshalAddressIsZero
+	}
+	if len(i.BatchID) != swarm.HashSize {
+		return nil, errUploadItemMarshalBatchInvalid
+	}
 	buf := make([]byte, uploadItemSize)
 	binary.LittleEndian.PutUint64(buf, i.TagID)
 	binary.LittleEndian.PutUint64(buf[8:], uint64(i.Uploaded))
@@ -212,11 +228,11 @@ func (i *uploadItem) Unmarshal(bytes []byte) error {
 	if len(bytes) != uploadItemSize {
 		return errUploadItemUnmarshalInvalidSize
 	}
-	ni := new(uploadItem)
-	ni.TagID = binary.LittleEndian.Uint64(bytes[:8])
-	ni.Uploaded = int64(binary.LittleEndian.Uint64(bytes[8:16]))
-	ni.Synced = int64(binary.LittleEndian.Uint64(bytes[16:]))
-	*i = *ni
+	// The Address and BatchID are required for the key, so it is assumed that
+	// they will be filled already. We reuse them during unmarshaling.
+	i.TagID = binary.LittleEndian.Uint64(bytes[:8])
+	i.Uploaded = int64(binary.LittleEndian.Uint64(bytes[8:16]))
+	i.Synced = int64(binary.LittleEndian.Uint64(bytes[16:]))
 	return nil
 }
 
@@ -226,15 +242,23 @@ func (i uploadItem) String() string {
 }
 
 type uploadPutter struct {
-	tag *tagItem
-	s   internal.Storage
+	tagID uint64
+	mtx   sync.Mutex
+	split uint64
+	seen  uint64
+	s     internal.Storage
 }
 
-func NewPutter(s internal.Storage, tagId uint64) internal.PutterCloserWithReference {
-	return &uploadPutter{
-		tag: &tagItem{TagID: tagId, StartedAt: now().Unix()},
-		s:   s,
+func NewPutter(s internal.Storage, tagId uint64) (internal.PutterCloserWithReference, error) {
+	ti := &tagItem{TagID: tagId, StartedAt: now().Unix()}
+	err := s.Store().Put(ti)
+	if err != nil {
+		return nil, fmt.Errorf("failed creating tag: %w", err)
 	}
+	return &uploadPutter{
+		s:     s,
+		tagID: tagId,
+	}, nil
 }
 
 // Put operation will do the following:
@@ -244,7 +268,10 @@ func NewPutter(s internal.Storage, tagId uint64) internal.PutterCloserWithRefere
 //    b. pushItem entry to make it available for PushSubscriber
 //    c. add chunk to the chunkstore till it is synced
 func (u *uploadPutter) Put(ctx context.Context, chunk swarm.Chunk) error {
-	u.tag.Split++
+	u.mtx.Lock()
+	defer u.mtx.Unlock()
+
+	u.split++
 
 	// Check if upload store has already seen this chunk
 	ui := &uploadItem{
@@ -255,7 +282,7 @@ func (u *uploadPutter) Put(ctx context.Context, chunk swarm.Chunk) error {
 	case err != nil:
 		return fmt.Errorf("store has item %q call failed: %w", ui, err)
 	case exists:
-		u.tag.Seen++
+		u.seen++
 		return nil
 	}
 
@@ -264,7 +291,7 @@ func (u *uploadPutter) Put(ctx context.Context, chunk swarm.Chunk) error {
 	}
 
 	ui.Uploaded = now().Unix()
-	ui.TagID = u.tag.TagID
+	ui.TagID = u.tagID
 
 	if err := u.s.Store().Put(ui); err != nil {
 		return fmt.Errorf("store put item %q call failed: %w", ui, err)
@@ -274,7 +301,7 @@ func (u *uploadPutter) Put(ctx context.Context, chunk swarm.Chunk) error {
 		Timestamp: ui.Uploaded,
 		Address:   chunk.Address(),
 		BatchID:   chunk.Stamp().BatchID(),
-		TagID:     u.tag.TagID,
+		TagID:     u.tagID,
 	}
 	if err := u.s.Store().Put(pi); err != nil {
 		return fmt.Errorf("store put item %q call failed: %w", pi, err)
@@ -288,11 +315,23 @@ func (u *uploadPutter) Put(ctx context.Context, chunk swarm.Chunk) error {
 // the tags. It will update the tag. This will be filled with the Split and Seen count
 // by the Putter.
 func (u *uploadPutter) Close(addr swarm.Address) error {
-	if !addr.IsZero() {
-		u.tag.Address = addr.Clone()
+	u.mtx.Lock()
+	defer u.mtx.Unlock()
+
+	ti := &tagItem{TagID: u.tagID}
+	err := u.s.Store().Get(ti)
+	if err != nil {
+		return fmt.Errorf("failed reading tag while closing: %w", err)
 	}
 
-	err := u.s.Store().Put(u.tag)
+	ti.Split = u.split
+	ti.Seen = u.seen
+
+	if !addr.IsZero() {
+		ti.Address = addr.Clone()
+	}
+
+	err = u.s.Store().Put(ti)
 	if err != nil {
 		return fmt.Errorf("failed storing tag: %w", err)
 	}
@@ -304,15 +343,15 @@ type pushReporter struct {
 	s internal.Storage
 }
 
-func NewPushReporter(s internal.Storage) *pushReporter {
+func NewPushReporter(s internal.Storage) storage.PushReporter {
 	return &pushReporter{s: s}
 }
 
-// Sent is used by the pusher component to notify about successful push of chunk from
-// the node. A chunk could be retried on failure so, this sent count is maintained to
-// understand how many attempts were made by the node while pushing. The attempts are
-// registered only when an actual request was sent from this node.
-func (p *pushReporter) Sent(chunk swarm.Chunk) error {
+func (p *pushReporter) Report(
+	ctx context.Context,
+	chunk swarm.Chunk,
+	state storage.ChunkState,
+) error {
 	ui := &uploadItem{
 		Address: chunk.Address(),
 		BatchID: chunk.Stamp().BatchID(),
@@ -332,76 +371,45 @@ func (p *pushReporter) Sent(chunk swarm.Chunk) error {
 		return fmt.Errorf("failed getting tag: %w", err)
 	}
 
-	ti.Sent++
+	switch state {
+	case storage.ChunkSent:
+		ti.Sent++
+	case storage.ChunkStored:
+		ti.Stored++
+	case storage.ChunkSynced:
+		ti.Synced++
+
+		// Once the chunk is synced, it is deleted from the upload store as
+		// we no longer need to keep track of this chunk. We also need to cleanup
+		// the pushItem.
+		pi := &pushItem{
+			Timestamp: ui.Uploaded,
+			Address:   chunk.Address(),
+			BatchID:   chunk.Stamp().BatchID(),
+			TagID:     ui.TagID,
+		}
+
+		err = p.s.Store().Delete(pi)
+		if err != nil {
+			return fmt.Errorf("failed deleting pushItem %s: %w", pi, err)
+		}
+
+		err = p.s.ChunkStore().DeleteWithStamp(ctx, chunk.Address(), chunk.Stamp().BatchID())
+		if err != nil {
+			return fmt.Errorf("failed deleting chunk %s: %w", chunk.Address(), err)
+		}
+
+		ui.Synced = now().Unix()
+		err = p.s.Store().Put(ui)
+		if err != nil {
+			return fmt.Errorf("failed updating uploadItem %s: %w", ui, err)
+		}
+	}
+
 	err = p.s.Store().Put(ti)
 	if err != nil {
 		return fmt.Errorf("failed updating tag: %w", err)
 	}
 
-	return nil
-}
-
-// Synced is used by the pusher component to notify that the chunk is synced to the
-// network. This is reported when a valid receipt was received after the chunk was
-// pushed. Once the chunk is synced, the chunk is deleted from the upload store as
-// we no longer need to keep track of this chunk. It could potentially be saved by
-// some other component. The uploadItem is kept around to have information about
-// the chunk, which can be used for debug functionality. These need to have a separate
-// cleanup process.
-func (p *pushReporter) Synced(chunk swarm.Chunk) error {
-	ui := &uploadItem{
-		Address: chunk.Address(),
-		BatchID: chunk.Stamp().BatchID(),
-	}
-
-	err := p.s.Store().Get(ui)
-	if err != nil {
-		return fmt.Errorf("failed to read upload item %s: %w", ui, err)
-	}
-
-	pi := &pushItem{
-		Timestamp: ui.Uploaded,
-		Address:   chunk.Address(),
-		BatchID:   chunk.Stamp().BatchID(),
-	}
-
-	err = p.s.Store().Get(pi)
-	if err != nil {
-		return fmt.Errorf("failed reading pushItem: %w", err)
-	}
-
-	err = p.s.Store().Delete(pi)
-	if err != nil {
-		return fmt.Errorf("failed deleting pushItem %s: %w", pi, err)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	err = p.s.ChunkStore().DeleteWithStamp(ctx, chunk.Address(), chunk.Stamp().BatchID())
-	if err != nil {
-		return fmt.Errorf("failed deleting chunk %s: %w", chunk.Address(), err)
-	}
-
-	ui.Synced = now().Unix()
-	err = p.s.Store().Put(ui)
-	if err != nil {
-		return fmt.Errorf("failed updating uploadItem %s: %w", ui, err)
-	}
-
-	ti := &tagItem{
-		TagID: ui.TagID,
-	}
-
-	err = p.s.Store().Get(ti)
-	if err != nil {
-		return fmt.Errorf("failed getting tag: %w", err)
-	}
-
-	ti.Synced++
-	err = p.s.Store().Put(ti)
-	if err != nil {
-		return fmt.Errorf("failed updating tag: %w", err)
-	}
 	return nil
 }

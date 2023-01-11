@@ -117,3 +117,24 @@ type PullSubscriber interface {
 type PushSubscriber interface {
 	SubscribePush(ctx context.Context, skipFn func([]byte) bool) (c <-chan swarm.Chunk, repeat, stop func())
 }
+
+type ChunkState = int
+
+const (
+	// ChunkSent is used by the pusher component to notify about successful push of chunk from
+	// the node. A chunk could be retried on failure so, this sent count is maintained to
+	// understand how many attempts were made by the node while pushing. The attempts are
+	// registered only when an actual request was sent from this node.
+	ChunkSent ChunkState = iota
+	// ChunkStored is used by the pusher component to notify that the uploader node is
+	// the closest node and has stored the chunk.
+	ChunkStored
+	// ChunkSynced is used by the pusher component to notify that the chunk is synced to the
+	// network. This is reported when a valid receipt was received after the chunk was
+	// pushed. Once the chunk is synced, the chunk is deleted from the upload store as
+	ChunkSynced
+)
+
+type PushReporter interface {
+	Report(context.Context, swarm.Chunk, ChunkState) error
+}
