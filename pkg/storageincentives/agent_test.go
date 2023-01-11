@@ -7,7 +7,8 @@ package storageincentives_test
 import (
 	"context"
 	"errors"
-	"github.com/ethereum/go-ethereum/common"
+	"fmt"
+	erc20mock "github.com/ethersphere/bee/pkg/settlement/swap/erc20/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
 	"math/big"
@@ -142,11 +143,11 @@ func TestAgent(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			//status, err := service.GetStatus()
-			//if err != nil {
-			//	fmt.Errorf("error getting status: %v", err)
-			//}
-			//fmt.Println("status", status)
+			status, err := service.GetStatus()
+			if err != nil {
+				fmt.Errorf("error getting status: %v", err)
+			}
+			fmt.Println("status", status)
 		})
 	}
 }
@@ -161,15 +162,12 @@ func createService(
 	postageContract := contractMock.New(contractMock.WithExpiresBatchesFunc(func(context.Context) error {
 		return nil
 	}),
-		contractMock.WithGetRewardFunc(func(context.Context, common.Address) (*big.Int, error) {
-			return nil, nil
-		}),
 	)
 	stakingContract := mock.New(mock.WithIsFrozen(func(context.Context) (bool, error) {
 		return true, nil
 	}))
 
-	return storageincentives.New(addr, backend, log.Noop, &mockMonitor{}, contract, postageContract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), &mockSampler{}, time.Millisecond*10, blocksPerRound, blocksPerPhase, statestore.NewStateStore())
+	return storageincentives.New(addr, backend, log.Noop, &mockMonitor{}, contract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), &mockSampler{}, time.Millisecond*10, blocksPerRound, blocksPerPhase, statestore.NewStateStore(), erc20mock.New())
 }
 
 type mockchainBackend struct {

@@ -1,6 +1,8 @@
 package api_test
 
 import (
+	"fmt"
+	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	testing2 "github.com/ethersphere/bee/pkg/postage/testing"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
@@ -29,12 +31,18 @@ func TestRedistributionStatus(t *testing.T) {
 		if err != nil {
 			t.Errorf("redistribution put state: %v", err)
 		}
+		fmt.Println("redistributionStatusHandler", key)
 		srv, _, _, _ := newTestServer(t, testServerOptions{
 			DebugAPI:    true,
 			StateStorer: store,
 			Overlay:     addr,
+			beeMode:     api.FullMode,
 		})
+		//var res storageincentives.NodeStatus
+		//store.Get(key, &res)
+		//fmt.Println("------", res)
 		jsonhttptest.Request(t, srv, http.MethodGet, "/redistributionstate", http.StatusOK,
+			jsonhttptest.WithRequestHeader("Content-Type", "application/json; charset=utf-8"),
 			jsonhttptest.WithExpectedJSONResponse(expectedResponse),
 		)
 

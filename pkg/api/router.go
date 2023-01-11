@@ -324,11 +324,6 @@ func (s *Service) mountAPI() {
 			"GET": http.HandlerFunc(s.rchasher),
 		})),
 	)
-	handle("/redistributionstate", web.ChainHandlers(
-		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.redistributionStatusHandler),
-		})),
-	)
 
 	if s.Restricted {
 		handle("/auth", jsonhttp.MethodHandler{
@@ -571,6 +566,11 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET":    http.HandlerFunc(s.getStakedAmountHandler),
 			"DELETE": http.HandlerFunc(s.withdrawAllStakeHandler),
+		})),
+	)
+	handle("/redistributionstate", web.ChainHandlers(
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.redistributionStatusHandler),
 		})),
 	)
 }
