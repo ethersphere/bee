@@ -57,11 +57,9 @@ require (
 )
 
 require (
-	github.com/go-playground/validator/v10 v10.11.1
 	github.com/ipfs/go-cid v0.3.2
 	github.com/multiformats/go-multihash v0.2.1
 	go.opencensus.io v0.24.0
-	resenje.org/multex v0.1.0
 )
 
 require (
@@ -71,6 +69,9 @@ require (
 	github.com/google/pprof v0.0.0-20221203041831-ce31453925ec // indirect
 	github.com/onsi/ginkgo/v2 v2.5.1 // indirect
 	github.com/prometheus/statsd_exporter v0.22.7 // indirect
+	github.com/spf13/cast v1.3.0 // indirect
+	github.com/spf13/jwalterweatherman v1.0.0 // indirect
+	github.com/spf13/pflag v1.0.3 // indirect
 	go.uber.org/dig v1.15.0 // indirect
 	go.uber.org/fx v1.18.2 // indirect
 )
@@ -155,7 +156,6 @@ require (
 	github.com/raulk/go-watchdog v1.3.0 // indirect
 	github.com/rjeczalik/notify v0.9.2 // indirect
 	github.com/shirou/gopsutil v3.21.5+incompatible // indirect
-	github.com/smartystreets/assertions v1.1.1 // indirect
 	github.com/spacemonkeygo/spacelog v0.0.0-20180420211403-2296661a0572 // indirect
 	github.com/spaolacci/murmur3 v1.1.0 // indirect
 	github.com/stretchr/testify v1.8.1 // indirect
