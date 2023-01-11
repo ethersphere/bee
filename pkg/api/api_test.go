@@ -12,6 +12,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	contractMock "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
+	"github.com/ethersphere/bee/pkg/storageincentives"
+	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
+	mock2 "github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
 	"io"
 	"math/big"
 	"net"
@@ -82,6 +86,7 @@ func init() {
 
 type testServerOptions struct {
 	Storer             storage.Storer
+	StateStorer        storage.StateStorer
 	Resolver           resolver.Interface
 	Pss                pss.Interface
 	Traversal          traversal.Traverser
@@ -122,9 +127,10 @@ type testServerOptions struct {
 	BatchStore postage.Storer
 	SyncStatus func() (bool, error)
 
-	BackendOpts []backendmock.Option
-	Erc20Opts   []erc20mock.Option
-	beeMode     api.BeeNodeMode
+	BackendOpts         []backendmock.Option
+	Erc20Opts           []erc20mock.Option
+	beeMode             api.BeeNodeMode
+	redistributionAgent *storageincentives.Agent
 }
 
 func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.Conn, string, *chanStorer) {
@@ -199,11 +205,13 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	if o.beeMode == api.LightMode {
 		o.beeMode = api.FullMode
 	}
-	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.Logger, transaction, o.BatchStore, statestore.NewStateStore(), o.beeMode, true, true, backend, o.CORSAllowedOrigins)
+	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.Logger, transaction, o.BatchStore, o.beeMode, true, true, backend, o.CORSAllowedOrigins)
 
 	s.SetP2P(o.P2P)
 	s.SetSwarmAddress(&o.Overlay)
+	o.redistributionAgent = createRedistributionAgentService(o.Overlay, nil, nil, 0, 0, o.StateStorer)
 
+	s.SetRedistributionAgent(o.redistributionAgent)
 	s.SetProbe(o.Probe)
 
 	noOpTracer, tracerCloser, _ := tracing.NewTracer(&tracing.Options{
@@ -375,7 +383,7 @@ func TestParseName(t *testing.T) {
 		pk, _ := crypto.GenerateSecp256k1Key()
 		signer := crypto.NewDefaultSigner(pk)
 
-		s := api.New(pk.PublicKey, pk.PublicKey, common.Address{}, log, nil, nil, nil, 1, false, false, nil, []string{"*"})
+		s := api.New(pk.PublicKey, pk.PublicKey, common.Address{}, log, nil, nil, 1, false, false, nil, []string{"*"})
 		s.Configure(signer, nil, nil, api.Options{}, api.ExtraOptions{Resolver: tC.res}, 1, nil)
 		s.MountAPI()
 
@@ -704,4 +712,24 @@ func (c *chanStorer) SubscribePush(ctx context.Context, skipf func([]byte) bool)
 
 func (c *chanStorer) Close() error {
 	panic("not implemented") // TODO: Implement
+}
+
+func createRedistributionAgentService(
+	addr swarm.Address,
+	backend storageincentives.ChainBackend,
+	contract redistribution.Contract,
+	blocksPerRound uint64,
+	blocksPerPhase uint64, storer storage.StateStorer) *storageincentives.Agent {
+
+	postageContract := contractMock.New(contractMock.WithExpiresBatchesFunc(func(context.Context) error {
+		return nil
+	}),
+		contractMock.WithGetRewardFunc(func(context.Context, common.Address) (*big.Int, error) {
+			return nil, nil
+		}),
+	)
+	stakingContract := mock2.New(mock2.WithIsFrozen(func(context.Context) (bool, error) {
+		return true, nil
+	}))
+	return storageincentives.New(addr, backend, log.Noop, nil, contract, postageContract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), nil, time.Millisecond*10, blocksPerRound, blocksPerPhase, storer)
 }
