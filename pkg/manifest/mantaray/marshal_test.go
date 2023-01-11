@@ -10,7 +10,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"math/rand"
-	mrand "math/rand"
 	"reflect"
 	"testing"
 
@@ -50,7 +49,7 @@ type NodeEntry struct {
 
 // nolint:gochecknoinits
 func init() {
-	obfuscationKeyFn = mrand.Read
+	obfuscationKeyFn = rand.Read
 }
 
 func TestVersion01(t *testing.T) {

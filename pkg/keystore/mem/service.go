@@ -39,7 +39,7 @@ func (s *Service) Exists(name string) (bool, error) {
 
 }
 
-func (s *Service) SetKey(name, password string, generateFunc func() (*ecdsa.PrivateKey, error), encodeFunc func(k *ecdsa.PrivateKey) ([]byte, error)) (*ecdsa.PrivateKey, error) {
+func (s *Service) SetKey(name, password string, generateFunc keystore.GeneratorFunc, encodeFunc keystore.EncoderFunc) (*ecdsa.PrivateKey, error) {
 	pk, err := generateFunc()
 	if err != nil {
 		return nil, fmt.Errorf("generate key: %w", err)
@@ -51,7 +51,7 @@ func (s *Service) SetKey(name, password string, generateFunc func() (*ecdsa.Priv
 	return pk, nil
 }
 
-func (s *Service) Key(name, password string, generateFunc func() (*ecdsa.PrivateKey, error), encodeFunc func(k *ecdsa.PrivateKey) ([]byte, error), decodeFunc func(data []byte) (*ecdsa.PrivateKey, error)) (pk *ecdsa.PrivateKey, created bool, err error) {
+func (s *Service) Key(name, password string, generateFunc keystore.GeneratorFunc, encodeFunc keystore.EncoderFunc, decodeFunc keystore.DecoderFunc) (pk *ecdsa.PrivateKey, created bool, err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
