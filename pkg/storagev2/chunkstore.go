@@ -131,10 +131,11 @@ const (
 	ChunkStored
 	// ChunkSynced is used by the pusher component to notify that the chunk is synced to the
 	// network. This is reported when a valid receipt was received after the chunk was
-	// pushed. Once the chunk is synced, the chunk is deleted from the upload store as
+	// pushed.
 	ChunkSynced
 )
 
+// PushReporter is used to report chunk state.
 type PushReporter interface {
 	Report(context.Context, swarm.Chunk, ChunkState) error
 }

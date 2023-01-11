@@ -40,7 +40,7 @@ const pushItemSize = 8 + 2*swarm.HashSize + 8
 var _ storage.Item = (*pushItem)(nil)
 
 // pushItem is an store.Item that represents data relevant to push.
-// The key is a combination of Timestamp and Address, where the
+// The key is a combination of Timestamp, Address and postage stamp, where the
 // Timestamp provides an order to iterate.
 type pushItem struct {
 	Timestamp int64
@@ -107,7 +107,7 @@ const tagItemSize = swarm.HashSize + 7*8
 
 var _ storage.Item = (*tagItem)(nil)
 
-// tagItem is an store.Item that stores addresses of already seen chunks.
+// tagItem is an store.Item that stores information about a session of upload.
 type tagItem struct {
 	TagID     uint64        // unique identifier for the tag
 	Split     uint64        // total no of chunks processed by the splitter for hashing
