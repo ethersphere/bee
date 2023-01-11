@@ -78,6 +78,9 @@ const (
 	peerUserAgentTimeout  = time.Second
 
 	defaultHeadersRWTimeout = 10 * time.Second
+
+	IncomingStreamCountLimit = 5_000
+	OutgoingStreamCountLimit = 10_000
 )
 
 type Service struct {
@@ -174,10 +177,9 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	cfg := rcmgr.InfiniteLimits
 
-	in, out := 5_000, 10_000
-	cfg.ProtocolPeerDefault.Streams = in + out
-	cfg.ProtocolPeerDefault.StreamsInbound = in
-	cfg.ProtocolPeerDefault.StreamsOutbound = out
+	cfg.ProtocolPeerDefault.Streams = IncomingStreamCountLimit + OutgoingStreamCountLimit
+	cfg.ProtocolPeerDefault.StreamsInbound = IncomingStreamCountLimit
+	cfg.ProtocolPeerDefault.StreamsOutbound = OutgoingStreamCountLimit
 
 	limiter := rcmgr.NewFixedLimiter(cfg)
 
