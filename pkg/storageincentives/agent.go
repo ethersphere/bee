@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 	"io"
 	"math"
@@ -54,7 +55,6 @@ type Agent struct {
 	monitor        Monitor
 	contract       redistribution.Contract
 	batchExpirer   postagecontract.PostageBatchExpirer
-	reward         postagecontract.RedistributionReward
 	stake          staking.RedistributionStatus
 	reserve        postage.Storer
 	nodeState      storage.StateStorer
@@ -64,6 +64,9 @@ type Agent struct {
 	wg             sync.WaitGroup
 	nodeStatus     NodeStatus
 	mtx            sync.Mutex
+	erc20Service   erc20.Service
+	initialBalance *big.Int // current balance of the node before starting the round
+
 }
 
 // NodeStatus provide internal status of the nodes in the redistribution game
@@ -75,7 +78,7 @@ type NodeStatus struct {
 	Fees   *big.Int `json:"fees"`
 }
 
-func New(overlay swarm.Address, backend ChainBackend, logger log.Logger, monitor Monitor, contract redistribution.Contract, batchExpirer postagecontract.PostageBatchExpirer, reward postagecontract.RedistributionReward, stake staking.RedistributionStatus, reserve postage.Storer, sampler storage.Sampler, blockTime time.Duration, blocksPerRound, blocksPerPhase uint64, nodeState storage.StateStorer) *Agent {
+func New(overlay swarm.Address, backend ChainBackend, logger log.Logger, monitor Monitor, contract redistribution.Contract, batchExpirer postagecontract.PostageBatchExpirer, stake staking.RedistributionStatus, reserve postage.Storer, sampler storage.Sampler, blockTime time.Duration, blocksPerRound, blocksPerPhase uint64, nodeState storage.StateStorer, erc20Service erc20.Service) *Agent {
 
 	a := &Agent{
 		overlay:        overlay,
@@ -90,9 +93,10 @@ func New(overlay swarm.Address, backend ChainBackend, logger log.Logger, monitor
 		sampler:        sampler,
 		quit:           make(chan struct{}),
 		nodeStatus:     NodeStatus{},
-		reward:         reward,
 		nodeState:      nodeState,
 		stake:          stake,
+		erc20Service:   erc20Service,
+		initialBalance: big.NewInt(0),
 	}
 
 	a.wg.Add(1)
@@ -323,11 +327,13 @@ func (a *Agent) claim(ctx context.Context) error {
 		a.nodeStatus.State = winner.String()
 		a.mtx.Unlock()
 		a.metrics.Winner.Inc()
-		err := a.calculateWinnerReward()
+		a.SetBalance()
+
+		err = a.contract.Claim(ctx)
+		a.calculateWinnerReward()
 		if err != nil {
 			a.logger.Info("calculate winner reward", "err", err)
 		}
-		err = a.contract.Claim(ctx)
 		a.setNodeStatusFee(a.contract.GetFee())
 
 		if err != nil {
@@ -476,9 +482,11 @@ func (a *Agent) setNodeStatusFee(fee *big.Int) {
 }
 
 // calculateWinnerReward calculates the reward for the winner
-func (a *Agent) calculateWinnerReward() (err error) {
-	a.nodeStatus.Reward, err = a.reward.GetReward(context.Background(), common.HexToAddress(a.overlay.String()))
-	return
+func (a *Agent) calculateWinnerReward() {
+	currentBalance := a.GetBalance()
+	if currentBalance != nil {
+		a.nodeStatus.Reward = currentBalance.Sub(currentBalance, a.initialBalance)
+	}
 }
 
 // saveStatus saves the node status to the database
@@ -493,11 +501,29 @@ func (a *Agent) saveStatus() {
 }
 
 // GetStatus returns the node status
-func (a *Agent) GetStatus() (status NodeStatus, err error) {
-	err = a.nodeState.Get(fmt.Sprintf("%s%x", redistributionStatusKey, a.overlay.String()), status)
+func (a *Agent) GetStatus() (NodeStatus, error) {
+	var status NodeStatus
+	fmt.Println("get status", fmt.Sprintf("%s%x", redistributionStatusKey, a.overlay.String()))
+	err := a.nodeState.Get(fmt.Sprintf("%s%x", redistributionStatusKey, a.overlay.String()), status)
 	if err != nil {
 		a.logger.Error(err, "error fetching node status")
+		return status, err
+	}
+	return status, nil
+}
+
+func (a *Agent) SetBalance() {
+	balance, err := a.erc20Service.BalanceOf(context.Background(), common.HexToAddress(a.overlay.String()))
+	if err != nil {
 		return
 	}
-	return
+	a.initialBalance.Set(balance)
+}
+
+func (a *Agent) GetBalance() *big.Int {
+	balance, err := a.erc20Service.BalanceOf(context.Background(), common.HexToAddress(a.overlay.String()))
+	if err != nil {
+		return nil
+	}
+	return balance
 }

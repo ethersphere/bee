@@ -12,10 +12,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/ethereum/go-ethereum/core/types"
 	contractMock "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
+	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/storageincentives"
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	mock2 "github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
+	"github.com/ethersphere/bee/pkg/swarm/test"
 	"io"
 	"math/big"
 	"net"
@@ -209,7 +212,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 
 	s.SetP2P(o.P2P)
 	s.SetSwarmAddress(&o.Overlay)
-	o.redistributionAgent = createRedistributionAgentService(o.Overlay, nil, nil, 0, 0, o.StateStorer)
+	o.redistributionAgent = createRedistributionAgentService(o.Overlay, backend, nil, 12, 4, o.StateStorer, erc20)
 
 	s.SetRedistributionAgent(o.redistributionAgent)
 	s.SetProbe(o.Probe)
@@ -719,17 +722,141 @@ func createRedistributionAgentService(
 	backend storageincentives.ChainBackend,
 	contract redistribution.Contract,
 	blocksPerRound uint64,
-	blocksPerPhase uint64, storer storage.StateStorer) *storageincentives.Agent {
+	blocksPerPhase uint64, storer storage.StateStorer, erc20Service erc20.Service) *storageincentives.Agent {
 
 	postageContract := contractMock.New(contractMock.WithExpiresBatchesFunc(func(context.Context) error {
 		return nil
 	}),
-		contractMock.WithGetRewardFunc(func(context.Context, common.Address) (*big.Int, error) {
-			return nil, nil
-		}),
 	)
 	stakingContract := mock2.New(mock2.WithIsFrozen(func(context.Context) (bool, error) {
 		return true, nil
 	}))
-	return storageincentives.New(addr, backend, log.Noop, nil, contract, postageContract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), nil, time.Millisecond*10, blocksPerRound, blocksPerPhase, storer)
+	wait := make(chan struct{})
+	backend = &mockchainBackend{
+		limit: 144,
+		limitCallback: func() {
+			select {
+			case wait <- struct{}{}:
+			default:
+			}
+		},
+		incrementBy: 2,
+		block:       blocksPerRound}
+	contract = &mockContract{}
+	return storageincentives.New(addr, backend, log.Noop, nil, contract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), nil, time.Millisecond*10, blocksPerRound, blocksPerPhase, storer, erc20Service)
+}
+
+type mockchainBackend struct {
+	mu            sync.Mutex
+	incrementBy   uint64
+	block         uint64
+	limit         uint64
+	limitCallback func()
+}
+
+func (m *mockchainBackend) BlockNumber(context.Context) (uint64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	ret := m.block
+	lim := m.limit
+	inc := m.incrementBy
+
+	if lim == 0 || ret+inc < lim {
+		m.block += inc
+	} else if m.limitCallback != nil {
+		m.limitCallback()
+		return 0, errors.New("reached limit")
+	}
+
+	return ret, nil
+}
+
+func (m *mockchainBackend) HeaderByNumber(context.Context, *big.Int) (*types.Header, error) {
+	return &types.Header{
+		Time: uint64(time.Now().Unix()),
+	}, nil
+}
+
+type mockMonitor struct {
+}
+
+func (m *mockMonitor) IsFullySynced() bool {
+	return true
+}
+
+type contractCall int
+
+func (c contractCall) String() string {
+	switch c {
+	case isWinnerCall:
+		return "isWinnerCall"
+	case revealCall:
+		return "revealCall"
+	case commitCall:
+		return "commitCall"
+	case claimCall:
+		return "claimCall"
+	}
+	return "unknown"
+}
+
+const (
+	isWinnerCall contractCall = iota
+	revealCall
+	commitCall
+	claimCall
+)
+
+type mockContract struct {
+	callsList []contractCall
+	mtx       sync.Mutex
+}
+
+func (m *mockContract) GetFee() *big.Int {
+	return nil
+}
+
+func (m *mockContract) ReserveSalt(context.Context) ([]byte, error) {
+	return nil, nil
+}
+
+func (m *mockContract) IsPlaying(context.Context, uint8) (bool, error) {
+	return true, nil
+}
+
+func (m *mockContract) IsWinner(context.Context) (bool, error) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	m.callsList = append(m.callsList, isWinnerCall)
+	return false, nil
+}
+
+func (m *mockContract) Claim(context.Context) error {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	m.callsList = append(m.callsList, claimCall)
+	return nil
+}
+
+func (m *mockContract) Commit(context.Context, []byte, *big.Int) error {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	m.callsList = append(m.callsList, commitCall)
+	return nil
+}
+
+func (m *mockContract) Reveal(context.Context, uint8, []byte, []byte) error {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	m.callsList = append(m.callsList, revealCall)
+	return nil
+}
+
+type mockSampler struct{}
+
+func (m *mockSampler) ReserveSample(context.Context, []byte, uint8, uint64) (storage.Sample, error) {
+	return storage.Sample{
+		Hash: test.RandomAddress(),
+	}, nil
 }

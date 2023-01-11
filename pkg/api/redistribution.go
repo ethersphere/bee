@@ -5,6 +5,7 @@
 package api
 
 import (
+	"fmt"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"net/http"
@@ -12,7 +13,7 @@ import (
 
 func (s *Service) redistributionStatusHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger.WithName("redistribution_status").Build())
-
+	fmt.Println("redistributionStatusHandler")
 	status, err := s.redistributionAgent.GetStatus()
 	if err != nil {
 		logger.Debug("get redistribution status", "overlay address", s.overlay.String(), "error", err)
