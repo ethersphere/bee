@@ -31,10 +31,6 @@ jobs:
     outputs:
       msg: ${{ steps.commit.outputs.msg }}
     steps:
-      - name: Setup Go
-        uses: actions/setup-go@v2
-        with:
-          go-version: '1.18'
       - name: Checkout
         uses: actions/checkout@v3
         if: github.event.action != 'beekeeper'
@@ -209,21 +205,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: [init]
     steps:
-      - name: Setup Go
-        uses: actions/setup-go@v2
-        with:
-          go-version: '1.18'
-      - name: Checkout
-        uses: actions/checkout@v2
-        if: github.event.action != 'beekeeper'
-        with:
-          fetch-depth: 1
-      - name: Checkout
-        uses: actions/checkout@v2
-        if: github.event.action == 'beekeeper'
-        with:
-          ref: ${{ github.event.client_payload.ref }}
-          fetch-depth: 1
       - name: Cache
         uses: actions/cache@v3
         with:
@@ -288,21 +269,6 @@ jobs:
     needs: [init]
     runs-on: ubuntu-latest
     steps:
-      - name: Setup Go
-        uses: actions/setup-go@v2
-        with:
-          go-version: '1.18'
-      - name: Checkout
-        uses: actions/checkout@v2
-        if: github.event.action != 'beekeeper'
-        with:
-          fetch-depth: 1
-      - name: Checkout
-        uses: actions/checkout@v2
-        if: github.event.action == 'beekeeper'
-        with:
-          ref: ${{ github.event.client_payload.ref }}
-          fetch-depth: 1
       - name: Cache
         uses: actions/cache@v3
         with:
