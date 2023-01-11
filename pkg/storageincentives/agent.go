@@ -496,7 +496,7 @@ func (a *Agent) saveStatus() {
 func (a *Agent) GetStatus() (status NodeStatus, err error) {
 	err = a.nodeState.Get(fmt.Sprintf("%s%x", redistributionStatusKey, a.overlay.String()), status)
 	if err != nil {
-		a.logger.Error(err, "error saving node status")
+		a.logger.Error(err, "error fetching node status")
 		return
 	}
 	return
