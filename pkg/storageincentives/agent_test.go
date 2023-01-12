@@ -7,7 +7,6 @@ package storageincentives_test
 import (
 	"context"
 	"errors"
-	"fmt"
 	erc20mock "github.com/ethersphere/bee/pkg/settlement/swap/erc20/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
@@ -143,11 +142,6 @@ func TestAgent(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			status, err := service.GetStatus()
-			if err != nil {
-				fmt.Errorf("error getting status: %v", err)
-			}
-			fmt.Println("status", status)
 		})
 	}
 }

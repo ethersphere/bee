@@ -66,7 +66,7 @@ type Agent struct {
 	mtx            sync.Mutex
 	erc20Service   erc20.Service
 	initialBalance *big.Int // current balance of the node before starting the round
-
+	storageKey     string
 }
 
 // NodeStatus provide internal status of the nodes in the redistribution game
@@ -499,7 +499,7 @@ func (a *Agent) calculateWinnerReward() error {
 func (a *Agent) saveStatus() {
 	a.mtx.Lock()
 	defer a.mtx.Unlock()
-	err := a.nodeState.Put(fmt.Sprintf("%s%x", redistributionStatusKey, a.overlay.String()), a.nodeStatus)
+	err := a.nodeState.Put(fmt.Sprintf("%s%s", redistributionStatusKey, a.overlay.String()), a.nodeStatus)
 	if err != nil {
 		a.logger.Error(err, "error saving node status")
 		return
@@ -508,7 +508,7 @@ func (a *Agent) saveStatus() {
 
 // GetStatus returns the node status
 func (a *Agent) GetStatus() (status NodeStatus, err error) {
-	return status, a.nodeState.Get(fmt.Sprintf("%s%x", redistributionStatusKey, a.overlay.String()), &status)
+	return status, a.nodeState.Get(fmt.Sprintf("%s%s", redistributionStatusKey, a.overlay.String()), &status)
 }
 
 func (a *Agent) setBalance() error {
