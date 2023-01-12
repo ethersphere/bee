@@ -1181,7 +1181,7 @@ func (k *Kad) binReachablePeers(bin uint8) (peers []swarm.Address) {
 
 func isStaticPeer(staticNodes []swarm.Address) func(overlay swarm.Address) bool {
 	return func(overlay swarm.Address) bool {
-		return swarm.AddressSliceContains(staticNodes, overlay)
+		return swarm.ContainsAddress(staticNodes, overlay)
 	}
 }
 
@@ -1333,7 +1333,7 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, filter topology.
 	}
 
 	err := k.EachPeerRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
-		if swarm.AddressSliceContains(skipPeers, peer) {
+		if swarm.ContainsAddress(skipPeers, peer) {
 			return false, false, nil
 		}
 

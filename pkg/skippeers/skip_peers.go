@@ -37,7 +37,7 @@ func (s *List) Add(address swarm.Address) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if swarm.AddressSliceContains(s.addresses, address) {
+	if swarm.ContainsAddress(s.addresses, address) {
 		return
 	}
 
@@ -48,11 +48,11 @@ func (s *List) AddOverdraft(address swarm.Address) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if swarm.AddressSliceContains(s.overdraftAddresses, address) {
+	if swarm.ContainsAddress(s.overdraftAddresses, address) {
 		return
 	}
 
-	s.addresses = swarm.AddressSliceRemove(s.addresses, address)
+	s.addresses = swarm.RemoveAddress(s.addresses, address)
 	s.overdraftAddresses = append(s.overdraftAddresses, address)
 }
 

@@ -591,7 +591,7 @@ func (ps *PushSync) pushToNeighbourhood(ctx context.Context, skiplist []swarm.Ad
 		}
 
 		// skip skiplisted peers
-		if swarm.AddressSliceContains(skiplist, peer) {
+		if swarm.ContainsAddress(skiplist, peer) {
 			return false, false, nil
 		}
 

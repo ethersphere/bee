@@ -14,7 +14,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-func Test_AddressSliceContains(t *testing.T) {
+func Test_ContainsAddress(t *testing.T) {
 	t.Parallel()
 
 	addrs := makeAddreses(t, 10)
@@ -35,7 +35,7 @@ func Test_AddressSliceContains(t *testing.T) {
 	}
 
 	for _, tc := range tt {
-		contains := bzz.AddressSliceContains(tc.addresses, &tc.search)
+		contains := bzz.ContainsAddress(tc.addresses, &tc.search)
 		if contains != tc.contains {
 			t.Fatalf("got %v, want %v", contains, tc.contains)
 		}

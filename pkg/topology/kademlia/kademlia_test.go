@@ -2086,7 +2086,7 @@ func waitBcast(t *testing.T, d *mock.Discovery, pivot swarm.Address, addrs ...sw
 
 			oks := 0
 			for _, a := range addrs {
-				if !swarm.AddressSliceContains(recs, a) {
+				if !swarm.ContainsAddress(recs, a) {
 					t.Fatalf("address %s not found in discovery records: %s", a, addrs)
 				}
 				oks++

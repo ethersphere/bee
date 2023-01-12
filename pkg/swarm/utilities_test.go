@@ -11,7 +11,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-func Test_AddressSliceContains(t *testing.T) {
+func Test_ContainsAddress(t *testing.T) {
 	t.Parallel()
 
 	addrs := makeAddreses(t, 10)
@@ -32,14 +32,14 @@ func Test_AddressSliceContains(t *testing.T) {
 	}
 
 	for _, tc := range tt {
-		contains := swarm.AddressSliceContains(tc.addresses, tc.search)
+		contains := swarm.ContainsAddress(tc.addresses, tc.search)
 		if contains != tc.contains {
 			t.Fatalf("got %v, want %v", contains, tc.contains)
 		}
 	}
 }
 
-func Test_FindAddressIdx(t *testing.T) {
+func Test_IndexOfAddress(t *testing.T) {
 	t.Parallel()
 
 	addrs := makeAddreses(t, 10)
@@ -59,14 +59,14 @@ func Test_FindAddressIdx(t *testing.T) {
 	}
 
 	for _, tc := range tt {
-		result := swarm.FindAddressIdx(tc.addresses, tc.search)
+		result := swarm.IndexOfAddress(tc.addresses, tc.search)
 		if result != tc.result {
 			t.Fatalf("got %v, want %v", result, tc.result)
 		}
 	}
 }
 
-func Test_AddressSliceRemove(t *testing.T) {
+func Test_RemoveAddress(t *testing.T) {
 	t.Parallel()
 
 	addrs := makeAddreses(t, 10)
@@ -86,9 +86,9 @@ func Test_AddressSliceRemove(t *testing.T) {
 	}
 
 	for i, tc := range tt {
-		contains := swarm.AddressSliceContains(tc.addresses, tc.remove)
-		containsAfterRemove := swarm.AddressSliceContains(
-			swarm.AddressSliceRemove(cloneAddresses(tc.addresses), tc.remove),
+		contains := swarm.ContainsAddress(tc.addresses, tc.remove)
+		containsAfterRemove := swarm.ContainsAddress(
+			swarm.RemoveAddress(cloneAddresses(tc.addresses), tc.remove),
 			tc.remove,
 		)
 
@@ -98,7 +98,7 @@ func Test_AddressSliceRemove(t *testing.T) {
 	}
 }
 
-func Test_FindChunkIdxWithAddress(t *testing.T) {
+func Test_IndexOfChunkWithAddress(t *testing.T) {
 	t.Parallel()
 
 	chunks := []swarm.Chunk{
@@ -123,7 +123,7 @@ func Test_FindChunkIdxWithAddress(t *testing.T) {
 	}
 
 	for _, tc := range tt {
-		result := swarm.FindChunkIdxWithAddress(tc.chunks, tc.address)
+		result := swarm.IndexOfChunkWithAddress(tc.chunks, tc.address)
 		if result != tc.result {
 			t.Fatalf("got %v, want %v", result, tc.result)
 		}

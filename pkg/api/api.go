@@ -843,7 +843,7 @@ func (p *pushStamperPutter) Put(ctx context.Context, mode storage.ModePut, chs .
 		if err != nil {
 			return nil, err
 		}
-		if has || swarm.ChunksSliceContainsAddress(chs[:i], c.Address()) {
+		if has || swarm.ContainsChunkWithAddress(chs[:i], c.Address()) {
 			exists[i] = true
 			continue
 		}
@@ -908,7 +908,7 @@ func (p *stamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...sw
 		if err != nil {
 			return nil, err
 		}
-		if has || swarm.ChunksSliceContainsAddress(chs[:i], c.Address()) {
+		if has || swarm.ContainsChunkWithAddress(chs[:i], c.Address()) {
 			exists[i] = true
 			continue
 		}

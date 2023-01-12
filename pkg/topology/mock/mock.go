@@ -91,7 +91,7 @@ func (d *mock) Disconnected(peer p2p.Peer) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 
-	d.peers = swarm.AddressSliceRemove(d.peers, peer.Address)
+	d.peers = swarm.RemoveAddress(d.peers, peer.Address)
 }
 
 func (d *mock) Announce(_ context.Context, _ swarm.Address, _ bool) error {

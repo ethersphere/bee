@@ -84,7 +84,7 @@ func (a Address) Equal(b Address) bool {
 // MemberOf returns true if the address is a member of the
 // provided set.
 func (a Address) MemberOf(addrs []Address) bool {
-	return AddressSliceContains(addrs, a)
+	return ContainsAddress(addrs, a)
 }
 
 // IsZero returns true if the Address is not set to any value.

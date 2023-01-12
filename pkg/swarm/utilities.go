@@ -4,14 +4,14 @@
 
 package swarm
 
-// AddressSliceContains reports whether a is present in addrs.
-func AddressSliceContains(addrs []Address, a Address) bool {
-	return FindAddressIdx(addrs, a) != -1
+// ContainsAddress reports whether a is present in addrs.
+func ContainsAddress(addrs []Address, a Address) bool {
+	return IndexOfAddress(addrs, a) != -1
 }
 
-// AddressSliceRemove removes first occurrence of a in addrs, returning the modified slice.
-func AddressSliceRemove(addrs []Address, a Address) []Address {
-	i := FindAddressIdx(addrs, a)
+// RemoveAddress removes first occurrence of a in addrs, returning the modified slice.
+func RemoveAddress(addrs []Address, a Address) []Address {
+	i := IndexOfAddress(addrs, a)
 	if i == -1 {
 		return addrs
 	}
@@ -19,9 +19,9 @@ func AddressSliceRemove(addrs []Address, a Address) []Address {
 	return append(addrs[:i], addrs[i+1:]...)
 }
 
-// FindAddressIdx returns the index of the first occurrence of a in addrs,
+// IndexOfAddress returns the index of the first occurrence of a in addrs,
 // or -1 if not present.
-func FindAddressIdx(addrs []Address, a Address) int {
+func IndexOfAddress(addrs []Address, a Address) int {
 	for i, v := range addrs {
 		if v.Equal(a) {
 			return i
@@ -30,9 +30,9 @@ func FindAddressIdx(addrs []Address, a Address) int {
 	return -1
 }
 
-// FindChunkIdxWithAddress returns the index of the first occurrence of
+// IndexOfChunkWithAddress returns the index of the first occurrence of
 // Chunk with Address a in chunks, or -1 if not present.
-func FindChunkIdxWithAddress(chunks []Chunk, a Address) int {
+func IndexOfChunkWithAddress(chunks []Chunk, a Address) int {
 	for i, c := range chunks {
 		if c != nil && a.Equal(c.Address()) {
 			return i
@@ -41,7 +41,7 @@ func FindChunkIdxWithAddress(chunks []Chunk, a Address) int {
 	return -1
 }
 
-// ChunksSliceContainsAddress reports whether Chunk with Address a is present in chunks.
-func ChunksSliceContainsAddress(chunks []Chunk, a Address) bool {
-	return FindChunkIdxWithAddress(chunks, a) != -1
+// ContainsChunkWithAddress reports whether Chunk with Address a is present in chunks.
+func ContainsChunkWithAddress(chunks []Chunk, a Address) bool {
+	return IndexOfChunkWithAddress(chunks, a) != -1
 }

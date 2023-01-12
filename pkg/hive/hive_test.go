@@ -316,7 +316,7 @@ func expectOverlaysEventually(t *testing.T, exporter ab.Interface, wantOverlays 
 	}
 
 	for _, v := range wantOverlays {
-		if !swarm.AddressSliceContains(overlays, v) {
+		if !swarm.ContainsAddress(overlays, v) {
 			t.Errorf("overlay %s expected but not found", v.String())
 		}
 	}
@@ -347,7 +347,7 @@ func expectBzzAddresessEventually(t *testing.T, exporter ab.Interface, wantBzzAd
 	}
 
 	for _, v := range wantBzzAddresses {
-		if !bzz.AddressSliceContains(addresses, &v) {
+		if !bzz.ContainsAddress(addresses, &v) {
 			t.Errorf("address %s expected but not found", v.Overlay.String())
 		}
 	}

@@ -104,7 +104,7 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 	)
 
 	putChunk := func(ch swarm.Chunk, index int, putOp func(shed.Item, bool) (int64, error)) (bool, int64, error) {
-		if swarm.ChunksSliceContainsAddress(chs[:index], ch.Address()) {
+		if swarm.ContainsChunkWithAddress(chs[:index], ch.Address()) {
 			return true, 0, nil
 		}
 		item := chunkToItem(ch)

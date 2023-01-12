@@ -599,7 +599,7 @@ func newTestDB(t *testing.T, o *localstore.Options) (baseKey []byte, db *localst
 func checkAinB(t *testing.T, a, b []swarm.Address) {
 	t.Helper()
 	for _, v := range a {
-		if !swarm.AddressSliceContains(b, v) {
+		if !swarm.ContainsAddress(b, v) {
 			t.Fatalf("address %s not found in slice %s", v, b)
 		}
 	}
