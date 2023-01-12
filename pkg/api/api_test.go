@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/storageincentives"
 	mock2 "github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
+	"github.com/ethersphere/bee/pkg/swarm/test"
 	"io"
 	"math/big"
 	"net"
@@ -742,7 +743,7 @@ func createRedistributionAgentService(addr swarm.Address, storer storage.StateSt
 		block:       blocksPerRound}
 	contract := &mockContract{}
 
-	return storageincentives.New(addr, backend, log.Noop, nil, contract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), nil, time.Millisecond*10, blocksPerRound, blocksPerPhase, storer, erc20Service)
+	return storageincentives.New(addr, backend, log.Noop, &mockMonitor{}, contract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), &mockSampler{}, time.Millisecond*10, blocksPerRound, blocksPerPhase, storer, erc20Service)
 }
 
 type mockchainBackend struct {
@@ -843,4 +844,19 @@ func (m *mockContract) Reveal(context.Context, uint8, []byte, []byte) error {
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, revealCall)
 	return nil
+}
+
+type mockMonitor struct {
+}
+
+func (m *mockMonitor) IsFullySynced() bool {
+	return true
+}
+
+type mockSampler struct{}
+
+func (m *mockSampler) ReserveSample(context.Context, []byte, uint8, uint64) (storage.Sample, error) {
+	return storage.Sample{
+		Hash: test.RandomAddress(),
+	}, nil
 }
