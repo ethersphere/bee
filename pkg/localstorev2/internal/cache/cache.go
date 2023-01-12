@@ -5,7 +5,6 @@
 package cache
 
 import (
-	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -25,22 +24,6 @@ var (
 	errUnmarshalCacheStateInvalidSize  = errors.New("unmarshal cacheState: invalid size")
 )
 
-var emptyAddr = make([]byte, swarm.HashSize)
-
-func addressOrZero(buf []byte) swarm.Address {
-	if bytes.Equal(buf, emptyAddr) {
-		return swarm.ZeroAddress
-	}
-	return swarm.NewAddress(append(make([]byte, 0, swarm.HashSize), buf...))
-}
-
-func addressBytesOrZero(addr swarm.Address) []byte {
-	if addr.IsZero() {
-		return make([]byte, swarm.HashSize)
-	}
-	return addr.Bytes()
-}
-
 type cacheEntry struct {
 	Address swarm.Address
 	Prev    swarm.Address
@@ -57,8 +40,8 @@ func (c *cacheEntry) Marshal() ([]byte, error) {
 		return nil, errMarshalCacheEntryInvalidAddress
 	}
 	copy(entryBuf[:swarm.HashSize], c.Address.Bytes())
-	copy(entryBuf[swarm.HashSize:2*swarm.HashSize], addressBytesOrZero(c.Prev))
-	copy(entryBuf[2*swarm.HashSize:], addressBytesOrZero(c.Next))
+	copy(entryBuf[swarm.HashSize:2*swarm.HashSize], internal.AddressBytesOrZero(c.Prev))
+	copy(entryBuf[2*swarm.HashSize:], internal.AddressBytesOrZero(c.Next))
 	return entryBuf, nil
 }
 
@@ -68,8 +51,8 @@ func (c *cacheEntry) Unmarshal(buf []byte) error {
 	}
 	newEntry := new(cacheEntry)
 	newEntry.Address = swarm.NewAddress(append(make([]byte, 0, swarm.HashSize), buf[:swarm.HashSize]...))
-	newEntry.Prev = addressOrZero(buf[swarm.HashSize : 2*swarm.HashSize])
-	newEntry.Next = addressOrZero(buf[2*swarm.HashSize:])
+	newEntry.Prev = internal.AddressOrZero(buf[swarm.HashSize : 2*swarm.HashSize])
+	newEntry.Next = internal.AddressOrZero(buf[2*swarm.HashSize:])
 	*c = *newEntry
 
 	return nil
@@ -93,8 +76,8 @@ func (cacheState) ID() string { return "entry" }
 
 func (c *cacheState) Marshal() ([]byte, error) {
 	entryBuf := make([]byte, cacheStateSize)
-	copy(entryBuf[:swarm.HashSize], addressBytesOrZero(c.Head))
-	copy(entryBuf[swarm.HashSize:2*swarm.HashSize], addressBytesOrZero(c.Tail))
+	copy(entryBuf[:swarm.HashSize], internal.AddressBytesOrZero(c.Head))
+	copy(entryBuf[swarm.HashSize:2*swarm.HashSize], internal.AddressBytesOrZero(c.Tail))
 	binary.LittleEndian.PutUint64(entryBuf[2*swarm.HashSize:], c.Count)
 	return entryBuf, nil
 }
@@ -104,8 +87,8 @@ func (c *cacheState) Unmarshal(buf []byte) error {
 		return errUnmarshalCacheStateInvalidSize
 	}
 	newEntry := new(cacheState)
-	newEntry.Head = addressOrZero(buf[:swarm.HashSize])
-	newEntry.Tail = addressOrZero(buf[swarm.HashSize : 2*swarm.HashSize])
+	newEntry.Head = internal.AddressOrZero(buf[:swarm.HashSize])
+	newEntry.Tail = internal.AddressOrZero(buf[swarm.HashSize : 2*swarm.HashSize])
 	newEntry.Count = binary.LittleEndian.Uint64(buf[2*swarm.HashSize:])
 	*c = *newEntry
 	return nil
