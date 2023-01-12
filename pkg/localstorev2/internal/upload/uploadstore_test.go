@@ -18,11 +18,10 @@ import (
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/upload"
 	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
-	"github.com/ethersphere/bee/pkg/storagev2/inmemchunkstore"
-	inmem "github.com/ethersphere/bee/pkg/storagev2/inmemstore"
 	"github.com/ethersphere/bee/pkg/storagev2/storagetest"
 	"github.com/ethersphere/bee/pkg/swarm"
 	swarmtesting "github.com/ethersphere/bee/pkg/swarm/test"
+	"github.com/google/go-cmp/cmp"
 )
 
 // now is a function that returns the current time and replaces time.Now.
@@ -42,84 +41,20 @@ var _ internal.Storage = (*testStorage)(nil)
 type testStorage struct {
 	ctx        context.Context
 	indexStore storage.Store
-	chunkStore storage.ChunkStore
+	chunkStore *chunkStore
 }
 
-func (t *testStorage) Ctx() context.Context           { return t.ctx }
-func (t *testStorage) Store() storage.Store           { return t.indexStore }
-func (t *testStorage) ChunkStore() storage.ChunkStore { return t.chunkStore }
-
-func TestTagIDAddressItem_MarshalAndUnmarshal(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		test *storagetest.ItemMarshalAndUnmarshalTest
-	}{{
-		name: "zero values",
-		test: &storagetest.ItemMarshalAndUnmarshalTest{
-			Item:       &upload.TagIDAddressItem{},
-			Factory:    func() storage.Item { return new(upload.TagIDAddressItem) },
-			MarshalErr: upload.ErrTagIDAddressItemMarshalAddressIsZero,
-		},
-	}, {
-		name: "zero address",
-		test: &storagetest.ItemMarshalAndUnmarshalTest{
-			Item: &upload.TagIDAddressItem{
-				Address: swarm.ZeroAddress,
-				TagID:   1,
-			},
-			Factory:    func() storage.Item { return new(upload.TagIDAddressItem) },
-			MarshalErr: upload.ErrTagIDAddressItemMarshalAddressIsZero,
-		},
-	}, {
-		name: "min values",
-		test: &storagetest.ItemMarshalAndUnmarshalTest{
-			Item: &upload.TagIDAddressItem{
-				Address: swarm.NewAddress(storagetest.MinAddressBytes[:]),
-				TagID:   0,
-			},
-			Factory: func() storage.Item { return new(upload.TagIDAddressItem) },
-		},
-	}, {
-		name: "max values",
-		test: &storagetest.ItemMarshalAndUnmarshalTest{
-			Item: &upload.TagIDAddressItem{
-				Address: swarm.NewAddress(storagetest.MaxAddressBytes[:]),
-				TagID:   math.MaxUint64,
-			},
-			Factory: func() storage.Item { return new(upload.TagIDAddressItem) },
-		},
-	}, {
-		name: "random values",
-		test: &storagetest.ItemMarshalAndUnmarshalTest{
-			Item: &upload.TagIDAddressItem{
-				Address: swarmtesting.RandomAddress(),
-				TagID:   rand.Uint64(),
-			},
-			Factory: func() storage.Item { return new(upload.TagIDAddressItem) },
-		},
-	}, {
-		name: "invalid size",
-		test: &storagetest.ItemMarshalAndUnmarshalTest{
-			Item: &storagetest.ItemStub{
-				MarshalBuf:   []byte{0xFF},
-				UnmarshalBuf: []byte{0xFF},
-			},
-			Factory:      func() storage.Item { return new(upload.TagIDAddressItem) },
-			UnmarshalErr: upload.ErrTagIDAddressItemUnmarshalInvalidSize,
-		},
-	}}
-
-	for _, tc := range tests {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			storagetest.TestItemMarshalAndUnmarshal(t, tc.test)
-		})
-	}
+type chunkStore struct {
+	storage.ChunkStore
 }
+
+func (c *chunkStore) GetWithStamp(ctx context.Context, address swarm.Address, _ []byte) (swarm.Chunk, error) {
+	return c.Get(ctx, address)
+}
+
+func (t *testStorage) Ctx() context.Context            { return t.ctx }
+func (t *testStorage) Store() storage.Store            { return t.indexStore }
+func (t *testStorage) ChunkStore() internal.ChunkStore { return t.chunkStore }
 
 func TestPushItem_MarshalAndUnmarshal(t *testing.T) {
 	t.Parallel()
@@ -146,11 +81,23 @@ func TestPushItem_MarshalAndUnmarshal(t *testing.T) {
 			MarshalErr: upload.ErrPushItemMarshalAddressIsZero,
 		},
 	}, {
+		name: "nil stamp",
+		test: &storagetest.ItemMarshalAndUnmarshalTest{
+			Item: &upload.PushItem{
+				Timestamp: 1,
+				Address:   swarm.NewAddress(storagetest.MinAddressBytes[:]),
+				TagID:     1,
+			},
+			Factory:    func() storage.Item { return new(upload.PushItem) },
+			MarshalErr: upload.ErrPushItemMarshalBatchInvalid,
+		},
+	}, {
 		name: "min values",
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
 			Item: &upload.PushItem{
 				Timestamp: 0,
 				Address:   swarm.NewAddress(storagetest.MinAddressBytes[:]),
+				BatchID:   storagetest.MinAddressBytes[:],
 				TagID:     0,
 			},
 			Factory: func() storage.Item { return new(upload.PushItem) },
@@ -161,6 +108,7 @@ func TestPushItem_MarshalAndUnmarshal(t *testing.T) {
 			Item: &upload.PushItem{
 				Timestamp: math.MaxInt64,
 				Address:   swarm.NewAddress(storagetest.MaxAddressBytes[:]),
+				BatchID:   storagetest.MaxAddressBytes[:],
 				TagID:     math.MaxUint64,
 			},
 			Factory: func() storage.Item { return new(upload.PushItem) },
@@ -171,6 +119,7 @@ func TestPushItem_MarshalAndUnmarshal(t *testing.T) {
 			Item: &upload.PushItem{
 				Timestamp: rand.Int63(),
 				Address:   swarmtesting.RandomAddress(),
+				BatchID:   swarmtesting.RandomAddress().Bytes(),
 				TagID:     rand.Uint64(),
 			},
 			Factory: func() storage.Item { return new(upload.PushItem) },
@@ -197,109 +146,199 @@ func TestPushItem_MarshalAndUnmarshal(t *testing.T) {
 	}
 }
 
-func TestChunkGetterDeleter(t *testing.T) {
+func TestTagItem_MarshalAndUnmarshal(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
+	tests := []struct {
+		name string
+		test *storagetest.ItemMarshalAndUnmarshalTest
+	}{{
+		name: "zero values",
+		test: &storagetest.ItemMarshalAndUnmarshalTest{
+			Item:    &upload.TagItem{},
+			Factory: func() storage.Item { return new(upload.TagItem) },
+		},
+	}, {
+		name: "max values",
+		test: &storagetest.ItemMarshalAndUnmarshalTest{
+			Item: &upload.TagItem{
+				TagID:     math.MaxUint64,
+				Split:     math.MaxUint64,
+				Seen:      math.MaxUint64,
+				Stored:    math.MaxUint64,
+				Sent:      math.MaxUint64,
+				Synced:    math.MaxUint64,
+				Address:   swarm.NewAddress(storagetest.MaxAddressBytes[:]),
+				StartedAt: math.MaxInt64,
+			},
+			Factory: func() storage.Item { return new(upload.TagItem) },
+		},
+	}, {
+		name: "random values",
+		test: &storagetest.ItemMarshalAndUnmarshalTest{
+			Item: &upload.TagItem{
+				TagID:     rand.Uint64(),
+				Split:     rand.Uint64(),
+				Seen:      rand.Uint64(),
+				Stored:    rand.Uint64(),
+				Sent:      rand.Uint64(),
+				Synced:    rand.Uint64(),
+				Address:   swarmtesting.RandomAddress(),
+				StartedAt: rand.Int63(),
+			},
+			Factory: func() storage.Item { return new(upload.TagItem) },
+		},
+	}, {
+		name: "invalid size",
+		test: &storagetest.ItemMarshalAndUnmarshalTest{
+			Item: &storagetest.ItemStub{
+				MarshalBuf:   []byte{0xFF},
+				UnmarshalBuf: []byte{0xFF},
+			},
+			Factory:      func() storage.Item { return new(upload.TagItem) },
+			UnmarshalErr: upload.ErrTagItemUnmarshalInvalidSize,
+		},
+	}}
 
-	ts := &testStorage{
-		ctx:        ctx,
-		indexStore: inmem.New(),
-		chunkStore: inmemchunkstore.New(),
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			storagetest.TestItemMarshalAndUnmarshal(t, tc.test)
+		})
 	}
+
+}
+
+func TestUploadItem_MarshalAndUnmarshal(t *testing.T) {
+	t.Parallel()
+
+	randomAddress := swarmtesting.RandomAddress()
+	randomBatchId := swarmtesting.RandomAddress().Bytes()
+
+	tests := []struct {
+		name string
+		test *storagetest.ItemMarshalAndUnmarshalTest
+	}{{
+		name: "zero values",
+		test: &storagetest.ItemMarshalAndUnmarshalTest{
+			Item:       &upload.UploadItem{},
+			Factory:    func() storage.Item { return new(upload.UploadItem) },
+			MarshalErr: upload.ErrUploadItemMarshalAddressIsZero,
+		},
+	}, {
+		name: "zero address",
+		test: &storagetest.ItemMarshalAndUnmarshalTest{
+			Item: &upload.UploadItem{
+				Address: swarm.ZeroAddress,
+				BatchID: storagetest.MinAddressBytes[:],
+			},
+			Factory:    func() storage.Item { return new(upload.UploadItem) },
+			MarshalErr: upload.ErrUploadItemMarshalAddressIsZero,
+		},
+	}, {
+		name: "nil stamp",
+		test: &storagetest.ItemMarshalAndUnmarshalTest{
+			Item: &upload.UploadItem{
+				Address: swarm.NewAddress(storagetest.MinAddressBytes[:]),
+			},
+			Factory:    func() storage.Item { return new(upload.UploadItem) },
+			MarshalErr: upload.ErrUploadItemMarshalBatchInvalid,
+		},
+	}, {
+		name: "min values",
+		test: &storagetest.ItemMarshalAndUnmarshalTest{
+			Item: &upload.UploadItem{
+				Address: swarm.NewAddress(storagetest.MinAddressBytes[:]),
+				BatchID: storagetest.MinAddressBytes[:],
+			},
+			Factory: func() storage.Item {
+				return &upload.UploadItem{
+					Address: swarm.NewAddress(storagetest.MinAddressBytes[:]),
+					BatchID: storagetest.MinAddressBytes[:],
+				}
+			},
+		},
+	}, {
+		name: "max values",
+		test: &storagetest.ItemMarshalAndUnmarshalTest{
+			Item: &upload.UploadItem{
+				Address:  swarm.NewAddress(storagetest.MaxAddressBytes[:]),
+				BatchID:  storagetest.MaxAddressBytes[:],
+				TagID:    math.MaxUint64,
+				Uploaded: math.MaxInt64,
+				Synced:   math.MaxInt64,
+			},
+			Factory: func() storage.Item {
+				return &upload.UploadItem{
+					Address: swarm.NewAddress(storagetest.MaxAddressBytes[:]),
+					BatchID: storagetest.MaxAddressBytes[:],
+				}
+			},
+		},
+	}, {
+		name: "random values",
+		test: &storagetest.ItemMarshalAndUnmarshalTest{
+			Item: &upload.UploadItem{
+				Address:  randomAddress,
+				BatchID:  randomBatchId,
+				TagID:    rand.Uint64(),
+				Uploaded: rand.Int63(),
+				Synced:   rand.Int63(),
+			},
+			Factory: func() storage.Item {
+				return &upload.UploadItem{
+					Address: randomAddress,
+					BatchID: randomBatchId,
+				}
+			},
+		},
+	}, {
+		name: "invalid size",
+		test: &storagetest.ItemMarshalAndUnmarshalTest{
+			Item: &storagetest.ItemStub{
+				MarshalBuf:   []byte{0xFF},
+				UnmarshalBuf: []byte{0xFF},
+			},
+			Factory:      func() storage.Item { return new(upload.UploadItem) },
+			UnmarshalErr: upload.ErrUploadItemUnmarshalInvalidSize,
+		},
+	}}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			storagetest.TestItemMarshalAndUnmarshal(t, tc.test)
+		})
+	}
+}
+
+func newTestStorage(t *testing.T) internal.Storage {
+	t.Helper()
+
+	storg, closer := internal.NewInmemStorage()
 	t.Cleanup(func() {
-		if err := ts.Store().Close(); err != nil {
-			t.Errorf("Storage().Close(): unexpected error: %v", err)
-		}
-		if err := ts.ChunkStore().Close(); err != nil {
-			t.Errorf("ChunkStore().Close(): unexpected error: %v", err)
+		err := closer()
+		if err != nil {
+			t.Errorf("failed closing storage: %v", err)
 		}
 	})
 
-	const tagID = 1
-	putter, err := upload.ChunkPutter(ts, tagID)
-	if err != nil {
-		t.Fatalf("upload.ChunkPutter(...): unexpected error: %v", err)
-	}
-
-	// Initialize the store before the tests.
-	chunks := chunktest.GenerateTestRandomChunks(10)
-	for _, chunk := range chunks {
-		if err := putter.Put(ctx, chunk.WithTagID(uint32(tagID))); err != nil {
-			t.Fatalf("putter.Put(...): unexpected error: %v", err)
-		}
-	}
-
-	store := upload.ChunkGetterDeleter(ts, tagID)
-	for i, chunk := range chunks {
-		t.Run(fmt.Sprintf("chunk %s", chunk.Address()), func(t *testing.T) {
-			t.Run("get existing chunk", func(t *testing.T) {
-				have, err := store.Get(context.TODO(), chunk.Address())
-				if err != nil {
-					t.Fatalf("Get(...): unexpected error: %v", err)
-				}
-				if want := chunk; !want.Equal(have) {
-					t.Fatalf("Get(...): chunk missmatch:\nwant: %x\nhave: %x", want, have)
-				}
-			})
-
-			t.Run("delete existing chunk", func(t *testing.T) {
-				err := store.Delete(context.TODO(), chunk.Address())
-				if err != nil {
-					t.Fatalf("Put(...): unexpected error: %v", err)
-				}
-
-				cnt := 0
-				err = ts.ChunkStore().Iterate(ctx, func(chunk swarm.Chunk) (stop bool, err error) {
-					cnt++
-					return false, nil
-				})
-				if err != nil {
-					t.Fatalf("ChunkStore().Iterate(...): unexpected error: %v", err)
-				}
-				if want, have := len(chunks)-(i+1), cnt; want != have {
-					t.Fatalf("ChunkStore().Iterate(...): chunk count mismatch:\nwant: %d\nhave: %d", want, have)
-				}
-			})
-
-			t.Run("get non-existing chunk", func(t *testing.T) {
-				have, err := store.Get(context.TODO(), chunk.Address())
-				if !errors.Is(err, storage.ErrNotFound) {
-					t.Fatalf("Get(...): unexpected error: %v", err)
-				}
-				if want := swarm.Chunk(nil); want != have {
-					t.Fatalf("Get(...): chunk missmatch:\nwant: %x\nhave: %x", want, have)
-				}
-			})
-		})
-	}
+	return storg
 }
 
 func TestChunkPutter(t *testing.T) {
 	t.Parallel()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
-
-	ts := &testStorage{
-		ctx:        ctx,
-		indexStore: inmem.New(),
-		chunkStore: inmemchunkstore.New(),
-	}
-	t.Cleanup(func() {
-		if err := ts.Store().Close(); err != nil {
-			t.Errorf("Storage().Close(): unexpected error: %v", err)
-		}
-		if err := ts.ChunkStore().Close(); err != nil {
-			t.Errorf("ChunkStore().Close(): unexpected error: %v", err)
-		}
-	})
+	ts := newTestStorage(t)
 
 	const tagID = 1
-	putter, err := upload.ChunkPutter(ts, tagID)
+	putter, err := upload.NewPutter(ts, tagID)
 	if err != nil {
-		t.Fatalf("upload.ChunkPutter(...): unexpected error: %v", err)
+		t.Fatalf("failed creating putter: %v", err)
 	}
 
 	for _, chunk := range chunktest.GenerateTestRandomChunks(10) {
@@ -319,27 +358,43 @@ func TestChunkPutter(t *testing.T) {
 			})
 
 			t.Run("verify internal state", func(t *testing.T) {
-				has, err := ts.Store().Has(&upload.TagIDAddressItem{
-					TagID:   tagID,
+				ui := &upload.UploadItem{
 					Address: chunk.Address(),
-				})
-				if err != nil {
-					t.Fatalf("Has(...): unexpected error: %v", err)
+					BatchID: chunk.Stamp().BatchID(),
 				}
-				if !has {
-					t.Fatal("Has(...): item not found")
+				err := ts.Store().Get(ui)
+				if err != nil {
+					t.Fatalf("Get(...): unexpected error: %v", err)
+				}
+				wantUI := &upload.UploadItem{
+					Address:  chunk.Address(),
+					BatchID:  chunk.Stamp().BatchID(),
+					TagID:    tagID,
+					Uploaded: now().Unix(),
 				}
 
-				has, err = ts.Store().Has(&upload.PushItem{
+				if diff := cmp.Diff(wantUI, ui); diff != "" {
+					t.Fatalf("Get(...): unexpected UploadItem (-want +have):\n%s", diff)
+				}
+
+				pi := &upload.PushItem{
 					Timestamp: now().Unix(),
 					Address:   chunk.Address(),
-					TagID:     tagID,
-				})
-				if err != nil {
-					t.Fatalf("Has(...): unexpected error: %v", err)
+					BatchID:   chunk.Stamp().BatchID(),
 				}
-				if !has {
-					t.Fatalf("Has(...): item not found")
+				err = ts.Store().Get(pi)
+				if err != nil {
+					t.Fatalf("Get(...): unexpected error: %v", err)
+				}
+				wantPI := &upload.PushItem{
+					Address:   chunk.Address(),
+					BatchID:   chunk.Stamp().BatchID(),
+					TagID:     tagID,
+					Timestamp: now().Unix(),
+				}
+
+				if diff := cmp.Diff(wantPI, pi); diff != "" {
+					t.Fatalf("Get(...): unexpected UploadItem (-want +have):\n%s", diff)
 				}
 
 				have, err := ts.ChunkStore().Get(context.TODO(), chunk.Address())
@@ -352,4 +407,173 @@ func TestChunkPutter(t *testing.T) {
 			})
 		})
 	}
+
+	t.Run("close with reference", func(t *testing.T) {
+		addr := swarmtesting.RandomAddress()
+
+		err := putter.Close(addr)
+		if err != nil {
+			t.Fatalf("Close(...): unexpected error %v", err)
+		}
+
+		ti := &upload.TagItem{TagID: tagID}
+		err = ts.Store().Get(ti)
+		if err != nil {
+			t.Fatalf("Get(...): unexpected error %v", err)
+		}
+
+		wantTI := &upload.TagItem{
+			TagID:     tagID,
+			Split:     20,
+			Seen:      10,
+			StartedAt: now().Unix(),
+			Address:   addr,
+		}
+		if diff := cmp.Diff(wantTI, ti); diff != "" {
+			t.Fatalf("Get(...): unexpected TagItem (-want +have):\n%s", diff)
+		}
+	})
+
+	t.Run("error after close", func(t *testing.T) {
+		err := putter.Put(context.TODO(), chunktest.GenerateTestRandomChunk())
+		if !errors.Is(err, upload.ErrPutterAlreadyClosed) {
+			t.Fatalf("unexpected error, expected: %v, got: %v", upload.ErrPutterAlreadyClosed, err)
+		}
+	})
+}
+
+func TestChunkReporter(t *testing.T) {
+	t.Parallel()
+
+	ts := newTestStorage(t)
+
+	const tagID = 1
+	putter, err := upload.NewPutter(ts, tagID)
+	if err != nil {
+		t.Fatalf("failed creating putter: %v", err)
+	}
+
+	reporter := upload.NewPushReporter(ts)
+
+	for idx, chunk := range chunktest.GenerateTestRandomChunks(10) {
+		t.Run(fmt.Sprintf("chunk %s", chunk.Address()), func(t *testing.T) {
+			err := putter.Put(context.TODO(), chunk)
+			if err != nil {
+				t.Fatalf("Put(...): unexpected error: %v", err)
+			}
+
+			t.Run("mark sent", func(t *testing.T) {
+				err := reporter.Report(context.TODO(), chunk, storage.ChunkSent)
+				if err != nil {
+					t.Fatalf("Report(...): unexpected error: %v", err)
+				}
+			})
+
+			t.Run("mark stored", func(t *testing.T) {
+				err := reporter.Report(context.TODO(), chunk, storage.ChunkStored)
+				if err != nil {
+					t.Fatalf("Report(...): unexpected error: %v", err)
+				}
+			})
+
+			t.Run("mark synced", func(t *testing.T) {
+				err := reporter.Report(context.TODO(), chunk, storage.ChunkSynced)
+				if err != nil {
+					t.Fatalf("Report(...): unexpected error: %v", err)
+				}
+			})
+
+			t.Run("verify internal state", func(t *testing.T) {
+				ti := &upload.TagItem{
+					TagID: tagID,
+				}
+				err := ts.Store().Get(ti)
+				if err != nil {
+					t.Fatalf("Get(...): unexpected error: %v", err)
+				}
+				count := uint64(idx + 1)
+				wantTI := &upload.TagItem{
+					TagID:     tagID,
+					StartedAt: now().Unix(),
+					Sent:      count,
+					Synced:    count,
+					Stored:    count,
+				}
+
+				if diff := cmp.Diff(wantTI, ti); diff != "" {
+					t.Fatalf("Get(...): unexpected TagItem (-want +have):\n%s", diff)
+				}
+
+				ui := &upload.UploadItem{
+					Address: chunk.Address(),
+					BatchID: chunk.Stamp().BatchID(),
+				}
+				err = ts.Store().Get(ui)
+				if err != nil {
+					t.Fatalf("Get(...): unexpected error: %v", err)
+				}
+				wantUI := &upload.UploadItem{
+					Address:  chunk.Address(),
+					BatchID:  chunk.Stamp().BatchID(),
+					TagID:    tagID,
+					Uploaded: now().Unix(),
+					Synced:   now().Unix(),
+				}
+
+				if diff := cmp.Diff(wantUI, ui); diff != "" {
+					t.Fatalf("Get(...): unexpected UploadItem (-want +have):\n%s", diff)
+				}
+
+				pi := &upload.PushItem{
+					Timestamp: now().Unix(),
+					Address:   chunk.Address(),
+					BatchID:   chunk.Stamp().BatchID(),
+				}
+				has, err := ts.Store().Has(pi)
+				if err != nil {
+					t.Fatalf("Has(...): unexpected error: %v", err)
+				}
+				if has {
+					t.Fatalf("Has(...): expected to not be found: %s", pi)
+				}
+
+				have, err := ts.ChunkStore().Has(context.TODO(), chunk.Address())
+				if err != nil {
+					t.Fatalf("Get(...): unexpected error: %v", err)
+				}
+				if have {
+					t.Fatalf("Get(...): chunk expected to not be found: %s", chunk.Address())
+				}
+			})
+		})
+	}
+
+	t.Run("close with reference", func(t *testing.T) {
+		addr := swarmtesting.RandomAddress()
+
+		err := putter.Close(addr)
+		if err != nil {
+			t.Fatalf("Close(...): unexpected error %v", err)
+		}
+
+		ti := &upload.TagItem{TagID: tagID}
+		err = ts.Store().Get(ti)
+		if err != nil {
+			t.Fatalf("Get(...): unexpected error %v", err)
+		}
+
+		wantTI := &upload.TagItem{
+			TagID:     tagID,
+			Split:     10,
+			Seen:      0,
+			Stored:    10,
+			Sent:      10,
+			Synced:    10,
+			StartedAt: now().Unix(),
+			Address:   addr,
+		}
+		if diff := cmp.Diff(wantTI, ti); diff != "" {
+			t.Fatalf("Get(...): unexpected TagItem (-want +have):\n%s", diff)
+		}
+	})
 }
