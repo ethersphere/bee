@@ -177,6 +177,9 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	storeRecipient := statestore.NewStateStore()
 	recipient := pseudosettle.New(nil, o.Logger, storeRecipient, nil, big.NewInt(10000), big.NewInt(10000), o.P2P)
 
+	if o.StateStorer == nil {
+		o.StateStorer = storeRecipient
+	}
 	erc20 := erc20mock.New(o.Erc20Opts...)
 	backend := backendmock.New(o.BackendOpts...)
 
