@@ -698,6 +698,20 @@ components:
         walletAddress:
           $ref: "#/components/schemas/EthereumAddress"
 
+    RedistributionStateResponse:
+      type: object
+      properties:
+        state:
+          type: string
+        round:
+          type: integer
+        block:
+          type: integer
+        reward:
+          type: string
+        fees:
+          type: string
+
     PendingTransactionsResponse:
       type: object
       properties:
