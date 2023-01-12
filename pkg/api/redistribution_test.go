@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	testing2 "github.com/ethersphere/bee/pkg/postage/testing"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
@@ -36,7 +37,13 @@ func TestRedistributionStatus(t *testing.T) {
 		})
 		jsonhttptest.Request(t, srv, http.MethodGet, "/redistributionstate", http.StatusOK,
 			jsonhttptest.WithRequestHeader("Content-Type", "application/json; charset=utf-8"),
-			jsonhttptest.WithExpectedJSONResponse(expectedResponse),
+			jsonhttptest.WithExpectedJSONResponse(api.NodeStatusResponse{
+				State:  expectedResponse.State,
+				Round:  expectedResponse.Round,
+				Block:  expectedResponse.Block,
+				Reward: expectedResponse.Reward.String(),
+				Fees:   expectedResponse.Fees.String(),
+			}),
 		)
 
 	})

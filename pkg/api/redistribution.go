@@ -10,6 +10,14 @@ import (
 	"net/http"
 )
 
+type NodeStatusResponse struct {
+	State  string `json:"state"`
+	Round  uint64 `json:"round"`
+	Block  uint64 `json:"block"`
+	Reward string `json:"reward"`
+	Fees   string `json:"fees"`
+}
+
 func (s *Service) redistributionStatusHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger.WithName("redistribution_status").Build())
 
@@ -21,5 +29,11 @@ func (s *Service) redistributionStatusHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	jsonhttp.OK(w, status)
+	jsonhttp.OK(w, NodeStatusResponse{
+		State:  status.State,
+		Round:  status.Round,
+		Block:  status.Block,
+		Reward: status.Reward.String(),
+		Fees:   status.Fees.String(),
+	})
 }
