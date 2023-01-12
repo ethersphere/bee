@@ -705,6 +705,22 @@ paths:
         default:
           description: Default response
 
+  "/redistributionstate":
+    get:
+      summary: Get current status of node in redistribution game
+      tags:
+        - RedistributionState
+      responses:
+        "200":
+          description: Redistribution status info
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/RedistributionStateResponse"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
   "/wallet":
     get:
       summary: Get wallet balance for BZZ and xDai
