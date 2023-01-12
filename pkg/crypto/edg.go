@@ -1,7 +1,12 @@
+// Copyright 2023 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package crypto
 
 import "crypto/ecdsa"
 
+// Secp256k1EDG aggregates private key cryptography functions that employ secp256k1
 type Secp256k1EDG struct{}
 
 func (s *Secp256k1EDG) Generate() (*ecdsa.PrivateKey, error) {
@@ -14,6 +19,7 @@ func (s *Secp256k1EDG) Decode(data []byte) (*ecdsa.PrivateKey, error) {
 	return DecodeSecp256k1PrivateKey(data)
 }
 
+// Secp256r1EDG aggregates private key cryptography functions that employ secp256r1
 type Secp256r1EDG struct{}
 
 func (s *Secp256r1EDG) Generate() (*ecdsa.PrivateKey, error) {
