@@ -34,6 +34,9 @@ var (
 	errInvalidPinCollectionSize = errors.New("unmarshal pinCollectionItem: invalid size")
 	// errPutterAlreadyClosed is returned when trying to use a Putter which is already closed
 	errPutterAlreadyClosed = errors.New("pin store: putter already closed")
+	// errCollectionRootAddressIsZero is returned if the putter is closed with a zero
+	// swarm.Address. Root reference has to be set.
+	errCollectionRootAddressIsZero = errors.New("pin store: collection root address is zero")
 )
 
 // batchSize used for deletion
@@ -179,6 +182,10 @@ func (c *collectionPutter) Put(ctx context.Context, ch swarm.Chunk) error {
 }
 
 func (c *collectionPutter) Close(root swarm.Address) error {
+	if root.IsZero() {
+		return errCollectionRootAddressIsZero
+	}
+
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 

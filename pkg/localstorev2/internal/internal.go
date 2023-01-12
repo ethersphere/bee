@@ -62,7 +62,7 @@ func NewInmemStorage() (Storage, func() error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	ts := &testStorage{
+	ts := &inmemRepository{
 		ctx:        ctx,
 		indexStore: inmemstore.New(),
 		chunkStore: &chunkStore{inmemchunkstore.New()},
@@ -74,7 +74,7 @@ func NewInmemStorage() (Storage, func() error) {
 	}
 }
 
-type testStorage struct {
+type inmemRepository struct {
 	ctx        context.Context
 	indexStore storage.Store
 	chunkStore *chunkStore
@@ -89,6 +89,6 @@ func (c *chunkStore) GetWithStamp(ctx context.Context, address swarm.Address, _ 
 	return c.Get(ctx, address)
 }
 
-func (t *testStorage) Ctx() context.Context   { return t.ctx }
-func (t *testStorage) Store() storage.Store   { return t.indexStore }
-func (t *testStorage) ChunkStore() ChunkStore { return t.chunkStore }
+func (t *inmemRepository) Ctx() context.Context   { return t.ctx }
+func (t *inmemRepository) Store() storage.Store   { return t.indexStore }
+func (t *inmemRepository) ChunkStore() ChunkStore { return t.chunkStore }

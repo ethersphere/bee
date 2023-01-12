@@ -239,6 +239,22 @@ func TestPinStore(t *testing.T) {
 			t.Fatalf("unexpected error during Put, want: %v, got: %v", pinstore.ErrPutterAlreadyClosed, err)
 		}
 	})
+
+	t.Run("zero address close", func(t *testing.T) {
+		root := chunktest.GenerateTestRandomChunk()
+		putter := pinstore.NewCollection(st)
+
+		err := putter.Put(context.TODO(), root)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = putter.Close(swarm.ZeroAddress)
+		if !errors.Is(err, pinstore.ErrCollectionRootAddressIsZero) {
+			t.Fatalf("unexpected error on close, want: %v, got: %v", pinstore.ErrCollectionRootAddressIsZero, err)
+		}
+
+	})
 }
 
 func TestPinCollectionItem_MarshalAndUnmarshal(t *testing.T) {
