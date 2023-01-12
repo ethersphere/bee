@@ -242,13 +242,21 @@ func (i uploadItem) String() string {
 }
 
 type uploadPutter struct {
-	tagID uint64
-	mtx   sync.Mutex
-	split uint64
-	seen  uint64
-	s     internal.Storage
+	tagID  uint64
+	mtx    sync.Mutex
+	split  uint64
+	seen   uint64
+	s      internal.Storage
+	closed bool
 }
 
+var (
+	// errPutterAlreadyClosed is returned when trying to Put a new chunk after the
+	// putter has been closed.
+	errPutterAlreadyClosed = errors.New("upload store: putter already closed")
+)
+
+// NewPutter returns a new chunk putter associated with the tagID.
 func NewPutter(s internal.Storage, tagId uint64) (internal.PutterCloserWithReference, error) {
 	ti := &tagItem{TagID: tagId, StartedAt: now().Unix()}
 	err := s.Store().Put(ti)
@@ -270,6 +278,10 @@ func NewPutter(s internal.Storage, tagId uint64) (internal.PutterCloserWithRefer
 func (u *uploadPutter) Put(ctx context.Context, chunk swarm.Chunk) error {
 	u.mtx.Lock()
 	defer u.mtx.Unlock()
+
+	if u.closed {
+		return errPutterAlreadyClosed
+	}
 
 	u.split++
 
@@ -335,6 +347,8 @@ func (u *uploadPutter) Close(addr swarm.Address) error {
 	if err != nil {
 		return fmt.Errorf("failed storing tag: %w", err)
 	}
+
+	u.closed = true
 
 	return nil
 }

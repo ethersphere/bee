@@ -16,6 +16,8 @@ var (
 	ErrUploadItemMarshalAddressIsZero = errUploadItemMarshalAddressIsZero
 	ErrUploadItemMarshalBatchInvalid  = errUploadItemMarshalBatchInvalid
 	ErrUploadItemUnmarshalInvalidSize = errUploadItemUnmarshalInvalidSize
+
+	ErrPutterAlreadyClosed = errPutterAlreadyClosed
 )
 
 type (

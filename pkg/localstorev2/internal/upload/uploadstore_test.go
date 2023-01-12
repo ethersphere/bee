@@ -6,6 +6,7 @@ package upload_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"math/rand"
@@ -433,6 +434,13 @@ func TestChunkPutter(t *testing.T) {
 		}
 		if diff := cmp.Diff(wantTI, ti); diff != "" {
 			t.Fatalf("Get(...): unexpected TagItem (-want +have):\n%s", diff)
+		}
+	})
+
+	t.Run("error after close", func(t *testing.T) {
+		err := putter.Put(context.TODO(), chunktest.GenerateTestRandomChunk())
+		if !errors.Is(err, upload.ErrPutterAlreadyClosed) {
+			t.Fatalf("unexpected error, expected: %v, got: %v", upload.ErrPutterAlreadyClosed, err)
 		}
 	})
 }
