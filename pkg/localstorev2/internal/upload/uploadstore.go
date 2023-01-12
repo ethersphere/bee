@@ -343,10 +343,13 @@ type pushReporter struct {
 	s internal.Storage
 }
 
+// NewPushReporter returns a new storage.PushReporter which can be used by the
+// pusher component to report chunk state information.
 func NewPushReporter(s internal.Storage) storage.PushReporter {
 	return &pushReporter{s: s}
 }
 
+// Report is the implementation of the PushReporter interface.
 func (p *pushReporter) Report(
 	ctx context.Context,
 	chunk swarm.Chunk,
