@@ -66,7 +66,6 @@ type Agent struct {
 	mtx            sync.Mutex
 	erc20Service   erc20.Service
 	initialBalance *big.Int // current balance of the node before starting the round
-	storageKey     string
 }
 
 // NodeStatus provide internal status of the nodes in the redistribution game
@@ -111,7 +110,6 @@ func New(overlay swarm.Address, backend ChainBackend, logger log.Logger, monitor
 // the sample is submitted, and in the reveal phase, the obfuscation key from the commit phase is submitted.
 // Next, in the claim phase, we check if we've won, and the cycle repeats. The cycle must occur in the length of one round.
 func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase uint64) {
-	defer fmt.Println("Starting storage incentives", a.overlay.String())
 	defer a.wg.Done()
 
 	var (
@@ -332,7 +330,10 @@ func (a *Agent) claim(ctx context.Context) error {
 		}
 
 		err = a.contract.Claim(ctx)
-		a.calculateWinnerReward()
+		if err != nil {
+			a.logger.Info("calculate winner reward", "err", err)
+		}
+		err = a.calculateWinnerReward()
 		if err != nil {
 			a.logger.Info("calculate winner reward", "err", err)
 		}
