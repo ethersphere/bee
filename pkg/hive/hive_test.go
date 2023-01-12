@@ -301,14 +301,6 @@ func expectOverlaysEventually(t *testing.T, exporter ab.Interface, wantOverlays 
 	var (
 		overlays []swarm.Address
 		err      error
-		isIn     = func(a swarm.Address, addrs []swarm.Address) bool {
-			for _, v := range addrs {
-				if a.Equal(v) {
-					return true
-				}
-			}
-			return false
-		}
 	)
 
 	err = spinlock.Wait(spinTimeout, func() bool {
@@ -324,7 +316,7 @@ func expectOverlaysEventually(t *testing.T, exporter ab.Interface, wantOverlays 
 	}
 
 	for _, v := range wantOverlays {
-		if !isIn(v, overlays) {
+		if !swarm.ContainsAddress(overlays, v) {
 			t.Errorf("overlay %s expected but not found", v.String())
 		}
 	}
@@ -340,14 +332,6 @@ func expectBzzAddresessEventually(t *testing.T, exporter ab.Interface, wantBzzAd
 	var (
 		addresses []bzz.Address
 		err       error
-		isIn      = func(a bzz.Address, addrs []bzz.Address) bool {
-			for _, v := range addrs {
-				if a.Equal(&v) {
-					return true
-				}
-			}
-			return false
-		}
 	)
 
 	err = spinlock.Wait(spinTimeout, func() bool {
@@ -363,7 +347,7 @@ func expectBzzAddresessEventually(t *testing.T, exporter ab.Interface, wantBzzAd
 	}
 
 	for _, v := range wantBzzAddresses {
-		if !isIn(v, addresses) {
+		if !bzz.ContainsAddress(addresses, &v) {
 			t.Errorf("address %s expected but not found", v.Overlay.String())
 		}
 	}
