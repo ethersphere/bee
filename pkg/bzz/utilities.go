@@ -4,6 +4,7 @@
 
 package bzz
 
+// AddressSliceContains reports whether a is present in addrs.
 func AddressSliceContains(addrs []Address, a *Address) bool {
 	for _, v := range addrs {
 		if v.Equal(a) {
