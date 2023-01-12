@@ -16,7 +16,6 @@ import (
 	contractMock "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/storageincentives"
-	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	mock2 "github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
 	"io"
 	"math/big"
@@ -212,7 +211,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 
 	s.SetP2P(o.P2P)
 
-	o.redistributionAgent = createRedistributionAgentService(o.Overlay, nil, o.StateStorer, erc20)
+	o.redistributionAgent = createRedistributionAgentService(o.Overlay, o.StateStorer, erc20)
 	s.SetSwarmAddress(&o.Overlay)
 	s.SetRedistributionAgent(o.redistributionAgent)
 	s.SetProbe(o.Probe)
@@ -717,9 +716,7 @@ func (c *chanStorer) Close() error {
 	panic("not implemented") // TODO: Implement
 }
 
-func createRedistributionAgentService(
-	addr swarm.Address,
-	contract redistribution.Contract, storer storage.StateStorer, erc20Service erc20.Service) *storageincentives.Agent {
+func createRedistributionAgentService(addr swarm.Address, storer storage.StateStorer, erc20Service erc20.Service) *storageincentives.Agent {
 	var blocksPerRound uint64 = 12
 	var blocksPerPhase uint64 = 4
 	postageContract := contractMock.New(contractMock.WithExpiresBatchesFunc(func(context.Context) error {
@@ -740,7 +737,7 @@ func createRedistributionAgentService(
 		},
 		incrementBy: 2,
 		block:       blocksPerRound}
-	contract = &mockContract{}
+	contract := &mockContract{}
 
 	return storageincentives.New(addr, backend, log.Noop, nil, contract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), nil, time.Millisecond*10, blocksPerRound, blocksPerPhase, storer, erc20Service)
 }
