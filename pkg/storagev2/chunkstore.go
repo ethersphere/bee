@@ -19,7 +19,7 @@ type Getter interface {
 	// if the chunk is not found.
 	// If the chunk has multiple stamps, then the first stamp is returned in this
 	// query. In order to deterministically get the stamp, use the GetterWithStamp
-	// interface.
+	// interface. If the chunk is not found storage.ErrNotFound will be returned.
 	Get(context.Context, swarm.Address) (swarm.Chunk, error)
 }
 

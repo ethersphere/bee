@@ -368,14 +368,14 @@ func TestChunkPutter(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Get(...): unexpected error: %v", err)
 				}
-				exp := &upload.UploadItem{
+				wantUI := &upload.UploadItem{
 					Address:  chunk.Address(),
 					BatchID:  chunk.Stamp().BatchID(),
 					TagID:    tagID,
 					Uploaded: now().Unix(),
 				}
 
-				if diff := cmp.Diff(ui, exp); diff != "" {
+				if diff := cmp.Diff(wantUI, ui); diff != "" {
 					t.Fatalf("Get(...): unexpected UploadItem (-want +have):\n%s", diff)
 				}
 
@@ -388,14 +388,14 @@ func TestChunkPutter(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Get(...): unexpected error: %v", err)
 				}
-				pexp := &upload.PushItem{
+				wantPI := &upload.PushItem{
 					Address:   chunk.Address(),
 					BatchID:   chunk.Stamp().BatchID(),
 					TagID:     tagID,
 					Timestamp: now().Unix(),
 				}
 
-				if diff := cmp.Diff(pi, pexp); diff != "" {
+				if diff := cmp.Diff(wantPI, pi); diff != "" {
 					t.Fatalf("Get(...): unexpected UploadItem (-want +have):\n%s", diff)
 				}
 
@@ -424,14 +424,14 @@ func TestChunkPutter(t *testing.T) {
 			t.Fatalf("Get(...): unexpected error %v", err)
 		}
 
-		exp := &upload.TagItem{
+		wantTI := &upload.TagItem{
 			TagID:     tagID,
 			Split:     20,
 			Seen:      10,
 			StartedAt: now().Unix(),
 			Address:   addr,
 		}
-		if diff := cmp.Diff(ti, exp); diff != "" {
+		if diff := cmp.Diff(wantTI, ti); diff != "" {
 			t.Fatalf("Get(...): unexpected TagItem (-want +have):\n%s", diff)
 		}
 	})
@@ -502,7 +502,7 @@ func TestChunkReporter(t *testing.T) {
 					t.Fatalf("Get(...): unexpected error: %v", err)
 				}
 				count := uint64(idx + 1)
-				exp := &upload.TagItem{
+				wantTI := &upload.TagItem{
 					TagID:     tagID,
 					StartedAt: now().Unix(),
 					Sent:      count,
@@ -510,7 +510,7 @@ func TestChunkReporter(t *testing.T) {
 					Stored:    count,
 				}
 
-				if diff := cmp.Diff(ti, exp); diff != "" {
+				if diff := cmp.Diff(wantTI, ti); diff != "" {
 					t.Fatalf("Get(...): unexpected TagItem (-want +have):\n%s", diff)
 				}
 
@@ -522,7 +522,7 @@ func TestChunkReporter(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Get(...): unexpected error: %v", err)
 				}
-				uexp := &upload.UploadItem{
+				wantUI := &upload.UploadItem{
 					Address:  chunk.Address(),
 					BatchID:  chunk.Stamp().BatchID(),
 					TagID:    tagID,
@@ -530,7 +530,7 @@ func TestChunkReporter(t *testing.T) {
 					Synced:   now().Unix(),
 				}
 
-				if diff := cmp.Diff(ui, uexp); diff != "" {
+				if diff := cmp.Diff(wantUI, ui); diff != "" {
 					t.Fatalf("Get(...): unexpected UploadItem (-want +have):\n%s", diff)
 				}
 
@@ -572,7 +572,7 @@ func TestChunkReporter(t *testing.T) {
 			t.Fatalf("Get(...): unexpected error %v", err)
 		}
 
-		exp := &upload.TagItem{
+		wantTI := &upload.TagItem{
 			TagID:     tagID,
 			Split:     10,
 			Seen:      0,
@@ -582,7 +582,7 @@ func TestChunkReporter(t *testing.T) {
 			StartedAt: now().Unix(),
 			Address:   addr,
 		}
-		if diff := cmp.Diff(ti, exp); diff != "" {
+		if diff := cmp.Diff(wantTI, ti); diff != "" {
 			t.Fatalf("Get(...): unexpected TagItem (-want +have):\n%s", diff)
 		}
 	})
