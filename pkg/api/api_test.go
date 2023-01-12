@@ -18,7 +18,6 @@ import (
 	"github.com/ethersphere/bee/pkg/storageincentives"
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	mock2 "github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
-	"github.com/ethersphere/bee/pkg/swarm/test"
 	"io"
 	"math/big"
 	"net"
@@ -853,10 +852,10 @@ func (m *mockContract) Reveal(context.Context, uint8, []byte, []byte) error {
 	return nil
 }
 
-type mockSampler struct{}
-
-func (m *mockSampler) ReserveSample(context.Context, []byte, uint8, uint64) (storage.Sample, error) {
-	return storage.Sample{
-		Hash: test.RandomAddress(),
-	}, nil
-}
+//type mockSampler struct{}
+//
+//func (m *mockSampler) ReserveSample(context.Context, []byte, uint8, uint64) (storage.Sample, error) {
+//	return storage.Sample{
+//		Hash: test.RandomAddress(),
+//	}, nil
+//}
