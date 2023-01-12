@@ -591,10 +591,8 @@ func (ps *PushSync) pushToNeighbourhood(ctx context.Context, skiplist []swarm.Ad
 		}
 
 		// skip skiplisted peers
-		for _, s := range skiplist {
-			if peer.Equal(s) {
-				return false, false, nil
-			}
+		if swarm.ContainsAddress(skiplist, peer) {
+			return false, false, nil
 		}
 
 		// here we skip the peer if the peer is closer to the chunk than us
