@@ -15,8 +15,6 @@ import (
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/cache"
 	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
-	"github.com/ethersphere/bee/pkg/storagev2/inmemchunkstore"
-	inmem "github.com/ethersphere/bee/pkg/storagev2/inmemstore"
 	"github.com/ethersphere/bee/pkg/storagev2/storagetest"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
@@ -136,27 +134,12 @@ func TestCacheEntryItem(t *testing.T) {
 }
 
 type testStorage struct {
-	store   storage.Store
-	chStore *chunkStore
-	putFn   func(storage.Item) error
+	internal.Storage
+	putFn func(storage.Item) error
 }
-
-type chunkStore struct {
-	storage.ChunkStore
-}
-
-func (c *chunkStore) GetWithStamp(ctx context.Context, address swarm.Address, _ []byte) (swarm.Chunk, error) {
-	return c.Get(ctx, address)
-}
-
-func (testStorage) Ctx() context.Context { return context.TODO() }
 
 func (t *testStorage) Store() storage.Store {
-	return &wrappedStore{Store: t.store, putFn: t.putFn}
-}
-
-func (t *testStorage) ChunkStore() internal.ChunkStore {
-	return t.chStore
+	return &wrappedStore{Store: t.Storage.Store(), putFn: t.putFn}
 }
 
 type wrappedStore struct {
@@ -171,16 +154,27 @@ func (w *wrappedStore) Put(i storage.Item) error {
 	return w.Store.Put(i)
 }
 
+func newTestStorage(t *testing.T) *testStorage {
+	t.Helper()
+
+	storg, closer := internal.NewInmemStorage()
+	t.Cleanup(func() {
+		err := closer()
+		if err != nil {
+			t.Errorf("failed closing storage: %v", err)
+		}
+	})
+
+	return &testStorage{Storage: storg}
+}
+
 func TestCache(t *testing.T) {
 	t.Parallel()
 
 	t.Run("fresh new cache", func(t *testing.T) {
 		t.Parallel()
 
-		st := &testStorage{
-			store:   inmem.New(),
-			chStore: &chunkStore{inmemchunkstore.New()},
-		}
+		st := newTestStorage(t)
 		c, err := cache.New(st, 10)
 		if err != nil {
 			t.Fatal(err)
@@ -191,10 +185,7 @@ func TestCache(t *testing.T) {
 	t.Run("putter", func(t *testing.T) {
 		t.Parallel()
 
-		st := &testStorage{
-			store:   inmem.New(),
-			chStore: &chunkStore{inmemchunkstore.New()},
-		}
+		st := newTestStorage(t)
 		c, err := cache.New(st, 10)
 		if err != nil {
 			t.Fatal(err)
@@ -255,10 +246,7 @@ func TestCache(t *testing.T) {
 	t.Run("getter", func(t *testing.T) {
 		t.Parallel()
 
-		st := &testStorage{
-			store:   inmem.New(),
-			chStore: &chunkStore{inmemchunkstore.New()},
-		}
+		st := newTestStorage(t)
 		c, err := cache.New(st, 10)
 		if err != nil {
 			t.Fatal(err)
@@ -342,10 +330,7 @@ func TestCache(t *testing.T) {
 	t.Run("handle error", func(t *testing.T) {
 		t.Parallel()
 
-		st := &testStorage{
-			store:   inmem.New(),
-			chStore: &chunkStore{inmemchunkstore.New()},
-		}
+		st := newTestStorage(t)
 		c, err := cache.New(st, 10)
 		if err != nil {
 			t.Fatal(err)
@@ -365,7 +350,7 @@ func TestCache(t *testing.T) {
 			if i.Namespace() == "cacheState" {
 				return retErr
 			}
-			return st.store.Put(i)
+			return st.Storage.Store().Put(i)
 		}
 
 		// on error the cache expects the overarching transactions to clean itself up
