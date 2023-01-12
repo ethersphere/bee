@@ -154,13 +154,27 @@ func (w *wrappedStore) Put(i storage.Item) error {
 	return w.Store.Put(i)
 }
 
+func newTestStorage(t *testing.T) *testStorage {
+	t.Helper()
+
+	storg, closer := internal.NewInmemStorage()
+	t.Cleanup(func() {
+		err := closer()
+		if err != nil {
+			t.Errorf("failed closing storage: %v", err)
+		}
+	})
+
+	return &testStorage{Storage: storg}
+}
+
 func TestCache(t *testing.T) {
 	t.Parallel()
 
 	t.Run("fresh new cache", func(t *testing.T) {
 		t.Parallel()
 
-		st := &testStorage{Storage: internal.NewTestStorage(t)}
+		st := newTestStorage(t)
 		c, err := cache.New(st, 10)
 		if err != nil {
 			t.Fatal(err)
@@ -171,7 +185,7 @@ func TestCache(t *testing.T) {
 	t.Run("putter", func(t *testing.T) {
 		t.Parallel()
 
-		st := &testStorage{Storage: internal.NewTestStorage(t)}
+		st := newTestStorage(t)
 		c, err := cache.New(st, 10)
 		if err != nil {
 			t.Fatal(err)
@@ -232,7 +246,7 @@ func TestCache(t *testing.T) {
 	t.Run("getter", func(t *testing.T) {
 		t.Parallel()
 
-		st := &testStorage{Storage: internal.NewTestStorage(t)}
+		st := newTestStorage(t)
 		c, err := cache.New(st, 10)
 		if err != nil {
 			t.Fatal(err)
@@ -316,7 +330,7 @@ func TestCache(t *testing.T) {
 	t.Run("handle error", func(t *testing.T) {
 		t.Parallel()
 
-		st := &testStorage{Storage: internal.NewTestStorage(t)}
+		st := newTestStorage(t)
 		c, err := cache.New(st, 10)
 		if err != nil {
 			t.Fatal(err)

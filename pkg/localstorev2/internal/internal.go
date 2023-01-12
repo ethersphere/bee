@@ -7,12 +7,12 @@ package internal
 import (
 	"bytes"
 	"context"
-	"testing"
 
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/storagev2/inmemchunkstore"
 	"github.com/ethersphere/bee/pkg/storagev2/inmemstore"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/hashicorp/go-multierror"
 )
 
 // Storage groups the storage.Store and storage.ChunkStore interfaces with context..
@@ -36,6 +36,9 @@ type PutterCloserWithReference interface {
 
 var emptyAddr = make([]byte, swarm.HashSize)
 
+// AddressOrZero returns swarm.ZeroAddress if the buf is of zero bytes. The Zero byte
+// buffer is used by the items to serialize their contents and if valid swarm.ZeroAddress
+// entries are allowed.
 func AddressOrZero(buf []byte) swarm.Address {
 	if bytes.Equal(buf, emptyAddr) {
 		return swarm.ZeroAddress
@@ -43,6 +46,9 @@ func AddressOrZero(buf []byte) swarm.Address {
 	return swarm.NewAddress(append(make([]byte, 0, swarm.HashSize), buf...))
 }
 
+// AddressBytesOrZero is a helper which creates a zero buffer of swarm.HashSize. This
+// is required during storing the items in the Store as their serialization formats
+// are strict.
 func AddressBytesOrZero(addr swarm.Address) []byte {
 	if addr.IsZero() {
 		return make([]byte, swarm.HashSize)
@@ -50,27 +56,22 @@ func AddressBytesOrZero(addr swarm.Address) []byte {
 	return addr.Bytes()
 }
 
-func NewTestStorage(t *testing.T) Storage {
-	t.Helper()
+// NewInmemStorage constructs a inmem Storage implementation which can be used
+// for the tests in the internal packages.
+func NewInmemStorage() (Storage, func() error) {
 
 	ctx, cancel := context.WithCancel(context.Background())
-	t.Cleanup(cancel)
 
 	ts := &testStorage{
 		ctx:        ctx,
 		indexStore: inmemstore.New(),
 		chunkStore: &chunkStore{inmemchunkstore.New()},
 	}
-	t.Cleanup(func() {
-		if err := ts.Store().Close(); err != nil {
-			t.Errorf("Storage().Close(): unexpected error: %v", err)
-		}
-		if err := ts.ChunkStore().Close(); err != nil {
-			t.Errorf("ChunkStore().Close(): unexpected error: %v", err)
-		}
-	})
 
-	return ts
+	return ts, func() error {
+		cancel()
+		return multierror.Append(ts.indexStore.Close(), ts.chunkStore.Close()).ErrorOrNil()
+	}
 }
 
 type testStorage struct {
@@ -83,12 +84,9 @@ type chunkStore struct {
 	storage.ChunkStore
 }
 
+// Once the inmemchunkstore supports this, we can remove this.
 func (c *chunkStore) GetWithStamp(ctx context.Context, address swarm.Address, _ []byte) (swarm.Chunk, error) {
 	return c.Get(ctx, address)
-}
-
-func (c *chunkStore) DeleteWithStamp(ctx context.Context, address swarm.Address, _ []byte) error {
-	return c.Delete(ctx, address)
 }
 
 func (t *testStorage) Ctx() context.Context   { return t.ctx }

@@ -25,6 +25,20 @@ type pinningCollection struct {
 	dupChunks    []swarm.Chunk
 }
 
+func newTestStorage(t *testing.T) internal.Storage {
+	t.Helper()
+
+	storg, closer := internal.NewInmemStorage()
+	t.Cleanup(func() {
+		err := closer()
+		if err != nil {
+			t.Errorf("failed closing storage: %v", err)
+		}
+	})
+
+	return storg
+}
+
 func TestPinStore(t *testing.T) {
 
 	tests := make([]pinningCollection, 0, 3)
@@ -56,7 +70,7 @@ func TestPinStore(t *testing.T) {
 		tests = append(tests, c)
 	}
 
-	st := internal.NewTestStorage(t)
+	st := newTestStorage(t)
 
 	t.Run("create new collections", func(t *testing.T) {
 		for tCount, tc := range tests {

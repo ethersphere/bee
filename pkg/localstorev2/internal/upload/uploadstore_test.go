@@ -315,10 +315,24 @@ func TestUploadItem_MarshalAndUnmarshal(t *testing.T) {
 	}
 }
 
+func newTestStorage(t *testing.T) internal.Storage {
+	t.Helper()
+
+	storg, closer := internal.NewInmemStorage()
+	t.Cleanup(func() {
+		err := closer()
+		if err != nil {
+			t.Errorf("failed closing storage: %v", err)
+		}
+	})
+
+	return storg
+}
+
 func TestChunkPutter(t *testing.T) {
 	t.Parallel()
 
-	ts := internal.NewTestStorage(t)
+	ts := newTestStorage(t)
 
 	const tagID = 1
 	putter, err := upload.NewPutter(ts, tagID)
@@ -423,7 +437,7 @@ func TestChunkPutter(t *testing.T) {
 func TestChunkReporter(t *testing.T) {
 	t.Parallel()
 
-	ts := internal.NewTestStorage(t)
+	ts := newTestStorage(t)
 
 	const tagID = 1
 	putter, err := upload.NewPutter(ts, tagID)
