@@ -22,7 +22,6 @@ type Storage interface {
 type ChunkStore interface {
 	storage.ChunkStore
 	storage.GetterWithStamp
-	storage.DeleterWithStamp
 }
 
 // PutterCloserWithReference provides a Putter which can be closed with a root

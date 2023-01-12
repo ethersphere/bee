@@ -394,7 +394,7 @@ func (p *pushReporter) Report(
 			return fmt.Errorf("failed deleting pushItem %s: %w", pi, err)
 		}
 
-		err = p.s.ChunkStore().DeleteWithStamp(ctx, chunk.Address(), chunk.Stamp().BatchID())
+		err = p.s.ChunkStore().Delete(ctx, chunk.Address())
 		if err != nil {
 			return fmt.Errorf("failed deleting chunk %s: %w", chunk.Address(), err)
 		}

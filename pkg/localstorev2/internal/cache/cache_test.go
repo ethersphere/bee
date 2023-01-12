@@ -149,10 +149,6 @@ func (c *chunkStore) GetWithStamp(ctx context.Context, address swarm.Address, _ 
 	return c.Get(ctx, address)
 }
 
-func (c *chunkStore) DeleteWithStamp(ctx context.Context, address swarm.Address, _ []byte) error {
-	return c.Delete(ctx, address)
-}
-
 func (testStorage) Ctx() context.Context { return context.TODO() }
 
 func (t *testStorage) Store() storage.Store {

@@ -37,20 +37,10 @@ type Putter interface {
 	Put(context.Context, swarm.Chunk) error
 }
 
-// Deleter is the interface that wraps the basic Delete method. This delete will
-// remove all the stamps associated with the chunk. To delete based on stamps,
-// use the DeleterWithStamp interface.
+// Deleter is the interface that wraps the basic Delete method.
 type Deleter interface {
 	// Delete a chunk by the given swarm.Address.
 	Delete(context.Context, swarm.Address) error
-}
-
-// DeleterWithStamp provides a way to Delete a chunk by specifying the stamp
-// associated with this deletion. If the chunk has other stamps, then it is expected
-// that only the stamp association will be deleted and chunk will be kept in the
-// chunkstore.
-type DeleterWithStamp interface {
-	DeleteWithStamp(context.Context, swarm.Address, []byte) error
 }
 
 // PutterFunc type is an adapter to allow the use of

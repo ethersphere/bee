@@ -53,10 +53,6 @@ func (c *chunkStore) GetWithStamp(ctx context.Context, address swarm.Address, _ 
 	return c.Get(ctx, address)
 }
 
-func (c *chunkStore) DeleteWithStamp(ctx context.Context, address swarm.Address, _ []byte) error {
-	return c.Delete(ctx, address)
-}
-
 func (t *testStorage) Ctx() context.Context            { return t.ctx }
 func (t *testStorage) Store() storage.Store            { return t.indexStore }
 func (t *testStorage) ChunkStore() internal.ChunkStore { return t.chunkStore }
