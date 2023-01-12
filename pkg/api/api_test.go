@@ -777,13 +777,6 @@ func (m *mockchainBackend) HeaderByNumber(context.Context, *big.Int) (*types.Hea
 	}, nil
 }
 
-type mockMonitor struct {
-}
-
-func (m *mockMonitor) IsFullySynced() bool {
-	return true
-}
-
 type contractCall int
 
 func (c contractCall) String() string {
@@ -851,11 +844,3 @@ func (m *mockContract) Reveal(context.Context, uint8, []byte, []byte) error {
 	m.callsList = append(m.callsList, revealCall)
 	return nil
 }
-
-//type mockSampler struct{}
-//
-//func (m *mockSampler) ReserveSample(context.Context, []byte, uint8, uint64) (storage.Sample, error) {
-//	return storage.Sample{
-//		Hash: test.RandomAddress(),
-//	}, nil
-//}
