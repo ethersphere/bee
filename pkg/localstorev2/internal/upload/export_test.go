@@ -7,16 +7,23 @@ package upload
 import "time"
 
 var (
-	ErrTagIDAddressItemMarshalAddressIsZero = errTagIDAddressItemMarshalAddressIsZero
-	ErrTagIDAddressItemUnmarshalInvalidSize = errTagIDAddressItemUnmarshalInvalidSize
-
 	ErrPushItemMarshalAddressIsZero = errPushItemMarshalAddressIsZero
+	ErrPushItemMarshalBatchInvalid  = errPushItemMarshalBatchInvalid
 	ErrPushItemUnmarshalInvalidSize = errPushItemUnmarshalInvalidSize
+
+	ErrTagItemUnmarshalInvalidSize = errTagItemUnmarshalInvalidSize
+
+	ErrUploadItemMarshalAddressIsZero = errUploadItemMarshalAddressIsZero
+	ErrUploadItemMarshalBatchInvalid  = errUploadItemMarshalBatchInvalid
+	ErrUploadItemUnmarshalInvalidSize = errUploadItemUnmarshalInvalidSize
+
+	ErrPutterAlreadyClosed = errPutterAlreadyClosed
 )
 
 type (
-	TagIDAddressItem = tagIDAddressItem
-	PushItem         = pushItem
+	PushItem   = pushItem
+	TagItem    = tagItem
+	UploadItem = uploadItem
 )
 
 func ReplaceTimeNow(fn func() time.Time) { now = fn }
