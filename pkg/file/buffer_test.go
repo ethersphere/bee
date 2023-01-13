@@ -39,24 +39,16 @@ func TestChunkPipe(t *testing.T) {
 			t.Parallel()
 
 			buf := file.NewChunkPipe()
-			sizeC := make(chan int, 255)
-			errC := make(chan error, 1)
+			readResultC := make(chan readResult, 16)
 			go func() {
 				data := make([]byte, swarm.ChunkSize)
 				for {
 					// get buffered chunkpipe read
-					c, err := buf.Read(data)
-					sizeC <- c
-					if err != nil {
-						close(sizeC)
-						errC <- err
-						return
-					}
+					n, err := buf.Read(data)
+					readResultC <- readResult{n: n, err: err}
 
 					// only the last read should be smaller than chunk size
-					if c < swarm.ChunkSize {
-						close(sizeC)
-						errC <- nil
+					if n < swarm.ChunkSize {
 						return
 					}
 				}
@@ -86,19 +78,14 @@ func TestChunkPipe(t *testing.T) {
 			// err may or may not be EOF, depending on whether writes end on
 			// chunk boundary
 			readTotal := 0
-			for {
-				select {
-				case c := <-sizeC:
-					readTotal += c
-					if readTotal == writeTotal {
-						return
-					}
-				case err = <-errC:
-					if err != nil {
-						if !errors.Is(err, io.EOF) {
-							t.Fatal(err)
-						}
-					}
+			for res := range readResultC {
+				if res.err != nil && !errors.Is(res.err, io.EOF) {
+					t.Fatal(res.err)
+				}
+
+				readTotal += res.n
+				if readTotal == writeTotal {
+					return
 				}
 			}
 		})
@@ -147,70 +134,53 @@ func TestCopyBuffer(t *testing.T) {
 		t.Run(fmt.Sprintf("buf_%-4d/data_size_%d", tc.readBufferSize, tc.dataSize), func(t *testing.T) {
 			t.Parallel()
 
-			// https://golang.org/doc/faq#closures_and_goroutines
 			readBufferSize := tc.readBufferSize
 			dataSize := tc.dataSize
-
+			chunkPipe := file.NewChunkPipe()
 			srcBytes := make([]byte, dataSize)
 
 			_, _ = rand.Read(srcBytes)
 
-			chunkPipe := file.NewChunkPipe()
-
 			// destination
-			sizeC := make(chan int)
-			dataC := make(chan []byte)
-			go reader(t, readBufferSize, chunkPipe, sizeC, dataC)
+			resultC := make(chan readResult, 1)
+			go reader(t, readBufferSize, chunkPipe, resultC)
 
 			// source
-			errC := make(chan error, 1)
+			errC := make(chan error, 16)
 			go func() {
 				src := bytes.NewReader(srcBytes)
 
 				buf := make([]byte, swarm.ChunkSize)
 				c, err := io.CopyBuffer(chunkPipe, src, buf)
-				if err != nil {
-					errC <- err
-				}
+				errC <- err
 
 				if c != int64(dataSize) {
 					errC <- errors.New("read count mismatch")
 				}
 
-				err = chunkPipe.Close()
-				if err != nil {
-					errC <- err
-				}
-
-				close(errC)
+				errC <- chunkPipe.Close()
 			}()
 
 			// receive the writes
-			// err may or may not be EOF, depending on whether writes end on
-			// chunk boundary
-			expected := dataSize
-			readTotal := 0
+			// err may or may not be EOF, depending on whether writes end on chunk boundary
 			readData := []byte{}
 			for {
 				select {
-				case c := <-sizeC:
-					readTotal += c
-					if readTotal == expected {
-
-						// check received content
+				case res, ok := <-resultC:
+					if !ok {
+						// when resultC is closed (there is no more data to read)
+						// assert if read data is same as source
 						if !bytes.Equal(srcBytes, readData) {
 							t.Fatal("invalid byte content received")
 						}
 
 						return
 					}
-				case d := <-dataC:
-					readData = append(readData, d...)
+
+					readData = append(readData, res.data...)
 				case err := <-errC:
-					if err != nil {
-						if !errors.Is(err, io.EOF) {
-							t.Fatal(err)
-						}
+					if err != nil && !errors.Is(err, io.EOF) {
+						t.Fatal(err)
 					}
 				}
 			}
@@ -218,24 +188,32 @@ func TestCopyBuffer(t *testing.T) {
 	}
 }
 
-func reader(t *testing.T, bufferSize int, r io.Reader, c chan int, cd chan []byte) {
+type readResult struct {
+	data []byte
+	n    int
+	err  error
+}
+
+func reader(t *testing.T, bufferSize int, r io.Reader, c chan<- readResult) {
 	t.Helper()
+
+	defer close(c)
 
 	var buf = make([]byte, bufferSize)
 	for {
 		n, err := r.Read(buf)
 		if errors.Is(err, io.EOF) {
-			c <- 0
-			break
+			c <- readResult{n: n}
+			return
 		}
+
 		if err != nil {
 			t.Errorf("read: %v", err)
 		}
 
-		b := make([]byte, n)
-		copy(b, buf)
-		cd <- b
+		data := make([]byte, n)
+		copy(data, buf)
 
-		c <- n
+		c <- readResult{n: n, data: data}
 	}
 }
