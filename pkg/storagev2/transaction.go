@@ -114,6 +114,10 @@ func (tx *TxState) Done() error {
 	return err
 }
 
+func NewChildTxState(tx *TxState) *TxState {
+	return NewTxState(tx.ctx)
+}
+
 // NewTxState is a convenient constructor for creating instances of TxState.
 func NewTxState(ctx context.Context) *TxState {
 	ctx, cancel := context.WithCancel(ctx)

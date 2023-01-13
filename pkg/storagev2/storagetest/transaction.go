@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
+	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
@@ -337,7 +337,8 @@ func checkTxChunkStoreFinishedTxInvariants(t *testing.T, store storage.TxChunkSt
 
 	ctx := context.Background()
 	want := storage.ErrTxDone
-	o007 := swarm.NewChunk(swarm.NewAddress([]byte("007")), []byte("Hello, World!"))
+	// o007 := swarm.NewChunk(swarm.NewAddress([]byte("007")), []byte("Hello, World!"))
+	o007 := chunktest.GenerateTestRandomChunk()
 
 	if chunk, have := store.Get(ctx, o007.Address()); !errors.Is(have, want) || chunk != nil {
 		t.Fatalf("Get(...)\n\thave: %v, %v\n\twant: <nil>, %v", chunk, have, want)
@@ -404,11 +405,12 @@ func TestTxChunkStore(t *testing.T, store storage.TxChunkStore) {
 		ctx, cancel := context.WithCancel(context.Background())
 		t.Cleanup(cancel)
 
-		chunks := []swarm.Chunk{
-			swarm.NewChunk(swarm.NewAddress([]byte("0001")), []byte("data1")).WithStamp(postagetesting.MustNewStamp()),
-			swarm.NewChunk(swarm.NewAddress([]byte("0002")), []byte("data2")).WithStamp(postagetesting.MustNewStamp()),
-			swarm.NewChunk(swarm.NewAddress([]byte("0003")), []byte("data3")).WithStamp(postagetesting.MustNewStamp()),
-		}
+		// chunks := []swarm.Chunk{
+		// 	swarm.NewChunk(swarm.NewAddress([]byte("0001")), []byte("data1")),
+		// 	swarm.NewChunk(swarm.NewAddress([]byte("0002")), []byte("data2")),
+		// 	swarm.NewChunk(swarm.NewAddress([]byte("0003")), []byte("data3")),
+		// }
+		chunks := chunktest.GenerateTestRandomChunks(3)
 
 		t.Run("add new chunks", func(t *testing.T) {
 			tx := store.NewTx(storage.NewTxState(ctx))
@@ -474,11 +476,12 @@ func TestTxChunkStore(t *testing.T, store storage.TxChunkStore) {
 
 		tx := store.NewTx(storage.NewTxState(ctx))
 
-		chunks := []swarm.Chunk{
-			swarm.NewChunk(swarm.NewAddress([]byte("0001")), []byte("data1")).WithStamp(postagetesting.MustNewStamp()),
-			swarm.NewChunk(swarm.NewAddress([]byte("0002")), []byte("data2")).WithStamp(postagetesting.MustNewStamp()),
-			swarm.NewChunk(swarm.NewAddress([]byte("0003")), []byte("data3")).WithStamp(postagetesting.MustNewStamp()),
-		}
+		// chunks := []swarm.Chunk{
+		// 	swarm.NewChunk(swarm.NewAddress([]byte("0001")), []byte("data1")),
+		// 	swarm.NewChunk(swarm.NewAddress([]byte("0002")), []byte("data2")),
+		// 	swarm.NewChunk(swarm.NewAddress([]byte("0003")), []byte("data3")),
+		// }
+		chunks := chunktest.GenerateTestRandomChunks(3)
 		initChunkStore(t, tx, chunks...)
 
 		if err := tx.Rollback(); err != nil {
@@ -501,11 +504,12 @@ func TestTxChunkStore(t *testing.T, store storage.TxChunkStore) {
 		t.Cleanup(cancel)
 
 		tx := store.NewTx(storage.NewTxState(ctx))
-		chunks := []swarm.Chunk{
-			swarm.NewChunk(swarm.NewAddress([]byte("0001")), []byte("data1")).WithStamp(postagetesting.MustNewStamp()),
-			swarm.NewChunk(swarm.NewAddress([]byte("0002")), []byte("data2")).WithStamp(postagetesting.MustNewStamp()),
-			swarm.NewChunk(swarm.NewAddress([]byte("0003")), []byte("data3")).WithStamp(postagetesting.MustNewStamp()),
-		}
+		// chunks := []swarm.Chunk{
+		// 	swarm.NewChunk(swarm.NewAddress([]byte("0001")), []byte("data1")),
+		// 	swarm.NewChunk(swarm.NewAddress([]byte("0002")), []byte("data2")),
+		// 	swarm.NewChunk(swarm.NewAddress([]byte("0003")), []byte("data3")),
+		// }
+		chunks := chunktest.GenerateTestRandomChunks(3)
 		initChunkStore(t, tx, chunks...)
 		if err := tx.Commit(); err != nil {
 			t.Fatalf("Commit(): unexpected error: %v", err)

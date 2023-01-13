@@ -5,6 +5,7 @@
 package chunkstore
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -180,9 +181,15 @@ func (c *chunkStampItem) Clone() storage.Item {
 	return clone
 }
 
+type Sharky interface {
+	Read(context.Context, sharky.Location, []byte) error
+	Write(context.Context, []byte) (sharky.Location, error)
+	Release(context.Context, sharky.Location) error
+}
+
 type chunkStoreWrapper struct {
 	store  storage.Store
-	sharky *sharky.Store
+	sharky Sharky
 }
 
 // New returns a chunkStoreWrapper which implements the storage.ChunkStore interface
@@ -199,18 +206,20 @@ type chunkStoreWrapper struct {
 // of some component which will provide the uniqueness guarantee.
 // Due to the refCnt a Delete would only result in an actual Delete operation
 // if the refCnt goes to 0.
-func New(store storage.Store, sharky *sharky.Store) storage.ChunkStore {
+func New(store storage.Store, sharky Sharky) storage.ChunkStore {
 	return &chunkStoreWrapper{store: store, sharky: sharky}
 }
 
-func (c *chunkStoreWrapper) getStamp(addr swarm.Address) (swarm.Stamp, error) {
+func (c *chunkStoreWrapper) getStamp(addr swarm.Address, batchID []byte) (swarm.Stamp, error) {
 	var stamp swarm.Stamp
 	err := c.store.Iterate(storage.Query{
 		Factory: func() storage.Item { return &chunkStampItem{Address: addr} },
 	}, func(res storage.Result) (bool, error) {
-		// Use the first available stamp till we support multiple stamps on chunk.
-		stamp = res.Entry.(*chunkStampItem).Stamp
-		return true, nil
+		if batchID == nil || bytes.Equal(batchID, res.Entry.(*chunkStampItem).Stamp.BatchID()) {
+			stamp = res.Entry.(*chunkStampItem).Stamp
+			return true, nil
+		}
+		return false, nil
 	})
 	if err != nil {
 		return nil, err
@@ -240,8 +249,8 @@ func (c *chunkStoreWrapper) removeStamps(addr swarm.Address) error {
 }
 
 // helper to read chunk from retrievalIndex.
-func (c *chunkStoreWrapper) readChunk(ctx context.Context, rIdx *retrievalIndexItem) (swarm.Chunk, error) {
-	stamp, err := c.getStamp(rIdx.Address)
+func (c *chunkStoreWrapper) readChunk(ctx context.Context, rIdx *retrievalIndexItem, batchID []byte) (swarm.Chunk, error) {
+	stamp, err := c.getStamp(rIdx.Address, batchID)
 	if err != nil {
 		return nil, fmt.Errorf("chunk store: failed to read stamp for address %s: %w", rIdx.Address, err)
 	}
@@ -261,14 +270,26 @@ func (c *chunkStoreWrapper) readChunk(ctx context.Context, rIdx *retrievalIndexI
 	return swarm.NewChunk(rIdx.Address, buf).WithStamp(stamp), nil
 }
 
-func (c *chunkStoreWrapper) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
+func (c *chunkStoreWrapper) get(ctx context.Context, addr swarm.Address, batchID []byte) (swarm.Chunk, error) {
 	rIdx := &retrievalIndexItem{Address: addr}
 	err := c.store.Get(rIdx)
 	if err != nil {
 		return nil, fmt.Errorf("chunk store: failed reading retrievalIndex for address %s: %w", addr, err)
 	}
 
-	return c.readChunk(ctx, rIdx)
+	return c.readChunk(ctx, rIdx, batchID)
+}
+
+func (c *chunkStoreWrapper) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
+	return c.get(ctx, addr, nil)
+}
+
+func (c *chunkStoreWrapper) GetWithStamp(
+	ctx context.Context,
+	addr swarm.Address,
+	batchID []byte,
+) (swarm.Chunk, error) {
+	return c.get(ctx, addr, batchID)
 }
 
 func (c *chunkStoreWrapper) GetWithStamp(ctx context.Context, addr swarm.Address, batchID []byte) (swarm.Chunk, error) {
@@ -369,7 +390,7 @@ func (c *chunkStoreWrapper) Iterate(ctx context.Context, fn storage.IterateChunk
 	return c.store.Iterate(storage.Query{
 		Factory: func() storage.Item { return new(retrievalIndexItem) },
 	}, func(r storage.Result) (bool, error) {
-		ch, err := c.readChunk(ctx, r.Entry.(*retrievalIndexItem))
+		ch, err := c.readChunk(ctx, r.Entry.(*retrievalIndexItem), nil)
 		if err != nil {
 			return true, err
 		}
