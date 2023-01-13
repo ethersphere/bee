@@ -158,7 +158,7 @@ func (f *asyncFinder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, 
 		return nil, nil, &index{uint64(after)}, nil
 	}
 	// if chunk exists construct an initial interval with base=0
-	c := make(chan *result)
+	c := make(chan *result, 8)
 	i := newInterval(0)
 	i.found = &result{ch, nil, 0, 0}
 
@@ -205,21 +205,21 @@ func (f *asyncFinder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, 
 // at launches concurrent lookups at exponential intervals after the starting from further
 func (f *asyncFinder) at(ctx context.Context, at int64, min int, i *interval, c chan<- *result, quit <-chan struct{}) {
 	var wg sync.WaitGroup
-	defer wg.Wait()
 
-	wg.Add(i.level)
 	for l := i.level; l > min; l-- {
 		select {
 		case <-quit: // if the parent process quit
 			return
 		default:
 		}
+
+		wg.Add(1)
 		go func(l int) {
 			// TODO: remove hardcoded timeout and define it as constant or inject in the getter.
 			reqCtx, cancel := context.WithTimeout(ctx, 1*time.Second)
 			defer func() {
-				wg.Done()
 				cancel()
+				wg.Done()
 			}()
 			index := i.base + (1 << l) - 1
 			chunk := f.asyncGet(reqCtx, at, index)
@@ -233,12 +233,13 @@ func (f *asyncFinder) at(ctx context.Context, at int64, min int, i *interval, c 
 			}
 		}(l)
 	}
+
+	wg.Wait()
 }
 
 func (f *asyncFinder) asyncGet(ctx context.Context, at int64, index uint64) <-chan swarm.Chunk {
-	c := make(chan swarm.Chunk)
+	c := make(chan swarm.Chunk, 1)
 	go func() {
-		defer close(c)
 		ch, err := f.get(ctx, at, index)
 		if err != nil {
 			return
