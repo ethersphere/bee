@@ -894,12 +894,12 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 
 	pinningService := pinning.NewService(storer, stateStore, traversalService)
 
-	pushSyncProtocol := pushsync.New(swarmAddress, nonce, p2ps, storer, kad, tagService, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
+	pushSyncProtocol := pushsync.New(swarmAddress, nonce, p2ps, storer, kad, batchStore, tagService, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
 
 	// set the pushSyncer in the PSS
 	pssService.SetPushSyncer(pushSyncProtocol)
 
-	pusherService := pusher.New(networkID, storer, kad, pushSyncProtocol, validStamp, tagService, logger, tracer, warmupTime, pusher.DefaultRetryCount)
+	pusherService := pusher.New(networkID, storer, batchStore, pushSyncProtocol, validStamp, tagService, logger, tracer, warmupTime, pusher.DefaultRetryCount)
 	b.pusherCloser = pusherService
 
 	pullStorage := pullstorage.New(storer, logger)

@@ -21,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
+	bsMock "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	pricermock "github.com/ethersphere/bee/pkg/pricer/mock"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/pushsync/pb"
@@ -69,7 +70,7 @@ func TestPushClosest(t *testing.T) {
 	// peer is the node responding to the chunk receipt message
 	// mock should return ErrWantSelf since there's no one to forward to
 
-	psPeer, storerPeer, _, peerAccounting := createPushSyncNode(t, closestPeer, defaultPrices, nil, nil, defaultSigner, mock.WithClosestPeerErr(topology.ErrWantSelf), WithinDepthMock)
+	psPeer, storerPeer, _, peerAccounting := createPushSyncNode(t, closestPeer, defaultPrices, nil, nil, defaultSigner, mock.WithClosestPeerErr(topology.ErrWantSelf))
 	defer storerPeer.Close()
 
 	recorder := streamtest.New(streamtest.WithProtocols(psPeer.Protocol()), streamtest.WithBaseAddr(pivotNode))
@@ -136,12 +137,12 @@ func TestReplicateBeforeReceipt(t *testing.T) {
 
 	// node that is connected to closestPeer
 	// will receieve chunk from closestPeer
-	psSecond, storerSecond, _, secondAccounting := createPushSyncNode(t, secondPeer, defaultPrices, emptyRecorder, nil, defaultSigner, mock.WithPeers(emptyPeer), WithinDepthMock)
+	psSecond, storerSecond, _, secondAccounting := createPushSyncNode(t, secondPeer, defaultPrices, emptyRecorder, nil, defaultSigner, mock.WithPeers(emptyPeer))
 	defer storerSecond.Close()
 
 	secondRecorder := streamtest.New(streamtest.WithProtocols(psSecond.Protocol()), streamtest.WithBaseAddr(closestPeer))
 
-	psStorer, storerPeer, _, storerAccounting := createPushSyncNode(t, closestPeer, defaultPrices, secondRecorder, nil, defaultSigner, mock.WithPeers(secondPeer), mock.WithClosestPeerErr(topology.ErrWantSelf), WithinDepthMock)
+	psStorer, storerPeer, _, storerAccounting := createPushSyncNode(t, closestPeer, defaultPrices, secondRecorder, nil, defaultSigner, mock.WithPeers(secondPeer), mock.WithClosestPeerErr(topology.ErrWantSelf))
 	defer storerPeer.Close()
 
 	recorder := streamtest.New(streamtest.WithProtocols(psStorer.Protocol()), streamtest.WithBaseAddr(pivotNode))
@@ -321,7 +322,7 @@ func TestPushChunkToNextClosest(t *testing.T) {
 	psPeer1, storerPeer1, _, peerAccounting1 := createPushSyncNode(t, peer1, defaultPrices, nil, nil, defaultSigner, mock.WithClosestPeerErr(topology.ErrWantSelf))
 	defer storerPeer1.Close()
 
-	psPeer2, storerPeer2, _, peerAccounting2 := createPushSyncNode(t, peer2, defaultPrices, nil, nil, defaultSigner, mock.WithClosestPeerErr(topology.ErrWantSelf), WithinDepthMock)
+	psPeer2, storerPeer2, _, peerAccounting2 := createPushSyncNode(t, peer2, defaultPrices, nil, nil, defaultSigner, mock.WithClosestPeerErr(topology.ErrWantSelf))
 	defer storerPeer2.Close()
 
 	var fail = true
@@ -457,7 +458,7 @@ func TestPushChunkToClosestErrorAttemptRetry(t *testing.T) {
 	psPeer3, storerPeer3, _, peerAccounting3 := createPushSyncNode(t, peer3, defaultPrices, nil, nil, defaultSigner, mock.WithClosestPeerErr(topology.ErrWantSelf))
 	defer storerPeer3.Close()
 
-	psPeer4, storerPeer4, _, peerAccounting4 := createPushSyncNode(t, peer4, defaultPrices, nil, nil, defaultSigner, mock.WithClosestPeerErr(topology.ErrWantSelf), WithinDepthMock)
+	psPeer4, storerPeer4, _, peerAccounting4 := createPushSyncNode(t, peer4, defaultPrices, nil, nil, defaultSigner, mock.WithClosestPeerErr(topology.ErrWantSelf))
 	defer storerPeer4.Close()
 
 	recorder := streamtest.New(
@@ -577,7 +578,7 @@ func TestHandler(t *testing.T) {
 	closestPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
 
 	// Create the closest peer
-	psClosestPeer, closestStorerPeerDB, _, closestAccounting := createPushSyncNode(t, closestPeer, defaultPrices, nil, nil, defaultSigner, mock.WithClosestPeerErr(topology.ErrWantSelf), WithinDepthMock)
+	psClosestPeer, closestStorerPeerDB, _, closestAccounting := createPushSyncNode(t, closestPeer, defaultPrices, nil, nil, defaultSigner, mock.WithClosestPeerErr(topology.ErrWantSelf))
 	defer closestStorerPeerDB.Close()
 
 	closestRecorder := streamtest.New(streamtest.WithProtocols(psClosestPeer.Protocol()), streamtest.WithBaseAddr(pivotPeer))
@@ -666,7 +667,7 @@ func TestSignsReceipt(t *testing.T) {
 	closestPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
 
 	// Create the closest peer
-	psClosestPeer, closestStorerPeerDB, _, _ := createPushSyncNode(t, closestPeer, defaultPrices, nil, nil, signer, mock.WithClosestPeerErr(topology.ErrWantSelf), WithinDepthMock)
+	psClosestPeer, closestStorerPeerDB, _, _ := createPushSyncNode(t, closestPeer, defaultPrices, nil, nil, signer, mock.WithClosestPeerErr(topology.ErrWantSelf))
 	defer closestStorerPeerDB.Close()
 
 	closestRecorder := streamtest.New(streamtest.WithProtocols(psClosestPeer.Protocol()), streamtest.WithBaseAddr(pivotPeer))
@@ -740,7 +741,7 @@ func TestPushChunkToClosestSkipError(t *testing.T) {
 	psPeer2, storerPeer2, _, _ := createPushSyncNode(t, peer2, defaultPrices, nil, nil, defaultSigner, mock.WithClosestPeerErr(topology.ErrWantSelf))
 	defer storerPeer2.Close()
 
-	psPeer3, storerPeer3, _, _ := createPushSyncNode(t, peer3, defaultPrices, nil, nil, defaultSigner, mock.WithClosestPeerErr(topology.ErrWantSelf), WithinDepthMock)
+	psPeer3, storerPeer3, _, _ := createPushSyncNode(t, peer3, defaultPrices, nil, nil, defaultSigner, mock.WithClosestPeerErr(topology.ErrWantSelf))
 	defer storerPeer3.Close()
 
 	var (
@@ -836,7 +837,9 @@ func createPushSyncNodeWithAccounting(t *testing.T, addr swarm.Address, prices p
 		return ch, nil
 	}
 
-	return pushsync.New(addr, blockHash.Bytes(), recorderDisconnecter, storer, mockTopology, mtag, true, unwrap, validStamp, logger, acct, mockPricer, signer, nil, -1), storer, mtag
+	bs := bsMock.New()
+
+	return pushsync.New(addr, blockHash.Bytes(), recorderDisconnecter, storer, mockTopology, bs, mtag, true, unwrap, validStamp, logger, acct, mockPricer, signer, nil, -1), storer, mtag
 }
 
 func waitOnRecordAndTest(t *testing.T, peer swarm.Address, recorder *streamtest.Recorder, add swarm.Address, data []byte) {

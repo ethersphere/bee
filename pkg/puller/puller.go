@@ -121,7 +121,6 @@ func (p *Puller) manage(ctx context.Context, warmupTime time.Duration) {
 			peersDisconnected[peer.address.ByteString()] = peer
 		}
 
-		neighborhoodDepth := p.topology.NeighborhoodDepth()
 		syncRadius := p.reserveState.GetReserveState().StorageRadius
 
 		// if the radius decreases, we must fully resync the bin
@@ -134,7 +133,7 @@ func (p *Puller) manage(ctx context.Context, warmupTime time.Duration) {
 		prevRadius = syncRadius
 
 		_ = p.topology.EachPeerRev(func(addr swarm.Address, po uint8) (stop, jumpToNext bool, err error) {
-			if po >= neighborhoodDepth {
+			if po >= syncRadius {
 				// add peer to sync
 				if _, ok := p.syncPeers[addr.ByteString()]; !ok {
 					p.syncPeers[addr.ByteString()] = newSyncPeer(addr, p.bins)

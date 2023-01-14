@@ -14,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -95,6 +96,14 @@ func (s *store) GetReserveState() *postage.ReserveState {
 		Radius:        s.rs.Radius,
 		StorageRadius: s.rs.StorageRadius,
 	}
+}
+
+func (s *store) IsWithinStorageRadius(addr swarm.Address) bool {
+
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+
+	return false
 }
 
 func (s *store) SetStorageRadius(f func(uint8) uint8) error {
