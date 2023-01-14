@@ -13,21 +13,23 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchstore"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 var _ postage.Storer = (*BatchStore)(nil)
 
 // BatchStore is a mock BatchStorer
 type BatchStore struct {
-	rs                *postage.ReserveState
-	cs                *postage.ChainState
-	id                []byte
-	batch             *postage.Batch
-	getErr            error
-	getErrDelayCnt    int
-	updateErr         error
-	updateErrDelayCnt int
-	resetCallCount    int
+	rs                    *postage.ReserveState
+	cs                    *postage.ChainState
+	isWithinStorageRadius bool
+	id                    []byte
+	batch                 *postage.Batch
+	getErr                error
+	getErrDelayCnt        int
+	updateErr             error
+	updateErrDelayCnt     int
+	resetCallCount        int
 
 	radiusSetter postage.StorageRadiusSetter
 
@@ -46,6 +48,7 @@ func New(opts ...Option) *BatchStore {
 	bs := &BatchStore{}
 	bs.cs = &postage.ChainState{}
 	bs.rs = &postage.ReserveState{}
+	bs.isWithinStorageRadius = true
 	for _, o := range opts {
 		o(bs)
 	}
@@ -56,6 +59,12 @@ func New(opts ...Option) *BatchStore {
 func WithReserveState(rs *postage.ReserveState) Option {
 	return func(bs *BatchStore) {
 		bs.rs = rs
+	}
+}
+
+func WithIsWithinStorageRadius(b bool) Option {
+	return func(bs *BatchStore) {
+		bs.isWithinStorageRadius = b
 	}
 }
 
@@ -191,6 +200,10 @@ func (bs *BatchStore) GetReserveState() *postage.ReserveState {
 		rs.StorageRadius = bs.rs.StorageRadius
 	}
 	return rs
+}
+
+func (bs *BatchStore) IsWithinStorageRadius(swarm.Address) bool {
+	return bs.isWithinStorageRadius
 }
 
 func (bs *BatchStore) SetStorageRadiusSetter(r postage.StorageRadiusSetter) {

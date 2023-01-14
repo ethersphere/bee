@@ -59,7 +59,7 @@ type EachNeighbor interface {
 	EachNeighbor(EachPeerFunc) error
 	// EachNeighborRev iterates from farthest bin to closest within the neighborhood.
 	EachNeighborRev(EachPeerFunc) error
-	// IsWithinDepth checks if an address is the within neighborhood.
+	// IsWithinDepth checks if an address is within the neighborhood.
 	IsWithinDepth(swarm.Address) bool
 }
 

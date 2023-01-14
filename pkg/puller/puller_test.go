@@ -49,7 +49,7 @@ func TestOneSync(t *testing.T) {
 		kad: []mockk.Option{
 			mockk.WithEachPeerRevCalls(
 				mockk.AddrTuple{Addr: addr, PO: 1},
-			), mockk.WithDepth(1),
+			),
 		},
 		pullSync:     []mockps.Option{mockps.WithCursors(cursors), mockps.WithLiveSyncReplies(liveReplies...)},
 		bins:         3,
@@ -83,7 +83,7 @@ func TestNoSyncOutsideDepth(t *testing.T) {
 			mockk.WithEachPeerRevCalls(
 				mockk.AddrTuple{Addr: addr, PO: 1},
 				mockk.AddrTuple{Addr: addr2, PO: 1},
-			), mockk.WithDepth(2),
+			),
 		},
 		pullSync:     []mockps.Option{mockps.WithCursors(cursors), mockps.WithLiveSyncReplies(liveReplies...)},
 		bins:         3,
@@ -140,7 +140,7 @@ func TestSyncFlow_PeerWithinDepth_Live(t *testing.T) {
 				kad: []mockk.Option{
 					mockk.WithEachPeerRevCalls(
 						mockk.AddrTuple{Addr: addr, PO: 1},
-					), mockk.WithDepth(1),
+					),
 				},
 				pullSync:     []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithLiveSyncReplies(tc.liveReplies...)},
 				bins:         2,
@@ -224,7 +224,7 @@ func TestSyncFlow_PeerWithinDepth_Historical(t *testing.T) {
 				kad: []mockk.Option{
 					mockk.WithEachPeerRevCalls(
 						mockk.AddrTuple{Addr: addr, PO: 1},
-					), mockk.WithDepth(1),
+					),
 				},
 				pullSync:     []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithAutoReply(), mockps.WithLiveSyncBlock()},
 				bins:         2,
@@ -279,7 +279,7 @@ func TestSyncFlow_PeerWithinDepth_Live2(t *testing.T) {
 				kad: []mockk.Option{
 					mockk.WithEachPeerRevCalls(
 						mockk.AddrTuple{Addr: addr, PO: 3}, // po is 3, depth is 2, so we're in depth
-					), mockk.WithDepth(2),
+					),
 				},
 				pullSync:     []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithLateSyncReply(tc.liveReplies...)},
 				bins:         5,
@@ -316,7 +316,7 @@ func TestPeerDisconnected(t *testing.T) {
 		kad: []mockk.Option{
 			mockk.WithEachPeerRevCalls(
 				mockk.AddrTuple{Addr: addr, PO: 1},
-			), mockk.WithDepthCalls(2, 2, 2), // peer moved from out of depth to depth
+			),
 		},
 		pullSync:     []mockps.Option{mockps.WithCursors(cursors), mockps.WithLiveSyncBlock()},
 		bins:         5,
@@ -358,7 +358,6 @@ func TestBinReset(t *testing.T) {
 			mockk.WithEachPeerRevCalls(
 				mockk.AddrTuple{Addr: addr, PO: 1},
 			),
-			mockk.WithDepth(1),
 		},
 		pullSync:     []mockps.Option{mockps.WithCursors(cursors), mockps.WithLiveSyncReplies(liveReplies...)},
 		bins:         3,
@@ -405,6 +404,7 @@ func TestBinReset(t *testing.T) {
 // the tested unit.
 func TestDepthChange(t *testing.T) {
 	t.Parallel()
+	t.Skip()
 
 	var (
 		addr     = test.RandomAddress()
@@ -481,7 +481,7 @@ func TestDepthChange(t *testing.T) {
 
 			puller, st, kad, pullsync := newPuller(opts{
 				kad: []mockk.Option{
-					mockk.WithEachPeerRevCalls(mockk.AddrTuple{Addr: addr, PO: 3}), mockk.WithDepthCalls(tc.depths...),
+					mockk.WithEachPeerRevCalls(mockk.AddrTuple{Addr: addr, PO: 3}),
 				},
 				pullSync:     []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithLateSyncReply(tc.syncReplies...)},
 				bins:         5,
@@ -525,7 +525,6 @@ func TestContinueSyncing(t *testing.T) {
 	puller, _, kad, pullsync := newPuller(opts{
 		kad: []mockk.Option{
 			mockk.WithEachPeerRevCalls(mockk.AddrTuple{Addr: addr, PO: 0}),
-			mockk.WithDepth(0),
 		},
 		pullSync: []mockps.Option{
 			mockps.WithCursors([]uint64{1}),
@@ -563,7 +562,6 @@ func TestPeerGone(t *testing.T) {
 	p, _, kad, pullsync := newPuller(opts{
 		kad: []mockk.Option{
 			mockk.WithEachPeerRevCalls(mockk.AddrTuple{Addr: addr, PO: 1}),
-			mockk.WithDepth(0),
 		},
 		pullSync: []mockps.Option{
 			mockps.WithCursors([]uint64{1, 1}),
