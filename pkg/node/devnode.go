@@ -48,6 +48,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 	stakingContractMock "github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	mockTopology "github.com/ethersphere/bee/pkg/topology/mock"
@@ -115,7 +116,9 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 	}
 	b.stateStoreCloser = stateStore
 
-	batchStore, err := batchstore.New(stateStore, func(b []byte) error { return nil }, logger)
+	swarmAddress := test.RandomAddress()
+
+	batchStore, err := batchstore.New(stateStore, func(b []byte) error { return nil }, swarmAddress, logger)
 	if err != nil {
 		return nil, fmt.Errorf("batchstore: %w", err)
 	}
@@ -235,7 +238,6 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		},
 	}
 
-	var swarmAddress swarm.Address
 	storer, err := localstore.New("", swarmAddress.Bytes(), stateStore, lo, logger)
 	if err != nil {
 		return nil, fmt.Errorf("localstore: %w", err)
