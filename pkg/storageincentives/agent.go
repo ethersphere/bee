@@ -274,7 +274,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 func (a *Agent) reveal(ctx context.Context, storageRadius uint8, sample, obfuscationKey []byte) error {
 	a.metrics.RevealPhase.Inc()
 	err := a.contract.Reveal(ctx, storageRadius, sample, obfuscationKey)
-	a.state.SetFee(a.contract.GetFee())
+	a.state.SetFee(a.contract.Fee())
 	if err != nil {
 		a.metrics.ErrReveal.Inc()
 	}
@@ -315,7 +315,7 @@ func (a *Agent) claim(ctx context.Context) error {
 		if err != nil {
 			a.logger.Info("calculate winner reward", "err", err)
 		}
-		a.state.SetFee(a.contract.GetFee())
+		a.state.SetFee(a.contract.Fee())
 
 		if err != nil {
 			a.metrics.ErrClaim.Inc()
@@ -419,7 +419,7 @@ func (a *Agent) commit(ctx context.Context, storageRadius uint8, sample []byte, 
 		a.metrics.ErrCommit.Inc()
 		return nil, err
 	}
-	a.state.SetFee(a.contract.GetFee())
+	a.state.SetFee(a.contract.Fee())
 	return key, nil
 }
 

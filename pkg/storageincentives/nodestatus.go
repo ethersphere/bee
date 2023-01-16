@@ -10,7 +10,6 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"math/big"
 	"sync"
@@ -21,7 +20,6 @@ const (
 )
 
 type NodeState struct {
-	contract       redistribution.Contract
 	stateStore     storage.StateStorer
 	erc20Service   erc20.Service
 	logger         log.Logger

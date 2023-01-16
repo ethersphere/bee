@@ -26,7 +26,7 @@ type Contract interface {
 	Claim(context.Context) error
 	Commit(context.Context, []byte, *big.Int) error
 	Reveal(context.Context, uint8, []byte, []byte) error
-	GetFee() *big.Int
+	Fee() *big.Int
 }
 
 type contract struct {
@@ -217,6 +217,6 @@ func (c *contract) setFee(in *big.Int) {
 	c.accumulativeFee = in
 }
 
-func (c *contract) GetFee() *big.Int {
+func (c *contract) Fee() *big.Int {
 	return c.accumulativeFee
 }
