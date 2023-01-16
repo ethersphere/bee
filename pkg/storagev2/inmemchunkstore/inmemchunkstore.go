@@ -28,6 +28,11 @@ func (c *ChunkStore) Get(_ context.Context, addr swarm.Address) (swarm.Chunk, er
 	return val.(swarm.Chunk), nil
 }
 
+func (c *ChunkStore) GetWithStamp(ctx context.Context, addr swarm.Address, stamp []byte) (swarm.Chunk, error) {
+	// TODO
+	return c.Get(ctx, addr)
+}
+
 func (c *ChunkStore) Put(_ context.Context, ch swarm.Chunk) error {
 	c.chunks.Store(ch.Address().ByteString(), ch)
 	return nil

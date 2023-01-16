@@ -41,15 +41,7 @@ var _ internal.Storage = (*testStorage)(nil)
 type testStorage struct {
 	ctx        context.Context
 	indexStore storage.Store
-	chunkStore *chunkStore
-}
-
-type chunkStore struct {
-	storage.ChunkStore
-}
-
-func (c *chunkStore) GetWithStamp(ctx context.Context, address swarm.Address, _ []byte) (swarm.Chunk, error) {
-	return c.Get(ctx, address)
+	chunkStore internal.ChunkStore
 }
 
 func (t *testStorage) Ctx() context.Context            { return t.ctx }
