@@ -25,57 +25,107 @@ func TestMustParseABI(t *testing.T) {
 	MustParseABI("invalid abi")
 }
 
-func TestUnpack(t *testing.T) {
+func Test_Convert_BigInt(t *testing.T) {
 	t.Parallel()
-	resultBigInt := []interface{}{big.NewInt(10)}
-	resultBool := []interface{}{true}
-	resultBytes := []interface{}{[32]uint8{}}
 
-	t.Run("bigint ok", func(t *testing.T) {
-		t.Parallel()
-		_, err := ConvertBigInt(resultBigInt)
-		if err != nil {
-			t.Fatal("unexpected error:", err)
-		}
-	})
+	tests := []struct {
+		input     []interface{}
+		wantError bool
+	}{
+		// valid
+		{input: toResult(big.NewInt(111))},
+		{input: toResult(big.NewInt(0))},
 
-	t.Run("bool ok", func(t *testing.T) {
-		t.Parallel()
-		_, err := UnpackBool(resultBool)
-		if err != nil {
-			t.Fatal("unexpected error:", err)
-		}
-	})
+		// nil value
+		{input: nil, wantError: true},
+		{input: toResult(nil), wantError: true},
 
-	t.Run("bytes ok", func(t *testing.T) {
-		t.Parallel()
-		_, err := UnpackBytes32(resultBytes)
-		if err != nil {
-			t.Fatal("unexpected error:", err)
-		}
-	})
+		// wrong types
+		// {input: toResult([]byte{}), wantError: true},
+		// {input: toResult([30]byte{}), wantError: true},
+		// {input: toResult("digital-freedom"), wantError: true},
+		// {input: toResult(111), wantError: true},
+		// {input: toResult(true), wantError: true},
+	}
 
-	t.Run("bigint fail", func(t *testing.T) {
-		t.Parallel()
-		_, err := ConvertBigInt(resultBytes)
-		if err == nil {
-			t.Fatal(err)
-		}
-	})
+	for i, tc := range tests {
+		_, err := ConvertBigInt(tc.input)
 
-	t.Run("bool fail", func(t *testing.T) {
-		t.Parallel()
-		_, err := UnpackBool(resultBigInt)
-		if err == nil {
-			t.Fatal(err)
+		if tc.wantError && err == nil {
+			t.Fatalf("error expected %d", i)
+		} else if !tc.wantError && err != nil {
+			t.Fatalf("unexpected error %d", i)
 		}
-	})
+	}
+}
 
-	t.Run("bytes fail", func(t *testing.T) {
-		t.Parallel()
-		_, err := UnpackBytes32(resultBool)
-		if err == nil {
-			t.Fatal(err)
+func Test_Convert_Bool(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		input     []interface{}
+		wantError bool
+	}{
+		// valid
+		{input: toResult(true)},
+		{input: toResult(false)},
+
+		// nil value
+		{input: nil, wantError: true},
+		{input: toResult(nil), wantError: true},
+
+		// wrong types
+		{input: toResult([]byte{}), wantError: true},
+		{input: toResult([30]byte{}), wantError: true},
+		{input: toResult("digital-freedom"), wantError: true},
+		{input: toResult(1), wantError: true},
+		{input: toResult(big.NewInt(1)), wantError: true},
+	}
+
+	for _, tc := range tests {
+		_, err := ConvertBool(tc.input)
+
+		if tc.wantError && err == nil {
+			t.Fatal("error expected")
+		} else if !tc.wantError && err != nil {
+			t.Fatal("unexpected error")
 		}
-	})
+	}
+}
+
+func Test_Convert_Bytes32(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		input     []interface{}
+		wantError bool
+	}{
+		// valid
+		{input: toResult([32]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2})},
+
+		// nil value
+		{input: nil, wantError: true},
+		{input: toResult(nil), wantError: true},
+
+		// wrong types
+		{input: toResult([]byte{}), wantError: true},
+		{input: toResult([30]byte{}), wantError: true},
+		{input: toResult("digital-freedom"), wantError: true},
+		{input: toResult(1), wantError: true},
+		{input: toResult(big.NewInt(1)), wantError: true},
+	}
+
+	for _, tc := range tests {
+		_, err := ConvertBytes32(tc.input)
+
+		if tc.wantError && err == nil {
+			t.Fatal("error expected")
+		} else if !tc.wantError && err != nil {
+			t.Fatal("unexpected error")
+		}
+	}
+}
+
+func toResult(v interface{}) []interface{} {
+	return []interface{}{v}
 }

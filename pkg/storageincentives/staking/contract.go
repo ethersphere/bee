@@ -30,8 +30,6 @@ var (
 	ErrInsufficientStake       = errors.New("insufficient stake")
 	ErrNotImplemented          = errors.New("not implemented")
 	ErrNotPaused               = errors.New("contract is not paused")
-	ErrTypecasting             = errors.New("typecasting failed")
-	ErrUnexpectedResults       = errors.New("unexpected empty results")
 
 	approveDescription       = "Approve tokens for stake deposit operations"
 	depositStakeDescription  = "Deposit Stake"
@@ -234,16 +232,7 @@ func (c *contract) getBalance(ctx context.Context) (*big.Int, error) {
 		return nil, err
 	}
 
-	if len(results) == 0 {
-		return nil, ErrUnexpectedResults
-	}
-
-	balance, ok := abi.ConvertType(results[0], new(big.Int)).(*big.Int)
-	if !ok {
-		return nil, ErrTypecasting
-	}
-
-	return balance, nil
+	return abiutil.ConvertBigInt(results)
 }
 
 func (c *contract) WithdrawAllStake(ctx context.Context) (txHash common.Hash, err error) {
@@ -315,7 +304,7 @@ func (c *contract) paused(ctx context.Context) (bool, error) {
 		return false, err
 	}
 
-	return abiutil.UnpackBool(results)
+	return abiutil.ConvertBool(results)
 }
 
 func (c *contract) IsOverlayFrozen(ctx context.Context) (bool, error) {

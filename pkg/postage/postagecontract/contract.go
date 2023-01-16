@@ -132,7 +132,7 @@ func (c *postageContract) expiredBatchesExists(ctx context.Context) (bool, error
 		return false, err
 	}
 
-	return abiutil.UnpackBool(results)
+	return abiutil.ConvertBool(results)
 }
 
 func (c *postageContract) expireLimitedBatches(ctx context.Context, count *big.Int) error {

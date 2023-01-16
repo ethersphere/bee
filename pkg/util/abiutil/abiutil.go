@@ -28,6 +28,7 @@ func MustParseABI(json string) abi.ABI {
 	return val
 }
 
+// ConvertType is panic safe wrapper for abi.ConvertType.
 func ConvertType(in interface{}, proto interface{}) (out interface{}, err error) {
 	defer func() {
 		if rec := recover(); rec != nil {
@@ -40,7 +41,7 @@ func ConvertType(in interface{}, proto interface{}) (out interface{}, err error)
 	return
 }
 
-// ConvertBigInt converts a value to a big int in safe way by handling unintended failures in conversion.
+// ConvertBigInt converts a value to a big.Int in safe way.
 func ConvertBigInt(values []interface{}) (*big.Int, error) {
 	// values should have at least one value
 	if len(values) == 0 {
@@ -55,8 +56,8 @@ func ConvertBigInt(values []interface{}) (*big.Int, error) {
 	return val.(*big.Int), nil
 }
 
-// UnpackBool unpacks a value to a boolean in safe way by handling unintended failures in conversion.
-func UnpackBool(values []interface{}) (bool, error) {
+// ConvertBool unpacks a value to a boolean in safe way.
+func ConvertBool(values []interface{}) (bool, error) {
 	// values should have at least one value
 	if len(values) == 0 {
 		return false, ErrEmptyResults
@@ -70,8 +71,8 @@ func UnpackBool(values []interface{}) (bool, error) {
 	return value, nil
 }
 
-// UnpackBytes32 unpacks a value to a byte array in safe way by handling unintended failures in conversion.
-func UnpackBytes32(values []interface{}) ([]byte, error) {
+// ConvertBytes32 unpacks a value to a byte array in safe way.
+func ConvertBytes32(values []interface{}) ([]byte, error) {
 	// values should have at least one value
 	if len(values) == 0 {
 		return nil, ErrEmptyResults
