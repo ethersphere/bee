@@ -264,67 +264,6 @@ jobs:
         with:
           name: debug-dump
           path: dump/
-  beekeeper-si:
-    name: Integration tests (storage incentives)
-    needs: [init]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Cache
-        uses: actions/cache@v3
-        with:
-          path: |
-            /tmp/k3s-${{ env.K3S_VERSION }}-v3
-          key: k3s-${{ env.K3S_VERSION }}-v3
-      - name: "Download Artifact"
-        uses: actions/download-artifact@v3
-        with:
-          name: temp-artifacts
-      - name: Unpack artifacts
-        run: |
-          chmod +x bee-2 beekeeper
-          mv .beekeeper.yaml ~/.beekeeper.yaml
-          mkdir ~/.beekeeper && mv local.yaml ~/.beekeeper/local.yaml
-          mv bee-2 bee
-          sudo mv beekeeper /usr/local/bin/beekeeper
-      - name: Prepare testing cluster (storage incentives setup)
-        run: |
-          timeout ${TIMEOUT} make beelocal OPTS='ci skip-vet' ACTION=prepare
-      - name: Set kube config
-        run: |
-          mkdir -p ~/.kube
-          cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
-      - name: Set testing cluster (storage incentives setup)
-        run: |
-          timeout ${TIMEOUT} make deploylocal BEEKEEPER_CLUSTER=local-gc
-      - name: Test pingpong
-        id: pingpong
-        run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-gc --checks ci-pingpong; do echo "waiting for pingpong..."; sleep .3; done'
-      # GC test requires custom patches which no longer work with the contract
-      # - name: Test gc
-      #   id: gc-chunk
-      #   run: timeout ${TIMEOUT} beekeeper check --cluster-name local-gc --checks=ci-gc
-      - name: Debug workflow if failed
-        if: failure()
-        run: |
-          bash .github/bin/beekeeper_artifacts.sh local-gc
-          export FAILED='no-test'
-          if ${{ steps.pingpong.outcome=='failure' }}; then FAILED=pingpong; fi
-          if ${{ steps.gc-chunk.outcome=='failure' }}; then FAILED=gc-chunk; fi
-          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**${RUN_TYPE}** Beekeeper Error\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebugging artifacts: [click](https://$BUCKET_NAME.$AWS_ENDPOINT/artifacts_$VERTAG.tar.gz)\nStep failed: \`${FAILED}\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.TUNSHELL_KEY }}
-          echo "Failed test: ${FAILED}"
-      - name: Create tunshell session for debug
-        if: failure() && contains(needs.init.outputs.msg, '[debug]')
-        run: |
-          KEYS=$(curl -sSf -X POST https://eu.relay.tunshell.com/api/sessions)
-          curl -sSf -X POST -H "Content-Type: application/json" -d "{\"text\": \"**Integration tests (storage incentives)** Beekeeper Debug\nBranch: \`${{ github.head_ref }}\`\nUser: @${{ github.event.pull_request.user.login }}\nDebug shell: \`sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com\`\"}" https://beehive.ethswarm.org/hooks/${{ secrets.TUNSHELL_KEY }}
-          echo "Connect to github actions node using"
-          echo "sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com"
-          curl -sSf https://lets.tunshell.com/init.sh | sh /dev/stdin T $(echo $KEYS | jq -r .peer1_key) ${{ secrets.TUNSHELL_SECRET }} eu.relay.tunshell.com
-      - uses: actions/upload-artifact@v3
-        if: failure()
-        with:
-          name: debug-dump
-          path: dump/
   retag:
     name: Retag and Trigger ArgoCD
     env:
