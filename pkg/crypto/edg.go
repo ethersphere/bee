@@ -4,12 +4,16 @@
 
 package crypto
 
-import "crypto/ecdsa"
+import (
+	"crypto/ecdsa"
+
+	"github.com/ethersphere/bee/pkg/keystore"
+)
 
 // EDGSecp256_k1 aggregates private key cryptography functions that employ secp256k1
 type EDGSecp256_k1 struct{}
 
-var EDGSecp256_K1 = new(EDGSecp256_k1)
+var EDGSecp256_K1 keystore.EDG = new(EDGSecp256_k1)
 
 func (s *EDGSecp256_k1) Generate() (*ecdsa.PrivateKey, error) {
 	return GenerateSecp256k1Key()
@@ -24,7 +28,7 @@ func (s *EDGSecp256_k1) Decode(data []byte) (*ecdsa.PrivateKey, error) {
 // EDGSecp256_r1 aggregates private key cryptography functions that employ secp256r1
 type EDGSecp256_r1 struct{}
 
-var EDGSecp256_R1 = new(EDGSecp256_r1)
+var EDGSecp256_R1 keystore.EDG = new(EDGSecp256_r1)
 
 func (s *EDGSecp256_r1) Generate() (*ecdsa.PrivateKey, error) {
 	return GenerateSecp256r1Key()
