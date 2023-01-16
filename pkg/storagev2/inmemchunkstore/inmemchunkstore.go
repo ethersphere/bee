@@ -5,6 +5,7 @@
 package inmemchunkstore
 
 import (
+	"bytes"
 	"context"
 	"sync"
 
@@ -13,54 +14,93 @@ import (
 )
 
 type ChunkStore struct {
-	chunks sync.Map
+	chunks map[string][]swarm.Chunk
+	lock   sync.Mutex
 }
 
 func New() *ChunkStore {
 	return &ChunkStore{}
 }
 
-func (c *ChunkStore) Get(_ context.Context, addr swarm.Address) (swarm.Chunk, error) {
-	val, found := c.chunks.Load(addr.ByteString())
-	if !found {
-		return nil, storage.ErrNotFound
-	}
-	return val.(swarm.Chunk), nil
+func (c *ChunkStore) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
+	return c.GetWithStamp(ctx, addr, nil)
 }
 
-func (c *ChunkStore) GetWithStamp(ctx context.Context, addr swarm.Address, stamp []byte) (swarm.Chunk, error) {
-	// TODO
-	return c.Get(ctx, addr)
+func (c *ChunkStore) GetWithStamp(ctx context.Context, addr swarm.Address, batchID []byte) (swarm.Chunk, error) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	chunks, ok := c.chunks[addr.ByteString()]
+	if !ok {
+		return nil, storage.ErrNotFound
+	}
+
+	return findChunkWithBatchID(chunks, batchID)
 }
 
 func (c *ChunkStore) Put(_ context.Context, ch swarm.Chunk) error {
-	c.chunks.Store(ch.Address().ByteString(), ch)
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	chunks, ok := c.chunks[ch.Address().ByteString()]
+	if !ok {
+		chunks = make([]swarm.Chunk, 1)
+	}
+
+	chunks = append(chunks, ch)
+
+	c.chunks[ch.Address().ByteString()] = chunks
+
 	return nil
 }
 
 func (c *ChunkStore) Has(_ context.Context, addr swarm.Address) (bool, error) {
-	_, exists := c.chunks.Load(addr.ByteString())
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	_, exists := c.chunks[addr.ByteString()]
+
 	return exists, nil
 }
 
 func (c *ChunkStore) Delete(_ context.Context, addr swarm.Address) error {
-	c.chunks.Delete(addr.ByteString())
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	delete(c.chunks, addr.ByteString())
 	return nil
 }
 
 func (c *ChunkStore) Iterate(_ context.Context, fn storage.IterateChunkFn) error {
-	var retErr error
-	c.chunks.Range(func(_, val interface{}) bool {
-		stop, err := fn(val.(swarm.Chunk))
-		if err != nil {
-			retErr = err
-			return false
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	for _, chunks := range c.chunks {
+		for _, chunk := range chunks {
+			stop, err := fn(chunk)
+			if err != nil {
+				return err
+			}
+			if stop {
+				return nil
+			}
 		}
-		return !stop
-	})
-	return retErr
+	}
+
+	return nil
 }
 
 func (c *ChunkStore) Close() error {
 	return nil
+}
+
+// note: this should be probabbly moved to swarm package with other utilities (rebase needed)
+func findChunkWithBatchID(chunks []swarm.Chunk, batchID []byte) (swarm.Chunk, error) {
+	for _, chunk := range chunks {
+		if batchID == nil || bytes.Equal(chunk.Stamp().BatchID(), batchID) {
+			return chunk, nil
+		}
+	}
+
+	return nil, storage.ErrNotFound
 }
