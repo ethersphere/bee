@@ -231,7 +231,7 @@ type mockContract struct {
 	mtx       sync.Mutex
 }
 
-func (m *mockContract) GetFee() *big.Int {
+func (m *mockContract) Fee() *big.Int {
 	return nil
 }
 
