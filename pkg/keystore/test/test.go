@@ -27,7 +27,7 @@ func Service(t *testing.T, s keystore.Service) {
 		t.Fatal("should not exist")
 	}
 
-	edg := new(crypto.Secp256k1EDG)
+	edg := crypto.EDGSecp256_K1
 	// create a new swarm key
 	k1, created, err := s.Key("swarm", "pass123456", edg)
 	if err != nil {
