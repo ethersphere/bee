@@ -1,4 +1,4 @@
-// Copyright 2021 The Swarm Authors. All rights reserved.
+// Copyright 2023 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -19,9 +19,9 @@ type NodeStatusResponse struct {
 }
 
 func (s *Service) redistributionStatusHandler(w http.ResponseWriter, r *http.Request) {
-	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger.WithName("redistribution_status").Build())
+	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger.WithName("get_redistributionstate").Build())
 
-	status, err := s.redistributionAgent.GetStatus()
+	status, err := s.redistributionAgent.Status()
 	if err != nil {
 		logger.Debug("get redistribution status", "overlay address", s.overlay.String(), "error", err)
 		logger.Error(nil, "get redistribution status")
@@ -30,7 +30,7 @@ func (s *Service) redistributionStatusHandler(w http.ResponseWriter, r *http.Req
 	}
 
 	jsonhttp.OK(w, NodeStatusResponse{
-		State:  status.State,
+		State:  status.State.String(),
 		Round:  status.Round,
 		Block:  status.Block,
 		Reward: status.Reward.String(),
