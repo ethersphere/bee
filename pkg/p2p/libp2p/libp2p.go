@@ -353,9 +353,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	h.Network().Notify(peerRegistry) // update peer registry on network events
 	h.Network().Notify(connMetricNotify)
 
-	streamNotify := newStreamNotifier(s.metrics)
-	h.Network().Notify(streamNotify)
-
 	return s, nil
 }
 
@@ -1118,25 +1115,6 @@ type connectionNotifier struct {
 
 func (c *connectionNotifier) Connected(_ network.Network, _ network.Conn) {
 	c.metrics.HandledConnectionCount.Inc()
-}
-
-func newStreamNotifier(m metrics) *streamNotifier {
-	return &streamNotifier{
-		metrics:  m,
-		Notifiee: new(network.NoopNotifiee),
-	}
-}
-
-type streamNotifier struct {
-	metrics metrics
-	network.Notifiee
-}
-
-func (sn *streamNotifier) OpenedStream(network.Network, network.Stream) {
-	sn.metrics.Libp2pCreatedStreamCount.Inc()
-}
-func (sn *streamNotifier) ClosedStream(network.Network, network.Stream) {
-	sn.metrics.Libp2pClosedStreamCount.Inc()
 }
 
 // isNetworkOrHostUnreachableError determines based on the
