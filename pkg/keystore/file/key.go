@@ -65,8 +65,11 @@ type kdfParams struct {
 	Salt  string `json:"salt"`
 }
 
-func encryptKey(k *ecdsa.PrivateKey, password string) ([]byte, error) {
-	data := crypto.EncodeSecp256k1PrivateKey(k)
+func encryptKey(k *ecdsa.PrivateKey, password string, edg keystore.EDG) ([]byte, error) {
+	data, err := edg.Encode(k)
+	if err != nil {
+		return nil, err
+	}
 	kc, err := encryptData(data, []byte(password))
 	if err != nil {
 		return nil, err
@@ -92,7 +95,7 @@ func encryptKey(k *ecdsa.PrivateKey, password string) ([]byte, error) {
 	})
 }
 
-func decryptKey(data []byte, password string) (*ecdsa.PrivateKey, error) {
+func decryptKey(data []byte, password string, edg keystore.EDG) (*ecdsa.PrivateKey, error) {
 	var k encryptedKey
 	if err := json.Unmarshal(data, &k); err != nil {
 		return nil, err
@@ -104,7 +107,7 @@ func decryptKey(data []byte, password string) (*ecdsa.PrivateKey, error) {
 	if err != nil {
 		return nil, err
 	}
-	return crypto.DecodeSecp256k1PrivateKey(d)
+	return edg.Decode(d)
 }
 
 func encryptData(data, password []byte) (*keyCripto, error) {
