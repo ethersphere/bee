@@ -35,7 +35,20 @@ func (c *ChunkStore) GetWithStamp(ctx context.Context, addr swarm.Address, batch
 		return nil, storage.ErrNotFound
 	}
 
-	return findChunkWithBatchID(chunks, batchID)
+	// when batchID is not specifed, first chunk is returned
+	if batchID == nil {
+		if len(chunks) > 0 {
+			return chunks[0], nil
+		}
+		return nil, storage.ErrNotFound
+	}
+
+	// when batchID is specified, we need to search chunks by batchID
+	if ch, found := findChunkWithBatchID(chunks, batchID); found {
+		return ch, nil
+	}
+
+	return nil, storage.ErrNotFound
 }
 
 func (c *ChunkStore) Put(_ context.Context, ch swarm.Chunk) error {
@@ -44,12 +57,14 @@ func (c *ChunkStore) Put(_ context.Context, ch swarm.Chunk) error {
 
 	chunks, ok := c.chunks[ch.Address().ByteString()]
 	if !ok {
-		chunks = make([]swarm.Chunk, 1)
+		chunks = make([]swarm.Chunk, 0, 1)
 	}
 
-	chunks = append(chunks, ch)
-
-	c.chunks[ch.Address().ByteString()] = chunks
+	// append new chunk only if it doesn't exist
+	if _, found := findChunkWithBatchID(chunks, ch.Stamp().BatchID()); !found {
+		chunks = append(chunks, ch)
+		c.chunks[ch.Address().ByteString()] = chunks
+	}
 
 	return nil
 }
@@ -68,6 +83,7 @@ func (c *ChunkStore) Delete(_ context.Context, addr swarm.Address) error {
 	defer c.lock.Unlock()
 
 	delete(c.chunks, addr.ByteString())
+
 	return nil
 }
 
@@ -95,12 +111,11 @@ func (c *ChunkStore) Close() error {
 }
 
 // note: this should be probabbly moved to swarm package with other utilities (rebase needed)
-func findChunkWithBatchID(chunks []swarm.Chunk, batchID []byte) (swarm.Chunk, error) {
+func findChunkWithBatchID(chunks []swarm.Chunk, batchID []byte) (swarm.Chunk, bool) {
 	for _, chunk := range chunks {
-		if batchID == nil || bytes.Equal(chunk.Stamp().BatchID(), batchID) {
-			return chunk, nil
+		if bytes.Equal(chunk.Stamp().BatchID(), batchID) {
+			return chunk, true
 		}
 	}
-
-	return nil, storage.ErrNotFound
+	return nil, false
 }
