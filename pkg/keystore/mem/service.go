@@ -21,7 +21,7 @@ var _ keystore.Service = (*Service)(nil)
 // the password are stored.
 type Service struct {
 	m  map[string]key
-	mu sync.Mutex
+	mu sync.RWMutex
 }
 
 // New creates new memory-based keystore.Service implementation.
@@ -32,8 +32,8 @@ func New() *Service {
 }
 
 func (s *Service) Exists(name string) (bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.mu.RLock()
+	defer s.mu.RUnlock()
 	_, ok := s.m[name]
 	return ok, nil
 
@@ -44,11 +44,19 @@ func (s *Service) SetKey(name, password string, edg keystore.EDG) (*ecdsa.Privat
 	if err != nil {
 		return nil, fmt.Errorf("generate key: %w", err)
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.setKey(name, password, pk)
+
+	return pk, nil
+}
+
+func (s *Service) setKey(name, password string, pk *ecdsa.PrivateKey) {
 	s.m[name] = key{
 		pk:       pk,
 		password: password,
 	}
-	return pk, nil
 }
 
 func (s *Service) Key(name, password string, edg keystore.EDG) (pk *ecdsa.PrivateKey, created bool, err error) {
@@ -57,7 +65,11 @@ func (s *Service) Key(name, password string, edg keystore.EDG) (pk *ecdsa.Privat
 
 	k, ok := s.m[name]
 	if !ok {
-		pk, err := s.SetKey(name, password, edg)
+		pk, err := edg.Generate()
+		if err != nil {
+			return nil, false, fmt.Errorf("generate key: %w", err)
+		}
+		s.setKey(name, password, pk)
 		return pk, true, err
 	}
 
