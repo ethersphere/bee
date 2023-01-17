@@ -40,13 +40,13 @@ func (s *Service) Exists(name string) (bool, error) {
 	return true, nil
 }
 
-func (s *Service) SetKey(name, password string, generateFunc keystore.GeneratorFunc, encodeFunc keystore.EncoderFunc) (*ecdsa.PrivateKey, error) {
-	pk, err := generateFunc()
+func (s *Service) SetKey(name, password string, edg keystore.EDG) (*ecdsa.PrivateKey, error) {
+	pk, err := edg.Generate()
 	if err != nil {
 		return nil, fmt.Errorf("generate key: %w", err)
 	}
 
-	d, err := encryptKey(pk, password, encodeFunc)
+	d, err := encryptKey(pk, password, edg)
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +64,7 @@ func (s *Service) SetKey(name, password string, generateFunc keystore.GeneratorF
 	return pk, nil
 }
 
-func (s *Service) Key(name, password string, generateFunc keystore.GeneratorFunc, encodeFunc keystore.EncoderFunc, decodeFunc keystore.DecoderFunc) (pk *ecdsa.PrivateKey, created bool, err error) {
+func (s *Service) Key(name, password string, edg keystore.EDG) (pk *ecdsa.PrivateKey, created bool, err error) {
 	filename := s.keyFilename(name)
 
 	data, err := os.ReadFile(filename)
@@ -72,11 +72,11 @@ func (s *Service) Key(name, password string, generateFunc keystore.GeneratorFunc
 		return nil, false, fmt.Errorf("read private key: %w", err)
 	}
 	if len(data) == 0 {
-		pk, err := s.SetKey(name, password, generateFunc, encodeFunc)
+		pk, err := s.SetKey(name, password, edg)
 		return pk, true, err
 	}
 
-	pk, err = decryptKey(data, password, decodeFunc)
+	pk, err = decryptKey(data, password, edg)
 	if err != nil {
 		return nil, false, err
 	}
