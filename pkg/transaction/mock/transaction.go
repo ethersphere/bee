@@ -9,7 +9,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	context2 "golang.org/x/net/context"
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/accounts/abi"
@@ -29,7 +28,7 @@ type transactionServiceMock struct {
 	cancelTransaction    func(ctx context.Context, originalTxHash common.Hash) (common.Hash, error)
 }
 
-func (m *transactionServiceMock) Send(ctx context2.Context, request *transaction.TxRequest, boostPercent int) (txHash common.Hash, err error) {
+func (m *transactionServiceMock) Send(ctx context.Context, request *transaction.TxRequest, boostPercent int) (txHash common.Hash, err error) {
 	if m.send != nil {
 		return m.send(ctx, request, boostPercent)
 	}

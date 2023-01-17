@@ -44,37 +44,37 @@ type Monitor interface {
 }
 
 type Agent struct {
-	logger         log.Logger
-	metrics        metrics
-	backend        ChainBackend
-	blocksPerRound uint64
-	monitor        Monitor
-	contract       redistribution.Contract
-	batchExpirer   postagecontract.PostageBatchExpirer
-	stake          staking.RedistributionStatus
-	reserve        postage.Storer
-	sampler        storage.Sampler
-	overlay        swarm.Address
-	quit           chan struct{}
-	wg             sync.WaitGroup
-	state          NodeState
+	logger                 log.Logger
+	metrics                metrics
+	backend                ChainBackend
+	blocksPerRound         uint64
+	monitor                Monitor
+	contract               redistribution.Contract
+	batchExpirer           postagecontract.PostageBatchExpirer
+	redistributionStatuser staking.RedistributionStatUser
+	reserve                postage.Storer
+	sampler                storage.Sampler
+	overlay                swarm.Address
+	quit                   chan struct{}
+	wg                     sync.WaitGroup
+	nodeState              NodeState
 }
 
-func New(overlay swarm.Address, backend ChainBackend, logger log.Logger, monitor Monitor, contract redistribution.Contract, batchExpirer postagecontract.PostageBatchExpirer, stake staking.RedistributionStatus, reserve postage.Storer, sampler storage.Sampler, blockTime time.Duration, blocksPerRound, blocksPerPhase uint64, stateStore storage.StateStorer, erc20Service erc20.Service) *Agent {
+func New(overlay swarm.Address, backend ChainBackend, logger log.Logger, monitor Monitor, contract redistribution.Contract, batchExpirer postagecontract.PostageBatchExpirer, redistributionStatuser staking.RedistributionStatUser, reserve postage.Storer, sampler storage.Sampler, blockTime time.Duration, blocksPerRound, blocksPerPhase uint64, stateStore storage.StateStorer, erc20Service erc20.Service) *Agent {
 	a := &Agent{
-		overlay:        overlay,
-		metrics:        newMetrics(),
-		backend:        backend,
-		logger:         logger.WithName(loggerName).Register(),
-		contract:       contract,
-		batchExpirer:   batchExpirer,
-		reserve:        reserve,
-		monitor:        monitor,
-		blocksPerRound: blocksPerRound,
-		sampler:        sampler,
-		quit:           make(chan struct{}),
-		stake:          stake,
-		state:          NewNode(log.Noop, stateStore, erc20Service),
+		overlay:                overlay,
+		metrics:                newMetrics(),
+		backend:                backend,
+		logger:                 logger.WithName(loggerName).Register(),
+		contract:               contract,
+		batchExpirer:           batchExpirer,
+		reserve:                reserve,
+		monitor:                monitor,
+		blocksPerRound:         blocksPerRound,
+		sampler:                sampler,
+		quit:                   make(chan struct{}),
+		redistributionStatuser: redistributionStatuser,
+		nodeState:              NewNode(log.Noop, stateStore, erc20Service),
 	}
 
 	a.wg.Add(1)
@@ -254,10 +254,10 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 			a.logger.Info("entering phase", "phase", currentPhase.String(), "round", round, "block", block)
 
-			a.state.SetPhase(currentPhase)
-			a.state.SetRound(round)
-			a.state.SetBlock(block)
-			a.state.SaveStatus()
+			a.nodeState.SetPhase(currentPhase)
+			a.nodeState.SetRound(round)
+			a.nodeState.SetBlock(block)
+			a.nodeState.SaveStatus()
 
 			phaseEvents.Publish(currentPhase)
 			if currentPhase == claim {
@@ -274,7 +274,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 func (a *Agent) reveal(ctx context.Context, storageRadius uint8, sample, obfuscationKey []byte) error {
 	a.metrics.RevealPhase.Inc()
 	err := a.contract.Reveal(ctx, storageRadius, sample, obfuscationKey)
-	a.state.SetFee(a.contract.Fee())
+	a.nodeState.SetFee(a.contract.Fee())
 	if err != nil {
 		a.metrics.ErrReveal.Inc()
 	}
@@ -283,7 +283,7 @@ func (a *Agent) reveal(ctx context.Context, storageRadius uint8, sample, obfusca
 
 func (a *Agent) claim(ctx context.Context) error {
 	defer func() {
-		a.state.SaveStatus()
+		a.nodeState.SaveStatus()
 	}()
 	a.metrics.ClaimPhase.Inc()
 	// event claimPhase was processed
@@ -300,9 +300,9 @@ func (a *Agent) claim(ctx context.Context) error {
 	}
 
 	if isWinner {
-		a.state.SetPhase(winner)
+		a.nodeState.SetPhase(winner)
 		a.metrics.Winner.Inc()
-		err := a.state.SetBalance()
+		err := a.nodeState.SetBalance()
 		if err != nil {
 			a.logger.Info("could not set balance", "err", err)
 		}
@@ -311,11 +311,11 @@ func (a *Agent) claim(ctx context.Context) error {
 		if err != nil {
 			a.logger.Info("calculate winner reward", "err", err)
 		}
-		err = a.state.CalculateWinnerReward()
+		err = a.nodeState.CalculateWinnerReward()
 		if err != nil {
 			a.logger.Info("calculate winner reward", "err", err)
 		}
-		a.state.SetFee(a.contract.Fee())
+		a.nodeState.SetFee(a.contract.Fee())
 
 		if err != nil {
 			a.metrics.ErrClaim.Inc()
@@ -341,13 +341,13 @@ func (a *Agent) play(ctx context.Context) (uint8, []byte, error) {
 	storageRadius := a.reserve.GetReserveState().StorageRadius
 
 	// true if frozen
-	isFrozen, err := a.stake.IsFrozen(ctx)
+	isFrozen, err := a.redistributionStatuser.IsFrozen(ctx)
 	if err != nil {
 		a.logger.Info("error checking if stake is frozen", "err", err)
 	}
 	if isFrozen {
-		a.state.SetPhase(frozen)
-		a.state.SaveStatus()
+		a.nodeState.SetPhase(frozen)
+		a.nodeState.SaveStatus()
 	}
 
 	isPlaying, err := a.contract.IsPlaying(ctx, storageRadius)
@@ -419,7 +419,7 @@ func (a *Agent) commit(ctx context.Context, storageRadius uint8, sample []byte, 
 		a.metrics.ErrCommit.Inc()
 		return nil, err
 	}
-	a.state.SetFee(a.contract.Fee())
+	a.nodeState.SetFee(a.contract.Fee())
 	return key, nil
 }
 
@@ -453,5 +453,5 @@ func (a *Agent) wrapCommit(storageRadius uint8, sample []byte, key []byte) ([]by
 
 // Status returns the node status
 func (a *Agent) Status() (status NodeStatus, err error) {
-	return a.state.Status()
+	return a.nodeState.Status()
 }
