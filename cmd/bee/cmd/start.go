@@ -484,15 +484,14 @@ func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config
 			return nil, fmt.Errorf("libp2p key: %w", err)
 		}
 
-		logger.Info("migrating the libp2p keys...")
-
-		libp2pPrivateKey, err = keystore.SetKey("libp2p", password, crypto.EDGSecp256_R1)
+		libp2pPrivateKey, err = migrateKeys(logger, keystore, password)
 		if err != nil {
-			return nil, fmt.Errorf("set libp2p key: %w", err)
+			return nil, fmt.Errorf("migrate libp2p key: %w", err)
 		}
 
 		created = true
 	}
+
 	if created {
 		logger.Debug("new libp2p key created")
 	} else {
@@ -550,4 +549,15 @@ func getConfigByNetworkID(networkID uint64, defaultBlockTimeInSeconds uint64) *n
 	}
 
 	return &config
+}
+
+func migrateKeys(logger log.Logger, keystore keystore.Service, password string) (*ecdsa.PrivateKey, error) {
+	logger.Info("migrating the libp2p keys...")
+
+	libp2pPrivateKey, err := keystore.SetKey("libp2p", password, crypto.EDGSecp256_R1)
+	if err != nil {
+		return nil, fmt.Errorf("set libp2p key: %w", err)
+	}
+
+	return libp2pPrivateKey, nil
 }
