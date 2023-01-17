@@ -37,6 +37,75 @@ func TestGenerateSecp256k1Key(t *testing.T) {
 	}
 }
 
+func TestGenerateSecp256k1EDG(t *testing.T) {
+	t.Parallel()
+
+	k1, err := crypto.EDGSecp256_K1.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if k1 == nil {
+		t.Fatal("nil key")
+	}
+	k2, err := crypto.EDGSecp256_K1.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if k2 == nil {
+		t.Fatal("nil key")
+	}
+
+	if bytes.Equal(k1.D.Bytes(), k2.D.Bytes()) {
+		t.Fatal("two generated keys are equal")
+	}
+}
+
+func TestGenerateSecp256r1Key(t *testing.T) {
+	t.Parallel()
+
+	k1, err := crypto.GenerateSecp256r1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if k1 == nil {
+		t.Fatal("nil key")
+	}
+	k2, err := crypto.GenerateSecp256r1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if k2 == nil {
+		t.Fatal("nil key")
+	}
+
+	if bytes.Equal(k1.D.Bytes(), k2.D.Bytes()) {
+		t.Fatal("two generated keys are equal")
+	}
+}
+
+func TestGenerateSecp256r1EDG(t *testing.T) {
+	t.Parallel()
+
+	r1, err := crypto.EDGSecp256_R1.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r1 == nil {
+		t.Fatal("nil key")
+	}
+	r2, err := crypto.EDGSecp256_R1.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r2 == nil {
+		t.Fatal("nil key")
+	}
+
+	if bytes.Equal(r1.D.Bytes(), r2.D.Bytes()) {
+		t.Fatal("two generated keys are equal")
+	}
+}
+
 func TestNewAddress(t *testing.T) {
 	t.Parallel()
 
@@ -74,6 +143,66 @@ func TestEncodeSecp256k1PrivateKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(k1.D.Bytes(), k2.D.Bytes()) {
+		t.Fatal("encoded and decoded keys are not equal")
+	}
+}
+
+func TestEncodeSecp256k1EDG(t *testing.T) {
+	t.Parallel()
+
+	k1, err := crypto.EDGSecp256_K1.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := crypto.EDGSecp256_K1.Encode(k1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	k2, err := crypto.EDGSecp256_K1.Decode(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(k1.D.Bytes(), k2.D.Bytes()) {
+		t.Fatal("encoded and decoded keys are not equal")
+	}
+}
+
+func TestEncodeSecp256r1PrivateKey(t *testing.T) {
+	t.Parallel()
+
+	r1, err := crypto.GenerateSecp256r1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := crypto.EncodeSecp256r1PrivateKey(r1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r2, err := crypto.DecodeSecp256r1PrivateKey(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(r1.D.Bytes(), r2.D.Bytes()) {
+		t.Fatal("encoded and decoded keys are not equal")
+	}
+}
+
+func TestEncodeSecp256r1EDG(t *testing.T) {
+	t.Parallel()
+
+	r1, err := crypto.EDGSecp256_R1.Generate()
+	if err != nil {
+		t.Fatal(err)
+	}
+	d, err := crypto.EDGSecp256_R1.Encode(r1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r2, err := crypto.EDGSecp256_R1.Decode(d)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(r1.D.Bytes(), r2.D.Bytes()) {
 		t.Fatal("encoded and decoded keys are not equal")
 	}
 }
