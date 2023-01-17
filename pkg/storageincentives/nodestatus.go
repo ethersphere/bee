@@ -15,9 +15,8 @@ import (
 	"sync"
 )
 
-const (
-	redistributionStatusKey = "redistribution_state_"
-)
+const redistributionStatusKey = "redistribution_state_"
+const loggerNameNode = "nodestatus"
 
 type NodeState struct {
 	stateStore     storage.StateStorer
@@ -42,7 +41,7 @@ func NewNode(logger log.Logger, stateStore storage.StateStorer, erc20Service erc
 	return NodeState{
 		stateStore:     stateStore,
 		erc20Service:   erc20Service,
-		logger:         logger.WithName("nodestatus").Register(),
+		logger:         logger.WithName(loggerNameNode).Register(),
 		initialBalance: big.NewInt(0),
 		nodeStatus: NodeStatus{
 			Round:  0,

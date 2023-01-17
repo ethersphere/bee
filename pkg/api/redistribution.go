@@ -5,17 +5,18 @@
 package api
 
 import (
+	"github.com/ethersphere/bee/pkg/bigint"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"net/http"
 )
 
-type NodeStatusResponse struct {
-	State  string `json:"state"`
-	Round  uint64 `json:"round"`
-	Block  uint64 `json:"block"`
-	Reward string `json:"reward"`
-	Fees   string `json:"fees"`
+type nodeStatusResponse struct {
+	State  string         `json:"state"`
+	Round  uint64         `json:"round"`
+	Block  uint64         `json:"block"`
+	Reward *bigint.BigInt `json:"reward"`
+	Fees   *bigint.BigInt `json:"fees"`
 }
 
 func (s *Service) redistributionStatusHandler(w http.ResponseWriter, r *http.Request) {
@@ -29,11 +30,11 @@ func (s *Service) redistributionStatusHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	jsonhttp.OK(w, NodeStatusResponse{
+	jsonhttp.OK(w, nodeStatusResponse{
 		State:  status.State.String(),
 		Round:  status.Round,
 		Block:  status.Block,
-		Reward: status.Reward.String(),
-		Fees:   status.Fees.String(),
+		Reward: bigint.Wrap(status.Reward),
+		Fees:   bigint.Wrap(status.Fees),
 	})
 }

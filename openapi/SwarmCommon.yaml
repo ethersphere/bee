@@ -708,9 +708,9 @@ components:
         block:
           type: integer
         reward:
-          type: string
+          $ref: "#/components/schemas/BigInt"
         fees:
-          type: string
+          $ref: "#/components/schemas/BigInt"
 
     PendingTransactionsResponse:
       type: object

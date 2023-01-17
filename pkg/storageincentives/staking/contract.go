@@ -40,10 +40,10 @@ type Contract interface {
 	DepositStake(ctx context.Context, stakedAmount *big.Int) (common.Hash, error)
 	GetStake(ctx context.Context) (*big.Int, error)
 	WithdrawAllStake(ctx context.Context) (common.Hash, error)
-	RedistributionStatus
+	RedistributionStatUser
 }
 
-type RedistributionStatus interface {
+type RedistributionStatUser interface {
 	IsFrozen(ctx context.Context) (bool, error)
 }
 
