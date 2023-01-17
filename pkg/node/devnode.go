@@ -6,6 +6,7 @@ package node
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
@@ -48,7 +49,6 @@ import (
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 	stakingContractMock "github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	mockTopology "github.com/ethersphere/bee/pkg/topology/mock"
@@ -116,7 +116,10 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 	}
 	b.stateStoreCloser = stateStore
 
-	swarmAddress := test.RandomAddress()
+	swarmAddress, err := randomAddress()
+	if err != nil {
+		return nil, err
+	}
 
 	batchStore, err := batchstore.New(stateStore, func(b []byte) error { return nil }, swarmAddress, logger)
 	if err != nil {
@@ -512,4 +515,17 @@ func (b *DevBee) Shutdown() error {
 
 func pong(ctx context.Context, address swarm.Address, msgs ...string) (rtt time.Duration, err error) {
 	return time.Millisecond, nil
+}
+
+func randomAddress() (swarm.Address, error) {
+
+	b := make([]byte, 32)
+
+	_, err := rand.Read(b)
+	if err != nil {
+		return swarm.ZeroAddress, err
+	}
+
+	return swarm.NewAddress(b), nil
+
 }

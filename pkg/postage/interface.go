@@ -47,7 +47,7 @@ type ReserveStateGetter interface {
 	GetReserveState() *ReserveState
 }
 
-type IsWithinRadius interface {
+type RadiusChecker interface {
 	IsWithinStorageRadius(addr swarm.Address) bool
 }
 
@@ -55,7 +55,7 @@ type IsWithinRadius interface {
 // on the current (highest available) block.
 type Storer interface {
 	ReserveStateGetter
-	IsWithinRadius
+	RadiusChecker
 
 	// Get returns a batch from the store with the given ID.
 	Get([]byte) (*Batch, error)

@@ -254,7 +254,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 
 	addressbook := addressbook.New(stateStore)
 
-	pubKey, _ := signer.PublicKey()
+	pubKey, err := signer.PublicKey()
 	if err != nil {
 		return nil, err
 	}
