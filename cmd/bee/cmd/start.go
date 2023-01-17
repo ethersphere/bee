@@ -467,7 +467,7 @@ func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config
 		}
 	} else {
 		logger.Warning("clef is not enabled; portability and security of your keys is sub optimal")
-		swarmPrivateKey, _, err := keystore.Key("swarm", password, crypto.GenerateSecp256k1Key, crypto.EncodeSecp256k1PrivateKey, crypto.DecodeSecp256k1PrivateKey)
+		swarmPrivateKey, _, err := keystore.Key("swarm", password, crypto.EDGSecp256_K1)
 		if err != nil {
 			return nil, fmt.Errorf("swarm key: %w", err)
 		}
@@ -478,7 +478,7 @@ func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config
 	logger.Info("swarm public key", "public_key", hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(publicKey)))
 
 	// use secp256r1 for libp2p as requires specific elliptic curve implementations only
-	libp2pPrivateKey, created, err := keystore.Key("libp2p", password, crypto.GenerateSecp256r1Key, crypto.EncodeSecp256r1PrivateKey, crypto.DecodeSecp256r1PrivateKey)
+	libp2pPrivateKey, created, err := keystore.Key("libp2p", password, crypto.EDGSecp256_R1)
 	if err != nil {
 		if !errors.Is(err, crypto.ErrX509Parse) {
 			return nil, fmt.Errorf("libp2p key: %w", err)
@@ -486,7 +486,7 @@ func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config
 
 		logger.Info("migrating the libp2p keys...")
 
-		libp2pPrivateKey, err = keystore.SetKey("libp2p", password, crypto.GenerateSecp256r1Key, crypto.EncodeSecp256r1PrivateKey)
+		libp2pPrivateKey, err = keystore.SetKey("libp2p", password, crypto.EDGSecp256_R1)
 		if err != nil {
 			return nil, fmt.Errorf("set libp2p key: %w", err)
 		}
@@ -499,7 +499,7 @@ func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config
 		logger.Debug("using existing libp2p key")
 	}
 
-	pssPrivateKey, created, err := keystore.Key("pss", password, crypto.GenerateSecp256k1Key, crypto.EncodeSecp256k1PrivateKey, crypto.DecodeSecp256k1PrivateKey)
+	pssPrivateKey, created, err := keystore.Key("pss", password, crypto.EDGSecp256_K1)
 	if err != nil {
 		return nil, fmt.Errorf("pss key: %w", err)
 	}
