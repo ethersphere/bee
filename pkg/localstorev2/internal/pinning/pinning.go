@@ -57,6 +57,8 @@ type CollectionStat struct {
 // pinCollectionSize represents the size of the pinCollectionItem
 const pinCollectionItemSize = swarm.HashSize + uuidSize + 8 + 8
 
+var _ storage.Item = (*pinCollectionItem)(nil)
+
 // pinCollectionItem is the index used to describe a pinning collection. The Addr
 // is the root reference of the collection and UUID is a unique UUID for this collection.
 type pinCollectionItem struct {
@@ -65,10 +67,9 @@ type pinCollectionItem struct {
 	Stat CollectionStat
 }
 
-// common prefix for all pinCollectionItem entries
-func (pinCollectionItem) Namespace() string { return "pinCollectionItem" }
-
 func (p *pinCollectionItem) ID() string { return p.Addr.ByteString() }
+
+func (pinCollectionItem) Namespace() string { return "pinCollectionItem" }
 
 func (p *pinCollectionItem) Marshal() ([]byte, error) {
 	if p.Addr.IsZero() {
@@ -100,6 +101,19 @@ func (p *pinCollectionItem) Unmarshal(buf []byte) error {
 	return nil
 }
 
+func (p *pinCollectionItem) Clone() storage.Item {
+	if p == nil {
+		return nil
+	}
+	return &pinCollectionItem{
+		Addr: p.Addr.Clone(),
+		UUID: append([]byte(nil), p.UUID...),
+		Stat: p.Stat,
+	}
+}
+
+var _ storage.Item = (*pinChunkItem)(nil)
+
 // pinChunkItem is the index used to represent a single chunk in the pinning
 // collection. It is prefixed with the UUID of the collection.
 type pinChunkItem struct {
@@ -121,6 +135,16 @@ func (p *pinChunkItem) Marshal() ([]byte, error) {
 
 func (p *pinChunkItem) Unmarshal(_ []byte) error {
 	return nil
+}
+
+func (p *pinChunkItem) Clone() storage.Item {
+	if p == nil {
+		return nil
+	}
+	return &pinChunkItem{
+		UUID: append([]byte(nil), p.UUID...),
+		Addr: p.Addr.Clone(),
+	}
 }
 
 // NewCollection returns a putter wrapped around the passed storage.
