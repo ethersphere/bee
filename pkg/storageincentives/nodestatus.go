@@ -16,7 +16,7 @@ import (
 	"sync"
 )
 
-const redistributionStatusKey = "redistribution_state_"
+const redistributionStatusKey = "redistribution_state"
 const loggerNameNode = "nodestatus"
 
 type NodeState struct {
@@ -136,8 +136,12 @@ func (n *NodeState) SaveStatus() {
 }
 
 // Status returns the node status
-func (n *NodeState) Status() (status NodeStatus, err error) {
-	return status, n.stateStore.Get(redistributionStatusKey, &status)
+func (n *NodeState) Status() (*NodeStatus, error) {
+	status := new(NodeStatus)
+	if err := n.stateStore.Get(redistributionStatusKey, status); err != nil {
+		return nil, err
+	}
+	return status, nil
 }
 
 func (n *NodeState) SetBalance() error {

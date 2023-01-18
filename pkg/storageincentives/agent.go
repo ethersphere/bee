@@ -51,7 +51,7 @@ type Agent struct {
 	monitor                Monitor
 	contract               redistribution.Contract
 	batchExpirer           postagecontract.PostageBatchExpirer
-	redistributionStatuser staking.RedistributionStatUser
+	redistributionStatuser staking.RedistributionStatuser
 	reserve                postage.Storer
 	sampler                storage.Sampler
 	overlay                swarm.Address
@@ -60,7 +60,7 @@ type Agent struct {
 	nodeState              NodeState
 }
 
-func New(overlay swarm.Address, backend ChainBackend, logger log.Logger, monitor Monitor, contract redistribution.Contract, batchExpirer postagecontract.PostageBatchExpirer, redistributionStatuser staking.RedistributionStatUser, reserve postage.Storer, sampler storage.Sampler, blockTime time.Duration, blocksPerRound, blocksPerPhase uint64, stateStore storage.StateStorer, erc20Service erc20.Service) *Agent {
+func New(overlay swarm.Address, backend ChainBackend, logger log.Logger, monitor Monitor, contract redistribution.Contract, batchExpirer postagecontract.PostageBatchExpirer, redistributionStatuser staking.RedistributionStatuser, reserve postage.Storer, sampler storage.Sampler, blockTime time.Duration, blocksPerRound, blocksPerPhase uint64, stateStore storage.StateStorer, erc20Service erc20.Service) *Agent {
 	a := &Agent{
 		overlay:                overlay,
 		metrics:                newMetrics(),
@@ -342,7 +342,7 @@ func (a *Agent) play(ctx context.Context) (uint8, []byte, error) {
 	storageRadius := a.reserve.GetReserveState().StorageRadius
 
 	// true if frozen
-	isFrozen, err := a.redistributionStatuser.IsFrozen(ctx)
+	isFrozen, err := a.redistributionStatuser.IsOverlayFrozen(ctx)
 	if err != nil {
 		a.logger.Info("error checking if stake is frozen", "err", err)
 	}
@@ -453,6 +453,6 @@ func (a *Agent) wrapCommit(storageRadius uint8, sample []byte, key []byte) ([]by
 }
 
 // Status returns the node status
-func (a *Agent) Status() (status NodeStatus, err error) {
+func (a *Agent) Status() (*NodeStatus, error) {
 	return a.nodeState.Status()
 }
