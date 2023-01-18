@@ -74,7 +74,7 @@ func New(overlay swarm.Address, backend ChainBackend, logger log.Logger, monitor
 		sampler:                sampler,
 		quit:                   make(chan struct{}),
 		redistributionStatuser: redistributionStatuser,
-		nodeState:              NewNode(log.Noop, stateStore, erc20Service),
+		nodeState:              NewNode(logger, stateStore, erc20Service, contract),
 	}
 
 	a.wg.Add(1)
@@ -104,6 +104,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		phaseEvents    = newEvents()
 	)
 
+	a.nodeState.SetState(idle)
 	// cancel all possible running phases
 	defer phaseEvents.Close()
 
@@ -274,7 +275,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 func (a *Agent) reveal(ctx context.Context, storageRadius uint8, sample, obfuscationKey []byte) error {
 	a.metrics.RevealPhase.Inc()
 	err := a.contract.Reveal(ctx, storageRadius, sample, obfuscationKey)
-	a.nodeState.SetFee(a.contract.Fee())
+	a.nodeState.AddFee()
 	if err != nil {
 		a.metrics.ErrReveal.Inc()
 	}
@@ -300,7 +301,7 @@ func (a *Agent) claim(ctx context.Context) error {
 	}
 
 	if isWinner {
-		a.nodeState.SetPhase(winner)
+		a.nodeState.SetState(winner)
 		a.metrics.Winner.Inc()
 		err := a.nodeState.SetBalance()
 		if err != nil {
@@ -315,7 +316,7 @@ func (a *Agent) claim(ctx context.Context) error {
 		if err != nil {
 			a.logger.Info("calculate winner reward", "err", err)
 		}
-		a.nodeState.SetFee(a.contract.Fee())
+		a.nodeState.AddFee()
 
 		if err != nil {
 			a.metrics.ErrClaim.Inc()
@@ -346,7 +347,7 @@ func (a *Agent) play(ctx context.Context) (uint8, []byte, error) {
 		a.logger.Info("error checking if stake is frozen", "err", err)
 	}
 	if isFrozen {
-		a.nodeState.SetPhase(frozen)
+		a.nodeState.SetState(frozen)
 		a.nodeState.SaveStatus()
 	}
 
@@ -419,7 +420,7 @@ func (a *Agent) commit(ctx context.Context, storageRadius uint8, sample []byte, 
 		a.metrics.ErrCommit.Inc()
 		return nil, err
 	}
-	a.nodeState.SetFee(a.contract.Fee())
+	a.nodeState.AddFee()
 	return key, nil
 }
 
