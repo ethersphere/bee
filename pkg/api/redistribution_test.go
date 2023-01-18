@@ -5,6 +5,8 @@
 package api_test
 
 import (
+	"github.com/ethersphere/bee/pkg/api"
+	"github.com/ethersphere/bee/pkg/bigint"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	testing2 "github.com/ethersphere/bee/pkg/postage/testing"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
@@ -18,13 +20,15 @@ func TestRedistributionStatus(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 		store := statestore.NewStateStore()
-		err := store.Put("redistribution_state_", storageincentives.NodeStatus{
+		expectedResponse := storageincentives.NodeStatus{
 			State:  0,
+			Phase:  0,
 			Round:  2,
 			Block:  6,
 			Reward: testing2.NewBigInt(),
 			Fees:   testing2.NewBigInt(),
-		})
+		}
+		err := store.Put("redistribution_state_", expectedResponse)
 		if err != nil {
 			t.Errorf("redistribution put state: %v", err)
 		}
@@ -34,6 +38,14 @@ func TestRedistributionStatus(t *testing.T) {
 		})
 		jsonhttptest.Request(t, srv, http.MethodGet, "/redistributionstate", http.StatusOK,
 			jsonhttptest.WithRequestHeader("Content-Type", "application/json; charset=utf-8"),
+			jsonhttptest.WithExpectedJSONResponse(api.NodeStatusResponse{
+				State:  expectedResponse.State.String(),
+				Phase:  expectedResponse.Phase.String(),
+				Round:  expectedResponse.Round,
+				Block:  expectedResponse.Block,
+				Reward: bigint.Wrap(expectedResponse.Reward),
+				Fees:   bigint.Wrap(expectedResponse.Fees),
+			}),
 		)
 
 	})
