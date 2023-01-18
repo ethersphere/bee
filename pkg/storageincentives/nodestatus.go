@@ -16,7 +16,7 @@ import (
 	"sync"
 )
 
-const redistributionStatusKey = "redistribution_state_"
+const redistributionStatusKey = "redistribution_state"
 const loggerNameNode = "nodestatus"
 
 type NodeState struct {

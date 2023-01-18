@@ -5,8 +5,8 @@
 package api_test
 
 import (
+	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	testing2 "github.com/ethersphere/bee/pkg/postage/testing"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storageincentives"
 	"net/http"
@@ -18,13 +18,13 @@ func TestRedistributionStatus(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
 		store := statestore.NewStateStore()
-		err := store.Put("redistribution_state_", storageincentives.NodeStatus{
-			State:  0,
-			Round:  2,
-			Block:  6,
-			Reward: testing2.NewBigInt(),
-			Fees:   testing2.NewBigInt(),
-		})
+		expectedResponse := storageincentives.NodeStatus{
+			State: storageincentives.State(3),
+			Phase: storageincentives.PhaseType(1),
+			Round: 1,
+			Block: 12,
+		}
+		err := store.Put("redistribution_state", expectedResponse)
 		if err != nil {
 			t.Errorf("redistribution put state: %v", err)
 		}
@@ -34,6 +34,12 @@ func TestRedistributionStatus(t *testing.T) {
 		})
 		jsonhttptest.Request(t, srv, http.MethodGet, "/redistributionstate", http.StatusOK,
 			jsonhttptest.WithRequestHeader("Content-Type", "application/json; charset=utf-8"),
+			jsonhttptest.WithExpectedJSONResponse(api.NodeStatusResponse{
+				State: expectedResponse.State.String(),
+				Phase: expectedResponse.Phase.String(),
+				Round: expectedResponse.Round,
+				Block: expectedResponse.Block,
+			}),
 		)
 
 	})

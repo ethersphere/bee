@@ -32,7 +32,7 @@ func (s *stakingContractMock) WithdrawAllStake(ctx context.Context) (common.Hash
 	return s.withdrawAllStake(ctx)
 }
 
-func (s *stakingContractMock) IsFrozen(ctx context.Context) (bool, error) {
+func (s *stakingContractMock) IsOverlayFrozen(ctx context.Context) (bool, error) {
 	return s.isFrozen(ctx)
 }
 
