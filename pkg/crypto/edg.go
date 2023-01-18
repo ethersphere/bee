@@ -23,17 +23,17 @@ func (s *edgSecp256_k1) Decode(data []byte) (*ecdsa.PrivateKey, error) {
 	return DecodeSecp256k1PrivateKey(data)
 }
 
-// edg aggregates private key cryptography functions that employ secp256r1
-type edg struct{}
+// edgSecp256_r1 aggregates private key cryptography functions that employ secp256r1
+type edgSecp256_r1 struct{}
 
-var EDGSecp256_R1 = new(edg)
+var EDGSecp256_R1 = new(edgSecp256_r1)
 
-func (s *edg) Generate() (*ecdsa.PrivateKey, error) {
+func (s *edgSecp256_r1) Generate() (*ecdsa.PrivateKey, error) {
 	return GenerateSecp256r1Key()
 }
-func (s *edg) Encode(k *ecdsa.PrivateKey) ([]byte, error) {
+func (s *edgSecp256_r1) Encode(k *ecdsa.PrivateKey) ([]byte, error) {
 	return EncodeSecp256r1PrivateKey(k)
 }
-func (s *edg) Decode(data []byte) (*ecdsa.PrivateKey, error) {
+func (s *edgSecp256_r1) Decode(data []byte) (*ecdsa.PrivateKey, error) {
 	return DecodeSecp256r1PrivateKey(data)
 }
