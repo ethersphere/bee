@@ -10,6 +10,7 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"math/big"
 	"sync"
@@ -25,24 +26,48 @@ type NodeState struct {
 	overlay        swarm.Address
 	mtx            sync.Mutex
 	nodeStatus     NodeStatus
-	initialBalance *big.Int
+	currentBalance *big.Int
+	contract       redistribution.Contract
 }
 
 // NodeStatus provide internal status of the nodes in the redistribution game
 type NodeStatus struct {
-	State  PhaseType `json:"state"`
+	Phase  PhaseType `json:"phase"`
+	State  State     `json:"state"`
 	Round  uint64    `json:"round"`
 	Block  uint64    `json:"block"`
 	Reward *big.Int  `json:"reward"`
 	Fees   *big.Int  `json:"fees"`
 }
 
-func NewNode(logger log.Logger, stateStore storage.StateStorer, erc20Service erc20.Service) NodeState {
+type State int
+
+const (
+	winner State = iota + 1
+	frozen
+	idle
+)
+
+func (s State) String() string {
+	switch s {
+	case winner:
+		return "winner"
+	case frozen:
+		return "frozen"
+	case idle:
+		return "idle"
+	default:
+		return "unknown"
+	}
+}
+
+func NewNode(logger log.Logger, stateStore storage.StateStorer, erc20Service erc20.Service, contract redistribution.Contract) NodeState {
 	return NodeState{
 		stateStore:     stateStore,
 		erc20Service:   erc20Service,
 		logger:         logger.WithName(loggerNameNode).Register(),
-		initialBalance: big.NewInt(0),
+		currentBalance: big.NewInt(0),
+		contract:       contract,
 		nodeStatus: NodeStatus{
 			Round:  0,
 			Block:  0,
@@ -52,10 +77,16 @@ func NewNode(logger log.Logger, stateStore storage.StateStorer, erc20Service erc
 	}
 }
 
+func (n *NodeState) SetState(s State) {
+	n.mtx.Lock()
+	defer n.mtx.Unlock()
+	n.nodeStatus.State = s
+}
+
 func (n *NodeState) SetPhase(p PhaseType) {
 	n.mtx.Lock()
 	defer n.mtx.Unlock()
-	n.nodeStatus.State = p
+	n.nodeStatus.Phase = p
 }
 
 func (n *NodeState) SetRound(r uint64) {
@@ -70,10 +101,11 @@ func (n *NodeState) SetBlock(b uint64) {
 	n.nodeStatus.Block = b
 }
 
-// SetFee sets the internal node status
-func (n *NodeState) SetFee(fee *big.Int) {
+// AddFee sets the internal node status
+func (n *NodeState) AddFee() {
 	n.mtx.Lock()
 	defer n.mtx.Unlock()
+	fee := n.contract.Fee()
 	if fee != nil {
 		n.nodeStatus.Fees = n.nodeStatus.Fees.Add(n.nodeStatus.Fees, fee)
 	}
@@ -87,7 +119,7 @@ func (n *NodeState) CalculateWinnerReward() error {
 		return err
 	}
 	if currentBalance != nil {
-		n.nodeStatus.Reward = currentBalance.Sub(currentBalance, n.initialBalance)
+		n.nodeStatus.Reward = currentBalance.Sub(currentBalance, n.currentBalance)
 	}
 	return nil
 }
@@ -115,6 +147,6 @@ func (n *NodeState) SetBalance() error {
 		n.logger.Debug("error getting balance", "error", err, "overly address", n.overlay.String())
 		return err
 	}
-	n.initialBalance.Set(currentBalance)
+	n.currentBalance.Set(currentBalance)
 	return nil
 }
