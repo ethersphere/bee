@@ -9,12 +9,14 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 
+	"github.com/btcsuite/btcd/btcec"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/keystore"
 	"github.com/google/uuid"
@@ -72,9 +74,18 @@ func encryptKey(k *ecdsa.PrivateKey, password string, edg keystore.EDG) ([]byte,
 	if err != nil {
 		return nil, err
 	}
-	addr, err := crypto.NewEthereumAddress(k.PublicKey)
-	if err != nil {
-		return nil, err
+	var addr []byte
+	switch k.PublicKey.Curve {
+	case btcec.S256():
+		a, err := crypto.NewEthereumAddress(k.PublicKey)
+		if err != nil {
+			return nil, err
+		}
+		addr = a
+	case elliptic.P256():
+		addr = elliptic.Marshal(elliptic.P256(), k.PublicKey.X, k.PublicKey.Y)
+	default:
+		return nil, fmt.Errorf("unsupported curve: %v", k.PublicKey.Curve)
 	}
 	return json.Marshal(encryptedKey{
 		Address: hex.EncodeToString(addr),
