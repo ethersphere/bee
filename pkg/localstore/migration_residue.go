@@ -6,6 +6,7 @@ package localstore
 
 import (
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"time"
 
@@ -129,7 +130,10 @@ func migrateResidue(db *DB) error {
 
 	err = gcIndex.Iterate(func(item shed.Item) (bool, error) {
 		sItem, err := retrievalDataIndex.Get(item)
-		if err != nil {
+		switch {
+		case errors.Is(err, leveldb.ErrNotFound):
+			return true, nil
+		case err != nil:
 			return true, fmt.Errorf("retrievalIndex not found: %w", err)
 		}
 
