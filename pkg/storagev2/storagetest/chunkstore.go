@@ -9,6 +9,7 @@ import (
 	"errors"
 	"testing"
 
+	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -47,6 +48,66 @@ func TestChunkStore(t *testing.T, st storage.ChunkStore) {
 			if !readCh.Equal(ch) {
 				t.Fatal("read chunk doesnt match")
 			}
+		}
+	})
+
+	t.Run("get chunks with stamp", func(t *testing.T) {
+		for _, ch := range testChunks {
+			readCh, err := st.GetWithStamp(context.TODO(), ch.Address(), ch.Stamp().BatchID())
+			if err != nil {
+				t.Fatalf("failed getting chunk: %v", err)
+			}
+			if !readCh.Equal(ch) {
+				t.Fatal("read chunk doesnt match")
+			}
+		}
+	})
+
+	t.Run("get chunks with multiple stamps", func(t *testing.T) {
+		stamp1 := postagetesting.MustNewStamp()
+		stamp2 := postagetesting.MustNewStamp()
+		ch1 := chunktest.GenerateTestRandomInvalidChunk().WithStamp(stamp1)
+		ch2 := swarm.NewChunk(ch1.Address(), ch1.Data()).WithStamp(stamp2)
+
+		err := st.Put(context.TODO(), ch1)
+		if err != nil {
+			t.Fatalf("failed putting new chunk: %v", err)
+		}
+
+		err = st.Put(context.TODO(), ch2)
+		if err != nil {
+			t.Fatalf("failed putting new chunk: %v", err)
+		}
+
+		readCh, err := st.GetWithStamp(context.TODO(), ch1.Address(), stamp1.BatchID())
+		if err != nil {
+			t.Fatalf("failed getting chunk: %v", err)
+		}
+		if !readCh.Equal(ch1) {
+			t.Fatal("read chunk doesnt match")
+		}
+
+		readCh, err = st.GetWithStamp(context.TODO(), ch2.Address(), stamp2.BatchID())
+		if err != nil {
+			t.Fatalf("failed getting chunk: %v", err)
+		}
+		if !readCh.Equal(ch2) {
+			t.Fatal("read chunk doesnt match")
+		}
+
+		err = st.Delete(context.TODO(), ch1.Address())
+		if err != nil {
+			t.Fatalf("failed deleting chunk: %v", err)
+		}
+
+		_, err = st.GetWithStamp(context.TODO(), ch1.Address(), stamp1.BatchID())
+		if !errors.Is(err, storage.ErrNotFound) {
+			t.Fatalf("expected storage not found error found")
+		}
+
+		readCh, err = st.GetWithStamp(context.TODO(), ch2.Address(), stamp2.BatchID())
+		if !errors.Is(err, storage.ErrNotFound) {
+			t.Fatalf("expected storage not found error found")
 		}
 	})
 

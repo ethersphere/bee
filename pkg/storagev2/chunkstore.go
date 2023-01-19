@@ -72,6 +72,7 @@ type ChunkGetterDeleter interface {
 type ChunkStore interface {
 	io.Closer
 	Getter
+	GetterWithStamp
 	Putter
 	Deleter
 

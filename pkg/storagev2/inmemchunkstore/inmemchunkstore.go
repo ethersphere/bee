@@ -19,7 +19,9 @@ type ChunkStore struct {
 }
 
 func New() *ChunkStore {
-	return &ChunkStore{}
+	return &ChunkStore{
+		chunks: make(map[string][]swarm.Chunk),
+	}
 }
 
 func (c *ChunkStore) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
