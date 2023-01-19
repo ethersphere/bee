@@ -107,10 +107,15 @@ type transactionService struct {
 	store   storage.StateStorer
 	chainID *big.Int
 	monitor Monitor
+
+	boostTipRange   []int
+	boostPriceRange []int
+	defaultBoost    bool
 }
 
 // NewService creates a new transaction service.
-func NewService(logger log.Logger, backend Backend, signer crypto.Signer, store storage.StateStorer, chainID *big.Int, monitor Monitor) (Service, error) {
+func NewService(logger log.Logger, backend Backend, signer crypto.Signer, store storage.StateStorer, chainID *big.Int, monitor Monitor,
+	boostTipRange []int, boostPriceRange []int, defaultBoost bool) (Service, error) {
 	senderAddress, err := signer.EthereumAddress()
 	if err != nil {
 		return nil, err
@@ -119,15 +124,20 @@ func NewService(logger log.Logger, backend Backend, signer crypto.Signer, store 
 	ctx, cancel := context.WithCancel(context.Background())
 
 	t := &transactionService{
-		ctx:     ctx,
-		cancel:  cancel,
-		logger:  logger.WithName(loggerName).Register(),
-		backend: backend,
-		signer:  signer,
-		sender:  senderAddress,
-		store:   store,
-		chainID: chainID,
-		monitor: monitor,
+		wg:              sync.WaitGroup{},
+		lock:            sync.Mutex{},
+		ctx:             ctx,
+		cancel:          cancel,
+		logger:          logger.WithName(loggerName).Register(),
+		backend:         backend,
+		signer:          signer,
+		sender:          senderAddress,
+		store:           store,
+		chainID:         chainID,
+		monitor:         monitor,
+		boostTipRange:   boostTipRange,
+		boostPriceRange: boostPriceRange,
+		defaultBoost:    defaultBoost,
 	}
 
 	err = t.waitForAllPendingTx()

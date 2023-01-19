@@ -66,6 +66,9 @@ func (c *command) initDeployCmd() error {
 				signer,
 				blocktime,
 				true,
+				c.config.GetIntSlice(optionNameBoostGasTip),
+				c.config.GetIntSlice(optionNameBoostGasPrice),
+				c.config.GetBool(optionNameEnableDefaultBoost),
 			)
 			if err != nil {
 				return err

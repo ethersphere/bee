@@ -344,6 +344,9 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		AdminPasswordHash:             c.config.GetString(optionNameAdminPasswordHash),
 		UsePostageSnapshot:            c.config.GetBool(optionNameUsePostageSnapshot),
 		EnableStorageIncentives:       c.config.GetBool(optionNameStorageIncentivesEnable),
+		BoostGasTip:                   c.config.GetIntSlice(optionNameBoostGasTip),
+		BoostGasPrice:                 c.config.GetIntSlice(optionNameBoostGasPrice),
+		DefaultBoost:                  c.config.GetBool(optionNameEnableDefaultBoost),
 	})
 
 	return b, err

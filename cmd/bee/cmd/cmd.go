@@ -85,6 +85,9 @@ const (
 	optionNameAdminPasswordHash          = "admin-password"
 	optionNameUsePostageSnapshot         = "use-postage-snapshot"
 	optionNameStorageIncentivesEnable    = "storage-incentives-enable"
+	optionNameBoostGasTip                = "boost-gas-tip"
+	optionNameBoostGasPrice              = "boost-gas-price"
+	optionNameEnableDefaultBoost         = "enable-default-boost"
 )
 
 // nolint:gochecknoinits
@@ -300,6 +303,9 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameAdminPasswordHash, "", "bcrypt hash of the admin password to get the security token")
 	cmd.Flags().Bool(optionNameUsePostageSnapshot, false, "bootstrap node using postage snapshot from the network")
 	cmd.Flags().Bool(optionNameStorageIncentivesEnable, true, "enable storage incentives feature")
+	cmd.Flags().IntSlice(optionNameBoostGasPrice, []int{}, "define a range for boosting gas price")
+	cmd.Flags().IntSlice(optionNameBoostGasTip, []int{}, "define a range for boosting gas tip")
+	cmd.Flags().Bool(optionNameEnableDefaultBoost, true, "enable or disable default boost")
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {

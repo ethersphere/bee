@@ -178,6 +178,9 @@ type Options struct {
 	AdminPasswordHash             string
 	UsePostageSnapshot            bool
 	EnableStorageIncentives       bool
+	BoostGasTip                   []int
+	BoostGasPrice                 []int
+	DefaultBoost                  bool
 }
 
 const (
@@ -293,7 +296,10 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		o.ChainID,
 		signer,
 		o.BlockTime,
-		chainEnabled)
+		chainEnabled,
+		o.BoostGasTip,
+		o.BoostGasPrice,
+		o.DefaultBoost)
 	if err != nil {
 		return nil, fmt.Errorf("init chain: %w", err)
 	}

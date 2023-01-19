@@ -54,6 +54,9 @@ func InitChain(
 	signer crypto.Signer,
 	pollingInterval time.Duration,
 	chainEnabled bool,
+	boostTipRange []int,
+	boostPriceRange []int,
+	defaultBoost bool,
 ) (transaction.Backend, common.Address, int64, transaction.Monitor, transaction.Service, error) {
 	var backend transaction.Backend = &noOpChainBackend{
 		chainID: oChainID,
@@ -90,7 +93,7 @@ func InitChain(
 
 	transactionMonitor := transaction.NewMonitor(logger, backend, overlayEthAddress, pollingInterval, cancellationDepth)
 
-	transactionService, err := transaction.NewService(logger, backend, signer, stateStore, chainID, transactionMonitor)
+	transactionService, err := transaction.NewService(logger, backend, signer, stateStore, chainID, transactionMonitor, boostTipRange, boostPriceRange, defaultBoost)
 	if err != nil {
 		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("new transaction service: %w", err)
 	}
