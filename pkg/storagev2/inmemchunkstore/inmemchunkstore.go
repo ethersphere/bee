@@ -7,10 +7,16 @@ package inmemchunkstore
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"sync"
 
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
+)
+
+var (
+	ErrNoStampsForChunk = fmt.Errorf("chunk found but no stamps for chunk found: %w", storage.ErrNotFound)
+	ErrStampNotFound    = fmt.Errorf("chunk with stamp was not found: %w", storage.ErrNotFound)
 )
 
 type ChunkStore struct {
@@ -44,7 +50,11 @@ func (c *ChunkStore) GetWithStamp(ctx context.Context, addr swarm.Address, batch
 
 	// when batchID is not specified, chunk with first stamp is returned
 	if batchID == nil {
-		return makeChunk(data.chunk, data.stamps[0]), nil
+		if st := firstStamp(data.stamps); st != nil {
+			return makeChunk(data.chunk, st), nil
+		}
+
+		return nil, ErrNoStampsForChunk
 	}
 
 	// when batchID is specified, we need to search stamps by batchID
@@ -52,7 +62,7 @@ func (c *ChunkStore) GetWithStamp(ctx context.Context, addr swarm.Address, batch
 		return makeChunk(data.chunk, st), nil
 	}
 
-	return nil, storage.ErrNotFound
+	return nil, ErrStampNotFound
 }
 
 func (c *ChunkStore) Put(_ context.Context, ch swarm.Chunk) error {
@@ -68,9 +78,11 @@ func (c *ChunkStore) Put(_ context.Context, ch swarm.Chunk) error {
 	}
 
 	// append new stamp only if it doesn't exist
-	if _, found := findStampWithBatchID(data.stamps, ch.Stamp().BatchID()); !found {
-		data.stamps = append(data.stamps, ch.Stamp())
-		c.chunks[ch.Address().ByteString()] = data
+	if ch.Stamp().BatchID() != nil {
+		if _, found := findStampWithBatchID(data.stamps, ch.Stamp().BatchID()); !found {
+			data.stamps = append(data.stamps, ch.Stamp())
+			c.chunks[ch.Address().ByteString()] = data
+		}
 	}
 
 	return nil
@@ -99,14 +111,12 @@ func (c *ChunkStore) Iterate(_ context.Context, fn storage.IterateChunkFn) error
 	defer c.lock.Unlock()
 
 	for _, data := range c.chunks {
-		for _, stamp := range data.stamps {
-			stop, err := fn(makeChunk(data.chunk, stamp))
-			if err != nil {
-				return err
-			}
-			if stop {
-				return nil
-			}
+		stop, err := fn(makeChunk(data.chunk, firstStamp(data.stamps)))
+		if err != nil {
+			return err
+		}
+		if stop {
+			return nil
 		}
 	}
 
@@ -114,6 +124,13 @@ func (c *ChunkStore) Iterate(_ context.Context, fn storage.IterateChunkFn) error
 }
 
 func (c *ChunkStore) Close() error {
+	return nil
+}
+
+func firstStamp(stamps []swarm.Stamp) swarm.Stamp {
+	if len(stamps) > 0 {
+		return stamps[0]
+	}
 	return nil
 }
 
