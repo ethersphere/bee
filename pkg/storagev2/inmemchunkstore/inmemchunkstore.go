@@ -14,13 +14,18 @@ import (
 )
 
 type ChunkStore struct {
-	chunks map[string][]swarm.Chunk
+	chunks map[string]chunkData
 	lock   sync.Mutex
+}
+
+type chunkData struct {
+	chunk  swarm.Chunk
+	stamps []swarm.Stamp
 }
 
 func New() *ChunkStore {
 	return &ChunkStore{
-		chunks: make(map[string][]swarm.Chunk),
+		chunks: make(map[string]chunkData),
 	}
 }
 
@@ -32,22 +37,19 @@ func (c *ChunkStore) GetWithStamp(ctx context.Context, addr swarm.Address, batch
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	chunks, ok := c.chunks[addr.ByteString()]
+	data, ok := c.chunks[addr.ByteString()]
 	if !ok {
 		return nil, storage.ErrNotFound
 	}
 
-	// when batchID is not specifed, first chunk is returned
+	// when batchID is not specified, chunk with first stamp is returned
 	if batchID == nil {
-		if len(chunks) > 0 {
-			return chunks[0], nil
-		}
-		return nil, storage.ErrNotFound
+		return makeChunk(data.chunk, data.stamps[0]), nil
 	}
 
-	// when batchID is specified, we need to search chunks by batchID
-	if ch, found := findChunkWithBatchID(chunks, batchID); found {
-		return ch, nil
+	// when batchID is specified, we need to search stamps by batchID
+	if st, found := findStampWithBatchID(data.stamps, batchID); found {
+		return makeChunk(data.chunk, st), nil
 	}
 
 	return nil, storage.ErrNotFound
@@ -57,15 +59,18 @@ func (c *ChunkStore) Put(_ context.Context, ch swarm.Chunk) error {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	chunks, ok := c.chunks[ch.Address().ByteString()]
+	data, ok := c.chunks[ch.Address().ByteString()]
 	if !ok {
-		chunks = make([]swarm.Chunk, 0, 1)
+		data = chunkData{
+			chunk:  makeChunk(ch, nil),
+			stamps: make([]swarm.Stamp, 0, 1),
+		}
 	}
 
-	// append new chunk only if it doesn't exist
-	if _, found := findChunkWithBatchID(chunks, ch.Stamp().BatchID()); !found {
-		chunks = append(chunks, ch)
-		c.chunks[ch.Address().ByteString()] = chunks
+	// append new stamp only if it doesn't exist
+	if _, found := findStampWithBatchID(data.stamps, ch.Stamp().BatchID()); !found {
+		data.stamps = append(data.stamps, ch.Stamp())
+		c.chunks[ch.Address().ByteString()] = data
 	}
 
 	return nil
@@ -93,9 +98,9 @@ func (c *ChunkStore) Iterate(_ context.Context, fn storage.IterateChunkFn) error
 	c.lock.Lock()
 	defer c.lock.Unlock()
 
-	for _, chunks := range c.chunks {
-		for _, chunk := range chunks {
-			stop, err := fn(chunk)
+	for _, data := range c.chunks {
+		for _, stamp := range data.stamps {
+			stop, err := fn(makeChunk(data.chunk, stamp))
 			if err != nil {
 				return err
 			}
@@ -112,11 +117,15 @@ func (c *ChunkStore) Close() error {
 	return nil
 }
 
-// note: this should be probabbly moved to swarm package with other utilities (rebase needed)
-func findChunkWithBatchID(chunks []swarm.Chunk, batchID []byte) (swarm.Chunk, bool) {
-	for _, chunk := range chunks {
-		if bytes.Equal(chunk.Stamp().BatchID(), batchID) {
-			return chunk, true
+func makeChunk(ch swarm.Chunk, st swarm.Stamp) swarm.Chunk {
+	return swarm.NewChunk(ch.Address(), ch.Data()).WithStamp(st)
+}
+
+// note: this should be probably moved to swarm package with other utilities (rebase needed)
+func findStampWithBatchID(stamps []swarm.Stamp, batchID []byte) (swarm.Stamp, bool) {
+	for _, s := range stamps {
+		if bytes.Equal(s.BatchID(), batchID) {
+			return s, true
 		}
 	}
 	return nil, false
