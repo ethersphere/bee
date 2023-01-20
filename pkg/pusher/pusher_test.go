@@ -286,7 +286,7 @@ func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {
 	signer := crypto.NewDefaultSigner(key)
 
 	pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
-		time.Sleep(1 * time.Second)
+		time.Sleep(5 * time.Second)
 		signature, _ := signer.Sign(chunk.Address().Bytes())
 		receipt := &pushsync.Receipt{
 			Address:   swarm.NewAddress(chunk.Address().Bytes()),
