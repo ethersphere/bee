@@ -7,16 +7,10 @@ package inmemchunkstore
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"sync"
 
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
-)
-
-var (
-	ErrNoStampsForChunk = fmt.Errorf("chunk found but no stamps found: %w", storage.ErrNotFound)
-	ErrStampNotFound    = fmt.Errorf("chunk with stamp was not found: %w", storage.ErrNotFound)
 )
 
 type ChunkStore struct {
@@ -54,7 +48,7 @@ func (c *ChunkStore) GetWithStamp(ctx context.Context, addr swarm.Address, batch
 			return makeChunk(data.chunk, st), nil
 		}
 
-		return nil, ErrNoStampsForChunk
+		return nil, storage.ErrNoStampsForChunk
 	}
 
 	// when batchID is specified, we need to search stamps by batchID
@@ -62,7 +56,7 @@ func (c *ChunkStore) GetWithStamp(ctx context.Context, addr swarm.Address, batch
 		return makeChunk(data.chunk, st), nil
 	}
 
-	return nil, ErrStampNotFound
+	return nil, storage.ErrStampNotFound
 }
 
 func (c *ChunkStore) Put(_ context.Context, ch swarm.Chunk) error {
@@ -78,12 +72,13 @@ func (c *ChunkStore) Put(_ context.Context, ch swarm.Chunk) error {
 	}
 
 	// append new stamp only if it doesn't exist
-	if ch.Stamp().BatchID() != nil {
+	if st := ch.Stamp(); st != nil && st.BatchID() != nil {
 		if _, found := findStampWithBatchID(data.stamps, ch.Stamp().BatchID()); !found {
 			data.stamps = append(data.stamps, ch.Stamp())
-			c.chunks[ch.Address().ByteString()] = data
 		}
 	}
+
+	c.chunks[ch.Address().ByteString()] = data
 
 	return nil
 }
