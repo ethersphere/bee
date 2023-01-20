@@ -132,7 +132,8 @@ func migrateResidue(db *DB) error {
 		sItem, err := retrievalDataIndex.Get(item)
 		switch {
 		case errors.Is(err, leveldb.ErrNotFound):
-			return true, nil
+			// continue iteration on error
+			return false, nil
 		case err != nil:
 			return true, fmt.Errorf("retrievalIndex not found: %w", err)
 		}
