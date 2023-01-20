@@ -47,16 +47,12 @@ func (s *Service) SetKey(name, password string, edg keystore.EDG) (*ecdsa.Privat
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	s.setKey(name, password, pk)
-
-	return pk, nil
-}
-
-func (s *Service) setKey(name, password string, pk *ecdsa.PrivateKey) {
 	s.m[name] = key{
 		pk:       pk,
 		password: password,
 	}
+
+	return pk, nil
 }
 
 func (s *Service) Key(name, password string, edg keystore.EDG) (pk *ecdsa.PrivateKey, created bool, err error) {
@@ -69,7 +65,12 @@ func (s *Service) Key(name, password string, edg keystore.EDG) (pk *ecdsa.Privat
 		if err != nil {
 			return nil, false, fmt.Errorf("generate key: %w", err)
 		}
-		s.setKey(name, password, pk)
+
+		s.m[name] = key{
+			pk:       pk,
+			password: password,
+		}
+
 		return pk, true, err
 	}
 
