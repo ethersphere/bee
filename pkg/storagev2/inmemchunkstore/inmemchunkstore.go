@@ -15,7 +15,7 @@ import (
 )
 
 var (
-	ErrNoStampsForChunk = fmt.Errorf("chunk found but no stamps for chunk found: %w", storage.ErrNotFound)
+	ErrNoStampsForChunk = fmt.Errorf("chunk found but no stamps found: %w", storage.ErrNotFound)
 	ErrStampNotFound    = fmt.Errorf("chunk with stamp was not found: %w", storage.ErrNotFound)
 )
 
