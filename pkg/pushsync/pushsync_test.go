@@ -51,9 +51,6 @@ var (
 	defaultSigner = cryptomock.New(cryptomock.WithSignFunc(func([]byte) ([]byte, error) {
 		return nil, nil
 	}))
-	WithinDepthMock = mock.WithIsWithinFunc(func(addr swarm.Address) bool {
-		return true
-	})
 )
 
 // TestPushClosest inserts a chunk as uploaded chunk in db. This triggers sending a chunk to the closest node
@@ -230,7 +227,7 @@ func TestPushChunkToClosest(t *testing.T) {
 	// peer is the node responding to the chunk receipt message
 	// mock should return ErrWantSelf since there's no one to forward to
 
-	psPeer, storerPeer, _, peerAccounting := createPushSyncNode(t, closestPeer, defaultPrices, nil, chanFunc(callbackC), defaultSigner, mock.WithClosestPeerErr(topology.ErrWantSelf), WithinDepthMock)
+	psPeer, storerPeer, _, peerAccounting := createPushSyncNode(t, closestPeer, defaultPrices, nil, chanFunc(callbackC), defaultSigner, mock.WithClosestPeerErr(topology.ErrWantSelf))
 	defer storerPeer.Close()
 
 	recorder := streamtest.New(streamtest.WithProtocols(psPeer.Protocol()), streamtest.WithBaseAddr(pivotNode))
