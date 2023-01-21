@@ -121,16 +121,16 @@ func (p *Puller) manage(ctx context.Context, warmupTime time.Duration) {
 			peersDisconnected[peer.address.ByteString()] = peer
 		}
 
-		syncRadius := p.radius.StorageRadius()
+		storageRadius := p.radius.StorageRadius()
 
 		// if the radius decreases, we must fully resync the bin
-		if syncRadius < prevRadius {
-			err := p.resetInterval(syncRadius)
+		if storageRadius < prevRadius {
+			err := p.resetInterval(storageRadius)
 			if err != nil {
 				p.logger.Error(err, "reset lower sync radius")
 			}
 		}
-		prevRadius = syncRadius
+		prevRadius = storageRadius
 
 		_ = p.topology.EachPeerRev(func(addr swarm.Address, po uint8) (stop, jumpToNext bool, err error) {
 			if _, ok := p.syncPeers[addr.ByteString()]; !ok {
@@ -144,7 +144,7 @@ func (p *Puller) manage(ctx context.Context, warmupTime time.Duration) {
 			p.disconnectPeer(peer.address)
 		}
 
-		p.recalcPeers(ctx, syncRadius)
+		p.recalcPeers(ctx, storageRadius)
 
 		p.syncPeersMtx.Unlock()
 	}
@@ -180,19 +180,19 @@ func (p *Puller) disconnectPeer(addr swarm.Address) {
 
 // recalcPeers starts or stops syncing process for peers per bin depending on the current sync radius.
 // Must be called under lock.
-func (p *Puller) recalcPeers(ctx context.Context, syncRadius uint8) {
+func (p *Puller) recalcPeers(ctx context.Context, storageRadius uint8) {
 	for _, peer := range p.syncPeers {
 		peer.Lock()
-		err := p.syncPeer(ctx, peer, syncRadius)
+		err := p.syncPeer(ctx, peer, storageRadius)
 		if err != nil {
-			p.logger.Error(err, "recalc peers sync failed", "bin", syncRadius, "peer", peer.address)
+			p.logger.Error(err, "recalc peers sync failed", "bin", storageRadius, "peer", peer.address)
 		}
 		peer.Unlock()
 	}
 }
 
 // Must be called under syncPeer lock.
-func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, syncRadius uint8) error {
+func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, storageRadius uint8) error {
 	if peer.cursors == nil {
 		cursors, err := p.syncer.GetCursors(ctx, peer.address)
 		if err != nil {
@@ -206,12 +206,12 @@ func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, syncRadius uint8)
 	}
 
 	/*
-		The syncing diverges for peers outside and inside of our neighborhood.
+		The syncing behavior diverges for peers outside and winthin the storage radius.
 		For peers with PO lower than the storage radius, we must sync ONLY the bin that is the PO.
 		For neighbor peers, we sync ALL bins greater than or equal to the storage radius.
 	*/
 
-	if peer.po < syncRadius {
+	if peer.po < storageRadius {
 		// cancel all non-po bins, if any
 		for bin := uint8(0); bin < p.bins; bin++ {
 			if bin != peer.po {
@@ -224,13 +224,13 @@ func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, syncRadius uint8)
 		}
 	} else {
 		// cancel all bins lower than the storage radius
-		for bin := uint8(0); bin < syncRadius; bin++ {
+		for bin := uint8(0); bin < storageRadius; bin++ {
 			peer.cancelBin(bin)
 		}
 
-		//sync all bins >= storage radius
+		// sync all bins >= storage radius
 		for bin, cur := range peer.cursors {
-			if bin >= int(syncRadius) && !peer.isBinSyncing(uint8(bin)) {
+			if bin >= int(storageRadius) && !peer.isBinSyncing(uint8(bin)) {
 				p.syncPeerBin(ctx, peer, uint8(bin), cur)
 			}
 		}
