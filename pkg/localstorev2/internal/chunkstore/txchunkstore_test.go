@@ -1,3 +1,7 @@
+// Copyright 2023 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package chunkstore_test
 
 import (
@@ -26,7 +30,9 @@ func TestTxChunkStore(t *testing.T) {
 	storagetest.TestTxChunkStore(t, chunkstore.NewTxChunkStore(inmemstore.NewTxStore(inmemstore.New()), sharky))
 }
 
-func TestMultipleStamps(t *testing.T) {
+// TestMultipleStampsRefCnt tests the behaviour of ref counting along with multiple
+// stamps to ensure transactions work correctly.
+func TestMultipleStampsRefCnt(t *testing.T) {
 	t.Parallel()
 
 	sharky, err := sharky.New(&memFS{Fs: afero.NewMemMapFs()}, 1, swarm.SocMaxChunkSize)
