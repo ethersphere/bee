@@ -134,7 +134,7 @@ func (p *Puller) manage(ctx context.Context, warmupTime time.Duration) {
 
 		_ = p.topology.EachPeerRev(func(addr swarm.Address, po uint8) (stop, jumpToNext bool, err error) {
 			if _, ok := p.syncPeers[addr.ByteString()]; !ok {
-				p.syncPeers[addr.ByteString()] = newSyncPeer(addr, p.bins, swarm.Proximity(addr.Bytes(), nil))
+				p.syncPeers[addr.ByteString()] = newSyncPeer(addr, p.bins, po)
 			}
 			delete(peersDisconnected, addr.ByteString())
 			return false, false, nil
