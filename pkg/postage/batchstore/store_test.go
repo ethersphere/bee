@@ -209,9 +209,31 @@ func TestBatchStore_SetStorageRadius(t *testing.T) {
 		return newStorageRadius
 	})
 
-	got := batchStore.GetReserveState().StorageRadius
+	got := batchStore.StorageRadius()
 	if got != newStorageRadius {
 		t.Fatalf("got old radius %d, want %d", got, newStorageRadius)
+	}
+}
+
+func TestBatchStore_IsWithinRadius(t *testing.T) {
+
+	t.Parallel()
+
+	storageRadius := 2
+
+	stateStore := mock.NewStateStore()
+	_ = stateStore.Put(batchstore.ReserveStateKey, &postage.ReserveState{Radius: 2, StorageRadius: uint8(storageRadius)})
+	batchStore, _ := batchstore.New(stateStore, nil, baseAddr, log.Noop)
+
+	for i := 0; i < 5; i++ {
+		addr := test.RandomAddressAt(baseAddr, i)
+
+		got := batchStore.IsWithinStorageRadius(addr)
+		withinRadius := i >= storageRadius
+
+		if got != withinRadius {
+			t.Fatalf("want %v, got %v", withinRadius, got)
+		}
 	}
 }
 

@@ -345,7 +345,6 @@ func TestPeerDisconnected(t *testing.T) {
 
 func TestBinReset(t *testing.T) {
 	t.Parallel()
-	t.Skip()
 
 	var (
 		addr        = test.RandomAddress()
