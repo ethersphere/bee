@@ -109,6 +109,13 @@ func (s *store) IsWithinStorageRadius(addr swarm.Address) bool {
 	return po >= s.GetReserveState().StorageRadius
 }
 
+func (s *store) StorageRadius() uint8 {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+
+	return s.rs.StorageRadius
+}
+
 func (s *store) SetStorageRadius(f func(uint8) uint8) error {
 
 	s.mtx.Lock()

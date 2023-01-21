@@ -202,6 +202,16 @@ func (bs *BatchStore) GetReserveState() *postage.ReserveState {
 	return rs
 }
 
+func (bs *BatchStore) StorageRadius() uint8 {
+	bs.mtx.Lock()
+	defer bs.mtx.Unlock()
+
+	if bs.rs != nil {
+		return bs.rs.StorageRadius
+	}
+	return 0
+}
+
 func (bs *BatchStore) IsWithinStorageRadius(swarm.Address) bool {
 	return bs.isWithinStorageRadius
 }

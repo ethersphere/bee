@@ -49,6 +49,7 @@ type ReserveStateGetter interface {
 
 type RadiusChecker interface {
 	IsWithinStorageRadius(addr swarm.Address) bool
+	StorageRadius() uint8
 }
 
 // Storer represents the persistence layer for batches
