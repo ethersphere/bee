@@ -17,20 +17,22 @@ import (
 )
 
 const (
-	SpanSize                = 8
-	SectionSize             = 32
-	Branches                = 128
-	EncryptedBranches       = Branches / 2
-	BmtBranches             = 128
-	ChunkSize               = SectionSize * Branches
-	HashSize                = 32
-	MaxPO             uint8 = 31
-	ExtendedPO        uint8 = MaxPO + 5
-	MaxBins                 = MaxPO + 1
-	ChunkWithSpanSize       = ChunkSize + SpanSize
-	SocSignatureSize        = 65
-	SocMinChunkSize         = HashSize + SocSignatureSize + SpanSize
-	SocMaxChunkSize         = SocMinChunkSize + ChunkSize
+	StampIndexSize           = 8 // TODO: use this size in related code.
+	StampTimestampSize       = 8 // TODO: use this size in related code.
+	SpanSize                 = 8
+	SectionSize              = 32
+	Branches                 = 128
+	EncryptedBranches        = Branches / 2
+	BmtBranches              = 128
+	ChunkSize                = SectionSize * Branches
+	HashSize                 = 32
+	MaxPO              uint8 = 31
+	ExtendedPO         uint8 = MaxPO + 5
+	MaxBins                  = MaxPO + 1
+	ChunkWithSpanSize        = ChunkSize + SpanSize
+	SocSignatureSize         = 65
+	SocMinChunkSize          = HashSize + SocSignatureSize + SpanSize
+	SocMaxChunkSize          = SocMinChunkSize + ChunkSize
 )
 
 var (
@@ -130,7 +132,10 @@ func (a Address) Closer(x Address, y Address) (bool, error) {
 
 // Clone returns a new swarm address which is a copy of this one.
 func (a Address) Clone() Address {
-	return NewAddress(append(make([]byte, 0, HashSize), a.Bytes()...))
+	if a.b == nil {
+		return Address{}
+	}
+	return Address{b: append(make([]byte, 0, HashSize), a.Bytes()...)}
 }
 
 // ZeroAddress is the address that has no value.
@@ -172,6 +177,7 @@ type Stamp interface {
 	Index() []byte
 	Sig() []byte
 	Timestamp() []byte
+	Clone() Stamp
 	encoding.BinaryMarshaler
 	encoding.BinaryUnmarshaler
 }

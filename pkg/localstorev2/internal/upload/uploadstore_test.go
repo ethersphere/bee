@@ -35,7 +35,7 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func TestPushItem_MarshalAndUnmarshal(t *testing.T) {
+func TestPushItem(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -117,15 +117,25 @@ func TestPushItem_MarshalAndUnmarshal(t *testing.T) {
 
 	for _, tc := range tests {
 		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
+
+		t.Run(fmt.Sprintf("%s marshal/unmarshal", tc.name), func(t *testing.T) {
 			t.Parallel()
 
 			storagetest.TestItemMarshalAndUnmarshal(t, tc.test)
 		})
+
+		t.Run(fmt.Sprintf("%s clone", tc.name), func(t *testing.T) {
+			t.Parallel()
+
+			storagetest.TestItemClone(t, &storagetest.ItemCloneTest{
+				Item:    tc.test.Item,
+				CmpOpts: tc.test.CmpOpts,
+			})
+		})
 	}
 }
 
-func TestTagItem_MarshalAndUnmarshal(t *testing.T) {
+func TestTagItem(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -181,16 +191,25 @@ func TestTagItem_MarshalAndUnmarshal(t *testing.T) {
 
 	for _, tc := range tests {
 		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
+
+		t.Run(fmt.Sprintf("%s marshal/unmarshal", tc.name), func(t *testing.T) {
 			t.Parallel()
 
 			storagetest.TestItemMarshalAndUnmarshal(t, tc.test)
 		})
-	}
 
+		t.Run(fmt.Sprintf("%s clone", tc.name), func(t *testing.T) {
+			t.Parallel()
+
+			storagetest.TestItemClone(t, &storagetest.ItemCloneTest{
+				Item:    tc.test.Item,
+				CmpOpts: tc.test.CmpOpts,
+			})
+		})
+	}
 }
 
-func TestUploadItem_MarshalAndUnmarshal(t *testing.T) {
+func TestUploadItem(t *testing.T) {
 	t.Parallel()
 
 	randomAddress := swarmtesting.RandomAddress()
@@ -287,10 +306,20 @@ func TestUploadItem_MarshalAndUnmarshal(t *testing.T) {
 
 	for _, tc := range tests {
 		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
+
+		t.Run(fmt.Sprintf("%s marshal/unmarshal", tc.name), func(t *testing.T) {
 			t.Parallel()
 
 			storagetest.TestItemMarshalAndUnmarshal(t, tc.test)
+		})
+
+		t.Run(fmt.Sprintf("%s clone", tc.name), func(t *testing.T) {
+			t.Parallel()
+
+			storagetest.TestItemClone(t, &storagetest.ItemCloneTest{
+				Item:    tc.test.Item,
+				CmpOpts: tc.test.CmpOpts,
+			})
 		})
 	}
 }
