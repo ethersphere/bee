@@ -19,10 +19,6 @@ import (
 	"github.com/hashicorp/go-multierror"
 )
 
-const (
-	retrievalIndexItemSize = swarm.HashSize + 8 + sharky.LocationSize + 1
-)
-
 var (
 	// errMarshalInvalidRetrievalIndexAddress is returned if the retrievalIndexItem address is zero during marshaling.
 	errMarshalInvalidRetrievalIndexAddress = errors.New("marshal retrievalIndexItem: address is zero")
@@ -43,6 +39,10 @@ var (
 	errUnmarshalInvalidChunkStampItemSize = errors.New("unmarshal chunkStampItem: invalid size")
 )
 
+const retrievalIndexItemSize = swarm.HashSize + 8 + sharky.LocationSize + 1
+
+var _ storage.Item = (*retrievalIndexItem)(nil)
+
 // retrievalIndexItem is the index which gives us the sharky location from the swarm.Address.
 // The RefCnt stores the reference of each time a Put operation is issued on this Address.
 type retrievalIndexItem struct {
@@ -52,9 +52,9 @@ type retrievalIndexItem struct {
 	RefCnt    uint8
 }
 
-func (retrievalIndexItem) Namespace() string { return "retrievalIdx" }
-
 func (r *retrievalIndexItem) ID() string { return r.Address.ByteString() }
+
+func (retrievalIndexItem) Namespace() string { return "retrievalIdx" }
 
 // Stored in bytes as:
 // |--Address(32)--|--Timestamp(8)--|--Location(7)--|--RefCnt(1)--|
@@ -95,6 +95,20 @@ func (r *retrievalIndexItem) Unmarshal(buf []byte) error {
 	return nil
 }
 
+func (r *retrievalIndexItem) Clone() storage.Item {
+	if r == nil {
+		return nil
+	}
+	return &retrievalIndexItem{
+		Address:   r.Address.Clone(),
+		Timestamp: r.Timestamp,
+		Location:  r.Location,
+		RefCnt:    r.RefCnt,
+	}
+}
+
+var _ storage.Item = (*chunkStampItem)(nil)
+
 // chunkStampItem is the index used to represent a stamp for a chunk. Going ahead we will
 // support multiple stamps on chunks. This item will allow mapping multiple stamps to a
 // single address. For this reason, the Address is part of the Namespace and can be used
@@ -104,12 +118,12 @@ type chunkStampItem struct {
 	Stamp   swarm.Stamp
 }
 
-func (c *chunkStampItem) Namespace() string {
-	return path.Join("stamp", c.Address.ByteString())
-}
-
 func (c *chunkStampItem) ID() string {
 	return path.Join(string(c.Stamp.BatchID()), string(c.Stamp.Index()))
+}
+
+func (c *chunkStampItem) Namespace() string {
+	return path.Join("stamp", c.Address.ByteString())
 }
 
 // Address is not part of the payload which is stored, as Address is part of the prefix,
@@ -147,10 +161,23 @@ func (c *chunkStampItem) Unmarshal(buf []byte) error {
 	}
 
 	ni := new(chunkStampItem)
-	ni.Address = swarm.NewAddress(append(make([]byte, 0, swarm.HashSize), c.Address.Bytes()...))
+	ni.Address = c.Address.Clone()
 	ni.Stamp = stamp
 	*c = *ni
 	return nil
+}
+
+func (c *chunkStampItem) Clone() storage.Item {
+	if c == nil {
+		return nil
+	}
+	clone := &chunkStampItem{
+		Address: c.Address.Clone(),
+	}
+	if c.Stamp != nil {
+		clone.Stamp = c.Stamp.Clone()
+	}
+	return clone
 }
 
 type chunkStoreWrapper struct {

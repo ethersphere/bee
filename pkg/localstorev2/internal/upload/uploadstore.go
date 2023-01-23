@@ -91,6 +91,19 @@ func (i *pushItem) Unmarshal(bytes []byte) error {
 	return nil
 }
 
+// Clone implements the storage.Item interface.
+func (i *pushItem) Clone() storage.Item {
+	if i == nil {
+		return nil
+	}
+	return &pushItem{
+		Timestamp: i.Timestamp,
+		Address:   i.Address.Clone(),
+		BatchID:   append([]byte(nil), i.BatchID...),
+		TagID:     i.TagID,
+	}
+}
+
 // String implements the fmt.Stringer interface.
 func (i pushItem) String() string {
 	return path.Join(i.Namespace(), i.ID())
@@ -160,6 +173,23 @@ func (i *tagItem) Unmarshal(bytes []byte) error {
 	ni.StartedAt = int64(binary.LittleEndian.Uint64(bytes[48+swarm.HashSize:]))
 	*i = *ni
 	return nil
+}
+
+// Clone implements the storage.Item interface.
+func (i *tagItem) Clone() storage.Item {
+	if i == nil {
+		return nil
+	}
+	return &tagItem{
+		TagID:     i.TagID,
+		Split:     i.Split,
+		Seen:      i.Seen,
+		Stored:    i.Stored,
+		Sent:      i.Sent,
+		Synced:    i.Synced,
+		Address:   i.Address.Clone(),
+		StartedAt: i.StartedAt,
+	}
 }
 
 // String implements the fmt.Stringer interface.
@@ -234,6 +264,20 @@ func (i *uploadItem) Unmarshal(bytes []byte) error {
 	i.Uploaded = int64(binary.LittleEndian.Uint64(bytes[8:16]))
 	i.Synced = int64(binary.LittleEndian.Uint64(bytes[16:]))
 	return nil
+}
+
+// Clone implements the storage.Item interface.
+func (i *uploadItem) Clone() storage.Item {
+	if i == nil {
+		return nil
+	}
+	return &uploadItem{
+		Address:  i.Address.Clone(),
+		BatchID:  append([]byte(nil), i.BatchID...),
+		TagID:    i.TagID,
+		Uploaded: i.Uploaded,
+		Synced:   i.Synced,
+	}
 }
 
 // String implements the fmt.Stringer interface.

@@ -18,6 +18,8 @@ import (
 
 const cacheEntrySize = 3 * swarm.HashSize
 
+var _ storage.Item = (*cacheEntry)(nil)
+
 var (
 	errMarshalCacheEntryInvalidAddress = errors.New("marshal cacheEntry: invalid address")
 	errUnmarshalCacheEntryInvalidSize  = errors.New("unmarshal cacheEntry: invalid size")
@@ -30,9 +32,9 @@ type cacheEntry struct {
 	Next    swarm.Address
 }
 
-func (cacheEntry) Namespace() string { return "cacheEntry" }
-
 func (c *cacheEntry) ID() string { return c.Address.ByteString() }
+
+func (cacheEntry) Namespace() string { return "cacheEntry" }
 
 func (c *cacheEntry) Marshal() ([]byte, error) {
 	entryBuf := make([]byte, cacheEntrySize)
@@ -54,8 +56,18 @@ func (c *cacheEntry) Unmarshal(buf []byte) error {
 	newEntry.Prev = internal.AddressOrZero(buf[swarm.HashSize : 2*swarm.HashSize])
 	newEntry.Next = internal.AddressOrZero(buf[2*swarm.HashSize:])
 	*c = *newEntry
-
 	return nil
+}
+
+func (c *cacheEntry) Clone() storage.Item {
+	if c == nil {
+		return nil
+	}
+	return &cacheEntry{
+		Address: c.Address.Clone(),
+		Prev:    c.Prev.Clone(),
+		Next:    c.Next.Clone(),
+	}
 }
 
 func (c cacheEntry) String() string {
@@ -64,15 +76,17 @@ func (c cacheEntry) String() string {
 
 const cacheStateSize = 2*swarm.HashSize + 8
 
+var _ storage.Item = (*cacheState)(nil)
+
 type cacheState struct {
 	Head  swarm.Address
 	Tail  swarm.Address
 	Count uint64
 }
 
-func (cacheState) Namespace() string { return "cacheState" }
-
 func (cacheState) ID() string { return "entry" }
+
+func (cacheState) Namespace() string { return "cacheState" }
 
 func (c *cacheState) Marshal() ([]byte, error) {
 	entryBuf := make([]byte, cacheStateSize)
@@ -92,6 +106,17 @@ func (c *cacheState) Unmarshal(buf []byte) error {
 	newEntry.Count = binary.LittleEndian.Uint64(buf[2*swarm.HashSize:])
 	*c = *newEntry
 	return nil
+}
+
+func (c *cacheState) Clone() storage.Item {
+	if c == nil {
+		return nil
+	}
+	return &cacheState{
+		Head:  c.Head.Clone(),
+		Tail:  c.Tail.Clone(),
+		Count: c.Count,
+	}
 }
 
 func (c cacheState) String() string {
