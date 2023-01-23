@@ -88,9 +88,9 @@ func (m *transactionServiceMock) Close() error {
 	return nil
 }
 
-// GetAccumulativeFee returns fee of transaction
-func (m *transactionServiceMock) GetAccumulativeFee() *big.Int {
-	return nil
+// TransactionFee returns fee of transaction
+func (m *transactionServiceMock) TransactionFee(ctx context.Context, txHash common.Hash) (*big.Int, error) {
+	return nil, nil
 }
 
 // Option is the option passed to the mock Chequebook service

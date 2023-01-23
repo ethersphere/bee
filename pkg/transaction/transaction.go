@@ -92,8 +92,8 @@ type Service interface {
 	ResendTransaction(ctx context.Context, txHash common.Hash) error
 	// CancelTransaction cancels a previously sent transaction by double-spending its nonce with zero-transfer one
 	CancelTransaction(ctx context.Context, originalTxHash common.Hash) (common.Hash, error)
-	// GetAccumulativeFee returns fee of transaction
-	GetAccumulativeFee() *big.Int
+	// TransactionFee retrieves the transaction fee
+	TransactionFee(ctx context.Context, txHash common.Hash) (*big.Int, error)
 }
 
 type transactionService struct {
@@ -154,19 +154,6 @@ func (t *transactionService) waitForAllPendingTx() error {
 	}
 
 	return nil
-}
-func (t *transactionService) setAccumulativeFee(gasTipCap, gasFeeCap *big.Int, gasLimit uint64) {
-	gasTip := big.NewInt(0)
-	gasFee := big.NewInt(0)
-	if gasTipCap != nil {
-		*gasTip = *gasTipCap
-	}
-	*gasFee = *gasFeeCap
-	t.AccumulativeFee = gasTipCap.Add(gasTip, gasFee.Mul(gasFee, big.NewInt(int64(gasLimit))))
-}
-
-func (t *transactionService) GetAccumulativeFee() *big.Int {
-	return t.AccumulativeFee
 }
 
 // Send creates and signs a transaction based on the request and sends it.
@@ -323,9 +310,6 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 	if err != nil {
 		return nil, err
 	}
-
-	// transaction fee
-	t.setAccumulativeFee(gasTipCap, gasTipCap, gasLimit)
 
 	return types.NewTx(&types.DynamicFeeTx{
 		Nonce:     nonce,
@@ -596,4 +580,12 @@ func (t *transactionService) Close() error {
 	t.cancel()
 	t.wg.Wait()
 	return nil
+}
+
+func (t *transactionService) TransactionFee(ctx context.Context, txHash common.Hash) (*big.Int, error) {
+	hash, _, err := t.backend.TransactionByHash(ctx, txHash)
+	if err != nil {
+		return nil, err
+	}
+	return hash.GasPrice().Mul(hash.GasPrice(), big.NewInt(int64(hash.Gas()))), nil
 }

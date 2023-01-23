@@ -108,6 +108,7 @@ func (n *NodeState) AddFee() {
 	fee := n.contract.Fee()
 	if fee != nil {
 		n.nodeStatus.Fees = n.nodeStatus.Fees.Add(n.nodeStatus.Fees, fee)
+		n.SaveStatus()
 	}
 }
 

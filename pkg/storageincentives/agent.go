@@ -283,9 +283,6 @@ func (a *Agent) reveal(ctx context.Context, storageRadius uint8, sample, obfusca
 }
 
 func (a *Agent) claim(ctx context.Context) error {
-	defer func() {
-		a.nodeState.SaveStatus()
-	}()
 	a.metrics.ClaimPhase.Inc()
 	// event claimPhase was processed
 
