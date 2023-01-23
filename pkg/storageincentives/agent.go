@@ -49,7 +49,7 @@ type Agent struct {
 	monitor        Monitor
 	contract       redistribution.Contract
 	batchExpirer   postagecontract.PostageBatchExpirer
-	reserve        postage.Storer
+	radius         postage.RadiusChecker
 	sampler        storage.Sampler
 	overlay        swarm.Address
 	quit           chan struct{}
@@ -63,7 +63,7 @@ func New(
 	monitor Monitor,
 	contract redistribution.Contract,
 	batchExpirer postagecontract.PostageBatchExpirer,
-	reserve postage.Storer,
+	radius postage.RadiusChecker,
 	sampler storage.Sampler,
 	blockTime time.Duration, blocksPerRound, blocksPerPhase uint64) *Agent {
 
@@ -74,7 +74,7 @@ func New(
 		logger:         logger.WithName(loggerName).Register(),
 		contract:       contract,
 		batchExpirer:   batchExpirer,
-		reserve:        reserve,
+		radius:         radius,
 		monitor:        monitor,
 		blocksPerRound: blocksPerRound,
 		sampler:        sampler,
@@ -321,7 +321,7 @@ func (a *Agent) play(ctx context.Context) (uint8, []byte, error) {
 		return 0, nil, nil
 	}
 
-	storageRadius := a.reserve.GetReserveState().StorageRadius
+	storageRadius := a.radius.StorageRadius()
 
 	isPlaying, err := a.contract.IsPlaying(ctx, storageRadius)
 	if !isPlaying || err != nil {

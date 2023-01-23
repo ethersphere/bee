@@ -69,10 +69,6 @@ func (m *Mock) ClosestPeer(addr swarm.Address, _ bool, _ topology.Filter, skipPe
 	panic("not implemented") // TODO: Implement
 }
 
-func (m *Mock) IsWithinDepth(adr swarm.Address) bool {
-	panic("not implemented") // TODO: Implement
-}
-
 func (m *Mock) EachNeighbor(topology.EachPeerFunc) error {
 	panic("not implemented") // TODO: Implement
 }

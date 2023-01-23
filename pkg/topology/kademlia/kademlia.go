@@ -1364,11 +1364,6 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, filter topology.
 	return closest, nil
 }
 
-// IsWithinDepth returns if an address is within the neighborhood depth of a node.
-func (k *Kad) IsWithinDepth(addr swarm.Address) bool {
-	return swarm.Proximity(k.base.Bytes(), addr.Bytes()) >= k.NeighborhoodDepth()
-}
-
 // EachNeighbor iterates from closest bin to farthest of the neighborhood peers.
 func (k *Kad) EachNeighbor(f topology.EachPeerFunc) error {
 	depth := k.NeighborhoodDepth()

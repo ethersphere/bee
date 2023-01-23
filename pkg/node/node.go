@@ -254,6 +254,41 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 
 	addressbook := addressbook.New(stateStore)
 
+	pubKey, err := signer.PublicKey()
+	if err != nil {
+		return nil, err
+	}
+
+	// if theres a previous transaction hash, and not a new chequebook deployment on a node starting from scratch
+	// get old overlay
+	// mine nonce that gives similar new overlay
+	nonce, nonceExists, err := overlayNonceExists(stateStore)
+	if err != nil {
+		return nil, fmt.Errorf("check presence of nonce: %w", err)
+	}
+
+	swarmAddress, err := crypto.NewOverlayAddress(*pubKey, networkID, nonce)
+	if err != nil {
+		return nil, fmt.Errorf("compute overlay address: %w", err)
+	}
+	logger.Info("using overlay address", "address", swarmAddress)
+
+	if !nonceExists {
+		err := setOverlayNonce(stateStore, nonce)
+		if err != nil {
+			return nil, fmt.Errorf("statestore: save new overlay nonce: %w", err)
+		}
+
+		err = SetOverlayInStore(swarmAddress, stateStore)
+		if err != nil {
+			return nil, fmt.Errorf("statestore: save new overlay: %w", err)
+		}
+	}
+
+	if err = CheckOverlayWithStore(swarmAddress, stateStore); err != nil {
+		return nil, err
+	}
+
 	var (
 		chainBackend       transaction.Backend
 		overlayEthAddress  common.Address
@@ -278,6 +313,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 			func(id []byte) error {
 				return evictFn(id)
 			},
+			swarmAddress,
 			logger,
 		)
 		if err != nil {
@@ -475,42 +511,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		)
 	}
 
-	pubKey, _ := signer.PublicKey()
-	if err != nil {
-		return nil, err
-	}
-
-	// if theres a previous transaction hash, and not a new chequebook deployment on a node starting from scratch
-	// get old overlay
-	// mine nonce that gives similar new overlay
-	nonce, nonceExists, err := overlayNonceExists(stateStore)
-	if err != nil {
-		return nil, fmt.Errorf("check presence of nonce: %w", err)
-	}
-
-	swarmAddress, err := crypto.NewOverlayAddress(*pubKey, networkID, nonce)
-	if err != nil {
-		return nil, fmt.Errorf("compute overlay address: %w", err)
-	}
-	logger.Info("using overlay address", "address", swarmAddress)
-
-	if !nonceExists {
-		err := setOverlayNonce(stateStore, nonce)
-		if err != nil {
-			return nil, fmt.Errorf("statestore: save new overlay nonce: %w", err)
-		}
-
-		err = SetOverlayInStore(swarmAddress, stateStore)
-		if err != nil {
-			return nil, fmt.Errorf("statestore: save new overlay: %w", err)
-		}
-	}
-
 	apiService.SetSwarmAddress(&swarmAddress)
-
-	if err = CheckOverlayWithStore(swarmAddress, stateStore); err != nil {
-		return nil, err
-	}
 
 	lightNodes := lightnode.NewContainer(swarmAddress)
 
@@ -894,12 +895,12 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 
 	pinningService := pinning.NewService(storer, stateStore, traversalService)
 
-	pushSyncProtocol := pushsync.New(swarmAddress, nonce, p2ps, storer, kad, tagService, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
+	pushSyncProtocol := pushsync.New(swarmAddress, nonce, p2ps, storer, kad, batchStore, tagService, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
 
 	// set the pushSyncer in the PSS
 	pssService.SetPushSyncer(pushSyncProtocol)
 
-	pusherService := pusher.New(networkID, storer, kad, pushSyncProtocol, validStamp, tagService, logger, tracer, warmupTime, pusher.DefaultRetryCount)
+	pusherService := pusher.New(networkID, storer, batchStore, pushSyncProtocol, validStamp, tagService, logger, tracer, warmupTime, pusher.DefaultRetryCount)
 	b.pusherCloser = pusherService
 
 	pullStorage := pullstorage.New(storer, logger)

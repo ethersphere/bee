@@ -7,6 +7,8 @@ package postage
 import (
 	"errors"
 	"math/big"
+
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 var _ Storer = (*NoOpBatchStore)(nil)
@@ -38,6 +40,10 @@ func (b *NoOpBatchStore) GetChainState() *ChainState {
 func (b *NoOpBatchStore) PutChainState(*ChainState) error { return nil }
 
 func (b *NoOpBatchStore) GetReserveState() *ReserveState { return nil }
+
+func (b *NoOpBatchStore) IsWithinStorageRadius(swarm.Address) bool { return false }
+
+func (b *NoOpBatchStore) StorageRadius() uint8 { return 0 }
 
 func (b *NoOpBatchStore) SetStorageRadius(func(uint8) uint8) error { return nil }
 
