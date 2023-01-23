@@ -14,6 +14,7 @@ import (
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	postagetest "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
+	"github.com/ethersphere/bee/pkg/swarm/test"
 )
 
 type testBatch struct {
@@ -466,7 +467,7 @@ func setupBatchStore(t *testing.T) postage.Storer {
 		return nil
 	}
 
-	bStore, _ := batchstore.New(stateStore, evictFn, log.Noop)
+	bStore, _ := batchstore.New(stateStore, evictFn, test.RandomAddress(), log.Noop)
 
 	err = bStore.PutChainState(&postage.ChainState{
 		Block:        0,

@@ -14,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -36,6 +37,7 @@ type evictFn func(batchID []byte) error
 type store struct {
 	mtx sync.RWMutex
 
+	base  swarm.Address
 	store storage.StateStorer // State store backend to persist batches.
 	cs    *postage.ChainState // the chain state
 
@@ -50,7 +52,7 @@ type store struct {
 
 // New constructs a new postage batch store.
 // It initialises both chain state and reserve state from the persistent state store.
-func New(st storage.StateStorer, ev evictFn, logger log.Logger) (postage.Storer, error) {
+func New(st storage.StateStorer, ev evictFn, addr swarm.Address, logger log.Logger) (postage.Storer, error) {
 	cs := &postage.ChainState{}
 	err := st.Get(chainStateKey, cs)
 	if err != nil {
@@ -76,6 +78,7 @@ func New(st storage.StateStorer, ev evictFn, logger log.Logger) (postage.Storer,
 	}
 
 	s := &store{
+		base:    addr,
 		store:   st,
 		cs:      cs,
 		rs:      rs,
@@ -95,6 +98,22 @@ func (s *store) GetReserveState() *postage.ReserveState {
 		Radius:        s.rs.Radius,
 		StorageRadius: s.rs.StorageRadius,
 	}
+}
+
+func (s *store) IsWithinStorageRadius(addr swarm.Address) bool {
+
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+
+	po := swarm.Proximity(addr.Bytes(), s.base.Bytes())
+	return po >= s.rs.StorageRadius
+}
+
+func (s *store) StorageRadius() uint8 {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+
+	return s.rs.StorageRadius
 }
 
 func (s *store) SetStorageRadius(f func(uint8) uint8) error {

@@ -164,13 +164,6 @@ func (m *mock) NeighborhoodDepth() uint8 {
 	return m.depth
 }
 
-func (m *mock) IsWithinDepth(addr swarm.Address) bool {
-	if m.isWithinFunc != nil {
-		return m.isWithinFunc(addr)
-	}
-	return false
-}
-
 func (m *mock) EachNeighbor(f topology.EachPeerFunc) error {
 	return m.EachPeer(f, topology.Filter{})
 }

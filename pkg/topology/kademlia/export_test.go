@@ -4,6 +4,8 @@
 
 package kademlia
 
+import "github.com/ethersphere/bee/pkg/swarm"
+
 var (
 	PruneOversaturatedBinsFunc = func(k *Kad) func(uint8) {
 		return k.pruneOversaturatedBins
@@ -18,3 +20,7 @@ const (
 )
 
 type PeerFilterFunc = peerFilterFunc
+
+func (k *Kad) IsWithinDepth(addr swarm.Address) bool {
+	return swarm.Proximity(k.base.Bytes(), addr.Bytes()) >= k.NeighborhoodDepth()
+}

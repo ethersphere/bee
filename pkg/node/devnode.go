@@ -6,6 +6,7 @@ package node
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
@@ -115,7 +116,12 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 	}
 	b.stateStoreCloser = stateStore
 
-	batchStore, err := batchstore.New(stateStore, func(b []byte) error { return nil }, logger)
+	swarmAddress, err := randomAddress()
+	if err != nil {
+		return nil, err
+	}
+
+	batchStore, err := batchstore.New(stateStore, func(b []byte) error { return nil }, swarmAddress, logger)
 	if err != nil {
 		return nil, fmt.Errorf("batchstore: %w", err)
 	}
@@ -235,7 +241,6 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		},
 	}
 
-	var swarmAddress swarm.Address
 	storer, err := localstore.New("", swarmAddress.Bytes(), stateStore, lo, logger)
 	if err != nil {
 		return nil, fmt.Errorf("localstore: %w", err)
@@ -510,4 +515,17 @@ func (b *DevBee) Shutdown() error {
 
 func pong(ctx context.Context, address swarm.Address, msgs ...string) (rtt time.Duration, err error) {
 	return time.Millisecond, nil
+}
+
+func randomAddress() (swarm.Address, error) {
+
+	b := make([]byte, 32)
+
+	_, err := rand.Read(b)
+	if err != nil {
+		return swarm.ZeroAddress, err
+	}
+
+	return swarm.NewAddress(b), nil
+
 }
