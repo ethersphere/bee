@@ -35,27 +35,6 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-var _ internal.Storage = (*testStorage)(nil)
-
-// testStorage is an implementation of internal.Storage for test purposes.
-type testStorage struct {
-	ctx        context.Context
-	indexStore storage.Store
-	chunkStore *chunkStore
-}
-
-type chunkStore struct {
-	storage.ChunkStore
-}
-
-func (c *chunkStore) GetWithStamp(ctx context.Context, address swarm.Address, _ []byte) (swarm.Chunk, error) {
-	return c.Get(ctx, address)
-}
-
-func (t *testStorage) Ctx() context.Context            { return t.ctx }
-func (t *testStorage) Store() storage.Store            { return t.indexStore }
-func (t *testStorage) ChunkStore() internal.ChunkStore { return t.chunkStore }
-
 func TestPushItem(t *testing.T) {
 	t.Parallel()
 
