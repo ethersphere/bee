@@ -49,8 +49,8 @@ func (r *Repository) NewTx(ctx context.Context) (repository *Repository, commit 
 
 	rollback = func() error {
 		var errs *multierror.Error
-		for _, tx := range txs {
-			if err := tx.Rollback(); err != nil {
+		for i := len(txs) - 1; i >= 0; i-- {
+			if err := txs[i].Rollback(); err != nil {
 				errs = multierror.Append(errs, err)
 			}
 		}
