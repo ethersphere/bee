@@ -271,6 +271,10 @@ func (c *chunkStoreWrapper) Get(ctx context.Context, addr swarm.Address) (swarm.
 	return c.readChunk(ctx, rIdx)
 }
 
+func (c *chunkStoreWrapper) GetWithStamp(ctx context.Context, addr swarm.Address, batchID []byte) (swarm.Chunk, error) {
+	return nil, fmt.Errorf("not implemented")
+}
+
 func (c *chunkStoreWrapper) Has(_ context.Context, addr swarm.Address) (bool, error) {
 	return c.store.Has(&retrievalIndexItem{Address: addr})
 }
