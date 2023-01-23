@@ -72,12 +72,14 @@ func ValidateVersions(sm Steps) error {
 	return fmt.Errorf("missing versions")
 }
 
-type StorageVersionItem struct {
-	Version uint64
-}
+var _ storage.Item = (*StorageVersionItem)(nil)
 
 // storageVersionItemSize is the size of the marshaled storage version item.
 const storageVersionItemSize = 8
+
+type StorageVersionItem struct {
+	Version uint64
+}
 
 // ID implements the storage.Item interface.
 func (s *StorageVersionItem) ID() string {
@@ -103,6 +105,16 @@ func (s *StorageVersionItem) Unmarshal(bytes []byte) error {
 	}
 	s.Version = binary.LittleEndian.Uint64(bytes)
 	return nil
+}
+
+// Clone implements the storage.Item interface.
+func (s *StorageVersionItem) Clone() storage.Item {
+	if s == nil {
+		return nil
+	}
+	return &StorageVersionItem{
+		Version: s.Version,
+	}
 }
 
 // Version returns the current version of the storage

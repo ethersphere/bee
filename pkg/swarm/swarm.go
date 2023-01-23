@@ -121,7 +121,10 @@ func (x Address) Closer(a Address, y Address) (bool, error) {
 
 // Clone returns a new swarm address which is a copy of this one.
 func (a Address) Clone() Address {
-	return NewAddress(append(make([]byte, 0, HashSize), a.Bytes()...))
+	if a.b == nil {
+		return Address{}
+	}
+	return Address{b: append(make([]byte, 0, HashSize), a.Bytes()...)}
 }
 
 // ZeroAddress is the address that has no value.
@@ -163,6 +166,7 @@ type Stamp interface {
 	Index() []byte
 	Sig() []byte
 	Timestamp() []byte
+	Clone() Stamp
 	encoding.BinaryMarshaler
 	encoding.BinaryUnmarshaler
 }
