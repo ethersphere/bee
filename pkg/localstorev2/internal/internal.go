@@ -65,7 +65,7 @@ func NewInmemStorage() (Storage, func() error) {
 	ts := &inmemRepository{
 		ctx:        ctx,
 		indexStore: inmemstore.New(),
-		chunkStore: &chunkStore{inmemchunkstore.New()},
+		chunkStore: inmemchunkstore.New(),
 	}
 
 	return ts, func() error {
@@ -77,16 +77,7 @@ func NewInmemStorage() (Storage, func() error) {
 type inmemRepository struct {
 	ctx        context.Context
 	indexStore storage.Store
-	chunkStore *chunkStore
-}
-
-type chunkStore struct {
-	storage.ChunkStore
-}
-
-// Once the inmemchunkstore supports this, we can remove this.
-func (c *chunkStore) GetWithStamp(ctx context.Context, address swarm.Address, _ []byte) (swarm.Chunk, error) {
-	return c.Get(ctx, address)
+	chunkStore ChunkStore
 }
 
 func (t *inmemRepository) Ctx() context.Context   { return t.ctx }
