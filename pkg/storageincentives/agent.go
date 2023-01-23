@@ -300,7 +300,7 @@ func (a *Agent) claim(ctx context.Context) error {
 	if isWinner {
 		a.nodeState.SetState(winner)
 		a.metrics.Winner.Inc()
-		err := a.nodeState.SetBalance()
+		err := a.nodeState.SetBalance(ctx)
 		if err != nil {
 			a.logger.Info("could not set balance", "err", err)
 		}
@@ -309,7 +309,7 @@ func (a *Agent) claim(ctx context.Context) error {
 		if err != nil {
 			a.logger.Info("calculate winner reward", "err", err)
 		}
-		err = a.nodeState.CalculateWinnerReward()
+		err = a.nodeState.CalculateWinnerReward(ctx)
 		if err != nil {
 			a.logger.Info("calculate winner reward", "err", err)
 		}

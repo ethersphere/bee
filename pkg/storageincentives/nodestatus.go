@@ -113,8 +113,8 @@ func (n *NodeState) AddFee() {
 }
 
 // CalculateWinnerReward calculates the reward for the winner
-func (n *NodeState) CalculateWinnerReward() error {
-	currentBalance, err := n.erc20Service.BalanceOf(context.Background(), common.HexToAddress(n.overlay.String()))
+func (n *NodeState) CalculateWinnerReward(ctx context.Context) error {
+	currentBalance, err := n.erc20Service.BalanceOf(ctx, common.HexToAddress(n.overlay.String()))
 	if err != nil {
 		n.logger.Debug("error getting balance", "error", err, "overly address", n.overlay.String())
 		return err
@@ -145,9 +145,9 @@ func (n *NodeState) Status() (*NodeStatus, error) {
 	return status, nil
 }
 
-func (n *NodeState) SetBalance() error {
+func (n *NodeState) SetBalance(ctx context.Context) error {
 	// get current balance
-	currentBalance, err := n.erc20Service.BalanceOf(context.Background(), common.HexToAddress(n.overlay.String()))
+	currentBalance, err := n.erc20Service.BalanceOf(ctx, common.HexToAddress(n.overlay.String()))
 	if err != nil {
 		n.logger.Debug("error getting balance", "error", err, "overly address", n.overlay.String())
 		return err
