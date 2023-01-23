@@ -75,6 +75,18 @@ func (s *Stamp) Timestamp() []byte {
 	return s.timestamp
 }
 
+func (s *Stamp) Clone() swarm.Stamp {
+	if s == nil {
+		return nil
+	}
+	return &Stamp{
+		batchID:   append([]byte(nil), s.batchID...),
+		index:     append([]byte(nil), s.index...),
+		timestamp: append([]byte(nil), s.timestamp...),
+		sig:       append([]byte(nil), s.sig...),
+	}
+}
+
 // MarshalBinary gives the byte slice serialisation of a stamp:
 // batchID[32]|index[8]|timestamp[8]|Signature[65].
 func (s *Stamp) MarshalBinary() ([]byte, error) {

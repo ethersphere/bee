@@ -5,6 +5,7 @@
 package inmemstore
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 
@@ -12,12 +13,15 @@ import (
 	"github.com/hashicorp/go-multierror"
 )
 
+// TODO: factor out the common parts of the op struct and the op functionality.
+
 // opCode represents code for Store operations.
 type opCode string
 
 const (
-	putOp    opCode = "put"
-	deleteOp opCode = "delete"
+	putCreateOp opCode = "putCreate"
+	putUpdateOp opCode = "putUpdate"
+	deleteOp    opCode = "delete"
 )
 
 // op represents an operation that can be invoked by calling the fn.
@@ -48,12 +52,26 @@ type TxStore struct {
 
 // Put implements the Store interface.
 func (s *TxStore) Put(item storage.Item) error {
+	prev := item.Clone()
+
+	var reverseOp op
+	switch err := s.TxStoreBase.Get(prev); {
+	case errors.Is(err, storage.ErrNotFound):
+		reverseOp = op{putCreateOp, item, func() error {
+			return s.TxStoreBase.Delete(item)
+		}}
+	case err != nil:
+		return err
+	default:
+		reverseOp = op{putUpdateOp, prev, func() error {
+			return s.TxStoreBase.Put(prev)
+		}}
+	}
+
 	err := s.TxStoreBase.Put(item)
 	if err == nil {
 		s.opsMu.Lock()
-		s.ops = append(s.ops, op{putOp, item, func() error {
-			return s.TxStoreBase.Store.Delete(item)
-		}})
+		s.ops = append(s.ops, reverseOp)
 		s.opsMu.Unlock()
 	}
 	return err
@@ -91,7 +109,8 @@ func (s *TxStore) Rollback() error {
 	s.opsMu.Lock()
 	defer s.opsMu.Unlock()
 	var opErrors *multierror.Error
-	for _, op := range s.ops {
+	for i := len(s.ops) - 1; i >= 0; i-- {
+		op := s.ops[i]
 		if err := op.fn(); err != nil {
 			err = fmt.Errorf(
 				"inmemstore: unable to rollback operation %q for item %s/%s: %w",

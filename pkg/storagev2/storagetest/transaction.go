@@ -14,6 +14,7 @@ import (
 
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/google/go-cmp/cmp"
 	//"github.com/ethersphere/bee/pkg/storagev2/leveldbstore"
 )
 
@@ -26,24 +27,34 @@ type object struct {
 	data []byte
 }
 
-func (i object) ID() string      { return i.id }
+func (o object) ID() string      { return o.id }
 func (object) Namespace() string { return "object" }
 
-func (i object) Marshal() ([]byte, error) {
-	buf := make([]byte, 4+len(i.data))
-	copy(buf[:4], i.id)
-	copy(buf[4:], i.data)
+func (o object) Marshal() ([]byte, error) {
+	buf := make([]byte, 4+len(o.data))
+	copy(buf[:4], o.id)
+	copy(buf[4:], o.data)
 	return buf, nil
 }
 
-func (i *object) Unmarshal(buf []byte) error {
+func (o *object) Unmarshal(buf []byte) error {
 	if len(buf) < 4 {
 		return errors.New("invalid length")
 	}
-	i.id = string(buf[:4])
-	i.data = make([]byte, len(buf)-4)
-	copy(i.data, buf[4:])
+	o.id = string(buf[:4])
+	o.data = make([]byte, len(buf)-4)
+	copy(o.data, buf[4:])
 	return nil
+}
+
+func (o *object) Clone() storage.Item {
+	if o == nil {
+		return nil
+	}
+	return &object{
+		id:   o.id,
+		data: append([]byte(nil), o.data...),
+	}
 }
 
 // initStore initializes the given store with the given objects.
@@ -219,6 +230,46 @@ func TestTxStore(t *testing.T, store storage.TxStore) {
 			have := store.Get(&object{id: o.id})
 			if !errors.Is(have, want) {
 				t.Fatalf("Get(%q):\n\thave: %v\n\twant: %v", o.id, want, have)
+			}
+		}
+
+		checkTxStoreFinishedTxInvariants(t, tx)
+	})
+
+	t.Run("rollback updated objects", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		t.Cleanup(cancel)
+
+		tx := store.NewTx(storage.NewTxState(ctx))
+		oldObjects := []*object{
+			{id: "0001", data: []byte("data1")},
+			{id: "0002", data: []byte("data2")},
+			{id: "0003", data: []byte("data3")},
+		}
+		initStore(t, tx, oldObjects...)
+		if err := tx.Commit(); err != nil {
+			t.Fatalf("Commit(): unexpected error: %v", err)
+		}
+
+		tx = store.NewTx(storage.NewTxState(ctx))
+		newObjects := []*object{
+			{id: "0001", data: []byte("data11")},
+			{id: "0002", data: []byte("data22")},
+			{id: "0003", data: []byte("data33")},
+		}
+		initStore(t, tx, newObjects...)
+		if err := tx.Rollback(); err != nil {
+			t.Fatalf("Rollback(): unexpected error: %v", err)
+		}
+
+		for _, o := range oldObjects {
+			want := o
+			have := &object{id: o.id}
+			if err := store.Get(have); err != nil {
+				t.Fatalf("Get(%q): unexpected error: %v", o.id, err)
+			}
+			if diff := cmp.Diff(want, have, cmp.AllowUnexported(object{})); diff != "" {
+				t.Errorf("Get(%q): unexpected result: (-want +have):\n%s", o.id, diff)
 			}
 		}
 

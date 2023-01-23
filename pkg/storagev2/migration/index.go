@@ -154,6 +154,7 @@ func putAll(s storage.Store, items []storage.Item) error {
 type key struct {
 	storage.Marshaler
 	storage.Unmarshaler
+	storage.Cloner
 
 	id        string
 	namespace string
