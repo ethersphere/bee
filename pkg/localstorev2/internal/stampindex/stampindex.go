@@ -126,6 +126,21 @@ func (i *Item) Unmarshal(bytes []byte) error {
 	return nil
 }
 
+// Clone  implements the storage.Item interface.
+func (i *Item) Clone() storage.Item {
+	if i == nil {
+		return nil
+	}
+	return &Item{
+		namespace:        append([]byte(nil), i.namespace...),
+		batchID:          append([]byte(nil), i.batchID...),
+		batchIndex:       append([]byte(nil), i.batchIndex...),
+		BatchTimestamp:   append([]byte(nil), i.BatchTimestamp...),
+		ChunkAddress:     i.ChunkAddress.Clone(),
+		ChunkIsImmutable: i.ChunkIsImmutable,
+	}
+}
+
 // String implements the fmt.Stringer interface.
 func (i Item) String() string {
 	return path.Join(i.Namespace(), i.ID())

@@ -257,7 +257,7 @@ func TestPinStore(t *testing.T) {
 	})
 }
 
-func TestPinCollectionItem_MarshalAndUnmarshal(t *testing.T) {
+func TestPinCollectionItem(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
@@ -324,10 +324,20 @@ func TestPinCollectionItem_MarshalAndUnmarshal(t *testing.T) {
 
 	for _, tc := range tests {
 		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
+
+		t.Run(fmt.Sprintf("%s marshal/unmarshal", tc.name), func(t *testing.T) {
 			t.Parallel()
 
 			storagetest.TestItemMarshalAndUnmarshal(t, tc.test)
+		})
+
+		t.Run(fmt.Sprintf("%s clone", tc.name), func(t *testing.T) {
+			t.Parallel()
+
+			storagetest.TestItemClone(t, &storagetest.ItemCloneTest{
+				Item:    tc.test.Item,
+				CmpOpts: tc.test.CmpOpts,
+			})
 		})
 	}
 }
