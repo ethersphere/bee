@@ -12,6 +12,14 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+var (
+	// ErrStampNotFound is returned when chunk was found but there were no associated stamps.
+	ErrNoStampsForChunk = fmt.Errorf("chunk found but no stamps found: %w", ErrNotFound)
+
+	// ErrStampNotFound is returned when chunk with desired stamp was not fund.
+	ErrStampNotFound = fmt.Errorf("chunk with stamp was not found: %w", ErrNotFound)
+)
+
 // Getter is the interface that wraps the basic Get method.
 type Getter interface {
 	// Get a chunk by its swarm.Address. Returns the chunk associated with
@@ -72,6 +80,7 @@ type ChunkGetterDeleter interface {
 type ChunkStore interface {
 	io.Closer
 	Getter
+	GetterWithStamp
 	Putter
 	Deleter
 
