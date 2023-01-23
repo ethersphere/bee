@@ -89,6 +89,16 @@ func (q Query) Validate() error {
 	return nil
 }
 
+// Key represents the item identifiers.
+type Key interface {
+	// ID is the unique identifier of Item.
+	ID() string
+
+	// Namespace is used to separate similar items.
+	// E.g.: can be seen as a table construct.
+	Namespace() string
+}
+
 // Marshaler is the interface implemented by types
 // that can marshal themselves into valid Item.
 type Marshaler interface {
@@ -103,14 +113,9 @@ type Unmarshaler interface {
 	Unmarshal([]byte) error
 }
 
-// Key represents the item identifiers.
-type Key interface {
-	// ID is the unique identifier of Item.
-	ID() string
-
-	// Namespace is used to separate similar items.
-	// E.g.: can be seen as a table construct.
-	Namespace() string
+// Cloner makes a deep copy of the Item.
+type Cloner interface {
+	Clone() Item
 }
 
 // Item represents an item which can be used in the Store.
@@ -118,6 +123,7 @@ type Item interface {
 	Key
 	Marshaler
 	Unmarshaler
+	Cloner
 }
 
 // Store contains the interfaces required for the Data Abstraction Layer.
