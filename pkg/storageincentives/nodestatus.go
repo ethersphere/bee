@@ -107,7 +107,7 @@ func (n *NodeState) AddFee() {
 	defer n.mtx.Unlock()
 	fee := n.contract.Fee()
 	if fee != nil {
-		n.nodeStatus.Fees = n.nodeStatus.Fees.Add(n.nodeStatus.Fees, fee)
+		n.nodeStatus.Fees.Add(n.nodeStatus.Fees, fee)
 		n.SaveStatus()
 	}
 }
@@ -120,7 +120,7 @@ func (n *NodeState) CalculateWinnerReward() error {
 		return err
 	}
 	if currentBalance != nil {
-		n.nodeStatus.Reward = currentBalance.Sub(currentBalance, n.currentBalance)
+		n.nodeStatus.Reward.Add(n.nodeStatus.Reward, currentBalance.Sub(currentBalance, n.currentBalance))
 	}
 	return nil
 }
