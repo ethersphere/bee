@@ -371,7 +371,6 @@ func TestBinReset(t *testing.T) {
 	waitCursorsCalled(t, pullsync, addr, false)
 	waitSyncCalled(t, pullsync, addr, false)
 
-	// rs.setRadius(0)
 	kad.ResetPeers()
 	kad.Trigger()
 	time.Sleep(100 * time.Millisecond)

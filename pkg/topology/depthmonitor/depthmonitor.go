@@ -44,7 +44,6 @@ type SyncReporter interface {
 // Topology interface encapsulates the functionality required by the topology component
 // of the node.
 type Topology interface {
-	topologyDriver.NeighborhoodDepther
 	topologyDriver.SetStorageRadiuser
 	topologyDriver.PeersCounter
 }
@@ -125,7 +124,7 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration) {
 		case <-time.After(wakeupInterval):
 		}
 
-		radius := s.bs.GetReserveState().StorageRadius
+		radius := s.bs.StorageRadius()
 
 		currentSize, err := s.reserve.ComputeReserveSize(radius)
 		if err != nil {
