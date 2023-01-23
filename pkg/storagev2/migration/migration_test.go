@@ -325,8 +325,8 @@ type obj struct {
 
 func newObjFactory() storage.Item { return &obj{} }
 
-func (obj) Namespace() string { return "obj" }
 func (o *obj) ID() string     { return strconv.Itoa(o.id) }
+func (obj) Namespace() string { return "obj" }
 
 func (o *obj) Marshal() ([]byte, error) {
 	buf := make([]byte, 16)
@@ -342,4 +342,14 @@ func (o *obj) Unmarshal(buf []byte) error {
 	o.id = int(binary.LittleEndian.Uint64(buf))
 	o.val = int(binary.LittleEndian.Uint64(buf))
 	return nil
+}
+
+func (o *obj) Clone() storage.Item {
+	if o == nil {
+		return nil
+	}
+	return &obj{
+		id:  o.id,
+		val: o.val,
+	}
 }

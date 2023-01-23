@@ -27,9 +27,9 @@ func NewItemWithValues(batchTimestamp []byte, chunkAddress swarm.Address, chunkI
 }
 
 // NewItemWithKeys creates a new Item with given keys and zero values.
-func NewItemWithKey(namespace string, batchID, batchIndex []byte) *Item {
+func NewItemWithKeys(namespace string, batchID, batchIndex []byte) *Item {
 	return &Item{
-		namespace:  []byte(namespace),
+		namespace:  append([]byte(nil), namespace...),
 		batchID:    batchID,
 		batchIndex: batchIndex,
 	}
