@@ -57,15 +57,26 @@ func (im *ItemStub) Unmarshal(data []byte) error {
 	return nil
 }
 
+func (im *ItemStub) Clone() storage.Item {
+	if im == nil {
+		return nil
+	}
+	return &ItemStub{
+		MarshalBuf:   append([]byte(nil), im.MarshalBuf...),
+		MarshalErr:   im.MarshalErr,
+		UnmarshalBuf: append([]byte(nil), im.UnmarshalBuf...),
+	}
+}
+
 type obj1 struct {
 	Id      string
 	SomeInt uint64
 	Buf     []byte
 }
 
-func (obj1) Namespace() string { return "obj1" }
-
 func (o *obj1) ID() string { return o.Id }
+
+func (obj1) Namespace() string { return "obj1" }
 
 // ID is 32 bytes
 func (o *obj1) Marshal() ([]byte, error) {
@@ -86,19 +97,41 @@ func (o *obj1) Unmarshal(buf []byte) error {
 	return nil
 }
 
+func (o *obj1) Clone() storage.Item {
+	if o == nil {
+		return nil
+	}
+	return &obj1{
+		Id:      o.Id,
+		SomeInt: o.SomeInt,
+		Buf:     append([]byte(nil), o.Buf...),
+	}
+}
+
 type obj2 struct {
 	Id        int
 	SomeStr   string
 	SomeFloat float64
 }
 
-func (obj2) Namespace() string { return "obj2" }
-
 func (o *obj2) ID() string { return strconv.Itoa(o.Id) }
+
+func (obj2) Namespace() string { return "obj2" }
 
 func (o *obj2) Marshal() ([]byte, error) { return json.Marshal(o) }
 
 func (o *obj2) Unmarshal(buf []byte) error { return json.Unmarshal(buf, o) }
+
+func (o *obj2) Clone() storage.Item {
+	if o == nil {
+		return nil
+	}
+	return &obj2{
+		Id:        o.Id,
+		SomeStr:   o.SomeStr,
+		SomeFloat: o.SomeFloat,
+	}
+}
 
 func randBytes(count int) []byte {
 	buf := make([]byte, count)
@@ -587,6 +620,22 @@ func TestItemMarshalAndUnmarshal(t *testing.T, test *ItemMarshalAndUnmarshalTest
 	want, have := test.Item, item2
 	if !cmp.Equal(want, have, test.CmpOpts...) {
 		t.Errorf("Marshal/Unmarshal mismatch (-want +have):\n%s", cmp.Diff(want, have))
+	}
+}
+
+// ItemCloneTest represents a test case for the TestItemClone function.
+type ItemCloneTest struct {
+	Item    storage.Item
+	CmpOpts []cmp.Option
+}
+
+// TestItemClone provides correctness testsuite for storage.Item clone capabilities.
+func TestItemClone(t *testing.T, test *ItemCloneTest) {
+	want := test.Item
+	have := test.Item.Clone()
+
+	if diff := cmp.Diff(want, have, test.CmpOpts...); diff != "" {
+		t.Errorf("Clone(...): result mismatch (-want +have):\n%s", diff)
 	}
 }
 
