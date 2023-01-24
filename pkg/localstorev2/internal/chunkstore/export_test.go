@@ -6,11 +6,11 @@ package chunkstore
 
 import storage "github.com/ethersphere/bee/pkg/storagev2"
 
-type RetrievalIndexItem = retrievalIndexItem
-
-type ChunkStampItem = chunkStampItem
-
-type TxChunkStoreWrapper = txChunkStoreWrapper
+type (
+	RetrievalIndexItem  = retrievalIndexItem
+	ChunkStampItem      = chunkStampItem
+	TxChunkStoreWrapper = txChunkStoreWrapper
+)
 
 var (
 	ErrMarshalInvalidRetrievalIndexItemAddress = errMarshalInvalidRetrievalIndexAddress

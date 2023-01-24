@@ -215,9 +215,11 @@ func New(store storage.Store, sharky Sharky) storage.ChunkStore {
 
 func (c *chunkStoreWrapper) getStamp(addr swarm.Address, batchID []byte) (swarm.Stamp, error) {
 	var stamp swarm.Stamp
+	count := 0
 	err := c.store.Iterate(storage.Query{
 		Factory: func() storage.Item { return &chunkStampItem{Address: addr} },
 	}, func(res storage.Result) (bool, error) {
+		count++
 		if batchID == nil || bytes.Equal(batchID, res.Entry.(*chunkStampItem).Stamp.BatchID()) {
 			stamp = res.Entry.(*chunkStampItem).Stamp
 			return true, nil
@@ -226,6 +228,9 @@ func (c *chunkStoreWrapper) getStamp(addr swarm.Address, batchID []byte) (swarm.
 	})
 	if err != nil {
 		return nil, err
+	}
+	if count == 0 {
+		return nil, storage.ErrNoStampsForChunk
 	}
 	return stamp, nil
 }
@@ -258,7 +263,7 @@ func (c *chunkStoreWrapper) readChunk(ctx context.Context, rIdx *retrievalIndexI
 		return nil, fmt.Errorf("chunk store: failed to read stamp for address %s: %w", rIdx.Address, err)
 	}
 	if stamp == nil {
-		return nil, fmt.Errorf("chunk store: no stamp for chunk %s", rIdx.Address)
+		return nil, storage.ErrStampNotFound
 	}
 
 	buf := make([]byte, rIdx.Location.Length)
