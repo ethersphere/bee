@@ -255,10 +255,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 			a.logger.Info("entering phase", "phase", currentPhase.String(), "round", round, "block", block)
 
-			a.nodeState.SetPhase(currentPhase)
-			a.nodeState.SetRound(round)
-			a.nodeState.SetBlock(block)
-			a.nodeState.SaveStatus()
+			a.nodeState.SetCurrentEvent(currentPhase, round, block)
 
 			phaseEvents.Publish(currentPhase)
 			if currentPhase == claim {
@@ -275,10 +272,10 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 func (a *Agent) reveal(ctx context.Context, storageRadius uint8, sample, obfuscationKey []byte) error {
 	a.metrics.RevealPhase.Inc()
 	err := a.contract.Reveal(ctx, storageRadius, sample, obfuscationKey)
-	a.nodeState.AddFee()
 	if err != nil {
 		a.metrics.ErrReveal.Inc()
 	}
+	a.nodeState.AddFee()
 	return err
 }
 

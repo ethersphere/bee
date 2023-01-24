@@ -583,9 +583,9 @@ func (t *transactionService) Close() error {
 }
 
 func (t *transactionService) TransactionFee(ctx context.Context, txHash common.Hash) (*big.Int, error) {
-	hash, _, err := t.backend.TransactionByHash(ctx, txHash)
+	trx, _, err := t.backend.TransactionByHash(ctx, txHash)
 	if err != nil {
 		return nil, err
 	}
-	return hash.GasPrice().Mul(hash.GasPrice(), big.NewInt(int64(hash.Gas()))), nil
+	return trx.Cost(), nil
 }

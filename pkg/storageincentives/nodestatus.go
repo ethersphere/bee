@@ -77,6 +77,16 @@ func NewNode(logger log.Logger, stateStore storage.StateStorer, erc20Service erc
 	}
 }
 
+func (n *NodeState) SetCurrentEvent(p PhaseType, r uint64, b uint64) {
+	n.mtx.Lock()
+	defer n.mtx.Unlock()
+	n.nodeStatus.Phase = p
+	n.nodeStatus.Round = r
+	n.nodeStatus.Block = b
+	n.nodeStatus.State = idle
+	n.SaveStatus()
+}
+
 func (n *NodeState) SetState(s State) {
 	n.mtx.Lock()
 	defer n.mtx.Unlock()

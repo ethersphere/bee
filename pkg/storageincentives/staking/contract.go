@@ -341,10 +341,7 @@ func (c *contract) IsOverlayFrozen(ctx context.Context) (bool, error) {
 	if len(results) == 0 {
 		return false, errors.New("unexpected empty results")
 	}
-	// true if overlay is not frozen
-	if results[0].(bool) {
-		return false, nil
-	}
+	isNotFrozen := results[0].(bool)
 	// false if overlay is frozen
-	return true, nil
+	return !isNotFrozen, nil
 }
