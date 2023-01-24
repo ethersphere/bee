@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/ethersphere/bee/pkg/storagev2"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/hashicorp/go-multierror"
 )
 
