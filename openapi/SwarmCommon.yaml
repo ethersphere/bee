@@ -701,11 +701,15 @@ components:
     RedistributionStateResponse:
       type: object
       properties:
-        state:
-          type: string
+        isFrozen:
+          type: boolean
         round:
           type: integer
         lastWonRound:
+          type: integer
+        lastPlayedRound:
+          type: integer
+        lastFrozenRound:
           type: integer
         block:
           type: integer

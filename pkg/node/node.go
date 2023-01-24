@@ -1032,6 +1032,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		if apiService == nil {
 			apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, beeNodeMode, o.ChequebookEnable, o.SwapEnable, chainBackend, o.CORSAllowedOrigins)
 			apiService.SetProbe(probe)
+			apiService.SetRedistributionAgent(agent)
 		}
 
 		chunkC := apiService.Configure(signer, authenticator, tracer, api.Options{
@@ -1137,6 +1138,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		debugService.SetP2P(p2ps)
 		debugService.SetSwarmAddress(&swarmAddress)
 		debugService.MountDebug(false)
+		debugService.SetRedistributionAgent(agent)
 	}
 
 	if err := kad.Start(ctx); err != nil {

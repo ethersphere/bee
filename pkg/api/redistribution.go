@@ -12,13 +12,15 @@ import (
 )
 
 type nodeStatusResponse struct {
-	State        string         `json:"state"`
-	Phase        string         `json:"phase"`
-	Round        uint64         `json:"round"`
-	LastWonRound uint64         `json:"lastWonRound"`
-	Block        uint64         `json:"block"`
-	Reward       *bigint.BigInt `json:"reward"`
-	Fees         *bigint.BigInt `json:"fees"`
+	IsFrozen        bool           `json:"isFrozen"`
+	Phase           string         `json:"phase"`
+	Round           uint64         `json:"round"`
+	LastWonRound    uint64         `json:"lastWonRound"`
+	LastPlayedRound uint64         `json:"lastPlayedRound"`
+	LastFrozenRound uint64         `json:"lastFrozenRound"`
+	Block           uint64         `json:"block"`
+	Reward          *bigint.BigInt `json:"reward"`
+	Fees            *bigint.BigInt `json:"fees"`
 }
 
 func (s *Service) redistributionStatusHandler(w http.ResponseWriter, r *http.Request) {
@@ -28,17 +30,19 @@ func (s *Service) redistributionStatusHandler(w http.ResponseWriter, r *http.Req
 	if err != nil {
 		logger.Debug("get redistribution status", "overlay address", s.overlay.String(), "error", err)
 		logger.Error(nil, "get redistribution status")
-		w.WriteHeader(http.StatusNotFound)
+		jsonhttp.InternalServerError(w, "failed to get redistribution status")
 		return
 	}
 
 	jsonhttp.OK(w, nodeStatusResponse{
-		State:        status.State.String(),
-		Phase:        status.Phase.String(),
-		LastWonRound: status.LastWonRound,
-		Round:        status.Round,
-		Block:        status.Block,
-		Reward:       bigint.Wrap(status.Reward),
-		Fees:         bigint.Wrap(status.Fees),
+		IsFrozen:        status.IsFrozen,
+		Phase:           status.Phase.String(),
+		LastWonRound:    status.LastWonRound,
+		LastPlayedRound: status.LastPlayedRound,
+		LastFrozenRound: status.LastFrozenRound,
+		Round:           status.Round,
+		Block:           status.Block,
+		Reward:          bigint.Wrap(status.Reward),
+		Fees:            bigint.Wrap(status.Fees),
 	})
 }
