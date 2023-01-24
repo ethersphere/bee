@@ -66,7 +66,7 @@ func TestChunkStore(t *testing.T, st storage.ChunkStore) {
 	t.Run("get chunks with multiple stamps", func(t *testing.T) {
 		st1 := postagetesting.MustNewStamp()
 		st2 := postagetesting.MustNewStamp()
-		ch1 := chunktest.GenerateTestRandomInvalidChunk().WithStamp(st1)
+		ch1 := chunktest.GenerateTestRandomChunk().WithStamp(st1)
 		ch2 := swarm.NewChunk(ch1.Address(), ch1.Data()).WithStamp(st2)
 
 		err := st.Put(context.TODO(), ch1)
@@ -114,7 +114,7 @@ func TestChunkStore(t *testing.T, st storage.ChunkStore) {
 	t.Run("get chunk errors", func(t *testing.T) {
 		nonexistentBatchID := postagetesting.MustNewID()
 		stamp := postagetesting.MustNewStamp()
-		ch := chunktest.GenerateTestRandomInvalidChunk().WithStamp(stamp)
+		ch := chunktest.GenerateTestRandomChunk().WithStamp(stamp)
 
 		err := st.Put(context.TODO(), swarm.NewChunk(ch.Address(), ch.Data()))
 		if err != nil {
