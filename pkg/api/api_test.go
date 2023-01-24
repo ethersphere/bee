@@ -825,25 +825,25 @@ func (m *mockContract) IsWinner(context.Context) (bool, error) {
 	return false, nil
 }
 
-func (m *mockContract) Claim(context.Context) error {
+func (m *mockContract) Claim(context.Context) (*big.Int, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, claimCall)
-	return nil
+	return nil, nil
 }
 
-func (m *mockContract) Commit(context.Context, []byte, *big.Int) error {
+func (m *mockContract) Commit(context.Context, []byte, *big.Int) (*big.Int, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, commitCall)
-	return nil
+	return nil, nil
 }
 
-func (m *mockContract) Reveal(context.Context, uint8, []byte, []byte) error {
+func (m *mockContract) Reveal(context.Context, uint8, []byte, []byte) (*big.Int, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, revealCall)
-	return nil
+	return nil, nil
 }
 
 type mockMonitor struct {

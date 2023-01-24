@@ -102,14 +102,13 @@ type transactionService struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 
-	logger          log.Logger
-	backend         Backend
-	signer          crypto.Signer
-	sender          common.Address
-	store           storage.StateStorer
-	chainID         *big.Int
-	monitor         Monitor
-	AccumulativeFee *big.Int
+	logger  log.Logger
+	backend Backend
+	signer  crypto.Signer
+	sender  common.Address
+	store   storage.StateStorer
+	chainID *big.Int
+	monitor Monitor
 }
 
 // NewService creates a new transaction service.
