@@ -40,7 +40,8 @@ func TestMultipleStampsRefCnt(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	chunkStore := chunkstore.NewTxChunkStore(inmemstore.NewTxStore(inmemstore.New()), sharky)
+	store := inmemstore.New()
+	chunkStore := chunkstore.NewTxChunkStore(inmemstore.NewTxStore(store), sharky)
 
 	chunk := chunktest.GenerateTestRandomChunk()
 	stamps := []swarm.Stamp{chunk.Stamp()}
@@ -48,14 +49,14 @@ func TestMultipleStampsRefCnt(t *testing.T) {
 		stamps = append(stamps, postagetesting.MustNewStamp())
 	}
 
-	verify := func(t *testing.T) {
+	verifyAllIndexes := func(t *testing.T) {
 		t.Helper()
 
 		rIdx := chunkstore.RetrievalIndexItem{
 			Address: chunk.Address(),
 		}
 
-		has, err := chunkStore.(*chunkstore.TxChunkStoreWrapper).Store().Has(&rIdx)
+		has, err := store.Has(&rIdx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -70,7 +71,7 @@ func TestMultipleStampsRefCnt(t *testing.T) {
 				Stamp:   stamp,
 			}
 
-			has, err := chunkStore.(*chunkstore.TxChunkStoreWrapper).Store().Has(&sIdx)
+			has, err := store.Has(&sIdx)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -96,7 +97,7 @@ func TestMultipleStampsRefCnt(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		verify(t)
+		verifyAllIndexes(t)
 	})
 
 	t.Run("rollback delete operations", func(t *testing.T) {
@@ -115,7 +116,7 @@ func TestMultipleStampsRefCnt(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			verify(t)
+			verifyAllIndexes(t)
 		})
 
 		// this should remove all the stamps and hopefully bring them back
@@ -134,7 +135,7 @@ func TestMultipleStampsRefCnt(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			verify(t)
+			verifyAllIndexes(t)
 		})
 	})
 }

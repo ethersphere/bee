@@ -336,17 +336,17 @@ func checkTxChunkStoreFinishedTxInvariants(t *testing.T, store storage.TxChunkSt
 
 	ctx := context.Background()
 	want := storage.ErrTxDone
-	o007 := chunktest.GenerateTestRandomChunk()
+	randomChunk := chunktest.GenerateTestRandomChunk()
 
-	if chunk, have := store.Get(ctx, o007.Address()); !errors.Is(have, want) || chunk != nil {
+	if chunk, have := store.Get(ctx, randomChunk.Address()); !errors.Is(have, want) || chunk != nil {
 		t.Fatalf("Get(...)\n\thave: %v, %v\n\twant: <nil>, %v", chunk, have, want)
 	}
 
-	if have := store.Put(ctx, o007); !errors.Is(have, want) {
+	if have := store.Put(ctx, randomChunk); !errors.Is(have, want) {
 		t.Fatalf("Put(...):\n\thave: %v\n\twant: %v", have, want)
 	}
 
-	if have := store.Delete(ctx, o007.Address()); !errors.Is(have, want) {
+	if have := store.Delete(ctx, randomChunk.Address()); !errors.Is(have, want) {
 		t.Fatalf("Delete(...):\n\thave: %v\n\twant: %v", have, want)
 	}
 
