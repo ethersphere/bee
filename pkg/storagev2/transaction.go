@@ -98,15 +98,20 @@ func (tx *TxState) IsDone() error {
 }
 
 // Done marks this transaction as complete.
-func (tx *TxState) Done() {
+// It returns ErrTxDone if the transaction has already been committed.
+func (tx *TxState) Done() error {
 	if tx == nil {
-		return
+		return nil
 	}
 
+	err := ErrTxDone
 	tx.once.Do(func() {
-		atomic.StoreInt32(&tx.done, 1)
-		tx.cancel()
+		if atomic.SwapInt32(&tx.done, 1) == 0 {
+			err = tx.ctx.Err()
+			tx.cancel()
+		}
 	})
+	return err
 }
 
 // NewTxState is a convenient constructor for creating instances of TxState.
