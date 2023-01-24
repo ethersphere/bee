@@ -13,7 +13,7 @@ import (
 )
 
 var (
-	// ErrStampNotFound is returned when chunk was found but there were no associated stamps.
+	// ErrNoStampsForChunk is returned when chunk was found but there were no associated stamps.
 	ErrNoStampsForChunk = fmt.Errorf("chunk found but no stamps found: %w", ErrNotFound)
 
 	// ErrStampNotFound is returned when chunk with desired stamp was not fund.
