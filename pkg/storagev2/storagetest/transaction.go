@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
@@ -404,9 +405,9 @@ func TestTxChunkStore(t *testing.T, store storage.TxChunkStore) {
 		t.Cleanup(cancel)
 
 		chunks := []swarm.Chunk{
-			swarm.NewChunk(swarm.NewAddress([]byte("0001")), []byte("data1")),
-			swarm.NewChunk(swarm.NewAddress([]byte("0002")), []byte("data2")),
-			swarm.NewChunk(swarm.NewAddress([]byte("0003")), []byte("data3")),
+			swarm.NewChunk(swarm.NewAddress([]byte("0001")), []byte("data1")).WithStamp(postagetesting.MustNewStamp()),
+			swarm.NewChunk(swarm.NewAddress([]byte("0002")), []byte("data2")).WithStamp(postagetesting.MustNewStamp()),
+			swarm.NewChunk(swarm.NewAddress([]byte("0003")), []byte("data3")).WithStamp(postagetesting.MustNewStamp()),
 		}
 
 		t.Run("add new chunks", func(t *testing.T) {
@@ -474,9 +475,9 @@ func TestTxChunkStore(t *testing.T, store storage.TxChunkStore) {
 		tx := store.NewTx(storage.NewTxState(ctx))
 
 		chunks := []swarm.Chunk{
-			swarm.NewChunk(swarm.NewAddress([]byte("0001")), []byte("data1")),
-			swarm.NewChunk(swarm.NewAddress([]byte("0002")), []byte("data2")),
-			swarm.NewChunk(swarm.NewAddress([]byte("0003")), []byte("data3")),
+			swarm.NewChunk(swarm.NewAddress([]byte("0001")), []byte("data1")).WithStamp(postagetesting.MustNewStamp()),
+			swarm.NewChunk(swarm.NewAddress([]byte("0002")), []byte("data2")).WithStamp(postagetesting.MustNewStamp()),
+			swarm.NewChunk(swarm.NewAddress([]byte("0003")), []byte("data3")).WithStamp(postagetesting.MustNewStamp()),
 		}
 		initChunkStore(t, tx, chunks...)
 
@@ -501,9 +502,9 @@ func TestTxChunkStore(t *testing.T, store storage.TxChunkStore) {
 
 		tx := store.NewTx(storage.NewTxState(ctx))
 		chunks := []swarm.Chunk{
-			swarm.NewChunk(swarm.NewAddress([]byte("0001")), []byte("data1")),
-			swarm.NewChunk(swarm.NewAddress([]byte("0002")), []byte("data2")),
-			swarm.NewChunk(swarm.NewAddress([]byte("0003")), []byte("data3")),
+			swarm.NewChunk(swarm.NewAddress([]byte("0001")), []byte("data1")).WithStamp(postagetesting.MustNewStamp()),
+			swarm.NewChunk(swarm.NewAddress([]byte("0002")), []byte("data2")).WithStamp(postagetesting.MustNewStamp()),
+			swarm.NewChunk(swarm.NewAddress([]byte("0003")), []byte("data3")).WithStamp(postagetesting.MustNewStamp()),
 		}
 		initChunkStore(t, tx, chunks...)
 		if err := tx.Commit(); err != nil {
