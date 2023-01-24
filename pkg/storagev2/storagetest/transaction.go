@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -403,7 +404,12 @@ func TestTxChunkStore(t *testing.T, store storage.TxChunkStore) {
 		ctx, cancel := context.WithCancel(context.Background())
 		t.Cleanup(cancel)
 
-		chunks := chunktest.GenerateTestRandomChunks(3)
+		// chunks := chunktest.GenerateTestRandomChunks(3)
+		chunks := []swarm.Chunk{
+			swarm.NewChunk(swarm.NewAddress([]byte("0001")), []byte("data1")).WithStamp(postagetesting.MustNewStamp()),
+			swarm.NewChunk(swarm.NewAddress([]byte("0002")), []byte("data2")).WithStamp(postagetesting.MustNewStamp()),
+			swarm.NewChunk(swarm.NewAddress([]byte("0003")), []byte("data3")).WithStamp(postagetesting.MustNewStamp()),
+		}
 
 		t.Run("add new chunks", func(t *testing.T) {
 			tx := store.NewTx(storage.NewTxState(ctx))
