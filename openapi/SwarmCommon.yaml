@@ -705,6 +705,8 @@ components:
           type: string
         round:
           type: integer
+        lastWonRound:
+          type: integer
         block:
           type: integer
         reward:

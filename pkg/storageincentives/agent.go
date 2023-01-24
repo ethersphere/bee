@@ -181,7 +181,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		mtx.Unlock()
 
 		if round == revealRound { // to claim, previous reveal must've happened in the same round
-			err := a.claim(ctx)
+			err := a.claim(ctx, round)
 			if err != nil {
 				a.logger.Error(err, "claim")
 			}
@@ -279,7 +279,7 @@ func (a *Agent) reveal(ctx context.Context, storageRadius uint8, sample, obfusca
 	return err
 }
 
-func (a *Agent) claim(ctx context.Context) error {
+func (a *Agent) claim(ctx context.Context, round uint64) error {
 	a.metrics.ClaimPhase.Inc()
 	// event claimPhase was processed
 
@@ -295,6 +295,7 @@ func (a *Agent) claim(ctx context.Context) error {
 	}
 
 	if isWinner {
+		a.nodeState.SetLastWonRound(round)
 		a.nodeState.SetState(winner)
 		a.metrics.Winner.Inc()
 		err := a.nodeState.SetBalance(ctx)

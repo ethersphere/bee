@@ -32,12 +32,13 @@ type NodeState struct {
 
 // NodeStatus provide internal status of the nodes in the redistribution game
 type NodeStatus struct {
-	Phase  PhaseType `json:"phase"`
-	State  State     `json:"state"`
-	Round  uint64    `json:"round"`
-	Block  uint64    `json:"block"`
-	Reward *big.Int  `json:"reward"`
-	Fees   *big.Int  `json:"fees"`
+	Phase        PhaseType `json:"phase"`
+	State        State     `json:"state"`
+	Round        uint64    `json:"round"`
+	LastWonRound uint64    `json:"lastWonRound"`
+	Block        uint64    `json:"block"`
+	Reward       *big.Int  `json:"reward"`
+	Fees         *big.Int  `json:"fees"`
 }
 
 type State int
@@ -93,16 +94,10 @@ func (n *NodeState) SetState(s State) {
 	n.nodeStatus.State = s
 }
 
-func (n *NodeState) SetPhase(p PhaseType) {
+func (n *NodeState) SetLastWonRound(r uint64) {
 	n.mtx.Lock()
 	defer n.mtx.Unlock()
-	n.nodeStatus.Phase = p
-}
-
-func (n *NodeState) SetRound(r uint64) {
-	n.mtx.Lock()
-	defer n.mtx.Unlock()
-	n.nodeStatus.Round = r
+	n.nodeStatus.LastWonRound = r
 }
 
 func (n *NodeState) SetBlock(b uint64) {

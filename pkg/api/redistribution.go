@@ -12,12 +12,13 @@ import (
 )
 
 type nodeStatusResponse struct {
-	State  string         `json:"state"`
-	Phase  string         `json:"phase"`
-	Round  uint64         `json:"round"`
-	Block  uint64         `json:"block"`
-	Reward *bigint.BigInt `json:"reward"`
-	Fees   *bigint.BigInt `json:"fees"`
+	State        string         `json:"state"`
+	Phase        string         `json:"phase"`
+	Round        uint64         `json:"round"`
+	LastWonRound uint64         `json:"lastWonRound"`
+	Block        uint64         `json:"block"`
+	Reward       *bigint.BigInt `json:"reward"`
+	Fees         *bigint.BigInt `json:"fees"`
 }
 
 func (s *Service) redistributionStatusHandler(w http.ResponseWriter, r *http.Request) {
@@ -32,11 +33,12 @@ func (s *Service) redistributionStatusHandler(w http.ResponseWriter, r *http.Req
 	}
 
 	jsonhttp.OK(w, nodeStatusResponse{
-		State:  status.State.String(),
-		Phase:  status.Phase.String(),
-		Round:  status.Round,
-		Block:  status.Block,
-		Reward: bigint.Wrap(status.Reward),
-		Fees:   bigint.Wrap(status.Fees),
+		State:        status.State.String(),
+		Phase:        status.Phase.String(),
+		LastWonRound: status.LastWonRound,
+		Round:        status.Round,
+		Block:        status.Block,
+		Reward:       bigint.Wrap(status.Reward),
+		Fees:         bigint.Wrap(status.Fees),
 	})
 }
