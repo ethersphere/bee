@@ -49,7 +49,6 @@ type txChunkStoreWrapper struct {
 
 	txStore storage.TxStore
 	sharky  *txSharky
-	doneMu  sync.Mutex
 }
 
 func (t *txChunkStoreWrapper) Put(ctx context.Context, chunk swarm.Chunk) error {
@@ -61,10 +60,17 @@ func (t *txChunkStoreWrapper) Delete(ctx context.Context, address swarm.Address)
 }
 
 func (t *txChunkStoreWrapper) Commit() error {
-	t.doneMu.Lock()
-	defer t.doneMu.Unlock()
-
 	if err := t.IsDone(); err != nil {
+		return err
+	}
+
+	// First we need to commit the child txn. This will inturn provide locking as
+	// only 1 commit is possible on the child txn.
+	if err := t.txStore.Commit(); err != nil {
+		// due to the current implementation of the txStore, we would have already
+		// committed the entries to disk. So this failure should only happen if
+		// its a duplicate Commit request. If this assumption changes in future, we
+		// would need to handle committed sharky locations here.
 		return err
 	}
 
@@ -75,21 +81,10 @@ func (t *txChunkStoreWrapper) Commit() error {
 		}
 	}
 
-	if err := t.txStore.Commit(); err != nil {
-		for _, v := range t.sharky.committedLocs {
-			err = multierror.Append(err, t.sharky.Sharky.Release(context.Background(), v))
-		}
-		return err
-	}
-
-	t.TxState.Done()
-	return nil
+	return t.TxState.Done()
 }
 
 func (t *txChunkStoreWrapper) Rollback() error {
-	t.doneMu.Lock()
-	defer t.doneMu.Unlock()
-
 	if err := t.IsDone(); err != nil {
 		return err
 	}
@@ -102,7 +97,8 @@ func (t *txChunkStoreWrapper) Rollback() error {
 	for _, v := range t.sharky.committedLocs {
 		err = multierror.Append(err, t.sharky.Sharky.Release(context.Background(), v))
 	}
-	return err.ErrorOrNil()
+
+	return multierror.Append(err, t.TxState.Done()).ErrorOrNil()
 }
 
 func (t *txChunkStoreWrapper) NewTx(state *storage.TxState) storage.TxChunkStore {
