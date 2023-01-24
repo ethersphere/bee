@@ -181,6 +181,9 @@ func (c *chunkStampItem) Clone() storage.Item {
 	return clone
 }
 
+// Sharky provides an abstraction for the sharky.Store operations used in the
+// chunkstore. This allows us to be more flexible in passing in the sharky instance
+// to chunkstore. For eg, check the TxChunkStore implementation in this pkg.
 type Sharky interface {
 	Read(context.Context, sharky.Location, []byte) error
 	Write(context.Context, []byte) (sharky.Location, error)

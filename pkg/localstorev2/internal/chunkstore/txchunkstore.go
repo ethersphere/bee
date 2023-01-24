@@ -14,6 +14,7 @@ import (
 	"github.com/hashicorp/go-multierror"
 )
 
+// txSharky provides a simple txn functionality over the Sharky store.
 type txSharky struct {
 	Sharky
 
@@ -41,9 +42,7 @@ func (t *txSharky) Release(_ context.Context, loc sharky.Location) error {
 	return nil
 }
 
-func (t *txSharky) newTx() *txSharky {
-	return &txSharky{Sharky: t.Sharky}
-}
+func (t *txSharky) newTx() *txSharky { return &txSharky{Sharky: t.Sharky} }
 
 type txChunkStoreWrapper struct {
 	*storage.TxChunkStoreBase

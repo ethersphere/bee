@@ -23,3 +23,5 @@ type PinStore interface {
 	HasPin(context.Context) (bool, error)
 	DeletePin(context.Context, swarm.Address) error
 }
+
+type localstore struct{}
