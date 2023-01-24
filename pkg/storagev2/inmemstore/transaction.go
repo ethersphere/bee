@@ -58,13 +58,13 @@ func (s *TxStore) Put(item storage.Item) error {
 	switch err := s.TxStoreBase.Get(prev); {
 	case errors.Is(err, storage.ErrNotFound):
 		reverseOp = op{putCreateOp, item, func() error {
-			return s.TxStoreBase.Delete(item)
+			return s.TxStoreBase.Store.Delete(item)
 		}}
 	case err != nil:
 		return err
 	default:
 		reverseOp = op{putUpdateOp, prev, func() error {
-			return s.TxStoreBase.Put(prev)
+			return s.TxStoreBase.Store.Put(prev)
 		}}
 	}
 
@@ -92,22 +92,15 @@ func (s *TxStore) Delete(item storage.Item) error {
 
 // Commit implements the Tx interface.
 func (s *TxStore) Commit() error {
-	if err := s.IsDone(); err != nil {
-		return err
-	}
-	s.TxState.Done()
-	return nil
+	return s.TxState.Done()
 }
 
 // Rollback implements the Tx interface.
 func (s *TxStore) Rollback() error {
-	if err := s.IsDone(); err != nil {
+	if err := s.TxState.Done(); err != nil {
 		return err
 	}
-	defer s.TxState.Done()
 
-	s.opsMu.Lock()
-	defer s.opsMu.Unlock()
 	var opErrors *multierror.Error
 	for i := len(s.ops) - 1; i >= 0; i-- {
 		op := s.ops[i]
