@@ -81,22 +81,15 @@ func (s *TxChunkStore) Delete(ctx context.Context, addr swarm.Address) error {
 
 // Commit implements the Tx interface.
 func (s *TxChunkStore) Commit() error {
-	if err := s.IsDone(); err != nil {
-		return err
-	}
-	s.TxState.Done()
-	return nil
+	return s.TxState.Done()
 }
 
 // Rollback implements the Tx interface.
 func (s *TxChunkStore) Rollback() error {
-	if err := s.IsDone(); err != nil {
+	if err := s.TxState.Done(); err != nil {
 		return err
 	}
-	defer s.TxState.Done()
 
-	s.opsMu.Lock()
-	defer s.opsMu.Unlock()
 	var opErrors *multierror.Error
 	for _, op := range s.ops {
 		if err := op.fn(); err != nil {
