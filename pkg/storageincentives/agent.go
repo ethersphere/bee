@@ -448,6 +448,6 @@ func (a *Agent) wrapCommit(storageRadius uint8, sample []byte, key []byte) ([]by
 }
 
 // Status returns the node status
-func (a *Agent) Status() (*NodeStatus, error) {
+func (a *Agent) Status() (*Status, error) {
 	return a.nodeState.Status()
 }

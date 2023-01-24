@@ -15,7 +15,7 @@ import (
 func TestRedistributionStatus(t *testing.T) {
 	t.Parallel()
 	store := statestore.NewStateStore()
-	err := store.Put("redistribution_state", storageincentives.NodeStatus{
+	err := store.Put("redistribution_state", storageincentives.Status{
 		State: storageincentives.State(3),
 		Phase: storageincentives.PhaseType(1),
 		Round: 1,

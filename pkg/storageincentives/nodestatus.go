@@ -25,13 +25,13 @@ type NodeState struct {
 	logger         log.Logger
 	overlay        swarm.Address
 	mtx            sync.Mutex
-	nodeStatus     NodeStatus
+	status         Status
 	currentBalance *big.Int
 	contract       redistribution.Contract
 }
 
-// NodeStatus provide internal status of the nodes in the redistribution game
-type NodeStatus struct {
+// Status provide internal status of the nodes in the redistribution game
+type Status struct {
 	Phase        PhaseType `json:"phase"`
 	State        State     `json:"state"`
 	Round        uint64    `json:"round"`
@@ -69,7 +69,7 @@ func NewNode(logger log.Logger, stateStore storage.StateStorer, erc20Service erc
 		logger:         logger.WithName(loggerNameNode).Register(),
 		currentBalance: big.NewInt(0),
 		contract:       contract,
-		nodeStatus: NodeStatus{
+		status: Status{
 			Round:  0,
 			Block:  0,
 			Reward: nil,
@@ -81,29 +81,29 @@ func NewNode(logger log.Logger, stateStore storage.StateStorer, erc20Service erc
 func (n *NodeState) SetCurrentEvent(p PhaseType, r uint64, b uint64) {
 	n.mtx.Lock()
 	defer n.mtx.Unlock()
-	n.nodeStatus.Phase = p
-	n.nodeStatus.Round = r
-	n.nodeStatus.Block = b
-	n.nodeStatus.State = idle
+	n.status.Phase = p
+	n.status.Round = r
+	n.status.Block = b
+	n.status.State = idle
 	n.SaveStatus()
 }
 
 func (n *NodeState) SetState(s State) {
 	n.mtx.Lock()
 	defer n.mtx.Unlock()
-	n.nodeStatus.State = s
+	n.status.State = s
 }
 
 func (n *NodeState) SetLastWonRound(r uint64) {
 	n.mtx.Lock()
 	defer n.mtx.Unlock()
-	n.nodeStatus.LastWonRound = r
+	n.status.LastWonRound = r
 }
 
 func (n *NodeState) SetBlock(b uint64) {
 	n.mtx.Lock()
 	defer n.mtx.Unlock()
-	n.nodeStatus.Block = b
+	n.status.Block = b
 }
 
 // AddFee sets the internal node status
@@ -112,7 +112,7 @@ func (n *NodeState) AddFee() {
 	defer n.mtx.Unlock()
 	fee := n.contract.Fee()
 	if fee != nil {
-		n.nodeStatus.Fees.Add(n.nodeStatus.Fees, fee)
+		n.status.Fees.Add(n.status.Fees, fee)
 		n.SaveStatus()
 	}
 }
@@ -125,7 +125,7 @@ func (n *NodeState) CalculateWinnerReward(ctx context.Context) error {
 		return err
 	}
 	if currentBalance != nil {
-		n.nodeStatus.Reward.Add(n.nodeStatus.Reward, currentBalance.Sub(currentBalance, n.currentBalance))
+		n.status.Reward.Add(n.status.Reward, currentBalance.Sub(currentBalance, n.currentBalance))
 	}
 	return nil
 }
@@ -134,7 +134,7 @@ func (n *NodeState) CalculateWinnerReward(ctx context.Context) error {
 func (n *NodeState) SaveStatus() {
 	n.mtx.Lock()
 	defer n.mtx.Unlock()
-	err := n.stateStore.Put(redistributionStatusKey, n.nodeStatus)
+	err := n.stateStore.Put(redistributionStatusKey, n.status)
 	if err != nil {
 		n.logger.Error(err, "error saving node status")
 		return
@@ -142,8 +142,8 @@ func (n *NodeState) SaveStatus() {
 }
 
 // Status returns the node status
-func (n *NodeState) Status() (*NodeStatus, error) {
-	status := new(NodeStatus)
+func (n *NodeState) Status() (*Status, error) {
+	status := new(Status)
 	if err := n.stateStore.Get(redistributionStatusKey, status); err != nil {
 		return nil, err
 	}
