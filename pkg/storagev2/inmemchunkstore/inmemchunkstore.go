@@ -33,7 +33,7 @@ func (c *ChunkStore) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, 
 	return c.GetWithStamp(ctx, addr, nil)
 }
 
-func (c *ChunkStore) GetWithStamp(ctx context.Context, addr swarm.Address, batchID []byte) (swarm.Chunk, error) {
+func (c *ChunkStore) GetWithStamp(_ context.Context, addr swarm.Address, batchID []byte) (swarm.Chunk, error) {
 	c.lock.Lock()
 	defer c.lock.Unlock()
 

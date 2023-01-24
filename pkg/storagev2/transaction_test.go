@@ -32,7 +32,12 @@ func TestTxState(t *testing.T) {
 		}
 
 		time.AfterFunc(timeout, func() {
-			txs.Done()
+			if err := txs.Done(); err != nil {
+				t.Fatalf("Done(): unexpected error: %v", err)
+			}
+			if err := txs.Done(); !errors.Is(err, storage.ErrTxDone) {
+				t.Fatalf("Done():\n\twant error: %v\n\thave error: %v", storage.ErrTxDone, err)
+			}
 		})
 
 		func() {
@@ -104,7 +109,10 @@ func TestTxState(t *testing.T) {
 		}()
 
 		if err := txs.IsDone(); !errors.Is(err, context.Canceled) {
-			t.Fatalf("IsDone(): want error %v; have %v", context.Canceled, err)
+			t.Fatalf("IsDone():\n\twant error %v\n\thave %v", context.Canceled, err)
+		}
+		if err := txs.Done(); !errors.Is(err, context.Canceled) {
+			t.Fatalf("Done():\n\twant error: %v\n\thave error: %v", context.Canceled, err)
 		}
 
 		select {
