@@ -4,9 +4,13 @@
 
 package chunkstore
 
-type RetrievalIndexItem = retrievalIndexItem
+import storage "github.com/ethersphere/bee/pkg/storagev2"
 
-type ChunkStampItem = chunkStampItem
+type (
+	RetrievalIndexItem  = retrievalIndexItem
+	ChunkStampItem      = chunkStampItem
+	TxChunkStoreWrapper = txChunkStoreWrapper
+)
 
 var (
 	ErrMarshalInvalidRetrievalIndexItemAddress = errMarshalInvalidRetrievalIndexAddress
@@ -17,3 +21,7 @@ var (
 	ErrMarshalInvalidChunkStampItemStamp     = errMarshalInvalidChunkStampItemStamp
 	ErrUnmarshalInvalidChunkStampItemSize    = errUnmarshalInvalidChunkStampItemSize
 )
+
+func (t *txChunkStoreWrapper) Store() storage.Store {
+	return t.txStore
+}
