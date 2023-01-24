@@ -14,23 +14,22 @@ import (
 
 func TestRedistributionStatus(t *testing.T) {
 	t.Parallel()
-	store := statestore.NewStateStore()
-	err := store.Put("redistribution_state", storageincentives.Status{
-		State: storageincentives.State(3),
-		Phase: storageincentives.PhaseType(1),
-		Round: 1,
-		Block: 12,
-	})
-	if err != nil {
-		t.Errorf("redistribution put state: %v", err)
-	}
-	srv, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI:    true,
-		StateStorer: store,
-	})
+
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
-
+		store := statestore.NewStateStore()
+		err := store.Put("redistribution_state", storageincentives.Status{
+			Phase: storageincentives.PhaseType(1),
+			Round: 1,
+			Block: 12,
+		})
+		if err != nil {
+			t.Errorf("redistribution put state: %v", err)
+		}
+		srv, _, _, _ := newTestServer(t, testServerOptions{
+			DebugAPI:    true,
+			StateStorer: store,
+		})
 		jsonhttptest.Request(t, srv, http.MethodGet, "/redistributionstate", http.StatusOK,
 			jsonhttptest.WithRequestHeader("Content-Type", "application/json; charset=utf-8"),
 		)
@@ -38,8 +37,10 @@ func TestRedistributionStatus(t *testing.T) {
 	})
 	t.Run("failure", func(t *testing.T) {
 		t.Parallel()
-		srv, _, _, _ := newTestServer(t, testServerOptions{})
-		jsonhttptest.Request(t, srv, http.MethodGet, "/redistributionstate", http.StatusNotFound)
+		srv, _, _, _ := newTestServer(t, testServerOptions{
+			DebugAPI: true,
+		})
+		jsonhttptest.Request(t, srv, http.MethodGet, "/redistributionstate", http.StatusInternalServerError)
 	})
 
 }

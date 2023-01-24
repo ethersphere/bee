@@ -57,7 +57,7 @@ type Agent struct {
 	overlay                swarm.Address
 	quit                   chan struct{}
 	wg                     sync.WaitGroup
-	nodeState              NodeState
+	nodeState              RedistributionState
 }
 
 func New(overlay swarm.Address, backend ChainBackend, logger log.Logger, monitor Monitor, contract redistribution.Contract, batchExpirer postagecontract.PostageBatchExpirer, redistributionStatuser staking.RedistributionStatuser, radius postage.RadiusChecker, sampler storage.Sampler, blockTime time.Duration, blocksPerRound, blocksPerPhase uint64, stateStore storage.StateStorer, erc20Service erc20.Service) *Agent {
@@ -74,7 +74,7 @@ func New(overlay swarm.Address, backend ChainBackend, logger log.Logger, monitor
 		sampler:                sampler,
 		quit:                   make(chan struct{}),
 		redistributionStatuser: redistributionStatuser,
-		nodeState:              NewNode(logger, stateStore, erc20Service, contract),
+		nodeState:              NewRedistributionState(logger, stateStore, erc20Service),
 	}
 
 	a.wg.Add(1)
@@ -103,8 +103,6 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		storageRadius  uint8
 		phaseEvents    = newEvents()
 	)
-
-	a.nodeState.SetState(idle)
 	// cancel all possible running phases
 	defer phaseEvents.Close()
 
@@ -194,7 +192,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		round := round
 		mtx.Unlock()
 
-		sr, smpl, err := a.play(ctx)
+		sr, smpl, err := a.play(ctx, round)
 		if err != nil {
 			a.logger.Error(err, "make sample")
 		} else if smpl != nil {
@@ -271,12 +269,13 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 func (a *Agent) reveal(ctx context.Context, storageRadius uint8, sample, obfuscationKey []byte) error {
 	a.metrics.RevealPhase.Inc()
-	err := a.contract.Reveal(ctx, storageRadius, sample, obfuscationKey)
+	fee, err := a.contract.Reveal(ctx, storageRadius, sample, obfuscationKey)
 	if err != nil {
 		a.metrics.ErrReveal.Inc()
+		return err
 	}
-	a.nodeState.AddFee()
-	return err
+	a.nodeState.AddFee(fee)
+	return nil
 }
 
 func (a *Agent) claim(ctx context.Context, round uint64) error {
@@ -296,22 +295,24 @@ func (a *Agent) claim(ctx context.Context, round uint64) error {
 
 	if isWinner {
 		a.nodeState.SetLastWonRound(round)
-		a.nodeState.SetState(winner)
 		a.metrics.Winner.Inc()
-		err := a.nodeState.SetBalance(ctx)
-		if err != nil {
+		errBalance := a.nodeState.SetBalance(ctx)
+		if errBalance != nil {
 			a.logger.Info("could not set balance", "err", err)
 		}
 
-		err = a.contract.Claim(ctx)
+		fee, err := a.contract.Claim(ctx)
 		if err != nil {
 			a.logger.Info("calculate winner reward", "err", err)
+			return err
 		}
-		err = a.nodeState.CalculateWinnerReward(ctx)
-		if err != nil {
-			a.logger.Info("calculate winner reward", "err", err)
+		if errBalance == nil {
+			err = a.nodeState.CalculateWinnerReward(ctx)
+			if err != nil {
+				a.logger.Info("calculate winner reward", "err", err)
+			}
 		}
-		a.nodeState.AddFee()
+		a.nodeState.AddFee(fee)
 
 		if err != nil {
 			a.metrics.ErrClaim.Inc()
@@ -326,7 +327,7 @@ func (a *Agent) claim(ctx context.Context, round uint64) error {
 	return nil
 }
 
-func (a *Agent) play(ctx context.Context) (uint8, []byte, error) {
+func (a *Agent) play(ctx context.Context, round uint64) (uint8, []byte, error) {
 
 	// get depthmonitor fully synced indicator
 	ready := a.monitor.IsFullySynced()
@@ -341,17 +342,19 @@ func (a *Agent) play(ctx context.Context) (uint8, []byte, error) {
 	if err != nil {
 		a.logger.Info("error checking if stake is frozen", "err", err)
 	}
-	if isFrozen {
-		a.nodeState.SetState(frozen)
-		a.nodeState.SaveStatus()
+	if err == nil {
+		if isFrozen {
+			a.nodeState.SetLastFrozenRound(round)
+		}
+		a.nodeState.IsFrozen(isFrozen)
 	}
 
-	isPlaying, err := a.contract.IsPlaying(ctx, storageRadius)
-	if !isPlaying || err != nil {
+	_, err = a.contract.IsPlaying(ctx, storageRadius)
+	if err != nil {
 		a.metrics.ErrCheckIsPlaying.Inc()
 		return 0, nil, err
 	}
-
+	a.nodeState.SetLastPlayedRound(round)
 	a.logger.Info("neighbourhood chosen")
 	a.metrics.NeighborhoodSelected.Inc()
 
@@ -410,12 +413,12 @@ func (a *Agent) commit(ctx context.Context, storageRadius uint8, sample []byte, 
 		return nil, err
 	}
 
-	err = a.contract.Commit(ctx, obfuscatedHash, big.NewInt(int64(round)))
+	fee, err := a.contract.Commit(ctx, obfuscatedHash, big.NewInt(int64(round)))
 	if err != nil {
 		a.metrics.ErrCommit.Inc()
 		return nil, err
 	}
-	a.nodeState.AddFee()
+	a.nodeState.AddFee(fee)
 	return key, nil
 }
 
