@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
+	bsMock "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	pushsyncmock "github.com/ethersphere/bee/pkg/pushsync/mock"
@@ -28,7 +29,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
-	"github.com/ethersphere/bee/pkg/topology/mock"
 )
 
 // time to wait for received response from pushsync
@@ -88,7 +88,6 @@ func TestSendChunkToSyncWithTag(t *testing.T) {
 
 	// create a trigger  and a closestpeer
 	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
-	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
 
 	key, _ := crypto.GenerateSecp256k1Key()
 	signer := crypto.NewDefaultSigner(key)
@@ -103,7 +102,7 @@ func TestSendChunkToSyncWithTag(t *testing.T) {
 		return receipt, nil
 	})
 
-	mtags, _, storer := createPusher(t, triggerPeer, pushSyncService, defaultMockValidStamp, mock.WithClosestPeer(closestPeer), mock.WithNeighborhoodDepth(0))
+	mtags, _, storer := createPusher(t, triggerPeer, pushSyncService, defaultMockValidStamp)
 
 	ta, err := mtags.Create(1)
 	if err != nil {
@@ -138,7 +137,6 @@ func TestSendChunkToPushSyncWithoutTag(t *testing.T) {
 
 	// create a trigger  and a closestpeer
 	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
-	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
 
 	key, _ := crypto.GenerateSecp256k1Key()
 	signer := crypto.NewDefaultSigner(key)
@@ -153,7 +151,7 @@ func TestSendChunkToPushSyncWithoutTag(t *testing.T) {
 		return receipt, nil
 	})
 
-	_, _, storer := createPusher(t, triggerPeer, pushSyncService, defaultMockValidStamp, mock.WithClosestPeer(closestPeer), mock.WithNeighborhoodDepth(0))
+	_, _, storer := createPusher(t, triggerPeer, pushSyncService, defaultMockValidStamp)
 
 	_, err := storer.Put(context.Background(), storage.ModePutUpload, chunk)
 	if err != nil {
@@ -176,7 +174,6 @@ func TestSendChunkToPushSyncViaApiChannel(t *testing.T) {
 
 	// create a trigger  and a closestpeer
 	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
-	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
 
 	key, _ := crypto.GenerateSecp256k1Key()
 	signer := crypto.NewDefaultSigner(key)
@@ -191,7 +188,7 @@ func TestSendChunkToPushSyncViaApiChannel(t *testing.T) {
 		return receipt, nil
 	})
 
-	_, p, storer := createPusher(t, triggerPeer, pushSyncService, defaultMockValidStamp, mock.WithClosestPeer(closestPeer), mock.WithNeighborhoodDepth(0))
+	_, p, storer := createPusher(t, triggerPeer, pushSyncService, defaultMockValidStamp)
 
 	apiC := make(chan *pusher.Op)
 	p.AddFeed(apiC)
@@ -214,13 +211,12 @@ func TestSendChunkToPushSyncDirect(t *testing.T) {
 
 	// create a trigger  and a closestpeer
 	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
-	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
 
 	pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
 		return nil, topology.ErrWantSelf
 	})
 
-	_, p, _ := createPusher(t, triggerPeer, pushSyncService, defaultMockValidStamp, mock.WithClosestPeer(closestPeer), mock.WithNeighborhoodDepth(0))
+	_, p, _ := createPusher(t, triggerPeer, pushSyncService, defaultMockValidStamp)
 
 	apiC := make(chan *pusher.Op)
 	p.AddFeed(apiC)
@@ -249,13 +245,12 @@ func TestSendChunkAndReceiveInvalidReceipt(t *testing.T) {
 
 	// create a trigger  and a closestpeer
 	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
-	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
 
 	pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
 		return nil, errors.New("invalid receipt")
 	})
 
-	_, _, storer := createPusher(t, triggerPeer, pushSyncService, defaultMockValidStamp, mock.WithClosestPeer(closestPeer))
+	_, _, storer := createPusher(t, triggerPeer, pushSyncService, defaultMockValidStamp)
 
 	_, err := storer.Put(context.Background(), storage.ModePutUpload, chunk)
 	if err != nil {
@@ -280,13 +275,12 @@ func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {
 
 	// create a trigger  and a closestpeer
 	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
-	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
 
 	key, _ := crypto.GenerateSecp256k1Key()
 	signer := crypto.NewDefaultSigner(key)
 
 	pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
-		time.Sleep(1 * time.Second)
+		time.Sleep(5 * time.Second)
 		signature, _ := signer.Sign(chunk.Address().Bytes())
 		receipt := &pushsync.Receipt{
 			Address:   swarm.NewAddress(chunk.Address().Bytes()),
@@ -296,7 +290,7 @@ func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {
 		return receipt, nil
 	})
 
-	_, _, storer := createPusher(t, triggerPeer, pushSyncService, defaultMockValidStamp, mock.WithClosestPeer(closestPeer), mock.WithNeighborhoodDepth(0))
+	_, _, storer := createPusher(t, triggerPeer, pushSyncService, defaultMockValidStamp)
 
 	_, err := storer.Put(context.Background(), storage.ModePutUpload, chunk)
 	if err != nil {
@@ -336,7 +330,8 @@ func TestPusherRetryShallow(t *testing.T) {
 	// create the pivot peer pusher with depth 31, this makes
 	// sure that virtually any receipt generated by the random
 	// key will be considered too shallow
-	_, _, storer := createPusherWithRetryCount(t, pivotPeer, pushSyncService, defaultMockValidStamp, retryCount, mock.WithClosestPeer(closestPeer), mock.WithNeighborhoodDepth(31))
+	bs := bsMock.New(bsMock.WithReserveState(&postage.ReserveState{StorageRadius: 31}))
+	_, _, storer := createPusherWithRetryCount(t, pivotPeer, pushSyncService, bs, defaultMockValidStamp, retryCount)
 
 	// generate a chunk at PO 1 with closestPeer, meaning that we get a
 	// receipt which is shallower than the pivot peer's depth, resulting
@@ -363,7 +358,6 @@ func TestChunkWithInvalidStampSkipped(t *testing.T) {
 
 	// create a trigger  and a closestpeer
 	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
-	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
 
 	key, _ := crypto.GenerateSecp256k1Key()
 	signer := crypto.NewDefaultSigner(key)
@@ -382,7 +376,7 @@ func TestChunkWithInvalidStampSkipped(t *testing.T) {
 		return nil, errors.New("valid stamp error")
 	}
 
-	_, _, storer := createPusher(t, triggerPeer, pushSyncService, validStamp, mock.WithClosestPeer(closestPeer), mock.WithNeighborhoodDepth(0))
+	_, _, storer := createPusher(t, triggerPeer, pushSyncService, validStamp)
 
 	chunk := testingc.GenerateTestRandomChunk()
 
@@ -399,13 +393,14 @@ func TestChunkWithInvalidStampSkipped(t *testing.T) {
 	}
 }
 
-func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.PushSyncer, validStamp postage.ValidStampFn, mockOpts ...mock.Option) (*tags.Tags, *pusher.Service, *Store) {
+func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.PushSyncer, validStamp postage.ValidStampFn) (*tags.Tags, *pusher.Service, *Store) {
 	t.Helper()
 
-	return createPusherWithRetryCount(t, addr, pushSyncService, validStamp, pusher.DefaultRetryCount, mockOpts...)
+	bs := bsMock.New()
+	return createPusherWithRetryCount(t, addr, pushSyncService, bs, validStamp, pusher.DefaultRetryCount)
 }
 
-func createPusherWithRetryCount(t *testing.T, addr swarm.Address, pushSyncService pushsync.PushSyncer, validStamp postage.ValidStampFn, retryCount int, mockOpts ...mock.Option) (*tags.Tags, *pusher.Service, *Store) {
+func createPusherWithRetryCount(t *testing.T, addr swarm.Address, pushSyncService pushsync.PushSyncer, bs postage.Storer, validStamp postage.ValidStampFn, retryCount int) (*tags.Tags, *pusher.Service, *Store) {
 	t.Helper()
 	logger := log.Noop
 
@@ -425,9 +420,8 @@ func createPusherWithRetryCount(t *testing.T, addr swarm.Address, pushSyncServic
 		modeSet:        make(map[string]storage.ModeSet),
 		modeSetMu:      &sync.Mutex{},
 	}
-	peerSuggester := mock.NewTopologyDriver(mockOpts...)
 
-	pusherService := pusher.New(1, pusherStorer, peerSuggester, pushSyncService, validStamp, mtags, logger, nil, 0, retryCount)
+	pusherService := pusher.New(1, pusherStorer, bs, pushSyncService, validStamp, mtags, logger, nil, 0, retryCount)
 
 	t.Cleanup(func() {
 		pusherService.Close()

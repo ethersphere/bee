@@ -52,7 +52,7 @@ type Agent struct {
 	contract               redistribution.Contract
 	batchExpirer           postagecontract.PostageBatchExpirer
 	redistributionStatuser staking.RedistributionStatuser
-	reserve                postage.Storer
+	radius                 postage.RadiusChecker
 	sampler                storage.Sampler
 	overlay                swarm.Address
 	quit                   chan struct{}
@@ -60,7 +60,7 @@ type Agent struct {
 	nodeState              NodeState
 }
 
-func New(overlay swarm.Address, backend ChainBackend, logger log.Logger, monitor Monitor, contract redistribution.Contract, batchExpirer postagecontract.PostageBatchExpirer, redistributionStatuser staking.RedistributionStatuser, reserve postage.Storer, sampler storage.Sampler, blockTime time.Duration, blocksPerRound, blocksPerPhase uint64, stateStore storage.StateStorer, erc20Service erc20.Service) *Agent {
+func New(overlay swarm.Address, backend ChainBackend, logger log.Logger, monitor Monitor, contract redistribution.Contract, batchExpirer postagecontract.PostageBatchExpirer, redistributionStatuser staking.RedistributionStatuser, radius postage.RadiusChecker, sampler storage.Sampler, blockTime time.Duration, blocksPerRound, blocksPerPhase uint64, stateStore storage.StateStorer, erc20Service erc20.Service) *Agent {
 	a := &Agent{
 		overlay:                overlay,
 		metrics:                newMetrics(),
@@ -68,7 +68,7 @@ func New(overlay swarm.Address, backend ChainBackend, logger log.Logger, monitor
 		logger:                 logger.WithName(loggerName).Register(),
 		contract:               contract,
 		batchExpirer:           batchExpirer,
-		reserve:                reserve,
+		radius:                 radius,
 		monitor:                monitor,
 		blocksPerRound:         blocksPerRound,
 		sampler:                sampler,
@@ -333,7 +333,7 @@ func (a *Agent) play(ctx context.Context) (uint8, []byte, error) {
 		return 0, nil, nil
 	}
 
-	storageRadius := a.reserve.GetReserveState().StorageRadius
+	storageRadius := a.radius.StorageRadius()
 
 	// true if frozen
 	isFrozen, err := a.redistributionStatuser.IsOverlayFrozen(ctx)

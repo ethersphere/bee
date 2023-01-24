@@ -14,7 +14,6 @@ import (
 	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	"github.com/ethersphere/bee/pkg/spinlock"
 	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/depthmonitor"
 )
@@ -185,14 +184,6 @@ type mockTopology struct {
 	connDepth    uint8
 	storageDepth uint8
 	peers        int
-}
-
-func (m *mockTopology) NeighborhoodDepth() uint8 {
-	return m.connDepth
-}
-
-func (m *mockTopology) IsWithinDepth(swarm.Address) bool {
-	return false
 }
 
 func (m *mockTopology) SetStorageRadius(newDepth uint8) {

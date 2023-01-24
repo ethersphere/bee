@@ -44,7 +44,6 @@ type SyncReporter interface {
 // Topology interface encapsulates the functionality required by the topology component
 // of the node.
 type Topology interface {
-	topologyDriver.NeighborhoodDepther
 	topologyDriver.SetStorageRadiuser
 	topologyDriver.PeersCounter
 }
@@ -125,9 +124,9 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration) {
 		case <-time.After(wakeupInterval):
 		}
 
-		reserveState := s.bs.GetReserveState()
+		radius := s.bs.StorageRadius()
 
-		currentSize, err := s.reserve.ComputeReserveSize(reserveState.StorageRadius)
+		currentSize, err := s.reserve.ComputeReserveSize(radius)
 		if err != nil {
 			s.logger.Error(err, "depthmonitor: failed reading reserve size")
 			continue
@@ -137,7 +136,7 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration) {
 		s.lastRSize.Store(currentSize)
 
 		syncCount := s.syncer.ActiveHistoricalSyncing()
-		s.logger.Info("depthmonitor: state", "current size", currentSize, "radius", reserveState.StorageRadius, "sync_count", syncCount)
+		s.logger.Info("depthmonitor: state", "current size", currentSize, "radius", radius, "sync_count", syncCount)
 
 		if currentSize > targetSize {
 			continue
