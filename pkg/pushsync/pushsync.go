@@ -52,7 +52,6 @@ const (
 const (
 	nPeersToReplicate = 3 // number of peers to replicate to as receipt is sent upstream
 	maxAttempts       = 32
-	maxPeers          = 64
 )
 
 var (
@@ -342,27 +341,31 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	defer ps.skipList.PruneExpired()
 
 	var (
-		// limits "attempted" requests, see pushPeer when a request becomes attempted
 		allowedPushes = 1
-		// limits total requests, irregardless of "attempted"
-		allowedRetries = maxPeers
+		includeSelf   = ps.includeSelf
+		skipPeers     = new(skippeers.List)
 	)
 
 	if origin {
 		allowedPushes = maxAttempts
 	}
 
-	var (
-		includeSelf = ps.includeSelf
-		skipPeers   = new(skippeers.List)
-	)
-
 	resultChan := make(chan receiptResult)
 	doneChan := make(chan struct{})
 	defer close(doneChan)
 
-	timer := time.NewTimer(0)
-	defer timer.Stop()
+	preemptiveTicker := time.NewTicker(p90TTL)
+	defer preemptiveTicker.Stop()
+
+	retryC := make(chan struct{}, 1)
+	retryF := func() {
+		select {
+		case retryC <- struct{}{}:
+		default:
+		}
+	}
+
+	retryF()
 
 	// nextPeer attempts to lookup the next peer to push the chunk to, if there are overdrafted peers the boolean would signal a re-attempt
 	nextPeer := func() (peer swarm.Address, retry bool, err error) {
@@ -401,14 +404,13 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 		return peer, false, nil
 	}
 
-	for {
+	for allowedPushes > 0 {
 		select {
 		case <-ctx.Done():
 			return nil, ErrNoPush
-		case <-timer.C:
-
-			allowedRetries--
-			// decrement here to limit inflight requests, if the request is not "attempted", we will increment below
+		case <-preemptiveTicker.C:
+			retryF()
+		case <-retryC:
 
 			peer, retry, err := nextPeer()
 			if err != nil {
@@ -416,32 +418,24 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			}
 
 			if retry {
-				if allowedRetries <= 0 {
+				select {
+				case <-time.After(waitRefresh): // wait at least 600 milliseconds
+					retryF()
+					continue
+				case <-ctx.Done():
 					return nil, ErrNoPush
 				}
-				timer.Reset(waitRefresh)
-				continue
 			}
 
 			ps.metrics.TotalSendAttempts.Inc()
 
 			skipPeers.Add(peer)
 
-			allowedPushes--
-
 			go func() {
 				ctxd, cancel := context.WithTimeout(ctx, defaultTTL)
 				defer cancel()
 				ps.pushPeer(ctxd, resultChan, doneChan, peer, ch, origin)
 			}()
-
-			// reached the limit, do not set timer to retry
-			if allowedRetries <= 0 || allowedPushes <= 0 {
-				continue
-			}
-
-			// retry
-			timer.Reset(p90TTL)
 
 		case result := <-resultChan:
 
@@ -465,19 +459,15 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			ps.metrics.TotalFailedSendAttempts.Inc()
 			logger.Debug("could not push to peer", "peer_address", result.peer, "error", result.err)
 
-			// pushPeer returned early, do not count as an attempt
-			if !result.pushed {
-				allowedPushes++
+			if result.pushed {
+				allowedPushes--
 			}
 
-			if allowedRetries <= 0 || allowedPushes <= 0 {
-				return nil, ErrNoPush
-			}
-
-			// retry immediately
-			timer.Reset(0)
+			retryF()
 		}
 	}
+
+	return nil, ErrNoPush
 }
 
 func (ps *PushSync) measurePushPeer(t time.Time, err error, origin bool) {
