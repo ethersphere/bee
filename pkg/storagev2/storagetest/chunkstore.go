@@ -105,7 +105,7 @@ func TestChunkStore(t *testing.T, st storage.ChunkStore) {
 			t.Fatalf("expected storage not found error")
 		}
 
-		readCh, err = st.GetWithStamp(context.TODO(), ch2.Address(), st2.BatchID())
+		_, err = st.GetWithStamp(context.TODO(), ch2.Address(), st2.BatchID())
 		if !errors.Is(err, storage.ErrNotFound) {
 			t.Fatalf("expected storage not found error")
 		}
