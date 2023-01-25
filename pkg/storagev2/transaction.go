@@ -120,12 +120,6 @@ func NewTxState(ctx context.Context) *TxState {
 	return &TxState{ctx: ctx, cancel: cancel}
 }
 
-// NewChildTxState can be used to initialize a new TxState by deriving the context
-// of the parent TxState. This can be used to potentially chain Txns.
-func NewChildTxState(tx *TxState) *TxState {
-	return NewTxState(tx.ctx)
-}
-
 var _ Store = (*TxStoreBase)(nil)
 
 // TxStoreBase implements the Store interface where
