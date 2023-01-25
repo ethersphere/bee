@@ -73,12 +73,13 @@ type Syncer struct {
 	wg         sync.WaitGroup
 	unwrap     func(swarm.Chunk)
 	validStamp postage.ValidStampFn
+	radius     postage.RadiusChecker
 
 	Interface
 	io.Closer
 }
 
-func New(streamer p2p.Streamer, storage pullstorage.Storer, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger log.Logger) *Syncer {
+func New(streamer p2p.Streamer, storage pullstorage.Storer, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger log.Logger, radius postage.RadiusChecker) *Syncer {
 
 	return &Syncer{
 		streamer:   streamer,
@@ -89,6 +90,7 @@ func New(streamer p2p.Streamer, storage pullstorage.Storer, unwrap func(swarm.Ch
 		logger:     logger.WithName(loggerName).Register(),
 		wg:         sync.WaitGroup{},
 		quit:       make(chan struct{}),
+		radius:     radius,
 	}
 }
 
@@ -110,9 +112,9 @@ func (s *Syncer) Protocol() p2p.ProtocolSpec {
 }
 
 // SyncInterval syncs a requested interval from the given peer.
-// It returns the BinID of highest chunk that was synced from the given interval.
+// It returns the BinID of the highest chunk that was synced from the given interval.
 // If the requested interval is too large, the downstream peer has the liberty to
-// provide less chunks than requested.
+// provide fewer chunks than requested.
 func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (uint64, error) {
 	loggerV2 := s.logger.V(2).Register()
 
@@ -179,7 +181,8 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 			s.logger.Debug("storage has", "error", err)
 			continue
 		}
-		if !have {
+		po := swarm.Proximity(a.Bytes(), peer.Bytes())
+		if !have && po >= s.radius.StorageRadius() {
 			wantChunks[a.ByteString()] = struct{}{}
 			ctr++
 			s.metrics.Wanted.Inc()
