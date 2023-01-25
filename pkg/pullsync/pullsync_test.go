@@ -7,6 +7,7 @@ package pullsync_test
 import (
 	"context"
 	"errors"
+	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	"io"
 	"testing"
 
@@ -231,5 +232,13 @@ func newPullSync(s p2p.Streamer, o ...mock.Option) (*pullsync.Syncer, *mock.Pull
 	logger := log.Noop
 	unwrap := func(swarm.Chunk) {}
 	validStamp := func(ch swarm.Chunk, _ []byte) (swarm.Chunk, error) { return ch, nil }
-	return pullsync.New(s, storage, unwrap, validStamp, logger), storage
+	return pullsync.New(
+		s,
+		storage,
+		unwrap,
+		validStamp,
+		logger,
+		mockbatchstore.New(),
+		swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
+	), storage
 }
