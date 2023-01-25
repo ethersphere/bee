@@ -80,6 +80,7 @@ jobs:
         run: |
           export PATH=$(pwd):$PATH
           timeout ${TIMEOUT} make beekeeper BEEKEEPER_INSTALL_DIR=$(pwd)
+          beekeeper version --log-verbosity 0
           mv ~/.beekeeper.yaml .beekeeper.yaml
           mv ~/.beekeeper/local.yaml local.yaml
       - uses: actions/upload-artifact@v3
