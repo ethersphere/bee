@@ -42,8 +42,6 @@ func (t *txSharky) Release(_ context.Context, loc sharky.Location) error {
 	return nil
 }
 
-func (t *txSharky) newTx() *txSharky { return &txSharky{Sharky: t.Sharky} }
-
 type txChunkStoreWrapper struct {
 	*storage.TxChunkStoreBase
 
@@ -60,10 +58,6 @@ func (t *txChunkStoreWrapper) Delete(ctx context.Context, address swarm.Address)
 }
 
 func (t *txChunkStoreWrapper) Commit() error {
-	if err := t.IsDone(); err != nil {
-		return err
-	}
-
 	// First we need to commit the child txn. This will inturn provide locking as
 	// only 1 commit is possible on the child txn.
 	if err := t.txStore.Commit(); err != nil {
@@ -81,14 +75,10 @@ func (t *txChunkStoreWrapper) Commit() error {
 		}
 	}
 
-	return t.TxState.Done()
+	return nil
 }
 
 func (t *txChunkStoreWrapper) Rollback() error {
-	if err := t.IsDone(); err != nil {
-		return err
-	}
-
 	if err := t.txStore.Rollback(); err != nil {
 		return err
 	}
@@ -97,13 +87,12 @@ func (t *txChunkStoreWrapper) Rollback() error {
 	for _, v := range t.sharky.committedLocs {
 		err = multierror.Append(err, t.sharky.Sharky.Release(context.Background(), v))
 	}
-
-	return multierror.Append(err, t.TxState.Done()).ErrorOrNil()
+	return err.ErrorOrNil()
 }
 
 func (t *txChunkStoreWrapper) NewTx(state *storage.TxState) storage.TxChunkStore {
-	txStore := t.txStore.NewTx(storage.NewChildTxState(state))
-	txSharky := t.sharky.newTx()
+	txStore := t.txStore.NewTx(state)
+	txSharky := &txSharky{Sharky: t.sharky.Sharky}
 	return &txChunkStoreWrapper{
 		TxChunkStoreBase: &storage.TxChunkStoreBase{
 			TxState:    state,
