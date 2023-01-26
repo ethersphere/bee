@@ -167,20 +167,16 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr, sourcePeerAddr swarm.
 			case <-preemptiveTicker.C:
 				retry()
 			case <-retryC:
-
-				ctx := tracing.WithContext(context.Background(), tracing.FromContext(topCtx))
-
-				// get the tracing span
-				span, _, ctx := s.tracer.StartSpanFromContext(ctx, "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: addr.String()})
-				defer span.Finish()
-
 				s.metrics.PeerRequestCounter.Inc()
-
 				inflight++
 
 				go func() {
+					ctx := tracing.WithContext(context.Background(), tracing.FromContext(topCtx))
+					span, _, ctx := s.tracer.StartSpanFromContext(ctx, "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: addr.String()})
+					defer span.Finish()
 					ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
 					defer cancel()
+
 					s.retrieveChunk(ctx, done, resultC, addr, sp, origin)
 				}()
 			case res := <-resultC:
