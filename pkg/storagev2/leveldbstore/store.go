@@ -157,6 +157,8 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 		}
 	}
 
+	firstSkipped := !q.SkipFirst
+
 	for nextF() {
 		nextKey := string(iter.Key())
 		nextVal := iter.Value()
@@ -167,9 +169,16 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 			continue
 		}
 
-		var err error
+		if q.SkipFirst && !firstSkipped {
+			firstSkipped = true
+			continue
+		}
 
-		var res *storage.Result
+		var (
+			res *storage.Result
+			err error
+		)
+
 		switch q.ItemProperty {
 		case storage.QueryItemID, storage.QueryItemSize:
 			res = &storage.Result{ID: key, Size: len(nextVal)}

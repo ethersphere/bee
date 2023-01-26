@@ -390,6 +390,49 @@ func TestStore(t *testing.T, s storage.Store) {
 		})
 	})
 
+	t.Run("iterate skip first", func(t *testing.T) {
+		t.Run("obj1", func(t *testing.T) {
+			idx := 1
+			err := s.Iterate(storage.Query{
+				Factory:      func() storage.Item { return new(obj1) },
+				SkipFirst:    true,
+				ItemProperty: storage.QueryItem,
+			}, func(r storage.Result) (bool, error) {
+				checkTestItemEqual(t, r.Entry, testObjs[idx])
+				idx++
+				return false, nil
+			})
+			if err != nil {
+				t.Fatalf("unexpected error while iteration: %v", err)
+			}
+			if idx != obj1Cnt {
+				t.Fatalf("unexpected no of entries in iteration exp %d found %d", obj1Cnt, idx)
+			}
+		})
+		t.Run("obj2 decending", func(t *testing.T) {
+			idx := 8
+			err := s.Iterate(storage.Query{
+				Factory:      func() storage.Item { return new(obj2) },
+				SkipFirst:    true,
+				ItemProperty: storage.QueryItem,
+				Order:        storage.KeyDescendingOrder,
+			}, func(r storage.Result) (bool, error) {
+				if idx < obj2Cnt {
+					t.Fatal("index overflow")
+				}
+				checkTestItemEqual(t, r.Entry, testObjs[idx])
+				idx--
+				return false, nil
+			})
+			if err != nil {
+				t.Fatalf("unexpected error while iteration: %v", err)
+			}
+			if idx != obj2Cnt-1 {
+				t.Fatalf("unexpected no of entries in iteration exp %d found %d", obj2Cnt-1, idx)
+			}
+		})
+	})
+
 	t.Run("iterate ascending", func(t *testing.T) {
 		t.Run("obj1", func(t *testing.T) {
 			idx := 0

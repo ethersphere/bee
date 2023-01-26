@@ -71,8 +71,12 @@ type Query struct {
 	// to construct new object for the result.
 	Factory func() Item
 
-	// Prefix indicates interest in Item which hast this prefix.
+	// Prefix indicates interest in an item
+	// that contains this prefix in its ID.
 	Prefix string
+
+	// SkipFirst skips the first element in the iteration.
+	SkipFirst bool
 
 	// ItemProperty indicates a specific interest of an Item property.
 	ItemProperty QueryItemProperty

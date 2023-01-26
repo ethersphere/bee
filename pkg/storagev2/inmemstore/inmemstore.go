@@ -139,9 +139,12 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 		return res, nil
 	}
 
-	var retErr *multierror.Error
+	var (
+		retErr *multierror.Error
 
-	prefix := q.Factory().Namespace() + separator + q.Prefix
+		prefix       = q.Factory().Namespace() + separator + q.Prefix
+		firstSkipped = !q.SkipFirst
+	)
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -149,6 +152,11 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 	switch q.Order {
 	case storage.KeyAscendingOrder:
 		s.st.WalkPrefix(prefix, func(k string, v interface{}) bool {
+			if q.SkipFirst && !firstSkipped {
+				firstSkipped = true
+				return false
+			}
+
 			res, err := getNext(k, v)
 			if err != nil {
 				retErr = multierror.Append(retErr, err)
@@ -189,6 +197,10 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 			break
 		}
 		for i := len(results) - 1; i >= 0; i-- {
+			if q.SkipFirst && !firstSkipped {
+				firstSkipped = true
+				continue
+			}
 			stop, err := fn(results[i])
 			if err != nil {
 				return fmt.Errorf("failed in iterate function: %w", err)
