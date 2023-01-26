@@ -133,13 +133,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr, sourcePeerAddr swarm.
 			sp.Add(sourcePeerAddr)
 		}
 
-		preemptiveTicker := time.NewTicker(preemptiveInterval)
-		defer preemptiveTicker.Stop()
-
 		retrievedErrorsLeft := 1
-		if origin {
-			retrievedErrorsLeft = maxRetrievedErrors
-		}
 
 		done := make(chan struct{})
 		defer close(done)
@@ -154,6 +148,25 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr, sourcePeerAddr swarm.
 			}
 		}
 
+		if origin {
+
+			retrievedErrorsLeft = maxRetrievedErrors
+
+			preemptiveTicker := time.NewTicker(preemptiveInterval)
+			defer preemptiveTicker.Stop()
+
+			go func() {
+				for {
+					select {
+					case <-preemptiveTicker.C:
+						retry()
+					case <-done:
+						return
+					}
+				}
+			}()
+		}
+
 		retry()
 
 		inflight := 0
@@ -164,8 +177,6 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr, sourcePeerAddr swarm.
 			case <-ctx.Done():
 				loggerV1.Debug("failed to get chunk", "chunk_address", addr, "error", ctx.Err())
 				return nil, fmt.Errorf("retrieval: %w", ctx.Err())
-			case <-preemptiveTicker.C:
-				retry()
 			case <-retryC:
 				s.metrics.PeerRequestCounter.Inc()
 				inflight++
