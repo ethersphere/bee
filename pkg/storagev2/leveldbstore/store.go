@@ -142,8 +142,7 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 
 	var retErr *multierror.Error
 
-	namespace := q.Factory().Namespace()
-	prefix := namespace + separator
+	prefix := q.Factory().Namespace() + separator + q.Prefix
 
 	keys := util.BytesPrefix([]byte(prefix))
 
@@ -158,6 +157,8 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 		}
 	}
 
+	firstSkipped := !q.SkipFirst
+
 	for nextF() {
 		nextKey := string(iter.Key())
 		nextVal := iter.Value()
@@ -168,10 +169,17 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 			continue
 		}
 
-		var err error
+		if q.SkipFirst && !firstSkipped {
+			firstSkipped = true
+			continue
+		}
 
-		var res *storage.Result
-		switch q.ItemAttribute {
+		var (
+			res *storage.Result
+			err error
+		)
+
+		switch q.ItemProperty {
 		case storage.QueryItemID, storage.QueryItemSize:
 			res = &storage.Result{ID: key, Size: len(nextVal)}
 		case storage.QueryItem:
@@ -186,7 +194,7 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 		}
 
 		if res == nil {
-			retErr = multierror.Append(retErr, fmt.Errorf("unknown object attribute type: %v", q.ItemAttribute))
+			retErr = multierror.Append(retErr, fmt.Errorf("unknown object attribute type: %v", q.ItemProperty))
 			break
 		}
 
