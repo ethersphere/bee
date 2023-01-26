@@ -17,7 +17,9 @@ var (
 	ErrUploadItemMarshalBatchInvalid  = errUploadItemMarshalBatchInvalid
 	ErrUploadItemUnmarshalInvalidSize = errUploadItemUnmarshalInvalidSize
 
-	ErrPutterAlreadyClosed = errPutterAlreadyClosed
+	ErrPutterAlreadyClosed       = errPutterAlreadyClosed
+	ErrOverwriteOfImmutableBatch = errOverwriteOfImmutableBatch
+	ErrOverwriteOfNewerBatch     = errOverwriteOfNewerBatch
 )
 
 type (
