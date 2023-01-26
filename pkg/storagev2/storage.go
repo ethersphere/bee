@@ -32,13 +32,13 @@ type IterateFn func(Result) (bool, error)
 // directly in byte format or partially or fully unmarshal the data and check.
 type Filter func(string, []byte) bool
 
-// ItemAttribute tells the Query which Item
-// attribute should be loaded from the store.
-type ItemAttribute int
+// QueryItemProperty tells the Query which Item
+// property should be loaded from the store to the result.
+type QueryItemProperty int
 
 const (
 	// QueryItem indicates interest in the whole Item.
-	QueryItem ItemAttribute = iota
+	QueryItem QueryItemProperty = iota
 
 	// QueryItemID indicates interest in the Result.ID.
 	// No data will be unmarshalled.
@@ -71,8 +71,15 @@ type Query struct {
 	// to construct new object for the result.
 	Factory func() Item
 
-	// ItemAttribute indicates a specific interest of an Item attribute.
-	ItemAttribute ItemAttribute
+	// Prefix indicates interest in an item
+	// that contains this prefix in its ID.
+	Prefix string
+
+	// SkipFirst skips the first element in the iteration.
+	SkipFirst bool
+
+	// ItemProperty indicates a specific interest of an Item property.
+	ItemProperty QueryItemProperty
 
 	// Order denotes the order of iteration.
 	Order Order
@@ -83,7 +90,7 @@ type Query struct {
 
 // Validate checks if the query is a valid query.
 func (q Query) Validate() error {
-	if q.ItemAttribute == QueryItem && q.Factory == nil {
+	if q.ItemProperty == QueryItem && q.Factory == nil {
 		return fmt.Errorf("missing Factory: %w", ErrInvalidQuery)
 	}
 	return nil
