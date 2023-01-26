@@ -44,7 +44,7 @@ type Service struct {
 	storer            storage.Storer
 	pushSyncer        pushsync.PushSyncer
 	validStamp        postage.ValidStampFn
-	radius            postage.RadiusChecker
+	depther           topology.NeighborhoodDepther
 	logger            log.Logger
 	tag               *tags.Tags
 	metrics           metrics
@@ -69,13 +69,13 @@ var (
 
 const chunkStoreTimeout = 2 * time.Second
 
-func New(networkID uint64, storer storage.Storer, reserveGetter postage.RadiusChecker, pushSyncer pushsync.PushSyncer, validStamp postage.ValidStampFn, tagger *tags.Tags, logger log.Logger, tracer *tracing.Tracer, warmupTime time.Duration, retryCount int) *Service {
+func New(networkID uint64, storer storage.Storer, depther topology.NeighborhoodDepther, pushSyncer pushsync.PushSyncer, validStamp postage.ValidStampFn, tagger *tags.Tags, logger log.Logger, tracer *tracing.Tracer, warmupTime time.Duration, retryCount int) *Service {
 	p := &Service{
 		networkID:         networkID,
 		storer:            storer,
 		pushSyncer:        pushSyncer,
 		validStamp:        validStamp,
-		radius:            reserveGetter,
+		depther:           depther,
 		tag:               tagger,
 		logger:            logger.WithName(loggerName).Register(),
 		metrics:           newMetrics(),
@@ -301,7 +301,10 @@ func (s *Service) checkReceipt(receipt *pushsync.Receipt) error {
 	}
 
 	po := swarm.Proximity(addr.Bytes(), peer.Bytes())
-	d := s.radius.StorageRadius()
+
+	// Ideally the storage radius should be checked here, but because light nodes do not maintain a storage radius,
+	// we go with the best alternative - the kademlia neighborhood depth
+	d := s.depther.NeighborhoodDepth()
 
 	// if the receipt po is out of depth AND the receipt has not yet hit the maximum retry limit, reject the receipt.
 	if po < d && s.attempts.try(addr) {
