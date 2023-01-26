@@ -33,7 +33,7 @@ func key(i storage.Key) string {
 	return strings.Join([]string{i.Namespace(), i.ID()}, separator)
 }
 
-func idFromKey(pfx, key string) string {
+func idFromKey(key, pfx string) string {
 	return strings.TrimPrefix(key, pfx+separator)
 }
 
@@ -118,22 +118,16 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 		return fmt.Errorf("failed iteration: %w", err)
 	}
 
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	var retErr *multierror.Error
-	prefix := q.Factory().Namespace()
-
 	getNext := func(k string, v interface{}) (*storage.Result, error) {
 		for _, filter := range q.Filters {
-			if filter(idFromKey(prefix, k), v.([]byte)) {
+			if filter(idFromKey(k, q.Factory().Namespace()), v.([]byte)) {
 				return nil, nil
 			}
 		}
 		var res *storage.Result
-		switch q.ItemAttribute {
+		switch q.ItemProperty {
 		case storage.QueryItemID, storage.QueryItemSize:
-			res = &storage.Result{ID: idFromKey(prefix, k), Size: len(v.([]byte))}
+			res = &storage.Result{ID: idFromKey(k, q.Factory().Namespace()), Size: len(v.([]byte))}
 		case storage.QueryItem:
 			newItem := q.Factory()
 			err := newItem.Unmarshal(v.([]byte))
@@ -145,9 +139,24 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 		return res, nil
 	}
 
+	var (
+		retErr *multierror.Error
+
+		prefix       = q.Factory().Namespace() + separator + q.Prefix
+		firstSkipped = !q.SkipFirst
+	)
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	switch q.Order {
 	case storage.KeyAscendingOrder:
 		s.st.WalkPrefix(prefix, func(k string, v interface{}) bool {
+			if q.SkipFirst && !firstSkipped {
+				firstSkipped = true
+				return false
+			}
+
 			res, err := getNext(k, v)
 			if err != nil {
 				retErr = multierror.Append(retErr, err)
@@ -188,6 +197,10 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 			break
 		}
 		for i := len(results) - 1; i >= 0; i-- {
+			if q.SkipFirst && !firstSkipped {
+				firstSkipped = true
+				continue
+			}
 			stop, err := fn(results[i])
 			if err != nil {
 				return fmt.Errorf("failed in iterate function: %w", err)

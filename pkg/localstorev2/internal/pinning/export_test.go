@@ -31,8 +31,8 @@ func IterateCollection(st storage.Store, root swarm.Address, fn func(addr swarm.
 	}
 
 	return st.Iterate(storage.Query{
-		Factory:       func() storage.Item { return &pinChunkItem{UUID: collection.UUID} },
-		ItemAttribute: storage.QueryItemID,
+		Factory:      func() storage.Item { return &pinChunkItem{UUID: collection.UUID} },
+		ItemProperty: storage.QueryItemID,
 	}, func(r storage.Result) (bool, error) {
 		addr := swarm.NewAddress([]byte(r.ID))
 		stop, err := fn(addr)

@@ -41,8 +41,8 @@ func TestBatchedStore(t *testing.T, bs BatchedStore) {
 
 		var cnt int
 		err = bs.Iterate(storage.Query{
-			Factory:       func() storage.Item { return new(obj1) },
-			ItemAttribute: storage.QueryItem,
+			Factory:      func() storage.Item { return new(obj1) },
+			ItemProperty: storage.QueryItem,
 		}, func(r storage.Result) (bool, error) {
 			if cnt++; cnt > 1 {
 				t.Fatalf("Iterate(...): duplicate detected: %v", r.Entry)
@@ -81,8 +81,8 @@ func TestBatchedStore(t *testing.T, bs BatchedStore) {
 		}
 
 		err = bs.Iterate(storage.Query{
-			Factory:       func() storage.Item { return new(obj1) },
-			ItemAttribute: storage.QueryItem,
+			Factory:      func() storage.Item { return new(obj1) },
+			ItemProperty: storage.QueryItem,
 		}, func(r storage.Result) (bool, error) {
 			t.Fatalf("expected empty store, got %v", r.Entry)
 			return true, nil
