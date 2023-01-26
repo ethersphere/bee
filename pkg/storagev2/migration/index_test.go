@@ -61,8 +61,8 @@ func TestNewStepOnIndex(t *testing.T) {
 
 		stepFn := migration.NewStepOnIndex(
 			storage.Query{
-				Factory:       newObjFactory,
-				ItemAttribute: storage.QueryItem,
+				Factory:      newObjFactory,
+				ItemProperty: storage.QueryItem,
 			},
 			migration.WithItemDeleteFn(func(i storage.Item) bool {
 				o := i.(*obj)
@@ -88,8 +88,8 @@ func TestNewStepOnIndex(t *testing.T) {
 
 		stepFn := migration.NewStepOnIndex(
 			storage.Query{
-				Factory:       newObjFactory,
-				ItemAttribute: storage.QueryItem,
+				Factory:      newObjFactory,
+				ItemProperty: storage.QueryItem,
 			},
 			// translate values from  [0 ... populateItemsCount) to [minVal ... populateItemsCount + minval)
 			migration.WithItemUpdaterFn(func(i storage.Item) (storage.Item, bool) {
@@ -120,8 +120,8 @@ func TestNewStepOnIndex(t *testing.T) {
 
 		step := migration.NewStepOnIndex(
 			storage.Query{
-				Factory:       newObjFactory,
-				ItemAttribute: storage.QueryItem,
+				Factory:      newObjFactory,
+				ItemProperty: storage.QueryItem,
 			},
 			// remove first 10 items
 			migration.WithItemDeleteFn(func(i storage.Item) bool {
@@ -157,8 +157,8 @@ func TestNewStepOnIndex(t *testing.T) {
 
 		step := migration.NewStepOnIndex(
 			storage.Query{
-				Factory:       newObjFactory,
-				ItemAttribute: storage.QueryItem,
+				Factory:      newObjFactory,
+				ItemProperty: storage.QueryItem,
 			},
 			migration.WithItemUpdaterFn(func(i storage.Item) (storage.Item, bool) {
 				o := i.(*obj)
@@ -193,8 +193,8 @@ func TestStepIndex_BatchSize(t *testing.T) {
 
 			stepFn := migration.NewStepOnIndex(
 				storage.Query{
-					Factory:       newObjFactory,
-					ItemAttribute: storage.QueryItem,
+					Factory:      newObjFactory,
+					ItemProperty: storage.QueryItem,
 				},
 				migration.WithItemDeleteFn(func(i storage.Item) bool {
 					o := i.(*obj)
@@ -344,8 +344,8 @@ func assertItemsInRange(t *testing.T, s storage.Store, from, to int) {
 
 	err = s.Iterate(
 		storage.Query{
-			Factory:       newObjFactory,
-			ItemAttribute: storage.QueryItem,
+			Factory:      newObjFactory,
+			ItemProperty: storage.QueryItem,
 		},
 		func(r storage.Result) (bool, error) {
 			o := r.Entry.(*obj)
