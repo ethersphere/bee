@@ -238,8 +238,8 @@ func HasPin(st storage.Store, root swarm.Address) (bool, error) {
 func Pins(st storage.Store) ([]swarm.Address, error) {
 	var pins []swarm.Address
 	err := st.Iterate(storage.Query{
-		Factory:       func() storage.Item { return new(pinCollectionItem) },
-		ItemAttribute: storage.QueryItemID,
+		Factory:      func() storage.Item { return new(pinCollectionItem) },
+		ItemProperty: storage.QueryItemID,
 	}, func(r storage.Result) (bool, error) {
 		addr := swarm.NewAddress([]byte(r.ID))
 		pins = append(pins, addr)
@@ -268,8 +268,8 @@ func DeletePin(st internal.Storage, root swarm.Address) error {
 		countInBatch := 0
 
 		err = st.Store().Iterate(storage.Query{
-			Factory:       func() storage.Item { return &pinChunkItem{UUID: collection.UUID} },
-			ItemAttribute: storage.QueryItemID,
+			Factory:      func() storage.Item { return &pinChunkItem{UUID: collection.UUID} },
+			ItemProperty: storage.QueryItemID,
 		}, func(r storage.Result) (bool, error) {
 			addr := swarm.NewAddress([]byte(r.ID))
 			addrsToDelete = append(addrsToDelete, addr)

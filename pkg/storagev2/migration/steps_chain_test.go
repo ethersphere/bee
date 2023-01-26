@@ -31,8 +31,8 @@ func TestNewStepsChain(t *testing.T) {
 		if i%2 == 0 {
 			stepFn = migration.NewStepOnIndex(
 				storage.Query{
-					Factory:       newObjFactory,
-					ItemAttribute: storage.QueryItem,
+					Factory:      newObjFactory,
+					ItemProperty: storage.QueryItem,
 				},
 				migration.WithItemDeleteFn(func(i storage.Item) bool {
 					o := i.(*obj)
