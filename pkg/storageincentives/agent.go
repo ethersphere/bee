@@ -74,7 +74,7 @@ func New(overlay swarm.Address, backend ChainBackend, logger log.Logger, monitor
 		sampler:                sampler,
 		quit:                   make(chan struct{}),
 		redistributionStatuser: redistributionStatuser,
-		nodeState:              NewRedistributionState(logger, stateStore, erc20Service),
+		nodeState:              NewRedistributionState(logger, stateStore, erc20Service, contract),
 	}
 
 	a.wg.Add(1)
@@ -269,12 +269,12 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 func (a *Agent) reveal(ctx context.Context, storageRadius uint8, sample, obfuscationKey []byte) error {
 	a.metrics.RevealPhase.Inc()
-	fee, err := a.contract.Reveal(ctx, storageRadius, sample, obfuscationKey)
+	txHash, err := a.contract.Reveal(ctx, storageRadius, sample, obfuscationKey)
 	if err != nil {
 		a.metrics.ErrReveal.Inc()
 		return err
 	}
-	a.nodeState.AddFee(fee)
+	a.nodeState.AddFee(ctx, txHash)
 	return nil
 }
 
@@ -301,18 +301,18 @@ func (a *Agent) claim(ctx context.Context, round uint64) error {
 			a.logger.Info("could not set balance", "err", err)
 		}
 
-		fee, err := a.contract.Claim(ctx)
+		txHash, err := a.contract.Claim(ctx)
 		if err != nil {
-			a.logger.Info("calculate winner reward", "err", err)
-			return err
+			a.logger.Info("error claiming win", "err", err)
+			return fmt.Errorf("error claiming win: %w", err)
 		}
 		if errBalance == nil {
-			err = a.nodeState.CalculateWinnerReward(ctx)
-			if err != nil {
+			errReward := a.nodeState.CalculateWinnerReward(ctx)
+			if errReward != nil {
 				a.logger.Info("calculate winner reward", "err", err)
 			}
 		}
-		a.nodeState.AddFee(fee)
+		a.nodeState.AddFee(ctx, txHash)
 
 		if err != nil {
 			a.metrics.ErrClaim.Inc()
@@ -413,12 +413,12 @@ func (a *Agent) commit(ctx context.Context, storageRadius uint8, sample []byte, 
 		return nil, err
 	}
 
-	fee, err := a.contract.Commit(ctx, obfuscatedHash, big.NewInt(int64(round)))
+	txHash, err := a.contract.Commit(ctx, obfuscatedHash, big.NewInt(int64(round)))
 	if err != nil {
 		a.metrics.ErrCommit.Inc()
 		return nil, err
 	}
-	a.nodeState.AddFee(fee)
+	a.nodeState.AddFee(ctx, txHash)
 	return key, nil
 }
 

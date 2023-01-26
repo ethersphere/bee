@@ -23,9 +23,10 @@ type Contract interface {
 	ReserveSalt(context.Context) ([]byte, error)
 	IsPlaying(context.Context, uint8) (bool, error)
 	IsWinner(context.Context) (bool, error)
-	Claim(context.Context) (*big.Int, error)
-	Commit(context.Context, []byte, *big.Int) (*big.Int, error)
-	Reveal(context.Context, uint8, []byte, []byte) (*big.Int, error)
+	Claim(context.Context) (common.Hash, error)
+	Commit(context.Context, []byte, *big.Int) (common.Hash, error)
+	Reveal(context.Context, uint8, []byte, []byte) (common.Hash, error)
+	Fee(ctx context.Context, txHash common.Hash) *big.Int
 }
 
 type contract struct {
@@ -92,10 +93,10 @@ func (c *contract) IsWinner(ctx context.Context) (isWinner bool, err error) {
 }
 
 // Claim sends a transaction to blockchain if a win is claimed.
-func (c *contract) Claim(ctx context.Context) (*big.Int, error) {
+func (c *contract) Claim(ctx context.Context) (common.Hash, error) {
 	callData, err := c.incentivesContractABI.Pack("claim")
 	if err != nil {
-		return nil, err
+		return common.Hash{}, err
 	}
 	request := &transaction.TxRequest{
 		To:                   &c.incentivesContractAddress,
@@ -106,19 +107,19 @@ func (c *contract) Claim(ctx context.Context) (*big.Int, error) {
 		Value:                big.NewInt(0),
 		Description:          "claim win transaction",
 	}
-	fee, err := c.sendAndWait(ctx, request, 50)
+	txHash, err := c.sendAndWait(ctx, request, 50)
 	if err != nil {
-		return fee, fmt.Errorf("claim: %w", err)
+		return txHash, fmt.Errorf("claim: %w", err)
 	}
 
-	return fee, nil
+	return txHash, nil
 }
 
 // Commit submits the obfusHash hash by sending a transaction to the blockchain.
-func (c *contract) Commit(ctx context.Context, obfusHash []byte, round *big.Int) (*big.Int, error) {
+func (c *contract) Commit(ctx context.Context, obfusHash []byte, round *big.Int) (common.Hash, error) {
 	callData, err := c.incentivesContractABI.Pack("commit", common.BytesToHash(obfusHash), common.BytesToHash(c.overlay.Bytes()), round)
 	if err != nil {
-		return nil, err
+		return common.Hash{}, err
 	}
 	request := &transaction.TxRequest{
 		To:                   &c.incentivesContractAddress,
@@ -129,19 +130,19 @@ func (c *contract) Commit(ctx context.Context, obfusHash []byte, round *big.Int)
 		Value:                big.NewInt(0),
 		Description:          "commit transaction",
 	}
-	fee, err := c.sendAndWait(ctx, request, 50)
+	txHash, err := c.sendAndWait(ctx, request, 50)
 	if err != nil {
-		return fee, fmt.Errorf("commit: obfusHash %v overlay %v: %w", common.BytesToHash(obfusHash), common.BytesToHash(c.overlay.Bytes()), err)
+		return txHash, fmt.Errorf("commit: obfusHash %v overlay %v: %w", common.BytesToHash(obfusHash), common.BytesToHash(c.overlay.Bytes()), err)
 	}
 
-	return fee, nil
+	return txHash, nil
 }
 
 // Reveal submits the storageDepth, reserveCommitmentHash and RandomNonce in a transaction to blockchain.
-func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommitmentHash, RandomNonce []byte) (*big.Int, error) {
+func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommitmentHash []byte, RandomNonce []byte) (common.Hash, error) {
 	callData, err := c.incentivesContractABI.Pack("reveal", common.BytesToHash(c.overlay.Bytes()), storageDepth, common.BytesToHash(reserveCommitmentHash), common.BytesToHash(RandomNonce))
 	if err != nil {
-		return nil, err
+		return common.Hash{}, err
 	}
 	request := &transaction.TxRequest{
 		To:                   &c.incentivesContractAddress,
@@ -152,12 +153,12 @@ func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommit
 		Value:                big.NewInt(0),
 		Description:          "reveal transaction",
 	}
-	fee, err := c.sendAndWait(ctx, request, 50)
+	txHash, err := c.sendAndWait(ctx, request, 50)
 	if err != nil {
-		return fee, fmt.Errorf("reveal: storageDepth %d reserveCommitmentHash %v RandomNonce %v: %w", storageDepth, common.BytesToHash(reserveCommitmentHash), common.BytesToHash(RandomNonce), err)
+		return txHash, fmt.Errorf("reveal: storageDepth %d reserveCommitmentHash %v RandomNonce %v: %w", storageDepth, common.BytesToHash(reserveCommitmentHash), common.BytesToHash(RandomNonce), err)
 	}
 
-	return fee, nil
+	return txHash, nil
 }
 
 // ReserveSalt provides the current round anchor by transacting on the blockchain.
@@ -180,20 +181,20 @@ func (c *contract) ReserveSalt(ctx context.Context) ([]byte, error) {
 	return salt[:], nil
 }
 
-func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest, boostPercent int) (*big.Int, error) {
+func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest, boostPercent int) (common.Hash, error) {
 	txHash, err := c.txService.Send(ctx, request, boostPercent)
 	if err != nil {
-		return nil, err
+		return txHash, err
 	}
 	receipt, err := c.txService.WaitForReceipt(ctx, txHash)
 	if err != nil {
-		return c.fee(ctx, txHash), err
+		return txHash, err
 	}
 
 	if receipt.Status == 0 {
-		return c.fee(ctx, txHash), transaction.ErrTransactionReverted
+		return txHash, transaction.ErrTransactionReverted
 	}
-	return c.fee(ctx, txHash), nil
+	return txHash, nil
 }
 
 // callTx simulates a transaction based on tx request.
@@ -208,7 +209,7 @@ func (c *contract) callTx(ctx context.Context, callData []byte) ([]byte, error) 
 	return result, nil
 }
 
-func (c *contract) fee(ctx context.Context, txHash common.Hash) *big.Int {
+func (c *contract) Fee(ctx context.Context, txHash common.Hash) *big.Int {
 	fee, err := c.txService.TransactionFee(ctx, txHash)
 	if err != nil {
 		c.logger.Info("transaction fee error:", err)

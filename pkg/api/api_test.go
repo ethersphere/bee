@@ -806,8 +806,8 @@ type mockContract struct {
 	mtx       sync.Mutex
 }
 
-func (m *mockContract) Fee() *big.Int {
-	return nil
+func (m *mockContract) Fee(ctx context.Context, txHash common.Hash) *big.Int {
+	return big.NewInt(1000)
 }
 
 func (m *mockContract) ReserveSalt(context.Context) ([]byte, error) {
@@ -825,25 +825,25 @@ func (m *mockContract) IsWinner(context.Context) (bool, error) {
 	return false, nil
 }
 
-func (m *mockContract) Claim(context.Context) (*big.Int, error) {
+func (m *mockContract) Claim(context.Context) (common.Hash, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, claimCall)
-	return nil, nil
+	return common.Hash{}, nil
 }
 
-func (m *mockContract) Commit(context.Context, []byte, *big.Int) (*big.Int, error) {
+func (m *mockContract) Commit(context.Context, []byte, *big.Int) (common.Hash, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, commitCall)
-	return nil, nil
+	return common.Hash{}, nil
 }
 
-func (m *mockContract) Reveal(context.Context, uint8, []byte, []byte) (*big.Int, error) {
+func (m *mockContract) Reveal(context.Context, uint8, []byte, []byte) (common.Hash, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, revealCall)
-	return nil, nil
+	return common.Hash{}, nil
 }
 
 type mockMonitor struct {

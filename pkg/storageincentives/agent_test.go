@@ -7,6 +7,7 @@ package storageincentives_test
 import (
 	"context"
 	"errors"
+	"github.com/ethereum/go-ethereum/common"
 	erc20mock "github.com/ethersphere/bee/pkg/settlement/swap/erc20/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
@@ -231,7 +232,7 @@ type mockContract struct {
 	mtx       sync.Mutex
 }
 
-func (m *mockContract) Fee() *big.Int {
+func (m *mockContract) Fee(ctx context.Context, txhash common.Hash) *big.Int {
 	return big.NewInt(1000)
 }
 
@@ -250,25 +251,25 @@ func (m *mockContract) IsWinner(context.Context) (bool, error) {
 	return false, nil
 }
 
-func (m *mockContract) Claim(context.Context) (*big.Int, error) {
+func (m *mockContract) Claim(context.Context) (common.Hash, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, claimCall)
-	return big.NewInt(1000), nil
+	return common.Hash{}, nil
 }
 
-func (m *mockContract) Commit(context.Context, []byte, *big.Int) (*big.Int, error) {
+func (m *mockContract) Commit(context.Context, []byte, *big.Int) (common.Hash, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, commitCall)
-	return big.NewInt(1000), nil
+	return common.Hash{}, nil
 }
 
-func (m *mockContract) Reveal(context.Context, uint8, []byte, []byte) (*big.Int, error) {
+func (m *mockContract) Reveal(context.Context, uint8, []byte, []byte) (common.Hash, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, revealCall)
-	return big.NewInt(1000), nil
+	return common.Hash{}, nil
 }
 
 type mockSampler struct{}
