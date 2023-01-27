@@ -303,9 +303,11 @@ func (a *Agent) claim(ctx context.Context, round uint64) error {
 
 		txHash, err := a.contract.Claim(ctx)
 		if err != nil {
+			a.metrics.ErrClaim.Inc()
 			a.logger.Info("error claiming win", "err", err)
 			return fmt.Errorf("error claiming win: %w", err)
 		}
+		a.logger.Info("claimed win")
 		if errBalance == nil {
 			errReward := a.nodeState.CalculateWinnerReward(ctx)
 			if errReward != nil {
@@ -314,12 +316,6 @@ func (a *Agent) claim(ctx context.Context, round uint64) error {
 		}
 		a.nodeState.AddFee(ctx, txHash)
 
-		if err != nil {
-			a.metrics.ErrClaim.Inc()
-			return fmt.Errorf("error claiming win: %w", err)
-		} else {
-			a.logger.Info("claimed win")
-		}
 	} else {
 		a.logger.Info("claim made, lost round")
 	}
@@ -349,10 +345,13 @@ func (a *Agent) play(ctx context.Context, round uint64) (uint8, []byte, error) {
 		a.nodeState.IsFrozen(isFrozen)
 	}
 
-	_, err = a.contract.IsPlaying(ctx, storageRadius)
+	isPlaying, err := a.contract.IsPlaying(ctx, storageRadius)
 	if err != nil {
 		a.metrics.ErrCheckIsPlaying.Inc()
 		return 0, nil, err
+	}
+	if !isPlaying {
+		return 0, nil, nil
 	}
 	a.nodeState.SetLastPlayedRound(round)
 	a.logger.Info("neighbourhood chosen")
