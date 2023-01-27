@@ -26,7 +26,6 @@ type Contract interface {
 	Claim(context.Context) (common.Hash, error)
 	Commit(context.Context, []byte, *big.Int) (common.Hash, error)
 	Reveal(context.Context, uint8, []byte, []byte) (common.Hash, error)
-	Fee(ctx context.Context, txHash common.Hash) *big.Int
 }
 
 type contract struct {
@@ -207,13 +206,4 @@ func (c *contract) callTx(ctx context.Context, callData []byte) ([]byte, error) 
 		return nil, err
 	}
 	return result, nil
-}
-
-func (c *contract) Fee(ctx context.Context, txHash common.Hash) *big.Int {
-	fee, err := c.txService.TransactionFee(ctx, txHash)
-	if err != nil {
-		c.logger.Info("transaction fee error:", err)
-		return big.NewInt(0)
-	}
-	return fee
 }

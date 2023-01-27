@@ -972,7 +972,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 			}
 
 			redistributionContract := redistribution.New(swarmAddress, logger, transactionService, redistributionContractAddress, redistributionContractABI)
-			agent = storageincentives.New(swarmAddress, chainBackend, logger, depthMonitor, redistributionContract, postageStampContractService, stakingContract, batchStore, storer, o.BlockTime, storageincentives.DefaultBlocksPerRound, storageincentives.DefaultBlocksPerPhase, stateStore, erc20Service)
+			agent = storageincentives.New(swarmAddress, chainBackend, logger, depthMonitor, redistributionContract, postageStampContractService, stakingContract, batchStore, storer, o.BlockTime, storageincentives.DefaultBlocksPerRound, storageincentives.DefaultBlocksPerPhase, stateStore, erc20Service, transactionService)
 			b.storageIncetivesCloser = agent
 		}
 

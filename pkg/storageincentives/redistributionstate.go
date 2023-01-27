@@ -10,8 +10,8 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/transaction"
 	"math/big"
 	"sync"
 )
@@ -27,7 +27,7 @@ type RedistributionState struct {
 	mtx            sync.Mutex
 	status         Status
 	currentBalance *big.Int
-	contract       redistribution.Contract
+	contract       transaction.Service
 }
 
 // Status provide internal status of the nodes in the redistribution game
@@ -43,7 +43,7 @@ type Status struct {
 	Fees            *big.Int
 }
 
-func NewRedistributionState(logger log.Logger, stateStore storage.StateStorer, erc20Service erc20.Service, contract redistribution.Contract) RedistributionState {
+func NewRedistributionState(logger log.Logger, stateStore storage.StateStorer, erc20Service erc20.Service, contract transaction.Service) RedistributionState {
 	return RedistributionState{
 		stateStore:     stateStore,
 		erc20Service:   erc20Service,
@@ -94,10 +94,14 @@ func (n *RedistributionState) SetLastPlayedRound(p uint64) {
 
 // AddFee sets the internal node status
 func (n *RedistributionState) AddFee(ctx context.Context, txHash common.Hash) {
+	fee, err := n.contract.TransactionFee(ctx, txHash)
+	if err != nil {
+		return
+	}
 	n.mtx.Lock()
-	defer n.mtx.Unlock()
-	n.status.Fees.Add(n.status.Fees, n.contract.Fee(ctx, txHash))
+	n.status.Fees.Add(n.status.Fees, fee)
 	n.saveStatus()
+	n.mtx.Unlock()
 }
 
 // CalculateWinnerReward calculates the reward for the winner

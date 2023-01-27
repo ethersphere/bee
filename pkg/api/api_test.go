@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storageincentives"
 	mock2 "github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
 	"github.com/ethersphere/bee/pkg/swarm/test"
+	"github.com/ethersphere/bee/pkg/transaction"
 	"io"
 	"math/big"
 	"net"
@@ -216,7 +217,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	s.SetP2P(o.P2P)
 
 	if o.redistributionAgent == nil {
-		o.redistributionAgent = createRedistributionAgentService(o.Overlay, o.StateStorer, erc20)
+		o.redistributionAgent = createRedistributionAgentService(o.Overlay, o.StateStorer, erc20, transaction)
 		s.SetRedistributionAgent(o.redistributionAgent)
 	}
 	s.SetSwarmAddress(&o.Overlay)
@@ -722,7 +723,7 @@ func (c *chanStorer) Close() error {
 	panic("not implemented") // TODO: Implement
 }
 
-func createRedistributionAgentService(addr swarm.Address, storer storage.StateStorer, erc20Service erc20.Service) *storageincentives.Agent {
+func createRedistributionAgentService(addr swarm.Address, storer storage.StateStorer, erc20Service erc20.Service, tranService transaction.Service) *storageincentives.Agent {
 	const blocksPerRound uint64 = 12
 	const blocksPerPhase uint64 = 4
 	postageContract := contractMock.New(contractMock.WithExpiresBatchesFunc(func(context.Context) error {
@@ -745,7 +746,7 @@ func createRedistributionAgentService(addr swarm.Address, storer storage.StateSt
 		block:       blocksPerRound}
 	contract := &mockContract{}
 
-	return storageincentives.New(addr, backend, log.Noop, &mockMonitor{}, contract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), &mockSampler{}, time.Millisecond*10, blocksPerRound, blocksPerPhase, storer, erc20Service)
+	return storageincentives.New(addr, backend, log.Noop, &mockMonitor{}, contract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), &mockSampler{}, time.Millisecond*10, blocksPerRound, blocksPerPhase, storer, erc20Service, tranService)
 }
 
 type mockchainBackend struct {

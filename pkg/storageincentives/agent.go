@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
+	"github.com/ethersphere/bee/pkg/transaction"
 	"io"
 	"math"
 	"math/big"
@@ -60,7 +61,7 @@ type Agent struct {
 	nodeState              RedistributionState
 }
 
-func New(overlay swarm.Address, backend ChainBackend, logger log.Logger, monitor Monitor, contract redistribution.Contract, batchExpirer postagecontract.PostageBatchExpirer, redistributionStatuser staking.RedistributionStatuser, radius postage.RadiusChecker, sampler storage.Sampler, blockTime time.Duration, blocksPerRound, blocksPerPhase uint64, stateStore storage.StateStorer, erc20Service erc20.Service) *Agent {
+func New(overlay swarm.Address, backend ChainBackend, logger log.Logger, monitor Monitor, contract redistribution.Contract, batchExpirer postagecontract.PostageBatchExpirer, redistributionStatuser staking.RedistributionStatuser, radius postage.RadiusChecker, sampler storage.Sampler, blockTime time.Duration, blocksPerRound, blocksPerPhase uint64, stateStore storage.StateStorer, erc20Service erc20.Service, tranService transaction.Service) *Agent {
 	a := &Agent{
 		overlay:                overlay,
 		metrics:                newMetrics(),
@@ -74,7 +75,7 @@ func New(overlay swarm.Address, backend ChainBackend, logger log.Logger, monitor
 		sampler:                sampler,
 		quit:                   make(chan struct{}),
 		redistributionStatuser: redistributionStatuser,
-		nodeState:              NewRedistributionState(logger, stateStore, erc20Service, contract),
+		nodeState:              NewRedistributionState(logger, stateStore, erc20Service, tranService),
 	}
 
 	a.wg.Add(1)
