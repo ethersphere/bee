@@ -343,8 +343,6 @@ func (u *uploadPutter) Put(ctx context.Context, chunk swarm.Chunk) error {
 	switch item, loaded, err := stampindex.LoadOrStore(u.s, stampIndexUploadNamespace, chunk); {
 	case err != nil:
 		return fmt.Errorf("load or store stamp index for chunk %v has fail: %w", chunk, err)
-	case !loaded:
-		u.split++
 	case loaded && item.ChunkIsImmutable:
 		return errOverwriteOfImmutableBatch
 	case loaded && !item.ChunkIsImmutable:
@@ -353,12 +351,9 @@ func (u *uploadPutter) Put(ctx context.Context, chunk swarm.Chunk) error {
 		if prev >= curr {
 			return errOverwriteOfNewerBatch
 		}
-		if err := stampindex.Store(u.s, stampIndexUploadNamespace, chunk); err != nil {
-			return fmt.Errorf("store stamp index for chunk %v has fail: %w", chunk, err)
-		}
-	default:
-		return errors.New("unreachable statement")
 	}
+
+	u.split++
 
 	// Check if upload store has already seen this chunk
 	ui := &uploadItem{

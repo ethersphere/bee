@@ -482,7 +482,7 @@ func TestChunkPutter(t *testing.T) {
 
 		wantTI := &upload.TagItem{
 			TagID:     tagID,
-			Split:     20,
+			Split:     30,
 			Seen:      10,
 			StartedAt: now().Unix(),
 			Address:   addr,
