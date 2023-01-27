@@ -246,16 +246,13 @@ func (s *Service) retrieveChunk(ctx context.Context, done chan struct{}, result 
 	)
 
 	defer func() {
+		if err != nil {
+			s.metrics.TotalErrors.Inc()
+		}
 		select {
 		case result <- retrievalResult{err: err, chunk: chunk, retrieveAttempted: retrieveAttempted, peer: peer}:
 		case <-done:
 			return
-		}
-	}()
-
-	defer func() {
-		if err != nil {
-			s.metrics.TotalErrors.Inc()
 		}
 	}()
 
