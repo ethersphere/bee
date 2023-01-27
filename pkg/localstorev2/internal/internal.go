@@ -18,13 +18,8 @@ import (
 // Storage groups the storage.Store and storage.ChunkStore interfaces with context..
 type Storage interface {
 	Ctx() context.Context
-	Store() storage.Store
-	ChunkStore() ChunkStore
-}
-
-type ChunkStore interface {
-	storage.ChunkStore
-	storage.GetterWithStamp
+	IndexStore() storage.Store
+	ChunkStore() storage.ChunkStore
 }
 
 // PutterCloserWithReference provides a Putter which can be closed with a root
@@ -77,9 +72,9 @@ func NewInmemStorage() (Storage, func() error) {
 type inmemRepository struct {
 	ctx        context.Context
 	indexStore storage.Store
-	chunkStore ChunkStore
+	chunkStore storage.ChunkStore
 }
 
-func (t *inmemRepository) Ctx() context.Context   { return t.ctx }
-func (t *inmemRepository) Store() storage.Store   { return t.indexStore }
-func (t *inmemRepository) ChunkStore() ChunkStore { return t.chunkStore }
+func (t *inmemRepository) Ctx() context.Context           { return t.ctx }
+func (t *inmemRepository) IndexStore() storage.Store      { return t.indexStore }
+func (t *inmemRepository) ChunkStore() storage.ChunkStore { return t.chunkStore }

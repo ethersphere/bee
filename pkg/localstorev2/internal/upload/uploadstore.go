@@ -316,7 +316,7 @@ type uploadPutter struct {
 // NewPutter returns a new chunk putter associated with the tagID.
 func NewPutter(s internal.Storage, tagId uint64) (internal.PutterCloserWithReference, error) {
 	ti := &tagItem{TagID: tagId, StartedAt: now().Unix()}
-	err := s.Store().Put(ti)
+	err := s.IndexStore().Put(ti)
 	if err != nil {
 		return nil, fmt.Errorf("failed creating tag: %w", err)
 	}
@@ -360,7 +360,7 @@ func (u *uploadPutter) Put(ctx context.Context, chunk swarm.Chunk) error {
 		Address: chunk.Address(),
 		BatchID: chunk.Stamp().BatchID(),
 	}
-	switch exists, err := u.s.Store().Has(ui); {
+	switch exists, err := u.s.IndexStore().Has(ui); {
 	case err != nil:
 		return fmt.Errorf("store has item %q call failed: %w", ui, err)
 	case exists:
@@ -375,7 +375,7 @@ func (u *uploadPutter) Put(ctx context.Context, chunk swarm.Chunk) error {
 	ui.Uploaded = now().Unix()
 	ui.TagID = u.tagID
 
-	if err := u.s.Store().Put(ui); err != nil {
+	if err := u.s.IndexStore().Put(ui); err != nil {
 		return fmt.Errorf("store put item %q call failed: %w", ui, err)
 	}
 
@@ -385,7 +385,7 @@ func (u *uploadPutter) Put(ctx context.Context, chunk swarm.Chunk) error {
 		BatchID:   chunk.Stamp().BatchID(),
 		TagID:     u.tagID,
 	}
-	if err := u.s.Store().Put(pi); err != nil {
+	if err := u.s.IndexStore().Put(pi); err != nil {
 		return fmt.Errorf("store put item %q call failed: %w", pi, err)
 	}
 
@@ -401,7 +401,7 @@ func (u *uploadPutter) Close(addr swarm.Address) error {
 	defer u.mtx.Unlock()
 
 	ti := &tagItem{TagID: u.tagID}
-	err := u.s.Store().Get(ti)
+	err := u.s.IndexStore().Get(ti)
 	if err != nil {
 		return fmt.Errorf("failed reading tag while closing: %w", err)
 	}
@@ -413,7 +413,7 @@ func (u *uploadPutter) Close(addr swarm.Address) error {
 		ti.Address = addr.Clone()
 	}
 
-	err = u.s.Store().Put(ti)
+	err = u.s.IndexStore().Put(ti)
 	if err != nil {
 		return fmt.Errorf("failed storing tag: %w", err)
 	}
@@ -444,7 +444,7 @@ func (p *pushReporter) Report(
 		BatchID: chunk.Stamp().BatchID(),
 	}
 
-	err := p.s.Store().Get(ui)
+	err := p.s.IndexStore().Get(ui)
 	if err != nil {
 		return fmt.Errorf("failed to read uploadItem %s: %w", ui, err)
 	}
@@ -453,7 +453,7 @@ func (p *pushReporter) Report(
 		TagID: ui.TagID,
 	}
 
-	err = p.s.Store().Get(ti)
+	err = p.s.IndexStore().Get(ti)
 	if err != nil {
 		return fmt.Errorf("failed getting tag: %w", err)
 	}
@@ -476,7 +476,7 @@ func (p *pushReporter) Report(
 			TagID:     ui.TagID,
 		}
 
-		err = p.s.Store().Delete(pi)
+		err = p.s.IndexStore().Delete(pi)
 		if err != nil {
 			return fmt.Errorf("failed deleting pushItem %s: %w", pi, err)
 		}
@@ -487,13 +487,13 @@ func (p *pushReporter) Report(
 		}
 
 		ui.Synced = now().Unix()
-		err = p.s.Store().Put(ui)
+		err = p.s.IndexStore().Put(ui)
 		if err != nil {
 			return fmt.Errorf("failed updating uploadItem %s: %w", ui, err)
 		}
 	}
 
-	err = p.s.Store().Put(ti)
+	err = p.s.IndexStore().Put(ti)
 	if err != nil {
 		return fmt.Errorf("failed updating tag: %w", err)
 	}
