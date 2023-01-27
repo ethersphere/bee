@@ -36,21 +36,20 @@ type PutterSession interface {
 	Cleanup() error
 }
 
-type PinStore interface {
-	NewCollection(context.Context, swarm.Address) (PutterSession, error)
-	Pins(context.Context) ([]swarm.Address, error)
-	HasPin(context.Context) (bool, error)
-	DeletePin(context.Context, swarm.Address) error
+type SessionInfo struct {
+	Split     uint64        // total no of chunks processed by the splitter for hashing
+	Seen      uint64        // total no of chunks already seen
+	Stored    uint64        // total no of chunks stored locally on the node
+	Sent      uint64        // total no of chunks sent to the neighbourhood
+	Synced    uint64        // total no of chunks synced with proof
+	Address   swarm.Address // swarm.Address associated with this tag
+	StartedAt int64         // start timestamp
 }
 
 type UploadStore interface {
-	Upload(pin bool) (PutterSession, error)
-}
-
-type Options struct{}
-
-type DB struct {
-	repo *storage.Repository
+	Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession, error)
+	NewSession(context.Context) (uint64, error)
+	GetSessionInfo(ctx context.Context, tagID uint64) (SessionInfo, error)
 }
 
 type memFS struct {
@@ -113,8 +112,13 @@ func initDiskRepository(basePath string) (*storage.Repository, error) {
 	return storage.NewRepository(txStore, txChunkStore), nil
 }
 
-func New(dirPath string, opts *Options) (*DB, error) {
+type Options struct{}
 
+type DB struct {
+	repo *storage.Repository
+}
+
+func New(dirPath string, opts *Options) (*DB, error) {
 	// TODO: migration handling and sharky recovery
 	var (
 		repo *storage.Repository
@@ -147,12 +151,6 @@ func (p *putterSessionImpl) Done(addr swarm.Address) error { return p.done(addr)
 
 func (p *putterSessionImpl) Cleanup() error { return p.cleanup() }
 
-type noOpPutterCloser struct{}
-
-func (noOpPutterCloser) Put(_ context.Context, _ swarm.Chunk) error { return nil }
-
-func (noOpPutterCloser) Close(_ swarm.Address) error { return nil }
-
 func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession, error) {
 	txnRepo, commit, rollback := db.repo.NewTx(ctx)
 	uploadPutter, err := upload.NewPutter(txnRepo, tagID)
@@ -160,7 +158,7 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 		return nil, err
 	}
 
-	var pinningPutter internal.PutterCloserWithReference = &noOpPutterCloser{}
+	var pinningPutter internal.PutterCloserWithReference
 	if pin {
 		pinningPutter = pinstore.NewCollection(txnRepo)
 	}
@@ -169,13 +167,23 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 		Putter: storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
 			return multierror.Append(
 				uploadPutter.Put(ctx, chunk),
-				pinningPutter.Put(ctx, chunk),
+				func() error {
+					if pinningPutter != nil {
+						return pinningPutter.Put(ctx, chunk)
+					}
+					return nil
+				}(),
 			).ErrorOrNil()
 		}),
 		done: func(address swarm.Address) error {
 			return multierror.Append(
 				uploadPutter.Close(address),
-				pinningPutter.Close(address),
+				func() error {
+					if pinningPutter != nil {
+						return pinningPutter.Close(address)
+					}
+					return nil
+				}(),
 				commit(),
 			)
 		},
@@ -183,4 +191,12 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 			return rollback()
 		},
 	}, nil
+}
+
+func (db *DB) NewSession(ctx context.Context) (uint64, error) {
+	return 0, nil
+}
+
+func (db *DB) GetSessionInfo(ctx context.Context, tagID uint64) (SessionInfo, error) {
+	return SessionInfo{}, nil
 }
