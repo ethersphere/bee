@@ -65,30 +65,34 @@ type Interface interface {
 }
 
 type Syncer struct {
-	streamer   p2p.Streamer
-	metrics    metrics
-	logger     log.Logger
-	storage    pullstorage.Storer
-	quit       chan struct{}
-	wg         sync.WaitGroup
-	unwrap     func(swarm.Chunk)
-	validStamp postage.ValidStampFn
+	streamer       p2p.Streamer
+	metrics        metrics
+	logger         log.Logger
+	storage        pullstorage.Storer
+	quit           chan struct{}
+	wg             sync.WaitGroup
+	unwrap         func(swarm.Chunk)
+	validStamp     postage.ValidStampFn
+	radius         postage.RadiusChecker
+	overlayAddress swarm.Address
 
 	Interface
 	io.Closer
 }
 
-func New(streamer p2p.Streamer, storage pullstorage.Storer, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger log.Logger) *Syncer {
+func New(streamer p2p.Streamer, storage pullstorage.Storer, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger log.Logger, radius postage.RadiusChecker, overlayAddress swarm.Address) *Syncer {
 
 	return &Syncer{
-		streamer:   streamer,
-		storage:    storage,
-		metrics:    newMetrics(),
-		unwrap:     unwrap,
-		validStamp: validStamp,
-		logger:     logger.WithName(loggerName).Register(),
-		wg:         sync.WaitGroup{},
-		quit:       make(chan struct{}),
+		streamer:       streamer,
+		storage:        storage,
+		metrics:        newMetrics(),
+		unwrap:         unwrap,
+		validStamp:     validStamp,
+		logger:         logger.WithName(loggerName).Register(),
+		wg:             sync.WaitGroup{},
+		quit:           make(chan struct{}),
+		radius:         radius,
+		overlayAddress: overlayAddress,
 	}
 }
 
@@ -110,9 +114,9 @@ func (s *Syncer) Protocol() p2p.ProtocolSpec {
 }
 
 // SyncInterval syncs a requested interval from the given peer.
-// It returns the BinID of highest chunk that was synced from the given interval.
+// It returns the BinID of the highest chunk that was synced from the given interval.
 // If the requested interval is too large, the downstream peer has the liberty to
-// provide less chunks than requested.
+// provide fewer chunks than requested.
 func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (uint64, error) {
 	loggerV2 := s.logger.V(2).Register()
 
@@ -174,16 +178,20 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		}
 		s.metrics.Offered.Inc()
 		s.metrics.DbOps.Inc()
-		have, err = s.storage.Has(ctx, a)
-		if err != nil {
-			s.logger.Debug("storage has", "error", err)
-			continue
-		}
-		if !have {
-			wantChunks[a.ByteString()] = struct{}{}
-			ctr++
-			s.metrics.Wanted.Inc()
-			bv.Set(i / swarm.HashSize)
+		po := swarm.Proximity(a.Bytes(), s.overlayAddress.Bytes())
+		if po >= s.radius.StorageRadius() {
+			have, err = s.storage.Has(ctx, a)
+			if err != nil {
+				s.logger.Debug("storage has", "error", err)
+				continue
+			}
+
+			if !have {
+				wantChunks[a.ByteString()] = struct{}{}
+				ctr++
+				s.metrics.Wanted.Inc()
+				bv.Set(i / swarm.HashSize)
+			}
 		}
 	}
 
