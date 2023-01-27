@@ -162,12 +162,13 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr, sourcePeerAddr swarm.
 
 			select {
 			case <-ctx.Done():
-				loggerV1.Debug("failed to get chunk", "chunk_address", addr, "error", ctx.Err())
-				return nil, fmt.Errorf("retrieval: %w", ctx.Err())
+				return nil, ctx.Err()
 			case <-preemptiveTicker.C:
 				retry()
 			case <-retryC:
+
 				s.metrics.PeerRequestCounter.Inc()
+
 				inflight++
 
 				go func() {
@@ -185,43 +186,44 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr, sourcePeerAddr swarm.
 
 				if errors.Is(res.err, topology.ErrNotFound) {
 					if sp.OverdraftListEmpty() { // no peer is available, and none skipped due to overdraft errors
-						loggerV1.Debug("no peers left to retry", "chunk_address", addr)
 						if inflight == 0 {
+							loggerV1.Debug("no peers left to retry", "chunk_address", addr)
 							return nil, storage.ErrNotFound
 						}
 						continue
 					}
-					// there are overdrafted peers, so we want to retry with them again, let ticker trigger another retry
+
+					// there are overdrafted peers, so we want to retry with them again
+					loggerV1.Debug("peers are overdrafted, retrying", "chunk_address", addr)
 					sp.ResetOverdraft()
 					select {
 					case <-time.After(resetOverdraftDur): // wait at least 600 milliseconds
 						retry()
 						continue
 					case <-ctx.Done():
-						loggerV1.Debug("failed to get chunk", "chunk_address", addr, "error", ctx.Err())
-						return nil, fmt.Errorf("retrieval: %w", ctx.Err())
+						return nil, ctx.Err()
 					}
 				}
 
 				if res.retrieveAttempted {
 					retrievedErrorsLeft--
-					if res.err != nil {
-						s.logger.Debug("failed to get chunk from peer", "peer_address", res.peer, "chunk_address", addr, "error", res.err)
-					} else {
-						s.logger.Debug("retrieved chunk from peer", "peer_address", res.peer, "chunk_address", addr)
-						return res.chunk, nil
-					}
 				}
 
-				retry()
+				if res.err != nil {
+					loggerV1.Debug("failed to get chunk", "chunk_address", addr, "peer_address", res.peer, "error", res.err)
+					retry()
+				} else {
+					loggerV1.Debug("retrieved chunk", "chunk_address", addr, "peer_address", res.peer)
+					return res.chunk, nil
+				}
 			}
 		}
 
-		loggerV1.Debug("ran out of attempts", "chunk_address", addr)
+		loggerV1.Debug("no peers left to retry", "chunk_address", addr)
 		return nil, storage.ErrNotFound
 	})
-
 	if err != nil {
+		s.logger.Debug("retrieval failed", "chunk_address", addr, "error", err)
 		return nil, err
 	}
 
@@ -229,7 +231,6 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr, sourcePeerAddr swarm.
 }
 
 func (s *Service) retrieveChunk(ctx context.Context, done chan struct{}, result chan retrievalResult, addr swarm.Address, sp *skippeers.List, isOrigin bool) {
-	loggerV1 := s.logger.V(1).Build()
 
 	startTimer := time.Now()
 	// allow upstream requests if this node is the source of the request
@@ -281,8 +282,6 @@ func (s *Service) retrieveChunk(ctx context.Context, done chan struct{}, result 
 	defer creditAction.Cleanup()
 
 	sp.Add(peer)
-
-	loggerV1.Debug("requesting chunk from peer", "chunk_address", addr, "peer_address", peer)
 
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
