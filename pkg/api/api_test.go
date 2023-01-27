@@ -215,9 +215,11 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 
 	s.SetP2P(o.P2P)
 
-	o.redistributionAgent = createRedistributionAgentService(o.Overlay, o.StateStorer, erc20)
+	if o.redistributionAgent == nil {
+		o.redistributionAgent = createRedistributionAgentService(o.Overlay, o.StateStorer, erc20)
+		s.SetRedistributionAgent(o.redistributionAgent)
+	}
 	s.SetSwarmAddress(&o.Overlay)
-	s.SetRedistributionAgent(o.redistributionAgent)
 	s.SetProbe(o.Probe)
 
 	noOpTracer, tracerCloser, _ := tracing.NewTracer(&tracing.Options{
