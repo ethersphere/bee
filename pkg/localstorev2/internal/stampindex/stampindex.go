@@ -179,8 +179,8 @@ func Load(s internal.Storage, namespace string, chunk swarm.Chunk) (*Item, error
 	return item, nil
 }
 
-// Store creates and stores new stamp index record
-// related to the given namespace and chunk.
+// Store creates new or updated an existing stamp index
+// record related to the given namespace and chunk.
 func Store(s internal.Storage, namespace string, chunk swarm.Chunk) error {
 	item := &Item{
 		namespace:        []byte(namespace),
