@@ -122,7 +122,7 @@ func TestPinStore(t *testing.T) {
 	})
 
 	t.Run("verify root pins", func(t *testing.T) {
-		pins, err := pinstore.Pins(st.Store())
+		pins, err := pinstore.Pins(st.IndexStore())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -145,7 +145,7 @@ func TestPinStore(t *testing.T) {
 
 	t.Run("has pin", func(t *testing.T) {
 		for _, tc := range tests {
-			found, err := pinstore.HasPin(st.Store(), tc.root.Address())
+			found, err := pinstore.HasPin(st.IndexStore(), tc.root.Address())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -158,7 +158,7 @@ func TestPinStore(t *testing.T) {
 	t.Run("verify internal state", func(t *testing.T) {
 		for _, tc := range tests {
 			count := 0
-			err := pinstore.IterateCollection(st.Store(), tc.root.Address(), func(addr swarm.Address) (bool, error) {
+			err := pinstore.IterateCollection(st.IndexStore(), tc.root.Address(), func(addr swarm.Address) (bool, error) {
 				count++
 				return false, nil
 			})
@@ -168,7 +168,7 @@ func TestPinStore(t *testing.T) {
 			if count != len(tc.uniqueChunks)+2 {
 				t.Fatalf("incorrect no of chunks in collection, expected %d found %d", len(tc.uniqueChunks)+2, count)
 			}
-			stat, err := pinstore.GetStat(st.Store(), tc.root.Address())
+			stat, err := pinstore.GetStat(st.IndexStore(), tc.root.Address())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -187,7 +187,7 @@ func TestPinStore(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		found, err := pinstore.HasPin(st.Store(), tests[0].root.Address())
+		found, err := pinstore.HasPin(st.IndexStore(), tests[0].root.Address())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -195,7 +195,7 @@ func TestPinStore(t *testing.T) {
 			t.Fatal("expected pin to not be found")
 		}
 
-		pins, err := pinstore.Pins(st.Store())
+		pins, err := pinstore.Pins(st.IndexStore())
 		if err != nil {
 			t.Fatal(err)
 		}

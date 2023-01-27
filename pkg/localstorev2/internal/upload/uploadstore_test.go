@@ -420,7 +420,7 @@ func TestChunkPutter(t *testing.T) {
 					Address: chunk.Address(),
 					BatchID: chunk.Stamp().BatchID(),
 				}
-				err := ts.Store().Get(ui)
+				err := ts.IndexStore().Get(ui)
 				if err != nil {
 					t.Fatalf("Get(...): unexpected error: %v", err)
 				}
@@ -440,7 +440,7 @@ func TestChunkPutter(t *testing.T) {
 					Address:   chunk.Address(),
 					BatchID:   chunk.Stamp().BatchID(),
 				}
-				err = ts.Store().Get(pi)
+				err = ts.IndexStore().Get(pi)
 				if err != nil {
 					t.Fatalf("Get(...): unexpected error: %v", err)
 				}
@@ -475,7 +475,7 @@ func TestChunkPutter(t *testing.T) {
 		}
 
 		ti := &upload.TagItem{TagID: tagID}
-		err = ts.Store().Get(ti)
+		err = ts.IndexStore().Get(ti)
 		if err != nil {
 			t.Fatalf("Get(...): unexpected error %v", err)
 		}
@@ -545,7 +545,7 @@ func TestChunkReporter(t *testing.T) {
 				ti := &upload.TagItem{
 					TagID: tagID,
 				}
-				err := ts.Store().Get(ti)
+				err := ts.IndexStore().Get(ti)
 				if err != nil {
 					t.Fatalf("Get(...): unexpected error: %v", err)
 				}
@@ -566,7 +566,7 @@ func TestChunkReporter(t *testing.T) {
 					Address: chunk.Address(),
 					BatchID: chunk.Stamp().BatchID(),
 				}
-				err = ts.Store().Get(ui)
+				err = ts.IndexStore().Get(ui)
 				if err != nil {
 					t.Fatalf("Get(...): unexpected error: %v", err)
 				}
@@ -587,7 +587,7 @@ func TestChunkReporter(t *testing.T) {
 					Address:   chunk.Address(),
 					BatchID:   chunk.Stamp().BatchID(),
 				}
-				has, err := ts.Store().Has(pi)
+				has, err := ts.IndexStore().Has(pi)
 				if err != nil {
 					t.Fatalf("Has(...): unexpected error: %v", err)
 				}
@@ -615,7 +615,7 @@ func TestChunkReporter(t *testing.T) {
 		}
 
 		ti := &upload.TagItem{TagID: tagID}
-		err = ts.Store().Get(ti)
+		err = ts.IndexStore().Get(ti)
 		if err != nil {
 			t.Fatalf("Get(...): unexpected error %v", err)
 		}

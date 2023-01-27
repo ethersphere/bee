@@ -23,6 +23,7 @@ import (
 	"github.com/hashicorp/go-multierror"
 	"github.com/spf13/afero"
 	"github.com/syndtr/goleveldb/leveldb/opt"
+	"resenje.org/multex"
 )
 
 // PutterSession provides a session
@@ -36,20 +37,19 @@ type PutterSession interface {
 	Cleanup() error
 }
 
-type SessionInfo struct {
-	Split     uint64        // total no of chunks processed by the splitter for hashing
-	Seen      uint64        // total no of chunks already seen
-	Stored    uint64        // total no of chunks stored locally on the node
-	Sent      uint64        // total no of chunks sent to the neighbourhood
-	Synced    uint64        // total no of chunks synced with proof
-	Address   swarm.Address // swarm.Address associated with this tag
-	StartedAt int64         // start timestamp
-}
+type SessionInfo = upload.TagItem
 
 type UploadStore interface {
 	Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession, error)
-	NewSession(context.Context) (uint64, error)
-	GetSessionInfo(ctx context.Context, tagID uint64) (SessionInfo, error)
+	NewSession() (uint64, error)
+	GetSessionInfo(tagID uint64) (SessionInfo, error)
+}
+
+type PinStore interface {
+	NewCollection(context.Context) (PutterSession, error)
+	DeletePin(context.Context, swarm.Address) error
+	Pins() ([]swarm.Address, error)
+	HasPin(swarm.Address) (bool, error)
 }
 
 type memFS struct {
@@ -116,6 +116,7 @@ type Options struct{}
 
 type DB struct {
 	repo *storage.Repository
+	lock *multex.Multex
 }
 
 func New(dirPath string, opts *Options) (*DB, error) {
@@ -138,6 +139,7 @@ func New(dirPath string, opts *Options) (*DB, error) {
 
 	return &DB{
 		repo: repo,
+		lock: multex.New(),
 	}, nil
 }
 
@@ -151,8 +153,16 @@ func (p *putterSessionImpl) Done(addr swarm.Address) error { return p.done(addr)
 
 func (p *putterSessionImpl) Cleanup() error { return p.cleanup() }
 
+// Upload provides a PutterSession which can be used to upload data to the node.
+// If pin is set to true, it also creates a new pinning collection for the session.
+// If the tagID is specified, it updates the same tag, if not, it creates a new one.
 func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession, error) {
+	if tagID == 0 {
+		return nil, fmt.Errorf("localstore: tagID required")
+	}
+
 	txnRepo, commit, rollback := db.repo.NewTx(ctx)
+
 	uploadPutter, err := upload.NewPutter(txnRepo, tagID)
 	if err != nil {
 		return nil, err
@@ -193,10 +203,50 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 	}, nil
 }
 
-func (db *DB) NewSession(ctx context.Context) (uint64, error) {
-	return 0, nil
+// NewSession provides a new tag ID to use for Upload session.
+func (db *DB) NewSession() (uint64, error) {
+	db.lock.Lock("upload_session")
+	defer db.lock.Unlock("upload_session")
+
+	return upload.NextTag(db.repo.IndexStore())
 }
 
-func (db *DB) GetSessionInfo(ctx context.Context, tagID uint64) (SessionInfo, error) {
-	return SessionInfo{}, nil
+// GetSessionInfo returns the session related information for this tagID
+func (db *DB) GetSessionInfo(tagID uint64) (SessionInfo, error) {
+	return upload.GetTagInfo(db.repo.IndexStore(), tagID)
+}
+
+func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
+	txnRepo, commit, rollback := db.repo.NewTx(ctx)
+	pinningPutter := pinstore.NewCollection(txnRepo)
+
+	return &putterSessionImpl{
+		Putter: pinningPutter,
+		done: func(address swarm.Address) error {
+			return multierror.Append(
+				pinningPutter.Close(address),
+				commit(),
+			).ErrorOrNil()
+		},
+		cleanup: func() error { return rollback() },
+	}, nil
+}
+
+func (db *DB) DeletePin(ctx context.Context, root swarm.Address) error {
+	txnRepo, commit, rollback := db.repo.NewTx(ctx)
+
+	err := pinstore.DeletePin(txnRepo, root)
+	if err != nil {
+		return multierror.Append(err, rollback()).ErrorOrNil()
+	}
+
+	return commit()
+}
+
+func (db *DB) Pins() ([]swarm.Address, error) {
+	return pinstore.Pins(db.repo.IndexStore())
+}
+
+func (db *DB) HasPin(root swarm.Address) (bool, error) {
+	return pinstore.HasPin(db.repo.IndexStore(), root)
 }

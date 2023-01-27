@@ -24,7 +24,6 @@ var (
 
 type (
 	PushItem   = pushItem
-	TagItem    = tagItem
 	UploadItem = uploadItem
 )
 
