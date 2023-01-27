@@ -6,6 +6,7 @@ package upload_test
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"math"
@@ -16,6 +17,8 @@ import (
 
 	"github.com/ethersphere/bee/pkg/localstorev2/internal"
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/upload"
+	"github.com/ethersphere/bee/pkg/postage"
+	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/storagev2/storagetest"
@@ -359,8 +362,55 @@ func TestChunkPutter(t *testing.T) {
 			})
 
 			t.Run("put existing chunk", func(t *testing.T) {
-				err := putter.Put(context.TODO(), chunk)
-				if err != nil {
+				want := upload.ErrOverwriteOfNewerBatch
+				have := putter.Put(context.TODO(), chunk)
+				if !errors.Is(have, want) {
+					t.Fatalf("Put(...): unexpected error:\n\twant: %v\n\thave: %v", want, have)
+				}
+			})
+
+			t.Run("put existing chunk with immutable batch", func(t *testing.T) {
+				chunk := swarm.NewChunk(swarmtesting.RandomAddress(), chunk.Data()).
+					WithStamp(postagetesting.MustNewStamp()).
+					WithBatch(
+						chunk.Radius(),
+						chunk.Depth(),
+						chunk.BucketDepth(),
+						true,
+					)
+				if err := putter.Put(context.TODO(), chunk); err != nil {
+					t.Fatalf("Put(...): unexpected error: %v", err)
+				}
+
+				want := upload.ErrOverwriteOfImmutableBatch
+				have := putter.Put(context.TODO(), chunk)
+				if !errors.Is(have, want) {
+					t.Fatalf("Put(...): unexpected error:\n\twant: %v\n\thave: %v", want, have)
+				}
+			})
+
+			t.Run("put existing chunk with newer batch timestamp", func(t *testing.T) {
+				decTS := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
+				encTS := make([]byte, 8)
+				binary.BigEndian.PutUint64(encTS, decTS+1)
+
+				stamp := postage.NewStamp(
+					chunk.Stamp().BatchID(),
+					chunk.Stamp().Index(),
+					encTS,
+					chunk.Stamp().Sig(),
+				)
+
+				chunk := swarm.NewChunk(chunk.Address(), chunk.Data()).
+					WithStamp(stamp).
+					WithBatch(
+						chunk.Radius(),
+						chunk.Depth(),
+						chunk.BucketDepth(),
+						chunk.Immutable(),
+					)
+
+				if err := putter.Put(context.TODO(), chunk); err != nil {
 					t.Fatalf("Put(...): unexpected error: %v", err)
 				}
 			})
@@ -432,7 +482,7 @@ func TestChunkPutter(t *testing.T) {
 
 		wantTI := &upload.TagItem{
 			TagID:     tagID,
-			Split:     20,
+			Split:     30,
 			Seen:      10,
 			StartedAt: now().Unix(),
 			Address:   addr,
