@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/localstorev2/internal"
+	"github.com/ethersphere/bee/pkg/localstorev2/internal/stampindex"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -285,6 +286,24 @@ func (i uploadItem) String() string {
 	return path.Join(i.Namespace(), i.ID())
 }
 
+// stampIndexUploadNamespace represents the
+// namespace name of the stamp index for upload.
+const stampIndexUploadNamespace = "upload"
+
+var (
+	// errPutterAlreadyClosed is returned when trying to Put a new chunk
+	// after the putter has been closed.
+	errPutterAlreadyClosed = errors.New("upload store: putter already closed")
+
+	// errOverwriteOfImmutableBatch is returned when stamp index already
+	// exists and the batch is immutable.
+	errOverwriteOfImmutableBatch = errors.New("upload store: overwrite of existing immutable batch")
+
+	// errOverwriteOfNewerBatch is returned if a stamp index already exists
+	// and the existing chunk with the same stamp index has a newer timestamp.
+	errOverwriteOfNewerBatch = errors.New("upload store: overwrite of existing batch with newer timestamp")
+)
+
 type uploadPutter struct {
 	tagID  uint64
 	mtx    sync.Mutex
@@ -293,12 +312,6 @@ type uploadPutter struct {
 	s      internal.Storage
 	closed bool
 }
-
-var (
-	// errPutterAlreadyClosed is returned when trying to Put a new chunk after the
-	// putter has been closed.
-	errPutterAlreadyClosed = errors.New("upload store: putter already closed")
-)
 
 // NewPutter returns a new chunk putter associated with the tagID.
 func NewPutter(s internal.Storage, tagId uint64) (internal.PutterCloserWithReference, error) {
@@ -325,6 +338,19 @@ func (u *uploadPutter) Put(ctx context.Context, chunk swarm.Chunk) error {
 
 	if u.closed {
 		return errPutterAlreadyClosed
+	}
+
+	switch item, loaded, err := stampindex.LoadOrStore(u.s, stampIndexUploadNamespace, chunk); {
+	case err != nil:
+		return fmt.Errorf("load or store stamp index for chunk %v has fail: %w", chunk, err)
+	case loaded && item.ChunkIsImmutable:
+		return errOverwriteOfImmutableBatch
+	case loaded && !item.ChunkIsImmutable:
+		prev := binary.BigEndian.Uint64(item.BatchTimestamp)
+		curr := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
+		if prev >= curr {
+			return errOverwriteOfNewerBatch
+		}
 	}
 
 	u.split++
