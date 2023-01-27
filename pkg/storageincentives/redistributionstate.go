@@ -6,18 +6,24 @@ package storageincentives
 
 import (
 	"context"
+	"math/big"
+	"sync"
+	"time"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/transaction"
-	"math/big"
-	"sync"
 )
 
-const redistributionStatusKey = "redistribution_state"
 const loggerNameNode = "nodestatus"
+
+const (
+	redistributionStatusKey = "redistribution_state"
+	saveStatusInterval      = time.Second
+)
 
 type RedistributionState struct {
 	stateStore     storage.StateStorer
@@ -28,6 +34,7 @@ type RedistributionState struct {
 	status         Status
 	currentBalance *big.Int
 	contract       transaction.Service
+	saveStatusC    chan Status
 }
 
 // Status provide internal status of the nodes in the redistribution game
@@ -56,6 +63,53 @@ func NewRedistributionState(logger log.Logger, stateStore storage.StateStorer, e
 			Reward: nil,
 			Fees:   big.NewInt(0),
 		},
+		saveStatusC: make(chan Status, 8),
+	}
+}
+
+func (n *RedistributionState) Stop() {
+	close(n.saveStatusC)
+}
+
+func (n *RedistributionState) Start() {
+	go n.saveStateHandler()
+}
+
+func (n *RedistributionState) saveStateHandler() {
+	var status *Status // when nil latests is saved, when not nil status is dirty
+
+	saveStatus := func() {
+		if status == nil {
+			return
+		}
+
+		err := n.stateStore.Put(redistributionStatusKey, *status)
+		if err != nil {
+			n.logger.Error(err, "error saving node status")
+		} else {
+			status = nil
+		}
+	}
+
+	// save status is called in deffer to ensure that
+	// state is stored before handler exists
+	defer saveStatus()
+
+	saveTicker := time.NewTicker(saveStatusInterval)
+	defer saveTicker.Stop()
+
+	for {
+		select {
+		case newStatus, ok := <-n.saveStatusC:
+			if !ok {
+				return
+			}
+
+			status = &newStatus
+
+		case <-saveTicker.C:
+			saveStatus()
+		}
 	}
 }
 
@@ -65,7 +119,8 @@ func (n *RedistributionState) SetCurrentEvent(p PhaseType, r uint64, b uint64) {
 	n.status.Phase = p
 	n.status.Round = r
 	n.status.Block = b
-	n.saveStatus()
+
+	n.saveStatusC <- n.status
 }
 
 func (n *RedistributionState) SetFrozen(f bool, r uint64) {
@@ -75,21 +130,24 @@ func (n *RedistributionState) SetFrozen(f bool, r uint64) {
 	if f {
 		n.status.LastFrozenRound = r
 	}
-	n.saveStatus()
+
+	n.saveStatusC <- n.status
 }
 
 func (n *RedistributionState) SetLastWonRound(r uint64) {
 	n.mtx.Lock()
 	defer n.mtx.Unlock()
 	n.status.LastWonRound = r
-	n.saveStatus()
+
+	n.saveStatusC <- n.status
 }
 
 func (n *RedistributionState) SetLastPlayedRound(p uint64) {
 	n.mtx.Lock()
 	defer n.mtx.Unlock()
 	n.status.LastPlayedRound = p
-	n.saveStatus()
+
+	n.saveStatusC <- n.status
 }
 
 // AddFee sets the internal node status
@@ -98,9 +156,10 @@ func (n *RedistributionState) AddFee(ctx context.Context, txHash common.Hash) {
 	if err != nil {
 		return
 	}
+
 	n.mtx.Lock()
 	n.status.Fees.Add(n.status.Fees, fee)
-	n.saveStatus()
+	n.saveStatusC <- n.status
 	n.mtx.Unlock()
 }
 
@@ -114,18 +173,10 @@ func (n *RedistributionState) CalculateWinnerReward(ctx context.Context) error {
 	if currentBalance != nil {
 		n.mtx.Lock()
 		n.status.Reward.Add(n.status.Reward, currentBalance.Sub(currentBalance, n.currentBalance))
+		n.saveStatusC <- n.status
 		n.mtx.Unlock()
 	}
 	return nil
-}
-
-// saveStatus saves the node status to the database. Must be called under lock
-func (n *RedistributionState) saveStatus() {
-	err := n.stateStore.Put(redistributionStatusKey, n.status)
-	if err != nil {
-		n.logger.Error(err, "error saving node status")
-		return
-	}
 }
 
 // Status returns the node status

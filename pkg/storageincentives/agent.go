@@ -9,14 +9,15 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
-	"github.com/ethersphere/bee/pkg/storageincentives/staking"
-	"github.com/ethersphere/bee/pkg/transaction"
 	"io"
 	"math"
 	"math/big"
 	"sync"
 	"time"
+
+	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
+	"github.com/ethersphere/bee/pkg/storageincentives/staking"
+	"github.com/ethersphere/bee/pkg/transaction"
 
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/crypto"
@@ -91,6 +92,8 @@ func New(overlay swarm.Address, backend ChainBackend, logger log.Logger, monitor
 // the sample is submitted, and in the reveal phase, the obfuscation key from the commit phase is submitted.
 // Next, in the claim phase, we check if we've won, and the cycle repeats. The cycle must occur in the length of one round.
 func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase uint64) {
+	a.nodeState.Start()
+
 	defer a.wg.Done()
 
 	var (
@@ -420,6 +423,8 @@ func (a *Agent) commit(ctx context.Context, storageRadius uint8, sample []byte, 
 }
 
 func (a *Agent) Close() error {
+	a.nodeState.Stop()
+
 	close(a.quit)
 
 	stopped := make(chan struct{})
