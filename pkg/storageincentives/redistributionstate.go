@@ -50,23 +50,34 @@ type Status struct {
 	Fees            *big.Int
 }
 
-func NewRedistributionState(logger log.Logger, stateStore storage.StateStorer, erc20Service erc20.Service, contract transaction.Service) RedistributionState {
-	return RedistributionState{
+func NewRedistributionState(logger log.Logger, stateStore storage.StateStorer, erc20Service erc20.Service, contract transaction.Service) *RedistributionState {
+	return &RedistributionState{
 		stateStore:     stateStore,
 		erc20Service:   erc20Service,
 		logger:         logger.WithName(loggerNameNode).Register(),
 		currentBalance: big.NewInt(0),
 		txService:      contract,
 		status: Status{
-			Round:  0,
-			Block:  0,
-			Reward: nil,
+			Reward: big.NewInt(0),
 			Fees:   big.NewInt(0),
 		},
 		saveStatusC: make(chan Status, 8),
 	}
 }
 
+func (n *Status) clone() Status {
+	return Status{
+		Phase:           n.Phase,
+		IsFrozen:        n.IsFrozen,
+		Round:           n.Round,
+		LastWonRound:    n.LastWonRound,
+		LastPlayedRound: n.LastPlayedRound,
+		LastFrozenRound: n.LastFrozenRound,
+		Block:           n.Block,
+		Reward:          big.NewInt(0).Set(n.Reward),
+		Fees:            big.NewInt(0).Set(n.Fees),
+	}
+}
 func (n *RedistributionState) Stop() {
 	close(n.saveStatusC)
 }
@@ -120,7 +131,7 @@ func (n *RedistributionState) SetCurrentEvent(p PhaseType, r uint64, b uint64) {
 	n.status.Round = r
 	n.status.Block = b
 
-	n.saveStatusC <- n.status
+	n.saveStatusC <- n.status.clone()
 }
 
 func (n *RedistributionState) SetFrozen(f bool, r uint64) {
@@ -131,7 +142,7 @@ func (n *RedistributionState) SetFrozen(f bool, r uint64) {
 		n.status.LastFrozenRound = r
 	}
 
-	n.saveStatusC <- n.status
+	n.saveStatusC <- n.status.clone()
 }
 
 func (n *RedistributionState) SetLastWonRound(r uint64) {
@@ -139,7 +150,7 @@ func (n *RedistributionState) SetLastWonRound(r uint64) {
 	defer n.mtx.Unlock()
 	n.status.LastWonRound = r
 
-	n.saveStatusC <- n.status
+	n.saveStatusC <- n.status.clone()
 }
 
 func (n *RedistributionState) SetLastPlayedRound(p uint64) {
@@ -147,19 +158,19 @@ func (n *RedistributionState) SetLastPlayedRound(p uint64) {
 	defer n.mtx.Unlock()
 	n.status.LastPlayedRound = p
 
-	n.saveStatusC <- n.status
+	n.saveStatusC <- n.status.clone()
 }
 
 // AddFee sets the internal node status
 func (n *RedistributionState) AddFee(ctx context.Context, txHash common.Hash) {
+
 	fee, err := n.txService.TransactionFee(ctx, txHash)
 	if err != nil {
 		return
 	}
-
 	n.mtx.Lock()
 	n.status.Fees.Add(n.status.Fees, fee)
-	n.saveStatusC <- n.status
+	n.saveStatusC <- n.status.clone()
 	n.mtx.Unlock()
 }
 
@@ -173,7 +184,7 @@ func (n *RedistributionState) CalculateWinnerReward(ctx context.Context) error {
 	if currentBalance != nil {
 		n.mtx.Lock()
 		n.status.Reward.Add(n.status.Reward, currentBalance.Sub(currentBalance, n.currentBalance))
-		n.saveStatusC <- n.status
+		n.saveStatusC <- n.status.clone()
 		n.mtx.Unlock()
 	}
 	return nil

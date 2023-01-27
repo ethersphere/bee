@@ -42,11 +42,4 @@ func TestRedistributionStatus(t *testing.T) {
 			jsonhttptest.WithRequestHeader("Content-Type", "application/json; charset=utf-8"),
 		)
 	})
-	t.Run("failure", func(t *testing.T) {
-		t.Parallel()
-		srv, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI: true,
-		})
-		jsonhttptest.Request(t, srv, http.MethodGet, "/redistributionstate", http.StatusInternalServerError)
-	})
 }
