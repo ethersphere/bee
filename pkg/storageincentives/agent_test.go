@@ -233,10 +233,6 @@ type mockContract struct {
 	mtx       sync.Mutex
 }
 
-func (m *mockContract) Fee(ctx context.Context, txhash common.Hash) *big.Int {
-	return big.NewInt(1000)
-}
-
 func (m *mockContract) ReserveSalt(context.Context) ([]byte, error) {
 	return nil, nil
 }

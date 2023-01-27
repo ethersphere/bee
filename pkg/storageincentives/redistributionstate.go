@@ -33,7 +33,7 @@ type RedistributionState struct {
 	mtx            sync.Mutex
 	status         Status
 	currentBalance *big.Int
-	contract       transaction.Service
+	txService      transaction.Service
 	saveStatusC    chan Status
 }
 
@@ -56,7 +56,7 @@ func NewRedistributionState(logger log.Logger, stateStore storage.StateStorer, e
 		erc20Service:   erc20Service,
 		logger:         logger.WithName(loggerNameNode).Register(),
 		currentBalance: big.NewInt(0),
-		contract:       contract,
+		txService:      contract,
 		status: Status{
 			Round:  0,
 			Block:  0,
@@ -152,7 +152,7 @@ func (n *RedistributionState) SetLastPlayedRound(p uint64) {
 
 // AddFee sets the internal node status
 func (n *RedistributionState) AddFee(ctx context.Context, txHash common.Hash) {
-	fee, err := n.contract.TransactionFee(ctx, txHash)
+	fee, err := n.txService.TransactionFee(ctx, txHash)
 	if err != nil {
 		return
 	}
