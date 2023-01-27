@@ -68,10 +68,13 @@ func (n *RedistributionState) SetCurrentEvent(p PhaseType, r uint64, b uint64) {
 	n.saveStatus()
 }
 
-func (n *RedistributionState) IsFrozen(f bool) {
+func (n *RedistributionState) SetFrozen(f bool, r uint64) {
 	n.mtx.Lock()
 	defer n.mtx.Unlock()
 	n.status.IsFrozen = f
+	if f {
+		n.status.LastFrozenRound = r
+	}
 	n.saveStatus()
 }
 
@@ -79,13 +82,6 @@ func (n *RedistributionState) SetLastWonRound(r uint64) {
 	n.mtx.Lock()
 	defer n.mtx.Unlock()
 	n.status.LastWonRound = r
-	n.saveStatus()
-}
-
-func (n *RedistributionState) SetLastFrozenRound(f uint64) {
-	n.mtx.Lock()
-	defer n.mtx.Unlock()
-	n.status.LastFrozenRound = f
 	n.saveStatus()
 }
 
@@ -106,15 +102,15 @@ func (n *RedistributionState) AddFee(ctx context.Context, txHash common.Hash) {
 
 // CalculateWinnerReward calculates the reward for the winner
 func (n *RedistributionState) CalculateWinnerReward(ctx context.Context) error {
-	n.mtx.Lock()
-	defer n.mtx.Unlock()
 	currentBalance, err := n.erc20Service.BalanceOf(ctx, common.HexToAddress(n.overlay.String()))
 	if err != nil {
 		n.logger.Debug("error getting balance", "error", err, "overly address", n.overlay.String())
 		return err
 	}
 	if currentBalance != nil {
+		n.mtx.Lock()
 		n.status.Reward.Add(n.status.Reward, currentBalance.Sub(currentBalance, n.currentBalance))
+		n.mtx.Unlock()
 	}
 	return nil
 }
@@ -138,14 +134,14 @@ func (n *RedistributionState) Status() (*Status, error) {
 }
 
 func (n *RedistributionState) SetBalance(ctx context.Context) error {
-	n.mtx.Lock()
-	defer n.mtx.Unlock()
 	// get current balance
 	currentBalance, err := n.erc20Service.BalanceOf(ctx, common.HexToAddress(n.overlay.String()))
 	if err != nil {
 		n.logger.Debug("error getting balance", "error", err, "overly address", n.overlay.String())
 		return err
 	}
+	n.mtx.Lock()
 	n.currentBalance.Set(currentBalance)
+	n.mtx.Unlock()
 	return nil
 }

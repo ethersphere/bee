@@ -215,9 +215,11 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 
 	s.SetP2P(o.P2P)
 
-	o.redistributionAgent = createRedistributionAgentService(o.Overlay, o.StateStorer, erc20)
+	if o.redistributionAgent == nil {
+		o.redistributionAgent = createRedistributionAgentService(o.Overlay, o.StateStorer, erc20)
+		s.SetRedistributionAgent(o.redistributionAgent)
+	}
 	s.SetSwarmAddress(&o.Overlay)
-	s.SetRedistributionAgent(o.redistributionAgent)
 	s.SetProbe(o.Probe)
 
 	noOpTracer, tracerCloser, _ := tracing.NewTracer(&tracing.Options{
@@ -721,8 +723,8 @@ func (c *chanStorer) Close() error {
 }
 
 func createRedistributionAgentService(addr swarm.Address, storer storage.StateStorer, erc20Service erc20.Service) *storageincentives.Agent {
-	var blocksPerRound uint64 = 12
-	var blocksPerPhase uint64 = 4
+	const blocksPerRound uint64 = 12
+	const blocksPerPhase uint64 = 4
 	postageContract := contractMock.New(contractMock.WithExpiresBatchesFunc(func(context.Context) error {
 		return nil
 	}),
