@@ -357,7 +357,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	preemptiveTicker := time.NewTicker(p90TTL)
 	defer preemptiveTicker.Stop()
 
-	retryC := make(chan struct{}, 1)
+	retryC := make(chan struct{})
 	retryF := func() {
 		go func() {
 			select {
