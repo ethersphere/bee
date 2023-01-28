@@ -145,13 +145,15 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr, sourcePeerAddr swarm.
 		defer close(done)
 
 		resultC := make(chan retrievalResult, 1)
-		retryC := make(chan struct{}, 1)
+		retryC := make(chan struct{})
 
 		retry := func() {
-			select {
-			case retryC <- struct{}{}:
-			default:
-			}
+			go func() {
+				select {
+				case retryC <- struct{}{}:
+				case <-done:
+				}
+			}()
 		}
 
 		retry()
