@@ -53,10 +53,10 @@ type Interface interface {
 }
 
 type retrievalResult struct {
-	chunk     swarm.Chunk
-	peer      swarm.Address
-	err       error
-	retrieved bool
+	chunk             swarm.Chunk
+	peer              swarm.Address
+	err               error
+	retrieveAttempted bool
 }
 
 type Service struct {
@@ -104,11 +104,11 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 }
 
 const (
-	retrieveChunkTimeout          = 10 * time.Second
-	retrieveRetryIntervalDuration = time.Second
-	maxRequestRounds              = 1024
-	maxSelects                    = 32
-	originSuffix                  = "_origin"
+	retrieveChunkTimeout = 10 * time.Second
+	preemptiveInterval   = time.Second
+	resetOverdraftDur    = time.Millisecond * 600
+	maxRetrievedErrors   = 32
+	originSuffix         = "_origin"
 )
 
 func (s *Service) RetrieveChunk(ctx context.Context, addr, sourcePeerAddr swarm.Address) (swarm.Chunk, error) {
@@ -126,10 +126,6 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr, sourcePeerAddr swarm.
 	// topCtx is passing the tracing span to the first singleflight call
 	topCtx := ctx
 	v, _, err := s.singleflight.Do(ctx, flightRoute, func(ctx context.Context) (interface{}, error) {
-		maxPeers := 1
-		if origin {
-			maxPeers = maxSelects
-		}
 
 		sp := new(skippeers.List)
 
@@ -137,133 +133,106 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr, sourcePeerAddr swarm.
 			sp.Add(sourcePeerAddr)
 		}
 
-		ticker := time.NewTicker(retrieveRetryIntervalDuration)
-		defer ticker.Stop()
+		preemptiveTicker := time.NewTicker(preemptiveInterval)
+		defer preemptiveTicker.Stop()
 
-		var (
-			peerAttempt  int
-			peersResults int
-			resultC      = make(chan retrievalResult)
-		)
-
-		requestAttempt := 0
-
-		lastTime := time.Now().Unix()
-
-		for requestAttempt < maxRequestRounds {
-
-			if peerAttempt < maxSelects {
-
-				// create a new context without cancelation but
-				// set the tracing span to the new context from the context of the first caller
-				ctx := tracing.WithContext(context.Background(), tracing.FromContext(topCtx))
-
-				// get the tracing span
-				span, _, ctx := s.tracer.StartSpanFromContext(ctx, "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: addr.String()})
-				defer span.Finish()
-
-				peerAttempt++
-				s.metrics.PeerRequestCounter.Inc()
-				go func() {
-
-					// cancel the goroutine just with the timeout
-					ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
-					defer cancel()
-					chunk, peer, requested, err := s.retrieveChunk(ctx, addr, sp, origin)
-					select {
-					case resultC <- retrievalResult{
-						chunk:     chunk,
-						peer:      peer,
-						err:       err,
-						retrieved: requested,
-					}:
-					case <-ctx.Done():
-					}
-
-				}()
-			} else {
-				select {
-				case resultC <- retrievalResult{}:
-				case <-ctx.Done():
-				default:
-				}
-			}
-
-			select {
-			case <-ticker.C:
-				// break
-			case res := <-resultC:
-				if errors.Is(res.err, topology.ErrNotFound) {
-					if sp.OverdraftListEmpty() {
-						// if no peer is available, and none skipped temporarily
-						loggerV1.Debug("failed to get chunk", "chunk_address", addr)
-						return nil, storage.ErrNotFound
-					} else {
-						// skip to next request round if any peers are only skipped temporarily
-						peerAttempt = maxSelects
-					}
-				}
-				if res.retrieved {
-					if res.err != nil {
-						if !res.peer.IsZero() {
-							s.logger.Debug("failed to get chunk from peer", "chunk_address", addr, "peer_address", res.peer, "error", res.err)
-						}
-						peersResults++
-					} else {
-						return res.chunk, nil
-					}
-				}
-			case <-ctx.Done():
-				loggerV1.Debug("failed to get chunk", "chunk_address", addr, "error", ctx.Err())
-				return nil, fmt.Errorf("retrieval: %w", ctx.Err())
-			}
-
-			// all results received, only successfully attempted requests are counted
-			if peersResults >= maxPeers {
-				loggerV1.Debug("failed to get chunk", "chunk_address", addr)
-				return nil, storage.ErrNotFound
-			}
-
-			// if we have not counted enough successful attempts but out of selection amount, reset
-			if peerAttempt >= maxSelects {
-
-				// forwarder gives up after first round of request attempts,
-				// rather than holding up the forwarding chain by waiting to be able to reserve downstream peer
-				if !origin {
-					return nil, storage.ErrNotFound
-				}
-
-				requestAttempt++
-				timeNow := time.Now().Unix()
-				if timeNow > lastTime {
-					lastTime = timeNow
-					peerAttempt = 0
-					sp.ResetOverdraft()
-				} else {
-					select {
-					case <-time.After(600 * time.Millisecond):
-					case <-ctx.Done():
-						loggerV1.Debug("failed to get chunk", "chunk_address", addr, "error", ctx.Err())
-						return nil, fmt.Errorf("retrieval: %w", ctx.Err())
-					}
-				}
-			}
-
+		retrievedErrorsLeft := 1
+		if origin {
+			retrievedErrorsLeft = maxRetrievedErrors
 		}
 
-		// if we have not managed to get results after 5 (maxRequestRounds) rounds of peer selections, give up
-		return nil, storage.ErrNotFound
+		done := make(chan struct{})
+		defer close(done)
 
+		resultC := make(chan retrievalResult, 1)
+		retryC := make(chan struct{})
+
+		retry := func() {
+			go func() {
+				select {
+				case retryC <- struct{}{}:
+				case <-done:
+				}
+			}()
+		}
+
+		retry()
+
+		inflight := 0
+
+		for retrievedErrorsLeft > 0 {
+
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-preemptiveTicker.C:
+				retry()
+			case <-retryC:
+
+				s.metrics.PeerRequestCounter.Inc()
+
+				inflight++
+
+				go func() {
+					ctx := tracing.WithContext(context.Background(), tracing.FromContext(topCtx))
+					span, _, ctx := s.tracer.StartSpanFromContext(ctx, "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: addr.String()})
+					defer span.Finish()
+					ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
+					defer cancel()
+
+					s.retrieveChunk(ctx, done, resultC, addr, sp, origin)
+				}()
+			case res := <-resultC:
+
+				inflight--
+
+				if errors.Is(res.err, topology.ErrNotFound) {
+					if sp.OverdraftListEmpty() { // no peer is available, and none skipped due to overdraft errors
+						if inflight == 0 {
+							loggerV1.Debug("no peers left to retry", "chunk_address", addr)
+							return nil, storage.ErrNotFound
+						}
+						continue
+					}
+
+					// there are overdrafted peers, so we want to retry with them again
+					loggerV1.Debug("peers are overdrafted, retrying", "chunk_address", addr)
+					sp.ResetOverdraft()
+					select {
+					case <-time.After(resetOverdraftDur): // wait at least 600 milliseconds
+						retry()
+						continue
+					case <-ctx.Done():
+						return nil, ctx.Err()
+					}
+				}
+
+				if res.retrieveAttempted {
+					retrievedErrorsLeft--
+				}
+
+				if res.err != nil {
+					loggerV1.Debug("failed to get chunk", "chunk_address", addr, "peer_address", res.peer, "error", res.err)
+					retry()
+				} else {
+					loggerV1.Debug("retrieved chunk", "chunk_address", addr, "peer_address", res.peer)
+					return res.chunk, nil
+				}
+			}
+		}
+
+		loggerV1.Debug("no peers left to retry", "chunk_address", addr)
+		return nil, storage.ErrNotFound
 	})
 	if err != nil {
+		s.logger.Debug("retrieval failed", "chunk_address", addr, "error", err)
 		return nil, err
 	}
 
 	return v.(swarm.Chunk), nil
 }
 
-func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *skippeers.List, isOrigin bool) (chunk swarm.Chunk, peer swarm.Address, requested bool, err error) {
-	loggerV1 := s.logger.V(1).Build()
+func (s *Service) retrieveChunk(ctx context.Context, done chan struct{}, result chan retrievalResult, addr swarm.Address, sp *skippeers.List, isOrigin bool) {
 
 	startTimer := time.Now()
 	// allow upstream requests if this node is the source of the request
@@ -271,11 +240,30 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 	// if this node is the closest to he chunk but still does not contain it
 	allowUpstream := isOrigin
 
+	var (
+		err               error
+		peer              swarm.Address
+		retrieveAttempted bool
+		chunk             swarm.Chunk
+	)
+
+	defer func() {
+		if err != nil {
+			s.metrics.TotalErrors.Inc()
+		}
+		select {
+		case result <- retrievalResult{err: err, chunk: chunk, retrieveAttempted: retrieveAttempted, peer: peer}:
+		case <-done:
+			return
+		}
+	}()
+
 	ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
 	defer cancel()
 	peer, err = s.closestPeer(addr, sp.All(), allowUpstream)
 	if err != nil {
-		return nil, peer, false, fmt.Errorf("get closest for address %s, allow upstream %v: %w", addr.String(), allowUpstream, err)
+		err = fmt.Errorf("get closest for address %s, allow upstream %v: %w", addr.String(), allowUpstream, err)
+		return
 	}
 
 	// compute the peer's price for this chunk for price header
@@ -288,18 +276,16 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 	creditAction, err := s.accounting.PrepareCredit(creditCtx, peer, chunkPrice, isOrigin)
 	if err != nil {
 		sp.AddOverdraft(peer)
-		return nil, peer, false, err
+		return
 	}
 	defer creditAction.Cleanup()
 
 	sp.Add(peer)
 
-	loggerV1.Debug("requesting chunk from peer", "chunk_address", addr, "peer_address", peer)
-
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
-		s.metrics.TotalErrors.Inc()
-		return nil, peer, false, fmt.Errorf("new stream: %w", err)
+		err = fmt.Errorf("new stream: %w", err)
+		return
 	}
 
 	defer func() {
@@ -311,16 +297,19 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 	}()
 
 	w, r := protobuf.NewWriterAndReader(stream)
-	if err := w.WriteMsgWithContext(ctx, &pb.Request{
-		Addr: addr.Bytes(),
-	}); err != nil {
-		s.metrics.TotalErrors.Inc()
-		return nil, peer, false, fmt.Errorf("write request: %w peer %s", err, peer.String())
+	err = w.WriteMsgWithContext(ctx, &pb.Request{Addr: addr.Bytes()})
+	if err != nil {
+		err = fmt.Errorf("write request: %w peer %s", err, peer.String())
+		return
 	}
+
+	retrieveAttempted = true
+
 	var d pb.Delivery
-	if err := r.ReadMsgWithContext(ctx, &d); err != nil {
-		s.metrics.TotalErrors.Inc()
-		return nil, peer, true, fmt.Errorf("read delivery: %w peer %s", err, peer.String())
+	err = r.ReadMsgWithContext(ctx, &d)
+	if err != nil {
+		err = fmt.Errorf("read delivery: %w peer %s", err, peer.String())
+		return
 	}
 	s.metrics.ChunkRetrieveTime.Observe(time.Since(startTimer).Seconds())
 	s.metrics.TotalRetrieved.Inc()
@@ -328,24 +317,24 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, sp *ski
 	stamp := new(postage.Stamp)
 	err = stamp.UnmarshalBinary(d.Stamp)
 	if err != nil {
-		return nil, peer, true, fmt.Errorf("stamp unmarshal: %w", err)
+		err = fmt.Errorf("stamp unmarshal: %w", err)
+		return
 	}
 	chunk = swarm.NewChunk(addr, d.Data).WithStamp(stamp)
 	if !cac.Valid(chunk) {
 		if !soc.Valid(chunk) {
 			s.metrics.InvalidChunkRetrieved.Inc()
-			s.metrics.TotalErrors.Inc()
-			return nil, peer, true, swarm.ErrInvalidChunk
+			err = swarm.ErrInvalidChunk
+			return
 		}
 	}
 
 	// credit the peer after successful delivery
 	err = creditAction.Apply()
 	if err != nil {
-		return nil, peer, true, err
+		return
 	}
 	s.metrics.ChunkPrice.Observe(float64(chunkPrice))
-	return chunk, peer, true, err
 }
 
 // closestPeer returns address of the peer that is closest to the chunk with

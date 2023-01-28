@@ -150,6 +150,98 @@ func TestDelivery(t *testing.T) {
 	}
 }
 
+func TestWaitForInflight(t *testing.T) {
+	t.Parallel()
+
+	var (
+		chunk      = testingc.FixtureChunk("7000")
+		logger     = log.Noop
+		pricerMock = pricermock.NewMockService(defaultPrice, defaultPrice)
+
+		badMockStorer           = storemock.NewStorer()
+		badServerMockAccounting = accountingmock.NewAccounting()
+		badServerAddr           = swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
+
+		mockStorer           = storemock.NewStorer()
+		serverMockAccounting = accountingmock.NewAccounting()
+		serverAddr           = swarm.MustParseHexAddress("5000000000000000000000000000000000000000000000000000000000000000")
+
+		clientMockStorer     = storemock.NewStorer()
+		clientMockAccounting = accountingmock.NewAccounting()
+		clientAddr           = swarm.MustParseHexAddress("9ee7add8")
+	)
+
+	stamp, err := chunk.Stamp().MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// put testdata in the mock store of the server
+	_, err = mockStorer.Put(context.Background(), storage.ModePutSync, chunk)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// create the server that will handle the request and will serve the response
+	server := retrieval.New(serverAddr, mockStorer, nil, nil, logger, serverMockAccounting, pricerMock, nil, false, noopStampValidator)
+
+	badServer := retrieval.New(badServerAddr, badMockStorer, nil, nil, logger, badServerMockAccounting, pricerMock, nil, false, noopStampValidator)
+
+	var fail = true
+	var lock sync.Mutex
+
+	recorder := streamtest.New(
+		streamtest.WithBaseAddr(clientAddr),
+		streamtest.WithProtocols(badServer.Protocol(), server.Protocol()),
+		streamtest.WithMiddlewares(func(h p2p.HandlerFunc) p2p.HandlerFunc {
+			return func(ctx context.Context, p p2p.Peer, s p2p.Stream) error {
+				lock.Lock()
+				defer lock.Unlock()
+
+				if fail {
+					fail = false
+					s.Close()
+					return errors.New("peer not reachable")
+				}
+
+				time.Sleep(time.Second * 2)
+
+				if err := h(ctx, p, s); err != nil {
+					return err
+				}
+				// close stream after all previous middlewares wrote to it
+				// so that the receiving peer can get all the post messages
+				return s.Close()
+			}
+		}),
+	)
+
+	mt := topologymock.NewTopologyDriver(topologymock.WithPeers(badServerAddr, serverAddr))
+
+	client := retrieval.New(clientAddr, clientMockStorer, recorder, mt, logger, clientMockAccounting, pricerMock, nil, false, noopStampValidator)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*30)
+	defer cancel()
+
+	v, err := client.RetrieveChunk(ctx, chunk.Address(), swarm.ZeroAddress)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(v.Data(), chunk.Data()) {
+		t.Fatalf("request and response data not equal. got %s want %s", v, chunk.Data())
+	}
+
+	vstamp, err := v.Stamp().MarshalBinary()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(vstamp, stamp) {
+		t.Fatal("stamp mismatch")
+	}
+}
+
 func TestRetrieveChunk(t *testing.T) {
 	t.Parallel()
 
