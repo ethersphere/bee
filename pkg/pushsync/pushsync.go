@@ -350,7 +350,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 		allowedPushes = maxAttempts
 	}
 
-	resultChan := make(chan receiptResult)
+	resultChan := make(chan receiptResult, 1)
 	done := make(chan struct{})
 	defer close(done)
 
@@ -358,7 +358,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	defer preemptiveTicker.Stop()
 
 	retryC := make(chan struct{})
-	retryF := func() {
+	retry := func() {
 		go func() {
 			select {
 			case retryC <- struct{}{}:
@@ -367,7 +367,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 		}()
 	}
 
-	retryF()
+	retry()
 
 	// nextPeer attempts to lookup the next peer to push the chunk to, if there are overdrafted peers the boolean would signal a re-attempt
 	nextPeer := func() (peer swarm.Address, retry bool, err error) {
@@ -411,18 +411,18 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 		case <-ctx.Done():
 			return nil, ErrNoPush
 		case <-preemptiveTicker.C:
-			retryF()
+			retry()
 		case <-retryC:
 
-			peer, retry, err := nextPeer()
+			peer, overdraft, err := nextPeer()
 			if err != nil {
 				return nil, err
 			}
 
-			if retry {
+			if overdraft {
 				select {
 				case <-time.After(waitRefresh): // wait at least 600 milliseconds
-					retryF()
+					retry()
 					continue
 				case <-ctx.Done():
 					return nil, ErrNoPush
@@ -462,7 +462,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				allowedPushes--
 			}
 
-			retryF()
+			retry()
 		}
 	}
 
