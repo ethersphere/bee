@@ -12,6 +12,8 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"fmt"
+	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
+	"github.com/ethersphere/bee/pkg/topology/depthmonitor"
 	"io"
 	stdlog "log"
 	"math/big"
@@ -67,12 +69,10 @@ import (
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storageincentives"
-	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
-	"github.com/ethersphere/bee/pkg/topology/depthmonitor"
 	"github.com/ethersphere/bee/pkg/topology/kademlia"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/pkg/tracing"
@@ -908,39 +908,6 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 	pullSyncProtocol := pullsync.New(p2ps, pullStorage, pssService.TryUnwrap, validStamp, logger, batchStore, swarmAddress)
 	b.pullSyncCloser = pullSyncProtocol
 
-	var (
-		pullerService *puller.Puller
-		agent         *storageincentives.Agent
-	)
-
-	if o.FullNodeMode && !o.BootnodeMode {
-		pullerService = puller.New(stateStore, kad, batchStore, pullSyncProtocol, logger, puller.Options{SyncSleepDur: puller.DefaultSyncErrorSleepDur}, warmupTime)
-		b.pullerCloser = pullerService
-
-		depthMonitor := depthmonitor.New(kad, pullerService, storer, batchStore, logger, warmupTime, depthmonitor.DefaultWakeupInterval)
-		b.depthMonitorCloser = depthMonitor
-
-		if o.EnableStorageIncentives {
-
-			redistributionContractAddress := chainCfg.RedistributionAddress
-			if o.RedistributionContractAddress != "" {
-				if !common.IsHexAddress(o.RedistributionContractAddress) {
-					return nil, errors.New("malformed redistribution contract address")
-				}
-				redistributionContractAddress = common.HexToAddress(o.RedistributionContractAddress)
-			}
-			redistributionContractABI, err := abi.JSON(strings.NewReader(chainCfg.RedistributionABI))
-			if err != nil {
-				return nil, fmt.Errorf("unable to parse redistribution ABI: %w", err)
-			}
-
-			redistributionContract := redistribution.New(swarmAddress, logger, transactionService, redistributionContractAddress, redistributionContractABI)
-			agent = storageincentives.New(swarmAddress, chainBackend, logger, depthMonitor, redistributionContract, postageStampContractService, batchStore, storer, o.BlockTime, storageincentives.DefaultBlocksPerRound, storageincentives.DefaultBlocksPerPhase)
-			b.storageIncetivesCloser = agent
-		}
-
-	}
-
 	retrieveProtocolSpec := retrieve.Protocol()
 	pushSyncProtocolSpec := pushSyncProtocol.Protocol()
 	pullSyncProtocolSpec := pullSyncProtocol.Protocol()
@@ -978,6 +945,38 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 	}
 	stakingContract := staking.New(swarmAddress, overlayEthAddress, stakingContractAddress, stakingContractABI, bzzTokenAddress, transactionService, common.BytesToHash(nonce))
 
+	var (
+		pullerService *puller.Puller
+		agent         *storageincentives.Agent
+	)
+
+	if o.FullNodeMode && !o.BootnodeMode {
+		pullerService = puller.New(stateStore, kad, batchStore, pullSyncProtocol, logger, puller.Options{SyncSleepDur: puller.DefaultSyncErrorSleepDur}, warmupTime)
+		b.pullerCloser = pullerService
+
+		depthMonitor := depthmonitor.New(kad, pullerService, storer, batchStore, logger, warmupTime, depthmonitor.DefaultWakeupInterval)
+		b.depthMonitorCloser = depthMonitor
+
+		if o.EnableStorageIncentives {
+
+			redistributionContractAddress := chainCfg.RedistributionAddress
+			if o.RedistributionContractAddress != "" {
+				if !common.IsHexAddress(o.RedistributionContractAddress) {
+					return nil, errors.New("malformed redistribution contract address")
+				}
+				redistributionContractAddress = common.HexToAddress(o.RedistributionContractAddress)
+			}
+			redistributionContractABI, err := abi.JSON(strings.NewReader(chainCfg.RedistributionABI))
+			if err != nil {
+				return nil, fmt.Errorf("unable to parse redistribution ABI: %w", err)
+			}
+
+			redistributionContract := redistribution.New(swarmAddress, logger, transactionService, redistributionContractAddress, redistributionContractABI)
+			agent = storageincentives.New(swarmAddress, chainBackend, logger, depthMonitor, redistributionContract, postageStampContractService, stakingContract, batchStore, storer, o.BlockTime, storageincentives.DefaultBlocksPerRound, storageincentives.DefaultBlocksPerPhase, stateStore, erc20Service, transactionService)
+			b.storageIncetivesCloser = agent
+		}
+
+	}
 	multiResolver := multiresolver.NewMultiResolver(
 		multiresolver.WithConnectionConfigs(o.ResolverConnectionCfgs),
 		multiresolver.WithLogger(o.Logger),
@@ -1033,6 +1032,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		if apiService == nil {
 			apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, beeNodeMode, o.ChequebookEnable, o.SwapEnable, chainBackend, o.CORSAllowedOrigins)
 			apiService.SetProbe(probe)
+			apiService.SetRedistributionAgent(agent)
 		}
 
 		chunkC := apiService.Configure(signer, authenticator, tracer, api.Options{
@@ -1138,6 +1138,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		debugService.SetP2P(p2ps)
 		debugService.SetSwarmAddress(&swarmAddress)
 		debugService.MountDebug(false)
+		debugService.SetRedistributionAgent(agent)
 	}
 
 	if err := kad.Start(ctx); err != nil {

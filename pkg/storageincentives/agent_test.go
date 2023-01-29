@@ -7,6 +7,11 @@ package storageincentives_test
 import (
 	"context"
 	"errors"
+	"github.com/ethereum/go-ethereum/common"
+	erc20mock "github.com/ethersphere/bee/pkg/settlement/swap/erc20/mock"
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
+	"github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
+	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
 	"math/big"
 	"sync"
 	"testing"
@@ -152,19 +157,13 @@ func createService(
 
 	postageContract := contractMock.New(contractMock.WithExpiresBatchesFunc(func(context.Context) error {
 		return nil
+	}),
+	)
+	stakingContract := mock.New(mock.WithIsFrozen(func(context.Context) (bool, error) {
+		return true, nil
 	}))
 
-	return storageincentives.New(
-		addr,
-		backend,
-		log.Noop,
-		&mockMonitor{},
-		contract,
-		postageContract,
-		mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})),
-		&mockSampler{},
-		time.Millisecond*10, blocksPerRound, blocksPerPhase,
-	)
+	return storageincentives.New(addr, backend, log.Noop, &mockMonitor{}, contract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), &mockSampler{}, time.Millisecond*10, blocksPerRound, blocksPerPhase, statestore.NewStateStore(), erc20mock.New(), transactionmock.New())
 }
 
 type mockchainBackend struct {
@@ -249,25 +248,25 @@ func (m *mockContract) IsWinner(context.Context) (bool, error) {
 	return false, nil
 }
 
-func (m *mockContract) Claim(context.Context) error {
+func (m *mockContract) Claim(context.Context) (common.Hash, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, claimCall)
-	return nil
+	return common.Hash{}, nil
 }
 
-func (m *mockContract) Commit(context.Context, []byte, *big.Int) error {
+func (m *mockContract) Commit(context.Context, []byte, *big.Int) (common.Hash, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, commitCall)
-	return nil
+	return common.Hash{}, nil
 }
 
-func (m *mockContract) Reveal(context.Context, uint8, []byte, []byte) error {
+func (m *mockContract) Reveal(context.Context, uint8, []byte, []byte) (common.Hash, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, revealCall)
-	return nil
+	return common.Hash{}, nil
 }
 
 type mockSampler struct{}

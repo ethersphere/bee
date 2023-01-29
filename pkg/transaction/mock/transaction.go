@@ -26,6 +26,7 @@ type transactionServiceMock struct {
 	resendTransaction    func(ctx context.Context, txHash common.Hash) error
 	storedTransaction    func(txHash common.Hash) (*transaction.StoredTransaction, error)
 	cancelTransaction    func(ctx context.Context, originalTxHash common.Hash) (common.Hash, error)
+	transactionFee       func(ctx context.Context, txHash common.Hash) (*big.Int, error)
 }
 
 func (m *transactionServiceMock) Send(ctx context.Context, request *transaction.TxRequest, boostPercent int) (txHash common.Hash, err error) {
@@ -88,6 +89,11 @@ func (m *transactionServiceMock) Close() error {
 	return nil
 }
 
+// TransactionFee returns fee of transaction
+func (m *transactionServiceMock) TransactionFee(ctx context.Context, txHash common.Hash) (*big.Int, error) {
+	return big.NewInt(1000), nil
+}
+
 // Option is the option passed to the mock Chequebook service
 type Option interface {
 	apply(*transactionServiceMock)
@@ -136,6 +142,12 @@ func WithResendTransactionFunc(f func(ctx context.Context, txHash common.Hash) e
 func WithCancelTransactionFunc(f func(ctx context.Context, originalTxHash common.Hash) (common.Hash, error)) Option {
 	return optionFunc(func(s *transactionServiceMock) {
 		s.cancelTransaction = f
+	})
+}
+
+func WithTransactionFeeFunc(f func(ctx context.Context, txHash common.Hash) (*big.Int, error)) Option {
+	return optionFunc(func(s *transactionServiceMock) {
+		s.transactionFee = f
 	})
 }
 

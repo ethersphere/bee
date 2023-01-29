@@ -12,6 +12,13 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"github.com/ethereum/go-ethereum/core/types"
+	contractMock "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
+	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
+	"github.com/ethersphere/bee/pkg/storageincentives"
+	mock2 "github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
+	"github.com/ethersphere/bee/pkg/swarm/test"
+	"github.com/ethersphere/bee/pkg/transaction"
 	"io"
 	"math/big"
 	"net"
@@ -82,6 +89,7 @@ func init() {
 
 type testServerOptions struct {
 	Storer             storage.Storer
+	StateStorer        storage.StateStorer
 	Resolver           resolver.Interface
 	Pss                pss.Interface
 	Traversal          traversal.Traverser
@@ -122,9 +130,10 @@ type testServerOptions struct {
 	BatchStore postage.Storer
 	SyncStatus func() (bool, error)
 
-	BackendOpts []backendmock.Option
-	Erc20Opts   []erc20mock.Option
-	beeMode     api.BeeNodeMode
+	BackendOpts         []backendmock.Option
+	Erc20Opts           []erc20mock.Option
+	beeMode             api.BeeNodeMode
+	redistributionAgent *storageincentives.Agent
 }
 
 func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.Conn, string, *chanStorer) {
@@ -164,11 +173,15 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	settlement := swapmock.New(o.SwapOpts...)
 	chequebook := chequebookmock.NewChequebook(o.ChequebookOpts...)
 	ln := lightnode.NewContainer(o.Overlay)
+
 	transaction := transactionmock.New(o.TransactionOpts...)
 
 	storeRecipient := statestore.NewStateStore()
 	recipient := pseudosettle.New(nil, o.Logger, storeRecipient, nil, big.NewInt(10000), big.NewInt(10000), o.P2P)
 
+	if o.StateStorer == nil {
+		o.StateStorer = storeRecipient
+	}
 	erc20 := erc20mock.New(o.Erc20Opts...)
 	backend := backendmock.New(o.BackendOpts...)
 
@@ -202,8 +215,12 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.Logger, transaction, o.BatchStore, o.beeMode, true, true, backend, o.CORSAllowedOrigins)
 
 	s.SetP2P(o.P2P)
-	s.SetSwarmAddress(&o.Overlay)
 
+	if o.redistributionAgent == nil {
+		o.redistributionAgent = createRedistributionAgentService(o.Overlay, o.StateStorer, erc20, transaction)
+		s.SetRedistributionAgent(o.redistributionAgent)
+	}
+	s.SetSwarmAddress(&o.Overlay)
 	s.SetProbe(o.Probe)
 
 	noOpTracer, tracerCloser, _ := tracing.NewTracer(&tracing.Options{
@@ -704,4 +721,145 @@ func (c *chanStorer) SubscribePush(ctx context.Context, skipf func([]byte) bool)
 
 func (c *chanStorer) Close() error {
 	panic("not implemented") // TODO: Implement
+}
+
+func createRedistributionAgentService(addr swarm.Address, storer storage.StateStorer, erc20Service erc20.Service, tranService transaction.Service) *storageincentives.Agent {
+	const blocksPerRound uint64 = 12
+	const blocksPerPhase uint64 = 4
+	postageContract := contractMock.New(contractMock.WithExpiresBatchesFunc(func(context.Context) error {
+		return nil
+	}),
+	)
+	stakingContract := mock2.New(mock2.WithIsFrozen(func(context.Context) (bool, error) {
+		return true, nil
+	}))
+	wait := make(chan struct{})
+	backend := &mockchainBackend{
+		limit: 144,
+		limitCallback: func() {
+			select {
+			case wait <- struct{}{}:
+			default:
+			}
+		},
+		incrementBy: 2,
+		block:       blocksPerRound}
+	contract := &mockContract{}
+
+	return storageincentives.New(addr, backend, log.Noop, &mockMonitor{}, contract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), &mockSampler{}, time.Millisecond*10, blocksPerRound, blocksPerPhase, storer, erc20Service, tranService)
+}
+
+type mockchainBackend struct {
+	mu            sync.Mutex
+	incrementBy   uint64
+	block         uint64
+	limit         uint64
+	limitCallback func()
+}
+
+func (m *mockchainBackend) BlockNumber(context.Context) (uint64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	ret := m.block
+	lim := m.limit
+	inc := m.incrementBy
+
+	if lim == 0 || ret+inc < lim {
+		m.block += inc
+	} else if m.limitCallback != nil {
+		m.limitCallback()
+		return 0, errors.New("reached limit")
+	}
+
+	return ret, nil
+}
+
+func (m *mockchainBackend) HeaderByNumber(context.Context, *big.Int) (*types.Header, error) {
+	return &types.Header{
+		Time: uint64(time.Now().Unix()),
+	}, nil
+}
+
+type contractCall int
+
+func (c contractCall) String() string {
+	switch c {
+	case isWinnerCall:
+		return "isWinnerCall"
+	case revealCall:
+		return "revealCall"
+	case commitCall:
+		return "commitCall"
+	case claimCall:
+		return "claimCall"
+	}
+	return "unknown"
+}
+
+const (
+	isWinnerCall contractCall = iota
+	revealCall
+	commitCall
+	claimCall
+)
+
+type mockContract struct {
+	callsList []contractCall
+	mtx       sync.Mutex
+}
+
+func (m *mockContract) Fee(ctx context.Context, txHash common.Hash) *big.Int {
+	return big.NewInt(1000)
+}
+
+func (m *mockContract) ReserveSalt(context.Context) ([]byte, error) {
+	return nil, nil
+}
+
+func (m *mockContract) IsPlaying(context.Context, uint8) (bool, error) {
+	return true, nil
+}
+
+func (m *mockContract) IsWinner(context.Context) (bool, error) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	m.callsList = append(m.callsList, isWinnerCall)
+	return false, nil
+}
+
+func (m *mockContract) Claim(context.Context) (common.Hash, error) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	m.callsList = append(m.callsList, claimCall)
+	return common.Hash{}, nil
+}
+
+func (m *mockContract) Commit(context.Context, []byte, *big.Int) (common.Hash, error) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	m.callsList = append(m.callsList, commitCall)
+	return common.Hash{}, nil
+}
+
+func (m *mockContract) Reveal(context.Context, uint8, []byte, []byte) (common.Hash, error) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	m.callsList = append(m.callsList, revealCall)
+	return common.Hash{}, nil
+}
+
+type mockMonitor struct {
+}
+
+func (m *mockMonitor) IsFullySynced() bool {
+	return true
+}
+
+type mockSampler struct{}
+
+func (m *mockSampler) ReserveSample(context.Context, []byte, uint8, uint64) (storage.Sample, error) {
+	return storage.Sample{
+		Hash: test.RandomAddress(),
+	}, nil
 }
