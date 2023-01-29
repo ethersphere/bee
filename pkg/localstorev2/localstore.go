@@ -1,4 +1,4 @@
-// Copyright 2022 The Swarm Authors. All rights reserved.
+// Copyright 2023 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -7,6 +7,7 @@ package localstore
 import (
 	"context"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path"
@@ -37,18 +38,37 @@ type PutterSession interface {
 	Cleanup() error
 }
 
+// SessionInfo is a type which exports the localstore tag object. This object
+// stores all the relevant information about a particular session.
 type SessionInfo = upload.TagItem
 
+// UploadStore is a logical component of the localstore which deals with the upload
+// of data to swarm. This will be used by the API.
 type UploadStore interface {
+	// Upload provides a PutterSession which is tied to the tagID. Optionally if
+	// users requests to pin the data, a new pinning collection is created.
 	Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession, error)
+	// NewSession can be used to obtain a tag ID to use for a new Upload session.
 	NewSession() (uint64, error)
+	// GetSessionInfo will show the information about the session. This will also
+	// be used by the API.
 	GetSessionInfo(tagID uint64) (SessionInfo, error)
 }
 
+// PinStore is a logical component of the localstore which deals with pinning
+// functionality.
 type PinStore interface {
+	// NewCollection can be used to create a new PutterSession which writes a new
+	// pinning collection. The address passed in during the Done of the session is
+	// used as the root referencce.
 	NewCollection(context.Context) (PutterSession, error)
+	// DeletePin deletes all the chunks associated with the collection pointed to
+	// by the swarm.Address passed in.
 	DeletePin(context.Context, swarm.Address) error
+	// Pins returns all the root references of pinning collections.
 	Pins() ([]swarm.Address, error)
+	// HasPin is a helper which checks if a collection exists with the root
+	// reference passed in.
 	HasPin(swarm.Address) (bool, error)
 }
 
@@ -68,12 +88,26 @@ func (d *dirFS) Open(path string) (fs.File, error) {
 	return os.OpenFile(filepath.Join(d.basedir, path), os.O_RDWR|os.O_CREATE, 0644)
 }
 
-const sharkyNoOfShards = 32
+var sharkyNoOfShards = 32
 
-func initInmemRepository() (*storage.Repository, error) {
-	store, err := leveldbstore.New("", &opt.Options{})
+type closerFn func() error
+
+func (c closerFn) Close() error { return c() }
+
+func CloserFn(closers ...io.Closer) io.Closer {
+	return closerFn(func() error {
+		var err *multierror.Error
+		for _, closer := range closers {
+			multierror.Append(err, closer.Close())
+		}
+		return err.ErrorOrNil()
+	})
+}
+
+func initInmemRepository() (*storage.Repository, io.Closer, error) {
+	store, err := leveldbstore.New("", nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed creating inmem levelDB index store: %w", err)
+		return nil, nil, fmt.Errorf("failed creating inmem levelDB index store: %w", err)
 	}
 
 	sharky, err := sharky.New(
@@ -82,65 +116,126 @@ func initInmemRepository() (*storage.Repository, error) {
 		swarm.SocMaxChunkSize,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed creating inmem sharky instance: %w", err)
+		return nil, nil, fmt.Errorf("failed creating inmem sharky instance: %w", err)
 	}
 
 	txStore := leveldbstore.NewTxStore(store)
 	txChunkStore := chunkstore.NewTxChunkStore(txStore, sharky)
 
-	return storage.NewRepository(txStore, txChunkStore), nil
+	return storage.NewRepository(txStore, txChunkStore), CloserFn(store, sharky), nil
 }
 
-func initDiskRepository(basePath string) (*storage.Repository, error) {
-	store, err := leveldbstore.New(path.Join(basePath, "indexstore"), &opt.Options{})
+// Default options for levelDB.
+var (
+	defaultOpenFilesLimit         = uint64(256)
+	defaultBlockCacheCapacity     = uint64(32 * 1024 * 1024)
+	defaultWriteBufferSize        = uint64(32 * 1024 * 1024)
+	defaultDisableSeeksCompaction = false
+)
+
+func initDiskRepository(basePath string, opts *Options) (*storage.Repository, io.Closer, error) {
+	if opts == nil {
+		opts = &Options{
+			LdbOpenFilesLimit:         defaultOpenFilesLimit,
+			LdbBlockCacheCapacity:     defaultBlockCacheCapacity,
+			LdbWriteBufferSize:        defaultWriteBufferSize,
+			LdbDisableSeeksCompaction: defaultDisableSeeksCompaction,
+		}
+	}
+
+	ldbBasePath := path.Join(basePath, "indexstore")
+
+	if _, err := os.Stat(ldbBasePath); os.IsNotExist(err) {
+		err := os.Mkdir(ldbBasePath, 0775)
+		if err != nil {
+			return nil, nil, err
+		}
+	}
+	store, err := leveldbstore.New(path.Join(basePath, "indexstore"), &opt.Options{
+		OpenFilesCacheCapacity: int(opts.LdbOpenFilesLimit),
+		BlockCacheCapacity:     int(opts.LdbBlockCacheCapacity),
+		WriteBuffer:            int(opts.LdbWriteBufferSize),
+		DisableSeeksCompaction: opts.LdbDisableSeeksCompaction,
+	})
 	if err != nil {
-		return nil, fmt.Errorf("failed creating inmem levelDB index store: %w", err)
+		return nil, nil, fmt.Errorf("failed creating levelDB index store: %w", err)
+	}
+
+	sharkyBasePath := path.Join(basePath, "sharky")
+
+	if _, err := os.Stat(sharkyBasePath); os.IsNotExist(err) {
+		err := os.Mkdir(sharkyBasePath, 0775)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 
 	sharky, err := sharky.New(
-		&dirFS{basedir: path.Join(basePath, "sharky")},
+		&dirFS{basedir: sharkyBasePath},
 		sharkyNoOfShards,
 		swarm.SocMaxChunkSize,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed creating inmem sharky instance: %w", err)
+		return nil, nil, fmt.Errorf("failed creating sharky instance: %w", err)
 	}
 
 	txStore := leveldbstore.NewTxStore(store)
 	txChunkStore := chunkstore.NewTxChunkStore(txStore, sharky)
 
-	return storage.NewRepository(txStore, txChunkStore), nil
+	return storage.NewRepository(txStore, txChunkStore), CloserFn(store, sharky), nil
 }
 
-type Options struct{}
+const (
+	lockKeyNewSession string = "new_session"
+)
 
+// Options provides a container to configure different things in the localstore.
+type Options struct {
+	// These are options related to levelDB. Currently the underlying storage used
+	// is levelDB.
+	LdbOpenFilesLimit         uint64
+	LdbBlockCacheCapacity     uint64
+	LdbWriteBufferSize        uint64
+	LdbDisableSeeksCompaction bool
+}
+
+// DB implements all the component stores described above.
 type DB struct {
-	repo *storage.Repository
-	lock *multex.Multex
+	repo   *storage.Repository
+	lock   *multex.Multex
+	closer io.Closer
 }
 
+// New returns a newly constructed DB object which implements all the above
+// component stores.
 func New(dirPath string, opts *Options) (*DB, error) {
 	// TODO: migration handling and sharky recovery
 	var (
-		repo *storage.Repository
-		err  error
+		repo   *storage.Repository
+		err    error
+		closer io.Closer
 	)
 	if dirPath == "" {
-		repo, err = initInmemRepository()
+		repo, closer, err = initInmemRepository()
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		repo, err = initDiskRepository(dirPath)
+		repo, closer, err = initDiskRepository(dirPath, opts)
 		if err != nil {
 			return nil, err
 		}
 	}
 
 	return &DB{
-		repo: repo,
-		lock: multex.New(),
+		repo:   repo,
+		lock:   multex.New(),
+		closer: closer,
 	}, nil
+}
+
+func (db *DB) Close() error {
+	return db.closer.Close()
 }
 
 type putterSessionImpl struct {
@@ -153,9 +248,7 @@ func (p *putterSessionImpl) Done(addr swarm.Address) error { return p.done(addr)
 
 func (p *putterSessionImpl) Cleanup() error { return p.cleanup() }
 
-// Upload provides a PutterSession which can be used to upload data to the node.
-// If pin is set to true, it also creates a new pinning collection for the session.
-// If the tagID is specified, it updates the same tag, if not, it creates a new one.
+// Upload is the implementation of UploadStore.Upload function.
 func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession, error) {
 	if tagID == 0 {
 		return nil, fmt.Errorf("localstore: tagID required")
@@ -195,7 +288,7 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 					return nil
 				}(),
 				commit(),
-			)
+			).ErrorOrNil()
 		},
 		cleanup: func() error {
 			return rollback()
@@ -203,19 +296,20 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 	}, nil
 }
 
-// NewSession provides a new tag ID to use for Upload session.
+// NewSession is the implementation of UploadStore.NewSession function.
 func (db *DB) NewSession() (uint64, error) {
-	db.lock.Lock("upload_session")
-	defer db.lock.Unlock("upload_session")
+	db.lock.Lock(lockKeyNewSession)
+	defer db.lock.Unlock(lockKeyNewSession)
 
 	return upload.NextTag(db.repo.IndexStore())
 }
 
-// GetSessionInfo returns the session related information for this tagID
+// GetSessionInfo is the implementation of the UploadStore.GetSessionInfo function.
 func (db *DB) GetSessionInfo(tagID uint64) (SessionInfo, error) {
 	return upload.GetTagInfo(db.repo.IndexStore(), tagID)
 }
 
+// NewCollection is the implementation of the PinStore.NewCollection function.
 func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
 	txnRepo, commit, rollback := db.repo.NewTx(ctx)
 	pinningPutter := pinstore.NewCollection(txnRepo)
@@ -232,6 +326,7 @@ func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
 	}, nil
 }
 
+// DeletePin is the implementation of the PinStore.DeletePin function.
 func (db *DB) DeletePin(ctx context.Context, root swarm.Address) error {
 	txnRepo, commit, rollback := db.repo.NewTx(ctx)
 
@@ -243,10 +338,12 @@ func (db *DB) DeletePin(ctx context.Context, root swarm.Address) error {
 	return commit()
 }
 
+// Pins is the implementation of the PinStore.Pins function.
 func (db *DB) Pins() ([]swarm.Address, error) {
 	return pinstore.Pins(db.repo.IndexStore())
 }
 
+// HasPin is the implementation of the PinStore.HasPin function.
 func (db *DB) HasPin(root swarm.Address) (bool, error) {
 	return pinstore.HasPin(db.repo.IndexStore(), root)
 }

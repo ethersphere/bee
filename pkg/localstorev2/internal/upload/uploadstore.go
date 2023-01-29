@@ -348,7 +348,7 @@ func (u *uploadPutter) Put(ctx context.Context, chunk swarm.Chunk) error {
 	case loaded && !item.ChunkIsImmutable:
 		prev := binary.BigEndian.Uint64(item.BatchTimestamp)
 		curr := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
-		if prev >= curr {
+		if prev > curr {
 			return errOverwriteOfNewerBatch
 		}
 	}
@@ -518,18 +518,18 @@ func (n nextTagID) Marshal() ([]byte, error) {
 	return buf, nil
 }
 
-func (n nextTagID) Unmarshal(buf []byte) error {
+func (n *nextTagID) Unmarshal(buf []byte) error {
 	if len(buf) != 8 {
 		return errNextTagIDUnmarshalInvalidSize
 	}
 
-	n = nextTagID(binary.LittleEndian.Uint64(buf))
+	*n = nextTagID(binary.LittleEndian.Uint64(buf))
 	return nil
 }
 
-func (n nextTagID) Clone() storage.Item {
-	ni := n
-	return ni
+func (n *nextTagID) Clone() storage.Item {
+	ni := *n
+	return &ni
 }
 
 // NextTag returns the next tag ID to be used. It reads the last used ID and
@@ -537,13 +537,13 @@ func (n nextTagID) Clone() storage.Item {
 // is no guarantee for parallel updates.
 func NextTag(st storage.Store) (uint64, error) {
 	var tagID nextTagID
-	err := st.Get(tagID)
-	if err != nil && errors.Is(err, storage.ErrNotFound) {
+	err := st.Get(&tagID)
+	if err != nil && !errors.Is(err, storage.ErrNotFound) {
 		return 0, err
 	}
 
 	tagID++
-	err = st.Put(tagID)
+	err = st.Put(&tagID)
 	if err != nil {
 		return 0, err
 	}

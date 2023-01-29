@@ -327,6 +327,59 @@ func TestUploadItem(t *testing.T) {
 	}
 }
 
+func TestItemNextTagID(t *testing.T) {
+	t.Parallel()
+
+	zeroValue := upload.NextTagID(0)
+	maxValue := upload.NextTagID(math.MaxUint64)
+
+	tests := []struct {
+		name string
+		test *storagetest.ItemMarshalAndUnmarshalTest
+	}{{
+		name: "zero values",
+		test: &storagetest.ItemMarshalAndUnmarshalTest{
+			Item:    &zeroValue,
+			Factory: func() storage.Item { return new(upload.NextTagID) },
+		},
+	}, {
+		name: "max value",
+		test: &storagetest.ItemMarshalAndUnmarshalTest{
+			Item:    &maxValue,
+			Factory: func() storage.Item { return new(upload.NextTagID) },
+		},
+	}, {
+		name: "invalid size",
+		test: &storagetest.ItemMarshalAndUnmarshalTest{
+			Item: &storagetest.ItemStub{
+				MarshalBuf:   []byte{0xFF},
+				UnmarshalBuf: []byte{0xFF},
+			},
+			Factory:      func() storage.Item { return new(upload.NextTagID) },
+			UnmarshalErr: upload.ErrNextTagIDUnmarshalInvalidSize,
+		},
+	}}
+
+	for _, tc := range tests {
+		tc := tc
+
+		t.Run(fmt.Sprintf("%s marshal/unmarshal", tc.name), func(t *testing.T) {
+			t.Parallel()
+
+			storagetest.TestItemMarshalAndUnmarshal(t, tc.test)
+		})
+
+		t.Run(fmt.Sprintf("%s clone", tc.name), func(t *testing.T) {
+			t.Parallel()
+
+			storagetest.TestItemClone(t, &storagetest.ItemCloneTest{
+				Item:    tc.test.Item,
+				CmpOpts: tc.test.CmpOpts,
+			})
+		})
+	}
+}
+
 func newTestStorage(t *testing.T) internal.Storage {
 	t.Helper()
 
