@@ -98,7 +98,7 @@ func CloserFn(closers ...io.Closer) io.Closer {
 	return closerFn(func() error {
 		var err *multierror.Error
 		for _, closer := range closers {
-			multierror.Append(err, closer.Close())
+			err = multierror.Append(err, closer.Close())
 		}
 		return err.ErrorOrNil()
 	})

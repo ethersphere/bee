@@ -1,3 +1,7 @@
+// Copyright 2023 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package localstore_test
 
 import (
@@ -311,7 +315,7 @@ func testUploadStore(t *testing.T, newLocalstore func() (*localstore.DB, error))
 				t.Fatal(err)
 			}
 
-			sessionInfo, err = lstore.GetSessionInfo(id)
+			_, err = lstore.GetSessionInfo(id)
 			if !errors.Is(err, storage.ErrNotFound) {
 				t.Fatalf("expected ErrNotFound, got: %v", err)
 			}
@@ -367,6 +371,8 @@ func TestUploadStore(t *testing.T) {
 }
 
 func testPinStore(t *testing.T, newLocalstore func() (*localstore.DB, error)) {
+	t.Helper()
+
 	testCases := []struct {
 		name   string
 		root   swarm.Chunk
