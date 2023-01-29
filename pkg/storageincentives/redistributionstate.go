@@ -14,7 +14,6 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/transaction"
 )
 
@@ -26,15 +25,15 @@ const (
 )
 
 type RedistributionState struct {
+	mtx sync.Mutex
+
 	stateStore     storage.StateStorer
 	erc20Service   erc20.Service
 	logger         log.Logger
-	overlay        swarm.Address
-	mtx            sync.Mutex
-	status         Status
+	ethAddress     common.Address
+	status         *Status
 	currentBalance *big.Int
 	txService      transaction.Service
-	saveStatusC    chan Status
 }
 
 // Status provide internal status of the nodes in the redistribution game
@@ -50,77 +49,18 @@ type Status struct {
 	Fees            *big.Int
 }
 
-func NewRedistributionState(logger log.Logger, stateStore storage.StateStorer, erc20Service erc20.Service, contract transaction.Service) *RedistributionState {
+func NewRedistributionState(logger log.Logger, ethAddress common.Address, stateStore storage.StateStorer, erc20Service erc20.Service, contract transaction.Service) *RedistributionState {
 	return &RedistributionState{
+		ethAddress:     ethAddress,
 		stateStore:     stateStore,
 		erc20Service:   erc20Service,
 		logger:         logger.WithName(loggerNameNode).Register(),
 		currentBalance: big.NewInt(0),
 		txService:      contract,
-		status: Status{
+		status: &Status{
 			Reward: big.NewInt(0),
 			Fees:   big.NewInt(0),
 		},
-		saveStatusC: make(chan Status, 8),
-	}
-}
-
-func (n *Status) clone() Status {
-	return Status{
-		Phase:           n.Phase,
-		IsFrozen:        n.IsFrozen,
-		Round:           n.Round,
-		LastWonRound:    n.LastWonRound,
-		LastPlayedRound: n.LastPlayedRound,
-		LastFrozenRound: n.LastFrozenRound,
-		Block:           n.Block,
-		Reward:          big.NewInt(0).Set(n.Reward),
-		Fees:            big.NewInt(0).Set(n.Fees),
-	}
-}
-func (n *RedistributionState) Stop() {
-	close(n.saveStatusC)
-}
-
-func (n *RedistributionState) Start() {
-	go n.saveStateHandler()
-}
-
-func (n *RedistributionState) saveStateHandler() {
-	var status *Status // when nil latests is saved, when not nil status is dirty
-
-	saveStatus := func() {
-		if status == nil {
-			return
-		}
-
-		err := n.stateStore.Put(redistributionStatusKey, *status)
-		if err != nil {
-			n.logger.Error(err, "error saving node status")
-		} else {
-			status = nil
-		}
-	}
-
-	// save status is called in deffer to ensure that
-	// state is stored before handler exists
-	defer saveStatus()
-
-	saveTicker := time.NewTicker(saveStatusInterval)
-	defer saveTicker.Stop()
-
-	for {
-		select {
-		case newStatus, ok := <-n.saveStatusC:
-			if !ok {
-				return
-			}
-
-			status = &newStatus
-
-		case <-saveTicker.C:
-			saveStatus()
-		}
 	}
 }
 
@@ -130,8 +70,7 @@ func (n *RedistributionState) SetCurrentEvent(p PhaseType, r uint64, b uint64) {
 	n.status.Phase = p
 	n.status.Round = r
 	n.status.Block = b
-
-	n.saveStatusC <- n.status.clone()
+	n.save()
 }
 
 func (n *RedistributionState) SetFrozen(f bool, r uint64) {
@@ -141,24 +80,21 @@ func (n *RedistributionState) SetFrozen(f bool, r uint64) {
 	if f {
 		n.status.LastFrozenRound = r
 	}
-
-	n.saveStatusC <- n.status.clone()
+	n.save()
 }
 
 func (n *RedistributionState) SetLastWonRound(r uint64) {
 	n.mtx.Lock()
 	defer n.mtx.Unlock()
 	n.status.LastWonRound = r
-
-	n.saveStatusC <- n.status.clone()
+	n.save()
 }
 
 func (n *RedistributionState) SetLastPlayedRound(p uint64) {
 	n.mtx.Lock()
 	defer n.mtx.Unlock()
 	n.status.LastPlayedRound = p
-
-	n.saveStatusC <- n.status.clone()
+	n.save()
 }
 
 // AddFee sets the internal node status
@@ -170,21 +106,21 @@ func (n *RedistributionState) AddFee(ctx context.Context, txHash common.Hash) {
 	}
 	n.mtx.Lock()
 	n.status.Fees.Add(n.status.Fees, fee)
-	n.saveStatusC <- n.status.clone()
+	n.save()
 	n.mtx.Unlock()
 }
 
 // CalculateWinnerReward calculates the reward for the winner
 func (n *RedistributionState) CalculateWinnerReward(ctx context.Context) error {
-	currentBalance, err := n.erc20Service.BalanceOf(ctx, common.HexToAddress(n.overlay.String()))
+	currentBalance, err := n.erc20Service.BalanceOf(ctx, n.ethAddress)
 	if err != nil {
-		n.logger.Debug("error getting balance", "error", err, "overly address", n.overlay.String())
+		n.logger.Debug("error getting balance", "error", err)
 		return err
 	}
 	if currentBalance != nil {
 		n.mtx.Lock()
 		n.status.Reward.Add(n.status.Reward, currentBalance.Sub(currentBalance, n.currentBalance))
-		n.saveStatusC <- n.status.clone()
+		n.save()
 		n.mtx.Unlock()
 	}
 	return nil
@@ -201,13 +137,20 @@ func (n *RedistributionState) Status() (*Status, error) {
 
 func (n *RedistributionState) SetBalance(ctx context.Context) error {
 	// get current balance
-	currentBalance, err := n.erc20Service.BalanceOf(ctx, common.HexToAddress(n.overlay.String()))
+	currentBalance, err := n.erc20Service.BalanceOf(ctx, n.ethAddress)
 	if err != nil {
-		n.logger.Debug("error getting balance", "error", err, "overly address", n.overlay.String())
+		n.logger.Debug("error getting balance", "error", err)
 		return err
 	}
 	n.mtx.Lock()
 	n.currentBalance.Set(currentBalance)
 	n.mtx.Unlock()
 	return nil
+}
+
+func (n *RedistributionState) save() {
+	err := n.stateStore.Put(redistributionStatusKey, n.status)
+	if err != nil {
+		n.logger.Error(err, "savıng redıstrubutıon status")
+	}
 }

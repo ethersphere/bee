@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 	"github.com/ethersphere/bee/pkg/transaction"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/log"
@@ -62,7 +63,7 @@ type Agent struct {
 	nodeState              *RedistributionState
 }
 
-func New(overlay swarm.Address, backend ChainBackend, logger log.Logger, monitor Monitor, contract redistribution.Contract, batchExpirer postagecontract.PostageBatchExpirer, redistributionStatuser staking.RedistributionStatuser, radius postage.RadiusChecker, sampler storage.Sampler, blockTime time.Duration, blocksPerRound, blocksPerPhase uint64, stateStore storage.StateStorer, erc20Service erc20.Service, tranService transaction.Service) *Agent {
+func New(overlay swarm.Address, ethAddress common.Address, backend ChainBackend, logger log.Logger, monitor Monitor, contract redistribution.Contract, batchExpirer postagecontract.PostageBatchExpirer, redistributionStatuser staking.RedistributionStatuser, radius postage.RadiusChecker, sampler storage.Sampler, blockTime time.Duration, blocksPerRound, blocksPerPhase uint64, stateStore storage.StateStorer, erc20Service erc20.Service, tranService transaction.Service) *Agent {
 	a := &Agent{
 		overlay:                overlay,
 		metrics:                newMetrics(),
@@ -76,7 +77,7 @@ func New(overlay swarm.Address, backend ChainBackend, logger log.Logger, monitor
 		sampler:                sampler,
 		quit:                   make(chan struct{}),
 		redistributionStatuser: redistributionStatuser,
-		nodeState:              NewRedistributionState(logger, stateStore, erc20Service, tranService),
+		nodeState:              NewRedistributionState(logger, ethAddress, stateStore, erc20Service, tranService),
 	}
 
 	a.wg.Add(1)
@@ -92,7 +93,6 @@ func New(overlay swarm.Address, backend ChainBackend, logger log.Logger, monitor
 // the sample is submitted, and in the reveal phase, the obfuscation key from the commit phase is submitted.
 // Next, in the claim phase, we check if we've won, and the cycle repeats. The cycle must occur in the length of one round.
 func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase uint64) {
-	a.nodeState.Start()
 
 	defer a.wg.Done()
 
@@ -423,7 +423,6 @@ func (a *Agent) commit(ctx context.Context, storageRadius uint8, sample []byte, 
 }
 
 func (a *Agent) Close() error {
-	a.nodeState.Stop()
 
 	close(a.quit)
 

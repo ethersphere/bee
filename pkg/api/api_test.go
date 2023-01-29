@@ -12,13 +12,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"github.com/ethereum/go-ethereum/core/types"
-	contractMock "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
-	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
-	"github.com/ethersphere/bee/pkg/storageincentives"
-	mock2 "github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
-	"github.com/ethersphere/bee/pkg/swarm/test"
-	"github.com/ethersphere/bee/pkg/transaction"
 	"io"
 	"math/big"
 	"net"
@@ -28,6 +21,14 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/ethereum/go-ethereum/core/types"
+	contractMock "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
+	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
+	"github.com/ethersphere/bee/pkg/storageincentives"
+	mock2 "github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
+	"github.com/ethersphere/bee/pkg/swarm/test"
+	"github.com/ethersphere/bee/pkg/transaction"
 
 	"github.com/ethereum/go-ethereum/common"
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
@@ -746,7 +747,7 @@ func createRedistributionAgentService(addr swarm.Address, storer storage.StateSt
 		block:       blocksPerRound}
 	contract := &mockContract{}
 
-	return storageincentives.New(addr, backend, log.Noop, &mockMonitor{}, contract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), &mockSampler{}, time.Millisecond*10, blocksPerRound, blocksPerPhase, storer, erc20Service, tranService)
+	return storageincentives.New(addr, common.Address{}, backend, log.Noop, &mockMonitor{}, contract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), &mockSampler{}, time.Millisecond*10, blocksPerRound, blocksPerPhase, storer, erc20Service, tranService)
 }
 
 type mockchainBackend struct {
