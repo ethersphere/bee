@@ -568,4 +568,8 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 			"DELETE": http.HandlerFunc(s.withdrawAllStakeHandler),
 		})),
 	)
+	handle("/redistributionstate", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.redistributionStatusHandler),
+	},
+	)
 }
