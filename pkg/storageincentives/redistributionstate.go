@@ -80,20 +80,20 @@ func NewRedistributionState(logger log.Logger, ethAddress common.Address, stateS
 	return s, nil
 }
 
-func (r *RedistributionState) SetCurrentEvent(p PhaseType, round uint64, b uint64) {
+func (r *RedistributionState) SetCurrentEvent(phase PhaseType, round uint64, block uint64) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
-	r.status.Phase = p
+	r.status.Phase = phase
 	r.status.Round = round
-	r.status.Block = b
+	r.status.Block = block
 	r.save()
 }
 
-func (r *RedistributionState) SetFrozen(f bool, round uint64) {
+func (r *RedistributionState) SetFrozen(isFrozen bool, round uint64) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
-	r.status.IsFrozen = f
-	if f {
+	r.status.IsFrozen = isFrozen
+	if isFrozen {
 		r.status.LastFrozenRound = round
 	}
 	r.save()
@@ -106,10 +106,10 @@ func (r *RedistributionState) SetLastWonRound(round uint64) {
 	r.save()
 }
 
-func (r *RedistributionState) SetLastPlayedRound(p uint64) {
+func (r *RedistributionState) SetLastPlayedRound(round uint64) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
-	r.status.LastPlayedRound = p
+	r.status.LastPlayedRound = round
 	r.save()
 }
 
@@ -121,9 +121,7 @@ func (r *RedistributionState) AddFee(ctx context.Context, txHash common.Hash) {
 		return
 	}
 	r.mtx.Lock()
-	if fee != nil {
-		r.status.Fees.Add(r.status.Fees, fee)
-	}
+	r.status.Fees.Add(r.status.Fees, fee)
 	r.save()
 	r.mtx.Unlock()
 }
