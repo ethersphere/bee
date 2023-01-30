@@ -195,7 +195,7 @@ func TestCache(t *testing.T) {
 		t.Parallel()
 
 		st := newTestStorage(t)
-		c, err := cache.New(st, 10)
+		c, err := cache.New(context.TODO(), st, 10)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -206,7 +206,7 @@ func TestCache(t *testing.T) {
 		t.Parallel()
 
 		st := newTestStorage(t)
-		c, err := cache.New(st, 10)
+		c, err := cache.New(context.TODO(), st, 10)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -225,7 +225,7 @@ func TestCache(t *testing.T) {
 		})
 
 		t.Run("new cache retains state", func(t *testing.T) {
-			c2, err := cache.New(st, 10)
+			c2, err := cache.New(context.TODO(), st, 10)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -253,7 +253,7 @@ func TestCache(t *testing.T) {
 		})
 
 		t.Run("new with lower capacity", func(t *testing.T) {
-			c2, err := cache.New(st, 5)
+			c2, err := cache.New(context.TODO(), st, 5)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -267,7 +267,7 @@ func TestCache(t *testing.T) {
 		t.Parallel()
 
 		st := newTestStorage(t)
-		c, err := cache.New(st, 10)
+		c, err := cache.New(context.TODO(), st, 10)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -351,7 +351,7 @@ func TestCache(t *testing.T) {
 		t.Parallel()
 
 		st := newTestStorage(t)
-		c, err := cache.New(st, 10)
+		c, err := cache.New(context.TODO(), st, 10)
 		if err != nil {
 			t.Fatal(err)
 		}

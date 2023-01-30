@@ -15,9 +15,8 @@ import (
 	"github.com/hashicorp/go-multierror"
 )
 
-// Storage groups the storage.Store and storage.ChunkStore interfaces with context..
+// Storage groups the storage.Store and storage.ChunkStore interfaces.
 type Storage interface {
-	Ctx() context.Context
 	IndexStore() storage.Store
 	ChunkStore() storage.ChunkStore
 }

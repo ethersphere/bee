@@ -254,7 +254,7 @@ func Pins(st storage.Store) ([]swarm.Address, error) {
 
 // DeletePin will delete the root pin and all the chunks that are part of this
 // collection.
-func DeletePin(st internal.Storage, root swarm.Address) error {
+func DeletePin(ctx context.Context, st internal.Storage, root swarm.Address) error {
 	collection := &pinCollectionItem{Addr: root}
 	err := st.IndexStore().Get(collection)
 	if err != nil {
@@ -290,7 +290,7 @@ func DeletePin(st internal.Storage, root swarm.Address) error {
 			if err != nil {
 				return fmt.Errorf("pin store: failed in batch deletion: %w", err)
 			}
-			err = st.ChunkStore().Delete(st.Ctx(), chunk.Addr)
+			err = st.ChunkStore().Delete(ctx, chunk.Addr)
 			if err != nil {
 				return fmt.Errorf("pin store: failed in batch chunk deletion: %w", err)
 			}

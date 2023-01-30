@@ -27,7 +27,9 @@ import (
 	"resenje.org/multex"
 )
 
-// PutterSession provides a session
+// PutterSession provides a session around the storage.Putter. The session on
+// successful completion commits all the operations or in case of error, rolls back
+// the state.
 type PutterSession interface {
 	storage.Putter
 	// Done is used to close the session and optionally assign a swarm.Address to
@@ -330,7 +332,7 @@ func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
 func (db *DB) DeletePin(ctx context.Context, root swarm.Address) error {
 	txnRepo, commit, rollback := db.repo.NewTx(ctx)
 
-	err := pinstore.DeletePin(txnRepo, root)
+	err := pinstore.DeletePin(ctx, txnRepo, root)
 	if err != nil {
 		return multierror.Append(err, rollback()).ErrorOrNil()
 	}

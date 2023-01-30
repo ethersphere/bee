@@ -182,7 +182,7 @@ func TestPinStore(t *testing.T) {
 	})
 
 	t.Run("delete collection", func(t *testing.T) {
-		err := pinstore.DeletePin(st, tests[0].root.Address())
+		err := pinstore.DeletePin(context.TODO(), st, tests[0].root.Address())
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -340,21 +340,6 @@ func (u *uploadPutter) Put(ctx context.Context, chunk swarm.Chunk) error {
 		return errPutterAlreadyClosed
 	}
 
-	switch item, loaded, err := stampindex.LoadOrStore(u.s, stampIndexUploadNamespace, chunk); {
-	case err != nil:
-		return fmt.Errorf("load or store stamp index for chunk %v has fail: %w", chunk, err)
-	case loaded && item.ChunkIsImmutable:
-		return errOverwriteOfImmutableBatch
-	case loaded && !item.ChunkIsImmutable:
-		prev := binary.BigEndian.Uint64(item.BatchTimestamp)
-		curr := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
-		if prev > curr {
-			return errOverwriteOfNewerBatch
-		}
-	}
-
-	u.split++
-
 	// Check if upload store has already seen this chunk
 	ui := &uploadItem{
 		Address: chunk.Address(),
@@ -365,8 +350,28 @@ func (u *uploadPutter) Put(ctx context.Context, chunk swarm.Chunk) error {
 		return fmt.Errorf("store has item %q call failed: %w", ui, err)
 	case exists:
 		u.seen++
+		u.split++
 		return nil
 	}
+
+	switch item, loaded, err := stampindex.LoadOrStore(u.s, stampIndexUploadNamespace, chunk); {
+	case err != nil:
+		return fmt.Errorf("load or store stamp index for chunk %v has fail: %w", chunk, err)
+	case loaded && item.ChunkIsImmutable:
+		return errOverwriteOfImmutableBatch
+	case loaded && !item.ChunkIsImmutable:
+		prev := binary.BigEndian.Uint64(item.BatchTimestamp)
+		curr := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
+		if prev >= curr {
+			return errOverwriteOfNewerBatch
+		}
+		err = stampindex.Store(u.s, stampIndexUploadNamespace, chunk)
+		if err != nil {
+			return fmt.Errorf("failed updating stamp index: %w", err)
+		}
+	}
+
+	u.split++
 
 	if err := u.s.ChunkStore().Put(ctx, chunk); err != nil {
 		return fmt.Errorf("chunk store put chunk %q call failed: %w", chunk.Address(), err)

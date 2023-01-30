@@ -143,7 +143,7 @@ type Cache struct {
 // New creates a new Cache component with the specified capacity. The store is used
 // here only to read the initial state of the cache before shutdown if there was
 // any.
-func New(storg internal.Storage, capacity uint64) (*Cache, error) {
+func New(ctx context.Context, storg internal.Storage, capacity uint64) (*Cache, error) {
 	state := &cacheState{}
 	err := storg.IndexStore().Get(state)
 	if err != nil && !errors.Is(err, storage.ErrNotFound) {
@@ -159,7 +159,7 @@ func New(storg internal.Storage, capacity uint64) (*Cache, error) {
 			if err != nil {
 				return nil, fmt.Errorf("failed reading cache entry %s: %w", state.Head, err)
 			}
-			err = storg.ChunkStore().Delete(storg.Ctx(), entry.Address)
+			err = storg.ChunkStore().Delete(ctx, entry.Address)
 			if err != nil {
 				return nil, fmt.Errorf("failed deleting chunk %s: %w", entry.Address, err)
 			}
