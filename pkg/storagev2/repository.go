@@ -17,9 +17,6 @@ type Repository struct {
 	chunkStore TxChunkStore
 }
 
-// Ctx returns a background context that can be used for all operations
-func (r *Repository) Ctx() context.Context { return context.TODO() }
-
 // IndexStore returns Store.
 func (r *Repository) IndexStore() Store {
 	return r.indexStore

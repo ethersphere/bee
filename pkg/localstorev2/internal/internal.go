@@ -6,7 +6,6 @@ package internal
 
 import (
 	"bytes"
-	"context"
 
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/storagev2/inmemchunkstore"
@@ -53,27 +52,20 @@ func AddressBytesOrZero(addr swarm.Address) []byte {
 // NewInmemStorage constructs a inmem Storage implementation which can be used
 // for the tests in the internal packages.
 func NewInmemStorage() (Storage, func() error) {
-
-	ctx, cancel := context.WithCancel(context.Background())
-
 	ts := &inmemRepository{
-		ctx:        ctx,
 		indexStore: inmemstore.New(),
 		chunkStore: inmemchunkstore.New(),
 	}
 
 	return ts, func() error {
-		cancel()
 		return multierror.Append(ts.indexStore.Close(), ts.chunkStore.Close()).ErrorOrNil()
 	}
 }
 
 type inmemRepository struct {
-	ctx        context.Context
 	indexStore storage.Store
 	chunkStore storage.ChunkStore
 }
 
-func (t *inmemRepository) Ctx() context.Context           { return t.ctx }
 func (t *inmemRepository) IndexStore() storage.Store      { return t.indexStore }
 func (t *inmemRepository) ChunkStore() storage.ChunkStore { return t.chunkStore }
