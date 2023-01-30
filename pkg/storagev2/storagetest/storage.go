@@ -347,6 +347,27 @@ func TestStore(t *testing.T, s storage.Store) {
 		})
 	})
 
+	t.Run("iterate start prefix", func(t *testing.T) {
+		t.Run("obj1", func(t *testing.T) {
+			idx := 1
+			err := s.Iterate(storage.Query{
+				Factory:      func() storage.Item { return new(obj1) },
+				StartPrefix:  obj1Prefix + "b",
+				ItemProperty: storage.QueryItem,
+			}, func(r storage.Result) (bool, error) {
+				checkTestItemEqual(t, r.Entry, testObjs[idx])
+				idx++
+				return false, nil
+			})
+			if err != nil {
+				t.Fatalf("unexpected error while iteration: %v", err)
+			}
+			if idx-1 != obj1Cnt-1 {
+				t.Fatalf("unexpected no of entries in iteration exp %d found %d", obj1Cnt-1, idx-1)
+			}
+		})
+	})
+
 	t.Run("iterate prefix", func(t *testing.T) {
 		t.Run("obj1", func(t *testing.T) {
 			idx := 0
