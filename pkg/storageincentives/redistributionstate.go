@@ -6,6 +6,7 @@ package storageincentives
 
 import (
 	"context"
+	"errors"
 	"math/big"
 	"sync"
 	"time"
@@ -49,8 +50,8 @@ type Status struct {
 	Fees            *big.Int
 }
 
-func NewRedistributionState(logger log.Logger, ethAddress common.Address, stateStore storage.StateStorer, erc20Service erc20.Service, contract transaction.Service) *RedistributionState {
-	return &RedistributionState{
+func NewRedistributionState(logger log.Logger, ethAddress common.Address, stateStore storage.StateStorer, erc20Service erc20.Service, contract transaction.Service) (*RedistributionState, error) {
+	s := &RedistributionState{
 		ethAddress:     ethAddress,
 		stateStore:     stateStore,
 		erc20Service:   erc20Service,
@@ -62,95 +63,110 @@ func NewRedistributionState(logger log.Logger, ethAddress common.Address, stateS
 			Fees:   big.NewInt(0),
 		},
 	}
-}
 
-func (n *RedistributionState) SetCurrentEvent(p PhaseType, r uint64, b uint64) {
-	n.mtx.Lock()
-	defer n.mtx.Unlock()
-	n.status.Phase = p
-	n.status.Round = r
-	n.status.Block = b
-	n.save()
-}
-
-func (n *RedistributionState) SetFrozen(f bool, r uint64) {
-	n.mtx.Lock()
-	defer n.mtx.Unlock()
-	n.status.IsFrozen = f
-	if f {
-		n.status.LastFrozenRound = r
+	status, err := s.Status()
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			s.status = &Status{
+				Reward: big.NewInt(0),
+				Fees:   big.NewInt(0),
+			}
+			return s, nil
+		}
+		return nil, err
 	}
-	n.save()
+
+	s.status = status
+	return s, nil
 }
 
-func (n *RedistributionState) SetLastWonRound(r uint64) {
-	n.mtx.Lock()
-	defer n.mtx.Unlock()
-	n.status.LastWonRound = r
-	n.save()
+func (r *RedistributionState) SetCurrentEvent(p PhaseType, round uint64, b uint64) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+	r.status.Phase = p
+	r.status.Round = round
+	r.status.Block = b
+	r.save()
 }
 
-func (n *RedistributionState) SetLastPlayedRound(p uint64) {
-	n.mtx.Lock()
-	defer n.mtx.Unlock()
-	n.status.LastPlayedRound = p
-	n.save()
+func (r *RedistributionState) SetFrozen(f bool, round uint64) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+	r.status.IsFrozen = f
+	if f {
+		r.status.LastFrozenRound = round
+	}
+	r.save()
+}
+
+func (r *RedistributionState) SetLastWonRound(round uint64) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+	r.status.LastWonRound = round
+	r.save()
+}
+
+func (r *RedistributionState) SetLastPlayedRound(p uint64) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+	r.status.LastPlayedRound = p
+	r.save()
 }
 
 // AddFee sets the internal node status
-func (n *RedistributionState) AddFee(ctx context.Context, txHash common.Hash) {
+func (r *RedistributionState) AddFee(ctx context.Context, txHash common.Hash) {
 
-	fee, err := n.txService.TransactionFee(ctx, txHash)
+	fee, err := r.txService.TransactionFee(ctx, txHash)
 	if err != nil {
 		return
 	}
-	n.mtx.Lock()
-	n.status.Fees.Add(n.status.Fees, fee)
-	n.save()
-	n.mtx.Unlock()
+	r.mtx.Lock()
+	r.status.Fees.Add(r.status.Fees, fee)
+	r.save()
+	r.mtx.Unlock()
 }
 
 // CalculateWinnerReward calculates the reward for the winner
-func (n *RedistributionState) CalculateWinnerReward(ctx context.Context) error {
-	currentBalance, err := n.erc20Service.BalanceOf(ctx, n.ethAddress)
+func (r *RedistributionState) CalculateWinnerReward(ctx context.Context) error {
+	currentBalance, err := r.erc20Service.BalanceOf(ctx, r.ethAddress)
 	if err != nil {
-		n.logger.Debug("error getting balance", "error", err)
+		r.logger.Debug("error getting balance", "error", err)
 		return err
 	}
 	if currentBalance != nil {
-		n.mtx.Lock()
-		n.status.Reward.Add(n.status.Reward, currentBalance.Sub(currentBalance, n.currentBalance))
-		n.save()
-		n.mtx.Unlock()
+		r.mtx.Lock()
+		r.status.Reward.Add(r.status.Reward, currentBalance.Sub(currentBalance, r.currentBalance))
+		r.save()
+		r.mtx.Unlock()
 	}
 	return nil
 }
 
 // Status returns the node status
-func (n *RedistributionState) Status() (*Status, error) {
+func (r *RedistributionState) Status() (*Status, error) {
 	status := new(Status)
-	if err := n.stateStore.Get(redistributionStatusKey, status); err != nil {
+	if err := r.stateStore.Get(redistributionStatusKey, status); err != nil {
 		return nil, err
 	}
 	return status, nil
 }
 
-func (n *RedistributionState) SetBalance(ctx context.Context) error {
+func (r *RedistributionState) SetBalance(ctx context.Context) error {
 	// get current balance
-	currentBalance, err := n.erc20Service.BalanceOf(ctx, n.ethAddress)
+	currentBalance, err := r.erc20Service.BalanceOf(ctx, r.ethAddress)
 	if err != nil {
-		n.logger.Debug("error getting balance", "error", err)
+		r.logger.Debug("error getting balance", "error", err)
 		return err
 	}
-	n.mtx.Lock()
-	n.currentBalance.Set(currentBalance)
-	n.mtx.Unlock()
+	r.mtx.Lock()
+	r.currentBalance.Set(currentBalance)
+	r.mtx.Unlock()
 	return nil
 }
 
-func (n *RedistributionState) save() {
-	err := n.stateStore.Put(redistributionStatusKey, n.status)
+func (r *RedistributionState) save() {
+	err := r.stateStore.Put(redistributionStatusKey, r.status)
 	if err != nil {
-		n.logger.Error(err, "saving redistribution status")
+		r.logger.Error(err, "saving redistribution status")
 	}
 }

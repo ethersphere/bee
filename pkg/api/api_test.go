@@ -218,7 +218,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	s.SetP2P(o.P2P)
 
 	if o.redistributionAgent == nil {
-		o.redistributionAgent = createRedistributionAgentService(o.Overlay, o.StateStorer, erc20, transaction)
+		o.redistributionAgent, _ = createRedistributionAgentService(o.Overlay, o.StateStorer, erc20, transaction)
 		s.SetRedistributionAgent(o.redistributionAgent)
 	}
 	s.SetSwarmAddress(&o.Overlay)
@@ -724,7 +724,7 @@ func (c *chanStorer) Close() error {
 	panic("not implemented") // TODO: Implement
 }
 
-func createRedistributionAgentService(addr swarm.Address, storer storage.StateStorer, erc20Service erc20.Service, tranService transaction.Service) *storageincentives.Agent {
+func createRedistributionAgentService(addr swarm.Address, storer storage.StateStorer, erc20Service erc20.Service, tranService transaction.Service) (*storageincentives.Agent, error) {
 	const blocksPerRound uint64 = 12
 	const blocksPerPhase uint64 = 4
 	postageContract := contractMock.New(contractMock.WithExpiresBatchesFunc(func(context.Context) error {
