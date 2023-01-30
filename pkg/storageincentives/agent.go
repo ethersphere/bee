@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 	"github.com/ethersphere/bee/pkg/transaction"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/log"
@@ -59,10 +60,10 @@ type Agent struct {
 	overlay                swarm.Address
 	quit                   chan struct{}
 	wg                     sync.WaitGroup
-	nodeState              *RedistributionState
+	state                  *RedistributionState
 }
 
-func New(overlay swarm.Address, backend ChainBackend, logger log.Logger, monitor Monitor, contract redistribution.Contract, batchExpirer postagecontract.PostageBatchExpirer, redistributionStatuser staking.RedistributionStatuser, radius postage.RadiusChecker, sampler storage.Sampler, blockTime time.Duration, blocksPerRound, blocksPerPhase uint64, stateStore storage.StateStorer, erc20Service erc20.Service, tranService transaction.Service) *Agent {
+func New(overlay swarm.Address, ethAddress common.Address, backend ChainBackend, logger log.Logger, monitor Monitor, contract redistribution.Contract, batchExpirer postagecontract.PostageBatchExpirer, redistributionStatuser staking.RedistributionStatuser, radius postage.RadiusChecker, sampler storage.Sampler, blockTime time.Duration, blocksPerRound, blocksPerPhase uint64, stateStore storage.StateStorer, erc20Service erc20.Service, tranService transaction.Service) (*Agent, error) {
 	a := &Agent{
 		overlay:                overlay,
 		metrics:                newMetrics(),
@@ -76,13 +77,19 @@ func New(overlay swarm.Address, backend ChainBackend, logger log.Logger, monitor
 		sampler:                sampler,
 		quit:                   make(chan struct{}),
 		redistributionStatuser: redistributionStatuser,
-		nodeState:              NewRedistributionState(logger, stateStore, erc20Service, tranService),
 	}
+
+	state, err := NewRedistributionState(logger, ethAddress, stateStore, erc20Service, tranService)
+	if err != nil {
+		return nil, err
+	}
+
+	a.state = state
 
 	a.wg.Add(1)
 	go a.start(blockTime, a.blocksPerRound, blocksPerPhase)
 
-	return a
+	return a, nil
 }
 
 // start polls the current block number, calculates, and publishes only once the current phase.
@@ -92,7 +99,6 @@ func New(overlay swarm.Address, backend ChainBackend, logger log.Logger, monitor
 // the sample is submitted, and in the reveal phase, the obfuscation key from the commit phase is submitted.
 // Next, in the claim phase, we check if we've won, and the cycle repeats. The cycle must occur in the length of one round.
 func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase uint64) {
-	a.nodeState.Start()
 
 	defer a.wg.Done()
 
@@ -257,7 +263,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 			a.logger.Info("entering phase", "phase", currentPhase.String(), "round", round, "block", block)
 
-			a.nodeState.SetCurrentEvent(currentPhase, round, block)
+			a.state.SetCurrentEvent(currentPhase, round, block)
 
 			phaseEvents.Publish(currentPhase)
 			if currentPhase == claim {
@@ -278,7 +284,7 @@ func (a *Agent) reveal(ctx context.Context, storageRadius uint8, sample, obfusca
 		a.metrics.ErrReveal.Inc()
 		return err
 	}
-	a.nodeState.AddFee(ctx, txHash)
+	a.state.AddFee(ctx, txHash)
 	return nil
 }
 
@@ -298,9 +304,9 @@ func (a *Agent) claim(ctx context.Context, round uint64) error {
 	}
 
 	if isWinner {
-		a.nodeState.SetLastWonRound(round)
+		a.state.SetLastWonRound(round)
 		a.metrics.Winner.Inc()
-		errBalance := a.nodeState.SetBalance(ctx)
+		errBalance := a.state.SetBalance(ctx)
 		if errBalance != nil {
 			a.logger.Info("could not set balance", "err", err)
 		}
@@ -313,12 +319,12 @@ func (a *Agent) claim(ctx context.Context, round uint64) error {
 		}
 		a.logger.Info("claimed win")
 		if errBalance == nil {
-			errReward := a.nodeState.CalculateWinnerReward(ctx)
+			errReward := a.state.CalculateWinnerReward(ctx)
 			if errReward != nil {
 				a.logger.Info("calculate winner reward", "err", err)
 			}
 		}
-		a.nodeState.AddFee(ctx, txHash)
+		a.state.AddFee(ctx, txHash)
 
 	} else {
 		a.logger.Info("claim made, lost round")
@@ -343,7 +349,7 @@ func (a *Agent) play(ctx context.Context, round uint64) (uint8, []byte, error) {
 		a.logger.Info("error checking if stake is frozen", "err", err)
 	}
 	if err == nil {
-		a.nodeState.SetFrozen(isFrozen, round)
+		a.state.SetFrozen(isFrozen, round)
 	}
 
 	isPlaying, err := a.contract.IsPlaying(ctx, storageRadius)
@@ -354,7 +360,7 @@ func (a *Agent) play(ctx context.Context, round uint64) (uint8, []byte, error) {
 	if !isPlaying {
 		return 0, nil, nil
 	}
-	a.nodeState.SetLastPlayedRound(round)
+	a.state.SetLastPlayedRound(round)
 	a.logger.Info("neighbourhood chosen")
 	a.metrics.NeighborhoodSelected.Inc()
 
@@ -418,12 +424,11 @@ func (a *Agent) commit(ctx context.Context, storageRadius uint8, sample []byte, 
 		a.metrics.ErrCommit.Inc()
 		return nil, err
 	}
-	a.nodeState.AddFee(ctx, txHash)
+	a.state.AddFee(ctx, txHash)
 	return key, nil
 }
 
 func (a *Agent) Close() error {
-	a.nodeState.Stop()
 
 	close(a.quit)
 
@@ -454,5 +459,5 @@ func (a *Agent) wrapCommit(storageRadius uint8, sample []byte, key []byte) ([]by
 
 // Status returns the node status
 func (a *Agent) Status() (*Status, error) {
-	return a.nodeState.Status()
+	return a.state.Status()
 }
