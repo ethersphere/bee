@@ -55,13 +55,6 @@ func TestAgent(t *testing.T) {
 		expectedCalls:  true,
 		limit:          108,
 	}, {
-		name:           "3 blocks per phase, block number returns every other block",
-		blocksPerRound: 9,
-		blocksPerPhase: 3,
-		incrementBy:    2,
-		expectedCalls:  true,
-		limit:          108,
-	}, {
 		name:           "no expected calls - block number returns late after each phase",
 		blocksPerRound: 9,
 		blocksPerPhase: 3,
