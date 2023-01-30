@@ -151,6 +151,6 @@ func (n *RedistributionState) SetBalance(ctx context.Context) error {
 func (n *RedistributionState) save() {
 	err := n.stateStore.Put(redistributionStatusKey, n.status)
 	if err != nil {
-		n.logger.Error(err, "savıng redıstrubutıon status")
+		n.logger.Error(err, "saving redistribution status")
 	}
 }
