@@ -75,8 +75,8 @@ type Query struct {
 	// that contains this prefix in its ID.
 	Prefix string
 
-	// Prefix indicates interest in an item
-	// that is limited to the namespace but starts at this prefix.
+	// StartPrefix indicates interest in an item
+	// that is limited to the namespace but starts at a prefix.
 	StartPrefix string
 
 	// SkipFirst skips the first element in the iteration.
