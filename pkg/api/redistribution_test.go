@@ -6,14 +6,15 @@ package api_test
 
 import (
 	"context"
+	"math/big"
+	"net/http"
+	"testing"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storageincentives"
 	"github.com/ethersphere/bee/pkg/transaction/mock"
-	"math/big"
-	"net/http"
-	"testing"
 )
 
 func TestRedistributionStatus(t *testing.T) {

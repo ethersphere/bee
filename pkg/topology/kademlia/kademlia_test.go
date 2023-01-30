@@ -1394,7 +1394,7 @@ func TestOutofDepthPrune(t *testing.T) {
 	}
 
 	// wait for kademlia connectors and pruning to finish
-	time.Sleep(time.Millisecond * 100)
+	time.Sleep(time.Millisecond * 500)
 
 	// check that no pruning has happened
 	bins := binSizes(kad)
@@ -1417,7 +1417,7 @@ func TestOutofDepthPrune(t *testing.T) {
 	addOne(t, signer, kad, ab, addr)
 
 	// wait for kademlia connectors and pruning to finish
-	time.Sleep(time.Millisecond * 100)
+	time.Sleep(time.Millisecond * 500)
 
 	// check bins have been pruned
 	bins = binSizes(kad)
