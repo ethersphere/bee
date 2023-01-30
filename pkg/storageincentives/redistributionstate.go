@@ -121,7 +121,9 @@ func (r *RedistributionState) AddFee(ctx context.Context, txHash common.Hash) {
 		return
 	}
 	r.mtx.Lock()
-	r.status.Fees.Add(r.status.Fees, fee)
+	if fee != nil {
+		r.status.Fees.Add(r.status.Fees, fee)
+	}
 	r.save()
 	r.mtx.Unlock()
 }

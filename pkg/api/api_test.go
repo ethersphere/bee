@@ -22,7 +22,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/core/types"
 	contractMock "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/storageincentives"
@@ -734,52 +733,9 @@ func createRedistributionAgentService(addr swarm.Address, storer storage.StateSt
 	stakingContract := mock2.New(mock2.WithIsFrozen(func(context.Context) (bool, error) {
 		return true, nil
 	}))
-	wait := make(chan struct{})
-	backend := &mockchainBackend{
-		limit: 144,
-		limitCallback: func() {
-			select {
-			case wait <- struct{}{}:
-			default:
-			}
-		},
-		incrementBy: 2,
-		block:       blocksPerRound}
 	contract := &mockContract{}
 
-	return storageincentives.New(addr, common.Address{}, backend, log.Noop, &mockMonitor{}, contract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), &mockSampler{}, time.Millisecond*10, blocksPerRound, blocksPerPhase, storer, erc20Service, tranService)
-}
-
-type mockchainBackend struct {
-	mu            sync.Mutex
-	incrementBy   uint64
-	block         uint64
-	limit         uint64
-	limitCallback func()
-}
-
-func (m *mockchainBackend) BlockNumber(context.Context) (uint64, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-
-	ret := m.block
-	lim := m.limit
-	inc := m.incrementBy
-
-	if lim == 0 || ret+inc < lim {
-		m.block += inc
-	} else if m.limitCallback != nil {
-		m.limitCallback()
-		return 0, errors.New("reached limit")
-	}
-
-	return ret, nil
-}
-
-func (m *mockchainBackend) HeaderByNumber(context.Context, *big.Int) (*types.Header, error) {
-	return &types.Header{
-		Time: uint64(time.Now().Unix()),
-	}, nil
+	return storageincentives.New(addr, common.Address{}, backendmock.New(), log.Noop, &mockMonitor{}, contract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), &mockSampler{}, time.Millisecond*10, blocksPerRound, blocksPerPhase, storer, erc20Service, tranService)
 }
 
 type contractCall int
