@@ -721,3 +721,30 @@ func TestStampIndexHandling(t *testing.T) {
 		}
 	})
 }
+
+func TestNextTagID(t *testing.T) {
+	t.Parallel()
+
+	ts := newTestStorage(t)
+
+	for i := 1; i < 4; i++ {
+		id, err := upload.NextTag(ts.IndexStore())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if id != uint64(i) {
+			t.Fatalf("incorrect tag ID returned, exp: %d found %d", i, id)
+		}
+	}
+
+	var lastTag upload.NextTagID
+	err := ts.IndexStore().Get(&lastTag)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if uint64(lastTag) != 3 {
+		t.Fatalf("incorrect value for last tag, exp 3 found %d", uint64(lastTag))
+	}
+}
