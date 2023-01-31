@@ -30,11 +30,9 @@ func (r *Repository) ChunkStore() ChunkStore {
 // NewTx returns a new transaction that guards all the Repository
 // stores. The transaction must be committed or rolled back.
 func (r *Repository) NewTx(ctx context.Context) (repository *Repository, commit func() error, rollback func() error) {
-	tx := NewTxState(ctx)
-
 	repository = new(Repository)
-	repository.indexStore = r.indexStore.NewTx(tx)
-	repository.chunkStore = r.chunkStore.NewTx(tx)
+	repository.indexStore = r.indexStore.NewTx(NewTxState(ctx))
+	repository.chunkStore = r.chunkStore.NewTx(NewTxState(ctx))
 
 	txs := []Tx{repository.indexStore, repository.chunkStore}
 
