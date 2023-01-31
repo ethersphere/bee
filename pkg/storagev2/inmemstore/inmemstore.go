@@ -10,7 +10,7 @@ import (
 	"sync"
 
 	"github.com/armon/go-radix"
-	"github.com/ethersphere/bee/pkg/storagev2"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/hashicorp/go-multierror"
 )
 
@@ -139,11 +139,17 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 		return res, nil
 	}
 
-	var (
-		retErr *multierror.Error
+	var prefix string
+	if q.PrefixAtStart {
+		prefix = q.Factory().Namespace()
+	} else {
+		prefix = q.Factory().Namespace() + separator + q.Prefix
+	}
 
-		prefix       = q.Factory().Namespace() + separator + q.Prefix
+	var (
+		retErr       *multierror.Error
 		firstSkipped = !q.SkipFirst
+		skipUntil    = false
 	)
 
 	s.mu.RLock()
@@ -152,6 +158,15 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 	switch q.Order {
 	case storage.KeyAscendingOrder:
 		s.st.WalkPrefix(prefix, func(k string, v interface{}) bool {
+
+			if q.PrefixAtStart && !skipUntil {
+				if k >= prefix+separator+q.Prefix {
+					skipUntil = true
+				} else {
+					return false
+				}
+			}
+
 			if q.SkipFirst && !firstSkipped {
 				firstSkipped = true
 				return false
