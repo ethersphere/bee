@@ -20,12 +20,14 @@ var (
 	ErrPutterAlreadyClosed       = errPutterAlreadyClosed
 	ErrOverwriteOfImmutableBatch = errOverwriteOfImmutableBatch
 	ErrOverwriteOfNewerBatch     = errOverwriteOfNewerBatch
+
+	ErrNextTagIDUnmarshalInvalidSize = errNextTagIDUnmarshalInvalidSize
 )
 
 type (
 	PushItem   = pushItem
-	TagItem    = tagItem
 	UploadItem = uploadItem
+	NextTagID  = nextTagID
 )
 
 func ReplaceTimeNow(fn func() time.Time) { now = fn }
