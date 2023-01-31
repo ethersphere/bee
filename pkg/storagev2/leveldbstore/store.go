@@ -13,11 +13,12 @@ import (
 	"github.com/hashicorp/go-multierror"
 	"github.com/syndtr/goleveldb/leveldb"
 	ldbErrors "github.com/syndtr/goleveldb/leveldb/errors"
+	"github.com/syndtr/goleveldb/leveldb/iterator"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 	ldbStorage "github.com/syndtr/goleveldb/leveldb/storage"
 	"github.com/syndtr/goleveldb/leveldb/util"
 
-	"github.com/ethersphere/bee/pkg/storagev2"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 )
 
 const separator = "/"
@@ -142,11 +143,21 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 
 	var retErr *multierror.Error
 
-	prefix := q.Factory().Namespace() + separator + q.Prefix
+	var iter iterator.Iterator
+	var prefix string
 
-	keys := util.BytesPrefix([]byte(prefix))
-
-	iter := s.db.NewIterator(keys, nil)
+	if q.PrefixAtStart {
+		prefix = q.Factory().Namespace()
+		iter = s.db.NewIterator(util.BytesPrefix([]byte(prefix)), nil)
+		exists := iter.Seek([]byte(prefix + separator + q.Prefix))
+		if !exists {
+			return nil
+		}
+		_ = iter.Prev()
+	} else {
+		prefix = q.Factory().Namespace() + separator + q.Prefix
+		iter = s.db.NewIterator(util.BytesPrefix([]byte(prefix)), nil)
+	}
 
 	nextF := iter.Next
 
