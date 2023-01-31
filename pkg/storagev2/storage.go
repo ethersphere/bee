@@ -75,6 +75,11 @@ type Query struct {
 	// that contains this prefix in its ID.
 	Prefix string
 
+	// PrefixAtStart indicates interest in an item
+	// that contains the Prefix, but continues iterating until the end
+	// of the namespace
+	PrefixAtStart bool
+
 	// SkipFirst skips the first element in the iteration.
 	SkipFirst bool
 
