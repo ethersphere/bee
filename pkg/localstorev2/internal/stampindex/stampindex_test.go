@@ -12,7 +12,7 @@ import (
 	"github.com/ethersphere/bee/pkg/localstorev2/internal"
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/stampindex"
 	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
-	"github.com/ethersphere/bee/pkg/storagev2"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/storagev2/storagetest"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
@@ -149,7 +149,7 @@ func TestStoreLoadDelete(t *testing.T) {
 					chunk.Stamp().BatchID(),
 					chunk.Stamp().Index(),
 				)
-				err = ts.Store().Get(have)
+				err = ts.IndexStore().Get(have)
 				if err != nil {
 					t.Fatalf("Get(...): unexpected error: %v", err)
 				}
@@ -194,7 +194,7 @@ func TestStoreLoadDelete(t *testing.T) {
 				}
 
 				cnt := 0
-				err = ts.Store().Iterate(
+				err = ts.IndexStore().Iterate(
 					storage.Query{
 						Factory: func() storage.Item {
 							return new(stampindex.Item)
@@ -259,7 +259,7 @@ func TestLoadOrStore(t *testing.T) {
 			}
 
 			cnt := 0
-			err = ts.Store().Iterate(
+			err = ts.IndexStore().Iterate(
 				storage.Query{
 					Factory: func() storage.Item {
 						return new(stampindex.Item)
