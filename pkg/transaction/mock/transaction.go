@@ -91,7 +91,10 @@ func (m *transactionServiceMock) Close() error {
 
 // TransactionFee returns fee of transaction
 func (m *transactionServiceMock) TransactionFee(ctx context.Context, txHash common.Hash) (*big.Int, error) {
-	return big.NewInt(1000), nil
+	if m.transactionFee != nil {
+		return m.transactionFee(ctx, txHash)
+	}
+	return big.NewInt(0), nil
 }
 
 // Option is the option passed to the mock Chequebook service
