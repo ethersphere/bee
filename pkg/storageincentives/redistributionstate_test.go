@@ -11,6 +11,7 @@ import (
 	erc20mock "github.com/ethersphere/bee/pkg/settlement/swap/erc20/mock"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
+	"github.com/google/go-cmp/cmp"
 	"math/big"
 	"testing"
 )
@@ -33,7 +34,7 @@ func createRedistribution(t *testing.T, erc20Opts []erc20mock.Option, txOpts []t
 	}
 	state, err := NewRedistributionState(log.Noop, common.Address{}, mock.NewStateStore(), erc20mock.New(erc20Opts...), transactionmock.New(txOpts...))
 	if err != nil {
-		t.Fatal("failed to connet")
+		t.Fatal("failed to connect")
 	}
 	return state
 }
@@ -47,10 +48,8 @@ func TestState(t *testing.T) {
 		LastPlayedRound: 2,
 		LastFrozenRound: 2,
 		Block:           2,
-		Fees:            big.NewInt(0),
-		Reward:          big.NewInt(0),
 	}
-	expected := Status{
+	want := Status{
 		Phase:           commit,
 		IsFrozen:        false,
 		Round:           2,
@@ -61,26 +60,25 @@ func TestState(t *testing.T) {
 		Fees:            big.NewInt(0),
 		Reward:          big.NewInt(0),
 	}
-	t.Run("all state success", func(t *testing.T) {
-		t.Parallel()
-		state := createRedistribution(t, nil, nil)
-		if len(input.Phase.String()) > 0 && input.Round > 0 && input.Block > 0 {
-			state.SetCurrentEvent(input.Phase, input.Round, input.Block)
-		}
-		state.SetLastWonRound(input.LastWonRound)
-		state.SetFrozen(input.IsFrozen, input.LastFrozenRound)
-		state.SetLastPlayedRound(input.LastPlayedRound)
-		got, err := state.Status()
-		if err != nil {
-			t.Fatal("failed to get state")
-		}
-		if got != nil && (got.IsFrozen != expected.IsFrozen || got.LastFrozenRound != expected.LastFrozenRound ||
-			got.Reward.String() != expected.Reward.String() || got.Fees.String() != expected.Fees.String() ||
-			got.LastPlayedRound != expected.LastPlayedRound || got.Block != expected.Block ||
-			got.LastWonRound != expected.LastWonRound || got.Round != expected.Round || got.Phase != expected.Phase) {
-			t.Fatalf("want %+v\n got %+v\n", expected, *got)
-		}
-	})
+	state := createRedistribution(t, nil, nil)
+	state.SetCurrentEvent(input.Phase, input.Round, input.Block)
+	state.SetLastWonRound(input.LastWonRound)
+	state.SetFrozen(input.IsFrozen, input.LastFrozenRound)
+	state.SetLastPlayedRound(input.LastPlayedRound)
+	got, err := state.Status()
+	if err != nil {
+		t.Fatal("failed to get state")
+	}
+
+	opt := []cmp.Option{
+		cmp.AllowUnexported(big.Int{}),
+		cmp.AllowUnexported(Status{}),
+	}
+	if diff := cmp.Diff(want, *got, opt...); diff != "" {
+
+		t.Errorf("result mismatch (-want +have):\n%s", diff)
+	}
+
 }
 
 // TestReward test reward calculations. It also checks whether reward is incremented after second win.
@@ -114,7 +112,7 @@ func TestReward(t *testing.T) {
 		t.Fatal("failed to get status")
 	}
 	expectedReward := balanceAfterFirstWin.Sub(balanceAfterFirstWin, initialBalance)
-	if firstWinResult.Reward.String() != expectedReward.String() {
+	if firstWinResult.Reward.Cmp(expectedReward) != 0 {
 		t.Fatalf("expect reward %d got %d", expectedReward, firstWinResult.Reward)
 	}
 
@@ -141,7 +139,7 @@ func TestReward(t *testing.T) {
 		t.Fatal("failed to get status")
 	}
 	expectedSecondReward := firstWinResult.Reward.Add(firstWinResult.Reward, balanceAfterSecondWin.Sub(balanceAfterSecondWin, newCurrentBalance))
-	if secondWinResult.Reward.String() != expectedSecondReward.String() {
+	if secondWinResult.Reward.Cmp(expectedSecondReward) != 0 {
 		t.Fatalf("expect reward %d got %d", expectedSecondReward, secondWinResult.Reward)
 	}
 }
@@ -161,7 +159,7 @@ func TestFee(t *testing.T) {
 	if err != nil {
 		t.Fatal("failed to get status")
 	}
-	if gotFirstResult.Fees.String() != firstFee.String() {
+	if gotFirstResult.Fees.Cmp(firstFee) != 0 {
 		t.Fatalf("expected fee %d got %d", firstFee, gotFirstResult.Fees)
 	}
 	secondFee := big.NewInt(15)
@@ -177,7 +175,7 @@ func TestFee(t *testing.T) {
 		t.Fatal("failed to get status")
 	}
 	expectedResult := secondFee.Add(secondFee, firstFee)
-	if gotSecondResult.Fees.String() != expectedResult.String() {
+	if gotSecondResult.Fees.Cmp(expectedResult) != 0 {
 		t.Fatalf("expected fee %d got %d", expectedResult, gotSecondResult.Fees)
 	}
 }
