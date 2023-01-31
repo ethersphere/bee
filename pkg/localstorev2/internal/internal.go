@@ -6,7 +6,6 @@ package internal
 
 import (
 	"bytes"
-	"context"
 
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/storagev2/inmemchunkstore"
@@ -15,16 +14,10 @@ import (
 	"github.com/hashicorp/go-multierror"
 )
 
-// Storage groups the storage.Store and storage.ChunkStore interfaces with context..
+// Storage groups the storage.Store and storage.ChunkStore interfaces.
 type Storage interface {
-	Ctx() context.Context
-	Store() storage.Store
-	ChunkStore() ChunkStore
-}
-
-type ChunkStore interface {
-	storage.ChunkStore
-	storage.GetterWithStamp
+	IndexStore() storage.Store
+	ChunkStore() storage.ChunkStore
 }
 
 // PutterCloserWithReference provides a Putter which can be closed with a root
@@ -59,27 +52,20 @@ func AddressBytesOrZero(addr swarm.Address) []byte {
 // NewInmemStorage constructs a inmem Storage implementation which can be used
 // for the tests in the internal packages.
 func NewInmemStorage() (Storage, func() error) {
-
-	ctx, cancel := context.WithCancel(context.Background())
-
 	ts := &inmemRepository{
-		ctx:        ctx,
 		indexStore: inmemstore.New(),
 		chunkStore: inmemchunkstore.New(),
 	}
 
 	return ts, func() error {
-		cancel()
 		return multierror.Append(ts.indexStore.Close(), ts.chunkStore.Close()).ErrorOrNil()
 	}
 }
 
 type inmemRepository struct {
-	ctx        context.Context
 	indexStore storage.Store
-	chunkStore ChunkStore
+	chunkStore storage.ChunkStore
 }
 
-func (t *inmemRepository) Ctx() context.Context   { return t.ctx }
-func (t *inmemRepository) Store() storage.Store   { return t.indexStore }
-func (t *inmemRepository) ChunkStore() ChunkStore { return t.chunkStore }
+func (t *inmemRepository) IndexStore() storage.Store      { return t.indexStore }
+func (t *inmemRepository) ChunkStore() storage.ChunkStore { return t.chunkStore }

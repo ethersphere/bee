@@ -11,7 +11,10 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-type PinCollectionItem = pinCollectionItem
+type (
+	PinCollectionItem = pinCollectionItem
+	PinChunkItem      = pinChunkItem
+)
 
 var (
 	ErrInvalidPinCollectionItemAddr = errInvalidPinCollectionAddr
