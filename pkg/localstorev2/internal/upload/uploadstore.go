@@ -113,16 +113,16 @@ func (i pushItem) String() string {
 var (
 	// errTagIDAddressItemUnmarshalInvalidSize is returned when trying
 	// to unmarshal buffer that is not of size tagItemSize.
-	errTagItemUnmarshalInvalidSize = errors.New("unmarshal tagItem: invalid size")
+	errTagItemUnmarshalInvalidSize = errors.New("unmarshal TagItem: invalid size")
 )
 
-// tagItemSize is the size of a marshaled tagItem.
+// tagItemSize is the size of a marshaled TagItem.
 const tagItemSize = swarm.HashSize + 7*8
 
-var _ storage.Item = (*tagItem)(nil)
+var _ storage.Item = (*TagItem)(nil)
 
-// tagItem is an store.Item that stores information about a session of upload.
-type tagItem struct {
+// TagItem is an store.Item that stores information about a session of upload.
+type TagItem struct {
 	TagID     uint64        // unique identifier for the tag
 	Split     uint64        // total no of chunks processed by the splitter for hashing
 	Seen      uint64        // total no of chunks already seen
@@ -134,17 +134,17 @@ type tagItem struct {
 }
 
 // ID implements the storage.Item interface.
-func (i tagItem) ID() string {
+func (i TagItem) ID() string {
 	return strconv.FormatUint(i.TagID, 10)
 }
 
 // Namespace implements the storage.Item interface.
-func (i tagItem) Namespace() string {
+func (i TagItem) Namespace() string {
 	return "tagItem"
 }
 
 // Marshal implements the storage.Item interface.
-func (i tagItem) Marshal() ([]byte, error) {
+func (i TagItem) Marshal() ([]byte, error) {
 	buf := make([]byte, tagItemSize)
 	binary.LittleEndian.PutUint64(buf, i.TagID)
 	binary.LittleEndian.PutUint64(buf[8:], i.Split)
@@ -159,11 +159,11 @@ func (i tagItem) Marshal() ([]byte, error) {
 
 // Unmarshal implements the storage.Item interface.
 // If the buffer is not of size tagItemSize, an error is returned.
-func (i *tagItem) Unmarshal(bytes []byte) error {
+func (i *TagItem) Unmarshal(bytes []byte) error {
 	if len(bytes) != tagItemSize {
 		return errTagItemUnmarshalInvalidSize
 	}
-	ni := new(tagItem)
+	ni := new(TagItem)
 	ni.TagID = binary.LittleEndian.Uint64(bytes)
 	ni.Split = binary.LittleEndian.Uint64(bytes[8:])
 	ni.Seen = binary.LittleEndian.Uint64(bytes[16:])
@@ -177,11 +177,11 @@ func (i *tagItem) Unmarshal(bytes []byte) error {
 }
 
 // Clone implements the storage.Item interface.
-func (i *tagItem) Clone() storage.Item {
+func (i *TagItem) Clone() storage.Item {
 	if i == nil {
 		return nil
 	}
-	return &tagItem{
+	return &TagItem{
 		TagID:     i.TagID,
 		Split:     i.Split,
 		Seen:      i.Seen,
@@ -194,7 +194,7 @@ func (i *tagItem) Clone() storage.Item {
 }
 
 // String implements the fmt.Stringer interface.
-func (i tagItem) String() string {
+func (i TagItem) String() string {
 	return path.Join(i.Namespace(), i.ID())
 }
 
@@ -314,15 +314,15 @@ type uploadPutter struct {
 }
 
 // NewPutter returns a new chunk putter associated with the tagID.
-func NewPutter(s internal.Storage, tagId uint64) (internal.PutterCloserWithReference, error) {
-	ti := &tagItem{TagID: tagId, StartedAt: now().Unix()}
-	err := s.Store().Put(ti)
+func NewPutter(s internal.Storage, tagID uint64) (internal.PutterCloserWithReference, error) {
+	ti := &TagItem{TagID: tagID, StartedAt: now().Unix()}
+	err := s.IndexStore().Put(ti)
 	if err != nil {
 		return nil, fmt.Errorf("failed creating tag: %w", err)
 	}
 	return &uploadPutter{
 		s:     s,
-		tagID: tagId,
+		tagID: tagID,
 	}, nil
 }
 
@@ -330,14 +330,28 @@ func NewPutter(s internal.Storage, tagId uint64) (internal.PutterCloserWithRefer
 // 1.If upload store has already seen this chunk, it will update the tag and return
 // 2.For a new chunk it will add:
 // - uploadItem entry to keep track of this chunk.
-// - b.pushItem entry to make it available for PushSubscriber
-// - c.add chunk to the chunkstore till it is synced
+// - pushItem entry to make it available for PushSubscriber
+// - add chunk to the chunkstore till it is synced
 func (u *uploadPutter) Put(ctx context.Context, chunk swarm.Chunk) error {
 	u.mtx.Lock()
 	defer u.mtx.Unlock()
 
 	if u.closed {
 		return errPutterAlreadyClosed
+	}
+
+	// Check if upload store has already seen this chunk
+	ui := &uploadItem{
+		Address: chunk.Address(),
+		BatchID: chunk.Stamp().BatchID(),
+	}
+	switch exists, err := u.s.IndexStore().Has(ui); {
+	case err != nil:
+		return fmt.Errorf("store has item %q call failed: %w", ui, err)
+	case exists:
+		u.seen++
+		u.split++
+		return nil
 	}
 
 	switch item, loaded, err := stampindex.LoadOrStore(u.s, stampIndexUploadNamespace, chunk); {
@@ -351,22 +365,13 @@ func (u *uploadPutter) Put(ctx context.Context, chunk swarm.Chunk) error {
 		if prev >= curr {
 			return errOverwriteOfNewerBatch
 		}
+		err = stampindex.Store(u.s, stampIndexUploadNamespace, chunk)
+		if err != nil {
+			return fmt.Errorf("failed updating stamp index: %w", err)
+		}
 	}
 
 	u.split++
-
-	// Check if upload store has already seen this chunk
-	ui := &uploadItem{
-		Address: chunk.Address(),
-		BatchID: chunk.Stamp().BatchID(),
-	}
-	switch exists, err := u.s.Store().Has(ui); {
-	case err != nil:
-		return fmt.Errorf("store has item %q call failed: %w", ui, err)
-	case exists:
-		u.seen++
-		return nil
-	}
 
 	if err := u.s.ChunkStore().Put(ctx, chunk); err != nil {
 		return fmt.Errorf("chunk store put chunk %q call failed: %w", chunk.Address(), err)
@@ -375,7 +380,7 @@ func (u *uploadPutter) Put(ctx context.Context, chunk swarm.Chunk) error {
 	ui.Uploaded = now().Unix()
 	ui.TagID = u.tagID
 
-	if err := u.s.Store().Put(ui); err != nil {
+	if err := u.s.IndexStore().Put(ui); err != nil {
 		return fmt.Errorf("store put item %q call failed: %w", ui, err)
 	}
 
@@ -385,7 +390,7 @@ func (u *uploadPutter) Put(ctx context.Context, chunk swarm.Chunk) error {
 		BatchID:   chunk.Stamp().BatchID(),
 		TagID:     u.tagID,
 	}
-	if err := u.s.Store().Put(pi); err != nil {
+	if err := u.s.IndexStore().Put(pi); err != nil {
 		return fmt.Errorf("store put item %q call failed: %w", pi, err)
 	}
 
@@ -400,8 +405,8 @@ func (u *uploadPutter) Close(addr swarm.Address) error {
 	u.mtx.Lock()
 	defer u.mtx.Unlock()
 
-	ti := &tagItem{TagID: u.tagID}
-	err := u.s.Store().Get(ti)
+	ti := &TagItem{TagID: u.tagID}
+	err := u.s.IndexStore().Get(ti)
 	if err != nil {
 		return fmt.Errorf("failed reading tag while closing: %w", err)
 	}
@@ -413,7 +418,7 @@ func (u *uploadPutter) Close(addr swarm.Address) error {
 		ti.Address = addr.Clone()
 	}
 
-	err = u.s.Store().Put(ti)
+	err = u.s.IndexStore().Put(ti)
 	if err != nil {
 		return fmt.Errorf("failed storing tag: %w", err)
 	}
@@ -444,16 +449,16 @@ func (p *pushReporter) Report(
 		BatchID: chunk.Stamp().BatchID(),
 	}
 
-	err := p.s.Store().Get(ui)
+	err := p.s.IndexStore().Get(ui)
 	if err != nil {
 		return fmt.Errorf("failed to read uploadItem %s: %w", ui, err)
 	}
 
-	ti := &tagItem{
+	ti := &TagItem{
 		TagID: ui.TagID,
 	}
 
-	err = p.s.Store().Get(ti)
+	err = p.s.IndexStore().Get(ti)
 	if err != nil {
 		return fmt.Errorf("failed getting tag: %w", err)
 	}
@@ -476,7 +481,7 @@ func (p *pushReporter) Report(
 			TagID:     ui.TagID,
 		}
 
-		err = p.s.Store().Delete(pi)
+		err = p.s.IndexStore().Delete(pi)
 		if err != nil {
 			return fmt.Errorf("failed deleting pushItem %s: %w", pi, err)
 		}
@@ -487,16 +492,77 @@ func (p *pushReporter) Report(
 		}
 
 		ui.Synced = now().Unix()
-		err = p.s.Store().Put(ui)
+		err = p.s.IndexStore().Put(ui)
 		if err != nil {
 			return fmt.Errorf("failed updating uploadItem %s: %w", ui, err)
 		}
 	}
 
-	err = p.s.Store().Put(ti)
+	err = p.s.IndexStore().Put(ti)
 	if err != nil {
 		return fmt.Errorf("failed updating tag: %w", err)
 	}
 
 	return nil
+}
+
+var (
+	errNextTagIDUnmarshalInvalidSize = errors.New("unmarshal nextTagID: invalid size")
+)
+
+// nextTagID is a storage.Item which stores a uint64 value in the store.
+type nextTagID uint64
+
+func (nextTagID) Namespace() string { return "upload" }
+
+func (nextTagID) ID() string { return "nextTagID" }
+
+func (n nextTagID) Marshal() ([]byte, error) {
+	buf := make([]byte, 8)
+	binary.LittleEndian.PutUint64(buf, uint64(n))
+	return buf, nil
+}
+
+func (n *nextTagID) Unmarshal(buf []byte) error {
+	if len(buf) != 8 {
+		return errNextTagIDUnmarshalInvalidSize
+	}
+
+	*n = nextTagID(binary.LittleEndian.Uint64(buf))
+	return nil
+}
+
+func (n *nextTagID) Clone() storage.Item {
+	ni := *n
+	return &ni
+}
+
+// NextTag returns the next tag ID to be used. It reads the last used ID and
+// increments it by 1. This method needs to be called under lock by user as there
+// is no guarantee for parallel updates.
+func NextTag(st storage.Store) (uint64, error) {
+	var tagID nextTagID
+	err := st.Get(&tagID)
+	if err != nil && !errors.Is(err, storage.ErrNotFound) {
+		return 0, err
+	}
+
+	tagID++
+	err = st.Put(&tagID)
+	if err != nil {
+		return 0, err
+	}
+
+	return uint64(tagID), nil
+}
+
+// GetTagInfo returns the TagItem for this particular tagID.
+func GetTagInfo(st storage.Store, tagID uint64) (TagItem, error) {
+	ti := TagItem{TagID: tagID}
+	err := st.Get(&ti)
+	if err != nil {
+		return ti, fmt.Errorf("uploadstore: failed getting tag %d: %w", tagID, err)
+	}
+
+	return ti, nil
 }
