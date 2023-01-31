@@ -351,9 +351,10 @@ func TestStore(t *testing.T, s storage.Store) {
 		t.Run("obj1", func(t *testing.T) {
 			idx := 1
 			err := s.Iterate(storage.Query{
-				Factory:      func() storage.Item { return new(obj1) },
-				StartPrefix:  obj1Prefix + "b",
-				ItemProperty: storage.QueryItem,
+				Factory:       func() storage.Item { return new(obj1) },
+				Prefix:        obj1Prefix + "b",
+				PrefixAtStart: true,
+				ItemProperty:  storage.QueryItem,
 			}, func(r storage.Result) (bool, error) {
 				checkTestItemEqual(t, r.Entry, testObjs[idx])
 				idx++

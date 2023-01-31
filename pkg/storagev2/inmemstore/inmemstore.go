@@ -140,7 +140,7 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 	}
 
 	var prefix string
-	if q.StartPrefix != "" {
+	if q.PrefixAtStart {
 		prefix = q.Factory().Namespace()
 	} else {
 		prefix = q.Factory().Namespace() + separator + q.Prefix
@@ -159,8 +159,8 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 	case storage.KeyAscendingOrder:
 		s.st.WalkPrefix(prefix, func(k string, v interface{}) bool {
 
-			if q.StartPrefix != "" && !skipUntil {
-				if k >= prefix+separator+q.StartPrefix {
+			if q.PrefixAtStart && !skipUntil {
+				if k >= prefix+separator+q.Prefix {
 					skipUntil = true
 				} else {
 					return false

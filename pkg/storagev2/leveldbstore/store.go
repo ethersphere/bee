@@ -146,10 +146,10 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 	var iter iterator.Iterator
 	var prefix string
 
-	if q.StartPrefix != "" {
+	if q.PrefixAtStart {
 		prefix = q.Factory().Namespace()
 		iter = s.db.NewIterator(util.BytesPrefix([]byte(prefix)), nil)
-		exists := iter.Seek([]byte(prefix + separator + q.StartPrefix))
+		exists := iter.Seek([]byte(prefix + separator + q.Prefix))
 		if !exists {
 			return nil
 		}
