@@ -11,7 +11,7 @@ import (
 	"path"
 
 	"github.com/ethersphere/bee/pkg/localstorev2/internal"
-	"github.com/ethersphere/bee/pkg/storagev2"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -172,7 +172,7 @@ func Load(s internal.Storage, namespace string, chunk swarm.Chunk) (*Item, error
 		batchID:    chunk.Stamp().BatchID(),
 		batchIndex: chunk.Stamp().Index(),
 	}
-	err := s.Store().Get(item)
+	err := s.IndexStore().Get(item)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get stampindex.Item %s: %w", item, err)
 	}
@@ -190,7 +190,7 @@ func Store(s internal.Storage, namespace string, chunk swarm.Chunk) error {
 		ChunkAddress:     chunk.Address(),
 		ChunkIsImmutable: chunk.Immutable(),
 	}
-	if err := s.Store().Put(item); err != nil {
+	if err := s.IndexStore().Put(item); err != nil {
 		return fmt.Errorf("failed to put stampindex.Item %s: %w", item, err)
 	}
 	return nil
@@ -203,7 +203,7 @@ func Delete(s internal.Storage, namespace string, chunk swarm.Chunk) error {
 		batchID:    chunk.Stamp().BatchID(),
 		batchIndex: chunk.Stamp().Index(),
 	}
-	if err := s.Store().Delete(item); err != nil {
+	if err := s.IndexStore().Delete(item); err != nil {
 		return fmt.Errorf("failed to delete stampindex.Item %s: %w", item, err)
 	}
 	return nil
