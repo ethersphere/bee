@@ -7,13 +7,13 @@ package localstore
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"sync"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/bmt"
 	"github.com/ethersphere/bee/pkg/bmtpool"
 	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/postage"
@@ -124,7 +124,7 @@ func (db *DB) ReserveSample(
 	const workers = 6
 	for i := 0; i < workers; i++ {
 		g.Go(func() error {
-			hmacr := hmac.New(swarm.NewHasher, anchor)
+			keyedHasher := bmt.NewTrHasher(anchor)
 
 			for addr := range addrChan {
 				getStart := time.Now()
@@ -143,12 +143,12 @@ func (db *DB) ReserveSample(
 				}
 
 				hmacrStart := time.Now()
-				_, err = hmacr.Write(chItem.Data)
+				_, err = keyedHasher.Write(chItem.Data)
 				if err != nil {
 					return err
 				}
-				taddr := hmacr.Sum(nil)
-				hmacr.Reset()
+				taddr := keyedHasher.Sum(nil)
+				keyedHasher.Reset()
 				stat.HmacrDuration.Add(time.Since(hmacrStart).Nanoseconds())
 
 				select {
@@ -259,6 +259,7 @@ func (db *DB) ReserveSample(
 		Items: sampleItems,
 		Hash:  swarm.NewAddress(hash),
 	}
+	fmt.Println(sample)
 
 	db.metrics.SamplerSuccessfulRuns.Inc()
 	logger.Info("sampler done", "duration", time.Since(t), "storage_radius", storageRadius, "consensus_time_ns", consensusTime, "stats", stat, "sample", sample)

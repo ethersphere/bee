@@ -36,6 +36,20 @@ type TrHasher struct {
 	span    []byte      // The span of the data subsumed under the chunk
 }
 
+const Capacity = 32
+
+func NewTrHasher(key []byte) *TrHasher {
+
+	conf := NewTrConf(swarm.NewHasher, key, swarm.BmtBranches, Capacity)
+	return &TrHasher{
+		TrConf: conf,
+		result: make(chan []byte),
+		errc:   make(chan error, 1),
+		span:   make([]byte, SpanSize),
+		bmt:    newTrTree(conf.segmentSize, conf.maxSize, conf.depth, conf.hasher),
+	}
+}
+
 // Capacity returns the maximum amount of bytes that will be processed by this hasher implementation.
 // since BMT assumes a balanced binary tree, capacity it is always a power of 2
 func (h *TrHasher) Capacity() int {
