@@ -33,7 +33,7 @@ func createRedistribution(t *testing.T, erc20Opts []erc20mock.Option, txOpts []t
 	}
 	state, err := NewRedistributionState(log.Noop, common.Address{}, mock.NewStateStore(), erc20mock.New(erc20Opts...), transactionmock.New(txOpts...))
 	if err != nil {
-		t.Fatal("failed to connet")
+		t.Fatal("failed to connect")
 	}
 	return state
 }
@@ -50,7 +50,7 @@ func TestState(t *testing.T) {
 		Fees:            big.NewInt(0),
 		Reward:          big.NewInt(0),
 	}
-	expected := Status{
+	want := Status{
 		Phase:           commit,
 		IsFrozen:        false,
 		Round:           2,
@@ -64,9 +64,7 @@ func TestState(t *testing.T) {
 	t.Run("all state success", func(t *testing.T) {
 		t.Parallel()
 		state := createRedistribution(t, nil, nil)
-		if len(input.Phase.String()) > 0 && input.Round > 0 && input.Block > 0 {
-			state.SetCurrentEvent(input.Phase, input.Round, input.Block)
-		}
+		state.SetCurrentEvent(input.Phase, input.Round, input.Block)
 		state.SetLastWonRound(input.LastWonRound)
 		state.SetFrozen(input.IsFrozen, input.LastFrozenRound)
 		state.SetLastPlayedRound(input.LastPlayedRound)
@@ -74,11 +72,11 @@ func TestState(t *testing.T) {
 		if err != nil {
 			t.Fatal("failed to get state")
 		}
-		if got != nil && (got.IsFrozen != expected.IsFrozen || got.LastFrozenRound != expected.LastFrozenRound ||
-			got.Reward.String() != expected.Reward.String() || got.Fees.String() != expected.Fees.String() ||
-			got.LastPlayedRound != expected.LastPlayedRound || got.Block != expected.Block ||
-			got.LastWonRound != expected.LastWonRound || got.Round != expected.Round || got.Phase != expected.Phase) {
-			t.Fatalf("want %+v\n got %+v\n", expected, *got)
+		if got.IsFrozen != want.IsFrozen || got.LastFrozenRound != want.LastFrozenRound ||
+			got.Reward.String() != want.Reward.String() || got.Fees.String() != want.Fees.String() ||
+			got.LastPlayedRound != want.LastPlayedRound || got.Block != want.Block ||
+			got.LastWonRound != want.LastWonRound || got.Round != want.Round || got.Phase != want.Phase {
+			t.Fatalf("want %+v\n got %+v\n", want, *got)
 		}
 	})
 }
