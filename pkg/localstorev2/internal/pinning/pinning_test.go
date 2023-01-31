@@ -347,6 +347,9 @@ func TestPinChunkItem(t *testing.T) {
 	t.Parallel()
 
 	storagetest.TestItemClone(t, &storagetest.ItemCloneTest{
-		Item: &pinstore.PinChunkItem{UUID: pinstore.NewUUID(), Addr: swarmtesting.RandomAddress()},
+		Item: &pinstore.PinChunkItem{
+			UUID: pinstore.NewUUID(),
+			Addr: swarmtesting.RandomAddress(),
+		},
 	})
 }

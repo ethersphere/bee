@@ -45,15 +45,14 @@ type PutterSession interface {
 type SessionInfo = upload.TagItem
 
 // UploadStore is a logical component of the localstore which deals with the upload
-// of data to swarm. This will be used by the API.
+// of data to swarm.
 type UploadStore interface {
 	// Upload provides a PutterSession which is tied to the tagID. Optionally if
 	// users requests to pin the data, a new pinning collection is created.
 	Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession, error)
 	// NewSession can be used to obtain a tag ID to use for a new Upload session.
 	NewSession() (uint64, error)
-	// GetSessionInfo will show the information about the session. This will also
-	// be used by the API.
+	// GetSessionInfo will show the information about the session.
 	GetSessionInfo(tagID uint64) (SessionInfo, error)
 }
 
@@ -128,7 +127,7 @@ func initInmemRepository() (*storage.Repository, io.Closer, error) {
 }
 
 // Default options for levelDB.
-var (
+const (
 	defaultOpenFilesLimit         = uint64(256)
 	defaultBlockCacheCapacity     = uint64(32 * 1024 * 1024)
 	defaultWriteBufferSize        = uint64(32 * 1024 * 1024)
@@ -148,7 +147,7 @@ func initDiskRepository(basePath string, opts *Options) (*storage.Repository, io
 	ldbBasePath := path.Join(basePath, "indexstore")
 
 	if _, err := os.Stat(ldbBasePath); os.IsNotExist(err) {
-		err := os.Mkdir(ldbBasePath, 0775)
+		err := os.Mkdir(ldbBasePath, 0777)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -166,7 +165,7 @@ func initDiskRepository(basePath string, opts *Options) (*storage.Repository, io
 	sharkyBasePath := path.Join(basePath, "sharky")
 
 	if _, err := os.Stat(sharkyBasePath); os.IsNotExist(err) {
-		err := os.Mkdir(sharkyBasePath, 0775)
+		err := os.Mkdir(sharkyBasePath, 0777)
 		if err != nil {
 			return nil, nil, err
 		}

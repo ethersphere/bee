@@ -7,6 +7,7 @@ package localstore_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"testing"
@@ -31,25 +32,25 @@ func verifySessionInfo(
 	for _, ch := range chunks {
 		hasFound, err := repo.ChunkStore().Has(context.TODO(), ch.Address())
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("ChunkStore.Has(...): unexpected error: %v", err)
 		}
 
 		if hasFound != has {
-			t.Fatalf("unexpected chunk state, exp has chunk %t got %t", has, hasFound)
+			t.Fatalf("unexpected chunk has state: want %t have %t", has, hasFound)
 		}
 	}
 
 	if has {
 		tagInfo, err := upload.GetTagInfo(repo.IndexStore(), sessionID)
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("upload.GetTagInfo(...): unexpected error: %v", err)
 		}
 
 		if tagInfo.Split != uint64(len(chunks)) {
-			t.Fatalf("unexpected split chunk count in tag, exp %d found %d", len(chunks), tagInfo.Split)
+			t.Fatalf("unexpected split chunk count in tag: want %d have %d", len(chunks), tagInfo.Split)
 		}
 		if tagInfo.Seen != 0 {
-			t.Fatalf("unexpected seen chunk count in tag, exp %d found %d", len(chunks), tagInfo.Seen)
+			t.Fatalf("unexpected seen chunk count in tag: want %d have %d", len(chunks), tagInfo.Seen)
 		}
 	}
 }
@@ -65,19 +66,17 @@ func verifyPinCollection(
 
 	hasFound, err := pinstore.HasPin(repo.IndexStore(), root.Address())
 	if err != nil {
-		t.Fatal(err)
+		t.Fatalf("pinstore.HasPin(...): unexpected error: %v", err)
 	}
 
 	if hasFound != has {
-		t.Fatalf("unexpected pin collection state, exp exists %t got %t", has, hasFound)
+		t.Fatalf("unexpected pin collection state: want %t have %t", has, hasFound)
 	}
 
-	allChunks := append([]swarm.Chunk{root}, chunks...)
-
-	for _, ch := range allChunks {
+	for _, ch := range chunks {
 		hasFound, err := repo.ChunkStore().Has(context.TODO(), ch.Address())
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("ChunkStore.Has(...): unexpected error: %v", err)
 		}
 
 		if hasFound != has {
@@ -100,15 +99,15 @@ func testUploadStore(t *testing.T, newLocalstore func() (*localstore.DB, error))
 		for i := 1; i < 5; i++ {
 			id, err := lstore.NewSession()
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("NewSession(): unexpected error: %v", err)
 			}
 			if id != uint64(i) {
-				t.Fatalf("incorrect id generated, exp %d found %d", i, id)
+				t.Fatalf("incorrect id generated: want %d have %d", i, id)
 			}
 		}
 	})
 
-	t.Run("error on no tag", func(t *testing.T) {
+	t.Run("no tag", func(t *testing.T) {
 		t.Parallel()
 
 		lstore, err := newLocalstore()
@@ -118,55 +117,44 @@ func testUploadStore(t *testing.T, newLocalstore func() (*localstore.DB, error))
 
 		_, err = lstore.Upload(context.TODO(), false, 0)
 		if err == nil {
-			t.Fatal("expected error")
+			t.Fatal("expected error on Upload with no tag")
 		}
 	})
 
 	for _, tc := range []struct {
-		name   string
-		root   swarm.Chunk
 		chunks []swarm.Chunk
 		pin    bool
 		fail   bool
 	}{
 		{
-			name:   "10 chunks",
-			root:   chunktesting.GenerateTestRandomChunk(),
-			chunks: chunktesting.GenerateTestRandomChunks(9),
+			chunks: chunktesting.GenerateTestRandomChunks(10),
 		},
 		{
-			name:   "20 chunks",
-			root:   chunktesting.GenerateTestRandomChunk(),
-			chunks: chunktesting.GenerateTestRandomChunks(19),
+			chunks: chunktesting.GenerateTestRandomChunks(20),
 			fail:   true,
 		},
 		{
-			name:   "30 chunks",
-			root:   chunktesting.GenerateTestRandomChunk(),
-			chunks: chunktesting.GenerateTestRandomChunks(29),
+			chunks: chunktesting.GenerateTestRandomChunks(30),
 		},
 		{
-			name:   "10 chunks with pin",
-			root:   chunktesting.GenerateTestRandomChunk(),
-			chunks: chunktesting.GenerateTestRandomChunks(9),
+			chunks: chunktesting.GenerateTestRandomChunks(10),
 			pin:    true,
 		},
 		{
-			name:   "20 chunks with pin",
-			root:   chunktesting.GenerateTestRandomChunk(),
-			chunks: chunktesting.GenerateTestRandomChunks(19),
+			chunks: chunktesting.GenerateTestRandomChunks(20),
 			pin:    true,
 			fail:   true,
 		},
 		{
-			name:   "30 chunks with pin",
-			root:   chunktesting.GenerateTestRandomChunk(),
-			chunks: chunktesting.GenerateTestRandomChunks(29),
+			chunks: chunktesting.GenerateTestRandomChunks(30),
 			pin:    true,
 		},
 	} {
 		tc := tc
-		testName := "upload_" + tc.name
+		testName := fmt.Sprintf("upload_%d_chunks", len(tc.chunks))
+		if tc.pin {
+			testName += "_with_pin"
+		}
 		if tc.fail {
 			testName += "_rollback"
 		}
@@ -180,35 +168,35 @@ func testUploadStore(t *testing.T, newLocalstore func() (*localstore.DB, error))
 
 			id, err := lstore.NewSession()
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("NewSession(): unexpected error: %v", err)
 			}
 
 			session, err := lstore.Upload(context.TODO(), tc.pin, id)
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("Upload(...): unexpected error: %v", err)
 			}
 
-			for _, ch := range append([]swarm.Chunk{tc.root}, tc.chunks...) {
+			for _, ch := range tc.chunks {
 				err := session.Put(context.TODO(), ch)
 				if err != nil {
-					t.Fatal(err)
+					t.Fatalf("session.Put(...): unexpected error: %v", err)
 				}
 			}
 
 			if tc.fail {
 				err := session.Cleanup()
 				if err != nil {
-					t.Fatal(err)
+					t.Fatalf("session.Cleanup(): unexpected error: %v", err)
 				}
 			} else {
-				err := session.Done(tc.root.Address())
+				err := session.Done(tc.chunks[0].Address())
 				if err != nil {
-					t.Fatal(err)
+					t.Fatalf("session.Done(...): unexpected error: %v", err)
 				}
 			}
-			verifySessionInfo(t, lstore.Repo(), id, append([]swarm.Chunk{tc.root}, tc.chunks...), !tc.fail)
+			verifySessionInfo(t, lstore.Repo(), id, tc.chunks, !tc.fail)
 			if tc.pin {
-				verifyPinCollection(t, lstore.Repo(), tc.root, tc.chunks, !tc.fail)
+				verifyPinCollection(t, lstore.Repo(), tc.chunks[0], tc.chunks, !tc.fail)
 			}
 		})
 	}
@@ -225,36 +213,36 @@ func testUploadStore(t *testing.T, newLocalstore func() (*localstore.DB, error))
 			t.Helper()
 
 			if info.TagID != id {
-				t.Fatalf("unexpected TagID in session, exp %d found %d", id, info.TagID)
+				t.Fatalf("unexpected TagID in session: want %d have %d", id, info.TagID)
 			}
 
 			if info.Split != split {
-				t.Fatalf("unexpected split count in session, exp %d found %d", split, info.Split)
+				t.Fatalf("unexpected split count in session: want %d have %d", split, info.Split)
 			}
 
 			if info.Seen != seen {
-				t.Fatalf("unexpected seen count in session, exp %d found %d", seen, info.Seen)
+				t.Fatalf("unexpected seen count in session: want %d have %d", seen, info.Seen)
 			}
 
 			if !info.Address.Equal(addr) {
-				t.Fatalf("unexpected swarm reference, exp %s, found %s", addr, info.Address)
+				t.Fatalf("unexpected swarm reference: want %s have %s", addr, info.Address)
 			}
 		}
 
-		t.Run("commit", func(t *testing.T) {
+		t.Run("done", func(t *testing.T) {
 			id, err := lstore.NewSession()
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("NewSession(): unexpected error: %v", err)
 			}
 
 			session, err := lstore.Upload(context.TODO(), false, id)
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("Upload(...): unexpected error: %v", err)
 			}
 
 			sessionInfo, err := lstore.GetSessionInfo(id)
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("GetSessionInfo(...): unexpected error: %v", err)
 			}
 
 			verify(t, sessionInfo, id, 0, 0, swarm.ZeroAddress)
@@ -265,38 +253,38 @@ func testUploadStore(t *testing.T, newLocalstore func() (*localstore.DB, error))
 				for i := 0; i < 2; i++ {
 					err := session.Put(context.TODO(), ch)
 					if err != nil {
-						t.Fatal(err)
+						t.Fatalf("session.Put(...): unexpected error: %v", err)
 					}
 				}
 			}
 
 			err = session.Done(chunks[0].Address())
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("session.Done(...): unexpected error: %v", err)
 			}
 
 			sessionInfo, err = lstore.GetSessionInfo(id)
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("GetSessionInfo(...): unexpected error: %v", err)
 			}
 
 			verify(t, sessionInfo, id, 20, 10, chunks[0].Address())
 		})
 
-		t.Run("rollback", func(t *testing.T) {
+		t.Run("cleanup", func(t *testing.T) {
 			id, err := lstore.NewSession()
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("NewSession(): unexpected error: %v", err)
 			}
 
 			session, err := lstore.Upload(context.TODO(), false, id)
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("Upload(...): unexpected error: %v", err)
 			}
 
 			sessionInfo, err := lstore.GetSessionInfo(id)
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("GetSessionInfo(...): unexpected error: %v", err)
 			}
 
 			verify(t, sessionInfo, id, 0, 0, swarm.ZeroAddress)
@@ -306,18 +294,18 @@ func testUploadStore(t *testing.T, newLocalstore func() (*localstore.DB, error))
 			for _, ch := range chunks {
 				err := session.Put(context.TODO(), ch)
 				if err != nil {
-					t.Fatal(err)
+					t.Fatalf("session.Put(...): unexpected error: %v", err)
 				}
 			}
 
 			err = session.Cleanup()
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("session.Cleanup(): unexpected error: %v", err)
 			}
 
 			_, err = lstore.GetSessionInfo(id)
 			if !errors.Is(err, storage.ErrNotFound) {
-				t.Fatalf("expected ErrNotFound, got: %v", err)
+				t.Fatalf("unexpected error: want %v have %v", storage.ErrNotFound, err)
 			}
 		})
 	})
@@ -339,7 +327,12 @@ func diskLocalstore(t *testing.T) func() (*localstore.DB, error) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Cleanup(func() { os.RemoveAll(dir) })
+		t.Cleanup(func() {
+			err := os.RemoveAll(dir)
+			if err != nil {
+				t.Errorf("failed removing directories: %v", err)
+			}
+		})
 
 		lstore, err := localstore.New(dir, nil)
 		if err == nil {
@@ -374,26 +367,18 @@ func testPinStore(t *testing.T, newLocalstore func() (*localstore.DB, error)) {
 	t.Helper()
 
 	testCases := []struct {
-		name   string
-		root   swarm.Chunk
 		chunks []swarm.Chunk
 		fail   bool
 	}{
 		{
-			name:   "10 chunks",
-			root:   chunktesting.GenerateTestRandomChunk(),
-			chunks: chunktesting.GenerateTestRandomChunks(9),
+			chunks: chunktesting.GenerateTestRandomChunks(10),
 		},
 		{
-			name:   "20 chunks",
-			root:   chunktesting.GenerateTestRandomChunk(),
-			chunks: chunktesting.GenerateTestRandomChunks(19),
+			chunks: chunktesting.GenerateTestRandomChunks(20),
 			fail:   true,
 		},
 		{
-			name:   "30 chunks",
-			root:   chunktesting.GenerateTestRandomChunk(),
-			chunks: chunktesting.GenerateTestRandomChunks(29),
+			chunks: chunktesting.GenerateTestRandomChunks(30),
 		},
 	}
 
@@ -403,19 +388,20 @@ func testPinStore(t *testing.T, newLocalstore func() (*localstore.DB, error)) {
 	}
 
 	for _, tc := range testCases {
-		testName := "pin_" + tc.name
+		testName := fmt.Sprintf("pin_%d_chunks", len(tc.chunks))
 		if tc.fail {
 			testName += "_rollback"
 		}
 		t.Run(testName, func(t *testing.T) {
 			session, err := lstore.NewCollection(context.TODO())
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("NewCollection(...): unexpected error: %v", err)
 			}
 
-			for _, ch := range append([]swarm.Chunk{tc.root}, tc.chunks...) {
+			for _, ch := range tc.chunks {
 				err := session.Put(context.TODO(), ch)
 				if err != nil {
+					t.Fatalf("session.Put(...): unexpected error: %v", err)
 					t.Fatal(err)
 				}
 			}
@@ -423,26 +409,26 @@ func testPinStore(t *testing.T, newLocalstore func() (*localstore.DB, error)) {
 			if tc.fail {
 				err := session.Cleanup()
 				if err != nil {
-					t.Fatal(err)
+					t.Fatalf("session.Cleanup(): unexpected error: %v", err)
 				}
 			} else {
-				err := session.Done(tc.root.Address())
+				err := session.Done(tc.chunks[0].Address())
 				if err != nil {
-					t.Fatal(err)
+					t.Fatalf("session.Done(...): unexpected error: %v", err)
 				}
 			}
-			verifyPinCollection(t, lstore.Repo(), tc.root, tc.chunks, !tc.fail)
+			verifyPinCollection(t, lstore.Repo(), tc.chunks[0], tc.chunks, !tc.fail)
 		})
 	}
 
 	for _, tc := range testCases {
-		t.Run("has "+tc.root.Address().String(), func(t *testing.T) {
-			hasFound, err := lstore.HasPin(tc.root.Address())
+		t.Run("has "+tc.chunks[0].Address().String(), func(t *testing.T) {
+			hasFound, err := lstore.HasPin(tc.chunks[0].Address())
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("HasPin(...): unexpected error: %v", err)
 			}
 			if hasFound != !tc.fail {
-				t.Fatalf("unexpected chunk state, exp has chunk %t got %t", !tc.fail, hasFound)
+				t.Fatalf("unexpected has chunk state: want %t have %t", !tc.fail, hasFound)
 			}
 		})
 	}
@@ -450,23 +436,24 @@ func testPinStore(t *testing.T, newLocalstore func() (*localstore.DB, error)) {
 	t.Run("pins", func(t *testing.T) {
 		pins, err := lstore.Pins()
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("Pins(): unexpected error: %v", err)
 		}
 
-		if len(pins) != 2 {
-			t.Fatalf("unexpected no of pins, exp 2 found %d", len(pins))
+		want := 2
+		if len(pins) != want {
+			t.Fatalf("unexpected no of pins: want %d have %d", want, len(pins))
 		}
 	})
 
 	t.Run("delete pin", func(t *testing.T) {
-		err := lstore.DeletePin(context.TODO(), testCases[2].root.Address())
+		err := lstore.DeletePin(context.TODO(), testCases[2].chunks[0].Address())
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("DeletePin(...): unexpected error: %v", err)
 		}
 
-		has, err := lstore.HasPin(testCases[2].root.Address())
+		has, err := lstore.HasPin(testCases[2].chunks[0].Address())
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("HasPin(...): unexpected error: %v", err)
 		}
 		if has {
 			t.Fatal("expected root pin reference to be deleted")
@@ -474,16 +461,17 @@ func testPinStore(t *testing.T, newLocalstore func() (*localstore.DB, error)) {
 
 		pins, err := lstore.Pins()
 		if err != nil {
-			t.Fatal(err)
+			t.Fatalf("Pins(): unexpected error: %v", err)
 		}
-		if len(pins) != 1 {
-			t.Fatalf("unexpected length of pins, exp 1, found %d", len(pins))
+		want := 1
+		if len(pins) != want {
+			t.Fatalf("unexpected length of pins: want %d have %d", want, len(pins))
 		}
 
-		for _, ch := range append([]swarm.Chunk{testCases[2].root}, testCases[2].chunks...) {
+		for _, ch := range testCases[2].chunks {
 			has, err := lstore.Repo().ChunkStore().Has(context.TODO(), ch.Address())
 			if err != nil {
-				t.Fatal(err)
+				t.Fatalf("ChunkStore.Has(...): unexpected error: %v", err)
 			}
 			if has {
 				t.Fatalf("expected chunk in collection to be deleted %s", ch.Address())
