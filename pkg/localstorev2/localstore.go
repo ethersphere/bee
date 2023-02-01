@@ -120,7 +120,7 @@ func closer(closers ...io.Closer) io.Closer {
 	})
 }
 
-func initInmemRepository() (*storage.Repository, io.Closer, error) {
+func initInmemRepository() (storage.Repository, io.Closer, error) {
 	store, err := leveldbstore.New("", nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed creating inmem levelDB index store: %w", err)
@@ -149,16 +149,7 @@ const (
 	defaultDisableSeeksCompaction = false
 )
 
-func initDiskRepository(basePath string, opts *Options) (*storage.Repository, io.Closer, error) {
-	if opts == nil {
-		opts = &Options{
-			LdbOpenFilesLimit:         defaultOpenFilesLimit,
-			LdbBlockCacheCapacity:     defaultBlockCacheCapacity,
-			LdbWriteBufferSize:        defaultWriteBufferSize,
-			LdbDisableSeeksCompaction: defaultDisableSeeksCompaction,
-		}
-	}
-
+func initDiskRepository(basePath string, opts *Options) (storage.Repository, io.Closer, error) {
 	ldbBasePath := path.Join(basePath, "indexstore")
 
 	if _, err := os.Stat(ldbBasePath); os.IsNotExist(err) {
@@ -201,7 +192,7 @@ func initDiskRepository(basePath string, opts *Options) (*storage.Repository, io
 	return storage.NewRepository(txStore, txChunkStore), closer(store, sharky), nil
 }
 
-func initCache(capacity uint64, repo *storage.Repository) (*cache.Cache, error) {
+func initCache(capacity uint64, repo storage.Repository) (*cache.Cache, error) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -229,9 +220,19 @@ type Options struct {
 	CacheCapacity             uint64
 }
 
+func defaultOptions() *Options {
+	return &Options{
+		LdbOpenFilesLimit:         defaultOpenFilesLimit,
+		LdbBlockCacheCapacity:     defaultBlockCacheCapacity,
+		LdbWriteBufferSize:        defaultWriteBufferSize,
+		LdbDisableSeeksCompaction: defaultDisableSeeksCompaction,
+		CacheCapacity:             100,
+	}
+}
+
 // DB implements all the component stores described above.
 type DB struct {
-	repo     *storage.Repository
+	repo     storage.Repository
 	lock     *multex.Multex
 	cacheObj *cache.Cache
 	dbCloser io.Closer
@@ -242,10 +243,13 @@ type DB struct {
 func New(dirPath string, opts *Options) (*DB, error) {
 	// TODO: migration handling and sharky recovery
 	var (
-		repo     *storage.Repository
+		repo     storage.Repository
 		err      error
 		dbCloser io.Closer
 	)
+	if opts == nil {
+		opts = defaultOptions()
+	}
 	if dirPath == "" {
 		repo, dbCloser, err = initInmemRepository()
 		if err != nil {
