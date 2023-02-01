@@ -147,6 +147,7 @@ const (
 	defaultBlockCacheCapacity     = uint64(32 * 1024 * 1024)
 	defaultWriteBufferSize        = uint64(32 * 1024 * 1024)
 	defaultDisableSeeksCompaction = false
+	defaultCacheCapacity          = uint64(1_000_000)
 )
 
 func initDiskRepository(basePath string, opts *Options) (storage.Repository, io.Closer, error) {
@@ -226,7 +227,7 @@ func defaultOptions() *Options {
 		LdbBlockCacheCapacity:     defaultBlockCacheCapacity,
 		LdbWriteBufferSize:        defaultWriteBufferSize,
 		LdbDisableSeeksCompaction: defaultDisableSeeksCompaction,
-		CacheCapacity:             100,
+		CacheCapacity:             defaultCacheCapacity,
 	}
 }
 
