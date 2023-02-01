@@ -6,6 +6,7 @@ package localstore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -14,6 +15,7 @@ import (
 	"path/filepath"
 
 	"github.com/ethersphere/bee/pkg/localstorev2/internal"
+	"github.com/ethersphere/bee/pkg/localstorev2/internal/cache"
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/chunkstore"
 	pinstore "github.com/ethersphere/bee/pkg/localstorev2/internal/pinning"
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/upload"
@@ -73,6 +75,19 @@ type PinStore interface {
 	HasPin(swarm.Address) (bool, error)
 }
 
+// CacheStore is a logical component of the localstore that deals with cache
+// content.
+type CacheStore interface {
+	// Lookup function provides a storage.Getter wrapped around the underlying
+	// ChunkStore which will update cache related indexes if required on successful
+	// lookups.
+	Lookup() storage.Getter
+	// Cache function provides a storage.Putter which will add the chunks to cache.
+	// This will add the chunk to underlying store as well as new indexes which
+	// will keep track of the chunk in the cache.
+	Cache() storage.Putter
+}
+
 type memFS struct {
 	afero.Fs
 }
@@ -95,7 +110,7 @@ type closerFn func() error
 
 func (c closerFn) Close() error { return c() }
 
-func CloserFn(closers ...io.Closer) io.Closer {
+func closer(closers ...io.Closer) io.Closer {
 	return closerFn(func() error {
 		var err *multierror.Error
 		for _, closer := range closers {
@@ -123,7 +138,7 @@ func initInmemRepository() (*storage.Repository, io.Closer, error) {
 	txStore := leveldbstore.NewTxStore(store)
 	txChunkStore := chunkstore.NewTxChunkStore(txStore, sharky)
 
-	return storage.NewRepository(txStore, txChunkStore), CloserFn(store, sharky), nil
+	return storage.NewRepository(txStore, txChunkStore), closer(store, sharky), nil
 }
 
 // Default options for levelDB.
@@ -183,7 +198,20 @@ func initDiskRepository(basePath string, opts *Options) (*storage.Repository, io
 	txStore := leveldbstore.NewTxStore(store)
 	txChunkStore := chunkstore.NewTxChunkStore(txStore, sharky)
 
-	return storage.NewRepository(txStore, txChunkStore), CloserFn(store, sharky), nil
+	return storage.NewRepository(txStore, txChunkStore), closer(store, sharky), nil
+}
+
+func initCache(capacity uint64, repo *storage.Repository) (*cache.Cache, error) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	txnRepo, commit, rollback := repo.NewTx(ctx)
+	c, err := cache.New(ctx, txnRepo, capacity)
+	if err != nil {
+		return nil, multierror.Append(err, rollback())
+	}
+
+	return c, commit()
 }
 
 const (
@@ -198,13 +226,15 @@ type Options struct {
 	LdbBlockCacheCapacity     uint64
 	LdbWriteBufferSize        uint64
 	LdbDisableSeeksCompaction bool
+	CacheCapacity             uint64
 }
 
 // DB implements all the component stores described above.
 type DB struct {
-	repo   *storage.Repository
-	lock   *multex.Multex
-	closer io.Closer
+	repo     *storage.Repository
+	lock     *multex.Multex
+	cacheObj *cache.Cache
+	dbCloser io.Closer
 }
 
 // New returns a newly constructed DB object which implements all the above
@@ -212,31 +242,37 @@ type DB struct {
 func New(dirPath string, opts *Options) (*DB, error) {
 	// TODO: migration handling and sharky recovery
 	var (
-		repo   *storage.Repository
-		err    error
-		closer io.Closer
+		repo     *storage.Repository
+		err      error
+		dbCloser io.Closer
 	)
 	if dirPath == "" {
-		repo, closer, err = initInmemRepository()
+		repo, dbCloser, err = initInmemRepository()
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		repo, closer, err = initDiskRepository(dirPath, opts)
+		repo, dbCloser, err = initDiskRepository(dirPath, opts)
 		if err != nil {
 			return nil, err
 		}
 	}
 
+	cacheObj, err := initCache(opts.CacheCapacity, repo)
+	if err != nil {
+		return nil, err
+	}
+
 	return &DB{
-		repo:   repo,
-		lock:   multex.New(),
-		closer: closer,
+		repo:     repo,
+		lock:     multex.New(),
+		cacheObj: cacheObj,
+		dbCloser: dbCloser,
 	}, nil
 }
 
 func (db *DB) Close() error {
-	return db.closer.Close()
+	return db.dbCloser.Close()
 }
 
 type putterSessionImpl struct {
@@ -347,4 +383,35 @@ func (db *DB) Pins() ([]swarm.Address, error) {
 // HasPin is the implementation of the PinStore.HasPin function.
 func (db *DB) HasPin(root swarm.Address) (bool, error) {
 	return pinstore.HasPin(db.repo.IndexStore(), root)
+}
+
+// Lookup is the implementation of the CacheStore.Lookup function.
+func (db *DB) Lookup() storage.Getter {
+	return storage.GetterFunc(func(ctx context.Context, address swarm.Address) (swarm.Chunk, error) {
+		txnRepo, commit, rollback := db.repo.NewTx(ctx)
+		ch, err := db.cacheObj.Getter(txnRepo).Get(ctx, address)
+		switch {
+		case err == nil:
+			return ch, commit()
+		case errors.Is(err, storage.ErrNotFound):
+			// here we would ideally have nothing to do but just to return this
+			// error to the client. The commit is mainly done to end the txn.
+			return nil, multierror.Append(err, commit()).ErrorOrNil()
+		}
+		// if we are here, it means there was some unexpected error, in which
+		// case we need to rollback any changes that were already made.
+		return nil, multierror.Append(err, rollback()).ErrorOrNil()
+	})
+}
+
+// Cache is the implementation of the CacheStore.Cache function.
+func (db *DB) Cache() storage.Putter {
+	return storage.PutterFunc(func(ctx context.Context, ch swarm.Chunk) error {
+		txnRepo, commit, rollback := db.repo.NewTx(ctx)
+		err := db.cacheObj.Putter(txnRepo).Put(ctx, ch)
+		if err != nil {
+			return multierror.Append(err, rollback()).ErrorOrNil()
+		}
+		return multierror.Append(err, commit()).ErrorOrNil()
+	})
 }
