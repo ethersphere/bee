@@ -41,6 +41,7 @@ type RedistributionState struct {
 type Status struct {
 	Phase           PhaseType
 	IsFrozen        bool
+	IsFullySynced   bool
 	Round           uint64
 	LastWonRound    uint64
 	LastPlayedRound uint64
@@ -103,6 +104,13 @@ func (r *RedistributionState) SetLastWonRound(round uint64) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 	r.status.LastWonRound = round
+	r.save()
+}
+
+func (r *RedistributionState) IsFullySynced(isSynced bool) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+	r.status.IsFullySynced = isSynced
 	r.save()
 }
 

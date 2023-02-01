@@ -703,6 +703,8 @@ components:
       properties:
         isFrozen:
           type: boolean
+        isFullySynced:
+          type: boolean
         round:
           type: integer
         lastWonRound:
