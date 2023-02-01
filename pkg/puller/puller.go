@@ -125,7 +125,7 @@ func (p *Puller) manage(ctx context.Context, warmupTime time.Duration) {
 
 		// reset all intervals below the new radius to resync:
 		// 1. previously evicted chunks
-		// 2. previously ignored chunks due to a higer radius
+		// 2. previously ignored chunks due to a higher radius
 		if newRadius < prevRadius {
 			err := p.resetIntervals(prevRadius)
 			if err != nil {
