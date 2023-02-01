@@ -337,6 +337,7 @@ func (a *Agent) play(ctx context.Context, round uint64) (uint8, []byte, error) {
 
 	// get depthmonitor fully synced indicator
 	ready := a.monitor.IsFullySynced()
+	a.state.IsFullySynced(ready)
 	if !ready {
 		return 0, nil, nil
 	}
