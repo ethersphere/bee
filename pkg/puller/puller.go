@@ -294,7 +294,7 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			return
 		}
 		if s > cur {
-			p.logger.Debug("histSyncWorker syncing finished", "bin", bin, "cursor", cur)
+			p.logger.Debug("histSyncWorker syncing finished", "bin", bin, "cursor", cur, "peer_address", peer)
 			return
 		}
 		top, err := p.syncer.SyncInterval(ctx, peer, bin, s, cur)
