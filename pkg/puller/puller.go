@@ -99,14 +99,14 @@ func (p *Puller) ActiveHistoricalSyncing() uint64 {
 func (p *Puller) manage(ctx context.Context, warmupTime time.Duration) {
 	defer p.wg.Done()
 
+	c, unsubscribe := p.topology.SubscribeTopologyChange()
+	defer unsubscribe()
+
 	select {
 	case <-time.After(warmupTime):
 	case <-ctx.Done():
 		return
 	}
-
-	c, unsubscribe := p.topology.SubscribeTopologyChange()
-	defer unsubscribe()
 
 	p.logger.Info("puller: warmup period complete, worker starting.")
 
