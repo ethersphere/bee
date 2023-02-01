@@ -41,11 +41,11 @@ func Test_Convert_BigInt(t *testing.T) {
 		{input: toResult(nil), wantError: true},
 
 		// wrong types
-		// {input: toResult([]byte{}), wantError: true},
-		// {input: toResult([30]byte{}), wantError: true},
-		// {input: toResult("digital-freedom"), wantError: true},
-		// {input: toResult(111), wantError: true},
-		// {input: toResult(true), wantError: true},
+		{input: toResult([]byte{}), wantError: true},
+		{input: toResult([30]byte{}), wantError: true},
+		{input: toResult("digital-freedom"), wantError: true},
+		{input: toResult(111), wantError: true},
+		{input: toResult(true), wantError: true},
 	}
 
 	for i, tc := range tests {
