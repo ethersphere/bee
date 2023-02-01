@@ -338,7 +338,7 @@ func (a *Accounting) PrepareCredit(ctx context.Context, peer swarm.Address, pric
 }
 
 func (c *creditAction) Apply() error {
-	loggerV1 := c.accounting.logger.V(1).Register()
+	loggerV2 := c.accounting.logger.V(2).Register()
 
 	c.accountingPeer.lock.Lock()
 	defer c.accountingPeer.lock.Unlock()
@@ -354,7 +354,7 @@ func (c *creditAction) Apply() error {
 	// Calculate next balance by decreasing current balance with the price we credit
 	nextBalance := new(big.Int).Sub(currentBalance, c.price)
 
-	loggerV1.Debug("credit action apply", "crediting_peer_address", c.peer, "price", c.price, "new_balance", nextBalance)
+	loggerV2.Debug("credit action apply", "crediting_peer_address", c.peer, "price", c.price, "new_balance", nextBalance)
 
 	err = c.accounting.store.Put(peerBalanceKey(c.peer), nextBalance)
 	if err != nil {
@@ -395,7 +395,7 @@ func (c *creditAction) Apply() error {
 	// Calculate next balance by decreasing current balance with the price we credit
 	nextOriginBalance := new(big.Int).Sub(originBalance, c.price)
 
-	loggerV1.Debug("credit action apply", "crediting_peer_address", c.peer, "price", c.price, "new_originated_balance", nextOriginBalance)
+	loggerV2.Debug("credit action apply", "crediting_peer_address", c.peer, "price", c.price, "new_originated_balance", nextOriginBalance)
 
 	zero := big.NewInt(0)
 	// only consider negative balance for limiting originated balance
@@ -406,7 +406,7 @@ func (c *creditAction) Apply() error {
 	// If originated balance is more into the negative domain, set it to balance
 	if nextOriginBalance.Cmp(nextBalance) < 0 {
 		nextOriginBalance.Set(nextBalance)
-		loggerV1.Debug("credit action apply; decreasing originated balance", "crediting_peer_address", c.peer, "current_balance", nextOriginBalance)
+		loggerV2.Debug("credit action apply; decreasing originated balance", "crediting_peer_address", c.peer, "current_balance", nextOriginBalance)
 	}
 
 	err = c.accounting.store.Put(originatedBalanceKey(c.peer), nextOriginBalance)
