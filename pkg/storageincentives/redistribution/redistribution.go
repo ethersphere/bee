@@ -6,6 +6,7 @@ package redistribution
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 
@@ -15,9 +16,15 @@ import (
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/transaction"
+	"github.com/ethersphere/bee/pkg/util/abiutil"
+	"github.com/ethersphere/go-sw3-abi/sw3abi"
 )
 
 const loggerName = "redistributionContract"
+
+var (
+	erc20ABI = abiutil.MustParseABI(sw3abi.ERC20ABIv0_3_1)
+)
 
 type Contract interface {
 	ReserveSalt(context.Context) ([]byte, error)
@@ -34,6 +41,8 @@ type contract struct {
 	txService                 transaction.Service
 	incentivesContractAddress common.Address
 	incentivesContractABI     abi.ABI
+	bzzContractAddress        common.Address
+	owner                     common.Address
 }
 
 func New(
@@ -42,6 +51,8 @@ func New(
 	txService transaction.Service,
 	incentivesContractAddress common.Address,
 	incentivesContractABI abi.ABI,
+	bzzContractAddress common.Address,
+	owner common.Address,
 ) Contract {
 	return &contract{
 		overlay:                   overlay,
@@ -49,6 +60,8 @@ func New(
 		txService:                 txService,
 		incentivesContractAddress: incentivesContractAddress,
 		incentivesContractABI:     incentivesContractABI,
+		bzzContractAddress:        bzzContractAddress,
+		owner:                     owner,
 	}
 }
 
@@ -206,4 +219,43 @@ func (c *contract) callTx(ctx context.Context, callData []byte) ([]byte, error) 
 		return nil, err
 	}
 	return result, nil
+}
+
+func (c *contract) getBalance(ctx context.Context) (*big.Int, error) {
+	callData, err := erc20ABI.Pack("balanceOf", c.owner)
+	if err != nil {
+		return nil, err
+	}
+
+	result, err := c.txService.Call(ctx, &transaction.TxRequest{
+		To:   &c.bzzContractAddress,
+		Data: callData,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	results, err := erc20ABI.Unpack("balanceOf", result)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(results) == 0 {
+		return nil, errors.New("unexpected empty results")
+	}
+
+	return abi.ConvertType(results[0], new(big.Int)).(*big.Int), nil
+}
+
+func (c *contract) CanPlay(ctx context.Context) (bool, error) {
+	_, err := c.getBalance(ctx)
+	if err != nil {
+		return false, fmt.Errorf("unable to retrieve balance of address: %w", err)
+	}
+
+	return true, nil
+}
+
+func (c *contract) CalculateTxCost(ctx context.Context) (*big.Int, error) {
+	return nil, nil
 }

@@ -461,3 +461,8 @@ func (a *Agent) wrapCommit(storageRadius uint8, sample []byte, key []byte) ([]by
 func (a *Agent) Status() (*Status, error) {
 	return a.state.Status()
 }
+
+// canPlay compares the wallet balance of user with tx costs to see if they have minimum balance
+func (a *Agent) canPlay() {
+	
+}
