@@ -42,7 +42,8 @@ func TestState(t *testing.T) {
 	t.Parallel()
 	input := Status{
 		Phase:           commit,
-		IsFrozen:        false,
+		IsFrozen:        true,
+		IsFullySynced:   true,
 		Round:           2,
 		LastWonRound:    2,
 		LastPlayedRound: 2,
@@ -51,17 +52,19 @@ func TestState(t *testing.T) {
 	}
 	want := Status{
 		Phase:           commit,
-		IsFrozen:        false,
+		IsFrozen:        true,
+		IsFullySynced:   true,
 		Round:           2,
 		LastWonRound:    2,
 		LastPlayedRound: 2,
-		LastFrozenRound: 0,
+		LastFrozenRound: 2,
 		Block:           2,
 		Fees:            big.NewInt(0),
 		Reward:          big.NewInt(0),
 	}
 	state := createRedistribution(t, nil, nil)
 	state.SetCurrentEvent(input.Phase, input.Round, input.Block)
+	state.IsFullySynced(input.IsFullySynced)
 	state.SetLastWonRound(input.LastWonRound)
 	state.SetFrozen(input.IsFrozen, input.LastFrozenRound)
 	state.SetLastPlayedRound(input.LastPlayedRound)
