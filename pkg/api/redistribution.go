@@ -13,6 +13,7 @@ import (
 
 type nodeStatusResponse struct {
 	IsFrozen        bool           `json:"isFrozen"`
+	IsFullySynced   bool           `json:"isFullySynced"`
 	Phase           string         `json:"phase"`
 	Round           uint64         `json:"round"`
 	LastWonRound    uint64         `json:"lastWonRound"`
@@ -36,6 +37,7 @@ func (s *Service) redistributionStatusHandler(w http.ResponseWriter, r *http.Req
 
 	jsonhttp.OK(w, nodeStatusResponse{
 		IsFrozen:        status.IsFrozen,
+		IsFullySynced:   status.IsFullySynced,
 		Phase:           status.Phase.String(),
 		LastWonRound:    status.LastWonRound,
 		LastPlayedRound: status.LastPlayedRound,

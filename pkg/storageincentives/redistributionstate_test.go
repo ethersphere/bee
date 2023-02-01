@@ -43,6 +43,7 @@ func TestState(t *testing.T) {
 	input := Status{
 		Phase:           commit,
 		IsFrozen:        false,
+		IsFullySynced:   false,
 		Round:           2,
 		LastWonRound:    2,
 		LastPlayedRound: 2,
@@ -52,6 +53,7 @@ func TestState(t *testing.T) {
 	want := Status{
 		Phase:           commit,
 		IsFrozen:        false,
+		IsFullySynced:   false,
 		Round:           2,
 		LastWonRound:    2,
 		LastPlayedRound: 2,
@@ -62,6 +64,7 @@ func TestState(t *testing.T) {
 	}
 	state := createRedistribution(t, nil, nil)
 	state.SetCurrentEvent(input.Phase, input.Round, input.Block)
+	state.IsFullySynced(input.IsFullySynced)
 	state.SetLastWonRound(input.LastWonRound)
 	state.SetFrozen(input.IsFrozen, input.LastFrozenRound)
 	state.SetLastPlayedRound(input.LastPlayedRound)
