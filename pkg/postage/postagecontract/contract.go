@@ -132,7 +132,11 @@ func (c *postageContract) expiredBatchesExists(ctx context.Context) (bool, error
 		return false, err
 	}
 
-	return abiutil.ConvertBool(results)
+	if len(results) == 0 {
+		return false, errors.New("unexpected empty results")
+	}
+
+	return results[0].(bool), nil
 }
 
 func (c *postageContract) expireLimitedBatches(ctx context.Context, count *big.Int) error {
@@ -270,7 +274,11 @@ func (c *postageContract) getBalance(ctx context.Context) (*big.Int, error) {
 		return nil, err
 	}
 
-	return abiutil.ConvertBigInt(results)
+	if len(results) == 0 {
+		return nil, errors.New("unexpected empty results")
+	}
+
+	return abi.ConvertType(results[0], new(big.Int)).(*big.Int), nil
 }
 
 func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.Int, depth uint8, immutable bool, label string) (txHash common.Hash, batchID []byte, err error) {
@@ -337,7 +345,7 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 			return txHash, batchID, nil
 		}
 	}
-	return txHash, nil, ErrBatchCreate
+	return common.Hash{}, nil, ErrBatchCreate
 }
 
 func (c *postageContract) TopUpBatch(ctx context.Context, batchID []byte, topupBalance *big.Int) (txHash common.Hash, err error) {
@@ -403,7 +411,7 @@ func (c *postageContract) DiluteBatch(ctx context.Context, batchID []byte, newDe
 			return txHash, nil
 		}
 	}
-	return txHash, ErrBatchDilute
+	return common.Hash{}, ErrBatchDilute
 }
 
 type batchCreatedEvent struct {

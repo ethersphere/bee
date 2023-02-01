@@ -6,6 +6,7 @@ package redistribution
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
 
@@ -15,7 +16,6 @@ import (
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/transaction"
-	"github.com/ethersphere/bee/pkg/util/abiutil"
 )
 
 const loggerName = "redistributionContract"
@@ -70,7 +70,11 @@ func (c *contract) IsPlaying(ctx context.Context, depth uint8) (bool, error) {
 		return false, fmt.Errorf("IsPlaying: results %v: %w", results, err)
 	}
 
-	return abiutil.ConvertBool(results)
+	if len(results) == 0 {
+		return false, errors.New("unexpected empty results")
+	}
+
+	return results[0].(bool), nil
 }
 
 // IsWinner checks if the overlay is winner by sending a transaction to blockchain.
@@ -90,7 +94,11 @@ func (c *contract) IsWinner(ctx context.Context) (isWinner bool, err error) {
 		return false, fmt.Errorf("IsWinner: results %v : %w", results, err)
 	}
 
-	return abiutil.ConvertBool(results)
+	if len(results) == 0 {
+		return false, errors.New("unexpected empty results")
+	}
+
+	return results[0].(bool), nil
 }
 
 // Claim sends a transaction to blockchain if a win is claimed.
@@ -179,7 +187,12 @@ func (c *contract) ReserveSalt(ctx context.Context) ([]byte, error) {
 		return nil, err
 	}
 
-	return abiutil.ConvertBytes32(results)
+	if len(results) == 0 {
+		return nil, errors.New("unexpected empty results")
+	}
+
+	salt := results[0].([32]byte)
+	return salt[:], nil
 }
 
 func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest, boostPercent int) (common.Hash, error) {
