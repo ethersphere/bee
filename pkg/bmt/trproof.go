@@ -9,15 +9,14 @@ type TrProver struct {
 	*TrHasher
 }
 
-// Proof represents a Merkle proof of segment
-type TrProof struct {
-	Section []byte
-	Sisters [][]byte
-	Span    []byte
+func NewTrProover(key []byte) *TrProver {
+	return &TrProver{
+		TrHasher: NewTrHasher(key),
+	}
 }
 
 // Proof returns the inclusion proof of the i-th data segment
-func (p TrProver) Proof(i int, key []byte) Proof {
+func (p TrProver) Proof(i int) Proof {
 	if i < 0 || i > 127 {
 		panic("segment index can only lie between 0-127")
 	}

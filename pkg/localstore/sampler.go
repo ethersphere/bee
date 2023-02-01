@@ -40,11 +40,6 @@ type sampleStat struct {
 	ValidStampDuration atomic.Int64
 }
 
-type sampleEntry struct {
-	transformedAddress swarm.Address
-	chunkItem          shed.Item
-}
-
 func (s sampleStat) String() string {
 
 	seconds := int64(time.Second)
@@ -120,7 +115,7 @@ func (db *DB) ReserveSample(
 	})
 
 	// Phase 2: Get the chunk data and calculate transformed hash
-	sampleItemChan := make(chan sampleEntry)
+	sampleItemChan := make(chan storage.SampleEntry)
 	const workers = 6
 	for i := 0; i < workers; i++ {
 		g.Go(func() error {
@@ -152,7 +147,7 @@ func (db *DB) ReserveSample(
 				stat.HmacrDuration.Add(time.Since(hmacrStart).Nanoseconds())
 
 				select {
-				case sampleItemChan <- sampleEntry{transformedAddress: swarm.NewAddress(taddr), chunkItem: chItem}:
+				case sampleItemChan <- storage.SampleEntry{TransformedAddress: swarm.NewAddress(taddr), ChunkItem: chItem}:
 					// continue
 				case <-ctx.Done():
 					return ctx.Err()
@@ -172,13 +167,13 @@ func (db *DB) ReserveSample(
 		close(sampleItemChan)
 	}()
 
-	sampleItems := make([]swarm.Address, 0, sampleSize)
+	sampleItems := make([]storage.SampleEntry, 0, sampleSize)
 	// insert function will insert the new item in its correct place. If the sample
 	// size goes beyond what we need we omit the last item.
-	insert := func(item swarm.Address) {
+	insert := func(item storage.SampleEntry) {
 		added := false
 		for i, sItem := range sampleItems {
-			if le(item.Bytes(), sItem.Bytes()) {
+			if le(item.TransformedAddress.Bytes(), sItem.TransformedAddress.Bytes()) {
 				sampleItems = append(sampleItems[:i+1], sampleItems[i:]...)
 				sampleItems[i] = item
 				added = true
@@ -198,21 +193,21 @@ func (db *DB) ReserveSample(
 	for item := range sampleItemChan {
 		var currentMaxAddr swarm.Address
 		if len(sampleItems) > 0 {
-			currentMaxAddr = sampleItems[len(sampleItems)-1]
+			currentMaxAddr = sampleItems[len(sampleItems)-1].TransformedAddress
 		} else {
 			currentMaxAddr = swarm.NewAddress(make([]byte, 32))
 		}
-		if le(item.transformedAddress.Bytes(), currentMaxAddr.Bytes()) || len(sampleItems) < sampleSize {
+		if le(item.TransformedAddress.Bytes(), currentMaxAddr.Bytes()) || len(sampleItems) < sampleSize {
 
 			validStart := time.Now()
 
-			chunk := swarm.NewChunk(swarm.NewAddress(item.chunkItem.Address), item.chunkItem.Data)
+			chunk := swarm.NewChunk(swarm.NewAddress(item.ChunkItem.Address), item.ChunkItem.Data)
 
 			stamp := postage.NewStamp(
-				item.chunkItem.BatchID,
-				item.chunkItem.Index,
-				item.chunkItem.Timestamp,
-				item.chunkItem.Sig,
+				item.ChunkItem.BatchID,
+				item.ChunkItem.Index,
+				item.ChunkItem.Timestamp,
+				item.ChunkItem.Sig,
 			)
 
 			stampData, err := stamp.MarshalBinary()
@@ -225,7 +220,7 @@ func (db *DB) ReserveSample(
 				if !validChunkFn(chunk) {
 					logger.Debug("data invalid for chunk address", "chunk_address", chunk.Address())
 				} else {
-					insert(item.transformedAddress)
+					insert(item)
 				}
 			} else {
 				logger.Debug("invalid stamp for chunk", "chunk_address", chunk.Address(), "error", err)
@@ -243,11 +238,20 @@ func (db *DB) ReserveSample(
 		return storage.Sample{}, fmt.Errorf("sampler: failed creating sample: %w", err)
 	}
 
+	sampleContent := make([]byte, 0)
+
 	hasher := bmtpool.Get()
 	defer bmtpool.Put(hasher)
 
 	for _, s := range sampleItems {
-		_, err := hasher.Write(s.Bytes())
+		sampleContent = append(sampleContent, s.ChunkItem.Address...)
+		sampleContent = append(sampleContent, s.TransformedAddress.Bytes()...)
+		_, err := hasher.Write(s.ChunkItem.Address)
+		if err != nil {
+			db.metrics.SamplerFailedRuns.Inc()
+			return storage.Sample{}, fmt.Errorf("sampler: failed creating root hash of sample: %w", err)
+		}
+		_, err = hasher.Write(s.TransformedAddress.Bytes())
 		if err != nil {
 			db.metrics.SamplerFailedRuns.Inc()
 			return storage.Sample{}, fmt.Errorf("sampler: failed creating root hash of sample: %w", err)
@@ -256,8 +260,9 @@ func (db *DB) ReserveSample(
 	hash := hasher.Sum(nil)
 
 	sample := storage.Sample{
-		Items: sampleItems,
-		Hash:  swarm.NewAddress(hash),
+		Items:         sampleItems,
+		SampleContent: sampleContent,
+		Hash:          swarm.NewAddress(hash),
 	}
 	fmt.Println(sample)
 

@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/syndtr/goleveldb/leveldb"
 )
@@ -173,9 +174,15 @@ type PullSubscriber interface {
 	SubscribePull(ctx context.Context, bin uint8, since, until uint64) (c <-chan Descriptor, closed <-chan struct{}, stop func())
 }
 
+type SampleEntry struct {
+	TransformedAddress swarm.Address
+	ChunkItem          shed.Item
+}
+
 type Sample struct {
-	Items []swarm.Address
-	Hash  swarm.Address
+	Items         []SampleEntry
+	SampleContent []byte
+	Hash          swarm.Address
 }
 
 func (s *Sample) String() string {
