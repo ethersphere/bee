@@ -168,11 +168,7 @@ func (c *contract) getStake(ctx context.Context, overlay swarm.Address) (*big.In
 		return nil, err
 	}
 
-	if len(results) == 0 {
-		return nil, errors.New("unexpected empty results")
-	}
-
-	return abi.ConvertType(results[0], new(big.Int)).(*big.Int), nil
+	return abiutil.ConvertBigInt(results)
 }
 
 func (c *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
@@ -236,11 +232,7 @@ func (c *contract) getBalance(ctx context.Context) (*big.Int, error) {
 		return nil, err
 	}
 
-	if len(results) == 0 {
-		return nil, errors.New("unexpected empty results")
-	}
-
-	return abi.ConvertType(results[0], new(big.Int)).(*big.Int), nil
+	return abiutil.ConvertBigInt(results)
 }
 
 func (c *contract) WithdrawAllStake(ctx context.Context) (txHash common.Hash, err error) {
@@ -312,11 +304,7 @@ func (c *contract) paused(ctx context.Context) (bool, error) {
 		return false, err
 	}
 
-	if len(results) == 0 {
-		return false, errors.New("unexpected empty results")
-	}
-
-	return results[0].(bool), nil
+	return abiutil.ConvertBool(results)
 }
 
 func (c *contract) IsOverlayFrozen(ctx context.Context) (bool, error) {
