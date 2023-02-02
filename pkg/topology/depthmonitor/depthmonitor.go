@@ -106,7 +106,6 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration, freshNode boo
 			if radius == 0 {
 				radius = reserveRadius
 			}
-			s.logger.Info("depthmonitor: warmup period complete, starting worker", "initial depth", radius)
 			return radius
 		})
 		if err != nil {
@@ -121,31 +120,27 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration, freshNode boo
 	case <-time.After(warmupTime):
 	}
 
+	s.logger.Info("depthmonitor: warmup period complete, starting worker", "radius", s.bs.StorageRadius())
+
 	targetSize := s.reserve.ReserveCapacity() * 4 / 10 // 40% of the capacity
 
-	for {
-		select {
-		case <-s.quit:
-			return
-		case <-time.After(wakeupInterval):
-		}
-
+	next := func() {
 		radius := s.bs.StorageRadius()
 
 		currentSize, err := s.reserve.ComputeReserveSize(radius)
 		if err != nil {
 			s.logger.Error(err, "depthmonitor: failed reading reserve size")
-			continue
+			return
 		}
 
 		// save last calculated reserve size
 		s.lastRSize.Store(currentSize)
 
 		syncCount := s.syncer.ActiveHistoricalSyncing()
-		s.logger.Info("depthmonitor: state", "current size", currentSize, "radius", radius, "sync_count", syncCount)
+		s.logger.Info("depthmonitor: state", "size", currentSize, "radius", radius, "sync_count", syncCount)
 
 		if currentSize > targetSize {
-			continue
+			return
 		}
 
 		// if historical syncing rate is at zero, we proactively decrease the storage radius to allow nodes to widen their neighbourhoods
@@ -160,6 +155,16 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration, freshNode boo
 			if err != nil {
 				s.logger.Error(err, "depthmonitor: batchstore set storage radius")
 			}
+		}
+	}
+	next()
+
+	for {
+		select {
+		case <-s.quit:
+			return
+		case <-time.After(wakeupInterval):
+			next()
 		}
 	}
 }
