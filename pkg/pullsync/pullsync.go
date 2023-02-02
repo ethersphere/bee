@@ -51,7 +51,7 @@ const (
 )
 
 // how many maximum chunks in a batch
-var maxPage = 50
+var maxPage = 250
 
 // Interface is the PullSync interface.
 type Interface interface {
