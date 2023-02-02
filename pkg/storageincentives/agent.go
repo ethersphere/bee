@@ -272,8 +272,8 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		}
 
 		prevPhase = currentPhase
+		a.state.IsFullySynced(a.monitor.IsFullySynced())
 		mtx.Unlock()
-
 	}
 }
 
@@ -337,7 +337,6 @@ func (a *Agent) play(ctx context.Context, round uint64) (uint8, []byte, error) {
 
 	// get depthmonitor fully synced indicator
 	ready := a.monitor.IsFullySynced()
-	a.state.IsFullySynced(ready)
 	if !ready {
 		return 0, nil, nil
 	}
