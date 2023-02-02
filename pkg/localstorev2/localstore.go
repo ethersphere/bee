@@ -78,11 +78,11 @@ type PinStore interface {
 // CacheStore is a logical component of the localstore that deals with cache
 // content.
 type CacheStore interface {
-	// Lookup function provides a storage.Getter wrapped around the underlying
+	// Lookup method provides a storage.Getter wrapped around the underlying
 	// ChunkStore which will update cache related indexes if required on successful
 	// lookups.
 	Lookup() storage.Getter
-	// Cache function provides a storage.Putter which will add the chunks to cache.
+	// Cache method provides a storage.Putter which will add the chunks to cache.
 	// This will add the chunk to underlying store as well as new indexes which
 	// will keep track of the chunk in the cache.
 	Cache() storage.Putter
@@ -290,7 +290,7 @@ func (p *putterSessionImpl) Done(addr swarm.Address) error { return p.done(addr)
 
 func (p *putterSessionImpl) Cleanup() error { return p.cleanup() }
 
-// Upload is the implementation of UploadStore.Upload function.
+// Upload is the implementation of UploadStore.Upload method.
 func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession, error) {
 	if tagID == 0 {
 		return nil, fmt.Errorf("localstore: tagID required")
@@ -338,7 +338,7 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 	}, nil
 }
 
-// NewSession is the implementation of UploadStore.NewSession function.
+// NewSession is the implementation of UploadStore.NewSession method.
 func (db *DB) NewSession() (uint64, error) {
 	db.lock.Lock(lockKeyNewSession)
 	defer db.lock.Unlock(lockKeyNewSession)
@@ -346,12 +346,12 @@ func (db *DB) NewSession() (uint64, error) {
 	return upload.NextTag(db.repo.IndexStore())
 }
 
-// GetSessionInfo is the implementation of the UploadStore.GetSessionInfo function.
+// GetSessionInfo is the implementation of the UploadStore.GetSessionInfo method.
 func (db *DB) GetSessionInfo(tagID uint64) (SessionInfo, error) {
 	return upload.GetTagInfo(db.repo.IndexStore(), tagID)
 }
 
-// NewCollection is the implementation of the PinStore.NewCollection function.
+// NewCollection is the implementation of the PinStore.NewCollection method.
 func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
 	txnRepo, commit, rollback := db.repo.NewTx(ctx)
 	pinningPutter := pinstore.NewCollection(txnRepo)
@@ -368,7 +368,7 @@ func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
 	}, nil
 }
 
-// DeletePin is the implementation of the PinStore.DeletePin function.
+// DeletePin is the implementation of the PinStore.DeletePin method.
 func (db *DB) DeletePin(ctx context.Context, root swarm.Address) error {
 	txnRepo, commit, rollback := db.repo.NewTx(ctx)
 
@@ -380,17 +380,17 @@ func (db *DB) DeletePin(ctx context.Context, root swarm.Address) error {
 	return commit()
 }
 
-// Pins is the implementation of the PinStore.Pins function.
+// Pins is the implementation of the PinStore.Pins method.
 func (db *DB) Pins() ([]swarm.Address, error) {
 	return pinstore.Pins(db.repo.IndexStore())
 }
 
-// HasPin is the implementation of the PinStore.HasPin function.
+// HasPin is the implementation of the PinStore.HasPin method.
 func (db *DB) HasPin(root swarm.Address) (bool, error) {
 	return pinstore.HasPin(db.repo.IndexStore(), root)
 }
 
-// Lookup is the implementation of the CacheStore.Lookup function.
+// Lookup is the implementation of the CacheStore.Lookup method.
 func (db *DB) Lookup() storage.Getter {
 	return storage.GetterFunc(func(ctx context.Context, address swarm.Address) (swarm.Chunk, error) {
 		txnRepo, commit, rollback := db.repo.NewTx(ctx)
@@ -409,7 +409,7 @@ func (db *DB) Lookup() storage.Getter {
 	})
 }
 
-// Cache is the implementation of the CacheStore.Cache function.
+// Cache is the implementation of the CacheStore.Cache method.
 func (db *DB) Cache() storage.Putter {
 	return storage.PutterFunc(func(ctx context.Context, ch swarm.Chunk) error {
 		txnRepo, commit, rollback := db.repo.NewTx(ctx)
