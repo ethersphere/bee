@@ -78,7 +78,7 @@ func TestDepthMonitorService(t *testing.T) {
 		}
 	})
 
-	t.Run("old nodes starts at previous node", func(t *testing.T) {
+	t.Run("old nodes starts at previous radius", func(t *testing.T) {
 		t.Parallel()
 
 		bs := mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{Radius: 3, StorageRadius: 0}))
