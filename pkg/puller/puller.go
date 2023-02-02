@@ -99,14 +99,14 @@ func (p *Puller) ActiveHistoricalSyncing() uint64 {
 func (p *Puller) manage(ctx context.Context, warmupTime time.Duration) {
 	defer p.wg.Done()
 
+	c, unsubscribe := p.topology.SubscribeTopologyChange()
+	defer unsubscribe()
+
 	select {
 	case <-time.After(warmupTime):
 	case <-ctx.Done():
 		return
 	}
-
-	c, unsubscribe := p.topology.SubscribeTopologyChange()
-	defer unsubscribe()
 
 	p.logger.Info("puller: warmup period complete, worker starting.")
 
@@ -121,16 +121,18 @@ func (p *Puller) manage(ctx context.Context, warmupTime time.Duration) {
 			peersDisconnected[peer.address.ByteString()] = peer
 		}
 
-		storageRadius := p.radius.StorageRadius()
+		newRadius := p.radius.StorageRadius()
 
-		// if the radius decreases, we must fully resync the bin
-		if storageRadius < prevRadius {
-			err := p.resetInterval(storageRadius)
+		// reset all intervals below the new radius to resync:
+		// 1. previously evicted chunks
+		// 2. previously ignored chunks due to a higher radius
+		if newRadius < prevRadius {
+			err := p.resetIntervals(prevRadius)
 			if err != nil {
 				p.logger.Error(err, "reset lower sync radius")
 			}
 		}
-		prevRadius = storageRadius
+		prevRadius = newRadius
 
 		_ = p.topology.EachPeerRev(func(addr swarm.Address, po uint8) (stop, jumpToNext bool, err error) {
 			if _, ok := p.syncPeers[addr.ByteString()]; !ok {
@@ -144,7 +146,7 @@ func (p *Puller) manage(ctx context.Context, warmupTime time.Duration) {
 			p.disconnectPeer(peer.address)
 		}
 
-		p.recalcPeers(ctx, storageRadius)
+		p.recalcPeers(ctx, newRadius)
 
 		p.syncPeersMtx.Unlock()
 	}
@@ -292,7 +294,7 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			return
 		}
 		if s > cur {
-			p.logger.Debug("histSyncWorker syncing finished", "bin", bin, "cursor", cur)
+			p.logger.Debug("histSyncWorker syncing finished", "bin", bin, "cursor", cur, "peer_address", peer)
 			return
 		}
 		top, err := p.syncer.SyncInterval(ctx, peer, bin, s, cur)
@@ -394,10 +396,17 @@ func (p *Puller) addPeerInterval(peer swarm.Address, bin uint8, start, end uint6
 	return p.statestore.Put(peerStreamKey, i)
 }
 
-func (p *Puller) resetInterval(bin uint8) error {
-	return p.statestore.Iterate(binIntervalKey(bin), func(key, _ []byte) (stop bool, err error) {
-		return false, p.statestore.Delete(string(key))
-	})
+func (p *Puller) resetIntervals(upto uint8) error {
+	for bin := uint8(0); bin < upto; bin++ {
+		err := p.statestore.Iterate(binIntervalKey(bin), func(key, _ []byte) (stop bool, err error) {
+			return false, p.statestore.Delete(string(key))
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (p *Puller) nextPeerInterval(peer swarm.Address, bin uint8) (start, end uint64, empty bool, err error) {
