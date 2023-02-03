@@ -143,9 +143,9 @@ type Cache struct {
 // New creates a new Cache component with the specified capacity. The store is used
 // here only to read the initial state of the cache before shutdown if there was
 // any.
-func New(ctx context.Context, storg internal.Storage, capacity uint64) (*Cache, error) {
+func New(ctx context.Context, store internal.Storage, capacity uint64) (*Cache, error) {
 	state := &cacheState{}
-	err := storg.IndexStore().Get(state)
+	err := store.IndexStore().Get(state)
 	if err != nil && !errors.Is(err, storage.ErrNotFound) {
 		return nil, fmt.Errorf("failed reading cache state: %w", err)
 	}
@@ -155,15 +155,15 @@ func New(ctx context.Context, storg internal.Storage, capacity uint64) (*Cache, 
 		var i uint64
 		itemsToRemove := state.Count - capacity
 		for i = 0; i < itemsToRemove; i++ {
-			err = storg.IndexStore().Get(entry)
+			err = store.IndexStore().Get(entry)
 			if err != nil {
 				return nil, fmt.Errorf("failed reading cache entry %s: %w", state.Head, err)
 			}
-			err = storg.ChunkStore().Delete(ctx, entry.Address)
+			err = store.ChunkStore().Delete(ctx, entry.Address)
 			if err != nil {
 				return nil, fmt.Errorf("failed deleting chunk %s: %w", entry.Address, err)
 			}
-			err = storg.IndexStore().Delete(entry)
+			err = store.IndexStore().Delete(entry)
 			if err != nil {
 				return nil, fmt.Errorf("failed deleting cache entry item %s: %w", entry, err)
 			}
@@ -171,7 +171,7 @@ func New(ctx context.Context, storg internal.Storage, capacity uint64) (*Cache, 
 			state.Head = entry.Next.Clone()
 			state.Count--
 		}
-		err = storg.IndexStore().Put(state)
+		err = store.IndexStore().Put(state)
 		if err != nil {
 			return nil, fmt.Errorf("failed updating state: %w", err)
 		}
@@ -264,12 +264,12 @@ func (c *Cache) pushBack(
 
 // Putter returns a Storage.Putter instance which adds the chunk to the underlying
 // chunkstore and also adds a Cache entry for the chunk.
-func (c *Cache) Putter(store storage.Store, chStore storage.ChunkStore) storage.Putter {
+func (c *Cache) Putter(store internal.Storage) storage.Putter {
 	return storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
 		newEntry := &cacheEntry{Address: chunk.Address()}
-		found, err := store.Has(newEntry)
+		found, err := store.IndexStore().Has(newEntry)
 		if err != nil {
-			return err
+			return fmt.Errorf("failed checking has cache entry: %w", err)
 		}
 
 		// if chunk is already part of cache, return found.
@@ -290,17 +290,17 @@ func (c *Cache) Putter(store storage.Store, chStore storage.ChunkStore) storage.
 			if c.state.Count != 0 {
 				// if we are here, this is a new chunk which should be added. Add it to
 				// the end.
-				err = c.pushBack(ctx, newEntry, chunk, store, chStore)
+				err = c.pushBack(ctx, newEntry, chunk, store.IndexStore(), store.ChunkStore())
 				if err != nil {
 					return err
 				}
 			} else {
 				// first entry
-				err = chStore.Put(ctx, chunk)
+				err = store.ChunkStore().Put(ctx, chunk)
 				if err != nil {
 					return fmt.Errorf("failed adding chunk %s to chunkstore: %w", chunk.Address(), err)
 				}
-				err = store.Put(newEntry)
+				err = store.IndexStore().Put(newEntry)
 				if err != nil {
 					return fmt.Errorf("failed adding new cacheEntry %s: %w", newEntry, err)
 				}
@@ -310,14 +310,14 @@ func (c *Cache) Putter(store storage.Store, chStore storage.ChunkStore) storage.
 
 			if c.state.Count == c.capacity {
 				// if we reach the full capacity, remove the first element.
-				err = c.popFront(ctx, store, chStore)
+				err = c.popFront(ctx, store.IndexStore(), store.ChunkStore())
 				if err != nil {
 					return err
 				}
 			} else {
 				c.state.Count++
 			}
-			err = store.Put(c.state)
+			err = store.IndexStore().Put(c.state)
 			if err != nil {
 				return fmt.Errorf("failed updating state %s: %w", c.state, err)
 			}
@@ -336,9 +336,9 @@ func (c *Cache) Putter(store storage.Store, chStore storage.ChunkStore) storage.
 // part of cache it will update the cache queue. If the operation to update the
 // cache indexes fail, we need to fail the operation as this should signal the user
 // of this getter to rollback the operation.
-func (c *Cache) Getter(store storage.Store, chStore storage.ChunkStore) storage.Getter {
+func (c *Cache) Getter(store internal.Storage) storage.Getter {
 	return storage.GetterFunc(func(ctx context.Context, address swarm.Address) (swarm.Chunk, error) {
-		ch, err := chStore.Get(ctx, address)
+		ch, err := store.ChunkStore().Get(ctx, address)
 		if err != nil {
 			return nil, err
 		}
@@ -346,12 +346,12 @@ func (c *Cache) Getter(store storage.Store, chStore storage.ChunkStore) storage.
 		// check if there is an entry in Cache. As this is the download path, we do
 		// a best-effort operation. So in case of any error we return the chunk.
 		entry := &cacheEntry{Address: address}
-		err = store.Get(entry)
+		err = store.IndexStore().Get(entry)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
 				return ch, nil
 			}
-			return nil, err
+			return nil, fmt.Errorf("unexpected error getting indexstore entry: %w", err)
 		}
 
 		c.mtx.Lock()
@@ -371,7 +371,7 @@ func (c *Cache) Getter(store storage.Store, chStore storage.ChunkStore) storage.
 
 			// move the chunk to the end due to the access. Dont send duplicate
 			// chunk put operation.
-			err := c.pushBack(ctx, entry, nil, store, chStore)
+			err := c.pushBack(ctx, entry, nil, store.IndexStore(), store.ChunkStore())
 			if err != nil {
 				return err
 			}
@@ -379,22 +379,22 @@ func (c *Cache) Getter(store storage.Store, chStore storage.ChunkStore) storage.
 			// if this is first chunk we dont need to update both the prev or the
 			// next.
 			if !c.state.Head.Equal(address) {
-				err = store.Get(prev)
+				err = store.IndexStore().Get(prev)
 				if err != nil {
 					return fmt.Errorf("failed getting previous entry %s: %w", prev, err)
 				}
-				err = store.Get(next)
+				err = store.IndexStore().Get(next)
 				if err != nil {
 					return fmt.Errorf("failed getting next entry %s: %w", next, err)
 				}
 				prev.Next = next.Address.Clone()
-				err = store.Put(prev)
+				err = store.IndexStore().Put(prev)
 				if err != nil {
 					return fmt.Errorf("failed updating prev entry %s: %w", prev, err)
 				}
 
 				next.Prev = prev.Address.Clone()
-				err = store.Put(next)
+				err = store.IndexStore().Put(next)
 				if err != nil {
 					return fmt.Errorf("failed updating next entry %s: %w", next, err)
 				}
@@ -404,7 +404,7 @@ func (c *Cache) Getter(store storage.Store, chStore storage.ChunkStore) storage.
 				c.state.Head = next.Address.Clone()
 			}
 
-			err = store.Put(c.state)
+			err = store.IndexStore().Put(c.state)
 			if err != nil {
 				return fmt.Errorf("failed updating state %s: %w", c.state, err)
 			}
