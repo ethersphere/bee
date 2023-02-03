@@ -4,12 +4,85 @@
 
 package localstore
 
-import storage "github.com/ethersphere/bee/pkg/storagev2"
+import (
+	"context"
 
-func (db *DB) Repo() *storage.Repository {
+	storage "github.com/ethersphere/bee/pkg/storagev2"
+)
+
+func (db *DB) Repo() storage.Repository {
 	return db.repo
 }
 
 func ReplaceSharkyShardLimit(val int) {
 	sharkyNoOfShards = val
+}
+
+type wrappedRepo struct {
+	storage.Repository
+	deleteHook func(storage.Item) error
+	putHook    func(storage.Item) error
+}
+
+func (w *wrappedRepo) IndexStore() storage.Store {
+	return &wrappedStore{
+		Store:      w.Repository.IndexStore(),
+		deleteHook: w.deleteHook,
+		putHook:    w.putHook,
+	}
+}
+
+type wrappedStore struct {
+	storage.Store
+	deleteHook func(storage.Item) error
+	putHook    func(storage.Item) error
+}
+
+func (w *wrappedStore) Put(item storage.Item) error {
+	if w.putHook != nil {
+		err := w.putHook(item)
+		if err != nil {
+			return err
+		}
+	}
+	return w.Store.Put(item)
+}
+
+func (w *wrappedStore) Delete(item storage.Item) error {
+	if w.deleteHook != nil {
+		err := w.deleteHook(item)
+		if err != nil {
+			return err
+		}
+	}
+	return w.Store.Delete(item)
+}
+
+func (w *wrappedRepo) NewTx(ctx context.Context) (storage.Repository, func() error, func() error) {
+	repo, commit, rollback := w.Repository.NewTx(ctx)
+	return &wrappedRepo{
+		Repository: repo,
+		deleteHook: w.deleteHook,
+		putHook:    w.putHook,
+	}, commit, rollback
+}
+
+func (db *DB) SetRepoStoreDeleteHook(fn func(storage.Item) error) {
+	if alreadyWrapped, ok := db.repo.(*wrappedRepo); ok {
+		db.repo = &wrappedRepo{Repository: alreadyWrapped.Repository, deleteHook: fn}
+		return
+	}
+	db.repo = &wrappedRepo{Repository: db.repo, deleteHook: fn}
+}
+
+func (db *DB) SetRepoStorePutHook(fn func(storage.Item) error) {
+	if alreadyWrapped, ok := db.repo.(*wrappedRepo); ok {
+		db.repo = &wrappedRepo{Repository: alreadyWrapped.Repository, putHook: fn}
+		return
+	}
+	db.repo = &wrappedRepo{Repository: db.repo, putHook: fn}
+}
+
+func DefaultOptions() *Options {
+	return defaultOptions()
 }
