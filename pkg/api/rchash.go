@@ -5,6 +5,7 @@
 package api
 
 import (
+	"encoding/hex"
 	"math/big"
 	"net/http"
 	"time"
@@ -27,7 +28,22 @@ type rchash struct {
 	ProofLastp1 bmt.Proof
 	ProofLastp2 bmt.Proof
 	ProofLastp3 bmt.Proof
+	Stamp1      Stamp
+	Stamp2      Stamp
+	StampLast   Stamp
 	Time        string
+}
+
+type Stamp struct {
+	batchID   []byte // postage batch ID
+	index     []byte // index of the batch
+	timestamp []byte // to signal order when assigning the indexes to multiple chunks
+	sig       []byte // common r[32]s[32]v[1]-style 65 byte ECDSA signature of batchID|index|address by owner or grantee
+}
+
+// NewStamp constructs a new stamp from a given batch ID, index and signatures.
+func NewStamp(batchID, index, timestamp, sig []byte) Stamp {
+	return Stamp{batchID, index, timestamp, sig}
 }
 
 // TODO: Remove this API before next release. This API is kept mainly for testing
@@ -38,30 +54,65 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("get_rchash").Build()
 
 	paths := struct {
-		Depth  uint8  `map:"depth" validate:"required"`
-		Anchor string `map:"anchor" validate:"required"`
+		Depth   uint8  `map:"depth" validate:"required"`
+		Anchor  string `map:"anchor" validate:"required"`
+		Anchor2 string `map:"anchor2" validate:"required"`
 	}{}
 	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
 		response("invalid path params", logger, w)
 		return
 	}
 
+	anch, err := hex.DecodeString(paths.Anchor)
+	if err != nil {
+		logger.Error(err, "invalid hex params")
+		jsonhttp.InternalServerError(w, "invalid hex params")
+		return
+	}
+	anch2, err := hex.DecodeString(paths.Anchor2)
+	if err != nil {
+		logger.Error(err, "invalid hex params")
+		jsonhttp.InternalServerError(w, "invalid hex params")
+		return
+	}
+
 	start := time.Now()
-	sample, err := s.storer.ReserveSample(r.Context(), []byte(paths.Anchor), paths.Depth, uint64(start.UnixNano()))
+	sample, err := s.storer.ReserveSample(r.Context(), anch, paths.Depth, uint64(start.UnixNano()))
 	if err != nil {
 		logger.Error(err, "reserve commitment hasher: failed generating sample")
 		jsonhttp.InternalServerError(w, "failed generating sample")
 		return
 	}
 
-	require1 := new(big.Int).Mod(new(big.Int).SetBytes([]byte(paths.Anchor)), big.NewInt(15)).Uint64()
-	require2 := new(big.Int).Mod(new(big.Int).SetBytes([]byte(paths.Anchor)), big.NewInt(14)).Uint64()
+	require1 := new(big.Int).Mod(new(big.Int).SetBytes(anch2), big.NewInt(15)).Uint64()
+	require2 := new(big.Int).Mod(new(big.Int).SetBytes(anch2), big.NewInt(14)).Uint64()
 
-	segment1 := int(new(big.Int).Mod(new(big.Int).SetBytes([]byte(paths.Anchor)), big.NewInt(int64(len(sample.Items[require1].ChunkItem.Data)/32))).Uint64())
+	segment1 := int(new(big.Int).Mod(new(big.Int).SetBytes(anch2), big.NewInt(int64(len(sample.Items[require1].ChunkItem.Data)/32))).Uint64())
 
-	segment2 := int(new(big.Int).Mod(new(big.Int).SetBytes([]byte(paths.Anchor)), big.NewInt(int64(len(sample.Items[require2].ChunkItem.Data)/32))).Uint64())
+	segment2 := int(new(big.Int).Mod(new(big.Int).SetBytes(anch2), big.NewInt(int64(len(sample.Items[require2].ChunkItem.Data)/32))).Uint64())
 
-	segmentLast := int(new(big.Int).Mod(new(big.Int).SetBytes([]byte(paths.Anchor)), big.NewInt(int64(len(sample.Items[15].ChunkItem.Data)/32))).Uint64())
+	segmentLast := int(new(big.Int).Mod(new(big.Int).SetBytes(anch2), big.NewInt(int64(len(sample.Items[15].ChunkItem.Data)/32))).Uint64())
+
+	stamp1 := NewStamp(
+		sample.Items[require1].ChunkItem.BatchID,
+		sample.Items[require1].ChunkItem.Index,
+		sample.Items[require1].ChunkItem.Timestamp,
+		sample.Items[require1].ChunkItem.Sig,
+	)
+
+	stamp2 := NewStamp(
+		sample.Items[require2].ChunkItem.BatchID,
+		sample.Items[require2].ChunkItem.Index,
+		sample.Items[require2].ChunkItem.Timestamp,
+		sample.Items[require2].ChunkItem.Sig,
+	)
+
+	stampLast := NewStamp(
+		sample.Items[15].ChunkItem.BatchID,
+		sample.Items[15].ChunkItem.Index,
+		sample.Items[15].ChunkItem.Timestamp,
+		sample.Items[15].ChunkItem.Sig,
+	)
 
 	if require2 >= require1 {
 		require2++
@@ -70,7 +121,7 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 	const Capacity = 32
 
 	pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, swarm.BmtBranches, Capacity))
-	trpool := bmt.NewTrPool(bmt.NewTrConf(swarm.NewHasher, []byte(paths.Anchor), swarm.BmtBranches, Capacity))
+	trpool := bmt.NewTrPool(bmt.NewTrConf(swarm.NewHasher, anch, swarm.BmtBranches, Capacity))
 
 	rccontent := pool.Get()
 
@@ -216,6 +267,9 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 		ProofLastp1: proofLastp1,
 		ProofLastp2: proofLastp2,
 		ProofLastp3: proofLastp3,
+		Stamp1:      stamp1,
+		Stamp2:      stamp2,
+		StampLast:   stampLast,
 		Time:        time.Since(start).String(),
 	})
 }

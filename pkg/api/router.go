@@ -319,7 +319,7 @@ func (s *Service) mountAPI() {
 		web.FinalHandlerFunc(s.healthHandler),
 	))
 
-	handle("/rchash/{depth}/{anchor}", web.ChainHandlers(
+	handle("/rchash/{depth}/{anchor}/{anchor2}", web.ChainHandlers(
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.rchasher),
 		})),
