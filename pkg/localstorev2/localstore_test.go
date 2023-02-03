@@ -22,7 +22,7 @@ import (
 
 func verifySessionInfo(
 	t *testing.T,
-	repo *storage.Repository,
+	repo storage.Repository,
 	sessionID uint64,
 	chunks []swarm.Chunk,
 	has bool,
@@ -57,7 +57,7 @@ func verifySessionInfo(
 
 func verifyPinCollection(
 	t *testing.T,
-	repo *storage.Repository,
+	repo storage.Repository,
 	root swarm.Chunk,
 	chunks []swarm.Chunk,
 	has bool,
@@ -319,7 +319,7 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func diskLocalstore(t *testing.T) func() (*localstore.DB, error) {
+func diskLocalstore(t *testing.T, opts *localstore.Options) func() (*localstore.DB, error) {
 	t.Helper()
 
 	return func() (*localstore.DB, error) {
@@ -334,7 +334,7 @@ func diskLocalstore(t *testing.T) func() (*localstore.DB, error) {
 			}
 		})
 
-		lstore, err := localstore.New(dir, nil)
+		lstore, err := localstore.New(dir, opts)
 		if err == nil {
 			t.Cleanup(func() {
 				err := lstore.Close()
@@ -359,7 +359,7 @@ func TestUploadStore(t *testing.T) {
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
 
-		testUploadStore(t, diskLocalstore(t))
+		testUploadStore(t, diskLocalstore(t, nil))
 	})
 }
 
@@ -446,37 +446,32 @@ func testPinStore(t *testing.T, newLocalstore func() (*localstore.DB, error)) {
 	})
 
 	t.Run("delete pin", func(t *testing.T) {
-		err := lstore.DeletePin(context.TODO(), testCases[2].chunks[0].Address())
-		if err != nil {
-			t.Fatalf("DeletePin(...): unexpected error: %v", err)
-		}
-
-		has, err := lstore.HasPin(testCases[2].chunks[0].Address())
-		if err != nil {
-			t.Fatalf("HasPin(...): unexpected error: %v", err)
-		}
-		if has {
-			t.Fatal("expected root pin reference to be deleted")
-		}
-
-		pins, err := lstore.Pins()
-		if err != nil {
-			t.Fatalf("Pins(): unexpected error: %v", err)
-		}
-		want := 1
-		if len(pins) != want {
-			t.Fatalf("unexpected length of pins: want %d have %d", want, len(pins))
-		}
-
-		for _, ch := range testCases[2].chunks {
-			has, err := lstore.Repo().ChunkStore().Has(context.TODO(), ch.Address())
+		t.Run("commit", func(t *testing.T) {
+			err := lstore.DeletePin(context.TODO(), testCases[2].chunks[0].Address())
 			if err != nil {
-				t.Fatalf("ChunkStore.Has(...): unexpected error: %v", err)
+				t.Fatalf("DeletePin(...): unexpected error: %v", err)
 			}
-			if has {
-				t.Fatalf("expected chunk in collection to be deleted %s", ch.Address())
+
+			verifyPinCollection(t, lstore.Repo(), testCases[2].chunks[0], testCases[2].chunks, false)
+		})
+		t.Run("rollback", func(t *testing.T) {
+			want := errors.New("dummy error")
+			lstore.SetRepoStoreDeleteHook(func(item storage.Item) error {
+				// return error for delete of second last item in collection
+				// this should trigger a rollback
+				if item.ID() == testCases[0].chunks[8].Address().ByteString() {
+					return want
+				}
+				return nil
+			})
+
+			have := lstore.DeletePin(context.TODO(), testCases[0].chunks[0].Address())
+			if !errors.Is(have, want) {
+				t.Fatalf("DeletePin(...): unexpected error: want %v have %v", want, have)
 			}
-		}
+
+			verifyPinCollection(t, lstore.Repo(), testCases[0].chunks[0], testCases[0].chunks, true)
+		})
 	})
 }
 
@@ -491,6 +486,135 @@ func TestPinStore(t *testing.T) {
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
 
-		testPinStore(t, diskLocalstore(t))
+		testPinStore(t, diskLocalstore(t, nil))
+	})
+}
+
+func testCacheStore(t *testing.T, newLocalstore func() (*localstore.DB, error)) {
+	t.Helper()
+
+	chunks := chunktesting.GenerateTestRandomChunks(9)
+
+	lstore, err := newLocalstore()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("cache chunks", func(t *testing.T) {
+		t.Run("commit", func(t *testing.T) {
+			putter := lstore.Cache()
+			for _, ch := range chunks {
+				err := putter.Put(context.TODO(), ch)
+				if err != nil {
+					t.Fatalf("Cache.Put(...): unexpected error: %v", err)
+				}
+			}
+		})
+
+		t.Run("rollback", func(t *testing.T) {
+			want := errors.New("dummy error")
+			lstore.SetRepoStorePutHook(func(item storage.Item) error {
+				if item.Namespace() == "cacheState" {
+					return want
+				}
+				return nil
+			})
+			errChunk := chunktesting.GenerateTestRandomChunk()
+			have := lstore.Cache().Put(context.TODO(), errChunk)
+			if !errors.Is(have, want) {
+				t.Fatalf("unexpected error on cache put: want %v have %v", want, have)
+			}
+			haveChunk, err := lstore.Repo().ChunkStore().Has(context.TODO(), errChunk.Address())
+			if err != nil {
+				t.Fatalf("ChunkStore.Has(...): unexpected error: %v", err)
+			}
+			if haveChunk {
+				t.Fatalf("unexpected chunk state: want false have %t", haveChunk)
+			}
+		})
+	})
+	t.Run("lookup", func(t *testing.T) {
+		t.Run("commit", func(t *testing.T) {
+			lstore.SetRepoStorePutHook(nil)
+			getter := lstore.Lookup()
+			for _, ch := range chunks {
+				have, err := getter.Get(context.TODO(), ch.Address())
+				if err != nil {
+					t.Fatalf("Cache.Get(...): unexpected error: %v", err)
+				}
+				if !have.Equal(ch) {
+					t.Fatalf("chunk %s does not match", ch.Address())
+				}
+			}
+		})
+		t.Run("rollback", func(t *testing.T) {
+			want := errors.New("dummy error")
+			lstore.SetRepoStorePutHook(func(item storage.Item) error {
+				if item.Namespace() == "cacheState" {
+					return want
+				}
+				return nil
+			})
+			// fail access for the first 4 chunks. This will keep the order as is
+			// from the last test.
+			for idx, ch := range chunks {
+				if idx > 4 {
+					break
+				}
+				_, have := lstore.Lookup().Get(context.TODO(), ch.Address())
+				if !errors.Is(have, want) {
+					t.Fatalf("unexpected error in cache get: want %v have %v", want, have)
+				}
+			}
+		})
+	})
+	t.Run("cache chunks beyond capacity", func(t *testing.T) {
+		lstore.SetRepoStorePutHook(nil)
+		// add chunks beyond capacity and verify the correct chunks are removed
+		// from the cache based on last access order
+		newChunks := chunktesting.GenerateTestRandomChunks(5)
+		putter := lstore.Cache()
+		for _, ch := range newChunks {
+			err := putter.Put(context.TODO(), ch)
+			if err != nil {
+				t.Fatalf("Cache.Put(...): unexpected error: %v", err)
+			}
+		}
+
+		for idx, ch := range append(chunks, newChunks...) {
+			var want error = nil
+			readCh, have := lstore.Lookup().Get(context.TODO(), ch.Address())
+			if idx < 4 {
+				want = storage.ErrNotFound
+			}
+			if !errors.Is(have, want) {
+				t.Fatalf("unexpected error on Get: idx %d want %v have %v", idx, want, have)
+			}
+			if have == nil {
+				if !readCh.Equal(ch) {
+					t.Fatalf("incorrect chunk data read for %s", readCh.Address())
+				}
+			}
+		}
+	})
+}
+
+func TestCacheStore(t *testing.T) {
+	t.Parallel()
+
+	t.Run("inmem", func(t *testing.T) {
+		t.Parallel()
+
+		testCacheStore(t, func() (*localstore.DB, error) {
+			return localstore.New("", &localstore.Options{CacheCapacity: 10})
+		})
+	})
+	t.Run("disk", func(t *testing.T) {
+		t.Parallel()
+
+		opts := localstore.DefaultOptions()
+		opts.CacheCapacity = 10
+
+		testCacheStore(t, diskLocalstore(t, opts))
 	})
 }
