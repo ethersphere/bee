@@ -215,7 +215,7 @@ func TestCache(t *testing.T) {
 
 		t.Run("add till full", func(t *testing.T) {
 			for idx, ch := range chunks {
-				err := c.Putter(st.IndexStore(), st.ChunkStore()).Put(context.TODO(), ch)
+				err := c.Putter(st).Put(context.TODO(), ch)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -237,7 +237,7 @@ func TestCache(t *testing.T) {
 
 		t.Run("add over capacity", func(t *testing.T) {
 			for idx, ch := range chunks2 {
-				err := c.Putter(st.IndexStore(), st.ChunkStore()).Put(context.TODO(), ch)
+				err := c.Putter(st).Put(context.TODO(), ch)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -277,12 +277,12 @@ func TestCache(t *testing.T) {
 		// this should have no effect on ordering
 		t.Run("add and get last", func(t *testing.T) {
 			for idx, ch := range chunks {
-				err := c.Putter(st.IndexStore(), st.ChunkStore()).Put(context.TODO(), ch)
+				err := c.Putter(st).Put(context.TODO(), ch)
 				if err != nil {
 					t.Fatal(err)
 				}
 
-				readChunk, err := c.Getter(st.IndexStore(), st.ChunkStore()).Get(context.TODO(), ch.Address())
+				readChunk, err := c.Getter(st).Get(context.TODO(), ch.Address())
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -299,7 +299,7 @@ func TestCache(t *testing.T) {
 		t.Run("get reverse order", func(t *testing.T) {
 			var newOrder []swarm.Chunk
 			for idx := len(chunks) - 1; idx >= 0; idx-- {
-				readChunk, err := c.Getter(st.IndexStore(), st.ChunkStore()).Get(context.TODO(), chunks[idx].Address())
+				readChunk, err := c.Getter(st).Get(context.TODO(), chunks[idx].Address())
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -320,7 +320,7 @@ func TestCache(t *testing.T) {
 		t.Run("not in chunkstore returns error", func(t *testing.T) {
 			for i := 0; i < 5; i++ {
 				unknownChunk := chunktest.GenerateTestRandomChunk()
-				_, err := c.Getter(st.IndexStore(), st.ChunkStore()).Get(context.TODO(), unknownChunk.Address())
+				_, err := c.Getter(st).Get(context.TODO(), unknownChunk.Address())
 				if !errors.Is(err, storage.ErrNotFound) {
 					t.Fatalf("expected error not found for chunk %s", unknownChunk.Address())
 				}
@@ -336,7 +336,7 @@ func TestCache(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				readChunk, err := c.Getter(st.IndexStore(), st.ChunkStore()).Get(context.TODO(), extraChunk.Address())
+				readChunk, err := c.Getter(st).Get(context.TODO(), extraChunk.Address())
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -359,7 +359,7 @@ func TestCache(t *testing.T) {
 		chunks := chunktest.GenerateTestRandomChunks(5)
 
 		for _, ch := range chunks {
-			err := c.Putter(st.IndexStore(), st.ChunkStore()).Put(context.TODO(), ch)
+			err := c.Putter(st).Put(context.TODO(), ch)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -378,7 +378,7 @@ func TestCache(t *testing.T) {
 		// reverted to correct one.
 		t.Run("put error handling", func(t *testing.T) {
 			newChunk := chunktest.GenerateTestRandomChunk()
-			err := c.Putter(st.IndexStore(), st.ChunkStore()).Put(context.TODO(), newChunk)
+			err := c.Putter(st).Put(context.TODO(), newChunk)
 			if !errors.Is(err, retErr) {
 				t.Fatalf("expected error %v during put, found %v", retErr, err)
 			}
@@ -388,7 +388,7 @@ func TestCache(t *testing.T) {
 		})
 
 		t.Run("get error handling", func(t *testing.T) {
-			_, err := c.Getter(st.IndexStore(), st.ChunkStore()).Get(context.TODO(), chunks[2].Address())
+			_, err := c.Getter(st).Get(context.TODO(), chunks[2].Address())
 			if !errors.Is(err, retErr) {
 				t.Fatalf("expected error %v during get, found %v", retErr, err)
 			}
