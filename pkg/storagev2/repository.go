@@ -12,31 +12,38 @@ import (
 
 // Repository is a collection of stores that provides a unified interface
 // to access them. Access to all stores can be guarded by a transaction.
-type Repository struct {
+type Repository interface {
+	IndexStore() Store
+	ChunkStore() ChunkStore
+
+	NewTx(context.Context) (repo Repository, commit func() error, rollback func() error)
+}
+
+type repository struct {
 	indexStore TxStore
 	chunkStore TxChunkStore
 }
 
 // IndexStore returns Store.
-func (r *Repository) IndexStore() Store {
+func (r *repository) IndexStore() Store {
 	return r.indexStore
 }
 
 // ChunkStore returns ChunkStore.
-func (r *Repository) ChunkStore() ChunkStore {
+func (r *repository) ChunkStore() ChunkStore {
 	return r.chunkStore
 }
 
 // NewTx returns a new transaction that guards all the Repository
 // stores. The transaction must be committed or rolled back.
-func (r *Repository) NewTx(ctx context.Context) (repository *Repository, commit func() error, rollback func() error) {
-	repository = new(Repository)
-	repository.indexStore = r.indexStore.NewTx(NewTxState(ctx))
-	repository.chunkStore = r.chunkStore.NewTx(NewTxState(ctx))
+func (r *repository) NewTx(ctx context.Context) (Repository, func() error, func() error) {
+	repo := new(repository)
+	repo.indexStore = r.indexStore.NewTx(NewTxState(ctx))
+	repo.chunkStore = r.chunkStore.NewTx(NewTxState(ctx))
 
-	txs := []Tx{repository.indexStore, repository.chunkStore}
+	txs := []Tx{repo.indexStore, repo.chunkStore}
 
-	commit = func() error {
+	commit := func() error {
 		for _, tx := range txs {
 			if err := tx.Commit(); err != nil {
 				return err
@@ -45,7 +52,7 @@ func (r *Repository) NewTx(ctx context.Context) (repository *Repository, commit 
 		return nil
 	}
 
-	rollback = func() error {
+	rollback := func() error {
 		var errs *multierror.Error
 		for i := len(txs) - 1; i >= 0; i-- {
 			if err := txs[i].Rollback(); err != nil {
@@ -55,12 +62,12 @@ func (r *Repository) NewTx(ctx context.Context) (repository *Repository, commit 
 		return errs.ErrorOrNil()
 	}
 
-	return repository, commit, rollback
+	return repo, commit, rollback
 }
 
 // NewRepository returns a new Repository instance.
-func NewRepository(indexStore TxStore, chunkStore TxChunkStore) *Repository {
-	return &Repository{
+func NewRepository(indexStore TxStore, chunkStore TxChunkStore) Repository {
+	return &repository{
 		indexStore: indexStore,
 		chunkStore: chunkStore,
 	}
