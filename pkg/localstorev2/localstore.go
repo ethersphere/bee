@@ -19,6 +19,8 @@ import (
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/chunkstore"
 	pinstore "github.com/ethersphere/bee/pkg/localstorev2/internal/pinning"
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/upload"
+	"github.com/ethersphere/bee/pkg/pusher"
+	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/sharky"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/storagev2/leveldbstore"
@@ -86,6 +88,11 @@ type CacheStore interface {
 	// This will add the chunk to underlying store as well as new indexes which
 	// will keep track of the chunk in the cache.
 	Cache() storage.Putter
+}
+
+type NetStore interface {
+	DirectPush() storage.Putter
+	Download() storage.Getter
 }
 
 type memFS struct {
@@ -233,10 +240,13 @@ func defaultOptions() *Options {
 
 // DB implements all the component stores described above.
 type DB struct {
-	repo     storage.Repository
-	lock     *multex.Multex
-	cacheObj *cache.Cache
-	dbCloser io.Closer
+	repo       storage.Repository
+	lock       *multex.Multex
+	cacheObj   *cache.Cache
+	retrieval  retrieval.Interface
+	pusherFeed chan *pusher.Op
+	quit       chan struct{}
+	dbCloser   io.Closer
 }
 
 // New returns a newly constructed DB object which implements all the above
