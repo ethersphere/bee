@@ -52,7 +52,6 @@ type Service struct {
 	chunksWorkerQuitC chan struct{}
 	inflight          *inflight
 	attempts          *attempts
-	sem               chan struct{}
 	smugler           chan OpChan
 }
 
@@ -83,7 +82,6 @@ func New(networkID uint64, storer storage.Storer, depther topology.NeighborhoodD
 		chunksWorkerQuitC: make(chan struct{}),
 		inflight:          newInflight(),
 		attempts:          &attempts{retryCount: retryCount, attempts: make(map[string]int)},
-		sem:               make(chan struct{}, concurrentPushes),
 		smugler:           make(chan OpChan),
 	}
 	go p.chunksWorker(warmupTime, tracer)
@@ -132,12 +130,20 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 		s.metrics.TotalToPush.Inc()
 		ctx, logger := ctxLogger()
 		startTime := time.Now()
+
+		if err := s.valid(op.Chunk); err != nil {
+			logger.Warning("stamp with is no longer valid, skipping syncing for chunk", "batch_id", hex.EncodeToString(op.Chunk.Stamp().BatchID()), "chunk_address", op.Chunk.Address(), "error", err)
+			ctx, cancel := context.WithTimeout(ctx, chunkStoreTimeout)
+			defer cancel()
+			if err = s.storer.Set(ctx, storage.ModeSetSync, op.Chunk.Address()); err != nil {
+				s.logger.Error(err, "set sync failed")
+			}
+			return
+		}
+
 		wg.Add(1)
 		go func() {
-			defer func() {
-				wg.Done()
-				<-s.sem
-			}()
+			defer wg.Done()
 			if err := s.pushChunk(ctx, op.Chunk, logger, op.Direct); err != nil {
 				// warning: ugly flow control
 				// if errc is set it means we are in a direct push,
@@ -177,24 +183,15 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 	}()
 
 	// fan-in channel
-	cc := make(chan *Op)
-
+	cc := make(chan *Op, concurrentPushes)
 	go func() {
-		for ch := range chunks {
-			// If the stamp is invalid, the chunk is not synced with the network
-			// since other nodes would reject the chunk, so the chunk is marked as
-			// synced which makes it available to the node but not to the network
-			if err := s.valid(ch); err != nil {
-				logger.Warning("stamp with is no longer valid, skipping syncing for chunk", "batch_id", hex.EncodeToString(ch.Stamp().BatchID()), "chunk_address", ch.Address(), "error", err)
-
-				ctx, cancel := context.WithTimeout(ctx, chunkStoreTimeout)
-
-				if err = s.storer.Set(ctx, storage.ModeSetSync, ch.Address()); err != nil {
-					s.logger.Error(err, "set sync failed")
-				}
-				cancel()
+		for {
+			select {
+			case op := <-cc:
+				push(op)
+			case <-s.quit:
+				return
 			}
-			cc <- &Op{Chunk: ch, Direct: false}
 		}
 	}()
 
@@ -202,6 +199,16 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 
 	for {
 		select {
+		case ch, ok := <-chunks:
+			if !ok {
+				chunks = nil
+				continue
+			}
+			select {
+			case cc <- &Op{Chunk: ch, Direct: false}:
+			case <-s.quit:
+				return
+			}
 		case apiC := <-s.smugler:
 			go func() {
 				for op := range apiC {
@@ -212,19 +219,6 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 					}
 				}
 			}()
-		case op, ok := <-cc:
-			if !ok {
-				chunks = nil
-				continue
-			}
-
-			select {
-			case s.sem <- struct{}{}:
-			case <-s.quit:
-				return
-			}
-
-			push(op)
 		case <-s.quit:
 			return
 		}
