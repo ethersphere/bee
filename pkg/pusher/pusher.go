@@ -134,14 +134,16 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 		ctx, logger := ctxLogger()
 		startTime := time.Now()
 
-		if err := s.valid(op.Chunk); err != nil {
-			logger.Warning("stamp with is no longer valid, skipping syncing for chunk", "batch_id", hex.EncodeToString(op.Chunk.Stamp().BatchID()), "chunk_address", op.Chunk.Address(), "error", err)
-			ctx, cancel := context.WithTimeout(ctx, chunkStoreTimeout)
-			defer cancel()
-			if err = s.storer.Set(ctx, storage.ModeSetSync, op.Chunk.Address()); err != nil {
-				s.logger.Error(err, "set sync failed")
+		if !op.Direct {
+			if err := s.valid(op.Chunk); err != nil {
+				logger.Warning("stamp with is no longer valid, skipping syncing for chunk", "batch_id", hex.EncodeToString(op.Chunk.Stamp().BatchID()), "chunk_address", op.Chunk.Address(), "error", err)
+				ctx, cancel := context.WithTimeout(ctx, chunkStoreTimeout)
+				defer cancel()
+				if err = s.storer.Set(ctx, storage.ModeSetSync, op.Chunk.Address()); err != nil {
+					s.logger.Error(err, "set sync failed")
+				}
+				return
 			}
-			return
 		}
 
 		if err := s.pushChunk(ctx, op.Chunk, logger, op.Direct); err != nil {
