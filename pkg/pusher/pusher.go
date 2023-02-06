@@ -113,13 +113,9 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 	// inflight.set handles the backpressure for the maximum amount of inflight chunks
 	// and duplicate handling.
 	chunks, repeat, unsubscribe := s.storer.SubscribePush(ctx, s.inflight.set)
-	go func() {
-		<-s.quit
+	defer func() {
 		unsubscribe()
 		cancel()
-		if !timer.Stop() {
-			<-timer.C
-		}
 	}()
 
 	ctxLogger := func() (context.Context, log.Logger) {
