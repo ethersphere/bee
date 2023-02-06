@@ -5,9 +5,7 @@
 package postage
 
 import (
-	"encoding/binary"
 	"errors"
-	"time"
 
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -18,7 +16,7 @@ var (
 	ErrBucketFull = errors.New("bucket full")
 )
 
-// Stamper can issue stamps from the given address.
+// Stamper can issue stamps from the given address of chunk.
 type Stamper interface {
 	Stamp(swarm.Address) (*Stamp, error)
 }
@@ -38,12 +36,17 @@ func NewStamper(st *StampIssuer, signer crypto.Signer) Stamper {
 // Stamp takes chunk, see if the chunk can included in the batch and
 // signs it with the owner of the batch of this Stamp issuer.
 func (st *stamper) Stamp(addr swarm.Address) (*Stamp, error) {
-	index, err := st.issuer.inc(addr)
+	batchIndex, batchTimestamp, err := st.issuer.increment(addr)
 	if err != nil {
 		return nil, err
 	}
-	ts := timestamp()
-	toSign, err := toSignDigest(addr.Bytes(), st.issuer.data.BatchID, index, ts)
+
+	toSign, err := toSignDigest(
+		addr.Bytes(),
+		st.issuer.data.BatchID,
+		batchIndex,
+		batchTimestamp,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -51,11 +54,5 @@ func (st *stamper) Stamp(addr swarm.Address) (*Stamp, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewStamp(st.issuer.data.BatchID, index, ts, sig), nil
-}
-
-func timestamp() []byte {
-	ts := make([]byte, 8)
-	binary.BigEndian.PutUint64(ts, uint64(time.Now().UnixNano()))
-	return ts
+	return NewStamp(st.issuer.data.BatchID, batchIndex, batchTimestamp, sig), nil
 }
