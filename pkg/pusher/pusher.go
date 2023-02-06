@@ -127,6 +127,8 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 	}
 
 	push := func(op *Op) {
+		defer wg.Done()
+
 		s.metrics.TotalToPush.Inc()
 		ctx, logger := ctxLogger()
 		startTime := time.Now()
@@ -141,29 +143,25 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 			return
 		}
 
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			if err := s.pushChunk(ctx, op.Chunk, logger, op.Direct); err != nil {
-				// warning: ugly flow control
-				// if errc is set it means we are in a direct push,
-				// we therefore communicate the error into the channel
-				// otherwise we assume this is a buffered upload and
-				// therefore we repeat().
-				if op.Err != nil {
-					op.Err <- err
-				}
-				repeat()
-				s.metrics.TotalErrors.Inc()
-				s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())
-				loggerV1.Debug("cannot push chunk", "chunk_address", op.Chunk.Address(), "error", err)
-				return
-			}
+		if err := s.pushChunk(ctx, op.Chunk, logger, op.Direct); err != nil {
+			// warning: ugly flow control
+			// if errc is set it means we are in a direct push,
+			// we therefore communicate the error into the channel
+			// otherwise we assume this is a buffered upload and
+			// therefore we repeat().
 			if op.Err != nil {
-				op.Err <- nil
+				op.Err <- err
 			}
-			s.metrics.TotalSynced.Inc()
-		}()
+			repeat()
+			s.metrics.TotalErrors.Inc()
+			s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())
+			loggerV1.Debug("cannot push chunk", "chunk_address", op.Chunk.Address(), "error", err)
+			return
+		}
+		if op.Err != nil {
+			op.Err <- nil
+		}
+		s.metrics.TotalSynced.Inc()
 	}
 
 	go func() {
@@ -219,7 +217,8 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 	for {
 		select {
 		case op := <-cc:
-			push(op)
+			wg.Add(1)
+			go push(op)
 		case <-s.quit:
 			return
 		}
