@@ -19,9 +19,6 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-// MaxBatchTimestampBytes represents bytes that can be used to represent a max. BatchTimestamp.
-var MaxBatchTimestampBytes = [swarm.StampTimestampSize]byte{0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF}
-
 // newTestStorage is a helper function that creates a new storage.
 func newTestStorage(t *testing.T) internal.Storage {
 	t.Helper()
@@ -80,7 +77,7 @@ func TestStampIndexItem(t *testing.T) {
 		name: "max values",
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
 			Item: stampindex.NewItemWithValues(
-				MaxBatchTimestampBytes[:],
+				storagetest.MaxBatchTimestampBytes[:],
 				swarm.NewAddress(storagetest.MaxAddressBytes[:]),
 				true,
 			),
