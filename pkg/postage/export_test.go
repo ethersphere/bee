@@ -4,7 +4,9 @@
 
 package postage
 
-import "github.com/ethersphere/bee/pkg/swarm"
+import (
+	"github.com/ethersphere/bee/pkg/swarm"
+)
 
 var (
 	IndexToBytes   = indexToBytes
@@ -12,6 +14,34 @@ var (
 	BlockThreshold = blockThreshold
 )
 
-func (si *StampIssuer) Inc(addr swarm.Address) ([]byte, error) {
-	return si.inc(addr)
+var (
+	ErrStampItemMarshalBatchIDInvalid      = errStampItemMarshalBatchIDInvalid
+	ErrStampItemMarshalChunkAddressInvalid = errStampItemMarshalChunkAddressInvalid
+	ErrStampItemUnmarshalInvalidSize       = errStampItemUnmarshalInvalidSize
+)
+
+type StampItem = stampItem
+
+func (si *stampItem) WithBatchID(id []byte) *StampItem {
+	si.batchID = id
+	return si
+}
+
+func (si *stampItem) WithChunkAddress(addr swarm.Address) *StampItem {
+	si.chunkAddress = addr
+	return si
+}
+
+func (si *stampItem) WithBatchIndex(index []byte) *StampItem {
+	si.BatchIndex = index
+	return si
+}
+
+func (si *stampItem) WithBatchTimestamp(timestamp []byte) *StampItem {
+	si.BatchTimestamp = timestamp
+	return si
+}
+
+func NewStampItem() *StampItem {
+	return new(stampItem)
 }
