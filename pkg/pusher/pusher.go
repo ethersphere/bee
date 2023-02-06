@@ -57,7 +57,7 @@ type Service struct {
 
 const (
 	traceDuration     = 30 * time.Second // duration for every root tracing span
-	concurrentPushes  = 50               // how many chunks to push simultaneously
+	concurrentPushes  = 100              // how many chunks to push simultaneously
 	DefaultRetryCount = 6
 )
 
@@ -106,6 +106,8 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 		span, logger, ctx = tracer.StartSpanFromContext(cctx, "pusher-sync-batch", s.logger)
 		loggerV1          = logger.V(1).Build()
 		timer             = time.NewTimer(traceDuration)
+		sem               = make(chan struct{}, concurrentPushes)
+		cc                = make(chan *Op)
 	)
 
 	// inflight.set handles the backpressure for the maximum amount of inflight chunks
@@ -127,7 +129,10 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 	}
 
 	push := func(op *Op) {
-		defer wg.Done()
+		defer func() {
+			wg.Done()
+			<-sem
+		}()
 
 		s.metrics.TotalToPush.Inc()
 		ctx, logger := ctxLogger()
@@ -180,9 +185,6 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 		}
 	}()
 
-	// fan-in channel
-	cc := make(chan *Op, concurrentPushes)
-
 	go func() {
 		for {
 			select {
@@ -217,8 +219,13 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 	for {
 		select {
 		case op := <-cc:
-			wg.Add(1)
-			go push(op)
+			select {
+			case sem <- struct{}{}:
+				wg.Add(1)
+				go push(op)
+			case <-s.quit:
+				return
+			}
 		case <-s.quit:
 			return
 		}
