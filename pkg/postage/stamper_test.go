@@ -12,6 +12,7 @@ import (
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/swarm/test"
 )
 
 // TestStamperStamping tests if the stamp created by the stamper is valid.
@@ -68,12 +69,12 @@ func TestStamperStamping(t *testing.T) {
 		// issue another 15
 		// collision depth is 8, committed batch depth is 12, bucket volume 2^4
 		for i := 0; i < 14; i++ {
-			_, err = stamper.Stamp(chunkAddr)
+			_, err = stamper.Stamp(test.RandomAddressAt(chunkAddr, 8))
 			if err != nil {
 				t.Fatalf("error adding stamp at step %d: %v", i, err)
 			}
 		}
-		stamp, err := stamper.Stamp(chunkAddr)
+		stamp, err := stamper.Stamp(test.RandomAddressAt(chunkAddr, 8))
 		if err != nil {
 			t.Fatalf("error adding last stamp: %v", err)
 		}
@@ -92,13 +93,13 @@ func TestStamperStamping(t *testing.T) {
 		// issue another 15
 		// collision depth is 8, committed batch depth is 12, bucket volume 2^4
 		for i := 0; i < 15; i++ {
-			_, err = stamper.Stamp(chunkAddr)
+			_, err = stamper.Stamp(test.RandomAddressAt(chunkAddr, 8))
 			if err != nil {
 				t.Fatalf("error adding stamp at step %d: %v", i, err)
 			}
 		}
 		// the bucket should now be full, not allowing a stamp for the  pivot chunk
-		if _, err = stamper.Stamp(chunkAddr); !errors.Is(err, postage.ErrBucketFull) {
+		if _, err = stamper.Stamp(test.RandomAddressAt(chunkAddr, 8)); !errors.Is(err, postage.ErrBucketFull) {
 			t.Fatalf("expected ErrBucketFull, got %v", err)
 		}
 	})

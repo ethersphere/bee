@@ -180,8 +180,8 @@ func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, func() error, e
 
 // save persists the specified stamp issuer to the statestore.
 func (ps *service) save(i int, st *StampIssuer) error {
-	st.bucketMu.Lock()
-	defer st.bucketMu.Unlock()
+	st.dataMu.Lock()
+	defer st.dataMu.Unlock()
 	if err := ps.store.Put(ps.keyForIndex(i), st); err != nil {
 		return err
 	}
