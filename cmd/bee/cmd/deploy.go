@@ -6,13 +6,10 @@ package cmd
 
 import (
 	"fmt"
-	"strings"
-	"time"
-
-	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/node"
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/spf13/cobra"
+	"strings"
 )
 
 const blocktime = 15
@@ -38,7 +35,6 @@ func (c *command) initDeployCmd() error {
 			swapEndpoint := c.config.GetString(optionNameSwapEndpoint)
 			blockchainRpcEndpoint := c.config.GetString(optionNameBlockchainRpcEndpoint)
 			deployGasPrice := c.config.GetString(optionNameSwapDeploymentGasPrice)
-			networkID := c.config.GetUint64(optionNameNetworkID)
 			if swapEndpoint != "" {
 				blockchainRpcEndpoint = swapEndpoint
 			}
@@ -109,33 +105,6 @@ func (c *command) initDeployCmd() error {
 			if err != nil {
 				return err
 			}
-
-			optionTrxHash := c.config.GetString(optionNameTransactionHash)
-			optionBlockHash := c.config.GetString(optionNameBlockHash)
-
-			txHash, err := node.GetTxHash(stateStore, logger, optionTrxHash)
-			if err != nil {
-				return fmt.Errorf("invalid transaction hash: %w", err)
-			}
-
-			blockTime := time.Duration(c.config.GetUint64(optionNameBlockTime)) * time.Second
-
-			blockHash, err := node.GetTxNextBlock(ctx, logger, swapBackend, transactionMonitor, blockTime, txHash, optionBlockHash)
-			if err != nil {
-				return err
-			}
-
-			pubKey, err := signer.PublicKey()
-			if err != nil {
-				return err
-			}
-
-			swarmAddress, err := crypto.NewOverlayAddress(*pubKey, networkID, blockHash)
-			if err != nil {
-				return err
-			}
-
-			err = node.CheckOverlayWithStore(swarmAddress, stateStore)
 
 			return err
 		},

@@ -322,8 +322,6 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		SwapEnable:                    c.config.GetBool(optionNameSwapEnable),
 		ChequebookEnable:              c.config.GetBool(optionNameChequebookEnable),
 		FullNodeMode:                  fullNode,
-		Transaction:                   c.config.GetString(optionNameTransactionHash),
-		BlockHash:                     c.config.GetString(optionNameBlockHash),
 		PostageContractAddress:        c.config.GetString(optionNamePostageContractAddress),
 		PostageContractStartBlock:     c.config.GetUint64(optionNamePostageContractStartBlock),
 		PriceOracleAddress:            c.config.GetString(optionNamePriceOracleAddress),
