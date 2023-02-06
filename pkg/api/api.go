@@ -833,17 +833,17 @@ func newPushStamperPutter(s storage.Storer, i *postage.StampIssuer, signer crypt
 func (p *pushStamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exists []bool, err error) {
 	exists = make([]bool, len(chs))
 
-	for i, c := range chs {
+	for i, ch := range chs {
 		// skips chunk we already know about
-		has, err := p.Storer.Has(ctx, c.Address())
+		has, err := p.Storer.Has(ctx, ch.Address())
 		if err != nil {
 			return nil, err
 		}
-		if has || containsChunk(c.Address(), chs[:i]...) {
+		if has || containsChunk(ch.Address(), chs[:i]...) {
 			exists[i] = true
 			continue
 		}
-		stamp, err := p.stamper.Stamp(c.Address())
+		stamp, err := p.stamper.Stamp(ch.Address())
 		if err != nil {
 			return nil, err
 		}
@@ -877,7 +877,7 @@ func (p *pushStamperPutter) Put(ctx context.Context, mode storage.ModePut, chs .
 					return ctx.Err()
 				}
 			})
-		}(c.WithStamp(stamp))
+		}(ch.WithStamp(stamp))
 	}
 	return exists, nil
 }
@@ -899,20 +899,20 @@ func (p *stamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...sw
 	)
 	exists = make([]bool, len(chs))
 
-	for i, c := range chs {
-		has, err := p.Storer.Has(ctx, c.Address())
+	for i, ch := range chs {
+		has, err := p.Storer.Has(ctx, ch.Address())
 		if err != nil {
 			return nil, err
 		}
-		if has || containsChunk(c.Address(), chs[:i]...) {
+		if has || containsChunk(ch.Address(), chs[:i]...) {
 			exists[i] = true
 			continue
 		}
-		stamp, err := p.stamper.Stamp(c.Address())
+		stamp, err := p.stamper.Stamp(ch.Address())
 		if err != nil {
 			return nil, err
 		}
-		chs[i] = c.WithStamp(stamp)
+		chs[i] = ch.WithStamp(stamp)
 		ctp = append(ctp, chs[i])
 		idx = append(idx, i)
 	}
