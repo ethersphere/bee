@@ -184,11 +184,30 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 
 	// fan-in channel
 	cc := make(chan *Op, concurrentPushes)
+
 	go func() {
 		for {
 			select {
-			case op := <-cc:
-				push(op)
+			case ch, ok := <-chunks:
+				if !ok {
+					chunks = nil
+					continue
+				}
+				select {
+				case cc <- &Op{Chunk: ch, Direct: false}:
+				case <-s.quit:
+					return
+				}
+			case apiC := <-s.smugler:
+				go func() {
+					for op := range apiC {
+						select {
+						case cc <- op:
+						case <-s.quit:
+							return
+						}
+					}
+				}()
 			case <-s.quit:
 				return
 			}
@@ -199,30 +218,13 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 
 	for {
 		select {
-		case ch, ok := <-chunks:
-			if !ok {
-				chunks = nil
-				continue
-			}
-			select {
-			case cc <- &Op{Chunk: ch, Direct: false}:
-			case <-s.quit:
-				return
-			}
-		case apiC := <-s.smugler:
-			go func() {
-				for op := range apiC {
-					select {
-					case cc <- op:
-					case <-s.quit:
-						return
-					}
-				}
-			}()
+		case op := <-cc:
+			push(op)
 		case <-s.quit:
 			return
 		}
 	}
+
 }
 
 func (s *Service) pushChunk(ctx context.Context, ch swarm.Chunk, logger log.Logger, directUpload bool) error {
@@ -330,7 +332,6 @@ func (s *Service) AddFeed(c <-chan *Op) {
 		select {
 		case s.smugler <- c:
 		case <-s.quit:
-			// if we're quitting: don't do anything
 		}
 	}()
 }
