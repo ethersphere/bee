@@ -172,6 +172,8 @@ archives:
 nfpms:
   - file_name_template: "{{ tolower .ProjectName }}_{{ tolower .Version }}_{{ tolower .Arch }}"
 
+    id: packages
+
     vendor: Swarm Foundation
 
     homepage: https://www.ethswarm.org
@@ -229,6 +231,13 @@ nfpms:
           postremove: ./packaging/rpm/postun
 
     bindir: /usr/bin
+
+publishers:
+  - name: gemfury
+    ids:
+      - packages
+    dir: "{{ dir .ArtifactPath }}"
+    cmd: bash -c "if [[ \"{{ .Prerelease }}\" == \"\" ]]; then curl -F package=@{{ .ArtifactName }} https://{{ .Env.GEMFURY_TOKEN }}@push.fury.io/ethersphere/; else echo SKIPPING PRERELEASE!; fi"
 
 scoop:
   url_template: "https://github.com/ethersphere/bee/releases/download/{{ .Tag }}/{{ .ArtifactName }}"

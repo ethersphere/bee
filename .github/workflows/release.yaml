@@ -46,6 +46,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HOMEBREW_TAP_PAT: ${{ secrets.GHA_PAT_BASIC }}
           SCOOP_PAT: ${{ secrets.GHA_PAT_BASIC }}
+          GEMFURY_TOKEN: ${{ secrets.GEMFURY_TOKEN }}
           GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
           GPG_FINGERPRINT: ${{ secrets.GPG_FINGERPRINT }}
           BEE_API_VERSION: ${{ env.BEE_API_VERSION }}
