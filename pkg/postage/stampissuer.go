@@ -6,12 +6,115 @@ package postage
 
 import (
 	"encoding/binary"
+	"errors"
+	"fmt"
 	"math/big"
+	"path"
 	"sync"
+	"time"
 
+	storage "github.com/ethersphere/bee/pkg/storagev2"
+	"github.com/ethersphere/bee/pkg/storagev2/inmemstore"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/vmihailenco/msgpack/v5"
 )
+
+var (
+	// errStampItemMarshalBatchIDInvalid is returned when trying to
+	// marshal a stampItem with invalid batchID.
+	errStampItemMarshalBatchIDInvalid = errors.New("marshal postage.stampItem: batchID is invalid")
+	// errStampItemMarshalChunkAddressInvalid is returned when trying
+	// to marshal a stampItem with invalid chunkAddress.
+	errStampItemMarshalChunkAddressInvalid = errors.New("marshal postage.stampItem: chunkAddress is invalid")
+	// errStampItemUnmarshalInvalidSize is returned when trying
+	// to unmarshal buffer with smaller size then is the size
+	// of the Item fields.
+	errStampItemUnmarshalInvalidSize = errors.New("unmarshal postage.stampItem: invalid size")
+)
+
+const stampItemSize = swarm.HashSize + swarm.HashSize + swarm.StampIndexSize + swarm.StampTimestampSize
+
+type stampItem struct {
+	// Keys.
+	batchID      []byte
+	chunkAddress swarm.Address
+
+	// Values.
+	BatchIndex     []byte
+	BatchTimestamp []byte
+}
+
+// ID implements the storage.Item interface.
+func (si stampItem) ID() string {
+	return fmt.Sprintf("%s/%s", string(si.batchID), si.chunkAddress.String())
+}
+
+// Namespace implements the storage.Item interface.
+func (si stampItem) Namespace() string {
+	return "stampItem"
+}
+
+// Marshal implements the storage.Item interface.
+func (si stampItem) Marshal() ([]byte, error) {
+	switch {
+	case len(si.batchID) != swarm.HashSize:
+		return nil, errStampItemMarshalBatchIDInvalid
+	case len(si.chunkAddress.Bytes()) != swarm.HashSize:
+		return nil, errStampItemMarshalChunkAddressInvalid
+	}
+
+	buf := make([]byte, stampItemSize+1)
+
+	l := 0
+	copy(buf[l:l+swarm.HashSize], si.batchID)
+	l += swarm.HashSize
+	copy(buf[l:l+swarm.HashSize], si.chunkAddress.Bytes())
+	l += swarm.HashSize
+	copy(buf[l:l+swarm.StampIndexSize], si.BatchIndex)
+	l += swarm.StampIndexSize
+	copy(buf[l:l+swarm.StampTimestampSize], si.BatchTimestamp)
+
+	return buf, nil
+}
+
+// Unmarshal implements the storage.Item interface.
+func (si *stampItem) Unmarshal(bytes []byte) error {
+	if len(bytes) != stampItemSize+1 {
+		return errStampItemUnmarshalInvalidSize
+	}
+
+	ni := new(stampItem)
+
+	l := 0
+	ni.batchID = append(make([]byte, 0, swarm.HashSize), bytes[l:l+swarm.HashSize]...)
+	l += swarm.HashSize
+	ni.chunkAddress = swarm.NewAddress(bytes[l : l+swarm.HashSize])
+	l += swarm.HashSize
+	ni.BatchIndex = append(make([]byte, 0, swarm.StampIndexSize), bytes[l:l+swarm.StampIndexSize]...)
+	l += swarm.StampIndexSize
+	ni.BatchTimestamp = append(make([]byte, 0, swarm.StampTimestampSize), bytes[l:l+swarm.StampTimestampSize]...)
+
+	*si = *ni
+	return nil
+}
+
+// Clone  implements the storage.Item interface.
+func (si *stampItem) Clone() storage.Item {
+	if si == nil {
+		return nil
+	}
+	return &stampItem{
+		batchID:        append([]byte(nil), si.batchID...),
+		chunkAddress:   si.chunkAddress.Clone(),
+		BatchIndex:     append([]byte(nil), si.BatchIndex...),
+		BatchTimestamp: append([]byte(nil), si.BatchTimestamp...),
+	}
+}
+
+// String implements the fmt.Stringer interface.
+func (si stampItem) String() string {
+	return path.Join(si.Namespace(), si.ID())
+}
 
 // stampIssuerData groups related StampIssuer data.
 // The data are factored out in order to make
@@ -35,6 +138,8 @@ type stampIssuerData struct {
 // A StampIssuer instance extends a batch with bucket collision tracking
 // embedded in multiple Stampers, can be used concurrently.
 type StampIssuer struct {
+	store storage.Store
+
 	bucketMu sync.Mutex
 	data     stampIssuerData
 }
@@ -42,9 +147,10 @@ type StampIssuer struct {
 // NewStampIssuer constructs a StampIssuer as an extension of a batch for local
 // upload.
 //
-// BucketDepth must always be smaller than batchDepth otherwise inc() panics.
+// BucketDepth must always be smaller than batchDepth otherwise increment() panics.
 func NewStampIssuer(label, keyID string, batchID []byte, batchAmount *big.Int, batchDepth, bucketDepth uint8, blockNumber uint64, immutableFlag bool) *StampIssuer {
 	return &StampIssuer{
+		store: inmemstore.New(), // TODO: initialize this through constructor when fully refactoring to the new store v2.
 		data: stampIssuerData{
 			Label:         label,
 			KeyID:         keyID,
@@ -59,54 +165,44 @@ func NewStampIssuer(label, keyID string, batchID []byte, batchAmount *big.Int, b
 	}
 }
 
-// inc increments the count in the correct collision bucket for a newly stamped
-// chunk with address addr.
-func (si *StampIssuer) inc(addr swarm.Address) ([]byte, error) {
+// increment increments the count in the correct collision
+// bucket for a newly stamped chunk with given addr address.
+func (si *StampIssuer) increment(addr swarm.Address) (batchIndex []byte, batchTimestamp []byte, err error) {
+	item := &stampItem{
+		batchID:      si.data.BatchID,
+		chunkAddress: addr,
+	}
+	switch err := si.store.Get(item); {
+	case errors.Is(err, storage.ErrNotFound):
+		break
+	case err != nil:
+		return nil, nil, fmt.Errorf("load of stamp item failed for %s: %w", item, err)
+	default:
+		return item.BatchIndex, item.BatchTimestamp, nil
+	}
+
 	si.bucketMu.Lock()
 	defer si.bucketMu.Unlock()
 
-	b := toBucket(si.BucketDepth(), addr)
-	bucketCount := si.data.Buckets[b]
-
-	if bucketCount == si.BucketUpperBound() {
-		if si.ImmutableFlag() {
-			return nil, ErrBucketFull
-		}
-
-		bucketCount = 0
-		si.data.Buckets[b] = 0
+	bIdx := toBucket(si.BucketDepth(), addr)
+	bCnt := si.data.Buckets[bIdx]
+	if bCnt == 1<<(si.Depth()-si.BucketDepth()) {
+		return nil, nil, ErrBucketFull
 	}
 
-	si.data.Buckets[b]++
-	if si.data.Buckets[b] > si.data.MaxBucketCount {
-		si.data.MaxBucketCount = si.data.Buckets[b]
+	si.data.Buckets[bIdx]++
+	if si.data.Buckets[bIdx] > si.data.MaxBucketCount {
+		si.data.MaxBucketCount = si.data.Buckets[bIdx]
 	}
 
-	return indexToBytes(b, bucketCount), nil
-}
+	item.BatchIndex = indexToBytes(bIdx, bCnt)
+	item.BatchTimestamp = unixTime()
 
-// toBucket calculates the index of the collision bucket for a swarm address
-// bucket index := collision bucket depth number of bits as bigendian uint32
-func toBucket(depth uint8, addr swarm.Address) uint32 {
-	i := binary.BigEndian.Uint32(addr.Bytes()[:4])
-	return i >> (32 - depth)
-}
+	if err := si.store.Put(item); err != nil {
+		return nil, nil, err
+	}
 
-// indexToBytes creates an uint64 index from
-// - bucket index (neighbourhood index, uint32 <2^depth, bytes 2-4)
-// - and the within-bucket index (uint32 <2^(batchdepth-bucketdepth), bytes 5-8)
-func indexToBytes(bucket, index uint32) []byte {
-	buf := make([]byte, IndexSize)
-	binary.BigEndian.PutUint32(buf, bucket)
-	binary.BigEndian.PutUint32(buf[4:], index)
-	return buf
-}
-
-func bytesToIndex(buf []byte) (bucket, index uint32) {
-	index64 := binary.BigEndian.Uint64(buf)
-	bucket = uint32(index64 >> 32)
-	index = uint32(index64)
-	return bucket, index
+	return item.BatchIndex, item.BatchTimestamp, nil
 }
 
 // Label returns the label of the issuer.
@@ -156,7 +252,8 @@ func (si *StampIssuer) BucketDepth() uint8 {
 }
 
 // BucketUpperBound returns the maximum number of collisions
-// possible in a bucket given the batch's depth and bucket depth.
+// possible in a bucket given the batch's depth and bucket
+// depth.
 func (si *StampIssuer) BucketUpperBound() uint32 {
 	return 1 << (si.Depth() - si.BucketDepth())
 }
@@ -187,4 +284,31 @@ func (si *StampIssuer) Expired() bool {
 // SetExpired is setter for Expired property
 func (si *StampIssuer) SetExpired(e bool) {
 	si.data.Expired = e
+}
+
+// toBucket calculates the index of the collision bucket for a swarm address
+// bucket index := collision bucket depth number of bits as bigendian uint32
+func toBucket(depth uint8, addr swarm.Address) uint32 {
+	return binary.BigEndian.Uint32(addr.Bytes()[:4]) >> (32 - depth)
+}
+
+// indexToBytes creates an uint64 index from
+// - bucket index (neighbourhood index, uint32 <2^depth, bytes 2-4)
+// - and the within-bucket index (uint32 <2^(batchdepth-bucketdepth), bytes 5-8)
+func indexToBytes(bucket, index uint32) []byte {
+	buf := make([]byte, IndexSize)
+	binary.BigEndian.PutUint32(buf, bucket)
+	binary.BigEndian.PutUint32(buf[4:], index)
+	return buf
+}
+
+func bytesToIndex(buf []byte) (bucket, index uint32) {
+	index64 := binary.BigEndian.Uint64(buf)
+	return uint32(index64 >> 32), uint32(index64)
+}
+
+func unixTime() []byte {
+	buf := make([]byte, 8)
+	binary.BigEndian.PutUint64(buf, uint64(time.Now().UnixNano()))
+	return buf
 }
