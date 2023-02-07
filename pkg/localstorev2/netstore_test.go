@@ -1,11 +1,17 @@
+// Copyright 2023 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package localstore_test
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 
 	localstore "github.com/ethersphere/bee/pkg/localstorev2"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
@@ -53,7 +59,8 @@ func testNetStore(t *testing.T, newLocalstore func(r retrieval.Interface) (*loca
 							}
 						}
 						if !found {
-							t.Fatalf("incorrect chunk for push: have %s", op.Chunk.Address())
+							op.Err <- fmt.Errorf("incorrect chunk for push: have %s", op.Chunk.Address())
+							continue
 						}
 						count++
 						op.Err <- nil
@@ -110,7 +117,8 @@ func testNetStore(t *testing.T, newLocalstore func(r retrieval.Interface) (*loca
 							}
 						}
 						if !found {
-							t.Fatalf("incorrect chunk for push: have %s", op.Chunk.Address())
+							op.Err <- fmt.Errorf("incorrect chunk for push: have %s", op.Chunk.Address())
+							continue
 						}
 						count++
 						if count >= 5 {
@@ -285,7 +293,11 @@ func TestNetStore(t *testing.T) {
 		t.Parallel()
 
 		testNetStore(t, func(r retrieval.Interface) (*localstore.DB, error) {
-			return localstore.New("", &localstore.Options{Retrieval: r, CacheCapacity: 100})
+			return localstore.New("", &localstore.Options{
+				Retrieval:     r,
+				CacheCapacity: 100,
+				Logger:        log.Noop,
+			})
 		})
 	})
 	t.Run("disk", func(t *testing.T) {

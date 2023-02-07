@@ -1,3 +1,7 @@
+// Copyright 2023 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package localstore
 
 import (
@@ -77,7 +81,7 @@ func (db *DB) Download(cache bool) storage.Getter {
 
 						err := db.Cache().Put(ctx, ch)
 						if err != nil {
-							// log error
+							db.logger.Error(err, "failed putting chunk to cache", "chunk_address", ch.Address())
 						}
 					}()
 				}

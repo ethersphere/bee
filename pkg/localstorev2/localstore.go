@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"log"
 	"os"
 	"path"
 	"path/filepath"
@@ -22,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/chunkstore"
 	pinstore "github.com/ethersphere/bee/pkg/localstorev2/internal/pinning"
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/upload"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/sharky"
@@ -151,6 +151,9 @@ func initInmemRepository() (storage.Repository, io.Closer, error) {
 	return storage.NewRepository(txStore, txChunkStore), closer(store, sharky), nil
 }
 
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "localstore"
+
 // Default options for levelDB.
 const (
 	defaultOpenFilesLimit         = uint64(256)
@@ -230,6 +233,7 @@ type Options struct {
 	LdbWriteBufferSize        uint64
 	LdbDisableSeeksCompaction bool
 	CacheCapacity             uint64
+	Logger                    log.Logger
 	Retrieval                 retrieval.Interface
 }
 
@@ -240,6 +244,7 @@ func defaultOptions() *Options {
 		LdbWriteBufferSize:        defaultWriteBufferSize,
 		LdbDisableSeeksCompaction: defaultDisableSeeksCompaction,
 		CacheCapacity:             defaultCacheCapacity,
+		Logger:                    log.Noop,
 	}
 }
 
@@ -292,6 +297,7 @@ func New(dirPath string, opts *Options) (*DB, error) {
 		cacheObj:       cacheObj,
 		retrieval:      opts.Retrieval,
 		pusherFeed:     make(chan *pusher.Op),
+		logger:         opts.Logger.WithName(loggerName).Register(),
 		quit:           make(chan struct{}),
 		bgCacheWorkers: make(chan struct{}, 16),
 		dbCloser:       dbCloser,

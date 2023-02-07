@@ -15,6 +15,7 @@ import (
 	localstore "github.com/ethersphere/bee/pkg/localstorev2"
 	pinstore "github.com/ethersphere/bee/pkg/localstorev2/internal/pinning"
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/upload"
+	"github.com/ethersphere/bee/pkg/log"
 	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -609,7 +610,10 @@ func TestCacheStore(t *testing.T) {
 		t.Parallel()
 
 		testCacheStore(t, func() (*localstore.DB, error) {
-			return localstore.New("", &localstore.Options{CacheCapacity: 10})
+			return localstore.New("", &localstore.Options{
+				CacheCapacity: 10,
+				Logger:        log.Noop,
+			})
 		})
 	})
 	t.Run("disk", func(t *testing.T) {
