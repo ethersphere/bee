@@ -378,13 +378,13 @@ func TestChunkWithInvalidStampSkipped(t *testing.T) {
 		return receipt, nil
 	})
 
+	chunk := testingc.GenerateTestRandomChunk()
+
 	validStamp := func(ch swarm.Chunk, stamp []byte) (swarm.Chunk, error) {
-		return nil, errors.New("valid stamp error")
+		return chunk, nil
 	}
 
 	_, _, storer := createPusher(t, triggerPeer, pushSyncService, validStamp, mock.WithClosestPeer(closestPeer), mock.WithNeighborhoodDepth(0))
-
-	chunk := testingc.GenerateTestRandomChunk()
 
 	_, err := storer.Put(context.Background(), storage.ModePutUpload, chunk)
 	if err != nil {
