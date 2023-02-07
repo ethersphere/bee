@@ -135,7 +135,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 		startTime := time.Now()
 
 		if err := s.valid(op.Chunk); err != nil {
-			logger.Warning("stamp with is no longer valid, skipping syncing for chunk", "batch_id", hex.EncodeToString(op.Chunk.Stamp().BatchID()), "chunk_address", op.Chunk.Address(), "error", err)
+			logger.Warning("stamp with is no longer valid, skipping syncing for chunk", "batch_id", hex.EncodeToString(op.Chunk.Stamp().BatchID()), "direct_upload", op.Direct, "chunk_address", op.Chunk.Address(), "error", err)
 			if op.Direct {
 				if op.Err != nil {
 					op.Err <- err
