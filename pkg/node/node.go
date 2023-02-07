@@ -158,8 +158,6 @@ type Options struct {
 	SwapEnable                    bool
 	ChequebookEnable              bool
 	FullNodeMode                  bool
-	Transaction                   string
-	BlockHash                     string
 	PostageContractAddress        string
 	PostageContractStartBlock     uint64
 	StakingContractAddress        string
