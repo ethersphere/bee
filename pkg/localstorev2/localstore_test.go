@@ -20,10 +20,9 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-func verifySessionInfo(
+func verifyChunks(
 	t *testing.T,
 	repo storage.Repository,
-	sessionID uint64,
 	chunks []swarm.Chunk,
 	has bool,
 ) {
@@ -39,6 +38,19 @@ func verifySessionInfo(
 			t.Fatalf("unexpected chunk has state: want %t have %t", has, hasFound)
 		}
 	}
+
+}
+
+func verifySessionInfo(
+	t *testing.T,
+	repo storage.Repository,
+	sessionID uint64,
+	chunks []swarm.Chunk,
+	has bool,
+) {
+	t.Helper()
+
+	verifyChunks(t, repo, chunks, has)
 
 	if has {
 		tagInfo, err := upload.GetTagInfo(repo.IndexStore(), sessionID)
@@ -73,16 +85,7 @@ func verifyPinCollection(
 		t.Fatalf("unexpected pin collection state: want %t have %t", has, hasFound)
 	}
 
-	for _, ch := range chunks {
-		hasFound, err := repo.ChunkStore().Has(context.TODO(), ch.Address())
-		if err != nil {
-			t.Fatalf("ChunkStore.Has(...): unexpected error: %v", err)
-		}
-
-		if hasFound != has {
-			t.Fatalf("unexpected chunk state, exp has chunk %t got %t", has, hasFound)
-		}
-	}
+	verifyChunks(t, repo, chunks, has)
 }
 
 func testUploadStore(t *testing.T, newLocalstore func() (*localstore.DB, error)) {

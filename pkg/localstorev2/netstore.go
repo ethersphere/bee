@@ -7,33 +7,80 @@ import (
 	"github.com/ethersphere/bee/pkg/pusher"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"golang.org/x/sync/errgroup"
 )
 
-func (db *DB) DirectUpload() storage.Putter {
-	return storage.PutterFunc(func(ctx context.Context, ch swarm.Chunk) error {
-		op := &pusher.Op{Chunk: ch, Err: make(chan error), Direct: true}
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-db.quit:
-			return errors.New("db stopped")
-		case db.pusherFeed <- op:
-			return <-op.Err
-		}
-	})
+const (
+	directUploadWorkers = 16
+)
+
+var errDBStopped = errors.New("db stopped")
+
+func (db *DB) DirectUpload() PutterSession {
+	workers := make(chan struct{}, directUploadWorkers)
+	// egCtx will allow early exit of Put operations if we have
+	// already encountered error.
+	eg, egCtx := errgroup.WithContext(context.Background())
+
+	return &putterSessionImpl{
+		Putter: storage.PutterFunc(func(ctx context.Context, ch swarm.Chunk) error {
+			workers <- struct{}{}
+			eg.Go(func() error {
+				defer func() { <-workers }()
+
+				op := &pusher.Op{Chunk: ch, Err: make(chan error, 1), Direct: true}
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-egCtx.Done():
+					return egCtx.Err()
+				case <-db.quit:
+					return errDBStopped
+				case db.pusherFeed <- op:
+					select {
+					case <-ctx.Done():
+						return ctx.Err()
+					case <-egCtx.Done():
+						return egCtx.Err()
+					case <-db.quit:
+						return errDBStopped
+					case err := <-op.Err:
+						return err
+					}
+				}
+			})
+			return nil
+		}),
+		done:    func(_ swarm.Address) error { return eg.Wait() },
+		cleanup: func() error { _ = eg.Wait(); return nil },
+	}
 }
 
-func (db *DB) Download() storage.Getter {
+func (db *DB) Download(cache bool) storage.Getter {
 	return storage.GetterFunc(func(ctx context.Context, address swarm.Address) (swarm.Chunk, error) {
 		ch, err := db.Lookup().Get(ctx, address)
 		switch {
 		case err == nil:
 			return ch, nil
 		case errors.Is(err, storage.ErrNotFound):
-			// if chunk is not found locally, retrieve it from the network
-			ch, err = db.retrieval.RetrieveChunk(ctx, address, swarm.ZeroAddress)
-			if err == nil {
-				_ = db.Cache().Put(ctx, ch)
+			if db.retrieval != nil {
+				// if chunk is not found locally, retrieve it from the network
+				ch, err = db.retrieval.RetrieveChunk(ctx, address, swarm.ZeroAddress)
+				if err == nil && cache {
+					db.bgCacheWorkers <- struct{}{}
+					db.bgCacheWorkersWg.Add(1)
+					go func() {
+						defer func() {
+							<-db.bgCacheWorkers
+							db.bgCacheWorkersWg.Done()
+						}()
+
+						err := db.Cache().Put(ctx, ch)
+						if err != nil {
+							// log error
+						}
+					}()
+				}
 			}
 		}
 		if err != nil {
@@ -41,4 +88,8 @@ func (db *DB) Download() storage.Getter {
 		}
 		return ch, nil
 	})
+}
+
+func (db *DB) PusherFeed() <-chan *pusher.Op {
+	return db.pusherFeed
 }
