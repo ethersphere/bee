@@ -52,7 +52,7 @@ type Service struct {
 	chunksWorkerQuitC chan struct{}
 	inflight          *inflight
 	attempts          *attempts
-	smugler           chan OpChan
+	smuggler          chan OpChan
 }
 
 const (
@@ -82,7 +82,7 @@ func New(networkID uint64, storer storage.Storer, depther topology.NeighborhoodD
 		chunksWorkerQuitC: make(chan struct{}),
 		inflight:          newInflight(),
 		attempts:          &attempts{retryCount: retryCount, attempts: make(map[string]int)},
-		smugler:           make(chan OpChan),
+		smuggler:          make(chan OpChan),
 	}
 	go p.chunksWorker(warmupTime, tracer)
 	return p
@@ -134,16 +134,17 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 		ctx, logger := ctxLogger()
 		startTime := time.Now()
 
-		if !op.Direct {
-			if err := s.valid(op.Chunk); err != nil {
-				logger.Warning("stamp with is no longer valid, skipping syncing for chunk", "batch_id", hex.EncodeToString(op.Chunk.Stamp().BatchID()), "chunk_address", op.Chunk.Address(), "error", err)
-				ctx, cancel := context.WithTimeout(ctx, chunkStoreTimeout)
-				defer cancel()
-				if err = s.storer.Set(ctx, storage.ModeSetSync, op.Chunk.Address()); err != nil {
-					s.logger.Error(err, "set sync failed")
-				}
-				return
+		if err := s.valid(op.Chunk); err != nil {
+			logger.Warning("stamp with is no longer valid, skipping syncing for chunk", "batch_id", hex.EncodeToString(op.Chunk.Stamp().BatchID()), "chunk_address", op.Chunk.Address(), "error", err)
+			ctx, cancel := context.WithTimeout(ctx, chunkStoreTimeout)
+			defer cancel()
+			if err = s.storer.Set(ctx, storage.ModeSetSync, op.Chunk.Address()); err != nil {
+				s.logger.Error(err, "set sync failed")
 			}
+			if op.Err != nil {
+				op.Err <- err
+			}
+			return
 		}
 
 		if err := s.pushChunk(ctx, op.Chunk, logger, op.Direct); err != nil {
@@ -196,7 +197,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 				case <-s.quit:
 					return
 				}
-			case apiC := <-s.smugler:
+			case apiC := <-s.smuggler:
 				go func() {
 					for op := range apiC {
 						select {
@@ -334,7 +335,7 @@ func (s *Service) valid(ch swarm.Chunk) error {
 func (s *Service) AddFeed(c <-chan *Op) {
 	go func() {
 		select {
-		case s.smugler <- c:
+		case s.smuggler <- c:
 		case <-s.quit:
 		}
 	}()
