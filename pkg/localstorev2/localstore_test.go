@@ -5,12 +5,15 @@
 package localstore_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
+	"sync"
 	"testing"
+	"time"
 
 	localstore "github.com/ethersphere/bee/pkg/localstorev2"
 	pinstore "github.com/ethersphere/bee/pkg/localstorev2/internal/pinning"
@@ -617,4 +620,155 @@ func TestCacheStore(t *testing.T) {
 
 		testCacheStore(t, diskLocalstore(t, opts))
 	})
+}
+
+func TestPushSubscriber(t *testing.T) {
+	t.Parallel()
+
+	t.Run("inmem", func(t *testing.T) {
+		t.Parallel()
+
+		testPushSubscriber(t, func() (*localstore.DB, error) {
+			return localstore.New("", &localstore.Options{CacheCapacity: 10})
+		})
+	})
+	t.Run("disk", func(t *testing.T) {
+		t.Parallel()
+
+		opts := localstore.DefaultOptions()
+		opts.CacheCapacity = 10
+
+		testPushSubscriber(t, diskLocalstore(t, opts))
+	})
+}
+
+func testPushSubscriber(t *testing.T, newLocalstore func() (*localstore.DB, error)) {
+	t.Helper()
+
+	lstore, err := newLocalstore()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	chunks := make([]swarm.Chunk, 0)
+	var chunksMu sync.Mutex
+
+	chunkProcessedTimes := make([]int, 0)
+
+	uploadRandomChunks := func(count int) {
+		chunksMu.Lock()
+		defer chunksMu.Unlock()
+
+		for i := 0; i < count; i++ {
+			ch := chunktesting.GenerateTestRandomChunks(1)[0]
+
+			err := lstore.Repo().ChunkStore().Put(context.Background(), ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			chunks = append(chunks, ch)
+
+			chunkProcessedTimes = append(chunkProcessedTimes, 0)
+		}
+	}
+
+	// prepopulate database with some chunks
+	// before the subscription
+	uploadRandomChunks(10)
+
+	// set a timeout on subscription
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// collect all errors from validating addresses, even nil ones
+	// to validate the number of addresses received by the subscription
+	errChan := make(chan error)
+
+	ch, _, stop := lstore.SubscribePush(ctx)
+	defer stop()
+
+	// receive and validate addresses from the subscription
+	go func() {
+		var (
+			err, ierr           error
+			i                   int // address index
+			gotStamp, wantStamp []byte
+		)
+		for {
+			select {
+			case got, ok := <-ch:
+				if !ok {
+					return
+				}
+				chunksMu.Lock()
+				cIndex := i
+				want := chunks[cIndex]
+				chunkProcessedTimes[cIndex]++
+				chunksMu.Unlock()
+				if !bytes.Equal(got.Data(), want.Data()) {
+					err = fmt.Errorf("got chunk %v data %x, want %x", i, got.Data(), want.Data())
+				}
+				if !got.Address().Equal(want.Address()) {
+					err = fmt.Errorf("got chunk %v address %s, want %s", i, got.Address(), want.Address())
+				}
+				if gotStamp, ierr = got.Stamp().MarshalBinary(); ierr != nil {
+					err = ierr
+				}
+				if wantStamp, ierr = want.Stamp().MarshalBinary(); ierr != nil {
+					err = ierr
+				}
+				if !bytes.Equal(gotStamp, wantStamp) {
+					err = errors.New("stamps don't match")
+				}
+
+				i++
+				// send one and only one error per received address
+				select {
+				case errChan <- err:
+				case <-ctx.Done():
+					return
+				}
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	// upload some chunks just after subscribe
+	uploadRandomChunks(5)
+
+	time.Sleep(200 * time.Millisecond)
+
+	// upload some chunks after some short time
+	// to ensure that subscription will include them
+	// in a dynamic environment
+	uploadRandomChunks(3)
+
+	checkErrChan(ctx, t, errChan, len(chunks))
+
+	chunksMu.Lock()
+	for i, pc := range chunkProcessedTimes {
+		if pc != 1 {
+			t.Fatalf("chunk on address %s processed %d times, should be only once", chunks[i].Address(), pc)
+		}
+	}
+	chunksMu.Unlock()
+}
+
+// checkErrChan expects the number of wantedChunksCount errors from errChan
+// and calls t.Error for the ones that are not nil.
+func checkErrChan(ctx context.Context, t *testing.T, errChan chan error, wantedChunksCount int) {
+	t.Helper()
+
+	for i := 0; i < wantedChunksCount; i++ {
+		select {
+		case err := <-errChan:
+			if err != nil {
+				t.Error(err)
+			}
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
+		}
+	}
 }

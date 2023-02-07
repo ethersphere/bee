@@ -13,6 +13,8 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sync"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/localstorev2/internal"
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/cache"
@@ -237,6 +239,10 @@ type DB struct {
 	lock     *multex.Multex
 	cacheObj *cache.Cache
 	dbCloser io.Closer
+
+	pushTriggers    []chan<- struct{}
+	pushTriggersMu  sync.RWMutex
+	subscriptionsWG sync.WaitGroup
 }
 
 // New returns a newly constructed DB object which implements all the above
@@ -321,6 +327,7 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 			).ErrorOrNil()
 		}),
 		done: func(address swarm.Address) error {
+			defer db.triggerPushSubscriptions()
 			return multierror.Append(
 				uploadPutter.Close(address),
 				func() error {
@@ -419,4 +426,116 @@ func (db *DB) Cache() storage.Putter {
 		}
 		return multierror.Append(err, commit()).ErrorOrNil()
 	})
+}
+
+func (db *DB) SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, reset, stop func()) {
+	chunks := make(chan swarm.Chunk)
+	trigger := make(chan struct{}, 1)
+	resetC := make(chan struct{}, 1)
+
+	// send signal for the initial iteration
+	trigger <- struct{}{}
+
+	db.pushTriggersMu.Lock()
+	db.pushTriggers = append(db.pushTriggers, trigger)
+	db.pushTriggersMu.Unlock()
+
+	stopChan := make(chan struct{})
+	var stopChanOnce sync.Once
+
+	var sinceItem swarm.Chunk
+
+	db.subscriptionsWG.Add(1)
+	go func() {
+		defer db.subscriptionsWG.Done()
+		// close the returned chunkInfo channel at the end to
+		// signal that the subscription is done
+		defer close(chunks)
+		// sinceItem is the Item from which the next iteration
+		// should start. The first iteration starts from the first Item.
+		for {
+			select {
+			case <-stopChan:
+				// terminate the subscription
+				// on stop
+				return
+			case <-ctx.Done():
+				return
+			case <-resetC:
+				sinceItem = nil
+				select {
+				case trigger <- struct{}{}:
+				default:
+				}
+			case <-trigger:
+				// iterate until:
+				// - last index Item is reached
+				// - subscription stop is called
+				// - context is done
+
+				var count int
+
+				err := upload.Iterate(ctx, db.repo, sinceItem, func(chunk swarm.Chunk) (bool, error) {
+					select {
+					case chunks <- chunk:
+						count++
+						// set next iteration start item
+						// when its chunk is successfully sent to channel
+						sinceItem = chunk
+						return false, nil
+					case <-stopChan:
+						// gracefully stop the iteration
+						// on stop
+						return true, nil
+					case <-ctx.Done():
+						return true, ctx.Err()
+					}
+				})
+
+				if err != nil {
+					return
+				}
+			}
+		}
+	}()
+
+	stop = func() {
+		stopChanOnce.Do(func() {
+			close(stopChan)
+		})
+
+		db.pushTriggersMu.Lock()
+		defer db.pushTriggersMu.Unlock()
+
+		for i, t := range db.pushTriggers {
+			if t == trigger {
+				db.pushTriggers = append(db.pushTriggers[:i], db.pushTriggers[i+1:]...)
+				break
+			}
+		}
+	}
+
+	reset = func() {
+		time.Sleep(1 * time.Second) // give some time when retrying
+		select {
+		case resetC <- struct{}{}:
+		default:
+		}
+	}
+
+	return chunks, reset, stop
+}
+
+// triggerPushSubscriptions is used internally for starting iterations
+// on Push subscriptions. Whenever new item is added to the push index,
+// this function should be called.
+func (db *DB) triggerPushSubscriptions() {
+	db.pushTriggersMu.RLock()
+	defer db.pushTriggersMu.RUnlock()
+	for _, t := range db.pushTriggers {
+		select {
+		case t <- struct{}{}:
+		default:
+		}
+	}
 }
