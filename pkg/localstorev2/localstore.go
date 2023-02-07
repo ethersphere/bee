@@ -93,9 +93,19 @@ type CacheStore interface {
 	Cache() storage.Putter
 }
 
+// NetStore is a logical component of the localstore that deals with network. It will
+// push/retrieve chunks from the network.
 type NetStore interface {
-	DirectUpload() storage.Putter
-	Download(bool) storage.Getter
+	// DirectUpload provides a session which can be used to push chunks directly
+	// to the network.
+	DirectUpload() PutterSession
+	// Download provides a getter which can be used to download data. If the data
+	// is found locally, its returned immediately, otherwise it is retrieved from
+	// the network.
+	Download(pin bool) storage.Getter
+	// PusherFeed is the feed for direct push chunks. This can be used by the
+	// pusher component to push out the chunks.
+	PusherFeed() <-chan *pusher.Op
 }
 
 type memFS struct {

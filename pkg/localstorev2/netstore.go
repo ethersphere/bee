@@ -20,6 +20,7 @@ const (
 
 var errDBStopped = errors.New("db stopped")
 
+// DirectUpload is the implementation of the NetStore.DirectUpload method.
 func (db *DB) DirectUpload() PutterSession {
 	workers := make(chan struct{}, directUploadWorkers)
 	// egCtx will allow early exit of Put operations if we have
@@ -60,6 +61,7 @@ func (db *DB) DirectUpload() PutterSession {
 	}
 }
 
+// Download is the implementation of the NetStore.Download method.
 func (db *DB) Download(cache bool) storage.Getter {
 	return storage.GetterFunc(func(ctx context.Context, address swarm.Address) (swarm.Chunk, error) {
 		ch, err := db.Lookup().Get(ctx, address)
@@ -94,6 +96,7 @@ func (db *DB) Download(cache bool) storage.Getter {
 	})
 }
 
+// PusherFeed is the implementation of the NetStore.PusherFeed method.
 func (db *DB) PusherFeed() <-chan *pusher.Op {
 	return db.pusherFeed
 }
