@@ -320,7 +320,10 @@ func (c *contract) paused(ctx context.Context) (bool, error) {
 }
 
 func (c *contract) IsOverlayFrozen(ctx context.Context, block uint64) (bool, error) {
-	callData, err := c.stakingContractABI.Pack("lastUpdatedBlockNumberOfOverlay")
+
+	var overlayAddr [32]byte
+	copy(overlayAddr[:], c.overlay.Bytes())
+	callData, err := c.stakingContractABI.Pack("lastUpdatedBlockNumberOfOverlay", overlayAddr)
 	if err != nil {
 		return false, err
 	}
