@@ -6,6 +6,7 @@ package depthmonitor
 
 import (
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/log"
@@ -38,7 +39,7 @@ type ReserveReporter interface {
 // SyncReporter interface needs to be implemented by the syncing component of the node (puller).
 type SyncReporter interface {
 	// Number of active historical syncing jobs.
-	ActiveHistoricalSyncing() uint64
+	Rate() float64
 }
 
 // Topology interface encapsulates the functionality required by the topology component
@@ -136,15 +137,15 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration, freshNode boo
 		// save last calculated reserve size
 		s.lastRSize.Store(currentSize)
 
-		syncCount := s.syncer.ActiveHistoricalSyncing()
-		s.logger.Info("depthmonitor: state", "size", currentSize, "radius", radius, "sync_count", syncCount)
+		rate := s.syncer.Rate()
+		s.logger.Info("depthmonitor: state", "size", currentSize, "radius", radius, "sync_rate", fmt.Sprintf("%.2f ch/s", rate))
 
 		if currentSize > targetSize {
 			return
 		}
 
 		// if historical syncing rate is at zero, we proactively decrease the storage radius to allow nodes to widen their neighbourhoods
-		if syncCount == 0 && s.topology.PeersCount(topologyDriver.Filter{}) != 0 {
+		if rate == 0 && s.topology.PeersCount(topologyDriver.Filter{}) != 0 {
 			err = s.bs.SetStorageRadius(func(radius uint8) uint8 {
 				if radius > s.minimumRadius {
 					radius--
@@ -170,7 +171,7 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration, freshNode boo
 }
 
 func (s *Service) IsFullySynced() bool {
-	return s.syncer.ActiveHistoricalSyncing() == 0 && s.lastRSize.Load() > s.reserve.ReserveCapacity()*4/10
+	return s.syncer.Rate() == 0 && s.lastRSize.Load() > s.reserve.ReserveCapacity()*4/10
 }
 
 func (s *Service) Close() error {

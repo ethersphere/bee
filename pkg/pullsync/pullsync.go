@@ -23,6 +23,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pullsync/pb"
 	"github.com/ethersphere/bee/pkg/pullsync/pullstorage"
+	"github.com/ethersphere/bee/pkg/rate"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -39,7 +40,10 @@ const (
 	cancelStreamName = "cancel"
 )
 
-const MaxCursor = math.MaxUint64
+const (
+	MaxCursor           = math.MaxUint64
+	DefaultRateDuration = time.Minute * 10
+)
 
 var (
 	ErrUnsolicitedChunk = errors.New("peer sent unsolicited chunk")
@@ -76,6 +80,8 @@ type Syncer struct {
 	radius         postage.RadiusChecker
 	overlayAddress swarm.Address
 
+	rate *rate.Rate
+
 	Interface
 	io.Closer
 }
@@ -93,6 +99,7 @@ func New(streamer p2p.Streamer, storage pullstorage.Storer, unwrap func(swarm.Ch
 		quit:           make(chan struct{}),
 		radius:         radius,
 		overlayAddress: overlayAddress,
+		rate:           rate.New(DefaultRateDuration),
 	}
 }
 
@@ -233,6 +240,11 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 	}
 
 	if len(chunksToPut) > 0 {
+
+		if to != MaxCursor { // historical syncing
+			s.rate.Add(len(chunksToPut))
+		}
+
 		s.metrics.DbOps.Inc()
 		ctx, cancel := context.WithTimeout(ctx, storagePutTimeout)
 		defer cancel()
@@ -244,6 +256,11 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 	}
 
 	return topmost, nil
+}
+
+// Rate returns chunks per second synced
+func (s *Syncer) Rate() float64 {
+	return s.rate.Rate()
 }
 
 // handler handles an incoming request to sync an interval
