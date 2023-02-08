@@ -44,7 +44,7 @@ type Contract interface {
 }
 
 type RedistributionStatuser interface {
-	IsOverlayFrozen(ctx context.Context) (bool, error)
+	IsOverlayFrozen(ctx context.Context, block uint64) (bool, error)
 }
 
 type contract struct {
@@ -319,8 +319,8 @@ func (c *contract) paused(ctx context.Context) (bool, error) {
 	return results[0].(bool), nil
 }
 
-func (c *contract) IsOverlayFrozen(ctx context.Context) (bool, error) {
-	callData, err := c.stakingContractABI.Pack("overlayNotFrozen")
+func (c *contract) IsOverlayFrozen(ctx context.Context, block uint64) (bool, error) {
+	callData, err := c.stakingContractABI.Pack("lastUpdatedBlockNumberOfOverlay")
 	if err != nil {
 		return false, err
 	}
@@ -333,7 +333,7 @@ func (c *contract) IsOverlayFrozen(ctx context.Context) (bool, error) {
 		return false, err
 	}
 
-	results, err := c.stakingContractABI.Unpack("overlayNotFrozen", result)
+	results, err := c.stakingContractABI.Unpack("lastUpdatedBlockNumberOfOverlay", result)
 	if err != nil {
 		return false, err
 	}
@@ -341,7 +341,8 @@ func (c *contract) IsOverlayFrozen(ctx context.Context) (bool, error) {
 	if len(results) == 0 {
 		return false, errors.New("unexpected empty results")
 	}
-	isNotFrozen := results[0].(bool)
-	// false if overlay is frozen
-	return !isNotFrozen, nil
+
+	lastUpdate := abi.ConvertType(results[0], new(big.Int)).(*big.Int)
+
+	return lastUpdate.Uint64() >= block, nil
 }

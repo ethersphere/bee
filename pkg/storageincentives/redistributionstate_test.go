@@ -6,14 +6,15 @@ package storageincentives
 
 import (
 	"context"
+	"math/big"
+	"testing"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/log"
 	erc20mock "github.com/ethersphere/bee/pkg/settlement/swap/erc20/mock"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
 	"github.com/google/go-cmp/cmp"
-	"math/big"
-	"testing"
 )
 
 func createRedistribution(t *testing.T, erc20Opts []erc20mock.Option, txOpts []transactionmock.Option) *RedistributionState {
@@ -38,6 +39,7 @@ func createRedistribution(t *testing.T, erc20Opts []erc20mock.Option, txOpts []t
 	}
 	return state
 }
+
 func TestState(t *testing.T) {
 	t.Parallel()
 	input := Status{
