@@ -267,12 +267,11 @@ func (a *Accounting) getIncreasedExpectedDebt(peer swarm.Address, accountingPeer
 }
 
 func (a *Accounting) PrepareCredit(ctx context.Context, peer swarm.Address, price uint64, originated bool) (Action, error) {
-	loggerV2 := a.logger.V(2).Register()
 
 	accountingPeer := a.getAccountingPeer(peer)
 
 	if err := accountingPeer.lock.TryLock(ctx); err != nil {
-		loggerV2.Debug("failed to acquire lock when preparing credit", "error", err)
+		a.logger.Debug("failed to acquire lock when preparing credit", "error", err)
 		return nil, err
 	}
 	defer accountingPeer.lock.Unlock()
