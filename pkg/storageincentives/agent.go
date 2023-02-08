@@ -108,7 +108,6 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		commitRound    uint64 = math.MaxUint64
 		revealRound    uint64 = math.MaxUint64
 		round          uint64
-		block          uint64
 		reserveSample  []byte
 		obfuscationKey []byte
 		storageRadius  uint8
@@ -201,10 +200,9 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 		mtx.Lock()
 		round := round
-		block := block
 		mtx.Unlock()
 
-		sr, smpl, err := a.play(ctx, round, block)
+		sr, smpl, err := a.play(ctx, round)
 		if err != nil {
 			a.logger.Error(err, "make sample")
 		} else if smpl != nil {
@@ -237,16 +235,18 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		case <-time.After(blockTime * time.Duration(checkEvery)):
 		}
 
+		ctx, cancel := context.WithTimeout(context.Background(), blockTime*time.Duration(blocksPerRound))
+
 		a.metrics.BackendCalls.Inc()
-		blockNumber, err := a.backend.BlockNumber(context.Background())
+		block, err := a.backend.BlockNumber(context.Background())
 		if err != nil {
 			a.metrics.BackendErrors.Inc()
 			a.logger.Error(err, "getting block number")
+			cancel()
 			continue
 		}
 
 		mtx.Lock()
-		block = blockNumber
 		round = block / blocksPerRound
 		a.metrics.Round.Set(float64(round))
 
@@ -269,14 +269,12 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 			a.state.SetCurrentEvent(currentPhase, round, block)
 			a.state.IsFullySynced(a.monitor.IsFullySynced())
 
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 			isFrozen, err := a.redistributionStatuser.IsOverlayFrozen(ctx, block)
 			if err != nil {
 				a.logger.Error(err, "error checking if stake is frozen")
 			} else {
 				a.state.SetFrozen(isFrozen, round)
 			}
-			cancel()
 
 			phaseEvents.Publish(currentPhase)
 			if currentPhase == claim {
@@ -285,6 +283,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		}
 		prevPhase = currentPhase
 
+		cancel()
 		mtx.Unlock()
 	}
 }
@@ -345,7 +344,7 @@ func (a *Agent) claim(ctx context.Context, round uint64) error {
 	return nil
 }
 
-func (a *Agent) play(ctx context.Context, round, block uint64) (uint8, []byte, error) {
+func (a *Agent) play(ctx context.Context, round uint64) (uint8, []byte, error) {
 
 	status, err := a.state.Status()
 	if err != nil {
