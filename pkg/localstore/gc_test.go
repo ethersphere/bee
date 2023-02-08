@@ -19,8 +19,8 @@ package localstore
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"errors"
-	"math/rand"
 	"sync"
 	"testing"
 	"time"

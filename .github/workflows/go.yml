@@ -55,7 +55,7 @@ jobs:
       uses: golangci/golangci-lint-action@v3
       with:
         skip-cache: false
-        version: v1.49
+        version: v1.51
   coverage:
     name: Coverage Report
     runs-on: ubuntu-latest

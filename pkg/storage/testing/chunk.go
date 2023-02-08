@@ -18,20 +18,13 @@
 package testing
 
 import (
-	"math/rand"
-	"time"
+	"crypto/rand"
 
 	"github.com/ethersphere/bee/pkg/cac"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 	swarmtesting "github.com/ethersphere/bee/pkg/swarm/test"
 )
-
-// nolint:gochecknoinits
-func init() {
-	// needed for GenerateTestRandomChunk
-	rand.Seed(time.Now().UnixNano())
-}
 
 // GenerateTestRandomChunk generates a valid content addressed chunk.
 func GenerateTestRandomChunk() swarm.Chunk {

@@ -19,7 +19,7 @@ import (
 // matches the base protocol. A given protocol ID matches the base protocol if
 // the IDs are the same and if the semantic version of the base protocol is the
 // same or higher than that of the protocol ID provided.
-func (s *Service) protocolSemverMatcher(base protocol.ID) (func(string) bool, error) {
+func (s *Service) protocolSemverMatcher(base protocol.ID) (func(protocol.ID) bool, error) {
 	parts := strings.Split(string(base), "/")
 	partsLen := len(parts)
 	if partsLen < 2 {
@@ -30,8 +30,8 @@ func (s *Service) protocolSemverMatcher(base protocol.ID) (func(string) bool, er
 		return nil, err
 	}
 
-	return func(check string) bool {
-		chparts := strings.Split(check, "/")
+	return func(check protocol.ID) bool {
+		chparts := strings.Split(string(check), "/")
 		chpartsLen := len(chparts)
 		if chpartsLen != partsLen {
 			return false
