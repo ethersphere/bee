@@ -351,7 +351,13 @@ func (a *Agent) play(ctx context.Context, round uint64) (uint8, []byte, error) {
 		return 0, nil, err
 	}
 
-	if !status.IsFullySynced || status.IsFrozen {
+	if !status.IsFullySynced {
+		a.logger.Info("skipping round because node is not fully synced", "round", round)
+		return 0, nil, nil
+	}
+
+	if status.IsFrozen {
+		a.logger.Info("skipping round because node is frozen", "round", round)
 		return 0, nil, nil
 	}
 
@@ -366,7 +372,7 @@ func (a *Agent) play(ctx context.Context, round uint64) (uint8, []byte, error) {
 		return 0, nil, nil
 	}
 	a.state.SetLastPlayedRound(round)
-	a.logger.Info("neighbourhood chosen")
+	a.logger.Info("neighbourhood chosen", "round", round)
 	a.metrics.NeighborhoodSelected.Inc()
 
 	salt, err := a.contract.ReserveSalt(ctx)
