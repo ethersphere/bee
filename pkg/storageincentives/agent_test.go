@@ -153,8 +153,8 @@ func createService(
 		return nil
 	}),
 	)
-	stakingContract := mock.New(mock.WithIsFrozen(func(context.Context) (bool, error) {
-		return true, nil
+	stakingContract := mock.New(mock.WithIsFrozen(func(context.Context, uint64) (bool, error) {
+		return false, nil
 	}))
 
 	return storageincentives.New(addr, common.Address{}, backend, log.Noop, &mockMonitor{}, contract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), &mockSampler{}, time.Millisecond*10, blocksPerRound, blocksPerPhase, statestore.NewStateStore(), erc20mock.New(), transactionmock.New())

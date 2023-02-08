@@ -93,10 +93,10 @@ func (r *RedistributionState) SetCurrentEvent(phase PhaseType, round uint64, blo
 func (r *RedistributionState) SetFrozen(isFrozen bool, round uint64) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
-	r.status.IsFrozen = isFrozen
-	if isFrozen {
+	if isFrozen && !r.status.IsFrozen { // record fronzen round if not set already
 		r.status.LastFrozenRound = round
 	}
+	r.status.IsFrozen = isFrozen
 	r.save()
 }
 

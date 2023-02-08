@@ -235,11 +235,14 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		case <-time.After(blockTime * time.Duration(checkEvery)):
 		}
 
+		ctx, cancel := context.WithTimeout(context.Background(), blockTime*time.Duration(blocksPerRound))
+
 		a.metrics.BackendCalls.Inc()
 		block, err := a.backend.BlockNumber(context.Background())
 		if err != nil {
 			a.metrics.BackendErrors.Inc()
 			a.logger.Error(err, "getting block number")
+			cancel()
 			continue
 		}
 
@@ -261,18 +264,26 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 			a.metrics.CurrentPhase.Set(float64(currentPhase))
 
-			a.logger.Info("entering phase", "phase", currentPhase.String(), "round", round, "block", block)
+			a.logger.Info("entered new phase", "phase", currentPhase.String(), "round", round, "block", block)
 
 			a.state.SetCurrentEvent(currentPhase, round, block)
+			a.state.IsFullySynced(a.monitor.IsFullySynced())
+
+			isFrozen, err := a.redistributionStatuser.IsOverlayFrozen(ctx, block)
+			if err != nil {
+				a.logger.Error(err, "error checking if stake is frozen")
+			} else {
+				a.state.SetFrozen(isFrozen, round)
+			}
 
 			phaseEvents.Publish(currentPhase)
 			if currentPhase == claim {
 				phaseEvents.Publish(sample) // trigger sample along side the claim phase
 			}
 		}
-
 		prevPhase = currentPhase
-		a.state.IsFullySynced(a.monitor.IsFullySynced())
+
+		cancel()
 		mtx.Unlock()
 	}
 }
@@ -335,22 +346,22 @@ func (a *Agent) claim(ctx context.Context, round uint64) error {
 
 func (a *Agent) play(ctx context.Context, round uint64) (uint8, []byte, error) {
 
-	// get depthmonitor fully synced indicator
-	ready := a.monitor.IsFullySynced()
-	if !ready {
+	status, err := a.state.Status()
+	if err != nil {
+		return 0, nil, err
+	}
+
+	if !status.IsFullySynced {
+		a.logger.Info("skipping round because node is not fully synced", "round", round)
+		return 0, nil, nil
+	}
+
+	if status.IsFrozen {
+		a.logger.Info("skipping round because node is frozen", "round", round)
 		return 0, nil, nil
 	}
 
 	storageRadius := a.radius.StorageRadius()
-
-	// true if frozen
-	isFrozen, err := a.redistributionStatuser.IsOverlayFrozen(ctx)
-	if err != nil {
-		a.logger.Info("error checking if stake is frozen", "err", err)
-	}
-	if err == nil {
-		a.state.SetFrozen(isFrozen, round)
-	}
 
 	isPlaying, err := a.contract.IsPlaying(ctx, storageRadius)
 	if err != nil {
@@ -361,7 +372,7 @@ func (a *Agent) play(ctx context.Context, round uint64) (uint8, []byte, error) {
 		return 0, nil, nil
 	}
 	a.state.SetLastPlayedRound(round)
-	a.logger.Info("neighbourhood chosen")
+	a.logger.Info("neighbourhood chosen", "round", round)
 	a.metrics.NeighborhoodSelected.Inc()
 
 	salt, err := a.contract.ReserveSalt(ctx)
