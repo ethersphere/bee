@@ -133,8 +133,6 @@ type Options struct {
 	Registry         *prometheus.Registry
 }
 
-var registerMetricsOnce sync.Once
-
 func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, logger log.Logger, tracer *tracing.Tracer, o Options) (*Service, error) {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
@@ -184,9 +182,9 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	limiter := rcmgr.NewFixedLimiter(cfg)
 
-	registerMetricsOnce.Do(func() {
-		rcmgrObs.MustRegisterWith(prometheus.DefaultRegisterer)
-	})
+	if o.Registry != nil {
+		rcmgrObs.MustRegisterWith(o.Registry)
+	}
 
 	_, err = ocprom.NewExporter(ocprom.Options{
 		Namespace: m2.Namespace,
