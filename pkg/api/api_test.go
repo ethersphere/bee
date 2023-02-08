@@ -730,7 +730,7 @@ func createRedistributionAgentService(addr swarm.Address, storer storage.StateSt
 		return nil
 	}),
 	)
-	stakingContract := mock2.New(mock2.WithIsFrozen(func(context.Context) (bool, error) {
+	stakingContract := mock2.New(mock2.WithIsFrozen(func(context.Context, uint64) (bool, error) {
 		return true, nil
 	}))
 	contract := &mockContract{}

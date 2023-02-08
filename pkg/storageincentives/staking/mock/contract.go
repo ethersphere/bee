@@ -17,7 +17,7 @@ type stakingContractMock struct {
 	depositStake     func(ctx context.Context, stakedAmount *big.Int) (common.Hash, error)
 	getStake         func(ctx context.Context) (*big.Int, error)
 	withdrawAllStake func(ctx context.Context) (common.Hash, error)
-	isFrozen         func(ctx context.Context) (bool, error)
+	isFrozen         func(ctx context.Context, block uint64) (bool, error)
 }
 
 func (s *stakingContractMock) DepositStake(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
@@ -32,8 +32,8 @@ func (s *stakingContractMock) WithdrawAllStake(ctx context.Context) (common.Hash
 	return s.withdrawAllStake(ctx)
 }
 
-func (s *stakingContractMock) IsOverlayFrozen(ctx context.Context) (bool, error) {
-	return s.isFrozen(ctx)
+func (s *stakingContractMock) IsOverlayFrozen(ctx context.Context, block uint64) (bool, error) {
+	return s.isFrozen(ctx, block)
 }
 
 // Option is a an option passed to New
@@ -68,7 +68,7 @@ func WithWithdrawAllStake(f func(ctx context.Context) (common.Hash, error)) Opti
 	}
 }
 
-func WithIsFrozen(f func(ctx context.Context) (bool, error)) Option {
+func WithIsFrozen(f func(ctx context.Context, block uint64) (bool, error)) Option {
 	return func(mock *stakingContractMock) {
 		mock.isFrozen = f
 	}
