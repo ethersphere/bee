@@ -36,11 +36,6 @@ import (
 	"github.com/ethersphere/bee/pkg/topology/pslice"
 )
 
-// nolint:gochecknoinits
-func init() {
-	rand.Seed(time.Now().UnixNano())
-}
-
 const spinLockWaitTime = time.Second * 3
 
 var nonConnectableAddress, _ = ma.NewMultiaddr(underlayBase + "16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkA")
@@ -1716,7 +1711,7 @@ func TestIteratorOpts(t *testing.T) {
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{})
-		randBool                 = &boolgen{src: rand.NewSource(time.Now().UnixNano())}
+		randBool                 = &boolgen{}
 	)
 
 	for i := 0; i < 6; i++ {
@@ -1779,14 +1774,13 @@ func TestIteratorOpts(t *testing.T) {
 }
 
 type boolgen struct {
-	src       rand.Source
 	cache     int64
 	remaining int
 }
 
 func (b *boolgen) Bool() bool {
 	if b.remaining == 0 {
-		b.cache, b.remaining = b.src.Int63(), 63
+		b.cache, b.remaining = rand.Int63(), 63
 	}
 
 	result := b.cache&0x01 == 1

@@ -18,7 +18,7 @@
 package localstore
 
 import (
-	"math/rand"
+	"crypto/rand"
 	"strings"
 	"testing"
 

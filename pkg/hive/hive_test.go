@@ -9,7 +9,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
 	"strconv"
 	"testing"
 	"time"
@@ -112,7 +111,6 @@ func TestBroadcastPeers(t *testing.T) {
 	t.Parallel()
 
 	logger := log.Noop
-	rand.Seed(time.Now().UnixNano())
 	statestore := mock.NewStateStore()
 	addressbook := ab.New(statestore)
 	networkID := uint64(1)
