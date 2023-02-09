@@ -34,7 +34,7 @@ var errCursorsLength = errors.New("cursors length mismatch")
 const (
 	DefaultSyncErrorSleepDur = time.Second * 30
 	recalcPeersDur           = time.Minute * 5
-	histSyncTimeout          = time.Minute * 5
+	histSyncTimeout          = time.Minute * 10
 	histSyncTimeoutBlockList = time.Hour * 24
 )
 
