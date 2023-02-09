@@ -83,6 +83,17 @@ func (db *DB) SetRepoStorePutHook(fn func(storage.Item) error) {
 	db.repo = &wrappedRepo{Repository: db.repo, putHook: fn}
 }
 
+func (db *DB) WaitForBgCacheWorkers() (unblock func()) {
+	for i := 0; i < defaultBgCacheWorkers; i++ {
+		db.bgCacheWorkers <- struct{}{}
+	}
+	return func() {
+		for i := 0; i < defaultBgCacheWorkers; i++ {
+			<-db.bgCacheWorkers
+		}
+	}
+}
+
 func DefaultOptions() *Options {
 	return defaultOptions()
 }
