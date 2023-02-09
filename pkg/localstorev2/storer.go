@@ -16,10 +16,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/localstorev2/internal"
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/cache"
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/chunkstore"
-	pinstore "github.com/ethersphere/bee/pkg/localstorev2/internal/pinning"
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/upload"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/pusher"
@@ -346,143 +344,13 @@ func (db *DB) Close() error {
 	return err
 }
 
-type putterSessionImpl struct {
+type putterSession struct {
 	storage.Putter
 	done    func(swarm.Address) error
 	cleanup func() error
 }
 
-func (p *putterSessionImpl) Done(addr swarm.Address) error { return p.done(addr) }
+func (p *putterSession) Done(addr swarm.Address) error { return p.done(addr) }
 
-func (p *putterSessionImpl) Cleanup() error { return p.cleanup() }
+func (p *putterSession) Cleanup() error { return p.cleanup() }
 
-// Upload is the implementation of UploadStore.Upload method.
-func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession, error) {
-	if tagID == 0 {
-		return nil, fmt.Errorf("storer: tagID required")
-	}
-
-	txnRepo, commit, rollback := db.repo.NewTx(ctx)
-
-	uploadPutter, err := upload.NewPutter(txnRepo, tagID)
-	if err != nil {
-		return nil, err
-	}
-
-	var pinningPutter internal.PutterCloserWithReference
-	if pin {
-		pinningPutter = pinstore.NewCollection(txnRepo)
-	}
-
-	return &putterSessionImpl{
-		Putter: storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
-			return multierror.Append(
-				uploadPutter.Put(ctx, chunk),
-				func() error {
-					if pinningPutter != nil {
-						return pinningPutter.Put(ctx, chunk)
-					}
-					return nil
-				}(),
-			).ErrorOrNil()
-		}),
-		done: func(address swarm.Address) error {
-			return multierror.Append(
-				uploadPutter.Close(address),
-				func() error {
-					if pinningPutter != nil {
-						return pinningPutter.Close(address)
-					}
-					return nil
-				}(),
-				commit(),
-			).ErrorOrNil()
-		},
-		cleanup: func() error {
-			return rollback()
-		},
-	}, nil
-}
-
-// NewSession is the implementation of UploadStore.NewSession method.
-func (db *DB) NewSession() (uint64, error) {
-	db.lock.Lock(lockKeyNewSession)
-	defer db.lock.Unlock(lockKeyNewSession)
-
-	return upload.NextTag(db.repo.IndexStore())
-}
-
-// GetSessionInfo is the implementation of the UploadStore.GetSessionInfo method.
-func (db *DB) GetSessionInfo(tagID uint64) (SessionInfo, error) {
-	return upload.GetTagInfo(db.repo.IndexStore(), tagID)
-}
-
-// NewCollection is the implementation of the PinStore.NewCollection method.
-func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
-	txnRepo, commit, rollback := db.repo.NewTx(ctx)
-	pinningPutter := pinstore.NewCollection(txnRepo)
-
-	return &putterSessionImpl{
-		Putter: pinningPutter,
-		done: func(address swarm.Address) error {
-			return multierror.Append(
-				pinningPutter.Close(address),
-				commit(),
-			).ErrorOrNil()
-		},
-		cleanup: func() error { return rollback() },
-	}, nil
-}
-
-// DeletePin is the implementation of the PinStore.DeletePin method.
-func (db *DB) DeletePin(ctx context.Context, root swarm.Address) error {
-	txnRepo, commit, rollback := db.repo.NewTx(ctx)
-
-	err := pinstore.DeletePin(ctx, txnRepo, root)
-	if err != nil {
-		return multierror.Append(err, rollback()).ErrorOrNil()
-	}
-
-	return commit()
-}
-
-// Pins is the implementation of the PinStore.Pins method.
-func (db *DB) Pins() ([]swarm.Address, error) {
-	return pinstore.Pins(db.repo.IndexStore())
-}
-
-// HasPin is the implementation of the PinStore.HasPin method.
-func (db *DB) HasPin(root swarm.Address) (bool, error) {
-	return pinstore.HasPin(db.repo.IndexStore(), root)
-}
-
-// Lookup is the implementation of the CacheStore.Lookup method.
-func (db *DB) Lookup() storage.Getter {
-	return storage.GetterFunc(func(ctx context.Context, address swarm.Address) (swarm.Chunk, error) {
-		txnRepo, commit, rollback := db.repo.NewTx(ctx)
-		ch, err := db.cacheObj.Getter(txnRepo).Get(ctx, address)
-		switch {
-		case err == nil:
-			return ch, commit()
-		case errors.Is(err, storage.ErrNotFound):
-			// here we would ideally have nothing to do but just to return this
-			// error to the client. The commit is mainly done to end the txn.
-			return nil, multierror.Append(err, commit()).ErrorOrNil()
-		}
-		// if we are here, it means there was some unexpected error, in which
-		// case we need to rollback any changes that were already made.
-		return nil, multierror.Append(err, rollback()).ErrorOrNil()
-	})
-}
-
-// Cache is the implementation of the CacheStore.Cache method.
-func (db *DB) Cache() storage.Putter {
-	return storage.PutterFunc(func(ctx context.Context, ch swarm.Chunk) error {
-		txnRepo, commit, rollback := db.repo.NewTx(ctx)
-		err := db.cacheObj.Putter(txnRepo).Put(ctx, ch)
-		if err != nil {
-			return multierror.Append(err, rollback()).ErrorOrNil()
-		}
-		return multierror.Append(err, commit()).ErrorOrNil()
-	})
-}
