@@ -813,7 +813,7 @@ func newPuller(ops opts) (*puller.Puller, storage.StateStorer, *kadMock.Mock, *m
 		Bins:         ops.bins,
 		SyncSleepDur: ops.syncSleepDur,
 	}
-	return puller.New(s, kad, bs, ps, logger, o, 0), s, kad, ps
+	return puller.New(s, kad, bs, ps, nil, logger, o, 0), s, kad, ps
 }
 
 type c struct {
