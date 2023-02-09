@@ -269,7 +269,7 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 	defer p.activeHistoricalSyncing.Dec()
 
 	sleep := false
-	start := time.Now()
+	loopStart := time.Now()
 
 	loggerV2.Debug("histSyncWorker starting", "peer_address", peer, "bin", bin, "cursor", cur)
 
@@ -300,9 +300,11 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			return
 		}
 		if s > cur {
-			p.logger.Debug("histSyncWorker syncing finished", "bin", bin, "cursor", cur, "duration", time.Since(start), "peer_address", peer)
+			p.logger.Debug("histSyncWorker syncing finished", "bin", bin, "cursor", cur, "total_duration", time.Since(loopStart), "peer_address", peer)
 			return
 		}
+
+		syncStart := time.Now()
 
 		ctx, cancel := context.WithTimeout(ctx, histSyncTimeout)
 		top, err := p.syncer.SyncInterval(ctx, peer, bin, s, cur)
@@ -311,7 +313,7 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			p.metrics.HistWorkerErrCounter.Inc()
 			loggerV2.Debug("histSyncWorker syncing interval failed", "peer_address", peer, "bin", bin, "cursor", cur, "start", s, "topmost", top, "err", err)
 			if errors.Is(err, context.DeadlineExceeded) {
-				p.logger.Debug("peer sync interval timeout, exiting", "duration", time.Since(start), "peer_address", peer, "error", err)
+				p.logger.Debug("peer sync interval timeout, exiting", "total_duration", time.Since(loopStart), "peer_address", peer, "error", err)
 				err = p.blockLister.Blocklist(peer, histSyncTimeoutBlockList, "sync interval timeout")
 				if err != nil {
 					p.logger.Debug("peer sync interval timeout disconnect error", "error", err)
@@ -328,7 +330,7 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			p.logger.Error(err, "histSyncWorker could not persist interval for peer, quitting...", "peer_address", peer)
 			return
 		}
-		loggerV2.Debug("histSyncWorker pulled", "bin", bin, "start", s, "topmost", top, "peer_address", peer)
+		loggerV2.Debug("histSyncWorker pulled", "bin", bin, "start", s, "topmost", top, "duration", time.Since(syncStart), "peer_address", peer)
 	}
 }
 
