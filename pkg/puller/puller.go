@@ -32,10 +32,10 @@ const loggerName = "puller"
 var errCursorsLength = errors.New("cursors length mismatch")
 
 const (
-	DefaultSyncErrorSleepDur     = time.Second * 30
-	recalcPeersDur               = time.Minute * 5
-	syncIntervalTimeout          = time.Minute * 5
-	syncIntervalTimeoutBlockList = time.Hour * 24
+	DefaultSyncErrorSleepDur = time.Second * 30
+	recalcPeersDur           = time.Minute * 5
+	histSyncTimeout          = time.Minute * 5
+	histSyncTimeoutBlockList = time.Hour * 24
 )
 
 type Options struct {
@@ -304,7 +304,7 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			return
 		}
 
-		ctx, cancel := context.WithTimeout(ctx, recalcPeersDur)
+		ctx, cancel := context.WithTimeout(ctx, histSyncTimeout)
 		top, err := p.syncer.SyncInterval(ctx, peer, bin, s, cur)
 		if err != nil {
 			cancel()
@@ -312,7 +312,7 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			loggerV2.Debug("histSyncWorker syncing interval failed", "peer_address", peer, "bin", bin, "cursor", cur, "start", s, "topmost", top, "err", err)
 			if errors.Is(err, context.DeadlineExceeded) {
 				p.logger.Debug("peer sync interval timeout, exiting", "duration", time.Since(start), "peer_address", peer, "error", err)
-				err = p.blockLister.Blocklist(peer, syncIntervalTimeoutBlockList, "sync interval timeout")
+				err = p.blockLister.Blocklist(peer, histSyncTimeoutBlockList, "sync interval timeout")
 				if err != nil {
 					p.logger.Debug("peer sync interval timeout disconnect error", "error", err)
 				}
