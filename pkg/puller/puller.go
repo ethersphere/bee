@@ -312,7 +312,10 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			loggerV2.Debug("histSyncWorker syncing interval failed", "peer_address", peer, "bin", bin, "cursor", cur, "start", s, "topmost", top, "err", err)
 			if errors.Is(err, context.DeadlineExceeded) {
 				p.logger.Debug("peer sync interval timeout, exiting", "duration", time.Since(start), "peer_address", peer, "error", err)
-				p.blockLister.Blocklist(peer, syncIntervalTimeoutBlockList, "sync interval timeout")
+				err = p.blockLister.Blocklist(peer, syncIntervalTimeoutBlockList, "sync interval timeout")
+				if err != nil {
+					p.logger.Debug("peer sync interval timeout disconnect error", "error", err)
+				}
 				return
 			}
 			sleep = true
