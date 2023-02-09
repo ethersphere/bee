@@ -17,6 +17,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/intervalstore"
 	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pullsync"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -31,8 +32,10 @@ const loggerName = "puller"
 var errCursorsLength = errors.New("cursors length mismatch")
 
 const (
-	DefaultSyncErrorSleepDur = time.Second * 30
-	recalcPeersDur           = time.Minute * 5
+	DefaultSyncErrorSleepDur     = time.Second * 30
+	recalcPeersDur               = time.Minute * 5
+	syncIntervalTimeout          = time.Minute * 5
+	syncIntervalTimeoutBlockList = time.Hour * 24
 )
 
 type Options struct {
@@ -41,10 +44,11 @@ type Options struct {
 }
 
 type Puller struct {
-	topology   topology.Driver
-	radius     postage.RadiusChecker
-	statestore storage.StateStorer
-	syncer     pullsync.Interface
+	topology    topology.Driver
+	radius      postage.RadiusChecker
+	statestore  storage.StateStorer
+	syncer      pullsync.Interface
+	blockLister p2p.Blocklister
 
 	metrics metrics
 	logger  log.Logger
@@ -63,7 +67,7 @@ type Puller struct {
 	activeHistoricalSyncing *atomic.Uint64
 }
 
-func New(stateStore storage.StateStorer, topology topology.Driver, reserveState postage.RadiusChecker, pullSync pullsync.Interface, logger log.Logger, o Options, warmupTime time.Duration) *Puller {
+func New(stateStore storage.StateStorer, topology topology.Driver, reserveState postage.RadiusChecker, pullSync pullsync.Interface, blockLister p2p.Blocklister, logger log.Logger, o Options, warmupTime time.Duration) *Puller {
 	var (
 		bins uint8 = swarm.MaxBins
 	)
@@ -82,6 +86,7 @@ func New(stateStore storage.StateStorer, topology topology.Driver, reserveState 
 		syncErrorSleepDur:       o.SyncSleepDur,
 		bins:                    bins,
 		activeHistoricalSyncing: atomic.NewUint64(0),
+		blockLister:             blockLister,
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -264,6 +269,7 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 	defer p.activeHistoricalSyncing.Dec()
 
 	sleep := false
+	start := time.Now()
 
 	loggerV2.Debug("histSyncWorker starting", "peer_address", peer, "bin", bin, "cursor", cur)
 
@@ -294,16 +300,25 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			return
 		}
 		if s > cur {
-			p.logger.Debug("histSyncWorker syncing finished", "bin", bin, "cursor", cur, "peer_address", peer)
+			p.logger.Debug("histSyncWorker syncing finished", "bin", bin, "cursor", cur, "duration", time.Since(start), "peer_address", peer)
 			return
 		}
+
+		ctx, cancel := context.WithTimeout(ctx, recalcPeersDur)
 		top, err := p.syncer.SyncInterval(ctx, peer, bin, s, cur)
 		if err != nil {
+			cancel()
 			p.metrics.HistWorkerErrCounter.Inc()
 			loggerV2.Debug("histSyncWorker syncing interval failed", "peer_address", peer, "bin", bin, "cursor", cur, "start", s, "topmost", top, "err", err)
+			if errors.Is(err, context.DeadlineExceeded) {
+				p.logger.Debug("peer sync interval timeout, exiting", "duration", time.Since(start), "peer_address", peer, "error", err)
+				p.blockLister.Blocklist(peer, syncIntervalTimeoutBlockList, "sync interval timeout")
+				return
+			}
 			sleep = true
 			continue
 		}
+		cancel()
 		err = p.addPeerInterval(peer, bin, s, top)
 		if err != nil {
 			p.metrics.HistWorkerErrCounter.Inc()
