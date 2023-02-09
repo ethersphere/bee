@@ -353,4 +353,3 @@ type putterSession struct {
 func (p *putterSession) Done(addr swarm.Address) error { return p.done(addr) }
 
 func (p *putterSession) Cleanup() error { return p.cleanup() }
-
