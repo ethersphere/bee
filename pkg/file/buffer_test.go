@@ -6,10 +6,10 @@ package file_test
 
 import (
 	"bytes"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
-	"math/rand"
 	"strconv"
 	"testing"
 
@@ -153,7 +153,7 @@ func TestCopyBuffer(t *testing.T) {
 
 			srcBytes := make([]byte, dataSize)
 
-			rand.Read(srcBytes)
+			_, _ = rand.Read(srcBytes)
 
 			chunkPipe := file.NewChunkPipe()
 

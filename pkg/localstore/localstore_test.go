@@ -19,9 +19,10 @@ package localstore
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
-	"math/rand"
+	"math/big"
 	"runtime"
 	"sort"
 	"sync"
@@ -192,10 +193,13 @@ func TestParallelPutAndGet(t *testing.T) {
 		go func() {
 			defer readWG.Done()
 
-			random := rand.New(rand.NewSource(time.Now().UnixNano()))
-
 			for i := 0; i < chunkCount; i++ {
-				n := random.Int63n(int64(chunkCount))
+				nBig, err := rand.Int(rand.Reader, big.NewInt(int64(chunkCount)))
+				if err != nil {
+					t.Error(err)
+				}
+
+				n := nBig.Int64()
 				ch := chunks[n]
 
 				chData := ch.Data()

@@ -5,8 +5,8 @@
 package testing
 
 import (
+	"crypto/rand"
 	"encoding/binary"
-	"math/rand"
 
 	"github.com/ethersphere/bee/pkg/swarm"
 )

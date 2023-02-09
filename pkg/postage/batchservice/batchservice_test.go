@@ -7,10 +7,10 @@ package batchservice_test
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"errors"
 	"hash"
 	"math/big"
-	"math/rand"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -176,7 +176,7 @@ func TestBatchServiceCreate(t *testing.T) {
 
 		// create a owner different from the batch owner
 		owner := make([]byte, 32)
-		rand.Read(owner)
+		_, _ = rand.Read(owner)
 
 		svc, batchStore, _ := newTestStoreAndServiceWithListener(
 			t,
@@ -311,7 +311,7 @@ func TestBatchServiceTopUp(t *testing.T) {
 		testBatchListener := &mockBatchListener{}
 		// create an owner different from the batch owner
 		owner := make([]byte, 32)
-		rand.Read(owner)
+		_, _ = rand.Read(owner)
 
 		svc, batchStore, _ := newTestStoreAndServiceWithListener(
 			t,
@@ -415,7 +415,7 @@ func TestBatchServiceUpdateDepth(t *testing.T) {
 		testBatchListener := &mockBatchListener{}
 		// create an owner different from the batch owner
 		owner := make([]byte, 32)
-		rand.Read(owner)
+		_, _ = rand.Read(owner)
 
 		svc, batchStore, _ := newTestStoreAndServiceWithListener(
 			t,
