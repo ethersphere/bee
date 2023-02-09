@@ -7,9 +7,10 @@ package pullsync_test
 import (
 	"context"
 	"errors"
-	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	"io"
 	"testing"
+
+	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -93,6 +94,24 @@ func TestIncoming_WantNone(t *testing.T) {
 	}
 	if clientDb.PutCalls() > 0 {
 		t.Fatal("too many puts")
+	}
+}
+
+func TestIncoming_ContextTimeout(t *testing.T) {
+	t.Parallel()
+
+	var (
+		mockTopmost = uint64(5)
+		ps, _       = newPullSync(nil, mock.WithIntervalsResp(addrs, mockTopmost, nil), mock.WithChunks(chunks...))
+		recorder    = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
+		psClient, _ = newPullSync(recorder, mock.WithChunks(chunks...))
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 0)
+	cancel()
+	_, err := psClient.SyncInterval(ctx, swarm.ZeroAddress, 0, 0, 5)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("wanted error %v, got %v", context.DeadlineExceeded, err)
 	}
 }
 
