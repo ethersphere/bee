@@ -13,12 +13,17 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sync"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/localstorev2/internal"
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/cache"
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/chunkstore"
 	pinstore "github.com/ethersphere/bee/pkg/localstorev2/internal/pinning"
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/upload"
+	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/pkg/pusher"
+	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/sharky"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/storagev2/leveldbstore"
@@ -88,6 +93,21 @@ type CacheStore interface {
 	Cache() storage.Putter
 }
 
+// NetStore is a logical component of the localstore that deals with network. It will
+// push/retrieve chunks from the network.
+type NetStore interface {
+	// DirectUpload provides a session which can be used to push chunks directly
+	// to the network.
+	DirectUpload() PutterSession
+	// Download provides a getter which can be used to download data. If the data
+	// is found locally, its returned immediately, otherwise it is retrieved from
+	// the network.
+	Download(pin bool) storage.Getter
+	// PusherFeed is the feed for direct push chunks. This can be used by the
+	// pusher component to push out the chunks.
+	PusherFeed() <-chan *pusher.Op
+}
+
 type memFS struct {
 	afero.Fs
 }
@@ -141,6 +161,9 @@ func initInmemRepository() (storage.Repository, io.Closer, error) {
 	return storage.NewRepository(txStore, txChunkStore), closer(store, sharky), nil
 }
 
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "localstore"
+
 // Default options for levelDB.
 const (
 	defaultOpenFilesLimit         = uint64(256)
@@ -148,6 +171,7 @@ const (
 	defaultWriteBufferSize        = uint64(32 * 1024 * 1024)
 	defaultDisableSeeksCompaction = false
 	defaultCacheCapacity          = uint64(1_000_000)
+	defaultBgCacheWorkers         = 16
 )
 
 func initDiskRepository(basePath string, opts *Options) (storage.Repository, io.Closer, error) {
@@ -219,6 +243,8 @@ type Options struct {
 	LdbWriteBufferSize        uint64
 	LdbDisableSeeksCompaction bool
 	CacheCapacity             uint64
+	Logger                    log.Logger
+	Retrieval                 retrieval.Interface
 }
 
 func defaultOptions() *Options {
@@ -228,15 +254,22 @@ func defaultOptions() *Options {
 		LdbWriteBufferSize:        defaultWriteBufferSize,
 		LdbDisableSeeksCompaction: defaultDisableSeeksCompaction,
 		CacheCapacity:             defaultCacheCapacity,
+		Logger:                    log.Noop,
 	}
 }
 
 // DB implements all the component stores described above.
 type DB struct {
-	repo     storage.Repository
-	lock     *multex.Multex
-	cacheObj *cache.Cache
-	dbCloser io.Closer
+	repo             storage.Repository
+	lock             *multex.Multex
+	cacheObj         *cache.Cache
+	retrieval        retrieval.Interface
+	pusherFeed       chan *pusher.Op
+	logger           log.Logger
+	quit             chan struct{}
+	bgCacheWorkers   chan struct{}
+	bgCacheWorkersWg sync.WaitGroup
+	dbCloser         io.Closer
 }
 
 // New returns a newly constructed DB object which implements all the above
@@ -269,15 +302,48 @@ func New(dirPath string, opts *Options) (*DB, error) {
 	}
 
 	return &DB{
-		repo:     repo,
-		lock:     multex.New(),
-		cacheObj: cacheObj,
-		dbCloser: dbCloser,
+		repo:           repo,
+		lock:           multex.New(),
+		cacheObj:       cacheObj,
+		retrieval:      opts.Retrieval,
+		pusherFeed:     make(chan *pusher.Op),
+		logger:         opts.Logger.WithName(loggerName).Register(),
+		quit:           make(chan struct{}),
+		bgCacheWorkers: make(chan struct{}, 16),
+		dbCloser:       dbCloser,
 	}, nil
 }
 
 func (db *DB) Close() error {
-	return db.dbCloser.Close()
+	close(db.quit)
+
+	bgCacheWorkersClosed := make(chan struct{})
+	go func() {
+		defer close(bgCacheWorkersClosed)
+		db.bgCacheWorkersWg.Wait()
+	}()
+
+	var err error
+	closerDone := make(chan struct{})
+	go func() {
+		defer close(closerDone)
+		err = db.dbCloser.Close()
+	}()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		<-closerDone
+		<-bgCacheWorkersClosed
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		return errors.New("localstore closed with bg goroutines running")
+	}
+
+	return err
 }
 
 type putterSessionImpl struct {
