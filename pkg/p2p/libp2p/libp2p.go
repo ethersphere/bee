@@ -58,7 +58,6 @@ import (
 	m2 "github.com/ethersphere/bee/pkg/metrics"
 	rcmgrObs "github.com/libp2p/go-libp2p/p2p/host/resource-manager/obs"
 	"github.com/prometheus/client_golang/prometheus"
-	"go.opencensus.io/stats/view"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -184,7 +183,10 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	limiter := rcmgr.NewFixedLimiter(cfg)
 
-	_ = view.Register(rcmgrObs.DefaultViews...)
+	if o.Registry != nil {
+		rcmgrObs.MustRegisterWith(o.Registry)
+	}
+
 	_, err = ocprom.NewExporter(ocprom.Options{
 		Namespace: m2.Namespace,
 		Registry:  o.Registry,
@@ -950,7 +952,11 @@ func (s *Service) newStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, 
 			s.logger.Debug("stream experienced unexpected early close")
 			_ = st.Close()
 		}
-		if errors.Is(err, multistream.ErrNotSupported) || errors.Is(err, multistream.ErrIncorrectVersion) {
+		var errNotSupported multistream.ErrNotSupported[protocol.ID]
+		if errors.As(err, &errNotSupported) {
+			return nil, p2p.NewIncompatibleStreamError(err)
+		}
+		if errors.Is(err, multistream.ErrIncorrectVersion) {
 			return nil, p2p.NewIncompatibleStreamError(err)
 		}
 		return nil, fmt.Errorf("create stream %q to %q: %w", swarmStreamName, peerID, err)
