@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package localstore_test
+package storer_test
 
 import (
 	"context"
@@ -12,7 +12,7 @@ import (
 	"os"
 	"testing"
 
-	localstore "github.com/ethersphere/bee/pkg/localstorev2"
+	storer "github.com/ethersphere/bee/pkg/localstorev2"
 	pinstore "github.com/ethersphere/bee/pkg/localstorev2/internal/pinning"
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/upload"
 	"github.com/ethersphere/bee/pkg/log"
@@ -89,13 +89,13 @@ func verifyPinCollection(
 	verifyChunks(t, repo, chunks, has)
 }
 
-func testUploadStore(t *testing.T, newLocalstore func() (*localstore.DB, error)) {
+func testUploadStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 	t.Helper()
 
 	t.Run("new session", func(t *testing.T) {
 		t.Parallel()
 
-		lstore, err := newLocalstore()
+		lstore, err := newStorer()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -114,7 +114,7 @@ func testUploadStore(t *testing.T, newLocalstore func() (*localstore.DB, error))
 	t.Run("no tag", func(t *testing.T) {
 		t.Parallel()
 
-		lstore, err := newLocalstore()
+		lstore, err := newStorer()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -165,7 +165,7 @@ func testUploadStore(t *testing.T, newLocalstore func() (*localstore.DB, error))
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 
-			lstore, err := newLocalstore()
+			lstore, err := newStorer()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -208,12 +208,12 @@ func testUploadStore(t *testing.T, newLocalstore func() (*localstore.DB, error))
 	t.Run("get session info", func(t *testing.T) {
 		t.Parallel()
 
-		lstore, err := newLocalstore()
+		lstore, err := newStorer()
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		verify := func(t *testing.T, info localstore.SessionInfo, id, split, seen uint64, addr swarm.Address) {
+		verify := func(t *testing.T, info storer.SessionInfo, id, split, seen uint64, addr swarm.Address) {
 			t.Helper()
 
 			if info.TagID != id {
@@ -317,16 +317,16 @@ func testUploadStore(t *testing.T, newLocalstore func() (*localstore.DB, error))
 
 // TestMain exists to adjust the time.Now function to a fixed value.
 func TestMain(m *testing.M) {
-	localstore.ReplaceSharkyShardLimit(4)
+	storer.ReplaceSharkyShardLimit(4)
 	code := m.Run()
-	localstore.ReplaceSharkyShardLimit(32)
+	storer.ReplaceSharkyShardLimit(32)
 	os.Exit(code)
 }
 
-func diskLocalstore(t *testing.T, opts *localstore.Options) func() (*localstore.DB, error) {
+func diskStorer(t *testing.T, opts *storer.Options) func() (*storer.DB, error) {
 	t.Helper()
 
-	return func() (*localstore.DB, error) {
+	return func() (*storer.DB, error) {
 		dir, err := ioutil.TempDir(".", "testrepo*")
 		if err != nil {
 			t.Fatal(err)
@@ -338,12 +338,12 @@ func diskLocalstore(t *testing.T, opts *localstore.Options) func() (*localstore.
 			}
 		})
 
-		lstore, err := localstore.New(dir, opts)
+		lstore, err := storer.New(dir, opts)
 		if err == nil {
 			t.Cleanup(func() {
 				err := lstore.Close()
 				if err != nil {
-					t.Errorf("failed closing localstore: %v", err)
+					t.Errorf("failed closing storer: %v", err)
 				}
 			})
 		}
@@ -358,16 +358,16 @@ func TestUploadStore(t *testing.T) {
 	t.Run("inmem", func(t *testing.T) {
 		t.Parallel()
 
-		testUploadStore(t, func() (*localstore.DB, error) { return localstore.New("", nil) })
+		testUploadStore(t, func() (*storer.DB, error) { return storer.New("", nil) })
 	})
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
 
-		testUploadStore(t, diskLocalstore(t, nil))
+		testUploadStore(t, diskStorer(t, nil))
 	})
 }
 
-func testPinStore(t *testing.T, newLocalstore func() (*localstore.DB, error)) {
+func testPinStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 	t.Helper()
 
 	testCases := []struct {
@@ -386,7 +386,7 @@ func testPinStore(t *testing.T, newLocalstore func() (*localstore.DB, error)) {
 		},
 	}
 
-	lstore, err := newLocalstore()
+	lstore, err := newStorer()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -485,21 +485,21 @@ func TestPinStore(t *testing.T) {
 	t.Run("inmem", func(t *testing.T) {
 		t.Parallel()
 
-		testPinStore(t, func() (*localstore.DB, error) { return localstore.New("", nil) })
+		testPinStore(t, func() (*storer.DB, error) { return storer.New("", nil) })
 	})
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
 
-		testPinStore(t, diskLocalstore(t, nil))
+		testPinStore(t, diskStorer(t, nil))
 	})
 }
 
-func testCacheStore(t *testing.T, newLocalstore func() (*localstore.DB, error)) {
+func testCacheStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 	t.Helper()
 
 	chunks := chunktesting.GenerateTestRandomChunks(9)
 
-	lstore, err := newLocalstore()
+	lstore, err := newStorer()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -609,8 +609,8 @@ func TestCacheStore(t *testing.T) {
 	t.Run("inmem", func(t *testing.T) {
 		t.Parallel()
 
-		testCacheStore(t, func() (*localstore.DB, error) {
-			return localstore.New("", &localstore.Options{
+		testCacheStore(t, func() (*storer.DB, error) {
+			return storer.New("", &storer.Options{
 				CacheCapacity: 10,
 				Logger:        log.Noop,
 			})
@@ -619,9 +619,9 @@ func TestCacheStore(t *testing.T) {
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
 
-		opts := localstore.DefaultOptions()
+		opts := storer.DefaultOptions()
 		opts.CacheCapacity = 10
 
-		testCacheStore(t, diskLocalstore(t, opts))
+		testCacheStore(t, diskStorer(t, opts))
 	})
 }
