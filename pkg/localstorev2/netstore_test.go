@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package localstore_test
+package storer_test
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"testing"
 
-	localstore "github.com/ethersphere/bee/pkg/localstorev2"
+	storer "github.com/ethersphere/bee/pkg/localstorev2"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
@@ -26,7 +26,7 @@ func (t *testRetrieval) RetrieveChunk(_ context.Context, address swarm.Address, 
 	return t.fn(address)
 }
 
-func testNetStore(t *testing.T, newLocalstore func(r retrieval.Interface) (*localstore.DB, error)) {
+func testNetStore(t *testing.T, newStorer func(r retrieval.Interface) (*storer.DB, error)) {
 	t.Helper()
 
 	t.Run("direct upload", func(t *testing.T) {
@@ -37,7 +37,7 @@ func testNetStore(t *testing.T, newLocalstore func(r retrieval.Interface) (*loca
 
 			chunks := chunktesting.GenerateTestRandomChunks(10)
 
-			lstore, err := newLocalstore(nil)
+			lstore, err := newStorer(nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -94,7 +94,7 @@ func testNetStore(t *testing.T, newLocalstore func(r retrieval.Interface) (*loca
 
 			chunks := chunktesting.GenerateTestRandomChunks(10)
 
-			lstore, err := newLocalstore(nil)
+			lstore, err := newStorer(nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -152,7 +152,7 @@ func testNetStore(t *testing.T, newLocalstore func(r retrieval.Interface) (*loca
 
 			chunks := chunktesting.GenerateTestRandomChunks(10)
 
-			lstore, err := newLocalstore(nil)
+			lstore, err := newStorer(nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -196,7 +196,7 @@ func testNetStore(t *testing.T, newLocalstore func(r retrieval.Interface) (*loca
 
 			chunks := chunktesting.GenerateTestRandomChunks(10)
 
-			lstore, err := newLocalstore(&testRetrieval{fn: func(address swarm.Address) (swarm.Chunk, error) {
+			lstore, err := newStorer(&testRetrieval{fn: func(address swarm.Address) (swarm.Chunk, error) {
 				for _, ch := range chunks[5:] {
 					if ch.Address().Equal(address) {
 						return ch, nil
@@ -243,7 +243,7 @@ func testNetStore(t *testing.T, newLocalstore func(r retrieval.Interface) (*loca
 
 			chunks := chunktesting.GenerateTestRandomChunks(10)
 
-			lstore, err := newLocalstore(&testRetrieval{fn: func(address swarm.Address) (swarm.Chunk, error) {
+			lstore, err := newStorer(&testRetrieval{fn: func(address swarm.Address) (swarm.Chunk, error) {
 				for _, ch := range chunks[5:] {
 					if ch.Address().Equal(address) {
 						return ch, nil
@@ -292,8 +292,8 @@ func TestNetStore(t *testing.T) {
 	t.Run("inmem", func(t *testing.T) {
 		t.Parallel()
 
-		testNetStore(t, func(r retrieval.Interface) (*localstore.DB, error) {
-			return localstore.New("", &localstore.Options{
+		testNetStore(t, func(r retrieval.Interface) (*storer.DB, error) {
+			return storer.New("", &storer.Options{
 				Retrieval:     r,
 				CacheCapacity: 100,
 				Logger:        log.Noop,
@@ -303,10 +303,10 @@ func TestNetStore(t *testing.T) {
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
 
-		testNetStore(t, func(r retrieval.Interface) (*localstore.DB, error) {
-			opts := localstore.DefaultOptions()
+		testNetStore(t, func(r retrieval.Interface) (*storer.DB, error) {
+			opts := storer.DefaultOptions()
 			opts.Retrieval = r
-			return diskLocalstore(t, opts)()
+			return diskStorer(t, opts)()
 		})
 	})
 }
