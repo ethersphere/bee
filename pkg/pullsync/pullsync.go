@@ -246,8 +246,6 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		}
 
 		s.metrics.DbOps.Inc()
-		ctx, cancel := context.WithTimeout(ctx, storagePutTimeout)
-		defer cancel()
 
 		if err := s.storage.Put(ctx, storage.ModePutSync, chunksToPut...); err != nil {
 			return topmost, fmt.Errorf("delivery put: %w", err)
