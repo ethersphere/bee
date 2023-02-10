@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package localstore
+package storer
 
 import (
 	"context"
@@ -27,7 +27,7 @@ func (db *DB) DirectUpload() PutterSession {
 	// already encountered error.
 	eg, egCtx := errgroup.WithContext(context.Background())
 
-	return &putterSessionImpl{
+	return &putterSession{
 		Putter: storage.PutterFunc(func(ctx context.Context, ch swarm.Chunk) error {
 			workers <- struct{}{}
 			eg.Go(func() error {
