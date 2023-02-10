@@ -46,8 +46,7 @@ var (
 )
 
 const (
-	storagePutTimeout = 5 * time.Second
-	makeOfferTimeout  = 5 * time.Minute
+	makeOfferTimeout = 5 * time.Minute
 )
 
 // how many maximum chunks in a batch
@@ -234,9 +233,6 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 
 	if len(chunksToPut) > 0 {
 		s.metrics.DbOps.Inc()
-		ctx, cancel := context.WithTimeout(ctx, storagePutTimeout)
-		defer cancel()
-
 		if err := s.storage.Put(ctx, storage.ModePutSync, chunksToPut...); err != nil {
 			return topmost, fmt.Errorf("delivery put: %w", err)
 		}
