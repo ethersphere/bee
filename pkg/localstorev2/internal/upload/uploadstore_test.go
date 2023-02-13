@@ -748,3 +748,42 @@ func TestNextTagID(t *testing.T) {
 		t.Fatalf("incorrect value for last tag, exp 3 found %d", uint64(lastTag))
 	}
 }
+
+func TestIterate(t *testing.T) {
+	t.Parallel()
+
+	ts := newTestStorage(t)
+	defer ts.ChunkStore()
+
+	t.Run("on empty storage does not call the callback fn", func(t *testing.T) {
+		upload.Iterate(context.TODO(), ts, nil, func(chunk swarm.Chunk) (bool, error) {
+			t.Fatal("unexpected call")
+			return false, nil
+		})
+	})
+
+	t.Run("respects start from chunk", func(t *testing.T) {
+		putter, err := upload.NewPutter(ts, 1)
+		if err != nil {
+			t.Fatalf("failed creating putter: %v", err)
+		}
+
+		chunk1, chunk2 := chunktest.GenerateTestRandomChunk(), chunktest.GenerateTestRandomChunk()
+		putter.Put(context.TODO(), chunk1)
+		putter.Put(context.TODO(), chunk2)
+
+		var count int
+		upload.Iterate(context.TODO(), ts, chunk1, func(chunk swarm.Chunk) (bool, error) {
+			count++
+			return false, nil
+		})
+		upload.Iterate(context.TODO(), ts, chunk2, func(chunk swarm.Chunk) (bool, error) {
+			count++
+			return false, nil
+		})
+
+		if count != 3 {
+			t.Fatalf("expected to iterate one chunk, got: %v", count)
+		}
+	})
+}
