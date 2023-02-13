@@ -16,8 +16,9 @@ const blocktime = 15
 
 func (c *command) initDeployCmd() error {
 	cmd := &cobra.Command{
-		Use:   "deploy",
-		Short: "Deploy and fund the chequebook contract",
+		Use:               "deploy",
+		Short:             "Deploy and fund the chequebook contract",
+		PersistentPreRunE: c.CheckUnknownParams,
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			if (len(args)) > 0 {
 				return cmd.Help()
