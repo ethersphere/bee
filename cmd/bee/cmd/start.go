@@ -54,8 +54,9 @@ var beeWelcomeMessage string
 
 func (c *command) initStartCmd() (err error) {
 	cmd := &cobra.Command{
-		Use:   "start",
-		Short: "Start a Swarm node",
+		Use:               "start",
+		Short:             "Start a Swarm node",
+		PersistentPreRunE: c.CheckMissingFlag,
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			if len(args) > 0 {
 				return cmd.Help()
@@ -345,6 +346,22 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 	})
 
 	return b, err
+}
+func (c *command) CheckMissingFlag(cmd *cobra.Command, args []string) error {
+	if err := c.initConfig(); err != nil {
+		return err
+	}
+	var missingParams []string
+	for _, v := range c.config.AllKeys() {
+		if f := cmd.Flags().Lookup(v); f == nil {
+			missingParams = append(missingParams, v)
+		}
+	}
+	if len(missingParams) > 0 {
+		return errors.New("missing parameters " + strings.Join(missingParams, ","))
+	}
+
+	return nil
 }
 
 type program struct {
