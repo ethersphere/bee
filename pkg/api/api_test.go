@@ -222,6 +222,8 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		o.redistributionAgent, _ = createRedistributionAgentService(o.Overlay, o.StateStorer, erc20, transaction)
 		s.SetRedistributionAgent(o.redistributionAgent)
 	}
+	cleanupCloser(t, o.redistributionAgent)
+
 	s.SetSwarmAddress(&o.Overlay)
 	s.SetProbe(o.Probe)
 
@@ -651,6 +653,10 @@ func TestPostageDirectAndDeferred(t *testing.T) {
 
 func cleanupCloser(t *testing.T, c io.Closer) {
 	t.Helper()
+
+	if c == nil {
+		return
+	}
 
 	t.Cleanup(func() {
 		if err := c.Close(); err != nil {
