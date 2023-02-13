@@ -216,10 +216,10 @@ func (m *mockTopology) getStorageDepth() uint8 {
 }
 
 type mockSyncReporter struct {
-	rate uint64
+	rate float64
 }
 
-func (m *mockSyncReporter) ActiveHistoricalSyncing() uint64 {
+func (m *mockSyncReporter) Rate() float64 {
 	return m.rate
 }
 

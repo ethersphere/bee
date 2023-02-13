@@ -270,7 +270,6 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 
 	sleep := false
 	loopStart := time.Now()
-
 	loggerV2.Debug("histSyncWorker starting", "peer_address", peer, "bin", bin, "cursor", cur)
 
 	for {
@@ -305,18 +304,18 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 		}
 
 		syncStart := time.Now()
-
 		ctx, cancel := context.WithTimeout(ctx, histSyncTimeout)
+
 		top, err := p.syncer.SyncInterval(ctx, peer, bin, s, cur)
 		if err != nil {
 			cancel()
 			p.metrics.HistWorkerErrCounter.Inc()
-			loggerV2.Debug("histSyncWorker syncing interval failed", "peer_address", peer, "bin", bin, "cursor", cur, "start", s, "topmost", top, "err", err)
+			loggerV2.Debug("histSyncWorker interval failed", "peer_address", peer, "bin", bin, "cursor", cur, "start", s, "topmost", top, "err", err)
 			if errors.Is(err, context.DeadlineExceeded) {
-				p.logger.Debug("peer sync interval timeout, exiting", "total_duration", time.Since(loopStart), "peer_address", peer, "error", err)
+				p.logger.Debug("histSyncWorker interval timeout, exiting", "total_duration", time.Since(loopStart), "peer_address", peer, "error", err)
 				err = p.blockLister.Blocklist(peer, histSyncTimeoutBlockList, "sync interval timeout")
 				if err != nil {
-					p.logger.Debug("peer sync interval timeout disconnect error", "error", err)
+					p.logger.Debug("histSyncWorker timeout disconnect error", "error", err)
 				}
 				return
 			}
