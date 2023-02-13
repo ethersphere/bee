@@ -199,7 +199,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/Status"
+                $ref: "SwarmCommon.yaml#/components/schemas/ReferenceResponse"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "402":

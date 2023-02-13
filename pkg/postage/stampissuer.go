@@ -64,15 +64,24 @@ func NewStampIssuer(label, keyID string, batchID []byte, batchAmount *big.Int, b
 func (si *StampIssuer) inc(addr swarm.Address) ([]byte, error) {
 	si.bucketMu.Lock()
 	defer si.bucketMu.Unlock()
+
 	b := toBucket(si.BucketDepth(), addr)
 	bucketCount := si.data.Buckets[b]
-	if bucketCount == 1<<(si.Depth()-si.BucketDepth()) {
-		return nil, ErrBucketFull
+
+	if bucketCount == si.BucketUpperBound() {
+		if si.ImmutableFlag() {
+			return nil, ErrBucketFull
+		}
+
+		bucketCount = 0
+		si.data.Buckets[b] = 0
 	}
+
 	si.data.Buckets[b]++
 	if si.data.Buckets[b] > si.data.MaxBucketCount {
 		si.data.MaxBucketCount = si.data.Buckets[b]
 	}
+
 	return indexToBytes(b, bucketCount), nil
 }
 
@@ -147,8 +156,7 @@ func (si *StampIssuer) BucketDepth() uint8 {
 }
 
 // BucketUpperBound returns the maximum number of collisions
-// possible in a bucket given the batch's depth and bucket
-// depth.
+// possible in a bucket given the batch's depth and bucket depth.
 func (si *StampIssuer) BucketUpperBound() uint32 {
 	return 1 << (si.Depth() - si.BucketDepth())
 }

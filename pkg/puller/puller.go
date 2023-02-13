@@ -17,6 +17,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/intervalstore"
 	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pullsync"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -33,6 +34,8 @@ var errCursorsLength = errors.New("cursors length mismatch")
 const (
 	DefaultSyncErrorSleepDur = time.Second * 30
 	recalcPeersDur           = time.Minute * 5
+	histSyncTimeout          = time.Minute * 10
+	histSyncTimeoutBlockList = time.Hour * 24
 )
 
 type Options struct {
@@ -41,10 +44,11 @@ type Options struct {
 }
 
 type Puller struct {
-	topology     topology.Driver
-	reserveState postage.ReserveStateGetter
-	statestore   storage.StateStorer
-	syncer       pullsync.Interface
+	topology    topology.Driver
+	radius      postage.RadiusChecker
+	statestore  storage.StateStorer
+	syncer      pullsync.Interface
+	blockLister p2p.Blocklister
 
 	metrics metrics
 	logger  log.Logger
@@ -63,7 +67,7 @@ type Puller struct {
 	activeHistoricalSyncing *atomic.Uint64
 }
 
-func New(stateStore storage.StateStorer, topology topology.Driver, reserveState postage.ReserveStateGetter, pullSync pullsync.Interface, logger log.Logger, o Options, warmupTime time.Duration) *Puller {
+func New(stateStore storage.StateStorer, topology topology.Driver, reserveState postage.RadiusChecker, pullSync pullsync.Interface, blockLister p2p.Blocklister, logger log.Logger, o Options, warmupTime time.Duration) *Puller {
 	var (
 		bins uint8 = swarm.MaxBins
 	)
@@ -74,7 +78,7 @@ func New(stateStore storage.StateStorer, topology topology.Driver, reserveState 
 	p := &Puller{
 		statestore:              stateStore,
 		topology:                topology,
-		reserveState:            reserveState,
+		radius:                  reserveState,
 		syncer:                  pullSync,
 		metrics:                 newMetrics(),
 		logger:                  logger.WithName(loggerName).Register(),
@@ -82,6 +86,7 @@ func New(stateStore storage.StateStorer, topology topology.Driver, reserveState 
 		syncErrorSleepDur:       o.SyncSleepDur,
 		bins:                    bins,
 		activeHistoricalSyncing: atomic.NewUint64(0),
+		blockLister:             blockLister,
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -99,14 +104,14 @@ func (p *Puller) ActiveHistoricalSyncing() uint64 {
 func (p *Puller) manage(ctx context.Context, warmupTime time.Duration) {
 	defer p.wg.Done()
 
+	c, unsubscribe := p.topology.SubscribeTopologyChange()
+	defer unsubscribe()
+
 	select {
 	case <-time.After(warmupTime):
 	case <-ctx.Done():
 		return
 	}
-
-	c, unsubscribe := p.topology.SubscribeTopologyChange()
-	defer unsubscribe()
 
 	p.logger.Info("puller: warmup period complete, worker starting.")
 
@@ -121,27 +126,24 @@ func (p *Puller) manage(ctx context.Context, warmupTime time.Duration) {
 			peersDisconnected[peer.address.ByteString()] = peer
 		}
 
-		neighborhoodDepth := p.topology.NeighborhoodDepth()
-		syncRadius := p.reserveState.GetReserveState().StorageRadius
+		newRadius := p.radius.StorageRadius()
 
-		// if the radius decreases, we must fully resync the bin
-		if syncRadius < prevRadius {
-			err := p.resetInterval(syncRadius)
+		// reset all intervals below the new radius to resync:
+		// 1. previously evicted chunks
+		// 2. previously ignored chunks due to a higher radius
+		if newRadius < prevRadius {
+			err := p.resetIntervals(prevRadius)
 			if err != nil {
 				p.logger.Error(err, "reset lower sync radius")
 			}
 		}
-		prevRadius = syncRadius
+		prevRadius = newRadius
 
 		_ = p.topology.EachPeerRev(func(addr swarm.Address, po uint8) (stop, jumpToNext bool, err error) {
-			if po >= neighborhoodDepth {
-				// add peer to sync
-				if _, ok := p.syncPeers[addr.ByteString()]; !ok {
-					p.syncPeers[addr.ByteString()] = newSyncPeer(addr, p.bins)
-				}
-				// remove from disconnected list as the peer is still connected
-				delete(peersDisconnected, addr.ByteString())
+			if _, ok := p.syncPeers[addr.ByteString()]; !ok {
+				p.syncPeers[addr.ByteString()] = newSyncPeer(addr, p.bins, po)
 			}
+			delete(peersDisconnected, addr.ByteString())
 			return false, false, nil
 		}, topology.Filter{Reachable: true})
 
@@ -149,7 +151,7 @@ func (p *Puller) manage(ctx context.Context, warmupTime time.Duration) {
 			p.disconnectPeer(peer.address)
 		}
 
-		p.recalcPeers(ctx, syncRadius)
+		p.recalcPeers(ctx, newRadius)
 
 		p.syncPeersMtx.Unlock()
 	}
@@ -185,22 +187,19 @@ func (p *Puller) disconnectPeer(addr swarm.Address) {
 
 // recalcPeers starts or stops syncing process for peers per bin depending on the current sync radius.
 // Must be called under lock.
-func (p *Puller) recalcPeers(ctx context.Context, syncRadius uint8) {
+func (p *Puller) recalcPeers(ctx context.Context, storageRadius uint8) {
 	for _, peer := range p.syncPeers {
 		peer.Lock()
-		for bin := uint8(0); bin < syncRadius; bin++ {
-			peer.cancelBin(bin)
-		}
-		err := p.syncPeer(ctx, peer, syncRadius)
+		err := p.syncPeer(ctx, peer, storageRadius)
 		if err != nil {
-			p.logger.Error(err, "recalc peers sync failed", "bin", syncRadius, "peer", peer.address)
+			p.logger.Error(err, "recalc peers sync failed", "bin", storageRadius, "peer", peer.address)
 		}
 		peer.Unlock()
 	}
 }
 
-// Must be called under lock.
-func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, syncRadius uint8) error {
+// Must be called under syncPeer lock.
+func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, storageRadius uint8) error {
 	if peer.cursors == nil {
 		cursors, err := p.syncer.GetCursors(ctx, peer.address)
 		if err != nil {
@@ -213,9 +212,34 @@ func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, syncRadius uint8)
 		return errCursorsLength
 	}
 
-	for bin, cur := range peer.cursors {
-		if bin >= int(syncRadius) && !peer.isBinSyncing(uint8(bin)) {
-			p.syncPeerBin(ctx, peer, uint8(bin), cur)
+	/*
+		The syncing behavior diverges for peers outside and winthin the storage radius.
+		For peers with PO lower than the storage radius, we must sync ONLY the bin that is the PO.
+		For neighbor peers, we sync ALL bins greater than or equal to the storage radius.
+	*/
+
+	if peer.po < storageRadius {
+		// cancel all non-po bins, if any
+		for bin := uint8(0); bin < p.bins; bin++ {
+			if bin != peer.po {
+				peer.cancelBin(bin)
+			}
+		}
+		// sync PO bin only
+		if !peer.isBinSyncing(peer.po) {
+			p.syncPeerBin(ctx, peer, peer.po, peer.cursors[peer.po])
+		}
+	} else {
+		// cancel all bins lower than the storage radius
+		for bin := uint8(0); bin < storageRadius; bin++ {
+			peer.cancelBin(bin)
+		}
+
+		// sync all bins >= storage radius
+		for bin, cur := range peer.cursors {
+			if bin >= int(storageRadius) && !peer.isBinSyncing(uint8(bin)) {
+				p.syncPeerBin(ctx, peer, uint8(bin), cur)
+			}
 		}
 	}
 
@@ -245,6 +269,7 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 	defer p.activeHistoricalSyncing.Dec()
 
 	sleep := false
+	loopStart := time.Now()
 
 	loggerV2.Debug("histSyncWorker starting", "peer_address", peer, "bin", bin, "cursor", cur)
 
@@ -275,23 +300,37 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			return
 		}
 		if s > cur {
-			p.logger.Debug("histSyncWorker syncing finished", "bin", bin, "cursor", cur)
+			p.logger.Debug("histSyncWorker syncing finished", "bin", bin, "cursor", cur, "total_duration", time.Since(loopStart), "peer_address", peer)
 			return
 		}
+
+		syncStart := time.Now()
+
+		ctx, cancel := context.WithTimeout(ctx, histSyncTimeout)
 		top, err := p.syncer.SyncInterval(ctx, peer, bin, s, cur)
 		if err != nil {
+			cancel()
 			p.metrics.HistWorkerErrCounter.Inc()
-			p.logger.Error(err, "histSyncWorker syncing interval failed", "peer_address", peer, "bin", bin, "cursor", cur, "start", s, "topmost", top)
+			loggerV2.Debug("histSyncWorker syncing interval failed", "peer_address", peer, "bin", bin, "cursor", cur, "start", s, "topmost", top, "err", err)
+			if errors.Is(err, context.DeadlineExceeded) {
+				p.logger.Debug("peer sync interval timeout, exiting", "total_duration", time.Since(loopStart), "peer_address", peer, "error", err)
+				err = p.blockLister.Blocklist(peer, histSyncTimeoutBlockList, "sync interval timeout")
+				if err != nil {
+					p.logger.Debug("peer sync interval timeout disconnect error", "error", err)
+				}
+				return
+			}
 			sleep = true
 			continue
 		}
+		cancel()
 		err = p.addPeerInterval(peer, bin, s, top)
 		if err != nil {
 			p.metrics.HistWorkerErrCounter.Inc()
 			p.logger.Error(err, "histSyncWorker could not persist interval for peer, quitting...", "peer_address", peer)
 			return
 		}
-		loggerV2.Debug("histSyncWorker pulled", "bin", bin, "start", s, "topmost", top, "peer_address", peer)
+		loggerV2.Debug("histSyncWorker pulled", "bin", bin, "start", s, "topmost", top, "duration", time.Since(syncStart), "peer_address", peer)
 	}
 }
 
@@ -327,7 +366,7 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 		top, err := p.syncer.SyncInterval(ctx, peer, bin, from, pullsync.MaxCursor)
 		if err != nil {
 			p.metrics.LiveWorkerErrCounter.Inc()
-			p.logger.Error(err, "liveSyncWorker sync error", "peer_address", peer, "bin", bin, "from", from, "topmost", top)
+			loggerV2.Debug("liveSyncWorker sync error", "peer_address", peer, "bin", bin, "from", from, "topmost", top, "err", err)
 			sleep = true
 			continue
 		}
@@ -377,10 +416,17 @@ func (p *Puller) addPeerInterval(peer swarm.Address, bin uint8, start, end uint6
 	return p.statestore.Put(peerStreamKey, i)
 }
 
-func (p *Puller) resetInterval(bin uint8) error {
-	return p.statestore.Iterate(binIntervalKey(bin), func(key, _ []byte) (stop bool, err error) {
-		return false, p.statestore.Delete(string(key))
-	})
+func (p *Puller) resetIntervals(upto uint8) error {
+	for bin := uint8(0); bin < upto; bin++ {
+		err := p.statestore.Iterate(binIntervalKey(bin), func(key, _ []byte) (stop bool, err error) {
+			return false, p.statestore.Delete(string(key))
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 func (p *Puller) nextPeerInterval(peer swarm.Address, bin uint8) (start, end uint64, empty bool, err error) {
@@ -424,16 +470,17 @@ func binIntervalKey(bin uint8) string {
 type syncPeer struct {
 	address        swarm.Address
 	binCancelFuncs map[uint8]func() // slice of context cancel funcs for historical sync. index is bin
-
-	cursors []uint64
+	po             uint8
+	cursors        []uint64
 
 	sync.Mutex
 }
 
-func newSyncPeer(addr swarm.Address, bins uint8) *syncPeer {
+func newSyncPeer(addr swarm.Address, bins, po uint8) *syncPeer {
 	return &syncPeer{
 		address:        addr,
 		binCancelFuncs: make(map[uint8]func(), bins),
+		po:             po,
 	}
 }
 

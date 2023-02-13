@@ -78,6 +78,7 @@ type PushSync struct {
 	streamer       p2p.StreamerDisconnecter
 	storer         storage.Putter
 	topologyDriver topology.Driver
+	radiusChecker  postage.RadiusChecker
 	tagger         *tags.Tags
 	unwrap         func(swarm.Chunk)
 	logger         log.Logger
@@ -100,13 +101,14 @@ type receiptResult struct {
 	err      error
 }
 
-func New(address swarm.Address, nonce []byte, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, tagger *tags.Tags, includeSelf bool, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger log.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer, warmupTime time.Duration) *PushSync {
+func New(address swarm.Address, nonce []byte, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, rs postage.RadiusChecker, tagger *tags.Tags, includeSelf bool, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger log.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer, warmupTime time.Duration) *PushSync {
 	ps := &PushSync{
 		address:        address,
 		nonce:          nonce,
 		streamer:       streamer,
 		storer:         storer,
 		topologyDriver: topology,
+		radiusChecker:  rs,
 		tagger:         tagger,
 		includeSelf:    includeSelf,
 		unwrap:         unwrap,
@@ -248,7 +250,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	// forwarding replication
 	storerNode := false
 	defer func() {
-		if !storerNode && ps.warmedUp() && ps.topologyDriver.IsWithinDepth(chunkAddress) {
+		if !storerNode && ps.warmedUp() && ps.radiusChecker.IsWithinStorageRadius(chunkAddress) {
 			verifiedChunk, err := ps.validStamp(chunk, ch.Stamp)
 			if err != nil {
 				logger.Warning("forwarder, invalid stamp for chunk", "chunk_address", chunkAddress)
@@ -380,7 +382,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 				if skipPeers.OverdraftListEmpty() { // no peers in skip list means we can be confident that we are the closest peer
 					// we don't act on ErrWantSelf unless there are no overdraft peers
-					if !ps.topologyDriver.IsWithinDepth(ch.Address()) {
+					if !ps.radiusChecker.IsWithinStorageRadius(ch.Address()) {
 						return swarm.ZeroAddress, false, ErrOutOfDepthStoring
 					}
 					ps.pushToNeighbourhood(ctx, fullSkipList, ch, origin, originAddr)
@@ -591,10 +593,8 @@ func (ps *PushSync) pushToNeighbourhood(ctx context.Context, skiplist []swarm.Ad
 		}
 
 		// skip skiplisted peers
-		for _, s := range skiplist {
-			if peer.Equal(s) {
-				return false, false, nil
-			}
+		if swarm.ContainsAddress(skiplist, peer) {
+			return false, false, nil
 		}
 
 		// here we skip the peer if the peer is closer to the chunk than us

@@ -24,6 +24,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
+	"github.com/ethersphere/bee/pkg/topology/depthmonitor"
+
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/accounting"
@@ -67,12 +70,10 @@ import (
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storageincentives"
-	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
-	"github.com/ethersphere/bee/pkg/topology/depthmonitor"
 	"github.com/ethersphere/bee/pkg/topology/kademlia"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/pkg/tracing"
@@ -157,8 +158,6 @@ type Options struct {
 	SwapEnable                    bool
 	ChequebookEnable              bool
 	FullNodeMode                  bool
-	Transaction                   string
-	BlockHash                     string
 	PostageContractAddress        string
 	PostageContractStartBlock     uint64
 	StakingContractAddress        string
@@ -254,6 +253,41 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 
 	addressbook := addressbook.New(stateStore)
 
+	pubKey, err := signer.PublicKey()
+	if err != nil {
+		return nil, err
+	}
+
+	// if theres a previous transaction hash, and not a new chequebook deployment on a node starting from scratch
+	// get old overlay
+	// mine nonce that gives similar new overlay
+	nonce, nonceExists, err := overlayNonceExists(stateStore)
+	if err != nil {
+		return nil, fmt.Errorf("check presence of nonce: %w", err)
+	}
+
+	swarmAddress, err := crypto.NewOverlayAddress(*pubKey, networkID, nonce)
+	if err != nil {
+		return nil, fmt.Errorf("compute overlay address: %w", err)
+	}
+	logger.Info("using overlay address", "address", swarmAddress)
+
+	if !nonceExists {
+		err := setOverlayNonce(stateStore, nonce)
+		if err != nil {
+			return nil, fmt.Errorf("statestore: save new overlay nonce: %w", err)
+		}
+
+		err = SetOverlayInStore(swarmAddress, stateStore)
+		if err != nil {
+			return nil, fmt.Errorf("statestore: save new overlay: %w", err)
+		}
+	}
+
+	if err = CheckOverlayWithStore(swarmAddress, stateStore); err != nil {
+		return nil, err
+	}
+
 	var (
 		chainBackend       transaction.Backend
 		overlayEthAddress  common.Address
@@ -278,6 +312,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 			func(id []byte) error {
 				return evictFn(id)
 			},
+			swarmAddress,
 			logger,
 		)
 		if err != nil {
@@ -475,42 +510,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		)
 	}
 
-	pubKey, _ := signer.PublicKey()
-	if err != nil {
-		return nil, err
-	}
-
-	// if theres a previous transaction hash, and not a new chequebook deployment on a node starting from scratch
-	// get old overlay
-	// mine nonce that gives similar new overlay
-	nonce, nonceExists, err := overlayNonceExists(stateStore)
-	if err != nil {
-		return nil, fmt.Errorf("check presence of nonce: %w", err)
-	}
-
-	swarmAddress, err := crypto.NewOverlayAddress(*pubKey, networkID, nonce)
-	if err != nil {
-		return nil, fmt.Errorf("compute overlay address: %w", err)
-	}
-	logger.Info("using overlay address", "address", swarmAddress)
-
-	if !nonceExists {
-		err := setOverlayNonce(stateStore, nonce)
-		if err != nil {
-			return nil, fmt.Errorf("statestore: save new overlay nonce: %w", err)
-		}
-
-		err = SetOverlayInStore(swarmAddress, stateStore)
-		if err != nil {
-			return nil, fmt.Errorf("statestore: save new overlay: %w", err)
-		}
-	}
-
 	apiService.SetSwarmAddress(&swarmAddress)
-
-	if err = CheckOverlayWithStore(swarmAddress, stateStore); err != nil {
-		return nil, err
-	}
 
 	lightNodes := lightnode.NewContainer(swarmAddress)
 
@@ -690,10 +690,16 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		// wait for nat manager to init
 		logger.Debug("initializing NAT manager")
 		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
 		case <-natManager.Ready():
 			// this is magic sleep to give NAT time to sync the mappings
 			// this is a hack, kind of alchemy and should be improved
-			time.Sleep(3 * time.Second)
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(3 * time.Second):
+			}
 			logger.Debug("NAT manager initialized")
 		case <-time.After(10 * time.Second):
 			logger.Warning("NAT manager init timeout")
@@ -888,7 +894,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 
 	pinningService := pinning.NewService(storer, stateStore, traversalService)
 
-	pushSyncProtocol := pushsync.New(swarmAddress, nonce, p2ps, storer, kad, tagService, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
+	pushSyncProtocol := pushsync.New(swarmAddress, nonce, p2ps, storer, kad, batchStore, tagService, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
 
 	// set the pushSyncer in the PSS
 	pssService.SetPushSyncer(pushSyncProtocol)
@@ -898,14 +904,8 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 
 	pullStorage := pullstorage.New(storer, logger)
 
-	pullSyncProtocol := pullsync.New(p2ps, pullStorage, pssService.TryUnwrap, validStamp, logger)
+	pullSyncProtocol := pullsync.New(p2ps, pullStorage, pssService.TryUnwrap, validStamp, logger, batchStore, swarmAddress)
 	b.pullSyncCloser = pullSyncProtocol
-
-	var pullerService *puller.Puller
-	if o.FullNodeMode && !o.BootnodeMode {
-		pullerService = puller.New(stateStore, kad, batchStore, pullSyncProtocol, logger, puller.Options{SyncSleepDur: puller.DefaultSyncErrorSleepDur}, warmupTime)
-		b.pullerCloser = pullerService
-	}
 
 	retrieveProtocolSpec := retrieve.Protocol()
 	pushSyncProtocolSpec := pushSyncProtocol.Protocol()
@@ -942,16 +942,21 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 	if err != nil {
 		return nil, fmt.Errorf("unable to parse staking ABI: %w", err)
 	}
-
 	stakingContract := staking.New(swarmAddress, overlayEthAddress, stakingContractAddress, stakingContractABI, bzzTokenAddress, transactionService, common.BytesToHash(nonce))
 
-	var agent *storageincentives.Agent
-	if o.FullNodeMode {
+	var (
+		pullerService *puller.Puller
+		agent         *storageincentives.Agent
+	)
 
-		depthMonitor := depthmonitor.New(kad, pullerService, storer, batchStore, logger, warmupTime, depthmonitor.DefaultWakeupInterval)
+	if o.FullNodeMode && !o.BootnodeMode {
+		pullerService = puller.New(stateStore, kad, batchStore, pullSyncProtocol, p2ps, logger, puller.Options{SyncSleepDur: puller.DefaultSyncErrorSleepDur}, warmupTime)
+		b.pullerCloser = pullerService
+
+		depthMonitor := depthmonitor.New(kad, pullerService, storer, batchStore, logger, warmupTime, depthmonitor.DefaultWakeupInterval, !batchStoreExists)
 		b.depthMonitorCloser = depthMonitor
 
-		if !o.BootnodeMode && o.EnableStorageIncentives {
+		if o.EnableStorageIncentives {
 
 			redistributionContractAddress := chainCfg.RedistributionAddress
 			if o.RedistributionContractAddress != "" {
@@ -966,11 +971,14 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 			}
 
 			redistributionContract := redistribution.New(swarmAddress, logger, transactionService, redistributionContractAddress, redistributionContractABI)
-			agent = storageincentives.New(swarmAddress, chainBackend, logger, depthMonitor, redistributionContract, postageStampContractService, batchStore, storer, o.BlockTime, storageincentives.DefaultBlocksPerRound, storageincentives.DefaultBlocksPerPhase)
+			agent, err = storageincentives.New(swarmAddress, overlayEthAddress, chainBackend, logger, depthMonitor, redistributionContract, postageStampContractService, stakingContract, batchStore, storer, o.BlockTime, storageincentives.DefaultBlocksPerRound, storageincentives.DefaultBlocksPerPhase, stateStore, erc20Service, transactionService)
+			if err != nil {
+				return nil, fmt.Errorf("storage incentives agent: %w", err)
+			}
 			b.storageIncetivesCloser = agent
 		}
-	}
 
+	}
 	multiResolver := multiresolver.NewMultiResolver(
 		multiresolver.WithConnectionConfigs(o.ResolverConnectionCfgs),
 		multiresolver.WithLogger(o.Logger),
@@ -1026,6 +1034,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		if apiService == nil {
 			apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, beeNodeMode, o.ChequebookEnable, o.SwapEnable, chainBackend, o.CORSAllowedOrigins)
 			apiService.SetProbe(probe)
+			apiService.SetRedistributionAgent(agent)
 		}
 
 		chunkC := apiService.Configure(signer, authenticator, tracer, api.Options{
@@ -1131,6 +1140,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		debugService.SetP2P(p2ps)
 		debugService.SetSwarmAddress(&swarmAddress)
 		debugService.MountDebug(false)
+		debugService.SetRedistributionAgent(agent)
 	}
 
 	if err := kad.Start(ctx); err != nil {

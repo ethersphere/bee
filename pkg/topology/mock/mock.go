@@ -91,12 +91,7 @@ func (d *mock) Disconnected(peer p2p.Peer) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 
-	for i, addr := range d.peers {
-		if addr.Equal(peer.Address) {
-			d.peers = append(d.peers[:i], d.peers[i+1:]...)
-			break
-		}
-	}
+	d.peers = swarm.RemoveAddress(d.peers, peer.Address)
 }
 
 func (d *mock) Announce(_ context.Context, _ swarm.Address, _ bool) error {
@@ -167,13 +162,6 @@ func (d *mock) SubscribeTopologyChange() (c <-chan struct{}, unsubscribe func())
 
 func (m *mock) NeighborhoodDepth() uint8 {
 	return m.depth
-}
-
-func (m *mock) IsWithinDepth(addr swarm.Address) bool {
-	if m.isWithinFunc != nil {
-		return m.isWithinFunc(addr)
-	}
-	return false
 }
 
 func (m *mock) EachNeighbor(f topology.EachPeerFunc) error {

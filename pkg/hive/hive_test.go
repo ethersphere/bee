@@ -9,8 +9,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
-	"runtime/debug"
 	"strconv"
 	"testing"
 	"time"
@@ -26,6 +24,7 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
+	"github.com/ethersphere/bee/pkg/spinlock"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
@@ -35,6 +34,8 @@ var (
 	tx    = common.HexToHash("0x2").Bytes()
 	block = common.HexToHash("0x1").Bytes()
 )
+
+const spinTimeout = time.Second * 5
 
 func TestHandlerRateLimit(t *testing.T) {
 	t.Parallel()
@@ -112,7 +113,6 @@ func TestBroadcastPeers(t *testing.T) {
 	t.Parallel()
 
 	logger := log.Noop
-	rand.Seed(time.Now().UnixNano())
 	statestore := mock.NewStateStore()
 	addressbook := ab.New(statestore)
 	networkID := uint64(1)
@@ -303,34 +303,22 @@ func expectOverlaysEventually(t *testing.T, exporter ab.Interface, wantOverlays 
 	var (
 		overlays []swarm.Address
 		err      error
-		isIn     = func(a swarm.Address, addrs []swarm.Address) bool {
-			for _, v := range addrs {
-				if a.Equal(v) {
-					return true
-				}
-			}
-			return false
-		}
 	)
 
-	for i := 0; i < 100; i++ {
-		time.Sleep(50 * time.Millisecond)
+	err = spinlock.Wait(spinTimeout, func() bool {
 		overlays, err = exporter.Overlays()
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		if len(overlays) == len(wantOverlays) {
-			break
-		}
-	}
-	if len(overlays) != len(wantOverlays) {
-		debug.PrintStack()
+		return len(overlays) == len(wantOverlays)
+	})
+	if err != nil {
 		t.Fatal("timed out waiting for overlays")
 	}
 
 	for _, v := range wantOverlays {
-		if !isIn(v, overlays) {
+		if !swarm.ContainsAddress(overlays, v) {
 			t.Errorf("overlay %s expected but not found", v.String())
 		}
 	}
@@ -346,35 +334,22 @@ func expectBzzAddresessEventually(t *testing.T, exporter ab.Interface, wantBzzAd
 	var (
 		addresses []bzz.Address
 		err       error
-
-		isIn = func(a bzz.Address, addrs []bzz.Address) bool {
-			for _, v := range addrs {
-				if a.Equal(&v) {
-					return true
-				}
-			}
-			return false
-		}
 	)
 
-	for i := 0; i < 100; i++ {
-		time.Sleep(50 * time.Millisecond)
+	err = spinlock.Wait(spinTimeout, func() bool {
 		addresses, err = exporter.Addresses()
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		if len(addresses) == len(wantBzzAddresses) {
-			break
-		}
-	}
-	if len(addresses) != len(wantBzzAddresses) {
-		debug.PrintStack()
+		return len(addresses) == len(wantBzzAddresses)
+	})
+	if err != nil {
 		t.Fatal("timed out waiting for bzz addresses")
 	}
 
 	for _, v := range wantBzzAddresses {
-		if !isIn(v, addresses) {
+		if !bzz.ContainsAddress(addresses, &v) {
 			t.Errorf("address %s expected but not found", v.Overlay.String())
 		}
 	}

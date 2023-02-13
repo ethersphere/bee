@@ -698,6 +698,28 @@ components:
         walletAddress:
           $ref: "#/components/schemas/EthereumAddress"
 
+    RedistributionStateResponse:
+      type: object
+      properties:
+        isFrozen:
+          type: boolean
+        isFullySynced:
+          type: boolean
+        round:
+          type: integer
+        lastWonRound:
+          type: integer
+        lastPlayedRound:
+          type: integer
+        lastFrozenRound:
+          type: integer
+        block:
+          type: integer
+        reward:
+          $ref: "#/components/schemas/BigInt"
+        fees:
+          $ref: "#/components/schemas/BigInt"
+
     PendingTransactionsResponse:
       type: object
       properties:

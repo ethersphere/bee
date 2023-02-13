@@ -33,6 +33,7 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/node"
 	"github.com/ethersphere/bee/pkg/resolver/multiresolver"
+	"github.com/ethersphere/bee/pkg/spinlock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/kardianos/service"
 	"github.com/spf13/cobra"
@@ -321,8 +322,6 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		SwapEnable:                    c.config.GetBool(optionNameSwapEnable),
 		ChequebookEnable:              c.config.GetBool(optionNameChequebookEnable),
 		FullNodeMode:                  fullNode,
-		Transaction:                   c.config.GetString(optionNameTransactionHash),
-		BlockHash:                     c.config.GetString(optionNameBlockHash),
 		PostageContractAddress:        c.config.GetString(optionNamePostageContractAddress),
 		PostageContractStartBlock:     c.config.GetUint64(optionNamePostageContractStartBlock),
 		PriceOracleAddress:            c.config.GetString(optionNamePriceOracleAddress),
@@ -372,19 +371,19 @@ type signerConfig struct {
 }
 
 func waitForClef(logger log.Logger, maxRetries uint64, endpoint string) (externalSigner *external.ExternalSigner, err error) {
-	for {
-		externalSigner, err = external.NewExternalSigner(endpoint)
-		if err == nil {
-			return externalSigner, nil
-		}
-		if maxRetries == 0 {
-			return nil, err
-		}
-		maxRetries--
-		logger.Warning("connect to clef signer failed", "error", err)
+	var (
+		interval = time.Second * 5
+		timeout  = interval * time.Duration(maxRetries)
+	)
 
-		time.Sleep(5 * time.Second)
+	spinErr := spinlock.WaitWithInterval(timeout, interval, func() bool {
+		externalSigner, err = external.NewExternalSigner(endpoint)
+		return err == nil
+	})
+	if spinErr != nil {
+		logger.Warning("connect to clef signer failed", "error", err)
 	}
+	return
 }
 
 func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config *signerConfig, err error) {

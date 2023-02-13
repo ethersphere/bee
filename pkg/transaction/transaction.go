@@ -92,6 +92,8 @@ type Service interface {
 	ResendTransaction(ctx context.Context, txHash common.Hash) error
 	// CancelTransaction cancels a previously sent transaction by double-spending its nonce with zero-transfer one
 	CancelTransaction(ctx context.Context, originalTxHash common.Hash) (common.Hash, error)
+	// TransactionFee retrieves the transaction fee
+	TransactionFee(ctx context.Context, txHash common.Hash) (*big.Int, error)
 }
 
 type transactionService struct {
@@ -577,4 +579,12 @@ func (t *transactionService) Close() error {
 	t.cancel()
 	t.wg.Wait()
 	return nil
+}
+
+func (t *transactionService) TransactionFee(ctx context.Context, txHash common.Hash) (*big.Int, error) {
+	trx, _, err := t.backend.TransactionByHash(ctx, txHash)
+	if err != nil {
+		return nil, err
+	}
+	return trx.Cost(), nil
 }

@@ -44,7 +44,6 @@ type SyncReporter interface {
 // Topology interface encapsulates the functionality required by the topology component
 // of the node.
 type Topology interface {
-	topologyDriver.NeighborhoodDepther
 	topologyDriver.SetStorageRadiuser
 	topologyDriver.PeersCounter
 }
@@ -71,6 +70,7 @@ func New(
 	logger log.Logger,
 	warmupTime time.Duration,
 	wakeupInterval time.Duration,
+	freshNode bool,
 ) *Service {
 
 	s := &Service{
@@ -85,28 +85,32 @@ func New(
 		lastRSize:     atomic.NewUint64(0),
 	}
 
-	go s.manage(warmupTime, wakeupInterval)
+	go s.manage(warmupTime, wakeupInterval, freshNode)
 
 	return s
 }
 
-func (s *Service) manage(warmupTime, wakeupInterval time.Duration) {
+func (s *Service) manage(warmupTime, wakeupInterval time.Duration, freshNode bool) {
 	defer close(s.stopped)
 
 	// wire up batchstore to start reporting storage radius to kademlia
 	s.bs.SetStorageRadiusSetter(s.topology)
-	reserveRadius := s.bs.GetReserveState().Radius
 
-	err := s.bs.SetStorageRadius(func(radius uint8) uint8 {
-		// if we are starting from scratch, we can use the reserve radius.
-		if radius == 0 {
-			radius = reserveRadius
+	// if it's a new fresh node, then we set the storage radius to the reserve radius
+	// to prevent syncing from starting at radius zero.
+	if freshNode {
+		reserveRadius := s.bs.GetReserveState().Radius
+
+		err := s.bs.SetStorageRadius(func(radius uint8) uint8 {
+			// if we are starting from scratch, we can use the reserve radius.
+			if radius == 0 {
+				radius = reserveRadius
+			}
+			return radius
+		})
+		if err != nil {
+			s.logger.Error(err, "depthmonitor: batchstore set storage radius")
 		}
-		s.logger.Info("depthmonitor: warmup period complete, starting worker", "initial depth", radius)
-		return radius
-	})
-	if err != nil {
-		s.logger.Error(err, "depthmonitor: batchstore set storage radius")
 	}
 
 	// wait for warmup
@@ -116,31 +120,27 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration) {
 	case <-time.After(warmupTime):
 	}
 
+	s.logger.Info("depthmonitor: warmup period complete, starting worker", "radius", s.bs.StorageRadius())
+
 	targetSize := s.reserve.ReserveCapacity() * 4 / 10 // 40% of the capacity
 
-	for {
-		select {
-		case <-s.quit:
-			return
-		case <-time.After(wakeupInterval):
-		}
+	next := func() {
+		radius := s.bs.StorageRadius()
 
-		reserveState := s.bs.GetReserveState()
-
-		currentSize, err := s.reserve.ComputeReserveSize(reserveState.StorageRadius)
+		currentSize, err := s.reserve.ComputeReserveSize(radius)
 		if err != nil {
 			s.logger.Error(err, "depthmonitor: failed reading reserve size")
-			continue
+			return
 		}
 
 		// save last calculated reserve size
 		s.lastRSize.Store(currentSize)
 
 		syncCount := s.syncer.ActiveHistoricalSyncing()
-		s.logger.Info("depthmonitor: state", "current size", currentSize, "radius", reserveState.StorageRadius, "sync_count", syncCount)
+		s.logger.Info("depthmonitor: state", "size", currentSize, "radius", radius, "sync_count", syncCount)
 
 		if currentSize > targetSize {
-			continue
+			return
 		}
 
 		// if historical syncing rate is at zero, we proactively decrease the storage radius to allow nodes to widen their neighbourhoods
@@ -155,6 +155,16 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration) {
 			if err != nil {
 				s.logger.Error(err, "depthmonitor: batchstore set storage radius")
 			}
+		}
+	}
+	next()
+
+	for {
+		select {
+		case <-s.quit:
+			return
+		case <-time.After(wakeupInterval):
+			next()
 		}
 	}
 }

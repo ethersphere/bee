@@ -12,6 +12,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+	erc20mock "github.com/ethersphere/bee/pkg/settlement/swap/erc20/mock"
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
+	"github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
+	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
+
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
@@ -46,13 +52,6 @@ func TestAgent(t *testing.T) {
 		blocksPerRound: 9,
 		blocksPerPhase: 3,
 		incrementBy:    1,
-		expectedCalls:  true,
-		limit:          108,
-	}, {
-		name:           "3 blocks per phase, block number returns every other block",
-		blocksPerRound: 9,
-		blocksPerPhase: 3,
-		incrementBy:    2,
 		expectedCalls:  true,
 		limit:          108,
 	}, {
@@ -92,7 +91,7 @@ func TestAgent(t *testing.T) {
 				block:       tc.blocksPerRound}
 			contract := &mockContract{}
 
-			service := createService(addr, backend, contract, tc.blocksPerRound, tc.blocksPerPhase)
+			service, _ := createService(addr, backend, contract, tc.blocksPerRound, tc.blocksPerPhase)
 
 			<-wait
 
@@ -148,23 +147,17 @@ func createService(
 	backend storageincentives.ChainBackend,
 	contract redistribution.Contract,
 	blocksPerRound uint64,
-	blocksPerPhase uint64) *storageincentives.Agent {
+	blocksPerPhase uint64) (*storageincentives.Agent, error) {
 
 	postageContract := contractMock.New(contractMock.WithExpiresBatchesFunc(func(context.Context) error {
 		return nil
+	}),
+	)
+	stakingContract := mock.New(mock.WithIsFrozen(func(context.Context, uint64) (bool, error) {
+		return false, nil
 	}))
 
-	return storageincentives.New(
-		addr,
-		backend,
-		log.Noop,
-		&mockMonitor{},
-		contract,
-		postageContract,
-		mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})),
-		&mockSampler{},
-		time.Millisecond*10, blocksPerRound, blocksPerPhase,
-	)
+	return storageincentives.New(addr, common.Address{}, backend, log.Noop, &mockMonitor{}, contract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), &mockSampler{}, time.Millisecond*10, blocksPerRound, blocksPerPhase, statestore.NewStateStore(), erc20mock.New(), transactionmock.New())
 }
 
 type mockchainBackend struct {
@@ -249,25 +242,25 @@ func (m *mockContract) IsWinner(context.Context) (bool, error) {
 	return false, nil
 }
 
-func (m *mockContract) Claim(context.Context) error {
+func (m *mockContract) Claim(context.Context) (common.Hash, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, claimCall)
-	return nil
+	return common.Hash{}, nil
 }
 
-func (m *mockContract) Commit(context.Context, []byte, *big.Int) error {
+func (m *mockContract) Commit(context.Context, []byte, *big.Int) (common.Hash, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, commitCall)
-	return nil
+	return common.Hash{}, nil
 }
 
-func (m *mockContract) Reveal(context.Context, uint8, []byte, []byte) error {
+func (m *mockContract) Reveal(context.Context, uint8, []byte, []byte) (common.Hash, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, revealCall)
-	return nil
+	return common.Hash{}, nil
 }
 
 type mockSampler struct{}

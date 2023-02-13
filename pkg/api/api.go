@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ethersphere/bee/pkg/storageincentives"
 	"io"
 	"math"
 	"math/big"
@@ -181,6 +182,8 @@ type Service struct {
 
 	preMapHooks map[string]func(v string) (string, error)
 	validate    *validator.Validate
+
+	redistributionAgent *storageincentives.Agent
 }
 
 func (s *Service) SetP2P(p2p p2p.DebugService) {
@@ -192,6 +195,12 @@ func (s *Service) SetP2P(p2p p2p.DebugService) {
 func (s *Service) SetSwarmAddress(addr *swarm.Address) {
 	if s != nil {
 		s.overlay = addr
+	}
+}
+
+func (s *Service) SetRedistributionAgent(redistributionAgent *storageincentives.Agent) {
+	if s != nil {
+		s.redistributionAgent = redistributionAgent
 	}
 }
 
@@ -225,7 +234,7 @@ type ExtraOptions struct {
 	IndexDebugger    StorageIndexDebugger
 }
 
-func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger log.Logger, transaction transaction.Service, batchStore postage.Storer, beeMode BeeNodeMode, chequebookEnabled bool, swapEnabled bool, chainBackend transaction.Backend, cors []string) *Service {
+func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger log.Logger, transaction transaction.Service, batchStore postage.Storer, beeMode BeeNodeMode, chequebookEnabled, swapEnabled bool, chainBackend transaction.Backend, cors []string) *Service {
 	s := new(Service)
 
 	s.CORSAllowedOrigins = cors
@@ -259,7 +268,6 @@ func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address
 		}
 		return name
 	})
-
 	return s
 }
 
@@ -843,7 +851,7 @@ func (p *pushStamperPutter) Put(ctx context.Context, mode storage.ModePut, chs .
 		if err != nil {
 			return nil, err
 		}
-		if has || containsChunk(c.Address(), chs[:i]...) {
+		if has || swarm.ContainsChunkWithAddress(chs[:i], c.Address()) {
 			exists[i] = true
 			continue
 		}
@@ -908,7 +916,7 @@ func (p *stamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...sw
 		if err != nil {
 			return nil, err
 		}
-		if has || containsChunk(c.Address(), chs[:i]...) {
+		if has || swarm.ContainsChunkWithAddress(chs[:i], c.Address()) {
 			exists[i] = true
 			continue
 		}
@@ -976,17 +984,6 @@ func requestCalculateNumberOfChunks(r *http.Request) int64 {
 		return calculateNumberOfChunks(r.ContentLength, requestEncrypt(r))
 	}
 	return 0
-}
-
-// containsChunk returns true if the chunk with a specific address
-// is present in the provided chunk slice.
-func containsChunk(addr swarm.Address, chs ...swarm.Chunk) bool {
-	for _, c := range chs {
-		if addr.Equal(c.Address()) {
-			return true
-		}
-	}
-	return false
 }
 
 func noopWaitFn() error {

@@ -69,10 +69,6 @@ func (m *Mock) ClosestPeer(addr swarm.Address, _ bool, _ topology.Filter, skipPe
 	panic("not implemented") // TODO: Implement
 }
 
-func (m *Mock) IsWithinDepth(adr swarm.Address) bool {
-	panic("not implemented") // TODO: Implement
-}
-
 func (m *Mock) EachNeighbor(topology.EachPeerFunc) error {
 	panic("not implemented") // TODO: Implement
 }
@@ -139,12 +135,8 @@ func (m *Mock) Disconnected(peer p2p.Peer) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 
-	for i, addr := range m.peers {
-		if addr.Equal(peer.Address) {
-			m.peers = append(m.peers[:i], m.peers[i+1:]...)
-			break
-		}
-	}
+	m.peers = swarm.RemoveAddress(m.peers, peer.Address)
+
 	m.Trigger()
 }
 

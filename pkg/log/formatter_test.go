@@ -36,13 +36,13 @@ func (p pointErr) MarshalText() ([]byte, error) {
 // marshalerTest expect to result in the MarshalLog() value when logged.
 type marshalerTest struct{ val string }
 
-func (_ marshalerTest) MarshalLog() interface{} {
+func (marshalerTest) MarshalLog() interface{} {
 	return struct{ Inner string }{"I am a log.Marshaler"}
 }
-func (_ marshalerTest) String() string {
+func (marshalerTest) String() string {
 	return "String(): you should not see this"
 }
-func (_ marshalerTest) Error() string {
+func (marshalerTest) Error() string {
 	return "Error(): you should not see this"
 }
 
@@ -50,7 +50,7 @@ func (_ marshalerTest) Error() string {
 // marshalerPanicTest expect this to result in a panic when logged.
 type marshalerPanicTest struct{ val string }
 
-func (_ marshalerPanicTest) MarshalLog() interface{} {
+func (marshalerPanicTest) MarshalLog() interface{} {
 	panic("marshalerPanicTest")
 }
 
@@ -58,17 +58,17 @@ func (_ marshalerPanicTest) MarshalLog() interface{} {
 // stringerTest expect this to result in the String() value when logged.
 type stringerTest struct{ val string }
 
-func (_ stringerTest) String() string {
+func (stringerTest) String() string {
 	return "I am a fmt.Stringer"
 }
-func (_ stringerTest) Error() string {
+func (stringerTest) Error() string {
 	return "Error(): you should not see this"
 }
 
 // stringerPanicTest expect this to result in a panic when logged.
 type stringerPanicTest struct{ val string }
 
-func (_ stringerPanicTest) String() string {
+func (stringerPanicTest) String() string {
 	panic("stringerPanicTest")
 }
 
@@ -76,7 +76,7 @@ func (_ stringerPanicTest) String() string {
 // errorTest expect this to result in the Error() value when logged.
 type errorTest struct{ val string }
 
-func (_ errorTest) Error() string {
+func (errorTest) Error() string {
 	return "I am an error"
 }
 
@@ -84,7 +84,7 @@ func (_ errorTest) Error() string {
 // errorPanicTest expect this to result in a panic when logged.
 type errorPanicTest struct{ val string }
 
-func (_ errorPanicTest) Error() string {
+func (errorPanicTest) Error() string {
 	panic("errorPanicTest")
 }
 

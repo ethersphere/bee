@@ -11,6 +11,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 // EventUpdater interface definitions reflect the updates triggered by events
@@ -46,10 +47,16 @@ type ReserveStateGetter interface {
 	GetReserveState() *ReserveState
 }
 
+type RadiusChecker interface {
+	IsWithinStorageRadius(addr swarm.Address) bool
+	StorageRadius() uint8
+}
+
 // Storer represents the persistence layer for batches
 // on the current (highest available) block.
 type Storer interface {
 	ReserveStateGetter
+	RadiusChecker
 
 	// Get returns a batch from the store with the given ID.
 	Get([]byte) (*Batch, error)

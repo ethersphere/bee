@@ -17,7 +17,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/shed"
 	ma "github.com/multiformats/go-multiaddr"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
@@ -28,6 +27,8 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
 	pingpongmock "github.com/ethersphere/bee/pkg/pingpong/mock"
+	"github.com/ethersphere/bee/pkg/shed"
+	"github.com/ethersphere/bee/pkg/spinlock"
 	mockstate "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
@@ -35,11 +36,6 @@ import (
 	"github.com/ethersphere/bee/pkg/topology/kademlia"
 	"github.com/ethersphere/bee/pkg/topology/pslice"
 )
-
-// nolint:gochecknoinits
-func init() {
-	rand.Seed(time.Now().UnixNano())
-}
 
 const spinLockWaitTime = time.Second * 3
 
@@ -1390,7 +1386,7 @@ func TestOutofDepthPrune(t *testing.T) {
 	}
 
 	// wait for kademlia connectors and pruning to finish
-	time.Sleep(time.Millisecond * 100)
+	time.Sleep(time.Millisecond * 500)
 
 	// check that no pruning has happened
 	bins := binSizes(kad)
@@ -1413,7 +1409,7 @@ func TestOutofDepthPrune(t *testing.T) {
 	addOne(t, signer, kad, ab, addr)
 
 	// wait for kademlia connectors and pruning to finish
-	time.Sleep(time.Millisecond * 100)
+	time.Sleep(time.Millisecond * 500)
 
 	// check bins have been pruned
 	bins = binSizes(kad)
@@ -1710,7 +1706,7 @@ func TestIteratorOpts(t *testing.T) {
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{})
-		randBool                 = &boolgen{src: rand.NewSource(time.Now().UnixNano())}
+		randBool                 = &boolgen{}
 	)
 
 	if err := kad.Start(context.Background()); err != nil {
@@ -1788,14 +1784,13 @@ func cleanupCloser(t *testing.T, c io.Closer) {
 }
 
 type boolgen struct {
-	src       rand.Source
 	cache     int64
 	remaining int
 }
 
 func (b *boolgen) Bool() bool {
 	if b.remaining == 0 {
-		b.cache, b.remaining = b.src.Int63(), 63
+		b.cache, b.remaining = rand.Int63(), 63
 	}
 
 	result := b.cache&0x01 == 1
@@ -2031,14 +2026,13 @@ func kDepth(t *testing.T, k *kademlia.Kad, d int) {
 	t.Helper()
 
 	var depth int
-	err := spinLock(t, spinLockWaitTime, func() bool {
+	err := spinlock.Wait(spinLockWaitTime, func() bool {
 		depth = int(k.NeighborhoodDepth())
 		return depth == d
 	})
 	if err != nil {
 		t.Fatalf("timed out waiting for depth. want %d got %d", d, depth)
 	}
-
 }
 
 func waitConn(t *testing.T, conns *int32) {
@@ -2052,7 +2046,7 @@ func waitCounter(t *testing.T, conns *int32, exp int32) {
 	t.Helper()
 	var got int32
 
-	err := spinLock(t, spinLockWaitTime, func() bool {
+	err := spinlock.Wait(spinLockWaitTime, func() bool {
 		if got = atomic.LoadInt32(conns); got == exp {
 			atomic.StoreInt32(conns, 0)
 			return true
@@ -2067,7 +2061,7 @@ func waitCounter(t *testing.T, conns *int32, exp int32) {
 func waitPeers(t *testing.T, k *kademlia.Kad, peers int) {
 	t.Helper()
 
-	err := spinLock(t, spinLockWaitTime, func() bool {
+	err := spinlock.Wait(spinLockWaitTime, func() bool {
 		i := 0
 		_ = k.EachPeer(func(_ swarm.Address, _ uint8) (bool, bool, error) {
 			i++
@@ -2084,7 +2078,7 @@ func waitPeers(t *testing.T, k *kademlia.Kad, peers int) {
 func waitBcast(t *testing.T, d *mock.Discovery, pivot swarm.Address, addrs ...swarm.Address) {
 	t.Helper()
 
-	err := spinLock(t, spinLockWaitTime, func() bool {
+	err := spinlock.Wait(spinLockWaitTime, func() bool {
 		if d.Broadcasts() > 0 {
 			recs, ok := d.AddresseeRecords(pivot)
 			if !ok {
@@ -2093,7 +2087,7 @@ func waitBcast(t *testing.T, d *mock.Discovery, pivot swarm.Address, addrs ...sw
 
 			oks := 0
 			for _, a := range addrs {
-				if !isIn(a, recs) {
+				if !swarm.ContainsAddress(recs, a) {
 					t.Fatalf("address %s not found in discovery records: %s", a, addrs)
 				}
 				oks++
@@ -2108,20 +2102,11 @@ func waitBcast(t *testing.T, d *mock.Discovery, pivot swarm.Address, addrs ...sw
 	}
 }
 
-func isIn(addr swarm.Address, addrs []swarm.Address) bool {
-	for _, v := range addrs {
-		if v.Equal(addr) {
-			return true
-		}
-	}
-	return false
-}
-
 // waitBalanced waits for kademlia to be balanced for specified bin.
 func waitBalanced(t *testing.T, k *kademlia.Kad, bin uint8) {
 	t.Helper()
 
-	err := spinLock(t, spinLockWaitTime, func() bool {
+	err := spinlock.Wait(spinLockWaitTime, func() bool {
 		return k.IsBalanced(bin)
 	})
 	if err != nil {
@@ -2135,26 +2120,4 @@ func ptrInt(v int) *int {
 
 func ptrDuration(v time.Duration) *time.Duration {
 	return &v
-}
-
-func spinLock(t *testing.T, timeout time.Duration, cond func() bool) error {
-	t.Helper()
-
-	timer := time.NewTimer(timeout)
-	defer timer.Stop()
-
-	condCheckTicker := time.NewTicker(time.Millisecond * 50)
-	defer condCheckTicker.Stop()
-
-	for {
-		select {
-		case <-timer.C:
-			return errors.New("timed out waiting for condition")
-
-		case <-condCheckTicker.C:
-			if cond() {
-				return nil
-			}
-		}
-	}
 }

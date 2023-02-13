@@ -1181,13 +1181,7 @@ func (k *Kad) binReachablePeers(bin uint8) (peers []swarm.Address) {
 
 func isStaticPeer(staticNodes []swarm.Address) func(overlay swarm.Address) bool {
 	return func(overlay swarm.Address) bool {
-		for _, addr := range staticNodes {
-			if addr.Equal(overlay) {
-				return true
-			}
-		}
-		return false
-
+		return swarm.ContainsAddress(staticNodes, overlay)
 	}
 }
 
@@ -1339,11 +1333,8 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, filter topology.
 	}
 
 	err := k.EachPeerRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
-
-		for _, a := range skipPeers {
-			if a.Equal(peer) {
-				return false, false, nil
-			}
+		if swarm.ContainsAddress(skipPeers, peer) {
+			return false, false, nil
 		}
 
 		if closest.IsZero() {
@@ -1371,11 +1362,6 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, filter topology.
 	}
 
 	return closest, nil
-}
-
-// IsWithinDepth returns if an address is within the neighborhood depth of a node.
-func (k *Kad) IsWithinDepth(addr swarm.Address) bool {
-	return swarm.Proximity(k.base.Bytes(), addr.Bytes()) >= k.NeighborhoodDepth()
 }
 
 // EachNeighbor iterates from closest bin to farthest of the neighborhood peers.

@@ -84,12 +84,7 @@ func (a Address) Equal(b Address) bool {
 // MemberOf returns true if the address is a member of the
 // provided set.
 func (a Address) MemberOf(addrs []Address) bool {
-	for _, v := range addrs {
-		if v.Equal(a) {
-			return true
-		}
-	}
-	return false
+	return ContainsAddress(addrs, a)
 }
 
 // IsZero returns true if the Address is not set to any value.

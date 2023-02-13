@@ -241,12 +241,9 @@ func (s *PSlice) po(peer []byte) uint8 {
 
 // index returns if a peer exists and the index in the slice.
 func (s *PSlice) index(addr swarm.Address, po uint8) (bool, int) {
-
-	for i, peer := range s.peers[po] {
-		if peer.Equal(addr) {
-			return true, i
-		}
+	idx := swarm.IndexOfAddress(s.peers[po], addr)
+	if idx != -1 {
+		return true, idx
 	}
-
 	return false, 0
 }

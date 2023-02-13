@@ -10,6 +10,8 @@ import (
 	"io"
 	"testing"
 
+	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
+
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
@@ -92,6 +94,24 @@ func TestIncoming_WantNone(t *testing.T) {
 	}
 	if clientDb.PutCalls() > 0 {
 		t.Fatal("too many puts")
+	}
+}
+
+func TestIncoming_ContextTimeout(t *testing.T) {
+	t.Parallel()
+
+	var (
+		mockTopmost = uint64(5)
+		ps, _       = newPullSync(nil, mock.WithIntervalsResp(addrs, mockTopmost, nil), mock.WithChunks(chunks...))
+		recorder    = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
+		psClient, _ = newPullSync(recorder, mock.WithChunks(chunks...))
+	)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 0)
+	cancel()
+	_, err := psClient.SyncInterval(ctx, swarm.ZeroAddress, 0, 0, 5)
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("wanted error %v, got %v", context.DeadlineExceeded, err)
 	}
 }
 
@@ -231,5 +251,13 @@ func newPullSync(s p2p.Streamer, o ...mock.Option) (*pullsync.Syncer, *mock.Pull
 	logger := log.Noop
 	unwrap := func(swarm.Chunk) {}
 	validStamp := func(ch swarm.Chunk, _ []byte) (swarm.Chunk, error) { return ch, nil }
-	return pullsync.New(s, storage, unwrap, validStamp, logger), storage
+	return pullsync.New(
+		s,
+		storage,
+		unwrap,
+		validStamp,
+		logger,
+		mockbatchstore.New(),
+		swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c"),
+	), storage
 }

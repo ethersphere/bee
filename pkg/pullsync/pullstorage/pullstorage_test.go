@@ -5,13 +5,10 @@
 package pullstorage_test
 
 import (
-	"bytes"
 	"context"
 	"crypto/rand"
 	"errors"
 	"reflect"
-	"runtime/pprof"
-	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -452,8 +449,6 @@ func TestIntervalChunks_IteratorShareContextCancellation(t *testing.T) {
 		}()
 		<-sched // wait for goroutine to get scheduled
 
-		// wait till all the routines are scheduled
-		waitStacks(t, "ethswarm.org/bee/pkg/pullsync/pullstorage/pullstorage.go:66", 3, 2*time.Second)
 		// cancel the first caller
 		cancel()
 		i := 0
@@ -526,8 +521,6 @@ func TestIntervalChunks_IteratorShareContextCancellation(t *testing.T) {
 		}()
 		<-sched // wait for goroutine to get scheduled
 
-		// wait till all the routines are scheduled
-		waitStacks(t, "ethswarm.org/bee/pkg/pullsync/pullstorage/pullstorage.go:66", 3, 2*time.Second)
 		// cancel all callers
 		cancel()
 		i := 0
@@ -568,25 +561,6 @@ func TestIntervalChunks_IteratorShareContextCancellation(t *testing.T) {
 	})
 }
 
-// Taken from https://github.com/janos/singleflight/blob/master/singleflight_test.go#L344
-// this is required to verify the goroutine scheduling for the tests
-func waitStacks(t *testing.T, loc string, count int, timeout time.Duration) {
-	t.Helper()
-
-	for deadline := time.Now().Add(timeout); time.Now().Before(deadline); {
-		// Ensure that exact n goroutines are waiting at the desired stack trace.
-		var buf bytes.Buffer
-		if err := pprof.Lookup("goroutine").WriteTo(&buf, 2); err != nil {
-			t.Fatal(err)
-		}
-		c := strings.Count(buf.String(), loc)
-		if c == count {
-			break
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-}
-
 func newPullStorage(t *testing.T, o ...mock.Option) (pullstorage.Storer, *mock.MockStorer) {
 	t.Helper()
 
@@ -625,17 +599,8 @@ func newTestDB(t *testing.T, o *localstore.Options) (baseKey []byte, db *localst
 func checkAinB(t *testing.T, a, b []swarm.Address) {
 	t.Helper()
 	for _, v := range a {
-		if !isIn(v, b) {
+		if !swarm.ContainsAddress(b, v) {
 			t.Fatalf("address %s not found in slice %s", v, b)
 		}
 	}
-}
-
-func isIn(a swarm.Address, b []swarm.Address) bool {
-	for _, v := range b {
-		if a.Equal(v) {
-			return true
-		}
-	}
-	return false
 }

@@ -29,6 +29,7 @@ import (
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/pushsync"
+	"github.com/ethersphere/bee/pkg/spinlock"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/websocket"
@@ -351,16 +352,14 @@ func expectMessage(t *testing.T, cl *websocket.Conn, respC chan error, expData [
 func waitDone(t *testing.T, mtx *sync.Mutex, done *bool) {
 	t.Helper()
 
-	for i := 0; i < 10; i++ {
+	err := spinlock.Wait(time.Second, func() bool {
 		mtx.Lock()
-		if *done {
-			mtx.Unlock()
-			return
-		}
-		mtx.Unlock()
-		time.Sleep(50 * time.Millisecond)
+		defer mtx.Unlock()
+		return *done
+	})
+	if err != nil {
+		t.Fatal("timed out waiting for send")
 	}
-	t.Fatal("timed out waiting for send")
 }
 
 type opts struct {

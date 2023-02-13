@@ -60,8 +60,6 @@ const (
 	optionNameSwapInitialDeposit         = "swap-initial-deposit"
 	optionNameSwapEnable                 = "swap-enable"
 	optionNameChequebookEnable           = "chequebook-enable"
-	optionNameTransactionHash            = "transaction"
-	optionNameBlockHash                  = "block-hash"
 	optionNameSwapDeploymentGasPrice     = "swap-deployment-gas-price"
 	optionNameFullNode                   = "full-node"
 	optionNamePostageContractAddress     = "postage-stamp-address"
@@ -283,8 +281,6 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNamePriceOracleAddress, "", "price oracle contract address")
 	cmd.Flags().String(optionNameRedistributionAddress, "", "redistribution contract address")
 	cmd.Flags().String(optionNameStakingAddress, "", "staking contract address")
-	cmd.Flags().String(optionNameTransactionHash, "", "proof-of-identity transaction hash")
-	cmd.Flags().String(optionNameBlockHash, "", "block hash of the block whose parent is the block that contains the transaction hash")
 	cmd.Flags().Uint64(optionNameBlockTime, 15, "chain block time")
 	cmd.Flags().String(optionNameSwapDeploymentGasPrice, "", "gas price in wei to use for deployment and funding")
 	cmd.Flags().Duration(optionWarmUpTime, time.Minute*5, "time to warmup the node before some major protocols can be kicked off.")

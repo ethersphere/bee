@@ -14,6 +14,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
+	"github.com/ethersphere/bee/pkg/spinlock"
 	libp2pm "github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p-core/host"
 	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
@@ -479,16 +480,12 @@ func expectErrNotSupported(t *testing.T, err error) {
 func expectCounter(t *testing.T, c *int, expected int, mtx *sync.Mutex) {
 	t.Helper()
 
-	for i := 0; i < 20; i++ {
+	err := spinlock.Wait(time.Second, func() bool {
 		mtx.Lock()
-		if *c == expected {
-			mtx.Unlock()
-			return
-		}
-
-		mtx.Unlock()
-		time.Sleep(10 * time.Millisecond)
+		defer mtx.Unlock()
+		return *c == expected
+	})
+	if err != nil {
+		t.Fatal("timed out waiting for counter to be set")
 	}
-
-	t.Fatal("timed out waiting for counter to be set")
 }

@@ -183,7 +183,7 @@ func TestRedistribution(t *testing.T) {
 			redistributionContractABI,
 		)
 
-		err = contract.Claim(ctx)
+		_, err = contract.Claim(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -222,7 +222,7 @@ func TestRedistribution(t *testing.T) {
 			redistributionContractABI,
 		)
 
-		err = contract.Claim(ctx)
+		_, err = contract.Claim(ctx)
 		if !errors.Is(err, transaction.ErrTransactionReverted) {
 			t.Fatal(err)
 		}
@@ -263,7 +263,7 @@ func TestRedistribution(t *testing.T) {
 			redistributionContractABI,
 		)
 
-		err = contract.Commit(ctx, testobfus, big.NewInt(0))
+		_, err = contract.Commit(ctx, testobfus, big.NewInt(0))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -306,7 +306,7 @@ func TestRedistribution(t *testing.T) {
 			redistributionContractABI,
 		)
 
-		err = contract.Reveal(ctx, depth, common.Hex2Bytes("hash"), common.Hex2Bytes("nonce"))
+		_, err = contract.Reveal(ctx, depth, common.Hex2Bytes("hash"), common.Hex2Bytes("nonce"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -394,7 +394,7 @@ func TestRedistribution(t *testing.T) {
 			redistributionContractABI,
 		)
 
-		err = contract.Commit(ctx, common.Hex2Bytes("hash"), big.NewInt(0))
+		_, err = contract.Commit(ctx, common.Hex2Bytes("hash"), big.NewInt(0))
 		if err == nil {
 			t.Fatal("expected error")
 		}

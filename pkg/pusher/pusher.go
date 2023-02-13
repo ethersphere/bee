@@ -52,13 +52,12 @@ type Service struct {
 	chunksWorkerQuitC chan struct{}
 	inflight          *inflight
 	attempts          *attempts
-	sem               chan struct{}
-	smugler           chan OpChan
+	smuggler          chan OpChan
 }
 
 const (
 	traceDuration     = 30 * time.Second // duration for every root tracing span
-	concurrentPushes  = 50               // how many chunks to push simultaneously
+	concurrentPushes  = 100              // how many chunks to push simultaneously
 	DefaultRetryCount = 6
 )
 
@@ -83,8 +82,7 @@ func New(networkID uint64, storer storage.Storer, depther topology.NeighborhoodD
 		chunksWorkerQuitC: make(chan struct{}),
 		inflight:          newInflight(),
 		attempts:          &attempts{retryCount: retryCount, attempts: make(map[string]int)},
-		sem:               make(chan struct{}, concurrentPushes),
-		smugler:           make(chan OpChan),
+		smuggler:          make(chan OpChan),
 	}
 	go p.chunksWorker(warmupTime, tracer)
 	return p
@@ -108,18 +106,16 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 		span, logger, ctx = tracer.StartSpanFromContext(cctx, "pusher-sync-batch", s.logger)
 		loggerV1          = logger.V(1).Build()
 		timer             = time.NewTimer(traceDuration)
+		sem               = make(chan struct{}, concurrentPushes)
+		cc                = make(chan *Op)
 	)
 
 	// inflight.set handles the backpressure for the maximum amount of inflight chunks
 	// and duplicate handling.
 	chunks, repeat, unsubscribe := s.storer.SubscribePush(ctx, s.inflight.set)
-	go func() {
-		<-s.quit
+	defer func() {
 		unsubscribe()
 		cancel()
-		if !timer.Stop() {
-			<-timer.C
-		}
 	}()
 
 	ctxLogger := func() (context.Context, log.Logger) {
@@ -129,35 +125,50 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 	}
 
 	push := func(op *Op) {
+		defer func() {
+			wg.Done()
+			<-sem
+		}()
+
 		s.metrics.TotalToPush.Inc()
 		ctx, logger := ctxLogger()
 		startTime := time.Now()
-		wg.Add(1)
-		go func() {
-			defer func() {
-				wg.Done()
-				<-s.sem
-			}()
-			if err := s.pushChunk(ctx, op.Chunk, logger, op.Direct); err != nil {
-				// warning: ugly flow control
-				// if errc is set it means we are in a direct push,
-				// we therefore communicate the error into the channel
-				// otherwise we assume this is a buffered upload and
-				// therefore we repeat().
+
+		if err := s.valid(op.Chunk); err != nil {
+			logger.Warning("stamp with is no longer valid, skipping syncing for chunk", "batch_id", hex.EncodeToString(op.Chunk.Stamp().BatchID()), "direct_upload", op.Direct, "chunk_address", op.Chunk.Address(), "error", err)
+			if op.Direct {
 				if op.Err != nil {
 					op.Err <- err
 				}
-				repeat()
-				s.metrics.TotalErrors.Inc()
-				s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())
-				loggerV1.Debug("cannot push chunk", "chunk_address", op.Chunk.Address(), "error", err)
-				return
+			} else {
+				ctx, cancel := context.WithTimeout(ctx, chunkStoreTimeout)
+				defer cancel()
+				if err = s.storer.Set(ctx, storage.ModeSetSync, op.Chunk.Address()); err != nil {
+					s.logger.Error(err, "set sync failed")
+				}
 			}
+			return
+		}
+
+		if err := s.pushChunk(ctx, op.Chunk, logger, op.Direct); err != nil {
+			// warning: ugly flow control
+			// if errc is set it means we are in a direct push,
+			// we therefore communicate the error into the channel
+			// otherwise we assume this is a buffered upload and
+			// therefore we repeat().
 			if op.Err != nil {
-				op.Err <- nil
+				op.Err <- err
 			}
-			s.metrics.TotalSynced.Inc()
-		}()
+			repeat()
+			s.metrics.TotalErrors.Inc()
+			s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())
+			loggerV1.Debug("cannot push chunk", "chunk_address", op.Chunk.Address(), "error", err)
+			return
+		}
+		if op.Err != nil {
+			op.Err <- nil
+		}
+		s.metrics.TotalSynced.Inc()
 	}
 
 	go func() {
@@ -176,25 +187,34 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 		}
 	}()
 
-	// fan-in channel
 	cc := make(chan *Op, 16)
 
 	go func() {
-		for ch := range chunks {
-			// If the stamp is invalid, the chunk is not synced with the network
-			// since other nodes would reject the chunk, so the chunk is marked as
-			// synced which makes it available to the node but not to the network
-			if err := s.valid(ch); err != nil {
-				logger.Warning("stamp with is no longer valid, skipping syncing for chunk", "batch_id", hex.EncodeToString(ch.Stamp().BatchID()), "chunk_address", ch.Address(), "error", err)
-
-				ctx, cancel := context.WithTimeout(ctx, chunkStoreTimeout)
-
-				if err = s.storer.Set(ctx, storage.ModeSetSync, ch.Address()); err != nil {
-					s.logger.Error(err, "set sync failed")
+		for {
+			select {
+			case ch, ok := <-chunks:
+				if !ok {
+					chunks = nil
+					continue
 				}
-				cancel()
+				select {
+				case cc <- &Op{Chunk: ch, Direct: false}:
+				case <-s.quit:
+					return
+				}
+			case apiC := <-s.smuggler:
+				go func() {
+					for op := range apiC {
+						select {
+						case cc <- op:
+						case <-s.quit:
+							return
+						}
+					}
+				}()
+			case <-s.quit:
+				return
 			}
-			cc <- &Op{Chunk: ch, Direct: false}
 		}
 	}()
 
@@ -202,34 +222,19 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 
 	for {
 		select {
-		case apiC := <-s.smugler:
-			go func() {
-				for {
-					select {
-					case op := <-apiC:
-						cc <- op
-					case <-s.quit:
-						return
-					}
-				}
-			}()
-		case op, ok := <-cc:
-			if !ok {
-				chunks = nil
-				continue
-			}
-
+		case op := <-cc:
 			select {
-			case s.sem <- struct{}{}:
+			case sem <- struct{}{}:
+				wg.Add(1)
+				go push(op)
 			case <-s.quit:
 				return
 			}
-
-			push(op)
 		case <-s.quit:
 			return
 		}
 	}
+
 }
 
 func (s *Service) pushChunk(ctx context.Context, ch swarm.Chunk, logger log.Logger, directUpload bool) error {
@@ -302,6 +307,9 @@ func (s *Service) checkReceipt(receipt *pushsync.Receipt) error {
 	}
 
 	po := swarm.Proximity(addr.Bytes(), peer.Bytes())
+
+	// Ideally the storage radius should be checked here, but because light nodes do not maintain a storage radius,
+	// we go with the best alternative - the kademlia neighborhood depth
 	d := s.depther.NeighborhoodDepth()
 
 	// if the receipt po is out of depth AND the receipt has not yet hit the maximum retry limit, reject the receipt.
@@ -332,9 +340,8 @@ func (s *Service) valid(ch swarm.Chunk) error {
 func (s *Service) AddFeed(c <-chan *Op) {
 	go func() {
 		select {
-		case s.smugler <- c:
+		case s.smuggler <- c:
 		case <-s.quit:
-			// if we're quitting: don't do anything
 		}
 	}()
 }

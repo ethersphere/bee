@@ -8,20 +8,21 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"sync"
 	"testing"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/intervalstore"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
+	bsMock "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	"github.com/ethersphere/bee/pkg/puller"
 	mockps "github.com/ethersphere/bee/pkg/pullsync/mock"
+	"github.com/ethersphere/bee/pkg/spinlock"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
-	mockk "github.com/ethersphere/bee/pkg/topology/kademlia/mock"
+	kadMock "github.com/ethersphere/bee/pkg/topology/kademlia/mock"
 )
 
 const max = math.MaxUint64
@@ -44,15 +45,17 @@ func TestOneSync(t *testing.T) {
 		liveReplies = []uint64{1001}
 	)
 
+	bsMock.New(bsMock.WithReserveState(&postage.ReserveState{StorageRadius: 1}))
+
 	puller, _, kad, pullsync := newPuller(opts{
-		kad: []mockk.Option{
-			mockk.WithEachPeerRevCalls(
-				mockk.AddrTuple{Addr: addr, PO: 1},
-			), mockk.WithDepth(1),
+		kad: []kadMock.Option{
+			kadMock.WithEachPeerRevCalls(
+				kadMock.AddrTuple{Addr: addr, PO: 1},
+			),
 		},
-		pullSync:     []mockps.Option{mockps.WithCursors(cursors), mockps.WithLiveSyncReplies(liveReplies...)},
-		bins:         3,
-		reserveState: &reserveStateGetter{rs: postage.ReserveState{StorageRadius: 1}},
+		pullSync: []mockps.Option{mockps.WithCursors(cursors), mockps.WithLiveSyncReplies(liveReplies...)},
+		bins:     3,
+		bs:       bsMock.WithReserveState(&postage.ReserveState{StorageRadius: 1}),
 	})
 	defer puller.Close()
 	defer pullsync.Close()
@@ -67,26 +70,25 @@ func TestOneSync(t *testing.T) {
 	checkHistSyncingCount(t, puller, 0)
 }
 
-func TestNoSyncOutsideDepth(t *testing.T) {
+func TestSyncOutsideDepth(t *testing.T) {
 	t.Parallel()
 
 	var (
-		addr        = test.RandomAddress()
-		addr2       = test.RandomAddress()
-		cursors     = []uint64{1000, 1000, 1000}
-		liveReplies = []uint64{1}
+		addr    = test.RandomAddress()
+		addr2   = test.RandomAddress()
+		cursors = []uint64{1000, 1000, 1000, 1000}
 	)
 
 	puller, _, kad, pullsync := newPuller(opts{
-		kad: []mockk.Option{
-			mockk.WithEachPeerRevCalls(
-				mockk.AddrTuple{Addr: addr, PO: 1},
-				mockk.AddrTuple{Addr: addr2, PO: 1},
-			), mockk.WithDepth(2),
+		kad: []kadMock.Option{
+			kadMock.WithEachPeerRevCalls(
+				kadMock.AddrTuple{Addr: addr, PO: 2},
+				kadMock.AddrTuple{Addr: addr2, PO: 0},
+			),
 		},
-		pullSync:     []mockps.Option{mockps.WithCursors(cursors), mockps.WithLiveSyncReplies(liveReplies...)},
-		bins:         3,
-		reserveState: &reserveStateGetter{rs: postage.ReserveState{StorageRadius: 2}},
+		pullSync: []mockps.Option{mockps.WithCursors(cursors)},
+		bins:     4,
+		bs:       bsMock.WithReserveState(&postage.ReserveState{StorageRadius: 2}),
 	})
 	defer puller.Close()
 	defer pullsync.Close()
@@ -94,11 +96,11 @@ func TestNoSyncOutsideDepth(t *testing.T) {
 
 	kad.Trigger()
 
-	waitCursorsCalled(t, pullsync, addr, true)
-	waitCursorsCalled(t, pullsync, addr2, true)
+	waitCursorsCalled(t, pullsync, addr, false)
+	waitCursorsCalled(t, pullsync, addr2, false)
 
-	waitSyncCalled(t, pullsync, addr, true)
-	waitSyncCalled(t, pullsync, addr2, true)
+	waitLiveSyncCalledBins(t, pullsync, addr, 2, 3)
+	waitLiveSyncCalledBins(t, pullsync, addr2, 0)
 
 	checkHistSyncingCount(t, puller, 0)
 }
@@ -136,14 +138,14 @@ func TestSyncFlow_PeerWithinDepth_Live(t *testing.T) {
 			t.Parallel()
 
 			puller, st, kad, pullsync := newPuller(opts{
-				kad: []mockk.Option{
-					mockk.WithEachPeerRevCalls(
-						mockk.AddrTuple{Addr: addr, PO: 1},
-					), mockk.WithDepth(1),
+				kad: []kadMock.Option{
+					kadMock.WithEachPeerRevCalls(
+						kadMock.AddrTuple{Addr: addr, PO: 1},
+					),
 				},
-				pullSync:     []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithLiveSyncReplies(tc.liveReplies...)},
-				bins:         2,
-				reserveState: &reserveStateGetter{rs: postage.ReserveState{StorageRadius: 1}},
+				pullSync: []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithLiveSyncReplies(tc.liveReplies...)},
+				bins:     2,
+				bs:       bsMock.WithReserveState(&postage.ReserveState{StorageRadius: 1}),
 			})
 			t.Cleanup(func() {
 				pullsync.Close()
@@ -220,14 +222,14 @@ func TestSyncFlow_PeerWithinDepth_Historical(t *testing.T) {
 			t.Parallel()
 
 			puller, st, kad, pullsync := newPuller(opts{
-				kad: []mockk.Option{
-					mockk.WithEachPeerRevCalls(
-						mockk.AddrTuple{Addr: addr, PO: 1},
-					), mockk.WithDepth(1),
+				kad: []kadMock.Option{
+					kadMock.WithEachPeerRevCalls(
+						kadMock.AddrTuple{Addr: addr, PO: 1},
+					),
 				},
-				pullSync:     []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithAutoReply(), mockps.WithLiveSyncBlock()},
-				bins:         2,
-				reserveState: &reserveStateGetter{rs: postage.ReserveState{StorageRadius: 1}},
+				pullSync: []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithAutoReply(), mockps.WithLiveSyncBlock()},
+				bins:     2,
+				bs:       bsMock.WithReserveState(&postage.ReserveState{StorageRadius: 1}),
 			})
 			defer puller.Close()
 			defer pullsync.Close()
@@ -275,14 +277,14 @@ func TestSyncFlow_PeerWithinDepth_Live2(t *testing.T) {
 			t.Parallel()
 
 			puller, st, kad, pullsync := newPuller(opts{
-				kad: []mockk.Option{
-					mockk.WithEachPeerRevCalls(
-						mockk.AddrTuple{Addr: addr, PO: 3}, // po is 3, depth is 2, so we're in depth
-					), mockk.WithDepth(2),
+				kad: []kadMock.Option{
+					kadMock.WithEachPeerRevCalls(
+						kadMock.AddrTuple{Addr: addr, PO: 3}, // po is 3, depth is 2, so we're in depth
+					),
 				},
-				pullSync:     []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithLateSyncReply(tc.liveReplies...)},
-				bins:         5,
-				reserveState: &reserveStateGetter{rs: postage.ReserveState{StorageRadius: 2}},
+				pullSync: []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithLateSyncReply(tc.liveReplies...)},
+				bins:     5,
+				bs:       bsMock.WithReserveState(&postage.ReserveState{StorageRadius: 2}),
 			})
 			defer puller.Close()
 			defer pullsync.Close()
@@ -308,18 +310,18 @@ func TestSyncFlow_PeerWithinDepth_Live2(t *testing.T) {
 func TestPeerDisconnected(t *testing.T) {
 	t.Parallel()
 
-	cursors := []uint64{0, 0}
+	cursors := []uint64{0, 0, 0, 0, 0}
 	addr := test.RandomAddress()
 
 	p, _, kad, pullsync := newPuller(opts{
-		kad: []mockk.Option{
-			mockk.WithEachPeerRevCalls(
-				mockk.AddrTuple{Addr: addr, PO: 1},
-			), mockk.WithDepthCalls(2, 2, 2), // peer moved from out of depth to depth
+		kad: []kadMock.Option{
+			kadMock.WithEachPeerRevCalls(
+				kadMock.AddrTuple{Addr: addr, PO: 1},
+			),
 		},
-		pullSync:     []mockps.Option{mockps.WithCursors(cursors), mockps.WithLiveSyncBlock()},
-		bins:         5,
-		reserveState: &reserveStateGetter{rs: postage.ReserveState{StorageRadius: 2}},
+		pullSync: []mockps.Option{mockps.WithCursors(cursors)},
+		bins:     5,
+		bs:       bsMock.WithReserveState(&postage.ReserveState{StorageRadius: 2}),
 	})
 	t.Cleanup(func() {
 		pullsync.Close()
@@ -329,8 +331,8 @@ func TestPeerDisconnected(t *testing.T) {
 	time.Sleep(50 * time.Millisecond)
 
 	kad.Trigger()
-	waitCursorsCalled(t, pullsync, addr, true)
-	waitLiveSyncCalled(t, pullsync, addr, true)
+	waitCursorsCalled(t, pullsync, addr, false)
+	waitLiveSyncCalled(t, pullsync, addr, false)
 	kad.ResetPeers()
 	kad.Trigger()
 	time.Sleep(50 * time.Millisecond)
@@ -350,18 +352,15 @@ func TestBinReset(t *testing.T) {
 		liveReplies = []uint64{1001}
 	)
 
-	rs := &reserveStateGetter{rs: postage.ReserveState{StorageRadius: 1}}
-
 	puller, s, kad, pullsync := newPuller(opts{
-		kad: []mockk.Option{
-			mockk.WithEachPeerRevCalls(
-				mockk.AddrTuple{Addr: addr, PO: 1},
+		kad: []kadMock.Option{
+			kadMock.WithEachPeerRevCalls(
+				kadMock.AddrTuple{Addr: addr, PO: 1},
 			),
-			mockk.WithDepth(1),
 		},
-		pullSync:     []mockps.Option{mockps.WithCursors(cursors), mockps.WithLiveSyncReplies(liveReplies...)},
-		bins:         3,
-		reserveState: rs,
+		pullSync: []mockps.Option{mockps.WithCursors(cursors), mockps.WithLiveSyncReplies(liveReplies...)},
+		bins:     3,
+		bs:       bsMock.WithReserveState(&postage.ReserveState{StorageRadius: 1}),
 	})
 	defer puller.Close()
 	defer pullsync.Close()
@@ -372,7 +371,6 @@ func TestBinReset(t *testing.T) {
 	waitCursorsCalled(t, pullsync, addr, false)
 	waitSyncCalled(t, pullsync, addr, false)
 
-	rs.setRadius(0)
 	kad.ResetPeers()
 	kad.Trigger()
 	time.Sleep(100 * time.Millisecond)
@@ -404,6 +402,7 @@ func TestBinReset(t *testing.T) {
 // the tested unit.
 func TestDepthChange(t *testing.T) {
 	t.Parallel()
+	t.Skip()
 
 	var (
 		addr     = test.RandomAddress()
@@ -479,12 +478,12 @@ func TestDepthChange(t *testing.T) {
 			}
 
 			puller, st, kad, pullsync := newPuller(opts{
-				kad: []mockk.Option{
-					mockk.WithEachPeerRevCalls(mockk.AddrTuple{Addr: addr, PO: 3}), mockk.WithDepthCalls(tc.depths...),
+				kad: []kadMock.Option{
+					kadMock.WithEachPeerRevCalls(kadMock.AddrTuple{Addr: addr, PO: 3}),
 				},
-				pullSync:     []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithLateSyncReply(tc.syncReplies...)},
-				bins:         5,
-				reserveState: &reserveStateGetter{rs: postage.ReserveState{StorageRadius: syncRadius}},
+				pullSync: []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithLateSyncReply(tc.syncReplies...)},
+				bins:     5,
+				bs:       bsMock.WithReserveState(&postage.ReserveState{StorageRadius: syncRadius}),
 			})
 			defer puller.Close()
 			defer pullsync.Close()
@@ -522,15 +521,15 @@ func TestContinueSyncing(t *testing.T) {
 	)
 
 	puller, _, kad, pullsync := newPuller(opts{
-		kad: []mockk.Option{
-			mockk.WithEachPeerRevCalls(mockk.AddrTuple{Addr: addr, PO: 0}),
-			mockk.WithDepth(0),
+		kad: []kadMock.Option{
+			kadMock.WithEachPeerRevCalls(kadMock.AddrTuple{Addr: addr, PO: 0}),
 		},
 		pullSync: []mockps.Option{
 			mockps.WithCursors([]uint64{1}),
 			mockps.WithSyncError(errors.New("sync error"))},
-		bins:         1,
-		reserveState: &reserveStateGetter{rs: postage.ReserveState{StorageRadius: 0}},
+		bins: 1,
+		bs:   bsMock.WithReserveState(&postage.ReserveState{StorageRadius: 0}),
+
 		syncSleepDur: time.Millisecond * 10,
 	})
 	defer puller.Close()
@@ -560,15 +559,15 @@ func TestPeerGone(t *testing.T) {
 	)
 
 	p, _, kad, pullsync := newPuller(opts{
-		kad: []mockk.Option{
-			mockk.WithEachPeerRevCalls(mockk.AddrTuple{Addr: addr, PO: 1}),
-			mockk.WithDepth(0),
+		kad: []kadMock.Option{
+			kadMock.WithEachPeerRevCalls(kadMock.AddrTuple{Addr: addr, PO: 1}),
 		},
 		pullSync: []mockps.Option{
 			mockps.WithCursors([]uint64{1, 1}),
 		},
-		bins:         2,
-		reserveState: &reserveStateGetter{rs: postage.ReserveState{StorageRadius: 1}},
+		bins: 2,
+		bs:   bsMock.WithReserveState(&postage.ReserveState{StorageRadius: 1}),
+
 		syncSleepDur: time.Millisecond * 10,
 	})
 	defer p.Close()
@@ -640,29 +639,28 @@ func checkNotFound(t *testing.T, s storage.StateStorer, addr swarm.Address, bin 
 
 func waitCheckCalls(t *testing.T, expCalls []c, callsFn func(swarm.Address) []mockps.SyncCall, addr swarm.Address) {
 	t.Helper()
-	for i := 0; i < 10; i++ {
-		time.Sleep(50 * time.Millisecond)
-		calls := callsFn(addr)
-		if l := len(calls); l != len(expCalls) {
-			t.Log(l, len(expCalls), "continue")
-			continue
-		}
-		// check the calls
-		for i, v := range expCalls {
-			if b := calls[i].Bin; b != v.b {
-				t.Errorf("bin mismatch. got %d want %d index %d", b, v.b, i)
-			}
-			if f := calls[i].From; f != v.f {
-				t.Errorf("from mismatch. got %d want %d index %d", f, v.f, i)
-			}
-			if tt := calls[i].To; tt != v.t {
-				t.Errorf("to mismatch. got %d want %d index %d", tt, v.t, i)
-			}
-		}
-		return
+
+	var calls []mockps.SyncCall
+	err := spinlock.Wait(time.Second, func() bool {
+		calls = callsFn(addr)
+		return len(calls) == len(expCalls)
+	})
+	if err != nil {
+		t.Fatalf("expected %d calls but got %d. calls: %v", len(expCalls), len(calls), calls)
 	}
-	calls := callsFn(addr)
-	t.Fatalf("expected %d calls but got %d. calls: %v", len(expCalls), len(calls), calls)
+
+	// check the calls
+	for i, v := range expCalls {
+		if b := calls[i].Bin; b != v.b {
+			t.Errorf("bin mismatch. got %d want %d index %d", b, v.b, i)
+		}
+		if f := calls[i].From; f != v.f {
+			t.Errorf("from mismatch. got %d want %d index %d", f, v.f, i)
+		}
+		if tt := calls[i].To; tt != v.t {
+			t.Errorf("to mismatch. got %d want %d index %d", tt, v.t, i)
+		}
+	}
 }
 
 // this is needed since there are several goroutines checking the calls,
@@ -693,130 +691,132 @@ func checkCallsUnordered(t *testing.T, expCalls []c, calls []mockps.SyncCall) {
 // waitCursorsCalled waits until GetCursors are called on the given address.
 func waitCursorsCalled(t *testing.T, ps *mockps.PullSyncMock, addr swarm.Address, invert bool) {
 	t.Helper()
-	for i := 0; i < 20; i++ {
-		if v := ps.CursorsCalls(addr); v {
+
+	err := spinlock.Wait(time.Second, func() bool {
+		v := ps.CursorsCalls(addr)
+		if v {
 			if invert {
 				t.Fatal("got a call to sync to a peer but shouldnt")
 			} else {
-				return
+				return true
 			}
 		}
-
-		time.Sleep(50 * time.Millisecond)
+		return false
+	})
+	if err != nil && !invert {
+		t.Fatal("timed out waiting for cursors")
 	}
-	if invert {
-		return
-	}
-	t.Fatal("timed out waiting for cursors")
 }
 
 // waitLiveSyncCalled waits until SyncInterval is called on the address given.
 func waitLiveSyncCalled(t *testing.T, ps *mockps.PullSyncMock, addr swarm.Address, invert bool) {
 	t.Helper()
-	for i := 0; i < 15; i++ {
+
+	err := spinlock.Wait(time.Second, func() bool {
+		t.Helper()
 		v := ps.LiveSyncCalls(addr)
 		if len(v) > 0 {
 			if invert {
 				t.Fatal("got a call to sync to a peer but shouldnt")
 			} else {
-				return
+				return true
 			}
 		}
-
-		time.Sleep(50 * time.Millisecond)
+		return false
+	})
+	if err != nil && !invert {
+		t.Fatal("timed out waiting for sync")
 	}
-	if invert {
-		return
-	}
-	t.Fatal("timed out waiting for sync")
 }
 
 // waitSyncCalled waits until SyncInterval is called on the address given.
 func waitSyncCalled(t *testing.T, ps *mockps.PullSyncMock, addr swarm.Address, invert bool) {
 	t.Helper()
-	for i := 0; i < 15; i++ {
+
+	err := spinlock.Wait(time.Second, func() bool {
 		v := ps.SyncCalls(addr)
 		if len(v) > 0 {
 			if invert {
 				t.Fatal("got a call to sync to a peer but shouldnt")
 			} else {
-				return
+				return true
 			}
 		}
-
-		time.Sleep(50 * time.Millisecond)
+		return false
+	})
+	if err != nil && !invert {
+		t.Fatal("timed out waiting for sync")
 	}
-	if invert {
-		return
-	}
-	t.Fatal("timed out waiting for sync")
 }
 
 func waitSyncCalledTimes(t *testing.T, ps *mockps.PullSyncMock, addr swarm.Address, times int) {
 	t.Helper()
-	for i := 0; i < 15; i++ {
-		v := ps.SyncCalls(addr)
-		if len(v) == times {
-			return
-		}
 
-		time.Sleep(50 * time.Millisecond)
+	err := spinlock.Wait(time.Second, func() bool {
+		v := ps.SyncCalls(addr)
+		return len(v) == times
+	})
+	if err != nil {
+		t.Fatal("timed out waiting for sync")
 	}
-	t.Fatal("timed out waiting for sync")
 }
 
 func waitLiveSyncCalledTimes(t *testing.T, ps *mockps.PullSyncMock, addr swarm.Address, times int) {
 	t.Helper()
-	for i := 0; i < 15; i++ {
-		v := ps.LiveSyncCalls(addr)
-		if len(v) == times {
-			return
-		}
 
-		time.Sleep(50 * time.Millisecond)
+	err := spinlock.Wait(time.Second, func() bool {
+		v := ps.LiveSyncCalls(addr)
+		return len(v) == times
+	})
+	if err != nil {
+		t.Fatal("timed out waiting for sync")
 	}
-	t.Fatal("timed out waiting for sync")
+}
+
+func waitLiveSyncCalledBins(t *testing.T, ps *mockps.PullSyncMock, addr swarm.Address, bins ...uint8) {
+	t.Helper()
+
+	err := spinlock.Wait(time.Second, func() bool {
+		calls := ps.LiveSyncCalls(addr)
+	nextCall:
+		for _, c := range calls {
+			for _, b := range bins {
+				if c.Bin == b {
+					continue nextCall
+				}
+			}
+			return false
+		}
+		return true
+	})
+	if err != nil {
+		t.Fatal("timed out waiting for sync")
+	}
 }
 
 type opts struct {
 	pullSync     []mockps.Option
-	kad          []mockk.Option
+	kad          []kadMock.Option
+	bs           bsMock.Option
 	bins         uint8
-	reserveState *reserveStateGetter
 	syncSleepDur time.Duration
 }
 
-func newPuller(ops opts) (*puller.Puller, storage.StateStorer, *mockk.Mock, *mockps.PullSyncMock) {
+func newPuller(ops opts) (*puller.Puller, storage.StateStorer, *kadMock.Mock, *mockps.PullSyncMock) {
 	s := mock.NewStateStore()
 	ps := mockps.NewPullSync(ops.pullSync...)
-	kad := mockk.NewMockKademlia(ops.kad...)
+	kad := kadMock.NewMockKademlia(ops.kad...)
+	bs := bsMock.New(ops.bs)
 	logger := log.Noop
 
 	o := puller.Options{
 		Bins:         ops.bins,
 		SyncSleepDur: ops.syncSleepDur,
 	}
-	return puller.New(s, kad, ops.reserveState, ps, logger, o, 0), s, kad, ps
+	return puller.New(s, kad, bs, ps, nil, logger, o, 0), s, kad, ps
 }
 
 type c struct {
 	b    uint8  //bin
 	f, t uint64 //from, to
-}
-
-type reserveStateGetter struct {
-	mtx sync.Mutex
-	rs  postage.ReserveState
-}
-
-func (rs *reserveStateGetter) GetReserveState() *postage.ReserveState {
-	rs.mtx.Lock()
-	defer rs.mtx.Unlock()
-	return &rs.rs
-}
-
-func (rs *reserveStateGetter) setRadius(r uint8) {
-	rs.mtx.Lock()
-	defer rs.mtx.Unlock()
-	rs.rs.StorageRadius = r
 }

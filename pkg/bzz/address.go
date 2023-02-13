@@ -105,7 +105,19 @@ func generateSignData(underlay, overlay []byte, networkID uint64) []byte {
 }
 
 func (a *Address) Equal(b *Address) bool {
-	return a.Overlay.Equal(b.Overlay) && a.Underlay.Equal(b.Underlay) && bytes.Equal(a.Signature, b.Signature) && bytes.Equal(a.Transaction, b.Transaction)
+	if a == nil || b == nil {
+		return a == b
+	}
+
+	return a.Overlay.Equal(b.Overlay) && multiaddrEqual(a.Underlay, b.Underlay) && bytes.Equal(a.Signature, b.Signature) && bytes.Equal(a.Transaction, b.Transaction)
+}
+
+func multiaddrEqual(a, b ma.Multiaddr) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+
+	return a.Equal(b)
 }
 
 func (a *Address) MarshalJSON() ([]byte, error) {
