@@ -19,8 +19,9 @@ import (
 func (c *command) initStartDevCmd() (err error) {
 
 	cmd := &cobra.Command{
-		Use:   "dev",
-		Short: "Start a Swarm node in development mode",
+		Use:               "dev",
+		Short:             "Start a Swarm node in development mode",
+		PersistentPreRunE: c.CheckMissingFlag,
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			if len(args) > 0 {
 				return cmd.Help()

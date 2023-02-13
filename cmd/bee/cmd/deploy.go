@@ -14,10 +14,13 @@ import (
 
 const blocktime = 15
 
+var missingParams []string
+
 func (c *command) initDeployCmd() error {
 	cmd := &cobra.Command{
-		Use:   "deploy",
-		Short: "Deploy and fund the chequebook contract",
+		Use:               "deploy",
+		Short:             "Deploy and fund the chequebook contract",
+		PersistentPreRunE: c.CheckMissingFlag,
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			if (len(args)) > 0 {
 				return cmd.Help()
