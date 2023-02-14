@@ -57,7 +57,7 @@ func TestJoinerSingleChunk(t *testing.T) {
 	mockDataLengthBytes := make([]byte, 8)
 	mockDataLengthBytes[0] = 0x03
 	mockChunk := swarm.NewChunk(mockAddr, append(mockDataLengthBytes, mockData...))
-	_, err := store.Put(ctx, mockChunk)
+	err := store.Put(ctx, mockChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +97,7 @@ func TestJoinerDecryptingStore_NormalChunk(t *testing.T) {
 	mockDataLengthBytes := make([]byte, 8)
 	mockDataLengthBytes[0] = 0x03
 	mockChunk := swarm.NewChunk(mockAddr, append(mockDataLengthBytes, mockData...))
-	_, err := st.Put(ctx, mockChunk)
+	err := st.Put(ctx, mockChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,21 +131,21 @@ func TestJoinerWithReference(t *testing.T) {
 
 	// create root chunk and two data chunks referenced in the root chunk
 	rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*2, swarm.SectionSize*2)
-	_, err := store.Put(ctx, rootChunk)
+	err := store.Put(ctx, rootChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	firstAddress := swarm.NewAddress(rootChunk.Data()[8 : swarm.SectionSize+8])
 	firstChunk := filetest.GenerateTestRandomFileChunk(firstAddress, swarm.ChunkSize, swarm.ChunkSize)
-	_, err = store.Put(ctx, firstChunk)
+	err = store.Put(ctx, firstChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	secondAddress := swarm.NewAddress(rootChunk.Data()[swarm.SectionSize+8:])
 	secondChunk := filetest.GenerateTestRandomFileChunk(secondAddress, swarm.ChunkSize, swarm.ChunkSize)
-	_, err = store.Put(ctx, secondChunk)
+	err = store.Put(ctx, secondChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +185,7 @@ func TestJoinerMalformed(t *testing.T) {
 	c1addr, _ := builder.FeedPipeline(ctx, pb, bytes.NewReader(subTrie))
 
 	chunk2 := testingc.GenerateTestRandomChunk()
-	_, err := store.Put(ctx, chunk2)
+	err := store.Put(ctx, chunk2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +202,7 @@ func TestJoinerMalformed(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err = store.Put(ctx, rootChunk)
+	err = store.Put(ctx, rootChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -655,21 +655,21 @@ func TestJoinerReadAt(t *testing.T) {
 
 	// create root chunk with 2 references and the referenced data chunks
 	rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*2, swarm.SectionSize*2)
-	_, err := store.Put(ctx, rootChunk)
+	err := store.Put(ctx, rootChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	firstAddress := swarm.NewAddress(rootChunk.Data()[8 : swarm.SectionSize+8])
 	firstChunk := filetest.GenerateTestRandomFileChunk(firstAddress, swarm.ChunkSize, swarm.ChunkSize)
-	_, err = store.Put(ctx, firstChunk)
+	err = store.Put(ctx, firstChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	secondAddress := swarm.NewAddress(rootChunk.Data()[swarm.SectionSize+8:])
 	secondChunk := filetest.GenerateTestRandomFileChunk(secondAddress, swarm.ChunkSize, swarm.ChunkSize)
-	_, err = store.Put(ctx, secondChunk)
+	err = store.Put(ctx, secondChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -702,21 +702,21 @@ func TestJoinerOneLevel(t *testing.T) {
 
 	// create root chunk with 2 references and the referenced data chunks
 	rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*2, swarm.SectionSize*2)
-	_, err := store.Put(ctx, rootChunk)
+	err := store.Put(ctx, rootChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	firstAddress := swarm.NewAddress(rootChunk.Data()[8 : swarm.SectionSize+8])
 	firstChunk := filetest.GenerateTestRandomFileChunk(firstAddress, swarm.ChunkSize, swarm.ChunkSize)
-	_, err = store.Put(ctx, firstChunk)
+	err = store.Put(ctx, firstChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	secondAddress := swarm.NewAddress(rootChunk.Data()[swarm.SectionSize+8:])
 	secondChunk := filetest.GenerateTestRandomFileChunk(secondAddress, swarm.ChunkSize, swarm.ChunkSize)
-	_, err = store.Put(ctx, secondChunk)
+	err = store.Put(ctx, secondChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -776,21 +776,21 @@ func TestJoinerTwoLevelsAcrossChunk(t *testing.T) {
 
 	// create root chunk with 2 references and two intermediate chunks with references
 	rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*swarm.Branches+42, swarm.SectionSize*2)
-	_, err := store.Put(ctx, rootChunk)
+	err := store.Put(ctx, rootChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	firstAddress := swarm.NewAddress(rootChunk.Data()[8 : swarm.SectionSize+8])
 	firstChunk := filetest.GenerateTestRandomFileChunk(firstAddress, swarm.ChunkSize*swarm.Branches, swarm.ChunkSize)
-	_, err = store.Put(ctx, firstChunk)
+	err = store.Put(ctx, firstChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	secondAddress := swarm.NewAddress(rootChunk.Data()[swarm.SectionSize+8:])
 	secondChunk := filetest.GenerateTestRandomFileChunk(secondAddress, 42, swarm.SectionSize)
-	_, err = store.Put(ctx, secondChunk)
+	err = store.Put(ctx, secondChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -801,7 +801,7 @@ func TestJoinerTwoLevelsAcrossChunk(t *testing.T) {
 		chunkAddressBytes := firstChunk.Data()[cursor : cursor+swarm.SectionSize]
 		chunkAddress := swarm.NewAddress(chunkAddressBytes)
 		ch := filetest.GenerateTestRandomFileChunk(chunkAddress, swarm.ChunkSize, swarm.ChunkSize)
-		_, err := store.Put(ctx, ch)
+		err := store.Put(ctx, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -810,7 +810,7 @@ func TestJoinerTwoLevelsAcrossChunk(t *testing.T) {
 	chunkAddressBytes := secondChunk.Data()[8:]
 	chunkAddress := swarm.NewAddress(chunkAddressBytes)
 	ch := filetest.GenerateTestRandomFileChunk(chunkAddress, 42, 42)
-	_, err = store.Put(ctx, ch)
+	err = store.Put(ctx, ch)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -850,21 +850,21 @@ func TestJoinerIterateChunkAddresses(t *testing.T) {
 
 	// create root chunk with 2 references and the referenced data chunks
 	rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*2, swarm.SectionSize*2)
-	_, err := store.Put(ctx, rootChunk)
+	err := store.Put(ctx, rootChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	firstAddress := swarm.NewAddress(rootChunk.Data()[8 : swarm.SectionSize+8])
 	firstChunk := filetest.GenerateTestRandomFileChunk(firstAddress, swarm.ChunkSize, swarm.ChunkSize)
-	_, err = store.Put(ctx, firstChunk)
+	err = store.Put(ctx, firstChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	secondAddress := swarm.NewAddress(rootChunk.Data()[swarm.SectionSize+8:])
 	secondChunk := filetest.GenerateTestRandomFileChunk(secondAddress, swarm.ChunkSize, swarm.ChunkSize)
-	_, err = store.Put(ctx, secondChunk)
+	err = store.Put(ctx, secondChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
