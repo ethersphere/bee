@@ -61,7 +61,7 @@ func TestSplitSingleChunk(t *testing.T) {
 		t.Fatalf("expected %v, got %v", testHashAddress, resultAddress)
 	}
 
-	_, err = store.Get(context.TODO(), resultAddress)
+	_, err = store.Get(context.Background(), resultAddress)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,12 +95,12 @@ func TestSplitThreeLevels(t *testing.T) {
 		t.Fatalf("expected %v, got %v", testHashAddress, resultAddress)
 	}
 
-	_, err = store.Get(context.TODO(), resultAddress)
+	_, err = store.Get(context.Background(), resultAddress)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	rootChunk, err := store.Get(context.TODO(), resultAddress)
+	rootChunk, err := store.Get(context.Background(), resultAddress)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,7 +109,7 @@ func TestSplitThreeLevels(t *testing.T) {
 	for i := 0; i < swarm.ChunkSize; i += swarm.SectionSize {
 		dataAddressBytes := rootData[i : i+swarm.SectionSize]
 		dataAddress := swarm.NewAddress(dataAddressBytes)
-		_, err := store.Get(context.TODO(), dataAddress)
+		_, err := store.Get(context.Background(), dataAddress)
 		if err != nil {
 			t.Fatal(err)
 		}
