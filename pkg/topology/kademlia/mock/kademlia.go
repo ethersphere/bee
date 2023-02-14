@@ -77,6 +77,10 @@ func (m *Mock) EachNeighborRev(topology.EachPeerFunc) error {
 	panic("not implemented") // TODO: Implement
 }
 
+func (m *Mock) SetStorageRadius(uint8) {
+	panic("not implemented")
+}
+
 // EachPeer iterates from closest bin to farthest
 func (m *Mock) EachPeer(f topology.EachPeerFunc, _ topology.Filter) error {
 	m.mtx.Lock()
