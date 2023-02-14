@@ -480,7 +480,7 @@ func TestTraversalSOC(t *testing.T) {
 	store := inmemchunkstore.New()
 	iter := newAddressIterator(false)
 
-	ctx := context.TODO()
+	ctx := context.Background()
 
 	s := testingsoc.GenerateMockSOC(t, generateSample(swarm.ChunkSize))
 	sch := s.Chunk()
@@ -506,6 +506,6 @@ func TestTraversalSOC(t *testing.T) {
 
 func pipelineFactory(s storage.Putter, encrypt bool) func() pipeline.Interface {
 	return func() pipeline.Interface {
-		return builder.NewPipelineBuilder(context.TODO(), s, encrypt)
+		return builder.NewPipelineBuilder(context.Background(), s, encrypt)
 	}
 }
