@@ -354,18 +354,18 @@ func (u *uploadPutter) Put(ctx context.Context, chunk swarm.Chunk) error {
 		return nil
 	}
 
-	switch item, loaded, err := stampindex.LoadOrStore(u.s, stampIndexUploadNamespace, chunk); {
+	switch item, loaded, err := stampindex.LoadOrStore(u.s.IndexStore(), stampIndexUploadNamespace, chunk); {
 	case err != nil:
 		return fmt.Errorf("load or store stamp index for chunk %v has fail: %w", chunk, err)
 	case loaded && item.ChunkIsImmutable:
 		return errOverwriteOfImmutableBatch
 	case loaded && !item.ChunkIsImmutable:
-		prev := binary.BigEndian.Uint64(item.BatchTimestamp)
+		prev := binary.BigEndian.Uint64(item.StampTimestamp)
 		curr := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
 		if prev >= curr {
 			return errOverwriteOfNewerBatch
 		}
-		err = stampindex.Store(u.s, stampIndexUploadNamespace, chunk)
+		err = stampindex.Store(u.s.IndexStore(), stampIndexUploadNamespace, chunk)
 		if err != nil {
 			return fmt.Errorf("failed updating stamp index: %w", err)
 		}
@@ -593,7 +593,7 @@ func Iterate(ctx context.Context, s internal.Storage, startFrom swarm.Chunk, con
 
 	return s.IndexStore().Iterate(q, func(r storage.Result) (bool, error) {
 		pi := r.Entry.(*pushItem)
-		chunk, err := s.ChunkStore().GetWithStamp(ctx, pi.Address, pi.BatchID)
+		chunk, err := s.ChunkStore().Get(ctx, pi.Address)
 		if err != nil {
 			return true, err
 		}

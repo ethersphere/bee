@@ -13,7 +13,7 @@ import (
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/chunkstamp"
 	"github.com/ethersphere/bee/pkg/postage"
 	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
-	"github.com/ethersphere/bee/pkg/storagev2"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/storagev2/storagetest"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
@@ -157,7 +157,7 @@ func TestStoreLoadDelete(t *testing.T) {
 					t.Fatalf("Get(...): unexpected error: have: %v; want: %v", err, storage.ErrNotFound)
 				}
 
-				if err := chunkstamp.Store(ts, ns, chunk); err != nil {
+				if err := chunkstamp.Store(ts.IndexStore(), ns, chunk); err != nil {
 					t.Fatalf("Store(...): unexpected error: %v", err)
 				}
 
@@ -177,7 +177,7 @@ func TestStoreLoadDelete(t *testing.T) {
 			t.Run("load stored chunk stamp", func(t *testing.T) {
 				want := chunk.Stamp()
 
-				have, err := chunkstamp.Load(ts, ns, chunk.Address())
+				have, err := chunkstamp.Load(ts.IndexStore(), ns, chunk.Address())
 				if err != nil {
 					t.Fatalf("Load(...): unexpected error: %v", err)
 				}
@@ -190,7 +190,7 @@ func TestStoreLoadDelete(t *testing.T) {
 			t.Run("load stored chunk stamp with batch id", func(t *testing.T) {
 				want := chunk.Stamp()
 
-				have, err := chunkstamp.LoadWithBatchID(ts, ns, chunk.Address(), chunk.Stamp().BatchID())
+				have, err := chunkstamp.LoadWithBatchID(ts.IndexStore(), ns, chunk.Address(), chunk.Stamp().BatchID())
 				if err != nil {
 					t.Fatalf("LoadWithBatchID(...): unexpected error: %v", err)
 				}
@@ -200,12 +200,30 @@ func TestStoreLoadDelete(t *testing.T) {
 				}
 			})
 
-			t.Run("delete stored stamp index", func(t *testing.T) {
-				if err := chunkstamp.DeleteAll(ts, ns, chunk.Address()); err != nil {
+			t.Run("delete stored stamp", func(t *testing.T) {
+				if err := chunkstamp.Delete(ts.IndexStore(), ns, chunk.Address(), chunk.Stamp().BatchID()); err != nil {
+					t.Fatalf("Delete(...): unexpected error: %v", err)
+				}
+
+				have, err := chunkstamp.LoadWithBatchID(ts.IndexStore(), ns, chunk.Address(), chunk.Stamp().BatchID())
+				if !errors.Is(err, storage.ErrNotFound) {
+					t.Fatalf("Load(...): unexpected error: %v", err)
+				}
+				if have != nil {
+					t.Fatalf("Load(...): loaded stamp should be nil")
+				}
+			})
+
+			t.Run("delete all stored stamp index", func(t *testing.T) {
+				if err := chunkstamp.Store(ts.IndexStore(), ns, chunk); err != nil {
+					t.Fatalf("Store(...): unexpected error: %v", err)
+				}
+
+				if err := chunkstamp.DeleteAll(ts.IndexStore(), ns, chunk.Address()); err != nil {
 					t.Fatalf("DeleteAll(...): unexpected error: %v", err)
 				}
 
-				have, err := chunkstamp.Load(ts, ns, chunk.Address())
+				have, err := chunkstamp.Load(ts.IndexStore(), ns, chunk.Address())
 				if !errors.Is(err, storage.ErrNotFound) {
 					t.Fatalf("Load(...): unexpected error: %v", err)
 				}

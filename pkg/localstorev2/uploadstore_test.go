@@ -9,11 +9,13 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	storer "github.com/ethersphere/bee/pkg/localstorev2"
 	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/swarm/test"
 )
 
 func testUploadStore(t *testing.T, newStorer func() (*storer.DB, error)) {
@@ -249,12 +251,12 @@ func TestUploadStore(t *testing.T) {
 		t.Parallel()
 
 		testUploadStore(t, func() (*storer.DB, error) {
-			return storer.New(context.Background(), "", nil)
+			return storer.New(context.Background(), "", dbTestOps(test.RandomAddress(), 0, nil, nil, nil, time.Second))
 		})
 	})
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
 
-		testUploadStore(t, diskStorer(t, nil))
+		testUploadStore(t, diskStorer(t, dbTestOps(test.RandomAddress(), 0, nil, nil, nil, time.Second)))
 	})
 }
