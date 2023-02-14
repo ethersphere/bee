@@ -41,17 +41,17 @@ type Item struct {
 	// Keys.
 	namespace  []byte // The namespace of other related item.
 	batchID    []byte
-	batchIndex []byte
+	stampIndex []byte
 
 	// Values.
-	BatchTimestamp   []byte
+	StampTimestamp   []byte
 	ChunkAddress     swarm.Address
 	ChunkIsImmutable bool
 }
 
 // ID implements the storage.Item interface.
 func (i Item) ID() string {
-	return fmt.Sprintf("%s/%s/%s", string(i.namespace), string(i.batchID), string(i.batchIndex))
+	return fmt.Sprintf("%s/%s/%s", string(i.namespace), string(i.batchID), string(i.stampIndex))
 }
 
 // Namespace implements the storage.Item interface.
@@ -66,7 +66,7 @@ func (i Item) Marshal() ([]byte, error) {
 		return nil, errStampItemMarshalNamespaceInvalid
 	case len(i.batchID) != swarm.HashSize:
 		return nil, errStampItemMarshalBatchIDInvalid
-	case len(i.batchIndex) != swarm.StampIndexSize:
+	case len(i.stampIndex) != swarm.StampIndexSize:
 		return nil, errStampItemMarshalBatchIndexInvalid
 	}
 
@@ -79,9 +79,9 @@ func (i Item) Marshal() ([]byte, error) {
 	l += len(i.namespace)
 	copy(buf[l:l+swarm.HashSize], i.batchID)
 	l += swarm.HashSize
-	copy(buf[l:l+swarm.StampIndexSize], i.batchIndex)
+	copy(buf[l:l+swarm.StampIndexSize], i.stampIndex)
 	l += swarm.StampIndexSize
-	copy(buf[l:l+swarm.StampTimestampSize], i.BatchTimestamp)
+	copy(buf[l:l+swarm.StampTimestampSize], i.StampTimestamp)
 	l += swarm.StampTimestampSize
 	copy(buf[l:l+swarm.HashSize], internal.AddressBytesOrZero(i.ChunkAddress))
 	l += swarm.HashSize
@@ -108,9 +108,9 @@ func (i *Item) Unmarshal(bytes []byte) error {
 	l += nsLen
 	ni.batchID = append(make([]byte, 0, swarm.HashSize), bytes[l:l+swarm.HashSize]...)
 	l += swarm.HashSize
-	ni.batchIndex = append(make([]byte, 0, swarm.StampIndexSize), bytes[l:l+swarm.StampIndexSize]...)
+	ni.stampIndex = append(make([]byte, 0, swarm.StampIndexSize), bytes[l:l+swarm.StampIndexSize]...)
 	l += swarm.StampIndexSize
-	ni.BatchTimestamp = append(make([]byte, 0, swarm.StampTimestampSize), bytes[l:l+swarm.StampTimestampSize]...)
+	ni.StampTimestamp = append(make([]byte, 0, swarm.StampTimestampSize), bytes[l:l+swarm.StampTimestampSize]...)
 	l += swarm.StampTimestampSize
 	ni.ChunkAddress = internal.AddressOrZero(bytes[l : l+swarm.HashSize])
 	l += swarm.HashSize
@@ -134,8 +134,8 @@ func (i *Item) Clone() storage.Item {
 	return &Item{
 		namespace:        append([]byte(nil), i.namespace...),
 		batchID:          append([]byte(nil), i.batchID...),
-		batchIndex:       append([]byte(nil), i.batchIndex...),
-		BatchTimestamp:   append([]byte(nil), i.BatchTimestamp...),
+		stampIndex:       append([]byte(nil), i.stampIndex...),
+		StampTimestamp:   append([]byte(nil), i.StampTimestamp...),
 		ChunkAddress:     i.ChunkAddress.Clone(),
 		ChunkIsImmutable: i.ChunkIsImmutable,
 	}
@@ -149,14 +149,14 @@ func (i Item) String() string {
 // LoadOrStore tries to first load a stamp index related record from the store.
 // If the record is not found, it will try to create and save a new record and
 // return it.
-func LoadOrStore(s internal.Storage, namespace string, chunk swarm.Chunk) (item *Item, loaded bool, err error) {
+func LoadOrStore(s storage.Store, namespace string, chunk swarm.Chunk) (item *Item, loaded bool, err error) {
 	item, err = Load(s, namespace, chunk)
 	if errors.Is(err, storage.ErrNotFound) {
 		return &Item{
 			namespace:        []byte(namespace),
 			batchID:          chunk.Stamp().BatchID(),
-			batchIndex:       chunk.Stamp().Index(),
-			BatchTimestamp:   chunk.Stamp().Timestamp(),
+			stampIndex:       chunk.Stamp().Index(),
+			StampTimestamp:   chunk.Stamp().Timestamp(),
 			ChunkAddress:     chunk.Address(),
 			ChunkIsImmutable: chunk.Immutable(),
 		}, false, Store(s, namespace, chunk)
@@ -166,13 +166,13 @@ func LoadOrStore(s internal.Storage, namespace string, chunk swarm.Chunk) (item 
 
 // Load returns stamp index record related to the given namespace and chunk.
 // The storage.ErrNotFound is returned if no record is found.
-func Load(s internal.Storage, namespace string, chunk swarm.Chunk) (*Item, error) {
+func Load(s storage.Store, namespace string, chunk swarm.Chunk) (*Item, error) {
 	item := &Item{
 		namespace:  []byte(namespace),
 		batchID:    chunk.Stamp().BatchID(),
-		batchIndex: chunk.Stamp().Index(),
+		stampIndex: chunk.Stamp().Index(),
 	}
-	err := s.IndexStore().Get(item)
+	err := s.Get(item)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get stampindex.Item %s: %w", item, err)
 	}
@@ -181,29 +181,29 @@ func Load(s internal.Storage, namespace string, chunk swarm.Chunk) (*Item, error
 
 // Store creates new or updated an existing stamp index
 // record related to the given namespace and chunk.
-func Store(s internal.Storage, namespace string, chunk swarm.Chunk) error {
+func Store(s storage.Store, namespace string, chunk swarm.Chunk) error {
 	item := &Item{
 		namespace:        []byte(namespace),
 		batchID:          chunk.Stamp().BatchID(),
-		batchIndex:       chunk.Stamp().Index(),
-		BatchTimestamp:   chunk.Stamp().Timestamp(),
+		stampIndex:       chunk.Stamp().Index(),
+		StampTimestamp:   chunk.Stamp().Timestamp(),
 		ChunkAddress:     chunk.Address(),
 		ChunkIsImmutable: chunk.Immutable(),
 	}
-	if err := s.IndexStore().Put(item); err != nil {
+	if err := s.Put(item); err != nil {
 		return fmt.Errorf("failed to put stampindex.Item %s: %w", item, err)
 	}
 	return nil
 }
 
 // Delete removes the related stamp index record from the storage.
-func Delete(s internal.Storage, namespace string, chunk swarm.Chunk) error {
+func Delete(s storage.Store, namespace string, chunk swarm.Chunk) error {
 	item := &Item{
 		namespace:  []byte(namespace),
 		batchID:    chunk.Stamp().BatchID(),
-		batchIndex: chunk.Stamp().Index(),
+		stampIndex: chunk.Stamp().Index(),
 	}
-	if err := s.IndexStore().Delete(item); err != nil {
+	if err := s.Delete(item); err != nil {
 		return fmt.Errorf("failed to delete stampindex.Item %s: %w", item, err)
 	}
 	return nil
