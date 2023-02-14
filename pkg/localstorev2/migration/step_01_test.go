@@ -19,10 +19,12 @@ func Test_Step_01(t *testing.T) {
 	stepFn := localmigration.Step_01
 	dummyObj := localmigration.NewDummyObj(1635)
 
-	// Test case when there is no obj:1635 in store.
+	// Test case when there is no dummyObj in store.
 	// Asserts that stepFn executes without error and
 	// that store will contain this object after step is executed.
-	t.Run("no obj:1635", func(t *testing.T) {
+	t.Run("no dummyObj", func(t *testing.T) {
+		t.Parallel()
+
 		store := inmemstore.New()
 
 		assert.NoError(t, stepFn(store))
@@ -32,10 +34,12 @@ func Test_Step_01(t *testing.T) {
 		assert.True(t, has)
 	})
 
-	// Test case when there is obj:1635 already in store.
+	// Test case when there is dummyObj already in store.
 	// Asserts that stepFn executes without error and
 	// that store will contain this object after step is executed.
-	t.Run("with obj:1635", func(t *testing.T) {
+	t.Run("with dummyObj", func(t *testing.T) {
+		t.Parallel()
+
 		store := inmemstore.New()
 		assert.NoError(t, store.Put(dummyObj))
 
