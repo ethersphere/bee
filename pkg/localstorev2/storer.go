@@ -18,9 +18,13 @@ import (
 
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/cache"
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/chunkstore"
+	"github.com/ethersphere/bee/pkg/localstorev2/internal/events"
+	"github.com/ethersphere/bee/pkg/localstorev2/internal/reserve"
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/upload"
 	localmigration "github.com/ethersphere/bee/pkg/localstorev2/migration"
 	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/pullsync"
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/sharky"
@@ -28,10 +32,13 @@ import (
 	"github.com/ethersphere/bee/pkg/storagev2/leveldbstore"
 	"github.com/ethersphere/bee/pkg/storagev2/migration"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/hashicorp/go-multierror"
 	"github.com/spf13/afero"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 	"resenje.org/multex"
+
+	stateStore "github.com/ethersphere/bee/pkg/storage"
 )
 
 // PutterSession provides a session around the storage.Putter. The session on
@@ -106,6 +113,17 @@ type NetStore interface {
 	// PusherFeed is the feed for direct push chunks. This can be used by the
 	// pusher component to push out the chunks.
 	PusherFeed() <-chan *pusher.Op
+}
+
+type BinC struct {
+	Address swarm.Address
+	BinID   uint64
+}
+
+type ReserveStore interface {
+	Putter() PutterSession
+	ReserveSample(context.Context, []byte, uint8, uint64) (reserve.Sample, error)
+	SubscribeBin(ctx context.Context, bin uint8, start, end uint64) <-chan *BinC
 }
 
 type memFS struct {
@@ -250,6 +268,16 @@ type Options struct {
 	CacheCapacity             uint64
 	Logger                    log.Logger
 	Retrieval                 retrieval.Interface
+
+	Address        swarm.Address
+	WarmupDuration time.Duration
+	Batchstore     postage.Storer
+	StateStore     stateStore.StateStorer
+	RadiusSetter   topology.SetStorageRadiuser
+	Syncer         pullsync.SyncReporter
+
+	ReserveCapacity       int
+	ReserveWakeUpDuration time.Duration
 }
 
 func defaultOptions() *Options {
@@ -275,6 +303,13 @@ type DB struct {
 	bgCacheWorkers   chan struct{}
 	bgCacheWorkersWg sync.WaitGroup
 	dbCloser         io.Closer
+
+	events *events.Subscriber
+
+	reserve          *reserve.Reserve
+	reserveBinEvents *events.Subscriber
+	baseAddr         swarm.Address
+	bs               postage.Storer
 }
 
 // New returns a newly constructed DB object which implements all the above
@@ -312,17 +347,35 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		return nil, err
 	}
 
-	return &DB{
-		repo:           repo,
-		lock:           multex.New(),
-		cacheObj:       cacheObj,
-		retrieval:      opts.Retrieval,
-		pusherFeed:     make(chan *pusher.Op),
-		logger:         opts.Logger.WithName(loggerName).Register(),
-		quit:           make(chan struct{}),
-		bgCacheWorkers: make(chan struct{}, 16),
-		dbCloser:       dbCloser,
-	}, nil
+	logger := opts.Logger.WithName(loggerName).Register()
+
+	reserveRadius := opts.Batchstore.GetReserveState().Radius
+
+	reserve, err := initReserve(repo.IndexStore(), opts.Address, opts.ReserveCapacity, reserveRadius, opts.StateStore, opts.RadiusSetter, logger)
+	if err != nil {
+		return nil, err
+	}
+
+	db := &DB{
+		baseAddr:         opts.Address,
+		repo:             repo,
+		lock:             multex.New(),
+		cacheObj:         cacheObj,
+		retrieval:        opts.Retrieval,
+		pusherFeed:       make(chan *pusher.Op),
+		logger:           logger,
+		quit:             make(chan struct{}),
+		bgCacheWorkers:   make(chan struct{}, 16),
+		dbCloser:         dbCloser,
+		reserve:          reserve,
+		bs:               opts.Batchstore,
+		events:           events.NewSubscriber(),
+		reserveBinEvents: events.NewSubscriber(),
+	}
+
+	go db.reserveWorker(opts.ReserveCapacity, opts.Syncer, opts.WarmupDuration, opts.ReserveWakeUpDuration)
+
+	return db, nil
 }
 
 func (db *DB) Close() error {
