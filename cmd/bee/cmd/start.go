@@ -465,7 +465,7 @@ func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config
 		}
 	} else {
 		logger.Warning("clef is not enabled; portability and security of your keys is sub optimal")
-		swarmPrivateKey, _, err := keystore.Key("swarm", password)
+		swarmPrivateKey, _, err := keystore.Key("swarm", password, crypto.EDGSecp256_K1)
 		if err != nil {
 			return nil, fmt.Errorf("swarm key: %w", err)
 		}
@@ -475,7 +475,7 @@ func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config
 
 	logger.Info("swarm public key", "public_key", hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(publicKey)))
 
-	libp2pPrivateKey, created, err := keystore.Key("libp2p", password)
+	libp2pPrivateKey, created, err := keystore.Key("libp2p", password, crypto.EDGSecp256_K1)
 	if err != nil {
 		return nil, fmt.Errorf("libp2p key: %w", err)
 	}
@@ -485,7 +485,7 @@ func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config
 		logger.Debug("using existing libp2p key")
 	}
 
-	pssPrivateKey, created, err := keystore.Key("pss", password)
+	pssPrivateKey, created, err := keystore.Key("pss", password, crypto.EDGSecp256_K1)
 	if err != nil {
 		return nil, fmt.Errorf("pss key: %w", err)
 	}

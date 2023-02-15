@@ -9,12 +9,14 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 
+	"github.com/btcsuite/btcd/btcec"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/keystore"
 	"github.com/google/uuid"
@@ -63,15 +65,27 @@ type kdfParams struct {
 	Salt  string `json:"salt"`
 }
 
-func encryptKey(k *ecdsa.PrivateKey, password string) ([]byte, error) {
-	data := crypto.EncodeSecp256k1PrivateKey(k)
+func encryptKey(k *ecdsa.PrivateKey, password string, edg keystore.EDG) ([]byte, error) {
+	data, err := edg.Encode(k)
+	if err != nil {
+		return nil, err
+	}
 	kc, err := encryptData(data, []byte(password))
 	if err != nil {
 		return nil, err
 	}
-	addr, err := crypto.NewEthereumAddress(k.PublicKey)
-	if err != nil {
-		return nil, err
+	var addr []byte
+	switch k.PublicKey.Curve {
+	case btcec.S256():
+		a, err := crypto.NewEthereumAddress(k.PublicKey)
+		if err != nil {
+			return nil, err
+		}
+		addr = a
+	case elliptic.P256():
+		addr = elliptic.Marshal(elliptic.P256(), k.PublicKey.X, k.PublicKey.Y)
+	default:
+		return nil, fmt.Errorf("unsupported curve: %v", k.PublicKey.Curve)
 	}
 	return json.Marshal(encryptedKey{
 		Address: hex.EncodeToString(addr),
@@ -81,7 +95,7 @@ func encryptKey(k *ecdsa.PrivateKey, password string) ([]byte, error) {
 	})
 }
 
-func decryptKey(data []byte, password string) (*ecdsa.PrivateKey, error) {
+func decryptKey(data []byte, password string, edg keystore.EDG) (*ecdsa.PrivateKey, error) {
 	var k encryptedKey
 	if err := json.Unmarshal(data, &k); err != nil {
 		return nil, err
@@ -93,7 +107,7 @@ func decryptKey(data []byte, password string) (*ecdsa.PrivateKey, error) {
 	if err != nil {
 		return nil, err
 	}
-	return crypto.DecodeSecp256k1PrivateKey(d)
+	return edg.Decode(d)
 }
 
 func encryptData(data, password []byte) (*keyCripto, error) {
