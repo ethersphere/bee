@@ -212,9 +212,15 @@ func initDiskRepository(basePath string, opts *Options) (storage.Repository, io.
 	}
 
 	txStore := leveldbstore.NewTxStore(store)
+
+	recoveryCloser, err := sharkyRecovery(sharkyBasePath, txStore, opts)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to recover sharky: %w", err)
+	}
+
 	txChunkStore := chunkstore.NewTxChunkStore(txStore, sharky)
 
-	return storage.NewRepository(txStore, txChunkStore), closer(store, sharky), nil
+	return storage.NewRepository(txStore, txChunkStore), closer(store, sharky, recoveryCloser), nil
 }
 
 func initCache(capacity uint64, repo storage.Repository) (*cache.Cache, error) {
@@ -284,6 +290,7 @@ func New(dirPath string, opts *Options) (*DB, error) {
 	if opts == nil {
 		opts = defaultOptions()
 	}
+
 	if dirPath == "" {
 		repo, dbCloser, err = initInmemRepository()
 		if err != nil {
