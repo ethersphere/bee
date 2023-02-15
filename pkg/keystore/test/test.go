@@ -9,6 +9,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/keystore"
 )
 
@@ -25,8 +26,10 @@ func Service(t *testing.T, s keystore.Service) {
 	if exists {
 		t.Fatal("should not exist")
 	}
+
+	edg := crypto.EDGSecp256_K1
 	// create a new swarm key
-	k1, created, err := s.Key("swarm", "pass123456")
+	k1, created, err := s.Key("swarm", "pass123456", edg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,7 +47,7 @@ func Service(t *testing.T, s keystore.Service) {
 	}
 
 	// get swarm key
-	k2, created, err := s.Key("swarm", "pass123456")
+	k2, created, err := s.Key("swarm", "pass123456", edg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -56,13 +59,13 @@ func Service(t *testing.T, s keystore.Service) {
 	}
 
 	// invalid password
-	_, _, err = s.Key("swarm", "invalid password")
+	_, _, err = s.Key("swarm", "invalid password", edg)
 	if !errors.Is(err, keystore.ErrInvalidPassword) {
 		t.Fatal(err)
 	}
 
 	// create a new libp2p key
-	k3, created, err := s.Key("libp2p", "p2p pass")
+	k3, created, err := s.Key("libp2p", "p2p pass", edg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +77,7 @@ func Service(t *testing.T, s keystore.Service) {
 	}
 
 	// get libp2p key
-	k4, created, err := s.Key("libp2p", "p2p pass")
+	k4, created, err := s.Key("libp2p", "p2p pass", edg)
 	if err != nil {
 		t.Fatal(err)
 	}
