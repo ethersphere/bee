@@ -108,6 +108,13 @@ type NetStore interface {
 	PusherFeed() <-chan *pusher.Op
 }
 
+type Storer interface {
+	UploadStore
+	PinStore
+	CacheStore
+	NetStore
+}
+
 type memFS struct {
 	afero.Fs
 }
