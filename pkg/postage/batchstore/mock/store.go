@@ -252,7 +252,7 @@ func (bs *BatchStore) ResetCalls() int {
 	return bs.resetCallCount
 }
 
-func (bs *BatchStore) GetBatchIDsExpiringUntil(*big.Int) (map[string]bool, error) {
+func (bs *BatchStore) GetBatchIDsBelowValue(*big.Int) (map[string]bool, error) {
 	emptyMap := make(map[string]bool)
 	return emptyMap, nil
 }

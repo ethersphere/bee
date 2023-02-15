@@ -11,7 +11,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"math/big"
 	"sync"
 	"time"
 
@@ -80,7 +79,7 @@ func (db *DB) ReserveSample(
 	anchor []byte,
 	storageRadius uint8,
 	consensusTime uint64, // nanoseconds
-	minimumBalance *big.Int,
+	excludedBatchIDs map[string]bool,
 ) (storage.Sample, error) {
 
 	g, ctx := errgroup.WithContext(ctx)
@@ -89,11 +88,6 @@ func (db *DB) ReserveSample(
 	logger := db.logger.WithName("sampler").V(1).Register()
 
 	t := time.Now()
-	excludedBatchIDs, err := db.batchStore.GetBatchIDsExpiringUntil(minimumBalance)
-	if err != nil {
-		logger.Error(err, "error getting minimum balance based excluded batchIDs")
-		return storage.Sample{}, fmt.Errorf("sampler: failed creating sample: %w", errSamplerStoppedI)
-	}
 
 	// signal start of sampling to see if we get any evictions during the sampler
 	// run

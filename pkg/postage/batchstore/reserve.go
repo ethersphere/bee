@@ -125,7 +125,7 @@ func (s *store) cleanup() error {
 	return nil
 }
 
-func (s *store) GetBatchIDsExpiringUntil(until *big.Int) (map[string]bool, error) {
+func (s *store) GetBatchIDsBelowValue(until *big.Int) (map[string]bool, error) {
 
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()

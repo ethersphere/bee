@@ -6,7 +6,6 @@ package inmemstore
 
 import (
 	"context"
-	"math/big"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/storage"
@@ -79,7 +78,7 @@ func (s *Store) SubscribePush(_ context.Context, _ func([]byte) bool) (c <-chan 
 	panic("not implemented")
 }
 
-func (s *Store) ReserveSample(_ context.Context, _ []byte, _ uint8, _ uint64, _ *big.Int) (storage.Sample, error) {
+func (s *Store) ReserveSample(_ context.Context, _ []byte, _ uint8, _ uint64, _ map[string]bool) (storage.Sample, error) {
 	panic("not implemented")
 }
 

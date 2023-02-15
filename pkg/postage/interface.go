@@ -51,6 +51,8 @@ type RadiusChecker interface {
 	IsWithinStorageRadius(addr swarm.Address) bool
 	StorageRadius() uint8
 	GetChainState() *ChainState
+	//
+	GetBatchIDsBelowValue(*big.Int) (map[string]bool, error)
 }
 
 // Storer represents the persistence layer for batches
@@ -99,8 +101,6 @@ type Storer interface {
 	Reset() error
 	//
 	SetBatchExpiryHandler(BatchExpiryHandler)
-	//
-	GetBatchIDsExpiringUntil(*big.Int) (map[string]bool, error)
 }
 
 // StorageRadiusSetter is used as a callback when the radius of a node changes.

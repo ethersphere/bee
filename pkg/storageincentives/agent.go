@@ -122,6 +122,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		commitRound    uint64 = math.MaxUint64
 		revealRound    uint64 = math.MaxUint64
 		round          uint64
+		block          uint64
 		reserveSample  []byte
 		obfuscationKey []byte
 		storageRadius  uint8
@@ -155,20 +156,20 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	}
 
 	// when the sample finishes, if we are in the commit phase, run commit
-	phaseEvents.On(sampleEnd, func(ctx context.Context, block uint64, previous PhaseType) {
+	phaseEvents.On(sampleEnd, func(ctx context.Context, previous PhaseType) {
 		if previous == commit {
 			commitF(ctx)
 		}
 	})
 
 	// when we enter the commit phase, if the sample is already finished, run commit
-	phaseEvents.On(commit, func(ctx context.Context, block uint64, previous PhaseType) {
+	phaseEvents.On(commit, func(ctx context.Context, previous PhaseType) {
 		if previous == sampleEnd {
 			commitF(ctx)
 		}
 	})
 
-	phaseEvents.On(reveal, func(ctx context.Context, block uint64, _ PhaseType) {
+	phaseEvents.On(reveal, func(ctx context.Context, _ PhaseType) {
 
 		// cancel previous executions of the commit and sample phases
 		phaseEvents.Cancel(commit, sample, sampleEnd)
@@ -206,7 +207,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 	})
 
-	phaseEvents.On(claim, func(ctx context.Context, block uint64, _ PhaseType) {
+	phaseEvents.On(claim, func(ctx context.Context, _ PhaseType) {
 
 		phaseEvents.Cancel(reveal)
 
@@ -223,10 +224,11 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		}
 	})
 
-	phaseEvents.On(sample, func(ctx context.Context, block uint64, _ PhaseType) {
+	phaseEvents.On(sample, func(ctx context.Context, _ PhaseType) {
 
 		mtx.Lock()
 		round := round
+		block := block
 		mtx.Unlock()
 
 		sr, smpl, err := a.play(ctx, round, block)
@@ -241,7 +243,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 			mtx.Unlock()
 		}
 
-		phaseEvents.Publish(sampleEnd, block)
+		phaseEvents.Publish(sampleEnd)
 	})
 
 	var (
@@ -303,9 +305,9 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 				a.state.SetFrozen(isFrozen, round)
 			}
 
-			phaseEvents.Publish(currentPhase, block)
+			phaseEvents.Publish(currentPhase)
 			if currentPhase == claim {
-				phaseEvents.Publish(sample, block) // trigger sample along side the claim phase
+				phaseEvents.Publish(sample) // trigger sample along side the claim phase
 			}
 		}
 		prevPhase = currentPhase
@@ -437,7 +439,13 @@ func (a *Agent) play(ctx context.Context, round uint64, block uint64) (uint8, []
 
 	a.latestPriceMtx.Unlock()
 
-	sample, err := a.sampler.ReserveSample(ctx, salt, storageRadius, uint64(timeLimiter), minimumBalance)
+	excludedBatchIDs, err := a.radius.GetBatchIDsBelowValue(minimumBalance)
+	if err != nil {
+		a.logger.Error(err, "error getting minimum balance based excluded batchIDs")
+		return 0, nil, err
+	}
+
+	sample, err := a.sampler.ReserveSample(ctx, salt, storageRadius, uint64(timeLimiter), excludedBatchIDs)
 	if err != nil {
 		return 0, nil, err
 	}

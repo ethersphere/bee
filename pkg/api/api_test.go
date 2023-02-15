@@ -826,7 +826,7 @@ type mockSampler struct {
 	t *testing.T
 }
 
-func (m *mockSampler) ReserveSample(context.Context, []byte, uint8, uint64, *big.Int) (storage.Sample, error) {
+func (m *mockSampler) ReserveSample(context.Context, []byte, uint8, uint64, map[string]bool) (storage.Sample, error) {
 	return storage.Sample{
 		Hash: swarm.RandAddress(m.t),
 	}, nil
