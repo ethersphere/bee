@@ -10,7 +10,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ethersphere/bee/pkg/crypto"
+	"github.com/ethersphere/bee/pkg/keystore"
 )
 
 // Service is the file-based keystore.Service implementation.
@@ -40,7 +40,31 @@ func (s *Service) Exists(name string) (bool, error) {
 	return true, nil
 }
 
-func (s *Service) Key(name, password string) (pk *ecdsa.PrivateKey, created bool, err error) {
+func (s *Service) SetKey(name, password string, edg keystore.EDG) (*ecdsa.PrivateKey, error) {
+	pk, err := edg.Generate()
+	if err != nil {
+		return nil, fmt.Errorf("generate key: %w", err)
+	}
+
+	d, err := encryptKey(pk, password, edg)
+	if err != nil {
+		return nil, err
+	}
+
+	filename := s.keyFilename(name)
+
+	if err := os.MkdirAll(filepath.Dir(filename), 0700); err != nil {
+		return nil, err
+	}
+
+	if err := os.WriteFile(filename, d, 0600); err != nil {
+		return nil, err
+	}
+
+	return pk, nil
+}
+
+func (s *Service) Key(name, password string, edg keystore.EDG) (pk *ecdsa.PrivateKey, created bool, err error) {
 	filename := s.keyFilename(name)
 
 	data, err := os.ReadFile(filename)
@@ -48,27 +72,11 @@ func (s *Service) Key(name, password string) (pk *ecdsa.PrivateKey, created bool
 		return nil, false, fmt.Errorf("read private key: %w", err)
 	}
 	if len(data) == 0 {
-		var err error
-		pk, err = crypto.GenerateSecp256k1Key()
-		if err != nil {
-			return nil, false, fmt.Errorf("generate secp256k1 key: %w", err)
-		}
-
-		d, err := encryptKey(pk, password)
-		if err != nil {
-			return nil, false, err
-		}
-
-		if err := os.MkdirAll(filepath.Dir(filename), 0700); err != nil {
-			return nil, false, err
-		}
-		if err := os.WriteFile(filename, d, 0600); err != nil {
-			return nil, false, err
-		}
-		return pk, true, nil
+		pk, err := s.SetKey(name, password, edg)
+		return pk, true, err
 	}
 
-	pk, err = decryptKey(data, password)
+	pk, err = decryptKey(data, password, edg)
 	if err != nil {
 		return nil, false, err
 	}
