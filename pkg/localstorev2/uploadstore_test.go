@@ -6,14 +6,13 @@ package storer_test
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"testing"
 
 	storer "github.com/ethersphere/bee/pkg/localstorev2"
 	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
-	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/google/go-cmp/cmp"
 )
 
 func testUploadStore(t *testing.T, newStorer func() (*storer.DB, error)) {
@@ -28,12 +27,12 @@ func testUploadStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 		}
 
 		for i := 1; i < 5; i++ {
-			id, err := lstore.NewSession()
+			tag, err := lstore.NewSession()
 			if err != nil {
 				t.Fatalf("NewSession(): unexpected error: %v", err)
 			}
-			if id != uint64(i) {
-				t.Fatalf("incorrect id generated: want %d have %d", i, id)
+			if tag.TagID != uint64(i) {
+				t.Fatalf("incorrect id generated: want %d have %d", i, tag.TagID)
 			}
 		}
 	})
@@ -97,12 +96,12 @@ func testUploadStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 				t.Fatal(err)
 			}
 
-			id, err := lstore.NewSession()
+			tag, err := lstore.NewSession()
 			if err != nil {
 				t.Fatalf("NewSession(): unexpected error: %v", err)
 			}
 
-			session, err := lstore.Upload(context.TODO(), tc.pin, id)
+			session, err := lstore.Upload(context.TODO(), tc.pin, tag.TagID)
 			if err != nil {
 				t.Fatalf("Upload(...): unexpected error: %v", err)
 			}
@@ -125,7 +124,7 @@ func testUploadStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 					t.Fatalf("session.Done(...): unexpected error: %v", err)
 				}
 			}
-			verifySessionInfo(t, lstore.Repo(), id, tc.chunks, !tc.fail)
+			verifySessionInfo(t, lstore.Repo(), tag.TagID, tc.chunks, !tc.fail)
 			if tc.pin {
 				verifyPinCollection(t, lstore.Repo(), tc.chunks[0], tc.chunks, !tc.fail)
 			}
@@ -161,22 +160,22 @@ func testUploadStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 		}
 
 		t.Run("done", func(t *testing.T) {
-			id, err := lstore.NewSession()
+			tag, err := lstore.NewSession()
 			if err != nil {
 				t.Fatalf("NewSession(): unexpected error: %v", err)
 			}
 
-			session, err := lstore.Upload(context.TODO(), false, id)
+			session, err := lstore.Upload(context.TODO(), false, tag.TagID)
 			if err != nil {
 				t.Fatalf("Upload(...): unexpected error: %v", err)
 			}
 
-			sessionInfo, err := lstore.GetSessionInfo(id)
+			sessionInfo, err := lstore.GetSessionInfo(tag.TagID)
 			if err != nil {
 				t.Fatalf("GetSessionInfo(...): unexpected error: %v", err)
 			}
 
-			verify(t, sessionInfo, id, 0, 0, swarm.ZeroAddress)
+			verify(t, sessionInfo, tag.TagID, 0, 0, swarm.ZeroAddress)
 
 			chunks := chunktesting.GenerateTestRandomChunks(10)
 
@@ -194,31 +193,31 @@ func testUploadStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 				t.Fatalf("session.Done(...): unexpected error: %v", err)
 			}
 
-			sessionInfo, err = lstore.GetSessionInfo(id)
+			sessionInfo, err = lstore.GetSessionInfo(tag.TagID)
 			if err != nil {
 				t.Fatalf("GetSessionInfo(...): unexpected error: %v", err)
 			}
 
-			verify(t, sessionInfo, id, 20, 10, chunks[0].Address())
+			verify(t, sessionInfo, tag.TagID, 20, 10, chunks[0].Address())
 		})
 
 		t.Run("cleanup", func(t *testing.T) {
-			id, err := lstore.NewSession()
+			tag, err := lstore.NewSession()
 			if err != nil {
 				t.Fatalf("NewSession(): unexpected error: %v", err)
 			}
 
-			session, err := lstore.Upload(context.TODO(), false, id)
+			session, err := lstore.Upload(context.TODO(), false, tag.TagID)
 			if err != nil {
 				t.Fatalf("Upload(...): unexpected error: %v", err)
 			}
 
-			sessionInfo, err := lstore.GetSessionInfo(id)
+			sessionInfo, err := lstore.GetSessionInfo(tag.TagID)
 			if err != nil {
 				t.Fatalf("GetSessionInfo(...): unexpected error: %v", err)
 			}
 
-			verify(t, sessionInfo, id, 0, 0, swarm.ZeroAddress)
+			verify(t, sessionInfo, tag.TagID, 0, 0, swarm.ZeroAddress)
 
 			chunks := chunktesting.GenerateTestRandomChunks(10)
 
@@ -234,9 +233,14 @@ func testUploadStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 				t.Fatalf("session.Cleanup(): unexpected error: %v", err)
 			}
 
-			_, err = lstore.GetSessionInfo(id)
-			if !errors.Is(err, storage.ErrNotFound) {
-				t.Fatalf("unexpected error: want %v have %v", storage.ErrNotFound, err)
+			got, err := lstore.GetSessionInfo(tag.TagID)
+			if err != nil {
+				t.Fatalf("GetSessionInfo(...): unexpected error: %v", err)
+			}
+
+			// All updates to tag should be reverted
+			if diff := cmp.Diff(tag, got); diff != "" {
+				t.Fatalf("tag mismatch (-want +have):\n%s", diff)
 			}
 		})
 	})

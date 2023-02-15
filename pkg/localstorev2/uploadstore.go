@@ -69,7 +69,7 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 }
 
 // NewSession is the implementation of UploadStore.NewSession method.
-func (db *DB) NewSession() (uint64, error) {
+func (db *DB) NewSession() (SessionInfo, error) {
 	db.lock.Lock(lockKeyNewSession)
 	defer db.lock.Unlock(lockKeyNewSession)
 

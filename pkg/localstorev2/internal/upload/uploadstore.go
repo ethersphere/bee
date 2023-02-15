@@ -544,20 +544,26 @@ func (n nextTagID) String() string {
 // NextTag returns the next tag ID to be used. It reads the last used ID and
 // increments it by 1. This method needs to be called under lock by user as there
 // is no guarantee for parallel updates.
-func NextTag(st storage.Store) (uint64, error) {
-	var tagID nextTagID
+func NextTag(st storage.Store) (TagItem, error) {
+	var (
+		tagID nextTagID
+		tag   TagItem
+	)
 	err := st.Get(&tagID)
 	if err != nil && !errors.Is(err, storage.ErrNotFound) {
-		return 0, err
+		return tag, err
 	}
 
 	tagID++
 	err = st.Put(&tagID)
 	if err != nil {
-		return 0, err
+		return tag, err
 	}
 
-	return uint64(tagID), nil
+	tag.TagID = uint64(tagID)
+	tag.StartedAt = time.Now().Unix()
+
+	return tag, st.Put(&tag)
 }
 
 // GetTagInfo returns the TagItem for this particular tagID.
@@ -593,7 +599,7 @@ func Iterate(ctx context.Context, s internal.Storage, startFrom swarm.Chunk, con
 
 	return s.IndexStore().Iterate(q, func(r storage.Result) (bool, error) {
 		pi := r.Entry.(*pushItem)
-		chunk, err := s.ChunkStore().GetWithStamp(ctx, pi.Address, pi.BatchID)
+		chunk, err := s.ChunkStore().Get(ctx, pi.Address)
 		if err != nil {
 			return true, err
 		}
