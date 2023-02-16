@@ -136,6 +136,7 @@ type Item interface {
 	Marshaler
 	Unmarshaler
 	Cloner
+	fmt.Stringer
 }
 
 // Store contains the interfaces required for the Data Abstraction Layer.
