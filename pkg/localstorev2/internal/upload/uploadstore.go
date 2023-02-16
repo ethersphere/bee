@@ -537,6 +537,10 @@ func (n *nextTagID) Clone() storage.Item {
 	return &ni
 }
 
+func (n nextTagID) String() string {
+	return path.Join(n.Namespace(), n.ID())
+}
+
 // NextTag returns the next tag ID to be used. It reads the last used ID and
 // increments it by 1. This method needs to be called under lock by user as there
 // is no guarantee for parallel updates.
