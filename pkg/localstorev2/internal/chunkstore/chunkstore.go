@@ -108,6 +108,10 @@ func (r *retrievalIndexItem) Clone() storage.Item {
 	}
 }
 
+func (r retrievalIndexItem) String() string {
+	return path.Join(r.Namespace(), r.ID())
+}
+
 var _ storage.Item = (*chunkStampItem)(nil)
 
 // chunkStampItem is the index used to represent a stamp for a chunk. Going ahead we will
@@ -179,6 +183,10 @@ func (c *chunkStampItem) Clone() storage.Item {
 		clone.Stamp = c.Stamp.Clone()
 	}
 	return clone
+}
+
+func (c chunkStampItem) String() string {
+	return path.Join(c.Namespace(), c.ID())
 }
 
 // Sharky provides an abstraction for the sharky.Store operations used in the
