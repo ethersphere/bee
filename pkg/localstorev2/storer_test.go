@@ -111,7 +111,7 @@ func diskStorer(t *testing.T, opts *storer.Options) func() (*storer.DB, error) {
 			}
 		})
 
-		lstore, err := storer.New(dir, opts)
+		lstore, err := storer.New(context.Background(), dir, opts)
 		if err == nil {
 			t.Cleanup(func() {
 				err := lstore.Close()
@@ -206,7 +206,7 @@ func assertStorerVersion(t *testing.T, lstore *storer.DB) {
 func makeInmemStorer(t *testing.T, opts *storer.Options) *storer.DB {
 	t.Helper()
 
-	lstore, err := storer.New("", nil)
+	lstore, err := storer.New(context.Background(), "", nil)
 	if err != nil {
 		t.Fatalf("New(...): unexpected error: %v", err)
 	}
@@ -235,7 +235,7 @@ func makeDiskStorer(t *testing.T, opts *storer.Options) *storer.DB {
 		}
 	})
 
-	lstore, err := storer.New(dir, opts)
+	lstore, err := storer.New(context.Background(), dir, opts)
 	if err != nil {
 		t.Fatalf("New(...): unexpected error: %v", err)
 	}
