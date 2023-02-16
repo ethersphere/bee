@@ -7,10 +7,12 @@ package storage
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/hashicorp/go-multierror"
 )
 
 // ErrTxDone is returned by any operation that is performed on
@@ -118,6 +120,66 @@ func (tx *TxState) Done() error {
 func NewTxState(ctx context.Context) *TxState {
 	ctx, cancel := context.WithCancel(ctx)
 	return &TxState{ctx: ctx, cancel: cancel}
+}
+
+// TxOpCode represents code for tx operations.
+type TxOpCode string
+
+const (
+	PutOp       TxOpCode = "put"
+	PutCreateOp TxOpCode = "putCreate"
+	PutUpdateOp TxOpCode = "putUpdate"
+	DeleteOp    TxOpCode = "delete"
+)
+
+// TxRevertOp represents a reverse operation that
+// can be invoked by calling its Revert function.
+type TxRevertOp struct {
+	// Origin is the TxOpCode of the operation that
+	// is the originator of the Revert operation.
+	Origin TxOpCode
+
+	// ObjectID is a unique object identifier on
+	// which the Revert operation is invoked.
+	ObjectID string
+
+	// Revert is the inverse operation to the Origin.
+	Revert func() error
+}
+
+// TxRevStack tracks reverse operations.
+type TxRevStack struct {
+	mu  sync.Mutex
+	ops []*TxRevertOp
+}
+
+// Append appends a Revert operation to the stack.
+func (to *TxRevStack) Append(op *TxRevertOp) {
+	to.mu.Lock()
+	to.ops = append(to.ops, op)
+	to.mu.Unlock()
+}
+
+// Revert executes all the revere operations in the stack in reverse order.
+// If an error occurs during the call to the Revert operation, this error
+// is captured and execution continues to the top of the stack.
+func (to *TxRevStack) Revert() error {
+	to.mu.Lock()
+	defer to.mu.Unlock()
+
+	var errs *multierror.Error
+	for i := len(to.ops) - 1; i >= 0; i-- {
+		op := to.ops[i]
+		if err := op.Revert(); err != nil {
+			errs = multierror.Append(errs, fmt.Errorf(
+				"revert operation %q for object %s failed: %w",
+				op.Origin,
+				op.ObjectID,
+				err,
+			))
+		}
+	}
+	return errs.ErrorOrNil()
 }
 
 var _ Store = (*TxStoreBase)(nil)

@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"path"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -55,6 +56,10 @@ func (o *object) Clone() storage.Item {
 		id:   o.id,
 		data: append([]byte(nil), o.data...),
 	}
+}
+
+func (o object) String() string {
+	return path.Join(o.Namespace(), o.ID())
 }
 
 // initStore initializes the given store with the given objects.
