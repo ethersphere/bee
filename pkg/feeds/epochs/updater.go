@@ -9,7 +9,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds"
-	"github.com/ethersphere/bee/pkg/storage"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 )
 
 var _ feeds.Updater = (*updater)(nil)
