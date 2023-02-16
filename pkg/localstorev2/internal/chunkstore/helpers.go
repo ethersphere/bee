@@ -20,9 +20,10 @@ type LocationResult struct {
 // IterateLocations iterates over entire retrieval index and plucks only sharky location.
 func IterateLocations(ctx context.Context, st storage.Store) <-chan LocationResult {
 	locationResultC := make(chan LocationResult, 128)
-	defer close(locationResultC)
 
 	go func() {
+		defer close(locationResultC)
+
 		err := st.Iterate(storage.Query{
 			Factory: func() storage.Item { return new(retrievalIndexItem) },
 		}, func(r storage.Result) (bool, error) {
