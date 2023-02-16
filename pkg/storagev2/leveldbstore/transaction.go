@@ -7,37 +7,12 @@ package leveldbstore
 import (
 	"errors"
 	"fmt"
-	"sync"
 
 	"github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/hashicorp/go-multierror"
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 )
-
-// TODO: factor out the common parts of the op struct and the op functionality.
-
-// opCode represents code for Store operations.
-type opCode string
-
-const (
-	putCreateOp opCode = "putCreate"
-	putUpdateOp opCode = "putUpdate"
-	deleteOp    opCode = "delete"
-)
-
-// op represents an operation that can be invoked by calling the fn.
-type op struct {
-	// origin is the opCode of the operation that
-	// is the originator of this inverse operation.
-	origin opCode
-
-	// key of the item on which the inverse operation is performed.
-	key storage.Key
-
-	// fn is the inverse operation to the origin.
-	fn func() error
-}
 
 var _ storage.TxStore = (*TxStore)(nil)
 
@@ -48,40 +23,45 @@ type TxStore struct {
 
 	// Bookkeeping of invasive operations executed
 	// on the Store to support rollback functionality.
-	batch *leveldb.Batch
-	opsMu sync.Mutex
-	ops   []op
+	batch  *leveldb.Batch
+	revOps storage.TxRevStack
 }
 
 // Put implements the Store interface.
 func (s *TxStore) Put(item storage.Item) error {
 	prev := item.Clone()
 
-	var reverseOp op
+	var reverseOp *storage.TxRevertOp
 	switch err := s.TxStoreBase.Get(prev); {
 	case errors.Is(err, storage.ErrNotFound):
-		reverseOp = op{putCreateOp, item, func() error {
-			s.batch.Delete(key(item))
-			return nil
-		}}
+		reverseOp = &storage.TxRevertOp{
+			Origin:   storage.PutCreateOp,
+			ObjectID: item.String(),
+			Revert: func() error {
+				s.batch.Delete(key(item))
+				return nil
+			},
+		}
 	case err != nil:
 		return err
 	default:
-		reverseOp = op{putUpdateOp, prev, func() error {
-			val, err := prev.Marshal()
-			if err != nil {
-				return err
-			}
-			s.batch.Put(key(prev), val)
-			return nil
-		}}
+		reverseOp = &storage.TxRevertOp{
+			Origin:   storage.PutUpdateOp,
+			ObjectID: prev.String(),
+			Revert: func() error {
+				val, err := prev.Marshal()
+				if err != nil {
+					return err
+				}
+				s.batch.Put(key(prev), val)
+				return nil
+			},
+		}
 	}
 
 	err := s.TxStoreBase.Put(item)
 	if err == nil {
-		s.opsMu.Lock()
-		s.ops = append(s.ops, reverseOp)
-		s.opsMu.Unlock()
+		s.revOps.Append(reverseOp)
 	}
 	return err
 }
@@ -90,16 +70,18 @@ func (s *TxStore) Put(item storage.Item) error {
 func (s *TxStore) Delete(item storage.Item) error {
 	err := s.TxStoreBase.Delete(item)
 	if err == nil {
-		s.opsMu.Lock()
-		s.ops = append(s.ops, op{deleteOp, item, func() error {
-			val, err := item.Marshal()
-			if err != nil {
-				return err
-			}
-			s.batch.Put(key(item), val)
-			return nil
-		}})
-		s.opsMu.Unlock()
+		s.revOps.Append(&storage.TxRevertOp{
+			Origin:   storage.DeleteOp,
+			ObjectID: item.String(),
+			Revert: func() error {
+				val, err := item.Marshal()
+				if err != nil {
+					return err
+				}
+				s.batch.Put(key(item), val)
+				return nil
+			},
+		})
 	}
 	return err
 }
@@ -115,26 +97,16 @@ func (s *TxStore) Rollback() error {
 		return err
 	}
 
-	var opErrors *multierror.Error
-	for i := len(s.ops) - 1; i >= 0; i-- {
-		op := s.ops[i]
-		if err := op.fn(); err != nil {
-			err = fmt.Errorf(
-				"leveldbstore: unable to rollback operation %q for item %s/%s: %w",
-				op.origin,
-				op.key.Namespace(),
-				op.key.ID(),
-				err,
-			)
-			opErrors = multierror.Append(opErrors, err)
-		}
+	var errs *multierror.Error
+	if err := s.revOps.Revert(); err != nil {
+		errs = multierror.Append(errs, fmt.Errorf("leveldbstore: unable to rollback: %w", err))
 	}
 
 	db := s.TxStoreBase.Store.(*Store).db
 	if err := db.Write(s.batch, &opt.WriteOptions{Sync: true}); err != nil {
-		return fmt.Errorf("leveldbstore: failed to write rollback batch: %w", err)
+		errs = multierror.Append(errs, fmt.Errorf("leveldbstore: unable to write rollback batch: %w", err))
 	}
-	return opErrors.ErrorOrNil()
+	return errs.ErrorOrNil()
 }
 
 // NewTx implements the TxStore interface.

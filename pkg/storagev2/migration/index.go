@@ -6,6 +6,7 @@ package migration
 
 import (
 	"errors"
+	"fmt"
 
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 )
@@ -155,6 +156,7 @@ type key struct {
 	storage.Marshaler
 	storage.Unmarshaler
 	storage.Cloner
+	fmt.Stringer
 
 	id        string
 	namespace string
