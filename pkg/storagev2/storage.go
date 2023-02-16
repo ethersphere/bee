@@ -61,9 +61,13 @@ const (
 )
 
 // ErrInvalidQuery indicates that the query is not a valid query.
-var ErrInvalidQuery = errors.New("storage: invalid query")
+var (
+	ErrInvalidQuery = errors.New("storage: invalid query")
 
-var ErrNotFound = errors.New("storage: not found")
+	ErrNotFound = errors.New("storage: not found")
+
+	ErrReferenceLength = errors.New("storage: invalid reference length")
+)
 
 // Query denotes the iteration attributes.
 type Query struct {
