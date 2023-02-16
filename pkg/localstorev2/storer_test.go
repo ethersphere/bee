@@ -13,8 +13,10 @@ import (
 	storer "github.com/ethersphere/bee/pkg/localstorev2"
 	pinstore "github.com/ethersphere/bee/pkg/localstorev2/internal/pinning"
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/upload"
+	localmigration "github.com/ethersphere/bee/pkg/localstorev2/migration"
 	"github.com/ethersphere/bee/pkg/log"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
+	"github.com/ethersphere/bee/pkg/storagev2/migration"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -129,52 +131,29 @@ func TestNew(t *testing.T) {
 	t.Run("inmem default options", func(t *testing.T) {
 		t.Parallel()
 
-		lstore, err := storer.New("", nil)
-		if err != nil {
-			t.Fatalf("New(...): unexpected error: %v", err)
-		}
-
-		err = lstore.Close()
-		if err != nil {
-			t.Fatalf("Close(): unexpected error: %v", err)
+		lstore := makeInmemStorer(t, nil)
+		if lstore == nil {
+			t.Fatalf("storer should be instantiated")
 		}
 	})
 	t.Run("inmem with options", func(t *testing.T) {
 		t.Parallel()
 
-		lstore, err := storer.New("", &storer.Options{
+		opts := &storer.Options{
 			Logger: log.Noop,
-		})
-		if err != nil {
-			t.Fatalf("New(...): unexpected error: %v", err)
 		}
 
-		err = lstore.Close()
-		if err != nil {
-			t.Fatalf("Close(): unexpected error: %v", err)
+		lstore := makeInmemStorer(t, opts)
+		if lstore == nil {
+			t.Fatalf("storer should be instantiated")
 		}
 	})
 	t.Run("disk default options", func(t *testing.T) {
 		t.Parallel()
 
-		dir, err := ioutil.TempDir(".", "testrepo*")
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() {
-			err := os.RemoveAll(dir)
-			if err != nil {
-				t.Errorf("failed removing directories: %v", err)
-			}
-		})
-
-		lstore, err := storer.New(dir, nil)
-		if err != nil {
-			t.Fatalf("New(...): unexpected error: %v", err)
-		}
-		err = lstore.Close()
-		if err != nil {
-			t.Fatalf("Close(): unexpected closing storer: %v", err)
+		lstore := makeDiskStorer(t, nil)
+		if lstore == nil {
+			t.Fatalf("storer should be instantiated")
 		}
 	})
 	t.Run("disk with options", func(t *testing.T) {
@@ -184,24 +163,89 @@ func TestNew(t *testing.T) {
 		opts.CacheCapacity = 10
 		opts.Logger = log.Noop
 
-		dir, err := ioutil.TempDir(".", "testrepo*")
-		if err != nil {
-			t.Fatal(err)
+		lstore := makeDiskStorer(t, opts)
+		if lstore == nil {
+			t.Fatalf("storer should be instantiated")
 		}
-		t.Cleanup(func() {
-			err := os.RemoveAll(dir)
-			if err != nil {
-				t.Errorf("failed removing directories: %v", err)
-			}
+	})
+
+	t.Run("migration on latest version", func(t *testing.T) {
+		t.Parallel()
+
+		t.Run("inmem", func(t *testing.T) {
+			t.Parallel()
+
+			lstore := makeInmemStorer(t, nil)
+			assertStorerVersion(t, lstore)
 		})
 
-		lstore, err := storer.New(dir, opts)
+		t.Run("disk", func(t *testing.T) {
+			t.Parallel()
+
+			lstore := makeDiskStorer(t, nil)
+			assertStorerVersion(t, lstore)
+		})
+	})
+}
+
+func assertStorerVersion(t *testing.T, lstore *storer.DB) {
+	t.Helper()
+
+	current, err := migration.Version(lstore.Repo().IndexStore())
+	if err != nil {
+		t.Fatalf("migration.Version(...): unexpected error: %v", err)
+	}
+
+	expected := migration.LatestVersion(localmigration.AllSteps())
+
+	if current != expected {
+		t.Fatalf("storer is not migrated to latest version; got %d, expected %d", current, expected)
+	}
+}
+
+func makeInmemStorer(t *testing.T, opts *storer.Options) *storer.DB {
+	t.Helper()
+
+	lstore, err := storer.New("", nil)
+	if err != nil {
+		t.Fatalf("New(...): unexpected error: %v", err)
+	}
+
+	t.Cleanup(func() {
+		err := lstore.Close()
 		if err != nil {
-			t.Fatalf("New(...): unexpected error: %v", err)
+			t.Fatalf("Close(): unexpected error: %v", err)
 		}
-		err = lstore.Close()
+	})
+
+	return lstore
+}
+
+func makeDiskStorer(t *testing.T, opts *storer.Options) *storer.DB {
+	t.Helper()
+
+	dir, err := ioutil.TempDir(".", "testrepo*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		err := os.RemoveAll(dir)
+		if err != nil {
+			t.Errorf("failed removing directories: %v", err)
+		}
+	})
+
+	lstore, err := storer.New(dir, opts)
+	if err != nil {
+		t.Fatalf("New(...): unexpected error: %v", err)
+	}
+
+	t.Cleanup(func() {
+		err := lstore.Close()
 		if err != nil {
 			t.Fatalf("Close(): unexpected closing storer: %v", err)
 		}
 	})
+
+	return lstore
 }
