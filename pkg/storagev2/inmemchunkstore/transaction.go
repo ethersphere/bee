@@ -7,34 +7,10 @@ package inmemchunkstore
 import (
 	"context"
 	"fmt"
-	"sync"
 
-	storage "github.com/ethersphere/bee/pkg/storagev2"
+	"github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/hashicorp/go-multierror"
 )
-
-// opCode represents code for Store operations.
-type opCode string
-
-const (
-	putOp    opCode = "put"
-	deleteOp opCode = "delete"
-)
-
-// op represents an operation that can be invoked by calling the fn.
-type op struct {
-	// origin is the opCode of the operation that
-	// is the originator of this inverse operation.
-	origin opCode
-
-	// addr is the address of a chunk on which
-	// the inverse operation is performed.
-	addr swarm.Address
-
-	// fn is the inverse operation to the origin.
-	fn func() error
-}
 
 var _ storage.TxChunkStore = (*TxChunkStore)(nil)
 
@@ -45,19 +21,20 @@ type TxChunkStore struct {
 
 	// Bookkeeping of invasive operations executed
 	// on the ChunkStore to support rollback functionality.
-	opsMu sync.Mutex
-	ops   []op
+	revOps storage.TxRevStack
 }
 
 // Put implements the Store interface.
 func (s *TxChunkStore) Put(ctx context.Context, chunk swarm.Chunk) (err error) {
 	err = s.TxChunkStoreBase.Put(ctx, chunk)
 	if err == nil {
-		s.opsMu.Lock()
-		s.ops = append(s.ops, op{putOp, chunk.Address(), func() error {
-			return s.TxChunkStoreBase.ChunkStore.Delete(ctx, chunk.Address())
-		}})
-		s.opsMu.Unlock()
+		s.revOps.Append(&storage.TxRevertOp{
+			Origin:   storage.PutOp,
+			ObjectID: chunk.Address().String(),
+			Revert: func() error {
+				return s.TxChunkStoreBase.ChunkStore.Delete(ctx, chunk.Address())
+			},
+		})
 	}
 	return err
 }
@@ -70,11 +47,13 @@ func (s *TxChunkStore) Delete(ctx context.Context, addr swarm.Address) error {
 	}
 	err = s.TxChunkStoreBase.Delete(ctx, addr)
 	if err == nil {
-		s.opsMu.Lock()
-		s.ops = append(s.ops, op{deleteOp, addr, func() error {
-			return s.TxChunkStoreBase.ChunkStore.Put(ctx, chunk)
-		}})
-		s.opsMu.Unlock()
+		s.revOps.Append(&storage.TxRevertOp{
+			Origin:   storage.DeleteOp,
+			ObjectID: addr.String(),
+			Revert: func() error {
+				return s.TxChunkStoreBase.ChunkStore.Put(ctx, chunk)
+			},
+		})
 	}
 	return err
 }
@@ -90,19 +69,10 @@ func (s *TxChunkStore) Rollback() error {
 		return err
 	}
 
-	var opErrors *multierror.Error
-	for _, op := range s.ops {
-		if err := op.fn(); err != nil {
-			err = fmt.Errorf(
-				"inmemchunkstore: unable to rollback operation %q for chunk %s: %w",
-				op.origin,
-				op.addr,
-				err,
-			)
-			opErrors = multierror.Append(opErrors, err)
-		}
+	if err := s.revOps.Revert(); err != nil {
+		return fmt.Errorf("inmemchunkstore: unable to rollback: %w", err)
 	}
-	return opErrors.ErrorOrNil()
+	return nil
 }
 
 // NewTx implements the TxStore interface.
