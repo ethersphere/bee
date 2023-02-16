@@ -6,6 +6,8 @@ package migration
 
 var (
 	ErrStorageVersionItemUnmarshalInvalidSize = errStorageVersionItemUnmarshalInvalidSize
+
+	SetVersion = setVersion
 )
 
 func DefaultOptions() *options {
