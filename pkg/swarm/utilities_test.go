@@ -130,6 +130,37 @@ func Test_IndexOfChunkWithAddress(t *testing.T) {
 	}
 }
 
+func Test_ContainsChunkWithData(t *testing.T) {
+	t.Parallel()
+
+	chunks := []swarm.Chunk{
+		swarm.NewChunk(makeAddress(t), nil),
+		swarm.NewChunk(makeAddress(t), []byte{1, 1, 1}),
+		swarm.NewChunk(makeAddress(t), []byte{2, 2, 2}),
+	}
+	tt := []struct {
+		data     []byte
+		contains bool
+	}{
+		// contains
+		{data: nil, contains: true},
+		{data: []byte{1, 1, 1}, contains: true},
+		{data: []byte{2, 2, 2}, contains: true},
+
+		// do not contain
+		{data: []byte{3, 3, 3}},
+		{data: []byte{1}},
+		{data: []byte{2}},
+	}
+
+	for _, tc := range tt {
+		contains := swarm.ContainsChunkWithData(chunks, tc.data)
+		if contains != tc.contains {
+			t.Fatalf("got %v, want %v", contains, tc.contains)
+		}
+	}
+}
+
 func cloneAddresses(addrs []swarm.Address) []swarm.Address {
 	result := make([]swarm.Address, len(addrs))
 	for i := 0; i < len(addrs); i++ {
