@@ -158,7 +158,7 @@ func (f *asyncFinder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, 
 		return nil, nil, &index{uint64(after)}, nil
 	}
 	// if chunk exists construct an initial interval with base=0
-	c := make(chan *result, 8)
+	c := make(chan *result)
 	i := newInterval(0)
 	i.found = &result{ch, nil, 0, 0}
 
@@ -226,9 +226,17 @@ func (f *asyncFinder) at(ctx context.Context, at int64, min int, i *interval, c 
 
 			select {
 			case ch := <-chunk:
-				c <- &result{ch, i, l, index}
+				select {
+				case c <- &result{ch, i, l, index}:
+				case <-quit:
+					return
+				}
 			case <-reqCtx.Done():
-				c <- &result{nil, i, l, index}
+				select {
+				case c <- &result{nil, i, l, index}:
+				case <-quit:
+					return
+				}
 			case <-quit:
 			}
 		}(l)

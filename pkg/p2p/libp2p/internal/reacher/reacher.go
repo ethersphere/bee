@@ -92,7 +92,7 @@ func (r *reacher) manage() {
 
 	defer r.wg.Done()
 
-	c := make(chan *peer, 32)
+	c := make(chan *peer)
 	defer close(c)
 
 	ctx, cancel := context.WithCancel(context.Background())

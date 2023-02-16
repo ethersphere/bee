@@ -107,7 +107,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 		loggerV1          = logger.V(1).Build()
 		timer             = time.NewTimer(traceDuration)
 		sem               = make(chan struct{}, concurrentPushes)
-		cc                = make(chan *Op, 16)
+		cc                = make(chan *Op)
 	)
 
 	// inflight.set handles the backpressure for the maximum amount of inflight chunks
