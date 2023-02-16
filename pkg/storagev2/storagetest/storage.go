@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"path"
 	"runtime"
 	"strconv"
 	"strings"
@@ -63,6 +64,7 @@ func (im *ItemStub) Unmarshal(data []byte) error {
 	return nil
 }
 
+// Clone implements the storage.Item interface.
 func (im *ItemStub) Clone() storage.Item {
 	if im == nil {
 		return nil
@@ -72,6 +74,11 @@ func (im *ItemStub) Clone() storage.Item {
 		MarshalErr:   im.MarshalErr,
 		UnmarshalBuf: append([]byte(nil), im.UnmarshalBuf...),
 	}
+}
+
+// Clone implements the storage.Item interface.
+func (im ItemStub) String() string {
+	return path.Join(im.Namespace(), im.ID())
 }
 
 type obj1 struct {
@@ -113,6 +120,10 @@ func (o *obj1) Clone() storage.Item {
 	}
 }
 
+func (o obj1) String() string {
+	return path.Join(o.Namespace(), o.ID())
+}
+
 type obj2 struct {
 	Id        int
 	SomeStr   string
@@ -136,6 +147,10 @@ func (o *obj2) Clone() storage.Item {
 		SomeStr:   o.SomeStr,
 		SomeFloat: o.SomeFloat,
 	}
+}
+
+func (o obj2) String() string {
+	return path.Join(o.Namespace(), o.ID())
 }
 
 func randBytes(count int) []byte {
