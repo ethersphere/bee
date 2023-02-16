@@ -9,6 +9,7 @@ import (
 	"errors"
 	"math"
 	"math/rand"
+	"path"
 	"strconv"
 	"testing"
 
@@ -352,4 +353,8 @@ func (o *obj) Clone() storage.Item {
 		id:  o.id,
 		val: o.val,
 	}
+}
+
+func (o obj) String() string {
+	return path.Join(o.Namespace(), o.ID())
 }
