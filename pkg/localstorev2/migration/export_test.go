@@ -5,6 +5,5 @@
 package migration
 
 var (
-	Step_01     = step_01
-	NewDummyObj = newDummyObj
+	Step_01 = step_01
 )
