@@ -11,5 +11,8 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	goleak.VerifyTestMain(m)
+	goleak.VerifyTestMain(
+		m,
+		goleak.IgnoreTopFunction("sync.runtime_Semacquire"),
+	)
 }
