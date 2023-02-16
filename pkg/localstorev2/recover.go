@@ -5,8 +5,8 @@
 package storer
 
 import (
+	"context"
 	"errors"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -22,7 +22,10 @@ const (
 	sharkyDirtyFileName = ".DIRTY"
 )
 
-func sharkyRecovery(sharkyBasePath string, store storage.Store, opts *Options) (closerFn, error) {
+func sharkyRecovery(ctx context.Context, sharkyBasePath string, store storage.Store, opts *Options) (closerFn, error) {
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	logger := opts.Logger.WithName(loggerName).Register()
 	dirtyFilePath := filepath.Join(sharkyBasePath, sharkyDirtyFileName)
 
@@ -48,9 +51,7 @@ func sharkyRecovery(sharkyBasePath string, store storage.Store, opts *Options) (
 		}
 	}()
 
-	locationResultC := make(chan locationResult, 128)
-
-	go readSharkyLocations(locationResultC, store)
+	locationResultC := chunkstore.IterateLocations(ctx, store)
 
 	if err := addLocations(locationResultC, sharkyRecover); err != nil {
 		return closer, err
@@ -59,33 +60,13 @@ func sharkyRecovery(sharkyBasePath string, store storage.Store, opts *Options) (
 	return closer, nil
 }
 
-type locationResult struct {
-	err error
-	loc sharky.Location
-}
-
-func readSharkyLocations(locationResultC chan<- locationResult, store storage.Store) {
-	defer close(locationResultC)
-
-	err := store.Iterate(storage.Query{
-		Factory: func() storage.Item { return new(chunkstore.RetrievalIndexItemTemp) },
-	}, func(r storage.Result) (bool, error) {
-		entry := r.Entry.(*chunkstore.RetrievalIndexItemTemp)
-		locationResultC <- locationResult{loc: entry.Location}
-		return false, nil
-	})
-	if err != nil {
-		locationResultC <- locationResult{err: fmt.Errorf("iterate index: %w", err)}
-	}
-}
-
-func addLocations(locationResultC <-chan locationResult, sharkyRecover *sharky.Recovery) error {
+func addLocations(locationResultC <-chan chunkstore.LocationResult, sharkyRecover *sharky.Recovery) error {
 	for res := range locationResultC {
-		if res.err != nil {
-			return res.err
+		if res.Err != nil {
+			return res.Err
 		}
 
-		if err := sharkyRecover.Add(res.loc); err != nil {
+		if err := sharkyRecover.Add(res.Location); err != nil {
 			return err
 		}
 	}
