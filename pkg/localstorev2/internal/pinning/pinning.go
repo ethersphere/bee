@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"path"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/localstorev2/internal"
@@ -112,6 +113,10 @@ func (p *pinCollectionItem) Clone() storage.Item {
 	}
 }
 
+func (p pinCollectionItem) String() string {
+	return path.Join(p.Namespace(), p.ID())
+}
+
 var _ storage.Item = (*pinChunkItem)(nil)
 
 // pinChunkItem is the index used to represent a single chunk in the pinning
@@ -145,6 +150,10 @@ func (p *pinChunkItem) Clone() storage.Item {
 		UUID: append([]byte(nil), p.UUID...),
 		Addr: p.Addr.Clone(),
 	}
+}
+
+func (p pinChunkItem) String() string {
+	return path.Join(p.Namespace(), p.ID())
 }
 
 // NewCollection returns a putter wrapped around the passed storage.
