@@ -53,9 +53,6 @@ type retrievalIndexItem struct {
 	RefCnt    uint8
 }
 
-// TODO original type should be exported
-type RetrievalIndexItemTemp = retrievalIndexItem
-
 func (r *retrievalIndexItem) ID() string { return r.Address.ByteString() }
 
 func (retrievalIndexItem) Namespace() string { return "retrievalIdx" }
