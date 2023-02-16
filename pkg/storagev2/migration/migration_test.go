@@ -23,6 +23,23 @@ var (
 	errStep = errors.New("step error")
 )
 
+func TestLatestVersion(t *testing.T) {
+	t.Parallel()
+
+	const expectedLatestVersion = 8
+	steps := migration.Steps{
+		8: func(s storage.Store) error { return nil },
+		7: func(s storage.Store) error { return nil },
+		6: func(s storage.Store) error { return nil },
+	}
+
+	latestVersion := migration.LatestVersion(steps)
+
+	if latestVersion != expectedLatestVersion {
+		t.Errorf("got %d, expected %d", latestVersion, expectedLatestVersion)
+	}
+}
+
 func TestGetSetVersion(t *testing.T) {
 	t.Parallel()
 
@@ -261,8 +278,10 @@ func TestMigrate(t *testing.T) {
 		}
 	})
 }
+
 func assertObjectExists(t *testing.T, s storage.Store, keys ...storage.Key) {
 	t.Helper()
+
 	for _, key := range keys {
 		if isExist, _ := s.Has(key); !isExist {
 			t.Errorf("key = %v doesn't exists", key)

@@ -19,12 +19,14 @@ import (
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/cache"
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/chunkstore"
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/upload"
+	localmigration "github.com/ethersphere/bee/pkg/localstorev2/migration"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/sharky"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/storagev2/leveldbstore"
+	"github.com/ethersphere/bee/pkg/storagev2/migration"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/hashicorp/go-multierror"
 	"github.com/spf13/afero"
@@ -292,6 +294,11 @@ func New(dirPath string, opts *Options) (*DB, error) {
 		if err != nil {
 			return nil, err
 		}
+	}
+
+	err = migration.Migrate(repo.IndexStore(), localmigration.AllSteps())
+	if err != nil {
+		return nil, err
 	}
 
 	cacheObj, err := initCache(opts.CacheCapacity, repo)

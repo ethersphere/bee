@@ -47,7 +47,7 @@ func Migrate(s storage.Store, sm Steps) error {
 		if err != nil {
 			return err
 		}
-		err = SetVersion(s, nextVersion)
+		err = setVersion(s, nextVersion)
 		if err != nil {
 			return err
 		}
@@ -61,8 +61,8 @@ func ValidateVersions(sm Steps) error {
 	}
 	versions := make([]int, len(sm))
 	i := 0
-	for key := range sm {
-		versions[i] = int(key)
+	for version := range sm {
+		versions[i] = int(version)
 		i++
 	}
 	sort.Ints(versions)
@@ -136,7 +136,20 @@ func Version(s storage.Store) (uint64, error) {
 	return item.Version, nil
 }
 
-// SetVersion sets the current version of the storage
-func SetVersion(s storage.Store, v uint64) error {
+// setVersion sets the current version of the storage
+func setVersion(s storage.Store, v uint64) error {
 	return s.Put(&StorageVersionItem{Version: v})
+}
+
+// LatestVersion returns latest version from supplied migration steps.
+func LatestVersion(sm Steps) uint64 {
+	var latest uint64
+
+	for version := range sm {
+		if version > latest {
+			latest = version
+		}
+	}
+
+	return latest
 }
