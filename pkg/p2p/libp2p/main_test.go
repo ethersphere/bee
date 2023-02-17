@@ -21,5 +21,8 @@ func TestMain(m *testing.M) {
 		goleak.IgnoreTopFunction("github.com/libp2p/go-flow-metrics.(*sweeper).run"),
 		goleak.IgnoreTopFunction("github.com/libp2p/go-cidranger.(*prefixTrie).insert"),
 		goleak.IgnoreTopFunction("github.com/libp2p/go-cidranger.newPathprefixTrie"),
+		goleak.IgnoreTopFunction("github.com/libp2p/go-cidranger/net.NetworkNumber.LeastCommonBitPosition"),
+		goleak.IgnoreTopFunction("github.com/libp2p/go-cidranger/net.NewNetwork"),
+		goleak.IgnoreTopFunction("github.com/libp2p/go-cidranger/net.Network.LeastCommonBitPosition"),
 	)
 }
