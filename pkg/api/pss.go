@@ -166,6 +166,8 @@ func (s *Service) pumpWs(conn *websocket.Conn, t string) {
 			return
 		case <-gone:
 			return
+		case <-s.quit:
+			return
 		}
 	})
 
