@@ -130,6 +130,91 @@ func Test_IndexOfChunkWithAddress(t *testing.T) {
 	}
 }
 
+func Test_ContainsChunkWithData(t *testing.T) {
+	t.Parallel()
+
+	chunks := []swarm.Chunk{
+		swarm.NewChunk(makeAddress(t), nil),
+		swarm.NewChunk(makeAddress(t), []byte{1, 1, 1}),
+		swarm.NewChunk(makeAddress(t), []byte{2, 2, 2}),
+	}
+	tt := []struct {
+		chunks   []swarm.Chunk
+		data     []byte
+		contains bool
+	}{
+		// contains
+		{chunks: chunks, data: nil, contains: true},
+		{chunks: chunks, data: []byte{1, 1, 1}, contains: true},
+		{chunks: chunks, data: []byte{2, 2, 2}, contains: true},
+
+		// do not contain
+		{chunks: nil, data: nil},
+		{chunks: chunks, data: []byte{3, 3, 3}},
+		{chunks: chunks, data: []byte{1}},
+		{chunks: chunks, data: []byte{2}},
+		{chunks: make([]swarm.Chunk, 0), data: []byte{1, 1, 1}},
+		{chunks: make([]swarm.Chunk, 10), data: nil},
+	}
+
+	for _, tc := range tt {
+		contains := swarm.ContainsChunkWithData(tc.chunks, tc.data)
+		if contains != tc.contains {
+			t.Fatalf("got %v, want %v", contains, tc.contains)
+		}
+	}
+}
+
+func Test_FindStampWithBatchID(t *testing.T) {
+	t.Parallel()
+
+	stamps := []swarm.Stamp{
+		makeStamp(t),
+		makeStamp(t),
+		makeStamp(t),
+	}
+	tt := []struct {
+		stamps   []swarm.Stamp
+		batchID  []byte
+		contains bool
+	}{
+		// contains
+		{stamps: stamps, batchID: stamps[0].BatchID(), contains: true},
+		{stamps: stamps, batchID: stamps[1].BatchID(), contains: true},
+		{stamps: stamps, batchID: stamps[2].BatchID(), contains: true},
+
+		// do not contain
+		{stamps: nil, batchID: nil},
+		{stamps: nil, batchID: makeStamp(t).BatchID()},
+		{stamps: make([]swarm.Stamp, 0), batchID: makeBatchID(t)},
+		{stamps: make([]swarm.Stamp, 10), batchID: makeBatchID(t)},
+		{stamps: make([]swarm.Stamp, 10), batchID: nil},
+		{stamps: stamps, batchID: makeBatchID(t)},
+	}
+
+	for _, tc := range tt {
+		st, found := swarm.FindStampWithBatchID(tc.stamps, tc.batchID)
+		if found != tc.contains {
+			t.Fatalf("got %v, want %v", found, tc.contains)
+		}
+		if found && st == nil {
+			t.Fatal("stamp should not be nil")
+		}
+	}
+}
+
+func randomBytes(t *testing.T, size int) []byte {
+	t.Helper()
+
+	buf := make([]byte, size)
+	_, err := rand.Read(buf)
+	if err != nil {
+		t.Fatal(err.Error())
+	}
+
+	return buf
+}
+
 func cloneAddresses(addrs []swarm.Address) []swarm.Address {
 	result := make([]swarm.Address, len(addrs))
 	for i := 0; i < len(addrs); i++ {
@@ -151,11 +236,33 @@ func makeAddreses(t *testing.T, count int) []swarm.Address {
 func makeAddress(t *testing.T) swarm.Address {
 	t.Helper()
 
-	buf := make([]byte, 32)
-	_, err := rand.Read(buf)
-	if err != nil {
-		t.Fatal(err.Error())
-	}
-
-	return swarm.NewAddress(buf)
+	return swarm.NewAddress(randomBytes(t, swarm.HashSize))
 }
+
+func makeBatchID(t *testing.T) []byte {
+	t.Helper()
+
+	return randomBytes(t, swarm.HashSize)
+}
+
+func makeStamp(t *testing.T) swarm.Stamp {
+	return stamp{
+		batchID: makeBatchID(t),
+	}
+}
+
+type stamp struct {
+	batchID []byte
+}
+
+func (s stamp) BatchID() []byte { return s.batchID }
+
+func (s stamp) Index() []byte { return nil }
+
+func (s stamp) Sig() []byte { return nil }
+
+func (s stamp) Timestamp() []byte { return nil }
+
+func (s stamp) MarshalBinary() (data []byte, err error) { return nil, nil }
+
+func (s stamp) UnmarshalBinary(data []byte) error { return nil }
