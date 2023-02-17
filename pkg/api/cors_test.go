@@ -82,11 +82,14 @@ func TestCORSHeaders(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
+			ctx, cancel := context.WithCancel(context.Background())
+			t.Cleanup(cancel)
+
 			client, _, _, _ := newTestServer(t, testServerOptions{
 				CORSAllowedOrigins: tc.allowedOrigins,
 			})
 
-			req, err := http.NewRequestWithContext(context.TODO(), http.MethodGet, "/", nil)
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, "/", nil)
 			if err != nil {
 				t.Fatal(err)
 			}

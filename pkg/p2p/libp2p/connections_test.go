@@ -1052,9 +1052,14 @@ func TestReachabilityUpdate(t *testing.T) {
 	emitReachabilityChanged, _ := s1.Host().EventBus().Emitter(new(event.EvtLocalReachabilityChanged), eventbus.Stateful)
 
 	firstUpdate := make(chan struct{})
+	secondUpdate := make(chan struct{})
+
 	s1.SetPickyNotifier(mockReachabilityNotifier(func(status p2p.ReachabilityStatus) {
 		if status == p2p.ReachabilityStatusPublic {
 			close(firstUpdate)
+		}
+		if status == p2p.ReachabilityStatusPrivate {
+			close(secondUpdate)
 		}
 	}))
 
@@ -1068,13 +1073,6 @@ func TestReachabilityUpdate(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatalf("test timed out")
 	}
-
-	secondUpdate := make(chan struct{})
-	s1.SetPickyNotifier(mockReachabilityNotifier(func(status p2p.ReachabilityStatus) {
-		if status == p2p.ReachabilityStatusPrivate {
-			close(secondUpdate)
-		}
-	}))
 
 	err = emitReachabilityChanged.Emit(event.EvtLocalReachabilityChanged{Reachability: network.ReachabilityPrivate})
 	if err != nil {

@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"math"
 	"math/rand"
 	"reflect"
@@ -60,7 +61,7 @@ func TestNeighborhoodDepth(t *testing.T) {
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	defer kad.Close()
+	cleanupCloser(t, kad)
 
 	// add 2 peers in bin 8
 	for i := 0; i < 2; i++ {
@@ -212,7 +213,7 @@ func TestNeighborhoodDepthWithReachability(t *testing.T) {
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	defer kad.Close()
+	cleanupCloser(t, kad)
 
 	// add 2 peers in bin 8
 	for i := 0; i < 2; i++ {
@@ -372,7 +373,7 @@ func TestEachNeighbor(t *testing.T) {
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	defer kad.Close()
+	cleanupCloser(t, kad)
 
 	for i := 0; i < 15; i++ {
 		addr := test.RandomAddressAt(base, i)
@@ -443,7 +444,7 @@ func TestManage(t *testing.T) {
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	defer kad.Close()
+	cleanupCloser(t, kad)
 
 	// first, we add peers to bin 0
 	for i := 0; i < saturation; i++ {
@@ -498,7 +499,7 @@ func TestManageWithBalancing(t *testing.T) {
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	defer kad.Close()
+	cleanupCloser(t, kad)
 
 	// add peers for bin '0', enough to have balanced connections
 	add(t, signer, kad, ab, mineBin(t, base, 0, 20, true), 0, 20)
@@ -538,7 +539,7 @@ func TestBinSaturation(t *testing.T) {
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	defer kad.Close()
+	cleanupCloser(t, kad)
 
 	// add two peers in a few bins to generate some depth >= 0, this will
 	// make the next iteration result in binSaturated==true, causing no new
@@ -587,7 +588,7 @@ func TestOversaturation(t *testing.T) {
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	defer kad.Close()
+	cleanupCloser(t, kad)
 
 	// Add maximum accepted number of peers up until bin 5 without problems
 	for i := 0; i < 6; i++ {
@@ -636,7 +637,7 @@ func TestOversaturationBootnode(t *testing.T) {
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	defer kad.Close()
+	cleanupCloser(t, kad)
 
 	// Add maximum accepted number of peers up until bin 5 without problems
 	for i := 0; i < 6; i++ {
@@ -694,7 +695,7 @@ func TestBootnodeMaxConnections(t *testing.T) {
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	defer kad.Close()
+	cleanupCloser(t, kad)
 
 	// Add maximum accepted number of peers up until bin 5 without problems
 	for i := 0; i < 6; i++ {
@@ -747,7 +748,7 @@ func TestNotifierHooks(t *testing.T) {
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	defer kad.Close()
+	cleanupCloser(t, kad)
 
 	connectOne(t, signer, kad, ab, peer, nil)
 
@@ -785,7 +786,7 @@ func TestDiscoveryHooks(t *testing.T) {
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	defer kad.Close()
+	cleanupCloser(t, kad)
 
 	// first add a peer from AddPeers, wait for the connection
 	addOne(t, signer, kad, ab, p1)
@@ -819,7 +820,7 @@ func TestAnnounceTo(t *testing.T) {
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	defer kad.Close()
+	cleanupCloser(t, kad)
 
 	// first add a peer from AddPeers, wait for the connection
 	addOne(t, signer, kad, ab, p1)
@@ -848,7 +849,7 @@ func TestBackoff(t *testing.T) {
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	defer kad.Close()
+	cleanupCloser(t, kad)
 
 	// add one peer, wait for connection
 	addr := test.RandomAddressAt(base, 1)
@@ -888,7 +889,7 @@ func TestAddressBookPrune(t *testing.T) {
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	defer kad.Close()
+	cleanupCloser(t, kad)
 
 	nonConnPeer, err := bzz.NewAddress(signer, nonConnectableAddress, test.RandomAddressAt(base, 1), 0, nil)
 	if err != nil {
@@ -959,7 +960,7 @@ func TestAddressBookQuickPrune(t *testing.T) {
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	defer kad.Close()
+	cleanupCloser(t, kad)
 
 	time.Sleep(100 * time.Millisecond)
 
@@ -996,11 +997,7 @@ func TestClosestPeer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		if err := metricsDB.Close(); err != nil {
-			t.Fatal(err)
-		}
-	})
+	cleanupCloser(t, metricsDB)
 
 	_ = waitPeers
 	t.Skip("disabled due to kademlia inconsistencies hotfix")
@@ -1032,7 +1029,7 @@ func TestClosestPeer(t *testing.T) {
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	defer kad.Close()
+	cleanupCloser(t, kad)
 
 	pk, _ := beeCrypto.GenerateSecp256k1Key()
 	for _, v := range connectedPeers {
@@ -1126,7 +1123,7 @@ func TestKademlia_SubscribeTopologyChange(t *testing.T) {
 		if err := kad.Start(context.Background()); err != nil {
 			t.Fatal(err)
 		}
-		defer kad.Close()
+		cleanupCloser(t, kad)
 
 		c, u := kad.SubscribeTopologyChange()
 		defer u()
@@ -1144,7 +1141,7 @@ func TestKademlia_SubscribeTopologyChange(t *testing.T) {
 		if err := kad.Start(context.Background()); err != nil {
 			t.Fatal(err)
 		}
-		defer kad.Close()
+		cleanupCloser(t, kad)
 
 		c, u := kad.SubscribeTopologyChange()
 		defer u()
@@ -1165,7 +1162,7 @@ func TestKademlia_SubscribeTopologyChange(t *testing.T) {
 		if err := kad.Start(context.Background()); err != nil {
 			t.Fatal(err)
 		}
-		defer kad.Close()
+		cleanupCloser(t, kad)
 
 		c1, u1 := kad.SubscribeTopologyChange()
 		defer u1()
@@ -1188,7 +1185,7 @@ func TestKademlia_SubscribeTopologyChange(t *testing.T) {
 		if err := kad.Start(context.Background()); err != nil {
 			t.Fatal(err)
 		}
-		defer kad.Close()
+		cleanupCloser(t, kad)
 
 		c, u := kad.SubscribeTopologyChange()
 		defer u()
@@ -1215,7 +1212,7 @@ func TestKademlia_SubscribeTopologyChange(t *testing.T) {
 		if err := kad.Start(context.Background()); err != nil {
 			t.Fatal(err)
 		}
-		defer kad.Close()
+		cleanupCloser(t, kad)
 
 		c, u := kad.SubscribeTopologyChange()
 		defer u()
@@ -1240,7 +1237,7 @@ func TestSnapshot(t *testing.T) {
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	defer kad.Close()
+	cleanupCloser(t, kad)
 
 	a := test.RandomAddress()
 	addOne(t, signer, kad, ab, a)
@@ -1289,7 +1286,6 @@ func TestStart(t *testing.T) {
 		t.Skip("test flakes")
 		var conns, failedConns int32 // how many connect calls were made to the p2p mock
 		_, kad, ab, _, signer := newTestKademlia(t, &conns, &failedConns, kademlia.Options{Bootnodes: bootnodes})
-		defer kad.Close()
 
 		for i := 0; i < 3; i++ {
 			peer := test.RandomAddress()
@@ -1309,6 +1305,7 @@ func TestStart(t *testing.T) {
 		if err := kad.Start(context.Background()); err != nil {
 			t.Fatal(err)
 		}
+		cleanupCloser(t, kad)
 
 		waitCounter(t, &conns, 3)
 		waitCounter(t, &failedConns, 0)
@@ -1319,11 +1316,11 @@ func TestStart(t *testing.T) {
 
 		var conns, failedConns int32 // how many connect calls were made to the p2p mock
 		_, kad, _, _, _ := newTestKademlia(t, &conns, &failedConns, kademlia.Options{Bootnodes: bootnodes})
-		defer kad.Close()
 
 		if err := kad.Start(context.Background()); err != nil {
 			t.Fatal(err)
 		}
+		cleanupCloser(t, kad)
 
 		waitCounter(t, &conns, 3)
 		waitCounter(t, &failedConns, 0)
@@ -1364,7 +1361,7 @@ func TestOutofDepthPrune(t *testing.T) {
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	defer kad.Close()
+	cleanupCloser(t, kad)
 
 	// bin 0,1 balanced, rest not
 	for i := 0; i < 6; i++ {
@@ -1449,11 +1446,7 @@ func TestLatency(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		if err := metricsDB.Close(); err != nil {
-			t.Fatal(err)
-		}
-	})
+	cleanupCloser(t, metricsDB)
 
 	kad, err := kademlia.New(base, ab, disc, p2pMock(ab, nil, nil, nil), ppm, metricsDB, logger, kademlia.Options{
 		PeerPingPollTime: ptrDuration(1 * time.Second),
@@ -1464,7 +1457,7 @@ func TestLatency(t *testing.T) {
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	defer kad.Close()
+	cleanupCloser(t, kad)
 
 	pk, _ := beeCrypto.GenerateSecp256k1Key()
 	signer := beeCrypto.NewDefaultSigner(pk)
@@ -1502,6 +1495,11 @@ func TestBootnodeProtectedNodes(t *testing.T) {
 			ReachabilityFunc:            func(_ swarm.Address) bool { return false },
 		})
 	)
+
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	cleanupCloser(t, kad)
 
 	// Add maximum accepted number of peers up until bin 5 without problems
 	for i := 0; i < 6; i++ {
@@ -1664,6 +1662,7 @@ func TestAnnounceNeighborhoodToNeighbor(t *testing.T) {
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+	cleanupCloser(t, kad)
 
 	// add some peers
 	for bin := 0; bin < 2; bin++ {
@@ -1694,10 +1693,6 @@ func TestAnnounceNeighborhoodToNeighbor(t *testing.T) {
 	waitPeers(t, kad, broadCastSize+1)
 	kDepth(t, kad, 2)
 
-	if err := kad.Close(); err != nil {
-		t.Fatal(err)
-	}
-
 	select {
 	case <-done:
 	case <-time.After(time.Second):
@@ -1713,6 +1708,11 @@ func TestIteratorOpts(t *testing.T) {
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{})
 		randBool                 = &boolgen{}
 	)
+
+	if err := kad.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	cleanupCloser(t, kad)
 
 	for i := 0; i < 6; i++ {
 		for j := 0; j < 4; j++ {
@@ -1769,6 +1769,16 @@ func TestIteratorOpts(t *testing.T) {
 		}
 		if count != totalReachable {
 			t.Fatal("iterator returned incorrect no of peers", count, "expected", totalReachable)
+		}
+	})
+}
+
+func cleanupCloser(t *testing.T, c io.Closer) {
+	t.Helper()
+
+	t.Cleanup(func() {
+		if err := c.Close(); err != nil {
+			t.Fatalf("failed to gracefully close %s: %s", reflect.TypeOf(c), err)
 		}
 	})
 }
@@ -1868,11 +1878,8 @@ func newTestKademliaWithAddrDiscovery(
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		if err := metricsDB.Close(); err != nil {
-			t.Fatal(err)
-		}
-	})
+	cleanupCloser(t, metricsDB)
+
 	var (
 		pk, _  = beeCrypto.GenerateSecp256k1Key()                    // random private key
 		signer = beeCrypto.NewDefaultSigner(pk)                      // signer
