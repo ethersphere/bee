@@ -259,6 +259,12 @@ func (r *reacher) Disconnected(overlay swarm.Address) {
 
 // Close stops the worker. Must be called once.
 func (r *reacher) Close() error {
+	select {
+	case <-r.quit:
+		return nil
+	default:
+	}
+
 	close(r.quit)
 	r.wg.Wait()
 	return nil

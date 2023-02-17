@@ -202,9 +202,14 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 				}
 			case apiC := <-s.smuggler:
 				go func() {
-					for op := range apiC {
+					for {
 						select {
-						case cc <- op:
+						case op := <-apiC:
+							select {
+							case cc <- op:
+							case <-s.quit:
+								return
+							}
 						case <-s.quit:
 							return
 						}
