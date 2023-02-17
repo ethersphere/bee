@@ -947,8 +947,8 @@ func TestWithDisconnectStreams(t *testing.T) {
 
 func TestWithBlocklistStreams(t *testing.T) {
 	t.Parallel()
+	t.Skip("this test always fails")
 
-	t.Skip("test flakes")
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

@@ -739,6 +739,7 @@ func TestBootnodeMaxConnections(t *testing.T) {
 func TestNotifierHooks(t *testing.T) {
 	t.Parallel()
 	t.Skip("disabled due to kademlia inconsistencies hotfix")
+
 	var (
 		base, kad, ab, _, signer = newTestKademlia(t, nil, nil, kademlia.Options{})
 		peer                     = test.RandomAddressAt(base, 3)
@@ -992,6 +993,7 @@ func TestAddressBookQuickPrune(t *testing.T) {
 // TestClosestPeer tests that ClosestPeer method returns closest connected peer to a given address.
 func TestClosestPeer(t *testing.T) {
 	t.Parallel()
+	t.Skip("disabled due to kademlia inconsistencies hotfix")
 
 	metricsDB, err := shed.NewDB("", nil)
 	if err != nil {
@@ -1000,7 +1002,6 @@ func TestClosestPeer(t *testing.T) {
 	cleanupCloser(t, metricsDB)
 
 	_ = waitPeers
-	t.Skip("disabled due to kademlia inconsistencies hotfix")
 
 	logger := log.Noop
 	base := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000") // base is 0000
@@ -1284,6 +1285,7 @@ func TestStart(t *testing.T) {
 	t.Run("non-empty addressbook", func(t *testing.T) {
 		t.Parallel()
 		t.Skip("test flakes")
+
 		var conns, failedConns int32 // how many connect calls were made to the p2p mock
 		_, kad, ab, _, signer := newTestKademlia(t, &conns, &failedConns, kademlia.Options{Bootnodes: bootnodes})
 
