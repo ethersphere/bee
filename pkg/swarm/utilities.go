@@ -4,6 +4,8 @@
 
 package swarm
 
+import "bytes"
+
 // ContainsAddress reports whether a is present in addrs.
 func ContainsAddress(addrs []Address, a Address) bool {
 	return IndexOfAddress(addrs, a) != -1
@@ -44,4 +46,24 @@ func IndexOfChunkWithAddress(chunks []Chunk, a Address) int {
 // ContainsChunkWithAddress reports whether Chunk with Address a is present in chunks.
 func ContainsChunkWithAddress(chunks []Chunk, a Address) bool {
 	return IndexOfChunkWithAddress(chunks, a) != -1
+}
+
+// ContainsChunkWithAddress reports whether Chunk with data d is present in chunks.
+func ContainsChunkWithData(chunks []Chunk, d []byte) bool {
+	for _, c := range chunks {
+		if c != nil && bytes.Equal(c.Data(), d) {
+			return true
+		}
+	}
+	return false
+}
+
+// FindStampWithBatchID returns the first occurrence of Stamp having the same batchID.
+func FindStampWithBatchID(stamps []Stamp, batchID []byte) (Stamp, bool) {
+	for _, s := range stamps {
+		if s != nil && bytes.Equal(s.BatchID(), batchID) {
+			return s, true
+		}
+	}
+	return nil, false
 }
