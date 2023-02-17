@@ -159,9 +159,11 @@ func (s *Service) pumpWs(conn *websocket.Conn, t string) {
 		ticker.Stop()
 		_ = conn.Close()
 	}()
-	cleanup := s.pss.Register(topic, func(_ context.Context, m []byte) {
+	cleanup := s.pss.Register(topic, func(ctx context.Context, m []byte) {
 		select {
 		case dataC <- m:
+		case <-ctx.Done():
+			return
 		case <-gone:
 			return
 		}
