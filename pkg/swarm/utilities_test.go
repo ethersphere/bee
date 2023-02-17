@@ -246,6 +246,8 @@ func makeBatchID(t *testing.T) []byte {
 }
 
 func makeStamp(t *testing.T) swarm.Stamp {
+	t.Helper()
+
 	return stamp{
 		batchID: makeBatchID(t),
 	}
