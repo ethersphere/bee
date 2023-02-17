@@ -54,7 +54,7 @@ func newTestSvc(
 	return depthmonitor.New(topo, syncer, reserve, batchStore, log.Noop, warmupTime, wakeupInterval, freshNode)
 }
 
-func TestDepthMonitorService(t *testing.T) {
+func TestDepthMonitorService_FLAKY(t *testing.T) {
 	t.Parallel()
 
 	waitForDepth := func(t *testing.T, svc *depthmonitor.Service, depth uint8) {

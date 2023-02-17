@@ -386,7 +386,7 @@ func TestBinReset(t *testing.T) {
 	checkHistSyncingCount(t, puller, 0)
 }
 
-// TestDepthChange tests that puller reacts correctly to
+// TestDepthChange_FLAKY tests that puller reacts correctly to
 // depth changes signalled from kademlia.
 // Due to the fact that the component does goroutine termination
 // and new syncing sessions autonomously, the testing strategy is a bit
@@ -400,7 +400,7 @@ func TestBinReset(t *testing.T) {
 // the bin was synced). This also means that tweaking these tests needs to
 // be done carefully and with the understanding of what each change does to
 // the tested unit.
-func TestDepthChange(t *testing.T) {
+func TestDepthChange_FLAKY(t *testing.T) {
 	t.Parallel()
 	t.Skip()
 

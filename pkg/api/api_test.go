@@ -567,9 +567,9 @@ func TestOptions(t *testing.T) {
 	}
 }
 
-// TestPostageDirectAndDeferred tests that incorrect postage batch ids
+// TestPostageDirectAndDeferred_FLAKY tests that incorrect postage batch ids
 // provided to the api correct the appropriate error code.
-func TestPostageDirectAndDeferred(t *testing.T) {
+func TestPostageDirectAndDeferred_FLAKY(t *testing.T) {
 	t.Parallel()
 
 	options := testServerOptions{
