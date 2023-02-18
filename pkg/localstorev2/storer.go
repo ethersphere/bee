@@ -371,8 +371,8 @@ func (p *putterSession) Done(addr swarm.Address) error { return p.done(addr) }
 
 func (p *putterSession) Cleanup() error { return p.cleanup() }
 
-func (db *DB) SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, reset, stop func()) {
-	chunks := make(chan swarm.Chunk)
+func (db *DB) SubscribePush(ctx context.Context) (chunks chan swarm.Chunk, reset, stop func()) {
+	chunks = make(chan swarm.Chunk)
 	trigger := make(chan struct{}, 1)
 	resetC := make(chan struct{}, 1)
 
