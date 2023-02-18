@@ -40,6 +40,7 @@ func (s *Service) dirUploadHandler(
 	putter storer.PutterSession,
 	contentTypeString string,
 	encrypt bool,
+	tag uint64,
 ) {
 	if r.Body == http.NoBody {
 		logger.Error(nil, "request has no body")
@@ -64,14 +65,14 @@ func (s *Service) dirUploadHandler(
 	defer r.Body.Close()
 
 	reference, err := storeDir(
-		ctx,
+		r.Context(),
 		requestEncrypt(r),
 		dReader,
-		s.logger,
+		logger,
+		putter,
+		s.storer.ChunkStore(),
 		r.Header.Get(SwarmIndexDocumentHeader),
 		r.Header.Get(SwarmErrorDocumentHeader),
-		tag,
-		created,
 	)
 	if err != nil {
 		logger.Debug("store dir failed", "error", multierror.Append(err, putter.Cleanup()))
@@ -94,7 +95,7 @@ func (s *Service) dirUploadHandler(
 	}
 
 	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
-	w.Header().Set(SwarmTagHeader, fmt.Sprint(tag.Uid))
+	w.Header().Set(SwarmTagHeader, fmt.Sprint(tag))
 	jsonhttp.Created(w, bzzUploadResponse{
 		Reference: reference,
 	})

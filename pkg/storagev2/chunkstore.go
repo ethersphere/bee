@@ -51,6 +51,12 @@ type Deleter interface {
 	Delete(context.Context, swarm.Address) error
 }
 
+// Hasser is the interface that wraps the basic Has method.
+type Hasser interface {
+	// Has checks whether a chunk exists in the store.
+	Has(context.Context, swarm.Address) (bool, error)
+}
+
 // PutterFunc type is an adapter to allow the use of
 // ChunkStore as Putter interface. If f is a function
 // with the appropriate signature, PutterFunc(f) is a
@@ -83,11 +89,15 @@ type ChunkStore interface {
 	GetterWithStamp
 	Putter
 	Deleter
+	Hasser
 
-	// Has checks whether a chunk exists in the store.
-	Has(context.Context, swarm.Address) (bool, error)
 	// Iterate over chunks in no particular order.
 	Iterate(context.Context, IterateChunkFn) error
+}
+
+type ReadOnlyChunkStore interface {
+	Getter
+	Hasser
 }
 
 type SizeReporter interface {

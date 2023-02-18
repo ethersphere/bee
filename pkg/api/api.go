@@ -790,7 +790,16 @@ type putterOptions struct {
 
 type putterSessionWrapper struct {
 	storer.PutterSession
-	save func() error
+	stamper postage.Stamper
+	save    func() error
+}
+
+func (p *putterSessionWrapper) Put(ctx context.Context, chunk swarm.Chunk) error {
+	stamp, err := p.stamper.Stamp(chunk.Address())
+	if err != nil {
+		return err
+	}
+	return p.PutterSession.Put(ctx, chunk.WithStamp(stamp))
 }
 
 func (p *putterSessionWrapper) Done(ref swarm.Address) error {
@@ -819,6 +828,8 @@ func (s *Service) newStamperPutter(ctx context.Context, opts putterOptions) (sto
 		return nil, errBatchUnusable
 	}
 
+	stamper := postage.NewStamper(issuer, s.signer)
+
 	var session storer.PutterSession
 	if opts.Deferred {
 		session, err = s.storer.Upload(ctx, opts.Pin, opts.TagID)
@@ -830,7 +841,11 @@ func (s *Service) newStamperPutter(ctx context.Context, opts putterOptions) (sto
 		return nil, fmt.Errorf("failed creating session: %w", err)
 	}
 
-	return &putterSessionWrapper{PutterSession: session, save: save}, nil
+	return &putterSessionWrapper{
+		PutterSession: session,
+		stamper:       stamper,
+		save:          save,
+	}, nil
 }
 
 type pipelineFunc func(context.Context, io.Reader) (swarm.Address, error)
@@ -846,6 +861,18 @@ func requestPipelineFactory(ctx context.Context, s storage.Putter, encrypt bool)
 	return func() pipeline.Interface {
 		return builder.NewPipelineBuilder(ctx, s, encrypt)
 	}
+}
+
+type responseWithErrCheck struct {
+	http.ResponseWriter
+	onErr func()
+}
+
+func (r *responseWithErrCheck) WriteHeader(statusCode int) {
+	if statusCode > 400 {
+		r.onErr()
+	}
+	r.ResponseWriter.WriteHeader(statusCode)
 }
 
 // calculateNumberOfChunks calculates the number of chunks in an arbitrary
@@ -876,8 +903,4 @@ func requestCalculateNumberOfChunks(r *http.Request) int64 {
 		return calculateNumberOfChunks(r.ContentLength, requestEncrypt(r))
 	}
 	return 0
-}
-
-func noopWaitFn() error {
-	return nil
 }

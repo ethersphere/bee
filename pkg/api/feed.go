@@ -21,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/pkg/manifest/simple"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/soc"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
 )
@@ -133,10 +134,37 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	putter, wait, err := s.newStamperPutter(r)
+	headers := struct {
+		BatchID []byte `map:"Swarm-Postage-Batch-Id" validate:"required"`
+		Pin     bool   `map:"Swarm-Pin"`
+	}{}
+	if response := s.mapStructure(r.Header, &headers); response != nil {
+		response("invalid header params", logger, w)
+		return
+	}
+
+	tag, err := s.storer.NewSession()
 	if err != nil {
-		logger.Debug("putter failed", "error", err)
-		logger.Error(nil, "putter failed")
+		logger.Debug("get or create tag failed", "error", err)
+		logger.Error(nil, "get or create tag failed")
+		switch {
+		case errors.Is(err, storage.ErrNotFound):
+			jsonhttp.NotFound(w, "tag not found")
+		default:
+			jsonhttp.InternalServerError(w, "cannot get or create tag")
+		}
+		return
+	}
+
+	putter, err := s.newStamperPutter(r.Context(), putterOptions{
+		BatchID:  headers.BatchID,
+		TagID:    tag,
+		Pin:      headers.Pin,
+		Deferred: true,
+	})
+	if err != nil {
+		logger.Debug("get putter failed", "error", err)
+		logger.Error(nil, "get putter failed")
 		switch {
 		case errors.Is(err, errBatchUnusable) || errors.Is(err, postage.ErrNotUsable):
 			jsonhttp.UnprocessableEntity(w, "batch not usable yet or does not exist")
@@ -152,7 +180,7 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	l := loadsave.New(putter, requestPipelineFactory(r.Context(), putter, r))
+	l := loadsave.New(s.storer.ChunkStore(), requestPipelineFactory(r.Context(), putter, false))
 	feedManifest, err := manifest.NewDefaultManifest(l, false)
 	if err != nil {
 		logger.Debug("create manifest failed", "error", err)
@@ -198,22 +226,6 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		default:
 			jsonhttp.InternalServerError(w, "store manifest failed")
 		}
-		return
-	}
-
-	if requestPin(r) {
-		if err := s.pinning.CreatePin(r.Context(), ref, false); err != nil {
-			logger.Debug("pin creation failed: %v", "address", ref, "error", err)
-			logger.Error(nil, "pin creation failed")
-			jsonhttp.InternalServerError(w, "creation of pin failed")
-			return
-		}
-	}
-
-	if err = wait(); err != nil {
-		logger.Debug("sync chunks failed", "error", err)
-		logger.Error(nil, "sync chunks failed")
-		jsonhttp.InternalServerError(w, "sync failed")
 		return
 	}
 

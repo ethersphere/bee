@@ -89,7 +89,7 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if headers.IsDir || headers.ContentType == multiPartFormData {
-		s.dirUploadHandler(logger, w, r, putter, headers.ContentType, headers.Encrypt)
+		s.dirUploadHandler(logger, w, r, putter, headers.ContentType, headers.Encrypt, tag)
 		return
 	}
 	s.fileUploadHandler(logger, w, r, putter, headers.Encrypt, tag)

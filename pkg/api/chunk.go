@@ -55,6 +55,10 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Currently the localstore supports session based uploads. We don't want to
+	// create new session for single chunk uploads. So if the chunk upload is not
+	// part of a session already, then we directly push the chunk. This way we dont
+	// need to go through the UploadStore.
 	deferred := tag != 0
 
 	putter, err := s.newStamperPutter(r.Context(), putterOptions{
@@ -80,41 +84,51 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ow := &responseWithErrCheck{
+		ResponseWriter: w,
+		onErr: func() {
+			err := putter.Cleanup()
+			if err != nil {
+				logger.Debug("chunk upload: failed to cleanup session", "error", err)
+			}
+		},
+	}
+
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
-		if jsonhttp.HandleBodyReadError(err, w) {
+		if jsonhttp.HandleBodyReadError(err, ow) {
 			return
 		}
-		s.logger.Debug("chunk upload: read chunk data failed", "error", err)
-		s.logger.Error(nil, "chunk upload: read chunk data failed")
-		jsonhttp.InternalServerError(w, "cannot read chunk data")
+		logger.Debug("chunk upload: read chunk data failed", "error", err)
+		logger.Error(nil, "chunk upload: read chunk data failed")
+		jsonhttp.InternalServerError(ow, "cannot read chunk data")
 		return
 	}
 
 	if len(data) < swarm.SpanSize {
-		s.logger.Debug("chunk upload: insufficient data length")
-		s.logger.Error(nil, "chunk upload: insufficient data length")
-		jsonhttp.BadRequest(w, "insufficient data length")
+		logger.Debug("chunk upload: insufficient data length")
+		logger.Error(nil, "chunk upload: insufficient data length")
+		jsonhttp.BadRequest(ow, "insufficient data length")
 		return
 	}
 
 	chunk, err := cac.NewWithDataSpan(data)
 	if err != nil {
-		s.logger.Debug("chunk upload: create chunk failed", "error", err)
-		s.logger.Error(nil, "chunk upload: create chunk error")
-		jsonhttp.InternalServerError(w, "create chunk error")
+		logger.Debug("chunk upload: create chunk failed", "error", err)
+		logger.Error(nil, "chunk upload: create chunk error")
+		jsonhttp.InternalServerError(ow, "create chunk error")
 		return
 	}
 
 	err = putter.Put(r.Context(), chunk)
 	if err != nil {
-		s.logger.Debug("chunk upload: write chunk failed", "chunk_address", chunk.Address(), "error", err)
-		s.logger.Error(nil, "chunk upload: write chunk failed")
+		logger.Debug("chunk upload: write chunk failed", "chunk_address", chunk.Address(), "error", err)
+		logger.Error(nil, "chunk upload: write chunk failed")
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):
-			jsonhttp.PaymentRequired(w, "batch is overissued")
+			jsonhttp.PaymentRequired(ow, "batch is overissued")
 		default:
-			jsonhttp.InternalServerError(w, "chunk write error")
+			jsonhttp.InternalServerError(ow, "chunk write error")
 		}
 		return
 	}
@@ -139,7 +153,7 @@ func (s *Service) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	chunk, err := s.storer.Get(r.Context(), storage.ModeGetRequest, paths.Address)
+	chunk, err := s.storer.Lookup().Get(r.Context(), paths.Address)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			loggerV1.Debug("chunk not found", "address", paths.Address)

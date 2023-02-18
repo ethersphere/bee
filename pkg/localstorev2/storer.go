@@ -108,11 +108,16 @@ type NetStore interface {
 	PusherFeed() <-chan *pusher.Op
 }
 
+type LocalStore interface {
+	ChunkStore() storage.ReadOnlyChunkStore
+}
+
 type Storer interface {
 	UploadStore
 	PinStore
 	CacheStore
 	NetStore
+	LocalStore
 }
 
 type memFS struct {
