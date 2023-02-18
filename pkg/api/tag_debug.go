@@ -10,34 +10,33 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	storer "github.com/ethersphere/bee/pkg/localstorev2"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/gorilla/mux"
 )
 
 type debugTagResponse struct {
-	Total     int64         `json:"total"`
-	Split     int64         `json:"split"`
-	Seen      int64         `json:"seen"`
-	Stored    int64         `json:"stored"`
-	Sent      int64         `json:"sent"`
-	Synced    int64         `json:"synced"`
-	Uid       uint32        `json:"uid"`
+	Split     uint64        `json:"split"`
+	Seen      uint64        `json:"seen"`
+	Stored    uint64        `json:"stored"`
+	Sent      uint64        `json:"sent"`
+	Synced    uint64        `json:"synced"`
+	Uid       uint64        `json:"uid"`
 	Address   swarm.Address `json:"address"`
 	StartedAt time.Time     `json:"startedAt"`
 }
 
-func newDebugTagResponse(tag *tags.Tag) debugTagResponse {
+func newDebugTagResponse(tag storer.SessionInfo) debugTagResponse {
 	return debugTagResponse{
-		Total:     tag.Total,
 		Split:     tag.Split,
 		Seen:      tag.Seen,
 		Stored:    tag.Stored,
 		Sent:      tag.Sent,
 		Synced:    tag.Synced,
-		Uid:       tag.Uid,
+		Uid:       tag.TagID,
 		Address:   tag.Address,
-		StartedAt: tag.StartedAt,
+		StartedAt: time.Unix(tag.StartedAt, 0),
 	}
 }
 
@@ -45,16 +44,16 @@ func (s *Service) getDebugTagHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("get_tag").Build()
 
 	paths := struct {
-		TagID uint32 `map:"id" validate:"required"`
+		TagID uint64 `map:"id" validate:"required"`
 	}{}
 	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
 		response("invalid path params", logger, w)
 		return
 	}
 
-	tag, err := s.tags.Get(paths.TagID)
+	tag, err := s.storer.GetSessionInfo(paths.TagID)
 	if err != nil {
-		if errors.Is(err, tags.ErrNotFound) {
+		if errors.Is(err, storage.ErrNotFound) {
 			logger.Debug("tag not found", "tag_id", paths.TagID)
 			logger.Error(nil, "tag not found")
 			jsonhttp.NotFound(w, "tag not present")

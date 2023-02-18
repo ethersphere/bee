@@ -87,6 +87,8 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ow := &cleanupOnErrWriter{ResponseWriter: w, onErr: putter.Cleanup}
+
 	p := requestPipelineFn(putter, headers.Encrypt)
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
@@ -101,9 +103,9 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		logger.Error(nil, "split write all failed")
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):
-			jsonhttp.PaymentRequired(w, "batch is overissued")
+			jsonhttp.PaymentRequired(ow, "batch is overissued")
 		default:
-			jsonhttp.InternalServerError(w, "split write all failed")
+			jsonhttp.InternalServerError(ow, "split write all failed")
 		}
 		return
 	}
@@ -112,7 +114,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debug("done split failed", "error", err)
 		logger.Error(nil, "done split failed")
-		jsonhttp.InternalServerError(w, "done split filed")
+		jsonhttp.InternalServerError(ow, "done split filed")
 	}
 
 	if tag != 0 {
@@ -154,7 +156,7 @@ func (s *Service) bytesHeadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	getter := s.storer.Download(false)
+	getter := s.storer.Download(true)
 
 	ch, err := getter.Get(r.Context(), paths.Address)
 	if err != nil {

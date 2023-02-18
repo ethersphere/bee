@@ -158,7 +158,7 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 
 	putter, err := s.newStamperPutter(r.Context(), putterOptions{
 		BatchID:  headers.BatchID,
-		TagID:    tag,
+		TagID:    tag.TagID,
 		Pin:      headers.Pin,
 		Deferred: true,
 	})
@@ -172,13 +172,13 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.NotFound(w, "batch with id not found")
 		case errors.Is(err, errInvalidPostageBatch):
 			jsonhttp.BadRequest(w, "invalid batch id")
-		case errors.Is(err, errUnsupportedDevNodeOperation):
-			jsonhttp.BadRequest(w, errUnsupportedDevNodeOperation)
 		default:
 			jsonhttp.BadRequest(w, nil)
 		}
 		return
 	}
+
+	ow := &cleanupOnErrWriter{ResponseWriter: w, onErr: putter.Cleanup}
 
 	l := loadsave.New(s.storer.ChunkStore(), requestPipelineFactory(r.Context(), putter, false))
 	feedManifest, err := manifest.NewDefaultManifest(l, false)
@@ -187,9 +187,9 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		logger.Error(nil, "create manifest failed")
 		switch {
 		case errors.Is(err, manifest.ErrInvalidManifestType):
-			jsonhttp.BadRequest(w, "invalid manifest type")
+			jsonhttp.BadRequest(ow, "invalid manifest type")
 		default:
-			jsonhttp.InternalServerError(w, "create manifest failed")
+			jsonhttp.InternalServerError(ow, "create manifest failed")
 		}
 	}
 
@@ -208,11 +208,11 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		logger.Error(nil, "add manifest entry failed")
 		switch {
 		case errors.Is(err, simple.ErrEmptyPath):
-			jsonhttp.NotFound(w, "invalid or empty path")
+			jsonhttp.NotFound(ow, "invalid or empty path")
 		case errors.Is(err, mantaray.ErrEmptyPath):
-			jsonhttp.NotFound(w, "invalid path or mantaray path is empty")
+			jsonhttp.NotFound(ow, "invalid path or mantaray path is empty")
 		default:
-			jsonhttp.InternalServerError(w, "add manifest entry failed")
+			jsonhttp.InternalServerError(ow, "add manifest entry failed")
 		}
 		return
 	}
@@ -222,9 +222,9 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		logger.Error(nil, "store manifest failed")
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):
-			jsonhttp.PaymentRequired(w, "batch is overissued")
+			jsonhttp.PaymentRequired(ow, "batch is overissued")
 		default:
-			jsonhttp.InternalServerError(w, "store manifest failed")
+			jsonhttp.InternalServerError(ow, "store manifest failed")
 		}
 		return
 	}

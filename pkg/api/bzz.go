@@ -88,11 +88,13 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	ow := &cleanupOnErrWriter{ResponseWriter: w, onErr: putter.Cleanup}
+
 	if headers.IsDir || headers.ContentType == multiPartFormData {
-		s.dirUploadHandler(logger, w, r, putter, headers.ContentType, headers.Encrypt, tag)
+		s.dirUploadHandler(logger, ow, r, putter, headers.ContentType, headers.Encrypt, tag)
 		return
 	}
-	s.fileUploadHandler(logger, w, r, putter, headers.Encrypt, tag)
+	s.fileUploadHandler(logger, ow, r, putter, headers.Encrypt, tag)
 }
 
 // fileUploadResponse is returned when an HTTP request to upload a file is successful
@@ -162,7 +164,7 @@ func (s *Service) fileUploadHandler(
 	}
 
 	factory := requestPipelineFactory(ctx, putter, encrypt)
-	l := loadsave.New(s.storer.Lookup(), factory)
+	l := loadsave.New(s.storer.ChunkStore(), factory)
 
 	m, err := manifest.NewDefaultManifest(l, encrypt)
 	if err != nil {
@@ -256,7 +258,7 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 	logger = tracing.NewLoggerWithTraceID(r.Context(), logger)
 	loggerV1 := logger.V(1).Build()
 
-	ls := loadsave.NewReadonly(s.storer.Download(false))
+	ls := loadsave.NewReadonly(s.storer.Download(true))
 	feedDereferenced := false
 
 	ctx := r.Context()
@@ -429,7 +431,7 @@ func (s *Service) serveManifestEntry(
 
 // downloadHandler contains common logic for dowloading Swarm file from API
 func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *http.Request, reference swarm.Address, additionalHeaders http.Header, etag bool) {
-	reader, l, err := joiner.New(r.Context(), s.storer.Lookup(), reference)
+	reader, l, err := joiner.New(r.Context(), s.storer.Download(true), reference)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			logger.Debug("api download: not found ", "address", reference, "error", err)

@@ -56,7 +56,6 @@ import (
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/pkg/tracing"
@@ -120,7 +119,7 @@ var (
 
 type Service struct {
 	auth auth.Authenticator
-	tags *tags.Tags
+	// tags *tags.Tags
 	// storer          storage.Storer
 	storer          storer.Storer
 	resolver        resolver.Interface
@@ -221,7 +220,7 @@ type ExtraOptions struct {
 	Swap           swap.Interface
 	Chequebook     chequebook.Service
 	BlockTime      time.Duration
-	Tags           *tags.Tags
+	// Tags           *tags.Tags
 	// Storer           storage.Storer
 	Storer           storer.Storer
 	Resolver         resolver.Interface
@@ -296,7 +295,6 @@ func (s *Service) Configure(signer crypto.Signer, auth auth.Authenticator, trace
 
 	s.quit = make(chan struct{})
 
-	s.tags = e.Tags
 	s.storer = e.Storer
 	s.resolver = e.Resolver
 	s.pss = e.Pss
@@ -367,22 +365,17 @@ func (s *Service) Close() error {
 // getOrCreateTag attempts to get the tag if an id is supplied, and returns an error if it does not exist.
 // If no id is supplied, it will attempt to create a new tag with a generated name and return it.
 func (s *Service) getOrCreateSessionID(tagUid uint64) (uint64, error) {
-	var err error
+	var (
+		tag storer.SessionInfo
+		err error
+	)
 	// if tag ID is not supplied, create a new tag
 	if tagUid == 0 {
-		tagUid, err = s.storer.NewSession()
+		tag, err = s.storer.NewSession()
 	} else {
-		_, err = s.storer.GetSessionInfo(tagUid)
+		tag, err = s.storer.GetSessionInfo(tagUid)
 	}
-	return tagUid, err
-}
-
-func (s *Service) getTag(tagUid string) (*tags.Tag, error) {
-	uid, err := strconv.Atoi(tagUid)
-	if err != nil {
-		return nil, fmt.Errorf("cannot mapStructure taguid: %w", err)
-	}
-	return s.tags.Get(uint32(uid))
+	return tag.TagID, err
 }
 
 func (s *Service) resolveNameOrAddress(str string) (swarm.Address, error) {
@@ -863,14 +856,18 @@ func requestPipelineFactory(ctx context.Context, s storage.Putter, encrypt bool)
 	}
 }
 
-type responseWithErrCheck struct {
+type cleanupOnErrWriter struct {
 	http.ResponseWriter
-	onErr func()
+	logger log.Logger
+	onErr  func() error
 }
 
-func (r *responseWithErrCheck) WriteHeader(statusCode int) {
+func (r *cleanupOnErrWriter) WriteHeader(statusCode int) {
 	if statusCode > 400 {
-		r.onErr()
+		err := r.onErr()
+		if err != nil {
+			r.logger.Debug("failed cleaning up", "err", err)
+		}
 	}
 	r.ResponseWriter.WriteHeader(statusCode)
 }

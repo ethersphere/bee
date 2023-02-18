@@ -84,15 +84,7 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ow := &responseWithErrCheck{
-		ResponseWriter: w,
-		onErr: func() {
-			err := putter.Cleanup()
-			if err != nil {
-				logger.Debug("chunk upload: failed to cleanup session", "error", err)
-			}
-		},
-	}
+	ow := &cleanupOnErrWriter{ResponseWriter: w, onErr: putter.Cleanup}
 
 	data, err := io.ReadAll(r.Body)
 	if err != nil {

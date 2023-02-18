@@ -12,8 +12,9 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	storer "github.com/ethersphere/bee/pkg/localstorev2"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/gorilla/mux"
 )
 
@@ -22,23 +23,23 @@ type tagRequest struct {
 }
 
 type tagResponse struct {
-	Uid       uint32    `json:"uid"`
+	Uid       uint64    `json:"uid"`
 	StartedAt time.Time `json:"startedAt"`
-	Total     int64     `json:"total"`
-	Processed int64     `json:"processed"`
-	Synced    int64     `json:"synced"`
+	Total     uint64    `json:"total"`
+	Processed uint64    `json:"processed"`
+	Synced    uint64    `json:"synced"`
 }
 
 type listTagsResponse struct {
 	Tags []tagResponse `json:"tags"`
 }
 
-func newTagResponse(tag *tags.Tag) tagResponse {
+func newTagResponse(tag storer.SessionInfo) tagResponse {
 	return tagResponse{
-		Uid:       tag.Uid,
-		StartedAt: tag.StartedAt,
-		Total:     tag.Total,
-		Processed: tag.Stored,
+		Uid:       tag.TagID,
+		StartedAt: time.Unix(tag.StartedAt, 0),
+		Total:     tag.Split,
+		Processed: tag.Split,
 		Synced:    tag.Seen + tag.Synced,
 	}
 }
@@ -46,29 +47,7 @@ func newTagResponse(tag *tags.Tag) tagResponse {
 func (s *Service) createTagHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("post_tag").Build()
 
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		if jsonhttp.HandleBodyReadError(err, w) {
-			return
-		}
-		logger.Debug("read request body failed", "error", err)
-		logger.Error(nil, "read request body failed")
-		jsonhttp.InternalServerError(w, "cannot read request")
-		return
-	}
-
-	tagr := tagRequest{}
-	if len(body) > 0 {
-		err = json.Unmarshal(body, &tagr)
-		if err != nil {
-			logger.Debug("unmarshal tag name failed", "error", err)
-			logger.Error(nil, "unmarshal tag name failed")
-			jsonhttp.InternalServerError(w, "error unmarshaling metadata")
-			return
-		}
-	}
-
-	tag, err := s.tags.Create(0)
+	tag, err := s.storer.NewSession()
 	if err != nil {
 		logger.Debug("create tag failed", "error", err)
 		logger.Error(nil, "create tag failed")
@@ -83,16 +62,16 @@ func (s *Service) getTagHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("get_tag").Build()
 
 	paths := struct {
-		TagID uint32 `map:"id" validate:"required"`
+		TagID uint64 `map:"id" validate:"required"`
 	}{}
 	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
 		response("invalid path params", logger, w)
 		return
 	}
 
-	tag, err := s.tags.Get(paths.TagID)
+	tag, err := s.storer.GetSessionInfo(paths.TagID)
 	if err != nil {
-		if errors.Is(err, tags.ErrNotFound) {
+		if errors.Is(err, storage.ErrNotFound) {
 			logger.Debug("tag not found", "tag_id", paths.TagID)
 			logger.Error(nil, "tag not found")
 			jsonhttp.NotFound(w, "tag not present")
@@ -112,16 +91,16 @@ func (s *Service) deleteTagHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("delete_tag").Build()
 
 	paths := struct {
-		TagID uint32 `map:"id" validate:"required"`
+		TagID uint64 `map:"id" validate:"required"`
 	}{}
 	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
 		response("invalid path params", logger, w)
 		return
 	}
 
-	tag, err := s.tags.Get(paths.TagID)
+	tag, err := s.storer.GetSessionInfo(paths.TagID)
 	if err != nil {
-		if errors.Is(err, tags.ErrNotFound) {
+		if errors.Is(err, storage.ErrNotFound) {
 			logger.Debug("tag not found", "tag_id", paths.TagID)
 			logger.Error(nil, "tag not found")
 			jsonhttp.NotFound(w, "tag not present")
@@ -133,7 +112,7 @@ func (s *Service) deleteTagHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.tags.Delete(tag.Uid)
+	s.storer.DeleteSessionInfo(tag.TagID)
 	jsonhttp.NoContent(w)
 }
 
@@ -141,7 +120,7 @@ func (s *Service) doneSplitHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("patch_tag").Build()
 
 	paths := struct {
-		TagID uint32 `map:"id" validate:"required"`
+		TagID uint64 `map:"id" validate:"required"`
 	}{}
 	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
 		response("invalid path params", logger, w)
@@ -170,9 +149,9 @@ func (s *Service) doneSplitHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	tag, err := s.tags.Get(paths.TagID)
+	tag, err := s.storer.GetSessionInfo(paths.TagID)
 	if err != nil {
-		if errors.Is(err, tags.ErrNotFound) {
+		if errors.Is(err, storage.ErrNotFound) {
 			logger.Debug("tag not found", "tag_id", paths.TagID)
 			logger.Error(nil, "tag not found")
 			jsonhttp.NotFound(w, "tag not present")
@@ -184,7 +163,11 @@ func (s *Service) doneSplitHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = tag.DoneSplit(tagr.Address)
+	putter, err := s.storer.Upload(r.Context(), false, tag.TagID)
+	if err != nil {
+	}
+
+	err = putter.Done(tagr.Address)
 	if err != nil {
 		logger.Debug("done split failed", "address", tagr.Address, "error", err)
 		logger.Error(nil, "done split failed", "address", tagr.Address)
@@ -208,7 +191,7 @@ func (s *Service) listTagsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tagList, err := s.tags.ListAll(r.Context(), queries.Offset, queries.Limit)
+	tagList, err := s.storer.ListSessions(queries.Offset, queries.Limit)
 	if err != nil {
 		logger.Debug("listing failed", "offset", queries.Offset, "limit", queries.Limit, "error", err)
 		logger.Error(nil, "listing failed")

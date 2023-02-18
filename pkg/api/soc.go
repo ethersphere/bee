@@ -66,7 +66,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	putter, err := s.newStamperPutter(r.Context(), putterOptions{
 		BatchID:  headers.BatchID,
-		TagID:    tag,
+		TagID:    tag.TagID,
 		Pin:      headers.Pin,
 		Deferred: true,
 	})
@@ -80,36 +80,36 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.NotFound(w, "batch with id not found")
 		case errors.Is(err, errInvalidPostageBatch):
 			jsonhttp.BadRequest(w, "invalid batch id")
-		case errors.Is(err, errUnsupportedDevNodeOperation):
-			jsonhttp.BadRequest(w, errUnsupportedDevNodeOperation)
 		default:
 			jsonhttp.BadRequest(w, nil)
 		}
 		return
 	}
 
+	ow := &cleanupOnErrWriter{ResponseWriter: w, onErr: putter.Cleanup}
+
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
-		if jsonhttp.HandleBodyReadError(err, w) {
+		if jsonhttp.HandleBodyReadError(err, ow) {
 			return
 		}
 		logger.Debug("read body failed", "error", err)
 		logger.Error(nil, "read body failed")
-		jsonhttp.InternalServerError(w, "cannot read chunk data")
+		jsonhttp.InternalServerError(ow, "cannot read chunk data")
 		return
 	}
 
 	if len(data) < swarm.SpanSize {
 		logger.Debug("chunk data too short")
 		logger.Error(nil, "chunk data too short")
-		jsonhttp.BadRequest(w, "short chunk data")
+		jsonhttp.BadRequest(ow, "short chunk data")
 		return
 	}
 
 	if len(data) > swarm.ChunkSize+swarm.SpanSize {
 		logger.Debug("chunk data exceeds required length", "required_length", swarm.ChunkSize+swarm.SpanSize)
 		logger.Error(nil, "chunk data exceeds required length")
-		jsonhttp.RequestEntityTooLarge(w, "payload too large")
+		jsonhttp.RequestEntityTooLarge(ow, "payload too large")
 		return
 	}
 
@@ -117,7 +117,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debug("create content addressed chunk failed", "error", err)
 		logger.Error(nil, "create content addressed chunk failed")
-		jsonhttp.BadRequest(w, "chunk data error")
+		jsonhttp.BadRequest(ow, "chunk data error")
 		return
 	}
 
@@ -125,7 +125,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debug("create soc failed", "id", paths.ID, "owner", paths.Owner, "error", err)
 		logger.Error(nil, "create soc failed")
-		jsonhttp.Unauthorized(w, "invalid address")
+		jsonhttp.Unauthorized(ow, "invalid address")
 		return
 	}
 
@@ -133,14 +133,14 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debug("read chunk data failed", "error", err)
 		logger.Error(nil, "read chunk data failed")
-		jsonhttp.InternalServerError(w, "cannot read chunk data")
+		jsonhttp.InternalServerError(ow, "cannot read chunk data")
 		return
 	}
 
 	if !soc.Valid(sch) {
 		logger.Debug("invalid chunk", "error", err)
 		logger.Error(nil, "invalid chunk")
-		jsonhttp.Unauthorized(w, "invalid chunk")
+		jsonhttp.Unauthorized(ow, "invalid chunk")
 		return
 	}
 
@@ -148,7 +148,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debug("write chunk failed", "chunk_address", sch.Address(), "error", err)
 		logger.Error(nil, "write chunk failed")
-		jsonhttp.BadRequest(w, "chunk write error")
+		jsonhttp.BadRequest(ow, "chunk write error")
 		return
 	}
 
@@ -156,7 +156,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debug("read chunk data failed", "error", err)
 		logger.Error(nil, "read chunk data failed")
-		jsonhttp.InternalServerError(w, "cannot read chunk data")
+		jsonhttp.InternalServerError(ow, "cannot read chunk data")
 		return
 	}
 

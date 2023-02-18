@@ -58,9 +58,11 @@ type UploadStore interface {
 	// users requests to pin the data, a new pinning collection is created.
 	Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession, error)
 	// NewSession can be used to obtain a tag ID to use for a new Upload session.
-	NewSession() (uint64, error)
+	NewSession() (SessionInfo, error)
 	// GetSessionInfo will show the information about the session.
 	GetSessionInfo(tagID uint64) (SessionInfo, error)
+	DeleteSessionInfo(tagID uint64)
+	ListSessions(page, limit int) ([]SessionInfo, error)
 }
 
 // PinStore is a logical component of the storer which deals with pinning
