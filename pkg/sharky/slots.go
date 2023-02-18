@@ -86,6 +86,7 @@ func (sl *slots) Next() uint32 {
 	return sl.head
 }
 
+// Must be called under lock.
 func (sl *slots) next() uint32 {
 	for i := sl.head; i < sl.size(); i++ {
 		if sl.data[i/8]&(1<<(i%8)) > 0 { // first 1 bit
@@ -99,6 +100,7 @@ func (sl *slots) next() uint32 {
 
 // extend adapts the slots to an extended size shard
 // extensions are bytewise: can only be multiples of 8 bits
+// Must be called under lock.
 func (sl *slots) extend(n int) {
 	for i := 0; i < n; i++ {
 		sl.data = append(sl.data, 0xff)
@@ -106,6 +108,7 @@ func (sl *slots) extend(n int) {
 }
 
 // size in bits
+// Must be called under lock.
 func (sl *slots) size() uint32 {
 	return uint32(len(sl.data) * 8)
 }

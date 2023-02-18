@@ -133,8 +133,8 @@ func (s *Store) Write(ctx context.Context, data []byte) (loc Location, err error
 	defer s.wg.Done()
 
 	select {
-	case write := <-s.availableShards:
-		loc, err := s.shards[write.shard].write(data, write.slot)
+	case a := <-s.availableShards:
+		loc, err := s.shards[a.shard].write(data, a.slot)
 		if err != nil {
 			s.metrics.TotalWriteCallsErr.Inc()
 			return loc, err
