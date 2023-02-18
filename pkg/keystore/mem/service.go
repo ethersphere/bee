@@ -7,7 +7,8 @@ package mem
 import (
 	"crypto/ecdsa"
 	"fmt"
-	"sync"
+
+	sync "github.com/sasha-s/go-deadlock"
 
 	"github.com/ethersphere/bee/pkg/keystore"
 )

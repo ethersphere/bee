@@ -8,7 +8,8 @@ import (
 	"bytes"
 	"errors"
 	"math/big"
-	"sync"
+
+	sync "github.com/sasha-s/go-deadlock"
 
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchstore"

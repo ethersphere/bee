@@ -5,7 +5,7 @@
 package mock
 
 import (
-	"sync"
+	sync "github.com/sasha-s/go-deadlock"
 
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 )

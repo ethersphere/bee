@@ -19,8 +19,9 @@ package localstore
 import (
 	"context"
 	"errors"
-	"sync"
 	"time"
+
+	sync "github.com/sasha-s/go-deadlock"
 
 	"github.com/ethersphere/bee/pkg/flipflop"
 	"github.com/ethersphere/bee/pkg/shed"

@@ -6,7 +6,8 @@ package storageincentives
 
 import (
 	"context"
-	"sync"
+
+	sync "github.com/sasha-s/go-deadlock"
 )
 
 type PhaseType int

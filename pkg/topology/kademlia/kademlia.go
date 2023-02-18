@@ -14,9 +14,10 @@ import (
 	"net"
 	"os"
 	"runtime/pprof"
-	"sync"
 	"syscall"
 	"time"
+
+	sync "github.com/sasha-s/go-deadlock"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/blocker"

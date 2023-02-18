@@ -4,7 +4,7 @@
 
 package util
 
-import "sync"
+import sync "github.com/sasha-s/go-deadlock"
 
 // Signaler allows for multiple writers to safely signal an event
 // so that reader on the channel C would get unblocked

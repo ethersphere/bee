@@ -25,8 +25,9 @@ import (
 	"os"
 	"path/filepath"
 	"runtime/pprof"
-	"sync"
 	"time"
+
+	sync "github.com/sasha-s/go-deadlock"
 
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/pinning"

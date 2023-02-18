@@ -9,7 +9,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"sync"
+
+	sync "github.com/sasha-s/go-deadlock"
 
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/syndtr/goleveldb/leveldb"

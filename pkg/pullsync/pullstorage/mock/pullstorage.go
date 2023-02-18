@@ -6,7 +6,8 @@ package mock
 
 import (
 	"context"
-	"sync"
+
+	sync "github.com/sasha-s/go-deadlock"
 
 	"github.com/ethersphere/bee/pkg/pullsync/pullstorage"
 	"github.com/ethersphere/bee/pkg/storage"

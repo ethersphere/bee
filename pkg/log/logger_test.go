@@ -10,8 +10,9 @@ import (
 	"fmt"
 	"path/filepath"
 	"runtime"
-	"sync"
 	"testing"
+
+	sync "github.com/sasha-s/go-deadlock"
 )
 
 // hook is a helper type for recording

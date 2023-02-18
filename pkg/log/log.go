@@ -7,8 +7,9 @@ package log
 import (
 	"io"
 	"strconv"
-	"sync"
 	"sync/atomic"
+
+	sync "github.com/sasha-s/go-deadlock"
 )
 
 // Level specifies a level of verbosity for logger.

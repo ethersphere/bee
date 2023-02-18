@@ -9,7 +9,8 @@ import (
 	"io"
 	"os"
 	"regexp"
-	"sync"
+
+	sync "github.com/sasha-s/go-deadlock"
 
 	"github.com/hashicorp/go-multierror"
 )

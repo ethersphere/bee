@@ -21,9 +21,10 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"sync"
 	"sync/atomic"
 	"time"
+
+	sync "github.com/sasha-s/go-deadlock"
 
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/storage"

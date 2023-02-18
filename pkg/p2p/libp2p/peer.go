@@ -8,7 +8,8 @@ import (
 	"bytes"
 	"context"
 	"sort"
-	"sync"
+
+	sync "github.com/sasha-s/go-deadlock"
 
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"

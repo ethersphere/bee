@@ -12,8 +12,9 @@ import (
 	"io"
 	"math"
 	"math/big"
-	"sync"
 	"time"
+
+	sync "github.com/sasha-s/go-deadlock"
 
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"

@@ -9,7 +9,8 @@ package mock
 import (
 	"context"
 	"math/big"
-	"sync"
+
+	sync "github.com/sasha-s/go-deadlock"
 
 	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/swarm"

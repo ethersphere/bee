@@ -8,8 +8,9 @@
 package ratelimit
 
 import (
-	"sync"
 	"time"
+
+	sync "github.com/sasha-s/go-deadlock"
 
 	"golang.org/x/time/rate"
 )

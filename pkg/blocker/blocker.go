@@ -6,12 +6,12 @@ package blocker
 
 import (
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
+	sync "github.com/sasha-s/go-deadlock"
 	"go.uber.org/atomic"
 )
 

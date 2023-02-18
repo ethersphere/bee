@@ -6,8 +6,9 @@ package breaker
 
 import (
 	"errors"
-	"sync"
 	"time"
+
+	sync "github.com/sasha-s/go-deadlock"
 )
 
 const (

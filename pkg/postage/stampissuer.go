@@ -7,7 +7,8 @@ package postage
 import (
 	"encoding/binary"
 	"math/big"
-	"sync"
+
+	sync "github.com/sasha-s/go-deadlock"
 
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/vmihailenco/msgpack/v5"

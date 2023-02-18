@@ -5,7 +5,7 @@
 package pslice
 
 import (
-	"sync"
+	sync "github.com/sasha-s/go-deadlock"
 
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"

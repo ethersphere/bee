@@ -7,8 +7,9 @@ package log
 import (
 	"bytes"
 	"fmt"
-	"sync"
 	"testing"
+
+	sync "github.com/sasha-s/go-deadlock"
 
 	"github.com/google/go-cmp/cmp"
 )

@@ -12,8 +12,9 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"sync"
 	"time"
+
+	sync "github.com/sasha-s/go-deadlock"
 
 	"github.com/ethersphere/bee/pkg/bitvector"
 	"github.com/ethersphere/bee/pkg/cac"

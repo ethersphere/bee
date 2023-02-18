@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/ethersphere/bee/pkg/storageincentives"
 	"io"
 	"math"
 	"math/big"
@@ -23,9 +22,11 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 	"unicode/utf8"
+
+	"github.com/ethersphere/bee/pkg/storageincentives"
+	sync "github.com/sasha-s/go-deadlock"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/accounting"

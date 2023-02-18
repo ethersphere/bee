@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"math"
+
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/pullsync"

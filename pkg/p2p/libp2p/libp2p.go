@@ -14,8 +14,9 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
+
+	sync "github.com/sasha-s/go-deadlock"
 
 	"github.com/ethersphere/bee"
 	"github.com/ethersphere/bee/pkg/addressbook"

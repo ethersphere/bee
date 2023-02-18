@@ -7,7 +7,8 @@ package mock
 import (
 	"bytes"
 	"math/big"
-	"sync"
+
+	sync "github.com/sasha-s/go-deadlock"
 
 	"github.com/ethersphere/bee/pkg/postage"
 )
