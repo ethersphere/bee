@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"math/big"
 	"sync"
 	"testing"
 	"time"
@@ -35,7 +34,7 @@ func TestReserveSampler(t *testing.T) {
 	})
 
 	timeVar := uint64(time.Now().UnixNano())
-	minBalance := big.NewInt(0)
+	minBalance := make(map[string]bool)
 
 	for po := 0; po < maxPO; po++ {
 		for i := 0; i < chunkCountPerPO; i++ {
@@ -117,7 +116,7 @@ func TestReserveSamplerStop_FLAKY(t *testing.T) {
 	startWait, waitChan := make(chan struct{}), make(chan struct{})
 	doneWaiting := false
 
-	minBalance := big.NewInt(0)
+	minBalance := make(map[string]bool)
 
 	t.Cleanup(setWithinRadiusFunc(func(*DB, shed.Item) bool { return true }))
 

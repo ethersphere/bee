@@ -29,7 +29,6 @@ const sampleSize = 8
 
 var errDbClosed = errors.New("database closed")
 var errSamplerStopped = errors.New("sampler stopped due to ongoing evictions")
-var errSamplerStoppedI = errors.New("sampler stopped due to batchStore iteration error")
 
 type sampleStat struct {
 	TotalIterated      atomic.Int64

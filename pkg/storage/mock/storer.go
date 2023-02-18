@@ -6,7 +6,6 @@ package mock
 
 import (
 	"context"
-	"math/big"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/storage"
@@ -299,7 +298,7 @@ func (m *MockStorer) SubscribePush(ctx context.Context, skipf func([]byte) bool)
 	panic("not implemented") // TODO: Implement
 }
 
-func (m *MockStorer) ReserveSample(_ context.Context, _ []byte, _ uint8, _ uint64, _ *big.Int) (storage.Sample, error) {
+func (m *MockStorer) ReserveSample(_ context.Context, _ []byte, _ uint8, _ uint64, _ map[string]bool) (storage.Sample, error) {
 	panic("not implemented")
 }
 
