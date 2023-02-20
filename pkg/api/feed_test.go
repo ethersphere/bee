@@ -212,7 +212,7 @@ func TestDirectUploadFeed(t *testing.T) {
 			Tags:    tag,
 			Logger:  logger,
 			Post:    mp,
-			beeMode: api.DevMode,
+			BeeMode: api.DevMode,
 		})
 		url = fmt.Sprintf("/feeds/%s/%s?type=%s", ownerString, topic, "sequence")
 	)

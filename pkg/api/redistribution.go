@@ -5,10 +5,11 @@
 package api
 
 import (
+	"net/http"
+
 	"github.com/ethersphere/bee/pkg/bigint"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/tracing"
-	"net/http"
 )
 
 type nodeStatusResponse struct {
@@ -26,6 +27,11 @@ type nodeStatusResponse struct {
 
 func (s *Service) redistributionStatusHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger.WithName("get_redistributionstate").Build())
+
+	if s.beeMode != FullMode {
+		jsonhttp.BadRequest(w, errOperationSupportedOnlyInFullMode)
+		return
+	}
 
 	status, err := s.redistributionAgent.Status()
 	if err != nil {

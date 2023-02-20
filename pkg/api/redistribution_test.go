@@ -11,6 +11,8 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethersphere/bee/pkg/api"
+	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storageincentives"
@@ -19,8 +21,10 @@ import (
 
 func TestRedistributionStatus(t *testing.T) {
 	t.Parallel()
+
 	t.Run("success", func(t *testing.T) {
 		t.Parallel()
+
 		store := statestore.NewStateStore()
 		err := store.Put("redistribution_state", storageincentives.Status{
 			Phase: storageincentives.PhaseType(1),
@@ -41,6 +45,27 @@ func TestRedistributionStatus(t *testing.T) {
 		})
 		jsonhttptest.Request(t, srv, http.MethodGet, "/redistributionstate", http.StatusOK,
 			jsonhttptest.WithRequestHeader("Content-Type", "application/json; charset=utf-8"),
+		)
+	})
+
+	t.Run("bad request", func(t *testing.T) {
+		t.Parallel()
+
+		srv, _, _, _ := newTestServer(t, testServerOptions{
+			DebugAPI:    true,
+			BeeMode:     api.LightMode,
+			StateStorer: statestore.NewStateStore(),
+			TransactionOpts: []mock.Option{
+				mock.WithTransactionFeeFunc(func(ctx context.Context, txHash common.Hash) (*big.Int, error) {
+					return big.NewInt(1000), nil
+				}),
+			},
+		})
+		jsonhttptest.Request(t, srv, http.MethodGet, "/redistributionstate", http.StatusBadRequest,
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: api.ErrOperationSupportedOnlyInFullMode.Error(),
+				Code:    http.StatusBadRequest,
+			}),
 		)
 	})
 }
