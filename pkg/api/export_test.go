@@ -37,7 +37,6 @@ var (
 
 var (
 	ErrNoResolver                  = errNoResolver
-	ErrInvalidNameOrAddress        = errInvalidNameOrAddress
 	ErrUnsupportedDevNodeOperation = errUnsupportedDevNodeOperation
 )
 
