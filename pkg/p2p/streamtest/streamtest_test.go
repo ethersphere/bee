@@ -375,7 +375,8 @@ func TestRecorder_resetAfterPartialWrite(t *testing.T) {
 
 		// stream should be closed and read should return streamtest.ErrStreamClosed
 		if _, err := rw.ReadString('\n'); !errors.Is(err, streamtest.ErrStreamClosed) {
-			return fmt.Errorf("got error %v, want %w", err, streamtest.ErrStreamClosed)
+			cause := fmt.Sprintf("got error %v, want %v", err, streamtest.ErrStreamClosed)
+			return errors.New(cause)
 		}
 
 		return nil

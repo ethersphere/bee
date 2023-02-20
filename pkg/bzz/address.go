@@ -18,6 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/hashicorp/go-multierror"
 
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -84,7 +85,8 @@ func ParseAddress(underlay, overlay, signature, nonce []byte, validateOverlay bo
 
 	ethAddress, err := crypto.NewEthereumAddress(*recoveredPK)
 	if err != nil {
-		return nil, fmt.Errorf("extract ethereum address: %v: %w", err, ErrInvalidAddress)
+		err := multierror.Append(err, ErrInvalidAddress)
+		return nil, fmt.Errorf("extract ethereum address: %w", err)
 	}
 
 	return &Address{

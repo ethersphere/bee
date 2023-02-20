@@ -12,6 +12,7 @@ import (
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/hashicorp/go-multierror"
 )
 
 // StampSize is the number of bytes in the serialisation of a stamp
@@ -126,7 +127,8 @@ func ValidStamp(batchStore Storer) ValidStampFn {
 		b, err := batchStore.Get(stamp.BatchID())
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
-				return nil, fmt.Errorf("batchstore get: %v, %w", err, ErrNotFound)
+				err := multierror.Append(err, ErrNotFound)
+				return nil, fmt.Errorf("batchstore get: %w", err)
 			}
 			return nil, err
 		}

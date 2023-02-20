@@ -9,6 +9,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/resolver"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/hashicorp/go-multierror"
 	"github.com/ipfs/go-cid"
 	"github.com/multiformats/go-multihash"
 )
@@ -25,7 +26,8 @@ type Resolver struct{}
 func (Resolver) Resolve(name string) (swarm.Address, error) {
 	id, err := cid.Parse(name)
 	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("failed parsing CID %s err %v: %w", name, err, resolver.ErrParse)
+		err := multierror.Append(err, resolver.ErrParse)
+		return swarm.ZeroAddress, fmt.Errorf("failed parsing CID %s: %w", name, err)
 	}
 
 	switch id.Prefix().GetCodec() {
@@ -38,7 +40,8 @@ func (Resolver) Resolve(name string) (swarm.Address, error) {
 
 	dh, err := multihash.Decode(id.Hash())
 	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("unable to decode hash %v: %w", err, resolver.ErrInvalidContentHash)
+		err := multierror.Append(err, resolver.ErrInvalidContentHash)
+		return swarm.ZeroAddress, fmt.Errorf("unable to decode hash: %w", err)
 	}
 
 	addr := swarm.NewAddress(dh.Digest)

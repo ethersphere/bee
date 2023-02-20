@@ -29,6 +29,7 @@ import (
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/hashicorp/go-multierror"
 	opentracing "github.com/opentracing/opentracing-go"
 )
 
@@ -520,7 +521,8 @@ func (ps *PushSync) pushPeer(ctx context.Context, resultChan chan<- receiptResul
 	creditAction, err := ps.accounting.PrepareCredit(creditCtx, peer, receiptPrice, origin)
 	if err != nil {
 		if errors.Is(err, accounting.ErrOverdraft) || errors.Is(err, accounting.ErrFailToLock) {
-			err = fmt.Errorf("pushsync: prepare credit: %v: %w", err, errNotAttempted)
+			err = multierror.Append(err, errNotAttempted)
+			err = fmt.Errorf("pushsync: prepare credit: %w", err)
 			return
 		}
 		err = fmt.Errorf("reserve balance for peer %s: %w", peer, err)

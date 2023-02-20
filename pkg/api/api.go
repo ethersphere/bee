@@ -106,7 +106,6 @@ const (
 )
 
 var (
-	errInvalidNameOrAddress        = errors.New("invalid name or bzz address")
 	errNoResolver                  = errors.New("no resolver connected")
 	errInvalidRequest              = errors.New("could not validate request")
 	errInvalidContentType          = errors.New("invalid content-type")
@@ -394,7 +393,7 @@ func (s *Service) resolveNameOrAddress(str string) (swarm.Address, error) {
 		return addr, nil
 	}
 
-	return swarm.ZeroAddress, fmt.Errorf("%v: %w", errInvalidNameOrAddress, err)
+	return swarm.ZeroAddress, fmt.Errorf("invalid name or bzz address: %w", err)
 }
 
 // requestModePut returns the desired storage.ModePut for this request based on the request headers.

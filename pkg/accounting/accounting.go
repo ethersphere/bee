@@ -21,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/hashicorp/go-multierror"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -114,7 +115,7 @@ func (m *Mutex) TryLock(ctx context.Context) error {
 	case m.mu <- struct{}{}:
 		return nil // locked
 	case <-ctx.Done():
-		return fmt.Errorf("%v: %w", ctx.Err(), ErrFailToLock)
+		return multierror.Append(ctx.Err(), ErrFailToLock)
 	}
 }
 
