@@ -86,7 +86,7 @@ format:
 
 .PHONY: lint
 lint: linter
-	$(GOLANGCI_LINT) run ./...
+	$(GOLANGCI_LINT) run -vv ./...
 
 .PHONY: linter
 linter:
