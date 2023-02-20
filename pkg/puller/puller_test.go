@@ -402,7 +402,7 @@ func TestBinReset(t *testing.T) {
 // the tested unit.
 func TestDepthChange(t *testing.T) {
 	t.Parallel()
-	t.Skip()
+	t.Skip("this test always panics")
 
 	var (
 		addr     = test.RandomAddress()

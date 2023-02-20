@@ -102,7 +102,7 @@ func TestReserveSampler(t *testing.T) {
 	})
 }
 
-func TestReserveSamplerStop(t *testing.T) {
+func TestReserveSamplerStop_FLAKY(t *testing.T) {
 	const chunkCountPerPO = 10
 	const maxPO = 10
 	var (
