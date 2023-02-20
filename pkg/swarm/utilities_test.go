@@ -5,10 +5,10 @@
 package swarm_test
 
 import (
-	"crypto/rand"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
 func Test_ContainsAddress(t *testing.T) {
@@ -203,18 +203,6 @@ func Test_FindStampWithBatchID(t *testing.T) {
 	}
 }
 
-func randomBytes(t *testing.T, size int) []byte {
-	t.Helper()
-
-	buf := make([]byte, size)
-	_, err := rand.Read(buf)
-	if err != nil {
-		t.Fatal(err.Error())
-	}
-
-	return buf
-}
-
 func cloneAddresses(addrs []swarm.Address) []swarm.Address {
 	result := make([]swarm.Address, len(addrs))
 	for i := 0; i < len(addrs); i++ {
@@ -236,13 +224,13 @@ func makeAddreses(t *testing.T, count int) []swarm.Address {
 func makeAddress(t *testing.T) swarm.Address {
 	t.Helper()
 
-	return swarm.NewAddress(randomBytes(t, swarm.HashSize))
+	return swarm.NewAddress(testutil.RandBytes(t, swarm.HashSize))
 }
 
 func makeBatchID(t *testing.T) []byte {
 	t.Helper()
 
-	return randomBytes(t, swarm.HashSize)
+	return testutil.RandBytes(t, swarm.HashSize)
 }
 
 func makeStamp(t *testing.T) swarm.Stamp {

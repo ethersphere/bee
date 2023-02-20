@@ -18,13 +18,13 @@ package encryption_test
 
 import (
 	"bytes"
-	crand "crypto/rand"
 	"encoding/hex"
 	"math/rand"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/encryption"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -170,23 +170,8 @@ func testEncryptDecryptIsIdentity(t *testing.T, initCtr uint32, padding, dataLen
 func TestEncryptSectioned(t *testing.T) {
 	t.Parallel()
 
-	data := make([]byte, 4096)
-	c, err := crand.Read(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if c < 4096 {
-		t.Fatalf("short read %d", c)
-	}
-
-	key := make([]byte, encryption.KeyLength)
-	c, err = crand.Read(key)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if c < encryption.KeyLength {
-		t.Fatalf("short read %d", c)
-	}
+	data := testutil.RandBytes(t, 4096)
+	key := testutil.RandBytes(t, encryption.KeyLength)
 
 	enc := encryption.New(key, 0, uint32(42), sha3.NewLegacyKeccak256)
 	whole, err := enc.Encrypt(data)

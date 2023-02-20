@@ -6,7 +6,6 @@ package file_test
 
 import (
 	"bytes"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"io"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
 // TestChunkPipe verifies that the reads are correctly buffered for
@@ -137,9 +137,7 @@ func TestCopyBuffer(t *testing.T) {
 			readBufferSize := tc.readBufferSize
 			dataSize := tc.dataSize
 			chunkPipe := file.NewChunkPipe()
-			srcBytes := make([]byte, dataSize)
-
-			_, _ = rand.Read(srcBytes)
+			srcBytes := testutil.RandBytes(t, dataSize)
 
 			// destination
 			resultC := make(chan readResult, 1)
