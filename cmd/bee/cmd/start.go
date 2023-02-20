@@ -54,8 +54,9 @@ var beeWelcomeMessage string
 
 func (c *command) initStartCmd() (err error) {
 	cmd := &cobra.Command{
-		Use:   "start",
-		Short: "Start a Swarm node",
+		Use:               "start",
+		Short:             "Start a Swarm node",
+		PersistentPreRunE: c.CheckUnknownParams,
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			if len(args) > 0 {
 				return cmd.Help()
