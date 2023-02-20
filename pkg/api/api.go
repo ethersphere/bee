@@ -10,7 +10,6 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -40,11 +39,9 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
-	"github.com/ethersphere/bee/pkg/pinning"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/pss"
-	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/resolver"
 	"github.com/ethersphere/bee/pkg/resolver/client/ens"
 	"github.com/ethersphere/bee/pkg/sctx"
@@ -118,14 +115,11 @@ var (
 )
 
 type Service struct {
-	auth auth.Authenticator
-	// tags *tags.Tags
-	// storer          storage.Storer
+	auth            auth.Authenticator
 	storer          storer.Storer
 	resolver        resolver.Interface
 	pss             pss.Interface
 	traversal       traversal.Traverser
-	pinning         pinning.Interface
 	steward         steward.Interface
 	logger          log.Logger
 	loggerV1        log.Logger
@@ -134,7 +128,6 @@ type Service struct {
 	signer          crypto.Signer
 	post            postage.Service
 	postageContract postagecontract.Interface
-	chunkPushC      chan *pusher.Op
 	probe           *Probe
 	metricsRegistry *prometheus.Registry
 	stakingContract staking.Contract
@@ -212,28 +205,24 @@ type Options struct {
 }
 
 type ExtraOptions struct {
-	Pingpong       pingpong.Interface
-	TopologyDriver topology.Driver
-	LightNodes     *lightnode.Container
-	Accounting     accounting.Interface
-	Pseudosettle   settlement.Interface
-	Swap           swap.Interface
-	Chequebook     chequebook.Service
-	BlockTime      time.Duration
-	// Tags           *tags.Tags
-	// Storer           storage.Storer
-	Storer           storer.Storer
-	Resolver         resolver.Interface
-	Pss              pss.Interface
-	TraversalService traversal.Traverser
-	Pinning          pinning.Interface
-	FeedFactory      feeds.Factory
-	Post             postage.Service
-	PostageContract  postagecontract.Interface
-	Staking          staking.Contract
-	Steward          steward.Interface
-	SyncStatus       func() (bool, error)
-	IndexDebugger    StorageIndexDebugger
+	Pingpong        pingpong.Interface
+	TopologyDriver  topology.Driver
+	LightNodes      *lightnode.Container
+	Accounting      accounting.Interface
+	Pseudosettle    settlement.Interface
+	Swap            swap.Interface
+	Chequebook      chequebook.Service
+	BlockTime       time.Duration
+	Storer          storer.Storer
+	Resolver        resolver.Interface
+	Pss             pss.Interface
+	FeedFactory     feeds.Factory
+	Post            postage.Service
+	PostageContract postagecontract.Interface
+	Staking         staking.Contract
+	Steward         steward.Interface
+	SyncStatus      func() (bool, error)
+	IndexDebugger   StorageIndexDebugger
 }
 
 func New(
@@ -285,9 +274,8 @@ func New(
 }
 
 // Configure will create a and initialize a new API service.
-func (s *Service) Configure(signer crypto.Signer, auth auth.Authenticator, tracer *tracing.Tracer, o Options, e ExtraOptions, chainID int64, erc20 erc20.Service) <-chan *pusher.Op {
+func (s *Service) Configure(signer crypto.Signer, auth auth.Authenticator, tracer *tracing.Tracer, o Options, e ExtraOptions, chainID int64, erc20 erc20.Service) {
 	s.auth = auth
-	s.chunkPushC = make(chan *pusher.Op)
 	s.signer = signer
 	s.Options = o
 	s.tracer = tracer
@@ -298,8 +286,6 @@ func (s *Service) Configure(signer crypto.Signer, auth auth.Authenticator, trace
 	s.storer = e.Storer
 	s.resolver = e.Resolver
 	s.pss = e.Pss
-	s.traversal = e.TraversalService
-	s.pinning = e.Pinning
 	s.feedFactory = e.FeedFactory
 	s.post = e.Post
 	s.postageContract = e.PostageContract
@@ -334,8 +320,6 @@ func (s *Service) Configure(signer crypto.Signer, auth auth.Authenticator, trace
 			return "", err
 		}
 	}
-
-	return s.chunkPushC
 }
 
 func (s *Service) SetProbe(probe *Probe) {
@@ -400,36 +384,6 @@ func (s *Service) resolveNameOrAddress(str string) (swarm.Address, error) {
 	}
 
 	return swarm.ZeroAddress, fmt.Errorf("%v: %w", errInvalidNameOrAddress, err)
-}
-
-func requestPin(r *http.Request) bool {
-	return strings.ToLower(r.Header.Get(SwarmPinHeader)) == boolHeaderSetValue
-}
-
-func requestEncrypt(r *http.Request) bool {
-	return strings.ToLower(r.Header.Get(SwarmEncryptHeader)) == boolHeaderSetValue
-}
-
-func requestDeferred(r *http.Request) (bool, error) {
-	if h := strings.ToLower(r.Header.Get(SwarmDeferredUploadHeader)); h != "" {
-		return strconv.ParseBool(h)
-	}
-	return true, nil
-}
-
-func requestPostageBatchId(r *http.Request) ([]byte, error) {
-	if h := strings.ToLower(r.Header.Get(SwarmPostageBatchIdHeader)); h != "" {
-		if len(h) != 64 {
-			return nil, errInvalidPostageBatch
-		}
-		b, err := hex.DecodeString(h)
-		if err != nil {
-			return nil, errInvalidPostageBatch
-		}
-		return b, nil
-	}
-
-	return nil, errInvalidPostageBatch
 }
 
 type securityTokenRsp struct {
@@ -893,11 +847,4 @@ func calculateNumberOfChunks(contentLength int64, isEncrypted bool) int64 {
 	}
 
 	return int64(totalChunks) + 1
-}
-
-func requestCalculateNumberOfChunks(r *http.Request) int64 {
-	if !strings.Contains(r.Header.Get(contentTypeHeader), "multipart") && r.ContentLength > 0 {
-		return calculateNumberOfChunks(r.ContentLength, requestEncrypt(r))
-	}
-	return 0
 }

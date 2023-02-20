@@ -66,7 +66,7 @@ func (s *Service) dirUploadHandler(
 
 	reference, err := storeDir(
 		r.Context(),
-		requestEncrypt(r),
+		encrypt,
 		dReader,
 		logger,
 		putter,
