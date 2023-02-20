@@ -5,13 +5,13 @@
 package bzz_test
 
 import (
-	"crypto/rand"
 	"testing"
 
 	ma "github.com/multiformats/go-multiaddr"
 
 	"github.com/ethersphere/bee/pkg/bzz"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
 func Test_ContainsAddress(t *testing.T) {
@@ -61,20 +61,9 @@ func makeAddress(t *testing.T) bzz.Address {
 
 	return bzz.Address{
 		Underlay:        multiaddr,
-		Overlay:         swarm.NewAddress(randomBytes(t, 12)),
-		Signature:       randomBytes(t, 12),
-		Transaction:     randomBytes(t, 12),
-		EthereumAddress: randomBytes(t, 32),
+		Overlay:         swarm.NewAddress(testutil.RandBytes(t, 12)),
+		Signature:       testutil.RandBytes(t, 12),
+		Transaction:     testutil.RandBytes(t, 12),
+		EthereumAddress: testutil.RandBytes(t, 32),
 	}
-}
-
-func randomBytes(t *testing.T, size int) []byte {
-	t.Helper()
-
-	buf := make([]byte, size)
-	_, err := rand.Read(buf)
-	if err != nil {
-		t.Fatal(err.Error())
-	}
-	return buf
 }

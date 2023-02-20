@@ -19,7 +19,6 @@ package localstore
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"errors"
 	"sync"
 	"testing"
@@ -30,6 +29,7 @@ import (
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
@@ -483,10 +483,8 @@ func TestDB_collectGarbageWorker_withRequests(t *testing.T) {
 // database is initialized with existing data.
 func TestDB_gcSize(t *testing.T) {
 	dir := t.TempDir()
-	baseKey := make([]byte, 32)
-	if _, err := rand.Read(baseKey); err != nil {
-		t.Fatal(err)
-	}
+	baseKey := testutil.RandBytes(t, 32)
+
 	logger := log.Noop
 	db, err := New(dir, baseKey, nil, nil, logger)
 	if err != nil {
