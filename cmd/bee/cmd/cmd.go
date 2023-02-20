@@ -332,3 +332,21 @@ func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {
 		log.WithVerbosity(vLevel),
 	).Register(), nil
 }
+
+func (c *command) CheckUnknownParams(cmd *cobra.Command, args []string) error {
+	if err := c.initConfig(); err != nil {
+		return err
+	}
+	var unknownParams []string
+	for _, v := range c.config.AllKeys() {
+		if cmd.Flags().Lookup(v) == nil {
+			unknownParams = append(unknownParams, v)
+		}
+	}
+
+	if len(unknownParams) > 0 {
+		return fmt.Errorf("unknown parameters:\n\t%v", strings.Join(unknownParams, "\n\t"))
+	}
+
+	return nil
+}
