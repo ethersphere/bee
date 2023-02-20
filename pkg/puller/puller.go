@@ -251,6 +251,17 @@ func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, storageRadius uin
 func (p *Puller) syncPeerBin(ctx context.Context, peer *syncPeer, bin uint8, cur uint64) {
 	binCtx, cancel := context.WithCancel(ctx)
 	peer.setBinCancel(cancel, bin)
+
+	// a zero cursor could be due to 1) the peer is a fresh node, 2) the peer nuked it's the localstore
+	// in the case it has been nuked, we must reset the peer intervals we have locally of the peer
+	if cur == 0 {
+		err := p.resetPeerInterval(peer.address, bin)
+		if err != nil {
+			p.logger.Error(err, "coud not reset peer interval", "peer_address", peer.address, "bin", bin)
+			return
+		}
+	}
+
 	if cur > 0 {
 		p.wg.Add(1)
 		p.activeHistoricalSyncing.Inc()
@@ -426,6 +437,10 @@ func (p *Puller) resetIntervals(upto uint8) error {
 	}
 
 	return nil
+}
+
+func (p *Puller) resetPeerInterval(add swarm.Address, bin uint8) error {
+	return p.statestore.Delete(peerIntervalKey(add, bin))
 }
 
 func (p *Puller) nextPeerInterval(peer swarm.Address, bin uint8) (start, end uint64, empty bool, err error) {
