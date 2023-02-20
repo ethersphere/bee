@@ -106,14 +106,6 @@ else
 	$(GO) test -race -failfast -v ./...
 endif
 
-.PHONY: test-race-ci
-test-race-ci:
-ifdef cover
-	$(GO) test -race -coverprofile=cover.out -v ./...
-else
-	$(GO) test -race -v ./...
-endif
-
 .PHONY: test-integration
 test-integration:
 	$(GO) test -tags=integration -v ./...
@@ -129,10 +121,22 @@ endif
 .PHONY: test-ci
 test-ci:
 ifdef cover
-	$(GO) test -coverprofile=cover.out -v ./...
+	$(GO) test -run "[^FLAKY]$$" -v -coverprofile=cover.out ./...
 else
-	$(GO) test -v ./...
+	$(GO) test -run "[^FLAKY]$$" -v ./...
 endif
+
+.PHONY: test-ci-race
+test-ci-race:
+ifdef cover
+	$(GO) test -race -run "[^FLAKY]$$" -v -coverprofile=cover.out ./...
+else
+	$(GO) test -race -run "[^FLAKY]$$" -v ./...
+endif
+
+.PHONY: test-ci-flaky
+test-ci-flaky:
+	$(GO) test -race -run "FLAKY$$" -v ./...
 
 .PHONY: build
 build: export CGO_ENABLED=0
