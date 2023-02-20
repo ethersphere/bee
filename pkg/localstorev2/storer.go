@@ -202,9 +202,7 @@ func initDiskRepository(ctx context.Context, basePath string, opts *Options) (st
 		}
 	}
 
-	txStore := leveldbstore.NewTxStore(store)
-
-	recoveryCloser, err := sharkyRecovery(ctx, sharkyBasePath, txStore, opts)
+	recoveryCloser, err := sharkyRecovery(ctx, sharkyBasePath, store, opts)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to recover sharky: %w", err)
 	}
@@ -218,6 +216,7 @@ func initDiskRepository(ctx context.Context, basePath string, opts *Options) (st
 		return nil, nil, fmt.Errorf("failed creating sharky instance: %w", err)
 	}
 
+	txStore := leveldbstore.NewTxStore(store)
 	txChunkStore := chunkstore.NewTxChunkStore(txStore, sharky)
 
 	return storage.NewRepository(txStore, txChunkStore), closer(store, sharky, recoveryCloser), nil

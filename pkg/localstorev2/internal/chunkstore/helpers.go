@@ -29,19 +29,24 @@ func IterateLocations(
 		err := st.Iterate(storage.Query{
 			Factory: func() storage.Item { return new(retrievalIndexItem) },
 		}, func(r storage.Result) (bool, error) {
+			entry := r.Entry.(*retrievalIndexItem)
+			result := LocationResult{Location: entry.Location}
+
 			select {
 			case <-ctx.Done():
 				return true, ctx.Err()
-			default:
+			case locationResultC <- result:
 			}
-
-			entry := r.Entry.(*retrievalIndexItem)
-			locationResultC <- LocationResult{Location: entry.Location}
 
 			return false, nil
 		})
 		if err != nil {
-			locationResultC <- LocationResult{Err: fmt.Errorf("iterate retrieval index error: %w", err)}
+			result := LocationResult{Err: fmt.Errorf("iterate retrieval index error: %w", err)}
+
+			select {
+			case <-ctx.Done():
+			case locationResultC <- result:
+			}
 		}
 	}()
 }

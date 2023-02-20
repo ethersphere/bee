@@ -79,7 +79,10 @@ func TestIterateLocations_Stop(t *testing.T) {
 		}
 
 		buf := make([]byte, resp.Location.Length)
-		assert.NoError(t, cs.sharky.Read(ctx, resp.Location, buf))
+		if err := cs.sharky.Read(ctx, resp.Location, buf); err != nil {
+			assert.ErrorIs(t, err, context.Canceled)
+			break
+		}
 
 		assert.True(t, swarm.ContainsChunkWithData(testChunks, buf))
 		readCount++
@@ -89,7 +92,7 @@ func TestIterateLocations_Stop(t *testing.T) {
 		}
 	}
 
-	assert.Equal(t, stopReadAt, readCount)
+	assert.InDelta(t, stopReadAt, readCount, 1)
 }
 
 type chunkStore struct {
