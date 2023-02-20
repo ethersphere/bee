@@ -6,7 +6,6 @@ package pullstorage_test
 
 import (
 	"context"
-	"crypto/rand"
 	"errors"
 	"reflect"
 	"sync"
@@ -21,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	stesting "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
 var (
@@ -573,10 +573,7 @@ func newPullStorage(t *testing.T, o ...mock.Option) (pullstorage.Storer, *mock.M
 func newTestDB(t *testing.T, o *localstore.Options) (baseKey []byte, db *localstore.DB) {
 	t.Helper()
 
-	baseKey = make([]byte, 32)
-	if _, err := rand.Read(baseKey); err != nil {
-		t.Fatal(err)
-	}
+	baseKey = testutil.RandBytes(t, 32)
 
 	createLocalstoreLock.Lock()
 	defer createLocalstoreLock.Unlock()

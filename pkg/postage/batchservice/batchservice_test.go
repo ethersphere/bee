@@ -7,7 +7,6 @@ package batchservice_test
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"errors"
 	"hash"
 	"math/big"
@@ -21,6 +20,7 @@ import (
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	mocks "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
 var (
@@ -175,8 +175,7 @@ func TestBatchServiceCreate(t *testing.T) {
 		testAmount := postagetesting.NewBigInt()
 
 		// create a owner different from the batch owner
-		owner := make([]byte, 32)
-		_, _ = rand.Read(owner)
+		owner := testutil.RandBytes(t, 32)
 
 		svc, batchStore, _ := newTestStoreAndServiceWithListener(
 			t,
@@ -310,8 +309,7 @@ func TestBatchServiceTopUp(t *testing.T) {
 	t.Run("passes without BatchEventListener update", func(t *testing.T) {
 		testBatchListener := &mockBatchListener{}
 		// create an owner different from the batch owner
-		owner := make([]byte, 32)
-		_, _ = rand.Read(owner)
+		owner := testutil.RandBytes(t, 32)
 
 		svc, batchStore, _ := newTestStoreAndServiceWithListener(
 			t,
@@ -414,8 +412,7 @@ func TestBatchServiceUpdateDepth(t *testing.T) {
 	t.Run("passes without BatchEventListener update", func(t *testing.T) {
 		testBatchListener := &mockBatchListener{}
 		// create an owner different from the batch owner
-		owner := make([]byte, 32)
-		_, _ = rand.Read(owner)
+		owner := testutil.RandBytes(t, 32)
 
 		svc, batchStore, _ := newTestStoreAndServiceWithListener(
 			t,

@@ -7,7 +7,6 @@ package redistribution_test
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"errors"
 	"fmt"
 	"math/big"
@@ -23,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/transaction"
 	transactionMock "github.com/ethersphere/bee/pkg/transaction/mock"
 	"github.com/ethersphere/bee/pkg/util/abiutil"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
 var redistributionContractABI = abiutil.MustParseABI(chaincfg.Testnet.RedistributionABI)
@@ -314,11 +314,7 @@ func TestRedistribution(t *testing.T) {
 
 	t.Run("Reserve Salt", func(t *testing.T) {
 		t.Parallel()
-		someSalt := make([]byte, 32)
-		_, err := rand.Read(someSalt)
-		if err != nil {
-			t.Fatal(err)
-		}
+		someSalt := testutil.RandBytes(t, 32)
 		contract := redistribution.New(
 			owner,
 			log.Noop,

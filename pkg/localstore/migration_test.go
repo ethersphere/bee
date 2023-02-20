@@ -18,11 +18,11 @@
 package localstore
 
 import (
-	"crypto/rand"
 	"strings"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
 func TestOneMigration(t *testing.T) {
@@ -48,11 +48,7 @@ func TestOneMigration(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	baseKey := make([]byte, 32)
-	if _, err := rand.Read(baseKey); err != nil {
-		t.Fatal(err)
-	}
-
+	baseKey := testutil.RandBytes(t, 32)
 	logger := log.Noop
 
 	// start the fresh localstore with the sanctuary schema name
@@ -132,10 +128,7 @@ func TestManyMigrations(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	baseKey := make([]byte, 32)
-	if _, err := rand.Read(baseKey); err != nil {
-		t.Fatal(err)
-	}
+	baseKey := testutil.RandBytes(t, 32)
 	logger := log.Noop
 
 	// start the fresh localstore with the sanctuary schema name
@@ -208,10 +201,7 @@ func TestMigrationErrorFrom(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	baseKey := make([]byte, 32)
-	if _, err := rand.Read(baseKey); err != nil {
-		t.Fatal(err)
-	}
+	baseKey := testutil.RandBytes(t, 32)
 	logger := log.Noop
 
 	// start the fresh localstore with the sanctuary schema name
@@ -264,10 +254,7 @@ func TestMigrationErrorTo(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	baseKey := make([]byte, 32)
-	if _, err := rand.Read(baseKey); err != nil {
-		t.Fatal(err)
-	}
+	baseKey := testutil.RandBytes(t, 32)
 
 	logger := log.Noop
 
