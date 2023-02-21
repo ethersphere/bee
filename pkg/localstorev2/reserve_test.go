@@ -29,6 +29,7 @@ import (
 )
 
 func TestEvictBatch(t *testing.T) {
+	t.Parallel()
 
 	baseAddr := test.RandomAddress()
 	dbReserveOps(baseAddr, 100, nil, nil, nil, nil, time.Minute)
@@ -112,6 +113,7 @@ func TestEvictBatch(t *testing.T) {
 // }
 
 func TestUnreserveCap(t *testing.T) {
+	t.Parallel()
 
 	var (
 		storageRadius = 2
@@ -181,6 +183,7 @@ func TestUnreserveCap(t *testing.T) {
 }
 
 func TestRadiusManager(t *testing.T) {
+	t.Parallel()
 
 	baseAddr := test.RandomAddress()
 
