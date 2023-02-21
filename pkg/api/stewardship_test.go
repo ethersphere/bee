@@ -12,26 +12,22 @@ import (
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
+	mockstorer "github.com/ethersphere/bee/pkg/localstorev2/mock"
 	"github.com/ethersphere/bee/pkg/log"
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/steward/mock"
-	smock "github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/tags"
 )
 
 // nolint:paralleltest
 func TestStewardship(t *testing.T) {
 	var (
-		logger         = log.Noop
-		statestoreMock = statestore.NewStateStore()
-		stewardMock    = &mock.Steward{}
-		storer         = smock.NewStorer()
-		addr           = swarm.NewAddress([]byte{31: 128})
+		logger      = log.Noop
+		stewardMock = &mock.Steward{}
+		storer      = mockstorer.New()
+		addr        = swarm.NewAddress([]byte{31: 128})
 	)
 	client, _, _, _ := newTestServer(t, testServerOptions{
 		Storer:  storer,
-		Tags:    tags.NewTags(statestoreMock, logger),
 		Logger:  logger,
 		Steward: stewardMock,
 	})

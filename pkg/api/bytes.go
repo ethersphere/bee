@@ -16,12 +16,11 @@ import (
 	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/storage"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/util/ioutil"
 	"github.com/gorilla/mux"
-	"github.com/hashicorp/go-multierror"
 )
 
 type bytesPostResponse struct {
@@ -48,7 +47,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		tag uint64
 		err error
 	)
-	if !headers.Deferred {
+	if headers.Deferred {
 		tag, err = s.getOrCreateSessionID(headers.SwarmTag)
 		if err != nil {
 			logger.Debug("get or create tag failed", "error", err)
@@ -99,7 +98,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	})
 	address, err := p(ctx, pr)
 	if err != nil {
-		logger.Debug("split write all failed", "error", multierror.Append(err, putter.Cleanup()))
+		logger.Debug("split write all failed", "error", err)
 		logger.Error(nil, "split write all failed")
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):

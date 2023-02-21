@@ -16,14 +16,11 @@ import (
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	"github.com/ethersphere/bee/pkg/log"
+	mockstorer "github.com/ethersphere/bee/pkg/localstorev2/mock"
 	"github.com/ethersphere/bee/pkg/postage"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	testingsoc "github.com/ethersphere/bee/pkg/soc/testing"
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/tags"
 )
 
 // nolint:paralleltest
@@ -31,14 +28,10 @@ func TestSOC(t *testing.T) {
 	var (
 		testData        = []byte("foo")
 		socResource     = func(owner, id, sig string) string { return fmt.Sprintf("/soc/%s/%s?sig=%s", owner, id, sig) }
-		mockStatestore  = statestore.NewStateStore()
-		logger          = log.Noop
-		tag             = tags.NewTags(mockStatestore, logger)
 		mp              = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))
-		mockStorer      = mock.NewStorer()
+		mockStorer      = mockstorer.New()
 		client, _, _, _ = newTestServer(t, testServerOptions{
 			Storer: mockStorer,
-			Tags:   tag,
 			Post:   mp,
 		})
 	)

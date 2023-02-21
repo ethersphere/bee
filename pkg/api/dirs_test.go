@@ -21,13 +21,11 @@ import (
 	"github.com/ethersphere/bee/pkg/file/loadsave"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
+	mockstorer "github.com/ethersphere/bee/pkg/localstorev2/mock"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/manifest"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/tags"
 )
 
 // nolint:paralleltest
@@ -36,12 +34,10 @@ func TestDirs(t *testing.T) {
 		dirUploadResource   = "/bzz"
 		bzzDownloadResource = func(addr, path string) string { return "/bzz/" + addr + "/" + path }
 		ctx                 = context.Background()
-		storer              = mock.NewStorer()
-		mockStatestore      = statestore.NewStateStore()
+		storer              = mockstorer.New()
 		logger              = log.Noop
 		client, _, _, _     = newTestServer(t, testServerOptions{
 			Storer:          storer,
-			Tags:            tags.NewTags(mockStatestore, logger),
 			Logger:          logger,
 			PreventRedirect: true,
 			Post:            mockpost.New(mockpost.WithAcceptAll()),
@@ -289,7 +285,7 @@ func TestDirs(t *testing.T) {
 			// verify manifest content
 			verifyManifest, err := manifest.NewDefaultManifestReference(
 				resp.Reference,
-				loadsave.NewReadonly(storer),
+				loadsave.NewReadonly(storer.ChunkStore()),
 			)
 			if err != nil {
 				t.Fatal(err)
@@ -488,16 +484,14 @@ func TestDirs(t *testing.T) {
 				},
 			},
 		})
-		tag := tags.NewTags(statestore.NewStateStore(), log.Noop)
 		clientTagExists, _, _, _ := newTestServer(t, testServerOptions{
-			Tags:   tag,
 			Storer: storer,
 			Logger: logger,
 			Post:   mockpost.New(mockpost.WithAcceptAll()),
 		})
 
 		jsonhttptest.Request(t, clientTagExists, http.MethodPost, dirUploadResource, http.StatusNotFound,
-			jsonhttptest.WithRequestHeader(api.SwarmTagHeader, strconv.FormatUint(uint64(tag.TagUidFunc()), 10)),
+			jsonhttptest.WithRequestHeader(api.SwarmTagHeader, strconv.FormatUint(uint64(10000), 10)),
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(tr),
@@ -510,12 +504,10 @@ func TestEmtpyDir(t *testing.T) {
 
 	var (
 		dirUploadResource = "/bzz"
-		storer            = mock.NewStorer()
-		mockStatestore    = statestore.NewStateStore()
+		storer            = mockstorer.New()
 		logger            = log.Noop
 		client, _, _, _   = newTestServer(t, testServerOptions{
 			Storer:          storer,
-			Tags:            tags.NewTags(mockStatestore, logger),
 			Logger:          logger,
 			PreventRedirect: true,
 			Post:            mockpost.New(mockpost.WithAcceptAll()),

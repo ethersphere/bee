@@ -13,15 +13,11 @@ import (
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
+	mockstorer "github.com/ethersphere/bee/pkg/localstorev2/mock"
 	"github.com/ethersphere/bee/pkg/log"
-	pinning "github.com/ethersphere/bee/pkg/pinning/mock"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/bee/pkg/storage/mock"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/tags"
-	"github.com/ethersphere/bee/pkg/traversal"
 )
 
 func checkPinHandlers(t *testing.T, client *http.Client, rootHash string, createPin bool) {
@@ -83,14 +79,11 @@ func checkPinHandlers(t *testing.T, client *http.Client, rootHash string, create
 func TestPinHandlers(t *testing.T) {
 	var (
 		logger          = log.Noop
-		storerMock      = mock.NewStorer()
+		storerMock      = mockstorer.New()
 		client, _, _, _ = newTestServer(t, testServerOptions{
-			Storer:    storerMock,
-			Traversal: traversal.New(storerMock),
-			Tags:      tags.NewTags(statestore.NewStateStore(), logger),
-			Pinning:   pinning.NewServiceMock(),
-			Logger:    logger,
-			Post:      mockpost.New(mockpost.WithAcceptAll()),
+			Storer: storerMock,
+			Logger: logger,
+			Post:   mockpost.New(mockpost.WithAcceptAll()),
 		})
 	)
 

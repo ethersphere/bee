@@ -22,13 +22,6 @@ import (
 	"testing"
 	"time"
 
-	contractMock "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
-	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
-	"github.com/ethersphere/bee/pkg/storageincentives"
-	mock2 "github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
-	"github.com/ethersphere/bee/pkg/swarm/test"
-	"github.com/ethersphere/bee/pkg/transaction"
-
 	"github.com/ethereum/go-ethereum/common"
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
 	"github.com/ethersphere/bee/pkg/api"
@@ -39,36 +32,41 @@ import (
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
+	storer "github.com/ethersphere/bee/pkg/localstorev2"
+	mockstorer "github.com/ethersphere/bee/pkg/localstorev2/mock"
 	"github.com/ethersphere/bee/pkg/log"
 	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
 	"github.com/ethersphere/bee/pkg/pingpong"
-	"github.com/ethersphere/bee/pkg/pinning"
 	"github.com/ethersphere/bee/pkg/postage"
 	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
+	contractMock "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/resolver"
 	resolverMock "github.com/ethersphere/bee/pkg/resolver/mock"
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	chequebookmock "github.com/ethersphere/bee/pkg/settlement/swap/chequebook/mock"
+	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	erc20mock "github.com/ethersphere/bee/pkg/settlement/swap/erc20/mock"
 	swapmock "github.com/ethersphere/bee/pkg/settlement/swap/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/mock"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
+	"github.com/ethersphere/bee/pkg/storageincentives"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
+	mock2 "github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
+	storagev2 "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/tags"
+	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	topologymock "github.com/ethersphere/bee/pkg/topology/mock"
 	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/bee/pkg/transaction/backendmock"
 	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
-	"github.com/ethersphere/bee/pkg/traversal"
 	"github.com/gorilla/websocket"
 	"resenje.org/web"
 )
@@ -88,14 +86,11 @@ func init() {
 }
 
 type testServerOptions struct {
-	Storer             storage.Storer
+	Storer             storer.Storer
 	StateStorer        storage.StateStorer
 	Resolver           resolver.Interface
 	Pss                pss.Interface
-	Traversal          traversal.Traverser
-	Pinning            pinning.Interface
 	WsPath             string
-	Tags               *tags.Tags
 	WsPingPeriod       time.Duration
 	Logger             log.Logger
 	PreventRedirect    bool
@@ -125,7 +120,6 @@ type testServerOptions struct {
 	ChequebookOpts  []chequebookmock.Option
 	SwapOpts        []swapmock.Option
 	TransactionOpts []transactionmock.Option
-	Traverser       traversal.Traverser
 
 	BatchStore postage.Storer
 	SyncStatus func() (bool, error)
@@ -186,27 +180,24 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	backend := backendmock.New(o.BackendOpts...)
 
 	var extraOpts = api.ExtraOptions{
-		TopologyDriver:   topologyDriver,
-		Accounting:       acc,
-		Pseudosettle:     recipient,
-		LightNodes:       ln,
-		Swap:             settlement,
-		Chequebook:       chequebook,
-		Pingpong:         o.Pingpong,
-		BlockTime:        o.BlockTime,
-		Tags:             o.Tags,
-		Storer:           o.Storer,
-		Resolver:         o.Resolver,
-		Pss:              o.Pss,
-		TraversalService: o.Traversal,
-		Pinning:          o.Pinning,
-		FeedFactory:      o.Feeds,
-		Post:             o.Post,
-		PostageContract:  o.PostageContract,
-		Steward:          o.Steward,
-		SyncStatus:       o.SyncStatus,
-		Staking:          o.StakingContract,
-		IndexDebugger:    o.IndexDebugger,
+		TopologyDriver:  topologyDriver,
+		Accounting:      acc,
+		Pseudosettle:    recipient,
+		LightNodes:      ln,
+		Swap:            settlement,
+		Chequebook:      chequebook,
+		Pingpong:        o.Pingpong,
+		BlockTime:       o.BlockTime,
+		Storer:          o.Storer,
+		Resolver:        o.Resolver,
+		Pss:             o.Pss,
+		FeedFactory:     o.Feeds,
+		Post:            o.Post,
+		PostageContract: o.PostageContract,
+		Steward:         o.Steward,
+		SyncStatus:      o.SyncStatus,
+		Staking:         o.StakingContract,
+		IndexDebugger:   o.IndexDebugger,
 	}
 	// by default bee mode is set to full mode
 	if o.beeMode == api.LightMode {
@@ -229,7 +220,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 
 	t.Cleanup(func() { _ = tracerCloser.Close() })
 
-	chC := s.Configure(signer, o.Authenticator, noOpTracer, api.Options{
+	s.Configure(signer, o.Authenticator, noOpTracer, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
 		WsPingPeriod:       o.WsPingPeriod,
 		Restricted:         o.Restricted,
@@ -243,7 +234,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	}
 
 	if o.DirectUpload {
-		chanStore = newChanStore(chC)
+		chanStore = newChanStore(o.Storer.PusherFeed())
 		t.Cleanup(chanStore.stop)
 	}
 
@@ -323,9 +314,9 @@ func request(t *testing.T, client *http.Client, method, resource string, body io
 	return resp
 }
 
-func pipelineFactory(s storage.Putter, mode storage.ModePut, encrypt bool) func() pipeline.Interface {
+func pipelineFactory(s storagev2.Putter, encrypt bool) func() pipeline.Interface {
 	return func() pipeline.Interface {
-		return builder.NewPipelineBuilder(context.Background(), s, mode, encrypt)
+		return builder.NewPipelineBuilder(context.Background(), s, encrypt)
 	}
 }
 
@@ -458,13 +449,11 @@ func TestPostageHeaderError(t *testing.T) {
 	t.Parallel()
 
 	var (
-		mockStorer      = mock.NewStorer()
-		mockStatestore  = statestore.NewStateStore()
+		mockStorer      = mockstorer.New()
 		logger          = log.Noop
 		mp              = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))
 		client, _, _, _ = newTestServer(t, testServerOptions{
 			Storer: mockStorer,
-			Tags:   tags.NewTags(mockStatestore, logger),
 			Logger: logger,
 			Post:   mp,
 		})
@@ -569,8 +558,7 @@ func TestPostageDirectAndDeferred(t *testing.T) {
 	t.Parallel()
 
 	options := testServerOptions{
-		Storer: mock.NewStorer(),
-		Tags:   tags.NewTags(statestore.NewStateStore(), log.Noop),
+		Storer: mockstorer.New(),
 		Logger: log.Noop,
 		Post: mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer(
 			"",
@@ -608,7 +596,7 @@ func TestPostageDirectAndDeferred(t *testing.T) {
 			if err := json.Unmarshal(responseBytes, &body); err != nil {
 				t.Fatal("unmarshal response body:", err)
 			}
-			if found, _ := options.Storer.Has(context.Background(), body.Reference); !found {
+			if found, _ := options.Storer.ChunkStore().Has(context.Background(), body.Reference); !found {
 				t.Fatal("chunk not found in the store")
 			}
 			if found, _ := chanStorer.Has(context.Background(), body.Reference); found {
@@ -640,7 +628,7 @@ func TestPostageDirectAndDeferred(t *testing.T) {
 			if found, _ := chanStorer.Has(context.Background(), body.Reference); !found {
 				t.Fatal("chunk not received through the direct channel")
 			}
-			if found, _ := options.Storer.Has(context.Background(), body.Reference); found {
+			if found, _ := options.Storer.ChunkStore().Has(context.Background(), body.Reference); found {
 				t.Fatal("chunk was not expected to be present in store")
 			}
 		})
@@ -679,15 +667,7 @@ func (c *chanStorer) stop() {
 	close(c.quit)
 }
 
-func (c *chanStorer) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Address) (ch swarm.Chunk, err error) {
-	panic("not implemented") // TODO: Implement
-}
-
-func (c *chanStorer) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
-	panic("not implemented") // TODO: Implement
-}
-
-func (c *chanStorer) GetMulti(ctx context.Context, mode storage.ModeGet, addrs ...swarm.Address) (ch []swarm.Chunk, err error) {
+func (c *chanStorer) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, err error) {
 	panic("not implemented") // TODO: Implement
 }
 
@@ -697,30 +677,6 @@ func (c *chanStorer) Has(ctx context.Context, addr swarm.Address) (yes bool, err
 	c.lock.Unlock()
 
 	return ok, nil
-}
-
-func (c *chanStorer) HasMulti(ctx context.Context, addrs ...swarm.Address) (yes []bool, err error) {
-	panic("not implemented") // TODO: Implement
-}
-
-func (c *chanStorer) Set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Address) (err error) {
-	panic("not implemented") // TODO: Implement
-}
-
-func (c *chanStorer) LastPullSubscriptionBinID(bin uint8) (id uint64, err error) {
-	panic("not implemented") // TODO: Implement
-}
-
-func (c *chanStorer) SubscribePull(ctx context.Context, bin uint8, since uint64, until uint64) (<-chan storage.Descriptor, <-chan struct{}, func()) {
-	panic("not implemented") // TODO: Implement
-}
-
-func (c *chanStorer) SubscribePush(ctx context.Context, skipf func([]byte) bool) (<-chan swarm.Chunk, func(), func()) {
-	panic("not implemented") // TODO: Implement
-}
-
-func (c *chanStorer) Close() error {
-	panic("not implemented") // TODO: Implement
 }
 
 func createRedistributionAgentService(addr swarm.Address, storer storage.StateStorer, erc20Service erc20.Service, tranService transaction.Service) (*storageincentives.Agent, error) {

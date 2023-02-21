@@ -24,13 +24,13 @@ import (
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
+	mockstorer "github.com/ethersphere/bee/pkg/localstorev2/mock"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/spinlock"
-	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/websocket"
 )
@@ -187,7 +187,7 @@ func TestPssSend(t *testing.T) {
 		p               = newMockPss(sendFn)
 		client, _, _, _ = newTestServer(t, testServerOptions{
 			Pss:    p,
-			Storer: mock.NewStorer(),
+			Storer: mockstorer.New(),
 			Logger: logger,
 			Post:   mp,
 		})
@@ -382,7 +382,7 @@ func newPssTest(t *testing.T, o opts) (pss.Interface, *ecdsa.PublicKey, *websock
 	_, cl, listener, _ := newTestServer(t, testServerOptions{
 		Pss:          pss,
 		WsPath:       "/pss/subscribe/testtopic",
-		Storer:       mock.NewStorer(),
+		Storer:       mockstorer.New(),
 		Logger:       logger,
 		WsPingPeriod: o.pingPeriod,
 	})

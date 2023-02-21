@@ -14,18 +14,16 @@ import (
 	"testing"
 	"time"
 
+	mockstorer "github.com/ethersphere/bee/pkg/localstorev2/mock"
 	"github.com/ethersphere/bee/pkg/log"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	"github.com/ethersphere/bee/pkg/storage/mock"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
-	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/gorilla/websocket"
 	"gitlab.com/nolash/go-mockbytes"
 )
@@ -34,7 +32,7 @@ type fileUploadResponse struct {
 	Reference swarm.Address `json:"reference"`
 }
 
-func tagsWithIdResource(id uint32) string { return fmt.Sprintf("/tags/%d", id) }
+func tagsWithIdResource(id uint64) string { return fmt.Sprintf("/tags/%d", id) }
 
 // nolint:paralleltest
 func TestTags(t *testing.T) {
@@ -45,12 +43,10 @@ func TestTags(t *testing.T) {
 		chunksResource           = "/chunks"
 		tagsResource             = "/tags"
 		chunk                    = testingc.GenerateTestRandomChunk()
-		mockStatestore           = statestore.NewStateStore()
+		storerMock               = mockstorer.New()
 		logger                   = log.Noop
-		tag                      = tags.NewTags(mockStatestore, logger)
 		client, _, listenAddr, _ = newTestServer(t, testServerOptions{
-			Storer: mock.NewStorer(),
-			Tags:   tag,
+			Storer: storerMock,
 			Logger: logger,
 			Post:   mockpost.New(mockpost.WithAcceptAll()),
 		})
@@ -81,7 +77,7 @@ func TestTags(t *testing.T) {
 	})
 
 	t.Run("get non-existent tag", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodDelete, tagsWithIdResource(uint32(333)), http.StatusNotFound,
+		jsonhttptest.Request(t, client, http.MethodDelete, tagsWithIdResource(uint64(333)), http.StatusNotFound,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "tag not present",
 				Code:    http.StatusNotFound,
@@ -113,7 +109,7 @@ func TestTags(t *testing.T) {
 		)
 
 		isTagFoundInResponse(t, rcvdHeaders, &tr)
-		tagValueTest(t, tr.Uid, 1, 1, 1, 0, 0, 0, swarm.ZeroAddress, client)
+		tagValueTest(t, tr.Uid, 1, 1, 1, 0, 0, swarm.ZeroAddress, client)
 	})
 
 	t.Run("create tag upload chunk stream", func(t *testing.T) {
@@ -164,7 +160,7 @@ func TestTags(t *testing.T) {
 			}
 		}
 
-		tagValueTest(t, tr.Uid, 5, 5, 0, 0, 0, 0, swarm.ZeroAddress, client)
+		tagValueTest(t, tr.Uid, 5, 5, 0, 0, 0, swarm.ZeroAddress, client)
 	})
 
 	t.Run("list tags", func(t *testing.T) {
@@ -205,7 +201,7 @@ func TestTags(t *testing.T) {
 
 	t.Run("delete non-existent tag", func(t *testing.T) {
 		// try to delete non-existent tag
-		jsonhttptest.Request(t, client, http.MethodDelete, tagsWithIdResource(uint32(333)), http.StatusNotFound,
+		jsonhttptest.Request(t, client, http.MethodDelete, tagsWithIdResource(uint64(333)), http.StatusNotFound,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "tag not present",
 				Code:    http.StatusNotFound,
@@ -237,7 +233,7 @@ func TestTags(t *testing.T) {
 
 	t.Run("done split non-existent tag", func(t *testing.T) {
 		// non-existent tag
-		jsonhttptest.Request(t, client, http.MethodPatch, tagsWithIdResource(uint32(333)), http.StatusNotFound,
+		jsonhttptest.Request(t, client, http.MethodPatch, tagsWithIdResource(uint64(333)), http.StatusNotFound,
 			jsonhttptest.WithJSONRequestBody(api.TagResponse{}),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "tag not present",
@@ -276,7 +272,7 @@ func TestTags(t *testing.T) {
 				Code:    http.StatusOK,
 			}),
 		)
-		tagValueTest(t, tagId, 1, 1, 1, 0, 0, 1, addr, client)
+		tagValueTest(t, tagId, 1, 1, 1, 0, 0, addr, client)
 
 		// try different address value
 		addr = test.RandomAddress()
@@ -291,7 +287,7 @@ func TestTags(t *testing.T) {
 				Code:    http.StatusOK,
 			}),
 		)
-		tagValueTest(t, tagId, 1, 1, 1, 0, 0, 1, addr, client)
+		tagValueTest(t, tagId, 1, 1, 1, 0, 0, addr, client)
 	})
 
 	t.Run("file tags", func(t *testing.T) {
@@ -312,7 +308,7 @@ func TestTags(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		tagValueTest(t, uint32(tagId), 4, 4, 0, 0, 0, 4, expectedHash, client)
+		tagValueTest(t, uint64(tagId), 4, 4, 0, 0, 0, expectedHash, client)
 	})
 
 	t.Run("dir tags", func(t *testing.T) {
@@ -337,7 +333,7 @@ func TestTags(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		tagValueTest(t, uint32(tagId), 3, 3, 0, 0, 0, 3, expectedHash, client)
+		tagValueTest(t, uint64(tagId), 3, 3, 0, 0, 0, expectedHash, client)
 	})
 
 	t.Run("bytes tags", func(t *testing.T) {
@@ -375,15 +371,15 @@ func TestTags(t *testing.T) {
 		)
 		id := isTagFoundInResponse(t, rcvdHeaders, nil)
 
-		tagToVerify, err := tag.Get(id)
+		tagToVerify, err := storerMock.GetSessionInfo(id)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		if tagToVerify.Uid != tr.Uid {
-			t.Fatalf("expected tag id to be %d but is %d", tagToVerify.Uid, tr.Uid)
+		if tagToVerify.TagID != tr.Uid {
+			t.Fatalf("expected tag id to be %d but is %d", tagToVerify.TagID, tr.Uid)
 		}
-		tagValueTest(t, id, 3, 3, 1, 0, 0, 3, swarm.ZeroAddress, client)
+		tagValueTest(t, id, 3, 3, 1, 0, 0, swarm.ZeroAddress, client)
 	})
 }
 
@@ -428,7 +424,7 @@ func Test_tagHandlers_invalidInputs(t *testing.T) {
 
 // isTagFoundInResponse verifies that the tag id is found in the supplied HTTP headers
 // if an API tag response is supplied, it also verifies that it contains an id which matches the headers
-func isTagFoundInResponse(t *testing.T, headers http.Header, tr *api.TagResponse) uint32 {
+func isTagFoundInResponse(t *testing.T, headers http.Header, tr *api.TagResponse) uint64 {
 	t.Helper()
 
 	idStr := headers.Get(api.SwarmTagHeader)
@@ -436,7 +432,7 @@ func isTagFoundInResponse(t *testing.T, headers http.Header, tr *api.TagResponse
 		t.Fatalf("could not find tag id header in chunk upload response")
 	}
 	nId, err := strconv.Atoi(idStr)
-	id := uint32(nId)
+	id := uint64(nId)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -448,7 +444,7 @@ func isTagFoundInResponse(t *testing.T, headers http.Header, tr *api.TagResponse
 	return id
 }
 
-func tagValueTest(t *testing.T, id uint32, split, stored, seen, sent, synced, total int64, address swarm.Address, client *http.Client) {
+func tagValueTest(t *testing.T, id, split, stored, seen, sent, synced uint64, address swarm.Address, client *http.Client) {
 	t.Helper()
 	tag := api.TagResponse{}
 	jsonhttptest.Request(t, client, http.MethodGet, tagsWithIdResource(id), http.StatusOK,
@@ -460,8 +456,5 @@ func tagValueTest(t *testing.T, id uint32, split, stored, seen, sent, synced, to
 	}
 	if tag.Synced != seen+synced {
 		t.Errorf("tag synced count mismatch. got %d want %d (seen: %d, synced: %d)", tag.Synced, seen+synced, seen, synced)
-	}
-	if tag.Total != total {
-		t.Errorf("tag total count mismatch. got %d want %d", tag.Total, total)
 	}
 }
