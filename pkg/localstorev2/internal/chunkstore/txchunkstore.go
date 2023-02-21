@@ -10,7 +10,6 @@ import (
 
 	"github.com/ethersphere/bee/pkg/sharky"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
-	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/hashicorp/go-multierror"
 )
 
@@ -47,14 +46,6 @@ type txChunkStoreWrapper struct {
 
 	txStore storage.TxStore
 	sharky  *txSharky
-}
-
-func (t *txChunkStoreWrapper) Put(ctx context.Context, chunk swarm.Chunk) error {
-	return t.TxChunkStoreBase.Put(ctx, chunk)
-}
-
-func (t *txChunkStoreWrapper) Delete(ctx context.Context, address swarm.Address) error {
-	return t.TxChunkStoreBase.Delete(ctx, address)
 }
 
 func (t *txChunkStoreWrapper) Commit() error {
