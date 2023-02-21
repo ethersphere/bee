@@ -348,7 +348,7 @@ func TestDirectChunkUpload(t *testing.T) {
 			Pinning: pinningMock,
 			Tags:    tag,
 			Post:    mockpost.New(mockpost.WithAcceptAll()),
-			beeMode: api.DevMode,
+			BeeMode: api.DevMode,
 		})
 	)
 

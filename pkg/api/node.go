@@ -13,7 +13,8 @@ import (
 type BeeNodeMode uint
 
 const (
-	LightMode BeeNodeMode = iota
+	UnknownMode BeeNodeMode = iota
+	LightMode
 	FullMode
 	DevMode
 	UltraLightMode

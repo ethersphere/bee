@@ -133,8 +133,8 @@ type testServerOptions struct {
 
 	BackendOpts         []backendmock.Option
 	Erc20Opts           []erc20mock.Option
-	beeMode             api.BeeNodeMode
-	redistributionAgent *storageincentives.Agent
+	BeeMode             api.BeeNodeMode
+	RedistributionAgent *storageincentives.Agent
 }
 
 func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.Conn, string, *chanStorer) {
@@ -209,20 +209,22 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		Staking:          o.StakingContract,
 		IndexDebugger:    o.IndexDebugger,
 	}
-	// by default bee mode is set to full mode
-	if o.beeMode == api.LightMode {
-		o.beeMode = api.FullMode
+
+	// By default bee mode is set to full mode.
+	if o.BeeMode == api.UnknownMode {
+		o.BeeMode = api.FullMode
 	}
-	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.Logger, transaction, o.BatchStore, o.beeMode, true, true, backend, o.CORSAllowedOrigins)
+
+	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.Logger, transaction, o.BatchStore, o.BeeMode, true, true, backend, o.CORSAllowedOrigins)
 	cleanupCloser(t, s)
 
 	s.SetP2P(o.P2P)
 
-	if o.redistributionAgent == nil {
-		o.redistributionAgent, _ = createRedistributionAgentService(o.Overlay, o.StateStorer, erc20, transaction)
-		s.SetRedistributionAgent(o.redistributionAgent)
+	if o.RedistributionAgent == nil {
+		o.RedistributionAgent, _ = createRedistributionAgentService(o.Overlay, o.StateStorer, erc20, transaction)
+		s.SetRedistributionAgent(o.RedistributionAgent)
 	}
-	cleanupCloser(t, o.redistributionAgent)
+	cleanupCloser(t, o.RedistributionAgent)
 
 	s.SetSwarmAddress(&o.Overlay)
 	s.SetProbe(o.Probe)

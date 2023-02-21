@@ -13,13 +13,11 @@ import (
 func TestBeeNodeMode_String(t *testing.T) {
 	t.Parallel()
 
-	const nonExistingMode api.BeeNodeMode = 4
-
 	mapping := map[string]string{
+		api.UnknownMode.String(): "unknown",
 		api.LightMode.String():   "light",
 		api.FullMode.String():    "full",
 		api.DevMode.String():     "dev",
-		nonExistingMode.String(): "unknown",
 	}
 
 	for have, want := range mapping {

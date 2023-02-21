@@ -36,9 +36,10 @@ var (
 )
 
 var (
-	ErrNoResolver                  = errNoResolver
-	ErrInvalidNameOrAddress        = errInvalidNameOrAddress
-	ErrUnsupportedDevNodeOperation = errUnsupportedDevNodeOperation
+	ErrNoResolver                       = errNoResolver
+	ErrInvalidNameOrAddress             = errInvalidNameOrAddress
+	ErrUnsupportedDevNodeOperation      = errUnsupportedDevNodeOperation
+	ErrOperationSupportedOnlyInFullMode = errOperationSupportedOnlyInFullMode
 )
 
 var (

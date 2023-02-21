@@ -400,7 +400,7 @@ func TestDirectUploadBytes(t *testing.T) {
 			Pinning: pinningMock,
 			Logger:  logger,
 			Post:    mockpost.New(mockpost.WithAcceptAll()),
-			beeMode: api.DevMode,
+			BeeMode: api.DevMode,
 		})
 	)
 

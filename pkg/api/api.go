@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/ethersphere/bee/pkg/storageincentives"
 	"io"
 	"math"
 	"math/big"
@@ -52,6 +51,7 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storageincentives"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
@@ -106,15 +106,16 @@ const (
 )
 
 var (
-	errInvalidNameOrAddress        = errors.New("invalid name or bzz address")
-	errNoResolver                  = errors.New("no resolver connected")
-	errInvalidRequest              = errors.New("could not validate request")
-	errInvalidContentType          = errors.New("invalid content-type")
-	errDirectoryStore              = errors.New("could not store directory")
-	errFileStore                   = errors.New("could not store file")
-	errInvalidPostageBatch         = errors.New("invalid postage batch id")
-	errBatchUnusable               = errors.New("batch not usable")
-	errUnsupportedDevNodeOperation = errors.New("operation not supported in dev mode")
+	errInvalidNameOrAddress             = errors.New("invalid name or bzz address")
+	errNoResolver                       = errors.New("no resolver connected")
+	errInvalidRequest                   = errors.New("could not validate request")
+	errInvalidContentType               = errors.New("invalid content-type")
+	errDirectoryStore                   = errors.New("could not store directory")
+	errFileStore                        = errors.New("could not store file")
+	errInvalidPostageBatch              = errors.New("invalid postage batch id")
+	errBatchUnusable                    = errors.New("batch not usable")
+	errUnsupportedDevNodeOperation      = errors.New("operation not supported in dev mode")
+	errOperationSupportedOnlyInFullMode = errors.New("operation is supported only in full mode")
 )
 
 type Service struct {
