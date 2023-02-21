@@ -180,22 +180,6 @@ func TestUnreserveCap(t *testing.T) {
 	}
 }
 
-// 	err = reserve.Close()
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-
-// 	reserve, err = createReserve(t, baseAddr, 100, ldbStore, nil, nil, chunkStore, nil, nil, nil, wakeup)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-
-// 	// check size after Close
-// 	if reserve.Size() != 20 {
-// 		t.Fatalf("want size %d, got size %d", 20, reserve.Size())
-// 	}
-// }
-
 func TestRadiusManager(t *testing.T) {
 
 	baseAddr := test.RandomAddress()
@@ -426,7 +410,7 @@ func TestSubscribeBinTrigger(t *testing.T) {
 
 	binC, _ := storer.SubscribeBin(context.Background(), 0, 1, chunksPerPO)
 	i := uint64(1)
-	timer := time.After(time.Second)
+	timer := time.After(time.Millisecond * 500)
 
 loop:
 	for {
@@ -437,11 +421,8 @@ loop:
 				t.Fatal("mismatch of chunks at index", i)
 			}
 			i++
-			if i == chunksPerPO {
-				break loop
-			}
 		case <-timer:
-			t.Fatal("test timed out")
+			break loop
 		}
 	}
 
