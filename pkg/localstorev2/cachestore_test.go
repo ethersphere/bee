@@ -131,7 +131,7 @@ func TestCacheStore(t *testing.T) {
 		t.Parallel()
 
 		testCacheStore(t, func() (*storer.DB, error) {
-			return storer.New("", &storer.Options{
+			return storer.New(context.Background(), "", &storer.Options{
 				CacheCapacity: 10,
 				Logger:        log.Noop,
 			})

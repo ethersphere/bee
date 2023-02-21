@@ -134,7 +134,7 @@ func TestPinStore(t *testing.T) {
 	t.Run("inmem", func(t *testing.T) {
 		t.Parallel()
 
-		testPinStore(t, func() (*storer.DB, error) { return storer.New("", nil) })
+		testPinStore(t, func() (*storer.DB, error) { return storer.New(context.Background(), "", nil) })
 	})
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
