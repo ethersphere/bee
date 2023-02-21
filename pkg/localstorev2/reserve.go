@@ -162,7 +162,7 @@ func (db *DB) unreserve(ctx context.Context) error {
 		}
 
 		radius++
-		db.reserve.SetRadius(radius)
+		_ = db.reserve.SetRadius(radius)
 	}
 }
 

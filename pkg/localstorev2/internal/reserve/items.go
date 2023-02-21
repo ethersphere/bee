@@ -43,6 +43,10 @@ func (b *batchRadiusItem) Clone() storage.Item {
 	}
 }
 
+func (b *batchRadiusItem) String() string {
+	return ""
+}
+
 const batchRadiusItemSize = 1 + swarm.HashSize + swarm.HashSize + 8
 
 func (b *batchRadiusItem) Marshal() ([]byte, error) {
@@ -112,6 +116,10 @@ func (b *chunkBinItem) Clone() storage.Item {
 	}
 }
 
+func (b *chunkBinItem) String() string {
+	return ""
+}
+
 const chunkBinItemSize = 1 + 8 + swarm.HashSize
 
 func (b *chunkBinItem) Marshal() ([]byte, error) {
@@ -162,6 +170,10 @@ func (b *binItem) Clone() storage.Item {
 		PO:    b.PO,
 		BinID: b.BinID,
 	}
+}
+
+func (b *binItem) String() string {
+	return ""
 }
 
 const binItemSize = 8
