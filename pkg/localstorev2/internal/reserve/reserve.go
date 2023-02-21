@@ -25,8 +25,6 @@ const loggerName = "reserve"
 const storageRadiusKey = "reserve_storage_radius"
 const DefaultRadiusWakeUpTime = time.Minute * 5
 
-var errBelowRadius = errors.New("proximity order below radius")
-
 type Reserve struct {
 	mtx sync.Mutex
 
