@@ -728,13 +728,13 @@ func TestNextTagID(t *testing.T) {
 	ts := newTestStorage(t)
 
 	for i := 1; i < 4; i++ {
-		id, err := upload.NextTag(ts.IndexStore())
+		tag, err := upload.NextTag(ts.IndexStore())
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		if id != uint64(i) {
-			t.Fatalf("incorrect tag ID returned, exp: %d found %d", i, id)
+		if tag.TagID != uint64(i) {
+			t.Fatalf("incorrect tag ID returned, exp: %d found %d", i, tag.TagID)
 		}
 	}
 
