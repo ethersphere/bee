@@ -126,7 +126,7 @@ func ValidStamp(batchStore Storer) ValidStampFn {
 		b, err := batchStore.Get(stamp.BatchID())
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
-				return nil, fmt.Errorf("batchstore get: %v, %w", err, ErrNotFound)
+				return nil, fmt.Errorf("batchstore get: %w, %w", err, ErrNotFound)
 			}
 			return nil, err
 		}
