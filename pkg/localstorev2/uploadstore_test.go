@@ -248,7 +248,9 @@ func TestUploadStore(t *testing.T) {
 	t.Run("inmem", func(t *testing.T) {
 		t.Parallel()
 
-		testUploadStore(t, func() (*storer.DB, error) { return storer.New("", nil) })
+		testUploadStore(t, func() (*storer.DB, error) {
+			return storer.New(context.Background(), "", nil)
+		})
 	})
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()

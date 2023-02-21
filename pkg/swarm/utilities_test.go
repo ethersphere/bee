@@ -233,3 +233,5 @@ func (s stamp) Timestamp() []byte { return nil }
 func (s stamp) MarshalBinary() (data []byte, err error) { return nil, nil }
 
 func (s stamp) UnmarshalBinary(data []byte) error { return nil }
+
+func (s stamp) Clone() swarm.Stamp { return s }
