@@ -895,7 +895,7 @@ func TestDirectUploadBzz(t *testing.T) {
 		Logger:     logger,
 		Post:       mockpost.New(mockpost.WithAcceptAll()),
 		BatchStore: mockbatchstore.New(),
-		beeMode:    api.DevMode,
+		BeeMode:    api.DevMode,
 	})
 	jsonhttptest.Request(t, clientBatchUnusable, http.MethodPost, fileUploadResource, http.StatusBadRequest,
 		jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "false"),
