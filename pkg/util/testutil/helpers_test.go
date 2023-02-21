@@ -8,15 +8,18 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/util/testutil"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestRandBytes(t *testing.T) {
 	t.Parallel()
 
-	bytes := testutil.RandBytes(t, 32)
-	assert.Len(t, bytes, 32)
-	assert.NotEmpty(t, bytes)
+	const size = 32
+
+	bytes := testutil.RandBytes(t, size)
+
+	if got := len(bytes); got != size {
+		t.Fatalf("expected %d, got %d", size, got)
+	}
 }
 
 func TestCleanupCloser(t *testing.T) {
@@ -35,8 +38,12 @@ func TestCleanupCloser(t *testing.T) {
 	// Test first add it's own Cleanup function which will
 	// assert that all Close method is being invoked
 	t.Cleanup(func() {
-		assert.Len(t, c1, 1)
-		assert.Len(t, c2, 1)
+		if got := len(c1); got != 1 {
+			t.Fatalf("expected %d, got %d", 1, got)
+		}
+		if got := len(c2); got != 1 {
+			t.Fatalf("expected %d, got %d", 1, got)
+		}
 	})
 
 	testutil.CleanupCloser(t,

@@ -9,8 +9,6 @@ import (
 	"io"
 	"reflect"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
 // RandBytes returns bytes slice of specified size filled with random values.
@@ -19,8 +17,12 @@ func RandBytes(t *testing.T, size int) []byte {
 
 	buf := make([]byte, size)
 	n, err := rand.Read(buf)
-	assert.NoError(t, err)
-	assert.Equal(t, size, n)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != size {
+		t.Fatalf("expected to read %d, got %d", size, n)
+	}
 
 	return buf
 }
