@@ -5,6 +5,7 @@
 package testutil_test
 
 import (
+	"bytes"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/util/testutil"
@@ -15,10 +16,14 @@ func TestRandBytes(t *testing.T) {
 
 	const size = 32
 
-	bytes := testutil.RandBytes(t, size)
+	randBytes := testutil.RandBytes(t, size)
 
-	if got := len(bytes); got != size {
+	if got := len(randBytes); got != size {
 		t.Fatalf("expected %d, got %d", size, got)
+	}
+
+	if bytes.Equal(randBytes, make([]byte, size)) {
+		t.Fatalf("bytes should not be zero value")
 	}
 }
 
