@@ -293,7 +293,7 @@ func TestNetStore(t *testing.T) {
 		t.Parallel()
 
 		testNetStore(t, func(r retrieval.Interface) (*storer.DB, error) {
-			return storer.New("", &storer.Options{
+			return storer.New(context.Background(), "", &storer.Options{
 				Retrieval:     r,
 				CacheCapacity: 100,
 				Logger:        log.Noop,

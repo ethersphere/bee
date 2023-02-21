@@ -174,7 +174,7 @@ const (
 	defaultBgCacheWorkers         = 16
 )
 
-func initDiskRepository(basePath string, opts *Options) (storage.Repository, io.Closer, error) {
+func initDiskRepository(ctx context.Context, basePath string, opts *Options) (storage.Repository, io.Closer, error) {
 	ldbBasePath := path.Join(basePath, "indexstore")
 
 	if _, err := os.Stat(ldbBasePath); os.IsNotExist(err) {
@@ -202,6 +202,11 @@ func initDiskRepository(basePath string, opts *Options) (storage.Repository, io.
 		}
 	}
 
+	recoveryCloser, err := sharkyRecovery(ctx, sharkyBasePath, store, opts)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to recover sharky: %w", err)
+	}
+
 	sharky, err := sharky.New(
 		&dirFS{basedir: sharkyBasePath},
 		sharkyNoOfShards,
@@ -214,11 +219,11 @@ func initDiskRepository(basePath string, opts *Options) (storage.Repository, io.
 	txStore := leveldbstore.NewTxStore(store)
 	txChunkStore := chunkstore.NewTxChunkStore(txStore, sharky)
 
-	return storage.NewRepository(txStore, txChunkStore), closer(store, sharky), nil
+	return storage.NewRepository(txStore, txChunkStore), closer(store, sharky, recoveryCloser), nil
 }
 
-func initCache(capacity uint64, repo storage.Repository) (*cache.Cache, error) {
-	ctx, cancel := context.WithCancel(context.Background())
+func initCache(ctx context.Context, capacity uint64, repo storage.Repository) (*cache.Cache, error) {
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
 	txnRepo, commit, rollback := repo.NewTx(ctx)
@@ -274,7 +279,7 @@ type DB struct {
 
 // New returns a newly constructed DB object which implements all the above
 // component stores.
-func New(dirPath string, opts *Options) (*DB, error) {
+func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	// TODO: migration handling and sharky recovery
 	var (
 		repo     storage.Repository
@@ -284,13 +289,14 @@ func New(dirPath string, opts *Options) (*DB, error) {
 	if opts == nil {
 		opts = defaultOptions()
 	}
+
 	if dirPath == "" {
 		repo, dbCloser, err = initInmemRepository()
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		repo, dbCloser, err = initDiskRepository(dirPath, opts)
+		repo, dbCloser, err = initDiskRepository(ctx, dirPath, opts)
 		if err != nil {
 			return nil, err
 		}
@@ -301,7 +307,7 @@ func New(dirPath string, opts *Options) (*DB, error) {
 		return nil, err
 	}
 
-	cacheObj, err := initCache(opts.CacheCapacity, repo)
+	cacheObj, err := initCache(ctx, opts.CacheCapacity, repo)
 	if err != nil {
 		return nil, err
 	}
