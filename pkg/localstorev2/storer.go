@@ -351,7 +351,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 
 	reserveRadius := opts.Batchstore.GetReserveState().Radius
 
-	reserve, err := initReserve(repo.IndexStore(), opts.Address, opts.ReserveCapacity, reserveRadius, opts.StateStore, opts.RadiusSetter, logger)
+	reserve, err := reserve.New(opts.Address, repo.IndexStore(), opts.ReserveCapacity, reserveRadius, opts.StateStore, opts.RadiusSetter, logger)
 	if err != nil {
 		return nil, err
 	}

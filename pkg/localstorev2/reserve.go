@@ -11,28 +11,16 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/reserve"
-	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pullsync"
-	stateStore "github.com/ethersphere/bee/pkg/storage"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/topology"
 )
 
 const (
 	reserveOverCapacity = "reserveOverCapacity"
 	reserveUnreserved   = "reserveUnreserved"
 )
-
-func initReserve(store storage.Store, baseAddr swarm.Address, capacity int, reserveRadius uint8, stateStore stateStore.StateStorer, radiusSetter topology.SetStorageRadiuser, logger log.Logger) (*reserve.Reserve, error) {
-	r, err := reserve.New(baseAddr, store, capacity, reserveRadius, stateStore, radiusSetter, logger)
-	if err != nil {
-		return nil, err
-	}
-
-	return r, nil
-}
 
 func (db *DB) reserveWorker(capacity int, syncer pullsync.SyncReporter, warmupDur, wakeUpDur time.Duration) {
 
