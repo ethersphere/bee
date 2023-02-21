@@ -6,11 +6,14 @@ package testutil
 
 import (
 	"crypto/rand"
+	"io"
+	"reflect"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
+// RandBytes returns bytes slice of specified size filled with random values.
 func RandBytes(t *testing.T, size int) []byte {
 	t.Helper()
 
@@ -20,4 +23,21 @@ func RandBytes(t *testing.T, size int) []byte {
 	assert.Equal(t, size, n)
 
 	return buf
+}
+
+// CleanupCloser adds Cleanup function to Test which will close supplied Closers.
+func CleanupCloser(t *testing.T, closers ...io.Closer) {
+	t.Helper()
+
+	t.Cleanup(func() {
+		for _, c := range closers {
+			if c == nil {
+				continue
+			}
+
+			if err := c.Close(); err != nil {
+				t.Fatalf("failed to gracefully close %s: %s", reflect.TypeOf(c), err)
+			}
+		}
+	})
 }

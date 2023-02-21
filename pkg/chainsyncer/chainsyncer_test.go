@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology/mock"
 	"github.com/ethersphere/bee/pkg/transaction/backendmock"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
 // nolint:paralleltest
@@ -64,7 +65,8 @@ func TestChainsyncer(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			defer cs.Close()
+			testutil.CleanupCloser(t, cs)
+
 			cb(t)
 		}
 	}

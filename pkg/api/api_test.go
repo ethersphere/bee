@@ -18,7 +18,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
-	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -29,6 +28,7 @@ import (
 	mock2 "github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
 	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/ethersphere/bee/pkg/transaction"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 
 	"github.com/ethereum/go-ethereum/common"
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
@@ -216,7 +216,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	}
 
 	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.Logger, transaction, o.BatchStore, o.BeeMode, true, true, backend, o.CORSAllowedOrigins)
-	cleanupCloser(t, s)
+	testutil.CleanupCloser(t, s)
 
 	s.SetP2P(o.P2P)
 
@@ -224,7 +224,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		o.RedistributionAgent, _ = createRedistributionAgentService(o.Overlay, o.StateStorer, erc20, transaction)
 		s.SetRedistributionAgent(o.RedistributionAgent)
 	}
-	cleanupCloser(t, o.RedistributionAgent)
+	testutil.CleanupCloser(t, o.RedistributionAgent)
 
 	s.SetSwarmAddress(&o.Overlay)
 	s.SetProbe(o.Probe)
@@ -232,7 +232,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	noOpTracer, tracerCloser, _ := tracing.NewTracer(&tracing.Options{
 		Enabled: false,
 	})
-	cleanupCloser(t, tracerCloser)
+	testutil.CleanupCloser(t, tracerCloser)
 
 	chC := s.Configure(signer, o.Authenticator, noOpTracer, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
@@ -300,7 +300,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		if err != nil {
 			t.Fatalf("dial: %v. url %v", err, u.String())
 		}
-		cleanupCloser(t, conn)
+		testutil.CleanupCloser(t, conn)
 	}
 
 	if o.PreventRedirect {
@@ -651,20 +651,6 @@ func TestPostageDirectAndDeferred_FLAKY(t *testing.T) {
 			}
 		})
 	}
-}
-
-func cleanupCloser(t *testing.T, c io.Closer) {
-	t.Helper()
-
-	if c == nil {
-		return
-	}
-
-	t.Cleanup(func() {
-		if err := c.Close(); err != nil {
-			t.Fatalf("failed to gracefully close %s: %s", reflect.TypeOf(c), err)
-		}
-	})
 }
 
 type chanStorer struct {

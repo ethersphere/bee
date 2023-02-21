@@ -24,6 +24,7 @@ import (
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
 // TestInmemoryStore tests basic functionality of InmemoryStore.
@@ -43,7 +44,7 @@ func TestDBStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	testutil.CleanupCloser(t, store)
 
 	testStore(t, store)
 }

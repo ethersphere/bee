@@ -13,21 +13,21 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	erc20mock "github.com/ethersphere/bee/pkg/settlement/swap/erc20/mock"
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
-	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
-
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	contractMock "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
+	erc20mock "github.com/ethersphere/bee/pkg/settlement/swap/erc20/mock"
+	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storageincentives"
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
+	"github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
+	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
 func TestAgent(t *testing.T) {
@@ -92,6 +92,7 @@ func TestAgent(t *testing.T) {
 			contract := &mockContract{}
 
 			service, _ := createService(addr, backend, contract, tc.blocksPerRound, tc.blocksPerPhase)
+			testutil.CleanupCloser(t, service)
 
 			<-wait
 
@@ -99,11 +100,6 @@ func TestAgent(t *testing.T) {
 				if len(contract.callsList) > 0 {
 					t.Fatal("got unexpected calls")
 				} else {
-					err := service.Close()
-					if err != nil {
-						t.Fatal(err)
-					}
-
 					return
 				}
 			}
@@ -132,11 +128,6 @@ func TestAgent(t *testing.T) {
 				}
 
 				prevCall = contract.callsList[i]
-			}
-
-			err := service.Close()
-			if err != nil {
-				t.Fatal(err)
 			}
 		})
 	}

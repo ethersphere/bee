@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -135,7 +136,7 @@ func TestTags(t *testing.T) {
 		if err != nil {
 			t.Fatalf("dial: %v. url %v", err, u.String())
 		}
-		cleanupCloser(t, wsConn)
+		testutil.CleanupCloser(t, wsConn)
 
 		for i := 0; i < 5; i++ {
 			ch := testingc.GenerateTestRandomChunk()

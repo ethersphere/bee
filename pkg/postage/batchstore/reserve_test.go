@@ -15,6 +15,7 @@ import (
 	postagetest "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	"github.com/ethersphere/bee/pkg/swarm/test"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
 type testBatch struct {
@@ -457,11 +458,7 @@ func setupBatchStore(t *testing.T) postage.Storer {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		if err := stateStore.Close(); err != nil {
-			t.Fatal(err)
-		}
-	})
+	testutil.CleanupCloser(t, stateStore)
 
 	evictFn := func(b []byte) error {
 		return nil

@@ -1047,7 +1047,6 @@ func TestReachabilityUpdate(t *testing.T) {
 			},
 		),
 	})
-	defer s1.Close()
 
 	emitReachabilityChanged, _ := s1.Host().EventBus().Emitter(new(event.EvtLocalReachabilityChanged), eventbus.Stateful)
 

@@ -22,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 	"github.com/multiformats/go-multiaddr"
 )
 
@@ -72,6 +73,7 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
 
 	if o.lightNodes == nil {
 		o.lightNodes = lightnode.NewContainer(overlay)
@@ -83,6 +85,7 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 	if err != nil {
 		t.Fatal(err)
 	}
+	testutil.CleanupCloser(t, s)
 
 	if o.notifier != nil {
 		s.SetPickyNotifier(o.notifier)
@@ -90,10 +93,6 @@ func newService(t *testing.T, networkID uint64, o libp2pServiceOpts) (s *libp2p.
 
 	_ = s.Ready()
 
-	t.Cleanup(func() {
-		cancel()
-		s.Close()
-	})
 	return s, overlay
 }
 

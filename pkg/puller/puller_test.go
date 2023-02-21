@@ -23,6 +23,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
 	kadMock "github.com/ethersphere/bee/pkg/topology/kademlia/mock"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
 const max = math.MaxUint64
@@ -47,7 +48,7 @@ func TestOneSync(t *testing.T) {
 
 	bsMock.New(bsMock.WithReserveState(&postage.ReserveState{StorageRadius: 1}))
 
-	puller, _, kad, pullsync := newPuller(opts{
+	puller, _, kad, pullsync := newPuller(t, opts{
 		kad: []kadMock.Option{
 			kadMock.WithEachPeerRevCalls(
 				kadMock.AddrTuple{Addr: addr, PO: 1},
@@ -57,8 +58,6 @@ func TestOneSync(t *testing.T) {
 		bins:     3,
 		bs:       bsMock.WithReserveState(&postage.ReserveState{StorageRadius: 1}),
 	})
-	defer puller.Close()
-	defer pullsync.Close()
 	time.Sleep(100 * time.Millisecond)
 
 	kad.Trigger()
@@ -79,7 +78,7 @@ func TestSyncOutsideDepth(t *testing.T) {
 		cursors = []uint64{1000, 1000, 1000, 1000}
 	)
 
-	puller, _, kad, pullsync := newPuller(opts{
+	puller, _, kad, pullsync := newPuller(t, opts{
 		kad: []kadMock.Option{
 			kadMock.WithEachPeerRevCalls(
 				kadMock.AddrTuple{Addr: addr, PO: 2},
@@ -90,8 +89,7 @@ func TestSyncOutsideDepth(t *testing.T) {
 		bins:     4,
 		bs:       bsMock.WithReserveState(&postage.ReserveState{StorageRadius: 2}),
 	})
-	defer puller.Close()
-	defer pullsync.Close()
+
 	time.Sleep(100 * time.Millisecond)
 
 	kad.Trigger()
@@ -137,7 +135,7 @@ func TestSyncFlow_PeerWithinDepth_Live(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			puller, st, kad, pullsync := newPuller(opts{
+			puller, st, kad, pullsync := newPuller(t, opts{
 				kad: []kadMock.Option{
 					kadMock.WithEachPeerRevCalls(
 						kadMock.AddrTuple{Addr: addr, PO: 1},
@@ -147,10 +145,7 @@ func TestSyncFlow_PeerWithinDepth_Live(t *testing.T) {
 				bins:     2,
 				bs:       bsMock.WithReserveState(&postage.ReserveState{StorageRadius: 1}),
 			})
-			t.Cleanup(func() {
-				pullsync.Close()
-				puller.Close()
-			})
+
 			time.Sleep(100 * time.Millisecond)
 
 			kad.Trigger()
@@ -221,7 +216,7 @@ func TestSyncFlow_PeerWithinDepth_Historical(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			puller, st, kad, pullsync := newPuller(opts{
+			puller, st, kad, pullsync := newPuller(t, opts{
 				kad: []kadMock.Option{
 					kadMock.WithEachPeerRevCalls(
 						kadMock.AddrTuple{Addr: addr, PO: 1},
@@ -231,8 +226,7 @@ func TestSyncFlow_PeerWithinDepth_Historical(t *testing.T) {
 				bins:     2,
 				bs:       bsMock.WithReserveState(&postage.ReserveState{StorageRadius: 1}),
 			})
-			defer puller.Close()
-			defer pullsync.Close()
+
 			time.Sleep(100 * time.Millisecond)
 
 			kad.Trigger()
@@ -276,7 +270,7 @@ func TestSyncFlow_PeerWithinDepth_Live2(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			puller, st, kad, pullsync := newPuller(opts{
+			puller, st, kad, pullsync := newPuller(t, opts{
 				kad: []kadMock.Option{
 					kadMock.WithEachPeerRevCalls(
 						kadMock.AddrTuple{Addr: addr, PO: 3}, // po is 3, depth is 2, so we're in depth
@@ -286,8 +280,7 @@ func TestSyncFlow_PeerWithinDepth_Live2(t *testing.T) {
 				bins:     5,
 				bs:       bsMock.WithReserveState(&postage.ReserveState{StorageRadius: 2}),
 			})
-			defer puller.Close()
-			defer pullsync.Close()
+
 			time.Sleep(100 * time.Millisecond)
 
 			kad.Trigger()
@@ -313,7 +306,7 @@ func TestPeerDisconnected(t *testing.T) {
 	cursors := []uint64{0, 0, 0, 0, 0}
 	addr := test.RandomAddress()
 
-	p, _, kad, pullsync := newPuller(opts{
+	p, _, kad, pullsync := newPuller(t, opts{
 		kad: []kadMock.Option{
 			kadMock.WithEachPeerRevCalls(
 				kadMock.AddrTuple{Addr: addr, PO: 1},
@@ -322,10 +315,6 @@ func TestPeerDisconnected(t *testing.T) {
 		pullSync: []mockps.Option{mockps.WithCursors(cursors)},
 		bins:     5,
 		bs:       bsMock.WithReserveState(&postage.ReserveState{StorageRadius: 2}),
-	})
-	t.Cleanup(func() {
-		pullsync.Close()
-		p.Close()
 	})
 
 	time.Sleep(50 * time.Millisecond)
@@ -352,7 +341,7 @@ func TestBinReset(t *testing.T) {
 		liveReplies = []uint64{1001}
 	)
 
-	puller, s, kad, pullsync := newPuller(opts{
+	puller, s, kad, pullsync := newPuller(t, opts{
 		kad: []kadMock.Option{
 			kadMock.WithEachPeerRevCalls(
 				kadMock.AddrTuple{Addr: addr, PO: 1},
@@ -362,8 +351,7 @@ func TestBinReset(t *testing.T) {
 		bins:     3,
 		bs:       bsMock.WithReserveState(&postage.ReserveState{StorageRadius: 1}),
 	})
-	defer puller.Close()
-	defer pullsync.Close()
+
 	time.Sleep(100 * time.Millisecond)
 
 	kad.Trigger()
@@ -477,7 +465,7 @@ func TestDepthChange(t *testing.T) {
 				syncRadius = tc.binsSyncing[0]
 			}
 
-			puller, st, kad, pullsync := newPuller(opts{
+			puller, st, kad, pullsync := newPuller(t, opts{
 				kad: []kadMock.Option{
 					kadMock.WithEachPeerRevCalls(kadMock.AddrTuple{Addr: addr, PO: 3}),
 				},
@@ -485,8 +473,6 @@ func TestDepthChange(t *testing.T) {
 				bins:     5,
 				bs:       bsMock.WithReserveState(&postage.ReserveState{StorageRadius: syncRadius}),
 			})
-			defer puller.Close()
-			defer pullsync.Close()
 
 			time.Sleep(100 * time.Millisecond)
 
@@ -520,7 +506,7 @@ func TestContinueSyncing(t *testing.T) {
 		addr = test.RandomAddress()
 	)
 
-	puller, _, kad, pullsync := newPuller(opts{
+	puller, _, kad, pullsync := newPuller(t, opts{
 		kad: []kadMock.Option{
 			kadMock.WithEachPeerRevCalls(kadMock.AddrTuple{Addr: addr, PO: 0}),
 		},
@@ -532,8 +518,6 @@ func TestContinueSyncing(t *testing.T) {
 
 		syncSleepDur: time.Millisecond * 10,
 	})
-	defer puller.Close()
-	defer pullsync.Close()
 
 	time.Sleep(100 * time.Millisecond)
 	kad.Trigger()
@@ -558,7 +542,7 @@ func TestPeerGone(t *testing.T) {
 		addr = test.RandomAddress()
 	)
 
-	p, _, kad, pullsync := newPuller(opts{
+	p, _, kad, pullsync := newPuller(t, opts{
 		kad: []kadMock.Option{
 			kadMock.WithEachPeerRevCalls(kadMock.AddrTuple{Addr: addr, PO: 1}),
 		},
@@ -570,8 +554,6 @@ func TestPeerGone(t *testing.T) {
 
 		syncSleepDur: time.Millisecond * 10,
 	})
-	defer p.Close()
-	defer pullsync.Close()
 
 	time.Sleep(100 * time.Millisecond)
 	kad.Trigger()
@@ -802,7 +784,9 @@ type opts struct {
 	syncSleepDur time.Duration
 }
 
-func newPuller(ops opts) (*puller.Puller, storage.StateStorer, *kadMock.Mock, *mockps.PullSyncMock) {
+func newPuller(t *testing.T, ops opts) (*puller.Puller, storage.StateStorer, *kadMock.Mock, *mockps.PullSyncMock) {
+	t.Helper()
+
 	s := mock.NewStateStore()
 	ps := mockps.NewPullSync(ops.pullSync...)
 	kad := kadMock.NewMockKademlia(ops.kad...)
@@ -813,7 +797,11 @@ func newPuller(ops opts) (*puller.Puller, storage.StateStorer, *kadMock.Mock, *m
 		Bins:         ops.bins,
 		SyncSleepDur: ops.syncSleepDur,
 	}
-	return puller.New(s, kad, bs, ps, nil, logger, o, 0), s, kad, ps
+	p := puller.New(s, kad, bs, ps, nil, logger, o, 0)
+
+	testutil.CleanupCloser(t, ps, p)
+
+	return p, s, kad, ps
 }
 
 type c struct {

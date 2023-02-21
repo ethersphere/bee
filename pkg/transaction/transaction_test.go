@@ -22,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/bee/pkg/transaction/backendmock"
 	"github.com/ethersphere/bee/pkg/transaction/monitormock"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
 func nonceKey(sender common.Address) string {
@@ -150,7 +151,7 @@ func TestTransactionSend(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer transactionService.Close()
+		testutil.CleanupCloser(t, transactionService)
 
 		txHash, err := transactionService.Send(context.Background(), request, 0)
 		if err != nil {
@@ -281,7 +282,7 @@ func TestTransactionSend(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer transactionService.Close()
+		testutil.CleanupCloser(t, transactionService)
 
 		txHash, err := transactionService.Send(context.Background(), request, 50)
 		if err != nil {
@@ -398,7 +399,7 @@ func TestTransactionSend(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer transactionService.Close()
+		testutil.CleanupCloser(t, transactionService)
 
 		txHash, err := transactionService.Send(context.Background(), request, 0)
 		if err != nil {
@@ -509,7 +510,7 @@ func TestTransactionWaitForReceipt(t *testing.T) {
 	nonce := uint64(10)
 
 	store := storemock.NewStateStore()
-	defer store.Close()
+	testutil.CleanupCloser(t, store)
 
 	err := store.Put(transaction.StoredTransactionKey(txHash), transaction.StoredTransaction{
 		Nonce: nonce,
@@ -548,7 +549,7 @@ func TestTransactionWaitForReceipt(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer transactionService.Close()
+	testutil.CleanupCloser(t, transactionService)
 
 	receipt, err := transactionService.WaitForReceipt(context.Background(), txHash)
 	if err != nil {
@@ -575,7 +576,7 @@ func TestTransactionResend(t *testing.T) {
 	value := big.NewInt(0)
 
 	store := storemock.NewStateStore()
-	defer store.Close()
+	testutil.CleanupCloser(t, store)
 
 	signedTx := types.NewTx(&types.DynamicFeeTx{
 		ChainID:   chainID,
@@ -623,7 +624,7 @@ func TestTransactionResend(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer transactionService.Close()
+	testutil.CleanupCloser(t, transactionService)
 
 	err = transactionService.ResendTransaction(context.Background(), signedTx.Hash())
 	if err != nil {
@@ -646,7 +647,7 @@ func TestTransactionCancel(t *testing.T) {
 	value := big.NewInt(0)
 
 	store := storemock.NewStateStore()
-	t.Cleanup(func() { store.Close() })
+	testutil.CleanupCloser(t, store)
 
 	signedTx := types.NewTx(&types.DynamicFeeTx{
 		ChainID:   chainID,
@@ -712,7 +713,7 @@ func TestTransactionCancel(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer transactionService.Close()
+		testutil.CleanupCloser(t, transactionService)
 
 		cancelTxHash, err := transactionService.CancelTransaction(context.Background(), signedTx.Hash())
 		if err != nil {
@@ -763,7 +764,7 @@ func TestTransactionCancel(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer transactionService.Close()
+		testutil.CleanupCloser(t, transactionService)
 
 		ctx := sctx.SetGasPrice(context.Background(), customGasPrice)
 		cancelTxHash, err := transactionService.CancelTransaction(ctx, signedTx.Hash())
