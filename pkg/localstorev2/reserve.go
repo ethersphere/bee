@@ -56,8 +56,8 @@ func (db *DB) po(addr swarm.Address) uint8 {
 
 func (db *DB) ReservePutter(ctx context.Context) PutterSession {
 
-	txnRepo, commit, rollback := db.repo.NewTx(ctx)
-	reservePutter := db.reserve.Putter(txnRepo)
+	trx, commit, rollback := db.repo.NewTx(ctx)
+	reservePutter := db.reserve.Putter(trx)
 
 	pos := make(map[uint8]bool)
 	count := 0
@@ -81,7 +81,7 @@ func (db *DB) ReservePutter(ctx context.Context) PutterSession {
 			for po := range pos {
 				db.reserveBinEvents.Trigger(string(po))
 			}
-			if !db.reserve.WithinCapacity() {
+			if !db.reserve.IsWithinCapacity() {
 				fmt.Println("over capacity")
 				db.events.Trigger(reserveOverCapacity)
 			}
@@ -135,7 +135,7 @@ func (db *DB) unreserve(ctx context.Context) error {
 				return false, err
 			}
 
-			if db.reserve.WithinCapacity() {
+			if db.reserve.IsWithinCapacity() {
 				withinCap = true
 				return true, nil
 			}

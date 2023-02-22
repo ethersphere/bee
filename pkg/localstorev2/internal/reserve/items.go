@@ -150,7 +150,7 @@ func (b *chunkBinItem) Unmarshal(buf []byte) error {
 }
 
 type binItem struct {
-	PO    uint8
+	Bin   uint8
 	BinID uint64
 }
 
@@ -159,12 +159,12 @@ func (b *binItem) Namespace() string {
 }
 
 func (c *binItem) ID() string {
-	return string(c.PO)
+	return string(c.Bin)
 }
 
 func (b *binItem) Clone() storage.Item {
 	return &binItem{
-		PO:    b.PO,
+		Bin:   b.Bin,
 		BinID: b.BinID,
 	}
 }
