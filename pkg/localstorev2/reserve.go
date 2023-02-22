@@ -174,6 +174,10 @@ func (db *DB) unreserve(ctx context.Context) error {
 	}
 }
 
+func (db *DB) ReserveLastBinIDs() ([]uint64, error) {
+	return db.reserve.LastBinIDs(db.repo.IndexStore())
+}
+
 func (db *DB) SubscribeBin(ctx context.Context, bin uint8, start, end uint64) (<-chan *BinC, <-chan error) {
 
 	out := make(chan *BinC)
