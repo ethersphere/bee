@@ -14,7 +14,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-func TestCacheEntryItem(t *testing.T) {
+func TestReserveItems(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
