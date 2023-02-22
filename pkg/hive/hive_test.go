@@ -27,7 +27,6 @@ import (
 	"github.com/ethersphere/bee/pkg/spinlock"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
@@ -54,7 +53,7 @@ func TestHandlerRateLimit(t *testing.T) {
 	server, _ := hive.New(streamer, addressbookclean, networkID, false, true, logger)
 	testutil.CleanupCloser(t, server)
 
-	serverAddress := test.RandomAddress()
+	serverAddress := swarm.RandAddress(t)
 
 	// setup the stream recorder to record stream data
 	serverRecorder := streamtest.New(

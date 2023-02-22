@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/swarm/test"
+
 	"github.com/ethersphere/bee/pkg/topology/pslice"
 )
 
@@ -19,14 +19,14 @@ func TestShallowestEmpty(t *testing.T) {
 	t.Parallel()
 
 	var (
-		base  = test.RandomAddress()
+		base  = swarm.RandAddress(t)
 		ps    = pslice.New(16, base)
 		peers = make([][]swarm.Address, 16)
 	)
 
 	for i := 0; i < 16; i++ {
 		for j := 0; j < 3; j++ {
-			a := test.RandomAddressAt(base, i)
+			a := swarm.RandAddressAt(t, base, i)
 			peers[i] = append(peers[i], a)
 		}
 	}
@@ -91,10 +91,11 @@ func TestShallowestEmpty(t *testing.T) {
 func TestNoPanicOnEmptyRemove(t *testing.T) {
 	t.Parallel()
 
+	base := swarm.RandAddress(t)
 	var ps = pslice.New(4, base)
 
-	addr1 := test.RandomAddressAt(base, 2)
-	addr2 := test.RandomAddressAt(base, 2)
+	addr1 := swarm.RandAddressAt(t, base, 2)
+	addr2 := swarm.RandAddressAt(t, base, 2)
 
 	ps.Remove(addr1)
 
@@ -114,7 +115,7 @@ func TestAddRemove(t *testing.T) {
 	t.Parallel()
 
 	var (
-		base  = test.RandomAddress()
+		base  = swarm.RandAddress(t)
 		ps    = pslice.New(4, base)
 		peers = make([]swarm.Address, 8)
 	)
@@ -122,10 +123,10 @@ func TestAddRemove(t *testing.T) {
 	// 2 peers per bin
 	// indexes {0,1} {2,3} {4,5} {6,7}
 	for i := 0; i < 8; i += 2 {
-		a := test.RandomAddressAt(base, i/2)
+		a := swarm.RandAddressAt(t, base, i/2)
 		peers[i] = a
 
-		b := test.RandomAddressAt(base, i/2)
+		b := swarm.RandAddressAt(t, base, i/2)
 		peers[i+1] = b
 	}
 
@@ -197,9 +198,9 @@ func TestIteratorError(t *testing.T) {
 	t.Parallel()
 
 	var (
-		base = test.RandomAddress()
+		base = swarm.RandAddress(t)
 		ps   = pslice.New(4, base)
-		a    = test.RandomAddressAt(base, 0)
+		a    = swarm.RandAddressAt(t, base, 0)
 		e    = errors.New("err1")
 	)
 
@@ -219,13 +220,13 @@ func TestIteratorError(t *testing.T) {
 func TestIterators(t *testing.T) {
 	t.Parallel()
 
-	base := test.RandomAddress()
+	base := swarm.RandAddress(t)
 
 	ps := pslice.New(4, base)
 
 	peers := make([]swarm.Address, 4)
 	for i := 0; i < 4; i++ {
-		a := test.RandomAddressAt(base, i)
+		a := swarm.RandAddressAt(t, base, i)
 		peers[i] = a
 	}
 
@@ -284,7 +285,7 @@ func TestBinPeers(t *testing.T) {
 		t.Run(tc.label, func(t *testing.T) {
 			t.Parallel()
 
-			base := test.RandomAddress()
+			base := swarm.RandAddress(t)
 
 			binPeers := make([][]swarm.Address, len(tc.peersCount))
 
@@ -292,7 +293,7 @@ func TestBinPeers(t *testing.T) {
 			ps := pslice.New(len(tc.peersCount), base)
 			for bin, peersCount := range tc.peersCount {
 				for i := 0; i < peersCount; i++ {
-					peer := test.RandomAddressAt(base, bin)
+					peer := swarm.RandAddressAt(t, base, bin)
 					binPeers[bin] = append(binPeers[bin], peer)
 					ps.Add(peer)
 				}
@@ -344,14 +345,14 @@ func isEqual(a, b []swarm.Address) bool {
 func TestIteratorsJumpStop(t *testing.T) {
 	t.Parallel()
 
-	base := test.RandomAddress()
+	base := swarm.RandAddress(t)
 	ps := pslice.New(4, base)
 
 	peers := make([]swarm.Address, 12)
 	j := 0
 	for i := 0; i < 4; i++ {
 		for ii := 0; ii < 3; ii++ {
-			a := test.RandomAddressAt(base, i)
+			a := swarm.RandAddressAt(t, base, i)
 			peers[j] = a
 			ps.Add(a)
 			j++
@@ -433,19 +434,19 @@ func chkNotExists(t *testing.T, ps *pslice.PSlice, addrs ...swarm.Address) {
 	}
 }
 
-var (
-	base   = test.RandomAddress()
+const (
 	bins   = int(swarm.MaxBins)
 	perBin = 1000
 )
 
 func BenchmarkAdd(b *testing.B) {
+	base := swarm.RandAddress(b)
 	ps := pslice.New(bins, base)
 
 	var addrs []swarm.Address
 
 	for i := 0; i < bins*perBin; i++ {
-		addrs = append(addrs, test.RandomAddress())
+		addrs = append(addrs, swarm.RandAddress(b))
 	}
 
 	b.ResetTimer()
@@ -458,12 +459,13 @@ func BenchmarkAdd(b *testing.B) {
 }
 
 func BenchmarkAddBatch(b *testing.B) {
+	base := swarm.RandAddress(b)
 	ps := pslice.New(bins, base)
 
 	var addrs []swarm.Address
 
 	for i := 0; i < bins*perBin; i++ {
-		addrs = append(addrs, test.RandomAddress())
+		addrs = append(addrs, swarm.RandAddress(b))
 	}
 
 	b.ResetTimer()
@@ -474,13 +476,14 @@ func BenchmarkAddBatch(b *testing.B) {
 }
 
 func BenchmarkRemove(b *testing.B) {
+	base := swarm.RandAddress(b)
 	ps := pslice.New(bins, base)
 
 	var addrs []swarm.Address
 
 	for i := 0; i < bins*perBin; i++ {
-		addr := test.RandomAddress()
-		addrs = append(addrs, test.RandomAddress())
+		addr := swarm.RandAddress(b)
+		addrs = append(addrs, swarm.RandAddress(b))
 		ps.Add(addr)
 	}
 
@@ -494,10 +497,11 @@ func BenchmarkRemove(b *testing.B) {
 }
 
 func BenchmarkEachBin(b *testing.B) {
+	base := swarm.RandAddress(b)
 	ps := pslice.New(bins, base)
 
 	for i := 0; i < bins*perBin; i++ {
-		ps.Add(test.RandomAddress())
+		ps.Add(swarm.RandAddress(b))
 	}
 
 	b.ResetTimer()
@@ -510,10 +514,11 @@ func BenchmarkEachBin(b *testing.B) {
 }
 
 func BenchmarkEachBinRev(b *testing.B) {
+	base := swarm.RandAddress(b)
 	ps := pslice.New(bins, base)
 
 	for i := 0; i < bins*perBin; i++ {
-		ps.Add(test.RandomAddress())
+		ps.Add(swarm.RandAddress(b))
 	}
 
 	b.ResetTimer()
