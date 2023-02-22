@@ -223,7 +223,7 @@ type radiusItem struct {
 	Radius uint8
 }
 
-func (br *radiusItem) Namespace() string {
+func (r *radiusItem) Namespace() string {
 	return "radius"
 }
 

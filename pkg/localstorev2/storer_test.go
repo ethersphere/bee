@@ -9,6 +9,7 @@ import (
 	"io/ioutil"
 	"os"
 	"testing"
+	"time"
 
 	storer "github.com/ethersphere/bee/pkg/localstorev2"
 	pinstore "github.com/ethersphere/bee/pkg/localstorev2/internal/pinning"
@@ -18,6 +19,7 @@ import (
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/storagev2/migration"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/swarm/test"
 )
 
 func verifyChunks(
@@ -128,20 +130,11 @@ func diskStorer(t *testing.T, opts *storer.Options) func() (*storer.DB, error) {
 func TestNew(t *testing.T) {
 	t.Parallel()
 
-	t.Run("inmem default options", func(t *testing.T) {
-		t.Parallel()
-
-		lstore := makeInmemStorer(t, nil)
-		if lstore == nil {
-			t.Fatalf("storer should be instantiated")
-		}
-	})
 	t.Run("inmem with options", func(t *testing.T) {
 		t.Parallel()
 
-		opts := &storer.Options{
-			Logger: log.Noop,
-		}
+		opts := dbTestOps(test.RandomAddress(), 0, nil, nil, nil, time.Second)
+		opts.Logger = log.Noop
 
 		lstore := makeInmemStorer(t, opts)
 		if lstore == nil {
@@ -151,7 +144,7 @@ func TestNew(t *testing.T) {
 	t.Run("disk default options", func(t *testing.T) {
 		t.Parallel()
 
-		lstore := makeDiskStorer(t, nil)
+		lstore := makeDiskStorer(t, dbTestOps(test.RandomAddress(), 0, nil, nil, nil, time.Second))
 		if lstore == nil {
 			t.Fatalf("storer should be instantiated")
 		}
@@ -159,7 +152,7 @@ func TestNew(t *testing.T) {
 	t.Run("disk with options", func(t *testing.T) {
 		t.Parallel()
 
-		opts := storer.DefaultOptions()
+		opts := dbTestOps(test.RandomAddress(), 0, nil, nil, nil, time.Second)
 		opts.CacheCapacity = 10
 		opts.Logger = log.Noop
 
@@ -175,14 +168,14 @@ func TestNew(t *testing.T) {
 		t.Run("inmem", func(t *testing.T) {
 			t.Parallel()
 
-			lstore := makeInmemStorer(t, nil)
+			lstore := makeInmemStorer(t, dbTestOps(test.RandomAddress(), 0, nil, nil, nil, time.Second))
 			assertStorerVersion(t, lstore)
 		})
 
 		t.Run("disk", func(t *testing.T) {
 			t.Parallel()
 
-			lstore := makeDiskStorer(t, nil)
+			lstore := makeDiskStorer(t, dbTestOps(test.RandomAddress(), 0, nil, nil, nil, time.Second))
 			assertStorerVersion(t, lstore)
 		})
 	})
@@ -206,7 +199,7 @@ func assertStorerVersion(t *testing.T, lstore *storer.DB) {
 func makeInmemStorer(t *testing.T, opts *storer.Options) *storer.DB {
 	t.Helper()
 
-	lstore, err := storer.New(context.Background(), "", nil)
+	lstore, err := storer.New(context.Background(), "", opts)
 	if err != nil {
 		t.Fatalf("New(...): unexpected error: %v", err)
 	}

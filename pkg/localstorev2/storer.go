@@ -286,6 +286,8 @@ func defaultOptions() *Options {
 		LdbDisableSeeksCompaction: defaultDisableSeeksCompaction,
 		CacheCapacity:             defaultCacheCapacity,
 		Logger:                    log.Noop,
+		ReserveCapacity:           2 ^ 22,
+		ReserveWakeUpDuration:     time.Minute * 5,
 	}
 }
 

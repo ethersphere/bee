@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"sync"
-	"time"
 
 	"github.com/ethersphere/bee/pkg/localstorev2/internal"
 	"github.com/ethersphere/bee/pkg/log"
@@ -19,8 +18,6 @@ import (
 
 // loggerName is the tree path name of the logger for this package.
 const loggerName = "reserve"
-
-const DefaultRadiusWakeUpTime = time.Minute * 5
 
 type Reserve struct {
 	mtx sync.Mutex
