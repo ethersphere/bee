@@ -24,6 +24,7 @@ import (
 const (
 	reserveOverCapacity = "reserveOverCapacity"
 	reserveUnreserved   = "reserveUnreserved"
+	reserveLock         = "reserveLock"
 )
 
 func (db *DB) reserveWorker(capacity int, syncer pullsync.SyncReporter, warmupDur, wakeUpDur time.Duration) {
@@ -68,6 +69,9 @@ func (db *DB) ReservePutter(ctx context.Context) PutterSession {
 	pos := make(map[uint8]bool)
 	count := 0
 
+	// lock to avoid Puting a chunk that expires during the session.
+	db.lock.Lock(reserveLock)
+
 	return &putterSession{
 		Putter: storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
 			err := reservePutter.Put(ctx, chunk)
@@ -79,6 +83,7 @@ func (db *DB) ReservePutter(ctx context.Context) PutterSession {
 			return nil
 		}),
 		done: func(swarm.Address) error {
+			defer db.lock.Unlock(reserveLock)
 			err := commit()
 			if err != nil {
 				return err
@@ -93,6 +98,7 @@ func (db *DB) ReservePutter(ctx context.Context) PutterSession {
 			return nil
 		},
 		cleanup: func() error {
+			defer db.lock.Unlock(reserveLock)
 			return rollback()
 		},
 	}
@@ -103,6 +109,9 @@ func (db *DB) EvictBatch(ctx context.Context, batchID []byte) error {
 }
 
 func (db *DB) evictBatch(ctx context.Context, batchID []byte, bin uint8) error {
+
+	db.lock.Lock(reserveLock)
+	defer db.lock.Unlock(reserveLock)
 
 	for b := uint8(0); b < bin; b++ {
 
