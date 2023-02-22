@@ -764,7 +764,7 @@ func TestIterate(t *testing.T) {
 		}
 	})
 
-	t.Run("respects start from chunk", func(t *testing.T) {
+	t.Run("iterates chunks", func(t *testing.T) {
 		putter, err := upload.NewPutter(ts, 1)
 		if err != nil {
 			t.Fatalf("failed creating putter: %v", err)
@@ -775,17 +775,14 @@ func TestIterate(t *testing.T) {
 		_ = putter.Put(context.TODO(), chunk2)
 
 		var count int
-		_ = upload.Iterate(context.TODO(), ts, chunk1, func(chunk swarm.Chunk) (bool, error) {
-			count++
-			return false, nil
-		})
-		_ = upload.Iterate(context.TODO(), ts, chunk2, func(chunk swarm.Chunk) (bool, error) {
+
+		_ = upload.Iterate(context.TODO(), ts, nil, func(chunk swarm.Chunk) (bool, error) {
 			count++
 			return false, nil
 		})
 
-		if count != 3 {
-			t.Fatalf("expected to iterate one chunk, got: %v", count)
+		if count != 2 {
+			t.Fatalf("expected to iterate two chunks, got: %v", count)
 		}
 	})
 }

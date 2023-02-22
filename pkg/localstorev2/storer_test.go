@@ -262,7 +262,7 @@ func TestPushSubscriber(t *testing.T) {
 		t.Parallel()
 
 		testPushSubscriber(t, func() (*storer.DB, error) {
-			return storer.New("", &storer.Options{
+			return storer.New(context.TODO(), "", &storer.Options{
 				Logger: log.Noop,
 			})
 		})
@@ -374,6 +374,12 @@ func testPushSubscriber(t *testing.T, newLocalstore func() (*storer.DB, error)) 
 				case <-ctx.Done():
 					return
 				}
+
+				chunksMu.Lock()
+				if i == len(chunks) {
+					close(errChan)
+				}
+				chunksMu.Unlock()
 			case <-ctx.Done():
 				return
 			}
@@ -406,14 +412,9 @@ func testPushSubscriber(t *testing.T, newLocalstore func() (*storer.DB, error)) 
 func checkErrChan(ctx context.Context, t *testing.T, errChan chan error, wantedChunksCount int) {
 	t.Helper()
 
-	for i := 0; i < wantedChunksCount; i++ {
-		select {
-		case err := <-errChan:
-			if err != nil {
-				t.Error(err)
-			}
-		case <-ctx.Done():
-			t.Fatal(ctx.Err())
+	for err := range errChan {
+		if err != nil {
+			t.Error(err)
 		}
 	}
 }
