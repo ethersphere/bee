@@ -51,8 +51,9 @@ func (s *Service) chunkUploadStreamHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	putter, err := s.newStamperPutter(r.Context(), putterOptions{
-		BatchID: headers.BatchID,
-		TagID:   tag,
+		BatchID:  headers.BatchID,
+		TagID:    tag,
+		Deferred: true,
 	})
 	if err != nil {
 		logger.Debug("get putter failed", "error", err)
@@ -73,8 +74,8 @@ func (s *Service) chunkUploadStreamHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	upgrader := websocket.Upgrader{
-		ReadBufferSize:  swarm.SocMaxChunkSize,
-		WriteBufferSize: swarm.SocMaxChunkSize,
+		ReadBufferSize:  swarm.ChunkSize,
+		WriteBufferSize: swarm.ChunkSize,
 		CheckOrigin:     s.checkOrigin,
 	}
 

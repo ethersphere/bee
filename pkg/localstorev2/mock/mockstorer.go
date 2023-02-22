@@ -3,7 +3,6 @@ package mockstorer
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
@@ -35,11 +34,9 @@ func (p *putterSession) Put(ctx context.Context, ch swarm.Chunk) error {
 }
 
 func (p *putterSession) Done(address swarm.Address) error {
-	fmt.Println("done called")
 	if p.addPin != nil {
 		return p.addPin(address)
 	}
-	fmt.Println("done called")
 	return nil
 }
 
@@ -77,7 +74,6 @@ func (m *mockStorer) NewSession() (storer.SessionInfo, error) {
 
 func (m *mockStorer) GetSessionInfo(tagID uint64) (storer.SessionInfo, error) {
 	if tagID > m.sessionID.Load() {
-		fmt.Println("returning err not found")
 		return storer.SessionInfo{}, storage.ErrNotFound
 	}
 	return storer.SessionInfo{
@@ -123,11 +119,11 @@ func (m *mockStorer) NewCollection(ctx context.Context) (storer.PutterSession, e
 }
 
 func (m *mockStorer) Lookup() storage.Getter {
-	return nil
+	return m.chunkStore
 }
 
 func (m *mockStorer) Cache() storage.Putter {
-	return nil
+	return m.chunkStore
 }
 
 func (m *mockStorer) DirectUpload() storer.PutterSession {

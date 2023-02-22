@@ -181,7 +181,7 @@ func storeDir(
 	}
 
 	// save manifest
-	manifestReference, err := dirManifest.Store(ctx, nil)
+	manifestReference, err := dirManifest.Store(ctx)
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("store manifest: %w", err)
 	}

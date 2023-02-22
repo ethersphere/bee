@@ -205,7 +205,7 @@ func (s *Service) fileUploadHandler(
 
 	logger.Debug("info", "encrypt", encrypt, "file_name", queries.FileName, "hash", fr, "metadata", fileMtdt)
 
-	manifestReference, err := m.Store(ctx, nil)
+	manifestReference, err := m.Store(ctx)
 	if err != nil {
 		logger.Debug("manifest store failed", "file_name", queries.FileName, "error", err)
 		logger.Error(nil, "manifest store failed", "file_name", queries.FileName)
