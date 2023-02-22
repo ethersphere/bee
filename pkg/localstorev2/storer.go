@@ -276,9 +276,12 @@ type DB struct {
 	bgCacheWorkersWg sync.WaitGroup
 	dbCloser         io.Closer
 
-	pushTriggers    []chan<- struct{}
+	pushTriggers    []chan<- swarm.Address
 	pushTriggersMu  sync.RWMutex
 	subscriptionsWG sync.WaitGroup
+
+	dirtyTagsMu sync.RWMutex
+	dirtyTags   []uint64 // tagIDs
 }
 
 // New returns a newly constructed DB object which implements all the above
@@ -371,13 +374,15 @@ func (p *putterSession) Done(addr swarm.Address) error { return p.done(addr) }
 
 func (p *putterSession) Cleanup() error { return p.cleanup() }
 
+var total = 0
+
 func (db *DB) SubscribePush(ctx context.Context) (chunks chan swarm.Chunk, reset, stop func()) {
 	chunks = make(chan swarm.Chunk)
-	trigger := make(chan struct{}, 1)
+	trigger := make(chan swarm.Address, 1)
 	resetC := make(chan struct{}, 1)
 
 	// send signal for the initial iteration
-	trigger <- struct{}{}
+	trigger <- swarm.ZeroAddress
 
 	db.pushTriggersMu.Lock()
 	db.pushTriggers = append(db.pushTriggers, trigger)
@@ -398,6 +403,8 @@ func (db *DB) SubscribePush(ctx context.Context) (chunks chan swarm.Chunk, reset
 		// should start. The first iteration starts from the first Item.
 		for {
 			select {
+			default:
+				time.Sleep(time.Second)
 			case <-stopChan:
 				// terminate the subscription
 				// on stop
@@ -407,10 +414,11 @@ func (db *DB) SubscribePush(ctx context.Context) (chunks chan swarm.Chunk, reset
 			case <-resetC:
 				sinceItem = nil
 				select {
-				case trigger <- struct{}{}:
+				case trigger <- swarm.ZeroAddress:
 				default:
 				}
-			case <-trigger:
+			case addr := <-trigger:
+
 				// iterate until:
 				// - last index Item is reached
 				// - subscription stop is called
@@ -418,13 +426,27 @@ func (db *DB) SubscribePush(ctx context.Context) (chunks chan swarm.Chunk, reset
 
 				var count int
 
+				fmt.Println("starting iteration", addr)
+
 				err := upload.Iterate(ctx, db.repo, sinceItem, func(chunk swarm.Chunk) (bool, error) {
+
+					db.dirtyTagsMu.RLock()
+					defer db.dirtyTagsMu.RUnlock()
+
+					for _, dirtyTag := range db.dirtyTags {
+						if dirtyTag == uint64(chunk.TagID()) {
+							fmt.Println("dirty tag", dirtyTag)
+							return true, nil
+						}
+					}
+
 					select {
-					case chunks <- chunk:
+					default:
 						count++
 						// set next iteration start item
 						// when its chunk is successfully sent to channel
 						sinceItem = chunk
+
 						return false, nil
 					case <-stopChan:
 						// gracefully stop the iteration
@@ -435,7 +457,14 @@ func (db *DB) SubscribePush(ctx context.Context) (chunks chan swarm.Chunk, reset
 					}
 				})
 
+				total += count
+				fmt.Println(addr, "done iteration")
+				fmt.Println("total chunk iterated", total)
+
+				total = 0
+
 				if err != nil {
+					fmt.Println("got error", err)
 					return
 				}
 			}
@@ -472,13 +501,13 @@ func (db *DB) SubscribePush(ctx context.Context) (chunks chan swarm.Chunk, reset
 // triggerPushSubscriptions is used internally for starting iterations
 // on Push subscriptions. Whenever new item is added to the push index,
 // this function should be called.
-func (db *DB) triggerPushSubscriptions() {
+func (db *DB) triggerPushSubscriptions(addr swarm.Address) {
 	db.pushTriggersMu.RLock()
 	defer db.pushTriggersMu.RUnlock()
-	for _, t := range db.pushTriggers {
-		select {
-		case t <- struct{}{}:
-		default:
-		}
+	for _, trigger := range db.pushTriggers {
+		trigger := trigger
+		go func() {
+			trigger <- addr
+		}()
 	}
 }

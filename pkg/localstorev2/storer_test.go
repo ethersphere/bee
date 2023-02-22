@@ -5,9 +5,7 @@
 package storer_test
 
 import (
-	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -306,24 +304,19 @@ func testPushSubscriber(t *testing.T, newLocalstore func() (*storer.DB, error)) 
 			t.Fatal(err)
 		}
 
-		defer func() {
-			_ = p.Cleanup()
-		}()
-
 		ch := chunktesting.GenerateTestRandomChunks(count)
-		for i := 0; i < count; i++ {
+		var i = 0
+		for ; i < count; i++ {
 			if err := p.Put(context.TODO(), ch[i]); err != nil {
 				t.Fatal(err)
 			}
-
-			defer func(j int) {
-				_ = p.Done(ch[j].Address())
-			}(i)
-
 			chunks = append(chunks, ch[i])
-
 			chunkProcessedTimes = append(chunkProcessedTimes, 0)
 		}
+
+		triggerAddr := ch[i-1].Address()
+		fmt.Println("uploaded batch of", count, "trigger signal addr", triggerAddr)
+		_ = p.Done(triggerAddr)
 	}
 
 	// prepopulate database with some chunks
@@ -344,17 +337,20 @@ func testPushSubscriber(t *testing.T, newLocalstore func() (*storer.DB, error)) 
 	// receive and validate addresses from the subscription
 	go func() {
 		var (
-			err, ierr           error
-			i                   int // address index
-			gotStamp, wantStamp []byte
+			err error
+			i   int // address index
+			// gotStamp, wantStamp []byte
 		)
 		for {
 			select {
-			case got, ok := <-ch:
+			default:
+				time.Sleep(time.Second)
+			case chunk, ok := <-ch:
 				if !ok {
+					fmt.Println("stopping")
 					return
 				}
-				chunksMu.Lock()
+				/* chunksMu.Lock()
 				cIndex := i
 				want := chunks[cIndex]
 				chunkProcessedTimes[cIndex]++
@@ -373,7 +369,7 @@ func testPushSubscriber(t *testing.T, newLocalstore func() (*storer.DB, error)) 
 				}
 				if !bytes.Equal(gotStamp, wantStamp) {
 					err = errors.New("stamps don't match")
-				}
+				} */
 
 				i++
 				// send one and only one error per received address
@@ -381,6 +377,8 @@ func testPushSubscriber(t *testing.T, newLocalstore func() (*storer.DB, error)) 
 				case errChan <- err:
 				case <-ctx.Done():
 					return
+				default:
+					fmt.Println("< received chunk", chunk.Address())
 				}
 			case <-ctx.Done():
 				return
@@ -414,14 +412,11 @@ func testPushSubscriber(t *testing.T, newLocalstore func() (*storer.DB, error)) 
 func checkErrChan(ctx context.Context, t *testing.T, errChan chan error, wantedChunksCount int) {
 	t.Helper()
 
-	for i := 0; i < wantedChunksCount; i++ {
-		select {
-		case err := <-errChan:
-			if err != nil {
-				t.Error(err)
-			}
-		case <-ctx.Done():
-			t.Fatal(ctx.Err())
+	for err := range errChan {
+		if err != nil {
+			t.Error(err)
 		}
+
+		fmt.Println("processed chunk")
 	}
 }

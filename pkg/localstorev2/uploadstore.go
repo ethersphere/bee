@@ -34,6 +34,11 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 		pinningPutter = pinstore.NewCollection(txnRepo)
 	}
 
+	db.dirtyTagsMu.Lock()
+	defer db.dirtyTagsMu.Unlock()
+
+	db.dirtyTags = append(db.dirtyTags, tagID)
+
 	return &putterSession{
 		Putter: storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
 			return multierror.Append(
@@ -47,7 +52,17 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 			).ErrorOrNil()
 		}),
 		done: func(address swarm.Address) error {
-			defer db.triggerPushSubscriptions()
+			db.dirtyTagsMu.Lock()
+			defer db.dirtyTagsMu.Unlock()
+
+			for i, tag := range db.dirtyTags {
+				if tag == tagID {
+					db.dirtyTags = append(db.dirtyTags[:i], db.dirtyTags[i+1:]...)
+					break
+				}
+			}
+
+			defer db.triggerPushSubscriptions(address)
 			return multierror.Append(
 				uploadPutter.Close(address),
 				func() error {

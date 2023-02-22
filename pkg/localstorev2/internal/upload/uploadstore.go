@@ -47,7 +47,7 @@ type pushItem struct {
 	Timestamp int64
 	Address   swarm.Address
 	BatchID   []byte
-	TagID     uint64
+	TagID     uint64 // TODO uint32
 }
 
 // ID implements the storage.Item interface.
@@ -588,6 +588,7 @@ func Iterate(ctx context.Context, s internal.Storage, startFrom swarm.Chunk, con
 
 		q.Prefix = fmt.Sprintf("%d/%s/%s", ui.Uploaded, ui.Address.ByteString(), string(ui.BatchID))
 		q.PrefixAtStart = true
+		q.SkipFirst = true
 	}
 
 	return s.IndexStore().Iterate(q, func(r storage.Result) (bool, error) {
@@ -596,6 +597,11 @@ func Iterate(ctx context.Context, s internal.Storage, startFrom swarm.Chunk, con
 		if err != nil {
 			return true, err
 		}
-		return consumerFn(chunk)
+
+		fmt.Println("> sending chunk", chunk.Address())
+
+		ch := chunk.WithTagID(uint32(pi.TagID))
+
+		return consumerFn(ch)
 	})
 }
