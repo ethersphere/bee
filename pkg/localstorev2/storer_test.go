@@ -5,7 +5,9 @@
 package storer_test
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -266,7 +268,6 @@ func TestPushSubscriber(t *testing.T) {
 		})
 	})
 	t.Run("disk", func(t *testing.T) {
-		t.Skip("wip")
 		t.Parallel()
 
 		opts := storer.DefaultOptions()
@@ -314,9 +315,7 @@ func testPushSubscriber(t *testing.T, newLocalstore func() (*storer.DB, error)) 
 			chunkProcessedTimes = append(chunkProcessedTimes, 0)
 		}
 
-		triggerAddr := ch[i-1].Address()
-		fmt.Println("uploaded batch of", count, "trigger signal addr", triggerAddr)
-		_ = p.Done(triggerAddr)
+		_ = p.Done(ch[i-1].Address())
 	}
 
 	// prepopulate database with some chunks
@@ -337,19 +336,17 @@ func testPushSubscriber(t *testing.T, newLocalstore func() (*storer.DB, error)) 
 	// receive and validate addresses from the subscription
 	go func() {
 		var (
-			err error
-			i   int // address index
-			// gotStamp, wantStamp []byte
+			err, ierr           error
+			gotStamp, wantStamp []byte
 		)
+		var i int // address index
 		for {
 			select {
-			case ch, ok := <-ch:
-				fmt.Println("got chunk", ch.Address())
+			case got, ok := <-ch:
 				if !ok {
-					fmt.Println("stopping")
 					return
 				}
-				/* chunksMu.Lock()
+				chunksMu.Lock()
 				cIndex := i
 				want := chunks[cIndex]
 				chunkProcessedTimes[cIndex]++
@@ -368,17 +365,13 @@ func testPushSubscriber(t *testing.T, newLocalstore func() (*storer.DB, error)) 
 				}
 				if !bytes.Equal(gotStamp, wantStamp) {
 					err = errors.New("stamps don't match")
-				} */
+				}
 
 				i++
 				// send one and only one error per received address
 				select {
 				case errChan <- err:
 				case <-ctx.Done():
-					return
-				}
-				if i == 18 {
-					close(errChan)
 					return
 				}
 			case <-ctx.Done():
@@ -413,11 +406,14 @@ func testPushSubscriber(t *testing.T, newLocalstore func() (*storer.DB, error)) 
 func checkErrChan(ctx context.Context, t *testing.T, errChan chan error, wantedChunksCount int) {
 	t.Helper()
 
-	for err := range errChan {
-		if err != nil {
-			t.Error(err)
+	for i := 0; i < wantedChunksCount; i++ {
+		select {
+		case err := <-errChan:
+			if err != nil {
+				t.Error(err)
+			}
+		case <-ctx.Done():
+			t.Fatal(ctx.Err())
 		}
-
-		fmt.Println("processed chunk")
 	}
 }
