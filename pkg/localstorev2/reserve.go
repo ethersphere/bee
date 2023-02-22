@@ -46,8 +46,9 @@ func (db *DB) reserveWorker(capacity int, syncer pullsync.SyncReporter, warmupDu
 		case <-overCapTrigger:
 			_ = db.unreserve(context.Background())
 		case <-time.After(wakeUpDur):
-			if db.reserve.Size() < threshold && syncer.Rate() == 0 && db.reserve.Radius() > 0 {
-				_ = db.reserve.SetRadius(db.repo.IndexStore(), db.reserve.Radius()-1)
+			radius := db.reserve.Radius()
+			if db.reserve.Size() < threshold && syncer.Rate() == 0 && radius > 0 {
+				_ = db.reserve.SetRadius(db.repo.IndexStore(), radius-1)
 			}
 		case <-db.quit:
 			return
