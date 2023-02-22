@@ -12,7 +12,6 @@ import (
 
 	"github.com/ethersphere/bee/pkg/localstorev2/internal"
 	"github.com/ethersphere/bee/pkg/log"
-	storage "github.com/ethersphere/bee/pkg/storage"
 	storagev2 "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
@@ -28,7 +27,6 @@ type Reserve struct {
 	mtx sync.Mutex
 
 	baseAddr     swarm.Address
-	stateStore   storage.StateStorer
 	radiusSetter topology.SetStorageRadiuser
 	logger       log.Logger
 
@@ -48,26 +46,25 @@ type Sample struct {
 	sample by 	bin
 */
 
-func New(baseAddr swarm.Address, store storagev2.Store, capacity int, reserveRadius uint8, stateStore storage.StateStorer, radiusSetter topology.SetStorageRadiuser, logger log.Logger) (*Reserve, error) {
+func New(baseAddr swarm.Address, store storagev2.Store, capacity int, reserveRadius uint8, radiusSetter topology.SetStorageRadiuser, logger log.Logger) (*Reserve, error) {
 
 	rs := &Reserve{
 		baseAddr:     baseAddr,
 		capacity:     capacity,
-		stateStore:   stateStore,
 		radiusSetter: radiusSetter,
 		logger:       logger.WithName(loggerName).Register(),
 	}
 
-	var radius uint8
-	err := stateStore.Get(storageRadiusKey, &radius)
+	rItem := &radiusItem{}
+	err := store.Get(rItem)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) { // fresh node
-			radius = reserveRadius
+		if errors.Is(err, storagev2.ErrNotFound) { // fresh node
+			rItem.Radius = reserveRadius
 		} else {
 			return nil, err
 		}
 	}
-	err = rs.SetRadius(radius)
+	err = rs.SetRadius(store, rItem.Radius)
 	if err != nil {
 		return nil, err
 	}
@@ -255,12 +252,12 @@ func (r *Reserve) IsWithinCapacity() bool {
 }
 
 // Must be called underlock.
-func (r *Reserve) SetRadius(rad uint8) error {
+func (r *Reserve) SetRadius(store storagev2.Store, rad uint8) error {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 	r.radius = rad
 	r.radiusSetter.SetStorageRadius(r.radius)
-	return r.stateStore.Put(storageRadiusKey, r.radius)
+	return store.Put(&radiusItem{Radius: rad})
 }
 
 // Must be called under lock.

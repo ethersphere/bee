@@ -2,9 +2,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package pullsync provides the pullsync protocol
-// implementation.
-
 package events
 
 import (
@@ -35,6 +32,7 @@ func (b *Subscriber) Subscribe(str string) (<-chan struct{}, func()) {
 
 		for i, s := range b.subs[str] {
 			if s == c {
+				b.subs[str][i] = nil
 				b.subs[str] = append(b.subs[str][:i], b.subs[str][i+1:]...)
 				break
 			}

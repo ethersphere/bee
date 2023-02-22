@@ -19,7 +19,6 @@ import (
 	"github.com/ethersphere/bee/pkg/pullsync"
 	"github.com/ethersphere/bee/pkg/spinlock"
 	statestoreMock "github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/bee/pkg/storage"
 	chunk "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
@@ -32,8 +31,7 @@ func TestEvictBatch(t *testing.T) {
 	t.Parallel()
 
 	baseAddr := test.RandomAddress()
-	dbReserveOps(baseAddr, 100, nil, nil, nil, nil, time.Minute)
-	storer, err := diskStorer(t, dbReserveOps(baseAddr, 100, nil, nil, nil, nil, time.Minute))()
+	storer, err := diskStorer(t, dbReserveOps(baseAddr, 100, nil, nil, nil, time.Minute))()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +134,7 @@ func TestUnreserveCap(t *testing.T) {
 		baseAddr      = test.RandomAddress()
 	)
 
-	storer, err := diskStorer(t, dbReserveOps(baseAddr, capacity, nil, bs, nil, nil, time.Minute))()
+	storer, err := diskStorer(t, dbReserveOps(baseAddr, capacity, bs, nil, nil, time.Minute))()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,7 +222,7 @@ func TestRadiusManager(t *testing.T) {
 			bs       = batchstore.New(batchstore.WithReserveState(&postage.ReserveState{Radius: 3}))
 		)
 
-		storer, err := diskStorer(t, dbReserveOps(baseAddr, capacity, nil, bs, nil, nil, time.Millisecond))()
+		storer, err := diskStorer(t, dbReserveOps(baseAddr, capacity, bs, nil, nil, time.Millisecond))()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -237,10 +235,9 @@ func TestRadiusManager(t *testing.T) {
 
 	t.Run("radius decrease due to under utilization", func(t *testing.T) {
 		t.Parallel()
-		ss := statestoreMock.NewStateStore()
 		bs := batchstore.New(batchstore.WithReserveState(&postage.ReserveState{Radius: 3}))
 
-		storer, err := diskStorer(t, dbReserveOps(baseAddr, 10, ss, bs, nil, nil, time.Second))()
+		storer, err := diskStorer(t, dbReserveOps(baseAddr, 10, bs, nil, nil, time.Second))()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -283,10 +280,9 @@ func TestRadiusManager(t *testing.T) {
 	t.Run("radius doesnt change due to non-zero pull rate", func(t *testing.T) {
 		t.Parallel()
 
-		ss := statestoreMock.NewStateStore()
 		bs := batchstore.New(batchstore.WithReserveState(&postage.ReserveState{Radius: 3}))
 
-		storer, err := diskStorer(t, dbReserveOps(baseAddr, 10, ss, bs, &mockSyncReporter{rate: 1}, nil, time.Millisecond))()
+		storer, err := diskStorer(t, dbReserveOps(baseAddr, 10, bs, &mockSyncReporter{rate: 1}, nil, time.Millisecond))()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -301,7 +297,7 @@ func TestSubscribeBin(t *testing.T) {
 	t.Parallel()
 
 	baseAddr := test.RandomAddress()
-	storer, err := diskStorer(t, dbReserveOps(baseAddr, 100, nil, nil, nil, nil, reserve.DefaultRadiusWakeUpTime))()
+	storer, err := diskStorer(t, dbReserveOps(baseAddr, 100, nil, nil, nil, reserve.DefaultRadiusWakeUpTime))()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -399,7 +395,7 @@ func TestSubscribeBinTrigger(t *testing.T) {
 	t.Parallel()
 
 	baseAddr := test.RandomAddress()
-	storer, err := diskStorer(t, dbReserveOps(baseAddr, 100, nil, nil, nil, nil, reserve.DefaultRadiusWakeUpTime))()
+	storer, err := diskStorer(t, dbReserveOps(baseAddr, 100, nil, nil, nil, reserve.DefaultRadiusWakeUpTime))()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -476,7 +472,7 @@ func TestReserveSampler(t *testing.T) {
 	var chs []swarm.Chunk
 	baseAddr := test.RandomAddress()
 
-	storer, err := diskStorer(t, dbReserveOps(baseAddr, 1000, nil, nil, nil, nil, reserve.DefaultRadiusWakeUpTime))()
+	storer, err := diskStorer(t, dbReserveOps(baseAddr, 1000, nil, nil, nil, reserve.DefaultRadiusWakeUpTime))()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -577,13 +573,9 @@ func reserveSizeTest(rs *reserve.Reserve, want int) func(t *testing.T) {
 	}
 }
 
-func dbReserveOps(baseAddr swarm.Address, capacity int, stateStore storage.StateStorer, bs postage.Storer, syncer pullsync.SyncReporter, radiusSetter topology.SetStorageRadiuser, wakeUpTime time.Duration) *storer.Options {
+func dbReserveOps(baseAddr swarm.Address, capacity int, bs postage.Storer, syncer pullsync.SyncReporter, radiusSetter topology.SetStorageRadiuser, wakeUpTime time.Duration) *storer.Options {
 
 	opts := storer.DefaultOptions()
-
-	if stateStore == nil {
-		stateStore = statestoreMock.NewStateStore()
-	}
 
 	if radiusSetter == nil {
 		radiusSetter = kademlia.NewTopologyDriver()
@@ -601,7 +593,6 @@ func dbReserveOps(baseAddr swarm.Address, capacity int, stateStore storage.State
 	opts.RadiusSetter = radiusSetter
 	opts.ReserveCapacity = capacity
 	opts.Batchstore = bs
-	opts.StateStore = stateStore
 	opts.Syncer = syncer
 
 	return opts

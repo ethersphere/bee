@@ -6,6 +6,7 @@ package reserve
 
 import (
 	"encoding/binary"
+	"path"
 
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -32,16 +33,19 @@ func batchBinToString(bin uint8, batchID []byte) string {
 }
 
 func (b *batchRadiusItem) Clone() storage.Item {
+	if b == nil {
+		return nil
+	}
 	return &batchRadiusItem{
 		Bin:     b.Bin,
-		BatchID: b.BatchID,
-		Address: b.Address,
+		BatchID: copyBytes(b.BatchID),
+		Address: b.Address.Clone(),
 		BinID:   b.BinID,
 	}
 }
 
 func (b *batchRadiusItem) String() string {
-	return ""
+	return path.Join(b.Namespace(), b.ID())
 }
 
 const batchRadiusItemSize = 1 + swarm.HashSize + swarm.HashSize + 8
@@ -72,10 +76,10 @@ func (b *batchRadiusItem) Unmarshal(buf []byte) error {
 	b.Bin = buf[i]
 	i += 1
 
-	b.BatchID = buf[i : i+swarm.HashSize]
+	b.BatchID = copyBytes(buf[i : i+swarm.HashSize])
 	i += swarm.HashSize
 
-	b.Address = swarm.NewAddress(buf[i : i+swarm.HashSize])
+	b.Address = swarm.NewAddress(buf[i : i+swarm.HashSize]).Clone()
 	i += swarm.HashSize
 
 	b.BinID = binary.BigEndian.Uint64(buf[i : i+8])
@@ -105,46 +109,49 @@ func binIDToString(binID uint64) string {
 	return string(binIDBytes)
 }
 
-func (b *chunkBinItem) Clone() storage.Item {
+func (c *chunkBinItem) Clone() storage.Item {
+	if c == nil {
+		return nil
+	}
 	return &chunkBinItem{
-		Bin:     b.Bin,
-		BinID:   b.BinID,
-		Address: b.Address,
+		Bin:     c.Bin,
+		BinID:   c.BinID,
+		Address: c.Address.Clone(),
 	}
 }
 
-func (b *chunkBinItem) String() string {
-	return ""
+func (c *chunkBinItem) String() string {
+	return path.Join(c.Namespace(), c.ID())
 }
 
 const chunkBinItemSize = 1 + 8 + swarm.HashSize
 
-func (b *chunkBinItem) Marshal() ([]byte, error) {
+func (c *chunkBinItem) Marshal() ([]byte, error) {
 
 	buf := make([]byte, chunkBinItemSize)
 	i := 0
 
-	buf[i] = b.Bin
+	buf[i] = c.Bin
 	i += 1
 
-	binary.BigEndian.PutUint64(buf[i:], b.BinID)
+	binary.BigEndian.PutUint64(buf[i:], c.BinID)
 	i += 8
 
-	copy(buf[i:], b.Address.Bytes())
+	copy(buf[i:], c.Address.Bytes())
 
 	return buf, nil
 }
 
-func (b *chunkBinItem) Unmarshal(buf []byte) error {
+func (c *chunkBinItem) Unmarshal(buf []byte) error {
 
 	i := 0
-	b.Bin = buf[i]
+	c.Bin = buf[i]
 	i += 1
 
-	b.BinID = binary.BigEndian.Uint64(buf[i : i+8])
+	c.BinID = binary.BigEndian.Uint64(buf[i : i+8])
 	i += 8
 
-	b.Address = swarm.NewAddress(buf[i : i+swarm.HashSize])
+	c.Address = swarm.NewAddress(buf[i : i+swarm.HashSize]).Clone()
 
 	return nil
 }
@@ -158,30 +165,73 @@ func (b *binItem) Namespace() string {
 	return "binID"
 }
 
-func (c *binItem) ID() string {
-	return string(c.Bin)
+func (b *binItem) ID() string {
+	return string(b.Bin)
 }
 
 func (b *binItem) Clone() storage.Item {
+	if b == nil {
+		return nil
+	}
 	return &binItem{
 		Bin:   b.Bin,
 		BinID: b.BinID,
 	}
 }
 
-func (b *binItem) String() string {
-	return ""
+func (c *binItem) String() string {
+	return path.Join(c.Namespace(), c.ID())
 }
 
 const binItemSize = 8
 
-func (b *binItem) Marshal() ([]byte, error) {
+func (c *binItem) Marshal() ([]byte, error) {
 	buf := make([]byte, binItemSize)
-	binary.BigEndian.PutUint64(buf, b.BinID)
+	binary.BigEndian.PutUint64(buf, c.BinID)
 	return buf, nil
 }
 
-func (b *binItem) Unmarshal(buf []byte) error {
-	b.BinID = binary.BigEndian.Uint64(buf)
+func (c *binItem) Unmarshal(buf []byte) error {
+	c.BinID = binary.BigEndian.Uint64(buf)
 	return nil
+}
+
+type radiusItem struct {
+	Radius uint8
+}
+
+func (br *radiusItem) Namespace() string {
+	return "radius"
+}
+
+func (r *radiusItem) ID() string {
+	return ""
+}
+
+func (r *radiusItem) Clone() storage.Item {
+	if r == nil {
+		return nil
+	}
+	return &radiusItem{
+		Radius: r.Radius,
+	}
+}
+
+func (r *radiusItem) String() string {
+	return path.Join(r.Namespace(), r.ID())
+}
+
+func (r *radiusItem) Marshal() ([]byte, error) {
+	return []byte{r.Radius}, nil
+}
+
+func (r *radiusItem) Unmarshal(buf []byte) error {
+	r.Radius = uint8(buf[0])
+	return nil
+}
+
+func copyBytes(src []byte) []byte {
+	dst := make([]byte, len(src))
+	copy(dst, src)
+	return dst
 }
