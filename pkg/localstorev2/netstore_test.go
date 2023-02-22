@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	storer "github.com/ethersphere/bee/pkg/localstorev2"
 	"github.com/ethersphere/bee/pkg/log"
@@ -16,6 +17,7 @@ import (
 	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/swarm/test"
 )
 
 type testRetrieval struct {
@@ -293,18 +295,20 @@ func TestNetStore(t *testing.T) {
 		t.Parallel()
 
 		testNetStore(t, func(r retrieval.Interface) (*storer.DB, error) {
-			return storer.New(context.Background(), "", &storer.Options{
-				Retrieval:     r,
-				CacheCapacity: 100,
-				Logger:        log.Noop,
-			})
+
+			opts := dbTestOps(test.RandomAddress(), 0, nil, nil, nil, time.Second)
+			opts.Retrieval = r
+			opts.CacheCapacity = 100
+			opts.Logger = log.Noop
+
+			return storer.New(context.Background(), "", opts)
 		})
 	})
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
 
 		testNetStore(t, func(r retrieval.Interface) (*storer.DB, error) {
-			opts := storer.DefaultOptions()
+			opts := dbTestOps(test.RandomAddress(), 0, nil, nil, nil, time.Second)
 			opts.Retrieval = r
 			return diskStorer(t, opts)()
 		})
