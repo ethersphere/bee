@@ -15,26 +15,31 @@ func TestSubscriber(t *testing.T) {
 
 	s := events.NewSubscriber()
 
-	bin, clean1 := s.Subscribe("0")
-	t.Cleanup(func() { clean1() })
+	bin0_1, unsub0_1 := s.Subscribe("0")
+	bin0_2, unsub0_2 := s.Subscribe("0")
+	t.Cleanup(func() { unsub0_1(); unsub0_2() })
 	go s.Trigger("0")
-	<-bin
+	<-bin0_1
+	<-bin0_2
 
 	select {
-	case <-bin:
+	case <-bin0_1:
+		t.Fatalf("trigger should not have fired")
+	case <-bin0_2:
 		t.Fatalf("trigger should not have fired")
 	default:
 	}
 
-	bin1, clean2 := s.Subscribe("1")
-	t.Cleanup(func() { clean2() })
+	bin1, unsub1 := s.Subscribe("1")
 	go s.Trigger("1")
 	go s.Trigger("1")
 	<-bin1
 	<-bin1
 
+	unsub1()
+
 	select {
-	case <-bin:
+	case <-bin1:
 		t.Fatalf("trigger should not have fired")
 	default:
 	}

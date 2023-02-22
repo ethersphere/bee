@@ -107,18 +107,18 @@ type chunkBinItem struct {
 
 // bin
 func (c *chunkBinItem) Namespace() string {
-	return "chunkBin" + string(c.Bin)
+	return "chunkBin"
 }
 
 // binID
 func (c *chunkBinItem) ID() string {
-	return binIDToString(c.BinID)
+	return binIDToString(c.Bin, c.BinID)
 }
 
-func binIDToString(binID uint64) string {
+func binIDToString(bin uint8, binID uint64) string {
 	binIDBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(binIDBytes, binID)
-	return string(binIDBytes)
+	return string(bin) + string(binIDBytes)
 }
 
 func (c *chunkBinItem) Clone() storage.Item {

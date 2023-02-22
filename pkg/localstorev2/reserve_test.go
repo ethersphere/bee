@@ -7,7 +7,6 @@ package storer_test
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"testing"
 	"time"
 
@@ -332,7 +331,6 @@ func TestSubscribeBin(t *testing.T) {
 
 		i := uint64(0)
 		for c := range binC {
-			fmt.Println("+", i, c.BinID, c.Address, chunks[i].Address())
 			if !c.Address.Equal(chunks[i].Address()) {
 				t.Fatal("mismatch of chunks at index", i)
 			}
@@ -352,7 +350,6 @@ func TestSubscribeBin(t *testing.T) {
 
 		i := uint64(1)
 		for c := range binC {
-			fmt.Println("+", i, c.BinID, c.Address, chunks[i].Address())
 			if !c.Address.Equal(chunks[i].Address()) {
 				t.Fatal("mismatch of chunks at index", i)
 			}
@@ -375,7 +372,6 @@ func TestSubscribeBin(t *testing.T) {
 		for {
 			select {
 			case c := <-binC:
-				fmt.Println("+", i, c.BinID, c.Address, chunks[i].Address())
 				if !c.Address.Equal(chunks[i].Address()) {
 					t.Fatal("mismatch of chunks at index", i)
 				}
@@ -429,7 +425,6 @@ loop:
 	for {
 		select {
 		case c := <-binC:
-			fmt.Println("+", i, c.BinID, c.Address, chunks[i].Address())
 			if !c.Address.Equal(chunks[i].Address()) {
 				t.Fatal("mismatch of chunks at index", i)
 			}
@@ -472,7 +467,7 @@ func TestReserveSampler(t *testing.T) {
 	var chs []swarm.Chunk
 	baseAddr := test.RandomAddress()
 
-	storer, err := diskStorer(t, dbReserveOps(baseAddr, 1000, nil, nil, nil, reserve.DefaultRadiusWakeUpTime))()
+	st, err := diskStorer(t, dbReserveOps(baseAddr, 1000, nil, nil, nil, reserve.DefaultRadiusWakeUpTime))()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -488,7 +483,7 @@ func TestReserveSampler(t *testing.T) {
 		}
 	}
 
-	putter := storer.ReservePutter(context.Background())
+	putter := st.ReservePutter(context.Background())
 	for _, ch := range chs {
 		err := putter.Put(context.Background(), ch)
 		if err != nil {
@@ -500,12 +495,12 @@ func TestReserveSampler(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Run("reserve size", reserveSizeTest(storer.Reserve(), chunkCountPerPO*maxPO))
+	t.Run("reserve size", reserveSizeTest(st.Reserve(), chunkCountPerPO*maxPO))
 
-	var sample1 reserve.Sample
+	var sample1 storer.Sample
 
 	t.Run("reserve sample 1", func(t *testing.T) {
-		sample, err := storer.ReserveSample(context.TODO(), []byte("anchor"), 5, timeVar)
+		sample, err := st.ReserveSample(context.TODO(), []byte("anchor"), 5, timeVar)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -532,7 +527,7 @@ func TestReserveSampler(t *testing.T) {
 		}
 	}
 
-	putter = storer.ReservePutter(context.Background())
+	putter = st.ReservePutter(context.Background())
 	for _, ch := range chs {
 		err := putter.Put(context.Background(), ch)
 		if err != nil {
@@ -546,12 +541,12 @@ func TestReserveSampler(t *testing.T) {
 
 	time.Sleep(time.Second)
 
-	t.Run("reserve size", reserveSizeTest(storer.Reserve(), 3*chunkCountPerPO*maxPO))
+	t.Run("reserve size", reserveSizeTest(st.Reserve(), 3*chunkCountPerPO*maxPO))
 
 	// Now we generate another sample with the older timestamp. This should give us
 	// the exact same sample, ensuring that none of the later chunks were considered.
 	t.Run("reserve sample 2", func(t *testing.T) {
-		sample, err := storer.ReserveSample(context.TODO(), []byte("anchor"), 5, timeVar)
+		sample, err := st.ReserveSample(context.TODO(), []byte("anchor"), 5, timeVar)
 		if err != nil {
 			t.Fatal(err)
 		}
