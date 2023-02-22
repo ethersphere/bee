@@ -62,26 +62,17 @@ func New(baseAddr swarm.Address, store storagev2.Store, capacity int, reserveRad
 	err := stateStore.Get(storageRadiusKey, &radius)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) { // fresh node
-			err = rs.SetRadius(reserveRadius)
-			if err != nil {
-				return nil, err
-			}
+			radius = reserveRadius
 		} else {
 			return nil, err
 		}
 	}
+	err = rs.SetRadius(radius)
+	if err != nil {
+		return nil, err
+	}
 
-	var size int
-	err = store.Iterate(storagev2.Query{
-		Factory: func() storagev2.Item {
-			return &batchRadiusItem{}
-		},
-		Prefix:        string(radius),
-		PrefixAtStart: true,
-	}, func(res storagev2.Result) (bool, error) {
-		size++
-		return false, nil
-	})
+	size, err := store.Count(&batchRadiusItem{})
 	if err != nil {
 		return nil, err
 	}
@@ -141,12 +132,7 @@ func (r *Reserve) Putter(store internal.Storage) storagev2.Putter {
 			return err
 		}
 
-		err = chunkStore.Put(ctx, chunk)
-		if err != nil {
-			return err
-		}
-
-		return nil
+		return chunkStore.Put(ctx, chunk)
 	})
 }
 
@@ -212,13 +198,36 @@ func (r *Reserve) EvictBatchBin(store internal.Storage, batchID []byte, bin uint
 
 			return false, nil
 		})
-
 		if err != nil {
 			return 0, err
 		}
 	}
 
 	return evicted, nil
+}
+
+func (r *Reserve) LastBinIDs(store storagev2.Store) ([]uint64, error) {
+
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	ids := make([]uint64, swarm.MaxBins)
+
+	for bin := uint8(0); bin < swarm.MaxBins; bin++ {
+		binItem := &binItem{Bin: bin}
+		err := store.Get(binItem)
+		if err != nil {
+			if errors.Is(err, storagev2.ErrNotFound) {
+				ids[bin] = 0
+			} else {
+				return nil, err
+			}
+		} else {
+			ids[bin] = binItem.BinID
+		}
+	}
+
+	return ids, nil
 }
 
 func (r *Reserve) Radius() uint8 {
@@ -239,7 +248,7 @@ func (r *Reserve) AddSize(diff int) {
 	r.size += diff
 }
 
-func (r *Reserve) WithinCapacity() bool {
+func (r *Reserve) IsWithinCapacity() bool {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 	return r.size <= r.capacity
@@ -257,7 +266,7 @@ func (r *Reserve) SetRadius(rad uint8) error {
 // Must be called under lock.
 func incBinID(store storagev2.Store, po uint8) (uint64, error) {
 
-	bin := &binItem{PO: po}
+	bin := &binItem{Bin: po}
 	err := store.Get(bin)
 	if err != nil {
 		if errors.Is(err, storagev2.ErrNotFound) {

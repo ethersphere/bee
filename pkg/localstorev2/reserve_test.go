@@ -94,6 +94,20 @@ func TestEvictBatch(t *testing.T) {
 	if reserve.Radius() != 0 {
 		t.Fatalf("want radius %d, got radius %d", 0, reserve.Radius())
 	}
+
+	ids, err := storer.Reserve().LastBinIDs(storer.Repo().IndexStore())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for bin, id := range ids {
+		if bin < 3 && id != 9 {
+			t.Fatalf("bin %d got binID %d, want %d", bin, id, 9)
+		}
+		if bin >= 3 && id != 0 {
+			t.Fatalf("bin %d  got binID %d, want %d", bin, id, 0)
+		}
+	}
 }
 
 // 	err = reserve.Close()
