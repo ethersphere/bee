@@ -74,9 +74,6 @@ func (r *Reserve) Putter(store internal.Storage) storagev2.Putter {
 
 	return storagev2.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
 
-		r.mtx.Lock()
-		defer r.mtx.Unlock()
-
 		indexStore := store.IndexStore()
 		chunkStore := store.ChunkStore()
 
@@ -163,9 +160,6 @@ func (r *Reserve) Iterate(store storagev2.Store, bin uint8, cb func(swarm.Addres
 
 func (r *Reserve) EvictBatchBin(store internal.Storage, batchID []byte, bin uint8) (int, error) {
 
-	r.mtx.Lock()
-	defer r.mtx.Unlock()
-
 	indexStore := store.IndexStore()
 	chunkStore := store.ChunkStore()
 
@@ -212,9 +206,6 @@ func (r *Reserve) EvictBatchBin(store internal.Storage, batchID []byte, bin uint
 }
 
 func (r *Reserve) LastBinIDs(store storagev2.Store) ([]uint64, error) {
-
-	r.mtx.Lock()
-	defer r.mtx.Unlock()
 
 	ids := make([]uint64, swarm.MaxBins)
 
@@ -264,7 +255,7 @@ func (r *Reserve) SetRadius(store storagev2.Store, rad uint8) error {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 	r.radius = rad
-	r.radiusSetter.SetStorageRadius(r.radius)
+	r.radiusSetter.SetStorageRadius(rad)
 	return store.Put(&radiusItem{Radius: rad})
 }
 
