@@ -14,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/reacher"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 	ma "github.com/multiformats/go-multiaddr"
 	"go.uber.org/atomic"
 )
@@ -70,7 +71,7 @@ func TestPingSuccess(t *testing.T) {
 			mock := newMock(tc.pingFunc, tc.reachableFunc(done))
 
 			r := reacher.New(mock, mock, &defaultOptions)
-			defer r.Close()
+			testutil.CleanupCloser(t, r)
 
 			overlay := test.RandomAddress()
 
@@ -116,7 +117,7 @@ func TestDisconnected(t *testing.T) {
 	mock := newMock(pingFunc, reachableFunc)
 
 	r := reacher.New(mock, mock, &defaultOptions)
-	defer r.Close()
+	testutil.CleanupCloser(t, r)
 
 	r.Connected(test.RandomAddress(), nil)
 	r.Connected(disconnectedOverlay, disconnectedMa)

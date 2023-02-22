@@ -412,7 +412,6 @@ func TestPing(t *testing.T) {
 			},
 		),
 	})
-	defer s1.Close()
 
 	s2, _ := newService(t, 1, libp2pServiceOpts{
 		libp2pOpts: libp2p.WithHostFactory(
@@ -421,7 +420,6 @@ func TestPing(t *testing.T) {
 			},
 		),
 	})
-	defer s2.Close()
 
 	addr := serviceUnderlayAddress(t, s1)
 

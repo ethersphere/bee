@@ -79,7 +79,7 @@ func TestENSIntegration(t *testing.T) {
 				}
 				return
 			}
-			defer ensClient.Close()
+			testutil.CleanupCloser(t, ensClient)
 
 			addr, err := ensClient.Resolve(tC.name)
 			if err != nil {

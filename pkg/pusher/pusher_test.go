@@ -29,6 +29,7 @@ import (
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/mock"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
 // time to wait for received response from pushsync
@@ -428,11 +429,7 @@ func createPusherWithRetryCount(t *testing.T, addr swarm.Address, pushSyncServic
 	peerSuggester := mock.NewTopologyDriver(mockOpts...)
 
 	pusherService := pusher.New(1, pusherStorer, peerSuggester, pushSyncService, validStamp, mtags, logger, nil, 0, retryCount)
-
-	t.Cleanup(func() {
-		pusherService.Close()
-		pusherStorer.Close()
-	})
+	testutil.CleanupCloser(t, pusherService, pusherStorer)
 
 	return mtags, pusherService, pusherStorer
 }

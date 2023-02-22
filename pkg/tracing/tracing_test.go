@@ -9,20 +9,19 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 	"github.com/uber/jaeger-client-go"
 )
 
 func TestSpanFromHeaders(t *testing.T) {
 	t.Parallel()
 
-	tracer, closer := newTracer(t)
-	defer closer.Close()
+	tracer := newTracer(t)
 
 	span, _, ctx := tracer.StartSpanFromContext(context.Background(), "some-operation", nil)
 	defer span.Finish()
@@ -54,8 +53,7 @@ func TestSpanFromHeaders(t *testing.T) {
 func TestSpanWithContextFromHeaders(t *testing.T) {
 	t.Parallel()
 
-	tracer, closer := newTracer(t)
-	defer closer.Close()
+	tracer := newTracer(t)
 
 	span, _, ctx := tracer.StartSpanFromContext(context.Background(), "some-operation", nil)
 	defer span.Finish()
@@ -88,8 +86,7 @@ func TestSpanWithContextFromHeaders(t *testing.T) {
 func TestFromContext(t *testing.T) {
 	t.Parallel()
 
-	tracer, closer := newTracer(t)
-	defer closer.Close()
+	tracer := newTracer(t)
 
 	span, _, ctx := tracer.StartSpanFromContext(context.Background(), "some-operation", nil)
 	defer span.Finish()
@@ -112,8 +109,7 @@ func TestFromContext(t *testing.T) {
 func TestWithContext(t *testing.T) {
 	t.Parallel()
 
-	tracer, closer := newTracer(t)
-	defer closer.Close()
+	tracer := newTracer(t)
 
 	span, _, _ := tracer.StartSpanFromContext(context.Background(), "some-operation", nil)
 	defer span.Finish()
@@ -138,8 +134,7 @@ func TestWithContext(t *testing.T) {
 func TestStartSpanFromContext_logger(t *testing.T) {
 	t.Parallel()
 
-	tracer, closer := newTracer(t)
-	defer closer.Close()
+	tracer := newTracer(t)
 
 	buf := new(bytes.Buffer)
 
@@ -172,8 +167,7 @@ func TestStartSpanFromContext_logger(t *testing.T) {
 func TestStartSpanFromContext_nilLogger(t *testing.T) {
 	t.Parallel()
 
-	tracer, closer := newTracer(t)
-	defer closer.Close()
+	tracer := newTracer(t)
 
 	span, logger, _ := tracer.StartSpanFromContext(context.Background(), "some-operation", nil)
 	defer span.Finish()
@@ -186,8 +180,7 @@ func TestStartSpanFromContext_nilLogger(t *testing.T) {
 func TestNewLoggerWithTraceID(t *testing.T) {
 	t.Parallel()
 
-	tracer, closer := newTracer(t)
-	defer closer.Close()
+	tracer := newTracer(t)
 
 	span, _, ctx := tracer.StartSpanFromContext(context.Background(), "some-operation", nil)
 	defer span.Finish()
@@ -222,8 +215,7 @@ func TestNewLoggerWithTraceID(t *testing.T) {
 func TestNewLoggerWithTraceID_nilLogger(t *testing.T) {
 	t.Parallel()
 
-	tracer, closer := newTracer(t)
-	defer closer.Close()
+	tracer := newTracer(t)
 
 	span, _, ctx := tracer.StartSpanFromContext(context.Background(), "some-operation", nil)
 	defer span.Finish()
@@ -235,7 +227,7 @@ func TestNewLoggerWithTraceID_nilLogger(t *testing.T) {
 	}
 }
 
-func newTracer(t *testing.T) (*tracing.Tracer, io.Closer) {
+func newTracer(t *testing.T) *tracing.Tracer {
 	t.Helper()
 
 	tracer, closer, err := tracing.NewTracer(&tracing.Options{
@@ -245,6 +237,7 @@ func newTracer(t *testing.T) (*tracing.Tracer, io.Closer) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	testutil.CleanupCloser(t, closer)
 
-	return tracer, closer
+	return tracer
 }

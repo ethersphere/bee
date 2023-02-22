@@ -10,18 +10,14 @@ import (
 
 	"github.com/ethersphere/bee/pkg/resolver"
 	"github.com/ethersphere/bee/pkg/resolver/cidv1"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
 func TestCIDResolver(t *testing.T) {
 	t.Parallel()
 
 	r := cidv1.Resolver{}
-	t.Cleanup(func() {
-		err := r.Close()
-		if err != nil {
-			t.Fatal("failed closing")
-		}
-	})
+	testutil.CleanupCloser(t, r)
 
 	t.Run("resolve manifest CID", func(t *testing.T) {
 		t.Parallel()
