@@ -91,7 +91,7 @@ func (r *Reserve) Putter(store internal.Storage) storagev2.Putter {
 			return nil
 		}
 
-		binID, err := incBinID(indexStore, po)
+		binID, err := r.incBinID(indexStore, po)
 		if err != nil {
 			return err
 		}
@@ -250,7 +250,6 @@ func (r *Reserve) IsWithinCapacity() bool {
 	return r.size <= r.capacity
 }
 
-// Must be called underlock.
 func (r *Reserve) SetRadius(store storagev2.Store, rad uint8) error {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
@@ -259,8 +258,9 @@ func (r *Reserve) SetRadius(store storagev2.Store, rad uint8) error {
 	return store.Put(&radiusItem{Radius: rad})
 }
 
-// Must be called under lock.
-func incBinID(store storagev2.Store, po uint8) (uint64, error) {
+func (r *Reserve) incBinID(store storagev2.Store, po uint8) (uint64, error) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
 
 	bin := &binItem{Bin: po}
 	err := store.Get(bin)
