@@ -6,11 +6,15 @@ package reserve
 
 import (
 	"encoding/binary"
+	"errors"
 	"path"
 
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
+
+var errMarshalInvalidAddress = errors.New("marshal: invalid address")
+var errUnmarshalInvalidSize = errors.New("unmarshal: invalid size")
 
 type batchRadiusItem struct {
 	Bin     uint8
@@ -38,7 +42,7 @@ func (b *batchRadiusItem) Clone() storage.Item {
 	}
 	return &batchRadiusItem{
 		Bin:     b.Bin,
-		BatchID: copyBytes(b.BatchID),
+		BatchID: copyBytes(b.BatchID, swarm.HashSize),
 		Address: b.Address.Clone(),
 		BinID:   b.BinID,
 	}
@@ -51,6 +55,10 @@ func (b *batchRadiusItem) String() string {
 const batchRadiusItemSize = 1 + swarm.HashSize + swarm.HashSize + 8
 
 func (b *batchRadiusItem) Marshal() ([]byte, error) {
+
+	if b.Address.IsZero() {
+		return nil, errMarshalInvalidAddress
+	}
 
 	buf := make([]byte, batchRadiusItemSize)
 
@@ -72,17 +80,21 @@ func (b *batchRadiusItem) Marshal() ([]byte, error) {
 
 func (b *batchRadiusItem) Unmarshal(buf []byte) error {
 
+	if len(buf) != batchRadiusItemSize {
+		return errUnmarshalInvalidSize
+	}
+
 	i := 0
 	b.Bin = buf[i]
 	i += 1
 
-	b.BatchID = copyBytes(buf[i : i+swarm.HashSize])
+	b.BatchID = copyBytes(buf[i:i+swarm.HashSize], swarm.HashSize)
 	i += swarm.HashSize
 
 	b.Address = swarm.NewAddress(buf[i : i+swarm.HashSize]).Clone()
 	i += swarm.HashSize
 
-	b.BinID = binary.BigEndian.Uint64(buf[i : i+8])
+	b.BinID = binary.BigEndian.Uint64(buf[i:])
 
 	return nil
 }
@@ -128,6 +140,10 @@ const chunkBinItemSize = 1 + 8 + swarm.HashSize
 
 func (c *chunkBinItem) Marshal() ([]byte, error) {
 
+	if c.Address.IsZero() {
+		return nil, errMarshalInvalidAddress
+	}
+
 	buf := make([]byte, chunkBinItemSize)
 	i := 0
 
@@ -143,6 +159,10 @@ func (c *chunkBinItem) Marshal() ([]byte, error) {
 }
 
 func (c *chunkBinItem) Unmarshal(buf []byte) error {
+
+	if len(buf) != chunkBinItemSize {
+		return errUnmarshalInvalidSize
+	}
 
 	i := 0
 	c.Bin = buf[i]
@@ -192,6 +212,9 @@ func (c *binItem) Marshal() ([]byte, error) {
 }
 
 func (c *binItem) Unmarshal(buf []byte) error {
+	if len(buf) != binItemSize {
+		return errUnmarshalInvalidSize
+	}
 	c.BinID = binary.BigEndian.Uint64(buf)
 	return nil
 }
@@ -226,12 +249,15 @@ func (r *radiusItem) Marshal() ([]byte, error) {
 }
 
 func (r *radiusItem) Unmarshal(buf []byte) error {
+	if len(buf) != 1 {
+		return errUnmarshalInvalidSize
+	}
 	r.Radius = uint8(buf[0])
 	return nil
 }
 
-func copyBytes(src []byte) []byte {
-	dst := make([]byte, len(src))
+func copyBytes(src []byte, len int) []byte {
+	dst := make([]byte, len)
 	copy(dst, src)
 	return dst
 }
