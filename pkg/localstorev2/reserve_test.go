@@ -29,7 +29,10 @@ func TestEvictBatch(t *testing.T) {
 	t.Parallel()
 
 	baseAddr := test.RandomAddress()
-	storer, err := diskStorer(t, dbTestOps(baseAddr, 100, nil, nil, nil, time.Minute))()
+
+	dir := t.TempDir()
+	opts := dbTestOps(baseAddr, 100, nil, nil, nil, time.Minute)
+	st, err := storer.New(context.Background(), dir, opts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,7 +44,7 @@ func TestEvictBatch(t *testing.T) {
 	stamps := []*postage.Stamp{postagetesting.MustNewStamp(), postagetesting.MustNewStamp(), postagetesting.MustNewStamp()}
 	evictBatchID := stamps[1].BatchID()
 
-	putter := storer.ReservePutter(ctx)
+	putter := st.ReservePutter(ctx)
 
 	for i := 0; i < 10; i++ {
 		for b := 0; b < 3; b++ {
@@ -60,13 +63,13 @@ func TestEvictBatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = storer.EvictBatch(ctx, evictBatchID)
+	err = st.EvictBatch(ctx, evictBatchID)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	chunkStore := storer.Repo().ChunkStore()
-	reserve := storer.Reserve()
+	chunkStore := st.Repo().ChunkStore()
+	reserve := st.Reserve()
 
 	for _, ch := range chunks {
 		has, err := chunkStore.Has(ctx, ch.Address())
@@ -91,7 +94,7 @@ func TestEvictBatch(t *testing.T) {
 		t.Fatalf("want radius %d, got radius %d", 0, reserve.Radius())
 	}
 
-	ids, err := storer.Reserve().LastBinIDs(storer.Repo().IndexStore())
+	ids, err := st.Reserve().LastBinIDs(st.Repo().IndexStore())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,23 +107,21 @@ func TestEvictBatch(t *testing.T) {
 			t.Fatalf("bin %d  got binID %d, want %d", bin, id, 0)
 		}
 	}
+
+	err = st.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	st, err = storer.New(context.Background(), dir, opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if got := st.Reserve().Size(); got != 20 {
+		t.Fatalf("want size %d, got size %d", 20, got)
+	}
 }
-
-// 	err = reserve.Close()
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-
-// 	reserve, err = createReserve(t, baseAddr, 100, ldbStore, nil, nil, chunkStore, nil, nil, nil, wakeup)
-// 	if err != nil {
-// 		t.Fatal(err)
-// 	}
-
-// 	// check size after Close
-// 	if reserve.Size() != 20 {
-// 		t.Fatalf("want size %d, got size %d", 20, reserve.Size())
-// 	}
-// }
 
 func TestUnreserveCap(t *testing.T) {
 	t.Parallel()
@@ -139,7 +140,7 @@ func TestUnreserveCap(t *testing.T) {
 
 	chunkStore := storer.Repo().ChunkStore()
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
 	var chunksPO = make([][]swarm.Chunk, 5)
@@ -199,8 +200,7 @@ func TestRadiusManager(t *testing.T) {
 
 	waitForRadius := func(t *testing.T, reserve *reserve.Reserve, expectedRadius uint8) {
 		t.Helper()
-
-		err := spinlock.Wait(time.Second*3, func() bool {
+		err := spinlock.Wait(time.Second*5, func() bool {
 			return reserve.Radius() == expectedRadius
 		})
 		if err != nil {
@@ -208,11 +208,41 @@ func TestRadiusManager(t *testing.T) {
 		}
 	}
 
+	t.Run("old nodes starts at previous radius", func(t *testing.T) {
+		t.Parallel()
+
+		var (
+			capacity = 100
+			bs       = batchstore.New(batchstore.WithReserveState(&postage.ReserveState{Radius: 3}))
+			dir      = t.TempDir()
+		)
+
+		opts := dbTestOps(baseAddr, capacity, bs, &mockSyncReporter{rate: 1}, nil, time.Millisecond*50)
+		st, err := storer.New(context.Background(), dir, opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		waitForRadius(t, st.Reserve(), 3)
+		err = st.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		bs = batchstore.New(batchstore.WithReserveState(&postage.ReserveState{Radius: 4}))
+		opts.Batchstore = bs
+		st, err = storer.New(context.Background(), dir, opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		waitForRadius(t, st.Reserve(), 3)
+	})
+
 	t.Run("radius decrease due to under utilization", func(t *testing.T) {
 		t.Parallel()
 		bs := batchstore.New(batchstore.WithReserveState(&postage.ReserveState{Radius: 3}))
 
-		storer, err := diskStorer(t, dbTestOps(baseAddr, 10, bs, nil, nil, time.Millisecond))()
+		storer, err := diskStorer(t, dbTestOps(baseAddr, 10, bs, nil, nil, time.Millisecond*50))()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -254,17 +284,14 @@ func TestRadiusManager(t *testing.T) {
 
 	t.Run("radius doesnt change due to non-zero pull rate", func(t *testing.T) {
 		t.Parallel()
-
 		bs := batchstore.New(batchstore.WithReserveState(&postage.ReserveState{Radius: 3}))
-
-		storer, err := diskStorer(t, dbTestOps(baseAddr, 10, bs, &mockSyncReporter{rate: 1}, nil, time.Millisecond))()
+		storer, err := diskStorer(t, dbTestOps(baseAddr, 10, bs, &mockSyncReporter{rate: 1}, nil, time.Millisecond*50))()
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		time.Sleep(time.Second)
 		waitForRadius(t, storer.Reserve(), 3)
-
 	})
 }
 
@@ -280,9 +307,8 @@ func TestSubscribeBin(t *testing.T) {
 	var (
 		chunks      []swarm.Chunk
 		chunksPerPO uint64 = 5
+		putter             = storer.ReservePutter(context.Background())
 	)
-
-	putter := storer.ReservePutter(context.Background())
 
 	for j := 0; j < 2; j++ {
 		for i := uint64(0); i < chunksPerPO; i++ {
@@ -568,7 +594,6 @@ func dbTestOps(baseAddr swarm.Address, capacity int, bs postage.Storer, syncer p
 	opts.ReserveWakeUpDuration = reserveWakeUpTime
 
 	return opts
-
 }
 
 type mockSyncReporter struct {
