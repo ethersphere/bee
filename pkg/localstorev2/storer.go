@@ -276,7 +276,7 @@ type DB struct {
 	bgCacheWorkersWg sync.WaitGroup
 	dbCloser         io.Closer
 
-	pushTriggers    []chan<- swarm.Address
+	pushTriggers    []chan<- struct{}
 	pushTriggersMu  sync.RWMutex
 	subscriptionsWG sync.WaitGroup
 
@@ -374,15 +374,13 @@ func (p *putterSession) Done(addr swarm.Address) error { return p.done(addr) }
 
 func (p *putterSession) Cleanup() error { return p.cleanup() }
 
-var total = 0
-
 func (db *DB) SubscribePush(ctx context.Context) (chunks chan swarm.Chunk, reset, stop func()) {
 	chunks = make(chan swarm.Chunk)
-	trigger := make(chan swarm.Address, 1)
+	trigger := make(chan struct{}, 1)
 	resetC := make(chan struct{}, 1)
 
 	// send signal for the initial iteration
-	trigger <- swarm.ZeroAddress
+	trigger <- struct{}{}
 
 	db.pushTriggersMu.Lock()
 	db.pushTriggers = append(db.pushTriggers, trigger)
@@ -392,6 +390,14 @@ func (db *DB) SubscribePush(ctx context.Context) (chunks chan swarm.Chunk, reset
 	var stopChanOnce sync.Once
 
 	var sinceItem swarm.Chunk
+
+	reset = func() {
+		time.Sleep(1 * time.Second) // give some time when retrying
+		select {
+		case resetC <- struct{}{}:
+		default:
+		}
+	}
 
 	db.subscriptionsWG.Add(1)
 	go func() {
@@ -403,8 +409,6 @@ func (db *DB) SubscribePush(ctx context.Context) (chunks chan swarm.Chunk, reset
 		// should start. The first iteration starts from the first Item.
 		for {
 			select {
-			default:
-				time.Sleep(time.Second)
 			case <-stopChan:
 				// terminate the subscription
 				// on stop
@@ -414,10 +418,10 @@ func (db *DB) SubscribePush(ctx context.Context) (chunks chan swarm.Chunk, reset
 			case <-resetC:
 				sinceItem = nil
 				select {
-				case trigger <- swarm.ZeroAddress:
+				case trigger <- struct{}{}:
 				default:
 				}
-			case addr := <-trigger:
+			case <-trigger:
 
 				// iterate until:
 				// - last index Item is reached
@@ -426,22 +430,16 @@ func (db *DB) SubscribePush(ctx context.Context) (chunks chan swarm.Chunk, reset
 
 				var count int
 
-				fmt.Println("starting iteration", addr)
-
 				err := upload.Iterate(ctx, db.repo, sinceItem, func(chunk swarm.Chunk) (bool, error) {
 
-					db.dirtyTagsMu.RLock()
-					defer db.dirtyTagsMu.RUnlock()
-
-					for _, dirtyTag := range db.dirtyTags {
-						if dirtyTag == uint64(chunk.TagID()) {
-							fmt.Println("dirty tag", dirtyTag)
-							return true, nil
-						}
+					if db.isDirty(uint64(chunk.TagID())) {
+						fmt.Println("found dirty tag resetting")
+						reset()
+						return true, nil
 					}
 
 					select {
-					default:
+					case chunks <- chunk:
 						count++
 						// set next iteration start item
 						// when its chunk is successfully sent to channel
@@ -457,14 +455,7 @@ func (db *DB) SubscribePush(ctx context.Context) (chunks chan swarm.Chunk, reset
 					}
 				})
 
-				total += count
-				fmt.Println(addr, "done iteration")
-				fmt.Println("total chunk iterated", total)
-
-				total = 0
-
 				if err != nil {
-					fmt.Println("got error", err)
 					return
 				}
 			}
@@ -487,27 +478,50 @@ func (db *DB) SubscribePush(ctx context.Context) (chunks chan swarm.Chunk, reset
 		}
 	}
 
-	reset = func() {
-		time.Sleep(1 * time.Second) // give some time when retrying
-		select {
-		case resetC <- struct{}{}:
-		default:
-		}
-	}
-
 	return chunks, reset, stop
 }
 
 // triggerPushSubscriptions is used internally for starting iterations
 // on Push subscriptions. Whenever new item is added to the push index,
 // this function should be called.
-func (db *DB) triggerPushSubscriptions(addr swarm.Address) {
+func (db *DB) triggerPushSubscriptions() {
 	db.pushTriggersMu.RLock()
 	defer db.pushTriggersMu.RUnlock()
 	for _, trigger := range db.pushTriggers {
 		trigger := trigger
 		go func() {
-			trigger <- addr
+			trigger <- struct{}{}
 		}()
+	}
+}
+
+func (db *DB) isDirty(tag uint64) bool {
+	db.dirtyTagsMu.RLock()
+	defer db.dirtyTagsMu.RUnlock()
+
+	for _, dirtyTag := range db.dirtyTags {
+		if dirtyTag == tag {
+			return true
+		}
+	}
+	return false
+}
+
+func (db *DB) markDirty(tag uint64) {
+	db.dirtyTagsMu.Lock()
+	defer db.dirtyTagsMu.Unlock()
+
+	db.dirtyTags = append(db.dirtyTags, tag)
+}
+
+func (db *DB) clearDirty(tag uint64) {
+	db.dirtyTagsMu.Lock()
+	defer db.dirtyTagsMu.Unlock()
+
+	for i, tagID := range db.dirtyTags {
+		if tag == tagID {
+			db.dirtyTags = append(db.dirtyTags[:i], db.dirtyTags[i+1:]...)
+			break
+		}
 	}
 }

@@ -377,7 +377,7 @@ func (u *uploadPutter) Put(ctx context.Context, chunk swarm.Chunk) error {
 		return fmt.Errorf("chunk store put chunk %q call failed: %w", chunk.Address(), err)
 	}
 
-	ui.Uploaded = now().Unix()
+	ui.Uploaded = now().UnixNano()
 	ui.TagID = u.tagID
 
 	if err := u.s.IndexStore().Put(ui); err != nil {
@@ -597,11 +597,6 @@ func Iterate(ctx context.Context, s internal.Storage, startFrom swarm.Chunk, con
 		if err != nil {
 			return true, err
 		}
-
-		fmt.Println("> sending chunk", chunk.Address())
-
-		ch := chunk.WithTagID(uint32(pi.TagID))
-
-		return consumerFn(ch)
+		return consumerFn(chunk.WithTagID(uint32(pi.TagID)))
 	})
 }

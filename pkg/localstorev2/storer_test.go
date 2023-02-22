@@ -343,9 +343,8 @@ func testPushSubscriber(t *testing.T, newLocalstore func() (*storer.DB, error)) 
 		)
 		for {
 			select {
-			default:
-				time.Sleep(time.Second)
-			case chunk, ok := <-ch:
+			case ch, ok := <-ch:
+				fmt.Println("got chunk", ch.Address())
 				if !ok {
 					fmt.Println("stopping")
 					return
@@ -377,8 +376,10 @@ func testPushSubscriber(t *testing.T, newLocalstore func() (*storer.DB, error)) 
 				case errChan <- err:
 				case <-ctx.Done():
 					return
-				default:
-					fmt.Println("< received chunk", chunk.Address())
+				}
+				if i == 18 {
+					close(errChan)
+					return
 				}
 			case <-ctx.Done():
 				return
