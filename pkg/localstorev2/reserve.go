@@ -42,7 +42,7 @@ func (db *DB) reserveWorker(capacity int, syncer pullsync.SyncReporter, warmupDu
 			_ = db.unreserve(context.Background())
 		case <-time.After(wakeUpDur):
 			if db.reserve.Size() < threshold && syncer.Rate() == 0 && db.reserve.Radius() > 0 {
-				_ = db.reserve.SetRadius(db.reserve.Radius() - 1)
+				_ = db.reserve.SetRadius(db.repo.IndexStore(), db.reserve.Radius()-1)
 			}
 		case <-db.quit:
 			return
@@ -150,7 +150,7 @@ func (db *DB) unreserve(ctx context.Context) error {
 		}
 
 		radius++
-		_ = db.reserve.SetRadius(radius)
+		_ = db.reserve.SetRadius(db.repo.IndexStore(), radius)
 	}
 }
 
@@ -224,9 +224,7 @@ func (db *DB) ReserveSample(
 	consensusTime uint64,
 ) (reserve.Sample, error) {
 
-	txnRepo, _, _ := db.repo.NewTx(ctx)
-
-	sample, err := db.reserve.ReserveSample(ctx, txnRepo, anchor, storageRadius, consensusTime)
+	sample, err := db.reserve.ReserveSample(ctx, db.repo, anchor, storageRadius, consensusTime)
 	if err != nil {
 		return reserve.Sample{}, err
 	}

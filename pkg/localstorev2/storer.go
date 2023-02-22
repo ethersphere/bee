@@ -37,8 +37,6 @@ import (
 	"github.com/spf13/afero"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 	"resenje.org/multex"
-
-	stateStore "github.com/ethersphere/bee/pkg/storage"
 )
 
 // PutterSession provides a session around the storage.Putter. The session on
@@ -272,7 +270,6 @@ type Options struct {
 	Address        swarm.Address
 	WarmupDuration time.Duration
 	Batchstore     postage.Storer
-	StateStore     stateStore.StateStorer
 	RadiusSetter   topology.SetStorageRadiuser
 	Syncer         pullsync.SyncReporter
 
@@ -354,7 +351,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 
 	reserveRadius := opts.Batchstore.GetReserveState().Radius
 
-	reserve, err := reserve.New(opts.Address, repo.IndexStore(), opts.ReserveCapacity, reserveRadius, opts.StateStore, opts.RadiusSetter, logger)
+	rs, err := reserve.New(opts.Address, repo.IndexStore(), opts.ReserveCapacity, reserveRadius, opts.RadiusSetter, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -370,7 +367,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		quit:             make(chan struct{}),
 		bgCacheWorkers:   make(chan struct{}, 16),
 		dbCloser:         dbCloser,
-		reserve:          reserve,
+		reserve:          rs,
 		bs:               opts.Batchstore,
 		events:           events.NewSubscriber(),
 		reserveBinEvents: events.NewSubscriber(),
