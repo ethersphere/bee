@@ -252,12 +252,12 @@ func (r *radiusItem) Unmarshal(buf []byte) error {
 	if len(buf) != 1 {
 		return errUnmarshalInvalidSize
 	}
-	r.Radius = uint8(buf[0])
+	r.Radius = buf[0]
 	return nil
 }
 
-func copyBytes(src []byte, len int) []byte {
-	dst := make([]byte, len)
+func copyBytes(src []byte, length int) []byte {
+	dst := make([]byte, length)
 	copy(dst, src)
 	return dst
 }
