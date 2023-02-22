@@ -66,6 +66,9 @@ issues:
     - linters:
         - dogsled
       path: pkg/api/(.+)_test\.go # temporally disable dogsled in api test files
+    - linters:
+        - dogsled
+      path: pkg/pushsync/(.+)_test\.go # temporally disable dogsled in pushsync test files
       # temporally disable paralleltest in following packages
     - linters:
         - paralleltest

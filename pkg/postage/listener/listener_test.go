@@ -22,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage/listener"
 	"github.com/ethersphere/bee/pkg/util"
 	"github.com/ethersphere/bee/pkg/util/abiutil"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
 var (
@@ -77,8 +78,8 @@ func TestListener(t *testing.T) {
 			stallingTimeout,
 			backoffTime,
 		)
+		testutil.CleanupCloser(t, l)
 		<-l.Listen(context.Background(), 0, ev, nil)
-		defer l.Close()
 
 		select {
 		case e := <-ev.eventC:
@@ -118,9 +119,8 @@ func TestListener(t *testing.T) {
 			stallingTimeout,
 			backoffTime,
 		)
+		testutil.CleanupCloser(t, l)
 		<-l.Listen(context.Background(), 0, ev, nil)
-
-		defer l.Close()
 
 		select {
 		case e := <-ev.eventC:
@@ -160,9 +160,9 @@ func TestListener(t *testing.T) {
 			stallingTimeout,
 			backoffTime,
 		)
-		<-l.Listen(context.Background(), 0, ev, nil)
+		testutil.CleanupCloser(t, l)
 
-		defer l.Close()
+		<-l.Listen(context.Background(), 0, ev, nil)
 
 		select {
 		case e := <-ev.eventC:
@@ -200,8 +200,8 @@ func TestListener(t *testing.T) {
 			stallingTimeout,
 			backoffTime,
 		)
+		testutil.CleanupCloser(t, l)
 		<-l.Listen(context.Background(), 0, ev, nil)
-		defer l.Close()
 
 		select {
 		case e := <-ev.eventC:
@@ -263,9 +263,8 @@ func TestListener(t *testing.T) {
 			stallingTimeout,
 			backoffTime,
 		)
+		testutil.CleanupCloser(t, l)
 		<-l.Listen(context.Background(), 0, ev, nil)
-
-		defer l.Close()
 
 		select {
 		case e := <-ev.eventC:
@@ -344,8 +343,8 @@ func TestListener(t *testing.T) {
 			stallingTimeout,
 			0,
 		)
+		testutil.CleanupCloser(t, l)
 		<-l.Listen(context.Background(), 0, ev, nil)
-		defer l.Close()
 
 		select {
 		case e := <-ev.eventC:
@@ -372,8 +371,8 @@ func TestListener(t *testing.T) {
 			50*time.Millisecond,
 			0,
 		)
+		testutil.CleanupCloser(t, l)
 		<-l.Listen(context.Background(), 0, ev, nil)
-		defer l.Close()
 
 		select {
 		case <-c.C:
@@ -399,8 +398,8 @@ func TestListener(t *testing.T) {
 			stallingTimeout,
 			backoffTime,
 		)
+		testutil.CleanupCloser(t, l)
 		<-l.Listen(context.Background(), 0, ev, nil)
-		defer l.Close()
 
 		select {
 		case e := <-ev.eventC:
@@ -514,8 +513,8 @@ func TestListenerBatchState(t *testing.T) {
 		stallingTimeout,
 		backoffTime,
 	)
+	testutil.CleanupCloser(t, l)
 	l.Listen(context.Background(), snapshot.LastBlockNumber+1, ev, snapshot)
-	defer l.Close()
 
 	defer close(stop)
 

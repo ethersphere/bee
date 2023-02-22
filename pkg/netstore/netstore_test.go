@@ -21,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
 // TestNetstoreRetrieval verifies that a chunk is asked from the network whenever
@@ -215,7 +216,7 @@ func waitAndGetChunk(t *testing.T, store storage.Storer, addr swarm.Address, mod
 }
 
 // returns a mock retrieval protocol, a mock local storage and a netstore
-func newRetrievingNetstore(t *testing.T, validStamp postage.ValidStampFn, chunk swarm.Chunk) (ret *retrievalMock, mockStore *mock.MockStorer, ns storage.Storer) {
+func newRetrievingNetstore(t *testing.T, validStamp postage.ValidStampFn, chunk swarm.Chunk) (*retrievalMock, *mock.MockStorer, storage.Storer) {
 	t.Helper()
 
 	retrieve := &retrievalMock{
@@ -223,13 +224,9 @@ func newRetrievingNetstore(t *testing.T, validStamp postage.ValidStampFn, chunk 
 	}
 	store := mock.NewStorer()
 	logger := log.Noop
-	ns = netstore.New(store, validStamp, retrieve, logger)
-	t.Cleanup(func() {
-		err := ns.Close()
-		if err != nil {
-			t.Fatal("failed closing netstore", err)
-		}
-	})
+	ns := netstore.New(store, validStamp, retrieve, logger)
+	testutil.CleanupCloser(t, ns)
+
 	return retrieve, store, ns
 }
 

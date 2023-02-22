@@ -12,6 +12,7 @@ import (
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology/kademlia/internal/metrics"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -36,11 +37,7 @@ func TestPeerMetricsCollector(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		if err := db.Close(); err != nil {
-			t.Fatal(err)
-		}
-	})
+	testutil.CleanupCloser(t, db)
 
 	mc, err := metrics.NewCollector(db)
 	if err != nil {

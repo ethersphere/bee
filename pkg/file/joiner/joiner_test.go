@@ -26,6 +26,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 	"gitlab.com/nolash/go-mockbytes"
 )
 
@@ -331,7 +332,7 @@ func TestSeek(t *testing.T) {
 			ctx := context.Background()
 
 			store := mock.NewStorer()
-			defer store.Close()
+			testutil.CleanupCloser(t, store)
 
 			r := mrand.New(mrand.NewSource(seed))
 			data, err := io.ReadAll(io.LimitReader(r, tc.size))
@@ -613,7 +614,7 @@ func TestPrefetch(t *testing.T) {
 			ctx := context.Background()
 
 			store := mock.NewStorer()
-			defer store.Close()
+			testutil.CleanupCloser(t, store)
 
 			r := mrand.New(mrand.NewSource(seed))
 			data, err := io.ReadAll(io.LimitReader(r, tc.size))

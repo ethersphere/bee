@@ -18,6 +18,8 @@ package shed
 
 import (
 	"testing"
+
+	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
 // TestNewDB constructs a new DB
@@ -100,10 +102,7 @@ func newTestDB(t *testing.T) *DB {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		if err := db.Close(); err != nil {
-			t.Fatal(err)
-		}
-	})
+	testutil.CleanupCloser(t, db)
+
 	return db
 }

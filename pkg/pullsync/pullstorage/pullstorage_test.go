@@ -581,13 +581,7 @@ func newTestDB(t *testing.T, o *localstore.Options) (baseKey []byte, db *localst
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	t.Cleanup(func() {
-		err := db.Close()
-		if err != nil {
-			t.Error(err)
-		}
-	})
+	testutil.CleanupCloser(t, db)
 
 	return baseKey, db
 }

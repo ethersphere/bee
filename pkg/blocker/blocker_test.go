@@ -16,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
 const (
@@ -56,7 +57,7 @@ func TestBlocksAfterFlagTimeout(t *testing.T) {
 	})
 
 	b := blocker.New(mock, flagTime, blockTime, time.Millisecond, nil, logger)
-	defer b.Close()
+	testutil.CleanupCloser(t, b)
 
 	// Flagging address shouldn't block it immediately
 	b.Flag(addr)
@@ -92,7 +93,7 @@ func TestUnflagBeforeBlock(t *testing.T) {
 	})
 
 	b := blocker.New(mock, flagTime, blockTime, time.Millisecond, nil, logger)
-	defer b.Close()
+	testutil.CleanupCloser(t, b)
 
 	// Flagging address shouldn't block it imidietly
 	b.Flag(addr)
@@ -117,7 +118,7 @@ func TestPruneBeforeBlock(t *testing.T) {
 	})
 
 	b := blocker.New(mock, flagTime, blockTime, time.Millisecond, nil, logger)
-	defer b.Close()
+	testutil.CleanupCloser(t, b)
 
 	// Flagging address shouldn't block it imidietly
 	b.Flag(addr)

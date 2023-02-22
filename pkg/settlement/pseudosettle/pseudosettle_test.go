@@ -21,7 +21,9 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle/pb"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
 type testObserver struct {
@@ -264,8 +266,7 @@ func TestPayment(t *testing.T) {
 
 	logger := log.Noop
 
-	storeRecipient := mock.NewStateStore()
-	defer storeRecipient.Close()
+	storeRecipient := newStateStore(t)
 
 	peerID := swarm.MustParseHexAddress("9ee7add7")
 	peer := p2p.Peer{Address: peerID, FullNode: true}
@@ -286,8 +287,7 @@ func TestPayment(t *testing.T) {
 		streamtest.WithBaseAddr(peerID),
 	)
 
-	storePayer := mock.NewStateStore()
-	defer storePayer.Close()
+	storePayer := newStateStore(t)
 
 	payer := pseudosettle.New(recorder, logger, storePayer, payerObserver, big.NewInt(testRefreshRate), big.NewInt(testRefreshRateLight), mockp2p.New())
 	payer.SetAccounting(payerObserver)
@@ -300,8 +300,7 @@ func TestTimeLimitedPayment(t *testing.T) {
 
 	logger := log.Noop
 
-	storeRecipient := mock.NewStateStore()
-	defer storeRecipient.Close()
+	storeRecipient := newStateStore(t)
 
 	peerID := swarm.MustParseHexAddress("9ee7add7")
 	peer := p2p.Peer{Address: peerID, FullNode: true}
@@ -322,8 +321,7 @@ func TestTimeLimitedPayment(t *testing.T) {
 		streamtest.WithBaseAddr(peerID),
 	)
 
-	storePayer := mock.NewStateStore()
-	defer storePayer.Close()
+	storePayer := newStateStore(t)
 
 	payer := pseudosettle.New(recorder, logger, storePayer, payerObserver, big.NewInt(testRefreshRate), big.NewInt(testRefreshRateLight), mockp2p.New())
 	payer.SetAccounting(payerObserver)
@@ -356,8 +354,7 @@ func TestTimeLimitedPaymentLight(t *testing.T) {
 
 	logger := log.Noop
 
-	storeRecipient := mock.NewStateStore()
-	defer storeRecipient.Close()
+	storeRecipient := newStateStore(t)
 
 	peerID := swarm.MustParseHexAddress("9ee7add7")
 	peer := p2p.Peer{Address: peerID, FullNode: false}
@@ -378,8 +375,7 @@ func TestTimeLimitedPaymentLight(t *testing.T) {
 		streamtest.WithBaseAddr(peerID),
 	)
 
-	storePayer := mock.NewStateStore()
-	defer storePayer.Close()
+	storePayer := newStateStore(t)
 
 	payer := pseudosettle.New(recorder, logger, storePayer, payerObserver, big.NewInt(testRefreshRateLight), big.NewInt(testRefreshRateLight), mockp2p.New())
 	payer.SetAccounting(payerObserver)
@@ -400,4 +396,13 @@ func TestTimeLimitedPaymentLight(t *testing.T) {
 	// set time 100 seconds later, attempt with debt below time based allowance, expect full amount accepted
 	sentSum = big.NewInt(debt + testRefreshRateLight*3 + testRefreshRateLight + 6*testRefreshRateLight + 50*testRefreshRateLight)
 	testCaseAccepted(t, recorder, payerObserver, receiverObserver, payer, recipient, peerID, 10110, 10110, 6, 1, 1, big.NewInt(50*testRefreshRateLight), big.NewInt(50*testRefreshRateLight), big.NewInt(50*testRefreshRateLight), sentSum)
+}
+
+func newStateStore(t *testing.T) storage.StateStorer {
+	t.Helper()
+
+	storePayer := mock.NewStateStore()
+	testutil.CleanupCloser(t, storePayer)
+
+	return storePayer
 }
