@@ -6,8 +6,6 @@ package storer
 
 import (
 	"context"
-	"encoding/hex"
-	"fmt"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/reserve"
@@ -38,7 +36,6 @@ func (db *DB) reserveWorker(capacity int, syncer pullsync.SyncReporter, warmupDu
 	for {
 		select {
 		case <-overCapTrigger:
-			fmt.Println("overCapTrigger")
 			_ = db.unreserve(context.Background())
 		case <-time.After(wakeUpDur):
 			if db.reserve.Size() < threshold && syncer.Rate() == 0 && db.reserve.Radius() > 0 {
@@ -82,7 +79,6 @@ func (db *DB) ReservePutter(ctx context.Context) PutterSession {
 				db.reserveBinEvents.Trigger(string(po))
 			}
 			if !db.reserve.IsWithinCapacity() {
-				fmt.Println("over capacity")
 				db.events.Trigger(reserveOverCapacity)
 			}
 			return nil
@@ -129,7 +125,6 @@ func (db *DB) unreserve(ctx context.Context) error {
 	for {
 
 		err := db.bs.Iterate(func(b *postage.Batch) (bool, error) {
-			fmt.Println(hex.EncodeToString(b.ID))
 			err := db.evictBatch(ctx, b.ID, radius)
 			if err != nil {
 				return false, err
@@ -173,8 +168,6 @@ func (db *DB) SubscribeBin(ctx context.Context, bin uint8, start, end uint64) (<
 		for {
 
 			err := db.reserve.IterateBin(db.repo.IndexStore(), bin, startID, func(a swarm.Address, binID uint64) (bool, error) {
-
-				fmt.Println("-", bin, binID, a, startID)
 
 				if binID <= end {
 					lastBinID = binID
