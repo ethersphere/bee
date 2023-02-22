@@ -120,7 +120,7 @@ type BinC struct {
 
 type ReserveStore interface {
 	Putter() PutterSession
-	ReserveSample(context.Context, []byte, uint8, uint64) (reserve.Sample, error)
+	ReserveSample(context.Context, []byte, uint8, uint64) (Sample, error)
 	SubscribeBin(ctx context.Context, bin uint8, start, end uint64) <-chan *BinC
 }
 
@@ -141,6 +141,7 @@ func (d *dirFS) Open(path string) (fs.File, error) {
 }
 
 var sharkyNoOfShards = 32
+var errDBQuit = errors.New("db quit")
 
 type closerFn func() error
 
@@ -307,6 +308,7 @@ type DB struct {
 	events *events.Subscriber
 
 	reserve          *reserve.Reserve
+	reserveWg        sync.WaitGroup
 	reserveBinEvents *events.Subscriber
 	baseAddr         swarm.Address
 	batchstore       postage.Storer
@@ -373,6 +375,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		reserveBinEvents: events.NewSubscriber(),
 	}
 
+	db.reserveWg.Add(1)
 	go db.reserveWorker(opts.ReserveCapacity, opts.Syncer, opts.WarmupDuration, opts.ReserveWakeUpDuration)
 
 	return db, nil
@@ -380,6 +383,12 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 
 func (db *DB) Close() error {
 	close(db.quit)
+
+	bgReserveWorkersClosed := make(chan struct{})
+	go func() {
+		defer close(bgReserveWorkersClosed)
+		db.reserveWg.Wait()
+	}()
 
 	bgCacheWorkersClosed := make(chan struct{})
 	go func() {
@@ -399,6 +408,7 @@ func (db *DB) Close() error {
 		defer close(done)
 		<-closerDone
 		<-bgCacheWorkersClosed
+		<-bgReserveWorkersClosed
 	}()
 
 	select {

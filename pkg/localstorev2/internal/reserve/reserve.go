@@ -34,11 +34,6 @@ type Reserve struct {
 	radius   uint8
 }
 
-type Sample struct {
-	Items []swarm.Address
-	Hash  swarm.Address
-}
-
 /*
 	pull by 	bin - binID
 	evict by 	bin - batchID
@@ -132,16 +127,33 @@ func (r *Reserve) Putter(store internal.Storage) storagev2.Putter {
 	})
 }
 
-func (r *Reserve) IterateBin(store storagev2.Store, bin uint8, start uint64, cb func(swarm.Address, uint64) (bool, error)) error {
+func (r *Reserve) IterateBin(store storagev2.Store, bin uint8, startBinID uint64, cb func(swarm.Address, uint64) (bool, error)) error {
 	err := store.Iterate(storagev2.Query{
-		Factory: func() storagev2.Item {
-			return &chunkBinItem{Bin: bin}
-		},
-		Prefix:        binIDToString(start),
+		Factory:       func() storagev2.Item { return &chunkBinItem{} },
+		Prefix:        binIDToString(bin, startBinID),
 		PrefixAtStart: true,
 	}, func(res storagev2.Result) (bool, error) {
 		item := res.Entry.(*chunkBinItem)
+		if item.Bin > bin {
+			return true, nil
+		}
+		stop, err := cb(item.Address, item.BinID)
+		if stop || err != nil {
+			return true, err
+		}
+		return false, nil
+	})
 
+	return err
+}
+
+func (r *Reserve) Iterate(store storagev2.Store, bin uint8, cb func(swarm.Address, uint64) (bool, error)) error {
+	err := store.Iterate(storagev2.Query{
+		Factory:       func() storagev2.Item { return &chunkBinItem{} },
+		Prefix:        binIDToString(bin, 0),
+		PrefixAtStart: true,
+	}, func(res storagev2.Result) (bool, error) {
+		item := res.Entry.(*chunkBinItem)
 		stop, err := cb(item.Address, item.BinID)
 		if stop || err != nil {
 			return true, err
