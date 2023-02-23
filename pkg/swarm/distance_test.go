@@ -2,51 +2,53 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package swarm
+package swarm_test
 
 import (
 	"testing"
+
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 type distanceTest struct {
-	x      []byte
-	y      []byte
+	x      swarm.Address
+	y      swarm.Address
 	result string
 }
 
 type distanceCmpTest struct {
-	a      []byte
-	x      []byte
-	y      []byte
+	a      swarm.Address
+	x      swarm.Address
+	y      swarm.Address
 	result int
 }
 
 var (
 	distanceTests = []distanceTest{
 		{
-			x:      MustParseHexAddress("9100000000000000000000000000000000000000000000000000000000000000").Bytes(),
-			y:      MustParseHexAddress("8200000000000000000000000000000000000000000000000000000000000000").Bytes(),
+			x:      swarm.MustParseHexAddress("9100000000000000000000000000000000000000000000000000000000000000"),
+			y:      swarm.MustParseHexAddress("8200000000000000000000000000000000000000000000000000000000000000"),
 			result: "8593944123082061379093159043613555660984881674403010612303492563087302590464",
 		},
 	}
 
 	distanceCmpTests = []distanceCmpTest{
 		{
-			a:      MustParseHexAddress("9100000000000000000000000000000000000000000000000000000000000000").Bytes(), // 10010001
-			x:      MustParseHexAddress("8200000000000000000000000000000000000000000000000000000000000000").Bytes(), // 10000010 xor(0x91,0x82) =	19
-			y:      MustParseHexAddress("1200000000000000000000000000000000000000000000000000000000000000").Bytes(), // 00010010 xor(0x91,0x12) = 131
+			a:      swarm.MustParseHexAddress("9100000000000000000000000000000000000000000000000000000000000000"), // 10010001
+			x:      swarm.MustParseHexAddress("8200000000000000000000000000000000000000000000000000000000000000"), // 10000010 xor(0x91,0x82) =	19
+			y:      swarm.MustParseHexAddress("1200000000000000000000000000000000000000000000000000000000000000"), // 00010010 xor(0x91,0x12) = 131
 			result: 1,
 		},
 		{
-			a:      MustParseHexAddress("9100000000000000000000000000000000000000000000000000000000000000").Bytes(),
-			x:      MustParseHexAddress("1200000000000000000000000000000000000000000000000000000000000000").Bytes(),
-			y:      MustParseHexAddress("8200000000000000000000000000000000000000000000000000000000000000").Bytes(),
+			a:      swarm.MustParseHexAddress("9100000000000000000000000000000000000000000000000000000000000000"),
+			x:      swarm.MustParseHexAddress("1200000000000000000000000000000000000000000000000000000000000000"),
+			y:      swarm.MustParseHexAddress("8200000000000000000000000000000000000000000000000000000000000000"),
 			result: -1,
 		},
 		{
-			a:      MustParseHexAddress("9100000000000000000000000000000000000000000000000000000000000000").Bytes(),
-			x:      MustParseHexAddress("1200000000000000000000000000000000000000000000000000000000000000").Bytes(),
-			y:      MustParseHexAddress("1200000000000000000000000000000000000000000000000000000000000000").Bytes(),
+			a:      swarm.MustParseHexAddress("9100000000000000000000000000000000000000000000000000000000000000"),
+			x:      swarm.MustParseHexAddress("1200000000000000000000000000000000000000000000000000000000000000"),
+			y:      swarm.MustParseHexAddress("1200000000000000000000000000000000000000000000000000000000000000"),
 			result: 0,
 		},
 	}
@@ -57,7 +59,7 @@ func TestDistance(t *testing.T) {
 	t.Parallel()
 
 	for _, dt := range distanceTests {
-		distance, err := Distance(dt.x, dt.y)
+		distance, err := swarm.Distance(dt.x, dt.y)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -72,7 +74,7 @@ func TestDistanceCmp(t *testing.T) {
 	t.Parallel()
 
 	for _, dt := range distanceCmpTests {
-		direction, err := DistanceCmp(dt.a, dt.x, dt.y)
+		direction, err := swarm.DistanceCmp(dt.a, dt.x, dt.y)
 		if err != nil {
 			t.Fatal(err)
 		}
