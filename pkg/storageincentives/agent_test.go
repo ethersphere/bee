@@ -183,6 +183,10 @@ func (m *mockchainBackend) HeaderByNumber(context.Context, *big.Int) (*types.Hea
 	}, nil
 }
 
+func (m *mockchainBackend) BalanceAt(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error) {
+	return nil, nil
+}
+
 type mockMonitor struct {
 }
 
