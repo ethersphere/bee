@@ -534,10 +534,6 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 		})),
 	)
 
-	handle("/tags/{id}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.getDebugTagHandler),
-	})
-
 	handle("/accounting", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.accountingInfoHandler),
 	})

@@ -3,6 +3,7 @@ package mockstorer
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -17,16 +18,17 @@ import (
 var errNotImplemented = errors.New("mock storer: not implemented")
 
 type mockStorer struct {
-	chunkStore storage.ChunkStore
-	mu         sync.Mutex
-	pins       []swarm.Address
-	sessionID  atomic.Uint64
-	chunkPushC chan *pusher.Op
+	chunkStore     storage.ChunkStore
+	mu             sync.Mutex
+	pins           []swarm.Address
+	sessionID      atomic.Uint64
+	activeSessions map[uint64]*storer.SessionInfo
+	chunkPushC     chan *pusher.Op
 }
 
 type putterSession struct {
 	chunkStore storage.Putter
-	addPin     func(swarm.Address) error
+	done       func(swarm.Address) error
 }
 
 func (p *putterSession) Put(ctx context.Context, ch swarm.Chunk) error {
@@ -34,8 +36,8 @@ func (p *putterSession) Put(ctx context.Context, ch swarm.Chunk) error {
 }
 
 func (p *putterSession) Done(address swarm.Address) error {
-	if p.addPin != nil {
-		return p.addPin(address)
+	if p.done != nil {
+		return p.done(address)
 	}
 	return nil
 }
@@ -44,52 +46,84 @@ func (p *putterSession) Cleanup() error { return nil }
 
 func New() storer.Storer {
 	return &mockStorer{
-		chunkStore: inmemchunkstore.New(),
-		chunkPushC: make(chan *pusher.Op),
+		chunkStore:     inmemchunkstore.New(),
+		chunkPushC:     make(chan *pusher.Op),
+		activeSessions: make(map[uint64]*storer.SessionInfo),
 	}
 }
 
 func (m *mockStorer) Upload(ctx context.Context, pin bool, tagID uint64) (storer.PutterSession, error) {
-	ps := &putterSession{
+	return &putterSession{
 		chunkStore: m.chunkStore,
-	}
-	if pin {
-		ps.addPin = func(address swarm.Address) error {
+		done: func(address swarm.Address) error {
 			m.mu.Lock()
 			defer m.mu.Unlock()
 
-			m.pins = append(m.pins, address)
+			if pin {
+				m.pins = append(m.pins, address)
+			}
+			if session, ok := m.activeSessions[tagID]; ok {
+				session.Address = address
+				fmt.Println("updated session", session.Address)
+			}
 			return nil
-		}
-	}
-	return ps, nil
+		},
+	}, nil
 }
 
 func (m *mockStorer) NewSession() (storer.SessionInfo, error) {
-	return storer.SessionInfo{
+	session := &storer.SessionInfo{
 		TagID:     m.sessionID.Inc(),
 		StartedAt: time.Now().Unix(),
-	}, nil
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.activeSessions[session.TagID] = session
+
+	return *session, nil
 }
 
 func (m *mockStorer) GetSessionInfo(tagID uint64) (storer.SessionInfo, error) {
-	if tagID > m.sessionID.Load() {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	session, ok := m.activeSessions[tagID]
+	if !ok {
 		return storer.SessionInfo{}, storage.ErrNotFound
 	}
-	return storer.SessionInfo{
-		TagID:     tagID,
-		StartedAt: time.Now().Unix(),
-	}, nil
+	return *session, nil
 }
 
-func (m *mockStorer) DeleteSessionInfo(tagID uint64) {}
+func (m *mockStorer) DeleteSessionInfo(tagID uint64) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	delete(m.activeSessions, tagID)
+}
 
 func (m *mockStorer) ListSessions(page, limit int) ([]storer.SessionInfo, error) {
-	return nil, errNotImplemented
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	sessions := []storer.SessionInfo{}
+	for _, v := range m.activeSessions {
+		sessions = append(sessions, *v)
+	}
+	return sessions, nil
 }
 
 func (m *mockStorer) DeletePin(ctx context.Context, address swarm.Address) error {
-	return errNotImplemented
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for idx, p := range m.pins {
+		if p.Equal(address) {
+			m.pins = append(m.pins[:idx], m.pins[idx+1:]...)
+			break
+		}
+	}
+	return nil
 }
 
 func (m *mockStorer) Pins() ([]swarm.Address, error) {
@@ -115,7 +149,16 @@ func (m *mockStorer) HasPin(address swarm.Address) (bool, error) {
 }
 
 func (m *mockStorer) NewCollection(ctx context.Context) (storer.PutterSession, error) {
-	return nil, errNotImplemented
+	return &putterSession{
+		chunkStore: m.chunkStore,
+		done: func(address swarm.Address) error {
+			m.mu.Lock()
+			defer m.mu.Unlock()
+
+			m.pins = append(m.pins, address)
+			return nil
+		},
+	}, nil
 }
 
 func (m *mockStorer) Lookup() storage.Getter {

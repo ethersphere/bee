@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"testing"
@@ -29,13 +30,14 @@ import (
 // to a given validator, then tries to download the uploaded data.
 func TestChunkUploadDownload(t *testing.T) {
 	var (
-		chunksEndpoint  = "/chunks"
-		chunksResource  = func(a swarm.Address) string { return "/chunks/" + a.String() }
-		chunk           = testingc.GenerateTestRandomChunk()
-		storerMock      = mockstorer.New()
-		client, _, _, _ = newTestServer(t, testServerOptions{
-			Storer: storerMock,
-			Post:   mockpost.New(mockpost.WithAcceptAll()),
+		chunksEndpoint           = "/chunks"
+		chunksResource           = func(a swarm.Address) string { return "/chunks/" + a.String() }
+		chunk                    = testingc.GenerateTestRandomChunk()
+		storerMock               = mockstorer.New()
+		client, _, _, chanStorer = newTestServer(t, testServerOptions{
+			Storer:       storerMock,
+			Post:         mockpost.New(mockpost.WithAcceptAll()),
+			DirectUpload: true,
 		})
 	)
 
@@ -50,8 +52,13 @@ func TestChunkUploadDownload(t *testing.T) {
 	})
 
 	t.Run("ok", func(t *testing.T) {
+		tag, err := storerMock.NewSession()
+		if err != nil {
+			t.Fatalf("failed creating tag: %v", err)
+		}
+
 		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusCreated,
-			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.SwarmTagHeader, fmt.Sprintf("%d", tag.TagID)),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: chunk.Address()}),
@@ -75,6 +82,22 @@ func TestChunkUploadDownload(t *testing.T) {
 
 		if !bytes.Equal(chunk.Data(), data) {
 			t.Fatal("data retrieved doesnt match uploaded content")
+		}
+	})
+
+	t.Run("direct upload ok", func(t *testing.T) {
+		jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
+			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: chunk.Address()}),
+		)
+
+		has, err := chanStorer.Has(context.Background(), chunk.Address())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !has {
+			t.Fatal("storer check root chunk reference: have none; want one")
 		}
 	})
 
@@ -137,7 +160,7 @@ func TestChunkUploadDownload(t *testing.T) {
 }
 
 // nolint:paralleltest
-func TestHasChunkHandler(t *testing.T) {
+func TestChunkHasHandler(t *testing.T) {
 	mockStorer := mockstorer.New()
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
 		Storer: mockStorer,
@@ -166,41 +189,41 @@ func TestHasChunkHandler(t *testing.T) {
 			jsonhttptest.WithNoResponseBody())
 	})
 
-	t.Run("remove-chunk", func(t *testing.T) {
-		jsonhttptest.Request(t, testServer, http.MethodDelete, "/chunks/"+key.String(), http.StatusOK,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: http.StatusText(http.StatusOK),
-				Code:    http.StatusOK,
-			}),
-		)
-		yes, err := mockStorer.ChunkStore().Has(context.Background(), key)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if yes {
-			t.Fatalf("The chunk %s is not deleted", key.String())
-		}
-	})
+	// t.Run("remove-chunk", func(t *testing.T) {
+	// 	jsonhttptest.Request(t, testServer, http.MethodDelete, "/chunks/"+key.String(), http.StatusOK,
+	// 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+	// 			Message: http.StatusText(http.StatusOK),
+	// 			Code:    http.StatusOK,
+	// 		}),
+	// 	)
+	// 	yes, err := mockStorer.ChunkStore().Has(context.Background(), key)
+	// 	if err != nil {
+	// 		t.Fatal(err)
+	// 	}
+	// 	if yes {
+	// 		t.Fatalf("The chunk %s is not deleted", key.String())
+	// 	}
+	// })
 
-	t.Run("remove-not-present-chunk", func(t *testing.T) {
-		notPresentChunkAddress := "deadbeef"
-		jsonhttptest.Request(t, testServer, http.MethodDelete, "/chunks/"+notPresentChunkAddress, http.StatusOK,
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: http.StatusText(http.StatusOK),
-				Code:    http.StatusOK,
-			}),
-		)
-		yes, err := mockStorer.ChunkStore().Has(context.Background(), swarm.NewAddress([]byte(notPresentChunkAddress)))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if yes {
-			t.Fatalf("The chunk %s is not deleted", notPresentChunkAddress)
-		}
-	})
+	// t.Run("remove-not-present-chunk", func(t *testing.T) {
+	// 	notPresentChunkAddress := "deadbeef"
+	// 	jsonhttptest.Request(t, testServer, http.MethodDelete, "/chunks/"+notPresentChunkAddress, http.StatusOK,
+	// 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+	// 			Message: http.StatusText(http.StatusOK),
+	// 			Code:    http.StatusOK,
+	// 		}),
+	// 	)
+	// 	yes, err := mockStorer.ChunkStore().Has(context.Background(), swarm.NewAddress([]byte(notPresentChunkAddress)))
+	// 	if err != nil {
+	// 		t.Fatal(err)
+	// 	}
+	// 	if yes {
+	// 		t.Fatalf("The chunk %s is not deleted", notPresentChunkAddress)
+	// 	}
+	// })
 }
 
-func Test_chunkHandlers_invalidInputs(t *testing.T) {
+func TestChunkHandlersInvalidInputs(t *testing.T) {
 	t.Parallel()
 
 	client, _, _, _ := newTestServer(t, testServerOptions{})
@@ -210,7 +233,7 @@ func Test_chunkHandlers_invalidInputs(t *testing.T) {
 		address string
 		want    jsonhttp.StatusResponse
 	}{{
-		name:    "address - odd hex string",
+		name:    "address odd hex string",
 		address: "123",
 		want: jsonhttp.StatusResponse{
 			Code:    http.StatusBadRequest,
@@ -223,7 +246,7 @@ func Test_chunkHandlers_invalidInputs(t *testing.T) {
 			},
 		},
 	}, {
-		name:    "address - invalid hex character",
+		name:    "address invalid hex character",
 		address: "123G",
 		want: jsonhttp.StatusResponse{
 			Code:    http.StatusBadRequest,
@@ -237,22 +260,20 @@ func Test_chunkHandlers_invalidInputs(t *testing.T) {
 		},
 	}}
 
-	for _, method := range []string{http.MethodGet, http.MethodDelete} {
-		method := method
-		for _, tc := range tests {
-			tc := tc
-			t.Run(method+" "+tc.name, func(t *testing.T) {
-				t.Parallel()
+	method := http.MethodGet
+	for _, tc := range tests {
+		tc := tc
+		t.Run(method+" "+tc.name, func(t *testing.T) {
+			t.Parallel()
 
-				jsonhttptest.Request(t, client, method, "/chunks/"+tc.address, tc.want.Code,
-					jsonhttptest.WithExpectedJSONResponse(tc.want),
-				)
-			})
-		}
+			jsonhttptest.Request(t, client, method, "/chunks/"+tc.address, tc.want.Code,
+				jsonhttptest.WithExpectedJSONResponse(tc.want),
+			)
+		})
 	}
 }
 
-func TestInvalidChunkParams(t *testing.T) {
+func TestChunkInvalidParams(t *testing.T) {
 	t.Parallel()
 
 	var (
@@ -314,7 +335,7 @@ func TestInvalidChunkParams(t *testing.T) {
 }
 
 // // TestDirectChunkUpload tests that the direct upload endpoint give correct error message in dev mode
-func TestDirectChunkUpload(t *testing.T) {
+func TestChunkDirectUpload(t *testing.T) {
 	t.Parallel()
 	var (
 		chunksEndpoint  = "/chunks"

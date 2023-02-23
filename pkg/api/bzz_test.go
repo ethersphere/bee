@@ -791,7 +791,7 @@ func TestInvalidBzzParams(t *testing.T) {
 			Post:   mockpost.New(mockpost.WithAcceptAll()),
 		})
 
-		jsonhttptest.Request(t, clientInvalidTag, http.MethodPost, fileUploadResource, http.StatusInternalServerError,
+		jsonhttptest.Request(t, clientInvalidTag, http.MethodPost, fileUploadResource, http.StatusBadRequest,
 			jsonhttptest.WithRequestHeader(api.SwarmTagHeader, "tag"),
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),

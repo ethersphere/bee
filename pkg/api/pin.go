@@ -40,6 +40,10 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 
 	putter, err := s.storer.NewCollection(r.Context())
 	if err != nil {
+		logger.Debug("pin root hash: failed to create collection", "error", err)
+		logger.Error(nil, "pin root hash: failed to create collection")
+		jsonhttp.InternalServerError(w, "pin root hash: create collection failed")
+		return
 	}
 
 	getter := s.storer.Download(true)

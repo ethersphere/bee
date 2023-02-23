@@ -16,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/file/loadsave"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	storer "github.com/ethersphere/bee/pkg/localstorev2"
 	"github.com/ethersphere/bee/pkg/manifest"
 	"github.com/ethersphere/bee/pkg/manifest/mantaray"
 	"github.com/ethersphere/bee/pkg/manifest/simple"
@@ -135,32 +136,39 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	headers := struct {
-		BatchID []byte `map:"Swarm-Postage-Batch-Id" validate:"required"`
-		Pin     bool   `map:"Swarm-Pin"`
+		BatchID  []byte `map:"Swarm-Postage-Batch-Id" validate:"required"`
+		Pin      bool   `map:"Swarm-Pin"`
+		Deferred bool   `map:"Swarm-Deferred-Upload"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
 		return
 	}
 
-	tag, err := s.storer.NewSession()
-	if err != nil {
-		logger.Debug("get or create tag failed", "error", err)
-		logger.Error(nil, "get or create tag failed")
-		switch {
-		case errors.Is(err, storage.ErrNotFound):
-			jsonhttp.NotFound(w, "tag not found")
-		default:
-			jsonhttp.InternalServerError(w, "cannot get or create tag")
+	var (
+		tag storer.SessionInfo
+		err error
+	)
+	if !headers.Deferred {
+		tag, err = s.storer.NewSession()
+		if err != nil {
+			logger.Debug("get or create tag failed", "error", err)
+			logger.Error(nil, "get or create tag failed")
+			switch {
+			case errors.Is(err, storage.ErrNotFound):
+				jsonhttp.NotFound(w, "tag not found")
+			default:
+				jsonhttp.InternalServerError(w, "cannot get or create tag")
+			}
+			return
 		}
-		return
 	}
 
 	putter, err := s.newStamperPutter(r.Context(), putterOptions{
 		BatchID:  headers.BatchID,
 		TagID:    tag.TagID,
 		Pin:      headers.Pin,
-		Deferred: true,
+		Deferred: headers.Deferred,
 	})
 	if err != nil {
 		logger.Debug("get putter failed", "error", err)
@@ -172,6 +180,8 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.NotFound(w, "batch with id not found")
 		case errors.Is(err, errInvalidPostageBatch):
 			jsonhttp.BadRequest(w, "invalid batch id")
+		case errors.Is(err, errUnsupportedDevNodeOperation):
+			jsonhttp.BadRequest(w, errUnsupportedDevNodeOperation)
 		default:
 			jsonhttp.BadRequest(w, nil)
 		}

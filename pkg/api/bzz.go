@@ -17,21 +17,20 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	storer "github.com/ethersphere/bee/pkg/localstorev2"
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/gorilla/mux"
-	"github.com/hashicorp/go-multierror"
-
 	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/loadsave"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	storer "github.com/ethersphere/bee/pkg/localstorev2"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/manifest"
 	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/storage"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/langos"
+	"github.com/gorilla/mux"
+	"github.com/hashicorp/go-multierror"
 )
 
 func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
@@ -91,7 +90,7 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 	ow := &cleanupOnErrWriter{ResponseWriter: w, onErr: putter.Cleanup}
 
 	if headers.IsDir || headers.ContentType == multiPartFormData {
-		s.dirUploadHandler(logger, ow, r, putter, headers.ContentType, headers.Encrypt, tag)
+		s.dirUploadHandler(logger, ow, r, putter, r.Header.Get(contentTypeHeader), headers.Encrypt, tag)
 		return
 	}
 	s.fileUploadHandler(logger, ow, r, putter, headers.Encrypt, tag)

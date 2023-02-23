@@ -23,25 +23,31 @@ type tagRequest struct {
 }
 
 type tagResponse struct {
-	Uid       uint64    `json:"uid"`
-	StartedAt time.Time `json:"startedAt"`
-	Total     uint64    `json:"total"`
-	Processed uint64    `json:"processed"`
-	Synced    uint64    `json:"synced"`
-}
-
-type listTagsResponse struct {
-	Tags []tagResponse `json:"tags"`
+	Split     uint64        `json:"split"`
+	Seen      uint64        `json:"seen"`
+	Stored    uint64        `json:"stored"`
+	Sent      uint64        `json:"sent"`
+	Synced    uint64        `json:"synced"`
+	Uid       uint64        `json:"uid"`
+	Address   swarm.Address `json:"address"`
+	StartedAt time.Time     `json:"startedAt"`
 }
 
 func newTagResponse(tag storer.SessionInfo) tagResponse {
 	return tagResponse{
+		Split:     tag.Split,
+		Seen:      tag.Seen,
+		Stored:    tag.Stored,
+		Sent:      tag.Sent,
+		Synced:    tag.Synced,
 		Uid:       tag.TagID,
+		Address:   tag.Address,
 		StartedAt: time.Unix(tag.StartedAt, 0),
-		Total:     tag.Split,
-		Processed: tag.Split,
-		Synced:    tag.Seen + tag.Synced,
 	}
+}
+
+type listTagsResponse struct {
+	Tags []tagResponse `json:"tags"`
 }
 
 func (s *Service) createTagHandler(w http.ResponseWriter, r *http.Request) {
@@ -165,6 +171,10 @@ func (s *Service) doneSplitHandler(w http.ResponseWriter, r *http.Request) {
 
 	putter, err := s.storer.Upload(r.Context(), false, tag.TagID)
 	if err != nil {
+		logger.Debug("get tag failed", "tag_id", paths.TagID, "error", err)
+		logger.Error(nil, "get tag failed", "tag_id", paths.TagID)
+		jsonhttp.InternalServerError(w, "cannot get tag")
+		return
 	}
 
 	err = putter.Done(tagr.Address)

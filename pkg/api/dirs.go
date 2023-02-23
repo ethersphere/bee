@@ -137,7 +137,7 @@ func storeDir(
 		if errors.Is(err, io.EOF) {
 			break
 		} else if err != nil {
-			return swarm.ZeroAddress, fmt.Errorf("read tar stream: %w", err)
+			return swarm.ZeroAddress, fmt.Errorf("read dir stream: %w", err)
 		}
 
 		fileReference, err := p(ctx, fileInfo.Reader)

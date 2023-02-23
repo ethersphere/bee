@@ -136,6 +136,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	signer := crypto.NewDefaultSigner(pk)
 
 	if o.Logger == nil {
+		// o.Logger = log.NewLogger("test", log.WithSink(os.Stdout))
 		o.Logger = log.Noop
 	}
 	if o.Resolver == nil {
@@ -450,12 +451,11 @@ func TestPostageHeaderError(t *testing.T) {
 
 	var (
 		mockStorer      = mockstorer.New()
-		logger          = log.Noop
 		mp              = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))
 		client, _, _, _ = newTestServer(t, testServerOptions{
-			Storer: mockStorer,
-			Logger: logger,
-			Post:   mp,
+			Storer:       mockStorer,
+			Post:         mp,
+			DirectUpload: true,
 		})
 
 		endpoints = []string{
@@ -492,7 +492,7 @@ func TestPostageHeaderError(t *testing.T) {
 			t.Parallel()
 
 			hexbatch := hex.EncodeToString(batchInvalid)
-			expCode := http.StatusBadRequest
+			expCode := http.StatusNotFound
 			jsonhttptest.Request(t, client, http.MethodPost, "/"+endpoint, expCode,
 				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
 				jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "application/octet-stream"),
@@ -527,7 +527,7 @@ func TestOptions(t *testing.T) {
 		},
 		{
 			endpoint:        "chunks/123213",
-			expectedMethods: "DELETE, GET, HEAD",
+			expectedMethods: "GET, HEAD",
 		},
 		{
 			endpoint:        "bytes",
@@ -557,10 +557,8 @@ func TestOptions(t *testing.T) {
 func TestPostageDirectAndDeferred(t *testing.T) {
 	t.Parallel()
 
-	options := testServerOptions{
-		Storer: mockstorer.New(),
-		Logger: log.Noop,
-		Post: mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer(
+	post := mockpost.New(
+		mockpost.WithIssuer(postage.NewStampIssuer(
 			"",
 			"",
 			batchOk,
@@ -569,45 +567,56 @@ func TestPostageDirectAndDeferred(t *testing.T) {
 			10,
 			1000,
 			true,
-		))),
-		DirectUpload: true,
-	}
+		)),
+	)
 
 	for _, endpoint := range []string{"bytes", "bzz", "chunks"} {
 		endpoint := endpoint
 
-		t.Run(endpoint+" deferred", func(t *testing.T) {
-			t.Parallel()
+		if endpoint != "chunks" {
+			t.Run(endpoint+" deferred", func(t *testing.T) {
+				t.Parallel()
 
-			client, _, _, chanStorer := newTestServer(t, options)
-			hexbatch := hex.EncodeToString(batchOk)
-			chunk := testingc.GenerateTestRandomChunk()
-			var responseBytes []byte
-			jsonhttptest.Request(t, client, http.MethodPost, "/"+endpoint, http.StatusCreated,
-				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
-				jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "application/octet-stream"),
-				jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
-				jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
-				jsonhttptest.WithPutResponseBody(&responseBytes),
-			)
-			var body struct {
-				Reference swarm.Address `json:"reference"`
-			}
-			if err := json.Unmarshal(responseBytes, &body); err != nil {
-				t.Fatal("unmarshal response body:", err)
-			}
-			if found, _ := options.Storer.ChunkStore().Has(context.Background(), body.Reference); !found {
-				t.Fatal("chunk not found in the store")
-			}
-			if found, _ := chanStorer.Has(context.Background(), body.Reference); found {
-				t.Fatal("chunk was not expected to be present in direct channel")
-			}
-		})
+				mockStorer := mockstorer.New()
+				client, _, _, chanStorer := newTestServer(t, testServerOptions{
+					Storer:       mockStorer,
+					Post:         post,
+					DirectUpload: true,
+				})
+				hexbatch := hex.EncodeToString(batchOk)
+				chunk := testingc.GenerateTestRandomChunk()
+				var responseBytes []byte
+				jsonhttptest.Request(t, client, http.MethodPost, "/"+endpoint, http.StatusCreated,
+					jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
+					jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "application/octet-stream"),
+					jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+					jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
+					jsonhttptest.WithPutResponseBody(&responseBytes),
+				)
+				var body struct {
+					Reference swarm.Address `json:"reference"`
+				}
+				if err := json.Unmarshal(responseBytes, &body); err != nil {
+					t.Fatal("unmarshal response body:", err)
+				}
+				if found, _ := mockStorer.ChunkStore().Has(context.Background(), body.Reference); !found {
+					t.Fatal("chunk not found in the store")
+				}
+				if found, _ := chanStorer.Has(context.Background(), body.Reference); found {
+					t.Fatal("chunk was not expected to be present in direct channel")
+				}
+			})
+		}
 
 		t.Run(endpoint+" direct upload", func(t *testing.T) {
 			t.Parallel()
 
-			client, _, _, chanStorer := newTestServer(t, options)
+			mockStorer := mockstorer.New()
+			client, _, _, chanStorer := newTestServer(t, testServerOptions{
+				Storer:       mockStorer,
+				Post:         post,
+				DirectUpload: true,
+			})
 			hexbatch := hex.EncodeToString(batchOk)
 			chunk := testingc.GenerateTestRandomChunk()
 			var responseBytes []byte
@@ -628,7 +637,7 @@ func TestPostageDirectAndDeferred(t *testing.T) {
 			if found, _ := chanStorer.Has(context.Background(), body.Reference); !found {
 				t.Fatal("chunk not received through the direct channel")
 			}
-			if found, _ := options.Storer.ChunkStore().Has(context.Background(), body.Reference); found {
+			if found, _ := mockStorer.ChunkStore().Has(context.Background(), body.Reference); found {
 				t.Fatal("chunk was not expected to be present in store")
 			}
 		})
@@ -667,10 +676,6 @@ func (c *chanStorer) stop() {
 	close(c.quit)
 }
 
-func (c *chanStorer) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, err error) {
-	panic("not implemented") // TODO: Implement
-}
-
 func (c *chanStorer) Has(ctx context.Context, addr swarm.Address) (yes bool, err error) {
 	c.lock.Lock()
 	_, ok := c.chunks[addr.ByteString()]
@@ -679,7 +684,12 @@ func (c *chanStorer) Has(ctx context.Context, addr swarm.Address) (yes bool, err
 	return ok, nil
 }
 
-func createRedistributionAgentService(addr swarm.Address, storer storage.StateStorer, erc20Service erc20.Service, tranService transaction.Service) (*storageincentives.Agent, error) {
+func createRedistributionAgentService(
+	addr swarm.Address,
+	storer storage.StateStorer,
+	erc20Service erc20.Service,
+	tranService transaction.Service,
+) (*storageincentives.Agent, error) {
 	const blocksPerRound uint64 = 12
 	const blocksPerPhase uint64 = 4
 	postageContract := contractMock.New(contractMock.WithExpiresBatchesFunc(func(context.Context) error {
@@ -691,7 +701,24 @@ func createRedistributionAgentService(addr swarm.Address, storer storage.StateSt
 	}))
 	contract := &mockContract{}
 
-	return storageincentives.New(addr, common.Address{}, backendmock.New(), log.Noop, &mockMonitor{}, contract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), &mockSampler{}, time.Millisecond*10, blocksPerRound, blocksPerPhase, storer, erc20Service, tranService)
+	return storageincentives.New(
+		addr,
+		common.Address{},
+		backendmock.New(),
+		log.Noop,
+		&mockMonitor{},
+		contract,
+		postageContract,
+		stakingContract,
+		mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})),
+		&mockSampler{},
+		time.Millisecond*10,
+		blocksPerRound,
+		blocksPerPhase,
+		storer,
+		erc20Service,
+		tranService,
+	)
 }
 
 type contractCall int

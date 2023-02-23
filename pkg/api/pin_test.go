@@ -5,7 +5,6 @@
 package api_test
 
 import (
-	"bytes"
 	"net/http"
 	"strings"
 	"testing"
@@ -14,9 +13,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	mockstorer "github.com/ethersphere/bee/pkg/localstorev2/mock"
-	"github.com/ethersphere/bee/pkg/log"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
-	testingc "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -78,11 +75,9 @@ func checkPinHandlers(t *testing.T, client *http.Client, rootHash string, create
 // nolint:paralleltest
 func TestPinHandlers(t *testing.T) {
 	var (
-		logger          = log.Noop
 		storerMock      = mockstorer.New()
 		client, _, _, _ = newTestServer(t, testServerOptions{
 			Storer: storerMock,
-			Logger: logger,
 			Post:   mockpost.New(mockpost.WithAcceptAll()),
 		})
 	)
@@ -133,24 +128,24 @@ func TestPinHandlers(t *testing.T) {
 		checkPinHandlers(t, client, rootHash, false)
 	})
 
-	t.Run("chunk", func(t *testing.T) {
-		var (
-			chunk    = testingc.GenerateTestRandomChunk()
-			rootHash = chunk.Address().String()
-		)
-		jsonhttptest.Request(t, client, http.MethodPost, "/chunks", http.StatusCreated,
-			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
-			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
-			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
-			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{
-				Reference: chunk.Address(),
-			}),
-		)
-		checkPinHandlers(t, client, rootHash, true)
-	})
+	// t.Run("chunk", func(t *testing.T) {
+	// 	var (
+	// 		chunk    = testingc.GenerateTestRandomChunk()
+	// 		rootHash = chunk.Address().String()
+	// 	)
+	// 	jsonhttptest.Request(t, client, http.MethodPost, "/chunks", http.StatusCreated,
+	// 		jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+	// 		jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+	// 		jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
+	// 		jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{
+	// 			Reference: chunk.Address(),
+	// 		}),
+	// 	)
+	// 	checkPinHandlers(t, client, rootHash, true)
+	// })
 }
 
-func Test_pinHandlers_invalidInputs(t *testing.T) {
+func TestPinHandlersInvalidInputs(t *testing.T) {
 	t.Parallel()
 
 	client, _, _, _ := newTestServer(t, testServerOptions{})

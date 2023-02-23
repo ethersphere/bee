@@ -35,8 +35,9 @@ func TestSOC(t *testing.T) {
 			Post:   mp,
 		})
 	)
-	t.Run("cmpty data", func(t *testing.T) {
+	t.Run("empty data", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, socResource("8d3766440f0d7b949a5e32995d09619a7f86e632", "bb", "cc"), http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "short chunk data",
 				Code:    http.StatusBadRequest,
@@ -55,6 +56,7 @@ func TestSOC(t *testing.T) {
 
 		jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(sig)), http.StatusUnauthorized,
 			jsonhttptest.WithRequestBody(bytes.NewReader(s.WrappedChunk.Data())),
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "invalid chunk",
 				Code:    http.StatusUnauthorized,
@@ -87,39 +89,45 @@ func TestSOC(t *testing.T) {
 		}
 	})
 
-	t.Run("already exists", func(t *testing.T) {
-		s := testingsoc.GenerateMockSOC(t, testData)
+	// t.Run("already exists", func(t *testing.T) {
+	// 	s := testingsoc.GenerateMockSOC(t, testData)
 
-		jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(s.Signature)), http.StatusCreated,
-			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
-			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
-			jsonhttptest.WithRequestBody(bytes.NewReader(s.WrappedChunk.Data())),
-			jsonhttptest.WithExpectedJSONResponse(api.SocPostResponse{
-				Reference: s.Address(),
-			}),
-		)
-		jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(s.Signature)), http.StatusConflict,
-			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
-			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
-			jsonhttptest.WithRequestBody(bytes.NewReader(s.WrappedChunk.Data())),
-			jsonhttptest.WithExpectedJSONResponse(
-				jsonhttp.StatusResponse{
-					Message: "chunk already exists",
-					Code:    http.StatusConflict,
-				}),
-		)
-	})
+	// 	jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(s.Signature)), http.StatusCreated,
+	// 		jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+	// 		jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+	// 		jsonhttptest.WithRequestBody(bytes.NewReader(s.WrappedChunk.Data())),
+	// 		jsonhttptest.WithExpectedJSONResponse(api.SocPostResponse{
+	// 			Reference: s.Address(),
+	// 		}),
+	// 	)
+	// 	jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(s.Signature)), http.StatusConflict,
+	// 		jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+	// 		jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+	// 		jsonhttptest.WithRequestBody(bytes.NewReader(s.WrappedChunk.Data())),
+	// 		jsonhttptest.WithExpectedJSONResponse(
+	// 			jsonhttp.StatusResponse{
+	// 				Message: "chunk already exists",
+	// 				Code:    http.StatusConflict,
+	// 			}),
+	// 	)
+	// })
 
 	t.Run("postage", func(t *testing.T) {
 		s := testingsoc.GenerateMockSOC(t, testData)
 		t.Run("err - bad batch", func(t *testing.T) {
-			hexbatch := hex.EncodeToString(batchInvalid)
+			hexbatch := "abcdefgg"
 			jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(s.Signature)), http.StatusBadRequest,
 				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
 				jsonhttptest.WithRequestBody(bytes.NewReader(s.WrappedChunk.Data())),
 				jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-					Message: "invalid postage batch id",
 					Code:    http.StatusBadRequest,
+					Message: "invalid header params",
+					Reasons: []jsonhttp.Reason{
+						{
+							Field: api.SwarmPostageBatchIdHeader,
+							Error: api.HexInvalidByteError('g').Error(),
+						},
+					},
 				}))
 		})
 

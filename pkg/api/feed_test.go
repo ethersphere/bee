@@ -162,11 +162,11 @@ func TestFeed_Post(t *testing.T) {
 	t.Run("postage", func(t *testing.T) {
 		t.Run("err - bad batch", func(t *testing.T) {
 			hexbatch := hex.EncodeToString(batchInvalid)
-			jsonhttptest.Request(t, client, http.MethodPost, url, http.StatusBadRequest,
+			jsonhttptest.Request(t, client, http.MethodPost, url, http.StatusNotFound,
 				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
 				jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-					Message: "invalid batch id",
-					Code:    http.StatusBadRequest,
+					Message: "batch with id not found",
+					Code:    http.StatusNotFound,
 				}))
 		})
 
@@ -188,16 +188,14 @@ func TestFeed_Post(t *testing.T) {
 }
 
 // TestDirectUploadFeed tests that the direct upload endpoint give correct error message in dev mode
-func TestDirectUploadFeed(t *testing.T) {
+func TestFeedDirectUpload(t *testing.T) {
 	t.Parallel()
 	var (
-		logger          = log.Noop
 		topic           = "aabbcc"
 		mp              = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))
 		mockStorer      = mockstorer.New()
 		client, _, _, _ = newTestServer(t, testServerOptions{
 			Storer:  mockStorer,
-			Logger:  logger,
 			Post:    mp,
 			beeMode: api.DevMode,
 		})

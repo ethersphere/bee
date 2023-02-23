@@ -162,8 +162,6 @@ func TestPssWebsocketMultiHandler(t *testing.T) {
 // TestPssSend tests that the pss message sending over http works correctly.
 func TestPssSend(t *testing.T) {
 	var (
-		logger = log.Noop
-
 		mtx             sync.Mutex
 		receivedTopic   pss.Topic
 		receivedBytes   []byte
@@ -188,7 +186,6 @@ func TestPssSend(t *testing.T) {
 		client, _, _, _ = newTestServer(t, testServerOptions{
 			Pss:    p,
 			Storer: mockstorer.New(),
-			Logger: logger,
 			Post:   mp,
 		})
 
@@ -204,13 +201,19 @@ func TestPssSend(t *testing.T) {
 	}
 
 	t.Run("err - bad batch", func(t *testing.T) {
-		hexbatch := hex.EncodeToString(batchInvalid)
+		hexbatch := "abcdefgg"
 		jsonhttptest.Request(t, client, http.MethodPost, "/pss/send/to/12", http.StatusBadRequest,
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
 			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "invalid postage batch id",
 				Code:    http.StatusBadRequest,
+				Message: "invalid header params",
+				Reasons: []jsonhttp.Reason{
+					{
+						Field: api.SwarmPostageBatchIdHeader,
+						Error: api.HexInvalidByteError('g').Error(),
+					},
+				},
 			}),
 		)
 	})
@@ -389,7 +392,7 @@ func newPssTest(t *testing.T, o opts) (pss.Interface, *ecdsa.PublicKey, *websock
 	return pss, &privkey.PublicKey, cl, listener
 }
 
-func Test_pssPostHandler_invalidInputs(t *testing.T) {
+func TestPssPostHandlerInvalidInputs(t *testing.T) {
 	t.Parallel()
 
 	client, _, _, _ := newTestServer(t, testServerOptions{})
