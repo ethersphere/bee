@@ -497,5 +497,5 @@ func (a *Agent) canCommit(ctx context.Context) (bool, error) {
 	minBalance := big.NewInt(minTxCountToCover)
 	minBalance.Mul(minBalance, a.state.AvgFee())
 
-	return balance.Cmp(minBalance) > 1, nil
+	return balance.Cmp(minBalance) >= 1, nil
 }

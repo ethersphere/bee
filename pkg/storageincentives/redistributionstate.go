@@ -130,13 +130,21 @@ func (r *RedistributionState) AddFee(ctx context.Context, txHash common.Hash) {
 	}
 
 	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
 	r.status.Fees.Add(r.status.Fees, fee)
 	r.status.TxCount++
 	r.save()
-	r.mtx.Unlock()
 }
 
 func (r *RedistributionState) AvgFee() *big.Int {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	if r.status.TxCount == 0 {
+		return big.NewInt(0)
+	}
+
 	avgFee := big.NewInt(0).Set(r.status.Fees)
 	avgFee.Div(avgFee, big.NewInt(int64(r.status.TxCount)))
 
@@ -150,12 +158,13 @@ func (r *RedistributionState) CalculateWinnerReward(ctx context.Context) error {
 		r.logger.Debug("error getting balance", "error", err)
 		return err
 	}
-	if currentBalance != nil {
-		r.mtx.Lock()
-		r.status.Reward.Add(r.status.Reward, currentBalance.Sub(currentBalance, r.currentBalance))
-		r.save()
-		r.mtx.Unlock()
-	}
+
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	r.status.Reward.Add(r.status.Reward, currentBalance.Sub(currentBalance, r.currentBalance))
+	r.save()
+
 	return nil
 }
 

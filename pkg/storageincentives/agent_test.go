@@ -88,7 +88,9 @@ func TestAgent(t *testing.T) {
 					}
 				},
 				incrementBy: tc.incrementBy,
-				block:       tc.blocksPerRound}
+				block:       tc.blocksPerRound,
+				balance:     big.NewInt(1000000),
+			}
 			contract := &mockContract{}
 
 			service, _ := createService(addr, backend, contract, tc.blocksPerRound, tc.blocksPerPhase)
@@ -157,6 +159,7 @@ type mockchainBackend struct {
 	block         uint64
 	limit         uint64
 	limitCallback func()
+	balance       *big.Int
 }
 
 func (m *mockchainBackend) BlockNumber(context.Context) (uint64, error) {
@@ -184,7 +187,7 @@ func (m *mockchainBackend) HeaderByNumber(context.Context, *big.Int) (*types.Hea
 }
 
 func (m *mockchainBackend) BalanceAt(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error) {
-	return nil, nil
+	return m.balance, nil
 }
 
 type mockMonitor struct {
