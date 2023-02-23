@@ -49,6 +49,7 @@ type Status struct {
 	Block           uint64
 	Reward          *big.Int
 	Fees            *big.Int
+	TxCount         uint64
 }
 
 func NewRedistributionState(logger log.Logger, ethAddress common.Address, stateStore storage.StateStorer, erc20Service erc20.Service, contract transaction.Service) (*RedistributionState, error) {
@@ -123,15 +124,23 @@ func (r *RedistributionState) SetLastPlayedRound(round uint64) {
 
 // AddFee sets the internal node status
 func (r *RedistributionState) AddFee(ctx context.Context, txHash common.Hash) {
-
 	fee, err := r.txService.TransactionFee(ctx, txHash)
 	if err != nil {
 		return
 	}
+
 	r.mtx.Lock()
 	r.status.Fees.Add(r.status.Fees, fee)
+	r.status.TxCount++
 	r.save()
 	r.mtx.Unlock()
+}
+
+func (r *RedistributionState) AvgFee() *big.Int {
+	avgFee := big.NewInt(0).Set(r.status.Fees)
+	avgFee.Div(avgFee, big.NewInt(int64(r.status.TxCount)))
+
+	return avgFee
 }
 
 // CalculateWinnerReward calculates the reward for the winner

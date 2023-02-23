@@ -14,6 +14,7 @@ type metrics struct {
 	CurrentPhase         prometheus.Gauge
 	RevealPhase          prometheus.Counter
 	CommitPhase          prometheus.Counter
+	CommitPhaseSkipped   prometheus.Counter
 	ClaimPhase           prometheus.Counter
 	Winner               prometheus.Counter
 	NeighborhoodSelected prometheus.Counter
@@ -53,6 +54,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "commit_phases",
 			Help:      "Count of commit phases entered.",
+		}),
+		CommitPhaseSkipped: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "commit_phases_skipped",
+			Help:      "Count of commit phases skipped.",
 		}),
 		ClaimPhase: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,

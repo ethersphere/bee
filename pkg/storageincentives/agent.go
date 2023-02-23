@@ -35,11 +35,14 @@ const loggerName = "storageincentives"
 const (
 	DefaultBlocksPerRound = 152
 	DefaultBlocksPerPhase = DefaultBlocksPerRound / 4
+
+	minTxCountToCover = 25
 )
 
 type ChainBackend interface {
 	BlockNumber(context.Context) (uint64, error)
 	HeaderByNumber(context.Context, *big.Int) (*types.Header, error)
+	BalanceAt(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error)
 }
 
 type Monitor interface {
@@ -127,6 +130,18 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		mtx.Unlock()
 
 		if round-1 == sampleRound { // the sample has to come from previous round to be able to commit it
+			canCommit, err := a.canCommit(ctx)
+			if err != nil {
+				a.logger.Error(err, "agent canCommit failed")
+				return
+			}
+
+			if !canCommit {
+				a.logger.Debug("agent has insufficient balance to commit to next round")
+				a.metrics.CommitPhaseSkipped.Inc()
+				return
+			}
+
 			obf, err := a.commit(ctx, storageRadius, reserveSample, round)
 			if err != nil {
 				a.logger.Error(err, "commit")
@@ -471,4 +486,16 @@ func (a *Agent) wrapCommit(storageRadius uint8, sample []byte, key []byte) ([]by
 // Status returns the node status
 func (a *Agent) Status() (*Status, error) {
 	return a.state.Status()
+}
+
+func (a *Agent) canCommit(ctx context.Context) (bool, error) {
+	balance, err := a.backend.BalanceAt(ctx, a.state.ethAddress, nil)
+	if err != nil {
+		return false, err
+	}
+
+	minBalance := big.NewInt(minTxCountToCover)
+	minBalance.Mul(minBalance, a.state.AvgFee())
+
+	return balance.Cmp(minBalance) > 1, nil
 }
