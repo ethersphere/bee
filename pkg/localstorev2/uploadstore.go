@@ -34,6 +34,8 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 		pinningPutter = pinstore.NewCollection(txnRepo)
 	}
 
+	db.markDirty(tagID)
+
 	return &putterSession{
 		Putter: storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
 			return multierror.Append(
@@ -47,6 +49,8 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 			).ErrorOrNil()
 		}),
 		done: func(address swarm.Address) error {
+			defer db.clearDirty(tagID)
+
 			return multierror.Append(
 				uploadPutter.Close(address),
 				func() error {
