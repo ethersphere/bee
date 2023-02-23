@@ -67,13 +67,13 @@ func (b *batchRadiusItem) Marshal() ([]byte, error) {
 	buf[i] = b.Bin
 	i += 1
 
-	copy(buf[i:], b.BatchID)
+	copy(buf[i:i+swarm.HashSize], b.BatchID)
 	i += swarm.HashSize
 
-	copy(buf[i:], b.Address.Bytes())
+	copy(buf[i:i+swarm.HashSize], b.Address.Bytes())
 	i += swarm.HashSize
 
-	binary.BigEndian.PutUint64(buf[i:], b.BinID)
+	binary.BigEndian.PutUint64(buf[i:i+8], b.BinID)
 
 	return buf, nil
 }
@@ -94,7 +94,7 @@ func (b *batchRadiusItem) Unmarshal(buf []byte) error {
 	b.Address = swarm.NewAddress(buf[i : i+swarm.HashSize]).Clone()
 	i += swarm.HashSize
 
-	b.BinID = binary.BigEndian.Uint64(buf[i:])
+	b.BinID = binary.BigEndian.Uint64(buf[i : i+8])
 
 	return nil
 }
@@ -150,10 +150,10 @@ func (c *chunkBinItem) Marshal() ([]byte, error) {
 	buf[i] = c.Bin
 	i += 1
 
-	binary.BigEndian.PutUint64(buf[i:], c.BinID)
+	binary.BigEndian.PutUint64(buf[i:i+8], c.BinID)
 	i += 8
 
-	copy(buf[i:], c.Address.Bytes())
+	copy(buf[i:i+swarm.HashSize], c.Address.Bytes())
 
 	return buf, nil
 }
