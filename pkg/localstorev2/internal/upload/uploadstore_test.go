@@ -433,7 +433,7 @@ func TestChunkPutter(t *testing.T) {
 					Address:  chunk.Address(),
 					BatchID:  chunk.Stamp().BatchID(),
 					TagID:    tagID,
-					Uploaded: now().Unix(),
+					Uploaded: now().UnixNano(),
 				}
 
 				if diff := cmp.Diff(wantUI, ui); diff != "" {
@@ -441,7 +441,7 @@ func TestChunkPutter(t *testing.T) {
 				}
 
 				pi := &upload.PushItem{
-					Timestamp: now().Unix(),
+					Timestamp: now().UnixNano(),
 					Address:   chunk.Address(),
 					BatchID:   chunk.Stamp().BatchID(),
 				}
@@ -453,7 +453,7 @@ func TestChunkPutter(t *testing.T) {
 					Address:   chunk.Address(),
 					BatchID:   chunk.Stamp().BatchID(),
 					TagID:     tagID,
-					Timestamp: now().Unix(),
+					Timestamp: now().UnixNano(),
 				}
 
 				if diff := cmp.Diff(wantPI, pi); diff != "" {
@@ -578,7 +578,7 @@ func TestChunkReporter(t *testing.T) {
 					Address:  chunk.Address(),
 					BatchID:  chunk.Stamp().BatchID(),
 					TagID:    tagID,
-					Uploaded: now().Unix(),
+					Uploaded: now().UnixNano(),
 					Synced:   now().Unix(),
 				}
 
