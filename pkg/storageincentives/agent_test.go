@@ -40,6 +40,7 @@ func TestAgent(t *testing.T) {
 		incrementBy    uint64
 		limit          uint64
 		expectedCalls  bool
+		balance        *big.Int
 	}{{
 		name:           "3 blocks per phase, same block number returns twice",
 		blocksPerRound: 9,
@@ -47,6 +48,7 @@ func TestAgent(t *testing.T) {
 		incrementBy:    1,
 		expectedCalls:  true,
 		limit:          108, // computed with blocksPerRound * (exptectedCalls + 2)
+		balance:        big.NewInt(1000000),
 	}, {
 		name:           "3 blocks per phase, block number returns every block",
 		blocksPerRound: 9,
@@ -54,6 +56,7 @@ func TestAgent(t *testing.T) {
 		incrementBy:    1,
 		expectedCalls:  true,
 		limit:          108,
+		balance:        big.NewInt(1000000),
 	}, {
 		name:           "no expected calls - block number returns late after each phase",
 		blocksPerRound: 9,
@@ -61,6 +64,7 @@ func TestAgent(t *testing.T) {
 		incrementBy:    6,
 		expectedCalls:  false,
 		limit:          108,
+		balance:        big.NewInt(1000000),
 	}, {
 		name:           "4 blocks per phase, block number returns every other block",
 		blocksPerRound: 12,
@@ -68,6 +72,17 @@ func TestAgent(t *testing.T) {
 		incrementBy:    2,
 		expectedCalls:  true,
 		limit:          144,
+		balance:        big.NewInt(1000000),
+	}, {
+		// This test case is based on previous, but this time agent will not have enough
+		// balance to participate in the game so no calls are going to be made.
+		name:           "no expected calls - insufficient balance",
+		blocksPerRound: 12,
+		blocksPerPhase: 4,
+		incrementBy:    2,
+		expectedCalls:  false,
+		limit:          144,
+		balance:        big.NewInt(0),
 	},
 	}
 
@@ -89,7 +104,7 @@ func TestAgent(t *testing.T) {
 				},
 				incrementBy: tc.incrementBy,
 				block:       tc.blocksPerRound,
-				balance:     big.NewInt(1000000),
+				balance:     tc.balance,
 			}
 			contract := &mockContract{}
 
