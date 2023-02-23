@@ -59,7 +59,7 @@ jobs:
       - name: Get Commit Message
         id: commit
         run: |
-          MSG=$(git log --format=%B -n 1 ${{github.event.after}})
+          MSG=$(git log --format=%s -n 1 ${{github.event.after}})
           echo "msg=${MSG}" >> $GITHUB_OUTPUT
       - name: Build - 0
         run: |
