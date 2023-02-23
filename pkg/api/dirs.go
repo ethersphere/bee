@@ -27,7 +27,6 @@ import (
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tracing"
-	"github.com/hashicorp/go-multierror"
 )
 
 var errEmptyDir = errors.New("no files in root directory")
@@ -75,7 +74,7 @@ func (s *Service) dirUploadHandler(
 		r.Header.Get(SwarmErrorDocumentHeader),
 	)
 	if err != nil {
-		logger.Debug("store dir failed", "error", multierror.Append(err, putter.Cleanup()))
+		logger.Debug("store dir failed", "error", err)
 		logger.Error(nil, "store dir failed")
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):
@@ -92,10 +91,16 @@ func (s *Service) dirUploadHandler(
 
 	err = putter.Done(reference)
 	if err != nil {
+		logger.Debug("store dir failed", "error", err)
+		logger.Error(nil, "store dir failed")
+		jsonhttp.InternalServerError(w, errDirectoryStore)
+		return
 	}
 
+	if tag != 0 {
+		w.Header().Set(SwarmTagHeader, fmt.Sprint(tag))
+	}
 	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
-	w.Header().Set(SwarmTagHeader, fmt.Sprint(tag))
 	jsonhttp.Created(w, bzzUploadResponse{
 		Reference: reference,
 	})

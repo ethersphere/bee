@@ -50,17 +50,23 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tag, err := s.getOrCreateSessionID(headers.SwarmTag)
-	if err != nil {
-		logger.Debug("get or create tag failed", "error", err)
-		logger.Error(nil, "get or create tag failed")
-		switch {
-		case errors.Is(err, storage.ErrNotFound):
-			jsonhttp.NotFound(w, "tag not found")
-		default:
-			jsonhttp.InternalServerError(w, "cannot get or create tag")
+	var (
+		tag uint64
+		err error
+	)
+	if headers.Deferred || headers.Pin {
+		tag, err = s.getOrCreateSessionID(headers.SwarmTag)
+		if err != nil {
+			logger.Debug("get or create tag failed", "error", err)
+			logger.Error(nil, "get or create tag failed")
+			switch {
+			case errors.Is(err, storage.ErrNotFound):
+				jsonhttp.NotFound(w, "tag not found")
+			default:
+				jsonhttp.InternalServerError(w, "cannot get or create tag")
+			}
+			return
 		}
-		return
 	}
 
 	putter, err := s.newStamperPutter(r.Context(), putterOptions{
@@ -226,8 +232,10 @@ func (s *Service) fileUploadHandler(
 		return
 	}
 
+	if tagID != 0 {
+		w.Header().Set(SwarmTagHeader, fmt.Sprint(tagID))
+	}
 	w.Header().Set("ETag", fmt.Sprintf("%q", manifestReference.String()))
-	w.Header().Set(SwarmTagHeader, fmt.Sprint(tagID))
 	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
 	jsonhttp.Created(w, bzzUploadResponse{
 		Reference: manifestReference,

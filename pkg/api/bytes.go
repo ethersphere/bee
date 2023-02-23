@@ -47,7 +47,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		tag uint64
 		err error
 	)
-	if headers.Deferred {
+	if headers.Deferred || headers.Pin {
 		tag, err = s.getOrCreateSessionID(headers.SwarmTag)
 		if err != nil {
 			logger.Debug("get or create tag failed", "error", err)

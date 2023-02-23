@@ -753,10 +753,6 @@ func (p *putterSessionWrapper) Done(ref swarm.Address) error {
 	return multierror.Append(p.PutterSession.Done(ref), p.save()).ErrorOrNil()
 }
 
-// newStamperPutter returns either a storingStamperPutter or a pushStamperPutter
-// according to whether the upload is a deferred upload or not. in the case of
-// direct push to the network (default) a pushStamperPutter is returned.
-// returns a function to wait on the errorgroup in case of a pushing stamper putter.
 func (s *Service) newStamperPutter(ctx context.Context, opts putterOptions) (storer.PutterSession, error) {
 	if !opts.Deferred && s.beeMode == DevMode {
 		return nil, errUnsupportedDevNodeOperation
@@ -778,7 +774,7 @@ func (s *Service) newStamperPutter(ctx context.Context, opts putterOptions) (sto
 	stamper := postage.NewStamper(issuer, s.signer)
 
 	var session storer.PutterSession
-	if opts.Deferred {
+	if opts.Deferred || opts.Pin {
 		session, err = s.storer.Upload(ctx, opts.Pin, opts.TagID)
 	} else {
 		session = s.storer.DirectUpload()

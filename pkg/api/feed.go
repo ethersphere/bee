@@ -149,7 +149,7 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		tag storer.SessionInfo
 		err error
 	)
-	if !headers.Deferred {
+	if headers.Deferred || headers.Pin {
 		tag, err = s.storer.NewSession()
 		if err != nil {
 			logger.Debug("get or create tag failed", "error", err)
