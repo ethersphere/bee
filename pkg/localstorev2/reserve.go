@@ -61,6 +61,7 @@ func (db *DB) po(addr swarm.Address) uint8 {
 	return swarm.Proximity(db.baseAddr.Bytes(), addr.Bytes())
 }
 
+// ReservePutter returns a PutterSession for inserting chunks into the reserve.
 func (db *DB) ReservePutter(ctx context.Context) PutterSession {
 
 	trx, commit, rollback := db.repo.NewTx(ctx)
@@ -104,6 +105,7 @@ func (db *DB) ReservePutter(ctx context.Context) PutterSession {
 	}
 }
 
+// EvictBatch evicts all chunks belonging to a batch from the reserve.
 func (db *DB) EvictBatch(ctx context.Context, batchID []byte) error {
 	return db.evictBatch(ctx, batchID, swarm.MaxBins)
 }
@@ -174,10 +176,18 @@ func (db *DB) unreserve(ctx context.Context) error {
 	}
 }
 
+// ReserveLastBinIDs returns all of the highest binIDs from all the bins in the reserve.
 func (db *DB) ReserveLastBinIDs() ([]uint64, error) {
 	return db.reserve.LastBinIDs(db.repo.IndexStore())
 }
 
+// BinC is the result returned from the SubscribeBin channel that contains the chunk address and the binID
+type BinC struct {
+	Address swarm.Address
+	BinID   uint64
+}
+
+// SubscribeBin returns a channel that feeds all the chunks in the reserve from a certain bin between a start and end binIDs.
 func (db *DB) SubscribeBin(ctx context.Context, bin uint8, start, end uint64) (<-chan *BinC, <-chan error) {
 
 	out := make(chan *BinC)
@@ -252,6 +262,17 @@ type Sample struct {
 	Hash  swarm.Address
 }
 
+// ReserveSample generates the sample of reserve storage of a node required for the
+// storage incentives agent to participate in the lottery round. In order to generate
+// this sample we need to iterate through all the chunks in the node's reserve and
+// calculate the transformed hashes of all the chunks using the anchor as the salt.
+// In order to generate the transformed hashes, we will use the std hmac keyed-hash
+// implementation by using the anchor as the key. Nodes need to calculate the sample
+// in the most optimal way and there are time restrictions. The lottery round is a
+// time based round, so nodes participating in the round need to perform this
+// calculation within the round limits.
+// In order to optimize this we use a simple pipeline pattern:
+// Iterate chunk addresses -> Get the chunk data and calculate transformed hash -> Assemble the sample
 func (db *DB) ReserveSample(
 	ctx context.Context,
 	anchor []byte,

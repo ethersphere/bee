@@ -113,11 +113,6 @@ type NetStore interface {
 	PusherFeed() <-chan *pusher.Op
 }
 
-type BinC struct {
-	Address swarm.Address
-	BinID   uint64
-}
-
 type ReserveStore interface {
 	Putter() PutterSession
 	ReserveSample(context.Context, []byte, uint8, uint64) (Sample, error)

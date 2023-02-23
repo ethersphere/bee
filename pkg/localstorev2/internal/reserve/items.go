@@ -42,7 +42,7 @@ func (b *batchRadiusItem) Clone() storage.Item {
 	}
 	return &batchRadiusItem{
 		Bin:     b.Bin,
-		BatchID: copyBytes(b.BatchID, swarm.HashSize),
+		BatchID: copyBytes(b.BatchID),
 		Address: b.Address.Clone(),
 		BinID:   b.BinID,
 	}
@@ -88,7 +88,7 @@ func (b *batchRadiusItem) Unmarshal(buf []byte) error {
 	b.Bin = buf[i]
 	i += 1
 
-	b.BatchID = copyBytes(buf[i:i+swarm.HashSize], swarm.HashSize)
+	b.BatchID = copyBytes(buf[i : i+swarm.HashSize])
 	i += swarm.HashSize
 
 	b.Address = swarm.NewAddress(buf[i : i+swarm.HashSize]).Clone()
@@ -256,8 +256,11 @@ func (r *radiusItem) Unmarshal(buf []byte) error {
 	return nil
 }
 
-func copyBytes(src []byte, length int) []byte {
-	dst := make([]byte, length)
+func copyBytes(src []byte) []byte {
+	if src == nil {
+		return nil
+	}
+	dst := make([]byte, len(src))
 	copy(dst, src)
 	return dst
 }
