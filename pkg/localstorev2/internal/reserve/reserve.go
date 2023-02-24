@@ -139,10 +139,10 @@ func (r *Reserve) IterateBin(store storagev2.Store, bin uint8, startBinID uint64
 	return err
 }
 
-func (r *Reserve) Iterate(store storagev2.Store, bin uint8, cb func(swarm.Address, uint64) (bool, error)) error {
+func (r *Reserve) Iterate(store storagev2.Store, startBin uint8, cb func(swarm.Address, uint64) (bool, error)) error {
 	err := store.Iterate(storagev2.Query{
 		Factory:       func() storagev2.Item { return &chunkBinItem{} },
-		Prefix:        binIDToString(bin, 0),
+		Prefix:        binIDToString(startBin, 0),
 		PrefixAtStart: true,
 	}, func(res storagev2.Result) (bool, error) {
 		item := res.Entry.(*chunkBinItem)
@@ -186,7 +186,7 @@ func (r *Reserve) EvictBatchBin(store internal.Storage, batchID []byte, bin uint
 				return false, err
 			}
 
-			err = chunkStore.Delete(context.TODO(), batchRadius.Address)
+			err = chunkStore.Delete(context.Background(), batchRadius.Address)
 			if err != nil {
 				return false, err
 			}
