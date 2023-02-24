@@ -74,7 +74,7 @@ jobs:
     - name: Whitespace check
       run: make check-whitespace
     - name: go mod tidy check
-      uses: katexochen/go-tidy-check@v1
+      uses: katexochen/go-tidy-check@v2
   coverage:
     name: Coverage Report
     if: github.ref == 'refs/heads/master'
