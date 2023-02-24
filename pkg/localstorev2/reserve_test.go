@@ -387,6 +387,21 @@ func TestSubscribeBin(t *testing.T) {
 
 	})
 
+	t.Run("subscribe unsub", func(t *testing.T) {
+		t.Parallel()
+
+		binC, unsub, _ := storer.SubscribeBin(context.Background(), 0, 0, chunksPerPO-1)
+
+		<-binC
+		unsub()
+
+		select {
+		case <-binC:
+		case <-time.After(time.Second):
+			t.Fatal("still waiting on result")
+		}
+	})
+
 	t.Run("subscribe sub range", func(t *testing.T) {
 		t.Parallel()
 
