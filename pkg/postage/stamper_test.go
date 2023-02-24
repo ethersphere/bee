@@ -18,6 +18,7 @@ import (
 
 // TestStamperStamping tests if the stamp created by the stamper is valid.
 func TestStamperStamping(t *testing.T) {
+	t.Parallel()
 	privKey, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		t.Fatal(err)
@@ -45,6 +46,7 @@ func TestStamperStamping(t *testing.T) {
 
 	// tests a valid stamp
 	t.Run("valid stamp", func(t *testing.T) {
+		t.Parallel()
 		st := newTestStampIssuer(t, 1000)
 		stamper := postage.NewStamper(st, signer)
 		chunkAddr, stamp := createStamp(t, stamper)
@@ -55,6 +57,7 @@ func TestStamperStamping(t *testing.T) {
 
 	// tests that Stamps returns with postage.ErrBucketMismatch
 	t.Run("bucket mismatch", func(t *testing.T) {
+		t.Parallel()
 		st := newTestStampIssuer(t, 1000)
 		stamper := postage.NewStamper(st, signer)
 		chunkAddr, stamp := createStamp(t, stamper)
@@ -67,6 +70,7 @@ func TestStamperStamping(t *testing.T) {
 
 	// tests that Stamps returns with postage.ErrInvalidIndex
 	t.Run("invalid index", func(t *testing.T) {
+		t.Parallel()
 		st := newTestStampIssuer(t, 1000)
 		stamper := postage.NewStamper(st, signer)
 		// issue 1 stamp
@@ -91,6 +95,7 @@ func TestStamperStamping(t *testing.T) {
 	// tests that Stamps returns with postage.ErrBucketFull iff
 	// issuer has the corresponding collision bucket filled]
 	t.Run("bucket full", func(t *testing.T) {
+		t.Parallel()
 		st := postage.NewStampIssuer("", "", newTestStampIssuer(t, 1000).ID(), big.NewInt(3), 12, 8, 1000, true)
 		stamper := postage.NewStamper(st, signer)
 		// issue 1 stamp
@@ -111,6 +116,7 @@ func TestStamperStamping(t *testing.T) {
 
 	// tests return with ErrOwnerMismatch
 	t.Run("owner mismatch", func(t *testing.T) {
+		t.Parallel()
 		owner[0] ^= 0xff // bitflip the owner first byte, this case must come last!
 		st := newTestStampIssuer(t, 1000)
 		stamper := postage.NewStamper(st, signer)
