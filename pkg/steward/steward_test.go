@@ -11,6 +11,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	mockstorer "github.com/ethersphere/bee/pkg/localstorev2/mock"
@@ -53,27 +54,26 @@ func TestSteward(t *testing.T) {
 		return false, nil
 	})
 
-	count := 0
-	stop := make(chan struct{})
+	done := make(chan struct{})
 	errc := make(chan error, 1)
 	go func() {
-		for {
-			select {
-			case <-stop:
-				return
-			case op := <-store.PusherFeed():
-				has, err := chunkStore.Has(ctx, op.Chunk.Address())
-				if err != nil || !has {
-					if !has {
-						err = errors.New("chunk not found")
-					}
-					select {
-					case errc <- err:
-					default:
-					}
-					return
+		defer close(done)
+		count := 0
+		for op := range store.PusherFeed() {
+			has, err := chunkStore.Has(ctx, op.Chunk.Address())
+			if err != nil || !has {
+				if !has {
+					err = errors.New("chunk not found")
 				}
-				count++
+				select {
+				case errc <- err:
+				default:
+				}
+				return
+			}
+			count++
+			if count == chunkCount {
+				return
 			}
 		}
 	}()
@@ -84,13 +84,15 @@ func TestSteward(t *testing.T) {
 	}
 
 	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("took too long to finish")
+	}
+
+	select {
 	case err := <-errc:
 		t.Fatalf("unexpected error: %v", err)
 	default:
-	}
-
-	if count != chunkCount {
-		t.Fatalf("unexpected no of chunks pushed: want %d have %d", chunkCount, count)
 	}
 
 	isRetrievable, err := s.IsRetrievable(ctx, addr)
@@ -101,7 +103,7 @@ func TestSteward(t *testing.T) {
 		t.Fatalf("re-uploaded content on %q should be retrievable", addr)
 	}
 
-	count = len(localRetrieval.retrievedChunks)
+	count := len(localRetrieval.retrievedChunks)
 	if count != chunkCount {
 		t.Fatalf("unexpected no of unique chunks retrieved: want %d have %d", chunkCount, count)
 	}
