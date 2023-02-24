@@ -520,7 +520,7 @@ func (ps *PushSync) pushPeer(ctx context.Context, resultChan chan<- receiptResul
 	creditAction, err := ps.accounting.PrepareCredit(creditCtx, peer, receiptPrice, origin)
 	if err != nil {
 		if errors.Is(err, accounting.ErrOverdraft) || errors.Is(err, accounting.ErrFailToLock) {
-			err = fmt.Errorf("pushsync: prepare credit: %v: %w", err, errNotAttempted)
+			err = fmt.Errorf("pushsync: prepare credit: %w: %w", err, errNotAttempted)
 			return
 		}
 		err = fmt.Errorf("reserve balance for peer %s: %w", peer, err)

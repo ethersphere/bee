@@ -16,7 +16,6 @@ linters:
     - goconst
     - gofmt
     - goheader
-    - gomoddirectives
     - goprintffuncname
     - gosimple
     - govet
@@ -35,7 +34,6 @@ linters:
     - typecheck
     - unconvert
     - unused
-    - wastedassign
 
 linters-settings:
   govet:

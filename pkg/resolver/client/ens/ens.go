@@ -80,7 +80,7 @@ func NewClient(endpoint string, opts ...Option) (client.Interface, error) {
 	}
 	ethCl, registry, err := c.connectFn(c.endpoint, c.contractAddr)
 	if err != nil {
-		return nil, fmt.Errorf("%v: %w", err, ErrFailedToConnect)
+		return nil, fmt.Errorf("%w: %w", err, ErrFailedToConnect)
 	}
 	c.ethCl = ethCl
 	c.registry = registry
@@ -114,7 +114,7 @@ func (c *Client) Resolve(name string) (Address, error) {
 
 	hash, err := c.resolveFn(c.registry, common.HexToAddress(c.contractAddr), name)
 	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("%v: %w", err, ErrResolveFailed)
+		return swarm.ZeroAddress, fmt.Errorf("%w: %w", err, ErrResolveFailed)
 	}
 
 	// Ensure that the content hash string is in a valid format, eg.
@@ -170,29 +170,29 @@ func wrapResolve(registry *goens.Registry, _ common.Address, name string) (strin
 	// Ensure the name is registered.
 	ownerAddress, err := registry.Owner(name)
 	if err != nil {
-		return "", fmt.Errorf("owner: %v: %w", err, resolver.ErrNotFound)
+		return "", fmt.Errorf("owner: %w: %w", err, resolver.ErrNotFound)
 	}
 
 	// If the name is not registered, return an error.
 	if bytes.Equal(ownerAddress.Bytes(), goens.UnknownAddress.Bytes()) {
-		return "", fmt.Errorf("%v: %w", errNameNotRegistered, resolver.ErrNotFound)
+		return "", fmt.Errorf("%w: %w", errNameNotRegistered, resolver.ErrNotFound)
 	}
 
 	// Obtain the resolver for this domain name.
 	ensR, err := registry.Resolver(name)
 	if err != nil {
-		return "", fmt.Errorf("resolver: %v: %w", err, resolver.ErrServiceNotAvailable)
+		return "", fmt.Errorf("resolver: %w: %w", err, resolver.ErrServiceNotAvailable)
 	}
 
 	// Try and read out the content hash record.
 	ch, err := ensR.Contenthash()
 	if err != nil {
-		return "", fmt.Errorf("contenthash: %v: %w", err, resolver.ErrInvalidContentHash)
+		return "", fmt.Errorf("contenthash: %w: %w", err, resolver.ErrInvalidContentHash)
 	}
 
 	addr, err := goens.ContenthashToString(ch)
 	if err != nil {
-		return "", fmt.Errorf("contenthash to string: %v: %w", err, resolver.ErrInvalidContentHash)
+		return "", fmt.Errorf("contenthash to string: %w: %w", err, resolver.ErrInvalidContentHash)
 	}
 
 	return addr, nil

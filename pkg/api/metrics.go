@@ -160,6 +160,10 @@ func newDebugMetrics() (r *prometheus.Registry) {
 	return r
 }
 
+func (s *Service) MetricsRegistry() *prometheus.Registry {
+	return s.metricsRegistry
+}
+
 func (s *Service) MustRegisterMetrics(cs ...prometheus.Collector) {
 	s.metricsRegistry.MustRegister(cs...)
 }

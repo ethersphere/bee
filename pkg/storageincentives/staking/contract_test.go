@@ -194,7 +194,7 @@ func TestDepositStake(t *testing.T) {
 
 		_, err := contract.DepositStake(ctx, big.NewInt(0))
 		if !errors.Is(err, staking.ErrInsufficientStakeAmount) {
-			t.Fatal(fmt.Errorf("wanted %w, got %v", staking.ErrInsufficientStakeAmount, err))
+			t.Fatal(fmt.Errorf("wanted %w, got %w", staking.ErrInsufficientStakeAmount, err))
 		}
 	})
 
@@ -226,7 +226,7 @@ func TestDepositStake(t *testing.T) {
 
 		_, err := contract.DepositStake(ctx, big.NewInt(100000000000000000))
 		if !errors.Is(err, staking.ErrInsufficientFunds) {
-			t.Fatal(fmt.Errorf("wanted %w, got %v", staking.ErrInsufficientFunds, err))
+			t.Fatal(fmt.Errorf("wanted %w, got %w", staking.ErrInsufficientFunds, err))
 		}
 	})
 
@@ -258,7 +258,7 @@ func TestDepositStake(t *testing.T) {
 
 		_, err := contract.DepositStake(ctx, big.NewInt(100000000000000000))
 		if !errors.Is(err, staking.ErrInsufficientFunds) {
-			t.Fatal(fmt.Errorf("wanted %w, got %v", staking.ErrInsufficientStakeAmount, err))
+			t.Fatal(fmt.Errorf("wanted %w, got %w", staking.ErrInsufficientStakeAmount, err))
 		}
 	})
 

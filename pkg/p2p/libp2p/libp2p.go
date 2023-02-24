@@ -34,25 +34,30 @@ import (
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/hashicorp/go-multierror"
 	libp2p "github.com/libp2p/go-libp2p"
-	autonat "github.com/libp2p/go-libp2p-autonat"
-	crypto "github.com/libp2p/go-libp2p-core/crypto"
-	"github.com/libp2p/go-libp2p-core/event"
-	"github.com/libp2p/go-libp2p-core/host"
-	"github.com/libp2p/go-libp2p-core/mux"
-	"github.com/libp2p/go-libp2p-core/network"
-	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
-	"github.com/libp2p/go-libp2p-core/peerstore"
-	protocol "github.com/libp2p/go-libp2p-core/protocol"
-	"github.com/libp2p/go-libp2p-peerstore/pstoremem"
-	lp2pswarm "github.com/libp2p/go-libp2p-swarm"
-	goyamux "github.com/libp2p/go-libp2p-yamux"
+	"github.com/libp2p/go-libp2p/core/crypto"
+	"github.com/libp2p/go-libp2p/core/event"
+	"github.com/libp2p/go-libp2p/core/host"
+	network "github.com/libp2p/go-libp2p/core/network"
+	libp2ppeer "github.com/libp2p/go-libp2p/core/peer"
+	"github.com/libp2p/go-libp2p/core/peerstore"
+	protocol "github.com/libp2p/go-libp2p/core/protocol"
+	autonat "github.com/libp2p/go-libp2p/p2p/host/autonat"
 	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
+	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
+	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
+	lp2pswarm "github.com/libp2p/go-libp2p/p2p/net/swarm"
 	libp2pping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
-	"github.com/libp2p/go-tcp-transport"
-	ws "github.com/libp2p/go-ws-transport"
+	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
+	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
+
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multistream"
 	"go.uber.org/atomic"
+
+	ocprom "contrib.go.opencensus.io/exporter/prometheus"
+	m2 "github.com/ethersphere/bee/pkg/metrics"
+	rcmgrObs "github.com/libp2p/go-libp2p/p2p/host/resource-manager/obs"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -72,13 +77,10 @@ const (
 	peerUserAgentTimeout  = time.Second
 
 	defaultHeadersRWTimeout = 10 * time.Second
-)
 
-// nolint:gochecknoinits
-func init() {
-	goyamux.DefaultTransport.AcceptBacklog = 1024
-	goyamux.DefaultTransport.MaxIncomingStreams = 5000
-}
+	IncomingStreamCountLimit = 5_000
+	OutgoingStreamCountLimit = 10_000
+)
 
 type Service struct {
 	ctx               context.Context
@@ -129,6 +131,7 @@ type Options struct {
 	ValidateOverlay  bool
 	hostFactory      func(...libp2p.Option) (host.Host, error)
 	HeadersRWTimeout time.Duration
+	Registry         *prometheus.Registry
 }
 
 func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay swarm.Address, addr string, ab addressbook.Putter, storer storage.StateStorer, lightNodes *lightnode.Container, logger log.Logger, tracer *tracing.Tracer, o Options) (*Service, error) {
@@ -172,6 +175,36 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, err
 	}
 
+	cfg := rcmgr.InfiniteLimits
+
+	cfg.ProtocolPeerDefault.Streams = IncomingStreamCountLimit + OutgoingStreamCountLimit
+	cfg.ProtocolPeerDefault.StreamsInbound = IncomingStreamCountLimit
+	cfg.ProtocolPeerDefault.StreamsOutbound = OutgoingStreamCountLimit
+
+	limiter := rcmgr.NewFixedLimiter(cfg)
+
+	if o.Registry != nil {
+		rcmgrObs.MustRegisterWith(o.Registry)
+	}
+
+	_, err = ocprom.NewExporter(ocprom.Options{
+		Namespace: m2.Namespace,
+		Registry:  o.Registry,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	str, err := rcmgrObs.NewStatsTraceReporter()
+	if err != nil {
+		return nil, err
+	}
+
+	rm, err := rcmgr.NewResourceManager(limiter, rcmgr.WithTraceReporter(str))
+	if err != nil {
+		return nil, err
+	}
+
 	var natManager basichost.NATManager
 
 	opts := []libp2p.Option{
@@ -180,6 +213,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		// Use dedicated peerstore instead the global DefaultPeerstore
 		libp2p.Peerstore(libp2pPeerstore),
 		libp2p.UserAgent(userAgent()),
+		libp2p.ResourceManager(rm),
 	}
 
 	if o.NATAddr == "" {
@@ -192,8 +226,12 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	if o.PrivateKey != nil {
+		myKey, _, err := crypto.ECDSAKeyPairFromKey(o.PrivateKey)
+		if err != nil {
+			return nil, err
+		}
 		opts = append(opts,
-			libp2p.Identity((*crypto.Secp256k1PrivateKey)(o.PrivateKey)),
+			libp2p.Identity(myKey),
 		)
 	}
 
@@ -319,9 +357,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	connMetricNotify := newConnMetricNotify(s.metrics)
 	h.Network().Notify(peerRegistry) // update peer registry on network events
 	h.Network().Notify(connMetricNotify)
-
-	streamNotify := newStreamNotifier(s.metrics)
-	h.Network().Notify(streamNotify)
 
 	return s, nil
 }
@@ -588,7 +623,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 				if errors.Is(err, p2p.ErrUnexpected) {
 					s.metrics.UnexpectedProtocolReqCount.Inc()
 				}
-				if errors.Is(err, mux.ErrReset) {
+				if errors.Is(err, network.ErrReset) {
 					s.metrics.StreamHandlerErrResetCount.Inc()
 				}
 				logger.Debug("handle protocol failed", "protocol", p.Name, "version", p.Version, "stream", ss.Name, "peer", overlay, "error", err)
@@ -917,7 +952,11 @@ func (s *Service) newStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, 
 			s.logger.Debug("stream experienced unexpected early close")
 			_ = st.Close()
 		}
-		if errors.Is(err, multistream.ErrNotSupported) || errors.Is(err, multistream.ErrIncorrectVersion) {
+		var errNotSupported multistream.ErrNotSupported[protocol.ID]
+		if errors.As(err, &errNotSupported) {
+			return nil, p2p.NewIncompatibleStreamError(err)
+		}
+		if errors.Is(err, multistream.ErrIncorrectVersion) {
 			return nil, p2p.NewIncompatibleStreamError(err)
 		}
 		return nil, fmt.Errorf("create stream %q to %q: %w", swarmStreamName, peerID, err)
@@ -1095,25 +1134,6 @@ type connectionNotifier struct {
 
 func (c *connectionNotifier) Connected(_ network.Network, _ network.Conn) {
 	c.metrics.HandledConnectionCount.Inc()
-}
-
-func newStreamNotifier(m metrics) *streamNotifier {
-	return &streamNotifier{
-		metrics:  m,
-		Notifiee: new(network.NoopNotifiee),
-	}
-}
-
-type streamNotifier struct {
-	metrics metrics
-	network.Notifiee
-}
-
-func (sn *streamNotifier) OpenedStream(network.Network, network.Stream) {
-	sn.metrics.Libp2pCreatedStreamCount.Inc()
-}
-func (sn *streamNotifier) ClosedStream(network.Network, network.Stream) {
-	sn.metrics.Libp2pClosedStreamCount.Inc()
 }
 
 // isNetworkOrHostUnreachableError determines based on the

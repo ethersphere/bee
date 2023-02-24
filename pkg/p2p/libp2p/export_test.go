@@ -9,9 +9,9 @@ import (
 
 	handshake "github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
 	libp2pm "github.com/libp2p/go-libp2p"
-	"github.com/libp2p/go-libp2p-core/host"
-	"github.com/libp2p/go-libp2p-core/network"
-	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
+	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/network"
+	libp2ppeer "github.com/libp2p/go-libp2p/core/peer"
 )
 
 func (s *Service) HandshakeService() *handshake.Service {

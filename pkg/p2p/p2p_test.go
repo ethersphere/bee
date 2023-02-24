@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/p2p"
-	"github.com/libp2p/go-libp2p-core/network"
+	"github.com/libp2p/go-libp2p/core/network"
 )
 
 func TestNewSwarmStreamName(t *testing.T) {

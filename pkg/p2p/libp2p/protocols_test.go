@@ -16,9 +16,10 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/spinlock"
 	libp2pm "github.com/libp2p/go-libp2p"
-	"github.com/libp2p/go-libp2p-core/host"
-	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
+	"github.com/libp2p/go-libp2p/core/host"
+	protocol "github.com/libp2p/go-libp2p/core/protocol"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
+	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 	"github.com/multiformats/go-multistream"
 )
 
@@ -470,8 +471,9 @@ func expectErrNotSupported(t *testing.T, err error) {
 	if e := (*p2p.IncompatibleStreamError)(nil); !errors.As(err, &e) {
 		t.Fatalf("got error %v, want %T", err, e)
 	}
-	if !errors.Is(err, multistream.ErrNotSupported) {
-		t.Fatalf("got error %v, want %v", err, multistream.ErrNotSupported)
+	var e2 multistream.ErrNotSupported[protocol.ID]
+	if !errors.As(err, &e2) {
+		t.Fatalf("got error %v, want %v", err, &e2)
 	}
 }
 

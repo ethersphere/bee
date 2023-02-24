@@ -25,7 +25,7 @@ type Resolver struct{}
 func (Resolver) Resolve(name string) (swarm.Address, error) {
 	id, err := cid.Parse(name)
 	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("failed parsing CID %s err %v: %w", name, err, resolver.ErrParse)
+		return swarm.ZeroAddress, fmt.Errorf("failed parsing CID %s err %w: %w", name, err, resolver.ErrParse)
 	}
 
 	switch id.Prefix().GetCodec() {
@@ -38,7 +38,7 @@ func (Resolver) Resolve(name string) (swarm.Address, error) {
 
 	dh, err := multihash.Decode(id.Hash())
 	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("unable to decode hash %v: %w", err, resolver.ErrInvalidContentHash)
+		return swarm.ZeroAddress, fmt.Errorf("unable to decode hash %w: %w", err, resolver.ErrInvalidContentHash)
 	}
 
 	addr := swarm.NewAddress(dh.Digest)
