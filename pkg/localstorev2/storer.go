@@ -367,7 +367,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		bgCacheWorkers:   make(chan struct{}, 16),
 		dbCloser:         dbCloser,
 		reserve:          rs,
-		bs:               opts.Batchstore,
+		batchstore:       opts.Batchstore,
 		events:           events.NewSubscriber(),
 		reserveBinEvents: events.NewSubscriber(),
 	}

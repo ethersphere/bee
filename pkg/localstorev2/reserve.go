@@ -144,7 +144,7 @@ func (db *DB) unreserve(ctx context.Context) error {
 
 	for {
 
-		err := db.bs.Iterate(func(b *postage.Batch) (bool, error) {
+		err := db.batchstore.Iterate(func(b *postage.Batch) (bool, error) {
 
 			select {
 			case <-db.quit:

@@ -105,12 +105,11 @@ type chunkBinItem struct {
 	Address swarm.Address
 }
 
-// bin
 func (c *chunkBinItem) Namespace() string {
 	return "chunkBin"
 }
 
-// binID
+// bin/binID
 func (c *chunkBinItem) ID() string {
 	return binIDToString(c.Bin, c.BinID)
 }
