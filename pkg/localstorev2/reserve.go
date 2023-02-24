@@ -74,7 +74,7 @@ func (db *DB) ReservePutter(ctx context.Context) PutterSession {
 	pos := make(map[uint8]bool)
 	count := 0
 
-	// lock to avoid Puting a chunk that expires during the session.
+	// lock to avoid Putting a chunk that expires during the session.
 	db.lock.Lock(reserveLock)
 
 	return &putterSession{
@@ -187,8 +187,8 @@ func (db *DB) ReserveLastBinIDs() ([]uint64, error) {
 
 // BinC is the result returned from the SubscribeBin channel that contains the chunk address and the binID
 type BinC struct {
-	Address swarm.Address
-	BinID   uint64
+	Chunk swarm.Chunk
+	BinID uint64
 }
 
 // SubscribeBin returns a channel that feeds all the chunks in the reserve from a certain bin between a start and end binIDs.
@@ -213,12 +213,12 @@ func (db *DB) SubscribeBin(ctx context.Context, bin uint8, start, end uint64) (<
 
 		for {
 
-			err := db.reserve.IterateBin(db.repo.IndexStore(), bin, startID, func(a swarm.Address, binID uint64) (bool, error) {
+			err := db.reserve.IterateBin(db.repo, bin, startID, func(c swarm.Chunk, binID uint64) (bool, error) {
 
 				if binID <= end {
 					lastBinID = binID
 					select {
-					case out <- &BinC{Address: a, BinID: binID}:
+					case out <- &BinC{Chunk: c, BinID: binID}:
 					case <-db.quit:
 						return false, errDBQuit
 					case <-ctx.Done():
@@ -286,22 +286,19 @@ func (db *DB) ReserveSample(
 
 	g, ctx := errgroup.WithContext(ctx)
 
-	addrChan := make(chan swarm.Address)
+	chunkC := make(chan swarm.Chunk)
 	var stat sampleStat
-
-	indexStore := db.repo.IndexStore()
-	chunkStore := db.repo.ChunkStore()
 
 	t := time.Now()
 
 	// Phase 1: Iterate chunk addresses
 	g.Go(func() error {
-		defer close(addrChan)
+		defer close(chunkC)
 		iterationStart := time.Now()
 
-		err := db.reserve.Iterate(indexStore, storageRadius, func(a swarm.Address, u uint64) (bool, error) {
+		err := db.reserve.Iterate(db.repo, storageRadius, func(a swarm.Chunk, u uint64) (bool, error) {
 			select {
-			case addrChan <- a:
+			case chunkC <- a:
 				stat.TotalIterated.Inc()
 				return false, nil
 			case <-ctx.Done():
@@ -323,25 +320,20 @@ func (db *DB) ReserveSample(
 		g.Go(func() error {
 			hmacr := hmac.New(swarm.NewHasher, anchor)
 
-			for addr := range addrChan {
+			for chunk := range chunkC {
 				getStart := time.Now()
 
-				ch, err := chunkStore.Get(ctx, addr)
-				if err != nil {
-					stat.NotFound.Inc()
-					continue
-				}
 				stat.GetDuration.Add(time.Since(getStart).Nanoseconds())
 
 				// check if the timestamp on the postage stamp is not later than
 				// the consensus time.
-				if binary.BigEndian.Uint64(ch.Stamp().Timestamp()) > consensusTime {
+				if binary.BigEndian.Uint64(chunk.Stamp().Timestamp()) > consensusTime {
 					stat.NewIgnored.Inc()
 					continue
 				}
 
 				hmacrStart := time.Now()
-				_, err = hmacr.Write(ch.Data())
+				_, err := hmacr.Write(chunk.Data())
 				if err != nil {
 					return err
 				}
@@ -350,7 +342,7 @@ func (db *DB) ReserveSample(
 				stat.HmacrDuration.Add(time.Since(hmacrStart).Nanoseconds())
 
 				select {
-				case sampleItemChan <- sampleEntry{transformedAddress: swarm.NewAddress(taddr), chunk: ch}:
+				case sampleItemChan <- sampleEntry{transformedAddress: swarm.NewAddress(taddr), chunk: chunk}:
 				case <-ctx.Done():
 					return ctx.Err()
 				}

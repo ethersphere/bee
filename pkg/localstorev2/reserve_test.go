@@ -25,6 +25,41 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
+func TestIndexCollision(t *testing.T) {
+	t.Parallel()
+
+	baseAddr := test.RandomAddress()
+
+	storer, err := diskStorer(t, dbTestOps(baseAddr, 10, nil, nil, nil, time.Minute))()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+
+	batch := postagetesting.MustNewBatch()
+
+	putter := storer.ReservePutter(ctx)
+
+	stamp := postagetesting.MustNewBatchStamp(batch.ID)
+
+	err = putter.Put(ctx, chunk.GenerateTestRandomChunkAt(baseAddr, 0).WithStamp(stamp))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = putter.Put(ctx, chunk.GenerateTestRandomChunkAt(baseAddr, 0).WithStamp(stamp))
+	if err == nil {
+		t.Fatal("expected index collision error")
+	}
+
+	err = putter.Done(swarm.ZeroAddress)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestEvictBatch(t *testing.T) {
 	t.Parallel()
 
@@ -41,15 +76,15 @@ func TestEvictBatch(t *testing.T) {
 	defer cancel()
 
 	var chunks []swarm.Chunk
-	stamps := []*postage.Stamp{postagetesting.MustNewStamp(), postagetesting.MustNewStamp(), postagetesting.MustNewStamp()}
-	evictBatchID := stamps[1].BatchID()
+	batches := []*postage.Batch{postagetesting.MustNewBatch(), postagetesting.MustNewBatch(), postagetesting.MustNewBatch()}
+	evictBatch := batches[1]
 
 	putter := st.ReservePutter(ctx)
 
 	for i := 0; i < 10; i++ {
 		for b := 0; b < 3; b++ {
 			ch := chunk.GenerateTestRandomChunkAt(baseAddr, b)
-			ch = ch.WithStamp(stamps[b])
+			ch = ch.WithStamp(postagetesting.MustNewBatchStamp(batches[b].ID))
 			chunks = append(chunks, ch)
 			err := putter.Put(ctx, ch)
 			if err != nil {
@@ -63,7 +98,7 @@ func TestEvictBatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = st.EvictBatch(ctx, evictBatchID)
+	err = st.EvictBatch(ctx, evictBatch.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -77,7 +112,7 @@ func TestEvictBatch(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if bytes.Equal(ch.Stamp().BatchID(), evictBatchID) {
+		if bytes.Equal(ch.Stamp().BatchID(), evictBatch.ID) {
 			if has {
 				t.Fatal("store should NOT have chunk")
 			}
@@ -146,7 +181,6 @@ func TestUnreserveCap(t *testing.T) {
 	var chunksPO = make([][]swarm.Chunk, 5)
 
 	batch := postagetesting.MustNewBatch()
-	stamp := postagetesting.MustNewBatchStamp(batch.ID)
 	err = bs.Save(batch)
 	if err != nil {
 		t.Fatal(err)
@@ -157,7 +191,7 @@ func TestUnreserveCap(t *testing.T) {
 	for b := 0; b < 5; b++ {
 		for i := 0; i < 10; i++ {
 			ch := chunk.GenerateTestRandomChunkAt(baseAddr, b)
-			ch = ch.WithStamp(stamp)
+			ch = ch.WithStamp(postagetesting.MustNewBatchStamp(batch.ID))
 			chunksPO[b] = append(chunksPO[b], ch)
 			err := putter.Put(ctx, ch)
 			if err != nil {
@@ -248,7 +282,6 @@ func TestRadiusManager(t *testing.T) {
 		}
 
 		batch := postagetesting.MustNewBatch()
-		stamp := postagetesting.MustNewBatchStamp(batch.ID)
 		err = bs.Save(batch)
 		if err != nil {
 			t.Fatal(err)
@@ -259,7 +292,7 @@ func TestRadiusManager(t *testing.T) {
 		for i := 0; i < 4; i++ {
 			for j := 0; j < 10; j++ {
 				ch := chunk.GenerateTestRandomChunkAt(baseAddr, i)
-				ch = ch.WithStamp(stamp)
+				ch = ch.WithStamp(postagetesting.MustNewBatchStamp(batch.ID))
 				err := putter.Put(context.Background(), ch)
 				if err != nil {
 					t.Fatal(err)
@@ -333,7 +366,7 @@ func TestSubscribeBin(t *testing.T) {
 
 		i := uint64(0)
 		for c := range binC {
-			if !c.Address.Equal(chunks[i].Address()) {
+			if !c.Chunk.Address().Equal(chunks[i].Address()) {
 				t.Fatal("mismatch of chunks at index", i)
 			}
 			i++
@@ -352,7 +385,7 @@ func TestSubscribeBin(t *testing.T) {
 
 		i := uint64(1)
 		for c := range binC {
-			if !c.Address.Equal(chunks[i].Address()) {
+			if !c.Chunk.Address().Equal(chunks[i].Address()) {
 				t.Fatal("mismatch of chunks at index", i)
 			}
 			i++
@@ -374,7 +407,7 @@ func TestSubscribeBin(t *testing.T) {
 		for {
 			select {
 			case c := <-binC:
-				if !c.Address.Equal(chunks[i].Address()) {
+				if !c.Chunk.Address().Equal(chunks[i].Address()) {
 					t.Fatal("mismatch of chunks at index", i)
 				}
 				i++
@@ -427,7 +460,7 @@ loop:
 	for {
 		select {
 		case c := <-binC:
-			if !c.Address.Equal(chunks[i].Address()) {
+			if !c.Chunk.Address().Equal(chunks[i].Address()) {
 				t.Fatal("mismatch of chunks at index", i)
 			}
 			i++
@@ -453,7 +486,7 @@ loop:
 
 	select {
 	case c := <-binC:
-		if !c.Address.Equal(newChunk.Address()) {
+		if !c.Chunk.Address().Equal(newChunk.Address()) {
 			t.Fatal("mismatch of chunks")
 		}
 	case <-time.After(time.Second):

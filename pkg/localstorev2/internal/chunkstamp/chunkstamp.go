@@ -13,7 +13,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/localstorev2/internal"
 	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/storagev2"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/hashicorp/go-multierror"
 )
@@ -142,17 +142,17 @@ func (i item) String() string {
 
 // Load returns first found swarm.Stamp related to the given address.
 // The storage.ErrNoStampsForChunk is returned if no record is found.
-func Load(s internal.Storage, namespace string, addr swarm.Address) (swarm.Stamp, error) {
+func Load(s storage.Store, namespace string, addr swarm.Address) (swarm.Stamp, error) {
 	return LoadWithBatchID(s, namespace, addr, nil)
 }
 
 // LoadWithBatchID returns swarm.Stamp related to the given address and batchID.
 // The storage.ErrNoStampsForChunk is returned if no record is found.
-func LoadWithBatchID(s internal.Storage, namespace string, addr swarm.Address, batchID []byte) (swarm.Stamp, error) {
+func LoadWithBatchID(s storage.Store, namespace string, addr swarm.Address, batchID []byte) (swarm.Stamp, error) {
 	var stamp swarm.Stamp
 
 	cnt := 0
-	err := s.IndexStore().Iterate(
+	err := s.Iterate(
 		storage.Query{
 			Factory: func() storage.Item {
 				return &item{

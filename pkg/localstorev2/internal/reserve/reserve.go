@@ -6,10 +6,14 @@ package reserve
 
 import (
 	"context"
+	"encoding/binary"
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/localstorev2/internal"
+	"github.com/ethersphere/bee/pkg/localstorev2/internal/chunkstamp"
+	"github.com/ethersphere/bee/pkg/localstorev2/internal/stampindex"
 	"github.com/ethersphere/bee/pkg/log"
 	storagev2 "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -18,6 +22,18 @@ import (
 
 // loggerName is the tree path name of the logger for this package.
 const loggerName = "reserve"
+
+const reserveNamespace = "reserve"
+
+var (
+	// errOverwriteOfImmutableBatch is returned when stamp index already
+	// exists and the batch is immutable.
+	errOverwriteOfImmutableBatch = errors.New("reserve: overwrite of existing immutable batch")
+
+	// errOverwriteOfNewerBatch is returned if a stamp index already exists
+	// and the existing chunk with the same stamp index has a newer timestamp.
+	errOverwriteOfNewerBatch = errors.New("reserve: overwrite of existing batch with newer timestamp")
+)
 
 type Reserve struct {
 	mtx sync.Mutex
@@ -91,6 +107,28 @@ func (r *Reserve) Putter(store internal.Storage) storagev2.Putter {
 			return nil
 		}
 
+		switch item, loaded, err := stampindex.LoadOrStore(store, reserveNamespace, chunk); {
+		case err != nil:
+			return fmt.Errorf("load or store stamp index for chunk %v has fail: %w", chunk, err)
+		case loaded && item.ChunkIsImmutable:
+			return errOverwriteOfImmutableBatch
+		case loaded && !item.ChunkIsImmutable:
+			prev := binary.BigEndian.Uint64(item.BatchTimestamp)
+			curr := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
+			if prev >= curr {
+				return errOverwriteOfNewerBatch
+			}
+			err = stampindex.Store(store, reserveNamespace, chunk)
+			if err != nil {
+				return fmt.Errorf("failed updating stamp index: %w", err)
+			}
+		}
+
+		err = chunkstamp.Store(store, reserveNamespace, chunk)
+		if err != nil {
+			return err
+		}
+
 		binID, err := r.incBinID(indexStore, po)
 		if err != nil {
 			return err
@@ -119,8 +157,8 @@ func (r *Reserve) Putter(store internal.Storage) storagev2.Putter {
 	})
 }
 
-func (r *Reserve) IterateBin(store storagev2.Store, bin uint8, startBinID uint64, cb func(swarm.Address, uint64) (bool, error)) error {
-	err := store.Iterate(storagev2.Query{
+func (r *Reserve) IterateBin(store internal.Storage, bin uint8, startBinID uint64, cb func(swarm.Chunk, uint64) (bool, error)) error {
+	err := store.IndexStore().Iterate(storagev2.Query{
 		Factory:       func() storagev2.Item { return &chunkBinItem{} },
 		Prefix:        binIDToString(bin, startBinID),
 		PrefixAtStart: true,
@@ -129,7 +167,18 @@ func (r *Reserve) IterateBin(store storagev2.Store, bin uint8, startBinID uint64
 		if item.Bin > bin {
 			return true, nil
 		}
-		stop, err := cb(item.Address, item.BinID)
+
+		chunk, err := store.ChunkStore().Get(context.Background(), item.Address)
+		if err != nil {
+			return false, err
+		}
+
+		stamp, err := chunkstamp.Load(store.IndexStore(), reserveNamespace, item.Address)
+		if err != nil {
+			return false, err
+		}
+
+		stop, err := cb(chunk.WithStamp(stamp), item.BinID)
 		if stop || err != nil {
 			return true, err
 		}
@@ -139,14 +188,25 @@ func (r *Reserve) IterateBin(store storagev2.Store, bin uint8, startBinID uint64
 	return err
 }
 
-func (r *Reserve) Iterate(store storagev2.Store, startBin uint8, cb func(swarm.Address, uint64) (bool, error)) error {
-	err := store.Iterate(storagev2.Query{
+func (r *Reserve) Iterate(store internal.Storage, startBin uint8, cb func(swarm.Chunk, uint64) (bool, error)) error {
+	err := store.IndexStore().Iterate(storagev2.Query{
 		Factory:       func() storagev2.Item { return &chunkBinItem{} },
 		Prefix:        binIDToString(startBin, 0),
 		PrefixAtStart: true,
 	}, func(res storagev2.Result) (bool, error) {
 		item := res.Entry.(*chunkBinItem)
-		stop, err := cb(item.Address, item.BinID)
+
+		chunk, err := store.ChunkStore().Get(context.Background(), item.Address)
+		if err != nil {
+			return false, err
+		}
+
+		stamp, err := chunkstamp.Load(store.IndexStore(), reserveNamespace, item.Address)
+		if err != nil {
+			return false, err
+		}
+
+		stop, err := cb(chunk.WithStamp(stamp), item.BinID)
 		if stop || err != nil {
 			return true, err
 		}
