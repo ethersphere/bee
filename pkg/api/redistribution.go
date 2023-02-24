@@ -13,6 +13,7 @@ import (
 )
 
 type nodeStatusResponse struct {
+	HasFunds        bool           `json:"hasFunds"`
 	IsFrozen        bool           `json:"isFrozen"`
 	IsFullySynced   bool           `json:"isFullySynced"`
 	Phase           string         `json:"phase"`
@@ -41,7 +42,16 @@ func (s *Service) redistributionStatusHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	hasFunds, err := s.redistributionAgent.HasEnoughFundsToPlay(r.Context())
+	if err != nil {
+		logger.Debug("has enough funds to play", "overlay address", s.overlay.String(), "error", err)
+		logger.Error(nil, "has enough funds to play")
+		jsonhttp.InternalServerError(w, "failed to calculate if node has enough funds to play")
+		return
+	}
+
 	jsonhttp.OK(w, nodeStatusResponse{
+		HasFunds:        hasFunds,
 		IsFrozen:        status.IsFrozen,
 		IsFullySynced:   status.IsFullySynced,
 		Phase:           status.Phase.String(),

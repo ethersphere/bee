@@ -16,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storageincentives"
+	"github.com/ethersphere/bee/pkg/transaction/backendmock"
 	"github.com/ethersphere/bee/pkg/transaction/mock"
 )
 
@@ -40,6 +41,14 @@ func TestRedistributionStatus(t *testing.T) {
 			TransactionOpts: []mock.Option{
 				mock.WithTransactionFeeFunc(func(ctx context.Context, txHash common.Hash) (*big.Int, error) {
 					return big.NewInt(1000), nil
+				}),
+			},
+			BackendOpts: []backendmock.Option{
+				backendmock.WithBalanceAt(func(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error) {
+					return big.NewInt(100000000), nil
+				}),
+				backendmock.WithSuggestGasPriceFunc(func(ctx context.Context) (*big.Int, error) {
+					return big.NewInt(1), nil
 				}),
 			},
 		})

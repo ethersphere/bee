@@ -380,13 +380,13 @@ func (a *Agent) play(ctx context.Context, round uint64) (uint8, []byte, error) {
 		return 0, nil, nil
 	}
 
-	hasEnough, err := a.hasEnoughFundsToPlay(ctx)
+	hasFunds, err := a.HasEnoughFundsToPlay(ctx)
 	if err != nil {
-		a.logger.Error(err, "agent hasEnoughFundsToPlay failed")
+		a.logger.Error(err, "agent HasEnoughFundsToPlay failed")
 		return 0, nil, nil
 	}
 
-	if !hasEnough {
+	if !hasFunds {
 		a.logger.Info("insufficient funds to participate in next round", "round", round)
 		a.metrics.InsufficientFundsToPlay.Inc()
 		return 0, nil, nil
@@ -494,7 +494,7 @@ func (a *Agent) Status() (*Status, error) {
 	return a.state.Status()
 }
 
-func (a *Agent) hasEnoughFundsToPlay(ctx context.Context) (bool, error) {
+func (a *Agent) HasEnoughFundsToPlay(ctx context.Context) (bool, error) {
 	balance, err := a.backend.BalanceAt(ctx, a.state.ethAddress, nil)
 	if err != nil {
 		return false, err
