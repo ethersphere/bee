@@ -29,27 +29,21 @@ func TestIndexCollision(t *testing.T) {
 	t.Parallel()
 
 	baseAddr := test.RandomAddress()
-
 	storer, err := diskStorer(t, dbTestOps(baseAddr, 10, nil, nil, nil, time.Minute))()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	defer cancel()
-
 	batch := postagetesting.MustNewBatch()
-
-	putter := storer.ReservePutter(ctx)
-
+	putter := storer.ReservePutter(context.Background())
 	stamp := postagetesting.MustNewBatchStamp(batch.ID)
 
-	err = putter.Put(ctx, chunk.GenerateTestRandomChunkAt(baseAddr, 0).WithStamp(stamp))
+	err = putter.Put(context.Background(), chunk.GenerateTestRandomChunkAt(baseAddr, 0).WithStamp(stamp))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = putter.Put(ctx, chunk.GenerateTestRandomChunkAt(baseAddr, 0).WithStamp(stamp))
+	err = putter.Put(context.Background(), chunk.GenerateTestRandomChunkAt(baseAddr, 0).WithStamp(stamp))
 	if err == nil {
 		t.Fatal("expected index collision error")
 	}
@@ -636,13 +630,3 @@ type mockSyncReporter struct {
 func (m *mockSyncReporter) Rate() float64 {
 	return m.rate
 }
-
-// type radiusItem struct {
-// 	Radius uint8
-// }
-// func (r *radiusItem) Namespace() string          { return "radius" }
-// func (r *radiusItem) ID() string                 { return "" }
-// func (r *radiusItem) Clone() storage.Item        { return &radiusItem{Radius: r.Radius} }
-// func (r *radiusItem) String() string             { return "" }
-// func (r *radiusItem) Marshal() ([]byte, error)   { return []byte{r.Radius}, nil }
-// func (r *radiusItem) Unmarshal(buf []byte) error { return nil }
