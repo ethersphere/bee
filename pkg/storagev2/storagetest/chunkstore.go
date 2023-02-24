@@ -51,94 +51,13 @@ func TestChunkStore(t *testing.T, st storage.ChunkStore) {
 		}
 	})
 
-	t.Run("get chunks with stamp", func(t *testing.T) {
-		for _, ch := range testChunks {
-			readCh, err := st.GetWithStamp(context.TODO(), ch.Address(), ch.Stamp().BatchID())
-			if err != nil {
-				t.Fatalf("failed getting chunk: %v", err)
-			}
-			if !readCh.Equal(ch) {
-				t.Fatal("read chunk doesnt match")
-			}
-		}
-	})
-
-	t.Run("get chunks with multiple stamps", func(t *testing.T) {
-		st1 := postagetesting.MustNewStamp()
-		st2 := postagetesting.MustNewStamp()
-		ch1 := chunktest.GenerateTestRandomChunk().WithStamp(st1)
-		ch2 := swarm.NewChunk(ch1.Address(), ch1.Data()).WithStamp(st2)
-
-		err := st.Put(context.TODO(), ch1)
-		if err != nil {
-			t.Fatalf("failed putting new chunk: %v", err)
-		}
-
-		err = st.Put(context.TODO(), ch2)
-		if err != nil {
-			t.Fatalf("failed putting new chunk: %v", err)
-		}
-
-		readCh, err := st.GetWithStamp(context.TODO(), ch1.Address(), st1.BatchID())
-		if err != nil {
-			t.Fatalf("failed getting chunk: %v", err)
-		}
-		if !readCh.Equal(ch1) {
-			t.Fatal("read chunk doesnt match")
-		}
-
-		readCh, err = st.GetWithStamp(context.TODO(), ch2.Address(), st2.BatchID())
-		if err != nil {
-			t.Fatalf("failed getting chunk: %v", err)
-		}
-		if !readCh.Equal(ch2) {
-			t.Fatal("read chunk doesnt match")
-		}
-
-		err = st.Delete(context.TODO(), ch1.Address())
-		if err != nil {
-			t.Fatalf("failed deleting chunk: %v", err)
-		}
-
-		_, err = st.GetWithStamp(context.TODO(), ch1.Address(), st1.BatchID())
-		if !errors.Is(err, storage.ErrNotFound) {
-			t.Fatalf("expected storage not found error")
-		}
-
-		_, err = st.GetWithStamp(context.TODO(), ch2.Address(), st2.BatchID())
-		if !errors.Is(err, storage.ErrNotFound) {
-			t.Fatalf("expected storage not found error")
-		}
-	})
-
-	t.Run("get chunk errors", func(t *testing.T) {
-		nonexistentBatchID := postagetesting.MustNewID()
+	t.Run("get non-existing chunk", func(t *testing.T) {
 		stamp := postagetesting.MustNewStamp()
 		ch := chunktest.GenerateTestRandomChunk().WithStamp(stamp)
 
-		err := st.Put(context.TODO(), swarm.NewChunk(ch.Address(), ch.Data()))
-		if err != nil {
-			t.Fatalf("failed putting new chunk: %v", err)
-		}
-
-		_, err = st.Get(context.TODO(), ch.Address())
-		if !errors.Is(err, storage.ErrNoStampsForChunk) {
-			t.Fatalf("expected error %v", storage.ErrNoStampsForChunk)
-		}
-
-		err = st.Put(context.TODO(), ch)
-		if err != nil {
-			t.Fatalf("failed putting new chunk: %v", err)
-		}
-
-		_, err = st.GetWithStamp(context.TODO(), ch.Address(), nonexistentBatchID)
-		if !errors.Is(err, storage.ErrStampNotFound) {
-			t.Fatalf("expected error %v", storage.ErrStampNotFound)
-		}
-
-		err = st.Delete(context.TODO(), ch.Address())
-		if err != nil {
-			t.Fatalf("failed deleting chunk: %v", err)
+		_, err := st.Get(context.TODO(), ch.Address())
+		if !errors.Is(err, storage.ErrNotFound) {
+			t.Fatalf("expected error %v", storage.ErrNotFound)
 		}
 	})
 
