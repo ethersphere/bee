@@ -11,15 +11,15 @@ import (
 
 type metrics struct {
 	// phase gauge and counter
-	CurrentPhase         prometheus.Gauge
-	RevealPhase          prometheus.Counter
-	CommitPhase          prometheus.Counter
-	CommitPhaseSkipped   prometheus.Counter
-	ClaimPhase           prometheus.Counter
-	Winner               prometheus.Counter
-	NeighborhoodSelected prometheus.Counter
-	SampleDuration       prometheus.Gauge
-	Round                prometheus.Gauge
+	CurrentPhase            prometheus.Gauge
+	RevealPhase             prometheus.Counter
+	CommitPhase             prometheus.Counter
+	ClaimPhase              prometheus.Counter
+	Winner                  prometheus.Counter
+	NeighborhoodSelected    prometheus.Counter
+	SampleDuration          prometheus.Gauge
+	Round                   prometheus.Gauge
+	InsufficientFundsToPlay prometheus.Counter
 
 	// total calls to chain backend
 	BackendCalls  prometheus.Counter
@@ -55,11 +55,11 @@ func newMetrics() metrics {
 			Name:      "commit_phases",
 			Help:      "Count of commit phases entered.",
 		}),
-		CommitPhaseSkipped: prometheus.NewCounter(prometheus.CounterOpts{
+		InsufficientFundsToPlay: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "commit_phases_skipped",
-			Help:      "Count of commit phases skipped.",
+			Name:      "insufficient_funds_to_play",
+			Help:      "Count of games skipped due to insufficient balance to participate.",
 		}),
 		ClaimPhase: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,

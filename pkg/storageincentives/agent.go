@@ -130,18 +130,6 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		mtx.Unlock()
 
 		if round-1 == sampleRound { // the sample has to come from previous round to be able to commit it
-			canCommit, err := a.canCommit(ctx)
-			if err != nil {
-				a.logger.Error(err, "agent canCommit failed")
-				return
-			}
-
-			if !canCommit {
-				a.logger.Debug("agent has insufficient balance to commit to next round")
-				a.metrics.CommitPhaseSkipped.Inc()
-				return
-			}
-
 			obf, err := a.commit(ctx, storageRadius, reserveSample, round)
 			if err != nil {
 				a.logger.Error(err, "commit")
@@ -376,6 +364,18 @@ func (a *Agent) play(ctx context.Context, round uint64) (uint8, []byte, error) {
 		return 0, nil, nil
 	}
 
+	hasEnough, err := a.hasEnoughFundsToPlay(ctx)
+	if err != nil {
+		a.logger.Error(err, "agent hasEnoughFundsToPlay failed")
+		return 0, nil, nil
+	}
+
+	if !hasEnough {
+		a.logger.Debug("agent has insufficient f to participate in next round")
+		a.metrics.InsufficientFundsToPlay.Inc()
+		return 0, nil, nil
+	}
+
 	storageRadius := a.radius.StorageRadius()
 
 	isPlaying, err := a.contract.IsPlaying(ctx, storageRadius)
@@ -488,7 +488,7 @@ func (a *Agent) Status() (*Status, error) {
 	return a.state.Status()
 }
 
-func (a *Agent) canCommit(ctx context.Context) (bool, error) {
+func (a *Agent) hasEnoughFundsToPlay(ctx context.Context) (bool, error) {
 	balance, err := a.backend.BalanceAt(ctx, a.state.ethAddress, nil)
 	if err != nil {
 		return false, err
