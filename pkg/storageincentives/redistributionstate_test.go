@@ -166,8 +166,7 @@ func TestFee(t *testing.T) {
 	if gotFirstResult.Fees.Cmp(firstFee) != 0 {
 		t.Fatalf("expected fee %d got %d", firstFee, gotFirstResult.Fees)
 	}
-
-	secondFee := big.NewInt(16)
+	secondFee := big.NewInt(15)
 	state.txService = transactionmock.New([]transactionmock.Option{
 		transactionmock.WithTransactionFeeFunc(func(ctx context.Context, txHash common.Hash) (*big.Int, error) {
 			return secondFee, nil
