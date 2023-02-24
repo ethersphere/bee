@@ -12,7 +12,6 @@ import (
 	"time"
 
 	storer "github.com/ethersphere/bee/pkg/localstorev2"
-	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
@@ -299,7 +298,6 @@ func TestNetStore(t *testing.T) {
 			opts := dbTestOps(test.RandomAddress(), 0, nil, nil, nil, time.Second)
 			opts.Retrieval = r
 			opts.CacheCapacity = 100
-			opts.Logger = log.Noop
 
 			return storer.New(context.Background(), "", opts)
 		})

@@ -16,10 +16,15 @@ import (
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/upload"
 	localmigration "github.com/ethersphere/bee/pkg/localstorev2/migration"
 	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/pkg/postage"
+	batchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
+	"github.com/ethersphere/bee/pkg/pullsync"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/storagev2/migration"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
+	"github.com/ethersphere/bee/pkg/topology"
+	kademlia "github.com/ethersphere/bee/pkg/topology/mock"
 )
 
 func verifyChunks(
@@ -123,7 +128,6 @@ func TestNew(t *testing.T) {
 		t.Parallel()
 
 		opts := dbTestOps(test.RandomAddress(), 0, nil, nil, nil, time.Second)
-		opts.Logger = log.Noop
 
 		lstore := makeInmemStorer(t, opts)
 		if lstore == nil {
@@ -143,7 +147,6 @@ func TestNew(t *testing.T) {
 
 		opts := dbTestOps(test.RandomAddress(), 0, nil, nil, nil, time.Second)
 		opts.CacheCapacity = 10
-		opts.Logger = log.Noop
 
 		lstore := makeDiskStorer(t, opts)
 		if lstore == nil {
@@ -168,6 +171,33 @@ func TestNew(t *testing.T) {
 			assertStorerVersion(t, lstore)
 		})
 	})
+}
+
+func dbTestOps(baseAddr swarm.Address, capacity int, bs postage.Storer, syncer pullsync.SyncReporter, radiusSetter topology.SetStorageRadiuser, reserveWakeUpTime time.Duration) *storer.Options {
+
+	opts := storer.DefaultOptions()
+
+	if radiusSetter == nil {
+		radiusSetter = kademlia.NewTopologyDriver()
+	}
+
+	if bs == nil {
+		bs = batchstore.New()
+	}
+
+	if syncer == nil {
+		syncer = &mockSyncReporter{}
+	}
+
+	opts.Address = baseAddr
+	opts.RadiusSetter = radiusSetter
+	opts.ReserveCapacity = capacity
+	opts.Batchstore = bs
+	opts.Syncer = syncer
+	opts.ReserveWakeUpDuration = reserveWakeUpTime
+	opts.Logger = log.Noop
+
+	return opts
 }
 
 func assertStorerVersion(t *testing.T, lstore *storer.DB) {

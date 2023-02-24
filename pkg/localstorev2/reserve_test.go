@@ -15,13 +15,10 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	batchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
-	"github.com/ethersphere/bee/pkg/pullsync"
 	"github.com/ethersphere/bee/pkg/spinlock"
 	chunk "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
-	"github.com/ethersphere/bee/pkg/topology"
-	kademlia "github.com/ethersphere/bee/pkg/topology/mock"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -34,9 +31,8 @@ func TestIndexCollision(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	batch := postagetesting.MustNewBatch()
+	stamp := postagetesting.MustNewBatchStamp(postagetesting.MustNewBatch().ID)
 	putter := storer.ReservePutter(context.Background())
-	stamp := postagetesting.MustNewBatchStamp(batch.ID)
 
 	err = putter.Put(context.Background(), chunk.GenerateTestRandomChunkAt(baseAddr, 0).WithStamp(stamp))
 	if err != nil {
@@ -595,32 +591,6 @@ func reserveSizeTest(rs *reserve.Reserve, want int) func(t *testing.T) {
 			t.Errorf("got reserve size %v, want %v", got, want)
 		}
 	}
-}
-
-func dbTestOps(baseAddr swarm.Address, capacity int, bs postage.Storer, syncer pullsync.SyncReporter, radiusSetter topology.SetStorageRadiuser, reserveWakeUpTime time.Duration) *storer.Options {
-
-	opts := storer.DefaultOptions()
-
-	if radiusSetter == nil {
-		radiusSetter = kademlia.NewTopologyDriver()
-	}
-
-	if bs == nil {
-		bs = batchstore.New()
-	}
-
-	if syncer == nil {
-		syncer = &mockSyncReporter{}
-	}
-
-	opts.Address = baseAddr
-	opts.RadiusSetter = radiusSetter
-	opts.ReserveCapacity = capacity
-	opts.Batchstore = bs
-	opts.Syncer = syncer
-	opts.ReserveWakeUpDuration = reserveWakeUpTime
-
-	return opts
 }
 
 type mockSyncReporter struct {
