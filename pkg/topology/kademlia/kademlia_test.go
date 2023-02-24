@@ -1565,7 +1565,7 @@ func TestBootnodeProtectedNodes(t *testing.T) {
 	}
 }
 
-func TestAnnounceBgBroadcast(t *testing.T) {
+func TestAnnounceBgBroadcast_FLAKY(t *testing.T) {
 	t.Parallel()
 
 	var (
