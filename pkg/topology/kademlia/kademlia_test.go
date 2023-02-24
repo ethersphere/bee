@@ -1230,7 +1230,7 @@ func TestKademlia_SubscribeTopologyChange(t *testing.T) {
 	})
 }
 
-func TestSnapshot(t *testing.T) {
+func TestSnapshot_FLAKY(t *testing.T) {
 	t.Parallel()
 
 	var conns = new(int32)
