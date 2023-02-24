@@ -60,6 +60,14 @@ func New() storer.Storer {
 	}
 }
 
+func NewWithChunkStore(cs storage.ChunkStore) storer.Storer {
+	return &mockStorer{
+		chunkStore:     cs,
+		chunkPushC:     make(chan *pusher.Op),
+		activeSessions: make(map[uint64]*storer.SessionInfo),
+	}
+}
+
 func (m *mockStorer) Upload(ctx context.Context, pin bool, tagID uint64) (storer.PutterSession, error) {
 	return &putterSession{
 		chunkStore: m.chunkStore,
