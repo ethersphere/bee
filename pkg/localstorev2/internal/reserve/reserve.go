@@ -96,8 +96,6 @@ func (r *Reserve) Putter(store internal.Storage) storagev2.Putter {
 			return err
 		}
 
-		// fmt.Println("inserting", "bin", po, "addr", chunk.Address(), "BinID", binID, "batchID", hex.EncodeToString(chunk.Stamp().BatchID()))
-
 		err = indexStore.Put(&batchRadiusItem{
 			Bin:     po,
 			Address: chunk.Address(),

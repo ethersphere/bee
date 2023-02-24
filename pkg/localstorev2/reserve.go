@@ -42,23 +42,27 @@ func (db *DB) reserveWorker(capacity int, syncer pullsync.SyncReporter, warmupDu
 		return
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		<-db.quit
+		cancel()
+	}()
+
 	for {
 		select {
 		case <-overCapTrigger:
-			_ = db.unreserve(context.Background())
+			err := db.unreserve(ctx)
+			db.logger.Error(err, "reserve unreserve process")
 		case <-time.After(wakeUpDur):
 			radius := db.reserve.Radius()
 			if db.reserve.Size() < threshold && syncer.Rate() == 0 && radius > 0 {
-				_ = db.reserve.SetRadius(db.repo.IndexStore(), radius-1)
+				err := db.reserve.SetRadius(db.repo.IndexStore(), radius-1)
+				db.logger.Error(err, "reserve set radius")
 			}
 		case <-db.quit:
 			return
 		}
 	}
-}
-
-func (db *DB) po(addr swarm.Address) uint8 {
-	return swarm.Proximity(db.baseAddr.Bytes(), addr.Bytes())
 }
 
 // ReservePutter returns a PutterSession for inserting chunks into the reserve.
@@ -117,6 +121,12 @@ func (db *DB) evictBatch(ctx context.Context, batchID []byte, bin uint8) error {
 
 	for b := uint8(0); b < bin; b++ {
 
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
+
 		txnRepo, commit, rollback := db.repo.NewTx(ctx)
 
 		evicted, err := db.reserve.EvictBatchBin(txnRepo, batchID, b)
@@ -145,12 +155,6 @@ func (db *DB) unreserve(ctx context.Context) error {
 	for {
 
 		err := db.batchstore.Iterate(func(b *postage.Batch) (bool, error) {
-
-			select {
-			case <-db.quit:
-				return false, errDBQuit
-			default:
-			}
 
 			err := db.evictBatch(ctx, b.ID, radius)
 			if err != nil {
@@ -421,6 +425,10 @@ func (db *DB) ReserveSample(
 	db.logger.Info("sampler done", "duration", time.Since(t), "storage_radius", storageRadius, "consensus_time_ns", consensusTime, "stats", stat, "sample", sample)
 
 	return sample, nil
+}
+
+func (db *DB) po(addr swarm.Address) uint8 {
+	return swarm.Proximity(db.baseAddr.Bytes(), addr.Bytes())
 }
 
 // less function uses the byte compare to check for lexicographic ordering

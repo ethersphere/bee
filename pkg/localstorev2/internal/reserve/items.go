@@ -29,11 +29,15 @@ func (b *batchRadiusItem) Namespace() string {
 
 // bin/batchID/ChunkAddr
 func (b *batchRadiusItem) ID() string {
-	return batchBinToString(b.Bin, b.BatchID) + b.Address.ByteString()
+	return path.Join(batchBinToString(b.Bin, b.BatchID), b.Address.ByteString())
 }
 
 func batchBinToString(bin uint8, batchID []byte) string {
-	return string(bin) + string(batchID)
+	return path.Join(string(bin), string(batchID))
+}
+
+func (b *batchRadiusItem) String() string {
+	return path.Join(b.Namespace(), b.ID())
 }
 
 func (b *batchRadiusItem) Clone() storage.Item {
@@ -46,10 +50,6 @@ func (b *batchRadiusItem) Clone() storage.Item {
 		Address: b.Address.Clone(),
 		BinID:   b.BinID,
 	}
-}
-
-func (b *batchRadiusItem) String() string {
-	return path.Join(b.Namespace(), b.ID())
 }
 
 const batchRadiusItemSize = 1 + swarm.HashSize + swarm.HashSize + 8
@@ -117,7 +117,11 @@ func (c *chunkBinItem) ID() string {
 func binIDToString(bin uint8, binID uint64) string {
 	binIDBytes := make([]byte, 8)
 	binary.BigEndian.PutUint64(binIDBytes, binID)
-	return string(bin) + string(binIDBytes)
+	return path.Join(string(bin), string(binIDBytes))
+}
+
+func (c *chunkBinItem) String() string {
+	return path.Join(c.Namespace(), c.ID())
 }
 
 func (c *chunkBinItem) Clone() storage.Item {
@@ -129,10 +133,6 @@ func (c *chunkBinItem) Clone() storage.Item {
 		BinID:   c.BinID,
 		Address: c.Address.Clone(),
 	}
-}
-
-func (c *chunkBinItem) String() string {
-	return path.Join(c.Namespace(), c.ID())
 }
 
 const chunkBinItemSize = 1 + 8 + swarm.HashSize
@@ -188,6 +188,9 @@ func (b *binItem) ID() string {
 	return string(b.Bin)
 }
 
+func (c *binItem) String() string {
+	return path.Join(c.Namespace(), c.ID())
+}
 func (b *binItem) Clone() storage.Item {
 	if b == nil {
 		return nil
@@ -196,10 +199,6 @@ func (b *binItem) Clone() storage.Item {
 		Bin:   b.Bin,
 		BinID: b.BinID,
 	}
-}
-
-func (c *binItem) String() string {
-	return path.Join(c.Namespace(), c.ID())
 }
 
 const binItemSize = 8
@@ -230,6 +229,10 @@ func (r *radiusItem) ID() string {
 	return ""
 }
 
+func (r *radiusItem) String() string {
+	return r.Namespace()
+}
+
 func (r *radiusItem) Clone() storage.Item {
 	if r == nil {
 		return nil
@@ -237,10 +240,6 @@ func (r *radiusItem) Clone() storage.Item {
 	return &radiusItem{
 		Radius: r.Radius,
 	}
-}
-
-func (r *radiusItem) String() string {
-	return path.Join(r.Namespace(), r.ID())
 }
 
 func (r *radiusItem) Marshal() ([]byte, error) {
