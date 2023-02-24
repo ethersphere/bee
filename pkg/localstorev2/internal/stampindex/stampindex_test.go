@@ -127,7 +127,7 @@ func TestStoreLoadDelete(t *testing.T) {
 		ns := fmt.Sprintf("namespace_%d", i)
 		t.Run(ns, func(t *testing.T) {
 			t.Run("store new stamp index", func(t *testing.T) {
-				err := stampindex.Store(ts, ns, chunk)
+				err := stampindex.Store(ts.IndexStore(), ns, chunk)
 				if err != nil {
 					t.Fatalf("Store(...): unexpected error: %v", err)
 				}
@@ -166,7 +166,7 @@ func TestStoreLoadDelete(t *testing.T) {
 				want.ChunkAddress = chunk.Address()
 				want.ChunkIsImmutable = chunk.Immutable()
 
-				have, err := stampindex.Load(ts, ns, chunk)
+				have, err := stampindex.Load(ts.IndexStore(), ns, chunk)
 				if err != nil {
 					t.Fatalf("Load(...): unexpected error: %v", err)
 				}
@@ -177,12 +177,12 @@ func TestStoreLoadDelete(t *testing.T) {
 			})
 
 			t.Run("delete stored stamp index", func(t *testing.T) {
-				err := stampindex.Delete(ts, ns, chunk)
+				err := stampindex.Delete(ts.IndexStore(), ns, chunk)
 				if err != nil {
 					t.Fatalf("Delete(...): unexpected error: %v", err)
 				}
 
-				have, err := stampindex.Load(ts, ns, chunk)
+				have, err := stampindex.Load(ts.IndexStore(), ns, chunk)
 				if have != nil {
 					t.Fatalf("Load(...): unexpected item %v", have)
 				}
@@ -231,7 +231,7 @@ func TestLoadOrStore(t *testing.T) {
 			want.ChunkAddress = chunk.Address()
 			want.ChunkIsImmutable = chunk.Immutable()
 
-			have, loaded, err := stampindex.LoadOrStore(ts, ns, chunk)
+			have, loaded, err := stampindex.LoadOrStore(ts.IndexStore(), ns, chunk)
 			if err != nil {
 				t.Fatalf("LoadOrStore(...): unexpected error: %v", err)
 			}
@@ -243,7 +243,7 @@ func TestLoadOrStore(t *testing.T) {
 				t.Fatalf("Get(...): mismatch (-want +have):\n%s", diff)
 			}
 
-			have, loaded, err = stampindex.LoadOrStore(ts, ns, chunk)
+			have, loaded, err = stampindex.LoadOrStore(ts.IndexStore(), ns, chunk)
 			if err != nil {
 				t.Fatalf("LoadOrStore(...): unexpected error: %v", err)
 			}

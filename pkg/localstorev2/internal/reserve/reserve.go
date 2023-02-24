@@ -108,7 +108,7 @@ func (r *Reserve) Putter(store internal.Storage) storagev2.Putter {
 			return nil
 		}
 
-		switch item, loaded, err := stampindex.LoadOrStore(store, reserveNamespace, chunk); {
+		switch item, loaded, err := stampindex.LoadOrStore(indexStore, reserveNamespace, chunk); {
 		case err != nil:
 			return fmt.Errorf("load or store stamp index for chunk %v has fail: %w", chunk, err)
 		case loaded && item.ChunkIsImmutable:
@@ -119,7 +119,7 @@ func (r *Reserve) Putter(store internal.Storage) storagev2.Putter {
 			if prev >= curr {
 				return errOverwriteOfNewerBatch
 			}
-			err = stampindex.Store(store, reserveNamespace, chunk)
+			err = stampindex.Store(indexStore, reserveNamespace, chunk)
 			if err != nil {
 				return fmt.Errorf("failed updating stamp index: %w", err)
 			}

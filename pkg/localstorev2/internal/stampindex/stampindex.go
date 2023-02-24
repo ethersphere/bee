@@ -149,7 +149,7 @@ func (i Item) String() string {
 // LoadOrStore tries to first load a stamp index related record from the store.
 // If the record is not found, it will try to create and save a new record and
 // return it.
-func LoadOrStore(s internal.Storage, namespace string, chunk swarm.Chunk) (item *Item, loaded bool, err error) {
+func LoadOrStore(s storage.Store, namespace string, chunk swarm.Chunk) (item *Item, loaded bool, err error) {
 	item, err = Load(s, namespace, chunk)
 	if errors.Is(err, storage.ErrNotFound) {
 		return &Item{
@@ -166,13 +166,13 @@ func LoadOrStore(s internal.Storage, namespace string, chunk swarm.Chunk) (item 
 
 // Load returns stamp index record related to the given namespace and chunk.
 // The storage.ErrNotFound is returned if no record is found.
-func Load(s internal.Storage, namespace string, chunk swarm.Chunk) (*Item, error) {
+func Load(s storage.Store, namespace string, chunk swarm.Chunk) (*Item, error) {
 	item := &Item{
 		namespace:  []byte(namespace),
 		batchID:    chunk.Stamp().BatchID(),
 		batchIndex: chunk.Stamp().Index(),
 	}
-	err := s.IndexStore().Get(item)
+	err := s.Get(item)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get stampindex.Item %s: %w", item, err)
 	}
@@ -181,7 +181,7 @@ func Load(s internal.Storage, namespace string, chunk swarm.Chunk) (*Item, error
 
 // Store creates new or updated an existing stamp index
 // record related to the given namespace and chunk.
-func Store(s internal.Storage, namespace string, chunk swarm.Chunk) error {
+func Store(s storage.Store, namespace string, chunk swarm.Chunk) error {
 	item := &Item{
 		namespace:        []byte(namespace),
 		batchID:          chunk.Stamp().BatchID(),
@@ -190,20 +190,20 @@ func Store(s internal.Storage, namespace string, chunk swarm.Chunk) error {
 		ChunkAddress:     chunk.Address(),
 		ChunkIsImmutable: chunk.Immutable(),
 	}
-	if err := s.IndexStore().Put(item); err != nil {
+	if err := s.Put(item); err != nil {
 		return fmt.Errorf("failed to put stampindex.Item %s: %w", item, err)
 	}
 	return nil
 }
 
 // Delete removes the related stamp index record from the storage.
-func Delete(s internal.Storage, namespace string, chunk swarm.Chunk) error {
+func Delete(s storage.Store, namespace string, chunk swarm.Chunk) error {
 	item := &Item{
 		namespace:  []byte(namespace),
 		batchID:    chunk.Stamp().BatchID(),
 		batchIndex: chunk.Stamp().Index(),
 	}
-	if err := s.IndexStore().Delete(item); err != nil {
+	if err := s.Delete(item); err != nil {
 		return fmt.Errorf("failed to delete stampindex.Item %s: %w", item, err)
 	}
 	return nil
