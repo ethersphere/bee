@@ -36,8 +36,8 @@ const (
 	DefaultBlocksPerRound = 152
 	DefaultBlocksPerPhase = DefaultBlocksPerRound / 4
 
-	// min transactions required for each game
-	minTxCountToCover = 25
+	// min # of transactions our wallet should be able to cover
+	minTxCountToCover = 5
 
 	// average tx gas used by transactions issued from agent
 	avgTxGas = 200_000
@@ -369,18 +369,6 @@ func (a *Agent) play(ctx context.Context, round uint64) (uint8, []byte, error) {
 		return 0, nil, nil
 	}
 
-	hasEnough, err := a.hasEnoughFundsToPlay(ctx)
-	if err != nil {
-		a.logger.Error(err, "agent hasEnoughFundsToPlay failed")
-		return 0, nil, nil
-	}
-
-	if !hasEnough {
-		a.logger.Debug("agent has insufficient f to participate in next round")
-		a.metrics.InsufficientFundsToPlay.Inc()
-		return 0, nil, nil
-	}
-
 	storageRadius := a.radius.StorageRadius()
 
 	isPlaying, err := a.contract.IsPlaying(ctx, storageRadius)
@@ -391,6 +379,19 @@ func (a *Agent) play(ctx context.Context, round uint64) (uint8, []byte, error) {
 	if !isPlaying {
 		return 0, nil, nil
 	}
+
+	hasEnough, err := a.hasEnoughFundsToPlay(ctx)
+	if err != nil {
+		a.logger.Error(err, "agent hasEnoughFundsToPlay failed")
+		return 0, nil, nil
+	}
+
+	if !hasEnough {
+		a.logger.Info("insufficient funds to participate in next round", "round", round)
+		a.metrics.InsufficientFundsToPlay.Inc()
+		return 0, nil, nil
+	}
+
 	a.state.SetLastPlayedRound(round)
 	a.logger.Info("neighbourhood chosen", "round", round)
 	a.metrics.NeighborhoodSelected.Inc()
