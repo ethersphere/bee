@@ -47,6 +47,7 @@ var schemaMigrations = []migration{
 	{schemaName: DBSchemaCatharsis, fn: migrateCatharsis},
 	{schemaName: DBSchemaDeadPostageIndex, fn: migrateDeadPostageIndex},
 	{schemaName: DBSchemaResidue, fn: migrateResidue},
+	{schemaName: DBSchemaAddressBook, fn: migrateAddressBook},
 }
 
 func (db *DB) migrate(schemaName string) error {
