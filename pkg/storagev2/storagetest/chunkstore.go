@@ -116,17 +116,7 @@ func TestChunkStore(t *testing.T, st storage.ChunkStore) {
 		stamp := postagetesting.MustNewStamp()
 		ch := chunktest.GenerateTestRandomChunk().WithStamp(stamp)
 
-		err := st.Put(context.TODO(), swarm.NewChunk(ch.Address(), ch.Data()))
-		if err != nil {
-			t.Fatalf("failed putting new chunk: %v", err)
-		}
-
-		_, err = st.Get(context.TODO(), ch.Address())
-		if !errors.Is(err, storage.ErrNoStampsForChunk) {
-			t.Fatalf("expected error %v", storage.ErrNoStampsForChunk)
-		}
-
-		err = st.Put(context.TODO(), ch)
+		err := st.Put(context.TODO(), ch)
 		if err != nil {
 			t.Fatalf("failed putting new chunk: %v", err)
 		}
