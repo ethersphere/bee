@@ -7,19 +7,12 @@ package chunkstore
 import storage "github.com/ethersphere/bee/pkg/storagev2"
 
 type (
-	RetrievalIndexItem  = retrievalIndexItem
-	ChunkStampItem      = chunkStampItem
-	TxChunkStoreWrapper = txChunkStoreWrapper
+	RetrievalIndexItem = retrievalIndexItem
 )
 
 var (
 	ErrMarshalInvalidRetrievalIndexItemAddress = errMarshalInvalidRetrievalIndexAddress
 	ErrUnmarshalInvalidRetrievalIndexItemSize  = errUnmarshalInvalidRetrievalIndexSize
-
-	ErrMarshalInvalidChunkStampItemAddress   = errMarshalInvalidChunkStampItemAddress
-	ErrUnmarshalInvalidChunkStampItemAddress = errUnmarshalInvalidChunkStampItemAddress
-	ErrMarshalInvalidChunkStampItemStamp     = errMarshalInvalidChunkStampItemStamp
-	ErrUnmarshalInvalidChunkStampItemSize    = errUnmarshalInvalidChunkStampItemSize
 )
 
 func (t *txChunkStoreWrapper) Store() storage.Store {
