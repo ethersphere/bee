@@ -14,10 +14,7 @@ import (
 
 var (
 	// ErrNoStampsForChunk is returned when chunk was found but there were no associated stamps.
-	ErrNoStampsForChunk = fmt.Errorf("chunk found but no stamps found: %w", ErrNotFound)
-
-	// ErrStampNotFound is returned when chunk with desired stamp was not fund.
-	ErrStampNotFound = fmt.Errorf("chunk with stamp was not found: %w", ErrNotFound)
+	ErrNoStampsForChunk = fmt.Errorf("no stamp for existing chunk: %w", ErrNotFound)
 )
 
 // Getter is the interface that wraps the basic Get method.
@@ -29,14 +26,6 @@ type Getter interface {
 	// query. In order to deterministically get the stamp, use the GetterWithStamp
 	// interface. If the chunk is not found storage.ErrNotFound will be returned.
 	Get(context.Context, swarm.Address) (swarm.Chunk, error)
-}
-
-// GetterWithStamp is the interface that provides a way to specify a postage
-// stamp to filter the Get query. This is required as we will support multiple stamps
-// on a chunk. As a result some components would need to query chunk and provide
-// the stamp to return by using the argument.
-type GetterWithStamp interface {
-	GetWithStamp(context.Context, swarm.Address, []byte) (swarm.Chunk, error)
 }
 
 // Putter is the interface that wraps the basic Put method.
@@ -80,7 +69,6 @@ type ChunkGetterDeleter interface {
 type ChunkStore interface {
 	io.Closer
 	Getter
-	GetterWithStamp
 	Putter
 	Deleter
 
