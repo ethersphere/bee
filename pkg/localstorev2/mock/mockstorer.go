@@ -1,9 +1,12 @@
+// Copyright 2023 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package mockstorer
 
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 	"time"
 
@@ -16,6 +19,9 @@ import (
 )
 
 var errNotImplemented = errors.New("mock storer: not implemented")
+
+// now returns the current time.Time; used in testing.
+var now = time.Now
 
 type mockStorer struct {
 	chunkStore     storage.ChunkStore
@@ -44,6 +50,8 @@ func (p *putterSession) Done(address swarm.Address) error {
 
 func (p *putterSession) Cleanup() error { return nil }
 
+// New returns a mock storer implementation that is designed to be used for the
+// unit tests.
 func New() storer.Storer {
 	return &mockStorer{
 		chunkStore:     inmemchunkstore.New(),
@@ -64,7 +72,6 @@ func (m *mockStorer) Upload(ctx context.Context, pin bool, tagID uint64) (storer
 			}
 			if session, ok := m.activeSessions[tagID]; ok {
 				session.Address = address
-				fmt.Println("updated session", session.Address)
 			}
 			return nil
 		},
@@ -74,7 +81,7 @@ func (m *mockStorer) Upload(ctx context.Context, pin bool, tagID uint64) (storer
 func (m *mockStorer) NewSession() (storer.SessionInfo, error) {
 	session := &storer.SessionInfo{
 		TagID:     m.sessionID.Inc(),
-		StartedAt: time.Now().Unix(),
+		StartedAt: now().Unix(),
 	}
 
 	m.mu.Lock()
