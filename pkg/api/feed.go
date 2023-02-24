@@ -239,6 +239,14 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	err = putter.Done(ref)
+	if err != nil {
+		logger.Debug("done split failed", "error", err)
+		logger.Error(nil, "done split failed")
+		jsonhttp.InternalServerError(ow, "done split failed")
+		return
+	}
+
 	jsonhttp.Created(w, feedReferenceResponse{Reference: ref})
 }
 

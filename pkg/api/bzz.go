@@ -30,7 +30,6 @@ import (
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/langos"
 	"github.com/gorilla/mux"
-	"github.com/hashicorp/go-multierror"
 )
 
 func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
@@ -131,10 +130,7 @@ func (s *Service) fileUploadHandler(
 	// first store the file and get its reference
 	fr, err := p(ctx, r.Body)
 	if err != nil {
-		logger.Debug("file store failed",
-			"file_name", queries.FileName,
-			"error", multierror.Append(err, putter.Cleanup()),
-		)
+		logger.Debug("file store failed", "file_name", queries.FileName, "error", err)
 		logger.Error(nil, "file store failed", "file_name", queries.FileName)
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):

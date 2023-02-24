@@ -154,9 +154,9 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = putter.Done(sch.Address())
 	if err != nil {
-		logger.Debug("read chunk data failed", "error", err)
-		logger.Error(nil, "read chunk data failed")
-		jsonhttp.InternalServerError(ow, "cannot read chunk data")
+		logger.Debug("done split failed", "error", err)
+		logger.Error(nil, "done split failed")
+		jsonhttp.InternalServerError(ow, "done split failed")
 		return
 	}
 

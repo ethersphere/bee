@@ -125,6 +125,14 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	err = putter.Done(swarm.ZeroAddress)
+	if err != nil {
+		logger.Debug("done split failed", "error", err)
+		logger.Error(nil, "done split failed")
+		jsonhttp.InternalServerError(ow, "done split failed")
+		return
+	}
+
 	if tag != 0 {
 		w.Header().Set(SwarmTagHeader, fmt.Sprint(tag))
 	}
