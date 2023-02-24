@@ -102,18 +102,7 @@ func diskStorer(t *testing.T, opts *storer.Options) func() (*storer.DB, error) {
 	t.Helper()
 
 	return func() (*storer.DB, error) {
-		dir, err := ioutil.TempDir(".", "testrepo*")
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() {
-			err := os.RemoveAll(dir)
-			if err != nil {
-				t.Errorf("failed removing directories: %v", err)
-			}
-		})
-
-		lstore, err := storer.New(context.Background(), dir, opts)
+		lstore, err := storer.New(context.Background(), t.TempDir(), opts)
 		if err == nil {
 			t.Cleanup(func() {
 				err := lstore.Close()
