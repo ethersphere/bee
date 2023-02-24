@@ -10,11 +10,11 @@ import (
 	"crypto/hmac"
 	"encoding/binary"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/bmtpool"
 	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/pullsync"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"go.uber.org/atomic"
@@ -27,7 +27,12 @@ const (
 	reserveLock         = "reserveLock"
 )
 
-func (db *DB) reserveWorker(capacity int, syncer pullsync.SyncReporter, warmupDur, wakeUpDur time.Duration) {
+type SyncReporter interface {
+	// Number of active historical syncing jobs.
+	Rate() float64
+}
+
+func (db *DB) reserveWorker(capacity int, syncer SyncReporter, warmupDur, wakeUpDur time.Duration) {
 
 	defer db.reserveWg.Done()
 
@@ -63,6 +68,14 @@ func (db *DB) reserveWorker(capacity int, syncer pullsync.SyncReporter, warmupDu
 			return
 		}
 	}
+}
+
+func (db *DB) ReserveGet(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
+	return db.reserve.Get(ctx, db.repo, addr)
+}
+
+func (db *DB) ReserveHas(addr swarm.Address) (bool, error) {
+	return db.reserve.Has(db.repo.IndexStore(), addr)
 }
 
 // ReservePutter returns a PutterSession for inserting chunks into the reserve.
@@ -187,14 +200,15 @@ func (db *DB) ReserveLastBinIDs() ([]uint64, error) {
 
 // BinC is the result returned from the SubscribeBin channel that contains the chunk address and the binID
 type BinC struct {
-	Chunk swarm.Chunk
-	BinID uint64
+	Address swarm.Address
+	BinID   uint64
 }
 
 // SubscribeBin returns a channel that feeds all the chunks in the reserve from a certain bin between a start and end binIDs.
-func (db *DB) SubscribeBin(ctx context.Context, bin uint8, start, end uint64) (<-chan *BinC, <-chan error) {
+func (db *DB) SubscribeBin(ctx context.Context, bin uint8, start, end uint64) (<-chan *BinC, func(), <-chan error) {
 
 	out := make(chan *BinC)
+	done := make(chan struct{})
 	errC := make(chan error, 1)
 
 	db.reserveWg.Add(1)
@@ -213,12 +227,14 @@ func (db *DB) SubscribeBin(ctx context.Context, bin uint8, start, end uint64) (<
 
 		for {
 
-			err := db.reserve.IterateBin(db.repo, bin, startID, func(c swarm.Chunk, binID uint64) (bool, error) {
+			err := db.reserve.IterateBin(db.repo, bin, startID, func(a swarm.Address, binID uint64) (bool, error) {
 
 				if binID <= end {
 					lastBinID = binID
 					select {
-					case out <- &BinC{Chunk: c, BinID: binID}:
+					case out <- &BinC{Address: a, BinID: binID}:
+					case <-done:
+						return false, nil
 					case <-db.quit:
 						return false, errDBQuit
 					case <-ctx.Done():
@@ -248,6 +264,8 @@ func (db *DB) SubscribeBin(ctx context.Context, bin uint8, start, end uint64) (<
 
 			select {
 			case <-trigger:
+			case <-done:
+				return
 			case <-db.quit:
 				errC <- errDBQuit
 				return
@@ -258,7 +276,10 @@ func (db *DB) SubscribeBin(ctx context.Context, bin uint8, start, end uint64) (<
 		}
 	}()
 
-	return out, errC
+	var doneOnce sync.Once
+	return out, func() {
+		doneOnce.Do(func() { close(done) })
+	}, errC
 }
 
 type Sample struct {
@@ -296,7 +317,7 @@ func (db *DB) ReserveSample(
 		defer close(chunkC)
 		iterationStart := time.Now()
 
-		err := db.reserve.Iterate(db.repo, storageRadius, func(a swarm.Chunk, u uint64) (bool, error) {
+		err := db.reserve.IterateChunks(db.repo, storageRadius, func(a swarm.Chunk, u uint64) (bool, error) {
 			select {
 			case chunkC <- a:
 				stat.TotalIterated.Inc()

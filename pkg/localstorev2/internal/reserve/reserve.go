@@ -15,6 +15,7 @@ import (
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/chunkstamp"
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/stampindex"
 	"github.com/ethersphere/bee/pkg/log"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 	storagev2 "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
@@ -124,7 +125,7 @@ func (r *Reserve) Putter(store internal.Storage) storagev2.Putter {
 			}
 		}
 
-		err = chunkstamp.Store(store, reserveNamespace, chunk)
+		err = chunkstamp.Store(indexStore, reserveNamespace, chunk)
 		if err != nil {
 			return err
 		}
@@ -157,7 +158,32 @@ func (r *Reserve) Putter(store internal.Storage) storagev2.Putter {
 	})
 }
 
-func (r *Reserve) IterateBin(store internal.Storage, bin uint8, startBinID uint64, cb func(swarm.Chunk, uint64) (bool, error)) error {
+func (r *Reserve) Has(store storagev2.Store, addr swarm.Address) (bool, error) {
+	_, err := chunkstamp.Load(store, reserveNamespace, addr)
+	if errors.Is(err, storage.ErrNoStampsForChunk) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+func (r *Reserve) Get(ctx context.Context, storage internal.Storage, addr swarm.Address) (swarm.Chunk, error) {
+	stamp, err := chunkstamp.Load(storage.IndexStore(), reserveNamespace, addr)
+	if err != nil {
+		return nil, err
+	}
+
+	ch, err := storage.ChunkStore().Get(ctx, addr)
+	if err != nil {
+		return nil, err
+	}
+
+	return ch.WithStamp(stamp), nil
+}
+
+func (r *Reserve) IterateBin(store internal.Storage, bin uint8, startBinID uint64, cb func(swarm.Address, uint64) (bool, error)) error {
 	err := store.IndexStore().Iterate(storagev2.Query{
 		Factory:       func() storagev2.Item { return &chunkBinItem{} },
 		Prefix:        binIDToString(bin, startBinID),
@@ -168,27 +194,18 @@ func (r *Reserve) IterateBin(store internal.Storage, bin uint8, startBinID uint6
 			return true, nil
 		}
 
-		chunk, err := store.ChunkStore().Get(context.Background(), item.Address)
-		if err != nil {
-			return false, err
-		}
-
-		stamp, err := chunkstamp.Load(store.IndexStore(), reserveNamespace, item.Address)
-		if err != nil {
-			return false, err
-		}
-
-		stop, err := cb(chunk.WithStamp(stamp), item.BinID)
+		stop, err := cb(item.Address, item.BinID)
 		if stop || err != nil {
 			return true, err
 		}
+
 		return false, nil
 	})
 
 	return err
 }
 
-func (r *Reserve) Iterate(store internal.Storage, startBin uint8, cb func(swarm.Chunk, uint64) (bool, error)) error {
+func (r *Reserve) IterateChunks(store internal.Storage, startBin uint8, cb func(swarm.Chunk, uint64) (bool, error)) error {
 	err := store.IndexStore().Iterate(storagev2.Query{
 		Factory:       func() storagev2.Item { return &chunkBinItem{} },
 		Prefix:        binIDToString(startBin, 0),
@@ -242,6 +259,11 @@ func (r *Reserve) EvictBatchBin(store internal.Storage, batchID []byte, bin uint
 				Bin:   batchRadius.Bin,
 				BinID: batchRadius.BinID,
 			})
+			if err != nil {
+				return false, err
+			}
+
+			err = chunkstamp.Delete(indexStore, reserveNamespace, batchRadius.Address, batchRadius.BatchID)
 			if err != nil {
 				return false, err
 			}

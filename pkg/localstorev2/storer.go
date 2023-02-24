@@ -24,7 +24,6 @@ import (
 	localmigration "github.com/ethersphere/bee/pkg/localstorev2/migration"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/pullsync"
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/sharky"
@@ -113,10 +112,16 @@ type NetStore interface {
 	PusherFeed() <-chan *pusher.Op
 }
 
+var _ ReserveStore = (*DB)(nil)
+
 type ReserveStore interface {
-	Putter() PutterSession
+	ReserveGet(ctx context.Context, addr swarm.Address) (swarm.Chunk, error)
+	ReserveHas(addr swarm.Address) (bool, error)
+	ReservePutter(ctx context.Context) PutterSession
 	ReserveSample(context.Context, []byte, uint8, uint64) (Sample, error)
-	SubscribeBin(ctx context.Context, bin uint8, start, end uint64) <-chan *BinC
+	SubscribeBin(ctx context.Context, bin uint8, start, end uint64) (<-chan *BinC, func(), <-chan error)
+	ReserveLastBinIDs() ([]uint64, error)
+	EvictBatch(ctx context.Context, batchID []byte) error
 }
 
 type memFS struct {
@@ -267,7 +272,7 @@ type Options struct {
 	WarmupDuration time.Duration
 	Batchstore     postage.Storer
 	RadiusSetter   topology.SetStorageRadiuser
-	Syncer         pullsync.SyncReporter
+	Syncer         SyncReporter
 
 	ReserveCapacity       int
 	ReserveWakeUpDuration time.Duration

@@ -7,6 +7,8 @@ package storer_test
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
+	"errors"
 	"testing"
 	"time"
 
@@ -17,6 +19,7 @@ import (
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/spinlock"
 	chunk "github.com/ethersphere/bee/pkg/storage/testing"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/google/go-cmp/cmp"
@@ -34,11 +37,13 @@ func TestIndexCollision(t *testing.T) {
 	stamp := postagetesting.MustNewBatchStamp(postagetesting.MustNewBatch().ID)
 	putter := storer.ReservePutter(context.Background())
 
-	err = putter.Put(context.Background(), chunk.GenerateTestRandomChunkAt(baseAddr, 0).WithStamp(stamp))
+	ch_1 := chunk.GenerateTestRandomChunkAt(baseAddr, 0)
+	err = putter.Put(context.Background(), ch_1.WithStamp(stamp))
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	ch_2 := chunk.GenerateTestRandomChunkAt(baseAddr, 0)
 	err = putter.Put(context.Background(), chunk.GenerateTestRandomChunkAt(baseAddr, 0).WithStamp(stamp))
 	if err == nil {
 		t.Fatal("expected index collision error")
@@ -47,6 +52,23 @@ func TestIndexCollision(t *testing.T) {
 	err = putter.Done(swarm.ZeroAddress)
 	if err != nil {
 		t.Fatal(err)
+	}
+
+	_, err = storer.ReserveGet(context.Background(), ch_2.Address())
+	if !errors.Is(err, storage.ErrNotFound) {
+		t.Fatal(err)
+	}
+
+	got, err := storer.ReserveGet(context.Background(), ch_1.Address())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Address().Equal(ch_1.Address()) {
+		t.Fatalf("got addr %s, want %d", got.Address(), ch_1.Address())
+	}
+
+	if !bytes.Equal(got.Stamp().BatchID(), ch_1.Stamp().BatchID()) {
+		t.Fatalf("got batchID %s, want %s", hex.EncodeToString(got.Stamp().BatchID()), hex.EncodeToString(ch_1.Stamp().BatchID()))
 	}
 }
 
@@ -93,11 +115,10 @@ func TestEvictBatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	chunkStore := st.Repo().ChunkStore()
 	reserve := st.Reserve()
 
 	for _, ch := range chunks {
-		has, err := chunkStore.Has(ctx, ch.Address())
+		has, err := st.ReserveHas(ch.Address())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -163,8 +184,6 @@ func TestUnreserveCap(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	chunkStore := storer.Repo().ChunkStore()
-
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
 
@@ -202,7 +221,7 @@ func TestUnreserveCap(t *testing.T) {
 
 	for po, chunks := range chunksPO {
 		for _, ch := range chunks {
-			has, err := chunkStore.Has(ctx, ch.Address())
+			has, err := storer.ReserveHas(ch.Address())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -352,11 +371,11 @@ func TestSubscribeBin(t *testing.T) {
 	t.Run("subscribe full range", func(t *testing.T) {
 		t.Parallel()
 
-		binC, _ := storer.SubscribeBin(context.Background(), 0, 0, chunksPerPO-1)
+		binC, _, _ := storer.SubscribeBin(context.Background(), 0, 0, chunksPerPO-1)
 
 		i := uint64(0)
 		for c := range binC {
-			if !c.Chunk.Address().Equal(chunks[i].Address()) {
+			if !c.Address.Equal(chunks[i].Address()) {
 				t.Fatal("mismatch of chunks at index", i)
 			}
 			i++
@@ -371,11 +390,11 @@ func TestSubscribeBin(t *testing.T) {
 	t.Run("subscribe sub range", func(t *testing.T) {
 		t.Parallel()
 
-		binC, _ := storer.SubscribeBin(context.Background(), 0, 1, chunksPerPO-1)
+		binC, _, _ := storer.SubscribeBin(context.Background(), 0, 1, chunksPerPO-1)
 
 		i := uint64(1)
 		for c := range binC {
-			if !c.Chunk.Address().Equal(chunks[i].Address()) {
+			if !c.Address.Equal(chunks[i].Address()) {
 				t.Fatal("mismatch of chunks at index", i)
 			}
 			i++
@@ -389,7 +408,7 @@ func TestSubscribeBin(t *testing.T) {
 	t.Run("subscribe beyond range", func(t *testing.T) {
 		t.Parallel()
 
-		binC, _ := storer.SubscribeBin(context.Background(), 0, 1, chunksPerPO)
+		binC, _, _ := storer.SubscribeBin(context.Background(), 0, 1, chunksPerPO)
 		i := uint64(1)
 		timer := time.After(time.Millisecond * 500)
 
@@ -397,7 +416,7 @@ func TestSubscribeBin(t *testing.T) {
 		for {
 			select {
 			case c := <-binC:
-				if !c.Chunk.Address().Equal(chunks[i].Address()) {
+				if !c.Address.Equal(chunks[i].Address()) {
 					t.Fatal("mismatch of chunks at index", i)
 				}
 				i++
@@ -442,7 +461,7 @@ func TestSubscribeBinTrigger(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	binC, _ := storer.SubscribeBin(context.Background(), 0, 1, chunksPerPO)
+	binC, _, _ := storer.SubscribeBin(context.Background(), 0, 1, chunksPerPO)
 	i := uint64(1)
 	timer := time.After(time.Millisecond * 500)
 
@@ -450,7 +469,7 @@ loop:
 	for {
 		select {
 		case c := <-binC:
-			if !c.Chunk.Address().Equal(chunks[i].Address()) {
+			if !c.Address.Equal(chunks[i].Address()) {
 				t.Fatal("mismatch of chunks at index", i)
 			}
 			i++
@@ -476,7 +495,7 @@ loop:
 
 	select {
 	case c := <-binC:
-		if !c.Chunk.Address().Equal(newChunk.Address()) {
+		if !c.Address.Equal(newChunk.Address()) {
 			t.Fatal("mismatch of chunks")
 		}
 	case <-time.After(time.Second):
