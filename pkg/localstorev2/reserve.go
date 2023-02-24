@@ -227,7 +227,7 @@ func (db *DB) SubscribeBin(ctx context.Context, bin uint8, start, end uint64) (<
 
 		for {
 
-			err := db.reserve.IterateBin(db.repo, bin, startID, func(a swarm.Address, binID uint64) (bool, error) {
+			err := db.reserve.IterateBin(db.repo.IndexStore(), bin, startID, func(a swarm.Address, binID uint64) (bool, error) {
 
 				if binID <= end {
 					lastBinID = binID

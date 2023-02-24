@@ -183,8 +183,8 @@ func (r *Reserve) Get(ctx context.Context, storage internal.Storage, addr swarm.
 	return ch.WithStamp(stamp), nil
 }
 
-func (r *Reserve) IterateBin(store internal.Storage, bin uint8, startBinID uint64, cb func(swarm.Address, uint64) (bool, error)) error {
-	err := store.IndexStore().Iterate(storagev2.Query{
+func (r *Reserve) IterateBin(store storage.Store, bin uint8, startBinID uint64, cb func(swarm.Address, uint64) (bool, error)) error {
+	err := store.Iterate(storagev2.Query{
 		Factory:       func() storagev2.Item { return &chunkBinItem{} },
 		Prefix:        binIDToString(bin, startBinID),
 		PrefixAtStart: true,
