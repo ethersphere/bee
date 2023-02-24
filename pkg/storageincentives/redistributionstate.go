@@ -49,7 +49,6 @@ type Status struct {
 	Block           uint64
 	Reward          *big.Int
 	Fees            *big.Int
-	TxCount         uint64
 }
 
 func NewRedistributionState(logger log.Logger, ethAddress common.Address, stateStore storage.StateStorer, erc20Service erc20.Service, contract transaction.Service) (*RedistributionState, error) {
@@ -133,22 +132,7 @@ func (r *RedistributionState) AddFee(ctx context.Context, txHash common.Hash) {
 	defer r.mtx.Unlock()
 
 	r.status.Fees.Add(r.status.Fees, fee)
-	r.status.TxCount++
 	r.save()
-}
-
-func (r *RedistributionState) AvgFee() *big.Int {
-	r.mtx.Lock()
-	defer r.mtx.Unlock()
-
-	if r.status.TxCount == 0 {
-		return big.NewInt(0)
-	}
-
-	avgFee := big.NewInt(0).Set(r.status.Fees)
-	avgFee.Div(avgFee, big.NewInt(int64(r.status.TxCount)))
-
-	return avgFee
 }
 
 // CalculateWinnerReward calculates the reward for the winner

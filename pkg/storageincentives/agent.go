@@ -36,13 +36,18 @@ const (
 	DefaultBlocksPerRound = 152
 	DefaultBlocksPerPhase = DefaultBlocksPerRound / 4
 
+	// min transactions required for each game
 	minTxCountToCover = 25
+
+	// average tx gas used by transactions issued from agent
+	avgTxGas = 200_000
 )
 
 type ChainBackend interface {
 	BlockNumber(context.Context) (uint64, error)
 	HeaderByNumber(context.Context, *big.Int) (*types.Header, error)
 	BalanceAt(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error)
+	SuggestGasPrice(ctx context.Context) (*big.Int, error)
 }
 
 type Monitor interface {
@@ -494,8 +499,16 @@ func (a *Agent) hasEnoughFundsToPlay(ctx context.Context) (bool, error) {
 		return false, err
 	}
 
+	price, err := a.backend.SuggestGasPrice(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	avgGasPrice := big.NewInt(avgTxGas)
+	avgGasPrice = avgGasPrice.Mul(avgGasPrice, price)
+
 	minBalance := big.NewInt(minTxCountToCover)
-	minBalance.Mul(minBalance, a.state.AvgFee())
+	minBalance.Mul(minBalance, avgGasPrice)
 
 	return balance.Cmp(minBalance) >= 1, nil
 }

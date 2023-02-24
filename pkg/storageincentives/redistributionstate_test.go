@@ -166,12 +166,6 @@ func TestFee(t *testing.T) {
 	if gotFirstResult.Fees.Cmp(firstFee) != 0 {
 		t.Fatalf("expected fee %d got %d", firstFee, gotFirstResult.Fees)
 	}
-	if gotFirstResult.TxCount != 1 {
-		t.Fatalf("expected %d got %d", 1, gotFirstResult.TxCount)
-	}
-	if state.AvgFee().Int64() != 10 {
-		t.Fatalf("expected %d got %d", 10, state.AvgFee().Int64())
-	}
 
 	secondFee := big.NewInt(16)
 	state.txService = transactionmock.New([]transactionmock.Option{
@@ -188,11 +182,5 @@ func TestFee(t *testing.T) {
 	expectedResult := secondFee.Add(secondFee, firstFee)
 	if gotSecondResult.Fees.Cmp(expectedResult) != 0 {
 		t.Fatalf("expected fee %d got %d", expectedResult, gotSecondResult.Fees)
-	}
-	if gotSecondResult.TxCount != 2 {
-		t.Fatalf("expected %d got %d", 2, gotSecondResult.TxCount)
-	}
-	if state.AvgFee().Int64() != 13 {
-		t.Fatalf("expected %d got %d", 13, state.AvgFee().Int64())
 	}
 }
