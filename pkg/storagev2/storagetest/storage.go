@@ -771,7 +771,7 @@ func TestItemMarshalAndUnmarshal(t *testing.T, test *ItemMarshalAndUnmarshalTest
 
 	buf, err := test.Item.Marshal()
 	if !errors.Is(err, test.MarshalErr) {
-		t.Fatalf("Marshal(): want error: %v; have error %v", test.MarshalErr, err)
+		t.Fatalf("Marshal(): want error: %v; have error: %v", test.MarshalErr, err)
 	}
 	if test.MarshalErr != nil {
 		return
@@ -782,7 +782,7 @@ func TestItemMarshalAndUnmarshal(t *testing.T, test *ItemMarshalAndUnmarshalTest
 
 	item2 := test.Factory()
 	if err := item2.Unmarshal(buf); !errors.Is(err, test.UnmarshalErr) {
-		t.Fatalf("Unmarshal(): want error: %v; have error %v", test.UnmarshalErr, err)
+		t.Fatalf("Unmarshal(): want error: %v; have error: %v", test.UnmarshalErr, err)
 	}
 	if test.UnmarshalErr != nil {
 		return
