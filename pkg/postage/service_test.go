@@ -22,6 +22,7 @@ import (
 // TestSaveLoad tests the idempotence of saving and loading the postage.Service
 // with all the active stamp issuers.
 func TestSaveLoad(t *testing.T) {
+	t.Parallel()
 	store := storemock.NewStateStore()
 	pstore := pstoremock.New()
 	saved := func(id int64) postage.Service {
@@ -67,6 +68,7 @@ func TestSaveLoad(t *testing.T) {
 }
 
 func TestGetStampIssuer(t *testing.T) {
+	t.Parallel()
 	store := storemock.NewStateStore()
 	chainID := int64(0)
 	testChainState := postagetesting.NewChainState()
@@ -101,6 +103,7 @@ func TestGetStampIssuer(t *testing.T) {
 		}
 	}
 	t.Run("found", func(t *testing.T) {
+		t.Parallel()
 		for _, id := range ids[1:4] {
 			st, save, err := ps.GetStampIssuer(id)
 			if err != nil {
@@ -125,12 +128,14 @@ func TestGetStampIssuer(t *testing.T) {
 		}
 	})
 	t.Run("not found", func(t *testing.T) {
+		t.Parallel()
 		_, _, err := ps.GetStampIssuer(ids[0])
 		if !errors.Is(err, postage.ErrNotFound) {
 			t.Fatalf("expected ErrNotFound, got %v", err)
 		}
 	})
 	t.Run("not usable", func(t *testing.T) {
+		t.Parallel()
 		for _, id := range ids[4:] {
 			_, _, err := ps.GetStampIssuer(id)
 			if !errors.Is(err, postage.ErrNotUsable) {
@@ -139,6 +144,7 @@ func TestGetStampIssuer(t *testing.T) {
 		}
 	})
 	t.Run("recovered", func(t *testing.T) {
+		t.Parallel()
 		b := postagetesting.MustNewBatch()
 		b.Start = validBlockNumber
 		testAmount := big.NewInt(1)
@@ -159,6 +165,7 @@ func TestGetStampIssuer(t *testing.T) {
 		}
 	})
 	t.Run("topup", func(t *testing.T) {
+		t.Parallel()
 		ps.HandleTopUp(ids[1], big.NewInt(10))
 		_, _, err := ps.GetStampIssuer(ids[1])
 		if err != nil {
@@ -169,6 +176,7 @@ func TestGetStampIssuer(t *testing.T) {
 		}
 	})
 	t.Run("dilute", func(t *testing.T) {
+		t.Parallel()
 		ps.HandleDepthIncrease(ids[2], 17)
 		_, _, err := ps.GetStampIssuer(ids[2])
 		if err != nil {
