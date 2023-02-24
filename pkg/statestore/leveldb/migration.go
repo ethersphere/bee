@@ -33,23 +33,24 @@ var (
 )
 
 const (
-	dbSchemaKey             = "statestore_schema"
-	dbSchemaGrace           = "grace"
-	dbSchemaDrain           = "drain"
-	dbSchemaCleanInterval   = "clean-interval"
-	dbSchemaNoStamp         = "no-stamp"
-	dbSchemaFlushBlock      = "flushblock"
-	dbSchemaSwapAddr        = "swapaddr"
-	dBSchemaKademliaMetrics = "kademlia-metrics"
-	dBSchemaBatchStore      = "batchstore"
-	dBSchemaBatchStoreV2    = "batchstoreV2"
-	dBSchemaBatchStoreV3    = "batchstoreV3"
-	dBSchemaBatchStoreV4    = "batchstoreV4"
-	dBSchemaInterval        = "interval"
+	dbSchemaKey              = "statestore_schema"
+	dbSchemaGrace            = "grace"
+	dbSchemaDrain            = "drain"
+	dbSchemaCleanInterval    = "clean-interval"
+	dbSchemaNoStamp          = "no-stamp"
+	dbSchemaFlushBlock       = "flushblock"
+	dbSchemaSwapAddr         = "swapaddr"
+	dBSchemaKademliaMetrics  = "kademlia-metrics"
+	dBSchemaBatchStore       = "batchstore"
+	dBSchemaBatchStoreV2     = "batchstoreV2"
+	dBSchemaBatchStoreV3     = "batchstoreV3"
+	dBSchemaBatchStoreV4     = "batchstoreV4"
+	dBSchemaInterval         = "interval"
+	dBSchemaClearAddressBook = "address-book"
 )
 
 var (
-	dbSchemaCurrent = dBSchemaInterval
+	dbSchemaCurrent = dBSchemaClearAddressBook
 )
 
 type migration struct {
@@ -72,6 +73,7 @@ var schemaMigrations = []migration{
 	{name: dBSchemaBatchStoreV3, fn: migrateBatchstore},
 	{name: dBSchemaBatchStoreV4, fn: migrateBatchstore},
 	{name: dBSchemaInterval, fn: noOpMigration},
+	{name: dBSchemaClearAddressBook, fn: clearAddressBook},
 }
 
 func migrateFB(s *Store) error {
@@ -97,6 +99,14 @@ func migrateBatchstoreV2(s *Store) error {
 
 func noOpMigration(s *Store) error {
 	return nil
+}
+
+func clearAddressBook(s *Store) error {
+	collectedKeys, err := collectKeys(s, "addressbook_entry_")
+	if err != nil {
+		return err
+	}
+	return deleteKeys(s, collectedKeys)
 }
 
 func migrateBatchstore(s *Store) error {
