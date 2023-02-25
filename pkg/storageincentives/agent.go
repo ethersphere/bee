@@ -505,11 +505,8 @@ func (a *Agent) HasEnoughFundsToPlay(ctx context.Context) (bool, error) {
 		return false, err
 	}
 
-	avgGasPrice := big.NewInt(avgTxGas)
-	avgGasPrice = avgGasPrice.Mul(avgGasPrice, price)
-
-	minBalance := big.NewInt(minTxCountToCover)
-	minBalance.Mul(minBalance, avgGasPrice)
+	avgTxFee := new(big.Int).Mul(big.NewInt(avgTxGas), price)
+	minBalance := new(big.Int).Mul(avgTxFee, big.NewInt(minTxCountToCover))
 
 	return balance.Cmp(minBalance) >= 1, nil
 }
