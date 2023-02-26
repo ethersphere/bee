@@ -341,6 +341,8 @@ func TestParseName(t *testing.T) {
 	const bzzHash = "89c17d0d8018a19057314aa035e61c9d23c47581a61dd3a79a7839692c617e4d"
 	log := log.Noop
 
+	var errInvalidNameOrAddress = errors.New("invalid name or bzz address")
+
 	testCases := []struct {
 		desc       string
 		name       string
@@ -352,7 +354,7 @@ func TestParseName(t *testing.T) {
 		{
 			desc:    "empty name",
 			name:    "",
-			wantErr: api.ErrInvalidNameOrAddress,
+			wantAdr: swarm.ZeroAddress,
 		},
 		{
 			desc:    "bzz hash",
@@ -376,10 +378,10 @@ func TestParseName(t *testing.T) {
 			name: "not.good",
 			res: resolverMock.NewResolver(
 				resolverMock.WithResolveFunc(func(string) (swarm.Address, error) {
-					return swarm.ZeroAddress, api.ErrInvalidNameOrAddress
+					return swarm.ZeroAddress, errInvalidNameOrAddress
 				}),
 			),
-			wantErr: api.ErrInvalidNameOrAddress,
+			wantErr: errInvalidNameOrAddress,
 		},
 		{
 			desc:    "name resolved",
@@ -407,7 +409,7 @@ func TestParseName(t *testing.T) {
 			t.Parallel()
 
 			got, err := s.ResolveNameOrAddress(tC.name)
-			if err != nil && !errors.Is(err, tC.wantErr) {
+			if tC.wantErr != nil && !errors.Is(err, tC.wantErr) {
 				t.Fatalf("bad error: %v", err)
 			}
 			if !got.Equal(tC.wantAdr) {
