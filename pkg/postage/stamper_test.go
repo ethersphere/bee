@@ -5,9 +5,7 @@
 package postage_test
 
 import (
-	crand "crypto/rand"
 	"errors"
-	"io"
 	"math/big"
 	"testing"
 
@@ -30,12 +28,8 @@ func TestStamperStamping(t *testing.T) {
 	signer := crypto.NewDefaultSigner(privKey)
 	createStamp := func(t *testing.T, stamper postage.Stamper) (swarm.Address, *postage.Stamp) {
 		t.Helper()
-		h := make([]byte, 32)
-		_, err = io.ReadFull(crand.Reader, h)
-		if err != nil {
-			t.Fatal(err)
-		}
-		chunkAddr := swarm.NewAddress(h)
+
+		chunkAddr := swarm.RandAddress(t)
 		stamp, err := stamper.Stamp(chunkAddr)
 		if err != nil {
 			t.Fatal(err)
