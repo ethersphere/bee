@@ -11,7 +11,7 @@ import (
 
 // Distance returns the distance between address x and address y as a (comparable) big integer using the distance metric defined in the swarm specification.
 // Fails if not all addresses are of equal length.
-func Distance(x, y []byte) (*big.Int, error) {
+func Distance(x, y Address) (*big.Int, error) {
 	distanceBytes, err := DistanceRaw(x, y)
 	if err != nil {
 		return nil, err
@@ -23,13 +23,15 @@ func Distance(x, y []byte) (*big.Int, error) {
 
 // DistanceRaw returns the distance between address x and address y in big-endian binary format using the distance metric defined in the swarm specification.
 // Fails if not all addresses are of equal length.
-func DistanceRaw(x, y []byte) ([]byte, error) {
-	if len(x) != len(y) {
+func DistanceRaw(x, y Address) ([]byte, error) {
+	xb, yb := x.b, y.b
+
+	if len(xb) != len(yb) {
 		return nil, errors.New("address length must match")
 	}
-	c := make([]byte, len(x))
-	for i, addr := range x {
-		c[i] = addr ^ y[i]
+	c := make([]byte, len(xb))
+	for i, addr := range xb {
+		c[i] = addr ^ yb[i]
 	}
 	return c, nil
 }
@@ -41,14 +43,16 @@ func DistanceRaw(x, y []byte) ([]byte, error) {
 //   - -1 if x is farther from a than y
 //
 // Fails if not all addresses are of equal length.
-func DistanceCmp(a, x, y []byte) (int, error) {
-	if len(a) != len(x) || len(a) != len(y) {
+func DistanceCmp(a, x, y Address) (int, error) {
+	ab, xb, yb := a.b, x.b, y.b
+
+	if len(ab) != len(xb) || len(ab) != len(yb) {
 		return 0, errors.New("address length must match")
 	}
 
-	for i := range a {
-		dx := x[i] ^ a[i]
-		dy := y[i] ^ a[i]
+	for i := range ab {
+		dx := xb[i] ^ ab[i]
+		dy := yb[i] ^ ab[i]
 		if dx == dy {
 			continue
 		} else if dx < dy {
