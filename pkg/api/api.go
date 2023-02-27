@@ -14,7 +14,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/ethersphere/bee/pkg/storageincentives"
 	"io"
 	"math"
 	"math/big"
