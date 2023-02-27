@@ -15,14 +15,7 @@ func Test_RandAddress(t *testing.T) {
 	t.Parallel()
 
 	addr := swarm.RandAddress(t)
-
-	if got := len(addr.Bytes()); got != swarm.HashSize {
-		t.Fatalf("expected %d, got %d", swarm.HashSize, got)
-	}
-
-	if addr.Equal(swarm.ZeroAddress) {
-		t.Fatalf("should not be zero address")
-	}
+	assertNotZeroAddress(t, addr)
 }
 
 // TestRandAddressAt checks that RandAddressAt generates a correct random address
@@ -38,8 +31,9 @@ func Test_RandAddressAt(t *testing.T) {
 
 	for bitsInCommon := 0; bitsInCommon < 30; bitsInCommon++ {
 		addr := swarm.RandAddressAt(t, base, bitsInCommon)
-		b1 := addr.Bytes()
+		assertNotZeroAddress(t, addr)
 
+		b1 := addr.Bytes()
 		hw1 := []byte{b1[0], b1[1], 0, 0} // highest words of 1
 		hw1int := binary.BigEndian.Uint32(hw1)
 
@@ -67,5 +61,20 @@ func Test_RandAddresses(t *testing.T) {
 
 	if got := len(addrs); got != count {
 		t.Fatalf("expected %d, got %d", count, got)
+	}
+	for i := 0; i < count; i++ {
+		assertNotZeroAddress(t, addrs[i])
+	}
+}
+
+func assertNotZeroAddress(t *testing.T, addr swarm.Address) {
+	t.Helper()
+
+	if got := len(addr.Bytes()); got != swarm.HashSize {
+		t.Fatalf("expected %d, got %d", swarm.HashSize, got)
+	}
+
+	if addr.Equal(swarm.ZeroAddress) {
+		t.Fatalf("should not be zero address")
 	}
 }
