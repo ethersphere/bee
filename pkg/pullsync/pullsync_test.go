@@ -236,7 +236,7 @@ func TestGetCursorsError(t *testing.T) {
 func haveChunks(t *testing.T, s *mock.PullStorage, addrs ...swarm.Address) {
 	t.Helper()
 	for _, a := range addrs {
-		have, err := s.Has(context.Background(), a)
+		have, err := s.Has(a, 0) // because the underlying storage is mocked, we use the zero as the binID for all chunks.
 		if err != nil {
 			t.Fatal(err)
 		}

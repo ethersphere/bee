@@ -20,10 +20,16 @@ message GetRange {
   uint64 To = 3;
 }
 
+message Chunk {
+  bytes Address = 1;
+  uint64 BinID = 2;
+}
+
 message Offer {
   uint64 Topmost = 1;
-  bytes Hashes = 2;
+  repeated Chunk Chunks = 2;
 }
+
 
 message Want {
   bytes BitVector = 1;
