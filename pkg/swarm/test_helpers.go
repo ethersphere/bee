@@ -1,4 +1,4 @@
-// Copyright 2022 The Swarm Authors. All rights reserved.
+// Copyright 2023 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -61,7 +61,7 @@ func RandAddresses(tb testing.TB, count int) []Address {
 	return result
 }
 
-// RandAddress generates a random BatchID.
+// RandBatchID generates a random BatchID.
 func RandBatchID(tb testing.TB) []byte {
 	tb.Helper()
 

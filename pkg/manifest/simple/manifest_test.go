@@ -13,13 +13,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// randomAddress generates a random address.
-func randomAddress(t *testing.T) string {
-	t.Helper()
-
-	return swarm.RandAddress(t).String()
-}
-
 func TestNilPath(t *testing.T) {
 	t.Parallel()
 
@@ -55,7 +48,7 @@ func makeTestCases(t *testing.T) []testCase {
 			entries: []e{
 				{
 					path:      "entry-1",
-					reference: randomAddress(t),
+					reference: swarm.RandAddress(t).String(),
 				},
 			},
 		},
@@ -64,11 +57,11 @@ func makeTestCases(t *testing.T) []testCase {
 			entries: []e{
 				{
 					path:      "entry-1.txt",
-					reference: randomAddress(t),
+					reference: swarm.RandAddress(t).String(),
 				},
 				{
 					path:      "entry-2.png",
-					reference: randomAddress(t),
+					reference: swarm.RandAddress(t).String(),
 				},
 			},
 		},
@@ -77,19 +70,19 @@ func makeTestCases(t *testing.T) []testCase {
 			entries: []e{
 				{
 					path:      "text/robots.txt",
-					reference: randomAddress(t),
+					reference: swarm.RandAddress(t).String(),
 				},
 				{
 					path:      "img/1.png",
-					reference: randomAddress(t),
+					reference: swarm.RandAddress(t).String(),
 				},
 				{
 					path:      "img/2.jpg",
-					reference: randomAddress(t),
+					reference: swarm.RandAddress(t).String(),
 				},
 				{
 					path:      "readme.md",
-					reference: randomAddress(t),
+					reference: swarm.RandAddress(t).String(),
 				},
 				{
 					path: "/",
@@ -140,7 +133,7 @@ func TestEntries(t *testing.T) {
 			// replace entry
 			lastEntry := tc.entries[len(tc.entries)-1]
 
-			newReference := randomAddress(t)
+			newReference := swarm.RandAddress(t).String()
 
 			err := m.Add(lastEntry.path, newReference, map[string]string{})
 			if err != nil {
