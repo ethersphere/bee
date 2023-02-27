@@ -26,7 +26,7 @@ func TestNilPath(t *testing.T) {
 // struct for manifest entries for test cases
 type e struct {
 	path      string
-	reference string
+	reference swarm.Address
 	metadata  map[string]string
 }
 
@@ -48,7 +48,7 @@ func makeTestCases(t *testing.T) []testCase {
 			entries: []e{
 				{
 					path:      "entry-1",
-					reference: swarm.RandAddress(t).String(),
+					reference: swarm.RandAddress(t),
 				},
 			},
 		},
@@ -57,11 +57,11 @@ func makeTestCases(t *testing.T) []testCase {
 			entries: []e{
 				{
 					path:      "entry-1.txt",
-					reference: swarm.RandAddress(t).String(),
+					reference: swarm.RandAddress(t),
 				},
 				{
 					path:      "entry-2.png",
-					reference: swarm.RandAddress(t).String(),
+					reference: swarm.RandAddress(t),
 				},
 			},
 		},
@@ -70,19 +70,19 @@ func makeTestCases(t *testing.T) []testCase {
 			entries: []e{
 				{
 					path:      "text/robots.txt",
-					reference: swarm.RandAddress(t).String(),
+					reference: swarm.RandAddress(t),
 				},
 				{
 					path:      "img/1.png",
-					reference: swarm.RandAddress(t).String(),
+					reference: swarm.RandAddress(t),
 				},
 				{
 					path:      "img/2.jpg",
-					reference: swarm.RandAddress(t).String(),
+					reference: swarm.RandAddress(t),
 				},
 				{
 					path:      "readme.md",
-					reference: swarm.RandAddress(t).String(),
+					reference: swarm.RandAddress(t),
 				},
 				{
 					path: "/",
@@ -110,13 +110,13 @@ func TestEntries(t *testing.T) {
 
 			// add entries
 			for i, e := range tc.entries {
-				err := m.Add(e.path, e.reference, e.metadata)
+				err := m.Add(e.path, e.reference.String(), e.metadata)
 				if err != nil {
 					t.Fatal(err)
 				}
 
 				checkLength(t, m, i+1)
-				checkEntry(t, m, e.reference, e.path)
+				checkEntry(t, m, e.reference.String(), e.path)
 			}
 
 			manifestLen := m.Length()
@@ -205,7 +205,7 @@ func TestMarshal(t *testing.T) {
 			m := simple.NewManifest()
 
 			for _, e := range tc.entries {
-				err := m.Add(e.path, e.reference, e.metadata)
+				err := m.Add(e.path, e.reference.String(), e.metadata)
 				if err != nil {
 					t.Fatal(err)
 				}

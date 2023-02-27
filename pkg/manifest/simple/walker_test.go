@@ -23,7 +23,7 @@ func TestWalkEntry(t *testing.T) {
 
 			// add entries
 			for _, e := range tc.entries {
-				err := m.Add(e.path, e.reference, e.metadata)
+				err := m.Add(e.path, e.reference.String(), e.metadata)
 				if err != nil {
 					t.Fatal(err)
 				}
