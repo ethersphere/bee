@@ -87,6 +87,10 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 	require1 := new(big.Int).Mod(new(big.Int).SetBytes(anch2), big.NewInt(15)).Uint64()
 	require2 := new(big.Int).Mod(new(big.Int).SetBytes(anch2), big.NewInt(14)).Uint64()
 
+	if require2 >= require1 {
+		require2++
+	}
+
 	segment1 := int(new(big.Int).Mod(new(big.Int).SetBytes(anch2), big.NewInt(int64(len(sample.Items[require1].ChunkItem.Data)/32))).Uint64())
 
 	segment2 := int(new(big.Int).Mod(new(big.Int).SetBytes(anch2), big.NewInt(int64(len(sample.Items[require2].ChunkItem.Data)/32))).Uint64())
@@ -113,10 +117,6 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 		sample.Items[15].ChunkItem.Timestamp,
 		sample.Items[15].ChunkItem.Sig,
 	)
-
-	if require2 >= require1 {
-		require2++
-	}
 
 	const Capacity = 32
 
