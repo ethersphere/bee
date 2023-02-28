@@ -26,7 +26,6 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/storageincentives"
 	mock2 "github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
-	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/bee/pkg/util/testutil"
 
@@ -221,7 +220,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	s.SetP2P(o.P2P)
 
 	if o.RedistributionAgent == nil {
-		o.RedistributionAgent, _ = createRedistributionAgentService(o.Overlay, o.StateStorer, erc20, transaction)
+		o.RedistributionAgent, _ = createRedistributionAgentService(t, o.Overlay, o.StateStorer, erc20, transaction)
 		s.SetRedistributionAgent(o.RedistributionAgent)
 	}
 	testutil.CleanupCloser(t, o.RedistributionAgent)
@@ -729,7 +728,9 @@ func (c *chanStorer) Close() error {
 	panic("not implemented") // TODO: Implement
 }
 
-func createRedistributionAgentService(addr swarm.Address, storer storage.StateStorer, erc20Service erc20.Service, tranService transaction.Service) (*storageincentives.Agent, error) {
+func createRedistributionAgentService(t *testing.T, addr swarm.Address, storer storage.StateStorer, erc20Service erc20.Service, tranService transaction.Service) (*storageincentives.Agent, error) {
+	t.Helper()
+
 	const blocksPerRound uint64 = 12
 	const blocksPerPhase uint64 = 4
 	postageContract := contractMock.New(contractMock.WithExpiresBatchesFunc(func(context.Context) error {
@@ -741,7 +742,7 @@ func createRedistributionAgentService(addr swarm.Address, storer storage.StateSt
 	}))
 	contract := &mockContract{}
 
-	return storageincentives.New(addr, common.Address{}, backendmock.New(), log.Noop, &mockMonitor{}, contract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), &mockSampler{}, time.Millisecond*10, blocksPerRound, blocksPerPhase, storer, erc20Service, tranService)
+	return storageincentives.New(addr, common.Address{}, backendmock.New(), log.Noop, &mockMonitor{}, contract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), &mockSampler{t: t}, time.Millisecond*10, blocksPerRound, blocksPerPhase, storer, erc20Service, tranService)
 }
 
 type contractCall int
@@ -819,10 +820,12 @@ func (m *mockMonitor) IsFullySynced() bool {
 	return true
 }
 
-type mockSampler struct{}
+type mockSampler struct {
+	t *testing.T
+}
 
 func (m *mockSampler) ReserveSample(context.Context, []byte, uint8, uint64) (storage.Sample, error) {
 	return storage.Sample{
-		Hash: test.RandomAddress(),
+		Hash: swarm.RandAddress(m.t),
 	}, nil
 }
