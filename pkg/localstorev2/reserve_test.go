@@ -183,8 +183,7 @@ func TestEvictBatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-	defer cancel()
+	ctx := context.Background()
 
 	var chunks []swarm.Chunk
 	var chunksPerPO uint64 = 10
@@ -276,8 +275,6 @@ func TestUnreserveCap(t *testing.T) {
 
 	testF := func(t *testing.T, baseAddr swarm.Address, bs *batchstore.BatchStore, storer *storer.DB) {
 		t.Helper()
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
-		defer cancel()
 
 		var chunksPO = make([][]swarm.Chunk, 5)
 		var chunksPerPO uint64 = 10
@@ -287,6 +284,8 @@ func TestUnreserveCap(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+
+		ctx := context.Background()
 
 		putter := storer.ReservePutter(ctx)
 
