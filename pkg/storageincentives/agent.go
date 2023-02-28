@@ -35,11 +35,19 @@ const loggerName = "storageincentives"
 const (
 	DefaultBlocksPerRound = 152
 	DefaultBlocksPerPhase = DefaultBlocksPerRound / 4
+
+	// min # of transactions our wallet should be able to cover
+	minTxCountToCover = 5
+
+	// average tx gas used by transactions issued from agent
+	avgTxGas = 200_000
 )
 
 type ChainBackend interface {
 	BlockNumber(context.Context) (uint64, error)
 	HeaderByNumber(context.Context, *big.Int) (*types.Header, error)
+	BalanceAt(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error)
+	SuggestGasPrice(ctx context.Context) (*big.Int, error)
 }
 
 type Monitor interface {
@@ -371,6 +379,19 @@ func (a *Agent) play(ctx context.Context, round uint64) (uint8, []byte, error) {
 	if !isPlaying {
 		return 0, nil, nil
 	}
+
+	hasFunds, err := a.HasEnoughFundsToPlay(ctx)
+	if err != nil {
+		a.logger.Error(err, "agent HasEnoughFundsToPlay failed")
+		return 0, nil, nil
+	}
+
+	if !hasFunds {
+		a.logger.Info("insufficient funds to participate in next round", "round", round)
+		a.metrics.InsufficientFundsToPlay.Inc()
+		return 0, nil, nil
+	}
+
 	a.state.SetLastPlayedRound(round)
 	a.logger.Info("neighbourhood chosen", "round", round)
 	a.metrics.NeighborhoodSelected.Inc()
@@ -471,4 +492,21 @@ func (a *Agent) wrapCommit(storageRadius uint8, sample []byte, key []byte) ([]by
 // Status returns the node status
 func (a *Agent) Status() (*Status, error) {
 	return a.state.Status()
+}
+
+func (a *Agent) HasEnoughFundsToPlay(ctx context.Context) (bool, error) {
+	balance, err := a.backend.BalanceAt(ctx, a.state.ethAddress, nil)
+	if err != nil {
+		return false, err
+	}
+
+	price, err := a.backend.SuggestGasPrice(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	avgTxFee := new(big.Int).Mul(big.NewInt(avgTxGas), price)
+	minBalance := new(big.Int).Mul(avgTxFee, big.NewInt(minTxCountToCover))
+
+	return balance.Cmp(minBalance) >= 1, nil
 }

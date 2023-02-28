@@ -32,6 +32,7 @@ import (
 func TestAgent(t *testing.T) {
 	t.Parallel()
 
+	bigBalance := big.NewInt(4_000_000_000)
 	tests := []struct {
 		name           string
 		blocksPerRound uint64
@@ -39,6 +40,7 @@ func TestAgent(t *testing.T) {
 		incrementBy    uint64
 		limit          uint64
 		expectedCalls  bool
+		balance        *big.Int
 	}{{
 		name:           "3 blocks per phase, same block number returns twice",
 		blocksPerRound: 9,
@@ -46,6 +48,7 @@ func TestAgent(t *testing.T) {
 		incrementBy:    1,
 		expectedCalls:  true,
 		limit:          108, // computed with blocksPerRound * (exptectedCalls + 2)
+		balance:        bigBalance,
 	}, {
 		name:           "3 blocks per phase, block number returns every block",
 		blocksPerRound: 9,
@@ -53,6 +56,7 @@ func TestAgent(t *testing.T) {
 		incrementBy:    1,
 		expectedCalls:  true,
 		limit:          108,
+		balance:        bigBalance,
 	}, {
 		name:           "no expected calls - block number returns late after each phase",
 		blocksPerRound: 9,
@@ -60,6 +64,7 @@ func TestAgent(t *testing.T) {
 		incrementBy:    6,
 		expectedCalls:  false,
 		limit:          108,
+		balance:        bigBalance,
 	}, {
 		name:           "4 blocks per phase, block number returns every other block",
 		blocksPerRound: 12,
@@ -67,6 +72,17 @@ func TestAgent(t *testing.T) {
 		incrementBy:    2,
 		expectedCalls:  true,
 		limit:          144,
+		balance:        bigBalance,
+	}, {
+		// This test case is based on previous, but this time agent will not have enough
+		// balance to participate in the game so no calls are going to be made.
+		name:           "no expected calls - insufficient balance",
+		blocksPerRound: 12,
+		blocksPerPhase: 4,
+		incrementBy:    2,
+		expectedCalls:  false,
+		limit:          144,
+		balance:        big.NewInt(0),
 	},
 	}
 
@@ -87,7 +103,9 @@ func TestAgent(t *testing.T) {
 					}
 				},
 				incrementBy: tc.incrementBy,
-				block:       tc.blocksPerRound}
+				block:       tc.blocksPerRound,
+				balance:     tc.balance,
+			}
 			contract := &mockContract{}
 
 			service, _ := createService(t, addr, backend, contract, tc.blocksPerRound, tc.blocksPerPhase)
@@ -158,6 +176,7 @@ type mockchainBackend struct {
 	block         uint64
 	limit         uint64
 	limitCallback func()
+	balance       *big.Int
 }
 
 func (m *mockchainBackend) BlockNumber(context.Context) (uint64, error) {
@@ -182,6 +201,14 @@ func (m *mockchainBackend) HeaderByNumber(context.Context, *big.Int) (*types.Hea
 	return &types.Header{
 		Time: uint64(time.Now().Unix()),
 	}, nil
+}
+
+func (m *mockchainBackend) BalanceAt(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error) {
+	return m.balance, nil
+}
+
+func (m *mockchainBackend) SuggestGasPrice(ctx context.Context) (*big.Int, error) {
+	return big.NewInt(4), nil
 }
 
 type mockMonitor struct {
