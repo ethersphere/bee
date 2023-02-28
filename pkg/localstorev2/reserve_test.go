@@ -52,12 +52,12 @@ func TestIndexCollision(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		_, err = storer.ReserveGet(context.Background(), ch_2.Address(), 1)
+		_, err = storer.ReserveGet(context.Background(), ch_2.Address(), ch_2.Stamp().BatchID())
 		if !errors.Is(err, storage.ErrNotFound) {
 			t.Fatal(err)
 		}
 
-		_, err = storer.ReserveGet(context.Background(), ch_1.Address(), 0)
+		_, err = storer.ReserveGet(context.Background(), ch_1.Address(), ch_1.Stamp().BatchID())
 		if !errors.Is(err, storage.ErrNotFound) {
 			t.Fatal(err)
 		}
@@ -115,7 +115,7 @@ func TestReplaceOldIndex(t *testing.T) {
 
 			// Chunk 2 must be stored
 			checkSaved(t, storer, ch_2, true)
-			got, err := storer.ReserveGet(context.Background(), ch_2.Address(), 0)
+			got, err := storer.ReserveGet(context.Background(), ch_2.Address(), ch_2.Stamp().BatchID())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -142,7 +142,7 @@ func TestReplaceOldIndex(t *testing.T) {
 			if !errors.Is(err, storage.ErrNotFound) {
 				t.Fatalf("wanted err %s, got err %s", storage.ErrNotFound, err)
 			}
-			_, err = storer.ReserveGet(context.Background(), ch_1.Address(), 1)
+			_, err = storer.ReserveGet(context.Background(), ch_1.Address(), ch_1.Stamp().BatchID())
 			if !errors.Is(err, storage.ErrNotFound) {
 				t.Fatal(err)
 			}

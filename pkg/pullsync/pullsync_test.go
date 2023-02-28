@@ -10,12 +10,10 @@ import (
 	"io"
 	"testing"
 
-	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
-
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
-	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
+	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	"github.com/ethersphere/bee/pkg/pullsync"
 	"github.com/ethersphere/bee/pkg/pullsync/pullstorage/mock"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
@@ -236,7 +234,7 @@ func TestGetCursorsError(t *testing.T) {
 func haveChunks(t *testing.T, s *mock.PullStorage, addrs ...swarm.Address) {
 	t.Helper()
 	for _, a := range addrs {
-		have, err := s.Has(a, 0) // because the underlying storage is mocked, we use the zero as the binID for all chunks.
+		have, err := s.Has(a, nil) // because the underlying storage is mocked, we use the zero as the binID for all chunks.
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -31,13 +31,14 @@ var (
 // It is used in order to collect and provide information about chunks
 // currently present in the local store.
 type Storer interface {
+	EvictBatch(ctx context.Context, batchID []byte) error
 	// IntervalChunks collects chunk for a requested interval.
-	IntervalChunks(ctx context.Context, bin uint8, from, to uint64, limit int) (chunks []swarm.Address, topmost uint64, err error)
+	IntervalChunks(ctx context.Context, bin uint8, from, to uint64, limit int) (chunks []*storer.BinC, topmost uint64, err error)
 	// Cursors gets the last BinID for every bin in the local storage
 	Cursors(ctx context.Context) ([]uint64, error)
-	Has(addr swarm.Address, binID uint64) (bool, error)
+	Has(addr swarm.Address, batchID []byte) (bool, error)
 	Put(ctx context.Context, chunks ...swarm.Chunk) error
-	Get(ctx context.Context, addr swarm.Address, binID uint64) (swarm.Chunk, error)
+	Get(ctx context.Context, addr swarm.Address, batchID []byte) (swarm.Chunk, error)
 }
 
 // PullStorer wraps storage.Storer.
@@ -57,12 +58,16 @@ func New(store storer.ReserveStore, logger log.Logger) *PullStorer {
 	}
 }
 
+func (s *PullStorer) EvictBatch(ctx context.Context, batchID []byte) error {
+	return s.store.EvictBatch(ctx, batchID)
+}
+
 // IntervalChunks collects chunk for a requested interval.
-func (s *PullStorer) IntervalChunks(ctx context.Context, bin uint8, from, to uint64, limit int) ([]swarm.Address, uint64, error) {
+func (s *PullStorer) IntervalChunks(ctx context.Context, bin uint8, from, to uint64, limit int) ([]*storer.BinC, uint64, error) {
 	loggerV2 := s.logger.V(2).Register()
 
 	type result struct {
-		chs     []swarm.Address
+		chs     []*storer.BinC
 		topmost uint64
 	}
 	s.metrics.TotalSubscribePullRequests.Inc()
@@ -70,7 +75,7 @@ func (s *PullStorer) IntervalChunks(ctx context.Context, bin uint8, from, to uin
 
 	v, _, err := s.intervalsSF.Do(ctx, fmt.Sprintf("%v-%v-%v-%v", bin, from, to, limit), func(ctx context.Context) (interface{}, error) {
 		var (
-			chs     []swarm.Address
+			chs     []*storer.BinC
 			topmost uint64
 		)
 		// call iterator, iterate either until upper bound or limit reached
@@ -99,7 +104,7 @@ func (s *PullStorer) IntervalChunks(ctx context.Context, bin uint8, from, to uin
 					nomore = true
 					break LOOP
 				}
-				chs = append(chs, c.Address)
+				chs = append(chs, c)
 				if c.BinID > topmost {
 					topmost = c.BinID
 				}
@@ -148,12 +153,11 @@ func (s *PullStorer) Cursors(ctx context.Context) (curs []uint64, err error) {
 	return s.store.ReserveLastBinIDs()
 }
 
-func (s *PullStorer) Has(addr swarm.Address, batchID [] ) (bool, error) {
-	return s.store.ReserveHas(addr, binID)
+func (s *PullStorer) Has(addr swarm.Address, batchID []byte) (bool, error) {
+	return s.store.ReserveHas(addr, batchID)
 }
 
 func (s *PullStorer) Put(ctx context.Context, chunks ...swarm.Chunk) error {
-
 	putter := s.store.ReservePutter(ctx)
 	for _, c := range chunks {
 		err := putter.Put(ctx, c)
@@ -165,9 +169,8 @@ func (s *PullStorer) Put(ctx context.Context, chunks ...swarm.Chunk) error {
 	return putter.Done(swarm.ZeroAddress)
 }
 
-func (s *PullStorer) Get(ctx context.Context, addr swarm.Address, binID uint64) (swarm.Chunk, error) {
-
-	c, err := s.store.ReserveGet(ctx, addr, binID)
+func (s *PullStorer) Get(ctx context.Context, addr swarm.Address, batchID []byte) (swarm.Chunk, error) {
+	c, err := s.store.ReserveGet(ctx, addr, batchID)
 	if err != nil {
 		return nil, err
 	}

@@ -184,12 +184,8 @@ func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.C
 }
 
 func (r *Reserve) Has(store storage.Store, addr swarm.Address, batchID []byte) (bool, error) {
-
-	// 1. addr
-	// 2. batchID
-	// 3. bin
-
-	bItem := &batchRadiusItem{Bin: swarm.Proximity(r.baseAddr.Bytes(), addr.Bytes()), BatchID: batchID}
+	bin := swarm.Proximity(r.baseAddr.Bytes(), addr.Bytes())
+	bItem := &batchRadiusItem{Bin: bin, BatchID: batchID, Address: addr}
 	err := store.Get(bItem)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
@@ -201,15 +197,15 @@ func (r *Reserve) Has(store storage.Store, addr swarm.Address, batchID []byte) (
 	return true, nil
 }
 
-func (r *Reserve) Get(ctx context.Context, storage internal.Storage, addr swarm.Address, binID uint64) (swarm.Chunk, error) {
-
-	chunkItem := &chunkBinItem{Bin: swarm.Proximity(r.baseAddr.Bytes(), addr.Bytes()), BinID: binID}
-	err := storage.IndexStore().Get(chunkItem)
+func (r *Reserve) Get(ctx context.Context, storage internal.Storage, addr swarm.Address, batchID []byte) (swarm.Chunk, error) {
+	bin := swarm.Proximity(r.baseAddr.Bytes(), addr.Bytes())
+	bItem := &batchRadiusItem{Bin: bin, BatchID: batchID, Address: addr}
+	err := storage.IndexStore().Get(bItem)
 	if err != nil {
 		return nil, err
 	}
 
-	stamp, err := chunkstamp.LoadWithBatchID(storage.IndexStore(), reserveNamespace, addr, chunkItem.BatchID)
+	stamp, err := chunkstamp.LoadWithBatchID(storage.IndexStore(), reserveNamespace, addr, bItem.BatchID)
 	if err != nil {
 		return nil, err
 	}

@@ -115,7 +115,7 @@ type NetStore interface {
 var _ ReserveStore = (*DB)(nil)
 
 type ReserveStore interface {
-	ReserveGet(ctx context.Context, addr swarm.Address, binID uint64) (swarm.Chunk, error)
+	ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte) (swarm.Chunk, error)
 	ReserveHas(addr swarm.Address, batchID []byte) (bool, error)
 	ReservePutter(ctx context.Context) PutterSession
 	ReserveSample(context.Context, []byte, uint8, uint64) (Sample, error)

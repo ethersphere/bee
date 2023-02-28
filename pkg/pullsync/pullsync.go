@@ -305,7 +305,7 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 	}
 
 	// make an offer to the upstream peer in return for the requested range
-	offer, _, err := s.makeOffer(ctx, rn)
+	offer, err := s.makeOffer(ctx, rn)
 	if err != nil {
 		return fmt.Errorf("make offer: %w", err)
 	}
@@ -350,21 +350,22 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 }
 
 // makeOffer tries to assemble an offer for a given requested interval.
-func (s *Syncer) makeOffer(ctx context.Context, rn pb.GetRange) (o *pb.Offer, addrs []swarm.Address, err error) {
+func (s *Syncer) makeOffer(ctx context.Context, rn pb.GetRange) (*pb.Offer, error) {
 
 	ctx, cancel := context.WithTimeout(ctx, makeOfferTimeout)
 	defer cancel()
 
 	chs, top, err := s.storage.IntervalChunks(ctx, uint8(rn.Bin), rn.From, rn.To, maxPage)
 	if err != nil {
-		return o, nil, err
+		return nil, err
 	}
-	o = new(pb.Offer)
+
+	o := new(pb.Offer)
 	o.Topmost = top
 	for _, v := range chs {
-		o.Chunks = append(o.Chunks, &pb.Chunk{Address: v.Bytes(), BinID: 0}) // TODO; get binID
+		o.Chunks = append(o.Chunks, &pb.Chunk{Address: v.Address.Bytes(), BatchID: v.BatchID}) // TODO; get binID
 	}
-	return o, chs, nil
+	return o, nil
 }
 
 // processWant compares a received Want to a sent Offer and returns
@@ -378,7 +379,8 @@ func (s *Syncer) processWant(ctx context.Context, o *pb.Offer, w *pb.Want) ([]sw
 	var chunks []swarm.Chunk
 	for i := 0; i < len(o.Chunks); i++ {
 		if bv.Get(i) {
-			c, err := s.storage.Get(ctx, swarm.NewAddress(o.Chunks[i].Address), batchID)
+			ch := o.Chunks[i]
+			c, err := s.storage.Get(ctx, swarm.NewAddress(ch.Address), ch.BatchID)
 			if err != nil {
 				return nil, err
 			}
