@@ -116,7 +116,7 @@ var _ ReserveStore = (*DB)(nil)
 
 type ReserveStore interface {
 	ReserveGet(ctx context.Context, addr swarm.Address, binID uint64) (swarm.Chunk, error)
-	ReserveHas(addr swarm.Address, binID uint64) (bool, error)
+	ReserveHas(addr swarm.Address, batchID []byte) (bool, error)
 	ReservePutter(ctx context.Context) PutterSession
 	ReserveSample(context.Context, []byte, uint8, uint64) (Sample, error)
 	SubscribeBin(ctx context.Context, bin uint8, start, end uint64) (<-chan *BinC, func(), <-chan error)

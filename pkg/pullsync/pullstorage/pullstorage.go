@@ -148,7 +148,7 @@ func (s *PullStorer) Cursors(ctx context.Context) (curs []uint64, err error) {
 	return s.store.ReserveLastBinIDs()
 }
 
-func (s *PullStorer) Has(addr swarm.Address, binID uint64) (bool, error) {
+func (s *PullStorer) Has(addr swarm.Address, batchID [] ) (bool, error) {
 	return s.store.ReserveHas(addr, binID)
 }
 

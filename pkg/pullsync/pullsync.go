@@ -179,7 +179,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 	for i := 0; i < len(offer.Chunks); i++ {
 
 		addr := offer.Chunks[i].Address
-		binID := offer.Chunks[i].BinID
+		batchID := offer.Chunks[i].BatchID
 		if len(addr) != swarm.HashSize {
 			return 0, fmt.Errorf("inconsistent hash length")
 		}
@@ -193,7 +193,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		s.metrics.Offered.Inc()
 		s.metrics.DbOps.Inc()
 		if swarm.Proximity(a.Bytes(), s.overlayAddress.Bytes()) >= s.radius.StorageRadius() {
-			have, err = s.storage.Has(a, binID)
+			have, err = s.storage.Has(a, batchID)
 			if err != nil {
 				s.logger.Debug("storage has", "error", err)
 				continue
@@ -378,7 +378,7 @@ func (s *Syncer) processWant(ctx context.Context, o *pb.Offer, w *pb.Want) ([]sw
 	var chunks []swarm.Chunk
 	for i := 0; i < len(o.Chunks); i++ {
 		if bv.Get(i) {
-			c, err := s.storage.Get(ctx, swarm.NewAddress(o.Chunks[i].Address), o.Chunks[i].BinID)
+			c, err := s.storage.Get(ctx, swarm.NewAddress(o.Chunks[i].Address), batchID)
 			if err != nil {
 				return nil, err
 			}

@@ -217,8 +217,8 @@ func TestEvictBatch(t *testing.T) {
 
 	reserve := st.Reserve()
 
-	for i, ch := range chunks {
-		has, err := st.ReserveHas(ch.Address(), uint64(i)%chunksPerPO)
+	for _, ch := range chunks {
+		has, err := st.ReserveHas(ch.Address(), ch.Stamp().BatchID())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -315,8 +315,8 @@ func TestUnreserveCap(t *testing.T) {
 		t.Run("reserve size", reserveSizeTest(storer.Reserve(), capacity))
 
 		for po, chunks := range chunksPO {
-			for i, ch := range chunks {
-				has, err := storer.ReserveHas(ch.Address(), uint64(i)%chunksPerPO)
+			for _, ch := range chunks {
+				has, err := storer.ReserveHas(ch.Address(), ch.Stamp().BatchID())
 				if err != nil {
 					t.Fatal(err)
 				}

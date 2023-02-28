@@ -70,12 +70,13 @@ func (db *DB) reserveWorker(capacity int, syncer SyncReporter, warmupDur, wakeUp
 	}
 }
 
-func (db *DB) ReserveGet(ctx context.Context, addr swarm.Address, binID uint64) (swarm.Chunk, error) {
-	return db.reserve.Get(ctx, db.repo, addr, binID)
+func (db *DB) ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte) (swarm.Chunk, error) {
+	return db.reserve.Get(ctx, db.repo, addr, batchID)
 }
 
-func (db *DB) ReserveHas(addr swarm.Address, binID uint64) (bool, error) {
-	return db.reserve.Has(db.repo.IndexStore(), addr, binID)
+// ReserveHas is called by the requestor
+func (db *DB) ReserveHas(addr swarm.Address, batchID []byte) (bool, error) {
+	return db.reserve.Has(db.repo.IndexStore(), addr, batchID)
 }
 
 // ReservePutter returns a PutterSession for inserting chunks into the reserve.
@@ -203,6 +204,7 @@ func (db *DB) ReserveLastBinIDs() ([]uint64, error) {
 type BinC struct {
 	Address swarm.Address
 	BinID   uint64
+	BatchID []byte
 }
 
 // SubscribeBin returns a channel that feeds all the chunks in the reserve from a certain bin between a start and end binIDs.
@@ -227,12 +229,12 @@ func (db *DB) SubscribeBin(ctx context.Context, bin uint8, start, end uint64) (<
 
 		for {
 
-			err := db.reserve.IterateBin(db.repo.IndexStore(), bin, start, func(a swarm.Address, binID uint64) (bool, error) {
+			err := db.reserve.IterateBin(db.repo.IndexStore(), bin, start, func(a swarm.Address, binID uint64, batchID []byte) (bool, error) {
 
 				if binID <= end {
 					lastBinID = binID
 					select {
-					case out <- &BinC{Address: a, BinID: binID}:
+					case out <- &BinC{Address: a, BinID: binID, BatchID: batchID}:
 					case <-done:
 						stop = true
 						return false, nil
