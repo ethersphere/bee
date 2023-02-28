@@ -9,7 +9,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"sync"
 	"testing"
@@ -106,16 +105,7 @@ func diskStorer(t *testing.T, opts *storer.Options) func() (*storer.DB, error) {
 	t.Helper()
 
 	return func() (*storer.DB, error) {
-		dir, err := ioutil.TempDir(".", "testrepo*")
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() {
-			err := os.RemoveAll(dir)
-			if err != nil {
-				t.Errorf("failed removing directories: %v", err)
-			}
-		})
+		dir := t.TempDir()
 
 		lstore, err := storer.New(context.Background(), dir, opts)
 		if err == nil {
@@ -230,16 +220,7 @@ func makeInmemStorer(t *testing.T, opts *storer.Options) *storer.DB {
 func makeDiskStorer(t *testing.T, opts *storer.Options) *storer.DB {
 	t.Helper()
 
-	dir, err := ioutil.TempDir(".", "testrepo*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		err := os.RemoveAll(dir)
-		if err != nil {
-			t.Errorf("failed removing directories: %v", err)
-		}
-	})
+	dir := t.TempDir()
 
 	lstore, err := storer.New(context.Background(), dir, opts)
 	if err != nil {
