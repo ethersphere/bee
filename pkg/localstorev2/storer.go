@@ -276,6 +276,10 @@ type DB struct {
 	bgCacheWorkersWg sync.WaitGroup
 	dbCloser         io.Closer
 
+	pushTriggers    []chan<- struct{}
+	pushTriggersMu  sync.RWMutex
+	subscriptionsWG sync.WaitGroup
+
 	dirtyTagsMu sync.RWMutex
 	dirtyTags   []uint64 // tagIDs
 }
@@ -369,6 +373,138 @@ type putterSession struct {
 func (p *putterSession) Done(addr swarm.Address) error { return p.done(addr) }
 
 func (p *putterSession) Cleanup() error { return p.cleanup() }
+
+func (db *DB) SubscribePush(ctx context.Context) (chunks chan swarm.Chunk, reset, stop func()) {
+	chunks = make(chan swarm.Chunk)
+	trigger := make(chan struct{}, 1)
+	resetC := make(chan struct{}, 1)
+
+	// send signal for the initial iteration
+	trigger <- struct{}{}
+
+	db.pushTriggersMu.Lock()
+	db.pushTriggers = append(db.pushTriggers, trigger)
+	db.pushTriggersMu.Unlock()
+
+	stopChan := make(chan struct{})
+	var stopChanOnce sync.Once
+
+	var sinceItem swarm.Chunk
+
+	reset = func() {
+		time.Sleep(1 * time.Second) // give some time when retrying
+		select {
+		case resetC <- struct{}{}:
+		default:
+		}
+	}
+
+	db.subscriptionsWG.Add(1)
+	go func() {
+		defer db.subscriptionsWG.Done()
+		// close the returned chunkInfo channel at the end to
+		// signal that the subscription is done
+		defer close(chunks)
+		// sinceItem is the Item from which the next iteration
+		// should start. The first iteration starts from the first Item.
+		for {
+			select {
+			case <-stopChan:
+				// terminate the subscription
+				// on stop
+				return
+			case <-ctx.Done():
+				return
+			case <-resetC:
+				sinceItem = nil
+				select {
+				case trigger <- struct{}{}:
+				default:
+				}
+			case <-trigger:
+
+				// iterate until:
+				// - last index Item is reached
+				// - subscription stop is called
+				// - context is done
+
+				var count int
+
+				err := upload.Iterate(ctx, db.repo, sinceItem, func(chunk swarm.Chunk) (bool, error) {
+
+					if db.isDirty(uint64(chunk.TagID())) {
+						reset()
+						return true, nil
+					}
+
+					select {
+					case chunks <- chunk:
+						count++
+						// set next iteration start item
+						// when its chunk is successfully sent to channel
+						sinceItem = chunk
+
+						return false, nil
+					case <-stopChan:
+						// gracefully stop the iteration
+						// on stop
+						return true, nil
+					case <-ctx.Done():
+						return true, ctx.Err()
+					}
+				})
+
+				if err != nil {
+					return
+				}
+			}
+		}
+	}()
+
+	stop = func() {
+		stopChanOnce.Do(func() {
+			close(stopChan)
+		})
+
+		db.pushTriggersMu.Lock()
+		defer db.pushTriggersMu.Unlock()
+
+		for i, t := range db.pushTriggers {
+			if t == trigger {
+				db.pushTriggers = append(db.pushTriggers[:i], db.pushTriggers[i+1:]...)
+				break
+			}
+		}
+	}
+
+	return chunks, reset, stop
+}
+
+// triggerPushSubscriptions is used internally for starting iterations
+// on Push subscriptions. Whenever new item is added to the push index,
+// this function should be called.
+func (db *DB) triggerPushSubscriptions() {
+	db.pushTriggersMu.RLock()
+	defer db.pushTriggersMu.RUnlock()
+	for _, trigger := range db.pushTriggers {
+		trigger := trigger
+		go func() {
+			trigger <- struct{}{}
+		}()
+	}
+}
+
+func (db *DB) isDirty(tag uint64) bool {
+	db.dirtyTagsMu.RLock()
+	defer db.dirtyTagsMu.RUnlock()
+
+	for _, dirtyTag := range db.dirtyTags {
+		if dirtyTag == tag {
+			return true
+		}
+	}
+	return false
+}
 
 func (db *DB) markDirty(tag uint64) {
 	db.dirtyTagsMu.Lock()
