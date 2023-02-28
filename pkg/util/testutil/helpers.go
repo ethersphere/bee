@@ -12,16 +12,16 @@ import (
 )
 
 // RandBytes returns bytes slice of specified size filled with random values.
-func RandBytes(t *testing.T, size int) []byte {
-	t.Helper()
+func RandBytes(tb testing.TB, size int) []byte {
+	tb.Helper()
 
 	buf := make([]byte, size)
 	n, err := rand.Read(buf)
 	if err != nil {
-		t.Fatal(err)
+		tb.Fatal(err)
 	}
 	if n != size {
-		t.Fatalf("expected to read %d, got %d", size, n)
+		tb.Fatalf("expected to read %d, got %d", size, n)
 	}
 
 	return buf

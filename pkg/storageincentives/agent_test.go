@@ -25,7 +25,6 @@ import (
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/swarm/test"
 	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
 	"github.com/ethersphere/bee/pkg/util/testutil"
 )
@@ -77,7 +76,7 @@ func TestAgent(t *testing.T) {
 			t.Parallel()
 
 			wait := make(chan struct{})
-			addr := test.RandomAddress()
+			addr := swarm.RandAddress(t)
 
 			backend := &mockchainBackend{
 				limit: tc.limit,
@@ -91,7 +90,7 @@ func TestAgent(t *testing.T) {
 				block:       tc.blocksPerRound}
 			contract := &mockContract{}
 
-			service, _ := createService(addr, backend, contract, tc.blocksPerRound, tc.blocksPerPhase)
+			service, _ := createService(t, addr, backend, contract, tc.blocksPerRound, tc.blocksPerPhase)
 			testutil.CleanupCloser(t, service)
 
 			<-wait
@@ -134,11 +133,13 @@ func TestAgent(t *testing.T) {
 }
 
 func createService(
+	t *testing.T,
 	addr swarm.Address,
 	backend storageincentives.ChainBackend,
 	contract redistribution.Contract,
 	blocksPerRound uint64,
 	blocksPerPhase uint64) (*storageincentives.Agent, error) {
+	t.Helper()
 
 	postageContract := contractMock.New(contractMock.WithExpiresBatchesFunc(func(context.Context) error {
 		return nil
@@ -148,7 +149,7 @@ func createService(
 		return false, nil
 	}))
 
-	return storageincentives.New(addr, common.Address{}, backend, log.Noop, &mockMonitor{}, contract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), &mockSampler{}, time.Millisecond*10, blocksPerRound, blocksPerPhase, statestore.NewStateStore(), erc20mock.New(), transactionmock.New())
+	return storageincentives.New(addr, common.Address{}, backend, log.Noop, &mockMonitor{}, contract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), &mockSampler{t: t}, time.Millisecond*10, blocksPerRound, blocksPerPhase, statestore.NewStateStore(), erc20mock.New(), transactionmock.New())
 }
 
 type mockchainBackend struct {
@@ -254,10 +255,12 @@ func (m *mockContract) Reveal(context.Context, uint8, []byte, []byte) (common.Ha
 	return common.Hash{}, nil
 }
 
-type mockSampler struct{}
+type mockSampler struct {
+	t *testing.T
+}
 
 func (m *mockSampler) ReserveSample(context.Context, []byte, uint8, uint64) (storage.Sample, error) {
 	return storage.Sample{
-		Hash: test.RandomAddress(),
+		Hash: swarm.RandAddress(m.t),
 	}, nil
 }

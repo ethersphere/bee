@@ -23,7 +23,6 @@ import (
 	"github.com/ethersphere/bee/pkg/spinlock"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
 
@@ -115,7 +114,7 @@ func TestLightPeerLimit(t *testing.T) {
 
 	var (
 		limit     = 3
-		container = lightnode.NewContainer(test.RandomAddress())
+		container = lightnode.NewContainer(swarm.RandAddress(t))
 		notifier  = mockNotifier(noopCf, noopDf, true)
 		sf, _     = newService(t, 1, libp2pServiceOpts{
 			lightNodes: container,

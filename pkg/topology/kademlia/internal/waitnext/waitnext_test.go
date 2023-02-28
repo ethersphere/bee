@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/swarm/test"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology/kademlia/internal/waitnext"
 )
 
@@ -19,7 +19,7 @@ func TestSet(t *testing.T) {
 
 	waitNext := waitnext.New()
 
-	addr := test.RandomAddress()
+	addr := swarm.RandAddress(t)
 
 	waitNext.Set(addr, time.Now().Add(time.Millisecond*10), 2)
 

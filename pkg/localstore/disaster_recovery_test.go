@@ -27,7 +27,7 @@ func TestRecovery(t *testing.T) {
 	}
 
 	for i := 0; i < chunkCount; i++ {
-		ch := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2).WithBatch(5, 3, 2, false)
+		ch := generateTestRandomChunkAt(t, swarm.NewAddress(db.baseKey), 2).WithBatch(5, 3, 2, false)
 		_, err := db.Put(context.Background(), storage.ModePutUpload, ch)
 		if err != nil {
 			t.Fatal(err)

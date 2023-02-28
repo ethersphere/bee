@@ -21,7 +21,6 @@ import (
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/swarm/test"
 	kadMock "github.com/ethersphere/bee/pkg/topology/kademlia/mock"
 	"github.com/ethersphere/bee/pkg/util/testutil"
 )
@@ -41,7 +40,7 @@ func TestOneSync(t *testing.T) {
 	t.Parallel()
 
 	var (
-		addr        = test.RandomAddress()
+		addr        = swarm.RandAddress(t)
 		cursors     = []uint64{1000, 1000, 1000}
 		liveReplies = []uint64{1001}
 	)
@@ -73,8 +72,8 @@ func TestSyncOutsideDepth(t *testing.T) {
 	t.Parallel()
 
 	var (
-		addr    = test.RandomAddress()
-		addr2   = test.RandomAddress()
+		addr    = swarm.RandAddress(t)
+		addr2   = swarm.RandAddress(t)
 		cursors = []uint64{1000, 1000, 1000, 1000}
 	)
 
@@ -106,7 +105,7 @@ func TestSyncOutsideDepth(t *testing.T) {
 func TestSyncFlow_PeerWithinDepth_Live(t *testing.T) {
 	t.Parallel()
 
-	addr := test.RandomAddress()
+	addr := swarm.RandAddress(t)
 
 	for _, tc := range []struct {
 		name         string   // name of test
@@ -166,7 +165,7 @@ func TestSyncFlow_PeerWithinDepth_Live(t *testing.T) {
 func TestSyncFlow_PeerWithinDepth_Historical(t *testing.T) {
 	t.Parallel()
 
-	addr := test.RandomAddress()
+	addr := swarm.RandAddress(t)
 
 	for _, tc := range []struct {
 		name         string   // name of test
@@ -249,7 +248,7 @@ func TestSyncFlow_PeerWithinDepth_Historical(t *testing.T) {
 func TestSyncFlow_PeerWithinDepth_Live2(t *testing.T) {
 	t.Parallel()
 
-	addr := test.RandomAddress()
+	addr := swarm.RandAddress(t)
 
 	for _, tc := range []struct {
 		name         string   // name of test
@@ -304,7 +303,7 @@ func TestPeerDisconnected(t *testing.T) {
 	t.Parallel()
 
 	cursors := []uint64{0, 0, 0, 0, 0}
-	addr := test.RandomAddress()
+	addr := swarm.RandAddress(t)
 
 	p, _, kad, pullsync := newPuller(t, opts{
 		kad: []kadMock.Option{
@@ -336,7 +335,7 @@ func TestBinReset(t *testing.T) {
 	t.Parallel()
 
 	var (
-		addr        = test.RandomAddress()
+		addr        = swarm.RandAddress(t)
 		cursors     = []uint64{1000, 1000, 1000}
 		liveReplies = []uint64{1001}
 	)
@@ -393,7 +392,7 @@ func TestDepthChange(t *testing.T) {
 	t.Skip("this test always panics")
 
 	var (
-		addr     = test.RandomAddress()
+		addr     = swarm.RandAddress(t)
 		interval = "[[1 1]]"
 	)
 
@@ -503,7 +502,7 @@ func TestContinueSyncing(t *testing.T) {
 	t.Parallel()
 
 	var (
-		addr = test.RandomAddress()
+		addr = swarm.RandAddress(t)
 	)
 
 	puller, _, kad, pullsync := newPuller(t, opts{
@@ -539,7 +538,7 @@ func TestPeerGone(t *testing.T) {
 	t.Parallel()
 
 	var (
-		addr = test.RandomAddress()
+		addr = swarm.RandAddress(t)
 	)
 
 	p, _, kad, pullsync := newPuller(t, opts{

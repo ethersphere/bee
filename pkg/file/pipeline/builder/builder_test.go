@@ -7,7 +7,6 @@ package builder_test
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"encoding/hex"
 	"fmt"
 	"strconv"
@@ -18,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
 func TestPartialWrites(t *testing.T) {
@@ -156,15 +156,11 @@ func benchmarkPipeline(b *testing.B, count int) {
 
 	m := mock.NewStorer()
 	p := builder.NewPipelineBuilder(context.Background(), m, storage.ModePutUpload, false)
-	data := make([]byte, count)
-	_, err := rand.Read(data)
-	if err != nil {
-		b.Fatal(err)
-	}
+	data := testutil.RandBytes(b, count)
 
 	b.StartTimer()
 
-	_, err = p.Write(data)
+	_, err := p.Write(data)
 	if err != nil {
 		b.Fatal(err)
 	}

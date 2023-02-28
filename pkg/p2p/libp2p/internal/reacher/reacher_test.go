@@ -13,7 +13,6 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/reacher"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/ethersphere/bee/pkg/util/testutil"
 	ma "github.com/multiformats/go-multiaddr"
 	"go.uber.org/atomic"
@@ -73,7 +72,7 @@ func TestPingSuccess(t *testing.T) {
 			r := reacher.New(mock, mock, &defaultOptions)
 			testutil.CleanupCloser(t, r)
 
-			overlay := test.RandomAddress()
+			overlay := swarm.RandAddress(t)
 
 			r.Connected(overlay, nil)
 
@@ -90,7 +89,7 @@ func TestDisconnected(t *testing.T) {
 	t.Parallel()
 
 	var (
-		disconnectedOverlay = test.RandomAddress()
+		disconnectedOverlay = swarm.RandAddress(t)
 		disconnectedMa, _   = ma.NewMultiaddr("/ip4/127.0.0.1/tcp/7071/p2p/16Uiu2HAmTBuJT9LvNmBiQiNoTsxE5mtNy6YG3paw79m94CRa9sRb")
 	)
 
@@ -119,7 +118,7 @@ func TestDisconnected(t *testing.T) {
 	r := reacher.New(mock, mock, &defaultOptions)
 	testutil.CleanupCloser(t, r)
 
-	r.Connected(test.RandomAddress(), nil)
+	r.Connected(swarm.RandAddress(t), nil)
 	r.Connected(disconnectedOverlay, disconnectedMa)
 	r.Disconnected(disconnectedOverlay)
 

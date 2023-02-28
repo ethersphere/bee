@@ -342,7 +342,7 @@ func TestPusherRetryShallow(t *testing.T) {
 	// generate a chunk at PO 1 with closestPeer, meaning that we get a
 	// receipt which is shallower than the pivot peer's depth, resulting
 	// in retries
-	chunk := testingc.GenerateTestRandomChunkAt(closestPeer, 1)
+	chunk := testingc.GenerateTestRandomChunkAt(t, closestPeer, 1)
 
 	_, err := storer.Put(context.Background(), storage.ModePutUpload, chunk)
 	if err != nil {

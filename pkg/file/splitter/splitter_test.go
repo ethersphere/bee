@@ -7,7 +7,6 @@ package splitter_test
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"strconv"
 	"testing"
 	"time"
@@ -17,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 	mockbytes "gitlab.com/nolash/go-mockbytes"
 )
 
@@ -238,18 +238,13 @@ func benchmarkSplitter(b *testing.B, count int) {
 
 	m := mock.NewStorer()
 	s := splitter.NewSimpleSplitter(m, storage.ModePutUpload)
-	data := make([]byte, count)
-	_, err := rand.Read(data)
-	if err != nil {
-		b.Fatal(err)
-	}
+	data := testutil.RandBytes(b, count)
 
 	testDataReader := file.NewSimpleReadCloser(data)
 	b.StartTimer()
 
-	_, err = s.Split(context.Background(), testDataReader, int64(len(data)), false)
+	_, err := s.Split(context.Background(), testDataReader, int64(len(data)), false)
 	if err != nil {
 		b.Fatal(err)
 	}
-
 }
