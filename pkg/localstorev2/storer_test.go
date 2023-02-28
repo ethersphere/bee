@@ -257,6 +257,6 @@ func diskStorer(t *testing.T, opts *storer.Options) func() (*storer.DB, error) {
 func memStorer(t *testing.T, opts *storer.Options) func() (*storer.DB, error) {
 	t.Helper()
 	return func() (*storer.DB, error) {
-		return newStorer(t, t.TempDir(), opts)
+		return newStorer(t, "", opts)
 	}
 }
