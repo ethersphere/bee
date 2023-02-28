@@ -728,7 +728,6 @@ func (c *chanStorer) Close() error {
 	panic("not implemented") // TODO: Implement
 }
 
-
 func createRedistributionAgentService(t *testing.T, addr swarm.Address, storer storage.StateStorer, erc20Service erc20.Service, tranService transaction.Service, backend storageincentives.ChainBackend) (*storageincentives.Agent, error) {
 	t.Helper()
 
