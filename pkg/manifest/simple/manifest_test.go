@@ -5,24 +5,13 @@
 package simple_test
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"errors"
 	"reflect"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/manifest/simple"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
-
-// randomAddress generates a random address.
-func randomAddress() string {
-	b := make([]byte, 32)
-	_, err := rand.Read(b)
-	if err != nil {
-		panic(err)
-	}
-	return hex.EncodeToString(b)
-}
 
 func TestNilPath(t *testing.T) {
 	t.Parallel()
@@ -37,74 +26,80 @@ func TestNilPath(t *testing.T) {
 // struct for manifest entries for test cases
 type e struct {
 	path      string
-	reference string
+	reference swarm.Address
 	metadata  map[string]string
 }
 
-var testCases = []struct {
+type testCase struct {
 	name    string
 	entries []e // entries to add to manifest
-}{
-	{
-		name:    "empty-manifest",
-		entries: nil,
-	},
-	{
-		name: "one-entry",
-		entries: []e{
-			{
-				path:      "entry-1",
-				reference: randomAddress(),
-			},
+}
+
+func makeTestCases(t *testing.T) []testCase {
+	t.Helper()
+
+	return []testCase{
+		{
+			name:    "empty-manifest",
+			entries: nil,
 		},
-	},
-	{
-		name: "two-entries",
-		entries: []e{
-			{
-				path:      "entry-1.txt",
-				reference: randomAddress(),
-			},
-			{
-				path:      "entry-2.png",
-				reference: randomAddress(),
-			},
-		},
-	},
-	{
-		name: "nested-entries",
-		entries: []e{
-			{
-				path:      "text/robots.txt",
-				reference: randomAddress(),
-			},
-			{
-				path:      "img/1.png",
-				reference: randomAddress(),
-			},
-			{
-				path:      "img/2.jpg",
-				reference: randomAddress(),
-			},
-			{
-				path:      "readme.md",
-				reference: randomAddress(),
-			},
-			{
-				path: "/",
-				metadata: map[string]string{
-					"index-document": "readme.md",
-					"error-document": "404.html",
+		{
+			name: "one-entry",
+			entries: []e{
+				{
+					path:      "entry-1",
+					reference: swarm.RandAddress(t),
 				},
 			},
 		},
-	},
+		{
+			name: "two-entries",
+			entries: []e{
+				{
+					path:      "entry-1.txt",
+					reference: swarm.RandAddress(t),
+				},
+				{
+					path:      "entry-2.png",
+					reference: swarm.RandAddress(t),
+				},
+			},
+		},
+		{
+			name: "nested-entries",
+			entries: []e{
+				{
+					path:      "text/robots.txt",
+					reference: swarm.RandAddress(t),
+				},
+				{
+					path:      "img/1.png",
+					reference: swarm.RandAddress(t),
+				},
+				{
+					path:      "img/2.jpg",
+					reference: swarm.RandAddress(t),
+				},
+				{
+					path:      "readme.md",
+					reference: swarm.RandAddress(t),
+				},
+				{
+					path: "/",
+					metadata: map[string]string{
+						"index-document": "readme.md",
+						"error-document": "404.html",
+					},
+				},
+			},
+		},
+	}
 }
 
 func TestEntries(t *testing.T) {
 	t.Parallel()
 
-	for _, tc := range testCases {
+	for _, tc := range makeTestCases(t) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -115,13 +110,13 @@ func TestEntries(t *testing.T) {
 
 			// add entries
 			for i, e := range tc.entries {
-				err := m.Add(e.path, e.reference, e.metadata)
+				err := m.Add(e.path, e.reference.String(), e.metadata)
 				if err != nil {
 					t.Fatal(err)
 				}
 
 				checkLength(t, m, i+1)
-				checkEntry(t, m, e.reference, e.path)
+				checkEntry(t, m, e.reference.String(), e.path)
 			}
 
 			manifestLen := m.Length()
@@ -138,7 +133,7 @@ func TestEntries(t *testing.T) {
 			// replace entry
 			lastEntry := tc.entries[len(tc.entries)-1]
 
-			newReference := randomAddress()
+			newReference := swarm.RandAddress(t).String()
 
 			err := m.Add(lastEntry.path, newReference, map[string]string{})
 			if err != nil {
@@ -202,7 +197,7 @@ func checkEntry(t *testing.T, m simple.Manifest, reference, path string) {
 func TestMarshal(t *testing.T) {
 	t.Parallel()
 
-	for _, tc := range testCases {
+	for _, tc := range makeTestCases(t) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -210,7 +205,7 @@ func TestMarshal(t *testing.T) {
 			m := simple.NewManifest()
 
 			for _, e := range tc.entries {
-				err := m.Add(e.path, e.reference, e.metadata)
+				err := m.Add(e.path, e.reference.String(), e.metadata)
 				if err != nil {
 					t.Fatal(err)
 				}

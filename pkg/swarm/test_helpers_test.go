@@ -1,21 +1,27 @@
-// Copyright 2020 The Swarm Authors. All rights reserved.
+// Copyright 2023 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package test_test
+package swarm_test
 
 import (
 	"encoding/binary"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/swarm/test"
 )
 
-// TestRandomAddressAt checks that RandomAddressAt generates a correct random address
+func Test_RandAddress(t *testing.T) {
+	t.Parallel()
+
+	addr := swarm.RandAddress(t)
+	assertNotZeroAddress(t, addr)
+}
+
+// TestRandAddressAt checks that RandAddressAt generates a correct random address
 // at a given proximity order. It compares the number of leading equal bits in the generated
 // address to the base address.
-func TestRandomAddressAt(t *testing.T) {
+func Test_RandAddressAt(t *testing.T) {
 	t.Parallel()
 
 	base := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
@@ -24,9 +30,10 @@ func TestRandomAddressAt(t *testing.T) {
 	hw0int := binary.BigEndian.Uint32(hw0)
 
 	for bitsInCommon := 0; bitsInCommon < 30; bitsInCommon++ {
-		addr := test.RandomAddressAt(base, bitsInCommon)
-		b1 := addr.Bytes()
+		addr := swarm.RandAddressAt(t, base, bitsInCommon)
+		assertNotZeroAddress(t, addr)
 
+		b1 := addr.Bytes()
 		hw1 := []byte{b1[0], b1[1], 0, 0} // highest words of 1
 		hw1int := binary.BigEndian.Uint32(hw1)
 
@@ -43,5 +50,31 @@ func TestRandomAddressAt(t *testing.T) {
 		if andhw0 != andhw1 {
 			t.Fatalf("hw0 %08b hw1 %08b mask %08b &0 %08b &1 %08b", hw0int, hw1int, bb0, andhw0, andhw1)
 		}
+	}
+}
+
+func Test_RandAddresses(t *testing.T) {
+	t.Parallel()
+
+	count := 20
+	addrs := swarm.RandAddresses(t, count)
+
+	if got := len(addrs); got != count {
+		t.Fatalf("expected %d, got %d", count, got)
+	}
+	for i := 0; i < count; i++ {
+		assertNotZeroAddress(t, addrs[i])
+	}
+}
+
+func assertNotZeroAddress(t *testing.T, addr swarm.Address) {
+	t.Helper()
+
+	if got := len(addr.Bytes()); got != swarm.HashSize {
+		t.Fatalf("expected %d, got %d", swarm.HashSize, got)
+	}
+
+	if addr.Equal(swarm.ZeroAddress) {
+		t.Fatalf("should not be zero address")
 	}
 }

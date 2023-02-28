@@ -14,7 +14,7 @@ import (
 func TestWalkEntry(t *testing.T) {
 	t.Parallel()
 
-	for _, tc := range testCases {
+	for _, tc := range makeTestCases(t) {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -23,7 +23,7 @@ func TestWalkEntry(t *testing.T) {
 
 			// add entries
 			for _, e := range tc.entries {
-				err := m.Add(e.path, e.reference, e.metadata)
+				err := m.Add(e.path, e.reference.String(), e.metadata)
 				if err != nil {
 					t.Fatal(err)
 				}

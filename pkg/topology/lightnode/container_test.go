@@ -12,7 +12,6 @@ import (
 
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 )
@@ -20,7 +19,7 @@ import (
 func TestContainer(t *testing.T) {
 	t.Parallel()
 
-	base := test.RandomAddress()
+	base := swarm.RandAddress(t)
 
 	t.Run("new container is empty container", func(t *testing.T) {
 		t.Parallel()

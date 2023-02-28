@@ -18,8 +18,6 @@ type metrics struct {
 	CreatedStreamCount         prometheus.Counter
 	ClosedStreamCount          prometheus.Counter
 	StreamResetCount           prometheus.Counter
-	Libp2pCreatedStreamCount   prometheus.Counter
-	Libp2pClosedStreamCount    prometheus.Counter
 	HandledStreamCount         prometheus.Counter
 	BlocklistedPeerCount       prometheus.Counter
 	BlocklistedPeerErrCount    prometheus.Counter
@@ -64,18 +62,6 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "stream_reset_count",
 			Help:      "Number of outgoing libp2p streams resets.",
-		}),
-		Libp2pCreatedStreamCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "library_reported_created_stream_count",
-			Help:      "Number of initiated outgoing libp2p streams reported by the library.",
-		}),
-		Libp2pClosedStreamCount: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "library_reported_closed_stream_count",
-			Help:      "Number of closed outgoing libp2p streams reported by the library.",
 		}),
 		HandledStreamCount: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,

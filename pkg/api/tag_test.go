@@ -25,7 +25,6 @@ import (
 	"github.com/ethersphere/bee/pkg/storage/mock"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/gorilla/websocket"
 	"gitlab.com/nolash/go-mockbytes"
@@ -258,7 +257,7 @@ func TestTags(t *testing.T) {
 		tagId := tRes.Uid
 
 		// generate address to be supplied to the done split
-		addr := test.RandomAddress()
+		addr := swarm.RandAddress(t)
 
 		// upload content with tag
 		jsonhttptest.Request(t, client, http.MethodPost, chunksResource, http.StatusCreated,
@@ -281,7 +280,7 @@ func TestTags(t *testing.T) {
 		tagValueTest(t, tagId, 1, 1, 1, 0, 0, 1, addr, client)
 
 		// try different address value
-		addr = test.RandomAddress()
+		addr = swarm.RandAddress(t)
 
 		// call done split
 		jsonhttptest.Request(t, client, http.MethodPatch, tagsWithIdResource(tagId), http.StatusOK,

@@ -10,7 +10,7 @@ import (
 	"net"
 	"strings"
 
-	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
+	libp2ppeer "github.com/libp2p/go-libp2p/core/peer"
 	ma "github.com/multiformats/go-multiaddr"
 )
 

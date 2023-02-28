@@ -21,22 +21,13 @@ func generateCommonBinPrefixes(base swarm.Address, suffixLength int) [][]swarm.A
 		bitSuffixes[i] = uint8(i)
 	}
 
-	addr := swarm.MustParseHexAddress(base.String())
-	addrBytes := addr.Bytes()
-	_ = addrBytes
-
 	binPrefixes := make([][]swarm.Address, int(swarm.MaxBins))
 
 	// copy base address
 	for i := range binPrefixes {
 		binPrefixes[i] = make([]swarm.Address, bitCombinationsCount)
-	}
-
-	for i := range binPrefixes {
 		for j := range binPrefixes[i] {
-			pseudoAddrBytes := make([]byte, len(base.Bytes()))
-			copy(pseudoAddrBytes, base.Bytes())
-			binPrefixes[i][j] = swarm.NewAddress(pseudoAddrBytes)
+			binPrefixes[i][j] = base.Clone()
 		}
 	}
 

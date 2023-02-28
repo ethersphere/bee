@@ -114,7 +114,7 @@ func (m *Mutex) TryLock(ctx context.Context) error {
 	case m.mu <- struct{}{}:
 		return nil // locked
 	case <-ctx.Done():
-		return fmt.Errorf("%v: %w", ctx.Err(), ErrFailToLock)
+		return fmt.Errorf("%w: %w", ctx.Err(), ErrFailToLock)
 	}
 }
 

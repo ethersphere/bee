@@ -15,7 +15,6 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
@@ -23,11 +22,6 @@ const (
 	sequencerResolution = time.Millisecond
 	flagTime            = sequencerResolution * 25
 	blockTime           = time.Second
-)
-
-var (
-	addr   = test.RandomAddress()
-	logger = log.Noop
 )
 
 func TestMain(m *testing.M) {
@@ -44,6 +38,7 @@ func TestMain(m *testing.M) {
 func TestBlocksAfterFlagTimeout(t *testing.T) {
 	t.Parallel()
 
+	addr := swarm.RandAddress(t)
 	blockedC := make(chan swarm.Address, 10)
 
 	mock := mockBlockLister(func(a swarm.Address, d time.Duration, r string) error {
@@ -56,7 +51,7 @@ func TestBlocksAfterFlagTimeout(t *testing.T) {
 		return nil
 	})
 
-	b := blocker.New(mock, flagTime, blockTime, time.Millisecond, nil, logger)
+	b := blocker.New(mock, flagTime, blockTime, time.Millisecond, nil, log.Noop)
 	testutil.CleanupCloser(t, b)
 
 	// Flagging address shouldn't block it immediately
@@ -86,13 +81,14 @@ func TestBlocksAfterFlagTimeout(t *testing.T) {
 func TestUnflagBeforeBlock(t *testing.T) {
 	t.Parallel()
 
+	addr := swarm.RandAddress(t)
 	mock := mockBlockLister(func(a swarm.Address, d time.Duration, r string) error {
 		t.Fatalf("address should not be blocked")
 
 		return nil
 	})
 
-	b := blocker.New(mock, flagTime, blockTime, time.Millisecond, nil, logger)
+	b := blocker.New(mock, flagTime, blockTime, time.Millisecond, nil, log.Noop)
 	testutil.CleanupCloser(t, b)
 
 	// Flagging address shouldn't block it imidietly
@@ -111,13 +107,14 @@ func TestUnflagBeforeBlock(t *testing.T) {
 func TestPruneBeforeBlock(t *testing.T) {
 	t.Parallel()
 
+	addr := swarm.RandAddress(t)
 	mock := mockBlockLister(func(a swarm.Address, d time.Duration, r string) error {
 		t.Fatalf("address should not be blocked")
 
 		return nil
 	})
 
-	b := blocker.New(mock, flagTime, blockTime, time.Millisecond, nil, logger)
+	b := blocker.New(mock, flagTime, blockTime, time.Millisecond, nil, log.Noop)
 	testutil.CleanupCloser(t, b)
 
 	// Flagging address shouldn't block it imidietly
