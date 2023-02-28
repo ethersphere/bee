@@ -220,7 +220,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	s.SetP2P(o.P2P)
 
 	if o.RedistributionAgent == nil {
-		o.RedistributionAgent, _ = createRedistributionAgentService(t, o.Overlay, o.StateStorer, erc20, transaction)
+		o.RedistributionAgent, _ = createRedistributionAgentService(t, o.Overlay, o.StateStorer, erc20, transaction, backend)
 		s.SetRedistributionAgent(o.RedistributionAgent)
 	}
 	testutil.CleanupCloser(t, o.RedistributionAgent)
@@ -728,7 +728,7 @@ func (c *chanStorer) Close() error {
 	panic("not implemented") // TODO: Implement
 }
 
-func createRedistributionAgentService(t *testing.T, addr swarm.Address, storer storage.StateStorer, erc20Service erc20.Service, tranService transaction.Service) (*storageincentives.Agent, error) {
+func createRedistributionAgentService(t *testing.T, addr swarm.Address, storer storage.StateStorer, erc20Service erc20.Service, tranService transaction.Service, backend storageincentives.ChainBackend) (*storageincentives.Agent, error) {
 	t.Helper()
 
 	const blocksPerRound uint64 = 12
@@ -742,7 +742,7 @@ func createRedistributionAgentService(t *testing.T, addr swarm.Address, storer s
 	}))
 	contract := &mockContract{}
 
-	return storageincentives.New(addr, common.Address{}, backendmock.New(), log.Noop, &mockMonitor{}, contract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), &mockSampler{t: t}, time.Millisecond*10, blocksPerRound, blocksPerPhase, storer, erc20Service, tranService)
+	return storageincentives.New(addr, common.Address{}, backend, log.Noop, &mockMonitor{}, contract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), &mockSampler{t: t}, time.Millisecond*10, blocksPerRound, blocksPerPhase, storer, erc20Service, tranService)
 }
 
 type contractCall int
