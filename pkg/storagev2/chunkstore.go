@@ -130,9 +130,10 @@ const (
 	// network. This is reported when a valid receipt was received after the chunk was
 	// pushed.
 	ChunkSynced
+	ChunkCouldNotSync
 )
 
 // PushReporter is used to report chunk state.
 type PushReporter interface {
-	Report(context.Context, swarm.Chunk, ChunkState) error
+	Report(context.Context, swarm.Chunk, ChunkState)
 }

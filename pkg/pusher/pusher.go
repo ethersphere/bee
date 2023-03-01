@@ -21,9 +21,8 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pushsync"
-	"github.com/ethersphere/bee/pkg/storage"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
 )
@@ -39,14 +38,19 @@ type Op struct {
 
 type OpChan <-chan *Op
 
+type Storer interface {
+	storage.PushReporter
+	storage.PushSubscriber
+	ReservePutter() storage.Putter
+}
+
 type Service struct {
 	networkID         uint64
-	storer            storage.Storer
+	storer            Storer
 	pushSyncer        pushsync.PushSyncer
 	validStamp        postage.ValidStampFn
 	depther           topology.NeighborhoodDepther
 	logger            log.Logger
-	tag               *tags.Tags
 	metrics           metrics
 	quit              chan struct{}
 	chunksWorkerQuitC chan struct{}
@@ -70,11 +74,10 @@ const chunkStoreTimeout = 2 * time.Second
 
 func New(
 	networkID uint64,
-	storer storage.Storer,
+	storer Storer,
 	depther topology.NeighborhoodDepther,
 	pushSyncer pushsync.PushSyncer,
 	validStamp postage.ValidStampFn,
-	tagger *tags.Tags,
 	logger log.Logger,
 	tracer *tracing.Tracer,
 	warmupTime time.Duration,
@@ -86,7 +89,6 @@ func New(
 		pushSyncer:        pushSyncer,
 		validStamp:        validStamp,
 		depther:           depther,
-		tag:               tagger,
 		logger:            logger.WithName(loggerName).Register(),
 		metrics:           newMetrics(),
 		quit:              make(chan struct{}),
@@ -115,7 +117,6 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 		mtx               sync.Mutex
 		wg                sync.WaitGroup
 		span, logger, ctx = tracer.StartSpanFromContext(cctx, "pusher-sync-batch", s.logger)
-		loggerV1          = logger.V(1).Build()
 		timer             = time.NewTimer(traceDuration)
 		sem               = make(chan struct{}, concurrentPushes)
 		cc                = make(chan *Op)
@@ -143,48 +144,16 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 
 		s.metrics.TotalToPush.Inc()
 		ctx, logger := ctxLogger()
-		startTime := time.Now()
 
-		if err := s.valid(op.Chunk); err != nil {
-			logger.Warning(
-				"stamp with is no longer valid, skipping syncing for chunk",
-				"batch_id", hex.EncodeToString(op.Chunk.Stamp().BatchID()),
-				"direct_upload", op.Direct,
-				"chunk_address", op.Chunk.Address(),
-				"error", err,
-			)
-			if op.Direct {
-				if op.Err != nil {
-					op.Err <- err
-				}
-			} else {
-				ctx, cancel := context.WithTimeout(ctx, chunkStoreTimeout)
-				defer cancel()
-				if err = s.storer.Set(ctx, storage.ModeSetSync, op.Chunk.Address()); err != nil {
-					s.logger.Error(err, "set sync failed")
-				}
+		if op.Direct {
+			s.pushDirect(ctx, logger, op)
+		} else {
+			if s.pushDeferred(ctx, logger, op) {
+				repeat()
+				return
 			}
-			return
 		}
 
-		if err := s.pushChunk(ctx, op.Chunk, logger, op.Direct); err != nil {
-			// warning: ugly flow control
-			// if errc is set it means we are in a direct push,
-			// we therefore communicate the error into the channel
-			// otherwise we assume this is a buffered upload and
-			// therefore we repeat().
-			if op.Err != nil {
-				op.Err <- err
-			}
-			repeat()
-			s.metrics.TotalErrors.Inc()
-			s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())
-			loggerV1.Debug("cannot push chunk", "chunk_address", op.Chunk.Address(), "error", err)
-			return
-		}
-		if op.Err != nil {
-			op.Err <- nil
-		}
 		s.metrics.TotalSynced.Inc()
 	}
 
@@ -198,7 +167,6 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 				mtx.Lock()
 				span.Finish()
 				span, logger, ctx = tracer.StartSpanFromContext(cctx, "pusher-sync-batch", s.logger)
-				loggerV1 = logger.V(1).Build()
 				mtx.Unlock()
 			}
 		}
@@ -257,64 +225,80 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 
 }
 
-func (s *Service) pushChunk(ctx context.Context, ch swarm.Chunk, logger log.Logger, directUpload bool) error {
+func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) bool {
 	loggerV1 := logger.V(1).Build()
+	defer s.inflight.delete(op.Chunk)
 
-	defer s.inflight.delete(ch)
-	var wantSelf bool
-	// Later when we process receipt, get the receipt and process it
-	// for now ignoring the receipt and checking only for error
-	receipt, err := s.pushSyncer.PushChunkToClosest(ctx, ch)
-	if err != nil {
-		// when doing a direct upload from a light node this will never happen because the light node
-		// never includes self in kademlia iterator. This is only hit when doing a direct upload from a full node
-		if directUpload && errors.Is(err, topology.ErrWantSelf) {
-			return err
-		}
-		if !errors.Is(err, topology.ErrWantSelf) {
-			return err
-		}
-		// we are the closest ones - this is fine
-		// this is to make sure that the sent number does not diverge from the synced counter
-		// the edge case is on the uploader node, in the case where the uploader node is
-		// connected to other nodes, but is the closest one to the chunk.
-		wantSelf = true
-		loggerV1.Debug("chunk stays here, i'm the closest node", "chunk_address", ch.Address())
-	} else if err = s.checkReceipt(receipt); err != nil {
-		return err
+	if err := s.valid(op.Chunk); err != nil {
+		loggerV1.Warning(
+			"stamp with is no longer valid, skipping syncing for chunk",
+			"batch_id", hex.EncodeToString(op.Chunk.Stamp().BatchID()),
+			"chunk_address", op.Chunk.Address(),
+			"error", err,
+		)
+
+		s.storer.Report(ctx, op.Chunk, storage.ChunkCouldNotSync)
+		return false
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
-	defer cancel()
-	if err = s.storer.Set(ctx, storage.ModeSetSync, ch.Address()); err != nil {
-		return fmt.Errorf("pusher: set sync: %w", err)
-	}
-	if ch.TagID() > 0 {
-		// for individual chunks uploaded using the
-		// /chunks api endpoint the tag will be missing
-		// by default, unless the api consumer specifies one
-		t, err := s.tag.Get(ch.TagID())
-		if err == nil && t != nil {
-			err = t.Inc(tags.StateSynced)
-			if err != nil {
-				logger.Debug("increment synced failed", "error", err)
-				return nil // tag error is non-fatal
-			}
-			if wantSelf {
-				err = t.Inc(tags.StateSent)
-				if err != nil {
-					logger.Debug("increment sent failed", "error", err)
-					return nil // tag error is non-fatal
-				}
-			}
+	switch receipt, err := s.pushSyncer.PushChunkToClosest(ctx, op.Chunk); {
+	case errors.Is(err, topology.ErrWantSelf):
+		// store the chunk
+		loggerV1.Debug("chunk stays here, i'm the closest node", "chunk_address", op.Chunk.Address())
+		err = s.storer.ReservePutter().Put(ctx, op.Chunk)
+		if err != nil {
+			loggerV1.Error(err, "pusher: failed to store chunk")
+			return true
 		}
+		s.storer.Report(ctx, op.Chunk, storage.ChunkStored)
+	case err == nil:
+		s.storer.Report(ctx, op.Chunk, storage.ChunkSent)
+		if err := s.checkReceipt(receipt, loggerV1); err != nil {
+			loggerV1.Error(err, "pusher: failed checking receipt")
+			return true
+		}
+		s.storer.Report(ctx, op.Chunk, storage.ChunkSynced)
+	default:
+		loggerV1.Error(err, "pusher: failed PushChunkToClosest")
+		return true
 	}
-	return nil
+
+	return false
 }
 
-func (s *Service) checkReceipt(receipt *pushsync.Receipt) error {
-	loggerV1 := s.logger.V(1).Register()
+func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) {
+	loggerV1 := logger.V(1).Build()
+	defer s.inflight.delete(op.Chunk)
 
+	var (
+		receipt *pushsync.Receipt
+		err     error
+	)
+
+	err = s.valid(op.Chunk)
+	if err != nil {
+		logger.Warning(
+			"stamp with is no longer valid, skipping direct upload for chunk",
+			"batch_id", hex.EncodeToString(op.Chunk.Stamp().BatchID()),
+			"chunk_address", op.Chunk.Address(),
+			"error", err,
+		)
+	} else {
+		receipt, err = s.pushSyncer.PushChunkToClosest(ctx, op.Chunk)
+		if err != nil {
+			loggerV1.Error(err, "pusher: failed PushChunkToClosest on direct upload")
+		} else if err = s.checkReceipt(receipt, loggerV1); err != nil {
+			loggerV1.Error(err, "pusher: failed checking receipt on direct upload")
+		}
+	}
+	select {
+	case op.Err <- err:
+	default:
+		loggerV1.Error(err, "pusher: failed to return error for direct upload")
+	}
+}
+
+func (s *Service) checkReceipt(receipt *pushsync.Receipt, loggerV1 log.Logger) error {
 	addr := receipt.Address
 	publicKey, err := crypto.Recover(receipt.Signature, addr.Bytes())
 	if err != nil {
