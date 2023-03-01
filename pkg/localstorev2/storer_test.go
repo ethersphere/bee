@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	batchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	"github.com/ethersphere/bee/pkg/pullsync"
+	pullsyncMock "github.com/ethersphere/bee/pkg/pullsync/mock"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/storagev2/migration"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -167,7 +168,7 @@ func dbTestOps(baseAddr swarm.Address, capacity int, bs postage.Storer, syncer p
 	}
 
 	if syncer == nil {
-		syncer = &mockSyncReporter{}
+		syncer = pullsyncMock.NewMockRateReporter(0)
 	}
 
 	opts.Address = baseAddr

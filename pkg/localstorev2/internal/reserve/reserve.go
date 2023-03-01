@@ -128,7 +128,7 @@ func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.C
 		// An older and different chunk with the same batchID and stamp index has been previously
 		// saved to the reserve. We must do the below before saving the new chunk:
 		// 1. Delete the old chunk from the chunkstore
-		// 2. Remove the old chunk's stamp data
+		// 2. Delete the old chunk's stamp data
 		// 3. Update the stamp index
 		newStampIndex = false
 		err := chunkStore.Delete(ctx, item.ChunkAddress)
@@ -183,10 +183,9 @@ func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.C
 	return newStampIndex, nil
 }
 
-func (r *Reserve) Has(store storage.Store, addr swarm.Address, binID uint64) (bool, error) {
-
-	chunkItem := &chunkBinItem{Bin: swarm.Proximity(r.baseAddr.Bytes(), addr.Bytes()), BinID: binID}
-	err := store.Get(chunkItem)
+func (r *Reserve) Has(store storage.Store, addr swarm.Address, batchID []byte) (bool, error) {
+	item := &batchRadiusItem{Bin: swarm.Proximity(r.baseAddr.Bytes(), addr.Bytes()), BatchID: batchID, Address: addr}
+	err := store.Get(item)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return false, nil
@@ -197,15 +196,15 @@ func (r *Reserve) Has(store storage.Store, addr swarm.Address, binID uint64) (bo
 	return true, nil
 }
 
-func (r *Reserve) Get(ctx context.Context, storage internal.Storage, addr swarm.Address, binID uint64) (swarm.Chunk, error) {
+func (r *Reserve) Get(ctx context.Context, storage internal.Storage, addr swarm.Address, batchID []byte) (swarm.Chunk, error) {
 
-	chunkItem := &chunkBinItem{Bin: swarm.Proximity(r.baseAddr.Bytes(), addr.Bytes()), BinID: binID}
-	err := storage.IndexStore().Get(chunkItem)
+	item := &batchRadiusItem{Bin: swarm.Proximity(r.baseAddr.Bytes(), addr.Bytes()), BatchID: batchID, Address: addr}
+	err := storage.IndexStore().Get(item)
 	if err != nil {
 		return nil, err
 	}
 
-	stamp, err := chunkstamp.LoadWithBatchID(storage.IndexStore(), reserveNamespace, addr, chunkItem.BatchID)
+	stamp, err := chunkstamp.LoadWithBatchID(storage.IndexStore(), reserveNamespace, addr, item.BatchID)
 	if err != nil {
 		return nil, err
 	}
@@ -273,61 +272,66 @@ func (r *Reserve) EvictBatchBin(store internal.Storage, batchID []byte, bin uint
 	indexStore := store.IndexStore()
 	chunkStore := store.ChunkStore()
 
-	evicted := 0
+	count := 0
 
 	for i := uint8(0); i < bin; i++ {
+
+		var evicted []*batchRadiusItem
+
 		err := indexStore.Iterate(storage.Query{
 			Factory: func() storage.Item {
 				return &batchRadiusItem{}
 			},
 			Prefix: batchBinToString(i, batchID),
 		}, func(res storage.Result) (bool, error) {
-
 			batchRadius := res.Entry.(*batchRadiusItem)
-
-			err := indexStore.Delete(batchRadius)
-			if err != nil {
-				return false, err
-			}
-
-			err = indexStore.Delete(&chunkBinItem{
-				Bin:   batchRadius.Bin,
-				BinID: batchRadius.BinID,
-			})
-			if err != nil {
-				return false, err
-			}
-
-			stamp, err := chunkstamp.LoadWithBatchID(indexStore, reserveNamespace, batchRadius.Address, batchRadius.BatchID)
-			if err != nil {
-				return false, err
-			}
-
-			err = stampindex.Delete(indexStore, reserveNamespace, swarm.NewChunk(batchRadius.Address, nil).WithStamp(stamp))
-			if err != nil {
-				return false, err
-			}
-
-			err = chunkstamp.Delete(indexStore, reserveNamespace, batchRadius.Address, batchRadius.BatchID)
-			if err != nil {
-				return false, err
-			}
-
-			err = chunkStore.Delete(context.Background(), batchRadius.Address)
-			if err != nil {
-				return false, err
-			}
-
-			evicted++
-
+			evicted = append(evicted, batchRadius)
 			return false, nil
 		})
 		if err != nil {
 			return 0, err
 		}
+
+		count += len(evicted)
+
+		for _, item := range evicted {
+
+			err := indexStore.Delete(&chunkBinItem{
+				Bin:   item.Bin,
+				BinID: item.BinID,
+			})
+			if err != nil {
+				return 0, err
+			}
+
+			stamp, err := chunkstamp.LoadWithBatchID(indexStore, reserveNamespace, item.Address, item.BatchID)
+			if err != nil {
+				return 0, err
+			}
+
+			err = stampindex.Delete(indexStore, reserveNamespace, swarm.NewChunk(item.Address, nil).WithStamp(stamp))
+			if err != nil {
+				return 0, err
+			}
+
+			err = chunkstamp.Delete(indexStore, reserveNamespace, item.Address, item.BatchID)
+			if err != nil {
+				return 0, err
+			}
+
+			err = chunkStore.Delete(context.Background(), item.Address)
+			if err != nil {
+				return 0, err
+			}
+
+			err = indexStore.Delete(item)
+			if err != nil {
+				return 0, err
+			}
+		}
 	}
 
-	return evicted, nil
+	return count, nil
 }
 
 func (r *Reserve) LastBinIDs(store storage.Store) ([]uint64, error) {
