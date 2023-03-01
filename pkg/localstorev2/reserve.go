@@ -174,7 +174,6 @@ func (db *DB) evictBatch(ctx context.Context, batchID []byte, upToBin uint8) err
 
 func (db *DB) unreserve(ctx context.Context) error {
 
-	withinCap := false
 	radius := db.reserve.Radius()
 	defer db.events.Trigger(reserveUnreserved)
 
@@ -183,7 +182,6 @@ func (db *DB) unreserve(ctx context.Context) error {
 		err := db.batchstore.Iterate(func(b *postage.Batch) (bool, error) {
 
 			if db.reserve.IsWithinCapacity() {
-				withinCap = true
 				return true, nil
 			}
 
@@ -197,7 +195,7 @@ func (db *DB) unreserve(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		if withinCap {
+		if db.reserve.IsWithinCapacity() {
 			return nil
 		}
 

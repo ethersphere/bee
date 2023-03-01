@@ -435,7 +435,7 @@ func TestRadiusManager(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		waitForRadius(t, storer.Reserve(), 4)
+		waitForRadius(t, storer.Reserve(), 3)
 
 		t.Run("reservesize", reserveSizeTest(storer.Reserve(), 10))
 
