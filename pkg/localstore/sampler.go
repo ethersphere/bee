@@ -25,7 +25,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-const sampleSize = 8
+const sampleSize = 16
 
 var errDbClosed = errors.New("database closed")
 var errSamplerStopped = errors.New("sampler stopped due to ongoing evictions")
