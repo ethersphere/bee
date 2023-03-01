@@ -50,7 +50,7 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 		}),
 		done: func(address swarm.Address) error {
 			defer db.clearDirty(tagID)
-
+			defer db.events.Trigger(subscribePushEventKey)
 			return multierror.Append(
 				uploadPutter.Close(address),
 				func() error {
