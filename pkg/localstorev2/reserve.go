@@ -33,7 +33,6 @@ type SyncReporter interface {
 }
 
 func (db *DB) reserveWorker(capacity int, syncer SyncReporter, warmupDur, wakeUpDur time.Duration) {
-
 	defer db.reserveWg.Done()
 
 	threshold := capacity * 4 / 10
@@ -207,18 +206,17 @@ type BinC struct {
 
 // SubscribeBin returns a channel that feeds all the chunks in the reserve from a certain bin between a start and end binIDs.
 func (db *DB) SubscribeBin(ctx context.Context, bin uint8, start, end uint64) (<-chan *BinC, func(), <-chan error) {
-
 	out := make(chan *BinC)
 	done := make(chan struct{})
 	errC := make(chan error, 1)
 
 	db.reserveWg.Add(1)
 	go func() {
+		defer db.reserveWg.Done()
 
 		trigger, unsub := db.reserveBinEvents.Subscribe(string(bin))
 		defer unsub()
 		defer close(out)
-		defer db.reserveWg.Done()
 
 		var (
 			stop      = false
