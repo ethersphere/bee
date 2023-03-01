@@ -6,11 +6,13 @@ package api
 
 import (
 	"encoding/hex"
+	"fmt"
 	"math/big"
 	"net/http"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/bmt"
+	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -18,20 +20,114 @@ import (
 )
 
 type rchash struct {
-	Sample      storage.Sample
-	Proof1p1    bmt.Proof
-	Proof1p2    bmt.Proof
-	Proof1p3    bmt.Proof
-	Proof2p1    bmt.Proof
-	Proof2p2    bmt.Proof
-	Proof2p3    bmt.Proof
-	ProofLastp1 bmt.Proof
-	ProofLastp2 bmt.Proof
-	ProofLastp3 bmt.Proof
-	Stamp1      Stamp
-	Stamp2      Stamp
-	StampLast   Stamp
-	Time        string
+	Sample    storage.Sample `json:"sample"`
+	Proof1    entityProof    `json:"proof1"`
+	Proof2    entityProof    `json:"proof2"`
+	ProofLast entityProof    `json:"proofLast"`
+	Time      string         `json:"time"`
+}
+
+type entityProof struct {
+	ProofSegments []hexByte `json:"proofSegments"`
+	ProveSegment  hexByte   `json:"proveSegment"`
+	// _RCspan is known for RC 32*32
+
+	// Inclusion proof of transformed address
+	ProofSegments2 []hexByte `json:"proofSegments2"`
+	ProveSegment2  hexByte   `json:"proveSegment2"`
+	// proveSegmentIndex2 known from deterministic random selection;
+	ChunkSpan hexByte `json:"chunkSpan"`
+	//
+	ProofSegments3 []hexByte `json:"proofSegments3"`
+	//  _proveSegment3 known, is equal _proveSegment2
+	// proveSegmentIndex3 know, is equal _proveSegmentIndex2;
+	// chunkSpan2 is equal to chunkSpan (as the data is the same)
+
+	Signer    hexByte `json:"signer"`
+	Signature hexByte `json:"signature"`
+	ChunkAddr hexByte `json:"chunkAddress"`
+	PostageId hexByte `json:"postageId"`
+	Index     hexByte `json:"index"`
+	TimeStamp hexByte `json:"timeStamp"`
+}
+
+// toSignDigest creates a digest to represent the stamp which is to be signed by
+// the owner.
+func toSignDigest(addr, batchId, index, timestamp []byte) ([]byte, error) {
+	h := swarm.NewHasher()
+	_, err := h.Write(addr)
+	if err != nil {
+		return nil, err
+	}
+	_, err = h.Write(batchId)
+	if err != nil {
+		return nil, err
+	}
+	_, err = h.Write(index)
+	if err != nil {
+		return nil, err
+	}
+	_, err = h.Write(timestamp)
+	if err != nil {
+		return nil, err
+	}
+	return h.Sum(nil), nil
+}
+
+func NewProof(proofp1, proofp2 bmt.Proof, proofp3 bmt.Proof, stamp Stamp, chunkAddress []byte) (entityProof, error) {
+
+	//sanity check if proofp1.Span != 32*32 { return nil, errors.New("failed p1 span check") }
+
+	//      if proofp2.Span != proofp3.Span {
+	//              return entityProof{}, errors.New("failed p2p3 span check")
+	//      }
+	//
+	//      if proofp2.Section != proofp3.Section || proofp2.Sisters[0] != proofp3.Sisters[0] {
+	//              return entityProof{}, errors.New("failed p2p3 data check")
+	//      }
+
+	p1Sisters := make([]hexByte, len(proofp1.Sisters))
+	for i, sister := range proofp1.Sisters {
+		p1Sisters[i] = sister
+	}
+
+	p2Sisters := make([]hexByte, len(proofp2.Sisters))
+	for i, sister := range proofp2.Sisters {
+		p2Sisters[i] = sister
+	}
+
+	p3Sisters := make([]hexByte, len(proofp3.Sisters))
+	for i, sister := range proofp3.Sisters {
+		p3Sisters[i] = sister
+	}
+
+	toSign, err := toSignDigest(chunkAddress, stamp.batchID, stamp.index, stamp.timestamp)
+	if err != nil {
+		return entityProof{}, err
+	}
+	signerPubkey, err := crypto.Recover(stamp.sig, toSign)
+	if err != nil {
+		return entityProof{}, err
+	}
+	batchOwner, err := crypto.NewEthereumAddress(*signerPubkey)
+	if err != nil {
+		return entityProof{}, err
+	}
+
+	return entityProof{
+		p1Sisters,
+		proofp1.Section,
+		p2Sisters,
+		proofp2.Section,
+		proofp2.Span,
+		p3Sisters,
+		batchOwner,
+		stamp.sig,
+		proofp1.Section,
+		stamp.batchID,
+		stamp.index,
+		stamp.timestamp,
+	}, nil
 }
 
 type Stamp struct {
@@ -86,10 +182,14 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 
 	require1 := new(big.Int).Mod(new(big.Int).SetBytes(anch2), big.NewInt(15)).Uint64()
 	require2 := new(big.Int).Mod(new(big.Int).SetBytes(anch2), big.NewInt(14)).Uint64()
+	fmt.Printf("Require1 %d\n", require1)
 
 	if require2 >= require1 {
 		require2++
 	}
+
+	fmt.Printf("Require2 %d\n", require2)
+	fmt.Printf("sampleItems %d\n", len(sample.Items))
 
 	segment1 := int(new(big.Int).Mod(new(big.Int).SetBytes(anch2), big.NewInt(int64(len(sample.Items[require1].ChunkItem.Data)/32))).Uint64())
 
@@ -256,20 +356,37 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 	pool.Put(chunkLastContent)
 	trpool.Put(chunkLastTrContent)
 
+	proof1, err := NewProof(proof1p1, proof1p2, proof1p3, stamp1, sample.Items[require1].ChunkItem.Address)
+	if err != nil {
+		logger.Error(err, "reserve commitment hasher: failure in proof1 conversion")
+		jsonhttp.InternalServerError(w, "failure in proof1 conversion")
+		return
+	}
+	proof2, err := NewProof(proof2p1, proof2p2, proof2p3, stamp2, sample.Items[require2].ChunkItem.Address)
+	if err != nil {
+		logger.Error(err, "reserve commitment hasher: failure in proof2 conversion")
+		jsonhttp.InternalServerError(w, "failure in proof2 conversion")
+		return
+	}
+	proofLast, err := NewProof(proofLastp1, proofLastp2, proofLastp3, stampLast, sample.Items[15].ChunkItem.Address)
+	if err != nil {
+		logger.Error(err, "reserve commitment hasher: failure in proofLast conversion")
+		jsonhttp.InternalServerError(w, "failure in proofLast conversion")
+		return
+	}
+
+	fmt.Println("proof1")
+	fmt.Println(proof1)
+	fmt.Println("proof2")
+	fmt.Println(proof2)
+	fmt.Println("proofLast")
+	fmt.Println(proofLast)
+
 	jsonhttp.OK(w, rchash{
-		Sample:      sample,
-		Proof1p1:    proof1p1,
-		Proof1p2:    proof1p2,
-		Proof1p3:    proof1p3,
-		Proof2p1:    proof2p1,
-		Proof2p2:    proof2p2,
-		Proof2p3:    proof2p3,
-		ProofLastp1: proofLastp1,
-		ProofLastp2: proofLastp2,
-		ProofLastp3: proofLastp3,
-		Stamp1:      stamp1,
-		Stamp2:      stamp2,
-		StampLast:   stampLast,
-		Time:        time.Since(start).String(),
+		Sample:    sample,
+		Proof1:    proof1,
+		Proof2:    proof2,
+		ProofLast: proofLast,
+		Time:      time.Since(start).String(),
 	})
 }
