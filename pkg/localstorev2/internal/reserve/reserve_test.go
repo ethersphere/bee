@@ -125,21 +125,22 @@ func TestEvict(t *testing.T) {
 			if !errors.Is(err, storage.ErrNotFound) {
 				t.Fatalf("got err %v, want %v", err, storage.ErrNotFound)
 			}
-			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: uint8(b), BatchID: ch.Stamp().BatchID(), Address: ch.Address()}, true)
-			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: uint8(b), BinID: uint64(binID)}, true)
+			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: b, BatchID: ch.Stamp().BatchID(), Address: ch.Address()}, true)
+			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: b, BinID: uint64(binID)}, true)
 			checkChunk(t, ts, ch, true)
 		} else {
 			if err != nil {
 				t.Fatal(err)
 			}
-			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: uint8(b), BatchID: ch.Stamp().BatchID(), Address: ch.Address()}, false)
-			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: uint8(b), BinID: uint64(binID)}, false)
+			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: b, BatchID: ch.Stamp().BatchID(), Address: ch.Address()}, false)
+			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: b, BinID: uint64(binID)}, false)
 			checkChunk(t, ts, ch, false)
 		}
 	}
 }
 
 func checkStore(t *testing.T, s storage.Store, k storage.Key, gone bool) {
+	t.Helper()
 	h, err := s.Has(k)
 	if err != nil {
 		t.Fatal(err)
@@ -153,6 +154,7 @@ func checkStore(t *testing.T, s storage.Store, k storage.Key, gone bool) {
 }
 
 func checkChunk(t *testing.T, s internal.Storage, ch swarm.Chunk, gone bool) {
+	t.Helper()
 	h, err := s.ChunkStore().Has(context.Background(), ch.Address())
 	if err != nil {
 		t.Fatal(err)
