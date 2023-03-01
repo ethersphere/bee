@@ -8,10 +8,10 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"path"
 	"sort"
 
 	storage "github.com/ethersphere/bee/pkg/storagev2"
+	"github.com/ethersphere/bee/pkg/storagev2/storageutil"
 )
 
 type (
@@ -120,7 +120,7 @@ func (s *StorageVersionItem) Clone() storage.Item {
 
 // Clone implements the storage.Item interface.
 func (s StorageVersionItem) String() string {
-	return path.Join(s.Namespace(), s.ID())
+	return storageutil.JoinFields(s.Namespace(), s.ID())
 }
 
 // Version returns the current version of the storage
