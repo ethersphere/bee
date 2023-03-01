@@ -90,10 +90,6 @@ func NewPullStorage(opts ...Option) *PullStorage {
 	return s
 }
 
-func (s *PullStorage) EvictBatch(ctx context.Context, batchID []byte) error {
-	panic("not implemented") // TODO
-}
-
 // IntervalChunks returns a set of chunk in a requested interval.
 func (s *PullStorage) IntervalChunks(_ context.Context, bin uint8, from, to uint64, limit int) (chunks []*storer.BinC, topmost uint64, err error) {
 	s.mtx.Lock()

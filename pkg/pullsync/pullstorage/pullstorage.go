@@ -31,7 +31,6 @@ var (
 // It is used in order to collect and provide information about chunks
 // currently present in the local store.
 type Storer interface {
-	EvictBatch(ctx context.Context, batchID []byte) error
 	// IntervalChunks collects chunk for a requested interval.
 	IntervalChunks(ctx context.Context, bin uint8, from, to uint64, limit int) (chunks []*storer.BinC, topmost uint64, err error)
 	// Cursors gets the last BinID for every bin in the local storage
@@ -56,10 +55,6 @@ func New(store storer.ReserveStore, logger log.Logger) *PullStorer {
 		metrics: newMetrics(),
 		logger:  logger.WithName(loggerName).Register(),
 	}
-}
-
-func (s *PullStorer) EvictBatch(ctx context.Context, batchID []byte) error {
-	return s.store.EvictBatch(ctx, batchID)
 }
 
 // IntervalChunks collects chunk for a requested interval.

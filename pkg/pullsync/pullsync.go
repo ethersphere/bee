@@ -363,7 +363,7 @@ func (s *Syncer) makeOffer(ctx context.Context, rn pb.GetRange) (*pb.Offer, erro
 	o := new(pb.Offer)
 	o.Topmost = top
 	for _, v := range chs {
-		o.Chunks = append(o.Chunks, &pb.Chunk{Address: v.Address.Bytes(), BatchID: v.BatchID}) // TODO; get binID
+		o.Chunks = append(o.Chunks, &pb.Chunk{Address: v.Address.Bytes(), BatchID: v.BatchID})
 	}
 	return o, nil
 }

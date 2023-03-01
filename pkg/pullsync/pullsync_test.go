@@ -10,10 +10,12 @@ import (
 	"io"
 	"testing"
 
+	storer "github.com/ethersphere/bee/pkg/localstorev2"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
 	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
+	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/pullsync"
 	"github.com/ethersphere/bee/pkg/pullsync/pullstorage/mock"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
@@ -21,8 +23,9 @@ import (
 )
 
 var (
-	addrs  []swarm.Address
-	chunks []swarm.Chunk
+	results []*storer.BinC
+	addrs   []swarm.Address
+	chunks  []swarm.Chunk
 )
 
 func someChunks(i ...int) (c []swarm.Chunk) {
@@ -37,9 +40,14 @@ func init() {
 	n := 5
 	chunks = make([]swarm.Chunk, n)
 	addrs = make([]swarm.Address, n)
+	results = make([]*storer.BinC, n)
 	for i := 0; i < n; i++ {
 		chunks[i] = testingc.GenerateTestRandomChunk()
 		addrs[i] = chunks[i].Address()
+		results[i] = &storer.BinC{
+			Address: addrs[i],
+			BatchID: chunks[i].Stamp().BatchID(),
+		}
 	}
 }
 
@@ -53,7 +61,7 @@ func TestIncoming_WantEmptyInterval(t *testing.T) {
 
 	var (
 		mockTopmost        = uint64(5)
-		ps, _              = newPullSync(nil, mock.WithIntervalsResp([]swarm.Address{}, mockTopmost, nil))
+		ps, _              = newPullSync(nil, mock.WithIntervalsResp([]*storer.BinC{}, mockTopmost, nil))
 		recorder           = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
 		psClient, clientDb = newPullSync(recorder)
 	)
@@ -77,7 +85,7 @@ func TestIncoming_WantNone(t *testing.T) {
 
 	var (
 		mockTopmost        = uint64(5)
-		ps, _              = newPullSync(nil, mock.WithIntervalsResp(addrs, mockTopmost, nil), mock.WithChunks(chunks...))
+		ps, _              = newPullSync(nil, mock.WithIntervalsResp(results, mockTopmost, nil), mock.WithChunks(chunks...))
 		recorder           = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
 		psClient, clientDb = newPullSync(recorder, mock.WithChunks(chunks...))
 	)
@@ -100,7 +108,7 @@ func TestIncoming_ContextTimeout(t *testing.T) {
 
 	var (
 		mockTopmost = uint64(5)
-		ps, _       = newPullSync(nil, mock.WithIntervalsResp(addrs, mockTopmost, nil), mock.WithChunks(chunks...))
+		ps, _       = newPullSync(nil, mock.WithIntervalsResp(results, mockTopmost, nil), mock.WithChunks(chunks...))
 		recorder    = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
 		psClient, _ = newPullSync(recorder, mock.WithChunks(chunks...))
 	)
@@ -118,7 +126,7 @@ func TestIncoming_WantOne(t *testing.T) {
 
 	var (
 		mockTopmost        = uint64(5)
-		ps, _              = newPullSync(nil, mock.WithIntervalsResp(addrs, mockTopmost, nil), mock.WithChunks(chunks...))
+		ps, _              = newPullSync(nil, mock.WithIntervalsResp(results, mockTopmost, nil), mock.WithChunks(chunks...))
 		recorder           = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
 		psClient, clientDb = newPullSync(recorder, mock.WithChunks(someChunks(1, 2, 3, 4)...))
 	)
@@ -144,7 +152,7 @@ func TestIncoming_WantAll(t *testing.T) {
 
 	var (
 		mockTopmost        = uint64(5)
-		ps, _              = newPullSync(nil, mock.WithIntervalsResp(addrs, mockTopmost, nil), mock.WithChunks(chunks...))
+		ps, _              = newPullSync(nil, mock.WithIntervalsResp(results, mockTopmost, nil), mock.WithChunks(chunks...))
 		recorder           = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
 		psClient, clientDb = newPullSync(recorder)
 	)
@@ -175,7 +183,7 @@ func TestIncoming_UnsolicitedChunk(t *testing.T) {
 
 	var (
 		mockTopmost = uint64(5)
-		ps, _       = newPullSync(nil, mock.WithIntervalsResp(addrs, mockTopmost, nil), mock.WithChunks(chunks...), mock.WithEvilChunk(addrs[4], evil))
+		ps, _       = newPullSync(nil, mock.WithIntervalsResp(results, mockTopmost, nil), mock.WithChunks(chunks...), mock.WithEvilChunk(addrs[4], evil))
 		recorder    = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
 		psClient, _ = newPullSync(recorder)
 	)
@@ -234,7 +242,7 @@ func TestGetCursorsError(t *testing.T) {
 func haveChunks(t *testing.T, s *mock.PullStorage, addrs ...swarm.Address) {
 	t.Helper()
 	for _, a := range addrs {
-		have, err := s.Has(a, nil) // because the underlying storage is mocked, we use the zero as the binID for all chunks.
+		have, err := s.Has(a, nil) // because the underlying storage is mocked, we use the nil as the batchID for all chunks.
 		if err != nil {
 			t.Fatal(err)
 		}
