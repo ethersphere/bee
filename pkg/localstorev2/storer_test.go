@@ -6,7 +6,6 @@ package storer_test
 
 import (
 	"context"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -100,7 +99,7 @@ func diskStorer(t *testing.T, opts *storer.Options) func() (*storer.DB, error) {
 	t.Helper()
 
 	return func() (*storer.DB, error) {
-		dir, err := ioutil.TempDir(".", "testrepo*")
+		dir, err := os.MkdirTemp(".", "testrepo*")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -224,7 +223,7 @@ func makeInmemStorer(t *testing.T, opts *storer.Options) *storer.DB {
 func makeDiskStorer(t *testing.T, opts *storer.Options) *storer.DB {
 	t.Helper()
 
-	dir, err := ioutil.TempDir(".", "testrepo*")
+	dir, err := os.MkdirTemp(".", "testrepo*")
 	if err != nil {
 		t.Fatal(err)
 	}
