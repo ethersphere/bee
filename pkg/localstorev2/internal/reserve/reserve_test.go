@@ -35,7 +35,7 @@ func TestReserve(t *testing.T) {
 		}
 	})
 
-	r, err := reserve.New(baseAddr, ts.IndexStore(), 1, 0, kademlia.NewTopologyDriver(), log.Noop)
+	r, err := reserve.New(baseAddr, ts.IndexStore(), 0, 0, kademlia.NewTopologyDriver(), log.Noop)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestEvict(t *testing.T) {
 	batches := []*postage.Batch{postagetesting.MustNewBatch(), postagetesting.MustNewBatch(), postagetesting.MustNewBatch()}
 	evictBatch := batches[1]
 
-	r, err := reserve.New(baseAddr, ts.IndexStore(), 1, 0, kademlia.NewTopologyDriver(), log.Noop)
+	r, err := reserve.New(baseAddr, ts.IndexStore(), 0, 0, kademlia.NewTopologyDriver(), log.Noop)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -109,12 +109,17 @@ func TestEvict(t *testing.T) {
 		}
 	}
 
-	evicted, err := r.EvictBatchBin(ts, evictBatch.ID, swarm.MaxBins)
-	if err != nil {
-		t.Fatal(err)
+	totalEvicted := 0
+	for i := 0; i < 3; i++ {
+		evicted, err := r.EvictBatchBin(ts, uint8(i), evictBatch.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		totalEvicted += evicted
 	}
-	if evicted != chunksPerBatch {
-		t.Fatalf("got %d, want %d", evicted, chunksPerBatch)
+
+	if totalEvicted != chunksPerBatch {
+		t.Fatalf("got %d, want %d", totalEvicted, chunksPerBatch)
 	}
 
 	for i, ch := range chunks {
