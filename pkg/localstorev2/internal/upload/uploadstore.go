@@ -593,7 +593,7 @@ func Iterate(ctx context.Context, s internal.Storage, startFrom swarm.Chunk, con
 
 	return s.IndexStore().Iterate(q, func(r storage.Result) (bool, error) {
 		pi := r.Entry.(*pushItem)
-		chunk, err := s.ChunkStore().GetWithStamp(ctx, pi.Address, pi.BatchID)
+		chunk, err := s.ChunkStore().Get(ctx, pi.Address)
 		if err != nil {
 			return true, err
 		}
