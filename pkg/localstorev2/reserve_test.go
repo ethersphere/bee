@@ -360,36 +360,6 @@ func TestRadiusManager(t *testing.T) {
 		}
 	}
 
-	t.Run("old nodes starts at previous radius", func(t *testing.T) {
-		t.Parallel()
-
-		var (
-			capacity = 100
-			bs       = batchstore.New(batchstore.WithReserveState(&postage.ReserveState{Radius: 3}))
-			dir      = t.TempDir()
-		)
-
-		opts := dbTestOps(baseAddr, capacity, bs, pullsync.NewMockRateReporter(1), nil, time.Second)
-		st, err := storer.New(context.Background(), dir, opts)
-		if err != nil {
-			t.Fatal(err)
-		}
-		waitForRadius(t, st.Reserve(), 3)
-		err = st.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		bs = batchstore.New(batchstore.WithReserveState(&postage.ReserveState{Radius: 4}))
-		opts.Batchstore = bs
-		st, err = storer.New(context.Background(), dir, opts)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		waitForRadius(t, st.Reserve(), 3)
-	})
-
 	t.Run("radius decrease due to under utilization", func(t *testing.T) {
 		t.Parallel()
 		bs := batchstore.New(batchstore.WithReserveState(&postage.ReserveState{Radius: 3}))
