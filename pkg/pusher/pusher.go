@@ -144,16 +144,30 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 
 		s.metrics.TotalToPush.Inc()
 		ctx, logger := ctxLogger()
+		startTime := time.Now()
+
+		var (
+			err      error
+			doRepeat bool
+		)
 
 		if op.Direct {
-			s.pushDirect(ctx, logger, op)
+			err = s.pushDirect(ctx, logger, op)
 		} else {
-			if s.pushDeferred(ctx, logger, op) {
-				repeat()
-				return
-			}
+			doRepeat, err = s.pushDeferred(ctx, logger, op)
 		}
 
+		if err != nil {
+			s.metrics.TotalErrors.Inc()
+			s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())
+		}
+
+		if doRepeat {
+			repeat()
+			return
+		}
+
+		s.metrics.SyncTime.Observe(time.Since(startTime).Seconds())
 		s.metrics.TotalSynced.Inc()
 	}
 
@@ -225,7 +239,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 
 }
 
-func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) bool {
+func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (bool, error) {
 	loggerV1 := logger.V(1).Build()
 	defer s.inflight.delete(op.Chunk)
 
@@ -238,7 +252,7 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) b
 		)
 
 		s.storer.Report(ctx, op.Chunk, storage.ChunkCouldNotSync)
-		return false
+		return false, err
 	}
 
 	switch receipt, err := s.pushSyncer.PushChunkToClosest(ctx, op.Chunk); {
@@ -248,25 +262,25 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) b
 		err = s.storer.ReservePutter().Put(ctx, op.Chunk)
 		if err != nil {
 			loggerV1.Error(err, "pusher: failed to store chunk")
-			return true
+			return true, err
 		}
 		s.storer.Report(ctx, op.Chunk, storage.ChunkStored)
 	case err == nil:
 		s.storer.Report(ctx, op.Chunk, storage.ChunkSent)
 		if err := s.checkReceipt(receipt, loggerV1); err != nil {
 			loggerV1.Error(err, "pusher: failed checking receipt")
-			return true
+			return true, err
 		}
 		s.storer.Report(ctx, op.Chunk, storage.ChunkSynced)
 	default:
 		loggerV1.Error(err, "pusher: failed PushChunkToClosest")
-		return true
+		return true, err
 	}
 
-	return false
+	return false, nil
 }
 
-func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) {
+func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) error {
 	loggerV1 := logger.V(1).Build()
 	defer s.inflight.delete(op.Chunk)
 
@@ -296,6 +310,7 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) {
 	default:
 		loggerV1.Error(err, "pusher: failed to return error for direct upload")
 	}
+	return err
 }
 
 func (s *Service) checkReceipt(receipt *pushsync.Receipt, loggerV1 log.Logger) error {

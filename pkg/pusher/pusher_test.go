@@ -40,45 +40,17 @@ var defaultMockValidStamp = func(ch swarm.Chunk, stamp []byte) (swarm.Chunk, err
 	return ch, nil
 }
 
-// createLocalstoreLock is used to prevent data race issues detected when multiple localstore.New functions
-// are being called in the tests.
-var createLocalstoreLock sync.Mutex
+type mockStorer struct{}
 
-// Wrap the actual storer to intercept the modeSet that the pusher will call when a valid receipt is received
-type Store struct {
-	storage.Storer
-	internalStorer storage.Storer
-	modeSet        map[string]storage.ModeSet
-	modeSetMu      *sync.Mutex
-
-	closed              bool
-	setBeforeCloseCount int
-	setAfterCloseCount  int
+func (m *mockStorer) SubscribePush(ctx context.Context, skipFn func([]byte) bool) (c <-chan swarm.Chunk, repeat, stop func()) {
+	return nil, nil, nil
 }
 
-// Override the Set function to capture the ModeSetSync
-func (s *Store) Set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Address) error {
-	s.modeSetMu.Lock()
-	defer s.modeSetMu.Unlock()
+func (m *mockStorer) Report(ctx context.Context, chunk swarm.Chunk, state storage.ChunkState) {
+}
 
-	if s.closed {
-		s.setAfterCloseCount++
-	} else {
-		s.setBeforeCloseCount++
-	}
-
-	for _, addr := range addrs {
-		s.modeSet[addr.String()] = mode
-	}
+func (m *mockStorer) ReservePutter() storage.Putter {
 	return nil
-}
-
-func (s *Store) Close() error {
-	s.modeSetMu.Lock()
-	defer s.modeSetMu.Unlock()
-
-	s.closed = true
-	return s.internalStorer.Close()
 }
 
 // TestSendChunkToPushSync sends a chunk to pushsync to be sent ot its closest peer and get a receipt.
