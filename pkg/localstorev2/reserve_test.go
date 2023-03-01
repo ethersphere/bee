@@ -258,6 +258,8 @@ func TestEvictBatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	time.Sleep(time.Second)
+
 	st, err = storer.New(context.Background(), dir, opts)
 	if err != nil {
 		t.Fatal(err)
@@ -380,7 +382,7 @@ func TestRadiusManager(t *testing.T) {
 			dir      = t.TempDir()
 		)
 
-		opts := dbTestOps(baseAddr, capacity, bs, pullsync.NewMockRateReporter(1), nil, time.Millisecond*50)
+		opts := dbTestOps(baseAddr, capacity, bs, pullsync.NewMockRateReporter(1), nil, time.Second)
 		st, err := storer.New(context.Background(), dir, opts)
 		if err != nil {
 			t.Fatal(err)
@@ -405,7 +407,7 @@ func TestRadiusManager(t *testing.T) {
 		t.Parallel()
 		bs := batchstore.New(batchstore.WithReserveState(&postage.ReserveState{Radius: 3}))
 
-		storer, err := diskStorer(t, dbTestOps(baseAddr, 10, bs, nil, nil, time.Millisecond*50))()
+		storer, err := memStorer(t, dbTestOps(baseAddr, 10, bs, nil, nil, time.Millisecond*50))()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -446,12 +448,10 @@ func TestRadiusManager(t *testing.T) {
 	t.Run("radius doesnt change due to non-zero pull rate", func(t *testing.T) {
 		t.Parallel()
 		bs := batchstore.New(batchstore.WithReserveState(&postage.ReserveState{Radius: 3}))
-		storer, err := diskStorer(t, dbTestOps(baseAddr, 10, bs, pullsync.NewMockRateReporter(1), nil, time.Millisecond*10))()
+		storer, err := memStorer(t, dbTestOps(baseAddr, 10, bs, pullsync.NewMockRateReporter(1), nil, time.Second))()
 		if err != nil {
 			t.Fatal(err)
 		}
-
-		time.Sleep(time.Second)
 		waitForRadius(t, storer.Reserve(), 3)
 	})
 }
