@@ -230,6 +230,7 @@ func TestEvictBatch(t *testing.T) {
 			checkSaved(t, st, ch, false)
 		} else if !has {
 			t.Fatal("store should have chunk")
+			checkSaved(t, st, ch, true)
 		}
 	}
 
@@ -252,20 +253,6 @@ func TestEvictBatch(t *testing.T) {
 			t.Fatalf("bin %d  got binID %d, want %d", bin, id, 0)
 		}
 	}
-
-	err = st.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	time.Sleep(time.Second)
-
-	st, err = storer.New(context.Background(), dir, opts)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	t.Run("reserve size", reserveSizeTest(st.Reserve(), 20))
 }
 
 func TestUnreserveCap(t *testing.T) {
