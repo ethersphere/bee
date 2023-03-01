@@ -218,7 +218,9 @@ func makeInmemStorer(t *testing.T, opts *storer.Options) *storer.DB {
 func makeDiskStorer(t *testing.T, opts *storer.Options) *storer.DB {
 	t.Helper()
 
-	lstore, err := storer.New(context.Background(), t.TempDir(), opts)
+	dir := t.TempDir()
+
+	lstore, err := storer.New(context.Background(), dir, opts)
 	if err != nil {
 		t.Fatalf("New(...): unexpected error: %v", err)
 	}
