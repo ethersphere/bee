@@ -112,7 +112,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 
 	// inflight.set handles the backpressure for the maximum amount of inflight chunks
 	// and duplicate handling.
-	chunks, repeat, unsubscribe := s.storer.SubscribePush(ctx, s.inflight.set)
+	chunks, _, unsubscribe := s.storer.SubscribePush(ctx, s.inflight.set)
 	defer func() {
 		unsubscribe()
 		cancel()
@@ -159,7 +159,12 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 			if op.Err != nil {
 				op.Err <- err
 			}
-			repeat()
+
+			select {
+			case cc <- op:
+			case <-s.quit:
+			}
+
 			s.metrics.TotalErrors.Inc()
 			s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())
 			loggerV1.Debug("cannot push chunk", "chunk_address", op.Chunk.Address(), "error", err)
