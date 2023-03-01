@@ -109,7 +109,7 @@ func TestEvict(t *testing.T) {
 		}
 	}
 
-	evicted, err := r.EvictBatchBin(ts, evictBatch.ID, 32)
+	evicted, err := r.EvictBatchBin(ts, evictBatch.ID, swarm.MaxBins)
 	if err != nil {
 		t.Fatal(err)
 	}
