@@ -144,6 +144,33 @@ func TestEvict(t *testing.T) {
 	}
 }
 
+func TestOldRadius(t *testing.T) {
+	t.Parallel()
+
+	baseAddr := test.RandomAddress()
+
+	ts, closer := internal.NewInmemStorage()
+	t.Cleanup(func() {
+		if err := closer(); err != nil {
+			t.Errorf("failed closing the storage: %v", err)
+		}
+	})
+
+	err := ts.IndexStore().Put(&reserve.RadiusItem{Radius: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	r, err := reserve.New(baseAddr, ts.IndexStore(), 0, 0, kademlia.NewTopologyDriver(), log.Noop)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if r.Radius() != 3 {
+		t.Errorf("got %d, want %d", r.Radius(), 3)
+	}
+}
+
 func checkStore(t *testing.T, s storage.Store, k storage.Key, gone bool) {
 	t.Helper()
 	h, err := s.Has(k)
