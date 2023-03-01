@@ -435,7 +435,9 @@ func TestRadiusManager(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		waitForRadius(t, storer.Reserve(), 3)
+		waitForRadius(t, storer.Reserve(), 4)
+
+		t.Run("reservesize", reserveSizeTest(storer.Reserve(), 10))
 
 		err = storer.EvictBatch(context.Background(), batch.ID)
 		if err != nil {

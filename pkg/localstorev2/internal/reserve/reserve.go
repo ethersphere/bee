@@ -275,10 +275,8 @@ func (r *Reserve) EvictBatchBin(store internal.Storage, bin uint8, batchID []byt
 	var evicted []*batchRadiusItem
 
 	err := indexStore.Iterate(storage.Query{
-		Factory: func() storage.Item {
-			return &batchRadiusItem{}
-		},
-		Prefix: batchBinToString(bin, batchID),
+		Factory: func() storage.Item { return &batchRadiusItem{} },
+		Prefix:  batchBinToString(bin, batchID),
 	}, func(res storage.Result) (bool, error) {
 		batchRadius := res.Entry.(*batchRadiusItem)
 		evicted = append(evicted, batchRadius)
