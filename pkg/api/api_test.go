@@ -26,7 +26,6 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/storageincentives"
 	mock2 "github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
-	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/bee/pkg/util/testutil"
 
@@ -221,7 +220,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	s.SetP2P(o.P2P)
 
 	if o.RedistributionAgent == nil {
-		o.RedistributionAgent, _ = createRedistributionAgentService(o.Overlay, o.StateStorer, erc20, transaction)
+		o.RedistributionAgent, _ = createRedistributionAgentService(t, o.Overlay, o.StateStorer, erc20, transaction, backend)
 		s.SetRedistributionAgent(o.RedistributionAgent)
 	}
 	testutil.CleanupCloser(t, o.RedistributionAgent)
@@ -341,6 +340,8 @@ func TestParseName(t *testing.T) {
 	const bzzHash = "89c17d0d8018a19057314aa035e61c9d23c47581a61dd3a79a7839692c617e4d"
 	log := log.Noop
 
+	var errInvalidNameOrAddress = errors.New("invalid name or bzz address")
+
 	testCases := []struct {
 		desc       string
 		name       string
@@ -352,7 +353,7 @@ func TestParseName(t *testing.T) {
 		{
 			desc:    "empty name",
 			name:    "",
-			wantErr: api.ErrInvalidNameOrAddress,
+			wantAdr: swarm.ZeroAddress,
 		},
 		{
 			desc:    "bzz hash",
@@ -376,10 +377,10 @@ func TestParseName(t *testing.T) {
 			name: "not.good",
 			res: resolverMock.NewResolver(
 				resolverMock.WithResolveFunc(func(string) (swarm.Address, error) {
-					return swarm.ZeroAddress, api.ErrInvalidNameOrAddress
+					return swarm.ZeroAddress, errInvalidNameOrAddress
 				}),
 			),
-			wantErr: api.ErrInvalidNameOrAddress,
+			wantErr: errInvalidNameOrAddress,
 		},
 		{
 			desc:    "name resolved",
@@ -407,7 +408,7 @@ func TestParseName(t *testing.T) {
 			t.Parallel()
 
 			got, err := s.ResolveNameOrAddress(tC.name)
-			if err != nil && !errors.Is(err, tC.wantErr) {
+			if tC.wantErr != nil && !errors.Is(err, tC.wantErr) {
 				t.Fatalf("bad error: %v", err)
 			}
 			if !got.Equal(tC.wantAdr) {
@@ -729,7 +730,9 @@ func (c *chanStorer) Close() error {
 	panic("not implemented") // TODO: Implement
 }
 
-func createRedistributionAgentService(addr swarm.Address, storer storage.StateStorer, erc20Service erc20.Service, tranService transaction.Service) (*storageincentives.Agent, error) {
+func createRedistributionAgentService(t *testing.T, addr swarm.Address, storer storage.StateStorer, erc20Service erc20.Service, tranService transaction.Service, backend storageincentives.ChainBackend) (*storageincentives.Agent, error) {
+	t.Helper()
+
 	const blocksPerRound uint64 = 12
 	const blocksPerPhase uint64 = 4
 	postageContract := contractMock.New(contractMock.WithExpiresBatchesFunc(func(context.Context) error {
@@ -741,7 +744,7 @@ func createRedistributionAgentService(addr swarm.Address, storer storage.StateSt
 	}))
 	contract := &mockContract{}
 
-	return storageincentives.New(addr, common.Address{}, backendmock.New(), log.Noop, &mockMonitor{}, contract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), &mockSampler{}, time.Millisecond*10, blocksPerRound, blocksPerPhase, storer, erc20Service, tranService)
+	return storageincentives.New(addr, common.Address{}, backend, log.Noop, &mockMonitor{}, contract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), &mockSampler{t: t}, time.Millisecond*10, blocksPerRound, blocksPerPhase, storer, erc20Service, tranService)
 }
 
 type contractCall int
@@ -819,10 +822,12 @@ func (m *mockMonitor) IsFullySynced() bool {
 	return true
 }
 
-type mockSampler struct{}
+type mockSampler struct {
+	t *testing.T
+}
 
 func (m *mockSampler) ReserveSample(context.Context, []byte, uint8, uint64) (storage.Sample, error) {
 	return storage.Sample{
-		Hash: test.RandomAddress(),
+		Hash: swarm.RandAddress(m.t),
 	}, nil
 }

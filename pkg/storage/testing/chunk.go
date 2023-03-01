@@ -19,11 +19,11 @@ package testing
 
 import (
 	"crypto/rand"
+	"testing"
 
 	"github.com/ethersphere/bee/pkg/cac"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
-	swarmtesting "github.com/ethersphere/bee/pkg/swarm/test"
 )
 
 // GenerateTestRandomChunk generates a valid content addressed chunk.
@@ -57,10 +57,12 @@ func GenerateTestRandomChunks(count int) []swarm.Chunk {
 }
 
 // GenerateTestRandomChunkAt generates an invalid (!) chunk with address of proximity order po wrt target.
-func GenerateTestRandomChunkAt(target swarm.Address, po int) swarm.Chunk {
+func GenerateTestRandomChunkAt(tb testing.TB, target swarm.Address, po int) swarm.Chunk {
+	tb.Helper()
+
 	data := make([]byte, swarm.ChunkSize)
 	_, _ = rand.Read(data)
-	addr := swarmtesting.RandomAddressAt(target, po)
+	addr := swarm.RandAddressAt(tb, target, po)
 	stamp := postagetesting.MustNewStamp()
 	return swarm.NewChunk(addr, data).WithStamp(stamp)
 }

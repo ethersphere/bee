@@ -153,7 +153,7 @@ func TestModePutRequestCache(t *testing.T) {
 			db := newTestDB(t, nil)
 			var chunks []swarm.Chunk
 			for i := 0; i < tc.count; i++ {
-				chunk := generateTestRandomChunkAt(swarm.NewAddress(db.baseKey), 2)
+				chunk := generateTestRandomChunkAt(t, swarm.NewAddress(db.baseKey), 2)
 				chunks = append(chunks, chunk)
 			}
 			// call unreserve on the batch with radius 0 so that
