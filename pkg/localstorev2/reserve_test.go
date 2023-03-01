@@ -177,9 +177,8 @@ func TestEvictBatch(t *testing.T) {
 
 	baseAddr := test.RandomAddress()
 
-	dir := t.TempDir()
-	opts := dbTestOps(baseAddr, 100, nil, nil, nil, time.Minute)
-	st, err := storer.New(context.Background(), dir, opts)
+	t.Cleanup(func() {})
+	st, err := diskStorer(t, dbTestOps(baseAddr, 100, nil, nil, nil, time.Minute))()
 	if err != nil {
 		t.Fatal(err)
 	}
