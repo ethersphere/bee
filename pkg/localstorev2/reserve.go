@@ -10,6 +10,7 @@ import (
 	"crypto/hmac"
 	"encoding/binary"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -27,6 +28,8 @@ const (
 	reserveUnreserved   = "reserveUnreserved"
 	reserveLock         = "reserveLock"
 )
+
+var errMaxRadius = errors.New("max radius reached")
 
 type SyncReporter interface {
 	// Number of active historical syncing jobs.
@@ -58,7 +61,7 @@ func (db *DB) reserveWorker(capacity int, syncer SyncReporter, warmupDur, wakeUp
 		case <-overCapTrigger:
 			err := db.unreserve(ctx)
 			if err != nil {
-				db.logger.Error(err, "reserve unreserve process")
+				db.logger.Error(err, "reserve unreserve")
 			}
 		case <-time.After(wakeUpDur):
 			radius := db.reserve.Radius()
@@ -175,18 +178,18 @@ func (db *DB) unreserve(ctx context.Context) error {
 	radius := db.reserve.Radius()
 	defer db.events.Trigger(reserveUnreserved)
 
-	for {
+	for radius < swarm.MaxPO {
 
 		err := db.batchstore.Iterate(func(b *postage.Batch) (bool, error) {
-
-			err := db.evictBatch(ctx, b.ID, radius)
-			if err != nil {
-				return false, err
-			}
 
 			if db.reserve.IsWithinCapacity() {
 				withinCap = true
 				return true, nil
+			}
+
+			err := db.evictBatch(ctx, b.ID, radius)
+			if err != nil {
+				return false, err
 			}
 
 			return false, nil
@@ -202,6 +205,8 @@ func (db *DB) unreserve(ctx context.Context) error {
 		db.logger.Info("reserve radius increase", "radius", radius)
 		_ = db.reserve.SetRadius(db.repo.IndexStore(), radius)
 	}
+
+	return errMaxRadius
 }
 
 // ReserveLastBinIDs returns all of the highest binIDs from all the bins in the reserve.
