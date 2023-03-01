@@ -9,6 +9,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 	"sync"
 	"time"
@@ -56,12 +57,19 @@ func (db *DB) reserveWorker(capacity int, syncer SyncReporter, warmupDur, wakeUp
 		select {
 		case <-overCapTrigger:
 			err := db.unreserve(ctx)
-			db.logger.Error(err, "reserve unreserve process")
+			if err != nil {
+				db.logger.Error(err, "reserve unreserve process")
+			}
 		case <-time.After(wakeUpDur):
 			radius := db.reserve.Radius()
 			if db.reserve.Size() < threshold && syncer.Rate() == 0 && radius > 0 {
-				err := db.reserve.SetRadius(db.repo.IndexStore(), radius-1)
-				db.logger.Error(err, "reserve set radius")
+				radius--
+				err := db.reserve.SetRadius(db.repo.IndexStore(), radius)
+				if err != nil {
+					db.logger.Error(err, "reserve set radius")
+				}
+				db.logger.Info("reserve radius decrease", "radius", radius)
+
 			}
 		case <-db.quit:
 			return
@@ -127,12 +135,12 @@ func (db *DB) EvictBatch(ctx context.Context, batchID []byte) error {
 	return db.evictBatch(ctx, batchID, swarm.MaxBins)
 }
 
-func (db *DB) evictBatch(ctx context.Context, batchID []byte, bin uint8) error {
+func (db *DB) evictBatch(ctx context.Context, batchID []byte, upToBin uint8) error {
 
 	db.lock.Lock(reserveLock)
 	defer db.lock.Unlock(reserveLock)
 
-	for b := uint8(0); b < bin; b++ {
+	for b := uint8(0); b < upToBin; b++ {
 
 		select {
 		case <-ctx.Done():
@@ -142,7 +150,7 @@ func (db *DB) evictBatch(ctx context.Context, batchID []byte, bin uint8) error {
 
 		txnRepo, commit, rollback := db.repo.NewTx(ctx)
 
-		evicted, err := db.reserve.EvictBatchBin(txnRepo, batchID, b)
+		evicted, err := db.reserve.EvictBatchBin(txnRepo, b, batchID)
 		if err != nil {
 			_ = rollback()
 			return err
@@ -152,6 +160,8 @@ func (db *DB) evictBatch(ctx context.Context, batchID []byte, bin uint8) error {
 		if err != nil {
 			return err
 		}
+
+		db.logger.Info("reserve eviction", "bin", b, "evicted", evicted, "batchID", hex.EncodeToString(batchID), "size", db.reserve.Size())
 
 		db.reserve.AddSize(-evicted)
 	}
@@ -189,6 +199,7 @@ func (db *DB) unreserve(ctx context.Context) error {
 		}
 
 		radius++
+		db.logger.Info("reserve radius increase", "radius", radius)
 		_ = db.reserve.SetRadius(db.repo.IndexStore(), radius)
 	}
 }
@@ -315,7 +326,7 @@ func (db *DB) ReserveSample(
 		defer close(chunkC)
 		iterationStart := time.Now()
 
-		err := db.reserve.IterateChunks(db.repo, storageRadius, func(a swarm.Chunk, u uint64) (bool, error) {
+		err := db.reserve.IterateChunks(db.repo, storageRadius, func(a swarm.Chunk) (bool, error) {
 			select {
 			case chunkC <- a:
 				stat.TotalIterated.Inc()
@@ -433,7 +444,7 @@ func (db *DB) ReserveSample(
 		Hash:  swarm.NewAddress(hash),
 	}
 
-	db.logger.Info("sampler done", "duration", time.Since(t), "storage_radius", storageRadius, "consensus_time_ns", consensusTime, "stats", stat, "sample", sample)
+	db.logger.Info("reserve sampler done", "duration", time.Since(t), "storage_radius", storageRadius, "consensus_time_ns", consensusTime, "stats", stat, "sample", sample)
 
 	return sample, nil
 }
