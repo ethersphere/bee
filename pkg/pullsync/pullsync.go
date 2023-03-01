@@ -17,12 +17,12 @@ import (
 
 	"github.com/ethersphere/bee/pkg/bitvector"
 	"github.com/ethersphere/bee/pkg/cac"
+	storer "github.com/ethersphere/bee/pkg/localstorev2"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pullsync/pb"
-	"github.com/ethersphere/bee/pkg/pullsync/pullstorage"
 	"github.com/ethersphere/bee/pkg/rate"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -72,11 +72,24 @@ type SyncReporter interface {
 	Rate() float64
 }
 
+// Storer is a thin wrapper around storage.Storer.
+// It is used in order to collect and provide information about chunks
+// currently present in the local store.
+type Storer interface {
+	// IntervalChunks collects chunk for a requested interval.
+	IntervalChunks(ctx context.Context, bin uint8, from, to uint64, limit int) (chunks []*storer.BinC, topmost uint64, err error)
+	// Cursors gets the last BinID for every bin in the local storage
+	Cursors(ctx context.Context) ([]uint64, error)
+	Has(addr swarm.Address, batchID []byte) (bool, error)
+	Put(ctx context.Context, chunks ...swarm.Chunk) error
+	Get(ctx context.Context, addr swarm.Address, batchID []byte) (swarm.Chunk, error)
+}
+
 type Syncer struct {
 	streamer       p2p.Streamer
 	metrics        metrics
 	logger         log.Logger
-	storage        pullstorage.Storer
+	storage        Storer
 	quit           chan struct{}
 	wg             sync.WaitGroup
 	unwrap         func(swarm.Chunk)
@@ -90,7 +103,7 @@ type Syncer struct {
 	io.Closer
 }
 
-func New(streamer p2p.Streamer, storage pullstorage.Storer, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger log.Logger, radius postage.RadiusChecker, overlayAddress swarm.Address) *Syncer {
+func New(streamer p2p.Streamer, storage Storer, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger log.Logger, radius postage.RadiusChecker, overlayAddress swarm.Address) *Syncer {
 
 	return &Syncer{
 		streamer:       streamer,

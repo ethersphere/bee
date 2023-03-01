@@ -9,12 +9,12 @@ import (
 	"sync"
 
 	storer "github.com/ethersphere/bee/pkg/localstorev2"
-	"github.com/ethersphere/bee/pkg/pullsync/pullstorage"
+	"github.com/ethersphere/bee/pkg/pullsync"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-var _ pullstorage.Storer = (*PullStorage)(nil)
+var _ pullsync.Storer = (*PullStorage)(nil)
 
 type chunksResponse struct {
 	chunks  []*storer.BinC
