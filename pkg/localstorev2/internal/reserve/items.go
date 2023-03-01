@@ -13,8 +13,10 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-var errMarshalInvalidAddress = errors.New("marshal: invalid address")
-var errUnmarshalInvalidSize = errors.New("unmarshal: invalid size")
+var (
+	errMarshalInvalidAddress = errors.New("marshal: invalid address")
+	errUnmarshalInvalidSize  = errors.New("unmarshal: invalid size")
+)
 
 // batchRadiusItem allows iteration of the chunks with respect to bin and batchID.
 // Used for batch evictions of certain bins.
