@@ -62,8 +62,7 @@ func (m *mockBatchListener) HandleDepthIncrease(_ []byte, _ uint8) {
 	m.diluteCount++
 }
 
-func TestBatchServiceCreate(t *testing.T) {
-	t.Parallel()
+func TestBatchServiceCreate_FLAKY(t *testing.T) {
 	testChainState := postagetesting.NewChainState()
 
 	validateNoBatch := func(t *testing.T, testBatch *postage.Batch, st *mock.BatchStore) {

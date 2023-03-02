@@ -7,7 +7,6 @@ package steward_test
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"sync"
 	"testing"
 
@@ -20,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/traversal"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
 func TestSteward(t *testing.T) {
@@ -28,7 +28,7 @@ func TestSteward(t *testing.T) {
 	var (
 		ctx            = context.Background()
 		chunks         = 1000
-		data           = make([]byte, chunks*4096) //1k chunks
+		data           = testutil.RandBytes(t, chunks*4096) //1k chunks
 		store          = mock.NewStorer()
 		traverser      = traversal.New(store)
 		loggingStorer  = &loggingStore{Storer: store}
@@ -43,13 +43,6 @@ func TestSteward(t *testing.T) {
 		ps = psmock.New(fn)
 		s  = steward.New(store, traverser, loggingStorer, ps)
 	)
-	n, err := rand.Read(data)
-	if n != cap(data) {
-		t.Fatal("short read")
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	pipe := builder.NewPipelineBuilder(ctx, loggingStorer, storage.ModePutUpload, false)
 	addr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data))
@@ -86,7 +79,7 @@ func TestSteward_ErrWantSelf(t *testing.T) {
 	var (
 		ctx           = context.Background()
 		chunks        = 10
-		data          = make([]byte, chunks*4096)
+		data          = testutil.RandBytes(t, chunks*4096)
 		store         = mock.NewStorer()
 		traverser     = traversal.New(store)
 		loggingStorer = &loggingStore{Storer: store}
@@ -96,13 +89,6 @@ func TestSteward_ErrWantSelf(t *testing.T) {
 		ps = psmock.New(fn)
 		s  = steward.New(store, traverser, loggingStorer, ps)
 	)
-	n, err := rand.Read(data)
-	if n != cap(data) {
-		t.Fatal("short read")
-	}
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	pipe := builder.NewPipelineBuilder(ctx, loggingStorer, storage.ModePutUpload, false)
 	addr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data))

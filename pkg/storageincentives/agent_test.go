@@ -25,7 +25,6 @@ import (
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/swarm/test"
 	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
 	"github.com/ethersphere/bee/pkg/util/testutil"
 )
@@ -33,6 +32,7 @@ import (
 func TestAgent(t *testing.T) {
 	t.Parallel()
 
+	bigBalance := big.NewInt(4_000_000_000)
 	tests := []struct {
 		name           string
 		blocksPerRound uint64
@@ -40,6 +40,7 @@ func TestAgent(t *testing.T) {
 		incrementBy    uint64
 		limit          uint64
 		expectedCalls  bool
+		balance        *big.Int
 	}{{
 		name:           "3 blocks per phase, same block number returns twice",
 		blocksPerRound: 9,
@@ -47,6 +48,7 @@ func TestAgent(t *testing.T) {
 		incrementBy:    1,
 		expectedCalls:  true,
 		limit:          108, // computed with blocksPerRound * (exptectedCalls + 2)
+		balance:        bigBalance,
 	}, {
 		name:           "3 blocks per phase, block number returns every block",
 		blocksPerRound: 9,
@@ -54,6 +56,7 @@ func TestAgent(t *testing.T) {
 		incrementBy:    1,
 		expectedCalls:  true,
 		limit:          108,
+		balance:        bigBalance,
 	}, {
 		name:           "no expected calls - block number returns late after each phase",
 		blocksPerRound: 9,
@@ -61,6 +64,7 @@ func TestAgent(t *testing.T) {
 		incrementBy:    6,
 		expectedCalls:  false,
 		limit:          108,
+		balance:        bigBalance,
 	}, {
 		name:           "4 blocks per phase, block number returns every other block",
 		blocksPerRound: 12,
@@ -68,6 +72,17 @@ func TestAgent(t *testing.T) {
 		incrementBy:    2,
 		expectedCalls:  true,
 		limit:          144,
+		balance:        bigBalance,
+	}, {
+		// This test case is based on previous, but this time agent will not have enough
+		// balance to participate in the game so no calls are going to be made.
+		name:           "no expected calls - insufficient balance",
+		blocksPerRound: 12,
+		blocksPerPhase: 4,
+		incrementBy:    2,
+		expectedCalls:  false,
+		limit:          144,
+		balance:        big.NewInt(0),
 	},
 	}
 
@@ -77,7 +92,7 @@ func TestAgent(t *testing.T) {
 			t.Parallel()
 
 			wait := make(chan struct{})
-			addr := test.RandomAddress()
+			addr := swarm.RandAddress(t)
 
 			backend := &mockchainBackend{
 				limit: tc.limit,
@@ -88,10 +103,12 @@ func TestAgent(t *testing.T) {
 					}
 				},
 				incrementBy: tc.incrementBy,
-				block:       tc.blocksPerRound}
+				block:       tc.blocksPerRound,
+				balance:     tc.balance,
+			}
 			contract := &mockContract{}
 
-			service, _ := createService(addr, backend, contract, tc.blocksPerRound, tc.blocksPerPhase)
+			service, _ := createService(t, addr, backend, contract, tc.blocksPerRound, tc.blocksPerPhase)
 			testutil.CleanupCloser(t, service)
 
 			<-wait
@@ -134,11 +151,13 @@ func TestAgent(t *testing.T) {
 }
 
 func createService(
+	t *testing.T,
 	addr swarm.Address,
 	backend storageincentives.ChainBackend,
 	contract redistribution.Contract,
 	blocksPerRound uint64,
 	blocksPerPhase uint64) (*storageincentives.Agent, error) {
+	t.Helper()
 
 	postageContract := contractMock.New(contractMock.WithExpiresBatchesFunc(func(context.Context) error {
 		return nil
@@ -148,7 +167,7 @@ func createService(
 		return false, nil
 	}))
 
-	return storageincentives.New(addr, common.Address{}, backend, log.Noop, &mockMonitor{}, contract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), &mockSampler{}, time.Millisecond*10, blocksPerRound, blocksPerPhase, statestore.NewStateStore(), erc20mock.New(), transactionmock.New())
+	return storageincentives.New(addr, common.Address{}, backend, log.Noop, &mockMonitor{}, contract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), &mockSampler{t: t}, time.Millisecond*10, blocksPerRound, blocksPerPhase, statestore.NewStateStore(), erc20mock.New(), transactionmock.New())
 }
 
 type mockchainBackend struct {
@@ -157,6 +176,7 @@ type mockchainBackend struct {
 	block         uint64
 	limit         uint64
 	limitCallback func()
+	balance       *big.Int
 }
 
 func (m *mockchainBackend) BlockNumber(context.Context) (uint64, error) {
@@ -181,6 +201,14 @@ func (m *mockchainBackend) HeaderByNumber(context.Context, *big.Int) (*types.Hea
 	return &types.Header{
 		Time: uint64(time.Now().Unix()),
 	}, nil
+}
+
+func (m *mockchainBackend) BalanceAt(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error) {
+	return m.balance, nil
+}
+
+func (m *mockchainBackend) SuggestGasPrice(ctx context.Context) (*big.Int, error) {
+	return big.NewInt(4), nil
 }
 
 type mockMonitor struct {
@@ -254,10 +282,12 @@ func (m *mockContract) Reveal(context.Context, uint8, []byte, []byte) (common.Ha
 	return common.Hash{}, nil
 }
 
-type mockSampler struct{}
+type mockSampler struct {
+	t *testing.T
+}
 
 func (m *mockSampler) ReserveSample(context.Context, []byte, uint8, uint64) (storage.Sample, error) {
 	return storage.Sample{
-		Hash: test.RandomAddress(),
+		Hash: swarm.RandAddress(m.t),
 	}, nil
 }

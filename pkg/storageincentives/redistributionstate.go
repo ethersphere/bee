@@ -123,15 +123,16 @@ func (r *RedistributionState) SetLastPlayedRound(round uint64) {
 
 // AddFee sets the internal node status
 func (r *RedistributionState) AddFee(ctx context.Context, txHash common.Hash) {
-
 	fee, err := r.txService.TransactionFee(ctx, txHash)
 	if err != nil {
 		return
 	}
+
 	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
 	r.status.Fees.Add(r.status.Fees, fee)
 	r.save()
-	r.mtx.Unlock()
 }
 
 // CalculateWinnerReward calculates the reward for the winner
@@ -141,12 +142,13 @@ func (r *RedistributionState) CalculateWinnerReward(ctx context.Context) error {
 		r.logger.Debug("error getting balance", "error", err)
 		return err
 	}
-	if currentBalance != nil {
-		r.mtx.Lock()
-		r.status.Reward.Add(r.status.Reward, currentBalance.Sub(currentBalance, r.currentBalance))
-		r.save()
-		r.mtx.Unlock()
-	}
+
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	r.status.Reward.Add(r.status.Reward, currentBalance.Sub(currentBalance, r.currentBalance))
+	r.save()
+
 	return nil
 }
 

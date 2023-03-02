@@ -8,23 +8,22 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
 func Test_ContainsAddress(t *testing.T) {
 	t.Parallel()
 
-	addrs := makeAddreses(t, 10)
+	addrs := swarm.RandAddresses(t, 10)
 	tt := []struct {
 		addresses []swarm.Address
 		search    swarm.Address
 		contains  bool
 	}{
 		{addresses: nil, search: swarm.Address{}},
-		{addresses: nil, search: makeAddress(t)},
+		{addresses: nil, search: swarm.RandAddress(t)},
 		{addresses: make([]swarm.Address, 10), search: swarm.Address{}, contains: true},
-		{addresses: makeAddreses(t, 0), search: makeAddress(t)},
-		{addresses: makeAddreses(t, 10), search: makeAddress(t)},
+		{addresses: swarm.RandAddresses(t, 0), search: swarm.RandAddress(t)},
+		{addresses: swarm.RandAddresses(t, 10), search: swarm.RandAddress(t)},
 		{addresses: addrs, search: addrs[0], contains: true},
 		{addresses: addrs, search: addrs[1], contains: true},
 		{addresses: addrs, search: addrs[3], contains: true},
@@ -42,16 +41,16 @@ func Test_ContainsAddress(t *testing.T) {
 func Test_IndexOfAddress(t *testing.T) {
 	t.Parallel()
 
-	addrs := makeAddreses(t, 10)
+	addrs := swarm.RandAddresses(t, 10)
 	tt := []struct {
 		addresses []swarm.Address
 		search    swarm.Address
 		result    int
 	}{
 		{addresses: nil, search: swarm.Address{}, result: -1},
-		{addresses: nil, search: makeAddress(t), result: -1},
-		{addresses: makeAddreses(t, 0), search: makeAddress(t), result: -1},
-		{addresses: makeAddreses(t, 10), search: makeAddress(t), result: -1},
+		{addresses: nil, search: swarm.RandAddress(t), result: -1},
+		{addresses: swarm.RandAddresses(t, 0), search: swarm.RandAddress(t), result: -1},
+		{addresses: swarm.RandAddresses(t, 10), search: swarm.RandAddress(t), result: -1},
 		{addresses: addrs, search: addrs[0], result: 0},
 		{addresses: addrs, search: addrs[1], result: 1},
 		{addresses: addrs, search: addrs[3], result: 3},
@@ -69,15 +68,15 @@ func Test_IndexOfAddress(t *testing.T) {
 func Test_RemoveAddress(t *testing.T) {
 	t.Parallel()
 
-	addrs := makeAddreses(t, 10)
+	addrs := swarm.RandAddresses(t, 10)
 	tt := []struct {
 		addresses []swarm.Address
 		remove    swarm.Address
 	}{
 		{addresses: nil, remove: swarm.Address{}},
-		{addresses: nil, remove: makeAddress(t)},
-		{addresses: makeAddreses(t, 0), remove: makeAddress(t)},
-		{addresses: makeAddreses(t, 10), remove: makeAddress(t)},
+		{addresses: nil, remove: swarm.RandAddress(t)},
+		{addresses: swarm.RandAddresses(t, 0), remove: swarm.RandAddress(t)},
+		{addresses: swarm.RandAddresses(t, 10), remove: swarm.RandAddress(t)},
 		{addresses: addrs, remove: addrs[0]},
 		{addresses: addrs, remove: addrs[1]},
 		{addresses: addrs, remove: addrs[3]},
@@ -102,9 +101,9 @@ func Test_IndexOfChunkWithAddress(t *testing.T) {
 	t.Parallel()
 
 	chunks := []swarm.Chunk{
-		swarm.NewChunk(makeAddress(t), nil),
-		swarm.NewChunk(makeAddress(t), nil),
-		swarm.NewChunk(makeAddress(t), nil),
+		swarm.NewChunk(swarm.RandAddress(t), nil),
+		swarm.NewChunk(swarm.RandAddress(t), nil),
+		swarm.NewChunk(swarm.RandAddress(t), nil),
 	}
 	tt := []struct {
 		chunks  []swarm.Chunk
@@ -112,11 +111,11 @@ func Test_IndexOfChunkWithAddress(t *testing.T) {
 		result  int
 	}{
 		{chunks: nil, address: swarm.Address{}, result: -1},
-		{chunks: nil, address: makeAddress(t), result: -1},
-		{chunks: make([]swarm.Chunk, 0), address: makeAddress(t), result: -1},
-		{chunks: make([]swarm.Chunk, 10), address: makeAddress(t), result: -1},
+		{chunks: nil, address: swarm.RandAddress(t), result: -1},
+		{chunks: make([]swarm.Chunk, 0), address: swarm.RandAddress(t), result: -1},
+		{chunks: make([]swarm.Chunk, 10), address: swarm.RandAddress(t), result: -1},
 		{chunks: make([]swarm.Chunk, 10), address: swarm.Address{}, result: -1},
-		{chunks: chunks, address: makeAddress(t), result: -1},
+		{chunks: chunks, address: swarm.RandAddress(t), result: -1},
 		{chunks: chunks, address: chunks[0].Address(), result: 0},
 		{chunks: chunks, address: chunks[1].Address(), result: 1},
 		{chunks: chunks, address: chunks[2].Address(), result: 2},
@@ -134,9 +133,9 @@ func Test_ContainsChunkWithData(t *testing.T) {
 	t.Parallel()
 
 	chunks := []swarm.Chunk{
-		swarm.NewChunk(makeAddress(t), nil),
-		swarm.NewChunk(makeAddress(t), []byte{1, 1, 1}),
-		swarm.NewChunk(makeAddress(t), []byte{2, 2, 2}),
+		swarm.NewChunk(swarm.RandAddress(t), nil),
+		swarm.NewChunk(swarm.RandAddress(t), []byte{1, 1, 1}),
+		swarm.NewChunk(swarm.RandAddress(t), []byte{2, 2, 2}),
 	}
 	tt := []struct {
 		chunks   []swarm.Chunk
@@ -186,10 +185,10 @@ func Test_FindStampWithBatchID(t *testing.T) {
 		// do not contain
 		{stamps: nil, batchID: nil},
 		{stamps: nil, batchID: makeStamp(t).BatchID()},
-		{stamps: make([]swarm.Stamp, 0), batchID: makeBatchID(t)},
-		{stamps: make([]swarm.Stamp, 10), batchID: makeBatchID(t)},
+		{stamps: make([]swarm.Stamp, 0), batchID: swarm.RandBatchID(t)},
+		{stamps: make([]swarm.Stamp, 10), batchID: swarm.RandBatchID(t)},
 		{stamps: make([]swarm.Stamp, 10), batchID: nil},
-		{stamps: stamps, batchID: makeBatchID(t)},
+		{stamps: stamps, batchID: swarm.RandBatchID(t)},
 	}
 
 	for _, tc := range tt {
@@ -211,33 +210,11 @@ func cloneAddresses(addrs []swarm.Address) []swarm.Address {
 	return result
 }
 
-func makeAddreses(t *testing.T, count int) []swarm.Address {
-	t.Helper()
-
-	result := make([]swarm.Address, count)
-	for i := 0; i < count; i++ {
-		result[i] = makeAddress(t)
-	}
-	return result
-}
-
-func makeAddress(t *testing.T) swarm.Address {
-	t.Helper()
-
-	return swarm.NewAddress(testutil.RandBytes(t, swarm.HashSize))
-}
-
-func makeBatchID(t *testing.T) []byte {
-	t.Helper()
-
-	return testutil.RandBytes(t, swarm.HashSize)
-}
-
 func makeStamp(t *testing.T) swarm.Stamp {
 	t.Helper()
 
 	return stamp{
-		batchID: makeBatchID(t),
+		batchID: swarm.RandBatchID(t),
 	}
 }
 

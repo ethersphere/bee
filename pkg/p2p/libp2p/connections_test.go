@@ -23,18 +23,16 @@ import (
 	"github.com/ethersphere/bee/pkg/spinlock"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
-	"github.com/libp2p/go-eventbus"
+	"github.com/libp2p/go-libp2p/p2p/host/eventbus"
+
 	libp2pm "github.com/libp2p/go-libp2p"
-	"github.com/libp2p/go-libp2p-core/event"
-	"github.com/libp2p/go-libp2p-core/host"
-	"github.com/libp2p/go-libp2p-core/mux"
-	"github.com/libp2p/go-libp2p-core/network"
-	libp2ppeer "github.com/libp2p/go-libp2p-core/peer"
-	swarmt "github.com/libp2p/go-libp2p-swarm/testing"
-	goyamux "github.com/libp2p/go-libp2p-yamux"
+	"github.com/libp2p/go-libp2p/core/event"
+	"github.com/libp2p/go-libp2p/core/host"
+	"github.com/libp2p/go-libp2p/core/network"
+	libp2ppeer "github.com/libp2p/go-libp2p/core/peer"
 	bhost "github.com/libp2p/go-libp2p/p2p/host/basic"
+	swarmt "github.com/libp2p/go-libp2p/p2p/net/swarm/testing"
 	ma "github.com/multiformats/go-multiaddr"
 )
 
@@ -116,7 +114,7 @@ func TestLightPeerLimit(t *testing.T) {
 
 	var (
 		limit     = 3
-		container = lightnode.NewContainer(test.RandomAddress())
+		container = lightnode.NewContainer(swarm.RandAddress(t))
 		notifier  = mockNotifier(noopCf, noopDf, true)
 		sf, _     = newService(t, 1, libp2pServiceOpts{
 			lightNodes: container,
@@ -159,6 +157,8 @@ func TestLightPeerLimit(t *testing.T) {
 func TestStreamsMaxIncomingLimit(t *testing.T) {
 	t.Parallel()
 
+	maxIncomingStreams := 5000
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -167,6 +167,11 @@ func TestStreamsMaxIncomingLimit(t *testing.T) {
 	}})
 	s2, overlay2 := newService(t, 1, libp2pServiceOpts{})
 
+	var (
+		streamsMu sync.Mutex
+		streams   = make([]p2p.Stream, 0)
+	)
+
 	testProtocolSpec := p2p.ProtocolSpec{
 		Name:    testProtocolName,
 		Version: testProtocolVersion,
@@ -174,13 +179,16 @@ func TestStreamsMaxIncomingLimit(t *testing.T) {
 			{
 				Name: testStreamName,
 				Handler: func(ctx context.Context, p p2p.Peer, s p2p.Stream) error {
+					streamsMu.Lock()
+					defer streamsMu.Unlock()
+
+					streams = append(streams, s)
 					return nil
 				},
 			},
 		},
 	}
 
-	streams := make([]p2p.Stream, 0)
 	t.Cleanup(func() {
 		for _, s := range streams {
 			if err := s.Reset(); err != nil {
@@ -190,11 +198,10 @@ func TestStreamsMaxIncomingLimit(t *testing.T) {
 	})
 
 	testProtocolClient := func() error {
-		s, err := s2.NewStream(ctx, overlay1, nil, testProtocolName, testProtocolVersion, testStreamName)
+		_, err := s2.NewStream(ctx, overlay1, nil, testProtocolName, testProtocolVersion, testStreamName)
 		if err != nil {
 			return err
 		}
-		streams = append(streams, s)
 		// do not close or rest the stream in defer in order to keep the stream active
 		return nil
 	}
@@ -210,35 +217,33 @@ func TestStreamsMaxIncomingLimit(t *testing.T) {
 	expectPeers(t, s2, overlay1)
 	expectPeersEventually(t, s1, overlay2)
 
-	maxIncomingStreams := goyamux.DefaultTransport.MaxIncomingStreams
-
 	overflowStreamCount := maxIncomingStreams / 4
 
 	// create streams over the limit
 
-	for i := uint32(0); i < maxIncomingStreams+overflowStreamCount; i++ {
+	for i := 0; i < maxIncomingStreams+overflowStreamCount; i++ {
 		err := testProtocolClient()
 		if i < maxIncomingStreams {
 			if err != nil {
 				t.Errorf("test protocol client %v: %v", i, err)
 			}
 		} else {
-			if !errors.Is(err, mux.ErrReset) {
-				t.Errorf("test protocol client %v error %v, want %v", i, err, mux.ErrReset)
+			if err == nil {
+				t.Errorf("test protocol client %v got nil error", i)
 			}
 		}
 	}
 
-	if uint32(len(streams)) != maxIncomingStreams {
-		t.Errorf("got %v streams, want %v", uint32(len(streams)), maxIncomingStreams)
+	if len(streams) != maxIncomingStreams {
+		t.Errorf("got %v streams, want %v", len(streams), maxIncomingStreams)
 	}
 
-	closeStreamCount := uint32(len(streams) / 2)
+	closeStreamCount := len(streams) / 2
 
 	// close random streams to validate new streams creation
 
 	random := rand.New(rand.NewSource(time.Now().UnixNano()))
-	for i := 0; i < int(closeStreamCount); i++ {
+	for i := 0; i < closeStreamCount; i++ {
 		n := random.Intn(len(streams))
 		if err := streams[n].Reset(); err != nil {
 			t.Error(err)
@@ -247,27 +252,27 @@ func TestStreamsMaxIncomingLimit(t *testing.T) {
 		streams = append(streams[:n], streams[n+1:]...)
 	}
 
-	if maxIncomingStreams-uint32(len(streams)) != closeStreamCount {
-		t.Errorf("got %v closed streams, want %v", maxIncomingStreams-uint32(len(streams)), closeStreamCount)
+	if maxIncomingStreams-len(streams) != closeStreamCount {
+		t.Errorf("got %v closed streams, want %v", maxIncomingStreams-len(streams), closeStreamCount)
 	}
 
 	// create new streams
 
-	for i := uint32(0); i < closeStreamCount+overflowStreamCount; i++ {
+	for i := 0; i < closeStreamCount+overflowStreamCount; i++ {
 		err := testProtocolClient()
 		if i < closeStreamCount {
 			if err != nil {
 				t.Errorf("test protocol client %v: %v", i, err)
 			}
 		} else {
-			if !errors.Is(err, mux.ErrReset) {
-				t.Errorf("test protocol client %v error %v, want %v", i, err, mux.ErrReset)
+			if err == nil {
+				t.Errorf("test protocol client %v got nil error", i)
 			}
 		}
 	}
 
-	if uint32(len(streams)) != maxIncomingStreams {
-		t.Errorf("got %v streams, want %v", uint32(len(streams)), maxIncomingStreams)
+	if len(streams) != maxIncomingStreams {
+		t.Errorf("got %v streams, want %v", len(streams), maxIncomingStreams)
 	}
 
 	expectPeers(t, s2, overlay1)
@@ -1147,7 +1152,7 @@ func expectStreamReset(t *testing.T, s io.ReadCloser, err error) {
 
 	// due to the fact that disconnect method is asynchronous
 	// stream reset error should occur either on creation or on first read attempt
-	if err != nil && !errors.Is(err, mux.ErrReset) {
+	if err != nil && !errors.Is(err, network.ErrReset) {
 		t.Fatalf("expected stream reset error, got %v", err)
 	}
 
@@ -1163,7 +1168,7 @@ func expectStreamReset(t *testing.T, s io.ReadCloser, err error) {
 		case <-time.After(60 * time.Second):
 			t.Error("expected stream reset error, got timeout reading")
 		case err := <-readErr:
-			if !errors.Is(err, mux.ErrReset) {
+			if !errors.Is(err, network.ErrReset) {
 				t.Errorf("expected stream reset error, got %v", err)
 			}
 		}

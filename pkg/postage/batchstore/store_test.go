@@ -17,15 +17,12 @@ import (
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/swarm/test"
 )
 
 var noopEvictFn = func([]byte) error { return nil }
 
-var baseAddr = test.RandomAddress()
-
 func TestBatchStore_Get(t *testing.T) {
-	t.Parallel()
+	baseAddr := swarm.RandAddress(t)
 	testBatch := postagetest.MustNewBatch()
 
 	stateStore := mock.NewStateStore()
@@ -41,7 +38,7 @@ func TestBatchStore_Get(t *testing.T) {
 }
 
 func TestBatchStore_Iterate(t *testing.T) {
-	t.Parallel()
+	baseAddr := swarm.RandAddress(t)
 	testBatch := postagetest.MustNewBatch()
 	key := batchstore.BatchKey(testBatch.ID)
 
@@ -63,7 +60,7 @@ func TestBatchStore_Iterate(t *testing.T) {
 }
 
 func TestBatchStore_IterateStopsEarly(t *testing.T) {
-	t.Parallel()
+	baseAddr := swarm.RandAddress(t)
 	testBatch1 := postagetest.MustNewBatch()
 	key1 := batchstore.BatchKey(testBatch1.ID)
 
@@ -114,8 +111,7 @@ func TestBatchStore_IterateStopsEarly(t *testing.T) {
 }
 
 func TestBatchStore_SaveAndUpdate(t *testing.T) {
-	t.Parallel()
-
+	baseAddr := swarm.RandAddress(t)
 	testBatch := postagetest.MustNewBatch()
 	key := batchstore.BatchKey(testBatch.ID)
 
@@ -165,7 +161,7 @@ func TestBatchStore_SaveAndUpdate(t *testing.T) {
 }
 
 func TestBatchStore_GetChainState(t *testing.T) {
-	t.Parallel()
+	baseAddr := swarm.RandAddress(t)
 	testChainState := postagetest.NewChainState()
 
 	stateStore := mock.NewStateStore()
@@ -183,6 +179,7 @@ func TestBatchStore_PutChainState(t *testing.T) {
 	t.Parallel()
 	testChainState := postagetest.NewChainState()
 
+	baseAddr := swarm.RandAddress(t)
 	stateStore := mock.NewStateStore()
 	batchStore, _ := batchstore.New(stateStore, nil, baseAddr, log.Noop)
 
@@ -200,7 +197,7 @@ func TestBatchStore_SetStorageRadius(t *testing.T) {
 		oldStorageRadius uint8 = 5
 		newStorageRadius uint8 = 3
 	)
-
+	baseAddr := swarm.RandAddress(t)
 	stateStore := mock.NewStateStore()
 	_ = stateStore.Put(batchstore.ReserveStateKey, &postage.ReserveState{Radius: radius})
 	batchStore, _ := batchstore.New(stateStore, nil, baseAddr, log.Noop)
@@ -228,12 +225,13 @@ func TestBatchStore_IsWithinRadius(t *testing.T) {
 
 	storageRadius := 2
 
+	baseAddr := swarm.RandAddress(t)
 	stateStore := mock.NewStateStore()
 	_ = stateStore.Put(batchstore.ReserveStateKey, &postage.ReserveState{Radius: 2, StorageRadius: uint8(storageRadius)})
 	batchStore, _ := batchstore.New(stateStore, nil, baseAddr, log.Noop)
 
 	for i := 0; i < 5; i++ {
-		addr := test.RandomAddressAt(baseAddr, i)
+		addr := swarm.RandAddressAt(t, baseAddr, i)
 
 		got := batchStore.IsWithinStorageRadius(addr)
 		withinRadius := i >= storageRadius
@@ -264,6 +262,7 @@ func TestBatchStore_Reset(t *testing.T) {
 	}
 	defer stateStore.Close()
 
+	baseAddr := swarm.RandAddress(t)
 	batchStore, _ := batchstore.New(stateStore, noopEvictFn, baseAddr, log.Noop)
 	err = batchStore.Save(testBatch)
 	if err != nil {
