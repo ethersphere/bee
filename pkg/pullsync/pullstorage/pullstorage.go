@@ -157,7 +157,7 @@ func (s *PullStorer) Put(ctx context.Context, chunks ...swarm.Chunk) error {
 	for _, c := range chunks {
 		err := putter.Put(ctx, c)
 		if err != nil {
-			putter.Cleanup()
+			_ = putter.Cleanup()
 			return err
 		}
 	}
