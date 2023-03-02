@@ -449,7 +449,10 @@ func (m *Delivery) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthPushsync
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthPushsync
 			}
 			if (iNdEx + skippy) > l {
@@ -601,7 +604,10 @@ func (m *Receipt) Unmarshal(dAtA []byte) error {
 			if err != nil {
 				return err
 			}
-			if (skippy < 0) || (iNdEx+skippy) < 0 {
+			if skippy < 0 {
+				return ErrInvalidLengthPushsync
+			}
+			if (iNdEx + skippy) < 0 {
 				return ErrInvalidLengthPushsync
 			}
 			if (iNdEx + skippy) > l {

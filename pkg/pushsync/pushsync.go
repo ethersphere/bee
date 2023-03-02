@@ -72,13 +72,18 @@ type Receipt struct {
 	Nonce     []byte
 }
 
+type RadiusChecker interface {
+	IsWithinStorageRadius(addr swarm.Address) bool
+	StorageRadius() uint8
+}
+
 type PushSync struct {
 	address        swarm.Address
 	nonce          []byte
 	streamer       p2p.StreamerDisconnecter
 	storer         storage.Putter
 	topologyDriver topology.Driver
-	radiusChecker  postage.RadiusChecker
+	radiusChecker  RadiusChecker
 	tagger         *tags.Tags
 	unwrap         func(swarm.Chunk)
 	logger         log.Logger
@@ -101,7 +106,7 @@ type receiptResult struct {
 	err      error
 }
 
-func New(address swarm.Address, nonce []byte, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, rs postage.RadiusChecker, tagger *tags.Tags, includeSelf bool, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger log.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer, warmupTime time.Duration) *PushSync {
+func New(address swarm.Address, nonce []byte, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, rs RadiusChecker, tagger *tags.Tags, includeSelf bool, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger log.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer, warmupTime time.Duration) *PushSync {
 	ps := &PushSync{
 		address:        address,
 		nonce:          nonce,
