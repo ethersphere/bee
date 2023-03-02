@@ -9,11 +9,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"path"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/localstorev2/internal"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
+	"github.com/ethersphere/bee/pkg/storagev2/storageutil"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/google/uuid"
 )
@@ -114,7 +114,7 @@ func (p *pinCollectionItem) Clone() storage.Item {
 }
 
 func (p pinCollectionItem) String() string {
-	return path.Join(p.Namespace(), p.ID())
+	return storageutil.JoinFields(p.Namespace(), p.ID())
 }
 
 var _ storage.Item = (*pinChunkItem)(nil)
@@ -153,7 +153,7 @@ func (p *pinChunkItem) Clone() storage.Item {
 }
 
 func (p pinChunkItem) String() string {
-	return path.Join(p.Namespace(), p.ID())
+	return storageutil.JoinFields(p.Namespace(), p.ID())
 }
 
 // NewCollection returns a putter wrapped around the passed storage.
