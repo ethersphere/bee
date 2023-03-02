@@ -87,18 +87,18 @@ func NewProof(proofp1, proofp2 bmt.Proof, proofp3 bmt.Proof, stamp Stamp, chunkA
 	//              return entityProof{}, errors.New("failed p2p3 data check")
 	//      }
 
-	p1Sisters := make([]hexByte, len(proofp1.Sisters))
-	for i, sister := range proofp1.Sisters {
+	p1Sisters := make([]hexByte, len(proofp1.ProofSegments))
+	for i, sister := range proofp1.ProofSegments {
 		p1Sisters[i] = sister
 	}
 
-	p2Sisters := make([]hexByte, len(proofp2.Sisters))
-	for i, sister := range proofp2.Sisters {
+	p2Sisters := make([]hexByte, len(proofp2.ProofSegments))
+	for i, sister := range proofp2.ProofSegments {
 		p2Sisters[i] = sister
 	}
 
-	p3Sisters := make([]hexByte, len(proofp3.Sisters))
-	for i, sister := range proofp3.Sisters {
+	p3Sisters := make([]hexByte, len(proofp3.ProofSegments))
+	for i, sister := range proofp3.ProofSegments {
 		p3Sisters[i] = sister
 	}
 
@@ -117,9 +117,9 @@ func NewProof(proofp1, proofp2 bmt.Proof, proofp3 bmt.Proof, stamp Stamp, chunkA
 
 	return entityProof{
 		p1Sisters,
-		proofp1.Section,
+		proofp1.ProveSegment,
 		p2Sisters,
-		proofp2.Section,
+		proofp2.ProveSegment,
 		uint64(binary.LittleEndian.Uint64(proofp2.Span[:swarm.SpanSize])), // should be uint64 on the other size; copied from pkg/api/bytes.go
 		p3Sisters,
 		batchOwner,

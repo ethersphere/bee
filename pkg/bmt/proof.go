@@ -11,9 +11,9 @@ type Prover struct {
 
 // Proof represents a Merkle proof of segment
 type Proof struct {
-	Section []byte
-	Sisters [][]byte
-	Span    []byte
+	ProveSegment  []byte
+	ProofSegments [][]byte
+	Span          []byte
 }
 
 // Proof returns the inclusion proof of the i-th data segment
@@ -24,14 +24,29 @@ func (p Prover) Proof(i int) Proof {
 	i = i / 2
 	n := p.bmt.leaves[i]
 	isLeft := n.isLeft
+	secsize := p.segmentSize
+	offset := i * secsize
+	leafSisterSegmentCoefficient := -1
+	if isLeft {
+		leafSisterSegmentCoefficient = 1
+	}
+	leafSisterSegmentOffset := offset + secsize*leafSisterSegmentCoefficient
+
+	// sisters := make([][]byte, 7)
+
 	var sisters [][]byte
+	// sisters[0] = p.bmt.buffer[leafSisterSegmentOffset : leafSisterSegmentOffset+secsize]
+	// sisters[0] = n.getSister(isLeft) -> does not work
+	// sisters = append(sisters, n.getSister(isLeft))
+	sisters = append(sisters, p.bmt.buffer[leafSisterSegmentOffset:leafSisterSegmentOffset+secsize])
+	sistersIndex := 1
 	for n = n.parent; n != nil; n = n.parent {
+		// sisters[sistersIndex] = n.getSister(isLeft)
 		sisters = append(sisters, n.getSister(isLeft))
 		isLeft = n.isLeft
+		sistersIndex++
 	}
 
-	secsize := 2 * p.segmentSize
-	offset := i * secsize
 	section := p.bmt.buffer[offset : offset+secsize]
 	return Proof{section, sisters, p.span}
 }
@@ -42,13 +57,13 @@ func (p Prover) Verify(i int, proof Proof) (root []byte, err error) {
 	i = i / 2
 	n := p.bmt.leaves[i]
 	isLeft := n.isLeft
-	root, err = doHash(n.hasher, proof.Section)
+	root, err = doHash(n.hasher, proof.ProveSegment)
 	if err != nil {
 		return nil, err
 	}
 	n = n.parent
 
-	for _, sister := range proof.Sisters {
+	for _, sister := range proof.ProofSegments {
 		if isLeft {
 			root, err = doHash(n.hasher, root, sister)
 		} else {

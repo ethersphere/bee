@@ -41,13 +41,13 @@ func (p TrProver) Verify(i int, key []byte, proof Proof) (root []byte, err error
 	i = i / 2
 	n := p.bmt.leaves[i]
 	isLeft := n.isLeft
-	root, err = trDoHash(n.hasher, key, proof.Section)
+	root, err = trDoHash(n.hasher, key, proof.ProveSegment)
 	if err != nil {
 		return nil, err
 	}
 	n = n.parent
 
-	for _, sister := range proof.Sisters {
+	for _, sister := range proof.ProofSegments {
 		if isLeft {
 			root, err = trDoHash(n.hasher, key, root, sister)
 		} else {
