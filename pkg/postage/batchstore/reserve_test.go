@@ -27,6 +27,7 @@ type testBatch struct {
 // TestBatchSave adds batches to the batchstore, and after each batch, checks
 // the reserve state radius.
 func TestBatchSave(t *testing.T) {
+	t.Parallel()
 
 	totalCapacity := batchstore.Exp2(5)
 
@@ -106,6 +107,7 @@ func TestBatchSave(t *testing.T) {
 // TestBatchUpdate adds an initial group of batches to the batchstore and one by one
 // updates their depth and value fields while checking the batchstore radius values.
 func TestBatchUpdate(t *testing.T) {
+	t.Parallel()
 
 	totalCapacity := batchstore.Exp2(5)
 
@@ -207,6 +209,7 @@ func TestBatchUpdate(t *testing.T) {
 // TestPutChainState add a group of batches to the batchstore, and after updating the chainstate,
 // checks the batchstore radius reflects the updates.
 func TestPutChainState(t *testing.T) {
+	t.Parallel()
 
 	totalCapacity := batchstore.Exp2(5)
 
@@ -289,6 +292,7 @@ func TestPutChainState(t *testing.T) {
 // TestUnreserve tests the Unreserve call increases the storage radius after each
 // full iteration and that the storage radius is calculated correctly after a radius decrease.
 func TestUnreserveAndLowerStorageRadius(t *testing.T) {
+	t.Parallel()
 
 	totalCapacity := batchstore.Exp2(5)
 	defer func(i int64) {
@@ -388,6 +392,7 @@ func TestUnreserveAndLowerStorageRadius(t *testing.T) {
 }
 
 func TestBatchExpiry(t *testing.T) {
+	t.Parallel()
 	store := setupBatchStore(t)
 
 	batch := postagetest.MustNewBatch(
@@ -419,6 +424,7 @@ func TestBatchExpiry(t *testing.T) {
 }
 
 func TestUnexpiredBatch(t *testing.T) {
+	t.Parallel()
 	store := setupBatchStore(t)
 
 	batch := postagetest.MustNewBatch(

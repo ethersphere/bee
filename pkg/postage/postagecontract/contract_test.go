@@ -28,6 +28,7 @@ import (
 var postageStampContractABI = abiutil.MustParseABI(chaincfg.Testnet.PostageStampABI)
 
 func TestCreateBatch(t *testing.T) {
+	t.Parallel()
 	defer func(b uint8) {
 		postagecontract.BucketDepth = b
 	}(postagecontract.BucketDepth)
@@ -40,6 +41,7 @@ func TestCreateBatch(t *testing.T) {
 	initialBalance := big.NewInt(100)
 
 	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
 
 		depth := uint8(10)
 		totalAmount := big.NewInt(102400)
@@ -144,6 +146,7 @@ func TestCreateBatch(t *testing.T) {
 	})
 
 	t.Run("invalid depth", func(t *testing.T) {
+		t.Parallel()
 		depth := uint8(9)
 
 		contract := postagecontract.New(
@@ -164,6 +167,7 @@ func TestCreateBatch(t *testing.T) {
 	})
 
 	t.Run("insufficient funds", func(t *testing.T) {
+		t.Parallel()
 		depth := uint8(10)
 		totalAmount := big.NewInt(102399)
 
@@ -213,6 +217,7 @@ func newCreateEvent(postageContractAddress common.Address, batchId common.Hash) 
 }
 
 func TestTopUpBatch(t *testing.T) {
+	t.Parallel()
 	defer func(b uint8) {
 		postagecontract.BucketDepth = b
 	}(postagecontract.BucketDepth)
@@ -224,6 +229,7 @@ func TestTopUpBatch(t *testing.T) {
 	topupBalance := big.NewInt(100)
 
 	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
 
 		totalAmount := big.NewInt(102400)
 		txHashApprove := common.HexToHash("abb0")
@@ -308,6 +314,7 @@ func TestTopUpBatch(t *testing.T) {
 	})
 
 	t.Run("batch doesnt exist", func(t *testing.T) {
+		t.Parallel()
 		errNotFound := errors.New("not found")
 		contract := postagecontract.New(
 			owner,
@@ -327,6 +334,7 @@ func TestTopUpBatch(t *testing.T) {
 	})
 
 	t.Run("insufficient funds", func(t *testing.T) {
+		t.Parallel()
 		totalAmount := big.NewInt(102399)
 		batch := postagetesting.MustNewBatch(postagetesting.WithOwner(owner.Bytes()))
 		batchStoreMock := postagestoreMock.New(postagestoreMock.WithBatch(batch))
@@ -374,6 +382,7 @@ func newTopUpEvent(postageContractAddress common.Address, batch *postage.Batch) 
 }
 
 func TestDiluteBatch(t *testing.T) {
+	t.Parallel()
 	defer func(b uint8) {
 		postagecontract.BucketDepth = b
 	}(postagecontract.BucketDepth)
@@ -384,6 +393,7 @@ func TestDiluteBatch(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
 
 		txHashDilute := common.HexToHash("c3a7")
 		batch := postagetesting.MustNewBatch(postagetesting.WithOwner(owner.Bytes()))
@@ -494,6 +504,7 @@ func TestDiluteBatch(t *testing.T) {
 	})
 
 	t.Run("batch doesnt exist", func(t *testing.T) {
+		t.Parallel()
 		errNotFound := errors.New("not found")
 		contract := postagecontract.New(
 			owner,
@@ -513,6 +524,7 @@ func TestDiluteBatch(t *testing.T) {
 	})
 
 	t.Run("invalid depth", func(t *testing.T) {
+		t.Parallel()
 		batch := postagetesting.MustNewBatch(postagetesting.WithOwner(owner.Bytes()))
 		batch.Depth = uint8(16)
 		batchStoreMock := postagestoreMock.New(postagestoreMock.WithBatch(batch))

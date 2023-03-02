@@ -25,6 +25,7 @@ var noopEvictFn = func([]byte) error { return nil }
 var baseAddr = test.RandomAddress()
 
 func TestBatchStore_Get(t *testing.T) {
+	t.Parallel()
 	testBatch := postagetest.MustNewBatch()
 
 	stateStore := mock.NewStateStore()
@@ -40,6 +41,7 @@ func TestBatchStore_Get(t *testing.T) {
 }
 
 func TestBatchStore_Iterate(t *testing.T) {
+	t.Parallel()
 	testBatch := postagetest.MustNewBatch()
 	key := batchstore.BatchKey(testBatch.ID)
 
@@ -61,6 +63,7 @@ func TestBatchStore_Iterate(t *testing.T) {
 }
 
 func TestBatchStore_IterateStopsEarly(t *testing.T) {
+	t.Parallel()
 	testBatch1 := postagetest.MustNewBatch()
 	key1 := batchstore.BatchKey(testBatch1.ID)
 
@@ -111,6 +114,7 @@ func TestBatchStore_IterateStopsEarly(t *testing.T) {
 }
 
 func TestBatchStore_SaveAndUpdate(t *testing.T) {
+	t.Parallel()
 
 	testBatch := postagetest.MustNewBatch()
 	key := batchstore.BatchKey(testBatch.ID)
@@ -161,6 +165,7 @@ func TestBatchStore_SaveAndUpdate(t *testing.T) {
 }
 
 func TestBatchStore_GetChainState(t *testing.T) {
+	t.Parallel()
 	testChainState := postagetest.NewChainState()
 
 	stateStore := mock.NewStateStore()
@@ -175,6 +180,7 @@ func TestBatchStore_GetChainState(t *testing.T) {
 }
 
 func TestBatchStore_PutChainState(t *testing.T) {
+	t.Parallel()
 	testChainState := postagetest.NewChainState()
 
 	stateStore := mock.NewStateStore()
@@ -187,6 +193,7 @@ func TestBatchStore_PutChainState(t *testing.T) {
 }
 
 func TestBatchStore_SetStorageRadius(t *testing.T) {
+	t.Parallel()
 
 	var (
 		radius           uint8 = 5
@@ -238,6 +245,7 @@ func TestBatchStore_IsWithinRadius(t *testing.T) {
 }
 
 func TestBatchStore_Reset(t *testing.T) {
+	t.Parallel()
 	testChainState := postagetest.NewChainState()
 	testBatch := postagetest.MustNewBatch(
 		postagetest.WithValue(15),
