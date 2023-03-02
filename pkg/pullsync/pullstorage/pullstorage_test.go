@@ -61,6 +61,8 @@ func someDescriptors(i ...int) (d []storage.Descriptor) {
 func TestIntervalChunks(t *testing.T) {
 	t.Parallel()
 
+	t.Fatal("FAIL NOW")
+
 	// we need to check four cases of the subscribe pull iterator:
 	// - no chunks in interval
 	// - less chunks reported than what is in the interval (but interval still intact, probably old chunks GCd)
@@ -111,6 +113,8 @@ func TestIntervalChunks(t *testing.T) {
 func TestIntervalChunksTimeout(t *testing.T) {
 	t.Parallel()
 
+	t.Fatal("FAIL NOW")
+
 	ctx, cancel := context.WithTimeout(context.Background(), 0)
 	defer cancel()
 	<-ctx.Done()
@@ -128,6 +132,8 @@ func TestIntervalChunksTimeout(t *testing.T) {
 // exits correctly.
 func TestIntervalChunks_GetChunksLater(t *testing.T) {
 	t.Parallel()
+
+	t.Fatal("FAIL NOW")
 
 	desc := someDescriptors(0, 2)
 	ps, db := newPullStorage(t, mock.WithSubscribePullChunks(desc...), mock.WithPartialInterval(true))
@@ -156,6 +162,8 @@ func TestIntervalChunks_GetChunksLater(t *testing.T) {
 
 func TestIntervalChunks_Blocking(t *testing.T) {
 	t.Parallel()
+
+	t.Fatal("FAIL NOW")
 
 	desc := someDescriptors(0, 2)
 	ps, _ := newPullStorage(t, mock.WithSubscribePullChunks(desc...), mock.WithPartialInterval(true))
@@ -199,6 +207,8 @@ func TestIntervalChunks_DbShutdown(t *testing.T) {
 // localstore instance.
 func TestIntervalChunks_Localstore(t *testing.T) {
 	t.Parallel()
+
+	t.Fatal("FAIL NOW")
 
 	fill := func(f, t int) (ints []int) {
 		for i := f; i <= t; i++ {
@@ -339,6 +349,8 @@ func TestIntervalChunks_Localstore(t *testing.T) {
 func TestIntervalChunks_IteratorShare(t *testing.T) {
 	t.Parallel()
 
+	t.Fatal("FAIL NOW")
+
 	desc := someDescriptors(0, 2)
 	ps, db := newPullStorage(t, mock.WithSubscribePullChunks(desc...), mock.WithPartialInterval(true))
 
@@ -406,6 +418,8 @@ func TestIntervalChunks_IteratorShare(t *testing.T) {
 // a fresh subscription call should be made and results should be shared
 func TestIntervalChunks_IteratorShareContextCancellation(t *testing.T) {
 	t.Parallel()
+
+	t.Fatal("FAIL NOW")
 
 	type result struct {
 		addrs []swarm.Address
