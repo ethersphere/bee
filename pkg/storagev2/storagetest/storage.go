@@ -12,7 +12,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"path"
 	"runtime"
 	"strconv"
 	"strings"
@@ -20,6 +19,7 @@ import (
 	"testing"
 
 	storage "github.com/ethersphere/bee/pkg/storagev2"
+	"github.com/ethersphere/bee/pkg/storagev2/storageutil"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
 )
@@ -78,7 +78,7 @@ func (im *ItemStub) Clone() storage.Item {
 
 // Clone implements the storage.Item interface.
 func (im ItemStub) String() string {
-	return path.Join(im.Namespace(), im.ID())
+	return storageutil.JoinFields(im.Namespace(), im.ID())
 }
 
 type obj1 struct {
@@ -121,7 +121,7 @@ func (o *obj1) Clone() storage.Item {
 }
 
 func (o obj1) String() string {
-	return path.Join(o.Namespace(), o.ID())
+	return storageutil.JoinFields(o.Namespace(), o.ID())
 }
 
 type obj2 struct {
@@ -150,7 +150,7 @@ func (o *obj2) Clone() storage.Item {
 }
 
 func (o obj2) String() string {
-	return path.Join(o.Namespace(), o.ID())
+	return storageutil.JoinFields(o.Namespace(), o.ID())
 }
 
 func randBytes(count int) []byte {
