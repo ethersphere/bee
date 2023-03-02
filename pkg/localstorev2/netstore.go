@@ -18,8 +18,6 @@ const (
 	directUploadWorkers = 16
 )
 
-var errDBStopped = errors.New("db stopped")
-
 // DirectUpload is the implementation of the NetStore.DirectUpload method.
 func (db *DB) DirectUpload() PutterSession {
 	workers := make(chan struct{}, directUploadWorkers)
@@ -40,7 +38,7 @@ func (db *DB) DirectUpload() PutterSession {
 				case <-egCtx.Done():
 					return egCtx.Err()
 				case <-db.quit:
-					return errDBStopped
+					return errDBQuit
 				case db.pusherFeed <- op:
 					select {
 					case <-ctx.Done():
@@ -48,7 +46,7 @@ func (db *DB) DirectUpload() PutterSession {
 					case <-egCtx.Done():
 						return egCtx.Err()
 					case <-db.quit:
-						return errDBStopped
+						return errDBQuit
 					case err := <-op.Err:
 						return err
 					}
