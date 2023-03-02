@@ -101,12 +101,12 @@ func (db *DB) ReservePutter(ctx context.Context) PutterSession {
 
 	return &putterSession{
 		Putter: storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
-			newChunk, err := db.reserve.Put(ctx, trx, chunk)
+			newIndex, err := db.reserve.Put(ctx, trx, chunk)
 			if err != nil {
 				return err
 			}
 			triggerBins[db.po(chunk.Address())] = true
-			if newChunk {
+			if newIndex {
 				count++
 			}
 			return nil

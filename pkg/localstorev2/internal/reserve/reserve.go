@@ -129,7 +129,8 @@ func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.C
 		// saved to the reserve. We must do the below before saving the new chunk:
 		// 1. Delete the old chunk from the chunkstore
 		// 2. Delete the old chunk's stamp data
-		// 3. Update the stamp index
+		// 3. Delete ALL old chunk related items from the reserve
+		// 4. Update the stamp index
 		newStampIndex = false
 
 		oldChunk := &batchRadiusItem{Bin: po, BatchID: chunk.Stamp().BatchID(), Address: item.ChunkAddress}
