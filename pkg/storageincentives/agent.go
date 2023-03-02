@@ -422,14 +422,25 @@ func (a *Agent) play(ctx context.Context, round uint64, block uint64) (uint8, []
 		return 0, nil, err
 	}
 
-	t := time.Now()
-
 	timeLimiter, err := a.getPreviousRoundTime(ctx)
 	if err != nil {
 		return 0, nil, err
 	}
 
-	nextRoundNumber := (block / a.blocksPerRound) + 1
+	sample, err := a.newSample(ctx, salt, storageRadius, timeLimiter, block)
+	if err != nil {
+		return 0, nil, err
+	}
+
+	return storageRadius, sample.Hash.Bytes(), nil
+}
+
+func (a *Agent) newSample(ctx context.Context, salt []byte, storageRadius uint8, timeLimiter time.Duration, block uint64) (storage.Sample, error) {
+
+	t := time.Now()
+
+	// get round number of the round after the upcoming round
+	nextRoundNumber := (block / a.blocksPerRound) + 2
 	nextRoundBeginningBlock := nextRoundNumber * a.blocksPerRound
 
 	a.latestPriceMtx.Lock()
@@ -442,16 +453,17 @@ func (a *Agent) play(ctx context.Context, round uint64, block uint64) (uint8, []
 	excludedBatchIDs, err := a.radius.GetBatchIDsBelowValue(minimumBalance)
 	if err != nil {
 		a.logger.Error(err, "error getting minimum balance based excluded batchIDs")
-		return 0, nil, err
+		return storage.Sample{}, err
 	}
 
 	sample, err := a.sampler.ReserveSample(ctx, salt, storageRadius, uint64(timeLimiter), excludedBatchIDs)
 	if err != nil {
-		return 0, nil, err
+		return storage.Sample{}, err
 	}
 	a.metrics.SampleDuration.Set(time.Since(t).Seconds())
 
-	return storageRadius, sample.Hash.Bytes(), nil
+	return sample, nil
+
 }
 
 func (a *Agent) getPreviousRoundTime(ctx context.Context) (time.Duration, error) {
