@@ -168,6 +168,9 @@ func (m *mock) NeighborhoodDepth() uint8 {
 	return m.depth
 }
 
+func (m *mock) SetStorageRadius(uint8) {
+}
+
 func (m *mock) EachNeighbor(f topology.EachPeerFunc) error {
 	return m.EachConnectedPeer(f, topology.Filter{})
 }

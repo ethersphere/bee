@@ -32,6 +32,7 @@ type Driver interface {
 	Halter
 	Snapshot() *KadParams
 	IsReachable() bool
+	SetStorageRadiuser
 }
 
 type PeerAdder interface {
