@@ -8,15 +8,16 @@ import (
 	"context"
 	"sync"
 
+	storer "github.com/ethersphere/bee/pkg/localstorev2"
 	"github.com/ethersphere/bee/pkg/pullsync/pullstorage"
-	"github.com/ethersphere/bee/pkg/storage"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 var _ pullstorage.Storer = (*PullStorage)(nil)
 
 type chunksResponse struct {
-	chunks  []swarm.Address
+	chunks  []*storer.BinC
 	topmost uint64
 	err     error
 }
@@ -25,9 +26,9 @@ type chunksResponse struct {
 // Different possible responses for subsequent responses in multi-call scenarios
 // are possible (i.e. first call yields a,b,c, second call yields d,e,f).
 // Mock maintains state of current call using chunksCalls counter.
-func WithIntervalsResp(addrs []swarm.Address, top uint64, err error) Option {
+func WithIntervalsResp(chunks []*storer.BinC, top uint64, err error) Option {
 	return optionFunc(func(p *PullStorage) {
-		p.intervalChunksResponses = append(p.intervalChunksResponses, chunksResponse{chunks: addrs, topmost: top, err: err})
+		p.intervalChunksResponses = append(p.intervalChunksResponses, chunksResponse{chunks: chunks, topmost: top, err: err})
 	})
 }
 
@@ -90,7 +91,7 @@ func NewPullStorage(opts ...Option) *PullStorage {
 }
 
 // IntervalChunks returns a set of chunk in a requested interval.
-func (s *PullStorage) IntervalChunks(_ context.Context, bin uint8, from, to uint64, limit int) (chunks []swarm.Address, topmost uint64, err error) {
+func (s *PullStorage) IntervalChunks(_ context.Context, bin uint8, from, to uint64, limit int) (chunks []*storer.BinC, topmost uint64, err error) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
@@ -120,25 +121,21 @@ func (s *PullStorage) SetCalls() int {
 }
 
 // Get chunks.
-func (s *PullStorage) Get(_ context.Context, _ storage.ModeGet, addrs ...swarm.Address) (chs []swarm.Chunk, err error) {
-	for _, a := range addrs {
-		if s.evilAddr.Equal(a) {
-			//inject the malicious chunk instead
-			chs = append(chs, s.evilChunk)
-			continue
-		}
-
-		if v, ok := s.chunks[a.String()]; ok {
-			chs = append(chs, v)
-		} else if !ok {
-			return nil, storage.ErrNotFound
-		}
+func (s *PullStorage) Get(ctx context.Context, addr swarm.Address, batchID []byte) (swarm.Chunk, error) {
+	if s.evilAddr.Equal(addr) {
+		//inject the malicious chunk instead
+		return s.evilChunk, nil
 	}
-	return chs, nil
+
+	if v, ok := s.chunks[addr.String()]; ok {
+		return v, nil
+	}
+
+	return nil, storage.ErrNotFound
 }
 
 // Put chunks.
-func (s *PullStorage) Put(_ context.Context, _ storage.ModePut, chs ...swarm.Chunk) error {
+func (s *PullStorage) Put(_ context.Context, chs ...swarm.Chunk) error {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 	for _, c := range chs {
@@ -149,16 +146,8 @@ func (s *PullStorage) Put(_ context.Context, _ storage.ModePut, chs ...swarm.Chu
 	return nil
 }
 
-// Set chunks.
-func (s *PullStorage) Set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Address) error {
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-	s.setCalls++
-	return nil
-}
-
 // Has chunks.
-func (s *PullStorage) Has(_ context.Context, addr swarm.Address) (bool, error) {
+func (s *PullStorage) Has(addr swarm.Address, batchID []byte) (bool, error) {
 	if _, ok := s.chunks[addr.String()]; !ok {
 		return false, nil
 	}

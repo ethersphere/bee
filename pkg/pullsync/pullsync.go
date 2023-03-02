@@ -25,7 +25,6 @@ import (
 	"github.com/ethersphere/bee/pkg/pullsync/pullstorage"
 	"github.com/ethersphere/bee/pkg/rate"
 	"github.com/ethersphere/bee/pkg/soc"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -157,20 +156,16 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		return 0, fmt.Errorf("read offer: %w", err)
 	}
 
-	if len(offer.Hashes)%swarm.HashSize != 0 {
-		return 0, fmt.Errorf("inconsistent hash length")
-	}
-
 	// empty interval (no chunks present in interval).
 	// return the end of the requested range as topmost.
-	if len(offer.Hashes) == 0 {
+	if len(offer.Chunks) == 0 {
 		return offer.Topmost, nil
 	}
 
 	topmost := offer.Topmost
 
 	var (
-		bvLen      = len(offer.Hashes) / swarm.HashSize
+		bvLen      = len(offer.Chunks)
 		wantChunks = make(map[string]struct{})
 		ctr        = 0
 		have       bool
@@ -181,8 +176,15 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		return topmost, fmt.Errorf("new bitvector: %w", err)
 	}
 
-	for i := 0; i < len(offer.Hashes); i += swarm.HashSize {
-		a := swarm.NewAddress(offer.Hashes[i : i+swarm.HashSize])
+	for i := 0; i < len(offer.Chunks); i++ {
+
+		addr := offer.Chunks[i].Address
+		batchID := offer.Chunks[i].BatchID
+		if len(addr) != swarm.HashSize {
+			return 0, fmt.Errorf("inconsistent hash length")
+		}
+
+		a := swarm.NewAddress(addr)
 		if a.Equal(swarm.ZeroAddress) {
 			// i'd like to have this around to see we don't see any of these in the logs
 			loggerV2.Debug("syncer got a zero address hash on offer")
@@ -190,9 +192,8 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		}
 		s.metrics.Offered.Inc()
 		s.metrics.DbOps.Inc()
-		po := swarm.Proximity(a.Bytes(), s.overlayAddress.Bytes())
-		if po >= s.radius.StorageRadius() {
-			have, err = s.storage.Has(ctx, a)
+		if swarm.Proximity(a.Bytes(), s.overlayAddress.Bytes()) >= s.radius.StorageRadius() {
+			have, err = s.storage.Has(a, batchID)
 			if err != nil {
 				s.logger.Debug("storage has", "error", err)
 				continue
@@ -202,7 +203,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 				wantChunks[a.ByteString()] = struct{}{}
 				ctr++
 				s.metrics.Wanted.Inc()
-				bv.Set(i / swarm.HashSize)
+				bv.Set(i)
 			}
 		}
 	}
@@ -252,7 +253,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 
 		s.metrics.DbOps.Inc()
 
-		if err := s.storage.Put(ctx, storage.ModePutSync, chunksToPut...); err != nil {
+		if err := s.storage.Put(ctx, chunksToPut...); err != nil {
 			return topmost, fmt.Errorf("delivery put: %w", err)
 		}
 		s.metrics.LastReceived.WithLabelValues(fmt.Sprintf("%d", bin)).Set(float64(time.Now().Unix()))
@@ -304,7 +305,7 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 	}
 
 	// make an offer to the upstream peer in return for the requested range
-	offer, _, err := s.makeOffer(ctx, rn)
+	offer, err := s.makeOffer(ctx, rn)
 	if err != nil {
 		return fmt.Errorf("make offer: %w", err)
 	}
@@ -320,7 +321,7 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 
 	// we don't have any hashes to offer in this range (the
 	// interval is empty). nothing more to do
-	if len(offer.Hashes) == 0 {
+	if len(offer.Chunks) == 0 {
 		return nil
 	}
 
@@ -349,42 +350,46 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 }
 
 // makeOffer tries to assemble an offer for a given requested interval.
-func (s *Syncer) makeOffer(ctx context.Context, rn pb.GetRange) (o *pb.Offer, addrs []swarm.Address, err error) {
+func (s *Syncer) makeOffer(ctx context.Context, rn pb.GetRange) (*pb.Offer, error) {
 
 	ctx, cancel := context.WithTimeout(ctx, makeOfferTimeout)
 	defer cancel()
 
 	chs, top, err := s.storage.IntervalChunks(ctx, uint8(rn.Bin), rn.From, rn.To, maxPage)
 	if err != nil {
-		return o, nil, err
+		return nil, err
 	}
-	o = new(pb.Offer)
+
+	o := new(pb.Offer)
 	o.Topmost = top
-	o.Hashes = make([]byte, 0)
 	for _, v := range chs {
-		o.Hashes = append(o.Hashes, v.Bytes()...)
+		o.Chunks = append(o.Chunks, &pb.Chunk{Address: v.Address.Bytes(), BatchID: v.BatchID})
 	}
-	return o, chs, nil
+	return o, nil
 }
 
 // processWant compares a received Want to a sent Offer and returns
 // the appropriate chunks from the local store.
 func (s *Syncer) processWant(ctx context.Context, o *pb.Offer, w *pb.Want) ([]swarm.Chunk, error) {
-	l := len(o.Hashes) / swarm.HashSize
-	bv, err := bitvector.NewFromBytes(w.BitVector, l)
+	bv, err := bitvector.NewFromBytes(w.BitVector, len(o.Chunks))
 	if err != nil {
 		return nil, err
 	}
 
-	var addrs []swarm.Address
-	for i := 0; i < len(o.Hashes); i += swarm.HashSize {
-		if bv.Get(i / swarm.HashSize) {
-			a := swarm.NewAddress(o.Hashes[i : i+swarm.HashSize])
-			addrs = append(addrs, a)
+	var chunks []swarm.Chunk
+	for i := 0; i < len(o.Chunks); i++ {
+		if bv.Get(i) {
+			ch := o.Chunks[i]
+			c, err := s.storage.Get(ctx, swarm.NewAddress(ch.Address), ch.BatchID)
+			if err != nil {
+				return nil, err
+			}
+			chunks = append(chunks, c)
 		}
 	}
 	s.metrics.DbOps.Inc()
-	return s.storage.Get(ctx, storage.ModeGetSync, addrs...)
+
+	return chunks, nil
 }
 
 func (s *Syncer) GetCursors(ctx context.Context, peer swarm.Address) (retr []uint64, err error) {
