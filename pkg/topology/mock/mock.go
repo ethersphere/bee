@@ -187,6 +187,8 @@ func (m *mock) NeighborhoodDepth() uint8 {
 	return m.depth
 }
 
+func (m *mock) SetStorageRadius(uint8) {}
+
 // EachConnectedPeer implements topology.PeerIterator interface.
 func (d *mock) EachConnectedPeer(f topology.EachPeerFunc, _ topology.Filter) (err error) {
 	d.mtx.Lock()

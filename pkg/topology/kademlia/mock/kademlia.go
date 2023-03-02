@@ -82,6 +82,11 @@ func (m *Mock) UpdatePeerHealth(swarm.Address, bool) {
 }
 
 // PeerIterator iterates from closest bin to farthest
+func (m *Mock) SetStorageRadius(uint8) {
+	panic("not implemented")
+}
+
+// EachConnectedPeer iterates from closest bin to farthest
 func (m *Mock) EachConnectedPeer(f topology.EachPeerFunc, _ topology.Filter) error {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
