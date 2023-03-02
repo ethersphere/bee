@@ -246,23 +246,16 @@ func (db *DB) ReserveSample(
 	for _, s := range sampleItems {
 		sampleContent = append(sampleContent, s.ChunkItem.Address...)
 		sampleContent = append(sampleContent, s.TransformedAddress.Bytes()...)
-		_, err := hasher.Write(s.ChunkItem.Address)
-		if err != nil {
-			db.metrics.SamplerFailedRuns.Inc()
-			return storage.Sample{}, fmt.Errorf("sampler: failed creating root hash of sample: %w", err)
-		}
-		_, err = hasher.Write(s.TransformedAddress.Bytes())
-		if err != nil {
-			db.metrics.SamplerFailedRuns.Inc()
-			return storage.Sample{}, fmt.Errorf("sampler: failed creating root hash of sample: %w", err)
-		}
 	}
-	hash := hasher.Sum(nil)
+	sampleContentChunk, err := cac.New(sampleContent)
+	if err != nil {
+		return storage.Sample{}, fmt.Errorf("sampler: failed creating sampleHash: %w", err)
+	}
 
 	sample := storage.Sample{
 		Items:         sampleItems,
 		SampleContent: sampleContent,
-		Hash:          swarm.NewAddress(hash),
+		Hash:          sampleContentChunk.Address(),
 	}
 	fmt.Println(sample)
 

@@ -5,6 +5,7 @@
 package api
 
 import (
+	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"math/big"
@@ -36,7 +37,7 @@ type entityProof struct {
 	ProofSegments2 []hexByte `json:"proofSegments2"`
 	ProveSegment2  hexByte   `json:"proveSegment2"`
 	// proveSegmentIndex2 known from deterministic random selection;
-	ChunkSpan hexByte `json:"chunkSpan"`
+	ChunkSpan uint64 `json:"chunkSpan"`
 	//
 	ProofSegments3 []hexByte `json:"proofSegments3"`
 	//  _proveSegment3 known, is equal _proveSegment2
@@ -45,7 +46,7 @@ type entityProof struct {
 
 	Signer    hexByte `json:"signer"`
 	Signature hexByte `json:"signature"`
-	ChunkAddr hexByte `json:"chunkAddress"`
+	ChunkAddr hexByte `json:"chunkAddr"`
 	PostageId hexByte `json:"postageId"`
 	Index     hexByte `json:"index"`
 	TimeStamp hexByte `json:"timeStamp"`
@@ -119,11 +120,11 @@ func NewProof(proofp1, proofp2 bmt.Proof, proofp3 bmt.Proof, stamp Stamp, chunkA
 		proofp1.Section,
 		p2Sisters,
 		proofp2.Section,
-		proofp2.Span,
+		uint64(binary.LittleEndian.Uint64(proofp2.Span[:swarm.SpanSize])), // should be uint64 on the other size; copied from pkg/api/bytes.go
 		p3Sisters,
 		batchOwner,
 		stamp.sig,
-		proofp1.Section,
+		chunkAddress,
 		stamp.batchID,
 		stamp.index,
 		stamp.timestamp,
@@ -225,6 +226,8 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 
 	rccontent := pool.Get()
 
+	rccontent.SetHeaderInt64(int64(len(sample.SampleContent)))
+
 	_, err = rccontent.Write(sample.SampleContent)
 	if err != nil {
 		logger.Error(err, "reserve commitment hasher: failure in proof creation")
@@ -248,12 +251,16 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 	chunk1Content := pool.Get()
 	chunk1TrContent := trpool.Get()
 
+	chunk1Content.SetHeaderInt64(int64(len(sample.Items[require1].ChunkItem.Data)))
+
 	_, err = chunk1Content.Write(sample.Items[require1].ChunkItem.Data)
 	if err != nil {
 		logger.Error(err, "reserve commitment hasher: failure in proof creation")
 		jsonhttp.InternalServerError(w, "failure in proof creation")
 		return
 	}
+
+	chunk1TrContent.SetHeaderInt64(int64(len(sample.Items[require1].ChunkItem.Data)))
 
 	_, err = chunk1TrContent.Write(sample.Items[require1].ChunkItem.Data)
 	if err != nil {
@@ -285,6 +292,8 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 	chunk2Content := pool.Get()
 	chunk2TrContent := trpool.Get()
 
+	chunk2Content.SetHeaderInt64(int64(len(sample.Items[require2].ChunkItem.Data)))
+
 	_, err = chunk2Content.Write(sample.Items[require2].ChunkItem.Data)
 	if err != nil {
 		logger.Error(err, "reserve commitment hasher: failure in proof creation")
@@ -292,6 +301,7 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	chunk2TrContent.SetHeaderInt64(int64(len(sample.Items[require2].ChunkItem.Data)))
 	_, err = chunk2TrContent.Write(sample.Items[require2].ChunkItem.Data)
 	if err != nil {
 		logger.Error(err, "reserve commitment hasher: failure in proof creation")
@@ -322,6 +332,8 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 	chunkLastContent := pool.Get()
 	chunkLastTrContent := trpool.Get()
 
+	chunkLastContent.SetHeaderInt64(int64(len(sample.Items[15].ChunkItem.Data)))
+
 	_, err = chunkLastContent.Write(sample.Items[15].ChunkItem.Data)
 	if err != nil {
 		logger.Error(err, "reserve commitment hasher: failure in proof creation")
@@ -329,6 +341,7 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	chunkLastTrContent.SetHeaderInt64(int64(len(sample.Items[15].ChunkItem.Data)))
 	_, err = chunkLastTrContent.Write(sample.Items[15].ChunkItem.Data)
 	if err != nil {
 		logger.Error(err, "reserve commitment hasher: failure in proof creation")
