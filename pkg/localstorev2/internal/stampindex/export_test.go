@@ -18,9 +18,9 @@ func NewItemWithValues(batchTimestamp []byte, chunkAddress swarm.Address, chunkI
 	return &Item{
 		namespace:  []byte("test_namespace"),
 		batchID:    []byte{swarm.HashSize - 1: 9},
-		batchIndex: []byte{swarm.StampIndexSize - 1: 9},
+		stampIndex: []byte{swarm.StampIndexSize - 1: 9},
 
-		BatchTimestamp:   batchTimestamp,
+		StampTimestamp:   batchTimestamp,
 		ChunkAddress:     chunkAddress,
 		ChunkIsImmutable: chunkIsImmutable,
 	}
@@ -31,6 +31,6 @@ func NewItemWithKeys(namespace string, batchID, batchIndex []byte) *Item {
 	return &Item{
 		namespace:  append([]byte(nil), namespace...),
 		batchID:    batchID,
-		batchIndex: batchIndex,
+		stampIndex: batchIndex,
 	}
 }

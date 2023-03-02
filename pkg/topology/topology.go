@@ -31,6 +31,7 @@ type Driver interface {
 	io.Closer
 	Halter
 	Snapshot() *KadParams
+	SetStorageRadiuser
 }
 
 type PeerAdder interface {
