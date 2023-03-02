@@ -96,8 +96,7 @@ func (db *DB) ReservePutter(ctx context.Context) PutterSession {
 	triggerBins := make(map[uint8]bool)
 	count := 0
 
-	// lock to avoid Putting a chunk that expires during the session.
-	db.lock.Lock(reserveLock)
+	db.reserveMtx.RLock()
 
 	return &putterSession{
 		Putter: storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
@@ -112,7 +111,7 @@ func (db *DB) ReservePutter(ctx context.Context) PutterSession {
 			return nil
 		}),
 		done: func(swarm.Address) error {
-			defer db.lock.Unlock(reserveLock)
+			defer db.reserveMtx.RUnlock()
 			err := commit()
 			if err != nil {
 				return err
@@ -127,7 +126,7 @@ func (db *DB) ReservePutter(ctx context.Context) PutterSession {
 			return nil
 		},
 		cleanup: func() error {
-			defer db.lock.Unlock(reserveLock)
+			defer db.reserveMtx.RUnlock()
 			return rollback()
 		},
 	}
@@ -140,8 +139,8 @@ func (db *DB) EvictBatch(ctx context.Context, batchID []byte) error {
 
 func (db *DB) evictBatch(ctx context.Context, batchID []byte, upToBin uint8) error {
 
-	db.lock.Lock(reserveLock)
-	defer db.lock.Unlock(reserveLock)
+	db.reserveMtx.Lock()
+	defer db.reserveMtx.Unlock()
 
 	for b := uint8(0); b < upToBin; b++ {
 
