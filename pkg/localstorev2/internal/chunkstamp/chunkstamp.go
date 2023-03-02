@@ -10,9 +10,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ethersphere/bee/pkg/localstorev2/internal"
 	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/storagev2"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/storagev2/storageutil"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/hashicorp/go-multierror"
@@ -142,17 +141,17 @@ func (i item) String() string {
 
 // Load returns first found swarm.Stamp related to the given address.
 // The storage.ErrNoStampsForChunk is returned if no record is found.
-func Load(s internal.Storage, namespace string, addr swarm.Address) (swarm.Stamp, error) {
+func Load(s storage.Store, namespace string, addr swarm.Address) (swarm.Stamp, error) {
 	return LoadWithBatchID(s, namespace, addr, nil)
 }
 
 // LoadWithBatchID returns swarm.Stamp related to the given address and batchID.
 // The storage.ErrNoStampsForChunk is returned if no record is found.
-func LoadWithBatchID(s internal.Storage, namespace string, addr swarm.Address, batchID []byte) (swarm.Stamp, error) {
+func LoadWithBatchID(s storage.Store, namespace string, addr swarm.Address, batchID []byte) (swarm.Stamp, error) {
 	var stamp swarm.Stamp
 
 	cnt := 0
-	err := s.IndexStore().Iterate(
+	err := s.Iterate(
 		storage.Query{
 			Factory: func() storage.Item {
 				return &item{
@@ -183,22 +182,22 @@ func LoadWithBatchID(s internal.Storage, namespace string, addr swarm.Address, b
 
 // Store creates new or updated an existing stamp index
 // record related to the given namespace and chunk.
-func Store(s internal.Storage, namespace string, chunk swarm.Chunk) error {
+func Store(s storage.Store, namespace string, chunk swarm.Chunk) error {
 	item := &item{
 		namespace: []byte(namespace),
 		address:   chunk.Address(),
 		stamp:     chunk.Stamp(),
 	}
-	if err := s.IndexStore().Put(item); err != nil {
+	if err := s.Put(item); err != nil {
 		return fmt.Errorf("unable to put chunkstamp.item %s: %w", item, err)
 	}
 	return nil
 }
 
 // DeleteAll removes all swarm.Stamp related to the given address.
-func DeleteAll(s internal.Storage, namespace string, addr swarm.Address) error {
+func DeleteAll(s storage.Store, namespace string, addr swarm.Address) error {
 	var stamps []swarm.Stamp
-	err := s.IndexStore().Iterate(
+	err := s.Iterate(
 		storage.Query{
 			Factory: func() storage.Item {
 				return &item{
@@ -220,7 +219,7 @@ func DeleteAll(s internal.Storage, namespace string, addr swarm.Address) error {
 	for _, stamp := range stamps {
 		errs = multierror.Append(
 			errs,
-			s.IndexStore().Delete(&item{
+			s.Delete(&item{
 				namespace: []byte(namespace),
 				address:   addr,
 				stamp:     stamp,
@@ -228,4 +227,17 @@ func DeleteAll(s internal.Storage, namespace string, addr swarm.Address) error {
 		)
 	}
 	return errs.ErrorOrNil()
+}
+
+// Delete removes a stamp associated with an chunk and batchID.
+func Delete(s storage.Store, namespace string, addr swarm.Address, batchId []byte) error {
+	stamp, err := LoadWithBatchID(s, namespace, addr, batchId)
+	if err != nil {
+		return err
+	}
+	return s.Delete(&item{
+		namespace: []byte(namespace),
+		address:   addr,
+		stamp:     stamp,
+	})
 }
