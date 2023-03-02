@@ -9,11 +9,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"path"
 
 	"github.com/ethersphere/bee/pkg/localstorev2/internal"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/storagev2"
+	"github.com/ethersphere/bee/pkg/storagev2/storageutil"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/hashicorp/go-multierror"
 )
@@ -47,12 +47,12 @@ type item struct {
 
 // ID implements the storage.Item interface.
 func (i *item) ID() string {
-	return path.Join(string(i.stamp.BatchID()), string(i.stamp.Index()))
+	return storageutil.JoinFields(string(i.stamp.BatchID()), string(i.stamp.Index()))
 }
 
 // Namespace implements the storage.Item interface.
 func (i *item) Namespace() string {
-	return path.Join("chunkStamp", string(i.namespace), i.address.ByteString())
+	return storageutil.JoinFields("chunkStamp", string(i.namespace), i.address.ByteString())
 }
 
 // Marshal implements the storage.Item interface.
@@ -137,7 +137,7 @@ func (i *item) Clone() storage.Item {
 
 // String implements the storage.Item interface.
 func (i item) String() string {
-	return path.Join(i.Namespace(), i.ID())
+	return storageutil.JoinFields(i.Namespace(), i.ID())
 }
 
 // Load returns first found swarm.Stamp related to the given address.
