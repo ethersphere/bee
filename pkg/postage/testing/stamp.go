@@ -37,6 +37,16 @@ func MustNewBatchStamp(batch []byte) *postage.Stamp {
 	return postage.NewStamp(batch, MustNewID()[:8], MustNewID()[:8], MustNewSignature())
 }
 
+// MustNewBatchStamp will generate a postage stamp with the provided batch ID and assign
+// random data to other fields. Panics on error
+func MustNewFields(batch []byte, index, ts uint64) *postage.Stamp {
+	indexBuf := make([]byte, 8)
+	binary.BigEndian.PutUint64(indexBuf, index)
+	tsBuf := make([]byte, 8)
+	binary.BigEndian.PutUint64(tsBuf, ts)
+	return postage.NewStamp(batch, indexBuf, tsBuf, MustNewSignature())
+}
+
 // MustNewStampWithTimestamp will generate a postage stamp with provided timestamp and
 // random data for other fields. Panics on errors.
 func MustNewStampWithTimestamp(ts uint64) *postage.Stamp {
