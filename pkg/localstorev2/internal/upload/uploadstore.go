@@ -9,7 +9,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"path"
 	"strconv"
 	"sync"
 	"time"
@@ -17,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/localstorev2/internal"
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/stampindex"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
+	"github.com/ethersphere/bee/pkg/storagev2/storageutil"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -107,7 +107,7 @@ func (i *pushItem) Clone() storage.Item {
 
 // String implements the fmt.Stringer interface.
 func (i pushItem) String() string {
-	return path.Join(i.Namespace(), i.ID())
+	return storageutil.JoinFields(i.Namespace(), i.ID())
 }
 
 var (
@@ -195,7 +195,7 @@ func (i *TagItem) Clone() storage.Item {
 
 // String implements the fmt.Stringer interface.
 func (i TagItem) String() string {
-	return path.Join(i.Namespace(), i.ID())
+	return storageutil.JoinFields(i.Namespace(), i.ID())
 }
 
 var (
@@ -231,7 +231,7 @@ func (i uploadItem) ID() string {
 
 // Namespace implements the storage.Item interface.
 func (i uploadItem) Namespace() string {
-	return path.Join("UploadItem", i.Address.ByteString())
+	return storageutil.JoinFields("UploadItem", i.Address.ByteString())
 }
 
 // Marshal implements the storage.Item interface.
@@ -283,7 +283,7 @@ func (i *uploadItem) Clone() storage.Item {
 
 // String implements the fmt.Stringer interface.
 func (i uploadItem) String() string {
-	return path.Join(i.Namespace(), i.ID())
+	return storageutil.JoinFields(i.Namespace(), i.ID())
 }
 
 // stampIndexUploadNamespace represents the
@@ -538,7 +538,7 @@ func (n *nextTagID) Clone() storage.Item {
 }
 
 func (n nextTagID) String() string {
-	return path.Join(n.Namespace(), n.ID())
+	return storageutil.JoinFields(n.Namespace(), n.ID())
 }
 
 // NextTag returns the next tag ID to be used. It reads the last used ID and
