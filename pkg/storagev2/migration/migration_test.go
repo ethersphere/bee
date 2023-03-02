@@ -9,7 +9,6 @@ import (
 	"errors"
 	"math"
 	"math/rand"
-	"path"
 	"strconv"
 	"testing"
 
@@ -17,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storagev2/inmemstore"
 	"github.com/ethersphere/bee/pkg/storagev2/migration"
 	"github.com/ethersphere/bee/pkg/storagev2/storagetest"
+	"github.com/ethersphere/bee/pkg/storagev2/storageutil"
 )
 
 var (
@@ -375,5 +375,5 @@ func (o *obj) Clone() storage.Item {
 }
 
 func (o obj) String() string {
-	return path.Join(o.Namespace(), o.ID())
+	return storageutil.JoinFields(o.Namespace(), o.ID())
 }
