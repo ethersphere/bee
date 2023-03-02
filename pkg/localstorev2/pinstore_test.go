@@ -9,11 +9,13 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	storer "github.com/ethersphere/bee/pkg/localstorev2"
 	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/swarm/test"
 )
 
 func testPinStore(t *testing.T, newStorer func() (*storer.DB, error)) {
@@ -134,11 +136,13 @@ func TestPinStore(t *testing.T) {
 	t.Run("inmem", func(t *testing.T) {
 		t.Parallel()
 
-		testPinStore(t, func() (*storer.DB, error) { return storer.New(context.Background(), "", nil) })
+		testPinStore(t, func() (*storer.DB, error) {
+			return storer.New(context.Background(), "", dbTestOps(test.RandomAddress(), 0, nil, nil, nil, time.Second))
+		})
 	})
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
 
-		testPinStore(t, diskStorer(t, nil))
+		testPinStore(t, diskStorer(t, dbTestOps(test.RandomAddress(), 0, nil, nil, nil, time.Second)))
 	})
 }

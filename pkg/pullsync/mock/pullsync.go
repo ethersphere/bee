@@ -266,3 +266,15 @@ type Option interface {
 type optionFunc func(*PullSyncMock)
 
 func (f optionFunc) apply(r *PullSyncMock) { f(r) }
+
+type mockRateReporter struct {
+	rate float64
+}
+
+func NewMockRateReporter(r float64) pullsync.SyncReporter {
+	return &mockRateReporter{r}
+}
+
+func (m *mockRateReporter) Rate() float64 {
+	return m.rate
+}
