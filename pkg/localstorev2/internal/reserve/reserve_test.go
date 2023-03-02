@@ -13,6 +13,7 @@ import (
 	"github.com/ethersphere/bee/pkg/localstorev2/internal"
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/chunkstamp"
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/reserve"
+	"github.com/ethersphere/bee/pkg/localstorev2/internal/stampindex"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
@@ -70,6 +71,56 @@ func TestReserve(t *testing.T) {
 				t.Fatalf("expected addr %s, got %s", ch.Address(), chGet.Address())
 			}
 		}
+	}
+}
+
+func TestReplaceOldIndex(t *testing.T) {
+	t.Parallel()
+
+	baseAddr := test.RandomAddress()
+
+	ts, closer := internal.NewInmemStorage()
+	t.Cleanup(func() {
+		if err := closer(); err != nil {
+			t.Errorf("failed closing the storage: %v", err)
+		}
+	})
+
+	r, err := reserve.New(baseAddr, ts.IndexStore(), 0, 0, kademlia.NewTopologyDriver(), log.Noop)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	batch := postagetesting.MustNewBatch()
+	ch1 := chunk.GenerateTestRandomChunkAt(baseAddr, 0).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 0))
+	ch2 := chunk.GenerateTestRandomChunkAt(baseAddr, 0).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 1))
+
+	_, err = r.Put(context.Background(), ts, ch1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = r.Put(context.Background(), ts, ch2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Chunk 1 must be gone
+	checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: 0, BatchID: ch1.Stamp().BatchID(), Address: ch1.Address()}, true)
+	checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: 0}, true)
+	checkChunk(t, ts, ch1, true)
+
+	// Chunk 2 must be stored
+	checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: 0, BatchID: ch2.Stamp().BatchID(), Address: ch2.Address()}, false)
+	checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: 1}, false)
+	checkChunk(t, ts, ch2, false)
+
+	item, err := stampindex.Load(ts.IndexStore(), "reserve", ch2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !item.ChunkAddress.Equal(ch2.Address()) {
+		t.Fatalf("wanted ch2 address")
 	}
 }
 
