@@ -6,18 +6,25 @@ package storer_test
 
 import (
 	"context"
-	"io/ioutil"
 	"os"
 	"testing"
+	"time"
 
 	storer "github.com/ethersphere/bee/pkg/localstorev2"
 	pinstore "github.com/ethersphere/bee/pkg/localstorev2/internal/pinning"
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/upload"
 	localmigration "github.com/ethersphere/bee/pkg/localstorev2/migration"
 	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/pkg/postage"
+	batchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
+	"github.com/ethersphere/bee/pkg/pullsync"
+	pullsyncMock "github.com/ethersphere/bee/pkg/pullsync/mock"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/storagev2/migration"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/swarm/test"
+	"github.com/ethersphere/bee/pkg/topology"
+	kademlia "github.com/ethersphere/bee/pkg/topology/mock"
 )
 
 func verifyChunks(
@@ -96,52 +103,13 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func diskStorer(t *testing.T, opts *storer.Options) func() (*storer.DB, error) {
-	t.Helper()
-
-	return func() (*storer.DB, error) {
-		dir, err := ioutil.TempDir(".", "testrepo*")
-		if err != nil {
-			t.Fatal(err)
-		}
-		t.Cleanup(func() {
-			err := os.RemoveAll(dir)
-			if err != nil {
-				t.Errorf("failed removing directories: %v", err)
-			}
-		})
-
-		lstore, err := storer.New(context.Background(), dir, opts)
-		if err == nil {
-			t.Cleanup(func() {
-				err := lstore.Close()
-				if err != nil {
-					t.Errorf("failed closing storer: %v", err)
-				}
-			})
-		}
-
-		return lstore, err
-	}
-}
-
 func TestNew(t *testing.T) {
 	t.Parallel()
 
-	t.Run("inmem default options", func(t *testing.T) {
-		t.Parallel()
-
-		lstore := makeInmemStorer(t, nil)
-		if lstore == nil {
-			t.Fatalf("storer should be instantiated")
-		}
-	})
 	t.Run("inmem with options", func(t *testing.T) {
 		t.Parallel()
 
-		opts := &storer.Options{
-			Logger: log.Noop,
-		}
+		opts := dbTestOps(test.RandomAddress(), 0, nil, nil, nil, time.Second)
 
 		lstore := makeInmemStorer(t, opts)
 		if lstore == nil {
@@ -151,7 +119,7 @@ func TestNew(t *testing.T) {
 	t.Run("disk default options", func(t *testing.T) {
 		t.Parallel()
 
-		lstore := makeDiskStorer(t, nil)
+		lstore := makeDiskStorer(t, dbTestOps(test.RandomAddress(), 0, nil, nil, nil, time.Second))
 		if lstore == nil {
 			t.Fatalf("storer should be instantiated")
 		}
@@ -159,9 +127,8 @@ func TestNew(t *testing.T) {
 	t.Run("disk with options", func(t *testing.T) {
 		t.Parallel()
 
-		opts := storer.DefaultOptions()
+		opts := dbTestOps(test.RandomAddress(), 0, nil, nil, nil, time.Second)
 		opts.CacheCapacity = 10
-		opts.Logger = log.Noop
 
 		lstore := makeDiskStorer(t, opts)
 		if lstore == nil {
@@ -175,17 +142,44 @@ func TestNew(t *testing.T) {
 		t.Run("inmem", func(t *testing.T) {
 			t.Parallel()
 
-			lstore := makeInmemStorer(t, nil)
+			lstore := makeInmemStorer(t, dbTestOps(test.RandomAddress(), 0, nil, nil, nil, time.Second))
 			assertStorerVersion(t, lstore)
 		})
 
 		t.Run("disk", func(t *testing.T) {
 			t.Parallel()
 
-			lstore := makeDiskStorer(t, nil)
+			lstore := makeDiskStorer(t, dbTestOps(test.RandomAddress(), 0, nil, nil, nil, time.Second))
 			assertStorerVersion(t, lstore)
 		})
 	})
+}
+
+func dbTestOps(baseAddr swarm.Address, capacity int, bs postage.Storer, syncer pullsync.SyncReporter, radiusSetter topology.SetStorageRadiuser, reserveWakeUpTime time.Duration) *storer.Options {
+
+	opts := storer.DefaultOptions()
+
+	if radiusSetter == nil {
+		radiusSetter = kademlia.NewTopologyDriver()
+	}
+
+	if bs == nil {
+		bs = batchstore.New()
+	}
+
+	if syncer == nil {
+		syncer = pullsyncMock.NewMockRateReporter(0)
+	}
+
+	opts.Address = baseAddr
+	opts.RadiusSetter = radiusSetter
+	opts.ReserveCapacity = capacity
+	opts.Batchstore = bs
+	opts.Syncer = syncer
+	opts.ReserveWakeUpDuration = reserveWakeUpTime
+	opts.Logger = log.Noop
+
+	return opts
 }
 
 func assertStorerVersion(t *testing.T, lstore *storer.DB) {
@@ -206,7 +200,7 @@ func assertStorerVersion(t *testing.T, lstore *storer.DB) {
 func makeInmemStorer(t *testing.T, opts *storer.Options) *storer.DB {
 	t.Helper()
 
-	lstore, err := storer.New(context.Background(), "", nil)
+	lstore, err := storer.New(context.Background(), "", opts)
 	if err != nil {
 		t.Fatalf("New(...): unexpected error: %v", err)
 	}
@@ -224,18 +218,7 @@ func makeInmemStorer(t *testing.T, opts *storer.Options) *storer.DB {
 func makeDiskStorer(t *testing.T, opts *storer.Options) *storer.DB {
 	t.Helper()
 
-	dir, err := ioutil.TempDir(".", "testrepo*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		err := os.RemoveAll(dir)
-		if err != nil {
-			t.Errorf("failed removing directories: %v", err)
-		}
-	})
-
-	lstore, err := storer.New(context.Background(), dir, opts)
+	lstore, err := storer.New(context.Background(), t.TempDir(), opts)
 	if err != nil {
 		t.Fatalf("New(...): unexpected error: %v", err)
 	}
@@ -248,4 +231,33 @@ func makeDiskStorer(t *testing.T, opts *storer.Options) *storer.DB {
 	})
 
 	return lstore
+}
+
+func newStorer(t *testing.T, path string, opts *storer.Options) (*storer.DB, error) {
+	t.Helper()
+	lstore, err := storer.New(context.Background(), path, opts)
+	if err == nil {
+		t.Cleanup(func() {
+			err := lstore.Close()
+			if err != nil {
+				t.Errorf("failed closing storer: %v", err)
+			}
+		})
+	}
+
+	return lstore, err
+}
+
+func diskStorer(t *testing.T, opts *storer.Options) func() (*storer.DB, error) {
+	t.Helper()
+	return func() (*storer.DB, error) {
+		return newStorer(t, t.TempDir(), opts)
+	}
+}
+
+func memStorer(t *testing.T, opts *storer.Options) func() (*storer.DB, error) {
+	t.Helper()
+	return func() (*storer.DB, error) {
+		return newStorer(t, "", opts)
+	}
 }

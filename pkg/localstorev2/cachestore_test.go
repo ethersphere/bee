@@ -8,11 +8,12 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	storer "github.com/ethersphere/bee/pkg/localstorev2"
-	"github.com/ethersphere/bee/pkg/log"
 	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
+	"github.com/ethersphere/bee/pkg/swarm/test"
 )
 
 func testCacheStore(t *testing.T, newStorer func() (*storer.DB, error)) {
@@ -131,16 +132,17 @@ func TestCacheStore(t *testing.T) {
 		t.Parallel()
 
 		testCacheStore(t, func() (*storer.DB, error) {
-			return storer.New(context.Background(), "", &storer.Options{
-				CacheCapacity: 10,
-				Logger:        log.Noop,
-			})
+
+			opts := dbTestOps(test.RandomAddress(), 0, nil, nil, nil, time.Second)
+			opts.CacheCapacity = 10
+
+			return storer.New(context.Background(), "", opts)
 		})
 	})
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
 
-		opts := storer.DefaultOptions()
+		opts := dbTestOps(test.RandomAddress(), 0, nil, nil, nil, time.Second)
 		opts.CacheCapacity = 10
 
 		testCacheStore(t, diskStorer(t, opts))

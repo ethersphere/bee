@@ -7,11 +7,21 @@ package storer
 import (
 	"context"
 
+	"github.com/ethersphere/bee/pkg/localstorev2/internal/events"
+	"github.com/ethersphere/bee/pkg/localstorev2/internal/reserve"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 )
 
+func (db *DB) Reserve() *reserve.Reserve {
+	return db.reserve
+}
+
 func (db *DB) Repo() storage.Repository {
 	return db.repo
+}
+
+func (db *DB) Events() *events.Subscriber {
+	return db.events
 }
 
 func ReplaceSharkyShardLimit(val int) {

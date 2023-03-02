@@ -69,6 +69,11 @@ type Interface interface {
 	GetCursors(ctx context.Context, peer swarm.Address) ([]uint64, error)
 }
 
+type SyncReporter interface {
+	// Number of active historical syncing jobs.
+	Rate() float64
+}
+
 type Syncer struct {
 	streamer       p2p.Streamer
 	metrics        metrics

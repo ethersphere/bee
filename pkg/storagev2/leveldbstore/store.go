@@ -171,10 +171,15 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 	firstSkipped := !q.SkipFirst
 
 	for nextF() {
-		nextKey := string(iter.Key())
-		nextVal := iter.Value()
+		keyRaw := iter.Key()
+		nextKey := make([]byte, len(keyRaw))
+		copy(nextKey, keyRaw)
 
-		key := strings.TrimPrefix(nextKey, prefix)
+		valRaw := iter.Value()
+		nextVal := make([]byte, len(valRaw))
+		copy(nextVal, valRaw)
+
+		key := strings.TrimPrefix(string(nextKey), prefix)
 
 		if filters(q.Filters).matchAny(key, nextVal) {
 			continue

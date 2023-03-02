@@ -18,9 +18,12 @@ import (
 
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/cache"
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/chunkstore"
+	"github.com/ethersphere/bee/pkg/localstorev2/internal/events"
+	"github.com/ethersphere/bee/pkg/localstorev2/internal/reserve"
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/upload"
 	localmigration "github.com/ethersphere/bee/pkg/localstorev2/migration"
 	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/sharky"
@@ -28,6 +31,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storagev2/leveldbstore"
 	"github.com/ethersphere/bee/pkg/storagev2/migration"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/hashicorp/go-multierror"
 	"github.com/spf13/afero"
 	"github.com/syndtr/goleveldb/leveldb/opt"
@@ -108,6 +112,18 @@ type NetStore interface {
 	PusherFeed() <-chan *pusher.Op
 }
 
+var _ ReserveStore = (*DB)(nil)
+
+type ReserveStore interface {
+	ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte) (swarm.Chunk, error)
+	ReserveHas(addr swarm.Address, batchID []byte) (bool, error)
+	ReservePutter(ctx context.Context) PutterSession
+	ReserveSample(context.Context, []byte, uint8, uint64) (Sample, error)
+	SubscribeBin(ctx context.Context, bin uint8, start, end uint64) (<-chan *BinC, func(), <-chan error)
+	ReserveLastBinIDs() ([]uint64, error)
+	EvictBatch(ctx context.Context, batchID []byte) error
+}
+
 type memFS struct {
 	afero.Fs
 }
@@ -125,6 +141,7 @@ func (d *dirFS) Open(path string) (fs.File, error) {
 }
 
 var sharkyNoOfShards = 32
+var errDBQuit = errors.New("db quit")
 
 type closerFn func() error
 
@@ -250,6 +267,15 @@ type Options struct {
 	CacheCapacity             uint64
 	Logger                    log.Logger
 	Retrieval                 retrieval.Interface
+
+	Address        swarm.Address
+	WarmupDuration time.Duration
+	Batchstore     postage.Storer
+	RadiusSetter   topology.SetStorageRadiuser
+	Syncer         SyncReporter
+
+	ReserveCapacity       int
+	ReserveWakeUpDuration time.Duration
 }
 
 func defaultOptions() *Options {
@@ -260,6 +286,8 @@ func defaultOptions() *Options {
 		LdbDisableSeeksCompaction: defaultDisableSeeksCompaction,
 		CacheCapacity:             defaultCacheCapacity,
 		Logger:                    log.Noop,
+		ReserveCapacity:           2 ^ 22,
+		ReserveWakeUpDuration:     time.Minute * 5,
 	}
 }
 
@@ -278,6 +306,15 @@ type DB struct {
 
 	dirtyTagsMu sync.RWMutex
 	dirtyTags   []uint64 // tagIDs
+
+	events *events.Subscriber
+
+	reserve          *reserve.Reserve
+	reserveWg        sync.WaitGroup
+	reserveMtx       sync.RWMutex
+	reserveBinEvents *events.Subscriber
+	baseAddr         swarm.Address
+	batchstore       postage.Storer
 }
 
 // New returns a newly constructed DB object which implements all the above
@@ -315,21 +352,46 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		return nil, err
 	}
 
-	return &DB{
-		repo:           repo,
-		lock:           multex.New(),
-		cacheObj:       cacheObj,
-		retrieval:      opts.Retrieval,
-		pusherFeed:     make(chan *pusher.Op),
-		logger:         opts.Logger.WithName(loggerName).Register(),
-		quit:           make(chan struct{}),
-		bgCacheWorkers: make(chan struct{}, 16),
-		dbCloser:       dbCloser,
-	}, nil
+	logger := opts.Logger.WithName(loggerName).Register()
+
+	reserveRadius := opts.Batchstore.GetReserveState().Radius
+
+	rs, err := reserve.New(opts.Address, repo.IndexStore(), opts.ReserveCapacity, reserveRadius, opts.RadiusSetter, logger)
+	if err != nil {
+		return nil, err
+	}
+
+	db := &DB{
+		baseAddr:         opts.Address,
+		repo:             repo,
+		lock:             multex.New(),
+		cacheObj:         cacheObj,
+		retrieval:        opts.Retrieval,
+		pusherFeed:       make(chan *pusher.Op),
+		logger:           logger,
+		quit:             make(chan struct{}),
+		bgCacheWorkers:   make(chan struct{}, 16),
+		dbCloser:         dbCloser,
+		reserve:          rs,
+		batchstore:       opts.Batchstore,
+		events:           events.NewSubscriber(),
+		reserveBinEvents: events.NewSubscriber(),
+	}
+
+	db.reserveWg.Add(1)
+	go db.reserveWorker(opts.ReserveCapacity, opts.Syncer, opts.WarmupDuration, opts.ReserveWakeUpDuration)
+
+	return db, nil
 }
 
 func (db *DB) Close() error {
 	close(db.quit)
+
+	bgReserveWorkersClosed := make(chan struct{})
+	go func() {
+		defer close(bgReserveWorkersClosed)
+		db.reserveWg.Wait()
+	}()
 
 	bgCacheWorkersClosed := make(chan struct{})
 	go func() {
@@ -349,6 +411,7 @@ func (db *DB) Close() error {
 		defer close(done)
 		<-closerDone
 		<-bgCacheWorkersClosed
+		<-bgReserveWorkersClosed
 	}()
 
 	select {
