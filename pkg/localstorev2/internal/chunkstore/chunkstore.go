@@ -9,11 +9,11 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"path"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/storagev2"
+	"github.com/ethersphere/bee/pkg/storagev2/storageutil"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/hashicorp/go-multierror"
 )
@@ -98,7 +98,7 @@ func (r *retrievalIndexItem) Clone() storage.Item {
 }
 
 func (r retrievalIndexItem) String() string {
-	return path.Join(r.Namespace(), r.ID())
+	return storageutil.JoinFields(r.Namespace(), r.ID())
 }
 
 // Sharky provides an abstraction for the sharky.Store operations used in the
