@@ -8,13 +8,13 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"path"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
+	"github.com/ethersphere/bee/pkg/storagev2/storageutil"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
 )
@@ -59,7 +59,7 @@ func (o *object) Clone() storage.Item {
 }
 
 func (o object) String() string {
-	return path.Join(o.Namespace(), o.ID())
+	return storageutil.JoinFields(o.Namespace(), o.ID())
 }
 
 // initStore initializes the given store with the given objects.
