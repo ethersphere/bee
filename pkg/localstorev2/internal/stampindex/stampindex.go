@@ -8,10 +8,10 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"path"
 
 	"github.com/ethersphere/bee/pkg/localstorev2/internal"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
+	"github.com/ethersphere/bee/pkg/storagev2/storageutil"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -143,7 +143,7 @@ func (i *Item) Clone() storage.Item {
 
 // String implements the fmt.Stringer interface.
 func (i Item) String() string {
-	return path.Join(i.Namespace(), i.ID())
+	return storageutil.JoinFields(i.Namespace(), i.ID())
 }
 
 // LoadOrStore tries to first load a stamp index related record from the store.
