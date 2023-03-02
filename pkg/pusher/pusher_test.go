@@ -372,10 +372,21 @@ func TestChunkWithInvalidStampSkipped(t *testing.T) {
 	}
 }
 
-func createPusher(t *testing.T, addr swarm.Address, pushSyncService pushsync.PushSyncer, validStamp postage.ValidStampFn, mockOpts ...mock.Option) (*tags.Tags, *pusher.Service, *Store) {
+func createPusher(
+	t *testing.T,
+	storer pusher.Storer,
+	pushSyncService pushsync.PushSyncer,
+	validStamp postage.ValidStampFn,
+	retryCount int,
+	mockOpts ...mock.Option,
+) *pusher.Service {
 	t.Helper()
 
-	return createPusherWithRetryCount(t, addr, pushSyncService, validStamp, pusher.DefaultRetryCount, mockOpts...)
+	peerSuggester := mock.NewTopologyDriver(mockOpts...)
+	pusherService := pusher.New(1, storer, peerSuggester, pushSyncService, validStamp, log.Noop, nil, 0, retryCount)
+	testutil.CleanupCloser(t, pusherService, pusherStorer)
+
+	return pusherService
 }
 
 func createPusherWithRetryCount(t *testing.T, addr swarm.Address, pushSyncService pushsync.PushSyncer, validStamp postage.ValidStampFn, retryCount int, mockOpts ...mock.Option) (*tags.Tags, *pusher.Service, *Store) {
