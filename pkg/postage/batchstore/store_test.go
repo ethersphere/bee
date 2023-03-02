@@ -22,6 +22,7 @@ import (
 var noopEvictFn = func([]byte) error { return nil }
 
 func TestBatchStore_Get(t *testing.T) {
+	t.Parallel()
 	baseAddr := swarm.RandAddress(t)
 	testBatch := postagetest.MustNewBatch()
 
@@ -38,6 +39,7 @@ func TestBatchStore_Get(t *testing.T) {
 }
 
 func TestBatchStore_Iterate(t *testing.T) {
+	t.Parallel()
 	baseAddr := swarm.RandAddress(t)
 	testBatch := postagetest.MustNewBatch()
 	key := batchstore.BatchKey(testBatch.ID)
@@ -60,6 +62,7 @@ func TestBatchStore_Iterate(t *testing.T) {
 }
 
 func TestBatchStore_IterateStopsEarly(t *testing.T) {
+	t.Parallel()
 	baseAddr := swarm.RandAddress(t)
 	testBatch1 := postagetest.MustNewBatch()
 	key1 := batchstore.BatchKey(testBatch1.ID)
@@ -111,6 +114,7 @@ func TestBatchStore_IterateStopsEarly(t *testing.T) {
 }
 
 func TestBatchStore_SaveAndUpdate(t *testing.T) {
+	t.Parallel()
 	baseAddr := swarm.RandAddress(t)
 	testBatch := postagetest.MustNewBatch()
 	key := batchstore.BatchKey(testBatch.ID)
@@ -161,6 +165,7 @@ func TestBatchStore_SaveAndUpdate(t *testing.T) {
 }
 
 func TestBatchStore_GetChainState(t *testing.T) {
+	t.Parallel()
 	baseAddr := swarm.RandAddress(t)
 	testChainState := postagetest.NewChainState()
 
