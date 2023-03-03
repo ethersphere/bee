@@ -92,7 +92,7 @@ func testPushSubscriber(t *testing.T, newLocalstore func() (*storer.DB, error)) 
 	// to validate the number of addresses received by the subscription
 	errChan := make(chan error)
 
-	ch, stop := lstore.SubscribePush(ctx)
+	ch, _, stop := lstore.SubscribePush(ctx)
 	defer stop()
 
 	// receive and validate addresses from the subscription

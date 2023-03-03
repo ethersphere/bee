@@ -14,14 +14,9 @@ import (
 
 const subscribePushEventKey = "subscribe-push"
 
-func (db *DB) SubscribePush(ctx context.Context) (chunks chan swarm.Chunk, stop func()) {
+func (db *DB) SubscribePush(ctx context.Context) (chunks chan swarm.Chunk, reset, stop func()) {
 	chunks = make(chan swarm.Chunk)
-
-	trigger, unsub := db.events.Subscribe(subscribePushEventKey)
-	defer unsub()
-
-	// send signal for the initial iteration
-	db.events.Trigger(subscribePushEventKey)
+	resetC := make(chan struct{}, 1)
 
 	stopChan := make(chan struct{})
 	var stopChanOnce sync.Once
@@ -31,6 +26,10 @@ func (db *DB) SubscribePush(ctx context.Context) (chunks chan swarm.Chunk, stop 
 	db.subscriptionsWG.Add(1)
 	go func() {
 		defer db.subscriptionsWG.Done()
+
+		trigger, unsub := db.events.Subscribe(subscribePushEventKey)
+		defer unsub()
+
 		// close the returned chunkInfo channel at the end to
 		// signal that the subscription is done
 		defer close(chunks)
@@ -43,6 +42,7 @@ func (db *DB) SubscribePush(ctx context.Context) (chunks chan swarm.Chunk, stop 
 			err := upload.Iterate(ctx, db.repo, sinceItem, func(chunk swarm.Chunk) (bool, error) {
 
 				if db.isDirty(uint64(chunk.TagID())) {
+					reset()
 					return true, nil
 				}
 
@@ -54,6 +54,9 @@ func (db *DB) SubscribePush(ctx context.Context) (chunks chan swarm.Chunk, stop 
 					sinceItem = chunk
 
 					return false, nil
+				case <-resetC:
+					sinceItem = nil
+					return true, nil
 				case <-stopChan:
 					// gracefully stop the iteration
 					// on stop
@@ -87,8 +90,15 @@ func (db *DB) SubscribePush(ctx context.Context) (chunks chan swarm.Chunk, stop 
 			close(stopChan)
 		})
 	}
+	reset = func() {
+		select {
+		case resetC <- struct{}{}:
+			db.events.Trigger(subscribePushEventKey)
+		default:
+		}
+	}
 
-	return chunks, stop
+	return chunks, reset, stop
 }
 
 func (db *DB) isDirty(tag uint64) bool {

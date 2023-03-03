@@ -60,6 +60,7 @@ func (db *DB) SubscribePush(ctx context.Context, skipf func([]byte) bool) (c <-c
 		var sinceItem *shed.Item
 		for {
 			select {
+
 			case <-stopChan:
 				// terminate the subscription
 				// on stop
