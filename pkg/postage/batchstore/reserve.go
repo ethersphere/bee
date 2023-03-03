@@ -32,7 +32,6 @@
 package batchstore
 
 import (
-	"encoding/hex"
 	"fmt"
 	"math"
 
@@ -49,10 +48,6 @@ type reserveState struct {
 	// it defines the proximity order of chunks which we
 	// would like to guarantee that all chunks are stored.
 	Radius uint8
-	// StorageRadius is the de-facto storage radius tracked
-	// by monitoring the events communicated to the localstore
-	// reserve eviction worker.
-	StorageRadius uint8
 }
 
 // saveBatch adds a new batch to the batchstore by creating a new value item, cleaning up
@@ -152,117 +147,14 @@ func (s *store) computeRadius() error {
 
 	// edge case where the sum of all batches is below the node capacity.
 	if totalCommitment <= Capacity {
-		s.rs.Radius = 0
+		s.radius = 0
 	} else {
 		// totalCommitment/node_capacity = 2^R
 		// log2(totalCommitment/node_capacity) = R
-		s.rs.Radius = uint8(math.Ceil(math.Log2(float64(totalCommitment) / float64(Capacity))))
+		s.radius = uint8(math.Ceil(math.Log2(float64(totalCommitment) / float64(Capacity))))
 	}
 
-	// in the edge case that the new radius is lower because total commitment has decreased, the global storage radius has to be readjusted
-	if s.rs.Radius < s.rs.StorageRadius {
-		s.rs.StorageRadius = s.rs.Radius
-		if err := s.setBatchStorageRadius(); err != nil {
-			s.logger.Error(err, "batchstore: lower batch storage radius")
-		}
-	}
-
-	return s.store.Put(reserveStateKey, s.rs)
-}
-
-// Unreserve is implementation of postage.Storer interface Unreserve method.
-func (s *store) Unreserve(cb postage.UnreserveIteratorFn) error {
-
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-
-	var (
-		updates []*postage.Batch
-		stopped = false
-	)
-
-	err := s.store.Iterate(valueKeyPrefix, func(key, value []byte) (bool, error) {
-
-		id := valueKeyToID(key)
-
-		b, err := s.get(id)
-		if err != nil {
-			return false, err
-		}
-
-		s.logger.Debug("unreserve callback", "batch_id", hex.EncodeToString(id), "storage_radius", s.rs.StorageRadius, "batch_storage_radius", b.StorageRadius)
-
-		stopped, err = cb(id, s.rs.StorageRadius)
-		if err != nil {
-			return false, err
-		}
-
-		if b.StorageRadius != s.rs.StorageRadius {
-			b.StorageRadius = s.rs.StorageRadius
-			updates = append(updates, b)
-		}
-
-		return stopped, nil
-	})
-	if err != nil {
-		return err
-	}
-
-	for _, u := range updates {
-		err := s.store.Put(batchKey(u.ID), u)
-		if err != nil {
-			s.logger.Warning("unreserve put updated batch failed", "error", err)
-		}
-	}
-
-	// a full iteration has occurred (meaning current storage radius is too low), increase global storage radius
-	if !stopped && s.rs.StorageRadius < s.rs.Radius {
-		s.rs.StorageRadius++
-		s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
-		s.logger.Debug("new storage radius", "reserve_state_storage_radius", s.rs.StorageRadius)
-		if s.storageRadiusSetter != nil {
-			s.storageRadiusSetter.SetStorageRadius(s.rs.StorageRadius)
-		}
-		return s.store.Put(reserveStateKey, s.rs)
-	}
-
-	return nil
-}
-
-// setBatchStorageRadius set the storage radius of batches to the current storage radius.
-// Must be called under lock.
-func (s *store) setBatchStorageRadius() error {
-
-	var updates []*postage.Batch
-
-	err := s.store.Iterate(batchKeyPrefix, func(key, value []byte) (bool, error) {
-
-		b := &postage.Batch{}
-		err := b.UnmarshalBinary(value)
-		if err != nil {
-			return false, err
-		}
-
-		if b.StorageRadius != s.rs.StorageRadius {
-			s.logger.Debug("adjust batch storage radius", "batch_id", hex.EncodeToString(b.ID), "old_batch_radius", b.StorageRadius, "new_batch_radius", s.rs.StorageRadius)
-			b.StorageRadius = s.rs.StorageRadius
-			updates = append(updates, b)
-		}
-
-		return false, nil
-	})
-	if err != nil {
-		return err
-	}
-
-	for _, u := range updates {
-		err := s.store.Put(batchKey(u.ID), u)
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return s.store.Put(reserveStateKey, &s.radius)
 }
 
 // exp2 returns the e-th power of 2

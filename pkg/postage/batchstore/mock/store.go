@@ -20,7 +20,7 @@ var _ postage.Storer = (*BatchStore)(nil)
 
 // BatchStore is a mock BatchStorer
 type BatchStore struct {
-	rs                    *postage.ReserveState
+	radius                uint8
 	cs                    *postage.ChainState
 	isWithinStorageRadius bool
 	id                    []byte
@@ -47,7 +47,6 @@ type Option func(*BatchStore)
 func New(opts ...Option) *BatchStore {
 	bs := &BatchStore{}
 	bs.cs = &postage.ChainState{}
-	bs.rs = &postage.ReserveState{}
 	bs.isWithinStorageRadius = true
 	for _, o := range opts {
 		o(bs)
@@ -56,15 +55,9 @@ func New(opts ...Option) *BatchStore {
 }
 
 // WithReserveState will set the initial reservestate in the ChainStore mock.
-func WithReserveState(rs *postage.ReserveState) Option {
+func WithRadius(radius uint8) Option {
 	return func(bs *BatchStore) {
-		bs.rs = rs
-	}
-}
-
-func WithIsWithinStorageRadius(b bool) Option {
-	return func(bs *BatchStore) {
-		bs.isWithinStorageRadius = b
+		bs.radius = radius
 	}
 }
 
@@ -190,26 +183,11 @@ func (bs *BatchStore) PutChainState(cs *postage.ChainState) error {
 	return nil
 }
 
-func (bs *BatchStore) GetReserveState() *postage.ReserveState {
+func (bs *BatchStore) Radius() uint8 {
 	bs.mtx.Lock()
 	defer bs.mtx.Unlock()
 
-	rs := new(postage.ReserveState)
-	if bs.rs != nil {
-		rs.Radius = bs.rs.Radius
-		rs.StorageRadius = bs.rs.StorageRadius
-	}
-	return rs
-}
-
-func (bs *BatchStore) StorageRadius() uint8 {
-	bs.mtx.Lock()
-	defer bs.mtx.Unlock()
-
-	if bs.rs != nil {
-		return bs.rs.StorageRadius
-	}
-	return 0
+	return bs.radius
 }
 
 func (bs *BatchStore) IsWithinStorageRadius(swarm.Address) bool {
@@ -218,17 +196,6 @@ func (bs *BatchStore) IsWithinStorageRadius(swarm.Address) bool {
 
 func (bs *BatchStore) SetStorageRadiusSetter(r postage.StorageRadiusSetter) {
 	bs.radiusSetter = r
-}
-
-func (bs *BatchStore) SetStorageRadius(f func(uint8) uint8) error {
-	bs.mtx.Lock()
-	defer bs.mtx.Unlock()
-
-	bs.rs.StorageRadius = f(bs.rs.StorageRadius)
-	if bs.radiusSetter != nil {
-		bs.radiusSetter.SetStorageRadius(bs.rs.StorageRadius)
-	}
-	return nil
 }
 
 func (bs *BatchStore) Unreserve(_ postage.UnreserveIteratorFn) error {

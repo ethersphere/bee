@@ -41,9 +41,9 @@ type store struct {
 	store storage.StateStorer // State store backend to persist batches.
 	cs    *postage.ChainState // the chain state
 
-	rs      *reserveState // the reserve state
-	evictFn evictFn       // evict function
-	metrics metrics       // metrics
+	radius  uint8
+	evictFn evictFn // evict function
+	metrics metrics // metrics
 	logger  log.Logger
 
 	batchExpiry         postage.BatchExpiryHandler
@@ -65,15 +65,11 @@ func New(st storage.StateStorer, ev evictFn, addr swarm.Address, logger log.Logg
 			CurrentPrice: big.NewInt(0),
 		}
 	}
-	rs := &reserveState{}
-	err = st.Get(reserveStateKey, rs)
+	var radius uint8
+	err = st.Get(reserveStateKey, &radius)
 	if err != nil {
 		if !errors.Is(err, storage.ErrNotFound) {
 			return nil, err
-		}
-		rs = &reserveState{
-			Radius:        0,
-			StorageRadius: 0,
 		}
 	}
 
@@ -81,7 +77,7 @@ func New(st storage.StateStorer, ev evictFn, addr swarm.Address, logger log.Logg
 		base:    addr,
 		store:   st,
 		cs:      cs,
-		rs:      rs,
+		radius:  radius,
 		evictFn: ev,
 		metrics: newMetrics(),
 		logger:  logger.WithName(loggerName).Register(),
@@ -89,62 +85,12 @@ func New(st storage.StateStorer, ev evictFn, addr swarm.Address, logger log.Logg
 	return s, nil
 }
 
-func (s *store) GetReserveState() *postage.ReserveState {
+func (s *store) Radius() uint8 {
 
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 
-	return &postage.ReserveState{
-		Radius:        s.rs.Radius,
-		StorageRadius: s.rs.StorageRadius,
-	}
-}
-
-func (s *store) IsWithinStorageRadius(addr swarm.Address) bool {
-
-	s.mtx.RLock()
-	defer s.mtx.RUnlock()
-
-	po := swarm.Proximity(addr.Bytes(), s.base.Bytes())
-	return po >= s.rs.StorageRadius
-}
-
-func (s *store) StorageRadius() uint8 {
-	s.mtx.RLock()
-	defer s.mtx.RUnlock()
-
-	return s.rs.StorageRadius
-}
-
-func (s *store) SetStorageRadius(f func(uint8) uint8) error {
-
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-
-	oldRadius := s.rs.StorageRadius
-	newRadius := f(oldRadius)
-
-	if newRadius > s.rs.Radius {
-		return ErrStorageRadiusExceeds
-	}
-
-	if newRadius != oldRadius {
-		s.rs.StorageRadius = newRadius
-
-		if s.storageRadiusSetter != nil {
-			s.storageRadiusSetter.SetStorageRadius(newRadius)
-		}
-
-		s.metrics.StorageRadius.Set(float64(newRadius))
-
-		if err := s.setBatchStorageRadius(); err != nil {
-			s.logger.Error(err, "batchstore: set batch storage radius")
-		}
-
-		return s.store.Put(reserveStateKey, s.rs)
-	}
-
-	return nil
+	return s.radius
 }
 
 func (s *store) GetChainState() *postage.ChainState {
@@ -207,7 +153,6 @@ func (s *store) Save(batch *postage.Batch) error {
 
 	switch err := s.store.Get(batchKey(batch.ID), new(postage.Batch)); {
 	case errors.Is(err, storage.ErrNotFound):
-		batch.StorageRadius = s.rs.StorageRadius
 		if err := s.store.Put(batchKey(batch.ID), batch); err != nil {
 			return err
 		}
@@ -216,14 +161,9 @@ func (s *store) Save(batch *postage.Batch) error {
 			return err
 		}
 
-		if s.storageRadiusSetter != nil {
-			s.storageRadiusSetter.SetStorageRadius(s.rs.StorageRadius)
-		}
+		s.metrics.Radius.Set(float64(s.radius))
 
-		s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
-		s.metrics.Radius.Set(float64(s.rs.Radius))
-
-		s.logger.Debug("batch saved", "batch_id", hex.EncodeToString(batch.ID), "batch_depth", batch.Depth, "batch_value", batch.Value.Int64(), "reserve_state_radius", s.rs.Radius, "reserve_state_storage_radius", s.rs.StorageRadius)
+		s.logger.Debug("batch saved", "batch_id", hex.EncodeToString(batch.ID), "batch_depth", batch.Depth, "batch_value", batch.Value.Int64(), "reserve_state_radius", s.radius)
 
 		return nil
 	case err != nil:
@@ -257,7 +197,6 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 
 	batch.Value.Set(value)
 	batch.Depth = depth
-	batch.StorageRadius = oldBatch.StorageRadius
 
 	err := s.store.Put(batchKey(batch.ID), batch)
 	if err != nil {
@@ -269,12 +208,7 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 		return err
 	}
 
-	if s.storageRadiusSetter != nil {
-		s.storageRadiusSetter.SetStorageRadius(s.rs.StorageRadius)
-	}
-
-	s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
-	s.metrics.Radius.Set(float64(s.rs.Radius))
+	s.metrics.Radius.Set(float64(s.radius))
 
 	return nil
 }
@@ -301,12 +235,7 @@ func (s *store) PutChainState(cs *postage.ChainState) error {
 		return fmt.Errorf("batchstore: put chain state adjust radius: %w", err)
 	}
 
-	if s.storageRadiusSetter != nil {
-		s.storageRadiusSetter.SetStorageRadius(s.rs.StorageRadius)
-	}
-
-	s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
-	s.metrics.Radius.Set(float64(s.rs.Radius))
+	s.metrics.Radius.Set(float64(s.radius))
 
 	return s.store.Put(chainStateKey, cs)
 }
@@ -335,9 +264,7 @@ func (s *store) Reset() error {
 		CurrentPrice: big.NewInt(0),
 	}
 
-	s.rs = &reserveState{
-		Radius: 0,
-	}
+	s.radius = 0
 
 	return nil
 }

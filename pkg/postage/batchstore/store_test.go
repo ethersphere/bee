@@ -122,10 +122,10 @@ func TestBatchStore_SaveAndUpdate(t *testing.T) {
 		t.Fatalf("storer.Save(...): unexpected error: %v", err)
 	}
 
-	// call Unreserve once to increase storage radius of the test batch
-	if err := batchStore.Unreserve(func(id []byte, radius uint8) (bool, error) { return false, nil }); err != nil {
-		t.Fatalf("storer.Unreserve(...): unexpected error: %v", err)
-	}
+	// // call Unreserve once to increase storage radius of the test batch
+	// if err := batchStore.Unreserve(func(id []byte, radius uint8) (bool, error) { return false, nil }); err != nil {
+	// 	t.Fatalf("storer.Unreserve(...): unexpected error: %v", err)
+	// }
 
 	//get test batch after save call
 	stateStoreGet(t, stateStore, key, testBatch)
@@ -184,57 +184,6 @@ func TestBatchStore_PutChainState(t *testing.T) {
 	var got postage.ChainState
 	stateStoreGet(t, stateStore, batchstore.StateKey, &got)
 	postagetest.CompareChainState(t, testChainState, &got)
-}
-
-func TestBatchStore_SetStorageRadius(t *testing.T) {
-
-	var (
-		radius           uint8 = 5
-		oldStorageRadius uint8 = 5
-		newStorageRadius uint8 = 3
-	)
-
-	stateStore := mock.NewStateStore()
-	_ = stateStore.Put(batchstore.ReserveStateKey, &postage.ReserveState{Radius: radius})
-	batchStore, _ := batchstore.New(stateStore, nil, baseAddr, log.Noop)
-
-	_ = batchStore.SetStorageRadius(func(uint8) uint8 {
-		return oldStorageRadius
-	})
-
-	_ = batchStore.SetStorageRadius(func(radius uint8) uint8 {
-		if radius != oldStorageRadius {
-			t.Fatalf("got old radius %d, want %d", radius, oldStorageRadius)
-		}
-		return newStorageRadius
-	})
-
-	got := batchStore.StorageRadius()
-	if got != newStorageRadius {
-		t.Fatalf("got old radius %d, want %d", got, newStorageRadius)
-	}
-}
-
-func TestBatchStore_IsWithinRadius(t *testing.T) {
-
-	t.Parallel()
-
-	storageRadius := 2
-
-	stateStore := mock.NewStateStore()
-	_ = stateStore.Put(batchstore.ReserveStateKey, &postage.ReserveState{Radius: 2, StorageRadius: uint8(storageRadius)})
-	batchStore, _ := batchstore.New(stateStore, nil, baseAddr, log.Noop)
-
-	for i := 0; i < 5; i++ {
-		addr := test.RandomAddressAt(baseAddr, i)
-
-		got := batchStore.IsWithinStorageRadius(addr)
-		withinRadius := i >= storageRadius
-
-		if got != withinRadius {
-			t.Fatalf("want %v, got %v", withinRadius, got)
-		}
-	}
 }
 
 func TestBatchStore_Reset(t *testing.T) {
