@@ -19,7 +19,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	batchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
-	pullsync "github.com/ethersphere/bee/pkg/pullsync/mock"
+	pullerMock "github.com/ethersphere/bee/pkg/puller/mock"
 	"github.com/ethersphere/bee/pkg/spinlock"
 	chunk "github.com/ethersphere/bee/pkg/storage/testing"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
@@ -406,7 +406,7 @@ func TestRadiusManager(t *testing.T) {
 	t.Run("radius doesnt change due to non-zero pull rate", func(t *testing.T) {
 		t.Parallel()
 		bs := batchstore.New(batchstore.WithReserveState(&postage.ReserveState{Radius: 3}))
-		storer, err := memStorer(t, dbTestOps(baseAddr, 10, bs, pullsync.NewMockRateReporter(1), nil, time.Second))()
+		storer, err := memStorer(t, dbTestOps(baseAddr, 10, bs, pullerMock.NewMockRateReporter(1), nil, time.Second))()
 		if err != nil {
 			t.Fatal(err)
 		}

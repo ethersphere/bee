@@ -17,8 +17,8 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	batchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
-	"github.com/ethersphere/bee/pkg/pullsync"
-	pullsyncMock "github.com/ethersphere/bee/pkg/pullsync/mock"
+	"github.com/ethersphere/bee/pkg/puller"
+	pullerMock "github.com/ethersphere/bee/pkg/puller/mock"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/storagev2/migration"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -155,7 +155,7 @@ func TestNew(t *testing.T) {
 	})
 }
 
-func dbTestOps(baseAddr swarm.Address, reserveCapacity int, bs postage.Storer, syncer pullsync.SyncReporter, radiusSetter topology.SetStorageRadiuser, reserveWakeUpTime time.Duration) *storer.Options {
+func dbTestOps(baseAddr swarm.Address, reserveCapacity int, bs postage.Storer, syncer puller.SyncRate, radiusSetter topology.SetStorageRadiuser, reserveWakeUpTime time.Duration) *storer.Options {
 
 	opts := storer.DefaultOptions()
 
@@ -168,7 +168,7 @@ func dbTestOps(baseAddr swarm.Address, reserveCapacity int, bs postage.Storer, s
 	}
 
 	if syncer == nil {
-		syncer = pullsyncMock.NewMockRateReporter(0)
+		syncer = pullerMock.NewMockRateReporter(0)
 	}
 
 	opts.Address = baseAddr

@@ -66,7 +66,7 @@ func TestIncoming_WantEmptyInterval(t *testing.T) {
 		psClient, clientDb = newPullSync(recorder)
 	)
 
-	topmost, err := psClient.SyncInterval(context.Background(), swarm.ZeroAddress, 1, 0, 5)
+	topmost, _, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 1, 0, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,7 +90,7 @@ func TestIncoming_WantNone(t *testing.T) {
 		psClient, clientDb = newPullSync(recorder, mock.WithChunks(chunks...))
 	)
 
-	topmost, err := psClient.SyncInterval(context.Background(), swarm.ZeroAddress, 0, 0, 5)
+	topmost, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +115,7 @@ func TestIncoming_ContextTimeout(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 0)
 	cancel()
-	_, err := psClient.SyncInterval(ctx, swarm.ZeroAddress, 0, 0, 5)
+	_, _, err := psClient.Sync(ctx, swarm.ZeroAddress, 0, 0, 5)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("wanted error %v, got %v", context.DeadlineExceeded, err)
 	}
@@ -131,7 +131,7 @@ func TestIncoming_WantOne(t *testing.T) {
 		psClient, clientDb = newPullSync(recorder, mock.WithChunks(someChunks(1, 2, 3, 4)...))
 	)
 
-	topmost, err := psClient.SyncInterval(context.Background(), swarm.ZeroAddress, 0, 0, 5)
+	topmost, _, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -157,7 +157,7 @@ func TestIncoming_WantAll(t *testing.T) {
 		psClient, clientDb = newPullSync(recorder)
 	)
 
-	topmost, err := psClient.SyncInterval(context.Background(), swarm.ZeroAddress, 0, 0, 5)
+	topmost, _, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +188,7 @@ func TestIncoming_UnsolicitedChunk(t *testing.T) {
 		psClient, _ = newPullSync(recorder)
 	)
 
-	_, err := psClient.SyncInterval(context.Background(), swarm.ZeroAddress, 0, 0, 5)
+	_, _, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0, 5)
 	if err != nil {
 		t.Fatalf("expected nil but got %v", err)
 	}

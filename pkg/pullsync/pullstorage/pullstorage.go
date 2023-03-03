@@ -121,7 +121,6 @@ func (s *PullStorer) IntervalChunks(ctx context.Context, bin uint8, start, limit
 
 		return &result{chs: chs, topmost: topmost}, nil
 	})
-
 	if err != nil {
 		s.metrics.SubscribePullsFailures.Inc()
 		return nil, 0, err

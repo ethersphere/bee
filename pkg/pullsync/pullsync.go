@@ -23,7 +23,6 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pullsync/pb"
 	"github.com/ethersphere/bee/pkg/pullsync/pullstorage"
-	"github.com/ethersphere/bee/pkg/rate"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -58,17 +57,17 @@ var maxPage uint64 = 250
 
 // Interface is the PullSync interface.
 type Interface interface {
-	// SyncInterval syncs a requested interval from the given peer.
+	// Sync syncs a requested interval from the given peer.
 	// It returns the BinID of highest chunk that was synced from the given
 	// interval. If the requested interval is too large, the downstream peer
 	// has the liberty to provide less chunks than requested.
-	SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (topmost uint64, err error)
+	Sync(ctx context.Context, peer swarm.Address, bin uint8, start uint64) (topmost uint64, count int, err error)
 	// GetCursors retrieves all cursors from a downstream peer.
 	GetCursors(ctx context.Context, peer swarm.Address) ([]uint64, error)
 }
 
-type SyncReporter interface {
-	// Number of active historical syncing jobs.
+type SyncRate interface {
+	// Rate of ch/s for historical syncing.
 	Rate() float64
 }
 
@@ -83,8 +82,6 @@ type Syncer struct {
 	validStamp     postage.ValidStampFn
 	radius         postage.RadiusChecker
 	overlayAddress swarm.Address
-
-	rate *rate.Rate
 
 	Interface
 	io.Closer
@@ -103,7 +100,6 @@ func New(streamer p2p.Streamer, storage pullstorage.Storer, unwrap func(swarm.Ch
 		quit:           make(chan struct{}),
 		radius:         radius,
 		overlayAddress: overlayAddress,
-		rate:           rate.New(DefaultRateDuration),
 	}
 }
 
@@ -124,21 +120,21 @@ func (s *Syncer) Protocol() p2p.ProtocolSpec {
 	}
 }
 
-// SyncInterval syncs a requested interval from the given peer.
-// It returns the BinID of the highest chunk that was synced from the given interval.
+// Sync syncs a requested interval from the given peer.
+// It returns the BinID of the highest chunk that was synced from the start BinID.
 // If the requested interval is too large, the downstream peer has the liberty to
 // provide fewer chunks than requested.
-func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (uint64, error) {
+func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start uint64) (uint64, int, error) {
 	loggerV2 := s.logger.V(2).Register()
 
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
-		return 0, fmt.Errorf("new stream: %w", err)
+		return 0, 0, fmt.Errorf("new stream: %w", err)
 	}
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
-			loggerV2.Debug("error syncing peer", "peer_address", peer, "bin", bin, "from", from, "to", to, "error", err)
+			loggerV2.Debug("error syncing peer", "peer_address", peer, "bin", bin, "from", start, "error", err)
 		} else {
 			stream.FullClose()
 		}
@@ -146,20 +142,20 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 
 	w, r := protobuf.NewWriterAndReader(stream)
 
-	rangeMsg := &pb.GetRange{Bin: int32(bin), Start: from}
+	rangeMsg := &pb.GetRange{Bin: int32(bin), Start: start}
 	if err = w.WriteMsgWithContext(ctx, rangeMsg); err != nil {
-		return 0, fmt.Errorf("write get range: %w", err)
+		return 0, 0, fmt.Errorf("write get range: %w", err)
 	}
 
 	var offer pb.Offer
 	if err = r.ReadMsgWithContext(ctx, &offer); err != nil {
-		return 0, fmt.Errorf("read offer: %w", err)
+		return 0, 0, fmt.Errorf("read offer: %w", err)
 	}
 
 	// empty interval (no chunks present in interval).
 	// return the end of the requested range as topmost.
 	if len(offer.Chunks) == 0 {
-		return offer.Topmost, nil
+		return offer.Topmost, 0, nil
 	}
 
 	topmost := offer.Topmost
@@ -173,7 +169,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 
 	bv, err := bitvector.New(bvLen)
 	if err != nil {
-		return topmost, fmt.Errorf("new bitvector: %w", err)
+		return topmost, 0, fmt.Errorf("new bitvector: %w", err)
 	}
 
 	for i := 0; i < len(offer.Chunks); i++ {
@@ -181,7 +177,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		addr := offer.Chunks[i].Address
 		batchID := offer.Chunks[i].BatchID
 		if len(addr) != swarm.HashSize {
-			return 0, fmt.Errorf("inconsistent hash length")
+			return 0, 0, fmt.Errorf("inconsistent hash length")
 		}
 
 		a := swarm.NewAddress(addr)
@@ -210,7 +206,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 
 	wantMsg := &pb.Want{BitVector: bv.Bytes()}
 	if err = w.WriteMsgWithContext(ctx, wantMsg); err != nil {
-		return topmost, fmt.Errorf("write want: %w", err)
+		return topmost, 0, fmt.Errorf("write want: %w", err)
 	}
 
 	var chunksToPut []swarm.Chunk
@@ -218,7 +214,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 	for ; ctr > 0; ctr-- {
 		var delivery pb.Delivery
 		if err = r.ReadMsgWithContext(ctx, &delivery); err != nil {
-			return topmost, fmt.Errorf("read delivery: %w", err)
+			return topmost, 0, fmt.Errorf("read delivery: %w", err)
 		}
 
 		addr := swarm.NewAddress(delivery.Address)
@@ -247,24 +243,15 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 
 	if len(chunksToPut) > 0 {
 
-		if to != MaxCursor { // historical syncing
-			s.rate.Add(len(chunksToPut))
-		}
-
 		s.metrics.DbOps.Inc()
 
 		if err := s.storage.Put(ctx, chunksToPut...); err != nil {
-			return topmost, fmt.Errorf("delivery put: %w", err)
+			return topmost, 0, fmt.Errorf("delivery put: %w", err)
 		}
 		s.metrics.LastReceived.WithLabelValues(fmt.Sprintf("%d", bin)).Set(float64(time.Now().Unix()))
 	}
 
-	return topmost, nil
-}
-
-// Rate returns chunks per second synced
-func (s *Syncer) Rate() float64 {
-	return s.rate.Rate()
+	return topmost, len(chunksToPut), nil
 }
 
 // handler handles an incoming request to sync an interval

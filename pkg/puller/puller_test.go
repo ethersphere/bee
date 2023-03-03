@@ -498,7 +498,7 @@ func TestDepthChange(t *testing.T) {
 }
 
 // TestContinueSyncing adds a single peer with PO 0 to hist and live sync only a peer
-// to test that when SyncInterval returns an error, the syncing does not terminate.
+// to test that when Sync returns an error, the syncing does not terminate.
 func TestContinueSyncing(t *testing.T) {
 	t.Parallel()
 
@@ -690,7 +690,7 @@ func waitCursorsCalled(t *testing.T, ps *mockps.PullSyncMock, addr swarm.Address
 	}
 }
 
-// waitLiveSyncCalled waits until SyncInterval is called on the address given.
+// waitLiveSyncCalled waits until Sync is called on the address given.
 func waitLiveSyncCalled(t *testing.T, ps *mockps.PullSyncMock, addr swarm.Address, invert bool) {
 	t.Helper()
 
@@ -711,7 +711,7 @@ func waitLiveSyncCalled(t *testing.T, ps *mockps.PullSyncMock, addr swarm.Addres
 	}
 }
 
-// waitSyncCalled waits until SyncInterval is called on the address given.
+// waitSyncCalled waits Sync is called on the address given.
 func waitSyncCalled(t *testing.T, ps *mockps.PullSyncMock, addr swarm.Address, invert bool) {
 	t.Helper()
 

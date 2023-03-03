@@ -20,10 +20,10 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pullsync"
+	"github.com/ethersphere/bee/pkg/rate"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
-	"go.uber.org/atomic"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -36,11 +36,17 @@ const (
 	recalcPeersDur           = time.Minute * 5
 	histSyncTimeout          = time.Minute * 10
 	histSyncTimeoutBlockList = time.Hour * 24
+	DefaultHistRateWindow    = time.Minute * 10
 )
 
 type Options struct {
 	Bins         uint8
 	SyncSleepDur time.Duration
+}
+
+type SyncRate interface {
+	// Rate of ch/s for historical syncing.
+	Rate() float64
 }
 
 type Puller struct {
@@ -64,7 +70,7 @@ type Puller struct {
 
 	bins uint8 // how many bins do we support
 
-	activeHistoricalSyncing *atomic.Uint64
+	rate *rate.Rate
 }
 
 func New(stateStore storage.StateStorer, topology topology.Driver, reserveState postage.RadiusChecker, pullSync pullsync.Interface, blockLister p2p.Blocklister, logger log.Logger, o Options, warmupTime time.Duration) *Puller {
@@ -76,17 +82,17 @@ func New(stateStore storage.StateStorer, topology topology.Driver, reserveState 
 	}
 
 	p := &Puller{
-		statestore:              stateStore,
-		topology:                topology,
-		radius:                  reserveState,
-		syncer:                  pullSync,
-		metrics:                 newMetrics(),
-		logger:                  logger.WithName(loggerName).Register(),
-		syncPeers:               make(map[string]*syncPeer),
-		syncErrorSleepDur:       o.SyncSleepDur,
-		bins:                    bins,
-		activeHistoricalSyncing: atomic.NewUint64(0),
-		blockLister:             blockLister,
+		statestore:        stateStore,
+		topology:          topology,
+		radius:            reserveState,
+		syncer:            pullSync,
+		metrics:           newMetrics(),
+		logger:            logger.WithName(loggerName).Register(),
+		syncPeers:         make(map[string]*syncPeer),
+		syncErrorSleepDur: o.SyncSleepDur,
+		bins:              bins,
+		blockLister:       blockLister,
+		rate:              rate.New(DefaultHistRateWindow),
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -95,10 +101,6 @@ func New(stateStore storage.StateStorer, topology topology.Driver, reserveState 
 	p.wg.Add(1)
 	go p.manage(ctx, warmupTime)
 	return p
-}
-
-func (p *Puller) ActiveHistoricalSyncing() uint64 {
-	return p.activeHistoricalSyncing.Load()
 }
 
 func (p *Puller) manage(ctx context.Context, warmupTime time.Duration) {
@@ -253,7 +255,6 @@ func (p *Puller) syncPeerBin(ctx context.Context, peer *syncPeer, bin uint8, cur
 	peer.setBinCancel(cancel, bin)
 	if cur > 0 {
 		p.wg.Add(1)
-		p.activeHistoricalSyncing.Inc()
 		go p.histSyncWorker(binCtx, peer.address, bin, cur)
 	}
 	// start live
@@ -266,7 +267,6 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 
 	defer p.wg.Done()
 	defer p.metrics.HistWorkerDoneCounter.Inc()
-	defer p.activeHistoricalSyncing.Dec()
 
 	sleep := false
 	loopStart := time.Now()
@@ -306,7 +306,7 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 		syncStart := time.Now()
 		ctx, cancel := context.WithTimeout(ctx, histSyncTimeout)
 
-		top, err := p.syncer.SyncInterval(ctx, peer, bin, s, cur)
+		top, count, err := p.syncer.Sync(ctx, peer, bin, s)
 		if err != nil {
 			cancel()
 			p.metrics.HistWorkerErrCounter.Inc()
@@ -323,6 +323,7 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			continue
 		}
 		cancel()
+		p.rate.Add(count)
 		err = p.addPeerInterval(peer, bin, s, top)
 		if err != nil {
 			p.metrics.HistWorkerErrCounter.Inc()
@@ -362,7 +363,7 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 		default:
 		}
 
-		top, err := p.syncer.SyncInterval(ctx, peer, bin, from, pullsync.MaxCursor)
+		top, _, err := p.syncer.Sync(ctx, peer, bin, from)
 		if err != nil {
 			p.metrics.LiveWorkerErrCounter.Inc()
 			loggerV2.Debug("liveSyncWorker sync error", "peer_address", peer, "bin", bin, "from", from, "topmost", top, "err", err)
@@ -383,6 +384,10 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 		loggerV2.Debug("liveSyncWorker pulled bin", "bin", bin, "from", from, "topmost", top, "peer_address", peer)
 		from = top + 1
 	}
+}
+
+func (p *Puller) Rate() float64 {
+	return p.rate.Rate()
 }
 
 func (p *Puller) Close() error {
