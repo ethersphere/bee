@@ -115,24 +115,6 @@ type chunkStoreWrapper struct {
 	sharky Sharky
 }
 
-// New returns a chunkStoreWrapper which implements the storage.ChunkStore interface
-// on top of the Store and the sharky blob storage.
-// It uses the Store to maintain the retrievalIndex and also stamps for the chunk and
-// sharky to maintain the chunk data.
-// Currently we do not support multiple stamps on chunks, but the chunkStoreWrapper
-// allows for this in future.
-// chunkStoreWrapper uses refCnt and works slightly different to the ChunkStore API.
-// The current Put API returns true if the chunk is already found as it supports only
-// unique chunks. The chunkStoreWrapper will also maintain refCnts for all the Puts
-// for the same chunk. This allows duplicates to change state.
-// Usually this Put operation would not be used by clients directly as it will be part
-// of some component which will provide the uniqueness guarantee.
-// Due to the refCnt a Delete would only result in an actual Delete operation
-// if the refCnt goes to 0.
-func New(store storage.Store, sharky Sharky) storage.ChunkStore {
-	return &chunkStoreWrapper{store: store, sharky: sharky}
-}
-
 // helper to read chunk from retrievalIndex.
 func (c *chunkStoreWrapper) readChunk(ctx context.Context, rIdx *retrievalIndexItem) (swarm.Chunk, error) {
 	buf := make([]byte, rIdx.Location.Length)
