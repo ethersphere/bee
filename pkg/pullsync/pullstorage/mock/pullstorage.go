@@ -91,7 +91,7 @@ func NewPullStorage(opts ...Option) *PullStorage {
 }
 
 // IntervalChunks returns a set of chunk in a requested interval.
-func (s *PullStorage) IntervalChunks(_ context.Context, bin uint8, from, to uint64, limit int) (chunks []*storer.BinC, topmost uint64, err error) {
+func (s *PullStorage) IntervalChunks(_ context.Context, bin uint8, from, limit uint64) (chunks []*storer.BinC, topmost uint64, err error) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 

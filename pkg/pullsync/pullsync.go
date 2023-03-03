@@ -54,7 +54,7 @@ const (
 )
 
 // how many maximum chunks in a batch
-var maxPage = 250
+var maxPage uint64 = 250
 
 // Interface is the PullSync interface.
 type Interface interface {
@@ -146,7 +146,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 
 	w, r := protobuf.NewWriterAndReader(stream)
 
-	rangeMsg := &pb.GetRange{Bin: int32(bin), From: from, To: to}
+	rangeMsg := &pb.GetRange{Bin: int32(bin), Start: from}
 	if err = w.WriteMsgWithContext(ctx, rangeMsg); err != nil {
 		return 0, fmt.Errorf("write get range: %w", err)
 	}
@@ -355,7 +355,7 @@ func (s *Syncer) makeOffer(ctx context.Context, rn pb.GetRange) (*pb.Offer, erro
 	ctx, cancel := context.WithTimeout(ctx, makeOfferTimeout)
 	defer cancel()
 
-	chs, top, err := s.storage.IntervalChunks(ctx, uint8(rn.Bin), rn.From, rn.To, maxPage)
+	chs, top, err := s.storage.IntervalChunks(ctx, uint8(rn.Bin), rn.Start, maxPage)
 	if err != nil {
 		return nil, err
 	}

@@ -220,7 +220,7 @@ type BinC struct {
 }
 
 // SubscribeBin returns a channel that feeds all the chunks in the reserve from a certain bin between a start and end binIDs.
-func (db *DB) SubscribeBin(ctx context.Context, bin uint8, start, end uint64) (<-chan *BinC, func(), <-chan error) {
+func (db *DB) SubscribeBin(ctx context.Context, bin uint8, start uint64) (<-chan *BinC, func(), <-chan error) {
 	out := make(chan *BinC)
 	done := make(chan struct{})
 	errC := make(chan error, 1)
@@ -233,54 +233,35 @@ func (db *DB) SubscribeBin(ctx context.Context, bin uint8, start, end uint64) (<
 		defer unsub()
 		defer close(out)
 
-		var (
-			stop      = false
-			lastBinID uint64
-		)
-
 		for {
 
 			err := db.reserve.IterateBin(db.repo.IndexStore(), bin, start, func(a swarm.Address, binID uint64, batchID []byte) (bool, error) {
 
-				if binID <= end {
-					lastBinID = binID
-					select {
-					case out <- &BinC{Address: a, BinID: binID, BatchID: batchID}:
-					case <-done:
-						stop = true
-						return false, nil
-					case <-db.quit:
-						return false, errDBQuit
-					case <-ctx.Done():
-						return false, ctx.Err()
-					}
-				}
+				fmt.Println("iterate", bin, binID)
 
-				if binID >= end {
-					stop = true
+				select {
+				case out <- &BinC{Address: a, BinID: binID, BatchID: batchID}:
+				case <-done:
 					return true, nil
+				case <-db.quit:
+					return false, ErrDBQuit
+				case <-ctx.Done():
+					return false, ctx.Err()
 				}
 
 				return false, nil
-
 			})
 			if err != nil {
 				errC <- err
 				return
 			}
 
-			if stop {
-				return
-			}
-
-			start = lastBinID + 1
-
 			select {
 			case <-trigger:
 			case <-done:
 				return
 			case <-db.quit:
-				errC <- errDBQuit
+				errC <- ErrDBQuit
 				return
 			case <-ctx.Done():
 				errC <- err

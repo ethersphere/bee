@@ -6,7 +6,6 @@ package pullstorage
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -20,11 +19,9 @@ const loggerName = "pullstorage"
 
 var (
 	_ Storer = (*PullStorer)(nil)
-	// ErrDbClosed is used to signal the underlying database was closed
-	ErrDbClosed = errors.New("db closed")
 
 	// after how long to return a non-empty batch
-	batchTimeout = 500 * time.Millisecond
+	batchTimeout = time.Second
 )
 
 // Storer is a thin wrapper around storage.Storer.
@@ -32,7 +29,7 @@ var (
 // currently present in the local store.
 type Storer interface {
 	// IntervalChunks collects chunk for a requested interval.
-	IntervalChunks(ctx context.Context, bin uint8, from, to uint64, limit int) (chunks []*storer.BinC, topmost uint64, err error)
+	IntervalChunks(ctx context.Context, bin uint8, from, limit uint64) (chunks []*BinC, topmost uint64, err error)
 	// Cursors gets the last BinID for every bin in the local storage
 	Cursors(ctx context.Context) ([]uint64, error)
 	Has(addr swarm.Address, batchID []byte) (bool, error)
@@ -57,49 +54,47 @@ func New(store storer.ReserveStore, logger log.Logger) *PullStorer {
 	}
 }
 
-// IntervalChunks collects chunk for a requested interval.
-func (s *PullStorer) IntervalChunks(ctx context.Context, bin uint8, from, to uint64, limit int) ([]*storer.BinC, uint64, error) {
+type BinC struct {
+	Address swarm.Address
+	BatchID []byte
+}
+
+// IntervalChunks collects chunks at a bin starting at some start BinID until a limit is reached.
+// The function waits for an unbounded amount of time for the first chunk to arrive.
+// After the arrival of the first chunk, the subsequent chunks have a limited amount of time to arrive,
+// after which the function returns the collected slice of chunks.
+func (s *PullStorer) IntervalChunks(ctx context.Context, bin uint8, start, limit uint64) ([]*BinC, uint64, error) {
 	loggerV2 := s.logger.V(2).Register()
 
 	type result struct {
-		chs     []*storer.BinC
+		chs     []*BinC
 		topmost uint64
 	}
 	s.metrics.TotalSubscribePullRequests.Inc()
 	defer s.metrics.TotalSubscribePullRequestsComplete.Inc()
 
-	v, _, err := s.intervalsSF.Do(ctx, fmt.Sprintf("%v-%v-%v-%v", bin, from, to, limit), func(ctx context.Context) (interface{}, error) {
+	v, _, err := s.intervalsSF.Do(ctx, fmt.Sprintf("%v-%v-%v", bin, start, limit), func(ctx context.Context) (interface{}, error) {
 		var (
-			chs     []*storer.BinC
+			chs     []*BinC
 			topmost uint64
-		)
-		// call iterator, iterate either until upper bound or limit reached
-		// return addresses, topmost is the topmost bin ID
-		var (
-			timer  *time.Timer
-			timerC <-chan time.Time
+			timer   *time.Timer
+			timerC  <-chan time.Time
 		)
 		s.metrics.SubscribePullsStarted.Inc()
-		chC, stop, errC := s.store.SubscribeBin(ctx, bin, from, to)
-		defer func(start time.Time) {
-			stop()
+		chC, unsub, errC := s.store.SubscribeBin(ctx, bin, start)
+		defer func() {
+			unsub()
 			if timer != nil {
 				timer.Stop()
 			}
 			s.metrics.SubscribePullsComplete.Inc()
-		}(time.Now())
-
-		var nomore bool
+		}()
 
 	LOOP:
 		for limit > 0 {
 			select {
-			case c, ok := <-chC:
-				if !ok {
-					nomore = true
-					break LOOP
-				}
-				chs = append(chs, c)
+			case c := <-chC:
+				chs = append(chs, &BinC{Address: c.Address, BatchID: c.BatchID})
 				if c.BinID > topmost {
 					topmost = c.BinID
 				}
@@ -122,14 +117,6 @@ func (s *PullStorer) IntervalChunks(ctx context.Context, bin uint8, from, to uin
 				// return batch if new chunks are not received after some time
 				break LOOP
 			}
-		}
-
-		if nomore {
-			// end of interval reached. no more chunks so interval is complete
-			// return requested `to`. it could be that len(chs) == 0 if the interval
-			// is empty
-			loggerV2.Debug("no more batches from the subscription", "to", to, "topmost", topmost)
-			topmost = to
 		}
 
 		return &result{chs: chs, topmost: topmost}, nil

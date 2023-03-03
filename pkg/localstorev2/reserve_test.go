@@ -444,7 +444,7 @@ func TestSubscribeBin(t *testing.T) {
 		t.Run("subscribe full range", func(t *testing.T) {
 			t.Parallel()
 
-			binC, _, _ := storer.SubscribeBin(context.Background(), 0, 0, chunksPerPO-1)
+			binC, _, _ := storer.SubscribeBin(context.Background(), 0, 0)
 
 			i := uint64(0)
 			for c := range binC {
@@ -463,7 +463,7 @@ func TestSubscribeBin(t *testing.T) {
 		t.Run("subscribe unsub", func(t *testing.T) {
 			t.Parallel()
 
-			binC, unsub, _ := storer.SubscribeBin(context.Background(), 0, 0, chunksPerPO-1)
+			binC, unsub, _ := storer.SubscribeBin(context.Background(), 0, 0)
 
 			<-binC
 			unsub()
@@ -475,28 +475,28 @@ func TestSubscribeBin(t *testing.T) {
 			}
 		})
 
-		t.Run("subscribe sub range", func(t *testing.T) {
-			t.Parallel()
+		// t.Run("subscribe sub range", func(t *testing.T) {
+		// 	t.Parallel()
 
-			binC, _, _ := storer.SubscribeBin(context.Background(), 0, 1, chunksPerPO-1)
+		// 	binC, _, _ := storer.SubscribeBin(context.Background(), 0, 1, chunksPerPO-1)
 
-			i := uint64(1)
-			for c := range binC {
-				if !c.Address.Equal(chunks[i].Address()) {
-					t.Fatal("mismatch of chunks at index", i)
-				}
-				i++
-			}
+		// 	i := uint64(1)
+		// 	for c := range binC {
+		// 		if !c.Address.Equal(chunks[i].Address()) {
+		// 			t.Fatal("mismatch of chunks at index", i)
+		// 		}
+		// 		i++
+		// 	}
 
-			if i != chunksPerPO {
-				t.Fatalf("mismatch of chunk count, got %d, want %d", i, chunksPerPO)
-			}
-		})
+		// 	if i != chunksPerPO {
+		// 		t.Fatalf("mismatch of chunk count, got %d, want %d", i, chunksPerPO)
+		// 	}
+		// })
 
 		t.Run("subscribe beyond range", func(t *testing.T) {
 			t.Parallel()
 
-			binC, _, _ := storer.SubscribeBin(context.Background(), 0, 1, chunksPerPO)
+			binC, _, _ := storer.SubscribeBin(context.Background(), 0, 1)
 			i := uint64(1)
 			timer := time.After(time.Millisecond * 500)
 
@@ -565,7 +565,7 @@ func TestSubscribeBinTrigger(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		binC, _, _ := storer.SubscribeBin(context.Background(), 0, 1, chunksPerPO)
+		binC, _, _ := storer.SubscribeBin(context.Background(), 0, 1)
 		i := uint64(1)
 		timer := time.After(time.Millisecond * 500)
 

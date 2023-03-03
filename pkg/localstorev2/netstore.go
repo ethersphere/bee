@@ -38,7 +38,7 @@ func (db *DB) DirectUpload() PutterSession {
 				case <-egCtx.Done():
 					return egCtx.Err()
 				case <-db.quit:
-					return errDBQuit
+					return ErrDBQuit
 				case db.pusherFeed <- op:
 					select {
 					case <-ctx.Done():
@@ -46,7 +46,7 @@ func (db *DB) DirectUpload() PutterSession {
 					case <-egCtx.Done():
 						return egCtx.Err()
 					case <-db.quit:
-						return errDBQuit
+						return ErrDBQuit
 					case err := <-op.Err:
 						return err
 					}

@@ -155,7 +155,7 @@ func TestNew(t *testing.T) {
 	})
 }
 
-func dbTestOps(baseAddr swarm.Address, capacity int, bs postage.Storer, syncer pullsync.SyncReporter, radiusSetter topology.SetStorageRadiuser, reserveWakeUpTime time.Duration) *storer.Options {
+func dbTestOps(baseAddr swarm.Address, reserveCapacity int, bs postage.Storer, syncer pullsync.SyncReporter, radiusSetter topology.SetStorageRadiuser, reserveWakeUpTime time.Duration) *storer.Options {
 
 	opts := storer.DefaultOptions()
 
@@ -173,7 +173,7 @@ func dbTestOps(baseAddr swarm.Address, capacity int, bs postage.Storer, syncer p
 
 	opts.Address = baseAddr
 	opts.RadiusSetter = radiusSetter
-	opts.ReserveCapacity = capacity
+	opts.ReserveCapacity = reserveCapacity
 	opts.Batchstore = bs
 	opts.Syncer = syncer
 	opts.ReserveWakeUpDuration = reserveWakeUpTime
