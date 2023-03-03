@@ -16,7 +16,6 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/traversal"
-	"github.com/hashicorp/go-multierror"
 )
 
 // how many parallel push operations
@@ -65,10 +64,10 @@ func (s *steward) Reupload(ctx context.Context, root swarm.Address) error {
 	}
 
 	if err := s.traverser.Traverse(ctx, root, fn); err != nil {
-		return multierror.Append(
+		return errors.Join(
 			fmt.Errorf("traversal of %s failed: %w", root.String(), err),
 			uploaderSession.Cleanup(),
-		).ErrorOrNil()
+		)
 	}
 
 	return uploaderSession.Done(root)

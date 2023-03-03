@@ -5,13 +5,13 @@
 package api
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/traversal"
 	"github.com/gorilla/mux"
-	"github.com/hashicorp/go-multierror"
 )
 
 // pinRootHash pins root hash of given reference. This method is idempotent.
@@ -65,7 +65,7 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 		},
 	)
 	if err != nil {
-		logger.Debug("pin collection failed", "error", multierror.Append(err, putter.Cleanup()).ErrorOrNil())
+		logger.Debug("pin collection failed", "error", errors.Join(err, putter.Cleanup()))
 		logger.Error(nil, "pin collection failed")
 		jsonhttp.InternalServerError(w, "pin collection failed")
 		return

@@ -750,7 +750,7 @@ func (p *putterSessionWrapper) Put(ctx context.Context, chunk swarm.Chunk) error
 }
 
 func (p *putterSessionWrapper) Done(ref swarm.Address) error {
-	return multierror.Append(p.PutterSession.Done(ref), p.save()).ErrorOrNil()
+	return errors.Join(p.PutterSession.Done(ref), p.save())
 }
 
 func (s *Service) newStamperPutter(ctx context.Context, opts putterOptions) (storer.PutterSession, error) {
