@@ -49,9 +49,9 @@ func TestMockStorer(t *testing.T) {
 	})
 
 	t.Run("get session", func(t *testing.T) {
-		have, err := mockStorer.GetSessionInfo(1)
+		have, err := mockStorer.Session(1)
 		if err != nil {
-			t.Fatalf("GetSessionInfo(): unexpected error: %v", err)
+			t.Fatalf("Session(): unexpected error: %v", err)
 		}
 
 		want := storer.SessionInfo{TagID: 1, StartedAt: now().Unix()}
@@ -77,12 +77,12 @@ func TestMockStorer(t *testing.T) {
 	})
 
 	t.Run("delete session", func(t *testing.T) {
-		mockStorer.DeleteSessionInfo(1)
+		mockStorer.DeleteSession(1)
 
 		want := storage.ErrNotFound
-		_, have := mockStorer.GetSessionInfo(1)
+		_, have := mockStorer.Session(1)
 		if !errors.Is(want, have) {
-			t.Fatalf("GetSessionInfo(): unexpected error: want %v have %v", want, have)
+			t.Fatalf("Session(): unexpected error: want %v have %v", want, have)
 		}
 	})
 
@@ -151,9 +151,9 @@ func TestMockStorer(t *testing.T) {
 			t.Fatalf("Done(...): unexpected error: %v", err)
 		}
 
-		have, err := mockStorer.GetSessionInfo(session.TagID)
+		have, err := mockStorer.Session(session.TagID)
 		if err != nil {
-			t.Fatalf("GetSessionInfo(...): unexpected error: %v", err)
+			t.Fatalf("Session(...): unexpected error: %v", err)
 		}
 
 		want := storer.SessionInfo{

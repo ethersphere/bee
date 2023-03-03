@@ -212,7 +212,6 @@ func (s *Service) mountAPI() {
 	handle("/chunks/{address}", jsonhttp.MethodHandler{
 		"GET":  http.HandlerFunc(s.chunkGetHandler),
 		"HEAD": http.HandlerFunc(s.hasChunkHandler),
-		// "DELETE": http.HandlerFunc(s.removeChunk),
 	})
 
 	handle("/soc/{owner}/{id}", jsonhttp.MethodHandler{
@@ -383,7 +382,6 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 
 	handle("/chunks/{address}", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.hasChunkHandler),
-		// "DELETE": http.HandlerFunc(s.removeChunk),
 	})
 
 	handle("/topology", jsonhttp.MethodHandler{

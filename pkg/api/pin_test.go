@@ -128,21 +128,6 @@ func TestPinHandlers(t *testing.T) {
 		checkPinHandlers(t, client, rootHash, false)
 	})
 
-	// t.Run("chunk", func(t *testing.T) {
-	// 	var (
-	// 		chunk    = testingc.GenerateTestRandomChunk()
-	// 		rootHash = chunk.Address().String()
-	// 	)
-	// 	jsonhttptest.Request(t, client, http.MethodPost, "/chunks", http.StatusCreated,
-	// 		jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
-	// 		jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
-	// 		jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
-	// 		jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{
-	// 			Reference: chunk.Address(),
-	// 		}),
-	// 	)
-	// 	checkPinHandlers(t, client, rootHash, true)
-	// })
 }
 
 func TestPinHandlersInvalidInputs(t *testing.T) {

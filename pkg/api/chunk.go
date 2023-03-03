@@ -84,7 +84,11 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ow := &cleanupOnErrWriter{ResponseWriter: w, onErr: putter.Cleanup}
+	ow := &cleanupOnErrWriter{
+		ResponseWriter: w,
+		onErr:          putter.Cleanup,
+		logger:         logger,
+	}
 
 	data, err := io.ReadAll(r.Body)
 	if err != nil {

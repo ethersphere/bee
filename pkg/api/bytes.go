@@ -86,7 +86,11 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ow := &cleanupOnErrWriter{ResponseWriter: w, onErr: putter.Cleanup}
+	ow := &cleanupOnErrWriter{
+		ResponseWriter: w,
+		onErr:          putter.Cleanup,
+		logger:         logger,
+	}
 
 	p := requestPipelineFn(putter, headers.Encrypt)
 	ctx, cancel := context.WithCancel(r.Context())

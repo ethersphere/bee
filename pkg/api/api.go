@@ -346,8 +346,8 @@ func (s *Service) Close() error {
 	return nil
 }
 
-// getOrCreateTag attempts to get the tag if an id is supplied, and returns an error if it does not exist.
-// If no id is supplied, it will attempt to create a new tag with a generated name and return it.
+// getOrCreateSessionID attempts to get the session if an tag id is supplied, and returns an error
+// if it does not exist. If no id is supplied, it will attempt to create a new session and return it.
 func (s *Service) getOrCreateSessionID(tagUid uint64) (uint64, error) {
 	var (
 		tag storer.SessionInfo
@@ -357,7 +357,7 @@ func (s *Service) getOrCreateSessionID(tagUid uint64) (uint64, error) {
 	if tagUid == 0 {
 		tag, err = s.storer.NewSession()
 	} else {
-		tag, err = s.storer.GetSessionInfo(tagUid)
+		tag, err = s.storer.Session(tagUid)
 	}
 	return tag.TagID, err
 }
@@ -813,7 +813,8 @@ type cleanupOnErrWriter struct {
 }
 
 func (r *cleanupOnErrWriter) WriteHeader(statusCode int) {
-	if statusCode > 400 {
+	// if there is an error status returned, cleanup.
+	if statusCode > http.StatusBadRequest {
 		err := r.onErr()
 		if err != nil {
 			r.logger.Debug("failed cleaning up", "err", err)

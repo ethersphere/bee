@@ -61,12 +61,7 @@ func (s *steward) Reupload(ctx context.Context, root swarm.Address) error {
 			return err
 		}
 
-		err = uploaderSession.Put(ctx, c)
-		if err != nil {
-			return err
-		}
-
-		return nil
+		return uploaderSession.Put(ctx, c)
 	}
 
 	if err := s.traverser.Traverse(ctx, root, fn); err != nil {

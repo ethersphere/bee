@@ -59,9 +59,11 @@ type UploadStore interface {
 	Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession, error)
 	// NewSession can be used to obtain a tag ID to use for a new Upload session.
 	NewSession() (SessionInfo, error)
-	// GetSessionInfo will show the information about the session.
-	GetSessionInfo(tagID uint64) (SessionInfo, error)
-	DeleteSessionInfo(tagID uint64)
+	// Session will show the information about the session.
+	Session(tagID uint64) (SessionInfo, error)
+	// DeleteSession will delete the session info associated with the tag id.
+	DeleteSession(tagID uint64)
+	// ListSessions will list all the Sessions currently being tracked.
 	ListSessions(page, limit int) ([]SessionInfo, error)
 }
 

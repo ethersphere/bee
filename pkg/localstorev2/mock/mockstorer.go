@@ -99,7 +99,7 @@ func (m *mockStorer) NewSession() (storer.SessionInfo, error) {
 	return *session, nil
 }
 
-func (m *mockStorer) GetSessionInfo(tagID uint64) (storer.SessionInfo, error) {
+func (m *mockStorer) Session(tagID uint64) (storer.SessionInfo, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -110,7 +110,7 @@ func (m *mockStorer) GetSessionInfo(tagID uint64) (storer.SessionInfo, error) {
 	return *session, nil
 }
 
-func (m *mockStorer) DeleteSessionInfo(tagID uint64) {
+func (m *mockStorer) DeleteSession(tagID uint64) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

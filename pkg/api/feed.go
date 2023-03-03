@@ -188,7 +188,11 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ow := &cleanupOnErrWriter{ResponseWriter: w, onErr: putter.Cleanup}
+	ow := &cleanupOnErrWriter{
+		ResponseWriter: w,
+		onErr:          putter.Cleanup,
+		logger:         logger,
+	}
 
 	l := loadsave.New(s.storer.ChunkStore(), requestPipelineFactory(r.Context(), putter, false))
 	feedManifest, err := manifest.NewDefaultManifest(l, false)

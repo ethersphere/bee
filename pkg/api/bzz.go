@@ -92,7 +92,11 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ow := &cleanupOnErrWriter{ResponseWriter: w, onErr: putter.Cleanup}
+	ow := &cleanupOnErrWriter{
+		ResponseWriter: w,
+		onErr:          putter.Cleanup,
+		logger:         logger,
+	}
 
 	if headers.IsDir || headers.ContentType == multiPartFormData {
 		s.dirUploadHandler(logger, ow, r, putter, r.Header.Get(contentTypeHeader), headers.Encrypt, tag)

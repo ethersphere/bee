@@ -89,29 +89,6 @@ func TestSOC(t *testing.T) {
 		}
 	})
 
-	// t.Run("already exists", func(t *testing.T) {
-	// 	s := testingsoc.GenerateMockSOC(t, testData)
-
-	// 	jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(s.Signature)), http.StatusCreated,
-	// 		jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
-	// 		jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
-	// 		jsonhttptest.WithRequestBody(bytes.NewReader(s.WrappedChunk.Data())),
-	// 		jsonhttptest.WithExpectedJSONResponse(api.SocPostResponse{
-	// 			Reference: s.Address(),
-	// 		}),
-	// 	)
-	// 	jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(s.Signature)), http.StatusConflict,
-	// 		jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
-	// 		jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
-	// 		jsonhttptest.WithRequestBody(bytes.NewReader(s.WrappedChunk.Data())),
-	// 		jsonhttptest.WithExpectedJSONResponse(
-	// 			jsonhttp.StatusResponse{
-	// 				Message: "chunk already exists",
-	// 				Code:    http.StatusConflict,
-	// 			}),
-	// 	)
-	// })
-
 	t.Run("postage", func(t *testing.T) {
 		s := testingsoc.GenerateMockSOC(t, testData)
 		t.Run("err - bad batch", func(t *testing.T) {

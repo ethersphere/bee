@@ -75,7 +75,7 @@ func (s *Service) getTagHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tag, err := s.storer.GetSessionInfo(paths.TagID)
+	tag, err := s.storer.Session(paths.TagID)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			logger.Debug("tag not found", "tag_id", paths.TagID)
@@ -104,7 +104,7 @@ func (s *Service) deleteTagHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tag, err := s.storer.GetSessionInfo(paths.TagID)
+	tag, err := s.storer.Session(paths.TagID)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			logger.Debug("tag not found", "tag_id", paths.TagID)
@@ -118,7 +118,7 @@ func (s *Service) deleteTagHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.storer.DeleteSessionInfo(tag.TagID)
+	s.storer.DeleteSession(tag.TagID)
 	jsonhttp.NoContent(w)
 }
 
@@ -155,7 +155,7 @@ func (s *Service) doneSplitHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	tag, err := s.storer.GetSessionInfo(paths.TagID)
+	tag, err := s.storer.Session(paths.TagID)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			logger.Debug("tag not found", "tag_id", paths.TagID)
