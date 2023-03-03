@@ -100,63 +100,6 @@ func TestChunkUploadDownload(t *testing.T) {
 			t.Fatal("storer check root chunk reference: have none; want one")
 		}
 	})
-
-	// t.Run("pin-invalid-value", func(t *testing.T) {
-	// 	jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusCreated,
-	// 		jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
-	// 		jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
-	// 		jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
-	// 		jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: chunk.Address()}),
-	// 		jsonhttptest.WithRequestHeader(api.SwarmPinHeader, "invalid-pin"),
-	// 	)
-
-	// 	// Also check if the chunk is NOT pinned
-	// 	if storerMock.GetModeSet(chunk.Address()) == storage.ModeSetPin {
-	// 		t.Fatal("chunk should not be pinned")
-	// 	}
-	// })
-	// t.Run("pin-header-missing", func(t *testing.T) {
-	// 	jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusCreated,
-	// 		jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
-	// 		jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
-	// 		jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
-	// 		jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: chunk.Address()}),
-	// 	)
-
-	// 	// Also check if the chunk is NOT pinned
-	// 	if storerMock.GetModeSet(chunk.Address()) == storage.ModeSetPin {
-	// 		t.Fatal("chunk should not be pinned")
-	// 	}
-	// })
-	// t.Run("pin-ok", func(t *testing.T) {
-	// 	reference := chunk.Address()
-	// 	jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusCreated,
-	// 		jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
-	// 		jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
-	// 		jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
-	// 		jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: reference}),
-	// 		jsonhttptest.WithRequestHeader(api.SwarmPinHeader, "True"),
-	// 	)
-
-	// 	has, err := storerMock.ChunkStore().Has(context.Background(), reference)
-	// 	if err != nil {
-	// 		t.Fatal(err)
-	// 	}
-	// 	if !has {
-	// 		t.Fatal("storer check root chunk reference: have none; want one")
-	// 	}
-
-	// 	refs, err := storerMock.Pins()
-	// 	if err != nil {
-	// 		t.Fatal(err)
-	// 	}
-	// 	if have, want := len(refs), 1; have != want {
-	// 		t.Fatalf("root pin count mismatch: have %d; want %d", have, want)
-	// 	}
-	// 	if have, want := refs[0], reference; !have.Equal(want) {
-	// 		t.Fatalf("root pin reference mismatch: have %q; want %q", have, want)
-	// 	}
-	// })
 }
 
 // nolint:paralleltest
@@ -188,39 +131,6 @@ func TestChunkHasHandler(t *testing.T) {
 		jsonhttptest.Request(t, testServer, http.MethodHead, "/chunks/abcd1100zz", http.StatusBadRequest,
 			jsonhttptest.WithNoResponseBody())
 	})
-
-	// t.Run("remove-chunk", func(t *testing.T) {
-	// 	jsonhttptest.Request(t, testServer, http.MethodDelete, "/chunks/"+key.String(), http.StatusOK,
-	// 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-	// 			Message: http.StatusText(http.StatusOK),
-	// 			Code:    http.StatusOK,
-	// 		}),
-	// 	)
-	// 	yes, err := mockStorer.ChunkStore().Has(context.Background(), key)
-	// 	if err != nil {
-	// 		t.Fatal(err)
-	// 	}
-	// 	if yes {
-	// 		t.Fatalf("The chunk %s is not deleted", key.String())
-	// 	}
-	// })
-
-	// t.Run("remove-not-present-chunk", func(t *testing.T) {
-	// 	notPresentChunkAddress := "deadbeef"
-	// 	jsonhttptest.Request(t, testServer, http.MethodDelete, "/chunks/"+notPresentChunkAddress, http.StatusOK,
-	// 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-	// 			Message: http.StatusText(http.StatusOK),
-	// 			Code:    http.StatusOK,
-	// 		}),
-	// 	)
-	// 	yes, err := mockStorer.ChunkStore().Has(context.Background(), swarm.NewAddress([]byte(notPresentChunkAddress)))
-	// 	if err != nil {
-	// 		t.Fatal(err)
-	// 	}
-	// 	if yes {
-	// 		t.Fatalf("The chunk %s is not deleted", notPresentChunkAddress)
-	// 	}
-	// })
 }
 
 func TestChunkHandlersInvalidInputs(t *testing.T) {
