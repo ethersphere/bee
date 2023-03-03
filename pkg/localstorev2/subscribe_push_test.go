@@ -22,20 +22,15 @@ import (
 func TestPushSubscriber(t *testing.T) {
 	t.Parallel()
 
+	baseAddr := test.RandomAddress()
 	t.Run("inmem", func(t *testing.T) {
 		t.Parallel()
-
-		testPushSubscriber(t, func() (*storer.DB, error) {
-			baseAddr := test.RandomAddress()
-			return memStorer(t, dbTestOps(baseAddr, 0, nil, nil, nil, time.Second))()
-		})
+		memStorer := memStorer(t, dbTestOps(baseAddr, 10, nil, nil, nil, time.Second))
+		testPushSubscriber(t, memStorer)
 	})
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
-
-		baseAddr := test.RandomAddress()
 		diskStorer := diskStorer(t, dbTestOps(baseAddr, 0, nil, nil, nil, time.Second))
-
 		testPushSubscriber(t, diskStorer)
 	})
 }
