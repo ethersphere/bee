@@ -15,6 +15,6 @@ var (
 	ErrUnmarshalInvalidRetrievalIndexItemSize  = errUnmarshalInvalidRetrievalIndexSize
 )
 
-func (t *txChunkStoreWrapper) Store() storage.Store {
-	return t.txStore
+func New(store storage.Store, sharky Sharky) storage.ChunkStore {
+	return &chunkStoreWrapper{store: store, sharky: sharky}
 }
