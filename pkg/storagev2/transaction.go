@@ -100,7 +100,8 @@ func (tx *TxState) IsDone() error {
 }
 
 // Done marks this transaction as complete.
-// It returns ErrTxDone if the transaction has already been committed.
+// It returns ErrTxDone if the transaction
+// has already been committed or rolled back.
 func (tx *TxState) Done() error {
 	if tx == nil {
 		return nil
