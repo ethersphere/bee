@@ -13,7 +13,6 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchstore"
 	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 var _ postage.Storer = (*BatchStore)(nil)
@@ -30,8 +29,6 @@ type BatchStore struct {
 	updateErr             error
 	updateErrDelayCnt     int
 	resetCallCount        int
-
-	radiusSetter postage.StorageRadiusSetter
 
 	existsFn func([]byte) (bool, error)
 
@@ -188,18 +185,6 @@ func (bs *BatchStore) Radius() uint8 {
 	defer bs.mtx.Unlock()
 
 	return bs.radius
-}
-
-func (bs *BatchStore) IsWithinStorageRadius(swarm.Address) bool {
-	return bs.isWithinStorageRadius
-}
-
-func (bs *BatchStore) SetStorageRadiusSetter(r postage.StorageRadiusSetter) {
-	bs.radiusSetter = r
-}
-
-func (bs *BatchStore) Unreserve(_ postage.UnreserveIteratorFn) error {
-	panic("not implemented")
 }
 
 // Exists reports whether batch referenced by the give id exists.

@@ -38,9 +38,6 @@ type ChainSnapshot struct {
 	Timestamp        int64       `json:"timestamp"`
 }
 
-// UnreserveIteratorFn is used as a callback on Storer.Unreserve method calls.
-type UnreserveIteratorFn func(id []byte, radius uint8) (bool, error)
-
 // Storer represents the persistence layer for batches
 // on the current (highest available) block.
 type Storer interface {
@@ -75,11 +72,6 @@ type Storer interface {
 	Reset() error
 
 	SetBatchExpiryHandler(BatchExpiryHandler)
-}
-
-// StorageRadiusSetter is used as a callback when the radius of a node changes.
-type StorageRadiusSetter interface {
-	SetStorageRadius(uint8)
 }
 
 // Listener provides a blockchain event iterator.
