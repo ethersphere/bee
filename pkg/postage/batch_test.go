@@ -20,7 +20,7 @@ func TestBatchMarshalling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(buf) != 96 {
+	if len(buf) != 95 {
 		t.Fatalf("invalid length for serialised batch. expected 95, got %d", len(buf))
 	}
 	b := &postage.Batch{}
