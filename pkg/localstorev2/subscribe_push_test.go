@@ -7,7 +7,6 @@ package storer_test
 import (
 	"bytes"
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 	"testing"
@@ -121,7 +120,7 @@ func testPushSubscriber(t *testing.T, newLocalstore func() (*storer.DB, error)) 
 					err = ierr
 				}
 				if !bytes.Equal(gotStamp, wantStamp) {
-					err = errors.New("stamps don't match")
+					err = fmt.Errorf("stamps don't match\nwant: %v\n  got %v", wantStamp, gotStamp)
 				}
 
 				i++
