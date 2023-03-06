@@ -120,7 +120,7 @@ func testPushSubscriber(t *testing.T, newLocalstore func() (*storer.DB, error)) 
 					err = ierr
 				}
 				if !bytes.Equal(gotStamp, wantStamp) {
-					err = fmt.Errorf("stamps don't match\nwant: %v\n  got %v", wantStamp, gotStamp)
+					err = fmt.Errorf("stamps don't match\nwant: %s\n  got %s", want.Stamp().BatchID(), got.Stamp().BatchID())
 				}
 
 				i++
