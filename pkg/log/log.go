@@ -296,6 +296,6 @@ func WithLogMetrics() Option {
 			return
 		}
 		opts.logMetrics = newLogMetrics()
-		WithLevelHooks(VerbosityAll, opts.logMetrics)
+		WithLevelHooks(VerbosityAll, opts.logMetrics)(opts)
 	}
 }

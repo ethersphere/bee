@@ -3,6 +3,9 @@ project_name: bee
 release:
   prerelease: auto
 
+git:
+  tag_sort: version:refname
+
 builds:
   - id: linux
     main: ./cmd/bee
