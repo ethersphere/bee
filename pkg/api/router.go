@@ -210,9 +210,8 @@ func (s *Service) mountAPI() {
 	))
 
 	handle("/chunks/{address}", jsonhttp.MethodHandler{
-		"GET":    http.HandlerFunc(s.chunkGetHandler),
-		"HEAD":   http.HandlerFunc(s.hasChunkHandler),
-		"DELETE": http.HandlerFunc(s.removeChunk),
+		"GET":  http.HandlerFunc(s.chunkGetHandler),
+		"HEAD": http.HandlerFunc(s.hasChunkHandler),
 	})
 
 	handle("/soc/{owner}/{id}", jsonhttp.MethodHandler{
@@ -319,12 +318,6 @@ func (s *Service) mountAPI() {
 		web.FinalHandlerFunc(s.healthHandler),
 	))
 
-	handle("/rchash/{depth}/{anchor}", web.ChainHandlers(
-		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.rchasher),
-		})),
-	)
-
 	if s.Restricted {
 		handle("/auth", jsonhttp.MethodHandler{
 			"POST": web.ChainHandlers(
@@ -388,8 +381,7 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 	})
 
 	handle("/chunks/{address}", jsonhttp.MethodHandler{
-		"GET":    http.HandlerFunc(s.hasChunkHandler),
-		"DELETE": http.HandlerFunc(s.removeChunk),
+		"GET": http.HandlerFunc(s.hasChunkHandler),
 	})
 
 	handle("/topology", jsonhttp.MethodHandler{
@@ -533,10 +525,6 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 			"GET": http.HandlerFunc(s.postageGetAllStampsHandler),
 		})),
 	)
-
-	handle("/tags/{id}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.getDebugTagHandler),
-	})
 
 	handle("/accounting", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.accountingInfoHandler),
