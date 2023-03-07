@@ -335,8 +335,6 @@ func (s *store) cleanup() error {
 
 // computeRadius calculates the radius by using the sum of all batch depths
 // and the node capacity using the formula totalCommitment/node_capacity = 2^R.
-// In the case that the new radius is lower than the current storage radius,
-// batch storage radiuses are adjusted to the new radius.
 // Must be called under lock.
 func (s *store) computeRadius() error {
 

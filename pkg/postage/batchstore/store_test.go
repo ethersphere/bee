@@ -127,11 +127,6 @@ func TestBatchStore_SaveAndUpdate(t *testing.T) {
 		t.Fatalf("storer.Save(...): unexpected error: %v", err)
 	}
 
-	// // call Unreserve once to increase storage radius of the test batch
-	// if err := batchStore.Unreserve(func(id []byte, radius uint8) (bool, error) { return false, nil }); err != nil {
-	// 	t.Fatalf("storer.Unreserve(...): unexpected error: %v", err)
-	// }
-
 	//get test batch after save call
 	stateStoreGet(t, stateStore, key, testBatch)
 
