@@ -370,9 +370,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 
 	logger := opts.Logger.WithName(loggerName).Register()
 
-	reserveRadius := opts.Batchstore.GetReserveState().Radius
-
-	rs, err := reserve.New(opts.Address, repo.IndexStore(), opts.ReserveCapacity, reserveRadius, opts.RadiusSetter, logger)
+	rs, err := reserve.New(opts.Address, repo.IndexStore(), opts.ReserveCapacity, opts.Batchstore.Radius(), opts.RadiusSetter, logger)
 	if err != nil {
 		return nil, err
 	}

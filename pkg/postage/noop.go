@@ -39,16 +39,12 @@ func (b *NoOpBatchStore) GetChainState() *ChainState {
 
 func (b *NoOpBatchStore) PutChainState(*ChainState) error { return nil }
 
-func (b *NoOpBatchStore) GetReserveState() *ReserveState { return nil }
+func (b *NoOpBatchStore) Radius() uint8 { return 0 }
 
 func (b *NoOpBatchStore) IsWithinStorageRadius(swarm.Address) bool { return false }
 
 func (b *NoOpBatchStore) StorageRadius() uint8 { return 0 }
 
 func (b *NoOpBatchStore) SetStorageRadius(func(uint8) uint8) error { return nil }
-
-func (b *NoOpBatchStore) SetStorageRadiusSetter(StorageRadiusSetter) {}
-
-func (b *NoOpBatchStore) Unreserve(UnreserveIteratorFn) error { return nil }
 
 func (b *NoOpBatchStore) Reset() error { return nil }
