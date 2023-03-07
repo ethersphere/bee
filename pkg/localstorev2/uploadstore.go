@@ -79,6 +79,6 @@ func (db *DB) NewSession() (SessionInfo, error) {
 }
 
 // GetSessionInfo is the implementation of the UploadStore.GetSessionInfo method.
-func (db *DB) GetSessionInfo(tagID uint64) (SessionInfo, error) {
+func (db *DB) Session(tagID uint64) (SessionInfo, error) {
 	return upload.GetTagInfo(db.repo.IndexStore(), tagID)
 }

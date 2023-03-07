@@ -73,8 +73,7 @@ type Receipt struct {
 }
 
 type RadiusChecker interface {
-	IsWithinStorageRadius(addr swarm.Address) bool
-	StorageRadius() uint8
+	IsWithinStorageRadius(swarm.Address) bool
 }
 
 type PushSync struct {
