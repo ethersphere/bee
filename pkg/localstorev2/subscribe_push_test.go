@@ -69,6 +69,11 @@ func testPushSubscriber(t *testing.T, newLocalstore func() (*storer.DB, error)) 
 			if err := p.Put(context.TODO(), ch[i]); err != nil {
 				t.Fatal(err)
 			}
+
+			// on windows the time granularity isn't enough to
+			// generate distinct entries
+			time.Sleep(100 * time.Millisecond)
+
 			chunks = append(chunks, ch[i])
 			chunkProcessedTimes = append(chunkProcessedTimes, 0)
 		}

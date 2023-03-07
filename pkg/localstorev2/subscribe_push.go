@@ -42,7 +42,6 @@ func (db *DB) SubscribePush(ctx context.Context) (chunks chan swarm.Chunk, reset
 			err := upload.Iterate(ctx, db.repo, sinceItem, func(chunk swarm.Chunk) (bool, error) {
 
 				if db.isDirty(uint64(chunk.TagID())) {
-					reset()
 					return true, nil
 				}
 
