@@ -62,9 +62,13 @@ type UploadStore interface {
 	// users requests to pin the data, a new pinning collection is created.
 	Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession, error)
 	// NewSession can be used to obtain a tag ID to use for a new Upload session.
-	NewSession() (uint64, error)
-	// GetSessionInfo will show the information about the session.
-	GetSessionInfo(tagID uint64) (SessionInfo, error)
+	NewSession() (SessionInfo, error)
+	// Session will show the information about the session.
+	Session(tagID uint64) (SessionInfo, error)
+	// DeleteSession will delete the session info associated with the tag id.
+	DeleteSession(tagID uint64)
+	// ListSessions will list all the Sessions currently being tracked.
+	ListSessions(page, limit int) ([]SessionInfo, error)
 }
 
 // PinStore is a logical component of the storer which deals with pinning
@@ -122,6 +126,18 @@ type ReserveStore interface {
 	SubscribeBin(ctx context.Context, bin uint8, start, end uint64) (<-chan *BinC, func(), <-chan error)
 	ReserveLastBinIDs() ([]uint64, error)
 	EvictBatch(ctx context.Context, batchID []byte) error
+}
+
+type LocalStore interface {
+	ChunkStore() storage.ReadOnlyChunkStore
+}
+
+type Storer interface {
+	UploadStore
+	PinStore
+	CacheStore
+	NetStore
+	LocalStore
 }
 
 type memFS struct {

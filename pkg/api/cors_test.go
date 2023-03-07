@@ -144,7 +144,7 @@ func TestCors(t *testing.T) {
 		},
 		{
 			endpoint:        "chunks/123213",
-			expectedMethods: "DELETE, GET, HEAD",
+			expectedMethods: "GET, HEAD",
 		},
 		{
 			endpoint:        "bytes",
@@ -202,7 +202,7 @@ func TestCorsStatus(t *testing.T) {
 		{
 			endpoint:          "chunks/0101011",
 			notAllowedMethods: http.MethodPost,
-			allowedMethods:    "DELETE, GET, HEAD",
+			allowedMethods:    "GET, HEAD",
 		},
 		{
 			endpoint:          "bytes",
