@@ -814,7 +814,7 @@ type cleanupOnErrWriter struct {
 
 func (r *cleanupOnErrWriter) WriteHeader(statusCode int) {
 	// if there is an error status returned, cleanup.
-	if statusCode > http.StatusBadRequest {
+	if statusCode >= http.StatusBadRequest {
 		err := r.onErr()
 		if err != nil {
 			r.logger.Debug("failed cleaning up", "err", err)

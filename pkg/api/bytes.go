@@ -117,7 +117,8 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debug("done split failed", "error", err)
 		logger.Error(nil, "done split failed")
-		jsonhttp.InternalServerError(ow, "done split filed")
+		jsonhttp.InternalServerError(ow, "done split failed")
+		return
 	}
 
 	if tag != 0 {

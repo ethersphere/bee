@@ -137,7 +137,6 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	signer := crypto.NewDefaultSigner(pk)
 
 	if o.Logger == nil {
-		// o.Logger = log.NewLogger("test", log.WithSink(os.Stdout))
 		o.Logger = log.Noop
 	}
 	if o.Resolver == nil {
