@@ -135,5 +135,5 @@ const (
 
 // PushReporter is used to report chunk state.
 type PushReporter interface {
-	Report(context.Context, swarm.Chunk, ChunkState)
+	Report(context.Context, swarm.Chunk, ChunkState) error
 }

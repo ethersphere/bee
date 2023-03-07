@@ -7,7 +7,6 @@ package pusher_test
 import (
 	"context"
 	"errors"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -15,14 +14,12 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 
 	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	pushsyncmock "github.com/ethersphere/bee/pkg/pushsync/mock"
 	"github.com/ethersphere/bee/pkg/spinlock"
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -76,7 +73,14 @@ func TestSendChunkToSyncWithTag(t *testing.T) {
 		return receipt, nil
 	})
 
-	mtags, _, storer := createPusher(t, triggerPeer, pushSyncService, defaultMockValidStamp, mock.WithClosestPeer(closestPeer), mock.WithNeighborhoodDepth(0))
+	pusher := createPusher(
+		t,
+		&mockStorer{},
+		pushSyncService,
+		defaultMockValidStamp,
+		mock.WithClosestPeer(closestPeer),
+		mock.WithNeighborhoodDepth(0),
+	)
 
 	ta, err := mtags.Create(1)
 	if err != nil {
@@ -384,54 +388,7 @@ func createPusher(
 
 	peerSuggester := mock.NewTopologyDriver(mockOpts...)
 	pusherService := pusher.New(1, storer, peerSuggester, pushSyncService, validStamp, log.Noop, nil, 0, retryCount)
-	testutil.CleanupCloser(t, pusherService, pusherStorer)
+	testutil.CleanupCloser(t, pusherService)
 
 	return pusherService
-}
-
-func createPusherWithRetryCount(t *testing.T, addr swarm.Address, pushSyncService pushsync.PushSyncer, validStamp postage.ValidStampFn, retryCount int, mockOpts ...mock.Option) (*tags.Tags, *pusher.Service, *Store) {
-	t.Helper()
-	logger := log.Noop
-
-	createLocalstoreLock.Lock()
-	storer, err := localstore.New("", addr.Bytes(), nil, nil, logger)
-	if err != nil {
-		createLocalstoreLock.Unlock()
-		t.Fatal(err)
-	}
-	createLocalstoreLock.Unlock()
-
-	mockStatestore := statestore.NewStateStore()
-	mtags := tags.NewTags(mockStatestore, logger)
-	pusherStorer := &Store{
-		Storer:         storer,
-		internalStorer: storer,
-		modeSet:        make(map[string]storage.ModeSet),
-		modeSetMu:      &sync.Mutex{},
-	}
-	peerSuggester := mock.NewTopologyDriver(mockOpts...)
-
-	pusherService := pusher.New(1, pusherStorer, peerSuggester, pushSyncService, validStamp, mtags, logger, nil, 0, retryCount)
-	testutil.CleanupCloser(t, pusherService, pusherStorer)
-
-	return mtags, pusherService, pusherStorer
-}
-
-func checkIfModeSet(addr swarm.Address, mode storage.ModeSet, storer *Store) error {
-	var found bool
-	storer.modeSetMu.Lock()
-	defer storer.modeSetMu.Unlock()
-
-	for k, v := range storer.modeSet {
-		if addr.String() == k {
-			found = true
-			if v != mode {
-				return errors.New("chunk mode is not properly set as synced")
-			}
-		}
-	}
-	if !found {
-		return errors.New("Chunk not synced")
-	}
-	return nil
 }

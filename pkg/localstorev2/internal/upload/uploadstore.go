@@ -475,39 +475,46 @@ func (p *pushReporter) Report(
 		ti.Sent++
 	case storage.ChunkStored:
 		ti.Stored++
+		// also mark it as synced
+		fallthrough
 	case storage.ChunkSynced:
 		ti.Synced++
-
-		// Once the chunk is synced, it is deleted from the upload store as
-		// we no longer need to keep track of this chunk. We also need to cleanup
-		// the pushItem.
-		pi := &pushItem{
-			Timestamp: ui.Uploaded,
-			Address:   chunk.Address(),
-			BatchID:   chunk.Stamp().BatchID(),
-			TagID:     ui.TagID,
-		}
-
-		err = p.s.IndexStore().Delete(pi)
-		if err != nil {
-			return fmt.Errorf("failed deleting pushItem %s: %w", pi, err)
-		}
-
-		err = p.s.ChunkStore().Delete(ctx, chunk.Address())
-		if err != nil {
-			return fmt.Errorf("failed deleting chunk %s: %w", chunk.Address(), err)
-		}
-
-		ui.Synced = now().Unix()
-		err = p.s.IndexStore().Put(ui)
-		if err != nil {
-			return fmt.Errorf("failed updating uploadItem %s: %w", ui, err)
-		}
+	case storage.ChunkCouldNotSync:
+		break
 	}
 
 	err = p.s.IndexStore().Put(ti)
 	if err != nil {
 		return fmt.Errorf("failed updating tag: %w", err)
+	}
+
+	if state == storage.ChunkSent {
+		return nil
+	}
+
+	// Once the chunk is stored/synced/failed to sync, it is deleted from the upload store as
+	// we no longer need to keep track of this chunk. We also need to cleanup
+	// the pushItem.
+	pi := &pushItem{
+		Timestamp: ui.Uploaded,
+		Address:   chunk.Address(),
+		BatchID:   chunk.Stamp().BatchID(),
+	}
+
+	err = p.s.IndexStore().Delete(pi)
+	if err != nil {
+		return fmt.Errorf("failed deleting pushItem %s: %w", pi, err)
+	}
+
+	err = p.s.ChunkStore().Delete(ctx, chunk.Address())
+	if err != nil {
+		return fmt.Errorf("failed deleting chunk %s: %w", chunk.Address(), err)
+	}
+
+	ui.Synced = now().Unix()
+	err = p.s.IndexStore().Put(ui)
+	if err != nil {
+		return fmt.Errorf("failed updating uploadItem %s: %w", ui, err)
 	}
 
 	return nil

@@ -531,19 +531,32 @@ func TestChunkReporter(t *testing.T) {
 				}
 			})
 
-			t.Run("mark stored", func(t *testing.T) {
-				err := reporter.Report(context.TODO(), chunk, storage.ChunkStored)
-				if err != nil {
-					t.Fatalf("Report(...): unexpected error: %v", err)
-				}
-			})
+			if idx < 4 {
+				t.Run("mark stored", func(t *testing.T) {
+					err := reporter.Report(context.TODO(), chunk, storage.ChunkStored)
+					if err != nil {
+						t.Fatalf("Report(...): unexpected error: %v", err)
+					}
+				})
+			}
 
-			t.Run("mark synced", func(t *testing.T) {
-				err := reporter.Report(context.TODO(), chunk, storage.ChunkSynced)
-				if err != nil {
-					t.Fatalf("Report(...): unexpected error: %v", err)
-				}
-			})
+			if idx >= 4 && idx < 8 {
+				t.Run("mark synced", func(t *testing.T) {
+					err := reporter.Report(context.TODO(), chunk, storage.ChunkSynced)
+					if err != nil {
+						t.Fatalf("Report(...): unexpected error: %v", err)
+					}
+				})
+			}
+
+			if idx >= 8 {
+				t.Run("mark could not sync", func(t *testing.T) {
+					err := reporter.Report(context.TODO(), chunk, storage.ChunkCouldNotSync)
+					if err != nil {
+						t.Fatalf("Report(...): unexpected error: %v", err)
+					}
+				})
+			}
 
 			t.Run("verify internal state", func(t *testing.T) {
 				ti := &upload.TagItem{
@@ -553,13 +566,22 @@ func TestChunkReporter(t *testing.T) {
 				if err != nil {
 					t.Fatalf("Get(...): unexpected error: %v", err)
 				}
-				count := uint64(idx + 1)
+				var synced, sent, stored uint64
+				sent = uint64(idx + 1)
+				if idx >= 8 {
+					synced, stored = 8, 4
+				} else {
+					synced, stored = uint64(idx+1), uint64(idx+1)
+					if idx >= 4 {
+						stored = 4
+					}
+				}
 				wantTI := &upload.TagItem{
 					TagID:     tagID,
 					StartedAt: now().Unix(),
-					Sent:      count,
-					Synced:    count,
-					Stored:    count,
+					Sent:      sent,
+					Synced:    synced,
+					Stored:    stored,
 				}
 
 				if diff := cmp.Diff(wantTI, ti); diff != "" {
@@ -627,9 +649,9 @@ func TestChunkReporter(t *testing.T) {
 			TagID:     tagID,
 			Split:     10,
 			Seen:      0,
-			Stored:    10,
+			Stored:    4,
 			Sent:      10,
-			Synced:    10,
+			Synced:    8,
 			StartedAt: now().Unix(),
 			Address:   addr,
 		}
