@@ -226,7 +226,7 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 
 	rccontent := pool.Get()
 
-	rccontent.SetHeaderInt64(int64(len(sample.SampleContent)))
+	rccontent.SetHeaderInt64(int64(len(sample.SampleContent[swarm.SpanSize:])))
 
 	_, err = rccontent.Write(sample.SampleContent)
 	if err != nil {
@@ -251,7 +251,7 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 	chunk1Content := pool.Get()
 	chunk1TrContent := trpool.Get()
 
-	chunk1Content.SetHeaderInt64(int64(len(sample.Items[require1].ChunkItem.Data)))
+	chunk1Content.SetHeaderInt64(int64(len(sample.Items[require1].ChunkItem.Data[swarm.SpanSize:])))
 
 	_, err = chunk1Content.Write(sample.Items[require1].ChunkItem.Data)
 	if err != nil {
@@ -260,7 +260,8 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	chunk1TrContent.SetHeaderInt64(int64(len(sample.Items[require1].ChunkItem.Data)))
+	chunk1TrContent.SetHeaderInt64(int64(len(sample.Items[require1].ChunkItem.Data[swarm.SpanSize:])))
+	fmt.Printf("require1 data length %d", len(sample.Items[require1].ChunkItem.Data))
 
 	_, err = chunk1TrContent.Write(sample.Items[require1].ChunkItem.Data)
 	if err != nil {
@@ -292,7 +293,7 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 	chunk2Content := pool.Get()
 	chunk2TrContent := trpool.Get()
 
-	chunk2Content.SetHeaderInt64(int64(len(sample.Items[require2].ChunkItem.Data)))
+	chunk2Content.SetHeaderInt64(int64(len(sample.Items[require2].ChunkItem.Data[swarm.SpanSize:])))
 
 	_, err = chunk2Content.Write(sample.Items[require2].ChunkItem.Data)
 	if err != nil {
@@ -301,7 +302,7 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	chunk2TrContent.SetHeaderInt64(int64(len(sample.Items[require2].ChunkItem.Data)))
+	chunk2TrContent.SetHeaderInt64(int64(len(sample.Items[require2].ChunkItem.Data[swarm.SpanSize:])))
 	_, err = chunk2TrContent.Write(sample.Items[require2].ChunkItem.Data)
 	if err != nil {
 		logger.Error(err, "reserve commitment hasher: failure in proof creation")
@@ -332,7 +333,7 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 	chunkLastContent := pool.Get()
 	chunkLastTrContent := trpool.Get()
 
-	chunkLastContent.SetHeaderInt64(int64(len(sample.Items[15].ChunkItem.Data)))
+	chunkLastContent.SetHeaderInt64(int64(len(sample.Items[15].ChunkItem.Data[swarm.SpanSize:])))
 
 	_, err = chunkLastContent.Write(sample.Items[15].ChunkItem.Data)
 	if err != nil {
@@ -341,7 +342,8 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	chunkLastTrContent.SetHeaderInt64(int64(len(sample.Items[15].ChunkItem.Data)))
+	// NOTE: ChunkItem.Data prefixed with the spansize
+	chunkLastTrContent.SetHeaderInt64(int64(len(sample.Items[15].ChunkItem.Data[:swarm.SpanSize])))
 	_, err = chunkLastTrContent.Write(sample.Items[15].ChunkItem.Data)
 	if err != nil {
 		logger.Error(err, "reserve commitment hasher: failure in proof creation")
@@ -387,13 +389,6 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "failure in proofLast conversion")
 		return
 	}
-
-	fmt.Println("proof1")
-	fmt.Println(proof1)
-	fmt.Println("proof2")
-	fmt.Println(proof2)
-	fmt.Println("proofLast")
-	fmt.Println(proofLast)
 
 	jsonhttp.OK(w, rchash{
 		Sample:    sample,
