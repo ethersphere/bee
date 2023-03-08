@@ -23,11 +23,11 @@ require (
 	github.com/hashicorp/golang-lru v0.5.5-0.20210104140557-80c98217689d
 	github.com/ipfs/go-cid v0.3.2
 	github.com/kardianos/service v1.2.0
-	github.com/libp2p/go-libp2p v0.24.3-0.20230207035812-313b080ea4e2
+	github.com/libp2p/go-libp2p v0.26.2
 	github.com/multiformats/go-multiaddr v0.8.0
 	github.com/multiformats/go-multiaddr-dns v0.3.1
 	github.com/multiformats/go-multihash v0.2.1
-	github.com/multiformats/go-multistream v0.4.0
+	github.com/multiformats/go-multistream v0.4.1
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/prometheus/client_golang v1.14.0
 	github.com/spf13/afero v1.6.0
@@ -135,11 +135,10 @@ require (
 	github.com/prometheus/procfs v0.8.0 // indirect
 	github.com/prometheus/statsd_exporter v0.22.7 // indirect
 	github.com/quic-go/qpack v0.4.0 // indirect
-	github.com/quic-go/qtls-go1-18 v0.2.0 // indirect
-	github.com/quic-go/qtls-go1-19 v0.2.0 // indirect
-	github.com/quic-go/qtls-go1-20 v0.1.0 // indirect
-	github.com/quic-go/quic-go v0.32.0 // indirect
-	github.com/quic-go/webtransport-go v0.5.0 // indirect
+	github.com/quic-go/qtls-go1-19 v0.2.1 // indirect
+	github.com/quic-go/qtls-go1-20 v0.1.1 // indirect
+	github.com/quic-go/quic-go v0.33.0 // indirect
+	github.com/quic-go/webtransport-go v0.5.2 // indirect
 	github.com/raulk/go-watchdog v1.3.0 // indirect
 	github.com/rjeczalik/notify v0.9.2 // indirect
 	github.com/shirou/gopsutil v3.21.5+incompatible // indirect

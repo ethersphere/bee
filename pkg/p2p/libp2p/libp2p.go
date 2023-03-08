@@ -175,14 +175,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, err
 	}
 
-	cfg := rcmgr.InfiniteLimits
-
-	cfg.ProtocolPeerDefault.Streams = IncomingStreamCountLimit + OutgoingStreamCountLimit
-	cfg.ProtocolPeerDefault.StreamsInbound = IncomingStreamCountLimit
-	cfg.ProtocolPeerDefault.StreamsOutbound = OutgoingStreamCountLimit
-
-	limiter := rcmgr.NewFixedLimiter(cfg)
-
 	if o.Registry != nil {
 		rcmgrObs.MustRegisterWith(o.Registry)
 	}
@@ -200,7 +192,22 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, err
 	}
 
-	rm, err := rcmgr.NewResourceManager(limiter, rcmgr.WithTraceReporter(str))
+	scalingLimits := rcmgr.DefaultLimits
+	libp2p.SetDefaultServiceLimits(&scalingLimits)
+	scaledDefaultLimits := scalingLimits.AutoScale()
+
+	cfg := rcmgr.PartialLimitConfig{
+		System: rcmgr.ResourceLimits{
+			Streams: 5000,
+		},
+		// PeerDefault: rcmgr.ResourceLimits{
+		// 	Streams: 500,
+		// },
+	}
+
+	limits := cfg.Build(scaledDefaultLimits)
+
+	rm, err := rcmgr.NewResourceManager(rcmgr.NewFixedLimiter(limits), rcmgr.WithTraceReporter(str))
 	if err != nil {
 		return nil, err
 	}
