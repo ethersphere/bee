@@ -84,11 +84,11 @@ func bytesToHex(proof bmt.Proof) (hexProof, error) {
 	var proveSegment hexByte
 	proofSegments := make([]hexByte, len(proof.ProofSegments)+1)
 	if proof.Index%2 == 0 {
-		proofSegments[0] = proof.ProveSegment[swarm.SectionSize:]
-		proveSegment = proof.ProveSegment[:swarm.SectionSize]
-	} else {
 		proofSegments[0] = proof.ProveSegment[:swarm.SectionSize]
 		proveSegment = proof.ProveSegment[swarm.SectionSize:]
+	} else {
+		proofSegments[0] = proof.ProveSegment[swarm.SectionSize:]
+		proveSegment = proof.ProveSegment[:swarm.SectionSize]
 	}
 	for i, sister := range proof.ProofSegments {
 		proofSegments[i+1] = sister
@@ -246,7 +246,7 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h, err := rccontent.Hash(nil)
+	_, err = rccontent.Hash(nil)
 	if err != nil {
 		logger.Error(err, "reserve commitment hasher: failure in proof creation")
 		jsonhttp.InternalServerError(w, "failure in proof creation")
@@ -254,8 +254,6 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 	}
 
 	proof1p1 := bmt.Prover{rccontent}.Proof(int(require1) * 2)
-	verifyHash, err := bmt.Prover{rccontent}.Verify(int(require1)*2, proof1p1)
-	fmt.Printf("verifyHash of content %x got %x address from proofs with index %d", h, verifyHash, proof1p1.Index)
 	proof2p1 := bmt.Prover{rccontent}.Proof(int(require2) * 2)
 	proofLastp1 := bmt.Prover{rccontent}.Proof(30)
 
