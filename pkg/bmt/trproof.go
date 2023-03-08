@@ -32,7 +32,7 @@ func (p TrProver) Proof(i int) Proof {
 	secsize := 2 * p.segmentSize
 	offset := i * secsize
 	section := p.bmt.buffer[offset : offset+secsize]
-	return Proof{section, sisters, p.span}
+	return Proof{section, sisters, p.span, i}
 }
 
 // Verify returns the bmt hash obtained from the proof which can then be checked against

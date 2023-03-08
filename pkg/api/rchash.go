@@ -28,6 +28,11 @@ type rchash struct {
 	Time      string         `json:"time"`
 }
 
+type hexProof struct {
+	ProofSegments []hexByte
+	ProveSegment  hexByte
+}
+
 type entityProof struct {
 	ProofSegments []hexByte `json:"proofSegments"`
 	ProveSegment  hexByte   `json:"proveSegment"`
@@ -75,6 +80,23 @@ func toSignDigest(addr, batchId, index, timestamp []byte) ([]byte, error) {
 	return h.Sum(nil), nil
 }
 
+func bytesToHex(proof bmt.Proof) (hexProof, error) {
+	var proveSegment hexByte
+	proofSegments := make([]hexByte, len(proof.ProofSegments)+1)
+	if proof.Index%2 == 0 {
+		proofSegments[0] = proof.ProveSegment[swarm.SectionSize:]
+		proveSegment = proof.ProveSegment[:swarm.SectionSize]
+	} else {
+		proofSegments[0] = proof.ProveSegment[:swarm.SectionSize]
+		proveSegment = proof.ProveSegment[swarm.SectionSize:]
+	}
+	for i, sister := range proof.ProofSegments {
+		proofSegments[i+1] = sister
+	}
+
+	return hexProof{ProveSegment: proveSegment, ProofSegments: proofSegments}, nil
+}
+
 func NewProof(proofp1, proofp2 bmt.Proof, proofp3 bmt.Proof, stamp Stamp, chunkAddress []byte) (entityProof, error) {
 
 	//sanity check if proofp1.Span != 32*32 { return nil, errors.New("failed p1 span check") }
@@ -87,20 +109,9 @@ func NewProof(proofp1, proofp2 bmt.Proof, proofp3 bmt.Proof, stamp Stamp, chunkA
 	//              return entityProof{}, errors.New("failed p2p3 data check")
 	//      }
 
-	p1Sisters := make([]hexByte, len(proofp1.ProofSegments))
-	for i, sister := range proofp1.ProofSegments {
-		p1Sisters[i] = sister
-	}
-
-	p2Sisters := make([]hexByte, len(proofp2.ProofSegments))
-	for i, sister := range proofp2.ProofSegments {
-		p2Sisters[i] = sister
-	}
-
-	p3Sisters := make([]hexByte, len(proofp3.ProofSegments))
-	for i, sister := range proofp3.ProofSegments {
-		p3Sisters[i] = sister
-	}
+	proofp1Hex, _ := bytesToHex(proofp1)
+	proofp2Hex, _ := bytesToHex(proofp2)
+	proofp3Hex, _ := bytesToHex(proofp3)
 
 	toSign, err := toSignDigest(chunkAddress, stamp.batchID, stamp.index, stamp.timestamp)
 	if err != nil {
@@ -116,12 +127,12 @@ func NewProof(proofp1, proofp2 bmt.Proof, proofp3 bmt.Proof, stamp Stamp, chunkA
 	}
 
 	return entityProof{
-		p1Sisters,
-		proofp1.ProveSegment,
-		p2Sisters,
-		proofp2.ProveSegment,
+		proofp1Hex.ProofSegments,
+		proofp1Hex.ProveSegment,
+		proofp2Hex.ProofSegments,
+		proofp2Hex.ProveSegment,
 		uint64(binary.LittleEndian.Uint64(proofp2.Span[:swarm.SpanSize])), // should be uint64 on the other size; copied from pkg/api/bytes.go
-		p3Sisters,
+		proofp3Hex.ProofSegments,
 		batchOwner,
 		stamp.sig,
 		chunkAddress,
@@ -226,7 +237,7 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 
 	rccontent := pool.Get()
 
-	rccontent.SetHeaderInt64(int64(len(sample.SampleContent[swarm.SpanSize:])))
+	rccontent.SetHeaderInt64(32 * 32)
 
 	_, err = rccontent.Write(sample.SampleContent)
 	if err != nil {
