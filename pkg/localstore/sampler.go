@@ -251,13 +251,13 @@ func (db *DB) ReserveSample(
 	if err != nil {
 		return storage.Sample{}, fmt.Errorf("sampler: failed creating sampleHash: %w", err)
 	}
+	fmt.Printf("sampleContentChunk address: %x\nSpan: %d\n", sampleContentChunk.Address().Bytes(), uint64(binary.LittleEndian.Uint64(sampleContentChunk.Data()[:swarm.SpanSize])))
 
 	sample := storage.Sample{
 		Items:         sampleItems,
 		SampleContent: sampleContent,
 		Hash:          sampleContentChunk.Address(),
 	}
-	fmt.Println(sample)
 
 	db.metrics.SamplerSuccessfulRuns.Inc()
 	logger.Info("sampler done", "duration", time.Since(t), "storage_radius", storageRadius, "consensus_time_ns", consensusTime, "stats", stat, "sample", sample)
