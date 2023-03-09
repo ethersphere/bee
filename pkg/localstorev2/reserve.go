@@ -156,7 +156,14 @@ func (db *DB) evictBatch(ctx context.Context, batchID []byte, upToBin uint8) err
 
 		txnRepo, commit, rollback := db.repo.NewTx(ctx)
 
-		evicted, err := db.reserve.EvictBatchBin(txnRepo, b, batchID)
+		// cache evicted chunks
+		cache := func(c swarm.Chunk) {
+			if err := db.Cache().Put(ctx, c); err != nil {
+				db.logger.Error(err, "reserve cache")
+			}
+		}
+
+		evicted, err := db.reserve.EvictBatchBin(ctx, txnRepo, b, batchID, cache)
 		if err != nil {
 			_ = rollback()
 			return err

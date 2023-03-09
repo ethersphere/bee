@@ -272,7 +272,7 @@ func (r *Reserve) IterateChunks(store internal.Storage, startBin uint8, cb func(
 	return err
 }
 
-func (r *Reserve) EvictBatchBin(store internal.Storage, bin uint8, batchID []byte) (int, error) {
+func (r *Reserve) EvictBatchBin(ctx context.Context, store internal.Storage, bin uint8, batchID []byte, cb func(swarm.Chunk)) (int, error) {
 
 	var evicted []*batchRadiusItem
 
@@ -290,7 +290,14 @@ func (r *Reserve) EvictBatchBin(store internal.Storage, bin uint8, batchID []byt
 
 	for _, item := range evicted {
 
-		err := removeChunk(store, item)
+		c, err := r.Get(ctx, store, item.Address, item.BatchID)
+		if err != nil {
+			return 0, err
+		}
+
+		cb(c)
+
+		err = removeChunk(store, item)
 		if err != nil {
 			return 0, err
 		}
