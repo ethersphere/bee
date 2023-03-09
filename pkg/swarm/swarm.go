@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"hash"
 
 	"golang.org/x/crypto/sha3"
 )
@@ -36,6 +37,28 @@ const (
 var (
 	NewHasher = sha3.NewLegacyKeccak256
 )
+
+type TrHasher struct {
+	hash.Hash
+	prefix []byte
+}
+
+func NewTrHasher(prefix []byte) func() hash.Hash {
+	return func() hash.Hash {
+		h := &TrHasher{
+			NewHasher(),
+			prefix,
+		}
+		h.Reset()
+
+		return h
+	}
+}
+
+func (trH *TrHasher) Reset() {
+	trH.Hash.Reset()
+	_, _ = trH.Write(trH.prefix)
+}
 
 var (
 	ErrInvalidChunk = errors.New("invalid chunk")
