@@ -33,8 +33,6 @@ import (
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/auth"
-	"github.com/ethersphere/bee/pkg/chainsync"
-	"github.com/ethersphere/bee/pkg/chainsyncer"
 	"github.com/ethersphere/bee/pkg/config"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds/factory"
@@ -986,23 +984,6 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		multiresolver.WithDefaultCIDResolver(),
 	)
 	b.resolverCloser = multiResolver
-	var chainSyncer *chainsyncer.ChainSyncer
-
-	if o.FullNodeMode {
-		cs, err := chainsync.New(p2ps, chainBackend)
-		if err != nil {
-			return nil, fmt.Errorf("new chainsync: %w", err)
-		}
-		if err = p2ps.AddProtocol(cs.Protocol()); err != nil {
-			return nil, fmt.Errorf("chainsync protocol: %w", err)
-		}
-		chainSyncer, err = chainsyncer.New(chainBackend, cs, kad, p2ps, logger, nil)
-		if err != nil {
-			return nil, fmt.Errorf("new chainsyncer: %w", err)
-		}
-
-		b.chainSyncerCloser = chainSyncer
-	}
 
 	feedFactory := factory.New(ns)
 	steward := steward.New(storer, traversalService, retrieve, pushSyncProtocol)
@@ -1125,9 +1106,6 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		debugService.MustRegisterMetrics(pseudosettleService.Metrics()...)
 		if swapService != nil {
 			debugService.MustRegisterMetrics(swapService.Metrics()...)
-		}
-		if chainSyncer != nil {
-			debugService.MustRegisterMetrics(chainSyncer.Metrics()...)
 		}
 
 		debugService.Configure(signer, authenticator, tracer, api.Options{
