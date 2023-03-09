@@ -287,8 +287,22 @@ func (c *Collector) Snapshot(t time.Time, addresses ...swarm.Address) map[string
 	return snapshot
 }
 
-// IsUnreachable returns true if the peer is unreachable.
-func (c *Collector) IsUnreachable(addr swarm.Address) bool {
+type FilterOp func(*Counters) bool
+
+func Unreachable() FilterOp {
+	return func(cs *Counters) bool {
+		return cs.ReachabilityStatus != p2p.ReachabilityStatusPublic
+	}
+}
+
+func ConnectedAfter(t time.Time) FilterOp {
+	return func(cs *Counters) bool {
+		return time.Unix(0, cs.lastSeenTimestamp).After(t)
+	}
+}
+
+// Filter returns true if the addr does not pass any filter operation.
+func (c *Collector) Filter(addr swarm.Address, fop ...FilterOp) bool {
 	val, ok := c.counters.Load(addr.ByteString())
 	if !ok {
 		return true
@@ -298,7 +312,13 @@ func (c *Collector) IsUnreachable(addr swarm.Address) bool {
 	cs.Lock()
 	defer cs.Unlock()
 
-	return cs.ReachabilityStatus != p2p.ReachabilityStatusPublic
+	for _, f := range fop {
+		if f(cs) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Inspect allows inspecting current snapshot for the given
