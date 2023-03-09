@@ -290,7 +290,7 @@ func (r *Reserve) EvictBatchBin(ctx context.Context, store internal.Storage, bin
 
 	for _, item := range evicted {
 
-		c, err := r.Get(ctx, store, item.Address, item.BatchID)
+		c, err := store.ChunkStore().Get(ctx, item.Address)
 		if err != nil {
 			return 0, err
 		}
