@@ -63,7 +63,8 @@ type EachNeighbor interface {
 
 // Filter defines the different filters that can be used with the Peer iterators
 type Filter struct {
-	Reachable bool
+	Reachable     bool          // the peer must be reachable externally
+	AliveDuration time.Duration // the connect must be older than the specified duration
 }
 
 // EachPeerFunc is a callback that is called with a peer and its PO
