@@ -358,64 +358,6 @@ func TestNeighborhoodDepthWithReachability(t *testing.T) {
 	}
 }
 
-func TestEachNeighbor(t *testing.T) {
-	t.Parallel()
-
-	var (
-		conns                    int32 // how many connect calls were made to the p2p mock
-		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			ReachabilityFunc: func(_ swarm.Address) bool { return false },
-		})
-		peers []swarm.Address
-	)
-
-	if err := kad.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	testutil.CleanupCloser(t, kad)
-
-	for i := 0; i < 15; i++ {
-		addr := swarm.RandAddressAt(t, base, i)
-		peers = append(peers, addr)
-	}
-
-	add(t, signer, kad, ab, peers, 0, 15)
-	waitCounter(t, &conns, 15)
-
-	var depth uint8 = 15
-
-	err := kad.EachNeighbor(func(adr swarm.Address, po uint8) (stop, jumpToNext bool, err error) {
-
-		if po < depth {
-			depth = po
-		}
-		return false, false, nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if depth < kad.NeighborhoodDepth() {
-		t.Fatalf("incorrect depth argument pass to iterator function: expected >= %d (neighbourhood depth), got %d", kad.NeighborhoodDepth(), depth)
-	}
-
-	depth = 15
-	err = kad.EachNeighborRev(func(adr swarm.Address, po uint8) (stop, jumpToNext bool, err error) {
-
-		if po < depth {
-			depth = po
-		}
-		return false, false, nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if depth < kad.NeighborhoodDepth() {
-		t.Fatalf("incorrect depth argument pass to iterator function: expected >= %d (neighbourhood depth), got %d", kad.NeighborhoodDepth(), depth)
-	}
-}
-
 // TestManage explicitly tests that new connections are made according to
 // the addition or subtraction of peers to the knownPeers and connectedPeers
 // data structures. It tests that kademlia will try to initiate (emphesis on _initiate_,

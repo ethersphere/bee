@@ -1259,21 +1259,6 @@ func (k *Kad) notifyPeerSig() {
 	}
 }
 
-func closestPeer(peers *pslice.PSlice, addr swarm.Address, spf sanctionedPeerFunc) (swarm.Address, error) {
-	closest := swarm.ZeroAddress
-	err := peers.EachBinRev(closestPeerFunc(&closest, addr, spf))
-	if err != nil {
-		return closest, err
-	}
-
-	// check if found
-	if closest.IsZero() {
-		return closest, topology.ErrNotFound
-	}
-
-	return closest, nil
-}
-
 func nClosePeerInSlice(peers []swarm.Address, addr swarm.Address, spf sanctionedPeerFunc, minPO uint8) (swarm.Address, bool) {
 	for _, peer := range peers {
 		if spf(peer) {
@@ -1286,28 +1271,6 @@ func nClosePeerInSlice(peers []swarm.Address, addr swarm.Address, spf sanctioned
 	}
 
 	return swarm.ZeroAddress, false
-}
-
-func closestPeerFunc(closest *swarm.Address, addr swarm.Address, spf sanctionedPeerFunc) func(peer swarm.Address, po uint8) (bool, bool, error) {
-	return func(peer swarm.Address, po uint8) (bool, bool, error) {
-		// check whether peer is sanctioned
-		if spf(peer) {
-			return false, false, nil
-		}
-		if closest.IsZero() {
-			*closest = peer
-			return false, false, nil
-		}
-
-		closer, err := peer.Closer(addr, *closest)
-		if err != nil {
-			return false, false, err
-		}
-		if closer {
-			*closest = peer
-		}
-		return false, false, nil
-	}
 }
 
 // ClosestPeer returns the closest peer to a given address.
@@ -1352,30 +1315,6 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, filter topology.
 	}
 
 	return closest, nil
-}
-
-// EachNeighbor iterates from closest bin to farthest of the neighborhood peers.
-func (k *Kad) EachNeighbor(f topology.EachPeerFunc) error {
-	depth := k.NeighborhoodDepth()
-	fn := func(a swarm.Address, po uint8) (bool, bool, error) {
-		if po < depth {
-			return true, false, nil
-		}
-		return f(a, po)
-	}
-	return k.connectedPeers.EachBin(fn)
-}
-
-// EachNeighborRev iterates from farthest bin to closest of the neighborhood peers.
-func (k *Kad) EachNeighborRev(f topology.EachPeerFunc) error {
-	depth := k.NeighborhoodDepth()
-	fn := func(a swarm.Address, po uint8) (bool, bool, error) {
-		if po < depth {
-			return false, true, nil
-		}
-		return f(a, po)
-	}
-	return k.connectedPeers.EachBinRev(fn)
 }
 
 // EachPeer iterates from closest bin to farthest.
@@ -1462,32 +1401,6 @@ func (k *Kad) NeighborhoodDepth() uint8 {
 	defer k.depthMu.RUnlock()
 
 	return k.depth
-}
-
-// IsBalanced returns if Kademlia is balanced to bin.
-func (k *Kad) IsBalanced(bin uint8) bool {
-	k.depthMu.RLock()
-	defer k.depthMu.RUnlock()
-
-	if int(bin) >= len(k.commonBinPrefixes) {
-		return false
-	}
-
-	// for each pseudo address
-	for i := range k.commonBinPrefixes[bin] {
-		pseudoAddr := k.commonBinPrefixes[bin][i]
-		closestConnectedPeer, err := closestPeer(k.connectedPeers, pseudoAddr, noopSanctionedPeerFn)
-		if err != nil {
-			return false
-		}
-
-		closestConnectedPO := swarm.ExtendedProximity(closestConnectedPeer.Bytes(), pseudoAddr.Bytes())
-		if int(closestConnectedPO) < int(bin)+k.opt.BitSuffixLength+1 {
-			return false
-		}
-	}
-
-	return true
 }
 
 func (k *Kad) SetStorageRadius(d uint8) {
