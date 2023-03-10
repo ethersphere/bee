@@ -10,8 +10,6 @@ import (
 	"io/fs"
 	"os"
 	"path"
-
-	"github.com/hashicorp/go-multierror"
 )
 
 // Recovery allows disaster recovery.
@@ -22,7 +20,7 @@ type Recovery struct {
 var ErrShardNotFound = errors.New("shard not found")
 
 func NewRecovery(dir string, shardCnt int, datasize int) (*Recovery, error) {
-	shards := make([]*slots, shardCnt)
+	slots := make([]*slots, shardCnt)
 	for i := 0; i < shardCnt; i++ {
 		file, err := os.OpenFile(path.Join(dir, fmt.Sprintf("shard_%03d", i)), os.O_RDONLY, 0666)
 		if err != nil {
@@ -38,9 +36,9 @@ func NewRecovery(dir string, shardCnt int, datasize int) (*Recovery, error) {
 		if err != nil {
 			return nil, err
 		}
-		shards[i] = newSlots(ffile)
+		slots[i] = newSlots(ffile)
 	}
-	return &Recovery{shards}, nil
+	return &Recovery{slots}, nil
 }
 
 // Use marks a location as used (not free).
@@ -49,10 +47,9 @@ func (r *Recovery) Use(loc Location) {
 }
 
 // Close saves all free slots files of the recovery and closes data and free slots files of the recovery.
-func (r *Recovery) Close() error {
-	err := new(multierror.Error)
+func (r *Recovery) Close() (err error) {
 	for _, sl := range r.slots {
-		err = multierror.Append(err, sl.Close())
+		err = errors.Join(sl.Close())
 	}
-	return err.ErrorOrNil()
+	return
 }

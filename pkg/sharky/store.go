@@ -43,7 +43,7 @@ func New(basedir fs.FS, shardCnt int, maxDataSize int) (*Store, error) {
 		metrics:     newMetrics(),
 	}
 	for i := range store.shards {
-		s, err := store.create(uint8(i), maxDataSize, basedir)
+		s, err := store.create(uint8(i), basedir)
 		if err != nil {
 			return nil, err
 		}
@@ -57,13 +57,13 @@ func New(basedir fs.FS, shardCnt int, maxDataSize int) (*Store, error) {
 // Close closes each shard and return incidental errors from each shard
 func (s *Store) Close() (err error) {
 	for _, s := range s.shards {
-		err = errors.Join(err, s.close())
+		err = errors.Join(err, s.Close())
 	}
 	return
 }
 
 // create creates a new shard with index, max capacity limit, file within base directory
-func (s *Store) create(index uint8, maxDataSize int, basedir fs.FS) (*shard, error) {
+func (s *Store) create(index uint8, basedir fs.FS) (*shard, error) {
 	file, err := basedir.Open(fmt.Sprintf("shard_%03d", index))
 	if err != nil {
 		return nil, err
@@ -73,13 +73,13 @@ func (s *Store) create(index uint8, maxDataSize int, basedir fs.FS) (*shard, err
 		return nil, err
 	}
 	sl := newSlots(ffile.(sharkyFile))
-	err = sl.load()
+	err = sl.Load()
 	if err != nil {
 		return nil, err
 	}
 	sh := &shard{
 		index:       index,
-		maxDataSize: maxDataSize,
+		maxDataSize: s.maxDataSize,
 		file:        file.(sharkyFile),
 		slots:       sl,
 	}
@@ -91,7 +91,7 @@ func (s *Store) create(index uint8, maxDataSize int, basedir fs.FS) (*shard, err
 // The location is assumed to be obtained by an earlier Write call storing the blob
 func (s *Store) Read(loc Location, buf []byte) (err error) {
 	sh := s.shards[loc.Shard]
-	return sh.read(buf[:loc.Length], loc.Slot)
+	return sh.Read(buf[:loc.Length], loc.Slot)
 }
 
 // Write stores a new blob and returns its location to be used as a reference
@@ -106,7 +106,7 @@ func (s *Store) Write(data []byte) (Location, error) {
 	shard := s.shards[s.nextShard]
 	s.mtx.Unlock()
 
-	loc, err := shard.write(data)
+	loc, err := shard.Write(data)
 	if err != nil {
 		s.metrics.TotalWriteCallsErr.Inc()
 		return loc, err
@@ -128,7 +128,7 @@ func (s *Store) Write(data []byte) (Location, error) {
 // rest of the old blob bytes untouched
 func (s *Store) Release(loc Location) {
 	sh := s.shards[loc.Shard]
-	sh.release(loc.Slot)
+	sh.Release(loc.Slot)
 	shard := strconv.Itoa(int(sh.index))
 	s.metrics.TotalReleaseCalls.Inc()
 	s.metrics.CurrentShardSize.WithLabelValues(shard).Dec()

@@ -22,7 +22,7 @@ func TestFreeSlotsPersist(t *testing.T) {
 	}
 
 	slots := newSlots(ffile.(sharkyFile))
-	err = slots.load()
+	err = slots.Load()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestFreeSlotsPersist(t *testing.T) {
 	}
 
 	slots = newSlots(ffile.(sharkyFile))
-	err = slots.load()
+	err = slots.Load()
 	if err != nil {
 		t.Fatal(err)
 	}

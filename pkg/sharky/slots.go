@@ -22,7 +22,7 @@ func newSlots(file sharkyFile) *slots {
 	}
 }
 
-func (sl *slots) load() error {
+func (sl *slots) Load() error {
 	data, err := io.ReadAll(sl.file)
 	if err != nil {
 		return err

@@ -66,9 +66,9 @@ type shard struct {
 	slots       *slots     // component keeping track of freed slots
 }
 
-// close closes the shard:
+// Close closes the shard:
 // wait for pending operations to finish then saves free slots and blobs on disk
-func (sh *shard) close() error {
+func (sh *shard) Close() error {
 	if err := sh.slots.Close(); err != nil {
 		return err
 	}
@@ -81,17 +81,16 @@ func (sh *shard) offset(slot uint32) int64 {
 	return int64(slot) * int64(sh.maxDataSize)
 }
 
-// read reads loc.Length bytes to the buffer from the blob slot loc.Slot
-func (sh *shard) read(buf []byte, slot uint32) error {
+// Read reads loc.Length bytes to the buffer from the blob slot loc.Slot
+func (sh *shard) Read(buf []byte, slot uint32) error {
 	_, err := sh.file.ReadAt(buf, sh.offset(slot))
 	return err
 }
 
-// write writes loc.Length bytes to the buffer from the blob slot loc.Slot
-func (sh *shard) write(buf []byte) (Location, error) {
+// Write writes loc.Length bytes to the buffer from the blob slot loc.Slot
+func (sh *shard) Write(buf []byte) (Location, error) {
 	slot := sh.slots.Next()
 	n, err := sh.file.WriteAt(buf, sh.offset(slot))
-
 	return Location{
 		Shard:  sh.index,
 		Slot:   slot,
@@ -99,7 +98,7 @@ func (sh *shard) write(buf []byte) (Location, error) {
 	}, err
 }
 
-// release frees the slot allowing new entry to overwrite
-func (sh *shard) release(slot uint32) {
+// Release frees the slot allowing new entry to overwrite
+func (sh *shard) Release(slot uint32) {
 	sh.slots.Free(slot)
 }

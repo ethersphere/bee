@@ -31,7 +31,7 @@ func TestShard(t *testing.T) {
 	}
 
 	// in order for the test to succeed this slot is expected to become available before test finishes
-	shard.release(loc.Slot)
+	shard.Release(loc.Slot)
 
 	write = []byte{0xff >> 1}
 	loc = writePayload(t, shard, write)
@@ -41,14 +41,14 @@ func TestShard(t *testing.T) {
 		t.Fatalf("expected to write to slot 1, got %d", loc.Slot)
 	}
 
-	shard.release(loc.Slot)
+	shard.Release(loc.Slot)
 
 	// we make ten writes expecting that slot 0 is released and becomes available for writing eventually
 	i, runs := 0, 10
 	for ; i < runs; i++ {
 		write = []byte{0x01 << i}
 		loc = writePayload(t, shard, write)
-		shard.release(loc.Slot)
+		shard.Release(loc.Slot)
 		if loc.Slot == 0 {
 			break
 		}
@@ -62,7 +62,7 @@ func TestShard(t *testing.T) {
 func writePayload(t *testing.T, shard *shard, buf []byte) Location {
 	t.Helper()
 
-	loc, err := shard.write(buf)
+	loc, err := shard.Write(buf)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -74,7 +74,7 @@ func readFromLocation(t *testing.T, shard *shard, loc Location) []byte {
 	t.Helper()
 	buf := make([]byte, loc.Length)
 
-	err := shard.read(buf, loc.Slot)
+	err := shard.Read(buf, loc.Slot)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -105,7 +105,7 @@ func newShard(t *testing.T) *shard {
 	}
 
 	slots := newSlots(ffile.(sharkyFile))
-	err = slots.load()
+	err = slots.Load()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,7 +118,7 @@ func newShard(t *testing.T) *shard {
 	}
 
 	t.Cleanup(func() {
-		if err := shard.close(); err != nil {
+		if err := shard.Close(); err != nil {
 			t.Fatal("close shard", err)
 		}
 	})
