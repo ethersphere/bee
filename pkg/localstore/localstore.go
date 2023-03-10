@@ -687,11 +687,6 @@ func (db *DB) safeInit(rootPath, sharkyBasePath string) error {
 		recoverySharky.Use(l.loc)
 	}
 
-	err = recoverySharky.Save()
-	if err != nil {
-		return err
-	}
-
 	err = recoverySharky.Close()
 	if err != nil {
 		return err

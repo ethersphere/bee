@@ -5,20 +5,16 @@
 package sharky
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"io/fs"
 	"strconv"
 	"sync"
-	"time"
 )
 
 var (
 	// ErrTooLong returned by Write if the blob length exceeds the max blobsize.
 	ErrTooLong = errors.New("data too long")
-	// ErrQuitting returned by Write when the store is Closed before the write completes.
-	ErrQuitting = errors.New("quitting")
 )
 
 // Store models the sharded fix-length blobstore
@@ -27,17 +23,11 @@ var (
 // - read prioritisation over writing
 // - free slots allow write
 type Store struct {
-	maxDataSize     int            // max length of blobs
-	shards          []*shard       // shards
-	wg              sync.WaitGroup // count started operations
-	quit            chan struct{}  // quit channel
-	metrics         metrics
-	availableShards chan availableShard
-}
-
-type availableShard struct {
-	shard uint8
-	slot  uint32
+	mtx         sync.Mutex
+	maxDataSize int      // max length of blobs
+	shards      []*shard // shards
+	metrics     metrics
+	nextShard   int
 }
 
 // New constructs a sharded blobstore
@@ -48,11 +38,9 @@ type availableShard struct {
 // - maxDataSize - positive integer representing the maximum blob size to be stored
 func New(basedir fs.FS, shardCnt int, maxDataSize int) (*Store, error) {
 	store := &Store{
-		maxDataSize:     maxDataSize,
-		shards:          make([]*shard, shardCnt),
-		quit:            make(chan struct{}),
-		metrics:         newMetrics(),
-		availableShards: make(chan availableShard),
+		maxDataSize: maxDataSize,
+		shards:      make([]*shard, shardCnt),
+		metrics:     newMetrics(),
 	}
 	for i := range store.shards {
 		s, err := store.create(uint8(i), maxDataSize, basedir)
@@ -67,21 +55,11 @@ func New(basedir fs.FS, shardCnt int, maxDataSize int) (*Store, error) {
 }
 
 // Close closes each shard and return incidental errors from each shard
-func (s *Store) Close() error {
-	close(s.quit)
-
-	done := make(chan struct{})
-	go func() {
-		s.wg.Wait()
-		close(done)
-	}()
-
-	select {
-	case <-done:
-		return nil
-	case <-time.After(time.Second * 5):
-		return errors.New("did not close on time")
+func (s *Store) Close() (err error) {
+	for _, s := range s.shards {
+		err = errors.Join(err, s.close())
 	}
+	return
 }
 
 // create creates a new shard with index, max capacity limit, file within base directory
@@ -100,18 +78,12 @@ func (s *Store) create(index uint8, maxDataSize int, basedir fs.FS) (*shard, err
 		return nil, err
 	}
 	sh := &shard{
-		available:   s.availableShards,
 		index:       index,
 		maxDataSize: maxDataSize,
 		file:        file.(sharkyFile),
 		slots:       sl,
-		quit:        s.quit,
 	}
-	s.wg.Add(1)
-	go func() {
-		defer s.wg.Done()
-		sh.process()
-	}()
+
 	return sh, nil
 }
 
@@ -124,30 +96,28 @@ func (s *Store) Read(loc Location, buf []byte) (err error) {
 
 // Write stores a new blob and returns its location to be used as a reference
 // It can be given to a Read call to return the stored blob.
-func (s *Store) Write(ctx context.Context, data []byte) (loc Location, err error) {
+func (s *Store) Write(data []byte) (Location, error) {
 	if len(data) > s.maxDataSize {
-		return loc, ErrTooLong
+		return Location{}, ErrTooLong
 	}
 
-	s.wg.Add(1)
-	defer s.wg.Done()
+	s.mtx.Lock()
+	s.nextShard = (s.nextShard + 1) % len(s.shards)
+	shard := s.shards[s.nextShard]
+	s.mtx.Unlock()
 
-	select {
-	case a := <-s.availableShards:
-		loc, err := s.shards[a.shard].write(data, a.slot)
-		if err != nil {
-			s.metrics.TotalWriteCallsErr.Inc()
-			return loc, err
-		}
-		shard := strconv.Itoa(int(loc.Shard))
-		s.metrics.CurrentShardSize.WithLabelValues(shard).Inc()
-		s.metrics.ShardFragmentation.WithLabelValues(shard).Add(float64(s.maxDataSize - int(loc.Length)))
-		s.metrics.LastAllocatedShardSlot.WithLabelValues(shard).Set(float64(loc.Slot))
-		return loc, nil
-	case <-ctx.Done():
+	loc, err := shard.write(data)
+	if err != nil {
 		s.metrics.TotalWriteCallsErr.Inc()
-		return loc, ctx.Err()
+		return loc, err
 	}
+
+	shardStr := strconv.Itoa(int(loc.Shard))
+	s.metrics.CurrentShardSize.WithLabelValues(shardStr).Inc()
+	s.metrics.ShardFragmentation.WithLabelValues(shardStr).Add(float64(s.maxDataSize - int(loc.Length)))
+	s.metrics.LastAllocatedShardSlot.WithLabelValues(shardStr).Set(float64(loc.Slot))
+
+	return loc, nil
 }
 
 // Release gives back the slot to the shard
@@ -157,10 +127,10 @@ func (s *Store) Write(ctx context.Context, data []byte) (loc Location, err error
 // even after reuse, the slot may be used by a very short blob and leaves the
 // rest of the old blob bytes untouched
 func (s *Store) Release(loc Location) {
-	s.metrics.TotalReleaseCalls.Inc()
 	sh := s.shards[loc.Shard]
 	sh.release(loc.Slot)
 	shard := strconv.Itoa(int(sh.index))
+	s.metrics.TotalReleaseCalls.Inc()
 	s.metrics.CurrentShardSize.WithLabelValues(shard).Dec()
 	s.metrics.ShardFragmentation.WithLabelValues(shard).Sub(float64(s.maxDataSize - int(loc.Length)))
 	s.metrics.LastReleasedShardSlot.WithLabelValues(shard).Set(float64(loc.Slot))

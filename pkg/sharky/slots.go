@@ -11,7 +11,7 @@ import (
 
 type slots struct {
 	data []byte     // byteslice serving as bitvector: i-t bit set <>
-	head uint32     // the first free slot
+	head uint32     // points to the first free slot
 	file sharkyFile // file to persist free slots across sessions
 	mtx  sync.Mutex
 }
@@ -31,8 +31,8 @@ func (sl *slots) load() error {
 	return nil
 }
 
-// Save persists the free slot bitvector on disk (without closing)
-func (sl *slots) Save() error {
+// Close persists the free slot bitvector on disk and closes all files.
+func (sl *slots) Close() error {
 
 	sl.mtx.Lock()
 	defer sl.mtx.Unlock()
@@ -46,7 +46,11 @@ func (sl *slots) Save() error {
 	if _, err := sl.file.Write(sl.data); err != nil {
 		return err
 	}
-	return sl.file.Sync()
+	if err := sl.file.Sync(); err != nil {
+		return err
+	}
+
+	return sl.file.Close()
 }
 
 func (sl *slots) Free(slot uint32) {
@@ -62,30 +66,35 @@ func (sl *slots) Free(slot uint32) {
 	sl.data[slot/8] |= 1 << (slot % 8) // set bit to 1
 }
 
-// Use sets the slot as used.
+// Next returns the lowest free slot and marks it as used.
 func (sl *slots) Use(slot uint32) {
 
 	sl.mtx.Lock()
 	defer sl.mtx.Unlock()
 
+	// if used slot is bigger than the available slots, extend
 	diff := int(slot/8) - len(sl.data)
 	if diff >= 0 {
 		sl.extend(diff + 1)
 	}
 
 	sl.data[slot/8] &= ^(1 << (slot % 8)) // set bit to 0
+
 }
 
-// Next returns the lowest free slot.
+// Next returns the lowest free slot and marks it as used.
 func (sl *slots) Next() uint32 {
+
 	sl.mtx.Lock()
 	defer sl.mtx.Unlock()
 
+	slot := sl.next()
+	sl.data[slot/8] &= ^(1 << (slot % 8)) // set bit to 0
 	sl.head = sl.next()
-
-	return sl.head
+	return slot
 }
 
+// next returns the lowest free slot and allocates a new one if needed.
 // Must be called under lock.
 func (sl *slots) next() uint32 {
 	for i := sl.head; i < sl.size(); i++ {

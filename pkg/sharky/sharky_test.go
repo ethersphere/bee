@@ -41,8 +41,6 @@ func TestSingleRetrieval(t *testing.T) {
 	}
 	t.Cleanup(func() { s.Close() })
 
-	ctx := context.Background()
-
 	t.Run("write and read", func(t *testing.T) {
 		t.Parallel()
 
@@ -75,9 +73,7 @@ func TestSingleRetrieval(t *testing.T) {
 		} {
 			tc := tc
 			t.Run(tc.name, func(t *testing.T) {
-				cctx, cancel := context.WithTimeout(ctx, 800*time.Millisecond)
-				defer cancel()
-				loc, err := s.Write(cctx, tc.want)
+				loc, err := s.Write(tc.want)
 				if !errors.Is(err, tc.err) {
 					t.Fatalf("error mismatch on write. want %v, got %v", tc.err, err)
 				}
@@ -115,10 +111,8 @@ func TestPersistence(t *testing.T) {
 	locs := make([]*sharky.Location, items)
 	i := 0
 	j := 0
-	ctx := context.Background()
 	// simulate several subsequent sessions filling up the store
 	for ; i < items; j++ {
-		cctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 		s, err := sharky.New(&dirFS{basedir: dir}, shards, datasize)
 		if err != nil {
 			t.Fatal(err)
@@ -128,13 +122,12 @@ func TestPersistence(t *testing.T) {
 				continue
 			}
 			binary.BigEndian.PutUint32(buf, uint32(i))
-			loc, err := s.Write(cctx, buf)
+			loc, err := s.Write(buf)
 			if err != nil {
 				t.Fatal(err)
 			}
 			locs[i] = &loc
 		}
-		cancel()
 		if err := s.Close(); err != nil {
 			t.Fatal(err)
 		}
@@ -195,7 +188,7 @@ func TestConcurrency(t *testing.T) {
 				for i := 0; i < limit; i++ {
 					j := i*workers + k
 					binary.BigEndian.PutUint32(buf, uint32(j))
-					loc, err := s.Write(ctx, buf)
+					loc, err := s.Write(buf)
 					if err != nil {
 						return err
 					}
@@ -263,9 +256,8 @@ func TestConcurrency(t *testing.T) {
 		}
 
 		// the store has extra slots capacity
-		cctx, cancel := context.WithTimeout(ctx, 800*time.Millisecond)
 		for i := 0; i < extraSlots; i++ {
-			_, err = s.Write(cctx, []byte{0})
+			_, err = s.Write([]byte{0})
 			if err != nil {
 				t.Fatal(err)
 			}

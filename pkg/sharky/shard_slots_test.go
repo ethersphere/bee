@@ -9,9 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
-	"time"
 )
 
 // TestShard ensures that released slots eventually become available for writes
@@ -39,7 +37,7 @@ func TestShard(t *testing.T) {
 	loc = writePayload(t, shard, write)
 
 	// immediate write should pick the next slot
-	if loc.Slot != 1 {
+	if loc.Slot != 0 {
 		t.Fatalf("expected to write to slot 1, got %d", loc.Slot)
 	}
 
@@ -64,18 +62,12 @@ func TestShard(t *testing.T) {
 func writePayload(t *testing.T, shard *shard, buf []byte) Location {
 	t.Helper()
 
-	select {
-	case slot := <-shard.available:
-		loc, err := shard.write(buf, slot.slot)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return loc
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("write timeout")
+	loc, err := shard.write(buf)
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	return Location{}
+	return loc
 }
 
 func readFromLocation(t *testing.T, shard *shard, loc Location) []byte {
@@ -112,39 +104,24 @@ func newShard(t *testing.T) *shard {
 		t.Fatal(err)
 	}
 
-	var wg sync.WaitGroup
-
 	slots := newSlots(ffile.(sharkyFile))
 	err = slots.load()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	quit := make(chan struct{})
 	shard := &shard{
-		available:   make(chan availableShard),
 		index:       uint8(index),
 		maxDataSize: 1,
 		file:        file.(sharkyFile),
 		slots:       slots,
-		quit:        quit,
 	}
 
 	t.Cleanup(func() {
-		close(quit)
 		if err := shard.close(); err != nil {
 			t.Fatal("close shard", err)
 		}
 	})
-
-	terminated := make(chan struct{})
-
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		shard.process()
-		close(terminated)
-	}()
 
 	return shard
 }

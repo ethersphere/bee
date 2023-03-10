@@ -60,36 +60,16 @@ type sharkyFile interface {
 
 // shard models a shard writing to a file with periodic offsets due to fixed maxDataSize
 type shard struct {
-	available   chan availableShard
-	index       uint8         // index of the shard
-	maxDataSize int           // max size of blobs
-	file        sharkyFile    // the file handle the shard is writing data to
-	slots       *slots        // component keeping track of freed slots
-	quit        chan struct{} // channel to signal quitting
-}
-
-// forever loop processing
-func (sh *shard) process() {
-	defer sh.close()
-
-	for {
-		slot := sh.slots.Next()
-		select {
-		case sh.available <- availableShard{shard: sh.index, slot: slot}:
-			sh.slots.Use(slot)
-		case <-sh.quit:
-			return
-		}
-	}
+	index       uint8      // index of the shard
+	maxDataSize int        // max size of blobs
+	file        sharkyFile // the file handle the shard is writing data to
+	slots       *slots     // component keeping track of freed slots
 }
 
 // close closes the shard:
 // wait for pending operations to finish then saves free slots and blobs on disk
 func (sh *shard) close() error {
-	if err := sh.slots.Save(); err != nil {
-		return err
-	}
-	if err := sh.slots.file.Close(); err != nil {
+	if err := sh.slots.Close(); err != nil {
 		return err
 	}
 	return sh.file.Close()
@@ -108,8 +88,10 @@ func (sh *shard) read(buf []byte, slot uint32) error {
 }
 
 // write writes loc.Length bytes to the buffer from the blob slot loc.Slot
-func (sh *shard) write(buf []byte, slot uint32) (Location, error) {
+func (sh *shard) write(buf []byte) (Location, error) {
+	slot := sh.slots.Next()
 	n, err := sh.file.WriteAt(buf, sh.offset(slot))
+
 	return Location{
 		Shard:  sh.index,
 		Slot:   slot,

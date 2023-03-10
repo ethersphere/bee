@@ -125,7 +125,7 @@ func (db *DB) put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk)
 				}
 				return false, 0, err
 			}
-			l, err := db.sharky.Write(ctx, item.Data)
+			l, err := db.sharky.Write(item.Data)
 			if err != nil {
 				return false, 0, fmt.Errorf("failed writing to sharky: %w", err)
 			}

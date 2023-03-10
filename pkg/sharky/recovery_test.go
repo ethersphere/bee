@@ -11,7 +11,6 @@ import (
 	"errors"
 	"math/rand"
 	"testing"
-	"time"
 
 	"github.com/ethersphere/bee/pkg/sharky"
 )
@@ -33,7 +32,6 @@ func TestRecovery(t *testing.T) {
 	limitInChunks := shards * int(shardSize)
 
 	dir := t.TempDir()
-	ctx := context.Background()
 	size := limitInChunks / 2
 	data := make([]byte, 4)
 	locs := make([]sharky.Location, size)
@@ -42,7 +40,7 @@ func TestRecovery(t *testing.T) {
 	s := newSharky(t, dir, shards, datasize)
 	for i := range locs {
 		binary.BigEndian.PutUint32(data, uint32(i))
-		loc, err := s.Write(ctx, data)
+		loc, err := s.Write(data)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -81,9 +79,6 @@ func TestRecovery(t *testing.T) {
 				r.Use(locs[i])
 			}
 		}
-		if err := r.Save(); err != nil {
-			t.Fatal(err)
-		}
 	})
 
 	payload := []byte{0xff}
@@ -108,12 +103,10 @@ func TestRecovery(t *testing.T) {
 
 		t.Run("correct number of free slots", func(t *testing.T) {
 			s := newSharky(t, dir, 1, datasize)
-			cctx, cancel := context.WithTimeout(ctx, 800*time.Millisecond)
-			defer cancel()
 
 			runs := 96
 			for i := 0; i < runs; i++ {
-				loc, err := s.Write(cctx, payload)
+				loc, err := s.Write(payload)
 				if err != nil {
 					if errors.Is(err, context.DeadlineExceeded) {
 						break

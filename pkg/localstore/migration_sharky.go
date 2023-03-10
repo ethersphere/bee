@@ -5,7 +5,6 @@
 package localstore
 
 import (
-	"context"
 	"encoding/binary"
 	"fmt"
 	"time"
@@ -142,7 +141,7 @@ func migrateSharky(db *DB) error {
 			if compactStart == nil {
 				compactStart = &item
 			}
-			loc, err := db.sharky.Write(context.TODO(), item.Data)
+			loc, err := db.sharky.Write(item.Data)
 			if err != nil {
 				return false, err
 			}

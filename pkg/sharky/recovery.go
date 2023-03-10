@@ -25,10 +25,10 @@ func NewRecovery(dir string, shardCnt int, datasize int) (*Recovery, error) {
 	shards := make([]*slots, shardCnt)
 	for i := 0; i < shardCnt; i++ {
 		file, err := os.OpenFile(path.Join(dir, fmt.Sprintf("shard_%03d", i)), os.O_RDONLY, 0666)
-		if errors.Is(err, fs.ErrNotExist) {
-			return nil, fmt.Errorf("index %d: %w", i, ErrShardNotFound)
-		}
 		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil, fmt.Errorf("index %d: %w", i, ErrShardNotFound)
+			}
 			return nil, err
 		}
 		if err = file.Close(); err != nil {
@@ -48,20 +48,11 @@ func (r *Recovery) Use(loc Location) {
 	r.slots[loc.Shard].Use(loc.Slot)
 }
 
-// Save saves all free slots files of the recovery (without closing).
-func (r *Recovery) Save() error {
-	err := new(multierror.Error)
-	for _, sh := range r.slots {
-		err = multierror.Append(err, sh.Save())
-	}
-	return err.ErrorOrNil()
-}
-
-// Close closes data and free slots files of the recovery (without saving).
+// Close saves all free slots files of the recovery and closes data and free slots files of the recovery.
 func (r *Recovery) Close() error {
 	err := new(multierror.Error)
-	for _, sh := range r.slots {
-		err = multierror.Append(err, sh.file.Close())
+	for _, sl := range r.slots {
+		err = multierror.Append(err, sl.Close())
 	}
 	return err.ErrorOrNil()
 }
