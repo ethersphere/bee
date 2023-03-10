@@ -162,7 +162,7 @@ func TestEvict(t *testing.T) {
 
 	totalEvicted := 0
 	for i := 0; i < 3; i++ {
-		evicted, err := r.EvictBatchBin(ts, uint8(i), evictBatch.ID)
+		evicted, err := r.EvictBatchBin(context.Background(), ts, uint8(i), evictBatch.ID, func(swarm.Chunk) {})
 		if err != nil {
 			t.Fatal(err)
 		}
