@@ -12,8 +12,6 @@ import (
 	"fmt"
 	"math/big"
 	"net"
-	"os"
-	"runtime/pprof"
 	"sync"
 	"syscall"
 	"time"
@@ -48,7 +46,7 @@ const (
 	// than 15 seconds (empirically verified).
 	peerConnectionAttemptTimeout = 15 * time.Second // timeout for establishing a new connection with peer.
 
-	flagTimeout      = 5 * time.Minute  // how long before blocking a flagged peer
+	flagTimeout      = 15 * time.Minute // how long before blocking a flagged peer
 	blockDuration    = time.Hour        // how long to blocklist an unresponsive peer for
 	blockWorkerWakup = time.Second * 10 // wake up interval for the blocker worker
 )
@@ -63,7 +61,7 @@ const (
 	defaultShortRetry                  = 30 * time.Second
 	defaultTimeToRetry                 = 2 * defaultShortRetry
 	defaultBroadcastBinSize            = 4
-	defaultPeerPingPollTime            = 10 * time.Second // how often to ping a peer
+	defaultPeerPingPollTime            = 5 * time.Minute // how often to ping a peer
 )
 
 var (
@@ -536,18 +534,11 @@ func (k *Kad) manage() {
 	defer close(k.done)
 	defer k.logger.Debug("kademlia manage loop exited")
 
-	timer := time.NewTimer(0)
+	ticker := time.NewTicker(k.opt.PeerPingPollTime)
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		<-k.quit
-		if !timer.Stop() {
-			select {
-			case <-timer.C:
-			case <-time.After(1 * time.Second):
-				k.logger.Debug("kademlia timer not drained after 1 second")
-				_ = pprof.Lookup("goroutine").WriteTo(os.Stdout, 2)
-			}
-		}
+		ticker.Stop()
 		cancel()
 	}()
 
@@ -590,13 +581,12 @@ func (k *Kad) manage() {
 				return
 			case <-k.quit:
 				return
-			case <-timer.C:
+			case <-ticker.C:
 				k.wg.Add(1)
 				go func() {
 					defer k.wg.Done()
 					k.recordPeerLatencies(ctx)
 				}()
-				_ = timer.Reset(k.opt.PeerPingPollTime)
 			}
 		}
 	}()
