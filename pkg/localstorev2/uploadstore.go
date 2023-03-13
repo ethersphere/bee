@@ -49,8 +49,10 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 			).ErrorOrNil()
 		}),
 		done: func(address swarm.Address) error {
-			defer db.clearDirty(tagID)
-
+			defer func() {
+				db.clearDirty(tagID)
+				db.events.Trigger(subscribePushEventKey)
+			}()
 			return multierror.Append(
 				uploadPutter.Close(address),
 				func() error {
