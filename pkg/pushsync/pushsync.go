@@ -26,7 +26,6 @@ import (
 	"github.com/ethersphere/bee/pkg/soc"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
 	opentracing "github.com/opentracing/opentracing-go"
@@ -72,14 +71,9 @@ type Receipt struct {
 	Nonce     []byte
 }
 
-type PutterSession interface {
-	storage.Putter
-	Done(swarm.Address) error
-	Cleanup() error
-}
-
 type Storer interface {
-	ReservePutter(context.Context) PutterSession
+	storage.PushReporter
+	ReservePut(context.Context, swarm.Chunk) error
 	IsWithinStorageRadius(swarm.Address) bool
 }
 
@@ -241,7 +235,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 				return fmt.Errorf("pushsync replication invalid stamp: %w", err)
 			}
 
-			err = ps.putChunk(ctxd, chunk)
+			err = ps.store.ReservePut(ctxd, chunk)
 			if err != nil {
 				return fmt.Errorf("chunk store: %w", err)
 			}
@@ -277,7 +271,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 				logger.Warning("forwarder, invalid stamp for chunk", "chunk_address", chunkAddress)
 				return
 			}
-			err = ps.putChunk(ctx, verifiedChunk)
+			err = ps.store.ReservePut(ctx, verifiedChunk)
 			if err != nil {
 				logger.Warning("within depth peer's attempt to store chunk failed", "chunk_address", verifiedChunk.Address(), "error", err)
 			}
@@ -294,7 +288,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 				return fmt.Errorf("pushsync storer invalid stamp: %w", err)
 			}
 
-			err = ps.putChunk(ctx, chunk)
+			err = ps.store.ReservePut(ctx, chunk)
 			if err != nil {
 				return fmt.Errorf("chunk store: %w", err)
 			}
@@ -338,17 +332,6 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	}
 
 	return debit.Apply()
-}
-
-func (ps *PushSync) putChunk(ctx context.Context, chunk swarm.Chunk) error {
-	session := ps.store.ReservePutter(ctx)
-
-	err := session.Put(ctx, chunk)
-	if err != nil {
-		return errors.Join(err, session.Cleanup())
-	}
-
-	return session.Done(swarm.ZeroAddress)
 }
 
 // PushChunkToClosest sends chunk to the closest peer by opening a stream. It then waits for
@@ -588,14 +571,10 @@ func (ps *PushSync) pushPeer(ctx context.Context, resultChan chan<- receiptResul
 
 	pushed = true
 
-	// if you manage to get a tag, just increment the respective counter
-	t, err := ps.tagger.Get(ch.TagID())
-	if err == nil && t != nil {
-		err = t.Inc(tags.StateSent)
-		if err != nil {
-			err = fmt.Errorf("tag %d increment: %w", ch.TagID(), err)
-			return
-		}
+	err = ps.store.Report(ctx, ch, storage.ChunkSent)
+	if err != nil && !errors.Is(err, storage.ErrNotFound) {
+		err = fmt.Errorf("tag %d increment: %w", ch.TagID(), err)
+		return
 	}
 
 	err = r.ReadMsgWithContext(ctx, &receipt)
