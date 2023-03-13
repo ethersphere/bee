@@ -251,8 +251,7 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 			"error", err,
 		)
 
-		s.storer.Report(ctx, op.Chunk, storage.ChunkCouldNotSync)
-		return false, err
+		return false, errors.Join(err, s.storer.Report(ctx, op.Chunk, storage.ChunkCouldNotSync))
 	}
 
 	switch receipt, err := s.pushSyncer.PushChunkToClosest(ctx, op.Chunk); {
@@ -264,14 +263,18 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 			loggerV1.Error(err, "pusher: failed to store chunk")
 			return true, err
 		}
-		s.storer.Report(ctx, op.Chunk, storage.ChunkStored)
+		err = s.storer.Report(ctx, op.Chunk, storage.ChunkStored)
+		if err != nil {
+			loggerV1.Error(err, "pusher: failed reporting chunk")
+		}
 	case err == nil:
-		s.storer.Report(ctx, op.Chunk, storage.ChunkSent)
 		if err := s.checkReceipt(receipt, loggerV1); err != nil {
 			loggerV1.Error(err, "pusher: failed checking receipt")
 			return true, err
 		}
-		s.storer.Report(ctx, op.Chunk, storage.ChunkSynced)
+		if err := s.storer.Report(ctx, op.Chunk, storage.ChunkSynced); err != nil {
+			loggerV1.Error(err, "pusher: failed to report sync status")
+		}
 	default:
 		loggerV1.Error(err, "pusher: failed PushChunkToClosest")
 		return true, err
