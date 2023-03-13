@@ -54,7 +54,6 @@ type Service struct {
 	metrics           metrics
 	quit              chan struct{}
 	chunksWorkerQuitC chan struct{}
-	inflight          *inflight
 	attempts          *attempts
 	smuggler          chan OpChan
 }
@@ -93,7 +92,6 @@ func New(
 		metrics:           newMetrics(),
 		quit:              make(chan struct{}),
 		chunksWorkerQuitC: make(chan struct{}),
-		inflight:          newInflight(),
 		attempts:          &attempts{retryCount: retryCount, attempts: make(map[string]int)},
 		smuggler:          make(chan OpChan),
 	}
@@ -124,7 +122,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 
 	// inflight.set handles the backpressure for the maximum amount of inflight chunks
 	// and duplicate handling.
-	chunks, repeat, unsubscribe := s.storer.SubscribePush(ctx, s.inflight.set)
+	chunks, unsubscribe := s.storer.SubscribePush(ctx)
 	defer func() {
 		unsubscribe()
 		cancel()
@@ -163,7 +161,10 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 		}
 
 		if doRepeat {
-			repeat()
+			select {
+			case cc <- op:
+			case <-s.quit:
+			}
 			return
 		}
 
@@ -241,7 +242,6 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 
 func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (bool, error) {
 	loggerV1 := logger.V(1).Build()
-	defer s.inflight.delete(op.Chunk)
 
 	if err := s.valid(op.Chunk); err != nil {
 		loggerV1.Warning(
@@ -266,6 +266,7 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 		err = s.storer.Report(ctx, op.Chunk, storage.ChunkStored)
 		if err != nil {
 			loggerV1.Error(err, "pusher: failed reporting chunk")
+			return true, err
 		}
 	case err == nil:
 		if err := s.checkReceipt(receipt, loggerV1); err != nil {
@@ -274,6 +275,7 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 		}
 		if err := s.storer.Report(ctx, op.Chunk, storage.ChunkSynced); err != nil {
 			loggerV1.Error(err, "pusher: failed to report sync status")
+			return true, err
 		}
 	default:
 		loggerV1.Error(err, "pusher: failed PushChunkToClosest")
@@ -285,7 +287,6 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 
 func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) error {
 	loggerV1 := logger.V(1).Build()
-	defer s.inflight.delete(op.Chunk)
 
 	var (
 		receipt *pushsync.Receipt
@@ -378,4 +379,26 @@ func (s *Service) Close() error {
 	case <-time.After(6 * time.Second):
 	}
 	return nil
+}
+
+type attempts struct {
+	mtx        sync.Mutex
+	retryCount int
+	attempts   map[string]int
+}
+
+// try to log a chunk sync attempt. returns false when
+// maximum amount of attempts have been reached.
+func (a *attempts) try(ch swarm.Address) bool {
+	a.mtx.Lock()
+	defer a.mtx.Unlock()
+	key := ch.ByteString()
+	a.attempts[key]++
+	return a.attempts[key] < a.retryCount
+}
+
+func (a *attempts) delete(ch swarm.Address) {
+	a.mtx.Lock()
+	delete(a.attempts, ch.ByteString())
+	a.mtx.Unlock()
 }

@@ -591,27 +591,10 @@ func GetTagInfo(st storage.Store, tagID uint64) (TagItem, error) {
 	return ti, nil
 }
 
-func Iterate(ctx context.Context, s internal.Storage, startFrom swarm.Chunk, consumerFn func(chunk swarm.Chunk) (bool, error)) error {
-	var q = storage.Query{
+func Iterate(ctx context.Context, s internal.Storage, consumerFn func(chunk swarm.Chunk) (bool, error)) error {
+	return s.IndexStore().Iterate(storage.Query{
 		Factory: func() storage.Item { return &pushItem{} },
-	}
-
-	if startFrom != nil {
-		ui := uploadItem{
-			Address: startFrom.Address(),
-			BatchID: startFrom.Stamp().BatchID(),
-		}
-		err := s.IndexStore().Get(&ui)
-		if err != nil {
-			return fmt.Errorf("get start item: %w", err)
-		}
-
-		q.Prefix = fmt.Sprintf("%d/%s/%s", ui.Uploaded, ui.Address.ByteString(), string(ui.BatchID))
-		q.PrefixAtStart = true
-		q.SkipFirst = true
-	}
-
-	return s.IndexStore().Iterate(q, func(r storage.Result) (bool, error) {
+	}, func(r storage.Result) (bool, error) {
 		pi := r.Entry.(*pushItem)
 		chunk, err := s.ChunkStore().Get(ctx, pi.Address)
 		if err != nil {
@@ -623,8 +606,9 @@ func Iterate(ctx context.Context, s internal.Storage, startFrom swarm.Chunk, con
 			return true, err
 		}
 
-		chunk = chunk.WithStamp(stamp)
-		chunk = chunk.WithTagID(uint32(pi.TagID))
+		chunk = chunk.
+			WithStamp(stamp).
+			WithTagID(uint32(pi.TagID))
 
 		return consumerFn(chunk)
 	})
