@@ -203,11 +203,7 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 	fmt.Printf("Require2 %d\n", require2)
 	fmt.Printf("sampleItems %d\n", len(sample.Items))
 
-	segment1 := int(new(big.Int).Mod(new(big.Int).SetBytes(anch2), big.NewInt(int64(len(sample.Items[require1].ChunkItem.Data)/32))).Uint64())
-
-	segment2 := int(new(big.Int).Mod(new(big.Int).SetBytes(anch2), big.NewInt(int64(len(sample.Items[require2].ChunkItem.Data)/32))).Uint64())
-
-	segmentLast := int(new(big.Int).Mod(new(big.Int).SetBytes(anch2), big.NewInt(int64(len(sample.Items[15].ChunkItem.Data)/32))).Uint64())
+	segmentIndex := int(new(big.Int).Mod(new(big.Int).SetBytes(anch2), big.NewInt(int64(128))).Uint64())
 
 	stamp1 := NewStamp(
 		sample.Items[require1].ChunkItem.BatchID,
@@ -233,7 +229,7 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 	const Capacity = 32
 
 	pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, swarm.BmtBranches, Capacity))
-	trpool := bmt.NewTrPool(bmt.NewTrConf(swarm.NewHasher, anch, swarm.BmtBranches, Capacity))
+	trpool := bmt.NewPool(bmt.NewConf(swarm.NewTrHasher(anch), swarm.BmtBranches, Capacity))
 
 	rccontent := pool.Get()
 
@@ -262,19 +258,18 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 	chunk1Content := pool.Get()
 	chunk1TrContent := trpool.Get()
 
-	chunk1Content.SetHeaderInt64(int64(len(sample.Items[require1].ChunkItem.Data[swarm.SpanSize:])))
-
-	_, err = chunk1Content.Write(sample.Items[require1].ChunkItem.Data)
+	chunk1Content.SetHeader(sample.Items[require1].ChunkItem.Data[:swarm.SpanSize])
+	chunk1ContentPayload := sample.Items[require1].ChunkItem.Data[swarm.SpanSize:]
+	_, err = chunk1Content.Write(chunk1ContentPayload)
 	if err != nil {
 		logger.Error(err, "reserve commitment hasher: failure in proof creation")
 		jsonhttp.InternalServerError(w, "failure in proof creation")
 		return
 	}
 
-	chunk1TrContent.SetHeaderInt64(int64(len(sample.Items[require1].ChunkItem.Data[swarm.SpanSize:])))
-	fmt.Printf("require1 data length %d", len(sample.Items[require1].ChunkItem.Data))
+	chunk1TrContent.SetHeader(sample.Items[require1].ChunkItem.Data[:swarm.SpanSize])
 
-	_, err = chunk1TrContent.Write(sample.Items[require1].ChunkItem.Data)
+	_, err = chunk1TrContent.Write(chunk1ContentPayload)
 	if err != nil {
 		logger.Error(err, "reserve commitment hasher: failure in proof creation")
 		jsonhttp.InternalServerError(w, "failure in proof creation")
@@ -295,8 +290,8 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	proof1p2 := bmt.Prover{chunk1Content}.Proof(segment1)
-	proof1p3 := bmt.TrProver{chunk1TrContent}.Proof(segment1)
+	proof1p2 := bmt.Prover{chunk1Content}.Proof(segmentIndex)
+	proof1p3 := bmt.Prover{chunk1TrContent}.Proof(segmentIndex)
 
 	pool.Put(chunk1Content)
 	trpool.Put(chunk1TrContent)
@@ -304,17 +299,17 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 	chunk2Content := pool.Get()
 	chunk2TrContent := trpool.Get()
 
-	chunk2Content.SetHeaderInt64(int64(len(sample.Items[require2].ChunkItem.Data[swarm.SpanSize:])))
-
-	_, err = chunk2Content.Write(sample.Items[require2].ChunkItem.Data)
+	chunk2Content.SetHeader(sample.Items[require2].ChunkItem.Data[:swarm.SpanSize])
+	chunk2ContentPayload := sample.Items[require2].ChunkItem.Data[swarm.SpanSize:]
+	_, err = chunk2Content.Write(chunk2ContentPayload)
 	if err != nil {
 		logger.Error(err, "reserve commitment hasher: failure in proof creation")
 		jsonhttp.InternalServerError(w, "failure in proof creation")
 		return
 	}
 
-	chunk2TrContent.SetHeaderInt64(int64(len(sample.Items[require2].ChunkItem.Data[swarm.SpanSize:])))
-	_, err = chunk2TrContent.Write(sample.Items[require2].ChunkItem.Data)
+	chunk2TrContent.SetHeader(sample.Items[require2].ChunkItem.Data[:swarm.SpanSize])
+	_, err = chunk2TrContent.Write(chunk2ContentPayload)
 	if err != nil {
 		logger.Error(err, "reserve commitment hasher: failure in proof creation")
 		jsonhttp.InternalServerError(w, "failure in proof creation")
@@ -335,8 +330,8 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	proof2p2 := bmt.Prover{chunk2Content}.Proof(segment2)
-	proof2p3 := bmt.TrProver{chunk2TrContent}.Proof(segment2)
+	proof2p2 := bmt.Prover{chunk2Content}.Proof(segmentIndex)
+	proof2p3 := bmt.Prover{chunk2TrContent}.Proof(segmentIndex)
 
 	pool.Put(chunk2Content)
 	trpool.Put(chunk2TrContent)
@@ -344,9 +339,9 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 	chunkLastContent := pool.Get()
 	chunkLastTrContent := trpool.Get()
 
-	chunkLastContent.SetHeaderInt64(int64(len(sample.Items[15].ChunkItem.Data[swarm.SpanSize:])))
-
-	_, err = chunkLastContent.Write(sample.Items[15].ChunkItem.Data)
+	chunkLastContent.SetHeader(sample.Items[15].ChunkItem.Data[:swarm.SpanSize])
+	chunkLastContentPayload := sample.Items[15].ChunkItem.Data[swarm.SpanSize:]
+	_, err = chunkLastContent.Write(chunkLastContentPayload)
 	if err != nil {
 		logger.Error(err, "reserve commitment hasher: failure in proof creation")
 		jsonhttp.InternalServerError(w, "failure in proof creation")
@@ -354,8 +349,8 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// NOTE: ChunkItem.Data prefixed with the spansize
-	chunkLastTrContent.SetHeaderInt64(int64(len(sample.Items[15].ChunkItem.Data[:swarm.SpanSize])))
-	_, err = chunkLastTrContent.Write(sample.Items[15].ChunkItem.Data)
+	chunkLastTrContent.SetHeader(sample.Items[15].ChunkItem.Data[:swarm.SpanSize])
+	_, err = chunkLastTrContent.Write(chunkLastContentPayload)
 	if err != nil {
 		logger.Error(err, "reserve commitment hasher: failure in proof creation")
 		jsonhttp.InternalServerError(w, "failure in proof creation")
@@ -376,8 +371,8 @@ func (s *Service) rchasher(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	proofLastp2 := bmt.Prover{chunkLastContent}.Proof(int(segmentLast))
-	proofLastp3 := bmt.TrProver{chunkLastTrContent}.Proof(int(segmentLast))
+	proofLastp2 := bmt.Prover{chunkLastContent}.Proof(segmentIndex)
+	proofLastp3 := bmt.Prover{chunkLastTrContent}.Proof(segmentIndex)
 
 	pool.Put(chunkLastContent)
 	trpool.Put(chunkLastTrContent)
