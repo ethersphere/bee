@@ -40,6 +40,18 @@ type Hasher struct {
 	span   []byte      // The span of the data subsumed under the chunk
 }
 
+func NewTrHasher(key []byte) *Hasher {
+	capacity := 32
+	conf := NewConf(swarm.NewTrHasher(key), swarm.BmtBranches, capacity)
+	return &Hasher{
+		Conf:   conf,
+		result: make(chan []byte),
+		errc:   make(chan error, 1),
+		span:   make([]byte, SpanSize),
+		bmt:    newTree(conf.segmentSize, conf.maxSize, conf.depth, conf.hasher),
+	}
+}
+
 // Capacity returns the maximum amount of bytes that will be processed by this hasher implementation.
 // since BMT assumes a balanced binary tree, capacity it is always a power of 2
 func (h *Hasher) Capacity() int {
@@ -78,14 +90,14 @@ func (h *Hasher) BlockSize() int {
 // using Hash presupposes sequential synchronous writes (io.Writer interface).
 func (h *Hasher) Hash(b []byte) ([]byte, error) {
 	if h.size == 0 {
-		return sha3hash(h.span, h.zerohashes[h.depth])
+		return doHash(h.hasher(), h.span, h.zerohashes[h.depth])
 	}
 	copy(h.bmt.buffer[h.size:], zerosection)
 	// write the last section with final flag set to true
 	go h.processSection(h.pos, true)
 	select {
 	case result := <-h.result:
-		return sha3hash(h.span, result)
+		return doHash(h.hasher(), h.span, result)
 	case err := <-h.errc:
 		return nil, err
 	}
