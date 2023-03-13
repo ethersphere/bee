@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/localstorev2/internal"
+	"github.com/ethersphere/bee/pkg/localstorev2/internal/chunkstamp"
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/stampindex"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/storagev2/storageutil"
@@ -37,6 +38,8 @@ var (
 
 // pushItemSize is the size of a marshaled pushItem.
 const pushItemSize = 8 + 2*swarm.HashSize + 8
+
+const chunkStampNamespace = "upload"
 
 var _ storage.Item = (*pushItem)(nil)
 
@@ -377,6 +380,10 @@ func (u *uploadPutter) Put(ctx context.Context, chunk swarm.Chunk) error {
 		return fmt.Errorf("chunk store put chunk %q call failed: %w", chunk.Address(), err)
 	}
 
+	if err := chunkstamp.Store(u.s.IndexStore(), chunkStampNamespace, chunk); err != nil {
+		return fmt.Errorf("associate chunk with stamp %q call failed: %w", chunk.Address(), err)
+	}
+
 	ui.Uploaded = now().UnixNano()
 	ui.TagID = u.tagID
 
@@ -597,6 +604,15 @@ func Iterate(ctx context.Context, s internal.Storage, startFrom swarm.Chunk, con
 		if err != nil {
 			return true, err
 		}
-		return consumerFn(chunk.WithTagID(uint32(pi.TagID)))
+
+		stamp, err := chunkstamp.LoadWithBatchID(s.IndexStore(), chunkStampNamespace, chunk.Address(), pi.BatchID)
+		if err != nil {
+			return true, err
+		}
+
+		chunk = chunk.WithStamp(stamp)
+		chunk = chunk.WithTagID(uint32(pi.TagID))
+
+		return consumerFn(chunk)
 	})
 }
