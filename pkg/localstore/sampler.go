@@ -137,12 +137,16 @@ func (db *DB) ReserveSample(
 					continue
 				}
 
+				keyedHasher.SetHeader(chItem.Data[:bmt.SpanSize])
 				hmacrStart := time.Now()
-				_, err = keyedHasher.Write(chItem.Data)
+				_, err = keyedHasher.Write(chItem.Data[bmt.SpanSize:])
 				if err != nil {
 					return err
 				}
-				taddr := keyedHasher.Sum(nil)
+				taddr, err := keyedHasher.Hash(nil)
+				if err != nil {
+					return err
+				}
 				keyedHasher.Reset()
 				stat.HmacrDuration.Add(time.Since(hmacrStart).Nanoseconds())
 
