@@ -304,6 +304,8 @@ type DB struct {
 	bgCacheWorkersWg sync.WaitGroup
 	dbCloser         io.Closer
 
+	subscriptionsWG sync.WaitGroup
+
 	dirtyTagsMu sync.RWMutex
 	dirtyTags   []uint64 // tagIDs
 
