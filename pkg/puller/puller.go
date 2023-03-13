@@ -36,7 +36,6 @@ const (
 	recalcPeersDur           = time.Minute * 5
 	histSyncTimeout          = time.Minute * 10
 	histSyncTimeoutBlockList = time.Hour * 24
-	minimumConnectionDur     = time.Minute * 5
 )
 
 type Options struct {
@@ -146,7 +145,7 @@ func (p *Puller) manage(ctx context.Context, warmupTime time.Duration) {
 			}
 			delete(peersDisconnected, addr.ByteString())
 			return false, false, nil
-		}, topology.Filter{Reachable: true, AliveDuration: minimumConnectionDur})
+		}, topology.Filter{Reachable: true})
 
 		for _, peer := range peersDisconnected {
 			p.disconnectPeer(peer.address)

@@ -32,7 +32,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/kademlia"
-	im "github.com/ethersphere/bee/pkg/topology/kademlia/internal/metrics"
 	"github.com/ethersphere/bee/pkg/topology/pslice"
 	"github.com/ethersphere/bee/pkg/util/testutil"
 )
@@ -40,10 +39,6 @@ import (
 const spinLockWaitTime = time.Second * 3
 
 var nonConnectableAddress, _ = ma.NewMultiaddr(underlayBase + "16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkA")
-
-var defaultFilterFunc kademlia.FilterFunc = func(...im.FilterOp) kademlia.PeerFilterFunc {
-	return func(swarm.Address) bool { return false }
-}
 
 // TestNeighborhoodDepth tests that the kademlia depth changes correctly
 // according to the change to known peers slice. This inadvertently tests
@@ -57,8 +52,8 @@ func TestNeighborhoodDepth(t *testing.T) {
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			SaturationPeers: ptrInt(4),
-			FilterFunc:      defaultFilterFunc,
+			SaturationPeers:  ptrInt(4),
+			ReachabilityFunc: func(_ swarm.Address) bool { return false },
 		})
 	)
 
@@ -369,7 +364,7 @@ func TestEachNeighbor(t *testing.T) {
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			FilterFunc: defaultFilterFunc,
+			ReachabilityFunc: func(_ swarm.Address) bool { return false },
 		})
 		peers []swarm.Address
 	)
@@ -440,8 +435,8 @@ func TestManage(t *testing.T) {
 		conns                    int32 // how many connect calls were made to the p2p mock
 		saturation               = kademlia.DefaultSaturationPeers
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			BitSuffixLength: ptrInt(-1),
-			FilterFunc:      defaultFilterFunc,
+			BitSuffixLength:  ptrInt(-1),
+			ReachabilityFunc: func(_ swarm.Address) bool { return false },
 		})
 	)
 
@@ -487,10 +482,10 @@ func TestManageWithBalancing(t *testing.T) {
 			return f(bin, peers, connected, filter)
 		}
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			SaturationFunc:  saturationFunc,
-			SaturationPeers: ptrInt(4),
-			BitSuffixLength: ptrInt(2),
-			FilterFunc:      defaultFilterFunc,
+			SaturationFunc:   saturationFunc,
+			SaturationPeers:  ptrInt(4),
+			BitSuffixLength:  ptrInt(2),
+			ReachabilityFunc: func(_ swarm.Address) bool { return false },
 		})
 	)
 
@@ -534,9 +529,9 @@ func TestBinSaturation(t *testing.T) {
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			SaturationPeers: ptrInt(2),
-			BitSuffixLength: ptrInt(-1),
-			FilterFunc:      defaultFilterFunc,
+			SaturationPeers:  ptrInt(2),
+			BitSuffixLength:  ptrInt(-1),
+			ReachabilityFunc: func(_ swarm.Address) bool { return false },
 		})
 	)
 
@@ -585,7 +580,7 @@ func TestOversaturation(t *testing.T) {
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			FilterFunc: defaultFilterFunc,
+			ReachabilityFunc: func(_ swarm.Address) bool { return false },
 		})
 	)
 
@@ -634,7 +629,7 @@ func TestOversaturationBootnode(t *testing.T) {
 			OverSaturationPeers: ptrInt(overSaturationPeers),
 			SaturationPeers:     ptrInt(4),
 			BootnodeMode:        true,
-			FilterFunc:          defaultFilterFunc,
+			ReachabilityFunc:    func(_ swarm.Address) bool { return false },
 		})
 	)
 
@@ -692,7 +687,7 @@ func TestBootnodeMaxConnections(t *testing.T) {
 			BootnodeOverSaturationPeers: ptrInt(bootnodeOverSaturationPeers),
 			SaturationPeers:             ptrInt(4),
 			BootnodeMode:                true,
-			FilterFunc:                  defaultFilterFunc,
+			ReachabilityFunc:            func(_ swarm.Address) bool { return false },
 		})
 	)
 
@@ -783,7 +778,7 @@ func TestDiscoveryHooks(t *testing.T) {
 	var (
 		conns                    int32
 		_, kad, ab, disc, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			FilterFunc: defaultFilterFunc,
+			ReachabilityFunc: func(peer swarm.Address) bool { return false },
 		})
 		p1, p2, p3 = swarm.RandAddress(t), swarm.RandAddress(t), swarm.RandAddress(t)
 	)
@@ -1354,7 +1349,7 @@ func TestOutofDepthPrune(t *testing.T) {
 			SaturationPeers:     ptrInt(saturationPeers),
 			OverSaturationPeers: ptrInt(overSaturationPeers),
 			PruneFunc:           pruneFunc,
-			FilterFunc:          defaultFilterFunc,
+			ReachabilityFunc:    func(_ swarm.Address) bool { return false },
 		})
 	)
 
@@ -1498,7 +1493,7 @@ func TestBootnodeProtectedNodes(t *testing.T) {
 			LowWaterMark:                ptrInt(0),
 			BootnodeMode:                true,
 			StaticNodes:                 protected,
-			FilterFunc:                  defaultFilterFunc,
+			ReachabilityFunc:            func(_ swarm.Address) bool { return false },
 		})
 	)
 
@@ -1588,7 +1583,7 @@ func TestAnnounceBgBroadcast_FLAKY(t *testing.T) {
 			}),
 		)
 		_, kad, ab, _, signer = newTestKademliaWithDiscovery(t, disc, &conns, nil, kademlia.Options{
-			FilterFunc: defaultFilterFunc,
+			ReachabilityFunc: func(swarm.Address) bool { return false },
 		})
 	)
 
@@ -1657,7 +1652,7 @@ func TestAnnounceNeighborhoodToNeighbor(t *testing.T) {
 			}),
 		)
 		base, kad, ab, _, signer = newTestKademliaWithDiscovery(t, disc, &conns, nil, kademlia.Options{
-			FilterFunc:          defaultFilterFunc,
+			ReachabilityFunc:    func(swarm.Address) bool { return false },
 			OverSaturationPeers: ptrInt(4),
 			SaturationPeers:     ptrInt(4),
 		})
