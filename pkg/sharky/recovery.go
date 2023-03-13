@@ -49,7 +49,7 @@ func (r *Recovery) Use(loc Location) {
 // Close saves all free slots files of the recovery and closes data and free slots files of the recovery.
 func (r *Recovery) Close() (err error) {
 	for _, sl := range r.slots {
-		err = errors.Join(sl.Close())
+		err = errors.Join(err, sl.Close())
 	}
 	return
 }

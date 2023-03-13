@@ -97,7 +97,8 @@ func (sl *slots) Next() uint32 {
 // next returns the lowest free slot and allocates a new one if needed.
 // Must be called under lock.
 func (sl *slots) next() uint32 {
-	for i := sl.head; i < sl.size(); i++ {
+	length := uint32(len(sl.data) * 8) // length of bitvector in bits
+	for i := sl.head; i < length; i++ {
 		if sl.data[i/8]&(1<<(i%8)) > 0 { // first 1 bit
 			return i
 		}
@@ -114,10 +115,4 @@ func (sl *slots) extend(n int) {
 	for i := 0; i < n; i++ {
 		sl.data = append(sl.data, 0xff)
 	}
-}
-
-// size in bits
-// Must be called under lock.
-func (sl *slots) size() uint32 {
-	return uint32(len(sl.data) * 8)
 }
