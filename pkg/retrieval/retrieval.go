@@ -53,10 +53,10 @@ type Interface interface {
 }
 
 type retrievalResult struct {
-	chunk             swarm.Chunk
-	peer              swarm.Address
-	err               error
-	retrieveAttempted bool
+	chunk     swarm.Chunk
+	peer      swarm.Address
+	err       error
+	attempted bool
 }
 
 type Service struct {
@@ -108,7 +108,7 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 const (
 	retrieveChunkTimeout = 10 * time.Second
 	preemptiveInterval   = time.Second
-	skipListDur          = time.Minute
+	skiplistDur          = time.Minute
 	maxRetrievedErrors   = 32
 	originSuffix         = "_origin"
 )
@@ -193,7 +193,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr, sourcePeerAddr swarm.
 
 				inflight++
 
-				go func(peer swarm.Address) {
+				go func() {
 					ctx := tracing.WithContext(context.Background(), tracing.FromContext(topCtx))
 					span, _, ctx := s.tracer.StartSpanFromContext(ctx, "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: addr.String()})
 					defer span.Finish()
@@ -201,27 +201,29 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr, sourcePeerAddr swarm.
 					defer cancel()
 
 					s.retrieveChunk(ctx, peer, done, resultC, addr, origin)
-				}(peer)
+				}()
+
 			case res := <-resultC:
 
 				inflight--
 
-				if res.retrieveAttempted {
-					retrievedErrorsLeft--
-				}
-
-				if res.err != nil {
-					loggerV1.Debug("failed to get chunk", "chunk_address", addr, "peer_address", res.peer, "error", res.err)
-					retry()
-					s.skippeers.Add(addr, res.peer, skipListDur)
-				} else {
+				if res.err == nil {
 					loggerV1.Debug("retrieved chunk", "chunk_address", addr, "peer_address", res.peer)
 					return res.chunk, nil
 				}
+
+				loggerV1.Debug("failed to get chunk", "chunk_address", addr, "peer_address", res.peer, "error", res.err)
+
+				if res.attempted {
+					retrievedErrorsLeft--
+					s.skippeers.Add(addr, res.peer, skiplistDur)
+				}
+
+				retry()
 			}
 		}
 
-		loggerV1.Debug("no peers left to retry", "chunk_address", addr)
+		loggerV1.Debug("no attempts left", "chunk_address", addr)
 		return nil, storage.ErrNotFound
 	})
 	if err != nil {
@@ -254,7 +256,7 @@ func (s *Service) retrieveChunk(ctx context.Context, peer swarm.Address, done ch
 			s.metrics.TotalErrors.Inc()
 		}
 		select {
-		case result <- retrievalResult{err: err, chunk: chunk, retrieveAttempted: retrieveAttempted, peer: peer}:
+		case result <- retrievalResult{err: err, chunk: chunk, attempted: retrieveAttempted, peer: peer}:
 		case <-done:
 			return
 		}

@@ -410,10 +410,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			ps.measurePushPeer(result.pushTime, result.err, origin)
 
-			if errors.Is(result.err, errNotAttempted) {
-				logger.Debug("not attempted: adding overdraft peer to skiplist", "peer_address", result.peer)
-			}
-
 			if ps.warmedUp() && !errors.Is(result.err, errNotAttempted) {
 				ps.skipList.Add(ch.Address(), result.peer, sanctionWait)
 			}
@@ -476,7 +472,7 @@ func (ps *PushSync) pushPeer(ctx context.Context, resultChan chan<- receiptResul
 	creditAction, err := ps.accounting.PrepareCredit(creditCtx, peer, receiptPrice, origin)
 	if err != nil {
 		if errors.Is(err, accounting.ErrOverdraft) || errors.Is(err, accounting.ErrFailToLock) {
-			err = fmt.Errorf("pushsync: prepare credit: %w: %w", err, errNotAttempted)
+			err = fmt.Errorf("pushsync: prepare credit: %v: %w", err, errNotAttempted)
 			return
 		}
 		err = fmt.Errorf("reserve balance for peer %s: %w", peer, err)
