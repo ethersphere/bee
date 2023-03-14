@@ -19,6 +19,7 @@ type Proof struct {
 
 // Proof returns the inclusion proof of the i-th data segment
 func (p Prover) Proof(i int) Proof {
+	index := i
 	if i < 0 || i > 127 {
 		panic("segment index can only lie between 0-127")
 	}
@@ -36,7 +37,7 @@ func (p Prover) Proof(i int) Proof {
 	secsize := 2 * p.segmentSize
 	offset := i * secsize
 	section := p.bmt.buffer[offset : offset+secsize]
-	return Proof{section, sisters, p.span, i}
+	return Proof{section, sisters, p.span, index}
 }
 
 // Verify returns the bmt hash obtained from the proof which can then be checked against
