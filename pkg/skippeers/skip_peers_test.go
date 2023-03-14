@@ -6,43 +6,33 @@ package skippeers_test
 
 import (
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/skippeers"
-	"github.com/ethersphere/bee/pkg/swarm"
+	testingc "github.com/ethersphere/bee/pkg/storage/testing"
 )
 
-func TestAddOverdraft(t *testing.T) {
+func TestPeerSkipList(t *testing.T) {
 	t.Parallel()
+	skipList := skippeers.NewList()
 
-	var (
-		p1 = swarm.NewAddress([]byte("0xab"))
-		p2 = swarm.NewAddress([]byte("0xbc"))
-	)
+	addr1 := testingc.GenerateTestRandomChunk().Address()
+	addr2 := testingc.GenerateTestRandomChunk().Address()
+	addr3 := testingc.GenerateTestRandomChunk().Address()
 
-	sp := new(skippeers.List)
-	sp.Add(p1)
+	skipList.Add(addr1, addr2, time.Millisecond*10)
 
-	// duplicate entries are ignored
-	sp.Add(p1)
-	if len(sp.All()) != 1 {
-		t.Errorf("expected len: %d, got %d", 1, len(sp.All()))
+	if !skipList.ChunkPeers(addr1)[0].Equal(addr2) {
+		t.Fatal("peer should be skipped")
 	}
 
-	// add peer
-	sp.Add(p2)
-	if len(sp.All()) != 2 {
-		t.Errorf("expected len: %d, got %d", 2, len(sp.All()))
-	}
+	skipList.Add(addr1, addr3, time.Millisecond*10)
 
-	// add overdraft removes from addresses
-	sp.AddOverdraft(p2)
-	if len(sp.All()) != 2 {
-		t.Errorf("expected len: %d, got %d", 2, len(sp.All()))
-	}
+	time.Sleep(time.Millisecond * 11)
 
-	sp.ResetOverdraft()
+	skipList.PruneExpired()
 
-	if !sp.OverdraftListEmpty() {
-		t.Errorf("expected empty list, got %s", sp.All())
+	if len(skipList.ChunkPeers(addr1)) != 0 {
+		t.Fatal("entry should be pruned")
 	}
 }

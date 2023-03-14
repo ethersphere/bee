@@ -6,60 +6,68 @@ package skippeers
 
 import (
 	"sync"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 type List struct {
-	mu                 sync.Mutex
-	overdraftAddresses []swarm.Address
-	addresses          []swarm.Address
+	mtx sync.Mutex
+
+	// key is chunk address, value is map of peer address to expiration
+	skip map[string]map[string]int64
 }
 
-func (s *List) All() []swarm.Address {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	all := make([]swarm.Address, 0, len(s.addresses)+len(s.overdraftAddresses))
-	all = append(all, s.addresses...)
-	all = append(all, s.overdraftAddresses...)
-
-	return all
+func NewList() *List {
+	return &List{
+		skip: make(map[string]map[string]int64),
+	}
 }
 
-func (s *List) ResetOverdraft() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.overdraftAddresses = nil
-}
+func (l *List) Add(chunk, peer swarm.Address, expire time.Duration) {
+	l.mtx.Lock()
+	defer l.mtx.Unlock()
 
-func (s *List) Add(address swarm.Address) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if swarm.ContainsAddress(s.addresses, address) {
-		return
+	if _, ok := l.skip[chunk.ByteString()]; !ok {
+		l.skip[chunk.ByteString()] = make(map[string]int64)
 	}
 
-	s.addresses = append(s.addresses, address)
+	l.skip[chunk.ByteString()][peer.ByteString()] = time.Now().Add(expire).UnixMilli()
 }
 
-func (s *List) AddOverdraft(address swarm.Address) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+func (l *List) ChunkPeers(ch swarm.Address) (peers []swarm.Address) {
+	l.mtx.Lock()
+	defer l.mtx.Unlock()
 
-	if swarm.ContainsAddress(s.overdraftAddresses, address) {
-		return
+	now := time.Now().UnixMilli()
+
+	if p, ok := l.skip[ch.ByteString()]; ok {
+		for peer, exp := range p {
+			if exp > now {
+				peers = append(peers, swarm.NewAddress([]byte(peer)))
+			}
+		}
 	}
-
-	s.addresses = swarm.RemoveAddress(s.addresses, address)
-	s.overdraftAddresses = append(s.overdraftAddresses, address)
+	return peers
 }
 
-// OverdraftListEmpty function returns whether all skipped entries a permanently skipped for this skiplist
-// Temporary entries are stored in the overdraftAddresses slice of the skiplist, so if that is empty, the function returns true
-func (s *List) OverdraftListEmpty() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return len(s.overdraftAddresses) == 0
+func (l *List) PruneExpired() {
+	l.mtx.Lock()
+	defer l.mtx.Unlock()
+
+	now := time.Now().UnixMilli()
+
+	for k, chunkPeers := range l.skip {
+		chunkPeersLen := len(chunkPeers)
+		for peer, exp := range chunkPeers {
+			if exp < now {
+				delete(chunkPeers, peer)
+				chunkPeersLen--
+			}
+		}
+		// prune the chunk too
+		if chunkPeersLen == 0 {
+			delete(l.skip, k)
+		}
+	}
 }
