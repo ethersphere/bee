@@ -41,7 +41,7 @@ type OpChan <-chan *Op
 type Storer interface {
 	storage.PushReporter
 	storage.PushSubscriber
-	ReservePutter() storage.Putter
+	ReservePut(context.Context, swarm.Chunk) error
 }
 
 type Service struct {
@@ -258,7 +258,7 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 	case errors.Is(err, topology.ErrWantSelf):
 		// store the chunk
 		loggerV1.Debug("chunk stays here, i'm the closest node", "chunk_address", op.Chunk.Address())
-		err = s.storer.ReservePutter().Put(ctx, op.Chunk)
+		err = s.storer.ReservePut(ctx, op.Chunk)
 		if err != nil {
 			loggerV1.Error(err, "pusher: failed to store chunk")
 			return true, err

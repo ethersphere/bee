@@ -7,6 +7,7 @@ package pusher_test
 import (
 	"context"
 	"errors"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -20,10 +21,9 @@ import (
 	"github.com/ethersphere/bee/pkg/pushsync"
 	pushsyncmock "github.com/ethersphere/bee/pkg/pushsync/mock"
 	"github.com/ethersphere/bee/pkg/spinlock"
-	"github.com/ethersphere/bee/pkg/storage"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/mock"
 	"github.com/ethersphere/bee/pkg/util/testutil"
@@ -32,32 +32,80 @@ import (
 // time to wait for received response from pushsync
 const spinTimeout = time.Second * 3
 
-var block = common.HexToHash("0x1").Bytes()
-var defaultMockValidStamp = func(ch swarm.Chunk, stamp []byte) (swarm.Chunk, error) {
-	return ch, nil
+var (
+	block                 = common.HexToHash("0x1").Bytes()
+	defaultMockValidStamp = func(ch swarm.Chunk, stamp []byte) (swarm.Chunk, error) {
+		return ch, nil
+	}
+	defaultRetryCount = 3
+)
+
+type mockStorer struct {
+	chunks         chan swarm.Chunk
+	reportedMu     sync.Mutex
+	reportedSynced []swarm.Chunk
+	reportedFailed []swarm.Chunk
+	reportedStored []swarm.Chunk
 }
 
-type mockStorer struct{}
-
-func (m *mockStorer) SubscribePush(ctx context.Context, skipFn func([]byte) bool) (c <-chan swarm.Chunk, repeat, stop func()) {
-	return nil, nil, nil
+func (m *mockStorer) SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, stop func()) {
+	return m.chunks, func() { close(m.chunks) }
 }
 
-func (m *mockStorer) Report(ctx context.Context, chunk swarm.Chunk, state storage.ChunkState) {
+func (m *mockStorer) Report(ctx context.Context, chunk swarm.Chunk, state storage.ChunkState) error {
+	m.reportedMu.Lock()
+	defer m.reportedMu.Unlock()
+
+	if state == storage.ChunkSynced {
+		m.reportedSynced = append(m.reportedSynced, chunk)
+	}
+	if state == storage.ChunkCouldNotSync {
+		m.reportedFailed = append(m.reportedFailed, chunk)
+	}
+	if state == storage.ChunkStored {
+		m.reportedStored = append(m.reportedStored, chunk)
+	}
+	return nil
 }
 
-func (m *mockStorer) ReservePutter() storage.Putter {
+func (m *mockStorer) isReported(chunk swarm.Chunk, state storage.ChunkState) bool {
+	m.reportedMu.Lock()
+	defer m.reportedMu.Unlock()
+
+	switch {
+	case state == storage.ChunkSynced:
+		for _, ch := range m.reportedSynced {
+			if ch.Equal(chunk) {
+				return true
+			}
+		}
+	case state == storage.ChunkCouldNotSync:
+		for _, ch := range m.reportedFailed {
+			if ch.Equal(chunk) {
+				return true
+			}
+		}
+	case state == storage.ChunkStored:
+		for _, ch := range m.reportedStored {
+			if ch.Equal(chunk) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+func (m *mockStorer) ReservePut(ctx context.Context, chunk swarm.Chunk) error {
 	return nil
 }
 
 // TestSendChunkToPushSync sends a chunk to pushsync to be sent ot its closest peer and get a receipt.
 // once the receipt is got this check to see if the localstore is updated to see if the chunk is set
 // as ModeSetSync status.
-func TestSendChunkToSyncWithTag(t *testing.T) {
+func TestChunkSyncing(t *testing.T) {
 	t.Parallel()
 
-	// create a trigger  and a closestpeer
-	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
 	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
 
 	key, _ := crypto.GenerateSecp256k1Key()
@@ -73,146 +121,76 @@ func TestSendChunkToSyncWithTag(t *testing.T) {
 		return receipt, nil
 	})
 
-	pusher := createPusher(
+	storer := &mockStorer{
+		chunks: make(chan swarm.Chunk),
+	}
+
+	pusherSvc := createPusher(
 		t,
-		&mockStorer{},
+		storer,
 		pushSyncService,
 		defaultMockValidStamp,
+		defaultRetryCount,
 		mock.WithClosestPeer(closestPeer),
 		mock.WithNeighborhoodDepth(0),
 	)
 
-	ta, err := mtags.Create(1)
-	if err != nil {
-		t.Fatal(err)
-	}
+	t.Run("deferred", func(t *testing.T) {
+		chunk := testingc.GenerateTestRandomChunk()
+		storer.chunks <- chunk
 
-	chunk := testingc.GenerateTestRandomChunk().WithTagID(ta.Uid)
-
-	_, err = storer.Put(context.Background(), storage.ModePutUpload, chunk)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	err = spinlock.Wait(spinTimeout, func() bool {
-		return checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer) == nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if ta.Get(tags.StateSynced) != 1 {
-		t.Fatalf("tags error")
-	}
-}
-
-// TestSendChunkToPushSyncWithoutTag is similar to TestSendChunkToPushSync, excep that the tags are not
-// present to simulate bzz api withotu splitter condition
-func TestSendChunkToPushSyncWithoutTag(t *testing.T) {
-	t.Parallel()
-
-	chunk := testingc.GenerateTestRandomChunk()
-
-	// create a trigger  and a closestpeer
-	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
-	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
-
-	key, _ := crypto.GenerateSecp256k1Key()
-	signer := crypto.NewDefaultSigner(key)
-
-	pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
-		signature, _ := signer.Sign(chunk.Address().Bytes())
-		receipt := &pushsync.Receipt{
-			Address:   swarm.NewAddress(chunk.Address().Bytes()),
-			Signature: signature,
-			Nonce:     block,
+		err := spinlock.Wait(spinTimeout, func() bool {
+			return storer.isReported(chunk, storage.ChunkSynced)
+		})
+		if err != nil {
+			t.Fatal(err)
 		}
-		return receipt, nil
 	})
 
-	_, _, storer := createPusher(t, triggerPeer, pushSyncService, defaultMockValidStamp, mock.WithClosestPeer(closestPeer), mock.WithNeighborhoodDepth(0))
+	t.Run("direct", func(t *testing.T) {
+		chunk := testingc.GenerateTestRandomChunk()
 
-	_, err := storer.Put(context.Background(), storage.ModePutUpload, chunk)
-	if err != nil {
-		t.Fatal(err)
-	}
+		newFeed := make(chan *pusher.Op)
+		errC := make(chan error, 1)
+		pusherSvc.AddFeed(newFeed)
 
-	err = spinlock.Wait(spinTimeout, func() bool {
-		return checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer) == nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-}
+		newFeed <- &pusher.Op{Chunk: chunk, Err: errC, Direct: true}
 
-// TestSendChunkToPushSyncViaApiChannel sends chunks via the api channel
-func TestSendChunkToPushSyncViaApiChannel(t *testing.T) {
-	t.Parallel()
-
-	chunk := testingc.GenerateTestRandomChunk()
-
-	// create a trigger  and a closestpeer
-	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
-	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
-
-	key, _ := crypto.GenerateSecp256k1Key()
-	signer := crypto.NewDefaultSigner(key)
-
-	pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
-		signature, _ := signer.Sign(chunk.Address().Bytes())
-		receipt := &pushsync.Receipt{
-			Address:   swarm.NewAddress(chunk.Address().Bytes()),
-			Signature: signature,
-			Nonce:     block,
+		err := <-errC
+		if err != nil {
+			t.Fatalf("unexpected error on push %v", err)
 		}
-		return receipt, nil
 	})
-
-	_, p, storer := createPusher(t, triggerPeer, pushSyncService, defaultMockValidStamp, mock.WithClosestPeer(closestPeer), mock.WithNeighborhoodDepth(0))
-
-	apiC := make(chan *pusher.Op)
-	p.AddFeed(apiC)
-
-	apiC <- &pusher.Op{Chunk: chunk}
-
-	err := spinlock.Wait(spinTimeout, func() bool {
-		return checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer) == nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
 }
 
-// TestSendChunkToPushSyncDirect sends chunks via the api channel
-func TestSendChunkToPushSyncDirect(t *testing.T) {
+func TestChunkStored(t *testing.T) {
 	t.Parallel()
-
-	chunk := testingc.GenerateTestRandomChunk()
-
-	// create a trigger  and a closestpeer
-	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
-	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
 
 	pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
 		return nil, topology.ErrWantSelf
 	})
 
-	_, p, _ := createPusher(t, triggerPeer, pushSyncService, defaultMockValidStamp, mock.WithClosestPeer(closestPeer), mock.WithNeighborhoodDepth(0))
+	storer := &mockStorer{
+		chunks: make(chan swarm.Chunk),
+	}
 
-	apiC := make(chan *pusher.Op)
-	p.AddFeed(apiC)
+	_ = createPusher(
+		t,
+		storer,
+		pushSyncService,
+		defaultMockValidStamp,
+		defaultRetryCount,
+		mock.WithNeighborhoodDepth(0),
+	)
 
-	errC := make(chan error)
+	chunk := testingc.GenerateTestRandomChunk()
+	storer.chunks <- chunk
 
-	apiC <- &pusher.Op{Chunk: chunk, Err: errC, Direct: true}
-
-	select {
-	case err := <-errC:
-		if !errors.Is(err, topology.ErrWantSelf) {
-			t.Fatal("bad error", err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("timeout after 5 seconds")
+	err := spinlock.Wait(spinTimeout, func() bool {
+		return storer.isReported(chunk, storage.ChunkStored)
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -223,24 +201,30 @@ func TestSendChunkAndReceiveInvalidReceipt(t *testing.T) {
 	t.Parallel()
 
 	chunk := testingc.GenerateTestRandomChunk()
-
-	// create a trigger  and a closestpeer
-	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
 	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
 
 	pushSyncService := pushsyncmock.New(func(ctx context.Context, chunk swarm.Chunk) (*pushsync.Receipt, error) {
 		return nil, errors.New("invalid receipt")
 	})
 
-	_, _, storer := createPusher(t, triggerPeer, pushSyncService, defaultMockValidStamp, mock.WithClosestPeer(closestPeer))
-
-	_, err := storer.Put(context.Background(), storage.ModePutUpload, chunk)
-	if err != nil {
-		t.Fatal(err)
+	storer := &mockStorer{
+		chunks: make(chan swarm.Chunk),
 	}
 
-	err = spinlock.Wait(spinTimeout, func() bool {
-		return checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer) == nil
+	_ = createPusher(
+		t,
+		storer,
+		pushSyncService,
+		defaultMockValidStamp,
+		defaultRetryCount,
+		mock.WithClosestPeer(closestPeer),
+		mock.WithNeighborhoodDepth(0),
+	)
+
+	storer.chunks <- chunk
+
+	err := spinlock.Wait(spinTimeout, func() bool {
+		return storer.isReported(chunk, storage.ChunkSynced)
 	})
 	if err == nil {
 		t.Fatalf("chunk not syned error expected")
@@ -254,9 +238,6 @@ func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {
 	t.Parallel()
 
 	chunk := testingc.GenerateTestRandomChunk()
-
-	// create a trigger  and a closestpeer
-	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
 	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
 
 	key, _ := crypto.GenerateSecp256k1Key()
@@ -273,18 +254,27 @@ func TestSendChunkAndTimeoutinReceivingReceipt(t *testing.T) {
 		return receipt, nil
 	})
 
-	_, _, storer := createPusher(t, triggerPeer, pushSyncService, defaultMockValidStamp, mock.WithClosestPeer(closestPeer), mock.WithNeighborhoodDepth(0))
-
-	_, err := storer.Put(context.Background(), storage.ModePutUpload, chunk)
-	if err != nil {
-		t.Fatal(err)
+	storer := &mockStorer{
+		chunks: make(chan swarm.Chunk),
 	}
 
-	err = spinlock.Wait(time.Second, func() bool {
-		return checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer) == nil
+	_ = createPusher(
+		t,
+		storer,
+		pushSyncService,
+		defaultMockValidStamp,
+		defaultRetryCount,
+		mock.WithClosestPeer(closestPeer),
+		mock.WithNeighborhoodDepth(0),
+	)
+
+	storer.chunks <- chunk
+
+	err := spinlock.Wait(spinTimeout, func() bool {
+		return storer.isReported(chunk, storage.ChunkSynced)
 	})
 	if err == nil {
-		t.Fatal("expecting to time out")
+		t.Fatalf("chunk not syned error expected")
 	}
 }
 
@@ -292,7 +282,6 @@ func TestPusherRetryShallow(t *testing.T) {
 	t.Parallel()
 
 	var (
-		pivotPeer   = swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
 		closestPeer = swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
 		key, _      = crypto.GenerateSecp256k1Key()
 		signer      = crypto.NewDefaultSigner(key)
@@ -310,22 +299,28 @@ func TestPusherRetryShallow(t *testing.T) {
 		return receipt, nil
 	})
 
-	// create the pivot peer pusher with depth 31, this makes
-	// sure that virtually any receipt generated by the random
-	// key will be considered too shallow
-	_, _, storer := createPusherWithRetryCount(t, pivotPeer, pushSyncService, defaultMockValidStamp, retryCount, mock.WithClosestPeer(closestPeer), mock.WithNeighborhoodDepth(31))
+	storer := &mockStorer{
+		chunks: make(chan swarm.Chunk),
+	}
+
+	_ = createPusher(
+		t,
+		storer,
+		pushSyncService,
+		defaultMockValidStamp,
+		defaultRetryCount,
+		mock.WithClosestPeer(closestPeer),
+		mock.WithNeighborhoodDepth(31), // this ensures any receipt will be shallow
+	)
 
 	// generate a chunk at PO 1 with closestPeer, meaning that we get a
 	// receipt which is shallower than the pivot peer's depth, resulting
 	// in retries
 	chunk := testingc.GenerateTestRandomChunkAt(closestPeer, 1)
 
-	_, err := storer.Put(context.Background(), storage.ModePutUpload, chunk)
-	if err != nil {
-		t.Fatal(err)
-	}
+	storer.chunks <- chunk
 
-	err = spinlock.Wait(spinTimeout, func() bool {
+	err := spinlock.Wait(spinTimeout, func() bool {
 		c := int(atomic.LoadInt32(&callCount))
 		return c == retryCount
 	})
@@ -338,10 +333,7 @@ func TestPusherRetryShallow(t *testing.T) {
 func TestChunkWithInvalidStampSkipped(t *testing.T) {
 	t.Parallel()
 
-	// create a trigger  and a closestpeer
-	triggerPeer := swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
 	closestPeer := swarm.MustParseHexAddress("f000000000000000000000000000000000000000000000000000000000000000")
-
 	key, _ := crypto.GenerateSecp256k1Key()
 	signer := crypto.NewDefaultSigner(key)
 
@@ -355,25 +347,51 @@ func TestChunkWithInvalidStampSkipped(t *testing.T) {
 		return receipt, nil
 	})
 
-	chunk := testingc.GenerateTestRandomChunk()
-
+	wantErr := errors.New("dummy error")
 	validStamp := func(ch swarm.Chunk, stamp []byte) (swarm.Chunk, error) {
-		return chunk, nil
+		return nil, wantErr
 	}
 
-	_, _, storer := createPusher(t, triggerPeer, pushSyncService, validStamp, mock.WithClosestPeer(closestPeer), mock.WithNeighborhoodDepth(0))
-
-	_, err := storer.Put(context.Background(), storage.ModePutUpload, chunk)
-	if err != nil {
-		t.Fatal(err)
+	storer := &mockStorer{
+		chunks: make(chan swarm.Chunk),
 	}
 
-	err = spinlock.Wait(spinTimeout, func() bool {
-		return checkIfModeSet(chunk.Address(), storage.ModeSetSync, storer) == nil
+	pusherSvc := createPusher(
+		t,
+		storer,
+		pushSyncService,
+		validStamp,
+		defaultRetryCount,
+		mock.WithClosestPeer(closestPeer),
+		mock.WithNeighborhoodDepth(0),
+	)
+
+	t.Run("deferred", func(t *testing.T) {
+		chunk := testingc.GenerateTestRandomChunk()
+		storer.chunks <- chunk
+
+		err := spinlock.Wait(spinTimeout, func() bool {
+			return storer.isReported(chunk, storage.ChunkCouldNotSync)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+
+	t.Run("direct", func(t *testing.T) {
+		chunk := testingc.GenerateTestRandomChunk()
+
+		newFeed := make(chan *pusher.Op)
+		errC := make(chan error, 1)
+		pusherSvc.AddFeed(newFeed)
+
+		newFeed <- &pusher.Op{Chunk: chunk, Err: errC, Direct: true}
+
+		err := <-errC
+		if !errors.Is(err, wantErr) {
+			t.Fatalf("unexpected error on push %v", err)
+		}
+	})
 }
 
 func createPusher(
