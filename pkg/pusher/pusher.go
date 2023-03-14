@@ -54,6 +54,7 @@ type Service struct {
 	metrics           metrics
 	quit              chan struct{}
 	chunksWorkerQuitC chan struct{}
+	inflight          *inflight
 	attempts          *attempts
 	smuggler          chan OpChan
 }
@@ -92,6 +93,7 @@ func New(
 		metrics:           newMetrics(),
 		quit:              make(chan struct{}),
 		chunksWorkerQuitC: make(chan struct{}),
+		inflight:          newInflight(),
 		attempts:          &attempts{retryCount: retryCount, attempts: make(map[string]int)},
 		smuggler:          make(chan OpChan),
 	}
@@ -226,6 +228,9 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 	for {
 		select {
 		case op := <-cc:
+			if s.inflight.set(op.Chunk) {
+				continue
+			}
 			select {
 			case sem <- struct{}{}:
 				wg.Add(1)
@@ -242,6 +247,8 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 
 func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (bool, error) {
 	loggerV1 := logger.V(1).Build()
+
+	defer s.inflight.delete(op.Chunk)
 
 	if err := s.valid(op.Chunk); err != nil {
 		loggerV1.Warning(
@@ -287,6 +294,8 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 
 func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) error {
 	loggerV1 := logger.V(1).Build()
+
+	defer s.inflight.delete(op.Chunk)
 
 	var (
 		receipt *pushsync.Receipt
@@ -379,26 +388,4 @@ func (s *Service) Close() error {
 	case <-time.After(6 * time.Second):
 	}
 	return nil
-}
-
-type attempts struct {
-	mtx        sync.Mutex
-	retryCount int
-	attempts   map[string]int
-}
-
-// try to log a chunk sync attempt. returns false when
-// maximum amount of attempts have been reached.
-func (a *attempts) try(ch swarm.Address) bool {
-	a.mtx.Lock()
-	defer a.mtx.Unlock()
-	key := ch.ByteString()
-	a.attempts[key]++
-	return a.attempts[key] < a.retryCount
-}
-
-func (a *attempts) delete(ch swarm.Address) {
-	a.mtx.Lock()
-	delete(a.attempts, ch.ByteString())
-	a.mtx.Unlock()
 }
