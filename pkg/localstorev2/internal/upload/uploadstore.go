@@ -7,6 +7,7 @@ package upload
 import (
 	"context"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strconv"
@@ -504,6 +505,11 @@ func (p *pushReporter) Report(
 	err = p.s.IndexStore().Delete(pi)
 	if err != nil {
 		return fmt.Errorf("failed deleting pushItem %s: %w", pi, err)
+	}
+
+	err = chunkstamp.Delete(p.s.IndexStore(), chunkStampNamespace, pi.Address, pi.BatchID)
+	if err != nil {
+		return fmt.Errorf("failed deleting chunk stamp %s: %w", hex.EncodeToString(pi.BatchID), err)
 	}
 
 	err = p.s.ChunkStore().Delete(ctx, chunk.Address())
