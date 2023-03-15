@@ -374,6 +374,11 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				if !ps.warmedUp() {
 					return swarm.ZeroAddress, ErrWarmup
 				}
+
+				if !ps.radiusChecker.IsWithinStorageRadius(ch.Address()) {
+					return swarm.ZeroAddress, ErrOutOfDepthStoring
+				}
+
 				ps.pushToNeighbourhood(ctx, fullSkipList, ch, origin, originAddr)
 				return swarm.ZeroAddress, err
 			}
