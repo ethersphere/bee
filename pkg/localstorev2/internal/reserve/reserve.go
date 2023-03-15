@@ -395,7 +395,7 @@ func (r *Reserve) incBinID(store storage.Store, bin uint8) (uint64, error) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
-	item := &binItem{Bin: bin, BinID: 1}
+	item := &binItem{Bin: bin}
 	err := store.Get(item)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {

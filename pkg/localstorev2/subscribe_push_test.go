@@ -57,7 +57,7 @@ func testPushSubscriber(t *testing.T, newLocalstore func() (*storer.DB, error)) 
 			t.Fatal(err)
 		}
 
-		p, err := lstore.Upload(context.TODO(), false, id)
+		p, err := lstore.Upload(context.TODO(), false, id.TagID)
 		if err != nil {
 			t.Fatal(err)
 		}
