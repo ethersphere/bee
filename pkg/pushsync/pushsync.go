@@ -57,7 +57,7 @@ var (
 	ErrNoPush            = errors.New("could not push chunk")
 	ErrOutOfDepthStoring = errors.New("storing outside of the neighborhood")
 	ErrWarmup            = errors.New("node warmup time not complete")
-	errNotAttempted      = errors.New("peer not attempted")
+	errPrepareCredit     = errors.New("peer not attempted")
 )
 
 type PushSyncer interface {
@@ -95,7 +95,7 @@ type receiptResult struct {
 	pushTime time.Time
 	peer     swarm.Address
 	receipt  *pb.Receipt
-	pushed   bool
+	sent     bool
 	err      error
 }
 
@@ -331,7 +331,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	defer ps.skipList.PruneExpired()
 
 	var (
-		pushErrorsLeft   = 1
+		sentErrorsLeft   = 1
 		preemptiveTicker <-chan time.Time
 		includeSelf      = ps.includeSelf
 		skip             []swarm.Address
@@ -341,7 +341,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 		ticker := time.NewTicker(preemptiveInterval)
 		defer ticker.Stop()
 		preemptiveTicker = ticker.C
-		pushErrorsLeft = maxPushErrors
+		sentErrorsLeft = maxPushErrors
 	}
 
 	resultChan := make(chan receiptResult)
@@ -380,13 +380,16 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				ps.pushToNeighbourhood(ctx, fullSkipList, ch, origin, originAddr)
 				return swarm.ZeroAddress, err
 			}
+
+			logger.Debug("no peers left to retry", "chunk_address", ch.Address())
+
 			return swarm.ZeroAddress, fmt.Errorf("closest peer: %w", err)
 		}
 		skip = append(skip, peer)
 		return peer, nil
 	}
 
-	for pushErrorsLeft > 0 {
+	for sentErrorsLeft > 0 {
 		select {
 		case <-ctx.Done():
 			return nil, ErrNoPush
@@ -411,7 +414,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			ps.measurePushPeer(result.pushTime, result.err, origin)
 
-			if ps.warmedUp() && !errors.Is(result.err, errNotAttempted) {
+			if ps.warmedUp() && !errors.Is(result.err, errPrepareCredit) {
 				ps.skipList.Add(ch.Address(), result.peer, sanctionWait)
 			}
 
@@ -422,9 +425,8 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			ps.metrics.TotalFailedSendAttempts.Inc()
 			logger.Debug("could not push to peer", "peer_address", result.peer, "error", result.err)
 
-			// pushPeer returned early, do not count as an attempt
-			if !result.pushed {
-				pushErrorsLeft--
+			if result.sent {
+				sentErrorsLeft--
 			}
 
 			retry()
@@ -455,7 +457,7 @@ func (ps *PushSync) pushPeer(ctx context.Context, resultChan chan<- receiptResul
 
 	defer func() {
 		select {
-		case resultChan <- receiptResult{pushTime: now, peer: peer, err: err, pushed: pushed, receipt: &receipt}:
+		case resultChan <- receiptResult{pushTime: now, peer: peer, err: err, sent: pushed, receipt: &receipt}:
 		case <-doneChan:
 		}
 	}()
@@ -470,7 +472,7 @@ func (ps *PushSync) pushPeer(ctx context.Context, resultChan chan<- receiptResul
 	creditAction, err := ps.accounting.PrepareCredit(creditCtx, peer, receiptPrice, origin)
 	if err != nil {
 		if errors.Is(err, accounting.ErrOverdraft) || errors.Is(err, accounting.ErrFailToLock) {
-			err = fmt.Errorf("pushsync: prepare credit: %v: %w", err, errNotAttempted)
+			err = fmt.Errorf("pushsync: prepare credit: %v: %w", err, errPrepareCredit)
 			return
 		}
 		err = fmt.Errorf("reserve balance for peer %s: %w", peer, err)
