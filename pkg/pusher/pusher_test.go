@@ -56,13 +56,12 @@ func (m *mockStorer) Report(ctx context.Context, chunk swarm.Chunk, state storag
 	m.reportedMu.Lock()
 	defer m.reportedMu.Unlock()
 
-	if state == storage.ChunkSynced {
+	switch state {
+	case storage.ChunkSynced:
 		m.reportedSynced = append(m.reportedSynced, chunk)
-	}
-	if state == storage.ChunkCouldNotSync {
+	case storage.ChunkCouldNotSync:
 		m.reportedFailed = append(m.reportedFailed, chunk)
-	}
-	if state == storage.ChunkStored {
+	case storage.ChunkStored:
 		m.reportedStored = append(m.reportedStored, chunk)
 	}
 	return nil
@@ -72,20 +71,20 @@ func (m *mockStorer) isReported(chunk swarm.Chunk, state storage.ChunkState) boo
 	m.reportedMu.Lock()
 	defer m.reportedMu.Unlock()
 
-	switch {
-	case state == storage.ChunkSynced:
+	switch state {
+	case storage.ChunkSynced:
 		for _, ch := range m.reportedSynced {
 			if ch.Equal(chunk) {
 				return true
 			}
 		}
-	case state == storage.ChunkCouldNotSync:
+	case storage.ChunkCouldNotSync:
 		for _, ch := range m.reportedFailed {
 			if ch.Equal(chunk) {
 				return true
 			}
 		}
-	case state == storage.ChunkStored:
+	case storage.ChunkStored:
 		for _, ch := range m.reportedStored {
 			if ch.Equal(chunk) {
 				return true

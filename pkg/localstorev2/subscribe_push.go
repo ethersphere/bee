@@ -32,8 +32,6 @@ func (db *DB) SubscribePush(ctx context.Context) (chunks chan swarm.Chunk, stop 
 		// close the returned chunkInfo channel at the end to
 		// signal that the subscription is done
 		defer close(chunks)
-		// sinceItem is the Item from which the next iteration
-		// should start. The first iteration starts from the first Item.
 		for {
 
 			var count int
