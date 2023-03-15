@@ -381,11 +381,8 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				return swarm.ZeroAddress, err
 			}
 
-			logger.Debug("no peers left to retry", "chunk_address", ch.Address())
-
 			return swarm.ZeroAddress, fmt.Errorf("closest peer: %w", err)
 		}
-		skip = append(skip, peer)
 		return peer, nil
 	}
 
@@ -401,6 +398,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			if err != nil {
 				return nil, err
 			}
+			skip = append(skip, peer)
 
 			ps.metrics.TotalSendAttempts.Inc()
 
