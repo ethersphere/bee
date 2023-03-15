@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -115,7 +116,7 @@ func TestReplaceOldIndex(t *testing.T) {
 			}
 
 			// Chunk 2 must be stored
-			checkSaved(t, storer, ch_2, true)
+			checkSaved(t, storer, ch_2, true, true)
 			got, err := storer.ReserveGet(context.Background(), ch_2.Address(), ch_2.Stamp().BatchID())
 			if err != nil {
 				t.Fatal(err)
@@ -226,10 +227,10 @@ func TestEvictBatch(t *testing.T) {
 			if has {
 				t.Fatal("store should NOT have chunk")
 			}
-			checkSaved(t, st, ch, false)
+			checkSaved(t, st, ch, false, true)
 		} else if !has {
 			t.Fatal("store should have chunk")
-			checkSaved(t, st, ch, true)
+			checkSaved(t, st, ch, true, true)
 		}
 	}
 
@@ -312,11 +313,11 @@ func TestUnreserveCap(t *testing.T) {
 					if has {
 						t.Fatal("store should NOT have chunk at PO", po)
 					}
-					checkSaved(t, storer, ch, false)
+					checkSaved(t, storer, ch, false, true)
 				} else if !has {
 					t.Fatal("store should have chunk at PO", po)
 				} else {
-					checkSaved(t, storer, ch, true)
+					checkSaved(t, storer, ch, true, true)
 				}
 			}
 		}
@@ -573,6 +574,7 @@ func TestSubscribeBinTrigger(t *testing.T) {
 				if !c.Address.Equal(chunks[i].Address()) {
 					t.Fatal("mismatch of chunks at index", i)
 				}
+				fmt.Println(c.Address)
 				i++
 			case <-timer:
 				break loop
@@ -596,6 +598,7 @@ func TestSubscribeBinTrigger(t *testing.T) {
 
 		select {
 		case c := <-binC:
+			fmt.Println(c.Address)
 			if !c.Address.Equal(newChunk.Address()) {
 				t.Fatal("mismatch of chunks")
 			}
@@ -750,23 +753,28 @@ func reserveSizeTest(rs *reserve.Reserve, want int) func(t *testing.T) {
 	}
 }
 
-func checkSaved(t *testing.T, st *storer.DB, ch swarm.Chunk, saved bool) {
+func checkSaved(t *testing.T, st *storer.DB, ch swarm.Chunk, stampSaved, chunkStoreSaved bool) {
 	t.Helper()
 
-	var wantedErr error
-	if !saved {
-		wantedErr = storage.ErrNotFound
+	var stampWantedErr error
+	if !stampSaved {
+		stampWantedErr = storage.ErrNotFound
 	}
 	_, err := stampindex.Load(st.Repo().IndexStore(), "reserve", ch)
-	if !errors.Is(err, wantedErr) {
-		t.Fatalf("wanted err %s, got err %s", wantedErr, err)
+	if !errors.Is(err, stampWantedErr) {
+		t.Fatalf("wanted err %s, got err %s", stampWantedErr, err)
 	}
 	_, err = chunkstamp.Load(st.Repo().IndexStore(), "reserve", ch.Address())
-	if !errors.Is(err, wantedErr) {
-		t.Fatalf("wanted err %s, got err %s", wantedErr, err)
+	if !errors.Is(err, stampWantedErr) {
+		t.Fatalf("wanted err %s, got err %s", stampWantedErr, err)
+	}
+
+	var chunkStoreWantedErr error
+	if !chunkStoreSaved {
+		chunkStoreWantedErr = storage.ErrNotFound
 	}
 	_, err = st.Repo().ChunkStore().Get(context.Background(), ch.Address())
-	if !errors.Is(err, wantedErr) {
-		t.Fatalf("wanted err %s, got err %s", wantedErr, err)
+	if !errors.Is(err, chunkStoreWantedErr) {
+		t.Fatalf("wanted err %s, got err %s", chunkStoreWantedErr, err)
 	}
 }

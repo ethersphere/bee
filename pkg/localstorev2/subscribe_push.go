@@ -61,7 +61,7 @@ func (db *DB) SubscribePush(ctx context.Context) (chunks chan swarm.Chunk, reset
 					// on stop
 					return true, nil
 				case <-db.quit:
-					return true, errDBQuit
+					return true, ErrDBQuit
 				case <-ctx.Done():
 					return true, ctx.Err()
 				}

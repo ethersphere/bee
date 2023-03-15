@@ -254,6 +254,7 @@ func (db *DB) SubscribeBin(ctx context.Context, bin uint8, start uint64) (<-chan
 
 				select {
 				case out <- &BinC{Address: a, BinID: binID, BatchID: batchID}:
+					start = binID + 1
 				case <-done:
 					return true, nil
 				case <-db.quit:
