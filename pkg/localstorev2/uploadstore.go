@@ -78,7 +78,7 @@ func (db *DB) NewSession() (SessionInfo, error) {
 	return upload.NextTag(db.repo.IndexStore())
 }
 
-// GetSessionInfo is the implementation of the UploadStore.GetSessionInfo method.
-func (db *DB) GetSessionInfo(tagID uint64) (SessionInfo, error) {
+// Session is the implementation of the UploadStore.Session method.
+func (db *DB) Session(tagID uint64) (SessionInfo, error) {
 	return upload.GetTagInfo(db.repo.IndexStore(), tagID)
 }

@@ -22,17 +22,18 @@ func newInflight() *inflight {
 }
 
 func (i *inflight) delete(ch swarm.Chunk) {
+	key := ch.Address().ByteString() + string(ch.Stamp().BatchID())
 	i.mtx.Lock()
-	delete(i.inflight, ch.Address().ByteString())
+	delete(i.inflight, key)
 	i.mtx.Unlock()
 }
 
-func (i *inflight) set(addr []byte) bool {
+func (i *inflight) set(ch swarm.Chunk) bool {
 
 	i.mtx.Lock()
 	defer i.mtx.Unlock()
 
-	key := string(addr)
+	key := ch.Address().ByteString() + string(ch.Stamp().BatchID())
 	if _, ok := i.inflight[key]; ok {
 		return true
 	}
