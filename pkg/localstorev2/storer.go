@@ -116,16 +116,26 @@ type NetStore interface {
 	PusherFeed() <-chan *pusher.Op
 }
 
-var _ ReserveStore = (*DB)(nil)
+var _ Reserve = (*DB)(nil)
+
+type Reserve interface {
+	ReserveStore
+	EvictBatch(ctx context.Context, batchID []byte) error
+	ReserveSample(context.Context, []byte, uint8, uint64) (Sample, error)
+}
 
 type ReserveStore interface {
 	ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte) (swarm.Chunk, error)
 	ReserveHas(addr swarm.Address, batchID []byte) (bool, error)
 	ReservePutter(ctx context.Context) PutterSession
-	ReserveSample(context.Context, []byte, uint8, uint64) (Sample, error)
-	SubscribeBin(ctx context.Context, bin uint8, start, end uint64) (<-chan *BinC, func(), <-chan error)
+	SubscribeBin(ctx context.Context, bin uint8, start uint64) (<-chan *BinC, func(), <-chan error)
 	ReserveLastBinIDs() ([]uint64, error)
-	EvictBatch(ctx context.Context, batchID []byte) error
+	RadiusChecker
+}
+
+type RadiusChecker interface {
+	IsWithinStorageRadius(addr swarm.Address) bool
+	StorageRadius() uint8
 }
 
 type LocalStore interface {
@@ -157,7 +167,7 @@ func (d *dirFS) Open(path string) (fs.File, error) {
 }
 
 var sharkyNoOfShards = 32
-var errDBQuit = errors.New("db quit")
+var ErrDBQuit = errors.New("db quit")
 
 type closerFn func() error
 

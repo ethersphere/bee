@@ -202,7 +202,6 @@ func (r *Reserve) Has(store storage.Store, addr swarm.Address, batchID []byte) (
 }
 
 func (r *Reserve) Get(ctx context.Context, storage internal.Storage, addr swarm.Address, batchID []byte) (swarm.Chunk, error) {
-
 	item := &batchRadiusItem{Bin: swarm.Proximity(r.baseAddr.Bytes(), addr.Bytes()), BatchID: batchID, Address: addr}
 	err := storage.IndexStore().Get(item)
 	if err != nil {
@@ -222,7 +221,7 @@ func (r *Reserve) Get(ctx context.Context, storage internal.Storage, addr swarm.
 	return ch.WithStamp(stamp), nil
 }
 
-func (r *Reserve) IterateBin(store storage.Store, bin uint8, startBinID uint64, cb func(swarm.Address, uint64) (bool, error)) error {
+func (r *Reserve) IterateBin(store storage.Store, bin uint8, startBinID uint64, cb func(swarm.Address, uint64, []byte) (bool, error)) error {
 	err := store.Iterate(storage.Query{
 		Factory:       func() storage.Item { return &chunkBinItem{} },
 		Prefix:        binIDToString(bin, startBinID),
@@ -233,7 +232,7 @@ func (r *Reserve) IterateBin(store storage.Store, bin uint8, startBinID uint64, 
 			return true, nil
 		}
 
-		stop, err := cb(item.Address, item.BinID)
+		stop, err := cb(item.Address, item.BinID, item.BatchID)
 		if stop || err != nil {
 			return true, err
 		}
@@ -392,21 +391,21 @@ func (r *Reserve) SetRadius(store storage.Store, rad uint8) error {
 	return store.Put(&radiusItem{Radius: rad})
 }
 
-func (r *Reserve) incBinID(store storage.Store, po uint8) (uint64, error) {
+func (r *Reserve) incBinID(store storage.Store, bin uint8) (uint64, error) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
-	bin := &binItem{Bin: po}
-	err := store.Get(bin)
+	item := &binItem{Bin: bin, BinID: 1}
+	err := store.Get(item)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			return 0, store.Put(bin)
+			return 0, store.Put(item)
 		}
 
 		return 0, err
 	}
 
-	bin.BinID += 1
+	item.BinID += 1
 
-	return bin.BinID, store.Put(bin)
+	return item.BinID, store.Put(item)
 }
