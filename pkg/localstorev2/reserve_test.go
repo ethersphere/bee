@@ -19,7 +19,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	batchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
-	pullsync "github.com/ethersphere/bee/pkg/pullsync/mock"
+	pullerMock "github.com/ethersphere/bee/pkg/puller/mock"
 	"github.com/ethersphere/bee/pkg/spinlock"
 	chunk "github.com/ethersphere/bee/pkg/storage/testing"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
@@ -406,7 +406,7 @@ func TestRadiusManager(t *testing.T) {
 	t.Run("radius doesnt change due to non-zero pull rate", func(t *testing.T) {
 		t.Parallel()
 		bs := batchstore.New(batchstore.WithRadius(3))
-		storer, err := diskStorer(t, dbTestOps(baseAddr, 10, bs, pullsync.NewMockRateReporter(1), nil, time.Millisecond*10))()
+		storer, err := diskStorer(t, dbTestOps(baseAddr, 10, bs, pullerMock.NewMockRateReporter(1), nil, time.Millisecond*10))()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -444,7 +444,7 @@ func TestSubscribeBin(t *testing.T) {
 		t.Run("subscribe full range", func(t *testing.T) {
 			t.Parallel()
 
-			binC, _, _ := storer.SubscribeBin(context.Background(), 0, 0, chunksPerPO-1)
+			binC, _, _ := storer.SubscribeBin(context.Background(), 0, 0)
 
 			i := uint64(0)
 			for c := range binC {
@@ -452,18 +452,16 @@ func TestSubscribeBin(t *testing.T) {
 					t.Fatal("mismatch of chunks at index", i)
 				}
 				i++
+				if i == chunksPerPO {
+					return
+				}
 			}
-
-			if i != chunksPerPO {
-				t.Fatalf("mismatch of chunk count, got %d, want %d", i, chunksPerPO)
-			}
-
 		})
 
 		t.Run("subscribe unsub", func(t *testing.T) {
 			t.Parallel()
 
-			binC, unsub, _ := storer.SubscribeBin(context.Background(), 0, 0, chunksPerPO-1)
+			binC, unsub, _ := storer.SubscribeBin(context.Background(), 0, 0)
 
 			<-binC
 			unsub()
@@ -475,10 +473,10 @@ func TestSubscribeBin(t *testing.T) {
 			}
 		})
 
-		t.Run("subscribe sub range", func(t *testing.T) {
+		t.Run("subscribe range higher bin", func(t *testing.T) {
 			t.Parallel()
 
-			binC, _, _ := storer.SubscribeBin(context.Background(), 0, 1, chunksPerPO-1)
+			binC, _, _ := storer.SubscribeBin(context.Background(), 0, 1)
 
 			i := uint64(1)
 			for c := range binC {
@@ -486,17 +484,16 @@ func TestSubscribeBin(t *testing.T) {
 					t.Fatal("mismatch of chunks at index", i)
 				}
 				i++
-			}
-
-			if i != chunksPerPO {
-				t.Fatalf("mismatch of chunk count, got %d, want %d", i, chunksPerPO)
+				if i == chunksPerPO {
+					return
+				}
 			}
 		})
 
 		t.Run("subscribe beyond range", func(t *testing.T) {
 			t.Parallel()
 
-			binC, _, _ := storer.SubscribeBin(context.Background(), 0, 1, chunksPerPO)
+			binC, _, _ := storer.SubscribeBin(context.Background(), 0, 1)
 			i := uint64(1)
 			timer := time.After(time.Millisecond * 500)
 
@@ -565,7 +562,7 @@ func TestSubscribeBinTrigger(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		binC, _, _ := storer.SubscribeBin(context.Background(), 0, 1, chunksPerPO)
+		binC, _, _ := storer.SubscribeBin(context.Background(), 0, 1)
 		i := uint64(1)
 		timer := time.After(time.Millisecond * 500)
 
@@ -641,7 +638,7 @@ func TestReserveSampler(t *testing.T) {
 
 		for po := 0; po < maxPO; po++ {
 			for i := 0; i < chunkCountPerPO; i++ {
-				ch := chunk.GenerateTestRandomChunkAt(baseAddr, po).WithBatch(3, 2, false)
+				ch := chunk.GenerateTestRandomChunkAt(baseAddr, po).WithBatch(0, 3, 2, false)
 				// override stamp timestamp to be before the consensus timestamp
 				ch = ch.WithStamp(postagetesting.MustNewStampWithTimestamp(timeVar - 1))
 				chs = append(chs, ch)
@@ -685,7 +682,7 @@ func TestReserveSampler(t *testing.T) {
 		// some of them should definitely make it to the sample based on lex ordering.
 		for po := 0; po < maxPO; po++ {
 			for i := 0; i < chunkCountPerPO; i++ {
-				ch := chunk.GenerateTestRandomChunkAt(baseAddr, po).WithBatch(3, 2, false)
+				ch := chunk.GenerateTestRandomChunkAt(baseAddr, po).WithBatch(0, 3, 2, false)
 				// override stamp timestamp to be after the consensus timestamp
 				ch = ch.WithStamp(postagetesting.MustNewStampWithTimestamp(timeVar + 1))
 				chs = append(chs, ch)
