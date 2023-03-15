@@ -53,10 +53,10 @@ type Interface interface {
 }
 
 type retrievalResult struct {
-	chunk     swarm.Chunk
-	peer      swarm.Address
-	err       error
-	attempted bool
+	chunk swarm.Chunk
+	peer  swarm.Address
+	err   error
+	sent  bool
 }
 
 type Service struct {
@@ -138,9 +138,9 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 		preemptiveTicker := time.NewTicker(preemptiveInterval)
 		defer preemptiveTicker.Stop()
 
-		retrievedErrorsLeft := 1
+		sentErrorsLeft := 1
 		if origin {
-			retrievedErrorsLeft = maxRetrievedErrors
+			sentErrorsLeft = maxRetrievedErrors
 		}
 
 		done := make(chan struct{})
@@ -162,7 +162,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 
 		inflight := 0
 
-		for retrievedErrorsLeft > 0 {
+		for sentErrorsLeft > 0 {
 
 			select {
 			case <-ctx.Done():
@@ -206,8 +206,8 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 
 				loggerV1.Debug("failed to get chunk", "chunk_address", chunkAddr, "peer_address", res.peer, "error", res.err)
 
-				if res.attempted {
-					retrievedErrorsLeft--
+				if res.sent {
+					sentErrorsLeft--
 					s.skippeers.Add(chunkAddr, res.peer, skiplistDur)
 				}
 
@@ -229,10 +229,10 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 func (s *Service) retrieveChunk(ctx context.Context, peer swarm.Address, done chan struct{}, result chan retrievalResult, addr swarm.Address, isOrigin bool) {
 
 	var (
-		startTime         = time.Now()
-		err               error
-		retrieveAttempted bool
-		chunk             swarm.Chunk
+		startTime = time.Now()
+		err       error
+		sent      bool
+		chunk     swarm.Chunk
 	)
 
 	defer func() {
@@ -240,7 +240,7 @@ func (s *Service) retrieveChunk(ctx context.Context, peer swarm.Address, done ch
 			s.metrics.TotalErrors.Inc()
 		}
 		select {
-		case result <- retrievalResult{err: err, chunk: chunk, attempted: retrieveAttempted, peer: peer}:
+		case result <- retrievalResult{err: err, chunk: chunk, sent: sent, peer: peer}:
 		case <-done:
 			return
 		}
@@ -283,7 +283,7 @@ func (s *Service) retrieveChunk(ctx context.Context, peer swarm.Address, done ch
 		return
 	}
 
-	retrieveAttempted = true
+	sent = true
 
 	var d pb.Delivery
 	err = r.ReadMsgWithContext(ctx, &d)
