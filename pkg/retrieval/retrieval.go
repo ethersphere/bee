@@ -113,16 +113,16 @@ const (
 	originSuffix         = "_origin"
 )
 
-func (s *Service) RetrieveChunk(ctx context.Context, addr, sourcePeerAddr swarm.Address) (swarm.Chunk, error) {
+func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr swarm.Address) (swarm.Chunk, error) {
 	loggerV1 := s.logger.V(1).Register()
 
 	s.metrics.RequestCounter.Inc()
 
 	origin := sourcePeerAddr.IsZero()
 
-	flightRoute := addr.String()
+	flightRoute := chunkAddr.String()
 	if origin {
-		flightRoute = addr.String() + originSuffix
+		flightRoute = chunkAddr.String() + originSuffix
 	}
 
 	// topCtx is passing the tracing span to the first singleflight call
@@ -173,11 +173,11 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr, sourcePeerAddr swarm.
 
 				s.metrics.PeerRequestCounter.Inc()
 
-				peer, err := s.closestPeer(addr, append(skip, s.skippeers.ChunkPeers(addr)...), origin)
+				peer, err := s.closestPeer(chunkAddr, append(skip, s.skippeers.ChunkPeers(chunkAddr)...), origin)
 				if err != nil {
 					if inflight == 0 {
-						loggerV1.Debug("no peers left to retry", "chunk_address", addr)
-						return nil, fmt.Errorf("get closest for address %s, allow upstream %v: %w", addr.String(), origin, err)
+						loggerV1.Debug("no peers left to retry", "chunk_address", chunkAddr)
+						return nil, fmt.Errorf("get closest for address %s, allow upstream %v: %w", chunkAddr.String(), origin, err)
 					}
 					continue
 				}
@@ -187,12 +187,12 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr, sourcePeerAddr swarm.
 
 				go func() {
 					ctx := tracing.WithContext(context.Background(), tracing.FromContext(topCtx))
-					span, _, ctx := s.tracer.StartSpanFromContext(ctx, "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: addr.String()})
+					span, _, ctx := s.tracer.StartSpanFromContext(ctx, "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: chunkAddr.String()})
 					defer span.Finish()
 					ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
 					defer cancel()
 
-					s.retrieveChunk(ctx, peer, done, resultC, addr, origin)
+					s.retrieveChunk(ctx, peer, done, resultC, chunkAddr, origin)
 				}()
 
 			case res := <-resultC:
@@ -200,26 +200,26 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr, sourcePeerAddr swarm.
 				inflight--
 
 				if res.err == nil {
-					loggerV1.Debug("retrieved chunk", "chunk_address", addr, "peer_address", res.peer)
+					loggerV1.Debug("retrieved chunk", "chunk_address", chunkAddr, "peer_address", res.peer)
 					return res.chunk, nil
 				}
 
-				loggerV1.Debug("failed to get chunk", "chunk_address", addr, "peer_address", res.peer, "error", res.err)
+				loggerV1.Debug("failed to get chunk", "chunk_address", chunkAddr, "peer_address", res.peer, "error", res.err)
 
 				if res.attempted {
 					retrievedErrorsLeft--
-					s.skippeers.Add(addr, res.peer, skiplistDur)
+					s.skippeers.Add(chunkAddr, res.peer, skiplistDur)
 				}
 
 				retry()
 			}
 		}
 
-		loggerV1.Debug("no attempts left", "chunk_address", addr)
+		loggerV1.Debug("no attempts left", "chunk_address", chunkAddr)
 		return nil, storage.ErrNotFound
 	})
 	if err != nil {
-		s.logger.Debug("retrieval failed", "chunk_address", addr, "error", err)
+		s.logger.Debug("retrieval failed", "chunk_address", chunkAddr, "error", err)
 		return nil, err
 	}
 
@@ -228,12 +228,8 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr, sourcePeerAddr swarm.
 
 func (s *Service) retrieveChunk(ctx context.Context, peer swarm.Address, done chan struct{}, result chan retrievalResult, addr swarm.Address, isOrigin bool) {
 
-	startTimer := time.Now()
-	// allow upstream requests if this node is the source of the request
-	// i.e. the request was not forwarded, to improve retrieval
-	// if this node is the closest to he chunk but still does not contain it
-
 	var (
+		startTime         = time.Now()
 		err               error
 		retrieveAttempted bool
 		chunk             swarm.Chunk
@@ -295,7 +291,7 @@ func (s *Service) retrieveChunk(ctx context.Context, peer swarm.Address, done ch
 		err = fmt.Errorf("read delivery: %w peer %s", err, peer.String())
 		return
 	}
-	s.metrics.ChunkRetrieveTime.Observe(time.Since(startTimer).Seconds())
+	s.metrics.ChunkRetrieveTime.Observe(time.Since(startTime).Seconds())
 	s.metrics.TotalRetrieved.Inc()
 
 	stamp := new(postage.Stamp)
