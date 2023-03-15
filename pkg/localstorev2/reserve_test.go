@@ -9,7 +9,6 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"testing"
 	"time"
 
@@ -574,7 +573,6 @@ func TestSubscribeBinTrigger(t *testing.T) {
 				if !c.Address.Equal(chunks[i].Address()) {
 					t.Fatal("mismatch of chunks at index", i)
 				}
-				fmt.Println(c.Address)
 				i++
 			case <-timer:
 				break loop
@@ -598,7 +596,6 @@ func TestSubscribeBinTrigger(t *testing.T) {
 
 		select {
 		case c := <-binC:
-			fmt.Println(c.Address)
 			if !c.Address.Equal(newChunk.Address()) {
 				t.Fatal("mismatch of chunks")
 			}
