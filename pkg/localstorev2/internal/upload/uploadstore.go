@@ -475,39 +475,51 @@ func (p *pushReporter) Report(
 		ti.Sent++
 	case storage.ChunkStored:
 		ti.Stored++
+		// also mark it as synced
+		fallthrough
 	case storage.ChunkSynced:
 		ti.Synced++
-
-		// Once the chunk is synced, it is deleted from the upload store as
-		// we no longer need to keep track of this chunk. We also need to cleanup
-		// the pushItem.
-		pi := &pushItem{
-			Timestamp: ui.Uploaded,
-			Address:   chunk.Address(),
-			BatchID:   chunk.Stamp().BatchID(),
-			TagID:     ui.TagID,
-		}
-
-		err = p.s.IndexStore().Delete(pi)
-		if err != nil {
-			return fmt.Errorf("failed deleting pushItem %s: %w", pi, err)
-		}
-
-		err = p.s.ChunkStore().Delete(ctx, chunk.Address())
-		if err != nil {
-			return fmt.Errorf("failed deleting chunk %s: %w", chunk.Address(), err)
-		}
-
-		ui.Synced = now().Unix()
-		err = p.s.IndexStore().Put(ui)
-		if err != nil {
-			return fmt.Errorf("failed updating uploadItem %s: %w", ui, err)
-		}
+	case storage.ChunkCouldNotSync:
+		break
 	}
 
 	err = p.s.IndexStore().Put(ti)
 	if err != nil {
 		return fmt.Errorf("failed updating tag: %w", err)
+	}
+
+	if state == storage.ChunkSent {
+		return nil
+	}
+
+	// Once the chunk is stored/synced/failed to sync, it is deleted from the upload store as
+	// we no longer need to keep track of this chunk. We also need to cleanup
+	// the pushItem.
+	pi := &pushItem{
+		Timestamp: ui.Uploaded,
+		Address:   chunk.Address(),
+		BatchID:   chunk.Stamp().BatchID(),
+	}
+
+	err = p.s.IndexStore().Delete(pi)
+	if err != nil {
+		return fmt.Errorf("failed deleting pushItem %s: %w", pi, err)
+	}
+
+	err = chunkstamp.Delete(p.s.IndexStore(), chunkStampNamespace, pi.Address, pi.BatchID)
+	if err != nil {
+		return fmt.Errorf("failed deleting chunk stamp %x: %w", pi.BatchID, err)
+	}
+
+	err = p.s.ChunkStore().Delete(ctx, chunk.Address())
+	if err != nil {
+		return fmt.Errorf("failed deleting chunk %s: %w", chunk.Address(), err)
+	}
+
+	ui.Synced = now().Unix()
+	err = p.s.IndexStore().Put(ui)
+	if err != nil {
+		return fmt.Errorf("failed updating uploadItem %s: %w", ui, err)
 	}
 
 	return nil
@@ -584,27 +596,10 @@ func GetTagInfo(st storage.Store, tagID uint64) (TagItem, error) {
 	return ti, nil
 }
 
-func Iterate(ctx context.Context, s internal.Storage, startFrom swarm.Chunk, consumerFn func(chunk swarm.Chunk) (bool, error)) error {
-	var q = storage.Query{
+func Iterate(ctx context.Context, s internal.Storage, consumerFn func(chunk swarm.Chunk) (bool, error)) error {
+	return s.IndexStore().Iterate(storage.Query{
 		Factory: func() storage.Item { return &pushItem{} },
-	}
-
-	if startFrom != nil {
-		ui := uploadItem{
-			Address: startFrom.Address(),
-			BatchID: startFrom.Stamp().BatchID(),
-		}
-		err := s.IndexStore().Get(&ui)
-		if err != nil {
-			return fmt.Errorf("get start item: %w", err)
-		}
-
-		q.Prefix = fmt.Sprintf("%d/%s/%s", ui.Uploaded, ui.Address.ByteString(), string(ui.BatchID))
-		q.PrefixAtStart = true
-		q.SkipFirst = true
-	}
-
-	return s.IndexStore().Iterate(q, func(r storage.Result) (bool, error) {
+	}, func(r storage.Result) (bool, error) {
 		pi := r.Entry.(*pushItem)
 		chunk, err := s.ChunkStore().Get(ctx, pi.Address)
 		if err != nil {
@@ -616,8 +611,9 @@ func Iterate(ctx context.Context, s internal.Storage, startFrom swarm.Chunk, con
 			return true, err
 		}
 
-		chunk = chunk.WithStamp(stamp)
-		chunk = chunk.WithTagID(uint32(pi.TagID))
+		chunk = chunk.
+			WithStamp(stamp).
+			WithTagID(uint32(pi.TagID))
 
 		return consumerFn(chunk)
 	})

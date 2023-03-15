@@ -97,6 +97,15 @@ func (db *DB) ReserveHas(addr swarm.Address, batchID []byte) (bool, error) {
 	return db.reserve.Has(db.repo.IndexStore(), addr, batchID)
 }
 
+func (db *DB) ReservePut(ctx context.Context, chunk swarm.Chunk) error {
+	putter := db.ReservePutter(ctx)
+	err := putter.Put(ctx, chunk)
+	if err != nil {
+		return errors.Join(err, putter.Cleanup())
+	}
+	return putter.Done(swarm.ZeroAddress)
+}
+
 // ReservePutter returns a PutterSession for inserting chunks into the reserve.
 func (db *DB) ReservePutter(ctx context.Context) PutterSession {
 

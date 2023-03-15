@@ -112,7 +112,7 @@ type PullSubscriber interface {
 }
 
 type PushSubscriber interface {
-	SubscribePush(ctx context.Context, skipFn func([]byte) bool) (c <-chan swarm.Chunk, repeat, stop func())
+	SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, stop func())
 }
 
 type ChunkState = int
@@ -130,6 +130,7 @@ const (
 	// network. This is reported when a valid receipt was received after the chunk was
 	// pushed.
 	ChunkSynced
+	ChunkCouldNotSync
 )
 
 // PushReporter is used to report chunk state.

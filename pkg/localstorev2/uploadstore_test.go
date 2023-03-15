@@ -172,9 +172,9 @@ func testUploadStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 				t.Fatalf("Upload(...): unexpected error: %v", err)
 			}
 
-			sessionInfo, err := lstore.GetSessionInfo(tag.TagID)
+			sessionInfo, err := lstore.Session(tag.TagID)
 			if err != nil {
-				t.Fatalf("GetSessionInfo(...): unexpected error: %v", err)
+				t.Fatalf("Session(...): unexpected error: %v", err)
 			}
 
 			verify(t, sessionInfo, tag.TagID, 0, 0, swarm.ZeroAddress)
@@ -195,9 +195,9 @@ func testUploadStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 				t.Fatalf("session.Done(...): unexpected error: %v", err)
 			}
 
-			sessionInfo, err = lstore.GetSessionInfo(tag.TagID)
+			sessionInfo, err = lstore.Session(tag.TagID)
 			if err != nil {
-				t.Fatalf("GetSessionInfo(...): unexpected error: %v", err)
+				t.Fatalf("Session(...): unexpected error: %v", err)
 			}
 
 			verify(t, sessionInfo, tag.TagID, 20, 10, chunks[0].Address())
@@ -214,9 +214,9 @@ func testUploadStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 				t.Fatalf("Upload(...): unexpected error: %v", err)
 			}
 
-			sessionInfo, err := lstore.GetSessionInfo(tag.TagID)
+			sessionInfo, err := lstore.Session(tag.TagID)
 			if err != nil {
-				t.Fatalf("GetSessionInfo(...): unexpected error: %v", err)
+				t.Fatalf("Session(...): unexpected error: %v", err)
 			}
 
 			verify(t, sessionInfo, tag.TagID, 0, 0, swarm.ZeroAddress)
@@ -235,9 +235,9 @@ func testUploadStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 				t.Fatalf("session.Cleanup(): unexpected error: %v", err)
 			}
 
-			got, err := lstore.GetSessionInfo(tag.TagID)
+			got, err := lstore.Session(tag.TagID)
 			if err != nil {
-				t.Fatalf("GetSessionInfo(...): unexpected error: %v", err)
+				t.Fatalf("Session(...): unexpected error: %v", err)
 			}
 
 			// All updates to tag should be reverted
