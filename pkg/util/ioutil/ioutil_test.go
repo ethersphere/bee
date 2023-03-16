@@ -17,36 +17,57 @@ import (
 func TestTimeoutReader(t *testing.T) {
 	t.Parallel()
 
-	t.Run("normal read", func(t *testing.T) {
+	const data = "some data"
+	const timeout = 50 * time.Millisecond
+
+	t.Run("timer stopped after read", func(t *testing.T) {
 		t.Parallel()
 
-		read := uint64(0)
-		data := "0123456789"
-		timeout := 10 * time.Millisecond
-		callbackFn := func(u uint64) { atomic.StoreUint64(&read, u) }
+		callbackFn := func(u uint64) { t.Fatalf("should not happen") }
 		r := TimeoutReader(strings.NewReader(data), timeout, callbackFn)
 
-		buf, err := io.ReadAll(r)
+		buff, err := io.ReadAll(r)
 		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
+			t.Fatal(err.Error())
 		}
 
-		if want, have := 0, int(atomic.LoadUint64(&read)); want != have {
-			t.Fatalf("callbackFn called prematurely: want: %d; have: %d", want, have)
-		}
-
-		if want, have := data, string(buf); want != have {
+		if want, have := data, string(buff); want != have {
 			t.Fatalf("read data content mismatch: want: %s; have: %s", want, have)
+		}
+
+		time.Sleep(2 * timeout)
+	})
+
+	t.Run("read from drained reader", func(t *testing.T) {
+		t.Parallel()
+
+		callbackFn := func(u uint64) { t.Fatalf("should not happen") }
+		r := TimeoutReader(strings.NewReader(data), timeout, callbackFn)
+		// r := strings.NewReader(data)
+
+		buff, err := io.ReadAll(r)
+		if err != nil {
+			t.Fatal(err.Error())
+		}
+
+		time.Sleep(2 * timeout)
+
+		if want, have := data, string(buff); want != have {
+			t.Fatalf("read data content mismatch: want: %s; have: %s", want, have)
+		}
+
+		// Reading from reader again shouldn't read anything
+		_, err = r.Read(make([]byte, len(data)))
+		if !errors.Is(err, io.EOF) {
+			t.Fatalf("reader should be drained")
 		}
 	})
 
-	t.Run("stuck read", func(t *testing.T) {
+	t.Run("callback triggered after timeout", func(t *testing.T) {
 		t.Parallel()
 
 		read := uint64(0)
-		data := "0123456789"
-		timeout := 10 * time.Millisecond
-		callbackFn := func(u uint64) { atomic.StoreUint64(&read, u) }
+		callbackFn := func(u uint64) { atomic.StoreUint64(&read, 100) }
 		TimeoutReader(strings.NewReader(data), timeout, callbackFn)
 
 		if want, have := 0, int(atomic.LoadUint64(&read)); want != have {
@@ -55,7 +76,7 @@ func TestTimeoutReader(t *testing.T) {
 
 		time.Sleep(2 * timeout)
 
-		if want, have := 0, int(atomic.LoadUint64(&read)); want != have {
+		if want, have := 100, int(atomic.LoadUint64(&read)); want != have {
 			t.Fatalf("callbackFn data length mismatch: want: %d; have: %d", want, have)
 		}
 	})
@@ -64,7 +85,6 @@ func TestTimeoutReader(t *testing.T) {
 		t.Parallel()
 
 		read := uint64(0)
-		timeout := 10 * time.Millisecond
 		callbackFn := func(u uint64) { atomic.StoreUint64(&read, u) }
 		r := TimeoutReader(new(bytes.Buffer), timeout, callbackFn)
 
@@ -84,26 +104,5 @@ func TestTimeoutReader(t *testing.T) {
 		if want, have := 0, int(atomic.LoadUint64(&read)); want != have {
 			t.Fatalf("callbackFn data length mismatch: want: %d; have: %d", want, have)
 		}
-	})
-
-	t.Run("timer stopped after read", func(t *testing.T) {
-		t.Parallel()
-
-		const data = "some data"
-		const timeout = 10 * time.Millisecond
-
-		callbackFn := func(u uint64) { t.Fatalf("should not happen") }
-		r := TimeoutReader(strings.NewReader(data), timeout, callbackFn)
-
-		buff, err := io.ReadAll(r)
-		if err != nil {
-			t.Fatal(err.Error())
-		}
-
-		if string(buff) != data {
-			t.Fatalf("want: %v; have: %v", data, string(buff))
-		}
-
-		time.Sleep(2 * timeout)
 	})
 }

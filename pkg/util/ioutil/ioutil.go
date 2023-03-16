@@ -6,6 +6,7 @@ package ioutil
 
 import (
 	"io"
+	"sync"
 	"time"
 )
 
@@ -15,6 +16,7 @@ import (
 type timeoutReader struct {
 	reader io.Reader
 	resC   chan readResult
+	lock   sync.Mutex
 }
 
 type readResult struct {
@@ -25,10 +27,15 @@ type readResult struct {
 // Read implements the io.Reader interface.
 func (tr *timeoutReader) Read(p []byte) (int, error) {
 	n, err := tr.reader.Read(p)
-	select {
-	case tr.resC <- readResult{n, err}:
-	default:
+
+	tr.lock.Lock()
+	resC := tr.resC
+	tr.lock.Unlock()
+
+	if resC != nil {
+		resC <- readResult{n, err}
 	}
+
 	return n, err
 }
 
@@ -39,7 +46,7 @@ func (tr *timeoutReader) Read(p []byte) (int, error) {
 // goroutine. This goroutine will also terminate when the given context
 // is canceled or if the n (returned by the given reader) is equal to 0.
 func TimeoutReader(r io.Reader, timeout time.Duration, callback func(uint64)) io.Reader {
-	resC := make(chan readResult)
+	tr := &timeoutReader{reader: r, resC: make(chan readResult)}
 
 	go func() {
 		var (
@@ -47,26 +54,33 @@ func TimeoutReader(r io.Reader, timeout time.Duration, callback func(uint64)) io
 			timer = time.NewTimer(timeout)
 		)
 
-		defer timer.Stop()
-		defer close(resC)
+		cleanup := func() {
+			timer.Stop()
+
+			tr.lock.Lock()
+			tr.resC = nil
+			tr.lock.Unlock()
+		}
 
 		for {
 			select {
-			case result := <-resC:
+			case result := <-tr.resC:
 				total += uint64(result.n)
 				timer.Reset(timeout)
 
 				if result.err != nil {
+					cleanup()
 					return
 				}
 			case <-timer.C:
+				cleanup()
 				callback(total)
 				return
 			}
 		}
 	}()
 
-	return &timeoutReader{reader: r, resC: resC}
+	return tr
 }
 
 // The WriterFunc type is an adapter to allow the use of
