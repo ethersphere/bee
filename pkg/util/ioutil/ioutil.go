@@ -5,7 +5,6 @@
 package ioutil
 
 import (
-	"context"
 	"io"
 	"time"
 )
@@ -14,15 +13,20 @@ import (
 // and calls the cancel function when reading does not progress for
 // the specified time.
 type timeoutReader struct {
-	r io.Reader
-	n chan int
+	reader io.Reader
+	resC   chan readResult
 }
 
-// Read implements the io.Reader Read interface.
-func (pr *timeoutReader) Read(p []byte) (int, error) {
-	n, err := pr.r.Read(p)
+type readResult struct {
+	n   int
+	err error
+}
+
+// Read implements the io.Reader interface.
+func (tr *timeoutReader) Read(p []byte) (int, error) {
+	n, err := tr.reader.Read(p)
 	select {
-	case pr.n <- n:
+	case tr.resC <- readResult{n, err}:
 	default:
 	}
 	return n, err
@@ -31,42 +35,38 @@ func (pr *timeoutReader) Read(p []byte) (int, error) {
 // TimeoutReader creates a new timeoutReader instance and starts
 // a goroutine that monitors the progress of reading from the given reader.
 // If no progress is made for the duration of the given timeout, then the
-// reader executes the given cancel function and terminates the underlying
+// reader executes the given callback function and terminates the underlying
 // goroutine. This goroutine will also terminate when the given context
 // is canceled or if the n (returned by the given reader) is equal to 0.
-func TimeoutReader(ctx context.Context, r io.Reader, timeout time.Duration, cancel func(uint64)) io.Reader {
-	pr := &timeoutReader{r: r, n: make(chan int)}
+func TimeoutReader(r io.Reader, timeout time.Duration, callback func(uint64)) io.Reader {
+	resC := make(chan readResult)
 
 	go func() {
-		defer func() {
-			close(pr.n)
-			pr.n = nil
-		}()
-
 		var (
 			total = uint64(0)
 			timer = time.NewTimer(timeout)
 		)
+
+		defer timer.Stop()
+		defer close(resC)
+
 		for {
 			select {
-			case n := <-pr.n:
-				switch {
-				case n == 0:
+			case result := <-resC:
+				total += uint64(result.n)
+				timer.Reset(timeout)
+
+				if result.err != nil {
 					return
-				case n > 0:
-					total += uint64(n)
-					timer.Reset(timeout)
 				}
 			case <-timer.C:
-				cancel(total)
-				return
-			case <-ctx.Done():
+				callback(total)
 				return
 			}
 		}
 	}()
 
-	return pr
+	return &timeoutReader{reader: r, resC: resC}
 }
 
 // The WriterFunc type is an adapter to allow the use of

@@ -6,7 +6,6 @@ package ioutil
 
 import (
 	"bytes"
-	"context"
 	"errors"
 	"io"
 	"strings"
@@ -23,11 +22,9 @@ func TestTimeoutReader(t *testing.T) {
 
 		read := uint64(0)
 		data := "0123456789"
-		timeout := 100 * time.Millisecond
-		cancelFn := func(u uint64) { atomic.StoreUint64(&read, u) }
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		r := TimeoutReader(ctx, strings.NewReader(data), timeout, cancelFn)
+		timeout := 10 * time.Millisecond
+		callbackFn := func(u uint64) { atomic.StoreUint64(&read, u) }
+		r := TimeoutReader(strings.NewReader(data), timeout, callbackFn)
 
 		buf, err := io.ReadAll(r)
 		if err != nil {
@@ -35,51 +32,44 @@ func TestTimeoutReader(t *testing.T) {
 		}
 
 		if want, have := 0, int(atomic.LoadUint64(&read)); want != have {
-			t.Fatalf("cancelFn called prematurely: want: %d; have: %d", want, have)
+			t.Fatalf("callbackFn called prematurely: want: %d; have: %d", want, have)
 		}
 
 		if want, have := data, string(buf); want != have {
 			t.Fatalf("read data content mismatch: want: %s; have: %s", want, have)
 		}
-
-		_, err = io.ReadAll(r)
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
 	})
+
 	t.Run("stuck read", func(t *testing.T) {
 		t.Parallel()
 
 		read := uint64(0)
 		data := "0123456789"
-		timeout := 100 * time.Millisecond
-		cancelFn := func(u uint64) { atomic.StoreUint64(&read, u) }
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		TimeoutReader(ctx, strings.NewReader(data), timeout, cancelFn)
+		timeout := 10 * time.Millisecond
+		callbackFn := func(u uint64) { atomic.StoreUint64(&read, u) }
+		TimeoutReader(strings.NewReader(data), timeout, callbackFn)
 
 		if want, have := 0, int(atomic.LoadUint64(&read)); want != have {
-			t.Fatalf("cancelFn called prematurely: want: %d; have: %d", want, have)
+			t.Fatalf("callbackFn called prematurely: want: %d; have: %d", want, have)
 		}
 
 		time.Sleep(2 * timeout)
 
 		if want, have := 0, int(atomic.LoadUint64(&read)); want != have {
-			t.Fatalf("cancelFn data length mismatch: want: %d; have: %d", want, have)
+			t.Fatalf("callbackFn data length mismatch: want: %d; have: %d", want, have)
 		}
 	})
+
 	t.Run("EOF read", func(t *testing.T) {
 		t.Parallel()
 
 		read := uint64(0)
-		timeout := 100 * time.Millisecond
-		cancelFn := func(u uint64) { atomic.StoreUint64(&read, u) }
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		r := TimeoutReader(ctx, new(bytes.Buffer), timeout, cancelFn)
+		timeout := 10 * time.Millisecond
+		callbackFn := func(u uint64) { atomic.StoreUint64(&read, u) }
+		r := TimeoutReader(new(bytes.Buffer), timeout, callbackFn)
 
 		if want, have := 0, int(atomic.LoadUint64(&read)); want != have {
-			t.Fatalf("cancelFn called prematurely: want: %d; have: %d", want, have)
+			t.Fatalf("callbackFn called prematurely: want: %d; have: %d", want, have)
 		}
 
 		n, err := r.Read(make([]byte, 1))
@@ -92,7 +82,28 @@ func TestTimeoutReader(t *testing.T) {
 		}
 
 		if want, have := 0, int(atomic.LoadUint64(&read)); want != have {
-			t.Fatalf("cancelFn data length mismatch: want: %d; have: %d", want, have)
+			t.Fatalf("callbackFn data length mismatch: want: %d; have: %d", want, have)
 		}
+	})
+
+	t.Run("timer stopped after read", func(t *testing.T) {
+		t.Parallel()
+
+		const data = "some data"
+		const timeout = 10 * time.Millisecond
+
+		callbackFn := func(u uint64) { t.Fatalf("should not happen") }
+		r := TimeoutReader(strings.NewReader(data), timeout, callbackFn)
+
+		buff, err := io.ReadAll(r)
+		if err != nil {
+			t.Fatal(err.Error())
+		}
+
+		if string(buff) != data {
+			t.Fatalf("want: %v; have: %v", data, string(buff))
+		}
+
+		time.Sleep(2 * timeout)
 	})
 }
