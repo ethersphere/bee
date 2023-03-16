@@ -95,4 +95,24 @@ func TestTimeoutReader(t *testing.T) {
 			t.Fatalf("cancelFn data length mismatch: want: %d; have: %d", want, have)
 		}
 	})
+
+	t.Run("fail", func(t *testing.T) {
+		timeout := 20 * time.Millisecond
+		cancelFn := func(u uint64) {
+			t.Fatalf("should not happen")
+		}
+		ctx := context.Background()
+		data := "some data"
+
+		r := TimeoutReader(ctx, strings.NewReader(data), timeout, cancelFn)
+
+		buff := make([]byte, len([]byte(data)))
+		r.Read(buff)
+
+		if string(buff) != data {
+			t.Fatalf("want: %v; have: %v", data, string(buff))
+		}
+
+		time.Sleep(2 * timeout)
+	})
 }
