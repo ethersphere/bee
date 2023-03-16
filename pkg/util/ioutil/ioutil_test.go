@@ -43,7 +43,6 @@ func TestTimeoutReader(t *testing.T) {
 
 		callbackFn := func(u uint64) { t.Fatalf("should not happen") }
 		r := TimeoutReader(strings.NewReader(data), timeout, callbackFn)
-		// r := strings.NewReader(data)
 
 		buff, err := io.ReadAll(r)
 		if err != nil {
