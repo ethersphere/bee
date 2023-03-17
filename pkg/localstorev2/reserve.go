@@ -80,7 +80,17 @@ func (db *DB) reserveWorker(capacity int, syncer SyncReporter, warmupDur, wakeUp
 	}
 }
 
-func (db *DB) ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte) (swarm.Chunk, error) {
+func (db *DB) ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte) (chunk swarm.Chunk, err error) {
+	defer func() {
+		dur := captureDuration(time.Now())
+		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "ReserveGet").Observe(dur())
+		if err == nil || errors.Is(err, storage.ErrNotFound) {
+			db.metrics.MethodCalls.WithLabelValues("reserve", "ReserveGet", "success").Inc()
+		} else {
+			db.metrics.MethodCalls.WithLabelValues("reserve", "ReserveGet", "failure").Inc()
+		}
+	}()
+
 	return db.reserve.Get(ctx, db.repo, addr, batchID)
 }
 
@@ -93,14 +103,33 @@ func (db *DB) IsWithinStorageRadius(addr swarm.Address) bool {
 }
 
 // ReserveHas is called by the requestor
-func (db *DB) ReserveHas(addr swarm.Address, batchID []byte) (bool, error) {
+func (db *DB) ReserveHas(addr swarm.Address, batchID []byte) (has bool, err error) {
+	defer func() {
+		dur := captureDuration(time.Now())
+		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "ReserveHas").Observe(dur())
+		if err == nil || errors.Is(err, storage.ErrNotFound) {
+			db.metrics.MethodCalls.WithLabelValues("reserve", "ReserveHas", "success").Inc()
+		} else {
+			db.metrics.MethodCalls.WithLabelValues("reserve", "ReserveHas", "failure").Inc()
+		}
+	}()
+
 	return db.reserve.Has(db.repo.IndexStore(), addr, batchID)
 }
 
-func (db *DB) ReservePut(ctx context.Context, chunk swarm.Chunk) error {
+func (db *DB) ReservePut(ctx context.Context, chunk swarm.Chunk) (err error) {
+	defer func() {
+		dur := captureDuration(time.Now())
+		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "ReservePut").Observe(dur())
+		if err == nil || errors.Is(err, storage.ErrNotFound) {
+			db.metrics.MethodCalls.WithLabelValues("reserve", "ReservePut", "success").Inc()
+		} else {
+			db.metrics.MethodCalls.WithLabelValues("reserve", "ReservePut", "failure").Inc()
+		}
+	}()
+
 	putter := db.ReservePutter(ctx)
-	err := putter.Put(ctx, chunk)
-	if err != nil {
+	if err := putter.Put(ctx, chunk); err != nil {
 		return errors.Join(err, putter.Cleanup())
 	}
 	return putter.Done(swarm.ZeroAddress)
@@ -117,17 +146,21 @@ func (db *DB) ReservePutter(ctx context.Context) PutterSession {
 	db.reserveMtx.RLock()
 
 	return &putterSession{
-		Putter: storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
-			newIndex, err := db.reserve.Put(ctx, trx, chunk)
-			if err != nil {
-				return err
-			}
-			triggerBins[db.po(chunk.Address())] = true
-			if newIndex {
-				count++
-			}
-			return nil
-		}),
+		Putter: putterWithMetrics{
+			storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
+				newIndex, err := db.reserve.Put(ctx, trx, chunk)
+				if err != nil {
+					return err
+				}
+				triggerBins[db.po(chunk.Address())] = true
+				if newIndex {
+					count++
+				}
+				return nil
+			}),
+			db.metrics,
+			"reserve",
+		},
 		done: func(swarm.Address) error {
 			defer db.reserveMtx.RUnlock()
 			err := commit()
@@ -151,7 +184,17 @@ func (db *DB) ReservePutter(ctx context.Context) PutterSession {
 }
 
 // EvictBatch evicts all chunks belonging to a batch from the reserve.
-func (db *DB) EvictBatch(ctx context.Context, batchID []byte) error {
+func (db *DB) EvictBatch(ctx context.Context, batchID []byte) (err error) {
+	defer func() {
+		dur := captureDuration(time.Now())
+		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "EvictBatch").Observe(dur())
+		if err == nil || errors.Is(err, storage.ErrNotFound) {
+			db.metrics.MethodCalls.WithLabelValues("reserve", "EvictBatch", "success").Inc()
+		} else {
+			db.metrics.MethodCalls.WithLabelValues("reserve", "EvictBatch", "failure").Inc()
+		}
+	}()
+
 	return db.evictBatch(ctx, batchID, swarm.MaxBins)
 }
 
