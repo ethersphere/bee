@@ -479,7 +479,6 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 		w.Header().Set("ETag", fmt.Sprintf("%q", reference))
 	}
 	w.Header().Set("Content-Length", strconv.FormatInt(l, 10))
-	w.Header().Set("Decompressed-Content-Length", strconv.FormatInt(l, 10))
 	w.Header().Set("Access-Control-Expose-Headers", "Content-Disposition")
 	http.ServeContent(w, r, "", time.Now(), langos.NewBufferedLangos(reader, lookaheadBufferSize(l)))
 }
