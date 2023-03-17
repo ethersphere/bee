@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 
 	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/log"
@@ -204,5 +205,6 @@ func (s *Service) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "binary/octet-stream")
+	w.Header().Add("Content-Length", strconv.FormatInt(int64(len(chunk.Data())), 10))
 	_, _ = io.Copy(w, bytes.NewReader(chunk.Data()))
 }
