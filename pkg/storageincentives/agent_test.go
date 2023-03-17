@@ -14,9 +14,8 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	resMock "github.com/ethersphere/bee/pkg/localstorev2/mock"
 	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/postage"
-	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	contractMock "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
 	erc20mock "github.com/ethersphere/bee/pkg/settlement/swap/erc20/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
@@ -167,7 +166,23 @@ func createService(
 		return false, nil
 	}))
 
-	return storageincentives.New(addr, common.Address{}, backend, log.Noop, &mockMonitor{}, contract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), &mockSampler{t: t}, time.Millisecond*10, blocksPerRound, blocksPerPhase, statestore.NewStateStore(), erc20mock.New(), transactionmock.New())
+	return storageincentives.New(
+		addr, common.Address{},
+		backend,
+		log.Noop,
+		&mockMonitor{},
+		contract,
+		postageContract,
+		stakingContract,
+		resMock.NewReserve(resMock.WithRadius(0)),
+		&mockSampler{},
+		time.Millisecond*10,
+		blocksPerRound,
+		blocksPerPhase,
+		statestore.NewStateStore(),
+		erc20mock.New(),
+		transactionmock.New(),
+	)
 }
 
 type mockchainBackend struct {
