@@ -579,15 +579,12 @@ func (s *Service) contentLengthMetricMiddleware() func(h http.Handler) http.Hand
 			h.ServeHTTP(w, r)
 			switch r.Method {
 			case http.MethodGet:
-				hdr := w.Header().Get("Decompressed-Content-Length")
+				hdr := w.Header().Get("Content-Length")
 				if hdr == "" {
-					s.logger.Debug("decompressed content length header not found")
-					hdr = w.Header().Get("Content-Length")
-					if hdr == "" {
-						s.logger.Debug("content length header not found")
-						return
-					}
+					s.logger.Debug("content length header not found")
+					return
 				}
+
 				contentLength, err := strconv.Atoi(hdr)
 				if err != nil {
 					s.logger.Debug("int conversion failed", "content_length", hdr, "error", err)
