@@ -92,7 +92,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	p := requestPipelineFn(putter, r)
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	pr := ioutil.TimeoutReader(ctx, r.Body, time.Minute, func(n uint64) {
+	pr := ioutil.TimeoutReader(ctx, r.Body, 5*time.Minute, func(n uint64) {
 		logger.Error(nil, "idle read timeout exceeded")
 		logger.Debug("idle read timeout exceeded", "bytes_read", n)
 		cancel()
