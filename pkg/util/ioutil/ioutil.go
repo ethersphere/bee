@@ -6,6 +6,7 @@ package ioutil
 
 import (
 	"context"
+	"errors"
 	"io"
 	"time"
 )
@@ -14,17 +15,29 @@ import (
 // and calls the cancel function when reading does not progress for
 // the specified time.
 type timeoutReader struct {
+	t *time.Timer
 	r io.Reader
 	n chan int
 }
 
 // Read implements the io.Reader Read interface.
-func (pr *timeoutReader) Read(p []byte) (int, error) {
-	n, err := pr.r.Read(p)
-	select {
-	case pr.n <- n:
+func (tr *timeoutReader) Read(p []byte) (int, error) {
+	n, err := tr.r.Read(p)
+
+	switch {
+	case (n == 0 || errors.Is(err, io.EOF)) && tr.t.Stop():
+		select {
+		case <-tr.t.C:
+		default:
+		}
+		fallthrough
 	default:
+		select {
+		case tr.n <- n:
+		default:
+		}
 	}
+
 	return n, err
 }
 
@@ -35,29 +48,22 @@ func (pr *timeoutReader) Read(p []byte) (int, error) {
 // goroutine. This goroutine will also terminate when the given context
 // is canceled or if the n (returned by the given reader) is equal to 0.
 func TimeoutReader(ctx context.Context, r io.Reader, timeout time.Duration, cancel func(uint64)) io.Reader {
-	pr := &timeoutReader{r: r, n: make(chan int)}
+	tr := &timeoutReader{t: time.NewTimer(timeout), r: r, n: make(chan int)}
 
 	go func() {
-		defer func() {
-			close(pr.n)
-			pr.n = nil
-		}()
+		var total uint64 = 0
 
-		var (
-			total = uint64(0)
-			timer = time.NewTimer(timeout)
-		)
 		for {
 			select {
-			case n := <-pr.n:
+			case n := <-tr.n:
 				switch {
 				case n == 0:
 					return
 				case n > 0:
+					tr.t.Reset(timeout)
 					total += uint64(n)
-					timer.Reset(timeout)
 				}
-			case <-timer.C:
+			case <-tr.t.C:
 				cancel(total)
 				return
 			case <-ctx.Done():
@@ -66,7 +72,7 @@ func TimeoutReader(ctx context.Context, r io.Reader, timeout time.Duration, canc
 		}
 	}()
 
-	return pr
+	return tr
 }
 
 // The WriterFunc type is an adapter to allow the use of
