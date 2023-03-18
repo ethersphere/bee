@@ -567,15 +567,9 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 			addr,
 			swarmAddress,
 			nonce,
-			chainID,
-			overlayEthAddress,
 			addressbook,
 			bootnodes,
 			lightNodes,
-			chequebookService,
-			chequeStore,
-			cashoutService,
-			transactionService,
 			stateStore,
 			signer,
 			networkID,
@@ -775,11 +769,9 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 			if err != nil {
 				syncErr.Store(err)
 				return nil, fmt.Errorf("unable to start batch service: %w", err)
-			} else {
-				err = post.SetExpired()
-				if err != nil {
-					return nil, fmt.Errorf("unable to set expirations: %w", err)
-				}
+			}
+			if err = post.SetExpired(); err != nil {
+				return nil, fmt.Errorf("unable to set expirations: %w", err)
 			}
 		} else {
 			go func() {
@@ -1335,7 +1327,7 @@ func (b *Bee) Shutdown() error {
 	return mErr
 }
 
-var ErrShutdownInProgress error = errors.New("shutdown in progress")
+var ErrShutdownInProgress = errors.New("shutdown in progress")
 
 func isChainEnabled(o *Options, swapEndpoint string, logger log.Logger) bool {
 	chainDisabled := swapEndpoint == ""

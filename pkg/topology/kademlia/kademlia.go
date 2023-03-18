@@ -1336,7 +1336,8 @@ func (k *Kad) EachConnectedPeerRev(f topology.EachPeerFunc, filter topology.Filt
 		return f(addr, po)
 	})
 }
-func (k *Kad) PeersCount(filter topology.Filter) int {
+
+func (k *Kad) PeersCount() int {
 	return k.connectedPeers.Length()
 }
 

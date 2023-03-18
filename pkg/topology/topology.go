@@ -155,5 +155,5 @@ type SetStorageRadiuser interface {
 }
 
 type PeersCounter interface {
-	PeersCount(Filter) int
+	PeersCount() int
 }

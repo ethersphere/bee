@@ -85,7 +85,7 @@ func (d *defaultSigner) Sign(data []byte) (signature []byte, err error) {
 		return nil, err
 	}
 
-	return d.sign(hash, true)
+	return d.sign(hash)
 }
 
 // SignTx signs an ethereum transaction.
@@ -93,7 +93,7 @@ func (d *defaultSigner) SignTx(transaction *types.Transaction, chainID *big.Int)
 	txSigner := types.NewLondonSigner(chainID)
 	hash := txSigner.Hash(transaction).Bytes()
 	// isCompressedKey is false here so we get the expected v value (27 or 28)
-	signature, err := d.sign(hash, false)
+	signature, err := d.sign(hash)
 	if err != nil {
 		return nil, err
 	}
@@ -130,11 +130,11 @@ func (d *defaultSigner) SignTypedData(typedData *eip712.TypedData) ([]byte, erro
 		return nil, err
 	}
 
-	return d.sign(sighash, false)
+	return d.sign(sighash)
 }
 
 // sign the provided hash and convert it to the ethereum (r,s,v) format.
-func (d *defaultSigner) sign(sighash []byte, isCompressedKey bool) ([]byte, error) {
+func (d *defaultSigner) sign(sighash []byte) ([]byte, error) {
 	signature, err := btcec.SignCompact(btcec.S256(), (*btcec.PrivateKey)(d.key), sighash, false)
 	if err != nil {
 		return nil, err

@@ -14,7 +14,6 @@ import (
 	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	"github.com/ethersphere/bee/pkg/spinlock"
 	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/depthmonitor"
 )
 
@@ -193,7 +192,7 @@ func (m *mockTopology) SetStorageRadius(newDepth uint8) {
 	m.storageDepth = newDepth
 }
 
-func (m *mockTopology) PeersCount(topology.Filter) int {
+func (m *mockTopology) PeersCount() int {
 	return m.peers
 }
 

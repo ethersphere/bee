@@ -6,11 +6,9 @@ package node
 
 import (
 	"context"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
-	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum"
@@ -284,62 +282,6 @@ func InitSwap(
 	}
 
 	return swapService, priceOracle, nil
-}
-
-func GetTxHash(stateStore storage.StateStorer, logger log.Logger, trxString string) ([]byte, error) {
-
-	if trxString != "" {
-		txHashTrimmed := strings.TrimPrefix(trxString, "0x")
-		if len(txHashTrimmed) != 64 {
-			return nil, errors.New("invalid length")
-		}
-		txHash, err := hex.DecodeString(txHashTrimmed)
-		if err != nil {
-			return nil, err
-		}
-		logger.Info("using the provided transaction hash", "tx_hash", txHashTrimmed)
-		return txHash, nil
-	}
-
-	var txHash common.Hash
-	key := chequebook.ChequebookDeploymentKey
-	if err := stateStore.Get(key, &txHash); err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return nil, errors.New("chequebook deployment transaction hash not found, please specify the transaction hash manually")
-		}
-		return nil, err
-	}
-
-	logger.Info("using the chequebook transaction hash", "tx_hash", txHash)
-	return txHash.Bytes(), nil
-}
-
-func GetTxNextBlock(ctx context.Context, logger log.Logger, backend transaction.Backend, monitor transaction.Monitor, duration time.Duration, trx []byte, blockHash string) ([]byte, error) {
-
-	if blockHash != "" {
-		blockHashTrimmed := strings.TrimPrefix(blockHash, "0x")
-		if len(blockHashTrimmed) != 64 {
-			return nil, errors.New("invalid length")
-		}
-		blockHash, err := hex.DecodeString(blockHashTrimmed)
-		if err != nil {
-			return nil, err
-		}
-		logger.Info("using the provided block hash", "block_hash", hex.EncodeToString(blockHash))
-		return blockHash, nil
-	}
-
-	block, err := transaction.WaitBlockAfterTransaction(ctx, backend, duration, common.BytesToHash(trx), additionalConfirmations)
-	if err != nil {
-		return nil, err
-	}
-
-	hash := block.Hash()
-	hashBytes := hash.Bytes()
-
-	logger.Info("using the next block hash from the blockchain", "block_hash", hex.EncodeToString(hashBytes))
-
-	return hashBytes, nil
 }
 
 // noOpChequebookService is a noOp implementation for chequebook.Service interface.

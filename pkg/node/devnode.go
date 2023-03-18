@@ -513,7 +513,7 @@ func (b *DevBee) Shutdown() error {
 	return mErr
 }
 
-func pong(ctx context.Context, address swarm.Address, msgs ...string) (rtt time.Duration, err error) {
+func pong(context.Context, swarm.Address, ...string) (rtt time.Duration, err error) {
 	return time.Millisecond, nil
 }
 
