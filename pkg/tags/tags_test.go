@@ -17,7 +17,6 @@
 package tags
 
 import (
-	"context"
 	"errors"
 	"sort"
 	"testing"
@@ -81,7 +80,7 @@ func TestListAll(t *testing.T) {
 	}
 
 	// tags are from sync.Map
-	tagList1, err := ts1.ListAll(context.Background(), 0, 5)
+	tagList1, err := ts1.ListAll(0, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,7 +114,7 @@ func TestListAll(t *testing.T) {
 	}
 
 	// first tags are from sync.Map
-	tagList2, err := ts2.ListAll(context.Background(), 0, 5)
+	tagList2, err := ts2.ListAll(0, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +124,7 @@ func TestListAll(t *testing.T) {
 	}
 
 	// now tags are returned from statestore
-	tagList3, err := ts2.ListAll(context.Background(), 5, 5)
+	tagList3, err := ts2.ListAll(5, 5)
 	if err != nil {
 		t.Fatal(err)
 	}

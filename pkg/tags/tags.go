@@ -195,7 +195,7 @@ func (ts *Tags) UnmarshalJSON(value []byte) error {
 	return err
 }
 
-func (ts *Tags) ListAll(ctx context.Context, offset, limit int) (t []*Tag, err error) {
+func (ts *Tags) ListAll(offset, limit int) (t []*Tag, err error) {
 	if limit > maxPage {
 		limit = maxPage
 	}

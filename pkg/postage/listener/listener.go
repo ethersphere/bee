@@ -211,11 +211,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 			return err
 		}
 
-		if err := updater.TransactionEnd(); err != nil {
-			return err
-		}
-
-		return nil
+		return updater.TransactionEnd()
 	}
 
 	if initState != nil {

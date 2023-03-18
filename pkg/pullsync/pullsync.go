@@ -268,7 +268,7 @@ func (s *Syncer) SyncRate() float64 {
 }
 
 // handler handles an incoming request to sync an interval
-func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
+func (s *Syncer) handler(streamCtx context.Context, _ p2p.Peer, stream p2p.Stream) (err error) {
 	select {
 	case <-s.quit:
 		return nil

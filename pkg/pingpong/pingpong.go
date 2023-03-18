@@ -99,7 +99,7 @@ func (s *Service) Ping(ctx context.Context, address swarm.Address, msgs ...strin
 	return time.Since(start), nil
 }
 
-func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {
+func (s *Service) handler(ctx context.Context, _ p2p.Peer, stream p2p.Stream) error {
 	w, r := protobuf.NewWriterAndReader(stream)
 	defer stream.FullClose()
 

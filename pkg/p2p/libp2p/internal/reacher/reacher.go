@@ -100,7 +100,7 @@ func (r *reacher) manage() {
 
 	r.wg.Add(r.options.Workers)
 	for i := 0; i < r.options.Workers; i++ {
-		go r.ping(c, ctx)
+		go r.ping(ctx, c)
 	}
 
 	for {
@@ -141,7 +141,7 @@ func (r *reacher) manage() {
 	}
 }
 
-func (r *reacher) ping(c chan *peer, ctx context.Context) {
+func (r *reacher) ping(ctx context.Context, c chan *peer) {
 
 	defer r.wg.Done()
 

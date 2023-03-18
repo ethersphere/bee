@@ -42,7 +42,7 @@ func TestStamperStamping(t *testing.T) {
 		st := newTestStampIssuer(t, 1000)
 		stamper := postage.NewStamper(st, signer)
 		chunkAddr, stamp := createStamp(t, stamper)
-		if err := stamp.Valid(chunkAddr, owner, 12, 8, true); err != nil {
+		if err := stamp.Valid(chunkAddr, owner, 12, 8); err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
 	})
@@ -54,7 +54,7 @@ func TestStamperStamping(t *testing.T) {
 		chunkAddr, stamp := createStamp(t, stamper)
 		a := chunkAddr.Bytes()
 		a[0] ^= 0xff
-		if err := stamp.Valid(swarm.NewAddress(a), owner, 12, 8, true); !errors.Is(err, postage.ErrBucketMismatch) {
+		if err := stamp.Valid(swarm.NewAddress(a), owner, 12, 8); !errors.Is(err, postage.ErrBucketMismatch) {
 			t.Fatalf("expected ErrBucketMismatch, got %v", err)
 		}
 	})
@@ -77,7 +77,7 @@ func TestStamperStamping(t *testing.T) {
 		if err != nil {
 			t.Fatalf("error adding last stamp: %v", err)
 		}
-		if err := stamp.Valid(chunkAddr, owner, 11, 8, true); !errors.Is(err, postage.ErrInvalidIndex) {
+		if err := stamp.Valid(chunkAddr, owner, 11, 8); !errors.Is(err, postage.ErrInvalidIndex) {
 			t.Fatalf("expected ErrInvalidIndex, got %v", err)
 		}
 	})
@@ -109,7 +109,7 @@ func TestStamperStamping(t *testing.T) {
 		st := newTestStampIssuer(t, 1000)
 		stamper := postage.NewStamper(st, signer)
 		chunkAddr, stamp := createStamp(t, stamper)
-		if err := stamp.Valid(chunkAddr, owner, 12, 8, true); !errors.Is(err, postage.ErrOwnerMismatch) {
+		if err := stamp.Valid(chunkAddr, owner, 12, 8); !errors.Is(err, postage.ErrOwnerMismatch) {
 			t.Fatalf("expected ErrOwnerMismatch, got %v", err)
 		}
 	})

@@ -208,7 +208,7 @@ func (s *Service) listTagsHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tagList, err := s.tags.ListAll(r.Context(), queries.Offset, queries.Limit)
+	tagList, err := s.tags.ListAll(queries.Offset, queries.Limit)
 	if err != nil {
 		logger.Debug("listing failed", "offset", queries.Offset, "limit", queries.Limit, "error", err)
 		logger.Error(nil, "listing failed")
