@@ -92,7 +92,7 @@ func New(
 	validStamp postage.ValidStampFn,
 	logger log.Logger,
 	maxPage uint64,
-	makeOfferTimeout time.Duration) *Syncer {
+) *Syncer {
 
 	return &Syncer{
 		streamer:       streamer,

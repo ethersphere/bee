@@ -233,15 +233,15 @@ func (s *Service) postageGetAllStampsHandler(w http.ResponseWriter, _ *http.Requ
 		}
 
 		batches = append(batches, postageBatchResponse{
-			BatchID:       b.ID,
-			Value:         bigint.Wrap(b.Value),
-			Start:         b.Start,
-			Owner:         b.Owner,
-			Depth:         b.Depth,
-			BucketDepth:   b.BucketDepth,
-			Immutable:     b.Immutable,
-			StorageRadius: b.StorageRadius,
-			BatchTTL:      batchTTL,
+			BatchID:     b.ID,
+			Value:       bigint.Wrap(b.Value),
+			Start:       b.Start,
+			Owner:       b.Owner,
+			Depth:       b.Depth,
+			BucketDepth: b.BucketDepth,
+			Immutable:   b.Immutable,
+			// StorageRadius: b.StorageRadius,
+			BatchTTL: batchTTL,
 		})
 		return false, nil
 	})
@@ -381,7 +381,6 @@ type chainStateResponse struct {
 func (s *Service) reserveStateHandler(w http.ResponseWriter, _ *http.Request) {
 	logger := s.logger.WithName("get_reservestate").Build()
 
-	state := s.batchStore.GetReserveState()
 	commitment := int64(0)
 	if err := s.batchStore.Iterate(func(b *postage.Batch) (bool, error) {
 		commitment += int64(math.Pow(2.0, float64(b.Depth)))
@@ -395,8 +394,8 @@ func (s *Service) reserveStateHandler(w http.ResponseWriter, _ *http.Request) {
 	}
 
 	jsonhttp.OK(w, reserveStateResponse{
-		Radius:        state.Radius,
-		StorageRadius: state.StorageRadius,
+		Radius:        s.batchStore.Radius(),
+		StorageRadius: s.storer.StorageRadius(),
 		Commitment:    commitment,
 	})
 }

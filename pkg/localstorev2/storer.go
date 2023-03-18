@@ -124,6 +124,7 @@ type Reserve interface {
 	ReserveStore
 	EvictBatch(ctx context.Context, batchID []byte) error
 	ReserveSample(context.Context, []byte, uint8, uint64) (Sample, error)
+	IsFullySynced() bool
 }
 
 type ReserveStore interface {
@@ -145,6 +146,7 @@ type LocalStore interface {
 }
 
 type Storer interface {
+	ReserveStore
 	UploadStore
 	PinStore
 	CacheStore
@@ -352,7 +354,6 @@ type DB struct {
 // New returns a newly constructed DB object which implements all the above
 // component stores.
 func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
-	// TODO: migration handling and sharky recovery
 	var (
 		repo     storage.Repository
 		err      error
@@ -458,6 +459,10 @@ func (db *DB) Close() error {
 	}
 
 	return err
+}
+
+func (db *DB) ChunkStore() storage.ReadOnlyChunkStore {
+	return db.repo.ChunkStore()
 }
 
 type putterSession struct {
