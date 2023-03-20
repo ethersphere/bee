@@ -24,7 +24,7 @@ func TestTimeoutReader(t *testing.T) {
 		call := uint64(0)
 		read := uint64(0)
 		data := "0123456789"
-		timeout := 100 * time.Millisecond
+		timeout := 200 * time.Millisecond
 		cancelFn := func(u uint64) {
 			atomic.StoreUint64(&call, 1)
 			atomic.StoreUint64(&read, u)
@@ -64,7 +64,7 @@ func TestTimeoutReader(t *testing.T) {
 		call := uint64(0)
 		read := uint64(0)
 		data := "0123456789"
-		timeout := 100 * time.Millisecond
+		timeout := 200 * time.Millisecond
 		cancelFn := func(u uint64) {
 			atomic.StoreUint64(&call, 1)
 			atomic.StoreUint64(&read, u)
@@ -93,7 +93,7 @@ func TestTimeoutReader(t *testing.T) {
 
 		call := uint64(0)
 		read := uint64(0)
-		timeout := 100 * time.Millisecond
+		timeout := 200 * time.Millisecond
 		cancelFn := func(u uint64) {
 			atomic.StoreUint64(&call, 1)
 			atomic.StoreUint64(&read, u)
@@ -133,7 +133,7 @@ func TestTimeoutReader(t *testing.T) {
 
 		call := uint64(0)
 		read := uint64(0)
-		timeout := 100 * time.Millisecond
+		timeout := 200 * time.Millisecond
 		cancelFn := func(u uint64) {
 			atomic.StoreUint64(&call, 1)
 			atomic.StoreUint64(&read, u)

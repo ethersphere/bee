@@ -6,7 +6,6 @@ package ioutil
 
 import (
 	"context"
-	"errors"
 	"io"
 	"time"
 )
@@ -24,18 +23,21 @@ type timeoutReader struct {
 func (tr *timeoutReader) Read(p []byte) (int, error) {
 	n, err := tr.r.Read(p)
 
-	switch {
-	case (n == 0 || errors.Is(err, io.EOF)) && tr.t.Stop():
+	v := n
+	if err != nil && tr.t.Stop() {
 		select {
 		case <-tr.t.C:
 		default:
 		}
-		fallthrough
+
+		// Negative value signals that error has
+		// occurred and the goroutine should terminate.
+		v = -1
+	}
+
+	select {
+	case tr.n <- v:
 	default:
-		select {
-		case tr.n <- n:
-		default:
-		}
 	}
 
 	return n, err
@@ -46,7 +48,7 @@ func (tr *timeoutReader) Read(p []byte) (int, error) {
 // If no progress is made for the duration of the given timeout, then the
 // reader executes the given cancel function and terminates the underlying
 // goroutine. This goroutine will also terminate when the given context
-// is canceled or if the n (returned by the given reader) is equal to 0.
+// is canceled or if an error is returned by the given reader.
 func TimeoutReader(ctx context.Context, r io.Reader, timeout time.Duration, cancel func(uint64)) io.Reader {
 	tr := &timeoutReader{t: time.NewTimer(timeout), r: r, n: make(chan int)}
 
@@ -57,9 +59,9 @@ func TimeoutReader(ctx context.Context, r io.Reader, timeout time.Duration, canc
 			select {
 			case n := <-tr.n:
 				switch {
-				case n == 0:
+				case n < 0:
 					return
-				case n > 0:
+				case n >= 0:
 					tr.t.Reset(timeout)
 					total += uint64(n)
 				}
