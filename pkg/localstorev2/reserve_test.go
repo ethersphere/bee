@@ -73,6 +73,7 @@ func TestIndexCollision(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		storer.SetSyncer(pullerMock.NewMockRateReporter(0))
 		testF(t, baseAddr, storer)
 	})
 	t.Run("mem", func(t *testing.T) {
@@ -82,6 +83,7 @@ func TestIndexCollision(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		storer.SetSyncer(pullerMock.NewMockRateReporter(0))
 		testF(t, baseAddr, storer)
 	})
 }
@@ -159,6 +161,7 @@ func TestReplaceOldIndex(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		storer.SetSyncer(pullerMock.NewMockRateReporter(0))
 		testF(t, baseAddr, storer)
 	})
 	t.Run("mem", func(t *testing.T) {
@@ -168,6 +171,7 @@ func TestReplaceOldIndex(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		storer.SetSyncer(pullerMock.NewMockRateReporter(0))
 		testF(t, baseAddr, storer)
 	})
 }
@@ -182,6 +186,7 @@ func TestEvictBatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	st.SetSyncer(pullerMock.NewMockRateReporter(0))
 
 	ctx := context.Background()
 
@@ -330,6 +335,7 @@ func TestUnreserveCap(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		storer.SetSyncer(pullerMock.NewMockRateReporter(0))
 		testF(t, baseAddr, bs, storer)
 	})
 	t.Run("mem", func(t *testing.T) {
@@ -340,6 +346,7 @@ func TestUnreserveCap(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		storer.SetSyncer(pullerMock.NewMockRateReporter(0))
 		testF(t, baseAddr, bs, storer)
 	})
 }
@@ -367,6 +374,7 @@ func TestRadiusManager(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		storer.SetSyncer(pullerMock.NewMockRateReporter(0))
 
 		batch := postagetesting.MustNewBatch()
 		err = bs.Save(batch)

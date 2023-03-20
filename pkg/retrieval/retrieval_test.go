@@ -670,7 +670,3 @@ func TestClosestPeer(t *testing.T) {
 		}
 	})
 }
-
-var noopStampValidator = func(chunk swarm.Chunk, stampBytes []byte) (swarm.Chunk, error) {
-	return chunk, nil
-}

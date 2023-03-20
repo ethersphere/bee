@@ -284,6 +284,7 @@ func initCache(ctx context.Context, capacity uint64, repo storage.Repository) (*
 
 const (
 	lockKeyNewSession string = "new_session"
+	lockKeySetSyncer  string = "set_syncer"
 )
 
 // Options provides a container to configure different things in the storer.
@@ -348,6 +349,13 @@ type DB struct {
 	baseAddr         swarm.Address
 	batchstore       postage.Storer
 	syncer           SyncReporter
+	opts             workerOpts
+}
+
+type workerOpts struct {
+	capacity       int
+	warmupDuration time.Duration
+	wakeupDuration time.Duration
 }
 
 // New returns a newly constructed DB object which implements all the above
@@ -399,9 +407,13 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		bgCacheWorkers:   make(chan struct{}, 16),
 		dbCloser:         dbCloser,
 		batchstore:       opts.Batchstore,
-		syncer:           noopSyncer{},
 		events:           events.NewSubscriber(),
 		reserveBinEvents: events.NewSubscriber(),
+		opts: workerOpts{
+			capacity:       opts.ReserveCapacity,
+			warmupDuration: opts.WarmupDuration,
+			wakeupDuration: opts.ReserveWakeUpDuration,
+		},
 	}
 
 	if opts.ReserveCapacity > 0 {
@@ -410,9 +422,6 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 			return nil, err
 		}
 		db.reserve = rs
-
-		db.reserveWg.Add(1)
-		go db.reserveWorker(opts.ReserveCapacity, opts.WarmupDuration, opts.ReserveWakeUpDuration)
 	}
 
 	return db, nil
@@ -468,7 +477,17 @@ func (db *DB) SetRetrievalService(r retrieval.Interface) {
 }
 
 func (db *DB) SetSyncer(s SyncReporter) {
+	db.lock.Lock(lockKeySetSyncer)
+	defer db.lock.Unlock(lockKeySetSyncer)
+
+	if db.syncer != nil {
+		return
+	}
+
 	db.syncer = s
+
+	db.reserveWg.Add(1)
+	go db.reserveWorker(db.opts.capacity, db.opts.warmupDuration, db.opts.wakeupDuration)
 }
 
 type noopRetrieval struct{}
@@ -476,10 +495,6 @@ type noopRetrieval struct{}
 func (noopRetrieval) RetrieveChunk(_ context.Context, _ swarm.Address, _ swarm.Address) (swarm.Chunk, error) {
 	return nil, storage.ErrNotFound
 }
-
-type noopSyncer struct{}
-
-func (noopSyncer) Rate() float64 { return 0 }
 
 func (db *DB) ChunkStore() storage.ReadOnlyChunkStore {
 	return db.repo.ChunkStore()

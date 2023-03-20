@@ -18,9 +18,6 @@ import (
 	"github.com/ethersphere/bee/pkg/traversal"
 )
 
-// how many parallel push operations
-const parallelPush = 5
-
 type Interface interface {
 	// Reupload root hash and all of its underlying
 	// associated chunks to the network.

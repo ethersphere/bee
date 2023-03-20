@@ -18,13 +18,8 @@ import (
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/swarm/test"
 )
-
-type fileUploadResponse struct {
-	Reference swarm.Address `json:"reference"`
-}
 
 func tagsWithIdResource(id uint64) string { return fmt.Sprintf("/tags/%d", id) }
 

@@ -6,7 +6,6 @@ package mockstorer
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"time"
 
@@ -17,8 +16,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"go.uber.org/atomic"
 )
-
-var errNotImplemented = errors.New("mock storer: not implemented")
 
 // now returns the current time.Time; used in testing.
 var now = time.Now

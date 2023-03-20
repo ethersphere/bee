@@ -56,7 +56,6 @@ import (
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/transaction"
-	"github.com/ethersphere/bee/pkg/traversal"
 	"github.com/go-playground/validator/v10"
 	"github.com/gorilla/mux"
 	"github.com/hashicorp/go-multierror"
@@ -90,8 +89,6 @@ const (
 	largeFileBufferSize = 16 * 32 * 1024
 
 	largeBufferFilesizeThreshold = 10 * 1000000 // ten megs
-
-	uploadSem = 50
 )
 
 const (
@@ -130,7 +127,6 @@ type Service struct {
 	storer          Storer
 	resolver        resolver.Interface
 	pss             pss.Interface
-	traversal       traversal.Traverser
 	steward         steward.Interface
 	logger          log.Logger
 	loggerV1        log.Logger

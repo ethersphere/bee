@@ -20,7 +20,6 @@ var (
 type (
 	HTTPRequestIDKey struct{}
 	requestHostKey   struct{}
-	tagKey           struct{}
 	gasPriceKey      struct{}
 	gasLimitKey      struct{}
 )
