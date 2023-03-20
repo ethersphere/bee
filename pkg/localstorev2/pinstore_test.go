@@ -137,12 +137,12 @@ func TestPinStore(t *testing.T) {
 		t.Parallel()
 
 		testPinStore(t, func() (*storer.DB, error) {
-			return storer.New(context.Background(), "", dbTestOps(test.RandomAddress(), 0, nil, nil, nil, time.Second))
+			return storer.New(context.Background(), "", dbTestOps(test.RandomAddress(), 0, nil, nil, time.Second))
 		})
 	})
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
 
-		testPinStore(t, diskStorer(t, dbTestOps(test.RandomAddress(), 0, nil, nil, nil, time.Second)))
+		testPinStore(t, diskStorer(t, dbTestOps(test.RandomAddress(), 0, nil, nil, time.Second)))
 	})
 }

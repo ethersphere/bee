@@ -32,7 +32,6 @@ import (
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	storer "github.com/ethersphere/bee/pkg/localstorev2"
 	mockstorer "github.com/ethersphere/bee/pkg/localstorev2/mock"
 	"github.com/ethersphere/bee/pkg/log"
 	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
@@ -60,7 +59,6 @@ import (
 	mock2 "github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
 	storagev2 "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	topologymock "github.com/ethersphere/bee/pkg/topology/mock"
 	"github.com/ethersphere/bee/pkg/tracing"
@@ -87,7 +85,7 @@ func init() {
 }
 
 type testServerOptions struct {
-	Storer             storer.Storer
+	Storer             api.Storer
 	StateStorer        storage.StateStorer
 	Resolver           resolver.Interface
 	Pss                pss.Interface
@@ -107,7 +105,6 @@ type testServerOptions struct {
 	Restricted         bool
 	DirectUpload       bool
 	Probe              *api.Probe
-	IndexDebugger      api.StorageIndexDebugger
 
 	Overlay         swarm.Address
 	PublicKey       ecdsa.PublicKey
@@ -198,7 +195,6 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		Steward:         o.Steward,
 		SyncStatus:      o.SyncStatus,
 		Staking:         o.StakingContract,
-		IndexDebugger:   o.IndexDebugger,
 	}
 
 	// By default bee mode is set to full mode.
@@ -711,12 +707,10 @@ func createRedistributionAgentService(
 		common.Address{},
 		backendmock.New(),
 		log.Noop,
-		&mockMonitor{},
 		contract,
 		postageContract,
 		stakingContract,
-		mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})),
-		&mockSampler{},
+		mockstorer.NewReserve(),
 		time.Millisecond*10,
 		blocksPerRound,
 		blocksPerPhase,
@@ -792,19 +786,4 @@ func (m *mockContract) Reveal(context.Context, uint8, []byte, []byte) (common.Ha
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, revealCall)
 	return common.Hash{}, nil
-}
-
-type mockMonitor struct {
-}
-
-func (m *mockMonitor) IsFullySynced() bool {
-	return true
-}
-
-type mockSampler struct{}
-
-func (m *mockSampler) ReserveSample(context.Context, []byte, uint8, uint64) (storage.Sample, error) {
-	return storage.Sample{
-		Hash: test.RandomAddress(),
-	}, nil
 }

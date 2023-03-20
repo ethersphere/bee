@@ -36,7 +36,7 @@ type SyncReporter interface {
 	Rate() float64
 }
 
-func (db *DB) reserveWorker(capacity int, syncer SyncReporter, warmupDur, wakeUpDur time.Duration) {
+func (db *DB) reserveWorker(capacity int, warmupDur, wakeUpDur time.Duration) {
 	defer db.reserveWg.Done()
 
 	threshold := capacity * 4 / 10
@@ -65,7 +65,7 @@ func (db *DB) reserveWorker(capacity int, syncer SyncReporter, warmupDur, wakeUp
 			}
 		case <-time.After(wakeUpDur):
 			radius := db.reserve.Radius()
-			if db.reserve.Size() < threshold && syncer.Rate() == 0 && radius > 0 {
+			if db.reserve.Size() < threshold && db.syncer.Rate() == 0 && radius > 0 {
 				radius--
 				err := db.reserve.SetRadius(db.repo.IndexStore(), radius)
 				if err != nil {

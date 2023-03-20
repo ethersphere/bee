@@ -100,6 +100,7 @@ func (s *ReserveStore) EvictBatch(ctx context.Context, batchID []byte) error { r
 func (s *ReserveStore) IsWithinStorageRadius(addr swarm.Address) bool        { return true }
 func (s *ReserveStore) StorageRadius() uint8                                 { return s.radius }
 func (s *ReserveStore) SetStorageRadius(r uint8)                             { s.radius = r }
+func (s *ReserveStore) IsFullySynced() bool                                  { return true }
 
 // IntervalChunks returns a set of chunk in a requested interval.
 func (s *ReserveStore) SubscribeBin(ctx context.Context, bin uint8, start uint64) (<-chan *storer.BinC, func(), <-chan error) {

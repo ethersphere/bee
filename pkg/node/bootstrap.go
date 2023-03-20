@@ -181,7 +181,9 @@ func bootstrapNode(
 
 	pricing.SetPaymentThresholdObserver(acc)
 
-	localStore, err := storer.New(ctx, "", &storer.Options{})
+	localStore, err := storer.New(ctx, "", &storer.Options{
+		CacheCapacity: 1_000_000,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("local store creation: %v", err)
 	}
@@ -191,6 +193,8 @@ func bootstrapNode(
 	if err = p2ps.AddProtocol(retrieve.Protocol()); err != nil {
 		return nil, fmt.Errorf("retrieval service: %w", err)
 	}
+
+	localStore.SetRetrievalService(retrieve)
 
 	if err := kad.Start(p2pCtx); err != nil {
 		return nil, err

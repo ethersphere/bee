@@ -17,8 +17,6 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	batchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
-	"github.com/ethersphere/bee/pkg/puller"
-	pullerMock "github.com/ethersphere/bee/pkg/puller/mock"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/storagev2/migration"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -109,7 +107,7 @@ func TestNew(t *testing.T) {
 	t.Run("inmem with options", func(t *testing.T) {
 		t.Parallel()
 
-		opts := dbTestOps(test.RandomAddress(), 0, nil, nil, nil, time.Second)
+		opts := dbTestOps(test.RandomAddress(), 0, nil, nil, time.Second)
 
 		lstore := makeInmemStorer(t, opts)
 		if lstore == nil {
@@ -119,7 +117,7 @@ func TestNew(t *testing.T) {
 	t.Run("disk default options", func(t *testing.T) {
 		t.Parallel()
 
-		lstore := makeDiskStorer(t, dbTestOps(test.RandomAddress(), 0, nil, nil, nil, time.Second))
+		lstore := makeDiskStorer(t, dbTestOps(test.RandomAddress(), 0, nil, nil, time.Second))
 		if lstore == nil {
 			t.Fatalf("storer should be instantiated")
 		}
@@ -127,7 +125,7 @@ func TestNew(t *testing.T) {
 	t.Run("disk with options", func(t *testing.T) {
 		t.Parallel()
 
-		opts := dbTestOps(test.RandomAddress(), 0, nil, nil, nil, time.Second)
+		opts := dbTestOps(test.RandomAddress(), 0, nil, nil, time.Second)
 		opts.CacheCapacity = 10
 
 		lstore := makeDiskStorer(t, opts)
@@ -142,20 +140,20 @@ func TestNew(t *testing.T) {
 		t.Run("inmem", func(t *testing.T) {
 			t.Parallel()
 
-			lstore := makeInmemStorer(t, dbTestOps(test.RandomAddress(), 0, nil, nil, nil, time.Second))
+			lstore := makeInmemStorer(t, dbTestOps(test.RandomAddress(), 0, nil, nil, time.Second))
 			assertStorerVersion(t, lstore)
 		})
 
 		t.Run("disk", func(t *testing.T) {
 			t.Parallel()
 
-			lstore := makeDiskStorer(t, dbTestOps(test.RandomAddress(), 0, nil, nil, nil, time.Second))
+			lstore := makeDiskStorer(t, dbTestOps(test.RandomAddress(), 0, nil, nil, time.Second))
 			assertStorerVersion(t, lstore)
 		})
 	})
 }
 
-func dbTestOps(baseAddr swarm.Address, reserveCapacity int, bs postage.Storer, syncer puller.SyncRate, radiusSetter topology.SetStorageRadiuser, reserveWakeUpTime time.Duration) *storer.Options {
+func dbTestOps(baseAddr swarm.Address, reserveCapacity int, bs postage.Storer, radiusSetter topology.SetStorageRadiuser, reserveWakeUpTime time.Duration) *storer.Options {
 
 	opts := storer.DefaultOptions()
 
@@ -167,15 +165,10 @@ func dbTestOps(baseAddr swarm.Address, reserveCapacity int, bs postage.Storer, s
 		bs = batchstore.New()
 	}
 
-	if syncer == nil {
-		syncer = pullerMock.NewMockRateReporter(0)
-	}
-
 	opts.Address = baseAddr
 	opts.RadiusSetter = radiusSetter
 	opts.ReserveCapacity = reserveCapacity
 	opts.Batchstore = bs
-	opts.Syncer = syncer
 	opts.ReserveWakeUpDuration = reserveWakeUpTime
 	opts.Logger = log.Noop
 

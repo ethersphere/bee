@@ -296,13 +296,11 @@ type Options struct {
 	LdbDisableSeeksCompaction bool
 	CacheCapacity             uint64
 	Logger                    log.Logger
-	Retrieval                 retrieval.Interface
 
 	Address        swarm.Address
 	WarmupDuration time.Duration
 	Batchstore     postage.Storer
 	RadiusSetter   topology.SetStorageRadiuser
-	Syncer         SyncReporter
 
 	ReserveCapacity       int
 	ReserveWakeUpDuration time.Duration
@@ -349,6 +347,7 @@ type DB struct {
 	reserveBinEvents *events.Subscriber
 	baseAddr         swarm.Address
 	batchstore       postage.Storer
+	syncer           SyncReporter
 }
 
 // New returns a newly constructed DB object which implements all the above
@@ -387,11 +386,6 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 
 	logger := opts.Logger.WithName(loggerName).Register()
 
-	rs, err := reserve.New(opts.Address, repo.IndexStore(), opts.ReserveCapacity, opts.Batchstore.Radius(), opts.RadiusSetter, logger)
-	if err != nil {
-		return nil, err
-	}
-
 	db := &DB{
 		metrics:          newMetrics(),
 		logger:           logger,
@@ -399,19 +393,27 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		repo:             repo,
 		lock:             multex.New(),
 		cacheObj:         cacheObj,
-		retrieval:        opts.Retrieval,
+		retrieval:        noopRetrieval{},
 		pusherFeed:       make(chan *pusher.Op),
 		quit:             make(chan struct{}),
 		bgCacheWorkers:   make(chan struct{}, 16),
 		dbCloser:         dbCloser,
-		reserve:          rs,
 		batchstore:       opts.Batchstore,
+		syncer:           noopSyncer{},
 		events:           events.NewSubscriber(),
 		reserveBinEvents: events.NewSubscriber(),
 	}
 
-	db.reserveWg.Add(1)
-	go db.reserveWorker(opts.ReserveCapacity, opts.Syncer, opts.WarmupDuration, opts.ReserveWakeUpDuration)
+	if opts.ReserveCapacity > 0 {
+		rs, err := reserve.New(opts.Address, repo.IndexStore(), opts.ReserveCapacity, opts.Batchstore.Radius(), opts.RadiusSetter, logger)
+		if err != nil {
+			return nil, err
+		}
+		db.reserve = rs
+
+		db.reserveWg.Add(1)
+		go db.reserveWorker(opts.ReserveCapacity, opts.WarmupDuration, opts.ReserveWakeUpDuration)
+	}
 
 	return db, nil
 }
@@ -460,6 +462,24 @@ func (db *DB) Close() error {
 
 	return err
 }
+
+func (db *DB) SetRetrievalService(r retrieval.Interface) {
+	db.retrieval = r
+}
+
+func (db *DB) SetSyncer(s SyncReporter) {
+	db.syncer = s
+}
+
+type noopRetrieval struct{}
+
+func (noopRetrieval) RetrieveChunk(_ context.Context, _ swarm.Address, _ swarm.Address) (swarm.Chunk, error) {
+	return nil, storage.ErrNotFound
+}
+
+type noopSyncer struct{}
+
+func (noopSyncer) Rate() float64 { return 0 }
 
 func (db *DB) ChunkStore() storage.ReadOnlyChunkStore {
 	return db.repo.ChunkStore()

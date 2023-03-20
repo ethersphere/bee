@@ -52,7 +52,7 @@ func (p *putterSession) Cleanup() error { return nil }
 
 // New returns a mock storer implementation that is designed to be used for the
 // unit tests.
-func New() storer.Storer {
+func New() *mockStorer {
 	return &mockStorer{
 		chunkStore:     inmemchunkstore.New(),
 		chunkPushC:     make(chan *pusher.Op),
@@ -60,7 +60,7 @@ func New() storer.Storer {
 	}
 }
 
-func NewWithChunkStore(cs storage.ChunkStore) storer.Storer {
+func NewWithChunkStore(cs storage.ChunkStore) *mockStorer {
 	return &mockStorer{
 		chunkStore:     cs,
 		chunkPushC:     make(chan *pusher.Op),
@@ -209,3 +209,7 @@ func (m *mockStorer) PusherFeed() <-chan *pusher.Op {
 func (m *mockStorer) ChunkStore() storage.ReadOnlyChunkStore {
 	return m.chunkStore
 }
+
+func (m *mockStorer) StorageRadius() uint8 { return 0 }
+
+func (m *mockStorer) IsWithinStorageRadius(_ swarm.Address) bool { return true }

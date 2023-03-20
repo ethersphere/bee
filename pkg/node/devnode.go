@@ -65,7 +65,6 @@ type DevBee struct {
 	localstoreCloser io.Closer
 	apiCloser        io.Closer
 	pssCloser        io.Closer
-	tagsCloser       io.Closer
 	errorLogWriter   io.Writer
 	apiServer        *http.Server
 	debugAPIServer   *http.Server
@@ -225,21 +224,9 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		b.debugAPIServer = debugAPIServer
 	}
 
-	// lo := &localstore.Options{
-	// 	Capacity:               1000000,
-	// 	ReserveCapacity:        o.ReserveCapacity,
-	// 	OpenFilesLimit:         o.DBOpenFilesLimit,
-	// 	BlockCacheCapacity:     o.DBBlockCacheCapacity,
-	// 	WriteBufferSize:        o.DBWriteBufferSize,
-	// 	DisableSeeksCompaction: o.DBDisableSeeksCompaction,
-	// 	UnreserveFunc: func(postage.UnreserveIteratorFn) error {
-	// 		return nil
-	// 	},
-	// }
-
 	localStore, err := storer.New(context.Background(), "", &storer.Options{
-		Address: swarmAddress,
-		Logger:  logger,
+		Logger:        logger,
+		CacheCapacity: 1_000_000,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("localstore: %w", err)
@@ -495,7 +482,6 @@ func (b *DevBee) Shutdown() error {
 
 	tryClose(b.pssCloser, "pss")
 	tryClose(b.tracerCloser, "tracer")
-	tryClose(b.tagsCloser, "tag persistence")
 	tryClose(b.stateStoreCloser, "statestore")
 	tryClose(b.localstoreCloser, "localstore")
 

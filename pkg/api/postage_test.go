@@ -10,17 +10,19 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/ethereum/go-ethereum/common"
 	"math/big"
 	"net/http"
 	"strconv"
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
+
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/bigint"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
+	mockstorer "github.com/ethersphere/bee/pkg/localstorev2/mock"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
@@ -406,15 +408,15 @@ func TestGetAllBatches(t *testing.T) {
 	}{
 		Batches: []api.PostageBatchResponse{
 			{
-				BatchID:       b.ID,
-				Value:         bigint.Wrap(b.Value),
-				Start:         b.Start,
-				Owner:         b.Owner,
-				Depth:         b.Depth,
-				BucketDepth:   b.BucketDepth,
-				Immutable:     b.Immutable,
-				StorageRadius: b.StorageRadius,
-				BatchTTL:      15, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
+				BatchID:     b.ID,
+				Value:       bigint.Wrap(b.Value),
+				Start:       b.Start,
+				Owner:       b.Owner,
+				Depth:       b.Depth,
+				BucketDepth: b.BucketDepth,
+				Immutable:   b.Immutable,
+				// StorageRadius: b.StorageRadius,
+				BatchTTL: 15, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
 			},
 		},
 	}
@@ -502,10 +504,9 @@ func TestReserveState(t *testing.T) {
 		t.Parallel()
 
 		ts, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI: true,
-			BatchStore: mock.New(mock.WithReserveState(&postage.ReserveState{
-				Radius: 5,
-			})),
+			DebugAPI:   true,
+			BatchStore: mock.New(mock.WithRadius(5)),
+			Storer:     mockstorer.New(),
 		})
 		jsonhttptest.Request(t, ts, http.MethodGet, "/reservestate", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&api.ReserveStateResponse{
@@ -519,6 +520,7 @@ func TestReserveState(t *testing.T) {
 		ts, _, _, _ := newTestServer(t, testServerOptions{
 			DebugAPI:   true,
 			BatchStore: mock.New(),
+			Storer:     mockstorer.New(),
 		})
 		jsonhttptest.Request(t, ts, http.MethodGet, "/reservestate", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&api.ReserveStateResponse{}),

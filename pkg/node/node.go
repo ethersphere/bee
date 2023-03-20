@@ -628,33 +628,6 @@ func NewBee(
 	b.p2pService = p2ps
 	b.p2pHalter = p2ps
 
-	// localstore depends on batchstore
-	var path string
-
-	if o.DataDir != "" {
-		logger.Info("using datadir", "path", o.DataDir)
-		path = filepath.Join(o.DataDir, "localstore")
-	}
-
-	validStamp := postage.ValidStamp(batchStore)
-
-	lo := &storer.Options{
-		Address:                   swarmAddress,
-		CacheCapacity:             o.CacheCapacity,
-		ReserveCapacity:           reserveCapacity,
-		LdbOpenFilesLimit:         o.DBOpenFilesLimit,
-		LdbBlockCacheCapacity:     o.DBBlockCacheCapacity,
-		LdbWriteBufferSize:        o.DBWriteBufferSize,
-		LdbDisableSeeksCompaction: o.DBDisableSeeksCompaction,
-	}
-
-	localStore, err := storer.New(ctx, path, lo)
-	if err != nil {
-		return nil, fmt.Errorf("localstore: %w", err)
-	}
-	b.localstoreCloser = localStore
-	evictFn = func(id []byte) error { return localStore.EvictBatch(context.Background(), id) }
-
 	post, err := postage.NewService(stateStore, batchStore, chainID)
 	if err != nil {
 		return nil, fmt.Errorf("postage service load: %w", err)
@@ -906,10 +879,44 @@ func NewBee(
 
 	pricing.SetPaymentThresholdObserver(acc)
 
+	var path string
+
+	if o.DataDir != "" {
+		logger.Info("using datadir", "path", o.DataDir)
+		path = filepath.Join(o.DataDir, "localstore")
+	}
+
+	lo := &storer.Options{
+		Address:                   swarmAddress,
+		CacheCapacity:             o.CacheCapacity,
+		LdbOpenFilesLimit:         o.DBOpenFilesLimit,
+		LdbBlockCacheCapacity:     o.DBBlockCacheCapacity,
+		LdbWriteBufferSize:        o.DBWriteBufferSize,
+		LdbDisableSeeksCompaction: o.DBDisableSeeksCompaction,
+		Batchstore:                batchStore,
+		RadiusSetter:              kad,
+		WarmupDuration:            o.WarmupTime,
+	}
+
+	if o.FullNodeMode && !o.BootnodeMode {
+		// configure reserve only for full node
+		lo.ReserveCapacity = reserveCapacity
+	}
+
+	localStore, err := storer.New(ctx, path, lo)
+	if err != nil {
+		return nil, fmt.Errorf("localstore: %w", err)
+	}
+	b.localstoreCloser = localStore
+	evictFn = func(id []byte) error { return localStore.EvictBatch(context.Background(), id) }
+
 	retrieve := retrieval.New(swarmAddress, localStore, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching)
+	localStore.SetRetrievalService(retrieve)
 
 	pssService := pss.New(pssPrivateKey, logger)
 	b.pssCloser = pssService
+
+	validStamp := postage.ValidStamp(batchStore)
 
 	pushSyncProtocol := pushsync.New(swarmAddress, nonce, p2ps, localStore, kad, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
 
@@ -969,6 +976,8 @@ func NewBee(
 	if o.FullNodeMode && !o.BootnodeMode {
 		pullerService = puller.New(stateStore, kad, localStore, pullSyncProtocol, p2ps, logger, swarm.MaxBins, puller.DefaultSyncErrorSleepDur, warmupTime)
 		b.pullerCloser = pullerService
+
+		localStore.SetSyncer(pullerService)
 
 		if o.EnableStorageIncentives {
 
