@@ -11,6 +11,7 @@ import (
 	storer "github.com/ethersphere/bee/pkg/localstorev2"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
+	swarmtest "github.com/ethersphere/bee/pkg/swarm/test"
 )
 
 type chunksResponse struct {
@@ -207,7 +208,9 @@ func (s *ReserveStore) ReserveHas(addr swarm.Address, batchID []byte) (bool, err
 }
 
 func (s *ReserveStore) ReserveSample(context.Context, []byte, uint8, uint64) (storer.Sample, error) {
-	return storer.Sample{}, nil
+	return storer.Sample{
+		Hash: swarmtest.RandomAddress(),
+	}, nil
 }
 
 type Option interface {
