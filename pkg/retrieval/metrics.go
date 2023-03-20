@@ -16,6 +16,10 @@ type metrics struct {
 	// using reflection
 
 	RequestCounter        prometheus.Counter
+	RequestSuccessCounter prometheus.Counter
+	RequestFailureCounter prometheus.Counter
+	RequestDurationTime   prometheus.Histogram
+	RequestAttempts       prometheus.Histogram
 	PeerRequestCounter    prometheus.Counter
 	TotalRetrieved        prometheus.Counter
 	InvalidChunkRetrieved prometheus.Counter
@@ -33,6 +37,30 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "request_count",
 			Help:      "Number of requests to retrieve chunks.",
+		}),
+		RequestSuccessCounter: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "request_success_count",
+			Help:      "Number of requests which succeeded to retrieve chunk.",
+		}),
+		RequestFailureCounter: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "request_failure_count",
+			Help:      "Number of requests which failed to retrieve chunk.",
+		}),
+		RequestDurationTime: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "request_duration_time",
+			Help:      "Histogram for time taken to complete retrieval request",
+		}),
+		RequestAttempts: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "request_attempts",
+			Help:      "Histogram for total retrieval attempts pre each request.",
 		}),
 		PeerRequestCounter: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
@@ -64,13 +92,12 @@ func newMetrics() metrics {
 			Name:      "total_errors",
 			Help:      "Total number of errors while retrieving chunk.",
 		}),
-		ChunkRetrieveTime: prometheus.NewHistogram(
-			prometheus.HistogramOpts{
-				Namespace: m.Namespace,
-				Subsystem: subsystem,
-				Name:      "retrieve_chunk_time",
-				Help:      "Histogram for time taken to retrieve a chunk.",
-			},
+		ChunkRetrieveTime: prometheus.NewHistogram(prometheus.HistogramOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "retrieve_chunk_time",
+			Help:      "Histogram for time taken to retrieve a chunk.",
+		},
 		),
 	}
 }
