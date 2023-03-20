@@ -153,7 +153,7 @@ func newCommand(opts ...option) (c *command, err error) {
 	}
 
 	c.initVersionCmd()
-	c.initDBCmd()
+	// c.initDBCmd()
 
 	if err := c.initConfigurateOptionsCmd(); err != nil {
 		return nil, err

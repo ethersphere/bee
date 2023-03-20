@@ -9,7 +9,6 @@ import (
 	"errors"
 	"io"
 	"testing"
-	"time"
 
 	storer "github.com/ethersphere/bee/pkg/localstorev2"
 	mock "github.com/ethersphere/bee/pkg/localstorev2/mock"
@@ -243,6 +242,5 @@ func newPullSync(s p2p.Streamer, maxPage uint64, o ...mock.Option) (*pullsync.Sy
 		validStamp,
 		logger,
 		maxPage,
-		time.Hour,
 	), storage
 }
