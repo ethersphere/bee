@@ -701,10 +701,14 @@ components:
     RedistributionStateResponse:
       type: object
       properties:
+        hasSufficientFunds:
+          type: boolean
         isFrozen:
           type: boolean
         isFullySynced:
           type: boolean
+        phase:
+          type: string
         round:
           type: integer
         lastWonRound:
