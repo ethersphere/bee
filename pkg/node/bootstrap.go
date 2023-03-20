@@ -185,7 +185,7 @@ func bootstrapNode(
 		CacheCapacity: 1_000_000,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("local store creation: %v", err)
+		return nil, fmt.Errorf("local store creation: %w", err)
 	}
 	b.localstoreCloser = localStore
 
