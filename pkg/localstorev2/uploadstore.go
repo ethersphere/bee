@@ -37,17 +37,21 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 	db.markDirty(tagID)
 
 	return &putterSession{
-		Putter: storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
-			return multierror.Append(
-				uploadPutter.Put(ctx, chunk),
-				func() error {
-					if pinningPutter != nil {
-						return pinningPutter.Put(ctx, chunk)
-					}
-					return nil
-				}(),
-			).ErrorOrNil()
-		}),
+		Putter: putterWithMetrics{
+			storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
+				return multierror.Append(
+					uploadPutter.Put(ctx, chunk),
+					func() error {
+						if pinningPutter != nil {
+							return pinningPutter.Put(ctx, chunk)
+						}
+						return nil
+					}(),
+				).ErrorOrNil()
+			}),
+			db.metrics,
+			"uploadstore",
+		},
 		done: func(address swarm.Address) error {
 			defer func() {
 				db.clearDirty(tagID)

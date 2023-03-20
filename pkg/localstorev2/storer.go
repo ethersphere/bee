@@ -23,6 +23,7 @@ import (
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/upload"
 	localmigration "github.com/ethersphere/bee/pkg/localstorev2/migration"
 	"github.com/ethersphere/bee/pkg/log"
+	m "github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/retrieval"
@@ -33,6 +34,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/hashicorp/go-multierror"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/afero"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 	"resenje.org/multex"
@@ -319,12 +321,14 @@ func defaultOptions() *Options {
 
 // DB implements all the component stores described above.
 type DB struct {
+	logger  log.Logger
+	metrics metrics
+
 	repo             storage.Repository
 	lock             *multex.Multex
 	cacheObj         *cache.Cache
 	retrieval        retrieval.Interface
 	pusherFeed       chan *pusher.Op
-	logger           log.Logger
 	quit             chan struct{}
 	bgCacheWorkers   chan struct{}
 	bgCacheWorkersWg sync.WaitGroup
@@ -388,13 +392,14 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	}
 
 	db := &DB{
+		metrics:          newMetrics(),
+		logger:           logger,
 		baseAddr:         opts.Address,
 		repo:             repo,
 		lock:             multex.New(),
 		cacheObj:         cacheObj,
 		retrieval:        opts.Retrieval,
 		pusherFeed:       make(chan *pusher.Op),
-		logger:           logger,
 		quit:             make(chan struct{}),
 		bgCacheWorkers:   make(chan struct{}, 16),
 		dbCloser:         dbCloser,
@@ -408,6 +413,12 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	go db.reserveWorker(opts.ReserveCapacity, opts.Syncer, opts.WarmupDuration, opts.ReserveWakeUpDuration)
 
 	return db, nil
+}
+
+// Metrics returns set of prometheus collectors.
+// TODO: register metrics in the node.go.
+func (db *DB) Metrics() []prometheus.Collector {
+	return m.PrometheusCollectorsFromFields(db.metrics)
 }
 
 func (db *DB) Close() error {
