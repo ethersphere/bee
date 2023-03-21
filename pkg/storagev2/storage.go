@@ -25,6 +25,7 @@ type Result struct {
 }
 
 // IterateFn iterates through the Items of the store in the Key.Namespace.
+// The function returns a boolean to indicate if the iteration should stop.
 type IterateFn func(Result) (bool, error)
 
 // Filter subtracts entries from the iteration. Filters would not construct the
@@ -164,7 +165,7 @@ type Store interface {
 	// store that are in the same Key.Namespace.
 	Count(Key) (int, error)
 
-	// Put inserts or updates the the given Item identified by its Key.ID.
+	// Put inserts or updates the given Item identified by its Key.ID.
 	Put(Item) error
 
 	// Delete removes the given Item form the store.

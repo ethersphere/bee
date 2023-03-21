@@ -58,9 +58,9 @@ func verifySessionInfo(
 	verifyChunks(t, repo, chunks, has)
 
 	if has {
-		tagInfo, err := upload.GetTagInfo(repo.IndexStore(), sessionID)
+		tagInfo, err := upload.TagInfo(repo.IndexStore(), sessionID)
 		if err != nil {
-			t.Fatalf("upload.GetTagInfo(...): unexpected error: %v", err)
+			t.Fatalf("upload.TagInfo(...): unexpected error: %v", err)
 		}
 
 		if tagInfo.Split != uint64(len(chunks)) {

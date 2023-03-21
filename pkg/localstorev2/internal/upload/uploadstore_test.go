@@ -24,6 +24,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	swarmtesting "github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
 // now is a function that returns the current time and replaces time.Now.
@@ -398,8 +399,12 @@ func TestChunkPutter(t *testing.T) {
 
 	ts := newTestStorage(t)
 
-	const tagID = 1
-	putter, err := upload.NewPutter(ts, tagID)
+	tag, err := upload.NextTag(ts.IndexStore())
+	if err != nil {
+		t.Fatalf("failed creating tag: %v", err)
+	}
+
+	putter, err := upload.NewPutter(ts, tag.TagID)
 	if err != nil {
 		t.Fatalf("failed creating putter: %v", err)
 	}
@@ -432,7 +437,7 @@ func TestChunkPutter(t *testing.T) {
 				wantUI := &upload.UploadItem{
 					Address:  chunk.Address(),
 					BatchID:  chunk.Stamp().BatchID(),
-					TagID:    tagID,
+					TagID:    tag.TagID,
 					Uploaded: now().UnixNano(),
 				}
 
@@ -452,7 +457,7 @@ func TestChunkPutter(t *testing.T) {
 				wantPI := &upload.PushItem{
 					Address:   chunk.Address(),
 					BatchID:   chunk.Stamp().BatchID(),
-					TagID:     tagID,
+					TagID:     tag.TagID,
 					Timestamp: now().UnixNano(),
 				}
 
@@ -479,13 +484,13 @@ func TestChunkPutter(t *testing.T) {
 			t.Fatalf("Close(...): unexpected error %v", err)
 		}
 
-		ti, err := upload.GetTagInfo(ts.IndexStore(), tagID)
+		ti, err := upload.TagInfo(ts.IndexStore(), tag.TagID)
 		if err != nil {
-			t.Fatalf("GetTagInfo(...): unexpected error %v", err)
+			t.Fatalf("TagInfo(...): unexpected error %v", err)
 		}
 
 		wantTI := upload.TagItem{
-			TagID:     tagID,
+			TagID:     tag.TagID,
 			Split:     20,
 			Seen:      10,
 			StartedAt: now().Unix(),
@@ -509,8 +514,12 @@ func TestChunkReporter(t *testing.T) {
 
 	ts := newTestStorage(t)
 
-	const tagID = 1
-	putter, err := upload.NewPutter(ts, tagID)
+	tag, err := upload.NextTag(ts.IndexStore())
+	if err != nil {
+		t.Fatalf("failed creating tag: %v", err)
+	}
+
+	putter, err := upload.NewPutter(ts, tag.TagID)
 	if err != nil {
 		t.Fatalf("failed creating putter: %v", err)
 	}
@@ -560,7 +569,7 @@ func TestChunkReporter(t *testing.T) {
 
 			t.Run("verify internal state", func(t *testing.T) {
 				ti := &upload.TagItem{
-					TagID: tagID,
+					TagID: tag.TagID,
 				}
 				err := ts.IndexStore().Get(ti)
 				if err != nil {
@@ -577,7 +586,7 @@ func TestChunkReporter(t *testing.T) {
 					}
 				}
 				wantTI := &upload.TagItem{
-					TagID:     tagID,
+					TagID:     tag.TagID,
 					StartedAt: now().Unix(),
 					Sent:      sent,
 					Synced:    synced,
@@ -599,7 +608,7 @@ func TestChunkReporter(t *testing.T) {
 				wantUI := &upload.UploadItem{
 					Address:  chunk.Address(),
 					BatchID:  chunk.Stamp().BatchID(),
-					TagID:    tagID,
+					TagID:    tag.TagID,
 					Uploaded: now().UnixNano(),
 					Synced:   now().Unix(),
 				}
@@ -640,13 +649,13 @@ func TestChunkReporter(t *testing.T) {
 			t.Fatalf("Close(...): unexpected error %v", err)
 		}
 
-		ti, err := upload.GetTagInfo(ts.IndexStore(), tagID)
+		ti, err := upload.TagInfo(ts.IndexStore(), tag.TagID)
 		if err != nil {
-			t.Fatalf("GetTagInfo(...): unexpected error %v", err)
+			t.Fatalf("TagInfo(...): unexpected error %v", err)
 		}
 
 		wantTI := upload.TagItem{
-			TagID:     tagID,
+			TagID:     tag.TagID,
 			Split:     10,
 			Seen:      0,
 			Stored:    4,
@@ -666,8 +675,12 @@ func TestStampIndexHandling(t *testing.T) {
 
 	ts := newTestStorage(t)
 
-	const tagID = 1
-	putter, err := upload.NewPutter(ts, tagID)
+	tag, err := upload.NextTag(ts.IndexStore())
+	if err != nil {
+		t.Fatalf("failed creating tag: %v", err)
+	}
+
+	putter, err := upload.NewPutter(ts, tag.TagID)
 	if err != nil {
 		t.Fatalf("failed creating putter: %v", err)
 	}
@@ -771,6 +784,31 @@ func TestNextTagID(t *testing.T) {
 	}
 }
 
+func TestListTags(t *testing.T) {
+	t.Parallel()
+
+	ts := newTestStorage(t)
+
+	want := make([]upload.TagItem, 10)
+	for i := range want {
+		ti, err := upload.NextTag(ts.IndexStore())
+		if err != nil {
+			t.Fatalf("failed creating tag: %v", err)
+		}
+		want[i] = ti
+	}
+
+	have, err := upload.ListAllTags(ts.IndexStore())
+	if err != nil {
+		t.Fatalf("upload.ListAllTags(): unexpected error: %v", err)
+	}
+
+	opts := cmpopts.SortSlices(func(i, j upload.TagItem) bool { return i.TagID < j.TagID })
+	if diff := cmp.Diff(want, have, opts); diff != "" {
+		t.Fatalf("upload.ListAllTags(): missmatch (-want +have):\n%s", diff)
+	}
+}
+
 func TestIterate(t *testing.T) {
 	t.Parallel()
 
@@ -787,7 +825,12 @@ func TestIterate(t *testing.T) {
 	})
 
 	t.Run("iterates chunks", func(t *testing.T) {
-		putter, err := upload.NewPutter(ts, 1)
+		tag, err := upload.NextTag(ts.IndexStore())
+		if err != nil {
+			t.Fatalf("failed creating tag: %v", err)
+		}
+
+		putter, err := upload.NewPutter(ts, tag.TagID)
 		if err != nil {
 			t.Fatalf("failed creating putter: %v", err)
 		}
@@ -819,4 +862,25 @@ func TestIterate(t *testing.T) {
 			t.Fatalf("expected to iterate two chunks, got: %v", count)
 		}
 	})
+}
+
+func TestDeleteTag(t *testing.T) {
+	t.Parallel()
+
+	ts := newTestStorage(t)
+
+	tag, err := upload.NextTag(ts.IndexStore())
+	if err != nil {
+		t.Fatal("failed creating tag", err)
+	}
+
+	err = upload.DeleteTag(ts.IndexStore(), tag.TagID)
+	if err != nil {
+		t.Fatalf("upload.DeleteTag(): unexpected error: %v", err)
+	}
+
+	_, err = upload.TagInfo(ts.IndexStore(), tag.TagID)
+	if !errors.Is(err, storage.ErrNotFound) {
+		t.Fatalf("want: %v; have: %v", storage.ErrNotFound, err)
+	}
 }
