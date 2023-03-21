@@ -172,15 +172,20 @@ func (db *DB) ReserveSample(
 		close(sampleItemChan)
 	}()
 
-	sampleItems := make([]swarm.Address, 0, sampleSize)
+	sampleItems := make([]storage.SampleEntry, 0, sampleSize)
 	// insert function will insert the new item in its correct place. If the sample
 	// size goes beyond what we need we omit the last item.
 	insert := func(item swarm.Address) {
 		added := false
 		for i, sItem := range sampleItems {
-			if le(item.Bytes(), sItem.Bytes()) {
+			if le(item.Bytes(), sItem.TransformedAddress.Bytes()) {
 				sampleItems = append(sampleItems[:i+1], sampleItems[i:]...)
-				sampleItems[i] = item
+				sampleItems[i] = storage.SampleEntry{
+					TransformedAddress: item,
+					ChunkItem:          shed.Item{
+						//TODO fetch data
+					},
+				}
 				added = true
 				break
 			}
@@ -189,7 +194,12 @@ func (db *DB) ReserveSample(
 			sampleItems = sampleItems[:sampleSize]
 		}
 		if len(sampleItems) < sampleSize && !added {
-			sampleItems = append(sampleItems, item)
+			sampleItems = append(sampleItems, storage.SampleEntry{
+				TransformedAddress: item,
+				ChunkItem:          shed.Item{
+					//TODO fetch data
+				},
+			})
 		}
 	}
 
@@ -198,7 +208,7 @@ func (db *DB) ReserveSample(
 	for item := range sampleItemChan {
 		var currentMaxAddr swarm.Address
 		if len(sampleItems) > 0 {
-			currentMaxAddr = sampleItems[len(sampleItems)-1]
+			currentMaxAddr = sampleItems[len(sampleItems)-1].TransformedAddress
 		} else {
 			currentMaxAddr = swarm.NewAddress(make([]byte, 32))
 		}
@@ -247,7 +257,7 @@ func (db *DB) ReserveSample(
 	defer bmtpool.Put(hasher)
 
 	for _, s := range sampleItems {
-		_, err := hasher.Write(s.Bytes())
+		_, err := hasher.Write(s.ChunkItem.Data)
 		if err != nil {
 			db.metrics.SamplerFailedRuns.Inc()
 			return storage.Sample{}, fmt.Errorf("sampler: failed creating root hash of sample: %w", err)
