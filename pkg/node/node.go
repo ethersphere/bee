@@ -180,6 +180,7 @@ const (
 	maxPaymentThreshold           = 24 * refreshRate          // maximal accepted payment threshold of full nodes
 	mainnetNetworkID              = uint64(1)                 //
 	reserveCapacity               = 2 ^ 22
+	reserveTreshold               = reserveCapacity * 4 / 10
 )
 
 func NewBee(
@@ -977,7 +978,7 @@ func NewBee(
 		pullerService = puller.New(stateStore, kad, localStore, pullSyncProtocol, p2ps, logger, swarm.MaxBins, puller.DefaultSyncErrorSleepDur, warmupTime)
 		b.pullerCloser = pullerService
 
-		localStore.SetSyncer(pullerService)
+		localStore.StartReserveWorker(pullerService)
 
 		if o.EnableStorageIncentives {
 
@@ -993,6 +994,10 @@ func NewBee(
 				return nil, fmt.Errorf("unable to parse redistribution ABI: %w", err)
 			}
 
+			isFullySynced := func() bool {
+				return localStore.ReserveSize() >= reserveTreshold && pullerService.Rate() == 0
+			}
+
 			redistributionContract := redistribution.New(swarmAddress, logger, transactionService, redistributionContractAddress, redistributionContractABI)
 			agent, err = storageincentives.New(
 				swarmAddress,
@@ -1003,6 +1008,7 @@ func NewBee(
 				postageStampContractService,
 				stakingContract,
 				localStore,
+				isFullySynced,
 				o.BlockTime,
 				storageincentives.DefaultBlocksPerRound,
 				storageincentives.DefaultBlocksPerPhase,

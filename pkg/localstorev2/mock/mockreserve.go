@@ -130,6 +130,10 @@ func (s *ReserveStore) SubscribeBin(ctx context.Context, bin uint8, start uint64
 	return out, func() {}, errC
 }
 
+func (s *ReserveStore) ReserveSize() int {
+	return 0
+}
+
 func (s *ReserveStore) ReserveLastBinIDs() (curs []uint64, err error) {
 	return s.cursors, s.cursorsErr
 }
