@@ -149,15 +149,14 @@ type postageStampsResponse struct {
 }
 
 type postageBatchResponse struct {
-	BatchID       hexByte        `json:"batchID"`
-	Value         *bigint.BigInt `json:"value"`
-	Start         uint64         `json:"start"`
-	Owner         hexByte        `json:"owner"`
-	Depth         uint8          `json:"depth"`
-	BucketDepth   uint8          `json:"bucketDepth"`
-	Immutable     bool           `json:"immutable"`
-	StorageRadius uint8          `json:"storageRadius"`
-	BatchTTL      int64          `json:"batchTTL"`
+	BatchID     hexByte        `json:"batchID"`
+	Value       *bigint.BigInt `json:"value"`
+	Start       uint64         `json:"start"`
+	Owner       hexByte        `json:"owner"`
+	Depth       uint8          `json:"depth"`
+	BucketDepth uint8          `json:"bucketDepth"`
+	Immutable   bool           `json:"immutable"`
+	BatchTTL    int64          `json:"batchTTL"`
 }
 
 type postageStampBucketsResponse struct {
@@ -240,8 +239,7 @@ func (s *Service) postageGetAllStampsHandler(w http.ResponseWriter, _ *http.Requ
 			Depth:       b.Depth,
 			BucketDepth: b.BucketDepth,
 			Immutable:   b.Immutable,
-			// StorageRadius: b.StorageRadius,
-			BatchTTL: batchTTL,
+			BatchTTL:    batchTTL,
 		})
 		return false, nil
 	})

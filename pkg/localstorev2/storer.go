@@ -348,12 +348,12 @@ type DB struct {
 	reserveBinEvents *events.Subscriber
 	baseAddr         swarm.Address
 	batchstore       postage.Storer
+	setSyncerOnce    sync.Once
 	syncer           SyncReporter
 	opts             workerOpts
 }
 
 type workerOpts struct {
-	capacity       int
 	warmupDuration time.Duration
 	wakeupDuration time.Duration
 }
@@ -410,7 +410,6 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		events:           events.NewSubscriber(),
 		reserveBinEvents: events.NewSubscriber(),
 		opts: workerOpts{
-			capacity:       opts.ReserveCapacity,
 			warmupDuration: opts.WarmupDuration,
 			wakeupDuration: opts.ReserveWakeUpDuration,
 		},
@@ -477,17 +476,12 @@ func (db *DB) SetRetrievalService(r retrieval.Interface) {
 }
 
 func (db *DB) SetSyncer(s SyncReporter) {
-	db.lock.Lock(lockKeySetSyncer)
-	defer db.lock.Unlock(lockKeySetSyncer)
+	db.setSyncerOnce.Do(func() {
+		db.syncer = s
 
-	if db.syncer != nil {
-		return
-	}
-
-	db.syncer = s
-
-	db.reserveWg.Add(1)
-	go db.reserveWorker(db.opts.capacity, db.opts.warmupDuration, db.opts.wakeupDuration)
+		db.reserveWg.Add(1)
+		go db.reserveWorker(db.reserve.Capacity(), db.opts.warmupDuration, db.opts.wakeupDuration)
+	})
 }
 
 type noopRetrieval struct{}

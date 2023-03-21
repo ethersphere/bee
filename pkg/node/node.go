@@ -1113,7 +1113,7 @@ func NewBee(
 		debugService.MustRegisterMetrics(p2ps.Metrics()...)
 		debugService.MustRegisterMetrics(pingPong.Metrics()...)
 		debugService.MustRegisterMetrics(acc.Metrics()...)
-		// debugService.MustRegisterMetrics(localStore.Metrics()...)
+		debugService.MustRegisterMetrics(localStore.Metrics()...)
 		debugService.MustRegisterMetrics(kad.Metrics()...)
 
 		if pullerService != nil {

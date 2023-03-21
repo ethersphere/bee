@@ -36,10 +36,10 @@ type SyncReporter interface {
 	Rate() float64
 }
 
+func threshold(capacity int) int { return capacity * 4 / 10 }
+
 func (db *DB) reserveWorker(capacity int, warmupDur, wakeUpDur time.Duration) {
 	defer db.reserveWg.Done()
-
-	threshold := capacity * 4 / 10
 
 	overCapTrigger, overCapUnsub := db.events.Subscribe(reserveOverCapacity)
 	defer overCapUnsub()
@@ -65,7 +65,7 @@ func (db *DB) reserveWorker(capacity int, warmupDur, wakeUpDur time.Duration) {
 			}
 		case <-time.After(wakeUpDur):
 			radius := db.reserve.Radius()
-			if db.reserve.Size() < threshold && db.syncer.Rate() == 0 && radius > 0 {
+			if db.reserve.Size() < threshold(capacity) && db.syncer.Rate() == 0 && radius > 0 {
 				radius--
 				err := db.reserve.SetRadius(db.repo.IndexStore(), radius)
 				if err != nil {
@@ -102,7 +102,9 @@ func (db *DB) IsWithinStorageRadius(addr swarm.Address) bool {
 	return swarm.Proximity(addr.Bytes(), db.baseAddr.Bytes()) >= db.reserve.Radius()
 }
 
-func (db *DB) IsFullySynced() bool { return false }
+func (db *DB) IsFullySynced() bool {
+	return db.syncer.Rate() == 0 && db.reserve.Size() > threshold(db.reserve.Capacity())
+}
 
 // ReserveHas is called by the requestor
 func (db *DB) ReserveHas(addr swarm.Address, batchID []byte) (has bool, err error) {
