@@ -123,6 +123,13 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr, sourcePeerAddr swarm.
 		flightRoute = addr.String() + originSuffix
 	}
 
+	totalRetrieveAttempts := 0
+	requestStartTime := time.Now()
+	defer func() {
+		s.metrics.RequestDurationTime.Observe(time.Since(requestStartTime).Seconds())
+		s.metrics.RequestAttempts.Observe(float64(totalRetrieveAttempts))
+	}()
+
 	// topCtx is passing the tracing span to the first singleflight call
 	topCtx := ctx
 	v, _, err := s.singleflight.Do(ctx, flightRoute, func(ctx context.Context) (interface{}, error) {
@@ -169,6 +176,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr, sourcePeerAddr swarm.
 				retry()
 			case <-retryC:
 
+				totalRetrieveAttempts++
 				s.metrics.PeerRequestCounter.Inc()
 
 				inflight++
@@ -225,9 +233,13 @@ func (s *Service) RetrieveChunk(ctx context.Context, addr, sourcePeerAddr swarm.
 		return nil, storage.ErrNotFound
 	})
 	if err != nil {
+		s.metrics.RequestFailureCounter.Inc()
+
 		s.logger.Debug("retrieval failed", "chunk_address", addr, "error", err)
 		return nil, err
 	}
+
+	s.metrics.RequestSuccessCounter.Inc()
 
 	return v.(swarm.Chunk), nil
 }
