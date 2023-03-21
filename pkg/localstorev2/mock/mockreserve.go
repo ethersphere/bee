@@ -11,6 +11,7 @@ import (
 	storer "github.com/ethersphere/bee/pkg/localstorev2"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
+	swarmtest "github.com/ethersphere/bee/pkg/swarm/test"
 )
 
 type chunksResponse struct {
@@ -100,6 +101,7 @@ func (s *ReserveStore) EvictBatch(ctx context.Context, batchID []byte) error { r
 func (s *ReserveStore) IsWithinStorageRadius(addr swarm.Address) bool        { return true }
 func (s *ReserveStore) StorageRadius() uint8                                 { return s.radius }
 func (s *ReserveStore) SetStorageRadius(r uint8)                             { s.radius = r }
+func (s *ReserveStore) IsFullySynced() bool                                  { return true }
 
 // IntervalChunks returns a set of chunk in a requested interval.
 func (s *ReserveStore) SubscribeBin(ctx context.Context, bin uint8, start uint64) (<-chan *storer.BinC, func(), <-chan error) {
@@ -126,6 +128,10 @@ func (s *ReserveStore) SubscribeBin(ctx context.Context, bin uint8, start uint64
 	}()
 
 	return out, func() {}, errC
+}
+
+func (s *ReserveStore) ReserveSize() int {
+	return 0
 }
 
 func (s *ReserveStore) ReserveLastBinIDs() (curs []uint64, err error) {
@@ -206,7 +212,9 @@ func (s *ReserveStore) ReserveHas(addr swarm.Address, batchID []byte) (bool, err
 }
 
 func (s *ReserveStore) ReserveSample(context.Context, []byte, uint8, uint64) (storer.Sample, error) {
-	return storer.Sample{}, nil
+	return storer.Sample{
+		Hash: swarmtest.RandomAddress(),
+	}, nil
 }
 
 type Option interface {

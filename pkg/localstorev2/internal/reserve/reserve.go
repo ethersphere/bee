@@ -371,6 +371,10 @@ func (r *Reserve) Size() int {
 	return r.size
 }
 
+func (r *Reserve) Capacity() int {
+	return r.capacity
+}
+
 func (r *Reserve) AddSize(diff int) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()

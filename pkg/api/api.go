@@ -56,7 +56,6 @@ import (
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/transaction"
-	"github.com/ethersphere/bee/pkg/traversal"
 	"github.com/go-playground/validator/v10"
 	"github.com/gorilla/mux"
 	"github.com/hashicorp/go-multierror"
@@ -90,8 +89,6 @@ const (
 	largeFileBufferSize = 16 * 32 * 1024
 
 	largeBufferFilesizeThreshold = 10 * 1000000 // ten megs
-
-	uploadSem = 50
 )
 
 const (
@@ -114,12 +111,22 @@ var (
 	errOperationSupportedOnlyInFullMode = errors.New("operation is supported only in full mode")
 )
 
+// Storer interface provides the functionality required from the local storage
+// component of the node.
+type Storer interface {
+	storer.UploadStore
+	storer.PinStore
+	storer.CacheStore
+	storer.NetStore
+	storer.LocalStore
+	storer.RadiusChecker
+}
+
 type Service struct {
 	auth            auth.Authenticator
-	storer          storer.Storer
+	storer          Storer
 	resolver        resolver.Interface
 	pss             pss.Interface
-	traversal       traversal.Traverser
 	steward         steward.Interface
 	logger          log.Logger
 	loggerV1        log.Logger
@@ -131,7 +138,6 @@ type Service struct {
 	probe           *Probe
 	metricsRegistry *prometheus.Registry
 	stakingContract staking.Contract
-	indexDebugger   StorageIndexDebugger
 	Options
 
 	http.Handler
@@ -213,7 +219,7 @@ type ExtraOptions struct {
 	Swap            swap.Interface
 	Chequebook      chequebook.Service
 	BlockTime       time.Duration
-	Storer          storer.Storer
+	Storer          Storer
 	Resolver        resolver.Interface
 	Pss             pss.Interface
 	FeedFactory     feeds.Factory
@@ -222,7 +228,6 @@ type ExtraOptions struct {
 	Staking         staking.Contract
 	Steward         steward.Interface
 	SyncStatus      func() (bool, error)
-	IndexDebugger   StorageIndexDebugger
 }
 
 func New(
@@ -291,7 +296,6 @@ func (s *Service) Configure(signer crypto.Signer, auth auth.Authenticator, trace
 	s.postageContract = e.PostageContract
 	s.steward = e.Steward
 	s.stakingContract = e.Staking
-	s.indexDebugger = e.IndexDebugger
 
 	s.pingpong = e.Pingpong
 	s.topologyDriver = e.TopologyDriver

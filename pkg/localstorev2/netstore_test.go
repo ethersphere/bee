@@ -295,20 +295,27 @@ func TestNetStore(t *testing.T) {
 
 		testNetStore(t, func(r retrieval.Interface) (*storer.DB, error) {
 
-			opts := dbTestOps(test.RandomAddress(), 0, nil, nil, nil, time.Second)
-			opts.Retrieval = r
+			opts := dbTestOps(test.RandomAddress(), 0, nil, nil, time.Second)
 			opts.CacheCapacity = 100
 
-			return storer.New(context.Background(), "", opts)
+			db, err := storer.New(context.Background(), "", opts)
+			if err == nil {
+				db.SetRetrievalService(r)
+			}
+			return db, err
 		})
 	})
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
 
 		testNetStore(t, func(r retrieval.Interface) (*storer.DB, error) {
-			opts := dbTestOps(test.RandomAddress(), 0, nil, nil, nil, time.Second)
-			opts.Retrieval = r
-			return diskStorer(t, opts)()
+			opts := dbTestOps(test.RandomAddress(), 0, nil, nil, time.Second)
+
+			db, err := diskStorer(t, opts)()
+			if err == nil {
+				db.SetRetrievalService(r)
+			}
+			return db, err
 		})
 	})
 }

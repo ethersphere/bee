@@ -53,6 +53,9 @@ func TestSteward(t *testing.T) {
 		chunkCount++
 		return false, nil
 	})
+	if err != nil {
+		t.Fatalf("failed iterating: %v", err)
+	}
 
 	done := make(chan struct{})
 	errc := make(chan error, 1)

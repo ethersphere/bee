@@ -70,8 +70,6 @@ var (
 	ErrShallowReceipt = errors.New("shallow recipt")
 )
 
-const chunkStoreTimeout = 2 * time.Second
-
 func New(
 	networkID uint64,
 	storer Storer,

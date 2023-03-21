@@ -23,12 +23,12 @@ func TestPushSubscriber(t *testing.T) {
 	baseAddr := test.RandomAddress()
 	t.Run("inmem", func(t *testing.T) {
 		t.Parallel()
-		memStorer := memStorer(t, dbTestOps(baseAddr, 10, nil, nil, nil, time.Second))
+		memStorer := memStorer(t, dbTestOps(baseAddr, 10, nil, nil, time.Second))
 		testPushSubscriber(t, memStorer)
 	})
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
-		diskStorer := diskStorer(t, dbTestOps(baseAddr, 0, nil, nil, nil, time.Second))
+		diskStorer := diskStorer(t, dbTestOps(baseAddr, 0, nil, nil, time.Second))
 		testPushSubscriber(t, diskStorer)
 	})
 }

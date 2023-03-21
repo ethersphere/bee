@@ -86,3 +86,7 @@ func (db *DB) NewSession() (SessionInfo, error) {
 func (db *DB) Session(tagID uint64) (SessionInfo, error) {
 	return upload.GetTagInfo(db.repo.IndexStore(), tagID)
 }
+
+func (db *DB) DeleteSession(tagID uint64) {}
+
+func (db *DB) ListSessions(pg, limit int) ([]SessionInfo, error) { return nil, nil }

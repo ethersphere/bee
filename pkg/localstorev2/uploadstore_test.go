@@ -255,12 +255,12 @@ func TestUploadStore(t *testing.T) {
 		t.Parallel()
 
 		testUploadStore(t, func() (*storer.DB, error) {
-			return storer.New(context.Background(), "", dbTestOps(test.RandomAddress(), 0, nil, nil, nil, time.Second))
+			return storer.New(context.Background(), "", dbTestOps(test.RandomAddress(), 0, nil, nil, time.Second))
 		})
 	})
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
 
-		testUploadStore(t, diskStorer(t, dbTestOps(test.RandomAddress(), 0, nil, nil, nil, time.Second)))
+		testUploadStore(t, diskStorer(t, dbTestOps(test.RandomAddress(), 0, nil, nil, time.Second)))
 	})
 }

@@ -69,19 +69,21 @@ func TestIndexCollision(t *testing.T) {
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
 		baseAddr := test.RandomAddress()
-		storer, err := diskStorer(t, dbTestOps(baseAddr, 10, nil, nil, nil, time.Minute))()
+		storer, err := diskStorer(t, dbTestOps(baseAddr, 10, nil, nil, time.Minute))()
 		if err != nil {
 			t.Fatal(err)
 		}
+		storer.StartReserveWorker(pullerMock.NewMockRateReporter(0))
 		testF(t, baseAddr, storer)
 	})
 	t.Run("mem", func(t *testing.T) {
 		t.Parallel()
 		baseAddr := test.RandomAddress()
-		storer, err := memStorer(t, dbTestOps(baseAddr, 10, nil, nil, nil, time.Minute))()
+		storer, err := memStorer(t, dbTestOps(baseAddr, 10, nil, nil, time.Minute))()
 		if err != nil {
 			t.Fatal(err)
 		}
+		storer.StartReserveWorker(pullerMock.NewMockRateReporter(0))
 		testF(t, baseAddr, storer)
 	})
 }
@@ -155,19 +157,21 @@ func TestReplaceOldIndex(t *testing.T) {
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
 		baseAddr := test.RandomAddress()
-		storer, err := diskStorer(t, dbTestOps(baseAddr, 10, nil, nil, nil, time.Minute))()
+		storer, err := diskStorer(t, dbTestOps(baseAddr, 10, nil, nil, time.Minute))()
 		if err != nil {
 			t.Fatal(err)
 		}
+		storer.StartReserveWorker(pullerMock.NewMockRateReporter(0))
 		testF(t, baseAddr, storer)
 	})
 	t.Run("mem", func(t *testing.T) {
 		t.Parallel()
 		baseAddr := test.RandomAddress()
-		storer, err := memStorer(t, dbTestOps(baseAddr, 10, nil, nil, nil, time.Minute))()
+		storer, err := memStorer(t, dbTestOps(baseAddr, 10, nil, nil, time.Minute))()
 		if err != nil {
 			t.Fatal(err)
 		}
+		storer.StartReserveWorker(pullerMock.NewMockRateReporter(0))
 		testF(t, baseAddr, storer)
 	})
 }
@@ -178,10 +182,11 @@ func TestEvictBatch(t *testing.T) {
 	baseAddr := test.RandomAddress()
 
 	t.Cleanup(func() {})
-	st, err := diskStorer(t, dbTestOps(baseAddr, 100, nil, nil, nil, time.Minute))()
+	st, err := diskStorer(t, dbTestOps(baseAddr, 100, nil, nil, time.Minute))()
 	if err != nil {
 		t.Fatal(err)
 	}
+	st.StartReserveWorker(pullerMock.NewMockRateReporter(0))
 
 	ctx := context.Background()
 
@@ -326,20 +331,22 @@ func TestUnreserveCap(t *testing.T) {
 		t.Parallel()
 		bs := batchstore.New()
 		baseAddr := test.RandomAddress()
-		storer, err := diskStorer(t, dbTestOps(baseAddr, capacity, bs, nil, nil, time.Minute))()
+		storer, err := diskStorer(t, dbTestOps(baseAddr, capacity, bs, nil, time.Minute))()
 		if err != nil {
 			t.Fatal(err)
 		}
+		storer.StartReserveWorker(pullerMock.NewMockRateReporter(0))
 		testF(t, baseAddr, bs, storer)
 	})
 	t.Run("mem", func(t *testing.T) {
 		t.Parallel()
 		bs := batchstore.New()
 		baseAddr := test.RandomAddress()
-		storer, err := memStorer(t, dbTestOps(baseAddr, capacity, bs, nil, nil, time.Minute))()
+		storer, err := memStorer(t, dbTestOps(baseAddr, capacity, bs, nil, time.Minute))()
 		if err != nil {
 			t.Fatal(err)
 		}
+		storer.StartReserveWorker(pullerMock.NewMockRateReporter(0))
 		testF(t, baseAddr, bs, storer)
 	})
 }
@@ -359,14 +366,25 @@ func TestRadiusManager(t *testing.T) {
 		}
 	}
 
+	waitForSize := func(t *testing.T, reserve *reserve.Reserve, size int) {
+		t.Helper()
+		err := spinlock.Wait(time.Second*30, func() bool {
+			return reserve.Size() == size
+		})
+		if err != nil {
+			t.Fatalf("timed out waiting for reserve size, expected %d found %d", size, reserve.Size())
+		}
+	}
+
 	t.Run("radius decrease due to under utilization", func(t *testing.T) {
 		t.Parallel()
 		bs := batchstore.New(batchstore.WithRadius(3))
 
-		storer, err := memStorer(t, dbTestOps(baseAddr, 10, bs, nil, nil, time.Millisecond*50))()
+		storer, err := memStorer(t, dbTestOps(baseAddr, 10, bs, nil, time.Millisecond*50))()
 		if err != nil {
 			t.Fatal(err)
 		}
+		storer.StartReserveWorker(pullerMock.NewMockRateReporter(0))
 
 		batch := postagetesting.MustNewBatch()
 		err = bs.Save(batch)
@@ -393,7 +411,7 @@ func TestRadiusManager(t *testing.T) {
 
 		waitForRadius(t, storer.Reserve(), 3)
 
-		t.Run("reservesize", reserveSizeTest(storer.Reserve(), 10))
+		waitForSize(t, storer.Reserve(), 10)
 
 		err = storer.EvictBatch(context.Background(), batch.ID)
 		if err != nil {
@@ -406,10 +424,11 @@ func TestRadiusManager(t *testing.T) {
 	t.Run("radius doesnt change due to non-zero pull rate", func(t *testing.T) {
 		t.Parallel()
 		bs := batchstore.New(batchstore.WithRadius(3))
-		storer, err := diskStorer(t, dbTestOps(baseAddr, 10, bs, pullerMock.NewMockRateReporter(1), nil, time.Millisecond*10))()
+		storer, err := diskStorer(t, dbTestOps(baseAddr, 10, bs, nil, time.Millisecond*10))()
 		if err != nil {
 			t.Fatal(err)
 		}
+		storer.StartReserveWorker(pullerMock.NewMockRateReporter(1))
 		waitForRadius(t, storer.Reserve(), 3)
 	})
 }
@@ -519,7 +538,7 @@ func TestSubscribeBin(t *testing.T) {
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
 		baseAddr := test.RandomAddress()
-		storer, err := diskStorer(t, dbTestOps(baseAddr, 100, nil, nil, nil, time.Second))()
+		storer, err := diskStorer(t, dbTestOps(baseAddr, 100, nil, nil, time.Second))()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -528,7 +547,7 @@ func TestSubscribeBin(t *testing.T) {
 	t.Run("mem", func(t *testing.T) {
 		t.Parallel()
 		baseAddr := test.RandomAddress()
-		storer, err := memStorer(t, dbTestOps(baseAddr, 100, nil, nil, nil, time.Second))()
+		storer, err := memStorer(t, dbTestOps(baseAddr, 100, nil, nil, time.Second))()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -607,7 +626,7 @@ func TestSubscribeBinTrigger(t *testing.T) {
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
 		baseAddr := test.RandomAddress()
-		storer, err := diskStorer(t, dbTestOps(baseAddr, 100, nil, nil, nil, time.Second))()
+		storer, err := diskStorer(t, dbTestOps(baseAddr, 100, nil, nil, time.Second))()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -616,7 +635,7 @@ func TestSubscribeBinTrigger(t *testing.T) {
 	t.Run("mem", func(t *testing.T) {
 		t.Parallel()
 		baseAddr := test.RandomAddress()
-		storer, err := memStorer(t, dbTestOps(baseAddr, 100, nil, nil, nil, time.Second))()
+		storer, err := memStorer(t, dbTestOps(baseAddr, 100, nil, nil, time.Second))()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -723,7 +742,7 @@ func TestReserveSampler(t *testing.T) {
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
 		baseAddr := test.RandomAddress()
-		storer, err := diskStorer(t, dbTestOps(baseAddr, 1000, nil, nil, nil, time.Second))()
+		storer, err := diskStorer(t, dbTestOps(baseAddr, 1000, nil, nil, time.Second))()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -732,7 +751,7 @@ func TestReserveSampler(t *testing.T) {
 	t.Run("mem", func(t *testing.T) {
 		t.Parallel()
 		baseAddr := test.RandomAddress()
-		storer, err := memStorer(t, dbTestOps(baseAddr, 1000, nil, nil, nil, time.Second))()
+		storer, err := memStorer(t, dbTestOps(baseAddr, 1000, nil, nil, time.Second))()
 		if err != nil {
 			t.Fatal(err)
 		}
