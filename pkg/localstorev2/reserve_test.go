@@ -73,7 +73,7 @@ func TestIndexCollision(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.SetSyncer(pullerMock.NewMockRateReporter(0))
+		storer.StartReserveWorker(pullerMock.NewMockRateReporter(0))
 		testF(t, baseAddr, storer)
 	})
 	t.Run("mem", func(t *testing.T) {
@@ -83,7 +83,7 @@ func TestIndexCollision(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.SetSyncer(pullerMock.NewMockRateReporter(0))
+		storer.StartReserveWorker(pullerMock.NewMockRateReporter(0))
 		testF(t, baseAddr, storer)
 	})
 }
@@ -161,7 +161,7 @@ func TestReplaceOldIndex(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.SetSyncer(pullerMock.NewMockRateReporter(0))
+		storer.StartReserveWorker(pullerMock.NewMockRateReporter(0))
 		testF(t, baseAddr, storer)
 	})
 	t.Run("mem", func(t *testing.T) {
@@ -171,7 +171,7 @@ func TestReplaceOldIndex(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.SetSyncer(pullerMock.NewMockRateReporter(0))
+		storer.StartReserveWorker(pullerMock.NewMockRateReporter(0))
 		testF(t, baseAddr, storer)
 	})
 }
@@ -186,7 +186,7 @@ func TestEvictBatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	st.SetSyncer(pullerMock.NewMockRateReporter(0))
+	st.StartReserveWorker(pullerMock.NewMockRateReporter(0))
 
 	ctx := context.Background()
 
@@ -335,7 +335,7 @@ func TestUnreserveCap(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.SetSyncer(pullerMock.NewMockRateReporter(0))
+		storer.StartReserveWorker(pullerMock.NewMockRateReporter(0))
 		testF(t, baseAddr, bs, storer)
 	})
 	t.Run("mem", func(t *testing.T) {
@@ -346,7 +346,7 @@ func TestUnreserveCap(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.SetSyncer(pullerMock.NewMockRateReporter(0))
+		storer.StartReserveWorker(pullerMock.NewMockRateReporter(0))
 		testF(t, baseAddr, bs, storer)
 	})
 }
@@ -366,6 +366,16 @@ func TestRadiusManager(t *testing.T) {
 		}
 	}
 
+	waitForSize := func(t *testing.T, reserve *reserve.Reserve, size int) {
+		t.Helper()
+		err := spinlock.Wait(time.Second*30, func() bool {
+			return reserve.Size() == size
+		})
+		if err != nil {
+			t.Fatalf("timed out waiting for reserve size, expected %d found %d", size, reserve.Size())
+		}
+	}
+
 	t.Run("radius decrease due to under utilization", func(t *testing.T) {
 		t.Parallel()
 		bs := batchstore.New(batchstore.WithRadius(3))
@@ -374,7 +384,7 @@ func TestRadiusManager(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.SetSyncer(pullerMock.NewMockRateReporter(0))
+		storer.StartReserveWorker(pullerMock.NewMockRateReporter(0))
 
 		batch := postagetesting.MustNewBatch()
 		err = bs.Save(batch)
@@ -401,7 +411,7 @@ func TestRadiusManager(t *testing.T) {
 
 		waitForRadius(t, storer.Reserve(), 3)
 
-		t.Run("reservesize", reserveSizeTest(storer.Reserve(), 10))
+		waitForSize(t, storer.Reserve(), 10)
 
 		err = storer.EvictBatch(context.Background(), batch.ID)
 		if err != nil {
@@ -418,7 +428,7 @@ func TestRadiusManager(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.SetSyncer(pullerMock.NewMockRateReporter(1))
+		storer.StartReserveWorker(pullerMock.NewMockRateReporter(1))
 		waitForRadius(t, storer.Reserve(), 3)
 	})
 }

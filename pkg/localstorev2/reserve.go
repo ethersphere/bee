@@ -98,15 +98,14 @@ func (db *DB) StorageRadius() uint8 {
 	return db.reserve.Radius()
 }
 
+func (db *DB) ReserveSize() int {
+	return db.reserve.Size()
+}
+
 func (db *DB) IsWithinStorageRadius(addr swarm.Address) bool {
 	return swarm.Proximity(addr.Bytes(), db.baseAddr.Bytes()) >= db.reserve.Radius()
 }
 
-func (db *DB) IsFullySynced() bool {
-	return db.syncer.Rate() == 0 && db.reserve.Size() > threshold(db.reserve.Capacity())
-}
-
-// ReserveHas is called by the requestor
 func (db *DB) ReserveHas(addr swarm.Address, batchID []byte) (has bool, err error) {
 	defer func() {
 		dur := captureDuration(time.Now())

@@ -51,6 +51,7 @@ type Agent struct {
 	batchExpirer           postagecontract.PostageBatchExpirer
 	redistributionStatuser staking.RedistributionStatuser
 	store                  storer.Reserve
+	fullSyncedFunc         func() bool
 	overlay                swarm.Address
 	quit                   chan struct{}
 	wg                     sync.WaitGroup
@@ -65,6 +66,7 @@ func New(overlay swarm.Address,
 	batchExpirer postagecontract.PostageBatchExpirer,
 	redistributionStatuser staking.RedistributionStatuser,
 	store storer.Reserve,
+	fullSyncedFunc func() bool,
 	blockTime time.Duration,
 	blocksPerRound,
 	blocksPerPhase uint64,
@@ -80,6 +82,7 @@ func New(overlay swarm.Address,
 		contract:               contract,
 		batchExpirer:           batchExpirer,
 		store:                  store,
+		fullSyncedFunc:         fullSyncedFunc,
 		blocksPerRound:         blocksPerRound,
 		quit:                   make(chan struct{}),
 		redistributionStatuser: redistributionStatuser,
@@ -273,7 +276,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 			a.logger.Info("entered new phase", "phase", currentPhase.String(), "round", round, "block", block)
 
 			a.state.SetCurrentEvent(currentPhase, round, block)
-			a.state.IsFullySynced(a.store.IsFullySynced())
+			a.state.IsFullySynced(a.fullSyncedFunc())
 
 			isFrozen, err := a.redistributionStatuser.IsOverlayFrozen(ctx, block)
 			if err != nil {

@@ -154,6 +154,7 @@ func createService(
 		postageContract,
 		stakingContract,
 		resMock.NewReserve(resMock.WithRadius(0)),
+		func() bool { return true },
 		time.Millisecond*10,
 		blocksPerRound,
 		blocksPerPhase,

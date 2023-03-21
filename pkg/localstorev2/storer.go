@@ -124,7 +124,7 @@ type Reserve interface {
 	ReserveStore
 	EvictBatch(ctx context.Context, batchID []byte) error
 	ReserveSample(context.Context, []byte, uint8, uint64) (Sample, error)
-	IsFullySynced() bool
+	ReserveSize() int
 }
 
 type ReserveStore interface {
@@ -475,10 +475,9 @@ func (db *DB) SetRetrievalService(r retrieval.Interface) {
 	db.retrieval = r
 }
 
-func (db *DB) SetSyncer(s SyncReporter) {
+func (db *DB) StartReserveWorker(s SyncReporter) {
 	db.setSyncerOnce.Do(func() {
 		db.syncer = s
-
 		db.reserveWg.Add(1)
 		go db.reserveWorker(db.reserve.Capacity(), db.opts.warmupDuration, db.opts.wakeupDuration)
 	})
