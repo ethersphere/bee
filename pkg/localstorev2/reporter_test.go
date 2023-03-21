@@ -130,7 +130,7 @@ func TestReporter(t *testing.T) {
 
 		testReporter(t, func() (*storer.DB, error) {
 
-			opts := dbTestOps(test.RandomAddress(), 0, nil, nil, nil, time.Second)
+			opts := dbTestOps(test.RandomAddress(), 0, nil, nil, time.Second)
 
 			return storer.New(context.Background(), "", opts)
 		})
@@ -138,7 +138,7 @@ func TestReporter(t *testing.T) {
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
 
-		opts := dbTestOps(test.RandomAddress(), 0, nil, nil, nil, time.Second)
+		opts := dbTestOps(test.RandomAddress(), 0, nil, nil, time.Second)
 
 		testReporter(t, diskStorer(t, opts))
 	})

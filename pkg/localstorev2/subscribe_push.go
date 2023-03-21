@@ -14,8 +14,8 @@ import (
 
 const subscribePushEventKey = "subscribe-push"
 
-func (db *DB) SubscribePush(ctx context.Context) (chunks chan swarm.Chunk, stop func()) {
-	chunks = make(chan swarm.Chunk)
+func (db *DB) SubscribePush(ctx context.Context) (<-chan swarm.Chunk, func()) {
+	chunks := make(chan swarm.Chunk)
 
 	var (
 		stopChan     = make(chan struct{})
@@ -74,7 +74,7 @@ func (db *DB) SubscribePush(ctx context.Context) (chunks chan swarm.Chunk, stop 
 		}
 	}()
 
-	stop = func() {
+	stop := func() {
 		stopChanOnce.Do(func() {
 			close(stopChan)
 		})

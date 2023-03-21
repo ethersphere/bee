@@ -50,21 +50,16 @@ type ChainBackend interface {
 	SuggestGasPrice(ctx context.Context) (*big.Int, error)
 }
 
-type Monitor interface {
-	IsFullySynced() bool
-}
-
 type Agent struct {
 	logger                 log.Logger
 	metrics                metrics
 	backend                ChainBackend
 	blocksPerRound         uint64
-	monitor                Monitor
 	contract               redistribution.Contract
 	batchExpirer           postagecontract.PostageBatchExpirer
 	redistributionStatuser staking.RedistributionStatuser
-	radius                 storer.RadiusChecker
-	sampler                storage.Sampler
+	store                  storer.Reserve
+	fullSyncedFunc         func() bool
 	overlay                swarm.Address
 	quit                   chan struct{}
 	wg                     sync.WaitGroup
@@ -75,12 +70,11 @@ func New(overlay swarm.Address,
 	ethAddress common.Address,
 	backend ChainBackend,
 	logger log.Logger,
-	monitor Monitor,
 	contract redistribution.Contract,
 	batchExpirer postagecontract.PostageBatchExpirer,
 	redistributionStatuser staking.RedistributionStatuser,
-	radius storer.RadiusChecker,
-	sampler storage.Sampler,
+	store storer.Reserve,
+	fullSyncedFunc func() bool,
 	blockTime time.Duration,
 	blocksPerRound,
 	blocksPerPhase uint64,
@@ -95,10 +89,9 @@ func New(overlay swarm.Address,
 		logger:                 logger.WithName(loggerName).Register(),
 		contract:               contract,
 		batchExpirer:           batchExpirer,
-		radius:                 radius,
-		monitor:                monitor,
+		store:                  store,
+		fullSyncedFunc:         fullSyncedFunc,
 		blocksPerRound:         blocksPerRound,
-		sampler:                sampler,
 		quit:                   make(chan struct{}),
 		redistributionStatuser: redistributionStatuser,
 	}
@@ -291,7 +284,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 			a.logger.Info("entered new phase", "phase", currentPhase.String(), "round", round, "block", block)
 
 			a.state.SetCurrentEvent(currentPhase, round, block)
-			a.state.IsFullySynced(a.monitor.IsFullySynced())
+			a.state.IsFullySynced(a.fullSyncedFunc())
 
 			isFrozen, err := a.redistributionStatuser.IsOverlayFrozen(ctx, block)
 			if err != nil {
@@ -385,7 +378,7 @@ func (a *Agent) play(ctx context.Context, round uint64) (uint8, []byte, error) {
 		return 0, nil, nil
 	}
 
-	storageRadius := a.radius.StorageRadius()
+	storageRadius := a.store.StorageRadius()
 
 	isPlaying, err := a.contract.IsPlaying(ctx, storageRadius)
 	if err != nil {
@@ -424,7 +417,7 @@ func (a *Agent) play(ctx context.Context, round uint64) (uint8, []byte, error) {
 		return 0, nil, err
 	}
 
-	sample, err := a.sampler.ReserveSample(ctx, salt, storageRadius, uint64(timeLimiter))
+	sample, err := a.store.ReserveSample(ctx, salt, storageRadius, uint64(timeLimiter))
 	if err != nil {
 		return 0, nil, err
 	}

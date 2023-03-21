@@ -11,14 +11,15 @@ import (
 
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
-	"github.com/ethersphere/bee/pkg/storage"
+	storagev1 "github.com/ethersphere/bee/pkg/storage"
+	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 // InitStateStore will initialize the stateStore with the given path to the
 // data directory. When given an empty directory path, the function will instead
 // initialize an in-memory state store that will not be persisted.
-func InitStateStore(logger log.Logger, dataDir string) (storage.StateStorer, error) {
+func InitStateStore(logger log.Logger, dataDir string) (storagev1.StateStorer, error) {
 	if dataDir == "" {
 		logger.Warning("using in-mem state store, no node state will be persisted")
 		return leveldb.NewInMemoryStateStore(logger)
@@ -29,7 +30,7 @@ func InitStateStore(logger log.Logger, dataDir string) (storage.StateStorer, err
 const secureOverlayKey = "non-mineable-overlay"
 const noncedOverlayKey = "nonce-overlay"
 
-func GetExistingOverlay(storer storage.StateStorer) (swarm.Address, error) {
+func GetExistingOverlay(storer storagev1.StateStorer) (swarm.Address, error) {
 	var storedOverlay swarm.Address
 	err := storer.Get(secureOverlayKey, &storedOverlay)
 	if err != nil {
@@ -40,7 +41,7 @@ func GetExistingOverlay(storer storage.StateStorer) (swarm.Address, error) {
 }
 
 // CheckOverlayWithStore checks the overlay is the same as stored in the statestore
-func CheckOverlayWithStore(overlay swarm.Address, storer storage.StateStorer) error {
+func CheckOverlayWithStore(overlay swarm.Address, storer storagev1.StateStorer) error {
 
 	var storedOverlay swarm.Address
 	err := storer.Get(noncedOverlayKey, &storedOverlay)
@@ -59,13 +60,13 @@ func CheckOverlayWithStore(overlay swarm.Address, storer storage.StateStorer) er
 }
 
 // SetOverlayInStore sets the overlay stored in the statestore (for purpose of overlay migration)
-func SetOverlayInStore(overlay swarm.Address, storer storage.StateStorer) error {
+func SetOverlayInStore(overlay swarm.Address, storer storagev1.StateStorer) error {
 	return storer.Put(noncedOverlayKey, overlay)
 }
 
 const OverlayNonce = "overlayV2_nonce"
 
-func overlayNonceExists(s storage.StateStorer) ([]byte, bool, error) {
+func overlayNonceExists(s storagev1.StateStorer) ([]byte, bool, error) {
 	overlayNonce := make([]byte, 32)
 	if err := s.Get(OverlayNonce, &overlayNonce); err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
@@ -76,6 +77,6 @@ func overlayNonceExists(s storage.StateStorer) ([]byte, bool, error) {
 	return overlayNonce, true, nil
 }
 
-func setOverlayNonce(s storage.StateStorer, overlayNonce []byte) error {
+func setOverlayNonce(s storagev1.StateStorer, overlayNonce []byte) error {
 	return s.Put(OverlayNonce, overlayNonce)
 }

@@ -13,17 +13,13 @@ import (
 
 	mockstorer "github.com/ethersphere/bee/pkg/localstorev2/mock"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
 
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	"github.com/ethersphere/bee/pkg/swarm"
 )
-
-type fileUploadResponse struct {
-	Reference swarm.Address `json:"reference"`
-}
 
 func tagsWithIdResource(id uint64) string { return fmt.Sprintf("/tags/%d", id) }
 

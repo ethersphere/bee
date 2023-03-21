@@ -124,6 +124,7 @@ type Reserve interface {
 	ReserveStore
 	EvictBatch(ctx context.Context, batchID []byte) error
 	ReserveSample(context.Context, []byte, uint8, uint64) (Sample, error)
+	ReserveSize() int
 }
 
 type ReserveStore interface {
@@ -145,6 +146,7 @@ type LocalStore interface {
 }
 
 type Storer interface {
+	ReserveStore
 	UploadStore
 	PinStore
 	CacheStore
@@ -282,6 +284,7 @@ func initCache(ctx context.Context, capacity uint64, repo storage.Repository) (*
 
 const (
 	lockKeyNewSession string = "new_session"
+	lockKeySetSyncer  string = "set_syncer"
 )
 
 // Options provides a container to configure different things in the storer.
@@ -294,13 +297,11 @@ type Options struct {
 	LdbDisableSeeksCompaction bool
 	CacheCapacity             uint64
 	Logger                    log.Logger
-	Retrieval                 retrieval.Interface
 
 	Address        swarm.Address
 	WarmupDuration time.Duration
 	Batchstore     postage.Storer
 	RadiusSetter   topology.SetStorageRadiuser
-	Syncer         SyncReporter
 
 	ReserveCapacity       int
 	ReserveWakeUpDuration time.Duration
@@ -347,12 +348,19 @@ type DB struct {
 	reserveBinEvents *events.Subscriber
 	baseAddr         swarm.Address
 	batchstore       postage.Storer
+	setSyncerOnce    sync.Once
+	syncer           SyncReporter
+	opts             workerOpts
+}
+
+type workerOpts struct {
+	warmupDuration time.Duration
+	wakeupDuration time.Duration
 }
 
 // New returns a newly constructed DB object which implements all the above
 // component stores.
 func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
-	// TODO: migration handling and sharky recovery
 	var (
 		repo     storage.Repository
 		err      error
@@ -386,11 +394,6 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 
 	logger := opts.Logger.WithName(loggerName).Register()
 
-	rs, err := reserve.New(opts.Address, repo.IndexStore(), opts.ReserveCapacity, opts.Batchstore.Radius(), opts.RadiusSetter, logger)
-	if err != nil {
-		return nil, err
-	}
-
 	db := &DB{
 		metrics:          newMetrics(),
 		logger:           logger,
@@ -398,19 +401,27 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		repo:             repo,
 		lock:             multex.New(),
 		cacheObj:         cacheObj,
-		retrieval:        opts.Retrieval,
+		retrieval:        noopRetrieval{},
 		pusherFeed:       make(chan *pusher.Op),
 		quit:             make(chan struct{}),
 		bgCacheWorkers:   make(chan struct{}, 16),
 		dbCloser:         dbCloser,
-		reserve:          rs,
 		batchstore:       opts.Batchstore,
 		events:           events.NewSubscriber(),
 		reserveBinEvents: events.NewSubscriber(),
+		opts: workerOpts{
+			warmupDuration: opts.WarmupDuration,
+			wakeupDuration: opts.ReserveWakeUpDuration,
+		},
 	}
 
-	db.reserveWg.Add(1)
-	go db.reserveWorker(opts.ReserveCapacity, opts.Syncer, opts.WarmupDuration, opts.ReserveWakeUpDuration)
+	if opts.ReserveCapacity > 0 {
+		rs, err := reserve.New(opts.Address, repo.IndexStore(), opts.ReserveCapacity, opts.Batchstore.Radius(), opts.RadiusSetter, logger)
+		if err != nil {
+			return nil, err
+		}
+		db.reserve = rs
+	}
 
 	return db, nil
 }
@@ -458,6 +469,28 @@ func (db *DB) Close() error {
 	}
 
 	return err
+}
+
+func (db *DB) SetRetrievalService(r retrieval.Interface) {
+	db.retrieval = r
+}
+
+func (db *DB) StartReserveWorker(s SyncReporter) {
+	db.setSyncerOnce.Do(func() {
+		db.syncer = s
+		db.reserveWg.Add(1)
+		go db.reserveWorker(db.reserve.Capacity(), db.opts.warmupDuration, db.opts.wakeupDuration)
+	})
+}
+
+type noopRetrieval struct{}
+
+func (noopRetrieval) RetrieveChunk(_ context.Context, _ swarm.Address, _ swarm.Address) (swarm.Chunk, error) {
+	return nil, storage.ErrNotFound
+}
+
+func (db *DB) ChunkStore() storage.ReadOnlyChunkStore {
+	return db.repo.ChunkStore()
 }
 
 type putterSession struct {

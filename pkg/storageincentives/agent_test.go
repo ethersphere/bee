@@ -19,7 +19,6 @@ import (
 	contractMock "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
 	erc20mock "github.com/ethersphere/bee/pkg/settlement/swap/erc20/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storageincentives"
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
@@ -170,12 +169,11 @@ func createService(
 		addr, common.Address{},
 		backend,
 		log.Noop,
-		&mockMonitor{},
 		contract,
 		postageContract,
 		stakingContract,
 		resMock.NewReserve(resMock.WithRadius(0)),
-		&mockSampler{},
+		func() bool { return true },
 		time.Millisecond*10,
 		blocksPerRound,
 		blocksPerPhase,
@@ -224,13 +222,6 @@ func (m *mockchainBackend) BalanceAt(ctx context.Context, address common.Address
 
 func (m *mockchainBackend) SuggestGasPrice(ctx context.Context) (*big.Int, error) {
 	return big.NewInt(4), nil
-}
-
-type mockMonitor struct {
-}
-
-func (m *mockMonitor) IsFullySynced() bool {
-	return true
 }
 
 type contractCall int
@@ -295,14 +286,4 @@ func (m *mockContract) Reveal(context.Context, uint8, []byte, []byte) (common.Ha
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, revealCall)
 	return common.Hash{}, nil
-}
-
-type mockSampler struct {
-	t *testing.T
-}
-
-func (m *mockSampler) ReserveSample(context.Context, []byte, uint8, uint64) (storage.Sample, error) {
-	return storage.Sample{
-		Hash: swarm.RandAddress(m.t),
-	}, nil
 }
