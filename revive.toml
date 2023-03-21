@@ -1,0 +1,23 @@
+ignoreGeneratedHeader = false
+severity = "warning"
+confidence = 0.8
+errorCode = 0
+warningCode = 0
+
+[rule.waitgroup-by-value]
+[rule.atomic]
+# [rule.confusing-naming]
+# [rule.confusing-results]
+[rule.constant-logical-expr]
+[rule.context-keys-type]
+# [rule.defer]
+[rule.errorf]
+[rule.identical-branches]
+[rule.increment-decrement]
+# [rule.indent-error-flow]
+[rule.modifies-parameter]
+# [rule.modifies-value-receiver]
+[rule.range]
+[rule.range-val-in-closure]
+[rule.range-val-address]
+# [rule.]
