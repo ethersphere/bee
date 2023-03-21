@@ -26,7 +26,6 @@ type Driver interface {
 	PeerAdder
 	ClosestPeerer
 	EachPeerer
-	EachNeighbor
 	NeighborhoodDepther
 	SubscribeTopologyChange() (c <-chan struct{}, unsubscribe func())
 	io.Closer
@@ -52,13 +51,6 @@ type EachPeerer interface {
 	EachPeer(EachPeerFunc, Filter) error
 	// EachPeerRev iterates from farthest bin to closest
 	EachPeerRev(EachPeerFunc, Filter) error
-}
-
-type EachNeighbor interface {
-	// EachNeighbor iterates from closest bin to farthest within the neighborhood.
-	EachNeighbor(EachPeerFunc) error
-	// EachNeighborRev iterates from farthest bin to closest within the neighborhood.
-	EachNeighborRev(EachPeerFunc) error
 }
 
 // Filter defines the different filters that can be used with the Peer iterators
