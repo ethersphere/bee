@@ -5,6 +5,8 @@
 package cmd
 
 import (
+	"sort"
+
 	yaml "gopkg.in/yaml.v2"
 
 	"github.com/spf13/cobra"
@@ -16,19 +18,30 @@ func (c *command) initConfigurateOptionsCmd() (err error) {
 		Use:   "printconfig",
 		Short: "Print default or provided configuration in yaml format",
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
-
 			if len(args) > 0 {
 				return cmd.Help()
 			}
 
 			d := c.config.AllSettings()
-			ym, err := yaml.Marshal(d)
-			if err != nil {
-				return err
-			}
-			cmd.Println(string(ym))
-			return nil
 
+			var keys []string
+			for k := range d {
+				keys = append(keys, k)
+			}
+			sort.Strings(keys)
+
+			for _, k := range keys {
+				v := d[k]
+				ym, err := yaml.Marshal(map[any]any{k: v})
+				if err != nil {
+					return err
+				}
+				cmd.Println("#", cmd.Flag(k).Usage)
+				cmd.Print(string(ym))
+			}
+			cmd.Println()
+
+			return nil
 		},
 		PreRunE: func(cmd *cobra.Command, args []string) error {
 			return c.config.BindPFlags(cmd.Flags())
@@ -40,5 +53,4 @@ func (c *command) initConfigurateOptionsCmd() (err error) {
 	c.root.AddCommand(cmd)
 
 	return nil
-
 }
