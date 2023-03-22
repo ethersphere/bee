@@ -107,7 +107,7 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 
 const (
 	retrieveChunkTimeout = 10 * time.Second
-	preemptiveInterval   = time.Second
+	preemptiveInterval   = 5 * time.Second
 	skiplistDur          = time.Minute
 	maxRetrievedErrors   = 32
 	originSuffix         = "_origin"
@@ -115,6 +115,8 @@ const (
 
 func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr swarm.Address) (swarm.Chunk, error) {
 	loggerV1 := s.logger.V(1).Register()
+
+	defer s.skippeers.PruneExpired()
 
 	s.metrics.RequestCounter.Inc()
 
@@ -185,7 +187,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 				if err != nil {
 					if inflight == 0 {
 						loggerV1.Debug("no peers left to retry", "chunk_address", chunkAddr)
-						return nil, fmt.Errorf("get closest for address %s, allow upstream %v: %w", chunkAddr.String(), origin, err)
+						return nil, fmt.Errorf("get closest for address %s, allow upstream %v: %w", chunkAddr, origin, err)
 					}
 					continue
 				}
@@ -199,7 +201,6 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 					defer span.Finish()
 					ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
 					defer cancel()
-
 					s.retrieveChunk(ctx, peer, done, resultC, chunkAddr, origin)
 				}()
 

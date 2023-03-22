@@ -335,6 +335,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 		preemptiveTicker <-chan time.Time
 		includeSelf      = ps.includeSelf
 		skip             []swarm.Address
+		inflight         int
 	)
 
 	if origin {
@@ -396,11 +397,17 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			peer, err := nextPeer()
 			if err != nil {
-				return nil, err
+				if inflight == 0 {
+					ps.logger.Debug("no peers left to retry", "chunk_address", ch)
+					return nil, fmt.Errorf("get closest for address %s, allow upstream %v: %w", ch, origin, err)
+				}
+				continue
 			}
 			skip = append(skip, peer)
 
 			ps.metrics.TotalSendAttempts.Inc()
+
+			inflight++
 
 			go func() {
 				ctxd, cancel := context.WithTimeout(ctx, defaultTTL)
@@ -409,6 +416,8 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			}()
 
 		case result := <-resultChan:
+
+			inflight--
 
 			ps.measurePushPeer(result.pushTime, result.err, origin)
 
