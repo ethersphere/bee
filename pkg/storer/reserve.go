@@ -12,12 +12,13 @@ import (
 	"sync"
 	"time"
 
+	"slices"
+
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/storageutil"
 	"github.com/ethersphere/bee/pkg/storer/internal"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"golang.org/x/exp/slices"
 )
 
 const (

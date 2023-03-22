@@ -9,10 +9,11 @@ import (
 	"sync"
 	"time"
 
+	"maps"
+
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
-	"golang.org/x/exp/maps"
 )
 
 type mock struct {
