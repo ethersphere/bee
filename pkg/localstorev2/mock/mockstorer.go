@@ -65,7 +65,7 @@ func NewWithChunkStore(cs storage.ChunkStore) *mockStorer {
 	}
 }
 
-func (m *mockStorer) Upload(ctx context.Context, pin bool, tagID uint64) (storer.PutterSession, error) {
+func (m *mockStorer) Upload(_ context.Context, pin bool, tagID uint64) (storer.PutterSession, error) {
 	return &putterSession{
 		chunkStore: m.chunkStore,
 		done: func(address swarm.Address) error {
@@ -107,14 +107,18 @@ func (m *mockStorer) Session(tagID uint64) (storer.SessionInfo, error) {
 	return *session, nil
 }
 
-func (m *mockStorer) DeleteSession(tagID uint64) {
+func (m *mockStorer) DeleteSession(tagID uint64) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
+	if _, ok := m.activeSessions[tagID]; !ok {
+		return storage.ErrNotFound
+	}
 	delete(m.activeSessions, tagID)
+	return nil
 }
 
-func (m *mockStorer) ListSessions(page, limit int) ([]storer.SessionInfo, error) {
+func (m *mockStorer) ListSessions(offset, limit int) ([]storer.SessionInfo, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -125,7 +129,7 @@ func (m *mockStorer) ListSessions(page, limit int) ([]storer.SessionInfo, error)
 	return sessions, nil
 }
 
-func (m *mockStorer) DeletePin(ctx context.Context, address swarm.Address) error {
+func (m *mockStorer) DeletePin(_ context.Context, address swarm.Address) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 

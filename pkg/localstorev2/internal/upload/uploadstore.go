@@ -318,14 +318,16 @@ type uploadPutter struct {
 
 // NewPutter returns a new chunk putter associated with the tagID.
 func NewPutter(s internal.Storage, tagID uint64) (internal.PutterCloserWithReference, error) {
-	ti := &TagItem{TagID: tagID, StartedAt: now().Unix()}
-	err := s.IndexStore().Put(ti)
+	ti := &TagItem{TagID: tagID}
+	err := s.IndexStore().Get(ti)
 	if err != nil {
-		return nil, fmt.Errorf("failed creating tag: %w", err)
+		return nil, err
 	}
 	return &uploadPutter{
+		tagID: ti.TagID,
+		split: ti.Split,
+		seen:  ti.Seen,
 		s:     s,
-		tagID: tagID,
 	}, nil
 }
 
@@ -552,6 +554,9 @@ func (n *nextTagID) Unmarshal(buf []byte) error {
 }
 
 func (n *nextTagID) Clone() storage.Item {
+	if n == nil {
+		return nil
+	}
 	ni := *n
 	return &ni
 }
@@ -580,13 +585,13 @@ func NextTag(st storage.Store) (TagItem, error) {
 	}
 
 	tag.TagID = uint64(tagID)
-	tag.StartedAt = time.Now().Unix()
+	tag.StartedAt = now().Unix()
 
 	return tag, st.Put(&tag)
 }
 
-// GetTagInfo returns the TagItem for this particular tagID.
-func GetTagInfo(st storage.Store, tagID uint64) (TagItem, error) {
+// TagInfo returns the TagItem for this particular tagID.
+func TagInfo(st storage.Store, tagID uint64) (TagItem, error) {
 	ti := TagItem{TagID: tagID}
 	err := st.Get(&ti)
 	if err != nil {
@@ -594,6 +599,22 @@ func GetTagInfo(st storage.Store, tagID uint64) (TagItem, error) {
 	}
 
 	return ti, nil
+}
+
+// ListAllTags returns all the TagItems in the store.
+func ListAllTags(st storage.Store) ([]TagItem, error) {
+	var tags []TagItem
+	err := st.Iterate(storage.Query{
+		Factory: func() storage.Item { return new(TagItem) },
+	}, func(r storage.Result) (bool, error) {
+		tags = append(tags, *r.Entry.(*TagItem))
+		return false, nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("uploadstore: failed to iterate tags: %w", err)
+	}
+
+	return tags, nil
 }
 
 func Iterate(ctx context.Context, s internal.Storage, consumerFn func(chunk swarm.Chunk) (bool, error)) error {
@@ -617,4 +638,12 @@ func Iterate(ctx context.Context, s internal.Storage, consumerFn func(chunk swar
 
 		return consumerFn(chunk)
 	})
+}
+
+// DeleteTag deletes TagItem associated with the given tagID.
+func DeleteTag(st storage.Store, tagID uint64) error {
+	if err := st.Delete(&TagItem{TagID: tagID}); err != nil {
+		return fmt.Errorf("uploadstore: failed to delete tag %d: %w", tagID, err)
+	}
+	return nil
 }

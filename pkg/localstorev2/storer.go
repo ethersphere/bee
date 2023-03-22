@@ -68,9 +68,9 @@ type UploadStore interface {
 	// Session will show the information about the session.
 	Session(tagID uint64) (SessionInfo, error)
 	// DeleteSession will delete the session info associated with the tag id.
-	DeleteSession(tagID uint64)
+	DeleteSession(tagID uint64) error
 	// ListSessions will list all the Sessions currently being tracked.
-	ListSessions(page, limit int) ([]SessionInfo, error)
+	ListSessions(offset, limit int) ([]SessionInfo, error)
 }
 
 // PinStore is a logical component of the storer which deals with pinning

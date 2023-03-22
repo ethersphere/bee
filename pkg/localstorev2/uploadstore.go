@@ -7,6 +7,7 @@ package storer
 import (
 	"context"
 	"fmt"
+	"sort"
 
 	"github.com/ethersphere/bee/pkg/localstorev2/internal"
 	pinstore "github.com/ethersphere/bee/pkg/localstorev2/internal/pinning"
@@ -84,9 +85,33 @@ func (db *DB) NewSession() (SessionInfo, error) {
 
 // Session is the implementation of the UploadStore.Session method.
 func (db *DB) Session(tagID uint64) (SessionInfo, error) {
-	return upload.GetTagInfo(db.repo.IndexStore(), tagID)
+	return upload.TagInfo(db.repo.IndexStore(), tagID)
 }
 
-func (db *DB) DeleteSession(tagID uint64) {}
+func (db *DB) DeleteSession(tagID uint64) error {
+	return upload.DeleteTag(db.repo.IndexStore(), tagID)
+}
 
-func (db *DB) ListSessions(pg, limit int) ([]SessionInfo, error) { return nil, nil }
+func (db *DB) ListSessions(offset, limit int) ([]SessionInfo, error) {
+	const maxPageSize = 1000
+
+	min := func(a, b int) int {
+		if a < b {
+			return a
+		}
+		return b
+	}
+
+	limit = min(limit, maxPageSize)
+
+	tags, err := upload.ListAllTags(db.repo.IndexStore())
+	if err != nil {
+		return nil, err
+	}
+
+	sort.Slice(tags, func(i, j int) bool {
+		return tags[i].TagID < tags[j].TagID
+	})
+
+	return tags[min(offset, len(tags)):min(offset+limit, len(tags))], nil
+}

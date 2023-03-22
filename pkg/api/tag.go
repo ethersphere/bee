@@ -104,8 +104,7 @@ func (s *Service) deleteTagHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tag, err := s.storer.Session(paths.TagID)
-	if err != nil {
+	if err := s.storer.DeleteSession(paths.TagID); err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			logger.Debug("tag not found", "tag_id", paths.TagID)
 			logger.Error(nil, "tag not found")
@@ -118,7 +117,6 @@ func (s *Service) deleteTagHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.storer.DeleteSession(tag.TagID)
 	jsonhttp.NoContent(w)
 }
 

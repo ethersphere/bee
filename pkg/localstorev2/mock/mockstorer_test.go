@@ -77,7 +77,9 @@ func TestMockStorer(t *testing.T) {
 	})
 
 	t.Run("delete session", func(t *testing.T) {
-		mockStorer.DeleteSession(1)
+		if err := mockStorer.DeleteSession(1); err != nil {
+			t.Fatalf("DeleteSession(): unexpected error: %v", err)
+		}
 
 		want := storage.ErrNotFound
 		_, have := mockStorer.Session(1)

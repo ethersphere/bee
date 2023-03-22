@@ -53,7 +53,7 @@ func TestTags(t *testing.T) {
 	})
 
 	t.Run("get non-existent tag", func(t *testing.T) {
-		jsonhttptest.Request(t, client, http.MethodDelete, tagsWithIdResource(uint64(333)), http.StatusNotFound,
+		jsonhttptest.Request(t, client, http.MethodGet, tagsWithIdResource(uint64(333)), http.StatusNotFound,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "tag not present",
 				Code:    http.StatusNotFound,
@@ -114,6 +114,9 @@ func TestTags(t *testing.T) {
 			jsonhttptest.WithJSONRequestBody(api.TagRequest{}),
 			jsonhttptest.WithUnmarshalJSONResponse(&tRes),
 		)
+
+		// check tag existence
+		jsonhttptest.Request(t, client, http.MethodGet, tagsWithIdResource(tRes.Uid), http.StatusOK)
 
 		// delete tag through API
 		jsonhttptest.Request(t, client, http.MethodDelete, tagsWithIdResource(tRes.Uid), http.StatusNoContent,
