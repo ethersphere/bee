@@ -10,28 +10,23 @@ import (
 )
 
 type metrics struct {
-	TotalSent                       prometheus.Counter
-	TotalReceived                   prometheus.Counter
-	TotalHandlerErrors              prometheus.Counter
-	TotalReplicatedAttempts         prometheus.Counter
-	TotalReplicatedError            prometheus.Counter
-	TotalSendAttempts               prometheus.Counter
-	TotalFailedSendAttempts         prometheus.Counter
-	TotalSkippedPeers               prometheus.Counter
-	TotalOutgoing                   prometheus.Counter
-	TotalOutgoingErrors             prometheus.Counter
-	InvalidStampErrors              prometheus.Counter
-	StampValidationTime             prometheus.HistogramVec
-	HandlerReplication              prometheus.Counter
-	HandlerReplicationErrors        prometheus.Counter
-	Forwarder                       prometheus.Counter
-	Storer                          prometheus.Counter
-	TotalHandlerTime                prometheus.HistogramVec
-	PushToPeerTime                  prometheus.HistogramVec
-	OriginPushTime                  prometheus.Histogram
-	TotalReplicationFromDistantPeer prometheus.Counter
-	TotalReplicationFromClosestPeer prometheus.Counter
-	DuplicateReceipt                prometheus.Counter
+	TotalSent                prometheus.Counter
+	TotalReceived            prometheus.Counter
+	TotalHandlerErrors       prometheus.Counter
+	TotalReplicatedAttempts  prometheus.Counter
+	TotalReplicatedError     prometheus.Counter
+	TotalSendAttempts        prometheus.Counter
+	TotalFailedSendAttempts  prometheus.Counter
+	TotalOutgoing            prometheus.Counter
+	TotalOutgoingErrors      prometheus.Counter
+	InvalidStampErrors       prometheus.Counter
+	StampValidationTime      prometheus.HistogramVec
+	HandlerReplication       prometheus.Counter
+	HandlerReplicationErrors prometheus.Counter
+	Forwarder                prometheus.Counter
+	Storer                   prometheus.Counter
+	TotalHandlerTime         prometheus.HistogramVec
+	PushToPeerTime           prometheus.HistogramVec
 }
 
 func newMetrics() metrics {
@@ -79,12 +74,6 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "total_failed_send_attempts",
 			Help:      "Total no of failed attempts to push chunk.",
-		}),
-		TotalSkippedPeers: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "total_skipped_peers",
-			Help:      "Total no of peers skipped",
 		}),
 		TotalOutgoing: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
@@ -140,7 +129,7 @@ func newMetrics() metrics {
 				Subsystem: subsystem,
 				Name:      "total_handler_time",
 				Help:      "Histogram for time taken for the handler.",
-				Buckets:   []float64{.5, 1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20},
+				Buckets:   []float64{.5, 1, 2, 5, 10, 15, 30, 60, 120},
 			}, []string{"status"},
 		),
 		PushToPeerTime: *prometheus.NewHistogramVec(
@@ -149,35 +138,9 @@ func newMetrics() metrics {
 				Subsystem: subsystem,
 				Name:      "push_peer_time",
 				Help:      "Histogram for time taken to push a chunk to a peer.",
-				Buckets:   []float64{.5, 1, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20},
+				Buckets:   []float64{.5, 1, 2, 5, 10, 15, 30, 60, 120},
 			}, []string{"status"},
 		),
-		OriginPushTime: prometheus.NewHistogram(
-			prometheus.HistogramOpts{
-				Namespace: m.Namespace,
-				Subsystem: subsystem,
-				Name:      "origin_push_time",
-				Help:      "Histogram for time taken for origin node to successfully push a chunk.",
-			},
-		),
-		TotalReplicationFromDistantPeer: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "total_distant_replications",
-			Help:      "Total no of replication requests received from non closest peer to chunk",
-		}),
-		TotalReplicationFromClosestPeer: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "total_closest_replications",
-			Help:      "Total no of replication requests received from closest peer to chunk",
-		}),
-		DuplicateReceipt: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "duplicate_receipts",
-			Help:      "Number of receipts received after first successful receipt.",
-		}),
 	}
 }
 

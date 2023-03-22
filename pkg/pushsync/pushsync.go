@@ -205,15 +205,6 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			span, _, ctxd := ps.tracer.StartSpanFromContext(ctxd, "pushsync-replication-storage", ps.logger, opentracing.Tag{Key: "address", Value: chunkAddress.String()})
 			defer span.Finish()
 
-			realClosestPeer, err := ps.topologyDriver.ClosestPeer(chunk.Address(), false, topology.Filter{Reachable: true})
-			if err == nil {
-				if !realClosestPeer.Equal(p.Address) {
-					ps.metrics.TotalReplicationFromDistantPeer.Inc()
-				} else {
-					ps.metrics.TotalReplicationFromClosestPeer.Inc()
-				}
-			}
-
 			chunk, err = ps.validStamp(chunk, ch.Stamp)
 			if err != nil {
 				return fmt.Errorf("pushsync replication invalid stamp: %w", err)
@@ -454,8 +445,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			if ps.warmedUp() && !errors.Is(result.err, errNotAttempted) {
 				ps.skipList.Add(ch.Address(), result.peer, sanctionWait)
-				ps.metrics.TotalSkippedPeers.Inc()
-				logger.Debug("adding peer to skiplist", "peer_address", result.peer)
 			}
 
 			if result.err == nil {
@@ -486,9 +475,6 @@ func (ps *PushSync) measurePushPeer(t time.Time, err error, origin bool) {
 		status = "failure"
 	} else {
 		status = "success"
-		if origin {
-			ps.metrics.OriginPushTime.Observe(time.Since(t).Seconds())
-		}
 	}
 	ps.metrics.PushToPeerTime.WithLabelValues(status).Observe(time.Since(t).Seconds())
 }
@@ -506,7 +492,6 @@ func (ps *PushSync) pushPeer(ctx context.Context, resultChan chan<- receiptResul
 		select {
 		case resultChan <- receiptResult{pushTime: now, peer: peer, err: err, pushed: pushed, receipt: &receipt}:
 		case <-doneChan:
-			ps.metrics.DuplicateReceipt.Inc()
 		}
 	}()
 
