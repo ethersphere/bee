@@ -219,7 +219,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 
 		addr := swarm.NewAddress(delivery.Address)
 		if _, ok := wantChunks[addr.ByteString()]; !ok {
-			s.logger.Debug("want chunks", "error", ErrUnsolicitedChunk, "peer_address", peer)
+			s.logger.Debug("want chunks", "error", ErrUnsolicitedChunk, "peer_address", peer, "chunk_address", addr)
 			chunkErr = errors.Join(chunkErr, ErrUnsolicitedChunk)
 			continue
 		}
@@ -229,7 +229,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 
 		chunk := swarm.NewChunk(addr, delivery.Data)
 		if chunk, err = s.validStamp(chunk, delivery.Stamp); err != nil {
-			loggerV2.Debug("unverified stamp", "error", err, "peer_address", peer)
+			s.logger.Debug("unverified stamp", "error", err, "peer_address", peer, "chunk_address", chunk)
 			chunkErr = errors.Join(chunkErr, err)
 			continue
 		}
@@ -237,7 +237,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		if cac.Valid(chunk) {
 			go s.unwrap(chunk)
 		} else if !soc.Valid(chunk) {
-			s.logger.Debug("valid chunk", "error", swarm.ErrInvalidChunk, "peer_address", peer)
+			s.logger.Debug("valid chunk", "error", swarm.ErrInvalidChunk, "peer_address", peer, "chunk_address", chunk)
 			chunkErr = errors.Join(chunkErr, swarm.ErrInvalidChunk)
 			continue
 		}
