@@ -45,7 +45,6 @@ const (
 	preemptiveInterval = 5 * time.Second  // P90 request time to live
 	sanctionWait       = 5 * time.Minute
 	replicationTTL     = 5 * time.Second // time to live for neighborhood replication
-	waitRefresh        = 600 * time.Millisecond
 )
 
 const (

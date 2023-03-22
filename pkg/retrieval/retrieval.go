@@ -139,16 +139,17 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 	v, _, err := s.singleflight.Do(ctx, flightRoute, func(ctx context.Context) (interface{}, error) {
 
 		var skip []swarm.Address
+		var preemptiveTicker <-chan time.Time
 
 		if !sourcePeerAddr.IsZero() {
 			skip = append(skip, sourcePeerAddr)
 		}
 
-		preemptiveTicker := time.NewTicker(preemptiveInterval)
-		defer preemptiveTicker.Stop()
-
 		sentErrorsLeft := 1
 		if origin {
+			ticker := time.NewTicker(preemptiveInterval)
+			defer ticker.Stop()
+			preemptiveTicker = ticker.C
 			sentErrorsLeft = maxRetrievedErrors
 		}
 
@@ -176,7 +177,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 			select {
 			case <-ctx.Done():
 				return nil, ctx.Err()
-			case <-preemptiveTicker.C:
+			case <-preemptiveTicker:
 				retry()
 			case <-retryC:
 
