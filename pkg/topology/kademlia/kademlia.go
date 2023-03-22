@@ -46,9 +46,9 @@ const (
 	// than 15 seconds (empirically verified).
 	peerConnectionAttemptTimeout = 15 * time.Second // timeout for establishing a new connection with peer.
 
-	flagTimeout      = 15 * time.Minute // how long before blocking a flagged peer
-	blockDuration    = time.Hour        // how long to blocklist an unresponsive peer for
-	blockWorkerWakup = time.Second * 10 // wake up interval for the blocker worker
+	flagTimeout      = 10 * time.Minute // how long before blocking a flagged peer
+	blockDuration    = 6 * time.Hour    // how long to blocklist an unresponsive peer for
+	blockWorkerWakup = 30 * time.Second // wake up interval for the blocker worker
 )
 
 // Default option values

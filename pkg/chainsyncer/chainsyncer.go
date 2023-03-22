@@ -28,9 +28,9 @@ import (
 const loggerName = "chainsyncer"
 
 const (
-	defaultFlagTimeout     = 20 * time.Minute
-	defaultPollEvery       = 1 * time.Minute
-	defaultBlockerPollTime = 10 * time.Second
+	defaultFlagTimeout     = 15 * time.Minute
+	defaultPollEvery       = 5 * time.Minute
+	defaultBlockerPollTime = 30 * time.Second
 	blockDuration          = 24 * time.Hour
 
 	blocksToRemember = 1000
@@ -105,10 +105,9 @@ func (c *ChainSyncer) manage() {
 	var (
 		ctx, cancel = context.WithCancel(context.Background())
 		wg          sync.WaitGroup
-		o           sync.Once
 		positives   int32
 		items       int
-		ticker      = time.NewTicker(1 * time.Nanosecond)
+		ticker      = time.NewTicker(c.pollEvery)
 	)
 	go func() {
 		<-c.quit
@@ -121,9 +120,6 @@ func (c *ChainSyncer) manage() {
 		case <-c.quit:
 			return
 		case <-ticker.C:
-			o.Do(func() {
-				ticker.Reset(c.pollEvery)
-			})
 		}
 		// go through every peer we are connected to
 		// try to ask about a recent block height.
