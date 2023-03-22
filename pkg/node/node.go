@@ -24,6 +24,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/chainsync"
+	"github.com/ethersphere/bee/pkg/chainsyncer"
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/pkg/topology/depthmonitor"
 
@@ -984,6 +986,24 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		multiresolver.WithDefaultCIDResolver(),
 	)
 	b.resolverCloser = multiResolver
+
+	var chainSyncer *chainsyncer.ChainSyncer
+
+	if o.FullNodeMode {
+		cs, err := chainsync.New(p2ps, chainBackend)
+		if err != nil {
+			return nil, fmt.Errorf("new chainsync: %w", err)
+		}
+		if err = p2ps.AddProtocol(cs.Protocol()); err != nil {
+			return nil, fmt.Errorf("chainsync protocol: %w", err)
+		}
+		chainSyncer, err = chainsyncer.New(chainBackend, cs, kad, p2ps, logger, nil)
+		if err != nil {
+			return nil, fmt.Errorf("new chainsyncer: %w", err)
+		}
+
+		b.chainSyncerCloser = chainSyncer
+	}
 
 	feedFactory := factory.New(ns)
 	steward := steward.New(storer, traversalService, retrieve, pushSyncProtocol)
