@@ -7,6 +7,7 @@ package testutil
 import (
 	"crypto/rand"
 	"io"
+	mrand "math/rand"
 	"reflect"
 	"testing"
 )
@@ -17,6 +18,24 @@ func RandBytes(tb testing.TB, size int) []byte {
 
 	buf := make([]byte, size)
 	n, err := rand.Read(buf)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	if n != size {
+		tb.Fatalf("expected to read %d, got %d", size, n)
+	}
+
+	return buf
+}
+
+// RandBytesWithSeed returns bytes slice of specified size filled with random values generated using seed.
+func RandBytesWithSeed(tb testing.TB, size int, seed int64) []byte {
+	tb.Helper()
+
+	buf := make([]byte, size)
+
+	r := mrand.New(mrand.NewSource(seed))
+	n, err := io.ReadFull(r, buf)
 	if err != nil {
 		tb.Fatal(err)
 	}
