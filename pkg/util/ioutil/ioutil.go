@@ -7,74 +7,78 @@ package ioutil
 import (
 	"context"
 	"io"
+	"sync/atomic"
 	"time"
 )
 
-// timeoutReader monitors the progress of the io.Reader Read method
-// and calls the cancel function when reading does not progress for
-// the specified time.
-type timeoutReader struct {
-	t *time.Timer
-	r io.Reader
-	n chan int
+// idleReader monitors the progress of the io.Reader Read method
+// and calls the callbackFn function when reading does not progress
+// for the specified idle duration.
+type idleReader struct {
+	total  atomic.Uint64
+	reader io.Reader
+
+	idle  time.Duration
+	timer *time.Timer
+
+	done   atomic.Bool
+	cancel context.CancelFunc
 }
 
 // Read implements the io.Reader Read interface.
-func (tr *timeoutReader) Read(p []byte) (int, error) {
-	n, err := tr.r.Read(p)
-
-	v := n
-	if err != nil && tr.t.Stop() {
+func (ir *idleReader) Read(p []byte) (int, error) {
+	if !ir.done.Load() && ir.timer.Stop() {
 		select {
-		case <-tr.t.C:
+		case <-ir.timer.C:
 		default:
 		}
-
-		// Negative value signals that error has
-		// occurred and the goroutine should terminate.
-		v = -1
 	}
 
-	select {
-	case tr.n <- v:
-	default:
-	}
+	n, err := ir.reader.Read(p)
 
+	if !ir.done.Load() {
+		ir.timer.Reset(ir.idle)
+		ir.total.Add(uint64(n))
+		if err != nil {
+			ir.cancel()
+			ir.done.Store(true)
+		}
+	}
 	return n, err
 }
 
-// TimeoutReader creates a new timeoutReader instance and starts
-// a goroutine that monitors the progress of reading from the given reader.
-// If no progress is made for the duration of the given timeout, then the
-// reader executes the given cancel function and terminates the underlying
-// goroutine. This goroutine will also terminate when the given context
-// is canceled or if an error is returned by the given reader.
-func TimeoutReader(ctx context.Context, r io.Reader, timeout time.Duration, cancel func(uint64)) io.Reader {
-	tr := &timeoutReader{t: time.NewTimer(timeout), r: r, n: make(chan int)}
+// IdleReader creates a new io.Reader instance and starts a goroutine that
+// monitors the progress of reading from the given reader. If no progress is
+// made for the duration of the given idle, then the reader executes the given
+// cancelFn function and terminates the underlying goroutine. This goroutine
+// will also terminate when the given context is canceled or if an error is
+// returned by the given reader. The duration of the Read method is not taken
+// into account when monitoring the progress of reading.
+func IdleReader(ctx context.Context, reader io.Reader, idle time.Duration, callbackFn func(uint64)) io.Reader {
+	ctx, cancel := context.WithCancel(ctx)
+	ir := &idleReader{
+		reader: reader,
+		timer:  time.NewTimer(idle),
+		idle:   idle,
+		cancel: cancel,
+	}
 
 	go func() {
-		var total uint64 = 0
+		select {
+		case <-ctx.Done():
+		case <-ir.timer.C:
+			callbackFn(ir.total.Load())
+		}
 
-		for {
-			select {
-			case n := <-tr.n:
-				switch {
-				case n < 0:
-					return
-				case n >= 0:
-					tr.t.Reset(timeout)
-					total += uint64(n)
-				}
-			case <-tr.t.C:
-				cancel(total)
-				return
-			case <-ctx.Done():
-				return
-			}
+		ir.done.Store(true)
+		ir.timer.Stop()
+		select {
+		case <-ir.timer.C:
+		default:
 		}
 	}()
 
-	return tr
+	return ir
 }
 
 // The WriterFunc type is an adapter to allow the use of
