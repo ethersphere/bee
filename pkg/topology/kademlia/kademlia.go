@@ -62,6 +62,7 @@ const (
 	defaultTimeToRetry                 = 2 * defaultShortRetry
 	defaultBroadcastBinSize            = 4
 	defaultPeerPingPollTime            = 5 * time.Minute // how often to ping a peer
+	defaultExtraPrunePeers             = 1
 )
 
 var (
@@ -602,7 +603,7 @@ func (k *Kad) manage() {
 				case <-k.quit:
 					return
 				case <-time.After(5 * time.Minute):
-					k.pruneFunc(k.NeighborhoodDepth(), extraPeersToPrune)
+					k.opt.PruneFunc(k.NeighborhoodDepth(), defaultExtraPrunePeers)
 				}
 			}
 		}()
@@ -647,7 +648,7 @@ func (k *Kad) manage() {
 			depth := k.depth
 			k.depthMu.Unlock()
 
-			k.opt.PruneFunc(depth)
+			k.opt.PruneFunc(depth, 0)
 
 			loggerV1.Debug("connector finished", "elapsed", time.Since(start), "old_depth", oldDepth, "new_depth", depth)
 
@@ -724,7 +725,7 @@ func (k *Kad) recordPeerLatencies(ctx context.Context) {
 }
 
 // pruneOversaturatedBins disconnects out of depth peers from oversaturated bins
-// while maintaining the balance of the bin and favoring peers with longers connections
+// while maintaining the balance of the bin and favoring peers with shorter connections
 func (k *Kad) pruneOversaturatedBins(depth uint8, extraCap int) {
 
 	for i := range k.commonBinPrefixes {
@@ -751,20 +752,20 @@ func (k *Kad) pruneOversaturatedBins(depth uint8, extraCap int) {
 				continue
 			}
 
-			var smallestDuration time.Duration
-			var newestPeer swarm.Address
+			var largestDuration time.Duration
+			var oldestPeer swarm.Address
 			for _, peer := range peers {
 				ss := k.collector.Inspect(peer)
 				if ss == nil {
 					continue
 				}
 				duration := ss.SessionConnectionDuration
-				if smallestDuration == 0 || duration < smallestDuration {
-					smallestDuration = duration
-					newestPeer = peer
+				if largestDuration == 0 || duration > largestDuration {
+					largestDuration = duration
+					oldestPeer = peer
 				}
 			}
-			err := k.p2p.Disconnect(newestPeer, "pruned from oversaturated bin")
+			err := k.p2p.Disconnect(oldestPeer, "pruned from oversaturated bin")
 			if err != nil {
 				k.logger.Debug("prune disconnect failed", "error", err)
 			}
