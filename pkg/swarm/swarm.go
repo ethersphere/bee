@@ -12,8 +12,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-
-	"golang.org/x/crypto/sha3"
 )
 
 const (
@@ -31,10 +29,6 @@ const (
 	SocSignatureSize        = 65
 	SocMinChunkSize         = HashSize + SocSignatureSize + SpanSize
 	SocMaxChunkSize         = SocMinChunkSize + ChunkSize
-)
-
-var (
-	NewHasher = sha3.NewLegacyKeccak256
 )
 
 var (
