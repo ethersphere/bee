@@ -281,7 +281,6 @@ func (s *Service) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathVar string, w http.ResponseWriter, r *http.Request) {
-	logger = tracing.NewLoggerWithTraceID(r.Context(), logger)
 	loggerV1 := logger.V(1).Build()
 
 	ls := loadsave.NewReadonly(s.storer)
