@@ -33,7 +33,6 @@ import (
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/auth"
-	"github.com/ethersphere/bee/pkg/chainsync"
 	"github.com/ethersphere/bee/pkg/config"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds/factory"
@@ -117,6 +116,7 @@ type Bee struct {
 	postageServiceCloser     io.Closer
 	priceOracleCloser        io.Closer
 	hiveCloser               io.Closer
+	chainSyncerCloser        io.Closer
 	depthMonitorCloser       io.Closer
 	storageIncetivesCloser   io.Closer
 	shutdownInProgress       bool
@@ -985,16 +985,6 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 	)
 	b.resolverCloser = multiResolver
 
-	if o.FullNodeMode {
-		cs, err := chainsync.New(p2ps, chainBackend)
-		if err != nil {
-			return nil, fmt.Errorf("new chainsync: %w", err)
-		}
-		if err = p2ps.AddProtocol(cs.Protocol()); err != nil {
-			return nil, fmt.Errorf("chainsync protocol: %w", err)
-		}
-	}
-
 	feedFactory := factory.New(ns)
 	steward := steward.New(storer, traversalService, retrieve, pushSyncProtocol)
 
@@ -1207,7 +1197,11 @@ func (b *Bee) Shutdown() error {
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(6)
+	wg.Add(7)
+	go func() {
+		defer wg.Done()
+		tryClose(b.chainSyncerCloser, "chain syncer")
+	}()
 	go func() {
 		defer wg.Done()
 		tryClose(b.pssCloser, "pss")
