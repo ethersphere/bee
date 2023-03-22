@@ -47,7 +47,7 @@ const (
 	peerConnectionAttemptTimeout = 15 * time.Second // timeout for establishing a new connection with peer.
 
 	flagTimeout      = 10 * time.Minute // how long before blocking a flagged peer
-	blockDuration    = 6 * time.Hour    // how long to blocklist an unresponsive peer for
+	blockDuration    = time.Hour        // how long to blocklist an unresponsive peer for
 	blockWorkerWakup = 30 * time.Second // wake up interval for the blocker worker
 )
 
@@ -61,7 +61,8 @@ const (
 	defaultShortRetry                  = 30 * time.Second
 	defaultTimeToRetry                 = 2 * defaultShortRetry
 	defaultBroadcastBinSize            = 4
-	defaultPeerPingPollTime            = 5 * time.Minute // how often to ping a peer
+	defaultPeerPingPollTime            = 5 * time.Minute  // how often to ping a peer
+	defaultPingTimeout                 = 10 * time.Second // timeout for the ping response
 )
 
 var (
@@ -115,6 +116,7 @@ type kadOptions struct {
 	TimeToRetry                 time.Duration
 	ShortRetry                  time.Duration
 	PeerPingPollTime            time.Duration
+	PeerPingTimeout             time.Duration
 	BitSuffixLength             int // additional depth of common prefix for bin
 	SaturationPeers             int
 	OverSaturationPeers         int
@@ -137,6 +139,7 @@ func newKadOptions(o Options) kadOptions {
 		TimeToRetry:                 defaultValDuration(o.TimeToRetry, defaultTimeToRetry),
 		ShortRetry:                  defaultValDuration(o.ShortRetry, defaultShortRetry),
 		PeerPingPollTime:            defaultValDuration(o.PeerPingPollTime, defaultPeerPingPollTime),
+		PeerPingTimeout:             defaultValDuration(o.PeerPingPollTime, defaultPingTimeout),
 		BitSuffixLength:             defaultValInt(o.BitSuffixLength, defaultBitSuffixLength),
 		SaturationPeers:             defaultValInt(o.SaturationPeers, defaultSaturationPeers),
 		OverSaturationPeers:         defaultValInt(o.OverSaturationPeers, defaultOverSaturationPeers),
@@ -672,8 +675,6 @@ func (k *Kad) manage() {
 func (k *Kad) recordPeerLatencies(ctx context.Context) {
 	loggerV1 := k.logger.V(1).Register()
 
-	ctx, cancel := context.WithTimeout(ctx, k.opt.PeerPingPollTime)
-	defer cancel()
 	var wg sync.WaitGroup
 
 	_ = k.connectedPeers.EachBin(func(addr swarm.Address, _ uint8) (bool, bool, error) {
@@ -681,13 +682,14 @@ func (k *Kad) recordPeerLatencies(ctx context.Context) {
 		case <-ctx.Done():
 			return false, false, nil
 		case <-k.halt:
-			cancel()
 			return false, false, nil
 		default:
 		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			ctx, cancel := context.WithTimeout(ctx, k.opt.PeerPingTimeout)
+			defer cancel()
 			switch l, err := k.pinger.Ping(ctx, addr, "ping"); {
 			case err != nil:
 				loggerV1.Debug("cannot get latency for peer", "peer_address", addr, "error", err)
