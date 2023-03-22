@@ -41,7 +41,7 @@ func TestTxChunkStore_Recovery(t *testing.T) {
 	})
 
 	chunks := chunktest.GenerateTestRandomChunks(10)
-	lessFn := func(i, j swarm.Chunk) bool { return i.Address().Compare(j.Address()) < 0 }
+	lessFn := func(i, j swarm.Chunk) int { return i.Address().Compare(j.Address()) }
 	slices.SortFunc(chunks, lessFn)
 
 	// Sore half of the chunks within a transaction and commit it.
@@ -88,7 +88,8 @@ func TestTxChunkStore_Recovery(t *testing.T) {
 	); err != nil {
 		t.Fatalf("iterate: %v", err)
 	}
-	if diff := cmp.Diff(want, have, cmpopts.SortSlices(lessFn)); diff != "" {
+	lessFn2 := func(i, j swarm.Chunk) bool { return i.Address().Compare(j.Address()) < 0 }
+	if diff := cmp.Diff(want, have, cmpopts.SortSlices(lessFn2)); diff != "" {
 		t.Fatalf("recovered store data mismatch (-want +have):\n%s", diff)
 	}
 }
