@@ -82,6 +82,7 @@ import (
 	"github.com/ethersphere/bee/pkg/util/ioutil"
 	"github.com/hashicorp/go-multierror"
 	ma "github.com/multiformats/go-multiaddr"
+	promc "github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/sha3"
 	"golang.org/x/sync/errgroup"
 )
@@ -581,6 +582,12 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		}
 	}
 
+	var registry *promc.Registry
+
+	if debugService != nil {
+		registry = debugService.MetricsRegistry()
+	}
+
 	p2ps, err := libp2p.New(ctx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
 		PrivateKey:      libp2pPrivateKey,
 		NATAddr:         o.NATAddr,
@@ -589,7 +596,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		FullNode:        o.FullNodeMode,
 		Nonce:           nonce,
 		ValidateOverlay: chainEnabled,
-		Registry:        debugService.MetricsRegistry(),
+		Registry:        registry,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)
