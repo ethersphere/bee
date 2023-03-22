@@ -78,14 +78,14 @@ func (h *Hasher) BlockSize() int {
 // using Hash presupposes sequential synchronous writes (io.Writer interface).
 func (h *Hasher) Hash(b []byte) ([]byte, error) {
 	if h.size == 0 {
-		return sha3hash(h.span, h.zerohashes[h.depth])
+		return doHash(h.hasher(), h.span, h.zerohashes[h.depth])
 	}
 	copy(h.bmt.buffer[h.size:], zerosection)
 	// write the last section with final flag set to true
 	go h.processSection(h.pos, true)
 	select {
 	case result := <-h.result:
-		return sha3hash(h.span, result)
+		return doHash(h.hasher(), h.span, result)
 	case err := <-h.errc:
 		return nil, err
 	}
