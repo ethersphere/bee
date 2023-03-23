@@ -48,6 +48,7 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/steward"
+	"github.com/ethersphere/bee/pkg/storageincentives"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -181,6 +182,8 @@ type Service struct {
 
 	preMapHooks map[string]func(v string) (string, error)
 	validate    *validator.Validate
+
+	redistributionAgent *storageincentives.Agent
 }
 
 func (s *Service) SetP2P(p2p p2p.DebugService) {
@@ -192,6 +195,12 @@ func (s *Service) SetP2P(p2p p2p.DebugService) {
 func (s *Service) SetSwarmAddress(addr *swarm.Address) {
 	if s != nil {
 		s.overlay = addr
+	}
+}
+
+func (s *Service) SetRedistributionAgent(redistributionAgent *storageincentives.Agent) {
+	if s != nil {
+		s.redistributionAgent = redistributionAgent
 	}
 }
 
@@ -585,7 +594,7 @@ func (s *Service) corsHandler(h http.Handler) http.Handler {
 		if o := r.Header.Get("Origin"); o != "" && s.checkOrigin(r) {
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			w.Header().Set("Access-Control-Allow-Origin", o)
-			w.Header().Set("Access-Control-Allow-Headers", "User-Agent, Origin, Accept, Authorization, Content-Type, X-Requested-With, Decompressed-Content-Length, Access-Control-Request-Headers, Access-Control-Request-Method, Swarm-Tag, Swarm-Pin, Swarm-Encrypt, Swarm-Index-Document, Swarm-Error-Document, Swarm-Collection, Swarm-Postage-Batch-Id, Gas-Price, Range, Accept-Ranges, Content-Encoding")
+			w.Header().Set("Access-Control-Allow-Headers", "User-Agent, Origin, Accept, Authorization, Content-Type, X-Requested-With, Decompressed-Content-Length, Access-Control-Request-Headers, Access-Control-Request-Method, Swarm-Tag, Swarm-Pin, Swarm-Encrypt, Swarm-Index-Document, Swarm-Error-Document, Swarm-Collection, Swarm-Postage-Batch-Id, Swarm-Deferred-Upload, Gas-Price, Range, Accept-Ranges, Content-Encoding")
 			w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS, POST, PUT, DELETE")
 			w.Header().Set("Access-Control-Max-Age", "3600")
 		}

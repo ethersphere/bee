@@ -14,13 +14,12 @@ import (
 	storer "github.com/ethersphere/bee/pkg/localstorev2"
 	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/swarm/test"
 )
 
 func TestPushSubscriber(t *testing.T) {
 	t.Parallel()
 
-	baseAddr := test.RandomAddress()
+	baseAddr := swarm.RandAddress(t)
 	t.Run("inmem", func(t *testing.T) {
 		t.Parallel()
 		memStorer := memStorer(t, dbTestOps(baseAddr, 10, nil, nil, time.Second))

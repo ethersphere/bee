@@ -22,7 +22,6 @@ import (
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/storagev2/storagetest"
 	"github.com/ethersphere/bee/pkg/swarm"
-	swarmtesting "github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 )
@@ -100,8 +99,8 @@ func TestPushItem(t *testing.T) {
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
 			Item: &upload.PushItem{
 				Timestamp: rand.Int63(),
-				Address:   swarmtesting.RandomAddress(),
-				BatchID:   swarmtesting.RandomAddress().Bytes(),
+				Address:   swarm.RandAddress(t),
+				BatchID:   swarm.RandAddress(t).Bytes(),
 				TagID:     rand.Uint64(),
 			},
 			Factory: func() storage.Item { return new(upload.PushItem) },
@@ -175,7 +174,7 @@ func TestTagItem(t *testing.T) {
 				Stored:    rand.Uint64(),
 				Sent:      rand.Uint64(),
 				Synced:    rand.Uint64(),
-				Address:   swarmtesting.RandomAddress(),
+				Address:   swarm.RandAddress(t),
 				StartedAt: rand.Int63(),
 			},
 			Factory: func() storage.Item { return new(upload.TagItem) },
@@ -215,8 +214,8 @@ func TestTagItem(t *testing.T) {
 func TestUploadItem(t *testing.T) {
 	t.Parallel()
 
-	randomAddress := swarmtesting.RandomAddress()
-	randomBatchId := swarmtesting.RandomAddress().Bytes()
+	randomAddress := swarm.RandAddress(t)
+	randomBatchId := swarm.RandAddress(t).Bytes()
 
 	tests := []struct {
 		name string
@@ -477,7 +476,7 @@ func TestChunkPutter(t *testing.T) {
 	}
 
 	t.Run("close with reference", func(t *testing.T) {
-		addr := swarmtesting.RandomAddress()
+		addr := swarm.RandAddress(t)
 
 		err := putter.Close(addr)
 		if err != nil {
@@ -642,7 +641,7 @@ func TestChunkReporter(t *testing.T) {
 	}
 
 	t.Run("close with reference", func(t *testing.T) {
-		addr := swarmtesting.RandomAddress()
+		addr := swarm.RandAddress(t)
 
 		err := putter.Close(addr)
 		if err != nil {

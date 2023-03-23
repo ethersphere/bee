@@ -19,13 +19,10 @@ import (
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
 var noopEvictFn = func([]byte) error { return nil }
-
-var baseAddr = test.RandomAddress()
 
 const defaultCapacity = 2 ^ 22
 
@@ -197,6 +194,7 @@ func TestBatchStore_Reset(t *testing.T) {
 		postagetest.WithValue(15),
 		postagetest.WithDepth(8),
 	)
+	baseAddr := swarm.RandAddress(t)
 
 	path := t.TempDir()
 	logger := log.Noop
@@ -566,7 +564,7 @@ func setupBatchStore(t *testing.T, capacity int) postage.Storer {
 		return nil
 	}
 
-	bStore, _ := batchstore.New(stateStore, evictFn, test.RandomAddress(), capacity, log.Noop)
+	bStore, _ := batchstore.New(stateStore, evictFn, swarm.RandAddress(t), capacity, log.Noop)
 
 	err = bStore.PutChainState(&postage.ChainState{
 		Block:        0,

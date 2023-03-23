@@ -13,7 +13,6 @@ import (
 	storer "github.com/ethersphere/bee/pkg/localstorev2"
 	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -255,12 +254,12 @@ func TestUploadStore(t *testing.T) {
 		t.Parallel()
 
 		testUploadStore(t, func() (*storer.DB, error) {
-			return storer.New(context.Background(), "", dbTestOps(test.RandomAddress(), 0, nil, nil, time.Second))
+			return storer.New(context.Background(), "", dbTestOps(swarm.RandAddress(t), 0, nil, nil, time.Second))
 		})
 	})
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
 
-		testUploadStore(t, diskStorer(t, dbTestOps(test.RandomAddress(), 0, nil, nil, time.Second)))
+		testUploadStore(t, diskStorer(t, dbTestOps(swarm.RandAddress(t), 0, nil, nil, time.Second)))
 	})
 }

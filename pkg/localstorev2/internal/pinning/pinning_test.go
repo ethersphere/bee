@@ -17,7 +17,6 @@ import (
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	storagetest "github.com/ethersphere/bee/pkg/storagev2/storagetest"
 	"github.com/ethersphere/bee/pkg/swarm"
-	swarmtesting "github.com/ethersphere/bee/pkg/swarm/test"
 )
 
 type pinningCollection struct {
@@ -349,7 +348,7 @@ func TestPinChunkItem(t *testing.T) {
 	storagetest.TestItemClone(t, &storagetest.ItemCloneTest{
 		Item: &pinstore.PinChunkItem{
 			UUID: pinstore.NewUUID(),
-			Addr: swarmtesting.RandomAddress(),
+			Addr: swarm.RandAddress(t),
 		},
 	})
 }

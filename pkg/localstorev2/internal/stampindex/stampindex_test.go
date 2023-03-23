@@ -15,7 +15,6 @@ import (
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/storagev2/storagetest"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -67,7 +66,7 @@ func TestStampIndexItem(t *testing.T) {
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
 			Item: stampindex.NewItemWithValues(
 				[]byte{swarm.StampTimestampSize - 1: 9},
-				test.RandomAddress(),
+				swarm.RandAddress(t),
 				false,
 			),
 			Factory: func() storage.Item { return new(stampindex.Item) },

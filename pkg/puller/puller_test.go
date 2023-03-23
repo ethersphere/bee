@@ -19,7 +19,6 @@ import (
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/swarm/test"
 	kadMock "github.com/ethersphere/bee/pkg/topology/kademlia/mock"
 	"github.com/ethersphere/bee/pkg/util/testutil"
 )
@@ -29,7 +28,7 @@ func TestOneSync(t *testing.T) {
 	t.Parallel()
 
 	var (
-		addr    = test.RandomAddress()
+		addr    = swarm.RandAddress(t)
 		cursors = []uint64{1000, 1000, 1000}
 		replies = []mockps.SyncReply{
 			{Bin: 1, Start: 1, Topmost: 1000, Peer: addr},
@@ -236,7 +235,7 @@ func TestBinReset(t *testing.T) {
 	t.Parallel()
 
 	var (
-		addr    = test.RandomAddress()
+		addr    = swarm.RandAddress(t)
 		cursors = []uint64{1000, 1000, 1000}
 	)
 
@@ -275,7 +274,7 @@ func TestRadiusDecrease(t *testing.T) {
 	t.Parallel()
 
 	var (
-		addr    = test.RandomAddress()
+		addr    = swarm.RandAddress(t)
 		cursors = []uint64{1000, 1000, 1000, 1000}
 		replies = []mockps.SyncReply{
 			{Bin: 2, Start: 1, Topmost: 1000, Peer: addr},
@@ -313,7 +312,7 @@ func TestRadiusIncrease(t *testing.T) {
 	t.Parallel()
 
 	var (
-		addr    = test.RandomAddress()
+		addr    = swarm.RandAddress(t)
 		cursors = []uint64{1000, 1000, 1000, 1000}
 		replies = []mockps.SyncReply{
 			{Bin: 1, Start: 1, Topmost: 1000, Peer: addr},
@@ -394,7 +393,7 @@ func TestPeerGone(t *testing.T) {
 	t.Parallel()
 
 	var (
-		addr    = test.RandomAddress()
+		addr    = swarm.RandAddress(t)
 		replies = []mockps.SyncReply{
 			{Bin: 0, Start: 1, Topmost: 1001, Peer: addr},
 			{Bin: 1, Start: 1, Topmost: 1001, Peer: addr}}

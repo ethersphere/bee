@@ -24,7 +24,6 @@ import (
 	chunk "github.com/ethersphere/bee/pkg/storage/testing"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -36,13 +35,13 @@ func TestIndexCollision(t *testing.T) {
 		stamp := postagetesting.MustNewBatchStamp(postagetesting.MustNewBatch().ID)
 		putter := storer.ReservePutter(context.Background())
 
-		ch_1 := chunk.GenerateTestRandomChunkAt(baseAddr, 0).WithStamp(stamp)
+		ch_1 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(stamp)
 		err := putter.Put(context.Background(), ch_1)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		ch_2 := chunk.GenerateTestRandomChunkAt(baseAddr, 0).WithStamp(stamp)
+		ch_2 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(stamp)
 		err = putter.Put(context.Background(), ch_2)
 		if err == nil {
 			t.Fatal("expected index collision error")
@@ -68,7 +67,7 @@ func TestIndexCollision(t *testing.T) {
 
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
-		baseAddr := test.RandomAddress()
+		baseAddr := swarm.RandAddress(t)
 		storer, err := diskStorer(t, dbTestOps(baseAddr, 10, nil, nil, time.Minute))()
 		if err != nil {
 			t.Fatal(err)
@@ -78,7 +77,7 @@ func TestIndexCollision(t *testing.T) {
 	})
 	t.Run("mem", func(t *testing.T) {
 		t.Parallel()
-		baseAddr := test.RandomAddress()
+		baseAddr := swarm.RandAddress(t)
 		storer, err := memStorer(t, dbTestOps(baseAddr, 10, nil, nil, time.Minute))()
 		if err != nil {
 			t.Fatal(err)
@@ -96,8 +95,8 @@ func TestReplaceOldIndex(t *testing.T) {
 
 		t.Run("", func(t *testing.T) {
 			batch := postagetesting.MustNewBatch()
-			ch_1 := chunk.GenerateTestRandomChunkAt(baseAddr, 0).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 0))
-			ch_2 := chunk.GenerateTestRandomChunkAt(baseAddr, 0).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 1))
+			ch_1 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 0))
+			ch_2 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 1))
 
 			putter := storer.ReservePutter(context.Background())
 
@@ -156,7 +155,7 @@ func TestReplaceOldIndex(t *testing.T) {
 
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
-		baseAddr := test.RandomAddress()
+		baseAddr := swarm.RandAddress(t)
 		storer, err := diskStorer(t, dbTestOps(baseAddr, 10, nil, nil, time.Minute))()
 		if err != nil {
 			t.Fatal(err)
@@ -166,7 +165,7 @@ func TestReplaceOldIndex(t *testing.T) {
 	})
 	t.Run("mem", func(t *testing.T) {
 		t.Parallel()
-		baseAddr := test.RandomAddress()
+		baseAddr := swarm.RandAddress(t)
 		storer, err := memStorer(t, dbTestOps(baseAddr, 10, nil, nil, time.Minute))()
 		if err != nil {
 			t.Fatal(err)
@@ -179,7 +178,7 @@ func TestReplaceOldIndex(t *testing.T) {
 func TestEvictBatch(t *testing.T) {
 	t.Parallel()
 
-	baseAddr := test.RandomAddress()
+	baseAddr := swarm.RandAddress(t)
 
 	t.Cleanup(func() {})
 	st, err := diskStorer(t, dbTestOps(baseAddr, 100, nil, nil, time.Minute))()
@@ -199,7 +198,7 @@ func TestEvictBatch(t *testing.T) {
 
 	for b := 0; b < 3; b++ {
 		for i := uint64(0); i < chunksPerPO; i++ {
-			ch := chunk.GenerateTestRandomChunkAt(baseAddr, b)
+			ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, b)
 			ch = ch.WithStamp(postagetesting.MustNewBatchStamp(batches[b].ID))
 			chunks = append(chunks, ch)
 			err := putter.Put(ctx, ch)
@@ -285,7 +284,7 @@ func TestUnreserveCap(t *testing.T) {
 
 		for b := 0; b < 5; b++ {
 			for i := uint64(0); i < chunksPerPO; i++ {
-				ch := chunk.GenerateTestRandomChunkAt(baseAddr, b)
+				ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, b)
 				ch = ch.WithStamp(postagetesting.MustNewBatchStamp(batch.ID))
 				chunksPO[b] = append(chunksPO[b], ch)
 				err := putter.Put(ctx, ch)
@@ -330,7 +329,7 @@ func TestUnreserveCap(t *testing.T) {
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
 		bs := batchstore.New()
-		baseAddr := test.RandomAddress()
+		baseAddr := swarm.RandAddress(t)
 		storer, err := diskStorer(t, dbTestOps(baseAddr, capacity, bs, nil, time.Minute))()
 		if err != nil {
 			t.Fatal(err)
@@ -341,7 +340,7 @@ func TestUnreserveCap(t *testing.T) {
 	t.Run("mem", func(t *testing.T) {
 		t.Parallel()
 		bs := batchstore.New()
-		baseAddr := test.RandomAddress()
+		baseAddr := swarm.RandAddress(t)
 		storer, err := memStorer(t, dbTestOps(baseAddr, capacity, bs, nil, time.Minute))()
 		if err != nil {
 			t.Fatal(err)
@@ -354,7 +353,7 @@ func TestUnreserveCap(t *testing.T) {
 func TestRadiusManager(t *testing.T) {
 	t.Parallel()
 
-	baseAddr := test.RandomAddress()
+	baseAddr := swarm.RandAddress(t)
 
 	waitForRadius := func(t *testing.T, reserve *reserve.Reserve, expectedRadius uint8) {
 		t.Helper()
@@ -396,7 +395,7 @@ func TestRadiusManager(t *testing.T) {
 
 		for i := 0; i < 4; i++ {
 			for j := 0; j < 10; j++ {
-				ch := chunk.GenerateTestRandomChunkAt(baseAddr, i).WithStamp(postagetesting.MustNewBatchStamp(batch.ID))
+				ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, i).WithStamp(postagetesting.MustNewBatchStamp(batch.ID))
 				err := putter.Put(context.Background(), ch)
 				if err != nil {
 					t.Fatal(err)
@@ -446,7 +445,7 @@ func TestSubscribeBin(t *testing.T) {
 
 		for j := 0; j < 2; j++ {
 			for i := uint64(0); i < chunksPerPO; i++ {
-				ch := chunk.GenerateTestRandomChunkAt(baseAddr, j)
+				ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, j)
 				chunks = append(chunks, ch)
 				err := putter.Put(context.Background(), ch)
 				if err != nil {
@@ -537,7 +536,7 @@ func TestSubscribeBin(t *testing.T) {
 
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
-		baseAddr := test.RandomAddress()
+		baseAddr := swarm.RandAddress(t)
 		storer, err := diskStorer(t, dbTestOps(baseAddr, 100, nil, nil, time.Second))()
 		if err != nil {
 			t.Fatal(err)
@@ -546,7 +545,7 @@ func TestSubscribeBin(t *testing.T) {
 	})
 	t.Run("mem", func(t *testing.T) {
 		t.Parallel()
-		baseAddr := test.RandomAddress()
+		baseAddr := swarm.RandAddress(t)
 		storer, err := memStorer(t, dbTestOps(baseAddr, 100, nil, nil, time.Second))()
 		if err != nil {
 			t.Fatal(err)
@@ -568,7 +567,7 @@ func TestSubscribeBinTrigger(t *testing.T) {
 		putter := storer.ReservePutter(context.Background())
 		for j := 0; j < 2; j++ {
 			for i := uint64(0); i < chunksPerPO; i++ {
-				ch := chunk.GenerateTestRandomChunkAt(baseAddr, j)
+				ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, j)
 				chunks = append(chunks, ch)
 				err := putter.Put(context.Background(), ch)
 				if err != nil {
@@ -602,7 +601,7 @@ func TestSubscribeBinTrigger(t *testing.T) {
 			t.Fatalf("mismatch of chunk count, got %d, want %d", i, chunksPerPO)
 		}
 
-		newChunk := chunk.GenerateTestRandomChunkAt(baseAddr, 0)
+		newChunk := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0)
 		putter = storer.ReservePutter(context.Background())
 		err = putter.Put(context.Background(), newChunk)
 		if err != nil {
@@ -625,7 +624,7 @@ func TestSubscribeBinTrigger(t *testing.T) {
 
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
-		baseAddr := test.RandomAddress()
+		baseAddr := swarm.RandAddress(t)
 		storer, err := diskStorer(t, dbTestOps(baseAddr, 100, nil, nil, time.Second))()
 		if err != nil {
 			t.Fatal(err)
@@ -634,7 +633,7 @@ func TestSubscribeBinTrigger(t *testing.T) {
 	})
 	t.Run("mem", func(t *testing.T) {
 		t.Parallel()
-		baseAddr := test.RandomAddress()
+		baseAddr := swarm.RandAddress(t)
 		storer, err := memStorer(t, dbTestOps(baseAddr, 100, nil, nil, time.Second))()
 		if err != nil {
 			t.Fatal(err)
@@ -657,7 +656,7 @@ func TestReserveSampler(t *testing.T) {
 
 		for po := 0; po < maxPO; po++ {
 			for i := 0; i < chunkCountPerPO; i++ {
-				ch := chunk.GenerateTestRandomChunkAt(baseAddr, po).WithBatch(0, 3, 2, false)
+				ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, po).WithBatch(0, 3, 2, false)
 				// override stamp timestamp to be before the consensus timestamp
 				ch = ch.WithStamp(postagetesting.MustNewStampWithTimestamp(timeVar - 1))
 				chs = append(chs, ch)
@@ -701,7 +700,7 @@ func TestReserveSampler(t *testing.T) {
 		// some of them should definitely make it to the sample based on lex ordering.
 		for po := 0; po < maxPO; po++ {
 			for i := 0; i < chunkCountPerPO; i++ {
-				ch := chunk.GenerateTestRandomChunkAt(baseAddr, po).WithBatch(0, 3, 2, false)
+				ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, po).WithBatch(0, 3, 2, false)
 				// override stamp timestamp to be after the consensus timestamp
 				ch = ch.WithStamp(postagetesting.MustNewStampWithTimestamp(timeVar + 1))
 				chs = append(chs, ch)
@@ -741,7 +740,7 @@ func TestReserveSampler(t *testing.T) {
 
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
-		baseAddr := test.RandomAddress()
+		baseAddr := swarm.RandAddress(t)
 		storer, err := diskStorer(t, dbTestOps(baseAddr, 1000, nil, nil, time.Second))()
 		if err != nil {
 			t.Fatal(err)
@@ -750,7 +749,7 @@ func TestReserveSampler(t *testing.T) {
 	})
 	t.Run("mem", func(t *testing.T) {
 		t.Parallel()
-		baseAddr := test.RandomAddress()
+		baseAddr := swarm.RandAddress(t)
 		storer, err := memStorer(t, dbTestOps(baseAddr, 1000, nil, nil, time.Second))()
 		if err != nil {
 			t.Fatal(err)

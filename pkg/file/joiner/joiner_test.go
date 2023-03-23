@@ -611,18 +611,8 @@ func TestPrefetch(t *testing.T) {
 			store := inmemchunkstore.New()
 			testutil.CleanupCloser(t, store)
 
-<<<<<<< HEAD
 			data := testutil.RandBytesWithSeed(t, int(tc.size), seed)
-			s := splitter.NewSimpleSplitter(store, storage.ModePutUpload)
-=======
-			r := mrand.New(mrand.NewSource(seed))
-			data, err := io.ReadAll(io.LimitReader(r, tc.size))
-			if err != nil {
-				t.Fatal(err)
-			}
-
 			s := splitter.NewSimpleSplitter(store)
->>>>>>> e837b6fe (feat(file): use new storagev2 interfaces (#3787))
 			addr, err := s.Split(ctx, io.NopCloser(bytes.NewReader(data)), tc.size, false)
 			if err != nil {
 				t.Fatal(err)

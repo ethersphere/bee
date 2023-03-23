@@ -688,11 +688,15 @@ func (c *chanStorer) Has(ctx context.Context, addr swarm.Address) (yes bool, err
 }
 
 func createRedistributionAgentService(
+	t *testing.T,
 	addr swarm.Address,
 	storer storage.StateStorer,
 	erc20Service erc20.Service,
 	tranService transaction.Service,
+	backend storageincentives.ChainBackend,
 ) (*storageincentives.Agent, error) {
+	t.Helper()
+
 	const blocksPerRound uint64 = 12
 	const blocksPerPhase uint64 = 4
 	postageContract := contractMock.New(contractMock.WithExpiresBatchesFunc(func(context.Context) error {
@@ -707,7 +711,7 @@ func createRedistributionAgentService(
 	return storageincentives.New(
 		addr,
 		common.Address{},
-		backendmock.New(),
+		backend,
 		log.Noop,
 		contract,
 		postageContract,

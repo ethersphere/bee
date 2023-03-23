@@ -20,14 +20,13 @@ import (
 	chunk "github.com/ethersphere/bee/pkg/storage/testing"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/swarm/test"
 	kademlia "github.com/ethersphere/bee/pkg/topology/mock"
 )
 
 func TestReserve(t *testing.T) {
 	t.Parallel()
 
-	baseAddr := test.RandomAddress()
+	baseAddr := swarm.RandAddress(t)
 
 	ts, closer := internal.NewInmemStorage()
 	t.Cleanup(func() {
@@ -43,7 +42,7 @@ func TestReserve(t *testing.T) {
 
 	for b := 0; b < 2; b++ {
 		for i := 0; i < 50; i++ {
-			ch := chunk.GenerateTestRandomChunkAt(baseAddr, b)
+			ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, b)
 			c, err := r.Put(context.Background(), ts, ch)
 			if err != nil {
 				t.Fatal(err)
@@ -77,7 +76,7 @@ func TestReserve(t *testing.T) {
 func TestReplaceOldIndex(t *testing.T) {
 	t.Parallel()
 
-	baseAddr := test.RandomAddress()
+	baseAddr := swarm.RandAddress(t)
 
 	ts, closer := internal.NewInmemStorage()
 	t.Cleanup(func() {
@@ -92,8 +91,8 @@ func TestReplaceOldIndex(t *testing.T) {
 	}
 
 	batch := postagetesting.MustNewBatch()
-	ch1 := chunk.GenerateTestRandomChunkAt(baseAddr, 0).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 0))
-	ch2 := chunk.GenerateTestRandomChunkAt(baseAddr, 0).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 1))
+	ch1 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 0))
+	ch2 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 1))
 
 	_, err = r.Put(context.Background(), ts, ch1)
 	if err != nil {
@@ -127,7 +126,7 @@ func TestReplaceOldIndex(t *testing.T) {
 func TestEvict(t *testing.T) {
 	t.Parallel()
 
-	baseAddr := test.RandomAddress()
+	baseAddr := swarm.RandAddress(t)
 
 	ts, closer := internal.NewInmemStorage()
 	t.Cleanup(func() {
@@ -148,7 +147,7 @@ func TestEvict(t *testing.T) {
 
 	for i := 0; i < chunksPerBatch; i++ {
 		for b := 0; b < 3; b++ {
-			ch := chunk.GenerateTestRandomChunkAt(baseAddr, b).WithStamp(postagetesting.MustNewBatchStamp(batches[b].ID))
+			ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, b).WithStamp(postagetesting.MustNewBatchStamp(batches[b].ID))
 			chunks = append(chunks, ch)
 			c, err := r.Put(context.Background(), ts, ch)
 			if err != nil {
@@ -198,7 +197,7 @@ func TestEvict(t *testing.T) {
 func TestOldRadius(t *testing.T) {
 	t.Parallel()
 
-	baseAddr := test.RandomAddress()
+	baseAddr := swarm.RandAddress(t)
 
 	ts, closer := internal.NewInmemStorage()
 	t.Cleanup(func() {

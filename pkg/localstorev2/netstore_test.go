@@ -16,7 +16,6 @@ import (
 	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
 	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/swarm/test"
 )
 
 type testRetrieval struct {
@@ -295,7 +294,7 @@ func TestNetStore(t *testing.T) {
 
 		testNetStore(t, func(r retrieval.Interface) (*storer.DB, error) {
 
-			opts := dbTestOps(test.RandomAddress(), 0, nil, nil, time.Second)
+			opts := dbTestOps(swarm.RandAddress(t), 0, nil, nil, time.Second)
 			opts.CacheCapacity = 100
 
 			db, err := storer.New(context.Background(), "", opts)
@@ -309,7 +308,7 @@ func TestNetStore(t *testing.T) {
 		t.Parallel()
 
 		testNetStore(t, func(r retrieval.Interface) (*storer.DB, error) {
-			opts := dbTestOps(test.RandomAddress(), 0, nil, nil, time.Second)
+			opts := dbTestOps(swarm.RandAddress(t), 0, nil, nil, time.Second)
 
 			db, err := diskStorer(t, opts)()
 			if err == nil {
