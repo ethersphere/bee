@@ -25,7 +25,7 @@ type MockStorer struct {
 	morePull        chan struct{}
 	mtx             sync.Mutex
 	quit            chan struct{}
-	baseAddress     []byte
+	baseAddress     swarm.Address
 	bins            []uint64
 	subPullCalls    int
 }
@@ -39,7 +39,7 @@ func WithSubscribePullChunks(chs ...storage.Descriptor) Option {
 
 func WithBaseAddress(a swarm.Address) Option {
 	return optionFunc(func(m *MockStorer) {
-		m.baseAddress = a.Bytes()
+		m.baseAddress = a
 	})
 }
 
@@ -88,7 +88,7 @@ func (m *MockStorer) Put(ctx context.Context, mode storage.ModePut, chs ...swarm
 			return exist, err
 		}
 		if !exist[i] {
-			po := swarm.Proximity(ch.Address().Bytes(), m.baseAddress)
+			po := swarm.Proximity(ch.Address(), m.baseAddress)
 			m.bins[po]++
 		}
 		// this is needed since the chunk feeder shares memory across calls

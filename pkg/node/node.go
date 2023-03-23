@@ -630,7 +630,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		ValidStamp:             validStamp,
 	}
 
-	storer, err := localstore.New(path, swarmAddress.Bytes(), stateStore, lo, logger)
+	storer, err := localstore.New(path, swarmAddress, stateStore, lo, logger)
 	if err != nil {
 		return nil, fmt.Errorf("localstore: %w", err)
 	}

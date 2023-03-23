@@ -37,7 +37,7 @@ func TestReserveSampler(t *testing.T) {
 
 	for po := 0; po < maxPO; po++ {
 		for i := 0; i < chunkCountPerPO; i++ {
-			ch := generateTestRandomChunkAt(t, swarm.NewAddress(db.baseKey), po).WithBatch(0, 3, 2, false)
+			ch := generateTestRandomChunkAt(t, db.baseAddr, po).WithBatch(0, 3, 2, false)
 			// override stamp timestamp to be before the consensus timestamp
 			ch = ch.WithStamp(postagetesting.MustNewStampWithTimestamp(timeVar - 1))
 			chs = append(chs, ch)
@@ -74,7 +74,7 @@ func TestReserveSampler(t *testing.T) {
 	// some of them should definitely make it to the sample based on lex ordering.
 	for po := 0; po < maxPO; po++ {
 		for i := 0; i < chunkCountPerPO; i++ {
-			ch := generateTestRandomChunkAt(t, swarm.NewAddress(db.baseKey), po).WithBatch(0, 3, 2, false)
+			ch := generateTestRandomChunkAt(t, db.baseAddr, po).WithBatch(0, 3, 2, false)
 			// override stamp timestamp to be after the consensus timestamp
 			ch = ch.WithStamp(postagetesting.MustNewStampWithTimestamp(timeVar + 1))
 			chs = append(chs, ch)
@@ -168,7 +168,7 @@ func TestReserveSamplerStop_FLAKY(t *testing.T) {
 
 	for po := 0; po < maxPO; po++ {
 		for i := 0; i < chunkCountPerPO; i++ {
-			ch := generateTestRandomChunkAt(t, swarm.NewAddress(db.baseKey), po).WithBatch(2, 3, 2, false)
+			ch := generateTestRandomChunkAt(t, db.baseAddr, po).WithBatch(2, 3, 2, false)
 			mtx.Lock()
 			chs = append(chs, ch)
 			batchIDs = append(batchIDs, ch.Stamp().BatchID())

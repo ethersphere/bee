@@ -13,18 +13,18 @@ import (
 
 // PSlice maintains a list of addresses, indexing them by their different proximity orders.
 type PSlice struct {
-	peers     [][]swarm.Address // the slice of peers
-	baseBytes []byte
-	mu        sync.RWMutex
-	maxBins   int
+	peers   [][]swarm.Address // the slice of peers
+	base    swarm.Address
+	mu      sync.RWMutex
+	maxBins int
 }
 
 // New creates a new PSlice.
 func New(maxBins int, base swarm.Address) *PSlice {
 	return &PSlice{
-		peers:     make([][]swarm.Address, maxBins),
-		baseBytes: base.Bytes(),
-		maxBins:   maxBins,
+		peers:   make([][]swarm.Address, maxBins),
+		base:    base,
+		maxBins: maxBins,
 	}
 }
 
@@ -36,7 +36,7 @@ func (s *PSlice) Add(addrs ...swarm.Address) {
 	// bypass unnecessary allocations below if address count is one
 	if len(addrs) == 1 {
 		addr := addrs[0]
-		po := s.po(addr.Bytes())
+		po := s.po(addr)
 		if e, _ := s.index(addr, po); e {
 			return
 		}
@@ -49,7 +49,7 @@ func (s *PSlice) Add(addrs ...swarm.Address) {
 	exists := make([]bool, len(addrs))
 
 	for i, addr := range addrs {
-		po := s.po(addr.Bytes())
+		po := s.po(addr)
 		addrPo = append(addrPo, po)
 		if e, _ := s.index(addr, po); e {
 			exists[i] = true
@@ -192,7 +192,7 @@ func (s *PSlice) Exists(addr swarm.Address) bool {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	e, _ := s.index(addr, s.po(addr.Bytes()))
+	e, _ := s.index(addr, s.po(addr))
 	return e
 }
 
@@ -201,7 +201,7 @@ func (s *PSlice) Remove(addr swarm.Address) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	po := s.po(addr.Bytes())
+	po := s.po(addr)
 
 	e, i := s.index(addr, po)
 	if !e {
@@ -231,8 +231,8 @@ func (s *PSlice) Remove(addr swarm.Address) {
 	s.peers[po] = cpy
 }
 
-func (s *PSlice) po(peer []byte) uint8 {
-	po := swarm.Proximity(s.baseBytes, peer)
+func (s *PSlice) po(peer swarm.Address) uint8 {
+	po := swarm.Proximity(s.base, peer)
 	if int(po) >= s.maxBins {
 		return uint8(s.maxBins) - 1
 	}

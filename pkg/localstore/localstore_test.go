@@ -230,10 +230,7 @@ func TestParallelPutAndGet(t *testing.T) {
 func newTestDB(tb testing.TB, o *Options) *DB {
 	tb.Helper()
 
-	baseKey := make([]byte, 32)
-	if _, err := rand.Read(baseKey); err != nil {
-		tb.Fatal(err)
-	}
+	baseAddr := swarm.RandAddress(tb)
 	if o == nil {
 		o = &Options{}
 	}
@@ -248,7 +245,7 @@ func newTestDB(tb testing.TB, o *Options) *DB {
 		}
 	}
 	logger := log.Noop
-	db, err := New("", baseKey, nil, o, logger)
+	db, err := New("", baseAddr, nil, o, logger)
 	if err != nil {
 		tb.Fatal(err)
 	}

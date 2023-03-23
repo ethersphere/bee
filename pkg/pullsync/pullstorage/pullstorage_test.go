@@ -291,7 +291,7 @@ func TestIntervalChunks_Localstore(t *testing.T) {
 
 			for i := 1; i <= tc.chunks; {
 				c := stesting.GenerateTestRandomChunk()
-				po := swarm.Proximity(c.Address().Bytes(), base)
+				po := swarm.Proximity(c.Address(), base)
 				if po == 1 {
 					chunks = append(chunks, c)
 					i++
@@ -570,20 +570,20 @@ func newPullStorage(t *testing.T, o ...mock.Option) (pullstorage.Storer, *mock.M
 	return ps, db
 }
 
-func newTestDB(t *testing.T, o *localstore.Options) (baseKey []byte, db *localstore.DB) {
+func newTestDB(t *testing.T, o *localstore.Options) (base swarm.Address, db *localstore.DB) {
 	t.Helper()
 
-	baseKey = testutil.RandBytes(t, 32)
+	base = swarm.RandAddress(t)
 
 	createLocalstoreLock.Lock()
 	defer createLocalstoreLock.Unlock()
-	db, err := localstore.New("", baseKey, nil, o, log.Noop)
+	db, err := localstore.New("", base, nil, o, log.Noop)
 	if err != nil {
 		t.Fatal(err)
 	}
 	testutil.CleanupCloser(t, db)
 
-	return baseKey, db
+	return base, db
 }
 
 // check that every a exists in b

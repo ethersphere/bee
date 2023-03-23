@@ -411,7 +411,7 @@ func createPusherWithRetryCount(t *testing.T, addr swarm.Address, pushSyncServic
 	logger := log.Noop
 
 	createLocalstoreLock.Lock()
-	storer, err := localstore.New("", addr.Bytes(), nil, nil, logger)
+	storer, err := localstore.New("", addr, nil, nil, logger)
 	if err != nil {
 		createLocalstoreLock.Unlock()
 		t.Fatal(err)

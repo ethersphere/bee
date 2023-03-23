@@ -29,7 +29,6 @@ import (
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/util/testutil"
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
@@ -483,10 +482,10 @@ func TestDB_collectGarbageWorker_withRequests(t *testing.T) {
 // database is initialized with existing data.
 func TestDB_gcSize(t *testing.T) {
 	dir := t.TempDir()
-	baseKey := testutil.RandBytes(t, 32)
+	baseAddr := swarm.RandAddress(t)
 
 	logger := log.Noop
-	db, err := New(dir, baseKey, nil, nil, logger)
+	db, err := New(dir, baseAddr, nil, nil, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -514,7 +513,7 @@ func TestDB_gcSize(t *testing.T) {
 	if err := db.Close(); err != nil {
 		t.Fatal(err)
 	}
-	db, err = New(dir, baseKey, nil, nil, logger)
+	db, err = New(dir, baseAddr, nil, nil, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1069,7 +1068,7 @@ func TestReserveEvictionWorker(t *testing.T) {
 	// insert 11 chunks that fall into the reserve, then
 	// expect one to be evicted
 	for i := 0; i < chunkCount; i++ {
-		ch := generateTestRandomChunkAt(t, swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
+		ch := generateTestRandomChunkAt(t, db.baseAddr, 2).WithBatch(2, 3, 2, false)
 		_, err := db.Put(context.Background(), storage.ModePutSync, ch)
 		if err != nil {
 			t.Fatal(err)
@@ -1114,7 +1113,7 @@ func TestReserveEvictionWorker(t *testing.T) {
 	})
 
 	for i := 0; i < chunkCount; i++ {
-		ch := generateTestRandomChunkAt(t, swarm.NewAddress(db.baseKey), 3).WithBatch(2, 3, 2, false)
+		ch := generateTestRandomChunkAt(t, db.baseAddr, 3).WithBatch(2, 3, 2, false)
 		_, err := db.Put(context.Background(), storage.ModePutSync, ch)
 		if err != nil {
 			t.Fatal(err)

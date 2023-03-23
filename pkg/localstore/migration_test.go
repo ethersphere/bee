@@ -22,7 +22,7 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/util/testutil"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 func TestOneMigration(t *testing.T) {
@@ -48,7 +48,7 @@ func TestOneMigration(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	baseKey := testutil.RandBytes(t, 32)
+	baseKey := swarm.RandAddress(t)
 	logger := log.Noop
 
 	// start the fresh localstore with the sanctuary schema name
@@ -128,11 +128,11 @@ func TestManyMigrations(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	baseKey := testutil.RandBytes(t, 32)
+	baseAddr := swarm.RandAddress(t)
 	logger := log.Noop
 
 	// start the fresh localstore with the sanctuary schema name
-	db, err := New(dir, baseKey, nil, nil, logger)
+	db, err := New(dir, baseAddr, nil, nil, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +145,7 @@ func TestManyMigrations(t *testing.T) {
 	DBSchemaCurrent = "salvation"
 
 	// start the existing localstore and expect the migration to run
-	db, err = New(dir, baseKey, nil, nil, logger)
+	db, err = New(dir, baseAddr, nil, nil, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -201,11 +201,11 @@ func TestMigrationErrorFrom(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	baseKey := testutil.RandBytes(t, 32)
+	baseAddr := swarm.RandAddress(t)
 	logger := log.Noop
 
 	// start the fresh localstore with the sanctuary schema name
-	db, err := New(dir, baseKey, nil, nil, logger)
+	db, err := New(dir, baseAddr, nil, nil, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +218,7 @@ func TestMigrationErrorFrom(t *testing.T) {
 	DBSchemaCurrent = "foo"
 
 	// start the existing localstore and expect the migration to run
-	_, err = New(dir, baseKey, nil, nil, logger)
+	_, err = New(dir, baseAddr, nil, nil, logger)
 	if !strings.Contains(err.Error(), errMissingCurrentSchema.Error()) {
 		t.Fatalf("expected errCannotFindSchema but got %v", err)
 	}
@@ -254,12 +254,12 @@ func TestMigrationErrorTo(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	baseKey := testutil.RandBytes(t, 32)
+	baseAddr := swarm.RandAddress(t)
 
 	logger := log.Noop
 
 	// start the fresh localstore with the sanctuary schema name
-	db, err := New(dir, baseKey, nil, nil, logger)
+	db, err := New(dir, baseAddr, nil, nil, logger)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -272,7 +272,7 @@ func TestMigrationErrorTo(t *testing.T) {
 	DBSchemaCurrent = "foo"
 
 	// start the existing localstore and expect the migration to run
-	_, err = New(dir, baseKey, nil, nil, logger)
+	_, err = New(dir, baseAddr, nil, nil, logger)
 	if !strings.Contains(err.Error(), errMissingTargetSchema.Error()) {
 		t.Fatalf("expected errMissingTargetSchema but got %v", err)
 	}

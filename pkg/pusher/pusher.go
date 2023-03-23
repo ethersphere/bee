@@ -309,7 +309,7 @@ func (s *Service) checkReceipt(receipt *pushsync.Receipt) error {
 		return fmt.Errorf("pusher: receipt storer address: %w", err)
 	}
 
-	po := swarm.Proximity(addr.Bytes(), peer.Bytes())
+	po := swarm.Proximity(addr, peer)
 
 	// Ideally the storage radius should be checked here, but because light nodes do not maintain a storage radius,
 	// we go with the best alternative - the kademlia neighborhood depth

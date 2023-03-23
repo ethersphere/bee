@@ -57,8 +57,8 @@ func TestDB_pullIndex(t *testing.T) {
 	}
 
 	testItemsOrder(t, db.pullIndex, chunks, func(i, j int) (less bool) {
-		poi := swarm.Proximity(db.baseKey, chunks[i].Address().Bytes())
-		poj := swarm.Proximity(db.baseKey, chunks[j].Address().Bytes())
+		poi := swarm.Proximity(db.baseAddr, chunks[i].Address())
+		poj := swarm.Proximity(db.baseAddr, chunks[j].Address())
 		if poi < poj {
 			return true
 		}

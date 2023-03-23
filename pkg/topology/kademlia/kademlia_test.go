@@ -1195,7 +1195,7 @@ func TestSnapshot_FLAKY(t *testing.T) {
 		t.Errorf("expected population %d but got %d", 1, snap.Population)
 	}
 
-	po := swarm.Proximity(sa.Bytes(), a.Bytes())
+	po := swarm.Proximity(sa, a)
 
 	if binP := getBinPopulation(&snap.Bins, po); binP != 1 {
 		t.Errorf("expected bin(%d) to have population %d but got %d", po, 1, snap.Population)

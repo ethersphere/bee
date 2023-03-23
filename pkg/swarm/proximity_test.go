@@ -14,10 +14,12 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-package swarm
+package swarm_test
 
 import (
 	"testing"
+
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 // TestProximity validates Proximity function with explicit
@@ -26,13 +28,6 @@ import (
 func TestProximity(t *testing.T) {
 	t.Parallel()
 
-	// adjust expected bins in respect to MaxPO
-	limitPO := func(po uint8) uint8 {
-		if po > MaxPO {
-			return MaxPO
-		}
-		return po
-	}
 	base := []byte{0b00000000, 0b00000000, 0b00000000, 0b00000000}
 	for _, tc := range []struct {
 		addr []byte
@@ -40,158 +35,160 @@ func TestProximity(t *testing.T) {
 	}{
 		{
 			addr: base,
-			po:   MaxPO,
+			po:   swarm.MaxPO,
 		},
 		{
 			addr: []byte{0b10000000, 0b00000000, 0b00000000, 0b00000000},
-			po:   limitPO(0),
+			po:   0,
 		},
 		{
 			addr: []byte{0b01000000, 0b00000000, 0b00000000, 0b00000000},
-			po:   limitPO(1),
+			po:   1,
 		},
 		{
 			addr: []byte{0b00100000, 0b00000000, 0b00000000, 0b00000000},
-			po:   limitPO(2),
+			po:   2,
 		},
 		{
 			addr: []byte{0b00010000, 0b00000000, 0b00000000, 0b00000000},
-			po:   limitPO(3),
+			po:   3,
 		},
 		{
 			addr: []byte{0b00001000, 0b00000000, 0b00000000, 0b00000000},
-			po:   limitPO(4),
+			po:   4,
 		},
 		{
 			addr: []byte{0b00000100, 0b00000000, 0b00000000, 0b00000000},
-			po:   limitPO(5),
+			po:   5,
 		},
 		{
 			addr: []byte{0b00000010, 0b00000000, 0b00000000, 0b00000000},
-			po:   limitPO(6),
+			po:   6,
 		},
 		{
 			addr: []byte{0b00000001, 0b00000000, 0b00000000, 0b00000000},
-			po:   limitPO(7),
+			po:   7,
 		},
 		{
 			addr: []byte{0b00000000, 0b10000000, 0b00000000, 0b00000000},
-			po:   limitPO(8),
+			po:   8,
 		},
 		{
 			addr: []byte{0b00000000, 0b01000000, 0b00000000, 0b00000000},
-			po:   limitPO(9),
+			po:   9,
 		},
 		{
 			addr: []byte{0b00000000, 0b00100000, 0b00000000, 0b00000000},
-			po:   limitPO(10),
+			po:   10,
 		},
 		{
 			addr: []byte{0b00000000, 0b00010000, 0b00000000, 0b00000000},
-			po:   limitPO(11),
+			po:   11,
 		},
 		{
 			addr: []byte{0b00000000, 0b00001000, 0b00000000, 0b00000000},
-			po:   limitPO(12),
+			po:   12,
 		},
 		{
 			addr: []byte{0b00000000, 0b00000100, 0b00000000, 0b00000000},
-			po:   limitPO(13),
+			po:   13,
 		},
 		{
 			addr: []byte{0b00000000, 0b00000010, 0b00000000, 0b00000000},
-			po:   limitPO(14),
+			po:   14,
 		},
 		{
 			addr: []byte{0b00000000, 0b00000001, 0b00000000, 0b00000000},
-			po:   limitPO(15),
+			po:   15,
 		},
 		{
 			addr: []byte{0b00000000, 0b00000000, 0b10000000, 0b00000000},
-			po:   limitPO(16),
+			po:   16,
 		},
 		{
 			addr: []byte{0b00000000, 0b00000000, 0b01000000, 0b00000000},
-			po:   limitPO(17),
+			po:   17,
 		},
 		{
 			addr: []byte{0b00000000, 0b00000000, 0b00100000, 0b00000000},
-			po:   limitPO(18),
+			po:   18,
 		},
 		{
 			addr: []byte{0b00000000, 0b00000000, 0b00010000, 0b00000000},
-			po:   limitPO(19),
+			po:   19,
 		},
 		{
 			addr: []byte{0b00000000, 0b00000000, 0b00001000, 0b00000000},
-			po:   limitPO(20),
+			po:   20,
 		},
 		{
 			addr: []byte{0b00000000, 0b00000000, 0b00000100, 0b00000000},
-			po:   limitPO(21),
+			po:   21,
 		},
 		{
 			addr: []byte{0b00000000, 0b00000000, 0b00000010, 0b00000000},
-			po:   limitPO(22),
+			po:   22,
 		},
 		{
 			addr: []byte{0b00000000, 0b00000000, 0b00000001, 0b00000000},
-			po:   limitPO(23),
+			po:   23,
 		},
 		{
 			addr: []byte{0b00000000, 0b00000000, 0b00000000, 0b10000000},
-			po:   limitPO(24),
+			po:   24,
 		},
 		{
 			addr: []byte{0b00000000, 0b00000000, 0b00000000, 0b01000000},
-			po:   limitPO(25),
+			po:   25,
 		},
 		{
 			addr: []byte{0b00000000, 0b00000000, 0b00000000, 0b00100000},
-			po:   limitPO(26),
+			po:   26,
 		},
 		{
 			addr: []byte{0b00000000, 0b00000000, 0b00000000, 0b00010000},
-			po:   limitPO(27),
+			po:   27,
 		},
 		{
 			addr: []byte{0b00000000, 0b00000000, 0b00000000, 0b00001000},
-			po:   limitPO(28),
+			po:   28,
 		},
 		{
 			addr: []byte{0b00000000, 0b00000000, 0b00000000, 0b00000100},
-			po:   limitPO(29),
+			po:   29,
 		},
 		{
 			addr: []byte{0b00000000, 0b00000000, 0b00000000, 0b00000010},
-			po:   limitPO(30),
+			po:   30,
 		},
 		{
 			addr: []byte{0b00000000, 0b00000000, 0b00000000, 0b00000001},
-			po:   limitPO(31),
+			po:   31,
 		},
 		{
 			addr: nil,
-			po:   limitPO(31),
+			po:   31,
 		},
 		{
 			addr: []byte{0b00000001},
-			po:   limitPO(7),
+			po:   7,
 		},
 		{
 			addr: []byte{0b00000000},
-			po:   limitPO(31),
+			po:   31,
 		},
 		{
 			addr: []byte{0b00000000, 0b00000000, 0b00000000, 0b00000000, 0b00000001},
-			po:   limitPO(31),
+			po:   31,
 		},
 	} {
-		got := Proximity(base, tc.addr)
+		x, y := swarm.NewAddress(base), swarm.NewAddress(tc.addr)
+
+		got := swarm.Proximity(x, y)
 		if got != tc.po {
 			t.Errorf("got %v bin, want %v", got, tc.po)
 		}
-		got = Proximity(tc.addr, base)
+		got = swarm.Proximity(y, x)
 		if got != tc.po {
 			t.Errorf("got %v bin, want %v (reverse arguments)", got, tc.po)
 		}

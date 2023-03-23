@@ -185,7 +185,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		}
 		s.metrics.Offered.Inc()
 		s.metrics.DbOps.Inc()
-		po := swarm.Proximity(a.Bytes(), s.overlayAddress.Bytes())
+		po := swarm.Proximity(a, s.overlayAddress)
 		if po >= s.radius.StorageRadius() {
 			have, err = s.storage.Has(ctx, a)
 			if err != nil {

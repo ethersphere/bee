@@ -344,7 +344,7 @@ func (k *Kad) connectBalanced(wg *sync.WaitGroup, peerConnChan chan<- *peerConnI
 				wg.Add(1)
 				select {
 				case peerConnChan <- &peerConnInfo{
-					po:   swarm.Proximity(k.base.Bytes(), closestKnownPeer.Bytes()),
+					po:   swarm.Proximity(k.base, closestKnownPeer),
 					addr: closestKnownPeer,
 				}:
 				default:
@@ -763,7 +763,7 @@ func (k *Kad) balancedSlotPeers(pseudoAddr swarm.Address, peers []swarm.Address,
 	var ret []swarm.Address
 
 	for _, peer := range peers {
-		peerPo := swarm.ExtendedProximity(peer.Bytes(), pseudoAddr.Bytes())
+		peerPo := swarm.ExtendedProximity(peer, pseudoAddr)
 		if int(peerPo) >= po+k.opt.BitSuffixLength+1 {
 			ret = append(ret, peer)
 		}
@@ -1045,7 +1045,7 @@ func (k *Kad) Announce(ctx context.Context, peer swarm.Address, fullnode bool) e
 	var addrs []swarm.Address
 
 	depth := k.NeighborhoodDepth()
-	isNeighbor := swarm.Proximity(peer.Bytes(), k.base.Bytes()) >= depth
+	isNeighbor := swarm.Proximity(peer, k.base) >= depth
 
 outer:
 	for bin := uint8(0); bin < swarm.MaxBins; bin++ {
@@ -1141,7 +1141,7 @@ func (k *Kad) Pick(peer p2p.Peer) bool {
 		// at least until we find a better solution.
 		return true
 	}
-	po := swarm.Proximity(k.base.Bytes(), peer.Address.Bytes())
+	po := swarm.Proximity(k.base, peer.Address)
 	oversaturated := k.opt.SaturationFunc(po, k.knownPeers, k.connectedPeers, k.peerFilter)
 	// pick the peer if we are not oversaturated
 	if !oversaturated {
@@ -1188,7 +1188,7 @@ func (k *Kad) Connected(ctx context.Context, peer p2p.Peer, forceConnection bool
 	}()
 
 	address := peer.Address
-	po := swarm.Proximity(k.base.Bytes(), address.Bytes())
+	po := swarm.Proximity(k.base, address)
 
 	if overSaturated := k.opt.SaturationFunc(po, k.knownPeers, k.connectedPeers, k.peerFilter); overSaturated {
 		if k.bootnode {
@@ -1267,7 +1267,7 @@ func nClosePeerInSlice(peers []swarm.Address, addr swarm.Address, spf sanctioned
 			continue
 		}
 
-		if swarm.ExtendedProximity(peer.Bytes(), addr.Bytes()) >= minPO {
+		if swarm.ExtendedProximity(peer, addr) >= minPO {
 			return peer, true
 		}
 	}

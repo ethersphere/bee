@@ -32,7 +32,7 @@ func NewFixedPricer(overlay swarm.Address, poPrice uint64) *FixedPricer {
 
 // PeerPrice implements Pricer.
 func (pricer *FixedPricer) PeerPrice(peer, chunk swarm.Address) uint64 {
-	return uint64(swarm.MaxPO-swarm.Proximity(peer.Bytes(), chunk.Bytes())+1) * pricer.poPrice
+	return uint64(swarm.MaxPO-swarm.Proximity(peer, chunk)+1) * pricer.poPrice
 }
 
 // Price implements Pricer.

@@ -171,8 +171,8 @@ type DB struct {
 	// are done before closing the database
 	updateGCWG sync.WaitGroup
 
-	// baseKey is the overlay address
-	baseKey []byte
+	// baseAddr is the overlay address
+	baseAddr swarm.Address
 
 	lock *multex.Multex
 
@@ -261,7 +261,7 @@ func (d *dirFS) Open(path string) (fs.File, error) {
 // New returns a new DB.  All fields and indexes are initialized
 // and possible conflicts with schema from existing database is checked.
 // One goroutine for writing batches is created.
-func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger log.Logger) (db *DB, err error) {
+func New(path string, baseAddr swarm.Address, ss storage.StateStorer, o *Options, logger log.Logger) (db *DB, err error) {
 	if o == nil {
 		// default options
 		o = &Options{
@@ -277,7 +277,7 @@ func New(path string, baseKey []byte, ss storage.StateStorer, o *Options, logger
 		cacheCapacity:   o.Capacity,
 		reserveCapacity: o.ReserveCapacity,
 		unreserveFunc:   o.UnreserveFunc,
-		baseKey:         baseKey,
+		baseAddr:        baseAddr,
 		tags:            o.Tags,
 		ctx:             ctx,
 		cancel:          cancel,
@@ -742,7 +742,7 @@ func (db *DB) Close() error {
 // po computes the proximity order between the address
 // and database base key.
 func (db *DB) po(addr swarm.Address) (bin uint8) {
-	return swarm.Proximity(db.baseKey, addr.Bytes())
+	return swarm.Proximity(db.baseAddr, addr)
 }
 
 // DebugIndices returns the index sizes for all indexes in localstore

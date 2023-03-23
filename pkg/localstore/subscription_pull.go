@@ -220,7 +220,7 @@ func (db *DB) triggerPullSubscriptions(bin uint8) {
 // addressInBin returns an address that is in a specific
 // proximity order bin from database base key.
 func (db *DB) addressInBin(bin uint8) swarm.Address {
-	addr := append([]byte(nil), db.baseKey...)
+	addr := append([]byte(nil), db.baseAddr.Bytes()...)
 	b := bin / 8
 	addr[b] = addr[b] ^ (1 << (7 - bin%8))
 	return swarm.NewAddress(addr)

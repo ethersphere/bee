@@ -79,7 +79,7 @@ func GenerateValidRandomChunkAt(target swarm.Address, po int) swarm.Chunk {
 		if err != nil {
 			continue
 		}
-		if swarm.Proximity(ch.Address().Bytes(), target.Bytes()) > uint8(po) {
+		if swarm.Proximity(ch.Address(), target) > uint8(po) {
 			break
 		}
 	}

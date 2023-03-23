@@ -26,7 +26,7 @@ const (
 type PeerFilterFunc = peerFilterFunc
 
 func (k *Kad) IsWithinDepth(addr swarm.Address) bool {
-	return swarm.Proximity(k.base.Bytes(), addr.Bytes()) >= k.NeighborhoodDepth()
+	return swarm.Proximity(k.base, addr) >= k.NeighborhoodDepth()
 }
 
 // IsBalanced returns if Kademlia is balanced to bin.
@@ -43,7 +43,7 @@ func (k *Kad) IsBalanced(bin uint8) bool {
 			return false
 		}
 
-		closestConnectedPO := swarm.ExtendedProximity(closestConnectedPeer.Bytes(), pseudoAddr.Bytes())
+		closestConnectedPO := swarm.ExtendedProximity(closestConnectedPeer, pseudoAddr)
 		if int(closestConnectedPO) < int(bin)+k.opt.BitSuffixLength+1 {
 			return false
 		}

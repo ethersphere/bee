@@ -43,7 +43,7 @@ func TestDB_ReserveGC_AllOutOfRadius(t *testing.T) {
 	addrs := make([]swarm.Address, 0)
 
 	for i := 0; i < chunkCount; i++ {
-		ch := generateTestRandomChunkAt(t, swarm.NewAddress(db.baseKey), 2).WithBatch(5, 3, 2, false)
+		ch := generateTestRandomChunkAt(t, db.baseAddr, 2).WithBatch(5, 3, 2, false)
 		_, err := db.Put(context.Background(), storage.ModePutRequest, ch)
 		if err != nil {
 			t.Fatal(err)
@@ -158,7 +158,7 @@ func TestDB_ReserveGC_AllWithinRadius(t *testing.T) {
 	addrs := make([]swarm.Address, 0)
 
 	for i := 0; i < chunkCount; i++ {
-		ch := generateTestRandomChunkAt(t, swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
+		ch := generateTestRandomChunkAt(t, db.baseAddr, 2).WithBatch(2, 3, 2, false)
 		_, err := db.Put(context.Background(), storage.ModePutSync, ch)
 		if err != nil {
 			t.Fatal(err)
@@ -271,7 +271,7 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 	// will cause reserve eviction of 10 chunks into
 	// the cache. gc of the cache is still not triggered
 	for i := 0; i < chunkCount; i++ {
-		ch := generateTestRandomChunkAt(t, swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
+		ch := generateTestRandomChunkAt(t, db.baseAddr, 2).WithBatch(2, 3, 2, false)
 		_, err := db.Put(context.Background(), storage.ModePutSync, ch)
 		if err != nil {
 			t.Fatal(err)
@@ -299,7 +299,7 @@ func TestDB_ReserveGC_Unreserve(t *testing.T) {
 
 	// insert another 90, this will trigger gc
 	for i := 0; i < 90; i++ {
-		ch := generateTestRandomChunkAt(t, swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
+		ch := generateTestRandomChunkAt(t, db.baseAddr, 2).WithBatch(2, 3, 2, false)
 		_, err := db.Put(context.Background(), storage.ModePutSync, ch)
 		if err != nil {
 			t.Fatal(err)
@@ -449,7 +449,7 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 
 	// put the first chunkCount chunks within radius
 	for i := 0; i < chunkCount; i++ {
-		ch := generateTestRandomChunkAt(t, swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
+		ch := generateTestRandomChunkAt(t, db.baseAddr, 2).WithBatch(2, 3, 2, false)
 		_, err := db.Put(context.Background(), storage.ModePutSync, ch)
 		if err != nil {
 			t.Fatal(err)
@@ -485,7 +485,7 @@ func TestDB_ReserveGC_EvictMaxPO(t *testing.T) {
 	t.Run("postage radius index count", newItemsCountTest(db.postageRadiusIndex, 0))
 
 	for i := 0; i < 90; i++ {
-		ch := generateTestRandomChunkAt(t, swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
+		ch := generateTestRandomChunkAt(t, db.baseAddr, 2).WithBatch(2, 3, 2, false)
 		_, err := db.Put(context.Background(), storage.ModePutSync, ch)
 		if err != nil {
 			t.Fatal(err)
@@ -572,7 +572,7 @@ func TestReserveSize(t *testing.T) {
 			chs []swarm.Chunk
 		)
 		for i := 0; i < chunkCount; i++ {
-			ch := generateTestRandomChunkAt(t, swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
+			ch := generateTestRandomChunkAt(t, db.baseAddr, 2).WithBatch(2, 3, 2, false)
 			chs = append(chs, ch)
 		}
 		_, err := db.Put(context.Background(), storage.ModePutSync, chs...)
@@ -592,7 +592,7 @@ func TestReserveSize(t *testing.T) {
 			addrs []swarm.Address
 		)
 		for i := 0; i < chunkCount; i++ {
-			ch := generateTestRandomChunkAt(t, swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
+			ch := generateTestRandomChunkAt(t, db.baseAddr, 2).WithBatch(2, 3, 2, false)
 			chs = append(chs, ch)
 			addrs = append(addrs, ch.Address())
 		}
@@ -617,7 +617,7 @@ func TestReserveSize(t *testing.T) {
 			})
 		)
 		for i := 0; i < chunkCount; i++ {
-			ch := generateTestRandomChunkAt(t, swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
+			ch := generateTestRandomChunkAt(t, db.baseAddr, 2).WithBatch(2, 3, 2, false)
 			_, err := db.Put(context.Background(), storage.ModePutSync, ch)
 			if err != nil {
 				t.Fatal(err)
@@ -635,7 +635,7 @@ func TestReserveSize(t *testing.T) {
 			})
 		)
 		for i := 0; i < chunkCount; i++ {
-			ch := generateTestRandomChunkAt(t, swarm.NewAddress(db.baseKey), 2).WithBatch(2, 3, 2, false)
+			ch := generateTestRandomChunkAt(t, db.baseAddr, 2).WithBatch(2, 3, 2, false)
 			_, err := db.Put(context.Background(), storage.ModePutRequest, ch)
 			if err != nil {
 				t.Fatal(err)
@@ -657,7 +657,7 @@ func TestComputeReserveSize(t *testing.T) {
 
 	for po := 0; po < maxPO; po++ {
 		for i := 0; i < chunkCountPerPO; i++ {
-			ch := generateTestRandomChunkAt(t, swarm.NewAddress(db.baseKey), po).WithBatch(0, 3, 2, false)
+			ch := generateTestRandomChunkAt(t, db.baseAddr, po).WithBatch(0, 3, 2, false)
 			chs = append(chs, ch)
 		}
 	}
@@ -728,7 +728,7 @@ func TestDB_ReserveGC_BatchedUnreserve(t *testing.T) {
 	// generate chunks with the same batch and depth to trigger larger eviction
 	genChunk := func() swarm.Chunk {
 		newStamp := postagetesting.MustNewBatchStamp(stamp.BatchID())
-		ch := generateTestRandomChunkAt(t, swarm.NewAddress(db.baseKey), 2)
+		ch := generateTestRandomChunkAt(t, db.baseAddr, 2)
 		return ch.WithBatch(2, 3, 2, false).WithStamp(newStamp)
 	}
 
@@ -801,7 +801,7 @@ func TestDB_ReserveGC_EvictBatch(t *testing.T) {
 	// generate chunks with the same batch and depth to trigger larger eviction
 	genChunk := func() swarm.Chunk {
 		newStamp := postagetesting.MustNewBatchStamp(stamp.BatchID())
-		ch := generateTestRandomChunkAt(t, swarm.NewAddress(db.baseKey), 2)
+		ch := generateTestRandomChunkAt(t, db.baseAddr, 2)
 		return ch.WithBatch(2, 3, 2, false).WithStamp(newStamp)
 	}
 
