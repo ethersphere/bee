@@ -21,7 +21,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/tracing"
-	"github.com/ethersphere/bee/pkg/util/ioutil"
 	"github.com/gorilla/mux"
 )
 
@@ -90,14 +89,15 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// Add the tag to the context
 	ctx := sctx.SetTag(r.Context(), tag)
 	p := requestPipelineFn(putter, r)
-	ctx, cancel := context.WithCancel(ctx)
+	pctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	pr := ioutil.TimeoutReader(ctx, r.Body, 5*time.Minute, func(n uint64) {
-		logger.Error(nil, "idle read timeout exceeded")
-		logger.Debug("idle read timeout exceeded", "bytes_read", n)
+	timer := time.AfterFunc(5*time.Minute, func() {
 		cancel()
+		logger.Error(nil, "upload timeout exceeded")
+		logger.Debug("upload timeout exceeded")
 	})
-	address, err := p(ctx, pr)
+	defer timer.Stop()
+	address, err := p(pctx, r.Body)
 	if err != nil {
 		logger.Debug("split write all failed", "error", err)
 		logger.Error(nil, "split write all failed")
@@ -115,6 +115,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "sync chunks failed")
 		return
 	}
+	timer.Stop()
 
 	if created {
 		_, err = tag.DoneSplit(address)
