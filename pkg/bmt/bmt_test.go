@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"math/rand"
 	"sort"
 	"testing"
@@ -17,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/bmt"
 	"github.com/ethersphere/bee/pkg/bmt/reference"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -85,7 +85,7 @@ func TestHasherEmptyData(t *testing.T) {
 // tests sequential write with entire max size written in one go
 func TestSyncHasherCorrectness(t *testing.T) {
 	t.Parallel()
-	testData := randomBytes(t, seed)
+	testData := testutil.RandBytesWithSeed(t, 4096, seed)
 
 	for _, count := range testSegmentCounts {
 		count := count
@@ -133,7 +133,7 @@ func testHasherReuse(t *testing.T, poolsize int) {
 
 	for i := 0; i < 100; i++ {
 		seed := int64(i)
-		testData := randomBytes(t, seed)
+		testData := testutil.RandBytesWithSeed(t, 4096, seed)
 		n := rand.Intn(h.Capacity())
 		err := testHasherCorrectness(h, testData, n, testSegmentCount)
 		if err != nil {
@@ -146,7 +146,7 @@ func testHasherReuse(t *testing.T, poolsize int) {
 func TestBMTConcurrentUse(t *testing.T) {
 	t.Parallel()
 
-	testData := randomBytes(t, seed)
+	testData := testutil.RandBytesWithSeed(t, 4096, seed)
 	pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, testSegmentCount, testPoolSize))
 	cycles := 100
 
@@ -188,7 +188,7 @@ func TestBMTWriterBuffers(t *testing.T) {
 
 			size := h.Capacity()
 			seed := int64(i)
-			testData := randomBytes(t, seed)
+			testData := testutil.RandBytesWithSeed(t, 4096, seed)
 
 			resHash, err := syncHash(h, testData[:size])
 			if err != nil {
@@ -296,16 +296,4 @@ func TestUseSyncAsOrdinaryHasher(t *testing.T) {
 	if !bytes.Equal(expHash, resHash) {
 		t.Fatalf("normalhash; expected %x, got %x", expHash, resHash)
 	}
-}
-
-func randomBytes(tb testing.TB, seed int64) []byte {
-	tb.Helper()
-	data := make([]byte, 4096)
-	s := rand.NewSource(seed)
-	r := rand.New(s)
-	_, err := io.ReadFull(r, data)
-	if err != nil {
-		tb.Fatal(err)
-	}
-	return data
 }

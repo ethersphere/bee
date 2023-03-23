@@ -11,6 +11,7 @@ import (
 	"github.com/ethersphere/bee/pkg/bmt"
 	"github.com/ethersphere/bee/pkg/bmt/reference"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -43,7 +44,7 @@ func BenchmarkPool(b *testing.B) {
 func benchmarkSHA3(b *testing.B, n int) {
 	b.Helper()
 
-	testData := randomBytes(b, seed)
+	testData := testutil.RandBytesWithSeed(b, 4096, seed)
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -62,7 +63,7 @@ func benchmarkSHA3(b *testing.B, n int) {
 func benchmarkBMTBaseline(b *testing.B, n int) {
 	b.Helper()
 
-	testData := randomBytes(b, seed)
+	testData := testutil.RandBytesWithSeed(b, 4096, seed)
 
 	b.ReportAllocs()
 	b.ResetTimer()
@@ -84,7 +85,7 @@ func benchmarkBMTBaseline(b *testing.B, n int) {
 func benchmarkBMT(b *testing.B, n int) {
 	b.Helper()
 
-	testData := randomBytes(b, seed)
+	testData := testutil.RandBytesWithSeed(b, 4096, seed)
 
 	pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, testSegmentCount, testPoolSize))
 	h := pool.Get()
@@ -103,7 +104,7 @@ func benchmarkBMT(b *testing.B, n int) {
 func benchmarkPool(b *testing.B, poolsize int) {
 	b.Helper()
 
-	testData := randomBytes(b, seed)
+	testData := testutil.RandBytesWithSeed(b, 4096, seed)
 
 	pool := bmt.NewPool(bmt.NewConf(swarm.NewHasher, testSegmentCount, poolsize))
 	cycles := 100
@@ -130,7 +131,7 @@ func benchmarkPool(b *testing.B, poolsize int) {
 func benchmarkRefHasher(b *testing.B, n int) {
 	b.Helper()
 
-	testData := randomBytes(b, seed)
+	testData := testutil.RandBytesWithSeed(b, 4096, seed)
 
 	rbmt := reference.NewRefHasher(swarm.NewHasher(), 128)
 

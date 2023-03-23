@@ -334,12 +334,7 @@ func TestSeek(t *testing.T) {
 			store := mock.NewStorer()
 			testutil.CleanupCloser(t, store)
 
-			r := mrand.New(mrand.NewSource(seed))
-			data, err := io.ReadAll(io.LimitReader(r, tc.size))
-			if err != nil {
-				t.Fatal(err)
-			}
-
+			data := testutil.RandBytesWithSeed(t, int(tc.size), seed)
 			s := splitter.NewSimpleSplitter(store, storage.ModePutUpload)
 			addr, err := s.Split(ctx, io.NopCloser(bytes.NewReader(data)), tc.size, false)
 			if err != nil {
@@ -616,12 +611,7 @@ func TestPrefetch(t *testing.T) {
 			store := mock.NewStorer()
 			testutil.CleanupCloser(t, store)
 
-			r := mrand.New(mrand.NewSource(seed))
-			data, err := io.ReadAll(io.LimitReader(r, tc.size))
-			if err != nil {
-				t.Fatal(err)
-			}
-
+			data := testutil.RandBytesWithSeed(t, int(tc.size), seed)
 			s := splitter.NewSimpleSplitter(store, storage.ModePutUpload)
 			addr, err := s.Split(ctx, io.NopCloser(bytes.NewReader(data)), tc.size, false)
 			if err != nil {

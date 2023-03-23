@@ -27,6 +27,23 @@ func TestRandBytes(t *testing.T) {
 	}
 }
 
+func TestRandBytesWithSeed(t *testing.T) {
+	t.Parallel()
+
+	const size = 32
+
+	randBytes1 := testutil.RandBytesWithSeed(t, size, 1)
+	randBytes2 := testutil.RandBytesWithSeed(t, size, 1)
+
+	if got := len(randBytes1); got != size {
+		t.Fatalf("expected %d, got %d", size, got)
+	}
+
+	if !bytes.Equal(randBytes1, randBytes2) {
+		t.Fatalf("bytes generated with same seed should be equal")
+	}
+}
+
 func TestCleanupCloser(t *testing.T) {
 	t.Parallel()
 
