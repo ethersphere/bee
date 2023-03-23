@@ -134,8 +134,11 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 		s.metrics.RequestAttempts.Observe(float64(totalRetrieveAttempts))
 	}()
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	// topCtx is passing the tracing span to the first singleflight call
 	topCtx := ctx
+
 	v, _, err := s.singleflight.Do(ctx, flightRoute, func(ctx context.Context) (interface{}, error) {
 
 		var skip []swarm.Address

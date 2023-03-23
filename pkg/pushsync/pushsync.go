@@ -329,6 +329,9 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	defer span.Finish()
 	defer ps.skipList.PruneExpired()
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	var (
 		sentErrorsLeft   = 1
 		preemptiveTicker <-chan time.Time
