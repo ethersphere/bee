@@ -195,16 +195,18 @@ func (s *SimpleSplitterJob) hashUnfinished() error {
 // Let F be full chunks (disregarding branching factor) and S be single references
 // in the following scenario:
 //
-//       S
-//     F   F
-//   F   F   F
+//	    S
+//	  F   F
+//	F   F   F
+//
 // F   F   F   F S
 //
 // The result will be:
 //
-//       SS
-//     F    F
-//   F   F   F
+//	    SS
+//	  F    F
+//	F   F   F
+//
 // F   F   F   F
 //
 // After which the SS will be hashed to obtain the final root hash

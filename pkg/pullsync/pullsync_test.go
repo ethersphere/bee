@@ -10,8 +10,6 @@ import (
 	"io"
 	"testing"
 
-	storer "github.com/ethersphere/bee/pkg/localstorev2"
-	mock "github.com/ethersphere/bee/pkg/localstorev2/mock"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
@@ -19,6 +17,8 @@ import (
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/pullsync"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
+	storer "github.com/ethersphere/bee/pkg/storer"
+	mock "github.com/ethersphere/bee/pkg/storer/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 

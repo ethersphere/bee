@@ -8,7 +8,7 @@ import (
 	"context"
 	"sync"
 
-	"github.com/ethersphere/bee/pkg/localstorev2/internal/upload"
+	"github.com/ethersphere/bee/pkg/storer/internal/upload"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 

@@ -11,8 +11,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/ethersphere/bee/pkg/localstorev2/internal"
 	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storer/internal"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 

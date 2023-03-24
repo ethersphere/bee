@@ -9,7 +9,7 @@ import (
 	"errors"
 	"time"
 
-	pinstore "github.com/ethersphere/bee/pkg/localstorev2/internal/pinning"
+	pinstore "github.com/ethersphere/bee/pkg/storer/internal/pinning"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/hashicorp/go-multierror"
 )

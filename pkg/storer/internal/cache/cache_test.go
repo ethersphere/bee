@@ -11,11 +11,11 @@ import (
 	"math"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/localstorev2/internal"
-	"github.com/ethersphere/bee/pkg/localstorev2/internal/cache"
-	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/storagetest"
+	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
+	"github.com/ethersphere/bee/pkg/storer/internal"
+	"github.com/ethersphere/bee/pkg/storer/internal/cache"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
 )

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/localstorev2/internal/events"
+	"github.com/ethersphere/bee/pkg/storer/internal/events"
 )
 
 func TestSubscriber(t *testing.T) {

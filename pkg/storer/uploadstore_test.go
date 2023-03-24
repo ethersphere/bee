@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	storer "github.com/ethersphere/bee/pkg/localstorev2"
 	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
+	storer "github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
 )

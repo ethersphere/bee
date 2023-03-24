@@ -9,8 +9,8 @@ import (
 	"crypto/rand"
 	"sync"
 
-	storer "github.com/ethersphere/bee/pkg/localstorev2"
 	storage "github.com/ethersphere/bee/pkg/storage"
+	storer "github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 

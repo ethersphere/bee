@@ -11,11 +11,11 @@ import (
 	"math"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/localstorev2/internal"
-	pinstore "github.com/ethersphere/bee/pkg/localstorev2/internal/pinning"
-	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
 	storage "github.com/ethersphere/bee/pkg/storage"
 	storagetest "github.com/ethersphere/bee/pkg/storage/storagetest"
+	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
+	"github.com/ethersphere/bee/pkg/storer/internal"
+	pinstore "github.com/ethersphere/bee/pkg/storer/internal/pinning"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 

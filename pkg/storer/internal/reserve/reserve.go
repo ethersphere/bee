@@ -11,11 +11,11 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/ethersphere/bee/pkg/localstorev2/internal"
-	"github.com/ethersphere/bee/pkg/localstorev2/internal/chunkstamp"
-	"github.com/ethersphere/bee/pkg/localstorev2/internal/stampindex"
 	"github.com/ethersphere/bee/pkg/log"
 	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storer/internal"
+	"github.com/ethersphere/bee/pkg/storer/internal/chunkstamp"
+	"github.com/ethersphere/bee/pkg/storer/internal/stampindex"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 )

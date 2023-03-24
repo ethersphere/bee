@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
-	storer "github.com/ethersphere/bee/pkg/localstorev2"
 	storage "github.com/ethersphere/bee/pkg/storage"
+	storer "github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
 )

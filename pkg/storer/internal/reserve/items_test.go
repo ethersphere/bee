@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/localstorev2/internal/reserve"
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/storagetest"
+	"github.com/ethersphere/bee/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
