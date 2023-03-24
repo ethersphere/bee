@@ -145,15 +145,6 @@ type LocalStore interface {
 	ChunkStore() storage.ReadOnlyChunkStore
 }
 
-type Storer interface {
-	ReserveStore
-	UploadStore
-	PinStore
-	CacheStore
-	NetStore
-	LocalStore
-}
-
 type memFS struct {
 	afero.Fs
 }

@@ -95,6 +95,9 @@ func (db *DB) ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte
 }
 
 func (db *DB) StorageRadius() uint8 {
+	if db.reserve == nil {
+		return 0
+	}
 	return db.reserve.Radius()
 }
 
@@ -103,6 +106,9 @@ func (db *DB) ReserveSize() int {
 }
 
 func (db *DB) IsWithinStorageRadius(addr swarm.Address) bool {
+	if db.reserve == nil {
+		return false
+	}
 	return swarm.Proximity(addr.Bytes(), db.baseAddr.Bytes()) >= db.reserve.Radius()
 }
 
