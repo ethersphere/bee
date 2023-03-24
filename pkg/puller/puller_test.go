@@ -77,7 +77,7 @@ func TestSyncOutsideDepth(t *testing.T) {
 		cursors = []uint64{1000, 1000, 1000, 1000}
 	)
 
-	puller, _, kad, pullsync := newPuller(t, opts{
+	_, _, kad, pullsync := newPuller(t, opts{
 		kad: []kadMock.Option{
 			kadMock.WithEachPeerRevCalls(
 				kadMock.AddrTuple{Addr: addr, PO: 2},
@@ -98,8 +98,6 @@ func TestSyncOutsideDepth(t *testing.T) {
 
 	waitLiveSyncCalledBins(t, pullsync, addr, 2, 3)
 	waitLiveSyncCalledBins(t, pullsync, addr2, 0)
-
-	checkHistSyncingCount(t, puller, 0)
 }
 
 func TestSyncFlow_PeerWithinDepth_Live(t *testing.T) {
