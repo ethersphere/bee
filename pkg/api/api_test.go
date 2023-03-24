@@ -57,7 +57,6 @@ import (
 	"github.com/ethersphere/bee/pkg/storageincentives"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 	mock2 "github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
-	storagev2 "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	topologymock "github.com/ethersphere/bee/pkg/topology/mock"
@@ -316,7 +315,7 @@ func request(t *testing.T, client *http.Client, method, resource string, body io
 	return resp
 }
 
-func pipelineFactory(s storagev2.Putter, encrypt bool) func() pipeline.Interface {
+func pipelineFactory(s storage.Putter, encrypt bool) func() pipeline.Interface {
 	return func() pipeline.Interface {
 		return builder.NewPipelineBuilder(context.Background(), s, encrypt)
 	}

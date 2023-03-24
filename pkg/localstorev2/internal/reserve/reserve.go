@@ -15,7 +15,7 @@ import (
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/chunkstamp"
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/stampindex"
 	"github.com/ethersphere/bee/pkg/log"
-	storage "github.com/ethersphere/bee/pkg/storagev2"
+	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 )

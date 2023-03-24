@@ -4,7 +4,7 @@
 
 package chunkstore
 
-import storage "github.com/ethersphere/bee/pkg/storagev2"
+import storage "github.com/ethersphere/bee/pkg/storage"
 
 type (
 	RetrievalIndexItem = retrievalIndexItem

@@ -10,7 +10,7 @@ import (
 	"sync"
 
 	"github.com/armon/go-radix"
-	storage "github.com/ethersphere/bee/pkg/storagev2"
+	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/hashicorp/go-multierror"
 )
 

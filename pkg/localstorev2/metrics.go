@@ -9,7 +9,7 @@ import (
 	"time"
 
 	m "github.com/ethersphere/bee/pkg/metrics"
-	"github.com/ethersphere/bee/pkg/storagev2"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/prometheus/client_golang/prometheus"
 )

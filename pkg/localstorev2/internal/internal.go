@@ -7,9 +7,9 @@ package internal
 import (
 	"bytes"
 
-	storage "github.com/ethersphere/bee/pkg/storagev2"
-	"github.com/ethersphere/bee/pkg/storagev2/inmemchunkstore"
-	"github.com/ethersphere/bee/pkg/storagev2/inmemstore"
+	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
+	"github.com/ethersphere/bee/pkg/storage/inmemstore"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/hashicorp/go-multierror"
 )

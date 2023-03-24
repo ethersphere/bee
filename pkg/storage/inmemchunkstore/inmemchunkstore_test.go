@@ -7,8 +7,8 @@ package inmemchunkstore_test
 import (
 	"testing"
 
-	inmem "github.com/ethersphere/bee/pkg/storagev2/inmemchunkstore"
-	"github.com/ethersphere/bee/pkg/storagev2/storagetest"
+	inmem "github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
+	"github.com/ethersphere/bee/pkg/storage/storagetest"
 )
 
 func TestChunkStore(t *testing.T) {

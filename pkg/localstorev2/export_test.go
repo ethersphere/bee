@@ -9,7 +9,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/events"
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/reserve"
-	storage "github.com/ethersphere/bee/pkg/storagev2"
+	storage "github.com/ethersphere/bee/pkg/storage"
 )
 
 func (db *DB) Reserve() *reserve.Reserve {

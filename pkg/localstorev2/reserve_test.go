@@ -22,7 +22,7 @@ import (
 	pullerMock "github.com/ethersphere/bee/pkg/puller/mock"
 	"github.com/ethersphere/bee/pkg/spinlock"
 	chunk "github.com/ethersphere/bee/pkg/storage/testing"
-	storage "github.com/ethersphere/bee/pkg/storagev2"
+	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
 )

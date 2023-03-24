@@ -9,7 +9,7 @@ import (
 	"errors"
 
 	"github.com/ethersphere/bee/pkg/file/pipeline"
-	storage "github.com/ethersphere/bee/pkg/storagev2"
+	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 

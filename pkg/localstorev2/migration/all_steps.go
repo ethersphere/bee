@@ -4,7 +4,7 @@
 
 package migration
 
-import "github.com/ethersphere/bee/pkg/storagev2/migration"
+import "github.com/ethersphere/bee/pkg/storage/migration"
 
 // AllSteps lists all migration steps for localstore IndexStore.
 func AllSteps() migration.Steps {

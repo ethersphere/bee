@@ -5,7 +5,7 @@
 package migration
 
 import (
-	storage "github.com/ethersphere/bee/pkg/storagev2"
+	storage "github.com/ethersphere/bee/pkg/storage"
 )
 
 // step_01 serves as example for setting up migration step.

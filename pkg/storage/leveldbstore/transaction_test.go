@@ -7,8 +7,8 @@ package leveldbstore_test
 import (
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/storagev2/leveldbstore"
-	"github.com/ethersphere/bee/pkg/storagev2/storagetest"
+	"github.com/ethersphere/bee/pkg/storage/leveldbstore"
+	"github.com/ethersphere/bee/pkg/storage/storagetest"
 )
 
 func TestTxStore(t *testing.T) {

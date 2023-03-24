@@ -63,11 +63,10 @@ const (
 
 // ErrInvalidQuery indicates that the query is not a valid query.
 var (
-	ErrInvalidQuery = errors.New("storage: invalid query")
-
-	ErrNotFound = errors.New("storage: not found")
-
+	ErrInvalidQuery    = errors.New("storage: invalid query")
+	ErrNotFound        = errors.New("storage: not found")
 	ErrReferenceLength = errors.New("storage: invalid reference length")
+	ErrInvalidChunk    = errors.New("storage: invalid chunk")
 )
 
 // Query denotes the iteration attributes.

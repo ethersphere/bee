@@ -11,7 +11,7 @@ import (
 	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/feeds/sequence"
 	feedstesting "github.com/ethersphere/bee/pkg/feeds/testing"
-	storage "github.com/ethersphere/bee/pkg/storagev2"
+	storage "github.com/ethersphere/bee/pkg/storage"
 )
 
 func TestFinder(t *testing.T) {

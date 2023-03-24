@@ -9,7 +9,7 @@ import (
 	"encoding/binary"
 
 	"github.com/ethersphere/bee/pkg/encryption"
-	storage "github.com/ethersphere/bee/pkg/storagev2"
+	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"golang.org/x/crypto/sha3"
 )

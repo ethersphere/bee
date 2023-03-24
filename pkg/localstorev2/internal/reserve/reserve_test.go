@@ -18,7 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	chunk "github.com/ethersphere/bee/pkg/storage/testing"
-	storage "github.com/ethersphere/bee/pkg/storagev2"
+	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	kademlia "github.com/ethersphere/bee/pkg/topology/mock"
 )

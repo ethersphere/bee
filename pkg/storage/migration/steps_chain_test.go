@@ -7,9 +7,9 @@ package migration_test
 import (
 	"testing"
 
-	storage "github.com/ethersphere/bee/pkg/storagev2"
-	"github.com/ethersphere/bee/pkg/storagev2/inmemstore"
-	"github.com/ethersphere/bee/pkg/storagev2/migration"
+	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage/inmemstore"
+	"github.com/ethersphere/bee/pkg/storage/migration"
 )
 
 func TestNewStepsChain(t *testing.T) {

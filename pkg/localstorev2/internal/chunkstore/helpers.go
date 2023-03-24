@@ -9,7 +9,7 @@ import (
 	"fmt"
 
 	"github.com/ethersphere/bee/pkg/sharky"
-	storage "github.com/ethersphere/bee/pkg/storagev2"
+	storage "github.com/ethersphere/bee/pkg/storage"
 )
 
 type LocationResult struct {

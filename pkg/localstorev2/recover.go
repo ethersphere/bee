@@ -14,7 +14,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/chunkstore"
 	"github.com/ethersphere/bee/pkg/sharky"
-	storage "github.com/ethersphere/bee/pkg/storagev2"
+	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 

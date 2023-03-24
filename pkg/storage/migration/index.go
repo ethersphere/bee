@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 
-	storage "github.com/ethersphere/bee/pkg/storagev2"
+	storage "github.com/ethersphere/bee/pkg/storage"
 )
 
 var ErrItemIDShouldntChange = errors.New("item.ID shouldn't be changing after update")

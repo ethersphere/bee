@@ -10,7 +10,7 @@ import (
 	"sync"
 
 	storer "github.com/ethersphere/bee/pkg/localstorev2"
-	storage "github.com/ethersphere/bee/pkg/storagev2"
+	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 

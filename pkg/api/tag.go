@@ -13,7 +13,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	storer "github.com/ethersphere/bee/pkg/localstorev2"
-	storage "github.com/ethersphere/bee/pkg/storagev2"
+	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
 )

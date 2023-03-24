@@ -11,7 +11,7 @@ import (
 
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
-	storage "github.com/ethersphere/bee/pkg/storagev2"
+	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 

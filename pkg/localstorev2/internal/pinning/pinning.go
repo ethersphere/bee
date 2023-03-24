@@ -12,8 +12,8 @@ import (
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/localstorev2/internal"
-	storage "github.com/ethersphere/bee/pkg/storagev2"
-	"github.com/ethersphere/bee/pkg/storagev2/storageutil"
+	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage/storageutil"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/google/uuid"
 )

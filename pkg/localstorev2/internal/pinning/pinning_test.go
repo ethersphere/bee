@@ -14,8 +14,8 @@ import (
 	"github.com/ethersphere/bee/pkg/localstorev2/internal"
 	pinstore "github.com/ethersphere/bee/pkg/localstorev2/internal/pinning"
 	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
-	storage "github.com/ethersphere/bee/pkg/storagev2"
-	storagetest "github.com/ethersphere/bee/pkg/storagev2/storagetest"
+	storage "github.com/ethersphere/bee/pkg/storage"
+	storagetest "github.com/ethersphere/bee/pkg/storage/storagetest"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 

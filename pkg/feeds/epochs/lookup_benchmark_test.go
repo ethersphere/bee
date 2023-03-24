@@ -13,7 +13,7 @@ import (
 	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/feeds/epochs"
 	feedstesting "github.com/ethersphere/bee/pkg/feeds/testing"
-	"github.com/ethersphere/bee/pkg/storagev2/inmemchunkstore"
+	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 )
 
 func BenchmarkFinder(b *testing.B) {

@@ -13,8 +13,8 @@ import (
 	"github.com/ethersphere/bee/pkg/localstorev2/internal/chunkstore"
 	"github.com/ethersphere/bee/pkg/sharky"
 	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
-	storage "github.com/ethersphere/bee/pkg/storagev2"
-	"github.com/ethersphere/bee/pkg/storagev2/inmemstore"
+	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage/inmemstore"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/spf13/afero"
 )

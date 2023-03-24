@@ -37,8 +37,7 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/spinlock"
-	storagev1 "github.com/ethersphere/bee/pkg/storage"
-	storage "github.com/ethersphere/bee/pkg/storagev2"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/kademlia"
@@ -76,7 +75,7 @@ func bootstrapNode(
 	chequeStore chequebook.ChequeStore,
 	cashoutService chequebook.CashoutService,
 	transactionService transaction.Service,
-	stateStore storagev1.StateStorer,
+	stateStore storage.StateStorer,
 	signer crypto.Signer,
 	networkID uint64,
 	logger log.Logger,
@@ -362,7 +361,7 @@ func getLatestSnapshot(
 	return swarm.NewAddress(ref), nil
 }
 
-func batchStoreExists(s storagev1.StateStorer) (bool, error) {
+func batchStoreExists(s storage.StateStorer) (bool, error) {
 
 	hasOne := false
 	err := s.Iterate("batchstore_", func(key, value []byte) (stop bool, err error) {
