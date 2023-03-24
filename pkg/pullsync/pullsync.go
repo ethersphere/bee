@@ -63,6 +63,7 @@ type Interface interface {
 	// It returns the BinID of highest chunk that was synced from the given
 	// interval. If the requested interval is too large, the downstream peer
 	// has the liberty to provide less chunks than requested.
+	// A zero topmost is returned if a catastrophic error was encountered and the same interval should be tried again.
 	SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (topmost uint64, err error)
 	// GetCursors retrieves all cursors from a downstream peer.
 	GetCursors(ctx context.Context, peer swarm.Address) ([]uint64, error)
@@ -173,14 +174,14 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 
 	bv, err := bitvector.New(bvLen)
 	if err != nil {
-		return topmost, fmt.Errorf("new bitvector: %w", err)
+		return 0, fmt.Errorf("new bitvector: %w", err)
 	}
 
 	for i := 0; i < len(offer.Hashes); i += swarm.HashSize {
 		a := swarm.NewAddress(offer.Hashes[i : i+swarm.HashSize])
 		if a.Equal(swarm.ZeroAddress) {
 			// i'd like to have this around to see we don't see any of these in the logs
-			loggerV2.Debug("syncer got a zero address hash on offer")
+			s.logger.Debug("syncer got a zero address hash on offer", "peer_address", peer)
 			continue
 		}
 		s.metrics.Offered.Inc()
@@ -204,20 +205,22 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 
 	wantMsg := &pb.Want{BitVector: bv.Bytes()}
 	if err = w.WriteMsgWithContext(ctx, wantMsg); err != nil {
-		return topmost, fmt.Errorf("write want: %w", err)
+		return 0, fmt.Errorf("write want: %w", err)
 	}
 
 	var chunksToPut []swarm.Chunk
 
+	var chunkErr error
 	for ; ctr > 0; ctr-- {
 		var delivery pb.Delivery
 		if err = r.ReadMsgWithContext(ctx, &delivery); err != nil {
-			return topmost, fmt.Errorf("read delivery: %w", err)
+			return 0, fmt.Errorf("read delivery: %w", err)
 		}
 
 		addr := swarm.NewAddress(delivery.Address)
 		if _, ok := wantChunks[addr.ByteString()]; !ok {
-			s.logger.Debug("want chunks", "error", ErrUnsolicitedChunk)
+			s.logger.Debug("want chunks", "error", ErrUnsolicitedChunk, "peer_address", peer, "chunk_address", addr)
+			chunkErr = errors.Join(chunkErr, ErrUnsolicitedChunk)
 			continue
 		}
 
@@ -226,14 +229,16 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 
 		chunk := swarm.NewChunk(addr, delivery.Data)
 		if chunk, err = s.validStamp(chunk, delivery.Stamp); err != nil {
-			loggerV2.Debug("unverified stamp", "error", err)
+			s.logger.Debug("unverified stamp", "error", err, "peer_address", peer, "chunk_address", chunk)
+			chunkErr = errors.Join(chunkErr, err)
 			continue
 		}
 
 		if cac.Valid(chunk) {
 			go s.unwrap(chunk)
 		} else if !soc.Valid(chunk) {
-			s.logger.Debug("valid chunk", "error", swarm.ErrInvalidChunk)
+			s.logger.Debug("valid chunk", "error", swarm.ErrInvalidChunk, "peer_address", peer, "chunk_address", chunk)
+			chunkErr = errors.Join(chunkErr, swarm.ErrInvalidChunk)
 			continue
 		}
 		chunksToPut = append(chunksToPut, chunk)
@@ -248,12 +253,12 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		s.metrics.DbOps.Inc()
 
 		if err := s.storage.Put(ctx, storage.ModePutSync, chunksToPut...); err != nil {
-			return topmost, fmt.Errorf("delivery put: %w", err)
+			return 0, errors.Join(chunkErr, fmt.Errorf("delivery put: %w", err))
 		}
 		s.metrics.LastReceived.WithLabelValues(fmt.Sprintf("%d", bin)).Set(float64(time.Now().Unix()))
 	}
 
-	return topmost, nil
+	return topmost, chunkErr
 }
 
 // Rate returns chunks per second synced
