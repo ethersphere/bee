@@ -12,7 +12,6 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	storagev1 "github.com/ethersphere/bee/pkg/storage"
-	storage "github.com/ethersphere/bee/pkg/storagev2"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -46,7 +45,7 @@ func CheckOverlayWithStore(overlay swarm.Address, storer storagev1.StateStorer) 
 	var storedOverlay swarm.Address
 	err := storer.Get(noncedOverlayKey, &storedOverlay)
 	if err != nil {
-		if !errors.Is(err, storage.ErrNotFound) {
+		if !errors.Is(err, storagev1.ErrNotFound) {
 			return err
 		}
 		return storer.Put(noncedOverlayKey, overlay)
@@ -69,7 +68,7 @@ const OverlayNonce = "overlayV2_nonce"
 func overlayNonceExists(s storagev1.StateStorer) ([]byte, bool, error) {
 	overlayNonce := make([]byte, 32)
 	if err := s.Get(OverlayNonce, &overlayNonce); err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
+		if errors.Is(err, storagev1.ErrNotFound) {
 			return overlayNonce, false, nil
 		}
 		return nil, false, err
