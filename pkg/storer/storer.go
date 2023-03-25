@@ -216,7 +216,7 @@ func initDiskRepository(ctx context.Context, basePath string, opts *Options) (st
 	ldbBasePath := path.Join(basePath, "indexstore")
 
 	if _, err := os.Stat(ldbBasePath); os.IsNotExist(err) {
-		err := os.Mkdir(ldbBasePath, 0777)
+		err := os.MkdirAll(ldbBasePath, 0777)
 		if err != nil {
 			return nil, nil, err
 		}

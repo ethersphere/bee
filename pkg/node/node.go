@@ -904,6 +904,7 @@ func NewBee(
 		Batchstore:                batchStore,
 		RadiusSetter:              kad,
 		WarmupDuration:            o.WarmupTime,
+		Logger:                    logger,
 	}
 
 	if o.FullNodeMode && !o.BootnodeMode {
