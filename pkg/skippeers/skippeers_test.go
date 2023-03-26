@@ -1,4 +1,4 @@
-// Copyright 2020 The Swarm Authors. All rights reserved.
+// Copyright 2023 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -9,16 +9,16 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/skippeers"
-	testingc "github.com/ethersphere/bee/pkg/storage/testing"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 func TestPeerSkipList(t *testing.T) {
 	t.Parallel()
 	skipList := skippeers.NewList()
 
-	addr1 := testingc.GenerateTestRandomChunk().Address()
-	addr2 := testingc.GenerateTestRandomChunk().Address()
-	addr3 := testingc.GenerateTestRandomChunk().Address()
+	addr1 := swarm.RandAddress(t)
+	addr2 := swarm.RandAddress(t)
+	addr3 := swarm.RandAddress(t)
 
 	skipList.Add(addr1, addr2, time.Millisecond*10)
 

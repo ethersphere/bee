@@ -107,7 +107,7 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 
 const (
 	retrieveChunkTimeout = 10 * time.Second
-	preemptiveInterval   = 5 * time.Second
+	preemptiveInterval   = time.Second
 	skiplistDur          = time.Minute
 	maxRetrievedErrors   = 32
 	originSuffix         = "_origin"
@@ -136,6 +136,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
+
 	// topCtx is passing the tracing span to the first singleflight call
 	topCtx := ctx
 
@@ -160,15 +161,14 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 		defer close(done)
 
 		resultC := make(chan retrievalResult, 1)
-		retryC := make(chan struct{})
+		retryC := make(chan struct{}, 1)
 
 		retry := func() {
-			go func() {
-				select {
-				case retryC <- struct{}{}:
-				case <-done:
-				}
-			}()
+			select {
+			case retryC <- struct{}{}:
+			case <-done:
+			case <-ctx.Done():
+			}
 		}
 
 		retry()

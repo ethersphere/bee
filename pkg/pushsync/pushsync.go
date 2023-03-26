@@ -56,7 +56,7 @@ var (
 	ErrNoPush            = errors.New("could not push chunk")
 	ErrOutOfDepthStoring = errors.New("storing outside of the neighborhood")
 	ErrWarmup            = errors.New("node warmup time not complete")
-	errPrepareCredit     = errors.New("peer not attempted")
+	errPrepareCredit     = errors.New("preparing credit failed")
 )
 
 type PushSyncer interface {
@@ -351,15 +351,14 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	done := make(chan struct{})
 	defer close(done)
 
-	retryC := make(chan struct{})
+	retryC := make(chan struct{}, 1)
 
 	retry := func() {
-		go func() {
-			select {
-			case retryC <- struct{}{}:
-			case <-done:
-			}
-		}()
+		select {
+		case retryC <- struct{}{}:
+		case <-done:
+		case <-ctx.Done():
+		}
 	}
 
 	retry()
