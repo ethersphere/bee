@@ -399,7 +399,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			peer, err := nextPeer()
 			if err != nil {
 				if inflight == 0 {
-					ps.logger.Debug("no peers left to retry", "chunk_address", ch)
 					return nil, fmt.Errorf("get closest for address %s, allow upstream %v: %w", ch, origin, err)
 				}
 				continue
