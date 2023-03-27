@@ -5,7 +5,6 @@
 package api_test
 
 import (
-	"bytes"
 	"net/http"
 	"strings"
 	"testing"
@@ -13,15 +12,9 @@ import (
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	"github.com/ethersphere/bee/pkg/log"
-	pinning "github.com/ethersphere/bee/pkg/pinning/mock"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/bee/pkg/storage/mock"
-	testingc "github.com/ethersphere/bee/pkg/storage/testing"
+	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/tags"
-	"github.com/ethersphere/bee/pkg/traversal"
 )
 
 func checkPinHandlers(t *testing.T, client *http.Client, rootHash string, createPin bool) {
@@ -82,15 +75,10 @@ func checkPinHandlers(t *testing.T, client *http.Client, rootHash string, create
 // nolint:paralleltest
 func TestPinHandlers(t *testing.T) {
 	var (
-		logger          = log.Noop
-		storerMock      = mock.NewStorer()
+		storerMock      = mockstorer.New()
 		client, _, _, _ = newTestServer(t, testServerOptions{
-			Storer:    storerMock,
-			Traversal: traversal.New(storerMock),
-			Tags:      tags.NewTags(statestore.NewStateStore(), logger),
-			Pinning:   pinning.NewServiceMock(),
-			Logger:    logger,
-			Post:      mockpost.New(mockpost.WithAcceptAll()),
+			Storer: storerMock,
+			Post:   mockpost.New(mockpost.WithAcceptAll()),
 		})
 	)
 
@@ -140,24 +128,9 @@ func TestPinHandlers(t *testing.T) {
 		checkPinHandlers(t, client, rootHash, false)
 	})
 
-	t.Run("chunk", func(t *testing.T) {
-		var (
-			chunk    = testingc.GenerateTestRandomChunk()
-			rootHash = chunk.Address().String()
-		)
-		jsonhttptest.Request(t, client, http.MethodPost, "/chunks", http.StatusCreated,
-			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
-			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
-			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
-			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{
-				Reference: chunk.Address(),
-			}),
-		)
-		checkPinHandlers(t, client, rootHash, true)
-	})
 }
 
-func Test_pinHandlers_invalidInputs(t *testing.T) {
+func TestPinHandlersInvalidInputs(t *testing.T) {
 	t.Parallel()
 
 	client, _, _, _ := newTestServer(t, testServerOptions{})

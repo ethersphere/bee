@@ -15,7 +15,6 @@ type (
 	SocPostResponse       = socPostResponse
 	FeedReferenceResponse = feedReferenceResponse
 	BzzUploadResponse     = bzzUploadResponse
-	DebugTagResponse      = debugTagResponse
 	TagRequest            = tagRequest
 	ListTagsResponse      = listTagsResponse
 	IsRetrievableResponse = isRetrievableResponse

@@ -30,7 +30,8 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/settlement/swap/priceoracle"
 	"github.com/ethersphere/bee/pkg/settlement/swap/swapprotocol"
-	"github.com/ethersphere/bee/pkg/storage"
+	storage "github.com/ethersphere/bee/pkg/storage"
+	storagev1 "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/bee/pkg/transaction/wrapped"
 	"github.com/ethersphere/go-sw3-abi/sw3abi"
@@ -48,7 +49,7 @@ const (
 func InitChain(
 	ctx context.Context,
 	logger log.Logger,
-	stateStore storage.StateStorer,
+	stateStore storagev1.StateStorer,
 	endpoint string,
 	oChainID int64,
 	signer crypto.Signer,
@@ -153,7 +154,7 @@ func InitChequebookFactory(
 func InitChequebookService(
 	ctx context.Context,
 	logger log.Logger,
-	stateStore storage.StateStorer,
+	stateStore storagev1.StateStorer,
 	signer crypto.Signer,
 	chainID int64,
 	backend transaction.Backend,
@@ -200,7 +201,7 @@ func InitChequebookService(
 }
 
 func initChequeStoreCashout(
-	stateStore storage.StateStorer,
+	stateStore storagev1.StateStorer,
 	swapBackend transaction.Backend,
 	chequebookFactory chequebook.Factory,
 	chainID int64,
@@ -230,7 +231,7 @@ func initChequeStoreCashout(
 func InitSwap(
 	p2ps *libp2p.Service,
 	logger log.Logger,
-	stateStore storage.StateStorer,
+	stateStore storagev1.StateStorer,
 	networkID uint64,
 	overlayEthAddress common.Address,
 	chequebookService chequebook.Service,
@@ -286,7 +287,7 @@ func InitSwap(
 	return swapService, priceOracle, nil
 }
 
-func GetTxHash(stateStore storage.StateStorer, logger log.Logger, trxString string) ([]byte, error) {
+func GetTxHash(stateStore storagev1.StateStorer, logger log.Logger, trxString string) ([]byte, error) {
 
 	if trxString != "" {
 		txHashTrimmed := strings.TrimPrefix(trxString, "0x")

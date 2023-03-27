@@ -11,7 +11,7 @@ import (
 	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/soc"
-	"github.com/ethersphere/bee/pkg/storage"
+	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -53,8 +53,7 @@ func (u *Putter) Put(ctx context.Context, i Index, at int64, payload []byte) err
 	if err != nil {
 		return err
 	}
-	_, err = u.putter.Put(ctx, storage.ModePutUpload, ch)
-	return err
+	return u.putter.Put(ctx, ch)
 }
 
 func toChunk(at uint64, payload []byte) (swarm.Chunk, error) {

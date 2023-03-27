@@ -19,8 +19,8 @@ import (
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/manifest"
 	testingsoc "github.com/ethersphere/bee/pkg/soc/testing"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/mock"
+	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/traversal"
 )
@@ -155,13 +155,13 @@ func TestTraversalBytes(t *testing.T) {
 			var (
 				data       = generateSample(tc.dataSize)
 				iter       = newAddressIterator(tc.ignoreDuplicateHashes)
-				storerMock = mock.NewStorer()
+				storerMock = inmemchunkstore.New()
 			)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			pipe := builder.NewPipelineBuilder(ctx, storerMock, storage.ModePutUpload, false)
+			pipe := builder.NewPipelineBuilder(ctx, storerMock, false)
 			address, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data))
 			if err != nil {
 				t.Fatal(err)
@@ -250,19 +250,19 @@ func TestTraversalFiles(t *testing.T) {
 			var (
 				data       = generateSample(tc.filesSize)
 				iter       = newAddressIterator(tc.ignoreDuplicateHashes)
-				storerMock = mock.NewStorer()
+				storerMock = inmemchunkstore.New()
 			)
 
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			pipe := builder.NewPipelineBuilder(ctx, storerMock, storage.ModePutUpload, false)
+			pipe := builder.NewPipelineBuilder(ctx, storerMock, false)
 			fr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data))
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			ls := loadsave.New(storerMock, pipelineFactory(storerMock, storage.ModePutRequest, false))
+			ls := loadsave.New(storerMock, pipelineFactory(storerMock, false))
 			fManifest, err := manifest.NewDefaultManifest(ls, false)
 			if err != nil {
 				t.Fatal(err)
@@ -408,7 +408,7 @@ func TestTraversalManifest(t *testing.T) {
 			t.Parallel()
 
 			var (
-				storerMock = mock.NewStorer()
+				storerMock = inmemchunkstore.New()
 				iter       = newAddressIterator(tc.ignoreDuplicateHashes)
 			)
 
@@ -421,7 +421,7 @@ func TestTraversalManifest(t *testing.T) {
 			}
 			wantHashes = append(wantHashes, tc.manifestHashes...)
 
-			ls := loadsave.New(storerMock, pipelineFactory(storerMock, storage.ModePutRequest, false))
+			ls := loadsave.New(storerMock, pipelineFactory(storerMock, false))
 			dirManifest, err := manifest.NewMantarayManifest(ls, false)
 			if err != nil {
 				t.Fatal(err)
@@ -430,7 +430,7 @@ func TestTraversalManifest(t *testing.T) {
 			for _, f := range tc.files {
 				data := generateSample(f.size)
 
-				pipe := builder.NewPipelineBuilder(ctx, storerMock, storage.ModePutUpload, false)
+				pipe := builder.NewPipelineBuilder(ctx, storerMock, false)
 				fr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data))
 				if err != nil {
 					t.Fatal(err)
@@ -477,16 +477,15 @@ func TestTraversalManifest(t *testing.T) {
 func TestTraversalSOC(t *testing.T) {
 	t.Parallel()
 
-	store := mock.NewStorer()
+	store := inmemchunkstore.New()
 	iter := newAddressIterator(false)
 
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
+	ctx := context.Background()
 
 	s := testingsoc.GenerateMockSOC(t, generateSample(swarm.ChunkSize))
 	sch := s.Chunk()
 
-	_, err := store.Put(ctx, storage.ModePutUploadPin, sch)
+	err := store.Put(ctx, sch)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -505,8 +504,8 @@ func TestTraversalSOC(t *testing.T) {
 	}
 }
 
-func pipelineFactory(s storage.Putter, mode storage.ModePut, encrypt bool) func() pipeline.Interface {
+func pipelineFactory(s storage.Putter, encrypt bool) func() pipeline.Interface {
 	return func() pipeline.Interface {
-		return builder.NewPipelineBuilder(context.Background(), s, mode, encrypt)
+		return builder.NewPipelineBuilder(context.Background(), s, encrypt)
 	}
 }

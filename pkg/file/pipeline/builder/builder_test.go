@@ -14,8 +14,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	test "github.com/ethersphere/bee/pkg/file/testing"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/mock"
+	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/util/testutil"
 )
@@ -23,8 +22,8 @@ import (
 func TestPartialWrites(t *testing.T) {
 	t.Parallel()
 
-	m := mock.NewStorer()
-	p := builder.NewPipelineBuilder(context.Background(), m, storage.ModePutUpload, false)
+	m := inmemchunkstore.New()
+	p := builder.NewPipelineBuilder(context.Background(), m, false)
 	_, _ = p.Write([]byte("hello "))
 	_, _ = p.Write([]byte("world"))
 
@@ -41,8 +40,8 @@ func TestPartialWrites(t *testing.T) {
 func TestHelloWorld(t *testing.T) {
 	t.Parallel()
 
-	m := mock.NewStorer()
-	p := builder.NewPipelineBuilder(context.Background(), m, storage.ModePutUpload, false)
+	m := inmemchunkstore.New()
+	p := builder.NewPipelineBuilder(context.Background(), m, false)
 
 	data := []byte("hello world")
 	_, err := p.Write(data)
@@ -64,8 +63,8 @@ func TestHelloWorld(t *testing.T) {
 func TestEmpty(t *testing.T) {
 	t.Parallel()
 
-	m := mock.NewStorer()
-	p := builder.NewPipelineBuilder(context.Background(), m, storage.ModePutUpload, false)
+	m := inmemchunkstore.New()
+	p := builder.NewPipelineBuilder(context.Background(), m, false)
 
 	data := []byte{}
 	_, err := p.Write(data)
@@ -92,8 +91,8 @@ func TestAllVectors(t *testing.T) {
 		t.Run(fmt.Sprintf("data length %d, vector %d", len(data), i), func(t *testing.T) {
 			t.Parallel()
 
-			m := mock.NewStorer()
-			p := builder.NewPipelineBuilder(context.Background(), m, storage.ModePutUpload, false)
+			m := inmemchunkstore.New()
+			p := builder.NewPipelineBuilder(context.Background(), m, false)
 
 			_, err := p.Write(data)
 			if err != nil {
@@ -154,9 +153,9 @@ func benchmarkPipeline(b *testing.B, count int) {
 
 	b.StopTimer()
 
-	m := mock.NewStorer()
-	p := builder.NewPipelineBuilder(context.Background(), m, storage.ModePutUpload, false)
 	data := testutil.RandBytes(b, count)
+	m := inmemchunkstore.New()
+	p := builder.NewPipelineBuilder(context.Background(), m, false)
 
 	b.StartTimer()
 

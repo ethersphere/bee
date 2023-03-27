@@ -13,10 +13,9 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/postage"
-	storage "github.com/ethersphere/bee/pkg/storagev2"
-	"github.com/ethersphere/bee/pkg/storagev2/storagetest"
+	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage/storagetest"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/swarm/test"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 )
@@ -91,7 +90,7 @@ func TestStampItem(t *testing.T) {
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
 			Item: postage.NewStampItem().
 				WithBatchID([]byte{swarm.HashSize - 1: 9}).
-				WithChunkAddress(test.RandomAddress()).
+				WithChunkAddress(swarm.RandAddress(t)).
 				WithBatchIndex([]byte{swarm.StampIndexSize - 1: 9}).
 				WithBatchTimestamp([]byte{swarm.StampTimestampSize - 1: 9}),
 			Factory: func() storage.Item { return postage.NewStampItem() },

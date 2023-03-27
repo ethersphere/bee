@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/soc"
-	"github.com/ethersphere/bee/pkg/storage"
+	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -46,7 +46,7 @@ func (f *Getter) Get(ctx context.Context, i Index) (swarm.Chunk, error) {
 	if err != nil {
 		return nil, err
 	}
-	return f.getter.Get(ctx, storage.ModeGetRequest, addr)
+	return f.getter.Get(ctx, addr)
 }
 
 // FromChunk parses out the timestamp and the payload

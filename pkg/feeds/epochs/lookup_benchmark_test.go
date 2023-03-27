@@ -13,14 +13,14 @@ import (
 	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/feeds/epochs"
 	feedstesting "github.com/ethersphere/bee/pkg/feeds/testing"
-	"github.com/ethersphere/bee/pkg/storage/mock"
+	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 )
 
 func BenchmarkFinder(b *testing.B) {
 	for _, i := range []int{0, 8, 30} {
 		for _, prefill := range []int64{1, 50} {
 			after := int64(50)
-			storer := &feedstesting.Timeout{Storer: mock.NewStorer()}
+			storer := &feedstesting.Timeout{ChunkStore: inmemchunkstore.New()}
 			topicStr := "testtopic"
 			topic, err := crypto.LegacyKeccak256([]byte(topicStr))
 			if err != nil {

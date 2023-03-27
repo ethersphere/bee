@@ -23,14 +23,10 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/manifest"
-	pinning "github.com/ethersphere/bee/pkg/pinning/mock"
 	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/bee/pkg/storage"
-	smock "github.com/ethersphere/bee/pkg/storage/mock"
+	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/tags"
 )
 
 // nolint:paralleltest
@@ -39,16 +35,12 @@ func TestBzzFiles(t *testing.T) {
 		fileUploadResource   = "/bzz"
 		fileDownloadResource = func(addr string) string { return "/bzz/" + addr }
 		simpleData           = []byte("this is a simple text")
-		storerMock           = smock.NewStorer()
-		statestoreMock       = statestore.NewStateStore()
-		pinningMock          = pinning.NewServiceMock()
+		storerMock           = mockstorer.New()
 		logger               = log.Noop
 		client, _, _, _      = newTestServer(t, testServerOptions{
-			Storer:  storerMock,
-			Pinning: pinningMock,
-			Tags:    tags.NewTags(statestoreMock, logger),
-			Logger:  logger,
-			Post:    mockpost.New(mockpost.WithAcceptAll()),
+			Storer: storerMock,
+			Logger: logger,
+			Post:   mockpost.New(mockpost.WithAcceptAll()),
 		})
 	)
 
@@ -92,7 +84,7 @@ func TestBzzFiles(t *testing.T) {
 
 		isTagFoundInResponse(t, rcvdHeader, nil)
 
-		has, err := storerMock.Has(context.Background(), address)
+		has, err := storerMock.ChunkStore().Has(context.Background(), address)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -100,7 +92,7 @@ func TestBzzFiles(t *testing.T) {
 			t.Fatal("storer check root chunk address: have none; want one")
 		}
 
-		refs, err := pinningMock.Pins()
+		refs, err := storerMock.Pins()
 		if err != nil {
 			t.Fatal("unable to get pinned references")
 		}
@@ -150,7 +142,7 @@ func TestBzzFiles(t *testing.T) {
 
 		isTagFoundInResponse(t, rcvdHeader, nil)
 
-		has, err := storerMock.Has(context.Background(), reference)
+		has, err := storerMock.ChunkStore().Has(context.Background(), reference)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -158,7 +150,7 @@ func TestBzzFiles(t *testing.T) {
 			t.Fatal("storer check root chunk reference: have none; want one")
 		}
 
-		refs, err := pinningMock.Pins()
+		refs, err := storerMock.Pins()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -434,11 +426,9 @@ func TestBzzFilesRangeRequests(t *testing.T) {
 		t.Run(upload.name, func(t *testing.T) {
 			t.Parallel()
 
-			mockStatestore := statestore.NewStateStore()
 			logger := log.Noop
 			client, _, _, _ := newTestServer(t, testServerOptions{
-				Storer: smock.NewStorer(),
-				Tags:   tags.NewTags(mockStatestore, logger),
+				Storer: mockstorer.New(),
 				Logger: logger,
 				Post:   mockpost.New(mockpost.WithAcceptAll()),
 			})
@@ -553,12 +543,10 @@ func TestFeedIndirection(t *testing.T) {
 	// first, "upload" some content for the update
 	var (
 		updateData      = []byte("<h1>Swarm Feeds Hello World!</h1>")
-		mockStatestore  = statestore.NewStateStore()
 		logger          = log.Noop
-		storer          = smock.NewStorer()
+		storer          = mockstorer.New()
 		client, _, _, _ = newTestServer(t, testServerOptions{
 			Storer: storer,
-			Tags:   tags.NewTags(mockStatestore, logger),
 			Logger: logger,
 			Post:   mockpost.New(mockpost.WithAcceptAll()),
 		})
@@ -608,16 +596,15 @@ func TestFeedIndirection(t *testing.T) {
 	)
 	client, _, _, _ = newTestServer(t, testServerOptions{
 		Storer: storer,
-		Tags:   tags.NewTags(mockStatestore, logger),
 		Logger: logger,
 		Feeds:  factory,
 	})
-	_, err := storer.Put(ctx, storage.ModePutUpload, feedUpdate)
+	err := storer.Cache().Put(ctx, feedUpdate)
 	if err != nil {
 		t.Fatal(err)
 	}
 	m, err := manifest.NewDefaultManifest(
-		loadsave.New(storer, pipelineFactory(storer, storage.ModePutUpload, false)),
+		loadsave.New(storer.ChunkStore(), pipelineFactory(storer.Cache(), false)),
 		false,
 	)
 	if err != nil {
@@ -696,9 +683,7 @@ func TestInvalidBzzParams(t *testing.T) {
 
 	var (
 		fileUploadResource = "/bzz"
-		storerMock         = smock.NewStorer()
-		statestoreMock     = statestore.NewStateStore()
-		pinningMock        = pinning.NewServiceMock()
+		storerMock         = mockstorer.New()
 		logger             = log.Noop
 		existsFn           = func(id []byte) (bool, error) {
 			return false, errors.New("error")
@@ -720,8 +705,6 @@ func TestInvalidBzzParams(t *testing.T) {
 		})
 		clientBatchUnusable, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:     storerMock,
-			Pinning:    pinningMock,
-			Tags:       tags.NewTags(statestoreMock, logger),
 			Logger:     logger,
 			Post:       mockpost.New(mockpost.WithAcceptAll()),
 			BatchStore: mockbatchstore.New(),
@@ -750,8 +733,6 @@ func TestInvalidBzzParams(t *testing.T) {
 		})
 		clientBatchExists, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:     storerMock,
-			Pinning:    pinningMock,
-			Tags:       tags.NewTags(statestoreMock, logger),
 			Logger:     logger,
 			Post:       mockpost.New(mockpost.WithAcceptAll()),
 			BatchStore: mockbatchstore.New(mockbatchstore.WithExistsFunc(existsFn)),
@@ -779,11 +760,9 @@ func TestInvalidBzzParams(t *testing.T) {
 			},
 		})
 		clientBatchExists, _, _, _ := newTestServer(t, testServerOptions{
-			Storer:  storerMock,
-			Pinning: pinningMock,
-			Tags:    tags.NewTags(statestoreMock, logger),
-			Logger:  logger,
-			Post:    mockpost.New(),
+			Storer: storerMock,
+			Logger: logger,
+			Post:   mockpost.New(),
 		})
 		jsonhttptest.Request(t, clientBatchExists, http.MethodPost, fileUploadResource, http.StatusNotFound,
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
@@ -812,7 +791,7 @@ func TestInvalidBzzParams(t *testing.T) {
 			Post:   mockpost.New(mockpost.WithAcceptAll()),
 		})
 
-		jsonhttptest.Request(t, clientInvalidTag, http.MethodPost, fileUploadResource, http.StatusInternalServerError,
+		jsonhttptest.Request(t, clientInvalidTag, http.MethodPost, fileUploadResource, http.StatusBadRequest,
 			jsonhttptest.WithRequestHeader(api.SwarmTagHeader, "tag"),
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
@@ -833,16 +812,14 @@ func TestInvalidBzzParams(t *testing.T) {
 				},
 			},
 		})
-		tag := tags.NewTags(statestore.NewStateStore(), log.Noop)
 		clientTagExists, _, _, _ := newTestServer(t, testServerOptions{
-			Tags:   tag,
 			Storer: storerMock,
 			Logger: logger,
 			Post:   mockpost.New(mockpost.WithAcceptAll()),
 		})
 
 		jsonhttptest.Request(t, clientTagExists, http.MethodPost, fileUploadResource, http.StatusNotFound,
-			jsonhttptest.WithRequestHeader(api.SwarmTagHeader, strconv.FormatUint(uint64(tag.TagUidFunc()), 10)),
+			jsonhttptest.WithRequestHeader(api.SwarmTagHeader, strconv.FormatUint(10000, 10)),
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(tr),
@@ -853,11 +830,9 @@ func TestInvalidBzzParams(t *testing.T) {
 		t.Parallel()
 
 		client, _, _, _ := newTestServer(t, testServerOptions{
-			Storer:  storerMock,
-			Pinning: pinningMock,
-			Tags:    tags.NewTags(statestoreMock, logger),
-			Logger:  logger,
-			Post:    mockpost.New(mockpost.WithAcceptAll()),
+			Storer: storerMock,
+			Logger: logger,
+			Post:   mockpost.New(mockpost.WithAcceptAll()),
 		})
 
 		address := "f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b"
@@ -872,9 +847,7 @@ func TestDirectUploadBzz(t *testing.T) {
 
 	var (
 		fileUploadResource = "/bzz"
-		storerMock         = smock.NewStorer()
-		statestoreMock     = statestore.NewStateStore()
-		pinningMock        = pinning.NewServiceMock()
+		storerMock         = mockstorer.New()
 		logger             = log.Noop
 	)
 
@@ -890,8 +863,6 @@ func TestDirectUploadBzz(t *testing.T) {
 	})
 	clientBatchUnusable, _, _, _ := newTestServer(t, testServerOptions{
 		Storer:     storerMock,
-		Pinning:    pinningMock,
-		Tags:       tags.NewTags(statestoreMock, logger),
 		Logger:     logger,
 		Post:       mockpost.New(mockpost.WithAcceptAll()),
 		BatchStore: mockbatchstore.New(),
