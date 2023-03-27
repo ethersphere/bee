@@ -113,9 +113,9 @@ func TestGetStampIssuer(t *testing.T) {
 		}
 
 		// check if the save() call persisted the stamp issuers
-		for i, id := range ids[1:4] {
+		for _, id := range ids[1:4] {
 			issuer := new(postage.StampIssuer)
-			err := store.Get(fmt.Sprintf("postage%d%d", chainID, i), issuer)
+			err := store.Get(fmt.Sprintf("postage%d%s", chainID, id), issuer)
 			if err != nil {
 				t.Fatal(err)
 			}
