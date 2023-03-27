@@ -126,7 +126,6 @@ func (s *Syncer) Protocol() p2p.ProtocolSpec {
 // It returns the BinID of highest chunk that was synced from the given
 // batch and the total number of chunks the downstream peer has sent.
 func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start uint64) (uint64, int, error) {
-	loggerV2 := s.logger.V(2).Register()
 
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
@@ -135,7 +134,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
-			loggerV2.Debug("error syncing peer", "peer_address", peer, "bin", bin, "start", start, "error", err)
+			s.logger.Debug("error syncing peer", "peer_address", peer, "bin", bin, "start", start, "error", err)
 		} else {
 			stream.FullClose()
 		}
@@ -220,7 +219,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 
 		addr := swarm.NewAddress(delivery.Address)
 		if _, ok := wantChunks[addr.ByteString()]; !ok {
-			loggerV2.Debug("want chunks", "error", ErrUnsolicitedChunk, "peer_address", peer, "chunk_address", addr)
+			s.logger.Debug("want chunks", "error", ErrUnsolicitedChunk, "peer_address", peer, "chunk_address", addr)
 			chunkErr = errors.Join(chunkErr, ErrUnsolicitedChunk)
 			continue
 		}
@@ -231,7 +230,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		newChunk := swarm.NewChunk(addr, delivery.Data)
 		chunk, err := s.validStamp(newChunk, delivery.Stamp)
 		if err != nil {
-			loggerV2.Debug("unverified stamp", "error", err, "peer_address", peer, "chunk_address", newChunk)
+			s.logger.Debug("unverified stamp", "error", err, "peer_address", peer, "chunk_address", newChunk)
 			chunkErr = errors.Join(chunkErr, err)
 			continue
 		}
@@ -239,7 +238,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		if cac.Valid(chunk) {
 			go s.unwrap(chunk)
 		} else if !soc.Valid(chunk) {
-			loggerV2.Debug("valid chunk", "error", swarm.ErrInvalidChunk, "peer_address", peer, "chunk_address", chunk)
+			s.logger.Debug("invalid soc chunk", "error", swarm.ErrInvalidChunk, "peer_address", peer, "chunk_address", chunk)
 			chunkErr = errors.Join(chunkErr, swarm.ErrInvalidChunk)
 			continue
 		}
@@ -254,11 +253,11 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		putter := s.store.ReservePutter(ctx)
 		for _, c := range chunksToPut {
 			if err := putter.Put(ctx, c); err != nil {
-				return topmost, 0, errors.Join(chunkErr, fmt.Errorf("delivery put: %w", err), putter.Cleanup())
+				return 0, 0, errors.Join(chunkErr, err, putter.Cleanup())
 			}
 		}
 		if err := putter.Done(swarm.ZeroAddress); err != nil {
-			return 0, 0, errors.Join(chunkErr, fmt.Errorf("delivery put: %w", err))
+			return 0, 0, errors.Join(chunkErr, err)
 		}
 	}
 
