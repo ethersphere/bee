@@ -14,16 +14,21 @@ message Ack {
   repeated uint64 Cursors = 1;
 }
 
-message GetRange {
+message Get {
   int32 Bin = 1;
-  uint64 From = 2;
-  uint64 To = 3;
+  uint64 Start = 2;
+}
+
+message Chunk {
+  bytes Address = 1;
+  bytes BatchID = 2;
 }
 
 message Offer {
   uint64 Topmost = 1;
-  bytes Hashes = 2;
+  repeated Chunk Chunks = 2;
 }
+
 
 message Want {
   bytes BitVector = 1;

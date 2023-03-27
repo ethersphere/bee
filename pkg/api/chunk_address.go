@@ -8,7 +8,6 @@ import (
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
 )
@@ -24,7 +23,7 @@ func (s *Service) hasChunkHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	has, err := s.storer.Has(r.Context(), paths.Address)
+	has, err := s.storer.ChunkStore().Has(r.Context(), paths.Address)
 	if err != nil {
 		logger.Debug("has chunk failed", "chunk_address", paths.Address, "error", err)
 		jsonhttp.BadRequest(w, err)
@@ -33,38 +32,6 @@ func (s *Service) hasChunkHandler(w http.ResponseWriter, r *http.Request) {
 
 	if !has {
 		jsonhttp.NotFound(w, nil)
-		return
-	}
-	jsonhttp.OK(w, nil)
-}
-
-func (s *Service) removeChunk(w http.ResponseWriter, r *http.Request) {
-	logger := s.logger.WithName("delete_chunk").Build()
-
-	paths := struct {
-		Address swarm.Address `map:"address" validate:"required"`
-	}{}
-	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
-		response("invalid path params", logger, w)
-		return
-	}
-
-	has, err := s.storer.Has(r.Context(), paths.Address)
-	if err != nil {
-		logger.Debug("has chunk failed", "chunk_address", paths.Address, "error", err)
-		jsonhttp.BadRequest(w, err)
-		return
-	}
-
-	if !has {
-		jsonhttp.OK(w, nil)
-		return
-	}
-
-	err = s.storer.Set(r.Context(), storage.ModeSetRemove, paths.Address)
-	if err != nil {
-		logger.Debug("remove chunk failed", "chunk_address", paths.Address, "error", err)
-		jsonhttp.InternalServerError(w, err)
 		return
 	}
 	jsonhttp.OK(w, nil)

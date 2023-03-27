@@ -8,7 +8,7 @@ import (
 	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/feeds/epochs"
 	"github.com/ethersphere/bee/pkg/feeds/sequence"
-	"github.com/ethersphere/bee/pkg/storage"
+	storage "github.com/ethersphere/bee/pkg/storage"
 )
 
 type factory struct {
