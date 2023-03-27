@@ -207,12 +207,7 @@ func (m *mockchainBackend) BalanceAt(ctx context.Context, address common.Address
 	return m.balance, nil
 }
 
-func (m *mockchainBackend) SuggestGasPrice(ctx context.Context) (*big.Int, error) {
-	return big.NewInt(4), nil
-}
-
-type mockMonitor struct {
-}
+type mockMonitor struct{}
 
 func (m *mockMonitor) IsFullySynced() bool {
 	return true
