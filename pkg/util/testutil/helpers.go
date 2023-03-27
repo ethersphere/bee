@@ -10,6 +10,9 @@ import (
 	mrand "math/rand"
 	"reflect"
 	"testing"
+
+	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/pkg/util/ioutil"
 )
 
 // RandBytes returns bytes slice of specified size filled with random values.
@@ -61,4 +64,17 @@ func CleanupCloser(t *testing.T, closers ...io.Closer) {
 			}
 		}
 	})
+}
+
+// NewLogger returns a new log.Logger that uses t.Log method
+// as the log sink. It is particularly useful for debugging tests.
+func NewLogger(t *testing.T) log.Logger {
+	t.Helper()
+
+	testWriter := ioutil.WriterFunc(func(p []byte) (int, error) {
+		t.Log(string(p))
+		return len(p), nil
+	})
+
+	return log.NewLogger(t.Name(), log.WithSink(testWriter))
 }
