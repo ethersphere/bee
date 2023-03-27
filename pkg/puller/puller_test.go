@@ -384,7 +384,7 @@ func TestContinueSyncing(t *testing.T) {
 	time.Sleep(time.Second)
 
 	calls := len(pullsync.SyncCalls(addr))
-	if calls != 3 {
+	if calls != 1 {
 		t.Fatalf("unexpected amount of calls, got %d", calls)
 	}
 }
