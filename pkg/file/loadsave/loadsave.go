@@ -15,44 +15,39 @@ import (
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
-	"github.com/ethersphere/bee/pkg/storage"
+	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 var errReadonlyLoadSave = errors.New("readonly manifest loadsaver")
-
-type PutGetter interface {
-	storage.Putter
-	storage.Getter
-}
 
 // loadSave is needed for manifest operations and provides
 // simple wrapping over load and save operations using file
 // package abstractions. use with caution since Loader will
 // load all of the subtrie of a given hash in memory.
 type loadSave struct {
-	storer     PutGetter
+	getter     storage.Getter
 	pipelineFn func() pipeline.Interface
 }
 
 // New returns a new read-write load-saver.
-func New(storer PutGetter, pipelineFn func() pipeline.Interface) file.LoadSaver {
+func New(getter storage.Getter, pipelineFn func() pipeline.Interface) file.LoadSaver {
 	return &loadSave{
-		storer:     storer,
+		getter:     getter,
 		pipelineFn: pipelineFn,
 	}
 }
 
 // NewReadonly returns a new read-only load-saver
 // which will error on write.
-func NewReadonly(storer PutGetter) file.LoadSaver {
+func NewReadonly(getter storage.Getter) file.LoadSaver {
 	return &loadSave{
-		storer: storer,
+		getter: getter,
 	}
 }
 
 func (ls *loadSave) Load(ctx context.Context, ref []byte) ([]byte, error) {
-	j, _, err := joiner.New(ctx, ls.storer, swarm.NewAddress(ref))
+	j, _, err := joiner.New(ctx, ls.getter, swarm.NewAddress(ref))
 	if err != nil {
 		return nil, err
 	}

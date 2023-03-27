@@ -2,6 +2,10 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+// TODO: remove build tag once we change the cmds for new localstore
+//go:build oldlocalstore
+// +build oldlocalstore
+
 package cmd
 
 import (
@@ -13,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/localstore"
+	localstore "github.com/ethersphere/bee/pkg/_localstore"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	"github.com/spf13/cobra"
 )

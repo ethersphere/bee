@@ -13,15 +13,10 @@ import (
 	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/encryption"
 	"github.com/ethersphere/bee/pkg/file"
-	"github.com/ethersphere/bee/pkg/sctx"
+	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/tags"
 	"golang.org/x/crypto/sha3"
 )
-
-type Putter interface {
-	Put(context.Context, swarm.Chunk) ([]bool, error)
-}
 
 // maximum amount of file tree levels this file hasher component can handle
 // (128 ^ (9 - 1)) * 4096 = 295147905179352825856 bytes
@@ -38,21 +33,20 @@ const levelBufferLimit = 9
 // error and will may result in undefined result.
 type SimpleSplitterJob struct {
 	ctx        context.Context
-	putter     Putter
+	putter     storage.Putter
 	spanLength int64  // target length of data
 	length     int64  // number of bytes written to the data level of the hasher
 	sumCounts  []int  // number of sums performed, indexed per level
 	cursors    []int  // section write position, indexed per level
 	buffer     []byte // keeps data and hashes, indexed by cursors
-	tag        *tags.Tag
-	toEncrypt  bool // to encryrpt the chunks or not
+	toEncrypt  bool   // to encryrpt the chunks or not
 	refSize    int64
 }
 
 // NewSimpleSplitterJob creates a new SimpleSplitterJob.
 //
 // The spanLength is the length of the data that will be written.
-func NewSimpleSplitterJob(ctx context.Context, putter Putter, spanLength int64, toEncrypt bool) *SimpleSplitterJob {
+func NewSimpleSplitterJob(ctx context.Context, putter storage.Putter, spanLength int64, toEncrypt bool) *SimpleSplitterJob {
 	hashSize := swarm.HashSize
 	refSize := int64(hashSize)
 	if toEncrypt {
@@ -66,7 +60,6 @@ func NewSimpleSplitterJob(ctx context.Context, putter Putter, spanLength int64, 
 		sumCounts:  make([]int, levelBufferLimit),
 		cursors:    make([]int, levelBufferLimit),
 		buffer:     make([]byte, swarm.ChunkWithSpanSize*levelBufferLimit*2), // double size as temp workaround for weak calculation of needed buffer space
-		tag:        sctx.GetTag(ctx),
 		toEncrypt:  toEncrypt,
 		refSize:    refSize,
 	}
@@ -141,10 +134,6 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 	binary.LittleEndian.PutUint64(head, uint64(span))
 	tail := s.buffer[s.cursors[lvl+1]:s.cursors[lvl]]
 	chunkData = append(head, tail...)
-	err := s.incrTag(tags.StateSplit)
-	if err != nil {
-		return nil, err
-	}
 	c := chunkData
 	var encryptionKey encryption.Key
 
@@ -161,22 +150,7 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 		return nil, err
 	}
 
-	// Add tag to the chunk if tag is valid
-	if s.tag != nil {
-		ch = ch.WithTagID(s.tag.Uid)
-	}
-
-	seen, err := s.putter.Put(s.ctx, ch)
-	if err != nil {
-		return nil, err
-	} else if len(seen) > 0 && seen[0] {
-		err = s.incrTag(tags.StateSeen)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	err = s.incrTag(tags.StateStored)
+	err = s.putter.Put(s.ctx, ch)
 	if err != nil {
 		return nil, err
 	}
@@ -221,16 +195,18 @@ func (s *SimpleSplitterJob) hashUnfinished() error {
 // Let F be full chunks (disregarding branching factor) and S be single references
 // in the following scenario:
 //
-//       S
-//     F   F
-//   F   F   F
+//	    S
+//	  F   F
+//	F   F   F
+//
 // F   F   F   F S
 //
 // The result will be:
 //
-//       SS
-//     F    F
-//   F   F   F
+//	    SS
+//	  F    F
+//	F   F   F
+//
 // F   F   F   F
 //
 // After which the SS will be hashed to obtain the final root hash
@@ -297,11 +273,4 @@ func (s *SimpleSplitterJob) newSpanEncryption(key encryption.Key) encryption.Int
 
 func (s *SimpleSplitterJob) newDataEncryption(key encryption.Key) encryption.Interface {
 	return encryption.New(key, int(swarm.ChunkSize), 0, sha3.NewLegacyKeccak256)
-}
-
-func (s *SimpleSplitterJob) incrTag(state tags.State) error {
-	if s.tag != nil {
-		return s.tag.Inc(state)
-	}
-	return nil
 }
