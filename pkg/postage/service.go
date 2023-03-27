@@ -77,7 +77,7 @@ func (ps *service) Add(st *StampIssuer) error {
 	defer ps.lock.Unlock()
 
 	if ps.add(st) {
-		if err := ps.store.Put(ps.keyForIndex(string(st.data.BatchID)), st); err != nil {
+		if err := ps.store.Put(ps.keyForIndex(st.data.BatchID), st); err != nil {
 			return err
 		}
 	}
@@ -182,7 +182,7 @@ func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, func() error, e
 func (ps *service) save(st *StampIssuer) error {
 	st.bucketMu.Lock()
 	defer st.bucketMu.Unlock()
-	if err := ps.store.Put(ps.keyForIndex(string(st.data.BatchID)), st); err != nil {
+	if err := ps.store.Put(ps.keyForIndex(st.data.BatchID), st); err != nil {
 		return err
 	}
 	return nil
@@ -200,8 +200,8 @@ func (ps *service) Close() error {
 }
 
 // keyForIndex returns the statestore key for an issuer
-func (ps *service) keyForIndex(batchID string) string {
-	return fmt.Sprintf(ps.key()+"%s", batchID)
+func (ps *service) keyForIndex(batchID []byte) string {
+	return ps.key() + string(batchID)
 }
 
 // key returns the statestore base key for an issuer
