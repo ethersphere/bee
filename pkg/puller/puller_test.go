@@ -82,19 +82,11 @@ func TestSyncOutsideDepth(t *testing.T) {
 	time.Sleep(100 * time.Millisecond)
 	kad.Trigger()
 
-<<<<<<< HEAD
-	waitCursorsCalled(t, pullsync, addr, false)
-	waitCursorsCalled(t, pullsync, addr2, false)
-
-	waitLiveSyncCalledBins(t, pullsync, addr, 2, 3)
-	waitLiveSyncCalledBins(t, pullsync, addr2, 0)
-=======
 	waitCursorsCalled(t, pullsync, addr)
 	waitCursorsCalled(t, pullsync, addr2)
 
 	waitSyncCalledBins(t, pullsync, addr, 2, 3)
 	waitSyncCalledBins(t, pullsync, addr2, 0)
->>>>>>> feat: use new storagev2 interfaces (#3798)
 }
 
 func TestSyncIntervals(t *testing.T) {
@@ -392,7 +384,7 @@ func TestContinueSyncing(t *testing.T) {
 	time.Sleep(time.Second)
 
 	calls := len(pullsync.SyncCalls(addr))
-	if calls != 3 {
+	if calls != 1 {
 		t.Fatalf("unexpected amount of calls, got %d", calls)
 	}
 }

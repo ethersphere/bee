@@ -219,7 +219,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 	for ; ctr > 0; ctr-- {
 		var delivery pb.Delivery
 		if err = r.ReadMsgWithContext(ctx, &delivery); err != nil {
-			return 0, fmt.Errorf("read delivery: %w", err)
+			return 0, 0, fmt.Errorf("read delivery: %w", err)
 		}
 
 		addr := swarm.NewAddress(delivery.Address)
@@ -252,20 +252,20 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 	if len(chunksToPut) > 0 {
 
 		s.metrics.DbOps.Inc()
+		s.metrics.LastReceived.WithLabelValues(fmt.Sprintf("%d", bin)).Set(float64(time.Now().Unix()))
 
 		putter := s.store.ReservePutter(ctx)
 		for _, c := range chunksToPut {
 			if err := putter.Put(ctx, c); err != nil {
-				return topmost, 0, errors.Join(fmt.Errorf("delivery put: %w", err), putter.Cleanup())
+				return 0, 0, errors.Join(chunkErr, fmt.Errorf("delivery put: %w", err), putter.Cleanup())
 			}
 		}
 		if err := putter.Done(swarm.ZeroAddress); err != nil {
-			return topmost, 0, fmt.Errorf("delivery put: %w", err)
+			return 0, 0, errors.Join(chunkErr, err)
 		}
-		s.metrics.LastReceived.WithLabelValues(fmt.Sprintf("%d", bin)).Set(float64(time.Now().Unix()))
 	}
 
-	return topmost, len(chunksToPut), nil
+	return topmost, len(chunksToPut), chunkErr
 }
 
 // handler handles an incoming request to sync an interval

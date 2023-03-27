@@ -32,12 +32,8 @@ const loggerName = "puller"
 var errCursorsLength = errors.New("cursors length mismatch")
 
 const (
-<<<<<<< HEAD
 	DefaultSyncErrorSleepDur = time.Minute
-=======
-	DefaultSyncErrorSleepDur = time.Second * 30
 	DefaultHistRateWindow    = time.Minute * 10
->>>>>>> feat: use new storagev2 interfaces (#3798)
 	recalcPeersDur           = time.Minute * 5
 	histSyncTimeout          = time.Minute * 10
 	histSyncTimeoutBlockList = time.Hour * 24
@@ -311,11 +307,11 @@ func (p *Puller) histSyncWorker(ctx context.Context, done func(), peer swarm.Add
 
 		syncStart := time.Now()
 		ctx, cancel := context.WithTimeout(ctx, histSyncTimeout)
-		top, err := p.syncer.SyncInterval(ctx, peer, bin, s, cur)
+		top, count, err := p.syncer.Sync(ctx, peer, bin, s)
 		cancel()
 
 		p.rate.Add(count)
-		
+
 		if top >= s {
 			if err := p.addPeerInterval(peer, bin, s, top); err != nil {
 				p.metrics.HistWorkerErrCounter.Inc()
@@ -336,8 +332,10 @@ func (p *Puller) histSyncWorker(ctx context.Context, done func(), peer swarm.Add
 				return
 			}
 			sleep = true
+			fmt.Println("sleeping")
 			continue
 		}
+
 		loggerV2.Debug("histSyncWorker pulled", "bin", bin, "start", s, "topmost", top, "duration", time.Since(syncStart), "peer_address", peer)
 	}
 }
@@ -372,7 +370,13 @@ func (p *Puller) liveSyncWorker(ctx context.Context, done func(), peer swarm.Add
 		default:
 		}
 
-		top, err := p.syncer.SyncInterval(ctx, peer, bin, from, pullsync.MaxCursor)
+		top, _, err := p.syncer.Sync(ctx, peer, bin, from)
+
+		if top == math.MaxUint64 {
+			p.metrics.MaxUintErrCounter.Inc()
+			p.logger.Error(nil, "liveSyncWorker max uint64 encountered, quitting", "peer_address", peer, "bin", bin, "from", from, "topmost", top)
+			return
+		}
 
 		if top >= from {
 			if err := p.addPeerInterval(peer, bin, from, top); err != nil {
@@ -380,12 +384,7 @@ func (p *Puller) liveSyncWorker(ctx context.Context, done func(), peer swarm.Add
 				p.logger.Error(err, "liveSyncWorker exit on add peer interval, quitting", "peer_address", peer, "bin", bin, "from", from, "error", err)
 				return
 			}
-		}
-
-		if top == math.MaxUint64 {
-			p.metrics.MaxUintErrCounter.Inc()
-			p.logger.Error(nil, "liveSyncWorker max uint64 encountered, quitting", "peer_address", peer, "bin", bin, "from", from, "topmost", top)
-			return
+			from = top + 1
 		}
 
 		if err != nil {
@@ -396,10 +395,6 @@ func (p *Puller) liveSyncWorker(ctx context.Context, done func(), peer swarm.Add
 		}
 
 		loggerV2.Debug("liveSyncWorker pulled bin", "bin", bin, "from", from, "topmost", top, "peer_address", peer)
-
-		if top >= from {
-			from = top + 1
-		}
 	}
 }
 
