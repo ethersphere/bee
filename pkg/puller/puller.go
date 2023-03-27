@@ -37,7 +37,7 @@ const (
 
 	DefaultSyncErrorSleepDur    = time.Minute
 	DefaultShallowBinsWarmupDur = time.Hour * 24
-	DefaultHistRateWindow       = time.Minute * 15
+	DefaultHistRateWindow       = time.Minute * 10
 
 	recalcPeersDur           = time.Minute * 5
 	histSyncTimeout          = time.Minute * 15
@@ -411,6 +411,15 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			p.metrics.MaxUintErrCounter.Inc()
 			p.logger.Error(nil, "liveSyncWorker max uint64 encountered, quitting", "peer_address", peer, "bin", bin, "from", from, "topmost", top)
 			return
+		}
+
+		if top >= from {
+			if err := p.addPeerInterval(peer, bin, from, top); err != nil {
+				p.metrics.LiveWorkerErrCounter.Inc()
+				p.logger.Error(err, "liveSyncWorker exit on add peer interval, quitting", "peer_address", peer, "bin", bin, "from", from, "error", err)
+				return
+			}
+			from = top + 1
 		}
 
 		if err != nil {
