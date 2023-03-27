@@ -36,15 +36,18 @@ const (
 	DefaultBlocksPerRound = 152
 	DefaultBlocksPerPhase = DefaultBlocksPerRound / 4
 
-	// Minimum balance node should have in order to participate in game.
-	// This balance is needed to cover transactions cost for playing game.
-	minBalance = 1
+	// min # of transactions our wallet should be able to cover
+	minTxCountToCover = 25
+
+	// average tx gas used by transactions issued from agent
+	avgTxGas = 250_000
 )
 
 type ChainBackend interface {
 	BlockNumber(context.Context) (uint64, error)
 	HeaderByNumber(context.Context, *big.Int) (*types.Header, error)
 	BalanceAt(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error)
+	SuggestGasPrice(ctx context.Context) (*big.Int, error)
 }
 
 type Monitor interface {
@@ -497,5 +500,13 @@ func (a *Agent) HasEnoughFundsToPlay(ctx context.Context) (bool, error) {
 		return false, err
 	}
 
-	return balance.Cmp(big.NewInt(minBalance)) >= 0, nil
+	price, err := a.backend.SuggestGasPrice(ctx)
+	if err != nil {
+		return false, err
+	}
+
+	avgTxFee := new(big.Int).Mul(big.NewInt(avgTxGas), price)
+	minBalance := new(big.Int).Mul(avgTxFee, big.NewInt(minTxCountToCover))
+
+	return balance.Cmp(minBalance) >= 1, nil
 }
