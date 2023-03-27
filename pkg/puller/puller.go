@@ -268,6 +268,7 @@ func (p *Puller) histSyncWorker(ctx context.Context, done func(), peer swarm.Add
 
 	defer p.wg.Done()
 	defer done()
+	p.metrics.HistWorkerCounter.Inc()
 	defer p.metrics.HistWorkerDoneCounter.Inc()
 
 	sleep := false
@@ -322,7 +323,6 @@ func (p *Puller) histSyncWorker(ctx context.Context, done func(), peer swarm.Add
 
 		if err != nil {
 			p.metrics.HistWorkerErrCounter.Inc()
-			loggerV2.Debug("histSyncWorker interval failed", "peer_address", peer, "bin", bin, "cursor", cur, "start", s, "topmost", top, "err", err)
 			if errors.Is(err, context.DeadlineExceeded) {
 				p.logger.Error(err, "histSyncWorker unexpected interval timeout, blocklisting and exiting", "total_duration", time.Since(loopStart), "peer_address", peer, "error", err)
 				err = p.blockLister.Blocklist(peer, histSyncTimeoutBlockList, "sync interval timeout")
@@ -332,7 +332,7 @@ func (p *Puller) histSyncWorker(ctx context.Context, done func(), peer swarm.Add
 				return
 			}
 			sleep = true
-			fmt.Println("sleeping")
+			p.logger.Debug("histSyncWorker sync error, sleeping", "peer_address", peer, "bin", bin, "cursor", cur, "start", s, "topmost", top, "err", err)
 			continue
 		}
 
@@ -349,6 +349,8 @@ func (p *Puller) liveSyncWorker(ctx context.Context, done func(), peer swarm.Add
 	from := cur + 1
 
 	sleep := false
+
+	p.metrics.LiveWorkerCounter.Inc()
 
 	for {
 		p.metrics.LiveWorkerIterCounter.Inc()
@@ -389,8 +391,8 @@ func (p *Puller) liveSyncWorker(ctx context.Context, done func(), peer swarm.Add
 
 		if err != nil {
 			p.metrics.LiveWorkerErrCounter.Inc()
-			loggerV2.Debug("liveSyncWorker sync error", "peer_address", peer, "bin", bin, "from", from, "topmost", top, "err", err)
 			sleep = true
+			p.logger.Debug("liveSyncWorker sync error, sleeping", "peer_address", peer, "bin", bin, "cursor", cur, "start", from, "top", top, "err", err)
 			continue
 		}
 

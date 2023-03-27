@@ -129,7 +129,6 @@ func (s *Syncer) Protocol() p2p.ProtocolSpec {
 // It returns the BinID of highest chunk that was synced from the given
 // batch and the total number of chunks the downstream peer has sent.
 func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start uint64) (uint64, int, error) {
-	loggerV2 := s.logger.V(2).Register()
 
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
@@ -138,7 +137,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
-			loggerV2.Debug("error syncing peer", "peer_address", peer, "bin", bin, "start", start, "error", err)
+			s.logger.Debug("error syncing peer", "peer_address", peer, "bin", bin, "start", start, "error", err)
 		} else {
 			stream.FullClose()
 		}
@@ -242,7 +241,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		if cac.Valid(chunk) {
 			go s.unwrap(chunk)
 		} else if !soc.Valid(chunk) {
-			s.logger.Debug("valid chunk", "error", swarm.ErrInvalidChunk, "peer_address", peer, "chunk_address", chunk)
+			s.logger.Debug("invalid soc chunk", "error", swarm.ErrInvalidChunk, "peer_address", peer, "chunk_address", chunk)
 			chunkErr = errors.Join(chunkErr, swarm.ErrInvalidChunk)
 			continue
 		}
