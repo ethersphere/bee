@@ -193,10 +193,7 @@ func (ps *service) Close() error {
 	defer ps.lock.Unlock()
 	var closeErr error
 	for _, st := range ps.issuers {
-		err := ps.save(st)
-		if err != nil {
-			closeErr = errors.Join(closeErr, err)
-		}
+		closeErr = errors.Join(closeErr, ps.save(st))
 	}
 
 	return closeErr
