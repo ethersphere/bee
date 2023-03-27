@@ -396,6 +396,15 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			return
 		}
 
+		if top >= from {
+			if err := p.addPeerInterval(peer, bin, from, top); err != nil {
+				p.metrics.LiveWorkerErrCounter.Inc()
+				p.logger.Error(err, "liveSyncWorker exit on add peer interval, quitting", "peer_address", peer, "bin", bin, "from", from, "error", err)
+				return
+			}
+			from = top + 1
+		}
+
 		if err != nil {
 			p.metrics.LiveWorkerErrCounter.Inc()
 			p.logger.Debug("liveSyncWorker sync error", "peer_address", peer, "bin", bin, "from", from, "topmost", top, "err", err)
