@@ -313,3 +313,14 @@ func DeletePin(ctx context.Context, st internal.Storage, root swarm.Address) err
 
 	return nil
 }
+
+func IterateCollectionStats(st storage.Store, iterateFn func(st CollectionStat) (bool, error)) error {
+	return st.Iterate(
+		storage.Query{
+			Factory: func() storage.Item { return new(pinCollectionItem) },
+		},
+		func(r storage.Result) (bool, error) {
+			return iterateFn(r.Entry.(*pinCollectionItem).Stat)
+		},
+	)
+}

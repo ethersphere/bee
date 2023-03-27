@@ -181,6 +181,36 @@ func TestPinStore(t *testing.T) {
 		}
 	})
 
+	t.Run("iterate stats", func(t *testing.T) {
+		count, total, dup := 0, 0, 0
+		err := pinstore.IterateCollectionStats(st.IndexStore(), func(stat pinstore.CollectionStat) (bool, error) {
+			count++
+			total += int(stat.Total)
+			dup += int(stat.DupInCollection)
+
+			return false, nil
+		})
+		if err != nil {
+			t.Fatalf("IterateCollectionStats: unexpected error: %v", err)
+		}
+
+		wantTotal, wantDup := 0, 0
+		for _, tc := range tests {
+			wantTotal += len(tc.uniqueChunks) + len(tc.dupChunks) + 1
+			wantDup += len(tc.dupChunks) - 1
+		}
+
+		if count != len(tests) {
+			t.Fatalf("unexpected collection count: want %d have: %d", len(tests), count)
+		}
+		if wantTotal != total {
+			t.Fatalf("unexpected total count: want %d have: %d", wantTotal, total)
+		}
+		if wantDup != dup {
+			t.Fatalf("unexpected dup count: want %d have: %d", wantDup, dup)
+		}
+	})
+
 	t.Run("delete collection", func(t *testing.T) {
 		err := pinstore.DeletePin(context.TODO(), st, tests[0].root.Address())
 		if err != nil {
