@@ -37,10 +37,10 @@ const (
 	DefaultBlocksPerPhase = DefaultBlocksPerRound / 4
 
 	// min # of transactions our wallet should be able to cover
-	minTxCountToCover = 5
+	minTxCountToCover = 25
 
 	// average tx gas used by transactions issued from agent
-	avgTxGas = 200_000
+	avgTxGas = 250_000
 )
 
 type ChainBackend interface {
