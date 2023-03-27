@@ -404,7 +404,7 @@ func TestIntervalChunks_IteratorShare(t *testing.T) {
 // 2. cancel all callers tests that if all the goroutines with the same subscription
 // call are canceled, the call will be exited. During this time if a new goroutines comes,
 // a fresh subscription call should be made and results should be shared
-func TestIntervalChunks_IteratorShareContextCancellation(t *testing.T) {
+func TestIntervalChunks_IteratorShareContextCancellation_FLAKY(t *testing.T) {
 	t.Parallel()
 
 	type result struct {
