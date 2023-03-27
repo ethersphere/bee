@@ -10,7 +10,6 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -37,11 +36,9 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
-	"github.com/ethersphere/bee/pkg/pinning"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/pss"
-	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/resolver"
 	"github.com/ethersphere/bee/pkg/resolver/client/ens"
 	"github.com/ethersphere/bee/pkg/sctx"
@@ -51,21 +48,19 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/status"
 	"github.com/ethersphere/bee/pkg/steward"
-	"github.com/ethersphere/bee/pkg/storage"
+	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storageincentives"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
+	storer "github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/transaction"
-	"github.com/ethersphere/bee/pkg/traversal"
 	"github.com/go-playground/validator/v10"
 	"github.com/gorilla/mux"
 	"github.com/hashicorp/go-multierror"
 	"github.com/prometheus/client_golang/prometheus"
-	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/semaphore"
 )
 
@@ -108,8 +103,6 @@ const (
 	largeFileBufferSize = 16 * 32 * 1024
 
 	largeBufferFilesizeThreshold = 10 * 1000000 // ten megs
-
-	uploadSem = 50
 )
 
 const (
@@ -131,14 +124,22 @@ var (
 	errOperationSupportedOnlyInFullMode = errors.New("operation is supported only in full mode")
 )
 
+// Storer interface provides the functionality required from the local storage
+// component of the node.
+type Storer interface {
+	storer.UploadStore
+	storer.PinStore
+	storer.CacheStore
+	storer.NetStore
+	storer.LocalStore
+	storer.RadiusChecker
+}
+
 type Service struct {
 	auth            auth.Authenticator
-	tags            *tags.Tags
-	storer          storage.Storer
+	storer          Storer
 	resolver        resolver.Interface
 	pss             pss.Interface
-	traversal       traversal.Traverser
-	pinning         pinning.Interface
 	steward         steward.Interface
 	logger          log.Logger
 	loggerV1        log.Logger
@@ -147,11 +148,9 @@ type Service struct {
 	signer          crypto.Signer
 	post            postage.Service
 	postageContract postagecontract.Interface
-	chunkPushC      chan *pusher.Op
 	probe           *Probe
 	metricsRegistry *prometheus.Registry
 	stakingContract staking.Contract
-	indexDebugger   StorageIndexDebugger
 	Options
 
 	http.Handler
@@ -228,31 +227,38 @@ type Options struct {
 }
 
 type ExtraOptions struct {
-	Pingpong         pingpong.Interface
-	TopologyDriver   topology.Driver
-	LightNodes       *lightnode.Container
-	Accounting       accounting.Interface
-	Pseudosettle     settlement.Interface
-	Swap             swap.Interface
-	Chequebook       chequebook.Service
-	BlockTime        time.Duration
-	Tags             *tags.Tags
-	Storer           storage.Storer
-	Resolver         resolver.Interface
-	Pss              pss.Interface
-	TraversalService traversal.Traverser
-	Pinning          pinning.Interface
-	FeedFactory      feeds.Factory
-	Post             postage.Service
-	PostageContract  postagecontract.Interface
-	Staking          staking.Contract
-	Steward          steward.Interface
-	SyncStatus       func() (bool, error)
-	IndexDebugger    StorageIndexDebugger
-	NodeStatus       *status.Service
+	Pingpong        pingpong.Interface
+	TopologyDriver  topology.Driver
+	LightNodes      *lightnode.Container
+	Accounting      accounting.Interface
+	Pseudosettle    settlement.Interface
+	Swap            swap.Interface
+	Chequebook      chequebook.Service
+	BlockTime       time.Duration
+	Storer          Storer
+	Resolver        resolver.Interface
+	Pss             pss.Interface
+	FeedFactory     feeds.Factory
+	Post            postage.Service
+	PostageContract postagecontract.Interface
+	Staking         staking.Contract
+	Steward         steward.Interface
+	SyncStatus      func() (bool, error)
+	NodeStatus      *status.Service
 }
 
-func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger log.Logger, transaction transaction.Service, batchStore postage.Storer, beeMode BeeNodeMode, chequebookEnabled, swapEnabled bool, chainBackend transaction.Backend, cors []string) *Service {
+func New(
+	publicKey, pssPublicKey ecdsa.PublicKey,
+	ethereumAddress common.Address,
+	logger log.Logger,
+	transaction transaction.Service,
+	batchStore postage.Storer,
+	beeMode BeeNodeMode,
+	chequebookEnabled bool,
+	swapEnabled bool,
+	chainBackend transaction.Backend,
+	cors []string,
+) *Service {
 	s := new(Service)
 
 	s.CORSAllowedOrigins = cors
@@ -286,13 +292,13 @@ func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address
 		}
 		return name
 	})
+
 	return s
 }
 
 // Configure will create a and initialize a new API service.
-func (s *Service) Configure(signer crypto.Signer, auth auth.Authenticator, tracer *tracing.Tracer, o Options, e ExtraOptions, chainID int64, erc20 erc20.Service) <-chan *pusher.Op {
+func (s *Service) Configure(signer crypto.Signer, auth auth.Authenticator, tracer *tracing.Tracer, o Options, e ExtraOptions, chainID int64, erc20 erc20.Service) {
 	s.auth = auth
-	s.chunkPushC = make(chan *pusher.Op)
 	s.signer = signer
 	s.Options = o
 	s.tracer = tracer
@@ -300,18 +306,14 @@ func (s *Service) Configure(signer crypto.Signer, auth auth.Authenticator, trace
 
 	s.quit = make(chan struct{})
 
-	s.tags = e.Tags
 	s.storer = e.Storer
 	s.resolver = e.Resolver
 	s.pss = e.Pss
-	s.traversal = e.TraversalService
-	s.pinning = e.Pinning
 	s.feedFactory = e.FeedFactory
 	s.post = e.Post
 	s.postageContract = e.PostageContract
 	s.steward = e.Steward
 	s.stakingContract = e.Staking
-	s.indexDebugger = e.IndexDebugger
 
 	s.pingpong = e.Pingpong
 	s.topologyDriver = e.TopologyDriver
@@ -343,8 +345,6 @@ func (s *Service) Configure(signer crypto.Signer, auth auth.Authenticator, trace
 			return "", err
 		}
 	}
-
-	return s.chunkPushC
 }
 
 func (s *Service) SetProbe(probe *Probe) {
@@ -371,27 +371,20 @@ func (s *Service) Close() error {
 	return nil
 }
 
-// getOrCreateTag attempts to get the tag if an id is supplied, and returns an error if it does not exist.
-// If no id is supplied, it will attempt to create a new tag with a generated name and return it.
-func (s *Service) getOrCreateTag(tagUid string) (*tags.Tag, bool, error) {
+// getOrCreateSessionID attempts to get the session if an tag id is supplied, and returns an error
+// if it does not exist. If no id is supplied, it will attempt to create a new session and return it.
+func (s *Service) getOrCreateSessionID(tagUid uint64) (uint64, error) {
+	var (
+		tag storer.SessionInfo
+		err error
+	)
 	// if tag ID is not supplied, create a new tag
-	if tagUid == "" {
-		tag, err := s.tags.Create(0)
-		if err != nil {
-			return nil, false, fmt.Errorf("cannot create tag: %w", err)
-		}
-		return tag, true, nil
+	if tagUid == 0 {
+		tag, err = s.storer.NewSession()
+	} else {
+		tag, err = s.storer.Session(tagUid)
 	}
-	t, err := s.getTag(tagUid)
-	return t, false, err
-}
-
-func (s *Service) getTag(tagUid string) (*tags.Tag, error) {
-	uid, err := strconv.Atoi(tagUid)
-	if err != nil {
-		return nil, fmt.Errorf("cannot mapStructure taguid: %w", err)
-	}
-	return s.tags.Get(uint32(uid))
+	return tag.TagID, err
 }
 
 func (s *Service) resolveNameOrAddress(str string) (swarm.Address, error) {
@@ -416,44 +409,6 @@ func (s *Service) resolveNameOrAddress(str string) (swarm.Address, error) {
 	}
 
 	return swarm.ZeroAddress, fmt.Errorf("%w: %w", errInvalidNameOrAddress, err)
-}
-
-// requestModePut returns the desired storage.ModePut for this request based on the request headers.
-func requestModePut(r *http.Request) storage.ModePut {
-	if requestPin(r) {
-		return storage.ModePutUploadPin
-	}
-	return storage.ModePutUpload
-}
-
-func requestPin(r *http.Request) bool {
-	return strings.ToLower(r.Header.Get(SwarmPinHeader)) == boolHeaderSetValue
-}
-
-func requestEncrypt(r *http.Request) bool {
-	return strings.ToLower(r.Header.Get(SwarmEncryptHeader)) == boolHeaderSetValue
-}
-
-func requestDeferred(r *http.Request) (bool, error) {
-	if h := strings.ToLower(r.Header.Get(SwarmDeferredUploadHeader)); h != "" {
-		return strconv.ParseBool(h)
-	}
-	return true, nil
-}
-
-func requestPostageBatchId(r *http.Request) ([]byte, error) {
-	if h := strings.ToLower(r.Header.Get(SwarmPostageBatchIdHeader)); h != "" {
-		if len(h) != 64 {
-			return nil, errInvalidPostageBatch
-		}
-		b, err := hex.DecodeString(h)
-		if err != nil {
-			return nil, errInvalidPostageBatch
-		}
-		return b, nil
-	}
-
-	return nil, errInvalidPostageBatch
 }
 
 type securityTokenRsp struct {
@@ -803,185 +758,99 @@ func equalASCIIFold(s, t string) bool {
 	return s == t
 }
 
-// newStamperPutter returns either a storingStamperPutter or a pushStamperPutter
-// according to whether the upload is a deferred upload or not. in the case of
-// direct push to the network (default) a pushStamperPutter is returned.
-// returns a function to wait on the errorgroup in case of a pushing stamper putter.
-func (s *Service) newStamperPutter(r *http.Request) (storage.Storer, func() error, error) {
-	batch, err := requestPostageBatchId(r) // TODO: extrapolate the headers parsing to the handler level!
+type putterOptions struct {
+	BatchID  []byte
+	TagID    uint64
+	Deferred bool
+	Pin      bool
+}
+
+type putterSessionWrapper struct {
+	storer.PutterSession
+	stamper postage.Stamper
+	save    func() error
+}
+
+func (p *putterSessionWrapper) Put(ctx context.Context, chunk swarm.Chunk) error {
+	stamp, err := p.stamper.Stamp(chunk.Address())
 	if err != nil {
-		return nil, noopWaitFn, fmt.Errorf("postage batch id: %w", err)
+		return err
+	}
+	return p.PutterSession.Put(ctx, chunk.WithStamp(stamp))
+}
+
+func (p *putterSessionWrapper) Done(ref swarm.Address) error {
+	return errors.Join(p.PutterSession.Done(ref), p.save())
+}
+
+func (s *Service) newStamperPutter(ctx context.Context, opts putterOptions) (storer.PutterSession, error) {
+	if !opts.Deferred && s.beeMode == DevMode {
+		return nil, errUnsupportedDevNodeOperation
+	}
+	exists, err := s.batchStore.Exists(opts.BatchID)
+	if err != nil {
+		return nil, fmt.Errorf("batch exists: %w", err)
 	}
 
-	deferred, err := requestDeferred(r) // TODO: extrapolate the headers parsing to the handler level!
+	issuer, save, err := s.post.GetStampIssuer(opts.BatchID)
 	if err != nil {
-		return nil, noopWaitFn, fmt.Errorf("request deferred: %w", err)
-	}
-
-	if !deferred && s.beeMode == DevMode {
-		return nil, noopWaitFn, errUnsupportedDevNodeOperation
-	}
-	exists, err := s.batchStore.Exists(batch)
-	if err != nil {
-		return nil, noopWaitFn, fmt.Errorf("batch exists: %w", err)
-	}
-
-	issuer, save, err := s.post.GetStampIssuer(batch)
-	if err != nil {
-		return nil, noopWaitFn, fmt.Errorf("stamp issuer: %w", err)
+		return nil, fmt.Errorf("stamp issuer: %w", err)
 	}
 
 	if usable := exists && s.post.IssuerUsable(issuer); !usable {
-		return nil, noopWaitFn, errBatchUnusable
+		return nil, errBatchUnusable
 	}
 
-	if deferred {
-		p := newStoringStamperPutter(s.storer, issuer, s.signer)
-		return p, save, nil
-	}
-	p := newPushStamperPutter(s.logger, s.storer, issuer, s.signer, s.chunkPushC)
+	stamper := postage.NewStamper(issuer, s.signer)
 
-	wait := func() error {
-		if err := save(); err != nil {
-			return err
-		}
-		return p.Wait()
+	var session storer.PutterSession
+	if opts.Deferred || opts.Pin {
+		session, err = s.storer.Upload(ctx, opts.Pin, opts.TagID)
+	} else {
+		session = s.storer.DirectUpload()
 	}
 
-	return p, wait, err
-}
-
-type pushStamperPutter struct {
-	storage.Storer
-	logger  log.Logger
-	stamper postage.Stamper
-	eg      errgroup.Group
-	c       chan *pusher.Op
-	sem     chan struct{}
-}
-
-func newPushStamperPutter(logger log.Logger, s storage.Storer, i *postage.StampIssuer, signer crypto.Signer, cc chan *pusher.Op) *pushStamperPutter {
-	stamper := postage.NewStamper(i, signer)
-	return &pushStamperPutter{logger: logger, Storer: s, stamper: stamper, c: cc, sem: make(chan struct{}, uploadSem)}
-}
-
-func (p *pushStamperPutter) Wait() error {
-	return p.eg.Wait()
-}
-
-func (p *pushStamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exists []bool, err error) {
-	exists = make([]bool, len(chs))
-
-	for i, c := range chs {
-		// skips chunk we already know about
-		has, err := p.Storer.Has(ctx, c.Address())
-		if err != nil {
-			return nil, err
-		}
-		if has || swarm.ContainsChunkWithAddress(chs[:i], c.Address()) {
-			exists[i] = true
-			continue
-		}
-		stamp, err := p.stamper.Stamp(c.Address())
-		if err != nil {
-			return nil, err
-		}
-
-		p.putChunk(ctx, c.WithStamp(stamp))
-	}
-	return exists, nil
-}
-
-func (p *pushStamperPutter) putChunk(ctx context.Context, ch swarm.Chunk) {
-	p.sem <- struct{}{}
-	p.eg.Go(func() error {
-		defer func() {
-			<-p.sem
-		}()
-
-		for {
-			errc := make(chan error, 1)
-			p.c <- &pusher.Op{Chunk: ch, Err: errc, Direct: true}
-
-			select {
-			case err := <-errc:
-				// if we're the closest one we will store the chunk
-				if errors.Is(err, topology.ErrWantSelf) {
-					_, err := p.Storer.Put(ctx, storage.ModePutSync, ch)
-					return err
-				}
-				if err == nil {
-					return nil
-				}
-				p.logger.Debug("put chunk", "error", err)
-
-			case <-ctx.Done():
-				return ctx.Err()
-			}
-		}
-	})
-}
-
-type stamperPutter struct {
-	storage.Storer
-	stamper postage.Stamper
-}
-
-func newStoringStamperPutter(s storage.Storer, i *postage.StampIssuer, signer crypto.Signer) *stamperPutter {
-	stamper := postage.NewStamper(i, signer)
-	return &stamperPutter{Storer: s, stamper: stamper}
-}
-
-func (p *stamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exists []bool, err error) {
-	var (
-		ctp = make([]swarm.Chunk, 0, len(chs))
-		idx = make([]int, 0, len(chs))
-	)
-	exists = make([]bool, len(chs))
-
-	for i, c := range chs {
-		has, err := p.Storer.Has(ctx, c.Address())
-		if err != nil {
-			return nil, err
-		}
-		if has || swarm.ContainsChunkWithAddress(chs[:i], c.Address()) {
-			exists[i] = true
-			continue
-		}
-		stamp, err := p.stamper.Stamp(c.Address())
-		if err != nil {
-			return nil, err
-		}
-		chs[i] = c.WithStamp(stamp)
-		ctp = append(ctp, chs[i])
-		idx = append(idx, i)
-	}
-
-	exists2, err := p.Storer.Put(ctx, mode, ctp...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed creating session: %w", err)
 	}
-	for i, v := range idx {
-		exists[v] = exists2[i]
-	}
-	return exists, nil
+
+	return &putterSessionWrapper{
+		PutterSession: session,
+		stamper:       stamper,
+		save:          save,
+	}, nil
 }
 
 type pipelineFunc func(context.Context, io.Reader) (swarm.Address, error)
 
-func requestPipelineFn(s storage.Putter, r *http.Request) pipelineFunc {
-	mode, encrypt := requestModePut(r), requestEncrypt(r)
+func requestPipelineFn(s storage.Putter, encrypt bool) pipelineFunc {
 	return func(ctx context.Context, r io.Reader) (swarm.Address, error) {
-		pipe := builder.NewPipelineBuilder(ctx, s, mode, encrypt)
+		pipe := builder.NewPipelineBuilder(ctx, s, encrypt)
 		return builder.FeedPipeline(ctx, pipe, r)
 	}
 }
 
-func requestPipelineFactory(ctx context.Context, s storage.Putter, r *http.Request) func() pipeline.Interface {
-	mode, encrypt := requestModePut(r), requestEncrypt(r)
+func requestPipelineFactory(ctx context.Context, s storage.Putter, encrypt bool) func() pipeline.Interface {
 	return func() pipeline.Interface {
-		return builder.NewPipelineBuilder(ctx, s, mode, encrypt)
+		return builder.NewPipelineBuilder(ctx, s, encrypt)
 	}
+}
+
+type cleanupOnErrWriter struct {
+	http.ResponseWriter
+	logger log.Logger
+	onErr  func() error
+}
+
+func (r *cleanupOnErrWriter) WriteHeader(statusCode int) {
+	// if there is an error status returned, cleanup.
+	if statusCode >= http.StatusBadRequest {
+		err := r.onErr()
+		if err != nil {
+			r.logger.Debug("failed cleaning up", "err", err)
+		}
+	}
+	r.ResponseWriter.WriteHeader(statusCode)
 }
 
 // calculateNumberOfChunks calculates the number of chunks in an arbitrary
@@ -1005,15 +874,4 @@ func calculateNumberOfChunks(contentLength int64, isEncrypted bool) int64 {
 	}
 
 	return int64(totalChunks) + 1
-}
-
-func requestCalculateNumberOfChunks(r *http.Request) int64 {
-	if !strings.Contains(r.Header.Get(ContentTypeHeader), "multipart") && r.ContentLength > 0 {
-		return calculateNumberOfChunks(r.ContentLength, requestEncrypt(r))
-	}
-	return 0
-}
-
-func noopWaitFn() error {
-	return nil
 }

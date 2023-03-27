@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/status"
+	"github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	"go.uber.org/atomic"
@@ -41,7 +41,8 @@ type peerStatus interface {
 }
 
 type reserve interface {
-	ReserveSize() uint64
+	storer.RadiusChecker
+	ReserveSize() int
 }
 
 type service struct {
@@ -52,11 +53,18 @@ type service struct {
 	status        peerStatus
 	metrics       metrics
 	isSelfHealthy *atomic.Bool
-	rad           postage.Radius
 	reserve       reserve
 }
 
-func New(status peerStatus, topology topologyDriver, rad postage.Radius, reserve reserve, logger log.Logger, warmup time.Duration, mode string, minPeersPerbin int) *service {
+func New(
+	status peerStatus,
+	topology topologyDriver,
+	reserve reserve,
+	logger log.Logger,
+	warmup time.Duration,
+	mode string,
+	minPeersPerbin int,
+) *service {
 
 	metrics := newMetrics()
 
@@ -67,7 +75,6 @@ func New(status peerStatus, topology topologyDriver, rad postage.Radius, reserve
 		topology:      topology,
 		metrics:       metrics,
 		isSelfHealthy: atomic.NewBool(true),
-		rad:           rad,
 		reserve:       reserve,
 	}
 
@@ -149,7 +156,7 @@ func (s *service) salud(mode string, minPeersPerbin int) {
 			dur := time.Since(start).Seconds()
 
 			mtx.Lock()
-			if s.rad.IsWithinStorageRadius(addr) {
+			if s.reserve.IsWithinStorageRadius(addr) {
 				neighbors++
 			}
 			bins[bin]++
@@ -217,9 +224,9 @@ func (s *service) salud(mode string, minPeersPerbin int) {
 	}
 
 	selfHealth := true
-	if s.rad.StorageRadius() != networkRadius {
+	if s.reserve.StorageRadius() != networkRadius {
 		selfHealth = false
-		s.logger.Warning("node is unhealthy due to storage radius discrepency", "self_radius", s.rad.StorageRadius(), "network_radius", networkRadius)
+		s.logger.Warning("node is unhealthy due to storage radius discrepency", "self_radius", s.reserve.StorageRadius(), "network_radius", networkRadius)
 	} else if reserveSize > 0 && reserveSizePercentErr > maxReserveSizePercentageErr {
 		s.logger.Warning("node is unhealthy due to reserve size discrepency", "self_size", s.reserve.ReserveSize(), "network_size", reserveSize)
 		selfHealth = false
@@ -266,7 +273,7 @@ func (s *service) radius(peers []peer) (uint8, uint8) {
 
 	for _, peer := range peers {
 		if peer.status.StorageRadius < uint32(swarm.MaxBins) {
-			if s.rad.IsWithinStorageRadius(peer.addr) {
+			if s.reserve.IsWithinStorageRadius(peer.addr) {
 				nHoodRadius[peer.status.StorageRadius]++
 			}
 			networkRadius[peer.status.StorageRadius]++

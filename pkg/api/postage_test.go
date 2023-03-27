@@ -29,6 +29,7 @@ import (
 	contractMock "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/sctx"
+	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
 	"github.com/ethersphere/bee/pkg/transaction/backendmock"
 )
 
@@ -407,15 +408,14 @@ func TestGetAllBatches(t *testing.T) {
 	}{
 		Batches: []api.PostageBatchResponse{
 			{
-				BatchID:       b.ID,
-				Value:         bigint.Wrap(b.Value),
-				Start:         b.Start,
-				Owner:         b.Owner,
-				Depth:         b.Depth,
-				BucketDepth:   b.BucketDepth,
-				Immutable:     b.Immutable,
-				StorageRadius: b.StorageRadius,
-				BatchTTL:      15, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
+				BatchID:     b.ID,
+				Value:       bigint.Wrap(b.Value),
+				Start:       b.Start,
+				Owner:       b.Owner,
+				Depth:       b.Depth,
+				BucketDepth: b.BucketDepth,
+				Immutable:   b.Immutable,
+				BatchTTL:    15, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
 			},
 		},
 	}
@@ -503,10 +503,9 @@ func TestReserveState(t *testing.T) {
 		t.Parallel()
 
 		ts, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI: true,
-			BatchStore: mock.New(mock.WithReserveState(&postage.ReserveState{
-				Radius: 5,
-			})),
+			DebugAPI:   true,
+			BatchStore: mock.New(mock.WithRadius(5)),
+			Storer:     mockstorer.New(),
 		})
 		jsonhttptest.Request(t, ts, http.MethodGet, "/reservestate", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&api.ReserveStateResponse{
@@ -520,6 +519,7 @@ func TestReserveState(t *testing.T) {
 		ts, _, _, _ := newTestServer(t, testServerOptions{
 			DebugAPI:   true,
 			BatchStore: mock.New(),
+			Storer:     mockstorer.New(),
 		})
 		jsonhttptest.Request(t, ts, http.MethodGet, "/reservestate", http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(&api.ReserveStateResponse{}),
