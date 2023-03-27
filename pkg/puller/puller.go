@@ -18,9 +18,10 @@ import (
 	"github.com/ethersphere/bee/pkg/intervalstore"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
-	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pullsync"
+	"github.com/ethersphere/bee/pkg/rate"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	"go.uber.org/atomic"
@@ -36,6 +37,7 @@ const (
 
 	DefaultSyncErrorSleepDur    = time.Minute
 	DefaultShallowBinsWarmupDur = time.Hour * 24
+	DefaultHistRateWindow       = time.Minute * 15
 
 	recalcPeersDur           = time.Minute * 5
 	histSyncTimeout          = time.Minute * 15
@@ -43,6 +45,11 @@ const (
 
 	maxHistSyncs = swarm.MaxBins * 3
 )
+
+type SyncRate interface {
+	// Rate returns the current rate of historical syncing.
+	SyncRate() float64
+}
 
 type Options struct {
 	Bins                 uint8
@@ -52,7 +59,7 @@ type Options struct {
 
 type Puller struct {
 	topology    topology.Driver
-	radius      postage.Radius
+	radius      storer.RadiusChecker
 	statestore  storage.StateStorer
 	syncer      pullsync.Interface
 	blockLister p2p.Blocklister
@@ -74,9 +81,19 @@ type Puller struct {
 
 	histSync        *atomic.Uint64 // current number of gorourines doing historical syncing
 	histSyncLimiter chan struct{}  // historical syncing limiter
+	rate            *rate.Rate     // rate of historical syncing
 }
 
-func New(stateStore storage.StateStorer, topology topology.Driver, reserveState postage.Radius, pullSync pullsync.Interface, blockLister p2p.Blocklister, logger log.Logger, o Options, warmupTime time.Duration) *Puller {
+func New(
+	stateStore storage.StateStorer,
+	topology topology.Driver,
+	reserveState storer.RadiusChecker,
+	pullSync pullsync.Interface,
+	blockLister p2p.Blocklister,
+	logger log.Logger,
+	o Options,
+	warmupTime time.Duration,
+) *Puller {
 	var (
 		bins uint8 = swarm.MaxBins
 	)
@@ -97,6 +114,7 @@ func New(stateStore storage.StateStorer, topology topology.Driver, reserveState 
 		histSync:          atomic.NewUint64(0),
 		blockLister:       blockLister,
 		histSyncLimiter:   make(chan struct{}, maxHistSyncs),
+		rate:              rate.New(DefaultHistRateWindow),
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -111,6 +129,10 @@ func New(stateStore storage.StateStorer, topology topology.Driver, reserveState 
 
 func (p *Puller) ActiveHistoricalSyncing() uint64 {
 	return p.histSync.Load()
+}
+
+func (p *Puller) SyncRate() float64 {
+	return p.rate.Rate()
 }
 
 func (p *Puller) manage(ctx context.Context, warmupDur time.Duration) {
@@ -301,8 +323,10 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 
 		syncStart := time.Now()
 		ctx, cancel := context.WithTimeout(ctx, histSyncTimeout)
-		top, err := p.syncer.SyncInterval(ctx, peer, bin, s, cur)
+		top, count, err := p.syncer.Sync(ctx, peer, bin, s)
 		cancel()
+
+		p.rate.Add(count)
 
 		if top >= s {
 			if err := p.addPeerInterval(peer, bin, s, top); err != nil {
@@ -371,7 +395,7 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 		default:
 		}
 
-		top, err := p.syncer.SyncInterval(ctx, peer, bin, from, pullsync.MaxCursor)
+		top, _, err := p.syncer.Sync(ctx, peer, bin, from)
 
 		if top >= from {
 			if err := p.addPeerInterval(peer, bin, from, top); err != nil {

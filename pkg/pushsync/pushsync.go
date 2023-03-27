@@ -23,9 +23,8 @@ import (
 	"github.com/ethersphere/bee/pkg/pushsync/pb"
 	"github.com/ethersphere/bee/pkg/skippeers"
 	"github.com/ethersphere/bee/pkg/soc"
-	"github.com/ethersphere/bee/pkg/storage"
+	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
 	opentracing "github.com/opentracing/opentracing-go"
@@ -68,14 +67,19 @@ type Receipt struct {
 	Nonce     []byte
 }
 
+type Storer interface {
+	storage.PushReporter
+	ReservePut(context.Context, swarm.Chunk) error
+	IsWithinStorageRadius(swarm.Address) bool
+	StorageRadius() uint8
+}
+
 type PushSync struct {
 	address        swarm.Address
 	nonce          []byte
 	streamer       p2p.StreamerDisconnecter
-	storer         storage.Putter
+	store          Storer
 	topologyDriver topology.Driver
-	radiusChecker  postage.Radius
-	tagger         *tags.Tags
 	unwrap         func(swarm.Chunk)
 	logger         log.Logger
 	accounting     accounting.Interface
@@ -95,15 +99,27 @@ type receiptResult struct {
 	err      error
 }
 
-func New(address swarm.Address, nonce []byte, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, rs postage.Radius, tagger *tags.Tags, fullNode bool, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger log.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer) *PushSync {
+func New(
+	address swarm.Address,
+	nonce []byte,
+	streamer p2p.StreamerDisconnecter,
+	store Storer,
+	topology topology.Driver,
+	fullNode bool,
+	unwrap func(swarm.Chunk),
+	validStamp postage.ValidStampFn,
+	logger log.Logger,
+	accounting accounting.Interface,
+	pricer pricer.Interface,
+	signer crypto.Signer,
+	tracer *tracing.Tracer,
+) *PushSync {
 	ps := &PushSync{
 		address:        address,
 		nonce:          nonce,
 		streamer:       streamer,
-		storer:         storer,
+		store:          store,
 		topologyDriver: topology,
-		radiusChecker:  rs,
-		tagger:         tagger,
 		fullNode:       fullNode,
 		unwrap:         unwrap,
 		logger:         logger.WithName(loggerName).Register(),
@@ -188,7 +204,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			return fmt.Errorf("invalid stamp: %w", err)
 		}
 
-		_, err = ps.storer.Put(ctx, storage.ModePutSync, chunk)
+		err = ps.store.ReservePut(ctx, chunk)
 		if err != nil {
 			return fmt.Errorf("chunk store: %w", err)
 		}
@@ -213,7 +229,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		return debit.Apply()
 	}
 
-	if ps.topologyDriver.IsReachable() && ps.radiusChecker.IsWithinStorageRadius(chunkAddress) {
+	if ps.topologyDriver.IsReachable() && ps.store.IsWithinStorageRadius(chunkAddress) {
 		ps.metrics.Storer.Inc()
 		return store(ctx)
 	}
@@ -308,7 +324,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			if errors.Is(err, topology.ErrNotFound) {
 				if ps.skipList.PruneExpiresAfter(ch.Address(), overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers
 					if inflight == 0 {
-						if origin && ps.fullNode && ps.topologyDriver.IsReachable() && ps.radiusChecker.IsWithinStorageRadius(ch.Address()) {
+						if origin && ps.fullNode && ps.topologyDriver.IsReachable() && ps.store.IsWithinStorageRadius(ch.Address()) {
 							if cac.Valid(ch) {
 								go ps.unwrap(ch)
 							}
@@ -341,7 +357,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			// since we can reach into the neighborhood of the chunk
 			// act as the multiplexer and push the chunk in parallel to multiple peers
-			if swarm.Proximity(peer.Bytes(), ch.Address().Bytes()) >= ps.radiusChecker.StorageRadius() {
+			if swarm.Proximity(peer.Bytes(), ch.Address().Bytes()) >= ps.store.StorageRadius() {
 				for ; parallelForwards > 0; parallelForwards-- {
 					retry()
 					sentErrorsLeft++
@@ -447,13 +463,10 @@ func (ps *PushSync) pushChunkToPeer(ctx context.Context, peer swarm.Address, ch 
 		return nil, err
 	}
 
-	// if you manage to get a tag, just increment the respective counter
-	t, err := ps.tagger.Get(ch.TagID())
-	if err == nil && t != nil {
-		err = t.Inc(tags.StateSent)
-		if err != nil {
-			return nil, fmt.Errorf("tag %d increment: %w", ch.TagID(), err)
-		}
+	err = ps.store.Report(ctx, ch, storage.ChunkSent)
+	if err != nil && !errors.Is(err, storage.ErrNotFound) {
+		err = fmt.Errorf("tag %d increment: %w", ch.TagID(), err)
+		return
 	}
 
 	var rec pb.Receipt
@@ -466,7 +479,6 @@ func (ps *PushSync) pushChunkToPeer(ctx context.Context, peer swarm.Address, ch 
 	}
 
 	return &rec, nil
-
 }
 
 func (ps *PushSync) prepareCredit(ctx context.Context, peer swarm.Address, ch swarm.Chunk, origin bool) (accounting.Action, error) {

@@ -22,10 +22,10 @@ import (
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
+	storer "github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -49,12 +49,8 @@ type ChainBackend interface {
 	SuggestGasPrice(ctx context.Context) (*big.Int, error)
 }
 
-type Monitor interface {
-	IsFullySynced() bool
-}
-
 type SampleData struct {
-	ReserveSample storage.Sample
+	ReserveSample storer.Sample
 	StorageRadius uint8
 }
 
@@ -63,12 +59,11 @@ type Agent struct {
 	metrics                metrics
 	backend                ChainBackend
 	blocksPerRound         uint64
-	monitor                Monitor
 	contract               redistribution.Contract
 	batchExpirer           postagecontract.PostageBatchExpirer
 	redistributionStatuser staking.RedistributionStatuser
-	radius                 postage.Radius
-	sampler                storage.Sampler
+	store                  storer.Reserve
+	fullSyncedFunc         func() bool
 	overlay                swarm.Address
 	quit                   chan struct{}
 	wg                     sync.WaitGroup
@@ -76,7 +71,22 @@ type Agent struct {
 	commitLock             sync.Mutex
 }
 
-func New(overlay swarm.Address, ethAddress common.Address, backend ChainBackend, logger log.Logger, monitor Monitor, contract redistribution.Contract, batchExpirer postagecontract.PostageBatchExpirer, redistributionStatuser staking.RedistributionStatuser, radius postage.Radius, sampler storage.Sampler, blockTime time.Duration, blocksPerRound, blocksPerPhase uint64, stateStore storage.StateStorer, erc20Service erc20.Service, tranService transaction.Service) (*Agent, error) {
+func New(overlay swarm.Address,
+	ethAddress common.Address,
+	backend ChainBackend,
+	logger log.Logger,
+	contract redistribution.Contract,
+	batchExpirer postagecontract.PostageBatchExpirer,
+	redistributionStatuser staking.RedistributionStatuser,
+	store storer.Reserve,
+	fullSyncedFunc func() bool,
+	blockTime time.Duration,
+	blocksPerRound,
+	blocksPerPhase uint64,
+	stateStore storage.StateStorer,
+	erc20Service erc20.Service,
+	tranService transaction.Service,
+) (*Agent, error) {
 	a := &Agent{
 		overlay:                overlay,
 		metrics:                newMetrics(),
@@ -84,10 +94,9 @@ func New(overlay swarm.Address, ethAddress common.Address, backend ChainBackend,
 		logger:                 logger.WithName(loggerName).Register(),
 		contract:               contract,
 		batchExpirer:           batchExpirer,
-		radius:                 radius,
-		monitor:                monitor,
+		store:                  store,
+		fullSyncedFunc:         fullSyncedFunc,
 		blocksPerRound:         blocksPerRound,
-		sampler:                sampler,
 		quit:                   make(chan struct{}),
 		redistributionStatuser: redistributionStatuser,
 	}
@@ -210,7 +219,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		a.logger.Info("entered new phase", "phase", currentPhase.String(), "round", round, "block", block)
 
 		a.state.SetCurrentEvent(currentPhase, round, block)
-		a.state.IsFullySynced(a.monitor.IsFullySynced())
+		a.state.IsFullySynced(a.fullSyncedFunc())
 		go a.state.purgeStaleRoundData()
 
 		isFrozen, err := a.redistributionStatuser.IsOverlayFrozen(ctx, block)
@@ -371,7 +380,7 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 		return false, nil
 	}
 
-	storageRadius := a.radius.StorageRadius()
+	storageRadius := a.store.StorageRadius()
 
 	isPlaying, err := a.contract.IsPlaying(ctx, storageRadius)
 	if err != nil {
@@ -420,7 +429,7 @@ func (a *Agent) makeSample(ctx context.Context, storageRadius uint8) (SampleData
 	}
 
 	t := time.Now()
-	rSample, err := a.sampler.ReserveSample(ctx, salt, storageRadius, uint64(timeLimiter))
+	rSample, err := a.store.ReserveSample(ctx, salt, storageRadius, uint64(timeLimiter))
 	if err != nil {
 		return SampleData{}, err
 	}

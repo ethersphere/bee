@@ -44,19 +44,21 @@ func TestGetStatus(t *testing.T) {
 			chainstate:    &postage.ChainState{TotalAmount: big.NewInt(1)},
 		}
 
+		statusSvc := status.NewService(
+			log.Noop,
+			nil,
+			new(topologyPeersIterNoopMock),
+			mode.String(),
+			ssMock,
+		)
+
+		statusSvc.SetStorage(ssMock)
+		statusSvc.SetSync(ssMock)
+
 		client, _, _, _ := newTestServer(t, testServerOptions{
-			BeeMode:  mode,
-			DebugAPI: true,
-			NodeStatus: status.NewService(
-				log.Noop,
-				nil,
-				new(topologyPeersIterNoopMock),
-				mode.String(),
-				ssMock,
-				ssMock,
-				ssMock,
-				ssMock,
-			),
+			BeeMode:    mode,
+			DebugAPI:   true,
+			NodeStatus: statusSvc,
 		})
 
 		jsonhttptest.Request(t, client, http.MethodGet, url, http.StatusOK,
@@ -75,9 +77,6 @@ func TestGetStatus(t *testing.T) {
 				nil,
 				new(topologyPeersIterNoopMock),
 				"",
-				nil,
-				nil,
-				nil,
 				nil,
 			),
 		})
@@ -114,6 +113,6 @@ type statusSnapshotMock struct {
 }
 
 func (m *statusSnapshotMock) SyncRate() float64                  { return m.syncRate }
-func (m *statusSnapshotMock) ReserveSize() uint64                { return m.reserveSize }
+func (m *statusSnapshotMock) ReserveSize() int                   { return int(m.reserveSize) }
 func (m *statusSnapshotMock) StorageRadius() uint8               { return m.storageRadius }
 func (m *statusSnapshotMock) GetChainState() *postage.ChainState { return m.chainstate }

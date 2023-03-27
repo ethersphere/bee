@@ -21,13 +21,10 @@ import (
 	"github.com/ethersphere/bee/pkg/file/loadsave"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/manifest"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/bee/pkg/storage/mock"
+	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/tags"
 )
 
 // nolint:paralleltest
@@ -36,13 +33,9 @@ func TestDirs(t *testing.T) {
 		dirUploadResource   = "/bzz"
 		bzzDownloadResource = func(addr, path string) string { return "/bzz/" + addr + "/" + path }
 		ctx                 = context.Background()
-		storer              = mock.NewStorer()
-		mockStatestore      = statestore.NewStateStore()
-		logger              = log.Noop
+		storer              = mockstorer.New()
 		client, _, _, _     = newTestServer(t, testServerOptions{
 			Storer:          storer,
-			Tags:            tags.NewTags(mockStatestore, logger),
-			Logger:          logger,
 			PreventRedirect: true,
 			Post:            mockpost.New(mockpost.WithAcceptAll()),
 		})
@@ -289,7 +282,7 @@ func TestDirs(t *testing.T) {
 			// verify manifest content
 			verifyManifest, err := manifest.NewDefaultManifestReference(
 				resp.Reference,
-				loadsave.NewReadonly(storer),
+				loadsave.NewReadonly(storer.ChunkStore()),
 			)
 			if err != nil {
 				t.Fatal(err)
@@ -452,7 +445,7 @@ func TestDirs(t *testing.T) {
 		})
 	}
 
-	t.Run("upload, invalid tag", func(t *testing.T) {
+	t.Run("upload invalid tag", func(t *testing.T) {
 		tr := tarFiles(t, []f{
 			{
 				data: []byte("robots text"),
@@ -463,21 +456,27 @@ func TestDirs(t *testing.T) {
 				},
 			},
 		})
-		clientInvalidTag, _, _, _ := newTestServer(t, testServerOptions{
-			Storer: storer,
-			Logger: logger,
-			Post:   mockpost.New(mockpost.WithAcceptAll()),
-		})
 
-		jsonhttptest.Request(t, clientInvalidTag, http.MethodPost, dirUploadResource, http.StatusInternalServerError,
+		jsonhttptest.Request(t, client, http.MethodPost, dirUploadResource, http.StatusBadRequest,
 			jsonhttptest.WithRequestHeader(api.SwarmTagHeader, "tag"),
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(tr),
-			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar))
+			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "invalid header params",
+				Code:    http.StatusBadRequest,
+				Reasons: []jsonhttp.Reason{
+					{
+						Field: "Swarm-Tag",
+						Error: "invalid syntax",
+					},
+				},
+			}),
+		)
 	})
 
-	t.Run("upload, tag not found", func(t *testing.T) {
+	t.Run("upload tag not found", func(t *testing.T) {
 		tr := tarFiles(t, []f{
 			{
 				data: []byte("robots text"),
@@ -488,16 +487,9 @@ func TestDirs(t *testing.T) {
 				},
 			},
 		})
-		tag := tags.NewTags(statestore.NewStateStore(), log.Noop)
-		clientTagExists, _, _, _ := newTestServer(t, testServerOptions{
-			Tags:   tag,
-			Storer: storer,
-			Logger: logger,
-			Post:   mockpost.New(mockpost.WithAcceptAll()),
-		})
 
-		jsonhttptest.Request(t, clientTagExists, http.MethodPost, dirUploadResource, http.StatusNotFound,
-			jsonhttptest.WithRequestHeader(api.SwarmTagHeader, strconv.FormatUint(uint64(tag.TagUidFunc()), 10)),
+		jsonhttptest.Request(t, client, http.MethodPost, dirUploadResource, http.StatusNotFound,
+			jsonhttptest.WithRequestHeader(api.SwarmTagHeader, strconv.FormatUint(uint64(10000), 10)),
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(tr),
@@ -505,18 +497,14 @@ func TestDirs(t *testing.T) {
 	})
 }
 
-func TestEmtpyDir(t *testing.T) {
+func TestDirsEmtpyDir(t *testing.T) {
 	t.Parallel()
 
 	var (
 		dirUploadResource = "/bzz"
-		storer            = mock.NewStorer()
-		mockStatestore    = statestore.NewStateStore()
-		logger            = log.Noop
+		storer            = mockstorer.New()
 		client, _, _, _   = newTestServer(t, testServerOptions{
 			Storer:          storer,
-			Tags:            tags.NewTags(mockStatestore, logger),
-			Logger:          logger,
 			PreventRedirect: true,
 			Post:            mockpost.New(mockpost.WithAcceptAll()),
 		})
