@@ -11,8 +11,6 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/postage"
-	bsMock "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	"github.com/ethersphere/bee/pkg/salud"
 	"github.com/ethersphere/bee/pkg/spinlock"
 	"github.com/ethersphere/bee/pkg/status"
@@ -25,6 +23,19 @@ type peer struct {
 	status  *status.Snapshot
 	waitDur int
 	health  bool
+}
+
+type reserveMock struct {
+	depth        uint8
+	withinRadius bool
+}
+
+func (r *reserveMock) StorageRadius() uint8 {
+	return r.depth
+}
+
+func (r *reserveMock) IsWithinStorageRadius(addr swarm.Address) bool {
+	return r.withinRadius
 }
 
 func TestSalud(t *testing.T) {
@@ -65,9 +76,9 @@ func TestSalud(t *testing.T) {
 
 	topM := topMock.NewTopologyDriver(topMock.WithPeers(addrs...))
 
-	bs := bsMock.New(bsMock.WithIsWithinStorageRadius(true), bsMock.WithReserveState(&postage.ReserveState{StorageRadius: 8}))
+	reserve := &reserveMock{depth: 8, withinRadius: true}
 
-	service := salud.New(statusM, topM, bs, log.Noop, -1, "full", 0)
+	service := salud.New(statusM, topM, reserve, log.Noop, -1, "full", 0)
 
 	err := spinlock.Wait(time.Minute, func() bool {
 		return len(topM.PeersHealth()) == len(peers)
@@ -104,9 +115,9 @@ func TestSelfUnhealthSalud(t *testing.T) {
 
 	topM := topMock.NewTopologyDriver(topMock.WithPeers(addrs...))
 
-	bs := bsMock.New(bsMock.WithIsWithinStorageRadius(true), bsMock.WithReserveState(&postage.ReserveState{StorageRadius: 7}))
+	reserve := &reserveMock{depth: 7, withinRadius: true}
 
-	service := salud.New(statusM, topM, bs, log.Noop, -1, "full", 0)
+	service := salud.New(statusM, topM, reserve, log.Noop, -1, "full", 0)
 
 	err := spinlock.Wait(time.Minute, func() bool {
 		return len(topM.PeersHealth()) == len(peers)

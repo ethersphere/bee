@@ -21,6 +21,8 @@ import (
 	"github.com/ethersphere/bee/pkg/manifest/simple"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/soc"
+	storage "github.com/ethersphere/bee/pkg/storage"
+	storer "github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
 )
@@ -133,10 +135,44 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	putter, wait, err := s.newStamperPutter(r)
+	headers := struct {
+		BatchID  []byte `map:"Swarm-Postage-Batch-Id" validate:"required"`
+		Pin      bool   `map:"Swarm-Pin"`
+		Deferred bool   `map:"Swarm-Deferred-Upload"`
+	}{}
+	if response := s.mapStructure(r.Header, &headers); response != nil {
+		response("invalid header params", logger, w)
+		return
+	}
+
+	var (
+		tag storer.SessionInfo
+		err error
+	)
+	if headers.Deferred || headers.Pin {
+		tag, err = s.storer.NewSession()
+		if err != nil {
+			logger.Debug("get or create tag failed", "error", err)
+			logger.Error(nil, "get or create tag failed")
+			switch {
+			case errors.Is(err, storage.ErrNotFound):
+				jsonhttp.NotFound(w, "tag not found")
+			default:
+				jsonhttp.InternalServerError(w, "cannot get or create tag")
+			}
+			return
+		}
+	}
+
+	putter, err := s.newStamperPutter(r.Context(), putterOptions{
+		BatchID:  headers.BatchID,
+		TagID:    tag.TagID,
+		Pin:      headers.Pin,
+		Deferred: headers.Deferred,
+	})
 	if err != nil {
-		logger.Debug("putter failed", "error", err)
-		logger.Error(nil, "putter failed")
+		logger.Debug("get putter failed", "error", err)
+		logger.Error(nil, "get putter failed")
 		switch {
 		case errors.Is(err, errBatchUnusable) || errors.Is(err, postage.ErrNotUsable):
 			jsonhttp.UnprocessableEntity(w, "batch not usable yet or does not exist")
@@ -152,16 +188,22 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	l := loadsave.New(putter, requestPipelineFactory(r.Context(), putter, r))
+	ow := &cleanupOnErrWriter{
+		ResponseWriter: w,
+		onErr:          putter.Cleanup,
+		logger:         logger,
+	}
+
+	l := loadsave.New(s.storer.ChunkStore(), requestPipelineFactory(r.Context(), putter, false))
 	feedManifest, err := manifest.NewDefaultManifest(l, false)
 	if err != nil {
 		logger.Debug("create manifest failed", "error", err)
 		logger.Error(nil, "create manifest failed")
 		switch {
 		case errors.Is(err, manifest.ErrInvalidManifestType):
-			jsonhttp.BadRequest(w, "invalid manifest type")
+			jsonhttp.BadRequest(ow, "invalid manifest type")
 		default:
-			jsonhttp.InternalServerError(w, "create manifest failed")
+			jsonhttp.InternalServerError(ow, "create manifest failed")
 		}
 	}
 
@@ -180,11 +222,11 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		logger.Error(nil, "add manifest entry failed")
 		switch {
 		case errors.Is(err, simple.ErrEmptyPath):
-			jsonhttp.NotFound(w, "invalid or empty path")
+			jsonhttp.NotFound(ow, "invalid or empty path")
 		case errors.Is(err, mantaray.ErrEmptyPath):
-			jsonhttp.NotFound(w, "invalid path or mantaray path is empty")
+			jsonhttp.NotFound(ow, "invalid path or mantaray path is empty")
 		default:
-			jsonhttp.InternalServerError(w, "add manifest entry failed")
+			jsonhttp.InternalServerError(ow, "add manifest entry failed")
 		}
 		return
 	}
@@ -194,26 +236,18 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		logger.Error(nil, "store manifest failed")
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):
-			jsonhttp.PaymentRequired(w, "batch is overissued")
+			jsonhttp.PaymentRequired(ow, "batch is overissued")
 		default:
-			jsonhttp.InternalServerError(w, "store manifest failed")
+			jsonhttp.InternalServerError(ow, "store manifest failed")
 		}
 		return
 	}
 
-	if requestPin(r) {
-		if err := s.pinning.CreatePin(r.Context(), ref, false); err != nil {
-			logger.Debug("pin creation failed: %v", "address", ref, "error", err)
-			logger.Error(nil, "pin creation failed")
-			jsonhttp.InternalServerError(w, "creation of pin failed")
-			return
-		}
-	}
-
-	if err = wait(); err != nil {
-		logger.Debug("sync chunks failed", "error", err)
-		logger.Error(nil, "sync chunks failed")
-		jsonhttp.InternalServerError(w, "sync failed")
+	err = putter.Done(ref)
+	if err != nil {
+		logger.Debug("done split failed", "error", err)
+		logger.Error(nil, "done split failed")
+		jsonhttp.InternalServerError(ow, "done split failed")
 		return
 	}
 

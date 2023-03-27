@@ -12,8 +12,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/file/splitter/internal"
 	test "github.com/ethersphere/bee/pkg/file/testing"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/mock"
+	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -22,32 +21,19 @@ var (
 	end   = test.GetVectorCount()
 )
 
-type putWrapper struct {
-	putter func(context.Context, swarm.Chunk) ([]bool, error)
-}
-
-func (p putWrapper) Put(ctx context.Context, ch swarm.Chunk) ([]bool, error) {
-	return p.putter(ctx, ch)
-}
-
 // TestSplitterJobPartialSingleChunk passes sub-chunk length data to the splitter,
 // verifies the correct hash is returned, and that write after Sum/complete Write
 // returns error.
 func TestSplitterJobPartialSingleChunk(t *testing.T) {
 	t.Parallel()
 
-	store := mock.NewStorer()
-	putter := putWrapper{
-		putter: func(ctx context.Context, ch swarm.Chunk) ([]bool, error) {
-			return store.Put(ctx, storage.ModePutUpload, ch)
-		},
-	}
+	store := inmemchunkstore.New()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	data := []byte("foo")
-	j := internal.NewSimpleSplitterJob(ctx, putter, int64(len(data)), false)
+	j := internal.NewSimpleSplitterJob(ctx, store, int64(len(data)), false)
 
 	c, err := j.Write(data)
 	if err != nil {
@@ -88,18 +74,13 @@ func testSplitterJobVector(t *testing.T) {
 	var (
 		paramstring = strings.Split(t.Name(), "/")
 		dataIdx, _  = strconv.ParseInt(paramstring[1], 10, 0)
-		store       = mock.NewStorer()
-		putter      = putWrapper{
-			putter: func(ctx context.Context, ch swarm.Chunk) ([]bool, error) {
-				return store.Put(ctx, storage.ModePutUpload, ch)
-			},
-		}
+		store       = inmemchunkstore.New()
 	)
 
 	data, expect := test.GetVector(t, int(dataIdx))
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	j := internal.NewSimpleSplitterJob(ctx, putter, int64(len(data)), false)
+	j := internal.NewSimpleSplitterJob(ctx, store, int64(len(data)), false)
 
 	for i := 0; i < len(data); i += swarm.ChunkSize {
 		l := swarm.ChunkSize

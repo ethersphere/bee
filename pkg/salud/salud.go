@@ -13,8 +13,8 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/status"
+	"github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	"go.uber.org/atomic"
@@ -46,10 +46,10 @@ type service struct {
 	status        peerStatus
 	metrics       metrics
 	isSelfHealthy *atomic.Bool
-	rs            postage.Radius
+	rs            storer.RadiusChecker
 }
 
-func New(status peerStatus, topology topologyDriver, rs postage.Radius, logger log.Logger, warmup time.Duration, mode string, minPeersPerbin int) *service {
+func New(status peerStatus, topology topologyDriver, rs storer.RadiusChecker, logger log.Logger, warmup time.Duration, mode string, minPeersPerbin int) *service {
 
 	metrics := newMetrics()
 
