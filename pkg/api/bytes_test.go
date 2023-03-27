@@ -17,13 +17,10 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/log"
-	pinning "github.com/ethersphere/bee/pkg/pinning/mock"
 	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/bee/pkg/storage/mock"
+	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/tags"
 	"gitlab.com/nolash/go-mockbytes"
 )
 
@@ -37,15 +34,12 @@ func TestBytes(t *testing.T) {
 	)
 
 	var (
-		storerMock      = mock.NewStorer()
-		pinningMock     = pinning.NewServiceMock()
+		storerMock      = mockstorer.New()
 		logger          = log.Noop
 		client, _, _, _ = newTestServer(t, testServerOptions{
-			Storer:  storerMock,
-			Tags:    tags.NewTags(statestore.NewStateStore(), log.Noop),
-			Pinning: pinningMock,
-			Logger:  logger,
-			Post:    mockpost.New(mockpost.WithAcceptAll()),
+			Storer: storerMock,
+			Logger: logger,
+			Post:   mockpost.New(mockpost.WithAcceptAll()),
 		})
 	)
 
@@ -66,7 +60,7 @@ func TestBytes(t *testing.T) {
 			}),
 		)
 
-		has, err := storerMock.Has(context.Background(), chunkAddr)
+		has, err := storerMock.ChunkStore().Has(context.Background(), chunkAddr)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -74,7 +68,7 @@ func TestBytes(t *testing.T) {
 			t.Fatal("storer check root chunk address: have none; want one")
 		}
 
-		refs, err := pinningMock.Pins()
+		refs, err := storerMock.Pins()
 		if err != nil {
 			t.Fatal("unable to get pinned references")
 		}
@@ -94,7 +88,7 @@ func TestBytes(t *testing.T) {
 		)
 		reference := res.Reference
 
-		has, err := storerMock.Has(context.Background(), reference)
+		has, err := storerMock.ChunkStore().Has(context.Background(), reference)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -102,7 +96,7 @@ func TestBytes(t *testing.T) {
 			t.Fatal("storer check root chunk reference: have none; want one")
 		}
 
-		refs, err := pinningMock.Pins()
+		refs, err := storerMock.Pins()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -163,11 +157,11 @@ func TestBytesInvalidStamp(t *testing.T) {
 	)
 
 	var (
-		storerMock        = mock.NewStorer()
-		pinningMock       = pinning.NewServiceMock()
+		storerMock        = mockstorer.New()
 		logger            = log.Noop
 		retBool           = false
-		retErr      error = nil
+		retErr     error  = nil
+		invalidTag uint64 = 100
 		existsFn          = func(id []byte) (bool, error) {
 			return retBool, retErr
 		}
@@ -179,11 +173,9 @@ func TestBytesInvalidStamp(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Run("upload, batch not found", func(t *testing.T) {
+	t.Run("upload batch not found", func(t *testing.T) {
 		clientBatchNotExists, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:     storerMock,
-			Tags:       tags.NewTags(statestore.NewStateStore(), log.Noop),
-			Pinning:    pinningMock,
 			Logger:     logger,
 			Post:       mockpost.New(),
 			BatchStore: mockbatchstore.New(mockbatchstore.WithExistsFunc(existsFn)),
@@ -196,7 +188,7 @@ func TestBytesInvalidStamp(t *testing.T) {
 			jsonhttptest.WithRequestBody(bytes.NewReader(content)),
 		)
 
-		has, err := storerMock.Has(context.Background(), chunkAddr)
+		has, err := storerMock.ChunkStore().Has(context.Background(), chunkAddr)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -204,7 +196,7 @@ func TestBytesInvalidStamp(t *testing.T) {
 			t.Fatal("storer check root chunk address: have ont; want none")
 		}
 
-		refs, err := pinningMock.Pins()
+		refs, err := storerMock.Pins()
 		if err != nil {
 			t.Fatal("unable to get pinned references")
 		}
@@ -216,11 +208,9 @@ func TestBytesInvalidStamp(t *testing.T) {
 	// throw back an error
 	retErr = errors.New("err happened")
 
-	t.Run("upload, batch exists error", func(t *testing.T) {
+	t.Run("upload batch exists error", func(t *testing.T) {
 		client, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:     storerMock,
-			Tags:       tags.NewTags(statestore.NewStateStore(), log.Noop),
-			Pinning:    pinningMock,
 			Logger:     logger,
 			Post:       mockpost.New(mockpost.WithAcceptAll()),
 			BatchStore: mockbatchstore.New(mockbatchstore.WithExistsFunc(existsFn)),
@@ -233,7 +223,7 @@ func TestBytesInvalidStamp(t *testing.T) {
 			jsonhttptest.WithRequestBody(bytes.NewReader(content)),
 		)
 
-		has, err := storerMock.Has(context.Background(), chunkAddr)
+		has, err := storerMock.ChunkStore().Has(context.Background(), chunkAddr)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -242,11 +232,9 @@ func TestBytesInvalidStamp(t *testing.T) {
 		}
 	})
 
-	t.Run("upload, batch unusable", func(t *testing.T) {
+	t.Run("upload batch unusable", func(t *testing.T) {
 		clientBatchUnusable, _, _, _ := newTestServer(t, testServerOptions{
 			Storer:     storerMock,
-			Tags:       tags.NewTags(statestore.NewStateStore(), log.Noop),
-			Pinning:    pinningMock,
 			Logger:     logger,
 			Post:       mockpost.New(mockpost.WithAcceptAll()),
 			BatchStore: mockbatchstore.New(),
@@ -259,15 +247,14 @@ func TestBytesInvalidStamp(t *testing.T) {
 		)
 	})
 
-	t.Run("upload, invalid tag", func(t *testing.T) {
+	t.Run("upload invalid tag", func(t *testing.T) {
 		clientInvalidTag, _, _, _ := newTestServer(t, testServerOptions{
-			Storer:  storerMock,
-			Pinning: pinningMock,
-			Logger:  logger,
-			Post:    mockpost.New(mockpost.WithAcceptAll()),
+			Storer: storerMock,
+			Logger: logger,
+			Post:   mockpost.New(mockpost.WithAcceptAll()),
 		})
 
-		jsonhttptest.Request(t, clientInvalidTag, http.MethodPost, resource, http.StatusInternalServerError,
+		jsonhttptest.Request(t, clientInvalidTag, http.MethodPost, resource, http.StatusBadRequest,
 			jsonhttptest.WithRequestHeader(api.SwarmTagHeader, "tag"),
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
@@ -275,18 +262,15 @@ func TestBytesInvalidStamp(t *testing.T) {
 		)
 	})
 
-	t.Run("upload, tag not found", func(t *testing.T) {
-		tag := tags.NewTags(statestore.NewStateStore(), log.Noop)
+	t.Run("upload tag not found", func(t *testing.T) {
 		clientTagExists, _, _, _ := newTestServer(t, testServerOptions{
-			Tags:    tag,
-			Storer:  storerMock,
-			Pinning: pinningMock,
-			Logger:  logger,
-			Post:    mockpost.New(mockpost.WithAcceptAll()),
+			Storer: storerMock,
+			Logger: logger,
+			Post:   mockpost.New(mockpost.WithAcceptAll()),
 		})
 
 		jsonhttptest.Request(t, clientTagExists, http.MethodPost, resource, http.StatusNotFound,
-			jsonhttptest.WithRequestHeader(api.SwarmTagHeader, strconv.FormatUint(uint64(tag.TagUidFunc()), 10)),
+			jsonhttptest.WithRequestHeader(api.SwarmTagHeader, strconv.FormatUint(invalidTag, 10)),
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(content)),
@@ -295,7 +279,7 @@ func TestBytesInvalidStamp(t *testing.T) {
 
 }
 
-func Test_bytesUploadHandler_invalidInputs(t *testing.T) {
+func TestBytesUploadHandlerInvalidInputs(t *testing.T) {
 	t.Parallel()
 
 	client, _, _, _ := newTestServer(t, testServerOptions{})
@@ -305,21 +289,32 @@ func Test_bytesUploadHandler_invalidInputs(t *testing.T) {
 		hdrKey string
 		hdrVal string
 		want   jsonhttp.StatusResponse
-	}{{
-		name:   "Content-Type - invalid",
-		hdrKey: "Content-Type",
-		hdrVal: "multipart/form-data",
-		want: jsonhttp.StatusResponse{
-			Code:    http.StatusBadRequest,
-			Message: "invalid header params",
-			Reasons: []jsonhttp.Reason{
-				{
-					Field: "content-type",
-					Error: "want excludes:multipart/form-data",
+	}{
+		{
+			name:   "no stamp",
+			hdrKey: api.SwarmTagHeader,
+			hdrVal: strconv.FormatUint(1, 10),
+			want: jsonhttp.StatusResponse{
+				Code:    http.StatusBadRequest,
+				Message: "invalid header params",
+				Reasons: []jsonhttp.Reason{
+					{
+						Field: "swarm-postage-batch-id",
+						Error: "want required:",
+					},
 				},
 			},
 		},
-	}}
+		{
+			name:   "invalid stamp",
+			hdrKey: api.SwarmPostageBatchIdHeader,
+			hdrVal: batchOkStr,
+			want: jsonhttp.StatusResponse{
+				Code:    http.StatusNotFound,
+				Message: "batch with id not found",
+			},
+		},
+	}
 
 	for _, tc := range tests {
 		tc := tc
@@ -334,7 +329,7 @@ func Test_bytesUploadHandler_invalidInputs(t *testing.T) {
 	}
 }
 
-func Test_bytesGetHandler_invalidInputs(t *testing.T) {
+func TestBytesGetHandlerInvalidInputs(t *testing.T) {
 	t.Parallel()
 
 	client, _, _, _ := newTestServer(t, testServerOptions{})
@@ -384,20 +379,17 @@ func Test_bytesGetHandler_invalidInputs(t *testing.T) {
 }
 
 // TestDirectUploadBytes tests that the direct upload endpoint give correct error message in dev mode
-func TestDirectUploadBytes(t *testing.T) {
+func TestBytesDirectUpload(t *testing.T) {
 	t.Parallel()
 	const (
 		resource = "/bytes"
 	)
 
 	var (
-		storerMock      = mock.NewStorer()
-		pinningMock     = pinning.NewServiceMock()
+		storerMock      = mockstorer.New()
 		logger          = log.Noop
 		client, _, _, _ = newTestServer(t, testServerOptions{
 			Storer:  storerMock,
-			Tags:    tags.NewTags(statestore.NewStateStore(), log.Noop),
-			Pinning: pinningMock,
 			Logger:  logger,
 			Post:    mockpost.New(mockpost.WithAcceptAll()),
 			BeeMode: api.DevMode,

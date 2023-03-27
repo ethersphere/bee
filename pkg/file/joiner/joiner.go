@@ -16,7 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/encryption"
 	"github.com/ethersphere/bee/pkg/encryption/store"
 	"github.com/ethersphere/bee/pkg/file"
-	"github.com/ethersphere/bee/pkg/storage"
+	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"golang.org/x/sync/errgroup"
 )
@@ -36,7 +36,7 @@ type joiner struct {
 func New(ctx context.Context, getter storage.Getter, address swarm.Address) (file.Joiner, int64, error) {
 	getter = store.New(getter)
 	// retrieve the root chunk to read the total data length the be retrieved
-	rootChunk, err := getter.Get(ctx, storage.ModeGetRequest, address)
+	rootChunk, err := getter.Get(ctx, address)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -139,7 +139,7 @@ func (j *joiner) readAtOffset(b, data []byte, cur, subTrieSize, off, bufferOffse
 
 		func(address swarm.Address, b []byte, cur, subTrieSize, off, bufferOffset, bytesToRead, subtrieSpanLimit int64) {
 			eg.Go(func() error {
-				ch, err := j.getter.Get(j.ctx, storage.ModeGetRequest, address)
+				ch, err := j.getter.Get(j.ctx, address)
 				if err != nil {
 					return err
 				}
@@ -273,7 +273,7 @@ func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIter
 			eg.Go(func() error {
 				defer wg.Done()
 
-				ch, err := j.getter.Get(ectx, storage.ModeGetRequest, address)
+				ch, err := j.getter.Get(ectx, address)
 				if err != nil {
 					return err
 				}

@@ -27,7 +27,6 @@ import (
 	"github.com/ethersphere/bee/pkg/hive"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/manifest"
-	"github.com/ethersphere/bee/pkg/netstore"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pricer"
@@ -38,7 +37,7 @@ import (
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/spinlock"
 	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/inmemstore"
+	storer "github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/kademlia"
@@ -181,18 +180,20 @@ func bootstrapNode(
 
 	pricing.SetPaymentThresholdObserver(acc)
 
-	noopValidStamp := func(chunk swarm.Chunk, _ []byte) (swarm.Chunk, error) {
-		return chunk, nil
+	localStore, err := storer.New(ctx, "", &storer.Options{
+		CacheCapacity: 1_000_000,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("local store creation: %w", err)
 	}
+	b.localstoreCloser = localStore
 
-	storer := inmemstore.New()
-
-	retrieve := retrieval.New(swarmAddress, storer, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching, noopValidStamp)
+	retrieve := retrieval.New(swarmAddress, localStore, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching)
 	if err = p2ps.AddProtocol(retrieve.Protocol()); err != nil {
 		return nil, fmt.Errorf("retrieval service: %w", err)
 	}
 
-	ns := netstore.New(storer, noopValidStamp, retrieve, logger)
+	localStore.SetRetrievalService(retrieve)
 
 	if err := kad.Start(p2pCtx); err != nil {
 		return nil, err
@@ -223,7 +224,7 @@ func bootstrapNode(
 		ctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 
-		snapshotReference, err = getLatestSnapshot(ctx, ns, snapshotFeed)
+		snapshotReference, err = getLatestSnapshot(ctx, localStore.Download(true), snapshotFeed)
 		if err != nil {
 			logger.Warning("bootstrap: fetching snapshot failed", "error", err)
 			continue
@@ -242,7 +243,7 @@ func bootstrapNode(
 		ctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 
-		reader, l, err = joiner.New(ctx, ns, snapshotReference)
+		reader, l, err = joiner.New(ctx, localStore.Download(true), snapshotReference)
 		if err != nil {
 			logger.Warning("bootstrap: file joiner failed", "error", err)
 			continue
@@ -295,7 +296,7 @@ func (p *noopPinger) Ping(context.Context, swarm.Address, ...string) (time.Durat
 
 func getLatestSnapshot(
 	ctx context.Context,
-	st storage.Storer,
+	st storage.Getter,
 	address swarm.Address,
 ) (swarm.Address, error) {
 	ls := loadsave.NewReadonly(st)

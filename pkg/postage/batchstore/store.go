@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
 	"math/big"
 	"sync"
 
@@ -37,22 +38,22 @@ type evictFn func(batchID []byte) error
 type store struct {
 	mtx sync.RWMutex
 
-	base  swarm.Address
-	store storage.StateStorer // State store backend to persist batches.
-	cs    *postage.ChainState // the chain state
+	capacity int
+	base     swarm.Address
+	store    storage.StateStorer // State store backend to persist batches.
+	cs       *postage.ChainState // the chain state
 
-	rs      *reserveState // the reserve state
-	evictFn evictFn       // evict function
-	metrics metrics       // metrics
+	radius  uint8
+	evictFn evictFn // evict function
+	metrics metrics // metrics
 	logger  log.Logger
 
-	batchExpiry         postage.BatchExpiryHandler
-	storageRadiusSetter postage.StorageRadiusSetter // setter for radius notifications
+	batchExpiry postage.BatchExpiryHandler
 }
 
 // New constructs a new postage batch store.
 // It initialises both chain state and reserve state from the persistent state store.
-func New(st storage.StateStorer, ev evictFn, addr swarm.Address, logger log.Logger) (postage.Storer, error) {
+func New(st storage.StateStorer, ev evictFn, addr swarm.Address, capacity int, logger log.Logger) (postage.Storer, error) {
 	cs := &postage.ChainState{}
 	err := st.Get(chainStateKey, cs)
 	if err != nil {
@@ -65,86 +66,31 @@ func New(st storage.StateStorer, ev evictFn, addr swarm.Address, logger log.Logg
 			CurrentPrice: big.NewInt(0),
 		}
 	}
-	rs := &reserveState{}
-	err = st.Get(reserveStateKey, rs)
+	var radius uint8
+	err = st.Get(reserveStateKey, &radius)
 	if err != nil {
 		if !errors.Is(err, storage.ErrNotFound) {
 			return nil, err
 		}
-		rs = &reserveState{
-			Radius:        0,
-			StorageRadius: 0,
-		}
 	}
 
 	s := &store{
-		base:    addr,
-		store:   st,
-		cs:      cs,
-		rs:      rs,
-		evictFn: ev,
-		metrics: newMetrics(),
-		logger:  logger.WithName(loggerName).Register(),
+		base:     addr,
+		capacity: capacity,
+		store:    st,
+		cs:       cs,
+		radius:   radius,
+		evictFn:  ev,
+		metrics:  newMetrics(),
+		logger:   logger.WithName(loggerName).Register(),
 	}
 	return s, nil
 }
 
-func (s *store) GetReserveState() *postage.ReserveState {
-
+func (s *store) Radius() uint8 {
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
-
-	return &postage.ReserveState{
-		Radius:        s.rs.Radius,
-		StorageRadius: s.rs.StorageRadius,
-	}
-}
-
-func (s *store) IsWithinStorageRadius(addr swarm.Address) bool {
-
-	s.mtx.RLock()
-	defer s.mtx.RUnlock()
-
-	po := swarm.Proximity(addr.Bytes(), s.base.Bytes())
-	return po >= s.rs.StorageRadius
-}
-
-func (s *store) StorageRadius() uint8 {
-	s.mtx.RLock()
-	defer s.mtx.RUnlock()
-
-	return s.rs.StorageRadius
-}
-
-func (s *store) SetStorageRadius(f func(uint8) uint8) error {
-
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-
-	oldRadius := s.rs.StorageRadius
-	newRadius := f(oldRadius)
-
-	if newRadius > s.rs.Radius {
-		return ErrStorageRadiusExceeds
-	}
-
-	if newRadius != oldRadius {
-		s.rs.StorageRadius = newRadius
-
-		if s.storageRadiusSetter != nil {
-			s.storageRadiusSetter.SetStorageRadius(newRadius)
-		}
-
-		s.metrics.StorageRadius.Set(float64(newRadius))
-
-		if err := s.setBatchStorageRadius(); err != nil {
-			s.logger.Error(err, "batchstore: set batch storage radius")
-		}
-
-		return s.store.Put(reserveStateKey, s.rs)
-	}
-
-	return nil
+	return s.radius
 }
 
 func (s *store) GetChainState() *postage.ChainState {
@@ -207,7 +153,6 @@ func (s *store) Save(batch *postage.Batch) error {
 
 	switch err := s.store.Get(batchKey(batch.ID), new(postage.Batch)); {
 	case errors.Is(err, storage.ErrNotFound):
-		batch.StorageRadius = s.rs.StorageRadius
 		if err := s.store.Put(batchKey(batch.ID), batch); err != nil {
 			return err
 		}
@@ -216,14 +161,9 @@ func (s *store) Save(batch *postage.Batch) error {
 			return err
 		}
 
-		if s.storageRadiusSetter != nil {
-			s.storageRadiusSetter.SetStorageRadius(s.rs.StorageRadius)
-		}
+		s.metrics.Radius.Set(float64(s.radius))
 
-		s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
-		s.metrics.Radius.Set(float64(s.rs.Radius))
-
-		s.logger.Debug("batch saved", "batch_id", hex.EncodeToString(batch.ID), "batch_depth", batch.Depth, "batch_value", batch.Value.Int64(), "reserve_state_radius", s.rs.Radius, "reserve_state_storage_radius", s.rs.StorageRadius)
+		s.logger.Debug("batch saved", "batch_id", hex.EncodeToString(batch.ID), "batch_depth", batch.Depth, "batch_value", batch.Value.Int64(), "reserve_state_radius", s.radius)
 
 		return nil
 	case err != nil:
@@ -257,7 +197,6 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 
 	batch.Value.Set(value)
 	batch.Depth = depth
-	batch.StorageRadius = oldBatch.StorageRadius
 
 	err := s.store.Put(batchKey(batch.ID), batch)
 	if err != nil {
@@ -269,12 +208,7 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 		return err
 	}
 
-	if s.storageRadiusSetter != nil {
-		s.storageRadiusSetter.SetStorageRadius(s.rs.StorageRadius)
-	}
-
-	s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
-	s.metrics.Radius.Set(float64(s.rs.Radius))
+	s.metrics.Radius.Set(float64(s.radius))
 
 	return nil
 }
@@ -301,19 +235,9 @@ func (s *store) PutChainState(cs *postage.ChainState) error {
 		return fmt.Errorf("batchstore: put chain state adjust radius: %w", err)
 	}
 
-	if s.storageRadiusSetter != nil {
-		s.storageRadiusSetter.SetStorageRadius(s.rs.StorageRadius)
-	}
-
-	s.metrics.StorageRadius.Set(float64(s.rs.StorageRadius))
-	s.metrics.Radius.Set(float64(s.rs.Radius))
+	s.metrics.Radius.Set(float64(s.radius))
 
 	return s.store.Put(chainStateKey, cs)
-}
-
-// SetRadiusSetter is implementation of postage.Storer interface SetRadiusSetter method.
-func (s *store) SetStorageRadiusSetter(r postage.StorageRadiusSetter) {
-	s.storageRadiusSetter = r
 }
 
 // Reset is implementation of postage.Storer interface Reset method.
@@ -335,11 +259,119 @@ func (s *store) Reset() error {
 		CurrentPrice: big.NewInt(0),
 	}
 
-	s.rs = &reserveState{
-		Radius: 0,
+	s.radius = 0
+
+	return nil
+}
+
+// saveBatch adds a new batch to the batchstore by creating a new value item, cleaning up
+// expired batches, and computing a new radius.
+// Must be called under lock.
+func (s *store) saveBatch(b *postage.Batch) error {
+
+	if err := s.store.Put(valueKey(b.Value, b.ID), nil); err != nil {
+		return fmt.Errorf("batchstore: allocate batch %x: %w", b.ID, err)
+	}
+
+	err := s.cleanup()
+	if err != nil {
+		return fmt.Errorf("batchstore: allocate batch cleanup %x: %w", b.ID, err)
+	}
+
+	err = s.computeRadius()
+	if err != nil {
+		return fmt.Errorf("batchstore: allocate batch adjust radius %x: %w", b.ID, err)
 	}
 
 	return nil
+}
+
+// cleanup evicts and removes expired batch.
+// Must be called under lock.
+func (s *store) cleanup() error {
+
+	var evictions []*postage.Batch
+
+	err := s.store.Iterate(valueKeyPrefix, func(key, value []byte) (stop bool, err error) {
+
+		b, err := s.get(valueKeyToID(key))
+		if err != nil {
+			return false, err
+		}
+
+		// batches whose balance is below the total cumulative payout
+		if b.Value.Cmp(s.cs.TotalAmount) <= 0 {
+			evictions = append(evictions, b)
+		} else {
+			return true, nil // stop early as an optimization at first value above the total cumulative payout
+		}
+
+		return false, nil
+	})
+	if err != nil {
+		return err
+	}
+
+	for _, b := range evictions {
+		err := s.evictFn(b.ID)
+		if err != nil {
+			return fmt.Errorf("evict batch %x: %w", b.ID, err)
+		}
+		err = s.store.Delete(valueKey(b.Value, b.ID))
+		if err != nil {
+			return fmt.Errorf("delete value key for batch %x: %w", b.ID, err)
+		}
+		err = s.store.Delete(batchKey(b.ID))
+		if err != nil {
+			return fmt.Errorf("delete batch %x: %w", b.ID, err)
+		}
+		if s.batchExpiry != nil {
+			s.batchExpiry.HandleStampExpiry(b.ID)
+		}
+	}
+
+	return nil
+}
+
+// computeRadius calculates the radius by using the sum of all batch depths
+// and the node capacity using the formula totalCommitment/node_capacity = 2^R.
+// Must be called under lock.
+func (s *store) computeRadius() error {
+
+	var totalCommitment int
+
+	err := s.store.Iterate(batchKeyPrefix, func(key, value []byte) (bool, error) {
+
+		b := &postage.Batch{}
+		if err := b.UnmarshalBinary(value); err != nil {
+			return false, err
+		}
+
+		totalCommitment += exp2(uint(b.Depth))
+
+		return false, nil
+	})
+	if err != nil {
+		return err
+	}
+
+	s.metrics.Commitment.Set(float64(totalCommitment))
+
+	// edge case where the sum of all batches is below the node capacity.
+	if totalCommitment <= s.capacity {
+		s.radius = 0
+	} else {
+		// totalCommitment/node_capacity = 2^R
+		// log2(totalCommitment/node_capacity) = R
+		s.radius = uint8(math.Ceil(math.Log2(float64(totalCommitment) / float64(s.capacity))))
+	}
+
+	return s.store.Put(reserveStateKey, &s.radius)
+}
+
+// exp2 returns the e-th power of 2
+func exp2(e uint) int {
+	return 1 << e
 }
 
 // batchKey returns the index key for the batch ID used in the by-ID batch index.

@@ -15,20 +15,19 @@ import (
 	"time"
 
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
-	"github.com/ethersphere/bee/pkg/p2p"
-	"github.com/ethersphere/bee/pkg/spinlock"
-	"github.com/ethersphere/bee/pkg/topology"
-
 	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
 	pricermock "github.com/ethersphere/bee/pkg/pricer/mock"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	pb "github.com/ethersphere/bee/pkg/retrieval/pb"
-	"github.com/ethersphere/bee/pkg/storage"
-	storemock "github.com/ethersphere/bee/pkg/storage/mock"
+	"github.com/ethersphere/bee/pkg/spinlock"
+	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/topology"
 
 	topologymock "github.com/ethersphere/bee/pkg/topology/mock"
 )
@@ -38,6 +37,14 @@ var (
 	defaultPrice = uint64(10)
 )
 
+type testStorer struct {
+	storage.ChunkStore
+}
+
+func (t *testStorer) Lookup() storage.Getter { return t.ChunkStore }
+
+func (t *testStorer) Cache() storage.Putter { return t.ChunkStore }
+
 // TestDelivery tests that a naive request -> delivery flow works.
 func TestDelivery(t *testing.T) {
 	t.Parallel()
@@ -45,7 +52,7 @@ func TestDelivery(t *testing.T) {
 	var (
 		chunk                = testingc.FixtureChunk("0033")
 		logger               = log.Noop
-		mockStorer           = storemock.NewStorer()
+		mockStorer           = &testStorer{ChunkStore: inmemchunkstore.New()}
 		clientMockAccounting = accountingmock.NewAccounting()
 		serverMockAccounting = accountingmock.NewAccounting()
 		clientAddr           = swarm.MustParseHexAddress("9ee7add8")
@@ -53,19 +60,24 @@ func TestDelivery(t *testing.T) {
 
 		pricerMock = pricermock.NewMockService(defaultPrice, defaultPrice)
 	)
-	stamp, err := chunk.Stamp().MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	// put testdata in the mock store of the server
-	_, err = mockStorer.Put(context.Background(), storage.ModePutUpload, chunk)
+	err := mockStorer.Put(context.Background(), chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// create the server that will handle the request and will serve the response
-	server := retrieval.New(swarm.MustParseHexAddress("0034"), mockStorer, nil, nil, logger, serverMockAccounting, pricerMock, nil, false, noopStampValidator)
+	server := retrieval.New(
+		swarm.MustParseHexAddress("0034"),
+		mockStorer,
+		nil, nil,
+		logger,
+		serverMockAccounting,
+		pricerMock,
+		nil,
+		false,
+	)
 	recorder := streamtest.New(
 		streamtest.WithProtocols(server.Protocol()),
 		streamtest.WithBaseAddr(clientAddr),
@@ -75,11 +87,21 @@ func TestDelivery(t *testing.T) {
 	// but should be checked at at the end of the test for the
 	// presence of the chunk address key and value to ensure delivery
 	// was successful
-	clientMockStorer := storemock.NewStorer()
+	clientMockStorer := &testStorer{ChunkStore: inmemchunkstore.New()}
 
 	mt := topologymock.NewTopologyDriver(topologymock.WithClosestPeer(serverAddr))
 
-	client := retrieval.New(clientAddr, clientMockStorer, recorder, mt, logger, clientMockAccounting, pricerMock, nil, false, noopStampValidator)
+	client := retrieval.New(
+		clientAddr,
+		clientMockStorer,
+		recorder,
+		mt,
+		logger,
+		clientMockAccounting,
+		pricerMock,
+		nil,
+		false,
+	)
 	ctx, cancel := context.WithTimeout(context.Background(), testTimeout)
 	defer cancel()
 	v, err := client.RetrieveChunk(ctx, chunk.Address(), swarm.ZeroAddress)
@@ -89,14 +111,7 @@ func TestDelivery(t *testing.T) {
 	if !bytes.Equal(v.Data(), chunk.Data()) {
 		t.Fatalf("request and response data not equal. got %s want %s", v, chunk.Data())
 	}
-	vstamp, err := v.Stamp().MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(vstamp, stamp) {
-		t.Fatal("stamp mismatch")
-	}
-	records, err := recorder.Records(serverAddr, "retrieval", "1.2.0", "retrieval")
+	records, err := recorder.Records(serverAddr, "retrieval", "1.3.0", "retrieval")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,34 +173,29 @@ func TestWaitForInflight(t *testing.T) {
 		logger     = log.Noop
 		pricerMock = pricermock.NewMockService(defaultPrice, defaultPrice)
 
-		badMockStorer           = storemock.NewStorer()
+		badMockStorer           = &testStorer{ChunkStore: inmemchunkstore.New()}
 		badServerMockAccounting = accountingmock.NewAccounting()
 		badServerAddr           = swarm.MustParseHexAddress("6000000000000000000000000000000000000000000000000000000000000000")
 
-		mockStorer           = storemock.NewStorer()
+		mockStorer           = &testStorer{ChunkStore: inmemchunkstore.New()}
 		serverMockAccounting = accountingmock.NewAccounting()
 		serverAddr           = swarm.MustParseHexAddress("5000000000000000000000000000000000000000000000000000000000000000")
 
-		clientMockStorer     = storemock.NewStorer()
+		clientMockStorer     = &testStorer{ChunkStore: inmemchunkstore.New()}
 		clientMockAccounting = accountingmock.NewAccounting()
 		clientAddr           = swarm.MustParseHexAddress("9ee7add8")
 	)
 
-	stamp, err := chunk.Stamp().MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-
 	// put testdata in the mock store of the server
-	_, err = mockStorer.Put(context.Background(), storage.ModePutSync, chunk)
+	err := mockStorer.Put(context.Background(), chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// create the server that will handle the request and will serve the response
-	server := retrieval.New(serverAddr, mockStorer, nil, nil, logger, serverMockAccounting, pricerMock, nil, false, noopStampValidator)
+	server := retrieval.New(serverAddr, mockStorer, nil, nil, logger, serverMockAccounting, pricerMock, nil, false)
 
-	badServer := retrieval.New(badServerAddr, badMockStorer, nil, nil, logger, badServerMockAccounting, pricerMock, nil, false, noopStampValidator)
+	badServer := retrieval.New(badServerAddr, badMockStorer, nil, nil, logger, badServerMockAccounting, pricerMock, nil, false)
 
 	var fail = true
 	var lock sync.Mutex
@@ -218,7 +228,7 @@ func TestWaitForInflight(t *testing.T) {
 
 	mt := topologymock.NewTopologyDriver(topologymock.WithPeers(badServerAddr, serverAddr))
 
-	client := retrieval.New(clientAddr, clientMockStorer, recorder, mt, logger, clientMockAccounting, pricerMock, nil, false, noopStampValidator)
+	client := retrieval.New(clientAddr, clientMockStorer, recorder, mt, logger, clientMockAccounting, pricerMock, nil, false)
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Minute*30)
 	defer cancel()
@@ -230,15 +240,6 @@ func TestWaitForInflight(t *testing.T) {
 
 	if !bytes.Equal(v.Data(), chunk.Data()) {
 		t.Fatalf("request and response data not equal. got %s want %s", v, chunk.Data())
-	}
-
-	vstamp, err := v.Stamp().MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if !bytes.Equal(vstamp, stamp) {
-		t.Fatal("stamp mismatch")
 	}
 }
 
@@ -258,18 +259,18 @@ func TestRetrieveChunk(t *testing.T) {
 		clientAddress := swarm.MustParseHexAddress("01")
 		chunk := testingc.FixtureChunk("02c2")
 
-		serverStorer := storemock.NewStorer()
-		_, err := serverStorer.Put(context.Background(), storage.ModePutUpload, chunk)
+		serverStorer := &testStorer{ChunkStore: inmemchunkstore.New()}
+		err := serverStorer.Put(context.Background(), chunk)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		server := retrieval.New(serverAddress, serverStorer, nil, nil, logger, accountingmock.NewAccounting(), pricer, nil, false, noopStampValidator)
+		server := retrieval.New(serverAddress, serverStorer, nil, nil, logger, accountingmock.NewAccounting(), pricer, nil, false)
 		recorder := streamtest.New(streamtest.WithProtocols(server.Protocol()))
 
 		mt := topologymock.NewTopologyDriver(topologymock.WithClosestPeer(serverAddress))
 
-		client := retrieval.New(clientAddress, nil, recorder, mt, logger, accountingmock.NewAccounting(), pricer, nil, false, noopStampValidator)
+		client := retrieval.New(clientAddress, nil, recorder, mt, logger, accountingmock.NewAccounting(), pricer, nil, false)
 
 		got, err := client.RetrieveChunk(context.Background(), chunk.Address(), swarm.ZeroAddress)
 		if err != nil {
@@ -289,8 +290,8 @@ func TestRetrieveChunk(t *testing.T) {
 		forwarderAddress := swarm.MustParseHexAddress("0200000000000000000000000000000000000000000000000000000000000000")
 		clientAddress := swarm.MustParseHexAddress("030000000000000000000000000000000000000000000000000000000000000000")
 
-		serverStorer := storemock.NewStorer()
-		_, err := serverStorer.Put(context.Background(), storage.ModePutUpload, chunk)
+		serverStorer := &testStorer{ChunkStore: inmemchunkstore.New()}
+		err := serverStorer.Put(context.Background(), chunk)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -305,10 +306,9 @@ func TestRetrieveChunk(t *testing.T) {
 			pricer,
 			nil,
 			false,
-			noopStampValidator,
 		)
 
-		forwarderStore := storemock.NewStorer()
+		forwarderStore := &testStorer{ChunkStore: inmemchunkstore.New()}
 
 		forwarder := retrieval.New(
 			forwarderAddress,
@@ -320,12 +320,11 @@ func TestRetrieveChunk(t *testing.T) {
 			pricer,
 			nil,
 			true, // note explicit caching
-			noopStampValidator,
 		)
 
 		client := retrieval.New(
 			clientAddress,
-			storemock.NewStorer(), // no chunk in clients's store
+			&testStorer{ChunkStore: inmemchunkstore.New()},                 // no chunk in clients's store
 			streamtest.New(streamtest.WithProtocols(forwarder.Protocol())), // connect to forwarder
 			topologymock.NewTopologyDriver(topologymock.WithClosestPeer(forwarderAddress)),
 			logger,
@@ -333,7 +332,6 @@ func TestRetrieveChunk(t *testing.T) {
 			pricer,
 			nil,
 			false,
-			noopStampValidator,
 		)
 
 		if got, _ := forwarderStore.Has(context.Background(), chunk.Address()); got {
@@ -377,16 +375,16 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 		serverAddress2,
 	}
 
-	serverStorer1 := storemock.NewStorer()
-	serverStorer2 := storemock.NewStorer()
+	serverStorer1 := &testStorer{ChunkStore: inmemchunkstore.New()}
+	serverStorer2 := &testStorer{ChunkStore: inmemchunkstore.New()}
 
 	// we put some other chunk on server 1
-	_, err := serverStorer1.Put(context.Background(), storage.ModePutUpload, someOtherChunk)
+	err := serverStorer1.Put(context.Background(), someOtherChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
 	// we put chunk we need on server 2
-	_, err = serverStorer2.Put(context.Background(), storage.ModePutUpload, chunk)
+	err = serverStorer2.Put(context.Background(), chunk)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -394,8 +392,8 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 	noClosestPeer := topologymock.NewTopologyDriver()
 	closetPeers := topologymock.NewTopologyDriver(topologymock.WithPeers(peers...))
 
-	server1 := retrieval.New(serverAddress1, serverStorer1, nil, noClosestPeer, logger, accountingmock.NewAccounting(), pricerMock, nil, false, noopStampValidator)
-	server2 := retrieval.New(serverAddress2, serverStorer2, nil, noClosestPeer, logger, accountingmock.NewAccounting(), pricerMock, nil, false, noopStampValidator)
+	server1 := retrieval.New(serverAddress1, serverStorer1, nil, noClosestPeer, logger, accountingmock.NewAccounting(), pricerMock, nil, false)
+	server2 := retrieval.New(serverAddress2, serverStorer2, nil, noClosestPeer, logger, accountingmock.NewAccounting(), pricerMock, nil, false)
 
 	t.Run("peer not reachable", func(t *testing.T) {
 		t.Parallel()
@@ -425,7 +423,7 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 			streamtest.WithBaseAddr(clientAddress),
 		)
 
-		client := retrieval.New(clientAddress, nil, recorder, closetPeers, logger, accountingmock.NewAccounting(), pricerMock, nil, false, noopStampValidator)
+		client := retrieval.New(clientAddress, nil, recorder, closetPeers, logger, accountingmock.NewAccounting(), pricerMock, nil, false)
 
 		got, err := client.RetrieveChunk(context.Background(), chunk.Address(), swarm.ZeroAddress)
 		if err != nil {
@@ -463,7 +461,7 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 			),
 		)
 
-		client := retrieval.New(clientAddress, nil, recorder, closetPeers, logger, accountingmock.NewAccounting(), pricerMock, nil, false, noopStampValidator)
+		client := retrieval.New(clientAddress, nil, recorder, closetPeers, logger, accountingmock.NewAccounting(), pricerMock, nil, false)
 
 		got, err := client.RetrieveChunk(context.Background(), chunk.Address(), swarm.ZeroAddress)
 		if err != nil {
@@ -478,15 +476,15 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 	t.Run("one peer is slower", func(t *testing.T) {
 		t.Parallel()
 
-		serverStorer1 := storemock.NewStorer()
-		serverStorer2 := storemock.NewStorer()
+		serverStorer1 := &testStorer{ChunkStore: inmemchunkstore.New()}
+		serverStorer2 := &testStorer{ChunkStore: inmemchunkstore.New()}
 
 		// both peers have required chunk
-		_, err := serverStorer1.Put(context.Background(), storage.ModePutUpload, chunk)
+		err := serverStorer1.Put(context.Background(), chunk)
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = serverStorer2.Put(context.Background(), storage.ModePutUpload, chunk)
+		err = serverStorer2.Put(context.Background(), chunk)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -494,8 +492,8 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 		server1MockAccounting := accountingmock.NewAccounting()
 		server2MockAccounting := accountingmock.NewAccounting()
 
-		server1 := retrieval.New(serverAddress1, serverStorer1, nil, noClosestPeer, logger, server1MockAccounting, pricerMock, nil, false, noopStampValidator)
-		server2 := retrieval.New(serverAddress2, serverStorer2, nil, noClosestPeer, logger, server2MockAccounting, pricerMock, nil, false, noopStampValidator)
+		server1 := retrieval.New(serverAddress1, serverStorer1, nil, noClosestPeer, logger, server1MockAccounting, pricerMock, nil, false)
+		server2 := retrieval.New(serverAddress2, serverStorer2, nil, noClosestPeer, logger, server2MockAccounting, pricerMock, nil, false)
 
 		// NOTE: must be more than retry duration
 		// (here one second more)
@@ -530,7 +528,7 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 
 		clientMockAccounting := accountingmock.NewAccounting()
 
-		client := retrieval.New(clientAddress, nil, recorder, closetPeers, logger, clientMockAccounting, pricerMock, nil, false, noopStampValidator)
+		client := retrieval.New(clientAddress, nil, recorder, closetPeers, logger, clientMockAccounting, pricerMock, nil, false)
 
 		got, err := client.RetrieveChunk(context.Background(), chunk.Address(), swarm.ZeroAddress)
 		if err != nil {
@@ -570,21 +568,41 @@ func TestRetrievePreemptiveRetry(t *testing.T) {
 		t.Parallel()
 
 		// server 2 has the chunk
-		server2 := retrieval.New(serverAddress2, serverStorer2, nil, noClosestPeer, logger, accountingmock.NewAccounting(), pricerMock, nil, false, noopStampValidator)
+		server2 := retrieval.New(serverAddress2, serverStorer2, nil, noClosestPeer, logger, accountingmock.NewAccounting(), pricerMock, nil, false)
 
 		server1Recorder := streamtest.New(
 			streamtest.WithProtocols(server2.Protocol()),
 		)
 
 		// server 1 will forward request to server 2
-		server1 := retrieval.New(serverAddress1, serverStorer1, server1Recorder, topologymock.NewTopologyDriver(topologymock.WithPeers(serverAddress2)), logger, accountingmock.NewAccounting(), pricerMock, nil, true, noopStampValidator)
+		server1 := retrieval.New(
+			serverAddress1,
+			serverStorer1,
+			server1Recorder,
+			topologymock.NewTopologyDriver(topologymock.WithPeers(serverAddress2)),
+			logger,
+			accountingmock.NewAccounting(),
+			pricerMock,
+			nil,
+			true,
+		)
 
 		clientRecorder := streamtest.New(
 			streamtest.WithProtocols(server1.Protocol()),
 		)
 
 		// client only knows about server 1
-		client := retrieval.New(clientAddress, nil, clientRecorder, topologymock.NewTopologyDriver(topologymock.WithPeers(serverAddress1)), logger, accountingmock.NewAccounting(), pricerMock, nil, false, noopStampValidator)
+		client := retrieval.New(
+			clientAddress,
+			nil,
+			clientRecorder,
+			topologymock.NewTopologyDriver(topologymock.WithPeers(serverAddress1)),
+			logger,
+			accountingmock.NewAccounting(),
+			pricerMock,
+			nil,
+			false,
+		)
 
 		if got, _ := serverStorer1.Has(context.Background(), chunk.Address()); got {
 			t.Fatalf("forwarder node already has chunk")
@@ -617,7 +635,7 @@ func TestClosestPeer(t *testing.T) {
 	addr2 := swarm.MustParseHexAddress("0300000000000000000000000000000000000000000000000000000000000000")
 	addr3 := swarm.MustParseHexAddress("0400000000000000000000000000000000000000000000000000000000000000")
 
-	ret := retrieval.New(srvAd, nil, nil, topologymock.NewTopologyDriver(topologymock.WithPeers(addr1, addr2, addr3)), log.Noop, nil, nil, nil, false, nil)
+	ret := retrieval.New(srvAd, nil, nil, topologymock.NewTopologyDriver(topologymock.WithPeers(addr1, addr2, addr3)), log.Noop, nil, nil, nil, false)
 
 	t.Run("closest", func(t *testing.T) {
 		t.Parallel()
@@ -651,8 +669,4 @@ func TestClosestPeer(t *testing.T) {
 			t.Fatal("closest peer", err)
 		}
 	})
-}
-
-var noopStampValidator = func(chunk swarm.Chunk, stampBytes []byte) (swarm.Chunk, error) {
-	return chunk, nil
 }
