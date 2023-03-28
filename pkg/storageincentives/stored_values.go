@@ -23,40 +23,34 @@ type Sample struct {
 }
 
 func saveSample(store storage.StateStorer, sample Sample, round uint64) error {
-	key := sampleStorageKey(round)
-	return store.Put(key, sample)
+	return store.Put(sampleStorageKey(round), sample)
 }
 
 func getSample(store storage.StateStorer, round uint64) (Sample, error) {
-	key := sampleStorageKey(round)
-	sample := &Sample{}
-	err := store.Get(key, sample)
+	sample := Sample{}
+	err := store.Get(sampleStorageKey(round), &sample)
 
-	return *sample, err
+	return sample, err
 }
 
 func saveCommitKey(store storage.StateStorer, commitKey []byte, round uint64) error {
-	key := commitKeyStorageKey(round)
-	return store.Put(key, commitKey)
+	return store.Put(commitKeyStorageKey(round), commitKey)
 }
 
 func getCommitKey(store storage.StateStorer, round uint64) ([]byte, error) {
-	key := commitKeyStorageKey(round)
 	commitKey := make([]byte, swarm.HashSize)
-	err := store.Get(key, &commitKey)
+	err := store.Get(commitKeyStorageKey(round), &commitKey)
 
 	return commitKey, err
 }
 
 func saveRevealRound(store storage.StateStorer, round uint64) error {
-	key := revealRoundStorageKey(round)
-	return store.Put(key, true)
+	return store.Put(revealRoundStorageKey(round), true)
 }
 
 func getRevealRound(store storage.StateStorer, round uint64) error {
-	key := revealRoundStorageKey(round)
 	value := false
-	err := store.Get(key, &value)
+	err := store.Get(revealRoundStorageKey(round), &value)
 
 	return err
 }
