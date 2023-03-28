@@ -4,4 +4,12 @@
 
 package storageincentives
 
-var NewEvents = newEvents
+var (
+	NewEvents       = newEvents
+	SaveSample      = saveSample
+	GetSample       = getSample
+	SaveCommitKey   = saveCommitKey
+	GetCommitKey    = getCommitKey
+	SaveRevealRound = saveRevealRound
+	GetRevealRound  = getRevealRound
+)
