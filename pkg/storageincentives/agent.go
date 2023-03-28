@@ -54,6 +54,11 @@ type Monitor interface {
 	IsFullySynced() bool
 }
 
+type sampleData struct {
+	ReserveSample storage.Sample
+	StorageRadius uint8
+}
+
 type Agent struct {
 	logger                 log.Logger
 	metrics                metrics
@@ -295,7 +300,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	}
 }
 
-func (a *Agent) reveal(ctx context.Context, sample Sample, obfuscationKey []byte, round uint64) error {
+func (a *Agent) reveal(ctx context.Context, sample sampleData, obfuscationKey []byte, round uint64) error {
 	a.metrics.RevealPhase.Inc()
 	sampleBytes := sample.ReserveSample.Hash.Bytes()
 	txHash, err := a.contract.Reveal(ctx, sample.StorageRadius, sampleBytes, obfuscationKey)
@@ -306,7 +311,7 @@ func (a *Agent) reveal(ctx context.Context, sample Sample, obfuscationKey []byte
 	a.state.AddFee(ctx, txHash)
 
 	if err := saveRevealRound(a.state.stateStore, round); err != nil {
-		return err
+		return fmt.Errorf("failed to save reveal round: %w", err)
 	}
 
 	return nil
@@ -407,31 +412,31 @@ func (a *Agent) play(ctx context.Context, round uint64) (bool, error) {
 
 	err = saveSample(a.state.stateStore, sample, round)
 	if err != nil {
-		return false, err
+		return false, fmt.Errorf("failed to save sample: %w", err)
 	}
 
 	return true, nil
 }
 
-func (a *Agent) makeSample(ctx context.Context, round uint64, storageRadius uint8) (Sample, error) {
+func (a *Agent) makeSample(ctx context.Context, round uint64, storageRadius uint8) (sampleData, error) {
 	salt, err := a.contract.ReserveSalt(ctx)
 	if err != nil {
-		return Sample{}, err
+		return sampleData{}, err
 	}
 
 	timeLimiter, err := a.getPreviousRoundTime(ctx)
 	if err != nil {
-		return Sample{}, err
+		return sampleData{}, err
 	}
 
 	t := time.Now()
 	rSample, err := a.sampler.ReserveSample(ctx, salt, storageRadius, uint64(timeLimiter))
 	if err != nil {
-		return Sample{}, err
+		return sampleData{}, err
 	}
 	a.metrics.SampleDuration.Set(time.Since(t).Seconds())
 
-	sample := Sample{
+	sample := sampleData{
 		ReserveSample: rSample,
 		StorageRadius: storageRadius,
 	}
@@ -460,7 +465,7 @@ func (a *Agent) getPreviousRoundTime(ctx context.Context) (time.Duration, error)
 	return time.Duration(timeLimiterBlock.Time) * time.Second / time.Nanosecond, nil
 }
 
-func (a *Agent) commit(ctx context.Context, sample Sample, round uint64) error {
+func (a *Agent) commit(ctx context.Context, sample sampleData, round uint64) error {
 	a.metrics.CommitPhase.Inc()
 
 	key := make([]byte, swarm.HashSize)
@@ -483,7 +488,7 @@ func (a *Agent) commit(ctx context.Context, sample Sample, round uint64) error {
 
 	err = saveCommitKey(a.state.stateStore, key, round)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to save commit key: %w", err)
 	}
 
 	return nil

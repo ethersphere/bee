@@ -17,17 +17,12 @@ const (
 	revealRoundStorageKeyPrefix = "storage_incentives_reveal_round_"
 )
 
-type Sample struct {
-	ReserveSample storage.Sample
-	StorageRadius uint8
-}
-
-func saveSample(store storage.StateStorer, sample Sample, round uint64) error {
+func saveSample(store storage.StateStorer, sample sampleData, round uint64) error {
 	return store.Put(sampleStorageKey(round), sample)
 }
 
-func getSample(store storage.StateStorer, round uint64) (Sample, error) {
-	sample := Sample{}
+func getSample(store storage.StateStorer, round uint64) (sampleData, error) {
+	sample := sampleData{}
 	err := store.Get(sampleStorageKey(round), &sample)
 
 	return sample, err

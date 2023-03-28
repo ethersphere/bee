@@ -13,3 +13,7 @@ var (
 	SaveRevealRound = saveRevealRound
 	GetRevealRound  = getRevealRound
 )
+
+type (
+	SampleData = sampleData
+)

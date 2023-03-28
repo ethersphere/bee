@@ -27,7 +27,7 @@ func TestStorage_Sample(t *testing.T) {
 		t.Error("expected error")
 	}
 
-	savedSample := storageincentives.Sample{
+	savedSample := storageincentives.SampleData{
 		ReserveSample: storage.Sample{
 			Hash: swarm.RandAddress(t),
 		},
