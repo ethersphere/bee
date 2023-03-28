@@ -392,7 +392,7 @@ func (a *Agent) play(ctx context.Context, round uint64) (bool, error) {
 	hasFunds, err := a.HasEnoughFundsToPlay(ctx)
 	if err != nil {
 		a.logger.Error(err, "agent HasEnoughFundsToPlay failed")
-		return false, nil
+		return false, err
 	}
 
 	if !hasFunds {
