@@ -958,7 +958,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 	)
 
 	if o.FullNodeMode && !o.BootnodeMode {
-		pullerService = puller.New(stateStore, kad, batchStore, pullSyncProtocol, p2ps, logger, puller.Options{SyncSleepDur: puller.DefaultSyncErrorSleepDur}, warmupTime)
+		pullerService = puller.New(stateStore, kad, batchStore, pullSyncProtocol, p2ps, logger, puller.Options{SyncSleepDur: puller.DefaultSyncErrorSleepDur, ShallowBinsWarmupDur: puller.DefaultShallowBinsWarmupDur}, warmupTime)
 		b.pullerCloser = pullerService
 
 		depthMonitor := depthmonitor.New(kad, pullSyncProtocol, storer, batchStore, logger, warmupTime, depthmonitor.DefaultWakeupInterval, !batchStoreExists)
