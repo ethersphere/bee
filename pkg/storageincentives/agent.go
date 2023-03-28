@@ -116,8 +116,8 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	defer a.wg.Done()
 
 	var (
-		currRound   atomic.Uint64
-		phaseEvents = newEvents()
+		currentRound atomic.Uint64
+		phaseEvents  = newEvents()
 	)
 	// cancel all possible running phases
 	defer phaseEvents.Close()
@@ -125,7 +125,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	commitF := func(ctx context.Context) {
 		phaseEvents.Cancel(claim)
 
-		round := currRound.Load()
+		round := currentRound.Load()
 
 		// the sample has to come from previous round to be able to commit it
 		sample, err := getSample(a.state.stateStore, round-1)
@@ -165,7 +165,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		// cancel previous executions of the commit and sample phases
 		phaseEvents.Cancel(commit, sample, sampleEnd)
 
-		round := currRound.Load()
+		round := currentRound.Load()
 
 		// reveal requires the commitKey from the same round
 		commitKey, err := getCommitKey(a.state.stateStore, round)
@@ -198,7 +198,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	phaseEvents.On(claim, func(ctx context.Context, _ PhaseType) {
 		phaseEvents.Cancel(reveal)
 
-		round := currRound.Load()
+		round := currentRound.Load()
 
 		err := getRevealRound(a.state.stateStore, round)
 		if err != nil {
@@ -217,7 +217,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	})
 
 	phaseEvents.On(sample, func(ctx context.Context, _ PhaseType) {
-		round := currRound.Load()
+		round := currentRound.Load()
 
 		shouldPlayRound, err := a.play(ctx, round)
 		if err != nil {
@@ -259,7 +259,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		}
 
 		round := block / blocksPerRound
-		currRound.Store(round)
+		currentRound.Store(round)
 
 		a.metrics.Round.Set(float64(round))
 
