@@ -240,22 +240,16 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		checkEvery = 5
 	}
 
-	for {
-		select {
-		case <-a.quit:
-			return
-		case <-time.After(blockTime * time.Duration(checkEvery)):
-		}
-
+	doWork := func() {
 		ctx, cancel := context.WithTimeout(context.Background(), blockTime*time.Duration(blocksPerRound))
+		defer cancel()
 
 		a.metrics.BackendCalls.Inc()
-		block, err := a.backend.BlockNumber(context.Background())
+		block, err := a.backend.BlockNumber(ctx)
 		if err != nil {
 			a.metrics.BackendErrors.Inc()
 			a.logger.Error(err, "getting block number")
-			cancel()
-			continue
+			return
 		}
 
 		round := block / blocksPerRound
@@ -273,30 +267,38 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		}
 
 		// write the current phase only once
-		if currentPhase != prevPhase {
-
-			a.metrics.CurrentPhase.Set(float64(currentPhase))
-
-			a.logger.Info("entered new phase", "phase", currentPhase.String(), "round", round, "block", block)
-
-			a.state.SetCurrentEvent(currentPhase, round, block)
-			a.state.IsFullySynced(a.monitor.IsFullySynced())
-
-			isFrozen, err := a.redistributionStatuser.IsOverlayFrozen(ctx, block)
-			if err != nil {
-				a.logger.Error(err, "error checking if stake is frozen")
-			} else {
-				a.state.SetFrozen(isFrozen, round)
-			}
-
-			phaseEvents.Publish(currentPhase)
-			if currentPhase == claim {
-				phaseEvents.Publish(sample) // trigger sample along side the claim phase
-			}
+		if currentPhase == prevPhase {
+			return
 		}
-		prevPhase = currentPhase
 
-		cancel()
+		prevPhase = currentPhase
+		a.metrics.CurrentPhase.Set(float64(currentPhase))
+
+		a.logger.Info("entered new phase", "phase", currentPhase.String(), "round", round, "block", block)
+
+		a.state.SetCurrentEvent(currentPhase, round, block)
+		a.state.IsFullySynced(a.monitor.IsFullySynced())
+
+		isFrozen, err := a.redistributionStatuser.IsOverlayFrozen(ctx, block)
+		if err != nil {
+			a.logger.Error(err, "error checking if stake is frozen")
+		} else {
+			a.state.SetFrozen(isFrozen, round)
+		}
+
+		phaseEvents.Publish(currentPhase)
+		if currentPhase == claim {
+			phaseEvents.Publish(sample) // trigger sample along side the claim phase
+		}
+	}
+
+	for {
+		select {
+		case <-a.quit:
+			return
+		case <-time.After(blockTime * time.Duration(checkEvery)):
+			doWork()
+		}
 	}
 }
 
