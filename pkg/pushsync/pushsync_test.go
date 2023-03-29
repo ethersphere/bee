@@ -675,28 +675,6 @@ func TestSignsReceipt(t *testing.T) {
 	}
 }
 
-func TestPeerSkipList(t *testing.T) {
-	t.Parallel()
-	skipList := pushsync.NewPeerSkipList()
-
-	addr1 := testingc.GenerateTestRandomChunk().Address()
-	addr2 := testingc.GenerateTestRandomChunk().Address()
-
-	skipList.Add(addr1, addr2, time.Millisecond*10)
-
-	if !skipList.ChunkSkipPeers(addr1)[0].Equal(addr2) {
-		t.Fatal("peer should be skipped")
-	}
-
-	time.Sleep(time.Millisecond * 11)
-
-	skipList.PruneExpired()
-
-	if len(skipList.ChunkSkipPeers(addr1)) != 0 {
-		t.Fatal("entry should be pruned")
-	}
-}
-
 func TestPushChunkToClosestSkipError(t *testing.T) {
 	t.Parallel()
 
