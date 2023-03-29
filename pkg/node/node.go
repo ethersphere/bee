@@ -918,6 +918,12 @@ func NewBee(
 	b.localstoreCloser = localStore
 	evictFn = func(id []byte) error { return localStore.EvictBatch(context.Background(), id) }
 
+	validStamp := postage.ValidStamp(batchStore)
+
+	if err := localStore.EpochMigration(stateStore, validStamp, path, logger); err != nil {
+		return nil, fmt.Errorf("localstorev2 migration failed: %w", err)
+	}
+
 	retrieve := retrieval.New(swarmAddress, localStore, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching)
 	localStore.SetRetrievalService(retrieve)
 

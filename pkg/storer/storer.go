@@ -184,10 +184,10 @@ func closer(closers ...io.Closer) io.Closer {
 	})
 }
 
-func initInmemRepository() (storage.Repository, io.Closer, error) {
+func initInmemRepository() (storage.Repository, *sharky.Store, io.Closer, error) {
 	store, err := leveldbstore.New("", nil)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed creating inmem levelDB index store: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed creating inmem levelDB index store: %w", err)
 	}
 
 	sharky, err := sharky.New(
@@ -196,13 +196,13 @@ func initInmemRepository() (storage.Repository, io.Closer, error) {
 		swarm.SocMaxChunkSize,
 	)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed creating inmem sharky instance: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed creating inmem sharky instance: %w", err)
 	}
 
 	txStore := leveldbstore.NewTxStore(store)
 	txChunkStore := chunkstore.NewTxChunkStore(txStore, sharky)
 
-	return storage.NewRepository(txStore, txChunkStore), closer(store, sharky), nil
+	return storage.NewRepository(txStore, txChunkStore), sharky, closer(store, sharky), nil
 }
 
 // loggerName is the tree path name of the logger for this package.
@@ -216,15 +216,18 @@ const (
 	defaultDisableSeeksCompaction = false
 	defaultCacheCapacity          = uint64(1_000_000)
 	defaultBgCacheWorkers         = 16
+
+	indexPath  = "indexstore"
+	sharkyPath = "sharky"
 )
 
-func initDiskRepository(ctx context.Context, basePath string, opts *Options) (storage.Repository, io.Closer, error) {
-	ldbBasePath := path.Join(basePath, "indexstore")
+func initDiskRepository(ctx context.Context, basePath string, opts *Options) (storage.Repository, *sharky.Store, io.Closer, error) {
+	ldbBasePath := path.Join(basePath, indexPath)
 
 	if _, err := os.Stat(ldbBasePath); os.IsNotExist(err) {
 		err := os.MkdirAll(ldbBasePath, 0777)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 	}
 	store, err := leveldbstore.New(path.Join(basePath, "indexstore"), &opt.Options{
@@ -234,21 +237,21 @@ func initDiskRepository(ctx context.Context, basePath string, opts *Options) (st
 		DisableSeeksCompaction: opts.LdbDisableSeeksCompaction,
 	})
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed creating levelDB index store: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed creating levelDB index store: %w", err)
 	}
 
-	sharkyBasePath := path.Join(basePath, "sharky")
+	sharkyBasePath := path.Join(basePath, sharkyPath)
 
 	if _, err := os.Stat(sharkyBasePath); os.IsNotExist(err) {
 		err := os.Mkdir(sharkyBasePath, 0777)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 	}
 
 	recoveryCloser, err := sharkyRecovery(ctx, sharkyBasePath, store, opts)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to recover sharky: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed to recover sharky: %w", err)
 	}
 
 	sharky, err := sharky.New(
@@ -257,13 +260,13 @@ func initDiskRepository(ctx context.Context, basePath string, opts *Options) (st
 		swarm.SocMaxChunkSize,
 	)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed creating sharky instance: %w", err)
+		return nil, nil, nil, fmt.Errorf("failed creating sharky instance: %w", err)
 	}
 
 	txStore := leveldbstore.NewTxStore(store)
 	txChunkStore := chunkstore.NewTxChunkStore(txStore, sharky)
 
-	return storage.NewRepository(txStore, txChunkStore), closer(store, sharky, recoveryCloser), nil
+	return storage.NewRepository(txStore, txChunkStore), sharky, closer(store, sharky, recoveryCloser), nil
 }
 
 func initCache(ctx context.Context, capacity uint64, repo storage.Repository) (*cache.Cache, error) {
@@ -348,6 +351,8 @@ type DB struct {
 	setSyncerOnce    sync.Once
 	syncer           SyncReporter
 	opts             workerOpts
+
+	sharky *sharky.Store
 }
 
 type workerOpts struct {
@@ -362,18 +367,19 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		repo     storage.Repository
 		err      error
 		dbCloser io.Closer
+		sh       *sharky.Store
 	)
 	if opts == nil {
 		opts = defaultOptions()
 	}
 
 	if dirPath == "" {
-		repo, dbCloser, err = initInmemRepository()
+		repo, sh, dbCloser, err = initInmemRepository()
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		repo, dbCloser, err = initDiskRepository(ctx, dirPath, opts)
+		repo, sh, dbCloser, err = initDiskRepository(ctx, dirPath, opts)
 		if err != nil {
 			return nil, err
 		}
@@ -410,6 +416,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 			warmupDuration: opts.WarmupDuration,
 			wakeupDuration: opts.ReserveWakeUpDuration,
 		},
+		sharky: sh,
 	}
 
 	if opts.ReserveCapacity > 0 {
