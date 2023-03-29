@@ -923,13 +923,17 @@ func NewBee(
 	b.localstoreCloser = localStore
 	evictFn = func(id []byte) error { return localStore.EvictBatch(context.Background(), id) }
 
+	validStamp := postage.ValidStamp(batchStore)
+
+	if err := localStore.EpochMigration(stateStore, validStamp, path, logger); err != nil {
+		return nil, fmt.Errorf("localstorev2 migration failed: %w", err)
+	}
+
 	retrieve := retrieval.New(swarmAddress, localStore, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching)
 	localStore.SetRetrievalService(retrieve)
 
 	pssService := pss.New(pssPrivateKey, logger)
 	b.pssCloser = pssService
-
-	validStamp := postage.ValidStamp(batchStore)
 
 	pushSyncProtocol := pushsync.New(swarmAddress, nonce, p2ps, localStore, kad, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
 
