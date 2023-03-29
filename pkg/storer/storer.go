@@ -418,9 +418,12 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 }
 
 // Metrics returns set of prometheus collectors.
-// TODO: register metrics in the node.go.
 func (db *DB) Metrics() []prometheus.Collector {
-	return m.PrometheusCollectorsFromFields(db.metrics)
+	collectors := m.PrometheusCollectorsFromFields(db.metrics)
+	if v, ok := db.repo.(m.Collector); ok {
+		collectors = append(collectors, v.Metrics()...)
+	}
+	return collectors
 }
 
 func (db *DB) Close() error {
