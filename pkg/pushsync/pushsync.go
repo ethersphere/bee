@@ -10,7 +10,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/accounting"
@@ -42,24 +41,22 @@ const (
 )
 
 const (
-	defaultTTL     = 30 * time.Second // request time to live
-	p90TTL         = 5 * time.Second  // P90 request time to live
-	sanctionWait   = 5 * time.Minute
-	replicationTTL = 5 * time.Second // time to live for neighborhood replication
-	waitRefresh    = 600 * time.Millisecond
+	defaultTTL         = 30 * time.Second // request time to live
+	preemptiveInterval = 5 * time.Second  // P90 request time to live
+	sanctionWait       = 5 * time.Minute
+	replicationTTL     = 5 * time.Second // time to live for neighborhood replication
 )
 
 const (
 	nPeersToReplicate = 3 // number of peers to replicate to as receipt is sent upstream
-	maxAttempts       = 32
-	maxPeers          = 64
+	maxPushErrors     = 32
 )
 
 var (
 	ErrNoPush            = errors.New("could not push chunk")
 	ErrOutOfDepthStoring = errors.New("storing outside of the neighborhood")
 	ErrWarmup            = errors.New("node warmup time not complete")
-	errNotAttempted      = errors.New("peer not attempted")
+	errPrepareCredit     = errors.New("preparing credit failed")
 )
 
 type PushSyncer interface {
@@ -90,14 +87,14 @@ type PushSync struct {
 	signer         crypto.Signer
 	includeSelf    bool
 	warmupPeriod   time.Time
-	skipList       *peerSkipList
+	skipList       *skippeers.List
 }
 
 type receiptResult struct {
 	pushTime time.Time
 	peer     swarm.Address
 	receipt  *pb.Receipt
-	pushed   bool
+	sent     bool
 	err      error
 }
 
@@ -118,7 +115,7 @@ func New(address swarm.Address, nonce []byte, streamer p2p.StreamerDisconnecter,
 		metrics:        newMetrics(),
 		tracer:         tracer,
 		signer:         signer,
-		skipList:       newPeerSkipList(),
+		skipList:       skippeers.NewList(),
 		warmupPeriod:   time.Now().Add(warmupTime),
 	}
 
@@ -332,118 +329,99 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	defer span.Finish()
 	defer ps.skipList.PruneExpired()
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	var (
-		// limits "attempted" requests, see pushPeer when a request becomes attempted
-		allowedPushes = 1
-		// limits total requests, irregardless of "attempted"
-		allowedRetries = maxPeers
+		sentErrorsLeft   = 1
+		preemptiveTicker <-chan time.Time
+		includeSelf      = ps.includeSelf
+		skip             []swarm.Address
+		inflight         int
 	)
 
 	if origin {
-		allowedPushes = maxAttempts
+		ticker := time.NewTicker(preemptiveInterval)
+		defer ticker.Stop()
+		preemptiveTicker = ticker.C
+		sentErrorsLeft = maxPushErrors
 	}
 
-	var (
-		includeSelf = ps.includeSelf
-		skipPeers   = new(skippeers.List)
-	)
-
 	resultChan := make(chan receiptResult)
-	doneChan := make(chan struct{})
-	defer close(doneChan)
+	done := make(chan struct{})
+	defer close(done)
 
-	timer := time.NewTimer(0)
-	defer timer.Stop()
+	retryC := make(chan struct{}, 1)
+
+	retry := func() {
+		select {
+		case retryC <- struct{}{}:
+		case <-done:
+		case <-ctx.Done():
+		}
+	}
+
+	retry()
 
 	// nextPeer attempts to lookup the next peer to push the chunk to, if there are overdrafted peers the boolean would signal a re-attempt
-	nextPeer := func() (peer swarm.Address, retry bool, err error) {
+	nextPeer := func() (peer swarm.Address, err error) {
 
-		fullSkipList := append(ps.skipList.ChunkSkipPeers(ch.Address()), skipPeers.All()...)
+		fullSkipList := append(skip, ps.skipList.ChunkPeers(ch.Address())...)
 
 		peer, err = ps.topologyDriver.ClosestPeer(ch.Address(), includeSelf, topology.Filter{Reachable: true}, fullSkipList...)
 		if err != nil {
-			// ClosestPeer can return ErrNotFound in case we are not connected to any peers
-			// in which case we should return immediately.
-			// if ErrWantSelf is returned, it means we are the closest peer.
 			if errors.Is(err, topology.ErrWantSelf) {
-
 				if !ps.warmedUp() {
-					return swarm.ZeroAddress, false, ErrWarmup
+					return swarm.ZeroAddress, ErrWarmup
 				}
 
-				if skipPeers.OverdraftListEmpty() { // no peers in skip list means we can be confident that we are the closest peer
-					// we don't act on ErrWantSelf unless there are no overdraft peers
-					if !ps.radiusChecker.IsWithinStorageRadius(ch.Address()) {
-						return swarm.ZeroAddress, false, ErrOutOfDepthStoring
-					}
-					ps.pushToNeighbourhood(ctx, fullSkipList, ch, origin, originAddr)
-					return swarm.ZeroAddress, false, err
+				if !ps.radiusChecker.IsWithinStorageRadius(ch.Address()) {
+					return swarm.ZeroAddress, ErrOutOfDepthStoring
 				}
 
-				ps.logger.Debug("pushsync: continue iteration and reset overdraft skiplist")
-
-				skipPeers.ResetOverdraft() // reset the overdraft list and retry (in case the closest peer was there)
-				return swarm.ZeroAddress, true, nil
+				ps.pushToNeighbourhood(ctx, fullSkipList, ch, origin, originAddr)
+				return swarm.ZeroAddress, err
 			}
 
-			return swarm.ZeroAddress, false, fmt.Errorf("closest peer: %w", err)
+			return swarm.ZeroAddress, fmt.Errorf("closest peer: %w", err)
 		}
-
-		return peer, false, nil
+		return peer, nil
 	}
 
-	for {
+	for sentErrorsLeft > 0 {
 		select {
 		case <-ctx.Done():
 			return nil, ErrNoPush
-		case <-timer.C:
+		case <-preemptiveTicker:
+			retry()
+		case <-retryC:
 
-			allowedRetries--
-			// decrement here to limit inflight requests, if the request is not "attempted", we will increment below
-
-			peer, retry, err := nextPeer()
+			peer, err := nextPeer()
 			if err != nil {
-				return nil, err
-			}
-
-			if retry {
-				if allowedRetries <= 0 {
-					return nil, ErrNoPush
+				if inflight == 0 {
+					return nil, fmt.Errorf("get closest for address %s, allow upstream %v: %w", ch, origin, err)
 				}
-				timer.Reset(waitRefresh)
 				continue
 			}
+			skip = append(skip, peer)
 
 			ps.metrics.TotalSendAttempts.Inc()
 
-			skipPeers.Add(peer)
-
-			allowedPushes--
+			inflight++
 
 			go func() {
 				ctxd, cancel := context.WithTimeout(ctx, defaultTTL)
 				defer cancel()
-				ps.pushPeer(ctxd, resultChan, doneChan, peer, ch, origin)
+				ps.pushPeer(ctxd, resultChan, done, peer, ch, origin)
 			}()
-
-			// reached the limit, do not set timer to retry
-			if allowedRetries <= 0 || allowedPushes <= 0 {
-				continue
-			}
-
-			// retry
-			timer.Reset(p90TTL)
 
 		case result := <-resultChan:
 
+			inflight--
+
 			ps.measurePushPeer(result.pushTime, result.err, origin)
 
-			if errors.Is(result.err, errNotAttempted) {
-				logger.Debug("not attempted: adding overdraft peer to skiplist", "peer_address", result.peer)
-				skipPeers.AddOverdraft(result.peer)
-			}
-
-			if ps.warmedUp() && !errors.Is(result.err, errNotAttempted) {
+			if ps.warmedUp() && !errors.Is(result.err, errPrepareCredit) {
 				ps.skipList.Add(ch.Address(), result.peer, sanctionWait)
 			}
 
@@ -454,19 +432,15 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			ps.metrics.TotalFailedSendAttempts.Inc()
 			logger.Debug("could not push to peer", "peer_address", result.peer, "error", result.err)
 
-			// pushPeer returned early, do not count as an attempt
-			if !result.pushed {
-				allowedPushes++
+			if result.sent {
+				sentErrorsLeft--
 			}
 
-			if allowedRetries <= 0 || allowedPushes <= 0 {
-				return nil, ErrNoPush
-			}
-
-			// retry immediately
-			timer.Reset(0)
+			retry()
 		}
 	}
+
+	return nil, ErrNoPush
 }
 
 func (ps *PushSync) measurePushPeer(t time.Time, err error, origin bool) {
@@ -490,7 +464,7 @@ func (ps *PushSync) pushPeer(ctx context.Context, resultChan chan<- receiptResul
 
 	defer func() {
 		select {
-		case resultChan <- receiptResult{pushTime: now, peer: peer, err: err, pushed: pushed, receipt: &receipt}:
+		case resultChan <- receiptResult{pushTime: now, peer: peer, err: err, sent: pushed, receipt: &receipt}:
 		case <-doneChan:
 		}
 	}()
@@ -505,7 +479,7 @@ func (ps *PushSync) pushPeer(ctx context.Context, resultChan chan<- receiptResul
 	creditAction, err := ps.accounting.PrepareCredit(creditCtx, peer, receiptPrice, origin)
 	if err != nil {
 		if errors.Is(err, accounting.ErrOverdraft) || errors.Is(err, accounting.ErrFailToLock) {
-			err = fmt.Errorf("pushsync: prepare credit: %w: %w", err, errNotAttempted)
+			err = fmt.Errorf("pushsync: prepare credit: %w", errPrepareCredit)
 			return
 		}
 		err = fmt.Errorf("reserve balance for peer %s: %w", peer, err)
@@ -696,62 +670,4 @@ func (ps *PushSync) validStampWrapper(f postage.ValidStampFn) postage.ValidStamp
 
 func (ps *PushSync) warmedUp() bool {
 	return time.Now().After(ps.warmupPeriod)
-}
-
-type peerSkipList struct {
-	sync.Mutex
-
-	// key is chunk address, value is map of peer address to expiration
-	skip map[string]map[string]time.Time
-}
-
-func newPeerSkipList() *peerSkipList {
-	return &peerSkipList{
-		skip: make(map[string]map[string]time.Time),
-	}
-}
-
-func (l *peerSkipList) Add(chunk, peer swarm.Address, expire time.Duration) {
-	l.Lock()
-	defer l.Unlock()
-
-	if _, ok := l.skip[chunk.ByteString()]; !ok {
-		l.skip[chunk.ByteString()] = make(map[string]time.Time)
-	}
-	l.skip[chunk.ByteString()][peer.ByteString()] = time.Now().Add(expire)
-}
-
-func (l *peerSkipList) ChunkSkipPeers(ch swarm.Address) (peers []swarm.Address) {
-	l.Lock()
-	defer l.Unlock()
-
-	if p, ok := l.skip[ch.ByteString()]; ok {
-		for peer, exp := range p {
-			if time.Now().Before(exp) {
-				peers = append(peers, swarm.NewAddress([]byte(peer)))
-			}
-		}
-	}
-	return peers
-}
-
-func (l *peerSkipList) PruneExpired() {
-	l.Lock()
-	defer l.Unlock()
-
-	now := time.Now()
-
-	for k, v := range l.skip {
-		kc := len(v)
-		for kk, vv := range v {
-			if vv.Before(now) {
-				delete(v, kk)
-				kc--
-			}
-		}
-		if kc == 0 {
-			// prune the chunk too
-			delete(l.skip, k)
-		}
-	}
 }
