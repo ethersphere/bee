@@ -141,24 +141,21 @@ func toSignDigest(addr, batchId, index, timestamp []byte) ([]byte, error) {
 	return h.Sum(nil), nil
 }
 
-type ValidStampFn func(chunk swarm.Chunk, stampBytes []byte) (swarm.Chunk, error)
+type ValidStampFn func(chunk swarm.Chunk) (swarm.Chunk, error)
 
 // ValidStamp returns a stampvalidator function passed to protocols with chunk entrypoints.
 func ValidStamp(batchStore Storer) ValidStampFn {
-	return func(chunk swarm.Chunk, stampBytes []byte) (swarm.Chunk, error) {
-		stamp := new(Stamp)
-		err := stamp.UnmarshalBinary(stampBytes)
-		if err != nil {
-			return nil, err
-		}
-		b, err := batchStore.Get(stamp.BatchID())
+	return func(chunk swarm.Chunk) (swarm.Chunk, error) {
+		stamp := chunk.Stamp()
+		b, err := batchStore.Get(chunk.Stamp().BatchID())
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
 				return nil, fmt.Errorf("batchstore get: %w, %w", err, ErrNotFound)
 			}
 			return nil, err
 		}
-		if err = stamp.Valid(chunk.Address(), b.Owner, b.Depth, b.BucketDepth, b.Immutable); err != nil {
+
+		if err = NewStamp(stamp.BatchID(), stamp.Index(), stamp.Timestamp(), stamp.Sig()).Valid(chunk.Address(), b.Owner, b.Depth, b.BucketDepth, b.Immutable); err != nil {
 			return nil, err
 		}
 		return chunk.WithStamp(stamp).WithBatch(0, b.Depth, b.BucketDepth, b.Immutable), nil // TODO: remove radius arg
