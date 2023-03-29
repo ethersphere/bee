@@ -51,7 +51,7 @@ var (
 
 const (
 	storagePutTimeout = 5 * time.Second
-	makeOfferTimeout  = 5 * time.Minute
+	makeOfferTimeout  = 15 * time.Minute
 )
 
 // how many maximum chunks in a batch
