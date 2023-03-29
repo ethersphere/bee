@@ -5,13 +5,18 @@
 package storageincentives
 
 var (
-	NewEvents       = newEvents
-	SaveSample      = saveSample
-	GetSample       = getSample
-	SaveCommitKey   = saveCommitKey
-	GetCommitKey    = getCommitKey
-	SaveRevealRound = saveRevealRound
-	GetRevealRound  = getRevealRound
+	NewEvents           = newEvents
+	SaveSample          = saveSample
+	GetSample           = getSample
+	RemoveSample        = removeSample
+	SaveCommitKey       = saveCommitKey
+	GetCommitKey        = getCommitKey
+	RemoveCommitKey     = removeCommitKey
+	SaveRevealRound     = saveRevealRound
+	GetRevealRound      = getRevealRound
+	RemoveRevealRound   = removeRevealRound
+	SaveLastPurgedRound = saveLastPurgedRound
+	GetLastPurgedRound  = getLastPurgedRound
 )
 
 type (

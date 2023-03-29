@@ -15,19 +15,19 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
-	"github.com/ethersphere/bee/pkg/storageincentives/staking"
-	"github.com/ethersphere/bee/pkg/transaction"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
+	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
+	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/transaction"
+	"github.com/hashicorp/go-multierror"
 )
 
 const loggerName = "storageincentives"
@@ -41,6 +41,8 @@ const (
 
 	// average tx gas used by transactions issued from agent
 	avgTxGas = 250_000
+
+	purgeDataOlderThenXRounds = 10
 )
 
 type ChainBackend interface {
@@ -233,7 +235,10 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		prevPhase    PhaseType = -1
 		currentPhase PhaseType
 		checkEvery   uint64 = 1
+		newRoundC           = make(chan uint64, 1)
 	)
+
+	a.startOutdatedDataPurger(newRoundC)
 
 	// optimization, we do not need to check the phase change at every new block
 	if blocksPerPhase > 10 {
@@ -253,7 +258,11 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		}
 
 		round := block / blocksPerRound
-		currentRound.Store(round)
+		prevRound := currentRound.Swap(round)
+
+		if prevRound != round {
+			newRoundC <- round
+		}
 
 		a.metrics.Round.Set(float64(round))
 
@@ -299,6 +308,61 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		case <-time.After(blockTime * time.Duration(checkEvery)):
 			doWork()
 		}
+	}
+}
+
+func (a *Agent) startOutdatedDataPurger(onNewRoundC <-chan uint64) {
+	go func() {
+		for {
+			select {
+			case <-a.quit:
+				return
+			case currentRound := <-onNewRoundC:
+				purgeDataHandler(a.logger, a.state.stateStore, currentRound)
+			}
+		}
+	}()
+}
+
+func purgeDataHandler(logger log.Logger, store storage.StateStorer, currentRound uint64) {
+	if currentRound <= purgeDataOlderThenXRounds {
+		return
+	}
+
+	purgeRound := func(round uint64) error {
+		var mErr error
+
+		err := removeCommitKey(store, round)
+		mErr = multierror.Append(mErr, err)
+
+		err = removeRevealRound(store, round)
+		mErr = multierror.Append(mErr, err)
+
+		err = removeSample(store, round)
+		mErr = multierror.Append(mErr, err)
+
+		return mErr
+	}
+
+	from, err := getLastPurgedRound(store)
+	if err != nil {
+		logger.Error(err, "failed getting last purged round")
+		return
+	}
+
+	to := currentRound - purgeDataOlderThenXRounds
+
+	for i := from; i < to; i++ {
+		err := purgeRound(i)
+		if err != nil {
+			logger.Error(err, "got error while purging data")
+		}
+	}
+
+	err = saveLastPurgedRound(store, to)
+	if err != nil {
+		logger.Error(err, "failed storing last purged round")
+		return
 	}
 }
 

@@ -27,6 +27,11 @@ func TestStorage_Sample(t *testing.T) {
 		t.Error("expected error")
 	}
 
+	err = storageincentives.RemoveSample(s, 1)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+
 	savedSample := storageincentives.SampleData{
 		ReserveSample: storage.Sample{
 			Hash: swarm.RandAddress(t),
@@ -45,6 +50,16 @@ func TestStorage_Sample(t *testing.T) {
 	if !reflect.DeepEqual(savedSample, sample) {
 		t.Errorf("sample does not match saved sample")
 	}
+
+	err = storageincentives.RemoveSample(s, 1)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+
+	_, err = storageincentives.GetSample(s, 1)
+	if !errors.Is(err, storage.ErrNotFound) {
+		t.Error("expected error")
+	}
 }
 
 func TestStorage_CommitKey(t *testing.T) {
@@ -55,6 +70,11 @@ func TestStorage_CommitKey(t *testing.T) {
 	_, err := storageincentives.GetCommitKey(s, 1)
 	if !errors.Is(err, storage.ErrNotFound) {
 		t.Error("expected error")
+	}
+
+	err = storageincentives.RemoveCommitKey(s, 1)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
 	}
 
 	savedKey := testutil.RandBytes(t, swarm.HashSize)
@@ -70,6 +90,16 @@ func TestStorage_CommitKey(t *testing.T) {
 	if !bytes.Equal(savedKey, key) {
 		t.Errorf("key does not match saved key")
 	}
+
+	err = storageincentives.RemoveCommitKey(s, 1)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+
+	_, err = storageincentives.GetCommitKey(s, 1)
+	if !errors.Is(err, storage.ErrNotFound) {
+		t.Error("expected error")
+	}
 }
 
 func TestStorage_RevealRound(t *testing.T) {
@@ -82,6 +112,11 @@ func TestStorage_RevealRound(t *testing.T) {
 		t.Error("expected error")
 	}
 
+	err = storageincentives.RemoveRevealRound(s, 1)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+
 	err = storageincentives.SaveRevealRound(s, 1)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
@@ -90,5 +125,44 @@ func TestStorage_RevealRound(t *testing.T) {
 	err = storageincentives.GetRevealRound(s, 1)
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
+	}
+
+	err = storageincentives.RemoveRevealRound(s, 1)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+
+	err = storageincentives.GetRevealRound(s, 1)
+	if !errors.Is(err, storage.ErrNotFound) {
+		t.Error("expected error")
+	}
+}
+
+func TestStorage_LastPurgedDataRound(t *testing.T) {
+	t.Parallel()
+
+	s := statestore.NewStateStore()
+
+	round, err := storageincentives.GetLastPurgedRound(s)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if round != 0 {
+		t.Errorf("have %d, want %d", round, 0)
+	}
+
+	savedRound := uint64(1)
+
+	err = storageincentives.SaveLastPurgedRound(s, savedRound)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+
+	round, err = storageincentives.GetLastPurgedRound(s)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+	if round != savedRound {
+		t.Errorf("have %d, want %d", round, savedRound)
 	}
 }
