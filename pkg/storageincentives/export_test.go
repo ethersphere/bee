@@ -17,8 +17,13 @@ var (
 	RemoveRevealRound   = removeRevealRound
 	SaveLastPurgedRound = saveLastPurgedRound
 	GetLastPurgedRound  = getLastPurgedRound
+	PurgeDataHandler    = purgeDataHandler
 )
 
 type (
 	SampleData = sampleData
+)
+
+const (
+	PurgeDataOlderThenXRounds = purgeDataOlderThenXRounds
 )

@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"math/big"
+	"math/rand"
 	"sync"
 	"testing"
 	"time"
@@ -148,6 +149,116 @@ func TestAgent(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_PurgeDataHandler(t *testing.T) {
+	t.Parallel()
+
+	const purgeDataOlderThenXRounds = storageincentives.PurgeDataOlderThenXRounds
+
+	log := testutil.NewLogger(t)
+	store := statestore.NewStateStore()
+
+	// shorthand function for storageincentives.PurgeDataHandler
+	purgeData := func(round uint64) {
+		storageincentives.PurgeDataHandler(log, store, round)
+	}
+
+	// helper function which populates data at specified round
+	populateDataAtRound := func(round uint64) {
+		// save sample data
+		savedSample := storageincentives.SampleData{
+			ReserveSample: storage.Sample{
+				Hash: swarm.RandAddress(t),
+			},
+			StorageRadius: 3,
+		}
+		err := storageincentives.SaveSample(store, savedSample, round)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+
+		// save commit key
+		err = storageincentives.SaveCommitKey(store, testutil.RandBytes(t, swarm.HashSize), round)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+
+		// save reveal round
+		err = storageincentives.SaveRevealRound(store, round)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+	}
+
+	// asserts if there is, or there isn't, data at specified round
+	assertHasDataAtRound := func(round uint64, shouldHaveData bool) {
+		check := func(err error) {
+			if shouldHaveData && errors.Is(err, storage.ErrNotFound) {
+				t.Error("should have data")
+			} else if !shouldHaveData && !errors.Is(err, storage.ErrNotFound) {
+				t.Error("should not have data")
+			}
+		}
+
+		_, err1 := storageincentives.GetSample(store, round)
+		_, err2 := storageincentives.GetCommitKey(store, round)
+		err3 := storageincentives.GetRevealRound(store, round)
+
+		check(err1)
+		check(err2)
+		check(err3)
+	}
+
+	// asserts that stored last purge round is at specified value
+	assertLastPurgedRound := func(round uint64) {
+		current, err := storageincentives.GetLastPurgedRound(store)
+		if err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
+		if current != round {
+			t.Errorf("got: %v, expected %v", current, round)
+		}
+	}
+
+	const roundsCount = 100
+	hasRoundData := make([]bool, roundsCount)
+
+	// Populate data at random rounds
+	for i := uint64(0); i < roundsCount; i++ {
+		v := rand.Int()%2 == 0
+		hasRoundData[i] = v
+		if v {
+			populateDataAtRound(i)
+		}
+		assertHasDataAtRound(i, v)
+	}
+
+	// Run purge successively and assert that all data is purged up to
+	// currentRound - purgeDataOlderThenXRounds
+	for i := uint64(0); i < roundsCount; i++ {
+		purgeData(i)
+
+		if i <= purgeDataOlderThenXRounds {
+			assertHasDataAtRound(i, hasRoundData[i])
+		} else {
+			for j := uint64(0); j < i-purgeDataOlderThenXRounds; j++ {
+				assertHasDataAtRound(j, false)
+			}
+		}
+	}
+
+	assertLastPurgedRound(roundsCount - purgeDataOlderThenXRounds - 1)
+
+	// Purge remaining data in single go
+	purgeData(roundsCount + purgeDataOlderThenXRounds)
+
+	// One more time assert that everything was purged
+	for i := uint64(0); i < roundsCount; i++ {
+		assertHasDataAtRound(i, false)
+	}
+
+	assertLastPurgedRound(roundsCount)
 }
 
 func createService(

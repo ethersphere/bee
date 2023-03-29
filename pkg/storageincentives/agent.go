@@ -330,7 +330,7 @@ func purgeDataHandler(logger log.Logger, store storage.StateStorer, currentRound
 	}
 
 	purgeRound := func(round uint64) error {
-		var mErr error
+		mErr := &multierror.Error{}
 
 		err := removeCommitKey(store, round)
 		mErr = multierror.Append(mErr, err)
@@ -341,7 +341,7 @@ func purgeDataHandler(logger log.Logger, store storage.StateStorer, currentRound
 		err = removeSample(store, round)
 		mErr = multierror.Append(mErr, err)
 
-		return mErr
+		return mErr.ErrorOrNil()
 	}
 
 	from, err := getLastPurgedRound(store)
