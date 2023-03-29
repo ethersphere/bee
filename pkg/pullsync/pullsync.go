@@ -23,6 +23,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pullsync/pb"
 	"github.com/ethersphere/bee/pkg/soc"
+	"github.com/ethersphere/bee/pkg/storage"
 	storer "github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"resenje.org/singleflight"
@@ -248,7 +249,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		if cac.Valid(chunk) {
 			go s.unwrap(chunk)
 		} else if !soc.Valid(chunk) {
-			s.logger.Debug("invalid soc chunk", "error", swarm.ErrInvalidChunk, "peer_address", peer, "chunk_address", chunk)
+			s.logger.Debug("invalid soc chunk", "error", swarm.ErrInvalidChunk, "peer_address", peer, "chunk", chunk)
 			chunkErr = errors.Join(chunkErr, swarm.ErrInvalidChunk)
 			continue
 		}
@@ -260,14 +261,14 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		s.metrics.DbOps.Inc()
 		s.metrics.LastReceived.WithLabelValues(fmt.Sprintf("%d", bin)).Set(float64(time.Now().Unix()))
 
-		putter := s.store.ReservePutter(ctx)
 		for _, c := range chunksToPut {
-			if err := putter.Put(ctx, c); err != nil {
-				return 0, 0, errors.Join(chunkErr, fmt.Errorf("delivery put: %w", err), putter.Cleanup())
+			if err := s.store.ReservePut(ctx, c); err != nil {
+				if errors.Is(err, storage.ErrOverwriteNewerChunk) {
+					s.logger.Debug("overwrite newer chunk", "error", err, "peer_address", peer, "chunk", c)
+					continue
+				}
+				return 0, 0, errors.Join(chunkErr, fmt.Errorf("delivery put: %w", err))
 			}
-		}
-		if err := putter.Done(swarm.ZeroAddress); err != nil {
-			return 0, 0, errors.Join(chunkErr, err)
 		}
 	}
 
