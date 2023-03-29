@@ -84,7 +84,6 @@ func (r *repository) NewTx(ctx context.Context) (Repository, func() error, func(
 }
 
 // Metrics returns set of prometheus collectors.
-// TODO: register metrics in the node.go.
 func (r *repository) Metrics() []prometheus.Collector {
 	return m.PrometheusCollectorsFromFields(r.metrics)
 }
