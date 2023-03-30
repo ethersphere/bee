@@ -39,8 +39,8 @@ func TestAddress(t *testing.T) {
 		},
 		{
 			name: "all zeroes",
-			hex:  swarm.EmptyAddr.String(),
-			want: swarm.EmptyAddr,
+			hex:  swarm.EmptyAddress.String(),
+			want: swarm.EmptyAddress,
 		},
 		{
 			name: "one",

@@ -36,8 +36,8 @@ var (
 )
 
 var (
-	// EmptyAddr is the address that is all zeroes.
-	EmptyAddr = NewAddress(make([]byte, HashSize))
+	// EmptyAddress is the address that is all zeroes.
+	EmptyAddress = NewAddress(make([]byte, HashSize))
 	// ZeroAddress is the address that has no value.
 	ZeroAddress = NewAddress(nil)
 )
@@ -95,7 +95,7 @@ func (a Address) IsZero() bool {
 
 // IsEmpty returns true if the Address is all zeroes.
 func (a Address) IsEmpty() bool {
-	return a.Equal(EmptyAddr)
+	return a.Equal(EmptyAddress)
 }
 
 // Bytes returns bytes representation of the Address.
