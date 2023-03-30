@@ -122,6 +122,10 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 
 	origin := sourcePeerAddr.IsZero()
 
+	if isZeroAddress(chunkAddr) {
+		return nil, fmt.Errorf("zero address queried")
+	}
+
 	flightRoute := chunkAddr.String()
 	if origin {
 		flightRoute = chunkAddr.String() + originSuffix
