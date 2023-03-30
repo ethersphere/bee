@@ -27,7 +27,6 @@ import (
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/transaction"
-	"github.com/hashicorp/go-multierror"
 )
 
 const loggerName = "storageincentives"
@@ -202,8 +201,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 		round := currentRound.Load()
 
-		// Start purging outdated data
-		go purgeDataHandler(a.logger, a.state.stateStore, round)
+		go purgeStaleDataHandler(a.logger, a.state.stateStore, round)
 
 		err := getRevealRound(a.state.stateStore, round)
 		if err != nil {
@@ -307,24 +305,17 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	}
 }
 
-func purgeDataHandler(logger log.Logger, store storage.StateStorer, currentRound uint64) {
+func purgeStaleDataHandler(logger log.Logger, store storage.StateStorer, currentRound uint64) {
 	if currentRound <= purgeDataOlderThenXRounds {
 		return
 	}
 
 	purgeRound := func(round uint64) error {
-		mErr := &multierror.Error{}
-
-		err := removeCommitKey(store, round)
-		mErr = multierror.Append(mErr, err)
-
-		err = removeRevealRound(store, round)
-		mErr = multierror.Append(mErr, err)
-
-		err = removeSample(store, round)
-		mErr = multierror.Append(mErr, err)
-
-		return mErr.ErrorOrNil()
+		return errors.Join(
+			removeCommitKey(store, round),
+			removeRevealRound(store, round),
+			removeSample(store, round),
+		)
 	}
 
 	from, err := getLastPurgedRound(store)

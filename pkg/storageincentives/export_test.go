@@ -5,19 +5,19 @@
 package storageincentives
 
 var (
-	NewEvents           = newEvents
-	SaveSample          = saveSample
-	GetSample           = getSample
-	RemoveSample        = removeSample
-	SaveCommitKey       = saveCommitKey
-	GetCommitKey        = getCommitKey
-	RemoveCommitKey     = removeCommitKey
-	SaveRevealRound     = saveRevealRound
-	GetRevealRound      = getRevealRound
-	RemoveRevealRound   = removeRevealRound
-	SaveLastPurgedRound = saveLastPurgedRound
-	GetLastPurgedRound  = getLastPurgedRound
-	PurgeDataHandler    = purgeDataHandler
+	NewEvents             = newEvents
+	SaveSample            = saveSample
+	GetSample             = getSample
+	RemoveSample          = removeSample
+	SaveCommitKey         = saveCommitKey
+	GetCommitKey          = getCommitKey
+	RemoveCommitKey       = removeCommitKey
+	SaveRevealRound       = saveRevealRound
+	GetRevealRound        = getRevealRound
+	RemoveRevealRound     = removeRevealRound
+	SaveLastPurgedRound   = saveLastPurgedRound
+	GetLastPurgedRound    = getLastPurgedRound
+	PurgeStaleDataHandler = purgeStaleDataHandler
 )
 
 type (

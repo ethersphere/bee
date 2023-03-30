@@ -161,7 +161,7 @@ func Test_PurgeDataHandler(t *testing.T) {
 
 	// shorthand function for storageincentives.PurgeDataHandler
 	purgeData := func(round uint64) {
-		storageincentives.PurgeDataHandler(log, store, round)
+		storageincentives.PurgeStaleDataHandler(log, store, round)
 	}
 
 	// helper function which populates data at specified round
