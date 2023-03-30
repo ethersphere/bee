@@ -122,7 +122,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 
 	origin := sourcePeerAddr.IsZero()
 
-	if isZeroAddress(chunkAddr) {
+	if chunkAddr.IsZero() || chunkAddr.IsEmpty() {
 		return nil, fmt.Errorf("zero address queried")
 	}
 
@@ -384,7 +384,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	}
 
 	addr := swarm.NewAddress(req.Addr)
-	if isZeroAddress(addr) {
+	if addr.IsZero() || addr.IsEmpty() {
 		return fmt.Errorf("zero address queried by peer %s", p.Address.String())
 	}
 
@@ -449,16 +449,4 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		}
 	}
 	return nil
-}
-
-func isZeroAddress(addr swarm.Address) bool {
-	if addr.IsZero() {
-		return true
-	}
-
-	if addr.Equal(swarm.NewAddress(make([]byte, swarm.HashSize))) {
-		return true
-	}
-
-	return false
 }

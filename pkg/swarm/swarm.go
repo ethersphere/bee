@@ -35,6 +35,13 @@ var (
 	ErrInvalidChunk = errors.New("invalid chunk")
 )
 
+var (
+	// EmptyAddr is the address that is all zeroes.
+	EmptyAddr = NewAddress(make([]byte, HashSize))
+	// ZeroAddress is the address that has no value.
+	ZeroAddress = NewAddress(nil)
+)
+
 // Address represents an address in Swarm metric space of
 // Node and Chunk addresses.
 type Address struct {
@@ -86,6 +93,11 @@ func (a Address) IsZero() bool {
 	return a.Equal(ZeroAddress)
 }
 
+// IsEmpty returns true if the Address is all zeroes.
+func (a Address) IsEmpty() bool {
+	return a.Equal(EmptyAddr)
+}
+
 // Bytes returns bytes representation of the Address.
 func (a Address) Bytes() []byte {
 	return a.b
@@ -123,9 +135,6 @@ func (a Address) Clone() Address {
 	copy(b, a.b)
 	return NewAddress(b)
 }
-
-// ZeroAddress is the address that has no value.
-var ZeroAddress = NewAddress(nil)
 
 // AddressIterFunc is a callback on every address that is found by the iterator.
 type AddressIterFunc func(address Address) error
