@@ -287,14 +287,17 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	go func() {
+		<-a.quit
+		cancel()
+	}()
 
 	// manually trigger doWork initially in order to set initial data asap
 	doWork(ctx)
 
 	for {
 		select {
-		case <-a.quit:
+		case <-ctx.Done():
 			return
 		case <-time.After(blockTime):
 			doWork(ctx)
