@@ -49,6 +49,7 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
+	"github.com/ethersphere/bee/pkg/status"
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storageincentives"
@@ -172,6 +173,7 @@ type Service struct {
 	lightNodes  *lightnode.Container
 	blockTime   time.Duration
 
+	statusSem        *semaphore.Weighted
 	postageSem       *semaphore.Weighted
 	stakingSem       *semaphore.Weighted
 	cashOutChequeSem *semaphore.Weighted
@@ -185,6 +187,8 @@ type Service struct {
 	validate    *validator.Validate
 
 	redistributionAgent *storageincentives.Agent
+
+	statusService *status.Service
 }
 
 func (s *Service) SetP2P(p2p p2p.DebugService) {
@@ -233,6 +237,7 @@ type ExtraOptions struct {
 	Steward          steward.Interface
 	SyncStatus       func() (bool, error)
 	IndexDebugger    StorageIndexDebugger
+	NodeStatus       *status.Service
 }
 
 func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger log.Logger, transaction transaction.Service, batchStore postage.Storer, beeMode BeeNodeMode, chequebookEnabled, swapEnabled bool, chainBackend transaction.Backend, cors []string) *Service {
@@ -305,6 +310,7 @@ func (s *Service) Configure(signer crypto.Signer, auth auth.Authenticator, trace
 	s.pseudosettle = e.Pseudosettle
 	s.blockTime = e.BlockTime
 
+	s.statusSem = semaphore.NewWeighted(1)
 	s.postageSem = semaphore.NewWeighted(1)
 	s.stakingSem = semaphore.NewWeighted(1)
 	s.cashOutChequeSem = semaphore.NewWeighted(1)
@@ -312,6 +318,8 @@ func (s *Service) Configure(signer crypto.Signer, auth auth.Authenticator, trace
 	s.chainID = chainID
 	s.erc20Service = erc20
 	s.syncStatus = e.SyncStatus
+
+	s.statusService = e.NodeStatus
 
 	s.preMapHooks["resolve"] = func(v string) (string, error) {
 		switch addr, err := s.resolveNameOrAddress(v); {

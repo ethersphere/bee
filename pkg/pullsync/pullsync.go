@@ -78,7 +78,7 @@ type Syncer struct {
 	wg             sync.WaitGroup
 	unwrap         func(swarm.Chunk)
 	validStamp     postage.ValidStampFn
-	radius         postage.RadiusChecker
+	radius         postage.Radius
 	overlayAddress swarm.Address
 
 	rate *rate.Rate
@@ -87,7 +87,7 @@ type Syncer struct {
 	io.Closer
 }
 
-func New(streamer p2p.Streamer, storage pullstorage.Storer, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger log.Logger, radius postage.RadiusChecker, overlayAddress swarm.Address) *Syncer {
+func New(streamer p2p.Streamer, storage pullstorage.Storer, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger log.Logger, radius postage.Radius, overlayAddress swarm.Address) *Syncer {
 
 	return &Syncer{
 		streamer:       streamer,
@@ -261,8 +261,8 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 	return topmost, chunkErr
 }
 
-// Rate returns chunks per second synced
-func (s *Syncer) Rate() float64 {
+// SyncRate returns chunks per second synced.
+func (s *Syncer) SyncRate() float64 {
 	return s.rate.Rate()
 }
 

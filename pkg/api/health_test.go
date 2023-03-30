@@ -22,7 +22,7 @@ func TestHealth(t *testing.T) {
 		testServer, _, _, _ := newTestServer(t, testServerOptions{})
 
 		// When probe is not set health endpoint should indicate that node is not healthy
-		jsonhttptest.Request(t, testServer, http.MethodGet, "/health", http.StatusOK, jsonhttptest.WithExpectedJSONResponse(api.StatusResponse{
+		jsonhttptest.Request(t, testServer, http.MethodGet, "/health", http.StatusOK, jsonhttptest.WithExpectedJSONResponse(api.HealthStatusResponse{
 			Status:          "nok",
 			Version:         bee.Version,
 			APIVersion:      api.Version,
@@ -39,7 +39,7 @@ func TestHealth(t *testing.T) {
 		})
 
 		// Current health probe is pending which should indicate that API is not healthy
-		jsonhttptest.Request(t, testServer, http.MethodGet, "/health", http.StatusOK, jsonhttptest.WithExpectedJSONResponse(api.StatusResponse{
+		jsonhttptest.Request(t, testServer, http.MethodGet, "/health", http.StatusOK, jsonhttptest.WithExpectedJSONResponse(api.HealthStatusResponse{
 			Status:          "nok",
 			Version:         bee.Version,
 			APIVersion:      api.Version,
@@ -48,7 +48,7 @@ func TestHealth(t *testing.T) {
 
 		// When we set health probe to OK it should indicate that node is healthy
 		probe.SetHealthy(api.ProbeStatusOK)
-		jsonhttptest.Request(t, testServer, http.MethodGet, "/health", http.StatusOK, jsonhttptest.WithExpectedJSONResponse(api.StatusResponse{
+		jsonhttptest.Request(t, testServer, http.MethodGet, "/health", http.StatusOK, jsonhttptest.WithExpectedJSONResponse(api.HealthStatusResponse{
 			Status:          "ok",
 			Version:         bee.Version,
 			APIVersion:      api.Version,
@@ -57,7 +57,7 @@ func TestHealth(t *testing.T) {
 
 		// When we set health probe to NOK it should indicate that node is not healthy
 		probe.SetHealthy(api.ProbeStatusNOK)
-		jsonhttptest.Request(t, testServer, http.MethodGet, "/health", http.StatusOK, jsonhttptest.WithExpectedJSONResponse(api.StatusResponse{
+		jsonhttptest.Request(t, testServer, http.MethodGet, "/health", http.StatusOK, jsonhttptest.WithExpectedJSONResponse(api.HealthStatusResponse{
 			Status:          "nok",
 			Version:         bee.Version,
 			APIVersion:      api.Version,

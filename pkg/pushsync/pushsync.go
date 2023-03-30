@@ -75,7 +75,7 @@ type PushSync struct {
 	streamer       p2p.StreamerDisconnecter
 	storer         storage.Putter
 	topologyDriver topology.Driver
-	radiusChecker  postage.RadiusChecker
+	radiusChecker  postage.Radius
 	tagger         *tags.Tags
 	unwrap         func(swarm.Chunk)
 	logger         log.Logger
@@ -98,7 +98,7 @@ type receiptResult struct {
 	err      error
 }
 
-func New(address swarm.Address, nonce []byte, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, rs postage.RadiusChecker, tagger *tags.Tags, includeSelf bool, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger log.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer, warmupTime time.Duration) *PushSync {
+func New(address swarm.Address, nonce []byte, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, rs postage.Radius, tagger *tags.Tags, includeSelf bool, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger log.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer, warmupTime time.Duration) *PushSync {
 	ps := &PushSync{
 		address:        address,
 		nonce:          nonce,
@@ -545,7 +545,7 @@ func (ps *PushSync) pushToNeighbourhood(ctx context.Context, skiplist []swarm.Ad
 	count := 0
 	// Push the chunk to some peers in the neighborhood in parallel for replication.
 	// Any errors here should NOT impact the rest of the handler.
-	_ = ps.topologyDriver.EachPeer(func(peer swarm.Address, po uint8) (bool, bool, error) {
+	_ = ps.topologyDriver.EachConnectedPeer(func(peer swarm.Address, po uint8) (bool, bool, error) {
 		// skip forwarding peer
 		if peer.Equal(originAddr) {
 			return false, false, nil
