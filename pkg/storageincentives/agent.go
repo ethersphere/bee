@@ -202,6 +202,9 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 		round := currentRound.Load()
 
+		// Start purging outdated data
+		go purgeDataHandler(a.logger, a.state.stateStore, round)
+
 		err := getRevealRound(a.state.stateStore, round)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
@@ -235,10 +238,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		prevPhase    PhaseType = -1
 		currentPhase PhaseType
 		checkEvery   uint64 = 1
-		newRoundC           = make(chan uint64, 1)
 	)
-
-	a.startOutdatedDataPurger(newRoundC)
 
 	// optimization, we do not need to check the phase change at every new block
 	if blocksPerPhase > 10 {
@@ -258,11 +258,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		}
 
 		round := block / blocksPerRound
-		prevRound := currentRound.Swap(round)
-
-		if prevRound != round {
-			newRoundC <- round
-		}
+		currentRound.Store(round)
 
 		a.metrics.Round.Set(float64(round))
 
@@ -309,19 +305,6 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 			doWork()
 		}
 	}
-}
-
-func (a *Agent) startOutdatedDataPurger(onNewRoundC <-chan uint64) {
-	go func() {
-		for {
-			select {
-			case <-a.quit:
-				return
-			case currentRound := <-onNewRoundC:
-				purgeDataHandler(a.logger, a.state.stateStore, currentRound)
-			}
-		}
-	}()
 }
 
 func purgeDataHandler(logger log.Logger, store storage.StateStorer, currentRound uint64) {
