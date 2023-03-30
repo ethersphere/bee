@@ -379,10 +379,13 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		return fmt.Errorf("read request: %w peer %s", err, p.Address.String())
 	}
 
+	addr := swarm.NewAddress(req.Addr)
+	if isZeroAddress(addr) {
+		return fmt.Errorf("zero address queried by peer %s", p.Address.String())
+	}
+
 	span, _, ctx := s.tracer.StartSpanFromContext(ctx, "handle-retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: swarm.NewAddress(req.Addr).String()})
 	defer span.Finish()
-
-	addr := swarm.NewAddress(req.Addr)
 
 	forwarded := false
 	chunk, err := s.storer.Get(ctx, storage.ModeGetRequest, addr)
@@ -442,4 +445,16 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		}
 	}
 	return nil
+}
+
+func isZeroAddress(addr swarm.Address) bool {
+	if addr.IsZero() {
+		return true
+	}
+
+	if addr.Equal(swarm.NewAddress(make([]byte, swarm.HashSize))) {
+		return true
+	}
+
+	return false
 }
