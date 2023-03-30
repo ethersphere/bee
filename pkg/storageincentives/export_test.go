@@ -25,5 +25,5 @@ type (
 )
 
 const (
-	PurgeDataOlderThenXRounds = purgeDataOlderThenXRounds
+	PurgeStaleDataThreshold = purgeStaleDataThreshold
 )

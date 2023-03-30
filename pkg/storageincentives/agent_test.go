@@ -154,7 +154,7 @@ func TestAgent(t *testing.T) {
 func Test_PurgeDataHandler(t *testing.T) {
 	t.Parallel()
 
-	const purgeDataOlderThenXRounds = storageincentives.PurgeDataOlderThenXRounds
+	const purgeStaleDataThreshold = storageincentives.PurgeStaleDataThreshold
 
 	log := testutil.NewLogger(t)
 	store := statestore.NewStateStore()
@@ -239,19 +239,19 @@ func Test_PurgeDataHandler(t *testing.T) {
 	for i := uint64(0); i < roundsCount; i++ {
 		purgeData(i)
 
-		if i <= purgeDataOlderThenXRounds {
+		if i <= purgeStaleDataThreshold {
 			assertHasDataAtRound(i, hasRoundData[i])
 		} else {
-			for j := uint64(0); j < i-purgeDataOlderThenXRounds; j++ {
+			for j := uint64(0); j < i-purgeStaleDataThreshold; j++ {
 				assertHasDataAtRound(j, false)
 			}
 		}
 	}
 
-	assertLastPurgedRound(roundsCount - purgeDataOlderThenXRounds - 1)
+	assertLastPurgedRound(roundsCount - purgeStaleDataThreshold - 1)
 
 	// Purge remaining data in single go
-	purgeData(roundsCount + purgeDataOlderThenXRounds)
+	purgeData(roundsCount + purgeStaleDataThreshold)
 
 	// One more time assert that everything was purged
 	for i := uint64(0); i < roundsCount; i++ {

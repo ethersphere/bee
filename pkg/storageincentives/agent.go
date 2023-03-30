@@ -41,7 +41,7 @@ const (
 	// average tx gas used by transactions issued from agent
 	avgTxGas = 250_000
 
-	purgeDataOlderThenXRounds = 10
+	purgeStaleDataThreshold = 10
 )
 
 type ChainBackend interface {
@@ -306,7 +306,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 }
 
 func purgeStaleDataHandler(logger log.Logger, store storage.StateStorer, currentRound uint64) {
-	if currentRound <= purgeDataOlderThenXRounds {
+	if currentRound <= purgeStaleDataThreshold {
 		return
 	}
 
@@ -324,7 +324,7 @@ func purgeStaleDataHandler(logger log.Logger, store storage.StateStorer, current
 		return
 	}
 
-	to := currentRound - purgeDataOlderThenXRounds
+	to := currentRound - purgeStaleDataThreshold
 
 	for i := from; i < to; i++ {
 		err := purgeRound(i)
