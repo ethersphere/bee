@@ -13,7 +13,6 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
-	"github.com/ethersphere/bee/pkg/postage"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/pullsync"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
@@ -226,13 +225,8 @@ func newPullSync(s p2p.Streamer, maxPage uint64, o ...mock.Option) (*pullsync.Sy
 	storage := mock.NewReserve(o...)
 	logger := log.Noop
 	unwrap := func(swarm.Chunk) {}
-	validStamp := func(ch swarm.Chunk, stampBytes []byte) (swarm.Chunk, error) {
-		stamp := new(postage.Stamp)
-		err := stamp.UnmarshalBinary(stampBytes)
-		if err != nil {
-			return nil, err
-		}
-		return ch.WithStamp(stamp), nil
+	validStamp := func(ch swarm.Chunk) (swarm.Chunk, error) {
+		return ch, nil
 	}
 	return pullsync.New(
 		s,

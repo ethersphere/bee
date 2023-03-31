@@ -201,20 +201,19 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	price := ps.pricer.Price(chunkAddress)
 
 	store := func(ctx context.Context) error {
-
 		ps.metrics.Storer.Inc()
 
-		chunk, err := ps.validStamp(chunk, ch.Stamp)
+		chunkToPut, err := ps.validStamp(chunk)
 		if err != nil {
 			return fmt.Errorf("invalid stamp: %w", err)
 		}
 
-		err = ps.store.ReservePut(ctx, chunk)
+		err = ps.store.ReservePut(ctx, chunkToPut)
 		if err != nil {
 			return fmt.Errorf("chunk store: %w", err)
 		}
 
-		signature, err := ps.signer.Sign(ch.Address)
+		signature, err := ps.signer.Sign(chunkToPut.Address().Bytes())
 		if err != nil {
 			return fmt.Errorf("receipt signature: %w", err)
 		}
@@ -226,7 +225,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		}
 		defer debit.Cleanup()
 
-		receipt := pb.Receipt{Address: chunkAddress.Bytes(), Signature: signature, Nonce: ps.nonce}
+		receipt := pb.Receipt{Address: chunkToPut.Address().Bytes(), Signature: signature, Nonce: ps.nonce}
 		if err := w.WriteMsgWithContext(ctx, &receipt); err != nil {
 			return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 		}
@@ -520,9 +519,9 @@ func (ps *PushSync) measurePushPeer(t time.Time, err error, origin bool) {
 }
 
 func (ps *PushSync) validStampWrapper(f postage.ValidStampFn) postage.ValidStampFn {
-	return func(c swarm.Chunk, s []byte) (swarm.Chunk, error) {
+	return func(c swarm.Chunk) (swarm.Chunk, error) {
 		t := time.Now()
-		chunk, err := f(c, s)
+		chunk, err := f(c)
 		if err != nil {
 			ps.metrics.InvalidStampErrors.Inc()
 			ps.metrics.StampValidationTime.WithLabelValues("failure").Observe(time.Since(t).Seconds())
