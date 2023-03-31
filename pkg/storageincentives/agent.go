@@ -122,7 +122,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	// cancel all possible running phases
 	defer phaseEvents.Close()
 
-	printPhaseResult := func(phase PhaseType, round uint64, err error, isPhasePlayed bool) {
+	logPhaseResult := func(phase PhaseType, round uint64, err error, isPhasePlayed bool) {
 		if err != nil {
 			a.logger.Error(err, "phase failed", "phase", phase, "round", round)
 		} else if isPhasePlayed {
@@ -154,7 +154,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 		round := currentRound.Load()
 		isPhasePlayed, err := a.handleReveal(ctx, round)
-		printPhaseResult(reveal, round, err, isPhasePlayed)
+		logPhaseResult(reveal, round, err, isPhasePlayed)
 	})
 
 	phaseEvents.On(claim, func(ctx context.Context, _ PhaseType) {
@@ -162,13 +162,13 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 		round := currentRound.Load()
 		isPhasePlayed, err := a.handleClaim(ctx, round)
-		printPhaseResult(claim, round, err, isPhasePlayed)
+		logPhaseResult(claim, round, err, isPhasePlayed)
 	})
 
 	phaseEvents.On(sample, func(ctx context.Context, _ PhaseType) {
 		round := currentRound.Load()
 		isPhasePlayed, err := a.handleSample(ctx, round)
-		printPhaseResult(sample, round, err, isPhasePlayed)
+		logPhaseResult(sample, round, err, isPhasePlayed)
 
 		phaseEvents.Publish(sampleEnd)
 	})
