@@ -794,7 +794,7 @@ func createPushSyncNodeWithAccounting(
 		unwrap = func(swarm.Chunk) {}
 	}
 
-	validStamp := func(ch swarm.Chunk, stamp []byte) (swarm.Chunk, error) {
+	validStamp := func(ch swarm.Chunk) (swarm.Chunk, error) {
 		return ch, nil
 	}
 
