@@ -178,7 +178,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		currentPhase PhaseType
 	)
 
-	doWork := func(ctx context.Context) {
+	phaseCheck := func(ctx context.Context) {
 		ctx, cancel := context.WithTimeout(ctx, blockTime*time.Duration(blocksPerRound))
 		defer cancel()
 
@@ -236,21 +236,21 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		cancel()
 	}()
 
-	// manually trigger doWork initially in order to set initial data asap
-	doWork(ctx)
+	// manually invoke phaseCheck initially in order to set initial data asap
+	phaseCheck(ctx)
 
-	checkInterval := blockTime
+	phaseCheckInterval := blockTime
 	// optimization, we do not need to check the phase change at every new block
 	if blocksPerPhase > 10 {
-		checkInterval = blockTime * 5
+		phaseCheckInterval = blockTime * 5
 	}
 
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(checkInterval):
-			doWork(ctx)
+		case <-time.After(phaseCheckInterval):
+			phaseCheck(ctx)
 		}
 	}
 }
