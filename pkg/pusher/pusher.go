@@ -248,7 +248,7 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 
 	defer s.inflight.delete(op.Chunk)
 
-	if err := s.valid(op.Chunk); err != nil {
+	if _, err := s.validStamp(op.Chunk); err != nil {
 		loggerV1.Warning(
 			"stamp with is no longer valid, skipping syncing for chunk",
 			"batch_id", hex.EncodeToString(op.Chunk.Stamp().BatchID()),
@@ -300,7 +300,7 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 		err     error
 	)
 
-	err = s.valid(op.Chunk)
+	_, err = s.validStamp(op.Chunk)
 	if err != nil {
 		logger.Warning(
 			"stamp with is no longer valid, skipping direct upload for chunk",
@@ -348,20 +348,6 @@ func (s *Service) checkReceipt(receipt *pushsync.Receipt, loggerV1 log.Logger) e
 	loggerV1.Debug("chunk pushed", "chunk_address", addr, "peer_address", peer, "proximity_order", po)
 	s.metrics.ReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
 	s.attempts.delete(addr)
-	return nil
-}
-
-// valid checks whether the stamp for a chunk is valid before sending
-// it out on the network.
-func (s *Service) valid(ch swarm.Chunk) error {
-	stampBytes, err := ch.Stamp().MarshalBinary()
-	if err != nil {
-		return fmt.Errorf("pusher: valid stamp marshal: %w", err)
-	}
-	_, err = s.validStamp(ch, stampBytes)
-	if err != nil {
-		return fmt.Errorf("pusher: valid stamp: %w", err)
-	}
 	return nil
 }
 
