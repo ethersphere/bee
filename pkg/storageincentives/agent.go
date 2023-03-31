@@ -122,42 +122,29 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	// cancel all possible running phases
 	defer phaseEvents.Close()
 
-	commitF := func(ctx context.Context) {
-		phaseEvents.Cancel(claim)
-
-		round := currentRound.Load()
-
-		// the sample has to come from previous round to be able to commit it
-		sample, err := getSample(a.state.stateStore, round-1)
+	printPhaseResult := func(phase PhaseType, round uint64, err error, isPhasePlayed bool) {
 		if err != nil {
-			if errors.Is(err, storage.ErrNotFound) {
-				// In absence of sample, phase is skipped
-				return
-			}
-
-			a.logger.Error(err, "getSample for commit phase")
-			return
-		}
-
-		err = a.commit(ctx, sample, round)
-		if err != nil {
-			a.logger.Error(err, "commit")
+			a.logger.Error(err, "phase failed", "phase", phase, "round", round)
+		} else if isPhasePlayed {
+			a.logger.Info("phase played", "phase", phase, "round", round)
 		} else {
-			a.logger.Debug("committed the reserve sample and radius")
+			a.logger.Debug("phase skipped", "phase", phase, "round", round)
 		}
 	}
 
 	// when the sample finishes, if we are in the commit phase, run commit
 	phaseEvents.On(sampleEnd, func(ctx context.Context, previous PhaseType) {
 		if previous == commit {
-			commitF(ctx)
+			phaseEvents.Cancel(claim)
+			a.handleCommit(ctx, currentRound.Load())
 		}
 	})
 
 	// when we enter the commit phase, if the sample is already finished, run commit
 	phaseEvents.On(commit, func(ctx context.Context, previous PhaseType) {
 		if previous == sampleEnd {
-			commitF(ctx)
+			phaseEvents.Cancel(claim)
+			a.handleCommit(ctx, currentRound.Load())
 		}
 	})
 
@@ -166,65 +153,22 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		phaseEvents.Cancel(commit, sample, sampleEnd)
 
 		round := currentRound.Load()
-
-		// reveal requires the commitKey from the same round
-		commitKey, err := getCommitKey(a.state.stateStore, round)
-		if err != nil {
-			if errors.Is(err, storage.ErrNotFound) {
-				// In absence of commitKey, phase is skipped
-				return
-			}
-
-			a.logger.Error(err, "getCommitKey for reveal phase")
-			return
-		}
-
-		// reveal requires sample from previous round
-		sample, err := getSample(a.state.stateStore, round-1)
-		if err != nil {
-			// Sample must have been saved so far
-			a.logger.Error(err, "getSample for reveal phase")
-			return
-		}
-
-		err = a.reveal(ctx, sample, commitKey, round)
-		if err != nil {
-			a.logger.Error(err, "reveal")
-		} else {
-			a.logger.Debug("revealed the sample with the obfuscation key")
-		}
+		isPhasePlayed, err := a.handleReveal(ctx, round)
+		printPhaseResult(reveal, round, err, isPhasePlayed)
 	})
 
 	phaseEvents.On(claim, func(ctx context.Context, _ PhaseType) {
 		phaseEvents.Cancel(reveal)
 
 		round := currentRound.Load()
-
-		err := getRevealRound(a.state.stateStore, round)
-		if err != nil {
-			if errors.Is(err, storage.ErrNotFound) {
-				// In absence of reval round, phase is skipped
-				return
-			}
-
-			a.logger.Error(err, "getRevealRound for claim phase")
-			return
-		}
-
-		if err := a.claim(ctx, round); err != nil {
-			a.logger.Error(err, "claim")
-		}
+		isPhasePlayed, err := a.handleClaim(ctx, round)
+		printPhaseResult(claim, round, err, isPhasePlayed)
 	})
 
 	phaseEvents.On(sample, func(ctx context.Context, _ PhaseType) {
 		round := currentRound.Load()
-
-		shouldPlayRound, err := a.play(ctx, round)
-		if err != nil {
-			a.logger.Error(err, "make sample")
-		} else if shouldPlayRound {
-			a.logger.Info("produced reserve sample", "round", round)
-		}
+		isPhasePlayed, err := a.handleSample(ctx, round)
+		printPhaseResult(sample, round, err, isPhasePlayed)
 
 		phaseEvents.Publish(sampleEnd)
 	})
@@ -311,36 +255,88 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	}
 }
 
-func (a *Agent) reveal(ctx context.Context, sample sampleData, obfuscationKey []byte, round uint64) error {
+func (a *Agent) handleCommit(ctx context.Context, round uint64) {
+	// the sample has to come from previous round to be able to commit it
+	sample, err := getSample(a.state.stateStore, round-1)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			// In absence of sample, phase is skipped
+			return
+		}
+
+		a.logger.Error(err, "getSample for commit phase")
+		return
+	}
+
+	err = a.commit(ctx, sample, round)
+	if err != nil {
+		a.logger.Error(err, "commit")
+	} else {
+		a.logger.Debug("committed the reserve sample and radius")
+	}
+}
+
+func (a *Agent) handleReveal(ctx context.Context, round uint64) (bool, error) {
+	// reveal requires the commitKey from the same round
+	commitKey, err := getCommitKey(a.state.stateStore, round)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			// In absence of commitKey, phase is skipped
+			return false, nil
+		}
+
+		a.logger.Error(err, "getCommitKey for reveal phase")
+		return false, err
+	}
+
+	// reveal requires sample from previous round
+	sample, err := getSample(a.state.stateStore, round-1)
+	if err != nil {
+		// Sample must have been saved so far
+		a.logger.Error(err, "getSample for reveal phase")
+		return false, err
+	}
+
 	a.metrics.RevealPhase.Inc()
 	sampleBytes := sample.ReserveSample.Hash.Bytes()
-	txHash, err := a.contract.Reveal(ctx, sample.StorageRadius, sampleBytes, obfuscationKey)
+	txHash, err := a.contract.Reveal(ctx, sample.StorageRadius, sampleBytes, commitKey)
 	if err != nil {
 		a.metrics.ErrReveal.Inc()
-		return err
+		return false, err
 	}
 	a.state.AddFee(ctx, txHash)
 
 	if err := saveRevealRound(a.state.stateStore, round); err != nil {
-		return fmt.Errorf("failed to save reveal round: %w", err)
+		return false, fmt.Errorf("failed to save reveal round: %w", err)
 	}
 
-	return nil
+	return true, nil
 }
 
-func (a *Agent) claim(ctx context.Context, round uint64) error {
+func (a *Agent) handleClaim(ctx context.Context, round uint64) (bool, error) {
+	err := getRevealRound(a.state.stateStore, round)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			// In absence of reval round, phase is skipped
+			return false, nil
+		}
+
+		a.logger.Error(err, "getRevealRound for claim phase")
+		return false, err
+	}
+
 	a.metrics.ClaimPhase.Inc()
 	// event claimPhase was processed
 
-	err := a.batchExpirer.ExpireBatches(ctx)
+	err = a.batchExpirer.ExpireBatches(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	isWinner, err := a.contract.IsWinner(ctx)
 	if err != nil {
 		a.metrics.ErrWinner.Inc()
-		return err
+		return false, err
 	}
 
 	if isWinner {
@@ -355,7 +351,7 @@ func (a *Agent) claim(ctx context.Context, round uint64) error {
 		if err != nil {
 			a.metrics.ErrClaim.Inc()
 			a.logger.Info("error claiming win", "err", err)
-			return fmt.Errorf("error claiming win: %w", err)
+			return false, fmt.Errorf("error claiming win: %w", err)
 		}
 		a.logger.Info("claimed win")
 		if errBalance == nil {
@@ -370,10 +366,10 @@ func (a *Agent) claim(ctx context.Context, round uint64) error {
 		a.logger.Info("claim made, lost round")
 	}
 
-	return nil
+	return true, nil
 }
 
-func (a *Agent) play(ctx context.Context, round uint64) (bool, error) {
+func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 	status, err := a.state.Status()
 	if err != nil {
 		return false, err
