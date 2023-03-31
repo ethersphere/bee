@@ -16,7 +16,6 @@ const (
 	reveal
 	claim
 	sample
-	sampleEnd
 )
 
 func (p PhaseType) String() string {
@@ -29,8 +28,6 @@ func (p PhaseType) String() string {
 		return "claim"
 	case sample:
 		return "sample"
-	case sampleEnd:
-		return "sampleEnd"
 	default:
 		return "unknown"
 	}

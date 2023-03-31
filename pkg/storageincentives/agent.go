@@ -132,25 +132,18 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		}
 	}
 
-	// when the sample finishes, if we are in the commit phase, run commit
-	phaseEvents.On(sampleEnd, func(ctx context.Context, previous PhaseType) {
-		if previous == commit {
-			phaseEvents.Cancel(claim)
-			a.handleCommit(ctx, currentRound.Load())
-		}
-	})
-
 	// when we enter the commit phase, if the sample is already finished, run commit
-	phaseEvents.On(commit, func(ctx context.Context, previous PhaseType) {
-		if previous == sampleEnd {
-			phaseEvents.Cancel(claim)
-			a.handleCommit(ctx, currentRound.Load())
-		}
+	phaseEvents.On(commit, func(ctx context.Context, _ PhaseType) {
+		phaseEvents.Cancel(claim)
+
+		round := currentRound.Load()
+		isPhasePlayed, err := a.handleCommit(ctx, round)
+		printPhaseResult(commit, round, err, isPhasePlayed)
 	})
 
 	phaseEvents.On(reveal, func(ctx context.Context, _ PhaseType) {
 		// cancel previous executions of the commit and sample phases
-		phaseEvents.Cancel(commit, sample, sampleEnd)
+		phaseEvents.Cancel(commit, sample)
 
 		round := currentRound.Load()
 		isPhasePlayed, err := a.handleReveal(ctx, round)
@@ -170,7 +163,19 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		isPhasePlayed, err := a.handleSample(ctx, round)
 		printPhaseResult(sample, round, err, isPhasePlayed)
 
-		phaseEvents.Publish(sampleEnd)
+		// Sample handled could potentially take long time, therefore it could overlap with commit
+		// phase of next round. When that case happens commit event needs to be triggered once more
+		// in order to handle commit phase with delay.
+		a.state.mtx.Lock()
+		currentPhase := a.state.status.Phase
+		currentRound := a.state.status.Round
+		a.state.mtx.Unlock()
+
+		if isPhasePlayed &&
+			currentPhase == commit &&
+			currentRound-1 == round {
+			phaseEvents.Publish(commit)
+		}
 	})
 
 	var (
@@ -255,25 +260,26 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	}
 }
 
-func (a *Agent) handleCommit(ctx context.Context, round uint64) {
+func (a *Agent) handleCommit(ctx context.Context, round uint64) (bool, error) {
 	// the sample has to come from previous round to be able to commit it
 	sample, err := getSample(a.state.stateStore, round-1)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			// In absence of sample, phase is skipped
-			return
+			return false, nil
 		}
 
 		a.logger.Error(err, "getSample for commit phase")
-		return
+		return false, err
 	}
 
 	err = a.commit(ctx, sample, round)
 	if err != nil {
 		a.logger.Error(err, "commit")
-	} else {
-		a.logger.Debug("committed the reserve sample and radius")
+		return false, err
 	}
+
+	return true, nil
 }
 
 func (a *Agent) handleReveal(ctx context.Context, round uint64) (bool, error) {
