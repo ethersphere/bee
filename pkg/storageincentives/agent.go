@@ -12,7 +12,6 @@ import (
 	"io"
 	"math/big"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
@@ -115,11 +114,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 	defer a.wg.Done()
 
-	var (
-		currentRound atomic.Uint64
-		phaseEvents  = newEvents()
-	)
-	// cancel all possible running phases
+	phaseEvents := newEvents()
 	defer phaseEvents.Close()
 
 	printPhaseResult := func(phase PhaseType, round uint64, err error, isPhasePlayed bool) {
@@ -132,11 +127,17 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		}
 	}
 
+	currentRoundAndPhase := func() (uint64, PhaseType) {
+		a.state.mtx.Lock()
+		defer a.state.mtx.Unlock()
+		return a.state.status.Round, a.state.status.Phase
+	}
+
 	// when we enter the commit phase, if the sample is already finished, run commit
 	phaseEvents.On(commit, func(ctx context.Context) {
 		phaseEvents.Cancel(claim)
 
-		round := currentRound.Load()
+		round, _ := currentRoundAndPhase()
 		isPhasePlayed, err := a.handleCommit(ctx, round)
 		printPhaseResult(commit, round, err, isPhasePlayed)
 	})
@@ -144,7 +145,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	phaseEvents.On(reveal, func(ctx context.Context) {
 		phaseEvents.Cancel(commit, sample)
 
-		round := currentRound.Load()
+		round, _ := currentRoundAndPhase()
 		isPhasePlayed, err := a.handleReveal(ctx, round)
 		printPhaseResult(reveal, round, err, isPhasePlayed)
 	})
@@ -153,24 +154,20 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		phaseEvents.Cancel(reveal)
 		phaseEvents.Publish(sample)
 
-		round := currentRound.Load()
+		round, _ := currentRoundAndPhase()
 		isPhasePlayed, err := a.handleClaim(ctx, round)
 		printPhaseResult(claim, round, err, isPhasePlayed)
 	})
 
 	phaseEvents.On(sample, func(ctx context.Context) {
-		round := currentRound.Load()
+		round, _ := currentRoundAndPhase()
 		isPhasePlayed, err := a.handleSample(ctx, round)
 		printPhaseResult(sample, round, err, isPhasePlayed)
 
 		// Sample handled could potentially take long time, therefore it could overlap with commit
 		// phase of next round. When that case happens commit event needs to be triggered once more
 		// in order to handle commit phase with delay.
-		a.state.mtx.Lock()
-		currentPhase := a.state.status.Phase
-		currentRound := a.state.status.Round
-		a.state.mtx.Unlock()
-
+		currentRound, currentPhase := currentRoundAndPhase()
 		if isPhasePlayed &&
 			currentPhase == commit &&
 			currentRound-1 == round {
@@ -196,7 +193,6 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		}
 
 		round := block / blocksPerRound
-		currentRound.Store(round)
 
 		a.metrics.Round.Set(float64(round))
 
