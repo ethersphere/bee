@@ -295,11 +295,17 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	// manually trigger doWork initially in order to set initial data asap
 	doWork(ctx)
 
+	checkInterval := blockTime
+	// optimization, we do not need to check the phase change at every new block
+	if blocksPerPhase > 10 {
+		checkInterval = blockTime * 5
+	}
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(blockTime):
+		case <-time.After(checkInterval):
 			doWork(ctx)
 		}
 	}
