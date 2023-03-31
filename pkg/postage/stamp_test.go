@@ -87,17 +87,15 @@ func TestValidStamp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stBytes, err := st.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
+
+	ch.WithStamp(st)
 
 	// ensure the chunk doesnt have the batch details filled before we validate stamp
 	if ch.Depth() == b.Depth || ch.BucketDepth() == b.BucketDepth {
 		t.Fatal("expected chunk to not have correct depth and bucket depth at start")
 	}
 
-	ch, err = postage.ValidStamp(bs)(ch, stBytes)
+	ch, err = postage.ValidStamp(bs)(ch)
 	if err != nil {
 		t.Fatal(err)
 	}
