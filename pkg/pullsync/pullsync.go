@@ -232,7 +232,14 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		s.metrics.Delivered.Inc()
 
 		chunk := swarm.NewChunk(addr, delivery.Data)
-		if chunk, err = s.validStamp(chunk, delivery.Stamp); err != nil {
+		stamp := new(postage.Stamp)
+		if err = stamp.UnmarshalBinary(delivery.Stamp); err != nil {
+			chunkErr = errors.Join(chunkErr, err)
+			continue
+		}
+		chunk.WithStamp(stamp)
+
+		if chunk, err = s.validStamp(chunk); err != nil {
 			s.logger.Debug("unverified stamp", "error", err, "peer_address", peer, "chunk_address", chunk)
 			chunkErr = errors.Join(chunkErr, err)
 			continue
