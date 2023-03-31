@@ -21,17 +21,17 @@ func TestClose(t *testing.T) {
 	done2 := make(chan struct{})
 	done3 := make(chan struct{})
 
-	ev.On(1, func(ctx context.Context, pt storageincentives.PhaseType) {
+	ev.On(1, func(ctx context.Context) {
 		<-ctx.Done()
 		close(done1)
 	})
 
-	ev.On(1, func(ctx context.Context, pt storageincentives.PhaseType) {
+	ev.On(1, func(ctx context.Context) {
 		<-ctx.Done()
 		close(done2)
 	})
 
-	ev.On(2, func(ctx context.Context, pt storageincentives.PhaseType) {
+	ev.On(2, func(ctx context.Context) {
 		<-ctx.Done()
 		close(done3)
 	})
@@ -72,17 +72,17 @@ func TestPhaseCancel(t *testing.T) {
 	// ensure no panics occur on an empty publish
 	ev.Publish(0)
 
-	ev.On(1, func(ctx context.Context, pt storageincentives.PhaseType) {
+	ev.On(1, func(ctx context.Context) {
 		<-ctx.Done()
 		close(done1)
 	})
 
-	ev.On(2, func(ctx context.Context, pt storageincentives.PhaseType) {
+	ev.On(2, func(ctx context.Context) {
 		<-ctx.Done()
 		close(done2)
 	})
 
-	ev.On(3, func(ctx context.Context, pt storageincentives.PhaseType) {
+	ev.On(3, func(ctx context.Context) {
 		ev.Cancel(1, 2)
 	})
 

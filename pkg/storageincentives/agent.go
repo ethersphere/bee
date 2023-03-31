@@ -133,7 +133,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	}
 
 	// when we enter the commit phase, if the sample is already finished, run commit
-	phaseEvents.On(commit, func(ctx context.Context, _ PhaseType) {
+	phaseEvents.On(commit, func(ctx context.Context) {
 		phaseEvents.Cancel(claim)
 
 		round := currentRound.Load()
@@ -141,8 +141,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		printPhaseResult(commit, round, err, isPhasePlayed)
 	})
 
-	phaseEvents.On(reveal, func(ctx context.Context, _ PhaseType) {
-		// cancel previous executions of the commit and sample phases
+	phaseEvents.On(reveal, func(ctx context.Context) {
 		phaseEvents.Cancel(commit, sample)
 
 		round := currentRound.Load()
@@ -150,15 +149,16 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		printPhaseResult(reveal, round, err, isPhasePlayed)
 	})
 
-	phaseEvents.On(claim, func(ctx context.Context, _ PhaseType) {
+	phaseEvents.On(claim, func(ctx context.Context) {
 		phaseEvents.Cancel(reveal)
+		phaseEvents.Publish(sample)
 
 		round := currentRound.Load()
 		isPhasePlayed, err := a.handleClaim(ctx, round)
 		printPhaseResult(claim, round, err, isPhasePlayed)
 	})
 
-	phaseEvents.On(sample, func(ctx context.Context, _ PhaseType) {
+	phaseEvents.On(sample, func(ctx context.Context) {
 		round := currentRound.Load()
 		isPhasePlayed, err := a.handleSample(ctx, round)
 		printPhaseResult(sample, round, err, isPhasePlayed)
@@ -230,9 +230,6 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		}
 
 		phaseEvents.Publish(currentPhase)
-		if currentPhase == claim {
-			phaseEvents.Publish(sample) // trigger sample along side the claim phase
-		}
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

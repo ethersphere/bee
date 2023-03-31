@@ -34,13 +34,12 @@ func (p PhaseType) String() string {
 }
 
 type events struct {
-	mtx      sync.Mutex
-	previous PhaseType
-	ev       map[PhaseType]*event
+	mtx sync.Mutex
+	ev  map[PhaseType]*event
 }
 
 type event struct {
-	funcs  []func(context.Context, PhaseType)
+	funcs  []func(context.Context)
 	ctx    context.Context
 	cancel context.CancelFunc
 }
@@ -51,7 +50,7 @@ func newEvents() *events {
 	}
 }
 
-func (e *events) On(phase PhaseType, f func(context.Context, PhaseType)) {
+func (e *events) On(phase PhaseType, f func(context.Context)) {
 	e.mtx.Lock()
 	defer e.mtx.Unlock()
 
@@ -69,10 +68,9 @@ func (e *events) Publish(phase PhaseType) {
 
 	if ev, ok := e.ev[phase]; ok {
 		for _, v := range ev.funcs {
-			go v(ev.ctx, e.previous)
+			go v(ev.ctx)
 		}
 	}
-	e.previous = phase
 }
 
 func (e *events) Cancel(phases ...PhaseType) {
