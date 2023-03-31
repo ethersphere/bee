@@ -232,16 +232,10 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	var (
 		prevPhase    PhaseType = -1
 		currentPhase PhaseType
-		checkEvery   uint64 = 1
 	)
 
-	// optimization, we do not need to check the phase change at every new block
-	if blocksPerPhase > 10 {
-		checkEvery = 5
-	}
-
-	doWork := func() {
-		ctx, cancel := context.WithTimeout(context.Background(), blockTime*time.Duration(blocksPerRound))
+	phaseCheck := func(ctx context.Context) {
+		ctx, cancel := context.WithTimeout(ctx, blockTime*time.Duration(blocksPerRound))
 		defer cancel()
 
 		a.metrics.BackendCalls.Inc()
@@ -292,12 +286,27 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		}
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		<-a.quit
+		cancel()
+	}()
+
+	// manually invoke phaseCheck initially in order to set initial data asap
+	phaseCheck(ctx)
+
+	phaseCheckInterval := blockTime
+	// optimization, we do not need to check the phase change at every new block
+	if blocksPerPhase > 10 {
+		phaseCheckInterval = blockTime * 5
+	}
+
 	for {
 		select {
-		case <-a.quit:
+		case <-ctx.Done():
 			return
-		case <-time.After(blockTime * time.Duration(checkEvery)):
-			doWork()
+		case <-time.After(phaseCheckInterval):
+			phaseCheck(ctx)
 		}
 	}
 }
