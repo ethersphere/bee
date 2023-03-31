@@ -231,10 +231,16 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		delete(wantChunks, addr.ByteString())
 		s.metrics.Delivered.Inc()
 
-		newChunk := swarm.NewChunk(addr, delivery.Data)
-		chunk, err := s.validStamp(newChunk, delivery.Stamp)
-		if err != nil {
-			s.logger.Debug("unverified stamp", "error", err, "peer_address", peer, "chunk_address", newChunk)
+		chunk := swarm.NewChunk(addr, delivery.Data)
+		stamp := new(postage.Stamp)
+		if err = stamp.UnmarshalBinary(delivery.Stamp); err != nil {
+			chunkErr = errors.Join(chunkErr, err)
+			continue
+		}
+		chunk.WithStamp(stamp)
+
+		if chunk, err = s.validStamp(chunk); err != nil {
+			s.logger.Debug("unverified stamp", "error", err, "peer_address", peer, "chunk_address", chunk)
 			chunkErr = errors.Join(chunkErr, err)
 			continue
 		}

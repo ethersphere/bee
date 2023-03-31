@@ -218,7 +218,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			span, _, ctxd := ps.tracer.StartSpanFromContext(ctxd, "pushsync-replication-storage", ps.logger, opentracing.Tag{Key: "address", Value: chunkAddress.String()})
 			defer span.Finish()
 
-			chunk, err = ps.validStamp(chunk, ch.Stamp)
+			chunk, err = ps.validStamp(chunk)
 			if err != nil {
 				return fmt.Errorf("pushsync replication invalid stamp: %w", err)
 			}
@@ -254,7 +254,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	storerNode := false
 	defer func() {
 		if !storerNode && ps.warmedUp() && ps.store.IsWithinStorageRadius(chunkAddress) {
-			verifiedChunk, err := ps.validStamp(chunk, ch.Stamp)
+			verifiedChunk, err := ps.validStamp(chunk)
 			if err != nil {
 				logger.Warning("forwarder, invalid stamp for chunk", "chunk_address", chunkAddress)
 				return
@@ -271,7 +271,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		if errors.Is(err, topology.ErrWantSelf) {
 			storerNode = true
 			ps.metrics.Storer.Inc()
-			chunk, err = ps.validStamp(chunk, ch.Stamp)
+			chunk, err = ps.validStamp(chunk)
 			if err != nil {
 				return fmt.Errorf("pushsync storer invalid stamp: %w", err)
 			}
@@ -688,11 +688,11 @@ func (ps *PushSync) pushToNeighbour(ctx context.Context, peer swarm.Address, ch 
 }
 
 func (ps *PushSync) validStampWrapper(f postage.ValidStampFn) postage.ValidStampFn {
-	return func(c swarm.Chunk, s []byte) (swarm.Chunk, error) {
+	return func(c swarm.Chunk) (swarm.Chunk, error) {
 
 		t := time.Now()
 
-		chunk, err := f(c, s)
+		chunk, err := f(c)
 		if err != nil {
 			ps.metrics.InvalidStampErrors.Inc()
 			ps.metrics.StampValidationTime.WithLabelValues("failure").Observe(time.Since(t).Seconds())
