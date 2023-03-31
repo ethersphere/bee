@@ -34,7 +34,7 @@ const spinTimeout = time.Second * 3
 
 var (
 	block                 = common.HexToHash("0x1").Bytes()
-	defaultMockValidStamp = func(ch swarm.Chunk, stamp []byte) (swarm.Chunk, error) {
+	defaultMockValidStamp = func(ch swarm.Chunk) (swarm.Chunk, error) {
 		return ch, nil
 	}
 	defaultRetryCount = 3
@@ -347,7 +347,7 @@ func TestChunkWithInvalidStampSkipped(t *testing.T) {
 	})
 
 	wantErr := errors.New("dummy error")
-	validStamp := func(ch swarm.Chunk, stamp []byte) (swarm.Chunk, error) {
+	validStamp := func(ch swarm.Chunk) (swarm.Chunk, error) {
 		return nil, wantErr
 	}
 
