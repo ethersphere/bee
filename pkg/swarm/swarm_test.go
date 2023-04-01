@@ -38,6 +38,11 @@ func TestAddress(t *testing.T) {
 			want: swarm.NewAddress([]byte{0}),
 		},
 		{
+			name: "all zeroes",
+			hex:  swarm.EmptyAddress.String(),
+			want: swarm.EmptyAddress,
+		},
+		{
 			name: "one",
 			hex:  "01",
 			want: swarm.NewAddress([]byte{1}),
@@ -64,6 +69,9 @@ func TestAddress(t *testing.T) {
 			}
 			if a.IsZero() != tc.want.IsZero() {
 				t.Errorf("got address as zero=%v, want zero=%v", a.IsZero(), tc.want.IsZero())
+			}
+			if a.IsEmpty() != tc.want.IsEmpty() {
+				t.Errorf("got address as empty=%v, want empty=%v", a.IsEmpty(), tc.want.IsEmpty())
 			}
 		})
 	}
