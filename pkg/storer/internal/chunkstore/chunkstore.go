@@ -219,15 +219,31 @@ func (c *chunkStoreWrapper) Delete(ctx context.Context, addr swarm.Address) erro
 }
 
 func (c *chunkStoreWrapper) Iterate(ctx context.Context, fn storage.IterateChunkFn) error {
-	return c.store.Iterate(storage.Query{
-		Factory: func() storage.Item { return new(retrievalIndexItem) },
-	}, func(r storage.Result) (bool, error) {
-		ch, err := c.readChunk(ctx, r.Entry.(*retrievalIndexItem))
-		if err != nil {
-			return true, err
-		}
-		return fn(ch)
-	})
+	return c.store.Iterate(
+		storage.Query{
+			Factory: func() storage.Item { return new(retrievalIndexItem) },
+		},
+		func(r storage.Result) (bool, error) {
+			ch, err := c.readChunk(ctx, r.Entry.(*retrievalIndexItem))
+			if err != nil {
+				return true, err
+			}
+			return fn(ch)
+		},
+	)
 }
 
 func (c *chunkStoreWrapper) Close() error { return nil }
+
+func IterateChunkEntries(st storage.Store, fn func(swarm.Address, bool) (bool, error)) error {
+	return st.Iterate(
+		storage.Query{
+			Factory: func() storage.Item { return new(retrievalIndexItem) },
+		},
+		func(r storage.Result) (bool, error) {
+			addr := r.Entry.(*retrievalIndexItem).Address
+			isShared := r.Entry.(*retrievalIndexItem).RefCnt > 1
+			return fn(addr, isShared)
+		},
+	)
+}

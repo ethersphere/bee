@@ -229,12 +229,12 @@ type uploadItem struct {
 
 // ID implements the storage.Item interface.
 func (i uploadItem) ID() string {
-	return string(i.BatchID)
+	return storageutil.JoinFields(i.Address.ByteString(), string(i.BatchID))
 }
 
 // Namespace implements the storage.Item interface.
 func (i uploadItem) Namespace() string {
-	return storageutil.JoinFields("UploadItem", i.Address.ByteString())
+	return "UploadItem"
 }
 
 // Marshal implements the storage.Item interface.
@@ -646,4 +646,17 @@ func DeleteTag(st storage.Store, tagID uint64) error {
 		return fmt.Errorf("uploadstore: failed to delete tag %d: %w", tagID, err)
 	}
 	return nil
+}
+
+func IterateAll(st storage.Store, iterateFn func(addr swarm.Address, isSynced bool) (bool, error)) error {
+	return st.Iterate(
+		storage.Query{
+			Factory: func() storage.Item { return new(uploadItem) },
+		},
+		func(r storage.Result) (bool, error) {
+			address := swarm.NewAddress([]byte(r.ID[:32]))
+			synced := r.Entry.(*uploadItem).Synced != 0
+			return iterateFn(address, synced)
+		},
+	)
 }
