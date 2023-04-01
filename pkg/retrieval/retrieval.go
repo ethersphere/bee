@@ -122,6 +122,10 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 
 	origin := sourcePeerAddr.IsZero()
 
+	if chunkAddr.IsZero() || chunkAddr.IsEmpty() {
+		return nil, fmt.Errorf("zero address queried")
+	}
+
 	flightRoute := chunkAddr.String()
 	if origin {
 		flightRoute = chunkAddr.String() + originSuffix
@@ -379,10 +383,13 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		return fmt.Errorf("read request: %w peer %s", err, p.Address.String())
 	}
 
-	span, _, ctx := s.tracer.StartSpanFromContext(ctx, "handle-retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: swarm.NewAddress(req.Addr).String()})
-	defer span.Finish()
-
 	addr := swarm.NewAddress(req.Addr)
+	if addr.IsZero() || addr.IsEmpty() {
+		return fmt.Errorf("zero address queried by peer %s", p.Address.String())
+	}
+
+	span, _, ctx := s.tracer.StartSpanFromContext(ctx, "handle-retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: addr.String()})
+	defer span.Finish()
 
 	forwarded := false
 	chunk, err := s.storer.Get(ctx, storage.ModeGetRequest, addr)
