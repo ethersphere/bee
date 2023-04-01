@@ -134,7 +134,7 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 			if err != nil {
 				return nil, fmt.Errorf("failed unmarshaling: %w", err)
 			}
-			res = &storage.Result{Entry: newItem}
+			res = &storage.Result{ID: idFromKey(k, q.Factory().Namespace()), Entry: newItem}
 		}
 		return res, nil
 	}
