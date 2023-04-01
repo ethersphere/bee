@@ -27,6 +27,7 @@ type mockStorer struct {
 	sessionID      atomic.Uint64
 	activeSessions map[uint64]*storer.SessionInfo
 	chunkPushC     chan *pusher.Op
+	debugInfo      storer.Info
 }
 
 type putterSession struct {
@@ -63,6 +64,12 @@ func NewWithChunkStore(cs storage.ChunkStore) *mockStorer {
 		chunkPushC:     make(chan *pusher.Op),
 		activeSessions: make(map[uint64]*storer.SessionInfo),
 	}
+}
+
+func NewWithDebugInfo(info storer.Info) *mockStorer {
+	st := New()
+	st.debugInfo = info
+	return st
 }
 
 func (m *mockStorer) Upload(_ context.Context, pin bool, tagID uint64) (storer.PutterSession, error) {
@@ -214,3 +221,7 @@ func (m *mockStorer) ChunkStore() storage.ReadOnlyChunkStore {
 func (m *mockStorer) StorageRadius() uint8 { return 0 }
 
 func (m *mockStorer) IsWithinStorageRadius(_ swarm.Address) bool { return true }
+
+func (m *mockStorer) DebugInfo(_ context.Context) (storer.Info, error) {
+	return m.debugInfo, nil
+}

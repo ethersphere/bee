@@ -262,6 +262,15 @@ func (c *Cache) pushBack(
 	return nil
 }
 
+func (c *Cache) Size() uint64 {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
+	return c.state.Count
+}
+
+func (c *Cache) Capacity() uint64 { return c.capacity }
+
 // Putter returns a Storage.Putter instance which adds the chunk to the underlying
 // chunkstore and also adds a Cache entry for the chunk.
 func (c *Cache) Putter(store internal.Storage) storage.Putter {
