@@ -201,7 +201,7 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 		case storage.QueryItem:
 			newItem := q.Factory()
 			err = newItem.Unmarshal(nextVal)
-			res = &storage.Result{Entry: newItem}
+			res = &storage.Result{ID: key, Entry: newItem}
 		}
 
 		if err != nil {

@@ -117,6 +117,10 @@ func (s *Service) mountTechnicalDebug() {
 		"GET": http.HandlerFunc(s.chainStateHandler),
 	})
 
+	s.router.Handle("/debugstore", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.debugStorage),
+	})
+
 	s.router.Path("/metrics").Handler(web.ChainHandlers(
 		httpaccess.NewHTTPAccessSuppressLogHandler(),
 		web.FinalHandler(promhttp.InstrumentMetricHandler(

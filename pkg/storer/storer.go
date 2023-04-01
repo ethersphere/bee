@@ -145,6 +145,10 @@ type LocalStore interface {
 	ChunkStore() storage.ReadOnlyChunkStore
 }
 
+type Debugger interface {
+	DebugInfo(context.Context) (Info, error)
+}
+
 type memFS struct {
 	afero.Fs
 }
