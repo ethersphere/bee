@@ -189,6 +189,26 @@ func TestChunkStore(t *testing.T) {
 		}
 	})
 
+	t.Run("iterate chunk entries", func(t *testing.T) {
+		count, shared := 0, 0
+		err := chunkstore.IterateChunkEntries(store, func(_ swarm.Address, isShared bool) (bool, error) {
+			count++
+			if isShared {
+				shared++
+			}
+			return false, nil
+		})
+		if err != nil {
+			t.Fatalf("unexpected error while iteration: %v", err)
+		}
+		if count != 50 {
+			t.Fatalf("unexpected no of chunks, exp: %d, found: %d", 50, count)
+		}
+		if shared != 25 {
+			t.Fatalf("unexpected no of chunks, exp: %d, found: %d", 25, shared)
+		}
+	})
+
 	t.Run("delete unique chunks", func(t *testing.T) {
 		for idx, ch := range testChunks {
 			// Delete all even numbered indexes along with 0

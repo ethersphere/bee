@@ -475,6 +475,30 @@ func TestChunkPutter(t *testing.T) {
 		})
 	}
 
+	t.Run("iterate all", func(t *testing.T) {
+		count := 0
+		err := upload.IterateAll(ts.IndexStore(), func(addr swarm.Address, synced bool) (bool, error) {
+			count++
+			if synced {
+				t.Fatal("expected synced to be false")
+			}
+			has, err := ts.ChunkStore().Has(context.Background(), addr)
+			if err != nil {
+				t.Fatalf("unexpected error in Has(...): %v", err)
+			}
+			if !has {
+				t.Fatalf("expected chunk to be present %s", addr.String())
+			}
+			return false, nil
+		})
+		if err != nil {
+			t.Fatalf("IterateAll(...): unexpected error %v", err)
+		}
+		if count != 10 {
+			t.Fatalf("unexpected count: want 10 have %d", count)
+		}
+	})
+
 	t.Run("close with reference", func(t *testing.T) {
 		addr := swarm.RandAddress(t)
 
