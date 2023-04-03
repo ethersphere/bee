@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"io"
 	"math/big"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -310,33 +312,47 @@ func purgeStaleDataHandler(logger log.Logger, store storage.StateStorer, current
 		return
 	}
 
-	purgeRound := func(round uint64) error {
-		return errors.Join(
-			removeCommitKey(store, round),
-			removeRevealRound(store, round),
-			removeSample(store, round),
-		)
-	}
+	thresholdRound := currentRound - purgeStaleDataThreshold
+	keysForRemoval := make([]string, 0)
 
-	from, err := getLastPurgedRound(store)
-	if err != nil {
-		logger.Error(err, "failed getting last purged round")
-		return
-	}
-
-	to := currentRound - purgeStaleDataThreshold
-
-	for i := from; i < to; i++ {
-		err := purgeRound(i)
-		if err != nil {
-			logger.Error(err, "got error while purging data")
+	stripRoundValue := func(key string) (uint64, error) {
+		i := strings.LastIndex(key, "_")
+		if i == -1 {
+			return 0, fmt.Errorf("invalid key")
 		}
+
+		round, err := strconv.ParseUint(key[i+1:], 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("failed to parse round from key")
+		}
+
+		return round, nil
 	}
 
-	err = saveLastPurgedRound(store, to)
-	if err != nil {
-		logger.Error(err, "failed storing last purged round")
-		return
+	identifyStaledDataCallback := func(keyBytes, value []byte) (stop bool, err error) {
+		key := string(keyBytes)
+
+		round, err := stripRoundValue(key)
+		if err != nil {
+			logger.Error(err, "failed to strip round value from key", "key", key)
+			return false, nil // continue
+		}
+
+		if round < thresholdRound {
+			keysForRemoval = append(keysForRemoval, key)
+		}
+
+		return false, nil // continue
+	}
+
+	store.Iterate(commitKeyStorageKeyPrefix, identifyStaledDataCallback)
+	store.Iterate(sampleStorageKeyPrefix, identifyStaledDataCallback)
+	store.Iterate(revealRoundStorageKeyPrefix, identifyStaledDataCallback)
+
+	for _, key := range keysForRemoval {
+		if err := store.Delete(key); err != nil {
+			logger.Error(err, "failed removing key")
+		}
 	}
 }
 

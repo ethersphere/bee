@@ -15,8 +15,6 @@ var (
 	SaveRevealRound       = saveRevealRound
 	GetRevealRound        = getRevealRound
 	RemoveRevealRound     = removeRevealRound
-	SaveLastPurgedRound   = saveLastPurgedRound
-	GetLastPurgedRound    = getLastPurgedRound
 	PurgeStaleDataHandler = purgeStaleDataHandler
 )
 

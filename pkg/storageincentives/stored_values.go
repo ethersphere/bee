@@ -16,7 +16,6 @@ const (
 	sampleStorageKeyPrefix      = "storage_incentives_sample_"
 	commitKeyStorageKeyPrefix   = "storage_incentives_commit_key_"
 	revealRoundStorageKeyPrefix = "storage_incentives_reveal_round_"
-	lastPurgedRoundKey          = "storage_incentives_last_purged_round"
 )
 
 func saveSample(store storage.StateStorer, sample sampleData, round uint64) error {
@@ -74,24 +73,6 @@ func removeRevealRound(store storage.StateStorer, round uint64) error {
 		return nil // swallow error when nothing was removed
 	}
 	return err
-}
-
-func saveLastPurgedRound(store storage.StateStorer, round uint64) error {
-	return store.Put(lastPurgedRoundKey, round)
-}
-
-func getLastPurgedRound(store storage.StateStorer) (uint64, error) {
-	var value uint64
-	err := store.Get(lastPurgedRoundKey, &value)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return 0, nil
-		}
-
-		return 0, err
-	}
-
-	return value, nil
 }
 
 func sampleStorageKey(round uint64) string {

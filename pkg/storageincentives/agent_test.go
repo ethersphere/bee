@@ -210,17 +210,6 @@ func Test_PurgeDataHandler(t *testing.T) {
 		check(err3)
 	}
 
-	// asserts that stored last purge round is at specified value
-	assertLastPurgedRound := func(round uint64) {
-		current, err := storageincentives.GetLastPurgedRound(store)
-		if err != nil {
-			t.Errorf("unexpected error: %v", err)
-		}
-		if current != round {
-			t.Errorf("got: %v, expected %v", current, round)
-		}
-	}
-
 	const roundsCount = 100
 	hasRoundData := make([]bool, roundsCount)
 
@@ -248,8 +237,6 @@ func Test_PurgeDataHandler(t *testing.T) {
 		}
 	}
 
-	assertLastPurgedRound(roundsCount - purgeStaleDataThreshold - 1)
-
 	// Purge remaining data in single go
 	purgeData(roundsCount + purgeStaleDataThreshold)
 
@@ -257,8 +244,6 @@ func Test_PurgeDataHandler(t *testing.T) {
 	for i := uint64(0); i < roundsCount; i++ {
 		assertHasDataAtRound(i, false)
 	}
-
-	assertLastPurgedRound(roundsCount)
 }
 
 func createService(

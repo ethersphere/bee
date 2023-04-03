@@ -137,32 +137,3 @@ func TestStorage_RevealRound(t *testing.T) {
 		t.Error("expected error")
 	}
 }
-
-func TestStorage_LastPurgedDataRound(t *testing.T) {
-	t.Parallel()
-
-	s := statestore.NewStateStore()
-
-	round, err := storageincentives.GetLastPurgedRound(s)
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
-	if round != 0 {
-		t.Errorf("have %d, want %d", round, 0)
-	}
-
-	savedRound := uint64(1)
-
-	err = storageincentives.SaveLastPurgedRound(s, savedRound)
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
-
-	round, err = storageincentives.GetLastPurgedRound(s)
-	if err != nil {
-		t.Errorf("unexpected error: %v", err)
-	}
-	if round != savedRound {
-		t.Errorf("have %d, want %d", round, savedRound)
-	}
-}
