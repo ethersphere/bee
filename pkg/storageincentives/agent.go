@@ -128,7 +128,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		} else if isPhasePlayed {
 			a.logger.Info("phase played", "phase", phase, "round", round)
 		} else {
-			a.logger.Debug("phase skipped", "phase", phase, "round", round)
+			a.logger.Info("phase skipped", "phase", phase, "round", round)
 		}
 	}
 
