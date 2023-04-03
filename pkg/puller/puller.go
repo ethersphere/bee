@@ -35,10 +35,11 @@ const (
 	intervalPrefix = "sync_interval"
 
 	DefaultSyncErrorSleepDur    = time.Minute
-	recalcPeersDur              = time.Minute * 5
-	histSyncTimeout             = time.Minute * 10
-	histSyncTimeoutBlockList    = time.Hour * 24
 	DefaultShallowBinsWarmupDur = time.Hour * 24
+
+	recalcPeersDur           = time.Minute * 5
+	histSyncTimeout          = time.Minute * 20
+	histSyncTimeoutBlockList = time.Hour * 24
 )
 
 type Options struct {
