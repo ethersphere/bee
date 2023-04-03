@@ -199,10 +199,15 @@ func (s *ReserveStore) ReservePutter(ctx context.Context) storer.PutterSession {
 	}
 }
 
+func (s *ReserveStore) ReservePut(ctx context.Context, c swarm.Chunk) error {
+	return s.put(ctx, c)
+}
+
 // Put chunks.
 func (s *ReserveStore) put(_ context.Context, chs ...swarm.Chunk) error {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
+	s.putCalls++
 	for _, c := range chs {
 		c := c
 		s.chunks[c.Address().String()+string(c.Stamp().BatchID())] = c

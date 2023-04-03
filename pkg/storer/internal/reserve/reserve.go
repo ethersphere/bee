@@ -29,10 +29,6 @@ var (
 	// errOverwriteOfImmutableBatch is returned when stamp index already
 	// exists and the batch is immutable.
 	errOverwriteOfImmutableBatch = errors.New("reserve: overwrite of existing immutable batch")
-
-	// errOverwriteOfNewerBatch is returned if a stamp index already exists
-	// and the existing chunk with the same stamp index has a newer timestamp.
-	errOverwriteOfNewerBatch = errors.New("reserve: overwrite of existing batch with newer timestamp")
 )
 
 type Reserve struct {
@@ -123,7 +119,7 @@ func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.C
 		prev := binary.BigEndian.Uint64(item.StampTimestamp)
 		curr := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
 		if prev >= curr {
-			return false, errOverwriteOfNewerBatch
+			return false, storage.ErrOverwriteNewerChunk
 		}
 		// An older and different chunk with the same batchID and stamp index has been previously
 		// saved to the reserve. We must do the below before saving the new chunk:
