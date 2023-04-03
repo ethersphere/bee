@@ -345,13 +345,18 @@ func purgeStaleDataHandler(logger log.Logger, store storage.StateStorer, current
 		return false, nil // continue
 	}
 
-	store.Iterate(commitKeyStorageKeyPrefix, identifyStaledDataCallback)
-	store.Iterate(sampleStorageKeyPrefix, identifyStaledDataCallback)
-	store.Iterate(revealRoundStorageKeyPrefix, identifyStaledDataCallback)
+	err := errors.Join(
+		store.Iterate(commitKeyStorageKeyPrefix, identifyStaledDataCallback),
+		store.Iterate(sampleStorageKeyPrefix, identifyStaledDataCallback),
+		store.Iterate(revealRoundStorageKeyPrefix, identifyStaledDataCallback),
+	)
+	if err != nil {
+		logger.Error(err, "got error while identifying staled data")
+	}
 
 	for _, key := range keysForRemoval {
 		if err := store.Delete(key); err != nil {
-			logger.Error(err, "failed removing key")
+			logger.Error(err, "failed removing staled data", "key", key)
 		}
 	}
 }
