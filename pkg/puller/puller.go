@@ -32,6 +32,8 @@ const loggerName = "puller"
 var errCursorsLength = errors.New("cursors length mismatch")
 
 const (
+	intervalPrefix = "sync_interval"
+
 	DefaultSyncErrorSleepDur = time.Minute
 	recalcPeersDur           = time.Minute * 5
 	histSyncTimeout          = time.Minute * 10
@@ -469,11 +471,11 @@ func (p *Puller) getOrCreateInterval(peer swarm.Address, bin uint8) (*intervalst
 }
 
 func peerIntervalKey(peer swarm.Address, bin uint8) string {
-	return fmt.Sprintf("sync|%03d|%s", bin, peer.ByteString())
+	return fmt.Sprintf("%s_%03d_%s", intervalPrefix, bin, peer.ByteString())
 }
 
 func binIntervalKey(bin uint8) string {
-	return fmt.Sprintf("sync|%03d", bin)
+	return fmt.Sprintf("%s_%03d", intervalPrefix, bin)
 }
 
 type syncPeer struct {
