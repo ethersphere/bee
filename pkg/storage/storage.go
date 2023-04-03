@@ -10,6 +10,10 @@ import (
 	"io"
 )
 
+var (
+	ErrOverwriteNewerChunk = errors.New("overwriting chunk with newer timestamp")
+)
+
 // Result represents the item returned by the read operation, which returns
 // the item as the result. Or Key and/or Size in case the whole Item is not
 // needed.
