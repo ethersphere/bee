@@ -41,22 +41,14 @@ func TestClose(t *testing.T) {
 
 	ev.Close()
 
-	select {
-	case <-done1:
-	case <-time.After(time.Second):
-		t.Fatal("timeout")
-	}
-
-	select {
-	case <-done2:
-	case <-time.After(time.Second):
-		t.Fatal("timeout")
-	}
-
-	select {
-	case <-done3:
-	case <-time.After(time.Second):
-		t.Fatal("timeout")
+	for i := 0; i < 3; i++ {
+		select {
+		case <-done1:
+		case <-done2:
+		case <-done3:
+		case <-time.After(time.Second):
+			t.Fatal("timeout")
+		}
 	}
 }
 
@@ -90,15 +82,12 @@ func TestPhaseCancel(t *testing.T) {
 	ev.Publish(2)
 	ev.Publish(3)
 
-	select {
-	case <-done1:
-	case <-time.After(time.Second):
-		t.Fatal("timeout")
-	}
-
-	select {
-	case <-done2:
-	case <-time.After(time.Second):
-		t.Fatal("timeout")
+	for i := 0; i < 2; i++ {
+		select {
+		case <-done1:
+		case <-done2:
+		case <-time.After(time.Second):
+			t.Fatal("timeout")
+		}
 	}
 }
