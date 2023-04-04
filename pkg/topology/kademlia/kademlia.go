@@ -1153,7 +1153,7 @@ func (k *Kad) Pick(peer p2p.Peer) bool {
 
 func (k *Kad) binReachablePeers(bin uint8) (peers []swarm.Address) {
 
-	_ = k.EachPeerRev(func(p swarm.Address, po uint8) (bool, bool, error) {
+	_ = k.EachConnectedPeerRev(func(p swarm.Address, po uint8) (bool, bool, error) {
 
 		if po == bin {
 			peers = append(peers, p)
@@ -1287,7 +1287,7 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, filter topology.
 		closest = k.base
 	}
 
-	err := k.EachPeerRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
+	err := k.EachConnectedPeerRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
 		if swarm.ContainsAddress(skipPeers, peer) {
 			return false, false, nil
 		}
@@ -1319,8 +1319,8 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, filter topology.
 	return closest, nil
 }
 
-// EachPeer iterates from closest bin to farthest.
-func (k *Kad) EachPeer(f topology.EachPeerFunc, filter topology.Filter) error {
+// EachConnectedPeer implements topology.PeerIterator interface.
+func (k *Kad) EachConnectedPeer(f topology.EachPeerFunc, filter topology.Filter) error {
 	return k.connectedPeers.EachBin(func(addr swarm.Address, po uint8) (bool, bool, error) {
 		if filter.Reachable && k.peerFilter(addr) {
 			return false, false, nil
@@ -1329,8 +1329,8 @@ func (k *Kad) EachPeer(f topology.EachPeerFunc, filter topology.Filter) error {
 	})
 }
 
-// EachPeerRev iterates from farthest bin to closest.
-func (k *Kad) EachPeerRev(f topology.EachPeerFunc, filter topology.Filter) error {
+// EachConnectedPeerRev implements topology.PeerIterator interface.
+func (k *Kad) EachConnectedPeerRev(f topology.EachPeerFunc, filter topology.Filter) error {
 	return k.connectedPeers.EachBinRev(func(addr swarm.Address, po uint8) (bool, bool, error) {
 		if filter.Reachable && k.peerFilter(addr) {
 			return false, false, nil

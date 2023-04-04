@@ -150,7 +150,7 @@ githooks:
 .PHONY: protobuftools
 protobuftools:
 	which protoc || ( echo "install protoc for your system from https://github.com/protocolbuffers/protobuf/releases" && exit 1)
-	which $(GOGOPROTOBUF) || ( cd /tmp && GO111MODULE=on $(GO) get -u github.com/gogo/protobuf/$(GOGOPROTOBUF)@$(GOGOPROTOBUF_VERSION) )
+	which $(GOGOPROTOBUF) || ( cd /tmp && GO111MODULE=on $(GO) install github.com/gogo/protobuf/$(GOGOPROTOBUF)@$(GOGOPROTOBUF_VERSION) )
 
 .PHONY: protobuf
 protobuf: GOFLAGS=-mod=mod # use modules for protobuf file include option

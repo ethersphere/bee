@@ -279,7 +279,7 @@ func waitPeers(kad *kademlia.Kad) error {
 	const minPeersCount = 25
 	return spinlock.WaitWithInterval(time.Minute, time.Second, func() bool {
 		count := 0
-		_ = kad.EachPeer(func(_ swarm.Address, _ uint8) (bool, bool, error) {
+		_ = kad.EachConnectedPeer(func(_ swarm.Address, _ uint8) (bool, bool, error) {
 			count++
 			return false, false, nil
 		}, topology.Filter{})

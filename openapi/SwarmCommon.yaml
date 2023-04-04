@@ -418,7 +418,7 @@ components:
         swapEnabled:
           type: boolean
 
-    Status:
+    HealthStatus:
       type: object
       properties:
         status:
@@ -571,10 +571,6 @@ components:
       pattern: '^[A-Za-z0-9]+\.[A-Za-z0-9]+$'
       example: "swarm.eth"
 
-    isAll:
-      type: string
-      required: false
-
     BatchID:
       type: string
       pattern: "^[A-Fa-f0-9]{64}$"
@@ -698,7 +694,7 @@ components:
         walletAddress:
           $ref: "#/components/schemas/EthereumAddress"
 
-    RedistributionStateResponse:
+    RedistributionStatusResponse:
       type: object
       properties:
         hasSufficientFunds:
@@ -815,6 +811,32 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/Logger"
+
+    StatusSnapshotResponse:
+      type: object
+      properties:
+        peer:
+          $ref: "#/components/schemas/SwarmAddress"
+          nullable: true
+        proximity:
+          type: integer
+        reserveSize:
+          type: integer
+        pullsyncRate:
+            type: number
+        storageRadius:
+            type: integer
+        requestFailed:
+            type: boolean
+
+    StatusResponse:
+      type: object
+      properties:
+        stamps:
+          type: array
+          nullable: false
+          items:
+            $ref: "#/components/schemas/StatusSnapshotResponse"
 
   headers:
     SwarmTag:

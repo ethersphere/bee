@@ -50,7 +50,7 @@ type Options struct {
 
 type Puller struct {
 	topology    topology.Driver
-	radius      postage.RadiusChecker
+	radius      postage.Radius
 	statestore  storage.StateStorer
 	syncer      pullsync.Interface
 	blockLister p2p.Blocklister
@@ -73,7 +73,7 @@ type Puller struct {
 	activeHistoricalSyncing *atomic.Uint64
 }
 
-func New(stateStore storage.StateStorer, topology topology.Driver, reserveState postage.RadiusChecker, pullSync pullsync.Interface, blockLister p2p.Blocklister, logger log.Logger, o Options, warmupTime time.Duration) *Puller {
+func New(stateStore storage.StateStorer, topology topology.Driver, reserveState postage.Radius, pullSync pullsync.Interface, blockLister p2p.Blocklister, logger log.Logger, o Options, warmupTime time.Duration) *Puller {
 	var (
 		bins uint8 = swarm.MaxBins
 	)
@@ -147,7 +147,7 @@ func (p *Puller) manage(ctx context.Context, warmupDur time.Duration) {
 		}
 		prevRadius = newRadius
 
-		_ = p.topology.EachPeerRev(func(addr swarm.Address, po uint8) (stop, jumpToNext bool, err error) {
+		_ = p.topology.EachConnectedPeerRev(func(addr swarm.Address, po uint8) (stop, jumpToNext bool, err error) {
 			if _, ok := p.syncPeers[addr.ByteString()]; !ok {
 				p.syncPeers[addr.ByteString()] = newSyncPeer(addr, p.bins, po)
 			}
