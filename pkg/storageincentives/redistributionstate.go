@@ -180,3 +180,9 @@ func (r *RedistributionState) save() {
 		r.logger.Error(err, "saving redistribution status")
 	}
 }
+
+func (r *RedistributionState) currentRoundAndPhase() (uint64, PhaseType) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+	return r.status.Round, r.status.Phase
+}
