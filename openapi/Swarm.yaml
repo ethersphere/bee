@@ -487,7 +487,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/Status"
+                $ref: "SwarmCommon.yaml#/components/schemas/HealthStatus"
         "404":
           $ref: "SwarmCommon.yaml#/components/responses/404"
         "500":
@@ -861,7 +861,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/Status"
+                $ref: "SwarmCommon.yaml#/components/schemas/HealthStatus"
         default:
           description: Default response
 
@@ -1393,7 +1393,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/Status"
+                $ref: "SwarmCommon.yaml#/components/schemas/HealthStatus"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "500":

@@ -395,7 +395,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/Status"
+                $ref: "SwarmCommon.yaml#/components/schemas/HealthStatus"
         default:
           description: Default response
 
@@ -518,7 +518,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/Status"
+                $ref: "SwarmCommon.yaml#/components/schemas/HealthStatus"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "500":
@@ -716,7 +716,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/RedistributionStateResponse"
+                $ref: "SwarmCommon.yaml#/components/schemas/RedistributionStatusResponse"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "500":
@@ -837,7 +837,8 @@ paths:
       - in: query
         name: all
         schema:
-          $ref: "SwarmCommon.yaml#/components/schemas/isAll"
+          type: string
+          required: false
         description: Gets all stamps. Default is null.
     get:
       summary: Get stamps for this node
@@ -1150,3 +1151,27 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         default:
           description: Default response
+
+  "/status":
+    parameters:
+      - in: query
+        name: connectedPeers
+        schema:
+          type: string
+          required: false
+        description: Get status snapshots of all connected peers. Default is null.
+    get:
+      summary: Get the current status snapshot of this node.
+      tags:
+        - Node Status
+      responses:
+        "200":
+          description: Returns the current node status snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/StatusResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        default:
+          description: Default response.

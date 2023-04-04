@@ -173,11 +173,6 @@ func withinRadius(db *DB, item shed.Item) bool {
 	return po >= item.Radius
 }
 
-// ReserveCapacity returns the configured capacity
-func (db *DB) ReserveCapacity() uint64 {
-	return db.reserveCapacity
-}
-
 // ComputeReserveSize iterates on the pull index to count all chunks
 // starting at some proximity order with an generated address whose PO
 // is used as a starting prefix by the index.
@@ -202,6 +197,20 @@ func (db *DB) ComputeReserveSize(startPO uint8) (uint64, error) {
 	}
 
 	return count, err
+}
+
+// ReserveCapacity returns the configured capacity
+func (db *DB) ReserveCapacity() uint64 {
+	return db.reserveCapacity
+}
+
+// ReserveSize returns the current reserve size.
+func (db *DB) ReserveSize() uint64 {
+	val, err := db.reserveSize.Get()
+	if err != nil {
+		db.logger.Error(err, "failed to get reserve size")
+	}
+	return val
 }
 
 // SetReserveSize will update the localstore reserve size as calculated by the

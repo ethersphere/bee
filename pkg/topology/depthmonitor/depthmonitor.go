@@ -26,20 +26,25 @@ const DefaultWakeupInterval = 5 * time.Minute
 // for the depth monitor minimum radius.
 const defaultMinimumRadius uint8 = 0
 
-// ReserveReporter interface defines the functionality required from the local storage
+// SyncReporter interface needs to be implemented by the syncing component of the node (puller).
+type SyncReporter interface {
+	// Number of active historical syncing jobs.
+	SyncRate() float64
+}
+
+type ReserveReporter interface {
+	// ReserveSize returns the current reserve size.
+	ReserveSize() uint64
+}
+
+// Reserve interface defines the functionality required from the local storage
 // of the node to report information about the reserve. The reserve storage is the storage
 // pledged by the node to the network.
-type ReserveReporter interface {
+type Reserve interface {
 	// Current size of the reserve.
 	ComputeReserveSize(uint8) (uint64, error)
 	// Capacity of the reserve that is configured.
 	ReserveCapacity() uint64
-}
-
-// SyncReporter interface needs to be implemented by the syncing component of the node (puller).
-type SyncReporter interface {
-	// Number of active historical syncing jobs.
-	Rate() float64
 }
 
 // Topology interface encapsulates the functionality required by the topology component
@@ -53,7 +58,7 @@ type Topology interface {
 type Service struct {
 	topology      Topology
 	syncer        SyncReporter
-	reserve       ReserveReporter
+	reserve       Reserve
 	logger        log.Logger
 	bs            postage.Storer
 	quit          chan struct{} // to request service to stop
@@ -66,7 +71,7 @@ type Service struct {
 func New(
 	t Topology,
 	syncer SyncReporter,
-	reserve ReserveReporter,
+	reserve Reserve,
 	bs postage.Storer,
 	logger log.Logger,
 	warmupTime time.Duration,
@@ -143,7 +148,7 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration, freshNode boo
 		// save last calculated reserve size
 		s.lastRSize.Store(currentSize)
 
-		rate := s.syncer.Rate()
+		rate := s.syncer.SyncRate()
 		s.logger.Info("depthmonitor: state", "size", currentSize, "radius", radius, "sync_rate", fmt.Sprintf("%.2f ch/s", rate))
 
 		if currentSize > targetSize {
@@ -167,7 +172,7 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration, freshNode boo
 }
 
 func (s *Service) IsFullySynced() bool {
-	return s.syncer.Rate() == 0 && s.lastRSize.Load() > s.reserve.ReserveCapacity()*4/10
+	return s.syncer.SyncRate() == 0 && s.lastRSize.Load() > s.reserve.ReserveCapacity()*4/10
 }
 
 func (s *Service) Close() error {

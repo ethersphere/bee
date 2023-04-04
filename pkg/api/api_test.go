@@ -24,6 +24,7 @@ import (
 
 	contractMock "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
+	"github.com/ethersphere/bee/pkg/status"
 	"github.com/ethersphere/bee/pkg/storageincentives"
 	mock2 "github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
 	"github.com/ethersphere/bee/pkg/transaction"
@@ -134,6 +135,7 @@ type testServerOptions struct {
 	Erc20Opts           []erc20mock.Option
 	BeeMode             api.BeeNodeMode
 	RedistributionAgent *storageincentives.Agent
+	NodeStatus          *status.Service
 }
 
 func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.Conn, string, *chanStorer) {
@@ -207,6 +209,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		SyncStatus:       o.SyncStatus,
 		Staking:          o.StakingContract,
 		IndexDebugger:    o.IndexDebugger,
+		NodeStatus:       o.NodeStatus,
 	}
 
 	// By default bee mode is set to full mode.

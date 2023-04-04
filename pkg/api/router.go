@@ -152,6 +152,14 @@ func (s *Service) mountTechnicalDebug() {
 			web.FinalHandlerFunc(s.dbIndicesHandler),
 		),
 	})
+
+	s.router.Handle("/status", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			httpaccess.NewHTTPAccessSuppressLogHandler(),
+			s.statusAccessHandler,
+			web.FinalHandlerFunc(s.statusGetHandler),
+		),
+	})
 }
 
 func (s *Service) mountAPI() {

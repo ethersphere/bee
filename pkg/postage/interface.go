@@ -47,16 +47,24 @@ type ReserveStateGetter interface {
 	GetReserveState() *ReserveState
 }
 
+type RadiusReporter interface {
+	StorageRadius() uint8
+}
+
 type RadiusChecker interface {
 	IsWithinStorageRadius(addr swarm.Address) bool
-	StorageRadius() uint8
+}
+
+type Radius interface {
+	RadiusChecker
+	RadiusReporter
 }
 
 // Storer represents the persistence layer for batches
 // on the current (highest available) block.
 type Storer interface {
 	ReserveStateGetter
-	RadiusChecker
+	Radius
 
 	// Get returns a batch from the store with the given ID.
 	Get([]byte) (*Batch, error)

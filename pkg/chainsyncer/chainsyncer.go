@@ -47,9 +47,9 @@ type Options struct {
 }
 
 type ChainSyncer struct {
-	backend                transaction.Backend // eth backend
-	prove                  prover              // the chainsync protocol
-	peerIterator           topology.EachPeerer // topology peer iterator
+	backend                transaction.Backend   // eth backend
+	prove                  prover                // the chainsync protocol
+	peerIterator           topology.PeerIterator // topology peer iterator
 	pollEvery, flagTimeout time.Duration
 	logger                 log.Logger
 	lru                    *lru.Cache
@@ -61,7 +61,7 @@ type ChainSyncer struct {
 	wg   sync.WaitGroup
 }
 
-func New(backend transaction.Backend, p prover, peerIterator topology.EachPeerer, disconnecter p2p.Disconnecter, logger log.Logger, o *Options) (*ChainSyncer, error) {
+func New(backend transaction.Backend, p prover, peerIterator topology.PeerIterator, disconnecter p2p.Disconnecter, logger log.Logger, o *Options) (*ChainSyncer, error) {
 	lruCache, err := lru.New(blocksToRemember)
 	if err != nil {
 		return nil, err
@@ -138,7 +138,7 @@ func (c *ChainSyncer) manage() {
 		positives = 0
 		var seen []swarm.Address
 		cctx, cancelF := context.WithTimeout(ctx, defaultPollEvery)
-		_ = c.peerIterator.EachPeer(func(p swarm.Address, _ uint8) (bool, bool, error) {
+		_ = c.peerIterator.EachConnectedPeer(func(p swarm.Address, _ uint8) (bool, bool, error) {
 			seen = append(seen, p)
 			wg.Add(1)
 			items++

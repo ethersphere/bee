@@ -26,6 +26,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/chainsync"
 	"github.com/ethersphere/bee/pkg/chainsyncer"
+	"github.com/ethersphere/bee/pkg/status"
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/pkg/topology/depthmonitor"
 
@@ -1015,6 +1016,11 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 	feedFactory := factory.New(ns)
 	steward := steward.New(storer, traversalService, retrieve, pushSyncProtocol)
 
+	nodeStatus := status.NewService(logger, p2ps, kad, storer, pullSyncProtocol, batchStore)
+	if err = p2ps.AddProtocol(nodeStatus.Protocol()); err != nil {
+		return nil, fmt.Errorf("status service: %w", err)
+	}
+
 	extraOpts := api.ExtraOptions{
 		Pingpong:         pingPong,
 		TopologyDriver:   kad,
@@ -1037,6 +1043,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		Steward:          steward,
 		SyncStatus:       syncStatusFn,
 		IndexDebugger:    storer,
+		NodeStatus:       nodeStatus,
 	}
 
 	if o.APIAddr != "" {

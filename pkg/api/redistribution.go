@@ -12,7 +12,7 @@ import (
 	"github.com/ethersphere/bee/pkg/tracing"
 )
 
-type nodeStatusResponse struct {
+type redistributionStatusResponse struct {
 	HasSufficientFunds bool           `json:"hasSufficientFunds"`
 	IsFrozen           bool           `json:"isFrozen"`
 	IsFullySynced      bool           `json:"isFullySynced"`
@@ -50,7 +50,7 @@ func (s *Service) redistributionStatusHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	jsonhttp.OK(w, nodeStatusResponse{
+	jsonhttp.OK(w, redistributionStatusResponse{
 		HasSufficientFunds: hasSufficientFunds,
 		IsFrozen:           status.IsFrozen,
 		IsFullySynced:      status.IsFullySynced,

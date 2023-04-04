@@ -25,7 +25,7 @@ type Driver interface {
 	p2p.Notifier
 	PeerAdder
 	ClosestPeerer
-	EachPeerer
+	PeerIterator
 	NeighborhoodDepther
 	SubscribeTopologyChange() (c <-chan struct{}, unsubscribe func())
 	io.Closer
@@ -46,11 +46,14 @@ type ClosestPeerer interface {
 	ClosestPeer(addr swarm.Address, includeSelf bool, f Filter, skipPeers ...swarm.Address) (peerAddr swarm.Address, err error)
 }
 
-type EachPeerer interface {
-	// EachPeer iterates from closest bin to farthest
-	EachPeer(EachPeerFunc, Filter) error
-	// EachPeerRev iterates from farthest bin to closest
-	EachPeerRev(EachPeerFunc, Filter) error
+// PeerIterator is an interface that allows iteration over peers.
+type PeerIterator interface {
+	// EachConnectedPeer iterates through connected
+	// peers from the closest bin to the farthest.
+	EachConnectedPeer(EachPeerFunc, Filter) error
+	// EachConnectedPeerRev iterates through connected
+	// peers from the farthest bin to the closest.
+	EachConnectedPeerRev(EachPeerFunc, Filter) error
 }
 
 // Filter defines the different filters that can be used with the Peer iterators

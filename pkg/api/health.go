@@ -11,7 +11,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 )
 
-type statusResponse struct {
+type healthStatusResponse struct {
 	Status          string `json:"status"`
 	Version         string `json:"version"`
 	APIVersion      string `json:"apiVersion"`
@@ -20,7 +20,7 @@ type statusResponse struct {
 
 func (s *Service) healthHandler(w http.ResponseWriter, _ *http.Request) {
 	status := s.probe.Healthy()
-	jsonhttp.OK(w, statusResponse{
+	jsonhttp.OK(w, healthStatusResponse{
 		Status:          status.String(),
 		Version:         bee.Version,
 		APIVersion:      Version,
