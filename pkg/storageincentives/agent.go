@@ -133,7 +133,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 		round, _ := a.state.currentRoundAndPhase()
 		isPhasePlayed, err := a.handleCommit(ctx, round)
-		printPhaseResult(commit, round, err, isPhasePlayed)
+		logPhaseResult(commit, round, err, isPhasePlayed)
 	})
 
 	phaseEvents.On(reveal, func(ctx context.Context) {
