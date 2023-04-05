@@ -405,7 +405,8 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			if errors.Is(err, topology.ErrNotFound) {
 				if skip.PruneExpiresAfter(overDraftRefresh) == 0 { //no peers would be removed, we have depleted ALL peers
 					if inflight == 0 {
-						return nil, storage.ErrNotFound
+						ps.logger.Debug("no peers left", "chunk_address", ch.Address(), "error", err)
+						return nil, err
 					} else {
 						continue // there is still an inflight request, wait for it's result
 					}

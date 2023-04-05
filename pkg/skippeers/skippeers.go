@@ -51,23 +51,6 @@ func (l *List) ChunkPeers(ch swarm.Address) (peers []swarm.Address) {
 	return peers
 }
 
-func (l *List) ChunkPeersLength(ch swarm.Address) int {
-	l.mtx.Lock()
-	defer l.mtx.Unlock()
-
-	now := time.Now().UnixMilli()
-	count := 0
-
-	if p, ok := l.skip[ch.ByteString()]; ok {
-		for _, exp := range p {
-			if exp > now {
-				count++
-			}
-		}
-	}
-	return count
-}
-
 func (l *List) PruneExpiresAfter(d time.Duration) int {
 	l.mtx.Lock()
 	defer l.mtx.Unlock()

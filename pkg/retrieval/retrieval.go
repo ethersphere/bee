@@ -225,7 +225,8 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 				if errors.Is(res.err, topology.ErrNotFound) {
 					if skip.PruneExpiresAfter(overDraftRefresh) == 0 { //no peers would be removed, we have depleted ALL peers
 						if inflight == 0 {
-							return nil, storage.ErrNotFound
+							loggerV1.Debug("no peers left", "chunk_address", chunkAddr, "error", res.err)
+							return nil, res.err
 						} else {
 							continue // there is still an inflight request, wait for it's result
 						}
@@ -252,7 +253,6 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 			}
 		}
 
-		loggerV1.Debug("no attempts left", "chunk_address", chunkAddr)
 		return nil, storage.ErrNotFound
 	})
 	if err != nil {
