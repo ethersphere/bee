@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/log"
@@ -64,32 +65,35 @@ func (s *Service) Snapshots(ctx context.Context, connectedPeers bool) ([]*Snapsh
 		return snapshots, nil
 	}
 
-	loggerV2 := s.logger.V(2).Register()
-	peerFunc := func(address swarm.Address, po uint8) (stop, jumpToNext bool, err error) {
-		select {
-		case <-ctx.Done():
-			return true, false, nil
-		default:
-		}
+	var (
+		wg  sync.WaitGroup
+		mtx sync.Mutex
+	)
 
-		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		defer cancel()
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 
-		ss, err := s.requestStatusSnapshot(ctx, address)
-		if err != nil {
-			loggerV2.Debug("cannot get status snapshot for peer", "peer_address", address, "error", err)
-		}
+	peerFunc := func(address swarm.Address, po uint8) (bool, bool, error) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
 
-		snapshots = append(
-			snapshots,
-			&Snapshot{
-				Peer:          address,
-				Proximity:     po,
-				ReserveSize:   ss.ReserveSize,
-				PullsyncRate:  ss.PullsyncRate,
-				StorageRadius: uint8(ss.StorageRadius),
-				RequestFailed: err != nil,
-			})
+			snapshot := &Snapshot{Peer: address, Proximity: po}
+
+			ss, err := s.requestStatusSnapshot(ctx, address)
+			if err != nil {
+				s.logger.Debug("cannot get status snapshot for peer", "peer_address", address, "error", err)
+				snapshot.RequestFailed = true
+			} else {
+				snapshot.ReserveSize = ss.ReserveSize
+				snapshot.PullsyncRate = ss.PullsyncRate
+				snapshot.StorageRadius = uint8(ss.StorageRadius)
+			}
+
+			mtx.Lock()
+			snapshots = append(snapshots, snapshot)
+			mtx.Unlock()
+		}()
 
 		return false, false, nil
 	}
@@ -101,6 +105,8 @@ func (s *Service) Snapshots(ctx context.Context, connectedPeers bool) ([]*Snapsh
 	if err != nil {
 		s.logger.Error(err, "iteration of connected peers failed")
 	}
+
+	wg.Wait()
 
 	return snapshots, nil
 }
