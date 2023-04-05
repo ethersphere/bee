@@ -200,9 +200,6 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 					ctx := tracing.WithContext(context.Background(), tracing.FromContext(topCtx))
 					span, _, ctx := s.tracer.StartSpanFromContext(ctx, "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: chunkAddr.String()})
 					defer span.Finish()
-					ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
-					defer cancel()
-
 					s.retrieveChunk(ctx, chunkAddr, skip, done, resultC, origin)
 				}()
 
