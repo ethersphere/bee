@@ -28,9 +28,12 @@ func TestPeerSkipList(t *testing.T) {
 
 	skipList.Add(addr1, addr3, time.Millisecond*10)
 
-	time.Sleep(time.Millisecond * 11)
+	skipList.PruneExpiresAfter(time.Millisecond)
+	if len(skipList.ChunkPeers(addr1)) == 0 {
+		t.Fatal("entry should NOT be pruned")
+	}
 
-	skipList.PruneExpired()
+	skipList.PruneExpiresAfter(time.Millisecond * 10)
 
 	if len(skipList.ChunkPeers(addr1)) != 0 {
 		t.Fatal("entry should be pruned")
