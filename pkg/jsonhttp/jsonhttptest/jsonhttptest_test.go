@@ -15,6 +15,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -29,11 +30,14 @@ func TestRequest_statusCode(t *testing.T) {
 		w.WriteHeader(http.StatusBadRequest)
 	}))
 
-	assert(t, "", "", func(m *mock) {
+	assert(t, testResult{}, func(m *mock) {
 		jsonhttptest.Request(m, c, http.MethodGet, endpoint, http.StatusBadRequest)
 	})
 
-	assert(t, `got response status 400 Bad Request, want 200 OK`, "", func(m *mock) {
+	tr := testResult{
+		errors: []string{`got response status 400 Bad Request, want 200 OK`},
+	}
+	assert(t, tr, func(m *mock) {
 		jsonhttptest.Request(m, c, http.MethodGet, endpoint, http.StatusOK)
 	})
 }
@@ -48,11 +52,11 @@ func TestRequest_method(t *testing.T) {
 		}
 	}))
 
-	assert(t, "", "", func(m *mock) {
+	assert(t, testResult{}, func(m *mock) {
 		jsonhttptest.Request(m, c, http.MethodGet, endpoint, http.StatusOK)
 	})
 
-	assert(t, "", "", func(m *mock) {
+	assert(t, testResult{}, func(m *mock) {
 		jsonhttptest.Request(m, c, http.MethodPost, endpoint, http.StatusMethodNotAllowed)
 	})
 }
@@ -66,11 +70,11 @@ func TestRequest_url(t *testing.T) {
 		}
 	}))
 
-	assert(t, "", "", func(m *mock) {
+	assert(t, testResult{}, func(m *mock) {
 		jsonhttptest.Request(m, c, http.MethodGet, endpoint, http.StatusOK)
 	})
 
-	assert(t, "", "", func(m *mock) {
+	assert(t, testResult{}, func(m *mock) {
 		jsonhttptest.Request(m, c, http.MethodPost, endpoint+"/bzz", http.StatusNotFound)
 	})
 }
@@ -80,18 +84,20 @@ func TestRequest_responseHeader(t *testing.T) {
 
 	headerName := "Swarm-Header"
 	headerValue := "somevalue"
-	var gotValue string
 
 	c, endpoint := newClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(headerName, headerValue)
 	}))
 
-	assert(t, "", "", func(m *mock) {
-		gotValue = jsonhttptest.Request(m, c, http.MethodGet, endpoint, http.StatusOK).Get(headerName)
+	assert(t, testResult{}, func(m *mock) {
+		header := jsonhttptest.Request(m, c, http.MethodGet, endpoint, http.StatusOK,
+			jsonhttptest.WithExpectedResponseHeader(headerName, headerValue),
+		)
+		gotValue := header.Get(headerName)
+		if gotValue != headerValue {
+			t.Errorf("got header %q, want %q", gotValue, headerValue)
+		}
 	})
-	if gotValue != headerValue {
-		t.Errorf("got header %q, want %q", gotValue, headerValue)
-	}
 }
 
 func TestWithContext(t *testing.T) {
@@ -102,7 +108,10 @@ func TestWithContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel the context to detect the fatal error
 
-	assert(t, "", fmt.Sprintf("Get %q: context canceled", endpoint), func(m *mock) {
+	tr := testResult{
+		fatal: fmt.Sprintf("Get %q: context canceled", endpoint),
+	}
+	assert(t, tr, func(m *mock) {
 		jsonhttptest.Request(m, c, http.MethodGet, endpoint, http.StatusOK,
 			jsonhttptest.WithContext(ctx),
 		)
@@ -122,7 +131,7 @@ func TestWithRequestBody(t *testing.T) {
 		}
 	}))
 
-	assert(t, "", "", func(m *mock) {
+	assert(t, testResult{}, func(m *mock) {
 		jsonhttptest.Request(m, c, http.MethodPost, endpoint, http.StatusOK,
 			jsonhttptest.WithRequestBody(bytes.NewReader(wantBody)),
 		)
@@ -156,7 +165,7 @@ func TestWithJSONRequestBody(t *testing.T) {
 		}
 	}))
 
-	assert(t, "", "", func(m *mock) {
+	assert(t, testResult{}, func(m *mock) {
 		jsonhttptest.Request(m, c, http.MethodPost, endpoint, http.StatusOK,
 			jsonhttptest.WithJSONRequestBody(wantBody),
 		)
@@ -201,7 +210,7 @@ func TestWithMultipartRequest(t *testing.T) {
 		}
 	}))
 
-	assert(t, "", "", func(m *mock) {
+	assert(t, testResult{}, func(m *mock) {
 		jsonhttptest.Request(m, c, http.MethodPost, endpoint, http.StatusOK,
 			jsonhttptest.WithMultipartRequest(bytes.NewReader(wantBody), len(wantBody), filename, contentType),
 		)
@@ -228,7 +237,7 @@ func TestWithRequestHeader(t *testing.T) {
 		gotValue = r.Header.Get(headerName)
 	}))
 
-	assert(t, "", "", func(m *mock) {
+	assert(t, testResult{}, func(m *mock) {
 		jsonhttptest.Request(m, c, http.MethodPost, endpoint, http.StatusOK,
 			jsonhttptest.WithRequestHeader(headerName, headerValue),
 		)
@@ -236,6 +245,38 @@ func TestWithRequestHeader(t *testing.T) {
 	if gotValue != headerValue {
 		t.Errorf("got header %q, want %q", gotValue, headerValue)
 	}
+}
+
+func TestWithExpectedContentLength(t *testing.T) {
+	t.Parallel()
+
+	body := []byte("Digital Freedom Now")
+
+	c, endpoint := newClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+		_, err := w.Write(body)
+		if err != nil {
+			t.Error(err)
+		}
+	}))
+
+	assert(t, testResult{}, func(m *mock) {
+		jsonhttptest.Request(m, c, http.MethodGet, endpoint, http.StatusOK,
+			jsonhttptest.WithExpectedContentLength(len(body)),
+		)
+	})
+
+	tr := testResult{
+		errors: []string{
+			"header values for key=[Content-Length] not as expected, got: [19], want [100]",
+			"http.Response.ContentLength not as expected, got 19, want 100",
+		},
+	}
+	assert(t, tr, func(m *mock) {
+		jsonhttptest.Request(m, c, http.MethodGet, endpoint, http.StatusOK,
+			jsonhttptest.WithExpectedContentLength(100),
+		)
+	})
 }
 
 func TestWithExpectedResponse(t *testing.T) {
@@ -250,13 +291,16 @@ func TestWithExpectedResponse(t *testing.T) {
 		}
 	}))
 
-	assert(t, "", "", func(m *mock) {
+	assert(t, testResult{}, func(m *mock) {
 		jsonhttptest.Request(m, c, http.MethodGet, endpoint, http.StatusOK,
 			jsonhttptest.WithExpectedResponse(body),
 		)
 	})
 
-	assert(t, `got response "something to want", want "invalid"`, "", func(m *mock) {
+	tr := testResult{
+		errors: []string{`got response "something to want", want "invalid"`},
+	}
+	assert(t, tr, func(m *mock) {
 		jsonhttptest.Request(m, c, http.MethodGet, endpoint, http.StatusOK,
 			jsonhttptest.WithExpectedResponse([]byte("invalid")),
 		)
@@ -278,13 +322,16 @@ func TestWithExpectedJSONResponse(t *testing.T) {
 		jsonhttp.OK(w, want)
 	}))
 
-	assert(t, "", "", func(m *mock) {
+	assert(t, testResult{}, func(m *mock) {
 		jsonhttptest.Request(m, c, http.MethodGet, endpoint, http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(want),
 		)
 	})
 
-	assert(t, `got json response "{\"message\":\"text\"}", want "{\"message\":\"invalid\"}"`, "", func(m *mock) {
+	tr := testResult{
+		errors: []string{`got json response "{\"message\":\"text\"}", want "{\"message\":\"invalid\"}"`},
+	}
+	assert(t, tr, func(m *mock) {
 		jsonhttptest.Request(m, c, http.MethodGet, endpoint, http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(response{
 				Message: "invalid",
@@ -303,7 +350,7 @@ func TestWithUnmarhalJSONResponse(t *testing.T) {
 	}))
 
 	var r jsonhttp.StatusResponse
-	assert(t, "", "", func(m *mock) {
+	assert(t, testResult{}, func(m *mock) {
 		jsonhttptest.Request(m, c, http.MethodGet, endpoint, http.StatusOK,
 			jsonhttptest.WithUnmarshalJSONResponse(&r),
 		)
@@ -326,7 +373,7 @@ func TestWithPutResponseBody(t *testing.T) {
 	}))
 
 	var gotBody []byte
-	assert(t, "", "", func(m *mock) {
+	assert(t, testResult{}, func(m *mock) {
 		jsonhttptest.Request(m, c, http.MethodGet, endpoint, http.StatusOK,
 			jsonhttptest.WithPutResponseBody(&gotBody),
 		)
@@ -345,13 +392,16 @@ func TestWithNoResponseBody(t *testing.T) {
 		}
 	}))
 
-	assert(t, "", "", func(m *mock) {
+	assert(t, testResult{}, func(m *mock) {
 		jsonhttptest.Request(m, c, http.MethodGet, endpoint, http.StatusOK,
 			jsonhttptest.WithNoResponseBody(),
 		)
 	})
 
-	assert(t, `got response body "not found", want none`, "", func(m *mock) {
+	tr := testResult{
+		errors: []string{`got response body "not found", want none`},
+	}
+	assert(t, tr, func(m *mock) {
 		jsonhttptest.Request(m, c, http.MethodGet, endpoint+"/bzz", http.StatusOK,
 			jsonhttptest.WithNoResponseBody(),
 		)
