@@ -1116,6 +1116,9 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		debugService.MustRegisterMetrics(lightNodes.Metrics()...)
 		debugService.MustRegisterMetrics(hive.Metrics()...)
 
+		if chainSyncer != nil {
+			debugService.MustRegisterMetrics(chainSyncer.Metrics()...)
+		}
 		if bs, ok := batchStore.(metrics.Collector); ok {
 			debugService.MustRegisterMetrics(bs.Metrics()...)
 		}
