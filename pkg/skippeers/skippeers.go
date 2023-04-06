@@ -51,17 +51,19 @@ func (l *List) ChunkPeers(ch swarm.Address) (peers []swarm.Address) {
 	return peers
 }
 
-func (l *List) PruneExpired() {
+func (l *List) PruneExpiresAfter(d time.Duration) int {
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
 
-	now := time.Now().UnixMilli()
+	now := time.Now().Add(d).UnixMilli()
+	count := 0
 
 	for k, chunkPeers := range l.skip {
 		chunkPeersLen := len(chunkPeers)
 		for peer, exp := range chunkPeers {
-			if exp < now {
+			if exp <= now {
 				delete(chunkPeers, peer)
+				count++
 				chunkPeersLen--
 			}
 		}
@@ -69,5 +71,16 @@ func (l *List) PruneExpired() {
 		if chunkPeersLen == 0 {
 			delete(l.skip, k)
 		}
+	}
+
+	return count
+}
+
+func (l *List) Reset() {
+	l.mtx.Lock()
+	defer l.mtx.Unlock()
+
+	for k := range l.skip {
+		delete(l.skip, k)
 	}
 }
