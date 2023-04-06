@@ -139,7 +139,6 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 	defer func() {
 		s.metrics.RequestDurationTime.Observe(time.Since(requestStartTime).Seconds())
 		s.metrics.RequestAttempts.Observe(float64(totalRetrieveAttempts))
-		s.logger.Debug("retrieval duration", fmt.Sprintf("%0.2f", time.Since(requestStartTime).Seconds()))
 	}()
 
 	// topCtx is passing the tracing span to the first singleflight call
@@ -212,6 +211,8 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 					return res.chunk, nil
 				}
 
+				loggerV1.Debug("failed to get chunk", "chunk_address", chunkAddr, "peer_address", res.peer, "error", res.err)
+
 				// peer is overdrafted, skip to next result
 				if errors.Is(res.err, accounting.ErrOverdraft) {
 					retry()
@@ -238,8 +239,6 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 						return nil, ctx.Err()
 					}
 				}
-
-				loggerV1.Debug("failed to get chunk", "chunk_address", chunkAddr, "peer_address", res.peer, "error", res.err)
 
 				if res.sent {
 					sentErrorsLeft--
