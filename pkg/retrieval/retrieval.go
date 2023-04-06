@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/accounting"
@@ -113,7 +114,7 @@ const (
 	maxRetrievedErrors   = 32
 	originSuffix         = "_origin"
 
-	maxDuration time.Duration = 1<<63 - 1
+	maxDuration time.Duration = math.MaxInt64
 )
 
 func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr swarm.Address) (swarm.Chunk, error) {

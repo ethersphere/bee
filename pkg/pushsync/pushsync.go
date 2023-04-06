@@ -10,6 +10,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/accounting"
@@ -46,7 +47,7 @@ const (
 	sanctionWait                     = 5 * time.Minute
 	replicationTTL                   = 5 * time.Second // time to live for neighborhood replication
 	overDraftRefresh                 = time.Second
-	maxDuration        time.Duration = 1<<63 - 1
+	maxDuration        time.Duration = math.MaxInt64
 )
 
 const (
