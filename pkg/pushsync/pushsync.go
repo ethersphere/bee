@@ -429,10 +429,10 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			}
 
 			if err != nil {
-				if inflight > 0 {
-					continue
-				} else {
+				if inflight == 0 {
 					return nil, fmt.Errorf("get closest for address %s, allow upstream %v: %w", ch, origin, err)
+				} else {
+					continue
 				}
 			}
 
