@@ -412,7 +412,8 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 					}
 				}
 
-				// there are some overdraft peers, wait for refresh
+				ps.logger.Debug("sleeping to refresh overdraft balanced", "chunk_address", ch.Address())
+
 				select {
 				case <-time.After(overDraftRefresh):
 					retry()

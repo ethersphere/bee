@@ -230,7 +230,8 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 						}
 					}
 
-					// there are some overdraft peers, wait for refresh
+					loggerV1.Debug("sleeping to refresh overdraft balanced", "chunk_address", chunkAddr)
+
 					select {
 					case <-time.After(overDraftRefresh):
 						retry()
