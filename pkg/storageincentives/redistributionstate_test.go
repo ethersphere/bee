@@ -143,7 +143,7 @@ func TestStateRoundData(t *testing.T) {
 		}
 	})
 
-	t.Run("has reveal", func(t *testing.T) {
+	t.Run("has revealed", func(t *testing.T) {
 		t.Parallel()
 
 		state := createRedistribution(t, nil, nil)
