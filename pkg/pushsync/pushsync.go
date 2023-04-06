@@ -413,7 +413,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 					}
 				}
 
-				ps.logger.Debug("sleeping to refresh overdraft balanced", "chunk_address", ch.Address())
+				ps.logger.Debug("sleeping to refresh overdraft balance", "chunk_address", ch.Address())
 
 				select {
 				case <-time.After(overDraftRefresh):

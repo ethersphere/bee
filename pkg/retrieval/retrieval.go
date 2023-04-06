@@ -120,8 +120,6 @@ const (
 func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr swarm.Address) (swarm.Chunk, error) {
 	loggerV1 := s.logger.V(1).Register()
 
-	s.errSkip.PruneExpiresAfter(0)
-
 	s.metrics.RequestCounter.Inc()
 
 	origin := sourcePeerAddr.IsZero()
@@ -149,6 +147,8 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 
 		skip := skippeers.NewList()
 		defer skip.Reset()
+
+		s.errSkip.PruneExpiresAfter(0)
 
 		var preemptiveTicker <-chan time.Time
 
@@ -231,7 +231,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 						}
 					}
 
-					loggerV1.Debug("sleeping to refresh overdraft balanced", "chunk_address", chunkAddr)
+					loggerV1.Debug("sleeping to refresh overdraft balance", "chunk_address", chunkAddr)
 
 					select {
 					case <-time.After(overDraftRefresh):
