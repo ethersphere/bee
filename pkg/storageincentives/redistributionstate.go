@@ -49,6 +49,21 @@ type Status struct {
 	Block           uint64
 	Reward          *big.Int
 	Fees            *big.Int
+	RoundData       map[uint64]RoundData
+}
+
+type RoundData struct {
+	CommitKey   []byte
+	SampleData  *SampleData
+	HasRevealed bool
+}
+
+func NewStatus() *Status {
+	return &Status{
+		Reward:    big.NewInt(0),
+		Fees:      big.NewInt(0),
+		RoundData: make(map[uint64]RoundData),
+	}
 }
 
 func NewRedistributionState(logger log.Logger, ethAddress common.Address, stateStore storage.StateStorer, erc20Service erc20.Service, contract transaction.Service) (*RedistributionState, error) {
@@ -59,26 +74,35 @@ func NewRedistributionState(logger log.Logger, ethAddress common.Address, stateS
 		logger:         logger.WithName(loggerNameNode).Register(),
 		currentBalance: big.NewInt(0),
 		txService:      contract,
-		status: &Status{
-			Reward: big.NewInt(0),
-			Fees:   big.NewInt(0),
-		},
+		status:         NewStatus(),
 	}
 
 	status, err := s.Status()
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			s.status = &Status{
-				Reward: big.NewInt(0),
-				Fees:   big.NewInt(0),
-			}
-			return s, nil
+		if !errors.Is(err, storage.ErrNotFound) {
+			return nil, err
 		}
-		return nil, err
+		status = NewStatus()
 	}
 
 	s.status = status
 	return s, nil
+}
+
+// Status returns the node status
+func (r *RedistributionState) Status() (*Status, error) {
+	status := NewStatus()
+	if err := r.stateStore.Get(redistributionStatusKey, status); err != nil {
+		return nil, err
+	}
+	return status, nil
+}
+
+func (r *RedistributionState) save() {
+	err := r.stateStore.Put(redistributionStatusKey, r.status)
+	if err != nil {
+		r.logger.Error(err, "saving redistribution status")
+	}
 }
 
 func (r *RedistributionState) SetCurrentEvent(phase PhaseType, round uint64, block uint64) {
@@ -152,15 +176,6 @@ func (r *RedistributionState) CalculateWinnerReward(ctx context.Context) error {
 	return nil
 }
 
-// Status returns the node status
-func (r *RedistributionState) Status() (*Status, error) {
-	status := new(Status)
-	if err := r.stateStore.Get(redistributionStatusKey, status); err != nil {
-		return nil, err
-	}
-	return status, nil
-}
-
 func (r *RedistributionState) SetBalance(ctx context.Context) error {
 	// get current balance
 	currentBalance, err := r.erc20Service.BalanceOf(ctx, r.ethAddress)
@@ -174,11 +189,69 @@ func (r *RedistributionState) SetBalance(ctx context.Context) error {
 	return nil
 }
 
-func (r *RedistributionState) save() {
-	err := r.stateStore.Put(redistributionStatusKey, r.status)
-	if err != nil {
-		r.logger.Error(err, "saving redistribution status")
+func (r *RedistributionState) SampleData(round uint64) (SampleData, bool) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	rd, ok := r.status.RoundData[round]
+	if !ok || rd.SampleData == nil {
+		return SampleData{}, false
 	}
+
+	return *rd.SampleData, true
+}
+
+func (r *RedistributionState) SetSampleData(round uint64, sd SampleData) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	rd := r.status.RoundData[round]
+	rd.SampleData = &sd
+	r.status.RoundData[round] = rd
+
+	r.save()
+}
+
+func (r *RedistributionState) CommitKey(round uint64) ([]byte, bool) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	rd, ok := r.status.RoundData[round]
+	if !ok || rd.CommitKey == nil {
+		return nil, false
+	}
+
+	return rd.CommitKey, true
+}
+
+func (r *RedistributionState) SetCommitKey(round uint64, commitKey []byte) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	rd := r.status.RoundData[round]
+	rd.CommitKey = commitKey
+	r.status.RoundData[round] = rd
+
+	r.save()
+}
+
+func (r *RedistributionState) HasRevealed(round uint64) bool {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	rd := r.status.RoundData[round]
+	return rd.HasRevealed
+}
+
+func (r *RedistributionState) SetHasRevealed(round uint64) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	rd := r.status.RoundData[round]
+	rd.HasRevealed = true
+	r.status.RoundData[round] = rd
+
+	r.save()
 }
 
 func (r *RedistributionState) currentRoundAndPhase() (uint64, PhaseType) {
