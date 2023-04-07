@@ -575,8 +575,15 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 	handle("/status", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
 			httpaccess.NewHTTPAccessSuppressLogHandler(),
-			s.statusAccessHandler,
 			web.FinalHandlerFunc(s.statusGetHandler),
+		),
+	})
+
+	handle("/status/peers", jsonhttp.MethodHandler{
+		"GET": web.ChainHandlers(
+			httpaccess.NewHTTPAccessSuppressLogHandler(),
+			s.statusAccessHandler,
+			web.FinalHandlerFunc(s.statusGetPeersHandler),
 		),
 	})
 }
