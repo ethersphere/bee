@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"io"
 	"net/http"
 	"strconv"
 	"testing"
@@ -27,10 +26,12 @@ import (
 	"gitlab.com/nolash/go-mockbytes"
 )
 
-// nolint:paralleltest
+// nolint:paralleltest,tparallel
 // TestBytes tests that the data upload api responds as expected when uploading,
 // downloading and requesting a resource that cannot be found.
 func TestBytes(t *testing.T) {
+	t.Parallel()
+
 	const (
 		resource = "/bytes"
 		expHash  = "29a5fb121ce96194ba8b7b823a1f9c6af87e1791f824940a53b5a7efe3f790d9"
@@ -115,34 +116,22 @@ func TestBytes(t *testing.T) {
 	})
 
 	t.Run("download", func(t *testing.T) {
-		resp := request(t, client, http.MethodGet, resource+"/"+expHash, nil, http.StatusOK)
-		data, err := io.ReadAll(resp.Body)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if !bytes.Equal(data, content) {
-			t.Fatalf("data mismatch. got %s, want %s", string(data), string(content))
-		}
+		jsonhttptest.Request(t, client, http.MethodGet, resource+"/"+expHash, http.StatusOK,
+			jsonhttptest.WithExpectedContentLength(len(content)),
+			jsonhttptest.WithExpectedResponse(content),
+		)
 	})
 
 	t.Run("head", func(t *testing.T) {
-		resp := request(t, client, http.MethodHead, resource+"/"+expHash, nil, http.StatusOK)
-		if int(resp.ContentLength) != len(content) {
-			t.Fatalf("length %d want %d", resp.ContentLength, len(content))
-		}
+		jsonhttptest.Request(t, client, http.MethodHead, resource+"/"+expHash, http.StatusOK,
+			jsonhttptest.WithExpectedContentLength(len(content)),
+		)
 	})
 	t.Run("head with compression", func(t *testing.T) {
-		resp := jsonhttptest.Request(t, client, http.MethodHead, resource+"/"+expHash, http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodHead, resource+"/"+expHash, http.StatusOK,
 			jsonhttptest.WithRequestHeader("Accept-Encoding", "gzip"),
+			jsonhttptest.WithExpectedContentLength(len(content)),
 		)
-		val, err := strconv.Atoi(resp.Get("Content-Length"))
-		if err != nil {
-			t.Fatal(err)
-		}
-		if val != len(content) {
-			t.Fatalf("length %d want %d", val, len(content))
-		}
 	})
 
 	t.Run("internal error", func(t *testing.T) {
@@ -155,8 +144,10 @@ func TestBytes(t *testing.T) {
 	})
 }
 
-// nolint:paralleltest
+// nolint:paralleltest,tparallel
 func TestBytesInvalidStamp(t *testing.T) {
+	t.Parallel()
+
 	const (
 		resource = "/bytes"
 		expHash  = "29a5fb121ce96194ba8b7b823a1f9c6af87e1791f824940a53b5a7efe3f790d9"
