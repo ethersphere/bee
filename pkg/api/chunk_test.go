@@ -8,7 +8,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"io"
 	"net/http"
 	"testing"
 
@@ -29,10 +28,12 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// nolint:paralleltest
+// nolint:paralleltest,tparallel
 // TestChunkUploadDownload uploads a chunk to an API that verifies the chunk according
 // to a given validator, then tries to download the uploaded data.
 func TestChunkUploadDownload(t *testing.T) {
+	t.Parallel()
+
 	var (
 		chunksEndpoint  = "/chunks"
 		chunksResource  = func(a swarm.Address) string { return "/chunks/" + a.String() }
@@ -77,16 +78,10 @@ func TestChunkUploadDownload(t *testing.T) {
 		}
 
 		// try to fetch the same chunk
-		endpoint := chunksResource(chunk.Address())
-		resp := request(t, client, http.MethodGet, endpoint, nil, http.StatusOK)
-		data, err := io.ReadAll(resp.Body)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if !bytes.Equal(chunk.Data(), data) {
-			t.Fatal("data retrieved doesnt match uploaded content")
-		}
+		jsonhttptest.Request(t, client, http.MethodGet, chunksResource(chunk.Address()), http.StatusOK,
+			jsonhttptest.WithExpectedResponse(chunk.Data()),
+			jsonhttptest.WithExpectedContentLength(len(chunk.Data())),
+		)
 	})
 
 	t.Run("pin-invalid-value", func(t *testing.T) {
@@ -147,8 +142,10 @@ func TestChunkUploadDownload(t *testing.T) {
 	})
 }
 
-// nolint:paralleltest
+// nolint:paralleltest,tparallel
 func TestHasChunkHandler(t *testing.T) {
+	t.Parallel()
+
 	mockStorer := mock.NewStorer()
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
 		Storer: mockStorer,
@@ -164,7 +161,13 @@ func TestHasChunkHandler(t *testing.T) {
 
 	t.Run("ok", func(t *testing.T) {
 		jsonhttptest.Request(t, testServer, http.MethodHead, "/chunks/"+key.String(), http.StatusOK,
-			jsonhttptest.WithNoResponseBody())
+			jsonhttptest.WithNoResponseBody(),
+		)
+
+		jsonhttptest.Request(t, testServer, http.MethodGet, "/chunks/"+key.String(), http.StatusOK,
+			jsonhttptest.WithExpectedResponse(value),
+			jsonhttptest.WithExpectedContentLength(len(value)),
+		)
 	})
 
 	t.Run("not found", func(t *testing.T) {

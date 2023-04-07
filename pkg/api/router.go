@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/pprof"
+	"strings"
 
 	"github.com/ethersphere/bee/pkg/auth"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -61,21 +62,41 @@ func (s *Service) MountAPI() {
 
 	s.mountAPI()
 
-	skipHeadHandler := func(fn func(http.Handler) http.Handler) func(h http.Handler) http.Handler {
-		return func(h http.Handler) http.Handler {
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				if r.Method == http.MethodHead {
-					h.ServeHTTP(w, r)
-				} else {
-					fn(h).ServeHTTP(w, r)
-				}
-			})
+	compressHandler := func(h http.Handler) http.Handler {
+		downloadEndpoints := []string{
+			"/bzz",
+			"/bytes",
+			"/chunks",
+			rootPath + "/bzz",
+			rootPath + "/bytes",
+			rootPath + "/chunks",
 		}
+
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Skip compression for GET requests on download endpoints.
+			// This is done in order to preserve Content-Length header in response,
+			// because CompressHandler is always removing it.
+			if r.Method == http.MethodGet {
+				for _, endpoint := range downloadEndpoints {
+					if strings.HasPrefix(r.URL.Path, endpoint) {
+						h.ServeHTTP(w, r)
+						return
+					}
+				}
+			}
+
+			if r.Method == http.MethodHead {
+				h.ServeHTTP(w, r)
+				return
+			}
+
+			handlers.CompressHandler(h).ServeHTTP(w, r)
+		})
 	}
 
 	s.Handler = web.ChainHandlers(
 		httpaccess.NewHTTPAccessLogHandler(s.logger, s.tracer, "api access"),
-		skipHeadHandler(handlers.CompressHandler),
+		compressHandler,
 		s.responseCodeMetricsHandler,
 		s.pageviewMetricsHandler,
 		s.corsHandler,
