@@ -13,6 +13,8 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
+	"reflect"
+	"sort"
 	"strconv"
 	"testing"
 
@@ -50,6 +52,25 @@ func Request(tb testing.TB, client *http.Client, method, url string, responseCod
 
 	if resp.StatusCode != responseCode {
 		tb.Errorf("got response status %s, want %v %s", resp.Status, responseCode, http.StatusText(responseCode))
+	}
+
+	if headers := o.expectedResponseHeaders; headers != nil {
+		for key, values := range headers {
+			got := sort.StringSlice(resp.Header.Values(key))
+			want := sort.StringSlice(values)
+			if !reflect.DeepEqual(got, want) {
+				tb.Errorf("header values for key=[%s] not as expected, got: %v, want %v", key, got, want)
+			}
+		}
+
+		// When "Content-Length" header is set additionally assert
+		// that resp.ContentLength has the same value.
+		if want := headers.Get("Content-Length"); want != "" {
+			got := strconv.FormatInt(resp.ContentLength, 10)
+			if want != got {
+				tb.Errorf("http.Response.ContentLength not as expected, got %v, want %v", got, want)
+			}
+		}
 	}
 
 	if o.expectedResponse != nil {
@@ -197,6 +218,23 @@ func WithExpectedResponse(response []byte) Option {
 	})
 }
 
+// WithExpectedResponseHeader validates that the response from the request
+// has header with specified value
+func WithExpectedResponseHeader(key, value string) Option {
+	return optionFunc(func(o *options) error {
+		if o.expectedResponseHeaders == nil {
+			o.expectedResponseHeaders = make(http.Header)
+		}
+		o.expectedResponseHeaders.Add(key, value)
+		return nil
+	})
+}
+
+// WithExpectedContentLength is shorthand for creating "Content-Length" header check.
+func WithExpectedContentLength(value int) Option {
+	return WithExpectedResponseHeader("Content-Length", strconv.Itoa(value))
+}
+
 // WithExpectedJSONResponse validates that the response from the request in the
 // Request function matches JSON-encoded body provided here.
 func WithExpectedJSONResponse(response interface{}) Option {
@@ -241,14 +279,15 @@ func WithNoResponseBody() Option {
 }
 
 type options struct {
-	ctx                  context.Context
-	requestBody          io.Reader
-	requestHeaders       http.Header
-	expectedResponse     []byte
-	expectedJSONResponse interface{}
-	unmarshalResponse    interface{}
-	responseBody         *[]byte
-	noResponseBody       bool
+	ctx                     context.Context
+	requestBody             io.Reader
+	requestHeaders          http.Header
+	expectedResponseHeaders http.Header
+	expectedResponse        []byte
+	expectedJSONResponse    interface{}
+	unmarshalResponse       interface{}
+	responseBody            *[]byte
+	noResponseBody          bool
 }
 
 type Option interface {
