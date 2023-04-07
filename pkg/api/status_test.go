@@ -24,13 +24,10 @@ func TestGetStatus(t *testing.T) {
 	t.Run("node", func(t *testing.T) {
 		t.Parallel()
 
-		ssr := api.StatusSnapshotResponse{
+		ssr := api.StatusLocalSnapshotResponse{
 			ReserveSize:   128,
 			PullsyncRate:  64,
 			StorageRadius: 8,
-		}
-		res := api.StatusResponse{
-			Snapshots: []api.StatusSnapshotResponse{ssr},
 		}
 
 		ssMock := &statusSnapshotMock{
@@ -52,7 +49,7 @@ func TestGetStatus(t *testing.T) {
 		})
 
 		jsonhttptest.Request(t, client, http.MethodGet, url, http.StatusOK,
-			jsonhttptest.WithExpectedJSONResponse(res),
+			jsonhttptest.WithExpectedJSONResponse(ssr),
 		)
 	})
 

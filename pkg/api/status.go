@@ -11,17 +11,25 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 )
 
-type statusSnapshotResponse struct {
-	Peer          string  `json:"peer,omitempty"`
-	Proximity     uint8   `json:"proximity"`
+type statusLocalSnapshotResponse struct {
 	ReserveSize   uint64  `json:"reserveSize"`
 	PullsyncRate  float64 `json:"pullsyncRate"`
 	StorageRadius uint8   `json:"storageRadius"`
-	RequestFailed bool    `json:"requestFailed,omitempty"`
 }
 
-type statusResponse struct {
-	Snapshots []statusSnapshotResponse `json:"snapshots"`
+type statusConnectedPeersSnapshotResponse struct {
+	Peer             string  `json:"peer"`
+	Proximity        uint8   `json:"proximity"`
+	ReserveSize      uint64  `json:"reserveSize"`
+	PullsyncRate     float64 `json:"pullsyncRate"`
+	StorageRadius    uint8   `json:"storageRadius"`
+	ConnectedPeers   uint64  `json:"connectedPeers"`
+	NeighborhoodSize uint64  `json:"neighborhoodSize"`
+	RequestFailed    bool    `json:"requestFailed,omitempty"`
+}
+
+type statusConnectedPeersResponse struct {
+	Snapshots []statusConnectedPeersSnapshotResponse `json:"snapshots"`
 }
 
 // statusAccessHandler is a middleware that limits the number of simultaneous
@@ -51,15 +59,25 @@ func (s *Service) statusGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	queries := struct {
-		ConnectedPeers bool `map:"connectedPeers"`
-	}{}
-	if response := s.mapStructure(r.URL.Query(), &queries); response != nil {
-		response("invalid query params", logger, w)
+	ss := s.statusService.LocalSnapshot()
+	jsonhttp.OK(w, statusLocalSnapshotResponse{
+		ReserveSize:   ss.ReserveSize,
+		PullsyncRate:  ss.PullsyncRate,
+		StorageRadius: ss.StorageRadius,
+	})
+}
+
+// statusGetPeersHandler returns the status of currently connected peers.
+func (s *Service) statusGetPeersHandler(w http.ResponseWriter, r *http.Request) {
+	logger := s.logger.WithName("get_status_peers").Build()
+
+	if s.beeMode == DevMode {
+		logger.Warning("status endpoint is disabled in dev mode")
+		jsonhttp.BadRequest(w, errUnsupportedDevNodeOperation)
 		return
 	}
 
-	sss, err := s.statusService.Snapshots(r.Context(), queries.ConnectedPeers)
+	sss, err := s.statusService.ConnectedPeersSnapshot(r.Context())
 	if err != nil {
 		logger.Debug("status snapshot", "error", err)
 		logger.Error(nil, "status snapshot")
@@ -70,16 +88,18 @@ func (s *Service) statusGetHandler(w http.ResponseWriter, r *http.Request) {
 	sort.Slice(sss, func(i, j int) bool {
 		return sss[i].Proximity < sss[j].Proximity
 	})
-	snapshots := make([]statusSnapshotResponse, 0, len(sss))
+	snapshots := make([]statusConnectedPeersSnapshotResponse, 0, len(sss))
 	for _, ss := range sss {
-		snapshots = append(snapshots, statusSnapshotResponse{
-			Peer:          ss.Peer.String(),
-			Proximity:     ss.Proximity,
-			ReserveSize:   ss.ReserveSize,
-			PullsyncRate:  ss.PullsyncRate,
-			StorageRadius: ss.StorageRadius,
-			RequestFailed: ss.RequestFailed,
+		snapshots = append(snapshots, statusConnectedPeersSnapshotResponse{
+			Peer:             ss.Peer.String(),
+			Proximity:        ss.Proximity,
+			ReserveSize:      ss.ReserveSize,
+			PullsyncRate:     ss.PullsyncRate,
+			StorageRadius:    ss.StorageRadius,
+			ConnectedPeers:   ss.ConnectedPeers,
+			NeighborhoodSize: ss.NeighborhoodSize,
+			RequestFailed:    ss.RequestFailed,
 		})
 	}
-	jsonhttp.OK(w, statusResponse{Snapshots: snapshots})
+	jsonhttp.OK(w, statusConnectedPeersResponse{Snapshots: snapshots})
 }

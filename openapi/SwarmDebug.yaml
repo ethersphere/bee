@@ -1153,13 +1153,6 @@ paths:
           description: Default response
 
   "/status":
-    parameters:
-      - in: query
-        name: connectedPeers
-        schema:
-          type: string
-          required: false
-        description: Get status snapshots of all connected peers. Default is null.
     get:
       summary: Get the current status snapshot of this node.
       tags:
@@ -1170,7 +1163,24 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/StatusResponse"
+                $ref: "SwarmCommon.yaml#/components/schemas/StatusLocalSnapshotResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        default:
+          description: Default response.
+
+  "/status/peers":
+    get:
+      summary: Get the current status snapshot of this node connected peers.
+      tags:
+        - Node Status
+      responses:
+        "200":
+          description: Returns the status snapshot of this node connected peers
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/StatusConnectedPeerResponse"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         default:
