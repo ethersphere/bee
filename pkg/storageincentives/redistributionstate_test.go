@@ -5,10 +5,8 @@
 package storageincentives
 
 import (
-	"bytes"
 	"context"
 	"math/big"
-	"reflect"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -116,8 +114,8 @@ func TestStateRoundData(t *testing.T) {
 		if !exists {
 			t.Error("should exist")
 		}
-		if !reflect.DeepEqual(savedSample, sample) {
-			t.Errorf("sample does not match saved sample")
+		if diff := cmp.Diff(savedSample, sample); diff != "" {
+			t.Errorf("sample mismatch (-want +have):\n%s", diff)
 		}
 	})
 
@@ -138,8 +136,8 @@ func TestStateRoundData(t *testing.T) {
 		if !exists {
 			t.Error("should exist")
 		}
-		if !bytes.Equal(savedKey, key) {
-			t.Errorf("key does not match saved key")
+		if diff := cmp.Diff(savedKey, key); diff != "" {
+			t.Errorf("key mismatch (-want +have):\n%s", diff)
 		}
 	})
 
