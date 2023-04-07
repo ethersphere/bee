@@ -405,7 +405,7 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 	a.logger.Info("neighbourhood chosen", "round", round)
 	a.metrics.NeighborhoodSelected.Inc()
 
-	sample, err := a.makeSample(ctx, round, storageRadius)
+	sample, err := a.makeSample(ctx, storageRadius)
 	if err != nil {
 		return false, err
 	}
@@ -418,7 +418,7 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 	return true, nil
 }
 
-func (a *Agent) makeSample(ctx context.Context, round uint64, storageRadius uint8) (sampleData, error) {
+func (a *Agent) makeSample(ctx context.Context, storageRadius uint8) (sampleData, error) {
 	salt, err := a.contract.ReserveSalt(ctx)
 	if err != nil {
 		return sampleData{}, err
