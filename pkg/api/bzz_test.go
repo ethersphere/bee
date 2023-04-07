@@ -33,8 +33,10 @@ import (
 	"github.com/ethersphere/bee/pkg/tags"
 )
 
-// nolint:paralleltest
+// nolint:paralleltest,tparallel
 func TestBzzFiles(t *testing.T) {
+	t.Parallel()
+
 	var (
 		fileUploadResource   = "/bzz"
 		fileDownloadResource = func(addr string) string { return "/bzz/" + addr }
@@ -174,8 +176,7 @@ func TestBzzFiles(t *testing.T) {
 		fileName := "my-pictures.jpeg"
 
 		var resp api.BzzUploadResponse
-		rcvdHeader := jsonhttptest.Request(t, client, http.MethodPost,
-			fileUploadResource+"?name="+fileName, http.StatusCreated,
+		rcvdHeader := jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource+"?name="+fileName, http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
@@ -186,22 +187,12 @@ func TestBzzFiles(t *testing.T) {
 
 		isTagFoundInResponse(t, rcvdHeader, nil)
 
-		rootHash := resp.Reference.String()
-		rcvdHeader = jsonhttptest.Request(t, client, http.MethodGet,
-			fileDownloadResource(rootHash), http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodGet, fileDownloadResource(resp.Reference.String()), http.StatusOK,
+			jsonhttptest.WithExpectedContentLength(len(simpleData)),
+			jsonhttptest.WithExpectedResponseHeader("Content-Type", "image/jpeg; charset=utf-8"),
+			jsonhttptest.WithExpectedResponseHeader("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, fileName)),
 			jsonhttptest.WithExpectedResponse(simpleData),
 		)
-		cd := rcvdHeader.Get("Content-Disposition")
-		_, params, err := mime.ParseMediaType(cd)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if params["filename"] != fileName {
-			t.Fatal("Invalid file name detected")
-		}
-		if rcvdHeader.Get("Content-Type") != "image/jpeg; charset=utf-8" {
-			t.Fatal("Invalid content type detected")
-		}
 	})
 
 	t.Run("filter out filename path", func(t *testing.T) {
@@ -210,8 +201,7 @@ func TestBzzFiles(t *testing.T) {
 
 		var resp api.BzzUploadResponse
 
-		_ = jsonhttptest.Request(t, client, http.MethodPost,
-			fileUploadResource+"?name="+fileNameWithPath, http.StatusCreated,
+		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource+"?name="+fileNameWithPath, http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
@@ -220,29 +210,19 @@ func TestBzzFiles(t *testing.T) {
 		)
 
 		rootHash := resp.Reference.String()
-		rcvdHeader := jsonhttptest.Request(t, client, http.MethodGet,
-			fileDownloadResource(rootHash), http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodGet, fileDownloadResource(rootHash), http.StatusOK,
+			jsonhttptest.WithExpectedContentLength(len(simpleData)),
+			jsonhttptest.WithExpectedResponseHeader("Content-Type", "image/jpeg; charset=utf-8"),
+			jsonhttptest.WithExpectedResponseHeader("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, fileName)),
 			jsonhttptest.WithExpectedResponse(simpleData),
 		)
-		cd := rcvdHeader.Get("Content-Disposition")
-		_, params, err := mime.ParseMediaType(cd)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if params["filename"] != fileName {
-			t.Fatalf("want filename %s, got %s", fileName, params["filename"])
-		}
-		if rcvdHeader.Get("Content-Type") != "image/jpeg; charset=utf-8" {
-			t.Fatal("Invalid content type detected")
-		}
 	})
 
 	t.Run("check-content-type-detection", func(t *testing.T) {
 		fileName := "my-pictures.jpeg"
 		rootHash := "4f9146b3813ccbd7ce45a18be23763d7e436ab7a3982ef39961c6f3cd4da1dcf"
 
-		rcvdHeader := jsonhttptest.Request(t, client, http.MethodPost,
-			fileUploadResource+"?name="+fileName, http.StatusCreated,
+		rcvdHeader := jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource+"?name="+fileName, http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
@@ -254,21 +234,12 @@ func TestBzzFiles(t *testing.T) {
 
 		isTagFoundInResponse(t, rcvdHeader, nil)
 
-		rcvdHeader = jsonhttptest.Request(t, client, http.MethodGet,
-			fileDownloadResource(rootHash), http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodGet, fileDownloadResource(rootHash), http.StatusOK,
 			jsonhttptest.WithExpectedResponse(simpleData),
+			jsonhttptest.WithExpectedContentLength(len(simpleData)),
+			jsonhttptest.WithExpectedResponseHeader("Content-Type", "image/jpeg; charset=utf-8"),
+			jsonhttptest.WithExpectedResponseHeader("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, fileName)),
 		)
-		cd := rcvdHeader.Get("Content-Disposition")
-		_, params, err := mime.ParseMediaType(cd)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if params["filename"] != fileName {
-			t.Fatal("Invalid file name detected")
-		}
-		if rcvdHeader.Get("Content-Type") != "image/jpeg; charset=utf-8" {
-			t.Fatal("Invalid content type detected")
-		}
 	})
 
 	t.Run("upload-then-download-and-check-data", func(t *testing.T) {
@@ -285,8 +256,7 @@ func TestBzzFiles(t *testing.T) {
 		</body>
 		</html>`
 
-		rcvdHeader := jsonhttptest.Request(t, client, http.MethodPost,
-			fileUploadResource+"?name="+fileName, http.StatusCreated,
+		rcvdHeader := jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource+"?name="+fileName, http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(strings.NewReader(sampleHtml)),
@@ -303,32 +273,19 @@ func TestBzzFiles(t *testing.T) {
 		isTagFoundInResponse(t, rcvdHeader, nil)
 
 		// try to fetch the same file and check the data
-		rcvdHeader = jsonhttptest.Request(t, client, http.MethodGet,
-			fileDownloadResource(rootHash), http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodGet, fileDownloadResource(rootHash), http.StatusOK,
 			jsonhttptest.WithExpectedResponse([]byte(sampleHtml)),
+			jsonhttptest.WithExpectedContentLength(len(sampleHtml)),
+			jsonhttptest.WithExpectedResponseHeader("Content-Type", "text/html; charset=utf-8"),
+			jsonhttptest.WithExpectedResponseHeader("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, fileName)),
 		)
-
-		// check the headers
-		cd := rcvdHeader.Get("Content-Disposition")
-		_, params, err := mime.ParseMediaType(cd)
-		if err != nil {
-			t.Fatal(err)
-		}
-		if params["filename"] != fileName {
-			t.Fatal("Invalid filename detected")
-		}
-		if rcvdHeader.Get("Content-Type") != "text/html; charset=utf-8" {
-			t.Fatal("Invalid content type detected")
-		}
-
 	})
 
 	t.Run("upload-then-download-with-targets", func(t *testing.T) {
 		fileName := "simple_file.txt"
 		rootHash := "65148cd89b58e91616773f5acea433f7b5a6274f2259e25f4893a332b74a7e28"
 
-		rcvdHeader := jsonhttptest.Request(t, client, http.MethodPost,
-			fileUploadResource+"?name="+fileName, http.StatusCreated,
+		rcvdHeader := jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource+"?name="+fileName, http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
@@ -639,6 +596,7 @@ func TestFeedIndirection(t *testing.T) {
 
 	jsonhttptest.Request(t, client, http.MethodGet, bzzDownloadResource(manifRef.String(), ""), http.StatusOK,
 		jsonhttptest.WithExpectedResponse(updateData),
+		jsonhttptest.WithExpectedContentLength(len(updateData)),
 	)
 }
 

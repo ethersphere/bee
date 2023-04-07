@@ -205,6 +205,6 @@ func (s *Service) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Content-Type", "binary/octet-stream")
-	w.Header().Add("Content-Length", strconv.FormatInt(int64(len(chunk.Data())), 10))
+	w.Header().Set("Content-Length", strconv.FormatInt(int64(len(chunk.Data())), 10))
 	_, _ = io.Copy(w, bytes.NewReader(chunk.Data()))
 }

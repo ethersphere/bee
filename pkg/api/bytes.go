@@ -179,6 +179,6 @@ func (s *Service) bytesHeadHandler(w http.ResponseWriter, r *http.Request) {
 		// soc
 		span = int64(len(ch.Data()))
 	}
-	w.Header().Add("Content-Length", strconv.FormatInt(span, 10))
+	w.Header().Set("Content-Length", strconv.FormatInt(span, 10))
 	w.WriteHeader(http.StatusOK) // HEAD requests do not write a body
 }
