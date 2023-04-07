@@ -303,7 +303,7 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) (bool, error) {
 	a.metrics.ClaimPhase.Inc()
 	// event claimPhase was processed
 
-	err = a.batchExpirer.ExpireBatches(ctx)
+	err := a.batchExpirer.ExpireBatches(ctx)
 	if err != nil {
 		return false, err
 	}
