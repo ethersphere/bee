@@ -53,7 +53,7 @@ type Monitor interface {
 	IsFullySynced() bool
 }
 
-type sampleData struct {
+type SampleData struct {
 	ReserveSample storage.Sample
 	StorageRadius uint8
 }
@@ -249,18 +249,13 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 func (a *Agent) handleCommit(ctx context.Context, round uint64) (bool, error) {
 	// the sample has to come from previous round to be able to commit it
-	sample, err := getSample(a.state.stateStore, round-1)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			// In absence of sample, phase is skipped
-			return false, nil
-		}
-
-		a.logger.Error(err, "getSample for commit phase")
-		return false, err
+	sample, exists := a.state.SampleData(round - 1)
+	if !exists {
+		// In absence of sample, phase is skipped
+		return false, nil
 	}
 
-	err = a.commit(ctx, sample, round)
+	err := a.commit(ctx, sample, round)
 	if err != nil {
 		a.logger.Error(err, "commit")
 		return false, err
@@ -271,23 +266,17 @@ func (a *Agent) handleCommit(ctx context.Context, round uint64) (bool, error) {
 
 func (a *Agent) handleReveal(ctx context.Context, round uint64) (bool, error) {
 	// reveal requires the commitKey from the same round
-	commitKey, err := getCommitKey(a.state.stateStore, round)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			// In absence of commitKey, phase is skipped
-			return false, nil
-		}
-
-		a.logger.Error(err, "getCommitKey for reveal phase")
-		return false, err
+	commitKey, exists := a.state.CommitKey(round)
+	if !exists {
+		// In absence of commitKey, phase is skipped
+		return false, nil
 	}
 
 	// reveal requires sample from previous round
-	sample, err := getSample(a.state.stateStore, round-1)
-	if err != nil {
+	sample, exists := a.state.SampleData(round - 1)
+	if !exists {
 		// Sample must have been saved so far
-		a.logger.Error(err, "getSample for reveal phase")
-		return false, err
+		return false, fmt.Errorf("sample not found in reveal phase")
 	}
 
 	a.metrics.RevealPhase.Inc()
@@ -299,29 +288,22 @@ func (a *Agent) handleReveal(ctx context.Context, round uint64) (bool, error) {
 	}
 	a.state.AddFee(ctx, txHash)
 
-	if err := saveRevealRound(a.state.stateStore, round); err != nil {
-		return false, fmt.Errorf("failed to save reveal round: %w", err)
-	}
+	a.state.SetHasRevealed(round)
 
 	return true, nil
 }
 
 func (a *Agent) handleClaim(ctx context.Context, round uint64) (bool, error) {
-	err := getRevealRound(a.state.stateStore, round)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			// In absence of reval round, phase is skipped
-			return false, nil
-		}
-
-		a.logger.Error(err, "getRevealRound for claim phase")
-		return false, err
+	hasRevealed := a.state.HasRevealed(round)
+	if !hasRevealed {
+		// When there was no reveal in same round, phase is skipped
+		return false, nil
 	}
 
 	a.metrics.ClaimPhase.Inc()
 	// event claimPhase was processed
 
-	err = a.batchExpirer.ExpireBatches(ctx)
+	err := a.batchExpirer.ExpireBatches(ctx)
 	if err != nil {
 		return false, err
 	}
@@ -410,33 +392,30 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 		return false, err
 	}
 
-	err = saveSample(a.state.stateStore, sample, round)
-	if err != nil {
-		return false, fmt.Errorf("failed to save sample: %w", err)
-	}
+	a.state.SetSampleData(round, sample)
 
 	return true, nil
 }
 
-func (a *Agent) makeSample(ctx context.Context, storageRadius uint8) (sampleData, error) {
+func (a *Agent) makeSample(ctx context.Context, storageRadius uint8) (SampleData, error) {
 	salt, err := a.contract.ReserveSalt(ctx)
 	if err != nil {
-		return sampleData{}, err
+		return SampleData{}, err
 	}
 
 	timeLimiter, err := a.getPreviousRoundTime(ctx)
 	if err != nil {
-		return sampleData{}, err
+		return SampleData{}, err
 	}
 
 	t := time.Now()
 	rSample, err := a.sampler.ReserveSample(ctx, salt, storageRadius, uint64(timeLimiter))
 	if err != nil {
-		return sampleData{}, err
+		return SampleData{}, err
 	}
 	a.metrics.SampleDuration.Set(time.Since(t).Seconds())
 
-	sample := sampleData{
+	sample := SampleData{
 		ReserveSample: rSample,
 		StorageRadius: storageRadius,
 	}
@@ -465,7 +444,7 @@ func (a *Agent) getPreviousRoundTime(ctx context.Context) (time.Duration, error)
 	return time.Duration(timeLimiterBlock.Time) * time.Second / time.Nanosecond, nil
 }
 
-func (a *Agent) commit(ctx context.Context, sample sampleData, round uint64) error {
+func (a *Agent) commit(ctx context.Context, sample SampleData, round uint64) error {
 	a.metrics.CommitPhase.Inc()
 
 	key := make([]byte, swarm.HashSize)
@@ -486,10 +465,7 @@ func (a *Agent) commit(ctx context.Context, sample sampleData, round uint64) err
 	}
 	a.state.AddFee(ctx, txHash)
 
-	err = saveCommitKey(a.state.stateStore, key, round)
-	if err != nil {
-		return fmt.Errorf("failed to save commit key: %w", err)
-	}
+	a.state.SetCommitKey(round, key)
 
 	return nil
 }

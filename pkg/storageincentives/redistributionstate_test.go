@@ -13,7 +13,10 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	erc20mock "github.com/ethersphere/bee/pkg/settlement/swap/erc20/mock"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
+	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
 	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 	"github.com/google/go-cmp/cmp"
 )
 
@@ -63,6 +66,7 @@ func TestState(t *testing.T) {
 		Block:           2,
 		Fees:            big.NewInt(0),
 		Reward:          big.NewInt(0),
+		RoundData:       make(map[uint64]RoundData),
 	}
 	state := createRedistribution(t, nil, nil)
 	state.SetCurrentEvent(input.Phase, input.Round, input.Block)
@@ -82,6 +86,76 @@ func TestState(t *testing.T) {
 	if diff := cmp.Diff(want, *got, opt...); diff != "" {
 		t.Errorf("result mismatch (-want +have):\n%s", diff)
 	}
+
+}
+
+func TestStateRoundData(t *testing.T) {
+	t.Parallel()
+
+	t.Run("sample data", func(t *testing.T) {
+		t.Parallel()
+
+		state := createRedistribution(t, nil, nil)
+
+		_, exists := state.SampleData(1)
+		if exists {
+			t.Error("should not exists")
+		}
+
+		savedSample := SampleData{
+			ReserveSample: storage.Sample{
+				Hash: swarm.RandAddress(t),
+			},
+			StorageRadius: 3,
+		}
+		state.SetSampleData(1, savedSample)
+
+		sample, exists := state.SampleData(1)
+		if !exists {
+			t.Error("should exist")
+		}
+		if diff := cmp.Diff(savedSample, sample); diff != "" {
+			t.Errorf("sample mismatch (-want +have):\n%s", diff)
+		}
+	})
+
+	t.Run("commit key", func(t *testing.T) {
+		t.Parallel()
+
+		state := createRedistribution(t, nil, nil)
+
+		_, exists := state.CommitKey(1)
+		if exists {
+			t.Error("should not exists")
+		}
+
+		savedKey := testutil.RandBytes(t, swarm.HashSize)
+		state.SetCommitKey(1, savedKey)
+
+		key, exists := state.CommitKey(1)
+		if !exists {
+			t.Error("should exist")
+		}
+		if diff := cmp.Diff(savedKey, key); diff != "" {
+			t.Errorf("key mismatch (-want +have):\n%s", diff)
+		}
+	})
+
+	t.Run("has revealed", func(t *testing.T) {
+		t.Parallel()
+
+		state := createRedistribution(t, nil, nil)
+
+		if state.HasRevealed(1) {
+			t.Error("should not be revealed")
+		}
+
+		state.SetHasRevealed(1)
+
+		if !state.HasRevealed(1) {
+			t.Error("should be revealed")
+		}
+	})
 
 }
 
