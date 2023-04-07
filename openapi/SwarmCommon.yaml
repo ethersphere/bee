@@ -812,12 +812,21 @@ components:
           items:
             $ref: "#/components/schemas/Logger"
 
-    StatusSnapshotResponse:
+    StatusLocalSnapshotResponse:
+      type: object
+      properties:
+        reserveSize:
+          type: integer
+        pullsyncRate:
+          type: number
+        storageRadius:
+          type: integer
+
+    StatusConnectedPeersSnapshotResponse:
       type: object
       properties:
         peer:
           $ref: "#/components/schemas/SwarmAddress"
-          nullable: true
         proximity:
           type: integer
         reserveSize:
@@ -829,14 +838,14 @@ components:
         requestFailed:
             type: boolean
 
-    StatusResponse:
+    StatusConnectedPeerResponse:
       type: object
       properties:
         stamps:
           type: array
           nullable: false
           items:
-            $ref: "#/components/schemas/StatusSnapshotResponse"
+            $ref: "#/components/schemas/StatusConnectedPeersSnapshotResponse"
 
   headers:
     SwarmTag:

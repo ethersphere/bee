@@ -18,4 +18,6 @@ message Snapshot {
   uint64 ReserveSize = 1;
   double PullsyncRate = 2;
   uint32 StorageRadius = 3;
+  uint64 ConnectedPeers = 4;
+  uint64 NeighborhoodSize = 5;
 }

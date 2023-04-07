@@ -102,8 +102,7 @@ type (
 	WalletResponse                    = walletResponse
 	GetStakeResponse                  = getStakeResponse
 	WithdrawAllStakeResponse          = withdrawAllStakeResponse
-	StatusSnapshotResponse            = statusSnapshotResponse
-	StatusResponse                    = statusResponse
+	StatusLocalSnapshotResponse       = statusLocalSnapshotResponse
 )
 
 var (

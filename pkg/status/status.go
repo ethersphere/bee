@@ -33,11 +33,13 @@ const (
 
 // Snapshot is the current snapshot of the system.
 type Snapshot struct {
-	Peer          swarm.Address
-	Proximity     uint8
-	ReserveSize   uint64
-	PullsyncRate  float64
-	StorageRadius uint8
+	Peer             swarm.Address
+	Proximity        uint8
+	ReserveSize      uint64
+	PullsyncRate     float64
+	StorageRadius    uint8
+	ConnectedPeers   uint64
+	NeighborhoodSize uint64
 
 	RequestFailed bool // Indicates whether there was an error while requesting the snapshot.
 }
@@ -53,17 +55,18 @@ type Service struct {
 	radius  postage.RadiusReporter
 }
 
-// Snapshots returns the current status snapshot of this node or connected peers.
-func (s *Service) Snapshots(ctx context.Context, connectedPeers bool) ([]*Snapshot, error) {
-	snapshots := []*Snapshot{{
+// LocalSnapshot returns the current status snapshot of this node.
+func (s *Service) LocalSnapshot() *Snapshot {
+	return &Snapshot{
 		ReserveSize:   s.reserve.ReserveSize(),
 		PullsyncRate:  s.sync.SyncRate(),
 		StorageRadius: s.radius.StorageRadius(),
-	}}
-
-	if !connectedPeers {
-		return snapshots, nil
 	}
+}
+
+// ConnectedPeersSnapshot returns the current status snapshot of this node connected peers.
+func (s *Service) ConnectedPeersSnapshot(ctx context.Context) ([]*Snapshot, error) {
+	var snapshots []*Snapshot
 
 	var (
 		wg  sync.WaitGroup
@@ -88,6 +91,8 @@ func (s *Service) Snapshots(ctx context.Context, connectedPeers bool) ([]*Snapsh
 				snapshot.ReserveSize = ss.ReserveSize
 				snapshot.PullsyncRate = ss.PullsyncRate
 				snapshot.StorageRadius = uint8(ss.StorageRadius)
+				snapshot.ConnectedPeers = ss.ConnectedPeers
+				snapshot.NeighborhoodSize = ss.NeighborhoodSize
 			}
 
 			mtx.Lock()
@@ -166,10 +171,32 @@ func (s *Service) handler(ctx context.Context, _ p2p.Peer, stream p2p.Stream) er
 		return fmt.Errorf("read message: %w", err)
 	}
 
+	var (
+		storageRadius    = s.radius.StorageRadius()
+		connectedPeers   uint64
+		neighborhoodSize uint64
+	)
+	err := s.topologyIter.EachConnectedPeer(
+		func(_ swarm.Address, po uint8) (bool, bool, error) {
+			connectedPeers++
+			if po >= storageRadius {
+				neighborhoodSize++
+			}
+			return false, false, nil
+		},
+		topology.Filter{Reachable: true},
+	)
+	if err != nil {
+		s.logger.Error(err, "iteration of connected peers failed")
+		return fmt.Errorf("iterate connected peers: %w", err)
+	}
+
 	if err := w.WriteMsgWithContext(ctx, &pb.Snapshot{
-		ReserveSize:   s.reserve.ReserveSize(),
-		PullsyncRate:  s.sync.SyncRate(),
-		StorageRadius: uint32(s.radius.StorageRadius()),
+		ReserveSize:      s.reserve.ReserveSize(),
+		PullsyncRate:     s.sync.SyncRate(),
+		StorageRadius:    uint32(storageRadius),
+		ConnectedPeers:   connectedPeers,
+		NeighborhoodSize: neighborhoodSize,
 	}); err != nil {
 		loggerV2.Debug("write message failed", "error", err)
 		return fmt.Errorf("write message: %w", err)
