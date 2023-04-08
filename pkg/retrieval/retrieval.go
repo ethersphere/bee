@@ -57,7 +57,6 @@ type retrievalResult struct {
 	chunk swarm.Chunk
 	peer  swarm.Address
 	err   error
-	sent  bool
 }
 
 type Service struct {
@@ -124,8 +123,8 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 
 	origin := sourcePeerAddr.IsZero()
 
-	if chunkAddr.IsZero() || chunkAddr.IsEmpty() {
-		return nil, fmt.Errorf("zero address queried")
+	if chunkAddr.IsZero() || chunkAddr.IsEmpty() || !chunkAddr.IsValidLength() {
+		return nil, fmt.Errorf("invalid address queried")
 	}
 
 	flightRoute := chunkAddr.String()
@@ -156,12 +155,12 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 			skip.Add(chunkAddr, sourcePeerAddr, maxDuration)
 		}
 
-		sentErrorsLeft := 1
+		errorsLeft := 1
 		if origin {
 			ticker := time.NewTicker(preemptiveInterval)
 			defer ticker.Stop()
 			preemptiveTicker = ticker.C
-			sentErrorsLeft = maxRetrievedErrors
+			errorsLeft = maxRetrievedErrors
 		}
 
 		done := make(chan struct{})
@@ -182,7 +181,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 
 		inflight := 0
 
-		for sentErrorsLeft > 0 {
+		for errorsLeft > 0 {
 
 			select {
 			case <-ctx.Done():
@@ -242,11 +241,10 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 					}
 				}
 
-				if res.sent {
-					sentErrorsLeft--
-					s.errSkip.Add(chunkAddr, res.peer, skiplistDur)
-				}
+				// the above errors are the ONLY cases that we consider as non-fatal
 
+				errorsLeft--
+				s.errSkip.Add(chunkAddr, res.peer, skiplistDur)
 				retry()
 			}
 		}
@@ -269,7 +267,6 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skip *s
 	var (
 		startTime = time.Now()
 		err       error
-		sent      bool
 		chunk     swarm.Chunk
 		peer      swarm.Address
 	)
@@ -279,7 +276,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skip *s
 			s.metrics.TotalErrors.Inc()
 		}
 		select {
-		case result <- retrievalResult{err: err, chunk: chunk, sent: sent, peer: peer}:
+		case result <- retrievalResult{err: err, chunk: chunk, peer: peer}:
 		case <-done:
 			return
 		}
@@ -332,8 +329,6 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skip *s
 		err = fmt.Errorf("write request: %w peer %s", err, peer.String())
 		return
 	}
-
-	sent = true
 
 	var d pb.Delivery
 	err = r.ReadMsgWithContext(ctx, &d)
@@ -414,8 +409,9 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	}
 
 	addr := swarm.NewAddress(req.Addr)
-	if addr.IsZero() || addr.IsEmpty() {
-		return fmt.Errorf("zero address queried by peer %s", p.Address.String())
+
+	if addr.IsZero() || addr.IsEmpty() || !addr.IsValidLength() {
+		return fmt.Errorf("invalid address queried by peer %s", p.Address.String())
 	}
 
 	span, _, ctx := s.tracer.StartSpanFromContext(ctx, "handle-retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: addr.String()})
