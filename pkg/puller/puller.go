@@ -323,8 +323,8 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 		if top >= s {
 			if err := p.addPeerInterval(peer, bin, s, top); err != nil {
 				p.metrics.HistWorkerErrCounter.Inc()
-				p.logger.Error(err, "histSyncWorker could not persist interval for peer, quitting...", "peer_address", peer)
-				return
+				p.logger.Error(err, "histSyncWorker could not persist interval for peer", "peer_address", peer)
+				continue
 			}
 		}
 
@@ -381,9 +381,11 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 		if top >= from {
 			if err := p.addPeerInterval(peer, bin, from, top); err != nil {
 				p.metrics.LiveWorkerErrCounter.Inc()
-				p.logger.Error(err, "liveSyncWorker exit on add peer interval, quitting", "peer_address", peer, "bin", bin, "from", from, "error", err)
-				return
+				p.logger.Error(err, "liveSyncWorker exit on add peer interval", "peer_address", peer, "bin", bin, "from", from, "error", err)
+				continue
 			}
+			from = top + 1
+			loggerV2.Debug("liveSyncWorker pulled bin", "bin", bin, "from", from, "topmost", top, "peer_address", peer)
 		}
 
 		if top == math.MaxUint64 {
@@ -394,15 +396,9 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 
 		if err != nil {
 			p.metrics.LiveWorkerErrCounter.Inc()
-			loggerV2.Debug("liveSyncWorker sync error", "peer_address", peer, "bin", bin, "from", from, "topmost", top, "err", err)
+			p.logger.Debug("liveSyncWorker sync error", "peer_address", peer, "bin", bin, "from", from, "topmost", top, "err", err)
 			sleep = true
 			continue
-		}
-
-		loggerV2.Debug("liveSyncWorker pulled bin", "bin", bin, "from", from, "topmost", top, "peer_address", peer)
-
-		if top >= from {
-			from = top + 1
 		}
 	}
 }
