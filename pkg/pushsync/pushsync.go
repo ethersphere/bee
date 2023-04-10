@@ -330,8 +330,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	span, logger, ctx := ps.tracer.StartSpanFromContext(ctx, "push-closest", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
 	defer span.Finish()
 
-	ps.skipList.PruneExpiresAfter(0)
-
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -342,7 +340,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 		inflight         int
 		skip             = skippeers.NewList()
 	)
-	defer skip.Reset()
+	defer skip.Close()
 
 	if origin {
 		ticker := time.NewTicker(preemptiveInterval)

@@ -145,9 +145,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 	v, _, err := s.singleflight.Do(topCtx, flightRoute, func(ctx context.Context) (interface{}, error) {
 
 		skip := skippeers.NewList()
-		defer skip.Reset()
-
-		s.errSkip.PruneExpiresAfter(0)
+		defer skip.Close()
 
 		var preemptiveTicker <-chan time.Time
 

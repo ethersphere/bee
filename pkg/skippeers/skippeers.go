@@ -5,6 +5,7 @@
 package skippeers
 
 import (
+	"container/heap"
 	"sync"
 	"time"
 
@@ -14,32 +15,86 @@ import (
 type List struct {
 	mtx sync.Mutex
 
+	minHeap *timeHeap
+
+	smallestTime int64
+	durC         chan time.Duration
+	quit         chan struct{}
 	// key is chunk address, value is map of peer address to expiration
 	skip map[string]map[string]int64
 }
 
 func NewList() *List {
-	return &List{
-		skip: make(map[string]map[string]int64),
+	l := &List{
+		minHeap: &timeHeap{},
+		skip:    make(map[string]map[string]int64),
+		durC:    make(chan time.Duration),
+		quit:    make(chan struct{}),
 	}
+
+	go l.worker()
+
+	return l
+}
+
+func (l *List) worker() {
+
+	var (
+		timer  *time.Timer
+		timerC <-chan time.Time
+	)
+
+	for {
+		select {
+		case dur := <-l.durC:
+			if timer == nil {
+				timer = time.NewTimer(dur)
+			} else {
+				if !timer.Stop() {
+					<-timer.C
+				}
+				timer.Reset(dur)
+			}
+			timerC = timer.C
+		case <-timerC:
+			l.PruneExpiresAfter(0)
+		case <-l.quit:
+			return
+		}
+	}
+
 }
 
 func (l *List) Add(chunk, peer swarm.Address, expire time.Duration) {
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
 
+	now := time.Now()
+	t := now.Add(expire).UnixNano()
+
+	heap.Push(l.minHeap, t)
+	newMin := (*l.minHeap)[0]
+
+	if newMin < l.smallestTime || l.smallestTime == 0 {
+		l.smallestTime = newMin
+		select {
+		case l.durC <- time.Unix(0, newMin).Sub(now):
+		case <-l.quit:
+		}
+	}
+
 	if _, ok := l.skip[chunk.ByteString()]; !ok {
 		l.skip[chunk.ByteString()] = make(map[string]int64)
 	}
 
-	l.skip[chunk.ByteString()][peer.ByteString()] = time.Now().Add(expire).UnixMilli()
+	l.skip[chunk.ByteString()][peer.ByteString()] = t
 }
 
 func (l *List) ChunkPeers(ch swarm.Address) (peers []swarm.Address) {
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
 
-	now := time.Now().UnixMilli()
+	now := time.Now().UnixNano()
 
 	if p, ok := l.skip[ch.ByteString()]; ok {
 		for peer, exp := range p {
@@ -55,8 +110,15 @@ func (l *List) PruneExpiresAfter(d time.Duration) int {
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
 
-	now := time.Now().Add(d).UnixMilli()
+	now := time.Now().Add(d).UnixNano()
 	count := 0
+
+	if (*l.minHeap)[0] <= now {
+		heap.Pop(l.minHeap)
+		if len(*l.minHeap) > 0 {
+			l.smallestTime = (*l.minHeap)[0]
+		}
+	}
 
 	for k, chunkPeers := range l.skip {
 		chunkPeersLen := len(chunkPeers)
@@ -76,11 +138,30 @@ func (l *List) PruneExpiresAfter(d time.Duration) int {
 	return count
 }
 
-func (l *List) Reset() {
+func (l *List) Close() {
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
-
+	close(l.quit)
 	for k := range l.skip {
 		delete(l.skip, k)
 	}
+}
+
+// An IntHeap is a min-heap of ints.
+type timeHeap []int64
+
+func (h timeHeap) Len() int           { return len(h) }
+func (h timeHeap) Less(i, j int) bool { return h[i] < h[j] }
+func (h timeHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
+
+func (h *timeHeap) Push(x any) {
+	*h = append(*h, x.(int64))
+}
+
+func (h *timeHeap) Pop() any {
+	old := *h
+	n := len(old)
+	x := old[n-1]
+	*h = old[0 : n-1]
+	return x
 }
