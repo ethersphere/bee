@@ -57,13 +57,16 @@ func (s *service) Traverse(ctx context.Context, addr swarm.Address, iterFn swarm
 		return nil
 	}
 
-	ch, err := s.store.Get(ctx, storage.ModeGetRequest, addr)
-	if err != nil {
-		return fmt.Errorf("traversal: failed to get root chunk %s: %w", addr.String(), err)
-	}
-	if soc.Valid(ch) {
-		// if this is a SOC, the traversal will be just be the single chunk
-		return iterFn(addr)
+	// skip SOC check for encrypted references
+	if addr.IsValidLength() {
+		ch, err := s.store.Get(ctx, storage.ModeGetRequest, addr)
+		if err != nil {
+			return fmt.Errorf("traversal: failed to get root chunk %s: %w", addr.String(), err)
+		}
+		if soc.Valid(ch) {
+			// if this is a SOC, the traversal will be just be the single chunk
+			return iterFn(addr)
+		}
 	}
 
 	ls := loadsave.NewReadonly(s.store)
