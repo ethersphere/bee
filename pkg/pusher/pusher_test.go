@@ -428,7 +428,7 @@ func createPusherWithRetryCount(t *testing.T, addr swarm.Address, pushSyncServic
 	}
 	peerSuggester := mock.NewTopologyDriver(mockOpts...)
 
-	pusherService := pusher.New(1, pusherStorer, peerSuggester, pushSyncService, validStamp, mtags, logger, nil, 0, retryCount)
+	pusherService := pusher.New(1, pusherStorer, pushSyncService, validStamp, mtags, peerSuggester.NeighborhoodDepth, logger, nil, 0, retryCount)
 	testutil.CleanupCloser(t, pusherService, pusherStorer)
 
 	return mtags, pusherService, pusherStorer
