@@ -908,7 +908,14 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 	// set the pushSyncer in the PSS
 	pssService.SetPushSyncer(pushSyncProtocol)
 
-	pusherService := pusher.New(networkID, storer, kad, pushSyncProtocol, validStamp, tagService, logger, tracer, warmupTime, pusher.DefaultRetryCount)
+	var radiusFunc func() uint8
+	if o.FullNodeMode {
+		radiusFunc = func() uint8 { return batchStore.StorageRadius() }
+	} else {
+		radiusFunc = func() uint8 { return kad.NeighborhoodDepth() }
+	}
+
+	pusherService := pusher.New(networkID, storer, pushSyncProtocol, validStamp, tagService, radiusFunc, logger, tracer, warmupTime, pusher.DefaultRetryCount)
 	b.pusherCloser = pusherService
 
 	pullStorage := pullstorage.New(storer, logger)
