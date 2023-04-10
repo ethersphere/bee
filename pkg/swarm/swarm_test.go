@@ -73,6 +73,9 @@ func TestAddress(t *testing.T) {
 			if a.IsEmpty() != tc.want.IsEmpty() {
 				t.Errorf("got address as empty=%v, want empty=%v", a.IsEmpty(), tc.want.IsEmpty())
 			}
+			if a.IsValidLength() != tc.want.IsValidLength() {
+				t.Errorf("got address as invalid_size=%v, want valid=%v", a.IsValidLength(), tc.want.IsValidLength())
+			}
 		})
 	}
 }
@@ -97,6 +100,21 @@ func TestAddress_jsonMarshalling(t *testing.T) {
 	}
 }
 
+func TestValidSize(t *testing.T) {
+	t.Parallel()
+
+	a1 := swarm.MustParseHexAddress("24798dd5a470e927fa")
+	a2 := swarm.MustParseHexAddress("35a26b7bb6455cbabe7a0e05aafbd0b8b26feac843e3b9a649468d0ea37a12b2")
+
+	if a1.IsValidLength() {
+		t.Fatal("wanted invalid size")
+	}
+
+	if !a2.IsValidLength() {
+		t.Fatal("wanted valid size")
+	}
+}
+
 func TestAddress_MemberOf(t *testing.T) {
 	t.Parallel()
 
@@ -114,7 +132,6 @@ func TestAddress_MemberOf(t *testing.T) {
 	if a1.MemberOf(set2) {
 		t.Fatal("expected addr not member")
 	}
-
 }
 
 func TestAddress_Clone(t *testing.T) {

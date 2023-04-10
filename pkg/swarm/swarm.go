@@ -98,6 +98,11 @@ func (a Address) IsEmpty() bool {
 	return a.Equal(EmptyAddress)
 }
 
+// IsValidLength returns true if the Address is of valid length.
+func (a Address) IsValidLength() bool {
+	return len(a.b) == HashSize
+}
+
 // Bytes returns bytes representation of the Address.
 func (a Address) Bytes() []byte {
 	return a.b
