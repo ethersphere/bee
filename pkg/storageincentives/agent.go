@@ -371,7 +371,7 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 		return false, nil
 	}
 
-	hasFunds, err := a.HasEnoughFundsToPlay(ctx)
+	_, hasFunds, err := a.HasEnoughFundsToPlay(ctx)
 	if err != nil {
 		a.logger.Error(err, "agent HasEnoughFundsToPlay failed")
 		return false, err
@@ -504,19 +504,19 @@ func (a *Agent) Status() (*Status, error) {
 	return a.state.Status()
 }
 
-func (a *Agent) HasEnoughFundsToPlay(ctx context.Context) (bool, error) {
+func (a *Agent) HasEnoughFundsToPlay(ctx context.Context) (*big.Int, bool, error) {
 	balance, err := a.backend.BalanceAt(ctx, a.state.ethAddress, nil)
 	if err != nil {
-		return false, err
+		return nil, false, err
 	}
 
 	price, err := a.backend.SuggestGasPrice(ctx)
 	if err != nil {
-		return false, err
+		return nil, false, err
 	}
 
 	avgTxFee := new(big.Int).Mul(big.NewInt(avgTxGas), price)
 	minBalance := new(big.Int).Mul(avgTxFee, big.NewInt(minTxCountToCover))
 
-	return balance.Cmp(minBalance) >= 1, nil
+	return minBalance, balance.Cmp(minBalance) >= 1, nil
 }

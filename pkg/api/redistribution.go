@@ -13,6 +13,7 @@ import (
 )
 
 type redistributionStatusResponse struct {
+	MinimumFunds       *bigint.BigInt `json:"minimumFunds"`
 	HasSufficientFunds bool           `json:"hasSufficientFunds"`
 	IsFrozen           bool           `json:"isFrozen"`
 	IsFullySynced      bool           `json:"isFullySynced"`
@@ -42,7 +43,7 @@ func (s *Service) redistributionStatusHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	hasSufficientFunds, err := s.redistributionAgent.HasEnoughFundsToPlay(r.Context())
+	minFunds, hasSufficientFunds, err := s.redistributionAgent.HasEnoughFundsToPlay(r.Context())
 	if err != nil {
 		logger.Debug("has enough funds to play", "overlay_address", s.overlay.String(), "error", err)
 		logger.Error(nil, "has enough funds to play")
@@ -51,6 +52,7 @@ func (s *Service) redistributionStatusHandler(w http.ResponseWriter, r *http.Req
 	}
 
 	jsonhttp.OK(w, redistributionStatusResponse{
+		MinimumFunds:       bigint.Wrap(minFunds),
 		HasSufficientFunds: hasSufficientFunds,
 		IsFrozen:           status.IsFrozen,
 		IsFullySynced:      status.IsFullySynced,
