@@ -98,7 +98,7 @@ func (a Address) IsEmpty() bool {
 	return a.Equal(EmptyAddress)
 }
 
-// IsEmpty returns true if the Address is all zeroes.
+// IsValidLength returns true if the Address is of valid length.
 func (a Address) IsValidLength() bool {
 	return len(a.b) == HashSize
 }
