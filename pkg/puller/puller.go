@@ -383,8 +383,8 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 				p.logger.Error(err, "liveSyncWorker exit on add peer interval", "peer_address", peer, "bin", bin, "from", from, "error", err)
 				continue
 			}
-			from = top + 1
 			loggerV2.Debug("liveSyncWorker pulled bin", "bin", bin, "from", from, "topmost", top, "peer_address", peer)
+			from = top + 1
 		}
 
 		if top == math.MaxUint64 {
