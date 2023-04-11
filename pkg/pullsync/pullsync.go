@@ -42,7 +42,7 @@ const (
 
 const (
 	MaxCursor           = math.MaxUint64
-	DefaultRateDuration = time.Minute * 30
+	DefaultRateDuration = time.Minute * 15
 )
 
 var (
