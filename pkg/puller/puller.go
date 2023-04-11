@@ -38,7 +38,6 @@ const (
 	DefaultActiveHistoricalSyncDur = time.Hour * 24
 
 	recalcPeersDur           = time.Minute * 5
-	histSyncTimeout          = time.Minute * 20
 	histSyncTimeoutBlockList = time.Hour * 24
 )
 
@@ -318,7 +317,7 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 		}
 
 		syncStart := time.Now()
-		ctx, cancel := context.WithTimeout(ctx, histSyncTimeout)
+		ctx, cancel := context.WithTimeout(ctx, DefaultActiveHistoricalSyncDur)
 		top, err := p.syncer.SyncInterval(ctx, peer, bin, s, cur)
 		cancel()
 
