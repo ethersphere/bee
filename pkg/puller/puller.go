@@ -38,8 +38,10 @@ const (
 	DefaultShallowBinsWarmupDur = time.Hour * 24
 
 	recalcPeersDur           = time.Minute * 5
-	histSyncTimeout          = time.Minute * 20
+	histSyncTimeout          = time.Minute * 15
 	histSyncTimeoutBlockList = time.Hour * 24
+
+	maxHistJobs = swarm.MaxBins * 3
 )
 
 type Options struct {
@@ -71,6 +73,7 @@ type Puller struct {
 	bins uint8 // how many bins do we support
 
 	activeHistoricalSyncing *atomic.Uint64
+	activeHistoricalJobs    chan struct{}
 }
 
 func New(stateStore storage.StateStorer, topology topology.Driver, reserveState postage.Radius, pullSync pullsync.Interface, blockLister p2p.Blocklister, logger log.Logger, o Options, warmupTime time.Duration) *Puller {
@@ -93,6 +96,7 @@ func New(stateStore storage.StateStorer, topology topology.Driver, reserveState 
 		bins:                    bins,
 		activeHistoricalSyncing: atomic.NewUint64(0),
 		blockLister:             blockLister,
+		activeHistoricalJobs:    make(chan struct{}, maxHistJobs),
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -280,39 +284,19 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 	defer p.metrics.HistWorkerDoneCounter.Inc()
 	defer p.activeHistoricalSyncing.Dec()
 
-	sleep := false
 	loopStart := time.Now()
 	loggerV2.Debug("histSyncWorker starting", "peer_address", peer, "bin", bin, "cursor", cur)
 
-	for {
-		p.metrics.HistWorkerIterCounter.Inc()
-
-		if sleep {
-			select {
-			case <-ctx.Done():
-				loggerV2.Debug("histSyncWorker context cancelled", "peer_address", peer, "bin", bin, "cursor", cur)
-				return
-			case <-time.After(p.syncErrorSleepDur):
-			}
-			sleep = false
-		}
-
-		select {
-		case <-ctx.Done():
-			loggerV2.Debug("histSyncWorker context cancelled", "peer_address", peer, "bin", bin, "cursor", cur)
-			return
-		default:
-		}
-
+	sync := func() bool {
 		s, _, _, err := p.nextPeerInterval(peer, bin)
 		if err != nil {
 			p.metrics.HistWorkerErrCounter.Inc()
 			p.logger.Error(err, "histSyncWorker nextPeerInterval failed, quitting...")
-			return
+			return true
 		}
 		if s > cur {
 			p.logger.Debug("histSyncWorker syncing finished", "bin", bin, "cursor", cur, "total_duration", time.Since(loopStart), "peer_address", peer)
-			return
+			return true
 		}
 
 		syncStart := time.Now()
@@ -324,24 +308,42 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			if err := p.addPeerInterval(peer, bin, s, top); err != nil {
 				p.metrics.HistWorkerErrCounter.Inc()
 				p.logger.Error(err, "histSyncWorker could not persist interval for peer", "peer_address", peer)
-				continue
+				return false
 			}
 			loggerV2.Debug("histSyncWorker pulled", "bin", bin, "start", s, "topmost", top, "duration", time.Since(syncStart), "peer_address", peer)
 		}
 
 		if err != nil {
 			p.metrics.HistWorkerErrCounter.Inc()
-			loggerV2.Debug("histSyncWorker interval failed", "peer_address", peer, "bin", bin, "cursor", cur, "start", s, "topmost", top, "err", err)
+			p.logger.Debug("histSyncWorker interval failed", "peer_address", peer, "bin", bin, "cursor", cur, "start", s, "topmost", top, "err", err)
 			if errors.Is(err, context.DeadlineExceeded) {
 				p.logger.Debug("histSyncWorker interval timeout, exiting", "total_duration", time.Since(loopStart), "peer_address", peer, "error", err)
 				err = p.blockLister.Blocklist(peer, histSyncTimeoutBlockList, "sync interval timeout")
 				if err != nil {
 					p.logger.Debug("histSyncWorker timeout disconnect error", "error", err)
 				}
-				return
+				return true
 			}
-			sleep = true
-			continue
+		}
+
+		return false
+	}
+
+	for {
+		p.metrics.HistWorkerIterCounter.Inc()
+
+		select {
+		case <-ctx.Done():
+			loggerV2.Debug("histSyncWorker context cancelled", "peer_address", peer, "bin", bin, "cursor", cur)
+			return
+		case p.activeHistoricalJobs <- struct{}{}:
+		}
+
+		stop := sync()
+		<-p.activeHistoricalJobs
+
+		if stop {
+			return
 		}
 	}
 }
@@ -353,20 +355,8 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 	loggerV2.Debug("liveSyncWorker starting", "peer_address", peer, "bin", bin, "cursor", cur)
 	from := cur + 1
 
-	sleep := false
-
 	for {
 		p.metrics.LiveWorkerIterCounter.Inc()
-
-		if sleep {
-			select {
-			case <-ctx.Done():
-				loggerV2.Debug("liveSyncWorker context cancelled", "peer_address", peer, "bin", bin, "cursor", cur)
-				return
-			case <-time.After(p.syncErrorSleepDur):
-			}
-			sleep = false
-		}
 
 		select {
 		case <-ctx.Done():
@@ -396,8 +386,6 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 		if err != nil {
 			p.metrics.LiveWorkerErrCounter.Inc()
 			p.logger.Debug("liveSyncWorker sync error", "peer_address", peer, "bin", bin, "from", from, "topmost", top, "err", err)
-			sleep = true
-			continue
 		}
 	}
 }
