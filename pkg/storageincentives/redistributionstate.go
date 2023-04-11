@@ -23,6 +23,7 @@ const loggerNameNode = "nodestatus"
 const (
 	redistributionStatusKey = "redistribution_state"
 	saveStatusInterval      = time.Second
+	purgeStaleDataThreshold = 10
 )
 
 type RedistributionState struct {
@@ -258,4 +259,29 @@ func (r *RedistributionState) currentRoundAndPhase() (uint64, PhaseType) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 	return r.status.Round, r.status.Phase
+}
+
+func (r *RedistributionState) purgeStaleRoundData() {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	currentRound := r.status.Round
+
+	if currentRound <= purgeStaleDataThreshold {
+		return
+	}
+
+	thresholdRound := currentRound - purgeStaleDataThreshold
+	hasChanged := false
+
+	for round := range r.status.RoundData {
+		if round < thresholdRound {
+			delete(r.status.RoundData, round)
+			hasChanged = true
+		}
+	}
+
+	if hasChanged {
+		r.save()
+	}
 }
