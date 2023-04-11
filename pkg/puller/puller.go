@@ -34,8 +34,8 @@ var errCursorsLength = errors.New("cursors length mismatch")
 const (
 	intervalPrefix = "sync_interval"
 
-	DefaultSyncErrorSleepDur    = time.Minute
-	DefaultShallowBinsWarmupDur = time.Hour * 24
+	DefaultSyncErrorSleepDur       = time.Minute
+	DefaultActiveHistoricalSyncDur = time.Hour * 24
 
 	recalcPeersDur           = time.Minute * 5
 	histSyncTimeout          = time.Minute * 20
@@ -43,9 +43,9 @@ const (
 )
 
 type Options struct {
-	Bins                 uint8
-	SyncSleepDur         time.Duration
-	ShallowBinsWarmupDur time.Duration
+	Bins                    uint8
+	SyncSleepDur            time.Duration
+	ActiveHistoricalSyncDur time.Duration
 }
 
 type Puller struct {
@@ -65,12 +65,12 @@ type Puller struct {
 
 	wg sync.WaitGroup
 
-	syncErrorSleepDur     time.Duration
-	shallowBinsWarmupTime time.Time
+	syncErrorSleepDur time.Duration
 
 	bins uint8 // how many bins do we support
 
-	activeHistoricalSyncing *atomic.Uint64
+	activeHistoricalSyncing      *atomic.Uint64
+	activeHistoricalSycingWindow time.Time
 }
 
 func New(stateStore storage.StateStorer, topology topology.Driver, reserveState postage.Radius, pullSync pullsync.Interface, blockLister p2p.Blocklister, logger log.Logger, o Options, warmupTime time.Duration) *Puller {
@@ -82,23 +82,22 @@ func New(stateStore storage.StateStorer, topology topology.Driver, reserveState 
 	}
 
 	p := &Puller{
-		statestore:              stateStore,
-		topology:                topology,
-		radius:                  reserveState,
-		syncer:                  pullSync,
-		metrics:                 newMetrics(),
-		logger:                  logger.WithName(loggerName).Register(),
-		syncPeers:               make(map[string]*syncPeer),
-		syncErrorSleepDur:       o.SyncSleepDur,
-		bins:                    bins,
-		activeHistoricalSyncing: atomic.NewUint64(0),
-		blockLister:             blockLister,
+		statestore:                   stateStore,
+		topology:                     topology,
+		radius:                       reserveState,
+		syncer:                       pullSync,
+		metrics:                      newMetrics(),
+		logger:                       logger.WithName(loggerName).Register(),
+		syncPeers:                    make(map[string]*syncPeer),
+		syncErrorSleepDur:            o.SyncSleepDur,
+		bins:                         bins,
+		activeHistoricalSyncing:      atomic.NewUint64(0),
+		blockLister:                  blockLister,
+		activeHistoricalSycingWindow: time.Now().Add(o.ActiveHistoricalSyncDur),
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	p.cancel = cancel
-
-	p.shallowBinsWarmupTime = time.Now().Add(o.ShallowBinsWarmupDur)
 
 	p.wg.Add(1)
 	go p.manage(ctx, warmupTime)
@@ -240,7 +239,7 @@ func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, storageRadius uin
 			}
 		}
 
-	} else if time.Now().After(p.shallowBinsWarmupTime) {
+	} else if time.Now().After(p.activeHistoricalSycingWindow) {
 
 		// cancel all non-po bins, if any
 		for bin := uint8(0); bin < p.bins; bin++ {
@@ -265,7 +264,6 @@ func (p *Puller) syncPeerBin(ctx context.Context, peer *syncPeer, bin uint8, cur
 	peer.setBinCancel(cancel, bin)
 	if cur > 0 {
 		p.wg.Add(1)
-		p.activeHistoricalSyncing.Inc()
 		go p.histSyncWorker(binCtx, peer.address, bin, cur)
 	}
 	// start live
@@ -278,7 +276,11 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 
 	defer p.wg.Done()
 	defer p.metrics.HistWorkerDoneCounter.Inc()
-	defer p.activeHistoricalSyncing.Dec()
+
+	if time.Now().Before(p.activeHistoricalSycingWindow) {
+		p.activeHistoricalSyncing.Inc()
+		defer p.activeHistoricalSyncing.Dec()
+	}
 
 	sleep := false
 	loopStart := time.Now()
