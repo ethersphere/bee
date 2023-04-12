@@ -72,8 +72,8 @@ type Puller struct {
 
 	bins uint8 // how many bins do we support
 
-	activeHistoricalSyncing *atomic.Uint64
-	activeHistoricalJobs    chan struct{}
+	histSync        *atomic.Uint64 // current number of gorourines doing historical syncing
+	histSyncLimiter chan struct{}  // historical syncing limiter
 }
 
 func New(stateStore storage.StateStorer, topology topology.Driver, reserveState postage.Radius, pullSync pullsync.Interface, blockLister p2p.Blocklister, logger log.Logger, o Options, warmupTime time.Duration) *Puller {
@@ -85,18 +85,18 @@ func New(stateStore storage.StateStorer, topology topology.Driver, reserveState 
 	}
 
 	p := &Puller{
-		statestore:              stateStore,
-		topology:                topology,
-		radius:                  reserveState,
-		syncer:                  pullSync,
-		metrics:                 newMetrics(),
-		logger:                  logger.WithName(loggerName).Register(),
-		syncPeers:               make(map[string]*syncPeer),
-		syncErrorSleepDur:       o.SyncSleepDur,
-		bins:                    bins,
-		activeHistoricalSyncing: atomic.NewUint64(0),
-		blockLister:             blockLister,
-		activeHistoricalJobs:    make(chan struct{}, maxHistJobs),
+		statestore:        stateStore,
+		topology:          topology,
+		radius:            reserveState,
+		syncer:            pullSync,
+		metrics:           newMetrics(),
+		logger:            logger.WithName(loggerName).Register(),
+		syncPeers:         make(map[string]*syncPeer),
+		syncErrorSleepDur: o.SyncSleepDur,
+		bins:              bins,
+		histSync:          atomic.NewUint64(0),
+		blockLister:       blockLister,
+		histSyncLimiter:   make(chan struct{}, maxHistJobs),
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -110,7 +110,7 @@ func New(stateStore storage.StateStorer, topology topology.Driver, reserveState 
 }
 
 func (p *Puller) ActiveHistoricalSyncing() uint64 {
-	return p.activeHistoricalSyncing.Load()
+	return p.histSync.Load()
 }
 
 func (p *Puller) manage(ctx context.Context, warmupDur time.Duration) {
@@ -269,7 +269,7 @@ func (p *Puller) syncPeerBin(ctx context.Context, peer *syncPeer, bin uint8, cur
 	peer.setBinCancel(cancel, bin)
 	if cur > 0 {
 		p.wg.Add(1)
-		p.activeHistoricalSyncing.Inc()
+		p.histSync.Inc()
 		go p.histSyncWorker(binCtx, peer.address, bin, cur)
 	}
 	// start live
@@ -282,7 +282,7 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 
 	defer p.wg.Done()
 	defer p.metrics.HistWorkerDoneCounter.Inc()
-	defer p.activeHistoricalSyncing.Dec()
+	defer p.histSync.Dec()
 
 	loopStart := time.Now()
 	loggerV2.Debug("histSyncWorker starting", "peer_address", peer, "bin", bin, "cursor", cur)
@@ -336,11 +336,11 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 		case <-ctx.Done():
 			loggerV2.Debug("histSyncWorker context cancelled", "peer_address", peer, "bin", bin, "cursor", cur)
 			return
-		case p.activeHistoricalJobs <- struct{}{}:
+		case p.histSyncLimiter <- struct{}{}:
 		}
 
 		stop := sync()
-		<-p.activeHistoricalJobs
+		<-p.histSyncLimiter
 
 		if stop {
 			return
