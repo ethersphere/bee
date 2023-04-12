@@ -113,7 +113,7 @@ type Bee struct {
 	accountingCloser         io.Closer
 	pullSyncCloser           io.Closer
 	pssCloser                io.Closer
-	ethClientCloser          func()
+	closers                  []func()
 	transactionMonitorCloser io.Closer
 	transactionCloser        io.Closer
 	listenerCloser           io.Closer
@@ -334,7 +334,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 	if err != nil {
 		return nil, fmt.Errorf("init chain: %w", err)
 	}
-	b.ethClientCloser = chainBackend.Close
+	b.closers = append(b.closers, chainBackend.Close)
 
 	logger.Info("using chain with network network", "chain_id", chainID, "network_id", networkID)
 
@@ -889,7 +889,9 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 
 	pricing.SetPaymentThresholdObserver(acc)
 
-	retrieve := retrieval.New(swarmAddress, storer, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching, validStamp)
+	retrieve, retCleanup := retrieval.New(swarmAddress, storer, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching, validStamp)
+	b.closers = append(b.closers, retCleanup)
+
 	tagService := tags.NewTags(stateStore, logger)
 	b.tagsCloser = tagService
 
@@ -903,7 +905,8 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 
 	pinningService := pinning.NewService(storer, stateStore, traversalService)
 
-	pushSyncProtocol := pushsync.New(swarmAddress, nonce, p2ps, storer, kad, batchStore, tagService, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
+	pushSyncProtocol, pushCleanup := pushsync.New(swarmAddress, nonce, p2ps, storer, kad, batchStore, tagService, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
+	b.closers = append(b.closers, pushCleanup)
 
 	// set the pushSyncer in the PSS
 	pssService.SetPushSyncer(pushSyncProtocol)
@@ -1295,7 +1298,7 @@ func (b *Bee) Shutdown() error {
 
 	wg.Wait()
 
-	if c := b.ethClientCloser; c != nil {
+	for _, c := range b.closers {
 		c()
 	}
 

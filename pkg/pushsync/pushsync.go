@@ -10,7 +10,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/accounting"
@@ -42,12 +41,11 @@ const (
 )
 
 const (
-	defaultTTL                       = 30 * time.Second // request time to live
-	preemptiveInterval               = 5 * time.Second  // P90 request time to live
-	sanctionWait                     = 5 * time.Minute
-	replicationTTL                   = 5 * time.Second // time to live for neighborhood replication
-	overDraftRefresh                 = time.Second
-	maxDuration        time.Duration = math.MaxInt64
+	defaultTTL         = 30 * time.Second // request time to live
+	preemptiveInterval = 5 * time.Second  // P90 request time to live
+	sanctionWait       = 5 * time.Minute
+	replicationTTL     = 5 * time.Second // time to live for neighborhood replication
+	overDraftRefresh   = time.Second
 )
 
 const (
@@ -100,7 +98,7 @@ type receiptResult struct {
 	err      error
 }
 
-func New(address swarm.Address, nonce []byte, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, rs postage.Radius, tagger *tags.Tags, includeSelf bool, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger log.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer, warmupTime time.Duration) *PushSync {
+func New(address swarm.Address, nonce []byte, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, rs postage.Radius, tagger *tags.Tags, includeSelf bool, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger log.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer, warmupTime time.Duration) (*PushSync, func()) {
 	ps := &PushSync{
 		address:        address,
 		nonce:          nonce,
@@ -122,7 +120,7 @@ func New(address swarm.Address, nonce []byte, streamer p2p.StreamerDisconnecter,
 	}
 
 	ps.validStamp = ps.validStampWrapper(validStamp)
-	return ps
+	return ps, ps.skipList.Close
 }
 
 func (s *PushSync) Protocol() p2p.ProtocolSpec {
@@ -512,7 +510,7 @@ func (ps *PushSync) pushPeer(ctx context.Context, skip *skippeers.List, resultCh
 	}
 	defer creditAction.Cleanup()
 
-	skip.Add(ch.Address(), peer, maxDuration)
+	skip.AddForever(ch.Address(), peer)
 
 	stamp, err := ch.Stamp().MarshalBinary()
 	if err != nil {
