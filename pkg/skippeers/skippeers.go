@@ -86,7 +86,7 @@ func (l *List) Add(chunk, peer swarm.Address, expire time.Duration) {
 	heap.Push(l.minHeap, t)
 	min := l.minHeap.First()
 
-	if t < min || l.minHeap.Length() == 1 {
+	if t == min { // pushed the most recent expiration
 		select {
 		case l.durC <- time.Until(time.Unix(0, min)):
 		case <-l.quit:
