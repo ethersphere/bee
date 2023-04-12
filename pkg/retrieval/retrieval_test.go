@@ -658,7 +658,7 @@ func TestClosestPeer(t *testing.T) {
 }
 
 func createRetrieval(t *testing.T, addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunkPeerer topology.ClosestPeerer, logger log.Logger, accounting accounting.Interface, pricer pricer.Interface, tracer *tracing.Tracer, forwarderCaching bool, validStamp postage.ValidStampFn) *retrieval.Service {
-
+	t.Helper()
 	ret, cleanup := retrieval.New(addr, storer, streamer, chunkPeerer, log.Noop, accounting, pricer, tracer, forwarderCaching, validStamp)
 	t.Cleanup(cleanup)
 	return ret
