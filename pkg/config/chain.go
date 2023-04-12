@@ -80,6 +80,12 @@ func GetByChainID(chainID int64) (ChainConfig, bool) {
 	case Mainnet.ChainID:
 		return Mainnet, true
 	default:
-		return Testnet, false
+		return ChainConfig{
+			NativeTokenSymbol: Testnet.NativeTokenSymbol,
+			SwarmTokenSymbol:  Testnet.SwarmTokenSymbol,
+			StakingABI:        abi.TestnetStakingABI,
+			PostageStampABI:   abi.TestnetPostageStampStampABI,
+			RedistributionABI: abi.TestnetRedistributionABI,
+		}, false
 	}
 }
