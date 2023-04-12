@@ -814,40 +814,42 @@ components:
           items:
             $ref: "#/components/schemas/Logger"
 
-    StatusLocalSnapshotResponse:
+    StatusSnapshotResponse:
       type: object
       properties:
+        peer:
+          $ref: "#/components/schemas/SwarmAddress"
+        beeMode:
+          type: string
+          enum:
+            - "light"
+            - "full"
+            - "ultra-light"
+            - "unknown"
+        proximity:
+          type: integer
         reserveSize:
           type: integer
         pullsyncRate:
           type: number
         storageRadius:
           type: integer
-
-    StatusConnectedPeersSnapshotResponse:
-      type: object
-      properties:
-        peer:
-          $ref: "#/components/schemas/SwarmAddress"
-        proximity:
+        connectedPeers:
           type: integer
-        reserveSize:
+        neighborhoodSize:
           type: integer
-        pullsyncRate:
-            type: number
-        storageRadius:
-            type: integer
         requestFailed:
-            type: boolean
+          nullable: true
+          type: boolean
 
-    StatusConnectedPeerResponse:
+    StatusResponse:
       type: object
       properties:
         stamps:
           type: array
           nullable: false
           items:
-            $ref: "#/components/schemas/StatusConnectedPeersSnapshotResponse"
+            $ref: "#/components/schemas/StatusSnapshotResponse"
 
   headers:
     SwarmTag:
