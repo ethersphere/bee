@@ -20,9 +20,8 @@ type List struct {
 
 	minHeap *timeHeap
 
-	smallestTime int64
-	durC         chan time.Duration
-	quit         chan struct{}
+	durC chan time.Duration
+	quit chan struct{}
 	// key is chunk address, value is map of peer address to expiration
 	skip map[string]map[string]int64
 
@@ -81,12 +80,11 @@ func (l *List) Add(chunk, peer swarm.Address, expire time.Duration) {
 	t := now.Add(expire).UnixNano()
 
 	heap.Push(l.minHeap, t)
-	newMin := (*l.minHeap)[0]
+	min := (*l.minHeap)[0]
 
-	if newMin < l.smallestTime || l.smallestTime == 0 {
-		l.smallestTime = newMin
+	if t < min || len((*l.minHeap)) == 1 {
 		select {
-		case l.durC <- time.Unix(0, newMin).Sub(now):
+		case l.durC <- time.Unix(0, min).Sub(now):
 		case <-l.quit:
 		}
 	}
@@ -134,11 +132,8 @@ func (l *List) PruneExpiresAfter(d time.Duration) int {
 	now := time.Now().Add(d).UnixNano()
 	count := 0
 
-	if len(*l.minHeap) > 0 && (*l.minHeap)[0] <= now {
+	for len(*l.minHeap) > 0 && (*l.minHeap)[0] <= now {
 		heap.Pop(l.minHeap)
-		if len(*l.minHeap) > 0 {
-			l.smallestTime = (*l.minHeap)[0]
-		}
 	}
 
 	for k, chunkPeers := range l.skip {
