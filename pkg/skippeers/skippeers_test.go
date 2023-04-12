@@ -16,6 +16,7 @@ func TestPruneExpiresAfter(t *testing.T) {
 	t.Parallel()
 
 	skipList := skippeers.NewList()
+	t.Cleanup(skipList.Close)
 
 	chunk := swarm.RandAddress(t)
 	peer1 := swarm.RandAddress(t)
@@ -49,6 +50,7 @@ func TestPeerWait(t *testing.T) {
 	t.Parallel()
 
 	skipList := skippeers.NewList()
+	t.Cleanup(skipList.Close)
 
 	chunk1 := swarm.RandAddress(t)
 	chunk2 := swarm.RandAddress(t)
