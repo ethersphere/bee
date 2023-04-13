@@ -41,7 +41,7 @@ const (
 	histSyncTimeout          = time.Minute * 15
 	histSyncTimeoutBlockList = time.Hour * 24
 
-	maxHistSyncsPerBin = 2
+	maxHistSyncsPerBin = 3
 )
 
 type Options struct {
@@ -290,6 +290,14 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 	defer p.metrics.HistWorkerDoneCounter.Inc()
 	defer p.histSync.Dec()
 
+	select {
+	case <-ctx.Done():
+		loggerV2.Debug("histSyncWorker context cancelled", "peer_address", peer, "bin", bin, "cursor", cur)
+		return
+	case p.histSyncLimiter[bin] <- struct{}{}:
+		defer func() { <-p.histSyncLimiter[bin] }()
+	}
+
 	loopStart := time.Now()
 	loggerV2.Debug("histSyncWorker starting", "peer_address", peer, "bin", bin, "cursor", cur)
 
@@ -342,12 +350,9 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 		case <-ctx.Done():
 			loggerV2.Debug("histSyncWorker context cancelled", "peer_address", peer, "bin", bin, "cursor", cur)
 			return
-		case p.histSyncLimiter[bin] <- struct{}{}:
+		default:
 		}
-
 		stop := sync()
-		<-p.histSyncLimiter[bin]
-
 		if stop {
 			return
 		}
