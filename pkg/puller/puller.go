@@ -41,7 +41,7 @@ const (
 	histSyncTimeout          = time.Minute * 15
 	histSyncTimeoutBlockList = time.Hour * 24
 
-	maxHistSyncsPerBin = 3
+	maxHistSyncs = swarm.MaxBins
 )
 
 type Options struct {
@@ -72,8 +72,8 @@ type Puller struct {
 
 	bins uint8 // how many bins do we support
 
-	histSync        *atomic.Uint64  // current number of gorourines doing historical syncing
-	histSyncLimiter []chan struct{} // historical syncing limiter
+	histSync        *atomic.Uint64 // current number of gorourines doing historical syncing
+	histSyncLimiter chan struct{}  // historical syncing limiter
 }
 
 func New(stateStore storage.StateStorer, topology topology.Driver, reserveState postage.Radius, pullSync pullsync.Interface, blockLister p2p.Blocklister, logger log.Logger, o Options, warmupTime time.Duration) *Puller {
@@ -96,14 +96,8 @@ func New(stateStore storage.StateStorer, topology topology.Driver, reserveState 
 		bins:              bins,
 		histSync:          atomic.NewUint64(0),
 		blockLister:       blockLister,
+		histSyncLimiter:   make(chan struct{}, maxHistSyncs),
 	}
-
-	var binLimiter []chan struct{}
-	for i := 0; i < int(bins); i++ {
-		binLimiter = append(binLimiter, make(chan struct{}, maxHistSyncsPerBin))
-	}
-
-	p.histSyncLimiter = binLimiter
 
 	ctx, cancel := context.WithCancel(context.Background())
 	p.cancel = cancel
@@ -342,12 +336,12 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 		case <-ctx.Done():
 			loggerV2.Debug("histSyncWorker context cancelled", "peer_address", peer, "bin", bin, "cursor", cur)
 			return
-		case p.histSyncLimiter[bin] <- struct{}{}:
+		case p.histSyncLimiter <- struct{}{}:
 		}
 
 		stop := sync()
 
-		<-p.histSyncLimiter[bin]
+		<-p.histSyncLimiter
 
 		if stop {
 			return
