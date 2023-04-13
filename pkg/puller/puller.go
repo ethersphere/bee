@@ -41,7 +41,7 @@ const (
 	histSyncTimeout          = time.Minute * 15
 	histSyncTimeoutBlockList = time.Hour * 24
 
-	maxHistJobs = swarm.MaxBins * 3
+	maxHistJobs = swarm.MaxBins
 )
 
 type Options struct {
