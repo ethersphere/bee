@@ -290,14 +290,6 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 	defer p.metrics.HistWorkerDoneCounter.Inc()
 	defer p.histSync.Dec()
 
-	select {
-	case <-ctx.Done():
-		loggerV2.Debug("histSyncWorker context cancelled", "peer_address", peer, "bin", bin, "cursor", cur)
-		return
-	case p.histSyncLimiter[bin] <- struct{}{}:
-		defer func() { <-p.histSyncLimiter[bin] }()
-	}
-
 	loopStart := time.Now()
 	loggerV2.Debug("histSyncWorker starting", "peer_address", peer, "bin", bin, "cursor", cur)
 
@@ -350,9 +342,13 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 		case <-ctx.Done():
 			loggerV2.Debug("histSyncWorker context cancelled", "peer_address", peer, "bin", bin, "cursor", cur)
 			return
-		default:
+		case p.histSyncLimiter[bin] <- struct{}{}:
 		}
+
 		stop := sync()
+
+		<-p.histSyncLimiter[bin]
+
 		if stop {
 			return
 		}
