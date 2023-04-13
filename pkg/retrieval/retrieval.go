@@ -72,10 +72,11 @@ type Service struct {
 	caching       bool
 	validStamp    postage.ValidStampFn
 	errSkip       *skippeers.List
+	withinRadius  func(swarm.Address) bool
 }
 
-func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunkPeerer topology.ClosestPeerer, logger log.Logger, accounting accounting.Interface, pricer pricer.Interface, tracer *tracing.Tracer, forwarderCaching bool, validStamp postage.ValidStampFn) *Service {
-	s := &Service{
+func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunkPeerer topology.ClosestPeerer, withinRadius func(swarm.Address) bool, logger log.Logger, accounting accounting.Interface, pricer pricer.Interface, tracer *tracing.Tracer, forwarderCaching bool, validStamp postage.ValidStampFn) *Service {
+	return &Service{
 		addr:          addr,
 		streamer:      streamer,
 		peerSuggester: chunkPeerer,
@@ -88,9 +89,8 @@ func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunk
 		caching:       forwarderCaching,
 		validStamp:    validStamp,
 		errSkip:       skippeers.NewList(),
+		withinRadius:  withinRadius,
 	}
-
-	return s
 }
 
 func (s *Service) Protocol() p2p.ProtocolSpec {
@@ -107,12 +107,14 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 }
 
 const (
-	retrieveChunkTimeout = time.Second * 10
-	preemptiveInterval   = time.Second
-	overDraftRefresh     = time.Second
-	skiplistDur          = time.Minute
-	maxRetrievedErrors   = 32
-	originSuffix         = "_origin"
+	retrieveChunkTimeout  = time.Second * 10
+	preemptiveInterval    = time.Second
+	overDraftRefresh      = time.Second
+	skiplistDur           = time.Minute
+	maxRetrievedErrors    = 32
+	originSuffix          = "_origin"
+	maxOriginErrors       = 32
+	maxNeighborhoodErrors = 4
 )
 
 func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr swarm.Address) (swarm.Chunk, error) {
@@ -157,7 +159,9 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 			ticker := time.NewTicker(preemptiveInterval)
 			defer ticker.Stop()
 			preemptiveTicker = ticker.C
-			errorsLeft = maxRetrievedErrors
+			errorsLeft = maxOriginErrors
+		} else if s.withinRadius(chunkAddr) {
+			errorsLeft = maxNeighborhoodErrors
 		}
 
 		done := make(chan struct{})
