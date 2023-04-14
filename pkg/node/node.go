@@ -1023,7 +1023,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 	feedFactory := factory.New(ns)
 	steward := steward.New(storer, traversalService, retrieve, pushSyncProtocol)
 
-	nodeStatus := status.NewService(logger, p2ps, kad, beeNodeMode.String(), storer, pullSyncProtocol, batchStore)
+	nodeStatus := status.NewService(logger, p2ps, kad, beeNodeMode.String(), storer, pullSyncProtocol, batchStore, batchStore)
 	if err = p2ps.AddProtocol(nodeStatus.Protocol()); err != nil {
 		return nil, fmt.Errorf("status service: %w", err)
 	}
