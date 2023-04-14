@@ -58,8 +58,8 @@ var (
 	Mainnet = ChainConfig{
 		ChainID:                abi.MainnetChainID,
 		PostageStampStartBlock: abi.MainnetPostageStampBlockNumber,
-		NativeTokenSymbol:      "ETH",
-		SwarmTokenSymbol:       "BZZ",
+		NativeTokenSymbol:      "xDAI",
+		SwarmTokenSymbol:       "xBZZ",
 
 		StakingAddress:         common.HexToAddress(abi.MainnetStakingAddress),
 		PostageStampAddress:    common.HexToAddress(abi.MainnetPostageStampStampAddress),
@@ -81,8 +81,8 @@ func GetByChainID(chainID int64) (ChainConfig, bool) {
 		return Mainnet, true
 	default:
 		return ChainConfig{
-			NativeTokenSymbol: "ETH",
-			SwarmTokenSymbol:  "BZZ",
+			NativeTokenSymbol: Testnet.NativeTokenSymbol,
+			SwarmTokenSymbol:  Testnet.SwarmTokenSymbol,
 			StakingABI:        abi.TestnetStakingABI,
 			PostageStampABI:   abi.TestnetPostageStampStampABI,
 			RedistributionABI: abi.TestnetRedistributionABI,
