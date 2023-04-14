@@ -1163,7 +1163,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/StatusLocalSnapshotResponse"
+                $ref: "SwarmCommon.yaml#/components/schemas/StatusSnapshotResponse"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         default:
@@ -1180,7 +1180,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/StatusConnectedPeerResponse"
+                $ref: "SwarmCommon.yaml#/components/schemas/StatusResponse"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         default:
