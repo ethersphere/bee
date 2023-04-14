@@ -11,9 +11,10 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/swarm"
+	"golang.org/x/exp/maps"
 )
 
-const maxDuration int64 = math.MaxInt64
+const MaxDuration time.Duration = math.MaxInt64
 
 type List struct {
 	mtx sync.Mutex
@@ -81,15 +82,20 @@ func (l *List) Add(chunk, peer swarm.Address, expire time.Duration) {
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
 
-	t := time.Now().Add(expire).UnixNano()
+	var t int64
+	if expire == MaxDuration {
+		t = MaxDuration.Nanoseconds()
+	} else {
+		t = time.Now().Add(expire).UnixNano()
 
-	heap.Push(l.minHeap, t)
-	min := l.minHeap.First()
+		heap.Push(l.minHeap, t)
+		min := l.minHeap.First()
 
-	if t == min { // pushed the most recent expiration
-		select {
-		case l.durC <- time.Until(time.Unix(0, min)):
-		case <-l.quit:
+		if t == min { // pushed the most recent expiration
+			select {
+			case l.durC <- time.Until(time.Unix(0, min)):
+			case <-l.quit:
+			}
 		}
 	}
 
@@ -98,19 +104,6 @@ func (l *List) Add(chunk, peer swarm.Address, expire time.Duration) {
 	}
 
 	l.skip[chunk.ByteString()][peer.ByteString()] = t
-}
-
-func (l *List) AddForever(chunk, peer swarm.Address) {
-	l.mtx.Lock()
-	defer l.mtx.Unlock()
-
-	heap.Push(l.minHeap, maxDuration)
-
-	if _, ok := l.skip[chunk.ByteString()]; !ok {
-		l.skip[chunk.ByteString()] = make(map[string]int64)
-	}
-
-	l.skip[chunk.ByteString()][peer.ByteString()] = maxDuration
 }
 
 func (l *List) ChunkPeers(ch swarm.Address) (peers []swarm.Address) {
@@ -158,15 +151,15 @@ func (l *List) PruneExpiresAfter(d time.Duration) int {
 	return count
 }
 
-func (l *List) Close() {
+func (l *List) Close() error {
 	close(l.quit)
 	l.wg.Wait()
 
 	l.mtx.Lock()
-	for k := range l.skip {
-		delete(l.skip, k)
-	}
+	maps.Clear(l.skip)
 	l.mtx.Unlock()
+
+	return nil
 }
 
 // An IntHeap is a min-heap of ints.

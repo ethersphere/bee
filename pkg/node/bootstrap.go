@@ -187,11 +187,11 @@ func bootstrapNode(
 
 	storer := inmemstore.New()
 
-	retrieve, cleanup := retrieval.New(swarmAddress, storer, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching, noopValidStamp)
+	retrieve := retrieval.New(swarmAddress, storer, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching, noopValidStamp)
 	if err = p2ps.AddProtocol(retrieve.Protocol()); err != nil {
 		return nil, fmt.Errorf("retrieval service: %w", err)
 	}
-	defer cleanup()
+	b.retrievalCloser = retrieve
 
 	ns := netstore.New(storer, noopValidStamp, retrieve, logger)
 

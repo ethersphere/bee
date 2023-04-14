@@ -98,7 +98,7 @@ type receiptResult struct {
 	err      error
 }
 
-func New(address swarm.Address, nonce []byte, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, rs postage.Radius, tagger *tags.Tags, includeSelf bool, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger log.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer, warmupTime time.Duration) (*PushSync, func()) {
+func New(address swarm.Address, nonce []byte, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, rs postage.Radius, tagger *tags.Tags, includeSelf bool, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger log.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer, warmupTime time.Duration) *PushSync {
 	ps := &PushSync{
 		address:        address,
 		nonce:          nonce,
@@ -120,7 +120,7 @@ func New(address swarm.Address, nonce []byte, streamer p2p.StreamerDisconnecter,
 	}
 
 	ps.validStamp = ps.validStampWrapper(validStamp)
-	return ps, ps.skipList.Close
+	return ps
 }
 
 func (s *PushSync) Protocol() p2p.ProtocolSpec {
@@ -510,7 +510,7 @@ func (ps *PushSync) pushPeer(ctx context.Context, skip *skippeers.List, resultCh
 	}
 	defer creditAction.Cleanup()
 
-	skip.AddForever(ch.Address(), peer)
+	skip.Add(ch.Address(), peer, skippeers.MaxDuration)
 
 	stamp, err := ch.Stamp().MarshalBinary()
 	if err != nil {
@@ -695,4 +695,8 @@ func (ps *PushSync) validStampWrapper(f postage.ValidStampFn) postage.ValidStamp
 
 func (ps *PushSync) warmedUp() bool {
 	return time.Now().After(ps.warmupPeriod)
+}
+
+func (s *PushSync) Close() error {
+	return s.skipList.Close()
 }

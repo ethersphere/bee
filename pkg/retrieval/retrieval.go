@@ -74,7 +74,7 @@ type Service struct {
 	errSkip       *skippeers.List
 }
 
-func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunkPeerer topology.ClosestPeerer, logger log.Logger, accounting accounting.Interface, pricer pricer.Interface, tracer *tracing.Tracer, forwarderCaching bool, validStamp postage.ValidStampFn) (*Service, func()) {
+func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunkPeerer topology.ClosestPeerer, logger log.Logger, accounting accounting.Interface, pricer pricer.Interface, tracer *tracing.Tracer, forwarderCaching bool, validStamp postage.ValidStampFn) *Service {
 	s := &Service{
 		addr:          addr,
 		streamer:      streamer,
@@ -90,7 +90,7 @@ func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunk
 		errSkip:       skippeers.NewList(),
 	}
 
-	return s, s.errSkip.Close
+	return s
 }
 
 func (s *Service) Protocol() p2p.ProtocolSpec {
@@ -149,7 +149,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 		var preemptiveTicker <-chan time.Time
 
 		if !sourcePeerAddr.IsZero() {
-			skip.AddForever(chunkAddr, sourcePeerAddr)
+			skip.Add(chunkAddr, sourcePeerAddr, skippeers.MaxDuration)
 		}
 
 		errorsLeft := 1
@@ -304,7 +304,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skip *s
 	}
 	defer creditAction.Cleanup()
 
-	skip.AddForever(addr, peer)
+	skip.Add(addr, peer, skippeers.MaxDuration)
 
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
@@ -472,4 +472,8 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		}
 	}
 	return nil
+}
+
+func (s *Service) Close() error {
+	return s.errSkip.Close()
 }

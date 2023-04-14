@@ -791,8 +791,8 @@ func createPushSyncNodeWithAccounting(t *testing.T, addr swarm.Address, prices p
 
 	bs := bsMock.New()
 
-	ps, cleanup := pushsync.New(addr, blockHash.Bytes(), recorderDisconnecter, storer, mockTopology, bs, mtag, true, unwrap, validStamp, logger, acct, mockPricer, signer, nil, -1)
-	t.Cleanup(cleanup)
+	ps := pushsync.New(addr, blockHash.Bytes(), recorderDisconnecter, storer, mockTopology, bs, mtag, true, unwrap, validStamp, logger, acct, mockPricer, signer, nil, -1)
+	t.Cleanup(func() { ps.Close() })
 
 	return ps, storer, mtag
 }

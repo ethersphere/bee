@@ -112,6 +112,8 @@ type Bee struct {
 	pullerCloser             io.Closer
 	accountingCloser         io.Closer
 	pullSyncCloser           io.Closer
+	pushSyncCloser           io.Closer
+	retrievalCloser          io.Closer
 	pssCloser                io.Closer
 	closers                  []func()
 	transactionMonitorCloser io.Closer
@@ -889,8 +891,8 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 
 	pricing.SetPaymentThresholdObserver(acc)
 
-	retrieve, retCleanup := retrieval.New(swarmAddress, storer, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching, validStamp)
-	b.closers = append(b.closers, retCleanup)
+	retrieve := retrieval.New(swarmAddress, storer, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching, validStamp)
+	b.retrievalCloser = retrieve
 
 	tagService := tags.NewTags(stateStore, logger)
 	b.tagsCloser = tagService
@@ -905,8 +907,8 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 
 	pinningService := pinning.NewService(storer, stateStore, traversalService)
 
-	pushSyncProtocol, pushCleanup := pushsync.New(swarmAddress, nonce, p2ps, storer, kad, batchStore, tagService, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
-	b.closers = append(b.closers, pushCleanup)
+	pushSyncProtocol := pushsync.New(swarmAddress, nonce, p2ps, storer, kad, batchStore, tagService, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
+	b.pushSyncCloser = pushSyncProtocol
 
 	// set the pushSyncer in the PSS
 	pssService.SetPushSyncer(pushSyncProtocol)
@@ -1248,6 +1250,14 @@ func (b *Bee) Shutdown() error {
 	go func() {
 		defer wg.Done()
 		tryClose(b.chainSyncerCloser, "chain syncer")
+	}()
+	go func() {
+		defer wg.Done()
+		tryClose(b.pushSyncCloser, "pushsync")
+	}()
+	go func() {
+		defer wg.Done()
+		tryClose(b.retrievalCloser, "retrieval")
 	}()
 	go func() {
 		defer wg.Done()
