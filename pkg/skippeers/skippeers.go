@@ -67,8 +67,8 @@ func (l *List) worker() {
 		case <-timerC:
 			l.PruneExpiresAfter(0)
 			l.mtx.Lock()
-			if l.minHeap.Length() > 0 {
-				timer.Reset(time.Until(time.Unix(0, l.minHeap.First())))
+			if l.minHeap.Len() > 0 {
+				timer.Reset(time.Until(time.Unix(0, l.minHeap.Peek())))
 			}
 			l.mtx.Unlock()
 		case <-l.quit:
@@ -89,7 +89,7 @@ func (l *List) Add(chunk, peer swarm.Address, expire time.Duration) {
 		t = time.Now().Add(expire).UnixNano()
 
 		heap.Push(l.minHeap, t)
-		min := l.minHeap.First()
+		min := l.minHeap.Peek()
 
 		if t == min { // pushed the most recent expiration
 			select {
@@ -129,7 +129,7 @@ func (l *List) PruneExpiresAfter(d time.Duration) int {
 	expiresNano := time.Now().Add(d).UnixNano()
 	count := 0
 
-	for l.minHeap.Length() > 0 && l.minHeap.First() <= expiresNano {
+	for l.minHeap.Len() > 0 && l.minHeap.Peek() <= expiresNano {
 		heap.Pop(l.minHeap)
 	}
 
@@ -165,21 +165,12 @@ func (l *List) Close() error {
 // An IntHeap is a min-heap of ints.
 type timeHeap []int64
 
+func (h timeHeap) Peek() int64        { return h[0] }
 func (h timeHeap) Len() int           { return len(h) }
 func (h timeHeap) Less(i, j int) bool { return h[i] < h[j] }
 func (h timeHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
 
-func (h *timeHeap) Push(x any) {
-	*h = append(*h, x.(int64))
-}
-
-func (h *timeHeap) Length() int {
-	return len(*h)
-}
-
-func (h *timeHeap) First() int64 {
-	return (*h)[0]
-}
+func (h *timeHeap) Push(x any) { *h = append(*h, x.(int64)) }
 
 func (h *timeHeap) Pop() any {
 	old := *h
