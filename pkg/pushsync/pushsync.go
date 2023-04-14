@@ -49,7 +49,7 @@ const (
 )
 
 const (
-	nPeersToReplicate = 3 // number of peers to replicate to as receipt is sent upstream
+	nPeersToReplicate = 4 // number of peers to replicate to as receipt is sent upstream
 	maxPushErrors     = 32
 )
 
@@ -161,7 +161,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	chunk := swarm.NewChunk(swarm.NewAddress(ch.Address), ch.Data)
 	chunkAddress := chunk.Address()
 
-	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, opentracing.Tag{Key: "address", Value: chunkAddress.String()})
+	span, logger, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, opentracing.Tag{Key: "address", Value: chunkAddress.String()})
 	defer span.Finish()
 
 	stamp := new(postage.Stamp)
@@ -231,9 +231,26 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		return err
 	}
 
+	// forwarding replication
+	storerNode := false
+	defer func() {
+		if !storerNode && ps.radiusChecker.IsWithinStorageRadius(chunkAddress) {
+			verifiedChunk, err := ps.validStamp(chunk, ch.Stamp)
+			if err != nil {
+				logger.Warning("forwarder, invalid stamp for chunk", "chunk_address", chunkAddress)
+				return
+			}
+			_, err = ps.storer.Put(ctx, storage.ModePutSync, verifiedChunk)
+			if err != nil {
+				logger.Warning("within depth peer's attempt to store chunk failed", "chunk_address", verifiedChunk.Address(), "error", err)
+			}
+		}
+	}()
+
 	receipt, err := ps.pushToClosest(ctx, chunk, false)
 	if err != nil {
 		if errors.Is(err, topology.ErrWantSelf) {
+			storerNode = true
 			ps.metrics.Storer.Inc()
 			chunk, err = ps.validStamp(chunk, ch.Stamp)
 			if err != nil {
@@ -340,24 +357,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 	retry()
 
-	nextPeer := func() (swarm.Address, error) {
-
-		// we are a full node and in the neighborhood of the chunk
-		if ps.fullNode && ps.radiusChecker.IsWithinStorageRadius(ch.Address()) {
-			ps.pushToNeighbourhood(ctx, ps.skipList.ChunkPeers(ch.Address()), ch, origin)
-			return swarm.ZeroAddress, topology.ErrWantSelf
-		}
-
-		// find closer peer
-		peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), ps.fullNode, topology.Filter{Reachable: true}, ps.skipList.ChunkPeers(ch.Address())...)
-		// only return ErrWantSelf if we are in the neighborhood of the chunk
-		if errors.Is(err, topology.ErrWantSelf) {
-			return swarm.ZeroAddress, topology.ErrNotFound
-		}
-
-		return peer, err
-	}
-
 	for sentErrorsLeft > 0 {
 		select {
 		case <-ctx.Done():
@@ -366,7 +365,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			retry()
 		case <-retryC:
 
-			peer, err := nextPeer()
+			peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), ps.fullNode, topology.Filter{Reachable: true}, ps.skipList.ChunkPeers(ch.Address())...)
 
 			// no peers left
 			if errors.Is(err, topology.ErrNotFound) {
@@ -392,6 +391,10 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			if err != nil {
 				if inflight == 0 {
+					// replicate the chunks with neighbors if we are the storer node
+					if errors.Is(err, topology.ErrWantSelf) {
+						ps.pushToNeighbourhood(ctx, ps.skipList.ChunkPeers(ch.Address()), ch, origin)
+					}
 					return nil, fmt.Errorf("get closest for address %s, allow upstream %v: %w", ch, origin, err)
 				} else {
 					continue
