@@ -7,10 +7,10 @@ package storageincentives
 import (
 	"context"
 	"math/big"
+	"math/rand"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/log"
 	erc20mock "github.com/ethersphere/bee/pkg/settlement/swap/erc20/mock"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -36,7 +36,8 @@ func createRedistribution(t *testing.T, erc20Opts []erc20mock.Option, txOpts []t
 			}),
 		}
 	}
-	state, err := NewRedistributionState(log.Noop, common.Address{}, mock.NewStateStore(), erc20mock.New(erc20Opts...), transactionmock.New(txOpts...))
+	log := testutil.NewLogger(t)
+	state, err := NewRedistributionState(log, common.Address{}, mock.NewStateStore(), erc20mock.New(erc20Opts...), transactionmock.New(txOpts...))
 	if err != nil {
 		t.Fatal("failed to connect")
 	}
@@ -157,6 +158,84 @@ func TestStateRoundData(t *testing.T) {
 		}
 	})
 
+}
+
+func TestPurgeRoundData(t *testing.T) {
+	t.Parallel()
+
+	state := createRedistribution(t, nil, nil)
+
+	// helper function which populates data at specified round
+	populateDataAtRound := func(round uint64) {
+		savedSample := SampleData{
+			ReserveSample: storage.Sample{
+				Hash: swarm.RandAddress(t),
+			},
+			StorageRadius: 3,
+		}
+		commitKey := testutil.RandBytes(t, swarm.HashSize)
+
+		state.SetSampleData(round, savedSample)
+		state.SetCommitKey(round, commitKey)
+		state.SetHasRevealed(round)
+	}
+
+	// asserts if there is, or there isn't, data at specified round
+	assertHasDataAtRound := func(round uint64, shouldHaveData bool) {
+		check := func(exists bool) {
+			if shouldHaveData && !exists {
+				t.Error("should have data")
+			} else if !shouldHaveData && exists {
+				t.Error("should not have data")
+			}
+		}
+
+		_, exists1 := state.SampleData(round)
+		_, exists2 := state.CommitKey(round)
+		exists3 := state.HasRevealed(round)
+
+		check(exists1)
+		check(exists2)
+		check(exists3)
+	}
+
+	const roundsCount = 100
+	hasRoundData := make([]bool, roundsCount)
+
+	// Populate data at random rounds
+	for i := uint64(0); i < roundsCount; i++ {
+		v := rand.Int()%2 == 0
+		hasRoundData[i] = v
+		if v {
+			populateDataAtRound(i)
+		}
+		assertHasDataAtRound(i, v)
+	}
+
+	// Run purge successively and assert that all data is purged up to
+	// currentRound - purgeDataOlderThenXRounds
+	for i := uint64(0); i < roundsCount; i++ {
+		state.SetCurrentEvent(0, i, 0)
+		state.purgeStaleRoundData()
+
+		if i <= purgeStaleDataThreshold {
+			assertHasDataAtRound(i, hasRoundData[i])
+		} else {
+			for j := uint64(0); j < i-purgeStaleDataThreshold; j++ {
+				assertHasDataAtRound(j, false)
+			}
+		}
+	}
+
+	// Purge remaining data in single go
+	round := uint64(roundsCount + purgeStaleDataThreshold)
+	state.SetCurrentEvent(0, round, 0)
+	state.purgeStaleRoundData()
+
+	// One more time assert that everything was purged
+	for i := uint64(0); i < roundsCount; i++ {
+		assertHasDataAtRound(i, false)
+	}
 }
 
 // TestReward test reward calculations. It also checks whether reward is incremented after second win.

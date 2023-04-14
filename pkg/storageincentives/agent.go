@@ -211,6 +211,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 		a.state.SetCurrentEvent(currentPhase, round, block)
 		a.state.IsFullySynced(a.monitor.IsFullySynced())
+		go a.state.purgeStaleRoundData()
 
 		isFrozen, err := a.redistributionStatuser.IsOverlayFrozen(ctx, block)
 		if err != nil {
