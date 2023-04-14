@@ -24,10 +24,14 @@ func TestGetStatus(t *testing.T) {
 	t.Run("node", func(t *testing.T) {
 		t.Parallel()
 
-		ssr := api.StatusLocalSnapshotResponse{
-			ReserveSize:   128,
-			PullsyncRate:  64,
-			StorageRadius: 8,
+		mode := api.FullMode
+		ssr := api.StatusSnapshotResponse{
+			BeeMode:          mode.String(),
+			ReserveSize:      128,
+			PullsyncRate:     64,
+			StorageRadius:    8,
+			ConnectedPeers:   0,
+			NeighborhoodSize: 0,
 		}
 
 		ssMock := &statusSnapshotMock{
@@ -37,11 +41,13 @@ func TestGetStatus(t *testing.T) {
 		}
 
 		client, _, _, _ := newTestServer(t, testServerOptions{
+			BeeMode:  mode,
 			DebugAPI: true,
 			NodeStatus: status.NewService(
 				log.Noop,
 				nil,
 				new(topologyPeersIterNoopMock),
+				mode.String(),
 				ssMock,
 				ssMock,
 				ssMock,
@@ -63,6 +69,7 @@ func TestGetStatus(t *testing.T) {
 				log.Noop,
 				nil,
 				new(topologyPeersIterNoopMock),
+				"",
 				nil,
 				nil,
 				nil,

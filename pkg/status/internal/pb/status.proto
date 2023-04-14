@@ -20,4 +20,5 @@ message Snapshot {
   uint32 StorageRadius = 3;
   uint64 ConnectedPeers = 4;
   uint64 NeighborhoodSize = 5;
+  string BeeMode = 6;
 }

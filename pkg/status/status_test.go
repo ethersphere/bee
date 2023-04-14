@@ -9,6 +9,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
@@ -23,6 +24,7 @@ func TestStatus(t *testing.T) {
 	t.Parallel()
 
 	want := &pb.Snapshot{
+		BeeMode:       api.FullMode.String(),
 		ReserveSize:   128,
 		PullsyncRate:  64,
 		StorageRadius: 8,
@@ -36,6 +38,7 @@ func TestStatus(t *testing.T) {
 		log.Noop,
 		nil,
 		peersIterMock,
+		want.BeeMode,
 		sssMock,
 		sssMock,
 		sssMock,
@@ -43,11 +46,11 @@ func TestStatus(t *testing.T) {
 
 	recorder := streamtest.New(streamtest.WithProtocols(peer1.Protocol()))
 
-	peer2 := status.NewService(log.Noop, recorder, peersIterMock, nil, nil, nil)
+	peer2 := status.NewService(log.Noop, recorder, peersIterMock, "", nil, nil, nil)
 
 	address := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
 
-	if err := peer2.SendGetSnapshotMsg(context.Background(), address); err != nil {
+	if _, err := peer2.PeerSnapshot(context.Background(), address); err != nil {
 		t.Fatalf("send msg get: unexpected error: %v", err)
 	}
 
