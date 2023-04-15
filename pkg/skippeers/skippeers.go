@@ -126,14 +126,7 @@ func (l *List) PruneExpiresAfter(ch swarm.Address, d time.Duration) int {
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
 
-	expiresNano := time.Now().Add(d).UnixNano()
-	count := 0
-
-	for k := range l.skip {
-		count += l.pruneChunk(k, expiresNano)
-	}
-
-	return count
+	return l.pruneChunk(ch.ByteString(), time.Now().Add(d).UnixNano())
 }
 
 func (l *List) prune() {

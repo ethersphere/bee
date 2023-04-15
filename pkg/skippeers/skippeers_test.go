@@ -37,12 +37,20 @@ func TestPruneExpiresAfter(t *testing.T) {
 		t.Fatal("entry should NOT be pruned")
 	}
 
+	if len(skipList.ChunkPeers(swarm.RandAddress(t))) != 0 {
+		t.Fatal("there should be now entry")
+	}
+
 	if skipList.PruneExpiresAfter(chunk, time.Millisecond*10) == 0 {
 		t.Fatal("entry should be pruned")
 	}
 
 	if len(skipList.ChunkPeers(chunk)) != 0 {
 		t.Fatal("entry should be pruned")
+	}
+
+	if len(skipList.ChunkPeers(swarm.RandAddress(t))) != 0 {
+		t.Fatal("there should be now entry")
 	}
 }
 
