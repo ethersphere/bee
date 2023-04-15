@@ -218,7 +218,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 
 				// no peers left
 				if errors.Is(res.err, topology.ErrNotFound) {
-					if skip.PruneExpiresAfter(overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers
+					if skip.PruneExpiresAfter(chunkAddr, overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers
 						if inflight == 0 {
 							loggerV1.Debug("no peers left", "chunk_address", chunkAddr, "error", res.err)
 							return nil, res.err

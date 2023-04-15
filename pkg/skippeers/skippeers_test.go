@@ -28,16 +28,16 @@ func TestPruneExpiresAfter(t *testing.T) {
 	}
 
 	skipList.Add(chunk, peer2, time.Millisecond*10)
-	if skipList.PruneExpiresAfter(time.Millisecond) > 0 {
+	if skipList.PruneExpiresAfter(chunk, time.Millisecond) > 0 {
 		t.Fatal("entry should NOT be pruned")
 	}
 
-	skipList.PruneExpiresAfter(time.Millisecond)
+	skipList.PruneExpiresAfter(chunk, time.Millisecond)
 	if len(skipList.ChunkPeers(chunk)) == 0 {
 		t.Fatal("entry should NOT be pruned")
 	}
 
-	if skipList.PruneExpiresAfter(time.Millisecond*10) == 0 {
+	if skipList.PruneExpiresAfter(chunk, time.Millisecond*10) == 0 {
 		t.Fatal("entry should be pruned")
 	}
 

@@ -65,7 +65,7 @@ func (l *List) worker() {
 			}
 			timerC = timer.C
 		case <-timerC:
-			l.PruneExpiresAfter(0)
+			l.prune()
 			l.mtx.Lock()
 			if l.minHeap.Len() > 0 {
 				timer.Reset(time.Until(time.Unix(0, l.minHeap.Peek())))
@@ -122,30 +122,53 @@ func (l *List) ChunkPeers(ch swarm.Address) (peers []swarm.Address) {
 	return peers
 }
 
-func (l *List) PruneExpiresAfter(d time.Duration) int {
+func (l *List) PruneExpiresAfter(ch swarm.Address, d time.Duration) int {
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
 
 	expiresNano := time.Now().Add(d).UnixNano()
 	count := 0
 
-	for l.minHeap.Len() > 0 && l.minHeap.Peek() <= expiresNano {
+	for k := range l.skip {
+		count += l.pruneChunk(k, expiresNano)
+	}
+
+	return count
+}
+
+func (l *List) prune() {
+	l.mtx.Lock()
+	defer l.mtx.Unlock()
+
+	expiresNano := time.Now().UnixNano()
+
+	for k := range l.skip {
+		l.pruneChunk(k, expiresNano)
+	}
+}
+
+// Must be called under lock
+func (l *List) pruneChunk(ch string, now int64) int {
+
+	for l.minHeap.Len() > 0 && l.minHeap.Peek() <= now {
 		heap.Pop(l.minHeap)
 	}
 
-	for k, chunkPeers := range l.skip {
-		chunkPeersLen := len(chunkPeers)
-		for peer, exp := range chunkPeers {
-			if exp <= expiresNano {
-				delete(chunkPeers, peer)
-				count++
-				chunkPeersLen--
-			}
+	count := 0
+
+	chunkPeers := l.skip[ch]
+	chunkPeersLen := len(chunkPeers)
+	for peer, exp := range chunkPeers {
+		if exp <= now {
+			delete(chunkPeers, peer)
+			count++
+			chunkPeersLen--
 		}
-		// prune the chunk too
-		if chunkPeersLen == 0 {
-			delete(l.skip, k)
-		}
+	}
+
+	// prune the chunk too
+	if chunkPeersLen == 0 {
+		delete(l.skip, ch)
 	}
 
 	return count
