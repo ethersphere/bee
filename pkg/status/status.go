@@ -73,6 +73,7 @@ func (s *Service) LocalSnapshot() (*Snapshot, error) {
 		StorageRadius:    uint32(storageRadius),
 		ConnectedPeers:   connectedPeers,
 		NeighborhoodSize: neighborhoodSize,
+		BatchTotalAmount: s.chainstate.GetChainState().TotalAmount.String(),
 	}, nil
 }
 

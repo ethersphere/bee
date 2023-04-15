@@ -34,6 +34,7 @@ func TestGetStatus(t *testing.T) {
 			StorageRadius:    8,
 			ConnectedPeers:   0,
 			NeighborhoodSize: 0,
+			BatchTotalAmount: "1",
 		}
 
 		ssMock := &statusSnapshotMock{
