@@ -565,9 +565,9 @@ func TestMultiplePushesAsForwarder(t *testing.T) {
 
 	// peer is the node responding to the chunk receipt message
 	// mock should return ErrWantSelf since there's no one to forward to
-	psPeer1, storerPeer1, _, _ := createPushSyncNode(t, peer1, defaultPrices, nil, nil, defaultSigner, nil, mock.WithClosestPeerErr(topology.ErrWantSelf))
-	psPeer2, storerPeer2, _, _ := createPushSyncNode(t, peer2, defaultPrices, nil, nil, defaultSigner, nil, mock.WithClosestPeerErr(topology.ErrWantSelf))
-	psPeer3, storerPeer3, _, _ := createPushSyncNode(t, peer3, defaultPrices, nil, nil, defaultSigner, nil, mock.WithClosestPeerErr(topology.ErrWantSelf))
+	psPeer1, storerPeer1, _, _ := createPushSyncNode(t, peer1, defaultPrices, nil, nil, defaultSigner, withinRadius, mock.WithClosestPeerErr(topology.ErrWantSelf))
+	psPeer2, storerPeer2, _, _ := createPushSyncNode(t, peer2, defaultPrices, nil, nil, defaultSigner, withinRadius, mock.WithClosestPeerErr(topology.ErrWantSelf))
+	psPeer3, storerPeer3, _, _ := createPushSyncNode(t, peer3, defaultPrices, nil, nil, defaultSigner, withinRadius, mock.WithClosestPeerErr(topology.ErrWantSelf))
 
 	recorder := streamtest.New(
 		streamtest.WithPeerProtocols(
