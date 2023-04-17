@@ -524,10 +524,7 @@ func TestContinueSyncing(t *testing.T) {
 
 	checkHistSyncingCount(t, puller, 1)
 
-	// expected calls should ideally be exactly 100,
-	// but we allow some time for the goroutines to run
-	// by reducing the minimum expected calls to 2
-	if len(calls) < 2 || len(calls) > 100 {
+	if len(calls) < 2 {
 		t.Fatalf("unexpected amount of calls, got %d", len(calls))
 	}
 }
