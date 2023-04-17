@@ -95,7 +95,7 @@ func TestDepthMonitorService_FLAKY(t *testing.T) {
 
 		topo := &mockTopology{peers: 1}
 		// >40% utilized reserve
-		reserve := &mockReserve{size: 20001, capacity: 50000}
+		reserve := &mockReserve{size: 25001, capacity: 50000}
 
 		bs := mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{Radius: 3}))
 
