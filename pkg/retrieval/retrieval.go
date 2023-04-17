@@ -12,7 +12,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/accounting"
@@ -76,7 +75,7 @@ type Service struct {
 }
 
 func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunkPeerer topology.ClosestPeerer, logger log.Logger, accounting accounting.Interface, pricer pricer.Interface, tracer *tracing.Tracer, forwarderCaching bool, validStamp postage.ValidStampFn) *Service {
-	return &Service{
+	s := &Service{
 		addr:          addr,
 		streamer:      streamer,
 		peerSuggester: chunkPeerer,
@@ -90,6 +89,8 @@ func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunk
 		validStamp:    validStamp,
 		errSkip:       skippeers.NewList(),
 	}
+
+	return s
 }
 
 func (s *Service) Protocol() p2p.ProtocolSpec {
@@ -112,8 +113,6 @@ const (
 	skiplistDur          = time.Minute
 	maxRetrievedErrors   = 32
 	originSuffix         = "_origin"
-
-	maxDuration time.Duration = math.MaxInt64
 )
 
 func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr swarm.Address) (swarm.Chunk, error) {
@@ -145,14 +144,12 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 	v, _, err := s.singleflight.Do(topCtx, flightRoute, func(ctx context.Context) (interface{}, error) {
 
 		skip := skippeers.NewList()
-		defer skip.Reset()
-
-		s.errSkip.PruneExpiresAfter(0)
+		defer skip.Close()
 
 		var preemptiveTicker <-chan time.Time
 
 		if !sourcePeerAddr.IsZero() {
-			skip.Add(chunkAddr, sourcePeerAddr, maxDuration)
+			skip.Add(chunkAddr, sourcePeerAddr, skippeers.MaxDuration)
 		}
 
 		errorsLeft := 1
@@ -221,7 +218,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 
 				// no peers left
 				if errors.Is(res.err, topology.ErrNotFound) {
-					if skip.PruneExpiresAfter(overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers
+					if skip.PruneExpiresAfter(chunkAddr, overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers
 						if inflight == 0 {
 							loggerV1.Debug("no peers left", "chunk_address", chunkAddr, "error", res.err)
 							return nil, res.err
@@ -307,7 +304,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skip *s
 	}
 	defer creditAction.Cleanup()
 
-	skip.Add(addr, peer, maxDuration)
+	skip.Add(addr, peer, skippeers.MaxDuration)
 
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
@@ -475,4 +472,8 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		}
 	}
 	return nil
+}
+
+func (s *Service) Close() error {
+	return s.errSkip.Close()
 }

@@ -12,36 +12,95 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-func TestPeerSkipList(t *testing.T) {
+func TestPruneExpiresAfter(t *testing.T) {
 	t.Parallel()
+
 	skipList := skippeers.NewList()
+	t.Cleanup(func() { skipList.Close() })
 
-	addr1 := swarm.RandAddress(t)
-	addr2 := swarm.RandAddress(t)
-	addr3 := swarm.RandAddress(t)
+	chunk := swarm.RandAddress(t)
+	peer1 := swarm.RandAddress(t)
+	peer2 := swarm.RandAddress(t)
 
-	skipList.Add(addr1, addr2, time.Millisecond*10)
-
-	if !skipList.ChunkPeers(addr1)[0].Equal(addr2) {
-		t.Fatal("peer should be skipped")
+	skipList.Add(chunk, peer1, time.Millisecond*10)
+	if !swarm.ContainsAddress(skipList.ChunkPeers(chunk), peer1) {
+		t.Fatal("peer should be in skiplist")
 	}
 
-	skipList.Add(addr1, addr3, time.Millisecond*10)
-
-	if skipList.PruneExpiresAfter(time.Millisecond) > 0 {
+	skipList.Add(chunk, peer2, time.Millisecond*10)
+	if skipList.PruneExpiresAfter(chunk, time.Millisecond) > 0 {
 		t.Fatal("entry should NOT be pruned")
 	}
 
-	skipList.PruneExpiresAfter(time.Millisecond)
-	if len(skipList.ChunkPeers(addr1)) == 0 {
+	skipList.PruneExpiresAfter(chunk, time.Millisecond)
+	if len(skipList.ChunkPeers(chunk)) == 0 {
 		t.Fatal("entry should NOT be pruned")
 	}
 
-	if skipList.PruneExpiresAfter(time.Millisecond*10) == 0 {
+	if len(skipList.ChunkPeers(swarm.RandAddress(t))) != 0 {
+		t.Fatal("there should be now entry")
+	}
+
+	if skipList.PruneExpiresAfter(chunk, time.Millisecond*10) == 0 {
 		t.Fatal("entry should be pruned")
 	}
 
-	if len(skipList.ChunkPeers(addr1)) != 0 {
+	if len(skipList.ChunkPeers(chunk)) != 0 {
+		t.Fatal("entry should be pruned")
+	}
+
+	if len(skipList.ChunkPeers(swarm.RandAddress(t))) != 0 {
+		t.Fatal("there should be now entry")
+	}
+}
+
+func TestPeerWait(t *testing.T) {
+	t.Parallel()
+
+	skipList := skippeers.NewList()
+	t.Cleanup(func() { skipList.Close() })
+
+	chunk1 := swarm.RandAddress(t)
+	chunk2 := swarm.RandAddress(t)
+	peer1 := swarm.RandAddress(t)
+	peer2 := swarm.RandAddress(t)
+	peer3 := swarm.RandAddress(t)
+
+	skipList.Add(chunk1, peer1, time.Millisecond*100)
+	if !swarm.ContainsAddress(skipList.ChunkPeers(chunk1), peer1) {
+		t.Fatal("peer should be in skiplist")
+	}
+
+	skipList.Add(chunk2, peer1, time.Millisecond*150)
+	if !swarm.ContainsAddress(skipList.ChunkPeers(chunk2), peer1) {
+		t.Fatal("peer should be in skiplist")
+	}
+
+	skipList.Add(chunk1, peer2, time.Millisecond*50)
+	if !swarm.ContainsAddress(skipList.ChunkPeers(chunk1), peer2) {
+		t.Fatal("peer should be in skiplist")
+	}
+
+	skipList.Add(chunk1, peer3, -time.Millisecond*50)
+	if swarm.ContainsAddress(skipList.ChunkPeers(chunk1), peer3) {
+		t.Fatal("peer should NOT be in skiplist")
+	}
+
+	time.Sleep(time.Millisecond * 60)
+
+	if len(skipList.ChunkPeers(chunk1)) != 1 || !swarm.ContainsAddress(skipList.ChunkPeers(chunk1), peer1) {
+		t.Fatal("peer should be in skiplist")
+	}
+
+	time.Sleep(time.Millisecond * 60)
+
+	if len(skipList.ChunkPeers(chunk1)) != 0 {
+		t.Fatal("entry should be pruned")
+	}
+
+	time.Sleep(time.Millisecond * 60)
+
+	if len(skipList.ChunkPeers(chunk2)) != 0 {
 		t.Fatal("entry should be pruned")
 	}
 }
