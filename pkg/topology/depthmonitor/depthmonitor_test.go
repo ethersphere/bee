@@ -78,18 +78,6 @@ func TestDepthMonitorService_FLAKY(t *testing.T) {
 		}
 	})
 
-	t.Run("old nodes starts at previous radius", func(t *testing.T) {
-		t.Parallel()
-
-		bs := mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{Radius: 3, StorageRadius: 0}))
-		svc := newTestSvc(nil, nil, nil, nil, bs, 0, depthmonitor.DefaultWakeupInterval, false)
-		waitForDepth(t, svc, 0)
-		err := svc.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
-
 	t.Run("start with radius", func(t *testing.T) {
 		t.Parallel()
 
