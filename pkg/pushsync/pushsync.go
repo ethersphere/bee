@@ -10,7 +10,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/accounting"
@@ -42,12 +41,11 @@ const (
 )
 
 const (
-	defaultTTL                       = 30 * time.Second // request time to live
-	preemptiveInterval               = 5 * time.Second  // P90 request time to live
-	sanctionWait                     = 5 * time.Minute
-	replicationTTL                   = 5 * time.Second // time to live for neighborhood replication
-	overDraftRefresh                 = time.Second
-	maxDuration        time.Duration = math.MaxInt64
+	defaultTTL         = 30 * time.Second // request time to live
+	preemptiveInterval = 5 * time.Second  // P90 request time to live
+	sanctionWait       = 5 * time.Minute
+	replicationTTL     = 5 * time.Second // time to live for neighborhood replication
+	overDraftRefresh   = time.Second
 )
 
 const (
@@ -330,8 +328,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	span, logger, ctx := ps.tracer.StartSpanFromContext(ctx, "push-closest", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
 	defer span.Finish()
 
-	ps.skipList.PruneExpiresAfter(0)
-
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -342,7 +338,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 		inflight         int
 		skip             = skippeers.NewList()
 	)
-	defer skip.Reset()
+	defer skip.Close()
 
 	if origin {
 		ticker := time.NewTicker(preemptiveInterval)
@@ -404,7 +400,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			// no peers left
 			if errors.Is(err, topology.ErrNotFound) {
-				if skip.PruneExpiresAfter(overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers
+				if skip.PruneExpiresAfter(ch.Address(), overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers
 					if inflight == 0 {
 						ps.logger.Debug("no peers left", "chunk_address", ch.Address(), "error", err)
 						return nil, err
@@ -514,7 +510,7 @@ func (ps *PushSync) pushPeer(ctx context.Context, skip *skippeers.List, resultCh
 	}
 	defer creditAction.Cleanup()
 
-	skip.Add(ch.Address(), peer, maxDuration)
+	skip.Add(ch.Address(), peer, skippeers.MaxDuration)
 
 	stamp, err := ch.Stamp().MarshalBinary()
 	if err != nil {
@@ -699,4 +695,8 @@ func (ps *PushSync) validStampWrapper(f postage.ValidStampFn) postage.ValidStamp
 
 func (ps *PushSync) warmedUp() bool {
 	return time.Now().After(ps.warmupPeriod)
+}
+
+func (s *PushSync) Close() error {
+	return s.skipList.Close()
 }

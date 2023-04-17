@@ -191,6 +191,7 @@ func bootstrapNode(
 	if err = p2ps.AddProtocol(retrieve.Protocol()); err != nil {
 		return nil, fmt.Errorf("retrieval service: %w", err)
 	}
+	b.retrievalCloser = retrieve
 
 	ns := netstore.New(storer, noopValidStamp, retrieve, logger)
 
