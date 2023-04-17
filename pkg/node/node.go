@@ -891,7 +891,14 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 
 	pricing.SetPaymentThresholdObserver(acc)
 
-	retrieve := retrieval.New(swarmAddress, storer, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching, validStamp)
+	var radiusFunc func() uint8
+	if o.FullNodeMode {
+		radiusFunc = func() uint8 { return batchStore.StorageRadius() }
+	} else {
+		radiusFunc = func() uint8 { return kad.NeighborhoodDepth() }
+	}
+
+	retrieve := retrieval.New(swarmAddress, storer, p2ps, kad, radiusFunc, logger, acc, pricer, tracer, o.RetrievalCaching, validStamp)
 	b.retrievalCloser = retrieve
 
 	tagService := tags.NewTags(stateStore, logger)
@@ -912,13 +919,6 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 
 	// set the pushSyncer in the PSS
 	pssService.SetPushSyncer(pushSyncProtocol)
-
-	var radiusFunc func() uint8
-	if o.FullNodeMode {
-		radiusFunc = func() uint8 { return batchStore.StorageRadius() }
-	} else {
-		radiusFunc = func() uint8 { return kad.NeighborhoodDepth() }
-	}
 
 	pusherService := pusher.New(networkID, storer, pushSyncProtocol, validStamp, tagService, radiusFunc, logger, tracer, warmupTime, pusher.DefaultRetryCount)
 	b.pusherCloser = pusherService

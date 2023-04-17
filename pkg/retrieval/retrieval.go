@@ -75,7 +75,7 @@ type Service struct {
 	withinRadius  func(swarm.Address) bool
 }
 
-func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunkPeerer topology.ClosestPeerer, withinRadius func(swarm.Address) bool, logger log.Logger, accounting accounting.Interface, pricer pricer.Interface, tracer *tracing.Tracer, forwarderCaching bool, validStamp postage.ValidStampFn) *Service {
+func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunkPeerer topology.ClosestPeerer, radius func() uint8, logger log.Logger, accounting accounting.Interface, pricer pricer.Interface, tracer *tracing.Tracer, forwarderCaching bool, validStamp postage.ValidStampFn) *Service {
 	return &Service{
 		addr:          addr,
 		streamer:      streamer,
@@ -89,7 +89,7 @@ func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunk
 		caching:       forwarderCaching,
 		validStamp:    validStamp,
 		errSkip:       skippeers.NewList(),
-		withinRadius:  withinRadius,
+		withinRadius:  func(a swarm.Address) bool { return swarm.Proximity(addr.Bytes(), a.Bytes()) >= radius() },
 	}
 }
 
@@ -111,7 +111,6 @@ const (
 	preemptiveInterval    = time.Second
 	overDraftRefresh      = time.Second
 	skiplistDur           = time.Minute
-	maxRetrievedErrors    = 32
 	originSuffix          = "_origin"
 	maxOriginErrors       = 32
 	maxNeighborhoodErrors = 4
