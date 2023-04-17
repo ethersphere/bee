@@ -102,21 +102,17 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration, freshNode boo
 	// wire up batchstore to start reporting storage radius to kademlia
 	s.bs.SetStorageRadiusSetter(s.topology)
 
-	// if it's a new fresh node, then we set the storage radius to the reserve radius
-	// to prevent syncing from starting at radius zero.
-	if freshNode {
-		reserveRadius := s.bs.GetReserveState().Radius
+	reserveRadius := s.bs.GetReserveState().Radius
 
-		err := s.bs.SetStorageRadius(func(radius uint8) uint8 {
-			// if we are starting from scratch, we can use the reserve radius.
-			if radius == 0 {
-				radius = reserveRadius
-			}
-			return radius
-		})
-		if err != nil {
-			s.logger.Error(err, "depthmonitor: batchstore set storage radius")
+	err := s.bs.SetStorageRadius(func(radius uint8) uint8 {
+		// if we are starting from scratch, we can use the reserve radius.
+		if radius == 0 {
+			radius = reserveRadius
 		}
+		return radius
+	})
+	if err != nil {
+		s.logger.Error(err, "depthmonitor: batchstore set storage radius")
 	}
 
 	// wait for warmup
