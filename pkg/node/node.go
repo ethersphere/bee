@@ -185,7 +185,7 @@ const (
 	minPaymentThreshold           = 2 * refreshRate           // minimal accepted payment threshold of full nodes
 	maxPaymentThreshold           = 24 * refreshRate          // maximal accepted payment threshold of full nodes
 	mainnetNetworkID              = uint64(1)                 //
-	reserveCapacity               = 2 ^ 22
+	reserveCapacity               = 4194304                   // 2^22 chunks
 	reserveTreshold               = reserveCapacity * 4 / 10
 )
 
