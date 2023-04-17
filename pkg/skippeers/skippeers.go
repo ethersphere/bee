@@ -178,30 +178,6 @@ func (l *List) Close() error {
 	return nil
 }
 
-func (l *List) PruneChunkExpiresAfter(ch swarm.Address, d time.Duration) int {
-	l.mtx.Lock()
-	defer l.mtx.Unlock()
-
-	now := time.Now().Add(d).UnixMilli()
-	count := 0
-
-	chunkPeers := l.skip[ch.ByteString()]
-	chunkPeersLen := len(chunkPeers)
-	for peer, exp := range chunkPeers {
-		if exp <= now {
-			delete(chunkPeers, peer)
-			count++
-			chunkPeersLen--
-		}
-	}
-	// prune the chunk too
-	if chunkPeersLen == 0 {
-		delete(l.skip, ch.ByteString())
-	}
-
-	return count
-}
-
 // An IntHeap is a min-heap of ints.
 type timeHeap []int64
 

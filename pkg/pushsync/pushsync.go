@@ -44,7 +44,6 @@ const (
 	defaultTTL         = 30 * time.Second // request time to live
 	preemptiveInterval = 5 * time.Second  // P90 request time to live
 	sanctionWait       = 5 * time.Minute
-	replicationTTL     = 5 * time.Second // time to live for neighborhood replication
 	overDraftRefresh   = time.Second
 )
 
@@ -368,7 +367,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			// no peers left
 			if errors.Is(err, topology.ErrNotFound) {
-				if ps.skipList.PruneChunkExpiresAfter(ch.Address(), overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers
+				if ps.skipList.PruneExpiresAfter(ch.Address(), overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers
 					if inflight == 0 {
 						ps.logger.Debug("no peers left", "chunk_address", ch.Address(), "error", err)
 						return nil, err
