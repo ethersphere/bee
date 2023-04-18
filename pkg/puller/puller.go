@@ -550,13 +550,3 @@ func (p *syncPeer) isBinSyncing(bin uint8) bool {
 	_, ok := p.binCancelFuncs[bin]
 	return ok
 }
-
-func isSyncing(p *Puller, addr swarm.Address) bool {
-	// this is needed for testing purposes in order
-	// to verify that a peer is no longer syncing on
-	// disconnect
-	p.syncPeersMtx.Lock()
-	defer p.syncPeersMtx.Unlock()
-	_, ok := p.syncPeers[addr.ByteString()]
-	return ok
-}
