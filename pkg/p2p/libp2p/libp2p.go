@@ -903,7 +903,22 @@ func (s *Service) Blocklisted(overlay swarm.Address) (bool, error) {
 }
 
 func (s *Service) BlocklistedPeers() ([]p2p.BlockListedPeer, error) {
-	return s.blocklist.Peers()
+	ps, err := s.blocklist.Peers()
+	if err != nil {
+		return nil, err
+	}
+	for i := range ps {
+		peerID, found := s.peers.peerID(ps[i].Address)
+		if !found {
+			continue
+		}
+		full, found := s.peers.fullnode(peerID)
+		if !found {
+			continue
+		}
+		ps[i].FullNode = full
+	}
+	return ps, nil
 }
 
 func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers p2p.Headers, protocolName, protocolVersion, streamName string) (p2p.Stream, error) {
