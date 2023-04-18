@@ -176,9 +176,8 @@ func (m *topologyPeersIterNoopMock) EachConnectedPeerRev(_ topology.EachPeerFunc
 }
 
 // statusSnapshotMock satisfies the following interfaces:
-//   - Storage
+//   - Reserve
 //   - SyncReporter
-//   - postage.RadiusReporter
 type statusSnapshotMock struct {
 	*pb.Snapshot
 }
