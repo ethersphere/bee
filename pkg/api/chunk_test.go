@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/log"
 	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
@@ -86,6 +87,8 @@ func TestChunkUploadDownload(t *testing.T) {
 			jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 			jsonhttptest.WithExpectedJSONResponse(api.ChunkAddressResponse{Reference: chunk.Address()}),
 		)
+
+		time.Sleep(time.Millisecond * 100)
 
 		has, err := chanStorer.Has(context.Background(), chunk.Address())
 		if err != nil {
