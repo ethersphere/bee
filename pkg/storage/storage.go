@@ -11,7 +11,8 @@ import (
 )
 
 var (
-	ErrOverwriteNewerChunk = errors.New("overwriting chunk with newer timestamp")
+	ErrOverwriteNewerChunk       = errors.New("overwriting chunk with newer timestamp")
+	ErrOverwriteOfImmutableBatch = errors.New("overwrite of existing immutable batch")
 )
 
 // Result represents the item returned by the read operation, which returns
