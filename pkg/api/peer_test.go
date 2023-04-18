@@ -189,14 +189,14 @@ func TestBlocklistedPeers(t *testing.T) {
 	overlay := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
 		DebugAPI: true,
-		P2P: mock.New(mock.WithBlocklistedPeersFunc(func() ([]p2p.Peer, error) {
-			return []p2p.Peer{{Address: overlay}}, nil
+		P2P: mock.New(mock.WithBlocklistedPeersFunc(func() ([]p2p.BlockListedPeer, error) {
+			return []p2p.BlockListedPeer{{Peer: p2p.Peer{Address: overlay}}}, nil
 		})),
 	})
 
 	jsonhttptest.Request(t, testServer, http.MethodGet, "/blocklist", http.StatusOK,
-		jsonhttptest.WithExpectedJSONResponse(api.PeersResponse{
-			Peers: []api.Peer{{Address: overlay}},
+		jsonhttptest.WithExpectedJSONResponse(api.BlockedListedPeersResponse{
+			Peers: []api.BlockListedPeer{{Peer: api.Peer{Address: overlay}, Duration: "0s"}},
 		}),
 	)
 }
@@ -207,8 +207,8 @@ func TestBlocklistedPeersErr(t *testing.T) {
 	overlay := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
 		DebugAPI: true,
-		P2P: mock.New(mock.WithBlocklistedPeersFunc(func() ([]p2p.Peer, error) {
-			return []p2p.Peer{{Address: overlay}}, errors.New("some error")
+		P2P: mock.New(mock.WithBlocklistedPeersFunc(func() ([]p2p.BlockListedPeer, error) {
+			return []p2p.BlockListedPeer{{Peer: p2p.Peer{Address: overlay}}}, errors.New("some error")
 		})),
 	})
 

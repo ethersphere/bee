@@ -33,12 +33,12 @@ func TestExist(t *testing.T) {
 	}
 
 	// add forever
-	if err := bl.Add(addr1, 0); err != nil {
+	if err := bl.Add(addr1, 0, ""); err != nil {
 		t.Fatal(err)
 	}
 
 	// add for 50 miliseconds
-	if err := bl.Add(addr2, time.Millisecond*50); err != nil {
+	if err := bl.Add(addr2, time.Millisecond*50, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -72,12 +72,12 @@ func TestPeers(t *testing.T) {
 	bl := blocklist.NewBlocklistWithCurrentTimeFn(mock.NewStateStore(), ctMock.Time)
 
 	// add forever
-	if err := bl.Add(addr1, 0); err != nil {
+	if err := bl.Add(addr1, 0, ""); err != nil {
 		t.Fatal(err)
 	}
 
 	// add for 50 miliseconds
-	if err := bl.Add(addr2, time.Millisecond*50); err != nil {
+	if err := bl.Add(addr2, time.Millisecond*50, ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -109,7 +109,7 @@ func TestPeers(t *testing.T) {
 	}
 }
 
-func isIn(p swarm.Address, peers []p2p.Peer) bool {
+func isIn(p swarm.Address, peers []p2p.BlockListedPeer) bool {
 	for _, v := range peers {
 		if v.Address.Equal(p) {
 			return true
