@@ -312,7 +312,7 @@ func defaultOptions() *Options {
 		CacheCapacity:             defaultCacheCapacity,
 		Logger:                    log.Noop,
 		ReserveCapacity:           2 ^ 22,
-		ReserveWakeUpDuration:     time.Minute * 5,
+		ReserveWakeUpDuration:     time.Minute * 15,
 	}
 }
 
