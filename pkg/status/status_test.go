@@ -180,9 +180,8 @@ func (m *topologyPeersIterNoopMock) IsReachable() bool {
 }
 
 // statusSnapshotMock satisfies the following interfaces:
-//   - Storage
+//   - Reserve
 //   - SyncReporter
-//   - postage.RadiusReporter
 type statusSnapshotMock struct {
 	*pb.Snapshot
 }
