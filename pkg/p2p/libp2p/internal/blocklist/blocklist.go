@@ -98,13 +98,12 @@ func (b *Blocklist) Peers() ([]p2p.BlockListedPeer, error) {
 			return false, nil
 		}
 
-		timeLeft := d - b.currentTimeFn().Sub(t)
 		p := p2p.BlockListedPeer{
 			Peer: p2p.Peer{
 				Address:  addr,
 				FullNode: true,
 			},
-			Duration: timeLeft,
+			Duration: d,
 			Reason:   reason,
 		}
 		peers = append(peers, p)
