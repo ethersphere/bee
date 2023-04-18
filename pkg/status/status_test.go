@@ -41,12 +41,11 @@ func TestStatus(t *testing.T) {
 		want.BeeMode,
 		sssMock,
 		sssMock,
-		sssMock,
 	)
 
 	recorder := streamtest.New(streamtest.WithProtocols(peer1.Protocol()))
 
-	peer2 := status.NewService(log.Noop, recorder, peersIterMock, "", nil, nil, nil)
+	peer2 := status.NewService(log.Noop, recorder, peersIterMock, "", nil, nil)
 
 	address := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
 
@@ -99,13 +98,12 @@ func (m *topologyPeersIterNoopMock) EachConnectedPeerRev(_ topology.EachPeerFunc
 }
 
 // statusSnapshotMock satisfies the following interfaces:
-//   - depthmonitor.ReserveReporter
-//   - depthmonitor.SyncReporter
-//   - postage.RadiusReporter
+//   - Reserve
+//   - SyncReporter
 type statusSnapshotMock struct {
 	*pb.Snapshot
 }
 
 func (m *statusSnapshotMock) SyncRate() float64    { return m.Snapshot.PullsyncRate }
-func (m *statusSnapshotMock) ReserveSize() uint64  { return m.Snapshot.ReserveSize }
+func (m *statusSnapshotMock) ReserveSize() int     { return int(m.Snapshot.ReserveSize) }
 func (m *statusSnapshotMock) StorageRadius() uint8 { return uint8(m.Snapshot.StorageRadius) }

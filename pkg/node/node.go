@@ -112,6 +112,7 @@ type Bee struct {
 	hiveCloser               io.Closer
 	chainSyncerCloser        io.Closer
 	storageIncetivesCloser   io.Closer
+	retrievalCloser          io.Closer
 	shutdownInProgress       bool
 	shutdownMutex            sync.Mutex
 	syncingStopped           *util.Signaler
@@ -932,7 +933,14 @@ func NewBee(
 	// set the pushSyncer in the PSS
 	pssService.SetPushSyncer(pushSyncProtocol)
 
-	pusherService := pusher.New(networkID, localStore, kad, pushSyncProtocol, validStamp, logger, tracer, warmupTime, pusher.DefaultRetryCount)
+	var radiusFunc func() uint8
+	if o.FullNodeMode {
+		radiusFunc = func() uint8 { return localStore.StorageRadius() }
+	} else {
+		radiusFunc = func() uint8 { return kad.NeighborhoodDepth() }
+	}
+
+	pusherService := pusher.New(networkID, localStore, radiusFunc, pushSyncProtocol, validStamp, logger, tracer, warmupTime, pusher.DefaultRetryCount)
 	b.pusherCloser = pusherService
 
 	pusherService.AddFeed(localStore.PusherFeed())
@@ -983,7 +991,8 @@ func NewBee(
 	)
 
 	if o.FullNodeMode && !o.BootnodeMode {
-		pullerService = puller.New(stateStore, kad, localStore, pullSyncProtocol, p2ps, logger, swarm.MaxBins, puller.DefaultSyncErrorSleepDur, warmupTime)
+		pullerOpts := puller.Options{SyncSleepDur: puller.DefaultSyncErrorSleepDur, ShallowBinsWarmupDur: puller.DefaultShallowBinsWarmupDur}
+		pullerService = puller.New(stateStore, kad, localStore, pullSyncProtocol, p2ps, logger, pullerOpts, warmupTime)
 		b.pullerCloser = pullerService
 
 		localStore.StartReserveWorker(pullerService)
@@ -1003,7 +1012,7 @@ func NewBee(
 			}
 
 			isFullySynced := func() bool {
-				return localStore.ReserveSize() >= reserveTreshold && pullerService.Rate() == 0
+				return localStore.ReserveSize() >= reserveTreshold && pullerService.SyncRate() == 0
 			}
 
 			redistributionContract := redistribution.New(swarmAddress, logger, transactionService, redistributionContractAddress, redistributionContractABI)

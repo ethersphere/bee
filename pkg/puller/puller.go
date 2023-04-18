@@ -126,6 +126,10 @@ func (p *Puller) ActiveHistoricalSyncing() uint64 {
 	return p.histSync.Load()
 }
 
+func (p *Puller) SyncRate() float64 {
+	return p.rate.Rate()
+}
+
 func (p *Puller) manage(ctx context.Context, warmupDur time.Duration) {
 	defer p.wg.Done()
 

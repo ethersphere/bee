@@ -33,7 +33,7 @@ var errMaxRadius = errors.New("max radius reached")
 
 type SyncReporter interface {
 	// Number of active historical syncing jobs.
-	Rate() float64
+	SyncRate() float64
 }
 
 func threshold(capacity int) int { return capacity * 4 / 10 }
@@ -65,7 +65,7 @@ func (db *DB) reserveWorker(capacity int, warmupDur, wakeUpDur time.Duration) {
 			}
 		case <-time.After(wakeUpDur):
 			radius := db.reserve.Radius()
-			if db.reserve.Size() < threshold(capacity) && db.syncer.Rate() == 0 && radius > 0 {
+			if db.reserve.Size() < threshold(capacity) && db.syncer.SyncRate() == 0 && radius > 0 {
 				radius--
 				err := db.reserve.SetRadius(db.repo.IndexStore(), radius)
 				if err != nil {

@@ -90,7 +90,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	p := requestPipelineFn(putter, headers.Encrypt)
-	address, err := p(ctx, r.Body)
+	address, err := p(r.Context(), r.Body)
 	if err != nil {
 		logger.Debug("split write all failed", "error", err)
 		logger.Error(nil, "split write all failed")

@@ -13,11 +13,9 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
-	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/status/internal/pb"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
-	"github.com/ethersphere/bee/pkg/topology/depthmonitor"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -32,6 +30,17 @@ const (
 // Snapshot is the current snapshot of the system.
 type Snapshot pb.Snapshot
 
+// SyncReporter defines the interface to report syncing rate.
+type SyncReporter interface {
+	SyncRate() float64
+}
+
+// Reserve defines the reserve storage related information required.
+type Reserve interface {
+	ReserveSize() int
+	StorageRadius() uint8
+}
+
 // Service is the status service.
 type Service struct {
 	logger       log.Logger
@@ -39,15 +48,14 @@ type Service struct {
 	topologyIter topology.PeerIterator
 
 	beeMode string
-	reserve depthmonitor.ReserveReporter
-	sync    depthmonitor.SyncReporter
-	radius  postage.RadiusReporter
+	reserve Reserve
+	sync    SyncReporter
 }
 
 // LocalSnapshot returns the current status snapshot of this node.
 func (s *Service) LocalSnapshot() (*Snapshot, error) {
 	var (
-		storageRadius    = s.radius.StorageRadius()
+		storageRadius    = s.reserve.StorageRadius()
 		connectedPeers   uint64
 		neighborhoodSize uint64
 	)
@@ -67,7 +75,7 @@ func (s *Service) LocalSnapshot() (*Snapshot, error) {
 
 	return &Snapshot{
 		BeeMode:          s.beeMode,
-		ReserveSize:      s.reserve.ReserveSize(),
+		ReserveSize:      uint64(s.reserve.ReserveSize()),
 		PullsyncRate:     s.sync.SyncRate(),
 		StorageRadius:    uint32(storageRadius),
 		ConnectedPeers:   connectedPeers,
@@ -131,7 +139,7 @@ func (s *Service) handler(ctx context.Context, _ p2p.Peer, stream p2p.Stream) er
 	}
 
 	var (
-		storageRadius    = s.radius.StorageRadius()
+		storageRadius    = s.reserve.StorageRadius()
 		connectedPeers   uint64
 		neighborhoodSize uint64
 	)
@@ -152,7 +160,7 @@ func (s *Service) handler(ctx context.Context, _ p2p.Peer, stream p2p.Stream) er
 
 	if err := w.WriteMsgWithContext(ctx, &pb.Snapshot{
 		BeeMode:          s.beeMode,
-		ReserveSize:      s.reserve.ReserveSize(),
+		ReserveSize:      uint64(s.reserve.ReserveSize()),
 		PullsyncRate:     s.sync.SyncRate(),
 		StorageRadius:    uint32(storageRadius),
 		ConnectedPeers:   connectedPeers,
@@ -171,9 +179,8 @@ func NewService(
 	streamer p2p.Streamer,
 	topologyIter topology.PeerIterator,
 	beeMode string,
-	reserve depthmonitor.ReserveReporter,
-	sync depthmonitor.SyncReporter,
-	radius postage.RadiusReporter,
+	reserve Reserve,
+	sync SyncReporter,
 ) *Service {
 	return &Service{
 		logger:       logger.WithName(loggerName).Register(),
@@ -182,6 +189,5 @@ func NewService(
 		beeMode:      beeMode,
 		reserve:      reserve,
 		sync:         sync,
-		radius:       radius,
 	}
 }
