@@ -39,7 +39,7 @@ func TestGetStatus(t *testing.T) {
 
 		ssMock := &statusSnapshotMock{
 			syncRate:      ssr.PullsyncRate,
-			reserveSize:   ssr.ReserveSize,
+			reserveSize:   int(ssr.ReserveSize),
 			storageRadius: ssr.StorageRadius,
 			chainstate:    &postage.ChainState{TotalAmount: big.NewInt(1)},
 		}
@@ -102,17 +102,16 @@ func (m *topologyPeersIterNoopMock) EachConnectedPeerRev(_ topology.EachPeerFunc
 }
 
 // statusSnapshotMock satisfies the following interfaces:
-//   - depthmonitor.ReserveReporter
-//   - depthmonitor.SyncReporter
-//   - postage.RadiusReporter
+//   - status.Reserve
+//   - status.SyncReporter
 type statusSnapshotMock struct {
 	syncRate      float64
-	reserveSize   uint64
+	reserveSize   int
 	storageRadius uint8
 	chainstate    *postage.ChainState
 }
 
 func (m *statusSnapshotMock) SyncRate() float64                  { return m.syncRate }
-func (m *statusSnapshotMock) ReserveSize() int                   { return int(m.reserveSize) }
+func (m *statusSnapshotMock) ReserveSize() int                   { return m.reserveSize }
 func (m *statusSnapshotMock) StorageRadius() uint8               { return m.storageRadius }
 func (m *statusSnapshotMock) GetChainState() *postage.ChainState { return m.chainstate }
