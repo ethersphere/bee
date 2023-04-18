@@ -228,16 +228,16 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		delete(wantChunks, addr.ByteString())
 		s.metrics.Delivered.Inc()
 
-		chunk := swarm.NewChunk(addr, delivery.Data)
+		newChunk := swarm.NewChunk(addr, delivery.Data)
 		stamp := new(postage.Stamp)
 		if err = stamp.UnmarshalBinary(delivery.Stamp); err != nil {
 			chunkErr = errors.Join(chunkErr, err)
 			continue
 		}
-		chunk.WithStamp(stamp)
 
-		if chunk, err = s.validStamp(chunk); err != nil {
-			s.logger.Debug("unverified stamp", "error", err, "peer_address", peer, "chunk_address", chunk)
+		chunk, err := s.validStamp(newChunk.WithStamp(stamp))
+		if err != nil {
+			s.logger.Debug("unverified stamp", "error", err, "peer_address", peer, "chunk_address", newChunk)
 			chunkErr = errors.Join(chunkErr, err)
 			continue
 		}
@@ -259,7 +259,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 
 		for _, c := range chunksToPut {
 			if err := s.store.ReservePut(ctx, c); err != nil {
-				if errors.Is(err, storage.ErrOverwriteNewerChunk) {
+				if errors.Is(err, storage.ErrOverwriteNewerChunk) || errors.Is(err, storage.ErrOverwriteOfImmutableBatch) {
 					s.logger.Debug("overwrite newer chunk", "error", err, "peer_address", peer, "chunk", c)
 					continue
 				}

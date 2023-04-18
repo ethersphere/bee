@@ -205,11 +205,12 @@ func (p *Puller) disconnectPeer(addr swarm.Address) {
 // recalcPeers starts or stops syncing process for peers per bin depending on the current sync radius.
 // Must be called under lock.
 func (p *Puller) recalcPeers(ctx context.Context, storageRadius uint8) {
+	loggerV2 := p.logger.V(2).Register()
 	for _, peer := range p.syncPeers {
 		peer.Lock()
 		err := p.syncPeer(ctx, peer, storageRadius)
 		if err != nil {
-			p.logger.Debug("recalc peers sync failed", "bin", storageRadius, "peer", peer.address, "error", err)
+			loggerV2.Debug("recalc peers sync failed", "bin", storageRadius, "peer", peer.address, "error", err)
 		}
 		peer.Unlock()
 	}
@@ -375,16 +376,6 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 
 		top, _, err := p.syncer.Sync(ctx, peer, bin, from)
 
-		if top >= from {
-			if err := p.addPeerInterval(peer, bin, from, top); err != nil {
-				p.metrics.LiveWorkerErrCounter.Inc()
-				p.logger.Error(err, "liveSyncWorker exit on add peer interval", "peer_address", peer, "bin", bin, "from", from, "error", err)
-				continue
-			}
-			loggerV2.Debug("liveSyncWorker pulled bin", "bin", bin, "from", from, "topmost", top, "peer_address", peer)
-			from = top + 1
-		}
-
 		if top == math.MaxUint64 {
 			p.metrics.MaxUintErrCounter.Inc()
 			p.logger.Error(nil, "liveSyncWorker max uint64 encountered, quitting", "peer_address", peer, "bin", bin, "from", from, "topmost", top)
@@ -394,9 +385,10 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 		if top >= from {
 			if err := p.addPeerInterval(peer, bin, from, top); err != nil {
 				p.metrics.LiveWorkerErrCounter.Inc()
-				p.logger.Error(err, "liveSyncWorker exit on add peer interval, quitting", "peer_address", peer, "bin", bin, "from", from, "error", err)
-				return
+				p.logger.Error(err, "liveSyncWorker exit on add peer interval", "peer_address", peer, "bin", bin, "from", from, "error", err)
+				continue
 			}
+			loggerV2.Debug("liveSyncWorker pulled bin", "bin", bin, "from", from, "topmost", top, "peer_address", peer)
 			from = top + 1
 		}
 
