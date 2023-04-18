@@ -259,7 +259,7 @@ func (s *Store) Put(item storage.Item) error {
 		return fmt.Errorf("failed serializing: %w", err)
 	}
 
-	return s.db.Put(key(item), value, &opt.WriteOptions{Sync: true})
+	return s.db.Put(key(item), value, nil)
 }
 
 // Delete implements the storage.Store interface.
@@ -267,5 +267,5 @@ func (s *Store) Delete(item storage.Item) error {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
-	return s.db.Delete(key(item), &opt.WriteOptions{Sync: true})
+	return s.db.Delete(key(item), nil)
 }
