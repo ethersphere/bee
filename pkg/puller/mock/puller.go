@@ -4,11 +4,7 @@
 
 package mock
 
-import (
-	"github.com/ethersphere/bee/pkg/puller"
-)
-
 type mockRateReporter struct{ rate float64 }
 
-func NewMockRateReporter(r float64) puller.SyncRate { return &mockRateReporter{r} }
-func (m *mockRateReporter) SyncRate() float64       { return m.rate }
+func NewMockRateReporter(r float64) *mockRateReporter { return &mockRateReporter{r} }
+func (m *mockRateReporter) SyncRate() float64         { return m.rate }
