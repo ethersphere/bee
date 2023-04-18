@@ -26,17 +26,19 @@ const (
 	streamName      = "status"
 )
 
-type Storage interface {
-	ReserveSize() int
-	StorageRadius() uint8
-}
+// Snapshot is the current snapshot of the system.
+type Snapshot pb.Snapshot
 
+// SyncReporter defines the interface to report syncing rate.
 type SyncReporter interface {
 	SyncRate() float64
 }
 
-// Snapshot is the current snapshot of the system.
-type Snapshot pb.Snapshot
+// Reserve defines the reserve storage related information required.
+type Reserve interface {
+	ReserveSize() int
+	StorageRadius() uint8
+}
 
 type topologyDriver interface {
 	topology.PeerIterator
@@ -50,7 +52,7 @@ type Service struct {
 	topologyDriver topologyDriver
 
 	beeMode    string
-	reserve    Storage
+	reserve    Reserve
 	sync       SyncReporter
 	commitment postage.CommitmentGetter
 }
@@ -188,7 +190,7 @@ func NewService(
 	}
 }
 
-func (s *Service) SetStorage(storage Storage) {
+func (s *Service) SetStorage(storage Reserve) {
 	s.reserve = storage
 }
 

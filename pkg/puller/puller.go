@@ -46,11 +46,6 @@ const (
 	maxHistSyncs = swarm.MaxBins * 3
 )
 
-type SyncRate interface {
-	// Rate returns the current rate of historical syncing.
-	SyncRate() float64
-}
-
 type Options struct {
 	Bins                 uint8
 	SyncSleepDur         time.Duration
