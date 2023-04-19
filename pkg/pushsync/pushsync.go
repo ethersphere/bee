@@ -185,10 +185,6 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	store := func(ctx context.Context) error {
 
-		if !ps.radiusChecker.IsWithinStorageRadius(chunk.Address()) {
-			return ErrOutOfDepthStoring
-		}
-
 		chunk, err := ps.validStamp(chunk, ch.Stamp)
 		if err != nil {
 			return fmt.Errorf("invalid stamp: %w", err)
