@@ -132,7 +132,7 @@ func TestReplicateBeforeReceipt(t *testing.T) {
 
 	// node that is connected to closestPeer
 	// will receieve chunk from closestPeer
-	psSecond, _, _, secondAccounting := createPushSyncNode(t, secondPeer, defaultPrices, emptyRecorder, nil, defaultSigner, nil, mock.WithPeers(emptyPeer))
+	psSecond, _, _, secondAccounting := createPushSyncNode(t, secondPeer, defaultPrices, emptyRecorder, nil, defaultSigner, withinRadius, mock.WithPeers(emptyPeer))
 
 	secondRecorder := streamtest.New(streamtest.WithProtocols(psSecond.Protocol()), streamtest.WithBaseAddr(closestPeer))
 
