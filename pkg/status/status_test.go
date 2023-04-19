@@ -7,12 +7,14 @@ package status_test
 import (
 	"bytes"
 	"context"
+	"math/big"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/status"
 	"github.com/ethersphere/bee/pkg/status/internal/pb"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -24,10 +26,11 @@ func TestStatus(t *testing.T) {
 	t.Parallel()
 
 	want := &pb.Snapshot{
-		BeeMode:       api.FullMode.String(),
-		ReserveSize:   128,
-		PullsyncRate:  64,
-		StorageRadius: 8,
+		BeeMode:          api.FullMode.String(),
+		ReserveSize:      128,
+		PullsyncRate:     64,
+		StorageRadius:    8,
+		BatchTotalAmount: "1024",
 	}
 
 	sssMock := &statusSnapshotMock{want}
@@ -42,11 +45,12 @@ func TestStatus(t *testing.T) {
 		sssMock,
 		sssMock,
 		sssMock,
+		sssMock,
 	)
 
 	recorder := streamtest.New(streamtest.WithProtocols(peer1.Protocol()))
 
-	peer2 := status.NewService(log.Noop, recorder, peersIterMock, "", nil, nil, nil)
+	peer2 := status.NewService(log.Noop, recorder, peersIterMock, "", nil, nil, nil, nil)
 
 	address := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
 
@@ -109,3 +113,7 @@ type statusSnapshotMock struct {
 func (m *statusSnapshotMock) SyncRate() float64    { return m.Snapshot.PullsyncRate }
 func (m *statusSnapshotMock) ReserveSize() uint64  { return m.Snapshot.ReserveSize }
 func (m *statusSnapshotMock) StorageRadius() uint8 { return uint8(m.Snapshot.StorageRadius) }
+func (m *statusSnapshotMock) GetChainState() *postage.ChainState {
+	i, _ := big.NewInt(0).SetString(m.Snapshot.BatchTotalAmount, 10)
+	return &postage.ChainState{TotalAmount: i}
+}

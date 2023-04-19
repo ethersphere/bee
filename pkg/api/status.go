@@ -26,6 +26,7 @@ type statusSnapshotResponse struct {
 	ConnectedPeers   uint64  `json:"connectedPeers"`
 	NeighborhoodSize uint64  `json:"neighborhoodSize"`
 	RequestFailed    bool    `json:"requestFailed,omitempty"`
+	BatchTotalAmount string  `json:"batchTotalAmount"`
 }
 
 type statusResponse struct {
@@ -75,6 +76,7 @@ func (s *Service) statusGetHandler(w http.ResponseWriter, _ *http.Request) {
 		StorageRadius:    uint8(ss.StorageRadius),
 		ConnectedPeers:   ss.ConnectedPeers,
 		NeighborhoodSize: ss.NeighborhoodSize,
+		BatchTotalAmount: ss.BatchTotalAmount,
 	})
 }
 
