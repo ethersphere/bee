@@ -439,13 +439,11 @@ func (ps *PushSync) measurePushPeer(t time.Time, err error, origin bool) {
 
 func (ps *PushSync) prepareCredit(ctx context.Context, peer swarm.Address, ch swarm.Chunk, origin bool) (accounting.Action, error) {
 
-	// compute the price we pay for this receipt and reserve it for the rest of this function
 	receiptPrice := ps.pricer.PeerPrice(peer, ch.Address())
 
-	creditCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	creditCtx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 
-	// Reserve to see whether we can make the request
 	creditAction, err := ps.accounting.PrepareCredit(creditCtx, peer, receiptPrice, origin)
 	if err != nil {
 		ps.skipList.Add(ch.Address(), peer, overDraftRefresh)
@@ -534,7 +532,7 @@ func (ps *PushSync) replicateWithPeer(ctx context.Context, peer swarm.Address, c
 		}
 	}()
 
-	creditCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	creditCtx, cancel := context.WithTimeout(ctx, time.Second)
 	defer cancel()
 
 	creditAction, err := ps.accounting.PrepareCredit(creditCtx, peer, receiptPrice, origin)
@@ -598,8 +596,7 @@ func (ps *PushSync) pushChunkToPeer(ctx context.Context, peer swarm.Address, ch 
 	}
 
 	if !ch.Address().Equal(swarm.NewAddress(receipt.Address)) {
-		err = fmt.Errorf("invalid receipt. chunk %s, peer %s", ch.Address(), peer)
-		return nil, err
+		return nil, fmt.Errorf("invalid receipt. chunk %s, peer %s", ch.Address(), peer)
 	}
 
 	return &receipt, nil
