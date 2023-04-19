@@ -12,7 +12,6 @@ import (
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/syndtr/goleveldb/leveldb"
 )
 
 var _ storage.StateStorer = (*store)(nil)
@@ -101,7 +100,7 @@ func (s *store) Iterate(prefix string, iterFunc storage.StateIterFunc) (err erro
 }
 
 // DB implements StateStorer.DB method.
-func (s *store) DB() *leveldb.DB {
+func (s *store) DB() interface{} {
 	return nil
 }
 

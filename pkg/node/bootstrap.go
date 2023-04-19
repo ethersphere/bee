@@ -34,7 +34,6 @@ import (
 	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
-	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/spinlock"
 	"github.com/ethersphere/bee/pkg/storage"
 	storer "github.com/ethersphere/bee/pkg/storer"
@@ -127,12 +126,7 @@ func bootstrapNode(
 	}
 	b.hiveCloser = hive
 
-	metricsDB, err := shed.NewDBWrap(stateStore.DB())
-	if err != nil {
-		return nil, fmt.Errorf("unable to create metrics storage for kademlia: %w", err)
-	}
-
-	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, &noopPinger{}, metricsDB, logger,
+	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, &noopPinger{}, stateStore, logger,
 		kademlia.Options{Bootnodes: bootnodes, BootnodeMode: o.BootnodeMode, StaticNodes: o.StaticNodes})
 	if err != nil {
 		return nil, fmt.Errorf("unable to create kademlia: %w", err)

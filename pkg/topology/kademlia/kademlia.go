@@ -22,13 +22,15 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
-	"github.com/ethersphere/bee/pkg/shed"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	im "github.com/ethersphere/bee/pkg/topology/kademlia/internal/metrics"
+	"github.com/ethersphere/bee/pkg/topology/kademlia/internal/shed"
 	"github.com/ethersphere/bee/pkg/topology/kademlia/internal/waitnext"
 	"github.com/ethersphere/bee/pkg/topology/pslice"
 	ma "github.com/multiformats/go-multiaddr"
+	"github.com/syndtr/goleveldb/leveldb"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -218,15 +220,29 @@ func New(
 	discovery discovery.Driver,
 	p2pSvc p2p.Service,
 	pinger pingpong.Interface,
-	metricsDB *shed.DB,
+	stateStore storage.StateStorer,
 	logger log.Logger,
 	o Options,
 ) (*Kad, error) {
 	var k *Kad
 
+	var metricsDB *shed.DB
+	if db := stateStore.DB(); db == nil { // In-memory state store just for testing.
+		sdb, err := shed.NewDB("", nil)
+		if err != nil {
+			return nil, fmt.Errorf("unable to create metrics storage: %w", err)
+		}
+		metricsDB = sdb
+	} else {
+		sdb, err := shed.NewDBWrap(db.(*leveldb.DB))
+		if err != nil {
+			return nil, fmt.Errorf("unable to wrap metrics storage: %w", err)
+		}
+		metricsDB = sdb
+	}
 	imc, err := im.NewCollector(metricsDB)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unable to create metrics collector: %w", err)
 	}
 
 	opt := newKadOptions(o)

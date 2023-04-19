@@ -6,8 +6,6 @@ package storage
 
 import (
 	"io"
-
-	"github.com/syndtr/goleveldb/leveldb"
 )
 
 // StateStorer defines methods required to get, set, delete values for different keys
@@ -18,7 +16,9 @@ type StateStorer interface {
 	Delete(key string) (err error)
 	Iterate(prefix string, iterFunc StateIterFunc) (err error)
 	// DB returns the underlying DB storage.
-	DB() *leveldb.DB
+	// The returned interface is a gross hack until
+	// we can refactor the kademlia to not use the shed.
+	DB() interface{}
 	io.Closer
 }
 

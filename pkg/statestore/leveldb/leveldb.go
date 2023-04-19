@@ -174,7 +174,7 @@ func (s *Store) putSchemaName(val string) error {
 }
 
 // DB implements StateStorer.DB method.
-func (s *Store) DB() *leveldb.DB {
+func (s *Store) DB() interface{} {
 	return s.db
 }
 
