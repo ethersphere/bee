@@ -369,7 +369,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			// we store the chunk
 			if errors.Is(err, topology.ErrWantSelf) {
 				ps.replicateInNeighborhood(ctx, ps.skipList.ChunkPeers(ch.Address()), ch, origin)
-				if origin {
+				if origin && cac.Valid(ch) {
 					go ps.unwrap(ch)
 				}
 				return nil, err
