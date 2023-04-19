@@ -1136,7 +1136,7 @@ func (k *Kad) AddPeers(addrs ...swarm.Address) {
 
 func (k *Kad) Pick(peer p2p.Peer) bool {
 	k.metrics.PickCalls.Inc()
-	if k.bootnode {
+	if k.bootnode || !peer.FullNode {
 		// shortcircuit for bootnode mode - always accept connections,
 		// at least until we find a better solution.
 		return true
