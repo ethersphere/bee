@@ -38,10 +38,11 @@ type Service struct {
 	streamer     p2p.Streamer
 	topologyIter topology.PeerIterator
 
-	beeMode string
-	reserve depthmonitor.ReserveReporter
-	sync    depthmonitor.SyncReporter
-	radius  postage.RadiusReporter
+	beeMode    string
+	reserve    depthmonitor.ReserveReporter
+	sync       depthmonitor.SyncReporter
+	radius     postage.RadiusReporter
+	chainstate postage.ChainStateGetter
 }
 
 // LocalSnapshot returns the current status snapshot of this node.
@@ -72,6 +73,7 @@ func (s *Service) LocalSnapshot() (*Snapshot, error) {
 		StorageRadius:    uint32(storageRadius),
 		ConnectedPeers:   connectedPeers,
 		NeighborhoodSize: neighborhoodSize,
+		BatchTotalAmount: s.chainstate.GetChainState().TotalAmount.String(),
 	}, nil
 }
 
@@ -157,6 +159,7 @@ func (s *Service) handler(ctx context.Context, _ p2p.Peer, stream p2p.Stream) er
 		StorageRadius:    uint32(storageRadius),
 		ConnectedPeers:   connectedPeers,
 		NeighborhoodSize: neighborhoodSize,
+		BatchTotalAmount: s.chainstate.GetChainState().TotalAmount.String(),
 	}); err != nil {
 		loggerV2.Debug("write message failed", "error", err)
 		return fmt.Errorf("write message: %w", err)
@@ -174,6 +177,7 @@ func NewService(
 	reserve depthmonitor.ReserveReporter,
 	sync depthmonitor.SyncReporter,
 	radius postage.RadiusReporter,
+	chainstate postage.ChainStateGetter,
 ) *Service {
 	return &Service{
 		logger:       logger.WithName(loggerName).Register(),
@@ -183,5 +187,6 @@ func NewService(
 		reserve:      reserve,
 		sync:         sync,
 		radius:       radius,
+		chainstate:   chainstate,
 	}
 }
