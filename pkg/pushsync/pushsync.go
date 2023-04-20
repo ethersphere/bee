@@ -384,7 +384,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			// since we can reach into the neighborhood of the chunk
 			// act as the multiplexer and push the chunk in parallel to multiple peers
-			if ps.fullNode && swarm.Proximity(peer.Bytes(), ch.Address().Bytes()) >= ps.radiusChecker.StorageRadius() {
+			if swarm.Proximity(peer.Bytes(), ch.Address().Bytes()) >= ps.radiusChecker.StorageRadius() {
 				for ; parallelForwards > 0; parallelForwards-- {
 					retry()
 					sentErrorsLeft++
