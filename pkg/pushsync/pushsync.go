@@ -284,8 +284,6 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 }
 
 func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bool) (*pb.Receipt, error) {
-	span, logger, ctx := ps.tracer.StartSpanFromContext(ctx, "push-closest", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
-	defer span.Finish()
 
 	var (
 		sentErrorsLeft   = 1
@@ -416,7 +414,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			}
 
 			ps.metrics.TotalFailedSendAttempts.Inc()
-			logger.Debug("could not push to peer", "peer_address", result.peer, "error", result.err)
+			ps.logger.Debug("could not push to peer", "peer_address", result.peer, "error", result.err)
 
 			sentErrorsLeft--
 
@@ -429,8 +427,13 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 func (ps *PushSync) push(ctx context.Context, resultChan chan<- receiptResult, doneChan <-chan struct{}, peer swarm.Address, ch swarm.Chunk, action accounting.Action) {
 
-	ctx, cancel := context.WithTimeout(ctx, defaultTTL)
+	span := tracing.FromContext(ctx)
+
+	ctx, cancel := context.WithTimeout(context.Background(), defaultTTL)
 	defer cancel()
+
+	spanInner, _, ctx := ps.tracer.StartSpanFromContext(tracing.WithContext(ctx, span), "push-closest", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
+	defer spanInner.Finish()
 
 	var (
 		err     error
@@ -492,8 +495,7 @@ func (ps *PushSync) replicateWithPeer(ctx context.Context, peer swarm.Address, c
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTTL)
 	defer cancel()
 
-	ctx = tracing.WithContext(ctx, span)
-	spanInner, logger, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-replication", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
+	spanInner, logger, ctx := ps.tracer.StartSpanFromContext(tracing.WithContext(ctx, span), "pushsync-replication", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
 	loggerV1 := logger.V(1).Build()
 	defer spanInner.Finish()
 	defer func() {
