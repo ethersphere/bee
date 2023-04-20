@@ -196,7 +196,7 @@ func TestBlocklistedPeers(t *testing.T) {
 
 	jsonhttptest.Request(t, testServer, http.MethodGet, "/blocklist", http.StatusOK,
 		jsonhttptest.WithExpectedJSONResponse(api.BlockedListedPeersResponse{
-			Peers: []api.BlockListedPeer{{Peer: api.Peer{Address: overlay}, Duration: "0s"}},
+			Peers: []api.BlockListedPeer{{Peer: api.Peer{Address: overlay}, Duration: 0}},
 		}),
 	)
 }

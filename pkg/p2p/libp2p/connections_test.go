@@ -622,8 +622,10 @@ func TestBlocklistedPeers(t *testing.T) {
 	want := []p2p.BlockListedPeer{
 		{
 			Peer: p2p.Peer{
-				Address:  overlay1,
-				FullNode: true,
+				Address: overlay1,
+				// we can't mock peerRegistry. So we can't know if the peer is a full node or not.
+				// TODO: consider injecting peerRegistry in libp2pService
+				FullNode: false,
 			},
 			Reason:   testBlocklistMsg,
 			Duration: 0,
