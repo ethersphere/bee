@@ -7,6 +7,7 @@ package storer
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storer/internal/upload"
@@ -16,6 +17,10 @@ import (
 // Report implements the storage.PushReporter by wrapping the internal reporter
 // with a transaction.
 func (db *DB) Report(ctx context.Context, chunk swarm.Chunk, state storage.ChunkState) error {
+	// only allow one report per tag
+	db.lock.Lock(fmt.Sprintf("%d", chunk.TagID()))
+	defer db.lock.Unlock(fmt.Sprintf("%d", chunk.TagID()))
+
 	txnRepo, commit, rollback := db.repo.NewTx(ctx)
 	reporter := upload.NewPushReporter(txnRepo)
 

@@ -56,6 +56,8 @@ func (db *DB) reserveWorker(capacity int, warmupDur, wakeUpDur time.Duration) {
 		cancel()
 	}()
 
+	wakeUpTimer := time.NewTicker(wakeUpDur)
+
 	for {
 		select {
 		case <-overCapTrigger:
@@ -63,7 +65,7 @@ func (db *DB) reserveWorker(capacity int, warmupDur, wakeUpDur time.Duration) {
 			if err != nil {
 				db.logger.Error(err, "reserve unreserve")
 			}
-		case <-time.After(wakeUpDur):
+		case <-wakeUpTimer.C:
 			radius := db.reserve.Radius()
 			if db.reserve.Size() < threshold(capacity) && db.syncer.SyncRate() == 0 && radius > 0 {
 				radius--
@@ -72,8 +74,8 @@ func (db *DB) reserveWorker(capacity int, warmupDur, wakeUpDur time.Duration) {
 					db.logger.Error(err, "reserve set radius")
 				}
 				db.logger.Info("reserve radius decrease", "radius", radius)
-
 			}
+			wakeUpTimer.Reset(wakeUpDur)
 		case <-db.quit:
 			return
 		}
