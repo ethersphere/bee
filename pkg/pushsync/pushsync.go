@@ -476,11 +476,11 @@ func (ps *PushSync) replicateInNeighborhood(ctx context.Context, ch swarm.Chunk,
 }
 
 // replicateWithPeer handles in-neighborhood replication for a single peer.
-func (ps *PushSync) replicateWithPeer(ctx context.Context, peer swarm.Address, ch swarm.Chunk, origin bool) {
+func (ps *PushSync) replicateWithPeer(parentCtx context.Context, peer swarm.Address, ch swarm.Chunk, origin bool) {
 	var err error
 	ps.metrics.TotalReplicatedAttempts.Inc()
 
-	span := tracing.FromContext(ctx)
+	span := tracing.FromContext(parentCtx)
 
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTTL)
 	defer cancel()
