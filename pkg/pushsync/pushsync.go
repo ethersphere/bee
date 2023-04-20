@@ -367,7 +367,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			// we store the chunk
 			if errors.Is(err, topology.ErrWantSelf) {
-				go ps.replicateInNeighborhood(ctx, ps.skipList.ChunkPeers(ch.Address()), ch, origin)
+				go ps.replicateInNeighborhood(ctx, ch, origin)
 				if origin && cac.Valid(ch) {
 					go ps.unwrap(ch)
 				}
@@ -462,24 +462,13 @@ func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptRes
 }
 
 // replicateInNeighborhood pushes the chunk to some peers in the neighborhood in parallel for replication.
-func (ps *PushSync) replicateInNeighborhood(ctx context.Context, skiplist []swarm.Address, ch swarm.Chunk, origin bool) {
+func (ps *PushSync) replicateInNeighborhood(ctx context.Context, ch swarm.Chunk, origin bool) {
 	count := 0
 	_ = ps.topologyDriver.EachConnectedPeer(func(peer swarm.Address, po uint8) (bool, bool, error) {
-
-		// skip skiplisted peers
-		if swarm.ContainsAddress(skiplist, peer) {
-			return false, false, nil
-		}
-
 		// stop here since the rest of the peers will also be further away
-		if po < ps.radiusChecker.StorageRadius() {
+		if po < ps.radiusChecker.StorageRadius() || count == nPeersToReplicate {
 			return true, false, nil
 		}
-
-		if count == nPeersToReplicate {
-			return true, false, nil
-		}
-
 		count++
 		go ps.replicateWithPeer(ctx, peer, ch, origin)
 		return false, false, nil
