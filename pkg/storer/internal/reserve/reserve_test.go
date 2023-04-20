@@ -92,17 +92,23 @@ func TestReserveChunkType(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	storedChunksCA := rand.Intn(10) + 10
-	storedChunksSO := rand.Intn(10) + 10
-
-	for i := 0; i < storedChunksCA; i++ {
-		r.Put(ctx, ts, chunk.GenerateTestRandomChunk())
+	storedChunksCA := 0
+	storedChunksSO := 0
+	for i := 0; i < 100; i++ {
+		var ch swarm.Chunk
+		if rand.Intn(2) == 0 {
+			ch = chunk.GenerateTestRandomChunk()
+			storedChunksCA++
+		} else {
+			ch = chunk.GenerateTestRandomSoChunk(t)
+			storedChunksSO++
+		}
+		if _, err := r.Put(ctx, ts, ch); err != nil {
+			t.Errorf("unexpected error: %v", err)
+		}
 	}
-	for i := 0; i < storedChunksSO; i++ {
-		r.Put(ctx, ts, chunk.GenerateTestRandomSoChunk(t))
-	}
 
-	ts.IndexStore().Iterate(storage.Query{
+	err = ts.IndexStore().Iterate(storage.Query{
 		Factory: func() storage.Item { return &reserve.ChunkBinItem{} },
 	}, func(res storage.Result) (bool, error) {
 		item := res.Entry.(*reserve.ChunkBinItem)
@@ -115,6 +121,9 @@ func TestReserveChunkType(t *testing.T) {
 		}
 		return false, nil
 	})
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
 
 	if storedChunksCA != 0 {
 		t.Fatal("unexpected number of content addressed chunks")
