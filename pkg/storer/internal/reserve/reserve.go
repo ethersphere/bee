@@ -161,10 +161,11 @@ func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.C
 	}
 
 	err = indexStore.Put(&chunkBinItem{
-		Bin:     po,
-		BinID:   binID,
-		Address: chunk.Address(),
-		BatchID: chunk.Stamp().BatchID(),
+		Bin:       po,
+		BinID:     binID,
+		Address:   chunk.Address(),
+		BatchID:   chunk.Stamp().BatchID(),
+		ChunkType: chunkType(chunk),
 	})
 	if err != nil {
 		return false, err

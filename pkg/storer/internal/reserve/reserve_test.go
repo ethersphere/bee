@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"math/rand"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/log"
@@ -70,6 +71,56 @@ func TestReserve(t *testing.T) {
 				t.Fatalf("expected addr %s, got %s", ch.Address(), chGet.Address())
 			}
 		}
+	}
+}
+
+func TestReserveChunkType(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	baseAddr := swarm.RandAddress(t)
+
+	ts, closer := internal.NewInmemStorage()
+	t.Cleanup(func() {
+		if err := closer(); err != nil {
+			t.Errorf("failed closing the storage: %v", err)
+		}
+	})
+
+	r, err := reserve.New(baseAddr, ts.IndexStore(), 0, 0, kademlia.NewTopologyDriver(), log.Noop)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	storedChunksCA := rand.Intn(10) + 10
+	storedChunksSO := rand.Intn(10) + 10
+
+	for i := 0; i < storedChunksCA; i++ {
+		r.Put(ctx, ts, chunk.GenerateTestRandomChunk())
+	}
+	for i := 0; i < storedChunksSO; i++ {
+		r.Put(ctx, ts, chunk.GenerateTestRandomSoChunk(t))
+	}
+
+	ts.IndexStore().Iterate(storage.Query{
+		Factory: func() storage.Item { return &reserve.ChunkBinItem{} },
+	}, func(res storage.Result) (bool, error) {
+		item := res.Entry.(*reserve.ChunkBinItem)
+		if item.ChunkType == swarm.ChunkTypeContentAddressed {
+			storedChunksCA--
+		} else if item.ChunkType == swarm.ChunkTypeSingleOwner {
+			storedChunksSO--
+		} else {
+			t.Fatalf("unexpected chunk type: %d", item.ChunkType)
+		}
+		return false, nil
+	})
+
+	if storedChunksCA != 0 {
+		t.Fatal("unexpected number of content addressed chunks")
+	}
+	if storedChunksSO != 0 {
+		t.Fatal("unexpected number of single owner chunks")
 	}
 }
 

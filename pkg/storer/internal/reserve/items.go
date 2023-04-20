@@ -9,6 +9,8 @@ import (
 	"errors"
 	"path"
 
+	"github.com/ethersphere/bee/pkg/cac"
+	"github.com/ethersphere/bee/pkg/soc"
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -106,10 +108,11 @@ func (b *batchRadiusItem) Unmarshal(buf []byte) error {
 // chunkBinItem allows for iterating on ranges of bin and binIDs for chunks.
 // BinIDs come in handy when syncing the reserve contents with other peers.
 type chunkBinItem struct {
-	Bin     uint8
-	BinID   uint64
-	Address swarm.Address
-	BatchID []byte
+	Bin       uint8
+	BinID     uint64
+	Address   swarm.Address
+	BatchID   []byte
+	ChunkType swarm.ChunkType
 }
 
 func (c *chunkBinItem) Namespace() string {
@@ -136,14 +139,15 @@ func (c *chunkBinItem) Clone() storage.Item {
 		return nil
 	}
 	return &chunkBinItem{
-		Bin:     c.Bin,
-		BinID:   c.BinID,
-		Address: c.Address.Clone(),
-		BatchID: copyBytes(c.BatchID),
+		Bin:       c.Bin,
+		BinID:     c.BinID,
+		Address:   c.Address.Clone(),
+		BatchID:   copyBytes(c.BatchID),
+		ChunkType: c.ChunkType,
 	}
 }
 
-const chunkBinItemSize = 1 + 8 + swarm.HashSize + swarm.HashSize
+const chunkBinItemSize = 1 + 8 + swarm.HashSize + swarm.HashSize + 1
 
 func (c *chunkBinItem) Marshal() ([]byte, error) {
 
@@ -164,6 +168,9 @@ func (c *chunkBinItem) Marshal() ([]byte, error) {
 	i += swarm.HashSize
 
 	copy(buf[i:i+swarm.HashSize], c.BatchID)
+	i += swarm.HashSize
+
+	buf[i] = uint8(c.ChunkType)
 
 	return buf, nil
 }
@@ -185,6 +192,9 @@ func (c *chunkBinItem) Unmarshal(buf []byte) error {
 	i += swarm.HashSize
 
 	c.BatchID = copyBytes(buf[i : i+swarm.HashSize])
+	i += swarm.HashSize
+
+	c.ChunkType = swarm.ChunkType(buf[i])
 
 	return nil
 }
@@ -277,4 +287,13 @@ func copyBytes(src []byte) []byte {
 	dst := make([]byte, len(src))
 	copy(dst, src)
 	return dst
+}
+
+func chunkType(ch swarm.Chunk) swarm.ChunkType {
+	if cac.Valid(ch) {
+		return swarm.ChunkTypeContentAddressed
+	} else if soc.Valid(ch) {
+		return swarm.ChunkTypeSingleOwner
+	}
+	return swarm.ChunkTypeUnspecified
 }
