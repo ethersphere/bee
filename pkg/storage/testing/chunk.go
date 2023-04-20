@@ -22,8 +22,11 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/cac"
+	"github.com/ethersphere/bee/pkg/crypto"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
+	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
 // GenerateTestRandomChunk generates a valid content addressed chunk.
@@ -33,6 +36,17 @@ func GenerateTestRandomChunk() swarm.Chunk {
 	ch, _ := cac.New(data)
 	stamp := postagetesting.MustNewStamp()
 	return ch.WithStamp(stamp)
+}
+
+// GenerateTestRandomSoChunk generates a valid single owner chunk.
+func GenerateTestRandomSoChunk(tb testing.TB) swarm.Chunk {
+	id := testutil.RandBytes(tb, swarm.HashSize)
+	dataRaw := testutil.RandBytes(tb, 20)
+	key, _ := crypto.GenerateSecp256k1Key()
+	signer := crypto.NewDefaultSigner(key)
+	ch, _ := cac.New(dataRaw)
+	ch, _ = soc.New(id, ch).Sign(signer)
+	return ch.WithStamp(postagetesting.MustNewStamp())
 }
 
 // GenerateTestRandomInvalidChunk generates a random, however invalid, content

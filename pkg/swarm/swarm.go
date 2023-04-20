@@ -174,6 +174,15 @@ type Chunk interface {
 	Equal(Chunk) bool
 }
 
+// ChunkType indicates different categories of chunks.
+type ChunkType uint8
+
+const (
+	ChunkTypeUnspecified = iota
+	ChunkTypeSingleOwner
+	ChunkTypeContentAddressed
+)
+
 // Stamp interface for postage.Stamp to avoid circular dependency
 type Stamp interface {
 	BatchID() []byte
