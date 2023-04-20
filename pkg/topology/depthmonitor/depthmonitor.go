@@ -124,7 +124,7 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration, freshNode boo
 
 	s.logger.Info("depthmonitor: warmup period complete, starting worker", "radius", s.bs.StorageRadius())
 
-	targetSize := s.reserve.ReserveCapacity() * 4 / 10 // 40% of the capacity
+	targetSize := s.reserve.ReserveCapacity() * 5 / 10 // 50% of the capacity
 
 	for {
 		select {
@@ -147,7 +147,7 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration, freshNode boo
 		rate := s.syncer.SyncRate()
 		s.logger.Info("depthmonitor: state", "size", currentSize, "radius", radius, "sync_rate", fmt.Sprintf("%.2f ch/s", rate))
 
-		if currentSize > targetSize {
+		if currentSize >= targetSize {
 			continue
 		}
 
