@@ -285,6 +285,9 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 
 func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bool) (*pb.Receipt, error) {
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
 	var (
 		sentErrorsLeft   = 1
 		preemptiveTicker <-chan time.Time
@@ -300,8 +303,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	}
 
 	resultChan := make(chan receiptResult)
-	done := make(chan struct{})
-	defer close(done)
 
 	retryC := make(chan struct{}, parallelForwards)
 
@@ -366,7 +367,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			// we store the chunk
 			if errors.Is(err, topology.ErrWantSelf) {
-				ps.replicateInNeighborhood(ctx, ps.skipList.ChunkPeers(ch.Address()), ch, origin)
+				go ps.replicateInNeighborhood(ctx, ps.skipList.ChunkPeers(ch.Address()), ch, origin)
 				if origin && cac.Valid(ch) {
 					go ps.unwrap(ch)
 				}
@@ -401,7 +402,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			ps.metrics.TotalSendAttempts.Inc()
 			inflight++
 
-			go ps.push(ctx, resultChan, done, peer, ch, action)
+			go ps.push(ctx, resultChan, peer, ch, action)
 
 		case result := <-resultChan:
 
@@ -425,9 +426,9 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	return nil, ErrNoPush
 }
 
-func (ps *PushSync) push(ctx context.Context, resultChan chan<- receiptResult, doneChan <-chan struct{}, peer swarm.Address, ch swarm.Chunk, action accounting.Action) {
+func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptResult, peer swarm.Address, ch swarm.Chunk, action accounting.Action) {
 
-	span := tracing.FromContext(ctx)
+	span := tracing.FromContext(parentCtx)
 
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTTL)
 	defer cancel()
@@ -444,7 +445,7 @@ func (ps *PushSync) push(ctx context.Context, resultChan chan<- receiptResult, d
 	defer func() {
 		select {
 		case resultChan <- receiptResult{pushTime: now, peer: peer, err: err, receipt: receipt}:
-		case <-doneChan:
+		case <-parentCtx.Done():
 		}
 	}()
 
