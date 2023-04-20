@@ -7,6 +7,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -85,8 +86,8 @@ type Peer struct {
 
 type BlockListedPeer struct {
 	Peer
-	Reason   string `json:"reason"`
-	Duration string `json:"duration"`
+	Reason   string        `json:"reason"`
+	Duration time.Duration `json:"duration"`
 }
 
 type peersResponse struct {
@@ -138,7 +139,7 @@ func mapBlockListedPeers(peers []p2p.BlockListedPeer) []BlockListedPeer {
 				FullNode: peer.FullNode,
 			},
 			Reason:   peer.Reason,
-			Duration: peer.Duration.String(),
+			Duration: peer.Duration,
 		})
 	}
 	return out

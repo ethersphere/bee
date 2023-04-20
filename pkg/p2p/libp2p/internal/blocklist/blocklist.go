@@ -101,7 +101,7 @@ func (b *Blocklist) Peers() ([]p2p.BlockListedPeer, error) {
 		p := p2p.BlockListedPeer{
 			Peer: p2p.Peer{
 				Address:  addr,
-				FullNode: true,
+				FullNode: false,
 			},
 			Duration: d,
 			Reason:   reason,

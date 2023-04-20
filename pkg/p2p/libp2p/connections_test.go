@@ -618,21 +618,20 @@ func TestBlocklistedPeers(t *testing.T) {
 	if err != nil {
 		t.Fatal("could not get blocklisted peers", err)
 	}
-	if len(blocklistedPeers) != 1 {
-		t.Fatalf("expected %d blocklisted peers, got %d", 1, len(blocklistedPeers))
-	}
 
-	expected := p2p.BlockListedPeer{
-		Peer: p2p.Peer{
-			Address:  overlay1,
-			FullNode: true,
+	want := []p2p.BlockListedPeer{
+		{
+			Peer: p2p.Peer{
+				Address:  overlay1,
+				FullNode: true,
+			},
+			Reason:   testBlocklistMsg,
+			Duration: 0,
 		},
-		Reason:   testBlocklistMsg,
-		Duration: 0,
 	}
 
-	if !reflect.DeepEqual(expected, blocklistedPeers[0]) {
-		t.Fatal("expected blocklisted peer", expected, "got", blocklistedPeers[0])
+	if !reflect.DeepEqual(want, blocklistedPeers) {
+		t.Fatal("want", want, "got", blocklistedPeers)
 	}
 }
 
