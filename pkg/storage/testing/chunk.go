@@ -40,6 +40,8 @@ func GenerateTestRandomChunk() swarm.Chunk {
 
 // GenerateTestRandomSoChunk generates a valid single owner chunk.
 func GenerateTestRandomSoChunk(tb testing.TB) swarm.Chunk {
+	tb.Helper()
+
 	id := testutil.RandBytes(tb, swarm.HashSize)
 	dataRaw := testutil.RandBytes(tb, 20)
 	key, _ := crypto.GenerateSecp256k1Key()
