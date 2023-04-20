@@ -77,7 +77,7 @@ func TestSyncOutsideDepth(t *testing.T) {
 		cursors = []uint64{1000, 1000, 1000, 1000}
 	)
 
-	puller, _, kad, pullsync := newPuller(t, opts{
+	_, _, kad, pullsync := newPuller(t, opts{
 		kad: []kadMock.Option{
 			kadMock.WithEachPeerRevCalls(
 				kadMock.AddrTuple{Addr: addr, PO: 2},
@@ -98,8 +98,6 @@ func TestSyncOutsideDepth(t *testing.T) {
 
 	waitLiveSyncCalledBins(t, pullsync, addr, 2, 3)
 	waitLiveSyncCalledBins(t, pullsync, addr2, 0)
-
-	checkHistSyncingCount(t, puller, 0)
 }
 
 func TestSyncFlow_PeerWithinDepth_Live(t *testing.T) {
@@ -362,11 +360,11 @@ func TestBinReset(t *testing.T) {
 	kad.Trigger()
 	time.Sleep(100 * time.Millisecond)
 
-	if err := s.Get(fmt.Sprintf("sync|001|%s", addr.ByteString()), nil); errors.Is(err, storage.ErrNotFound) {
+	if err := s.Get(fmt.Sprintf("sync_interval_001_%s", addr.ByteString()), nil); errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("got error %v, want %v", err, storage.ErrNotFound)
 	}
 
-	if err := s.Get(fmt.Sprintf("sync|000|%s", addr.ByteString()), nil); !errors.Is(err, storage.ErrNotFound) {
+	if err := s.Get(fmt.Sprintf("sync_interval_000_%s", addr.ByteString()), nil); !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("got error %v, want %v", err, storage.ErrNotFound)
 	}
 
@@ -526,10 +524,7 @@ func TestContinueSyncing(t *testing.T) {
 
 	checkHistSyncingCount(t, puller, 1)
 
-	// expected calls should ideally be exactly 100,
-	// but we allow some time for the goroutines to run
-	// by reducing the minimum expected calls to 2
-	if len(calls) < 2 || len(calls) > 100 {
+	if len(calls) < 2 {
 		t.Fatalf("unexpected amount of calls, got %d", len(calls))
 	}
 }

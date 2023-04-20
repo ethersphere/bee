@@ -28,6 +28,7 @@ type BatchStore struct {
 	getErr                error
 	getErrDelayCnt        int
 	updateErr             error
+	saveErr               error
 	updateErrDelayCnt     int
 	resetCallCount        int
 
@@ -95,6 +96,12 @@ func WithUpdateErr(err error, delayCnt int) Option {
 	}
 }
 
+func WithSaveError(err error) Option {
+	return func(bs *BatchStore) {
+		bs.saveErr = err
+	}
+}
+
 // WithBatch will set batch to the one provided by user.
 // This will be returned in the next Get.
 func WithBatch(b *postage.Batch) Option {
@@ -149,6 +156,9 @@ func (bs *BatchStore) Iterate(f func(*postage.Batch) (bool, error)) error {
 func (bs *BatchStore) Save(batch *postage.Batch) error {
 	if bs.batch != nil {
 		return errors.New("batch already taken")
+	}
+	if bs.saveErr != nil {
+		return bs.saveErr
 	}
 	bs.batch = batch
 	bs.id = batch.ID

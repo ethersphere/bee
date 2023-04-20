@@ -552,8 +552,11 @@ func TestOversaturation(t *testing.T) {
 			// if error is not as specified, connectOne goes fatal
 			connectOne(t, signer, kad, ab, addr, topology.ErrOversaturated)
 			// check that pick works correctly
-			if kad.Pick(p2p.Peer{Address: addr}) {
+			if kad.Pick(p2p.Peer{Address: addr, FullNode: true}) {
 				t.Fatal("should not pick the peer")
+			}
+			if !kad.Pick(p2p.Peer{Address: addr, FullNode: false}) {
+				t.Fatal("should pick the peer")
 			}
 		}
 		// see depth is still as expected
@@ -1493,7 +1496,7 @@ func TestBootnodeProtectedNodes(t *testing.T) {
 	}
 	for _, pn := range protected {
 		found := false
-		_ = kad.EachPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+		_ = kad.EachConnectedPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
 			if addr.Equal(pn) {
 				found = true
 				return true, false, nil
@@ -1668,7 +1671,7 @@ func TestIteratorOpts(t *testing.T) {
 	// randomly mark some nodes as reachable
 	totalReachable := 0
 	reachable := make(map[string]struct{})
-	_ = kad.EachPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+	_ = kad.EachConnectedPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
 		if randBool.Bool() {
 			kad.Reachable(addr, p2p.ReachabilityStatusPublic)
 			reachable[addr.ByteString()] = struct{}{}
@@ -1677,11 +1680,11 @@ func TestIteratorOpts(t *testing.T) {
 		return false, false, nil
 	}, topology.Filter{})
 
-	t.Run("EachPeer reachable", func(t *testing.T) {
+	t.Run("EachConnectedPeer reachable", func(t *testing.T) {
 		t.Parallel()
 
 		count := 0
-		err := kad.EachPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+		err := kad.EachConnectedPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
 			if _, exists := reachable[addr.ByteString()]; !exists {
 				t.Fatal("iterator returned incorrect peer")
 			}
@@ -1696,11 +1699,11 @@ func TestIteratorOpts(t *testing.T) {
 		}
 	})
 
-	t.Run("EachPeerRev reachable", func(t *testing.T) {
+	t.Run("EachConnectedPeerRev reachable", func(t *testing.T) {
 		t.Parallel()
 
 		count := 0
-		err := kad.EachPeerRev(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+		err := kad.EachConnectedPeerRev(func(addr swarm.Address, _ uint8) (bool, bool, error) {
 			if _, exists := reachable[addr.ByteString()]; !exists {
 				t.Fatal("iterator returned incorrect peer")
 			}
@@ -1790,7 +1793,7 @@ func setBits(data []byte, startBit, bitCount int, b int) {
 func binSizes(kad *kademlia.Kad) []int {
 	bins := make([]int, swarm.MaxBins)
 
-	_ = kad.EachPeer(func(a swarm.Address, u uint8) (stop bool, jumpToNext bool, err error) {
+	_ = kad.EachConnectedPeer(func(a swarm.Address, u uint8) (stop bool, jumpToNext bool, err error) {
 		bins[u]++
 		return false, false, nil
 	}, topology.Filter{})
@@ -1998,7 +2001,7 @@ func waitPeers(t *testing.T, k *kademlia.Kad, peers int) {
 
 	err := spinlock.Wait(spinLockWaitTime, func() bool {
 		i := 0
-		_ = k.EachPeer(func(_ swarm.Address, _ uint8) (bool, bool, error) {
+		_ = k.EachConnectedPeer(func(_ swarm.Address, _ uint8) (bool, bool, error) {
 			i++
 			return false, false, nil
 		}, topology.Filter{})

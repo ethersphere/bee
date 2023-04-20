@@ -24,6 +24,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/chainsync"
+	"github.com/ethersphere/bee/pkg/chainsyncer"
+	"github.com/ethersphere/bee/pkg/status"
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/pkg/topology/depthmonitor"
 
@@ -33,7 +36,6 @@ import (
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/auth"
-	"github.com/ethersphere/bee/pkg/chainsync"
 	"github.com/ethersphere/bee/pkg/config"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds/factory"
@@ -82,6 +84,7 @@ import (
 	"github.com/ethersphere/bee/pkg/util/ioutil"
 	"github.com/hashicorp/go-multierror"
 	ma "github.com/multiformats/go-multiaddr"
+	promc "github.com/prometheus/client_golang/prometheus"
 	"golang.org/x/crypto/sha3"
 	"golang.org/x/sync/errgroup"
 )
@@ -109,14 +112,17 @@ type Bee struct {
 	pullerCloser             io.Closer
 	accountingCloser         io.Closer
 	pullSyncCloser           io.Closer
+	pushSyncCloser           io.Closer
+	retrievalCloser          io.Closer
 	pssCloser                io.Closer
-	ethClientCloser          func()
+	closers                  []func()
 	transactionMonitorCloser io.Closer
 	transactionCloser        io.Closer
 	listenerCloser           io.Closer
 	postageServiceCloser     io.Closer
 	priceOracleCloser        io.Closer
 	hiveCloser               io.Closer
+	chainSyncerCloser        io.Closer
 	depthMonitorCloser       io.Closer
 	storageIncetivesCloser   io.Closer
 	shutdownInProgress       bool
@@ -330,7 +336,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 	if err != nil {
 		return nil, fmt.Errorf("init chain: %w", err)
 	}
-	b.ethClientCloser = chainBackend.Close
+	b.closers = append(b.closers, chainBackend.Close)
 
 	logger.Info("using chain with network network", "chain_id", chainID, "network_id", networkID)
 
@@ -581,6 +587,12 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		}
 	}
 
+	var registry *promc.Registry
+
+	if debugService != nil {
+		registry = debugService.MetricsRegistry()
+	}
+
 	p2ps, err := libp2p.New(ctx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
 		PrivateKey:      libp2pPrivateKey,
 		NATAddr:         o.NATAddr,
@@ -589,7 +601,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		FullNode:        o.FullNodeMode,
 		Nonce:           nonce,
 		ValidateOverlay: chainEnabled,
-		Registry:        debugService.MetricsRegistry(),
+		Registry:        registry,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("p2p service: %w", err)
@@ -880,6 +892,8 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 	pricing.SetPaymentThresholdObserver(acc)
 
 	retrieve := retrieval.New(swarmAddress, storer, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching, validStamp)
+	b.retrievalCloser = retrieve
+
 	tagService := tags.NewTags(stateStore, logger)
 	b.tagsCloser = tagService
 
@@ -894,11 +908,19 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 	pinningService := pinning.NewService(storer, stateStore, traversalService)
 
 	pushSyncProtocol := pushsync.New(swarmAddress, nonce, p2ps, storer, kad, batchStore, tagService, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
+	b.pushSyncCloser = pushSyncProtocol
 
 	// set the pushSyncer in the PSS
 	pssService.SetPushSyncer(pushSyncProtocol)
 
-	pusherService := pusher.New(networkID, storer, kad, pushSyncProtocol, validStamp, tagService, logger, tracer, warmupTime, pusher.DefaultRetryCount)
+	var radiusFunc func() uint8
+	if o.FullNodeMode {
+		radiusFunc = func() uint8 { return batchStore.StorageRadius() }
+	} else {
+		radiusFunc = func() uint8 { return kad.NeighborhoodDepth() }
+	}
+
+	pusherService := pusher.New(networkID, storer, pushSyncProtocol, validStamp, tagService, radiusFunc, logger, tracer, warmupTime, pusher.DefaultRetryCount)
 	b.pusherCloser = pusherService
 
 	pullStorage := pullstorage.New(storer, logger)
@@ -949,7 +971,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 	)
 
 	if o.FullNodeMode && !o.BootnodeMode {
-		pullerService = puller.New(stateStore, kad, batchStore, pullSyncProtocol, p2ps, logger, puller.Options{SyncSleepDur: puller.DefaultSyncErrorSleepDur}, warmupTime)
+		pullerService = puller.New(stateStore, kad, batchStore, pullSyncProtocol, p2ps, logger, puller.Options{SyncSleepDur: puller.DefaultSyncErrorSleepDur, ShallowBinsWarmupDur: puller.DefaultShallowBinsWarmupDur}, warmupTime)
 		b.pullerCloser = pullerService
 
 		depthMonitor := depthmonitor.New(kad, pullSyncProtocol, storer, batchStore, logger, warmupTime, depthmonitor.DefaultWakeupInterval, !batchStoreExists)
@@ -985,6 +1007,8 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 	)
 	b.resolverCloser = multiResolver
 
+	var chainSyncer *chainsyncer.ChainSyncer
+
 	if o.FullNodeMode {
 		cs, err := chainsync.New(p2ps, chainBackend)
 		if err != nil {
@@ -993,10 +1017,21 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		if err = p2ps.AddProtocol(cs.Protocol()); err != nil {
 			return nil, fmt.Errorf("chainsync protocol: %w", err)
 		}
+		chainSyncer, err = chainsyncer.New(chainBackend, cs, kad, p2ps, logger, nil)
+		if err != nil {
+			return nil, fmt.Errorf("new chainsyncer: %w", err)
+		}
+
+		b.chainSyncerCloser = chainSyncer
 	}
 
 	feedFactory := factory.New(ns)
 	steward := steward.New(storer, traversalService, retrieve, pushSyncProtocol)
+
+	nodeStatus := status.NewService(logger, p2ps, kad, beeNodeMode.String(), storer, pullSyncProtocol, batchStore, batchStore)
+	if err = p2ps.AddProtocol(nodeStatus.Protocol()); err != nil {
+		return nil, fmt.Errorf("status service: %w", err)
+	}
 
 	extraOpts := api.ExtraOptions{
 		Pingpong:         pingPong,
@@ -1020,6 +1055,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		Steward:          steward,
 		SyncStatus:       syncStatusFn,
 		IndexDebugger:    storer,
+		NodeStatus:       nodeStatus,
 	}
 
 	if o.APIAddr != "" {
@@ -1092,6 +1128,9 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		debugService.MustRegisterMetrics(lightNodes.Metrics()...)
 		debugService.MustRegisterMetrics(hive.Metrics()...)
 
+		if chainSyncer != nil {
+			debugService.MustRegisterMetrics(chainSyncer.Metrics()...)
+		}
 		if bs, ok := batchStore.(metrics.Collector); ok {
 			debugService.MustRegisterMetrics(bs.Metrics()...)
 		}
@@ -1207,7 +1246,19 @@ func (b *Bee) Shutdown() error {
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(6)
+	wg.Add(7)
+	go func() {
+		defer wg.Done()
+		tryClose(b.chainSyncerCloser, "chain syncer")
+	}()
+	go func() {
+		defer wg.Done()
+		tryClose(b.pushSyncCloser, "pushsync")
+	}()
+	go func() {
+		defer wg.Done()
+		tryClose(b.retrievalCloser, "retrieval")
+	}()
 	go func() {
 		defer wg.Done()
 		tryClose(b.pssCloser, "pss")
@@ -1257,7 +1308,7 @@ func (b *Bee) Shutdown() error {
 
 	wg.Wait()
 
-	if c := b.ethClientCloser; c != nil {
+	for _, c := range b.closers {
 		c()
 	}
 

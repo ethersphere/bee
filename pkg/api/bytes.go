@@ -5,13 +5,11 @@
 package api
 
 import (
-	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
-	"time"
 
 	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -21,7 +19,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/tracing"
-	"github.com/ethersphere/bee/pkg/util/ioutil"
 	"github.com/gorilla/mux"
 )
 
@@ -90,14 +87,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	// Add the tag to the context
 	ctx := sctx.SetTag(r.Context(), tag)
 	p := requestPipelineFn(putter, r)
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	pr := ioutil.TimeoutReader(ctx, r.Body, 5*time.Minute, func(n uint64) {
-		logger.Error(nil, "idle read timeout exceeded")
-		logger.Debug("idle read timeout exceeded", "bytes_read", n)
-		cancel()
-	})
-	address, err := p(ctx, pr)
+	address, err := p(ctx, r.Body)
 	if err != nil {
 		logger.Debug("split write all failed", "error", err)
 		logger.Error(nil, "split write all failed")
@@ -189,6 +179,6 @@ func (s *Service) bytesHeadHandler(w http.ResponseWriter, r *http.Request) {
 		// soc
 		span = int64(len(ch.Data()))
 	}
-	w.Header().Add("Content-Length", strconv.FormatInt(span, 10))
+	w.Header().Set("Content-Length", strconv.FormatInt(span, 10))
 	w.WriteHeader(http.StatusOK) // HEAD requests do not write a body
 }

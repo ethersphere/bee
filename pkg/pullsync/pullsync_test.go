@@ -183,8 +183,8 @@ func TestIncoming_UnsolicitedChunk(t *testing.T) {
 	)
 
 	_, err := psClient.SyncInterval(context.Background(), swarm.ZeroAddress, 0, 0, 5)
-	if err != nil {
-		t.Fatalf("expected nil but got %v", err)
+	if !errors.Is(err, pullsync.ErrUnsolicitedChunk) {
+		t.Fatalf("expected err %v but got %v", pullsync.ErrUnsolicitedChunk, err)
 	}
 }
 

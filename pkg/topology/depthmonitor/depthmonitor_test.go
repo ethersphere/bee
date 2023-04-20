@@ -23,7 +23,7 @@ const depthMonitorWakeUpInterval = 10 * time.Millisecond
 func newTestSvc(
 	t depthmonitor.Topology,
 	s depthmonitor.SyncReporter,
-	r depthmonitor.ReserveReporter,
+	r depthmonitor.Reserve,
 	st storage.StateStorer,
 	bs postage.Storer,
 	warmupTime time.Duration,
@@ -41,7 +41,7 @@ func newTestSvc(
 		syncer = s
 	}
 
-	var reserve depthmonitor.ReserveReporter = &mockReserveReporter{}
+	var reserve depthmonitor.Reserve = &mockReserve{}
 	if r != nil {
 		reserve = r
 	}
@@ -78,18 +78,6 @@ func TestDepthMonitorService_FLAKY(t *testing.T) {
 		}
 	})
 
-	t.Run("old nodes starts at previous radius", func(t *testing.T) {
-		t.Parallel()
-
-		bs := mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{Radius: 3, StorageRadius: 0}))
-		svc := newTestSvc(nil, nil, nil, nil, bs, 0, depthmonitor.DefaultWakeupInterval, false)
-		waitForDepth(t, svc, 0)
-		err := svc.Close()
-		if err != nil {
-			t.Fatal(err)
-		}
-	})
-
 	t.Run("start with radius", func(t *testing.T) {
 		t.Parallel()
 
@@ -107,7 +95,7 @@ func TestDepthMonitorService_FLAKY(t *testing.T) {
 
 		topo := &mockTopology{peers: 1}
 		// >40% utilized reserve
-		reserve := &mockReserveReporter{size: 20001, capacity: 50000}
+		reserve := &mockReserve{size: 25001, capacity: 50000}
 
 		bs := mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{Radius: 3}))
 
@@ -128,7 +116,7 @@ func TestDepthMonitorService_FLAKY(t *testing.T) {
 		t.Parallel()
 
 		// under utilized reserve
-		reserve := &mockReserveReporter{size: 10000, capacity: 50000}
+		reserve := &mockReserve{size: 10000, capacity: 50000}
 		bs := mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{Radius: 3}))
 		syncer := &mockSyncReporter{rate: 10}
 
@@ -149,7 +137,7 @@ func TestDepthMonitorService_FLAKY(t *testing.T) {
 		t.Parallel()
 
 		// >40% utilized reserve
-		reserve := &mockReserveReporter{size: 20001, capacity: 50000}
+		reserve := &mockReserve{size: 20001, capacity: 50000}
 		bs := mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{Radius: 3}))
 
 		svc := newTestSvc(nil, nil, reserve, nil, bs, 0, depthMonitorWakeUpInterval, true)
@@ -171,7 +159,7 @@ func TestDepthMonitorService_FLAKY(t *testing.T) {
 		topo := &mockTopology{connDepth: 3}
 		bs := mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{Radius: 3}))
 		// >40% utilized reserve
-		reserve := &mockReserveReporter{size: 20001, capacity: 50000}
+		reserve := &mockReserve{size: 20001, capacity: 50000}
 
 		svc := newTestSvc(topo, nil, reserve, nil, bs, 0, depthMonitorWakeUpInterval, true)
 
@@ -219,28 +207,28 @@ type mockSyncReporter struct {
 	rate float64
 }
 
-func (m *mockSyncReporter) Rate() float64 {
+func (m *mockSyncReporter) SyncRate() float64 {
 	return m.rate
 }
 
-type mockReserveReporter struct {
+type mockReserve struct {
 	sync.Mutex
 	capacity uint64
 	size     uint64
 }
 
-func (m *mockReserveReporter) ComputeReserveSize(uint8) (uint64, error) {
+func (m *mockReserve) ComputeReserveSize(uint8) (uint64, error) {
 	m.Lock()
 	defer m.Unlock()
 	return m.size, nil
 }
 
-func (m *mockReserveReporter) setSize(sz uint64) {
+func (m *mockReserve) ReserveCapacity() uint64 {
+	return m.capacity
+}
+
+func (m *mockReserve) setSize(sz uint64) {
 	m.Lock()
 	defer m.Unlock()
 	m.size = sz
-}
-
-func (m *mockReserveReporter) ReserveCapacity() uint64 {
-	return m.capacity
 }

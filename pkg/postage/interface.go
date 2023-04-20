@@ -47,16 +47,25 @@ type ReserveStateGetter interface {
 	GetReserveState() *ReserveState
 }
 
+type RadiusReporter interface {
+	StorageRadius() uint8
+}
+
 type RadiusChecker interface {
 	IsWithinStorageRadius(addr swarm.Address) bool
-	StorageRadius() uint8
+}
+
+type Radius interface {
+	RadiusChecker
+	RadiusReporter
 }
 
 // Storer represents the persistence layer for batches
 // on the current (highest available) block.
 type Storer interface {
 	ReserveStateGetter
-	RadiusChecker
+	Radius
+	ChainStateGetter
 
 	// Get returns a batch from the store with the given ID.
 	Get([]byte) (*Batch, error)
@@ -76,9 +85,6 @@ type Storer interface {
 	// existing batch and then creating a new one. It's an error to update
 	// non-existing batch.
 	Update(*Batch, *big.Int, uint8) error
-
-	// GetChainState returns the stored chain state from the store.
-	GetChainState() *ChainState
 
 	// PutChainState puts given chain state into the store.
 	PutChainState(*ChainState) error
@@ -103,6 +109,11 @@ type Storer interface {
 // StorageRadiusSetter is used as a callback when the radius of a node changes.
 type StorageRadiusSetter interface {
 	SetStorageRadius(uint8)
+}
+
+type ChainStateGetter interface {
+	// GetChainState returns the stored chain state from the store.
+	GetChainState() *ChainState
 }
 
 // Listener provides a blockchain event iterator.

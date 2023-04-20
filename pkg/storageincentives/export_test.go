@@ -4,4 +4,6 @@
 
 package storageincentives
 
-var NewEvents = newEvents
+var (
+	NewEvents = newEvents
+)

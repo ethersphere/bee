@@ -21,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/topology"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -108,6 +109,9 @@ func (p *pss) Send(ctx context.Context, topic Topic, payload []byte, stamper pos
 
 	// push the chunk using push sync so that it reaches it destination in network
 	if _, err = p.pusher.PushChunkToClosest(ctx, tc); err != nil {
+		if errors.Is(err, topology.ErrWantSelf) {
+			return nil
+		}
 		return err
 	}
 

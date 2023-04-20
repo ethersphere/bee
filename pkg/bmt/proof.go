@@ -11,13 +11,16 @@ type Prover struct {
 
 // Proof represents a Merkle proof of segment
 type Proof struct {
-	Section []byte
-	Sisters [][]byte
-	Span    []byte
+	ProveSegment  []byte
+	ProofSegments [][]byte
+	Span          []byte
+	Index         int
 }
 
 // Proof returns the inclusion proof of the i-th data segment
 func (p Prover) Proof(i int) Proof {
+	index := i
+
 	if i < 0 || i > 127 {
 		panic("segment index can only lie between 0-127")
 	}
@@ -33,7 +36,7 @@ func (p Prover) Proof(i int) Proof {
 	secsize := 2 * p.segmentSize
 	offset := i * secsize
 	section := p.bmt.buffer[offset : offset+secsize]
-	return Proof{section, sisters, p.span}
+	return Proof{section, sisters, p.span, index}
 }
 
 // Verify returns the bmt hash obtained from the proof which can then be checked against
@@ -42,13 +45,13 @@ func (p Prover) Verify(i int, proof Proof) (root []byte, err error) {
 	i = i / 2
 	n := p.bmt.leaves[i]
 	isLeft := n.isLeft
-	root, err = doHash(n.hasher, proof.Section)
+	root, err = doHash(n.hasher, proof.ProveSegment)
 	if err != nil {
 		return nil, err
 	}
 	n = n.parent
 
-	for _, sister := range proof.Sisters {
+	for _, sister := range proof.ProofSegments {
 		if isLeft {
 			root, err = doHash(n.hasher, root, sister)
 		} else {

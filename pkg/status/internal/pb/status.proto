@@ -1,0 +1,25 @@
+// Copyright 2023 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
+syntax = "proto3";
+
+package status;
+
+option go_package = "pb";
+
+// Get message indicate interest in receiving a node Snapshot.
+message Get {}
+
+// Snapshot message is a response to the Get message and contains
+// the appropriate values that are a snapshot of the current state
+// of the running node.
+message Snapshot {
+  uint64 ReserveSize = 1;
+  double PullsyncRate = 2;
+  uint32 StorageRadius = 3;
+  uint64 ConnectedPeers = 4;
+  uint64 NeighborhoodSize = 5;
+  string BeeMode = 6;
+  string BatchTotalAmount = 7;
+}

@@ -7,12 +7,19 @@ package jsonhttptest_test
 import (
 	"errors"
 	"fmt"
+	"reflect"
+	"sort"
 	"testing"
 )
 
+type testResult struct {
+	errors []string
+	fatal  string
+}
+
 // assert is a test helper that validates a functionality of another helper
 // function by mocking Errorf, Fatal and Helper methods on testing.TB.
-func assert(t *testing.T, wantError, wantFatal string, f func(m *mock)) {
+func assert(t *testing.T, want testResult, f func(m *mock)) {
 	t.Helper()
 
 	defer func() {
@@ -24,10 +31,7 @@ func assert(t *testing.T, wantError, wantFatal string, f func(m *mock)) {
 		}
 	}()
 
-	m := &mock{
-		wantError: wantError,
-		wantFatal: wantFatal,
-	}
+	m := &mock{}
 
 	f(m)
 
@@ -35,12 +39,14 @@ func assert(t *testing.T, wantError, wantFatal string, f func(m *mock)) {
 		t.Error("not a helper function")
 	}
 
-	if m.gotError != m.wantError {
-		t.Errorf("got error %q, want %q", m.gotError, m.wantError)
+	gotErrors := sort.StringSlice(m.got.errors)
+	wantErrors := sort.StringSlice(want.errors)
+	if !reflect.DeepEqual(gotErrors, wantErrors) {
+		t.Errorf("errors not as expected: got  %v, want %v", gotErrors, wantErrors)
 	}
 
-	if m.gotFatal != m.wantFatal {
-		t.Errorf("got error %v, want %v", m.gotFatal, m.wantFatal)
+	if m.got.fatal != want.fatal {
+		t.Errorf("got error %v, want %v", m.got.fatal, want.fatal)
 	}
 }
 
@@ -48,11 +54,8 @@ func assert(t *testing.T, wantError, wantFatal string, f func(m *mock)) {
 // and Heleper methods.
 type mock struct {
 	testing.TB
-	isHelper  bool
-	gotError  string
-	wantError string
-	gotFatal  string
-	wantFatal string
+	isHelper bool
+	got      testResult
 }
 
 func (m *mock) Helper() {
@@ -60,11 +63,11 @@ func (m *mock) Helper() {
 }
 
 func (m *mock) Errorf(format string, args ...interface{}) {
-	m.gotError = fmt.Sprintf(format, args...)
+	m.got.errors = append(m.got.errors, fmt.Sprintf(format, args...))
 }
 
 func (m *mock) Fatal(args ...interface{}) {
-	m.gotFatal = fmt.Sprint(args...)
+	m.got.fatal = fmt.Sprint(args...)
 	panic(errFailed) // terminate the goroutine to detect it in the assert function
 }
 

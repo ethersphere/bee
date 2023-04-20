@@ -20,26 +20,31 @@ const loggerName = "depthmonitor"
 
 // DefaultWakeupInterval is the default value
 // for the depth monitor wake-up interval.
-const DefaultWakeupInterval = 5 * time.Minute
+const DefaultWakeupInterval = 15 * time.Minute
 
 // defaultMinimumRadius is the default value
 // for the depth monitor minimum radius.
 const defaultMinimumRadius uint8 = 0
 
-// ReserveReporter interface defines the functionality required from the local storage
+// SyncReporter interface needs to be implemented by the syncing component of the node (puller).
+type SyncReporter interface {
+	// Number of active historical syncing jobs.
+	SyncRate() float64
+}
+
+type ReserveReporter interface {
+	// ReserveSize returns the current reserve size.
+	ReserveSize() uint64
+}
+
+// Reserve interface defines the functionality required from the local storage
 // of the node to report information about the reserve. The reserve storage is the storage
 // pledged by the node to the network.
-type ReserveReporter interface {
+type Reserve interface {
 	// Current size of the reserve.
 	ComputeReserveSize(uint8) (uint64, error)
 	// Capacity of the reserve that is configured.
 	ReserveCapacity() uint64
-}
-
-// SyncReporter interface needs to be implemented by the syncing component of the node (puller).
-type SyncReporter interface {
-	// Number of active historical syncing jobs.
-	Rate() float64
 }
 
 // Topology interface encapsulates the functionality required by the topology component
@@ -53,7 +58,7 @@ type Topology interface {
 type Service struct {
 	topology      Topology
 	syncer        SyncReporter
-	reserve       ReserveReporter
+	reserve       Reserve
 	logger        log.Logger
 	bs            postage.Storer
 	quit          chan struct{} // to request service to stop
@@ -66,7 +71,7 @@ type Service struct {
 func New(
 	t Topology,
 	syncer SyncReporter,
-	reserve ReserveReporter,
+	reserve Reserve,
 	bs postage.Storer,
 	logger log.Logger,
 	warmupTime time.Duration,
@@ -97,21 +102,17 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration, freshNode boo
 	// wire up batchstore to start reporting storage radius to kademlia
 	s.bs.SetStorageRadiusSetter(s.topology)
 
-	// if it's a new fresh node, then we set the storage radius to the reserve radius
-	// to prevent syncing from starting at radius zero.
-	if freshNode {
-		reserveRadius := s.bs.GetReserveState().Radius
+	reserveRadius := s.bs.GetReserveState().Radius
 
-		err := s.bs.SetStorageRadius(func(radius uint8) uint8 {
-			// if we are starting from scratch, we can use the reserve radius.
-			if radius == 0 {
-				radius = reserveRadius
-			}
-			return radius
-		})
-		if err != nil {
-			s.logger.Error(err, "depthmonitor: batchstore set storage radius")
+	err := s.bs.SetStorageRadius(func(radius uint8) uint8 {
+		// if we are starting from scratch, we can use the reserve radius.
+		if radius == 0 {
+			radius = reserveRadius
 		}
+		return radius
+	})
+	if err != nil {
+		s.logger.Error(err, "depthmonitor: batchstore set storage radius")
 	}
 
 	// wait for warmup
@@ -123,7 +124,7 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration, freshNode boo
 
 	s.logger.Info("depthmonitor: warmup period complete, starting worker", "radius", s.bs.StorageRadius())
 
-	targetSize := s.reserve.ReserveCapacity() * 4 / 10 // 40% of the capacity
+	targetSize := s.reserve.ReserveCapacity() * 5 / 10 // 50% of the capacity
 
 	for {
 		select {
@@ -143,10 +144,10 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration, freshNode boo
 		// save last calculated reserve size
 		s.lastRSize.Store(currentSize)
 
-		rate := s.syncer.Rate()
+		rate := s.syncer.SyncRate()
 		s.logger.Info("depthmonitor: state", "size", currentSize, "radius", radius, "sync_rate", fmt.Sprintf("%.2f ch/s", rate))
 
-		if currentSize > targetSize {
+		if currentSize >= targetSize {
 			continue
 		}
 
@@ -167,7 +168,7 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration, freshNode boo
 }
 
 func (s *Service) IsFullySynced() bool {
-	return s.syncer.Rate() == 0 && s.lastRSize.Load() > s.reserve.ReserveCapacity()*4/10
+	return s.syncer.SyncRate() == 0 && s.lastRSize.Load() > s.reserve.ReserveCapacity()*4/10
 }
 
 func (s *Service) Close() error {

@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"math/big"
 	"sync"
 	"time"
@@ -37,10 +36,10 @@ const (
 	DefaultBlocksPerPhase = DefaultBlocksPerRound / 4
 
 	// min # of transactions our wallet should be able to cover
-	minTxCountToCover = 5
+	minTxCountToCover = 25
 
 	// average tx gas used by transactions issued from agent
-	avgTxGas = 200_000
+	avgTxGas = 250_000
 )
 
 type ChainBackend interface {
@@ -54,6 +53,11 @@ type Monitor interface {
 	IsFullySynced() bool
 }
 
+type SampleData struct {
+	ReserveSample storage.Sample
+	StorageRadius uint8
+}
+
 type Agent struct {
 	logger                 log.Logger
 	metrics                metrics
@@ -63,7 +67,7 @@ type Agent struct {
 	contract               redistribution.Contract
 	batchExpirer           postagecontract.PostageBatchExpirer
 	redistributionStatuser staking.RedistributionStatuser
-	radius                 postage.RadiusChecker
+	radius                 postage.Radius
 	sampler                storage.Sampler
 	overlay                swarm.Address
 	quit                   chan struct{}
@@ -71,7 +75,7 @@ type Agent struct {
 	state                  *RedistributionState
 }
 
-func New(overlay swarm.Address, ethAddress common.Address, backend ChainBackend, logger log.Logger, monitor Monitor, contract redistribution.Contract, batchExpirer postagecontract.PostageBatchExpirer, redistributionStatuser staking.RedistributionStatuser, radius postage.RadiusChecker, sampler storage.Sampler, blockTime time.Duration, blocksPerRound, blocksPerPhase uint64, stateStore storage.StateStorer, erc20Service erc20.Service, tranService transaction.Service) (*Agent, error) {
+func New(overlay swarm.Address, ethAddress common.Address, backend ChainBackend, logger log.Logger, monitor Monitor, contract redistribution.Contract, batchExpirer postagecontract.PostageBatchExpirer, redistributionStatuser staking.RedistributionStatuser, radius postage.Radius, sampler storage.Sampler, blockTime time.Duration, blocksPerRound, blocksPerPhase uint64, stateStore storage.StateStorer, erc20Service erc20.Service, tranService transaction.Service) (*Agent, error) {
 	a := &Agent{
 		overlay:                overlay,
 		metrics:                newMetrics(),
@@ -110,152 +114,80 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 	defer a.wg.Done()
 
-	var (
-		mtx            sync.Mutex
-		sampleRound    uint64 = math.MaxUint64
-		commitRound    uint64 = math.MaxUint64
-		revealRound    uint64 = math.MaxUint64
-		round          uint64
-		reserveSample  []byte
-		obfuscationKey []byte
-		storageRadius  uint8
-		phaseEvents    = newEvents()
-	)
-	// cancel all possible running phases
+	phaseEvents := newEvents()
 	defer phaseEvents.Close()
 
-	commitF := func(ctx context.Context) {
-		phaseEvents.Cancel(claim)
-
-		mtx.Lock()
-		round := round
-		sampleRound := sampleRound
-		storageRadius := storageRadius
-		reserveSample := reserveSample
-		mtx.Unlock()
-
-		if round-1 == sampleRound { // the sample has to come from previous round to be able to commit it
-			obf, err := a.commit(ctx, storageRadius, reserveSample, round)
-			if err != nil {
-				a.logger.Error(err, "commit")
-			} else {
-				mtx.Lock()
-				obfuscationKey = obf
-				commitRound = round
-				mtx.Unlock()
-				a.logger.Debug("committed the reserve sample and radius")
-			}
+	logPhaseResult := func(phase PhaseType, round uint64, err error, isPhasePlayed bool) {
+		if err != nil {
+			a.logger.Error(err, "phase failed", "phase", phase, "round", round)
+		} else if isPhasePlayed {
+			a.logger.Info("phase played", "phase", phase, "round", round)
+		} else {
+			a.logger.Info("phase skipped", "phase", phase, "round", round)
 		}
 	}
 
-	// when the sample finishes, if we are in the commit phase, run commit
-	phaseEvents.On(sampleEnd, func(ctx context.Context, previous PhaseType) {
-		if previous == commit {
-			commitF(ctx)
-		}
-	})
-
 	// when we enter the commit phase, if the sample is already finished, run commit
-	phaseEvents.On(commit, func(ctx context.Context, previous PhaseType) {
-		if previous == sampleEnd {
-			commitF(ctx)
-		}
+	phaseEvents.On(commit, func(ctx context.Context) {
+		phaseEvents.Cancel(claim)
+
+		round, _ := a.state.currentRoundAndPhase()
+		isPhasePlayed, err := a.handleCommit(ctx, round)
+		logPhaseResult(commit, round, err, isPhasePlayed)
 	})
 
-	phaseEvents.On(reveal, func(ctx context.Context, _ PhaseType) {
-		// cancel previous executions of the commit and sample phases
-		phaseEvents.Cancel(commit, sample, sampleEnd)
+	phaseEvents.On(reveal, func(ctx context.Context) {
+		phaseEvents.Cancel(commit, sample)
 
-		mtx.Lock()
-		round := round
-		commitRound := commitRound
-		storageRadius := storageRadius
-		reserveSample := reserveSample
-		obfuscationKey := obfuscationKey
-		mtx.Unlock()
-
-		if round == commitRound { // reveal requires the obfuscationKey from the same round
-			err := a.reveal(ctx, storageRadius, reserveSample, obfuscationKey)
-			if err != nil {
-				a.logger.Error(err, "reveal")
-			} else {
-				mtx.Lock()
-				revealRound = round
-				mtx.Unlock()
-				a.logger.Debug("revealed the sample with the obfuscation key")
-			}
-		}
+		round, _ := a.state.currentRoundAndPhase()
+		isPhasePlayed, err := a.handleReveal(ctx, round)
+		logPhaseResult(reveal, round, err, isPhasePlayed)
 	})
 
-	phaseEvents.On(claim, func(ctx context.Context, _ PhaseType) {
-
+	phaseEvents.On(claim, func(ctx context.Context) {
 		phaseEvents.Cancel(reveal)
+		phaseEvents.Publish(sample)
 
-		mtx.Lock()
-		round := round
-		revealRound := revealRound
-		mtx.Unlock()
-
-		if round == revealRound { // to claim, previous reveal must've happened in the same round
-			err := a.claim(ctx, round)
-			if err != nil {
-				a.logger.Error(err, "claim")
-			}
-		}
+		round, _ := a.state.currentRoundAndPhase()
+		isPhasePlayed, err := a.handleClaim(ctx, round)
+		logPhaseResult(claim, round, err, isPhasePlayed)
 	})
 
-	phaseEvents.On(sample, func(ctx context.Context, _ PhaseType) {
+	phaseEvents.On(sample, func(ctx context.Context) {
+		round, _ := a.state.currentRoundAndPhase()
+		isPhasePlayed, err := a.handleSample(ctx, round)
+		logPhaseResult(sample, round, err, isPhasePlayed)
 
-		mtx.Lock()
-		round := round
-		mtx.Unlock()
-
-		sr, smpl, err := a.play(ctx, round)
-		if err != nil {
-			a.logger.Error(err, "make sample")
-		} else if smpl != nil {
-			mtx.Lock()
-			sampleRound = round
-			reserveSample = smpl
-			storageRadius = sr
-			a.logger.Info("produced reserve sample", "round", round)
-			mtx.Unlock()
+		// Sample handled could potentially take long time, therefore it could overlap with commit
+		// phase of next round. When that case happens commit event needs to be triggered once more
+		// in order to handle commit phase with delay.
+		currentRound, currentPhase := a.state.currentRoundAndPhase()
+		if isPhasePlayed &&
+			currentPhase == commit &&
+			currentRound-1 == round {
+			phaseEvents.Publish(commit)
 		}
-
-		phaseEvents.Publish(sampleEnd)
 	})
 
 	var (
 		prevPhase    PhaseType = -1
 		currentPhase PhaseType
-		checkEvery   uint64 = 1
 	)
 
-	// optimization, we do not need to check the phase change at every new block
-	if blocksPerPhase > 10 {
-		checkEvery = 5
-	}
-
-	for {
-		select {
-		case <-a.quit:
-			return
-		case <-time.After(blockTime * time.Duration(checkEvery)):
-		}
-
-		ctx, cancel := context.WithTimeout(context.Background(), blockTime*time.Duration(blocksPerRound))
+	phaseCheck := func(ctx context.Context) {
+		ctx, cancel := context.WithTimeout(ctx, blockTime*time.Duration(blocksPerRound))
+		defer cancel()
 
 		a.metrics.BackendCalls.Inc()
-		block, err := a.backend.BlockNumber(context.Background())
+		block, err := a.backend.BlockNumber(ctx)
 		if err != nil {
 			a.metrics.BackendErrors.Inc()
 			a.logger.Error(err, "getting block number")
-			cancel()
-			continue
+			return
 		}
 
-		mtx.Lock()
-		round = block / blocksPerRound
+		round := block / blocksPerRound
+
 		a.metrics.Round.Set(float64(round))
 
 		p := block % blocksPerRound
@@ -268,58 +200,119 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		}
 
 		// write the current phase only once
-		if currentPhase != prevPhase {
-
-			a.metrics.CurrentPhase.Set(float64(currentPhase))
-
-			a.logger.Info("entered new phase", "phase", currentPhase.String(), "round", round, "block", block)
-
-			a.state.SetCurrentEvent(currentPhase, round, block)
-			a.state.IsFullySynced(a.monitor.IsFullySynced())
-
-			isFrozen, err := a.redistributionStatuser.IsOverlayFrozen(ctx, block)
-			if err != nil {
-				a.logger.Error(err, "error checking if stake is frozen")
-			} else {
-				a.state.SetFrozen(isFrozen, round)
-			}
-
-			phaseEvents.Publish(currentPhase)
-			if currentPhase == claim {
-				phaseEvents.Publish(sample) // trigger sample along side the claim phase
-			}
+		if currentPhase == prevPhase {
+			return
 		}
-		prevPhase = currentPhase
 
+		prevPhase = currentPhase
+		a.metrics.CurrentPhase.Set(float64(currentPhase))
+
+		a.logger.Info("entered new phase", "phase", currentPhase.String(), "round", round, "block", block)
+
+		a.state.SetCurrentEvent(currentPhase, round, block)
+		a.state.IsFullySynced(a.monitor.IsFullySynced())
+		go a.state.purgeStaleRoundData()
+
+		isFrozen, err := a.redistributionStatuser.IsOverlayFrozen(ctx, block)
+		if err != nil {
+			a.logger.Error(err, "error checking if stake is frozen")
+		} else {
+			a.state.SetFrozen(isFrozen, round)
+		}
+
+		phaseEvents.Publish(currentPhase)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		<-a.quit
 		cancel()
-		mtx.Unlock()
+	}()
+
+	// manually invoke phaseCheck initially in order to set initial data asap
+	phaseCheck(ctx)
+
+	phaseCheckInterval := blockTime
+	// optimization, we do not need to check the phase change at every new block
+	if blocksPerPhase > 10 {
+		phaseCheckInterval = blockTime * 5
+	}
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(phaseCheckInterval):
+			phaseCheck(ctx)
+		}
 	}
 }
 
-func (a *Agent) reveal(ctx context.Context, storageRadius uint8, sample, obfuscationKey []byte) error {
+func (a *Agent) handleCommit(ctx context.Context, round uint64) (bool, error) {
+	// the sample has to come from previous round to be able to commit it
+	sample, exists := a.state.SampleData(round - 1)
+	if !exists {
+		// In absence of sample, phase is skipped
+		return false, nil
+	}
+
+	err := a.commit(ctx, sample, round)
+	if err != nil {
+		a.logger.Error(err, "commit")
+		return false, err
+	}
+
+	return true, nil
+}
+
+func (a *Agent) handleReveal(ctx context.Context, round uint64) (bool, error) {
+	// reveal requires the commitKey from the same round
+	commitKey, exists := a.state.CommitKey(round)
+	if !exists {
+		// In absence of commitKey, phase is skipped
+		return false, nil
+	}
+
+	// reveal requires sample from previous round
+	sample, exists := a.state.SampleData(round - 1)
+	if !exists {
+		// Sample must have been saved so far
+		return false, fmt.Errorf("sample not found in reveal phase")
+	}
+
 	a.metrics.RevealPhase.Inc()
-	txHash, err := a.contract.Reveal(ctx, storageRadius, sample, obfuscationKey)
+	sampleBytes := sample.ReserveSample.Hash.Bytes()
+	txHash, err := a.contract.Reveal(ctx, sample.StorageRadius, sampleBytes, commitKey)
 	if err != nil {
 		a.metrics.ErrReveal.Inc()
-		return err
+		return false, err
 	}
 	a.state.AddFee(ctx, txHash)
-	return nil
+
+	a.state.SetHasRevealed(round)
+
+	return true, nil
 }
 
-func (a *Agent) claim(ctx context.Context, round uint64) error {
+func (a *Agent) handleClaim(ctx context.Context, round uint64) (bool, error) {
+	hasRevealed := a.state.HasRevealed(round)
+	if !hasRevealed {
+		// When there was no reveal in same round, phase is skipped
+		return false, nil
+	}
+
 	a.metrics.ClaimPhase.Inc()
 	// event claimPhase was processed
 
 	err := a.batchExpirer.ExpireBatches(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	isWinner, err := a.contract.IsWinner(ctx)
 	if err != nil {
 		a.metrics.ErrWinner.Inc()
-		return err
+		return false, err
 	}
 
 	if isWinner {
@@ -334,7 +327,7 @@ func (a *Agent) claim(ctx context.Context, round uint64) error {
 		if err != nil {
 			a.metrics.ErrClaim.Inc()
 			a.logger.Info("error claiming win", "err", err)
-			return fmt.Errorf("error claiming win: %w", err)
+			return false, fmt.Errorf("error claiming win: %w", err)
 		}
 		a.logger.Info("claimed win")
 		if errBalance == nil {
@@ -349,24 +342,23 @@ func (a *Agent) claim(ctx context.Context, round uint64) error {
 		a.logger.Info("claim made, lost round")
 	}
 
-	return nil
+	return true, nil
 }
 
-func (a *Agent) play(ctx context.Context, round uint64) (uint8, []byte, error) {
-
+func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 	status, err := a.state.Status()
 	if err != nil {
-		return 0, nil, err
+		return false, err
 	}
 
 	if !status.IsFullySynced {
 		a.logger.Info("skipping round because node is not fully synced", "round", round)
-		return 0, nil, nil
+		return false, nil
 	}
 
 	if status.IsFrozen {
 		a.logger.Info("skipping round because node is frozen", "round", round)
-		return 0, nil, nil
+		return false, nil
 	}
 
 	storageRadius := a.radius.StorageRadius()
@@ -374,47 +366,62 @@ func (a *Agent) play(ctx context.Context, round uint64) (uint8, []byte, error) {
 	isPlaying, err := a.contract.IsPlaying(ctx, storageRadius)
 	if err != nil {
 		a.metrics.ErrCheckIsPlaying.Inc()
-		return 0, nil, err
+		return false, err
 	}
 	if !isPlaying {
-		return 0, nil, nil
+		return false, nil
 	}
 
-	hasFunds, err := a.HasEnoughFundsToPlay(ctx)
+	_, hasFunds, err := a.HasEnoughFundsToPlay(ctx)
 	if err != nil {
 		a.logger.Error(err, "agent HasEnoughFundsToPlay failed")
-		return 0, nil, nil
+		return false, err
 	}
 
 	if !hasFunds {
 		a.logger.Info("insufficient funds to participate in next round", "round", round)
 		a.metrics.InsufficientFundsToPlay.Inc()
-		return 0, nil, nil
+		return false, nil
 	}
 
 	a.state.SetLastPlayedRound(round)
 	a.logger.Info("neighbourhood chosen", "round", round)
 	a.metrics.NeighborhoodSelected.Inc()
 
-	salt, err := a.contract.ReserveSalt(ctx)
+	sample, err := a.makeSample(ctx, storageRadius)
 	if err != nil {
-		return 0, nil, err
+		return false, err
 	}
 
-	t := time.Now()
+	a.state.SetSampleData(round, sample)
+
+	return true, nil
+}
+
+func (a *Agent) makeSample(ctx context.Context, storageRadius uint8) (SampleData, error) {
+	salt, err := a.contract.ReserveSalt(ctx)
+	if err != nil {
+		return SampleData{}, err
+	}
 
 	timeLimiter, err := a.getPreviousRoundTime(ctx)
 	if err != nil {
-		return 0, nil, err
+		return SampleData{}, err
 	}
 
-	sample, err := a.sampler.ReserveSample(ctx, salt, storageRadius, uint64(timeLimiter))
+	t := time.Now()
+	rSample, err := a.sampler.ReserveSample(ctx, salt, storageRadius, uint64(timeLimiter))
 	if err != nil {
-		return 0, nil, err
+		return SampleData{}, err
 	}
 	a.metrics.SampleDuration.Set(time.Since(t).Seconds())
 
-	return storageRadius, sample.Hash.Bytes(), nil
+	sample := SampleData{
+		ReserveSample: rSample,
+		StorageRadius: storageRadius,
+	}
+
+	return sample, nil
 }
 
 func (a *Agent) getPreviousRoundTime(ctx context.Context) (time.Duration, error) {
@@ -438,26 +445,30 @@ func (a *Agent) getPreviousRoundTime(ctx context.Context) (time.Duration, error)
 	return time.Duration(timeLimiterBlock.Time) * time.Second / time.Nanosecond, nil
 }
 
-func (a *Agent) commit(ctx context.Context, storageRadius uint8, sample []byte, round uint64) ([]byte, error) {
+func (a *Agent) commit(ctx context.Context, sample SampleData, round uint64) error {
 	a.metrics.CommitPhase.Inc()
 
 	key := make([]byte, swarm.HashSize)
 	if _, err := io.ReadFull(rand.Reader, key); err != nil {
-		return nil, err
+		return err
 	}
 
-	obfuscatedHash, err := a.wrapCommit(storageRadius, sample, key)
+	sampleBytes := sample.ReserveSample.Hash.Bytes()
+	obfuscatedHash, err := a.wrapCommit(sample.StorageRadius, sampleBytes, key)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	txHash, err := a.contract.Commit(ctx, obfuscatedHash, big.NewInt(int64(round)))
 	if err != nil {
 		a.metrics.ErrCommit.Inc()
-		return nil, err
+		return err
 	}
 	a.state.AddFee(ctx, txHash)
-	return key, nil
+
+	a.state.SetCommitKey(round, key)
+
+	return nil
 }
 
 func (a *Agent) Close() error {
@@ -494,19 +505,19 @@ func (a *Agent) Status() (*Status, error) {
 	return a.state.Status()
 }
 
-func (a *Agent) HasEnoughFundsToPlay(ctx context.Context) (bool, error) {
+func (a *Agent) HasEnoughFundsToPlay(ctx context.Context) (*big.Int, bool, error) {
 	balance, err := a.backend.BalanceAt(ctx, a.state.ethAddress, nil)
 	if err != nil {
-		return false, err
+		return nil, false, err
 	}
 
 	price, err := a.backend.SuggestGasPrice(ctx)
 	if err != nil {
-		return false, err
+		return nil, false, err
 	}
 
 	avgTxFee := new(big.Int).Mul(big.NewInt(avgTxGas), price)
 	minBalance := new(big.Int).Mul(avgTxFee, big.NewInt(minTxCountToCover))
 
-	return balance.Cmp(minBalance) >= 1, nil
+	return minBalance, balance.Cmp(minBalance) >= 1, nil
 }

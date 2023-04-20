@@ -19,7 +19,6 @@ package encryption_test
 import (
 	"bytes"
 	"encoding/hex"
-	"math/rand"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/encryption"
@@ -140,7 +139,7 @@ func testEncryptDecryptIsIdentity(t *testing.T, initCtr uint32, padding, dataLen
 	key := encryption.GenerateRandomKey(keyLength)
 	enc := encryption.New(key, padding, initCtr, hashFunc)
 
-	data := RandomBytes(1, dataLength)
+	data := testutil.RandBytesWithSeed(t, dataLength, 1)
 
 	encrypted, err := enc.Encrypt(data)
 	if err != nil {
@@ -190,19 +189,4 @@ func TestEncryptSectioned(t *testing.T) {
 			t.Fatalf("index %d, expected %x, got %x", i/encryption.KeyLength, wholeSection, cipher)
 		}
 	}
-}
-
-// RandomBytes returns pseudo-random deterministic result
-// because test fails must be reproducible
-func RandomBytes(seed, length int) []byte {
-	b := make([]byte, length)
-	reader := rand.New(rand.NewSource(int64(seed)))
-	for n := 0; n < length; {
-		read, err := reader.Read(b[n:])
-		if err != nil {
-			panic(err)
-		}
-		n += read
-	}
-	return b
 }

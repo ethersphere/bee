@@ -32,7 +32,6 @@ import (
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/pkg/tracing"
-	"github.com/hashicorp/go-multierror"
 	libp2p "github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/event"
@@ -666,7 +665,7 @@ func (s *Service) Blocklist(overlay swarm.Address, duration time.Duration, reaso
 	loggerV1 := s.logger.V(1).Register()
 
 	if s.NetworkStatus() != p2p.NetworkStatusAvailable {
-		return errors.New("blocklisting peer when network not available")
+		return errors.New("cannot blocklist peer when network not available")
 	}
 
 	loggerV1.Debug("libp2p blocklisting peer", "peer_address", overlay.String(), "duration", duration, "reason", reason)
@@ -698,7 +697,9 @@ func buildUnderlayAddress(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr
 func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.Address, err error) {
 	loggerV1 := s.logger.V(1).Register()
 
-	defer func() { err = multierror.Append(err, s.determineCurrentNetworkStatus(err)).ErrorOrNil() }()
+	defer func() {
+		err = s.determineCurrentNetworkStatus(err)
+	}()
 
 	// Extract the peer ID from the multiaddr.
 	info, err := libp2ppeer.AddrInfoFromP2pAddr(addr)
@@ -1093,15 +1094,13 @@ func (s *Service) determineCurrentNetworkStatus(err error) error {
 		s.networkStatus.Store(int32(p2p.NetworkStatusAvailable))
 	case errors.Is(err, lp2pswarm.ErrDialBackoff):
 		if s.NetworkStatus() == p2p.NetworkStatusUnavailable {
-			err = p2p.ErrNetworkUnavailable
+			err = errors.Join(err, p2p.ErrNetworkUnavailable)
 		}
 	case isNetworkOrHostUnreachableError(err):
 		s.networkStatus.Store(int32(p2p.NetworkStatusUnavailable))
-		err = p2p.ErrNetworkUnavailable
+		err = errors.Join(err, p2p.ErrNetworkUnavailable)
 	default:
-		if s.NetworkStatus() != p2p.NetworkStatusUnavailable {
-			s.networkStatus.Store(int32(p2p.NetworkStatusUnknown))
-		}
+		err = fmt.Errorf("network status unknown: %w", err)
 	}
 	return err
 }

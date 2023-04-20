@@ -94,6 +94,8 @@ func (s *steward) IsRetrievable(ctx context.Context, root swarm.Address) (bool, 
 	switch err := s.netTraverser.Traverse(ctx, root, noop); {
 	case errors.Is(err, storage.ErrNotFound):
 		return false, nil
+	case errors.Is(err, topology.ErrNotFound):
+		return false, nil
 	case err != nil:
 		return false, fmt.Errorf("traversal of %q failed: %w", root, err)
 	default:

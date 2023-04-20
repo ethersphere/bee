@@ -64,7 +64,7 @@ func CalculateNumberOfChunks(contentLength int64, isEncrypted bool) int64 {
 }
 
 type (
-	StatusResponse                    = statusResponse
+	HealthStatusResponse              = healthStatusResponse
 	NodeResponse                      = nodeResponse
 	PingpongResponse                  = pingpongResponse
 	PeerConnectResponse               = peerConnectResponse
@@ -102,7 +102,8 @@ type (
 	WalletResponse                    = walletResponse
 	GetStakeResponse                  = getStakeResponse
 	WithdrawAllStakeResponse          = withdrawAllStakeResponse
-	NodeStatusResponse                = nodeStatusResponse
+	StatusSnapshotResponse            = statusSnapshotResponse
+	StatusResponse                    = statusResponse
 )
 
 var (

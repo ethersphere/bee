@@ -46,9 +46,9 @@ const (
 	// than 15 seconds (empirically verified).
 	peerConnectionAttemptTimeout = 15 * time.Second // timeout for establishing a new connection with peer.
 
-	flagTimeout      = 15 * time.Minute // how long before blocking a flagged peer
+	flagTimeout      = 10 * time.Minute // how long before blocking a flagged peer
 	blockDuration    = time.Hour        // how long to blocklist an unresponsive peer for
-	blockWorkerWakup = time.Second * 10 // wake up interval for the blocker worker
+	blockWorkerWakup = 30 * time.Second // wake up interval for the blocker worker
 )
 
 // Default option values
@@ -61,7 +61,8 @@ const (
 	defaultShortRetry                  = 30 * time.Second
 	defaultTimeToRetry                 = 2 * defaultShortRetry
 	defaultBroadcastBinSize            = 4
-	defaultPeerPingPollTime            = 5 * time.Minute // how often to ping a peer
+	defaultPeerPingPollTime            = 5 * time.Minute  // how often to ping a peer
+	defaultPingTimeout                 = 10 * time.Second // timeout for the ping response
 )
 
 var (
@@ -115,6 +116,7 @@ type kadOptions struct {
 	TimeToRetry                 time.Duration
 	ShortRetry                  time.Duration
 	PeerPingPollTime            time.Duration
+	PeerPingTimeout             time.Duration
 	BitSuffixLength             int // additional depth of common prefix for bin
 	SaturationPeers             int
 	OverSaturationPeers         int
@@ -137,6 +139,7 @@ func newKadOptions(o Options) kadOptions {
 		TimeToRetry:                 defaultValDuration(o.TimeToRetry, defaultTimeToRetry),
 		ShortRetry:                  defaultValDuration(o.ShortRetry, defaultShortRetry),
 		PeerPingPollTime:            defaultValDuration(o.PeerPingPollTime, defaultPeerPingPollTime),
+		PeerPingTimeout:             defaultValDuration(o.PeerPingPollTime, defaultPingTimeout),
 		BitSuffixLength:             defaultValInt(o.BitSuffixLength, defaultBitSuffixLength),
 		SaturationPeers:             defaultValInt(o.SaturationPeers, defaultSaturationPeers),
 		OverSaturationPeers:         defaultValInt(o.OverSaturationPeers, defaultOverSaturationPeers),
@@ -672,8 +675,6 @@ func (k *Kad) manage() {
 func (k *Kad) recordPeerLatencies(ctx context.Context) {
 	loggerV1 := k.logger.V(1).Register()
 
-	ctx, cancel := context.WithTimeout(ctx, k.opt.PeerPingPollTime)
-	defer cancel()
 	var wg sync.WaitGroup
 
 	_ = k.connectedPeers.EachBin(func(addr swarm.Address, _ uint8) (bool, bool, error) {
@@ -681,13 +682,14 @@ func (k *Kad) recordPeerLatencies(ctx context.Context) {
 		case <-ctx.Done():
 			return false, false, nil
 		case <-k.halt:
-			cancel()
 			return false, false, nil
 		default:
 		}
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			ctx, cancel := context.WithTimeout(ctx, k.opt.PeerPingTimeout)
+			defer cancel()
 			switch l, err := k.pinger.Ping(ctx, addr, "ping"); {
 			case err != nil:
 				loggerV1.Debug("cannot get latency for peer", "peer_address", addr, "error", err)
@@ -1134,8 +1136,8 @@ func (k *Kad) AddPeers(addrs ...swarm.Address) {
 
 func (k *Kad) Pick(peer p2p.Peer) bool {
 	k.metrics.PickCalls.Inc()
-	if k.bootnode {
-		// shortcircuit for bootnode mode - always accept connections,
+	if k.bootnode || !peer.FullNode {
+		// shortcircuit for bootnode mode AND light node peers - always accept connections,
 		// at least until we find a better solution.
 		return true
 	}
@@ -1151,7 +1153,7 @@ func (k *Kad) Pick(peer p2p.Peer) bool {
 
 func (k *Kad) binReachablePeers(bin uint8) (peers []swarm.Address) {
 
-	_ = k.EachPeerRev(func(p swarm.Address, po uint8) (bool, bool, error) {
+	_ = k.EachConnectedPeerRev(func(p swarm.Address, po uint8) (bool, bool, error) {
 
 		if po == bin {
 			peers = append(peers, p)
@@ -1285,7 +1287,7 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, filter topology.
 		closest = k.base
 	}
 
-	err := k.EachPeerRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
+	err := k.EachConnectedPeerRev(func(peer swarm.Address, po uint8) (bool, bool, error) {
 		if swarm.ContainsAddress(skipPeers, peer) {
 			return false, false, nil
 		}
@@ -1317,8 +1319,8 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, filter topology.
 	return closest, nil
 }
 
-// EachPeer iterates from closest bin to farthest.
-func (k *Kad) EachPeer(f topology.EachPeerFunc, filter topology.Filter) error {
+// EachConnectedPeer implements topology.PeerIterator interface.
+func (k *Kad) EachConnectedPeer(f topology.EachPeerFunc, filter topology.Filter) error {
 	return k.connectedPeers.EachBin(func(addr swarm.Address, po uint8) (bool, bool, error) {
 		if filter.Reachable && k.peerFilter(addr) {
 			return false, false, nil
@@ -1327,8 +1329,8 @@ func (k *Kad) EachPeer(f topology.EachPeerFunc, filter topology.Filter) error {
 	})
 }
 
-// EachPeerRev iterates from farthest bin to closest.
-func (k *Kad) EachPeerRev(f topology.EachPeerFunc, filter topology.Filter) error {
+// EachConnectedPeerRev implements topology.PeerIterator interface.
+func (k *Kad) EachConnectedPeerRev(f topology.EachPeerFunc, filter topology.Filter) error {
 	return k.connectedPeers.EachBinRev(func(addr swarm.Address, po uint8) (bool, bool, error) {
 		if filter.Reachable && k.peerFilter(addr) {
 			return false, false, nil

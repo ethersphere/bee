@@ -12,8 +12,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-
-	"golang.org/x/crypto/sha3"
 )
 
 const (
@@ -34,11 +32,14 @@ const (
 )
 
 var (
-	NewHasher = sha3.NewLegacyKeccak256
+	ErrInvalidChunk = errors.New("invalid chunk")
 )
 
 var (
-	ErrInvalidChunk = errors.New("invalid chunk")
+	// EmptyAddress is the address that is all zeroes.
+	EmptyAddress = NewAddress(make([]byte, HashSize))
+	// ZeroAddress is the address that has no value.
+	ZeroAddress = NewAddress(nil)
 )
 
 // Address represents an address in Swarm metric space of
@@ -92,6 +93,16 @@ func (a Address) IsZero() bool {
 	return a.Equal(ZeroAddress)
 }
 
+// IsEmpty returns true if the Address is all zeroes.
+func (a Address) IsEmpty() bool {
+	return a.Equal(EmptyAddress)
+}
+
+// IsValidLength returns true if the Address is of valid length.
+func (a Address) IsValidLength() bool {
+	return len(a.b) == HashSize
+}
+
 // Bytes returns bytes representation of the Address.
 func (a Address) Bytes() []byte {
 	return a.b
@@ -129,9 +140,6 @@ func (a Address) Clone() Address {
 	copy(b, a.b)
 	return NewAddress(b)
 }
-
-// ZeroAddress is the address that has no value.
-var ZeroAddress = NewAddress(nil)
 
 // AddressIterFunc is a callback on every address that is found by the iterator.
 type AddressIterFunc func(address Address) error
