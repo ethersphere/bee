@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"io"
-	"os"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/log"
@@ -311,7 +310,7 @@ func newPullSyncWithStamperValidator(
 	t.Helper()
 
 	storage := mock.NewReserve(o...)
-	logger := log.NewLogger("test", log.WithSink(os.Stdout))
+	logger := log.Noop
 	unwrap := func(swarm.Chunk) {}
 	ps := pullsync.New(
 		s,

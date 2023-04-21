@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/bitvector"
@@ -73,11 +73,11 @@ type Syncer struct {
 	logger         log.Logger
 	store          storer.Reserve
 	quit           chan struct{}
-	wg             sync.WaitGroup
 	unwrap         func(swarm.Chunk)
 	validStamp     postage.ValidStampFn
 	overlayAddress swarm.Address
 	intervalsSF    singleflight.Group
+	syncInProgress atomic.Int32
 
 	maxPage uint64
 
@@ -103,7 +103,6 @@ func New(
 		unwrap:         unwrap,
 		validStamp:     validStamp,
 		logger:         logger.WithName(loggerName).Register(),
-		wg:             sync.WaitGroup{},
 		quit:           make(chan struct{}),
 		maxPage:        maxPage,
 	}
@@ -291,6 +290,8 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 	case <-s.quit:
 		return nil
 	default:
+		s.syncInProgress.Add(1)
+		defer s.syncInProgress.Add(-1)
 	}
 
 	r := protobuf.NewReader(stream)
@@ -313,9 +314,6 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 			return
 		}
 	}()
-
-	s.wg.Add(1)
-	defer s.wg.Done()
 
 	var rn pb.Get
 	if err := r.ReadMsgWithContext(ctx, &rn); err != nil {
@@ -550,7 +548,13 @@ func (s *Syncer) Close() error {
 	cc := make(chan struct{})
 	go func() {
 		defer close(cc)
-		s.wg.Wait()
+		for {
+			if s.syncInProgress.Load() > 0 {
+				time.Sleep(100 * time.Millisecond)
+				continue
+			}
+			break
+		}
 	}()
 
 	select {
