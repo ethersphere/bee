@@ -5,6 +5,7 @@
 package storage
 
 import (
+	"encoding"
 	"io"
 	"path"
 
@@ -61,7 +62,13 @@ func (ip *proxyItem) Namespace() string {
 }
 
 // Marshal implements Item interface.
-func (ip *proxyItem) Marshal() (data []byte, err error) {
+func (ip *proxyItem) Marshal() ([]byte, error) {
+	switch m := ip.obj.(type) {
+	case Marshaler:
+		return m.Marshal()
+	case encoding.BinaryMarshaler:
+		return m.MarshalBinary()
+	}
 	return msgpack.Marshal(ip.obj)
 }
 
@@ -72,6 +79,12 @@ func (ip *proxyItem) MarshalBinary() (data []byte, err error) {
 
 // Unmarshal implements Item interface.
 func (ip *proxyItem) Unmarshal(data []byte) error {
+	switch m := ip.obj.(type) {
+	case Unmarshaler:
+		return m.Unmarshal(data)
+	case encoding.BinaryUnmarshaler:
+		return m.UnmarshalBinary(data)
+	}
 	return msgpack.Unmarshal(data, &ip.obj)
 }
 

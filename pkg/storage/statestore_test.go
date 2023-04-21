@@ -5,14 +5,17 @@
 package storage_test
 
 import (
+	"testing"
+
 	"github.com/ethersphere/bee/pkg/statestore/test"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/inmemstore"
 	"github.com/ethersphere/bee/pkg/storage/leveldbstore"
-	"testing"
 )
 
 func TestStateStoreAdapter(t *testing.T) {
+	t.Parallel()
+
 	test.Run(t, func(t *testing.T) storage.StateStorer {
 		t.Helper()
 
