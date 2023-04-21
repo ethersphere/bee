@@ -167,6 +167,7 @@ func LoadOrStore(s storage.Store, namespace string, chunk swarm.Chunk) (item *It
 // Load returns stamp index record related to the given namespace and chunk.
 // The storage.ErrNotFound is returned if no record is found.
 func Load(s storage.Store, namespace string, chunk swarm.Chunk) (*Item, error) {
+	fmt.Println("load", namespace, chunk.Address(), chunk.Stamp().BatchID(), chunk.Stamp().Index())
 	item := &Item{
 		namespace:  []byte(namespace),
 		batchID:    chunk.Stamp().BatchID(),
