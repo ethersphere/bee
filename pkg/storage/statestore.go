@@ -154,6 +154,9 @@ func (s *StateStorerAdapter) Iterate(prefix string, iterFunc StateIterFunc) (err
 
 // DB implements StateStorer interface.
 func (s *StateStorerAdapter) DB() interface{} {
+	if db, ok := s.storage.(interface{ DB() interface{} }); ok {
+		return db.DB()
+	}
 	return s.storage
 }
 

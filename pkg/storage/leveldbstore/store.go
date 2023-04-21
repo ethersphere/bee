@@ -269,3 +269,9 @@ func (s *Store) Delete(item storage.Item) error {
 
 	return s.db.Delete(key(item), nil)
 }
+
+// DB implements the storage.Store interface.
+// This method is temporary and will be removed in the future.
+func (s *Store) DB() interface{} {
+	return s.db
+}
