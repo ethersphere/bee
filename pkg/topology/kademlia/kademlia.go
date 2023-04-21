@@ -227,14 +227,15 @@ func New(
 	var k *Kad
 
 	var metricsDB *shed.DB
-	if db := stateStore.DB(); db == nil { // In-memory state store just for testing.
+	if ldb, ok := stateStore.DB().(*leveldb.DB); !ok { // In-memory state store just for testing.
 		sdb, err := shed.NewDB("", nil)
 		if err != nil {
 			return nil, fmt.Errorf("unable to create metrics storage: %w", err)
 		}
+		logger.Warning("using in-mem store for kademlia metrics, no state will be persisted")
 		metricsDB = sdb
 	} else {
-		sdb, err := shed.NewDBWrap(db.(*leveldb.DB))
+		sdb, err := shed.NewDBWrap(ldb)
 		if err != nil {
 			return nil, fmt.Errorf("unable to wrap metrics storage: %w", err)
 		}
