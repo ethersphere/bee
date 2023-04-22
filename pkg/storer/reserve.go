@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/bmt"
 	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/soc"
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -576,8 +577,26 @@ func transformedAddressCAC(hasher *bmt.Hasher, chunk swarm.Chunk) (swarm.Address
 }
 
 func transformedAddressSOC(hasher *bmt.Hasher, chunk swarm.Chunk) (swarm.Address, error) {
-	// TODO
-	return swarm.ZeroAddress, nil
+	// Calculate transformed address from wrapped chunk
+	sChunk, err := soc.FromChunk(chunk)
+	if err != nil {
+		return swarm.ZeroAddress, nil
+	}
+	taddrCac, err := transformedAddressCAC(hasher, sChunk.WrappedChunk())
+	if err != nil {
+		return swarm.ZeroAddress, err
+	}
+
+	// Hash address and transformed address to make transformed address for this SOC
+	sHasher := swarm.NewHasher()
+	if _, err := sHasher.Write(chunk.Address().Bytes()); err != nil {
+		return swarm.ZeroAddress, err
+	}
+	if _, err := sHasher.Write(taddrCac.Bytes()); err != nil {
+		return swarm.ZeroAddress, err
+	}
+
+	return swarm.NewAddress(sHasher.Sum(nil)), nil
 }
 
 type sampleStat struct {
