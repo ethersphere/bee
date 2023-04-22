@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
+	"math/rand"
 	"testing"
 	"time"
 
@@ -657,6 +658,10 @@ func TestReserveSampler(t *testing.T) {
 		for po := 0; po < maxPO; po++ {
 			for i := 0; i < chunkCountPerPO; i++ {
 				ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, po).WithBatch(0, 3, 2, false)
+				if rand.Intn(2) == 0 { // 50% chance to wrap CAC into SOC
+					ch = chunk.GenerateTestRandomSoChunk(t, ch)
+				}
+
 				// override stamp timestamp to be before the consensus timestamp
 				ch = ch.WithStamp(postagetesting.MustNewStampWithTimestamp(timeVar - 1))
 				chs = append(chs, ch)

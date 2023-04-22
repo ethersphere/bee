@@ -96,11 +96,11 @@ func TestReserveChunkType(t *testing.T) {
 	storedChunksSO := 0
 	for i := 0; i < 100; i++ {
 		var ch swarm.Chunk
+		ch = chunk.GenerateTestRandomChunk()
 		if rand.Intn(2) == 0 {
-			ch = chunk.GenerateTestRandomChunk()
 			storedChunksCA++
 		} else {
-			ch = chunk.GenerateTestRandomSoChunk(t)
+			ch = chunk.GenerateTestRandomSoChunk(t, ch)
 			storedChunksSO++
 		}
 		if _, err := r.Put(ctx, ts, ch); err != nil {
