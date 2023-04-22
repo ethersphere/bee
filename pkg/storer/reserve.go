@@ -205,11 +205,10 @@ func (db *DB) EvictBatch(ctx context.Context, batchID []byte) (err error) {
 			db.metrics.MethodCalls.WithLabelValues("reserve", "EvictBatch", "failure").Inc()
 		}
 	}()
-
 	return db.evictBatch(ctx, batchID, swarm.MaxBins)
 }
 
-func (db *DB) evictBatch(ctx context.Context, batchID []byte, upToBin uint8) error {
+func (db *DB) evictBatch(ctx context.Context, batchID []byte, upToBin uint8) (err error) {
 
 	db.reserveMtx.Lock()
 	defer db.reserveMtx.Unlock()
@@ -250,12 +249,21 @@ func (db *DB) evictBatch(ctx context.Context, batchID []byte, upToBin uint8) err
 	return nil
 }
 
-func (db *DB) unreserve(ctx context.Context) error {
+func (db *DB) unreserve(ctx context.Context) (err error) {
+	dur := captureDuration(time.Now())
+	defer func() {
+		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "unreserve").Observe(dur())
+		if err == nil {
+			db.metrics.MethodCalls.WithLabelValues("reserve", "unreserve", "success").Inc()
+		} else {
+			db.metrics.MethodCalls.WithLabelValues("reserve", "unreserve", "failure").Inc()
+		}
+	}()
 
 	radius := db.reserve.Radius()
 	defer db.events.Trigger(reserveUnreserved)
 
-	for radius < swarm.MaxPO {
+	for radius < swarm.MaxBins {
 
 		err := db.batchstore.Iterate(func(b *postage.Batch) (bool, error) {
 
@@ -263,12 +271,7 @@ func (db *DB) unreserve(ctx context.Context) error {
 				return true, nil
 			}
 
-			err := db.evictBatch(ctx, b.ID, radius)
-			if err != nil {
-				return false, err
-			}
-
-			return false, nil
+			return false, db.evictBatch(ctx, b.ID, radius)
 		})
 		if err != nil {
 			return err
