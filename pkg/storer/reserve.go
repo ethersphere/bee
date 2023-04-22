@@ -7,7 +7,7 @@ package storer
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
+	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
@@ -15,9 +15,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/bmtpool"
+	"github.com/ethersphere/bee/pkg/bmt"
+	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/postage"
 	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"go.uber.org/atomic"
 	"golang.org/x/sync/errgroup"
@@ -27,6 +29,7 @@ const (
 	reserveOverCapacity = "reserveOverCapacity"
 	reserveUnreserved   = "reserveUnreserved"
 	reserveLock         = "reserveLock"
+	sampleSize          = 16
 )
 
 var errMaxRadius = errors.New("max radius reached")
@@ -356,9 +359,45 @@ func (db *DB) SubscribeBin(ctx context.Context, bin uint8, start uint64) (<-chan
 	}, errC
 }
 
+type SampleItem struct {
+	TransformedAddress swarm.Address
+	ChunkAddress       swarm.Address
+}
+
 type Sample struct {
-	Items []swarm.Address
-	Hash  swarm.Address
+	Items []SampleItem
+}
+
+func (s Sample) Content() ([]byte, swarm.Address, error) {
+	contentSize := len(s.Items) * (32 + 32)
+	sampleContent := make([]byte, 0, contentSize)
+	for _, s := range s.Items {
+		sampleContent = append(sampleContent, s.ChunkAddress.Bytes()...)
+		sampleContent = append(sampleContent, s.TransformedAddress.Bytes()...)
+	}
+
+	sampleContentChunk, err := cac.New(sampleContent)
+	if err != nil {
+		return nil, swarm.EmptyAddress, fmt.Errorf("failed creating sampleHash: %w", err)
+	}
+
+	return sampleContent, sampleContentChunk.Address(), nil
+}
+
+func RandSample() (Sample, error) {
+	items := make([]SampleItem, sampleSize)
+	for i := 0; i < len(items); i++ {
+		items[i].TransformedAddress = randAddress()
+		items[i].ChunkAddress = randAddress()
+	}
+
+	return Sample{Items: items}, nil
+}
+
+func randAddress() swarm.Address {
+	buf := make([]byte, swarm.HashSize)
+	_, _ = rand.Read(buf)
+	return swarm.NewAddress(buf)
 }
 
 // ReserveSample generates the sample of reserve storage of a node required for the
@@ -381,7 +420,7 @@ func (db *DB) ReserveSample(
 
 	g, ctx := errgroup.WithContext(ctx)
 
-	chunkC := make(chan swarm.Chunk)
+	chunkC := make(chan reserve.ChunkItem)
 	var stat sampleStat
 
 	t := time.Now()
@@ -391,9 +430,9 @@ func (db *DB) ReserveSample(
 		defer close(chunkC)
 		iterationStart := time.Now()
 
-		err := db.reserve.IterateChunks(db.repo, storageRadius, func(a swarm.Chunk) (bool, error) {
+		err := db.reserve.IterateChunksItems(db.repo, storageRadius, func(chi reserve.ChunkItem) (bool, error) {
 			select {
-			case chunkC <- a:
+			case chunkC <- chi:
 				stat.TotalIterated.Inc()
 				return false, nil
 			case <-ctx.Done():
@@ -409,35 +448,36 @@ func (db *DB) ReserveSample(
 	})
 
 	// Phase 2: Get the chunk data and calculate transformed hash
-	sampleItemChan := make(chan sampleEntry)
+	sampleItemChan := make(chan SampleItem)
 	const workers = 6
+
 	for i := 0; i < workers; i++ {
 		g.Go(func() error {
-			hmacr := hmac.New(swarm.NewHasher, anchor)
+			hasher := bmt.NewTrHasher(anchor)
 
-			for chunk := range chunkC {
+			for chItem := range chunkC {
 				getStart := time.Now()
 
 				stat.GetDuration.Add(time.Since(getStart).Nanoseconds())
 
 				// check if the timestamp on the postage stamp is not later than
 				// the consensus time.
-				if binary.BigEndian.Uint64(chunk.Stamp().Timestamp()) > consensusTime {
+				if binary.BigEndian.Uint64(chItem.Chunk.Stamp().Timestamp()) > consensusTime {
 					stat.NewIgnored.Inc()
 					continue
 				}
 
 				hmacrStart := time.Now()
-				_, err := hmacr.Write(chunk.Data())
+
+				taddr, err := transformedAddress(hasher, chItem.Chunk, chItem.Type)
 				if err != nil {
 					return err
 				}
-				taddr := hmacr.Sum(nil)
-				hmacr.Reset()
+
 				stat.HmacrDuration.Add(time.Since(hmacrStart).Nanoseconds())
 
 				select {
-				case sampleItemChan <- sampleEntry{transformedAddress: swarm.NewAddress(taddr), chunk: chunk}:
+				case sampleItemChan <- SampleItem{TransformedAddress: taddr, ChunkAddress: chItem.Chunk.Address()}:
 				case <-ctx.Done():
 					return ctx.Err()
 				}
@@ -452,13 +492,13 @@ func (db *DB) ReserveSample(
 		close(sampleItemChan)
 	}()
 
-	sampleItems := make([]swarm.Address, 0, sampleSize)
+	sampleItems := make([]SampleItem, 0, sampleSize)
 	// insert function will insert the new item in its correct place. If the sample
 	// size goes beyond what we need we omit the last item.
-	insert := func(item swarm.Address) {
+	insert := func(item SampleItem) {
 		added := false
 		for i, sItem := range sampleItems {
-			if le(item.Bytes(), sItem.Bytes()) {
+			if le(item.TransformedAddress, sItem.TransformedAddress) {
 				sampleItems = append(sampleItems[:i+1], sampleItems[i:]...)
 				sampleItems[i] = item
 				added = true
@@ -476,14 +516,13 @@ func (db *DB) ReserveSample(
 	// Phase 3: Assemble the sample. Here we need to assemble only the first sampleSize
 	// no of items from the results of the 2nd phase.
 	for item := range sampleItemChan {
-		var currentMaxAddr swarm.Address
+		currentMaxAddr := swarm.EmptyAddress
 		if len(sampleItems) > 0 {
-			currentMaxAddr = sampleItems[len(sampleItems)-1]
-		} else {
-			currentMaxAddr = swarm.NewAddress(make([]byte, 32))
+			currentMaxAddr = sampleItems[len(sampleItems)-1].TransformedAddress
 		}
-		if le(item.transformedAddress.Bytes(), currentMaxAddr.Bytes()) || len(sampleItems) < sampleSize {
-			insert(item.transformedAddress)
+
+		if le(item.TransformedAddress, currentMaxAddr) || len(sampleItems) < sampleSize {
+			insert(item)
 
 			// TODO: STAMP VALIDATION
 		}
@@ -493,20 +532,8 @@ func (db *DB) ReserveSample(
 		return Sample{}, fmt.Errorf("sampler: failed creating sample: %w", err)
 	}
 
-	hasher := bmtpool.Get()
-	defer bmtpool.Put(hasher)
-
-	for _, s := range sampleItems {
-		_, err := hasher.Write(s.Bytes())
-		if err != nil {
-			return Sample{}, fmt.Errorf("sampler: failed creating root hash of sample: %w", err)
-		}
-	}
-	hash := hasher.Sum(nil)
-
 	sample := Sample{
 		Items: sampleItems,
-		Hash:  swarm.NewAddress(hash),
 	}
 
 	db.logger.Info("reserve sampler done", "duration", time.Since(t), "storage_radius", storageRadius, "consensus_time_ns", consensusTime, "stats", stat, "sample", sample)
@@ -519,11 +546,42 @@ func (db *DB) po(addr swarm.Address) uint8 {
 }
 
 // less function uses the byte compare to check for lexicographic ordering
-func le(a, b []byte) bool {
-	return bytes.Compare(a, b) == -1
+func le(a, b swarm.Address) bool {
+	return bytes.Compare(a.Bytes(), b.Bytes()) == -1
 }
 
-const sampleSize = 8
+func transformedAddress(hasher *bmt.Hasher, chunk swarm.Chunk, chType swarm.ChunkType) (swarm.Address, error) {
+	switch chType {
+	case swarm.ChunkTypeContentAddressed:
+		return transformedAddressCAC(hasher, chunk)
+	case swarm.ChunkTypeSingleOwner:
+		return transformedAddressSOC(hasher, chunk)
+	default:
+		return swarm.EmptyAddress, fmt.Errorf("chunk type [%v] is is not valid", chType)
+	}
+}
+
+func transformedAddressCAC(hasher *bmt.Hasher, chunk swarm.Chunk) (swarm.Address, error) {
+	hasher.Reset()
+	hasher.SetHeader(chunk.Data()[:bmt.SpanSize])
+
+	_, err := hasher.Write(chunk.Data()[bmt.SpanSize:])
+	if err != nil {
+		return swarm.ZeroAddress, err
+	}
+
+	taddr, err := hasher.Hash(nil)
+	if err != nil {
+		return swarm.ZeroAddress, err
+	}
+
+	return swarm.NewAddress(taddr), nil
+}
+
+func transformedAddressSOC(hasher *bmt.Hasher, chunk swarm.Chunk) (swarm.Address, error) {
+	// TODO
+	return swarm.ZeroAddress, nil
+}
 
 type sampleStat struct {
 	TotalIterated      atomic.Int64
@@ -533,11 +591,6 @@ type sampleStat struct {
 	GetDuration        atomic.Int64
 	HmacrDuration      atomic.Int64
 	ValidStampDuration atomic.Int64
-}
-
-type sampleEntry struct {
-	transformedAddress swarm.Address
-	chunk              swarm.Chunk
 }
 
 func (s sampleStat) String() string {
