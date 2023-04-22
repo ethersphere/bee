@@ -83,8 +83,8 @@ func (db *DB) reserveWorker(capacity int, warmupDur, wakeUpDur time.Duration) {
 }
 
 func (db *DB) ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte) (chunk swarm.Chunk, err error) {
+	dur := captureDuration(time.Now())
 	defer func() {
-		dur := captureDuration(time.Now())
 		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "ReserveGet").Observe(dur())
 		if err == nil || errors.Is(err, storage.ErrNotFound) {
 			db.metrics.MethodCalls.WithLabelValues("reserve", "ReserveGet", "success").Inc()
@@ -115,8 +115,8 @@ func (db *DB) IsWithinStorageRadius(addr swarm.Address) bool {
 }
 
 func (db *DB) ReserveHas(addr swarm.Address, batchID []byte) (has bool, err error) {
+	dur := captureDuration(time.Now())
 	defer func() {
-		dur := captureDuration(time.Now())
 		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "ReserveHas").Observe(dur())
 		if err == nil || errors.Is(err, storage.ErrNotFound) {
 			db.metrics.MethodCalls.WithLabelValues("reserve", "ReserveHas", "success").Inc()
@@ -129,8 +129,8 @@ func (db *DB) ReserveHas(addr swarm.Address, batchID []byte) (has bool, err erro
 }
 
 func (db *DB) ReservePut(ctx context.Context, chunk swarm.Chunk) (err error) {
+	dur := captureDuration(time.Now())
 	defer func() {
-		dur := captureDuration(time.Now())
 		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "ReservePut").Observe(dur())
 		if err == nil || errors.Is(err, storage.ErrNotFound) {
 			db.metrics.MethodCalls.WithLabelValues("reserve", "ReservePut", "success").Inc()
@@ -196,8 +196,8 @@ func (db *DB) ReservePutter(ctx context.Context) PutterSession {
 
 // EvictBatch evicts all chunks belonging to a batch from the reserve.
 func (db *DB) EvictBatch(ctx context.Context, batchID []byte) (err error) {
+	dur := captureDuration(time.Now())
 	defer func() {
-		dur := captureDuration(time.Now())
 		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "EvictBatch").Observe(dur())
 		if err == nil || errors.Is(err, storage.ErrNotFound) {
 			db.metrics.MethodCalls.WithLabelValues("reserve", "EvictBatch", "success").Inc()
