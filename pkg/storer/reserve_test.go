@@ -688,7 +688,7 @@ func TestReserveSampler(t *testing.T) {
 				t.Fatalf("incorrect no of sample items exp %d found %d", sampleSize, len(sample.Items))
 			}
 			for i := 0; i < len(sample.Items)-2; i++ {
-				if bytes.Compare(sample.Items[i].Bytes(), sample.Items[i+1].Bytes()) != -1 {
+				if bytes.Compare(sample.Items[i].TransformedAddress.Bytes(), sample.Items[i+1].TransformedAddress.Bytes()) != -1 {
 					t.Fatalf("incorrect order of samples %+q", sample.Items)
 				}
 			}
