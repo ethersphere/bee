@@ -643,30 +643,32 @@ func TestSubscribeBinTrigger(t *testing.T) {
 	})
 }
 
-const sampleSize = 8
-
 func TestReserveSampler(t *testing.T) {
 	const chunkCountPerPO = 10
 	const maxPO = 10
 
-	testF := func(t *testing.T, baseAddr swarm.Address, st *storer.DB) {
-		t.Helper()
+	randChunks := func(baseAddr swarm.Address, timeVar uint64) []swarm.Chunk {
 		var chs []swarm.Chunk
-
-		timeVar := uint64(time.Now().UnixNano())
-
 		for po := 0; po < maxPO; po++ {
 			for i := 0; i < chunkCountPerPO; i++ {
-				ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, po).WithBatch(0, 3, 2, false)
+				ch := chunk.GenerateValidRandomChunkAt(baseAddr, po).WithBatch(0, 3, 2, false)
 				if rand.Intn(2) == 0 { // 50% chance to wrap CAC into SOC
 					ch = chunk.GenerateTestRandomSoChunk(t, ch)
 				}
 
 				// override stamp timestamp to be before the consensus timestamp
-				ch = ch.WithStamp(postagetesting.MustNewStampWithTimestamp(timeVar - 1))
+				ch = ch.WithStamp(postagetesting.MustNewStampWithTimestamp(timeVar))
 				chs = append(chs, ch)
 			}
 		}
+		return chs
+	}
+
+	testF := func(t *testing.T, baseAddr swarm.Address, st *storer.DB) {
+		t.Helper()
+
+		timeVar := uint64(time.Now().UnixNano())
+		chs := randChunks(baseAddr, timeVar-1)
 
 		putter := st.ReservePutter(context.Background())
 		for _, ch := range chs {
@@ -689,8 +691,8 @@ func TestReserveSampler(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(sample.Items) != sampleSize {
-				t.Fatalf("incorrect no of sample items exp %d found %d", sampleSize, len(sample.Items))
+			if len(sample.Items) != storer.SampleSize {
+				t.Fatalf("incorrect no of sample items exp %d found %d", storer.SampleSize, len(sample.Items))
 			}
 			for i := 0; i < len(sample.Items)-2; i++ {
 				if bytes.Compare(sample.Items[i].TransformedAddress.Bytes(), sample.Items[i+1].TransformedAddress.Bytes()) != -1 {
@@ -703,15 +705,7 @@ func TestReserveSampler(t *testing.T) {
 
 		// We generate another 100 chunks. With these new chunks in the reserve, statistically
 		// some of them should definitely make it to the sample based on lex ordering.
-		for po := 0; po < maxPO; po++ {
-			for i := 0; i < chunkCountPerPO; i++ {
-				ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, po).WithBatch(0, 3, 2, false)
-				// override stamp timestamp to be after the consensus timestamp
-				ch = ch.WithStamp(postagetesting.MustNewStampWithTimestamp(timeVar + 1))
-				chs = append(chs, ch)
-			}
-		}
-
+		chs = randChunks(baseAddr, timeVar+1)
 		putter = st.ReservePutter(context.Background())
 		for _, ch := range chs {
 			err := putter.Put(context.Background(), ch)
