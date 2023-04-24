@@ -669,7 +669,7 @@ func (s *Service) Blocklist(overlay swarm.Address, duration time.Duration, reaso
 	}
 
 	loggerV1.Debug("libp2p blocklisting peer", "peer_address", overlay.String(), "duration", duration, "reason", reason)
-	if err := s.blocklist.Add(overlay, duration); err != nil {
+	if err := s.blocklist.Add(overlay, duration, reason); err != nil {
 		s.metrics.BlocklistedPeerErrCount.Inc()
 		_ = s.Disconnect(overlay, "failed blocklisting peer")
 		return fmt.Errorf("blocklist peer %s: %w", overlay, err)
@@ -902,8 +902,23 @@ func (s *Service) Blocklisted(overlay swarm.Address) (bool, error) {
 	return s.blocklist.Exists(overlay)
 }
 
-func (s *Service) BlocklistedPeers() ([]p2p.Peer, error) {
-	return s.blocklist.Peers()
+func (s *Service) BlocklistedPeers() ([]p2p.BlockListedPeer, error) {
+	ps, err := s.blocklist.Peers()
+	if err != nil {
+		return nil, err
+	}
+	for i := range ps {
+		peerID, found := s.peers.peerID(ps[i].Address)
+		if !found {
+			continue
+		}
+		full, found := s.peers.fullnode(peerID)
+		if !found {
+			continue
+		}
+		ps[i].FullNode = full
+	}
+	return ps, nil
 }
 
 func (s *Service) NewStream(ctx context.Context, overlay swarm.Address, headers p2p.Headers, protocolName, protocolVersion, streamName string) (p2p.Stream, error) {

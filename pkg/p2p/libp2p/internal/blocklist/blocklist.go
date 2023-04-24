@@ -33,11 +33,12 @@ func NewBlocklist(store storage.StateStorer) *Blocklist {
 type entry struct {
 	Timestamp time.Time `json:"timestamp"`
 	Duration  string    `json:"duration"` // Duration is string because the time.Duration does not implement MarshalJSON/UnmarshalJSON methods.
+	Reason    string    `json:"reason"`
 }
 
 func (b *Blocklist) Exists(overlay swarm.Address) (bool, error) {
 	key := generateKey(overlay)
-	timestamp, duration, err := b.get(key)
+	timestamp, duration, _, err := b.get(key)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return false, nil
@@ -54,9 +55,9 @@ func (b *Blocklist) Exists(overlay swarm.Address) (bool, error) {
 	return true, nil
 }
 
-func (b *Blocklist) Add(overlay swarm.Address, duration time.Duration) (err error) {
+func (b *Blocklist) Add(overlay swarm.Address, duration time.Duration, reason string) (err error) {
 	key := generateKey(overlay)
-	_, d, err := b.get(key)
+	_, d, _, err := b.get(key)
 	if err != nil {
 		if !errors.Is(err, storage.ErrNotFound) {
 			return err
@@ -71,12 +72,13 @@ func (b *Blocklist) Add(overlay swarm.Address, duration time.Duration) (err erro
 	return b.store.Put(key, &entry{
 		Timestamp: b.currentTimeFn(),
 		Duration:  duration.String(),
+		Reason:    reason,
 	})
 }
 
 // Peers returns all currently blocklisted peers.
-func (b *Blocklist) Peers() ([]p2p.Peer, error) {
-	var peers []p2p.Peer
+func (b *Blocklist) Peers() ([]p2p.BlockListedPeer, error) {
+	var peers []p2p.BlockListedPeer
 	if err := b.store.Iterate(keyPrefix, func(k, v []byte) (bool, error) {
 		if !strings.HasPrefix(string(k), keyPrefix) {
 			return true, nil
@@ -86,7 +88,7 @@ func (b *Blocklist) Peers() ([]p2p.Peer, error) {
 			return true, err
 		}
 
-		t, d, err := b.get(string(k))
+		t, d, reason, err := b.get(string(k))
 		if err != nil {
 			return true, err
 		}
@@ -96,7 +98,14 @@ func (b *Blocklist) Peers() ([]p2p.Peer, error) {
 			return false, nil
 		}
 
-		p := p2p.Peer{Address: addr}
+		p := p2p.BlockListedPeer{
+			Peer: p2p.Peer{
+				Address:  addr,
+				FullNode: false,
+			},
+			Duration: d,
+			Reason:   reason,
+		}
 		peers = append(peers, p)
 		return false, nil
 	}); err != nil {
@@ -106,18 +115,18 @@ func (b *Blocklist) Peers() ([]p2p.Peer, error) {
 	return peers, nil
 }
 
-func (b *Blocklist) get(key string) (timestamp time.Time, duration time.Duration, err error) {
+func (b *Blocklist) get(key string) (timestamp time.Time, duration time.Duration, reason string, err error) {
 	var e entry
 	if err := b.store.Get(key, &e); err != nil {
-		return time.Time{}, -1, err
+		return time.Time{}, -1, "", err
 	}
 
 	duration, err = time.ParseDuration(e.Duration)
 	if err != nil {
-		return time.Time{}, -1, err
+		return time.Time{}, -1, "", err
 	}
 
-	return e.Timestamp, duration, nil
+	return e.Timestamp, duration, e.Reason, nil
 }
 
 func generateKey(overlay swarm.Address) string {

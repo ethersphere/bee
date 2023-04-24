@@ -7,6 +7,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -83,8 +84,18 @@ type Peer struct {
 	FullNode bool          `json:"fullNode"`
 }
 
+type BlockListedPeer struct {
+	Peer
+	Reason   string        `json:"reason"`
+	Duration time.Duration `json:"duration"`
+}
+
 type peersResponse struct {
 	Peers []Peer `json:"peers"`
+}
+
+type blockListedPeersResponse struct {
+	Peers []BlockListedPeer `json:"peers"`
 }
 
 func (s *Service) peersHandler(w http.ResponseWriter, _ *http.Request) {
@@ -103,8 +114,8 @@ func (s *Service) blocklistedPeersHandler(w http.ResponseWriter, _ *http.Request
 		return
 	}
 
-	jsonhttp.OK(w, peersResponse{
-		Peers: mapPeers(peers),
+	jsonhttp.OK(w, blockListedPeersResponse{
+		Peers: mapBlockListedPeers(peers),
 	})
 }
 
@@ -117,4 +128,19 @@ func mapPeers(peers []p2p.Peer) (out []Peer) {
 		})
 	}
 	return
+}
+
+func mapBlockListedPeers(peers []p2p.BlockListedPeer) []BlockListedPeer {
+	out := make([]BlockListedPeer, 0, len(peers))
+	for _, peer := range peers {
+		out = append(out, BlockListedPeer{
+			Peer: Peer{
+				Address:  peer.Address,
+				FullNode: peer.FullNode,
+			},
+			Reason:   peer.Reason,
+			Duration: peer.Duration,
+		})
+	}
+	return out
 }

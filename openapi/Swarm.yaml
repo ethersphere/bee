@@ -943,7 +943,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/Peers"
+                $ref: "SwarmCommon.yaml#/components/schemas/BlockListedPeers"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
