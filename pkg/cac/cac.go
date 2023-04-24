@@ -46,7 +46,7 @@ func NewWithDataSpan(data []byte) (swarm.Chunk, error) {
 
 // validateDataLength validates if data length (without span) is correct.
 func validateDataLength(dataLength int) error {
-	if dataLength <= 0 { // dataLength could be negative when span size is subtracted
+	if dataLength < 0 { // dataLength could be negative when span size is subtracted
 		return ErrChunkDataShort
 	}
 	if dataLength > swarm.ChunkSize {

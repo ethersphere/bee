@@ -71,12 +71,12 @@ func TestChunkInvariantsNew(t *testing.T) {
 		{
 			name:    "nil",
 			data:    nil,
-			wantErr: cac.ErrChunkDataShort,
+			wantErr: nil,
 		},
 		{
 			name:    "zero data",
 			data:    []byte{},
-			wantErr: cac.ErrChunkDataShort,
+			wantErr: nil,
 		},
 		{
 			name:    "too large data chunk",
@@ -122,7 +122,7 @@ func TestChunkInvariantsNewWithDataSpan(t *testing.T) {
 		{
 			name:    "small data",
 			data:    make([]byte, swarm.SpanSize),
-			wantErr: cac.ErrChunkDataShort,
+			wantErr: nil,
 		},
 		{
 			name:    "too large data chunk",
