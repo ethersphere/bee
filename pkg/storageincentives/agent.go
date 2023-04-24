@@ -49,11 +49,6 @@ type ChainBackend interface {
 	SuggestGasPrice(ctx context.Context) (*big.Int, error)
 }
 
-type SampleData struct {
-	ReserveSample storer.Sample
-	StorageRadius uint8
-}
-
 type Agent struct {
 	logger                 log.Logger
 	metrics                metrics
@@ -291,13 +286,8 @@ func (a *Agent) handleReveal(ctx context.Context, round uint64) (bool, error) {
 
 	a.metrics.RevealPhase.Inc()
 
-	// TODO ph4 sampling
-	_, hash, err := sample.ReserveSample.Content()
-	if err != nil {
-		return false, err
-	}
-
-	txHash, err := a.contract.Reveal(ctx, sample.StorageRadius, hash.Bytes(), commitKey)
+	rsh := sample.ReserveSampleHash.Bytes()
+	txHash, err := a.contract.Reveal(ctx, sample.StorageRadius, rsh, commitKey)
 	if err != nil {
 		a.metrics.ErrReveal.Inc()
 		return false, err
@@ -431,9 +421,14 @@ func (a *Agent) makeSample(ctx context.Context, storageRadius uint8) (SampleData
 	}
 	a.metrics.SampleDuration.Set(time.Since(t).Seconds())
 
+	sampleChunk, err := rSample.Chunk()
+	if err != nil {
+		return SampleData{}, err
+	}
+
 	sample := SampleData{
-		ReserveSample: rSample,
-		StorageRadius: storageRadius,
+		ReserveSampleHash: sampleChunk.Address(),
+		StorageRadius:     storageRadius,
 	}
 
 	return sample, nil
@@ -468,13 +463,8 @@ func (a *Agent) commit(ctx context.Context, sample SampleData, round uint64) err
 		return err
 	}
 
-	// TODO ph4 sampling
-	_, hash, err := sample.ReserveSample.Content()
-	if err != nil {
-		return err
-	}
-
-	obfuscatedHash, err := a.wrapCommit(sample.StorageRadius, hash.Bytes(), key)
+	rsh := sample.ReserveSampleHash.Bytes()
+	obfuscatedHash, err := a.wrapCommit(sample.StorageRadius, rsh, key)
 	if err != nil {
 		return err
 	}

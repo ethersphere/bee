@@ -765,25 +765,26 @@ func TestSample(t *testing.T) {
 		t.Error("sample size not in expected range")
 	}
 
-	content, hash, err := sample.Content()
+	chunk, err := sample.Chunk()
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	data := chunk.Data()[swarm.SpanSize:]
 	pos := 0
 	for _, item := range sample.Items {
-		if !bytes.Equal(content[pos:pos+swarm.HashSize], item.ChunkAddress.Bytes()) {
+		if !bytes.Equal(data[pos:pos+swarm.HashSize], item.ChunkAddress.Bytes()) {
 			t.Error("expected chunk address")
 		}
 		pos += swarm.HashSize
 
-		if !bytes.Equal(content[pos:pos+swarm.HashSize], item.TransformedAddress.Bytes()) {
+		if !bytes.Equal(data[pos:pos+swarm.HashSize], item.TransformedAddress.Bytes()) {
 			t.Error("expected transformed address")
 		}
 		pos += swarm.HashSize
 	}
 
-	if swarm.ZeroAddress.Equal(hash) || swarm.EmptyAddress.Equal(hash) {
+	if swarm.ZeroAddress.Equal(chunk.Address()) || swarm.EmptyAddress.Equal(chunk.Address()) {
 		t.Error("hash should not be empty or zero")
 	}
 }

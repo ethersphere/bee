@@ -13,7 +13,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	erc20mock "github.com/ethersphere/bee/pkg/settlement/swap/erc20/mock"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
-	storer "github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
 	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
 	"github.com/ethersphere/bee/pkg/util/testutil"
@@ -104,8 +103,8 @@ func TestStateRoundData(t *testing.T) {
 		}
 
 		savedSample := SampleData{
-			ReserveSample: storer.RandSampleT(t),
-			StorageRadius: 3,
+			ReserveSampleHash: swarm.RandAddress(t),
+			StorageRadius:     3,
 		}
 		state.SetSampleData(1, savedSample)
 
@@ -166,8 +165,8 @@ func TestPurgeRoundData(t *testing.T) {
 	// helper function which populates data at specified round
 	populateDataAtRound := func(round uint64) {
 		savedSample := SampleData{
-			ReserveSample: storer.RandSampleT(t),
-			StorageRadius: 3,
+			ReserveSampleHash: swarm.RandAddress(t),
+			StorageRadius:     3,
 		}
 		commitKey := testutil.RandBytes(t, swarm.HashSize)
 

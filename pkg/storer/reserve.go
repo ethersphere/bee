@@ -369,7 +369,7 @@ type Sample struct {
 	Items []SampleItem
 }
 
-func (s Sample) Content() ([]byte, swarm.Address, error) {
+func (s Sample) Chunk() (swarm.Chunk, error) {
 	contentSize := len(s.Items) * sampleItemSize
 
 	pos := 0
@@ -381,12 +381,7 @@ func (s Sample) Content() ([]byte, swarm.Address, error) {
 		pos += swarm.HashSize
 	}
 
-	contentChunk, err := cac.New(content)
-	if err != nil {
-		return nil, swarm.EmptyAddress, fmt.Errorf("failed creating sample hash: %w", err)
-	}
-
-	return content, contentChunk.Address(), nil
+	return cac.New(content)
 }
 
 func RandSampleT(t *testing.T) Sample {
