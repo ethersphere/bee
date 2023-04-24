@@ -8,85 +8,87 @@ import (
 	"bytes"
 	"encoding/binary"
 	"errors"
+	"fmt"
 
 	"github.com/ethersphere/bee/pkg/bmtpool"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 var (
-	errTooShortChunkData = errors.New("short chunk data")
-	errTooLargeChunkData = errors.New("data too large")
+	ErrChunkDataShort = errors.New("chunk data length is not sufficient")
+	ErrChunkDataLarge = errors.New("chunk data exceeds maximum allowed length")
 )
 
 // New creates a new content address chunk by initializing a span and appending the data to it.
 func New(data []byte) (swarm.Chunk, error) {
 	dataLength := len(data)
-	if dataLength > swarm.ChunkSize {
-		return nil, errTooLargeChunkData
-	}
 
-	if dataLength == 0 {
-		return nil, errTooShortChunkData
+	if err := validateDataLength(dataLength); err != nil {
+		return nil, fmt.Errorf("invalid CAC data length (%d): %w", dataLength, err)
 	}
 
 	span := make([]byte, swarm.SpanSize)
 	binary.LittleEndian.PutUint64(span, uint64(dataLength))
+
 	return newWithSpan(data, span)
 }
 
 // NewWithDataSpan creates a new chunk assuming that the span precedes the actual data.
 func NewWithDataSpan(data []byte) (swarm.Chunk, error) {
 	dataLength := len(data)
-	if dataLength > swarm.ChunkSize+swarm.SpanSize {
-		return nil, errTooLargeChunkData
+
+	if err := validateDataLength(dataLength - swarm.SpanSize); err != nil {
+		return nil, fmt.Errorf("invalid CAC data length (%d): %w", dataLength, err)
 	}
 
-	if dataLength < swarm.SpanSize {
-		return nil, errTooShortChunkData
-	}
 	return newWithSpan(data[swarm.SpanSize:], data[:swarm.SpanSize])
+}
+
+func validateDataLength(dataLength int) error {
+	if dataLength <= 0 {
+		return ErrChunkDataShort
+	}
+	if dataLength > swarm.ChunkSize {
+		return ErrChunkDataLarge
+	}
+	return nil
 }
 
 // newWithSpan creates a new chunk prepending the given span to the data.
 func newWithSpan(data, span []byte) (swarm.Chunk, error) {
-	h := hasher(data)
-	hash, err := h(span)
+	hash, err := doHash(data, span)
 	if err != nil {
 		return nil, err
 	}
 
-	cdata := make([]byte, len(data)+len(span))
-	copy(cdata[:swarm.SpanSize], span)
-	copy(cdata[swarm.SpanSize:], data)
-	return swarm.NewChunk(swarm.NewAddress(hash), cdata), nil
-}
+	cacData := make([]byte, len(data)+len(span))
+	copy(cacData, span)
+	copy(cacData[swarm.SpanSize:], data)
 
-// hasher is a helper function to hash a given data based on the given span.
-func hasher(data []byte) func([]byte) ([]byte, error) {
-	return func(span []byte) ([]byte, error) {
-		hasher := bmtpool.Get()
-		defer bmtpool.Put(hasher)
-
-		hasher.SetHeader(span)
-		if _, err := hasher.Write(data); err != nil {
-			return nil, err
-		}
-		return hasher.Hash(nil)
-	}
+	return swarm.NewChunk(swarm.NewAddress(hash), cacData), nil
 }
 
 // Valid checks whether the given chunk is a valid content-addressed chunk.
 func Valid(c swarm.Chunk) bool {
 	data := c.Data()
-	if len(data) < swarm.SpanSize {
+
+	if validateDataLength(len(data)-swarm.SpanSize) != nil {
 		return false
 	}
 
-	if len(data) > swarm.ChunkSize+swarm.SpanSize {
-		return false
-	}
+	hash, _ := doHash(data[swarm.SpanSize:], data[:swarm.SpanSize])
 
-	h := hasher(data[swarm.SpanSize:])
-	hash, _ := h(data[:swarm.SpanSize])
 	return bytes.Equal(hash, c.Address().Bytes())
+}
+
+func doHash(data, span []byte) ([]byte, error) {
+	hasher := bmtpool.Get()
+	defer bmtpool.Put(hasher)
+
+	hasher.SetHeader(span)
+	if _, err := hasher.Write(data); err != nil {
+		return nil, err
+	}
+
+	return hasher.Hash(nil)
 }
