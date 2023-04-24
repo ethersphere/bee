@@ -757,6 +757,37 @@ func TestReserveSampler(t *testing.T) {
 	})
 }
 
+func TestSample(t *testing.T) {
+	t.Parallel()
+
+	sample := storer.RandSample()
+	if len(sample.Items) != storer.SampleSize {
+		t.Error("sample size not in expected range")
+	}
+
+	content, hash, err := sample.Content()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pos := 0
+	for _, item := range sample.Items {
+		if !bytes.Equal(content[pos:pos+swarm.HashSize], item.ChunkAddress.Bytes()) {
+			t.Error("expected chunk address")
+		}
+		pos += swarm.HashSize
+
+		if !bytes.Equal(content[pos:pos+swarm.HashSize], item.TransformedAddress.Bytes()) {
+			t.Error("expected transformed address")
+		}
+		pos += swarm.HashSize
+	}
+
+	if swarm.ZeroAddress.Equal(hash) || swarm.EmptyAddress.Equal(hash) {
+		t.Error("hash should not be empty or zero")
+	}
+}
+
 func reserveSizeTest(rs *reserve.Reserve, want int) func(t *testing.T) {
 	return func(t *testing.T) {
 		t.Helper()
