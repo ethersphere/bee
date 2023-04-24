@@ -312,26 +312,25 @@ func (s *store) cleanup() error {
 		return err
 	}
 
-	var errs error
 	for _, b := range evictions {
 		err := s.evictFn(b.ID)
 		if err != nil {
-			errs = errors.Join(errs, fmt.Errorf("evict batch %x: %w", b.ID, err))
+			return fmt.Errorf("evict batch %x: %w", b.ID, err)
 		}
 		err = s.store.Delete(valueKey(b.Value, b.ID))
 		if err != nil {
-			errs = errors.Join(errs, fmt.Errorf("delete value key for batch %x: %w", b.ID, err))
+			return fmt.Errorf("delete value key for batch %x: %w", b.ID, err)
 		}
 		err = s.store.Delete(batchKey(b.ID))
 		if err != nil {
-			errs = errors.Join(errs, fmt.Errorf("delete batch %x: %w", b.ID, err))
+			return fmt.Errorf("delete batch %x: %w", b.ID, err)
 		}
 		if s.batchExpiry != nil {
 			s.batchExpiry.HandleStampExpiry(b.ID)
 		}
 	}
 
-	return errs
+	return nil
 }
 
 // computeRadius calculates the radius by using the sum of all batch depths
