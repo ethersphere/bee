@@ -10,6 +10,7 @@ import (
 	"errors"
 	"io"
 	"math/rand"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -596,6 +597,44 @@ func TestBlocklisting(t *testing.T) {
 
 	expectPeersEventually(t, s1)
 	expectPeers(t, s2)
+}
+
+func TestBlocklistedPeers(t *testing.T) {
+	t.Parallel()
+	s1, overlay1 := newService(t, 1, libp2pServiceOpts{libp2pOpts: libp2p.Options{
+		FullNode: true,
+	}})
+	s2, _ := newService(t, 1, libp2pServiceOpts{})
+	addr1 := serviceUnderlayAddress(t, s1)
+	_, err := s2.Connect(context.Background(), addr1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err = s2.Blocklist(overlay1, 0, testBlocklistMsg); err != nil {
+		t.Fatal(err)
+	}
+	blocklistedPeers, err := s2.BlocklistedPeers()
+	if err != nil {
+		t.Fatal("could not get blocklisted peers", err)
+	}
+
+	want := []p2p.BlockListedPeer{
+		{
+			Peer: p2p.Peer{
+				Address: overlay1,
+				// we can't mock peerRegistry. So we can't know if the peer is a full node or not.
+				// TODO: consider injecting peerRegistry in libp2pService
+				FullNode: false,
+			},
+			Reason:   testBlocklistMsg,
+			Duration: 0,
+		},
+	}
+
+	if !reflect.DeepEqual(want, blocklistedPeers) {
+		t.Fatal("want", want, "got", blocklistedPeers)
+	}
 }
 
 func TestTopologyNotifier(t *testing.T) {
