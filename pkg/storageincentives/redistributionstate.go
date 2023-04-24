@@ -15,6 +15,7 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/transaction"
 )
 
@@ -57,6 +58,11 @@ type RoundData struct {
 	CommitKey   []byte
 	SampleData  *SampleData
 	HasRevealed bool
+}
+
+type SampleData struct {
+	ReserveSampleHash swarm.Address
+	StorageRadius     uint8
 }
 
 func NewStatus() *Status {
