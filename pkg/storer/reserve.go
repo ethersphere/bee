@@ -360,6 +360,8 @@ func (db *DB) SubscribeBin(ctx context.Context, bin uint8, start uint64) (<-chan
 	}, errC
 }
 
+const sampleItemSize = 2 * swarm.HashSize
+
 type SampleItem struct {
 	TransformedAddress swarm.Address
 	ChunkAddress       swarm.Address
@@ -370,29 +372,33 @@ type Sample struct {
 }
 
 func (s Sample) Content() ([]byte, swarm.Address, error) {
-	contentSize := len(s.Items) * (32 + 32)
-	sampleContent := make([]byte, 0, contentSize)
+	contentSize := len(s.Items) * sampleItemSize
+
+	pos := 0
+	content := make([]byte, contentSize)
 	for _, s := range s.Items {
-		sampleContent = append(sampleContent, s.ChunkAddress.Bytes()...)
-		sampleContent = append(sampleContent, s.TransformedAddress.Bytes()...)
+		copy(content[pos:], s.ChunkAddress.Bytes())
+		pos += swarm.HashSize
+		copy(content[pos:], s.TransformedAddress.Bytes())
+		pos += swarm.HashSize
 	}
 
-	sampleContentChunk, err := cac.New(sampleContent)
+	contentChunk, err := cac.New(content)
 	if err != nil {
-		return nil, swarm.EmptyAddress, fmt.Errorf("failed creating sampleHash: %w", err)
+		return nil, swarm.EmptyAddress, fmt.Errorf("failed creating sample hash: %w", err)
 	}
 
-	return sampleContent, sampleContentChunk.Address(), nil
+	return content, contentChunk.Address(), nil
 }
 
-func RandSample() (Sample, error) {
+func RandSample() Sample {
 	items := make([]SampleItem, sampleSize)
 	for i := 0; i < len(items); i++ {
 		items[i].TransformedAddress = randAddress()
 		items[i].ChunkAddress = randAddress()
 	}
 
-	return Sample{Items: items}, nil
+	return Sample{Items: items}
 }
 
 func randAddress() swarm.Address {
@@ -583,7 +589,7 @@ func transformedAddressSOC(hasher *bmt.Hasher, chunk swarm.Chunk) (swarm.Address
 	// Calculate transformed address from wrapped chunk
 	sChunk, err := soc.FromChunk(chunk)
 	if err != nil {
-		return swarm.ZeroAddress, nil
+		return swarm.ZeroAddress, err
 	}
 	taddrCac, err := transformedAddressCAC(hasher, sChunk.WrappedChunk())
 	if err != nil {
