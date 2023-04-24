@@ -104,9 +104,7 @@ func TestStateRoundData(t *testing.T) {
 		}
 
 		savedSample := SampleData{
-			ReserveSample: storer.Sample{
-				Hash: swarm.RandAddress(t),
-			},
+			ReserveSample: storer.RandSampleT(t),
 			StorageRadius: 3,
 		}
 		state.SetSampleData(1, savedSample)
@@ -168,9 +166,7 @@ func TestPurgeRoundData(t *testing.T) {
 	// helper function which populates data at specified round
 	populateDataAtRound := func(round uint64) {
 		savedSample := SampleData{
-			ReserveSample: storer.Sample{
-				Hash: swarm.RandAddress(t),
-			},
+			ReserveSample: storer.RandSampleT(t),
 			StorageRadius: 3,
 		}
 		commitKey := testutil.RandBytes(t, swarm.HashSize)

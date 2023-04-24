@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/bmt"
@@ -388,20 +389,44 @@ func (s Sample) Content() ([]byte, swarm.Address, error) {
 	return content, contentChunk.Address(), nil
 }
 
-func RandSample() Sample {
-	items := make([]SampleItem, sampleSize)
-	for i := 0; i < len(items); i++ {
-		items[i].TransformedAddress = randAddress()
-		items[i].ChunkAddress = randAddress()
+func RandSampleT(t *testing.T) Sample {
+	t.Helper()
+
+	sample, err := RandSample()
+	if err != nil {
+		t.Fatal(err)
 	}
 
-	return Sample{Items: items}
+	return sample
 }
 
-func randAddress() swarm.Address {
+func RandSample() (Sample, error) {
+	var err error
+
+	items := make([]SampleItem, sampleSize)
+	for i := 0; i < len(items); i++ {
+		items[i].TransformedAddress, err = randAddress()
+		if err != nil {
+			return Sample{}, err
+		}
+
+		items[i].ChunkAddress, err = randAddress()
+		if err != nil {
+			return Sample{}, err
+		}
+	}
+
+	return Sample{Items: items}, nil
+}
+
+func randAddress() (swarm.Address, error) {
 	buf := make([]byte, swarm.HashSize)
-	_, _ = rand.Read(buf)
-	return swarm.NewAddress(buf)
+	n, err := rand.Read(buf)
+	if err != nil || n != swarm.HashSize {
+		return swarm.ZeroAddress, err
+	}
+
+	return swarm.NewAddress(buf), nil
 }
 
 // ReserveSample generates the sample of reserve storage of a node required for the
