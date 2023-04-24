@@ -290,8 +290,14 @@ func (a *Agent) handleReveal(ctx context.Context, round uint64) (bool, error) {
 	}
 
 	a.metrics.RevealPhase.Inc()
-	sampleBytes := sample.ReserveSample.Hash.Bytes()
-	txHash, err := a.contract.Reveal(ctx, sample.StorageRadius, sampleBytes, commitKey)
+
+	// TODO ph4 sampling
+	_, hash, err := sample.ReserveSample.Content()
+	if err != nil {
+		return false, err
+	}
+
+	txHash, err := a.contract.Reveal(ctx, sample.StorageRadius, hash.Bytes(), commitKey)
 	if err != nil {
 		a.metrics.ErrReveal.Inc()
 		return false, err
@@ -462,8 +468,13 @@ func (a *Agent) commit(ctx context.Context, sample SampleData, round uint64) err
 		return err
 	}
 
-	sampleBytes := sample.ReserveSample.Hash.Bytes()
-	obfuscatedHash, err := a.wrapCommit(sample.StorageRadius, sampleBytes, key)
+	// TODO ph4 sampling
+	_, hash, err := sample.ReserveSample.Content()
+	if err != nil {
+		return err
+	}
+
+	obfuscatedHash, err := a.wrapCommit(sample.StorageRadius, hash.Bytes(), key)
 	if err != nil {
 		return err
 	}

@@ -760,7 +760,7 @@ func TestReserveSampler(t *testing.T) {
 func TestSample(t *testing.T) {
 	t.Parallel()
 
-	sample := storer.RandSample()
+	sample := storer.RandSampleT(t)
 	if len(sample.Items) != storer.SampleSize {
 		t.Error("sample size not in expected range")
 	}

@@ -230,7 +230,7 @@ func (s *ReserveStore) ReserveHas(addr swarm.Address, batchID []byte) (bool, err
 }
 
 func (s *ReserveStore) ReserveSample(context.Context, []byte, uint8, uint64) (storer.Sample, error) {
-	return storer.RandSample(), nil
+	return storer.RandSample()
 }
 
 type Option interface {
