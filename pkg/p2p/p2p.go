@@ -197,7 +197,6 @@ type BlockListedPeer struct {
 	Peer
 	Reason   string
 	Duration time.Duration
-	Full     bool
 }
 
 // HandlerFunc handles a received Stream from a Peer.

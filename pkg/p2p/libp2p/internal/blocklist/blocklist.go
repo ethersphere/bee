@@ -39,7 +39,7 @@ type entry struct {
 
 func (b *Blocklist) Exists(overlay swarm.Address) (bool, error) {
 	key := generateKey(overlay)
-	timestamp, duration, _, _, err := b.get(key)
+	e, duration, err := b.get(key)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return false, nil
@@ -48,7 +48,7 @@ func (b *Blocklist) Exists(overlay swarm.Address) (bool, error) {
 		return false, err
 	}
 
-	if b.currentTimeFn().Sub(timestamp) > duration && duration != 0 {
+	if b.currentTimeFn().Sub(e.Timestamp) > duration && duration != 0 {
 		_ = b.store.Delete(key)
 		return false, nil
 	}
@@ -58,7 +58,7 @@ func (b *Blocklist) Exists(overlay swarm.Address) (bool, error) {
 
 func (b *Blocklist) Add(overlay swarm.Address, duration time.Duration, reason string, full bool) (err error) {
 	key := generateKey(overlay)
-	_, d, _, _, err := b.get(key)
+	_, d, err := b.get(key)
 	if err != nil {
 		if !errors.Is(err, storage.ErrNotFound) {
 			return err
@@ -90,12 +90,12 @@ func (b *Blocklist) Peers() ([]p2p.BlockListedPeer, error) {
 			return true, err
 		}
 
-		t, d, reason, f, err := b.get(string(k))
+		entry, d, err := b.get(string(k))
 		if err != nil {
 			return true, err
 		}
 
-		if b.currentTimeFn().Sub(t) > d && d != 0 {
+		if b.currentTimeFn().Sub(entry.Timestamp) > d && d != 0 {
 			// skip to the next item
 			return false, nil
 		}
@@ -103,11 +103,10 @@ func (b *Blocklist) Peers() ([]p2p.BlockListedPeer, error) {
 		p := p2p.BlockListedPeer{
 			Peer: p2p.Peer{
 				Address:  addr,
-				FullNode: false,
+				FullNode: entry.Full,
 			},
 			Duration: d,
-			Reason:   reason,
-			Full:     f,
+			Reason:   entry.Reason,
 		}
 		peers = append(peers, p)
 		return false, nil
@@ -118,18 +117,19 @@ func (b *Blocklist) Peers() ([]p2p.BlockListedPeer, error) {
 	return peers, nil
 }
 
-func (b *Blocklist) get(key string) (timestamp time.Time, duration time.Duration, reason string, full bool, err error) {
+func (b *Blocklist) get(key string) (entry, time.Duration, error) {
 	var e entry
-	if err := b.store.Get(key, &e); err != nil {
-		return time.Time{}, -1, "", false, err
-	}
-
-	duration, err = time.ParseDuration(e.Duration)
+	err := b.store.Get(key, &e)
 	if err != nil {
-		return time.Time{}, -1, "", false, err
+		return e, -1, err
 	}
 
-	return e.Timestamp, duration, e.Reason, e.Full, nil
+	dur, err := time.ParseDuration(e.Duration)
+	if err != nil {
+		return e, -1, err
+	}
+
+	return e, dur, nil
 }
 
 func generateKey(overlay swarm.Address) string {
