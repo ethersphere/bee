@@ -245,7 +245,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		}
 
 		ps.metrics.Forwarder.Inc()
-		return fmt.Errorf("handler: push to closest: %w", err)
+		return fmt.Errorf("handler: push to closest chunk %s: %w", chunkAddress, err)
 	}
 
 	ps.metrics.Forwarder.Inc()
@@ -319,12 +319,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			return swarm.ZeroAddress, topology.ErrWantSelf
 		}
 
-		peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), ps.fullNode, topology.Filter{Reachable: true}, ps.skipList.ChunkPeers(ch.Address())...)
-		if errors.Is(err, topology.ErrWantSelf) {
-			return swarm.ZeroAddress, topology.ErrNotFound
-		}
-
-		return peer, err
+		return ps.topologyDriver.ClosestPeer(ch.Address(), ps.fullNode, topology.Filter{Reachable: true}, ps.skipList.ChunkPeers(ch.Address())...)
 	}
 
 	retry()
@@ -383,8 +378,10 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			action, err := ps.prepareCredit(ctx, peer, ch, origin)
 			if err != nil {
 				retry()
+				ps.skipList.Add(ch.Address(), peer, overDraftRefresh)
 				continue
 			}
+			ps.skipList.Add(ch.Address(), peer, sanctionWait)
 
 			ps.metrics.TotalSendAttempts.Inc()
 			inflight++
@@ -558,10 +555,8 @@ func (ps *PushSync) prepareCredit(ctx context.Context, peer swarm.Address, ch sw
 
 	creditAction, err := ps.accounting.PrepareCredit(creditCtx, peer, ps.pricer.PeerPrice(peer, ch.Address()), origin)
 	if err != nil {
-		ps.skipList.Add(ch.Address(), peer, overDraftRefresh)
 		return nil, err
 	}
-	ps.skipList.Add(ch.Address(), peer, sanctionWait)
 
 	return creditAction, nil
 }
