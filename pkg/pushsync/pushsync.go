@@ -341,7 +341,8 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			if errors.Is(err, topology.ErrNotFound) {
 				if ps.skipList.PruneExpiresAfter(ch.Address(), overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers
 					if inflight == 0 {
-						return nil, fmt.Errorf("get closest for address %s, allow upstream %v: %w", ch, origin, err)
+						ps.logger.Debug("no peers left", "chunk_address", ch.Address(), "error", err)
+						return nil, err
 					}
 					continue // there is still an inflight request, wait for it's result
 				}
@@ -367,7 +368,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 					}
 					return nil, err
 				}
-
 				continue
 			}
 
