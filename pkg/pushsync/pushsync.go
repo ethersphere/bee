@@ -321,7 +321,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 		peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), ps.fullNode, topology.Filter{Reachable: true}, ps.skipList.ChunkPeers(ch.Address())...)
 		if errors.Is(err, topology.ErrWantSelf) {
-			return swarm.ZeroAddress, ErrOutOfDepthStoring
+			return swarm.ZeroAddress, topology.ErrNotFound
 		}
 
 		return peer, err
@@ -338,15 +338,9 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 		case <-retryC:
 
 			peer, err := nextPeer()
-			if err != nil {
+			if errors.Is(err, topology.ErrNotFound) {
 				if ps.skipList.PruneExpiresAfter(ch.Address(), overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers
 					if inflight == 0 {
-						if errors.Is(err, topology.ErrWantSelf) {
-							go ps.replicateInNeighborhood(ctx, ch, ps.skipList.ChunkPeers(ch.Address()), origin)
-							if origin && cac.Valid(ch) {
-								go ps.unwrap(ch)
-							}
-						}
 						return nil, fmt.Errorf("get closest for address %s, allow upstream %v: %w", ch, origin, err)
 					}
 					continue // there is still an inflight request, wait for it's result
@@ -361,6 +355,20 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				case <-ctx.Done():
 					return nil, ctx.Err()
 				}
+			}
+
+			if err != nil {
+				if inflight == 0 {
+					if errors.Is(err, topology.ErrWantSelf) {
+						go ps.replicateInNeighborhood(ctx, ch, ps.skipList.ChunkPeers(ch.Address()), origin)
+						if origin && cac.Valid(ch) {
+							go ps.unwrap(ch)
+						}
+					}
+					return nil, err
+				}
+
+				continue
 			}
 
 			// since we can reach into the neighborhood of the chunk
