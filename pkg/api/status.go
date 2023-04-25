@@ -18,8 +18,8 @@ import (
 
 type statusSnapshotResponse struct {
 	Peer             string  `json:"peer"`
-	BeeMode          string  `json:"beeMode"`
 	Proximity        uint8   `json:"proximity"`
+	BeeMode          string  `json:"beeMode"`
 	ReserveSize      uint64  `json:"reserveSize"`
 	PullsyncRate     float64 `json:"pullsyncRate"`
 	StorageRadius    uint8   `json:"storageRadius"`
@@ -120,6 +120,7 @@ func (s *Service) statusGetPeersHandler(w http.ResponseWriter, r *http.Request) 
 				snapshot.StorageRadius = uint8(ss.StorageRadius)
 				snapshot.ConnectedPeers = ss.ConnectedPeers
 				snapshot.NeighborhoodSize = ss.NeighborhoodSize
+				snapshot.BatchTotalAmount = ss.BatchTotalAmount
 			}
 
 			mu.Lock()
