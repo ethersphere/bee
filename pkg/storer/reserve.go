@@ -584,7 +584,7 @@ func transformedAddress(hasher *bmt.Hasher, chunk swarm.Chunk, chType swarm.Chun
 	case swarm.ChunkTypeSingleOwner:
 		return transformedAddressSOC(hasher, chunk)
 	default:
-		return swarm.EmptyAddress, fmt.Errorf("chunk type [%v] is is not valid", chType)
+		return swarm.ZeroAddress, fmt.Errorf("chunk type [%v] is is not valid", chType)
 	}
 }
 
