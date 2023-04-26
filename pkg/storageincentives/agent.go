@@ -307,7 +307,6 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) (bool, error) {
 	}
 
 	a.metrics.ClaimPhase.Inc()
-	// event claimPhase was processed
 
 	err := a.batchExpirer.ExpireBatches(ctx)
 	if err != nil {
@@ -328,7 +327,18 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) (bool, error) {
 			a.logger.Info("could not set balance", "err", err)
 		}
 
-		txHash, err := a.contract.Claim(ctx)
+		sampleData, exists := a.state.SampleData(round - 1)
+		if !exists {
+			return false, fmt.Errorf("sample not found")
+		}
+
+		proofs, err := makeInclusionProofs(ctx, sampleData)
+		if err != nil {
+			a.logger.Info("error making inclusion proofs", "err", err)
+			return false, err
+		}
+
+		txHash, err := a.contract.Claim(ctx, proofs)
 		if err != nil {
 			a.metrics.ErrClaim.Inc()
 			a.logger.Info("error claiming win", "err", err)
@@ -421,14 +431,16 @@ func (a *Agent) makeSample(ctx context.Context, storageRadius uint8) (SampleData
 	}
 	a.metrics.SampleDuration.Set(time.Since(t).Seconds())
 
-	sampleChunk, err := rSample.Chunk()
+	hash, err := sampleHash(rSample.Items)
 	if err != nil {
 		return SampleData{}, err
 	}
 
 	sample := SampleData{
-		ReserveSampleHash: sampleChunk.Address(),
-		StorageRadius:     storageRadius,
+		Salt:               salt,
+		ReserveSampleItems: rSample.Items,
+		ReserveSampleHash:  hash,
+		StorageRadius:      storageRadius,
 	}
 
 	return sample, nil

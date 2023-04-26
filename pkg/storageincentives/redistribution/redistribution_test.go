@@ -153,7 +153,8 @@ func TestRedistribution(t *testing.T) {
 	t.Run("Claim", func(t *testing.T) {
 		t.Parallel()
 
-		expectedCallData, err := redistributionContractABI.Pack("claim")
+		proofs := redistribution.RandChunkInclusionProofs(t)
+		expectedCallData, err := redistributionContractABI.Pack("claim") // todo add proofs
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -183,7 +184,7 @@ func TestRedistribution(t *testing.T) {
 			redistributionContractABI,
 		)
 
-		_, err = contract.Claim(ctx)
+		_, err = contract.Claim(ctx, proofs)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -192,7 +193,8 @@ func TestRedistribution(t *testing.T) {
 	t.Run("Claim with tx reverted", func(t *testing.T) {
 		t.Parallel()
 
-		expectedCallData, err := redistributionContractABI.Pack("claim")
+		proofs := redistribution.RandChunkInclusionProofs(t)
+		expectedCallData, err := redistributionContractABI.Pack("claim") // todo add proofs
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -222,7 +224,7 @@ func TestRedistribution(t *testing.T) {
 			redistributionContractABI,
 		)
 
-		_, err = contract.Claim(ctx)
+		_, err = contract.Claim(ctx, proofs)
 		if !errors.Is(err, transaction.ErrTransactionReverted) {
 			t.Fatal(err)
 		}

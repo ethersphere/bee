@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/bmt"
-	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/soc"
 	storage "github.com/ethersphere/bee/pkg/storage"
@@ -358,8 +357,6 @@ func (db *DB) SubscribeBin(ctx context.Context, bin uint8, start uint64) (<-chan
 	}, errC
 }
 
-const sampleItemSize = 2 * swarm.HashSize
-
 type SampleItem struct {
 	TransformedAddress swarm.Address
 	ChunkAddress       swarm.Address
@@ -367,21 +364,6 @@ type SampleItem struct {
 
 type Sample struct {
 	Items []SampleItem
-}
-
-func (s Sample) Chunk() (swarm.Chunk, error) {
-	contentSize := len(s.Items) * sampleItemSize
-
-	pos := 0
-	content := make([]byte, contentSize)
-	for _, s := range s.Items {
-		copy(content[pos:], s.ChunkAddress.Bytes())
-		pos += swarm.HashSize
-		copy(content[pos:], s.TransformedAddress.Bytes())
-		pos += swarm.HashSize
-	}
-
-	return cac.New(content)
 }
 
 func RandSampleT(t *testing.T) Sample {
