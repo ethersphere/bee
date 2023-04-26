@@ -363,6 +363,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 					}
 					return nil, err
 				}
+				ps.logger.Debug("next peer", "chunk_address", ch.Address(), "error", err)
 				continue
 			}
 

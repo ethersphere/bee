@@ -1297,8 +1297,12 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, filter topology.
 			return false, false, nil
 		}
 
-		if closer, _ := peer.Closer(addr, closest); closer {
+		closer, err := peer.Closer(addr, closest)
+		if closer {
 			closest = peer
+		}
+		if err != nil {
+			k.logger.Debug("closest peer", "peer", peer, "addr", addr, "error", err)
 		}
 		return false, false, nil
 	}, filter)
