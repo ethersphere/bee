@@ -85,7 +85,6 @@ type PushSync struct {
 	validStamp     postage.ValidStampFn
 	signer         crypto.Signer
 	fullNode       bool
-	warmupPeriod   time.Time
 	skipList       *skippeers.List
 }
 
@@ -96,7 +95,7 @@ type receiptResult struct {
 	err      error
 }
 
-func New(address swarm.Address, nonce []byte, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, rs postage.Radius, tagger *tags.Tags, fullNode bool, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger log.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer, warmupTime time.Duration) *PushSync {
+func New(address swarm.Address, nonce []byte, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, rs postage.Radius, tagger *tags.Tags, fullNode bool, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger log.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer) *PushSync {
 	ps := &PushSync{
 		address:        address,
 		nonce:          nonce,
@@ -114,7 +113,6 @@ func New(address swarm.Address, nonce []byte, streamer p2p.StreamerDisconnecter,
 		tracer:         tracer,
 		signer:         signer,
 		skipList:       skippeers.NewList(),
-		warmupPeriod:   time.Now().Add(warmupTime),
 	}
 
 	ps.validStamp = ps.validStampWrapper(validStamp)
@@ -247,7 +245,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		}
 
 		ps.metrics.Forwarder.Inc()
-		return fmt.Errorf("handler: push to closest: %w", err)
+		return fmt.Errorf("handler: push to closest chunk %s: %w", chunkAddress, err)
 	}
 
 	ps.metrics.Forwarder.Inc()
@@ -316,19 +314,12 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 	nextPeer := func() (swarm.Address, error) {
 
-		// we are a full, warmed up node and in the neighborhood of the chunk
-		if ps.fullNode && ps.radiusChecker.IsWithinStorageRadius(ch.Address()) && ps.warmedUp() {
+		// we are a full node and in the neighborhood of the chunk
+		if ps.fullNode && ps.radiusChecker.IsWithinStorageRadius(ch.Address()) {
 			return swarm.ZeroAddress, topology.ErrWantSelf
 		}
 
-		// find closer peer
-		peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), ps.fullNode, topology.Filter{Reachable: true}, ps.skipList.ChunkPeers(ch.Address())...)
-		// only return ErrWantSelf if we are in the neighborhood of the chunk
-		if errors.Is(err, topology.ErrWantSelf) {
-			return swarm.ZeroAddress, topology.ErrNotFound
-		}
-
-		return peer, err
+		return ps.topologyDriver.ClosestPeer(ch.Address(), ps.fullNode, topology.Filter{Reachable: true}, ps.skipList.ChunkPeers(ch.Address())...)
 	}
 
 	retry()
@@ -342,16 +333,13 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 		case <-retryC:
 
 			peer, err := nextPeer()
-
-			// no peers left
 			if errors.Is(err, topology.ErrNotFound) {
 				if ps.skipList.PruneExpiresAfter(ch.Address(), overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers
 					if inflight == 0 {
 						ps.logger.Debug("no peers left", "chunk_address", ch.Address(), "error", err)
 						return nil, err
-					} else {
-						continue // there is still an inflight request, wait for it's result
 					}
+					continue // there is still an inflight request, wait for it's result
 				}
 
 				ps.logger.Debug("sleeping to refresh overdraft balance", "chunk_address", ch.Address())
@@ -365,21 +353,17 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				}
 			}
 
-			// we store the chunk
-			if errors.Is(err, topology.ErrWantSelf) {
-				go ps.replicateInNeighborhood(ctx, ch, origin)
-				if origin && cac.Valid(ch) {
-					go ps.unwrap(ch)
-				}
-				return nil, err
-			}
-
 			if err != nil {
 				if inflight == 0 {
-					return nil, fmt.Errorf("get closest for address %s, allow upstream %v: %w", ch, origin, err)
-				} else {
-					continue
+					if errors.Is(err, topology.ErrWantSelf) {
+						go ps.replicateInNeighborhood(ctx, ch, ps.skipList.ChunkPeers(ch.Address()), origin)
+						if origin && cac.Valid(ch) {
+							go ps.unwrap(ch)
+						}
+					}
+					return nil, err
 				}
+				continue
 			}
 
 			// since we can reach into the neighborhood of the chunk
@@ -393,8 +377,8 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			action, err := ps.prepareCredit(ctx, peer, ch, origin)
 			if err != nil {
-				ps.skipList.Add(ch.Address(), peer, overDraftRefresh)
 				retry()
+				ps.skipList.Add(ch.Address(), peer, overDraftRefresh)
 				continue
 			}
 			ps.skipList.Add(ch.Address(), peer, sanctionWait)
@@ -415,7 +399,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			}
 
 			ps.metrics.TotalFailedSendAttempts.Inc()
-			ps.logger.Debug("could not push to peer", "peer_address", result.peer, "error", result.err)
+			ps.logger.Debug("could not push to peer", "chunk_address", ch.Address(), "peer_address", result.peer, "error", result.err)
 
 			sentErrorsLeft--
 
@@ -462,12 +446,15 @@ func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptRes
 }
 
 // replicateInNeighborhood pushes the chunk to some peers in the neighborhood in parallel for replication.
-func (ps *PushSync) replicateInNeighborhood(ctx context.Context, ch swarm.Chunk, origin bool) {
+func (ps *PushSync) replicateInNeighborhood(ctx context.Context, ch swarm.Chunk, peers []swarm.Address, origin bool) {
 	count := 0
 	_ = ps.topologyDriver.EachConnectedPeer(func(peer swarm.Address, po uint8) (bool, bool, error) {
 		// stop here since the rest of the peers will also be further away
 		if po < ps.radiusChecker.StorageRadius() || count == nPeersToReplicate {
 			return true, false, nil
+		}
+		if swarm.ContainsAddress(peers, peer) {
+			return false, false, nil
 		}
 		count++
 		go ps.replicateWithPeer(ctx, peer, ch, origin)
@@ -509,7 +496,7 @@ func (ps *PushSync) replicateWithPeer(parentCtx context.Context, peer swarm.Addr
 	err = action.Apply()
 }
 
-func (ps *PushSync) pushChunkToPeer(ctx context.Context, peer swarm.Address, ch swarm.Chunk, replicate bool) (*pb.Receipt, error) {
+func (ps *PushSync) pushChunkToPeer(ctx context.Context, peer swarm.Address, ch swarm.Chunk, replicate bool) (receipt *pb.Receipt, err error) {
 
 	streamer, err := ps.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
@@ -548,16 +535,16 @@ func (ps *PushSync) pushChunkToPeer(ctx context.Context, peer swarm.Address, ch 
 		}
 	}
 
-	var receipt pb.Receipt
-	if err = r.ReadMsgWithContext(ctx, &receipt); err != nil {
+	var rec pb.Receipt
+	if err = r.ReadMsgWithContext(ctx, &rec); err != nil {
 		return nil, err
 	}
 
-	if !ch.Address().Equal(swarm.NewAddress(receipt.Address)) {
+	if !ch.Address().Equal(swarm.NewAddress(rec.Address)) {
 		return nil, fmt.Errorf("invalid receipt. chunk %s, peer %s", ch.Address(), peer)
 	}
 
-	return &receipt, nil
+	return &rec, nil
 
 }
 
@@ -600,8 +587,4 @@ func (ps *PushSync) validStampWrapper(f postage.ValidStampFn) postage.ValidStamp
 
 func (s *PushSync) Close() error {
 	return s.skipList.Close()
-}
-
-func (ps *PushSync) warmedUp() bool {
-	return time.Now().After(ps.warmupPeriod)
 }

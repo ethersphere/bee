@@ -23,6 +23,7 @@ func TestPruneExpiresAfter(t *testing.T) {
 	peer2 := swarm.RandAddress(t)
 
 	skipList.Add(chunk, peer1, time.Millisecond*10)
+	skipList.Add(swarm.RandAddress(t), peer1, time.Millisecond*10)
 	if !swarm.ContainsAddress(skipList.ChunkPeers(chunk), peer1) {
 		t.Fatal("peer should be in skiplist")
 	}
@@ -38,7 +39,7 @@ func TestPruneExpiresAfter(t *testing.T) {
 	}
 
 	if len(skipList.ChunkPeers(swarm.RandAddress(t))) != 0 {
-		t.Fatal("there should be now entry")
+		t.Fatal("there should be no entry")
 	}
 
 	if skipList.PruneExpiresAfter(chunk, time.Millisecond*10) == 0 {
@@ -50,7 +51,7 @@ func TestPruneExpiresAfter(t *testing.T) {
 	}
 
 	if len(skipList.ChunkPeers(swarm.RandAddress(t))) != 0 {
-		t.Fatal("there should be now entry")
+		t.Fatal("there should be no entry")
 	}
 }
 
