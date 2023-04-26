@@ -213,30 +213,6 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		return debit.Apply()
 	}
 
-	if ch.Replicate {
-
-		ps.metrics.HandlerReplication.Inc()
-		defer func() {
-			if err != nil {
-				ps.metrics.HandlerReplicationErrors.Inc()
-			}
-		}()
-
-		if !ps.radiusChecker.IsWithinStorageRadius(chunk.Address()) {
-			return ErrOutOfDepthStoring
-		}
-
-		span, _, ctxd := ps.tracer.StartSpanFromContext(ctx, "pushsync-replication-storage", ps.logger, opentracing.Tag{Key: "address", Value: chunkAddress.String()})
-		defer span.Finish()
-
-		err = store(ctxd)
-		if err != nil {
-			err = fmt.Errorf("replication: %w", err)
-		}
-
-		return err
-	}
-
 	receipt, err := ps.pushToClosest(ctx, chunk, false)
 	if err != nil {
 		if errors.Is(err, topology.ErrWantSelf) {
