@@ -36,7 +36,7 @@ const loggerName = "pushsync"
 
 const (
 	protocolName    = "pushsync"
-	protocolVersion = "1.2.0"
+	protocolVersion = "1.1.0"
 	streamName      = "pushsync"
 )
 
@@ -48,7 +48,7 @@ const (
 )
 
 const (
-	nPeersToReplicate = 4 // number of peers to replicate to as receipt is sent upstream
+	nPeersToReplicate = 3 // number of peers to replicate to as receipt is sent upstream
 	maxPushErrors     = 32
 )
 
@@ -356,7 +356,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			if err != nil {
 				if inflight == 0 {
 					if errors.Is(err, topology.ErrWantSelf) {
-						go ps.replicateInNeighborhood(ctx, ch, ps.skipList.ChunkPeers(ch.Address()), origin)
 						if origin && cac.Valid(ch) {
 							go ps.unwrap(ch)
 						}
@@ -435,7 +434,7 @@ func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptRes
 
 	defer action.Cleanup()
 
-	receipt, err = ps.pushChunkToPeer(ctx, peer, ch, false)
+	receipt, err = ps.pushChunkToPeer(ctx, peer, ch)
 	if err != nil {
 		return
 	}
@@ -445,58 +444,7 @@ func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptRes
 	err = action.Apply()
 }
 
-// replicateInNeighborhood pushes the chunk to some peers in the neighborhood in parallel for replication.
-func (ps *PushSync) replicateInNeighborhood(ctx context.Context, ch swarm.Chunk, peers []swarm.Address, origin bool) {
-	count := 0
-	_ = ps.topologyDriver.EachConnectedPeer(func(peer swarm.Address, po uint8) (bool, bool, error) {
-		// stop here since the rest of the peers will also be further away
-		if po < ps.radiusChecker.StorageRadius() || count == nPeersToReplicate {
-			return true, false, nil
-		}
-		if swarm.ContainsAddress(peers, peer) {
-			return false, false, nil
-		}
-		count++
-		go ps.replicateWithPeer(ctx, peer, ch, origin)
-		return false, false, nil
-	}, topology.Filter{Reachable: true})
-}
-
-// replicateWithPeer handles in-neighborhood replication for a single peer.
-func (ps *PushSync) replicateWithPeer(parentCtx context.Context, peer swarm.Address, ch swarm.Chunk, origin bool) {
-	var err error
-	ps.metrics.TotalReplicatedAttempts.Inc()
-
-	span := tracing.FromContext(parentCtx)
-
-	ctx, cancel := context.WithTimeout(context.Background(), defaultTTL)
-	defer cancel()
-
-	spanInner, logger, ctx := ps.tracer.StartSpanFromContext(tracing.WithContext(ctx, span), "pushsync-replication", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
-	loggerV1 := logger.V(1).Build()
-	defer spanInner.Finish()
-	defer func() {
-		if err != nil {
-			loggerV1.Debug("pushsync replication failed", "error", err)
-			ps.metrics.TotalReplicatedError.Inc()
-		}
-	}()
-
-	action, err := ps.prepareCredit(ctx, peer, ch, origin)
-	if err != nil {
-		return
-	}
-	defer action.Cleanup()
-
-	_, err = ps.pushChunkToPeer(ctx, peer, ch, true)
-	if err != nil {
-		return
-	}
-
-	err = action.Apply()
-}
-
-func (ps *PushSync) pushChunkToPeer(ctx context.Context, peer swarm.Address, ch swarm.Chunk, replicate bool) (receipt *pb.Receipt, err error) {
+func (ps *PushSync) pushChunkToPeer(ctx context.Context, peer swarm.Address, ch swarm.Chunk) (receipt *pb.Receipt, err error) {
 
 	streamer, err := ps.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
@@ -517,10 +465,9 @@ func (ps *PushSync) pushChunkToPeer(ctx context.Context, peer swarm.Address, ch 
 		return nil, err
 	}
 	err = w.WriteMsgWithContext(ctx, &pb.Delivery{
-		Address:   ch.Address().Bytes(),
-		Data:      ch.Data(),
-		Stamp:     stamp,
-		Replicate: replicate,
+		Address: ch.Address().Bytes(),
+		Data:    ch.Data(),
+		Stamp:   stamp,
 	})
 	if err != nil {
 		return nil, err
