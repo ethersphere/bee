@@ -819,7 +819,7 @@ func (s *Service) newStamperPutter(r *http.Request) (storage.Storer, func() erro
 		p := newStoringStamperPutter(s.storer, issuer, s.signer)
 		return p, save, nil
 	}
-	p := newPushStamperPutter(s.storer, issuer, s.signer, s.chunkPushC)
+	p := newPushStamperPutter(s.logger, s.storer, issuer, s.signer, s.chunkPushC)
 
 	wait := func() error {
 		if err := save(); err != nil {
@@ -833,15 +833,16 @@ func (s *Service) newStamperPutter(r *http.Request) (storage.Storer, func() erro
 
 type pushStamperPutter struct {
 	storage.Storer
+	logger  log.Logger
 	stamper postage.Stamper
 	eg      errgroup.Group
 	c       chan *pusher.Op
 	sem     chan struct{}
 }
 
-func newPushStamperPutter(s storage.Storer, i *postage.StampIssuer, signer crypto.Signer, cc chan *pusher.Op) *pushStamperPutter {
+func newPushStamperPutter(logger log.Logger, s storage.Storer, i *postage.StampIssuer, signer crypto.Signer, cc chan *pusher.Op) *pushStamperPutter {
 	stamper := postage.NewStamper(i, signer)
-	return &pushStamperPutter{Storer: s, stamper: stamper, c: cc, sem: make(chan struct{}, uploadSem)}
+	return &pushStamperPutter{logger: logger, Storer: s, stamper: stamper, c: cc, sem: make(chan struct{}, uploadSem)}
 }
 
 func (p *pushStamperPutter) Wait() error {
@@ -892,6 +893,7 @@ func (p *pushStamperPutter) putChunk(ctx context.Context, ch swarm.Chunk) {
 				if err == nil {
 					return nil
 				}
+				p.logger.Debug("put chunk", "error", err)
 
 			case <-ctx.Done():
 				return ctx.Err()
