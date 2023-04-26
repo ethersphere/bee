@@ -625,7 +625,7 @@ func TestBlocklistedPeers(t *testing.T) {
 				Address: overlay1,
 				// we can't mock peerRegistry. So we can't know if the peer is a full node or not.
 				// TODO: consider injecting peerRegistry in libp2pService
-				FullNode: false,
+				FullNode: true,
 			},
 			Reason:   testBlocklistMsg,
 			Duration: 0,
