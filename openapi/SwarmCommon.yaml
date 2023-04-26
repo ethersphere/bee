@@ -343,7 +343,7 @@ components:
           reason:
             type: string
           duration:
-            $ref: "#/components/schemas/Duration"
+            type: integer
 
     PssRecipient:
       type: string
