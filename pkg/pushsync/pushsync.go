@@ -213,18 +213,17 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		return debit.Apply()
 	}
 
-	receipt, err := ps.pushToClosest(ctx, chunk, false)
-	if err != nil {
-		if errors.Is(err, topology.ErrWantSelf) {
-			ps.metrics.Storer.Inc()
-			return store(ctx)
-		}
-
-		ps.metrics.Forwarder.Inc()
-		return fmt.Errorf("handler: push to closest chunk %s: %w", chunkAddress, err)
+	if ps.fullNode && ps.radiusChecker.IsWithinStorageRadius(chunk.Address()) {
+		ps.metrics.Storer.Inc()
+		return store(ctx)
 	}
 
 	ps.metrics.Forwarder.Inc()
+
+	receipt, err := ps.pushToClosest(ctx, chunk, false)
+	if err != nil {
+		return fmt.Errorf("handler: push to closest chunk %s: %w", chunkAddress, err)
+	}
 
 	debit, err := ps.accounting.PrepareDebit(ctx, p.Address, price)
 	if err != nil {
@@ -304,7 +303,9 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				if ps.skipList.PruneExpiresAfter(ch.Address(), overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers
 					if inflight == 0 {
 						if origin && ps.fullNode && ps.radiusChecker.IsWithinStorageRadius(ch.Address()) {
-							ps.wantSelf(ch, origin)
+							if cac.Valid(ch) {
+								go ps.unwrap(ch)
+							}
 							return nil, topology.ErrWantSelf
 						}
 						ps.logger.Debug("no peers left", "chunk_address", ch.Address(), "error", err)
@@ -326,9 +327,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			if err != nil {
 				if inflight == 0 {
-					if errors.Is(err, topology.ErrWantSelf) {
-						ps.wantSelf(ch, origin)
-					}
 					return nil, err
 				}
 				continue
@@ -376,12 +374,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	}
 
 	return nil, ErrNoPush
-}
-
-func (ps *PushSync) wantSelf(ch swarm.Chunk, origin bool) {
-	if origin && cac.Valid(ch) {
-		go ps.unwrap(ch)
-	}
 }
 
 func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptResult, peer swarm.Address, ch swarm.Chunk, action accounting.Action) {
