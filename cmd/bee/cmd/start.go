@@ -87,20 +87,44 @@ func (c *command) initStartCmd() (err error) {
 			sysInterruptChannel := make(chan os.Signal, 1)
 			signal.Notify(sysInterruptChannel, syscall.SIGINT, syscall.SIGTERM)
 
-			go func() {
-				select {
-				case <-sysInterruptChannel:
-					logger.Info("received interrupt signal")
-					cancel()
-				case <-ctx.Done():
-				}
-			}()
-
 			// Building bee node can take up some time (because node.NewBee(...) is compute have function )
 			// Because of this we need to do it in background so that program could be terminated when interrupt singal is received
 			// while bee node is being constructed.
 			respC := buildBeeNodeAsync(ctx, c, cmd, logger)
 			var beeNode atomic.Value
+
+			// This goroutine will wait on interrupt signal and end main context (ctx).
+			// If node is still booting up interrupt signal will be discarded. Unless it gets repeated once again,
+			// in which case node will be forcefully terminated.
+			go func() {
+				const skipResetTimeout = time.Second * 5
+				hasSkipped := false
+				var resetSkipC <-chan time.Time
+
+				for {
+					select {
+					case <-sysInterruptChannel:
+						logger.Info("received interrupt signal")
+
+						if !hasSkipped && beeNode.Load() == nil {
+							msg := fmt.Sprintf("Could not end process because node is still booting up. Repeat action in next %s to forcefully terminate process.", skipResetTimeout)
+							logger.Info(msg)
+
+							hasSkipped = true
+							resetSkipC = time.After(skipResetTimeout)
+
+							continue
+						}
+
+						cancel()
+						return
+					case <-resetSkipC:
+						hasSkipped = false
+					case <-ctx.Done():
+						return
+					}
+				}
+			}()
 
 			p := &program{
 				start: func() {
