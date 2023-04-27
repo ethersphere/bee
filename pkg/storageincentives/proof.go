@@ -1,3 +1,7 @@
+// Copyright 2023 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package storageincentives
 
 import (
@@ -14,13 +18,15 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+const minSampleLength = 2
+
 func makeInclusionProofs(ctx context.Context, sampleData SampleData) (redistribution.ChunkInclusionProofs, error) {
 	proofs := redistribution.ChunkInclusionProofs{}
 
 	rsi := sampleData.ReserveSampleItems
 	sampleLength := len(rsi)
-	if sampleLength < 3 {
-		return proofs, fmt.Errorf("reserve sample items should not have less then three elements")
+	if sampleLength < minSampleLength {
+		return proofs, fmt.Errorf("reserve sample items should not have less then %d elements", minSampleLength)
 	}
 
 	rsc, err := sampleChunk(rsi)
@@ -49,7 +55,7 @@ func makeInclusionProofs(ctx context.Context, sampleData SampleData) (redistribu
 
 	wc, err := getWitnessChunks(wca)
 	if err != nil {
-		// handle
+		return proofs, fmt.Errorf("failed getting witness chunks: %w", err)
 	}
 
 	wp := Trio[bmt.Proof]{} // witness chunks proof
@@ -91,27 +97,30 @@ func makeInclusionProofs(ctx context.Context, sampleData SampleData) (redistribu
 
 func makeProof(h *bmt.Hasher, data []byte, j int) bmt.Proof {
 	h.Reset()
-	h.Write(data)
-	h.Hash(nil)
+	_, _ = h.Write(data)
+	_, _ = h.Hash(nil)
 
-	p := bmt.Prover{h}
+	p := bmt.Prover{Hasher: h}
 	return p.Proof(j)
 }
 
 func segmentSelection(salt []byte) Trio[int] {
+	// TODO
+	// SSN(g,i) = H(R(g)|BE_8(i))
+
 	sl := len(salt)
 	be := make([]byte, sl+1)
 	copy(be, salt)
 
-	make := func(i int) int {
+	ssn := func(i int) int {
 		be[sl] = byte(i)
 		return int(binary.BigEndian.Uint32(be))
 	}
 
 	return Trio[int]{
-		Element1: make(0),
-		Element2: make(1),
-		Element3: make(2),
+		Element1: ssn(0),
+		Element2: ssn(1),
+		Element3: ssn(2),
 	}
 }
 
