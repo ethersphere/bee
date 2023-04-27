@@ -288,16 +288,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 		}
 	}
 
-	nextPeer := func() (swarm.Address, error) {
-
-		// we are a full node and in the neighborhood of the chunk
-		if ps.fullNode && ps.radiusChecker.IsWithinStorageRadius(ch.Address()) {
-			return swarm.ZeroAddress, topology.ErrWantSelf
-		}
-
-		return ps.topologyDriver.ClosestPeer(ch.Address(), ps.fullNode, topology.Filter{Reachable: true}, ps.skipList.ChunkPeers(ch.Address())...)
-	}
-
 	retry()
 
 	for sentErrorsLeft > 0 {
@@ -308,10 +298,15 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			retry()
 		case <-retryC:
 
-			peer, err := nextPeer()
+			peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), false, topology.Filter{Reachable: true}, ps.skipList.ChunkPeers(ch.Address())...)
+
 			if errors.Is(err, topology.ErrNotFound) {
 				if ps.skipList.PruneExpiresAfter(ch.Address(), overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers
 					if inflight == 0 {
+						if origin && ps.fullNode && ps.radiusChecker.IsWithinStorageRadius(ch.Address()) {
+							ps.wantSelf(ch, origin)
+							return nil, topology.ErrWantSelf
+						}
 						ps.logger.Debug("no peers left", "chunk_address", ch.Address(), "error", err)
 						return nil, err
 					}
@@ -332,9 +327,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			if err != nil {
 				if inflight == 0 {
 					if errors.Is(err, topology.ErrWantSelf) {
-						if origin && cac.Valid(ch) {
-							go ps.unwrap(ch)
-						}
+						ps.wantSelf(ch, origin)
 					}
 					return nil, err
 				}
@@ -383,6 +376,12 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	}
 
 	return nil, ErrNoPush
+}
+
+func (ps *PushSync) wantSelf(ch swarm.Chunk, origin bool) {
+	if origin && cac.Valid(ch) {
+		go ps.unwrap(ch)
+	}
 }
 
 func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptResult, peer swarm.Address, ch swarm.Chunk, action accounting.Action) {

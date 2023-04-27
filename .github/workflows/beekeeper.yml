@@ -135,9 +135,9 @@ jobs:
       - name: Test fullconnectivity
         id: fullconnectivity
         run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns --checks=ci-full-connectivity; do echo "waiting for full connectivity..."; sleep .3; done'
-      # - name: Test settlements
-      #   id: settlements
-      #   run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-settlements
+      - name: Test settlements
+        id: settlements
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-settlements
       - name: Sleep for time allowance to replenish
         run: sleep 2
       - name: Test pss
