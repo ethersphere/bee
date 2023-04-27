@@ -213,13 +213,14 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		return debit.Apply()
 	}
 
-	if ps.fullNode && ps.radiusChecker.IsWithinStorageRadius(chunk.Address()) {
+	if ps.fullNode && ps.radiusChecker.IsWithinStorageRadius(chunkAddress) {
 		ps.metrics.Storer.Inc()
 		return store(ctx)
 	}
 
 	ps.metrics.Forwarder.Inc()
 
+	ps.skipList.Add(chunkAddress, p.Address, sanctionWait)
 	receipt, err := ps.pushToClosest(ctx, chunk, false)
 	if err != nil {
 		return fmt.Errorf("handler: push to closest chunk %s: %w", chunkAddress, err)
