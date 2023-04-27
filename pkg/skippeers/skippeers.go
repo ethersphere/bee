@@ -47,37 +47,21 @@ func (l *List) worker() {
 
 	defer l.wg.Done()
 
-	var (
-		timer  *time.Timer
-		timerC <-chan time.Time
-	)
-
-	reset := func(dur time.Duration) {
-		timer.Stop()
-		select {
-		case <-timer.C:
-		default:
-		}
-		if dur > 0 {
-			timer.Reset(dur)
-		}
-		timerC = timer.C
-	}
+	timer := time.NewTimer(0)
+	<-timer.C
 
 	for {
 		select {
 		case dur := <-l.durC:
-			if timer == nil {
-				timer = time.NewTimer(dur)
-				timerC = timer.C
-			} else {
-				reset(dur)
+			if !timer.Stop() {
+				<-timer.C
 			}
-		case <-timerC:
+			timer.Reset(dur)
+		case <-timer.C:
 			l.mtx.Lock()
 			l.prune()
 			if l.minHeap.Len() > 0 {
-				reset(time.Until(time.Unix(0, l.minHeap.Peek())))
+				timer.Reset(time.Until(time.Unix(0, l.minHeap.Peek())))
 			}
 			l.mtx.Unlock()
 		case <-l.quit:
