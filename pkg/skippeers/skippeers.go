@@ -54,7 +54,10 @@ func (l *List) worker() {
 		select {
 		case dur := <-l.durC:
 			if !timer.Stop() {
-				<-timer.C
+				select {
+				case <-timer.C:
+				default:
+				}
 			}
 			timer.Reset(dur)
 		case <-timer.C:
