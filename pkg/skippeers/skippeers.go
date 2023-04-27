@@ -52,23 +52,32 @@ func (l *List) worker() {
 		timerC <-chan time.Time
 	)
 
+	reset := func(dur time.Duration) {
+		timer.Stop()
+		select {
+		case <-timer.C:
+		default:
+		}
+		if dur > 0 {
+			timer.Reset(dur)
+		}
+		timerC = timer.C
+	}
+
 	for {
 		select {
 		case dur := <-l.durC:
 			if timer == nil {
 				timer = time.NewTimer(dur)
+				timerC = timer.C
 			} else {
-				if !timer.Stop() {
-					<-timer.C
-				}
-				timer.Reset(dur)
+				reset(dur)
 			}
-			timerC = timer.C
 		case <-timerC:
 			l.mtx.Lock()
 			l.prune()
 			if l.minHeap.Len() > 0 {
-				timer.Reset(time.Until(time.Unix(0, l.minHeap.Peek())))
+				reset(time.Until(time.Unix(0, l.minHeap.Peek())))
 			}
 			l.mtx.Unlock()
 		case <-l.quit:
