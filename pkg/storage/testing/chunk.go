@@ -38,16 +38,15 @@ func GenerateTestRandomChunk() swarm.Chunk {
 	return ch.WithStamp(stamp)
 }
 
-// GenerateTestRandomSoChunk generates a valid single owner chunk.
-func GenerateTestRandomSoChunk(tb testing.TB) swarm.Chunk {
+// GenerateTestRandomSoChunk generates a valid single owner chunk
+// using supplied content addressed chunk.
+func GenerateTestRandomSoChunk(tb testing.TB, cac swarm.Chunk) swarm.Chunk {
 	tb.Helper()
 
 	id := testutil.RandBytes(tb, swarm.HashSize)
-	dataRaw := testutil.RandBytes(tb, 20)
 	key, _ := crypto.GenerateSecp256k1Key()
 	signer := crypto.NewDefaultSigner(key)
-	ch, _ := cac.New(dataRaw)
-	ch, _ = soc.New(id, ch).Sign(signer)
+	ch, _ := soc.New(id, cac).Sign(signer)
 	return ch.WithStamp(postagetesting.MustNewStamp())
 }
 
