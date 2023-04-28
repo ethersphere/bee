@@ -332,7 +332,7 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) (bool, error) {
 			return false, fmt.Errorf("sample not found")
 		}
 
-		proofs, err := makeInclusionProofs(ctx, sampleData)
+		proofs, err := makeInclusionProofs(sampleData.ReserveSampleItems, sampleData.Salt)
 		if err != nil {
 			a.logger.Info("error making inclusion proofs", "err", err)
 			return false, err

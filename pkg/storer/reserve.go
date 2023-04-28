@@ -20,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/soc"
 	storage "github.com/ethersphere/bee/pkg/storage"
+	chunk "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"go.uber.org/atomic"
@@ -360,16 +361,18 @@ func (db *DB) SubscribeBin(ctx context.Context, bin uint8, start uint64) (<-chan
 type SampleItem struct {
 	TransformedAddress swarm.Address
 	ChunkAddress       swarm.Address
+	ChunkData          []byte
+	Stamp              swarm.Stamp
 }
 
 type Sample struct {
 	Items []SampleItem
 }
 
-func RandSampleT(t *testing.T) Sample {
+func RandSampleT(t *testing.T, salt []byte) Sample {
 	t.Helper()
 
-	sample, err := RandSample()
+	sample, err := RandSample(salt)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -377,8 +380,10 @@ func RandSampleT(t *testing.T) Sample {
 	return sample
 }
 
-func RandSample() (Sample, error) {
+func RandSample(salt []byte) (Sample, error) {
 	var err error
+
+	hasher := bmt.NewTrHasher(salt)
 
 	items := make([]SampleItem, sampleSize)
 	for i := 0; i < len(items); i++ {
@@ -387,9 +392,18 @@ func RandSample() (Sample, error) {
 			return Sample{}, err
 		}
 
-		items[i].ChunkAddress, err = randAddress()
+		ch := chunk.GenerateTestRandomChunk()
+
+		tr, err := transformedAddress(hasher, ch, swarm.ChunkTypeContentAddressed)
 		if err != nil {
 			return Sample{}, err
+		}
+
+		items[i] = SampleItem{
+			TransformedAddress: tr,
+			ChunkAddress:       ch.Address(),
+			ChunkData:          ch.Data(),
+			Stamp:              ch.Stamp(),
 		}
 	}
 
@@ -483,7 +497,12 @@ func (db *DB) ReserveSample(
 				stat.HmacrDuration.Add(time.Since(hmacrStart).Nanoseconds())
 
 				select {
-				case sampleItemChan <- SampleItem{TransformedAddress: taddr, ChunkAddress: chItem.Chunk.Address()}:
+				case sampleItemChan <- SampleItem{
+					TransformedAddress: taddr,
+					ChunkAddress:       chItem.Chunk.Address(),
+					ChunkData:          chItem.Chunk.Data(),
+					Stamp:              chItem.Chunk.Stamp(),
+				}:
 				case <-ctx.Done():
 					return ctx.Err()
 				}
