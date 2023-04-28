@@ -1275,6 +1275,10 @@ func nClosePeerInSlice(peers []swarm.Address, addr swarm.Address, spf sanctioned
 	return swarm.ZeroAddress, false
 }
 
+func (k *Kad) IsReachable() bool {
+	return k.reachability == p2p.ReachabilityStatusPublic
+}
+
 // ClosestPeer returns the closest peer to a given address.
 func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, filter topology.Filter, skipPeers ...swarm.Address) (swarm.Address, error) {
 	if k.connectedPeers.Length() == 0 {

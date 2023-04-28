@@ -31,6 +31,7 @@ type Driver interface {
 	io.Closer
 	Halter
 	Snapshot() *KadParams
+	IsReachable() bool
 }
 
 type PeerAdder interface {
