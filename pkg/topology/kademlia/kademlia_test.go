@@ -934,44 +934,6 @@ func TestAddressBookQuickPrune(t *testing.T) {
 	}
 }
 
-// // TestClosestPeer tests that ClosestPeer method returns closest connected peer to a given address.
-// func TestClosestPeerNeighbor(t *testing.T) {
-// 	t.Parallel()
-
-// 	var (
-// 		conns                    int32 // how many connect calls were made to the p2p mock
-// 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{})
-// 	)
-
-// 	if err := kad.Start(context.Background()); err != nil {
-// 		t.Fatal(err)
-// 	}
-// 	testutil.CleanupCloser(t, kad)
-
-// 	for i := 0; i < 6; i++ {
-// 		for j := 0; j < 4; j++ {
-// 			addr := swarm.RandAddressAt(t, base, i)
-// 			// if error is not nil as specified, connectOne goes fatal
-// 			connectOne(t, signer, kad, ab, addr, nil)
-// 		}
-// 	}
-
-// 	kad.SetStorageRadius(3)
-
-// 	for i := 3; i < 6; i++ {
-// 		addr := swarm.RandAddressAt(t, base, 6)
-// 		peer, err := kad.ClosestPeer(addr, true, topology.Filter{Neighbor: true})
-// 		if err != nil {
-// 			t.Fatal(err)
-// 		}
-
-// 		po := swarm.Proximity(peer.Bytes(), addr.Bytes())
-// 		if swarm.Proximity(peer.Bytes(), addr.Bytes()) != 3 {
-// 			t.Fatalf("wanted %d, got %d", i, po)
-// 		}
-// 	}
-// }
-
 func TestClosestPeer(t *testing.T) {
 	t.Parallel()
 	t.Skip("disabled due to kademlia inconsistencies hotfix")
