@@ -110,6 +110,10 @@ func (m *Mock) EachConnectedPeerRev(f topology.EachPeerFunc, _ topology.Filter) 
 	return nil
 }
 
+func (m *Mock) IsReachable() bool {
+	return true
+}
+
 func (m *Mock) NeighborhoodDepth() uint8 {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()

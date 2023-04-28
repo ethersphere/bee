@@ -156,6 +156,10 @@ func (d *mock) ClosestPeer(addr swarm.Address, wantSelf bool, _ topology.Filter,
 	return peerAddr, nil
 }
 
+func (m *mock) IsReachable() bool {
+	return true
+}
+
 func (d *mock) SubscribeTopologyChange() (c <-chan struct{}, unsubscribe func()) {
 	return c, unsubscribe
 }

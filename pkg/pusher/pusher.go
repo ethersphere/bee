@@ -263,6 +263,9 @@ func (s *Service) pushChunk(ctx context.Context, ch swarm.Chunk, logger log.Logg
 		// connected to other nodes, but is the closest one to the chunk.
 		wantSelf = true
 		loggerV1.Debug("chunk stays here, i'm the closest node", "chunk_address", ch.Address())
+		if _, err = s.storer.Put(ctx, storage.ModePutSync, ch); err != nil {
+			return fmt.Errorf("pusher: put sync: %w", err)
+		}
 	} else if err = s.checkReceipt(receipt); err != nil {
 		return err
 	}
