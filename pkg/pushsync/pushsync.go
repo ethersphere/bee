@@ -303,7 +303,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			// do not include self so that the chunk may always be forwarded
 			// but in the case that no peer can be found, return ErrWantSelf
 			// if the chunk falls in our neighborhood.
-			peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), false && !origin, topology.Filter{Reachable: true}, ps.skipList.ChunkPeers(ch.Address())...)
+			peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), false, topology.Filter{Reachable: true}, ps.skipList.ChunkPeers(ch.Address())...)
 
 			if errors.Is(err, topology.ErrNotFound) {
 				if ps.skipList.PruneExpiresAfter(ch.Address(), overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers
