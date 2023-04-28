@@ -213,7 +213,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		return debit.Apply()
 	}
 
-	if ps.fullNode && ps.radiusChecker.IsWithinStorageRadius(chunkAddress) {
+	if ps.fullNode && ps.topologyDriver.IsReachable() && ps.radiusChecker.IsWithinStorageRadius(chunkAddress) {
 		ps.metrics.Storer.Inc()
 		return store(ctx)
 	}
@@ -262,6 +262,8 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
+	ps.metrics.TotalRequests.Inc()
+
 	var (
 		sentErrorsLeft   = 1
 		preemptiveTicker <-chan time.Time
@@ -298,11 +300,20 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			retry()
 		case <-retryC:
 
-			peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), ps.fullNode, topology.Filter{Reachable: true}, ps.skipList.ChunkPeers(ch.Address())...)
+			// do not include self so that the chunk may always be forwarded
+			// but in the case that no peer can be found, return ErrWantSelf
+			// if the chunk falls in our neighborhood.
+			peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), false && !origin, topology.Filter{Reachable: true}, ps.skipList.ChunkPeers(ch.Address())...)
 
 			if errors.Is(err, topology.ErrNotFound) {
 				if ps.skipList.PruneExpiresAfter(ch.Address(), overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers
 					if inflight == 0 {
+						if origin && ps.fullNode && ps.topologyDriver.IsReachable() && ps.radiusChecker.IsWithinStorageRadius(ch.Address()) {
+							if cac.Valid(ch) {
+								go ps.unwrap(ch)
+							}
+							return nil, topology.ErrWantSelf
+						}
 						ps.logger.Debug("no peers left", "chunk_address", ch.Address(), "error", err)
 						return nil, err
 					}
@@ -322,11 +333,6 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			if err != nil {
 				if inflight == 0 {
-					if errors.Is(err, topology.ErrWantSelf) {
-						if origin && cac.Valid(ch) {
-							go ps.unwrap(ch)
-						}
-					}
 					return nil, err
 				}
 				continue
