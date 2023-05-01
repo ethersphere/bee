@@ -34,7 +34,7 @@ func TestGetStatus(t *testing.T) {
 			StorageRadius:    8,
 			ConnectedPeers:   0,
 			NeighborhoodSize: 0,
-			BatchTotalAmount: "1",
+			BatchCommitment:  1,
 		}
 
 		ssMock := &statusSnapshotMock{
@@ -117,3 +117,4 @@ func (m *statusSnapshotMock) SyncRate() float64                  { return m.sync
 func (m *statusSnapshotMock) ReserveSize() uint64                { return m.reserveSize }
 func (m *statusSnapshotMock) StorageRadius() uint8               { return m.storageRadius }
 func (m *statusSnapshotMock) GetChainState() *postage.ChainState { return m.chainstate }
+func (m *statusSnapshotMock) Commitment() (uint64, error)        { return 0, nil }
