@@ -36,7 +36,7 @@ const loggerName = "pushsync"
 
 const (
 	protocolName    = "pushsync"
-	protocolVersion = "1.1.0"
+	protocolVersion = "1.2.0"
 	streamName      = "pushsync"
 )
 
