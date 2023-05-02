@@ -5,7 +5,6 @@
 package api_test
 
 import (
-	"math/big"
 	"net/http"
 	"testing"
 
@@ -13,7 +12,6 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/status"
 	"github.com/ethersphere/bee/pkg/topology"
 )
@@ -41,7 +39,7 @@ func TestGetStatus(t *testing.T) {
 			syncRate:      ssr.PullsyncRate,
 			reserveSize:   ssr.ReserveSize,
 			storageRadius: ssr.StorageRadius,
-			chainstate:    &postage.ChainState{TotalAmount: big.NewInt(1)},
+			commitment:    ssr.BatchCommitment,
 		}
 
 		client, _, _, _ := newTestServer(t, testServerOptions{
@@ -110,11 +108,10 @@ type statusSnapshotMock struct {
 	syncRate      float64
 	reserveSize   uint64
 	storageRadius uint8
-	chainstate    *postage.ChainState
+	commitment    uint64
 }
 
-func (m *statusSnapshotMock) SyncRate() float64                  { return m.syncRate }
-func (m *statusSnapshotMock) ReserveSize() uint64                { return m.reserveSize }
-func (m *statusSnapshotMock) StorageRadius() uint8               { return m.storageRadius }
-func (m *statusSnapshotMock) GetChainState() *postage.ChainState { return m.chainstate }
-func (m *statusSnapshotMock) Commitment() (uint64, error)        { return 0, nil }
+func (m *statusSnapshotMock) SyncRate() float64           { return m.syncRate }
+func (m *statusSnapshotMock) ReserveSize() uint64         { return m.reserveSize }
+func (m *statusSnapshotMock) StorageRadius() uint8        { return m.storageRadius }
+func (m *statusSnapshotMock) Commitment() (uint64, error) { return m.commitment, nil }

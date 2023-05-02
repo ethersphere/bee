@@ -25,7 +25,7 @@ const loggerName = "status"
 
 const (
 	protocolName    = "status"
-	protocolVersion = "1.0.0"
+	protocolVersion = "1.1.0"
 	streamName      = "status"
 )
 
@@ -78,7 +78,7 @@ func (s *Service) LocalSnapshot() (*Snapshot, error) {
 		StorageRadius:    uint32(storageRadius),
 		ConnectedPeers:   connectedPeers,
 		NeighborhoodSize: neighborhoodSize,
-		BatchCommitment:  uint64(commitment),
+		BatchCommitment:  commitment,
 	}, nil
 }
 
