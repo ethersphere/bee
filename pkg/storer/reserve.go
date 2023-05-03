@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/bmt"ssssssssssssssssssssssssssssssssssssssss
+	"github.com/ethersphere/bee/pkg/bmt"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/soc"
 	storage "github.com/ethersphere/bee/pkg/storage"
@@ -371,7 +371,6 @@ type SampleItem struct {
 type Sample struct {
 	Items []SampleItem
 }
-
 
 func RandSampleT(t *testing.T, salt []byte) Sample {
 	t.Helper()
