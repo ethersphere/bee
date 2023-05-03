@@ -31,10 +31,14 @@ import (
 
 // GenerateTestRandomChunk generates a valid content addressed chunk.
 func GenerateTestRandomChunk() swarm.Chunk {
+	key, _ := crypto.GenerateSecp256k1Key()
+	signer := crypto.NewDefaultSigner(key)
+
 	data := make([]byte, swarm.ChunkSize)
 	_, _ = rand.Read(data)
 	ch, _ := cac.New(data)
-	stamp := postagetesting.MustNewStamp()
+	stamp := postagetesting.MustNewValidStamp(signer, ch.Address())
+
 	return ch.WithStamp(stamp)
 }
 
@@ -43,11 +47,14 @@ func GenerateTestRandomChunk() swarm.Chunk {
 func GenerateTestRandomSoChunk(tb testing.TB, cac swarm.Chunk) swarm.Chunk {
 	tb.Helper()
 
-	id := testutil.RandBytes(tb, swarm.HashSize)
 	key, _ := crypto.GenerateSecp256k1Key()
 	signer := crypto.NewDefaultSigner(key)
+
+	id := testutil.RandBytes(tb, swarm.HashSize)
 	ch, _ := soc.New(id, cac).Sign(signer)
-	return ch.WithStamp(postagetesting.MustNewStamp())
+	stamp := postagetesting.MustNewValidStamp(signer, ch.Address())
+
+	return ch.WithStamp(stamp)
 }
 
 // GenerateTestRandomInvalidChunk generates a random, however invalid, content

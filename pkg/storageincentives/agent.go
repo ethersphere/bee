@@ -296,6 +296,14 @@ func (a *Agent) handleReveal(ctx context.Context, round uint64) (bool, error) {
 
 	a.state.SetHasRevealed(round)
 
+	anchor2, err := a.contract.ReserveSalt(ctx)
+	if err != nil {
+		a.logger.Error(err, "failed getting anchor after second reveal")
+	} else {
+		sample.Anchor2 = anchor2
+		a.state.SetSampleData(round-1, sample)
+	}
+
 	return true, nil
 }
 

@@ -26,9 +26,14 @@ func makeInclusionProofs(
 ) (redistribution.ChunkInclusionProofs, error) {
 	proofs := redistribution.ChunkInclusionProofs{}
 
-	sampleLength := len(reserveSampleItems)
-	if sampleLength != 16 {
+	if len(reserveSampleItems) != 16 {
 		return proofs, fmt.Errorf("reserve sample items should have 16 elements")
+	}
+	if len(anchor1) == 0 {
+		return proofs, fmt.Errorf("anchor1 is not set")
+	}
+	if len(anchor2) == 0 {
+		return proofs, fmt.Errorf("anchor2 is not set")
 	}
 
 	rsc, err := sampleChunk(reserveSampleItems)

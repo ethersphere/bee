@@ -372,10 +372,10 @@ type Sample struct {
 	Items []SampleItem
 }
 
-func RandSampleT(t *testing.T, salt []byte) Sample {
+func RandSampleT(t *testing.T, anchor []byte) Sample {
 	t.Helper()
 
-	sample, err := RandSample(salt)
+	sample, err := RandSample(anchor)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -383,18 +383,11 @@ func RandSampleT(t *testing.T, salt []byte) Sample {
 	return sample
 }
 
-func RandSample(salt []byte) (Sample, error) {
-	var err error
-
-	hasher := bmt.NewTrHasher(salt)
+func RandSample(anchor []byte) (Sample, error) {
+	hasher := bmt.NewTrHasher(anchor)
 
 	items := make([]SampleItem, sampleSize)
 	for i := 0; i < len(items); i++ {
-		items[i].TransformedAddress, err = randAddress()
-		if err != nil {
-			return Sample{}, err
-		}
-
 		ch := chunk.GenerateTestRandomChunk()
 
 		tr, err := transformedAddress(hasher, ch, swarm.ChunkTypeContentAddressed)

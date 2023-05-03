@@ -118,8 +118,8 @@ func (s *Stamp) UnmarshalBinary(buf []byte) error {
 	return nil
 }
 
-// toSignDigest creates a digest to represent the stamp which is to be signed by the owner.
-func toSignDigest(addr, batchId, index, timestamp []byte) ([]byte, error) {
+// ToSignDigest creates a digest to represent the stamp which is to be signed by the owner.
+func ToSignDigest(addr, batchId, index, timestamp []byte) ([]byte, error) {
 	h := swarm.NewHasher()
 	_, err := h.Write(addr)
 	if err != nil {
@@ -167,15 +167,7 @@ func ValidStamp(batchStore Storer) ValidStampFn {
 // the validity  check is only meaningful in its association of a chunk
 // this chunk address needs to be given as argument
 func (s *Stamp) Valid(chunkAddr swarm.Address, ownerAddr []byte, depth, bucketDepth uint8, immutable bool) error {
-	toSign, err := toSignDigest(chunkAddr.Bytes(), s.batchID, s.index, s.timestamp)
-	if err != nil {
-		return err
-	}
-	signerPubkey, err := crypto.Recover(s.sig, toSign)
-	if err != nil {
-		return err
-	}
-	signerAddr, err := crypto.NewEthereumAddress(*signerPubkey)
+	signerAddr, err := RecoverBatchOwner(chunkAddr, s)
 	if err != nil {
 		return err
 	}
@@ -193,7 +185,7 @@ func (s *Stamp) Valid(chunkAddr swarm.Address, ownerAddr []byte, depth, bucketDe
 }
 
 func RecoverBatchOwner(chunkAddr swarm.Address, stamp swarm.Stamp) ([]byte, error) {
-	toSign, err := toSignDigest(chunkAddr.Bytes(), stamp.BatchID(), stamp.Index(), stamp.Timestamp())
+	toSign, err := ToSignDigest(chunkAddr.Bytes(), stamp.BatchID(), stamp.Index(), stamp.Timestamp())
 	if err != nil {
 		return nil, err
 	}
