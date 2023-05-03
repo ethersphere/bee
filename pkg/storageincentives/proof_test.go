@@ -18,10 +18,10 @@ import (
 func TestMakeInclusionProofs(t *testing.T) {
 	t.Parallel()
 
-	salt := testutil.RandBytes(t, 1)
-	sample := storer.RandSampleT(t, salt)
+	anchor := testutil.RandBytes(t, 1)
+	sample := storer.RandSampleT(t, anchor)
 
-	_, err := MakeInclusionProofs(sample.Items, salt, salt)
+	_, err := MakeInclusionProofs(sample.Items, anchor, anchor)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,10 +32,10 @@ func TestMakeInclusionProofsExpectedError(t *testing.T) {
 	t.Parallel()
 
 	t.Run("invalid sample length", func(t *testing.T) {
-		salt := testutil.RandBytes(t, 8)
-		sample := storer.RandSampleT(t, salt)
+		anchor := testutil.RandBytes(t, 8)
+		sample := storer.RandSampleT(t, anchor)
 
-		_, err := MakeInclusionProofs(sample.Items[:1], salt, salt)
+		_, err := MakeInclusionProofs(sample.Items[:1], anchor, anchor)
 		if err == nil {
 			t.Fatal("expecting error")
 		}

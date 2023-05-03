@@ -4,6 +4,7 @@
 
 package types
 
+// Trio is type for group of three elements.
 type Trio[T any] struct {
 	Element1 T
 	Element2 T

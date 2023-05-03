@@ -193,10 +193,6 @@ func RecoverBatchOwner(chunkAddr swarm.Address, stamp swarm.Stamp) ([]byte, erro
 	if err != nil {
 		return nil, err
 	}
-	batchOwner, err := crypto.NewEthereumAddress(*signerPubkey)
-	if err != nil {
-		return nil, err
-	}
 
-	return batchOwner, nil
+	return crypto.NewEthereumAddress(*signerPubkey)
 }
