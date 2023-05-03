@@ -104,6 +104,7 @@ func (m *topologyPeersIterNoopMock) EachConnectedPeerRev(_ topology.EachPeerFunc
 //   - depthmonitor.ReserveReporter
 //   - depthmonitor.SyncReporter
 //   - postage.RadiusReporter
+//   - postage.CommitmentGetter
 type statusSnapshotMock struct {
 	syncRate      float64
 	reserveSize   uint64
