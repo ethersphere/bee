@@ -53,11 +53,6 @@ type Health interface {
 	IsHealthy() bool
 }
 
-type SampleData struct {
-	ReserveSample storer.Sample
-	StorageRadius uint8
-}
-
 type Agent struct {
 	logger                 log.Logger
 	metrics                metrics
@@ -306,8 +301,9 @@ func (a *Agent) handleReveal(ctx context.Context, round uint64) (bool, error) {
 	}
 
 	a.metrics.RevealPhase.Inc()
-	sampleBytes := sample.ReserveSample.Hash.Bytes()
-	txHash, err := a.contract.Reveal(ctx, sample.StorageRadius, sampleBytes, commitKey)
+
+	rsh := sample.ReserveSampleHash.Bytes()
+	txHash, err := a.contract.Reveal(ctx, sample.StorageRadius, rsh, commitKey)
 	if err != nil {
 		a.metrics.ErrReveal.Inc()
 		return false, err
@@ -448,9 +444,14 @@ func (a *Agent) makeSample(ctx context.Context, storageRadius uint8) (SampleData
 	}
 	a.metrics.SampleDuration.Set(time.Since(t).Seconds())
 
+	sampleChunk, err := rSample.Chunk()
+	if err != nil {
+		return SampleData{}, err
+	}
+
 	sample := SampleData{
-		ReserveSample: rSample,
-		StorageRadius: storageRadius,
+		ReserveSampleHash: sampleChunk.Address(),
+		StorageRadius:     storageRadius,
 	}
 
 	return sample, nil
@@ -485,8 +486,8 @@ func (a *Agent) commit(ctx context.Context, sample SampleData, round uint64) err
 		return err
 	}
 
-	sampleBytes := sample.ReserveSample.Hash.Bytes()
-	obfuscatedHash, err := a.wrapCommit(sample.StorageRadius, sampleBytes, key)
+	rsh := sample.ReserveSampleHash.Bytes()
+	obfuscatedHash, err := a.wrapCommit(sample.StorageRadius, rsh, key)
 	if err != nil {
 		return err
 	}
