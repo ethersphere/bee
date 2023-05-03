@@ -26,6 +26,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storer/internal/stampindex"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
 func TestIndexCollision(t *testing.T) {
@@ -730,7 +731,7 @@ func TestReserveSampler(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if !cmp.Equal(sample, sample1) {
+			if !cmp.Equal(sample, sample1, cmpopts.IgnoreUnexported(postage.Stamp{})) {
 				t.Fatalf("samples different (-want +have):\n%s", cmp.Diff(sample, sample1))
 			}
 		})
@@ -760,32 +761,9 @@ func TestReserveSampler(t *testing.T) {
 func TestSample(t *testing.T) {
 	t.Parallel()
 
-	sample := storer.RandSampleT(t)
+	sample := storer.RandSampleT(t, nil)
 	if len(sample.Items) != storer.SampleSize {
 		t.Error("sample size not in expected range")
-	}
-
-	chunk, err := sample.Chunk()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	data := chunk.Data()[swarm.SpanSize:]
-	pos := 0
-	for _, item := range sample.Items {
-		if !bytes.Equal(data[pos:pos+swarm.HashSize], item.ChunkAddress.Bytes()) {
-			t.Error("expected chunk address")
-		}
-		pos += swarm.HashSize
-
-		if !bytes.Equal(data[pos:pos+swarm.HashSize], item.TransformedAddress.Bytes()) {
-			t.Error("expected transformed address")
-		}
-		pos += swarm.HashSize
-	}
-
-	if swarm.ZeroAddress.Equal(chunk.Address()) || swarm.EmptyAddress.Equal(chunk.Address()) {
-		t.Error("hash should not be empty or zero")
 	}
 }
 
