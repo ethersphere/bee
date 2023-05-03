@@ -7,7 +7,6 @@ package cac
 import (
 	"bytes"
 	"encoding/binary"
-	"errors"
 	"fmt"
 
 	"github.com/ethersphere/bee/pkg/bmtpool"
@@ -15,8 +14,8 @@ import (
 )
 
 var (
-	ErrChunkDataShort = errors.New("chunk data length is not sufficient")
-	ErrChunkDataLarge = errors.New("chunk data exceeds maximum allowed length")
+	ErrChunkSpanShort = fmt.Errorf("chunk span must have exactly length of %d", swarm.SpanSize)
+	ErrChunkDataLarge = fmt.Errorf("chunk data exceeds maximum allowed length")
 )
 
 // New creates a new content address chunk by initializing a span and appending the data to it.
@@ -47,7 +46,7 @@ func NewWithDataSpan(data []byte) (swarm.Chunk, error) {
 // validateDataLength validates if data length (without span) is correct.
 func validateDataLength(dataLength int) error {
 	if dataLength < 0 { // dataLength could be negative when span size is subtracted
-		return ErrChunkDataShort
+		return ErrChunkSpanShort
 	}
 	if dataLength > swarm.ChunkSize {
 		return ErrChunkDataLarge

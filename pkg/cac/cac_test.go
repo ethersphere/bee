@@ -112,12 +112,12 @@ func TestChunkInvariantsNewWithDataSpan(t *testing.T) {
 		{
 			name:    "nil",
 			data:    nil,
-			wantErr: cac.ErrChunkDataShort,
+			wantErr: cac.ErrChunkSpanShort,
 		},
 		{
 			name:    "zero data",
 			data:    []byte{},
-			wantErr: cac.ErrChunkDataShort,
+			wantErr: cac.ErrChunkSpanShort,
 		},
 		{
 			name:    "small data",
