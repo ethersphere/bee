@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/status"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -20,6 +21,9 @@ import (
 // logs
 // metrics
 
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "pushsync"
+
 const (
 	DefaultWakeup         = time.Minute
 	DefaultBlocklistDur   = time.Minute * 5
@@ -27,18 +31,29 @@ const (
 )
 
 type service struct {
-	wg   sync.WaitGroup
-	quit chan struct{}
-
-	topology topology.Driver
-	status   status.Service
-	p2p      p2p.Blocklister
+	wg          sync.WaitGroup
+	quit        chan struct{}
+	logger      log.Logger
+	topology    topology.Driver
+	status      status.Service
+	metrics     metrics
+	blocklister func() p2p.Blocklister
 }
 
-func New(warmup time.Duration) *service {
+func New(status status.Service, topology topology.Driver, blocklister p2p.Blocklister, logger log.Logger, warmup time.Duration) *service {
+
+	metrics := newMetrics()
 
 	s := &service{
-		quit: make(chan struct{}),
+		quit:     make(chan struct{}),
+		logger:   logger.WithName(loggerName).Register(),
+		status:   status,
+		topology: topology,
+		metrics:  metrics,
+		blocklister: func() p2p.Blocklister {
+			metrics.Blocklisted.Inc()
+			return blocklister
+		},
 	}
 
 	s.wg.Add(1)
@@ -105,8 +120,7 @@ func (s *service) salud() {
 
 			snapshot, err := s.status.PeerSnapshot(ctx, addr)
 			if err != nil {
-				// log and blocklist
-				s.p2p.Blocklist(addr, DefaultBlocklistDur, "salud status snapshop failure")
+				s.blocklister().Blocklist(addr, DefaultBlocklistDur, "salud status snapshop failure")
 				return
 			}
 
@@ -134,20 +148,21 @@ func (s *service) salud() {
 
 	avgDur := totaldur / float64(len(peers))
 
-	// log average dur and radius
+	s.metrics.Dur.Set(avgDur)
+	s.metrics.Radius.Set(float64(radius))
+
+	s.logger.Debug("computed", "average", fmt.Sprintf("%.2f", avgDur), "radius", radius)
 
 	for _, peer := range peers {
 
 		// radius check
 		if radius > 0 && peer.status.StorageRadius < uint32(radius-1) {
-			s.p2p.Blocklist(peer.addr, DefaultBlocklistDur, fmt.Sprintf("salud radius failure, radius %d", peer.status.StorageRadius))
-			// log and blocklist
+			s.blocklister().Blocklist(peer.addr, DefaultBlocklistDur, fmt.Sprintf("salud radius failure, radius %d", peer.status.StorageRadius))
 		}
 
 		// duration check
 		if peer.dur > avgDur*2 {
-			s.p2p.Blocklist(peer.addr, DefaultBlocklistDur, fmt.Sprintf("salud radius failure, duration %0.1f", peer.dur))
-			// log and blocklist
+			s.blocklister().Blocklist(peer.addr, DefaultBlocklistDur, fmt.Sprintf("salud duration exceeded, duration %0.1f", peer.dur))
 		}
 	}
 }
