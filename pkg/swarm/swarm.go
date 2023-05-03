@@ -174,6 +174,27 @@ type Chunk interface {
 	Equal(Chunk) bool
 }
 
+// ChunkType indicates different categories of chunks.
+type ChunkType uint8
+
+// String implements Stringer interface.
+func (ct ChunkType) String() string {
+	switch ct {
+	case ChunkTypeContentAddressed:
+		return "CAC"
+	case ChunkTypeSingleOwner:
+		return "SOC"
+	default:
+		return "unspecified"
+	}
+}
+
+const (
+	ChunkTypeUnspecified ChunkType = iota
+	ChunkTypeContentAddressed
+	ChunkTypeSingleOwner
+)
+
 // Stamp interface for postage.Stamp to avoid circular dependency
 type Stamp interface {
 	BatchID() []byte
