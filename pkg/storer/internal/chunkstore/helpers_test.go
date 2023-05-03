@@ -105,7 +105,7 @@ func makeChunkStore(t *testing.T) *chunkStore {
 	t.Helper()
 
 	store := inmemstore.New()
-	sharky, err := sharky.New(&memFS{Fs: afero.NewMemMapFs()}, 1, swarm.ChunkSize)
+	sharky, err := sharky.New(&memFS{Fs: afero.NewMemMapFs()}, 1, swarm.SocMaxChunkSize)
 	assert.NoError(t, err)
 
 	t.Cleanup(func() {
