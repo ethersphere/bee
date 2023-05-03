@@ -38,7 +38,8 @@ func GenerateTestRandomChunk() swarm.Chunk {
 	return ch.WithStamp(stamp)
 }
 
-// GenerateTestRandomSoChunk generates a valid single owner chunk.
+// GenerateTestRandomSoChunk generates a valid single owner chunk
+// using supplied content addressed chunk.
 func GenerateTestRandomSoChunk(tb testing.TB, cac swarm.Chunk) swarm.Chunk {
 	tb.Helper()
 
@@ -65,7 +66,7 @@ func GenerateTestRandomInvalidChunk() swarm.Chunk {
 func GenerateTestRandomChunks(count int) []swarm.Chunk {
 	chunks := make([]swarm.Chunk, count)
 	for i := 0; i < count; i++ {
-		chunks[i] = GenerateTestRandomInvalidChunk()
+		chunks[i] = GenerateTestRandomChunk()
 	}
 	return chunks
 }

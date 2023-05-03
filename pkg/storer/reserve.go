@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/bmt"
+	"github.com/ethersphere/bee/pkg/bmt"ssssssssssssssssssssssssssssssssssssssss
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/soc"
 	storage "github.com/ethersphere/bee/pkg/storage"
@@ -41,7 +41,7 @@ type SyncReporter interface {
 	SyncRate() float64
 }
 
-func threshold(capacity int) int { return capacity * 4 / 10 }
+func threshold(capacity int) int { return capacity * 5 / 10 }
 
 func (db *DB) reserveWorker(capacity int, warmupDur, wakeUpDur time.Duration) {
 	defer db.reserveWg.Done()
@@ -88,8 +88,8 @@ func (db *DB) reserveWorker(capacity int, warmupDur, wakeUpDur time.Duration) {
 }
 
 func (db *DB) ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte) (chunk swarm.Chunk, err error) {
+	dur := captureDuration(time.Now())
 	defer func() {
-		dur := captureDuration(time.Now())
 		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "ReserveGet").Observe(dur())
 		if err == nil || errors.Is(err, storage.ErrNotFound) {
 			db.metrics.MethodCalls.WithLabelValues("reserve", "ReserveGet", "success").Inc()
@@ -120,10 +120,10 @@ func (db *DB) IsWithinStorageRadius(addr swarm.Address) bool {
 }
 
 func (db *DB) ReserveHas(addr swarm.Address, batchID []byte) (has bool, err error) {
+	dur := captureDuration(time.Now())
 	defer func() {
-		dur := captureDuration(time.Now())
 		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "ReserveHas").Observe(dur())
-		if err == nil || errors.Is(err, storage.ErrNotFound) {
+		if err == nil {
 			db.metrics.MethodCalls.WithLabelValues("reserve", "ReserveHas", "success").Inc()
 		} else {
 			db.metrics.MethodCalls.WithLabelValues("reserve", "ReserveHas", "failure").Inc()
@@ -134,10 +134,10 @@ func (db *DB) ReserveHas(addr swarm.Address, batchID []byte) (has bool, err erro
 }
 
 func (db *DB) ReservePut(ctx context.Context, chunk swarm.Chunk) (err error) {
+	dur := captureDuration(time.Now())
 	defer func() {
-		dur := captureDuration(time.Now())
 		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "ReservePut").Observe(dur())
-		if err == nil || errors.Is(err, storage.ErrNotFound) {
+		if err == nil {
 			db.metrics.MethodCalls.WithLabelValues("reserve", "ReservePut", "success").Inc()
 		} else {
 			db.metrics.MethodCalls.WithLabelValues("reserve", "ReservePut", "failure").Inc()
@@ -201,20 +201,19 @@ func (db *DB) ReservePutter(ctx context.Context) PutterSession {
 
 // EvictBatch evicts all chunks belonging to a batch from the reserve.
 func (db *DB) EvictBatch(ctx context.Context, batchID []byte) (err error) {
+	dur := captureDuration(time.Now())
 	defer func() {
-		dur := captureDuration(time.Now())
 		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "EvictBatch").Observe(dur())
-		if err == nil || errors.Is(err, storage.ErrNotFound) {
+		if err == nil {
 			db.metrics.MethodCalls.WithLabelValues("reserve", "EvictBatch", "success").Inc()
 		} else {
 			db.metrics.MethodCalls.WithLabelValues("reserve", "EvictBatch", "failure").Inc()
 		}
 	}()
-
 	return db.evictBatch(ctx, batchID, swarm.MaxBins)
 }
 
-func (db *DB) evictBatch(ctx context.Context, batchID []byte, upToBin uint8) error {
+func (db *DB) evictBatch(ctx context.Context, batchID []byte, upToBin uint8) (err error) {
 
 	db.reserveMtx.Lock()
 	defer db.reserveMtx.Unlock()
@@ -255,12 +254,21 @@ func (db *DB) evictBatch(ctx context.Context, batchID []byte, upToBin uint8) err
 	return nil
 }
 
-func (db *DB) unreserve(ctx context.Context) error {
+func (db *DB) unreserve(ctx context.Context) (err error) {
+	dur := captureDuration(time.Now())
+	defer func() {
+		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "unreserve").Observe(dur())
+		if err == nil {
+			db.metrics.MethodCalls.WithLabelValues("reserve", "unreserve", "success").Inc()
+		} else {
+			db.metrics.MethodCalls.WithLabelValues("reserve", "unreserve", "failure").Inc()
+		}
+	}()
 
 	radius := db.reserve.Radius()
 	defer db.events.Trigger(reserveUnreserved)
 
-	for radius < swarm.MaxPO {
+	for radius < swarm.MaxBins {
 
 		err := db.batchstore.Iterate(func(b *postage.Batch) (bool, error) {
 
@@ -268,12 +276,7 @@ func (db *DB) unreserve(ctx context.Context) error {
 				return true, nil
 			}
 
-			err := db.evictBatch(ctx, b.ID, radius)
-			if err != nil {
-				return false, err
-			}
-
-			return false, nil
+			return false, db.evictBatch(ctx, b.ID, radius)
 		})
 		if err != nil {
 			return err
@@ -368,6 +371,7 @@ type SampleItem struct {
 type Sample struct {
 	Items []SampleItem
 }
+
 
 func RandSampleT(t *testing.T, salt []byte) Sample {
 	t.Helper()
