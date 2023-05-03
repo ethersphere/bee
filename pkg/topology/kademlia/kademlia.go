@@ -43,8 +43,8 @@ const (
 
 	// To avoid context.Timeout errors during network failure, the value of
 	// the peerConnectionAttemptTimeout constant must be equal to or greater
-	// than 15 seconds (empirically verified).
-	peerConnectionAttemptTimeout = 15 * time.Second // timeout for establishing a new connection with peer.
+	// than 5 seconds (empirically verified).
+	peerConnectionAttemptTimeout = 5 * time.Second // timeout for establishing a new connection with peer.
 
 	flagTimeout      = 10 * time.Minute // how long before blocking a flagged peer
 	blockDuration    = time.Hour        // how long to blocklist an unresponsive peer for
@@ -343,16 +343,11 @@ func (k *Kad) connectBalanced(wg *sync.WaitGroup, peerConnChan chan<- *peerConnI
 			default:
 				wg.Add(1)
 				select {
-				case peerConnChan <- &peerConnInfo{
-					po:   swarm.Proximity(k.base.Bytes(), closestKnownPeer.Bytes()),
-					addr: closestKnownPeer,
-				}:
-				default:
-					k.notifyManageLoop()
-					wg.Done()
+				case <-k.quit:
+					return
+				case peerConnChan <- &peerConnInfo{po: swarm.Proximity(k.base.Bytes(), closestKnownPeer.Bytes()), addr: closestKnownPeer}:
 				}
 			}
-			break
 		}
 	}
 }
@@ -365,10 +360,9 @@ func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerCon
 	var currentPo uint8 = 0
 
 	_ = k.knownPeers.EachBinRev(func(addr swarm.Address, po uint8) (bool, bool, error) {
-		depth := k.NeighborhoodDepth()
 
 		// out of depth, skip bin
-		if po < depth {
+		if po < k.NeighborhoodDepth() {
 			return false, true, nil
 		}
 
@@ -399,18 +393,14 @@ func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerCon
 			return true, false, nil
 		default:
 			wg.Add(1)
-
 			select {
-			case peerConnChan <- &peerConnInfo{
-				po:   po,
-				addr: addr,
-			}:
-			default:
-				k.notifyManageLoop()
-				wg.Done()
+			case <-k.quit:
+				return true, false, nil
+			case peerConnChan <- &peerConnInfo{po: po, addr: addr}:
 			}
-			sent++
 		}
+
+		sent++
 
 		// We want 'sent' equal to 'saturationPeers'
 		// in order to skip to the next bin and speed up the topology build.
@@ -512,7 +502,7 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 			}
 		}
 	}
-	for i := 0; i < 16; i++ {
+	for i := 0; i < 32; i++ {
 		go connAttempt(balanceChan)
 	}
 	for i := 0; i < 32; i++ {
@@ -613,9 +603,7 @@ func (k *Kad) manage() {
 			}
 
 			if k.bootnode {
-				k.depthMu.Lock()
-				depth := k.depth
-				k.depthMu.Unlock()
+				depth := k.NeighborhoodDepth()
 
 				k.metrics.CurrentDepth.Set(float64(depth))
 				k.metrics.CurrentlyKnownPeers.Set(float64(k.knownPeers.Length()))
@@ -629,9 +617,7 @@ func (k *Kad) manage() {
 			k.connectNeighbours(&wg, neighbourhoodChan)
 			wg.Wait()
 
-			k.depthMu.Lock()
-			depth := k.depth
-			k.depthMu.Unlock()
+			depth := k.NeighborhoodDepth()
 
 			k.opt.PruneFunc(depth)
 
