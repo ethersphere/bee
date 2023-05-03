@@ -118,8 +118,7 @@ func (s *Stamp) UnmarshalBinary(buf []byte) error {
 	return nil
 }
 
-// toSignDigest creates a digest to represent the stamp which is to be signed by
-// the owner.
+// toSignDigest creates a digest to represent the stamp which is to be signed by the owner.
 func toSignDigest(addr, batchId, index, timestamp []byte) ([]byte, error) {
 	h := swarm.NewHasher()
 	_, err := h.Write(addr)
@@ -191,4 +190,21 @@ func (s *Stamp) Valid(chunkAddr swarm.Address, ownerAddr []byte, depth, bucketDe
 		return ErrOwnerMismatch
 	}
 	return nil
+}
+
+func RecoverBatchOwner(chunkAddr swarm.Address, stamp swarm.Stamp) ([]byte, error) {
+	toSign, err := toSignDigest(chunkAddr.Bytes(), stamp.BatchID(), stamp.Index(), stamp.Timestamp())
+	if err != nil {
+		return nil, err
+	}
+	signerPubkey, err := crypto.Recover(stamp.Sig(), toSign)
+	if err != nil {
+		return nil, err
+	}
+	batchOwner, err := crypto.NewEthereumAddress(*signerPubkey)
+	if err != nil {
+		return nil, err
+	}
+
+	return batchOwner, nil
 }

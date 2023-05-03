@@ -111,4 +111,12 @@ func TestValidStamp(t *testing.T) {
 	if ch.Immutable() != b.Immutable {
 		t.Fatalf("invalid batch immutablility added on chunk exp %t got %t", b.Immutable, ch.Immutable())
 	}
+
+	recoveredOwner, err := postage.RecoverBatchOwner(ch.Address(), st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(recoveredOwner, owner) {
+		t.Fatal("recovering owner from stamp did not work")
+	}
 }
