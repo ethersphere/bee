@@ -112,7 +112,7 @@ func TestChunkStore(t *testing.T) {
 	t.Parallel()
 
 	store := inmemstore.New()
-	sharky, err := sharky.New(&memFS{Fs: afero.NewMemMapFs()}, 1, swarm.ChunkSize)
+	sharky, err := sharky.New(&memFS{Fs: afero.NewMemMapFs()}, 1, swarm.SocMaxChunkSize)
 	if err != nil {
 		t.Fatal(err)
 	}

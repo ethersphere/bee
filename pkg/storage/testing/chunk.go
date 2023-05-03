@@ -51,7 +51,7 @@ func GenerateTestRandomInvalidChunk() swarm.Chunk {
 func GenerateTestRandomChunks(count int) []swarm.Chunk {
 	chunks := make([]swarm.Chunk, count)
 	for i := 0; i < count; i++ {
-		chunks[i] = GenerateTestRandomInvalidChunk()
+		chunks[i] = GenerateTestRandomChunk()
 	}
 	return chunks
 }
