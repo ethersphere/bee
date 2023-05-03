@@ -21,8 +21,9 @@ import (
 // metrics
 
 const (
-	DefaultWakeup       = time.Minute
-	DefaultBlocklistDur = time.Minute * 5
+	DefaultWakeup         = time.Minute
+	DefaultBlocklistDur   = time.Minute * 5
+	DefaultRequestTimeout = time.Second * 10
 )
 
 type service struct {
@@ -97,7 +98,7 @@ func (s *service) salud() {
 		go func() {
 			defer wg.Done()
 
-			ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+			ctx, cancel := context.WithTimeout(context.Background(), DefaultRequestTimeout)
 			defer cancel()
 
 			start := time.Now()
@@ -105,6 +106,7 @@ func (s *service) salud() {
 			snapshot, err := s.status.PeerSnapshot(ctx, addr)
 			if err != nil {
 				// log and blocklist
+				s.p2p.Blocklist(addr, DefaultBlocklistDur, "salud status snapshop failure")
 				return
 			}
 
