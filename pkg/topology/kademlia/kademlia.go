@@ -719,15 +719,19 @@ func (k *Kad) pruneOversaturatedBins(depth uint8) {
 		}
 
 		binPeersCount := k.connectedPeers.BinSize(uint8(i))
-		if binPeersCount < k.opt.OverSaturationPeers {
+		if binPeersCount <= k.opt.OverSaturationPeers {
 			continue
 		}
 
 		binPeers := k.connectedPeers.BinPeers(uint8(i))
 
-		peersToRemove := binPeersCount - k.opt.OverSaturationPeers
+		k.logger.Debug("starting pruning", "bin", i, "binSize", binPeersCount)
 
-		for j := 0; peersToRemove > 0 && j < len(k.commonBinPrefixes[i]); j++ {
+		for j := 0; j < len(k.commonBinPrefixes[i]); j++ {
+
+			if k.connectedPeers.BinSize(uint8(i)) <= k.opt.OverSaturationPeers {
+				break
+			}
 
 			pseudoAddr := k.commonBinPrefixes[i][j]
 			peers := k.balancedSlotPeers(pseudoAddr, binPeers, i)
@@ -753,7 +757,6 @@ func (k *Kad) pruneOversaturatedBins(depth uint8) {
 			if err != nil {
 				k.logger.Debug("prune disconnect failed", "error", err)
 			}
-			peersToRemove--
 		}
 	}
 }
