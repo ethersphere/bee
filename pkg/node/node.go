@@ -184,7 +184,7 @@ const (
 	mainnetNetworkID              = uint64(1)                 //
 	reserveCapacity               = 4_194_304                 // 2^22 chunks
 	reserveWakeUpDuration         = 15 * time.Minute          // time to wait before waking up reserveWorker
-	reserveTreshold               = reserveCapacity * 4 / 10
+	reserveTreshold               = reserveCapacity * 5 / 10
 )
 
 func NewBee(
