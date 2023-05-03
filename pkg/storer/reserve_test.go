@@ -47,7 +47,7 @@ func TestIndexCollision(t *testing.T) {
 			t.Fatal("expected index collision error")
 		}
 
-		err = putter.Cleanup()
+		err = putter.Done(swarm.ZeroAddress)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -58,11 +58,11 @@ func TestIndexCollision(t *testing.T) {
 		}
 
 		_, err = storer.ReserveGet(context.Background(), ch_1.Address(), ch_1.Stamp().BatchID())
-		if !errors.Is(err, storage.ErrNotFound) {
+		if err != nil {
 			t.Fatal(err)
 		}
 
-		t.Run("reserve size", reserveSizeTest(storer.Reserve(), 0))
+		t.Run("reserve size", reserveSizeTest(storer.Reserve(), 1))
 	}
 
 	t.Run("disk", func(t *testing.T) {

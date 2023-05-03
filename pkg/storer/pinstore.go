@@ -37,8 +37,8 @@ func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
 
 // DeletePin is the implementation of the PinStore.DeletePin method.
 func (db *DB) DeletePin(ctx context.Context, root swarm.Address) (err error) {
+	dur := captureDuration(time.Now())
 	defer func() {
-		dur := captureDuration(time.Now())
 		db.metrics.MethodCallsDuration.WithLabelValues("pinstore", "DeletePin").Observe(dur())
 		if err == nil {
 			db.metrics.MethodCalls.WithLabelValues("pinstore", "DeletePin", "success").Inc()
@@ -56,8 +56,8 @@ func (db *DB) DeletePin(ctx context.Context, root swarm.Address) (err error) {
 
 // Pins is the implementation of the PinStore.Pins method.
 func (db *DB) Pins() (address []swarm.Address, err error) {
+	dur := captureDuration(time.Now())
 	defer func() {
-		dur := captureDuration(time.Now())
 		db.metrics.MethodCallsDuration.WithLabelValues("pinstore", "Pins").Observe(dur())
 		if err == nil {
 			db.metrics.MethodCalls.WithLabelValues("pinstore", "Pins", "success").Inc()
@@ -71,8 +71,8 @@ func (db *DB) Pins() (address []swarm.Address, err error) {
 
 // HasPin is the implementation of the PinStore.HasPin method.
 func (db *DB) HasPin(root swarm.Address) (has bool, err error) {
+	dur := captureDuration(time.Now())
 	defer func() {
-		dur := captureDuration(time.Now())
 		db.metrics.MethodCallsDuration.WithLabelValues("pinstore", "HasPin").Observe(dur())
 		if err == nil {
 			db.metrics.MethodCalls.WithLabelValues("pinstore", "HasPin", "success").Inc()
