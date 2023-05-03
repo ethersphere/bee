@@ -12,7 +12,7 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/bitvector"
@@ -73,11 +73,11 @@ type Syncer struct {
 	logger         log.Logger
 	store          storer.Reserve
 	quit           chan struct{}
-	wg             sync.WaitGroup
 	unwrap         func(swarm.Chunk)
 	validStamp     postage.ValidStampFn
 	overlayAddress swarm.Address
 	intervalsSF    singleflight.Group
+	syncInProgress atomic.Int32
 
 	maxPage uint64
 
@@ -103,7 +103,6 @@ func New(
 		unwrap:         unwrap,
 		validStamp:     validStamp,
 		logger:         logger.WithName(loggerName).Register(),
-		wg:             sync.WaitGroup{},
 		quit:           make(chan struct{}),
 		maxPage:        maxPage,
 	}
@@ -166,7 +165,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 
 	var (
 		bvLen      = len(offer.Chunks)
-		wantChunks = make(map[string]struct{})
+		wantChunks = make(map[string]struct{}, bvLen)
 		ctr        = 0
 		have       bool
 	)
@@ -200,7 +199,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 			}
 
 			if !have {
-				wantChunks[a.ByteString()] = struct{}{}
+				wantChunks[a.ByteString()+string(batchID)] = struct{}{}
 				ctr++
 				s.metrics.Wanted.Inc()
 				bv.Set(i)
@@ -213,7 +212,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		return 0, 0, fmt.Errorf("write want: %w", err)
 	}
 
-	var chunksToPut []swarm.Chunk
+	chunksToPut := make([]swarm.Chunk, 0, ctr)
 
 	var chunkErr error
 	for ; ctr > 0; ctr-- {
@@ -223,21 +222,22 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		}
 
 		addr := swarm.NewAddress(delivery.Address)
-		if _, ok := wantChunks[addr.ByteString()]; !ok {
-			s.logger.Debug("want chunks", "error", ErrUnsolicitedChunk, "peer_address", peer, "chunk_address", addr)
-			chunkErr = errors.Join(chunkErr, ErrUnsolicitedChunk)
-			continue
-		}
-
-		delete(wantChunks, addr.ByteString())
-		s.metrics.Delivered.Inc()
-
 		newChunk := swarm.NewChunk(addr, delivery.Data)
+
 		stamp := new(postage.Stamp)
 		if err = stamp.UnmarshalBinary(delivery.Stamp); err != nil {
 			chunkErr = errors.Join(chunkErr, err)
 			continue
 		}
+
+		if _, ok := wantChunks[addr.ByteString()+string(stamp.BatchID())]; !ok {
+			s.logger.Debug("want chunks", "error", ErrUnsolicitedChunk, "peer_address", peer, "chunk_address", addr)
+			chunkErr = errors.Join(chunkErr, ErrUnsolicitedChunk)
+			continue
+		}
+
+		delete(wantChunks, addr.ByteString()+string(stamp.BatchID()))
+		s.metrics.Delivered.Inc()
 
 		chunk, err := s.validStamp(newChunk.WithStamp(stamp))
 		if err != nil {
@@ -256,6 +256,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		chunksToPut = append(chunksToPut, chunk)
 	}
 
+	chunksPut := 0
 	if len(chunksToPut) > 0 {
 
 		s.metrics.DbOps.Inc()
@@ -268,17 +269,19 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 				// is safe to continue with the next chunk
 				if errors.Is(err, storage.ErrOverwriteNewerChunk) || errors.Is(err, storage.ErrOverwriteOfImmutableBatch) {
 					s.logger.Debug("overwrite newer chunk", "error", err, "peer_address", peer, "chunk", c)
+					chunkErr = errors.Join(chunkErr, err)
 					continue
 				}
 				return 0, 0, errors.Join(chunkErr, err, putter.Cleanup())
 			}
+			chunksPut++
 		}
 		if err := putter.Done(swarm.ZeroAddress); err != nil {
 			return 0, 0, errors.Join(chunkErr, err)
 		}
 	}
 
-	return topmost, len(chunksToPut), chunkErr
+	return topmost, chunksPut, chunkErr
 }
 
 // handler handles an incoming request to sync an interval
@@ -287,6 +290,8 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 	case <-s.quit:
 		return nil
 	default:
+		s.syncInProgress.Add(1)
+		defer s.syncInProgress.Add(-1)
 	}
 
 	r := protobuf.NewReader(stream)
@@ -309,9 +314,6 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 			return
 		}
 	}()
-
-	s.wg.Add(1)
-	defer s.wg.Done()
 
 	var rn pb.Get
 	if err := r.ReadMsgWithContext(ctx, &rn); err != nil {
@@ -376,6 +378,7 @@ func (s *Syncer) makeOffer(ctx context.Context, rn pb.Get) (*pb.Offer, error) {
 
 	o := new(pb.Offer)
 	o.Topmost = top
+	o.Chunks = make([]*pb.Chunk, 0, len(addrs))
 	for _, v := range addrs {
 		o.Chunks = append(o.Chunks, &pb.Chunk{Address: v.Address.Bytes(), BatchID: v.BatchID})
 	}
@@ -457,7 +460,7 @@ func (s *Syncer) processWant(ctx context.Context, o *pb.Offer, w *pb.Want) ([]sw
 		return nil, err
 	}
 
-	var chunks []swarm.Chunk
+	chunks := make([]swarm.Chunk, 0, len(o.Chunks))
 	for i := 0; i < len(o.Chunks); i++ {
 		if bv.Get(i) {
 			ch := o.Chunks[i]
@@ -545,7 +548,13 @@ func (s *Syncer) Close() error {
 	cc := make(chan struct{})
 	go func() {
 		defer close(cc)
-		s.wg.Wait()
+		for {
+			if s.syncInProgress.Load() > 0 {
+				time.Sleep(100 * time.Millisecond)
+				continue
+			}
+			break
+		}
 	}()
 
 	select {
