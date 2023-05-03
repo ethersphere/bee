@@ -72,6 +72,12 @@ func WithReserveSize(s int) Option {
 	})
 }
 
+func WithPutHook(f func(swarm.Chunk) error) Option {
+	return optionFunc(func(p *ReserveStore) {
+		p.putHook = f
+	})
+}
+
 var _ storer.ReserveStore = (*ReserveStore)(nil)
 
 type ReserveStore struct {
@@ -91,6 +97,7 @@ type ReserveStore struct {
 	reservesize int
 
 	subResponses []chunksResponse
+	putHook      func(swarm.Chunk) error
 }
 
 // NewReserve returns a new Reserve mock.
@@ -200,6 +207,9 @@ func (s *ReserveStore) ReservePutter(ctx context.Context) storer.PutterSession {
 }
 
 func (s *ReserveStore) ReservePut(ctx context.Context, c swarm.Chunk) error {
+	s.mtx.Lock()
+	s.putCalls++
+	s.mtx.Unlock()
 	return s.put(ctx, c)
 }
 
@@ -207,9 +217,13 @@ func (s *ReserveStore) ReservePut(ctx context.Context, c swarm.Chunk) error {
 func (s *ReserveStore) put(_ context.Context, chs ...swarm.Chunk) error {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
-	s.putCalls++
 	for _, c := range chs {
 		c := c
+		if s.putHook != nil {
+			if err := s.putHook(c); err != nil {
+				return err
+			}
+		}
 		s.chunks[c.Address().String()+string(c.Stamp().BatchID())] = c
 	}
 	return nil
