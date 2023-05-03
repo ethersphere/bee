@@ -262,6 +262,44 @@ func (r *Reserve) IterateChunks(store internal.Storage, startBin uint8, cb func(
 	return err
 }
 
+type ChunkItem struct {
+	Chunk swarm.Chunk
+	Type  swarm.ChunkType
+}
+
+func (r *Reserve) IterateChunksItems(store internal.Storage, startBin uint8, cb func(ChunkItem) (bool, error)) error {
+	err := store.IndexStore().Iterate(storage.Query{
+		Factory:       func() storage.Item { return &chunkBinItem{} },
+		Prefix:        binIDToString(startBin, 0),
+		PrefixAtStart: true,
+	}, func(res storage.Result) (bool, error) {
+		item := res.Entry.(*chunkBinItem)
+
+		chunk, err := store.ChunkStore().Get(context.Background(), item.Address)
+		if err != nil {
+			return false, err
+		}
+
+		stamp, err := chunkstamp.LoadWithBatchID(store.IndexStore(), reserveNamespace, item.Address, item.BatchID)
+		if err != nil {
+			return false, err
+		}
+
+		chItem := ChunkItem{
+			Chunk: chunk.WithStamp(stamp),
+			Type:  item.ChunkType,
+		}
+
+		stop, err := cb(chItem)
+		if stop || err != nil {
+			return true, err
+		}
+		return false, nil
+	})
+
+	return err
+}
+
 func (r *Reserve) EvictBatchBin(ctx context.Context, store internal.Storage, bin uint8, batchID []byte, cb func(swarm.Chunk)) (int, error) {
 
 	var evicted []*batchRadiusItem
