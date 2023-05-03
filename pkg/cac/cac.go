@@ -23,7 +23,7 @@ func New(data []byte) (swarm.Chunk, error) {
 	dataLength := len(data)
 
 	if err := validateDataLength(dataLength); err != nil {
-		return nil, fmt.Errorf("invalid CAC data length (%d): %w", dataLength, err)
+		return nil, err
 	}
 
 	span := make([]byte, swarm.SpanSize)
@@ -37,7 +37,7 @@ func NewWithDataSpan(data []byte) (swarm.Chunk, error) {
 	dataLength := len(data)
 
 	if err := validateDataLength(dataLength - swarm.SpanSize); err != nil {
-		return nil, fmt.Errorf("invalid CAC data length (%d): %w", dataLength, err)
+		return nil, err
 	}
 
 	return newWithSpan(data[swarm.SpanSize:], data[:swarm.SpanSize])
@@ -46,10 +46,11 @@ func NewWithDataSpan(data []byte) (swarm.Chunk, error) {
 // validateDataLength validates if data length (without span) is correct.
 func validateDataLength(dataLength int) error {
 	if dataLength < 0 { // dataLength could be negative when span size is subtracted
-		return ErrChunkSpanShort
+		spanLength := swarm.SpanSize + dataLength
+		return fmt.Errorf("invalid CAC span length %d: %w", spanLength, ErrChunkSpanShort)
 	}
 	if dataLength > swarm.ChunkSize {
-		return ErrChunkDataLarge
+		return fmt.Errorf("invalid CAC data length %d: %w", dataLength, ErrChunkDataLarge)
 	}
 	return nil
 }
