@@ -6,7 +6,6 @@ package mockstorer
 
 import (
 	"context"
-	"crypto/rand"
 	"sync"
 
 	storage "github.com/ethersphere/bee/pkg/storage"
@@ -238,11 +237,7 @@ func (s *ReserveStore) ReserveHas(addr swarm.Address, batchID []byte) (bool, err
 }
 
 func (s *ReserveStore) ReserveSample(context.Context, []byte, uint8, uint64) (storer.Sample, error) {
-	buf := make([]byte, swarm.HashSize)
-	_, _ = rand.Read(buf)
-	return storer.Sample{
-		Hash: swarm.NewAddress(buf),
-	}, nil
+	return storer.RandSample()
 }
 
 type Option interface {

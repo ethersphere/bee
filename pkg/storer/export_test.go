@@ -12,6 +12,10 @@ import (
 	"github.com/ethersphere/bee/pkg/storer/internal/reserve"
 )
 
+const (
+	SampleSize = sampleSize
+)
+
 func (db *DB) Reserve() *reserve.Reserve {
 	return db.reserve
 }
