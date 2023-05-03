@@ -7,18 +7,25 @@ package redistribution
 import (
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/bmt"
 	"github.com/ethersphere/bee/pkg/storageincentives/types"
-	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 type ChunkInclusionProofs = types.Trio[ChunkInclusionProof]
 
 type ChunkInclusionProof struct {
-	PostageStamp            swarm.Stamp
-	WitnessProof            bmt.Proof
-	RetentionProof          bmt.Proof
-	TransformedAddressProof bmt.Proof
+	ProofSegments  [][]byte
+	ProveSegment   []byte
+	ProofSegments2 [][]byte
+	ProveSegment2  []byte
+	ChunkSpan      uint64
+	ProofSegments3 [][]byte
+
+	Signer    []byte
+	Signature []byte
+	ChunkAddr []byte
+	PostageId []byte
+	Index     []byte
+	TimeStamp []byte
 }
 
 func RandChunkInclusionProof(t *testing.T) ChunkInclusionProof {

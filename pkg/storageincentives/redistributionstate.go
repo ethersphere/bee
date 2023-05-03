@@ -62,7 +62,8 @@ type RoundData struct {
 }
 
 type SampleData struct {
-	Salt               []byte
+	Anchor1            []byte
+	Anchor2            []byte
 	ReserveSampleItems []storer.SampleItem
 	ReserveSampleHash  swarm.Address
 	StorageRadius      uint8

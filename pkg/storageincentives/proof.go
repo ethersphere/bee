@@ -5,35 +5,30 @@
 package storageincentives
 
 import (
+	"encoding/binary"
 	"fmt"
+	"math/big"
 
 	"github.com/ethersphere/bee/pkg/bmt"
 	"github.com/ethersphere/bee/pkg/bmtpool"
 	"github.com/ethersphere/bee/pkg/cac"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	. "github.com/ethersphere/bee/pkg/storageincentives/types"
 	"github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-const (
-	minSampleLength = 2
-	saltLength      = 8
-)
-
 func makeInclusionProofs(
 	reserveSampleItems []storer.SampleItem,
-	salt []byte,
+	anchor1 []byte,
+	anchor2 []byte,
 ) (redistribution.ChunkInclusionProofs, error) {
 	proofs := redistribution.ChunkInclusionProofs{}
 
 	sampleLength := len(reserveSampleItems)
-	if sampleLength < minSampleLength {
-		return proofs, fmt.Errorf("reserve sample items should not have less then %d elements", minSampleLength)
-	}
-
-	if len(salt) != saltLength {
-		return proofs, fmt.Errorf("salt should be exactly length of %d", saltLength)
+	if sampleLength != 16 {
+		return proofs, fmt.Errorf("reserve sample items should have 16 elements")
 	}
 
 	rsc, err := sampleChunk(reserveSampleItems)
@@ -42,18 +37,15 @@ func makeInclusionProofs(
 	}
 	rscData := rsc.Data()
 
-	hasher, trHasher := bmtpool.Get(), bmt.NewTrHasher(salt)
+	hasher, trHasher := bmtpool.Get(), bmt.NewTrHasher(anchor1)
 	defer bmtpool.Put(hasher)
 
-	ssn := segmentSelection(salt)
+	wcp := Trio[int]{}
+	wcp.Element1 = int(new(big.Int).Mod(new(big.Int).SetBytes(anchor2), big.NewInt(15)).Int64())
+	wcp.Element2 = int(new(big.Int).Mod(new(big.Int).SetBytes(anchor2), big.NewInt(14)).Int64())
+	wcp.Element3 = 15
 
-	wcp := Trio[int]{} // wcp = witness chunk position
-	wcp.Element1 = ssn.Element1 % (sampleLength - 1)
-	wcp.Element2 = ssn.Element2 % (sampleLength - 2)
-	if wcp.Element2 == wcp.Element1 {
-		wcp.Element2 = sampleLength - 2
-	}
-	wcp.Element3 = sampleLength - 2
+	segmentIndex := int(new(big.Int).Mod(new(big.Int).SetBytes(anchor2), big.NewInt(int64(128))).Int64())
 
 	wc := Trio[storer.SampleItem]{} // wc = witness chunk
 	wc.Element1 = reserveSampleItems[wcp.Element1]
@@ -61,69 +53,50 @@ func makeInclusionProofs(
 	wc.Element3 = reserveSampleItems[wcp.Element3]
 
 	wp := Trio[bmt.Proof]{} // wp := witness chunks proof
-	wp.Element1 = makeProof(hasher, rscData, 2*wcp.Element1)
-	wp.Element2 = makeProof(hasher, rscData, 2*wcp.Element2)
-	wp.Element3 = makeProof(hasher, rscData, 2*wcp.Element3)
+	wp.Element1, _ = makeProof(hasher, rscData, 2*wcp.Element1)
+	wp.Element2, _ = makeProof(hasher, rscData, 2*wcp.Element2)
+	wp.Element3, _ = makeProof(hasher, rscData, 2*wcp.Element3)
 
 	rp := Trio[bmt.Proof]{} // rp = retention proofs
-	rp.Element1 = makeProof(hasher, wc.Element1.ChunkData, ssn.Element1%128)
-	rp.Element2 = makeProof(hasher, wc.Element2.ChunkData, ssn.Element2%128)
-	rp.Element3 = makeProof(hasher, wc.Element3.ChunkData, ssn.Element3%128)
+	rp.Element1, _ = makeProof(hasher, wc.Element1.ChunkData, segmentIndex)
+	rp.Element2, _ = makeProof(hasher, wc.Element2.ChunkData, segmentIndex)
+	rp.Element3, _ = makeProof(hasher, wc.Element3.ChunkData, segmentIndex)
 
 	trp := Trio[bmt.Proof]{} // trp = transformed address proofs
-	trp.Element1 = makeProof(trHasher, wc.Element1.ChunkData, ssn.Element1%128)
-	trp.Element2 = makeProof(trHasher, wc.Element2.ChunkData, ssn.Element2%128)
-	trp.Element3 = makeProof(trHasher, wc.Element3.ChunkData, ssn.Element3%128)
+	trp.Element1, _ = makeProof(trHasher, wc.Element1.ChunkData, segmentIndex)
+	trp.Element2, _ = makeProof(trHasher, wc.Element2.ChunkData, segmentIndex)
+	trp.Element3, _ = makeProof(trHasher, wc.Element3.ChunkData, segmentIndex)
 
-	proofs.Element1 = redistribution.ChunkInclusionProof{
-		PostageStamp:            wc.Element1.Stamp,
-		WitnessProof:            wp.Element1,
-		RetentionProof:          rp.Element1,
-		TransformedAddressProof: trp.Element1,
+	proofs.Element1, err = newChunkInclusionProof(wp.Element1, rp.Element1, trp.Element1, wc.Element1.ChunkAddress, wc.Element1.Stamp)
+	if err != nil {
+		return proofs, err
 	}
-	proofs.Element2 = redistribution.ChunkInclusionProof{
-		PostageStamp:            wc.Element2.Stamp,
-		WitnessProof:            wp.Element2,
-		RetentionProof:          rp.Element2,
-		TransformedAddressProof: trp.Element2,
+	proofs.Element2, err = newChunkInclusionProof(wp.Element2, rp.Element2, trp.Element2, wc.Element2.ChunkAddress, wc.Element2.Stamp)
+	if err != nil {
+		return proofs, err
 	}
-	proofs.Element3 = redistribution.ChunkInclusionProof{
-		PostageStamp:            wc.Element3.Stamp,
-		WitnessProof:            wp.Element3,
-		RetentionProof:          rp.Element3,
-		TransformedAddressProof: trp.Element3,
+	proofs.Element3, err = newChunkInclusionProof(wp.Element3, rp.Element3, trp.Element3, wc.Element3.ChunkAddress, wc.Element3.Stamp)
+	if err != nil {
+		return proofs, err
 	}
 
 	return proofs, nil
 }
 
-func makeProof(h *bmt.Hasher, data []byte, i int) bmt.Proof {
+func makeProof(h *bmt.Hasher, data []byte, i int) (bmt.Proof, error) {
 	h.Reset()
-	_, _ = h.Write(data)
-	_, _ = h.Hash(nil)
+	h.SetHeader(data[:swarm.SpanSize])
+	_, err := h.Write(data[swarm.SpanSize:])
+	if err != nil {
+		return bmt.Proof{}, err
+	}
+	_, err = h.Hash(nil)
+	if err != nil {
+		return bmt.Proof{}, err
+	}
 
 	p := bmt.Prover{Hasher: h}
-	return p.Proof(i)
-}
-
-func segmentSelection(salt []byte) Trio[int] {
-	// TODO
-	// SSN(g,i) = H(R(g)|BE_8(i))
-
-	// bi := big.NewInt(0).SetBytes(salt)
-
-	be := int64(salt[0])
-	be = be << 8
-
-	ssn := func(i int64) int {
-		return int(be | i)
-	}
-
-	return Trio[int]{
-		Element1: ssn(0),
-		Element2: ssn(1),
-		Element3: ssn(2),
-	}
+	return p.Proof(i), nil
 }
 
 func sampleChunk(items []storer.SampleItem) (swarm.Chunk, error) {
@@ -147,4 +120,57 @@ func sampleHash(items []storer.SampleItem) (swarm.Address, error) {
 		return swarm.ZeroAddress, err
 	}
 	return ch.Address(), nil
+}
+
+func newChunkInclusionProof(
+	proofp1, proofp2, proofp3 bmt.Proof,
+	chunkAddress swarm.Address,
+	stamp swarm.Stamp,
+) (redistribution.ChunkInclusionProof, error) {
+	proofp1Hex := bytesToHex(proofp1)
+	proofp2Hex := bytesToHex(proofp2)
+	proofp3Hex := bytesToHex(proofp3)
+
+	batchOwner, err := postage.RecoverBatchOwner(chunkAddress, stamp)
+	if err != nil {
+		return redistribution.ChunkInclusionProof{}, err
+	}
+
+	return redistribution.ChunkInclusionProof{
+		ProofSegments:  proofp1Hex.ProofSegments,
+		ProveSegment:   proofp1Hex.ProveSegment,
+		ProofSegments2: proofp2Hex.ProofSegments,
+		ProveSegment2:  proofp2Hex.ProveSegment,
+		ChunkSpan:      binary.LittleEndian.Uint64(proofp2.Span[:swarm.SpanSize]),
+		ProofSegments3: proofp3Hex.ProofSegments,
+		Signer:         batchOwner,
+		Signature:      stamp.Sig(),
+		ChunkAddr:      chunkAddress.Bytes(),
+		PostageId:      stamp.BatchID(),
+		Index:          stamp.Index(),
+		TimeStamp:      stamp.Timestamp(),
+	}, nil
+}
+
+func bytesToHex(proof bmt.Proof) hexProof {
+	var proveSegment []byte
+
+	proofSegments := make([][]byte, len(proof.ProofSegments)+1)
+	if proof.Index%2 == 0 {
+		proofSegments[0] = proof.ProveSegment[swarm.SectionSize:]
+		proveSegment = proof.ProveSegment[:swarm.SectionSize]
+	} else {
+		proofSegments[0] = proof.ProveSegment[:swarm.SectionSize]
+		proveSegment = proof.ProveSegment[swarm.SectionSize:]
+	}
+	for i, sister := range proof.ProofSegments {
+		proofSegments[i+1] = sister
+	}
+
+	return hexProof{ProveSegment: proveSegment, ProofSegments: proofSegments}
+}
+
+type hexProof struct {
+	ProofSegments [][]byte
+	ProveSegment  []byte
 }

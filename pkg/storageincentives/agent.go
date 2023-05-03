@@ -332,7 +332,7 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) (bool, error) {
 			return false, fmt.Errorf("sample not found")
 		}
 
-		proofs, err := makeInclusionProofs(sampleData.ReserveSampleItems, sampleData.Salt)
+		proofs, err := makeInclusionProofs(sampleData.ReserveSampleItems, sampleData.Anchor1, sampleData.Anchor2)
 		if err != nil {
 			a.logger.Info("error making inclusion proofs", "err", err)
 			return false, err
@@ -414,7 +414,7 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 }
 
 func (a *Agent) makeSample(ctx context.Context, storageRadius uint8) (SampleData, error) {
-	salt, err := a.contract.ReserveSalt(ctx)
+	anchor, err := a.contract.ReserveSalt(ctx)
 	if err != nil {
 		return SampleData{}, err
 	}
@@ -425,7 +425,7 @@ func (a *Agent) makeSample(ctx context.Context, storageRadius uint8) (SampleData
 	}
 
 	t := time.Now()
-	rSample, err := a.store.ReserveSample(ctx, salt, storageRadius, uint64(timeLimiter))
+	rSample, err := a.store.ReserveSample(ctx, anchor, storageRadius, uint64(timeLimiter))
 	if err != nil {
 		return SampleData{}, err
 	}
@@ -437,7 +437,7 @@ func (a *Agent) makeSample(ctx context.Context, storageRadius uint8) (SampleData
 	}
 
 	sample := SampleData{
-		Salt:               salt,
+		Anchor1:            anchor,
 		ReserveSampleItems: rSample.Items,
 		ReserveSampleHash:  hash,
 		StorageRadius:      storageRadius,
