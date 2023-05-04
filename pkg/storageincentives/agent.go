@@ -127,8 +127,15 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		}
 	}
 
-	// when we enter the commit phase, if the sample is already finished, run commit
+	// commit event handler has to be guarded with lock
+	// to avoid race conditions when handled is executed
+	// again from sample phase
+	var commitLock sync.Mutex
+
 	phaseEvents.On(commit, func(ctx context.Context) {
+		commitLock.Lock()
+		defer commitLock.Unlock()
+
 		phaseEvents.Cancel(claim)
 
 		round, _ := a.state.currentRoundAndPhase()
@@ -249,6 +256,11 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 }
 
 func (a *Agent) handleCommit(ctx context.Context, round uint64) (bool, error) {
+	if _, exists := a.state.CommitKey(round); exists {
+		// Already committed on this round, phase is skipped
+		return false, nil
+	}
+
 	// the sample has to come from previous round to be able to commit it
 	sample, exists := a.state.SampleData(round - 1)
 	if !exists {
