@@ -249,9 +249,8 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 }
 
 func (a *Agent) handleCommit(ctx context.Context, round uint64) (bool, error) {
-	// commit event handler has to be guarded with lock
-	// to avoid race conditions when handled is triggered
-	// again from sample phase
+	// commit event handler has to be guarded with lock to avoid
+	// race conditions when handler is triggered again from sample phase
 	a.commitLock.Lock()
 	defer a.commitLock.Unlock()
 
