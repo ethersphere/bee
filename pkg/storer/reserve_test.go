@@ -773,7 +773,7 @@ func assertValidSample(t *testing.T, sample storer.Sample) {
 			t.Fatalf("sample item %d transformed address should be set", i)
 		}
 		if !item.ChunkAddress.IsValidNonEmpty() {
-			t.Fatalf("sample item %d transformed address should be set", i)
+			t.Fatalf("sample item %d chunk address should be set", i)
 		}
 		if item.ChunkData == nil {
 			t.Fatalf("sample item %d chunk data should be set", i)
