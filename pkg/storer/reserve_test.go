@@ -26,7 +26,6 @@ import (
 	"github.com/ethersphere/bee/pkg/storer/internal/stampindex"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
-	"github.com/google/go-cmp/cmp/cmpopts"
 )
 
 func TestIndexCollision(t *testing.T) {
@@ -731,7 +730,7 @@ func TestReserveSampler(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if !cmp.Equal(sample, sample1, cmpopts.IgnoreUnexported(postage.Stamp{})) {
+			if !cmp.Equal(sample, sample1, cmp.AllowUnexported(postage.Stamp{})) {
 				t.Fatalf("samples different (-want +have):\n%s", cmp.Diff(sample, sample1))
 			}
 		})
