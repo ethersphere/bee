@@ -44,7 +44,7 @@ const (
 	// To avoid context.Timeout errors during network failure, the value of
 	// the peerConnectionAttemptTimeout constant must be equal to or greater
 	// than 5 seconds (empirically verified).
-	peerConnectionAttemptTimeout = 5 * time.Second // timeout for establishing a new connection with peer.
+	peerConnectionAttemptTimeout = 15 * time.Second // timeout for establishing a new connection with peer.
 
 	flagTimeout      = 10 * time.Minute // how long before blocking a flagged peer
 	blockDuration    = time.Hour        // how long to blocklist an unresponsive peer for
@@ -340,13 +340,7 @@ func (k *Kad) connectBalanced(wg *sync.WaitGroup, peerConnChan chan<- *peerConnI
 			select {
 			case <-k.quit:
 				return
-			default:
-				wg.Add(1)
-				select {
-				case <-k.quit:
-					return
-				case peerConnChan <- &peerConnInfo{po: swarm.Proximity(k.base.Bytes(), closestKnownPeer.Bytes()), addr: closestKnownPeer}:
-				}
+			case peerConnChan <- &peerConnInfo{po: swarm.Proximity(k.base.Bytes(), closestKnownPeer.Bytes()), addr: closestKnownPeer}:
 			}
 		}
 	}
@@ -391,13 +385,7 @@ func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerCon
 		select {
 		case <-k.quit:
 			return true, false, nil
-		default:
-			wg.Add(1)
-			select {
-			case <-k.quit:
-				return true, false, nil
-			case peerConnChan <- &peerConnInfo{po: po, addr: addr}:
-			}
+		case peerConnChan <- &peerConnInfo{po: po, addr: addr}:
 		}
 
 		sent++
@@ -481,6 +469,7 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 			case <-k.quit:
 				return
 			case peer := <-peerConnChan:
+				wg.Add(1)
 				addr := peer.addr.String()
 
 				if k.waitNext.Waiting(peer.addr) {
