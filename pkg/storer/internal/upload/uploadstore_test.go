@@ -530,6 +530,44 @@ func TestChunkPutter(t *testing.T) {
 			t.Fatalf("unexpected error, expected: %v, got: %v", upload.ErrPutterAlreadyClosed, err)
 		}
 	})
+
+	t.Run("restart putter", func(t *testing.T) {
+		putter, err = upload.NewPutter(ts, tag.TagID)
+		if err != nil {
+			t.Fatalf("failed creating putter: %v", err)
+		}
+
+		for _, chunk := range chunktest.GenerateTestRandomChunks(5) {
+			err := putter.Put(context.Background(), chunk)
+			if err != nil {
+				t.Fatalf("Put(...): unexpected error: %v", err)
+			}
+		}
+
+		// close with different address
+		addr := swarm.RandAddress(t)
+		err = putter.Close(addr)
+		if err != nil {
+			t.Fatalf("Close(...): unexpected error %v", err)
+		}
+
+		ti, err := upload.TagInfo(ts.IndexStore(), tag.TagID)
+		if err != nil {
+			t.Fatalf("TagInfo(...): unexpected error %v", err)
+		}
+
+		wantTI := upload.TagItem{
+			TagID:     tag.TagID,
+			Split:     25,
+			Seen:      10,
+			StartedAt: now().Unix(),
+			Address:   addr,
+		}
+
+		if diff := cmp.Diff(wantTI, ti); diff != "" {
+			t.Fatalf("Get(...): unexpected TagItem (-want +have):\n%s", diff)
+		}
+	})
 }
 
 func TestChunkReporter(t *testing.T) {
