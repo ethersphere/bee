@@ -337,6 +337,7 @@ func (k *Kad) connectBalanced(wg *sync.WaitGroup, peerConnChan chan<- *peerConnI
 				continue
 			}
 
+			wg.Add(1)
 			select {
 			case <-k.quit:
 				return
@@ -382,6 +383,7 @@ func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerCon
 			return false, false, nil
 		}
 
+		wg.Add(1)
 		select {
 		case <-k.quit:
 			return true, false, nil
@@ -469,7 +471,6 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 			case <-k.quit:
 				return
 			case peer := <-peerConnChan:
-				wg.Add(1)
 				addr := peer.addr.String()
 
 				if k.waitNext.Waiting(peer.addr) {
