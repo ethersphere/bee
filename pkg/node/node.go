@@ -63,6 +63,7 @@ import (
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/resolver/multiresolver"
 	"github.com/ethersphere/bee/pkg/retrieval"
+	"github.com/ethersphere/bee/pkg/salud"
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
@@ -124,6 +125,7 @@ type Bee struct {
 	hiveCloser               io.Closer
 	chainSyncerCloser        io.Closer
 	depthMonitorCloser       io.Closer
+	saludCloser              io.Closer
 	storageIncetivesCloser   io.Closer
 	shutdownInProgress       bool
 	shutdownMutex            sync.Mutex
@@ -1033,6 +1035,11 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		return nil, fmt.Errorf("status service: %w", err)
 	}
 
+	if o.FullNodeMode && !o.BootnodeMode {
+		s := salud.New(nodeStatus, kad, p2ps, logger, o.WarmupTime)
+		b.saludCloser = s
+	}
+
 	extraOpts := api.ExtraOptions{
 		Pingpong:         pingPong,
 		TopologyDriver:   kad,
@@ -1246,7 +1253,7 @@ func (b *Bee) Shutdown() error {
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(9)
+	wg.Add(10)
 	go func() {
 		defer wg.Done()
 		tryClose(b.chainSyncerCloser, "chain syncer")
@@ -1284,6 +1291,10 @@ func (b *Bee) Shutdown() error {
 	go func() {
 		defer wg.Done()
 		tryClose(b.hiveCloser, "hive")
+	}()
+	go func() {
+		defer wg.Done()
+		tryClose(b.saludCloser, "salud")
 	}()
 
 	wg.Wait()
