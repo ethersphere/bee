@@ -5,7 +5,6 @@
 package storageincentives
 
 import (
-	"encoding/binary"
 	"fmt"
 	"math/big"
 
@@ -14,6 +13,7 @@ import (
 	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
+	"github.com/ethersphere/bee/pkg/storageincentives/types"
 	. "github.com/ethersphere/bee/pkg/storageincentives/types"
 	"github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -45,47 +45,88 @@ func makeInclusionProofs(
 	hasher, trHasher := bmtpool.Get(), bmt.NewTrHasher(anchor1)
 	defer bmtpool.Put(hasher)
 
-	wcp := Trio[int]{}
-	wcp.Element1 = int(new(big.Int).Mod(new(big.Int).SetBytes(anchor2), big.NewInt(15)).Int64())
-	wcp.Element2 = int(new(big.Int).Mod(new(big.Int).SetBytes(anchor2), big.NewInt(14)).Int64())
-	wcp.Element3 = 15
+	anchor2Big := new(big.Int).SetBytes(anchor2)
+	segmentIndex := int(new(big.Int).Mod(anchor2Big, big.NewInt(128)).Int64())
 
-	segmentIndex := int(new(big.Int).Mod(new(big.Int).SetBytes(anchor2), big.NewInt(int64(128))).Int64())
+	wcp := Trio[int]{} // wcp := witness chunk position
+	wcp.A = int(new(big.Int).Mod(anchor2Big, big.NewInt(15)).Int64())
+	wcp.B = int(new(big.Int).Mod(anchor2Big, big.NewInt(14)).Int64())
+	wcp.C = 15
 
 	wc := Trio[storer.SampleItem]{} // wc = witness chunk
-	wc.Element1 = reserveSampleItems[wcp.Element1]
-	wc.Element2 = reserveSampleItems[wcp.Element2]
-	wc.Element3 = reserveSampleItems[wcp.Element3]
+	wc.A = reserveSampleItems[wcp.A]
+	wc.B = reserveSampleItems[wcp.B]
+	wc.C = reserveSampleItems[wcp.C]
 
-	wp := Trio[bmt.Proof]{} // wp := witness chunks proof
-	wp.Element1, _ = makeProof(hasher, rscData, 2*wcp.Element1)
-	wp.Element2, _ = makeProof(hasher, rscData, 2*wcp.Element2)
-	wp.Element3, _ = makeProof(hasher, rscData, 2*wcp.Element3)
-
-	rp := Trio[bmt.Proof]{} // rp = retention proofs
-	rp.Element1, _ = makeProof(hasher, wc.Element1.ChunkData, segmentIndex)
-	rp.Element2, _ = makeProof(hasher, wc.Element2.ChunkData, segmentIndex)
-	rp.Element3, _ = makeProof(hasher, wc.Element3.ChunkData, segmentIndex)
-
-	trp := Trio[bmt.Proof]{} // trp = transformed address proofs
-	trp.Element1, _ = makeProof(trHasher, wc.Element1.ChunkData, segmentIndex)
-	trp.Element2, _ = makeProof(trHasher, wc.Element2.ChunkData, segmentIndex)
-	trp.Element3, _ = makeProof(trHasher, wc.Element3.ChunkData, segmentIndex)
-
-	proofs.Element1, err = newChunkInclusionProof(wp.Element1, rp.Element1, trp.Element1, wc.Element1.ChunkAddress, wc.Element1.Stamp)
+	wp, err := makeProofTrio( // wp := witness chunks proof
+		hasher,
+		types.NewTrio(rscData, rscData, rscData),
+		types.NewTrio(2*wcp.A, 2*wcp.B, 2*wcp.C),
+	)
 	if err != nil {
-		return proofs, err
+		return proofs, fmt.Errorf("witness chunk proofs: %w", err)
 	}
-	proofs.Element2, err = newChunkInclusionProof(wp.Element2, rp.Element2, trp.Element2, wc.Element2.ChunkAddress, wc.Element2.Stamp)
+
+	rp, err := makeProofTrio( // rp = retention proofs
+		hasher,
+		types.NewTrio(wc.A.ChunkData, wc.B.ChunkData, wc.C.ChunkData),
+		types.NewTrio(segmentIndex, segmentIndex, segmentIndex),
+	)
 	if err != nil {
-		return proofs, err
+		return proofs, fmt.Errorf("retention proofs: %w", err)
 	}
-	proofs.Element3, err = newChunkInclusionProof(wp.Element3, rp.Element3, trp.Element3, wc.Element3.ChunkAddress, wc.Element3.Stamp)
+
+	trp, err := makeProofTrio( //  trp = transformed address proofs
+		trHasher,
+		types.NewTrio(wc.A.ChunkData, wc.B.ChunkData, wc.C.ChunkData),
+		types.NewTrio(segmentIndex, segmentIndex, segmentIndex),
+	)
 	if err != nil {
-		return proofs, err
+		return proofs, fmt.Errorf("transformed address proofs: %w", err)
+	}
+
+	proofs.A, err = newChunkInclusionProof(wp.A, rp.A, trp.A, wc.A.ChunkAddress, wc.A.Stamp)
+	if err != nil {
+		return proofs, fmt.Errorf("chunk inclusion proof #1: %w", err)
+	}
+
+	proofs.B, err = newChunkInclusionProof(wp.B, rp.B, trp.B, wc.B.ChunkAddress, wc.B.Stamp)
+	if err != nil {
+		return proofs, fmt.Errorf("chunk inclusion proof #2: %w", err)
+	}
+
+	proofs.C, err = newChunkInclusionProof(wp.C, rp.C, trp.C, wc.C.ChunkAddress, wc.C.Stamp)
+	if err != nil {
+		return proofs, fmt.Errorf("chunk inclusion proof #3: %w", err)
 	}
 
 	return proofs, nil
+}
+
+func makeProofTrio(
+	h *bmt.Hasher,
+	data types.Trio[[]byte],
+	segmentIndex types.Trio[int],
+) (types.Trio[bmt.Proof], error) {
+	var err error
+	proof := Trio[bmt.Proof]{}
+
+	proof.A, err = makeProof(h, data.A, segmentIndex.A)
+	if err != nil {
+		return proof, fmt.Errorf("make proof #1: %w", err)
+	}
+
+	proof.B, err = makeProof(h, data.B, segmentIndex.B)
+	if err != nil {
+		return proof, fmt.Errorf("make proof #2: %w", err)
+	}
+
+	proof.C, err = makeProof(h, data.C, segmentIndex.C)
+	if err != nil {
+		return proof, fmt.Errorf("make proof #3: %w", err)
+	}
+
+	return proof, nil
 }
 
 func makeProof(h *bmt.Hasher, data []byte, i int) (bmt.Proof, error) {
@@ -146,7 +187,7 @@ func newChunkInclusionProof(
 		ProveSegment:   proofp1Hex.ProveSegment,
 		ProofSegments2: proofp2Hex.ProofSegments,
 		ProveSegment2:  proofp2Hex.ProveSegment,
-		ChunkSpan:      binary.LittleEndian.Uint64(proofp2.Span[:swarm.SpanSize]),
+		ChunkSpan:      bmt.LengthFromSpan(proofp2.Span),
 		ProofSegments3: proofp3Hex.ProofSegments,
 		Signer:         batchOwner,
 		Signature:      stamp.Sig(),
@@ -168,9 +209,7 @@ func bytesToHex(proof bmt.Proof) hexProof {
 		proofSegments[0] = proof.ProveSegment[:swarm.SectionSize]
 		proveSegment = proof.ProveSegment[swarm.SectionSize:]
 	}
-	for i, sister := range proof.ProofSegments {
-		proofSegments[i+1] = sister
-	}
+	copy(proofSegments[1:], proof.ProofSegments)
 
 	return hexProof{ProveSegment: proveSegment, ProofSegments: proofSegments}
 }

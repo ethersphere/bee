@@ -6,7 +6,15 @@ package types
 
 // Trio is type for group of three elements.
 type Trio[T any] struct {
-	Element1 T
-	Element2 T
-	Element3 T
+	A T
+	B T
+	C T
+}
+
+func NewTrio[T any](a, b, c T) Trio[T] {
+	return Trio[T]{
+		A: a,
+		B: b,
+		C: c,
+	}
 }

@@ -38,8 +38,8 @@ func RandChunkInclusionProofs(t *testing.T) ChunkInclusionProofs {
 	t.Helper()
 
 	return ChunkInclusionProofs{
-		Element1: RandChunkInclusionProof(t),
-		Element2: RandChunkInclusionProof(t),
-		Element3: RandChunkInclusionProof(t),
+		A: RandChunkInclusionProof(t),
+		B: RandChunkInclusionProof(t),
+		C: RandChunkInclusionProof(t),
 	}
 }

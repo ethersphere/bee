@@ -7,7 +7,6 @@ package storer
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
@@ -365,7 +364,11 @@ type SampleItem struct {
 	TransformedAddress swarm.Address
 	ChunkAddress       swarm.Address
 	ChunkData          []byte
-	Stamp              swarm.Stamp
+	Stamp              *postage.Stamp
+}
+
+func newStamp(s swarm.Stamp) *postage.Stamp {
+	return postage.NewStamp(s.BatchID(), s.Index(), s.Timestamp(), s.Sig())
 }
 
 type Sample struct {
@@ -399,21 +402,11 @@ func RandSample(anchor []byte) (Sample, error) {
 			TransformedAddress: tr,
 			ChunkAddress:       ch.Address(),
 			ChunkData:          ch.Data(),
-			Stamp:              ch.Stamp(),
+			Stamp:              newStamp(ch.Stamp()),
 		}
 	}
 
 	return Sample{Items: items}, nil
-}
-
-func randAddress() (swarm.Address, error) {
-	buf := make([]byte, swarm.HashSize)
-	n, err := rand.Read(buf)
-	if err != nil || n != swarm.HashSize {
-		return swarm.ZeroAddress, err
-	}
-
-	return swarm.NewAddress(buf), nil
 }
 
 // ReserveSample generates the sample of reserve storage of a node required for the
@@ -497,7 +490,7 @@ func (db *DB) ReserveSample(
 					TransformedAddress: taddr,
 					ChunkAddress:       chItem.Chunk.Address(),
 					ChunkData:          chItem.Chunk.Data(),
-					Stamp:              chItem.Chunk.Stamp(),
+					Stamp:              newStamp(chItem.Chunk.Stamp()),
 				}:
 				case <-ctx.Done():
 					return ctx.Err()
