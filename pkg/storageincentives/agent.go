@@ -128,7 +128,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	}
 
 	// commit event handler has to be guarded with lock
-	// to avoid race conditions when handled is executed
+	// to avoid race conditions when handled is triggered
 	// again from sample phase
 	var commitLock sync.Mutex
 
@@ -257,7 +257,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 func (a *Agent) handleCommit(ctx context.Context, round uint64) (bool, error) {
 	if _, exists := a.state.CommitKey(round); exists {
-		// Already committed on this round, phase is skipped
+		// already committed on this round, phase is skipped
 		return false, nil
 	}
 
