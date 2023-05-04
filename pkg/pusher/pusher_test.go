@@ -46,6 +46,7 @@ type mockStorer struct {
 	reportedSynced []swarm.Chunk
 	reportedFailed []swarm.Chunk
 	reportedStored []swarm.Chunk
+	storedChunks   map[string]swarm.Chunk
 }
 
 func (m *mockStorer) SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, stop func()) {
@@ -96,6 +97,10 @@ func (m *mockStorer) isReported(chunk swarm.Chunk, state storage.ChunkState) boo
 }
 
 func (m *mockStorer) ReservePut(ctx context.Context, chunk swarm.Chunk) error {
+	if m.storedChunks == nil {
+		m.storedChunks = make(map[string]swarm.Chunk)
+	}
+	m.storedChunks[chunk.Address().ByteString()] = chunk
 	return nil
 }
 
@@ -173,7 +178,7 @@ func TestChunkStored(t *testing.T) {
 		chunks: make(chan swarm.Chunk),
 	}
 
-	_ = createPusher(
+	pusherSvc := createPusher(
 		t,
 		storer,
 		pushSyncService,
@@ -182,15 +187,38 @@ func TestChunkStored(t *testing.T) {
 		mock.WithNeighborhoodDepth(0),
 	)
 
-	chunk := testingc.GenerateTestRandomChunk()
-	storer.chunks <- chunk
+	t.Run("deferred", func(t *testing.T) {
+		chunk := testingc.GenerateTestRandomChunk()
+		storer.chunks <- chunk
 
-	err := spinlock.Wait(spinTimeout, func() bool {
-		return storer.isReported(chunk, storage.ChunkStored)
+		err := spinlock.Wait(spinTimeout, func() bool {
+			return storer.isReported(chunk, storage.ChunkStored)
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ch, found := storer.storedChunks[chunk.Address().ByteString()]; !found || !ch.Equal(chunk) {
+			t.Fatalf("chunk not found in the store")
+		}
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
+
+	t.Run("direct", func(t *testing.T) {
+		chunk := testingc.GenerateTestRandomChunk()
+
+		newFeed := make(chan *pusher.Op)
+		errC := make(chan error, 1)
+		pusherSvc.AddFeed(newFeed)
+
+		newFeed <- &pusher.Op{Chunk: chunk, Err: errC, Direct: true}
+
+		err := <-errC
+		if err != nil {
+			t.Fatalf("unexpected error on push %v", err)
+		}
+		if ch, found := storer.storedChunks[chunk.Address().ByteString()]; !found || !ch.Equal(chunk) {
+			t.Fatalf("chunk not found in the store")
+		}
+	})
 }
 
 // TestSendChunkAndReceiveInvalidReceipt sends a chunk to pushsync to be sent ot its closest peer and
