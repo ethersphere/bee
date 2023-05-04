@@ -168,8 +168,8 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 
 		retry := func() {
 			select {
-			case <-ctx.Done():
 			case retryC <- struct{}{}:
+			case <-ctx.Done():
 			default:
 			}
 		}
@@ -290,6 +290,8 @@ func (s *Service) retrieveChunk(parentCtx context.Context, chunkAddr, peer swarm
 	ctx, cancel := context.WithTimeout(parentCtx, retrieveChunkTimeout)
 	defer cancel()
 
+	defer action.Cleanup()
+
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
 		err = fmt.Errorf("new stream: %w", err)
@@ -303,8 +305,6 @@ func (s *Service) retrieveChunk(parentCtx context.Context, chunkAddr, peer swarm
 			_ = stream.FullClose()
 		}
 	}()
-
-	defer action.Cleanup()
 
 	w, r := protobuf.NewWriterAndReader(stream)
 	err = w.WriteMsgWithContext(ctx, &pb.Request{Addr: chunkAddr.Bytes()})
