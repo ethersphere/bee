@@ -425,19 +425,15 @@ func (a *Agent) makeSample(ctx context.Context, storageRadius uint8) (SampleData
 	}
 
 	t := time.Now()
-	rSample, err := a.store.ReserveSample(ctx, salt, storageRadius, uint64(timeLimiter))
+	_, err = a.store.ReserveSample(ctx, salt, storageRadius, uint64(timeLimiter))
 	if err != nil {
 		return SampleData{}, err
 	}
 	a.metrics.SampleDuration.Set(time.Since(t).Seconds())
 
-	sampleChunk, err := rSample.Chunk()
-	if err != nil {
-		return SampleData{}, err
-	}
-
+	// TODO: set sample
 	sample := SampleData{
-		ReserveSampleHash: sampleChunk.Address(),
+		ReserveSampleHash: swarm.EmptyAddress,
 		StorageRadius:     storageRadius,
 	}
 
