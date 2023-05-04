@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"math/rand"
+	"reflect"
 	"testing"
 	"time"
 
@@ -691,14 +692,8 @@ func TestReserveSampler(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(sample.Items) != storer.SampleSize {
-				t.Fatalf("incorrect no of sample items exp %d found %d", storer.SampleSize, len(sample.Items))
-			}
-			for i := 0; i < len(sample.Items)-2; i++ {
-				if bytes.Compare(sample.Items[i].TransformedAddress.Bytes(), sample.Items[i+1].TransformedAddress.Bytes()) != -1 {
-					t.Fatalf("incorrect order of samples %+q", sample.Items)
-				}
-			}
+
+			assertValidSample(t, sample)
 
 			sample1 = sample
 		})
@@ -730,7 +725,7 @@ func TestReserveSampler(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if !cmp.Equal(sample, sample1) {
+			if !reflect.DeepEqual(sample, sample1) {
 				t.Fatalf("samples different (-want +have):\n%s", cmp.Diff(sample, sample1))
 			}
 		})
@@ -757,35 +752,45 @@ func TestReserveSampler(t *testing.T) {
 	})
 }
 
-func TestSample(t *testing.T) {
+func TestRandSample(t *testing.T) {
 	t.Parallel()
 
-	sample := storer.RandSampleT(t)
+	sample := storer.RandSampleT(t, nil)
+	assertValidSample(t, sample)
+}
+
+func assertValidSample(t *testing.T, sample storer.Sample) {
+	t.Helper()
+
+	// Assert that sample size is exactly storer.SampleSize
 	if len(sample.Items) != storer.SampleSize {
-		t.Error("sample size not in expected range")
+		t.Fatalf("incorrect no of sample items, exp %d found %d", storer.SampleSize, len(sample.Items))
 	}
 
-	chunk, err := sample.Chunk()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	data := chunk.Data()[swarm.SpanSize:]
-	pos := 0
-	for _, item := range sample.Items {
-		if !bytes.Equal(data[pos:pos+swarm.HashSize], item.ChunkAddress.Bytes()) {
-			t.Error("expected chunk address")
+	// Assert that sample item has all fields set
+	assertSampleItem := func(item storer.SampleItem, i int) {
+		if !item.TransformedAddress.IsValidNonEmpty() {
+			t.Fatalf("sample item %d transformed address should be set", i)
 		}
-		pos += swarm.HashSize
-
-		if !bytes.Equal(data[pos:pos+swarm.HashSize], item.TransformedAddress.Bytes()) {
-			t.Error("expected transformed address")
+		if !item.ChunkAddress.IsValidNonEmpty() {
+			t.Fatalf("sample item %d transformed address should be set", i)
 		}
-		pos += swarm.HashSize
+		if item.ChunkData == nil {
+			t.Fatalf("sample item %d chunk data should be set", i)
+		}
+		if item.Stamp == nil {
+			t.Fatalf("sample item %d stamp should be set", i)
+		}
+	}
+	for i, item := range sample.Items {
+		assertSampleItem(item, i)
 	}
 
-	if swarm.ZeroAddress.Equal(chunk.Address()) || swarm.EmptyAddress.Equal(chunk.Address()) {
-		t.Error("hash should not be empty or zero")
+	// Assert that transformed addresses are in ascending order
+	for i := 0; i < len(sample.Items)-1; i++ {
+		if sample.Items[i].TransformedAddress.Compare(sample.Items[i+1].TransformedAddress) != -1 {
+			t.Fatalf("incorrect order of samples")
+		}
 	}
 }
 
