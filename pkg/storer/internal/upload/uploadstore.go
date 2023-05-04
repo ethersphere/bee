@@ -319,14 +319,15 @@ type uploadPutter struct {
 // NewPutter returns a new chunk putter associated with the tagID.
 func NewPutter(s internal.Storage, tagID uint64) (internal.PutterCloserWithReference, error) {
 	ti := &TagItem{TagID: tagID}
-	err := s.IndexStore().Get(ti)
+	has, err := s.IndexStore().Has(ti)
 	if err != nil {
 		return nil, err
 	}
+	if !has {
+		return nil, fmt.Errorf("upload store: tag %d not found: %w", tagID, storage.ErrNotFound)
+	}
 	return &uploadPutter{
 		tagID: ti.TagID,
-		split: ti.Split,
-		seen:  ti.Seen,
 		s:     s,
 	}, nil
 }
@@ -420,8 +421,8 @@ func (u *uploadPutter) Close(addr swarm.Address) error {
 		return fmt.Errorf("failed reading tag while closing: %w", err)
 	}
 
-	ti.Split = u.split
-	ti.Seen = u.seen
+	ti.Split += u.split
+	ti.Seen += u.seen
 
 	if !addr.IsZero() {
 		ti.Address = addr.Clone()
