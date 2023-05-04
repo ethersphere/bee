@@ -41,6 +41,7 @@ type ChainSnapshot struct {
 // Storer represents the persistence layer for batches
 // on the current (highest available) block.
 type Storer interface {
+	ChainStateGetter
 	Radius() uint8
 
 	// Get returns a batch from the store with the given ID.
@@ -62,9 +63,6 @@ type Storer interface {
 	// non-existing batch.
 	Update(*Batch, *big.Int, uint8) error
 
-	// GetChainState returns the stored chain state from the store.
-	GetChainState() *ChainState
-
 	// PutChainState puts given chain state into the store.
 	PutChainState(*ChainState) error
 
@@ -72,6 +70,11 @@ type Storer interface {
 	Reset() error
 
 	SetBatchExpiryHandler(BatchExpiryHandler)
+}
+
+type ChainStateGetter interface {
+	// GetChainState returns the stored chain state from the store.
+	GetChainState() *ChainState
 }
 
 // Listener provides a blockchain event iterator.

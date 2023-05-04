@@ -68,6 +68,7 @@ type (
 	PingpongResponse                  = pingpongResponse
 	PeerConnectResponse               = peerConnectResponse
 	PeersResponse                     = peersResponse
+	BlockedListedPeersResponse        = blockListedPeersResponse
 	AddressesResponse                 = addressesResponse
 	WelcomeMessageRequest             = welcomeMessageRequest
 	WelcomeMessageResponse            = welcomeMessageResponse

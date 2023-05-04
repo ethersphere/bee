@@ -47,26 +47,22 @@ func (l *List) worker() {
 
 	defer l.wg.Done()
 
-	var (
-		timer  *time.Timer
-		timerC <-chan time.Time
-	)
+	timer := time.NewTimer(0)
+	<-timer.C
 
 	for {
 		select {
 		case dur := <-l.durC:
-			if timer == nil {
-				timer = time.NewTimer(dur)
-			} else {
-				if !timer.Stop() {
-					<-timer.C
+			if !timer.Stop() {
+				select {
+				case <-timer.C:
+				default:
 				}
-				timer.Reset(dur)
 			}
-			timerC = timer.C
-		case <-timerC:
-			l.prune()
+			timer.Reset(dur)
+		case <-timer.C:
 			l.mtx.Lock()
+			l.prune()
 			if l.minHeap.Len() > 0 {
 				timer.Reset(time.Until(time.Unix(0, l.minHeap.Peek())))
 			}
@@ -79,24 +75,27 @@ func (l *List) worker() {
 }
 
 func (l *List) Add(chunk, peer swarm.Address, expire time.Duration) {
-	l.mtx.Lock()
-	defer l.mtx.Unlock()
 
-	var t int64
-	if expire == MaxDuration {
-		t = MaxDuration.Nanoseconds()
-	} else {
-		t = time.Now().Add(expire).UnixNano()
-
-		heap.Push(l.minHeap, t)
-		min := l.minHeap.Peek()
-
-		if t == min { // pushed the most recent expiration
+	var t, min int64
+	defer func() {
+		// pushed the most recent timestamp
+		if t == min {
 			select {
 			case l.durC <- time.Until(time.Unix(0, min)):
 			case <-l.quit:
 			}
 		}
+	}()
+
+	l.mtx.Lock()
+	defer l.mtx.Unlock()
+
+	if expire == MaxDuration {
+		t = MaxDuration.Nanoseconds()
+	} else {
+		t = time.Now().Add(expire).UnixNano()
+		heap.Push(l.minHeap, t)
+		min = l.minHeap.Peek()
 	}
 
 	if _, ok := l.skip[chunk.ByteString()]; !ok {
@@ -129,12 +128,9 @@ func (l *List) PruneExpiresAfter(ch swarm.Address, d time.Duration) int {
 	return l.pruneChunk(ch.ByteString(), time.Now().Add(d).UnixNano())
 }
 
+// Must be called under lock
 func (l *List) prune() {
-	l.mtx.Lock()
-	defer l.mtx.Unlock()
-
 	expiresNano := time.Now().UnixNano()
-
 	for k := range l.skip {
 		l.pruneChunk(k, expiresNano)
 	}

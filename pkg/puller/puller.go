@@ -43,7 +43,7 @@ const (
 	histSyncTimeout          = time.Minute * 15
 	histSyncTimeoutBlockList = time.Hour * 24
 
-	maxHistSyncs = swarm.MaxBins
+	maxHistSyncs = swarm.MaxBins * 3
 )
 
 type Options struct {
@@ -336,12 +336,17 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 		if err != nil {
 			p.metrics.HistWorkerErrCounter.Inc()
 			p.logger.Debug("histSyncWorker interval failed", "peer_address", peer, "bin", bin, "cursor", cur, "start", s, "topmost", top, "err", err)
-			if errors.Is(err, context.DeadlineExceeded) {
+			// DeadlineExceeded err could come from any other context timeouts
+			// so we explicitly check for duration of the sync time
+			if errors.Is(err, context.DeadlineExceeded) && time.Since(syncStart) >= histSyncTimeout {
 				p.logger.Debug("histSyncWorker interval timeout, exiting", "total_duration", time.Since(loopStart), "peer_address", peer, "error", err)
 				err = p.blockLister.Blocklist(peer, histSyncTimeoutBlockList, "sync interval timeout")
 				if err != nil {
 					p.logger.Debug("histSyncWorker timeout disconnect error", "error", err)
 				}
+				return true
+			}
+			if errors.Is(err, p2p.ErrPeerNotFound) {
 				return true
 			}
 		}
@@ -407,6 +412,9 @@ func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 		if err != nil {
 			p.metrics.LiveWorkerErrCounter.Inc()
 			p.logger.Debug("liveSyncWorker sync error", "peer_address", peer, "bin", bin, "from", from, "topmost", top, "err", err)
+			if errors.Is(err, p2p.ErrPeerNotFound) {
+				return
+			}
 		}
 	}
 }

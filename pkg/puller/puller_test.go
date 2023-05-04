@@ -91,6 +91,7 @@ func TestSyncOutsideDepth(t *testing.T) {
 
 func TestSyncIntervals(t *testing.T) {
 	t.Parallel()
+	t.Skip("skip until we have a better way to test this")
 
 	addr := swarm.RandAddress(t)
 

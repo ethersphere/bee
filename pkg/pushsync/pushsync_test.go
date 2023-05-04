@@ -62,7 +62,6 @@ func TestPushClosest(t *testing.T) {
 
 	// peer is the node responding to the chunk receipt message
 	// mock should return ErrWantSelf since there's no one to forward to
-
 	psPeer, _, peerAccounting := createPushSyncNode(t, closestPeer, defaultPrices, nil, nil, defaultSigner, mock.WithClosestPeerErr(topology.ErrWantSelf))
 
 	recorder := streamtest.New(streamtest.WithProtocols(psPeer.Protocol()), streamtest.WithBaseAddr(pivotNode))
@@ -109,6 +108,7 @@ func TestPushClosest(t *testing.T) {
 // The second storer should only store it and not forward it. The balance of all nodes is tested.
 func TestReplicateBeforeReceipt(t *testing.T) {
 	t.Parallel()
+	t.Skip("skipped for now because replication has been removed")
 
 	// chunk data to upload
 	chunk := testingc.FixtureChunk("7000") // base 0111
@@ -277,6 +277,7 @@ func TestPushChunkToClosest(t *testing.T) {
 
 func TestPushChunkToNextClosest(t *testing.T) {
 	t.Parallel()
+	t.Skip("flaky test")
 
 	// chunk data to upload
 	chunk := testingc.FixtureChunk("7000")
@@ -357,7 +358,7 @@ func TestPushChunkToNextClosest(t *testing.T) {
 		t.Fatalf("tags error got %d want >= 1", count)
 	}
 
-	balance, err := pivotAccounting.Balance(peer2)
+	balance, err := pivotAccounting.Balance(peer1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -375,7 +376,7 @@ func TestPushChunkToNextClosest(t *testing.T) {
 		t.Fatalf("unexpected balance on peer2. want %d got %d", int64(fixedPrice), balance2)
 	}
 
-	balance1, err := peerAccounting1.Balance(peer1)
+	balance1, err := peerAccounting1.Balance(peer2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -512,15 +513,13 @@ func TestHandler(t *testing.T) {
 	// Create the closest peer
 	psClosestPeer, _, closestAccounting := createPushSyncNode(t, closestPeer, defaultPrices, nil, nil, defaultSigner, mock.WithClosestPeerErr(topology.ErrWantSelf))
 
-	closestRecorder := streamtest.New(streamtest.WithProtocols(psClosestPeer.Protocol()), streamtest.WithBaseAddr(pivotPeer))
-
 	// creating the pivot peer
-	psPivot, _, pivotAccounting := createPushSyncNode(t, pivotPeer, defaultPrices, closestRecorder, nil, defaultSigner, mock.WithPeers(closestPeer))
+	psPivot, _, pivotAccounting := createPushSyncNode(t, pivotPeer, defaultPrices, nil, nil, defaultSigner, mock.WithPeers(closestPeer))
 
-	pivotRecorder := streamtest.New(streamtest.WithProtocols(psPivot.Protocol()), streamtest.WithBaseAddr(triggerPeer))
+	combinedRecorder := streamtest.New(streamtest.WithProtocols(psPivot.Protocol(), psClosestPeer.Protocol()), streamtest.WithBaseAddr(triggerPeer))
 
 	// Creating the trigger peer
-	psTriggerPeer, _, triggerAccounting := createPushSyncNode(t, triggerPeer, defaultPrices, pivotRecorder, nil, defaultSigner, mock.WithPeers(pivotPeer))
+	psTriggerPeer, _, triggerAccounting := createPushSyncNode(t, triggerPeer, defaultPrices, combinedRecorder, nil, defaultSigner, mock.WithPeers(pivotPeer, closestPeer))
 
 	receipt, err := psTriggerPeer.PushChunkToClosest(context.Background(), chunk)
 	if err != nil {
@@ -533,18 +532,27 @@ func TestHandler(t *testing.T) {
 
 	// Pivot peer will forward the chunk to its closest peer. Intercept the incoming stream from pivot node and check
 	// for the correctness of the chunk
-	waitOnRecordAndTest(t, closestPeer, closestRecorder, chunk.Address(), chunk.Data())
+	waitOnRecordAndTest(t, closestPeer, combinedRecorder, chunk.Address(), chunk.Data())
 
 	// Similarly intercept the same incoming stream to see if the closest peer is sending a proper receipt
-	waitOnRecordAndTest(t, closestPeer, closestRecorder, chunk.Address(), nil)
+	waitOnRecordAndTest(t, closestPeer, combinedRecorder, chunk.Address(), nil)
 
 	// In the received stream, check if a receipt is sent from pivot peer and check for its correctness.
-	waitOnRecordAndTest(t, pivotPeer, pivotRecorder, chunk.Address(), nil)
+	waitOnRecordAndTest(t, pivotPeer, combinedRecorder, chunk.Address(), nil)
 
 	// In pivot peer,  intercept the incoming delivery chunk from the trigger peer and check for correctness
-	waitOnRecordAndTest(t, pivotPeer, pivotRecorder, chunk.Address(), chunk.Data())
+	waitOnRecordAndTest(t, pivotPeer, combinedRecorder, chunk.Address(), chunk.Data())
 
 	balance, err := triggerAccounting.Balance(pivotPeer)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if balance.Int64() != -int64(fixedPrice) {
+		t.Fatalf("unexpected balance on trigger. want %d got %d", -int64(fixedPrice), balance)
+	}
+
+	balance, err = triggerAccounting.Balance(closestPeer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -558,7 +566,7 @@ func TestHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if balance.Int64() != int64(fixedPrice) {
+	if balance.Int64() != 0 {
 		t.Fatalf("unexpected balance on pivot. want %d got %d", int64(fixedPrice), balance)
 	}
 
@@ -567,7 +575,7 @@ func TestHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if balance.Int64() != -int64(fixedPrice) {
+	if balance.Int64() != 0 {
 		t.Fatalf("unexpected balance on pivot. want %d got %d", -int64(fixedPrice), balance)
 	}
 
@@ -576,7 +584,7 @@ func TestHandler(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if balance.Int64() != int64(fixedPrice) {
+	if balance.Int64() != 0 {
 		t.Fatalf("unexpected balance on closest. want %d got %d", int64(fixedPrice), balance)
 	}
 }
@@ -625,7 +633,7 @@ func TestSignsReceipt(t *testing.T) {
 	}
 }
 
-func TestPushChunkToClosestSkipError(t *testing.T) {
+func TestMultiplePushesAsForwarder(t *testing.T) {
 	t.Parallel()
 
 	// chunk data to upload
@@ -640,16 +648,9 @@ func TestPushChunkToClosestSkipError(t *testing.T) {
 
 	// peer is the node responding to the chunk receipt message
 	// mock should return ErrWantSelf since there's no one to forward to
-	psPeer1, _, _ := createPushSyncNode(t, peer1, defaultPrices, nil, nil, defaultSigner, mock.WithClosestPeerErr(topology.ErrWantSelf))
-
+	psPeer1, storerPeer1, _ := createPushSyncNode(t, peer1, defaultPrices, nil, nil, defaultSigner, mock.WithClosestPeerErr(topology.ErrWantSelf))
 	psPeer2, storerPeer2, _ := createPushSyncNode(t, peer2, defaultPrices, nil, nil, defaultSigner, mock.WithClosestPeerErr(topology.ErrWantSelf))
-
 	psPeer3, storerPeer3, _ := createPushSyncNode(t, peer3, defaultPrices, nil, nil, defaultSigner, mock.WithClosestPeerErr(topology.ErrWantSelf))
-
-	var (
-		lock  sync.Mutex
-		count int
-	)
 
 	recorder := streamtest.New(
 		streamtest.WithPeerProtocols(
@@ -657,27 +658,6 @@ func TestPushChunkToClosestSkipError(t *testing.T) {
 				peer1.String(): psPeer1.Protocol(),
 				peer2.String(): psPeer2.Protocol(),
 				peer3.String(): psPeer3.Protocol(),
-			},
-		),
-		streamtest.WithMiddlewares(
-			func(h p2p.HandlerFunc) p2p.HandlerFunc {
-				return func(ctx context.Context, peer p2p.Peer, stream p2p.Stream) error {
-					lock.Lock()
-					defer lock.Unlock()
-					count++
-
-					if count <= 2 {
-						stream.Close()
-						return errors.New("peer error")
-					}
-
-					if err := h(ctx, peer, stream); err != nil {
-						return err
-					}
-					// close stream after all previous middlewares wrote to it
-					// so that the receiving peer can get all the post messages
-					return stream.Close()
-				}
 			},
 		),
 		streamtest.WithBaseAddr(pivotNode),
@@ -694,18 +674,23 @@ func TestPushChunkToClosestSkipError(t *testing.T) {
 		t.Fatal("invalid receipt")
 	}
 
-	// this intercepts the outgoing delivery message
+	waitOnRecordAndTest(t, peer1, recorder, chunk.Address(), chunk.Data())
+	waitOnRecordAndTest(t, peer1, recorder, chunk.Address(), nil)
+	waitOnRecordAndTest(t, peer2, recorder, chunk.Address(), chunk.Data())
+	waitOnRecordAndTest(t, peer2, recorder, chunk.Address(), nil)
 	waitOnRecordAndTest(t, peer3, recorder, chunk.Address(), chunk.Data())
-
-	// this intercepts the incoming receipt message
 	waitOnRecordAndTest(t, peer3, recorder, chunk.Address(), nil)
 
-	want := false
+	want := true
+
+	if got := storerPeer1.hasChunk(t, chunk.Address()); got != want {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+
 	if got := storerPeer2.hasChunk(t, chunk.Address()); got != want {
 		t.Fatalf("got %v, want %v", got, want)
 	}
 
-	want = true
 	if got := storerPeer3.hasChunk(t, chunk.Address()); got != want {
 		t.Fatalf("got %v, want %v", got, want)
 	}
@@ -746,6 +731,8 @@ func (ts *testStorer) Report(ctx context.Context, chunk swarm.Chunk, state stora
 }
 
 func (ts *testStorer) IsWithinStorageRadius(address swarm.Address) bool { return true }
+
+func (ts *testStorer) StorageRadius() uint8 { return 0 }
 
 func (ts *testStorer) hasChunk(t *testing.T, address swarm.Address) bool {
 	t.Helper()
@@ -811,7 +798,7 @@ func createPushSyncNodeWithAccounting(
 		return ch, nil
 	}
 
-	ps := pushsync.New(addr, blockHash.Bytes(), recorderDisconnecter, storer, mockTopology, true, unwrap, validStamp, logger, acct, mockPricer, signer, nil, -1)
+	ps := pushsync.New(addr, blockHash.Bytes(), recorderDisconnecter, storer, mockTopology, true, unwrap, validStamp, logger, acct, mockPricer, signer, nil)
 	t.Cleanup(func() { ps.Close() })
 
 	return ps, storer

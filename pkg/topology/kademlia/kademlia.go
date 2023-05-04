@@ -1136,8 +1136,8 @@ func (k *Kad) AddPeers(addrs ...swarm.Address) {
 
 func (k *Kad) Pick(peer p2p.Peer) bool {
 	k.metrics.PickCalls.Inc()
-	if k.bootnode {
-		// shortcircuit for bootnode mode - always accept connections,
+	if k.bootnode || !peer.FullNode {
+		// shortcircuit for bootnode mode AND light node peers - always accept connections,
 		// at least until we find a better solution.
 		return true
 	}
@@ -1275,6 +1275,10 @@ func nClosePeerInSlice(peers []swarm.Address, addr swarm.Address, spf sanctioned
 	return swarm.ZeroAddress, false
 }
 
+func (k *Kad) IsReachable() bool {
+	return k.reachability == p2p.ReachabilityStatusPublic
+}
+
 // ClosestPeer returns the closest peer to a given address.
 func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, filter topology.Filter, skipPeers ...swarm.Address) (swarm.Address, error) {
 	if k.connectedPeers.Length() == 0 {
@@ -1297,8 +1301,12 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, filter topology.
 			return false, false, nil
 		}
 
-		if closer, _ := peer.Closer(addr, closest); closer {
+		closer, err := peer.Closer(addr, closest)
+		if closer {
 			closest = peer
+		}
+		if err != nil {
+			k.logger.Debug("closest peer", "peer", peer, "addr", addr, "error", err)
 		}
 		return false, false, nil
 	}, filter)

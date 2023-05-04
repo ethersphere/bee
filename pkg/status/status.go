@@ -13,6 +13,7 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/status/internal/pb"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
@@ -47,15 +48,18 @@ type Service struct {
 	streamer     p2p.Streamer
 	topologyIter topology.PeerIterator
 
-	beeMode string
-	reserve Reserve
-	sync    SyncReporter
+	beeMode    string
+	reserve    Reserve
+	sync       SyncReporter
+	chainstate postage.ChainStateGetter
 }
 
 // LocalSnapshot returns the current status snapshot of this node.
 func (s *Service) LocalSnapshot() (*Snapshot, error) {
 	var (
-		storageRadius    = s.reserve.StorageRadius()
+		storageRadius    uint8
+		syncRate         float64
+		reserveSize      uint64
 		connectedPeers   uint64
 		neighborhoodSize uint64
 	)
@@ -73,13 +77,23 @@ func (s *Service) LocalSnapshot() (*Snapshot, error) {
 		return nil, fmt.Errorf("iterate connected peers: %w", err)
 	}
 
+	if s.reserve != nil {
+		storageRadius = s.reserve.StorageRadius()
+		reserveSize = uint64(s.reserve.ReserveSize())
+	}
+
+	if s.sync != nil {
+		syncRate = s.sync.SyncRate()
+	}
+
 	return &Snapshot{
 		BeeMode:          s.beeMode,
-		ReserveSize:      uint64(s.reserve.ReserveSize()),
-		PullsyncRate:     s.sync.SyncRate(),
+		ReserveSize:      reserveSize,
+		PullsyncRate:     syncRate,
 		StorageRadius:    uint32(storageRadius),
 		ConnectedPeers:   connectedPeers,
 		NeighborhoodSize: neighborhoodSize,
+		BatchTotalAmount: s.chainstate.GetChainState().TotalAmount.String(),
 	}, nil
 }
 
@@ -138,34 +152,13 @@ func (s *Service) handler(ctx context.Context, _ p2p.Peer, stream p2p.Stream) er
 		return fmt.Errorf("read message: %w", err)
 	}
 
-	var (
-		storageRadius    = s.reserve.StorageRadius()
-		connectedPeers   uint64
-		neighborhoodSize uint64
-	)
-	err := s.topologyIter.EachConnectedPeer(
-		func(_ swarm.Address, po uint8) (bool, bool, error) {
-			connectedPeers++
-			if po >= storageRadius {
-				neighborhoodSize++
-			}
-			return false, false, nil
-		},
-		topology.Filter{Reachable: true},
-	)
+	snapshot, err := s.LocalSnapshot()
 	if err != nil {
-		s.logger.Error(err, "iteration of connected peers failed")
-		return fmt.Errorf("iterate connected peers: %w", err)
+		loggerV2.Debug("local snapshot failed", "error", err)
+		return fmt.Errorf("local snapshot: %w", err)
 	}
 
-	if err := w.WriteMsgWithContext(ctx, &pb.Snapshot{
-		BeeMode:          s.beeMode,
-		ReserveSize:      uint64(s.reserve.ReserveSize()),
-		PullsyncRate:     s.sync.SyncRate(),
-		StorageRadius:    uint32(storageRadius),
-		ConnectedPeers:   connectedPeers,
-		NeighborhoodSize: neighborhoodSize,
-	}); err != nil {
+	if err := w.WriteMsgWithContext(ctx, (*pb.Snapshot)(snapshot)); err != nil {
 		loggerV2.Debug("write message failed", "error", err)
 		return fmt.Errorf("write message: %w", err)
 	}
@@ -179,15 +172,21 @@ func NewService(
 	streamer p2p.Streamer,
 	topologyIter topology.PeerIterator,
 	beeMode string,
-	reserve Reserve,
-	sync SyncReporter,
+	chainstate postage.ChainStateGetter,
 ) *Service {
 	return &Service{
 		logger:       logger.WithName(loggerName).Register(),
 		streamer:     streamer,
 		topologyIter: topologyIter,
 		beeMode:      beeMode,
-		reserve:      reserve,
-		sync:         sync,
+		chainstate:   chainstate,
 	}
+}
+
+func (s *Service) SetStorage(storage Reserve) {
+	s.reserve = storage
+}
+
+func (s *Service) SetSync(sync SyncReporter) {
+	s.sync = sync
 }

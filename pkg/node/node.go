@@ -61,6 +61,7 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/settlement/swap/priceoracle"
 	"github.com/ethersphere/bee/pkg/shed"
+	"github.com/ethersphere/bee/pkg/status"
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storageincentives"
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
@@ -931,7 +932,7 @@ func NewBee(
 
 	validStamp := postage.ValidStamp(batchStore)
 
-	pushSyncProtocol := pushsync.New(swarmAddress, nonce, p2ps, localStore, kad, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
+	pushSyncProtocol := pushsync.New(swarmAddress, nonce, p2ps, localStore, kad, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer)
 
 	// set the pushSyncer in the PSS
 	pssService.SetPushSyncer(pushSyncProtocol)
@@ -974,6 +975,11 @@ func NewBee(
 		return nil, fmt.Errorf("pullsync protocol: %w", err)
 	}
 
+	nodeStatus := status.NewService(logger, p2ps, kad, beeNodeMode.String(), batchStore)
+	if err = p2ps.AddProtocol(nodeStatus.Protocol()); err != nil {
+		return nil, fmt.Errorf("status service: %w", err)
+	}
+
 	stakingContractAddress := chainCfg.StakingAddress
 	if o.StakingContractAddress != "" {
 		if !common.IsHexAddress(o.StakingContractAddress) {
@@ -999,6 +1005,9 @@ func NewBee(
 		b.pullerCloser = pullerService
 
 		localStore.StartReserveWorker(pullerService)
+
+		nodeStatus.SetStorage(localStore)
+		nodeStatus.SetSync(pullerService)
 
 		if o.EnableStorageIncentives {
 
@@ -1270,7 +1279,7 @@ func (b *Bee) Shutdown() error {
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(7)
+	wg.Add(9)
 	go func() {
 		defer wg.Done()
 		tryClose(b.chainSyncerCloser, "chain syncer")

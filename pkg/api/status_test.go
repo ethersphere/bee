@@ -5,6 +5,7 @@
 package api_test
 
 import (
+	"math/big"
 	"net/http"
 	"testing"
 
@@ -12,6 +13,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/status"
 	"github.com/ethersphere/bee/pkg/topology"
 )
@@ -32,25 +34,31 @@ func TestGetStatus(t *testing.T) {
 			StorageRadius:    8,
 			ConnectedPeers:   0,
 			NeighborhoodSize: 0,
+			BatchTotalAmount: "1",
 		}
 
 		ssMock := &statusSnapshotMock{
 			syncRate:      ssr.PullsyncRate,
 			reserveSize:   int(ssr.ReserveSize),
 			storageRadius: ssr.StorageRadius,
+			chainstate:    &postage.ChainState{TotalAmount: big.NewInt(1)},
 		}
 
+		statusSvc := status.NewService(
+			log.Noop,
+			nil,
+			new(topologyPeersIterNoopMock),
+			mode.String(),
+			ssMock,
+		)
+
+		statusSvc.SetStorage(ssMock)
+		statusSvc.SetSync(ssMock)
+
 		client, _, _, _ := newTestServer(t, testServerOptions{
-			BeeMode:  mode,
-			DebugAPI: true,
-			NodeStatus: status.NewService(
-				log.Noop,
-				nil,
-				new(topologyPeersIterNoopMock),
-				mode.String(),
-				ssMock,
-				ssMock,
-			),
+			BeeMode:    mode,
+			DebugAPI:   true,
+			NodeStatus: statusSvc,
 		})
 
 		jsonhttptest.Request(t, client, http.MethodGet, url, http.StatusOK,
@@ -69,7 +77,6 @@ func TestGetStatus(t *testing.T) {
 				nil,
 				new(topologyPeersIterNoopMock),
 				"",
-				nil,
 				nil,
 			),
 		})
@@ -101,8 +108,10 @@ type statusSnapshotMock struct {
 	syncRate      float64
 	reserveSize   int
 	storageRadius uint8
+	chainstate    *postage.ChainState
 }
 
-func (m *statusSnapshotMock) SyncRate() float64    { return m.syncRate }
-func (m *statusSnapshotMock) ReserveSize() int     { return m.reserveSize }
-func (m *statusSnapshotMock) StorageRadius() uint8 { return m.storageRadius }
+func (m *statusSnapshotMock) SyncRate() float64                  { return m.syncRate }
+func (m *statusSnapshotMock) ReserveSize() int                   { return m.reserveSize }
+func (m *statusSnapshotMock) StorageRadius() uint8               { return m.storageRadius }
+func (m *statusSnapshotMock) GetChainState() *postage.ChainState { return m.chainstate }

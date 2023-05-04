@@ -552,8 +552,11 @@ func TestOversaturation(t *testing.T) {
 			// if error is not as specified, connectOne goes fatal
 			connectOne(t, signer, kad, ab, addr, topology.ErrOversaturated)
 			// check that pick works correctly
-			if kad.Pick(p2p.Peer{Address: addr}) {
+			if kad.Pick(p2p.Peer{Address: addr, FullNode: true}) {
 				t.Fatal("should not pick the peer")
+			}
+			if !kad.Pick(p2p.Peer{Address: addr, FullNode: false}) {
+				t.Fatal("should pick the peer")
 			}
 		}
 		// see depth is still as expected
@@ -931,7 +934,6 @@ func TestAddressBookQuickPrune(t *testing.T) {
 	}
 }
 
-// TestClosestPeer tests that ClosestPeer method returns closest connected peer to a given address.
 func TestClosestPeer(t *testing.T) {
 	t.Parallel()
 	t.Skip("disabled due to kademlia inconsistencies hotfix")
