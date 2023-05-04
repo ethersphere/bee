@@ -73,6 +73,7 @@ type Agent struct {
 	quit                   chan struct{}
 	wg                     sync.WaitGroup
 	state                  *RedistributionState
+	commitLock             sync.Mutex
 }
 
 func New(overlay swarm.Address, ethAddress common.Address, backend ChainBackend, logger log.Logger, monitor Monitor, contract redistribution.Contract, batchExpirer postagecontract.PostageBatchExpirer, redistributionStatuser staking.RedistributionStatuser, radius postage.Radius, sampler storage.Sampler, blockTime time.Duration, blocksPerRound, blocksPerPhase uint64, stateStore storage.StateStorer, erc20Service erc20.Service, tranService transaction.Service) (*Agent, error) {
@@ -127,15 +128,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		}
 	}
 
-	// commit event handler has to be guarded with lock
-	// to avoid race conditions when handled is triggered
-	// again from sample phase
-	var commitLock sync.Mutex
-
 	phaseEvents.On(commit, func(ctx context.Context) {
-		commitLock.Lock()
-		defer commitLock.Unlock()
-
 		phaseEvents.Cancel(claim)
 
 		round, _ := a.state.currentRoundAndPhase()
@@ -256,6 +249,12 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 }
 
 func (a *Agent) handleCommit(ctx context.Context, round uint64) (bool, error) {
+	// commit event handler has to be guarded with lock
+	// to avoid race conditions when handled is triggered
+	// again from sample phase
+	a.commitLock.Lock()
+	defer a.commitLock.Unlock()
+
 	if _, exists := a.state.CommitKey(round); exists {
 		// already committed on this round, phase is skipped
 		return false, nil
