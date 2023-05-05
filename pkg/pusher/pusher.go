@@ -135,19 +135,25 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 	}
 
 	push := func(op *Op) {
+		var (
+			err      error
+			doRepeat bool
+		)
+
 		defer func() {
 			wg.Done()
 			<-sem
+			if doRepeat {
+				select {
+				case cc <- op:
+				case <-s.quit:
+				}
+			}
 		}()
 
 		s.metrics.TotalToPush.Inc()
 		ctx, logger := ctxLogger()
 		startTime := time.Now()
-
-		var (
-			err      error
-			doRepeat bool
-		)
 
 		if op.Direct {
 			err = s.pushDirect(ctx, logger, op)
@@ -158,14 +164,6 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 		if err != nil {
 			s.metrics.TotalErrors.Inc()
 			s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())
-		}
-
-		if doRepeat {
-			select {
-			case cc <- op:
-			case <-s.quit:
-			}
-			return
 		}
 
 		s.metrics.SyncTime.Observe(time.Since(startTime).Seconds())
