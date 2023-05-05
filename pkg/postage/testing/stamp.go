@@ -9,13 +9,14 @@ import (
 	"encoding/binary"
 	"io"
 
+	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 const signatureSize = 65
 
-// MustNewSignature will create a new random signature (65 byte slice). Panics
-// on errors.
+// MustNewSignature will create a new random signature (65 byte slice). Panics on errors.
 func MustNewSignature() []byte {
 	sig := make([]byte, signatureSize)
 	_, err := io.ReadFull(crand.Reader, sig)
@@ -25,10 +26,33 @@ func MustNewSignature() []byte {
 	return sig
 }
 
-// MustNewStamp will generate a postage stamp with random data. Panics on
-// errors.
+// MustNewValidSignature will create a new valid signature. Panics on errors.
+func MustNewValidSignature(signer crypto.Signer, addr swarm.Address, id, index, timestamp []byte) []byte {
+	digest, err := postage.ToSignDigest(addr.Bytes(), id, index, timestamp)
+	if err != nil {
+		panic(err)
+	}
+
+	sig, err := signer.Sign(digest)
+	if err != nil {
+		panic(err)
+	}
+
+	return sig
+}
+
+// MustNewStamp will generate a invalid postage stamp with random data. Panics on errors.
 func MustNewStamp() *postage.Stamp {
 	return postage.NewStamp(MustNewID(), MustNewID()[:8], MustNewID()[:8], MustNewSignature())
+}
+
+// MustNewValidStamp will generate a valid postage stamp with random data. Panics on errors.
+func MustNewValidStamp(signer crypto.Signer, addr swarm.Address) *postage.Stamp {
+	id := MustNewID()
+	index := MustNewID()[:8]
+	timestamp := MustNewID()[:8]
+	sig := MustNewValidSignature(signer, addr, id, index, timestamp)
+	return postage.NewStamp(id, index, timestamp, sig)
 }
 
 // MustNewBatchStamp will generate a postage stamp with the provided batch ID and assign
