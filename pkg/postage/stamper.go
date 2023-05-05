@@ -41,7 +41,7 @@ func (st *stamper) Stamp(addr swarm.Address) (*Stamp, error) {
 		return nil, err
 	}
 
-	toSign, err := toSignDigest(
+	toSign, err := ToSignDigest(
 		addr.Bytes(),
 		st.issuer.data.BatchID,
 		batchIndex,
