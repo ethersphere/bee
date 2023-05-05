@@ -770,16 +770,16 @@ func assertValidSample(t *testing.T, sample storer.Sample) {
 	// Assert that sample item has all fields set
 	assertSampleItem := func(item storer.SampleItem, i int) {
 		if !item.TransformedAddress.IsValidNonEmpty() {
-			t.Fatalf("sample item %d transformed address should be set", i)
+			t.Fatalf("sample item [%d]: transformed address should be set", i)
 		}
 		if !item.ChunkAddress.IsValidNonEmpty() {
-			t.Fatalf("sample item %d chunk address should be set", i)
+			t.Fatalf("sample item [%d]: chunk address should be set", i)
 		}
 		if item.ChunkData == nil {
-			t.Fatalf("sample item %d chunk data should be set", i)
+			t.Fatalf("sample item [%d]: chunk data should be set", i)
 		}
 		if item.Stamp == nil {
-			t.Fatalf("sample item %d stamp should be set", i)
+			t.Fatalf("sample item [%d]: stamp should be set", i)
 		}
 	}
 	for i, item := range sample.Items {
