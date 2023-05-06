@@ -7,6 +7,7 @@ package reserve
 import (
 	"context"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sync"
@@ -133,6 +134,12 @@ func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.C
 		if err != nil {
 			return false, fmt.Errorf("failed removing older chunk: %w", err)
 		}
+		r.logger.Debug(
+			"replacing chunk stamp index",
+			"old_chunk", oldChunk.Address.String(),
+			"new_chunk", chunk.Address().String(),
+			"batch_id", hex.EncodeToString(chunk.Stamp().BatchID()),
+		)
 
 		err = stampindex.Store(indexStore, reserveNamespace, chunk)
 		if err != nil {
