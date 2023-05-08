@@ -35,7 +35,7 @@ type topologyDriver interface {
 }
 
 type peerStatus interface {
-	PeerSnapshot(ctx context.Context, peer swarm.Address) (*status.Snapshot, error)
+	PeerSnapshot(ctx context.Context, peer swarm.Address) (*status.PeerStatusSnapshot, error)
 }
 
 type service struct {
@@ -98,7 +98,7 @@ func (s *service) Close() error {
 }
 
 type peer struct {
-	status *status.Snapshot
+	status *status.PeerStatusSnapshot
 	dur    float64
 	addr   swarm.Address
 	bin    uint8

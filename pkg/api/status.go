@@ -27,6 +27,7 @@ type statusSnapshotResponse struct {
 	NeighborhoodSize uint64  `json:"neighborhoodSize"`
 	RequestFailed    bool    `json:"requestFailed,omitempty"`
 	BatchCommitment  uint64  `json:"batchCommitment"`
+	IsReachable      bool    `json:"isReachable"`
 }
 
 type statusResponse struct {
@@ -77,6 +78,7 @@ func (s *Service) statusGetHandler(w http.ResponseWriter, _ *http.Request) {
 		ConnectedPeers:   ss.ConnectedPeers,
 		NeighborhoodSize: ss.NeighborhoodSize,
 		BatchCommitment:  ss.BatchCommitment,
+		IsReachable:      s.topologyDriver.IsReachable(),
 	})
 }
 
@@ -121,6 +123,7 @@ func (s *Service) statusGetPeersHandler(w http.ResponseWriter, r *http.Request) 
 				snapshot.ConnectedPeers = ss.ConnectedPeers
 				snapshot.NeighborhoodSize = ss.NeighborhoodSize
 				snapshot.BatchCommitment = ss.BatchCommitment
+				snapshot.IsReachable = ss.PeerReachable
 			}
 
 			mu.Lock()
@@ -133,7 +136,7 @@ func (s *Service) statusGetPeersHandler(w http.ResponseWriter, r *http.Request) 
 
 	err := s.topologyDriver.EachConnectedPeer(
 		peerFunc,
-		topology.Filter{Reachable: true},
+		topology.Filter{},
 	)
 	if err != nil {
 		logger.Debug("status snapshot", "error", err)

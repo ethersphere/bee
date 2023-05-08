@@ -32,11 +32,17 @@ const (
 // Snapshot is the current snapshot of the system.
 type Snapshot pb.Snapshot
 
+type topologyDriver interface {
+	topology.PeerIterator
+	PeerReachability(swarm.Address) bool
+	IsReachable() bool
+}
+
 // Service is the status service.
 type Service struct {
-	logger       log.Logger
-	streamer     p2p.Streamer
-	topologyIter topology.PeerIterator
+	logger         log.Logger
+	streamer       p2p.Streamer
+	topologyDriver topologyDriver
 
 	beeMode    string
 	reserve    depthmonitor.ReserveReporter
@@ -46,13 +52,13 @@ type Service struct {
 }
 
 // LocalSnapshot returns the current status snapshot of this node.
-func (s *Service) LocalSnapshot() (*Snapshot, error) {
+func (s *Service) LocalSnapshot() (*PeerStatusSnapshot, error) {
 	var (
 		storageRadius    = s.radius.StorageRadius()
 		connectedPeers   uint64
 		neighborhoodSize uint64
 	)
-	err := s.topologyIter.EachConnectedPeer(
+	err := s.topologyDriver.EachConnectedPeer(
 		func(_ swarm.Address, po uint8) (bool, bool, error) {
 			connectedPeers++
 			if po >= storageRadius {
@@ -60,7 +66,7 @@ func (s *Service) LocalSnapshot() (*Snapshot, error) {
 			}
 			return false, false, nil
 		},
-		topology.Filter{Reachable: true},
+		topology.Filter{},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("iterate connected peers: %w", err)
@@ -68,22 +74,30 @@ func (s *Service) LocalSnapshot() (*Snapshot, error) {
 
 	commitment, err := s.commitment.Commitment()
 	if err != nil {
-		return nil, fmt.Errorf("batchstore commitemnt: %w", err)
+		return nil, fmt.Errorf("batchstore commitment: %w", err)
 	}
 
-	return &Snapshot{
-		BeeMode:          s.beeMode,
-		ReserveSize:      s.reserve.ReserveSize(),
-		PullsyncRate:     s.sync.SyncRate(),
-		StorageRadius:    uint32(storageRadius),
-		ConnectedPeers:   connectedPeers,
-		NeighborhoodSize: neighborhoodSize,
-		BatchCommitment:  commitment,
+	return &PeerStatusSnapshot{
+		Snapshot: &Snapshot{
+			BeeMode:          s.beeMode,
+			ReserveSize:      s.reserve.ReserveSize(),
+			PullsyncRate:     s.sync.SyncRate(),
+			StorageRadius:    uint32(storageRadius),
+			ConnectedPeers:   connectedPeers,
+			NeighborhoodSize: neighborhoodSize,
+			BatchCommitment:  commitment,
+		},
+		PeerReachable: s.topologyDriver.IsReachable(),
 	}, nil
 }
 
+type PeerStatusSnapshot struct {
+	*Snapshot
+	PeerReachable bool
+}
+
 // PeerSnapshot sends request for status snapshot to the peer.
-func (s *Service) PeerSnapshot(ctx context.Context, peer swarm.Address) (*Snapshot, error) {
+func (s *Service) PeerSnapshot(ctx context.Context, peer swarm.Address) (*PeerStatusSnapshot, error) {
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
 		return nil, fmt.Errorf("new stream: %w", err)
@@ -105,7 +119,15 @@ func (s *Service) PeerSnapshot(ctx context.Context, peer swarm.Address) (*Snapsh
 		}
 		return nil, fmt.Errorf("read message failed: %w", err)
 	}
-	return (*Snapshot)(ss), nil
+
+	isPeerReachable := s.topologyDriver.PeerReachability(peer)
+
+	sn := &PeerStatusSnapshot{
+		Snapshot:      (*Snapshot)(ss),
+		PeerReachable: isPeerReachable,
+	}
+
+	return sn, nil
 }
 
 // Protocol returns the protocol specification.
@@ -142,7 +164,7 @@ func (s *Service) handler(ctx context.Context, _ p2p.Peer, stream p2p.Stream) er
 		connectedPeers   uint64
 		neighborhoodSize uint64
 	)
-	err := s.topologyIter.EachConnectedPeer(
+	err := s.topologyDriver.EachConnectedPeer(
 		func(_ swarm.Address, po uint8) (bool, bool, error) {
 			connectedPeers++
 			if po >= storageRadius {
@@ -150,7 +172,7 @@ func (s *Service) handler(ctx context.Context, _ p2p.Peer, stream p2p.Stream) er
 			}
 			return false, false, nil
 		},
-		topology.Filter{Reachable: true},
+		topology.Filter{},
 	)
 	if err != nil {
 		s.logger.Error(err, "iteration of connected peers failed")
@@ -170,6 +192,7 @@ func (s *Service) handler(ctx context.Context, _ p2p.Peer, stream p2p.Stream) er
 		ConnectedPeers:   connectedPeers,
 		NeighborhoodSize: neighborhoodSize,
 		BatchCommitment:  commitment,
+		IsReachable:      s.topologyDriver.IsReachable(),
 	}); err != nil {
 		loggerV2.Debug("write message failed", "error", err)
 		return fmt.Errorf("write message: %w", err)
@@ -182,7 +205,7 @@ func (s *Service) handler(ctx context.Context, _ p2p.Peer, stream p2p.Stream) er
 func NewService(
 	logger log.Logger,
 	streamer p2p.Streamer,
-	topologyIter topology.PeerIterator,
+	topology topologyDriver,
 	beeMode string,
 	reserve depthmonitor.ReserveReporter,
 	sync depthmonitor.SyncReporter,
@@ -190,13 +213,13 @@ func NewService(
 	commitment postage.CommitmentGetter,
 ) *Service {
 	return &Service{
-		logger:       logger.WithName(loggerName).Register(),
-		streamer:     streamer,
-		topologyIter: topologyIter,
-		beeMode:      beeMode,
-		reserve:      reserve,
-		sync:         sync,
-		radius:       radius,
-		commitment:   commitment,
+		logger:         logger.WithName(loggerName).Register(),
+		streamer:       streamer,
+		topologyDriver: topology,
+		beeMode:        beeMode,
+		reserve:        reserve,
+		sync:           sync,
+		radius:         radius,
+		commitment:     commitment,
 	}
 }

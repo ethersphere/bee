@@ -1369,7 +1369,11 @@ func (k *Kad) UpdateReachability(status p2p.ReachabilityStatus) {
 // p2p.ReachabilityStatusUnknown are ignored.
 func (k *Kad) UpdatePeerHealth(peer swarm.Address, health bool) {
 	k.collector.Record(peer, im.PeerHealth(health))
-	// k.logger.Debug("health of peer updated", "peer_address", peer, "health", health)
+}
+
+// PeerReachability reports if given address is publicly reachable
+func (k *Kad) PeerReachability(addr swarm.Address) bool {
+	return !k.collector.IsUnreachable(addr)
 }
 
 // SubscribeTopologyChange returns the channel that signals when the connected peers
