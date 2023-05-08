@@ -668,8 +668,15 @@ func (s *Service) Blocklist(overlay swarm.Address, duration time.Duration, reaso
 		return errors.New("cannot blocklist peer when network not available")
 	}
 
+	id, ok := s.peers.peerID(overlay)
+	if !ok {
+		return p2p.ErrPeerNotFound
+	}
+
+	full, _ := s.peers.fullnode(id)
+
 	loggerV1.Debug("libp2p blocklisting peer", "peer_address", overlay.String(), "duration", duration, "reason", reason)
-	if err := s.blocklist.Add(overlay, duration); err != nil {
+	if err := s.blocklist.Add(overlay, duration, reason, full); err != nil {
 		s.metrics.BlocklistedPeerErrCount.Inc()
 		_ = s.Disconnect(overlay, "failed blocklisting peer")
 		return fmt.Errorf("blocklist peer %s: %w", overlay, err)
@@ -902,7 +909,7 @@ func (s *Service) Blocklisted(overlay swarm.Address) (bool, error) {
 	return s.blocklist.Exists(overlay)
 }
 
-func (s *Service) BlocklistedPeers() ([]p2p.Peer, error) {
+func (s *Service) BlocklistedPeers() ([]p2p.BlockListedPeer, error) {
 	return s.blocklist.Peers()
 }
 

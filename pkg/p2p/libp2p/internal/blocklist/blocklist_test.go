@@ -33,12 +33,12 @@ func TestExist(t *testing.T) {
 	}
 
 	// add forever
-	if err := bl.Add(addr1, 0); err != nil {
+	if err := bl.Add(addr1, 0, "", false); err != nil {
 		t.Fatal(err)
 	}
 
 	// add for 50 miliseconds
-	if err := bl.Add(addr2, time.Millisecond*50); err != nil {
+	if err := bl.Add(addr2, time.Millisecond*50, "", false); err != nil {
 		t.Fatal(err)
 	}
 
@@ -72,12 +72,12 @@ func TestPeers(t *testing.T) {
 	bl := blocklist.NewBlocklistWithCurrentTimeFn(mock.NewStateStore(), ctMock.Time)
 
 	// add forever
-	if err := bl.Add(addr1, 0); err != nil {
+	if err := bl.Add(addr1, 0, "r1", true); err != nil {
 		t.Fatal(err)
 	}
 
 	// add for 50 miliseconds
-	if err := bl.Add(addr2, time.Millisecond*50); err != nil {
+	if err := bl.Add(addr2, time.Millisecond*50, "r2", true); err != nil {
 		t.Fatal(err)
 	}
 
@@ -85,11 +85,11 @@ func TestPeers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !isIn(addr1, peers) {
+	if !isIn(addr1, peers, "r1", true) {
 		t.Fatalf("expected addr1 to exist in peers: %v", addr1)
 	}
 
-	if !isIn(addr2, peers) {
+	if !isIn(addr2, peers, "r2", true) {
 		t.Fatalf("expected addr2 to exist in peers: %v", addr2)
 	}
 
@@ -100,18 +100,18 @@ func TestPeers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !isIn(addr1, peers) {
+	if !isIn(addr1, peers, "r1", true) {
 		t.Fatalf("expected addr1 to exist in peers: %v", peers)
 	}
 
-	if isIn(addr2, peers) {
+	if isIn(addr2, peers, "r2", true) {
 		t.Fatalf("expected addr2 to not exist in peers: %v", peers)
 	}
 }
 
-func isIn(p swarm.Address, peers []p2p.Peer) bool {
+func isIn(p swarm.Address, peers []p2p.BlockListedPeer, reason string, f bool) bool {
 	for _, v := range peers {
-		if v.Address.Equal(p) {
+		if v.Address.Equal(p) && v.Reason == reason && v.Peer.FullNode == f {
 			return true
 		}
 	}

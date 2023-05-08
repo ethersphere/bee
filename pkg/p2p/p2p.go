@@ -64,7 +64,7 @@ type Service interface {
 	Disconnecter
 	Peers() []Peer
 	Blocklisted(swarm.Address) (bool, error)
-	BlocklistedPeers() ([]Peer, error)
+	BlocklistedPeers() ([]BlockListedPeer, error)
 	Addresses() ([]ma.Multiaddr, error)
 	SetPickyNotifier(PickyNotifier)
 	Halter
@@ -190,6 +190,13 @@ type Peer struct {
 	Address         swarm.Address
 	FullNode        bool
 	EthereumAddress []byte
+}
+
+// BlockListedPeer holds information about a Peer that is blocked.
+type BlockListedPeer struct {
+	Peer
+	Reason   string
+	Duration time.Duration
 }
 
 // HandlerFunc handles a received Stream from a Peer.

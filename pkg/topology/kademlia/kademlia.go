@@ -43,7 +43,7 @@ const (
 
 	// To avoid context.Timeout errors during network failure, the value of
 	// the peerConnectionAttemptTimeout constant must be equal to or greater
-	// than 15 seconds (empirically verified).
+	// than 5 seconds (empirically verified).
 	peerConnectionAttemptTimeout = 15 * time.Second // timeout for establishing a new connection with peer.
 
 	flagTimeout      = 10 * time.Minute // how long before blocking a flagged peer
@@ -337,22 +337,16 @@ func (k *Kad) connectBalanced(wg *sync.WaitGroup, peerConnChan chan<- *peerConnI
 				continue
 			}
 
+			wg.Add(1)
 			select {
+			case peerConnChan <- &peerConnInfo{
+				po:   swarm.Proximity(k.base.Bytes(), closestKnownPeer.Bytes()),
+				addr: closestKnownPeer,
+			}:
 			case <-k.quit:
+				wg.Done()
 				return
-			default:
-				wg.Add(1)
-				select {
-				case peerConnChan <- &peerConnInfo{
-					po:   swarm.Proximity(k.base.Bytes(), closestKnownPeer.Bytes()),
-					addr: closestKnownPeer,
-				}:
-				default:
-					k.notifyManageLoop()
-					wg.Done()
-				}
 			}
-			break
 		}
 	}
 }
@@ -365,10 +359,9 @@ func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerCon
 	var currentPo uint8 = 0
 
 	_ = k.knownPeers.EachBinRev(func(addr swarm.Address, po uint8) (bool, bool, error) {
-		depth := k.NeighborhoodDepth()
 
 		// out of depth, skip bin
-		if po < depth {
+		if po < k.NeighborhoodDepth() {
 			return false, true, nil
 		}
 
@@ -394,23 +387,15 @@ func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerCon
 			return false, false, nil
 		}
 
+		wg.Add(1)
 		select {
+		case peerConnChan <- &peerConnInfo{po: po, addr: addr}:
 		case <-k.quit:
+			wg.Done()
 			return true, false, nil
-		default:
-			wg.Add(1)
-
-			select {
-			case peerConnChan <- &peerConnInfo{
-				po:   po,
-				addr: addr,
-			}:
-			default:
-				k.notifyManageLoop()
-				wg.Done()
-			}
-			sent++
 		}
+
+		sent++
 
 		// We want 'sent' equal to 'saturationPeers'
 		// in order to skip to the next bin and speed up the topology build.
@@ -512,7 +497,7 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 			}
 		}
 	}
-	for i := 0; i < 16; i++ {
+	for i := 0; i < 32; i++ {
 		go connAttempt(balanceChan)
 	}
 	for i := 0; i < 32; i++ {
@@ -613,9 +598,7 @@ func (k *Kad) manage() {
 			}
 
 			if k.bootnode {
-				k.depthMu.Lock()
-				depth := k.depth
-				k.depthMu.Unlock()
+				depth := k.NeighborhoodDepth()
 
 				k.metrics.CurrentDepth.Set(float64(depth))
 				k.metrics.CurrentlyKnownPeers.Set(float64(k.knownPeers.Length()))
@@ -629,9 +612,7 @@ func (k *Kad) manage() {
 			k.connectNeighbours(&wg, neighbourhoodChan)
 			wg.Wait()
 
-			k.depthMu.Lock()
-			depth := k.depth
-			k.depthMu.Unlock()
+			depth := k.NeighborhoodDepth()
 
 			k.opt.PruneFunc(depth)
 
@@ -719,15 +700,19 @@ func (k *Kad) pruneOversaturatedBins(depth uint8) {
 		}
 
 		binPeersCount := k.connectedPeers.BinSize(uint8(i))
-		if binPeersCount < k.opt.OverSaturationPeers {
+		if binPeersCount <= k.opt.OverSaturationPeers {
 			continue
 		}
 
 		binPeers := k.connectedPeers.BinPeers(uint8(i))
 
-		peersToRemove := binPeersCount - k.opt.OverSaturationPeers
+		k.logger.Debug("starting pruning", "bin", i, "binSize", binPeersCount)
 
-		for j := 0; peersToRemove > 0 && j < len(k.commonBinPrefixes[i]); j++ {
+		for j := 0; j < len(k.commonBinPrefixes[i]); j++ {
+
+			if k.connectedPeers.BinSize(uint8(i)) <= k.opt.OverSaturationPeers {
+				break
+			}
 
 			pseudoAddr := k.commonBinPrefixes[i][j]
 			peers := k.balancedSlotPeers(pseudoAddr, binPeers, i)
@@ -753,7 +738,6 @@ func (k *Kad) pruneOversaturatedBins(depth uint8) {
 			if err != nil {
 				k.logger.Debug("prune disconnect failed", "error", err)
 			}
-			peersToRemove--
 		}
 	}
 }
@@ -1275,6 +1259,10 @@ func nClosePeerInSlice(peers []swarm.Address, addr swarm.Address, spf sanctioned
 	return swarm.ZeroAddress, false
 }
 
+func (k *Kad) IsReachable() bool {
+	return k.reachability == p2p.ReachabilityStatusPublic
+}
+
 // ClosestPeer returns the closest peer to a given address.
 func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, filter topology.Filter, skipPeers ...swarm.Address) (swarm.Address, error) {
 	if k.connectedPeers.Length() == 0 {
@@ -1297,8 +1285,12 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, filter topology.
 			return false, false, nil
 		}
 
-		if closer, _ := peer.Closer(addr, closest); closer {
+		closer, err := peer.Closer(addr, closest)
+		if closer {
 			closest = peer
+		}
+		if err != nil {
+			k.logger.Debug("closest peer", "peer", peer, "addr", addr, "error", err)
 		}
 		return false, false, nil
 	}, filter)

@@ -160,16 +160,16 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 			errorsLeft = maxRetrievedErrors
 		}
 
-		done := make(chan struct{})
-		defer close(done)
+		ctx, cancel := context.WithCancel(ctx)
+		defer cancel()
 
 		resultC := make(chan retrievalResult, 1)
 		retryC := make(chan struct{}, 1)
 
 		retry := func() {
 			select {
-			case <-ctx.Done():
 			case retryC <- struct{}{}:
+			case <-ctx.Done():
 			default:
 			}
 		}
@@ -190,41 +190,16 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 				totalRetrieveAttempts++
 				s.metrics.PeerRequestCounter.Inc()
 
-				inflight++
+				fullSkip := append(skip.ChunkPeers(chunkAddr), s.errSkip.ChunkPeers(chunkAddr)...)
+				peer, err := s.closestPeer(chunkAddr, fullSkip, origin)
 
-				go func() {
-					ctx := tracing.WithContext(context.Background(), tracing.FromContext(topCtx))
-					span, _, ctx := s.tracer.StartSpanFromContext(ctx, "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: chunkAddr.String()})
-					defer span.Finish()
-					s.retrieveChunk(ctx, chunkAddr, skip, done, resultC, origin)
-				}()
-
-			case res := <-resultC:
-
-				inflight--
-
-				if res.err == nil {
-					loggerV1.Debug("retrieved chunk", "chunk_address", chunkAddr, "peer_address", res.peer)
-					return res.chunk, nil
-				}
-
-				loggerV1.Debug("failed to get chunk", "chunk_address", chunkAddr, "peer_address", res.peer, "error", res.err)
-
-				// peer is overdrafted, skip to next result
-				if errors.Is(res.err, accounting.ErrOverdraft) {
-					retry()
-					continue
-				}
-
-				// no peers left
-				if errors.Is(res.err, topology.ErrNotFound) {
+				if errors.Is(err, topology.ErrNotFound) {
 					if skip.PruneExpiresAfter(chunkAddr, overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers
 						if inflight == 0 {
-							loggerV1.Debug("no peers left", "chunk_address", chunkAddr, "error", res.err)
-							return nil, res.err
-						} else {
-							continue // there is still an inflight request, wait for it's result
+							loggerV1.Debug("no peers left", "chunk_address", chunkAddr, "error", err)
+							return nil, err
 						}
+						continue // there is still an inflight request, wait for it's result
 					}
 
 					loggerV1.Debug("sleeping to refresh overdraft balance", "chunk_address", chunkAddr)
@@ -238,7 +213,41 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 					}
 				}
 
-				// the above errors are the ONLY cases that we consider as non-fatal
+				if err != nil {
+					if inflight == 0 {
+						loggerV1.Debug("peer selection", "chunk_address", chunkAddr, "error", err)
+						return nil, err
+					}
+					continue
+				}
+
+				action, err := s.prepareCredit(ctx, peer, chunkAddr, origin)
+				if err != nil {
+					skip.Add(chunkAddr, peer, overDraftRefresh)
+					retry()
+					continue
+				}
+				skip.Add(chunkAddr, peer, skippeers.MaxDuration)
+
+				inflight++
+
+				go func() {
+					ctx := tracing.WithContext(context.Background(), tracing.FromContext(topCtx))
+					span, _, ctx := s.tracer.StartSpanFromContext(ctx, "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: chunkAddr.String()})
+					defer span.Finish()
+					s.retrieveChunk(ctx, chunkAddr, peer, resultC, action, origin)
+				}()
+
+			case res := <-resultC:
+
+				inflight--
+
+				if res.err == nil {
+					loggerV1.Debug("retrieved chunk", "chunk_address", chunkAddr, "peer_address", res.peer)
+					return res.chunk, nil
+				}
+
+				loggerV1.Debug("failed to get chunk", "chunk_address", chunkAddr, "peer_address", res.peer, "error", res.err)
 
 				errorsLeft--
 				s.errSkip.Add(chunkAddr, res.peer, skiplistDur)
@@ -259,13 +268,12 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 	return v.(swarm.Chunk), nil
 }
 
-func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skip *skippeers.List, done chan struct{}, result chan retrievalResult, isOrigin bool) {
+func (s *Service) retrieveChunk(parentCtx context.Context, chunkAddr, peer swarm.Address, result chan retrievalResult, action accounting.Action, isOrigin bool) {
 
 	var (
 		startTime = time.Now()
 		err       error
 		chunk     swarm.Chunk
-		peer      swarm.Address
 	)
 
 	defer func() {
@@ -274,37 +282,15 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skip *s
 		}
 		select {
 		case result <- retrievalResult{err: err, chunk: chunk, peer: peer}:
-		case <-done:
+		case <-parentCtx.Done():
 			return
 		}
 	}()
 
-	fullSkip := append(skip.ChunkPeers(addr), s.errSkip.ChunkPeers(addr)...)
-
-	peer, err = s.closestPeer(addr, fullSkip, isOrigin)
-	if err != nil {
-		err = fmt.Errorf("get closest for address %s, allow upstream %v: %w", addr, isOrigin, err)
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
+	ctx, cancel := context.WithTimeout(parentCtx, retrieveChunkTimeout)
 	defer cancel()
 
-	// compute the peer's price for this chunk for price header
-	chunkPrice := s.pricer.PeerPrice(peer, addr)
-
-	creditCtx, cancel := context.WithTimeout(context.Background(), time.Second)
-	defer cancel()
-
-	// Reserve to see whether we can request the chunk
-	creditAction, err := s.accounting.PrepareCredit(creditCtx, peer, chunkPrice, isOrigin)
-	if err != nil {
-		skip.Add(addr, peer, overDraftRefresh)
-		return
-	}
-	defer creditAction.Cleanup()
-
-	skip.Add(addr, peer, skippeers.MaxDuration)
+	defer action.Cleanup()
 
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
@@ -321,7 +307,7 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skip *s
 	}()
 
 	w, r := protobuf.NewWriterAndReader(stream)
-	err = w.WriteMsgWithContext(ctx, &pb.Request{Addr: addr.Bytes()})
+	err = w.WriteMsgWithContext(ctx, &pb.Request{Addr: chunkAddr.Bytes()})
 	if err != nil {
 		err = fmt.Errorf("write request: %w peer %s", err, peer.String())
 		return
@@ -342,21 +328,30 @@ func (s *Service) retrieveChunk(ctx context.Context, addr swarm.Address, skip *s
 		err = fmt.Errorf("stamp unmarshal: %w", err)
 		return
 	}
-	chunk = swarm.NewChunk(addr, d.Data).WithStamp(stamp)
-	if !cac.Valid(chunk) {
-		if !soc.Valid(chunk) {
-			s.metrics.InvalidChunkRetrieved.Inc()
-			err = swarm.ErrInvalidChunk
-			return
-		}
-	}
-
-	// credit the peer after successful delivery
-	err = creditAction.Apply()
-	if err != nil {
+	chunk = swarm.NewChunk(chunkAddr, d.Data).WithStamp(stamp)
+	if !cac.Valid(chunk) && !soc.Valid(chunk) {
+		s.metrics.InvalidChunkRetrieved.Inc()
+		err = swarm.ErrInvalidChunk
 		return
 	}
-	s.metrics.ChunkPrice.Observe(float64(chunkPrice))
+
+	err = action.Apply()
+}
+
+func (s *Service) prepareCredit(ctx context.Context, peer, chunk swarm.Address, origin bool) (accounting.Action, error) {
+
+	creditCtx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+
+	price := s.pricer.PeerPrice(peer, chunk)
+	s.metrics.ChunkPrice.Observe(float64(price))
+
+	creditAction, err := s.accounting.PrepareCredit(creditCtx, peer, price, origin)
+	if err != nil {
+		return nil, err
+	}
+
+	return creditAction, nil
 }
 
 // closestPeer returns address of the peer that is closest to the chunk with

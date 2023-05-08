@@ -331,6 +331,20 @@ components:
           items:
             $ref: "#/components/schemas/Address"
 
+    BlockListedPeers:
+      type: array
+      items:
+        type: object
+        properties:
+          address:
+            $ref: "#/components/schemas/Address"
+          fullNode:
+            type: boolean
+          reason:
+            type: string
+          duration:
+            type: integer
+
     PssRecipient:
       type: string
 
