@@ -30,7 +30,6 @@ import (
 const (
 	reserveOverCapacity = "reserveOverCapacity"
 	reserveUnreserved   = "reserveUnreserved"
-	reserveLock         = "reserveLock"
 	sampleSize          = 16
 )
 
