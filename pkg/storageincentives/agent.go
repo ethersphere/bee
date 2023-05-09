@@ -444,13 +444,13 @@ func (a *Agent) makeSample(ctx context.Context, storageRadius uint8) (SampleData
 	}
 	a.metrics.SampleDuration.Set(time.Since(t).Seconds())
 
-	sampleChunk, err := rSample.Chunk()
+	sampleHash, err := sampleHash(rSample.Items)
 	if err != nil {
 		return SampleData{}, err
 	}
 
 	sample := SampleData{
-		ReserveSampleHash: sampleChunk.Address(),
+		ReserveSampleHash: sampleHash,
 		StorageRadius:     storageRadius,
 	}
 

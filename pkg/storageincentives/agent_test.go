@@ -21,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storageincentives"
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
+	"github.com/ethersphere/bee/pkg/storer"
 	resMock "github.com/ethersphere/bee/pkg/storer/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
@@ -165,15 +166,20 @@ func createService(
 		return false, nil
 	}))
 
+	reserve := resMock.NewReserve(
+		resMock.WithRadius(0),
+		resMock.WithSample(storer.RandSample(t, nil)),
+	)
+
 	return storageincentives.New(
 		addr, common.Address{},
 		backend,
 		contract,
 		postageContract,
 		stakingContract,
-		resMock.NewReserve(resMock.WithRadius(0)),
+		reserve,
 		func() bool { return true },
-		time.Millisecond*10,
+		time.Millisecond*100,
 		blocksPerRound,
 		blocksPerPhase,
 		statestore.NewStateStore(),
