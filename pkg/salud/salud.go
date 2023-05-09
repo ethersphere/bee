@@ -144,7 +144,8 @@ func (s *service) salud() {
 	avgDur := totaldur / float64(len(peers))
 	pDur := percantile(peers, .99)
 
-	s.metrics.Dur.Set(avgDur)
+	s.metrics.AvgDur.Set(avgDur)
+	s.metrics.PDur.Set(pDur)
 	s.metrics.Radius.Set(float64(radius))
 
 	s.logger.Debug("computed", "average", avgDur, "p99", pDur, "radius", radius)

@@ -10,7 +10,8 @@ import (
 )
 
 type metrics struct {
-	Dur         prometheus.Gauge
+	AvgDur      prometheus.Gauge
+	PDur        prometheus.Gauge
 	Radius      prometheus.Gauge
 	Blocklisted prometheus.Counter
 }
@@ -19,11 +20,17 @@ func newMetrics() metrics {
 	subsystem := "pushsync"
 
 	return metrics{
-		Dur: prometheus.NewGauge(prometheus.GaugeOpts{
+		AvgDur: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "dur",
 			Help:      "Average duration for snapshot response.",
+		}),
+		PDur: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "pdur",
+			Help:      "P99 duration for snapshot response.",
 		}),
 		Radius: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: m.Namespace,
