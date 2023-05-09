@@ -71,6 +71,12 @@ func WithPutHook(f func(swarm.Chunk) error) Option {
 	})
 }
 
+func WithSample(s storer.Sample) Option {
+	return optionFunc(func(p *ReserveStore) {
+		p.sample = s
+	})
+}
+
 var _ storer.ReserveStore = (*ReserveStore)(nil)
 
 type ReserveStore struct {
@@ -90,6 +96,8 @@ type ReserveStore struct {
 
 	subResponses []chunksResponse
 	putHook      func(swarm.Chunk) error
+
+	sample storer.Sample
 }
 
 // NewReserve returns a new Reserve mock.
@@ -229,8 +237,8 @@ func (s *ReserveStore) ReserveHas(addr swarm.Address, batchID []byte) (bool, err
 	return true, nil
 }
 
-func (s *ReserveStore) ReserveSample(ctx context.Context, anchor []byte, storageRadius uint8, consensusTime uint64) (storer.Sample, error) {
-	return storer.RandSample(anchor)
+func (s *ReserveStore) ReserveSample(_ context.Context, _ []byte, _ uint8, _ uint64) (storer.Sample, error) {
+	return s.sample, nil
 }
 
 type Option interface {
