@@ -60,6 +60,7 @@ type PeerIterator interface {
 // Filter defines the different filters that can be used with the Peer iterators
 type Filter struct {
 	Reachable bool
+	Healthy   bool
 }
 
 // EachPeerFunc is a callback that is called with a peer and its PO

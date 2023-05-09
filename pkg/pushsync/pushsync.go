@@ -310,7 +310,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			// If no peer can be found from an origin peer, the origin peer may store the chunk.
 			// Non-origin peers store the chunk if the chunk is within depth.
 			// For non-origin peers, if the chunk is not within depth, they may store the chunk if they are the closest peer to the chunk.
-			peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), ps.fullNode && !origin, topology.Filter{Reachable: true}, ps.skipList.ChunkPeers(ch.Address())...)
+			peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), ps.fullNode && !origin, topology.Filter{Reachable: true, Healthy: true}, ps.skipList.ChunkPeers(ch.Address())...)
 
 			if errors.Is(err, topology.ErrNotFound) {
 				if ps.skipList.PruneExpiresAfter(ch.Address(), overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers

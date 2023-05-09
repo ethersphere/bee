@@ -115,8 +115,16 @@ func PeerReachability(s p2p.ReachabilityStatus) RecordOp {
 	return func(cs *Counters) {
 		cs.Lock()
 		defer cs.Unlock()
-
 		cs.ReachabilityStatus = s
+	}
+}
+
+// PeerHealth updates the last health status of a peers
+func PeerHealth(h bool) RecordOp {
+	return func(cs *Counters) {
+		cs.Lock()
+		defer cs.Unlock()
+		cs.Healthy = h
 	}
 }
 
@@ -129,6 +137,7 @@ type Snapshot struct {
 	SessionConnectionDirection PeerConnectionDirection
 	LatencyEWMA                time.Duration
 	Reachability               p2p.ReachabilityStatus
+	Healthy                    bool
 }
 
 // HasAtMaxOneConnectionAttempt returns true if the snapshot represents a new
@@ -162,6 +171,7 @@ type Counters struct {
 	sessionConnDirection PeerConnectionDirection
 	latencyEWMA          time.Duration
 	ReachabilityStatus   p2p.ReachabilityStatus
+	Healthy              bool
 }
 
 // UnmarshalJSON unmarshal just the persistent counters.
@@ -210,6 +220,7 @@ func (cs *Counters) snapshot(t time.Time) *Snapshot {
 		SessionConnectionDirection: cs.sessionConnDirection,
 		LatencyEWMA:                cs.latencyEWMA,
 		Reachability:               cs.ReachabilityStatus,
+		Healthy:                    cs.Healthy,
 	}
 }
 
@@ -299,6 +310,39 @@ func (c *Collector) IsUnreachable(addr swarm.Address) bool {
 	defer cs.Unlock()
 
 	return cs.ReachabilityStatus != p2p.ReachabilityStatusPublic
+}
+
+type FilterOp func(*Counters) bool
+
+func Unreachable() FilterOp {
+	return func(cs *Counters) bool {
+		return cs.ReachabilityStatus != p2p.ReachabilityStatusPublic
+	}
+}
+
+func Unhealthy() FilterOp {
+	return func(cs *Counters) bool {
+		return !cs.Healthy
+	}
+}
+
+// Filter returns true if the addr does not pass any filter operation.
+func (c *Collector) Filter(addr swarm.Address, fop ...FilterOp) bool {
+	val, ok := c.counters.Load(addr.ByteString())
+	if !ok {
+		return true
+	}
+	cs := val.(*Counters)
+	cs.Lock()
+	defer cs.Unlock()
+
+	for _, f := range fop {
+		if f(cs) {
+			return true
+		}
+	}
+
+	return false
 }
 
 // Inspect allows inspecting current snapshot for the given

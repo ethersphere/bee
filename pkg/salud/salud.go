@@ -2,13 +2,12 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package salud monitors the storage radius and request reponse duration of peers
+// Package salud monitors the storage radius and request response duration of peers
 // and blocklists peers to maintain network salud (health).
 package salud
 
 import (
 	"context"
-	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -24,22 +23,26 @@ import (
 const loggerName = "salud"
 
 const (
-	DefaultWakeup         = time.Minute
-	DefaultBlocklistDur   = time.Minute * 5
+	DefaultWakeup         = time.Minute * 5
 	DefaultRequestTimeout = time.Second * 10
 )
+
+type topologyDriver interface {
+	PeerHealth(peer swarm.Address, health bool)
+	topology.PeerIterator
+}
 
 type service struct {
 	wg          sync.WaitGroup
 	quit        chan struct{}
 	logger      log.Logger
-	topology    topology.Driver
+	topology    topologyDriver
 	status      *status.Service
 	metrics     metrics
 	blocklister func() p2p.Blocklister
 }
 
-func New(status *status.Service, topology topology.Driver, blocklister p2p.Blocklister, logger log.Logger, warmup time.Duration) *service {
+func New(status *status.Service, topology topologyDriver, blocklister p2p.Blocklister, logger log.Logger, warmup time.Duration) *service {
 
 	metrics := newMetrics()
 
@@ -118,17 +121,11 @@ func (s *service) salud() {
 
 			snapshot, err := s.status.PeerSnapshot(ctx, addr)
 			if err != nil {
-				s.blocklister().Blocklist(addr, DefaultBlocklistDur, "salud status snapshop failure")
-				return
-			}
-
-			if snapshot.BeeMode != "full" {
+				s.topology.PeerHealth(addr, false)
 				return
 			}
 
 			dur := time.Since(start).Seconds()
-
-			// s.logger.Debug("status", "radius", snapshot.StorageRadius, "dur", dur, "mode", snapshot.BeeMode, "peer", addr)
 
 			mtx.Lock()
 			totaldur += dur
@@ -142,7 +139,8 @@ func (s *service) salud() {
 
 	radius := radius(peers)
 	avgDur := totaldur / float64(len(peers))
-	pDur := percantile(peers, .99)
+	pDur := percentileDur(peers, .95)
+	pConns := percentileConns(peers, .95)
 
 	s.metrics.AvgDur.Set(avgDur)
 	s.metrics.PDur.Set(pDur)
@@ -151,30 +149,48 @@ func (s *service) salud() {
 	s.logger.Debug("computed", "average", avgDur, "p99", pDur, "radius", radius)
 
 	for _, peer := range peers {
-
-		// radius check
 		if radius > 0 && peer.status.StorageRadius < uint32(radius-1) {
-			s.blocklister().Blocklist(peer.addr, DefaultBlocklistDur, fmt.Sprintf("salud radius failure, radius %d", peer.status.StorageRadius))
-		}
-
-		// duration check
-		if peer.dur > pDur {
-			s.blocklister().Blocklist(peer.addr, DefaultBlocklistDur, fmt.Sprintf("salud duration exceeded, duration %0.1f", peer.dur))
+			s.topology.PeerHealth(peer.addr, false)
+			s.logger.Debug("radius health failure", "radius", peer.status.StorageRadius, "peer_address", peer.addr)
+		} else if peer.dur > pDur {
+			s.topology.PeerHealth(peer.addr, false)
+			s.logger.Debug("dur health failure", "dur", peer.dur, "peer_address", peer.addr)
+		} else if peer.status.ConnectedPeers < pConns {
+			s.topology.PeerHealth(peer.addr, false)
+			s.logger.Debug("connections health failure", "connections", peer.status.ConnectedPeers, "peer_address", peer.addr)
+		} else {
+			s.topology.PeerHealth(peer.addr, true)
 		}
 	}
 }
 
-func percantile(peers []peer, p float64) float64 {
+// percentileDur finds the p percentile of response duration.
+// Less is better.
+func percentileDur(peers []peer, p float64) float64 {
 
 	index := int(float64(len(peers)) * p)
 
 	sort.Slice(peers, func(i, j int) bool {
-		return peers[i].dur < peers[j].dur
+		return peers[i].dur < peers[j].dur // ascending
 	})
 
 	return peers[index].dur
 }
 
+// percentileConns finds the p percentile of connection count.
+// More is better.
+func percentileConns(peers []peer, p float64) uint64 {
+
+	index := int(float64(len(peers)) * p)
+
+	sort.Slice(peers, func(i, j int) bool {
+		return peers[i].status.ConnectedPeers > peers[j].status.ConnectedPeers // descending
+	})
+
+	return peers[index].status.ConnectedPeers
+}
+
+// radius finds the most common radius.
 func radius(peers []peer) uint8 {
 
 	var radiuses [swarm.MaxBins]int

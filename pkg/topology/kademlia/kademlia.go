@@ -78,19 +78,20 @@ type (
 	pruneFunc          func(depth uint8)
 	staticPeerFunc     func(peer swarm.Address) bool
 	peerFilterFunc     func(peer swarm.Address) bool
+	filtersFunc        func(...im.FilterOp) peerFilterFunc
 )
 
 var noopSanctionedPeerFn = func(_ swarm.Address) bool { return false }
 
 // Options for injecting services to Kademlia.
 type Options struct {
-	SaturationFunc   binSaturationFunc
-	Bootnodes        []ma.Multiaddr
-	BootnodeMode     bool
-	PruneFunc        pruneFunc
-	StaticNodes      []swarm.Address
-	ReachabilityFunc peerFilterFunc
-	IgnoreRadius     bool
+	SaturationFunc binSaturationFunc
+	Bootnodes      []ma.Multiaddr
+	BootnodeMode   bool
+	PruneFunc      pruneFunc
+	StaticNodes    []swarm.Address
+	FilterFunc     filtersFunc
+	IgnoreRadius   bool
 
 	BitSuffixLength             *int
 	TimeToRetry                 *time.Duration
@@ -105,13 +106,13 @@ type Options struct {
 
 // kadOptions are made from Options with default values set
 type kadOptions struct {
-	SaturationFunc   binSaturationFunc
-	Bootnodes        []ma.Multiaddr
-	BootnodeMode     bool
-	PruneFunc        pruneFunc
-	StaticNodes      []swarm.Address
-	ReachabilityFunc peerFilterFunc
-	IgnoreRadius     bool
+	SaturationFunc binSaturationFunc
+	Bootnodes      []ma.Multiaddr
+	BootnodeMode   bool
+	PruneFunc      pruneFunc
+	StaticNodes    []swarm.Address
+	FilterFunc     filtersFunc
+	IgnoreRadius   bool
 
 	TimeToRetry                 time.Duration
 	ShortRetry                  time.Duration
@@ -128,13 +129,13 @@ type kadOptions struct {
 func newKadOptions(o Options) kadOptions {
 	ko := kadOptions{
 		// copy values
-		SaturationFunc:   o.SaturationFunc,
-		Bootnodes:        o.Bootnodes,
-		BootnodeMode:     o.BootnodeMode,
-		PruneFunc:        o.PruneFunc,
-		StaticNodes:      o.StaticNodes,
-		ReachabilityFunc: o.ReachabilityFunc,
-		IgnoreRadius:     o.IgnoreRadius,
+		SaturationFunc: o.SaturationFunc,
+		Bootnodes:      o.Bootnodes,
+		BootnodeMode:   o.BootnodeMode,
+		PruneFunc:      o.PruneFunc,
+		StaticNodes:    o.StaticNodes,
+		FilterFunc:     o.FilterFunc,
+		IgnoreRadius:   o.IgnoreRadius,
 		// copy or use default
 		TimeToRetry:                 defaultValDuration(o.TimeToRetry, defaultTimeToRetry),
 		ShortRetry:                  defaultValDuration(o.ShortRetry, defaultShortRetry),
@@ -208,7 +209,6 @@ type Kad struct {
 	bgBroadcastCancel context.CancelFunc
 	blocker           *blocker.Blocker
 	reachability      p2p.ReachabilityStatus
-	peerFilter        peerFilterFunc
 }
 
 // New returns a new Kademlia.
@@ -251,7 +251,6 @@ func New(
 		metrics:           newMetrics(),
 		pinger:            pinger,
 		staticPeer:        isStaticPeer(opt.StaticNodes),
-		peerFilter:        opt.ReachabilityFunc,
 		storageRadius:     swarm.MaxPO,
 	}
 
@@ -266,8 +265,12 @@ func New(
 		k.opt.PruneFunc = k.pruneOversaturatedBins
 	}
 
-	if k.peerFilter == nil {
-		k.peerFilter = k.collector.IsUnreachable
+	if k.opt.FilterFunc == nil {
+		k.opt.FilterFunc = func(f ...im.FilterOp) peerFilterFunc {
+			return func(peer swarm.Address) bool {
+				return k.collector.Filter(peer, f...)
+			}
+		}
 	}
 
 	if k.opt.BitSuffixLength > 0 {
@@ -891,7 +894,7 @@ func (k *Kad) recalcDepth() {
 
 	var (
 		peers                 = k.connectedPeers
-		filter                = k.peerFilter
+		filter                = k.opt.FilterFunc(im.Unreachable())
 		binCount              = 0
 		shallowestUnsaturated = uint8(0)
 		depth                 uint8
@@ -1126,7 +1129,7 @@ func (k *Kad) Pick(peer p2p.Peer) bool {
 		return true
 	}
 	po := swarm.Proximity(k.base.Bytes(), peer.Address.Bytes())
-	oversaturated := k.opt.SaturationFunc(po, k.knownPeers, k.connectedPeers, k.peerFilter)
+	oversaturated := k.opt.SaturationFunc(po, k.knownPeers, k.connectedPeers, k.opt.FilterFunc(im.Unreachable()))
 	// pick the peer if we are not oversaturated
 	if !oversaturated {
 		return true
@@ -1174,7 +1177,7 @@ func (k *Kad) Connected(ctx context.Context, peer p2p.Peer, forceConnection bool
 	address := peer.Address
 	po := swarm.Proximity(k.base.Bytes(), address.Bytes())
 
-	if overSaturated := k.opt.SaturationFunc(po, k.knownPeers, k.connectedPeers, k.peerFilter); overSaturated {
+	if overSaturated := k.opt.SaturationFunc(po, k.knownPeers, k.connectedPeers, k.opt.FilterFunc(im.Unreachable())); overSaturated {
 		if k.bootnode {
 			randPeer, err := k.randomPeer(po)
 			if err != nil {
@@ -1313,8 +1316,10 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, filter topology.
 
 // EachConnectedPeer implements topology.PeerIterator interface.
 func (k *Kad) EachConnectedPeer(f topology.EachPeerFunc, filter topology.Filter) error {
+	filters := filterOps(filter)
+
 	return k.connectedPeers.EachBin(func(addr swarm.Address, po uint8) (bool, bool, error) {
-		if filter.Reachable && k.peerFilter(addr) {
+		if len(filters) > 0 && k.opt.FilterFunc(filters...)(addr) {
 			return false, false, nil
 		}
 		return f(addr, po)
@@ -1323,8 +1328,9 @@ func (k *Kad) EachConnectedPeer(f topology.EachPeerFunc, filter topology.Filter)
 
 // EachConnectedPeerRev implements topology.PeerIterator interface.
 func (k *Kad) EachConnectedPeerRev(f topology.EachPeerFunc, filter topology.Filter) error {
+	filters := filterOps(filter)
 	return k.connectedPeers.EachBinRev(func(addr swarm.Address, po uint8) (bool, bool, error) {
-		if filter.Reachable && k.peerFilter(addr) {
+		if len(filters) > 0 && k.opt.FilterFunc(filters...)(addr) {
 			return false, false, nil
 		}
 		return f(addr, po)
@@ -1336,15 +1342,12 @@ func (k *Kad) PeersCount(filter topology.Filter) int {
 
 // Reachable sets the peer reachability status.
 func (k *Kad) Reachable(addr swarm.Address, status p2p.ReachabilityStatus) {
-	loggerV1 := k.logger.V(1).Register()
 	k.collector.Record(addr, im.PeerReachability(status))
-	loggerV1.Debug("reachability of peer updated", "peer_address", addr, "reachability", status)
+	k.logger.Debug("reachability of peer updated", "peer_address", addr, "reachability", status)
 	if status == p2p.ReachabilityStatusPublic {
-
 		k.depthMu.Lock()
 		k.recalcDepth()
 		k.depthMu.Unlock()
-
 		k.notifyManageLoop()
 	}
 }
@@ -1359,6 +1362,14 @@ func (k *Kad) UpdateReachability(status p2p.ReachabilityStatus) {
 	k.logger.Debug("reachability updated", "reachability", status)
 	k.reachability = status
 	k.metrics.ReachabilityStatus.WithLabelValues(status.String()).Set(0)
+}
+
+// UpdateReachability updates node reachability status.
+// The status will be updated only once. Updates to status
+// p2p.ReachabilityStatusUnknown are ignored.
+func (k *Kad) PeerHealth(peer swarm.Address, health bool) {
+	k.collector.Record(peer, im.PeerHealth(health))
+	// k.logger.Debug("health of peer updated", "peer_address", peer, "health", health)
 }
 
 // SubscribeTopologyChange returns the channel that signals when the connected peers
@@ -1387,6 +1398,20 @@ func (k *Kad) SubscribeTopologyChange() (c <-chan struct{}, unsubscribe func()) 
 	}
 
 	return channel, unsubscribe
+}
+
+func filterOps(filter topology.Filter) []im.FilterOp {
+
+	ops := make([]im.FilterOp, 0, 2)
+
+	if filter.Reachable {
+		ops = append(ops, im.Unreachable())
+	}
+	if filter.Healthy {
+		ops = append(ops, im.Unhealthy())
+	}
+
+	return ops
 }
 
 // NeighborhoodDepth returns the current Kademlia depth.
