@@ -124,7 +124,7 @@ func PeerHealth(h bool) RecordOp {
 	return func(cs *Counters) {
 		cs.Lock()
 		defer cs.Unlock()
-		cs.Healthy = h
+		cs.Unhealthy = !h
 	}
 }
 
@@ -137,7 +137,7 @@ type Snapshot struct {
 	SessionConnectionDirection PeerConnectionDirection
 	LatencyEWMA                time.Duration
 	Reachability               p2p.ReachabilityStatus
-	Healthy                    bool
+	Unhealthy                  bool
 }
 
 // HasAtMaxOneConnectionAttempt returns true if the snapshot represents a new
@@ -171,7 +171,7 @@ type Counters struct {
 	sessionConnDirection PeerConnectionDirection
 	latencyEWMA          time.Duration
 	ReachabilityStatus   p2p.ReachabilityStatus
-	Healthy              bool
+	Unhealthy            bool
 }
 
 // UnmarshalJSON unmarshal just the persistent counters.
@@ -220,7 +220,7 @@ func (cs *Counters) snapshot(t time.Time) *Snapshot {
 		SessionConnectionDirection: cs.sessionConnDirection,
 		LatencyEWMA:                cs.latencyEWMA,
 		Reachability:               cs.ReachabilityStatus,
-		Healthy:                    cs.Healthy,
+		Unhealthy:                  cs.Unhealthy,
 	}
 }
 
@@ -322,7 +322,7 @@ func Unreachable() FilterOp {
 
 func Unhealthy() FilterOp {
 	return func(cs *Counters) bool {
-		return !cs.Healthy
+		return cs.Unhealthy
 	}
 }
 

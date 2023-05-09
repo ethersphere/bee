@@ -1684,7 +1684,8 @@ func TestIteratorOpts(t *testing.T) {
 			totalReachable++
 		}
 		if randBool.Bool() {
-			kad.PeerHealth(addr, true)
+			kad.PeerHealth(addr, false)
+		} else {
 			healthy[addr.ByteString()] = struct{}{}
 			totalHealthy++
 		}
