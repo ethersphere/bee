@@ -174,7 +174,7 @@ func createService(
 		stakingContract,
 		resMock.NewReserve(resMock.WithRadius(0)),
 		func() bool { return true },
-		time.Millisecond*30,
+		time.Millisecond*100,
 		blocksPerRound,
 		blocksPerPhase,
 		statestore.NewStateStore(),
