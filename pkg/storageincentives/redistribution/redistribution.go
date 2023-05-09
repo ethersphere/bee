@@ -93,8 +93,7 @@ func (c *contract) IsWinner(ctx context.Context) (isWinner bool, err error) {
 
 // Claim sends a transaction to blockchain if a win is claimed.
 func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs) (common.Hash, error) {
-	// TODO add inclusion proofs to call data
-	callData, err := c.incentivesContractABI.Pack("claim")
+	callData, err := c.incentivesContractABI.Pack("claim", proofs.A, proofs.B, proofs.C)
 	if err != nil {
 		return common.Hash{}, err
 	}

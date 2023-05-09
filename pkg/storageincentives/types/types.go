@@ -18,3 +18,9 @@ func NewTrio[T any](a, b, c T) Trio[T] {
 		C: c,
 	}
 }
+
+func ToByte32(data []byte) [32]byte {
+	var res [32]byte
+	copy(res[:], data)
+	return res
+}

@@ -11,7 +11,6 @@ import (
 	"github.com/ethersphere/bee/pkg/bmt"
 	"github.com/ethersphere/bee/pkg/bmtpool"
 	"github.com/ethersphere/bee/pkg/cac"
-	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/pkg/storageincentives/types"
 	. "github.com/ethersphere/bee/pkg/storageincentives/types"
@@ -177,10 +176,10 @@ func newChunkInclusionProof(
 	proofp2Hex := bytesToHex(proofp2)
 	proofp3Hex := bytesToHex(proofp3)
 
-	batchOwner, err := postage.RecoverBatchOwner(chunkAddress, stamp)
-	if err != nil {
-		return redistribution.ChunkInclusionProof{}, err
-	}
+	// batchOwner, err := postage.RecoverBatchOwner(chunkAddress, stamp)
+	// if err != nil {
+	// 	return redistribution.ChunkInclusionProof{}, err
+	// }
 
 	return redistribution.ChunkInclusionProof{
 		ProofSegments:  proofp1Hex.ProofSegments,
@@ -189,10 +188,9 @@ func newChunkInclusionProof(
 		ProveSegment2:  proofp2Hex.ProveSegment,
 		ChunkSpan:      bmt.LengthFromSpan(proofp2.Span),
 		ProofSegments3: proofp3Hex.ProofSegments,
-		Signer:         batchOwner,
 		Signature:      stamp.Sig(),
-		ChunkAddr:      chunkAddress.Bytes(),
-		PostageId:      stamp.BatchID(),
+		ChunkAddr:      types.ToByte32(chunkAddress.Bytes()),
+		PostageId:      types.ToByte32(stamp.BatchID()),
 		Index:          stamp.Index(),
 		TimeStamp:      stamp.Timestamp(),
 	}, nil
@@ -201,20 +199,25 @@ func newChunkInclusionProof(
 func bytesToHex(proof bmt.Proof) hexProof {
 	var proveSegment []byte
 
-	proofSegments := make([][]byte, len(proof.ProofSegments)+1)
+	proofSegments := make([][32]byte, len(proof.ProofSegments)+1)
 	if proof.Index%2 == 0 {
-		proofSegments[0] = proof.ProveSegment[swarm.SectionSize:]
+		proofSegments[0] = types.ToByte32(proof.ProveSegment[swarm.SectionSize:])
 		proveSegment = proof.ProveSegment[:swarm.SectionSize]
 	} else {
-		proofSegments[0] = proof.ProveSegment[:swarm.SectionSize]
+		proofSegments[0] = types.ToByte32(proof.ProveSegment[:swarm.SectionSize])
 		proveSegment = proof.ProveSegment[swarm.SectionSize:]
 	}
-	copy(proofSegments[1:], proof.ProofSegments)
+	for i := 0; i < len(proof.ProofSegments); i++ {
+		proofSegments[i+1] = types.ToByte32(proof.ProofSegments[i])
+	}
 
-	return hexProof{ProveSegment: proveSegment, ProofSegments: proofSegments}
+	return hexProof{
+		ProveSegment:  types.ToByte32(proveSegment),
+		ProofSegments: proofSegments,
+	}
 }
 
 type hexProof struct {
-	ProofSegments [][]byte
-	ProveSegment  []byte
+	ProofSegments [][32]byte
+	ProveSegment  [32]byte
 }

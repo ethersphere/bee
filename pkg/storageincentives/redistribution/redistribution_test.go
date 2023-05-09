@@ -12,9 +12,10 @@ import (
 	"math/big"
 	"testing"
 
+	_ "embed"
+
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	chaincfg "github.com/ethersphere/bee/pkg/config"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
@@ -25,7 +26,10 @@ import (
 	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
-var redistributionContractABI = abiutil.MustParseABI(chaincfg.Testnet.RedistributionABI)
+//go:embed Redistribution.abi
+var rabi string
+
+var redistributionContractABI = abiutil.MustParseABI(rabi)
 
 func TestRedistribution(t *testing.T) {
 	t.Parallel()
@@ -154,7 +158,7 @@ func TestRedistribution(t *testing.T) {
 		t.Parallel()
 
 		proofs := redistribution.RandChunkInclusionProofs(t)
-		expectedCallData, err := redistributionContractABI.Pack("claim") // todo add proofs
+		expectedCallData, err := redistributionContractABI.Pack("claim", proofs.A, proofs.B, proofs.C)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -194,7 +198,7 @@ func TestRedistribution(t *testing.T) {
 		t.Parallel()
 
 		proofs := redistribution.RandChunkInclusionProofs(t)
-		expectedCallData, err := redistributionContractABI.Pack("claim") // todo add proofs
+		expectedCallData, err := redistributionContractABI.Pack("claim", proofs.A, proofs.B, proofs.C)
 		if err != nil {
 			t.Fatal(err)
 		}

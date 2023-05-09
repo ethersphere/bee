@@ -6,32 +6,55 @@ package redistribution
 
 import (
 	"testing"
+	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/storageincentives/types"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
 type ChunkInclusionProofs = types.Trio[ChunkInclusionProof]
 
 type ChunkInclusionProof struct {
-	ProofSegments  [][]byte
-	ProveSegment   []byte
-	ProofSegments2 [][]byte
-	ProveSegment2  []byte
+	ProofSegments  [][32]byte
+	ProveSegment   [32]byte
+	ProofSegments2 [][32]byte
+	ProveSegment2  [32]byte
 	ChunkSpan      uint64
-	ProofSegments3 [][]byte
+	ProofSegments3 [][32]byte
 
-	Signer    []byte
 	Signature []byte
-	ChunkAddr []byte
-	PostageId []byte
-	Index     []byte
-	TimeStamp []byte
+	ChunkAddr [32]byte
+	PostageId [32]byte
+	Index     uint64
+	TimeStamp uint64
+
+	SocProofAttached []SOCProof
+}
+
+type SOCProof struct {
+	Signer     common.Address
+	Signature  []byte
+	Identifier [32]byte
+	ChunkAddr  [32]byte
 }
 
 func RandChunkInclusionProof(t *testing.T) ChunkInclusionProof {
 	t.Helper()
 
-	return ChunkInclusionProof{}
+	return ChunkInclusionProof{
+		ProofSegments:  [][32]byte{types.ToByte32(testutil.RandBytes(t, 32))},
+		ProveSegment:   types.ToByte32(testutil.RandBytes(t, 32)),
+		ProofSegments2: [][32]byte{types.ToByte32(testutil.RandBytes(t, 32))},
+		ProveSegment2:  types.ToByte32(testutil.RandBytes(t, 32)),
+		ProofSegments3: [][32]byte{types.ToByte32(testutil.RandBytes(t, 32))},
+		ChunkSpan:      1,
+		Signature:      testutil.RandBytes(t, 32),
+		ChunkAddr:      types.ToByte32(testutil.RandBytes(t, 32)),
+		PostageId:      types.ToByte32(testutil.RandBytes(t, 32)),
+		Index:          1,
+		TimeStamp:      uint64(time.Now().Unix()),
+	}
 }
 
 func RandChunkInclusionProofs(t *testing.T) ChunkInclusionProofs {
