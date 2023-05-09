@@ -105,6 +105,11 @@ func (a Address) IsValidLength() bool {
 	return len(a.b) == HashSize
 }
 
+// IsValidNonEmpty returns true if the Address has valid length and is not empty.
+func (a Address) IsValidNonEmpty() bool {
+	return a.IsValidLength() && !a.IsEmpty()
+}
+
 // Bytes returns bytes representation of the Address.
 func (a Address) Bytes() []byte {
 	return a.b
@@ -142,6 +147,12 @@ func (a Address) Clone() Address {
 		return Address{}
 	}
 	return Address{b: append(make([]byte, 0, HashSize), a.Bytes()...)}
+}
+
+// Compare returns an integer comparing two addresses lexicographically.
+// The result will be 0 if a == b, -1 if a < b, and +1 if a > b.
+func (a Address) Compare(b Address) int {
+	return bytes.Compare(a.b, b.b)
 }
 
 // AddressIterFunc is a callback on every address that is found by the iterator.
