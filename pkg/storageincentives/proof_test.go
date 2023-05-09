@@ -17,7 +17,7 @@ import (
 func TestSampleChunk(t *testing.T) {
 	t.Parallel()
 
-	sample := storer.RandSampleT(t, nil)
+	sample := storer.RandSample(t, nil)
 
 	for i := 1; i < len(sample.Items); i++ {
 		items := sample.Items[:i]
@@ -48,7 +48,7 @@ func TestSampleChunk(t *testing.T) {
 func TestSampleChunkExpectedError(t *testing.T) {
 	t.Parallel()
 
-	sampleItem := storer.RandSampleT(t, nil).Items[0]
+	sampleItem := storer.RandSample(t, nil).Items[0]
 	items := make([]storer.SampleItem, 65)
 	for i := range items {
 		items[i] = sampleItem

@@ -375,18 +375,9 @@ type Sample struct {
 	Items []SampleItem
 }
 
-func RandSampleT(t *testing.T, anchor []byte) Sample {
+func RandSample(t *testing.T, anchor []byte) Sample {
 	t.Helper()
 
-	sample, err := RandSample(anchor)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	return sample
-}
-
-func RandSample(anchor []byte) (Sample, error) {
 	hasher := bmt.NewTrHasher(anchor)
 
 	items := make([]SampleItem, sampleSize)
@@ -395,7 +386,7 @@ func RandSample(anchor []byte) (Sample, error) {
 
 		tr, err := transformedAddress(hasher, ch, swarm.ChunkTypeContentAddressed)
 		if err != nil {
-			return Sample{}, err
+			t.Fatal(err)
 		}
 
 		items[i] = SampleItem{
@@ -410,7 +401,7 @@ func RandSample(anchor []byte) (Sample, error) {
 		return items[i].TransformedAddress.Compare(items[j].TransformedAddress) == -1
 	})
 
-	return Sample{Items: items}, nil
+	return Sample{Items: items}
 }
 
 // ReserveSample generates the sample of reserve storage of a node required for the

@@ -755,7 +755,7 @@ func TestReserveSampler(t *testing.T) {
 func TestRandSample(t *testing.T) {
 	t.Parallel()
 
-	sample := storer.RandSampleT(t, nil)
+	sample := storer.RandSample(t, nil)
 	assertValidSample(t, sample)
 }
 

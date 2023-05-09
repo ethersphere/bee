@@ -237,7 +237,7 @@ func (s *ReserveStore) ReserveHas(addr swarm.Address, batchID []byte) (bool, err
 	return true, nil
 }
 
-func (s *ReserveStore) ReserveSample(_ context.Context, _ []byte, _ uint8, _ uint64) (storer.Sample, error) {
+func (s *ReserveStore) ReserveSample(context.Context, []byte, uint8, uint64) (storer.Sample, error) {
 	return s.sample, nil
 }
 

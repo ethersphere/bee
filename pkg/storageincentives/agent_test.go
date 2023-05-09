@@ -168,7 +168,7 @@ func createService(
 
 	reserve := resMock.NewReserve(
 		resMock.WithRadius(0),
-		resMock.WithSample(storer.RandSampleT(t, nil)),
+		resMock.WithSample(storer.RandSample(t, nil)),
 	)
 
 	return storageincentives.New(
