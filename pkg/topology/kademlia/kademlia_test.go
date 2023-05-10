@@ -961,7 +961,7 @@ func TestClosestPeer(t *testing.T) {
 		return 0, nil
 	})
 
-	kad, err := kademlia.New(base, ab, disc, p2pMock(t, ab, nil, nil, nil), ppm, ssMock, logger, kademlia.Options{})
+	kad, err := kademlia.New(base, ab, disc, p2pMock(t, ab, nil, nil, nil), ppm, logger, kademlia.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1389,7 +1389,7 @@ func TestLatency(t *testing.T) {
 	}
 	testutil.CleanupCloser(t, metricsDB)
 
-	kad, err := kademlia.New(base, ab, disc, p2pMock(t, ab, nil, nil, nil), ppm, ssMock, logger, kademlia.Options{
+	kad, err := kademlia.New(base, ab, disc, p2pMock(t, ab, nil, nil, nil), ppm, logger, kademlia.Options{
 		PeerPingPollTime: ptrDuration(1 * time.Second),
 	})
 	if err != nil {
@@ -1822,7 +1822,7 @@ func newTestKademliaWithAddrDiscovery(
 			return 0, nil
 		})
 	)
-	kad, err := kademlia.New(base, ab, disc, p2p, ppm, ssMock, logger, kadOpts)
+	kad, err := kademlia.New(base, ab, disc, p2p, ppm, logger, kadOpts)
 	if err != nil {
 		t.Fatal(err)
 	}

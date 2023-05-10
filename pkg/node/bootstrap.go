@@ -126,7 +126,7 @@ func bootstrapNode(
 	}
 	b.hiveCloser = hive
 
-	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, &noopPinger{}, stateStore, logger,
+	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, &noopPinger{}, logger,
 		kademlia.Options{Bootnodes: bootnodes, BootnodeMode: o.BootnodeMode, StaticNodes: o.StaticNodes, DataDir: o.DataDir})
 	if err != nil {
 		return nil, fmt.Errorf("unable to create kademlia: %w", err)

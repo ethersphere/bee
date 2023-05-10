@@ -23,7 +23,6 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	im "github.com/ethersphere/bee/pkg/topology/kademlia/internal/metrics"
@@ -221,7 +220,6 @@ func New(
 	discovery discovery.Driver,
 	p2pSvc p2p.Service,
 	pinger pingpong.Interface,
-	stateStore storage.StateStorer,
 	logger log.Logger,
 	o Options,
 ) (*Kad, error) {

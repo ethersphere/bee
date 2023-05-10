@@ -5,11 +5,9 @@
 package storage
 
 import (
-	"encoding"
+	"encoding/json"
 	"io"
 	"path"
-
-	"github.com/vmihailenco/msgpack/v5"
 )
 
 // StateIterFunc is used when iterating through StateStorer key/value pairs
@@ -57,24 +55,12 @@ func (ip *proxyItem) Namespace() string {
 
 // Marshal implements Item interface.
 func (ip *proxyItem) Marshal() ([]byte, error) {
-	switch m := ip.obj.(type) {
-	case Marshaler:
-		return m.Marshal()
-	case encoding.BinaryMarshaler:
-		return m.MarshalBinary()
-	}
-	return msgpack.Marshal(ip.obj)
+	return json.Marshal(ip.obj)
 }
 
 // Unmarshal implements Item interface.
 func (ip *proxyItem) Unmarshal(data []byte) error {
-	switch m := ip.obj.(type) {
-	case Unmarshaler:
-		return m.Unmarshal(data)
-	case encoding.BinaryUnmarshaler:
-		return m.UnmarshalBinary(data)
-	}
-	return msgpack.Unmarshal(data, &ip.obj)
+	return json.Unmarshal(data, &ip.obj)
 }
 
 // Clone implements Item interface.
