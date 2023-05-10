@@ -99,11 +99,6 @@ func (s *store) Iterate(prefix string, iterFunc storage.StateIterFunc) (err erro
 	return nil
 }
 
-// DB implements StateStorer.DB method.
-func (s *store) DB() interface{} {
-	return nil
-}
-
 func (s *store) Close() (err error) {
 	return nil
 }

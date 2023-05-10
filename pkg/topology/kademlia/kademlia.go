@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
@@ -30,7 +31,6 @@ import (
 	"github.com/ethersphere/bee/pkg/topology/kademlia/internal/waitnext"
 	"github.com/ethersphere/bee/pkg/topology/pslice"
 	ma "github.com/multiformats/go-multiaddr"
-	"github.com/syndtr/goleveldb/leveldb"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -93,6 +93,7 @@ type Options struct {
 	StaticNodes      []swarm.Address
 	ReachabilityFunc peerFilterFunc
 	IgnoreRadius     bool
+	DataDir          string
 
 	BitSuffixLength             *int
 	TimeToRetry                 *time.Duration
@@ -226,22 +227,16 @@ func New(
 ) (*Kad, error) {
 	var k *Kad
 
-	var metricsDB *shed.DB
-	if ldb, ok := stateStore.DB().(*leveldb.DB); !ok { // In-memory state store just for testing.
-		sdb, err := shed.NewDB("", nil)
-		if err != nil {
-			return nil, fmt.Errorf("unable to create metrics storage: %w", err)
-		}
+	if o.DataDir == "" {
 		logger.Warning("using in-mem store for kademlia metrics, no state will be persisted")
-		metricsDB = sdb
 	} else {
-		sdb, err := shed.NewDBWrap(ldb)
-		if err != nil {
-			return nil, fmt.Errorf("unable to wrap metrics storage: %w", err)
-		}
-		metricsDB = sdb
+		o.DataDir = filepath.Join(o.DataDir, "kademlia-metrics")
 	}
-	imc, err := im.NewCollector(metricsDB)
+	sdb, err := shed.NewDB(o.DataDir, nil)
+	if err != nil {
+		return nil, fmt.Errorf("unable to create metrics storage: %w", err)
+	}
+	imc, err := im.NewCollector(sdb)
 	if err != nil {
 		return nil, fmt.Errorf("unable to create metrics collector: %w", err)
 	}

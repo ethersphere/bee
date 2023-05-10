@@ -30,12 +30,6 @@ type StateStorer interface {
 
 	// Iterate iterates over all keys with the given prefix and calls iterFunc.
 	Iterate(prefix string, iterFunc StateIterFunc) error
-
-	// DB returns the underlying DB storage.
-	//
-	// Note: the returned interface is a gross hack until
-	// we can refactor the kademlia to not use the shed.
-	DB() interface{}
 }
 
 // stateStoreNamespace is the namespace used for state storage.
@@ -72,11 +66,6 @@ func (ip *proxyItem) Marshal() ([]byte, error) {
 	return msgpack.Marshal(ip.obj)
 }
 
-// MarshalBinary implements encoding.BinaryMarshaler interface.
-func (ip *proxyItem) MarshalBinary() (data []byte, err error) {
-	return ip.Marshal()
-}
-
 // Unmarshal implements Item interface.
 func (ip *proxyItem) Unmarshal(data []byte) error {
 	switch m := ip.obj.(type) {
@@ -86,11 +75,6 @@ func (ip *proxyItem) Unmarshal(data []byte) error {
 		return m.UnmarshalBinary(data)
 	}
 	return msgpack.Unmarshal(data, &ip.obj)
-}
-
-// UnmarshalBinary implements encoding.BinaryUnmarshaler interface.
-func (ip *proxyItem) UnmarshalBinary(data []byte) error {
-	return ip.Unmarshal(data)
 }
 
 // Clone implements Item interface.
@@ -156,21 +140,13 @@ func (s *StateStorerAdapter) Iterate(prefix string, iterFunc StateIterFunc) (err
 		},
 		func(res Result) (stop bool, err error) {
 			key := []byte(prefix + res.ID)
-			val, err := res.Entry.(*proxyItem).MarshalBinary()
+			val, err := res.Entry.(*proxyItem).Marshal()
 			if err != nil {
 				return false, err
 			}
 			return iterFunc(key, val)
 		},
 	)
-}
-
-// DB implements StateStorer interface.
-func (s *StateStorerAdapter) DB() interface{} {
-	if db, ok := s.storage.(interface{ DB() interface{} }); ok {
-		return db.DB()
-	}
-	return s.storage
 }
 
 // NewStateStorerAdapter creates a new StateStorerAdapter.
