@@ -119,12 +119,12 @@ func PeerReachability(s p2p.ReachabilityStatus) RecordOp {
 	}
 }
 
-// PeerHealth updates the last health status of a peers
-func PeerHealth(h bool) RecordOp {
+// PeerHealth updates the last health status of a peers.
+func PeerHealth(isHealty bool) RecordOp {
 	return func(cs *Counters) {
 		cs.Lock()
 		defer cs.Unlock()
-		cs.Unhealthy = !h
+		cs.Healthy = isHealty
 	}
 }
 
@@ -137,7 +137,7 @@ type Snapshot struct {
 	SessionConnectionDirection PeerConnectionDirection
 	LatencyEWMA                time.Duration
 	Reachability               p2p.ReachabilityStatus
-	Unhealthy                  bool
+	Healthy                    bool
 }
 
 // HasAtMaxOneConnectionAttempt returns true if the snapshot represents a new
@@ -171,7 +171,7 @@ type Counters struct {
 	sessionConnDirection PeerConnectionDirection
 	latencyEWMA          time.Duration
 	ReachabilityStatus   p2p.ReachabilityStatus
-	Unhealthy            bool
+	Healthy              bool
 }
 
 // UnmarshalJSON unmarshal just the persistent counters.
@@ -220,7 +220,7 @@ func (cs *Counters) snapshot(t time.Time) *Snapshot {
 		SessionConnectionDirection: cs.sessionConnDirection,
 		LatencyEWMA:                cs.latencyEWMA,
 		Reachability:               cs.ReachabilityStatus,
-		Unhealthy:                  cs.Unhealthy,
+		Healthy:                    cs.Healthy,
 	}
 }
 
@@ -312,17 +312,27 @@ func (c *Collector) IsUnreachable(addr swarm.Address) bool {
 	return cs.ReachabilityStatus != p2p.ReachabilityStatusPublic
 }
 
+// FilterOp is a function type used to filter peers on certain fields.
 type FilterOp func(*Counters) bool
 
-func Unreachable() FilterOp {
+// Reachable is used to filter reachable or unreachable peers based on r.
+func Reachability(filterReachable bool) FilterOp {
 	return func(cs *Counters) bool {
-		return cs.ReachabilityStatus != p2p.ReachabilityStatusPublic
+		reachble := cs.ReachabilityStatus == p2p.ReachabilityStatusPublic
+		if filterReachable {
+			return reachble
+		}
+		return !reachble
 	}
 }
 
-func Unhealthy() FilterOp {
+// Unreachable is used to filter unhealthy peers.
+func Health(filterHealthy bool) FilterOp {
 	return func(cs *Counters) bool {
-		return cs.Unhealthy
+		if filterHealthy {
+			return cs.Healthy
+		}
+		return !cs.Healthy
 	}
 }
 

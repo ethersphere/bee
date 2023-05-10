@@ -894,7 +894,7 @@ func (k *Kad) recalcDepth() {
 
 	var (
 		peers                 = k.connectedPeers
-		filter                = k.opt.FilterFunc(im.Unreachable())
+		filter                = k.opt.FilterFunc(im.Reachability(false))
 		binCount              = 0
 		shallowestUnsaturated = uint8(0)
 		depth                 uint8
@@ -1129,7 +1129,7 @@ func (k *Kad) Pick(peer p2p.Peer) bool {
 		return true
 	}
 	po := swarm.Proximity(k.base.Bytes(), peer.Address.Bytes())
-	oversaturated := k.opt.SaturationFunc(po, k.knownPeers, k.connectedPeers, k.opt.FilterFunc(im.Unreachable()))
+	oversaturated := k.opt.SaturationFunc(po, k.knownPeers, k.connectedPeers, k.opt.FilterFunc(im.Reachability(false)))
 	// pick the peer if we are not oversaturated
 	if !oversaturated {
 		return true
@@ -1177,7 +1177,7 @@ func (k *Kad) Connected(ctx context.Context, peer p2p.Peer, forceConnection bool
 	address := peer.Address
 	po := swarm.Proximity(k.base.Bytes(), address.Bytes())
 
-	if overSaturated := k.opt.SaturationFunc(po, k.knownPeers, k.connectedPeers, k.opt.FilterFunc(im.Unreachable())); overSaturated {
+	if overSaturated := k.opt.SaturationFunc(po, k.knownPeers, k.connectedPeers, k.opt.FilterFunc(im.Reachability(false))); overSaturated {
 		if k.bootnode {
 			randPeer, err := k.randomPeer(po)
 			if err != nil {
@@ -1405,10 +1405,10 @@ func filterOps(filter topology.Filter) []im.FilterOp {
 	ops := make([]im.FilterOp, 0, 2)
 
 	if filter.Reachable {
-		ops = append(ops, im.Unreachable())
+		ops = append(ops, im.Reachability(false))
 	}
 	if filter.Healthy {
-		ops = append(ops, im.Unhealthy())
+		ops = append(ops, im.Health(false))
 	}
 
 	return ops

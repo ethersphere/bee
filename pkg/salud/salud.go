@@ -75,11 +75,13 @@ func (s *service) worker(warmup time.Duration) {
 	}
 
 	for {
+
+		s.salud()
+
 		select {
 		case <-s.quit:
 			return
 		case <-time.After(DefaultWakeup):
-			s.salud()
 		}
 	}
 }
@@ -146,7 +148,7 @@ func (s *service) salud() {
 	s.metrics.PDur.Set(pDur)
 	s.metrics.Radius.Set(float64(radius))
 
-	s.logger.Debug("computed", "average", avgDur, "p99", pDur, "radius", radius)
+	s.logger.Debug("computed", "average", avgDur, "p95Dur", pDur, "p95Conns", pConns, "radius", radius)
 
 	for _, peer := range peers {
 		if radius > 0 && peer.status.StorageRadius < uint32(radius-1) {
