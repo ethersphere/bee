@@ -135,19 +135,25 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 	}
 
 	push := func(op *Op) {
+		var (
+			err      error
+			doRepeat bool
+		)
+
 		defer func() {
 			wg.Done()
 			<-sem
+			if doRepeat {
+				select {
+				case cc <- op:
+				case <-s.quit:
+				}
+			}
 		}()
 
 		s.metrics.TotalToPush.Inc()
 		ctx, logger := ctxLogger()
 		startTime := time.Now()
-
-		var (
-			err      error
-			doRepeat bool
-		)
 
 		if op.Direct {
 			err = s.pushDirect(ctx, logger, op)
@@ -158,14 +164,6 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 		if err != nil {
 			s.metrics.TotalErrors.Inc()
 			s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())
-		}
-
-		if doRepeat {
-			select {
-			case cc <- op:
-			case <-s.quit:
-			}
-			return
 		}
 
 		s.metrics.SyncTime.Observe(time.Since(startTime).Seconds())
@@ -300,6 +298,14 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 		err     error
 	)
 
+	defer func() {
+		select {
+		case op.Err <- err:
+		default:
+			loggerV1.Error(err, "pusher: failed to return error for direct upload")
+		}
+	}()
+
 	_, err = s.validStamp(op.Chunk)
 	if err != nil {
 		logger.Warning(
@@ -308,30 +314,24 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 			"chunk_address", op.Chunk.Address(),
 			"error", err,
 		)
-	} else {
-		switch receipt, err = s.pushSyncer.PushChunkToClosest(ctx, op.Chunk); {
-		case errors.Is(err, topology.ErrWantSelf):
-			// store the chunk
-			loggerV1.Debug("chunk stays here, i'm the closest node", "chunk_address", op.Chunk.Address())
-			err = s.storer.ReservePut(ctx, op.Chunk)
-			if err != nil {
-				loggerV1.Error(err, "pusher: failed to store chunk")
-				return err
-			}
-		case err == nil:
-			if err := s.checkReceipt(receipt, loggerV1); err != nil {
-				loggerV1.Error(err, "pusher: failed checking receipt")
-				return err
-			}
-		default:
-			loggerV1.Error(err, "pusher: failed PushChunkToClosest")
-			return err
-		}
+		return err
 	}
-	select {
-	case op.Err <- err:
+
+	switch receipt, err = s.pushSyncer.PushChunkToClosest(ctx, op.Chunk); {
+	case errors.Is(err, topology.ErrWantSelf):
+		// store the chunk
+		loggerV1.Debug("chunk stays here, i'm the closest node", "chunk_address", op.Chunk.Address())
+		err = s.storer.ReservePut(ctx, op.Chunk)
+		if err != nil {
+			loggerV1.Error(err, "pusher: failed to store chunk")
+		}
+	case err == nil:
+		err = s.checkReceipt(receipt, loggerV1)
+		if err != nil {
+			loggerV1.Error(err, "pusher: failed checking receipt")
+		}
 	default:
-		loggerV1.Error(err, "pusher: failed to return error for direct upload")
+		loggerV1.Error(err, "pusher: failed PushChunkToClosest")
 	}
 	return err
 }

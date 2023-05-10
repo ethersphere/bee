@@ -7,6 +7,7 @@ package reserve
 import (
 	"context"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sync"
@@ -26,7 +27,8 @@ const loggerName = "reserve"
 const reserveNamespace = "reserve"
 
 type Reserve struct {
-	mtx sync.Mutex
+	mtx      sync.Mutex
+	putterMu sync.Mutex
 
 	baseAddr     swarm.Address
 	radiusSetter topology.SetStorageRadiuser
@@ -84,6 +86,8 @@ func New(
 
 // Put stores a new chunk in the reserve and returns if the reserve size should increase.
 func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.Chunk) (bool, error) {
+	r.putterMu.Lock()
+	defer r.putterMu.Unlock()
 
 	indexStore := store.IndexStore()
 	chunkStore := store.ChunkStore()
@@ -133,6 +137,12 @@ func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.C
 		if err != nil {
 			return false, fmt.Errorf("failed removing older chunk: %w", err)
 		}
+		r.logger.Debug(
+			"replacing chunk stamp index",
+			"old_chunk", oldChunk.Address.String(),
+			"new_chunk", chunk.Address().String(),
+			"batch_id", hex.EncodeToString(chunk.Stamp().BatchID()),
+		)
 
 		err = stampindex.Store(indexStore, reserveNamespace, chunk)
 		if err != nil {
@@ -424,10 +434,8 @@ func (r *Reserve) SetRadius(store storage.Store, rad uint8) error {
 	return store.Put(&radiusItem{Radius: rad})
 }
 
+// should be called under lock
 func (r *Reserve) incBinID(store storage.Store, bin uint8) (uint64, error) {
-	r.mtx.Lock()
-	defer r.mtx.Unlock()
-
 	item := &binItem{Bin: bin}
 	err := store.Get(item)
 	if err != nil {

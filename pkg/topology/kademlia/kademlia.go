@@ -1263,7 +1263,7 @@ func nClosePeerInSlice(peers []swarm.Address, addr swarm.Address, spf sanctioned
 }
 
 func (k *Kad) IsReachable() bool {
-	return k.reachability == p2p.ReachabilityStatusPublic
+	return k.reachability != p2p.ReachabilityStatusPrivate
 }
 
 // ClosestPeer returns the closest peer to a given address.

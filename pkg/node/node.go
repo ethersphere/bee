@@ -1106,6 +1106,7 @@ func NewBee(
 		Staking:         stakingContract,
 		Steward:         steward,
 		SyncStatus:      syncStatusFn,
+		NodeStatus:      nodeStatus,
 	}
 
 	if o.APIAddr != "" {
