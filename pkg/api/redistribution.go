@@ -65,7 +65,7 @@ func (s *Service) redistributionStatusHandler(w http.ResponseWriter, r *http.Req
 		LastPlayedRound:    status.LastPlayedRound,
 		LastFrozenRound:    status.LastFrozenRound,
 		LastSelectedRound:  status.LastSelectedRound,
-		LastSampleDuration: status.SampleDuration,
+		LastSampleDuration: status.LastSampleDuration(),
 		Round:              status.Round,
 		Block:              status.Block,
 		Reward:             bigint.Wrap(status.Reward),

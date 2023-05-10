@@ -23,7 +23,7 @@ type Contract interface {
 	ReserveSalt(context.Context) ([]byte, error)
 	IsPlaying(context.Context, uint8) (bool, error)
 	IsWinner(context.Context) (bool, error)
-	Claim(context.Context) (common.Hash, error)
+	Claim(context.Context, ChunkInclusionProofs) (common.Hash, error)
 	Commit(context.Context, []byte, *big.Int) (common.Hash, error)
 	Reveal(context.Context, uint8, []byte, []byte) (common.Hash, error)
 }
@@ -92,7 +92,9 @@ func (c *contract) IsWinner(ctx context.Context) (isWinner bool, err error) {
 }
 
 // Claim sends a transaction to blockchain if a win is claimed.
-func (c *contract) Claim(ctx context.Context) (common.Hash, error) {
+func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs) (common.Hash, error) {
+	// TODO_PH4: use this when abi is updated
+	// callData, err := c.incentivesContractABI.Pack("claim", proofs.A, proofs.B, proofs.C)
 	callData, err := c.incentivesContractABI.Pack("claim")
 	if err != nil {
 		return common.Hash{}, err

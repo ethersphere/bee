@@ -21,6 +21,7 @@ func (s *Service) rchash(w http.ResponseWriter, r *http.Request) {
 	paths := struct {
 		Depth   uint8  `map:"depth" validate:"required"`
 		Anchor1 string `map:"anchor1" validate:"required"`
+		Anchor2 string `map:"anchor2" validate:"required"`
 	}{}
 	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
 		response("invalid path params", logger, w)
@@ -33,8 +34,14 @@ func (s *Service) rchash(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "invalid hex params")
 		return
 	}
+	anchor2, err := hex.DecodeString(paths.Anchor2)
+	if err != nil {
+		logger.Error(err, "invalid hex params")
+		jsonhttp.InternalServerError(w, "invalid hex params")
+		return
+	}
 
-	resp, err := s.redistributionAgent.SampleWithProofs(r.Context(), anchor1, paths.Depth)
+	resp, err := s.redistributionAgent.SampleWithProofs(r.Context(), anchor1, anchor2, paths.Depth)
 	if err != nil {
 		logger.Error(err, "failed making sample with proofs")
 		jsonhttp.InternalServerError(w, "failed making sample with proofs")

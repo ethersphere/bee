@@ -10,7 +10,7 @@ require (
 	github.com/coreos/go-semver v0.3.0
 	github.com/ethereum/go-ethereum v1.10.26
 	github.com/ethersphere/go-price-oracle-abi v0.1.0
-	github.com/ethersphere/go-storage-incentives-abi v0.5.0
+	github.com/ethersphere/go-storage-incentives-abi v0.5.0 // TODO_PH4: This repo should be updated with newest version of ABIs for ph4
 	github.com/ethersphere/go-sw3-abi v0.4.0
 	github.com/ethersphere/langos v1.0.0
 	github.com/go-playground/validator/v10 v10.11.1

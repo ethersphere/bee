@@ -312,6 +312,14 @@ func (a *Agent) handleReveal(ctx context.Context, round uint64) error {
 
 	a.state.SetHasRevealed(round)
 
+	anchor2, err := a.contract.ReserveSalt(ctx)
+	if err != nil {
+		a.logger.Info("failed getting anchor after second reveal", "err", err)
+	} else {
+		sample.Anchor2 = anchor2
+		a.state.SetSampleData(round-1, sample)
+	}
+
 	return nil
 }
 
@@ -353,7 +361,17 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 		a.logger.Info("could not set balance", "err", err)
 	}
 
-	txHash, err := a.contract.Claim(ctx)
+	sampleData, exists := a.state.SampleData(round - 1)
+	if !exists {
+		return fmt.Errorf("sample not found")
+	}
+
+	proofs, err := makeInclusionProofs(sampleData.ReserveSampleItems, sampleData.Anchor1, sampleData.Anchor2)
+	if err != nil {
+		return fmt.Errorf("making inclusion proofs: %w:", err)
+	}
+
+	txHash, err := a.contract.Claim(ctx, proofs)
 	if err != nil {
 		a.metrics.ErrClaim.Inc()
 		return fmt.Errorf("claiming win: %w", err)
@@ -392,15 +410,15 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 	}
 	a.state.SetLastSelectedRound(round + 1)
 	a.metrics.NeighborhoodSelected.Inc()
-	a.logger.Info("neighbourhood chosen", "round", round)
+	a.logger.Info("neighborhood chosen", "round", round)
 
 	if !a.state.IsFullySynced() {
 		a.logger.Info("skipping round because node is not fully synced")
 		return false, nil
 	}
 
-	if !a.state.IsHealthy() {
-		a.logger.Info("skipping round because node is unhealhy", "round", round)
+	if !a.health.IsHealthy() {
+		a.logger.Info("skipping round because node is unhealthy", "round", round)
 		return false, nil
 	}
 
@@ -413,7 +431,6 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 		return false, nil
 	}
 
-	now := time.Now()
 	sample, err := a.makeSample(ctx, storageRadius)
 	if err != nil {
 		return false, err
@@ -421,13 +438,13 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 
 	a.logger.Info("produced sample", "hash", sample.ReserveSampleHash, "radius", sample.StorageRadius, "round", round)
 
-	a.state.SetSampleData(round, sample, time.Since(now))
+	a.state.SetSampleData(round, sample)
 
 	return true, nil
 }
 
 func (a *Agent) makeSample(ctx context.Context, storageRadius uint8) (SampleData, error) {
-	salt, err := a.contract.ReserveSalt(ctx)
+	anchor, err := a.contract.ReserveSalt(ctx)
 	if err != nil {
 		return SampleData{}, err
 	}
@@ -438,11 +455,12 @@ func (a *Agent) makeSample(ctx context.Context, storageRadius uint8) (SampleData
 	}
 
 	t := time.Now()
-	rSample, err := a.store.ReserveSample(ctx, salt, storageRadius, uint64(timeLimiter), a.minBatchBalance())
+	rSample, err := a.store.ReserveSample(ctx, anchor, storageRadius, uint64(timeLimiter), a.minBatchBalance())
 	if err != nil {
 		return SampleData{}, err
 	}
-	a.metrics.SampleDuration.Set(time.Since(t).Seconds())
+	dur := time.Since(t)
+	a.metrics.SampleDuration.Set(dur.Seconds())
 
 	sampleHash, err := sampleHash(rSample.Items)
 	if err != nil {
@@ -450,8 +468,11 @@ func (a *Agent) makeSample(ctx context.Context, storageRadius uint8) (SampleData
 	}
 
 	sample := SampleData{
-		ReserveSampleHash: sampleHash,
-		StorageRadius:     storageRadius,
+		Anchor1:            anchor,
+		ReserveSampleItems: rSample.Items,
+		ReserveSampleHash:  sampleHash,
+		StorageRadius:      storageRadius,
+		SampleDuration:     dur,
 	}
 
 	return sample, nil
@@ -540,12 +561,14 @@ func (a *Agent) Status() (*Status, error) {
 type SampleWithProofs struct {
 	Items    []storer.SampleItem
 	Hash     swarm.Address
+	Proofs   redistribution.ChunkInclusionProofs
 	Duration time.Duration
 }
 
 func (a *Agent) SampleWithProofs(
 	ctx context.Context,
 	anchor1 []byte,
+	anchor2 []byte,
 	storageRadius uint8,
 ) (SampleWithProofs, error) {
 	sampleStartTime := time.Now()
@@ -565,9 +588,15 @@ func (a *Agent) SampleWithProofs(
 		return SampleWithProofs{}, fmt.Errorf("sample hash: %w:", err)
 	}
 
+	proofs, err := makeInclusionProofs(rSample.Items, anchor1, anchor2)
+	if err != nil {
+		return SampleWithProofs{}, fmt.Errorf("make proofs: %w:", err)
+	}
+
 	return SampleWithProofs{
 		Items:    rSample.Items,
 		Hash:     hash,
+		Proofs:   proofs,
 		Duration: time.Since(sampleStartTime),
 	}, nil
 }
