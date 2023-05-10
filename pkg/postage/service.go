@@ -13,6 +13,7 @@ import (
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage/inmemstore"
 )
 
 const (
@@ -62,6 +63,7 @@ func NewService(store storage.StateStorer, postageStore Storer, chainID int64) (
 		if err := st.UnmarshalBinary(value); err != nil {
 			return false, err
 		}
+		st.store = inmemstore.New()
 		_ = s.add(st)
 		return false, nil
 	}); err != nil {
