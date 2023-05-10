@@ -688,7 +688,7 @@ func TestReserveSampler(t *testing.T) {
 		var sample1 storer.Sample
 
 		t.Run("reserve sample 1", func(t *testing.T) {
-			sample, err := st.ReserveSample(context.TODO(), []byte("anchor"), 5, timeVar)
+			sample, err := st.ReserveSample(context.TODO(), []byte("anchor"), 5, timeVar, nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -720,7 +720,7 @@ func TestReserveSampler(t *testing.T) {
 		// Now we generate another sample with the older timestamp. This should give us
 		// the exact same sample, ensuring that none of the later chunks were considered.
 		t.Run("reserve sample 2", func(t *testing.T) {
-			sample, err := st.ReserveSample(context.TODO(), []byte("anchor"), 5, timeVar)
+			sample, err := st.ReserveSample(context.TODO(), []byte("anchor"), 5, timeVar, nil)
 			if err != nil {
 				t.Fatal(err)
 			}

@@ -112,12 +112,18 @@ func (r *RedistributionState) save() {
 	}
 }
 
-func (r *RedistributionState) SetCurrentEvent(phase PhaseType, round uint64, block uint64) {
+func (r *RedistributionState) SetCurrentBlock(block uint64) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+	r.status.Block = block
+	r.save()
+}
+
+func (r *RedistributionState) SetCurrentEvent(phase PhaseType, round uint64) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 	r.status.Phase = phase
 	r.status.Round = round
-	r.status.Block = block
 	r.save()
 }
 
@@ -265,6 +271,13 @@ func (r *RedistributionState) currentRoundAndPhase() (uint64, PhaseType) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 	return r.status.Round, r.status.Phase
+}
+
+func (r *RedistributionState) currentBlock() uint64 {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	return r.status.Block
 }
 
 func (r *RedistributionState) purgeStaleRoundData() {

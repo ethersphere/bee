@@ -1042,6 +1042,7 @@ func NewBee(
 				storageincentives.DefaultBlocksPerRound,
 				storageincentives.DefaultBlocksPerPhase,
 				stateStore,
+				batchStore,
 				erc20Service,
 				transactionService,
 			)
