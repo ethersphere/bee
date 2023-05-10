@@ -302,13 +302,24 @@ func indexToBytes(bucket, index uint32) []byte {
 	return buf
 }
 
-func bytesToIndex(buf []byte) (bucket, index uint32) {
-	index64 := binary.BigEndian.Uint64(buf)
+// BucketIndexFromBytes returns bucket index and within-bucket index from supplied bytes.
+func BucketIndexFromBytes(buf []byte) (bucket, index uint32) {
+	index64 := IndexFromBytes(buf)
 	return uint32(index64 >> 32), uint32(index64)
+}
+
+// IndexFromBytes returns uint64 value from supplied bytes
+func IndexFromBytes(buf []byte) uint64 {
+	return binary.BigEndian.Uint64(buf)
 }
 
 func unixTime() []byte {
 	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf, uint64(time.Now().UnixNano()))
 	return buf
+}
+
+// TimestampFromBytes returns uint64 value from supplied bytes
+func TimestampFromBytes(buf []byte) uint64 {
+	return binary.BigEndian.Uint64(buf)
 }

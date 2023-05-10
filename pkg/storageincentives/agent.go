@@ -311,6 +311,14 @@ func (a *Agent) handleReveal(ctx context.Context, round uint64) (bool, error) {
 
 	a.state.SetHasRevealed(round)
 
+	anchor2, err := a.contract.ReserveSalt(ctx)
+	if err != nil {
+		a.logger.Info("failed getting anchor after second reveal", "err", err)
+	} else {
+		sample.Anchor2 = anchor2
+		a.state.SetSampleData(round-1, sample)
+	}
+
 	return true, nil
 }
 
@@ -343,7 +351,17 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) (bool, error) {
 			a.logger.Info("could not set balance", "err", err)
 		}
 
-		txHash, err := a.contract.Claim(ctx)
+		sampleData, exists := a.state.SampleData(round - 1)
+		if !exists {
+			return false, fmt.Errorf("sample not found")
+		}
+
+		proofs, err := makeInclusionProofs(sampleData.ReserveSampleItems, sampleData.Anchor1, sampleData.Anchor2)
+		if err != nil {
+			return false, fmt.Errorf("making inclusion proofs: %w:", err)
+		}
+
+		txHash, err := a.contract.Claim(ctx, proofs)
 		if err != nil {
 			a.metrics.ErrClaim.Inc()
 			a.logger.Info("error claiming win", "err", err)
@@ -419,7 +437,7 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 }
 
 func (a *Agent) makeSample(ctx context.Context, storageRadius uint8) (SampleData, error) {
-	salt, err := a.contract.ReserveSalt(ctx)
+	anchor, err := a.contract.ReserveSalt(ctx)
 	if err != nil {
 		return SampleData{}, err
 	}
@@ -430,7 +448,7 @@ func (a *Agent) makeSample(ctx context.Context, storageRadius uint8) (SampleData
 	}
 
 	t := time.Now()
-	rSample, err := a.store.ReserveSample(ctx, salt, storageRadius, uint64(timeLimiter), a.minBatchBalance())
+	rSample, err := a.store.ReserveSample(ctx, anchor, storageRadius, uint64(timeLimiter), a.minBatchBalance())
 	if err != nil {
 		return SampleData{}, err
 	}
@@ -442,8 +460,10 @@ func (a *Agent) makeSample(ctx context.Context, storageRadius uint8) (SampleData
 	}
 
 	sample := SampleData{
-		ReserveSampleHash: sampleHash,
-		StorageRadius:     storageRadius,
+		Anchor1:            anchor,
+		ReserveSampleItems: rSample.Items,
+		ReserveSampleHash:  sampleHash,
+		StorageRadius:      storageRadius,
 	}
 
 	return sample, nil
