@@ -8,10 +8,39 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/storageincentives"
+	. "github.com/ethersphere/bee/pkg/storageincentives"
 	storer "github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 )
+
+// Test asserts valid case for MakeInclusionProofs.
+func TestMakeInclusionProofs(t *testing.T) {
+	t.Parallel()
+
+	anchor := testutil.RandBytes(t, 1)
+	sample := storer.RandSample(t, anchor)
+
+	_, err := MakeInclusionProofs(sample.Items, anchor, anchor)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Test asserts cases when MakeInclusionProofs should return error.
+func TestMakeInclusionProofsExpectedError(t *testing.T) {
+	t.Parallel()
+
+	t.Run("invalid sample length", func(t *testing.T) {
+		anchor := testutil.RandBytes(t, 8)
+		sample := storer.RandSample(t, anchor)
+
+		_, err := MakeInclusionProofs(sample.Items[:1], anchor, anchor)
+		if err == nil {
+			t.Fatal("expecting error")
+		}
+	})
+}
 
 // Tests asserts that creating sample chunk is valid for all lengths [1-MaxSampleSize]
 func TestSampleChunk(t *testing.T) {
@@ -22,7 +51,7 @@ func TestSampleChunk(t *testing.T) {
 	for i := 1; i < len(sample.Items); i++ {
 		items := sample.Items[:i]
 
-		chunk, err := storageincentives.SampleChunk(items)
+		chunk, err := SampleChunk(items)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -40,6 +69,10 @@ func TestSampleChunk(t *testing.T) {
 			}
 			pos += swarm.HashSize
 		}
+
+		if !chunk.Address().IsValidNonEmpty() {
+			t.Error("address shouldn't be empty")
+		}
 	}
 }
 
@@ -55,7 +88,7 @@ func TestSampleChunkExpectedError(t *testing.T) {
 		items[i] = sampleItem
 	}
 
-	_, err := storageincentives.SampleChunk(items)
+	_, err := SampleChunk(items)
 	if err == nil {
 		t.Fatal("expecting error")
 	}

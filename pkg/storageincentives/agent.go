@@ -318,6 +318,14 @@ func (a *Agent) handleReveal(ctx context.Context, round uint64) (bool, error) {
 
 	a.state.SetHasRevealed(round)
 
+	anchor2, err := a.contract.ReserveSalt(ctx)
+	if err != nil {
+		a.logger.Info("failed getting anchor after second reveal", "err", err)
+	} else {
+		sample.Anchor2 = anchor2
+		a.state.SetSampleData(round-1, sample)
+	}
+
 	return true, nil
 }
 
@@ -359,10 +367,21 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) (bool, error) {
 		a.logger.Info("could not set balance", "err", err)
 	}
 
-	txHash, err := a.contract.Claim(ctx)
+	sampleData, exists := a.state.SampleData(round - 1)
+	if !exists {
+		return false, fmt.Errorf("sample not found")
+	}
+
+	proofs, err := makeInclusionProofs(sampleData.ReserveSampleItems, sampleData.Anchor1, sampleData.Anchor2)
+	if err != nil {
+		return false, fmt.Errorf("making inclusion proofs: %w:", err)
+	}
+
+	txHash, err := a.contract.Claim(ctx, proofs)
 	if err != nil {
 		a.metrics.ErrClaim.Inc()
-		return false, fmt.Errorf("claiming win: %w", err)
+		a.logger.Info("error claiming win", "err", err)
+		return false, fmt.Errorf("error claiming win: %w", err)
 	}
 
 	a.logger.Info("claimed win")
@@ -433,7 +452,7 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 }
 
 func (a *Agent) makeSample(ctx context.Context, storageRadius uint8) (SampleData, error) {
-	salt, err := a.contract.ReserveSalt(ctx)
+	anchor, err := a.contract.ReserveSalt(ctx)
 	if err != nil {
 		return SampleData{}, err
 	}
@@ -444,7 +463,7 @@ func (a *Agent) makeSample(ctx context.Context, storageRadius uint8) (SampleData
 	}
 
 	t := time.Now()
-	rSample, err := a.store.ReserveSample(ctx, salt, storageRadius, uint64(timeLimiter), a.minBatchBalance())
+	rSample, err := a.store.ReserveSample(ctx, anchor, storageRadius, uint64(timeLimiter), a.minBatchBalance())
 	if err != nil {
 		return SampleData{}, err
 	}
@@ -456,8 +475,10 @@ func (a *Agent) makeSample(ctx context.Context, storageRadius uint8) (SampleData
 	}
 
 	sample := SampleData{
-		ReserveSampleHash: sampleHash,
-		StorageRadius:     storageRadius,
+		Anchor1:            anchor,
+		ReserveSampleItems: rSample.Items,
+		ReserveSampleHash:  sampleHash,
+		StorageRadius:      storageRadius,
 	}
 
 	return sample, nil
@@ -558,4 +579,29 @@ func (a *Agent) HasEnoughFundsToPlay(ctx context.Context) (*big.Int, bool, error
 	minBalance := new(big.Int).Mul(avgTxFee, big.NewInt(minTxCountToCover))
 
 	return minBalance, balance.Cmp(minBalance) >= 1, nil
+}
+
+func (a *Agent) SampleWithProofs(
+	ctx context.Context,
+	anchor1,
+	anchor2 []byte,
+	storageRadius uint8,
+) (*storer.Sample, *redistribution.ChunkInclusionProofs, error) {
+
+	timeLimiter, err := a.getPreviousRoundTime(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	rSample, err := a.store.ReserveSample(ctx, anchor1, storageRadius, uint64(timeLimiter), a.minBatchBalance())
+	if err != nil {
+		return nil, nil, err
+	}
+
+	proofs, err := makeInclusionProofs(rSample.Items, anchor1, anchor2)
+	if err != nil {
+		return nil, nil, fmt.Errorf("making inclusion proofs: %w:", err)
+	}
+
+	return &rSample, &proofs, nil
 }
