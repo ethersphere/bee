@@ -324,17 +324,14 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 		err = s.storer.ReservePut(ctx, op.Chunk)
 		if err != nil {
 			loggerV1.Error(err, "pusher: failed to store chunk")
-			return err
 		}
 	case err == nil:
 		err = s.checkReceipt(receipt, loggerV1)
 		if err != nil {
 			loggerV1.Error(err, "pusher: failed checking receipt")
-			return err
 		}
 	default:
 		loggerV1.Error(err, "pusher: failed PushChunkToClosest")
-		return err
 	}
 	return err
 }
