@@ -1035,10 +1035,8 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		return nil, fmt.Errorf("status service: %w", err)
 	}
 
-	if o.FullNodeMode && !o.BootnodeMode {
-		s := salud.New(nodeStatus, kad, p2ps, logger, o.WarmupTime)
-		b.saludCloser = s
-	}
+	s := salud.New(nodeStatus, kad, p2ps, logger, o.WarmupTime)
+	b.saludCloser = s
 
 	extraOpts := api.ExtraOptions{
 		Pingpong:         pingPong,
