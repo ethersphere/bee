@@ -23,7 +23,7 @@ import (
 const loggerName = "salud"
 
 const (
-	DefaultWakeup         = time.Minute * 5
+	DefaultWakeup         = time.Minute
 	DefaultRequestTimeout = time.Second * 10
 )
 
@@ -145,14 +145,14 @@ func (s *service) salud() {
 
 	radius := radius(peers)
 	avgDur := totaldur / float64(len(peers))
-	pDur := percentileDur(peers, .95)
-	pConns := percentileConns(peers, .95)
+	pDur := percentileDur(peers, .80)
+	pConns := percentileConns(peers, .80)
 
 	s.metrics.AvgDur.Set(avgDur)
 	s.metrics.PDur.Set(pDur)
 	s.metrics.Radius.Set(float64(radius))
 
-	s.logger.Debug("computed", "average", avgDur, "p95Dur", pDur, "p95Conns", pConns, "radius", radius)
+	s.logger.Debug("computed", "average", avgDur, "p80Dur", pDur, "p80Conns", pConns, "radius", radius)
 
 	for _, peer := range peers {
 		if radius > 0 && peer.status.StorageRadius < uint32(radius-1) {
