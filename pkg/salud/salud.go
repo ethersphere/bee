@@ -139,6 +139,10 @@ func (s *service) salud() {
 
 	wg.Wait()
 
+	if len(peers) == 0 {
+		return
+	}
+
 	radius := radius(peers)
 	avgDur := totaldur / float64(len(peers))
 	pDur := percentileDur(peers, .95)
