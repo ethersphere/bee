@@ -306,7 +306,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			retry()
 		case <-retryC:
 
-			// Origin peers should not store the chunk initially so that the chunks is always forwarded into the network.
+			// Origin peers should not store the chunk initially so that the chunk is always forwarded into the network.
 			// If no peer can be found from an origin peer, the origin peer may store the chunk.
 			// Non-origin peers store the chunk if the chunk is within depth.
 			// For non-origin peers, if the chunk is not within depth, they may store the chunk if they are the closest peer to the chunk.
