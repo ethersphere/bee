@@ -381,6 +381,7 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 		return false, err
 	}
 	if !isPlaying {
+		a.logger.Info("not playing in this round")
 		return false, nil
 	}
 
