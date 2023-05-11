@@ -10,11 +10,12 @@ import (
 )
 
 type metrics struct {
-	AvgDur  prometheus.Gauge
-	PDur    prometheus.Gauge
-	PConns  prometheus.Gauge
-	Radius  prometheus.Gauge
-	Healthy *prometheus.CounterVec
+	AvgDur    prometheus.Gauge
+	PDur      prometheus.Gauge
+	PConns    prometheus.Gauge
+	Radius    prometheus.Gauge
+	Healthy   prometheus.Gauge
+	Unhealthy prometheus.Gauge
 }
 
 func newMetrics() metrics {
@@ -45,15 +46,18 @@ func newMetrics() metrics {
 			Name:      "radius",
 			Help:      "Most common radius across the connected peers.",
 		}),
-		Healthy: prometheus.NewCounterVec(
-			prometheus.CounterOpts{
-				Namespace: m.Namespace,
-				Subsystem: subsystem,
-				Name:      "healthy",
-				Help:      "Count of current healthy and unhealthy peers.",
-			},
-			[]string{"healthy"},
-		),
+		Healthy: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "healthy",
+			Help:      "Count of healthy peers.",
+		}),
+		Unhealthy: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "unhealthy",
+			Help:      "Count of unhealthy peers.",
+		}),
 	}
 }
 

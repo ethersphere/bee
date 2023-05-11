@@ -35,6 +35,7 @@ func TestSalud(t *testing.T) {
 		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8}, 1, true},
 		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8}, 1, true},
 		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8}, 1, true},
+		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8}, 1, true},
 
 		// healthy since radius >= most common radius -  1
 		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 7}, 1, true},

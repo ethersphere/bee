@@ -9,7 +9,6 @@ package salud
 import (
 	"context"
 	"sort"
-	"strconv"
 	"sync"
 	"time"
 
@@ -144,19 +143,19 @@ func (s *service) salud() {
 
 	radius := radius(peers)
 	avgDur := totaldur / float64(len(peers))
-	pDur := percentileDur(peers, .80)
-	pConns := percentileConns(peers, .80)
+	pDur := percentileDur(peers, .90)
+	pConns := percentileConns(peers, .90)
 
 	s.metrics.AvgDur.Set(avgDur)
 	s.metrics.PDur.Set(pDur)
 	s.metrics.PConns.Set(float64(pConns))
 	s.metrics.Radius.Set(float64(radius))
 
-	s.logger.Debug("computed", "average", avgDur, "p80Dur", pDur, "p80Conns", pConns, "radius", radius)
+	s.logger.Debug("computed", "average", avgDur, "p90Dur", pDur, "p90Conns", pConns, "radius", radius)
 
 	for _, peer := range peers {
 
-		var healthy bool
+		var health bool
 
 		if radius > 0 && peer.status.StorageRadius < uint32(radius-1) {
 			s.logger.Debug("radius health failure", "radius", peer.status.StorageRadius, "peer_address", peer.addr)
@@ -165,11 +164,15 @@ func (s *service) salud() {
 		} else if peer.status.ConnectedPeers < pConns {
 			s.logger.Debug("connections health failure", "connections", peer.status.ConnectedPeers, "peer_address", peer.addr)
 		} else {
-			healthy = true
+			health = true
 		}
 
-		s.topology.UpdatePeerHealth(peer.addr, healthy)
-		s.metrics.Healthy.WithLabelValues(strconv.FormatBool(healthy)).Inc()
+		s.topology.UpdatePeerHealth(peer.addr, health)
+		if health {
+			s.metrics.Healthy.Inc()
+		} else {
+			s.metrics.Unhealthy.Inc()
+		}
 	}
 }
 
