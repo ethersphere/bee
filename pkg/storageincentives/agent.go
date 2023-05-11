@@ -311,6 +311,8 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) (bool, error) {
 		return false, nil
 	}
 
+	a.state.SetLastPlayedRound(round)
+
 	a.metrics.ClaimPhase.Inc()
 	// event claimPhase was processed
 
@@ -394,7 +396,6 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 		return false, nil
 	}
 
-	a.state.SetLastPlayedRound(round)
 	a.logger.Info("neighbourhood chosen", "round", round)
 	a.metrics.NeighborhoodSelected.Inc()
 
