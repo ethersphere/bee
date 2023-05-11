@@ -967,6 +967,14 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 	}
 	stakingContract := staking.New(swarmAddress, overlayEthAddress, stakingContractAddress, stakingContractABI, bzzTokenAddress, transactionService, common.BytesToHash(nonce))
 
+	nodeStatus := status.NewService(logger, p2ps, kad, beeNodeMode.String(), storer, pullSyncProtocol, batchStore, batchStore)
+	if err = p2ps.AddProtocol(nodeStatus.Protocol()); err != nil {
+		return nil, fmt.Errorf("status service: %w", err)
+	}
+
+	saludService := salud.New(nodeStatus, kad, batchStore, logger, o.WarmupTime)
+	b.saludCloser = saludService
+
 	var (
 		pullerService *puller.Puller
 		agent         *storageincentives.Agent
@@ -994,7 +1002,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 			}
 
 			redistributionContract := redistribution.New(swarmAddress, logger, transactionService, redistributionContractAddress, redistributionContractABI)
-			agent, err = storageincentives.New(swarmAddress, overlayEthAddress, chainBackend, logger, depthMonitor, redistributionContract, postageStampContractService, stakingContract, batchStore, storer, o.BlockTime, storageincentives.DefaultBlocksPerRound, storageincentives.DefaultBlocksPerPhase, stateStore, erc20Service, transactionService)
+			agent, err = storageincentives.New(swarmAddress, overlayEthAddress, chainBackend, depthMonitor, redistributionContract, postageStampContractService, stakingContract, batchStore, storer, o.BlockTime, storageincentives.DefaultBlocksPerRound, storageincentives.DefaultBlocksPerPhase, stateStore, erc20Service, transactionService, saludService, logger)
 			if err != nil {
 				return nil, fmt.Errorf("storage incentives agent: %w", err)
 			}
@@ -1029,14 +1037,6 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 
 	feedFactory := factory.New(ns)
 	steward := steward.New(storer, traversalService, retrieve, pushSyncProtocol)
-
-	nodeStatus := status.NewService(logger, p2ps, kad, beeNodeMode.String(), storer, pullSyncProtocol, batchStore, batchStore)
-	if err = p2ps.AddProtocol(nodeStatus.Protocol()); err != nil {
-		return nil, fmt.Errorf("status service: %w", err)
-	}
-
-	saludService := salud.New(nodeStatus, kad, batchStore, logger, o.WarmupTime)
-	b.saludCloser = saludService
 
 	extraOpts := api.ExtraOptions{
 		Pingpong:         pingPong,
