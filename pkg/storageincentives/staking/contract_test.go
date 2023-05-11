@@ -22,7 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/util/abiutil"
 )
 
-var stakingContractABI = abiutil.MustParseABI(chaincfg.Testnet.StakingABI)
+var stakingContractABI = abiutil.MustParseABI(chaincfg.Mainnet.StakingABI)
 
 func TestDepositStake(t *testing.T) {
 	t.Parallel()

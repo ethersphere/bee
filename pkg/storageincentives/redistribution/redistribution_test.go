@@ -25,7 +25,7 @@ import (
 	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
-var redistributionContractABI = abiutil.MustParseABI(chaincfg.Testnet.RedistributionABI)
+var redistributionContractABI = abiutil.MustParseABI(chaincfg.Mainnet.RedistributionABI)
 
 func TestRedistribution(t *testing.T) {
 	t.Parallel()

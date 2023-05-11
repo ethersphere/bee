@@ -32,7 +32,7 @@ var (
 
 var (
 	postageStampContractAddress = common.HexToAddress("eeee")
-	postageStampContractABI     = abiutil.MustParseABI(chaincfg.Testnet.PostageStampABI)
+	postageStampContractABI     = abiutil.MustParseABI(chaincfg.Mainnet.PostageStampABI)
 )
 
 const (
