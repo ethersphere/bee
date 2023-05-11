@@ -149,6 +149,7 @@ func (s *service) salud() {
 
 	s.metrics.AvgDur.Set(avgDur)
 	s.metrics.PDur.Set(pDur)
+	s.metrics.PConns.Set(float64(pConns))
 	s.metrics.Radius.Set(float64(radius))
 
 	s.logger.Debug("computed", "average", avgDur, "p80Dur", pDur, "p80Conns", pConns, "radius", radius)

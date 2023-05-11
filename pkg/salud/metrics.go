@@ -14,11 +14,11 @@ type metrics struct {
 	PDur    prometheus.Gauge
 	PConns  prometheus.Gauge
 	Radius  prometheus.Gauge
-	Healthy *prometheus.GaugeVec
+	Healthy *prometheus.CounterVec
 }
 
 func newMetrics() metrics {
-	subsystem := "pushsync"
+	subsystem := "salud"
 
 	return metrics{
 		AvgDur: prometheus.NewGauge(prometheus.GaugeOpts{
@@ -45,8 +45,8 @@ func newMetrics() metrics {
 			Name:      "radius",
 			Help:      "Most common radius across the connected peers.",
 		}),
-		Healthy: prometheus.NewGaugeVec(
-			prometheus.GaugeOpts{
+		Healthy: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
 				Name:      "healthy",
