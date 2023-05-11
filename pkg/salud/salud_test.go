@@ -87,8 +87,8 @@ func TestSelfUnhealthSalud(t *testing.T) {
 	t.Parallel()
 	peers := []peer{
 		// fully healhy
-		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, BeeMode: "full"}, 1, true},
-		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, BeeMode: "full"}, 1, true},
+		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, BeeMode: "full"}, 0, true},
+		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, BeeMode: "full"}, 0, true},
 	}
 
 	statusM := &statusMock{make(map[string]peer)}
@@ -122,7 +122,7 @@ type statusMock struct {
 
 func (p *statusMock) PeerSnapshot(ctx context.Context, peer swarm.Address) (*status.Snapshot, error) {
 	if peer, ok := p.peers[peer.ByteString()]; ok {
-		time.Sleep(time.Duration(peer.waitDur) * time.Second)
+		time.Sleep(time.Duration(peer.waitDur) * time.Millisecond * 100)
 		return peer.status, nil
 	}
 	return nil, errors.New("peer not found")
