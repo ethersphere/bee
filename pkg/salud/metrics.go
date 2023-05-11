@@ -10,12 +10,13 @@ import (
 )
 
 type metrics struct {
-	AvgDur    prometheus.Gauge
-	PDur      prometheus.Gauge
-	PConns    prometheus.Gauge
-	Radius    prometheus.Gauge
-	Healthy   prometheus.Gauge
-	Unhealthy prometheus.Gauge
+	AvgDur             prometheus.Gauge
+	PDur               prometheus.Gauge
+	PConns             prometheus.Gauge
+	NetworkRadius      prometheus.Gauge
+	NeighborhoodRadius prometheus.Gauge
+	Healthy            prometheus.Gauge
+	Unhealthy          prometheus.Gauge
 }
 
 func newMetrics() metrics {
@@ -40,10 +41,16 @@ func newMetrics() metrics {
 			Name:      "pconns",
 			Help:      "Percentile of connections counts.",
 		}),
-		Radius: prometheus.NewGauge(prometheus.GaugeOpts{
+		NetworkRadius: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "radius",
+			Name:      "network_radius",
+			Help:      "Most common radius across the connected peers.",
+		}),
+		NeighborhoodRadius: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "neighborhood_radius",
 			Help:      "Most common radius across the connected peers.",
 		}),
 		Healthy: prometheus.NewGauge(prometheus.GaugeOpts{

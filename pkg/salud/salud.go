@@ -13,9 +13,11 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/status"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
+	"go.uber.org/atomic"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -36,24 +38,28 @@ type peerStatus interface {
 }
 
 type service struct {
-	wg       sync.WaitGroup
-	quit     chan struct{}
-	logger   log.Logger
-	topology topologyDriver
-	status   peerStatus
-	metrics  metrics
+	wg            sync.WaitGroup
+	quit          chan struct{}
+	logger        log.Logger
+	topology      topologyDriver
+	status        peerStatus
+	metrics       metrics
+	isSelfHealthy *atomic.Bool
+	rs            postage.Radius
 }
 
-func New(status peerStatus, topology topologyDriver, logger log.Logger, warmup time.Duration) *service {
+func New(status peerStatus, topology topologyDriver, rs postage.Radius, logger log.Logger, warmup time.Duration) *service {
 
 	metrics := newMetrics()
 
 	s := &service{
-		quit:     make(chan struct{}),
-		logger:   logger.WithName(loggerName).Register(),
-		status:   status,
-		topology: topology,
-		metrics:  metrics,
+		quit:          make(chan struct{}),
+		logger:        logger.WithName(loggerName).Register(),
+		status:        status,
+		topology:      topology,
+		metrics:       metrics,
+		isSelfHealthy: atomic.NewBool(true),
+		rs:            rs,
 	}
 
 	s.wg.Add(1)
@@ -102,11 +108,11 @@ type peer struct {
 func (s *service) salud() {
 
 	var (
-		mtx sync.Mutex
-		wg  sync.WaitGroup
-
-		totaldur float64
-		peers    []peer
+		mtx       sync.Mutex
+		wg        sync.WaitGroup
+		totaldur  float64
+		peers     []peer
+		neighbors int
 	)
 
 	_ = s.topology.EachConnectedPeer(func(addr swarm.Address, _ uint8) (stop bool, jumpToNext bool, err error) {
@@ -125,9 +131,16 @@ func (s *service) salud() {
 				return
 			}
 
+			if snapshot.BeeMode != "full" {
+				return
+			}
+
 			dur := time.Since(start).Seconds()
 
 			mtx.Lock()
+			if s.rs.IsWithinStorageRadius(addr) {
+				neighbors++
+			}
 			totaldur += dur
 			peers = append(peers, peer{status: snapshot, dur: dur, addr: addr})
 			mtx.Unlock()
@@ -141,23 +154,25 @@ func (s *service) salud() {
 		return
 	}
 
-	radius := radius(peers)
+	percentile := 0.8
+	networkRadius, nHoodRadius := s.radius(peers)
 	avgDur := totaldur / float64(len(peers))
-	pDur := percentileDur(peers, .90)
-	pConns := percentileConns(peers, .90)
+	pDur := percentileDur(peers, percentile)
+	pConns := percentileConns(peers, percentile)
 
 	s.metrics.AvgDur.Set(avgDur)
 	s.metrics.PDur.Set(pDur)
 	s.metrics.PConns.Set(float64(pConns))
-	s.metrics.Radius.Set(float64(radius))
+	s.metrics.NetworkRadius.Set(float64(networkRadius))
+	s.metrics.NeighborhoodRadius.Set(float64(nHoodRadius))
 
-	s.logger.Debug("computed", "average", avgDur, "p90Dur", pDur, "p90Conns", pConns, "radius", radius)
+	s.logger.Debug("computed", "average", avgDur, "percentile", percentile, "pDur", pDur, "pConns", pConns, "network_radius", networkRadius, "neighborhood_radius", nHoodRadius)
 
 	for _, peer := range peers {
 
 		var healthy bool
 
-		if radius > 0 && peer.status.StorageRadius < uint32(radius-1) {
+		if networkRadius > 0 && peer.status.StorageRadius < uint32(networkRadius-1) {
 			s.logger.Debug("radius health failure", "radius", peer.status.StorageRadius, "peer_address", peer.addr)
 		} else if peer.dur > pDur {
 			s.logger.Debug("dur health failure", "dur", peer.dur, "peer_address", peer.addr)
@@ -174,6 +189,14 @@ func (s *service) salud() {
 			s.metrics.Unhealthy.Inc()
 		}
 	}
+
+	if neighbors > 0 {
+		s.isSelfHealthy.Store(s.rs.StorageRadius() == nHoodRadius)
+	}
+}
+
+func (s *service) IsHealthy() bool {
+	return s.isSelfHealthy.Load()
 }
 
 // percentileDur finds the p percentile of response duration.
@@ -203,24 +226,37 @@ func percentileConns(peers []peer, p float64) uint64 {
 }
 
 // radius finds the most common radius.
-func radius(peers []peer) uint8 {
+func (s *service) radius(peers []peer) (uint8, uint8) {
 
-	var radiuses [swarm.MaxBins]int
+	var networkRadius [swarm.MaxBins]int
+	var nHoodRadius [swarm.MaxBins]int
 
 	for _, peer := range peers {
+
 		if peer.status.StorageRadius < uint32(swarm.MaxBins) {
-			radiuses[peer.status.StorageRadius]++
+			if s.rs.IsWithinStorageRadius(peer.addr) {
+				nHoodRadius[peer.status.StorageRadius]++
+			}
+			networkRadius[peer.status.StorageRadius]++
 		}
 	}
+
+	networkR := highestCollisions(networkRadius[:])
+	hoodR := highestCollisions(nHoodRadius[:])
+
+	return uint8(networkR), uint8(hoodR)
+}
+
+func highestCollisions(n []int) int {
 
 	maxValue := 0
-	radius := 0
-	for i, c := range radiuses {
+	index := 0
+	for i, c := range n {
 		if c > maxValue {
 			maxValue = c
-			radius = i
+			index = i
 		}
 	}
 
-	return uint8(radius)
+	return index
 }

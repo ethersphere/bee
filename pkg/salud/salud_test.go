@@ -11,6 +11,8 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/pkg/postage"
+	bsMock "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	"github.com/ethersphere/bee/pkg/salud"
 	"github.com/ethersphere/bee/pkg/spinlock"
 	"github.com/ethersphere/bee/pkg/status"
@@ -29,25 +31,24 @@ func TestSalud(t *testing.T) {
 	t.Parallel()
 	peers := []peer{
 		// fully healhy
-		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8}, 1, true},
-		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8}, 1, true},
-		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8}, 1, true},
-		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8}, 1, true},
-		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8}, 1, true},
-		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8}, 1, true},
-		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8}, 1, true},
+		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, BeeMode: "full"}, 1, true},
+		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, BeeMode: "full"}, 1, true},
+		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, BeeMode: "full"}, 1, true},
+		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, BeeMode: "full"}, 1, true},
+		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, BeeMode: "full"}, 1, true},
+		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, BeeMode: "full"}, 1, true},
 
 		// healthy since radius >= most common radius -  1
-		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 7}, 1, true},
+		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 7, BeeMode: "full"}, 1, true},
 
 		// not healthy radius too low
-		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 6}, 1, false},
+		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 6, BeeMode: "full"}, 1, false},
 
 		// dur too long
-		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8}, 2, false},
+		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, BeeMode: "full"}, 2, false},
 
 		// connections not enough
-		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 90, StorageRadius: 8}, 1, false},
+		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 90, StorageRadius: 8, BeeMode: "full"}, 1, false},
 	}
 
 	statusM := &statusMock{make(map[string]peer)}
@@ -60,7 +61,9 @@ func TestSalud(t *testing.T) {
 
 	topM := topMock.NewTopologyDriver(topMock.WithPeers(addrs...))
 
-	_ = salud.New(statusM, topM, log.Noop, 0)
+	bs := bsMock.New(bsMock.WithIsWithinStorageRadius(true), bsMock.WithReserveState(&postage.ReserveState{StorageRadius: 8}))
+
+	service := salud.New(statusM, topM, bs, log.Noop, 0)
 
 	err := spinlock.Wait(time.Minute, func() bool {
 		return len(topM.PeersHealth()) == len(peers)
@@ -73,6 +76,43 @@ func TestSalud(t *testing.T) {
 		if want, got := p.health, topM.PeersHealth()[p.addr.ByteString()]; want != got {
 			t.Fatalf("got health %v, want %v for peer %s, %v", got, want, p.addr, p.status)
 		}
+	}
+
+	if !service.IsHealthy() {
+		t.Fatalf("self should be healthy")
+	}
+}
+
+func TestSelfUnhealthSalud(t *testing.T) {
+	t.Parallel()
+	peers := []peer{
+		// fully healhy
+		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, BeeMode: "full"}, 1, true},
+		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, BeeMode: "full"}, 1, true},
+	}
+
+	statusM := &statusMock{make(map[string]peer)}
+	addrs := make([]swarm.Address, 0, len(peers))
+	for _, p := range peers {
+		addrs = append(addrs, p.addr)
+		statusM.peers[p.addr.ByteString()] = p
+	}
+
+	topM := topMock.NewTopologyDriver(topMock.WithPeers(addrs...))
+
+	bs := bsMock.New(bsMock.WithIsWithinStorageRadius(true), bsMock.WithReserveState(&postage.ReserveState{StorageRadius: 7}))
+
+	service := salud.New(statusM, topM, bs, log.Noop, 0)
+
+	err := spinlock.Wait(time.Minute, func() bool {
+		return len(topM.PeersHealth()) == len(peers)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if service.IsHealthy() {
+		t.Fatalf("self should NOT be healthy")
 	}
 }
 
