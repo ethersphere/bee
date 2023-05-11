@@ -155,7 +155,7 @@ func (s *service) salud() {
 
 	for _, peer := range peers {
 
-		var health bool
+		var healthy bool
 
 		if radius > 0 && peer.status.StorageRadius < uint32(radius-1) {
 			s.logger.Debug("radius health failure", "radius", peer.status.StorageRadius, "peer_address", peer.addr)
@@ -164,11 +164,11 @@ func (s *service) salud() {
 		} else if peer.status.ConnectedPeers < pConns {
 			s.logger.Debug("connections health failure", "connections", peer.status.ConnectedPeers, "peer_address", peer.addr)
 		} else {
-			health = true
+			healthy = true
 		}
 
-		s.topology.UpdatePeerHealth(peer.addr, health)
-		if health {
+		s.topology.UpdatePeerHealth(peer.addr, healthy)
+		if healthy {
 			s.metrics.Healthy.Inc()
 		} else {
 			s.metrics.Unhealthy.Inc()
