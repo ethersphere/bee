@@ -11,6 +11,7 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
+	"golang.org/x/exp/maps"
 )
 
 type mock struct {
@@ -23,7 +24,10 @@ type mock struct {
 	isWithinFunc    func(c swarm.Address) bool
 	marshalJSONFunc func() ([]byte, error)
 	mtx             sync.Mutex
+	health          map[string]bool
 }
+
+var _ topology.Driver = (*mock)(nil)
 
 func WithPeers(peers ...swarm.Address) Option {
 	return optionFunc(func(d *mock) {
@@ -67,11 +71,14 @@ func WithIsWithinFunc(f func(swarm.Address) bool) Option {
 	})
 }
 
-func NewTopologyDriver(opts ...Option) topology.Driver {
+func NewTopologyDriver(opts ...Option) *mock {
 	d := new(mock)
 	for _, o := range opts {
 		o.apply(d)
 	}
+
+	d.health = map[string]bool{}
+
 	return d
 }
 
@@ -100,6 +107,18 @@ func (d *mock) Announce(_ context.Context, _ swarm.Address, _ bool) error {
 
 func (d *mock) AnnounceTo(_ context.Context, _, _ swarm.Address, _ bool) error {
 	return nil
+}
+
+func (d *mock) UpdatePeerHealth(peer swarm.Address, health bool) {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	d.health[peer.ByteString()] = health
+}
+
+func (d *mock) PeersHealth() map[string]bool {
+	d.mtx.Lock()
+	defer d.mtx.Unlock()
+	return maps.Clone(d.health)
 }
 
 func (d *mock) Peers() []swarm.Address {

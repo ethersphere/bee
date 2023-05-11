@@ -1367,7 +1367,7 @@ func (k *Kad) UpdateReachability(status p2p.ReachabilityStatus) {
 // UpdateReachability updates node reachability status.
 // The status will be updated only once. Updates to status
 // p2p.ReachabilityStatusUnknown are ignored.
-func (k *Kad) PeerHealth(peer swarm.Address, health bool) {
+func (k *Kad) UpdatePeerHealth(peer swarm.Address, health bool) {
 	k.collector.Record(peer, im.PeerHealth(health))
 	// k.logger.Debug("health of peer updated", "peer_address", peer, "health", health)
 }

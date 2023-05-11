@@ -10,10 +10,11 @@ import (
 )
 
 type metrics struct {
-	AvgDur      prometheus.Gauge
-	PDur        prometheus.Gauge
-	Radius      prometheus.Gauge
-	Blocklisted prometheus.Counter
+	AvgDur  prometheus.Gauge
+	PDur    prometheus.Gauge
+	PConns  prometheus.Gauge
+	Radius  prometheus.Gauge
+	Healthy *prometheus.GaugeVec
 }
 
 func newMetrics() metrics {
@@ -30,7 +31,13 @@ func newMetrics() metrics {
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "pdur",
-			Help:      "P99 duration for snapshot response.",
+			Help:      "Percentile of durations for snapshot response.",
+		}),
+		PConns: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "pconns",
+			Help:      "Percentile of connections counts.",
 		}),
 		Radius: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: m.Namespace,
@@ -38,12 +45,15 @@ func newMetrics() metrics {
 			Name:      "radius",
 			Help:      "Most common radius across the connected peers.",
 		}),
-		Blocklisted: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "blocklisted",
-			Help:      "Total number of blocklisted peers.",
-		}),
+		Healthy: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "healthy",
+				Help:      "Count of current healthy and unhealthy peers.",
+			},
+			[]string{"healthy"},
+		),
 	}
 }
 

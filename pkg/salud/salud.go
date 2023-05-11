@@ -9,11 +9,11 @@ package salud
 import (
 	"context"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/status"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
@@ -28,21 +28,24 @@ const (
 )
 
 type topologyDriver interface {
-	PeerHealth(peer swarm.Address, health bool)
+	UpdatePeerHealth(peer swarm.Address, health bool)
 	topology.PeerIterator
 }
 
-type service struct {
-	wg          sync.WaitGroup
-	quit        chan struct{}
-	logger      log.Logger
-	topology    topologyDriver
-	status      *status.Service
-	metrics     metrics
-	blocklister func() p2p.Blocklister
+type peerStatus interface {
+	PeerSnapshot(ctx context.Context, peer swarm.Address) (*status.Snapshot, error)
 }
 
-func New(status *status.Service, topology topologyDriver, blocklister p2p.Blocklister, logger log.Logger, warmup time.Duration) *service {
+type service struct {
+	wg       sync.WaitGroup
+	quit     chan struct{}
+	logger   log.Logger
+	topology topologyDriver
+	status   peerStatus
+	metrics  metrics
+}
+
+func New(status peerStatus, topology topologyDriver, logger log.Logger, warmup time.Duration) *service {
 
 	metrics := newMetrics()
 
@@ -52,10 +55,6 @@ func New(status *status.Service, topology topologyDriver, blocklister p2p.Blockl
 		status:   status,
 		topology: topology,
 		metrics:  metrics,
-		blocklister: func() p2p.Blocklister {
-			metrics.Blocklisted.Inc()
-			return blocklister
-		},
 	}
 
 	s.wg.Add(1)
@@ -123,7 +122,7 @@ func (s *service) salud() {
 
 			snapshot, err := s.status.PeerSnapshot(ctx, addr)
 			if err != nil {
-				s.topology.PeerHealth(addr, false)
+				s.topology.UpdatePeerHealth(addr, false)
 				return
 			}
 
@@ -155,18 +154,21 @@ func (s *service) salud() {
 	s.logger.Debug("computed", "average", avgDur, "p80Dur", pDur, "p80Conns", pConns, "radius", radius)
 
 	for _, peer := range peers {
+
+		var healthy bool
+
 		if radius > 0 && peer.status.StorageRadius < uint32(radius-1) {
-			s.topology.PeerHealth(peer.addr, false)
 			s.logger.Debug("radius health failure", "radius", peer.status.StorageRadius, "peer_address", peer.addr)
 		} else if peer.dur > pDur {
-			s.topology.PeerHealth(peer.addr, false)
 			s.logger.Debug("dur health failure", "dur", peer.dur, "peer_address", peer.addr)
 		} else if peer.status.ConnectedPeers < pConns {
-			s.topology.PeerHealth(peer.addr, false)
 			s.logger.Debug("connections health failure", "connections", peer.status.ConnectedPeers, "peer_address", peer.addr)
 		} else {
-			s.topology.PeerHealth(peer.addr, true)
+			healthy = true
 		}
+
+		s.topology.UpdatePeerHealth(peer.addr, healthy)
+		s.metrics.Healthy.WithLabelValues(strconv.FormatBool(healthy)).Inc()
 	}
 }
 
