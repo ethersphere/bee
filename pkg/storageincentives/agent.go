@@ -268,7 +268,6 @@ func (a *Agent) handleCommit(ctx context.Context, round uint64) (bool, error) {
 
 	err := a.commit(ctx, sample, round)
 	if err != nil {
-		a.logger.Error(err, "commit")
 		return false, err
 	}
 
@@ -295,7 +294,6 @@ func (a *Agent) handleReveal(ctx context.Context, round uint64) (bool, error) {
 	txHash, err := a.contract.Reveal(ctx, sample.StorageRadius, sampleBytes, commitKey)
 	if err != nil {
 		a.metrics.ErrReveal.Inc()
-		a.logger.Info("reveal contract call", "err", err)
 		return false, err
 	}
 	a.state.AddFee(ctx, txHash)
@@ -318,7 +316,6 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) (bool, error) {
 	isWinner, err := a.contract.IsWinner(ctx)
 	if err != nil {
 		a.metrics.ErrWinner.Inc()
-		a.logger.Info("is winner contract call", "err", err)
 		return false, err
 	}
 
@@ -348,7 +345,6 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) (bool, error) {
 	txHash, err := a.contract.Claim(ctx)
 	if err != nil {
 		a.metrics.ErrClaim.Inc()
-		a.logger.Info("error claiming win", "err", err)
 		return false, fmt.Errorf("error claiming win: %w", err)
 	}
 
@@ -390,8 +386,7 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 
 	_, hasFunds, err := a.HasEnoughFundsToPlay(ctx)
 	if err != nil {
-		a.logger.Error(err, "agent HasEnoughFundsToPlay failed")
-		return false, err
+		return false, fmt.Errorf("has enough funds to play: %w", err)
 	}
 
 	if !hasFunds {

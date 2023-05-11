@@ -71,7 +71,7 @@ func TestState(t *testing.T) {
 	}
 	state := createRedistribution(t, nil, nil)
 	state.SetCurrentEvent(input.Phase, input.Round, input.Block)
-	state.IsFullySynced(input.IsFullySynced)
+	state.SetFullySynced(input.IsFullySynced)
 	state.SetLastWonRound(input.LastWonRound)
 	state.SetFrozen(input.IsFrozen, input.LastFrozenRound)
 	state.SetLastPlayedRound(input.LastPlayedRound)
