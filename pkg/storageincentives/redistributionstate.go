@@ -115,6 +115,13 @@ func (r *RedistributionState) SetCurrentEvent(phase PhaseType, round uint64, blo
 	r.save()
 }
 
+func (r *RedistributionState) IsFrozen() bool {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	return r.status.IsFrozen
+}
+
 func (r *RedistributionState) SetFrozen(isFrozen bool, round uint64) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
@@ -132,7 +139,14 @@ func (r *RedistributionState) SetLastWonRound(round uint64) {
 	r.save()
 }
 
-func (r *RedistributionState) IsFullySynced(isSynced bool) {
+func (r *RedistributionState) IsFullySynced() bool {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	return r.status.IsFullySynced
+}
+
+func (r *RedistributionState) SetFullySynced(isSynced bool) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 	r.status.IsFullySynced = isSynced
@@ -184,9 +198,13 @@ func (r *RedistributionState) SetBalance(ctx context.Context) error {
 		r.logger.Debug("error getting balance", "error", err)
 		return err
 	}
+
 	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
 	r.currentBalance.Set(currentBalance)
-	r.mtx.Unlock()
+	r.save()
+
 	return nil
 }
 

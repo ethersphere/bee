@@ -210,7 +210,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		a.logger.Info("entered new phase", "phase", currentPhase.String(), "round", round, "block", block)
 
 		a.state.SetCurrentEvent(currentPhase, round, block)
-		a.state.IsFullySynced(a.monitor.IsFullySynced())
+		a.state.SetFullySynced(a.monitor.IsFullySynced())
 		go a.state.purgeStaleRoundData()
 
 		isFrozen, err := a.redistributionStatuser.IsOverlayFrozen(ctx, block)
@@ -295,6 +295,7 @@ func (a *Agent) handleReveal(ctx context.Context, round uint64) (bool, error) {
 	txHash, err := a.contract.Reveal(ctx, sample.StorageRadius, sampleBytes, commitKey)
 	if err != nil {
 		a.metrics.ErrReveal.Inc()
+		a.logger.Info("reveal contract call", "err", err)
 		return false, err
 	}
 	a.state.AddFee(ctx, txHash)
@@ -312,64 +313,67 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) (bool, error) {
 	}
 
 	a.state.SetLastPlayedRound(round)
-
 	a.metrics.ClaimPhase.Inc()
-	// event claimPhase was processed
-
-	err := a.batchExpirer.ExpireBatches(ctx)
-	if err != nil {
-		return false, err
-	}
 
 	isWinner, err := a.contract.IsWinner(ctx)
 	if err != nil {
 		a.metrics.ErrWinner.Inc()
+		a.logger.Info("is winner contract call", "err", err)
 		return false, err
 	}
 
-	if isWinner {
-		a.state.SetLastWonRound(round)
-		a.metrics.Winner.Inc()
-		errBalance := a.state.SetBalance(ctx)
-		if errBalance != nil {
-			a.logger.Info("could not set balance", "err", err)
-		}
-
-		txHash, err := a.contract.Claim(ctx)
-		if err != nil {
-			a.metrics.ErrClaim.Inc()
-			a.logger.Info("error claiming win", "err", err)
-			return false, fmt.Errorf("error claiming win: %w", err)
-		}
-		a.logger.Info("claimed win")
-		if errBalance == nil {
-			errReward := a.state.CalculateWinnerReward(ctx)
-			if errReward != nil {
-				a.logger.Info("calculate winner reward", "err", err)
-			}
-		}
-		a.state.AddFee(ctx, txHash)
-
-	} else {
-		a.logger.Info("claim made, lost round")
+	if !isWinner {
+		a.logger.Info("not a winner")
+		// When there is nothing to claim (node is not a winner), phase is played
+		return true, nil
 	}
+
+	a.state.SetLastWonRound(round)
+	a.metrics.Winner.Inc()
+
+	// In case when there are too many expired batches, Claim trx could runs out of gas.
+	// To prevent this, node should first expire batches before Claiming a reward.
+	err = a.batchExpirer.ExpireBatches(ctx)
+	if err != nil {
+		a.logger.Info("expire batches failed", "err", err)
+		// Even when error happens, proceed with claim handler
+		// because this should not prevent node from claiming a reward
+	}
+
+	errBalance := a.state.SetBalance(ctx)
+	if errBalance != nil {
+		a.logger.Info("could not set balance", "err", err)
+	}
+
+	txHash, err := a.contract.Claim(ctx)
+	if err != nil {
+		a.metrics.ErrClaim.Inc()
+		a.logger.Info("error claiming win", "err", err)
+		return false, fmt.Errorf("error claiming win: %w", err)
+	}
+
+	a.logger.Info("claimed win")
+
+	if errBalance == nil {
+		errReward := a.state.CalculateWinnerReward(ctx)
+		if errReward != nil {
+			a.logger.Info("calculate winner reward", "err", err)
+		}
+	}
+
+	a.state.AddFee(ctx, txHash)
 
 	return true, nil
 }
 
 func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
-	status, err := a.state.Status()
-	if err != nil {
-		return false, err
-	}
-
-	if !status.IsFullySynced {
-		a.logger.Info("skipping round because node is not fully synced", "round", round)
+	if !a.state.IsFullySynced() {
+		a.logger.Info("skipping round because node is not fully synced")
 		return false, nil
 	}
 
-	if status.IsFrozen {
-		a.logger.Info("skipping round because node is frozen", "round", round)
+	if a.state.IsFrozen() {
+		a.logger.Info("skipping round because node is frozen")
 		return false, nil
 	}
 
