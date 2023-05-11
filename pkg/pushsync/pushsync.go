@@ -48,7 +48,7 @@ const (
 )
 
 const (
-	nPeersToReplicate = 3 // number of peers to replicate to as receipt is sent upstream
+	nPeersToReplicate = 2 // number of peers to replicate to as receipt is sent upstream
 	maxPushErrors     = 32
 )
 
