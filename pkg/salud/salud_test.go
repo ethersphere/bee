@@ -21,12 +21,12 @@ import (
 type peer struct {
 	addr    swarm.Address
 	status  *status.Snapshot
-	waitDur time.Duration
+	waitDur int
 	health  bool
 }
 
 func TestSalud(t *testing.T) {
-
+	t.Parallel()
 	peers := []peer{
 		// fully healhy
 		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8}, 1, true},
@@ -51,7 +51,7 @@ func TestSalud(t *testing.T) {
 
 	statusM := &statusMock{make(map[string]peer)}
 
-	var addrs []swarm.Address
+	addrs := make([]swarm.Address, 0, len(peers))
 	for _, p := range peers {
 		addrs = append(addrs, p.addr)
 		statusM.peers[p.addr.ByteString()] = p
@@ -61,9 +61,12 @@ func TestSalud(t *testing.T) {
 
 	_ = salud.New(statusM, topM, log.Noop, 0)
 
-	spinlock.Wait(time.Minute, func() bool {
+	err := spinlock.Wait(time.Minute, func() bool {
 		return len(topM.PeersHealth()) == len(peers)
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	for _, p := range peers {
 		if want, got := p.health, topM.PeersHealth()[p.addr.ByteString()]; want != got {
@@ -78,7 +81,7 @@ type statusMock struct {
 
 func (p *statusMock) PeerSnapshot(ctx context.Context, peer swarm.Address) (*status.Snapshot, error) {
 	if peer, ok := p.peers[peer.ByteString()]; ok {
-		time.Sleep(peer.waitDur * time.Second)
+		time.Sleep(time.Duration(peer.waitDur) * time.Second)
 		return peer.status, nil
 	}
 	return nil, errors.New("peer not found")

@@ -1035,8 +1035,8 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		return nil, fmt.Errorf("status service: %w", err)
 	}
 
-	s := salud.New(nodeStatus, kad, p2ps, logger, o.WarmupTime)
-	b.saludCloser = s
+	saludService := salud.New(nodeStatus, kad, logger, o.WarmupTime)
+	b.saludCloser = saludService
 
 	extraOpts := api.ExtraOptions{
 		Pingpong:         pingPong,
@@ -1116,6 +1116,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		debugService.MustRegisterMetrics(acc.Metrics()...)
 		debugService.MustRegisterMetrics(storer.Metrics()...)
 		debugService.MustRegisterMetrics(kad.Metrics()...)
+		debugService.MustRegisterMetrics(saludService.Metrics()...)
 
 		if pullerService != nil {
 			debugService.MustRegisterMetrics(pullerService.Metrics()...)
