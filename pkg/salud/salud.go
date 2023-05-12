@@ -206,7 +206,7 @@ func (s *service) salud(mode string, minPeersPerbin int) {
 	}
 
 	if neighbors > 0 {
-		s.isSelfHealthy.Store(s.rs.StorageRadius() == nHoodRadius)
+		s.isSelfHealthy.Store(s.rs.StorageRadius() == networkRadius)
 	}
 }
 
