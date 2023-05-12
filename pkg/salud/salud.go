@@ -163,14 +163,16 @@ func (s *service) salud(minPeersPerbin int) {
 	avgDur := totaldur / float64(len(peers))
 	pDur := percentileDur(peers, percentile)
 	pConns := percentileConns(peers, percentile)
+	commitment := commitment(peers)
 
 	s.metrics.AvgDur.Set(avgDur)
 	s.metrics.PDur.Set(pDur)
 	s.metrics.PConns.Set(float64(pConns))
 	s.metrics.NetworkRadius.Set(float64(networkRadius))
 	s.metrics.NeighborhoodRadius.Set(float64(nHoodRadius))
+	s.metrics.Commitment.Set(float64(commitment))
 
-	s.logger.Debug("computed", "average", avgDur, "percentile", percentile, "pDur", pDur, "pConns", pConns, "network_radius", networkRadius, "neighborhood_radius", nHoodRadius)
+	s.logger.Debug("computed", "average", avgDur, "percentile", percentile, "pDur", pDur, "pConns", pConns, "network_radius", networkRadius, "neighborhood_radius", nHoodRadius, "batch_commitment", commitment)
 
 	for _, peer := range peers {
 
@@ -188,6 +190,8 @@ func (s *service) salud(minPeersPerbin int) {
 			s.logger.Debug("dur health failure", "dur", peer.dur, "peer_address", peer.addr)
 		} else if peer.status.ConnectedPeers < pConns {
 			s.logger.Debug("connections health failure", "connections", peer.status.ConnectedPeers, "peer_address", peer.addr)
+		} else if peer.status.BatchCommitment != commitment {
+			s.logger.Debug("batch commitment health failure", "commitment", peer.status.BatchCommitment, "peer_address", peer.addr)
 		} else {
 			healthy = true
 		}
@@ -243,7 +247,6 @@ func (s *service) radius(peers []peer) (uint8, uint8) {
 	var nHoodRadius [swarm.MaxBins]int
 
 	for _, peer := range peers {
-
 		if peer.status.StorageRadius < uint32(swarm.MaxBins) {
 			if s.rs.IsWithinStorageRadius(peer.addr) {
 				nHoodRadius[peer.status.StorageRadius]++
@@ -256,6 +259,30 @@ func (s *service) radius(peers []peer) (uint8, uint8) {
 	hoodR := highestCollisions(nHoodRadius[:])
 
 	return uint8(networkR), uint8(hoodR)
+}
+
+// commitment finds the most common batch commitment.
+func commitment(peers []peer) uint64 {
+
+	commitments := make(map[uint64]int)
+
+	for _, peer := range peers {
+		commitments[peer.status.BatchCommitment]++
+	}
+
+	var (
+		maxCount             = 0
+		maxCommitment uint64 = 0
+	)
+
+	for commitment, count := range commitments {
+		if count > maxCount {
+			maxCommitment = commitment
+			maxCount = count
+		}
+	}
+
+	return maxCommitment
 }
 
 func highestCollisions(n []int) int {

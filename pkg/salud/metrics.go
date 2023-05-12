@@ -15,8 +15,9 @@ type metrics struct {
 	PConns             prometheus.Gauge
 	NetworkRadius      prometheus.Gauge
 	NeighborhoodRadius prometheus.Gauge
-	Healthy            prometheus.Gauge
-	Unhealthy          prometheus.Gauge
+	Commitment         prometheus.Gauge
+	Healthy            prometheus.Counter
+	Unhealthy          prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -53,17 +54,23 @@ func newMetrics() metrics {
 			Name:      "neighborhood_radius",
 			Help:      "Most common radius across the connected peers.",
 		}),
-		Healthy: prometheus.NewGauge(prometheus.GaugeOpts{
+		Healthy: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "healthy",
 			Help:      "Count of healthy peers.",
 		}),
-		Unhealthy: prometheus.NewGauge(prometheus.GaugeOpts{
+		Unhealthy: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "unhealthy",
 			Help:      "Count of unhealthy peers.",
+		}),
+		Commitment: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "batch_commitment",
+			Help:      "Most common batch commitment.",
 		}),
 	}
 }
