@@ -131,19 +131,7 @@ func (s *store) cleanup() error {
 // Must be called under lock.
 func (s *store) computeRadius() error {
 
-	var totalCommitment int64
-
-	err := s.store.Iterate(batchKeyPrefix, func(key, value []byte) (bool, error) {
-
-		b := &postage.Batch{}
-		if err := b.UnmarshalBinary(value); err != nil {
-			return false, err
-		}
-
-		totalCommitment += exp2(uint(b.Depth))
-
-		return false, nil
-	})
+	totalCommitment, err := s.commitment()
 	if err != nil {
 		return err
 	}
@@ -151,7 +139,7 @@ func (s *store) computeRadius() error {
 	s.metrics.Commitment.Set(float64(totalCommitment))
 
 	// edge case where the sum of all batches is below the node capacity.
-	if totalCommitment <= Capacity {
+	if int64(totalCommitment) <= Capacity {
 		s.rs.Radius = 0
 	} else {
 		// totalCommitment/node_capacity = 2^R

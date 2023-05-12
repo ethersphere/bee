@@ -25,7 +25,7 @@ const loggerName = "status"
 
 const (
 	protocolName    = "status"
-	protocolVersion = "1.0.0"
+	protocolVersion = "1.1.0"
 	streamName      = "status"
 )
 
@@ -42,7 +42,7 @@ type Service struct {
 	reserve    depthmonitor.ReserveReporter
 	sync       depthmonitor.SyncReporter
 	radius     postage.RadiusReporter
-	chainstate postage.ChainStateGetter
+	commitment postage.CommitmentGetter
 }
 
 // LocalSnapshot returns the current status snapshot of this node.
@@ -66,6 +66,11 @@ func (s *Service) LocalSnapshot() (*Snapshot, error) {
 		return nil, fmt.Errorf("iterate connected peers: %w", err)
 	}
 
+	commitment, err := s.commitment.Commitment()
+	if err != nil {
+		return nil, fmt.Errorf("batchstore commitemnt: %w", err)
+	}
+
 	return &Snapshot{
 		BeeMode:          s.beeMode,
 		ReserveSize:      s.reserve.ReserveSize(),
@@ -73,7 +78,7 @@ func (s *Service) LocalSnapshot() (*Snapshot, error) {
 		StorageRadius:    uint32(storageRadius),
 		ConnectedPeers:   connectedPeers,
 		NeighborhoodSize: neighborhoodSize,
-		BatchTotalAmount: s.chainstate.GetChainState().TotalAmount.String(),
+		BatchCommitment:  commitment,
 	}, nil
 }
 
@@ -152,6 +157,11 @@ func (s *Service) handler(ctx context.Context, _ p2p.Peer, stream p2p.Stream) er
 		return fmt.Errorf("iterate connected peers: %w", err)
 	}
 
+	commitment, err := s.commitment.Commitment()
+	if err != nil {
+		return fmt.Errorf("batchstore commitemnt: %w", err)
+	}
+
 	if err := w.WriteMsgWithContext(ctx, &pb.Snapshot{
 		BeeMode:          s.beeMode,
 		ReserveSize:      s.reserve.ReserveSize(),
@@ -159,7 +169,7 @@ func (s *Service) handler(ctx context.Context, _ p2p.Peer, stream p2p.Stream) er
 		StorageRadius:    uint32(storageRadius),
 		ConnectedPeers:   connectedPeers,
 		NeighborhoodSize: neighborhoodSize,
-		BatchTotalAmount: s.chainstate.GetChainState().TotalAmount.String(),
+		BatchCommitment:  commitment,
 	}); err != nil {
 		loggerV2.Debug("write message failed", "error", err)
 		return fmt.Errorf("write message: %w", err)
@@ -177,7 +187,7 @@ func NewService(
 	reserve depthmonitor.ReserveReporter,
 	sync depthmonitor.SyncReporter,
 	radius postage.RadiusReporter,
-	chainstate postage.ChainStateGetter,
+	commitment postage.CommitmentGetter,
 ) *Service {
 	return &Service{
 		logger:       logger.WithName(loggerName).Register(),
@@ -187,6 +197,6 @@ func NewService(
 		reserve:      reserve,
 		sync:         sync,
 		radius:       radius,
-		chainstate:   chainstate,
+		commitment:   commitment,
 	}
 }
