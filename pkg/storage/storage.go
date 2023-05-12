@@ -84,9 +84,8 @@ type Query struct {
 	// that contains this prefix in its ID.
 	Prefix string
 
-	// PrefixAtStart indicates interest in an item
-	// that contains the Prefix, but continues iterating until the end
-	// of the namespace
+	// PrefixAtStart indicates that the
+	// iteration should start at the prefix.
 	PrefixAtStart bool
 
 	// SkipFirst skips the first element in the iteration.
@@ -148,7 +147,7 @@ type Item interface {
 	fmt.Stringer
 }
 
-// Store contains the interfaces required for the Data Abstraction Layer.
+// Store contains the methods required for the Data Abstraction Layer.
 type Store interface {
 	io.Closer
 

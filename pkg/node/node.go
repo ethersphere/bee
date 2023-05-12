@@ -61,7 +61,6 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/settlement/swap/priceoracle"
-	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/status"
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storageincentives"
@@ -738,13 +737,8 @@ func NewBee(
 
 	var swapService *swap.Service
 
-	metricsDB, err := shed.NewDBWrap(stateStore.DB())
-	if err != nil {
-		return nil, fmt.Errorf("unable to create metrics storage for kademlia: %w", err)
-	}
-
-	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, pingPong, metricsDB, logger,
-		kademlia.Options{Bootnodes: bootnodes, BootnodeMode: o.BootnodeMode, StaticNodes: o.StaticNodes, IgnoreRadius: !chainEnabled})
+	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, pingPong, logger,
+		kademlia.Options{Bootnodes: bootnodes, BootnodeMode: o.BootnodeMode, StaticNodes: o.StaticNodes, IgnoreRadius: !chainEnabled, DataDir: o.DataDir})
 	if err != nil {
 		return nil, fmt.Errorf("unable to create kademlia: %w", err)
 	}

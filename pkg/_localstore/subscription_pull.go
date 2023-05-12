@@ -23,9 +23,9 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/flipflop"
-	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/topology/kademlia/internal/shed"
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
