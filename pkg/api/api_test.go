@@ -210,7 +210,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	s.SetP2P(o.P2P)
 
 	if o.RedistributionAgent == nil {
-		o.RedistributionAgent, _ = createRedistributionAgentService(t, o.Overlay, o.StateStorer, erc20, transaction, backend)
+		o.RedistributionAgent, _ = createRedistributionAgentService(t, o.Overlay, o.StateStorer, erc20, transaction, backend, o.BatchStore)
 		s.SetRedistributionAgent(o.RedistributionAgent)
 	}
 	testutil.CleanupCloser(t, o.RedistributionAgent)
@@ -693,6 +693,7 @@ func createRedistributionAgentService(
 	erc20Service erc20.Service,
 	tranService transaction.Service,
 	backend storageincentives.ChainBackend,
+	chainStateGetter postage.ChainStateGetter,
 ) (*storageincentives.Agent, error) {
 	t.Helper()
 
@@ -720,6 +721,7 @@ func createRedistributionAgentService(
 		blocksPerRound,
 		blocksPerPhase,
 		storer,
+		chainStateGetter,
 		erc20Service,
 		tranService,
 		&mockHealth{},

@@ -15,6 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/pkg/postage"
 	contractMock "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
 	erc20mock "github.com/ethersphere/bee/pkg/settlement/swap/erc20/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
@@ -183,6 +184,7 @@ func createService(
 		blocksPerRound,
 		blocksPerPhase,
 		statestore.NewStateStore(),
+		&postage.NoOpBatchStore{},
 		erc20mock.New(),
 		transactionmock.New(),
 		&mockHealth{},
