@@ -178,6 +178,7 @@ func (s *service) salud(minPeersPerbin int) {
 
 		// every bin should have at least some peers, healthy or not
 		if bins[peer.bin] <= minPeersPerbin {
+			s.topology.UpdatePeerHealth(peer.addr, true)
 			continue
 		}
 
