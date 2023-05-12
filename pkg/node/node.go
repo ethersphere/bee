@@ -972,7 +972,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		return nil, fmt.Errorf("status service: %w", err)
 	}
 
-	saludService := salud.New(nodeStatus, kad, batchStore, logger, warmupTime, salud.DefaultMinPeersPerBin)
+	saludService := salud.New(nodeStatus, kad, batchStore, logger, warmupTime, api.FullMode.String(), salud.DefaultMinPeersPerBin)
 	b.saludCloser = saludService
 
 	var (

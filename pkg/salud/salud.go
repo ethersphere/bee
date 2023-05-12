@@ -49,7 +49,7 @@ type service struct {
 	rs            postage.Radius
 }
 
-func New(status peerStatus, topology topologyDriver, rs postage.Radius, logger log.Logger, warmup time.Duration, minPeersPerbin int) *service {
+func New(status peerStatus, topology topologyDriver, rs postage.Radius, logger log.Logger, warmup time.Duration, mode string, minPeersPerbin int) *service {
 
 	metrics := newMetrics()
 
@@ -64,13 +64,13 @@ func New(status peerStatus, topology topologyDriver, rs postage.Radius, logger l
 	}
 
 	s.wg.Add(1)
-	go s.worker(warmup, minPeersPerbin)
+	go s.worker(warmup, mode, minPeersPerbin)
 
 	return s
 
 }
 
-func (s *service) worker(warmup time.Duration, minPeersPerbin int) {
+func (s *service) worker(warmup time.Duration, mode string, minPeersPerbin int) {
 	defer s.wg.Done()
 
 	select {
@@ -81,7 +81,7 @@ func (s *service) worker(warmup time.Duration, minPeersPerbin int) {
 
 	for {
 
-		s.salud(minPeersPerbin)
+		s.salud(mode, minPeersPerbin)
 
 		select {
 		case <-s.quit:
@@ -107,7 +107,7 @@ type peer struct {
 // salud acquires the status snapshot of every peer and computes an avg response duration
 // and the most common storage radius and based on these values, it blocklist peers that fall beyond
 // some allowed threshold.
-func (s *service) salud(minPeersPerbin int) {
+func (s *service) salud(mode string, minPeersPerbin int) {
 
 	var (
 		mtx       sync.Mutex
@@ -134,7 +134,7 @@ func (s *service) salud(minPeersPerbin int) {
 				return
 			}
 
-			if snapshot.BeeMode != "full" {
+			if snapshot.BeeMode != mode {
 				return
 			}
 

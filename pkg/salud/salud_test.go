@@ -66,7 +66,7 @@ func TestSalud(t *testing.T) {
 
 	bs := bsMock.New(bsMock.WithIsWithinStorageRadius(true), bsMock.WithReserveState(&postage.ReserveState{StorageRadius: 8}))
 
-	service := salud.New(statusM, topM, bs, log.Noop, -1, 0)
+	service := salud.New(statusM, topM, bs, log.Noop, -1, "full", 0)
 
 	err := spinlock.Wait(time.Minute, func() bool {
 		return len(topM.PeersHealth()) == len(peers)
@@ -105,7 +105,7 @@ func TestSelfUnhealthSalud(t *testing.T) {
 
 	bs := bsMock.New(bsMock.WithIsWithinStorageRadius(true), bsMock.WithReserveState(&postage.ReserveState{StorageRadius: 7}))
 
-	service := salud.New(statusM, topM, bs, log.Noop, -1, 0)
+	service := salud.New(statusM, topM, bs, log.Noop, -1, "full", 0)
 
 	err := spinlock.Wait(time.Minute, func() bool {
 		return len(topM.PeersHealth()) == len(peers)
