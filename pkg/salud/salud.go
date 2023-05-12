@@ -8,7 +8,6 @@ package salud
 
 import (
 	"context"
-	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -171,13 +170,11 @@ func (s *service) salud(minPeersPerbin int) {
 	s.metrics.NetworkRadius.Set(float64(networkRadius))
 	s.metrics.NeighborhoodRadius.Set(float64(nHoodRadius))
 
-	fmt.Println("computed", "average", avgDur, "percentile", percentile, "pDur", pDur, "pConns", pConns, "network_radius", networkRadius, "neighborhood_radius", nHoodRadius)
+	s.logger.Debug("computed", "average", avgDur, "percentile", percentile, "pDur", pDur, "pConns", pConns, "network_radius", networkRadius, "neighborhood_radius", nHoodRadius)
 
 	for _, peer := range peers {
 
 		var healthy bool
-
-		fmt.Println(peer.bin, bins[peer.bin])
 
 		// every bin should have at least some peers, healthy or not
 		if bins[peer.bin] <= minPeersPerbin {
@@ -185,11 +182,11 @@ func (s *service) salud(minPeersPerbin int) {
 		}
 
 		if networkRadius > 0 && peer.status.StorageRadius < uint32(networkRadius-1) {
-			fmt.Println("radius health failure", "radius", peer.status.StorageRadius, "peer_address", peer.addr)
+			s.logger.Debug("radius health failure", "radius", peer.status.StorageRadius, "peer_address", peer.addr)
 		} else if peer.dur > pDur {
-			fmt.Println("dur health failure", "dur", peer.dur, "peer_address", peer.addr)
+			s.logger.Debug("dur health failure", "dur", peer.dur, "peer_address", peer.addr)
 		} else if peer.status.ConnectedPeers < pConns {
-			fmt.Println("connections health failure", "connections", peer.status.ConnectedPeers, "peer_address", peer.addr)
+			s.logger.Debug("connections health failure", "connections", peer.status.ConnectedPeers, "peer_address", peer.addr)
 		} else {
 			healthy = true
 		}
