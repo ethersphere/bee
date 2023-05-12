@@ -255,8 +255,8 @@ func (s *service) radius(peers []peer) (uint8, uint8) {
 		}
 	}
 
-	networkR := highestCollisions(networkRadius[:])
-	hoodR := highestCollisions(nHoodRadius[:])
+	networkR := maxIndex(networkRadius[:])
+	hoodR := maxIndex(nHoodRadius[:])
 
 	return uint8(networkR), uint8(hoodR)
 }
@@ -285,7 +285,7 @@ func commitment(peers []peer) uint64 {
 	return maxCommitment
 }
 
-func highestCollisions(n []int) int {
+func maxIndex(n []int) int {
 
 	maxValue := 0
 	index := 0
