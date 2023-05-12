@@ -7,10 +7,10 @@ package node
 import (
 	"errors"
 	"fmt"
+	"github.com/ethersphere/bee/pkg/storage/leveldbstore"
 	"path/filepath"
 
 	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/statestore/leveldb"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -21,23 +21,17 @@ import (
 func InitStateStore(logger log.Logger, dataDir string) (storage.StateStorer, error) {
 	if dataDir == "" {
 		logger.Warning("using in-mem state store, no node state will be persisted")
-		return leveldb.NewInMemoryStateStore(logger)
+	} else {
+		dataDir = filepath.Join(dataDir, "statestore")
 	}
-	return leveldb.NewStateStore(filepath.Join(dataDir, "statestore"), logger)
-}
-
-const secureOverlayKey = "non-mineable-overlay"
-const noncedOverlayKey = "nonce-overlay"
-
-func GetExistingOverlay(storer storage.StateStorer) (swarm.Address, error) {
-	var storedOverlay swarm.Address
-	err := storer.Get(secureOverlayKey, &storedOverlay)
+	ldb, err := leveldbstore.New(dataDir, nil)
 	if err != nil {
-		return swarm.ZeroAddress, err
+		return nil, err
 	}
-
-	return storedOverlay, nil
+	return storage.NewStateStorerAdapter(ldb), nil
 }
+
+const noncedOverlayKey = "nonce-overlay"
 
 // CheckOverlayWithStore checks the overlay is the same as stored in the statestore
 func CheckOverlayWithStore(overlay swarm.Address, storer storage.StateStorer) error {
