@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math/big"
 	"os"
 	"path"
 	"path/filepath"
@@ -123,7 +124,7 @@ var _ Reserve = (*DB)(nil)
 type Reserve interface {
 	ReserveStore
 	EvictBatch(ctx context.Context, batchID []byte) error
-	ReserveSample(context.Context, []byte, uint8, uint64) (Sample, error)
+	ReserveSample(context.Context, []byte, uint8, uint64, *big.Int) (Sample, error)
 	ReserveSize() int
 }
 

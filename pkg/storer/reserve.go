@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math/big"
 	"sort"
 	"sync"
 	"testing"
@@ -253,6 +254,23 @@ func (db *DB) evictBatch(ctx context.Context, batchID []byte, upToBin uint8) (er
 	return nil
 }
 
+func (db *DB) batchesBelowValue(until *big.Int) (map[string]struct{}, error) {
+	res := make(map[string]struct{})
+
+	if until == nil {
+		return res, nil
+	}
+
+	err := db.batchstore.Iterate(func(b *postage.Batch) (bool, error) {
+		if b.Value.Cmp(until) < 0 {
+			res[string(b.ID)] = struct{}{}
+		}
+		return false, nil
+	})
+
+	return res, err
+}
+
 func (db *DB) unreserve(ctx context.Context) (err error) {
 	dur := captureDuration(time.Now())
 	defer func() {
@@ -420,12 +438,18 @@ func (db *DB) ReserveSample(
 	anchor []byte,
 	storageRadius uint8,
 	consensusTime uint64,
+	minBatchBalance *big.Int,
 ) (Sample, error) {
 
 	g, ctx := errgroup.WithContext(ctx)
 
 	chunkC := make(chan reserve.ChunkItem)
 	var stat sampleStat
+
+	excludedBatchIDs, err := db.batchesBelowValue(minBatchBalance)
+	if err != nil {
+		db.logger.Error(err, "get batches below value")
+	}
 
 	t := time.Now()
 
@@ -463,6 +487,12 @@ func (db *DB) ReserveSample(
 				getStart := time.Now()
 
 				stat.GetDuration.Add(time.Since(getStart).Nanoseconds())
+
+				// exclude chunks who's batches balance are below minimum
+				if _, found := excludedBatchIDs[string(chItem.Chunk.Stamp().BatchID())]; found {
+					stat.BelowBalanceIgnored.Inc()
+					continue
+				}
 
 				// check if the timestamp on the postage stamp is not later than
 				// the consensus time.
@@ -611,13 +641,14 @@ func transformedAddressSOC(hasher *bmt.Hasher, chunk swarm.Chunk) (swarm.Address
 }
 
 type sampleStat struct {
-	TotalIterated      atomic.Int64
-	NotFound           atomic.Int64
-	NewIgnored         atomic.Int64
-	IterationDuration  atomic.Int64
-	GetDuration        atomic.Int64
-	HmacrDuration      atomic.Int64
-	ValidStampDuration atomic.Int64
+	TotalIterated       atomic.Int64
+	NotFound            atomic.Int64
+	NewIgnored          atomic.Int64
+	BelowBalanceIgnored atomic.Int64
+	IterationDuration   atomic.Int64
+	GetDuration         atomic.Int64
+	HmacrDuration       atomic.Int64
+	ValidStampDuration  atomic.Int64
 }
 
 func (s sampleStat) String() string {
@@ -625,11 +656,12 @@ func (s sampleStat) String() string {
 	seconds := int64(time.Second)
 
 	return fmt.Sprintf(
-		"Chunks: %d NotFound: %d New Ignored: %d Iteration Duration: %d secs GetDuration: %d secs"+
+		"Chunks: %d NotFound: %d New Ignored: %d BelowBalanceIgnored: %d Iteration Duration: %d secs GetDuration: %d secs"+
 			" HmacrDuration: %d secs ValidStampDuration: %d secs",
 		s.TotalIterated.Load(),
 		s.NotFound.Load(),
 		s.NewIgnored.Load(),
+		s.BelowBalanceIgnored.Load(),
 		s.IterationDuration.Load()/seconds,
 		s.GetDuration.Load()/seconds,
 		s.HmacrDuration.Load()/seconds,

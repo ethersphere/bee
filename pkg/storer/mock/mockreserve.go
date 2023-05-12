@@ -6,6 +6,7 @@ package mockstorer
 
 import (
 	"context"
+	"math/big"
 	"sync"
 
 	storage "github.com/ethersphere/bee/pkg/storage"
@@ -244,7 +245,7 @@ func (s *ReserveStore) ReserveHas(addr swarm.Address, batchID []byte) (bool, err
 	return true, nil
 }
 
-func (s *ReserveStore) ReserveSample(context.Context, []byte, uint8, uint64) (storer.Sample, error) {
+func (s *ReserveStore) ReserveSample(context.Context, []byte, uint8, uint64, *big.Int) (storer.Sample, error) {
 	return s.sample, nil
 }
 
