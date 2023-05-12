@@ -49,6 +49,8 @@ func (b *NoOpBatchStore) SetStorageRadius(func(uint8) uint8) error { return nil 
 
 func (b *NoOpBatchStore) SetStorageRadiusSetter(StorageRadiusSetter) {}
 
+func (b *NoOpBatchStore) Commitment() (uint64, error) { return 0, nil }
+
 func (b *NoOpBatchStore) Unreserve(UnreserveIteratorFn) error { return nil }
 
 func (b *NoOpBatchStore) Reset() error { return nil }

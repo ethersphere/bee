@@ -21,5 +21,5 @@ message Snapshot {
   uint64 ConnectedPeers = 4;
   uint64 NeighborhoodSize = 5;
   string BeeMode = 6;
-  string BatchTotalAmount = 7;
+  uint64 BatchCommitment = 7;
 }

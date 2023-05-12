@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math"
 	"math/big"
 	"net/http"
 	"time"
@@ -366,9 +365,9 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 }
 
 type reserveStateResponse struct {
-	Radius        uint8 `json:"radius"`
-	StorageRadius uint8 `json:"storageRadius"`
-	Commitment    int64 `json:"commitment"`
+	Radius        uint8  `json:"radius"`
+	StorageRadius uint8  `json:"storageRadius"`
+	Commitment    uint64 `json:"commitment"`
 }
 
 type chainStateResponse struct {
@@ -382,15 +381,12 @@ func (s *Service) reserveStateHandler(w http.ResponseWriter, _ *http.Request) {
 	logger := s.logger.WithName("get_reservestate").Build()
 
 	state := s.batchStore.GetReserveState()
-	commitment := int64(0)
-	if err := s.batchStore.Iterate(func(b *postage.Batch) (bool, error) {
-		commitment += int64(math.Pow(2.0, float64(b.Depth)))
-		return false, nil
-	}); err != nil {
-		logger.Debug("batch store iteration failed", "error", err)
-		logger.Error(nil, "batch store iteration failed")
+	commitment, err := s.batchStore.Commitment()
+	if err != nil {
+		logger.Debug("batch store commitment calculation failed", "error", err)
+		logger.Error(nil, "batch store commitment calculation failed")
 
-		jsonhttp.InternalServerError(w, "unable to iterate all batches")
+		jsonhttp.InternalServerError(w, "unable to calculate commitment")
 		return
 	}
 

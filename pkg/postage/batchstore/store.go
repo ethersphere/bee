@@ -311,6 +311,32 @@ func (s *store) PutChainState(cs *postage.ChainState) error {
 	return s.store.Put(chainStateKey, cs)
 }
 
+func (s *store) Commitment() (uint64, error) {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
+	return s.commitment()
+}
+
+// Must be called under lock.
+func (s *store) commitment() (uint64, error) {
+	var totalCommitment int64
+	err := s.store.Iterate(batchKeyPrefix, func(key, value []byte) (bool, error) {
+
+		b := &postage.Batch{}
+		if err := b.UnmarshalBinary(value); err != nil {
+			return false, err
+		}
+
+		totalCommitment += exp2(uint(b.Depth))
+
+		return false, nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return uint64(totalCommitment), err
+}
+
 // SetRadiusSetter is implementation of postage.Storer interface SetRadiusSetter method.
 func (s *store) SetStorageRadiusSetter(r postage.StorageRadiusSetter) {
 	s.storageRadiusSetter = r

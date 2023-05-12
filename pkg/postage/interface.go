@@ -66,6 +66,7 @@ type Storer interface {
 	ReserveStateGetter
 	Radius
 	ChainStateGetter
+	CommitmentGetter
 
 	// Get returns a batch from the store with the given ID.
 	Get([]byte) (*Batch, error)
@@ -104,6 +105,11 @@ type Storer interface {
 	Reset() error
 
 	SetBatchExpiryHandler(BatchExpiryHandler)
+}
+
+// StorageRadiusSetter is used to calculate total batch commitment of the network.
+type CommitmentGetter interface {
+	Commitment() (uint64, error)
 }
 
 // StorageRadiusSetter is used as a callback when the radius of a node changes.

@@ -188,6 +188,11 @@ func (bs *BatchStore) GetChainState() *postage.ChainState {
 	return bs.cs
 }
 
+// GetChainState mocks the GetChainState method from the BatchStore
+func (bs *BatchStore) Commitment() (uint64, error) {
+	return 0, nil
+}
+
 // PutChainState mocks the PutChainState method from the BatchStore
 func (bs *BatchStore) PutChainState(cs *postage.ChainState) error {
 	if bs.updateErr != nil {
