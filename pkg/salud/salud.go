@@ -8,6 +8,7 @@ package salud
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"sync"
 	"time"
@@ -24,8 +25,9 @@ import (
 const loggerName = "salud"
 
 const (
-	DefaultWakeup         = time.Minute
-	DefaultRequestTimeout = time.Second * 10
+	wakeup                = time.Minute
+	requestTimeout        = time.Second * 10
+	DefaultMinPeersPerBin = 3
 )
 
 type topologyDriver interface {
@@ -48,7 +50,7 @@ type service struct {
 	rs            postage.Radius
 }
 
-func New(status peerStatus, topology topologyDriver, rs postage.Radius, logger log.Logger, warmup time.Duration) *service {
+func New(status peerStatus, topology topologyDriver, rs postage.Radius, logger log.Logger, warmup time.Duration, minPeersPerbin int) *service {
 
 	metrics := newMetrics()
 
@@ -63,13 +65,13 @@ func New(status peerStatus, topology topologyDriver, rs postage.Radius, logger l
 	}
 
 	s.wg.Add(1)
-	go s.worker(warmup)
+	go s.worker(warmup, minPeersPerbin)
 
 	return s
 
 }
 
-func (s *service) worker(warmup time.Duration) {
+func (s *service) worker(warmup time.Duration, minPeersPerbin int) {
 	defer s.wg.Done()
 
 	select {
@@ -80,12 +82,12 @@ func (s *service) worker(warmup time.Duration) {
 
 	for {
 
-		s.salud()
+		s.salud(minPeersPerbin)
 
 		select {
 		case <-s.quit:
 			return
-		case <-time.After(DefaultWakeup):
+		case <-time.After(wakeup):
 		}
 	}
 }
@@ -100,12 +102,13 @@ type peer struct {
 	status *status.Snapshot
 	dur    float64
 	addr   swarm.Address
+	bin    uint8
 }
 
 // salud acquires the status snapshot of every peer and computes an avg response duration
 // and the most common storage radius and based on these values, it blocklist peers that fall beyond
 // some allowed threshold.
-func (s *service) salud() {
+func (s *service) salud(minPeersPerbin int) {
 
 	var (
 		mtx       sync.Mutex
@@ -113,14 +116,15 @@ func (s *service) salud() {
 		totaldur  float64
 		peers     []peer
 		neighbors int
+		bins      [swarm.MaxBins]int
 	)
 
-	_ = s.topology.EachConnectedPeer(func(addr swarm.Address, _ uint8) (stop bool, jumpToNext bool, err error) {
+	_ = s.topology.EachConnectedPeer(func(addr swarm.Address, bin uint8) (stop bool, jumpToNext bool, err error) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 
-			ctx, cancel := context.WithTimeout(context.Background(), DefaultRequestTimeout)
+			ctx, cancel := context.WithTimeout(context.Background(), requestTimeout)
 			defer cancel()
 
 			start := time.Now()
@@ -141,8 +145,9 @@ func (s *service) salud() {
 			if s.rs.IsWithinStorageRadius(addr) {
 				neighbors++
 			}
+			bins[bin]++
 			totaldur += dur
-			peers = append(peers, peer{status: snapshot, dur: dur, addr: addr})
+			peers = append(peers, peer{snapshot, dur, addr, bin})
 			mtx.Unlock()
 		}()
 		return false, false, nil
@@ -166,18 +171,25 @@ func (s *service) salud() {
 	s.metrics.NetworkRadius.Set(float64(networkRadius))
 	s.metrics.NeighborhoodRadius.Set(float64(nHoodRadius))
 
-	s.logger.Debug("computed", "average", avgDur, "percentile", percentile, "pDur", pDur, "pConns", pConns, "network_radius", networkRadius, "neighborhood_radius", nHoodRadius)
+	fmt.Println("computed", "average", avgDur, "percentile", percentile, "pDur", pDur, "pConns", pConns, "network_radius", networkRadius, "neighborhood_radius", nHoodRadius)
 
 	for _, peer := range peers {
 
 		var healthy bool
 
+		fmt.Println(peer.bin, bins[peer.bin])
+
+		// every bin should have at least some peers, healthy or not
+		if bins[peer.bin] <= minPeersPerbin {
+			continue
+		}
+
 		if networkRadius > 0 && peer.status.StorageRadius < uint32(networkRadius-1) {
-			s.logger.Debug("radius health failure", "radius", peer.status.StorageRadius, "peer_address", peer.addr)
+			fmt.Println("radius health failure", "radius", peer.status.StorageRadius, "peer_address", peer.addr)
 		} else if peer.dur > pDur {
-			s.logger.Debug("dur health failure", "dur", peer.dur, "peer_address", peer.addr)
+			fmt.Println("dur health failure", "dur", peer.dur, "peer_address", peer.addr)
 		} else if peer.status.ConnectedPeers < pConns {
-			s.logger.Debug("connections health failure", "connections", peer.status.ConnectedPeers, "peer_address", peer.addr)
+			fmt.Println("connections health failure", "connections", peer.status.ConnectedPeers, "peer_address", peer.addr)
 		} else {
 			healthy = true
 		}
@@ -187,6 +199,7 @@ func (s *service) salud() {
 			s.metrics.Healthy.Inc()
 		} else {
 			s.metrics.Unhealthy.Inc()
+			bins[peer.bin]--
 		}
 	}
 

@@ -909,7 +909,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 
 	pinningService := pinning.NewService(storer, stateStore, traversalService)
 
-	pushSyncProtocol := pushsync.New(swarmAddress, nonce, p2ps, storer, kad, batchStore, tagService, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer)
+	pushSyncProtocol := pushsync.New(swarmAddress, nonce, p2ps, storer, kad, batchStore, tagService, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
 	b.pushSyncCloser = pushSyncProtocol
 
 	// set the pushSyncer in the PSS
@@ -972,7 +972,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		return nil, fmt.Errorf("status service: %w", err)
 	}
 
-	saludService := salud.New(nodeStatus, kad, batchStore, logger, o.WarmupTime)
+	saludService := salud.New(nodeStatus, kad, batchStore, logger, o.WarmupTime, salud.DefaultMinPeersPerBin)
 	b.saludCloser = saludService
 
 	var (

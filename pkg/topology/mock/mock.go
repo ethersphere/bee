@@ -187,14 +187,6 @@ func (m *mock) NeighborhoodDepth() uint8 {
 	return m.depth
 }
 
-func (m *mock) EachNeighbor(f topology.EachPeerFunc) error {
-	return m.EachConnectedPeer(f, topology.Filter{})
-}
-
-func (*mock) EachNeighborRev(_ topology.EachPeerFunc) error {
-	panic("not implemented") // TODO: Implement
-}
-
 // EachConnectedPeer implements topology.PeerIterator interface.
 func (d *mock) EachConnectedPeer(f topology.EachPeerFunc, _ topology.Filter) (err error) {
 	d.mtx.Lock()
