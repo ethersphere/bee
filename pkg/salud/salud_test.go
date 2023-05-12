@@ -46,12 +46,13 @@ func TestSalud(t *testing.T) {
 
 		// dur too long
 		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, BeeMode: "full", BatchCommitment: 500}, 2, false},
+		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, BeeMode: "full", BatchCommitment: 500}, 2, false},
 
 		// connections not enough
 		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 90, StorageRadius: 8, BeeMode: "full", BatchCommitment: 500}, 1, false},
 
 		// commitment wrong
-		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 90, StorageRadius: 8, BeeMode: "full", BatchCommitment: 350}, 1, false},
+		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, BeeMode: "full", BatchCommitment: 350}, 1, false},
 	}
 
 	statusM := &statusMock{make(map[string]peer)}
