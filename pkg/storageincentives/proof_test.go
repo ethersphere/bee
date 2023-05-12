@@ -49,6 +49,7 @@ func TestSampleChunkExpectedError(t *testing.T) {
 	t.Parallel()
 
 	sampleItem := storer.RandSample(t, nil).Items[0]
+
 	items := make([]storer.SampleItem, 65)
 	for i := range items {
 		items[i] = sampleItem

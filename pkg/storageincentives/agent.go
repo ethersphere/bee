@@ -14,19 +14,19 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
-	"github.com/ethersphere/bee/pkg/storageincentives/staking"
-	"github.com/ethersphere/bee/pkg/transaction"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
+	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
+	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 	storer "github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/transaction"
 )
 
 const loggerName = "storageincentives"
@@ -63,6 +63,7 @@ type Agent struct {
 	quit                   chan struct{}
 	wg                     sync.WaitGroup
 	state                  *RedistributionState
+	chainStateGetter       postage.ChainStateGetter
 	commitLock             sync.Mutex
 }
 
@@ -79,6 +80,7 @@ func New(overlay swarm.Address,
 	blocksPerRound,
 	blocksPerPhase uint64,
 	stateStore storage.StateStorer,
+	chainStateGetter postage.ChainStateGetter,
 	erc20Service erc20.Service,
 	tranService transaction.Service,
 ) (*Agent, error) {
@@ -94,6 +96,7 @@ func New(overlay swarm.Address,
 		blocksPerRound:         blocksPerRound,
 		quit:                   make(chan struct{}),
 		redistributionStatuser: redistributionStatuser,
+		chainStateGetter:       chainStateGetter,
 	}
 
 	state, err := NewRedistributionState(logger, ethAddress, stateStore, erc20Service, tranService)
@@ -190,6 +193,8 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 			return
 		}
 
+		a.state.SetCurrentBlock(block)
+
 		round := block / blocksPerRound
 
 		a.metrics.Round.Set(float64(round))
@@ -213,7 +218,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 		a.logger.Info("entered new phase", "phase", currentPhase.String(), "round", round, "block", block)
 
-		a.state.SetCurrentEvent(currentPhase, round, block)
+		a.state.SetCurrentEvent(currentPhase, round)
 		a.state.IsFullySynced(a.fullSyncedFunc())
 		go a.state.purgeStaleRoundData()
 
@@ -425,7 +430,7 @@ func (a *Agent) makeSample(ctx context.Context, storageRadius uint8) (SampleData
 	}
 
 	t := time.Now()
-	rSample, err := a.store.ReserveSample(ctx, salt, storageRadius, uint64(timeLimiter))
+	rSample, err := a.store.ReserveSample(ctx, salt, storageRadius, uint64(timeLimiter), a.minBatchBalance())
 	if err != nil {
 		return SampleData{}, err
 	}
@@ -444,16 +449,17 @@ func (a *Agent) makeSample(ctx context.Context, storageRadius uint8) (SampleData
 	return sample, nil
 }
 
+func (a *Agent) minBatchBalance() *big.Int {
+	cs := a.chainStateGetter.GetChainState()
+	nextRoundBlockNumber := ((a.state.currentBlock() / a.blocksPerRound) + 2) * a.blocksPerRound
+	difference := nextRoundBlockNumber - cs.Block
+	minBalance := new(big.Int).Add(cs.TotalAmount, new(big.Int).Mul(cs.CurrentPrice, big.NewInt(int64(difference))))
+
+	return minBalance
+}
+
 func (a *Agent) getPreviousRoundTime(ctx context.Context) (time.Duration, error) {
-
-	a.metrics.BackendCalls.Inc()
-	block, err := a.backend.BlockNumber(ctx)
-	if err != nil {
-		a.metrics.BackendErrors.Inc()
-		return 0, err
-	}
-
-	previousRoundBlockNumber := ((block / a.blocksPerRound) - 1) * a.blocksPerRound
+	previousRoundBlockNumber := ((a.state.currentBlock() / a.blocksPerRound) - 1) * a.blocksPerRound
 
 	a.metrics.BackendCalls.Inc()
 	timeLimiterBlock, err := a.backend.HeaderByNumber(ctx, new(big.Int).SetUint64(previousRoundBlockNumber))
