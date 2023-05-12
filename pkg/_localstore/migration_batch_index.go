@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/topology/kademlia/internal/shed"
 )
 
 // DBSchemaBatchIndex is the bee schema identifier for batch index.
