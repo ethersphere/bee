@@ -321,6 +321,10 @@ components:
         latencyEWMA:
           type: integer
           nullable: false
+        reachability:
+          type: string
+        healthy:
+          type: boolean
 
     Peers:
       type: object

@@ -1653,6 +1653,7 @@ func createMetricsSnapshotView(ss *im.Snapshot) *topology.MetricSnapshotView {
 		SessionConnectionDirection: string(ss.SessionConnectionDirection),
 		LatencyEWMA:                ss.LatencyEWMA.Milliseconds(),
 		Reachability:               ss.Reachability.String(),
+		Healthy:                    ss.Healthy,
 	}
 }
 
