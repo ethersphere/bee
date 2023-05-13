@@ -5,6 +5,7 @@
 package sharky
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -16,13 +17,16 @@ import (
 
 // Recovery allows disaster recovery.
 type Recovery struct {
-	shards []*slots
+	shards     []*slots
+	shardFiles []*os.File
 }
 
 var ErrShardNotFound = errors.New("shard not found")
 
 func NewRecovery(dir string, shardCnt int, datasize int) (*Recovery, error) {
 	shards := make([]*slots, shardCnt)
+	shardFiles := make([]*os.File, shardCnt)
+
 	for i := 0; i < shardCnt; i++ {
 		file, err := os.OpenFile(path.Join(dir, fmt.Sprintf("shard_%03d", i)), os.O_RDONLY, 0666)
 		if errors.Is(err, fs.ErrNotExist) {
@@ -46,8 +50,9 @@ func NewRecovery(dir string, shardCnt int, datasize int) (*Recovery, error) {
 		sl := newSlots(ffile, nil)
 		sl.data = make([]byte, size/8)
 		shards[i] = sl
+		shardFiles[i] = file
 	}
-	return &Recovery{shards}, nil
+	return &Recovery{shards: shards, shardFiles: shardFiles}, nil
 }
 
 // Add marks a location as used (not free).
@@ -62,6 +67,15 @@ func (r *Recovery) Add(loc Location) error {
 	}
 	sh.push(loc.Slot)
 	return nil
+}
+
+func (r *Recovery) Read(ctx context.Context, loc Location, buf []byte) error {
+	sh := r.shards[loc.Shard]
+	if loc.Slot >= uint32(len(sh.data)*8) {
+		return errors.New("slot not found")
+	}
+	_, err := r.shardFiles[loc.Shard].ReadAt(buf, int64(loc.Slot)*int64(len(buf)))
+	return err
 }
 
 // Save saves all free slots files of the recovery (without closing).
