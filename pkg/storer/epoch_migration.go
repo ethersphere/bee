@@ -83,11 +83,14 @@ func (p *putOpStorage) Release(_ context.Context, loc sharky.Location) error {
 	return errors.New("not implemented")
 }
 
-// epochMigration performs the epoch migration if it hasnt been done already. It
-// migrates the reserve and pinning indexes to the new format. It also migrates
-// the postage stamp index to the new format. It reads the old indexes and writes
-// the new ones. It also creates the new epoch key in the store to indicate that
-// the migration has been performed.
+// epochMigration performs the initial migration if it hasnt been done already. It
+// reads the old indexes and writes them in the new format.  It only migrates the
+// reserve and pinned chunks. It also creates the new epoch key in the store to
+// indicate that the migration has been performed. Due to a bug in the old localstore
+// pinned chunks are not always present in the pinned index. So we do a best-effort
+// migration of the pinning index. If the migration fails, the user can re-pin
+// the chunks using the stewardship endpoint if the stamps used to upload them are
+// still valid.
 func epochMigration(
 	ctx context.Context,
 	path string,
