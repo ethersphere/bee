@@ -317,7 +317,7 @@ func performEpochMigration(ctx context.Context, basePath string, opts *Options) 
 
 	var rs *reserve.Reserve
 	if opts.ReserveCapacity > 0 {
-		rs, err = reserve.New(opts.Address, store, opts.ReserveCapacity, 0, noopRadiusSetter{}, logger)
+		rs, err = reserve.New(opts.Address, store, opts.ReserveCapacity, opts.Batchstore.Radius(), noopRadiusSetter{}, logger)
 		if err != nil {
 			return err
 		}
