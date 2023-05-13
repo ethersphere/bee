@@ -19,6 +19,7 @@ import (
 type Recovery struct {
 	shards     []*slots
 	shardFiles []*os.File
+	datasize   int
 }
 
 var ErrShardNotFound = errors.New("shard not found")
@@ -39,9 +40,6 @@ func NewRecovery(dir string, shardCnt int, datasize int) (*Recovery, error) {
 		if err != nil {
 			return nil, err
 		}
-		if err = file.Close(); err != nil {
-			return nil, err
-		}
 		size := uint32(fi.Size() / int64(datasize))
 		ffile, err := os.OpenFile(path.Join(dir, fmt.Sprintf("free_%03d", i)), os.O_RDWR|os.O_CREATE, 0666)
 		if err != nil {
@@ -52,7 +50,7 @@ func NewRecovery(dir string, shardCnt int, datasize int) (*Recovery, error) {
 		shards[i] = sl
 		shardFiles[i] = file
 	}
-	return &Recovery{shards: shards, shardFiles: shardFiles}, nil
+	return &Recovery{shards: shards, shardFiles: shardFiles, datasize: datasize}, nil
 }
 
 // Add marks a location as used (not free).
@@ -74,7 +72,7 @@ func (r *Recovery) Read(ctx context.Context, loc Location, buf []byte) error {
 	if loc.Slot >= uint32(len(sh.data)*8) {
 		return errors.New("slot not found")
 	}
-	_, err := r.shardFiles[loc.Shard].ReadAt(buf, int64(loc.Slot)*int64(len(buf)))
+	_, err := r.shardFiles[loc.Shard].ReadAt(buf, int64(loc.Slot)*int64(r.datasize))
 	return err
 }
 
@@ -93,8 +91,8 @@ func (r *Recovery) Save() error {
 // Close closes data and free slots files of the recovery (without saving).
 func (r *Recovery) Close() error {
 	err := new(multierror.Error)
-	for _, sh := range r.shards {
-		err = multierror.Append(err, sh.file.Close())
+	for idx, sh := range r.shards {
+		err = multierror.Append(err, sh.file.Close(), r.shardFiles[idx].Close())
 	}
 	return err.ErrorOrNil()
 }

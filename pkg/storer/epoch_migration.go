@@ -69,11 +69,10 @@ func (p *putOpStorage) Write(_ context.Context, _ []byte) (sharky.Location, erro
 	return p.location, p.recovery.Add(p.location)
 }
 
-// Read implements the sharky.Store interface. It is used only in the case of pinning.
-// The pinning traversal needs to read the contents of the chunk to be able to find
-// all the addresses that need to be pinned.
+// Read implements the sharky.Store interface. It is not implemented because during
+// the migration we do not need to read any chunks.
 func (p *putOpStorage) Read(ctx context.Context, l sharky.Location, buf []byte) error {
-	return p.recovery.Read(ctx, l, buf)
+	return errors.New("not implemented")
 }
 
 // Release implements the sharky.Store interface. It is not implemented because
@@ -111,7 +110,7 @@ func epochMigration(
 		return nil
 	}
 
-	logger.Debug("epoch migration: started", "path", path, "start_time", time.Now())
+	logger.Debug("started", "path", path, "start_time", time.Now())
 
 	dbshed, err := shed.NewDB(path, nil)
 	if err != nil {
@@ -314,7 +313,7 @@ func (e *epochMigrator) migrateReserve(ctx context.Context) error {
 
 			item, err := e.retrievalDataIndex.Get(i)
 			if err != nil {
-				e.logger.Debug("epoch migration: retrieval data index read failed", "chunk_address", addr, "error", err)
+				e.logger.Debug("retrieval data index read failed", "chunk_address", addr, "error", err)
 				return false, nil //continue
 			}
 
@@ -359,7 +358,30 @@ func (e *epochMigrator) migratePinning(ctx context.Context) error {
 		store:    e.store,
 		recovery: e.recovery,
 	}
-	traverser := traversal.New(pStorage.ChunkStore())
+	traverser := traversal.New(
+		storage.GetterFunc(func(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, err error) {
+			i := shed.Item{
+				Address: addr.Bytes(),
+			}
+			item, err := e.retrievalDataIndex.Get(i)
+			if err != nil {
+				return nil, err
+			}
+
+			l, err := sharky.LocationFromBinary(item.Location)
+			if err != nil {
+				return nil, err
+			}
+
+			chData := make([]byte, l.Length)
+			err = e.recovery.Read(ctx, l, chData)
+			if err != nil {
+				return nil, err
+			}
+
+			return swarm.NewChunk(addr, chData), nil
+		}),
+	)
 
 	e.logger.Debug("migrating pinning collections, if all the chunks in the collection" +
 		" are not found locally, the collection will not be migrated. Users will have to" +
@@ -419,9 +441,9 @@ func (e *epochMigrator) migratePinning(ctx context.Context) error {
 
 					// do not fail the entire migration if the collection is not migrated
 					if err != nil {
-						e.logger.Debug("epoch migration: pinning collection migration failed", "collection_root_address", addr, "error", err)
+						e.logger.Debug("pinning collection migration failed", "collection_root_address", addr, "error", err)
 					} else {
-						e.logger.Debug("epoch migration: pinning collection migration successful", "collection_root_address", addr)
+						e.logger.Debug("pinning collection migration successful", "collection_root_address", addr)
 					}
 				}
 			}
