@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -117,7 +118,11 @@ func epochMigration(
 		return fmt.Errorf("shed.NewDB: %w", err)
 	}
 
-	defer dbshed.Close()
+	defer func() {
+		if dbshed != nil {
+			dbshed.Close()
+		}
+	}()
 
 	pullIndex, retrievalDataIndex, err := initShedIndexes(dbshed)
 	if err != nil {
@@ -153,13 +158,16 @@ func epochMigration(
 		}
 	}
 
+	dbshed.Close()
+	dbshed = nil
+
 	matches, err := filepath.Glob(filepath.Join(path, "*"))
 	if err != nil {
 		return err
 	}
 
 	for _, m := range matches {
-		if m != indexPath && m != sharkyPath {
+		if !strings.Contains(m, indexPath) && !strings.Contains(m, sharkyPath) {
 			err = os.Remove(m)
 			if err != nil {
 				return err
@@ -170,7 +178,7 @@ func epochMigration(
 	return store.Put(epochKey{})
 }
 
-func initShedIndexes(dbshed *shed.DB) (pullIndex shed.Index, retrievalIndex shed.Index, err error) {
+func initShedIndexes(dbshed *shed.DB) (pullIndex shed.Index, retrievalDataIndex shed.Index, err error) {
 	// pull index allows history and live syncing per po bin
 	pullIndex, err = dbshed.NewIndex("PO|BinID->Hash", shed.IndexFuncs{
 		EncodeKey: func(fields shed.Item) (key []byte, err error) {
@@ -201,7 +209,7 @@ func initShedIndexes(dbshed *shed.DB) (pullIndex shed.Index, retrievalIndex shed
 
 	// Index storing actual chunk address, data and bin id.
 	headerSize := 16 + postage.StampSize
-	retrievalDataIndex, err := dbshed.NewIndex("Address->StoreTimestamp|BinID|BatchID|BatchIndex|Sig|Location", shed.IndexFuncs{
+	retrievalDataIndex, err = dbshed.NewIndex("Address->StoreTimestamp|BinID|BatchID|BatchIndex|Sig|Location", shed.IndexFuncs{
 		EncodeKey: func(fields shed.Item) (key []byte, err error) {
 			return fields.Address, nil
 		},
@@ -270,28 +278,30 @@ func (e *epochMigrator) migrateReserve(ctx context.Context) error {
 
 	for i := 0; i < 4; i++ {
 		eg.Go(func() error {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-egCtx.Done():
-				return egCtx.Err()
-			case op, more := <-opChan:
-				if !more {
-					return nil
-				}
-				pStorage := &putOpStorage{
-					store:    e.store,
-					location: op.loc,
-					recovery: e.recovery,
-				}
+			for {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-egCtx.Done():
+					return egCtx.Err()
+				case op, more := <-opChan:
+					if !more {
+						return nil
+					}
+					pStorage := &putOpStorage{
+						store:    e.store,
+						location: op.loc,
+						recovery: e.recovery,
+					}
 
-				switch newIdx, err := e.reserve.Put(egCtx, pStorage, op.chunk); {
-				case err != nil:
-					return err
-				case newIdx:
-					e.reserve.AddSize(1)
+					switch newIdx, err := e.reserve.Put(egCtx, pStorage, op.chunk); {
+					case err != nil:
+						return err
+					case newIdx:
+						e.reserve.AddSize(1)
+					}
+					_ = e.pullIndex.Delete(op.pIdx)
 				}
-				return e.pullIndex.Delete(op.pIdx)
 			}
 		})
 	}
@@ -358,61 +368,62 @@ func (e *epochMigrator) migratePinning(ctx context.Context) error {
 
 	for i := 0; i < 4; i++ {
 		eg.Go(func() error {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			case <-egCtx.Done():
-				return egCtx.Err()
-			case addr, more := <-pinChan:
-				if !more {
-					return nil
-				}
-
-				pinningPutter := pinstore.NewCollection(pStorage)
-				var mu sync.Mutex
-
-				traverserFn := func(chAddr swarm.Address) error {
-					item, err := e.retrievalDataIndex.Get(shed.Item{Address: chAddr.Bytes()})
-					if err != nil {
-						return err
+			for {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				case <-egCtx.Done():
+					return egCtx.Err()
+				case addr, more := <-pinChan:
+					if !more {
+						return nil
 					}
 
-					l, err := sharky.LocationFromBinary(item.Location)
-					if err != nil {
-						return err
-					}
-					ch := swarm.NewChunk(chAddr, nil)
+					pinningPutter := pinstore.NewCollection(pStorage)
+					var mu sync.Mutex
 
-					mu.Lock()
-					pStorage.location = l
-					err = pinningPutter.Put(egCtx, ch)
-					if err != nil {
+					traverserFn := func(chAddr swarm.Address) error {
+						item, err := e.retrievalDataIndex.Get(shed.Item{Address: chAddr.Bytes()})
+						if err != nil {
+							return err
+						}
+
+						l, err := sharky.LocationFromBinary(item.Location)
+						if err != nil {
+							return err
+						}
+						ch := swarm.NewChunk(chAddr, nil)
+
+						mu.Lock()
+						pStorage.location = l
+						err = pinningPutter.Put(egCtx, ch)
+						if err != nil {
+							mu.Unlock()
+							return err
+						}
 						mu.Unlock()
-						return err
-					}
-					mu.Unlock()
 
-					return nil
+						return nil
+					}
+
+					err := func() error {
+						if err := traverser.Traverse(egCtx, addr, traverserFn); err != nil {
+							return err
+						}
+
+						if err := pinningPutter.Close(addr); err != nil {
+							return err
+						}
+						return nil
+					}()
+
+					// do not fail the entire migration if the collection is not migrated
+					if err != nil {
+						e.logger.Debug("epoch migration: pinning collection migration failed", "collection_root_address", addr, "error", err)
+					} else {
+						e.logger.Debug("epoch migration: pinning collection migration successful", "collection_root_address", addr)
+					}
 				}
-
-				err := func() error {
-					if err := traverser.Traverse(egCtx, addr, traverserFn); err != nil {
-						return err
-					}
-
-					if err := pinningPutter.Close(addr); err != nil {
-						return err
-					}
-					return nil
-				}()
-
-				// do not fail the entire migration if the collection is not migrated
-				if err != nil {
-					e.logger.Debug("epoch migration: pinning collection migration failed", "collection_root_address", addr, "error", err)
-					return nil
-				}
-				e.logger.Debug("epoch migration: pinning collection migration successful", "collection_root_address", addr)
-				return nil
 			}
 		})
 	}
