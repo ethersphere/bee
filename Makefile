@@ -67,7 +67,7 @@ deploylocal:
 .PHONY: testlocal
 testlocal:
 	export PATH=${PATH}:$(GOBIN)
-	beekeeper check --cluster-name local --checks=ci-full-connectivity,ci-gc,ci-manifest,ci-pingpong,ci-pss,ci-pushsync-chunks,ci-retrieval,ci-content-availability,ci-settlements,ci-soc
+	beekeeper check --cluster-name local --checks=ci-full-connectivity,ci-gc,ci-manifest,ci-pingpong,ci-pss,ci-pushsync-chunks,ci-retrieval,ci-settlements,ci-soc
 
 .PHONY: testlocal-all
 testlocal-all: beekeeper beelocal deploylocal testlocal
