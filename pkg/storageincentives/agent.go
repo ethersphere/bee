@@ -345,7 +345,7 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) (bool, error) {
 	txHash, err := a.contract.Claim(ctx)
 	if err != nil {
 		a.metrics.ErrClaim.Inc()
-		return false, fmt.Errorf("error claiming win: %w", err)
+		return false, fmt.Errorf("claiming win: %w", err)
 	}
 
 	a.logger.Info("claimed win")
