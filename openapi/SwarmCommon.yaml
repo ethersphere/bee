@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 3.2.1
+  version: 3.2.2
   title: Common Data Types
   description: |
     \*****bzzz*****
@@ -861,6 +861,8 @@ components:
           type: boolean
         BatchCommitment:
           type: integer
+        isReachable:
+          type: boolean
 
     StatusResponse:
       type: object
