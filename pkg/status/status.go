@@ -52,7 +52,7 @@ type Service struct {
 }
 
 // LocalSnapshot returns the current status snapshot of this node.
-func (s *Service) LocalSnapshot() (*PeerStatusSnapshot, error) {
+func (s *Service) LocalSnapshot() (*Snapshot, error) {
 	var (
 		storageRadius    = s.radius.StorageRadius()
 		connectedPeers   uint64
@@ -77,27 +77,20 @@ func (s *Service) LocalSnapshot() (*PeerStatusSnapshot, error) {
 		return nil, fmt.Errorf("batchstore commitment: %w", err)
 	}
 
-	return &PeerStatusSnapshot{
-		Snapshot: &Snapshot{
-			BeeMode:          s.beeMode,
-			ReserveSize:      s.reserve.ReserveSize(),
-			PullsyncRate:     s.sync.SyncRate(),
-			StorageRadius:    uint32(storageRadius),
-			ConnectedPeers:   connectedPeers,
-			NeighborhoodSize: neighborhoodSize,
-			BatchCommitment:  commitment,
-		},
-		PeerReachable: s.topologyDriver.IsReachable(),
+	return &Snapshot{
+		BeeMode:          s.beeMode,
+		ReserveSize:      s.reserve.ReserveSize(),
+		PullsyncRate:     s.sync.SyncRate(),
+		StorageRadius:    uint32(storageRadius),
+		ConnectedPeers:   connectedPeers,
+		NeighborhoodSize: neighborhoodSize,
+		BatchCommitment:  commitment,
+		IsReachable:      s.topologyDriver.IsReachable(),
 	}, nil
 }
 
-type PeerStatusSnapshot struct {
-	*Snapshot
-	PeerReachable bool
-}
-
 // PeerSnapshot sends request for status snapshot to the peer.
-func (s *Service) PeerSnapshot(ctx context.Context, peer swarm.Address) (*PeerStatusSnapshot, error) {
+func (s *Service) PeerSnapshot(ctx context.Context, peer swarm.Address) (*Snapshot, error) {
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
 		return nil, fmt.Errorf("new stream: %w", err)
@@ -120,14 +113,7 @@ func (s *Service) PeerSnapshot(ctx context.Context, peer swarm.Address) (*PeerSt
 		return nil, fmt.Errorf("read message failed: %w", err)
 	}
 
-	isPeerReachable := s.topologyDriver.PeerReachability(peer)
-
-	sn := &PeerStatusSnapshot{
-		Snapshot:      (*Snapshot)(ss),
-		PeerReachable: isPeerReachable,
-	}
-
-	return sn, nil
+	return (*Snapshot)(ss), nil
 }
 
 // Protocol returns the protocol specification.

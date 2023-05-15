@@ -102,7 +102,7 @@ func (m *topologyPeersIterNoopMock) EachConnectedPeerRev(_ topology.EachPeerFunc
 	return nil
 }
 func (m *topologyPeersIterNoopMock) IsReachable() bool {
-	return false
+	return true
 }
 func (m *topologyPeersIterNoopMock) PeerReachability(swarm.Address) bool {
 	return false

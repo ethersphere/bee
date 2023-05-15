@@ -78,7 +78,7 @@ func (s *Service) statusGetHandler(w http.ResponseWriter, _ *http.Request) {
 		ConnectedPeers:   ss.ConnectedPeers,
 		NeighborhoodSize: ss.NeighborhoodSize,
 		BatchCommitment:  ss.BatchCommitment,
-		IsReachable:      s.topologyDriver.IsReachable(),
+		IsReachable:      ss.IsReachable,
 	})
 }
 
@@ -123,7 +123,7 @@ func (s *Service) statusGetPeersHandler(w http.ResponseWriter, r *http.Request) 
 				snapshot.ConnectedPeers = ss.ConnectedPeers
 				snapshot.NeighborhoodSize = ss.NeighborhoodSize
 				snapshot.BatchCommitment = ss.BatchCommitment
-				snapshot.IsReachable = ss.PeerReachable
+				snapshot.IsReachable = ss.IsReachable
 			}
 
 			mu.Lock()
