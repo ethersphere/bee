@@ -20,7 +20,7 @@ const loggerName = "depthmonitor"
 
 // DefaultWakeupInterval is the default value
 // for the depth monitor wake-up interval.
-const DefaultWakeupInterval = 5 * time.Minute
+const DefaultWakeupInterval = 15 * time.Minute
 
 // defaultMinimumRadius is the default value
 // for the depth monitor minimum radius.
