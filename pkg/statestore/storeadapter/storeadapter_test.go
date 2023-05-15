@@ -20,7 +20,10 @@ func TestStateStoreAdapter(t *testing.T) {
 	test.Run(t, func(t *testing.T) storage.StateStorer {
 		t.Helper()
 
-		store := storeadapter.NewStateStorerAdapter(inmemstore.New())
+		store, err := storeadapter.NewStateStorerAdapter(inmemstore.New())
+		if err != nil {
+			t.Fatal(err)
+		}
 		t.Cleanup(func() {
 			if err := store.Close(); err != nil {
 				t.Fatal(err)
@@ -44,6 +47,10 @@ func TestStateStoreAdapter(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		return storeadapter.NewStateStorerAdapter(leveldb)
+		store, err := storeadapter.NewStateStorerAdapter(leveldb)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return store
 	})
 }

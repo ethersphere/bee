@@ -7,11 +7,12 @@ package node
 import (
 	"errors"
 	"fmt"
-	"github.com/ethersphere/bee/pkg/storage/leveldbstore"
 	"path/filepath"
 
 	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/pkg/statestore/storeadapter"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage/leveldbstore"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -28,7 +29,7 @@ func InitStateStore(logger log.Logger, dataDir string) (storage.StateStorer, err
 	if err != nil {
 		return nil, err
 	}
-	return storage.NewStateStorerAdapter(ldb), nil
+	return storeadapter.NewStateStorerAdapter(ldb)
 }
 
 const noncedOverlayKey = "nonce-overlay"

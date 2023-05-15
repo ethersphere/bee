@@ -9,6 +9,7 @@ import (
 	"path"
 
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage/migration"
 )
 
 // stateStoreNamespace is the namespace used for state storage.
@@ -117,6 +118,10 @@ func (s *StateStorerAdapter) Iterate(prefix string, iterFunc storage.StateIterFu
 }
 
 // NewStateStorerAdapter creates a new StateStorerAdapter.
-func NewStateStorerAdapter(storage storage.Store) *StateStorerAdapter {
-	return &StateStorerAdapter{storage: storage}
+func NewStateStorerAdapter(storage storage.Store) (*StateStorerAdapter, error) {
+	err := migration.Migrate(storage, AllSteps())
+	if err != nil {
+		return nil, err
+	}
+	return &StateStorerAdapter{storage: storage}, nil
 }
