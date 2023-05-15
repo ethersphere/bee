@@ -33,6 +33,7 @@ func TestGetStatus(t *testing.T) {
 			ConnectedPeers:   0,
 			NeighborhoodSize: 0,
 			BatchCommitment:  1,
+			IsReachable:      true,
 		}
 
 		ssMock := &statusSnapshotMock{
@@ -98,6 +99,9 @@ func (m *topologyPeersIterNoopMock) EachConnectedPeer(_ topology.EachPeerFunc, _
 
 func (m *topologyPeersIterNoopMock) EachConnectedPeerRev(_ topology.EachPeerFunc, _ topology.Filter) error {
 	return nil
+}
+func (m *topologyPeersIterNoopMock) IsReachable() bool {
+	return true
 }
 
 // statusSnapshotMock satisfies the following interfaces:
