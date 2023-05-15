@@ -32,6 +32,7 @@ type Driver interface {
 	Halter
 	Snapshot() *KadParams
 	IsReachable() bool
+	UpdatePeerHealth(addr swarm.Address, h bool)
 }
 
 type PeerAdder interface {
@@ -60,6 +61,7 @@ type PeerIterator interface {
 // Filter defines the different filters that can be used with the Peer iterators
 type Filter struct {
 	Reachable bool
+	Healthy   bool
 }
 
 // EachPeerFunc is a callback that is called with a peer and its PO
@@ -80,6 +82,7 @@ type MetricSnapshotView struct {
 	SessionConnectionDirection string  `json:"sessionConnectionDirection"`
 	LatencyEWMA                int64   `json:"latencyEWMA"`
 	Reachability               string  `json:"reachability"`
+	Healthy                    bool    `json:"healthy"`
 }
 
 type BinInfo struct {

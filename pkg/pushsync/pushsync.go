@@ -86,6 +86,7 @@ type PushSync struct {
 	signer         crypto.Signer
 	fullNode       bool
 	skipList       *skippeers.List
+	warmupPeriod   time.Time
 }
 
 type receiptResult struct {
@@ -95,7 +96,7 @@ type receiptResult struct {
 	err      error
 }
 
-func New(address swarm.Address, nonce []byte, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, rs postage.Radius, tagger *tags.Tags, fullNode bool, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger log.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer) *PushSync {
+func New(address swarm.Address, nonce []byte, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, rs postage.Radius, tagger *tags.Tags, fullNode bool, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger log.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer, warmupTime time.Duration) *PushSync {
 	ps := &PushSync{
 		address:        address,
 		nonce:          nonce,
@@ -113,6 +114,7 @@ func New(address swarm.Address, nonce []byte, streamer p2p.StreamerDisconnecter,
 		tracer:         tracer,
 		signer:         signer,
 		skipList:       skippeers.NewList(),
+		warmupPeriod:   time.Now().Add(warmupTime),
 	}
 
 	ps.validStamp = ps.validStampWrapper(validStamp)
@@ -265,6 +267,10 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 // pushToClosest attempts to push the chunk into the network.
 func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bool) (*pb.Receipt, error) {
 
+	if !ps.warmedUp() {
+		return nil, ErrWarmup
+	}
+
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
@@ -310,7 +316,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			// If no peer can be found from an origin peer, the origin peer may store the chunk.
 			// Non-origin peers store the chunk if the chunk is within depth.
 			// For non-origin peers, if the chunk is not within depth, they may store the chunk if they are the closest peer to the chunk.
-			peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), ps.fullNode && !origin, topology.Filter{Reachable: true}, ps.skipList.ChunkPeers(ch.Address())...)
+			peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), ps.fullNode && !origin, topology.Filter{Reachable: true, Healthy: true}, ps.skipList.ChunkPeers(ch.Address())...)
 
 			if errors.Is(err, topology.ErrNotFound) {
 				if ps.skipList.PruneExpiresAfter(ch.Address(), overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers
@@ -515,4 +521,8 @@ func (ps *PushSync) validStampWrapper(f postage.ValidStampFn) postage.ValidStamp
 
 func (s *PushSync) Close() error {
 	return s.skipList.Close()
+}
+
+func (ps *PushSync) warmedUp() bool {
+	return time.Now().After(ps.warmupPeriod)
 }

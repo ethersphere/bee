@@ -63,6 +63,7 @@ import (
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/resolver/multiresolver"
 	"github.com/ethersphere/bee/pkg/retrieval"
+	"github.com/ethersphere/bee/pkg/salud"
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	"github.com/ethersphere/bee/pkg/settlement/swap"
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
@@ -124,6 +125,7 @@ type Bee struct {
 	hiveCloser               io.Closer
 	chainSyncerCloser        io.Closer
 	depthMonitorCloser       io.Closer
+	saludCloser              io.Closer
 	storageIncetivesCloser   io.Closer
 	shutdownInProgress       bool
 	shutdownMutex            sync.Mutex
@@ -907,7 +909,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 
 	pinningService := pinning.NewService(storer, stateStore, traversalService)
 
-	pushSyncProtocol := pushsync.New(swarmAddress, nonce, p2ps, storer, kad, batchStore, tagService, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer)
+	pushSyncProtocol := pushsync.New(swarmAddress, nonce, p2ps, storer, kad, batchStore, tagService, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
 	b.pushSyncCloser = pushSyncProtocol
 
 	// set the pushSyncer in the PSS
@@ -965,6 +967,14 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 	}
 	stakingContract := staking.New(swarmAddress, overlayEthAddress, stakingContractAddress, stakingContractABI, bzzTokenAddress, transactionService, common.BytesToHash(nonce))
 
+	nodeStatus := status.NewService(logger, p2ps, kad, beeNodeMode.String(), storer, pullSyncProtocol, batchStore, batchStore)
+	if err = p2ps.AddProtocol(nodeStatus.Protocol()); err != nil {
+		return nil, fmt.Errorf("status service: %w", err)
+	}
+
+	saludService := salud.New(nodeStatus, kad, batchStore, logger, warmupTime, api.FullMode.String(), salud.DefaultMinPeersPerBin)
+	b.saludCloser = saludService
+
 	var (
 		pullerService *puller.Puller
 		agent         *storageincentives.Agent
@@ -992,7 +1002,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 			}
 
 			redistributionContract := redistribution.New(swarmAddress, logger, transactionService, redistributionContractAddress, redistributionContractABI)
-			agent, err = storageincentives.New(swarmAddress, overlayEthAddress, chainBackend, logger, depthMonitor, redistributionContract, postageStampContractService, stakingContract, batchStore, storer, o.BlockTime, storageincentives.DefaultBlocksPerRound, storageincentives.DefaultBlocksPerPhase, stateStore, erc20Service, transactionService)
+			agent, err = storageincentives.New(swarmAddress, overlayEthAddress, chainBackend, depthMonitor, redistributionContract, postageStampContractService, stakingContract, batchStore, storer, o.BlockTime, storageincentives.DefaultBlocksPerRound, storageincentives.DefaultBlocksPerPhase, stateStore, erc20Service, transactionService, saludService, logger)
 			if err != nil {
 				return nil, fmt.Errorf("storage incentives agent: %w", err)
 			}
@@ -1027,11 +1037,6 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 
 	feedFactory := factory.New(ns)
 	steward := steward.New(storer, traversalService, retrieve, pushSyncProtocol)
-
-	nodeStatus := status.NewService(logger, p2ps, kad, beeNodeMode.String(), storer, pullSyncProtocol, batchStore, batchStore)
-	if err = p2ps.AddProtocol(nodeStatus.Protocol()); err != nil {
-		return nil, fmt.Errorf("status service: %w", err)
-	}
 
 	extraOpts := api.ExtraOptions{
 		Pingpong:         pingPong,
@@ -1111,6 +1116,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		debugService.MustRegisterMetrics(acc.Metrics()...)
 		debugService.MustRegisterMetrics(storer.Metrics()...)
 		debugService.MustRegisterMetrics(kad.Metrics()...)
+		debugService.MustRegisterMetrics(saludService.Metrics()...)
 
 		if pullerService != nil {
 			debugService.MustRegisterMetrics(pullerService.Metrics()...)
@@ -1246,7 +1252,7 @@ func (b *Bee) Shutdown() error {
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(9)
+	wg.Add(10)
 	go func() {
 		defer wg.Done()
 		tryClose(b.chainSyncerCloser, "chain syncer")
@@ -1284,6 +1290,10 @@ func (b *Bee) Shutdown() error {
 	go func() {
 		defer wg.Done()
 		tryClose(b.hiveCloser, "hive")
+	}()
+	go func() {
+		defer wg.Done()
+		tryClose(b.saludCloser, "salud")
 	}()
 
 	wg.Wait()

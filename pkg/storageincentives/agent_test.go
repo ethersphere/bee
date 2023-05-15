@@ -167,7 +167,7 @@ func createService(
 		return false, nil
 	}))
 
-	return storageincentives.New(addr, common.Address{}, backend, log.Noop, &mockMonitor{}, contract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), &mockSampler{t: t}, time.Millisecond*10, blocksPerRound, blocksPerPhase, statestore.NewStateStore(), erc20mock.New(), transactionmock.New())
+	return storageincentives.New(addr, common.Address{}, backend, &mockMonitor{}, contract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), &mockSampler{t: t}, time.Millisecond*10, blocksPerRound, blocksPerPhase, statestore.NewStateStore(), erc20mock.New(), transactionmock.New(), &mockHealth{}, log.Noop)
 }
 
 type mockchainBackend struct {
@@ -291,3 +291,7 @@ func (m *mockSampler) ReserveSample(context.Context, []byte, uint8, uint64) (sto
 		Hash: swarm.RandAddress(m.t),
 	}, nil
 }
+
+type mockHealth struct{}
+
+func (m *mockHealth) IsHealthy() bool { return true }

@@ -32,6 +32,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/kademlia"
+	im "github.com/ethersphere/bee/pkg/topology/kademlia/internal/metrics"
 	"github.com/ethersphere/bee/pkg/topology/pslice"
 	"github.com/ethersphere/bee/pkg/util/testutil"
 )
@@ -39,6 +40,9 @@ import (
 const spinLockWaitTime = time.Second * 3
 
 var nonConnectableAddress, _ = ma.NewMultiaddr(underlayBase + "16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkA")
+var defaultFilterFunc kademlia.FilterFunc = func(...im.FilterOp) kademlia.PeerFilterFunc {
+	return func(swarm.Address) bool { return false }
+}
 
 // TestNeighborhoodDepth tests that the kademlia depth changes correctly
 // according to the change to known peers slice. This inadvertently tests
@@ -52,8 +56,8 @@ func TestNeighborhoodDepth(t *testing.T) {
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			SaturationPeers:  ptrInt(4),
-			ReachabilityFunc: func(_ swarm.Address) bool { return false },
+			SaturationPeers: ptrInt(4),
+			FilterFunc:      defaultFilterFunc,
 		})
 	)
 
@@ -377,8 +381,8 @@ func TestManage(t *testing.T) {
 		conns                    int32 // how many connect calls were made to the p2p mock
 		saturation               = kademlia.DefaultSaturationPeers
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			BitSuffixLength:  ptrInt(-1),
-			ReachabilityFunc: func(_ swarm.Address) bool { return false },
+			BitSuffixLength: ptrInt(-1),
+			FilterFunc:      defaultFilterFunc,
 		})
 	)
 
@@ -424,10 +428,10 @@ func TestManageWithBalancing(t *testing.T) {
 			return f(bin, peers, connected, filter)
 		}
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			SaturationFunc:   saturationFunc,
-			SaturationPeers:  ptrInt(4),
-			BitSuffixLength:  ptrInt(2),
-			ReachabilityFunc: func(_ swarm.Address) bool { return false },
+			SaturationFunc:  saturationFunc,
+			SaturationPeers: ptrInt(4),
+			BitSuffixLength: ptrInt(2),
+			FilterFunc:      defaultFilterFunc,
 		})
 	)
 
@@ -471,9 +475,9 @@ func TestBinSaturation(t *testing.T) {
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			SaturationPeers:  ptrInt(2),
-			BitSuffixLength:  ptrInt(-1),
-			ReachabilityFunc: func(_ swarm.Address) bool { return false },
+			SaturationPeers: ptrInt(2),
+			BitSuffixLength: ptrInt(-1),
+			FilterFunc:      defaultFilterFunc,
 		})
 	)
 
@@ -522,7 +526,7 @@ func TestOversaturation(t *testing.T) {
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			ReachabilityFunc: func(_ swarm.Address) bool { return false },
+			FilterFunc: defaultFilterFunc,
 		})
 	)
 
@@ -574,7 +578,7 @@ func TestOversaturationBootnode(t *testing.T) {
 			OverSaturationPeers: ptrInt(overSaturationPeers),
 			SaturationPeers:     ptrInt(4),
 			BootnodeMode:        true,
-			ReachabilityFunc:    func(_ swarm.Address) bool { return false },
+			FilterFunc:          defaultFilterFunc,
 		})
 	)
 
@@ -632,7 +636,7 @@ func TestBootnodeMaxConnections(t *testing.T) {
 			BootnodeOverSaturationPeers: ptrInt(bootnodeOverSaturationPeers),
 			SaturationPeers:             ptrInt(4),
 			BootnodeMode:                true,
-			ReachabilityFunc:            func(_ swarm.Address) bool { return false },
+			FilterFunc:                  defaultFilterFunc,
 		})
 	)
 
@@ -723,7 +727,7 @@ func TestDiscoveryHooks(t *testing.T) {
 	var (
 		conns                    int32
 		_, kad, ab, disc, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			ReachabilityFunc: func(peer swarm.Address) bool { return false },
+			FilterFunc: defaultFilterFunc,
 		})
 		p1, p2, p3 = swarm.RandAddress(t), swarm.RandAddress(t), swarm.RandAddress(t)
 	)
@@ -1293,7 +1297,7 @@ func TestOutofDepthPrune(t *testing.T) {
 			SaturationPeers:     ptrInt(saturationPeers),
 			OverSaturationPeers: ptrInt(overSaturationPeers),
 			PruneFunc:           pruneFunc,
-			ReachabilityFunc:    func(_ swarm.Address) bool { return false },
+			FilterFunc:          defaultFilterFunc,
 		})
 	)
 
@@ -1437,7 +1441,7 @@ func TestBootnodeProtectedNodes(t *testing.T) {
 			LowWaterMark:                ptrInt(0),
 			BootnodeMode:                true,
 			StaticNodes:                 protected,
-			ReachabilityFunc:            func(_ swarm.Address) bool { return false },
+			FilterFunc:                  defaultFilterFunc,
 		})
 	)
 
@@ -1527,7 +1531,7 @@ func TestAnnounceBgBroadcast_FLAKY(t *testing.T) {
 			}),
 		)
 		_, kad, ab, _, signer = newTestKademliaWithDiscovery(t, disc, &conns, nil, kademlia.Options{
-			ReachabilityFunc: func(swarm.Address) bool { return false },
+			FilterFunc: defaultFilterFunc,
 		})
 	)
 
@@ -1596,7 +1600,7 @@ func TestAnnounceNeighborhoodToNeighbor(t *testing.T) {
 			}),
 		)
 		base, kad, ab, _, signer = newTestKademliaWithDiscovery(t, disc, &conns, nil, kademlia.Options{
-			ReachabilityFunc:    func(swarm.Address) bool { return false },
+			FilterFunc:          defaultFilterFunc,
 			OverSaturationPeers: ptrInt(4),
 			SaturationPeers:     ptrInt(4),
 		})
@@ -1669,12 +1673,20 @@ func TestIteratorOpts(t *testing.T) {
 
 	// randomly mark some nodes as reachable
 	totalReachable := 0
+	totalHealthy := 0
 	reachable := make(map[string]struct{})
+	healthy := make(map[string]struct{})
+
 	_ = kad.EachConnectedPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
 		if randBool.Bool() {
 			kad.Reachable(addr, p2p.ReachabilityStatusPublic)
 			reachable[addr.ByteString()] = struct{}{}
 			totalReachable++
+		}
+		if randBool.Bool() {
+			healthy[addr.ByteString()] = struct{}{}
+			totalHealthy++
+			kad.UpdatePeerHealth(addr, true)
 		}
 		return false, false, nil
 	}, topology.Filter{})
@@ -1698,6 +1710,41 @@ func TestIteratorOpts(t *testing.T) {
 		}
 	})
 
+	t.Run("EachConnectedPeer healthy", func(t *testing.T) {
+		t.Parallel()
+
+		count := 0
+		err := kad.EachConnectedPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+			if _, exists := healthy[addr.ByteString()]; !exists {
+				t.Fatal("iterator returned incorrect peer")
+			}
+			count++
+			return false, false, nil
+		}, topology.Filter{Healthy: true})
+		if err != nil {
+			t.Fatal("iterator returned error")
+		}
+		if count != totalHealthy {
+			t.Fatal("iterator returned incorrect no of peers", count, "expected", totalHealthy)
+		}
+	})
+
+	t.Run("EachConnectedPeer reachable healthy", func(t *testing.T) {
+		t.Parallel()
+		err := kad.EachConnectedPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+			if _, exists := reachable[addr.ByteString()]; !exists {
+				t.Fatal("iterator returned incorrect peer")
+			}
+			if _, exists := healthy[addr.ByteString()]; !exists {
+				t.Fatal("iterator returned incorrect peer")
+			}
+			return false, false, nil
+		}, topology.Filter{Reachable: true, Healthy: true})
+		if err != nil {
+			t.Fatal("iterator returned error")
+		}
+	})
+
 	t.Run("EachConnectedPeerRev reachable", func(t *testing.T) {
 		t.Parallel()
 
@@ -1714,6 +1761,41 @@ func TestIteratorOpts(t *testing.T) {
 		}
 		if count != totalReachable {
 			t.Fatal("iterator returned incorrect no of peers", count, "expected", totalReachable)
+		}
+	})
+
+	t.Run("EachConnectedPeerRev healthy", func(t *testing.T) {
+		t.Parallel()
+
+		count := 0
+		err := kad.EachConnectedPeerRev(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+			if _, exists := healthy[addr.ByteString()]; !exists {
+				t.Fatal("iterator returned incorrect peer")
+			}
+			count++
+			return false, false, nil
+		}, topology.Filter{Healthy: true})
+		if err != nil {
+			t.Fatal("iterator returned error")
+		}
+		if count != totalHealthy {
+			t.Fatal("iterator returned incorrect no of peers", count, "expected", totalHealthy)
+		}
+	})
+
+	t.Run("EachConnectedPeerRev reachable healthy", func(t *testing.T) {
+		t.Parallel()
+		err := kad.EachConnectedPeerRev(func(addr swarm.Address, _ uint8) (bool, bool, error) {
+			if _, exists := reachable[addr.ByteString()]; !exists {
+				t.Fatal("iterator returned incorrect peer")
+			}
+			if _, exists := healthy[addr.ByteString()]; !exists {
+				t.Fatal("iterator returned incorrect peer")
+			}
+			return false, false, nil
+		}, topology.Filter{Reachable: true, Healthy: true})
+		if err != nil {
+			t.Fatal("iterator returned error")
 		}
 	})
 }
