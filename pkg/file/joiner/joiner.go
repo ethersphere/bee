@@ -10,8 +10,9 @@ import (
 	"encoding/binary"
 	"errors"
 	"io"
-	"sync"
 	"sync/atomic"
+
+	sync "github.com/sasha-s/go-deadlock"
 
 	"github.com/ethersphere/bee/pkg/encryption"
 	"github.com/ethersphere/bee/pkg/encryption/store"

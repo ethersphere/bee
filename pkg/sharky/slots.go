@@ -6,7 +6,8 @@ package sharky
 
 import (
 	"io"
-	"sync"
+
+	sync "github.com/sasha-s/go-deadlock"
 )
 
 type slots struct {

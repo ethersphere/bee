@@ -10,9 +10,10 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
-	"sync"
 	"testing"
 	"time"
+
+	sync "github.com/sasha-s/go-deadlock"
 )
 
 // TestShard ensures that released slots eventually become available for writes

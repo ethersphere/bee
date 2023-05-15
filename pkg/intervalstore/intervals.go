@@ -26,7 +26,8 @@ import (
 	"fmt"
 	"math"
 	"strconv"
-	"sync"
+
+	sync "github.com/sasha-s/go-deadlock"
 )
 
 // Intervals store a list of intervals. Its purpose is to provide

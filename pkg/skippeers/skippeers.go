@@ -7,8 +7,9 @@ package skippeers
 import (
 	"container/heap"
 	"math"
-	"sync"
 	"time"
+
+	sync "github.com/sasha-s/go-deadlock"
 
 	"github.com/ethersphere/bee/pkg/swarm"
 	"golang.org/x/exp/maps"

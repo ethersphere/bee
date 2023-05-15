@@ -5,7 +5,7 @@
 package events
 
 import (
-	"sync"
+	sync "github.com/sasha-s/go-deadlock"
 )
 
 type Subscriber struct {

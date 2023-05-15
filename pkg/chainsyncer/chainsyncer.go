@@ -11,9 +11,10 @@ import (
 	"context"
 	"errors"
 	"math/big"
-	"sync"
 	"sync/atomic"
 	"time"
+
+	sync "github.com/sasha-s/go-deadlock"
 
 	"github.com/ethersphere/bee/pkg/blocker"
 	"github.com/ethersphere/bee/pkg/log"

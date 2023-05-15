@@ -8,8 +8,9 @@ package rate
 // Under the hood, it uses a moving window to interpolate a rate.
 
 import (
-	"sync"
 	"time"
+
+	sync "github.com/sasha-s/go-deadlock"
 )
 
 const milliInSeconds = 1000

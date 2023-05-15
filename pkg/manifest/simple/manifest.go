@@ -10,7 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
+
+	sync "github.com/sasha-s/go-deadlock"
 )
 
 // Error used when lookup path does not match

@@ -6,7 +6,8 @@ package storer
 
 import (
 	"context"
-	"sync"
+
+	sync "github.com/sasha-s/go-deadlock"
 
 	"github.com/ethersphere/bee/pkg/storer/internal/upload"
 	"github.com/ethersphere/bee/pkg/swarm"

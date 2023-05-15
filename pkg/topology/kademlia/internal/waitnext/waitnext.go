@@ -7,8 +7,9 @@
 package waitnext
 
 import (
-	"sync"
 	"time"
+
+	sync "github.com/sasha-s/go-deadlock"
 
 	"github.com/ethersphere/bee/pkg/swarm"
 )

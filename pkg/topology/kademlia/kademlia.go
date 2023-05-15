@@ -13,9 +13,10 @@ import (
 	"math/big"
 	"net"
 	"path/filepath"
-	"sync"
 	"syscall"
 	"time"
+
+	sync "github.com/sasha-s/go-deadlock"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/blocker"

@@ -7,7 +7,8 @@ package leveldbstore
 import (
 	"context"
 	"fmt"
-	"sync"
+
+	sync "github.com/sasha-s/go-deadlock"
 
 	storage "github.com/ethersphere/bee/pkg/storage"
 	ldb "github.com/syndtr/goleveldb/leveldb"

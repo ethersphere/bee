@@ -13,9 +13,10 @@ import (
 	"fmt"
 	"math/big"
 	"sort"
-	"sync"
 	"testing"
 	"time"
+
+	sync "github.com/sasha-s/go-deadlock"
 
 	"github.com/ethersphere/bee/pkg/bmt"
 	"github.com/ethersphere/bee/pkg/postage"

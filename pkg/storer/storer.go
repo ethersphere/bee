@@ -14,8 +14,9 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"sync"
 	"time"
+
+	sync "github.com/sasha-s/go-deadlock"
 
 	"github.com/ethersphere/bee/pkg/log"
 	m "github.com/ethersphere/bee/pkg/metrics"

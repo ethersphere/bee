@@ -14,8 +14,9 @@ import (
 	"crypto/ecdsa"
 	"errors"
 	"io"
-	"sync"
 	"time"
+
+	sync "github.com/sasha-s/go-deadlock"
 
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
