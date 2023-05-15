@@ -77,6 +77,10 @@ func (m *Mock) EachNeighborRev(topology.EachPeerFunc) error {
 	panic("not implemented") // TODO: Implement
 }
 
+func (m *Mock) UpdatePeerHealth(swarm.Address, bool) {
+	panic("not implemented") // TODO: Implement
+}
+
 // PeerIterator iterates from closest bin to farthest
 func (m *Mock) EachConnectedPeer(f topology.EachPeerFunc, _ topology.Filter) error {
 	m.mtx.Lock()

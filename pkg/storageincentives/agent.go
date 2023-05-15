@@ -53,6 +53,10 @@ type Monitor interface {
 	IsFullySynced() bool
 }
 
+type Health interface {
+	IsHealthy() bool
+}
+
 type SampleData struct {
 	ReserveSample storage.Sample
 	StorageRadius uint8
@@ -74,9 +78,10 @@ type Agent struct {
 	wg                     sync.WaitGroup
 	state                  *RedistributionState
 	commitLock             sync.Mutex
+	health                 Health
 }
 
-func New(overlay swarm.Address, ethAddress common.Address, backend ChainBackend, logger log.Logger, monitor Monitor, contract redistribution.Contract, batchExpirer postagecontract.PostageBatchExpirer, redistributionStatuser staking.RedistributionStatuser, radius postage.Radius, sampler storage.Sampler, blockTime time.Duration, blocksPerRound, blocksPerPhase uint64, stateStore storage.StateStorer, erc20Service erc20.Service, tranService transaction.Service) (*Agent, error) {
+func New(overlay swarm.Address, ethAddress common.Address, backend ChainBackend, monitor Monitor, contract redistribution.Contract, batchExpirer postagecontract.PostageBatchExpirer, redistributionStatuser staking.RedistributionStatuser, radius postage.Radius, sampler storage.Sampler, blockTime time.Duration, blocksPerRound, blocksPerPhase uint64, stateStore storage.StateStorer, erc20Service erc20.Service, tranService transaction.Service, health Health, logger log.Logger) (*Agent, error) {
 	a := &Agent{
 		overlay:                overlay,
 		metrics:                newMetrics(),
@@ -90,6 +95,7 @@ func New(overlay swarm.Address, ethAddress common.Address, backend ChainBackend,
 		sampler:                sampler,
 		quit:                   make(chan struct{}),
 		redistributionStatuser: redistributionStatuser,
+		health:                 health,
 	}
 
 	state, err := NewRedistributionState(logger, ethAddress, stateStore, erc20Service, tranService)
@@ -370,6 +376,11 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 
 	if status.IsFrozen {
 		a.logger.Info("skipping round because node is frozen", "round", round)
+		return false, nil
+	}
+
+	if !a.health.IsHealthy() {
+		a.logger.Info("skipping round because node is unhealhy", "round", round)
 		return false, nil
 	}
 
