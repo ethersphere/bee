@@ -1371,11 +1371,6 @@ func (k *Kad) UpdatePeerHealth(peer swarm.Address, health bool) {
 	k.collector.Record(peer, im.PeerHealth(health))
 }
 
-// PeerReachability reports if given address is publicly reachable
-func (k *Kad) PeerReachability(addr swarm.Address) bool {
-	return !k.collector.IsUnreachable(addr)
-}
-
 // SubscribeTopologyChange returns the channel that signals when the connected peers
 // set and depth changes. Returned function is safe to be called multiple times.
 func (k *Kad) SubscribeTopologyChange() (c <-chan struct{}, unsubscribe func()) {

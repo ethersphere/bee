@@ -13,7 +13,6 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/status"
-	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 )
 
@@ -103,9 +102,6 @@ func (m *topologyPeersIterNoopMock) EachConnectedPeerRev(_ topology.EachPeerFunc
 }
 func (m *topologyPeersIterNoopMock) IsReachable() bool {
 	return true
-}
-func (m *topologyPeersIterNoopMock) PeerReachability(swarm.Address) bool {
-	return false
 }
 
 // statusSnapshotMock satisfies the following interfaces:

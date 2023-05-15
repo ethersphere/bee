@@ -105,10 +105,6 @@ func (m *topologyPeersIterNoopMock) IsReachable() bool {
 	return true
 }
 
-func (m *topologyPeersIterNoopMock) PeerReachability(swarm.Address) bool {
-	return true
-}
-
 // statusSnapshotMock satisfies the following interfaces:
 //   - depthmonitor.ReserveReporter
 //   - depthmonitor.SyncReporter

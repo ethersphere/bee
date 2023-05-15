@@ -34,7 +34,6 @@ type Snapshot pb.Snapshot
 
 type topologyDriver interface {
 	topology.PeerIterator
-	PeerReachability(swarm.Address) bool
 	IsReachable() bool
 }
 
