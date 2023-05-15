@@ -2,11 +2,12 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package storage_test
+package storeadapter_test
 
 import (
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/statestore/storeadapter"
 	"github.com/ethersphere/bee/pkg/statestore/test"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/inmemstore"
@@ -19,7 +20,7 @@ func TestStateStoreAdapter(t *testing.T) {
 	test.Run(t, func(t *testing.T) storage.StateStorer {
 		t.Helper()
 
-		store := storage.NewStateStorerAdapter(inmemstore.New())
+		store := storeadapter.NewStateStorerAdapter(inmemstore.New())
 		t.Cleanup(func() {
 			if err := store.Close(); err != nil {
 				t.Fatal(err)
@@ -43,6 +44,6 @@ func TestStateStoreAdapter(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		return storage.NewStateStorerAdapter(leveldb)
+		return storeadapter.NewStateStorerAdapter(leveldb)
 	})
 }
