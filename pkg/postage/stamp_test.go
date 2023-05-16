@@ -13,6 +13,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
+	"github.com/ethersphere/bee/pkg/storage/inmemstore"
 	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
 )
 
@@ -77,7 +78,7 @@ func TestValidStamp(t *testing.T) {
 	bs := mock.New(mock.WithBatch(b))
 	signer := crypto.NewDefaultSigner(privKey)
 	issuer := postage.NewStampIssuer("label", "keyID", b.ID, big.NewInt(3), b.Depth, b.BucketDepth, 1000, true)
-	stamper := postage.NewStamper(issuer, signer)
+	stamper := postage.NewStamper(inmemstore.New(), issuer, signer)
 
 	// this creates a chunk with a mocked stamp. ValidStamp will override this
 	// stamp on execution
