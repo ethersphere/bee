@@ -567,3 +567,28 @@ func (a *Agent) HasEnoughFundsToPlay(ctx context.Context) (*big.Int, bool, error
 
 	return minBalance, balance.Cmp(minBalance) >= 1, nil
 }
+
+func (a *Agent) SampleWithProofs(
+	ctx context.Context,
+	anchor1,
+	anchor2 []byte,
+	storageRadius uint8,
+) (*storer.Sample, *redistribution.ChunkInclusionProofs, error) {
+
+	timeLimiter, err := a.getPreviousRoundTime(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	rSample, err := a.store.ReserveSample(ctx, anchor1, storageRadius, uint64(timeLimiter), a.minBatchBalance())
+	if err != nil {
+		return nil, nil, err
+	}
+
+	proofs, err := makeInclusionProofs(rSample.Items, anchor1, anchor2)
+	if err != nil {
+		return nil, nil, fmt.Errorf("making inclusion proofs: %w:", err)
+	}
+
+	return &rSample, &proofs, nil
+}
