@@ -8,21 +8,11 @@ import "sync/atomic"
 
 // ProbeStatus is the status of a probe.
 // ProbeStatus is treated as a sync/atomic int32.
-type ProbeStatus int32
-
-// get returns the value of the ProbeStatus.
-func (ps *ProbeStatus) get() ProbeStatus {
-	return ProbeStatus(atomic.LoadInt32((*int32)(ps)))
-}
-
-// set updates the value of the ProbeStatus.
-func (ps *ProbeStatus) set(v ProbeStatus) {
-	atomic.StoreInt32((*int32)(ps), int32(v))
-}
+type ProbeStatus uint32
 
 // String implements the fmt.Stringer interface.
 func (ps ProbeStatus) String() string {
-	switch ps.get() {
+	switch ps {
 	case ProbeStatusOK:
 		return "ok"
 	case ProbeStatusNOK:
@@ -42,9 +32,9 @@ const (
 // Probe structure holds flags which indicate node healthiness (sometimes refert also as liveness) and readiness.
 type Probe struct {
 	// Healthy probe indicates if node, due to any reason, needs to restarted.
-	healthy ProbeStatus
+	healthy atomic.Uint32
 	// Ready probe indicates that node is ready to start accepting traffic.
-	ready ProbeStatus
+	ready atomic.Uint32
 }
 
 // NewProbe returns new Probe.
@@ -57,13 +47,13 @@ func (p *Probe) Healthy() ProbeStatus {
 	if p == nil {
 		return ProbeStatusNOK
 	}
-	return p.healthy.get()
+	return ProbeStatus(p.healthy.Load())
 
 }
 
 // SetHealthy updates the value of the healthy status.
 func (p *Probe) SetHealthy(ps ProbeStatus) {
-	p.healthy.set(ps)
+	p.healthy.Store(uint32(ps))
 }
 
 // Ready returns the value of the ready status.
@@ -71,10 +61,10 @@ func (p *Probe) Ready() ProbeStatus {
 	if p == nil {
 		return ProbeStatusNOK
 	}
-	return p.ready.get()
+	return ProbeStatus(p.ready.Load())
 }
 
 // SetReady updates the value of the ready status.
 func (p *Probe) SetReady(ps ProbeStatus) {
-	p.ready.set(ps)
+	p.ready.Store(uint32(ps))
 }
