@@ -215,9 +215,19 @@ func (si *StampIssuer) MarshalBinary() ([]byte, error) {
 	return msgpack.Marshal(si.data)
 }
 
+// Marshal implements the storage.Marshaler interface.
+func (si *StampIssuer) Marshal() ([]byte, error) {
+	return si.MarshalBinary()
+}
+
 // UnmarshalBinary implements the encoding.BinaryUnmarshaler interface.
 func (si *StampIssuer) UnmarshalBinary(data []byte) error {
 	return msgpack.Unmarshal(data, &si.data)
+}
+
+// Unmarshal implements the storage.Unmarshaler interface.
+func (si *StampIssuer) Unmarshal(data []byte) error {
+	return si.UnmarshalBinary(data)
 }
 
 // Utilization returns the batch utilization in the form of
