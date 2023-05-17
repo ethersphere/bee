@@ -5,6 +5,7 @@
 package storage
 
 import (
+	"encoding"
 	"encoding/json"
 	"io"
 	"path"
@@ -44,50 +45,105 @@ type proxyItem struct {
 }
 
 // ID implements Item interface.
-func (ip *proxyItem) ID() string {
-	return ip.key
+func (pi *proxyItem) ID() string {
+	return pi.key
 }
 
 // Namespace implements Item interface.
-func (ip *proxyItem) Namespace() string {
-	return ip.ns
+func (pi *proxyItem) Namespace() string {
+	return pi.ns
 }
 
 // Marshal implements Item interface.
-func (ip *proxyItem) Marshal() ([]byte, error) {
-	return json.Marshal(ip.obj)
+func (pi *proxyItem) Marshal() ([]byte, error) {
+	if pi == nil || pi.obj == nil {
+		return nil, nil
+	}
+
+	switch m := pi.obj.(type) {
+	case encoding.BinaryMarshaler:
+		return m.MarshalBinary()
+	case Marshaler:
+		return m.Marshal()
+	}
+	return json.Marshal(pi.obj)
 }
 
 // Unmarshal implements Item interface.
-func (ip *proxyItem) Unmarshal(data []byte) error {
-	return json.Unmarshal(data, &ip.obj)
+func (pi *proxyItem) Unmarshal(data []byte) error {
+	if pi == nil || pi.obj == nil {
+		return nil
+	}
+	
+	switch m := pi.obj.(type) {
+	case encoding.BinaryUnmarshaler:
+		return m.UnmarshalBinary(data)
+	case Unmarshaler:
+		return m.Unmarshal(data)
+	}
+	return json.Unmarshal(data, &pi.obj)
 }
 
 // Clone implements Item interface.
-func (ip *proxyItem) Clone() Item {
-	if ip == nil {
+func (pi *proxyItem) Clone() Item {
+	if pi == nil {
 		return nil
 	}
 
-	obj := ip.obj
-	if cloner, ok := ip.obj.(Cloner); ok {
+	obj := pi.obj
+	if cloner, ok := pi.obj.(Cloner); ok {
 		obj = cloner.Clone()
 	}
 	return &proxyItem{
-		ns:  ip.ns,
-		key: ip.key,
+		ns:  pi.ns,
+		key: pi.key,
 		obj: obj,
 	}
 }
 
 // String implements Item interface.
-func (ip proxyItem) String() string {
-	return path.Join(ip.Namespace(), ip.ID())
+func (pi proxyItem) String() string {
+	return path.Join(pi.Namespace(), pi.ID())
 }
 
 // newItemProxy creates a new proxyItem.
 func newItemProxy(key string, obj interface{}) *proxyItem {
 	return &proxyItem{ns: stateStoreNamespace, key: key, obj: obj}
+}
+
+var _ Item = (*rawItem)(nil)
+
+// rawItem is a proxy object that implements the Item interface.
+// It is an intermediary object between StateStorer and Store iterator calls.
+type rawItem struct {
+	*proxyItem
+}
+
+// Marshal implements Item interface.
+func (ri *rawItem) Marshal() ([]byte, error) {
+	if ri == nil || ri.proxyItem == nil || ri.proxyItem.obj == nil {
+		return nil, nil
+	}
+
+	if buf, ok := ri.proxyItem.obj.([]byte); ok {
+		return buf, nil
+	}
+
+	return ri.proxyItem.Marshal()
+}
+
+// Unmarshal implements Item interface.
+func (ri *rawItem) Unmarshal(data []byte) error {
+	if ri == nil || ri.proxyItem == nil || ri.proxyItem.obj == nil || len(data) == 0 {
+		return nil
+	}
+
+	if buf, ok := ri.proxyItem.obj.([]byte); ok {
+		ri.proxyItem.obj = append(buf[:0], data...)
+		return nil
+	}
+
+	return ri.proxyItem.Unmarshal(data)
 }
 
 var _ StateStorer = (*StateStorerAdapter)(nil)
@@ -121,12 +177,12 @@ func (s *StateStorerAdapter) Delete(key string) (err error) {
 func (s *StateStorerAdapter) Iterate(prefix string, iterFunc StateIterFunc) (err error) {
 	return s.storage.Iterate(
 		Query{
-			Factory: func() Item { return newItemProxy("", nil) },
+			Factory: func() Item { return &rawItem{newItemProxy("", []byte(nil))} },
 			Prefix:  prefix,
 		},
 		func(res Result) (stop bool, err error) {
 			key := []byte(prefix + res.ID)
-			val, err := res.Entry.(*proxyItem).Marshal()
+			val, err := res.Entry.(*rawItem).Marshal()
 			if err != nil {
 				return false, err
 			}
