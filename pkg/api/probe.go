@@ -12,13 +12,10 @@ type ProbeStatus bool
 
 // String implements the fmt.Stringer interface.
 func (ps ProbeStatus) String() string {
-	switch ps {
-	case ProbeStatusOK:
+	if ps == ProbeStatusOK {
 		return "ok"
-	case ProbeStatusNOK:
-		return "nok"
 	}
-	return "unknown"
+	return "nok"
 }
 
 const (
