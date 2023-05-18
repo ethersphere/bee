@@ -5,7 +5,6 @@
 package test
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -30,21 +29,11 @@ type Serializing struct {
 	unmarshalCalled bool
 }
 
-func (st *Serializing) MarshalJSON() (data []byte, err error) {
-	st.marshalCalled = true
-	return json.Marshal(st.value)
-}
-
 func (st *Serializing) MarshalBinary() (data []byte, err error) {
 	d := []byte(st.value)
 	st.marshalCalled = true
 
 	return d, nil
-}
-
-func (st *Serializing) UnmarshalJSON(data []byte) (err error) {
-	st.unmarshalCalled = true
-	return json.Unmarshal(data, &st.value)
 }
 
 func (st *Serializing) UnmarshalBinary(data []byte) (err error) {
