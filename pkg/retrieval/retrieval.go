@@ -232,7 +232,9 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 				inflight++
 
 				go func() {
-					ctx := tracing.WithContext(context.Background(), tracing.FromContext(topCtx))
+					ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
+					defer cancel()
+					ctx = tracing.WithContext(ctx, tracing.FromContext(topCtx))
 					span, _, ctx := s.tracer.StartSpanFromContext(ctx, "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: chunkAddr.String()})
 					defer span.Finish()
 					s.retrieveChunk(ctx, chunkAddr, peer, done, resultC, action, origin)
@@ -282,13 +284,10 @@ func (s *Service) retrieveChunk(ctx context.Context, chunkAddr, peer swarm.Addre
 		}
 		select {
 		case result <- retrievalResult{err: err, chunk: chunk, peer: peer}:
-		case <-done:
+		case <-ctx.Done():
 			return
 		}
 	}()
-
-	ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
-	defer cancel()
 
 	defer action.Cleanup()
 
