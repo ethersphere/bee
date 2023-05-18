@@ -53,6 +53,7 @@ import (
 	"github.com/ethersphere/bee/pkg/status"
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage/inmemstore"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/storageincentives"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
@@ -204,7 +205,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		o.BeeMode = api.FullMode
 	}
 
-	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.Logger, transaction, o.BatchStore, o.BeeMode, true, true, backend, o.CORSAllowedOrigins)
+	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.Logger, transaction, o.BatchStore, o.BeeMode, true, true, backend, o.CORSAllowedOrigins, inmemstore.New())
 	testutil.CleanupCloser(t, s)
 
 	s.SetP2P(o.P2P)
@@ -389,7 +390,7 @@ func TestParseName(t *testing.T) {
 		pk, _ := crypto.GenerateSecp256k1Key()
 		signer := crypto.NewDefaultSigner(pk)
 
-		s := api.New(pk.PublicKey, pk.PublicKey, common.Address{}, log, nil, nil, 1, false, false, nil, []string{"*"})
+		s := api.New(pk.PublicKey, pk.PublicKey, common.Address{}, log, nil, nil, 1, false, false, nil, []string{"*"}, inmemstore.New())
 		s.Configure(signer, nil, nil, api.Options{}, api.ExtraOptions{Resolver: tC.res}, 1, nil)
 		s.MountAPI()
 

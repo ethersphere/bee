@@ -7,8 +7,9 @@ package node
 import (
 	"errors"
 	"fmt"
-	"github.com/ethersphere/bee/pkg/storage/leveldbstore"
 	"path/filepath"
+
+	"github.com/ethersphere/bee/pkg/storage/leveldbstore"
 
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -29,6 +30,18 @@ func InitStateStore(logger log.Logger, dataDir string) (storage.StateStorer, err
 		return nil, err
 	}
 	return storage.NewStateStorerAdapter(ldb), nil
+}
+
+// InitStamperStore will create new stamper store with the given path to the
+// data directory. When given an empty directory path, the function will instead
+// initialize an in-memory state store that will not be persisted.
+func InitStamperStore(logger log.Logger, dataDir string) (storage.Store, error) {
+	if dataDir == "" {
+		logger.Warning("using in-mem stamper store, no node state will be persisted")
+	} else {
+		dataDir = filepath.Join(dataDir, "stamperstore")
+	}
+	return leveldbstore.New(dataDir, nil)
 }
 
 const noncedOverlayKey = "nonce-overlay"
