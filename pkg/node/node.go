@@ -380,6 +380,11 @@ func NewBee(
 		}
 	}(probe)
 
+	stamperStore, err := InitStamperStore(logger, o.DataDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize stamper store: %w", err)
+	}
+
 	var debugService *api.Service
 
 	if o.DebugAPIAddr != "" {
@@ -408,6 +413,7 @@ func NewBee(
 			o.SwapEnable,
 			chainBackend,
 			o.CORSAllowedOrigins,
+			stamperStore,
 		)
 		debugService.MountTechnicalDebug()
 		debugService.SetProbe(probe)
@@ -446,6 +452,7 @@ func NewBee(
 			o.SwapEnable,
 			chainBackend,
 			o.CORSAllowedOrigins,
+			stamperStore,
 		)
 		apiService.MountTechnicalDebug()
 		apiService.SetProbe(probe)
@@ -1106,7 +1113,7 @@ func NewBee(
 
 	if o.APIAddr != "" {
 		if apiService == nil {
-			apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, beeNodeMode, o.ChequebookEnable, o.SwapEnable, chainBackend, o.CORSAllowedOrigins)
+			apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, beeNodeMode, o.ChequebookEnable, o.SwapEnable, chainBackend, o.CORSAllowedOrigins, stamperStore)
 			apiService.SetProbe(probe)
 			apiService.SetRedistributionAgent(agent)
 		}

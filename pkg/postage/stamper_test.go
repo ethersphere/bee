@@ -11,6 +11,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/storage/inmemstore"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -40,7 +41,7 @@ func TestStamperStamping(t *testing.T) {
 	// tests a valid stamp
 	t.Run("valid stamp", func(t *testing.T) {
 		st := newTestStampIssuer(t, 1000)
-		stamper := postage.NewStamper(st, signer)
+		stamper := postage.NewStamper(inmemstore.New(), st, signer)
 		chunkAddr, stamp := createStamp(t, stamper)
 		if err := stamp.Valid(chunkAddr, owner, 12, 8, true); err != nil {
 			t.Fatalf("expected no error, got %v", err)
@@ -50,7 +51,7 @@ func TestStamperStamping(t *testing.T) {
 	// tests that Stamps returns with postage.ErrBucketMismatch
 	t.Run("bucket mismatch", func(t *testing.T) {
 		st := newTestStampIssuer(t, 1000)
-		stamper := postage.NewStamper(st, signer)
+		stamper := postage.NewStamper(inmemstore.New(), st, signer)
 		chunkAddr, stamp := createStamp(t, stamper)
 		a := chunkAddr.Bytes()
 		a[0] ^= 0xff
@@ -62,7 +63,7 @@ func TestStamperStamping(t *testing.T) {
 	// tests that Stamps returns with postage.ErrInvalidIndex
 	t.Run("invalid index", func(t *testing.T) {
 		st := newTestStampIssuer(t, 1000)
-		stamper := postage.NewStamper(st, signer)
+		stamper := postage.NewStamper(inmemstore.New(), st, signer)
 		// issue 1 stamp
 		chunkAddr, _ := createStamp(t, stamper)
 		// issue another 15
@@ -86,7 +87,7 @@ func TestStamperStamping(t *testing.T) {
 	// issuer has the corresponding collision bucket filled]
 	t.Run("bucket full", func(t *testing.T) {
 		st := postage.NewStampIssuer("", "", newTestStampIssuer(t, 1000).ID(), big.NewInt(3), 12, 8, 1000, true)
-		stamper := postage.NewStamper(st, signer)
+		stamper := postage.NewStamper(inmemstore.New(), st, signer)
 		// issue 1 stamp
 		chunkAddr, _ := createStamp(t, stamper)
 		// issue another 15
@@ -107,7 +108,7 @@ func TestStamperStamping(t *testing.T) {
 	t.Run("owner mismatch", func(t *testing.T) {
 		owner[0] ^= 0xff // bitflip the owner first byte, this case must come last!
 		st := newTestStampIssuer(t, 1000)
-		stamper := postage.NewStamper(st, signer)
+		stamper := postage.NewStamper(inmemstore.New(), st, signer)
 		chunkAddr, stamp := createStamp(t, stamper)
 		if err := stamp.Valid(chunkAddr, owner, 12, 8, true); !errors.Is(err, postage.ErrOwnerMismatch) {
 			t.Fatalf("expected ErrOwnerMismatch, got %v", err)
