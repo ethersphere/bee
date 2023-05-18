@@ -279,8 +279,6 @@ func (e *epochMigrator) migrateReserve(ctx context.Context) error {
 		eg.Go(func() error {
 			for {
 				select {
-				case <-ctx.Done():
-					return ctx.Err()
 				case <-egCtx.Done():
 					return egCtx.Err()
 				case op, more := <-opChan:
@@ -326,8 +324,6 @@ func (e *epochMigrator) migrateReserve(ctx context.Context) error {
 				WithStamp(postage.NewStamp(item.BatchID, item.Index, item.Timestamp, item.Sig))
 
 			select {
-			case <-ctx.Done():
-				return true, ctx.Err()
 			case <-egCtx.Done():
 				return true, egCtx.Err()
 			case opChan <- putOp{pIdx: i, chunk: ch, loc: l}:
@@ -392,8 +388,6 @@ func (e *epochMigrator) migratePinning(ctx context.Context) error {
 		eg.Go(func() error {
 			for {
 				select {
-				case <-ctx.Done():
-					return ctx.Err()
 				case <-egCtx.Done():
 					return egCtx.Err()
 				case addr, more := <-pinChan:
@@ -459,8 +453,6 @@ func (e *epochMigrator) migratePinning(ctx context.Context) error {
 				return true, fmt.Errorf("pinning: unmarshal pin reference: %w", err)
 			}
 			select {
-			case <-ctx.Done():
-				return true, ctx.Err()
 			case <-egCtx.Done():
 				return true, egCtx.Err()
 			case pinChan <- ref:
