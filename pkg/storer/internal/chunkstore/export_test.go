@@ -4,8 +4,6 @@
 
 package chunkstore
 
-import storage "github.com/ethersphere/bee/pkg/storage"
-
 type (
 	RetrievalIndexItem = retrievalIndexItem
 )
@@ -14,7 +12,3 @@ var (
 	ErrMarshalInvalidRetrievalIndexItemAddress = errMarshalInvalidRetrievalIndexAddress
 	ErrUnmarshalInvalidRetrievalIndexItemSize  = errUnmarshalInvalidRetrievalIndexSize
 )
-
-func New(store storage.Store, sharky Sharky) storage.ChunkStore {
-	return &chunkStoreWrapper{store: store, sharky: sharky}
-}

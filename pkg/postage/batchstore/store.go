@@ -22,10 +22,10 @@ import (
 const loggerName = "batchstore"
 
 const (
-	batchKeyPrefix  = "batchstore_batch_"
-	valueKeyPrefix  = "batchstore_value_"
-	chainStateKey   = "batchstore_chainstate"
-	reserveStateKey = "batchstore_reservestate"
+	batchKeyPrefix   = "batchstore_batch_"
+	valueKeyPrefix   = "batchstore_value_"
+	chainStateKey    = "batchstore_chainstate"
+	reserveRadiusKey = "batchstore_radius"
 )
 
 // ErrNotFound signals that the element was not found.
@@ -67,7 +67,7 @@ func New(st storage.StateStorer, ev evictFn, addr swarm.Address, capacity int, l
 		}
 	}
 	var radius uint8
-	err = st.Get(reserveStateKey, &radius)
+	err = st.Get(reserveRadiusKey, &radius)
 	if err != nil {
 		if !errors.Is(err, storage.ErrNotFound) {
 			return nil, err
@@ -392,7 +392,7 @@ func (s *store) computeRadius() error {
 		s.radius = uint8(math.Ceil(math.Log2(float64(totalCommitment) / float64(s.capacity))))
 	}
 
-	return s.store.Put(reserveStateKey, &s.radius)
+	return s.store.Put(reserveRadiusKey, &s.radius)
 }
 
 // exp2 returns the e-th power of 2
