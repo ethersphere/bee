@@ -106,9 +106,6 @@ func (s *Service) PeerSnapshot(ctx context.Context, peer swarm.Address) (*Snapsh
 
 	ss := new(pb.Snapshot)
 	if err := r.ReadMsgWithContext(ctx, ss); err != nil {
-		if errors.Is(err, io.EOF) {
-			return nil, nil
-		}
 		return nil, fmt.Errorf("read message failed: %w", err)
 	}
 

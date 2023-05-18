@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Package salud monitors the storage radius and request response duration of peers
-// and blocklists peers to maintain network salud (health).
+// Package salud monitors the connected peers, calculates certain thresholds, and marks peers as unhealthy that
+// fall short of the thresholds to maintain network salud (health).
 package salud
 
 import (
@@ -104,9 +104,9 @@ type peer struct {
 	bin    uint8
 }
 
-// salud acquires the status snapshot of every peer and computes an avg response duration
-// and the most common storage radius and based on these values, it blocklist peers that fall beyond
-// some allowed threshold.
+// salud acquires the status snapshot of every peer and computes an nth percentile of response duration and connected
+// per count, the most common storage radius, and the batch commitment, and based on these values, marks peers as unhealhy that fall beyond
+// the allowed thresholds.
 func (s *service) salud(mode string, minPeersPerbin int) {
 
 	var (
