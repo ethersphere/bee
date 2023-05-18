@@ -14,7 +14,6 @@ import (
 	"time"
 
 	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/inmemstore"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/vmihailenco/msgpack/v5"
 )
@@ -138,8 +137,6 @@ type stampIssuerData struct {
 // A StampIssuer instance extends a batch with bucket collision tracking
 // embedded in multiple Stampers, can be used concurrently.
 type StampIssuer struct {
-	store storage.Store
-
 	bucketMu sync.Mutex
 	data     stampIssuerData
 }
@@ -150,7 +147,6 @@ type StampIssuer struct {
 // BucketDepth must always be smaller than batchDepth otherwise increment() panics.
 func NewStampIssuer(label, keyID string, batchID []byte, batchAmount *big.Int, batchDepth, bucketDepth uint8, blockNumber uint64, immutableFlag bool) *StampIssuer {
 	return &StampIssuer{
-		store: inmemstore.New(), // TODO: initialize this through constructor when fully refactoring to the new store v2.
 		data: stampIssuerData{
 			Label:         label,
 			KeyID:         keyID,
@@ -168,19 +164,6 @@ func NewStampIssuer(label, keyID string, batchID []byte, batchAmount *big.Int, b
 // increment increments the count in the correct collision
 // bucket for a newly stamped chunk with given addr address.
 func (si *StampIssuer) increment(addr swarm.Address) (batchIndex []byte, batchTimestamp []byte, err error) {
-	item := &stampItem{
-		batchID:      si.data.BatchID,
-		chunkAddress: addr,
-	}
-	switch err := si.store.Get(item); {
-	case errors.Is(err, storage.ErrNotFound):
-		break
-	case err != nil:
-		return nil, nil, fmt.Errorf("load of stamp item failed for %s: %w", item, err)
-	default:
-		return item.BatchIndex, item.BatchTimestamp, nil
-	}
-
 	si.bucketMu.Lock()
 	defer si.bucketMu.Unlock()
 
@@ -195,14 +178,7 @@ func (si *StampIssuer) increment(addr swarm.Address) (batchIndex []byte, batchTi
 		si.data.MaxBucketCount = si.data.Buckets[bIdx]
 	}
 
-	item.BatchIndex = indexToBytes(bIdx, bCnt)
-	item.BatchTimestamp = unixTime()
-
-	if err := si.store.Put(item); err != nil {
-		return nil, nil, err
-	}
-
-	return item.BatchIndex, item.BatchTimestamp, nil
+	return indexToBytes(bIdx, bCnt), unixTime(), nil
 }
 
 // Label returns the label of the issuer.
