@@ -165,8 +165,9 @@ type Service struct {
 	pseudosettle   settlement.Interface
 	pingpong       pingpong.Interface
 
-	batchStore postage.Storer
-	syncStatus func() (bool, error)
+	batchStore   postage.Storer
+	stamperStore storage.Store
+	syncStatus   func() (bool, error)
 
 	swap        swap.Interface
 	transaction transaction.Service
@@ -247,6 +248,7 @@ func New(
 	swapEnabled bool,
 	chainBackend transaction.Backend,
 	cors []string,
+	stamperStore storage.Store,
 ) *Service {
 	s := new(Service)
 
@@ -281,6 +283,7 @@ func New(
 		}
 		return name
 	})
+	s.stamperStore = stamperStore
 
 	return s
 }
@@ -782,7 +785,7 @@ func (s *Service) newStamperPutter(ctx context.Context, opts putterOptions) (sto
 		return nil, errBatchUnusable
 	}
 
-	stamper := postage.NewStamper(issuer, s.signer)
+	stamper := postage.NewStamper(s.stamperStore, issuer, s.signer)
 
 	var session storer.PutterSession
 	if opts.Deferred || opts.Pin {

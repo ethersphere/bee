@@ -6,8 +6,10 @@ package postage
 
 import (
 	"errors"
+	"fmt"
 
 	"github.com/ethersphere/bee/pkg/crypto"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -24,28 +26,41 @@ type Stamper interface {
 // stamper connects a stampissuer with a signer.
 // A stamper is created for each upload session.
 type stamper struct {
+	store  storage.Store
 	issuer *StampIssuer
 	signer crypto.Signer
 }
 
 // NewStamper constructs a Stamper.
-func NewStamper(st *StampIssuer, signer crypto.Signer) Stamper {
-	return &stamper{st, signer}
+func NewStamper(store storage.Store, issuer *StampIssuer, signer crypto.Signer) Stamper {
+	return &stamper{store, issuer, signer}
 }
 
 // Stamp takes chunk, see if the chunk can included in the batch and
 // signs it with the owner of the batch of this Stamp issuer.
 func (st *stamper) Stamp(addr swarm.Address) (*Stamp, error) {
-	batchIndex, batchTimestamp, err := st.issuer.increment(addr)
-	if err != nil {
-		return nil, err
+	item := &stampItem{
+		batchID:      st.issuer.data.BatchID,
+		chunkAddress: addr,
+	}
+	switch err := st.store.Get(item); {
+	case errors.Is(err, storage.ErrNotFound):
+		item.BatchIndex, item.BatchTimestamp, err = st.issuer.increment(addr)
+		if err != nil {
+			return nil, err
+		}
+		if err := st.store.Put(item); err != nil {
+			return nil, err
+		}
+	case err != nil:
+		return nil, fmt.Errorf("get stamp for %s: %w", item, err)
 	}
 
 	toSign, err := ToSignDigest(
 		addr.Bytes(),
 		st.issuer.data.BatchID,
-		batchIndex,
-		batchTimestamp,
+		item.BatchIndex,
+		item.BatchTimestamp,
 	)
 	if err != nil {
 		return nil, err
@@ -54,5 +69,5 @@ func (st *stamper) Stamp(addr swarm.Address) (*Stamp, error) {
 	if err != nil {
 		return nil, err
 	}
-	return NewStamp(st.issuer.data.BatchID, batchIndex, batchTimestamp, sig), nil
+	return NewStamp(st.issuer.data.BatchID, item.BatchIndex, item.BatchTimestamp, sig), nil
 }
