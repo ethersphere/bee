@@ -744,6 +744,41 @@ func NewBee(
 	hive.SetAddPeersHandler(kad.AddPeers)
 	p2ps.SetPickyNotifier(kad)
 
+	var path string
+
+	if o.DataDir != "" {
+		logger.Info("using datadir", "path", o.DataDir)
+		path = filepath.Join(o.DataDir, "localstore")
+	}
+
+	lo := &storer.Options{
+		Address:                   swarmAddress,
+		CacheCapacity:             o.CacheCapacity,
+		LdbOpenFilesLimit:         o.DBOpenFilesLimit,
+		LdbBlockCacheCapacity:     o.DBBlockCacheCapacity,
+		LdbWriteBufferSize:        o.DBWriteBufferSize,
+		LdbDisableSeeksCompaction: o.DBDisableSeeksCompaction,
+		Batchstore:                batchStore,
+		StateStore:                stateStore,
+		RadiusSetter:              kad,
+		WarmupDuration:            o.WarmupTime,
+		Logger:                    logger,
+	}
+
+	if o.FullNodeMode && !o.BootnodeMode {
+		// configure reserve only for full node
+		lo.ReserveCapacity = reserveCapacity
+		lo.ReserveWakeUpDuration = reserveWakeUpDuration
+		lo.RadiusSetter = kad
+	}
+
+	localStore, err := storer.New(ctx, path, lo)
+	if err != nil {
+		return nil, fmt.Errorf("localstore: %w", err)
+	}
+	b.localstoreCloser = localStore
+	evictFn = func(id []byte) error { return localStore.EvictBatch(context.Background(), id) }
+
 	var (
 		syncErr    atomic.Value
 		syncStatus atomic.Value
@@ -883,40 +918,6 @@ func NewBee(
 	}
 
 	pricing.SetPaymentThresholdObserver(acc)
-
-	var path string
-
-	if o.DataDir != "" {
-		logger.Info("using datadir", "path", o.DataDir)
-		path = filepath.Join(o.DataDir, "localstore")
-	}
-
-	lo := &storer.Options{
-		Address:                   swarmAddress,
-		CacheCapacity:             o.CacheCapacity,
-		LdbOpenFilesLimit:         o.DBOpenFilesLimit,
-		LdbBlockCacheCapacity:     o.DBBlockCacheCapacity,
-		LdbWriteBufferSize:        o.DBWriteBufferSize,
-		LdbDisableSeeksCompaction: o.DBDisableSeeksCompaction,
-		Batchstore:                batchStore,
-		RadiusSetter:              kad,
-		WarmupDuration:            o.WarmupTime,
-		Logger:                    logger,
-	}
-
-	if o.FullNodeMode && !o.BootnodeMode {
-		// configure reserve only for full node
-		lo.ReserveCapacity = reserveCapacity
-		lo.ReserveWakeUpDuration = reserveWakeUpDuration
-		lo.RadiusSetter = kad
-	}
-
-	localStore, err := storer.New(ctx, path, lo)
-	if err != nil {
-		return nil, fmt.Errorf("localstore: %w", err)
-	}
-	b.localstoreCloser = localStore
-	evictFn = func(id []byte) error { return localStore.EvictBatch(context.Background(), id) }
 
 	retrieve := retrieval.New(swarmAddress, localStore, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching)
 	localStore.SetRetrievalService(retrieve)
