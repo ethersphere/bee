@@ -160,9 +160,6 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 			errorsLeft = maxRetrievedErrors
 		}
 
-		done := make(chan struct{})
-		defer close(done)
-
 		resultC := make(chan retrievalResult, 1)
 		retryC := make(chan struct{}, 1)
 
@@ -232,12 +229,10 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 				inflight++
 
 				go func() {
-					ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
-					defer cancel()
-					ctx = tracing.WithContext(ctx, tracing.FromContext(topCtx))
+					ctx := tracing.WithContext(context.Background(), tracing.FromContext(topCtx))
 					span, _, ctx := s.tracer.StartSpanFromContext(ctx, "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: chunkAddr.String()})
 					defer span.Finish()
-					s.retrieveChunk(ctx, chunkAddr, peer, done, resultC, action, origin)
+					s.retrieveChunk(ctx, chunkAddr, peer, resultC, action, origin)
 				}()
 
 			case res := <-resultC:
@@ -270,13 +265,16 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 	return v.(swarm.Chunk), nil
 }
 
-func (s *Service) retrieveChunk(ctx context.Context, chunkAddr, peer swarm.Address, done chan struct{}, result chan retrievalResult, action accounting.Action, isOrigin bool) {
+func (s *Service) retrieveChunk(ctx context.Context, chunkAddr, peer swarm.Address, result chan retrievalResult, action accounting.Action, isOrigin bool) {
 
 	var (
 		startTime = time.Now()
 		err       error
 		chunk     swarm.Chunk
 	)
+
+	ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
+	defer cancel()
 
 	defer func() {
 		if err != nil {
