@@ -172,6 +172,8 @@ func TestRecorder_fullcloseWithRemoteClose(t *testing.T) {
 }
 
 func TestRecorder_fullcloseWithoutRemoteClose(t *testing.T) {
+	t.Parallel()
+
 	recorder := streamtest.New(
 		streamtest.WithProtocols(
 			newTestProtocol(func(_ context.Context, peer p2p.Peer, stream p2p.Stream) error {
