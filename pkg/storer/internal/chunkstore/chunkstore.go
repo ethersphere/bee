@@ -115,6 +115,10 @@ type chunkStoreWrapper struct {
 	sharky Sharky
 }
 
+func New(store storage.Store, sharky Sharky) storage.ChunkStore {
+	return &chunkStoreWrapper{store: store, sharky: sharky}
+}
+
 // helper to read chunk from retrievalIndex.
 func (c *chunkStoreWrapper) readChunk(ctx context.Context, rIdx *retrievalIndexItem) (swarm.Chunk, error) {
 	buf := make([]byte, rIdx.Location.Length)

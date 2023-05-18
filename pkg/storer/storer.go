@@ -216,15 +216,18 @@ const (
 	defaultDisableSeeksCompaction = false
 	defaultCacheCapacity          = uint64(1_000_000)
 	defaultBgCacheWorkers         = 16
+
+	indexPath  = "indexstore"
+	sharkyPath = "sharky"
 )
 
-func initDiskRepository(ctx context.Context, basePath string, opts *Options) (storage.Repository, io.Closer, error) {
-	ldbBasePath := path.Join(basePath, "indexstore")
+func initStore(basePath string, opts *Options) (storage.Store, error) {
+	ldbBasePath := path.Join(basePath, indexPath)
 
 	if _, err := os.Stat(ldbBasePath); os.IsNotExist(err) {
 		err := os.MkdirAll(ldbBasePath, 0777)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 	}
 	store, err := leveldbstore.New(path.Join(basePath, "indexstore"), &opt.Options{
@@ -234,10 +237,19 @@ func initDiskRepository(ctx context.Context, basePath string, opts *Options) (st
 		DisableSeeksCompaction: opts.LdbDisableSeeksCompaction,
 	})
 	if err != nil {
+		return nil, fmt.Errorf("failed creating levelDB index store: %w", err)
+	}
+
+	return store, nil
+}
+
+func initDiskRepository(ctx context.Context, basePath string, opts *Options) (storage.Repository, io.Closer, error) {
+	store, err := initStore(basePath, opts)
+	if err != nil {
 		return nil, nil, fmt.Errorf("failed creating levelDB index store: %w", err)
 	}
 
-	sharkyBasePath := path.Join(basePath, "sharky")
+	sharkyBasePath := path.Join(basePath, sharkyPath)
 
 	if _, err := os.Stat(sharkyBasePath); os.IsNotExist(err) {
 		err := os.Mkdir(sharkyBasePath, 0777)
@@ -279,6 +291,41 @@ func initCache(ctx context.Context, capacity uint64, repo storage.Repository) (*
 	return c, commit()
 }
 
+type noopRadiusSetter struct{}
+
+func (noopRadiusSetter) SetStorageRadius(uint8) {}
+
+func performEpochMigration(ctx context.Context, basePath string, opts *Options) error {
+	store, err := initStore(basePath, opts)
+	if err != nil {
+		return err
+	}
+	defer store.Close()
+
+	sharkyBasePath := path.Join(basePath, sharkyPath)
+	var sharkyRecover *sharky.Recovery
+	// if this is a fresh node then perform an empty epoch migration
+	if _, err := os.Stat(sharkyBasePath); err == nil {
+		sharkyRecover, err = sharky.NewRecovery(sharkyBasePath, sharkyNoOfShards, swarm.SocMaxChunkSize)
+		if err != nil {
+			return err
+		}
+		defer sharkyRecover.Close()
+	}
+
+	logger := opts.Logger.WithName("epochmigration").Register()
+
+	var rs *reserve.Reserve
+	if opts.ReserveCapacity > 0 {
+		rs, err = reserve.New(opts.Address, store, opts.ReserveCapacity, opts.Batchstore.Radius(), noopRadiusSetter{}, logger)
+		if err != nil {
+			return err
+		}
+	}
+
+	return epochMigration(ctx, basePath, opts.StateStore, store, rs, sharkyRecover, logger)
+}
+
 const (
 	lockKeyNewSession string = "new_session"
 	lockKeySetSyncer  string = "set_syncer"
@@ -299,6 +346,7 @@ type Options struct {
 	WarmupDuration time.Duration
 	Batchstore     postage.Storer
 	RadiusSetter   topology.SetStorageRadiuser
+	StateStore     storage.StateStorer
 
 	ReserveCapacity       int
 	ReserveWakeUpDuration time.Duration
@@ -373,6 +421,10 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 			return nil, err
 		}
 	} else {
+		err = performEpochMigration(ctx, dirPath, opts)
+		if err != nil {
+			return nil, err
+		}
 		repo, dbCloser, err = initDiskRepository(ctx, dirPath, opts)
 		if err != nil {
 			return nil, err

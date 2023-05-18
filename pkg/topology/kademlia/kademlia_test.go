@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/topology/kademlia/internal/shed"
+	"github.com/ethersphere/bee/pkg/shed"
 	ma "github.com/multiformats/go-multiaddr"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
