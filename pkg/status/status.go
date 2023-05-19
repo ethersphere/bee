@@ -6,9 +6,7 @@ package status
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io"
 
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -106,9 +104,6 @@ func (s *Service) PeerSnapshot(ctx context.Context, peer swarm.Address) (*Snapsh
 
 	ss := new(pb.Snapshot)
 	if err := r.ReadMsgWithContext(ctx, ss); err != nil {
-		if errors.Is(err, io.EOF) {
-			return nil, nil
-		}
 		return nil, fmt.Errorf("read message failed: %w", err)
 	}
 
@@ -139,7 +134,7 @@ func (s *Service) handler(ctx context.Context, _ p2p.Peer, stream p2p.Stream) er
 	}()
 
 	var msgGet pb.Get
-	if err := r.ReadMsgWithContext(ctx, &msgGet); err != nil && !errors.Is(err, io.EOF) {
+	if err := r.ReadMsgWithContext(ctx, &msgGet); err != nil {
 		loggerV2.Debug("read message failed", "error", err)
 		return fmt.Errorf("read message: %w", err)
 	}

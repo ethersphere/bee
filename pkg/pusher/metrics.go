@@ -19,6 +19,8 @@ type metrics struct {
 
 	ReceiptDepth        *prometheus.CounterVec
 	ShallowReceiptDepth *prometheus.CounterVec
+
+	ShallowReceipt prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -82,6 +84,12 @@ func newMetrics() metrics {
 			},
 			[]string{"depth"},
 		),
+		ShallowReceipt: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "shallow_receipt",
+			Help:      "Total shallow receipts.",
+		}),
 	}
 }
 

@@ -160,9 +160,6 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 			errorsLeft = maxRetrievedErrors
 		}
 
-		ctx, cancel := context.WithCancel(ctx)
-		defer cancel()
-
 		resultC := make(chan retrievalResult, 1)
 		retryC := make(chan struct{}, 1)
 
@@ -268,7 +265,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 	return v.(swarm.Chunk), nil
 }
 
-func (s *Service) retrieveChunk(parentCtx context.Context, chunkAddr, peer swarm.Address, result chan retrievalResult, action accounting.Action, isOrigin bool) {
+func (s *Service) retrieveChunk(ctx context.Context, chunkAddr, peer swarm.Address, result chan retrievalResult, action accounting.Action, isOrigin bool) {
 
 	var (
 		startTime = time.Now()
@@ -276,19 +273,19 @@ func (s *Service) retrieveChunk(parentCtx context.Context, chunkAddr, peer swarm
 		chunk     swarm.Chunk
 	)
 
+	ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
+	defer cancel()
+
 	defer func() {
 		if err != nil {
 			s.metrics.TotalErrors.Inc()
 		}
 		select {
 		case result <- retrievalResult{err: err, chunk: chunk, peer: peer}:
-		case <-parentCtx.Done():
+		case <-ctx.Done():
 			return
 		}
 	}()
-
-	ctx, cancel := context.WithTimeout(parentCtx, retrieveChunkTimeout)
-	defer cancel()
 
 	defer action.Cleanup()
 
