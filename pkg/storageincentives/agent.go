@@ -79,6 +79,8 @@ type Agent struct {
 	state                  *RedistributionState
 	commitLock             sync.Mutex
 	health                 Health
+	phaseEvents            *events
+	haltSigC               chan struct{}
 }
 
 func New(overlay swarm.Address, ethAddress common.Address, backend ChainBackend, monitor Monitor, contract redistribution.Contract, batchExpirer postagecontract.PostageBatchExpirer, redistributionStatuser staking.RedistributionStatuser, radius postage.Radius, sampler storage.Sampler, blockTime time.Duration, blocksPerRound, blocksPerPhase uint64, stateStore storage.StateStorer, erc20Service erc20.Service, tranService transaction.Service, health Health, logger log.Logger) (*Agent, error) {
@@ -96,6 +98,7 @@ func New(overlay swarm.Address, ethAddress common.Address, backend ChainBackend,
 		quit:                   make(chan struct{}),
 		redistributionStatuser: redistributionStatuser,
 		health:                 health,
+		haltSigC:               make(chan struct{}),
 	}
 
 	state, err := NewRedistributionState(logger, ethAddress, stateStore, erc20Service, tranService)
@@ -105,24 +108,16 @@ func New(overlay swarm.Address, ethAddress common.Address, backend ChainBackend,
 
 	a.state = state
 
+	a.phaseEvents = a.createPhaseEvents()
+
 	a.wg.Add(1)
 	go a.start(blockTime, a.blocksPerRound, blocksPerPhase)
 
 	return a, nil
 }
 
-// start polls the current block number, calculates, and publishes only once the current phase.
-// Each round is blocksPerRound long and is divided into three blocksPerPhase long phases: commit, reveal, claim.
-// The sample phase is triggered upon entering the claim phase and may run until the end of the commit phase.
-// If our neighborhood is selected to participate, a sample is created during the sample phase. In the commit phase,
-// the sample is submitted, and in the reveal phase, the obfuscation key from the commit phase is submitted.
-// Next, in the claim phase, we check if we've won, and the cycle repeats. The cycle must occur in the length of one round.
-func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase uint64) {
-
-	defer a.wg.Done()
-
+func (a *Agent) createPhaseEvents() *events {
 	phaseEvents := newEvents()
-	defer phaseEvents.Close()
 
 	logPhaseResult := func(phase PhaseType, round uint64, err error, isPhasePlayed bool) {
 		if err != nil {
@@ -175,6 +170,18 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		}
 	})
 
+	return phaseEvents
+}
+
+// start polls the current block number, calculates, and publishes only once the current phase.
+// Each round is blocksPerRound long and is divided into three blocksPerPhase long phases: commit, reveal, claim.
+// The sample phase is triggered upon entering the claim phase and may run until the end of the commit phase.
+// If our neighborhood is selected to participate, a sample is created during the sample phase. In the commit phase,
+// the sample is submitted, and in the reveal phase, the obfuscation key from the commit phase is submitted.
+// Next, in the claim phase, we check if we've won, and the cycle repeats. The cycle must occur in the length of one round.
+func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase uint64) {
+	defer a.wg.Done()
+
 	var (
 		prevPhase    PhaseType = -1
 		currentPhase PhaseType
@@ -205,6 +212,16 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 			currentPhase = claim // [76, 151]
 		}
 
+		// send halt signal when agent is not committed to playing on current round
+		if a.state.Halthing() && !a.state.HasCommitKey(round) {
+			select { // close only once
+			case <-a.haltSigC:
+			default:
+				close(a.haltSigC)
+			}
+			return
+		}
+
 		// write the current phase only once
 		if currentPhase == prevPhase {
 			return
@@ -226,7 +243,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 			a.state.SetFrozen(isFrozen, round)
 		}
 
-		phaseEvents.Publish(currentPhase)
+		a.phaseEvents.Publish(currentPhase)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -260,7 +277,7 @@ func (a *Agent) handleCommit(ctx context.Context, round uint64) (bool, error) {
 	a.commitLock.Lock()
 	defer a.commitLock.Unlock()
 
-	if _, exists := a.state.CommitKey(round); exists {
+	if a.state.HasCommitKey(round) {
 		// already committed on this round, phase is skipped
 		return false, nil
 	}
@@ -380,7 +397,7 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 	}
 
 	if !a.health.IsHealthy() {
-		a.logger.Info("skipping round because node is unhealhy", "round", round)
+		a.logger.Info("skipping round because node is unhealthy", "round", round)
 		return false, nil
 	}
 
@@ -493,8 +510,24 @@ func (a *Agent) commit(ctx context.Context, sample SampleData, round uint64) err
 	return nil
 }
 
-func (a *Agent) Close() error {
+// Halt method will stop all future participation in schelling game while
+// waiting on current game to finish (if node was already committed to it).
+// Method will return channel which will signal when
+// agent could be safely terminated.
+func (a *Agent) Halt() <-chan struct{} {
+	a.phaseEvents.Cancel(sample)
+	a.state.SetHalthing(true)
 
+	round, _ := a.state.currentRoundAndPhase()
+	if !a.state.HasCommitKey(round) {
+		close(a.haltSigC)
+	}
+
+	return a.haltSigC
+}
+
+func (a *Agent) Close() error {
+	a.phaseEvents.Close()
 	close(a.quit)
 
 	stopped := make(chan struct{})

@@ -51,6 +51,7 @@ type Status struct {
 	Reward          *big.Int
 	Fees            *big.Int
 	RoundData       map[uint64]RoundData
+	Halting         bool
 }
 
 type RoundData struct {
@@ -243,6 +244,11 @@ func (r *RedistributionState) CommitKey(round uint64) ([]byte, bool) {
 	return rd.CommitKey, true
 }
 
+func (r *RedistributionState) HasCommitKey(round uint64) bool {
+	_, exists := r.CommitKey(round)
+	return exists
+}
+
 func (r *RedistributionState) SetCommitKey(round uint64, commitKey []byte) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
@@ -271,6 +277,20 @@ func (r *RedistributionState) SetHasRevealed(round uint64) {
 	r.status.RoundData[round] = rd
 
 	r.save()
+}
+
+func (r *RedistributionState) Halthing() bool {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	return r.status.Halting
+}
+
+func (r *RedistributionState) SetHalthing(v bool) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	r.status.Halting = v
 }
 
 func (r *RedistributionState) currentRoundAndPhase() (uint64, PhaseType) {
