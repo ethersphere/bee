@@ -15,6 +15,8 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+
+	lru "github.com/hashicorp/golang-lru"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -25,11 +27,14 @@ const (
 	valueKeyPrefix  = "batchstore_value_"
 	chainStateKey   = "batchstore_chainstate"
 	reserveStateKey = "batchstore_reservestate"
+	cacheSize       = 100000
 )
 
 // ErrNotFound signals that the element was not found.
-var ErrNotFound = errors.New("batchstore: not found")
-var ErrStorageRadiusExceeds = errors.New("batchstore: storage radius must not exceed reserve radius")
+var (
+	ErrNotFound             = errors.New("batchstore: not found")
+	ErrStorageRadiusExceeds = errors.New("batchstore: storage radius must not exceed reserve radius")
+)
 
 type evictFn func(batchID []byte) error
 
@@ -48,13 +53,21 @@ type store struct {
 
 	batchExpiry         postage.BatchExpiryHandler
 	storageRadiusSetter postage.StorageRadiusSetter // setter for radius notifications
+
+	lru *lru.Cache // cache for batch store
 }
 
 // New constructs a new postage batch store.
 // It initialises both chain state and reserve state from the persistent state store.
 func New(st storage.StateStorer, ev evictFn, addr swarm.Address, logger log.Logger) (postage.Storer, error) {
+	// cache
+	lruCache, err := lru.New(cacheSize)
+	if err != nil {
+		return nil, err
+	}
+
 	cs := &postage.ChainState{}
-	err := st.Get(chainStateKey, cs)
+	err = st.Get(chainStateKey, cs)
 	if err != nil {
 		if !errors.Is(err, storage.ErrNotFound) {
 			return nil, err
@@ -83,6 +96,7 @@ func New(st storage.StateStorer, ev evictFn, addr swarm.Address, logger log.Logg
 		cs:      cs,
 		rs:      rs,
 		evictFn: ev,
+		lru:     lruCache,
 		metrics: newMetrics(),
 		logger:  logger.WithName(loggerName).Register(),
 	}
@@ -90,7 +104,6 @@ func New(st storage.StateStorer, ev evictFn, addr swarm.Address, logger log.Logg
 }
 
 func (s *store) GetReserveState() *postage.ReserveState {
-
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 
@@ -101,7 +114,6 @@ func (s *store) GetReserveState() *postage.ReserveState {
 }
 
 func (s *store) IsWithinStorageRadius(addr swarm.Address) bool {
-
 	s.mtx.RLock()
 	defer s.mtx.RUnlock()
 
@@ -117,7 +129,6 @@ func (s *store) StorageRadius() uint8 {
 }
 
 func (s *store) SetStorageRadius(f func(uint8) uint8) error {
-
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
@@ -159,14 +170,35 @@ func (s *store) Get(id []byte) (*postage.Batch, error) {
 	return s.get(id)
 }
 
+// getFromCache gets a postage batch from cache
+// returns true if batch with id was found in cache
+func (s *store) getFromCache(id string, batch *postage.Batch) bool {
+
+	b, ok := s.lru.Get(id)
+	if ok {
+		*batch = b.(postage.Batch)
+	}
+	return ok
+}
+
 // get returns the postage batch from the statestore.
 // Must be called under lock.
 func (s *store) get(id []byte) (*postage.Batch, error) {
 	b := &postage.Batch{}
+
+	inCache := s.getFromCache(batchKey(id), b)
+	if inCache {
+		return b, nil
+	}
+
 	err := s.store.Get(batchKey(id), b)
 	if err != nil {
 		return nil, fmt.Errorf("get batch %s: %w", hex.EncodeToString(id), err)
 	}
+
+	// add to cache
+	_ = s.lru.Add(batchKey(id), *b)
+
 	return b, nil
 }
 
@@ -201,7 +233,6 @@ func (s *store) Iterate(cb func(*postage.Batch) (bool, error)) error {
 // Save is implementation of postage.Storer interface Save method.
 // This method has side effects; it also updates the radius of the node if successful.
 func (s *store) Save(batch *postage.Batch) error {
-
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
@@ -236,7 +267,6 @@ func (s *store) Save(batch *postage.Batch) error {
 // Update is implementation of postage.Storer interface Update method.
 // This method has side effects; it also updates the radius of the node if successful.
 func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error {
-
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
@@ -283,7 +313,6 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 // This method has side effects; it purges expired batches and unreserves underfunded
 // ones before it stores the chain state in the store.
 func (s *store) PutChainState(cs *postage.ChainState) error {
-
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
@@ -321,7 +350,6 @@ func (s *store) Commitment() (uint64, error) {
 func (s *store) commitment() (uint64, error) {
 	var totalCommitment int64
 	err := s.store.Iterate(batchKeyPrefix, func(key, value []byte) (bool, error) {
-
 		b := &postage.Batch{}
 		if err := b.UnmarshalBinary(value); err != nil {
 			return false, err
@@ -344,7 +372,6 @@ func (s *store) SetStorageRadiusSetter(r postage.StorageRadiusSetter) {
 
 // Reset is implementation of postage.Storer interface Reset method.
 func (s *store) Reset() error {
-
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
