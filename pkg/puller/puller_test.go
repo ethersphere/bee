@@ -788,8 +788,7 @@ func newPuller(t *testing.T, ops opts) (*puller.Puller, storage.StateStorer, *ka
 	logger := log.Noop
 
 	o := puller.Options{
-		Bins:         ops.bins,
-		SyncSleepDur: ops.syncSleepDur,
+		Bins: ops.bins,
 	}
 	p := puller.New(s, kad, bs, ps, nil, logger, o, 0)
 
