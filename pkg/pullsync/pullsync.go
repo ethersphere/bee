@@ -256,7 +256,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		if err := s.storage.Put(ctx, storage.ModePutSync, chunksToPut...); err != nil {
 			return 0, errors.Join(chunkErr, fmt.Errorf("delivery put: %w", err))
 		}
-		s.metrics.LastReceived.WithLabelValues(fmt.Sprintf("%d", bin)).Set(float64(time.Now().UnixMilli()))
+		s.metrics.LastReceived.WithLabelValues(fmt.Sprintf("%d", bin)).Inc()
 	}
 
 	return topmost, chunkErr
