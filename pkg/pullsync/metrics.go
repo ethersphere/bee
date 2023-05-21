@@ -13,7 +13,7 @@ type metrics struct {
 	Offered       prometheus.Counter     // number of chunks offered
 	Wanted        prometheus.Counter     // number of chunks wanted
 	Delivered     prometheus.Counter     // number of chunk deliveries
-	DbOps         prometheus.Counter     // number of db ops
+	Sent          prometheus.Counter     // number of chunks sent
 	DuplicateRuid prometheus.Counter     // number of duplicate RUID requests we got
 	LastReceived  *prometheus.CounterVec // last timestamp of the received chunks per bin
 }
@@ -40,11 +40,11 @@ func newMetrics() metrics {
 			Name:      "chunks_delivered",
 			Help:      "Total chunks delivered.",
 		}),
-		DbOps: prometheus.NewCounter(prometheus.CounterOpts{
+		Sent: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "db_ops",
-			Help:      "Total Db Ops.",
+			Name:      "chunks_sent",
+			Help:      "Total chunks sent.",
 		}),
 		DuplicateRuid: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,

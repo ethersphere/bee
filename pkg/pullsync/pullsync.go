@@ -70,16 +70,15 @@ type Interface interface {
 }
 
 type Syncer struct {
-	streamer       p2p.Streamer
-	metrics        metrics
-	logger         log.Logger
-	storage        pullstorage.Storer
-	quit           chan struct{}
-	wg             sync.WaitGroup
-	unwrap         func(swarm.Chunk)
-	validStamp     postage.ValidStampFn
-	radius         postage.Radius
-	overlayAddress swarm.Address
+	streamer   p2p.Streamer
+	metrics    metrics
+	logger     log.Logger
+	storage    pullstorage.Storer
+	quit       chan struct{}
+	wg         sync.WaitGroup
+	unwrap     func(swarm.Chunk)
+	validStamp postage.ValidStampFn
+	radius     postage.Radius
 
 	rate *rate.Rate
 
@@ -87,20 +86,19 @@ type Syncer struct {
 	io.Closer
 }
 
-func New(streamer p2p.Streamer, storage pullstorage.Storer, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger log.Logger, radius postage.Radius, overlayAddress swarm.Address) *Syncer {
+func New(streamer p2p.Streamer, storage pullstorage.Storer, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger log.Logger, radius postage.Radius) *Syncer {
 
 	return &Syncer{
-		streamer:       streamer,
-		storage:        storage,
-		metrics:        newMetrics(),
-		unwrap:         unwrap,
-		validStamp:     validStamp,
-		logger:         logger.WithName(loggerName).Register(),
-		wg:             sync.WaitGroup{},
-		quit:           make(chan struct{}),
-		radius:         radius,
-		overlayAddress: overlayAddress,
-		rate:           rate.New(DefaultRateDuration),
+		streamer:   streamer,
+		storage:    storage,
+		metrics:    newMetrics(),
+		unwrap:     unwrap,
+		validStamp: validStamp,
+		logger:     logger.WithName(loggerName).Register(),
+		wg:         sync.WaitGroup{},
+		quit:       make(chan struct{}),
+		radius:     radius,
+		rate:       rate.New(DefaultRateDuration),
 	}
 }
 
@@ -185,9 +183,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 			continue
 		}
 		s.metrics.Offered.Inc()
-		s.metrics.DbOps.Inc()
-		po := swarm.Proximity(a.Bytes(), s.overlayAddress.Bytes())
-		if po >= s.radius.StorageRadius() {
+		if s.radius.IsWithinStorageRadius(a) {
 			have, err = s.storage.Has(ctx, a)
 			if err != nil {
 				s.logger.Debug("storage has", "error", err)
@@ -251,12 +247,12 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 			s.rate.Add(len(chunksToPut))
 		}
 
-		s.metrics.DbOps.Inc()
+		s.metrics.Delivered.Add(float64(len(chunksToPut)))
+		s.metrics.LastReceived.WithLabelValues(fmt.Sprintf("%d", bin)).Inc()
 
 		if err := s.storage.Put(ctx, storage.ModePutSync, chunksToPut...); err != nil {
 			return 0, errors.Join(chunkErr, fmt.Errorf("delivery put: %w", err))
 		}
-		s.metrics.LastReceived.WithLabelValues(fmt.Sprintf("%d", bin)).Inc()
 	}
 
 	return topmost, chunkErr
@@ -344,6 +340,7 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 		if err := w.WriteMsgWithContext(ctx, &deliver); err != nil {
 			return fmt.Errorf("write delivery: %w", err)
 		}
+		s.metrics.Sent.Inc()
 	}
 
 	return nil
@@ -384,7 +381,6 @@ func (s *Syncer) processWant(ctx context.Context, o *pb.Offer, w *pb.Want) ([]sw
 			addrs = append(addrs, a)
 		}
 	}
-	s.metrics.DbOps.Inc()
 	return s.storage.Get(ctx, storage.ModeGetSync, addrs...)
 }
 
@@ -441,7 +437,6 @@ func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Strea
 	}
 
 	var ack pb.Ack
-	s.metrics.DbOps.Inc()
 	ints, err := s.storage.Cursors(ctx)
 	if err != nil {
 		return err
