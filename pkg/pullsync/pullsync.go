@@ -248,7 +248,7 @@ func (s *Syncer) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8
 		}
 
 		s.metrics.Delivered.Add(float64(len(chunksToPut)))
-		s.metrics.LastReceived.WithLabelValues(fmt.Sprintf("%d", bin)).Inc()
+		s.metrics.LastReceived.WithLabelValues(fmt.Sprintf("%d", bin)).Add(float64(len(chunksToPut)))
 
 		if err := s.storage.Put(ctx, storage.ModePutSync, chunksToPut...); err != nil {
 			return 0, errors.Join(chunkErr, fmt.Errorf("delivery put: %w", err))
