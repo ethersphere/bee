@@ -53,7 +53,7 @@ const (
 
 // Default option values
 const (
-	defaultBitSuffixLength             = 4 // the number of bits used to create pseudo addresses for balancing
+	defaultBitSuffixLength             = 4 // the number of bits used to create pseudo addresses for balancing, 2^4, 16 addresses
 	defaultLowWaterMark                = 3 // the number of peers in consecutive deepest bins that constitute as nearest neighbours
 	defaultSaturationPeers             = 8
 	defaultOverSaturationPeers         = 20
