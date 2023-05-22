@@ -185,7 +185,10 @@ func (to *TxRevStack) Revert() error {
 
 func (to *TxRevStack) Reset() {
 	to.mu.Lock()
-	to.ops = to.ops[:0]
+	for idx := range to.ops {
+		to.ops[idx] = nil
+	}
+	to.ops = nil
 	to.mu.Unlock()
 }
 

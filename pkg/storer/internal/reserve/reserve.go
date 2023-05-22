@@ -355,6 +355,13 @@ func removeChunk(ctx context.Context, store internal.Storage, item *batchRadiusI
 	indexStore := store.IndexStore()
 	chunkStore := store.ChunkStore()
 
+	if has, err := indexStore.Has(item); err != nil || !has {
+		// removeChunk is called from two places, if we collect the chunk for eviction
+		// but if it is already removed because of postage stamp index collision or
+		// vice versa, we should return early
+		return err
+	}
+
 	err := indexStore.Delete(&chunkBinItem{Bin: item.Bin, BinID: item.BinID})
 	if err != nil {
 		return err
@@ -362,11 +369,6 @@ func removeChunk(ctx context.Context, store internal.Storage, item *batchRadiusI
 
 	stamp, err := chunkstamp.LoadWithBatchID(indexStore, reserveNamespace, item.Address, item.BatchID)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			// the Put could potentially delete the chunk if there are index collisions
-			// so we ignore if the stamp is not found
-			return nil
-		}
 		return err
 	}
 
