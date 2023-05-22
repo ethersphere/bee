@@ -40,17 +40,18 @@ type RedistributionState struct {
 
 // Status provide internal status of the nodes in the redistribution game
 type Status struct {
-	Phase           PhaseType
-	IsFrozen        bool
-	IsFullySynced   bool
-	Round           uint64
-	LastWonRound    uint64
-	LastPlayedRound uint64
-	LastFrozenRound uint64
-	Block           uint64
-	Reward          *big.Int
-	Fees            *big.Int
-	RoundData       map[uint64]RoundData
+	Phase             PhaseType
+	IsFrozen          bool
+	IsFullySynced     bool
+	Round             uint64
+	LastWonRound      uint64
+	LastPlayedRound   uint64
+	LastFrozenRound   uint64
+	LastSelectedRound uint64
+	Block             uint64
+	Reward            *big.Int
+	Fees              *big.Int
+	RoundData         map[uint64]RoundData
 }
 
 type RoundData struct {
@@ -157,6 +158,13 @@ func (r *RedistributionState) SetLastPlayedRound(round uint64) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 	r.status.LastPlayedRound = round
+	r.save()
+}
+
+func (r *RedistributionState) SetLastSelectedRound(round uint64) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+	r.status.LastSelectedRound = round
 	r.save()
 }
 
