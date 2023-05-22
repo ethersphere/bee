@@ -183,6 +183,12 @@ func (to *TxRevStack) Revert() error {
 	return errs.ErrorOrNil()
 }
 
+func (to *TxRevStack) Reset() {
+	to.mu.Lock()
+	to.ops = to.ops[:0]
+	to.mu.Unlock()
+}
+
 var _ Store = (*TxStoreBase)(nil)
 
 // TxStoreBase implements the Store interface where

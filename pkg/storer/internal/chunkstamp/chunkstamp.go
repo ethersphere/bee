@@ -151,6 +151,7 @@ func LoadWithBatchID(s storage.Store, namespace string, addr swarm.Address, batc
 	var stamp swarm.Stamp
 
 	cnt := 0
+	found := false
 	err := s.Iterate(
 		storage.Query{
 			Factory: func() storage.Item {
@@ -165,6 +166,7 @@ func LoadWithBatchID(s storage.Store, namespace string, addr swarm.Address, batc
 			item := res.Entry.(*item)
 			if batchID == nil || bytes.Equal(batchID, item.stamp.BatchID()) {
 				stamp = item.stamp
+				found = true
 				return true, nil
 			}
 			return false, nil
@@ -175,6 +177,9 @@ func LoadWithBatchID(s storage.Store, namespace string, addr swarm.Address, batc
 	}
 	if cnt == 0 {
 		return nil, storage.ErrNoStampsForChunk
+	}
+	if !found {
+		return nil, fmt.Errorf("stamp not found for batchID %x: %w", batchID, storage.ErrNotFound)
 	}
 
 	return stamp, nil

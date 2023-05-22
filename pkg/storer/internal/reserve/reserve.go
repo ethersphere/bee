@@ -127,13 +127,14 @@ func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.C
 		// 4. Update the stamp index
 		newStampIndex = false
 
-		oldChunk := &batchRadiusItem{Bin: po, BatchID: chunk.Stamp().BatchID(), Address: item.ChunkAddress}
+		oldChunkPO := swarm.Proximity(r.baseAddr.Bytes(), item.ChunkAddress.Bytes())
+		oldChunk := &batchRadiusItem{Bin: oldChunkPO, BatchID: chunk.Stamp().BatchID(), Address: item.ChunkAddress}
 		err := indexStore.Get(oldChunk)
 		if err != nil {
 			return false, fmt.Errorf("failed getting old chunk item to replace: %w", err)
 		}
 
-		err = removeChunk(store, oldChunk)
+		err = removeChunk(ctx, store, oldChunk)
 		if err != nil {
 			return false, fmt.Errorf("failed removing older chunk: %w", err)
 		}
@@ -335,7 +336,9 @@ func (r *Reserve) EvictBatchBin(ctx context.Context, store internal.Storage, bin
 
 		cb(c)
 
-		err = removeChunk(store, item)
+		r.putterMu.Lock()
+		err = removeChunk(ctx, store, item)
+		r.putterMu.Unlock()
 		if err != nil {
 			return 0, err
 		}
@@ -344,7 +347,7 @@ func (r *Reserve) EvictBatchBin(ctx context.Context, store internal.Storage, bin
 	return len(evicted), nil
 }
 
-func removeChunk(store internal.Storage, item *batchRadiusItem) error {
+func removeChunk(ctx context.Context, store internal.Storage, item *batchRadiusItem) error {
 
 	indexStore := store.IndexStore()
 	chunkStore := store.ChunkStore()
@@ -356,6 +359,11 @@ func removeChunk(store internal.Storage, item *batchRadiusItem) error {
 
 	stamp, err := chunkstamp.LoadWithBatchID(indexStore, reserveNamespace, item.Address, item.BatchID)
 	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			// the Put could potentially delete the chunk if there are index collisions
+			// so we ignore if the stamp is not found
+			return nil
+		}
 		return err
 	}
 
