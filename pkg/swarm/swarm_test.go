@@ -178,7 +178,7 @@ func TestMarshalChunk(t *testing.T) {
 	}
 
 	buf := bytes.NewBuffer(b)
-	ch1, err := swarm.UnmarshalChunkFromBinary(*buf)
+	ch1, err := swarm.UnmarshalChunkFromBinary(buf)
 	if err != nil {
 		t.Fatal(err)
 	}
