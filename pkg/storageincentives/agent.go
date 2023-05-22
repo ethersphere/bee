@@ -369,7 +369,7 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) (bool, error) {
 }
 
 func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
-	//last played round
+
 	a.state.SetLastPlayedRound(round)
 
 	if !a.state.IsFullySynced() {
