@@ -12,7 +12,6 @@ import (
 	"sync/atomic"
 
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/hashicorp/go-multierror"
 )
 
 // ErrTxDone is returned by any operation that is performed on
@@ -156,6 +155,10 @@ type TxRevStack struct {
 
 // Append appends a Revert operation to the stack.
 func (to *TxRevStack) Append(op *TxRevertOp) {
+	if to == nil {
+		return
+	}
+
 	to.mu.Lock()
 	to.ops = append(to.ops, op)
 	to.mu.Unlock()
@@ -165,14 +168,18 @@ func (to *TxRevStack) Append(op *TxRevertOp) {
 // If an error occurs during the call to the Revert operation, this error
 // is captured and execution continues to the top of the stack.
 func (to *TxRevStack) Revert() error {
+	if to == nil {
+		return nil
+	}
+
 	to.mu.Lock()
 	defer to.mu.Unlock()
 
-	var errs *multierror.Error
+	var errs error
 	for i := len(to.ops) - 1; i >= 0; i-- {
 		op := to.ops[i]
 		if err := op.Revert(); err != nil {
-			errs = multierror.Append(errs, fmt.Errorf(
+			errs = errors.Join(errs, fmt.Errorf(
 				"revert operation %q for object %s failed: %w",
 				op.Origin,
 				op.ObjectID,
@@ -180,7 +187,7 @@ func (to *TxRevStack) Revert() error {
 			))
 		}
 	}
-	return errs.ErrorOrNil()
+	return errs
 }
 
 var _ Store = (*TxStoreBase)(nil)
