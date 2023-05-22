@@ -733,6 +733,8 @@ components:
           type: integer
         lastFrozenRound:
           type: integer
+        lastSelectedRound:
+          type: integer
         block:
           type: integer
         reward:
