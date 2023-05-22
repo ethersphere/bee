@@ -150,7 +150,7 @@ func (s *service) salud(mode string, minPeersPerbin int) {
 			mtx.Unlock()
 		}()
 		return false, false, nil
-	}, topology.Filter{})
+	}, topology.Select{})
 
 	wg.Wait()
 

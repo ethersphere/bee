@@ -93,11 +93,11 @@ func TestStatus(t *testing.T) {
 // topologyPeersIterNoopMock is noop topology.PeerIterator.
 type topologyPeersIterNoopMock struct{}
 
-func (m *topologyPeersIterNoopMock) EachConnectedPeer(_ topology.EachPeerFunc, _ topology.Filter) error {
+func (m *topologyPeersIterNoopMock) EachConnectedPeer(_ topology.EachPeerFunc, _ topology.Select) error {
 	return nil
 }
 
-func (m *topologyPeersIterNoopMock) EachConnectedPeerRev(_ topology.EachPeerFunc, _ topology.Filter) error {
+func (m *topologyPeersIterNoopMock) EachConnectedPeerRev(_ topology.EachPeerFunc, _ topology.Select) error {
 	return nil
 }
 

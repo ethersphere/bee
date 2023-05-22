@@ -142,7 +142,7 @@ func (p *Puller) manage(ctx context.Context, warmupDur time.Duration) {
 			}
 			delete(peersDisconnected, addr.ByteString())
 			return false, false, nil
-		}, topology.Filter{})
+		}, topology.Select{})
 
 		for _, peer := range peersDisconnected {
 			p.disconnectPeer(peer.address)

@@ -701,7 +701,7 @@ func TestNotifierHooks(t *testing.T) {
 
 	connectOne(t, signer, kad, ab, peer, nil)
 
-	p, err := kad.ClosestPeer(addr, true, topology.Filter{})
+	p, err := kad.ClosestPeer(addr, true, topology.Select{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -712,7 +712,7 @@ func TestNotifierHooks(t *testing.T) {
 
 	// disconnect the peer, expect error
 	kad.Disconnected(p2p.Peer{Address: peer})
-	_, err = kad.ClosestPeer(addr, true, topology.Filter{})
+	_, err = kad.ClosestPeer(addr, true, topology.Select{})
 	if !errors.Is(err, topology.ErrNotFound) {
 		t.Fatalf("expected topology.ErrNotFound but got %v", err)
 	}
@@ -1032,7 +1032,7 @@ func TestClosestPeer(t *testing.T) {
 			includeSelf:  false,
 		},
 	} {
-		peer, err := kad.ClosestPeer(tc.chunkAddress, tc.includeSelf, topology.Filter{})
+		peer, err := kad.ClosestPeer(tc.chunkAddress, tc.includeSelf, topology.Select{})
 		if err != nil {
 			if tc.expectedPeer == -1 && !errors.Is(err, topology.ErrWantSelf) {
 				t.Fatalf("wanted %v but got %v", topology.ErrWantSelf, err)
@@ -1505,7 +1505,7 @@ func TestBootnodeProtectedNodes(t *testing.T) {
 				return true, false, nil
 			}
 			return false, false, nil
-		}, topology.Filter{})
+		}, topology.Select{})
 		if !found {
 			t.Fatalf("protected node %s not found in connected list", pn)
 		}
@@ -1689,7 +1689,7 @@ func TestIteratorOpts(t *testing.T) {
 			kad.UpdatePeerHealth(addr, true)
 		}
 		return false, false, nil
-	}, topology.Filter{})
+	}, topology.Select{})
 
 	t.Run("EachConnectedPeer reachable", func(t *testing.T) {
 		t.Parallel()
@@ -1701,7 +1701,7 @@ func TestIteratorOpts(t *testing.T) {
 			}
 			count++
 			return false, false, nil
-		}, topology.Filter{Reachable: true})
+		}, topology.Select{Reachable: true})
 		if err != nil {
 			t.Fatal("iterator returned error")
 		}
@@ -1720,7 +1720,7 @@ func TestIteratorOpts(t *testing.T) {
 			}
 			count++
 			return false, false, nil
-		}, topology.Filter{Healthy: true})
+		}, topology.Select{Healthy: true})
 		if err != nil {
 			t.Fatal("iterator returned error")
 		}
@@ -1739,7 +1739,7 @@ func TestIteratorOpts(t *testing.T) {
 				t.Fatal("iterator returned incorrect peer")
 			}
 			return false, false, nil
-		}, topology.Filter{Reachable: true, Healthy: true})
+		}, topology.Select{Reachable: true, Healthy: true})
 		if err != nil {
 			t.Fatal("iterator returned error")
 		}
@@ -1755,7 +1755,7 @@ func TestIteratorOpts(t *testing.T) {
 			}
 			count++
 			return false, false, nil
-		}, topology.Filter{Reachable: true})
+		}, topology.Select{Reachable: true})
 		if err != nil {
 			t.Fatal("iterator returned error")
 		}
@@ -1774,7 +1774,7 @@ func TestIteratorOpts(t *testing.T) {
 			}
 			count++
 			return false, false, nil
-		}, topology.Filter{Healthy: true})
+		}, topology.Select{Healthy: true})
 		if err != nil {
 			t.Fatal("iterator returned error")
 		}
@@ -1793,7 +1793,7 @@ func TestIteratorOpts(t *testing.T) {
 				t.Fatal("iterator returned incorrect peer")
 			}
 			return false, false, nil
-		}, topology.Filter{Reachable: true, Healthy: true})
+		}, topology.Select{Reachable: true, Healthy: true})
 		if err != nil {
 			t.Fatal("iterator returned error")
 		}
@@ -1877,7 +1877,7 @@ func binSizes(kad *kademlia.Kad) []int {
 	_ = kad.EachConnectedPeer(func(a swarm.Address, u uint8) (stop bool, jumpToNext bool, err error) {
 		bins[u]++
 		return false, false, nil
-	}, topology.Filter{})
+	}, topology.Select{})
 
 	return bins
 }
@@ -2085,7 +2085,7 @@ func waitPeers(t *testing.T, k *kademlia.Kad, peers int) {
 		_ = k.EachConnectedPeer(func(_ swarm.Address, _ uint8) (bool, bool, error) {
 			i++
 			return false, false, nil
-		}, topology.Filter{})
+		}, topology.Select{})
 		return i == peers
 	})
 	if err != nil {

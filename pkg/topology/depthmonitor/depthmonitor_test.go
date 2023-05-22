@@ -193,7 +193,7 @@ func (m *mockTopology) SetStorageRadius(newDepth uint8) {
 	m.storageDepth = newDepth
 }
 
-func (m *mockTopology) PeersCount(topology.Filter) int {
+func (m *mockTopology) PeersCount(topology.Select) int {
 	return m.peers
 }
 
