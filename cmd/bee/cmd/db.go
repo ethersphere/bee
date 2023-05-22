@@ -2,13 +2,11 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// TODO: remove build tag once we change the cmds for new localstore
-//go:build oldlocalstore
-// +build oldlocalstore
-
 package cmd
 
 import (
+	"archive/tar"
+	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -17,8 +15,11 @@ import (
 	"strings"
 	"time"
 
-	localstore "github.com/ethersphere/bee/pkg/_localstore"
+	//localstore "github.com/ethersphere/bee/pkg/_localstore"
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
+	"github.com/ethersphere/bee/pkg/storer"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/spf13/cobra"
 )
 
@@ -36,67 +37,83 @@ func (c *command) initDBCmd() {
 	dbExportCmd(cmd)
 	dbImportCmd(cmd)
 	dbNukeCmd(cmd)
-	dbIndicesCmd(cmd)
+	//dbIndicesCmd(cmd)
 
 	c.root.AddCommand(cmd)
 }
 
-func dbIndicesCmd(cmd *cobra.Command) {
-	c := &cobra.Command{
-		Use:   "indices",
-		Short: "Prints the DB indices",
-		RunE: func(cmd *cobra.Command, args []string) (err error) {
-			start := time.Now()
-			v, err := cmd.Flags().GetString(optionNameVerbosity)
-			if err != nil {
-				return fmt.Errorf("get verbosity: %w", err)
-			}
-			v = strings.ToLower(v)
-			logger, err := newLogger(cmd, v)
-			if err != nil {
-				return fmt.Errorf("new logger: %w", err)
-			}
-
-			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
-			if err != nil {
-				return fmt.Errorf("get data-dir: %w", err)
-			}
-			if dataDir == "" {
-				return errors.New("no data-dir provided")
-			}
-
-			logger.Info("getting db indices with data-dir", "path", dataDir)
-
-			path := filepath.Join(dataDir, "localstore")
-
-			storer, err := localstore.New(path, nil, nil, nil, logger)
-			if err != nil {
-				return fmt.Errorf("localstore: %w", err)
-			}
-
-			indices, err := storer.DebugIndices()
-			if err != nil {
-				return fmt.Errorf("error fetching indices: %w", err)
-			}
-
-			for k, v := range indices {
-				logger.Info("localstore", "index", k, "value", v)
-			}
-
-			logger.Info("done", "elapsed", time.Since(start))
-
-			return nil
-		},
-	}
-	c.Flags().String(optionNameDataDir, "", "data directory")
-	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
-	cmd.AddCommand(c)
-}
+//func dbIndicesCmd(cmd *cobra.Command) {
+//	c := &cobra.Command{
+//		Use:   "indices",
+//		Short: "Prints the DB indices",
+//		RunE: func(cmd *cobra.Command, args []string) (err error) {
+//			start := time.Now()
+//			v, err := cmd.Flags().GetString(optionNameVerbosity)
+//			if err != nil {
+//				return fmt.Errorf("get verbosity: %w", err)
+//			}
+//			v = strings.ToLower(v)
+//			logger, err := newLogger(cmd, v)
+//			if err != nil {
+//				return fmt.Errorf("new logger: %w", err)
+//			}
+//
+//			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
+//			if err != nil {
+//				return fmt.Errorf("get data-dir: %w", err)
+//			}
+//			if dataDir == "" {
+//				return errors.New("no data-dir provided")
+//			}
+//
+//			logger.Info("getting db indices with data-dir", "path", dataDir)
+//
+//			path := filepath.Join(dataDir, "localstore")
+//
+//			storer, err := localstore.New(path, nil, nil, nil, logger)
+//			if err != nil {
+//				return fmt.Errorf("localstore: %w", err)
+//			}
+//
+//			indices, err := storer.DebugIndices()
+//			if err != nil {
+//				return fmt.Errorf("error fetching indices: %w", err)
+//			}
+//
+//			for k, v := range indices {
+//				logger.Info("localstore", "index", k, "value", v)
+//			}
+//
+//			logger.Info("done", "elapsed", time.Since(start))
+//
+//			return nil
+//		},
+//	}
+//	c.Flags().String(optionNameDataDir, "", "data directory")
+//	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
+//	cmd.AddCommand(c)
+//}
 
 func dbExportCmd(cmd *cobra.Command) {
 	c := &cobra.Command{
-		Use:   "export <filename>",
-		Short: "Perform DB export to a file. Use \"-\" as filename in order to write to STDOUT",
+		Use:   "export",
+		Short: "Perform DB export to a file",
+	}
+	c.Flags().String(optionNameDataDir, "", "data directory")
+	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
+
+	dbExportReserveCmd(c)
+	cmd.AddCommand(c)
+}
+
+type noopRadiusSetter struct{}
+
+func (noopRadiusSetter) SetStorageRadius(uint8) {}
+
+func dbExportReserveCmd(cmd *cobra.Command) {
+	c := &cobra.Command{
+		Use:   "reserve <filename>",
+		Short: "Export reserve DB to a file. Use \"-\" as filename in order to write to STDOUT",
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			if (len(args)) != 1 {
 				return cmd.Help()
@@ -123,7 +140,11 @@ func dbExportCmd(cmd *cobra.Command) {
 
 			path := filepath.Join(dataDir, "localstore")
 
-			storer, err := localstore.New(path, nil, nil, nil, logger)
+			db, err := storer.New(cmd.Context(), path, &storer.Options{
+				Logger:       logger,
+				RadiusSetter: noopRadiusSetter{},
+				Batchstore:   new(postage.NoOpBatchStore),
+			})
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
 			}
@@ -139,25 +160,55 @@ func dbExportCmd(cmd *cobra.Command) {
 				defer f.Close()
 				out = f
 			}
-			c, err := storer.Export(out)
+
+			tw := tar.NewWriter(out)
+			var counter int64
+			err = db.ReserveIterateChunks(func(chunk swarm.Chunk) (stop bool, err error) {
+				logger.Info("exporting chunk", "address", chunk.Address().String())
+				b, err := swarm.MarshalChunkToBinary(chunk)
+				if err != nil {
+					return true, fmt.Errorf("error marshaling chunk: %w", err)
+				}
+				hdr := &tar.Header{
+					Name: chunk.Address().String(),
+					Size: int64(len(b)),
+					Mode: 0600,
+				}
+				if err := tw.WriteHeader(hdr); err != nil {
+					return true, fmt.Errorf("error writing header: %w", err)
+				}
+				if _, err := tw.Write(b); err != nil {
+					return true, fmt.Errorf("error writing chunk: %w", err)
+				}
+				counter++
+				return false, nil
+			})
 			if err != nil {
 				return fmt.Errorf("error exporting database: %w", err)
 			}
-
-			logger.Info("database exported successfully", "total_records", c)
-
+			logger.Info("database exported successfully", "total_records", counter)
 			return nil
 		},
 	}
-	c.Flags().String(optionNameDataDir, "", "data directory")
-	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
 	cmd.AddCommand(c)
 }
 
 func dbImportCmd(cmd *cobra.Command) {
 	c := &cobra.Command{
-		Use:   "import <filename>",
-		Short: "Perform DB import from a file. Use \"-\" as filename in order to feed from STDIN",
+		Use:   "import",
+		Short: "Perform DB import from a file",
+	}
+	c.PersistentFlags().String(optionNameDataDir, "", "data directory")
+	c.PersistentFlags().String(optionNameVerbosity, "info", "verbosity level")
+
+	dbImportReserveCmd(c)
+	cmd.AddCommand(c)
+}
+
+func dbImportReserveCmd(cmd *cobra.Command) {
+	c := &cobra.Command{
+		Use:   "reserve <filename>",
+		Short: "Perform DB import from a . Use \"-\" as filename in order to read from STDIN",
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			if (len(args)) != 1 {
 				return cmd.Help()
@@ -183,7 +234,11 @@ func dbImportCmd(cmd *cobra.Command) {
 
 			path := filepath.Join(dataDir, "localstore")
 
-			storer, err := localstore.New(path, nil, nil, nil, logger)
+			db, err := storer.New(cmd.Context(), path, &storer.Options{
+				Logger:       logger,
+				RadiusSetter: noopRadiusSetter{},
+				Batchstore:   new(postage.NoOpBatchStore),
+			})
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
 			}
@@ -199,21 +254,53 @@ func dbImportCmd(cmd *cobra.Command) {
 				defer f.Close()
 				in = f
 			}
-			c, err := storer.Import(cmd.Context(), in)
-			if err != nil {
-				return fmt.Errorf("error importing database: %w", err)
+
+			tr := tar.NewReader(in)
+			var counter int64
+			for {
+				hdr, err := tr.Next()
+				if err == io.EOF {
+					break
+				}
+				if err != nil {
+					return fmt.Errorf("error reading tar header: %w", err)
+				}
+				b := make([]byte, hdr.Size)
+				if _, err := io.ReadFull(tr, b); err != nil {
+					return fmt.Errorf("error reading chunk: %w", err)
+				}
+
+				buf := bytes.NewBuffer(b)
+				chunk, err := swarm.UnmarshalChunkFromBinary(buf)
+				if err != nil {
+					return fmt.Errorf("error unmarshaling chunk: %w", err)
+				}
+
+				stamp := new(postage.Stamp)
+				stampBytes := make([]byte, postage.StampSize)
+				_, err = buf.Read(stampBytes)
+				if err != nil {
+					return fmt.Errorf("error reading stamp: %w", err)
+				}
+				err = stamp.UnmarshalBinary(stampBytes)
+				if err != nil {
+					return fmt.Errorf("error unmarshaling stamp: %w", err)
+				}
+				chunk = chunk.WithStamp(stamp)
+
+				logger.Info("importing chunk", "address", chunk.Address().String())
+				if err := db.ReservePut(cmd.Context(), chunk); err != nil {
+					return fmt.Errorf("error importing chunk: %w", err)
+				}
+				counter++
 			}
-
-			fmt.Printf("database imported %d records successfully\n", c)
-
+			logger.Info("database imported successfully", "total_records", counter)
 			return nil
 		},
 	}
-	c.Flags().String(optionNameDataDir, "", "data directory")
-	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
+
 	cmd.AddCommand(c)
 }
-
 func dbNukeCmd(cmd *cobra.Command) {
 	c := &cobra.Command{
 		Use:   "nuke",
