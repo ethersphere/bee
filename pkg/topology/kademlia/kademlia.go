@@ -729,7 +729,7 @@ func (k *Kad) pruneOversaturatedBins(depth uint8) {
 				}
 			}
 
-			if disconnectPeer.IsEmpty() {
+			if disconnectPeer.IsZero() {
 				if unreachablePeer.IsZero() {
 					disconnectPeer = peers[0] // pick any peer
 				} else {
