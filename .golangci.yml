@@ -80,6 +80,3 @@ issues:
     - linters:
         - paralleltest
       path: pkg/statestore
-    - linters:
-        - paralleltest
-      path: pkg/p2p
