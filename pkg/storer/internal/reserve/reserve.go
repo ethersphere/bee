@@ -331,6 +331,9 @@ func (r *Reserve) EvictBatchBin(ctx context.Context, store internal.Storage, bin
 
 		c, err := store.ChunkStore().Get(ctx, item.Address)
 		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				continue
+			}
 			return 0, err
 		}
 
