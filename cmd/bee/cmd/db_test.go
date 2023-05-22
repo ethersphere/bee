@@ -3,11 +3,14 @@ package cmd_test
 import (
 	"context"
 	"fmt"
+	"testing"
+
 	"github.com/ethersphere/bee/cmd/bee/cmd"
+	"github.com/ethersphere/bee/pkg/postage"
 	testing2 "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/storer"
+	kademlia "github.com/ethersphere/bee/pkg/topology/mock"
 	"github.com/ethersphere/bee/pkg/util/testutil"
-	"testing"
 )
 
 func TestDBExportImport(t *testing.T) {
@@ -15,9 +18,10 @@ func TestDBExportImport(t *testing.T) {
 
 	ctx := context.Background()
 	db := newTestDB(t, ctx, &storer.Options{
-		Batchstore:   nil,
-		RadiusSetter: nil,
-		Logger:       testutil.NewLogger(t),
+		Batchstore:      new(postage.NoOpBatchStore),
+		RadiusSetter:    kademlia.NewTopologyDriver(),
+		Logger:          testutil.NewLogger(t),
+		ReserveCapacity: 4_194_304,
 	})
 
 	nChunks := 10
@@ -47,6 +51,6 @@ func newTestDB(t *testing.T, ctx context.Context, opts *storer.Options) *storer.
 	if err != nil {
 		t.Fatal(err)
 	}
-	//testutil.CleanupCloser(t, db)
+	testutil.CleanupCloser(t, db)
 	return db
 }
