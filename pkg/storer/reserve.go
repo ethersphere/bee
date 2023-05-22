@@ -32,6 +32,7 @@ const (
 	reserveOverCapacity = "reserveOverCapacity"
 	reserveUnreserved   = "reserveUnreserved"
 	sampleSize          = 16
+	lockKeyReservePut   = "reservePut"
 )
 
 var errMaxRadius = errors.New("max radius reached")
@@ -143,6 +144,9 @@ func (db *DB) ReservePut(ctx context.Context, chunk swarm.Chunk) (err error) {
 			db.metrics.MethodCalls.WithLabelValues("reserve", "ReservePut", "failure").Inc()
 		}
 	}()
+
+	db.lock.Lock(lockKeyReservePut)
+	defer db.lock.Unlock(lockKeyReservePut)
 
 	putter := db.ReservePutter(ctx)
 	if err := putter.Put(ctx, chunk); err != nil {

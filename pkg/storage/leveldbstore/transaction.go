@@ -30,16 +30,15 @@ type TxStore struct {
 // Put implements the Store interface.
 func (s *TxStore) Put(item storage.Item) error {
 	prev := item.Clone()
-	keyStr := key(item)
 
 	var reverseOp *storage.TxRevertOp
 	switch err := s.TxStoreBase.Get(prev); {
 	case errors.Is(err, storage.ErrNotFound):
 		reverseOp = &storage.TxRevertOp{
 			Origin:   storage.PutCreateOp,
-			ObjectID: string(keyStr),
+			ObjectID: item.String(),
 			Revert: func() error {
-				s.batch.Delete(keyStr)
+				s.batch.Delete(key(item))
 				return nil
 			},
 		}
@@ -48,13 +47,13 @@ func (s *TxStore) Put(item storage.Item) error {
 	default:
 		reverseOp = &storage.TxRevertOp{
 			Origin:   storage.PutUpdateOp,
-			ObjectID: string(keyStr),
+			ObjectID: prev.String(),
 			Revert: func() error {
 				val, err := prev.Marshal()
 				if err != nil {
 					return err
 				}
-				s.batch.Put(keyStr, val)
+				s.batch.Put(key(prev), val)
 				return nil
 			},
 		}
@@ -87,20 +86,13 @@ func (s *TxStore) Delete(item storage.Item) error {
 	return err
 }
 
-func (s *TxStore) reset() {
-	s.batch.Reset()
-	s.revOps.Reset()
-}
-
 // Commit implements the Tx interface.
 func (s *TxStore) Commit() error {
-	defer s.reset()
 	return s.TxState.Done()
 }
 
 // Rollback implements the Tx interface.
 func (s *TxStore) Rollback() error {
-	defer s.reset()
 	if err := s.TxState.Done(); err != nil {
 		return err
 	}
