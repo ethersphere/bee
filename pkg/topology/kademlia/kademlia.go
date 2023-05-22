@@ -702,13 +702,9 @@ func (k *Kad) pruneOversaturatedBins(depth uint8) {
 			return
 		}
 
-		for j := 0; j < len(k.commonBinPrefixes[i]); j++ {
+		binPeersCount := k.connectedPeers.BinSize(uint8(i))
 
-			binPeersCount := k.connectedPeers.BinSize(uint8(i))
-
-			if binPeersCount <= k.opt.OverSaturationPeers {
-				break
-			}
+		for j := 0; j < len(k.commonBinPrefixes[i]) && k.connectedPeers.BinSize(uint8(i)) > k.opt.OverSaturationPeers; j++ {
 
 			binPeers := k.connectedPeers.BinPeers(uint8(i))
 			peers := k.balancedSlotPeers(k.commonBinPrefixes[i][j], binPeers, i)
@@ -738,13 +734,13 @@ func (k *Kad) pruneOversaturatedBins(depth uint8) {
 				}
 			}
 
-			k.logger.Debug("pruning", "bin", i, "binSize", binPeersCount, "peer_address", disconnectPeer)
-
 			err := k.p2p.Disconnect(disconnectPeer, "pruned from oversaturated bin")
 			if err != nil {
 				k.logger.Debug("prune disconnect failed", "error", err)
 			}
 		}
+
+		k.logger.Debug("pruning", "bin", i, "oldBinSize", binPeersCount, "newBinSize", k.connectedPeers.BinSize(uint8(i)))
 	}
 }
 
