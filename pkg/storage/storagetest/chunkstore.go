@@ -194,13 +194,13 @@ func RunChunkStoreBenchmarkTests(b *testing.B, s storage.ChunkStore) {
 	})
 }
 
-func BenchmarkChunkStoreWriteSequential(b *testing.B, s storage.ChunkStore) {
+func BenchmarkChunkStoreWriteSequential(b *testing.B, s storage.Putter) {
 	b.Helper()
 
 	doWriteChunk(b, s, newSequentialEntryGenerator(b.N))
 }
 
-func BenchmarkChunkStoreWriteRandom(b *testing.B, s storage.ChunkStore) {
+func BenchmarkChunkStoreWriteRandom(b *testing.B, s storage.Putter) {
 	b.Helper()
 
 	doWriteChunk(b, s, newFullRandomEntryGenerator(0, b.N))

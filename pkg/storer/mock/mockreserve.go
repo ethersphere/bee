@@ -203,8 +203,6 @@ func (s *ReserveStore) ReservePutter(ctx context.Context) storer.PutterSession {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
-	s.putCalls++
-
 	return &reservePutterSession{
 		Putter: storage.PutterFunc(func(ctx context.Context, c swarm.Chunk) error {
 			return s.put(ctx, c)
