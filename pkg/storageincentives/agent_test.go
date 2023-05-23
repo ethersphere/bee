@@ -33,6 +33,7 @@ func TestAgent(t *testing.T) {
 	t.Parallel()
 
 	bigBalance := big.NewInt(4_000_000_000)
+	blockTime := time.Millisecond * 10
 	tests := []struct {
 		name           string
 		blocksPerRound uint64
@@ -92,8 +93,6 @@ func TestAgent(t *testing.T) {
 			t.Parallel()
 
 			wait := make(chan struct{})
-			addr := swarm.RandAddress(t)
-
 			backend := &mockchainBackend{
 				limit: tc.limit,
 				limitCallback: func() {
@@ -108,7 +107,7 @@ func TestAgent(t *testing.T) {
 			}
 			contract := &mockContract{}
 
-			service, _ := createService(t, addr, backend, contract, tc.blocksPerRound, tc.blocksPerPhase)
+			service, _ := createService(t, backend, contract, blockTime, tc.blocksPerRound, tc.blocksPerPhase)
 			testutil.CleanupCloser(t, service)
 
 			<-wait
@@ -121,44 +120,120 @@ func TestAgent(t *testing.T) {
 				}
 			}
 
-			assertOrder := func(t *testing.T, want, got contractCall) {
-				t.Helper()
-				if want != got {
-					t.Fatalf("expected call %s, got %s", want, got)
-				}
+			contract.mtx.Lock()
+			defer contract.mtx.Unlock()
+
+			assertContractCallOrder(t, contract.callsList)
+		})
+	}
+}
+
+func TestAgentHalt(t *testing.T) {
+	t.Parallel()
+
+	const (
+		blocksPerRound = 12
+		blocksPerPhase = 4
+		blockTime      = time.Millisecond * 10
+	)
+
+	tests := []struct {
+		name          string
+		sleepTime     time.Duration
+		expectedCalls int
+	}{
+		{
+			name:          "halt immediately",
+			sleepTime:     0,
+			expectedCalls: 0,
+		},
+		{
+			name:          "halt without committing to the round",
+			sleepTime:     blockTime * (blocksPerRound - 1),
+			expectedCalls: 0, // agent should not wait for round to finish
+		},
+		{
+			name:          "halt after committing to the round (beginning of commit phase)",
+			sleepTime:     blockTime * blocksPerRound,
+			expectedCalls: 3, // agent has just committed, but should finish round before halting
+		},
+		{
+			name:          "halt after committing to the round (beginning of reveal phase)",
+			sleepTime:     blockTime * (blocksPerRound + blocksPerPhase),
+			expectedCalls: 3, // agent has just revealed, but should finish round before halting
+		},
+		{
+			name:          "halt after committing to the round (beginning of claim phase)",
+			sleepTime:     blockTime * (blocksPerRound + (2 * blocksPerPhase)),
+			expectedCalls: 3, // agent has just claimed, but should finish round before halting
+		},
+		{
+			name:          "halt after committing to the round (#3 round)",
+			sleepTime:     blockTime * blocksPerRound * 2,
+			expectedCalls: 3 * 2,
+		},
+		{
+			name:          "halt after committing to the round (#4 round)",
+			sleepTime:     blockTime * blocksPerRound * 3,
+			expectedCalls: 3 * 3,
+		},
+		{
+			name:          "halt after committing to the round (#5 round)",
+			sleepTime:     blockTime * blocksPerRound * 4,
+			expectedCalls: 3 * 4,
+		},
+	}
+
+	for _, tc := range tests {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
+			backend := &mockchainBackend{
+				limit:       144,
+				incrementBy: 1,
+				block:       blocksPerRound,
+				balance:     big.NewInt(4_000_000_000),
+			}
+			contract := &mockContract{}
+			service, _ := createService(t, backend, contract, blockTime, blocksPerRound, blocksPerPhase)
+			testutil.CleanupCloser(t, service)
+
+			time.Sleep(tc.sleepTime)
+			haltSigC := service.Halt()
+
+			select {
+			case <-haltSigC:
+			case <-time.After(time.Second):
+				t.Fatal("halt signal was not received on time")
+			}
+
+			if tc.expectedCalls == 0 {
+				return
 			}
 
 			contract.mtx.Lock()
 			defer contract.mtx.Unlock()
 
-			prevCall := contract.callsList[0]
-
-			for i := 1; i < len(contract.callsList); i++ {
-
-				switch contract.callsList[i] {
-				case isWinnerCall:
-					assertOrder(t, revealCall, prevCall)
-				case revealCall:
-					assertOrder(t, commitCall, prevCall)
-				case commitCall:
-					assertOrder(t, isWinnerCall, prevCall)
-				}
-
-				prevCall = contract.callsList[i]
+			if got := len(contract.callsList); got != tc.expectedCalls {
+				t.Fatalf("contract call list should have size: %d, got: %d", tc.expectedCalls, got)
 			}
+
+			assertContractCallOrder(t, contract.callsList)
 		})
 	}
 }
 
 func createService(
 	t *testing.T,
-	addr swarm.Address,
 	backend storageincentives.ChainBackend,
 	contract redistribution.Contract,
+	blockTime time.Duration,
 	blocksPerRound uint64,
 	blocksPerPhase uint64) (*storageincentives.Agent, error) {
 	t.Helper()
 
+	addr := swarm.RandAddress(t)
 	postageContract := contractMock.New(contractMock.WithExpiresBatchesFunc(func(context.Context) error {
 		return nil
 	}),
@@ -167,7 +242,7 @@ func createService(
 		return false, nil
 	}))
 
-	return storageincentives.New(addr, common.Address{}, backend, &mockMonitor{}, contract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), &mockSampler{t: t}, time.Millisecond*10, blocksPerRound, blocksPerPhase, statestore.NewStateStore(), erc20mock.New(), transactionmock.New(), &mockHealth{}, log.Noop)
+	return storageincentives.New(addr, common.Address{}, backend, &mockMonitor{}, contract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), &mockSampler{t: t}, blockTime, blocksPerRound, blocksPerPhase, statestore.NewStateStore(), erc20mock.New(), transactionmock.New(), &mockHealth{}, log.Noop)
 }
 
 type mockchainBackend struct {
@@ -211,8 +286,7 @@ func (m *mockchainBackend) SuggestGasPrice(ctx context.Context) (*big.Int, error
 	return big.NewInt(4), nil
 }
 
-type mockMonitor struct {
-}
+type mockMonitor struct{}
 
 func (m *mockMonitor) IsFullySynced() bool {
 	return true
@@ -295,3 +369,31 @@ func (m *mockSampler) ReserveSample(context.Context, []byte, uint8, uint64) (sto
 type mockHealth struct{}
 
 func (m *mockHealth) IsHealthy() bool { return true }
+
+func assertContractCallOrder(t *testing.T, callsList []contractCall) {
+	t.Helper()
+
+	if len(callsList) == 0 {
+		t.Fatal("contract calls list should not be empty")
+	}
+
+	prevCall := callsList[0]
+	assertPrevCall := func(call contractCall) {
+		if prevCall != call {
+			t.Fatalf("expected call %s, got %s", call, prevCall)
+		}
+	}
+
+	for i := 1; i < len(callsList); i++ {
+		switch callsList[i] {
+		case isWinnerCall:
+			assertPrevCall(revealCall)
+		case revealCall:
+			assertPrevCall(commitCall)
+		case commitCall:
+			assertPrevCall(isWinnerCall)
+		}
+
+		prevCall = callsList[i]
+	}
+}

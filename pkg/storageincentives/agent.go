@@ -512,8 +512,7 @@ func (a *Agent) commit(ctx context.Context, sample SampleData, round uint64) err
 
 // Halt method will stop all future participation in schelling game while
 // waiting on current game to finish (if node was already committed to it).
-// Method will return channel which will signal when
-// agent could be safely terminated.
+// Method will return channel which will signal when agent could be safely Closed.
 func (a *Agent) Halt() <-chan struct{} {
 	a.phaseEvents.Cancel(sample)
 	a.state.SetHalthing(true)
