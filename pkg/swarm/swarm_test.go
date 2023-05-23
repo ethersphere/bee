@@ -5,13 +5,11 @@
 package swarm_test
 
 import (
-	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"testing"
 
-	testing2 "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -162,30 +160,5 @@ func TestCloser(t *testing.T) {
 
 	if cmp, _ := x.Closer(a, y); !cmp {
 		t.Fatal("x is closer")
-	}
-}
-
-func TestMarshalChunk(t *testing.T) {
-	t.Parallel()
-	ch := testing2.GenerateTestRandomChunk()
-	b, err := swarm.MarshalChunkToBinary(ch)
-	if err != nil {
-		t.Fatal(err)
-	}
-	want := 4 + swarm.HashSize + len(ch.Data()) + 125
-	if len(b) != want {
-		t.Fatalf("got %d, want %d", len(b), want)
-	}
-
-	buf := bytes.NewBuffer(b)
-	ch1, err := swarm.UnmarshalChunkFromBinary(buf)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !ch1.Address().Equal(ch.Address()) {
-		t.Fatalf("address mismatch: got %v, want %v", ch1.Address(), ch.Address())
-	}
-	if !bytes.Equal(ch1.Data(), ch.Data()) {
-		t.Fatalf("data mismatch: got %v, want %v", ch1.Data(), ch.Data())
 	}
 }
