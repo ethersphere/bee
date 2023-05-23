@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -61,6 +62,7 @@ import (
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/bee/pkg/traversal"
+	"github.com/ethersphere/bee/pkg/util"
 	"github.com/go-playground/validator/v10"
 	"github.com/gorilla/mux"
 	"github.com/hashicorp/go-multierror"
@@ -189,6 +191,9 @@ type Service struct {
 	redistributionAgent *storageincentives.Agent
 
 	statusService *status.Service
+
+	shutdownSig     *util.Signaler
+	shutdownStarted atomic.Bool
 }
 
 func (s *Service) SetP2P(p2p p2p.DebugService) {
@@ -238,6 +243,7 @@ type ExtraOptions struct {
 	SyncStatus       func() (bool, error)
 	IndexDebugger    StorageIndexDebugger
 	NodeStatus       *status.Service
+	ShutdownSig      *util.Signaler
 }
 
 func New(publicKey, pssPublicKey ecdsa.PublicKey, ethereumAddress common.Address, logger log.Logger, transaction transaction.Service, batchStore postage.Storer, beeMode BeeNodeMode, chequebookEnabled, swapEnabled bool, chainBackend transaction.Backend, cors []string) *Service {
@@ -300,7 +306,6 @@ func (s *Service) Configure(signer crypto.Signer, auth auth.Authenticator, trace
 	s.steward = e.Steward
 	s.stakingContract = e.Staking
 	s.indexDebugger = e.IndexDebugger
-
 	s.pingpong = e.Pingpong
 	s.topologyDriver = e.TopologyDriver
 	s.accounting = e.Accounting
@@ -309,6 +314,7 @@ func (s *Service) Configure(signer crypto.Signer, auth auth.Authenticator, trace
 	s.lightNodes = e.LightNodes
 	s.pseudosettle = e.Pseudosettle
 	s.blockTime = e.BlockTime
+	s.shutdownSig = e.ShutdownSig
 
 	s.statusSem = semaphore.NewWeighted(1)
 	s.postageSem = semaphore.NewWeighted(1)

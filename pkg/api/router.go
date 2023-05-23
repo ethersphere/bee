@@ -346,6 +346,12 @@ func (s *Service) mountAPI() {
 		})),
 	)
 
+	handle("/shutdown", jsonhttp.MethodHandler{
+		"POST": web.ChainHandlers(
+			web.FinalHandlerFunc(s.shutdownHandler),
+		),
+	})
+
 	if s.Restricted {
 		handle("/auth", jsonhttp.MethodHandler{
 			"POST": web.ChainHandlers(

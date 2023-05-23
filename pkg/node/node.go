@@ -1061,6 +1061,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		SyncStatus:       syncStatusFn,
 		IndexDebugger:    storer,
 		NodeStatus:       nodeStatus,
+		ShutdownSig:      b.shutdownSig,
 	}
 
 	if o.APIAddr != "" {
