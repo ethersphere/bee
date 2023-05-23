@@ -8,7 +8,6 @@ package swarm
 import (
 	"bytes"
 	"encoding"
-	"encoding/binary"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -292,99 +291,4 @@ func (c *chunk) String() string {
 
 func (c *chunk) Equal(cp Chunk) bool {
 	return c.Address().Equal(cp.Address()) && bytes.Equal(c.Data(), cp.Data())
-}
-
-func MarshalChunkToBinary(c Chunk) ([]byte, error) {
-	var buf bytes.Buffer
-	size := 4 + HashSize + len(c.Data()) + 125
-
-	sizeBytes := make([]byte, 4)
-	binary.BigEndian.PutUint32(sizeBytes, uint32(size))
-	buf.Write(sizeBytes)
-	buf.Write(c.Address().Bytes())
-	dataLenBytes := make([]byte, 4)
-	binary.BigEndian.PutUint32(dataLenBytes, uint32(len(c.Data())))
-	buf.Write(dataLenBytes)
-	buf.Write(c.Data())
-	tagBytes := make([]byte, 4)
-	binary.BigEndian.PutUint32(tagBytes, c.TagID())
-	buf.Write(tagBytes)
-	buf.Write([]byte{c.Radius(), c.Depth(), c.BucketDepth()})
-	if c.Immutable() {
-		buf.WriteByte(1)
-	} else {
-		buf.WriteByte(0)
-	}
-
-	stampBytes, err := c.Stamp().MarshalBinary()
-	if err != nil {
-		return nil, fmt.Errorf("error marshalling stamp: %v", err)
-	}
-	buf.Write(stampBytes)
-	return buf.Bytes(), nil
-}
-
-func UnmarshalChunkFromBinary(buf *bytes.Buffer) (Chunk, error) {
-	c := new(chunk)
-	sizeBytes := make([]byte, 4)
-	_, err := buf.Read(sizeBytes)
-	if err != nil {
-		return nil, fmt.Errorf("error reading chunk size: %w", err)
-	}
-	size := binary.BigEndian.Uint32(sizeBytes)
-	if int(size) != buf.Len()+4 {
-		return nil, fmt.Errorf("chunk size does not match buffer length")
-	}
-	addrBytes := make([]byte, HashSize)
-	_, err = buf.Read(addrBytes)
-	if err != nil {
-		return nil, fmt.Errorf("error reading chunk address: %w", err)
-	}
-	c.addr = NewAddress(addrBytes)
-
-	dataLenBytes := make([]byte, 4)
-	_, err = buf.Read(dataLenBytes)
-	dataLen := binary.BigEndian.Uint32(dataLenBytes)
-	if err != nil {
-		return nil, fmt.Errorf("error reading chunk data size: %v", err)
-	}
-	c.sdata = make([]byte, dataLen)
-	_, err = buf.Read(c.sdata)
-	if err != nil {
-		return nil, fmt.Errorf("error reading chunk data: %w", err)
-	}
-
-	tagBytes := make([]byte, 4)
-	_, err = buf.Read(tagBytes)
-	if err != nil {
-		return nil, fmt.Errorf("error reading tagID: %w", err)
-	}
-	c.tagID = binary.LittleEndian.Uint32(tagBytes)
-
-	c.radius, err = buf.ReadByte()
-	if err != nil {
-		return nil, fmt.Errorf("error reading radius: %w", err)
-	}
-
-	c.depth, err = buf.ReadByte()
-	if err != nil {
-		return nil, fmt.Errorf("error reading depth: %w", err)
-	}
-
-	c.bucketDepth, err = buf.ReadByte()
-	if err != nil {
-		return nil, fmt.Errorf("error reading bucket depth: %w", err)
-	}
-
-	immutable, err := buf.ReadByte()
-	if err != nil {
-		return nil, fmt.Errorf("error reading immutable: %w", err)
-	}
-	c.immutable = immutable == 1
-
-	// we didn't read the stamp yet
-	if l := buf.Len(); l != 113 {
-		return nil, fmt.Errorf("unexpected bytes left: %v", l)
-	}
-	return Chunk(c), nil
 }

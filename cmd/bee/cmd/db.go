@@ -7,6 +7,7 @@ package cmd
 import (
 	"archive/tar"
 	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
@@ -162,7 +163,7 @@ func dbExportReserveCmd(cmd *cobra.Command) {
 			var counter int64
 			err = db.ReserveIterateChunks(func(chunk swarm.Chunk) (stop bool, err error) {
 				logger.Info("exporting chunk", "address", chunk.Address().String())
-				b, err := swarm.MarshalChunkToBinary(chunk)
+				b, err := MarshalChunkToBinary(chunk)
 				if err != nil {
 					return true, fmt.Errorf("error marshaling chunk: %w", err)
 				}
@@ -267,24 +268,7 @@ func dbImportReserveCmd(cmd *cobra.Command) {
 					return fmt.Errorf("error reading chunk: %w", err)
 				}
 
-				buf := bytes.NewBuffer(b)
-				chunk, err := swarm.UnmarshalChunkFromBinary(buf)
-				if err != nil {
-					return fmt.Errorf("error unmarshaling chunk: %w", err)
-				}
-
-				stamp := new(postage.Stamp)
-				stampBytes := make([]byte, postage.StampSize)
-				_, err = buf.Read(stampBytes)
-				if err != nil {
-					return fmt.Errorf("error reading stamp: %w", err)
-				}
-				err = stamp.UnmarshalBinary(stampBytes)
-				if err != nil {
-					return fmt.Errorf("error unmarshaling stamp: %w", err)
-				}
-				chunk = chunk.WithStamp(stamp)
-
+				chunk, err := UnmarshalChunkFromBinary(b, hdr.Name)
 				logger.Info("importing chunk", "address", chunk.Address().String())
 				if err := db.ReservePut(cmd.Context(), chunk); err != nil {
 					return fmt.Errorf("error importing chunk: %w", err)
@@ -401,4 +385,59 @@ func removeContent(path string) error {
 		}
 	}
 	return nil
+}
+
+func MarshalChunkToBinary(c swarm.Chunk) ([]byte, error) {
+	buf := bytes.NewBuffer(nil)
+	dataLenBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(dataLenBytes, uint32(len(c.Data())))
+	buf.Write(dataLenBytes)
+	buf.Write(c.Data())
+
+	stampBytes, err := c.Stamp().MarshalBinary()
+	if err != nil {
+		return nil, fmt.Errorf("error marshalling stamp: %v", err)
+	}
+	buf.Write(stampBytes)
+	return buf.Bytes(), nil
+}
+
+func UnmarshalChunkFromBinary(data []byte, address string) (swarm.Chunk, error) {
+	buf := bytes.NewBuffer(data)
+
+	dataLenBytes := make([]byte, 4)
+	_, err := buf.Read(dataLenBytes)
+	dataLen := binary.BigEndian.Uint32(dataLenBytes)
+	if err != nil {
+		return nil, fmt.Errorf("error reading chunk data size: %v", err)
+	}
+
+	b := make([]byte, dataLen)
+	_, err = buf.Read(b)
+	if err != nil {
+		return nil, fmt.Errorf("error reading chunk data: %w", err)
+	}
+
+	addr, err := swarm.ParseHexAddress(address)
+	if err != nil {
+		return nil, fmt.Errorf("error parsing address: %w", err)
+	}
+
+	stampBytes := make([]byte, postage.StampSize)
+	_, err = buf.Read(stampBytes)
+	if err != nil {
+		return nil, fmt.Errorf("error reading stamp: %w", err)
+	}
+	stamp := new(postage.Stamp)
+	err = stamp.UnmarshalBinary(stampBytes)
+	if err != nil {
+		return nil, fmt.Errorf("error unmarshalling stamp: %w", err)
+	}
+
+	if buf.Len() != 0 {
+		return nil, fmt.Errorf("buffer should be empty")
+	}
+
+	chunk := swarm.NewChunk(addr, b).WithStamp(stamp)
+	return chunk, nil
 }

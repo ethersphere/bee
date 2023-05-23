@@ -1,6 +1,7 @@
 package cmd_test
 
 import (
+	"bytes"
 	"context"
 	"fmt"
 	"testing"
@@ -72,6 +73,30 @@ func TestDBExportImport(t *testing.T) {
 		if v != 1 {
 			t.Errorf("chunk %s missing", k)
 		}
+	}
+}
+
+func TestMarshalChunk(t *testing.T) {
+	t.Parallel()
+	ch := testing2.GenerateTestRandomChunk()
+	b, err := cmd.MarshalChunkToBinary(ch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := 4 + len(ch.Data()) + postage.StampSize
+	if len(b) != want {
+		t.Fatalf("got %d, want %d", len(b), want)
+	}
+
+	ch1, err := cmd.UnmarshalChunkFromBinary(b, ch.Address().String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ch1.Address().Equal(ch.Address()) {
+		t.Fatalf("address mismatch: got %s, want %s", ch1.Address(), ch.Address())
+	}
+	if !bytes.Equal(ch1.Data(), ch.Data()) {
+		t.Fatalf("data mismatch: got %v, want %v", ch1.Data(), ch.Data())
 	}
 }
 
