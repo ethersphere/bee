@@ -232,7 +232,7 @@ func newStorer(tb testing.TB, path string, opts *storer.Options) (*storer.DB, er
 		tb.Cleanup(func() {
 			err := lstore.Close()
 			if err != nil {
-				t.Errorf("failed closing storer: %v", err)
+				tb.Errorf("failed closing storer: %v", err)
 			}
 		})
 	}
