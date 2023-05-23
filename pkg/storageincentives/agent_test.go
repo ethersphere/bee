@@ -26,6 +26,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
+	"github.com/ethersphere/bee/pkg/util"
 	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
@@ -189,17 +190,13 @@ func TestAgentHalt(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
-			wait := make(chan struct{})
+			blockReachedSig := util.NewSignaler()
 			backend := &mockchainBackend{
 				incrementBy: 1,
 				balance:     big.NewInt(4_000_000_000),
 				blockNumberCallback: func(bno uint64) {
 					if bno >= tc.haltAtBlock {
-						select {
-						case <-wait:
-						default:
-							close(wait)
-						}
+						blockReachedSig.Signal()
 					}
 				},
 			}
@@ -207,7 +204,7 @@ func TestAgentHalt(t *testing.T) {
 			service, _ := createService(t, backend, contract, blockTime, blocksPerRound, blocksPerPhase)
 			testutil.CleanupCloser(t, service)
 
-			<-wait
+			<-blockReachedSig.C
 			select {
 			case <-service.Halt():
 			case <-time.After(time.Second):

@@ -17,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 	"github.com/ethersphere/bee/pkg/transaction"
+	"github.com/ethersphere/bee/pkg/util"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -80,7 +81,7 @@ type Agent struct {
 	commitLock             sync.Mutex
 	health                 Health
 	phaseEvents            *events
-	haltSigC               chan struct{}
+	haltSig                *util.Signaler
 }
 
 func New(overlay swarm.Address, ethAddress common.Address, backend ChainBackend, monitor Monitor, contract redistribution.Contract, batchExpirer postagecontract.PostageBatchExpirer, redistributionStatuser staking.RedistributionStatuser, radius postage.Radius, sampler storage.Sampler, blockTime time.Duration, blocksPerRound, blocksPerPhase uint64, stateStore storage.StateStorer, erc20Service erc20.Service, tranService transaction.Service, health Health, logger log.Logger) (*Agent, error) {
@@ -98,7 +99,7 @@ func New(overlay swarm.Address, ethAddress common.Address, backend ChainBackend,
 		quit:                   make(chan struct{}),
 		redistributionStatuser: redistributionStatuser,
 		health:                 health,
-		haltSigC:               make(chan struct{}),
+		haltSig:                util.NewSignaler(),
 	}
 
 	state, err := NewRedistributionState(logger, ethAddress, stateStore, erc20Service, tranService)
@@ -214,11 +215,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 		// send halt signal when agent is not committed to playing on current round
 		if a.state.Halthing() && !a.state.HasCommitKey(round) {
-			select { // close only once
-			case <-a.haltSigC:
-			default:
-				close(a.haltSigC)
-			}
+			a.haltSig.Signal()
 			return
 		}
 
@@ -519,10 +516,10 @@ func (a *Agent) Halt() <-chan struct{} {
 
 	round, _ := a.state.currentRoundAndPhase()
 	if !a.state.HasCommitKey(round) {
-		close(a.haltSigC)
+		a.haltSig.Signal()
 	}
 
-	return a.haltSigC
+	return a.haltSig.C
 }
 
 func (a *Agent) Close() error {
