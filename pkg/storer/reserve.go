@@ -145,9 +145,6 @@ func (db *DB) ReservePut(ctx context.Context, chunk swarm.Chunk) (err error) {
 		}
 	}()
 
-	db.lock.Lock(lockKeyReservePut)
-	defer db.lock.Unlock(lockKeyReservePut)
-
 	putter := db.ReservePutter(ctx)
 	if err := putter.Put(ctx, chunk); err != nil {
 		return errors.Join(err, putter.Cleanup())
