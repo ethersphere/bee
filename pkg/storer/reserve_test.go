@@ -20,6 +20,7 @@ import (
 	pullerMock "github.com/ethersphere/bee/pkg/puller/mock"
 	"github.com/ethersphere/bee/pkg/spinlock"
 	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage/storagetest"
 	chunk "github.com/ethersphere/bee/pkg/storage/testing"
 	storer "github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/storer/internal/chunkstamp"
@@ -828,4 +829,20 @@ func checkSaved(t *testing.T, st *storer.DB, ch swarm.Chunk, stampSaved, chunkSt
 	if !errors.Is(err, chunkStoreWantedErr) {
 		t.Fatalf("wanted err %s, got err %s", chunkStoreWantedErr, err)
 	}
+}
+
+func BenchmarkReservePutter(b *testing.B) {
+	baseAddr := swarm.RandAddress(b)
+	storer, err := diskStorer(b, dbTestOps(baseAddr, 10000, nil, nil, time.Second))()
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	putter := storage.PutterFunc(func(ctx context.Context, ch swarm.Chunk) error {
+		return storer.ReservePut(ctx, ch)
+	})
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	storagetest.BenchmarkChunkStoreWriteSequential(b, putter)
 }

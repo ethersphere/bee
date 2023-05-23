@@ -74,7 +74,7 @@ func (pi *proxyItem) Unmarshal(data []byte) error {
 	if pi == nil || pi.obj == nil {
 		return nil
 	}
-	
+
 	switch m := pi.obj.(type) {
 	case encoding.BinaryUnmarshaler:
 		return m.UnmarshalBinary(data)
