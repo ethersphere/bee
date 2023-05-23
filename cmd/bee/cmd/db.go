@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
 	//localstore "github.com/ethersphere/bee/pkg/_localstore"
 	"github.com/ethersphere/bee/pkg/postage"
@@ -257,7 +256,7 @@ func dbImportReserveCmd(cmd *cobra.Command) {
 			var counter int64
 			for {
 				hdr, err := tr.Next()
-				if err == io.EOF {
+				if errors.Is(err, io.EOF) {
 					break
 				}
 				if err != nil {
@@ -269,6 +268,9 @@ func dbImportReserveCmd(cmd *cobra.Command) {
 				}
 
 				chunk, err := UnmarshalChunkFromBinary(b, hdr.Name)
+				if err != nil {
+					return fmt.Errorf("error unmarshaling chunk: %w", err)
+				}
 				logger.Info("importing chunk", "address", chunk.Address().String())
 				if err := db.ReservePut(cmd.Context(), chunk); err != nil {
 					return fmt.Errorf("error importing chunk: %w", err)
@@ -366,26 +368,26 @@ func dbImportReserveCmd(cmd *cobra.Command) {
 //	cmd.AddCommand(c)
 //}
 
-func removeContent(path string) error {
-	dir, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer dir.Close()
-
-	subpaths, err := dir.Readdirnames(0)
-	if err != nil {
-		return err
-	}
-
-	for _, sub := range subpaths {
-		err = os.RemoveAll(filepath.Join(path, sub))
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
+//func removeContent(path string) error {
+//	dir, err := os.Open(path)
+//	if err != nil {
+//		return err
+//	}
+//	defer dir.Close()
+//
+//	subpaths, err := dir.Readdirnames(0)
+//	if err != nil {
+//		return err
+//	}
+//
+//	for _, sub := range subpaths {
+//		err = os.RemoveAll(filepath.Join(path, sub))
+//		if err != nil {
+//			return err
+//		}
+//	}
+//	return nil
+//}
 
 func MarshalChunkToBinary(c swarm.Chunk) ([]byte, error) {
 	buf := bytes.NewBuffer(nil)
@@ -396,7 +398,7 @@ func MarshalChunkToBinary(c swarm.Chunk) ([]byte, error) {
 
 	stampBytes, err := c.Stamp().MarshalBinary()
 	if err != nil {
-		return nil, fmt.Errorf("error marshalling stamp: %v", err)
+		return nil, fmt.Errorf("error marshalling stamp: %w", err)
 	}
 	buf.Write(stampBytes)
 	return buf.Bytes(), nil
@@ -409,7 +411,7 @@ func UnmarshalChunkFromBinary(data []byte, address string) (swarm.Chunk, error) 
 	_, err := buf.Read(dataLenBytes)
 	dataLen := binary.BigEndian.Uint32(dataLenBytes)
 	if err != nil {
-		return nil, fmt.Errorf("error reading chunk data size: %v", err)
+		return nil, fmt.Errorf("error reading chunk data size: %w", err)
 	}
 
 	b := make([]byte, dataLen)
