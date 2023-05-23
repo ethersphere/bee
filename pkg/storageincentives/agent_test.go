@@ -210,7 +210,7 @@ func TestAgentHalt(t *testing.T) {
 			<-wait
 			select {
 			case <-service.Halt():
-			case <-time.After((blocksPerRound + 1) * blockTime):
+			case <-time.After(blocksPerPhase * blockTime * 2):
 				t.Fatal("halt signal was not received on time")
 			}
 
