@@ -382,7 +382,7 @@ func removeChunk(ctx context.Context, store internal.Storage, item *batchRadiusI
 		return err
 	}
 
-	err = chunkStore.Delete(context.TODO(), item.Address)
+	err = chunkStore.Delete(ctx, item.Address)
 	if err != nil {
 		return err
 	}

@@ -225,11 +225,11 @@ func makeDiskStorer(t *testing.T, opts *storer.Options) *storer.DB {
 	return lstore
 }
 
-func newStorer(t testing.TB, path string, opts *storer.Options) (*storer.DB, error) {
-	t.Helper()
+func newStorer(tb testing.TB, path string, opts *storer.Options) (*storer.DB, error) {
+	tb.Helper()
 	lstore, err := storer.New(context.Background(), path, opts)
 	if err == nil {
-		t.Cleanup(func() {
+		tb.Cleanup(func() {
 			err := lstore.Close()
 			if err != nil {
 				t.Errorf("failed closing storer: %v", err)
@@ -240,16 +240,16 @@ func newStorer(t testing.TB, path string, opts *storer.Options) (*storer.DB, err
 	return lstore, err
 }
 
-func diskStorer(t testing.TB, opts *storer.Options) func() (*storer.DB, error) {
-	t.Helper()
+func diskStorer(tb testing.TB, opts *storer.Options) func() (*storer.DB, error) {
+	tb.Helper()
 	return func() (*storer.DB, error) {
-		return newStorer(t, t.TempDir(), opts)
+		return newStorer(tb, tb.TempDir(), opts)
 	}
 }
 
-func memStorer(t testing.TB, opts *storer.Options) func() (*storer.DB, error) {
-	t.Helper()
+func memStorer(tb testing.TB, opts *storer.Options) func() (*storer.DB, error) {
+	tb.Helper()
 	return func() (*storer.DB, error) {
-		return newStorer(t, "", opts)
+		return newStorer(tb, "", opts)
 	}
 }

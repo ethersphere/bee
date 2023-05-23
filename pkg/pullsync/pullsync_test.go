@@ -140,7 +140,7 @@ func TestIncoming_WantAll(t *testing.T) {
 
 	// should have all
 	haveChunks(t, clientDb, chunks...)
-	if p := clientDb.PutCalls(); p != 1 {
+	if p := clientDb.PutCalls(); p != len(chunks) {
 		t.Fatalf("want %d puts but got %d", len(chunks), p)
 	}
 }
@@ -202,7 +202,7 @@ func TestIncoming_WantErrors(t *testing.T) {
 	}
 
 	haveChunks(t, clientDb, append(tChunks[:1], tChunks[3:5]...)...)
-	if p := clientDb.PutCalls(); p != 1 {
+	if p := clientDb.PutCalls(); p != len(chunks)-1 {
 		t.Fatalf("want %d puts but got %d", len(chunks), p)
 	}
 }
