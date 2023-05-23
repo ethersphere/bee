@@ -262,9 +262,8 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		s.metrics.DbOps.Inc()
 		s.metrics.LastReceived.WithLabelValues(fmt.Sprintf("%d", bin)).Set(float64(time.Now().Unix()))
 
-		putter := s.store.ReservePutter(ctx)
 		for _, c := range chunksToPut {
-			if err := putter.Put(ctx, c); err != nil {
+			if err := s.store.ReservePut(ctx, c); err != nil {
 				// in case of these errors, no new items are added to the storage, so it
 				// is safe to continue with the next chunk
 				if errors.Is(err, storage.ErrOverwriteNewerChunk) || errors.Is(err, storage.ErrOverwriteOfImmutableBatch) {
@@ -272,12 +271,9 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 					chunkErr = errors.Join(chunkErr, err)
 					continue
 				}
-				return 0, 0, errors.Join(chunkErr, err, putter.Cleanup())
+				return 0, 0, errors.Join(chunkErr, err)
 			}
 			chunksPut++
-		}
-		if err := putter.Done(swarm.ZeroAddress); err != nil {
-			return 0, 0, errors.Join(chunkErr, err)
 		}
 	}
 

@@ -200,7 +200,7 @@ func initInmemRepository() (storage.Repository, io.Closer, error) {
 	}
 
 	txStore := leveldbstore.NewTxStore(store)
-	txChunkStore := chunkstore.NewTxChunkStore(txStore, sharky)
+	txChunkStore := chunkstore.NewTxChunkStore(store, sharky)
 
 	return storage.NewRepository(txStore, txChunkStore), closer(store, sharky), nil
 }
@@ -273,7 +273,7 @@ func initDiskRepository(ctx context.Context, basePath string, opts *Options) (st
 	}
 
 	txStore := leveldbstore.NewTxStore(store)
-	txChunkStore := chunkstore.NewTxChunkStore(txStore, sharky)
+	txChunkStore := chunkstore.NewTxChunkStore(store, sharky)
 
 	return storage.NewRepository(txStore, txChunkStore), closer(store, sharky, recoveryCloser), nil
 }

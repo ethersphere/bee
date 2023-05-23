@@ -127,13 +127,14 @@ func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.C
 		// 4. Update the stamp index
 		newStampIndex = false
 
-		oldChunk := &batchRadiusItem{Bin: po, BatchID: chunk.Stamp().BatchID(), Address: item.ChunkAddress}
+		oldChunkPO := swarm.Proximity(r.baseAddr.Bytes(), item.ChunkAddress.Bytes())
+		oldChunk := &batchRadiusItem{Bin: oldChunkPO, BatchID: chunk.Stamp().BatchID(), Address: item.ChunkAddress}
 		err := indexStore.Get(oldChunk)
 		if err != nil {
 			return false, fmt.Errorf("failed getting old chunk item to replace: %w", err)
 		}
 
-		err = removeChunk(store, oldChunk)
+		err = removeChunk(ctx, store, oldChunk)
 		if err != nil {
 			return false, fmt.Errorf("failed removing older chunk: %w", err)
 		}
@@ -330,12 +331,17 @@ func (r *Reserve) EvictBatchBin(ctx context.Context, store internal.Storage, bin
 
 		c, err := store.ChunkStore().Get(ctx, item.Address)
 		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				continue
+			}
 			return 0, err
 		}
 
 		cb(c)
 
-		err = removeChunk(store, item)
+		r.putterMu.Lock()
+		err = removeChunk(ctx, store, item)
+		r.putterMu.Unlock()
 		if err != nil {
 			return 0, err
 		}
@@ -344,10 +350,17 @@ func (r *Reserve) EvictBatchBin(ctx context.Context, store internal.Storage, bin
 	return len(evicted), nil
 }
 
-func removeChunk(store internal.Storage, item *batchRadiusItem) error {
+func removeChunk(ctx context.Context, store internal.Storage, item *batchRadiusItem) error {
 
 	indexStore := store.IndexStore()
 	chunkStore := store.ChunkStore()
+
+	if has, err := indexStore.Has(item); err != nil || !has {
+		// removeChunk is called from two places, if we collect the chunk for eviction
+		// but if it is already removed because of postage stamp index collision or
+		// vice versa, we should return early
+		return err
+	}
 
 	err := indexStore.Delete(&chunkBinItem{Bin: item.Bin, BinID: item.BinID})
 	if err != nil {
@@ -369,7 +382,7 @@ func removeChunk(store internal.Storage, item *batchRadiusItem) error {
 		return err
 	}
 
-	err = chunkStore.Delete(context.TODO(), item.Address)
+	err = chunkStore.Delete(ctx, item.Address)
 	if err != nil {
 		return err
 	}
