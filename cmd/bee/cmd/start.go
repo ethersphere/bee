@@ -120,8 +120,8 @@ func (c *command) initStartCmd() (err error) {
 					// block main goroutine until it is interrupted or stopped
 					select {
 					case <-ctx.Done():
-					case <-beeNode.Load().(*node.Bee).SyncingStopped():
-						logger.Debug("syncing has stopped")
+					case <-beeNode.Load().(*node.Bee).ShutdownSigC():
+						logger.Info("received shutdown signal from node")
 					}
 
 					logger.Info("shutting down...")

@@ -129,7 +129,7 @@ type Bee struct {
 	storageIncetivesCloser   io.Closer
 	shutdownInProgress       bool
 	shutdownMutex            sync.Mutex
-	syncingStopped           *util.Signaler
+	shutdownSig              *util.Signaler
 }
 
 type Options struct {
@@ -232,7 +232,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		ctxCancel:      ctxCancel,
 		errorLogWriter: sink,
 		tracerCloser:   tracerCloser,
-		syncingStopped: util.NewSignaler(),
+		shutdownSig:    util.NewSignaler(),
 	}
 
 	defer func(b *Bee) {
@@ -691,7 +691,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		chainEnabled,
 	)
 
-	eventListener = listener.New(b.syncingStopped, logger, chainBackend, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
+	eventListener = listener.New(b.shutdownSig, logger, chainBackend, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
 	b.listenerCloser = eventListener
 
 	batchSvc, err = batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync)
@@ -789,7 +789,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 				if err != nil {
 					syncErr.Store(err)
 					logger.Error(err, "unable to sync batches")
-					b.syncingStopped.Signal() // trigger shutdown in start.go
+					b.shutdownSig.Signal() // trigger shutdown in start.go
 				} else {
 					err = post.SetExpired()
 					if err != nil {
@@ -1186,8 +1186,8 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 	return b, nil
 }
 
-func (b *Bee) SyncingStopped() chan struct{} {
-	return b.syncingStopped.C
+func (b *Bee) ShutdownSigC() <-chan struct{} {
+	return b.shutdownSig.C
 }
 
 func (b *Bee) Shutdown() error {
