@@ -42,7 +42,7 @@ var (
 		SwarmTokenSymbol:       "gBZZ",
 
 		StakingAddress:         common.HexToAddress(abi.TestnetStakingAddress),
-		PostageStampAddress:    common.HexToAddress(abi.TestnetPostageStampStampAddress),
+		PostageStampAddress:    common.HexToAddress(abi.TestnetPostageStampAddress),
 		RedistributionAddress:  common.HexToAddress(abi.TestnetRedistributionAddress),
 		SwapPriceOracleAddress: common.HexToAddress("0x0c9de531dcb38b758fe8a2c163444a5e54ee0db2"),
 		CurrentFactoryAddress:  common.HexToAddress("0x73c412512E1cA0be3b89b77aB3466dA6A1B9d273"),
@@ -51,7 +51,7 @@ var (
 		},
 
 		StakingABI:        abi.TestnetStakingABI,
-		PostageStampABI:   abi.TestnetPostageStampStampABI,
+		PostageStampABI:   abi.TestnetPostageStampABI,
 		RedistributionABI: abi.TestnetRedistributionABI,
 	}
 
@@ -84,7 +84,7 @@ func GetByChainID(chainID int64) (ChainConfig, bool) {
 			NativeTokenSymbol: Testnet.NativeTokenSymbol,
 			SwarmTokenSymbol:  Testnet.SwarmTokenSymbol,
 			StakingABI:        abi.TestnetStakingABI,
-			PostageStampABI:   abi.TestnetPostageStampStampABI,
+			PostageStampABI:   abi.TestnetPostageStampABI,
 			RedistributionABI: abi.TestnetRedistributionABI,
 		}, false
 	}
