@@ -34,20 +34,15 @@ var errCursorsLength = errors.New("cursors length mismatch")
 const (
 	intervalPrefix = "sync_interval"
 
-	DefaultSyncErrorSleepDur    = time.Minute
-	DefaultShallowBinsWarmupDur = time.Hour * 24
-
 	recalcPeersDur           = time.Minute * 5
-	histSyncTimeout          = time.Minute * 15
+	histSyncTimeout          = time.Minute * 5
 	histSyncTimeoutBlockList = time.Hour * 24
 
 	maxHistSyncs = swarm.MaxBins * 3
 )
 
 type Options struct {
-	Bins                 uint8
-	SyncSleepDur         time.Duration
-	ShallowBinsWarmupDur time.Duration
+	Bins uint8
 }
 
 type Puller struct {
@@ -67,9 +62,6 @@ type Puller struct {
 
 	wg sync.WaitGroup
 
-	syncErrorSleepDur     time.Duration
-	shallowBinsWarmupTime time.Time
-
 	bins uint8 // how many bins do we support
 
 	histSync        *atomic.Uint64 // current number of gorourines doing historical syncing
@@ -77,32 +69,25 @@ type Puller struct {
 }
 
 func New(stateStore storage.StateStorer, topology topology.Driver, reserveState postage.Radius, pullSync pullsync.Interface, blockLister p2p.Blocklister, logger log.Logger, o Options, warmupTime time.Duration) *Puller {
-	var (
-		bins uint8 = swarm.MaxBins
-	)
-	if o.Bins != 0 {
-		bins = o.Bins
+	if o.Bins == 0 {
+		o.Bins = swarm.MaxBins
 	}
-
 	p := &Puller{
-		statestore:        stateStore,
-		topology:          topology,
-		radius:            reserveState,
-		syncer:            pullSync,
-		metrics:           newMetrics(),
-		logger:            logger.WithName(loggerName).Register(),
-		syncPeers:         make(map[string]*syncPeer),
-		syncErrorSleepDur: o.SyncSleepDur,
-		bins:              bins,
-		histSync:          atomic.NewUint64(0),
-		blockLister:       blockLister,
-		histSyncLimiter:   make(chan struct{}, maxHistSyncs),
+		statestore:      stateStore,
+		topology:        topology,
+		radius:          reserveState,
+		syncer:          pullSync,
+		metrics:         newMetrics(),
+		logger:          logger.WithName(loggerName).Register(),
+		syncPeers:       make(map[string]*syncPeer),
+		bins:            o.Bins,
+		histSync:        atomic.NewUint64(0),
+		blockLister:     blockLister,
+		histSyncLimiter: make(chan struct{}, maxHistSyncs),
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	p.cancel = cancel
-
-	p.shallowBinsWarmupTime = time.Now().Add(o.ShallowBinsWarmupDur)
 
 	p.wg.Add(1)
 	go p.manage(ctx, warmupTime)
@@ -157,7 +142,7 @@ func (p *Puller) manage(ctx context.Context, warmupDur time.Duration) {
 			}
 			delete(peersDisconnected, addr.ByteString())
 			return false, false, nil
-		}, topology.Filter{Reachable: true})
+		}, topology.Filter{})
 
 		for _, peer := range peersDisconnected {
 			p.disconnectPeer(peer.address)
@@ -231,7 +216,6 @@ func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, storageRadius uin
 	*/
 
 	if peer.po >= storageRadius {
-
 		// cancel all bins lower than the storage radius
 		for bin := uint8(0); bin < storageRadius; bin++ {
 			peer.cancelBin(bin)
@@ -244,8 +228,7 @@ func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, storageRadius uin
 			}
 		}
 
-	} else if time.Now().After(p.shallowBinsWarmupTime) {
-
+	} else {
 		// cancel all non-po bins, if any
 		for bin := uint8(0); bin < p.bins; bin++ {
 			if bin != peer.po {
@@ -256,7 +239,6 @@ func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, storageRadius uin
 		if !peer.isBinSyncing(peer.po) {
 			p.syncPeerBin(ctx, peer, peer.po, peer.cursors[peer.po])
 		}
-
 	}
 
 	return nil
@@ -320,10 +302,8 @@ func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uin
 			// so we explicitly check for duration of the sync time
 			if errors.Is(err, context.DeadlineExceeded) && time.Since(syncStart) >= histSyncTimeout {
 				p.logger.Debug("histSyncWorker interval timeout, exiting", "total_duration", time.Since(loopStart), "peer_address", peer, "error", err)
-				err = p.blockLister.Blocklist(peer, histSyncTimeoutBlockList, "sync interval timeout")
-				if err != nil {
-					p.logger.Debug("histSyncWorker timeout disconnect error", "error", err)
-				}
+				_ = p.blockLister.Blocklist(peer, histSyncTimeoutBlockList, "sync interval timeout")
+				p.metrics.HistSyncTimeout.Inc()
 				return true
 			}
 			if errors.Is(err, p2p.ErrPeerNotFound) {
