@@ -32,7 +32,6 @@ const (
 	reserveOverCapacity = "reserveOverCapacity"
 	reserveUnreserved   = "reserveUnreserved"
 	sampleSize          = 16
-	lockKeyReservePut   = "reservePut"
 )
 
 var errMaxRadius = errors.New("max radius reached")
