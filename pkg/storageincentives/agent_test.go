@@ -139,47 +139,47 @@ func TestAgentHalt(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		sleepTime     time.Duration
+		haltAtBlock   uint64
 		expectedCalls int
 	}{
 		{
 			name:          "halt immediately",
-			sleepTime:     0,
+			haltAtBlock:   0,
 			expectedCalls: 0,
 		},
 		{
 			name:          "halt without committing to the round",
-			sleepTime:     blockTime * (blocksPerRound - 1),
+			haltAtBlock:   blocksPerRound - 1,
 			expectedCalls: 0, // agent should not wait for round to finish
 		},
 		{
 			name:          "halt after committing to the round (beginning of commit phase)",
-			sleepTime:     blockTime * blocksPerRound,
+			haltAtBlock:   blocksPerRound + 1,
 			expectedCalls: 3, // agent has just committed, but should finish round before halting
 		},
 		{
 			name:          "halt after committing to the round (beginning of reveal phase)",
-			sleepTime:     blockTime * (blocksPerRound + blocksPerPhase),
+			haltAtBlock:   blocksPerRound + blocksPerPhase,
 			expectedCalls: 3, // agent has just revealed, but should finish round before halting
 		},
 		{
 			name:          "halt after committing to the round (beginning of claim phase)",
-			sleepTime:     blockTime * (blocksPerRound + (2 * blocksPerPhase)),
+			haltAtBlock:   blocksPerRound + (2 * blocksPerPhase),
 			expectedCalls: 3, // agent has just claimed, but should finish round before halting
 		},
 		{
 			name:          "halt after committing to the round (#3 round)",
-			sleepTime:     blockTime * blocksPerRound * 2,
+			haltAtBlock:   blocksPerRound*2 + 1,
 			expectedCalls: 3 * 2,
 		},
 		{
 			name:          "halt after committing to the round (#4 round)",
-			sleepTime:     blockTime * blocksPerRound * 3,
+			haltAtBlock:   blocksPerRound*3 + 1,
 			expectedCalls: 3 * 3,
 		},
 		{
 			name:          "halt after committing to the round (#5 round)",
-			sleepTime:     blockTime * blocksPerRound * 4,
+			haltAtBlock:   blocksPerRound*4 + 1,
 			expectedCalls: 3 * 4,
 		},
 	}
@@ -189,22 +189,28 @@ func TestAgentHalt(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
+			wait := make(chan struct{})
 			backend := &mockchainBackend{
-				limit:       144,
 				incrementBy: 1,
-				block:       blocksPerRound,
 				balance:     big.NewInt(4_000_000_000),
+				blockNumberCallback: func(bno uint64) {
+					if bno >= tc.haltAtBlock {
+						select {
+						case <-wait:
+						default:
+							close(wait)
+						}
+					}
+				},
 			}
 			contract := &mockContract{}
 			service, _ := createService(t, backend, contract, blockTime, blocksPerRound, blocksPerPhase)
 			testutil.CleanupCloser(t, service)
 
-			time.Sleep(tc.sleepTime)
-			haltSigC := service.Halt()
-
+			<-wait
 			select {
-			case <-haltSigC:
-			case <-time.After(time.Second):
+			case <-service.Halt():
+			case <-time.After((blocksPerRound + 1) * blockTime):
 				t.Fatal("halt signal was not received on time")
 			}
 
@@ -246,12 +252,13 @@ func createService(
 }
 
 type mockchainBackend struct {
-	mu            sync.Mutex
-	incrementBy   uint64
-	block         uint64
-	limit         uint64
-	limitCallback func()
-	balance       *big.Int
+	mu                  sync.Mutex
+	incrementBy         uint64
+	block               uint64
+	limit               uint64
+	limitCallback       func()
+	balance             *big.Int
+	blockNumberCallback func(uint64)
 }
 
 func (m *mockchainBackend) BlockNumber(context.Context) (uint64, error) {
@@ -267,6 +274,10 @@ func (m *mockchainBackend) BlockNumber(context.Context) (uint64, error) {
 	} else if m.limitCallback != nil {
 		m.limitCallback()
 		return 0, errors.New("reached limit")
+	}
+
+	if m.blockNumberCallback != nil {
+		m.blockNumberCallback(ret)
 	}
 
 	return ret, nil
