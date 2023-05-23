@@ -104,15 +104,9 @@ func (m *topologyPeersIterNoopMock) IsReachable() bool {
 }
 
 // statusSnapshotMock satisfies the following interfaces:
-<<<<<<< HEAD
-//   - depthmonitor.ReserveReporter
-//   - depthmonitor.SyncReporter
-//   - postage.RadiusReporter
-//   - postage.CommitmentGetter
-=======
 //   - status.Reserve
 //   - status.SyncReporter
->>>>>>> d0ce588b (fix: status and remaining conflicts)
+//   - postage.CommitmentGetter
 type statusSnapshotMock struct {
 	syncRate      float64
 	reserveSize   int
@@ -120,14 +114,7 @@ type statusSnapshotMock struct {
 	commitment    uint64
 }
 
-<<<<<<< HEAD
 func (m *statusSnapshotMock) SyncRate() float64           { return m.syncRate }
-func (m *statusSnapshotMock) ReserveSize() int            { return int(m.reserveSize) }
+func (m *statusSnapshotMock) ReserveSize() int            { return m.reserveSize }
 func (m *statusSnapshotMock) StorageRadius() uint8        { return m.storageRadius }
 func (m *statusSnapshotMock) Commitment() (uint64, error) { return m.commitment, nil }
-=======
-func (m *statusSnapshotMock) SyncRate() float64                  { return m.syncRate }
-func (m *statusSnapshotMock) ReserveSize() int                   { return m.reserveSize }
-func (m *statusSnapshotMock) StorageRadius() uint8               { return m.storageRadius }
-func (m *statusSnapshotMock) GetChainState() *postage.ChainState { return m.chainstate }
->>>>>>> d0ce588b (fix: status and remaining conflicts)
