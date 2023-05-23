@@ -225,7 +225,7 @@ func makeDiskStorer(t *testing.T, opts *storer.Options) *storer.DB {
 	return lstore
 }
 
-func newStorer(t *testing.T, path string, opts *storer.Options) (*storer.DB, error) {
+func newStorer(t testing.TB, path string, opts *storer.Options) (*storer.DB, error) {
 	t.Helper()
 	lstore, err := storer.New(context.Background(), path, opts)
 	if err == nil {
@@ -240,14 +240,14 @@ func newStorer(t *testing.T, path string, opts *storer.Options) (*storer.DB, err
 	return lstore, err
 }
 
-func diskStorer(t *testing.T, opts *storer.Options) func() (*storer.DB, error) {
+func diskStorer(t testing.TB, opts *storer.Options) func() (*storer.DB, error) {
 	t.Helper()
 	return func() (*storer.DB, error) {
 		return newStorer(t, t.TempDir(), opts)
 	}
 }
 
-func memStorer(t *testing.T, opts *storer.Options) func() (*storer.DB, error) {
+func memStorer(t testing.TB, opts *storer.Options) func() (*storer.DB, error) {
 	t.Helper()
 	return func() (*storer.DB, error) {
 		return newStorer(t, "", opts)
