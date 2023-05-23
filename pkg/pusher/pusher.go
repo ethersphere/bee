@@ -319,6 +319,7 @@ func (s *Service) checkReceipt(receipt *pushsync.Receipt) error {
 	// if the receipt po is out of depth AND the receipt has not yet hit the maximum retry limit, reject the receipt.
 	if po < d && s.attempts.try(addr) {
 		s.metrics.ShallowReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
+		s.metrics.ShallowReceipt.Inc()
 		return fmt.Errorf("pusher: shallow receipt depth %d, want at least %d", po, d)
 	}
 	loggerV1.Debug("chunk pushed", "chunk_address", addr, "peer_address", peer, "proximity_order", po)

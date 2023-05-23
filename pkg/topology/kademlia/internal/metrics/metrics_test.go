@@ -139,6 +139,22 @@ func TestPeerMetricsCollector(t *testing.T) {
 		t.Fatalf("Snapshot(%q, ...): has reachability status mismatch: have %q; want %q", addr, have, want)
 	}
 
+	// Health.
+	ss = snapshot(t, mc, t2, addr)
+	if have, want := ss.Healthy, false; have != want {
+		t.Fatalf("Snapshot(%q, ...): has health status mismatch: have %v; want %v", addr, have, want)
+	}
+	mc.Record(addr, metrics.PeerHealth(true))
+	ss = snapshot(t, mc, t2, addr)
+	if have, want := ss.Healthy, true; have != want {
+		t.Fatalf("Snapshot(%q, ...): has health status mismatch: have %v; want %v", addr, have, want)
+	}
+	mc.Record(addr, metrics.PeerHealth(false))
+	ss = snapshot(t, mc, t2, addr)
+	if have, want := ss.Healthy, false; have != want {
+		t.Fatalf("Snapshot(%q, ...): has health status mismatch: have %v; want %v", addr, have, want)
+	}
+
 	// Inspect.
 	have := mc.Inspect(addr)
 	want := ss

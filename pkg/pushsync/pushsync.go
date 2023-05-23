@@ -48,7 +48,7 @@ const (
 )
 
 const (
-	nPeersToReplicate = 3 // number of peers to replicate to as receipt is sent upstream
+	nPeersToReplicate = 2 // number of peers to replicate to as receipt is sent upstream
 	maxPushErrors     = 32
 )
 
@@ -86,6 +86,7 @@ type PushSync struct {
 	signer         crypto.Signer
 	fullNode       bool
 	skipList       *skippeers.List
+	warmupPeriod   time.Time
 }
 
 type receiptResult struct {
@@ -95,7 +96,7 @@ type receiptResult struct {
 	err      error
 }
 
-func New(address swarm.Address, nonce []byte, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, rs postage.Radius, tagger *tags.Tags, fullNode bool, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger log.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer) *PushSync {
+func New(address swarm.Address, nonce []byte, streamer p2p.StreamerDisconnecter, storer storage.Putter, topology topology.Driver, rs postage.Radius, tagger *tags.Tags, fullNode bool, unwrap func(swarm.Chunk), validStamp postage.ValidStampFn, logger log.Logger, accounting accounting.Interface, pricer pricer.Interface, signer crypto.Signer, tracer *tracing.Tracer, warmupTime time.Duration) *PushSync {
 	ps := &PushSync{
 		address:        address,
 		nonce:          nonce,
@@ -113,6 +114,7 @@ func New(address swarm.Address, nonce []byte, streamer p2p.StreamerDisconnecter,
 		tracer:         tracer,
 		signer:         signer,
 		skipList:       skippeers.NewList(),
+		warmupPeriod:   time.Now().Add(warmupTime),
 	}
 
 	ps.validStamp = ps.validStampWrapper(validStamp)
@@ -183,6 +185,8 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	store := func(ctx context.Context) error {
 
+		ps.metrics.Storer.Inc()
+
 		chunk, err := ps.validStamp(chunk, ch.Stamp)
 		if err != nil {
 			return fmt.Errorf("invalid stamp: %w", err)
@@ -214,17 +218,20 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	}
 
 	if ps.topologyDriver.IsReachable() && ps.radiusChecker.IsWithinStorageRadius(chunkAddress) {
-		ps.metrics.Storer.Inc()
 		return store(ctx)
 	}
 
-	ps.metrics.Forwarder.Inc()
-
-	ps.skipList.Add(chunkAddress, p.Address, sanctionWait)
 	receipt, err := ps.pushToClosest(ctx, chunk, false)
 	if err != nil {
+		if errors.Is(err, topology.ErrWantSelf) {
+			return store(ctx)
+		}
+
+		ps.metrics.Forwarder.Inc()
 		return fmt.Errorf("handler: push to closest chunk %s: %w", chunkAddress, err)
 	}
+
+	ps.metrics.Forwarder.Inc()
 
 	debit, err := ps.accounting.PrepareDebit(ctx, p.Address, price)
 	if err != nil {
@@ -257,7 +264,12 @@ func (ps *PushSync) PushChunkToClosest(ctx context.Context, ch swarm.Chunk) (*Re
 	}, nil
 }
 
+// pushToClosest attempts to push the chunk into the network.
 func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bool) (*pb.Receipt, error) {
+
+	if !ps.warmedUp() {
+		return nil, ErrWarmup
+	}
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -300,15 +312,16 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			retry()
 		case <-retryC:
 
-			// do not include self so that the chunk may always be forwarded
-			// but in the case that no peer can be found, return ErrWantSelf
-			// if the chunk falls in our neighborhood.
-			peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), false, topology.Filter{Reachable: true}, ps.skipList.ChunkPeers(ch.Address())...)
+			// Origin peers should not store the chunk initially so that the chunk is always forwarded into the network.
+			// If no peer can be found from an origin peer, the origin peer may store the chunk.
+			// Non-origin peers store the chunk if the chunk is within depth.
+			// For non-origin peers, if the chunk is not within depth, they may store the chunk if they are the closest peer to the chunk.
+			peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), ps.fullNode && !origin, topology.Filter{Reachable: true, Healthy: true}, ps.skipList.ChunkPeers(ch.Address())...)
 
 			if errors.Is(err, topology.ErrNotFound) {
 				if ps.skipList.PruneExpiresAfter(ch.Address(), overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers
 					if inflight == 0 {
-						if origin && ps.fullNode && ps.topologyDriver.IsReachable() && ps.radiusChecker.IsWithinStorageRadius(ch.Address()) {
+						if ps.fullNode && ps.topologyDriver.IsReachable() {
 							if cac.Valid(ch) {
 								go ps.unwrap(ch)
 							}
@@ -508,4 +521,8 @@ func (ps *PushSync) validStampWrapper(f postage.ValidStampFn) postage.ValidStamp
 
 func (s *PushSync) Close() error {
 	return s.skipList.Close()
+}
+
+func (ps *PushSync) warmedUp() bool {
+	return time.Now().After(ps.warmupPeriod)
 }
