@@ -58,7 +58,8 @@ type PeerIterator interface {
 	EachConnectedPeerRev(EachPeerFunc, Select) error
 }
 
-// Select defines the different filters that can be used with the Peer iterators
+// Select defines the different filters that can be used with the Peer iterators.
+// The fields only take effect if set to true. The logical AND operator is applied to multiple selected fields.
 type Select struct {
 	Reachable bool
 	Healthy   bool

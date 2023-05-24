@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"math/rand"
 	"net"
 	"sync"
 	"syscall"
@@ -731,7 +732,7 @@ func (k *Kad) pruneOversaturatedBins(depth uint8) {
 
 			if disconnectPeer.IsZero() {
 				if unreachablePeer.IsZero() {
-					disconnectPeer = peers[0] // pick any peer
+					disconnectPeer = peers[rand.Intn(len(peers))]
 				} else {
 					disconnectPeer = unreachablePeer // pick unrechable peer
 				}
