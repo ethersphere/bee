@@ -11,6 +11,7 @@ import (
 	"time"
 
 	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage/storagetest"
 	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
 	storer "github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -147,4 +148,18 @@ func TestCacheStore(t *testing.T) {
 
 		testCacheStore(t, diskStorer(t, opts))
 	})
+}
+
+func BenchmarkCachePutter(b *testing.B) {
+	baseAddr := swarm.RandAddress(b)
+	opts := dbTestOps(baseAddr, 10000, nil, nil, time.Second)
+	opts.CacheCapacity = 10
+	storer, err := diskStorer(b, opts)()
+	if err != nil {
+		b.Fatal(err)
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	storagetest.BenchmarkChunkStoreWriteSequential(b, storer.Cache())
 }
