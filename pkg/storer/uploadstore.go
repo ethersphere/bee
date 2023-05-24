@@ -32,7 +32,7 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 
 	var pinningPutter internal.PutterCloserWithReference
 	if pin {
-		pinningPutter = pinstore.NewCollection(txnRepo)
+		pinningPutter = pinstore.NewCollection(txnRepo, nil)
 	}
 
 	db.markDirty(tagID)

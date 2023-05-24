@@ -102,6 +102,7 @@ func dbExportCmd(cmd *cobra.Command) {
 	c.PersistentFlags().String(optionNameVerbosity, "info", "verbosity level")
 
 	dbExportReserveCmd(c)
+	dbExportPinningCmd(c)
 	cmd.AddCommand(c)
 }
 
@@ -192,6 +193,106 @@ func dbExportReserveCmd(cmd *cobra.Command) {
 	cmd.AddCommand(c)
 }
 
+func dbExportPinningCmd(cmd *cobra.Command) {
+	c := &cobra.Command{
+		Use:   "pinning <filename>",
+		Short: "Export pinning DB to a file. Use \"-\" as filename in order to write to STDOUT",
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			if (len(args)) != 1 {
+				return cmd.Help()
+			}
+			v, err := cmd.Flags().GetString(optionNameVerbosity)
+			if err != nil {
+				return fmt.Errorf("get verbosity: %w", err)
+			}
+			v = strings.ToLower(v)
+			logger, err := newLogger(cmd, v)
+			if err != nil {
+				return fmt.Errorf("new logger: %w", err)
+			}
+
+			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
+			if err != nil {
+				return fmt.Errorf("get data-dir: %w", err)
+			}
+			if dataDir == "" {
+				return errors.New("no data-dir provided")
+			}
+
+			logger.Info("starting export process with data-dir", "path", dataDir)
+			db, err := storer.New(cmd.Context(), dataDir, &storer.Options{
+				Logger:          logger,
+				RadiusSetter:    noopRadiusSetter{},
+				Batchstore:      new(postage.NoOpBatchStore),
+				ReserveCapacity: 4_194_304,
+			})
+			if err != nil {
+				return fmt.Errorf("localstore: %w", err)
+			}
+			defer db.Close()
+
+			var out io.Writer
+			if args[0] == "-" {
+				out = os.Stdout
+			} else {
+				f, err := os.Create(args[0])
+				if err != nil {
+					return fmt.Errorf("error opening output file: %w", err)
+				}
+				defer f.Close()
+				out = f
+			}
+
+			tw := tar.NewWriter(out)
+			pins, err := db.Pins()
+			if err != nil {
+				return fmt.Errorf("error getting pins: %w", err)
+			}
+			var nTotalChunks int64
+			for _, root := range pins {
+				var nChunks int64
+				err = db.IteratePinCollectionChunks(root, func(addr swarm.Address) (stop bool, err error) {
+					logger.Debug("exporting chunk", "root", root.String(), "address", addr.String())
+					chunk, err := db.ChunkStore().Get(cmd.Context(), addr)
+					if err != nil {
+						return true, fmt.Errorf("error getting chunk: %w", err)
+					}
+
+					if err != nil {
+						return false, err
+					}
+					b, err := MarshalChunkToBinary(chunk)
+					if err != nil {
+						return true, fmt.Errorf("error marshaling chunk: %w", err)
+					}
+					err = tw.WriteHeader(&tar.Header{
+						Name: root.String() + "/" + addr.String(),
+						Size: int64(len(b)),
+						Mode: 0600,
+					})
+					if err != nil {
+						return true, fmt.Errorf("error writing header: %w", err)
+					}
+					_, err = tw.Write(b)
+					if err != nil {
+						return true, fmt.Errorf("error writing chunk: %w", err)
+					}
+					nChunks++
+					return false, nil
+				})
+				if err != nil {
+					return fmt.Errorf("error exporting database: %w", err)
+				}
+				nTotalChunks += nChunks
+				logger.Info("exported collection successfully", "root", root.String(), "total_records", nChunks)
+			}
+			logger.Info("pinning database exported successfully", "file", args[0], "total_collections", len(pins), "total_records", nTotalChunks)
+			return nil
+		},
+	}
+	cmd.AddCommand(c)
+}
+
 func dbImportCmd(cmd *cobra.Command) {
 	c := &cobra.Command{
 		Use:   "import",
@@ -201,13 +302,14 @@ func dbImportCmd(cmd *cobra.Command) {
 	c.PersistentFlags().String(optionNameVerbosity, "info", "verbosity level")
 
 	dbImportReserveCmd(c)
+	dbImportPinningCmd(c)
 	cmd.AddCommand(c)
 }
 
 func dbImportReserveCmd(cmd *cobra.Command) {
 	c := &cobra.Command{
 		Use:   "reserve <filename>",
-		Short: "Perform DB import from a . Use \"-\" as filename in order to read from STDIN",
+		Short: "Import reserve DB from a file. Use \"-\" as filename in order to read from STDIN",
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			if (len(args)) != 1 {
 				return cmd.Help()
@@ -284,6 +386,116 @@ func dbImportReserveCmd(cmd *cobra.Command) {
 		},
 	}
 
+	cmd.AddCommand(c)
+}
+
+func dbImportPinningCmd(cmd *cobra.Command) {
+	c := &cobra.Command{
+		Use:   "pinning <filename>",
+		Short: "Import pinning DB from a file. Use \"-\" as filename in order to read from STDIN",
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			if (len(args)) != 1 {
+				return cmd.Help()
+			}
+			v, err := cmd.Flags().GetString(optionNameVerbosity)
+			if err != nil {
+				return fmt.Errorf("get verbosity: %w", err)
+			}
+			v = strings.ToLower(v)
+			logger, err := newLogger(cmd, v)
+			if err != nil {
+				return fmt.Errorf("new logger: %w", err)
+			}
+			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
+			if err != nil {
+				return fmt.Errorf("get data-dir: %w", err)
+			}
+			if dataDir == "" {
+				return errors.New("no data-dir provided")
+			}
+
+			fmt.Printf("starting import process with data-dir at %s\n", dataDir)
+
+			db, err := storer.New(cmd.Context(), dataDir, &storer.Options{
+				Logger:          logger,
+				RadiusSetter:    noopRadiusSetter{},
+				Batchstore:      new(postage.NoOpBatchStore),
+				ReserveCapacity: 4_194_304,
+			})
+			if err != nil {
+				return fmt.Errorf("localstore: %w", err)
+			}
+			defer db.Close()
+
+			var in io.Reader
+			if args[0] == "-" {
+				in = os.Stdin
+			} else {
+				f, err := os.Open(args[0])
+				if err != nil {
+					return fmt.Errorf("error opening input file: %w", err)
+				}
+				defer f.Close()
+				in = f
+			}
+
+			tr := tar.NewReader(in)
+			var nChunks int64
+			collections := make(map[string]storer.PutterSession)
+			for {
+				hdr, err := tr.Next()
+				if errors.Is(err, io.EOF) {
+					break
+				}
+				if err != nil {
+					return fmt.Errorf("error reading tar header: %w", err)
+				}
+				addresses := strings.Split(hdr.Name, "/")
+				if len(addresses) != 2 {
+					return fmt.Errorf("invalid address format: %s", hdr.Name)
+				}
+				rootAddr, chunkAddr := addresses[0], addresses[1]
+				logger.Debug("importing pinning", "root", rootAddr, "chunk", chunkAddr)
+
+				collection, ok := collections[rootAddr]
+				if !ok {
+					addr, err := swarm.ParseHexAddress(rootAddr)
+					if err != nil {
+						return fmt.Errorf("error parsing address: %w", err)
+					}
+					collection, err = db.NewCollection(cmd.Context(), &swarm.CollectionOptions{
+						UUID: addr.Bytes(),
+					})
+					if err != nil {
+						return fmt.Errorf("error creating collection: %w", err)
+					}
+					collections[rootAddr] = collection
+				}
+
+				b := make([]byte, hdr.Size)
+				if _, err = io.ReadFull(tr, b); err != nil {
+					return fmt.Errorf("error reading chunk: %w", err)
+				}
+				chunk, err := UnmarshalChunkFromBinary(b, addresses[1])
+				if err != nil {
+					return fmt.Errorf("error unmarshaling chunk: %w", err)
+				}
+				err = collection.Put(cmd.Context(), chunk)
+				if err != nil {
+					return fmt.Errorf("error putting chunk: %w", err)
+				}
+				nChunks++
+			}
+
+			for addr, collection := range collections {
+				rootAddr, _ := swarm.ParseHexAddress(addr)
+				collection.Done(rootAddr)
+			}
+
+			logger.Info("pinning database imported successfully", "file", args[0], "total_collections", len(collections), "total_records", nChunks)
+			return nil
+		},
+	}
 	cmd.AddCommand(c)
 }
 

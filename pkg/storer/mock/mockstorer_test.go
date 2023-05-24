@@ -172,7 +172,7 @@ func TestMockStorer(t *testing.T) {
 	})
 
 	t.Run("pin", func(t *testing.T) {
-		putter, err := mockStorer.NewCollection(context.Background())
+		putter, err := mockStorer.NewCollection(context.Background(), nil)
 		if err != nil {
 			t.Fatalf("NewCollection(): unexpected error: %v", err)
 		}

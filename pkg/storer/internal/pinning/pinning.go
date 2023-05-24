@@ -171,12 +171,16 @@ func (p pinChunkItem) String() string {
 
 // NewCollection returns a putter wrapped around the passed storage.
 // The putter will add the chunk to Chunk store if it doesnt exists within this collection.
-// It will create a new UUID for the collection which can be used to iterate on all the chunks
 // that are part of this collection. The root pin is only updated on successful close of this
 // Putter.
-func NewCollection(st internal.Storage) internal.PutterCloserWithReference {
+// If no UUID is specified in the options, a new UUID will be generated for this collection.
+func NewCollection(st internal.Storage, opts *swarm.CollectionOptions) internal.PutterCloserWithReference {
+	collectionUUID := newUUID()
+	if opts != nil && len(opts.UUID) > 0 {
+		collectionUUID = opts.UUID
+	}
 	return &collectionPutter{
-		collection: &pinCollectionItem{UUID: newUUID()},
+		collection: &pinCollectionItem{UUID: collectionUUID},
 		st:         st,
 	}
 }
@@ -324,6 +328,20 @@ func DeletePin(ctx context.Context, st internal.Storage, root swarm.Address) err
 		return fmt.Errorf("pin store: failed deleting root collection: %w", err)
 	}
 
+	return nil
+}
+
+func IterateCollectionChunks(st storage.Store, root swarm.Address, iterateFn func(swarm.Address) (bool, error)) error {
+	err := st.Iterate(storage.Query{
+		Factory:      func() storage.Item { return &pinChunkItem{UUID: root.Bytes()} },
+		ItemProperty: storage.QueryItemID,
+	}, func(r storage.Result) (bool, error) {
+		addr := swarm.NewAddress([]byte(r.ID))
+		return iterateFn(addr)
+	})
+	if err != nil {
+		return fmt.Errorf("pin store: failed in iteration: %w", err)
+	}
 	return nil
 }
 

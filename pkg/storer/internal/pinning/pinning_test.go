@@ -75,7 +75,7 @@ func TestPinStore(t *testing.T) {
 	t.Run("create new collections", func(t *testing.T) {
 		for tCount, tc := range tests {
 			t.Run(fmt.Sprintf("create collection %d", tCount), func(t *testing.T) {
-				putter := pinstore.NewCollection(st)
+				putter := pinstore.NewCollection(st, nil)
 				for _, ch := range append(tc.uniqueChunks, tc.root) {
 					err := putter.Put(context.TODO(), ch)
 					if err != nil {
@@ -252,7 +252,7 @@ func TestPinStore(t *testing.T) {
 
 	t.Run("error after close", func(t *testing.T) {
 		root := chunktest.GenerateTestRandomChunk()
-		putter := pinstore.NewCollection(st)
+		putter := pinstore.NewCollection(st, nil)
 
 		err := putter.Put(context.TODO(), root)
 		if err != nil {
@@ -272,7 +272,7 @@ func TestPinStore(t *testing.T) {
 
 	t.Run("zero address close", func(t *testing.T) {
 		root := chunktest.GenerateTestRandomChunk()
-		putter := pinstore.NewCollection(st)
+		putter := pinstore.NewCollection(st, nil)
 
 		err := putter.Put(context.TODO(), root)
 		if err != nil {

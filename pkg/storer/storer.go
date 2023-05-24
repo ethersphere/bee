@@ -80,7 +80,7 @@ type PinStore interface {
 	// NewCollection can be used to create a new PutterSession which writes a new
 	// pinning collection. The address passed in during the Done of the session is
 	// used as the root referencce.
-	NewCollection(context.Context) (PutterSession, error)
+	NewCollection(context.Context, *swarm.CollectionOptions) (PutterSession, error)
 	// DeletePin deletes all the chunks associated with the collection pointed to
 	// by the swarm.Address passed in.
 	DeletePin(context.Context, swarm.Address) error
@@ -89,6 +89,10 @@ type PinStore interface {
 	// HasPin is a helper which checks if a collection exists with the root
 	// reference passed in.
 	HasPin(swarm.Address) (bool, error)
+}
+
+type PinIterator interface {
+	IteratePinCollectionChunks(root swarm.Address, iterateFn func(swarm.Address) (bool, error)) error
 }
 
 // CacheStore is a logical component of the storer that deals with cache

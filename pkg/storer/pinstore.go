@@ -15,9 +15,9 @@ import (
 )
 
 // NewCollection is the implementation of the PinStore.NewCollection method.
-func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
+func (db *DB) NewCollection(ctx context.Context, opts *swarm.CollectionOptions) (PutterSession, error) {
 	txnRepo, commit, rollback := db.repo.NewTx(ctx)
-	pinningPutter := pinstore.NewCollection(txnRepo)
+	pinningPutter := pinstore.NewCollection(txnRepo, opts)
 
 	return &putterSession{
 		Putter: putterWithMetrics{
@@ -82,4 +82,8 @@ func (db *DB) HasPin(root swarm.Address) (has bool, err error) {
 	}()
 
 	return pinstore.HasPin(db.repo.IndexStore(), root)
+}
+
+func (db *DB) IteratePinCollectionChunks(root swarm.Address, iterateFn func(swarm.Address) (bool, error)) error {
+	return pinstore.IterateCollectionChunks(db.repo.IndexStore(), root, iterateFn)
 }
