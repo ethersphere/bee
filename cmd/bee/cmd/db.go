@@ -610,6 +610,9 @@ func MarshalChunkToBinary(c swarm.Chunk) ([]byte, error) {
 	buf.Write(dataLenBytes)
 	buf.Write(c.Data())
 
+	if c.Stamp() == nil {
+		return buf.Bytes(), nil
+	}
 	stampBytes, err := c.Stamp().MarshalBinary()
 	if err != nil {
 		return nil, fmt.Errorf("marshalling stamp: %w", err)
@@ -638,6 +641,11 @@ func UnmarshalChunkFromBinary(data []byte, address string) (swarm.Chunk, error) 
 	if err != nil {
 		return nil, fmt.Errorf("parsing address: %w", err)
 	}
+	chunk := swarm.NewChunk(addr, b)
+	// stamp not present
+	if buf.Len() == 0 {
+		return chunk, nil
+	}
 
 	stampBytes := make([]byte, postage.StampSize)
 	_, err = buf.Read(stampBytes)
@@ -654,6 +662,6 @@ func UnmarshalChunkFromBinary(data []byte, address string) (swarm.Chunk, error) 
 		return nil, fmt.Errorf("buffer should be empty")
 	}
 
-	chunk := swarm.NewChunk(addr, b).WithStamp(stamp)
+	chunk = chunk.WithStamp(stamp)
 	return chunk, nil
 }
