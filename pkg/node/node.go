@@ -789,7 +789,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 				if err != nil {
 					syncErr.Store(err)
 					logger.Error(err, "unable to sync batches")
-					b.shutdownSig.Signal() // trigger shutdown in start.go
+					b.shutdownSig.Signal()
 				} else {
 					err = post.SetExpired()
 					if err != nil {
@@ -1187,6 +1187,8 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 	return b, nil
 }
 
+// ShutdownSigC returns channel used to singal node's instantiatiator
+// that node should be shutdown.
 func (b *Bee) ShutdownSigC() <-chan struct{} {
 	return b.shutdownSig.C
 }
