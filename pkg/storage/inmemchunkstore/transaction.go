@@ -6,6 +6,7 @@ package inmemchunkstore
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/ethersphere/bee/pkg/storage"
@@ -21,7 +22,13 @@ type TxChunkStore struct {
 
 	// Bookkeeping of invasive operations executed
 	// on the ChunkStore to support rollback functionality.
-	revOps storage.TxRevStack
+	revOps *storage.TxRevStack
+}
+
+// release releases the TxStore transaction associated resources.
+func (s *TxChunkStore) release() {
+	s.TxChunkStoreBase.ChunkStore = nil
+	s.revOps = nil
 }
 
 // Put implements the Store interface.
@@ -60,11 +67,15 @@ func (s *TxChunkStore) Delete(ctx context.Context, addr swarm.Address) error {
 
 // Commit implements the Tx interface.
 func (s *TxChunkStore) Commit() error {
+	defer s.release()
+
 	return s.TxState.Done()
 }
 
 // Rollback implements the Tx interface.
 func (s *TxChunkStore) Rollback() error {
+	defer s.release()
+
 	if err := s.TxState.Done(); err != nil {
 		return err
 	}
@@ -77,11 +88,16 @@ func (s *TxChunkStore) Rollback() error {
 
 // NewTx implements the TxStore interface.
 func (s *TxChunkStore) NewTx(state *storage.TxState) storage.TxChunkStore {
+	if s.TxChunkStoreBase.ChunkStore == nil {
+		panic(errors.New("inmemchunkstore: nil store"))
+	}
+
 	return &TxChunkStore{
 		TxChunkStoreBase: &storage.TxChunkStoreBase{
 			TxState:    state,
 			ChunkStore: s.ChunkStore,
 		},
+		revOps: new(storage.TxRevStack),
 	}
 }
 
