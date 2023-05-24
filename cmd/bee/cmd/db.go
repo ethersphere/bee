@@ -161,7 +161,7 @@ func dbExportReserveCmd(cmd *cobra.Command) {
 			tw := tar.NewWriter(out)
 			var counter int64
 			err = db.ReserveIterateChunks(func(chunk swarm.Chunk) (stop bool, err error) {
-				logger.Info("exporting chunk", "address", chunk.Address().String())
+				logger.Debug("exporting chunk", "address", chunk.Address().String())
 				b, err := MarshalChunkToBinary(chunk)
 				if err != nil {
 					return true, fmt.Errorf("error marshaling chunk: %w", err)
@@ -271,7 +271,7 @@ func dbImportReserveCmd(cmd *cobra.Command) {
 				if err != nil {
 					return fmt.Errorf("error unmarshaling chunk: %w", err)
 				}
-				logger.Info("importing chunk", "address", chunk.Address().String())
+				logger.Debug("importing chunk", "address", chunk.Address().String())
 				if err := db.ReservePut(cmd.Context(), chunk); err != nil {
 					return fmt.Errorf("error importing chunk: %w", err)
 				}
