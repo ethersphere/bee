@@ -18,6 +18,12 @@ import (
 type metrics struct {
 	MethodCalls         prometheus.CounterVec
 	MethodCallsDuration prometheus.HistogramVec
+	ReserveSize         prometheus.Gauge
+	StorageRadius       prometheus.Gauge
+	CacheSize           prometheus.Gauge
+	EvictedCount        prometheus.Counter
+	ExpiredCount        prometheus.Counter
+	OverCapTriggerCount prometheus.Counter
 }
 
 // newMetrics is a convenient constructor for creating new metrics.
@@ -42,6 +48,54 @@ func newMetrics() metrics {
 				Help:      "Duration of method calls.",
 			},
 			[]string{"component", "method"},
+		),
+		ReserveSize: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "reserve_size",
+				Help:      "Number of chunks in reserve.",
+			},
+		),
+		StorageRadius: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "storage_radius",
+				Help:      "Radius of responsibility reserve storage.",
+			},
+		),
+		CacheSize: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "cache_size",
+				Help:      "Number of chunks in cache.",
+			},
+		),
+		EvictedCount: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "evicted_count",
+				Help:      "Number of chunks evicted from reserve.",
+			},
+		),
+		ExpiredCount: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "expired_count",
+				Help:      "Number of chunks expired from reserve due to stamp expirations.",
+			},
+		),
+		OverCapTriggerCount: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "over_cap_trigger_count",
+				Help:      "Number of times the reserve was over capacity and triggered an eviction.",
+			},
 		),
 	}
 }
