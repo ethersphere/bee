@@ -189,7 +189,7 @@ func (p *Puller) recalcPeers(ctx context.Context, storageRadius uint8) {
 		peer.Lock()
 		err := p.syncPeer(ctx, peer, storageRadius)
 		if err != nil {
-			p.logger.Error(err, "recalc peers sync failed", "bin", storageRadius, "peer", peer.address)
+			p.logger.Debug("recalc peers sync failed", "bin", storageRadius, "peer", peer.address, "error", err)
 		}
 		peer.Unlock()
 	}
