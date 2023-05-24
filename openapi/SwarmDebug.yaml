@@ -414,6 +414,19 @@ paths:
         default:
           description: Default response
 
+  "/shutdown":
+    post:
+      summary: Schedules graceful shutdown of the node.
+      description: "This is idempotent endpoint which schedules graceful shutdown of the node.\n\n
+        Graceful shutdown procedure will terminate node process after all internal components of the node have gracefully terminated. This procedure will mindfully stop 
+        participating in storage incentives whereby avoiding freezing or slashing staked funds."
+      tags:
+        - Shutdown
+      responses:
+        "200":
+          description: Indicates that node graceful shutdown procedure was initiated.
+          $ref: "SwarmCommon.yaml#/components/responses/200"
+
   "/settlements/{address}":
     get:
       summary: Get amount of sent and received from settlements with a peer
