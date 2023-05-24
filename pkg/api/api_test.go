@@ -28,6 +28,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storageincentives"
 	mock2 "github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
 	"github.com/ethersphere/bee/pkg/transaction"
+	"github.com/ethersphere/bee/pkg/util"
 	"github.com/ethersphere/bee/pkg/util/testutil"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -136,6 +137,7 @@ type testServerOptions struct {
 	BeeMode             api.BeeNodeMode
 	RedistributionAgent *storageincentives.Agent
 	NodeStatus          *status.Service
+	ShutdownSig         *util.Signaler
 }
 
 func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.Conn, string, *chanStorer) {
@@ -210,6 +212,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		Staking:          o.StakingContract,
 		IndexDebugger:    o.IndexDebugger,
 		NodeStatus:       o.NodeStatus,
+		ShutdownSig:      o.ShutdownSig,
 	}
 
 	// By default bee mode is set to full mode.

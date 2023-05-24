@@ -145,3 +145,8 @@ func MapStructure(input, output interface{}, hooks map[string]func(v string) (st
 func NewParseError(entry, value string, cause error) error {
 	return newParseError(entry, value, cause)
 }
+
+const (
+	MsgShutdownStarted        = msgShutdownStarted
+	MsgShutdownAlreadyStarted = msgShutdownAlreadyStarted
+)

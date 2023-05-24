@@ -4,17 +4,31 @@
 
 package api
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/ethersphere/bee/pkg/jsonhttp"
+)
+
+const (
+	msgShutdownStarted        = "shutdown procedure has started"
+	msgShutdownAlreadyStarted = "shutdown procedure already started"
+)
 
 func (s *Service) shutdownHandler(w http.ResponseWriter, _ *http.Request) {
 	logger := s.logger.WithName("shutdown").Build()
 
+	var msg string
+
 	if s.shutdownStarted.Swap(true) {
-		logger.Debug("shutdown procedure already started")
+		msg = msgShutdownAlreadyStarted
 	} else {
 		go s.gracefulShutdown()
-		logger.Debug("shutdown procedure has started")
+		msg = msgShutdownStarted
 	}
+
+	logger.Debug(msg)
+	jsonhttp.OK(w, msg)
 }
 
 func (s *Service) gracefulShutdown() {
