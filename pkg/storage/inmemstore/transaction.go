@@ -20,13 +20,22 @@ type TxStore struct {
 
 	// Bookkeeping of invasive operations executed
 	// on the Store to support rollback functionality.
-	revOps storage.TxRevStack
+	revOps *storage.TxRevStack
+}
+
+// release releases the TxStore transaction associated resources.
+func (s *TxStore) release() {
+	s.TxStoreBase.Store = nil
+	s.revOps = nil
 }
 
 // Put implements the Store interface.
 func (s *TxStore) Put(item storage.Item) error {
-	prev := item.Clone()
+	if err := s.IsDone(); err != nil {
+		return err
+	}
 
+	prev := item.Clone()
 	var reverseOp *storage.TxRevertOp
 	switch err := s.TxStoreBase.Get(prev); {
 	case errors.Is(err, storage.ErrNotFound):
@@ -73,11 +82,15 @@ func (s *TxStore) Delete(item storage.Item) error {
 
 // Commit implements the Tx interface.
 func (s *TxStore) Commit() error {
+	defer s.release()
+
 	return s.TxState.Done()
 }
 
 // Rollback implements the Tx interface.
 func (s *TxStore) Rollback() error {
+	defer s.release()
+
 	if err := s.TxState.Done(); err != nil {
 		return err
 	}
@@ -90,11 +103,16 @@ func (s *TxStore) Rollback() error {
 
 // NewTx implements the TxStore interface.
 func (s *TxStore) NewTx(state *storage.TxState) storage.TxStore {
+	if s.TxStoreBase.Store == nil {
+		panic(errors.New("inmemstore: nil store"))
+	}
+
 	return &TxStore{
 		TxStoreBase: &storage.TxStoreBase{
 			TxState: state,
 			Store:   s.Store,
 		},
+		revOps: new(storage.TxRevStack),
 	}
 }
 
