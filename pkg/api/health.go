@@ -24,6 +24,6 @@ func (s *Service) healthHandler(w http.ResponseWriter, _ *http.Request) {
 		Status:          status.String(),
 		Version:         bee.Version,
 		APIVersion:      Version,
-		DebugAPIVersion: Version,
+		DebugAPIVersion: DebugVersion,
 	})
 }
