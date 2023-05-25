@@ -36,7 +36,7 @@ func TestReserve(t *testing.T) {
 		}
 	})
 
-	r, err := reserve.New(baseAddr, ts.IndexStore(), 0, 0, kademlia.NewTopologyDriver(), log.Noop)
+	r, err := reserve.New(baseAddr, ts.IndexStore(), 0, kademlia.NewTopologyDriver(), log.Noop)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +87,7 @@ func TestReserveChunkType(t *testing.T) {
 		}
 	})
 
-	r, err := reserve.New(baseAddr, ts.IndexStore(), 0, 0, kademlia.NewTopologyDriver(), log.Noop)
+	r, err := reserve.New(baseAddr, ts.IndexStore(), 0, kademlia.NewTopologyDriver(), log.Noop)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +144,7 @@ func TestReplaceOldIndex(t *testing.T) {
 		}
 	})
 
-	r, err := reserve.New(baseAddr, ts.IndexStore(), 0, 0, kademlia.NewTopologyDriver(), log.Noop)
+	r, err := reserve.New(baseAddr, ts.IndexStore(), 0, kademlia.NewTopologyDriver(), log.Noop)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +199,7 @@ func TestEvict(t *testing.T) {
 	batches := []*postage.Batch{postagetesting.MustNewBatch(), postagetesting.MustNewBatch(), postagetesting.MustNewBatch()}
 	evictBatch := batches[1]
 
-	r, err := reserve.New(baseAddr, ts.IndexStore(), 0, 0, kademlia.NewTopologyDriver(), log.Noop)
+	r, err := reserve.New(baseAddr, ts.IndexStore(), 0, kademlia.NewTopologyDriver(), log.Noop)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -250,33 +250,6 @@ func TestEvict(t *testing.T) {
 			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: b, BinID: uint64(binID)}, false)
 			checkChunk(t, ts, ch, false)
 		}
-	}
-}
-
-func TestOldRadius(t *testing.T) {
-	t.Parallel()
-
-	baseAddr := swarm.RandAddress(t)
-
-	ts, closer := internal.NewInmemStorage()
-	t.Cleanup(func() {
-		if err := closer(); err != nil {
-			t.Errorf("failed closing the storage: %v", err)
-		}
-	})
-
-	err := ts.IndexStore().Put(&reserve.RadiusItem{Radius: 3})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	r, err := reserve.New(baseAddr, ts.IndexStore(), 0, 0, kademlia.NewTopologyDriver(), log.Noop)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if r.Radius() != 3 {
-		t.Errorf("got %d, want %d", r.Radius(), 3)
 	}
 }
 

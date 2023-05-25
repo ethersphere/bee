@@ -1013,7 +1013,7 @@ func NewBee(
 		pullerService = puller.New(stateStore, kad, localStore, pullSyncProtocol, p2ps, logger, pullerOpts, warmupTime)
 		b.pullerCloser = pullerService
 
-		localStore.StartReserveWorker(pullerService)
+		localStore.StartReserveWorker(pullerService, saludService)
 
 		nodeStatus.SetStorage(localStore)
 		nodeStatus.SetSync(pullerService)

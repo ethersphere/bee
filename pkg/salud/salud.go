@@ -47,6 +47,9 @@ type service struct {
 	metrics       metrics
 	isSelfHealthy *atomic.Bool
 	rs            storer.RadiusChecker
+
+	radiusSubsMtx sync.Mutex
+	radiusSubs    []func(uint8)
 }
 
 func New(status peerStatus, topology topologyDriver, rs storer.RadiusChecker, logger log.Logger, warmup time.Duration, mode string, minPeersPerbin int) *service {
@@ -172,6 +175,8 @@ func (s *service) salud(mode string, minPeersPerbin int) {
 	s.metrics.NeighborhoodRadius.Set(float64(nHoodRadius))
 	s.metrics.Commitment.Set(float64(commitment))
 
+	s.publishRadius(networkRadius)
+
 	s.logger.Debug("computed", "average", avgDur, "percentile", percentile, "pDur", pDur, "pConns", pConns, "network_radius", networkRadius, "neighborhood_radius", nHoodRadius, "batch_commitment", commitment)
 
 	for _, peer := range peers {
@@ -210,6 +215,20 @@ func (s *service) salud(mode string, minPeersPerbin int) {
 
 func (s *service) IsHealthy() bool {
 	return s.isSelfHealthy.Load()
+}
+
+func (s *service) publishRadius(r uint8) {
+	s.radiusSubsMtx.Lock()
+	defer s.radiusSubsMtx.Unlock()
+	for _, cb := range s.radiusSubs {
+		cb(r)
+	}
+}
+
+func (s *service) SubscribeNetworkStorageRadius(cb func(uint8)) {
+	s.radiusSubsMtx.Lock()
+	defer s.radiusSubsMtx.Unlock()
+	s.radiusSubs = append(s.radiusSubs, cb)
 }
 
 // percentileDur finds the p percentile of response duration.

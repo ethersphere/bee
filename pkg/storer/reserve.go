@@ -41,9 +41,14 @@ type SyncReporter interface {
 	SyncRate() float64
 }
 
+type NetworkRadius interface {
+	// Subscribe to network storage radius updates.
+	SubscribeNetworkStorageRadius(func(uint8))
+}
+
 func threshold(capacity int) int { return capacity * 5 / 10 }
 
-func (db *DB) reserveWorker(capacity int, warmupDur, wakeUpDur time.Duration) {
+func (db *DB) reserveWorker(capacity int, warmupDur, wakeUpDur time.Duration, f NetworkRadius) {
 	defer db.reserveWg.Done()
 
 	overCapTrigger, overCapUnsub := db.events.Subscribe(reserveOverCapacity)
@@ -55,13 +60,28 @@ func (db *DB) reserveWorker(capacity int, warmupDur, wakeUpDur time.Duration) {
 		return
 	}
 
+	if db.StorageRadius() == 0 {
+		initialRadius := make(chan uint8, 1)
+		f.SubscribeNetworkStorageRadius(func(r uint8) {
+			initialRadius <- r
+		})
+
+		select {
+		case radius := <-initialRadius:
+			if err := db.reserve.SetRadius(db.repo.IndexStore(), radius); err != nil {
+				db.logger.Error(err, "reserve set radius")
+			}
+		case <-db.quit:
+		}
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		<-db.quit
 		cancel()
 	}()
 
-	wakeUpTimer := time.NewTicker(wakeUpDur)
+	wakeUpTicker := time.NewTicker(wakeUpDur)
 
 	for {
 		select {
@@ -71,7 +91,7 @@ func (db *DB) reserveWorker(capacity int, warmupDur, wakeUpDur time.Duration) {
 				db.logger.Error(err, "reserve unreserve")
 			}
 			db.metrics.OverCapTriggerCount.Inc()
-		case <-wakeUpTimer.C:
+		case <-wakeUpTicker.C:
 			radius := db.reserve.Radius()
 			if db.reserve.Size() < threshold(capacity) && db.syncer.SyncRate() == 0 && radius > 0 {
 				radius--
@@ -81,7 +101,6 @@ func (db *DB) reserveWorker(capacity int, warmupDur, wakeUpDur time.Duration) {
 				}
 				db.logger.Info("reserve radius decrease", "radius", radius)
 			}
-			wakeUpTimer.Reset(wakeUpDur)
 			db.metrics.StorageRadius.Set(float64(radius))
 		case <-db.quit:
 			return
