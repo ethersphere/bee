@@ -254,9 +254,9 @@ func (db *DB) evictBatch(ctx context.Context, batchID []byte, upToBin uint8) (er
 		db.reserve.AddSize(-evicted)
 		db.metrics.ReserveSize.Set(float64(db.reserve.Size()))
 		if upToBin == swarm.MaxBins {
-			db.metrics.ExpiredCount.Add(float64(evicted))
+			db.metrics.ExpiredChunkCount.Add(float64(evicted))
 		} else {
-			db.metrics.EvictedCount.Add(float64(evicted))
+			db.metrics.EvictedChunkCount.Add(float64(evicted))
 		}
 	}
 

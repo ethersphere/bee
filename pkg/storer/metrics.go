@@ -21,8 +21,8 @@ type metrics struct {
 	ReserveSize         prometheus.Gauge
 	StorageRadius       prometheus.Gauge
 	CacheSize           prometheus.Gauge
-	EvictedCount        prometheus.Counter
-	ExpiredCount        prometheus.Counter
+	EvictedChunkCount   prometheus.Counter
+	ExpiredChunkCount   prometheus.Counter
 	OverCapTriggerCount prometheus.Counter
 }
 
@@ -73,7 +73,7 @@ func newMetrics() metrics {
 				Help:      "Number of chunks in cache.",
 			},
 		),
-		EvictedCount: prometheus.NewCounter(
+		EvictedChunkCount: prometheus.NewCounter(
 			prometheus.CounterOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
@@ -81,7 +81,7 @@ func newMetrics() metrics {
 				Help:      "Number of chunks evicted from reserve.",
 			},
 		),
-		ExpiredCount: prometheus.NewCounter(
+		ExpiredChunkCount: prometheus.NewCounter(
 			prometheus.CounterOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
