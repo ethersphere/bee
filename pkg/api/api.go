@@ -657,7 +657,7 @@ func lookaheadBufferSize(size int64) int {
 func (s *Service) corsHandler(h http.Handler) http.Handler {
 	allowedHeaders := []string{
 		"User-Agent", "Accept", "X-Requested-With", "Access-Control-Request-Headers", "Access-Control-Request-Method", "Accept-Ranges", "Content-Encoding",
-		AuthorizationHeader, AcceptEncodingHeader, ContentTypeHeader, RangeHeader, OriginHeader,
+		AuthorizationHeader, AcceptEncodingHeader, ContentTypeHeader, ContentDispositionHeader, RangeHeader, OriginHeader,
 		SwarmTagHeader, SwarmPinHeader, SwarmEncryptHeader, SwarmIndexDocumentHeader, SwarmErrorDocumentHeader, SwarmCollectionHeader, SwarmPostageBatchIdHeader, SwarmDeferredUploadHeader,
 		GasPriceHeader, GasLimitHeader, ImmutableHeader,
 	}
