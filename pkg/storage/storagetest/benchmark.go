@@ -316,14 +316,11 @@ func doWriteChunk(b *testing.B, db storage.Putter, g entryGenerator) {
 	b.Helper()
 
 	for i := 0; i < b.N; i++ {
-		addrBytes, err := hex.DecodeString(string(g.Key(i)))
-		if err != nil {
-			b.Fatalf("decode address: %v", err)
+		buf := make([]byte, swarm.HashSize)
+		if _, err := hex.Decode(buf, g.Key(i)); err != nil {
+			b.Fatalf("decode value: %v", err)
 		}
-		if len(addrBytes) != swarm.HashSize {
-			addrBytes = append(addrBytes, make([]byte, swarm.HashSize-len(addrBytes))...)
-		}
-		addr := swarm.NewAddress(addrBytes)
+		addr := swarm.NewAddress(buf)
 		chunk := swarm.NewChunk(addr, g.Value(i)).WithStamp(postagetesting.MustNewStamp())
 		if err := db.Put(context.Background(), chunk); err != nil {
 			b.Fatalf("write key '%s': %v", string(g.Key(i)), err)
