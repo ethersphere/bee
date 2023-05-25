@@ -151,15 +151,18 @@ func (i Item) String() string {
 // return it.
 func LoadOrStore(s storage.Store, namespace string, chunk swarm.Chunk) (item *Item, loaded bool, err error) {
 	item, err = Load(s, namespace, chunk)
-	if errors.Is(err, storage.ErrNotFound) {
-		return &Item{
-			namespace:        []byte(namespace),
-			batchID:          chunk.Stamp().BatchID(),
-			stampIndex:       chunk.Stamp().Index(),
-			StampTimestamp:   chunk.Stamp().Timestamp(),
-			ChunkAddress:     chunk.Address(),
-			ChunkIsImmutable: chunk.Immutable(),
-		}, false, Store(s, namespace, chunk)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return &Item{
+				namespace:        []byte(namespace),
+				batchID:          chunk.Stamp().BatchID(),
+				stampIndex:       chunk.Stamp().Index(),
+				StampTimestamp:   chunk.Stamp().Timestamp(),
+				ChunkAddress:     chunk.Address(),
+				ChunkIsImmutable: chunk.Immutable(),
+			}, false, Store(s, namespace, chunk)
+		}
+		return nil, false, err
 	}
 	return item, true, nil
 }
