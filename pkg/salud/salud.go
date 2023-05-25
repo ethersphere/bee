@@ -8,6 +8,7 @@ package salud
 
 import (
 	"context"
+	"math"
 	"sort"
 	"sync"
 	"time"
@@ -24,9 +25,10 @@ import (
 const loggerName = "salud"
 
 const (
-	wakeup                = time.Minute
-	requestTimeout        = time.Second * 10
-	DefaultMinPeersPerBin = 3
+	wakeup                      = time.Minute
+	requestTimeout              = time.Second * 10
+	DefaultMinPeersPerBin       = 3
+	maxReserveSizePercentageErr = 0.02
 )
 
 type topologyDriver interface {
@@ -38,6 +40,10 @@ type peerStatus interface {
 	PeerSnapshot(ctx context.Context, peer swarm.Address) (*status.Snapshot, error)
 }
 
+type reserve interface {
+	ReserveSize() uint64
+}
+
 type service struct {
 	wg            sync.WaitGroup
 	quit          chan struct{}
@@ -46,10 +52,11 @@ type service struct {
 	status        peerStatus
 	metrics       metrics
 	isSelfHealthy *atomic.Bool
-	rs            postage.Radius
+	rad           postage.Radius
+	reserve       reserve
 }
 
-func New(status peerStatus, topology topologyDriver, rs postage.Radius, logger log.Logger, warmup time.Duration, mode string, minPeersPerbin int) *service {
+func New(status peerStatus, topology topologyDriver, rad postage.Radius, reserve reserve, logger log.Logger, warmup time.Duration, mode string, minPeersPerbin int) *service {
 
 	metrics := newMetrics()
 
@@ -60,7 +67,8 @@ func New(status peerStatus, topology topologyDriver, rs postage.Radius, logger l
 		topology:      topology,
 		metrics:       metrics,
 		isSelfHealthy: atomic.NewBool(true),
-		rs:            rs,
+		rad:           rad,
+		reserve:       reserve,
 	}
 
 	s.wg.Add(1)
@@ -141,7 +149,7 @@ func (s *service) salud(mode string, minPeersPerbin int) {
 			dur := time.Since(start).Seconds()
 
 			mtx.Lock()
-			if s.rs.IsWithinStorageRadius(addr) {
+			if s.rad.IsWithinStorageRadius(addr) {
 				neighbors++
 			}
 			bins[bin]++
@@ -164,6 +172,7 @@ func (s *service) salud(mode string, minPeersPerbin int) {
 	pDur := percentileDur(peers, percentile)
 	pConns := percentileConns(peers, percentile)
 	commitment := commitment(peers)
+	reserveSize := reserveSize(peers, networkRadius, 0.9)
 
 	s.metrics.AvgDur.Set(avgDur)
 	s.metrics.PDur.Set(pDur)
@@ -172,7 +181,7 @@ func (s *service) salud(mode string, minPeersPerbin int) {
 	s.metrics.NeighborhoodRadius.Set(float64(nHoodRadius))
 	s.metrics.Commitment.Set(float64(commitment))
 
-	s.logger.Debug("computed", "average", avgDur, "percentile", percentile, "pDur", pDur, "pConns", pConns, "network_radius", networkRadius, "neighborhood_radius", nHoodRadius, "batch_commitment", commitment)
+	s.logger.Debug("computed", "average", avgDur, "percentile", percentile, "pDur", pDur, "pConns", pConns, "network_radius", networkRadius, "neighborhood_radius", nHoodRadius, "batch_commitment", commitment, "reserve_size", reserveSize)
 
 	for _, peer := range peers {
 
@@ -205,7 +214,16 @@ func (s *service) salud(mode string, minPeersPerbin int) {
 		}
 	}
 
-	s.isSelfHealthy.Store(s.rs.StorageRadius() == networkRadius)
+	selfHealth := true
+	if s.rad.StorageRadius() != networkRadius {
+		selfHealth = false
+		s.logger.Warning("node is unhealthy to due storage radius discrepency", "self_radius", s.rad.StorageRadius(), "network_radius", networkRadius)
+	} else if percentageErr(float64(s.reserve.ReserveSize()), float64(reserveSize)) > maxReserveSizePercentageErr {
+		s.logger.Warning("node is unhealthy to due reserve size discrepency", "self_size", s.reserve.ReserveSize(), "network_size", reserveSize)
+		selfHealth = false
+	}
+
+	s.isSelfHealthy.Store(selfHealth)
 }
 
 func (s *service) IsHealthy() bool {
@@ -246,7 +264,7 @@ func (s *service) radius(peers []peer) (uint8, uint8) {
 
 	for _, peer := range peers {
 		if peer.status.StorageRadius < uint32(swarm.MaxBins) {
-			if s.rs.IsWithinStorageRadius(peer.addr) {
+			if s.rad.IsWithinStorageRadius(peer.addr) {
 				nHoodRadius[peer.status.StorageRadius]++
 			}
 			networkRadius[peer.status.StorageRadius]++
@@ -281,6 +299,33 @@ func commitment(peers []peer) uint64 {
 	}
 
 	return maxCommitment
+}
+
+// reserveSize returns the avg reserveSize, trimmed by p percent
+func reserveSize(peers []peer, radius uint8, p float64) uint64 {
+
+	startIndex := int(float64(len(peers)) * (1 - p))
+	endIndex := int(float64(len(peers)) * p)
+
+	sort.Slice(peers, func(i, j int) bool {
+		return peers[i].status.ReserveSize < peers[j].status.ReserveSize // ascendings
+	})
+
+	var avg uint64
+	var count uint64
+
+	for _, peer := range peers[startIndex:endIndex] {
+		if peer.status.StorageRadius == uint32(radius) {
+			avg += peer.status.ReserveSize
+			count++
+		}
+	}
+
+	return avg / count
+}
+
+func percentageErr(x, y float64) float64 {
+	return math.Abs((x - y) / y)
 }
 
 func maxIndex(n []int) int {
