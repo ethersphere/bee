@@ -7,6 +7,7 @@ package storagetest
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -315,7 +316,11 @@ func doWriteChunk(b *testing.B, db storage.Putter, g entryGenerator) {
 	b.Helper()
 
 	for i := 0; i < b.N; i++ {
-		addr := swarm.MustParseHexAddress(string(g.Key(i)))
+		buf := make([]byte, swarm.HashSize)
+		if _, err := hex.Decode(buf, g.Key(i)); err != nil {
+			b.Fatalf("decode value: %v", err)
+		}
+		addr := swarm.NewAddress(buf)
 		chunk := swarm.NewChunk(addr, g.Value(i)).WithStamp(postagetesting.MustNewStamp())
 		if err := db.Put(context.Background(), chunk); err != nil {
 			b.Fatalf("write key '%s': %v", string(g.Key(i)), err)
