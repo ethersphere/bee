@@ -275,6 +275,9 @@ func (c *Cache) Capacity() uint64 { return c.capacity }
 // chunkstore and also adds a Cache entry for the chunk.
 func (c *Cache) Putter(store internal.Storage) storage.Putter {
 	return storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
+		c.mtx.Lock()
+		defer c.mtx.Unlock()
+
 		newEntry := &cacheEntry{Address: chunk.Address()}
 		found, err := store.IndexStore().Has(newEntry)
 		if err != nil {
@@ -285,9 +288,6 @@ func (c *Cache) Putter(store internal.Storage) storage.Putter {
 		if found {
 			return nil
 		}
-
-		c.mtx.Lock()
-		defer c.mtx.Unlock()
 
 		// save the old state. All the operations here are expected to be guarded by
 		// some store transaction, so on error return, all updates are rollbacked. As
