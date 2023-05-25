@@ -164,14 +164,10 @@ func TestCors(t *testing.T) {
 				CORSAllowedOrigins: []string{origin},
 			})
 
-			r := jsonhttptest.Request(t, client, http.MethodOptions, "/"+tc.endpoint, http.StatusNoContent,
-				jsonhttptest.WithRequestHeader(api.OriginHeader, origin))
-
-			allowedMethods := r.Get("Access-Control-Allow-Methods")
-
-			if allowedMethods != tc.expectedMethods {
-				t.Fatalf("expects %s and got %s", tc.expectedMethods, allowedMethods)
-			}
+			jsonhttptest.Request(t, client, http.MethodOptions, "/"+tc.endpoint, http.StatusNoContent,
+				jsonhttptest.WithRequestHeader(api.OriginHeader, origin),
+				jsonhttptest.WithExpectedResponseHeader("Access-Control-Allow-Methods", tc.expectedMethods),
+			)
 		})
 	}
 }
@@ -224,13 +220,10 @@ func TestCorsStatus(t *testing.T) {
 				CORSAllowedOrigins: []string{origin},
 			})
 
-			r := jsonhttptest.Request(t, client, tc.notAllowedMethods, "/"+tc.endpoint, http.StatusMethodNotAllowed,
-				jsonhttptest.WithRequestHeader(api.OriginHeader, origin))
-
-			allowedMethods := r.Get("Access-Control-Allow-Methods")
-			if allowedMethods != tc.allowedMethods {
-				t.Fatalf("expects %s and got %s", tc.notAllowedMethods, allowedMethods)
-			}
+			jsonhttptest.Request(t, client, tc.notAllowedMethods, "/"+tc.endpoint, http.StatusMethodNotAllowed,
+				jsonhttptest.WithRequestHeader(api.OriginHeader, origin),
+				jsonhttptest.WithExpectedResponseHeader("Access-Control-Allow-Methods", tc.allowedMethods),
+			)
 		})
 	}
 }

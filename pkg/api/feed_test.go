@@ -5,7 +5,6 @@
 package api_test
 
 import (
-	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/hex"
@@ -67,21 +66,10 @@ func TestFeed_Get(t *testing.T) {
 			})
 		)
 
-		respHeaders := jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", "12"), http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", "12"), http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(api.FeedReferenceResponse{Reference: expReference}),
+			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedIndexHeader, hex.EncodeToString(idBytes)),
 		)
-
-		h := respHeaders[api.SwarmFeedIndexHeader]
-		if len(h) == 0 {
-			t.Fatal("expected swarm feed index header to be set")
-		}
-		b, err := hex.DecodeString(h[0])
-		if err != nil {
-			t.Fatal(err)
-		}
-		if !bytes.Equal(b, idBytes) {
-			t.Fatalf("feed index header mismatch. got %v want %v", b, idBytes)
-		}
 	})
 
 	t.Run("latest", func(t *testing.T) {
@@ -101,21 +89,10 @@ func TestFeed_Get(t *testing.T) {
 			})
 		)
 
-		respHeaders := jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", ""), http.StatusOK,
+		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", ""), http.StatusOK,
 			jsonhttptest.WithExpectedJSONResponse(api.FeedReferenceResponse{Reference: expReference}),
+			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedIndexHeader, hex.EncodeToString(idBytes)),
 		)
-
-		if h := respHeaders[api.SwarmFeedIndexHeader]; len(h) > 0 {
-			b, err := hex.DecodeString(h[0])
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !bytes.Equal(b, idBytes) {
-				t.Fatalf("feed index header mismatch. got %v want %v", b, idBytes)
-			}
-		} else {
-			t.Fatal("expected swarm feed index header to be set")
-		}
 	})
 }
 

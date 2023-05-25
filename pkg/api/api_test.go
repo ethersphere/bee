@@ -563,12 +563,9 @@ func TestOptions(t *testing.T) {
 		t.Run(tc.endpoint+" options test", func(t *testing.T) {
 			t.Parallel()
 
-			resultHeader := jsonhttptest.Request(t, client, http.MethodOptions, "/"+tc.endpoint, http.StatusNoContent)
-
-			allowedMethods := resultHeader.Get("Allow")
-			if allowedMethods != tc.expectedMethods {
-				t.Fatalf("expects %s and got %s", tc.expectedMethods, allowedMethods)
-			}
+			jsonhttptest.Request(t, client, http.MethodOptions, "/"+tc.endpoint, http.StatusNoContent,
+				jsonhttptest.WithExpectedResponseHeader("Allow", tc.expectedMethods),
+			)
 		})
 	}
 }

@@ -90,13 +90,10 @@ func TestRequest_responseHeader(t *testing.T) {
 	}))
 
 	assert(t, testResult{}, func(m *mock) {
-		header := jsonhttptest.Request(m, c, http.MethodGet, endpoint, http.StatusOK,
+		jsonhttptest.Request(m, c, http.MethodGet, endpoint, http.StatusOK,
 			jsonhttptest.WithExpectedResponseHeader(headerName, headerValue),
+			jsonhttptest.WithNonEmptyResponseHeader(headerName),
 		)
-		gotValue := header.Get(headerName)
-		if gotValue != headerValue {
-			t.Errorf("got header %q, want %q", gotValue, headerValue)
-		}
 	})
 }
 

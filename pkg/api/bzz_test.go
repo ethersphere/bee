@@ -82,7 +82,7 @@ func TestBzzFiles(t *testing.T) {
 			},
 		})
 		address := swarm.MustParseHexAddress("f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b")
-		rcvdHeader := jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource, http.StatusCreated,
+		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource, http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(tr),
@@ -90,9 +90,8 @@ func TestBzzFiles(t *testing.T) {
 			jsonhttptest.WithExpectedJSONResponse(api.BzzUploadResponse{
 				Reference: address,
 			}),
+			jsonhttptest.WithNonEmptyResponseHeader(api.SwarmTagHeader),
 		)
-
-		isTagFoundInResponse(t, rcvdHeader, nil)
 
 		has, err := storerMock.Has(context.Background(), address)
 		if err != nil {
@@ -139,7 +138,7 @@ func TestBzzFiles(t *testing.T) {
 			},
 		})
 		reference := swarm.MustParseHexAddress("f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b")
-		rcvdHeader := jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource, http.StatusCreated,
+		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource, http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestHeader(api.SwarmPinHeader, "true"),
@@ -148,9 +147,8 @@ func TestBzzFiles(t *testing.T) {
 			jsonhttptest.WithExpectedJSONResponse(api.BzzUploadResponse{
 				Reference: reference,
 			}),
+			jsonhttptest.WithNonEmptyResponseHeader(api.SwarmTagHeader),
 		)
-
-		isTagFoundInResponse(t, rcvdHeader, nil)
 
 		has, err := storerMock.Has(context.Background(), reference)
 		if err != nil {
@@ -176,7 +174,7 @@ func TestBzzFiles(t *testing.T) {
 		fileName := "my-pictures.jpeg"
 
 		var resp api.BzzUploadResponse
-		rcvdHeader := jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource+"?name="+fileName, http.StatusCreated,
+		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource+"?name="+fileName, http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
@@ -184,8 +182,6 @@ func TestBzzFiles(t *testing.T) {
 			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "image/jpeg; charset=utf-8"),
 			jsonhttptest.WithUnmarshalJSONResponse(&resp),
 		)
-
-		isTagFoundInResponse(t, rcvdHeader, nil)
 
 		jsonhttptest.Request(t, client, http.MethodGet, fileDownloadResource(resp.Reference.String()), http.StatusOK,
 			jsonhttptest.WithExpectedContentLength(len(simpleData)),
@@ -222,7 +218,7 @@ func TestBzzFiles(t *testing.T) {
 		fileName := "my-pictures.jpeg"
 		rootHash := "4f9146b3813ccbd7ce45a18be23763d7e436ab7a3982ef39961c6f3cd4da1dcf"
 
-		rcvdHeader := jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource+"?name="+fileName, http.StatusCreated,
+		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource+"?name="+fileName, http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
@@ -230,9 +226,8 @@ func TestBzzFiles(t *testing.T) {
 				Reference: swarm.MustParseHexAddress(rootHash),
 			}),
 			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "image/jpeg; charset=utf-8"),
+			jsonhttptest.WithNonEmptyResponseHeader(api.SwarmTagHeader),
 		)
-
-		isTagFoundInResponse(t, rcvdHeader, nil)
 
 		jsonhttptest.Request(t, client, http.MethodGet, fileDownloadResource(rootHash), http.StatusOK,
 			jsonhttptest.WithExpectedResponse(simpleData),
@@ -256,7 +251,7 @@ func TestBzzFiles(t *testing.T) {
 		</body>
 		</html>`
 
-		rcvdHeader := jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource+"?name="+fileName, http.StatusCreated,
+		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource+"?name="+fileName, http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(strings.NewReader(sampleHtml)),
@@ -264,13 +259,9 @@ func TestBzzFiles(t *testing.T) {
 				Reference: swarm.MustParseHexAddress(rootHash),
 			}),
 			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "text/html; charset=utf-8"),
+			jsonhttptest.WithNonEmptyResponseHeader(api.SwarmTagHeader),
+			jsonhttptest.WithExpectedResponseHeader(api.ETagHeader, fmt.Sprintf("%q", rootHash)),
 		)
-
-		if rcvdHeader.Get(api.ETagHeader) != fmt.Sprintf("%q", rootHash) {
-			t.Fatal("Invalid ETags header received")
-		}
-
-		isTagFoundInResponse(t, rcvdHeader, nil)
 
 		// try to fetch the same file and check the data
 		jsonhttptest.Request(t, client, http.MethodGet, fileDownloadResource(rootHash), http.StatusOK,
@@ -285,7 +276,7 @@ func TestBzzFiles(t *testing.T) {
 		fileName := "simple_file.txt"
 		rootHash := "65148cd89b58e91616773f5acea433f7b5a6274f2259e25f4893a332b74a7e28"
 
-		rcvdHeader := jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource+"?name="+fileName, http.StatusCreated,
+		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource+"?name="+fileName, http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
@@ -293,9 +284,8 @@ func TestBzzFiles(t *testing.T) {
 				Reference: swarm.MustParseHexAddress(rootHash),
 			}),
 			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "text/html; charset=utf-8"),
+			jsonhttptest.WithNonEmptyResponseHeader(api.SwarmTagHeader),
 		)
-
-		isTagFoundInResponse(t, rcvdHeader, nil)
 	})
 
 }
@@ -408,16 +398,15 @@ func TestBzzFilesRangeRequests(t *testing.T) {
 				jsonhttptest.WithRequestBody(upload.reader),
 				jsonhttptest.WithRequestHeader(api.ContentTypeHeader, upload.contentType),
 				jsonhttptest.WithUnmarshalJSONResponse(&resp),
+				jsonhttptest.WithNonEmptyResponseHeader(api.SwarmTagHeader),
 			}
 			if upload.name == "dir" {
 				testOpts = append(testOpts, jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"))
 			}
 
-			rcvdHeader := jsonhttptest.Request(t, client, http.MethodPost, upload.uploadEndpoint, http.StatusCreated,
+			jsonhttptest.Request(t, client, http.MethodPost, upload.uploadEndpoint, http.StatusCreated,
 				testOpts...,
 			)
-
-			isTagFoundInResponse(t, rcvdHeader, nil)
 
 			var downloadPath string
 			if upload.downloadEndpoint != "/bytes" {
