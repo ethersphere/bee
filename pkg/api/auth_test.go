@@ -42,7 +42,7 @@ func TestAuth(t *testing.T) {
 	})
 	t.Run("missing role", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, resource, http.StatusBadRequest,
-			jsonhttptest.WithRequestHeader("Authorization", "Basic dGVzdDp0ZXN0"),
+			jsonhttptest.WithRequestHeader(api.AuthorizationHeader, "Basic dGVzdDp0ZXN0"),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "Unmarshal json body",
 				Code:    http.StatusBadRequest,
@@ -51,7 +51,7 @@ func TestAuth(t *testing.T) {
 	})
 	t.Run("bad authorization header", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, resource, http.StatusUnauthorized,
-			jsonhttptest.WithRequestHeader("Authorization", "Basic dGV"),
+			jsonhttptest.WithRequestHeader(api.AuthorizationHeader, "Basic dGV"),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "Unauthorized",
 				Code:    http.StatusUnauthorized,
@@ -60,7 +60,7 @@ func TestAuth(t *testing.T) {
 	})
 	t.Run("bad request body", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, resource, http.StatusBadRequest,
-			jsonhttptest.WithRequestHeader("Authorization", "Basic dGVzdDp0ZXN0"),
+			jsonhttptest.WithRequestHeader(api.AuthorizationHeader, "Basic dGVzdDp0ZXN0"),
 
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "Unmarshal json body",
@@ -75,7 +75,7 @@ func TestAuth(t *testing.T) {
 			authenticator.AuthorizeFunc = original
 		}()
 		jsonhttptest.Request(t, client, http.MethodPost, resource, http.StatusUnauthorized,
-			jsonhttptest.WithRequestHeader("Authorization", "Basic dGVzdDp0ZXN0"),
+			jsonhttptest.WithRequestHeader(api.AuthorizationHeader, "Basic dGVzdDp0ZXN0"),
 
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Message: "Unauthorized",
@@ -92,7 +92,7 @@ func TestAuth(t *testing.T) {
 			authenticator.GenerateKeyFunc = original
 		}()
 		jsonhttptest.Request(t, client, http.MethodPost, resource, http.StatusInternalServerError,
-			jsonhttptest.WithRequestHeader("Authorization", "Basic dGVzdDp0ZXN0"),
+			jsonhttptest.WithRequestHeader(api.AuthorizationHeader, "Basic dGVzdDp0ZXN0"),
 			jsonhttptest.WithJSONRequestBody(api.SecurityTokenRequest{
 				Role: "consumer",
 			}),
@@ -104,7 +104,7 @@ func TestAuth(t *testing.T) {
 	})
 	t.Run("success", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPost, resource, http.StatusCreated,
-			jsonhttptest.WithRequestHeader("Authorization", "Basic dGVzdDp0ZXN0"),
+			jsonhttptest.WithRequestHeader(api.AuthorizationHeader, "Basic dGVzdDp0ZXN0"),
 			jsonhttptest.WithJSONRequestBody(api.SecurityTokenRequest{
 				Role: "consumer",
 			}),

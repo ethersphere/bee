@@ -10,12 +10,13 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/ethereum/go-ethereum/common"
 	"math/big"
 	"net/http"
 	"strconv"
 	"testing"
 	"time"
+
+	"github.com/ethereum/go-ethereum/common"
 
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/bigint"
@@ -98,7 +99,7 @@ func TestPostageCreateStamp(t *testing.T) {
 		})
 
 		jsonhttptest.Request(t, ts, http.MethodPost, createBatch(initialBalance, depth, label), http.StatusCreated,
-			jsonhttptest.WithRequestHeader("Gas-Price", "10000"),
+			jsonhttptest.WithRequestHeader(api.GasPriceHeader, "10000"),
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageCreateResponse{
 				BatchID: batchID,
 				TxHash:  txHash.String(),
@@ -185,7 +186,7 @@ func TestPostageCreateStamp(t *testing.T) {
 		})
 
 		jsonhttptest.Request(t, ts, http.MethodPost, "/stamps/1000/24", http.StatusCreated,
-			jsonhttptest.WithRequestHeader("Immutable", "true"),
+			jsonhttptest.WithRequestHeader(api.ImmutableHeader, "true"),
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageCreateResponse{
 				BatchID: batchID,
 				TxHash:  txHash.String(),
@@ -215,7 +216,7 @@ func TestPostageCreateStamp(t *testing.T) {
 		})
 
 		jsonhttptest.Request(t, ts, http.MethodPost, "/stamps/1000/24", http.StatusCreated,
-			jsonhttptest.WithRequestHeader("Gas-Limit", "2000000"),
+			jsonhttptest.WithRequestHeader(api.GasLimitHeader, "2000000"),
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageCreateResponse{
 				BatchID: batchID,
 				TxHash:  txHash.String(),
@@ -614,7 +615,7 @@ func TestPostageTopUpStamp(t *testing.T) {
 		})
 
 		jsonhttptest.Request(t, ts, http.MethodPatch, topupBatch(batchOkStr, topupAmount), http.StatusAccepted,
-			jsonhttptest.WithRequestHeader("Gas-Price", "10000"),
+			jsonhttptest.WithRequestHeader(api.GasPriceHeader, "10000"),
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageCreateResponse{
 				BatchID: batchOk,
 				TxHash:  txHash.String(),
@@ -681,7 +682,7 @@ func TestPostageTopUpStamp(t *testing.T) {
 		})
 
 		jsonhttptest.Request(t, ts, http.MethodPatch, topupBatch(batchOkStr, topupAmount), http.StatusAccepted,
-			jsonhttptest.WithRequestHeader("Gas-Limit", "10000"),
+			jsonhttptest.WithRequestHeader(api.GasLimitHeader, "10000"),
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageCreateResponse{
 				BatchID: batchOk,
 				TxHash:  txHash.String(),
@@ -749,7 +750,7 @@ func TestPostageDiluteStamp(t *testing.T) {
 		})
 
 		jsonhttptest.Request(t, ts, http.MethodPatch, diluteBatch(batchOkStr, newBatchDepth), http.StatusAccepted,
-			jsonhttptest.WithRequestHeader("Gas-Price", "10000"),
+			jsonhttptest.WithRequestHeader(api.GasPriceHeader, "10000"),
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageCreateResponse{
 				BatchID: batchOk,
 				TxHash:  txHash.String(),
@@ -816,7 +817,7 @@ func TestPostageDiluteStamp(t *testing.T) {
 		})
 
 		jsonhttptest.Request(t, ts, http.MethodPatch, diluteBatch(batchOkStr, newBatchDepth), http.StatusAccepted,
-			jsonhttptest.WithRequestHeader("Gas-Limit", "10000"),
+			jsonhttptest.WithRequestHeader(api.GasLimitHeader, "10000"),
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageCreateResponse{
 				BatchID: batchOk,
 				TxHash:  txHash.String(),

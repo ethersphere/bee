@@ -101,7 +101,7 @@ func TestDepositStake(t *testing.T) {
 		})
 
 		jsonhttptest.Request(t, ts, http.MethodPost, depositStake(minStake), http.StatusOK,
-			jsonhttptest.WithRequestHeader("Gas-Limit", "2000000"),
+			jsonhttptest.WithRequestHeader(api.GasLimitHeader, "2000000"),
 		)
 	})
 }
@@ -234,7 +234,7 @@ func TestWithdrawAllStake(t *testing.T) {
 		})
 
 		jsonhttptest.Request(t, ts, http.MethodDelete, "/stake", http.StatusOK,
-			jsonhttptest.WithRequestHeader("Gas-Limit", "2000000"),
+			jsonhttptest.WithRequestHeader(api.GasLimitHeader, "2000000"),
 		)
 	})
 }

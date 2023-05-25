@@ -83,6 +83,19 @@ const (
 	SwarmCollectionHeader     = "Swarm-Collection"
 	SwarmPostageBatchIdHeader = "Swarm-Postage-Batch-Id"
 	SwarmDeferredUploadHeader = "Swarm-Deferred-Upload"
+
+	ImmutableHeader = "Immutable"
+	GasPriceHeader  = "Gas-Price"
+	GasLimitHeader  = "Gas-Limit"
+	ETagHeader      = "ETag"
+
+	AuthorizationHeader      = "Authorization"
+	AcceptEncodingHeader     = "Accept-Encoding"
+	ContentTypeHeader        = "Content-Type"
+	ContentDispositionHeader = "Content-Disposition"
+	ContentLengthHeader      = "Content-Length"
+	RangeHeader              = "Range"
+	OriginHeader             = "Origin"
 )
 
 // The size of buffer used for prefetching content with Langos.
@@ -100,7 +113,6 @@ const (
 )
 
 const (
-	contentTypeHeader  = "Content-Type"
 	multiPartFormData  = "multipart/form-data"
 	contentTypeTar     = "application/x-tar"
 	boolHeaderSetValue = "true"
@@ -506,7 +518,7 @@ func (s *Service) authHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Service) refreshHandler(w http.ResponseWriter, r *http.Request) {
-	reqToken := r.Header.Get("Authorization")
+	reqToken := r.Header.Get(AuthorizationHeader)
 	if !strings.HasPrefix(reqToken, "Bearer ") {
 		jsonhttp.Forbidden(w, "Missing bearer token")
 		return
@@ -587,7 +599,7 @@ func (s *Service) contentLengthMetricMiddleware() func(h http.Handler) http.Hand
 			h.ServeHTTP(w, r)
 			switch r.Method {
 			case http.MethodGet:
-				hdr := w.Header().Get("Content-Length")
+				hdr := w.Header().Get(ContentLengthHeader)
 				if hdr == "" {
 					s.logger.Debug("content length header not found")
 					return
@@ -643,11 +655,19 @@ func lookaheadBufferSize(size int64) int {
 
 // corsHandler sets CORS headers to HTTP response if allowed origins are configured.
 func (s *Service) corsHandler(h http.Handler) http.Handler {
+	allowedHeaders := []string{
+		"User-Agent", "Accept", "X-Requested-With", "Access-Control-Request-Headers", "Access-Control-Request-Method", "Accept-Ranges", "Content-Encoding",
+		AuthorizationHeader, AcceptEncodingHeader, ContentTypeHeader, RangeHeader, OriginHeader,
+		SwarmTagHeader, SwarmPinHeader, SwarmEncryptHeader, SwarmIndexDocumentHeader, SwarmErrorDocumentHeader, SwarmCollectionHeader, SwarmPostageBatchIdHeader, SwarmDeferredUploadHeader,
+		GasPriceHeader, GasLimitHeader, ImmutableHeader,
+	}
+	allowedHeadersStr := strings.Join(allowedHeaders, ", ")
+
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if o := r.Header.Get("Origin"); o != "" && s.checkOrigin(r) {
+		if o := r.Header.Get(OriginHeader); o != "" && s.checkOrigin(r) {
 			w.Header().Set("Access-Control-Allow-Credentials", "true")
 			w.Header().Set("Access-Control-Allow-Origin", o)
-			w.Header().Set("Access-Control-Allow-Headers", "User-Agent, Origin, Accept, Authorization, Content-Type, X-Requested-With, Decompressed-Content-Length, Access-Control-Request-Headers, Access-Control-Request-Method, Swarm-Tag, Swarm-Pin, Swarm-Encrypt, Swarm-Index-Document, Swarm-Error-Document, Swarm-Collection, Swarm-Postage-Batch-Id, Swarm-Deferred-Upload, Gas-Price, Range, Accept-Ranges, Content-Encoding")
+			w.Header().Set("Access-Control-Allow-Headers", allowedHeadersStr)
 			w.Header().Set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS, POST, PUT, DELETE")
 			w.Header().Set("Access-Control-Max-Age", "3600")
 		}
@@ -657,7 +677,7 @@ func (s *Service) corsHandler(h http.Handler) http.Handler {
 
 // checkOrigin returns true if the origin is not set or is equal to the request host.
 func (s *Service) checkOrigin(r *http.Request) bool {
-	origin := r.Header["Origin"]
+	origin := r.Header[OriginHeader]
 	if len(origin) == 0 {
 		return true
 	}
@@ -988,7 +1008,7 @@ func calculateNumberOfChunks(contentLength int64, isEncrypted bool) int64 {
 }
 
 func requestCalculateNumberOfChunks(r *http.Request) int64 {
-	if !strings.Contains(r.Header.Get(contentTypeHeader), "multipart") && r.ContentLength > 0 {
+	if !strings.Contains(r.Header.Get(ContentTypeHeader), "multipart") && r.ContentLength > 0 {
 		return calculateNumberOfChunks(r.ContentLength, requestEncrypt(r))
 	}
 	return 0

@@ -192,7 +192,7 @@ func TestChequebookWithdraw(t *testing.T) {
 
 		var got *api.ChequebookTxResponse
 		jsonhttptest.Request(t, testServer, http.MethodPost, "/chequebook/withdraw?amount=500", http.StatusOK,
-			jsonhttptest.WithRequestHeader("Gas-Price", "10"),
+			jsonhttptest.WithRequestHeader(api.GasPriceHeader, "10"),
 			jsonhttptest.WithUnmarshalJSONResponse(&got),
 		)
 
@@ -257,7 +257,7 @@ func TestChequebookDeposit(t *testing.T) {
 
 		var got *api.ChequebookTxResponse
 		jsonhttptest.Request(t, testServer, http.MethodPost, "/chequebook/deposit?amount=700", http.StatusOK,
-			jsonhttptest.WithRequestHeader("Gas-Price", "10"),
+			jsonhttptest.WithRequestHeader(api.GasPriceHeader, "10"),
 			jsonhttptest.WithUnmarshalJSONResponse(&got),
 		)
 
@@ -551,8 +551,8 @@ func TestChequebookCashout_CustomGas(t *testing.T) {
 
 	var got *api.SwapCashoutResponse
 	jsonhttptest.Request(t, testServer, http.MethodPost, "/chequebook/cashout/"+addr.String(), http.StatusOK,
-		jsonhttptest.WithRequestHeader("Gas-Price", "10000"),
-		jsonhttptest.WithRequestHeader("Gas-Limit", "12221"),
+		jsonhttptest.WithRequestHeader(api.GasPriceHeader, "10000"),
+		jsonhttptest.WithRequestHeader(api.GasLimitHeader, "12221"),
 		jsonhttptest.WithUnmarshalJSONResponse(&got),
 	)
 
