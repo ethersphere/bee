@@ -217,9 +217,9 @@ func (s *service) salud(mode string, minPeersPerbin int) {
 	selfHealth := true
 	if s.rad.StorageRadius() != networkRadius {
 		selfHealth = false
-		s.logger.Warning("node is unhealthy to due storage radius discrepency", "self_radius", s.rad.StorageRadius(), "network_radius", networkRadius)
+		s.logger.Warning("node is unhealthy due to storage radius discrepency", "self_radius", s.rad.StorageRadius(), "network_radius", networkRadius)
 	} else if percentageErr(float64(s.reserve.ReserveSize()), float64(reserveSize)) > maxReserveSizePercentageErr {
-		s.logger.Warning("node is unhealthy to due reserve size discrepency", "self_size", s.reserve.ReserveSize(), "network_size", reserveSize)
+		s.logger.Warning("node is unhealthy due to reserve size discrepency", "self_size", s.reserve.ReserveSize(), "network_size", reserveSize)
 		selfHealth = false
 	}
 
