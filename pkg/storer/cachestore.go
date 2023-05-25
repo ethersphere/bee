@@ -45,6 +45,7 @@ func (db *DB) Cache() storage.Putter {
 			if err != nil {
 				return multierror.Append(err, rollback()).ErrorOrNil()
 			}
+			db.metrics.CacheSize.Set(float64(db.cacheObj.Size()))
 			return multierror.Append(err, commit()).ErrorOrNil()
 		}),
 		db.metrics,

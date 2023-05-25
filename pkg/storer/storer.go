@@ -470,7 +470,10 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 			return nil, err
 		}
 		db.reserve = rs
+		db.metrics.StorageRadius.Set(float64(rs.Radius()))
+		db.metrics.ReserveSize.Set(float64(rs.Size()))
 	}
+	db.metrics.CacheSize.Set(float64(db.cacheObj.Size()))
 
 	return db, nil
 }

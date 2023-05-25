@@ -70,6 +70,7 @@ func (db *DB) reserveWorker(capacity int, warmupDur, wakeUpDur time.Duration) {
 			if err != nil {
 				db.logger.Error(err, "reserve unreserve")
 			}
+			db.metrics.OverCapTriggerCount.Inc()
 		case <-wakeUpTimer.C:
 			radius := db.reserve.Radius()
 			if db.reserve.Size() < threshold(capacity) && db.syncer.SyncRate() == 0 && radius > 0 {
@@ -81,6 +82,7 @@ func (db *DB) reserveWorker(capacity int, warmupDur, wakeUpDur time.Duration) {
 				db.logger.Info("reserve radius decrease", "radius", radius)
 			}
 			wakeUpTimer.Reset(wakeUpDur)
+			db.metrics.StorageRadius.Set(float64(radius))
 		case <-db.quit:
 			return
 		}
@@ -190,6 +192,7 @@ func (db *DB) ReservePutter(ctx context.Context) PutterSession {
 			if !db.reserve.IsWithinCapacity() {
 				db.events.Trigger(reserveOverCapacity)
 			}
+			db.metrics.ReserveSize.Set(float64(db.reserve.Size()))
 			return nil
 		},
 		cleanup: func() error {
@@ -249,6 +252,12 @@ func (db *DB) evictBatch(ctx context.Context, batchID []byte, upToBin uint8) (er
 		db.logger.Info("reserve eviction", "bin", b, "evicted", evicted, "batchID", hex.EncodeToString(batchID), "size", db.reserve.Size())
 
 		db.reserve.AddSize(-evicted)
+		db.metrics.ReserveSize.Set(float64(db.reserve.Size()))
+		if upToBin == swarm.MaxBins {
+			db.metrics.ExpiredChunkCount.Add(float64(evicted))
+		} else {
+			db.metrics.EvictedChunkCount.Add(float64(evicted))
+		}
 	}
 
 	return nil
