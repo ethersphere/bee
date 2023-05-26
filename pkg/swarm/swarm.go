@@ -146,7 +146,7 @@ func (a Address) Clone() Address {
 	if a.b == nil {
 		return Address{}
 	}
-	return Address{b: append(make([]byte, 0, HashSize), a.Bytes()...)}
+	return Address{b: append(make([]byte, 0, len(a.b)), a.Bytes()...)}
 }
 
 // Compare returns an integer comparing two addresses lexicographically.
