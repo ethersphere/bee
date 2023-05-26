@@ -5,7 +5,6 @@
 package skippeers
 
 import (
-	"container/heap"
 	"math"
 	"sync"
 	"time"
@@ -19,8 +18,6 @@ const MaxDuration time.Duration = math.MaxInt64
 type List struct {
 	mtx sync.Mutex
 
-	minHeap *timeHeap
-
 	durC chan time.Duration
 	quit chan struct{}
 	// key is chunk address, value is map of peer address to expiration
@@ -31,10 +28,9 @@ type List struct {
 
 func NewList() *List {
 	l := &List{
-		minHeap: &timeHeap{},
-		skip:    make(map[string]map[string]int64),
-		durC:    make(chan time.Duration),
-		quit:    make(chan struct{}),
+		skip: make(map[string]map[string]int64),
+		durC: make(chan time.Duration),
+		quit: make(chan struct{}),
 	}
 
 	l.wg.Add(1)
@@ -47,55 +43,30 @@ func (l *List) worker() {
 
 	defer l.wg.Done()
 
-	timer := time.NewTimer(0)
-	<-timer.C
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
 
 	for {
 		select {
-		case dur := <-l.durC:
-			if !timer.Stop() {
-				select {
-				case <-timer.C:
-				default:
-				}
-			}
-			timer.Reset(dur)
-		case <-timer.C:
-			l.mtx.Lock()
+		case <-ticker.C:
 			l.prune()
-			if l.minHeap.Len() > 0 {
-				timer.Reset(time.Until(time.Unix(0, l.minHeap.Peek())))
-			}
-			l.mtx.Unlock()
 		case <-l.quit:
 			return
 		}
 	}
-
 }
 
 func (l *List) Add(chunk, peer swarm.Address, expire time.Duration) {
 
-	var t, min int64
-	defer func() {
-		// pushed the most recent timestamp
-		if t == min {
-			select {
-			case l.durC <- time.Until(time.Unix(0, min)):
-			case <-l.quit:
-			}
-		}
-	}()
-
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
+
+	var t int64
 
 	if expire == MaxDuration {
 		t = MaxDuration.Nanoseconds()
 	} else {
 		t = time.Now().Add(expire).UnixNano()
-		heap.Push(l.minHeap, t)
-		min = l.minHeap.Peek()
 	}
 
 	if _, ok := l.skip[chunk.ByteString()]; !ok {
@@ -118,18 +89,19 @@ func (l *List) ChunkPeers(ch swarm.Address) (peers []swarm.Address) {
 			}
 		}
 	}
+
 	return peers
 }
 
 func (l *List) PruneExpiresAfter(ch swarm.Address, d time.Duration) int {
 	l.mtx.Lock()
 	defer l.mtx.Unlock()
-
 	return l.pruneChunk(ch.ByteString(), time.Now().Add(d).UnixNano())
 }
 
-// Must be called under lock
 func (l *List) prune() {
+	l.mtx.Lock()
+	defer l.mtx.Unlock()
 	expiresNano := time.Now().UnixNano()
 	for k := range l.skip {
 		l.pruneChunk(k, expiresNano)
@@ -139,24 +111,15 @@ func (l *List) prune() {
 // Must be called under lock
 func (l *List) pruneChunk(ch string, now int64) int {
 
-	for l.minHeap.Len() > 0 && l.minHeap.Peek() <= now {
-		heap.Pop(l.minHeap)
-	}
-
 	count := 0
 
-	chunkPeers := l.skip[ch]
-	chunkPeersLen := len(chunkPeers)
-	for peer, exp := range chunkPeers {
+	for peer, exp := range l.skip[ch] {
 		if exp <= now {
-			delete(chunkPeers, peer)
+			delete(l.skip[ch], peer)
 			count++
-			chunkPeersLen--
 		}
 	}
-
-	// prune the chunk too
-	if chunkPeersLen == 0 {
+	if len(l.skip[ch]) == 0 {
 		delete(l.skip, ch)
 	}
 
@@ -172,22 +135,4 @@ func (l *List) Close() error {
 	l.mtx.Unlock()
 
 	return nil
-}
-
-// An IntHeap is a min-heap of ints.
-type timeHeap []int64
-
-func (h timeHeap) Peek() int64        { return h[0] }
-func (h timeHeap) Len() int           { return len(h) }
-func (h timeHeap) Less(i, j int) bool { return h[i] < h[j] }
-func (h timeHeap) Swap(i, j int)      { h[i], h[j] = h[j], h[i] }
-
-func (h *timeHeap) Push(x any) { *h = append(*h, x.(int64)) }
-
-func (h *timeHeap) Pop() any {
-	old := *h
-	n := len(old)
-	x := old[n-1]
-	*h = old[0 : n-1]
-	return x
 }
