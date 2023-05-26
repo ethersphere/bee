@@ -61,7 +61,7 @@ func TestBzzFiles(t *testing.T) {
 				name: "robots.txt",
 				dir:  "",
 				header: http.Header{
-					"Content-Type": {"text/plain; charset=utf-8"},
+					api.ContentTypeHeader: {"text/plain; charset=utf-8"},
 				},
 			},
 			{
@@ -69,7 +69,7 @@ func TestBzzFiles(t *testing.T) {
 				name: "1.png",
 				dir:  "img",
 				header: http.Header{
-					"Content-Type": {"image/png"},
+					api.ContentTypeHeader: {"image/png"},
 				},
 			},
 			{
@@ -77,7 +77,7 @@ func TestBzzFiles(t *testing.T) {
 				name: "2.png",
 				dir:  "img",
 				header: http.Header{
-					"Content-Type": {"image/png"},
+					api.ContentTypeHeader: {"image/png"},
 				},
 			},
 		})
@@ -86,7 +86,7 @@ func TestBzzFiles(t *testing.T) {
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(tr),
-			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
+			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, api.ContentTypeTar),
 			jsonhttptest.WithExpectedJSONResponse(api.BzzUploadResponse{
 				Reference: address,
 			}),
@@ -118,7 +118,7 @@ func TestBzzFiles(t *testing.T) {
 				name: "robots.txt",
 				dir:  "",
 				header: http.Header{
-					"Content-Type": {"text/plain; charset=utf-8"},
+					api.ContentTypeHeader: {"text/plain; charset=utf-8"},
 				},
 			},
 			{
@@ -126,7 +126,7 @@ func TestBzzFiles(t *testing.T) {
 				name: "1.png",
 				dir:  "img",
 				header: http.Header{
-					"Content-Type": {"image/png"},
+					api.ContentTypeHeader: {"image/png"},
 				},
 			},
 			{
@@ -134,7 +134,7 @@ func TestBzzFiles(t *testing.T) {
 				name: "2.png",
 				dir:  "img",
 				header: http.Header{
-					"Content-Type": {"image/png"},
+					api.ContentTypeHeader: {"image/png"},
 				},
 			},
 		})
@@ -144,7 +144,7 @@ func TestBzzFiles(t *testing.T) {
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestHeader(api.SwarmPinHeader, "true"),
 			jsonhttptest.WithRequestBody(tr),
-			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
+			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, api.ContentTypeTar),
 			jsonhttptest.WithExpectedJSONResponse(api.BzzUploadResponse{
 				Reference: reference,
 			}),
@@ -181,7 +181,7 @@ func TestBzzFiles(t *testing.T) {
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
 			jsonhttptest.WithRequestHeader(api.SwarmEncryptHeader, "True"),
-			jsonhttptest.WithRequestHeader("Content-Type", "image/jpeg; charset=utf-8"),
+			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "image/jpeg; charset=utf-8"),
 			jsonhttptest.WithUnmarshalJSONResponse(&resp),
 		)
 
@@ -189,8 +189,8 @@ func TestBzzFiles(t *testing.T) {
 
 		jsonhttptest.Request(t, client, http.MethodGet, fileDownloadResource(resp.Reference.String()), http.StatusOK,
 			jsonhttptest.WithExpectedContentLength(len(simpleData)),
-			jsonhttptest.WithExpectedResponseHeader("Content-Type", "image/jpeg; charset=utf-8"),
-			jsonhttptest.WithExpectedResponseHeader("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, fileName)),
+			jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "image/jpeg; charset=utf-8"),
+			jsonhttptest.WithExpectedResponseHeader(api.ContentDispositionHeader, fmt.Sprintf(`inline; filename="%s"`, fileName)),
 			jsonhttptest.WithExpectedResponse(simpleData),
 		)
 	})
@@ -205,15 +205,15 @@ func TestBzzFiles(t *testing.T) {
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
-			jsonhttptest.WithRequestHeader("Content-Type", "image/jpeg; charset=utf-8"),
+			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "image/jpeg; charset=utf-8"),
 			jsonhttptest.WithUnmarshalJSONResponse(&resp),
 		)
 
 		rootHash := resp.Reference.String()
 		jsonhttptest.Request(t, client, http.MethodGet, fileDownloadResource(rootHash), http.StatusOK,
 			jsonhttptest.WithExpectedContentLength(len(simpleData)),
-			jsonhttptest.WithExpectedResponseHeader("Content-Type", "image/jpeg; charset=utf-8"),
-			jsonhttptest.WithExpectedResponseHeader("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, fileName)),
+			jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "image/jpeg; charset=utf-8"),
+			jsonhttptest.WithExpectedResponseHeader(api.ContentDispositionHeader, fmt.Sprintf(`inline; filename="%s"`, fileName)),
 			jsonhttptest.WithExpectedResponse(simpleData),
 		)
 	})
@@ -229,7 +229,7 @@ func TestBzzFiles(t *testing.T) {
 			jsonhttptest.WithExpectedJSONResponse(api.BzzUploadResponse{
 				Reference: swarm.MustParseHexAddress(rootHash),
 			}),
-			jsonhttptest.WithRequestHeader("Content-Type", "image/jpeg; charset=utf-8"),
+			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "image/jpeg; charset=utf-8"),
 		)
 
 		isTagFoundInResponse(t, rcvdHeader, nil)
@@ -237,8 +237,8 @@ func TestBzzFiles(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodGet, fileDownloadResource(rootHash), http.StatusOK,
 			jsonhttptest.WithExpectedResponse(simpleData),
 			jsonhttptest.WithExpectedContentLength(len(simpleData)),
-			jsonhttptest.WithExpectedResponseHeader("Content-Type", "image/jpeg; charset=utf-8"),
-			jsonhttptest.WithExpectedResponseHeader("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, fileName)),
+			jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "image/jpeg; charset=utf-8"),
+			jsonhttptest.WithExpectedResponseHeader(api.ContentDispositionHeader, fmt.Sprintf(`inline; filename="%s"`, fileName)),
 		)
 	})
 
@@ -263,10 +263,10 @@ func TestBzzFiles(t *testing.T) {
 			jsonhttptest.WithExpectedJSONResponse(api.BzzUploadResponse{
 				Reference: swarm.MustParseHexAddress(rootHash),
 			}),
-			jsonhttptest.WithRequestHeader("Content-Type", "text/html; charset=utf-8"),
+			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "text/html; charset=utf-8"),
 		)
 
-		if rcvdHeader.Get("ETag") != fmt.Sprintf("%q", rootHash) {
+		if rcvdHeader.Get(api.ETagHeader) != fmt.Sprintf("%q", rootHash) {
 			t.Fatal("Invalid ETags header received")
 		}
 
@@ -276,8 +276,8 @@ func TestBzzFiles(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodGet, fileDownloadResource(rootHash), http.StatusOK,
 			jsonhttptest.WithExpectedResponse([]byte(sampleHtml)),
 			jsonhttptest.WithExpectedContentLength(len(sampleHtml)),
-			jsonhttptest.WithExpectedResponseHeader("Content-Type", "text/html; charset=utf-8"),
-			jsonhttptest.WithExpectedResponseHeader("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, fileName)),
+			jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "text/html; charset=utf-8"),
+			jsonhttptest.WithExpectedResponseHeader(api.ContentDispositionHeader, fmt.Sprintf(`inline; filename="%s"`, fileName)),
 		)
 	})
 
@@ -292,7 +292,7 @@ func TestBzzFiles(t *testing.T) {
 			jsonhttptest.WithExpectedJSONResponse(api.BzzUploadResponse{
 				Reference: swarm.MustParseHexAddress(rootHash),
 			}),
-			jsonhttptest.WithRequestHeader("Content-Type", "text/html; charset=utf-8"),
+			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "text/html; charset=utf-8"),
 		)
 
 		isTagFoundInResponse(t, rcvdHeader, nil)
@@ -340,7 +340,7 @@ func TestBzzFilesRangeRequests(t *testing.T) {
 					name: "lorem.txt",
 					dir:  "ipsum",
 					header: http.Header{
-						"Content-Type": {"text/plain; charset=utf-8"},
+						api.ContentTypeHeader: {"text/plain; charset=utf-8"},
 					},
 				},
 			}),
@@ -406,7 +406,7 @@ func TestBzzFilesRangeRequests(t *testing.T) {
 				jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 				jsonhttptest.WithRequestBody(upload.reader),
-				jsonhttptest.WithRequestHeader("Content-Type", upload.contentType),
+				jsonhttptest.WithRequestHeader(api.ContentTypeHeader, upload.contentType),
 				jsonhttptest.WithUnmarshalJSONResponse(&resp),
 			}
 			if upload.name == "dir" {
@@ -434,11 +434,11 @@ func TestBzzFilesRangeRequests(t *testing.T) {
 					respHeaders := jsonhttptest.Request(t, client, http.MethodGet,
 						downloadPath,
 						http.StatusPartialContent,
-						jsonhttptest.WithRequestHeader("Range", rangeHeader),
+						jsonhttptest.WithRequestHeader(api.RangeHeader, rangeHeader),
 						jsonhttptest.WithPutResponseBody(&body),
 					)
 
-					got := parseRangeParts(t, respHeaders.Get("Content-Type"), body)
+					got := parseRangeParts(t, respHeaders.Get(api.ContentTypeHeader), body)
 
 					if len(got) != len(want) {
 						t.Fatalf("got %v parts, want %v parts", len(got), len(want))
@@ -536,7 +536,7 @@ func TestFeedIndirection(t *testing.T) {
 		jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 		jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 		jsonhttptest.WithRequestBody(tarReader),
-		jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
+		jsonhttptest.WithRequestHeader(api.ContentTypeHeader, api.ContentTypeTar),
 		jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"),
 		jsonhttptest.WithUnmarshalJSONResponse(&resp),
 		jsonhttptest.WithRequestHeader(api.SwarmIndexDocumentHeader, "index.html"),
@@ -672,7 +672,7 @@ func TestInvalidBzzParams(t *testing.T) {
 				name: "robots.txt",
 				dir:  "",
 				header: http.Header{
-					"Content-Type": {"text/plain; charset=utf-8"},
+					api.ContentTypeHeader: {"text/plain; charset=utf-8"},
 				},
 			},
 		})
@@ -688,7 +688,7 @@ func TestInvalidBzzParams(t *testing.T) {
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(tr),
-			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
+			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, api.ContentTypeTar),
 		)
 
 	})
@@ -702,7 +702,7 @@ func TestInvalidBzzParams(t *testing.T) {
 				name: "robots.txt",
 				dir:  "",
 				header: http.Header{
-					"Content-Type": {"text/plain; charset=utf-8"},
+					api.ContentTypeHeader: {"text/plain; charset=utf-8"},
 				},
 			},
 		})
@@ -718,7 +718,7 @@ func TestInvalidBzzParams(t *testing.T) {
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(tr),
-			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
+			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, api.ContentTypeTar),
 		)
 
 	})
@@ -732,7 +732,7 @@ func TestInvalidBzzParams(t *testing.T) {
 				name: "robots.txt",
 				dir:  "",
 				header: http.Header{
-					"Content-Type": {"text/plain; charset=utf-8"},
+					api.ContentTypeHeader: {"text/plain; charset=utf-8"},
 				},
 			},
 		})
@@ -747,7 +747,7 @@ func TestInvalidBzzParams(t *testing.T) {
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(tr),
-			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
+			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, api.ContentTypeTar),
 		)
 	})
 
@@ -760,7 +760,7 @@ func TestInvalidBzzParams(t *testing.T) {
 				name: "robots.txt",
 				dir:  "",
 				header: http.Header{
-					"Content-Type": {"text/plain; charset=utf-8"},
+					api.ContentTypeHeader: {"text/plain; charset=utf-8"},
 				},
 			},
 		})
@@ -775,7 +775,7 @@ func TestInvalidBzzParams(t *testing.T) {
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(tr),
-			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar))
+			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, api.ContentTypeTar))
 	})
 
 	t.Run("upload, tag not found", func(t *testing.T) {
@@ -787,7 +787,7 @@ func TestInvalidBzzParams(t *testing.T) {
 				name: "robots.txt",
 				dir:  "",
 				header: http.Header{
-					"Content-Type": {"text/plain; charset=utf-8"},
+					api.ContentTypeHeader: {"text/plain; charset=utf-8"},
 				},
 			},
 		})
@@ -804,7 +804,7 @@ func TestInvalidBzzParams(t *testing.T) {
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(tr),
-			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar))
+			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, api.ContentTypeTar))
 	})
 
 	t.Run("address not found", func(t *testing.T) {
@@ -842,7 +842,7 @@ func TestDirectUploadBzz(t *testing.T) {
 			name: "robots.txt",
 			dir:  "",
 			header: http.Header{
-				"Content-Type": {"text/plain; charset=utf-8"},
+				api.ContentTypeHeader: {"text/plain; charset=utf-8"},
 			},
 		},
 	})
@@ -859,7 +859,7 @@ func TestDirectUploadBzz(t *testing.T) {
 		jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "false"),
 		jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 		jsonhttptest.WithRequestBody(tr),
-		jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
+		jsonhttptest.WithRequestHeader(api.ContentTypeHeader, api.ContentTypeTar),
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 			Message: api.ErrUnsupportedDevNodeOperation.Error(),
 			Code:    http.StatusBadRequest,

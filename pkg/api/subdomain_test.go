@@ -42,7 +42,7 @@ func TestSubdomains(t *testing.T) {
 					name: "robots.txt",
 					dir:  "",
 					header: http.Header{
-						"Content-Type": {"text/plain; charset=utf-8"},
+						api.ContentTypeHeader: {"text/plain; charset=utf-8"},
 					},
 				},
 				{
@@ -50,7 +50,7 @@ func TestSubdomains(t *testing.T) {
 					name: "1.png",
 					dir:  "img",
 					header: http.Header{
-						"Content-Type": {"image/png"},
+						api.ContentTypeHeader: {"image/png"},
 					},
 				},
 				{
@@ -58,7 +58,7 @@ func TestSubdomains(t *testing.T) {
 					name: "2.png",
 					dir:  "img",
 					header: http.Header{
-						"Content-Type": {"image/png"},
+						api.ContentTypeHeader: {"image/png"},
 					},
 				},
 			},
@@ -76,7 +76,7 @@ func TestSubdomains(t *testing.T) {
 					name: "index.html",
 					dir:  "",
 					header: http.Header{
-						"Content-Type": {"text/html; charset=utf-8"},
+						api.ContentTypeHeader: {"text/html; charset=utf-8"},
 					},
 				},
 				{
@@ -84,7 +84,7 @@ func TestSubdomains(t *testing.T) {
 					name: "error.html",
 					dir:  "",
 					header: http.Header{
-						"Content-Type": {"text/html; charset=utf-8"},
+						api.ContentTypeHeader: {"text/html; charset=utf-8"},
 					},
 				},
 			},
@@ -140,7 +140,7 @@ func TestSubdomains(t *testing.T) {
 				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 				jsonhttptest.WithRequestBody(tarReader),
 				jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"),
-				jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
+				jsonhttptest.WithRequestHeader(api.ContentTypeHeader, api.ContentTypeTar),
 				jsonhttptest.WithUnmarshalJSONResponse(&resp),
 			}
 			if tc.indexFilenameOption != nil {

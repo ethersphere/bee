@@ -58,7 +58,7 @@ func TestDirs(t *testing.T) {
 				Message: api.InvalidRequest.Error(),
 				Code:    http.StatusBadRequest,
 			}),
-			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
+			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, api.ContentTypeTar),
 		)
 	})
 
@@ -75,7 +75,7 @@ func TestDirs(t *testing.T) {
 				Message: api.DirectoryStoreError.Error(),
 				Code:    http.StatusInternalServerError,
 			}),
-			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
+			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, api.ContentTypeTar),
 		)
 	})
 
@@ -95,7 +95,7 @@ func TestDirs(t *testing.T) {
 				Message: api.InvalidContentType.Error(),
 				Code:    http.StatusBadRequest,
 			}),
-			jsonhttptest.WithRequestHeader("Content-Type", "other"),
+			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "other"),
 		)
 	})
 
@@ -120,7 +120,7 @@ func TestDirs(t *testing.T) {
 					name: "file1",
 					dir:  "",
 					header: http.Header{
-						"Content-Type": {""},
+						api.ContentTypeHeader: {""},
 					},
 				},
 				{
@@ -128,7 +128,7 @@ func TestDirs(t *testing.T) {
 					name: "file2",
 					dir:  "",
 					header: http.Header{
-						"Content-Type": {""},
+						api.ContentTypeHeader: {""},
 					},
 				},
 			},
@@ -143,7 +143,7 @@ func TestDirs(t *testing.T) {
 					name: "robots.txt",
 					dir:  "",
 					header: http.Header{
-						"Content-Type": {"text/plain; charset=utf-8"},
+						api.ContentTypeHeader: {"text/plain; charset=utf-8"},
 					},
 				},
 				{
@@ -151,7 +151,7 @@ func TestDirs(t *testing.T) {
 					name: "1.png",
 					dir:  "img",
 					header: http.Header{
-						"Content-Type": {"image/png"},
+						api.ContentTypeHeader: {"image/png"},
 					},
 				},
 				{
@@ -159,7 +159,7 @@ func TestDirs(t *testing.T) {
 					name: "2.png",
 					dir:  "img",
 					header: http.Header{
-						"Content-Type": {"image/png"},
+						api.ContentTypeHeader: {"image/png"},
 					},
 				},
 			},
@@ -174,7 +174,7 @@ func TestDirs(t *testing.T) {
 					name: "index.html",
 					dir:  "",
 					header: http.Header{
-						"Content-Type": {"text/html; charset=utf-8"},
+						api.ContentTypeHeader: {"text/html; charset=utf-8"},
 					},
 				},
 			},
@@ -191,7 +191,7 @@ func TestDirs(t *testing.T) {
 					name: "index.html",
 					dir:  "",
 					header: http.Header{
-						"Content-Type": {"text/html; charset=utf-8"},
+						api.ContentTypeHeader: {"text/html; charset=utf-8"},
 					},
 				},
 			},
@@ -207,7 +207,7 @@ func TestDirs(t *testing.T) {
 					name: "index.html",
 					dir:  "dir",
 					header: http.Header{
-						"Content-Type": {"text/html; charset=utf-8"},
+						api.ContentTypeHeader: {"text/html; charset=utf-8"},
 					},
 				},
 			},
@@ -226,7 +226,7 @@ func TestDirs(t *testing.T) {
 					name: "index.html",
 					dir:  "",
 					header: http.Header{
-						"Content-Type": {"text/html; charset=utf-8"},
+						api.ContentTypeHeader: {"text/html; charset=utf-8"},
 					},
 				},
 				{
@@ -234,7 +234,7 @@ func TestDirs(t *testing.T) {
 					name: "error.html",
 					dir:  "",
 					header: http.Header{
-						"Content-Type": {"text/html; charset=utf-8"},
+						api.ContentTypeHeader: {"text/html; charset=utf-8"},
 					},
 				},
 			},
@@ -302,7 +302,7 @@ func TestDirs(t *testing.T) {
 					bzzDownloadResource(resp.Reference.String(), filePath),
 					http.StatusOK,
 					jsonhttptest.WithExpectedResponse(file.data),
-					jsonhttptest.WithRequestHeader("Content-Type", file.header.Get("Content-Type")),
+					jsonhttptest.WithRequestHeader(api.ContentTypeHeader, file.header.Get(api.ContentTypeHeader)),
 				)
 			}
 
@@ -392,7 +392,7 @@ func TestDirs(t *testing.T) {
 					jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 					jsonhttptest.WithRequestBody(tarReader),
 					jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"),
-					jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
+					jsonhttptest.WithRequestHeader(api.ContentTypeHeader, api.ContentTypeTar),
 					jsonhttptest.WithUnmarshalJSONResponse(&resp),
 				}
 				if tc.indexFilenameOption != nil {
@@ -426,7 +426,7 @@ func TestDirs(t *testing.T) {
 						jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 						jsonhttptest.WithRequestBody(mwReader),
 						jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"),
-						jsonhttptest.WithRequestHeader("Content-Type", fmt.Sprintf("multipart/form-data; boundary=%q", mwBoundary)),
+						jsonhttptest.WithRequestHeader(api.ContentTypeHeader, fmt.Sprintf("multipart/form-data; boundary=%q", mwBoundary)),
 						jsonhttptest.WithUnmarshalJSONResponse(&resp),
 					}
 					if tc.indexFilenameOption != nil {
@@ -459,7 +459,7 @@ func TestDirs(t *testing.T) {
 				name: "robots.txt",
 				dir:  "",
 				header: http.Header{
-					"Content-Type": {"text/plain; charset=utf-8"},
+					api.ContentTypeHeader: {"text/plain; charset=utf-8"},
 				},
 			},
 		})
@@ -474,7 +474,7 @@ func TestDirs(t *testing.T) {
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(tr),
-			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar))
+			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, api.ContentTypeTar))
 	})
 
 	t.Run("upload, tag not found", func(t *testing.T) {
@@ -484,7 +484,7 @@ func TestDirs(t *testing.T) {
 				name: "robots.txt",
 				dir:  "",
 				header: http.Header{
-					"Content-Type": {"text/plain; charset=utf-8"},
+					api.ContentTypeHeader: {"text/plain; charset=utf-8"},
 				},
 			},
 		})
@@ -501,7 +501,7 @@ func TestDirs(t *testing.T) {
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(tr),
-			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar))
+			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, api.ContentTypeTar))
 	})
 }
 
@@ -529,7 +529,7 @@ func TestEmtpyDir(t *testing.T) {
 		jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 		jsonhttptest.WithRequestBody(tarReader),
 		jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "true"),
-		jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
+		jsonhttptest.WithRequestHeader(api.ContentTypeHeader, api.ContentTypeTar),
 		jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 			Message: api.EmptyDir.Error(),
 			Code:    http.StatusBadRequest,
@@ -611,15 +611,15 @@ func multipartFiles(t *testing.T, files []f) (*bytes.Buffer, string) {
 		}
 
 		hdr := make(textproto.MIMEHeader)
-		hdr.Set("Content-Disposition", fmt.Sprintf("form-data; name=%q", filePath))
+		hdr.Set(api.ContentDispositionHeader, fmt.Sprintf("form-data; name=%q", filePath))
 
-		contentType := file.header.Get("Content-Type")
+		contentType := file.header.Get(api.ContentTypeHeader)
 		if contentType != "" {
-			hdr.Set("Content-Type", contentType)
+			hdr.Set(api.ContentTypeHeader, contentType)
 
 		}
 		if len(file.data) > 0 {
-			hdr.Set("Content-Length", strconv.Itoa(len(file.data)))
+			hdr.Set(api.ContentLengthHeader, strconv.Itoa(len(file.data)))
 
 		}
 		part, err := mw.CreatePart(hdr)

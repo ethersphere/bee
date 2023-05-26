@@ -26,6 +26,6 @@ func (s *Service) topologyHandler(w http.ResponseWriter, _ *http.Request) {
 		jsonhttp.InternalServerError(w, err)
 		return
 	}
-	w.Header().Set("Content-Type", jsonhttp.DefaultContentTypeHeader)
+	w.Header().Set(ContentTypeHeader, jsonhttp.DefaultContentTypeHeader)
 	_, _ = io.Copy(w, bytes.NewBuffer(b))
 }

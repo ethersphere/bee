@@ -118,7 +118,7 @@ func TestPinHandlers(t *testing.T) {
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(tarReader),
-			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
+			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, api.ContentTypeTar),
 			jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPinHeader, "true"),
 			jsonhttptest.WithExpectedJSONResponse(api.BzzUploadResponse{
@@ -130,13 +130,13 @@ func TestPinHandlers(t *testing.T) {
 		header := jsonhttptest.Request(t, client, http.MethodPost, "/bzz?name=somefile.txt", http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
-			jsonhttptest.WithRequestHeader("Content-Type", "text/plain"),
+			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "text/plain"),
 			jsonhttptest.WithRequestHeader(api.SwarmEncryptHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPinHeader, "true"),
 			jsonhttptest.WithRequestBody(strings.NewReader("this is a simple text")),
 		)
 
-		rootHash = strings.Trim(header.Get("ETag"), "\"")
+		rootHash = strings.Trim(header.Get(api.ETagHeader), "\"")
 		checkPinHandlers(t, client, rootHash, false)
 	})
 

@@ -31,8 +31,7 @@ var (
 )
 
 var (
-	ContentTypeTar    = contentTypeTar
-	ContentTypeHeader = contentTypeHeader
+	ContentTypeTar = contentTypeTar
 )
 
 var (
