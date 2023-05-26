@@ -184,7 +184,7 @@ func (s *Service) fileUploadHandler(logger log.Logger, w http.ResponseWriter, r 
 	}
 
 	fileMtdt := map[string]string{
-		manifest.EntryMetadataContentTypeKey: r.Header.Get(contentTypeHeader), // Content-Type has already been validated.
+		manifest.EntryMetadataContentTypeKey: r.Header.Get(ContentTypeHeader), // Content-Type has already been validated.
 		manifest.EntryMetadataFilenameKey:    queries.FileName,
 	}
 
@@ -253,7 +253,7 @@ func (s *Service) fileUploadHandler(logger log.Logger, w http.ResponseWriter, r 
 		return
 	}
 
-	w.Header().Set("ETag", fmt.Sprintf("%q", manifestReference.String()))
+	w.Header().Set(ETagHeader, fmt.Sprintf("%q", manifestReference.String()))
 	w.Header().Set(SwarmTagHeader, fmt.Sprint(tag.Uid))
 	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
 	jsonhttp.Created(w, bzzUploadResponse{
@@ -444,11 +444,11 @@ func (s *Service) serveManifestEntry(
 	mtdt := manifestEntry.Metadata()
 	if fname, ok := mtdt[manifest.EntryMetadataFilenameKey]; ok {
 		fname = filepath.Base(fname) // only keep the file name
-		additionalHeaders["Content-Disposition"] =
+		additionalHeaders[ContentDispositionHeader] =
 			[]string{fmt.Sprintf("inline; filename=\"%s\"", fname)}
 	}
 	if mimeType, ok := mtdt[manifest.EntryMetadataContentTypeKey]; ok {
-		additionalHeaders["Content-Type"] = []string{mimeType}
+		additionalHeaders[ContentTypeHeader] = []string{mimeType}
 	}
 
 	s.downloadHandler(logger, w, r, manifestEntry.Reference(), additionalHeaders, etag)
@@ -475,10 +475,10 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 		w.Header().Set(name, strings.Join(values, "; "))
 	}
 	if etag {
-		w.Header().Set("ETag", fmt.Sprintf("%q", reference))
+		w.Header().Set(ETagHeader, fmt.Sprintf("%q", reference))
 	}
-	w.Header().Set("Content-Length", strconv.FormatInt(l, 10))
-	w.Header().Set("Access-Control-Expose-Headers", "Content-Disposition")
+	w.Header().Set(ContentLengthHeader, strconv.FormatInt(l, 10))
+	w.Header().Set("Access-Control-Expose-Headers", ContentDispositionHeader)
 	http.ServeContent(w, r, "", time.Now(), langos.NewBufferedLangos(reader, lookaheadBufferSize(l)))
 }
 

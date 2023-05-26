@@ -42,7 +42,7 @@ func (s *Service) dirUploadHandler(logger log.Logger, w http.ResponseWriter, r *
 	}
 
 	// The error is ignored because the header was already validated by the caller.
-	mediaType, params, _ := mime.ParseMediaType(r.Header.Get(contentTypeHeader))
+	mediaType, params, _ := mime.ParseMediaType(r.Header.Get(ContentTypeHeader))
 
 	var dReader dirReader
 	switch mediaType {
@@ -320,12 +320,12 @@ func (m *multipartReader) Next() (*FileInfo, error) {
 
 	fileName := filepath.Base(filePath)
 
-	contentType := part.Header.Get(contentTypeHeader)
+	contentType := part.Header.Get(ContentTypeHeader)
 	if contentType == "" {
 		return nil, errors.New("content-type missing")
 	}
 
-	contentLength := part.Header.Get("Content-Length")
+	contentLength := part.Header.Get(ContentLengthHeader)
 	if contentLength == "" {
 		return nil, errors.New("content-length missing")
 	}

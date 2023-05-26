@@ -145,7 +145,7 @@ func (s *Service) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	additionalHeaders := http.Header{
-		"Content-Type": {"application/octet-stream"},
+		ContentTypeHeader: {"application/octet-stream"},
 	}
 
 	s.downloadHandler(logger, w, r, paths.Address, additionalHeaders, true)
@@ -170,7 +170,7 @@ func (s *Service) bytesHeadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Add("Access-Control-Expose-Headers", "Accept-Ranges, Content-Encoding")
-	w.Header().Add("Content-Type", "application/octet-stream")
+	w.Header().Add(ContentTypeHeader, "application/octet-stream")
 	var span int64
 
 	if cac.Valid(ch) {
@@ -179,6 +179,6 @@ func (s *Service) bytesHeadHandler(w http.ResponseWriter, r *http.Request) {
 		// soc
 		span = int64(len(ch.Data()))
 	}
-	w.Header().Set("Content-Length", strconv.FormatInt(span, 10))
+	w.Header().Set(ContentLengthHeader, strconv.FormatInt(span, 10))
 	w.WriteHeader(http.StatusOK) // HEAD requests do not write a body
 }

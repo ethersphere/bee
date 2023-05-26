@@ -53,7 +53,7 @@ func TestRedistributionStatus(t *testing.T) {
 			},
 		})
 		jsonhttptest.Request(t, srv, http.MethodGet, "/redistributionstate", http.StatusOK,
-			jsonhttptest.WithRequestHeader("Content-Type", "application/json; charset=utf-8"),
+			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "application/json; charset=utf-8"),
 		)
 	})
 

@@ -125,7 +125,7 @@ func TestTags(t *testing.T) {
 		)
 
 		wsHeaders := http.Header{}
-		wsHeaders.Set("Content-Type", "application/octet-stream")
+		wsHeaders.Set(api.ContentTypeHeader, "application/octet-stream")
 		wsHeaders.Set(api.SwarmDeferredUploadHeader, "true")
 		wsHeaders.Set(api.SwarmPostageBatchIdHeader, batchOkStr)
 		wsHeaders.Set(api.SwarmTagHeader, strconv.FormatUint(uint64(tr.Uid), 10))
@@ -306,7 +306,7 @@ func TestTags(t *testing.T) {
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestBody(bytes.NewReader([]byte("some data"))),
 			jsonhttptest.WithExpectedJSONResponse(expectedResponse),
-			jsonhttptest.WithRequestHeader("Content-Type", "application/octet-stream"),
+			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "application/octet-stream"),
 		)
 
 		tagId, err := strconv.Atoi(respHeaders.Get(api.SwarmTagHeader))
@@ -331,7 +331,7 @@ func TestTags(t *testing.T) {
 			jsonhttptest.WithRequestBody(tarReader),
 			jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"),
 			jsonhttptest.WithExpectedJSONResponse(expectedResponse),
-			jsonhttptest.WithRequestHeader("Content-Type", api.ContentTypeTar),
+			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, api.ContentTypeTar),
 		)
 
 		tagId, err := strconv.Atoi(respHeaders.Get(api.SwarmTagHeader))

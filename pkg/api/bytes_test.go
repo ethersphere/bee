@@ -129,7 +129,7 @@ func TestBytes(t *testing.T) {
 	})
 	t.Run("head with compression", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodHead, resource+"/"+expHash, http.StatusOK,
-			jsonhttptest.WithRequestHeader("Accept-Encoding", "gzip"),
+			jsonhttptest.WithRequestHeader(api.AcceptEncodingHeader, "gzip"),
 			jsonhttptest.WithExpectedContentLength(len(content)),
 		)
 	})

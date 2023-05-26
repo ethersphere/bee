@@ -27,9 +27,9 @@ import (
 // nolint:paralleltest
 func TestChunkUploadStream(t *testing.T) {
 	wsHeaders := http.Header{}
+	wsHeaders.Set(api.ContentTypeHeader, "application/octet-stream")
 	wsHeaders.Set(api.SwarmDeferredUploadHeader, "true")
-	wsHeaders.Set("Content-Type", "application/octet-stream")
-	wsHeaders.Set("Swarm-Postage-Batch-Id", batchOkStr)
+	wsHeaders.Set(api.SwarmPostageBatchIdHeader, batchOkStr)
 
 	var (
 		statestoreMock  = statestore.NewStateStore()

@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 )
 
@@ -94,7 +95,7 @@ func TestCORSHeaders(t *testing.T) {
 				t.Fatal(err)
 			}
 			if tc.origin != "" {
-				req.Header.Set("Origin", tc.origin)
+				req.Header.Set(api.OriginHeader, tc.origin)
 			}
 
 			r, err := client.Do(req)
@@ -164,7 +165,7 @@ func TestCors(t *testing.T) {
 			})
 
 			r := jsonhttptest.Request(t, client, http.MethodOptions, "/"+tc.endpoint, http.StatusNoContent,
-				jsonhttptest.WithRequestHeader("Origin", origin))
+				jsonhttptest.WithRequestHeader(api.OriginHeader, origin))
 
 			allowedMethods := r.Get("Access-Control-Allow-Methods")
 
@@ -224,7 +225,7 @@ func TestCorsStatus(t *testing.T) {
 			})
 
 			r := jsonhttptest.Request(t, client, tc.notAllowedMethods, "/"+tc.endpoint, http.StatusMethodNotAllowed,
-				jsonhttptest.WithRequestHeader("Origin", origin))
+				jsonhttptest.WithRequestHeader(api.OriginHeader, origin))
 
 			allowedMethods := r.Get("Access-Control-Allow-Methods")
 			if allowedMethods != tc.allowedMethods {
