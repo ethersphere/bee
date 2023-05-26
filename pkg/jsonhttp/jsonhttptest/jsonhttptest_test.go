@@ -83,17 +83,41 @@ func TestRequest_responseHeader(t *testing.T) {
 	t.Parallel()
 
 	headerName := "Swarm-Header"
-	headerValue := "somevalue"
+	headerValue := "Digital Freedom Now"
 
-	c, endpoint := newClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set(headerName, headerValue)
-	}))
+	t.Run("with header", func(t *testing.T) {
+		t.Parallel()
 
-	assert(t, testResult{}, func(m *mock) {
-		jsonhttptest.Request(m, c, http.MethodGet, endpoint, http.StatusOK,
-			jsonhttptest.WithExpectedResponseHeader(headerName, headerValue),
-			jsonhttptest.WithNonEmptyResponseHeader(headerName),
-		)
+		c, endpoint := newClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set(headerName, headerValue)
+		}))
+
+		assert(t, testResult{}, func(m *mock) {
+			jsonhttptest.Request(m, c, http.MethodGet, endpoint, http.StatusOK,
+				jsonhttptest.WithExpectedResponseHeader(headerName, headerValue),
+				jsonhttptest.WithNonEmptyResponseHeader(headerName),
+			)
+		})
+	})
+
+	t.Run("without header", func(t *testing.T) {
+		t.Parallel()
+
+		c, endpoint := newClient(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+
+		tr := testResult{
+			errors: []string{
+				fmt.Sprintf(`header key=[%v] should be set`, headerName),
+				fmt.Sprintf(`header values for key=[%v] not as expected, got: [], want [%v]`, headerName, headerValue),
+			},
+		}
+
+		assert(t, tr, func(m *mock) {
+			jsonhttptest.Request(m, c, http.MethodGet, endpoint, http.StatusOK,
+				jsonhttptest.WithNonEmptyResponseHeader(headerName),
+				jsonhttptest.WithExpectedResponseHeader(headerName, headerValue),
+			)
+		})
 	})
 }
 

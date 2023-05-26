@@ -54,6 +54,12 @@ func Request(tb testing.TB, client *http.Client, method, url string, responseCod
 		tb.Errorf("got response status %s, want %v %s", resp.Status, responseCode, http.StatusText(responseCode))
 	}
 
+	for _, key := range o.nonEmptyResponseHeaders {
+		if val := resp.Header.Get(key); val == "" {
+			tb.Errorf("header key=[%s] should be set", key)
+		}
+	}
+
 	if headers := o.expectedResponseHeaders; headers != nil {
 		for key, values := range headers {
 			got := sort.StringSlice(resp.Header.Values(key))
@@ -70,12 +76,6 @@ func Request(tb testing.TB, client *http.Client, method, url string, responseCod
 			if want != got {
 				tb.Errorf("http.Response.ContentLength not as expected, got %v, want %v", got, want)
 			}
-		}
-	}
-
-	for _, key := range o.nonEmptyResponseHeaders {
-		if val := resp.Header.Get(key); val == "" {
-			tb.Errorf("header key=[%s] should be set", key)
 		}
 	}
 
