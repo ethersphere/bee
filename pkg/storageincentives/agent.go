@@ -277,6 +277,8 @@ func (a *Agent) handleCommit(ctx context.Context, round uint64) (bool, error) {
 		return false, err
 	}
 
+	a.state.SetLastPlayedRound(round)
+
 	return true, nil
 }
 
@@ -316,7 +318,6 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) (bool, error) {
 		return false, nil
 	}
 
-	a.state.SetLastSelectedRound(round)
 	a.metrics.ClaimPhase.Inc()
 
 	isWinner, err := a.contract.IsWinner(ctx)
@@ -370,6 +371,8 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) (bool, error) {
 
 func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 
+	a.state.SetLastSelectedRound(round)
+
 	if !a.state.IsFullySynced() {
 		a.logger.Info("skipping round because node is not fully synced")
 		return false, nil
@@ -416,7 +419,6 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 		return false, err
 	}
 
-	a.state.SetLastPlayedRound(round)
 	a.state.SetSampleData(round, sample)
 
 	return true, nil
