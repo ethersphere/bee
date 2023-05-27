@@ -371,8 +371,6 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) (bool, error) {
 
 func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 
-	a.state.SetLastSelectedRound(round)
-
 	if !a.state.IsFullySynced() {
 		a.logger.Info("skipping round because node is not fully synced")
 		return false, nil
@@ -399,6 +397,8 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 		a.logger.Info("not playing in this round")
 		return false, nil
 	}
+
+	a.state.SetLastSelectedRound(round + 1)
 
 	_, hasFunds, err := a.HasEnoughFundsToPlay(ctx)
 	if err != nil {
