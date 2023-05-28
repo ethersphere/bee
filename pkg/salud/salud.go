@@ -172,7 +172,7 @@ func (s *service) salud(mode string, minPeersPerbin int) {
 	pDur := percentileDur(peers, percentile)
 	pConns := percentileConns(peers, percentile)
 	commitment := commitment(peers)
-	reserveSize := reserveSize(peers, networkRadius, 0.9)
+	reserveSize := reserveSize(peers, networkRadius, (1-percentile)/2)
 
 	s.metrics.AvgDur.Set(avgDur)
 	s.metrics.PDur.Set(pDur)
@@ -180,6 +180,7 @@ func (s *service) salud(mode string, minPeersPerbin int) {
 	s.metrics.NetworkRadius.Set(float64(networkRadius))
 	s.metrics.NeighborhoodRadius.Set(float64(nHoodRadius))
 	s.metrics.Commitment.Set(float64(commitment))
+	s.metrics.ReserveSize.Set(float64(reserveSize))
 
 	s.logger.Debug("computed", "average", avgDur, "percentile", percentile, "pDur", pDur, "pConns", pConns, "network_radius", networkRadius, "neighborhood_radius", nHoodRadius, "batch_commitment", commitment, "reserve_size", reserveSize)
 
@@ -218,7 +219,7 @@ func (s *service) salud(mode string, minPeersPerbin int) {
 	if s.rad.StorageRadius() != networkRadius {
 		selfHealth = false
 		s.logger.Warning("node is unhealthy due to storage radius discrepency", "self_radius", s.rad.StorageRadius(), "network_radius", networkRadius)
-	} else if percentageErr(float64(s.reserve.ReserveSize()), float64(reserveSize)) > maxReserveSizePercentageErr {
+	} else if reserveSize > 0 && percentageErr(float64(s.reserve.ReserveSize()), float64(reserveSize)) > maxReserveSizePercentageErr {
 		s.logger.Warning("node is unhealthy due to reserve size discrepency", "self_size", s.reserve.ReserveSize(), "network_size", reserveSize)
 		selfHealth = false
 	}
@@ -304,8 +305,8 @@ func commitment(peers []peer) uint64 {
 // reserveSize returns the avg reserveSize, trimmed by p percent
 func reserveSize(peers []peer, radius uint8, p float64) uint64 {
 
-	startIndex := int(float64(len(peers)) * (1 - p))
-	endIndex := int(float64(len(peers)) * p)
+	startIndex := int(float64(len(peers)) * p)
+	endIndex := int(float64(len(peers)) * (1 - p))
 
 	sort.Slice(peers, func(i, j int) bool {
 		return peers[i].status.ReserveSize < peers[j].status.ReserveSize // ascendings
@@ -321,7 +322,12 @@ func reserveSize(peers []peer, radius uint8, p float64) uint64 {
 		}
 	}
 
-	return avg / count
+	if count > 0 {
+		return avg / count
+	}
+
+	return 0
+
 }
 
 func percentageErr(x, y float64) float64 {

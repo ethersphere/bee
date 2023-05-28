@@ -16,6 +16,7 @@ type metrics struct {
 	NetworkRadius      prometheus.Gauge
 	NeighborhoodRadius prometheus.Gauge
 	Commitment         prometheus.Gauge
+	ReserveSize        prometheus.Gauge
 	Healthy            prometheus.Counter
 	Unhealthy          prometheus.Counter
 }
@@ -71,6 +72,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "batch_commitment",
 			Help:      "Most common batch commitment.",
+		}),
+		ReserveSize: prometheus.NewGauge(prometheus.GaugeOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "reserve_size",
+			Help:      "Avg reserve size of the peers.",
 		}),
 	}
 }
