@@ -408,20 +408,19 @@ func (p *Puller) addPeerInterval(peer swarm.Address, bin uint8, start, end uint6
 	return p.statestore.Put(peerStreamKey, i)
 }
 
-func (p *Puller) resetIntervals(upto uint8) error {
+func (p *Puller) resetIntervals(upto uint8) (err error) {
 	p.intervalMtx.Lock()
 	defer p.intervalMtx.Unlock()
 
 	for bin := uint8(0); bin < upto; bin++ {
-		err := p.statestore.Iterate(binIntervalKey(bin), func(key, _ []byte) (stop bool, err error) {
-			return false, p.statestore.Delete(string(key))
-		})
-		if err != nil {
-			return err
-		}
+		err = errors.Join(err,
+			p.statestore.Iterate(binIntervalKey(bin), func(key, _ []byte) (stop bool, err error) {
+				return false, p.statestore.Delete(string(key))
+			}),
+		)
 	}
 
-	return nil
+	return
 }
 
 func (p *Puller) nextPeerInterval(peer swarm.Address, bin uint8) (start, end uint64, empty bool, err error) {
