@@ -1095,13 +1095,11 @@ outer:
 	default:
 	}
 
-	err := k.discovery.BroadcastPeers(ctx, peer, addrs...)
-	if err != nil {
-		k.logger.Error(err, "could not broadcast to peer", "peer_address", peer)
-		_ = k.p2p.Disconnect(peer, "failed broadcasting to peer")
+	if err := k.discovery.BroadcastPeers(ctx, peer, addrs...); err != nil {
+		k.logger.Debug("could not broadcast to peer", "peer_address", peer, "error", err)
 	}
 
-	return err
+	return nil
 }
 
 // AnnounceTo announces a selected peer to another.
