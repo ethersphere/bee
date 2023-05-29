@@ -537,6 +537,7 @@ func newPuller(t *testing.T, ops opts) (*puller.Puller, storage.StateStorer, *ka
 		SyncSleepDur: ops.syncSleepDur,
 	}
 	p := puller.New(s, kad, ops.rs, ps, nil, logger, o, 0)
+	p.Start()
 
 	testutil.CleanupCloser(t, p)
 

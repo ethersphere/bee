@@ -36,9 +36,10 @@ const (
 
 var errMaxRadius = errors.New("max radius reached")
 
-type SyncReporter interface {
+type Syncer interface {
 	// Number of active historical syncing jobs.
 	SyncRate() float64
+	Start()
 }
 
 func threshold(capacity int) int { return capacity * 5 / 10 }
@@ -55,17 +56,20 @@ func (db *DB) reserveWorker(capacity int, warmupDur, wakeUpDur time.Duration, ra
 		return
 	}
 
+	// possibly a fresh node, acquire initial radius externally
 	if db.StorageRadius() == 0 {
-
 		r, err := radius()
 		if err != nil {
 			db.logger.Error(err, "reserve worker initial radius")
-		}
-
-		if err := db.reserve.SetRadius(db.repo.IndexStore(), r); err != nil {
-			db.logger.Error(err, "reserve set radius")
+		} else {
+			if err := db.reserve.SetRadius(db.repo.IndexStore(), r); err != nil {
+				db.logger.Error(err, "reserve set radius")
+			}
 		}
 	}
+
+	// syncing can now begin now that the reserver worker is running
+	db.syncer.Start()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {

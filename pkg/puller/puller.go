@@ -77,6 +77,8 @@ type Puller struct {
 	histSync        *atomic.Uint64 // current number of gorourines doing historical syncing
 	histSyncLimiter chan struct{}  // historical syncing limiter
 	rate            *rate.Rate     // rate of historical syncing
+
+	start sync.Once
 }
 
 func New(
@@ -112,14 +114,17 @@ func New(
 		rate:              rate.New(DefaultHistRateWindow),
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	p.cancel = cancel
-
-	p.shallowBinsWarmupTime = time.Now().Add(o.ShallowBinsWarmupDur)
-
-	p.wg.Add(1)
-	go p.manage(ctx, warmupTime)
 	return p
+}
+
+func (p *Puller) Start() {
+	p.start.Do(func() {
+		ctx, cancel := context.WithCancel(context.Background())
+		p.cancel = cancel
+
+		p.wg.Add(1)
+		go p.manage(ctx)
+	})
 }
 
 func (p *Puller) ActiveHistoricalSyncing() uint64 {
@@ -130,17 +135,11 @@ func (p *Puller) SyncRate() float64 {
 	return p.rate.Rate()
 }
 
-func (p *Puller) manage(ctx context.Context, warmupDur time.Duration) {
+func (p *Puller) manage(ctx context.Context) {
 	defer p.wg.Done()
 
 	c, unsubscribe := p.topology.SubscribeTopologyChange()
 	defer unsubscribe()
-
-	select {
-	case <-time.After(warmupDur):
-	case <-ctx.Done():
-		return
-	}
 
 	p.logger.Info("puller: warmup period complete, worker starting.")
 
@@ -189,14 +188,14 @@ func (p *Puller) manage(ctx context.Context, warmupDur time.Duration) {
 	defer tick.Stop()
 
 	for {
+
+		onChange()
+
 		select {
 		case <-ctx.Done():
 			return
 		case <-tick.C:
-			onChange()
 		case <-c:
-			tick.Reset(recalcPeersDur)
-			onChange()
 		}
 	}
 }

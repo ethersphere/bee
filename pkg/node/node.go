@@ -954,14 +954,15 @@ func NewBee(
 	rC, unsub := saludService.SubscribeNetworkStorageRadius()
 	initialRadiusC := make(chan struct{})
 	var radius atomic.Uint32
-	radius.Store(uint32(swarm.MaxBins))
+	radius.Store(uint32(swarm.MaxPO))
 
 	go func() {
 		for {
 			select {
 			case r := <-rC:
+				prev := radius.Load()
 				radius.Store(uint32(r))
-				if radius.Load() == uint32(swarm.MaxBins) {
+				if prev == uint32(swarm.MaxPO) {
 					close(initialRadiusC)
 				}
 			case <-ctx.Done():
@@ -971,8 +972,9 @@ func NewBee(
 		}
 	}()
 
-	radiusFunc := func() (uint8, error) {
-		if radius.Load() == uint32(swarm.MaxBins) {
+	networkRadiusFunc := func() (uint8, error) {
+		r := radius.Load()
+		if r == uint32(swarm.MaxPO) {
 			select {
 			case <-initialRadiusC:
 			case <-ctx.Done():
@@ -980,10 +982,10 @@ func NewBee(
 			}
 		}
 
-		return uint8(radius.Load()), nil
+		return uint8(r), nil
 	}
 
-	pusherService := pusher.New(networkID, localStore, radiusFunc, pushSyncProtocol, validStamp, logger, tracer, warmupTime, pusher.DefaultRetryCount)
+	pusherService := pusher.New(networkID, localStore, networkRadiusFunc, pushSyncProtocol, validStamp, logger, tracer, warmupTime, pusher.DefaultRetryCount)
 	b.pusherCloser = pusherService
 
 	pusherService.AddFeed(localStore.PusherFeed())
@@ -1038,7 +1040,7 @@ func NewBee(
 		pullerService = puller.New(stateStore, kad, localStore, pullSyncProtocol, p2ps, logger, pullerOpts, warmupTime)
 		b.pullerCloser = pullerService
 
-		localStore.StartReserveWorker(pullerService, radiusFunc)
+		localStore.StartReserveWorker(pullerService, networkRadiusFunc)
 
 		nodeStatus.SetStorage(localStore)
 		nodeStatus.SetSync(pullerService)

@@ -158,6 +158,7 @@ func (s *service) salud(mode string, minPeersPerbin int) {
 	wg.Wait()
 
 	if len(peers) == 0 {
+		s.publishRadius(0)
 		return
 	}
 
