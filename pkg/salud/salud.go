@@ -28,7 +28,7 @@ const (
 	wakeup                      = time.Minute
 	requestTimeout              = time.Second * 10
 	DefaultMinPeersPerBin       = 3
-	maxReserveSizePercentageErr = 0.02
+	maxReserveSizePercentageErr = 0.02 // 2%
 )
 
 type topologyDriver interface {
@@ -173,6 +173,7 @@ func (s *service) salud(mode string, minPeersPerbin int) {
 	pConns := percentileConns(peers, percentile)
 	commitment := commitment(peers)
 	reserveSize := reserveSize(peers, networkRadius, (1-percentile)/2)
+	reserveSizePercentErr := percentageErr(float64(s.reserve.ReserveSize()), float64(reserveSize))
 
 	s.metrics.AvgDur.Set(avgDur)
 	s.metrics.PDur.Set(pDur)
@@ -180,7 +181,7 @@ func (s *service) salud(mode string, minPeersPerbin int) {
 	s.metrics.NetworkRadius.Set(float64(networkRadius))
 	s.metrics.NeighborhoodRadius.Set(float64(nHoodRadius))
 	s.metrics.Commitment.Set(float64(commitment))
-	s.metrics.ReserveSize.Set(float64(reserveSize))
+	s.metrics.ReserveSizePercentErr.Set(reserveSizePercentErr)
 
 	s.logger.Debug("computed", "average", avgDur, "percentile", percentile, "pDur", pDur, "pConns", pConns, "network_radius", networkRadius, "neighborhood_radius", nHoodRadius, "batch_commitment", commitment, "reserve_size", reserveSize)
 
@@ -219,7 +220,7 @@ func (s *service) salud(mode string, minPeersPerbin int) {
 	if s.rad.StorageRadius() != networkRadius {
 		selfHealth = false
 		s.logger.Warning("node is unhealthy due to storage radius discrepency", "self_radius", s.rad.StorageRadius(), "network_radius", networkRadius)
-	} else if reserveSize > 0 && percentageErr(float64(s.reserve.ReserveSize()), float64(reserveSize)) > maxReserveSizePercentageErr {
+	} else if reserveSize > 0 && reserveSizePercentErr > maxReserveSizePercentageErr {
 		s.logger.Warning("node is unhealthy due to reserve size discrepency", "self_size", s.reserve.ReserveSize(), "network_size", reserveSize)
 		selfHealth = false
 	}
@@ -330,6 +331,8 @@ func reserveSize(peers []peer, radius uint8, p float64) uint64 {
 
 }
 
+// percentageErr returns the absolute value of the percentage difference between x and y,
+// in the range of [0, 1].
 func percentageErr(x, y float64) float64 {
 	return math.Abs((x - y) / y)
 }

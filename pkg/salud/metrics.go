@@ -10,15 +10,15 @@ import (
 )
 
 type metrics struct {
-	AvgDur             prometheus.Gauge
-	PDur               prometheus.Gauge
-	PConns             prometheus.Gauge
-	NetworkRadius      prometheus.Gauge
-	NeighborhoodRadius prometheus.Gauge
-	Commitment         prometheus.Gauge
-	ReserveSize        prometheus.Gauge
-	Healthy            prometheus.Counter
-	Unhealthy          prometheus.Counter
+	AvgDur                prometheus.Gauge
+	PDur                  prometheus.Gauge
+	PConns                prometheus.Gauge
+	NetworkRadius         prometheus.Gauge
+	NeighborhoodRadius    prometheus.Gauge
+	Commitment            prometheus.Gauge
+	ReserveSizePercentErr prometheus.Gauge
+	Healthy               prometheus.Counter
+	Unhealthy             prometheus.Counter
 }
 
 func newMetrics() metrics {
@@ -73,11 +73,11 @@ func newMetrics() metrics {
 			Name:      "batch_commitment",
 			Help:      "Most common batch commitment.",
 		}),
-		ReserveSize: prometheus.NewGauge(prometheus.GaugeOpts{
+		ReserveSizePercentErr: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
-			Name:      "reserve_size",
-			Help:      "Avg reserve size of the peers.",
+			Name:      "reserve_size_percentage_err",
+			Help:      "Pecentage error of the reservesize relative to the network average.",
 		}),
 	}
 }
