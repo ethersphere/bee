@@ -84,6 +84,6 @@ func (db *DB) HasPin(root swarm.Address) (has bool, err error) {
 	return pinstore.HasPin(db.repo.IndexStore(), root)
 }
 
-func (db *DB) IteratePinCollectionChunks(root swarm.Address, iterateFn func(swarm.Address) (bool, error)) error {
+func (db *DB) IteratePinCollection(root swarm.Address, iterateFn func(swarm.Address) (bool, error)) error {
 	return pinstore.IterateCollection(db.repo.IndexStore(), root, iterateFn)
 }

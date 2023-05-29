@@ -171,9 +171,9 @@ func (p pinChunkItem) String() string {
 
 // NewCollection returns a putter wrapped around the passed storage.
 // The putter will add the chunk to Chunk store if it doesnt exists within this collection.
+// It will create a new UUID for the collection which can be used to iterate on all the chunks
 // that are part of this collection. The root pin is only updated on successful close of this
 // Putter.
-// If no UUID is specified in the options, a new UUID will be generated for this collection.
 func NewCollection(st internal.Storage) internal.PutterCloserWithReference {
 	return &collectionPutter{
 		collection: &pinCollectionItem{UUID: newUUID()},

@@ -251,7 +251,7 @@ func dbExportPinningCmd(cmd *cobra.Command) {
 			var nTotalChunks int64
 			for _, root := range pins {
 				var nChunks int64
-				err = db.IteratePinCollectionChunks(root, func(addr swarm.Address) (stop bool, err error) {
+				err = db.IteratePinCollection(root, func(addr swarm.Address) (stop bool, err error) {
 					logger.Debug("exporting chunk", "root", root.String(), "address", addr.String())
 					chunk, err := db.ChunkStore().Get(cmd.Context(), addr)
 					if err != nil {

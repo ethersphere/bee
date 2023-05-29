@@ -162,7 +162,7 @@ func TestDBExportImportPinning(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = db2.IteratePinCollectionChunks(rootAddr, func(ch swarm.Address) (bool, error) {
+		err = db2.IteratePinCollection(rootAddr, func(ch swarm.Address) (bool, error) {
 			chunks[ch.String()]++
 			return false, nil
 		})

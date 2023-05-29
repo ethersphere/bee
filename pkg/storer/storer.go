@@ -92,7 +92,7 @@ type PinStore interface {
 }
 
 type PinIterator interface {
-	IteratePinCollectionChunks(root swarm.Address, iterateFn func(swarm.Address) (bool, error)) error
+	IteratePinCollection(root swarm.Address, iterateFn func(swarm.Address) (bool, error)) error
 }
 
 // CacheStore is a logical component of the storer that deals with cache
