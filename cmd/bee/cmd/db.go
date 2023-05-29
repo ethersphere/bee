@@ -455,9 +455,6 @@ func dbImportPinningCmd(cmd *cobra.Command) {
 
 				collection, ok := collections[rootAddr]
 				if !ok {
-					if err != nil {
-						return fmt.Errorf("error parsing address: %w", err)
-					}
 					collection, err = db.NewCollection(cmd.Context())
 					if err != nil {
 						return fmt.Errorf("error creating collection: %w", err)
@@ -482,7 +479,10 @@ func dbImportPinningCmd(cmd *cobra.Command) {
 
 			for addr, collection := range collections {
 				rootAddr, _ := swarm.ParseHexAddress(addr)
-				collection.Done(rootAddr)
+				err = collection.Done(rootAddr)
+				if err != nil {
+					return fmt.Errorf("pinning collection: %w", err)
+				}
 			}
 
 			logger.Info("pinning database imported successfully", "file", args[0], "total_collections", len(collections), "total_records", nChunks)
