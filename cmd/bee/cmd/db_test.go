@@ -1,4 +1,4 @@
-// Copyright 2021 The Swarm Authors. All rights reserved.
+// Copyright 2023 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -11,8 +11,9 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/cmd/bee/cmd"
+	"github.com/ethersphere/bee/pkg/node"
 	"github.com/ethersphere/bee/pkg/postage"
-	testing2 "github.com/ethersphere/bee/pkg/storage/testing"
+	storagetest "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
 	kademlia "github.com/ethersphere/bee/pkg/topology/mock"
@@ -31,13 +32,13 @@ func TestDBExportImport(t *testing.T) {
 		Batchstore:      new(postage.NoOpBatchStore),
 		RadiusSetter:    kademlia.NewTopologyDriver(),
 		Logger:          testutil.NewLogger(t),
-		ReserveCapacity: 4_194_304,
+		ReserveCapacity: node.ReserveCapacity,
 	}, dir1)
 
 	chunks := make(map[string]int)
 	nChunks := 10
 	for i := 0; i < nChunks; i++ {
-		ch := testing2.GenerateTestRandomChunk()
+		ch := storagetest.GenerateTestRandomChunk()
 		err := db1.ReservePut(ctx, ch)
 		if err != nil {
 			t.Fatal(err)
@@ -61,7 +62,7 @@ func TestDBExportImport(t *testing.T) {
 		Batchstore:      new(postage.NoOpBatchStore),
 		RadiusSetter:    kademlia.NewTopologyDriver(),
 		Logger:          testutil.NewLogger(t),
-		ReserveCapacity: 4_194_304,
+		ReserveCapacity: node.ReserveCapacity,
 	}, dir2)
 
 	err = db2.ReserveIterateChunks(func(chunk swarm.Chunk) (bool, error) {
@@ -82,7 +83,7 @@ func TestDBExportImport(t *testing.T) {
 
 func TestMarshalChunk(t *testing.T) {
 	t.Parallel()
-	ch := testing2.GenerateTestRandomChunk()
+	ch := storagetest.GenerateTestRandomChunk()
 	b, err := cmd.MarshalChunkToBinary(ch)
 	if err != nil {
 		t.Fatal(err)

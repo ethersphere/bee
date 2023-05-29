@@ -13,6 +13,8 @@ import (
 	"io"
 	"os"
 	"strings"
+
+	"github.com/ethersphere/bee/pkg/node"
 	//localstore "github.com/ethersphere/bee/pkg/_localstore"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/storer"
@@ -139,7 +141,7 @@ func dbExportReserveCmd(cmd *cobra.Command) {
 				Logger:          logger,
 				RadiusSetter:    noopRadiusSetter{},
 				Batchstore:      new(postage.NoOpBatchStore),
-				ReserveCapacity: 4_194_304,
+				ReserveCapacity: node.ReserveCapacity,
 			})
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
@@ -152,7 +154,7 @@ func dbExportReserveCmd(cmd *cobra.Command) {
 			} else {
 				f, err := os.Create(args[0])
 				if err != nil {
-					return fmt.Errorf("error opening output file: %w", err)
+					return fmt.Errorf("opening output file: %w", err)
 				}
 				defer f.Close()
 				out = f
@@ -164,7 +166,7 @@ func dbExportReserveCmd(cmd *cobra.Command) {
 				logger.Debug("exporting chunk", "address", chunk.Address().String())
 				b, err := MarshalChunkToBinary(chunk)
 				if err != nil {
-					return true, fmt.Errorf("error marshaling chunk: %w", err)
+					return true, fmt.Errorf("marshaling chunk: %w", err)
 				}
 				hdr := &tar.Header{
 					Name: chunk.Address().String(),
@@ -172,16 +174,16 @@ func dbExportReserveCmd(cmd *cobra.Command) {
 					Mode: 0600,
 				}
 				if err := tw.WriteHeader(hdr); err != nil {
-					return true, fmt.Errorf("error writing header: %w", err)
+					return true, fmt.Errorf("writing header: %w", err)
 				}
 				if _, err := tw.Write(b); err != nil {
-					return true, fmt.Errorf("error writing chunk: %w", err)
+					return true, fmt.Errorf("writing chunk: %w", err)
 				}
 				counter++
 				return false, nil
 			})
 			if err != nil {
-				return fmt.Errorf("error exporting database: %w", err)
+				return fmt.Errorf("exporting database: %w", err)
 			}
 			logger.Info("database exported successfully", "file", args[0], "total_records", counter)
 			return nil
@@ -233,7 +235,7 @@ func dbImportReserveCmd(cmd *cobra.Command) {
 				Logger:          logger,
 				RadiusSetter:    noopRadiusSetter{},
 				Batchstore:      new(postage.NoOpBatchStore),
-				ReserveCapacity: 4_194_304,
+				ReserveCapacity: node.ReserveCapacity,
 			})
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
@@ -246,7 +248,7 @@ func dbImportReserveCmd(cmd *cobra.Command) {
 			} else {
 				f, err := os.Open(args[0])
 				if err != nil {
-					return fmt.Errorf("error opening input file: %w", err)
+					return fmt.Errorf("opening input file: %w", err)
 				}
 				defer f.Close()
 				in = f
@@ -260,16 +262,16 @@ func dbImportReserveCmd(cmd *cobra.Command) {
 					break
 				}
 				if err != nil {
-					return fmt.Errorf("error reading tar header: %w", err)
+					return fmt.Errorf("reading tar header: %w", err)
 				}
 				b := make([]byte, hdr.Size)
 				if _, err := io.ReadFull(tr, b); err != nil {
-					return fmt.Errorf("error reading chunk: %w", err)
+					return fmt.Errorf("reading chunk: %w", err)
 				}
 
 				chunk, err := UnmarshalChunkFromBinary(b, hdr.Name)
 				if err != nil {
-					return fmt.Errorf("error unmarshaling chunk: %w", err)
+					return fmt.Errorf("unmarshaling chunk: %w", err)
 				}
 				logger.Debug("importing chunk", "address", chunk.Address().String())
 				if err := db.ReservePut(cmd.Context(), chunk); err != nil {
@@ -398,7 +400,7 @@ func MarshalChunkToBinary(c swarm.Chunk) ([]byte, error) {
 
 	stampBytes, err := c.Stamp().MarshalBinary()
 	if err != nil {
-		return nil, fmt.Errorf("error marshalling stamp: %w", err)
+		return nil, fmt.Errorf("marshalling stamp: %w", err)
 	}
 	buf.Write(stampBytes)
 	return buf.Bytes(), nil
@@ -411,29 +413,29 @@ func UnmarshalChunkFromBinary(data []byte, address string) (swarm.Chunk, error) 
 	_, err := buf.Read(dataLenBytes)
 	dataLen := binary.BigEndian.Uint32(dataLenBytes)
 	if err != nil {
-		return nil, fmt.Errorf("error reading chunk data size: %w", err)
+		return nil, fmt.Errorf("reading chunk data size: %w", err)
 	}
 
 	b := make([]byte, dataLen)
 	_, err = buf.Read(b)
 	if err != nil {
-		return nil, fmt.Errorf("error reading chunk data: %w", err)
+		return nil, fmt.Errorf("reading chunk data: %w", err)
 	}
 
 	addr, err := swarm.ParseHexAddress(address)
 	if err != nil {
-		return nil, fmt.Errorf("error parsing address: %w", err)
+		return nil, fmt.Errorf("parsing address: %w", err)
 	}
 
 	stampBytes := make([]byte, postage.StampSize)
 	_, err = buf.Read(stampBytes)
 	if err != nil {
-		return nil, fmt.Errorf("error reading stamp: %w", err)
+		return nil, fmt.Errorf("reading stamp: %w", err)
 	}
 	stamp := new(postage.Stamp)
 	err = stamp.UnmarshalBinary(stampBytes)
 	if err != nil {
-		return nil, fmt.Errorf("error unmarshalling stamp: %w", err)
+		return nil, fmt.Errorf("unmarshalling stamp: %w", err)
 	}
 
 	if buf.Len() != 0 {
