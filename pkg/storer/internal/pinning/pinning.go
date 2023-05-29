@@ -106,8 +106,9 @@ func (p *pinCollectionItem) Unmarshal(buf []byte) error {
 	} else {
 		ni.Addr = swarm.NewAddress(buf[:encryption.ReferenceSize]).Clone()
 	}
-	ni.UUID = append(make([]byte, 0, uuidSize), buf[swarm.HashSize:swarm.HashSize+uuidSize]...)
-	statBuf := buf[swarm.HashSize+uuidSize:]
+	off := encryption.ReferenceSize
+	ni.UUID = append(make([]byte, 0, uuidSize), buf[off:off+uuidSize]...)
+	statBuf := buf[off+uuidSize:]
 	ni.Stat.Total = binary.LittleEndian.Uint64(statBuf[:8])
 	ni.Stat.DupInCollection = binary.LittleEndian.Uint64(statBuf[8:16])
 	*p = *ni

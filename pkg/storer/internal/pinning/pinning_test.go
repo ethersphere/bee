@@ -331,7 +331,7 @@ func TestPinCollectionItem(t *testing.T) {
 		name: "max values",
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
 			Item: &pinstore.PinCollectionItem{
-				Addr: swarm.NewAddress(storagetest.MaxAddressBytes[:]),
+				Addr: swarm.NewAddress(storagetest.MaxEncryptedRefBytes[:]),
 				UUID: pinstore.NewUUID(),
 				Stat: pinstore.CollectionStat{
 					Total:           math.MaxUint64,
