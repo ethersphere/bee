@@ -943,11 +943,44 @@ func NewBee(
 	// set the pushSyncer in the PSS
 	pssService.SetPushSyncer(pushSyncProtocol)
 
-	var radiusFunc func() uint8
-	if o.FullNodeMode {
-		radiusFunc = func() uint8 { return localStore.StorageRadius() }
-	} else {
-		radiusFunc = func() uint8 { return kad.NeighborhoodDepth() }
+	nodeStatus := status.NewService(logger, p2ps, kad, beeNodeMode.String(), batchStore)
+	if err = p2ps.AddProtocol(nodeStatus.Protocol()); err != nil {
+		return nil, fmt.Errorf("status service: %w", err)
+	}
+
+	saludService := salud.New(nodeStatus, kad, localStore, logger, warmupTime, api.FullMode.String(), salud.DefaultMinPeersPerBin)
+	b.saludCloser = saludService
+
+	rC, unsub := saludService.SubscribeNetworkStorageRadius()
+	initialRadiusC := make(chan struct{})
+	var radius atomic.Uint32
+	radius.Store(uint32(swarm.MaxBins))
+
+	go func() {
+		for {
+			select {
+			case r := <-rC:
+				radius.Store(uint32(r))
+				if radius.Load() == uint32(swarm.MaxBins) {
+					close(initialRadiusC)
+				}
+			case <-ctx.Done():
+				unsub()
+				return
+			}
+		}
+	}()
+
+	radiusFunc := func() (uint8, error) {
+		if radius.Load() == uint32(swarm.MaxBins) {
+			select {
+			case <-initialRadiusC:
+			case <-ctx.Done():
+				return 0, ctx.Err()
+			}
+		}
+
+		return uint8(radius.Load()), nil
 	}
 
 	pusherService := pusher.New(networkID, localStore, radiusFunc, pushSyncProtocol, validStamp, logger, tracer, warmupTime, pusher.DefaultRetryCount)
@@ -981,11 +1014,6 @@ func NewBee(
 		return nil, fmt.Errorf("pullsync protocol: %w", err)
 	}
 
-	nodeStatus := status.NewService(logger, p2ps, kad, beeNodeMode.String(), batchStore)
-	if err = p2ps.AddProtocol(nodeStatus.Protocol()); err != nil {
-		return nil, fmt.Errorf("status service: %w", err)
-	}
-
 	stakingContractAddress := chainCfg.StakingAddress
 	if o.StakingContractAddress != "" {
 		if !common.IsHexAddress(o.StakingContractAddress) {
@@ -1000,9 +1028,6 @@ func NewBee(
 	}
 	stakingContract := staking.New(swarmAddress, overlayEthAddress, stakingContractAddress, stakingContractABI, bzzTokenAddress, transactionService, common.BytesToHash(nonce))
 
-	saludService := salud.New(nodeStatus, kad, localStore, logger, warmupTime, api.FullMode.String(), salud.DefaultMinPeersPerBin)
-	b.saludCloser = saludService
-
 	var (
 		pullerService *puller.Puller
 		agent         *storageincentives.Agent
@@ -1013,7 +1038,7 @@ func NewBee(
 		pullerService = puller.New(stateStore, kad, localStore, pullSyncProtocol, p2ps, logger, pullerOpts, warmupTime)
 		b.pullerCloser = pullerService
 
-		localStore.StartReserveWorker(pullerService, saludService)
+		localStore.StartReserveWorker(pullerService, radiusFunc)
 
 		nodeStatus.SetStorage(localStore)
 		nodeStatus.SetSync(pullerService)

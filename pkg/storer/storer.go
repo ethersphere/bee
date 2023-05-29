@@ -530,11 +530,11 @@ func (db *DB) SetRetrievalService(r retrieval.Interface) {
 	db.retrieval = r
 }
 
-func (db *DB) StartReserveWorker(s SyncReporter, f NetworkRadius) {
+func (db *DB) StartReserveWorker(s SyncReporter, radius func() (uint8, error)) {
 	db.setSyncerOnce.Do(func() {
 		db.syncer = s
 		db.reserveWg.Add(1)
-		go db.reserveWorker(db.reserve.Capacity(), db.opts.warmupDuration, db.opts.wakeupDuration, f)
+		go db.reserveWorker(db.reserve.Capacity(), db.opts.warmupDuration, db.opts.wakeupDuration, radius)
 	})
 }
 

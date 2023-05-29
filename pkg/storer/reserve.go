@@ -41,14 +41,9 @@ type SyncReporter interface {
 	SyncRate() float64
 }
 
-type NetworkRadius interface {
-	// Subscribe to network storage radius updates.
-	SubscribeNetworkStorageRadius(func(uint8))
-}
-
 func threshold(capacity int) int { return capacity * 5 / 10 }
 
-func (db *DB) reserveWorker(capacity int, warmupDur, wakeUpDur time.Duration, f NetworkRadius) {
+func (db *DB) reserveWorker(capacity int, warmupDur, wakeUpDur time.Duration, radius func() (uint8, error)) {
 	defer db.reserveWg.Done()
 
 	overCapTrigger, overCapUnsub := db.events.Subscribe(reserveOverCapacity)
@@ -61,17 +56,14 @@ func (db *DB) reserveWorker(capacity int, warmupDur, wakeUpDur time.Duration, f 
 	}
 
 	if db.StorageRadius() == 0 {
-		initialRadius := make(chan uint8, 1)
-		f.SubscribeNetworkStorageRadius(func(r uint8) {
-			initialRadius <- r
-		})
 
-		select {
-		case radius := <-initialRadius:
-			if err := db.reserve.SetRadius(db.repo.IndexStore(), radius); err != nil {
-				db.logger.Error(err, "reserve set radius")
-			}
-		case <-db.quit:
+		r, err := radius()
+		if err != nil {
+			db.logger.Error(err, "reserve worker initial radius")
+		}
+
+		if err := db.reserve.SetRadius(db.repo.IndexStore(), r); err != nil {
+			db.logger.Error(err, "reserve set radius")
 		}
 	}
 

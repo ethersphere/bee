@@ -49,7 +49,7 @@ type service struct {
 	rs            storer.RadiusChecker
 
 	radiusSubsMtx sync.Mutex
-	radiusSubs    []func(uint8)
+	radiusC       []chan uint8
 }
 
 func New(status peerStatus, topology topologyDriver, rs storer.RadiusChecker, logger log.Logger, warmup time.Duration, mode string, minPeersPerbin int) *service {
@@ -220,15 +220,31 @@ func (s *service) IsHealthy() bool {
 func (s *service) publishRadius(r uint8) {
 	s.radiusSubsMtx.Lock()
 	defer s.radiusSubsMtx.Unlock()
-	for _, cb := range s.radiusSubs {
-		cb(r)
+	for _, cb := range s.radiusC {
+		select {
+		case cb <- r:
+		default:
+		}
 	}
 }
 
-func (s *service) SubscribeNetworkStorageRadius(cb func(uint8)) {
+func (s *service) SubscribeNetworkStorageRadius() (<-chan uint8, func()) {
 	s.radiusSubsMtx.Lock()
 	defer s.radiusSubsMtx.Unlock()
-	s.radiusSubs = append(s.radiusSubs, cb)
+
+	c := make(chan uint8, 1)
+	s.radiusC = append(s.radiusC, c)
+
+	return c, func() {
+		s.radiusSubsMtx.Lock()
+		defer s.radiusSubsMtx.Unlock()
+		for i, cc := range s.radiusC {
+			if c == cc {
+				s.radiusC = append(s.radiusC[:i], s.radiusC[i+1:]...)
+				break
+			}
+		}
+	}
 }
 
 // percentileDur finds the p percentile of response duration.
