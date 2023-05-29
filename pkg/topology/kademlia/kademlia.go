@@ -19,11 +19,9 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
-	"github.com/ethersphere/bee/pkg/blocker"
 	"github.com/ethersphere/bee/pkg/discovery"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
-	"github.com/ethersphere/bee/pkg/pingpong"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
@@ -47,10 +45,6 @@ const (
 	// the peerConnectionAttemptTimeout constant must be equal to or greater
 	// than 5 seconds (empirically verified).
 	peerConnectionAttemptTimeout = 15 * time.Second // timeout for establishing a new connection with peer.
-
-	flagTimeout      = 10 * time.Minute // how long before blocking a flagged peer
-	blockDuration    = time.Hour        // how long to blocklist an unresponsive peer for
-	blockWorkerWakup = 30 * time.Second // wake up interval for the blocker worker
 )
 
 // Default option values
@@ -63,8 +57,6 @@ const (
 	defaultShortRetry                  = 30 * time.Second
 	defaultTimeToRetry                 = 2 * defaultShortRetry
 	defaultBroadcastBinSize            = 4
-	defaultPeerPingPollTime            = 5 * time.Minute  // how often to ping a peer
-	defaultPingTimeout                 = 10 * time.Second // timeout for the ping response
 )
 
 var (
@@ -104,7 +96,6 @@ type Options struct {
 	BootnodeOverSaturationPeers *int
 	BroadcastBinSize            *int
 	LowWaterMark                *int
-	PeerPingPollTime            *time.Duration
 }
 
 // kadOptions are made from Options with default values set
@@ -119,8 +110,6 @@ type kadOptions struct {
 
 	TimeToRetry                 time.Duration
 	ShortRetry                  time.Duration
-	PeerPingPollTime            time.Duration
-	PeerPingTimeout             time.Duration
 	BitSuffixLength             int // additional depth of common prefix for bin
 	SaturationPeers             int
 	OverSaturationPeers         int
@@ -142,8 +131,6 @@ func newKadOptions(o Options) kadOptions {
 		// copy or use default
 		TimeToRetry:                 defaultValDuration(o.TimeToRetry, defaultTimeToRetry),
 		ShortRetry:                  defaultValDuration(o.ShortRetry, defaultShortRetry),
-		PeerPingPollTime:            defaultValDuration(o.PeerPingPollTime, defaultPeerPingPollTime),
-		PeerPingTimeout:             defaultValDuration(o.PeerPingPollTime, defaultPingTimeout),
 		BitSuffixLength:             defaultValInt(o.BitSuffixLength, defaultBitSuffixLength),
 		SaturationPeers:             defaultValInt(o.SaturationPeers, defaultSaturationPeers),
 		OverSaturationPeers:         defaultValInt(o.OverSaturationPeers, defaultOverSaturationPeers),
@@ -206,11 +193,9 @@ type Kad struct {
 	wg                sync.WaitGroup
 	waitNext          *waitnext.WaitNext
 	metrics           metrics
-	pinger            pingpong.Interface
 	staticPeer        staticPeerFunc
 	bgBroadcastCtx    context.Context
 	bgBroadcastCancel context.CancelFunc
-	blocker           *blocker.Blocker
 	reachability      p2p.ReachabilityStatus
 }
 
@@ -220,7 +205,7 @@ func New(
 	addressbook addressbook.Interface,
 	discovery discovery.Driver,
 	p2pSvc p2p.Service,
-	pinger pingpong.Interface,
+	metricsDB *shed.DB,
 	logger log.Logger,
 	o Options,
 ) (*Kad, error) {
@@ -260,17 +245,9 @@ func New(
 		halt:              make(chan struct{}),
 		done:              make(chan struct{}),
 		metrics:           newMetrics(),
-		pinger:            pinger,
 		staticPeer:        isStaticPeer(opt.StaticNodes),
 		storageRadius:     swarm.MaxPO,
 	}
-
-	blocklistCallback := func(a swarm.Address) {
-		k.logger.Debug("disconnecting peer for ping failure", "peer_address", a)
-		k.metrics.Blocklist.Inc()
-	}
-
-	k.blocker = blocker.New(p2pSvc, flagTimeout, blockDuration, blockWorkerWakup, blocklistCallback, k.logger)
 
 	if k.opt.PruneFunc == nil {
 		k.opt.PruneFunc = k.pruneOversaturatedBins
@@ -536,11 +513,9 @@ func (k *Kad) manage() {
 	defer close(k.done)
 	defer k.logger.Debug("kademlia manage loop exited")
 
-	ticker := time.NewTicker(k.opt.PeerPingPollTime)
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		<-k.quit
-		ticker.Stop()
 		cancel()
 	}()
 
@@ -583,12 +558,6 @@ func (k *Kad) manage() {
 				return
 			case <-k.quit:
 				return
-			case <-ticker.C:
-				k.wg.Add(1)
-				go func() {
-					defer k.wg.Done()
-					k.recordPeerLatencies(ctx)
-				}()
 			}
 		}
 	}()
@@ -663,44 +632,6 @@ func (k *Kad) manage() {
 			}
 		}
 	}
-}
-
-// recordPeerLatencies tries to record the average
-// peer latencies from the p2p layer.
-func (k *Kad) recordPeerLatencies(ctx context.Context) {
-	loggerV1 := k.logger.V(1).Register()
-
-	var wg sync.WaitGroup
-
-	_ = k.connectedPeers.EachBin(func(addr swarm.Address, _ uint8) (bool, bool, error) {
-		select {
-		case <-ctx.Done():
-			return false, false, nil
-		case <-k.halt:
-			return false, false, nil
-		default:
-		}
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			ctx, cancel := context.WithTimeout(ctx, k.opt.PeerPingTimeout)
-			defer cancel()
-			switch l, err := k.pinger.Ping(ctx, addr, "ping"); {
-			case err != nil:
-				loggerV1.Debug("cannot get latency for peer", "peer_address", addr, "error", err)
-				k.blocker.Flag(addr)
-				k.metrics.Flag.Inc()
-			default:
-				k.blocker.Unflag(addr)
-				k.metrics.Unflag.Inc()
-				k.collector.Record(addr, im.PeerLatency(l))
-				v := k.collector.Inspect(addr).LatencyEWMA
-				k.metrics.PeerLatencyEWMA.Observe(v.Seconds())
-			}
-		}()
-		return false, false, nil
-	})
-	wg.Wait()
 }
 
 // pruneOversaturatedBins disconnects out of depth peers from oversaturated bins
@@ -1380,8 +1311,8 @@ func (k *Kad) UpdateReachability(status p2p.ReachabilityStatus) {
 // UpdateReachability updates node reachability status.
 // The status will be updated only once. Updates to status
 // p2p.ReachabilityStatusUnknown are ignored.
-func (k *Kad) UpdatePeerHealth(peer swarm.Address, health bool) {
-	k.collector.Record(peer, im.PeerHealth(health))
+func (k *Kad) UpdatePeerHealth(peer swarm.Address, health bool, dur time.Duration) {
+	k.collector.Record(peer, im.PeerHealth(health), im.PeerLatency(dur))
 }
 
 // SubscribeTopologyChange returns the channel that signals when the connected peers
@@ -1565,7 +1496,6 @@ func (k *Kad) Halt() {
 func (k *Kad) Close() error {
 	k.logger.Info("kademlia shutting down")
 	close(k.quit)
-	_ = k.blocker.Close()
 	cc := make(chan struct{})
 
 	k.bgBroadcastCancel()

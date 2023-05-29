@@ -7,6 +7,7 @@ package mock
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -109,7 +110,7 @@ func (d *mock) AnnounceTo(_ context.Context, _, _ swarm.Address, _ bool) error {
 	return nil
 }
 
-func (d *mock) UpdatePeerHealth(peer swarm.Address, health bool) {
+func (d *mock) UpdatePeerHealth(peer swarm.Address, health bool, pingDur time.Duration) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 	d.health[peer.ByteString()] = health

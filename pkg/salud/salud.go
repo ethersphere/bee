@@ -32,7 +32,7 @@ const (
 )
 
 type topologyDriver interface {
-	UpdatePeerHealth(peer swarm.Address, health bool)
+	UpdatePeerHealth(peer swarm.Address, health bool, dur time.Duration)
 	topology.PeerIterator
 }
 
@@ -116,10 +116,11 @@ func (s *service) Close() error {
 }
 
 type peer struct {
-	status *status.Snapshot
-	dur    float64
-	addr   swarm.Address
-	bin    uint8
+	status   *status.Snapshot
+	dur      time.Duration
+	addr     swarm.Address
+	bin      uint8
+	neighbor bool
 }
 
 // salud acquires the status snapshot of every peer and computes an nth percentile of response duration and connected
@@ -128,12 +129,11 @@ type peer struct {
 func (s *service) salud(mode string, minPeersPerbin int) {
 
 	var (
-		mtx       sync.Mutex
-		wg        sync.WaitGroup
-		totaldur  float64
-		peers     []peer
-		neighbors int
-		bins      [swarm.MaxBins]int
+		mtx      sync.Mutex
+		wg       sync.WaitGroup
+		totaldur float64
+		peers    []peer
+		bins     [swarm.MaxBins]int
 	)
 
 	_ = s.topology.EachConnectedPeer(func(addr swarm.Address, bin uint8) (stop bool, jumpToNext bool, err error) {
@@ -145,10 +145,11 @@ func (s *service) salud(mode string, minPeersPerbin int) {
 			defer cancel()
 
 			start := time.Now()
-
 			snapshot, err := s.status.PeerSnapshot(ctx, addr)
+			dur := time.Since(start)
+
 			if err != nil {
-				s.topology.UpdatePeerHealth(addr, false)
+				s.topology.UpdatePeerHealth(addr, false, dur)
 				return
 			}
 
@@ -156,15 +157,10 @@ func (s *service) salud(mode string, minPeersPerbin int) {
 				return
 			}
 
-			dur := time.Since(start).Seconds()
-
 			mtx.Lock()
-			if s.reserve.IsWithinStorageRadius(addr) {
-				neighbors++
-			}
 			bins[bin]++
-			totaldur += dur
-			peers = append(peers, peer{snapshot, dur, addr, bin})
+			totaldur += dur.Seconds()
+			peers = append(peers, peer{snapshot, dur, addr, bin, s.rad.IsWithinStorageRadius(addr)})
 			mtx.Unlock()
 		}()
 		return false, false, nil
@@ -203,13 +199,13 @@ func (s *service) salud(mode string, minPeersPerbin int) {
 
 		// every bin should have at least some peers, healthy or not
 		if bins[peer.bin] <= minPeersPerbin {
-			s.topology.UpdatePeerHealth(peer.addr, true)
+			s.topology.UpdatePeerHealth(peer.addr, true, peer.dur)
 			continue
 		}
 
 		if networkRadius > 0 && peer.status.StorageRadius < uint32(networkRadius-1) {
 			s.logger.Debug("radius health failure", "radius", peer.status.StorageRadius, "peer_address", peer.addr)
-		} else if peer.dur > pDur {
+		} else if peer.dur.Seconds() > pDur {
 			s.logger.Debug("dur health failure", "dur", peer.dur, "peer_address", peer.addr)
 		} else if peer.status.ConnectedPeers < pConns {
 			s.logger.Debug("connections health failure", "connections", peer.status.ConnectedPeers, "peer_address", peer.addr)
@@ -219,7 +215,7 @@ func (s *service) salud(mode string, minPeersPerbin int) {
 			healthy = true
 		}
 
-		s.topology.UpdatePeerHealth(peer.addr, healthy)
+		s.topology.UpdatePeerHealth(peer.addr, healthy, peer.dur)
 		if healthy {
 			s.metrics.Healthy.Inc()
 		} else {
@@ -284,7 +280,7 @@ func percentileDur(peers []peer, p float64) float64 {
 		return peers[i].dur < peers[j].dur // ascending
 	})
 
-	return peers[index].dur
+	return peers[index].dur.Seconds()
 }
 
 // percentileConns finds the p percentile of connection count.
@@ -308,7 +304,7 @@ func (s *service) radius(peers []peer) (uint8, uint8) {
 
 	for _, peer := range peers {
 		if peer.status.StorageRadius < uint32(swarm.MaxBins) {
-			if s.reserve.IsWithinStorageRadius(peer.addr) {
+			if peer.neighbor {
 				nHoodRadius[peer.status.StorageRadius]++
 			}
 			networkRadius[peer.status.StorageRadius]++

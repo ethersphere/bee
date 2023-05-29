@@ -28,8 +28,6 @@ type metrics struct {
 	TotalBootNodesConnectionAttempts      prometheus.Counter
 	StartAddAddressBookOverlaysTime       prometheus.Histogram
 	PeerLatencyEWMA                       prometheus.Histogram
-	Flag                                  prometheus.Counter
-	Unflag                                prometheus.Counter
 	Blocklist                             prometheus.Counter
 	ReachabilityStatus                    *prometheus.GaugeVec
 	PeersReachabilityStatus               *prometheus.GaugeVec
@@ -141,18 +139,6 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "peer_latency_ewma",
 			Help:      "Peer latency EWMA value distribution.",
-		}),
-		Flag: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "flag",
-			Help:      "The nubmer of times peers have been flagged.",
-		}),
-		Unflag: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "unflag",
-			Help:      "The nubmer of times peers have been unflagged.",
 		}),
 		Blocklist: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,

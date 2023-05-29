@@ -126,8 +126,18 @@ func bootstrapNode(
 	}
 	b.hiveCloser = hive
 
+<<<<<<< HEAD
 	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, &noopPinger{}, logger,
 		kademlia.Options{Bootnodes: bootnodes, BootnodeMode: o.BootnodeMode, StaticNodes: o.StaticNodes, DataDir: o.DataDir})
+=======
+	metricsDB, err := shed.NewDBWrap(stateStore.DB())
+	if err != nil {
+		return nil, fmt.Errorf("unable to create metrics storage for kademlia: %w", err)
+	}
+
+	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, metricsDB, logger,
+		kademlia.Options{Bootnodes: bootnodes, BootnodeMode: o.BootnodeMode, StaticNodes: o.StaticNodes})
+>>>>>>> 8ca4edf8... fix: salud to record peer latency, not kademlia
 	if err != nil {
 		return nil, fmt.Errorf("unable to create kademlia: %w", err)
 	}
@@ -281,12 +291,6 @@ func waitPeers(kad *kademlia.Kad) error {
 		}, topology.Select{})
 		return count >= minPeersCount
 	})
-}
-
-type noopPinger struct{}
-
-func (p *noopPinger) Ping(context.Context, swarm.Address, ...string) (time.Duration, error) {
-	return time.Duration(1), nil
 }
 
 func getLatestSnapshot(
