@@ -292,7 +292,3 @@ func (c *chunk) String() string {
 func (c *chunk) Equal(cp Chunk) bool {
 	return c.Address().Equal(cp.Address()) && bytes.Equal(c.Data(), cp.Data())
 }
-
-type CollectionOptions struct {
-	UUID []byte
-}

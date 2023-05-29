@@ -47,7 +47,7 @@ func testPinStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 			testName += "_rollback"
 		}
 		t.Run(testName, func(t *testing.T) {
-			session, err := lstore.NewCollection(context.TODO(), nil)
+			session, err := lstore.NewCollection(context.TODO())
 			if err != nil {
 				t.Fatalf("NewCollection(...): unexpected error: %v", err)
 			}

@@ -38,7 +38,7 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	putter, err := s.storer.NewCollection(r.Context(), nil)
+	putter, err := s.storer.NewCollection(r.Context())
 	if err != nil {
 		logger.Debug("pin root hash: failed to create collection", "error", err)
 		logger.Error(nil, "pin root hash: failed to create collection")

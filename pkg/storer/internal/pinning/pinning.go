@@ -174,13 +174,9 @@ func (p pinChunkItem) String() string {
 // that are part of this collection. The root pin is only updated on successful close of this
 // Putter.
 // If no UUID is specified in the options, a new UUID will be generated for this collection.
-func NewCollection(st internal.Storage, opts *swarm.CollectionOptions) internal.PutterCloserWithReference {
-	collectionUUID := newUUID()
-	if opts != nil && len(opts.UUID) > 0 {
-		collectionUUID = opts.UUID
-	}
+func NewCollection(st internal.Storage) internal.PutterCloserWithReference {
 	return &collectionPutter{
-		collection: &pinCollectionItem{UUID: collectionUUID},
+		collection: &pinCollectionItem{UUID: newUUID()},
 		st:         st,
 	}
 }
@@ -331,18 +327,24 @@ func DeletePin(ctx context.Context, st internal.Storage, root swarm.Address) err
 	return nil
 }
 
-func IterateCollectionChunks(st storage.Store, root swarm.Address, iterateFn func(swarm.Address) (bool, error)) error {
-	err := st.Iterate(storage.Query{
-		Factory:      func() storage.Item { return &pinChunkItem{UUID: root.Bytes()} },
+func IterateCollection(st storage.Store, root swarm.Address, fn func(addr swarm.Address) (bool, error)) error {
+	collection := &pinCollectionItem{Addr: root}
+	err := st.Get(collection)
+	if err != nil {
+		return fmt.Errorf("pin store: failed getting collection: %w", err)
+	}
+
+	return st.Iterate(storage.Query{
+		Factory:      func() storage.Item { return &pinChunkItem{UUID: collection.UUID} },
 		ItemProperty: storage.QueryItemID,
 	}, func(r storage.Result) (bool, error) {
 		addr := swarm.NewAddress([]byte(r.ID))
-		return iterateFn(addr)
+		stop, err := fn(addr)
+		if err != nil {
+			return true, err
+		}
+		return stop, nil
 	})
-	if err != nil {
-		return fmt.Errorf("pin store: failed in iteration: %w", err)
-	}
-	return nil
 }
 
 func IterateCollectionStats(st storage.Store, iterateFn func(st CollectionStat) (bool, error)) error {

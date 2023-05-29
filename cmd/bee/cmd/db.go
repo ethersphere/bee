@@ -257,10 +257,6 @@ func dbExportPinningCmd(cmd *cobra.Command) {
 					if err != nil {
 						return true, fmt.Errorf("error getting chunk: %w", err)
 					}
-
-					if err != nil {
-						return false, err
-					}
 					b, err := MarshalChunkToBinary(chunk)
 					if err != nil {
 						return true, fmt.Errorf("error marshaling chunk: %w", err)
@@ -459,13 +455,10 @@ func dbImportPinningCmd(cmd *cobra.Command) {
 
 				collection, ok := collections[rootAddr]
 				if !ok {
-					addr, err := swarm.ParseHexAddress(rootAddr)
 					if err != nil {
 						return fmt.Errorf("error parsing address: %w", err)
 					}
-					collection, err = db.NewCollection(cmd.Context(), &swarm.CollectionOptions{
-						UUID: addr.Bytes(),
-					})
+					collection, err = db.NewCollection(cmd.Context())
 					if err != nil {
 						return fmt.Errorf("error creating collection: %w", err)
 					}

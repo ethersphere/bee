@@ -171,7 +171,7 @@ func (m *mockStorer) HasPin(address swarm.Address) (bool, error) {
 	return false, nil
 }
 
-func (m *mockStorer) NewCollection(ctx context.Context, options *swarm.CollectionOptions) (storer.PutterSession, error) {
+func (m *mockStorer) NewCollection(ctx context.Context) (storer.PutterSession, error) {
 	return &putterSession{
 		chunkStore: m.chunkStore,
 		done: func(address swarm.Address) error {

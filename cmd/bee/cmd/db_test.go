@@ -102,7 +102,7 @@ func TestDBExportImportPinning(t *testing.T) {
 
 	for i := 0; i < 2; i++ {
 		rootAddr := swarm.RandAddress(t)
-		collection, err := db1.NewCollection(ctx, &swarm.CollectionOptions{UUID: rootAddr.Bytes()})
+		collection, err := db1.NewCollection(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}

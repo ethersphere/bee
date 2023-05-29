@@ -395,7 +395,7 @@ func (e *epochMigrator) migratePinning(ctx context.Context) error {
 						return nil
 					}
 
-					pinningPutter := pinstore.NewCollection(pStorage, nil)
+					pinningPutter := pinstore.NewCollection(pStorage)
 					var mu sync.Mutex
 
 					traverserFn := func(chAddr swarm.Address) error {

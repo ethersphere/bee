@@ -80,7 +80,7 @@ type PinStore interface {
 	// NewCollection can be used to create a new PutterSession which writes a new
 	// pinning collection. The address passed in during the Done of the session is
 	// used as the root referencce.
-	NewCollection(context.Context, *swarm.CollectionOptions) (PutterSession, error)
+	NewCollection(context.Context) (PutterSession, error)
 	// DeletePin deletes all the chunks associated with the collection pointed to
 	// by the swarm.Address passed in.
 	DeletePin(context.Context, swarm.Address) error
