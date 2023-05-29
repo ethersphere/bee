@@ -5,12 +5,14 @@
 package pinstore
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"sync"
 
+	"github.com/ethersphere/bee/pkg/encryption"
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/storageutil"
 	"github.com/ethersphere/bee/pkg/storer/internal"
@@ -49,6 +51,9 @@ func newUUID() []byte {
 	return id[:]
 }
 
+// emptyKey is a 32 byte slice of zeros used to check if encryption key is set
+var emptyKey = make([]byte, 32)
+
 // CollectionStat is used to store some basic stats about the pinning collection
 type CollectionStat struct {
 	Total           uint64
@@ -56,12 +61,14 @@ type CollectionStat struct {
 }
 
 // pinCollectionSize represents the size of the pinCollectionItem
-const pinCollectionItemSize = swarm.HashSize + uuidSize + 8 + 8
+const pinCollectionItemSize = encryption.ReferenceSize + uuidSize + 8 + 8
 
 var _ storage.Item = (*pinCollectionItem)(nil)
 
 // pinCollectionItem is the index used to describe a pinning collection. The Addr
 // is the root reference of the collection and UUID is a unique UUID for this collection.
+// The Address could be an encrypted swarm hash. This hash has the key to decrypt the
+// collection.
 type pinCollectionItem struct {
 	Addr swarm.Address
 	UUID []byte
@@ -80,9 +87,10 @@ func (p *pinCollectionItem) Marshal() ([]byte, error) {
 		return nil, errInvalidPinCollectionUUID
 	}
 	buf := make([]byte, pinCollectionItemSize)
-	copy(buf[:swarm.HashSize], p.Addr.Bytes())
-	copy(buf[swarm.HashSize:swarm.HashSize+uuidSize], p.UUID)
-	statBufOff := swarm.HashSize + uuidSize
+	copy(buf[:encryption.ReferenceSize], p.Addr.Bytes())
+	off := encryption.ReferenceSize
+	copy(buf[off:off+uuidSize], p.UUID)
+	statBufOff := encryption.ReferenceSize + uuidSize
 	binary.LittleEndian.PutUint64(buf[statBufOff:], p.Stat.Total)
 	binary.LittleEndian.PutUint64(buf[statBufOff+8:], p.Stat.DupInCollection)
 	return buf, nil
@@ -93,9 +101,14 @@ func (p *pinCollectionItem) Unmarshal(buf []byte) error {
 		return errInvalidPinCollectionSize
 	}
 	ni := new(pinCollectionItem)
-	ni.Addr = swarm.NewAddress(append(make([]byte, 0, swarm.HashSize), buf[:swarm.HashSize]...))
-	ni.UUID = append(make([]byte, 0, uuidSize), buf[swarm.HashSize:swarm.HashSize+uuidSize]...)
-	statBuf := buf[swarm.HashSize+uuidSize:]
+	if bytes.Equal(buf[swarm.HashSize:encryption.ReferenceSize], emptyKey) {
+		ni.Addr = swarm.NewAddress(buf[:swarm.HashSize]).Clone()
+	} else {
+		ni.Addr = swarm.NewAddress(buf[:encryption.ReferenceSize]).Clone()
+	}
+	off := encryption.ReferenceSize
+	ni.UUID = append(make([]byte, 0, uuidSize), buf[off:off+uuidSize]...)
+	statBuf := buf[off+uuidSize:]
 	ni.Stat.Total = binary.LittleEndian.Uint64(statBuf[:8])
 	ni.Stat.DupInCollection = binary.LittleEndian.Uint64(statBuf[8:16])
 	*p = *ni

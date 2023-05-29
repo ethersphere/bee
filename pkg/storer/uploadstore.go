@@ -36,6 +36,10 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 	}
 
 	db.markDirty(tagID)
+	tagCloser := func() {
+		db.clearDirty(tagID)
+		db.events.Trigger(subscribePushEventKey)
+	}
 
 	return &putterSession{
 		Putter: putterWithMetrics{
@@ -54,10 +58,7 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 			"uploadstore",
 		},
 		done: func(address swarm.Address) error {
-			defer func() {
-				db.clearDirty(tagID)
-				db.events.Trigger(subscribePushEventKey)
-			}()
+			defer tagCloser()
 			return multierror.Append(
 				uploadPutter.Close(address),
 				func() error {
@@ -70,6 +71,7 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 			).ErrorOrNil()
 		},
 		cleanup: func() error {
+			defer tagCloser()
 			return rollback()
 		},
 	}, nil
