@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/encryption"
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/storageutil"
 	"github.com/ethersphere/bee/pkg/storer/internal"
@@ -155,7 +156,13 @@ func (i TagItem) Marshal() ([]byte, error) {
 	binary.LittleEndian.PutUint64(buf[24:], i.Stored)
 	binary.LittleEndian.PutUint64(buf[32:], i.Sent)
 	binary.LittleEndian.PutUint64(buf[40:], i.Synced)
-	copy(buf[48:], internal.AddressBytesOrZero(i.Address))
+	addrBytes := internal.AddressBytesOrZero(i.Address)
+	if len(addrBytes) == encryption.ReferenceSize {
+		// in case of encrypted reference we use the swarm hash as the address and
+		// avoid storing the encryption key
+		addrBytes = addrBytes[:swarm.HashSize]
+	}
+	copy(buf[48:], addrBytes)
 	binary.LittleEndian.PutUint64(buf[48+swarm.HashSize:], uint64(i.StartedAt))
 	return buf, nil
 }
