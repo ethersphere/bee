@@ -107,7 +107,7 @@ func TestDBExportImportPinning(t *testing.T) {
 			t.Fatal(err)
 		}
 		for j := 0; j < nChunks; j++ {
-			ch := testing2.GenerateTestRandomChunk()
+			ch := storagetest.GenerateTestRandomChunk()
 			err = collection.Put(ctx, ch)
 			if err != nil {
 				t.Fatal(err)
