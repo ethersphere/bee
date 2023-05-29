@@ -22,7 +22,7 @@ import (
 )
 
 var (
-	factoryABI              = abiutil.MustParseABI(sw3abi.SimpleSwapFactoryABIv0_4_0)
+	factoryABI              = abiutil.MustParseABI(sw3abi.SimpleSwapFactoryABIv0_5_0)
 	simpleSwapDeployedEvent = factoryABI.Events["SimpleSwapDeployed"]
 )
 
@@ -82,8 +82,8 @@ func TestFactoryVerifySelf(t *testing.T) {
 
 		factory := chequebook.NewFactory(
 			backendWithCodeAt(map[common.Address]string{
-				factoryAddress: sw3abi.SimpleSwapFactoryDeployedBinv0_4_0,
-				legacyFactory1: sw3abi.SimpleSwapFactoryDeployedBinv0_3_1,
+				factoryAddress: sw3abi.SimpleSwapFactoryDeployedBinv0_5_0,
+				legacyFactory1: sw3abi.SimpleSwapFactoryDeployedBinv0_4_0,
 				legacyFactory2: sw3abi.SimpleSwapFactoryDeployedBinv0_3_1,
 			}),
 			transactionmock.New(),
