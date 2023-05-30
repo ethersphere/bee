@@ -31,7 +31,7 @@ import (
 )
 
 var (
-	tx    = common.HexToHash("0x2").Bytes()
+	nonce = common.HexToHash("0x2").Bytes()
 	block = common.HexToHash("0x1").Bytes()
 )
 
@@ -77,7 +77,7 @@ func TestHandlerRateLimit(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		bzzAddr, err := bzz.NewAddress(signer, underlay, overlay, networkID, tx)
+		bzzAddr, err := bzz.NewAddress(signer, underlay, overlay, networkID, nonce)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -97,7 +97,7 @@ func TestHandlerRateLimit(t *testing.T) {
 	}
 	testutil.CleanupCloser(t, client)
 
-	rec, err := serverRecorder.Records(serverAddress, "hive", "1.0.0", "peers")
+	rec, err := serverRecorder.Records(serverAddress, "hive", "1.1.0", "peers")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -145,7 +145,7 @@ func TestBroadcastPeers_FLAKY(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		bzzAddr, err := bzz.NewAddress(signer, underlay, overlay, networkID, tx)
+		bzzAddr, err := bzz.NewAddress(signer, underlay, overlay, networkID, nonce)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -158,10 +158,10 @@ func TestBroadcastPeers_FLAKY(t *testing.T) {
 		}
 
 		wantMsgs[i/hive.MaxBatchSize].Peers = append(wantMsgs[i/hive.MaxBatchSize].Peers, &pb.BzzAddress{
-			Overlay:     bzzAddresses[i].Overlay.Bytes(),
-			Underlay:    bzzAddresses[i].Underlay.Bytes(),
-			Signature:   bzzAddresses[i].Signature,
-			Transaction: tx,
+			Overlay:   bzzAddresses[i].Overlay.Bytes(),
+			Underlay:  bzzAddresses[i].Underlay.Bytes(),
+			Signature: bzzAddresses[i].Signature,
+			Nonce:     nonce,
 		})
 	}
 
@@ -271,7 +271,7 @@ func TestBroadcastPeers_FLAKY(t *testing.T) {
 			testutil.CleanupCloser(t, client)
 
 			// get a record for this stream
-			records, err := recorder.Records(tc.addresee, "hive", "1.0.0", "peers")
+			records, err := recorder.Records(tc.addresee, "hive", "1.1.0", "peers")
 			if err != nil {
 				t.Fatal(err)
 			}

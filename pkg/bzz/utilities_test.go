@@ -63,7 +63,7 @@ func makeAddress(t *testing.T) bzz.Address {
 		Underlay:        multiaddr,
 		Overlay:         swarm.RandAddress(t),
 		Signature:       testutil.RandBytes(t, 12),
-		Transaction:     testutil.RandBytes(t, 12),
+		Nonce:           testutil.RandBytes(t, 12),
 		EthereumAddress: testutil.RandBytes(t, 32),
 	}
 }

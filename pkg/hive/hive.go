@@ -38,7 +38,7 @@ const loggerName = "hive"
 
 const (
 	protocolName           = "hive"
-	protocolVersion        = "1.0.0"
+	protocolVersion        = "1.1.0"
 	peersStreamName        = "peers"
 	messageTimeout         = 1 * time.Minute // maximum allowed time for a message to be read or written.
 	maxBatchSize           = 30
@@ -209,10 +209,10 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 		}
 
 		peersRequest.Peers = append(peersRequest.Peers, &pb.BzzAddress{
-			Overlay:     addr.Overlay.Bytes(),
-			Underlay:    addr.Underlay.Bytes(),
-			Signature:   addr.Signature,
-			Transaction: addr.Transaction,
+			Overlay:   addr.Overlay.Bytes(),
+			Underlay:  addr.Underlay.Bytes(),
+			Signature: addr.Signature,
+			Nonce:     addr.Nonce,
 		})
 	}
 
@@ -362,10 +362,10 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 			s.metrics.ReachablePeers.Inc()
 
 			bzzAddress := bzz.Address{
-				Overlay:     swarm.NewAddress(newPeer.Overlay),
-				Underlay:    multiUnderlay,
-				Signature:   newPeer.Signature,
-				Transaction: newPeer.Transaction,
+				Overlay:   swarm.NewAddress(newPeer.Overlay),
+				Underlay:  multiUnderlay,
+				Signature: newPeer.Signature,
+				Nonce:     newPeer.Nonce,
 			}
 
 			err = s.addressBook.Put(bzzAddress.Overlay, bzzAddress)

@@ -31,18 +31,18 @@ type Address struct {
 	Underlay        ma.Multiaddr
 	Overlay         swarm.Address
 	Signature       []byte
-	Transaction     []byte
+	Nonce           []byte
 	EthereumAddress []byte
 }
 
 type addressJSON struct {
-	Overlay     string `json:"overlay"`
-	Underlay    string `json:"underlay"`
-	Signature   string `json:"signature"`
-	Transaction string `json:"transaction"`
+	Overlay   string `json:"overlay"`
+	Underlay  string `json:"underlay"`
+	Signature string `json:"signature"`
+	Nonce     string `json:"transaction"`
 }
 
-func NewAddress(signer crypto.Signer, underlay ma.Multiaddr, overlay swarm.Address, networkID uint64, trx []byte) (*Address, error) {
+func NewAddress(signer crypto.Signer, underlay ma.Multiaddr, overlay swarm.Address, networkID uint64, nonce []byte) (*Address, error) {
 	underlayBinary, err := underlay.MarshalBinary()
 	if err != nil {
 		return nil, err
@@ -54,10 +54,10 @@ func NewAddress(signer crypto.Signer, underlay ma.Multiaddr, overlay swarm.Addre
 	}
 
 	return &Address{
-		Underlay:    underlay,
-		Overlay:     overlay,
-		Signature:   signature,
-		Transaction: trx,
+		Underlay:  underlay,
+		Overlay:   overlay,
+		Signature: signature,
+		Nonce:     nonce,
 	}, nil
 }
 
@@ -91,7 +91,7 @@ func ParseAddress(underlay, overlay, signature, nonce []byte, validateOverlay bo
 		Underlay:        multiUnderlay,
 		Overlay:         swarm.NewAddress(overlay),
 		Signature:       signature,
-		Transaction:     nonce,
+		Nonce:           nonce,
 		EthereumAddress: ethAddress,
 	}, nil
 }
@@ -109,7 +109,7 @@ func (a *Address) Equal(b *Address) bool {
 		return a == b
 	}
 
-	return a.Overlay.Equal(b.Overlay) && multiaddrEqual(a.Underlay, b.Underlay) && bytes.Equal(a.Signature, b.Signature) && bytes.Equal(a.Transaction, b.Transaction)
+	return a.Overlay.Equal(b.Overlay) && multiaddrEqual(a.Underlay, b.Underlay) && bytes.Equal(a.Signature, b.Signature) && bytes.Equal(a.Nonce, b.Nonce)
 }
 
 func multiaddrEqual(a, b ma.Multiaddr) bool {
@@ -122,10 +122,10 @@ func multiaddrEqual(a, b ma.Multiaddr) bool {
 
 func (a *Address) MarshalJSON() ([]byte, error) {
 	return json.Marshal(&addressJSON{
-		Overlay:     a.Overlay.String(),
-		Underlay:    a.Underlay.String(),
-		Signature:   base64.StdEncoding.EncodeToString(a.Signature),
-		Transaction: common.Bytes2Hex(a.Transaction),
+		Overlay:   a.Overlay.String(),
+		Underlay:  a.Underlay.String(),
+		Signature: base64.StdEncoding.EncodeToString(a.Signature),
+		Nonce:     common.Bytes2Hex(a.Nonce),
 	})
 }
 
@@ -150,12 +150,12 @@ func (a *Address) UnmarshalJSON(b []byte) error {
 
 	a.Underlay = m
 	a.Signature, err = base64.StdEncoding.DecodeString(v.Signature)
-	a.Transaction = common.Hex2Bytes(v.Transaction)
+	a.Nonce = common.Hex2Bytes(v.Nonce)
 	return err
 }
 
 func (a *Address) String() string {
-	return fmt.Sprintf("[Underlay: %v, Overlay %v, Signature %x, Transaction %x]", a.Underlay, a.Overlay, a.Signature, a.Transaction)
+	return fmt.Sprintf("[Underlay: %v, Overlay %v, Signature %x, Transaction %x]", a.Underlay, a.Overlay, a.Signature, a.Nonce)
 }
 
 // ShortString returns shortened versions of bzz address in a format: [Overlay, Underlay]
