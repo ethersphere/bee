@@ -153,6 +153,9 @@ func (p *Puller) manage(ctx context.Context, warmupDur time.Duration) {
 		p.recalcPeers(ctx, newRadius)
 	}
 
+	tick := time.NewTicker(recalcPeersDur)
+	defer tick.Stop()
+
 	for {
 
 		onChange()
@@ -160,7 +163,7 @@ func (p *Puller) manage(ctx context.Context, warmupDur time.Duration) {
 		select {
 		case <-ctx.Done():
 			return
-		case <-time.After(recalcPeersDur):
+		case <-tick.C:
 		case <-c:
 		}
 	}
