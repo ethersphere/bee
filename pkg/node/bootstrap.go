@@ -283,7 +283,7 @@ func waitPeers(kad *kademlia.Kad) error {
 		_ = kad.EachConnectedPeer(func(_ swarm.Address, _ uint8) (bool, bool, error) {
 			count++
 			return false, false, nil
-		}, topology.Filter{})
+		}, topology.Select{})
 		return count >= minPeersCount
 	})
 }

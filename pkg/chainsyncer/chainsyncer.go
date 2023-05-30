@@ -163,7 +163,7 @@ func (c *ChainSyncer) manage() {
 				atomic.AddInt32(&positives, 1)
 			}(p)
 			return false, false, nil
-		}, topology.Filter{Reachable: true})
+		}, topology.Select{Reachable: true})
 
 		// wait for all operations to finish
 		wg.Wait()
