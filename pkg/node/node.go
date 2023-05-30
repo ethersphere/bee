@@ -973,8 +973,7 @@ func NewBee(
 	}()
 
 	networkRadiusFunc := func() (uint8, error) {
-		r := radius.Load()
-		if r == uint32(swarm.MaxPO) {
+		if radius.Load() == uint32(swarm.MaxPO) {
 			select {
 			case <-initialRadiusC:
 			case <-ctx.Done():
@@ -982,7 +981,7 @@ func NewBee(
 			}
 		}
 
-		return uint8(r), nil
+		return uint8(radius.Load()), nil
 	}
 
 	pusherService := pusher.New(networkID, localStore, networkRadiusFunc, pushSyncProtocol, validStamp, logger, tracer, warmupTime, pusher.DefaultRetryCount)
