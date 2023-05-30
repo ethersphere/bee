@@ -82,11 +82,14 @@ func (c *command) initStartCmd() (err error) {
 
 			go startTimeBomb(logger)
 
+			var beeNode atomic.Value
+
 			// ctx is global context of bee node; which is canceled after interrupt signal is received.
 			ctx, cancel := context.WithCancel(context.Background())
+
+			// On SIGINT and SIGTERM node will shutdown asap
 			sysInterruptChannel := make(chan os.Signal, 1)
 			signal.Notify(sysInterruptChannel, syscall.SIGINT, syscall.SIGTERM)
-
 			go func() {
 				select {
 				case <-sysInterruptChannel:
@@ -96,11 +99,27 @@ func (c *command) initStartCmd() (err error) {
 				}
 			}()
 
+			// On SIGUSR1 commence graceful shutdown (halt + shutdown)
+			gracefulShutdownSig := make(chan os.Signal, 1)
+			signal.Notify(gracefulShutdownSig, syscall.SIGUSR1)
+			go func() {
+				select {
+				case <-gracefulShutdownSig:
+					logger.Info("received graceful shutdown signal")
+
+					if val := beeNode.Load(); val != nil {
+						<-val.(*node.Bee).Halt()
+					}
+
+					cancel()
+				case <-ctx.Done():
+				}
+			}()
+
 			// Building bee node can take up some time (because node.NewBee(...) is compute have function )
 			// Because of this we need to do it in background so that program could be terminated when interrupt singal is received
 			// while bee node is being constructed.
 			respC := buildBeeNodeAsync(ctx, c, cmd, logger)
-			var beeNode atomic.Value
 
 			p := &program{
 				start: func() {
@@ -120,8 +139,8 @@ func (c *command) initStartCmd() (err error) {
 					// block main goroutine until it is interrupted or stopped
 					select {
 					case <-ctx.Done():
-					case <-beeNode.Load().(*node.Bee).SyncingStopped():
-						logger.Debug("syncing has stopped")
+					case <-beeNode.Load().(*node.Bee).ShutdownSigC():
+						logger.Info("received shutdown signal from node")
 					}
 
 					logger.Info("shutting down...")

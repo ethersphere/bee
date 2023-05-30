@@ -93,6 +93,15 @@ import (
 // LoggerName is the tree path name of the logger for this package.
 const LoggerName = "node"
 
+// halter interface is implemented by bee component that supports graceful termination.
+// Unlike io.Closer which releases all resources of component asap, halting can
+// take up as much time as possible needed by component in order to gracefully terminate.
+type halter interface {
+	// Halt will commence halting operation for component.
+	// Method returns channel which will signal when operation finalizes.
+	Halt() <-chan struct{}
+}
+
 type Bee struct {
 	p2pService               io.Closer
 	p2pHalter                p2p.Halter
@@ -129,7 +138,10 @@ type Bee struct {
 	storageIncetivesCloser   io.Closer
 	shutdownInProgress       bool
 	shutdownMutex            sync.Mutex
-	syncingStopped           *util.Signaler
+	shutdownSig              *util.Signaler
+	halters                  []halter
+	halting                  atomic.Bool
+	haltSig                  *util.Signaler
 }
 
 type Options struct {
@@ -232,7 +244,8 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		ctxCancel:      ctxCancel,
 		errorLogWriter: sink,
 		tracerCloser:   tracerCloser,
-		syncingStopped: util.NewSignaler(),
+		shutdownSig:    util.NewSignaler(),
+		haltSig:        util.NewSignaler(),
 	}
 
 	defer func(b *Bee) {
@@ -691,7 +704,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		chainEnabled,
 	)
 
-	eventListener = listener.New(b.syncingStopped, logger, chainBackend, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
+	eventListener = listener.New(b.shutdownSig, logger, chainBackend, postageStampContractAddress, postageStampContractABI, o.BlockTime, postageSyncingStallingTimeout, postageSyncingBackoffTimeout)
 	b.listenerCloser = eventListener
 
 	batchSvc, err = batchservice.New(stateStore, batchStore, logger, eventListener, overlayEthAddress.Bytes(), post, sha3.New256, o.Resync)
@@ -789,7 +802,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 				if err != nil {
 					syncErr.Store(err)
 					logger.Error(err, "unable to sync batches")
-					b.syncingStopped.Signal() // trigger shutdown in start.go
+					b.shutdownSig.Signal()
 				} else {
 					err = post.SetExpired()
 					if err != nil {
@@ -1007,6 +1020,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 				return nil, fmt.Errorf("storage incentives agent: %w", err)
 			}
 			b.storageIncetivesCloser = agent
+			// b.halters = append(b.halters, agent)
 		}
 
 	}
@@ -1186,8 +1200,29 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 	return b, nil
 }
 
-func (b *Bee) SyncingStopped() chan struct{} {
-	return b.syncingStopped.C
+// Halt all haleters of the node.
+// Method returns channel which will signal when node could be safely shutdown.
+func (b *Bee) Halt() <-chan struct{} {
+	if !b.halting.Swap(true) {
+		go func() {
+			haltSingals := make([]<-chan struct{}, len(b.halters))
+			for i, h := range b.halters {
+				haltSingals[i] = h.Halt()
+			}
+			for _, sigC := range haltSingals {
+				<-sigC
+			}
+			b.haltSig.Signal()
+		}()
+	}
+
+	return b.haltSig.C
+}
+
+// ShutdownSigC returns channel used to singal node's instantiatiator
+// that node should be shutdown.
+func (b *Bee) ShutdownSigC() <-chan struct{} {
+	return b.shutdownSig.C
 }
 
 func (b *Bee) Shutdown() error {
