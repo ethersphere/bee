@@ -57,6 +57,7 @@ type Puller struct {
 
 	syncPeers    map[string]*syncPeer // index is bin, map key is peer address
 	syncPeersMtx sync.Mutex
+	intervalMtx  sync.Mutex
 
 	cancel func()
 
@@ -116,6 +117,7 @@ func (p *Puller) manage(ctx context.Context, warmupDur time.Duration) {
 
 	onChange := func() {
 		p.syncPeersMtx.Lock()
+		defer p.syncPeersMtx.Unlock()
 
 		// peersDisconnected is used to mark and prune peers that are no longer connected.
 		peersDisconnected := make(map[string]*syncPeer)
@@ -149,22 +151,20 @@ func (p *Puller) manage(ctx context.Context, warmupDur time.Duration) {
 		}
 
 		p.recalcPeers(ctx, newRadius)
-
-		p.syncPeersMtx.Unlock()
 	}
 
 	tick := time.NewTicker(recalcPeersDur)
 	defer tick.Stop()
 
 	for {
+
+		onChange()
+
 		select {
 		case <-ctx.Done():
 			return
 		case <-tick.C:
-			onChange()
 		case <-c:
-			tick.Reset(recalcPeersDur)
-			onChange()
 		}
 	}
 }
@@ -397,6 +397,8 @@ func (p *Puller) Close() error {
 }
 
 func (p *Puller) addPeerInterval(peer swarm.Address, bin uint8, start, end uint64) (err error) {
+	p.intervalMtx.Lock()
+	defer p.intervalMtx.Unlock()
 
 	peerStreamKey := peerIntervalKey(peer, bin)
 	i, err := p.getOrCreateInterval(peer, bin)
@@ -409,20 +411,24 @@ func (p *Puller) addPeerInterval(peer swarm.Address, bin uint8, start, end uint6
 	return p.statestore.Put(peerStreamKey, i)
 }
 
-func (p *Puller) resetIntervals(upto uint8) error {
+func (p *Puller) resetIntervals(upto uint8) (err error) {
+	p.intervalMtx.Lock()
+	defer p.intervalMtx.Unlock()
+
 	for bin := uint8(0); bin < upto; bin++ {
-		err := p.statestore.Iterate(binIntervalKey(bin), func(key, _ []byte) (stop bool, err error) {
-			return false, p.statestore.Delete(string(key))
-		})
-		if err != nil {
-			return err
-		}
+		err = errors.Join(err,
+			p.statestore.Iterate(binIntervalKey(bin), func(key, _ []byte) (stop bool, err error) {
+				return false, p.statestore.Delete(string(key))
+			}),
+		)
 	}
 
-	return nil
+	return
 }
 
 func (p *Puller) nextPeerInterval(peer swarm.Address, bin uint8) (start, end uint64, empty bool, err error) {
+	p.intervalMtx.Lock()
+	defer p.intervalMtx.Unlock()
 
 	i, err := p.getOrCreateInterval(peer, bin)
 	if err != nil {
@@ -433,6 +439,7 @@ func (p *Puller) nextPeerInterval(peer swarm.Address, bin uint8) (start, end uin
 	return start, end, empty, nil
 }
 
+// Must be called underlock.
 func (p *Puller) getOrCreateInterval(peer swarm.Address, bin uint8) (*intervalstore.Intervals, error) {
 	// check that an interval entry exists
 	key := peerIntervalKey(peer, bin)
