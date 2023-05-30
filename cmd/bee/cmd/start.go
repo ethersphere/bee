@@ -99,9 +99,9 @@ func (c *command) initStartCmd() (err error) {
 				}
 			}()
 
-			// On SIGUSR1 commence graceful shutdown (halt + shutdown)
+			// On SIGHUP commence graceful shutdown (halt + shutdown)
 			gracefulShutdownSig := make(chan os.Signal, 1)
-			signal.Notify(gracefulShutdownSig, syscall.SIGUSR1)
+			signal.Notify(gracefulShutdownSig, syscall.SIGHUP)
 			go func() {
 				select {
 				case <-gracefulShutdownSig:
