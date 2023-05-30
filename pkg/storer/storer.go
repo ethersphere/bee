@@ -128,6 +128,10 @@ type Reserve interface {
 	ReserveSize() int
 }
 
+type ReserveIterator interface {
+	ReserveIterateChunks(cb func(swarm.Chunk) (bool, error)) error
+}
+
 type ReserveStore interface {
 	ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte) (swarm.Chunk, error)
 	ReserveHas(addr swarm.Address, batchID []byte) (bool, error)
