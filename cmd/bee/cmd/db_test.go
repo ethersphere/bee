@@ -81,6 +81,104 @@ func TestDBExportImport(t *testing.T) {
 	}
 }
 
+func TestDBExportImportPinning(t *testing.T) {
+	t.Parallel()
+
+	dir1 := t.TempDir()
+	dir2 := t.TempDir()
+	export := t.TempDir() + "/export.tar"
+
+	ctx := context.Background()
+	db1 := newTestDB(t, ctx, &storer.Options{
+		Batchstore:      new(postage.NoOpBatchStore),
+		RadiusSetter:    kademlia.NewTopologyDriver(),
+		Logger:          testutil.NewLogger(t),
+		ReserveCapacity: node.ReserveCapacity,
+	}, dir1)
+
+	chunks := make(map[string]int)
+	pins := make(map[string]any)
+	nChunks := 10
+
+	for i := 0; i < 2; i++ {
+		rootAddr := swarm.RandAddress(t)
+		collection, err := db1.NewCollection(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for j := 0; j < nChunks; j++ {
+			ch := storagetest.GenerateTestRandomChunk()
+			err = collection.Put(ctx, ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+			fmt.Println("collection ", rootAddr.String(), " put chunk: ", ch.Address().String())
+			chunks[ch.Address().String()] = 0
+		}
+		err = collection.Done(rootAddr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		pins[rootAddr.String()] = nil
+	}
+
+	addresses, err := db1.Pins()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, addr := range addresses {
+		fmt.Println("pin: ", addr.String())
+	}
+	db1.Close()
+
+	err = newCommand(t, cmd.WithArgs("db", "export", "pinning", export, "--data-dir", dir1)).Execute()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = newCommand(t, cmd.WithArgs("db", "import", "pinning", export, "--data-dir", dir2)).Execute()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	db2 := newTestDB(t, ctx, &storer.Options{
+		Batchstore:      new(postage.NoOpBatchStore),
+		RadiusSetter:    kademlia.NewTopologyDriver(),
+		Logger:          testutil.NewLogger(t),
+		ReserveCapacity: node.ReserveCapacity,
+	}, dir2)
+	addresses, err = db2.Pins()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, addr := range addresses {
+		if _, ok := pins[addr.String()]; !ok {
+			t.Errorf("pin %s missing", addr.String())
+		}
+	}
+
+	for _, addr := range addresses {
+		rootAddr, err := swarm.ParseHexAddress(addr.String())
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = db2.IteratePinCollection(rootAddr, func(ch swarm.Address) (bool, error) {
+			chunks[ch.String()]++
+			return false, nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	db2.Close()
+
+	for k, v := range chunks {
+		if v != 1 {
+			t.Errorf("chunk %s missing", k)
+		}
+	}
+}
+
 func TestMarshalChunk(t *testing.T) {
 	t.Parallel()
 	ch := storagetest.GenerateTestRandomChunk()

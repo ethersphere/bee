@@ -26,26 +26,6 @@ var (
 
 var NewUUID = newUUID
 
-func IterateCollection(st storage.Store, root swarm.Address, fn func(addr swarm.Address) (bool, error)) error {
-	collection := &pinCollectionItem{Addr: root}
-	err := st.Get(collection)
-	if err != nil {
-		return fmt.Errorf("pin store: failed getting collection: %w", err)
-	}
-
-	return st.Iterate(storage.Query{
-		Factory:      func() storage.Item { return &pinChunkItem{UUID: collection.UUID} },
-		ItemProperty: storage.QueryItemID,
-	}, func(r storage.Result) (bool, error) {
-		addr := swarm.NewAddress([]byte(r.ID))
-		stop, err := fn(addr)
-		if err != nil {
-			return true, err
-		}
-		return stop, nil
-	})
-}
-
 func GetStat(st storage.Store, root swarm.Address) (CollectionStat, error) {
 	collection := &pinCollectionItem{Addr: root}
 	err := st.Get(collection)

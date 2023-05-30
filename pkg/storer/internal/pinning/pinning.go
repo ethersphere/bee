@@ -327,6 +327,26 @@ func DeletePin(ctx context.Context, st internal.Storage, root swarm.Address) err
 	return nil
 }
 
+func IterateCollection(st storage.Store, root swarm.Address, fn func(addr swarm.Address) (bool, error)) error {
+	collection := &pinCollectionItem{Addr: root}
+	err := st.Get(collection)
+	if err != nil {
+		return fmt.Errorf("pin store: failed getting collection: %w", err)
+	}
+
+	return st.Iterate(storage.Query{
+		Factory:      func() storage.Item { return &pinChunkItem{UUID: collection.UUID} },
+		ItemProperty: storage.QueryItemID,
+	}, func(r storage.Result) (bool, error) {
+		addr := swarm.NewAddress([]byte(r.ID))
+		stop, err := fn(addr)
+		if err != nil {
+			return true, err
+		}
+		return stop, nil
+	})
+}
+
 func IterateCollectionStats(st storage.Store, iterateFn func(st CollectionStat) (bool, error)) error {
 	return st.Iterate(
 		storage.Query{
