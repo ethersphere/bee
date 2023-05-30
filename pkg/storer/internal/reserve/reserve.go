@@ -49,7 +49,6 @@ func New(
 	baseAddr swarm.Address,
 	store storage.Store,
 	capacity int,
-	reserveRadius uint8,
 	radiusSetter topology.SetStorageRadiuser,
 	logger log.Logger) (*Reserve, error) {
 
@@ -62,23 +61,15 @@ func New(
 
 	rItem := &radiusItem{}
 	err := store.Get(rItem)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) { // fresh node
-			rItem.Radius = reserveRadius
-		} else {
-			return nil, err
-		}
-	}
-	err = rs.SetRadius(store, rItem.Radius)
-	if err != nil {
+	if err != nil && !errors.Is(err, storage.ErrNotFound) {
 		return nil, err
 	}
+	rs.radius = rItem.Radius
 
 	size, err := store.Count(&batchRadiusItem{})
 	if err != nil {
 		return nil, err
 	}
-
 	rs.size = size
 
 	return rs, nil

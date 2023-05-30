@@ -36,14 +36,15 @@ const (
 
 var errMaxRadius = errors.New("max radius reached")
 
-type SyncReporter interface {
+type Syncer interface {
 	// Number of active historical syncing jobs.
 	SyncRate() float64
+	Start()
 }
 
 func threshold(capacity int) int { return capacity * 5 / 10 }
 
-func (db *DB) reserveWorker(capacity int, warmupDur, wakeUpDur time.Duration) {
+func (db *DB) reserveWorker(capacity int, warmupDur, wakeUpDur time.Duration, radius func() (uint8, error)) {
 	defer db.reserveWg.Done()
 
 	overCapTrigger, overCapUnsub := db.events.Subscribe(reserveOverCapacity)
@@ -55,13 +56,28 @@ func (db *DB) reserveWorker(capacity int, warmupDur, wakeUpDur time.Duration) {
 		return
 	}
 
+	// possibly a fresh node, acquire initial radius externally
+	if db.StorageRadius() == 0 {
+		r, err := radius()
+		if err != nil {
+			db.logger.Error(err, "reserve worker initial radius")
+		} else {
+			if err := db.reserve.SetRadius(db.repo.IndexStore(), r); err != nil {
+				db.logger.Error(err, "reserve set radius")
+			}
+		}
+	}
+
+	// syncing can now begin now that the reserver worker is running
+	db.syncer.Start()
+
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		<-db.quit
 		cancel()
 	}()
 
-	wakeUpTimer := time.NewTicker(wakeUpDur)
+	wakeUpTicker := time.NewTicker(wakeUpDur)
 
 	for {
 		select {
@@ -71,7 +87,7 @@ func (db *DB) reserveWorker(capacity int, warmupDur, wakeUpDur time.Duration) {
 				db.logger.Error(err, "reserve unreserve")
 			}
 			db.metrics.OverCapTriggerCount.Inc()
-		case <-wakeUpTimer.C:
+		case <-wakeUpTicker.C:
 			radius := db.reserve.Radius()
 			if db.reserve.Size() < threshold(capacity) && db.syncer.SyncRate() == 0 && radius > 0 {
 				radius--
@@ -81,7 +97,6 @@ func (db *DB) reserveWorker(capacity int, warmupDur, wakeUpDur time.Duration) {
 				}
 				db.logger.Info("reserve radius decrease", "radius", radius)
 			}
-			wakeUpTimer.Reset(wakeUpDur)
 			db.metrics.StorageRadius.Set(float64(radius))
 		case <-db.quit:
 			return

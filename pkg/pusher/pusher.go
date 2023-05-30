@@ -49,7 +49,7 @@ type Service struct {
 	storer            Storer
 	pushSyncer        pushsync.PushSyncer
 	validStamp        postage.ValidStampFn
-	radius            func() uint8
+	radius            func() (uint8, error)
 	logger            log.Logger
 	metrics           metrics
 	quit              chan struct{}
@@ -73,7 +73,7 @@ var (
 func New(
 	networkID uint64,
 	storer Storer,
-	radius func() uint8,
+	radius func() (uint8, error),
 	pushSyncer pushsync.PushSyncer,
 	validStamp postage.ValidStampFn,
 	logger log.Logger,
@@ -350,7 +350,10 @@ func (s *Service) checkReceipt(receipt *pushsync.Receipt, loggerV1 log.Logger) e
 
 	po := swarm.Proximity(addr.Bytes(), peer.Bytes())
 
-	d := s.radius()
+	d, err := s.radius()
+	if err != nil {
+		return fmt.Errorf("pusher: storage radius: %w", err)
+	}
 
 	// if the receipt po is out of depth AND the receipt has not yet hit the maximum retry limit, reject the receipt.
 	if po < d && s.attempts.try(addr) {
