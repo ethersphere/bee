@@ -26,19 +26,6 @@ type peer struct {
 	health  bool
 }
 
-type reserveMock struct {
-	depth        uint8
-	withinRadius bool
-}
-
-func (r *reserveMock) StorageRadius() uint8 {
-	return r.depth
-}
-
-func (r *reserveMock) IsWithinStorageRadius(addr swarm.Address) bool {
-	return r.withinRadius
-}
-
 func TestSalud(t *testing.T) {
 	t.Parallel()
 	peers := []peer{
@@ -179,6 +166,70 @@ func TestSelfUnhealthyReserveSize(t *testing.T) {
 
 	if service.IsHealthy() {
 		t.Fatalf("self should NOT be healthy")
+	}
+
+	if err := service.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestSubToRadius(t *testing.T) {
+	t.Parallel()
+	peers := []peer{
+		// fully healhy
+		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, BeeMode: "full", ReserveSize: 100}, 0, true},
+		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, BeeMode: "full", ReserveSize: 100}, 0, true},
+	}
+
+	addrs := make([]swarm.Address, 0, len(peers))
+	for _, p := range peers {
+		addrs = append(addrs, p.addr)
+	}
+
+	topM := topMock.NewTopologyDriver(topMock.WithPeers(addrs...))
+
+	service := salud.New(&statusMock{make(map[string]peer)}, topM, mockstorer.NewReserve(), log.Noop, -1, "full", 0)
+
+	c, unsub := service.SubscribeNetworkStorageRadius()
+	t.Cleanup(unsub)
+
+	select {
+	case radius := <-c:
+		if radius != 8 {
+			t.Fatalf("wanted radius 8, got %d", radius)
+		}
+	case <-time.After(time.Second):
+	}
+
+	if err := service.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUnsub(t *testing.T) {
+	t.Parallel()
+	peers := []peer{
+		// fully healhy
+		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, BeeMode: "full", ReserveSize: 100}, 0, true},
+		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, BeeMode: "full", ReserveSize: 100}, 0, true},
+	}
+
+	addrs := make([]swarm.Address, 0, len(peers))
+	for _, p := range peers {
+		addrs = append(addrs, p.addr)
+	}
+
+	topM := topMock.NewTopologyDriver(topMock.WithPeers(addrs...))
+
+	service := salud.New(&statusMock{make(map[string]peer)}, topM, mockstorer.NewReserve(), log.Noop, -1, "full", 0)
+
+	c, unsub := service.SubscribeNetworkStorageRadius()
+	unsub()
+
+	select {
+	case <-c:
+		t.Fatal("should not have received an address")
+	case <-time.After(time.Second):
 	}
 
 	if err := service.Close(); err != nil {
