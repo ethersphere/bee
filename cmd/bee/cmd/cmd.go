@@ -153,8 +153,7 @@ func newCommand(opts ...option) (c *command, err error) {
 	}
 
 	c.initVersionCmd()
-	// TODO: reintroduce this once we implement the cmds for new localstore
-	// c.initDBCmd()
+	c.initDBCmd()
 
 	if err := c.initConfigurateOptionsCmd(); err != nil {
 		return nil, err

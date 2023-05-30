@@ -324,6 +324,10 @@ func (db *DB) ReserveLastBinIDs() ([]uint64, error) {
 	return db.reserve.LastBinIDs(db.repo.IndexStore())
 }
 
+func (db *DB) ReserveIterateChunks(cb func(swarm.Chunk) (bool, error)) error {
+	return db.reserve.IterateChunks(db.repo, 0, cb)
+}
+
 // BinC is the result returned from the SubscribeBin channel that contains the chunk address and the binID
 type BinC struct {
 	Address swarm.Address

@@ -2,30 +2,30 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// TODO: remove build tag once we change the cmds for new localstore
-//go:build oldlocalstore
-// +build oldlocalstore
-
 package cmd
 
 import (
+	"archive/tar"
+	"bytes"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"strings"
-	"time"
 
-	localstore "github.com/ethersphere/bee/pkg/_localstore"
-	"github.com/ethersphere/bee/pkg/statestore/leveldb"
+	"github.com/ethersphere/bee/pkg/node"
+	//localstore "github.com/ethersphere/bee/pkg/_localstore"
+	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/storer"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/spf13/cobra"
 )
 
-const (
-	optionNameForgetOverlay = "forget-overlay"
-	optionNameForgetStamps  = "forget-stamps"
-)
+//const (
+//	optionNameForgetOverlay = "forget-overlay"
+//	optionNameForgetStamps  = "forget-stamps"
+//)
 
 func (c *command) initDBCmd() {
 	cmd := &cobra.Command{
@@ -35,68 +35,84 @@ func (c *command) initDBCmd() {
 
 	dbExportCmd(cmd)
 	dbImportCmd(cmd)
-	dbNukeCmd(cmd)
-	dbIndicesCmd(cmd)
+	//dbNukeCmd(cmd)
+	//dbIndicesCmd(cmd)
 
 	c.root.AddCommand(cmd)
 }
 
-func dbIndicesCmd(cmd *cobra.Command) {
-	c := &cobra.Command{
-		Use:   "indices",
-		Short: "Prints the DB indices",
-		RunE: func(cmd *cobra.Command, args []string) (err error) {
-			start := time.Now()
-			v, err := cmd.Flags().GetString(optionNameVerbosity)
-			if err != nil {
-				return fmt.Errorf("get verbosity: %w", err)
-			}
-			v = strings.ToLower(v)
-			logger, err := newLogger(cmd, v)
-			if err != nil {
-				return fmt.Errorf("new logger: %w", err)
-			}
-
-			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
-			if err != nil {
-				return fmt.Errorf("get data-dir: %w", err)
-			}
-			if dataDir == "" {
-				return errors.New("no data-dir provided")
-			}
-
-			logger.Info("getting db indices with data-dir", "path", dataDir)
-
-			path := filepath.Join(dataDir, "localstore")
-
-			storer, err := localstore.New(path, nil, nil, nil, logger)
-			if err != nil {
-				return fmt.Errorf("localstore: %w", err)
-			}
-
-			indices, err := storer.DebugIndices()
-			if err != nil {
-				return fmt.Errorf("error fetching indices: %w", err)
-			}
-
-			for k, v := range indices {
-				logger.Info("localstore", "index", k, "value", v)
-			}
-
-			logger.Info("done", "elapsed", time.Since(start))
-
-			return nil
-		},
-	}
-	c.Flags().String(optionNameDataDir, "", "data directory")
-	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
-	cmd.AddCommand(c)
-}
+//func dbIndicesCmd(cmd *cobra.Command) {
+//	c := &cobra.Command{
+//		Use:   "indices",
+//		Short: "Prints the DB indices",
+//		RunE: func(cmd *cobra.Command, args []string) (err error) {
+//			start := time.Now()
+//			v, err := cmd.Flags().GetString(optionNameVerbosity)
+//			if err != nil {
+//				return fmt.Errorf("get verbosity: %w", err)
+//			}
+//			v = strings.ToLower(v)
+//			logger, err := newLogger(cmd, v)
+//			if err != nil {
+//				return fmt.Errorf("new logger: %w", err)
+//			}
+//
+//			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
+//			if err != nil {
+//				return fmt.Errorf("get data-dir: %w", err)
+//			}
+//			if dataDir == "" {
+//				return errors.New("no data-dir provided")
+//			}
+//
+//			logger.Info("getting db indices with data-dir", "path", dataDir)
+//
+//			path := filepath.Join(dataDir, "localstore")
+//
+//			storer, err := localstore.New(path, nil, nil, nil, logger)
+//			if err != nil {
+//				return fmt.Errorf("localstore: %w", err)
+//			}
+//
+//			indices, err := storer.DebugIndices()
+//			if err != nil {
+//				return fmt.Errorf("error fetching indices: %w", err)
+//			}
+//
+//			for k, v := range indices {
+//				logger.Info("localstore", "index", k, "value", v)
+//			}
+//
+//			logger.Info("done", "elapsed", time.Since(start))
+//
+//			return nil
+//		},
+//	}
+//	c.Flags().String(optionNameDataDir, "", "data directory")
+//	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
+//	cmd.AddCommand(c)
+//}
 
 func dbExportCmd(cmd *cobra.Command) {
 	c := &cobra.Command{
-		Use:   "export <filename>",
-		Short: "Perform DB export to a file. Use \"-\" as filename in order to write to STDOUT",
+		Use:   "export",
+		Short: "Perform DB export to a file",
+	}
+	c.PersistentFlags().String(optionNameDataDir, "", "data directory")
+	c.PersistentFlags().String(optionNameVerbosity, "info", "verbosity level")
+
+	dbExportReserveCmd(c)
+	cmd.AddCommand(c)
+}
+
+type noopRadiusSetter struct{}
+
+func (noopRadiusSetter) SetStorageRadius(uint8) {}
+
+func dbExportReserveCmd(cmd *cobra.Command) {
+	c := &cobra.Command{
+		Use:   "reserve <filename>",
+		Short: "Export reserve DB to a file. Use \"-\" as filename in order to write to STDOUT",
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			if (len(args)) != 1 {
 				return cmd.Help()
@@ -121,12 +137,16 @@ func dbExportCmd(cmd *cobra.Command) {
 
 			logger.Info("starting export process with data-dir", "path", dataDir)
 
-			path := filepath.Join(dataDir, "localstore")
-
-			storer, err := localstore.New(path, nil, nil, nil, logger)
+			db, err := storer.New(cmd.Context(), dataDir, &storer.Options{
+				Logger:          logger,
+				RadiusSetter:    noopRadiusSetter{},
+				Batchstore:      new(postage.NoOpBatchStore),
+				ReserveCapacity: node.ReserveCapacity,
+			})
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
 			}
+			defer db.Close()
 
 			var out io.Writer
 			if args[0] == "-" {
@@ -134,30 +154,60 @@ func dbExportCmd(cmd *cobra.Command) {
 			} else {
 				f, err := os.Create(args[0])
 				if err != nil {
-					return fmt.Errorf("error opening output file: %w", err)
+					return fmt.Errorf("opening output file: %w", err)
 				}
 				defer f.Close()
 				out = f
 			}
-			c, err := storer.Export(out)
+
+			tw := tar.NewWriter(out)
+			var counter int64
+			err = db.ReserveIterateChunks(func(chunk swarm.Chunk) (stop bool, err error) {
+				logger.Debug("exporting chunk", "address", chunk.Address().String())
+				b, err := MarshalChunkToBinary(chunk)
+				if err != nil {
+					return true, fmt.Errorf("marshaling chunk: %w", err)
+				}
+				hdr := &tar.Header{
+					Name: chunk.Address().String(),
+					Size: int64(len(b)),
+					Mode: 0600,
+				}
+				if err := tw.WriteHeader(hdr); err != nil {
+					return true, fmt.Errorf("writing header: %w", err)
+				}
+				if _, err := tw.Write(b); err != nil {
+					return true, fmt.Errorf("writing chunk: %w", err)
+				}
+				counter++
+				return false, nil
+			})
 			if err != nil {
-				return fmt.Errorf("error exporting database: %w", err)
+				return fmt.Errorf("exporting database: %w", err)
 			}
-
-			logger.Info("database exported successfully", "total_records", c)
-
+			logger.Info("database exported successfully", "file", args[0], "total_records", counter)
 			return nil
 		},
 	}
-	c.Flags().String(optionNameDataDir, "", "data directory")
-	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
 	cmd.AddCommand(c)
 }
 
 func dbImportCmd(cmd *cobra.Command) {
 	c := &cobra.Command{
-		Use:   "import <filename>",
-		Short: "Perform DB import from a file. Use \"-\" as filename in order to feed from STDIN",
+		Use:   "import",
+		Short: "Perform DB import from a file",
+	}
+	c.PersistentFlags().String(optionNameDataDir, "", "data directory")
+	c.PersistentFlags().String(optionNameVerbosity, "info", "verbosity level")
+
+	dbImportReserveCmd(c)
+	cmd.AddCommand(c)
+}
+
+func dbImportReserveCmd(cmd *cobra.Command) {
+	c := &cobra.Command{
+		Use:   "reserve <filename>",
+		Short: "Perform DB import from a . Use \"-\" as filename in order to read from STDIN",
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			if (len(args)) != 1 {
 				return cmd.Help()
@@ -181,12 +231,16 @@ func dbImportCmd(cmd *cobra.Command) {
 
 			fmt.Printf("starting import process with data-dir at %s\n", dataDir)
 
-			path := filepath.Join(dataDir, "localstore")
-
-			storer, err := localstore.New(path, nil, nil, nil, logger)
+			db, err := storer.New(cmd.Context(), dataDir, &storer.Options{
+				Logger:          logger,
+				RadiusSetter:    noopRadiusSetter{},
+				Batchstore:      new(postage.NoOpBatchStore),
+				ReserveCapacity: node.ReserveCapacity,
+			})
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
 			}
+			defer db.Close()
 
 			var in io.Reader
 			if args[0] == "-" {
@@ -194,126 +248,200 @@ func dbImportCmd(cmd *cobra.Command) {
 			} else {
 				f, err := os.Open(args[0])
 				if err != nil {
-					return fmt.Errorf("error opening input file: %w", err)
+					return fmt.Errorf("opening input file: %w", err)
 				}
 				defer f.Close()
 				in = f
 			}
-			c, err := storer.Import(cmd.Context(), in)
-			if err != nil {
-				return fmt.Errorf("error importing database: %w", err)
+
+			tr := tar.NewReader(in)
+			var counter int64
+			for {
+				hdr, err := tr.Next()
+				if errors.Is(err, io.EOF) {
+					break
+				}
+				if err != nil {
+					return fmt.Errorf("reading tar header: %w", err)
+				}
+				b := make([]byte, hdr.Size)
+				if _, err := io.ReadFull(tr, b); err != nil {
+					return fmt.Errorf("reading chunk: %w", err)
+				}
+
+				chunk, err := UnmarshalChunkFromBinary(b, hdr.Name)
+				if err != nil {
+					return fmt.Errorf("unmarshaling chunk: %w", err)
+				}
+				logger.Debug("importing chunk", "address", chunk.Address().String())
+				if err := db.ReservePut(cmd.Context(), chunk); err != nil {
+					return fmt.Errorf("error importing chunk: %w", err)
+				}
+				counter++
 			}
-
-			fmt.Printf("database imported %d records successfully\n", c)
-
+			logger.Info("database imported successfully", "file", args[0], "total_records", counter)
 			return nil
 		},
 	}
-	c.Flags().String(optionNameDataDir, "", "data directory")
-	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
+
 	cmd.AddCommand(c)
 }
 
-func dbNukeCmd(cmd *cobra.Command) {
-	c := &cobra.Command{
-		Use:   "nuke",
-		Short: "Nuke the DB and the relevant statestore entries so that bee resyncs all data next time it boots up.",
-		RunE: func(cmd *cobra.Command, args []string) (err error) {
-			v, err := cmd.Flags().GetString(optionNameVerbosity)
-			if err != nil {
-				return fmt.Errorf("get verbosity: %w", err)
-			}
-			v = strings.ToLower(v)
-			logger, err := newLogger(cmd, v)
-			if err != nil {
-				return fmt.Errorf("new logger: %w", err)
-			}
-			d, err := cmd.Flags().GetDuration(optionNameSleepAfter)
-			if err != nil {
-				logger.Error(err, "getting sleep value failed")
-			}
+//func dbNukeCmd(cmd *cobra.Command) {
+//	c := &cobra.Command{
+//		Use:   "nuke",
+//		Short: "Nuke the DB and the relevant statestore entries so that bee resyncs all data next time it boots up.",
+//		RunE: func(cmd *cobra.Command, args []string) (err error) {
+//			v, err := cmd.Flags().GetString(optionNameVerbosity)
+//			if err != nil {
+//				return fmt.Errorf("get verbosity: %w", err)
+//			}
+//			v = strings.ToLower(v)
+//			logger, err := newLogger(cmd, v)
+//			if err != nil {
+//				return fmt.Errorf("new logger: %w", err)
+//			}
+//			d, err := cmd.Flags().GetDuration(optionNameSleepAfter)
+//			if err != nil {
+//				logger.Error(err, "getting sleep value failed")
+//			}
+//
+//			defer func() { time.Sleep(d) }()
+//
+//			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
+//			if err != nil {
+//				return fmt.Errorf("get data-dir: %w", err)
+//			}
+//			if dataDir == "" {
+//				return errors.New("no data-dir provided")
+//			}
+//
+//			logger.Warning("starting to nuke the DB with data-dir", "path", dataDir)
+//			logger.Warning("this process will erase all persisted chunks in your local storage")
+//			logger.Warning("it will NOT discriminate any pinned content, in case you were wondering")
+//			logger.Warning("you have another 10 seconds to change your mind and kill this process with CTRL-C...")
+//			time.Sleep(10 * time.Second)
+//			logger.Warning("proceeding with database nuke...")
+//
+//			localstorePath := filepath.Join(dataDir, "localstore")
+//			err = removeContent(localstorePath)
+//			if err != nil {
+//				return fmt.Errorf("localstore delete: %w", err)
+//			}
+//
+//			statestorePath := filepath.Join(dataDir, "statestore")
+//
+//			forgetOverlay, err := cmd.Flags().GetBool(optionNameForgetOverlay)
+//			if err != nil {
+//				return fmt.Errorf("get forget overlay: %w", err)
+//			}
+//
+//			forgetStamps, err := cmd.Flags().GetBool(optionNameForgetStamps)
+//			if err != nil {
+//				return fmt.Errorf("get forget stamps: %w", err)
+//			}
+//
+//			if forgetOverlay {
+//				err = removeContent(statestorePath)
+//				if err != nil {
+//					return fmt.Errorf("statestore delete: %w", err)
+//				}
+//				// all done, return early
+//				return nil
+//			}
+//
+//			stateStore, err := leveldb.NewStateStore(statestorePath, logger)
+//			if err != nil {
+//				return fmt.Errorf("new statestore: %w", err)
+//			}
+//
+//			logger.Warning("proceeding with statestore nuke...")
+//
+//			if err = stateStore.Nuke(forgetStamps); err != nil {
+//				return fmt.Errorf("statestore nuke: %w", err)
+//			}
+//			return nil
+//		}}
+//	c.Flags().String(optionNameDataDir, "", "data directory")
+//	c.Flags().String(optionNameVerbosity, "trace", "verbosity level")
+//	c.Flags().Bool(optionNameForgetOverlay, false, "forget the overlay and deploy a new chequebook on next bootup")
+//	c.Flags().Bool(optionNameForgetStamps, false, "forget the existing stamps belonging to the node. even when forgotten, they will show up again after a chain resync")
+//	c.Flags().Duration(optionNameSleepAfter, time.Duration(0), "time to sleep after the operation finished")
+//	cmd.AddCommand(c)
+//}
 
-			defer func() { time.Sleep(d) }()
+//func removeContent(path string) error {
+//	dir, err := os.Open(path)
+//	if err != nil {
+//		return err
+//	}
+//	defer dir.Close()
+//
+//	subpaths, err := dir.Readdirnames(0)
+//	if err != nil {
+//		return err
+//	}
+//
+//	for _, sub := range subpaths {
+//		err = os.RemoveAll(filepath.Join(path, sub))
+//		if err != nil {
+//			return err
+//		}
+//	}
+//	return nil
+//}
 
-			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
-			if err != nil {
-				return fmt.Errorf("get data-dir: %w", err)
-			}
-			if dataDir == "" {
-				return errors.New("no data-dir provided")
-			}
+func MarshalChunkToBinary(c swarm.Chunk) ([]byte, error) {
+	buf := bytes.NewBuffer(nil)
+	dataLenBytes := make([]byte, 4)
+	binary.BigEndian.PutUint32(dataLenBytes, uint32(len(c.Data())))
+	buf.Write(dataLenBytes)
+	buf.Write(c.Data())
 
-			logger.Warning("starting to nuke the DB with data-dir", "path", dataDir)
-			logger.Warning("this process will erase all persisted chunks in your local storage")
-			logger.Warning("it will NOT discriminate any pinned content, in case you were wondering")
-			logger.Warning("you have another 10 seconds to change your mind and kill this process with CTRL-C...")
-			time.Sleep(10 * time.Second)
-			logger.Warning("proceeding with database nuke...")
-
-			localstorePath := filepath.Join(dataDir, "localstore")
-			err = removeContent(localstorePath)
-			if err != nil {
-				return fmt.Errorf("localstore delete: %w", err)
-			}
-
-			statestorePath := filepath.Join(dataDir, "statestore")
-
-			forgetOverlay, err := cmd.Flags().GetBool(optionNameForgetOverlay)
-			if err != nil {
-				return fmt.Errorf("get forget overlay: %w", err)
-			}
-
-			forgetStamps, err := cmd.Flags().GetBool(optionNameForgetStamps)
-			if err != nil {
-				return fmt.Errorf("get forget stamps: %w", err)
-			}
-
-			if forgetOverlay {
-				err = removeContent(statestorePath)
-				if err != nil {
-					return fmt.Errorf("statestore delete: %w", err)
-				}
-				// all done, return early
-				return nil
-			}
-
-			stateStore, err := leveldb.NewStateStore(statestorePath, logger)
-			if err != nil {
-				return fmt.Errorf("new statestore: %w", err)
-			}
-
-			logger.Warning("proceeding with statestore nuke...")
-
-			if err = stateStore.Nuke(forgetStamps); err != nil {
-				return fmt.Errorf("statestore nuke: %w", err)
-			}
-			return nil
-		}}
-	c.Flags().String(optionNameDataDir, "", "data directory")
-	c.Flags().String(optionNameVerbosity, "trace", "verbosity level")
-	c.Flags().Bool(optionNameForgetOverlay, false, "forget the overlay and deploy a new chequebook on next bootup")
-	c.Flags().Bool(optionNameForgetStamps, false, "forget the existing stamps belonging to the node. even when forgotten, they will show up again after a chain resync")
-	c.Flags().Duration(optionNameSleepAfter, time.Duration(0), "time to sleep after the operation finished")
-	cmd.AddCommand(c)
+	stampBytes, err := c.Stamp().MarshalBinary()
+	if err != nil {
+		return nil, fmt.Errorf("marshalling stamp: %w", err)
+	}
+	buf.Write(stampBytes)
+	return buf.Bytes(), nil
 }
 
-func removeContent(path string) error {
-	dir, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	defer dir.Close()
+func UnmarshalChunkFromBinary(data []byte, address string) (swarm.Chunk, error) {
+	buf := bytes.NewBuffer(data)
 
-	subpaths, err := dir.Readdirnames(0)
+	dataLenBytes := make([]byte, 4)
+	_, err := buf.Read(dataLenBytes)
+	dataLen := binary.BigEndian.Uint32(dataLenBytes)
 	if err != nil {
-		return err
+		return nil, fmt.Errorf("reading chunk data size: %w", err)
 	}
 
-	for _, sub := range subpaths {
-		err = os.RemoveAll(filepath.Join(path, sub))
-		if err != nil {
-			return err
-		}
+	b := make([]byte, dataLen)
+	_, err = buf.Read(b)
+	if err != nil {
+		return nil, fmt.Errorf("reading chunk data: %w", err)
 	}
-	return nil
+
+	addr, err := swarm.ParseHexAddress(address)
+	if err != nil {
+		return nil, fmt.Errorf("parsing address: %w", err)
+	}
+
+	stampBytes := make([]byte, postage.StampSize)
+	_, err = buf.Read(stampBytes)
+	if err != nil {
+		return nil, fmt.Errorf("reading stamp: %w", err)
+	}
+	stamp := new(postage.Stamp)
+	err = stamp.UnmarshalBinary(stampBytes)
+	if err != nil {
+		return nil, fmt.Errorf("unmarshalling stamp: %w", err)
+	}
+
+	if buf.Len() != 0 {
+		return nil, fmt.Errorf("buffer should be empty")
+	}
+
+	chunk := swarm.NewChunk(addr, b).WithStamp(stamp)
+	return chunk, nil
 }
