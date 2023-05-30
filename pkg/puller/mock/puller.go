@@ -4,7 +4,8 @@
 
 package mock
 
-type mockRateReporter struct{ rate float64 }
+type mockSyncer struct{ rate float64 }
 
-func NewMockRateReporter(r float64) *mockRateReporter { return &mockRateReporter{r} }
-func (m *mockRateReporter) SyncRate() float64         { return m.rate }
+func NewMockRateReporter(r float64) *mockSyncer { return &mockSyncer{r} }
+func (m *mockSyncer) SyncRate() float64         { return m.rate }
+func (m *mockSyncer) Start()                    {}

@@ -321,7 +321,7 @@ func performEpochMigration(ctx context.Context, basePath string, opts *Options) 
 
 	var rs *reserve.Reserve
 	if opts.ReserveCapacity > 0 {
-		rs, err = reserve.New(opts.Address, store, opts.ReserveCapacity, opts.Batchstore.Radius(), noopRadiusSetter{}, logger)
+		rs, err = reserve.New(opts.Address, store, opts.ReserveCapacity, noopRadiusSetter{}, logger)
 		if err != nil {
 			return err
 		}
@@ -398,7 +398,7 @@ type DB struct {
 	baseAddr         swarm.Address
 	batchstore       postage.Storer
 	setSyncerOnce    sync.Once
-	syncer           SyncReporter
+	syncer           Syncer
 	opts             workerOpts
 }
 
@@ -469,7 +469,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	}
 
 	if opts.ReserveCapacity > 0 {
-		rs, err := reserve.New(opts.Address, repo.IndexStore(), opts.ReserveCapacity, opts.Batchstore.Radius(), opts.RadiusSetter, logger)
+		rs, err := reserve.New(opts.Address, repo.IndexStore(), opts.ReserveCapacity, opts.RadiusSetter, logger)
 		if err != nil {
 			return nil, err
 		}
@@ -534,11 +534,11 @@ func (db *DB) SetRetrievalService(r retrieval.Interface) {
 	db.retrieval = r
 }
 
-func (db *DB) StartReserveWorker(s SyncReporter) {
+func (db *DB) StartReserveWorker(s Syncer, radius func() (uint8, error)) {
 	db.setSyncerOnce.Do(func() {
 		db.syncer = s
 		db.reserveWg.Add(1)
-		go db.reserveWorker(db.reserve.Capacity(), db.opts.warmupDuration, db.opts.wakeupDuration)
+		go db.reserveWorker(db.reserve.Capacity(), db.opts.warmupDuration, db.opts.wakeupDuration, radius)
 	})
 }
 

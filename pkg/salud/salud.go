@@ -54,6 +54,9 @@ type service struct {
 	metrics       metrics
 	isSelfHealthy *atomic.Bool
 	reserve       reserve
+
+	radiusSubsMtx sync.Mutex
+	radiusC       []chan uint8
 }
 
 func New(
@@ -170,6 +173,7 @@ func (s *service) salud(mode string, minPeersPerbin int) {
 	wg.Wait()
 
 	if len(peers) == 0 {
+		s.publishRadius(0)
 		return
 	}
 
@@ -190,7 +194,9 @@ func (s *service) salud(mode string, minPeersPerbin int) {
 	s.metrics.Commitment.Set(float64(commitment))
 	s.metrics.ReserveSizePercentErr.Set(reserveSizePercentErr)
 
-	s.logger.Debug("computed", "average", avgDur, "percentile", percentile, "pDur", pDur, "pConns", pConns, "network_radius", networkRadius, "neighborhood_radius", nHoodRadius, "batch_commitment", commitment, "reserve_size", reserveSize)
+	s.publishRadius(networkRadius)
+
+	s.logger.Debug("computed", "average", avgDur, "percentile", percentile, "pDur", pDur, "pConns", pConns, "network_radius", networkRadius, "neighborhood_radius", nHoodRadius, "batch_commitment", commitment)
 
 	for _, peer := range peers {
 
@@ -237,6 +243,36 @@ func (s *service) salud(mode string, minPeersPerbin int) {
 
 func (s *service) IsHealthy() bool {
 	return s.isSelfHealthy.Load()
+}
+
+func (s *service) publishRadius(r uint8) {
+	s.radiusSubsMtx.Lock()
+	defer s.radiusSubsMtx.Unlock()
+	for _, cb := range s.radiusC {
+		select {
+		case cb <- r:
+		default:
+		}
+	}
+}
+
+func (s *service) SubscribeNetworkStorageRadius() (<-chan uint8, func()) {
+	s.radiusSubsMtx.Lock()
+	defer s.radiusSubsMtx.Unlock()
+
+	c := make(chan uint8, 1)
+	s.radiusC = append(s.radiusC, c)
+
+	return c, func() {
+		s.radiusSubsMtx.Lock()
+		defer s.radiusSubsMtx.Unlock()
+		for i, cc := range s.radiusC {
+			if c == cc {
+				s.radiusC = append(s.radiusC[:i], s.radiusC[i+1:]...)
+				break
+			}
+		}
+	}
 }
 
 // percentileDur finds the p percentile of response duration.
