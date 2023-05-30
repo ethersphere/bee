@@ -184,9 +184,9 @@ const (
 	minPaymentThreshold           = 2 * refreshRate           // minimal accepted payment threshold of full nodes
 	maxPaymentThreshold           = 24 * refreshRate          // maximal accepted payment threshold of full nodes
 	mainnetNetworkID              = uint64(1)                 //
-	reserveCapacity               = 4_194_304                 // 2^22 chunks
+	ReserveCapacity               = 4_194_304                 // 2^22 chunks
 	reserveWakeUpDuration         = 15 * time.Minute          // time to wait before waking up reserveWorker
-	reserveTreshold               = reserveCapacity * 5 / 10
+	reserveTreshold               = ReserveCapacity * 5 / 10
 )
 
 func NewBee(
@@ -321,7 +321,7 @@ func NewBee(
 				return evictFn(id)
 			},
 			swarmAddress,
-			reserveCapacity,
+			ReserveCapacity,
 			logger,
 		)
 		if err != nil {
@@ -777,7 +777,7 @@ func NewBee(
 
 	if o.FullNodeMode && !o.BootnodeMode {
 		// configure reserve only for full node
-		lo.ReserveCapacity = reserveCapacity
+		lo.ReserveCapacity = ReserveCapacity
 		lo.ReserveWakeUpDuration = reserveWakeUpDuration
 		lo.RadiusSetter = kad
 	}
