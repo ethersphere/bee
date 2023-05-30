@@ -93,7 +93,7 @@ func TestDBExportImportPinning(t *testing.T) {
 		Batchstore:      new(postage.NoOpBatchStore),
 		RadiusSetter:    kademlia.NewTopologyDriver(),
 		Logger:          testutil.NewLogger(t),
-		ReserveCapacity: 4_194_304,
+		ReserveCapacity: node.ReserveCapacity,
 	}, dir1)
 
 	chunks := make(map[string]int)
@@ -145,7 +145,7 @@ func TestDBExportImportPinning(t *testing.T) {
 		Batchstore:      new(postage.NoOpBatchStore),
 		RadiusSetter:    kademlia.NewTopologyDriver(),
 		Logger:          testutil.NewLogger(t),
-		ReserveCapacity: 4_194_304,
+		ReserveCapacity: node.ReserveCapacity,
 	}, dir2)
 	addresses, err = db2.Pins()
 	if err != nil {
