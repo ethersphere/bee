@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"math/rand"
 	"net"
 	"sync"
 	"syscall"
@@ -53,7 +54,7 @@ const (
 
 // Default option values
 const (
-	defaultBitSuffixLength             = 4 // the number of bits used to create pseudo addresses for balancing
+	defaultBitSuffixLength             = 4 // the number of bits used to create pseudo addresses for balancing, 2^4, 16 addresses
 	defaultLowWaterMark                = 3 // the number of peers in consecutive deepest bins that constitute as nearest neighbours
 	defaultSaturationPeers             = 8
 	defaultOverSaturationPeers         = 20
@@ -693,7 +694,7 @@ func (k *Kad) recordPeerLatencies(ctx context.Context) {
 }
 
 // pruneOversaturatedBins disconnects out of depth peers from oversaturated bins
-// while maintaining the balance of the bin and favoring peers with longers connections
+// while maintaining the balance of the bin and favoring healthy and reachable peers.
 func (k *Kad) pruneOversaturatedBins(depth uint8) {
 
 	for i := range k.commonBinPrefixes {
@@ -707,41 +708,43 @@ func (k *Kad) pruneOversaturatedBins(depth uint8) {
 			continue
 		}
 
-		binPeers := k.connectedPeers.BinPeers(uint8(i))
+		for j := 0; j < len(k.commonBinPrefixes[i]) && k.connectedPeers.BinSize(uint8(i)) > k.opt.OverSaturationPeers; j++ {
 
-		k.logger.Debug("starting pruning", "bin", i, "binSize", binPeersCount)
-
-		for j := 0; j < len(k.commonBinPrefixes[i]); j++ {
-
-			if k.connectedPeers.BinSize(uint8(i)) <= k.opt.OverSaturationPeers {
-				break
-			}
-
-			pseudoAddr := k.commonBinPrefixes[i][j]
-			peers := k.balancedSlotPeers(pseudoAddr, binPeers, i)
-
+			binPeers := k.connectedPeers.BinPeers(uint8(i))
+			peers := k.balancedSlotPeers(k.commonBinPrefixes[i][j], binPeers, i)
 			if len(peers) <= 1 {
 				continue
 			}
 
-			var smallestDuration time.Duration
-			var newestPeer swarm.Address
+			var disconnectPeer = swarm.ZeroAddress
+			var unreachablePeer = swarm.ZeroAddress
 			for _, peer := range peers {
-				ss := k.collector.Inspect(peer)
-				if ss == nil {
-					continue
-				}
-				duration := ss.SessionConnectionDuration
-				if smallestDuration == 0 || duration < smallestDuration {
-					smallestDuration = duration
-					newestPeer = peer
+				if ss := k.collector.Inspect(peer); ss != nil {
+					if !ss.Healthy {
+						disconnectPeer = peer
+						break
+					}
+					if ss.Reachability != p2p.ReachabilityStatusPublic {
+						unreachablePeer = peer
+					}
 				}
 			}
-			err := k.p2p.Disconnect(newestPeer, "pruned from oversaturated bin")
+
+			if disconnectPeer.IsZero() {
+				if unreachablePeer.IsZero() {
+					disconnectPeer = peers[rand.Intn(len(peers))]
+				} else {
+					disconnectPeer = unreachablePeer // pick unrechable peer
+				}
+			}
+
+			err := k.p2p.Disconnect(disconnectPeer, "pruned from oversaturated bin")
 			if err != nil {
 				k.logger.Debug("prune disconnect failed", "error", err)
 			}
 		}
+
+		k.logger.Debug("pruning", "bin", i, "oldBinSize", binPeersCount, "newBinSize", k.connectedPeers.BinSize(uint8(i)))
 	}
 }
 
@@ -1153,7 +1156,7 @@ func (k *Kad) binReachablePeers(bin uint8) (peers []swarm.Address) {
 
 		return false, true, nil
 
-	}, topology.Filter{Reachable: true})
+	}, topology.Select{Reachable: true})
 
 	return
 }
@@ -1267,7 +1270,7 @@ func (k *Kad) IsReachable() bool {
 }
 
 // ClosestPeer returns the closest peer to a given address.
-func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, filter topology.Filter, skipPeers ...swarm.Address) (swarm.Address, error) {
+func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, filter topology.Select, skipPeers ...swarm.Address) (swarm.Address, error) {
 	if k.connectedPeers.Length() == 0 {
 		return swarm.Address{}, topology.ErrNotFound
 	}
@@ -1315,7 +1318,7 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, filter topology.
 }
 
 // EachConnectedPeer implements topology.PeerIterator interface.
-func (k *Kad) EachConnectedPeer(f topology.EachPeerFunc, filter topology.Filter) error {
+func (k *Kad) EachConnectedPeer(f topology.EachPeerFunc, filter topology.Select) error {
 	filters := filterOps(filter)
 
 	return k.connectedPeers.EachBin(func(addr swarm.Address, po uint8) (bool, bool, error) {
@@ -1327,7 +1330,7 @@ func (k *Kad) EachConnectedPeer(f topology.EachPeerFunc, filter topology.Filter)
 }
 
 // EachConnectedPeerRev implements topology.PeerIterator interface.
-func (k *Kad) EachConnectedPeerRev(f topology.EachPeerFunc, filter topology.Filter) error {
+func (k *Kad) EachConnectedPeerRev(f topology.EachPeerFunc, filter topology.Select) error {
 	filters := filterOps(filter)
 	return k.connectedPeers.EachBinRev(func(addr swarm.Address, po uint8) (bool, bool, error) {
 		if len(filters) > 0 && k.opt.FilterFunc(filters...)(addr) {
@@ -1336,7 +1339,7 @@ func (k *Kad) EachConnectedPeerRev(f topology.EachPeerFunc, filter topology.Filt
 		return f(addr, po)
 	})
 }
-func (k *Kad) PeersCount(filter topology.Filter) int {
+func (k *Kad) PeersCount(filter topology.Select) int {
 	return k.connectedPeers.Length()
 }
 
@@ -1399,7 +1402,7 @@ func (k *Kad) SubscribeTopologyChange() (c <-chan struct{}, unsubscribe func()) 
 	return channel, unsubscribe
 }
 
-func filterOps(filter topology.Filter) []im.FilterOp {
+func filterOps(filter topology.Select) []im.FilterOp {
 
 	ops := make([]im.FilterOp, 0, 2)
 

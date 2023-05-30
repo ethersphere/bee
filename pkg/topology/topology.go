@@ -45,21 +45,22 @@ type ClosestPeerer interface {
 	// given chunk address.
 	// This function will ignore peers with addresses provided in skipPeers.
 	// Returns topology.ErrWantSelf in case base is the closest to the address.
-	ClosestPeer(addr swarm.Address, includeSelf bool, f Filter, skipPeers ...swarm.Address) (peerAddr swarm.Address, err error)
+	ClosestPeer(addr swarm.Address, includeSelf bool, f Select, skipPeers ...swarm.Address) (peerAddr swarm.Address, err error)
 }
 
 // PeerIterator is an interface that allows iteration over peers.
 type PeerIterator interface {
 	// EachConnectedPeer iterates through connected
 	// peers from the closest bin to the farthest.
-	EachConnectedPeer(EachPeerFunc, Filter) error
+	EachConnectedPeer(EachPeerFunc, Select) error
 	// EachConnectedPeerRev iterates through connected
 	// peers from the farthest bin to the closest.
-	EachConnectedPeerRev(EachPeerFunc, Filter) error
+	EachConnectedPeerRev(EachPeerFunc, Select) error
 }
 
-// Filter defines the different filters that can be used with the Peer iterators
-type Filter struct {
+// Select defines the different filters that can be used with the Peer iterators.
+// The fields only take effect if set to true. The logical AND operator is applied to multiple selected fields.
+type Select struct {
 	Reachable bool
 	Healthy   bool
 }
@@ -155,5 +156,5 @@ type SetStorageRadiuser interface {
 }
 
 type PeersCounter interface {
-	PeersCount(Filter) int
+	PeersCount(Select) int
 }

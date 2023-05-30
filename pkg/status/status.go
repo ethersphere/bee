@@ -63,7 +63,7 @@ func (s *Service) LocalSnapshot() (*Snapshot, error) {
 			}
 			return false, false, nil
 		},
-		topology.Filter{},
+		topology.Select{},
 	)
 	if err != nil {
 		return nil, fmt.Errorf("iterate connected peers: %w", err)
@@ -152,7 +152,7 @@ func (s *Service) handler(ctx context.Context, _ p2p.Peer, stream p2p.Stream) er
 			}
 			return false, false, nil
 		},
-		topology.Filter{},
+		topology.Select{},
 	)
 	if err != nil {
 		s.logger.Error(err, "iteration of connected peers failed")

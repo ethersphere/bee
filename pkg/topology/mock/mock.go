@@ -125,7 +125,7 @@ func (d *mock) Peers() []swarm.Address {
 	return d.peers
 }
 
-func (d *mock) ClosestPeer(addr swarm.Address, wantSelf bool, _ topology.Filter, skipPeers ...swarm.Address) (peerAddr swarm.Address, err error) {
+func (d *mock) ClosestPeer(addr swarm.Address, wantSelf bool, _ topology.Select, skipPeers ...swarm.Address) (peerAddr swarm.Address, err error) {
 	if len(skipPeers) == 0 {
 		if d.closestPeerErr != nil {
 			return d.closestPeer, d.closestPeerErr
@@ -188,7 +188,7 @@ func (m *mock) NeighborhoodDepth() uint8 {
 }
 
 // EachConnectedPeer implements topology.PeerIterator interface.
-func (d *mock) EachConnectedPeer(f topology.EachPeerFunc, _ topology.Filter) (err error) {
+func (d *mock) EachConnectedPeer(f topology.EachPeerFunc, _ topology.Select) (err error) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 
@@ -207,7 +207,7 @@ func (d *mock) EachConnectedPeer(f topology.EachPeerFunc, _ topology.Filter) (er
 }
 
 // EachConnectedPeerRev implements topology.PeerIterator interface.
-func (d *mock) EachConnectedPeerRev(f topology.EachPeerFunc, _ topology.Filter) (err error) {
+func (d *mock) EachConnectedPeerRev(f topology.EachPeerFunc, _ topology.Select) (err error) {
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 

@@ -152,7 +152,7 @@ func (s *Service) manage(warmupTime, wakeupInterval time.Duration, freshNode boo
 		}
 
 		// if historical syncing rate is at zero, we proactively decrease the storage radius to allow nodes to widen their neighbourhoods
-		if rate == 0 && s.topology.PeersCount(topologyDriver.Filter{}) != 0 {
+		if rate == 0 && s.topology.PeersCount(topologyDriver.Select{}) != 0 {
 			err = s.bs.SetStorageRadius(func(radius uint8) uint8 {
 				if radius > s.minimumRadius {
 					radius--

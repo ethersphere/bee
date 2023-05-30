@@ -358,7 +358,7 @@ func (s *Service) prepareCredit(ctx context.Context, peer, chunk swarm.Address, 
 // retrieve request.
 func (s *Service) closestPeer(addr swarm.Address, skipPeers []swarm.Address, allowUpstream bool) (swarm.Address, error) {
 
-	closest, err := s.peerSuggester.ClosestPeer(addr, false, topology.Filter{Reachable: true}, skipPeers...)
+	closest, err := s.peerSuggester.ClosestPeer(addr, false, topology.Select{Reachable: true}, skipPeers...)
 	if err != nil {
 		return swarm.Address{}, err
 	}
