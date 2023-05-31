@@ -158,7 +158,7 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 		// this is a small hack to make the iteration work with the
 		// old implementation of statestore. this allows us to do a
 		// full iteration without looking at the prefix.
-		if q.Factory().Namespace() != "" || q.Prefix != "" {
+		if q.Factory().Namespace() != "" {
 			prefix = q.Factory().Namespace() + separator + q.Prefix
 		}
 		iter = s.db.NewIterator(util.BytesPrefix([]byte(prefix)), nil)
