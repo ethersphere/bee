@@ -1,3 +1,7 @@
+// Copyright 2023 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package storeadapter
 
 import (
@@ -14,41 +18,19 @@ func AllSteps() migration.Steps {
 }
 
 func epochMigration(s storage.Store) error {
-	itemChan := make(chan *rawItem)
-	errChan := make(chan error)
-	done := make(chan struct{})
-
-	go func() {
-		defer close(done)
-
-		for item := range itemChan {
-			item.ns = stateStoreNamespace
-			if err := s.Put(item); err != nil {
-				errChan <- err
-				return
-			}
-		}
-	}()
-	err := s.Iterate(storage.Query{
+	return s.Iterate(storage.Query{
 		Factory: func() storage.Item { return &rawItem{&proxyItem{obj: []byte(nil)}} },
 	}, func(res storage.Result) (stop bool, err error) {
 		if strings.HasPrefix(res.ID, stateStoreNamespace) {
 			return false, nil
 		}
+
 		item := res.Entry.(*rawItem)
 		item.key = res.ID
-		select {
-		case itemChan <- item:
-			return false, nil
-		case err := <-errChan:
+		item.ns = stateStoreNamespace
+		if err := s.Put(item); err != nil {
 			return true, err
 		}
+		return false, nil
 	})
-	if err != nil {
-		return err
-	}
-	close(itemChan)
-	<-done
-
-	return nil
 }

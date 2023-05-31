@@ -7,10 +7,10 @@ package storeadapter
 import (
 	"encoding"
 	"encoding/json"
-	"path"
 
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/migration"
+	"github.com/ethersphere/bee/pkg/storage/storageutil"
 )
 
 // stateStoreNamespace is the namespace used for state storage.
@@ -85,7 +85,7 @@ func (pi *proxyItem) Clone() storage.Item {
 
 // String implements Item interface.
 func (pi proxyItem) String() string {
-	return path.Join(pi.Namespace(), pi.ID())
+	return storageutil.JoinFields(pi.Namespace(), pi.ID())
 }
 
 // newItemProxy creates a new proxyItem.
