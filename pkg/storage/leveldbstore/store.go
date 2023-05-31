@@ -155,7 +155,12 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 		}
 		_ = iter.Prev()
 	} else {
-		prefix = q.Factory().Namespace() + separator + q.Prefix
+		// this is a small hack to make the iteration work with the
+		// old implementation of statestore. this allows us to do a
+		// full iteration without looking at the prefix.
+		if q.Factory().Namespace() != "" || q.Prefix != "" {
+			prefix = q.Factory().Namespace() + separator + q.Prefix
+		}
 		iter = s.db.NewIterator(util.BytesPrefix([]byte(prefix)), nil)
 	}
 

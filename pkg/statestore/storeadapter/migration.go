@@ -30,7 +30,7 @@ func epochMigration(s storage.Store) error {
 		}
 	}()
 	err := s.Iterate(storage.Query{
-		Factory: func() storage.Item { return &rawItem{newItemProxy("", []byte(nil))} },
+		Factory: func() storage.Item { return &rawItem{&proxyItem{obj: []byte(nil)}} },
 	}, func(res storage.Result) (stop bool, err error) {
 		if strings.HasPrefix(res.ID, stateStoreNamespace) {
 			return false, nil
