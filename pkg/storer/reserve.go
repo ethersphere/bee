@@ -222,6 +222,10 @@ func (db *DB) ReservePutter(ctx context.Context) PutterSession {
 
 // EvictBatch evicts all chunks belonging to a batch from the reserve.
 func (db *DB) EvictBatch(ctx context.Context, batchID []byte) (err error) {
+	if db.reserve == nil {
+		// if reserve is not configured, do nothing
+		return nil
+	}
 	dur := captureDuration(time.Now())
 	defer func() {
 		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "EvictBatch").Observe(dur())
