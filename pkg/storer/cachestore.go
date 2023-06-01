@@ -13,10 +13,20 @@ import (
 	"github.com/hashicorp/go-multierror"
 )
 
+const (
+	cacheAccessLockKey = "cachestoreAccess"
+)
+
 // Lookup is the implementation of the CacheStore.Lookup method.
 func (db *DB) Lookup() storage.Getter {
 	return getterWithMetrics{
 		storage.GetterFunc(func(ctx context.Context, address swarm.Address) (swarm.Chunk, error) {
+			// the cacheObj resets its state on failures and expects the transaction
+			// rollback to undo all the updates, so we need a lock here to prevent
+			// concurrent access to the cacheObj.
+			db.lock.Lock(cacheAccessLockKey)
+			defer db.lock.Unlock(cacheAccessLockKey)
+
 			txnRepo, commit, rollback := db.repo.NewTx(ctx)
 			ch, err := db.cacheObj.Getter(txnRepo).Get(ctx, address)
 			switch {
@@ -40,6 +50,12 @@ func (db *DB) Lookup() storage.Getter {
 func (db *DB) Cache() storage.Putter {
 	return putterWithMetrics{
 		storage.PutterFunc(func(ctx context.Context, ch swarm.Chunk) error {
+			// the cacheObj resets its state on failures and expects the transaction
+			// rollback to undo all the updates, so we need a lock here to prevent
+			// concurrent access to the cacheObj.
+			db.lock.Lock(cacheAccessLockKey)
+			defer db.lock.Unlock(cacheAccessLockKey)
+
 			txnRepo, commit, rollback := db.repo.NewTx(ctx)
 			err := db.cacheObj.Putter(txnRepo).Put(ctx, ch)
 			if err != nil {
