@@ -103,6 +103,7 @@ func New(
 		blockLister:     blockLister,
 		histSyncLimiter: make(chan struct{}, maxHistSyncs),
 		rate:            rate.New(DefaultHistRateWindow),
+		cancel:          func() { /* Noop, since the context is initialized in the Start(). */ },
 	}
 
 	return p
