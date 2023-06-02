@@ -196,16 +196,6 @@ func (s *ReserveStore) ReserveGet(ctx context.Context, addr swarm.Address, batch
 	return nil, storage.ErrNotFound
 }
 
-type reservePutterSession struct {
-	storage.Putter
-	done    func(swarm.Address) error
-	cleanup func() error
-}
-
-func (p *reservePutterSession) Done(addr swarm.Address) error { return p.done(addr) }
-
-func (p *reservePutterSession) Cleanup() error { return p.cleanup() }
-
 // Put chunks.
 func (s *ReserveStore) ReservePutter() storage.Putter {
 	return storage.PutterFunc(
