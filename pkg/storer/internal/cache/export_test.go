@@ -20,14 +20,13 @@ var (
 	ErrUnmarshalCacheEntryInvalidSize  = errUnmarshalCacheEntryInvalidSize
 )
 
-func (c *Cache) State() CacheState {
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
-
-	start := c.state.Head.Clone()
-	end := c.state.Tail.Clone()
-
-	return cacheState{Head: start, Tail: end, Count: c.state.Count}
+func (c *Cache) State(store storage.Store) CacheState {
+	state := &CacheState{}
+	err := store.Get(state)
+	if err != nil {
+		return CacheState{}
+	}
+	return *state
 }
 
 func (c *Cache) IterateOldToNew(
