@@ -177,7 +177,7 @@ func New(ctx context.Context, store internal.Storage, capacity uint64) (*Cache, 
 		return nil, fmt.Errorf("failed updating state: %w", err)
 	}
 
-	return &Cache{capacity: capacity}, nil
+	return &Cache{size: state.Count, capacity: capacity}, nil
 }
 
 // popFront will pop the first item in the queue. It will update the cache state so
