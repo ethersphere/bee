@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"sync/atomic"
 
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -49,20 +48,12 @@ type TxChunkStore interface {
 // TxState is a mix-in for Tx. It provides basic
 // functionality for transaction state lifecycle.
 type TxState struct {
-	// once guards cancel and done invariants.
-	once sync.Once
-
 	// ctx lives for the life of the transaction.
 	ctx context.Context
 
 	// cancel is this context cancel function
 	// that signals the end of this transaction.
-	cancel context.CancelFunc
-
-	// done transitions from 0 to 1 exactly once, on Commit or Rollback.
-	// Once done, all operations should fail with ErrTxDone.
-	// The value is treated as a sync/atomic int32.
-	done int32
+	cancel context.CancelCauseFunc
 }
 
 // AwaitDone returns a channel that blocks until the context
@@ -80,45 +71,35 @@ func (tx *TxState) AwaitDone() <-chan struct{} {
 }
 
 // IsDone returns ErrTxDone if the transaction has already been committed
-// or rolled back. If the transaction is still in progress and the context
-// is finished, it returns a context error.
+// or rolled back. If the transaction was in progress and the context was
+// canceled, it returns the context.Canceled error.
 func (tx *TxState) IsDone() error {
 	if tx == nil {
 		return nil
 	}
 
-	select {
-	default:
-	case <-tx.ctx.Done():
-		if atomic.LoadInt32(&tx.done) == 1 {
-			return ErrTxDone
-		}
-		return tx.ctx.Err()
-	}
-	return nil
+	return context.Cause(tx.ctx)
 }
 
-// Done marks this transaction as complete.
-// It returns ErrTxDone if the transaction
-// has already been committed or rolled back.
+// Done marks this transaction as complete. It returns ErrTxDone if the
+// transaction has already been committed or rolled back or if the transaction
+// was in progress and the context was canceled, it returns the context.Canceled
+// error.
 func (tx *TxState) Done() error {
 	if tx == nil {
 		return nil
 	}
 
-	err := ErrTxDone
-	tx.once.Do(func() {
-		if atomic.SwapInt32(&tx.done, 1) == 0 {
-			err = tx.ctx.Err()
-			tx.cancel()
-		}
-	})
-	return err
+	if tx.ctx.Err() == nil {
+		tx.cancel(ErrTxDone)
+		return nil
+	}
+	return context.Cause(tx.ctx)
 }
 
 // NewTxState is a convenient constructor for creating instances of TxState.
 func NewTxState(ctx context.Context) *TxState {
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancelCause(ctx)
 	return &TxState{ctx: ctx, cancel: cancel}
 }
 
