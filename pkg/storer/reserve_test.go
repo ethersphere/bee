@@ -36,7 +36,7 @@ func TestIndexCollision(t *testing.T) {
 	testF := func(t *testing.T, baseAddr swarm.Address, storer *storer.DB) {
 		t.Helper()
 		stamp := postagetesting.MustNewBatchStamp(postagetesting.MustNewBatch().ID)
-		putter := storer.ReservePutter(context.Background())
+		putter := storer.ReservePutter()
 
 		ch_1 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(stamp)
 		err := putter.Put(context.Background(), ch_1)
@@ -48,11 +48,6 @@ func TestIndexCollision(t *testing.T) {
 		err = putter.Put(context.Background(), ch_2)
 		if err == nil {
 			t.Fatal("expected index collision error")
-		}
-
-		err = putter.Done(swarm.ZeroAddress)
-		if err != nil {
-			t.Fatal(err)
 		}
 
 		_, err = storer.ReserveGet(context.Background(), ch_2.Address(), ch_2.Stamp().BatchID())
@@ -101,7 +96,7 @@ func TestReplaceOldIndex(t *testing.T) {
 			ch_1 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 0))
 			ch_2 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 1))
 
-			putter := storer.ReservePutter(context.Background())
+			putter := storer.ReservePutter()
 
 			err := putter.Put(context.Background(), ch_1)
 			if err != nil {
@@ -109,11 +104,6 @@ func TestReplaceOldIndex(t *testing.T) {
 			}
 
 			err = putter.Put(context.Background(), ch_2)
-			if err != nil {
-				t.Fatal(err)
-			}
-
-			err = putter.Done(swarm.ZeroAddress)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -197,7 +187,7 @@ func TestEvictBatch(t *testing.T) {
 	batches := []*postage.Batch{postagetesting.MustNewBatch(), postagetesting.MustNewBatch(), postagetesting.MustNewBatch()}
 	evictBatch := batches[1]
 
-	putter := st.ReservePutter(ctx)
+	putter := st.ReservePutter()
 
 	for b := 0; b < 3; b++ {
 		for i := uint64(0); i < chunksPerPO; i++ {
@@ -209,11 +199,6 @@ func TestEvictBatch(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-	}
-
-	err = putter.Done(swarm.ZeroAddress)
-	if err != nil {
-		t.Fatal(err)
 	}
 
 	err = st.EvictBatch(ctx, evictBatch.ID)
@@ -283,7 +268,15 @@ func TestUnreserveCap(t *testing.T) {
 
 		ctx := context.Background()
 
-		putter := storer.ReservePutter(ctx)
+		putter := storer.ReservePutter()
+
+		gotUnreserveSignal := make(chan struct{})
+		go func() {
+			defer close(gotUnreserveSignal)
+			c, unsub := storer.Events().Subscribe("reserveUnreserved")
+			defer unsub()
+			<-c
+		}()
 
 		for b := 0; b < 5; b++ {
 			for i := uint64(0); i < chunksPerPO; i++ {
@@ -297,17 +290,15 @@ func TestUnreserveCap(t *testing.T) {
 			}
 		}
 
-		c, unsub := storer.Events().Subscribe("reserveUnreserved")
-		t.Cleanup(func() { unsub() })
+		// wait for unreserve signal
+		<-gotUnreserveSignal
 
-		err = putter.Done(swarm.ZeroAddress)
+		err = spinlock.Wait(time.Second*30, func() bool {
+			return storer.ReserveSize() == capacity
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
-
-		<-c
-
-		t.Run("reserve size", reserveSizeTest(storer.Reserve(), capacity))
 
 		for po, chunks := range chunksPO {
 			for _, ch := range chunks {
@@ -425,7 +416,7 @@ func TestRadiusManager(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		putter := storer.ReservePutter(context.Background())
+		putter := storer.ReservePutter()
 
 		for i := 0; i < 4; i++ {
 			for j := 0; j < 10; j++ {
@@ -435,11 +426,6 @@ func TestRadiusManager(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-		}
-
-		err = putter.Done(swarm.ZeroAddress)
-		if err != nil {
-			t.Fatal(err)
 		}
 
 		waitForRadius(t, storer.Reserve(), 3)
@@ -473,7 +459,7 @@ func TestSubscribeBin(t *testing.T) {
 		var (
 			chunks      []swarm.Chunk
 			chunksPerPO uint64 = 50
-			putter             = storer.ReservePutter(context.Background())
+			putter             = storer.ReservePutter()
 		)
 
 		for j := 0; j < 2; j++ {
@@ -485,11 +471,6 @@ func TestSubscribeBin(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-		}
-
-		err := putter.Done(swarm.ZeroAddress)
-		if err != nil {
-			t.Fatal(err)
 		}
 
 		t.Run("subscribe full range", func(t *testing.T) {
@@ -597,7 +578,7 @@ func TestSubscribeBinTrigger(t *testing.T) {
 			chunksPerPO uint64 = 5
 		)
 
-		putter := storer.ReservePutter(context.Background())
+		putter := storer.ReservePutter()
 		for j := 0; j < 2; j++ {
 			for i := uint64(0); i < chunksPerPO; i++ {
 				ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, j)
@@ -607,10 +588,6 @@ func TestSubscribeBinTrigger(t *testing.T) {
 					t.Fatal(err)
 				}
 			}
-		}
-		err := putter.Done(swarm.ZeroAddress)
-		if err != nil {
-			t.Fatal(err)
 		}
 
 		binC, _, _ := storer.SubscribeBin(context.Background(), 0, 1)
@@ -635,12 +612,8 @@ func TestSubscribeBinTrigger(t *testing.T) {
 		}
 
 		newChunk := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0)
-		putter = storer.ReservePutter(context.Background())
-		err = putter.Put(context.Background(), newChunk)
-		if err != nil {
-			t.Fatal(err)
-		}
-		err = putter.Done(swarm.ZeroAddress)
+		putter = storer.ReservePutter()
+		err := putter.Put(context.Background(), newChunk)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -702,16 +675,12 @@ func TestReserveSampler(t *testing.T) {
 		timeVar := uint64(time.Now().UnixNano())
 		chs := randChunks(baseAddr, timeVar-1)
 
-		putter := st.ReservePutter(context.Background())
+		putter := st.ReservePutter()
 		for _, ch := range chs {
 			err := putter.Put(context.Background(), ch)
 			if err != nil {
 				t.Fatal(err)
 			}
-		}
-		err := putter.Done(swarm.ZeroAddress)
-		if err != nil {
-			t.Fatal(err)
 		}
 
 		t.Run("reserve size", reserveSizeTest(st.Reserve(), chunkCountPerPO*maxPO))
@@ -732,16 +701,12 @@ func TestReserveSampler(t *testing.T) {
 		// We generate another 100 chunks. With these new chunks in the reserve, statistically
 		// some of them should definitely make it to the sample based on lex ordering.
 		chs = randChunks(baseAddr, timeVar+1)
-		putter = st.ReservePutter(context.Background())
+		putter = st.ReservePutter()
 		for _, ch := range chs {
 			err := putter.Put(context.Background(), ch)
 			if err != nil {
 				t.Fatal(err)
 			}
-		}
-		err = putter.Done(swarm.ZeroAddress)
-		if err != nil {
-			t.Fatal(err)
 		}
 
 		time.Sleep(time.Second)
@@ -868,13 +833,9 @@ func BenchmarkReservePutter(b *testing.B) {
 		b.Fatal(err)
 	}
 
-	putter := storage.PutterFunc(func(ctx context.Context, ch swarm.Chunk) error {
-		return storer.ReservePut(ctx, ch)
-	})
-
 	b.ResetTimer()
 	b.ReportAllocs()
-	storagetest.BenchmarkChunkStoreWriteSequential(b, putter)
+	storagetest.BenchmarkChunkStoreWriteSequential(b, storer.ReservePutter())
 }
 
 func networkRadiusFunc(r uint8) func() (uint8, error) {

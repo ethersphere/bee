@@ -27,8 +27,7 @@ const loggerName = "reserve"
 const reserveNamespace = "reserve"
 
 type Reserve struct {
-	mtx      sync.Mutex
-	putterMu sync.Mutex
+	mtx sync.Mutex
 
 	baseAddr     swarm.Address
 	radiusSetter topology.SetStorageRadiuser
@@ -77,9 +76,6 @@ func New(
 
 // Put stores a new chunk in the reserve and returns if the reserve size should increase.
 func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.Chunk) (bool, error) {
-	r.putterMu.Lock()
-	defer r.putterMu.Unlock()
-
 	indexStore := store.IndexStore()
 	chunkStore := store.ChunkStore()
 
@@ -330,9 +326,7 @@ func (r *Reserve) EvictBatchBin(ctx context.Context, store internal.Storage, bin
 
 		cb(c)
 
-		r.putterMu.Lock()
 		err = removeChunk(ctx, store, item)
-		r.putterMu.Unlock()
 		if err != nil {
 			return 0, err
 		}
