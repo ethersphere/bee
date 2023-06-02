@@ -396,7 +396,6 @@ type DB struct {
 
 	reserve          *reserve.Reserve
 	reserveWg        sync.WaitGroup
-	reserveMtx       sync.RWMutex
 	reserveBinEvents *events.Subscriber
 	baseAddr         swarm.Address
 	batchstore       postage.Storer
