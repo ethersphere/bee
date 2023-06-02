@@ -159,16 +159,6 @@ func (db *DB) ReservePutter() storage.Putter {
 	return putterWithMetrics{
 		storage.PutterFunc(
 			func(ctx context.Context, chunk swarm.Chunk) (err error) {
-				dur := captureDuration(time.Now())
-				defer func() {
-					db.metrics.MethodCallsDuration.WithLabelValues("reserve", "ReservePut").Observe(dur())
-					if err == nil {
-						db.metrics.MethodCalls.WithLabelValues("reserve", "ReservePut", "success").Inc()
-					} else {
-						db.metrics.MethodCalls.WithLabelValues("reserve", "ReservePut", "failure").Inc()
-					}
-				}()
-
 				db.lock.Lock(reserveUpdateLockKey)
 				defer db.lock.Unlock(reserveUpdateLockKey)
 
