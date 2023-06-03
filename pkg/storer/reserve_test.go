@@ -404,7 +404,7 @@ func TestRadiusManager(t *testing.T) {
 		t.Parallel()
 		bs := batchstore.New()
 
-		storer, err := memStorer(t, dbTestOps(baseAddr, 10, bs, nil, time.Millisecond*50))()
+		storer, err := memStorer(t, dbTestOps(baseAddr, 10, bs, nil, time.Millisecond*500))()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -428,9 +428,9 @@ func TestRadiusManager(t *testing.T) {
 			}
 		}
 
-		waitForRadius(t, storer.Reserve(), 3)
-
 		waitForSize(t, storer.Reserve(), 10)
+
+		waitForRadius(t, storer.Reserve(), 3)
 
 		err = storer.EvictBatch(context.Background(), batch.ID)
 		if err != nil {
