@@ -179,6 +179,58 @@ func TestDBExportImportPinning(t *testing.T) {
 	}
 }
 
+func TestDBNuke(t *testing.T) {
+	t.Parallel()
+
+	dir1 := t.TempDir()
+	ctx := context.Background()
+	db1 := newTestDB(t, ctx, &storer.Options{
+		Batchstore:      new(postage.NoOpBatchStore),
+		RadiusSetter:    kademlia.NewTopologyDriver(),
+		Logger:          testutil.NewLogger(t),
+		ReserveCapacity: node.ReserveCapacity,
+	}, dir1)
+
+	nChunks := 10
+	for i := 0; i < nChunks; i++ {
+		ch := storagetest.GenerateTestRandomChunk()
+		err := db1.ReservePut(ctx, ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	info, err := db1.DebugInfo(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Reserve.Size != nChunks {
+		t.Errorf("got reserve size before nuke: %d, want %d", info.Reserve.Size, nChunks)
+	}
+
+	db1.Close()
+
+	err = newCommand(t, cmd.WithArgs("db", "nuke", "--data-dir", dir1)).Execute()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	db1 = newTestDB(t, ctx, &storer.Options{
+		Batchstore:      new(postage.NoOpBatchStore),
+		RadiusSetter:    kademlia.NewTopologyDriver(),
+		Logger:          testutil.NewLogger(t),
+		ReserveCapacity: node.ReserveCapacity,
+	}, dir1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db1.Close()
+
+	info, err = db1.DebugInfo(ctx)
+	if info.Reserve.Size != 0 {
+		t.Errorf("got reserve size after nuke: %d, want %d", info.Reserve.Size, 0)
+	}
+}
+
 func TestMarshalChunk(t *testing.T) {
 	t.Parallel()
 	ch := storagetest.GenerateTestRandomChunk()

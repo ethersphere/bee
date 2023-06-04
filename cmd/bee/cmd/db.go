@@ -12,10 +12,11 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/node"
-	//localstore "github.com/ethersphere/bee/pkg/_localstore"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -35,7 +36,7 @@ func (c *command) initDBCmd() {
 
 	dbExportCmd(cmd)
 	dbImportCmd(cmd)
-	//dbNukeCmd(cmd)
+	dbNukeCmd(cmd)
 	//dbIndicesCmd(cmd)
 
 	c.root.AddCommand(cmd)
@@ -492,109 +493,74 @@ func dbImportPinningCmd(cmd *cobra.Command) {
 	cmd.AddCommand(c)
 }
 
-//func dbNukeCmd(cmd *cobra.Command) {
-//	c := &cobra.Command{
-//		Use:   "nuke",
-//		Short: "Nuke the DB and the relevant statestore entries so that bee resyncs all data next time it boots up.",
-//		RunE: func(cmd *cobra.Command, args []string) (err error) {
-//			v, err := cmd.Flags().GetString(optionNameVerbosity)
-//			if err != nil {
-//				return fmt.Errorf("get verbosity: %w", err)
-//			}
-//			v = strings.ToLower(v)
-//			logger, err := newLogger(cmd, v)
-//			if err != nil {
-//				return fmt.Errorf("new logger: %w", err)
-//			}
-//			d, err := cmd.Flags().GetDuration(optionNameSleepAfter)
-//			if err != nil {
-//				logger.Error(err, "getting sleep value failed")
-//			}
-//
-//			defer func() { time.Sleep(d) }()
-//
-//			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
-//			if err != nil {
-//				return fmt.Errorf("get data-dir: %w", err)
-//			}
-//			if dataDir == "" {
-//				return errors.New("no data-dir provided")
-//			}
-//
-//			logger.Warning("starting to nuke the DB with data-dir", "path", dataDir)
-//			logger.Warning("this process will erase all persisted chunks in your local storage")
-//			logger.Warning("it will NOT discriminate any pinned content, in case you were wondering")
-//			logger.Warning("you have another 10 seconds to change your mind and kill this process with CTRL-C...")
-//			time.Sleep(10 * time.Second)
-//			logger.Warning("proceeding with database nuke...")
-//
-//			localstorePath := filepath.Join(dataDir, "localstore")
-//			err = removeContent(localstorePath)
-//			if err != nil {
-//				return fmt.Errorf("localstore delete: %w", err)
-//			}
-//
-//			statestorePath := filepath.Join(dataDir, "statestore")
-//
-//			forgetOverlay, err := cmd.Flags().GetBool(optionNameForgetOverlay)
-//			if err != nil {
-//				return fmt.Errorf("get forget overlay: %w", err)
-//			}
-//
-//			forgetStamps, err := cmd.Flags().GetBool(optionNameForgetStamps)
-//			if err != nil {
-//				return fmt.Errorf("get forget stamps: %w", err)
-//			}
-//
-//			if forgetOverlay {
-//				err = removeContent(statestorePath)
-//				if err != nil {
-//					return fmt.Errorf("statestore delete: %w", err)
-//				}
-//				// all done, return early
-//				return nil
-//			}
-//
-//			stateStore, err := leveldb.NewStateStore(statestorePath, logger)
-//			if err != nil {
-//				return fmt.Errorf("new statestore: %w", err)
-//			}
-//
-//			logger.Warning("proceeding with statestore nuke...")
-//
-//			if err = stateStore.Nuke(forgetStamps); err != nil {
-//				return fmt.Errorf("statestore nuke: %w", err)
-//			}
-//			return nil
-//		}}
-//	c.Flags().String(optionNameDataDir, "", "data directory")
-//	c.Flags().String(optionNameVerbosity, "trace", "verbosity level")
-//	c.Flags().Bool(optionNameForgetOverlay, false, "forget the overlay and deploy a new chequebook on next bootup")
-//	c.Flags().Bool(optionNameForgetStamps, false, "forget the existing stamps belonging to the node. even when forgotten, they will show up again after a chain resync")
-//	c.Flags().Duration(optionNameSleepAfter, time.Duration(0), "time to sleep after the operation finished")
-//	cmd.AddCommand(c)
-//}
+func dbNukeCmd(cmd *cobra.Command) {
+	c := &cobra.Command{
+		Use:   "nuke",
+		Short: "Nuke the DB so that bee resyncs all data next time it boots up.",
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			v, err := cmd.Flags().GetString(optionNameVerbosity)
+			if err != nil {
+				return fmt.Errorf("get verbosity: %w", err)
+			}
+			v = strings.ToLower(v)
+			logger, err := newLogger(cmd, v)
+			if err != nil {
+				return fmt.Errorf("new logger: %w", err)
+			}
+			d, err := cmd.Flags().GetDuration(optionNameSleepAfter)
+			if err != nil {
+				logger.Error(err, "getting sleep value failed")
+			}
 
-//func removeContent(path string) error {
-//	dir, err := os.Open(path)
-//	if err != nil {
-//		return err
-//	}
-//	defer dir.Close()
-//
-//	subpaths, err := dir.Readdirnames(0)
-//	if err != nil {
-//		return err
-//	}
-//
-//	for _, sub := range subpaths {
-//		err = os.RemoveAll(filepath.Join(path, sub))
-//		if err != nil {
-//			return err
-//		}
-//	}
-//	return nil
-//}
+			defer func() { time.Sleep(d) }()
+
+			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
+			if err != nil {
+				return fmt.Errorf("get data-dir: %w", err)
+			}
+			if dataDir == "" {
+				return errors.New("no data-dir provided")
+			}
+
+			logger.Warning("starting to nuke the DB with data-dir", "path", dataDir)
+			logger.Warning("this process will erase all persisted chunks in your local storage")
+			logger.Warning("it will NOT discriminate any pinned content, in case you were wondering")
+			logger.Warning("you have another 10 seconds to change your mind and kill this process with CTRL-C...")
+			time.Sleep(10 * time.Second)
+			logger.Warning("proceeding with database nuke...")
+
+			err = removeContent(dataDir)
+			if err != nil {
+				return fmt.Errorf("delete data-dir: %w", err)
+			}
+			return nil
+		}}
+	c.Flags().String(optionNameDataDir, "", "data directory")
+	c.Flags().String(optionNameVerbosity, "trace", "verbosity level")
+	c.Flags().Duration(optionNameSleepAfter, time.Duration(0), "time to sleep after the operation finished")
+	cmd.AddCommand(c)
+}
+
+func removeContent(path string) error {
+	dir, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+
+	subpaths, err := dir.Readdirnames(0)
+	if err != nil {
+		return err
+	}
+
+	for _, sub := range subpaths {
+		err = os.RemoveAll(filepath.Join(path, sub))
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
 
 func MarshalChunkToBinary(c swarm.Chunk) ([]byte, error) {
 	buf := bytes.NewBuffer(nil)
