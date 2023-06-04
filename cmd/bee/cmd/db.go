@@ -23,11 +23,6 @@ import (
 	"github.com/spf13/cobra"
 )
 
-//const (
-//	optionNameForgetOverlay = "forget-overlay"
-//	optionNameForgetStamps  = "forget-stamps"
-//)
-
 func (c *command) initDBCmd() {
 	cmd := &cobra.Command{
 		Use:   "db",
@@ -37,62 +32,67 @@ func (c *command) initDBCmd() {
 	dbExportCmd(cmd)
 	dbImportCmd(cmd)
 	dbNukeCmd(cmd)
-	//dbIndicesCmd(cmd)
+	dbInfoCmd(cmd)
 
 	c.root.AddCommand(cmd)
 }
 
-//func dbIndicesCmd(cmd *cobra.Command) {
-//	c := &cobra.Command{
-//		Use:   "indices",
-//		Short: "Prints the DB indices",
-//		RunE: func(cmd *cobra.Command, args []string) (err error) {
-//			start := time.Now()
-//			v, err := cmd.Flags().GetString(optionNameVerbosity)
-//			if err != nil {
-//				return fmt.Errorf("get verbosity: %w", err)
-//			}
-//			v = strings.ToLower(v)
-//			logger, err := newLogger(cmd, v)
-//			if err != nil {
-//				return fmt.Errorf("new logger: %w", err)
-//			}
-//
-//			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
-//			if err != nil {
-//				return fmt.Errorf("get data-dir: %w", err)
-//			}
-//			if dataDir == "" {
-//				return errors.New("no data-dir provided")
-//			}
-//
-//			logger.Info("getting db indices with data-dir", "path", dataDir)
-//
-//			path := filepath.Join(dataDir, "localstore")
-//
-//			storer, err := localstore.New(path, nil, nil, nil, logger)
-//			if err != nil {
-//				return fmt.Errorf("localstore: %w", err)
-//			}
-//
-//			indices, err := storer.DebugIndices()
-//			if err != nil {
-//				return fmt.Errorf("error fetching indices: %w", err)
-//			}
-//
-//			for k, v := range indices {
-//				logger.Info("localstore", "index", k, "value", v)
-//			}
-//
-//			logger.Info("done", "elapsed", time.Since(start))
-//
-//			return nil
-//		},
-//	}
-//	c.Flags().String(optionNameDataDir, "", "data directory")
-//	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
-//	cmd.AddCommand(c)
-//}
+func dbInfoCmd(cmd *cobra.Command) {
+	c := &cobra.Command{
+		Use:   "info",
+		Short: "Prints the DB info",
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			start := time.Now()
+			v, err := cmd.Flags().GetString(optionNameVerbosity)
+			if err != nil {
+				return fmt.Errorf("get verbosity: %w", err)
+			}
+			v = strings.ToLower(v)
+			logger, err := newLogger(cmd, v)
+			if err != nil {
+				return fmt.Errorf("new logger: %w", err)
+			}
+
+			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
+			if err != nil {
+				return fmt.Errorf("get data-dir: %w", err)
+			}
+			if dataDir == "" {
+				return errors.New("no data-dir provided")
+			}
+
+			logger.Info("getting db indices with data-dir", "path", dataDir)
+
+			db, err := storer.New(cmd.Context(), dataDir, &storer.Options{
+				Logger:          logger,
+				RadiusSetter:    noopRadiusSetter{},
+				Batchstore:      new(postage.NoOpBatchStore),
+				ReserveCapacity: node.ReserveCapacity,
+			})
+			if err != nil {
+				return fmt.Errorf("localstore: %w", err)
+			}
+			defer db.Close()
+
+			info, err := db.DebugInfo(cmd.Context())
+			if err != nil {
+				return fmt.Errorf("fetching db info: %w", err)
+			}
+
+			logger.Info("reserve", "size", info.Reserve.Size, "capacity", info.Reserve.Capacity)
+			logger.Info("cache", "size", info.Cache.Size, "capacity", info.Cache.Capacity)
+			logger.Info("chunk", "total", info.ChunkStore.TotalChunks, "shared", info.ChunkStore.SharedSlots)
+			logger.Info("pinning", "chunks", info.Pinning.TotalChunks, "collections", info.Pinning.TotalCollections)
+			logger.Info("upload", "uploaded", info.Upload.TotalUploaded, "synced", info.Upload.TotalSynced)
+			logger.Info("done", "elapsed", time.Since(start))
+
+			return nil
+		},
+	}
+	c.Flags().String(optionNameDataDir, "", "data directory")
+	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
+	cmd.AddCommand(c)
+}
 
 func dbExportCmd(cmd *cobra.Command) {
 	c := &cobra.Command{
