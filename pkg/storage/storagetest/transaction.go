@@ -75,11 +75,10 @@ func initStore(t *testing.T, store storage.Store, objects ...*object) {
 
 // checkTxStoreFinishedTxInvariants check if all the store operations behave
 // as expected after the transaction has been committed or rolled back.
-func checkTxStoreFinishedTxInvariants(t *testing.T, store storage.TxStore) {
+func checkTxStoreFinishedTxInvariants(t *testing.T, store storage.TxStore, want error) {
 	t.Helper()
 
 	o007 := &object{id: "007", data: []byte("Hello, World!")}
-	want := storage.ErrTxDone
 
 	if have := store.Get(o007); !errors.Is(have, want) {
 		t.Fatalf("Get(...):\n\thave: %v\n\twant: %v", have, want)
@@ -109,11 +108,11 @@ func checkTxStoreFinishedTxInvariants(t *testing.T, store storage.TxStore) {
 		t.Fatalf("Delete(...):\n\thave: %v\n\twant: %v", have, want)
 	}
 
-	if have, want := store.Commit(), storage.ErrTxDone; !errors.Is(have, want) {
+	if have := store.Commit(); !errors.Is(have, want) {
 		t.Fatalf("Commit():\n\thave: %v\n\twant: %v", have, want)
 	}
 
-	if have, want := store.Rollback(), storage.ErrTxDone; !errors.Is(have, want) {
+	if have := store.Rollback(); !errors.Is(have, want) {
 		t.Fatalf("Rollback():\n\thave: %v\n\twant: %v", have, want)
 	}
 }
@@ -145,7 +144,7 @@ func TestTxStore(t *testing.T, store storage.TxStore) {
 			t.Fatalf("Commit(): unexpected error: %v", err)
 		}
 
-		checkTxStoreFinishedTxInvariants(t, tx)
+		checkTxStoreFinishedTxInvariants(t, tx, storage.ErrTxDone)
 	})
 
 	t.Run("commit", func(t *testing.T) {
@@ -174,7 +173,7 @@ func TestTxStore(t *testing.T, store storage.TxStore) {
 				}
 			}
 
-			checkTxStoreFinishedTxInvariants(t, tx)
+			checkTxStoreFinishedTxInvariants(t, tx, storage.ErrTxDone)
 		})
 
 		t.Run("delete existing objects", func(t *testing.T) {
@@ -196,7 +195,7 @@ func TestTxStore(t *testing.T, store storage.TxStore) {
 				}
 			}
 
-			checkTxStoreFinishedTxInvariants(t, tx)
+			checkTxStoreFinishedTxInvariants(t, tx, storage.ErrTxDone)
 		})
 	})
 
@@ -210,7 +209,20 @@ func TestTxStore(t *testing.T, store storage.TxStore) {
 			t.Fatalf("Rollback(): unexpected error: %v", err)
 		}
 
-		checkTxStoreFinishedTxInvariants(t, tx)
+		checkTxStoreFinishedTxInvariants(t, tx, storage.ErrTxDone)
+	})
+
+	t.Run("rollback canceled context", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		tx := store.NewTx(storage.NewTxState(ctx))
+
+		if err := tx.Rollback(); err != nil {
+			t.Fatalf("Rollback(): unexpected error: %v", err)
+		}
+
+		checkTxStoreFinishedTxInvariants(t, tx, context.Canceled)
 	})
 
 	t.Run("rollback added objects", func(t *testing.T) {
@@ -238,7 +250,7 @@ func TestTxStore(t *testing.T, store storage.TxStore) {
 			}
 		}
 
-		checkTxStoreFinishedTxInvariants(t, tx)
+		checkTxStoreFinishedTxInvariants(t, tx, storage.ErrTxDone)
 	})
 
 	t.Run("rollback updated objects", func(t *testing.T) {
@@ -278,7 +290,7 @@ func TestTxStore(t *testing.T, store storage.TxStore) {
 			}
 		}
 
-		checkTxStoreFinishedTxInvariants(t, tx)
+		checkTxStoreFinishedTxInvariants(t, tx, storage.ErrTxDone)
 	})
 
 	t.Run("rollback removed objects", func(t *testing.T) {
@@ -318,7 +330,7 @@ func TestTxStore(t *testing.T, store storage.TxStore) {
 			}
 		}
 
-		checkTxStoreFinishedTxInvariants(t, tx)
+		checkTxStoreFinishedTxInvariants(t, tx, storage.ErrTxDone)
 	})
 }
 
@@ -336,11 +348,10 @@ func initChunkStore(t *testing.T, store storage.ChunkStore, chunks ...swarm.Chun
 
 // checkTxChunkStoreFinishedTxInvariants check if all the store operations behave
 // as expected after the transaction has been committed or rolled back.
-func checkTxChunkStoreFinishedTxInvariants(t *testing.T, store storage.TxChunkStore) {
+func checkTxChunkStoreFinishedTxInvariants(t *testing.T, store storage.TxChunkStore, want error) {
 	t.Helper()
 
 	ctx := context.Background()
-	want := storage.ErrTxDone
 	randomChunk := chunktest.GenerateTestRandomChunk()
 
 	if chunk, have := store.Get(ctx, randomChunk.Address()); !errors.Is(have, want) || chunk != nil {
@@ -365,11 +376,11 @@ func checkTxChunkStoreFinishedTxInvariants(t *testing.T, store storage.TxChunkSt
 		t.Fatalf("Iterate(...):\n\thave: %v\n\twant: %v", have, want)
 	}
 
-	if have, want := store.Commit(), storage.ErrTxDone; !errors.Is(have, want) {
+	if have := store.Commit(); !errors.Is(have, want) {
 		t.Fatalf("Commit():\n\thave: %v\n\twant: %v", have, want)
 	}
 
-	if have, want := store.Rollback(), storage.ErrTxDone; !errors.Is(have, want) {
+	if have := store.Rollback(); !errors.Is(have, want) {
 		t.Fatalf("Rollback():\n\thave: %v\n\twant: %v", have, want)
 	}
 }
@@ -401,7 +412,7 @@ func TestTxChunkStore(t *testing.T, store storage.TxChunkStore) {
 			t.Fatalf("Commit(): unexpected error: %v", err)
 		}
 
-		checkTxChunkStoreFinishedTxInvariants(t, tx)
+		checkTxChunkStoreFinishedTxInvariants(t, tx, storage.ErrTxDone)
 	})
 
 	t.Run("commit", func(t *testing.T) {
@@ -429,7 +440,7 @@ func TestTxChunkStore(t *testing.T, store storage.TxChunkStore) {
 				}
 			}
 
-			checkTxChunkStoreFinishedTxInvariants(t, tx)
+			checkTxChunkStoreFinishedTxInvariants(t, tx, storage.ErrTxDone)
 		})
 
 		t.Run("delete existing chunks", func(t *testing.T) {
@@ -451,7 +462,7 @@ func TestTxChunkStore(t *testing.T, store storage.TxChunkStore) {
 				}
 			}
 
-			checkTxChunkStoreFinishedTxInvariants(t, tx)
+			checkTxChunkStoreFinishedTxInvariants(t, tx, storage.ErrTxDone)
 		})
 	})
 
@@ -465,7 +476,20 @@ func TestTxChunkStore(t *testing.T, store storage.TxChunkStore) {
 			t.Fatalf("Rollback(): unexpected error: %v", err)
 		}
 
-		checkTxChunkStoreFinishedTxInvariants(t, tx)
+		checkTxChunkStoreFinishedTxInvariants(t, tx, storage.ErrTxDone)
+	})
+
+	t.Run("rollback canceled context", func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		tx := store.NewTx(storage.NewTxState(ctx))
+
+		if err := tx.Rollback(); err != nil {
+			t.Fatalf("Rollback(): unexpected error: %v", err)
+		}
+
+		checkTxChunkStoreFinishedTxInvariants(t, tx, context.Canceled)
 	})
 
 	t.Run("rollback added chunks", func(t *testing.T) {
@@ -489,7 +513,7 @@ func TestTxChunkStore(t *testing.T, store storage.TxChunkStore) {
 			}
 		}
 
-		checkTxChunkStoreFinishedTxInvariants(t, tx)
+		checkTxChunkStoreFinishedTxInvariants(t, tx, storage.ErrTxDone)
 	})
 
 	t.Run("rollback removed chunks", func(t *testing.T) {
@@ -522,6 +546,6 @@ func TestTxChunkStore(t *testing.T, store storage.TxChunkStore) {
 			}
 		}
 
-		checkTxChunkStoreFinishedTxInvariants(t, tx)
+		checkTxChunkStoreFinishedTxInvariants(t, tx, storage.ErrTxDone)
 	})
 }

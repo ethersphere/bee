@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -178,6 +179,8 @@ var _ Store = (*TxStoreBase)(nil)
 type TxStoreBase struct {
 	*TxState
 	Store
+
+	rolledBack atomic.Bool
 }
 
 // Close implements the Store interface.
@@ -244,6 +247,16 @@ func (s *TxStoreBase) Delete(item Item) error {
 	return s.Store.Delete(item)
 }
 
+// Rollback implements the TxStore interface.
+func (s *TxStoreBase) Rollback() error {
+	if s.rolledBack.CompareAndSwap(false, true) {
+		if err := s.Done(); err == nil || errors.Is(err, context.Canceled) {
+			return nil
+		}
+	}
+	return s.IsDone()
+}
+
 var _ ChunkStore = (*TxChunkStoreBase)(nil)
 
 // TxChunkStoreBase implements the ChunkStore interface
@@ -251,6 +264,8 @@ var _ ChunkStore = (*TxChunkStoreBase)(nil)
 type TxChunkStoreBase struct {
 	*TxState
 	ChunkStore
+
+	rolledBack atomic.Bool
 }
 
 // Close implements the ChunkStore interface.
@@ -299,4 +314,14 @@ func (s *TxChunkStoreBase) Delete(ctx context.Context, address swarm.Address) er
 		return err
 	}
 	return s.ChunkStore.Delete(ctx, address)
+}
+
+// Rollback implements the TxChunkStore interface.
+func (s *TxChunkStoreBase) Rollback() error {
+	if s.rolledBack.CompareAndSwap(false, true) {
+		if err := s.Done(); err == nil || errors.Is(err, context.Canceled) {
+			return nil
+		}
+	}
+	return s.IsDone()
 }
