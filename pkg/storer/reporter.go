@@ -26,7 +26,7 @@ func (db *DB) Report(ctx context.Context, chunk swarm.Chunk, state storage.Chunk
 
 	err := reporter.Report(ctx, chunk, state)
 	if err != nil {
-		return errors.Join(err, rollback())
+		return fmt.Errorf("reporter.Report: %w", errors.Join(err, rollback()))
 	}
 
 	return commit()

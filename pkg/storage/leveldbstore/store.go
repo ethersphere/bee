@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/hashicorp/go-multierror"
 	"github.com/syndtr/goleveldb/leveldb"
 	ldbErrors "github.com/syndtr/goleveldb/leveldb/errors"
 	"github.com/syndtr/goleveldb/leveldb/iterator"
@@ -18,7 +17,7 @@ import (
 	ldbStorage "github.com/syndtr/goleveldb/leveldb/storage"
 	"github.com/syndtr/goleveldb/leveldb/util"
 
-	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage"
 )
 
 const separator = "/"
@@ -141,7 +140,7 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 		return fmt.Errorf("failed iteration: %w", err)
 	}
 
-	var retErr *multierror.Error
+	var retErr error
 
 	var iter iterator.Iterator
 	var prefix string
@@ -205,17 +204,17 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 		}
 
 		if err != nil {
-			retErr = multierror.Append(retErr, fmt.Errorf("failed unmarshaling: %w", err))
+			retErr = errors.Join(retErr, fmt.Errorf("failed unmarshaling: %w", err))
 			break
 		}
 
 		if res == nil {
-			retErr = multierror.Append(retErr, fmt.Errorf("unknown object attribute type: %v", q.ItemProperty))
+			retErr = errors.Join(retErr, fmt.Errorf("unknown object attribute type: %v", q.ItemProperty))
 			break
 		}
 
 		if stop, err := fn(*res); err != nil {
-			retErr = multierror.Append(retErr, fmt.Errorf("iterate callback function errored: %w", err))
+			retErr = errors.Join(retErr, fmt.Errorf("iterate callback function errored: %w", err))
 			break
 		} else if stop {
 			break
@@ -225,10 +224,10 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 	iter.Release()
 
 	if err := iter.Error(); err != nil {
-		retErr = multierror.Append(retErr, err)
+		retErr = errors.Join(retErr, err)
 	}
 
-	return retErr.ErrorOrNil()
+	return retErr
 }
 
 // Count implements the storage.Store interface.

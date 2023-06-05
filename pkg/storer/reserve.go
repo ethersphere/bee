@@ -165,7 +165,7 @@ func (db *DB) ReservePutter() storage.Putter {
 				trx, commit, rollback := db.repo.NewTx(ctx)
 				newIndex, err := db.reserve.Put(ctx, trx, chunk)
 				if err != nil {
-					return errors.Join(err, rollback())
+					return fmt.Errorf("reserve: putter.Put: %w", errors.Join(err, rollback()))
 				}
 				if err := commit(); err != nil {
 					return err
@@ -229,7 +229,7 @@ func (db *DB) evictBatch(ctx context.Context, batchID []byte, upToBin uint8) (er
 
 			evicted, err := db.reserve.EvictBatchBin(ctx, txnRepo, b, batchID, cache)
 			if err != nil {
-				return errors.Join(err, rollback())
+				return fmt.Errorf("reserve.EvictBatchBin: %w", errors.Join(err, rollback()))
 			}
 
 			err = commit()

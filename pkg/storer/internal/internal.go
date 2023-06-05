@@ -6,12 +6,12 @@ package internal
 
 import (
 	"bytes"
+	"errors"
 
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	"github.com/ethersphere/bee/pkg/storage/inmemstore"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/hashicorp/go-multierror"
 )
 
 // Storage groups the storage.Store and storage.ChunkStore interfaces.
@@ -58,7 +58,7 @@ func NewInmemStorage() (Storage, func() error) {
 	}
 
 	return ts, func() error {
-		return multierror.Append(ts.indexStore.Close(), ts.chunkStore.Close()).ErrorOrNil()
+		return errors.Join(ts.indexStore.Close(), ts.chunkStore.Close())
 	}
 }
 

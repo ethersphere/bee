@@ -10,7 +10,6 @@ import (
 	"time"
 
 	m "github.com/ethersphere/bee/pkg/metrics"
-	"github.com/hashicorp/go-multierror"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -68,16 +67,16 @@ func (r *repository) NewTx(ctx context.Context) (Repository, func() error, func(
 	}
 
 	rollback := func() error {
-		var errs *multierror.Error
+		var errs error
 		for i := len(txs) - 1; i >= 0; i-- {
 			if err := txs[i].Rollback(); err != nil {
-				errs = multierror.Append(errs, err)
+				errs = errors.Join(errs, err)
 			}
 		}
-		if !errors.Is(errs.ErrorOrNil(), ErrTxDone) {
+		if !errors.Is(errs, ErrTxDone) {
 			repo.metrics.TxTotalDuration.Observe(captureDuration(repo.txStart)())
 		}
-		return errs.ErrorOrNil()
+		return errs
 	}
 
 	return repo, commit, rollback

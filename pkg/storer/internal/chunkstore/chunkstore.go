@@ -15,7 +15,6 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/storageutil"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/hashicorp/go-multierror"
 )
 
 var (
@@ -179,7 +178,7 @@ func (c *chunkStoreWrapper) Put(ctx context.Context, ch swarm.Chunk) error {
 	}()
 
 	if err != nil && !found {
-		return multierror.Append(
+		return errors.Join(
 			err,
 			c.sharky.Release(context.Background(), loc),
 		)

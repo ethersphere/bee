@@ -14,7 +14,6 @@ import (
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/storageutil"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/hashicorp/go-multierror"
 )
 
 var (
@@ -220,9 +219,9 @@ func DeleteAll(s storage.Store, namespace string, addr swarm.Address) error {
 		return err
 	}
 
-	var errs *multierror.Error
+	var errs error
 	for _, stamp := range stamps {
-		errs = multierror.Append(
+		errs = errors.Join(
 			errs,
 			s.Delete(&item{
 				namespace: []byte(namespace),
@@ -231,7 +230,7 @@ func DeleteAll(s storage.Store, namespace string, addr swarm.Address) error {
 			}),
 		)
 	}
-	return errs.ErrorOrNil()
+	return errs
 }
 
 // Delete removes a stamp associated with an chunk and batchID.
