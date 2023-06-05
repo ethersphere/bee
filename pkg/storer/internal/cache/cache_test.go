@@ -199,7 +199,7 @@ func TestCache(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		verifyCacheState(t, c, swarm.ZeroAddress, swarm.ZeroAddress, 0)
+		verifyCacheState(t, st.IndexStore(), c, swarm.ZeroAddress, swarm.ZeroAddress, 0)
 	})
 
 	t.Run("putter", func(t *testing.T) {
@@ -219,7 +219,7 @@ func TestCache(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				verifyCacheState(t, c, chunks[0].Address(), chunks[idx].Address(), uint64(idx+1))
+				verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[idx].Address(), uint64(idx+1))
 				verifyCacheOrder(t, c, st.IndexStore(), chunks[:idx+1]...)
 			}
 		})
@@ -229,7 +229,7 @@ func TestCache(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			verifyCacheState(t, c2, chunks[0].Address(), chunks[len(chunks)-1].Address(), uint64(len(chunks)))
+			verifyCacheState(t, st.IndexStore(), c2, chunks[0].Address(), chunks[len(chunks)-1].Address(), uint64(len(chunks)))
 			verifyCacheOrder(t, c2, st.IndexStore(), chunks...)
 		})
 
@@ -242,10 +242,10 @@ func TestCache(t *testing.T) {
 					t.Fatal(err)
 				}
 				if idx == len(chunks)-1 {
-					verifyCacheState(t, c, chunks2[0].Address(), chunks2[idx].Address(), 10)
+					verifyCacheState(t, st.IndexStore(), c, chunks2[0].Address(), chunks2[idx].Address(), 10)
 					verifyCacheOrder(t, c, st.IndexStore(), chunks2...)
 				} else {
-					verifyCacheState(t, c, chunks[idx+1].Address(), chunks2[idx].Address(), 10)
+					verifyCacheState(t, st.IndexStore(), c, chunks[idx+1].Address(), chunks2[idx].Address(), 10)
 					verifyCacheOrder(t, c, st.IndexStore(), append(chunks[idx+1:], chunks2[:idx+1]...)...)
 				}
 			}
@@ -257,7 +257,7 @@ func TestCache(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			verifyCacheState(t, c2, chunks2[5].Address(), chunks2[len(chunks)-1].Address(), 5)
+			verifyCacheState(t, st.IndexStore(), c2, chunks2[5].Address(), chunks2[len(chunks)-1].Address(), 5)
 			verifyCacheOrder(t, c2, st.IndexStore(), chunks2[5:]...)
 			verifyChunksDeleted(t, st.ChunkStore(), chunks[:5]...)
 		})
@@ -289,7 +289,7 @@ func TestCache(t *testing.T) {
 				if !readChunk.Equal(ch) {
 					t.Fatalf("incorrect chunk: %s", ch.Address())
 				}
-				verifyCacheState(t, c, chunks[0].Address(), chunks[idx].Address(), uint64(idx+1))
+				verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[idx].Address(), uint64(idx+1))
 				verifyCacheOrder(t, c, st.IndexStore(), chunks[:idx+1]...)
 			}
 		})
@@ -308,9 +308,9 @@ func TestCache(t *testing.T) {
 				}
 				if idx == 0 {
 					// once we access the first entry, the top will change
-					verifyCacheState(t, c, chunks[9].Address(), chunks[idx].Address(), 10)
+					verifyCacheState(t, st.IndexStore(), c, chunks[9].Address(), chunks[idx].Address(), 10)
 				} else {
-					verifyCacheState(t, c, chunks[0].Address(), chunks[idx].Address(), 10)
+					verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[idx].Address(), 10)
 				}
 				newOrder = append(newOrder, chunks[idx])
 			}
@@ -328,7 +328,7 @@ func TestCache(t *testing.T) {
 		})
 
 		t.Run("not in cache doesnt affect state", func(t *testing.T) {
-			state := c.State()
+			state := c.State(st.IndexStore())
 
 			for i := 0; i < 5; i++ {
 				extraChunk := chunktest.GenerateTestRandomChunk()
@@ -343,7 +343,7 @@ func TestCache(t *testing.T) {
 				if !readChunk.Equal(extraChunk) {
 					t.Fatalf("incorrect chunk: %s", extraChunk.Address())
 				}
-				verifyCacheState(t, c, state.Head, state.Tail, state.Count)
+				verifyCacheState(t, st.IndexStore(), c, state.Head, state.Tail, state.Count)
 			}
 		})
 	})
@@ -384,7 +384,7 @@ func TestCache(t *testing.T) {
 			}
 
 			// state should be preserved on failure
-			verifyCacheState(t, c, chunks[0].Address(), chunks[4].Address(), 5)
+			verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[4].Address(), 5)
 		})
 
 		t.Run("get error handling", func(t *testing.T) {
@@ -394,20 +394,21 @@ func TestCache(t *testing.T) {
 			}
 
 			// state should be preserved on failure
-			verifyCacheState(t, c, chunks[0].Address(), chunks[4].Address(), 5)
+			verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[4].Address(), 5)
 		})
 	})
 }
 
 func verifyCacheState(
 	t *testing.T,
+	store storage.Store,
 	c *cache.Cache,
 	expStart, expEnd swarm.Address,
 	expCount uint64,
 ) {
 	t.Helper()
 
-	state := c.State()
+	state := c.State(store)
 	expState := cache.CacheState{Head: expStart, Tail: expEnd, Count: expCount}
 
 	if diff := cmp.Diff(expState, state); diff != "" {
@@ -423,7 +424,7 @@ func verifyCacheOrder(
 ) {
 	t.Helper()
 
-	state := c.State()
+	state := c.State(st)
 
 	if uint64(len(chs)) != state.Count {
 		t.Fatalf("unexpected count, exp: %d found: %d", state.Count, len(chs))
