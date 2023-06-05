@@ -9,7 +9,6 @@ import (
 	"fmt"
 
 	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/hashicorp/go-multierror"
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 )
@@ -111,16 +110,16 @@ func (s *TxStore) Rollback() error {
 		return err
 	}
 
-	var errs *multierror.Error
+	var errs error
 	if err := s.revOps.Revert(); err != nil {
-		errs = multierror.Append(errs, fmt.Errorf("leveldbstore: unable to rollback: %w", err))
+		errs = errors.Join(errs, fmt.Errorf("leveldbstore: unable to rollback: %w", err))
 	}
 
 	db := s.TxStoreBase.Store.(*Store).db
 	if err := db.Write(s.batch, &opt.WriteOptions{Sync: true}); err != nil {
-		errs = multierror.Append(errs, fmt.Errorf("leveldbstore: unable to write rollback batch: %w", err))
+		errs = errors.Join(errs, fmt.Errorf("leveldbstore: unable to write rollback batch: %w", err))
 	}
-	return errs.ErrorOrNil()
+	return errs
 }
 
 // NewTx implements the TxStore interface.

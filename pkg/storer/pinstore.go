@@ -7,11 +7,11 @@ package storer
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	pinstore "github.com/ethersphere/bee/pkg/storer/internal/pinning"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/hashicorp/go-multierror"
 )
 
 // NewCollection is the implementation of the PinStore.NewCollection method.
@@ -26,12 +26,17 @@ func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
 			"pinstore",
 		},
 		done: func(address swarm.Address) error {
-			return multierror.Append(
+			return errors.Join(
 				pinningPutter.Close(address),
 				commit(),
-			).ErrorOrNil()
+			)
 		},
-		cleanup: func() error { return rollback() },
+		cleanup: func() error {
+			if err := rollback(); err != nil {
+				return fmt.Errorf("pinstore.NewCollection: %w", err)
+			}
+			return nil
+		},
 	}, nil
 }
 
@@ -49,7 +54,7 @@ func (db *DB) DeletePin(ctx context.Context, root swarm.Address) (err error) {
 
 	txnRepo, commit, rollback := db.repo.NewTx(ctx)
 	if err := pinstore.DeletePin(ctx, txnRepo, root); err != nil {
-		return errors.Join(err, rollback())
+		return fmt.Errorf("pinstore.DeletePin: %w", errors.Join(err, rollback()))
 	}
 	return commit()
 }

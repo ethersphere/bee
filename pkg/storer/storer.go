@@ -34,7 +34,6 @@ import (
 	localmigration "github.com/ethersphere/bee/pkg/storer/migration"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
-	"github.com/hashicorp/go-multierror"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/afero"
 	"github.com/syndtr/goleveldb/leveldb/opt"
@@ -183,11 +182,11 @@ func (c closerFn) Close() error { return c() }
 
 func closer(closers ...io.Closer) io.Closer {
 	return closerFn(func() error {
-		var err *multierror.Error
+		var err error
 		for _, closer := range closers {
-			err = multierror.Append(err, closer.Close())
+			err = errors.Join(err, closer.Close())
 		}
-		return err.ErrorOrNil()
+		return err
 	})
 }
 
@@ -292,7 +291,7 @@ func initCache(ctx context.Context, capacity uint64, repo storage.Repository) (*
 	txnRepo, commit, rollback := repo.NewTx(ctx)
 	c, err := cache.New(ctx, txnRepo, capacity)
 	if err != nil {
-		return nil, multierror.Append(err, rollback())
+		return nil, fmt.Errorf("cache.New: %w", errors.Join(err, rollback()))
 	}
 
 	return c, commit()
