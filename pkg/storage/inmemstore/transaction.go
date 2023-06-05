@@ -91,7 +91,7 @@ func (s *TxStore) Commit() error {
 func (s *TxStore) Rollback() error {
 	defer s.release()
 
-	if err := s.TxState.Done(); err != nil {
+	if err := s.TxStoreBase.Rollback(); err != nil {
 		return err
 	}
 
