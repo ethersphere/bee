@@ -224,9 +224,12 @@ func TestDBNuke(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	db1.Close()
+	defer db1.Close()
 
 	info, err = db1.DebugInfo(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if info.Reserve.Size != 0 {
 		t.Errorf("got reserve size after nuke: %d, want %d", info.Reserve.Size, 0)
 	}
