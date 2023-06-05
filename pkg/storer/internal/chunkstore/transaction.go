@@ -144,7 +144,7 @@ func (cs *txChunkStoreWrapper) Commit() error {
 }
 
 func (cs *txChunkStoreWrapper) Rollback() error {
-	if err := cs.TxChunkStoreBase.Done(); err != nil {
+	if err := cs.TxChunkStoreBase.Rollback(); err != nil {
 		return err
 	}
 

@@ -76,7 +76,7 @@ func (s *TxChunkStore) Commit() error {
 func (s *TxChunkStore) Rollback() error {
 	defer s.release()
 
-	if err := s.TxState.Done(); err != nil {
+	if err := s.TxChunkStoreBase.Rollback(); err != nil {
 		return err
 	}
 
