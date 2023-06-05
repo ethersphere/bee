@@ -7,8 +7,10 @@ package storage
 import (
 	"encoding"
 	"encoding/json"
+	"fmt"
 	"io"
 	"path"
+	"strings"
 )
 
 // StateIterFunc is used when iterating through StateStorer key/value pairs
@@ -29,6 +31,9 @@ type StateStorer interface {
 
 	// Iterate iterates over all keys with the given prefix and calls iterFunc.
 	Iterate(prefix string, iterFunc StateIterFunc) error
+
+	// Nuke the store so that only the bare essential entries are left.
+	Nuke(forgetStamps bool) error
 }
 
 // stateStoreNamespace is the namespace used for state storage.
@@ -189,6 +194,54 @@ func (s *StateStorerAdapter) Iterate(prefix string, iterFunc StateIterFunc) (err
 			return iterFunc(key, val)
 		},
 	)
+}
+
+func (s *StateStorerAdapter) Nuke(forgetStamps bool) error {
+	var (
+		keys               []string
+		prefixesToPreserve = []string{"accounting", "pseudosettle", "swap", "non-mineable-overlay", "overlayV2_nonce"}
+		err                error
+	)
+
+	if !forgetStamps {
+		prefixesToPreserve = append(prefixesToPreserve, "postage")
+	}
+
+	keys, err = s.collectKeysExcept(prefixesToPreserve)
+	if err != nil {
+		return fmt.Errorf("collect keys except: %w", err)
+	}
+	return s.deleteKeys(keys)
+}
+
+func (s *StateStorerAdapter) collectKeysExcept(prefixesToPreserve []string) (keys []string, err error) {
+	if err := s.Iterate("", func(k, v []byte) (bool, error) {
+		stk := string(k)
+		has := false
+		for _, v := range prefixesToPreserve {
+			if strings.HasPrefix(stk, v) {
+				has = true
+				break
+			}
+		}
+		if !has {
+			keys = append(keys, stk)
+		}
+		return false, nil
+	}); err != nil {
+		return nil, err
+	}
+	return keys, nil
+}
+
+func (s *StateStorerAdapter) deleteKeys(keys []string) error {
+	for _, v := range keys {
+		err := s.Delete(v)
+		if err != nil {
+			return fmt.Errorf("deleting key %s: %w", v, err)
+		}
+	}
+	return nil
 }
 
 // NewStateStorerAdapter creates a new StateStorerAdapter.

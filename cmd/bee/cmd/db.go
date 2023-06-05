@@ -494,6 +494,11 @@ func dbImportPinningCmd(cmd *cobra.Command) {
 }
 
 func dbNukeCmd(cmd *cobra.Command) {
+	const (
+		optionNameForgetOverlay = "forget-overlay"
+		optionNameForgetStamps  = "forget-stamps"
+	)
+
 	c := &cobra.Command{
 		Use:   "nuke",
 		Short: "Nuke the DB so that bee resyncs all data next time it boots up.",
@@ -529,20 +534,68 @@ func dbNukeCmd(cmd *cobra.Command) {
 			time.Sleep(10 * time.Second)
 			logger.Warning("proceeding with database nuke...")
 
-			err = removeContent(dataDir)
+			dirsToNuke := []string{"localstore", "indexstore", "sharky", "kademlia-metrics"}
+			for _, dir := range dirsToNuke {
+				err = removeContent(filepath.Join(dataDir, dir))
+				if err != nil {
+					return fmt.Errorf("delete %s: %w", dir, err)
+				}
+			}
+
+			forgetOverlay, err := cmd.Flags().GetBool(optionNameForgetOverlay)
 			if err != nil {
-				return fmt.Errorf("delete data-dir: %w", err)
+				return fmt.Errorf("get forget overlay: %w", err)
+			}
+
+			if forgetOverlay {
+				err = removeContent(filepath.Join(dataDir, "statestore"))
+				if err != nil {
+					return fmt.Errorf("remove statestore: %w", err)
+				}
+				err = removeContent(filepath.Join(dataDir, "stamperstore"))
+				if err != nil {
+					return fmt.Errorf("remove stamperstore: %w", err)
+				}
+				return nil
+			}
+
+			forgetStamps, err := cmd.Flags().GetBool(optionNameForgetStamps)
+			if err != nil {
+				return fmt.Errorf("get forget stamps: %w", err)
+			}
+
+			stateStore, err := node.InitStateStore(logger, dataDir)
+			if err != nil {
+				return fmt.Errorf("new statestore: %w", err)
+			}
+			defer stateStore.Close()
+
+			err = stateStore.Nuke(forgetStamps)
+			if err != nil {
+				return fmt.Errorf("statestore nuke: %w", err)
+			}
+
+			if forgetStamps {
+				err = removeContent(filepath.Join(dataDir, "stamperstore"))
+				if err != nil {
+					return fmt.Errorf("remove stamperstore: %w", err)
+				}
 			}
 			return nil
 		}}
 	c.Flags().String(optionNameDataDir, "", "data directory")
 	c.Flags().String(optionNameVerbosity, "trace", "verbosity level")
 	c.Flags().Duration(optionNameSleepAfter, time.Duration(0), "time to sleep after the operation finished")
+	c.Flags().Bool(optionNameForgetOverlay, false, "forget the overlay and deploy a new chequebook on next bootup")
+	c.Flags().Bool(optionNameForgetStamps, false, "forget the existing stamps belonging to the node. even when forgotten, they will show up again after a chain resync")
 	cmd.AddCommand(c)
 }
 
 func removeContent(path string) error {
 	dir, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -559,7 +612,7 @@ func removeContent(path string) error {
 			return err
 		}
 	}
-	return nil
+	return os.Remove(path)
 }
 
 func MarshalChunkToBinary(c swarm.Chunk) ([]byte, error) {

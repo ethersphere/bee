@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"path"
 	"strings"
 	"testing"
 
@@ -183,24 +184,24 @@ func TestDBExportImportPinning(t *testing.T) {
 func TestDBNuke(t *testing.T) {
 	t.Parallel()
 
-	dir1 := t.TempDir()
+	dataDir := t.TempDir()
 	ctx := context.Background()
-	db1 := newTestDB(t, ctx, &storer.Options{
+	db := newTestDB(t, ctx, &storer.Options{
 		Batchstore:      new(postage.NoOpBatchStore),
 		RadiusSetter:    kademlia.NewTopologyDriver(),
 		Logger:          testutil.NewLogger(t),
 		ReserveCapacity: node.ReserveCapacity,
-	}, dir1)
+	}, dataDir)
 
 	nChunks := 10
 	for i := 0; i < nChunks; i++ {
 		ch := storagetest.GenerateTestRandomChunk()
-		err := db1.ReservePut(ctx, ch)
+		err := db.ReservePut(ctx, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
-	info, err := db1.DebugInfo(ctx)
+	info, err := db.DebugInfo(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,25 +209,25 @@ func TestDBNuke(t *testing.T) {
 		t.Errorf("got reserve size before nuke: %d, want %d", info.Reserve.Size, nChunks)
 	}
 
-	db1.Close()
+	db.Close()
 
-	err = newCommand(t, cmd.WithArgs("db", "nuke", "--data-dir", dir1)).Execute()
+	err = newCommand(t, cmd.WithArgs("db", "nuke", "--data-dir", dataDir)).Execute()
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	db1 = newTestDB(t, ctx, &storer.Options{
+	db = newTestDB(t, ctx, &storer.Options{
 		Batchstore:      new(postage.NoOpBatchStore),
 		RadiusSetter:    kademlia.NewTopologyDriver(),
 		Logger:          testutil.NewLogger(t),
 		ReserveCapacity: node.ReserveCapacity,
-	}, dir1)
+	}, path.Join(dataDir, "localstore"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db1.Close()
+	defer db.Close()
 
-	info, err = db1.DebugInfo(ctx)
+	info, err = db.DebugInfo(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
