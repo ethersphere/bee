@@ -174,12 +174,6 @@ func (s *Service) Close() error {
 }
 
 func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swarm.Address) (err error) {
-	addr, err := s.addressBook.Get(peer)
-	if err != nil && !errors.Is(err, addressbook.ErrNotFound) {
-		return err
-	}
-	isPeerPublic := addr != nil && manet.IsPublicAddr(addr.Underlay)
-
 	s.metrics.BroadcastPeersSends.Inc()
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, peersStreamName)
 	if err != nil {
@@ -204,7 +198,7 @@ func (s *Service) sendPeers(ctx context.Context, peer swarm.Address, peers []swa
 			return err
 		}
 
-		if !s.allowPrivateCIDRs && isPeerPublic && manet.IsPrivateAddr(addr.Underlay) {
+		if !s.allowPrivateCIDRs && manet.IsPrivateAddr(addr.Underlay) {
 			continue // Don't advertise private CIDRs to the public network.
 		}
 
