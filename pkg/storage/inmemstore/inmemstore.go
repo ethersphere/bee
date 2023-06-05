@@ -5,13 +5,13 @@
 package inmemstore
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
 
 	"github.com/armon/go-radix"
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/hashicorp/go-multierror"
+	"github.com/ethersphere/bee/pkg/storage"
 )
 
 const (
@@ -147,7 +147,7 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 	}
 
 	var (
-		retErr       *multierror.Error
+		retErr       error
 		firstSkipped = !q.SkipFirst
 		skipUntil    = false
 	)
@@ -174,13 +174,13 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 
 			res, err := getNext(k, v)
 			if err != nil {
-				retErr = multierror.Append(retErr, err)
+				retErr = errors.Join(retErr, err)
 				return true
 			}
 			if res != nil {
 				stop, err := fn(*res)
 				if err != nil {
-					retErr = multierror.Append(retErr, fmt.Errorf("failed in iterate function: %w", err))
+					retErr = errors.Join(retErr, fmt.Errorf("failed in iterate function: %w", err))
 					return true
 				}
 				return stop
@@ -200,7 +200,7 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 		s.st.WalkPrefix(prefix, func(k string, v interface{}) bool {
 			res, err := getNext(k, v)
 			if err != nil {
-				retErr = multierror.Append(retErr, err)
+				retErr = errors.Join(retErr, err)
 				return true
 			}
 			if res != nil {
@@ -208,7 +208,7 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 			}
 			return false
 		})
-		if retErr.ErrorOrNil() != nil {
+		if retErr != nil {
 			break
 		}
 		for i := len(results) - 1; i >= 0; i-- {
@@ -225,7 +225,7 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 			}
 		}
 	}
-	return retErr.ErrorOrNil()
+	return retErr
 }
 
 func (s *Store) Close() error {

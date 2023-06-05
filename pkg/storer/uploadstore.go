@@ -6,6 +6,7 @@ package storer
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 
@@ -14,7 +15,6 @@ import (
 	pinstore "github.com/ethersphere/bee/pkg/storer/internal/pinning"
 	"github.com/ethersphere/bee/pkg/storer/internal/upload"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/hashicorp/go-multierror"
 )
 
 // Upload is the implementation of UploadStore.Upload method.
@@ -44,7 +44,7 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 	return &putterSession{
 		Putter: putterWithMetrics{
 			storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
-				return multierror.Append(
+				return errors.Join(
 					uploadPutter.Put(ctx, chunk),
 					func() error {
 						if pinningPutter != nil {
@@ -52,14 +52,14 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 						}
 						return nil
 					}(),
-				).ErrorOrNil()
+				)
 			}),
 			db.metrics,
 			"uploadstore",
 		},
 		done: func(address swarm.Address) error {
 			defer tagCloser()
-			return multierror.Append(
+			return errors.Join(
 				uploadPutter.Close(address),
 				func() error {
 					if pinningPutter != nil {
@@ -68,11 +68,14 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 					return nil
 				}(),
 				commit(),
-			).ErrorOrNil()
+			)
 		},
 		cleanup: func() error {
 			defer tagCloser()
-			return rollback()
+			if err := rollback(); err != nil {
+				return fmt.Errorf("puttersession: putter.Put: %w", errors.Join(err, rollback()))
+			}
+			return nil
 		},
 	}, nil
 }

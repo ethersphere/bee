@@ -7,10 +7,10 @@ package storer
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/hashicorp/go-multierror"
 )
 
 const (
@@ -35,11 +35,11 @@ func (db *DB) Lookup() storage.Getter {
 			case errors.Is(err, storage.ErrNotFound):
 				// here we would ideally have nothing to do but just to return this
 				// error to the client. The commit is mainly done to end the txn.
-				return nil, multierror.Append(err, commit()).ErrorOrNil()
+				return nil, errors.Join(err, commit())
 			}
 			// if we are here, it means there was some unexpected error, in which
 			// case we need to rollback any changes that were already made.
-			return nil, multierror.Append(err, rollback()).ErrorOrNil()
+			return nil, fmt.Errorf("cache.Get: %w", errors.Join(err, rollback()))
 		}),
 		db.metrics,
 		"cachestore",
@@ -59,10 +59,10 @@ func (db *DB) Cache() storage.Putter {
 			txnRepo, commit, rollback := db.repo.NewTx(ctx)
 			err := db.cacheObj.Putter(txnRepo).Put(ctx, ch)
 			if err != nil {
-				return multierror.Append(err, rollback()).ErrorOrNil()
+				return fmt.Errorf("cache.Put: %w", errors.Join(err, rollback()))
 			}
 			db.metrics.CacheSize.Set(float64(db.cacheObj.Size()))
-			return multierror.Append(err, commit()).ErrorOrNil()
+			return errors.Join(err, commit())
 		}),
 		db.metrics,
 		"cachestore",
