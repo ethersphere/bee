@@ -95,12 +95,16 @@ func (m *mockStorer) isReported(chunk swarm.Chunk, state storage.ChunkState) boo
 	return false
 }
 
-func (m *mockStorer) ReservePut(ctx context.Context, chunk swarm.Chunk) error {
-	if m.storedChunks == nil {
-		m.storedChunks = make(map[string]swarm.Chunk)
-	}
-	m.storedChunks[chunk.Address().ByteString()] = chunk
-	return nil
+func (m *mockStorer) ReservePutter() storage.Putter {
+	return storage.PutterFunc(
+		func(ctx context.Context, chunk swarm.Chunk) error {
+			if m.storedChunks == nil {
+				m.storedChunks = make(map[string]swarm.Chunk)
+			}
+			m.storedChunks[chunk.Address().ByteString()] = chunk
+			return nil
+		},
+	)
 }
 
 // TestSendChunkToPushSync sends a chunk to pushsync to be sent ot its closest peer and get a receipt.

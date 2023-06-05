@@ -139,8 +139,7 @@ type ReserveIterator interface {
 type ReserveStore interface {
 	ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte) (swarm.Chunk, error)
 	ReserveHas(addr swarm.Address, batchID []byte) (bool, error)
-	ReservePut(context.Context, swarm.Chunk) error
-	ReservePutter(ctx context.Context) PutterSession
+	ReservePutter() storage.Putter
 	SubscribeBin(ctx context.Context, bin uint8, start uint64) (<-chan *BinC, func(), <-chan error)
 	ReserveLastBinIDs() ([]uint64, error)
 	RadiusChecker
@@ -397,7 +396,6 @@ type DB struct {
 
 	reserve          *reserve.Reserve
 	reserveWg        sync.WaitGroup
-	reserveMtx       sync.RWMutex
 	reserveBinEvents *events.Subscriber
 	baseAddr         swarm.Address
 	batchstore       postage.Storer

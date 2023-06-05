@@ -127,7 +127,7 @@ func testDebugInfo(t *testing.T, newStorer func() (*storer.DB, error)) {
 			t.Fatal(err)
 		}
 
-		putter := lstore.ReservePutter(context.Background())
+		putter := lstore.ReservePutter()
 
 		chunks := chunktest.GenerateTestRandomChunks(10)
 		for _, ch := range chunks {
@@ -135,11 +135,6 @@ func testDebugInfo(t *testing.T, newStorer func() (*storer.DB, error)) {
 			if err != nil {
 				t.Fatalf("session.Put(...): unexpected error: %v", err)
 			}
-		}
-
-		err = putter.Done(swarm.ZeroAddress)
-		if err != nil {
-			t.Fatalf("session.Done(...): unexpected error: %v", err)
 		}
 
 		info, err := lstore.DebugInfo(context.Background())

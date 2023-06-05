@@ -196,35 +196,16 @@ func (s *ReserveStore) ReserveGet(ctx context.Context, addr swarm.Address, batch
 	return nil, storage.ErrNotFound
 }
 
-type reservePutterSession struct {
-	storage.Putter
-	done    func(swarm.Address) error
-	cleanup func() error
-}
-
-func (p *reservePutterSession) Done(addr swarm.Address) error { return p.done(addr) }
-
-func (p *reservePutterSession) Cleanup() error { return p.cleanup() }
-
 // Put chunks.
-func (s *ReserveStore) ReservePutter(ctx context.Context) storer.PutterSession {
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-
-	return &reservePutterSession{
-		Putter: storage.PutterFunc(func(ctx context.Context, c swarm.Chunk) error {
+func (s *ReserveStore) ReservePutter() storage.Putter {
+	return storage.PutterFunc(
+		func(ctx context.Context, c swarm.Chunk) error {
+			s.mtx.Lock()
+			s.putCalls++
+			s.mtx.Unlock()
 			return s.put(ctx, c)
-		}),
-		done:    func(a swarm.Address) error { return nil },
-		cleanup: func() error { return nil },
-	}
-}
-
-func (s *ReserveStore) ReservePut(ctx context.Context, c swarm.Chunk) error {
-	s.mtx.Lock()
-	s.putCalls++
-	s.mtx.Unlock()
-	return s.put(ctx, c)
+		},
+	)
 }
 
 // Put chunks.

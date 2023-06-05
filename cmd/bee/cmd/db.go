@@ -372,7 +372,7 @@ func dbImportReserveCmd(cmd *cobra.Command) {
 					return fmt.Errorf("unmarshaling chunk: %w", err)
 				}
 				logger.Debug("importing chunk", "address", chunk.Address().String())
-				if err := db.ReservePut(cmd.Context(), chunk); err != nil {
+				if err := db.ReservePutter().Put(cmd.Context(), chunk); err != nil {
 					return fmt.Errorf("error importing chunk: %w", err)
 				}
 				counter++

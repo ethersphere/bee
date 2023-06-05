@@ -69,7 +69,7 @@ type Receipt struct {
 
 type Storer interface {
 	storage.PushReporter
-	ReservePut(context.Context, swarm.Chunk) error
+	ReservePutter() storage.Putter
 	IsWithinStorageRadius(swarm.Address) bool
 	StorageRadius() uint8
 }
@@ -208,7 +208,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			return fmt.Errorf("invalid stamp: %w", err)
 		}
 
-		err = ps.store.ReservePut(ctx, chunkToPut)
+		err = ps.store.ReservePutter().Put(ctx, chunkToPut)
 		if err != nil {
 			return fmt.Errorf("chunk store: %w", err)
 		}

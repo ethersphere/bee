@@ -29,9 +29,10 @@ import (
 )
 
 const (
-	reserveOverCapacity = "reserveOverCapacity"
-	reserveUnreserved   = "reserveUnreserved"
-	sampleSize          = 16
+	reserveOverCapacity  = "reserveOverCapacity"
+	reserveUnreserved    = "reserveUnreserved"
+	sampleSize           = 16
+	reserveUpdateLockKey = "reserveUpdateLockKey"
 )
 
 var errMaxRadius = errors.New("max radius reached")
@@ -153,70 +154,35 @@ func (db *DB) ReserveHas(addr swarm.Address, batchID []byte) (has bool, err erro
 	return db.reserve.Has(db.repo.IndexStore(), addr, batchID)
 }
 
-func (db *DB) ReservePut(ctx context.Context, chunk swarm.Chunk) (err error) {
-	dur := captureDuration(time.Now())
-	defer func() {
-		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "ReservePut").Observe(dur())
-		if err == nil {
-			db.metrics.MethodCalls.WithLabelValues("reserve", "ReservePut", "success").Inc()
-		} else {
-			db.metrics.MethodCalls.WithLabelValues("reserve", "ReservePut", "failure").Inc()
-		}
-	}()
+// ReservePutter returns a Putter for inserting chunks into the reserve.
+func (db *DB) ReservePutter() storage.Putter {
+	return putterWithMetrics{
+		storage.PutterFunc(
+			func(ctx context.Context, chunk swarm.Chunk) (err error) {
+				db.lock.Lock(reserveUpdateLockKey)
+				defer db.lock.Unlock(reserveUpdateLockKey)
 
-	putter := db.ReservePutter(ctx)
-	if err := putter.Put(ctx, chunk); err != nil {
-		return errors.Join(err, putter.Cleanup())
-	}
-	return putter.Done(swarm.ZeroAddress)
-}
-
-// ReservePutter returns a PutterSession for inserting chunks into the reserve.
-func (db *DB) ReservePutter(ctx context.Context) PutterSession {
-
-	trx, commit, rollback := db.repo.NewTx(ctx)
-
-	triggerBins := make(map[uint8]bool)
-	count := 0
-
-	db.reserveMtx.RLock()
-
-	return &putterSession{
-		Putter: putterWithMetrics{
-			storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
+				trx, commit, rollback := db.repo.NewTx(ctx)
 				newIndex, err := db.reserve.Put(ctx, trx, chunk)
 				if err != nil {
+					return errors.Join(err, rollback())
+				}
+				if err := commit(); err != nil {
 					return err
 				}
-				triggerBins[db.po(chunk.Address())] = true
 				if newIndex {
-					count++
+					db.reserve.AddSize(1)
 				}
+				db.reserveBinEvents.Trigger(string(db.po(chunk.Address())))
+				if !db.reserve.IsWithinCapacity() {
+					db.events.Trigger(reserveOverCapacity)
+				}
+				db.metrics.ReserveSize.Set(float64(db.reserve.Size()))
 				return nil
-			}),
-			db.metrics,
-			"reserve",
-		},
-		done: func(swarm.Address) error {
-			defer db.reserveMtx.RUnlock()
-			err := commit()
-			if err != nil {
-				return err
-			}
-			db.reserve.AddSize(count)
-			for bin := range triggerBins {
-				db.reserveBinEvents.Trigger(string(bin))
-			}
-			if !db.reserve.IsWithinCapacity() {
-				db.events.Trigger(reserveOverCapacity)
-			}
-			db.metrics.ReserveSize.Set(float64(db.reserve.Size()))
-			return nil
-		},
-		cleanup: func() error {
-			defer db.reserveMtx.RUnlock()
-			return rollback()
-		},
+			},
+		),
+		db.metrics,
+		"reserve",
 	}
 }
 
@@ -240,9 +206,6 @@ func (db *DB) EvictBatch(ctx context.Context, batchID []byte) (err error) {
 
 func (db *DB) evictBatch(ctx context.Context, batchID []byte, upToBin uint8) (err error) {
 
-	db.reserveMtx.Lock()
-	defer db.reserveMtx.Unlock()
-
 	for b := uint8(0); b < upToBin; b++ {
 
 		select {
@@ -251,34 +214,42 @@ func (db *DB) evictBatch(ctx context.Context, batchID []byte, upToBin uint8) (er
 		default:
 		}
 
-		txnRepo, commit, rollback := db.repo.NewTx(ctx)
+		err := func() error {
+			db.lock.Lock(reserveUpdateLockKey)
+			defer db.lock.Unlock(reserveUpdateLockKey)
 
-		// cache evicted chunks
-		cache := func(c swarm.Chunk) {
-			if err := db.Cache().Put(ctx, c); err != nil {
-				db.logger.Error(err, "reserve cache")
+			txnRepo, commit, rollback := db.repo.NewTx(ctx)
+
+			// cache evicted chunks
+			cache := func(c swarm.Chunk) {
+				if err := db.Cache().Put(ctx, c); err != nil {
+					db.logger.Error(err, "reserve cache")
+				}
 			}
-		}
 
-		evicted, err := db.reserve.EvictBatchBin(ctx, txnRepo, b, batchID, cache)
+			evicted, err := db.reserve.EvictBatchBin(ctx, txnRepo, b, batchID, cache)
+			if err != nil {
+				return errors.Join(err, rollback())
+			}
+
+			err = commit()
+			if err != nil {
+				return err
+			}
+
+			db.logger.Info("reserve eviction", "bin", b, "evicted", evicted, "batchID", hex.EncodeToString(batchID), "size", db.reserve.Size())
+
+			db.reserve.AddSize(-evicted)
+			db.metrics.ReserveSize.Set(float64(db.reserve.Size()))
+			if upToBin == swarm.MaxBins {
+				db.metrics.ExpiredChunkCount.Add(float64(evicted))
+			} else {
+				db.metrics.EvictedChunkCount.Add(float64(evicted))
+			}
+			return nil
+		}()
 		if err != nil {
-			_ = rollback()
 			return err
-		}
-
-		err = commit()
-		if err != nil {
-			return err
-		}
-
-		db.logger.Info("reserve eviction", "bin", b, "evicted", evicted, "batchID", hex.EncodeToString(batchID), "size", db.reserve.Size())
-
-		db.reserve.AddSize(-evicted)
-		db.metrics.ReserveSize.Set(float64(db.reserve.Size()))
-		if upToBin == swarm.MaxBins {
-			db.metrics.ExpiredChunkCount.Add(float64(evicted))
-		} else {
-			db.metrics.EvictedChunkCount.Add(float64(evicted))
 		}
 	}
 

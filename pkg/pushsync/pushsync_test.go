@@ -702,12 +702,15 @@ type testStorer struct {
 	chunksReported map[string]int
 }
 
-func (ts *testStorer) ReservePut(ctx context.Context, chunk swarm.Chunk) error {
-	ts.chunksMu.Lock()
-	defer ts.chunksMu.Unlock()
-
-	ts.chunksPut[chunk.Address().ByteString()] = chunk
-	return nil
+func (ts *testStorer) ReservePutter() storage.Putter {
+	return storage.PutterFunc(
+		func(ctx context.Context, chunk swarm.Chunk) error {
+			ts.chunksMu.Lock()
+			defer ts.chunksMu.Unlock()
+			ts.chunksPut[chunk.Address().ByteString()] = chunk
+			return nil
+		},
+	)
 }
 
 func (ts *testStorer) Report(ctx context.Context, chunk swarm.Chunk, state storage.ChunkState) error {
