@@ -179,15 +179,7 @@ func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.C
 
 func (r *Reserve) Has(store storage.Store, addr swarm.Address, batchID []byte) (bool, error) {
 	item := &batchRadiusItem{Bin: swarm.Proximity(r.baseAddr.Bytes(), addr.Bytes()), BatchID: batchID, Address: addr}
-	err := store.Get(item)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return false, nil
-		}
-		return false, err
-	}
-
-	return true, nil
+	return store.Has(item)
 }
 
 func (r *Reserve) Get(ctx context.Context, storage internal.Storage, addr swarm.Address, batchID []byte) (swarm.Chunk, error) {
