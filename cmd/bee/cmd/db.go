@@ -40,7 +40,7 @@ func (c *command) initDBCmd() {
 func dbInfoCmd(cmd *cobra.Command) {
 	c := &cobra.Command{
 		Use:   "info",
-		Short: "Prints the DB info",
+		Short: "Prints the different indexes present in the Database",
 		RunE: func(cmd *cobra.Command, args []string) (err error) {
 			start := time.Now()
 			v, err := cmd.Flags().GetString(optionNameVerbosity)
@@ -497,6 +497,11 @@ func dbNukeCmd(cmd *cobra.Command) {
 	const (
 		optionNameForgetOverlay = "forget-overlay"
 		optionNameForgetStamps  = "forget-stamps"
+
+		localstore   = "localstore"
+		kademlia     = "kademlia-metrics"
+		statestore   = "statestore"
+		stamperstore = "stamperstore"
 	)
 
 	c := &cobra.Command{
@@ -534,7 +539,7 @@ func dbNukeCmd(cmd *cobra.Command) {
 			time.Sleep(10 * time.Second)
 			logger.Warning("proceeding with database nuke...")
 
-			dirsToNuke := []string{"localstore", "indexstore", "sharky", "kademlia-metrics"}
+			dirsToNuke := []string{localstore, kademlia}
 			for _, dir := range dirsToNuke {
 				err = removeContent(filepath.Join(dataDir, dir))
 				if err != nil {
@@ -548,11 +553,11 @@ func dbNukeCmd(cmd *cobra.Command) {
 			}
 
 			if forgetOverlay {
-				err = removeContent(filepath.Join(dataDir, "statestore"))
+				err = removeContent(filepath.Join(dataDir, statestore))
 				if err != nil {
 					return fmt.Errorf("remove statestore: %w", err)
 				}
-				err = removeContent(filepath.Join(dataDir, "stamperstore"))
+				err = removeContent(filepath.Join(dataDir, stamperstore))
 				if err != nil {
 					return fmt.Errorf("remove stamperstore: %w", err)
 				}
@@ -576,7 +581,7 @@ func dbNukeCmd(cmd *cobra.Command) {
 			}
 
 			if forgetStamps {
-				err = removeContent(filepath.Join(dataDir, "stamperstore"))
+				err = removeContent(filepath.Join(dataDir, stamperstore))
 				if err != nil {
 					return fmt.Errorf("remove stamperstore: %w", err)
 				}

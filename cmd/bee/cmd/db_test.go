@@ -196,7 +196,7 @@ func TestDBNuke(t *testing.T) {
 	nChunks := 10
 	for i := 0; i < nChunks; i++ {
 		ch := storagetest.GenerateTestRandomChunk()
-		err := db.ReservePut(ctx, ch)
+		err := db.ReservePutter().Put(ctx, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -251,7 +251,7 @@ func TestDBInfo(t *testing.T) {
 	nChunks := 10
 	for i := 0; i < nChunks; i++ {
 		ch := storagetest.GenerateTestRandomChunk()
-		err := db1.ReservePut(ctx, ch)
+		err := db1.ReservePutter().Put(ctx, ch)
 		if err != nil {
 			t.Fatal(err)
 		}
