@@ -17,7 +17,6 @@
 package localstore
 
 import (
-	"context"
 	"errors"
 	"time"
 
@@ -237,10 +236,7 @@ func (db *DB) collectGarbage() (evicted uint64, done bool, err error) {
 	}
 
 	for _, loc := range locations {
-		err = db.sharky.Release(context.Background(), loc)
-		if err != nil {
-			db.logger.Warning("failed releasing sharky location", "location", loc)
-		}
+		db.sharky.Release(loc)
 	}
 
 	return totalChunksEvicted, done, nil

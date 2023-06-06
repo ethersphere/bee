@@ -11,7 +11,6 @@ import (
 	"errors"
 	"math/rand"
 	"testing"
-	"time"
 
 	"github.com/ethersphere/bee/pkg/sharky"
 )
@@ -33,7 +32,6 @@ func TestRecovery(t *testing.T) {
 	limitInChunks := shards * int(shardSize)
 
 	dir := t.TempDir()
-	ctx := context.Background()
 	size := limitInChunks / 2
 	data := make([]byte, 4)
 	locs := make([]sharky.Location, size)
@@ -42,7 +40,7 @@ func TestRecovery(t *testing.T) {
 	s := newSharky(t, dir, shards, datasize)
 	for i := range locs {
 		binary.BigEndian.PutUint32(data, uint32(i))
-		loc, err := s.Write(ctx, data)
+		loc, err := s.Write(data)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -78,13 +76,8 @@ func TestRecovery(t *testing.T) {
 		})
 		for i, add := range preserved {
 			if add {
-				if err := r.Add(locs[i]); err != nil {
-					t.Fatal(err)
-				}
+				r.Use(locs[i])
 			}
-		}
-		if err := r.Save(); err != nil {
-			t.Fatal(err)
 		}
 	})
 
@@ -96,7 +89,7 @@ func TestRecovery(t *testing.T) {
 		t.Run("preserved are found", func(t *testing.T) {
 			for i := range preserved {
 				loc := locs[i]
-				if err := s.Read(ctx, loc, buf); err != nil {
+				if err := s.Read(loc, buf); err != nil {
 					t.Fatal(err)
 				}
 				j := binary.BigEndian.Uint32(buf)
@@ -110,12 +103,10 @@ func TestRecovery(t *testing.T) {
 
 		t.Run("correct number of free slots", func(t *testing.T) {
 			s := newSharky(t, dir, 1, datasize)
-			cctx, cancel := context.WithTimeout(ctx, 800*time.Millisecond)
-			defer cancel()
 
 			runs := 96
 			for i := 0; i < runs; i++ {
-				loc, err := s.Write(cctx, payload)
+				loc, err := s.Write(payload)
 				if err != nil {
 					if errors.Is(err, context.DeadlineExceeded) {
 						break
@@ -133,7 +124,7 @@ func TestRecovery(t *testing.T) {
 				if !added {
 					continue
 				}
-				if err := s.Read(ctx, locs[int(i)], buf); err != nil {
+				if err := s.Read(locs[int(i)], buf); err != nil {
 					t.Fatal(err)
 				}
 				j := binary.BigEndian.Uint32(buf)
@@ -144,7 +135,7 @@ func TestRecovery(t *testing.T) {
 		})
 		t.Run("all other slots also overwritten", func(t *testing.T) {
 			for _, loc := range freelocs {
-				if err := s.Read(ctx, loc, buf); err != nil {
+				if err := s.Read(loc, buf); err != nil {
 					t.Fatal(err)
 				}
 				data := buf[:len(payload)]
