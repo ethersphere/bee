@@ -9,6 +9,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/log"
 	m "github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/prometheus/client_golang/prometheus"
@@ -83,6 +84,7 @@ var _ TxStore = (*txIndexStoreWithMetrics)(nil)
 type txIndexStoreWithMetrics struct {
 	TxStore
 
+	logger  log.Logger
 	metrics metrics
 }
 
@@ -101,8 +103,10 @@ func (m txIndexStoreWithMetrics) Commit() error {
 
 // Rollback implements the TxStore interface.
 func (m txIndexStoreWithMetrics) Rollback() error {
-	dur := captureDuration(time.Now())
+	now := time.Now()
+	dur := captureDuration(now)
 	err := m.TxStore.Rollback()
+	m.logger.Debug("index store rollback duration", "elapsed", time.Since(now), "err", err)
 	m.metrics.IndexStoreCallsDuration.WithLabelValues("Rollback").Observe(dur())
 	if err == nil {
 		m.metrics.IndexStoreCalls.WithLabelValues("Rollback", "success").Inc()
@@ -222,6 +226,7 @@ var _ TxChunkStore = (*txChunkStoreWithMetrics)(nil)
 type txChunkStoreWithMetrics struct {
 	TxChunkStore
 
+	logger  log.Logger
 	metrics metrics
 }
 
@@ -240,8 +245,10 @@ func (m txChunkStoreWithMetrics) Commit() error {
 
 // Rollback implements the TxChunkStore interface.
 func (m txChunkStoreWithMetrics) Rollback() error {
-	dur := captureDuration(time.Now())
+	now := time.Now()
+	dur := captureDuration(now)
 	err := m.TxChunkStore.Rollback()
+	m.logger.Debug("chunk store rollback duration", "elapsed", time.Since(now), "err", err)
 	m.metrics.ChunkStoreCallsDuration.WithLabelValues("Rollback").Observe(dur())
 	if err == nil {
 		m.metrics.ChunkStoreCalls.WithLabelValues("Rollback", "success").Inc()

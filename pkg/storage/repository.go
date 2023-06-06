@@ -9,6 +9,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/log"
 	m "github.com/ethersphere/bee/pkg/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -23,6 +24,7 @@ type Repository interface {
 }
 
 type repository struct {
+	logger  log.Logger
 	metrics metrics
 	txStart time.Time
 
@@ -46,8 +48,8 @@ func (r *repository) NewTx(ctx context.Context) (Repository, func() error, func(
 	repo := &repository{
 		metrics:      r.metrics,
 		txStart:      time.Now(),
-		txIndexStore: txIndexStoreWithMetrics{r.txIndexStore.NewTx(NewTxState(ctx)), r.metrics},
-		txChunkStore: txChunkStoreWithMetrics{r.txChunkStore.NewTx(NewTxState(ctx)), r.metrics},
+		txIndexStore: txIndexStoreWithMetrics{r.txIndexStore.NewTx(NewTxState(ctx)), r.logger, r.metrics},
+		txChunkStore: txChunkStoreWithMetrics{r.txChunkStore.NewTx(NewTxState(ctx)), r.logger, r.metrics},
 	}
 
 	txs := []Tx{repo.txIndexStore, repo.txChunkStore}
@@ -89,10 +91,12 @@ func (r *repository) Metrics() []prometheus.Collector {
 
 // NewRepository returns a new Repository instance.
 func NewRepository(txIndexStore TxStore, txChunkStore TxChunkStore) Repository {
+	logger := log.NewLogger("repository").Register()
 	metrics := newMetrics()
 	return &repository{
+		logger:       logger,
 		metrics:      metrics,
-		txIndexStore: txIndexStoreWithMetrics{txIndexStore, metrics},
-		txChunkStore: txChunkStoreWithMetrics{txChunkStore, metrics},
+		txIndexStore: txIndexStoreWithMetrics{txIndexStore, logger, metrics},
+		txChunkStore: txChunkStoreWithMetrics{txChunkStore, logger, metrics},
 	}
 }
