@@ -118,7 +118,6 @@ func New(overlay swarm.Address, ethAddress common.Address, backend ChainBackend,
 // the sample is submitted, and in the reveal phase, the obfuscation key from the commit phase is submitted.
 // Next, in the claim phase, we check if we've won, and the cycle repeats. The cycle must occur in the length of one round.
 func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase uint64) {
-
 	defer a.wg.Done()
 
 	phaseEvents := newEvents()
@@ -277,6 +276,8 @@ func (a *Agent) handleCommit(ctx context.Context, round uint64) (bool, error) {
 		return false, err
 	}
 
+	a.state.SetLastPlayedRound(round)
+
 	return true, nil
 }
 
@@ -316,7 +317,6 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) (bool, error) {
 		return false, nil
 	}
 
-	a.state.SetLastPlayedRound(round)
 	a.metrics.ClaimPhase.Inc()
 
 	isWinner, err := a.contract.IsWinner(ctx)
@@ -369,6 +369,22 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) (bool, error) {
 }
 
 func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
+	storageRadius := a.radius.StorageRadius()
+
+	isPlaying, err := a.contract.IsPlaying(ctx, storageRadius)
+	if err != nil {
+		a.metrics.ErrCheckIsPlaying.Inc()
+		return false, err
+	}
+	if !isPlaying {
+		a.logger.Info("not playing in this round")
+		return false, nil
+	}
+
+	a.state.SetLastSelectedRound(round + 1)
+	a.metrics.NeighborhoodSelected.Inc()
+	a.logger.Info("neighbourhood chosen", "round", round)
+
 	if !a.state.IsFullySynced() {
 		a.logger.Info("skipping round because node is not fully synced")
 		return false, nil
@@ -384,18 +400,6 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 		return false, nil
 	}
 
-	storageRadius := a.radius.StorageRadius()
-
-	isPlaying, err := a.contract.IsPlaying(ctx, storageRadius)
-	if err != nil {
-		a.metrics.ErrCheckIsPlaying.Inc()
-		return false, err
-	}
-	if !isPlaying {
-		a.logger.Info("not playing in this round")
-		return false, nil
-	}
-
 	_, hasFunds, err := a.HasEnoughFundsToPlay(ctx)
 	if err != nil {
 		return false, fmt.Errorf("has enough funds to play: %w", err)
@@ -406,9 +410,6 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 		a.metrics.InsufficientFundsToPlay.Inc()
 		return false, nil
 	}
-
-	a.logger.Info("neighbourhood chosen", "round", round)
-	a.metrics.NeighborhoodSelected.Inc()
 
 	sample, err := a.makeSample(ctx, storageRadius)
 	if err != nil {
@@ -447,7 +448,6 @@ func (a *Agent) makeSample(ctx context.Context, storageRadius uint8) (SampleData
 }
 
 func (a *Agent) getPreviousRoundTime(ctx context.Context) (time.Duration, error) {
-
 	a.metrics.BackendCalls.Inc()
 	block, err := a.backend.BlockNumber(ctx)
 	if err != nil {
@@ -494,7 +494,6 @@ func (a *Agent) commit(ctx context.Context, sample SampleData, round uint64) err
 }
 
 func (a *Agent) Close() error {
-
 	close(a.quit)
 
 	stopped := make(chan struct{})
@@ -512,7 +511,6 @@ func (a *Agent) Close() error {
 }
 
 func (a *Agent) wrapCommit(storageRadius uint8, sample []byte, key []byte) ([]byte, error) {
-
 	storageRadiusByte := []byte{storageRadius}
 
 	data := append(a.overlay.Bytes(), storageRadiusByte...)
