@@ -36,7 +36,7 @@ const (
 	DefaultBlocksPerPhase = DefaultBlocksPerRound / 4
 
 	// min # of transactions our wallet should be able to cover
-	minTxCountToCover = 25
+	minTxCountToCover = 15
 
 	// average tx gas used by transactions issued from agent
 	avgTxGas = 250_000
@@ -128,8 +128,6 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 			a.logger.Error(err, "phase failed", "phase", phase, "round", round)
 		} else if isPhasePlayed {
 			a.logger.Info("phase played", "phase", phase, "round", round)
-		} else {
-			a.logger.Info("phase skipped", "phase", phase, "round", round)
 		}
 	}
 
@@ -406,17 +404,18 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 	}
 
 	if !hasFunds {
-		a.logger.Info("insufficient funds to participate in next round", "round", round)
+		a.logger.Info("insufficient funds to play in next round", "round", round)
 		a.metrics.InsufficientFundsToPlay.Inc()
 		return false, nil
 	}
 
+	now := time.Now()
 	sample, err := a.makeSample(ctx, storageRadius)
 	if err != nil {
 		return false, err
 	}
 
-	a.state.SetSampleData(round, sample)
+	a.state.SetSampleData(round, sample, time.Since(now))
 
 	return true, nil
 }

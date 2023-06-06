@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 3.2.2
+  version: 3.2.3
   title: Common Data Types
   description: |
     \*****bzzz*****
@@ -735,6 +735,8 @@ components:
           type: integer
         lastSelectedRound:
           type: integer
+        lastSampleDuration:
+          $ref: "#/components/schemas/Duration"
         block:
           type: integer
         reward:
