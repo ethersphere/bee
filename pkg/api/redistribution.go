@@ -23,6 +23,7 @@ type redistributionStatusResponse struct {
 	LastWonRound       uint64         `json:"lastWonRound"`
 	LastPlayedRound    uint64         `json:"lastPlayedRound"`
 	LastFrozenRound    uint64         `json:"lastFrozenRound"`
+	LastSelectedRound  uint64         `json:"lastSelectedRound"`
 	LastSampleDuration time.Duration  `json:"lastSampleDuration"`
 	Block              uint64         `json:"block"`
 	Reward             *bigint.BigInt `json:"reward"`
@@ -62,6 +63,7 @@ func (s *Service) redistributionStatusHandler(w http.ResponseWriter, r *http.Req
 		LastWonRound:       status.LastWonRound,
 		LastPlayedRound:    status.LastPlayedRound,
 		LastFrozenRound:    status.LastFrozenRound,
+		LastSelectedRound:  status.LastSelectedRound,
 		LastSampleDuration: status.SampleDuration,
 		Round:              status.Round,
 		Block:              status.Block,
