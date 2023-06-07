@@ -16,7 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/shed"
 	ma "github.com/multiformats/go-multiaddr"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
@@ -26,7 +25,6 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
-	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/spinlock"
 	mockstate "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -961,7 +959,7 @@ func TestClosestPeer(t *testing.T) {
 	disc := mock.NewDiscovery()
 	ab := addressbook.New(mockstate.NewStateStore())
 
-	kad, err := kademlia.New(base, ab, disc, p2pMock(t, ab, nil, nil, nil), metricsDB, logger, kademlia.Options{})
+	kad, err := kademlia.New(base, ab, disc, p2pMock(t, ab, nil, nil, nil), logger, kademlia.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1835,12 +1833,6 @@ func newTestKademliaWithAddrDiscovery(
 ) (swarm.Address, *kademlia.Kad, addressbook.Interface, *mock.Discovery, beeCrypto.Signer) {
 	t.Helper()
 
-	metricsDB, err := shed.NewDB("", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	testutil.CleanupCloser(t, metricsDB)
-
 	var (
 		pk, _  = beeCrypto.GenerateSecp256k1Key()                       // random private key
 		signer = beeCrypto.NewDefaultSigner(pk)                         // signer
@@ -1849,7 +1841,7 @@ func newTestKademliaWithAddrDiscovery(
 		p2p    = p2pMock(t, ab, signer, connCounter, failedConnCounter) // p2p mock
 		logger = log.Noop                                               // logger
 	)
-	kad, err := kademlia.New(base, ab, disc, p2p, metricsDB, logger, kadOpts)
+	kad, err := kademlia.New(base, ab, disc, p2p, logger, kadOpts)
 	if err != nil {
 		t.Fatal(err)
 	}

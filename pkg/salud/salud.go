@@ -160,7 +160,7 @@ func (s *service) salud(mode string, minPeersPerbin int) {
 			mtx.Lock()
 			bins[bin]++
 			totaldur += dur.Seconds()
-			peers = append(peers, peer{snapshot, dur, addr, bin, s.rad.IsWithinStorageRadius(addr)})
+			peers = append(peers, peer{snapshot, dur, addr, bin, s.reserve.IsWithinStorageRadius(addr)})
 			mtx.Unlock()
 		}()
 		return false, false, nil

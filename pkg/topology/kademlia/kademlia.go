@@ -205,7 +205,6 @@ func New(
 	addressbook addressbook.Interface,
 	discovery discovery.Driver,
 	p2pSvc p2p.Service,
-	metricsDB *shed.DB,
 	logger log.Logger,
 	o Options,
 ) (*Kad, error) {
