@@ -5,5 +5,6 @@
 package storageincentives
 
 var (
-	NewEvents = newEvents
+	NewEvents   = newEvents
+	SampleChunk = sampleChunk
 )

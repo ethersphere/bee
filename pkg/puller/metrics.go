@@ -11,8 +11,10 @@ import (
 
 type metrics struct {
 	HistWorkerIterCounter prometheus.Counter // counts the number of historical syncing iterations
+	HistWorkerCounter     prometheus.Counter // count number of historical syncing jobs
 	HistWorkerDoneCounter prometheus.Counter // count number of finished historical syncing jobs
 	HistWorkerErrCounter  prometheus.Counter // count number of errors
+	LiveWorkerCounter     prometheus.Counter // count number of live syncing jobs
 	LiveWorkerIterCounter prometheus.Counter // counts the number of live syncing iterations
 	LiveWorkerErrCounter  prometheus.Counter // count number of errors
 	MaxUintErrCounter     prometheus.Counter // how many times we got maxuint as topmost
@@ -29,6 +31,13 @@ func newMetrics() metrics {
 			Name:      "hist_worker_iterations",
 			Help:      "Total history worker iterations.",
 		}),
+
+		HistWorkerCounter: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "hist_worker",
+			Help:      "Total history active worker jobs.",
+		}),
 		HistWorkerDoneCounter: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
@@ -40,6 +49,12 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "hist_worker_errors",
 			Help:      "Total history worker errors.",
+		}),
+		LiveWorkerCounter: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "live_worker",
+			Help:      "Total live active worker jobs.",
 		}),
 		LiveWorkerIterCounter: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,

@@ -173,11 +173,6 @@ func (s *Store) putSchemaName(val string) error {
 	return s.db.Put([]byte(dbSchemaKey), []byte(val), nil)
 }
 
-// DB implements StateStorer.DB method.
-func (s *Store) DB() *leveldb.DB {
-	return s.db
-}
-
 // Close releases the resources used by the store.
 func (s *Store) Close() error {
 	return s.db.Close()

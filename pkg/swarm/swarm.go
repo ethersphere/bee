@@ -15,20 +15,22 @@ import (
 )
 
 const (
-	SpanSize                = 8
-	SectionSize             = 32
-	Branches                = 128
-	EncryptedBranches       = Branches / 2
-	BmtBranches             = 128
-	ChunkSize               = SectionSize * Branches
-	HashSize                = 32
-	MaxPO             uint8 = 31
-	ExtendedPO        uint8 = MaxPO + 5
-	MaxBins                 = MaxPO + 1
-	ChunkWithSpanSize       = ChunkSize + SpanSize
-	SocSignatureSize        = 65
-	SocMinChunkSize         = HashSize + SocSignatureSize + SpanSize
-	SocMaxChunkSize         = SocMinChunkSize + ChunkSize
+	StampIndexSize           = 8 // TODO: use this size in related code.
+	StampTimestampSize       = 8 // TODO: use this size in related code.
+	SpanSize                 = 8
+	SectionSize              = 32
+	Branches                 = 128
+	EncryptedBranches        = Branches / 2
+	BmtBranches              = 128
+	ChunkSize                = SectionSize * Branches
+	HashSize                 = 32
+	MaxPO              uint8 = 31
+	ExtendedPO         uint8 = MaxPO + 5
+	MaxBins                  = MaxPO + 1
+	ChunkWithSpanSize        = ChunkSize + SpanSize
+	SocSignatureSize         = 65
+	SocMinChunkSize          = HashSize + SocSignatureSize + SpanSize
+	SocMaxChunkSize          = SocMinChunkSize + ChunkSize
 )
 
 var (
@@ -103,6 +105,11 @@ func (a Address) IsValidLength() bool {
 	return len(a.b) == HashSize
 }
 
+// IsValidNonEmpty returns true if the Address has valid length and is not empty.
+func (a Address) IsValidNonEmpty() bool {
+	return a.IsValidLength() && !a.IsEmpty()
+}
+
 // Bytes returns bytes representation of the Address.
 func (a Address) Bytes() []byte {
 	return a.b
@@ -134,11 +141,18 @@ func (x Address) Closer(a Address, y Address) (bool, error) {
 	return cmp == 1, err
 }
 
-// Clone returns deep clone of the Address.
+// Clone returns a new swarm address which is a copy of this one.
 func (a Address) Clone() Address {
-	b := make([]byte, len(a.b))
-	copy(b, a.b)
-	return NewAddress(b)
+	if a.b == nil {
+		return Address{}
+	}
+	return Address{b: append(make([]byte, 0, len(a.b)), a.Bytes()...)}
+}
+
+// Compare returns an integer comparing two addresses lexicographically.
+// The result will be 0 if a == b, -1 if a < b, and +1 if a > b.
+func (a Address) Compare(b Address) int {
+	return bytes.Compare(a.b, b.b)
 }
 
 // AddressIterFunc is a callback on every address that is found by the iterator.
@@ -171,12 +185,34 @@ type Chunk interface {
 	Equal(Chunk) bool
 }
 
+// ChunkType indicates different categories of chunks.
+type ChunkType uint8
+
+// String implements Stringer interface.
+func (ct ChunkType) String() string {
+	switch ct {
+	case ChunkTypeContentAddressed:
+		return "CAC"
+	case ChunkTypeSingleOwner:
+		return "SOC"
+	default:
+		return "unspecified"
+	}
+}
+
+const (
+	ChunkTypeUnspecified ChunkType = iota
+	ChunkTypeContentAddressed
+	ChunkTypeSingleOwner
+)
+
 // Stamp interface for postage.Stamp to avoid circular dependency
 type Stamp interface {
 	BatchID() []byte
 	Index() []byte
 	Sig() []byte
 	Timestamp() []byte
+	Clone() Stamp
 	encoding.BinaryMarshaler
 	encoding.BinaryUnmarshaler
 }

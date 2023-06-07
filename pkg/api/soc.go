@@ -5,7 +5,6 @@
 package api
 
 import (
-	"encoding/hex"
 	"errors"
 	"io"
 	"net/http"
@@ -14,6 +13,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/soc"
+	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
 )
@@ -42,28 +42,78 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	headers := struct {
+		BatchID []byte `map:"Swarm-Postage-Batch-Id" validate:"required"`
+		Pin     bool   `map:"Swarm-Pin"`
+	}{}
+	if response := s.mapStructure(r.Header, &headers); response != nil {
+		response("invalid header params", logger, w)
+		return
+	}
+
+	tag, err := s.storer.NewSession()
+	if err != nil {
+		logger.Debug("get or create tag failed", "error", err)
+		logger.Error(nil, "get or create tag failed")
+		switch {
+		case errors.Is(err, storage.ErrNotFound):
+			jsonhttp.NotFound(w, "tag not found")
+		default:
+			jsonhttp.InternalServerError(w, "cannot get or create tag")
+		}
+		return
+	}
+
+	putter, err := s.newStamperPutter(r.Context(), putterOptions{
+		BatchID:  headers.BatchID,
+		TagID:    tag.TagID,
+		Pin:      headers.Pin,
+		Deferred: true,
+	})
+	if err != nil {
+		logger.Debug("get putter failed", "error", err)
+		logger.Error(nil, "get putter failed")
+		switch {
+		case errors.Is(err, errBatchUnusable) || errors.Is(err, postage.ErrNotUsable):
+			jsonhttp.UnprocessableEntity(w, "batch not usable yet or does not exist")
+		case errors.Is(err, postage.ErrNotFound):
+			jsonhttp.NotFound(w, "batch with id not found")
+		case errors.Is(err, errInvalidPostageBatch):
+			jsonhttp.BadRequest(w, "invalid batch id")
+		default:
+			jsonhttp.BadRequest(w, nil)
+		}
+		return
+	}
+
+	ow := &cleanupOnErrWriter{
+		ResponseWriter: w,
+		onErr:          putter.Cleanup,
+		logger:         logger,
+	}
+
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
-		if jsonhttp.HandleBodyReadError(err, w) {
+		if jsonhttp.HandleBodyReadError(err, ow) {
 			return
 		}
 		logger.Debug("read body failed", "error", err)
 		logger.Error(nil, "read body failed")
-		jsonhttp.InternalServerError(w, "cannot read chunk data")
+		jsonhttp.InternalServerError(ow, "cannot read chunk data")
 		return
 	}
 
 	if len(data) < swarm.SpanSize {
 		logger.Debug("chunk data too short")
 		logger.Error(nil, "chunk data too short")
-		jsonhttp.BadRequest(w, "short chunk data")
+		jsonhttp.BadRequest(ow, "short chunk data")
 		return
 	}
 
 	if len(data) > swarm.ChunkSize+swarm.SpanSize {
 		logger.Debug("chunk data exceeds required length", "required_length", swarm.ChunkSize+swarm.SpanSize)
 		logger.Error(nil, "chunk data exceeds required length")
-		jsonhttp.RequestEntityTooLarge(w, "payload too large")
+		jsonhttp.RequestEntityTooLarge(ow, "payload too large")
 		return
 	}
 
@@ -71,7 +121,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debug("create content addressed chunk failed", "error", err)
 		logger.Error(nil, "create content addressed chunk failed")
-		jsonhttp.BadRequest(w, "chunk data error")
+		jsonhttp.BadRequest(ow, "chunk data error")
 		return
 	}
 
@@ -79,7 +129,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debug("create soc failed", "id", paths.ID, "owner", paths.Owner, "error", err)
 		logger.Error(nil, "create soc failed")
-		jsonhttp.Unauthorized(w, "invalid address")
+		jsonhttp.Unauthorized(ow, "invalid address")
 		return
 	}
 
@@ -87,88 +137,31 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		logger.Debug("read chunk data failed", "error", err)
 		logger.Error(nil, "read chunk data failed")
-		jsonhttp.InternalServerError(w, "cannot read chunk data")
+		jsonhttp.InternalServerError(ow, "cannot read chunk data")
 		return
 	}
 
 	if !soc.Valid(sch) {
 		logger.Debug("invalid chunk", "error", err)
 		logger.Error(nil, "invalid chunk")
-		jsonhttp.Unauthorized(w, "invalid chunk")
+		jsonhttp.Unauthorized(ow, "invalid chunk")
 		return
 	}
 
-	ctx := r.Context()
-
-	has, err := s.storer.Has(ctx, sch.Address())
-	if err != nil {
-		logger.Debug("has check failed", "chunk_address", sch.Address(), "error", err)
-		logger.Error(nil, "has check failed")
-		jsonhttp.InternalServerError(w, "storage error")
-		return
-	}
-	if has {
-		logger.Error(nil, "chunk already exists")
-		jsonhttp.Conflict(w, "chunk already exists")
-		return
-	}
-	batch, err := requestPostageBatchId(r)
-	if err != nil {
-		logger.Debug("mapStructure postage batch id failed", "error", err)
-		logger.Error(nil, "mapStructure postage batch id failed")
-		jsonhttp.BadRequest(w, "invalid postage batch id")
-		return
-	}
-
-	i, save, err := s.post.GetStampIssuer(batch)
-	if err != nil {
-		logger.Debug("get postage batch issuer failed", "batch_id", hex.EncodeToString(batch), "error", err)
-		logger.Error(nil, "get postage batch issue")
-		switch {
-		case errors.Is(err, postage.ErrNotFound):
-			jsonhttp.BadRequest(w, "batch not found")
-		case errors.Is(err, postage.ErrNotUsable):
-			jsonhttp.BadRequest(w, "batch not usable yet")
-		default:
-			jsonhttp.BadRequest(w, "postage stamp issuer")
-		}
-		return
-	}
-	defer func() {
-		if err := save(); err != nil {
-			s.logger.Debug("stamp issuer save", "error", err)
-		}
-	}()
-
-	stamper := postage.NewStamper(i, s.signer)
-	stamp, err := stamper.Stamp(sch.Address())
-	if err != nil {
-		logger.Debug("stamp failed", "chunk_address", sch.Address(), "error", err)
-		logger.Error(nil, "stamp failed")
-		switch {
-		case errors.Is(err, postage.ErrBucketFull):
-			jsonhttp.PaymentRequired(w, "batch is overissued")
-		default:
-			jsonhttp.InternalServerError(w, "stamp error")
-		}
-		return
-	}
-	sch = sch.WithStamp(stamp)
-	_, err = s.storer.Put(ctx, requestModePut(r), sch)
+	err = putter.Put(r.Context(), sch)
 	if err != nil {
 		logger.Debug("write chunk failed", "chunk_address", sch.Address(), "error", err)
 		logger.Error(nil, "write chunk failed")
-		jsonhttp.BadRequest(w, "chunk write error")
+		jsonhttp.BadRequest(ow, "chunk write error")
 		return
 	}
 
-	if requestPin(r) {
-		if err := s.pinning.CreatePin(ctx, sch.Address(), false); err != nil {
-			logger.Debug("create pin failed", "chunk_address", sch.Address(), "error", err)
-			logger.Error(nil, "create pin failed")
-			jsonhttp.InternalServerError(w, "creation of pin failed")
-			return
-		}
+	err = putter.Done(sch.Address())
+	if err != nil {
+		logger.Debug("done split failed", "error", err)
+		logger.Error(nil, "done split failed")
+		jsonhttp.InternalServerError(ow, "done split failed")
+		return
 	}
 
 	jsonhttp.Created(w, chunkAddressResponse{Reference: sch.Address()})

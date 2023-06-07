@@ -10,8 +10,6 @@ import (
 	"context"
 	"errors"
 	"math/big"
-
-	"github.com/ethersphere/bee/pkg/tags"
 )
 
 var (
@@ -22,7 +20,6 @@ var (
 type (
 	HTTPRequestIDKey struct{}
 	requestHostKey   struct{}
-	tagKey           struct{}
 	gasPriceKey      struct{}
 	gasLimitKey      struct{}
 )
@@ -39,20 +36,6 @@ func GetHost(ctx context.Context) string {
 		return v
 	}
 	return ""
-}
-
-// SetTag sets the tag instance in the context
-func SetTag(ctx context.Context, tagId *tags.Tag) context.Context {
-	return context.WithValue(ctx, tagKey{}, tagId)
-}
-
-// GetTag gets the tag instance from the context
-func GetTag(ctx context.Context) *tags.Tag {
-	v, ok := ctx.Value(tagKey{}).(*tags.Tag)
-	if !ok {
-		return nil
-	}
-	return v
 }
 
 func SetGasLimit(ctx context.Context, limit uint64) context.Context {

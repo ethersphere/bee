@@ -225,5 +225,5 @@ func testStoreIterator(t *testing.T, store storage.StateStorer, prefix string, s
 func testEmpty(t *testing.T, store storage.StateStorer) {
 	t.Helper()
 
-	testStoreIterator(t, store, "", 1)
+	testStoreIterator(t, store, "", 1) // 1 because of the schema entry.
 }

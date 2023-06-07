@@ -34,8 +34,8 @@ import (
 
 var (
 	defaultOpenFilesLimit         = uint64(256)
-	defaultBlockCacheCapacity     = uint64(32 * 1024 * 1024)
-	defaultWriteBufferSize        = uint64(32 * 1024 * 1024)
+	defaultBlockCacheCapacity     = uint64(1 * 1024 * 1024)
+	defaultWriteBufferSize        = uint64(1 * 1024 * 1024)
 	defaultDisableSeeksCompaction = false
 )
 

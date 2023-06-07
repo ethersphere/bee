@@ -11,11 +11,10 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/postage"
-	bsMock "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	"github.com/ethersphere/bee/pkg/salud"
 	"github.com/ethersphere/bee/pkg/spinlock"
 	"github.com/ethersphere/bee/pkg/status"
+	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	topMock "github.com/ethersphere/bee/pkg/topology/mock"
 )
@@ -65,9 +64,12 @@ func TestSalud(t *testing.T) {
 
 	topM := topMock.NewTopologyDriver(topMock.WithPeers(addrs...))
 
-	bs := bsMock.New(bsMock.WithIsWithinStorageRadius(true), bsMock.WithReserveState(&postage.ReserveState{StorageRadius: 8}))
+	reserve := mockstorer.NewReserve(
+		mockstorer.WithRadius(8),
+		mockstorer.WithReserveSize(100),
+	)
 
-	service := salud.New(statusM, topM, bs, &reserveMock{100}, log.Noop, -1, "full", 0)
+	service := salud.New(statusM, topM, reserve, log.Noop, -1, "full", 0)
 
 	err := spinlock.Wait(time.Minute, func() bool {
 		return len(topM.PeersHealth()) == len(peers)
@@ -108,9 +110,12 @@ func TestSelfUnhealthyRadius(t *testing.T) {
 
 	topM := topMock.NewTopologyDriver(topMock.WithPeers(addrs...))
 
-	bs := bsMock.New(bsMock.WithIsWithinStorageRadius(true), bsMock.WithReserveState(&postage.ReserveState{StorageRadius: 7}))
+	reserve := mockstorer.NewReserve(
+		mockstorer.WithRadius(7),
+		mockstorer.WithReserveSize(100),
+	)
 
-	service := salud.New(statusM, topM, bs, &reserveMock{100}, log.Noop, -1, "full", 0)
+	service := salud.New(statusM, topM, reserve, log.Noop, -1, "full", 0)
 
 	err := spinlock.Wait(time.Minute, func() bool {
 		return len(topM.PeersHealth()) == len(peers)
@@ -145,9 +150,12 @@ func TestSelfUnhealthyReserveSize(t *testing.T) {
 
 	topM := topMock.NewTopologyDriver(topMock.WithPeers(addrs...))
 
-	bs := bsMock.New(bsMock.WithIsWithinStorageRadius(true), bsMock.WithReserveState(&postage.ReserveState{StorageRadius: 8}))
+	reserve := mockstorer.NewReserve(
+		mockstorer.WithRadius(8),
+		mockstorer.WithReserveSize(97),
+	)
 
-	service := salud.New(statusM, topM, bs, &reserveMock{97}, log.Noop, -1, "full", 0)
+	service := salud.New(statusM, topM, reserve, log.Noop, -1, "full", 0)
 
 	err := spinlock.Wait(time.Minute, func() bool {
 		return len(topM.PeersHealth()) == len(peers)
@@ -165,6 +173,70 @@ func TestSelfUnhealthyReserveSize(t *testing.T) {
 	}
 }
 
+func TestSubToRadius(t *testing.T) {
+	t.Parallel()
+	peers := []peer{
+		// fully healhy
+		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, BeeMode: "full", ReserveSize: 100}, 0, true},
+		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, BeeMode: "full", ReserveSize: 100}, 0, true},
+	}
+
+	addrs := make([]swarm.Address, 0, len(peers))
+	for _, p := range peers {
+		addrs = append(addrs, p.addr)
+	}
+
+	topM := topMock.NewTopologyDriver(topMock.WithPeers(addrs...))
+
+	service := salud.New(&statusMock{make(map[string]peer)}, topM, mockstorer.NewReserve(), log.Noop, -1, "full", 0)
+
+	c, unsub := service.SubscribeNetworkStorageRadius()
+	t.Cleanup(unsub)
+
+	select {
+	case radius := <-c:
+		if radius != 8 {
+			t.Fatalf("wanted radius 8, got %d", radius)
+		}
+	case <-time.After(time.Second):
+	}
+
+	if err := service.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestUnsub(t *testing.T) {
+	t.Parallel()
+	peers := []peer{
+		// fully healhy
+		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, BeeMode: "full", ReserveSize: 100}, 0, true},
+		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, BeeMode: "full", ReserveSize: 100}, 0, true},
+	}
+
+	addrs := make([]swarm.Address, 0, len(peers))
+	for _, p := range peers {
+		addrs = append(addrs, p.addr)
+	}
+
+	topM := topMock.NewTopologyDriver(topMock.WithPeers(addrs...))
+
+	service := salud.New(&statusMock{make(map[string]peer)}, topM, mockstorer.NewReserve(), log.Noop, -1, "full", 0)
+
+	c, unsub := service.SubscribeNetworkStorageRadius()
+	unsub()
+
+	select {
+	case <-c:
+		t.Fatal("should not have received an address")
+	case <-time.After(time.Second):
+	}
+
+	if err := service.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
 type statusMock struct {
 	peers map[string]peer
 }
@@ -175,12 +247,4 @@ func (p *statusMock) PeerSnapshot(ctx context.Context, peer swarm.Address) (*sta
 		return peer.status, nil
 	}
 	return nil, errors.New("peer not found")
-}
-
-type reserveMock struct {
-	size uint64
-}
-
-func (r *reserveMock) ReserveSize() uint64 {
-	return r.size
 }

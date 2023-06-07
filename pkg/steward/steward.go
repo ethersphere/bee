@@ -11,17 +11,13 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/storage"
+	storer "github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/traversal"
-	"golang.org/x/sync/errgroup"
 )
-
-// how many parallel push operations
-const parallelPush = 5
 
 type Interface interface {
 	// Reupload root hash and all of its underlying
@@ -34,17 +30,15 @@ type Interface interface {
 }
 
 type steward struct {
-	getter       storage.Getter
-	push         pushsync.PushSyncer
+	netStore     storer.NetStore
 	traverser    traversal.Traverser
 	netTraverser traversal.Traverser
 }
 
-func New(getter storage.Getter, t traversal.Traverser, r retrieval.Interface, p pushsync.PushSyncer) Interface {
+func New(ns storer.NetStore, r retrieval.Interface) Interface {
 	return &steward{
-		getter:       getter,
-		push:         p,
-		traverser:    t,
+		netStore:     ns,
+		traverser:    traversal.New(ns.Download(true)),
 		netTraverser: traversal.New(&netGetter{r}),
 	}
 }
@@ -55,37 +49,26 @@ func New(getter storage.Getter, t traversal.Traverser, r retrieval.Interface, p 
 // It assumes all chunks are available locally. It is therefore
 // advisable to pin the content locally before trying to reupload it.
 func (s *steward) Reupload(ctx context.Context, root swarm.Address) error {
-	sem := make(chan struct{}, parallelPush)
-	eg, _ := errgroup.WithContext(ctx)
+	uploaderSession := s.netStore.DirectUpload()
+	getter := s.netStore.Download(false)
+
 	fn := func(addr swarm.Address) error {
-		c, err := s.getter.Get(ctx, storage.ModeGetSync, addr)
+		c, err := getter.Get(ctx, addr)
 		if err != nil {
 			return err
 		}
 
-		sem <- struct{}{}
-		eg.Go(func() error {
-			defer func() { <-sem }()
-			_, err := s.push.PushChunkToClosest(ctx, c)
-			if err != nil {
-				if !errors.Is(err, topology.ErrWantSelf) {
-					return err
-				}
-				// swallow the error in case we are the closest node
-			}
-			return nil
-		})
-		return nil
+		return uploaderSession.Put(ctx, c)
 	}
 
 	if err := s.traverser.Traverse(ctx, root, fn); err != nil {
-		return fmt.Errorf("traversal of %s failed: %w", root.String(), err)
+		return errors.Join(
+			fmt.Errorf("traversal of %s failed: %w", root.String(), err),
+			uploaderSession.Cleanup(),
+		)
 	}
 
-	if err := eg.Wait(); err != nil {
-		return fmt.Errorf("push error during reupload: %w", err)
-	}
-	return nil
+	return uploaderSession.Done(root)
 }
 
 // IsRetrievable implements Interface.IsRetrievable method.
@@ -110,11 +93,6 @@ type netGetter struct {
 }
 
 // Get implements the storage Getter.Get interface.
-func (ng *netGetter) Get(ctx context.Context, _ storage.ModeGet, addr swarm.Address) (swarm.Chunk, error) {
+func (ng *netGetter) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
 	return ng.retrieval.RetrieveChunk(ctx, addr, swarm.ZeroAddress)
-}
-
-// Put implements the storage Putter.Put interface.
-func (ng *netGetter) Put(_ context.Context, _ storage.ModePut, _ ...swarm.Chunk) ([]bool, error) {
-	return nil, errors.New("operation is not supported")
 }

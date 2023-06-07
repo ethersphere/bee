@@ -14,8 +14,8 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/status"
+	"github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	"go.uber.org/atomic"
@@ -41,7 +41,8 @@ type peerStatus interface {
 }
 
 type reserve interface {
-	ReserveSize() uint64
+	storer.RadiusChecker
+	ReserveSize() int
 }
 
 type service struct {
@@ -52,11 +53,21 @@ type service struct {
 	status        peerStatus
 	metrics       metrics
 	isSelfHealthy *atomic.Bool
-	rad           postage.Radius
 	reserve       reserve
+
+	radiusSubsMtx sync.Mutex
+	radiusC       []chan uint8
 }
 
-func New(status peerStatus, topology topologyDriver, rad postage.Radius, reserve reserve, logger log.Logger, warmup time.Duration, mode string, minPeersPerbin int) *service {
+func New(
+	status peerStatus,
+	topology topologyDriver,
+	reserve reserve,
+	logger log.Logger,
+	warmup time.Duration,
+	mode string,
+	minPeersPerbin int,
+) *service {
 
 	metrics := newMetrics()
 
@@ -67,7 +78,6 @@ func New(status peerStatus, topology topologyDriver, rad postage.Radius, reserve
 		topology:      topology,
 		metrics:       metrics,
 		isSelfHealthy: atomic.NewBool(true),
-		rad:           rad,
 		reserve:       reserve,
 	}
 
@@ -149,7 +159,7 @@ func (s *service) salud(mode string, minPeersPerbin int) {
 			dur := time.Since(start).Seconds()
 
 			mtx.Lock()
-			if s.rad.IsWithinStorageRadius(addr) {
+			if s.reserve.IsWithinStorageRadius(addr) {
 				neighbors++
 			}
 			bins[bin]++
@@ -183,7 +193,9 @@ func (s *service) salud(mode string, minPeersPerbin int) {
 	s.metrics.Commitment.Set(float64(commitment))
 	s.metrics.ReserveSizePercentErr.Set(reserveSizePercentErr)
 
-	s.logger.Debug("computed", "average", avgDur, "percentile", percentile, "pDur", pDur, "pConns", pConns, "network_radius", networkRadius, "neighborhood_radius", nHoodRadius, "batch_commitment", commitment, "reserve_size", reserveSize)
+	s.publishRadius(networkRadius)
+
+	s.logger.Debug("computed", "average", avgDur, "percentile", percentile, "pDur", pDur, "pConns", pConns, "network_radius", networkRadius, "neighborhood_radius", nHoodRadius, "batch_commitment", commitment)
 
 	for _, peer := range peers {
 
@@ -217,9 +229,9 @@ func (s *service) salud(mode string, minPeersPerbin int) {
 	}
 
 	selfHealth := true
-	if s.rad.StorageRadius() != networkRadius {
+	if s.reserve.StorageRadius() != networkRadius {
 		selfHealth = false
-		s.logger.Warning("node is unhealthy due to storage radius discrepency", "self_radius", s.rad.StorageRadius(), "network_radius", networkRadius)
+		s.logger.Warning("node is unhealthy due to storage radius discrepency", "self_radius", s.reserve.StorageRadius(), "network_radius", networkRadius)
 	} else if reserveSize > 0 && reserveSizePercentErr > maxReserveSizePercentageErr {
 		s.logger.Warning("node is unhealthy due to reserve size discrepency", "self_size", s.reserve.ReserveSize(), "network_size", reserveSize)
 		selfHealth = false
@@ -230,6 +242,36 @@ func (s *service) salud(mode string, minPeersPerbin int) {
 
 func (s *service) IsHealthy() bool {
 	return s.isSelfHealthy.Load()
+}
+
+func (s *service) publishRadius(r uint8) {
+	s.radiusSubsMtx.Lock()
+	defer s.radiusSubsMtx.Unlock()
+	for _, cb := range s.radiusC {
+		select {
+		case cb <- r:
+		default:
+		}
+	}
+}
+
+func (s *service) SubscribeNetworkStorageRadius() (<-chan uint8, func()) {
+	s.radiusSubsMtx.Lock()
+	defer s.radiusSubsMtx.Unlock()
+
+	c := make(chan uint8, 1)
+	s.radiusC = append(s.radiusC, c)
+
+	return c, func() {
+		s.radiusSubsMtx.Lock()
+		defer s.radiusSubsMtx.Unlock()
+		for i, cc := range s.radiusC {
+			if c == cc {
+				s.radiusC = append(s.radiusC[:i], s.radiusC[i+1:]...)
+				break
+			}
+		}
+	}
 }
 
 // percentileDur finds the p percentile of response duration.
@@ -266,7 +308,7 @@ func (s *service) radius(peers []peer) (uint8, uint8) {
 
 	for _, peer := range peers {
 		if peer.status.StorageRadius < uint32(swarm.MaxBins) {
-			if s.rad.IsWithinStorageRadius(peer.addr) {
+			if s.reserve.IsWithinStorageRadius(peer.addr) {
 				nHoodRadius[peer.status.StorageRadius]++
 			}
 			networkRadius[peer.status.StorageRadius]++

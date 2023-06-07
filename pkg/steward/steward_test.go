@@ -7,19 +7,18 @@ package steward_test
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"errors"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
-	"github.com/ethersphere/bee/pkg/pushsync"
-	psmock "github.com/ethersphere/bee/pkg/pushsync/mock"
 	"github.com/ethersphere/bee/pkg/steward"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/mock"
+	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
+	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/topology"
-	"github.com/ethersphere/bee/pkg/traversal"
-	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
 func TestSteward(t *testing.T) {
@@ -28,34 +27,76 @@ func TestSteward(t *testing.T) {
 	var (
 		ctx            = context.Background()
 		chunks         = 1000
-		data           = testutil.RandBytes(t, chunks*4096) //1k chunks
-		store          = mock.NewStorer()
-		traverser      = traversal.New(store)
-		loggingStorer  = &loggingStore{Storer: store}
-		traversedAddrs = make(map[string]struct{})
-		mu             sync.Mutex
-		fn             = func(_ context.Context, ch swarm.Chunk) (*pushsync.Receipt, error) {
-			mu.Lock()
-			traversedAddrs[ch.Address().String()] = struct{}{}
-			mu.Unlock()
-			return nil, nil
-		}
-		ps = psmock.New(fn)
-		s  = steward.New(store, traverser, loggingStorer, ps)
+		data           = make([]byte, chunks*4096) //1k chunks
+		chunkStore     = inmemchunkstore.New()
+		store          = mockstorer.NewWithChunkStore(chunkStore)
+		localRetrieval = &localRetriever{ChunkStore: chunkStore}
+		s              = steward.New(store, localRetrieval)
 	)
 
-	pipe := builder.NewPipelineBuilder(ctx, loggingStorer, storage.ModePutUpload, false)
+	n, err := rand.Read(data)
+	if n != cap(data) {
+		t.Fatal("short read")
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pipe := builder.NewPipelineBuilder(ctx, chunkStore, false)
 	addr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data))
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	chunkCount := 0
+	err = chunkStore.Iterate(context.Background(), func(ch swarm.Chunk) (bool, error) {
+		chunkCount++
+		return false, nil
+	})
+	if err != nil {
+		t.Fatalf("failed iterating: %v", err)
+	}
+
+	done := make(chan struct{})
+	errc := make(chan error, 1)
+	go func() {
+		defer close(done)
+		count := 0
+		for op := range store.PusherFeed() {
+			has, err := chunkStore.Has(ctx, op.Chunk.Address())
+			if err != nil || !has {
+				if !has {
+					err = errors.New("chunk not found")
+				}
+				select {
+				case errc <- err:
+				default:
+				}
+				return
+			}
+			count++
+			if count == chunkCount {
+				return
+			}
+		}
+	}()
+
 	err = s.Reupload(ctx, addr)
 	if err != nil {
 		t.Fatal(err)
 	}
-	mu.Lock()
-	defer mu.Unlock()
+
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("took too long to finish")
+	}
+
+	select {
+	case err := <-errc:
+		t.Fatalf("unexpected error: %v", err)
+	default:
+	}
 
 	isRetrievable, err := s.IsRetrievable(ctx, addr)
 	if err != nil {
@@ -65,55 +106,25 @@ func TestSteward(t *testing.T) {
 		t.Fatalf("re-uploaded content on %q should be retrievable", addr)
 	}
 
-	// check that everything that was stored is also traversed
-	for _, a := range loggingStorer.addrs {
-		if _, ok := traversedAddrs[a.String()]; !ok {
-			t.Fatalf("expected address %s to be traversed", a.String())
-		}
+	count := len(localRetrieval.retrievedChunks)
+	if count != chunkCount {
+		t.Fatalf("unexpected no of unique chunks retrieved: want %d have %d", chunkCount, count)
 	}
 }
 
-func TestSteward_ErrWantSelf(t *testing.T) {
-	t.Parallel()
-
-	var (
-		ctx           = context.Background()
-		chunks        = 10
-		data          = testutil.RandBytes(t, chunks*4096)
-		store         = mock.NewStorer()
-		traverser     = traversal.New(store)
-		loggingStorer = &loggingStore{Storer: store}
-		fn            = func(_ context.Context, ch swarm.Chunk) (*pushsync.Receipt, error) {
-			return nil, topology.ErrWantSelf
-		}
-		ps = psmock.New(fn)
-		s  = steward.New(store, traverser, loggingStorer, ps)
-	)
-
-	pipe := builder.NewPipelineBuilder(ctx, loggingStorer, storage.ModePutUpload, false)
-	addr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data))
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	err = s.Reupload(ctx, addr)
-	if err != nil {
-		t.Fatal(err)
-	}
+type localRetriever struct {
+	storage.ChunkStore
+	mu              sync.Mutex
+	retrievedChunks map[string]struct{}
 }
 
-type loggingStore struct {
-	storage.Storer
-	addrs []swarm.Address
-}
+func (lr *localRetriever) RetrieveChunk(ctx context.Context, addr, sourceAddr swarm.Address) (chunk swarm.Chunk, err error) {
+	lr.mu.Lock()
+	defer lr.mu.Unlock()
 
-func (ls *loggingStore) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
-	for _, c := range chs {
-		ls.addrs = append(ls.addrs, c.Address())
+	if lr.retrievedChunks == nil {
+		lr.retrievedChunks = make(map[string]struct{})
 	}
-	return ls.Storer.Put(ctx, mode, chs...)
-}
-
-func (ls *loggingStore) RetrieveChunk(ctx context.Context, addr, sourceAddr swarm.Address) (chunk swarm.Chunk, err error) {
-	return ls.Get(ctx, storage.ModeGetRequest, addr)
+	lr.retrievedChunks[addr.String()] = struct{}{}
+	return lr.Get(ctx, addr)
 }

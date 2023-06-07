@@ -95,7 +95,15 @@ func TestGetStampIssuer(t *testing.T) {
 		if i > 3 {
 			shift = uint64(i)
 		}
-		err = ps.Add(postage.NewStampIssuer(string(id), "", id, big.NewInt(3), 16, 8, validBlockNumber+shift, true))
+		err = ps.Add(postage.NewStampIssuer(
+			string(id),
+			"",
+			id,
+			big.NewInt(3),
+			16,
+			8,
+			validBlockNumber+shift, true),
+		)
 		if err != nil {
 			t.Fatal(err)
 		}

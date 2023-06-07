@@ -11,21 +11,20 @@ import (
 
 // Batch represents a postage batch, a payment on the blockchain.
 type Batch struct {
-	ID            []byte   // batch ID
-	Value         *big.Int // normalised balance of the batch
-	Start         uint64   // block number the batch was created
-	Owner         []byte   // owner's ethereum address
-	Depth         uint8    // batch depth, i.e., size = 2^{depth}
-	BucketDepth   uint8    // the depth of neighbourhoods t
-	Immutable     bool     // if the batch allows adding new capacity (dilution)
-	StorageRadius uint8    // storage radius
+	ID          []byte   // batch ID
+	Value       *big.Int // normalised balance of the batch
+	Start       uint64   // block number the batch was created
+	Owner       []byte   // owner's ethereum address
+	Depth       uint8    // batch depth, i.e., size = 2^{depth}
+	BucketDepth uint8    // the depth of neighbourhoods t
+	Immutable   bool     // if the batch allows adding new capacity (dilution)
 }
 
 // MarshalBinary implements BinaryMarshaller. It will attempt to serialize the
 // postage batch to a byte slice.
-// serialised as ID(32)|big endian value(32)|start block(8)|owner addr(20)|BucketDepth(1)|depth(1)|immutable(1)|StorageRadius(1)
+// serialised as ID(32)|big endian value(32)|start block(8)|owner addr(20)|BucketDepth(1)|depth(1)|immutable(1)
 func (b *Batch) MarshalBinary() ([]byte, error) {
-	out := make([]byte, 96)
+	out := make([]byte, 95)
 	copy(out, b.ID)
 	value := b.Value.Bytes()
 	copy(out[64-len(value):], value)
@@ -36,7 +35,6 @@ func (b *Batch) MarshalBinary() ([]byte, error) {
 	if b.Immutable {
 		out[94] = 1
 	}
-	out[95] = b.StorageRadius
 	return out, nil
 }
 
@@ -50,6 +48,5 @@ func (b *Batch) UnmarshalBinary(buf []byte) error {
 	b.BucketDepth = buf[92]
 	b.Depth = buf[93]
 	b.Immutable = buf[94] > 0
-	b.StorageRadius = buf[95]
 	return nil
 }

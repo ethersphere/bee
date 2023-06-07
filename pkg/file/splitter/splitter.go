@@ -13,31 +13,19 @@ import (
 
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/splitter/internal"
-	"github.com/ethersphere/bee/pkg/storage"
+	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-type putWrapper struct {
-	putter func(context.Context, swarm.Chunk) ([]bool, error)
-}
-
-func (p putWrapper) Put(ctx context.Context, ch swarm.Chunk) ([]bool, error) {
-	return p.putter(ctx, ch)
-}
-
 // simpleSplitter wraps a non-optimized implementation of file.Splitter
 type simpleSplitter struct {
-	putter internal.Putter
+	putter storage.Putter
 }
 
 // NewSimpleSplitter creates a new SimpleSplitter
-func NewSimpleSplitter(storePutter storage.Putter, mode storage.ModePut) file.Splitter {
+func NewSimpleSplitter(storePutter storage.Putter) file.Splitter {
 	return &simpleSplitter{
-		putter: putWrapper{
-			putter: func(ctx context.Context, ch swarm.Chunk) ([]bool, error) {
-				return storePutter.Put(ctx, mode, ch)
-			},
-		},
+		putter: storePutter,
 	}
 }
 

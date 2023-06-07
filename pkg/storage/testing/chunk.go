@@ -22,16 +22,42 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/cac"
+	"github.com/ethersphere/bee/pkg/crypto"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
+	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
 // GenerateTestRandomChunk generates a valid content addressed chunk.
 func GenerateTestRandomChunk() swarm.Chunk {
+	key, _ := crypto.GenerateSecp256k1Key()
+	signer := crypto.NewDefaultSigner(key)
+
 	data := make([]byte, swarm.ChunkSize)
 	_, _ = rand.Read(data)
 	ch, _ := cac.New(data)
-	stamp := postagetesting.MustNewStamp()
+	stamp := postagetesting.MustNewValidStamp(signer, ch.Address())
+
+	return ch.WithStamp(stamp)
+}
+
+// GenerateTestRandomSoChunk generates a valid single owner chunk
+// using supplied content addressed chunk.
+func GenerateTestRandomSoChunk(tb testing.TB, cac swarm.Chunk) swarm.Chunk {
+	tb.Helper()
+
+	key, _ := crypto.GenerateSecp256k1Key()
+	signer := crypto.NewDefaultSigner(key)
+	id := testutil.RandBytes(tb, swarm.HashSize)
+
+	ch, err := soc.New(id, cac).Sign(signer)
+	if err != nil {
+		tb.Fatal(err)
+	}
+
+	stamp := postagetesting.MustNewValidStamp(signer, ch.Address())
+
 	return ch.WithStamp(stamp)
 }
 
@@ -51,7 +77,7 @@ func GenerateTestRandomInvalidChunk() swarm.Chunk {
 func GenerateTestRandomChunks(count int) []swarm.Chunk {
 	chunks := make([]swarm.Chunk, count)
 	for i := 0; i < count; i++ {
-		chunks[i] = GenerateTestRandomInvalidChunk()
+		chunks[i] = GenerateTestRandomChunk()
 	}
 	return chunks
 }

@@ -18,7 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/manifest"
 	"github.com/ethersphere/bee/pkg/manifest/mantaray"
 	"github.com/ethersphere/bee/pkg/soc"
-	"github.com/ethersphere/bee/pkg/storage"
+	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -28,19 +28,14 @@ type Traverser interface {
 	Traverse(context.Context, swarm.Address, swarm.AddressIterFunc) error
 }
 
-type PutGetter interface {
-	storage.Putter
-	storage.Getter
-}
-
 // New constructs for a new Traverser.
-func New(store PutGetter) Traverser {
+func New(store storage.Getter) Traverser {
 	return &service{store: store}
 }
 
 // service is implementation of Traverser using storage.Storer as its storage.
 type service struct {
-	store PutGetter
+	store storage.Getter
 }
 
 // Traverse implements Traverser.Traverse method.
@@ -59,7 +54,7 @@ func (s *service) Traverse(ctx context.Context, addr swarm.Address, iterFn swarm
 
 	// skip SOC check for encrypted references
 	if addr.IsValidLength() {
-		ch, err := s.store.Get(ctx, storage.ModeGetRequest, addr)
+		ch, err := s.store.Get(ctx, addr)
 		if err != nil {
 			return fmt.Errorf("traversal: failed to get root chunk %s: %w", addr.String(), err)
 		}

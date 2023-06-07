@@ -14,19 +14,19 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
-	"github.com/ethersphere/bee/pkg/storageincentives/staking"
-	"github.com/ethersphere/bee/pkg/transaction"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
+	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
+	"github.com/ethersphere/bee/pkg/storageincentives/staking"
+	storer "github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/transaction"
 )
 
 const loggerName = "storageincentives"
@@ -49,17 +49,8 @@ type ChainBackend interface {
 	SuggestGasPrice(ctx context.Context) (*big.Int, error)
 }
 
-type Monitor interface {
-	IsFullySynced() bool
-}
-
 type Health interface {
 	IsHealthy() bool
-}
-
-type SampleData struct {
-	ReserveSample storage.Sample
-	StorageRadius uint8
 }
 
 type Agent struct {
@@ -67,21 +58,38 @@ type Agent struct {
 	metrics                metrics
 	backend                ChainBackend
 	blocksPerRound         uint64
-	monitor                Monitor
 	contract               redistribution.Contract
 	batchExpirer           postagecontract.PostageBatchExpirer
 	redistributionStatuser staking.RedistributionStatuser
-	radius                 postage.Radius
-	sampler                storage.Sampler
+	store                  storer.Reserve
+	fullSyncedFunc         func() bool
 	overlay                swarm.Address
 	quit                   chan struct{}
 	wg                     sync.WaitGroup
 	state                  *RedistributionState
+	chainStateGetter       postage.ChainStateGetter
 	commitLock             sync.Mutex
 	health                 Health
 }
 
-func New(overlay swarm.Address, ethAddress common.Address, backend ChainBackend, monitor Monitor, contract redistribution.Contract, batchExpirer postagecontract.PostageBatchExpirer, redistributionStatuser staking.RedistributionStatuser, radius postage.Radius, sampler storage.Sampler, blockTime time.Duration, blocksPerRound, blocksPerPhase uint64, stateStore storage.StateStorer, erc20Service erc20.Service, tranService transaction.Service, health Health, logger log.Logger) (*Agent, error) {
+func New(overlay swarm.Address,
+	ethAddress common.Address,
+	backend ChainBackend,
+	contract redistribution.Contract,
+	batchExpirer postagecontract.PostageBatchExpirer,
+	redistributionStatuser staking.RedistributionStatuser,
+	store storer.Reserve,
+	fullSyncedFunc func() bool,
+	blockTime time.Duration,
+	blocksPerRound,
+	blocksPerPhase uint64,
+	stateStore storage.StateStorer,
+	chainStateGetter postage.ChainStateGetter,
+	erc20Service erc20.Service,
+	tranService transaction.Service,
+	health Health,
+	logger log.Logger,
+) (*Agent, error) {
 	a := &Agent{
 		overlay:                overlay,
 		metrics:                newMetrics(),
@@ -89,13 +97,13 @@ func New(overlay swarm.Address, ethAddress common.Address, backend ChainBackend,
 		logger:                 logger.WithName(loggerName).Register(),
 		contract:               contract,
 		batchExpirer:           batchExpirer,
-		radius:                 radius,
-		monitor:                monitor,
+		store:                  store,
+		fullSyncedFunc:         fullSyncedFunc,
 		blocksPerRound:         blocksPerRound,
-		sampler:                sampler,
 		quit:                   make(chan struct{}),
 		redistributionStatuser: redistributionStatuser,
 		health:                 health,
+		chainStateGetter:       chainStateGetter,
 	}
 
 	state, err := NewRedistributionState(logger, ethAddress, stateStore, erc20Service, tranService)
@@ -189,6 +197,8 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 			return
 		}
 
+		a.state.SetCurrentBlock(block)
+
 		round := block / blocksPerRound
 
 		a.metrics.Round.Set(float64(round))
@@ -212,8 +222,8 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 		a.logger.Info("entered new phase", "phase", currentPhase.String(), "round", round, "block", block)
 
-		a.state.SetCurrentEvent(currentPhase, round, block)
-		a.state.SetFullySynced(a.monitor.IsFullySynced())
+		a.state.SetCurrentEvent(currentPhase, round)
+		a.state.SetFullySynced(a.fullSyncedFunc())
 		go a.state.purgeStaleRoundData()
 
 		isFrozen, err := a.redistributionStatuser.IsOverlayFrozen(ctx, block)
@@ -295,8 +305,9 @@ func (a *Agent) handleReveal(ctx context.Context, round uint64) (bool, error) {
 	}
 
 	a.metrics.RevealPhase.Inc()
-	sampleBytes := sample.ReserveSample.Hash.Bytes()
-	txHash, err := a.contract.Reveal(ctx, sample.StorageRadius, sampleBytes, commitKey)
+
+	rsh := sample.ReserveSampleHash.Bytes()
+	txHash, err := a.contract.Reveal(ctx, sample.StorageRadius, rsh, commitKey)
 	if err != nil {
 		a.metrics.ErrReveal.Inc()
 		return false, err
@@ -367,7 +378,7 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) (bool, error) {
 }
 
 func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
-	storageRadius := a.radius.StorageRadius()
+	storageRadius := a.store.StorageRadius()
 
 	isPlaying, err := a.contract.IsPlaying(ctx, storageRadius)
 	if err != nil {
@@ -432,29 +443,36 @@ func (a *Agent) makeSample(ctx context.Context, storageRadius uint8) (SampleData
 	}
 
 	t := time.Now()
-	rSample, err := a.sampler.ReserveSample(ctx, salt, storageRadius, uint64(timeLimiter))
+	rSample, err := a.store.ReserveSample(ctx, salt, storageRadius, uint64(timeLimiter), a.minBatchBalance())
 	if err != nil {
 		return SampleData{}, err
 	}
 	a.metrics.SampleDuration.Set(time.Since(t).Seconds())
 
+	sampleHash, err := sampleHash(rSample.Items)
+	if err != nil {
+		return SampleData{}, err
+	}
+
 	sample := SampleData{
-		ReserveSample: rSample,
-		StorageRadius: storageRadius,
+		ReserveSampleHash: sampleHash,
+		StorageRadius:     storageRadius,
 	}
 
 	return sample, nil
 }
 
-func (a *Agent) getPreviousRoundTime(ctx context.Context) (time.Duration, error) {
-	a.metrics.BackendCalls.Inc()
-	block, err := a.backend.BlockNumber(ctx)
-	if err != nil {
-		a.metrics.BackendErrors.Inc()
-		return 0, err
-	}
+func (a *Agent) minBatchBalance() *big.Int {
+	cs := a.chainStateGetter.GetChainState()
+	nextRoundBlockNumber := ((a.state.currentBlock() / a.blocksPerRound) + 2) * a.blocksPerRound
+	difference := nextRoundBlockNumber - cs.Block
+	minBalance := new(big.Int).Add(cs.TotalAmount, new(big.Int).Mul(cs.CurrentPrice, big.NewInt(int64(difference))))
 
-	previousRoundBlockNumber := ((block / a.blocksPerRound) - 1) * a.blocksPerRound
+	return minBalance
+}
+
+func (a *Agent) getPreviousRoundTime(ctx context.Context) (time.Duration, error) {
+	previousRoundBlockNumber := ((a.state.currentBlock() / a.blocksPerRound) - 1) * a.blocksPerRound
 
 	a.metrics.BackendCalls.Inc()
 	timeLimiterBlock, err := a.backend.HeaderByNumber(ctx, new(big.Int).SetUint64(previousRoundBlockNumber))
@@ -474,8 +492,8 @@ func (a *Agent) commit(ctx context.Context, sample SampleData, round uint64) err
 		return err
 	}
 
-	sampleBytes := sample.ReserveSample.Hash.Bytes()
-	obfuscatedHash, err := a.wrapCommit(sample.StorageRadius, sampleBytes, key)
+	rsh := sample.ReserveSampleHash.Bytes()
+	obfuscatedHash, err := a.wrapCommit(sample.StorageRadius, rsh, key)
 	if err != nil {
 		return err
 	}

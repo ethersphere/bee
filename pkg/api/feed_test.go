@@ -24,10 +24,8 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	testingsoc "github.com/ethersphere/bee/pkg/soc/testing"
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/bee/pkg/storage/mock"
+	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/tags"
 )
 
 const ownerString = "8d3766440f0d7b949a5e32995d09619a7f86e632"
@@ -44,10 +42,7 @@ func TestFeed_Get(t *testing.T) {
 			}
 			return fmt.Sprintf("/feeds/%s/%s", owner, topic)
 		}
-		mockStatestore = statestore.NewStateStore()
-		logger         = log.Noop
-		tag            = tags.NewTags(mockStatestore, logger)
-		mockStorer     = mock.NewStorer()
+		mockStorer = mockstorer.New()
 	)
 
 	t.Run("with at", func(t *testing.T) {
@@ -61,7 +56,6 @@ func TestFeed_Get(t *testing.T) {
 			idBytes, _      = (&id{}).MarshalBinary()
 			client, _, _, _ = newTestServer(t, testServerOptions{
 				Storer: mockStorer,
-				Tags:   tag,
 				Feeds:  factory,
 			})
 		)
@@ -84,7 +78,6 @@ func TestFeed_Get(t *testing.T) {
 
 			client, _, _, _ = newTestServer(t, testServerOptions{
 				Storer: mockStorer,
-				Tags:   tag,
 				Feeds:  factory,
 			})
 		)
@@ -102,15 +95,12 @@ func TestFeed_Post(t *testing.T) {
 	// get the reference from the store, unmarshal to a
 	// manifest entry and make sure all metadata correct
 	var (
-		mockStatestore  = statestore.NewStateStore()
 		logger          = log.Noop
-		tag             = tags.NewTags(mockStatestore, logger)
 		topic           = "aabbcc"
 		mp              = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))
-		mockStorer      = mock.NewStorer()
+		mockStorer      = mockstorer.New()
 		client, _, _, _ = newTestServer(t, testServerOptions{
 			Storer: mockStorer,
-			Tags:   tag,
 			Logger: logger,
 			Post:   mp,
 		})
@@ -125,7 +115,7 @@ func TestFeed_Post(t *testing.T) {
 			}),
 		)
 
-		ls := loadsave.NewReadonly(mockStorer)
+		ls := loadsave.NewReadonly(mockStorer.ChunkStore())
 		i, err := manifest.NewMantarayManifestReference(expReference, ls)
 		if err != nil {
 			t.Fatal(err)
@@ -149,11 +139,11 @@ func TestFeed_Post(t *testing.T) {
 	t.Run("postage", func(t *testing.T) {
 		t.Run("err - bad batch", func(t *testing.T) {
 			hexbatch := hex.EncodeToString(batchInvalid)
-			jsonhttptest.Request(t, client, http.MethodPost, url, http.StatusBadRequest,
+			jsonhttptest.Request(t, client, http.MethodPost, url, http.StatusNotFound,
 				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
 				jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-					Message: "invalid batch id",
-					Code:    http.StatusBadRequest,
+					Message: "batch with id not found",
+					Code:    http.StatusNotFound,
 				}))
 		})
 
@@ -175,19 +165,14 @@ func TestFeed_Post(t *testing.T) {
 }
 
 // TestDirectUploadFeed tests that the direct upload endpoint give correct error message in dev mode
-func TestDirectUploadFeed(t *testing.T) {
+func TestFeedDirectUpload(t *testing.T) {
 	t.Parallel()
 	var (
-		mockStatestore  = statestore.NewStateStore()
-		logger          = log.Noop
-		tag             = tags.NewTags(mockStatestore, logger)
 		topic           = "aabbcc"
 		mp              = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))
-		mockStorer      = mock.NewStorer()
+		mockStorer      = mockstorer.New()
 		client, _, _, _ = newTestServer(t, testServerOptions{
 			Storer:  mockStorer,
-			Tags:    tag,
-			Logger:  logger,
 			Post:    mp,
 			BeeMode: api.DevMode,
 		})

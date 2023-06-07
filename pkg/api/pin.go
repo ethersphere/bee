@@ -9,8 +9,8 @@ import (
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/traversal"
 	"github.com/gorilla/mux"
 )
 
@@ -26,7 +26,7 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	has, err := s.pinning.HasPin(paths.Reference)
+	has, err := s.storer.HasPin(paths.Reference)
 	if err != nil {
 		logger.Debug("pin root hash: has pin failed", "chunk_address", paths.Reference, "error", err)
 		logger.Error(nil, "pin root hash: has pin failed")
@@ -38,14 +38,44 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch err = s.pinning.CreatePin(r.Context(), paths.Reference, true); {
-	case errors.Is(err, storage.ErrNotFound):
-		jsonhttp.NotFound(w, nil)
+	putter, err := s.storer.NewCollection(r.Context())
+	if err != nil {
+		logger.Debug("pin root hash: failed to create collection", "error", err)
+		logger.Error(nil, "pin root hash: failed to create collection")
+		jsonhttp.InternalServerError(w, "pin root hash: create collection failed")
 		return
-	case err != nil:
-		logger.Debug("pin root hash: create pin failed", "chunk_address", paths.Reference, "error", err)
-		logger.Error(nil, "pin root hash: create pin failed")
-		jsonhttp.InternalServerError(w, "pin root hash: creation of tracking pin failed")
+	}
+
+	getter := s.storer.Download(true)
+	traverser := traversal.New(getter)
+
+	err = traverser.Traverse(
+		r.Context(),
+		paths.Reference,
+		func(address swarm.Address) error {
+			chunk, err := getter.Get(r.Context(), address)
+			if err != nil {
+				return err
+			}
+			err = putter.Put(r.Context(), chunk)
+			if err != nil {
+				return err
+			}
+			return nil
+		},
+	)
+	if err != nil {
+		logger.Debug("pin collection failed", "error", errors.Join(err, putter.Cleanup()))
+		logger.Error(nil, "pin collection failed")
+		jsonhttp.InternalServerError(w, "pin collection failed")
+		return
+	}
+
+	err = putter.Done(paths.Reference)
+	if err != nil {
+		logger.Debug("pin collection failed on done", "error", err)
+		logger.Error(nil, "pin collection failed")
+		jsonhttp.InternalServerError(w, "pin collection failed")
 		return
 	}
 
@@ -64,7 +94,7 @@ func (s *Service) unpinRootHash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	has, err := s.pinning.HasPin(paths.Reference)
+	has, err := s.storer.HasPin(paths.Reference)
 	if err != nil {
 		logger.Debug("unpin root hash: has pin failed", "chunk_address", paths.Reference, "error", err)
 		logger.Error(nil, "unpin root hash: has pin failed")
@@ -76,7 +106,7 @@ func (s *Service) unpinRootHash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := s.pinning.DeletePin(r.Context(), paths.Reference); err != nil {
+	if err := s.storer.DeletePin(r.Context(), paths.Reference); err != nil {
 		logger.Debug("unpin root hash: delete pin failed", "chunk_address", paths.Reference, "error", err)
 		logger.Error(nil, "unpin root hash: delete pin failed")
 		jsonhttp.InternalServerError(w, "unpin root hash: deletion of pin failed")
@@ -98,7 +128,7 @@ func (s *Service) getPinnedRootHash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	has, err := s.pinning.HasPin(paths.Reference)
+	has, err := s.storer.HasPin(paths.Reference)
 	if err != nil {
 		logger.Debug("pinned root hash: has pin failed", "chunk_address", paths.Reference, "error", err)
 		logger.Error(nil, "pinned root hash: has pin failed")
@@ -122,7 +152,7 @@ func (s *Service) getPinnedRootHash(w http.ResponseWriter, r *http.Request) {
 func (s *Service) listPinnedRootHashes(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("get_pins").Build()
 
-	pinned, err := s.pinning.Pins()
+	pinned, err := s.storer.Pins()
 	if err != nil {
 		logger.Debug("list pinned root references: unable to list references", "error", err)
 		logger.Error(nil, "list pinned root references: unable to list references")

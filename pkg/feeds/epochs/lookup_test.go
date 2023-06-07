@@ -11,7 +11,7 @@ import (
 	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/feeds/epochs"
 	feedstesting "github.com/ethersphere/bee/pkg/feeds/testing"
-	"github.com/ethersphere/bee/pkg/storage"
+	storage "github.com/ethersphere/bee/pkg/storage"
 )
 
 func TestFinder_FLAKY(t *testing.T) {

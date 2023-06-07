@@ -15,10 +15,8 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	resolverMock "github.com/ethersphere/bee/pkg/resolver/mock"
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/bee/pkg/storage/mock"
+	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/tags"
 )
 
 func TestSubdomains(t *testing.T) {
@@ -96,12 +94,10 @@ func TestSubdomains(t *testing.T) {
 
 			var (
 				dirUploadResource = "/bzz"
-				storer            = mock.NewStorer()
-				mockStatestore    = statestore.NewStateStore()
+				storer            = mockstorer.New()
 				logger            = log.Noop
 				client, _, _, _   = newTestServer(t, testServerOptions{
 					Storer:          storer,
-					Tags:            tags.NewTags(mockStatestore, logger),
 					Logger:          logger,
 					PreventRedirect: true,
 					Post:            mockpost.New(mockpost.WithAcceptAll()),
