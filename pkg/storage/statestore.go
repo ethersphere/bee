@@ -31,7 +31,10 @@ type StateStorer interface {
 
 	// Iterate iterates over all keys with the given prefix and calls iterFunc.
 	Iterate(prefix string, iterFunc StateIterFunc) error
+}
 
+// StateStorerCleaner is the interface for cleaning the store.
+type StateStorerCleaner interface {
 	// Nuke the store so that only the bare essential entries are left.
 	Nuke(forgetStamps bool) error
 }

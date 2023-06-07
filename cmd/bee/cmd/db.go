@@ -18,6 +18,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/node"
 	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/spf13/cobra"
@@ -575,7 +576,11 @@ func dbNukeCmd(cmd *cobra.Command) {
 			}
 			defer stateStore.Close()
 
-			err = stateStore.Nuke(forgetStamps)
+			stateStoreCleaner, ok := stateStore.(storage.StateStorerCleaner)
+			if !ok {
+				return errors.New("statestore does not implement StateStorerCleaner interface")
+			}
+			err = stateStoreCleaner.Nuke(forgetStamps)
 			if err != nil {
 				return fmt.Errorf("statestore nuke: %w", err)
 			}

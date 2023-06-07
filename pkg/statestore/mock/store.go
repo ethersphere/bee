@@ -102,7 +102,3 @@ func (s *store) Iterate(prefix string, iterFunc storage.StateIterFunc) (err erro
 func (s *store) Close() (err error) {
 	return nil
 }
-
-func (s *store) Nuke(bool) error {
-	return nil
-}
