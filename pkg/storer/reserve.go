@@ -584,9 +584,14 @@ func (db *DB) ReserveSample(
 		}
 
 		if le(item.TransformedAddress, currentMaxAddr) || len(sampleItems) < SampleSize {
-			insert(item)
+			ch := swarm.NewChunk(item.ChunkAddress, item.ChunkData).WithStamp(item.Stamp)
+			if _, err := db.validStamp(ch); err != nil {
+				stat.InvalidStamp.Inc()
+				db.logger.Debug("invalid stamp for chunk", "chunk_address", ch.Address(), "error", err)
+				continue
+			}
 
-			// TODO: STAMP VALIDATION
+			insert(item)
 		}
 	}
 
@@ -667,6 +672,7 @@ type sampleStat struct {
 	TotalIterated       atomic.Int64
 	NotFound            atomic.Int64
 	NewIgnored          atomic.Int64
+	InvalidStamp        atomic.Int64
 	BelowBalanceIgnored atomic.Int64
 	IterationDuration   atomic.Int64
 	GetDuration         atomic.Int64
@@ -679,11 +685,12 @@ func (s sampleStat) String() string {
 	seconds := int64(time.Second)
 
 	return fmt.Sprintf(
-		"Chunks: %d NotFound: %d New Ignored: %d BelowBalanceIgnored: %d Iteration Duration: %d secs GetDuration: %d secs"+
+		"Chunks: %d NotFound: %d New Ignored: %d InvalidStamp: %d BelowBalanceIgnored: %d Iteration Duration: %d secs GetDuration: %d secs"+
 			" HmacrDuration: %d secs ValidStampDuration: %d secs",
 		s.TotalIterated.Load(),
 		s.NotFound.Load(),
 		s.NewIgnored.Load(),
+		s.InvalidStamp.Load(),
 		s.BelowBalanceIgnored.Load(),
 		s.IterationDuration.Load()/seconds,
 		s.GetDuration.Load()/seconds,
