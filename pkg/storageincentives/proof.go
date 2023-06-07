@@ -5,6 +5,7 @@
 package storageincentives
 
 import (
+	"github.com/ethersphere/bee/pkg/bmtpool"
 	"github.com/ethersphere/bee/pkg/cac"
 	storer "github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -26,9 +27,23 @@ func sampleChunk(items []storer.SampleItem) (swarm.Chunk, error) {
 }
 
 func sampleHash(items []storer.SampleItem) (swarm.Address, error) {
-	ch, err := sampleChunk(items)
-	if err != nil {
-		return swarm.ZeroAddress, err
+	hasher := bmtpool.Get()
+	defer bmtpool.Put(hasher)
+
+	for _, s := range items {
+		_, err := hasher.Write(s.TransformedAddress.Bytes())
+		if err != nil {
+			return swarm.ZeroAddress, err
+		}
 	}
-	return ch.Address(), nil
+	hash := hasher.Sum(nil)
+
+	return swarm.NewAddress(hash), nil
+
+	// PH4_Logic:
+	// ch, err := sampleChunk(items)
+	// if err != nil {
+	// 	return swarm.ZeroAddress, err
+	// }
+	// return ch.Address(), nil
 }
