@@ -24,30 +24,23 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/chainsync"
-	"github.com/ethersphere/bee/pkg/chainsyncer"
-	"github.com/ethersphere/bee/pkg/status"
-	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
-	"github.com/ethersphere/bee/pkg/topology/depthmonitor"
-
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/auth"
+	"github.com/ethersphere/bee/pkg/chainsync"
+	"github.com/ethersphere/bee/pkg/chainsyncer"
 	"github.com/ethersphere/bee/pkg/config"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds/factory"
 	"github.com/ethersphere/bee/pkg/hive"
-	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/metrics"
-	"github.com/ethersphere/bee/pkg/netstore"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
-	"github.com/ethersphere/bee/pkg/pinning"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchservice"
 	"github.com/ethersphere/bee/pkg/postage/batchstore"
@@ -58,7 +51,6 @@ import (
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/puller"
 	"github.com/ethersphere/bee/pkg/pullsync"
-	"github.com/ethersphere/bee/pkg/pullsync/pullstorage"
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/pushsync"
 	"github.com/ethersphere/bee/pkg/resolver/multiresolver"
@@ -69,18 +61,18 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/settlement/swap/priceoracle"
-	"github.com/ethersphere/bee/pkg/shed"
+	"github.com/ethersphere/bee/pkg/status"
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storageincentives"
+	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
+	storer "github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/kademlia"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/transaction"
-	"github.com/ethersphere/bee/pkg/traversal"
 	"github.com/ethersphere/bee/pkg/util"
 	"github.com/ethersphere/bee/pkg/util/ioutil"
 	"github.com/hashicorp/go-multierror"
@@ -103,20 +95,16 @@ type Bee struct {
 	resolverCloser           io.Closer
 	errorLogWriter           io.Writer
 	tracerCloser             io.Closer
-	tagsCloser               io.Closer
 	stateStoreCloser         io.Closer
 	localstoreCloser         io.Closer
-	nsCloser                 io.Closer
 	topologyCloser           io.Closer
 	topologyHalter           topology.Halter
 	pusherCloser             io.Closer
 	pullerCloser             io.Closer
 	accountingCloser         io.Closer
 	pullSyncCloser           io.Closer
-	pushSyncCloser           io.Closer
-	retrievalCloser          io.Closer
 	pssCloser                io.Closer
-	closers                  []func()
+	ethClientCloser          func()
 	transactionMonitorCloser io.Closer
 	transactionCloser        io.Closer
 	listenerCloser           io.Closer
@@ -124,9 +112,10 @@ type Bee struct {
 	priceOracleCloser        io.Closer
 	hiveCloser               io.Closer
 	chainSyncerCloser        io.Closer
-	depthMonitorCloser       io.Closer
 	saludCloser              io.Closer
 	storageIncetivesCloser   io.Closer
+	pushSyncCloser           io.Closer
+	retrievalCloser          io.Closer
 	shutdownInProgress       bool
 	shutdownMutex            sync.Mutex
 	syncingStopped           *util.Signaler
@@ -195,9 +184,22 @@ const (
 	minPaymentThreshold           = 2 * refreshRate           // minimal accepted payment threshold of full nodes
 	maxPaymentThreshold           = 24 * refreshRate          // maximal accepted payment threshold of full nodes
 	mainnetNetworkID              = uint64(1)                 //
+	ReserveCapacity               = 4_194_304                 // 2^22 chunks
+	reserveWakeUpDuration         = 15 * time.Minute          // time to wait before waking up reserveWorker
+	reserveTreshold               = ReserveCapacity * 5 / 10
 )
 
-func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer crypto.Signer, networkID uint64, logger log.Logger, libp2pPrivateKey, pssPrivateKey *ecdsa.PrivateKey, o *Options) (b *Bee, err error) {
+func NewBee(
+	ctx context.Context,
+	addr string,
+	publicKey *ecdsa.PublicKey,
+	signer crypto.Signer,
+	networkID uint64,
+	logger log.Logger,
+	libp2pPrivateKey,
+	pssPrivateKey *ecdsa.PrivateKey,
+	o *Options,
+) (b *Bee, err error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
 		Enabled:     o.TracingEnabled,
 		Endpoint:    o.TracingEndpoint,
@@ -319,6 +321,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 				return evictFn(id)
 			},
 			swarmAddress,
+			ReserveCapacity,
 			logger,
 		)
 		if err != nil {
@@ -338,7 +341,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 	if err != nil {
 		return nil, fmt.Errorf("init chain: %w", err)
 	}
-	b.closers = append(b.closers, chainBackend.Close)
+	b.ethClientCloser = chainBackend.Close
 
 	logger.Info("using chain with network network", "chain_id", chainID, "network_id", networkID)
 
@@ -377,6 +380,11 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		}
 	}(probe)
 
+	stamperStore, err := InitStamperStore(logger, o.DataDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize stamper store: %w", err)
+	}
+
 	var debugService *api.Service
 
 	if o.DebugAPIAddr != "" {
@@ -393,7 +401,20 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 			return nil, fmt.Errorf("debug api listener: %w", err)
 		}
 
-		debugService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, beeNodeMode, o.ChequebookEnable, o.SwapEnable, chainBackend, o.CORSAllowedOrigins)
+		debugService = api.New(
+			*publicKey,
+			pssPrivateKey.PublicKey,
+			overlayEthAddress,
+			logger,
+			transactionService,
+			batchStore,
+			beeNodeMode,
+			o.ChequebookEnable,
+			o.SwapEnable,
+			chainBackend,
+			o.CORSAllowedOrigins,
+			stamperStore,
+		)
 		debugService.MountTechnicalDebug()
 		debugService.SetProbe(probe)
 
@@ -419,7 +440,20 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 	var apiService *api.Service
 
 	if o.Restricted {
-		apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, beeNodeMode, o.ChequebookEnable, o.SwapEnable, chainBackend, o.CORSAllowedOrigins)
+		apiService = api.New(
+			*publicKey,
+			pssPrivateKey.PublicKey,
+			overlayEthAddress,
+			logger,
+			transactionService,
+			batchStore,
+			beeNodeMode,
+			o.ChequebookEnable,
+			o.SwapEnable,
+			chainBackend,
+			o.CORSAllowedOrigins,
+			stamperStore,
+		)
 		apiService.MountTechnicalDebug()
 		apiService.SetProbe(probe)
 
@@ -614,34 +648,6 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 	b.p2pService = p2ps
 	b.p2pHalter = p2ps
 
-	// localstore depends on batchstore
-	var path string
-
-	if o.DataDir != "" {
-		logger.Info("using datadir", "path", o.DataDir)
-		path = filepath.Join(o.DataDir, "localstore")
-	}
-
-	validStamp := postage.ValidStamp(batchStore)
-
-	lo := &localstore.Options{
-		Capacity:               o.CacheCapacity,
-		ReserveCapacity:        uint64(batchstore.Capacity),
-		UnreserveFunc:          batchStore.Unreserve,
-		OpenFilesLimit:         o.DBOpenFilesLimit,
-		BlockCacheCapacity:     o.DBBlockCacheCapacity,
-		WriteBufferSize:        o.DBWriteBufferSize,
-		DisableSeeksCompaction: o.DBDisableSeeksCompaction,
-		ValidStamp:             validStamp,
-	}
-
-	storer, err := localstore.New(path, swarmAddress.Bytes(), stateStore, lo, logger)
-	if err != nil {
-		return nil, fmt.Errorf("localstore: %w", err)
-	}
-	b.localstoreCloser = storer
-	evictFn = storer.EvictBatch
-
 	post, err := postage.NewService(stateStore, batchStore, chainID)
 	if err != nil {
 		return nil, fmt.Errorf("postage service load: %w", err)
@@ -738,13 +744,8 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 
 	var swapService *swap.Service
 
-	metricsDB, err := shed.NewDBWrap(stateStore.DB())
-	if err != nil {
-		return nil, fmt.Errorf("unable to create metrics storage for kademlia: %w", err)
-	}
-
-	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, pingPong, metricsDB, logger,
-		kademlia.Options{Bootnodes: bootnodes, BootnodeMode: o.BootnodeMode, StaticNodes: o.StaticNodes, IgnoreRadius: !chainEnabled})
+	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, pingPong, logger,
+		kademlia.Options{Bootnodes: bootnodes, BootnodeMode: o.BootnodeMode, StaticNodes: o.StaticNodes, IgnoreRadius: !chainEnabled, DataDir: o.DataDir})
 	if err != nil {
 		return nil, fmt.Errorf("unable to create kademlia: %w", err)
 	}
@@ -752,6 +753,41 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 	b.topologyHalter = kad
 	hive.SetAddPeersHandler(kad.AddPeers)
 	p2ps.SetPickyNotifier(kad)
+
+	var path string
+
+	if o.DataDir != "" {
+		logger.Info("using datadir", "path", o.DataDir)
+		path = filepath.Join(o.DataDir, "localstore")
+	}
+
+	lo := &storer.Options{
+		Address:                   swarmAddress,
+		CacheCapacity:             o.CacheCapacity,
+		LdbOpenFilesLimit:         o.DBOpenFilesLimit,
+		LdbBlockCacheCapacity:     o.DBBlockCacheCapacity,
+		LdbWriteBufferSize:        o.DBWriteBufferSize,
+		LdbDisableSeeksCompaction: o.DBDisableSeeksCompaction,
+		Batchstore:                batchStore,
+		StateStore:                stateStore,
+		RadiusSetter:              kad,
+		WarmupDuration:            o.WarmupTime,
+		Logger:                    logger,
+	}
+
+	if o.FullNodeMode && !o.BootnodeMode {
+		// configure reserve only for full node
+		lo.ReserveCapacity = ReserveCapacity
+		lo.ReserveWakeUpDuration = reserveWakeUpDuration
+		lo.RadiusSetter = kad
+	}
+
+	localStore, err := storer.New(ctx, path, lo)
+	if err != nil {
+		return nil, fmt.Errorf("localstore: %w", err)
+	}
+	b.localstoreCloser = localStore
+	evictFn = func(id []byte) error { return localStore.EvictBatch(context.Background(), id) }
 
 	var (
 		syncErr    atomic.Value
@@ -893,41 +929,67 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 
 	pricing.SetPaymentThresholdObserver(acc)
 
-	retrieve := retrieval.New(swarmAddress, storer, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching, validStamp)
-	b.retrievalCloser = retrieve
-
-	tagService := tags.NewTags(stateStore, logger)
-	b.tagsCloser = tagService
+	retrieve := retrieval.New(swarmAddress, localStore, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching)
+	localStore.SetRetrievalService(retrieve)
 
 	pssService := pss.New(pssPrivateKey, logger)
 	b.pssCloser = pssService
 
-	ns := netstore.New(storer, validStamp, retrieve, logger)
-	b.nsCloser = ns
+	validStamp := postage.ValidStamp(batchStore)
 
-	traversalService := traversal.New(ns)
-
-	pinningService := pinning.NewService(storer, stateStore, traversalService)
-
-	pushSyncProtocol := pushsync.New(swarmAddress, nonce, p2ps, storer, kad, batchStore, tagService, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
+	pushSyncProtocol := pushsync.New(swarmAddress, nonce, p2ps, localStore, kad, o.FullNodeMode, pssService.TryUnwrap, validStamp, logger, acc, pricer, signer, tracer, warmupTime)
 	b.pushSyncCloser = pushSyncProtocol
 
 	// set the pushSyncer in the PSS
 	pssService.SetPushSyncer(pushSyncProtocol)
 
-	var radiusFunc func() uint8
-	if o.FullNodeMode {
-		radiusFunc = func() uint8 { return batchStore.StorageRadius() }
-	} else {
-		radiusFunc = func() uint8 { return kad.NeighborhoodDepth() }
+	nodeStatus := status.NewService(logger, p2ps, kad, beeNodeMode.String(), batchStore)
+	if err = p2ps.AddProtocol(nodeStatus.Protocol()); err != nil {
+		return nil, fmt.Errorf("status service: %w", err)
 	}
 
-	pusherService := pusher.New(networkID, storer, pushSyncProtocol, validStamp, tagService, radiusFunc, logger, tracer, warmupTime, pusher.DefaultRetryCount)
+	saludService := salud.New(nodeStatus, kad, localStore, logger, warmupTime, api.FullMode.String(), salud.DefaultMinPeersPerBin)
+	b.saludCloser = saludService
+
+	rC, unsub := saludService.SubscribeNetworkStorageRadius()
+	initialRadiusC := make(chan struct{})
+	var radius atomic.Uint32
+	radius.Store(uint32(swarm.MaxPO))
+
+	go func() {
+		for {
+			select {
+			case r := <-rC:
+				prev := radius.Load()
+				radius.Store(uint32(r))
+				if prev == uint32(swarm.MaxPO) {
+					close(initialRadiusC)
+				}
+			case <-ctx.Done():
+				unsub()
+				return
+			}
+		}
+	}()
+
+	networkRadiusFunc := func() (uint8, error) {
+		if radius.Load() == uint32(swarm.MaxPO) {
+			select {
+			case <-initialRadiusC:
+			case <-ctx.Done():
+				return 0, ctx.Err()
+			}
+		}
+
+		return uint8(radius.Load()), nil
+	}
+
+	pusherService := pusher.New(networkID, localStore, networkRadiusFunc, pushSyncProtocol, validStamp, logger, tracer, warmupTime, pusher.DefaultRetryCount)
 	b.pusherCloser = pusherService
 
-	pullStorage := pullstorage.New(storer, logger)
+	pusherService.AddFeed(localStore.PusherFeed())
 
-	pullSyncProtocol := pullsync.New(p2ps, pullStorage, pssService.TryUnwrap, validStamp, logger, batchStore)
+	pullSyncProtocol := pullsync.New(p2ps, localStore, pssService.TryUnwrap, validStamp, logger, pullsync.DefaultMaxPage)
 	b.pullSyncCloser = pullSyncProtocol
 
 	retrieveProtocolSpec := retrieve.Protocol()
@@ -967,25 +1029,19 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 	}
 	stakingContract := staking.New(swarmAddress, overlayEthAddress, stakingContractAddress, stakingContractABI, bzzTokenAddress, transactionService, common.BytesToHash(nonce))
 
-	nodeStatus := status.NewService(logger, p2ps, kad, beeNodeMode.String(), storer, pullSyncProtocol, batchStore, batchStore)
-	if err = p2ps.AddProtocol(nodeStatus.Protocol()); err != nil {
-		return nil, fmt.Errorf("status service: %w", err)
-	}
-
-	saludService := salud.New(nodeStatus, kad, batchStore, storer, logger, warmupTime, api.FullMode.String(), salud.DefaultMinPeersPerBin)
-	b.saludCloser = saludService
-
 	var (
 		pullerService *puller.Puller
 		agent         *storageincentives.Agent
 	)
 
 	if o.FullNodeMode && !o.BootnodeMode {
-		pullerService = puller.New(stateStore, kad, batchStore, pullSyncProtocol, p2ps, logger, puller.Options{}, warmupTime)
+		pullerService = puller.New(stateStore, kad, localStore, pullSyncProtocol, p2ps, logger, puller.Options{}, warmupTime)
 		b.pullerCloser = pullerService
 
-		depthMonitor := depthmonitor.New(kad, pullSyncProtocol, storer, batchStore, logger, warmupTime, depthmonitor.DefaultWakeupInterval, !batchStoreExists)
-		b.depthMonitorCloser = depthMonitor
+		localStore.StartReserveWorker(pullerService, networkRadiusFunc)
+
+		nodeStatus.SetStorage(localStore)
+		nodeStatus.SetSync(pullerService)
 
 		if o.EnableStorageIncentives {
 
@@ -1001,8 +1057,30 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 				return nil, fmt.Errorf("unable to parse redistribution ABI: %w", err)
 			}
 
+			isFullySynced := func() bool {
+				return localStore.ReserveSize() >= reserveTreshold && pullerService.SyncRate() == 0
+			}
+
 			redistributionContract := redistribution.New(swarmAddress, logger, transactionService, redistributionContractAddress, redistributionContractABI)
-			agent, err = storageincentives.New(swarmAddress, overlayEthAddress, chainBackend, depthMonitor, redistributionContract, postageStampContractService, stakingContract, batchStore, storer, o.BlockTime, storageincentives.DefaultBlocksPerRound, storageincentives.DefaultBlocksPerPhase, stateStore, erc20Service, transactionService, saludService, logger)
+			agent, err = storageincentives.New(
+				swarmAddress,
+				overlayEthAddress,
+				chainBackend,
+				redistributionContract,
+				postageStampContractService,
+				stakingContract,
+				localStore,
+				isFullySynced,
+				o.BlockTime,
+				storageincentives.DefaultBlocksPerRound,
+				storageincentives.DefaultBlocksPerPhase,
+				stateStore,
+				batchStore,
+				erc20Service,
+				transactionService,
+				saludService,
+				logger,
+			)
 			if err != nil {
 				return nil, fmt.Errorf("storage incentives agent: %w", err)
 			}
@@ -1035,48 +1113,42 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		b.chainSyncerCloser = chainSyncer
 	}
 
-	feedFactory := factory.New(ns)
-	steward := steward.New(storer, traversalService, retrieve, pushSyncProtocol)
+	feedFactory := factory.New(localStore.Download(true))
+	steward := steward.New(localStore, retrieve)
 
 	extraOpts := api.ExtraOptions{
-		Pingpong:         pingPong,
-		TopologyDriver:   kad,
-		LightNodes:       lightNodes,
-		Accounting:       acc,
-		Pseudosettle:     pseudosettleService,
-		Swap:             swapService,
-		Chequebook:       chequebookService,
-		BlockTime:        o.BlockTime,
-		Tags:             tagService,
-		Storer:           ns,
-		Resolver:         multiResolver,
-		Pss:              pssService,
-		TraversalService: traversalService,
-		Pinning:          pinningService,
-		FeedFactory:      feedFactory,
-		Post:             post,
-		PostageContract:  postageStampContractService,
-		Staking:          stakingContract,
-		Steward:          steward,
-		SyncStatus:       syncStatusFn,
-		IndexDebugger:    storer,
-		NodeStatus:       nodeStatus,
+		Pingpong:        pingPong,
+		TopologyDriver:  kad,
+		LightNodes:      lightNodes,
+		Accounting:      acc,
+		Pseudosettle:    pseudosettleService,
+		Swap:            swapService,
+		Chequebook:      chequebookService,
+		BlockTime:       o.BlockTime,
+		Storer:          localStore,
+		Resolver:        multiResolver,
+		Pss:             pssService,
+		FeedFactory:     feedFactory,
+		Post:            post,
+		PostageContract: postageStampContractService,
+		Staking:         stakingContract,
+		Steward:         steward,
+		SyncStatus:      syncStatusFn,
+		NodeStatus:      nodeStatus,
 	}
 
 	if o.APIAddr != "" {
 		if apiService == nil {
-			apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, beeNodeMode, o.ChequebookEnable, o.SwapEnable, chainBackend, o.CORSAllowedOrigins)
+			apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, beeNodeMode, o.ChequebookEnable, o.SwapEnable, chainBackend, o.CORSAllowedOrigins, stamperStore)
 			apiService.SetProbe(probe)
 			apiService.SetRedistributionAgent(agent)
 		}
 
-		chunkC := apiService.Configure(signer, authenticator, tracer, api.Options{
+		apiService.Configure(signer, authenticator, tracer, api.Options{
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
 			WsPingPeriod:       60 * time.Second,
 			Restricted:         o.Restricted,
 		}, extraOpts, chainID, erc20Service)
-
-		pusherService.AddFeed(chunkC)
 
 		apiService.MountAPI()
 
@@ -1114,7 +1186,7 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		debugService.MustRegisterMetrics(p2ps.Metrics()...)
 		debugService.MustRegisterMetrics(pingPong.Metrics()...)
 		debugService.MustRegisterMetrics(acc.Metrics()...)
-		debugService.MustRegisterMetrics(storer.Metrics()...)
+		debugService.MustRegisterMetrics(localStore.Metrics()...)
 		debugService.MustRegisterMetrics(kad.Metrics()...)
 		debugService.MustRegisterMetrics(saludService.Metrics()...)
 
@@ -1129,14 +1201,10 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		debugService.MustRegisterMetrics(pushSyncProtocol.Metrics()...)
 		debugService.MustRegisterMetrics(pusherService.Metrics()...)
 		debugService.MustRegisterMetrics(pullSyncProtocol.Metrics()...)
-		debugService.MustRegisterMetrics(pullStorage.Metrics()...)
 		debugService.MustRegisterMetrics(retrieve.Metrics()...)
 		debugService.MustRegisterMetrics(lightNodes.Metrics()...)
 		debugService.MustRegisterMetrics(hive.Metrics()...)
 
-		if chainSyncer != nil {
-			debugService.MustRegisterMetrics(chainSyncer.Metrics()...)
-		}
 		if bs, ok := batchStore.(metrics.Collector); ok {
 			debugService.MustRegisterMetrics(bs.Metrics()...)
 		}
@@ -1154,9 +1222,6 @@ func NewBee(ctx context.Context, addr string, publicKey *ecdsa.PublicKey, signer
 		}
 		if l, ok := logger.(metrics.Collector); ok {
 			debugService.MustRegisterMetrics(l.Metrics()...)
-		}
-		if nsMetrics, ok := ns.(metrics.Collector); ok {
-			debugService.MustRegisterMetrics(nsMetrics.Metrics()...)
 		}
 		debugService.MustRegisterMetrics(pseudosettleService.Metrics()...)
 		if swapService != nil {
@@ -1259,14 +1324,6 @@ func (b *Bee) Shutdown() error {
 	}()
 	go func() {
 		defer wg.Done()
-		tryClose(b.pushSyncCloser, "pushsync")
-	}()
-	go func() {
-		defer wg.Done()
-		tryClose(b.retrievalCloser, "retrieval")
-	}()
-	go func() {
-		defer wg.Done()
 		tryClose(b.pssCloser, "pss")
 	}()
 	go func() {
@@ -1318,15 +1375,12 @@ func (b *Bee) Shutdown() error {
 
 	wg.Wait()
 
-	for _, c := range b.closers {
+	if c := b.ethClientCloser; c != nil {
 		c()
 	}
 
 	tryClose(b.tracerCloser, "tracer")
-	tryClose(b.tagsCloser, "tag persistence")
 	tryClose(b.topologyCloser, "topology driver")
-	tryClose(b.nsCloser, "netstore")
-	tryClose(b.depthMonitorCloser, "depthmonitor service")
 	tryClose(b.storageIncetivesCloser, "storage incentives agent")
 	tryClose(b.stateStoreCloser, "statestore")
 	tryClose(b.localstoreCloser, "localstore")

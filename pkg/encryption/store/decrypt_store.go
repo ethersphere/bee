@@ -9,7 +9,7 @@ import (
 	"encoding/binary"
 
 	"github.com/ethersphere/bee/pkg/encryption"
-	"github.com/ethersphere/bee/pkg/storage"
+	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"golang.org/x/crypto/sha3"
 )
@@ -22,17 +22,17 @@ func New(s storage.Getter) storage.Getter {
 	return &decryptingStore{s}
 }
 
-func (s *decryptingStore) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Address) (ch swarm.Chunk, err error) {
+func (s *decryptingStore) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, err error) {
 	switch l := len(addr.Bytes()); l {
 	case swarm.HashSize:
 		// normal, unencrypted content
-		return s.Getter.Get(ctx, mode, addr)
+		return s.Getter.Get(ctx, addr)
 
 	case encryption.ReferenceSize:
 		// encrypted reference
 		ref := addr.Bytes()
 		address := swarm.NewAddress(ref[:swarm.HashSize])
-		ch, err := s.Getter.Get(ctx, mode, address)
+		ch, err := s.Getter.Get(ctx, address)
 		if err != nil {
 			return nil, err
 		}

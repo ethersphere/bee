@@ -13,7 +13,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	erc20mock "github.com/ethersphere/bee/pkg/settlement/swap/erc20/mock"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
 	"github.com/ethersphere/bee/pkg/util/testutil"
@@ -70,7 +69,8 @@ func TestState(t *testing.T) {
 		RoundData:       make(map[uint64]RoundData),
 	}
 	state := createRedistribution(t, nil, nil)
-	state.SetCurrentEvent(input.Phase, input.Round, input.Block)
+	state.SetCurrentBlock(input.Block)
+	state.SetCurrentEvent(input.Phase, input.Round)
 	state.SetFullySynced(input.IsFullySynced)
 	state.SetLastWonRound(input.LastWonRound)
 	state.SetFrozen(input.IsFrozen, input.LastFrozenRound)
@@ -104,10 +104,8 @@ func TestStateRoundData(t *testing.T) {
 		}
 
 		savedSample := SampleData{
-			ReserveSample: storage.Sample{
-				Hash: swarm.RandAddress(t),
-			},
-			StorageRadius: 3,
+			ReserveSampleHash: swarm.RandAddress(t),
+			StorageRadius:     3,
 		}
 		state.SetSampleData(1, savedSample, 0)
 
@@ -168,10 +166,8 @@ func TestPurgeRoundData(t *testing.T) {
 	// helper function which populates data at specified round
 	populateDataAtRound := func(round uint64) {
 		savedSample := SampleData{
-			ReserveSample: storage.Sample{
-				Hash: swarm.RandAddress(t),
-			},
-			StorageRadius: 3,
+			ReserveSampleHash: swarm.RandAddress(t),
+			StorageRadius:     3,
 		}
 		commitKey := testutil.RandBytes(t, swarm.HashSize)
 
@@ -215,7 +211,7 @@ func TestPurgeRoundData(t *testing.T) {
 	// Run purge successively and assert that all data is purged up to
 	// currentRound - purgeDataOlderThenXRounds
 	for i := uint64(0); i < roundsCount; i++ {
-		state.SetCurrentEvent(0, i, 0)
+		state.SetCurrentEvent(0, i)
 		state.purgeStaleRoundData()
 
 		if i <= purgeStaleDataThreshold {
@@ -229,7 +225,7 @@ func TestPurgeRoundData(t *testing.T) {
 
 	// Purge remaining data in single go
 	round := uint64(roundsCount + purgeStaleDataThreshold)
-	state.SetCurrentEvent(0, round, 0)
+	state.SetCurrentEvent(0, round)
 	state.purgeStaleRoundData()
 
 	// One more time assert that everything was purged

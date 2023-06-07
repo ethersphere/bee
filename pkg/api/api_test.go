@@ -22,14 +22,6 @@ import (
 	"testing"
 	"time"
 
-	contractMock "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
-	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
-	"github.com/ethersphere/bee/pkg/status"
-	"github.com/ethersphere/bee/pkg/storageincentives"
-	mock2 "github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
-	"github.com/ethersphere/bee/pkg/transaction"
-	"github.com/ethersphere/bee/pkg/util/testutil"
-
 	"github.com/ethereum/go-ethereum/common"
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
 	"github.com/ethersphere/bee/pkg/api"
@@ -43,33 +35,38 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
 	"github.com/ethersphere/bee/pkg/pingpong"
-	"github.com/ethersphere/bee/pkg/pinning"
 	"github.com/ethersphere/bee/pkg/postage"
 	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
+	contractMock "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
 	"github.com/ethersphere/bee/pkg/pss"
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/resolver"
 	resolverMock "github.com/ethersphere/bee/pkg/resolver/mock"
 	"github.com/ethersphere/bee/pkg/settlement/pseudosettle"
 	chequebookmock "github.com/ethersphere/bee/pkg/settlement/swap/chequebook/mock"
+	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	erc20mock "github.com/ethersphere/bee/pkg/settlement/swap/erc20/mock"
 	swapmock "github.com/ethersphere/bee/pkg/settlement/swap/mock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
+	"github.com/ethersphere/bee/pkg/status"
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/mock"
+	"github.com/ethersphere/bee/pkg/storage/inmemstore"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
+	"github.com/ethersphere/bee/pkg/storageincentives"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
+	mock2 "github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
+	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	topologymock "github.com/ethersphere/bee/pkg/topology/mock"
 	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/bee/pkg/transaction/backendmock"
 	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
-	"github.com/ethersphere/bee/pkg/traversal"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 	"github.com/gorilla/websocket"
 	"resenje.org/web"
 )
@@ -89,14 +86,11 @@ func init() {
 }
 
 type testServerOptions struct {
-	Storer             storage.Storer
+	Storer             api.Storer
 	StateStorer        storage.StateStorer
 	Resolver           resolver.Interface
 	Pss                pss.Interface
-	Traversal          traversal.Traverser
-	Pinning            pinning.Interface
 	WsPath             string
-	Tags               *tags.Tags
 	WsPingPeriod       time.Duration
 	Logger             log.Logger
 	PreventRedirect    bool
@@ -112,7 +106,6 @@ type testServerOptions struct {
 	Restricted         bool
 	DirectUpload       bool
 	Probe              *api.Probe
-	IndexDebugger      api.StorageIndexDebugger
 
 	Overlay         swarm.Address
 	PublicKey       ecdsa.PublicKey
@@ -126,7 +119,6 @@ type testServerOptions struct {
 	ChequebookOpts  []chequebookmock.Option
 	SwapOpts        []swapmock.Option
 	TransactionOpts []transactionmock.Option
-	Traverser       traversal.Traverser
 
 	BatchStore postage.Storer
 	SyncStatus func() (bool, error)
@@ -188,28 +180,24 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	backend := backendmock.New(o.BackendOpts...)
 
 	var extraOpts = api.ExtraOptions{
-		TopologyDriver:   topologyDriver,
-		Accounting:       acc,
-		Pseudosettle:     recipient,
-		LightNodes:       ln,
-		Swap:             settlement,
-		Chequebook:       chequebook,
-		Pingpong:         o.Pingpong,
-		BlockTime:        o.BlockTime,
-		Tags:             o.Tags,
-		Storer:           o.Storer,
-		Resolver:         o.Resolver,
-		Pss:              o.Pss,
-		TraversalService: o.Traversal,
-		Pinning:          o.Pinning,
-		FeedFactory:      o.Feeds,
-		Post:             o.Post,
-		PostageContract:  o.PostageContract,
-		Steward:          o.Steward,
-		SyncStatus:       o.SyncStatus,
-		Staking:          o.StakingContract,
-		IndexDebugger:    o.IndexDebugger,
-		NodeStatus:       o.NodeStatus,
+		TopologyDriver:  topologyDriver,
+		Accounting:      acc,
+		Pseudosettle:    recipient,
+		LightNodes:      ln,
+		Swap:            settlement,
+		Chequebook:      chequebook,
+		Pingpong:        o.Pingpong,
+		BlockTime:       o.BlockTime,
+		Storer:          o.Storer,
+		Resolver:        o.Resolver,
+		Pss:             o.Pss,
+		FeedFactory:     o.Feeds,
+		Post:            o.Post,
+		PostageContract: o.PostageContract,
+		Steward:         o.Steward,
+		SyncStatus:      o.SyncStatus,
+		Staking:         o.StakingContract,
+		NodeStatus:      o.NodeStatus,
 	}
 
 	// By default bee mode is set to full mode.
@@ -217,13 +205,13 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		o.BeeMode = api.FullMode
 	}
 
-	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.Logger, transaction, o.BatchStore, o.BeeMode, true, true, backend, o.CORSAllowedOrigins)
+	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.Logger, transaction, o.BatchStore, o.BeeMode, true, true, backend, o.CORSAllowedOrigins, inmemstore.New())
 	testutil.CleanupCloser(t, s)
 
 	s.SetP2P(o.P2P)
 
 	if o.RedistributionAgent == nil {
-		o.RedistributionAgent, _ = createRedistributionAgentService(t, o.Overlay, o.StateStorer, erc20, transaction, backend)
+		o.RedistributionAgent, _ = createRedistributionAgentService(t, o.Overlay, o.StateStorer, erc20, transaction, backend, o.BatchStore)
 		s.SetRedistributionAgent(o.RedistributionAgent)
 	}
 	testutil.CleanupCloser(t, o.RedistributionAgent)
@@ -236,7 +224,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	})
 	testutil.CleanupCloser(t, tracerCloser)
 
-	chC := s.Configure(signer, o.Authenticator, noOpTracer, api.Options{
+	s.Configure(signer, o.Authenticator, noOpTracer, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
 		WsPingPeriod:       o.WsPingPeriod,
 		Restricted:         o.Restricted,
@@ -250,7 +238,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	}
 
 	if o.DirectUpload {
-		chanStore = newChanStore(chC)
+		chanStore = newChanStore(o.Storer.PusherFeed())
 		t.Cleanup(chanStore.stop)
 	}
 
@@ -331,9 +319,9 @@ func request(t *testing.T, client *http.Client, method, resource string, body io
 	return resp
 }
 
-func pipelineFactory(s storage.Putter, mode storage.ModePut, encrypt bool) func() pipeline.Interface {
+func pipelineFactory(s storage.Putter, encrypt bool) func() pipeline.Interface {
 	return func() pipeline.Interface {
-		return builder.NewPipelineBuilder(context.Background(), s, mode, encrypt)
+		return builder.NewPipelineBuilder(context.Background(), s, encrypt)
 	}
 }
 
@@ -402,7 +390,7 @@ func TestParseName(t *testing.T) {
 		pk, _ := crypto.GenerateSecp256k1Key()
 		signer := crypto.NewDefaultSigner(pk)
 
-		s := api.New(pk.PublicKey, pk.PublicKey, common.Address{}, log, nil, nil, 1, false, false, nil, []string{"*"})
+		s := api.New(pk.PublicKey, pk.PublicKey, common.Address{}, log, nil, nil, 1, false, false, nil, []string{"*"}, inmemstore.New())
 		s.Configure(signer, nil, nil, api.Options{}, api.ExtraOptions{Resolver: tC.res}, 1, nil)
 		s.MountAPI()
 
@@ -468,15 +456,12 @@ func TestPostageHeaderError(t *testing.T) {
 	t.Parallel()
 
 	var (
-		mockStorer      = mock.NewStorer()
-		mockStatestore  = statestore.NewStateStore()
-		logger          = log.Noop
+		mockStorer      = mockstorer.New()
 		mp              = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))
 		client, _, _, _ = newTestServer(t, testServerOptions{
-			Storer: mockStorer,
-			Tags:   tags.NewTags(mockStatestore, logger),
-			Logger: logger,
-			Post:   mp,
+			Storer:       mockStorer,
+			Post:         mp,
+			DirectUpload: true,
 		})
 
 		endpoints = []string{
@@ -513,7 +498,7 @@ func TestPostageHeaderError(t *testing.T) {
 			t.Parallel()
 
 			hexbatch := hex.EncodeToString(batchInvalid)
-			expCode := http.StatusBadRequest
+			expCode := http.StatusNotFound
 			jsonhttptest.Request(t, client, http.MethodPost, "/"+endpoint, expCode,
 				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
 				jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "application/octet-stream"),
@@ -548,7 +533,7 @@ func TestOptions(t *testing.T) {
 		},
 		{
 			endpoint:        "chunks/123213",
-			expectedMethods: "DELETE, GET, HEAD",
+			expectedMethods: "GET, HEAD",
 		},
 		{
 			endpoint:        "bytes",
@@ -575,11 +560,8 @@ func TestOptions(t *testing.T) {
 func TestPostageDirectAndDeferred_FLAKY(t *testing.T) {
 	t.Parallel()
 
-	options := testServerOptions{
-		Storer: mock.NewStorer(),
-		Tags:   tags.NewTags(statestore.NewStateStore(), log.Noop),
-		Logger: log.Noop,
-		Post: mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer(
+	post := mockpost.New(
+		mockpost.WithIssuer(postage.NewStampIssuer(
 			"",
 			"",
 			batchOk,
@@ -588,45 +570,56 @@ func TestPostageDirectAndDeferred_FLAKY(t *testing.T) {
 			10,
 			1000,
 			true,
-		))),
-		DirectUpload: true,
-	}
+		)),
+	)
 
 	for _, endpoint := range []string{"bytes", "bzz", "chunks"} {
 		endpoint := endpoint
 
-		t.Run(endpoint+" deferred", func(t *testing.T) {
-			t.Parallel()
+		if endpoint != "chunks" {
+			t.Run(endpoint+" deferred", func(t *testing.T) {
+				t.Parallel()
 
-			client, _, _, chanStorer := newTestServer(t, options)
-			hexbatch := hex.EncodeToString(batchOk)
-			chunk := testingc.GenerateTestRandomChunk()
-			var responseBytes []byte
-			jsonhttptest.Request(t, client, http.MethodPost, "/"+endpoint, http.StatusCreated,
-				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
-				jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "application/octet-stream"),
-				jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
-				jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
-				jsonhttptest.WithPutResponseBody(&responseBytes),
-			)
-			var body struct {
-				Reference swarm.Address `json:"reference"`
-			}
-			if err := json.Unmarshal(responseBytes, &body); err != nil {
-				t.Fatal("unmarshal response body:", err)
-			}
-			if found, _ := options.Storer.Has(context.Background(), body.Reference); !found {
-				t.Fatal("chunk not found in the store")
-			}
-			if found, _ := chanStorer.Has(context.Background(), body.Reference); found {
-				t.Fatal("chunk was not expected to be present in direct channel")
-			}
-		})
+				mockStorer := mockstorer.New()
+				client, _, _, chanStorer := newTestServer(t, testServerOptions{
+					Storer:       mockStorer,
+					Post:         post,
+					DirectUpload: true,
+				})
+				hexbatch := hex.EncodeToString(batchOk)
+				chunk := testingc.GenerateTestRandomChunk()
+				var responseBytes []byte
+				jsonhttptest.Request(t, client, http.MethodPost, "/"+endpoint, http.StatusCreated,
+					jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
+					jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "application/octet-stream"),
+					jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+					jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
+					jsonhttptest.WithPutResponseBody(&responseBytes),
+				)
+				var body struct {
+					Reference swarm.Address `json:"reference"`
+				}
+				if err := json.Unmarshal(responseBytes, &body); err != nil {
+					t.Fatal("unmarshal response body:", err)
+				}
+				if found, _ := mockStorer.ChunkStore().Has(context.Background(), body.Reference); !found {
+					t.Fatal("chunk not found in the store")
+				}
+				if found, _ := chanStorer.Has(context.Background(), body.Reference); found {
+					t.Fatal("chunk was not expected to be present in direct channel")
+				}
+			})
+		}
 
 		t.Run(endpoint+" direct upload", func(t *testing.T) {
 			t.Parallel()
 
-			client, _, _, chanStorer := newTestServer(t, options)
+			mockStorer := mockstorer.New()
+			client, _, _, chanStorer := newTestServer(t, testServerOptions{
+				Storer:       mockStorer,
+				Post:         post,
+				DirectUpload: true,
+			})
 			hexbatch := hex.EncodeToString(batchOk)
 			chunk := testingc.GenerateTestRandomChunk()
 			var responseBytes []byte
@@ -647,7 +640,7 @@ func TestPostageDirectAndDeferred_FLAKY(t *testing.T) {
 			if found, _ := chanStorer.Has(context.Background(), body.Reference); !found {
 				t.Fatal("chunk not received through the direct channel")
 			}
-			if found, _ := options.Storer.Has(context.Background(), body.Reference); found {
+			if found, _ := mockStorer.ChunkStore().Has(context.Background(), body.Reference); found {
 				t.Fatal("chunk was not expected to be present in store")
 			}
 		})
@@ -686,18 +679,6 @@ func (c *chanStorer) stop() {
 	close(c.quit)
 }
 
-func (c *chanStorer) Get(ctx context.Context, mode storage.ModeGet, addr swarm.Address) (ch swarm.Chunk, err error) {
-	panic("not implemented") // TODO: Implement
-}
-
-func (c *chanStorer) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exist []bool, err error) {
-	panic("not implemented") // TODO: Implement
-}
-
-func (c *chanStorer) GetMulti(ctx context.Context, mode storage.ModeGet, addrs ...swarm.Address) (ch []swarm.Chunk, err error) {
-	panic("not implemented") // TODO: Implement
-}
-
 func (c *chanStorer) Has(ctx context.Context, addr swarm.Address) (yes bool, err error) {
 	c.lock.Lock()
 	_, ok := c.chunks[addr.ByteString()]
@@ -706,31 +687,15 @@ func (c *chanStorer) Has(ctx context.Context, addr swarm.Address) (yes bool, err
 	return ok, nil
 }
 
-func (c *chanStorer) HasMulti(ctx context.Context, addrs ...swarm.Address) (yes []bool, err error) {
-	panic("not implemented") // TODO: Implement
-}
-
-func (c *chanStorer) Set(ctx context.Context, mode storage.ModeSet, addrs ...swarm.Address) (err error) {
-	panic("not implemented") // TODO: Implement
-}
-
-func (c *chanStorer) LastPullSubscriptionBinID(bin uint8) (id uint64, err error) {
-	panic("not implemented") // TODO: Implement
-}
-
-func (c *chanStorer) SubscribePull(ctx context.Context, bin uint8, since uint64, until uint64) (<-chan storage.Descriptor, <-chan struct{}, func()) {
-	panic("not implemented") // TODO: Implement
-}
-
-func (c *chanStorer) SubscribePush(ctx context.Context, skipf func([]byte) bool) (<-chan swarm.Chunk, func(), func()) {
-	panic("not implemented") // TODO: Implement
-}
-
-func (c *chanStorer) Close() error {
-	panic("not implemented") // TODO: Implement
-}
-
-func createRedistributionAgentService(t *testing.T, addr swarm.Address, storer storage.StateStorer, erc20Service erc20.Service, tranService transaction.Service, backend storageincentives.ChainBackend) (*storageincentives.Agent, error) {
+func createRedistributionAgentService(
+	t *testing.T,
+	addr swarm.Address,
+	storer storage.StateStorer,
+	erc20Service erc20.Service,
+	tranService transaction.Service,
+	backend storageincentives.ChainBackend,
+	chainStateGetter postage.ChainStateGetter,
+) (*storageincentives.Agent, error) {
 	t.Helper()
 
 	const blocksPerRound uint64 = 12
@@ -744,7 +709,25 @@ func createRedistributionAgentService(t *testing.T, addr swarm.Address, storer s
 	}))
 	contract := &mockContract{}
 
-	return storageincentives.New(addr, common.Address{}, backend, &mockMonitor{}, contract, postageContract, stakingContract, mockbatchstore.New(mockbatchstore.WithReserveState(&postage.ReserveState{StorageRadius: 0})), &mockSampler{t: t}, time.Millisecond*10, blocksPerRound, blocksPerPhase, storer, erc20Service, tranService, &mockHealth{}, log.Noop)
+	return storageincentives.New(
+		addr,
+		common.Address{},
+		backend,
+		contract,
+		postageContract,
+		stakingContract,
+		mockstorer.NewReserve(),
+		func() bool { return true },
+		time.Millisecond*10,
+		blocksPerRound,
+		blocksPerPhase,
+		storer,
+		chainStateGetter,
+		erc20Service,
+		tranService,
+		&mockHealth{},
+		log.Noop,
+	)
 }
 
 type contractCall int
@@ -813,23 +796,6 @@ func (m *mockContract) Reveal(context.Context, uint8, []byte, []byte) (common.Ha
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, revealCall)
 	return common.Hash{}, nil
-}
-
-type mockMonitor struct {
-}
-
-func (m *mockMonitor) IsFullySynced() bool {
-	return true
-}
-
-type mockSampler struct {
-	t *testing.T
-}
-
-func (m *mockSampler) ReserveSample(context.Context, []byte, uint8, uint64) (storage.Sample, error) {
-	return storage.Sample{
-		Hash: swarm.RandAddress(m.t),
-	}, nil
 }
 
 type mockHealth struct{}

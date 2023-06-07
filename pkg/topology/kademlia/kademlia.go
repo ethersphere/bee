@@ -13,6 +13,7 @@ import (
 	"math/big"
 	"math/rand"
 	"net"
+	"path/filepath"
 	"sync"
 	"syscall"
 	"time"
@@ -93,6 +94,7 @@ type Options struct {
 	StaticNodes    []swarm.Address
 	FilterFunc     filtersFunc
 	IgnoreRadius   bool
+	DataDir        string
 
 	BitSuffixLength             *int
 	TimeToRetry                 *time.Duration
@@ -219,15 +221,23 @@ func New(
 	discovery discovery.Driver,
 	p2pSvc p2p.Service,
 	pinger pingpong.Interface,
-	metricsDB *shed.DB,
 	logger log.Logger,
 	o Options,
 ) (*Kad, error) {
 	var k *Kad
 
-	imc, err := im.NewCollector(metricsDB)
+	if o.DataDir == "" {
+		logger.Warning("using in-mem store for kademlia metrics, no state will be persisted")
+	} else {
+		o.DataDir = filepath.Join(o.DataDir, "kademlia-metrics")
+	}
+	sdb, err := shed.NewDB(o.DataDir, nil)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unable to create metrics storage: %w", err)
+	}
+	imc, err := im.NewCollector(sdb)
+	if err != nil {
+		return nil, fmt.Errorf("unable to create metrics collector: %w", err)
 	}
 
 	opt := newKadOptions(o)
@@ -1266,7 +1276,7 @@ func nClosePeerInSlice(peers []swarm.Address, addr swarm.Address, spf sanctioned
 }
 
 func (k *Kad) IsReachable() bool {
-	return k.reachability == p2p.ReachabilityStatusPublic
+	return k.reachability != p2p.ReachabilityStatusPrivate
 }
 
 // ClosestPeer returns the closest peer to a given address.

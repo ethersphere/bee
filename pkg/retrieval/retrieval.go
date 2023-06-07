@@ -19,12 +19,11 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
-	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/pricer"
 	pb "github.com/ethersphere/bee/pkg/retrieval/pb"
 	"github.com/ethersphere/bee/pkg/skippeers"
 	"github.com/ethersphere/bee/pkg/soc"
-	"github.com/ethersphere/bee/pkg/storage"
+	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
@@ -37,7 +36,7 @@ const loggerName = "retrieval"
 
 const (
 	protocolName    = "retrieval"
-	protocolVersion = "1.2.0"
+	protocolVersion = "1.3.0"
 	streamName      = "retrieval"
 )
 
@@ -58,11 +57,16 @@ type retrievalResult struct {
 	err   error
 }
 
+type Storer interface {
+	Cache() storage.Putter
+	Lookup() storage.Getter
+}
+
 type Service struct {
 	addr          swarm.Address
 	streamer      p2p.Streamer
 	peerSuggester topology.ClosestPeerer
-	storer        storage.Storer
+	storer        Storer
 	singleflight  singleflight.Group
 	logger        log.Logger
 	accounting    accounting.Interface
@@ -70,12 +74,21 @@ type Service struct {
 	pricer        pricer.Interface
 	tracer        *tracing.Tracer
 	caching       bool
-	validStamp    postage.ValidStampFn
 	errSkip       *skippeers.List
 }
 
-func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunkPeerer topology.ClosestPeerer, logger log.Logger, accounting accounting.Interface, pricer pricer.Interface, tracer *tracing.Tracer, forwarderCaching bool, validStamp postage.ValidStampFn) *Service {
-	s := &Service{
+func New(
+	addr swarm.Address,
+	storer Storer,
+	streamer p2p.Streamer,
+	chunkPeerer topology.ClosestPeerer,
+	logger log.Logger,
+	accounting accounting.Interface,
+	pricer pricer.Interface,
+	tracer *tracing.Tracer,
+	forwarderCaching bool,
+) *Service {
+	return &Service{
 		addr:          addr,
 		streamer:      streamer,
 		peerSuggester: chunkPeerer,
@@ -86,11 +99,8 @@ func New(addr swarm.Address, storer storage.Storer, streamer p2p.Streamer, chunk
 		metrics:       newMetrics(),
 		tracer:        tracer,
 		caching:       forwarderCaching,
-		validStamp:    validStamp,
 		errSkip:       skippeers.NewList(),
 	}
-
-	return s
 }
 
 func (s *Service) Protocol() p2p.ProtocolSpec {
@@ -319,17 +329,13 @@ func (s *Service) retrieveChunk(ctx context.Context, chunkAddr, peer swarm.Addre
 	s.metrics.ChunkRetrieveTime.Observe(time.Since(startTime).Seconds())
 	s.metrics.TotalRetrieved.Inc()
 
-	stamp := new(postage.Stamp)
-	err = stamp.UnmarshalBinary(d.Stamp)
-	if err != nil {
-		err = fmt.Errorf("stamp unmarshal: %w", err)
-		return
-	}
-	chunk = swarm.NewChunk(chunkAddr, d.Data).WithStamp(stamp)
-	if !cac.Valid(chunk) && !soc.Valid(chunk) {
-		s.metrics.InvalidChunkRetrieved.Inc()
-		err = swarm.ErrInvalidChunk
-		return
+	chunk = swarm.NewChunk(chunkAddr, d.Data)
+	if !cac.Valid(chunk) {
+		if !soc.Valid(chunk) {
+			s.metrics.InvalidChunkRetrieved.Inc()
+			err = swarm.ErrInvalidChunk
+			return
+		}
 	}
 
 	err = action.Apply()
@@ -407,7 +413,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	defer span.Finish()
 
 	forwarded := false
-	chunk, err := s.storer.Get(ctx, storage.ModeGetRequest, addr)
+	chunk, err := s.storer.Lookup().Get(ctx, addr)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			// forward the request
@@ -420,10 +426,6 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 			return fmt.Errorf("get from store: %w", err)
 		}
 	}
-	stamp, err := chunk.Stamp().MarshalBinary()
-	if err != nil {
-		return fmt.Errorf("stamp marshal: %w", err)
-	}
 
 	chunkPrice := s.pricer.Price(chunk.Address())
 	debit, err := s.accounting.PrepareDebit(ctx, p.Address, chunkPrice)
@@ -433,8 +435,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	defer debit.Cleanup()
 
 	if err := w.WriteMsgWithContext(ctx, &pb.Delivery{
-		Data:  chunk.Data(),
-		Stamp: stamp,
+		Data: chunk.Data(),
 	}); err != nil {
 		return fmt.Errorf("write delivery: %w peer %s", err, p.Address.String())
 	}
@@ -448,17 +449,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 
 	// cache the request last, so that putting to the localstore does not slow down the request flow
 	if s.caching && forwarded {
-		putMode := storage.ModePutRequest
-
-		cch, err := s.validStamp(chunk, stamp)
-		if err != nil {
-			// if a chunk with an invalid postage stamp was received
-			// we force it into the cache.
-			putMode = storage.ModePutRequestCache
-			cch = chunk
-		}
-
-		_, err = s.storer.Put(ctx, putMode, cch)
+		err = s.storer.Cache().Put(ctx, chunk)
 		if err != nil {
 			return fmt.Errorf("retrieve cache put: %w", err)
 		}

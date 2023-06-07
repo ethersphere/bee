@@ -13,6 +13,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
+	"github.com/ethersphere/bee/pkg/storage/inmemstore"
 	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
 )
 
@@ -77,7 +78,7 @@ func TestValidStamp(t *testing.T) {
 	bs := mock.New(mock.WithBatch(b))
 	signer := crypto.NewDefaultSigner(privKey)
 	issuer := postage.NewStampIssuer("label", "keyID", b.ID, big.NewInt(3), b.Depth, b.BucketDepth, 1000, true)
-	stamper := postage.NewStamper(issuer, signer)
+	stamper := postage.NewStamper(inmemstore.New(), issuer, signer)
 
 	// this creates a chunk with a mocked stamp. ValidStamp will override this
 	// stamp on execution
@@ -87,17 +88,15 @@ func TestValidStamp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	stBytes, err := st.MarshalBinary()
-	if err != nil {
-		t.Fatal(err)
-	}
+
+	ch.WithStamp(st)
 
 	// ensure the chunk doesnt have the batch details filled before we validate stamp
 	if ch.Depth() == b.Depth || ch.BucketDepth() == b.BucketDepth {
 		t.Fatal("expected chunk to not have correct depth and bucket depth at start")
 	}
 
-	ch, err = postage.ValidStamp(bs)(ch, stBytes)
+	ch, err = postage.ValidStamp(bs)(ch)
 	if err != nil {
 		t.Fatal(err)
 	}

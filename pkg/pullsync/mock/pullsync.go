@@ -7,7 +7,6 @@ package mock
 import (
 	"context"
 	"fmt"
-	"math"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/pullsync"
@@ -28,84 +27,41 @@ func WithCursors(v []uint64) Option {
 	})
 }
 
-// WithAutoReply means that the pull syncer will automatically reply
-// to incoming range requests with a top = from+limit.
-// This is in order to force the requester to request a subsequent range.
-func WithAutoReply() Option {
+func WithReplies(replies ...SyncReply) Option {
 	return optionFunc(func(p *PullSyncMock) {
-		p.autoReply = true
+		for _, r := range replies {
+			p.replies[toID(r.Peer, r.Bin, r.Start)] = append(p.replies[toID(r.Peer, r.Bin, r.Start)], r)
+		}
 	})
 }
 
-// WithLiveSyncBlock makes the protocol mock block on incoming live
-// sync requests (identified by the math.MaxUint64 `to` field).
-func WithLiveSyncBlock() Option {
-	return optionFunc(func(p *PullSyncMock) {
-		p.blockLiveSync = true
-	})
-}
-
-func WithLiveSyncReplies(r ...uint64) Option {
-	return optionFunc(func(p *PullSyncMock) {
-		p.liveSyncReplies = r
-	})
-}
-
-func WithLateSyncReply(r ...SyncReply) Option {
-	return optionFunc(func(p *PullSyncMock) {
-		p.lateReply = true
-		p.lateSyncReplies = r
-	})
-}
-
-const limit = 50
-
-type SyncCall struct {
-	Peer     swarm.Address
-	Bin      uint8
-	From, To uint64
-	Live     bool
+func toID(a swarm.Address, bin uint8, start uint64) string {
+	return fmt.Sprintf("%s-%d-%d", a, bin, start)
 }
 
 type SyncReply struct {
-	bin     uint8
-	from    uint64
-	topmost uint64
-	block   bool
-}
-
-func NewReply(bin uint8, from, top uint64, block bool) SyncReply {
-	return SyncReply{
-		bin:     bin,
-		from:    from,
-		topmost: top,
-		block:   block,
-	}
+	Peer    swarm.Address
+	Bin     uint8
+	Start   uint64
+	Topmost uint64
+	Count   int
 }
 
 type PullSyncMock struct {
 	mtx             sync.Mutex
-	syncCalls       []SyncCall
+	syncCalls       []SyncReply
 	syncErr         error
 	cursors         []uint64
 	getCursorsPeers []swarm.Address
-	autoReply       bool
-	blockLiveSync   bool
-	liveSyncReplies []uint64
-	liveSyncCalls   int
-
-	lateReply       bool
-	lateCond        *sync.Cond
-	lateChange      bool
-	lateSyncReplies []SyncReply
+	replies         map[string][]SyncReply
 
 	quit chan struct{}
 }
 
 func NewPullSync(opts ...Option) *PullSyncMock {
 	s := &PullSyncMock{
-		lateCond: sync.NewCond(new(sync.Mutex)),
-		quit:     make(chan struct{}),
+		quit:    make(chan struct{}),
+		replies: make(map[string][]SyncReply),
 	}
 	for _, v := range opts {
 		v.apply(s)
@@ -113,94 +69,23 @@ func NewPullSync(opts ...Option) *PullSyncMock {
 	return s
 }
 
-func (p *PullSyncMock) SyncInterval(ctx context.Context, peer swarm.Address, bin uint8, from, to uint64) (topmost uint64, err error) {
+func (p *PullSyncMock) Sync(ctx context.Context, peer swarm.Address, bin uint8, start uint64) (topmost uint64, count int, err error) {
 
-	isLive := to == math.MaxUint64
-
-	call := SyncCall{
-		Peer: peer,
-		Bin:  bin,
-		From: from,
-		To:   to,
-		Live: isLive,
-	}
 	p.mtx.Lock()
-	p.syncCalls = append(p.syncCalls, call)
+
+	id := toID(peer, bin, start)
+	replies := p.replies[id]
+
+	if len(replies) > 0 {
+		reply := replies[0]
+		p.replies[id] = p.replies[id][1:]
+		p.syncCalls = append(p.syncCalls, reply)
+		p.mtx.Unlock()
+		return reply.Topmost, reply.Count, p.syncErr
+	}
 	p.mtx.Unlock()
-
-	if p.syncErr != nil {
-		return 0, p.syncErr
-	}
-
-	if isLive && p.lateReply {
-		p.lateCond.L.Lock()
-		for !p.lateChange {
-			p.lateCond.Wait()
-		}
-		p.lateCond.L.Unlock()
-
-		select {
-		case <-p.quit:
-			return 0, context.Canceled
-		case <-ctx.Done():
-			return 0, ctx.Err()
-		default:
-		}
-
-		found := false
-		var sr SyncReply
-		p.mtx.Lock()
-		for i, v := range p.lateSyncReplies {
-			if v.bin == bin && v.from == from {
-				sr = v
-				found = true
-				p.lateSyncReplies = append(p.lateSyncReplies[:i], p.lateSyncReplies[i+1:]...)
-			}
-		}
-		p.mtx.Unlock()
-		if found {
-			if sr.block {
-				select {
-				case <-p.quit:
-					return 0, context.Canceled
-				case <-ctx.Done():
-					return 0, ctx.Err()
-				}
-			}
-			return sr.topmost, nil
-		}
-		panic(fmt.Sprintf("bin %d from %d to %d", bin, from, to))
-	}
-
-	if isLive && p.blockLiveSync {
-		// don't respond, wait for quit
-		<-p.quit
-		return 0, context.Canceled
-	}
-	if isLive && len(p.liveSyncReplies) > 0 {
-		p.mtx.Lock()
-		if p.liveSyncCalls >= len(p.liveSyncReplies) {
-			p.mtx.Unlock()
-			<-p.quit
-			// when shutting down, onthe puller side we cancel the context going into the pullsync protocol request
-			// this results in SyncInterval returning with a context cancelled error
-			return 0, context.Canceled
-		}
-		v := p.liveSyncReplies[p.liveSyncCalls]
-		p.liveSyncCalls++
-		p.mtx.Unlock()
-		return v, nil
-	}
-
-	if p.autoReply {
-		t := from + limit - 1
-		// floor to the cursor
-		if t > to {
-			t = to
-		}
-		return t, nil
-	}
-	return to, nil
+	<-ctx.Done()
+	return 0, 0, ctx.Err()
 }
 
 func (p *PullSyncMock) GetCursors(_ context.Context, peer swarm.Address) ([]uint64, error) {
@@ -210,28 +95,18 @@ func (p *PullSyncMock) GetCursors(_ context.Context, peer swarm.Address) ([]uint
 	return p.cursors, nil
 }
 
-func (p *PullSyncMock) SyncCalls(peer swarm.Address) (res []SyncCall) {
+func (p *PullSyncMock) ResetCalls(peer swarm.Address) {
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
+	p.syncCalls = nil
+}
+
+func (p *PullSyncMock) SyncCalls(peer swarm.Address) (res []SyncReply) {
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
 
 	for _, v := range p.syncCalls {
-		if v.Peer.Equal(peer) && !v.Live {
-			res = append(res, v)
-		}
-	}
-	return res
-}
-
-func (p *PullSyncMock) CancelRuid(ctx context.Context, peer swarm.Address, ruid uint32) error {
-	return nil
-}
-
-func (p *PullSyncMock) LiveSyncCalls(peer swarm.Address) (res []SyncCall) {
-	p.mtx.Lock()
-	defer p.mtx.Unlock()
-
-	for _, v := range p.syncCalls {
-		if v.Peer.Equal(peer) && v.Live {
+		if v.Peer.Equal(peer) {
 			res = append(res, v)
 		}
 	}
@@ -242,22 +117,6 @@ func (p *PullSyncMock) CursorsCalls(peer swarm.Address) bool {
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
 	return swarm.ContainsAddress(p.getCursorsPeers, peer)
-}
-
-func (p *PullSyncMock) TriggerChange() {
-	p.lateCond.L.Lock()
-	p.lateChange = true
-	p.lateCond.L.Unlock()
-	p.lateCond.Broadcast()
-}
-
-func (p *PullSyncMock) Close() error {
-	close(p.quit)
-	p.lateCond.L.Lock()
-	p.lateChange = true
-	p.lateCond.L.Unlock()
-	p.lateCond.Broadcast()
-	return nil
 }
 
 type Option interface {

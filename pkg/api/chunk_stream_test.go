@@ -12,15 +12,10 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/log"
-	pinning "github.com/ethersphere/bee/pkg/pinning/mock"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/mock"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
+	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/gorilla/websocket"
 )
 
@@ -32,15 +27,9 @@ func TestChunkUploadStream(t *testing.T) {
 	wsHeaders.Set(api.SwarmPostageBatchIdHeader, batchOkStr)
 
 	var (
-		statestoreMock  = statestore.NewStateStore()
-		logger          = log.Noop
-		tag             = tags.NewTags(statestoreMock, logger)
-		storerMock      = mock.NewStorer()
-		pinningMock     = pinning.NewServiceMock()
+		storerMock      = mockstorer.New()
 		_, wsConn, _, _ = newTestServer(t, testServerOptions{
 			Storer:    storerMock,
-			Pinning:   pinningMock,
-			Tags:      tag,
 			Post:      mockpost.New(mockpost.WithAcceptAll()),
 			WsPath:    "/chunks/stream",
 			WsHeaders: wsHeaders,
@@ -80,7 +69,7 @@ func TestChunkUploadStream(t *testing.T) {
 		}
 
 		for _, c := range chsToGet {
-			ch, err := storerMock.Get(context.Background(), storage.ModeGetRequest, c.Address())
+			ch, err := storerMock.ChunkStore().Get(context.Background(), c.Address())
 			if err != nil {
 				t.Fatal("failed to get chunk after upload", err)
 			}

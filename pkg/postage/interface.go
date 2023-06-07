@@ -11,7 +11,6 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 // EventUpdater interface definitions reflect the updates triggered by events
@@ -39,34 +38,13 @@ type ChainSnapshot struct {
 	Timestamp        int64       `json:"timestamp"`
 }
 
-// UnreserveIteratorFn is used as a callback on Storer.Unreserve method calls.
-type UnreserveIteratorFn func(id []byte, radius uint8) (bool, error)
-
-type ReserveStateGetter interface {
-	// GetReserveState returns a copy of stored reserve state.
-	GetReserveState() *ReserveState
-}
-
-type RadiusReporter interface {
-	StorageRadius() uint8
-}
-
-type RadiusChecker interface {
-	IsWithinStorageRadius(addr swarm.Address) bool
-}
-
-type Radius interface {
-	RadiusChecker
-	RadiusReporter
-}
-
 // Storer represents the persistence layer for batches
 // on the current (highest available) block.
 type Storer interface {
-	ReserveStateGetter
-	Radius
 	ChainStateGetter
 	CommitmentGetter
+
+	Radius() uint8
 
 	// Get returns a batch from the store with the given ID.
 	Get([]byte) (*Batch, error)
@@ -90,17 +68,6 @@ type Storer interface {
 	// PutChainState puts given chain state into the store.
 	PutChainState(*ChainState) error
 
-	// SetStorageRadius updates the value of the storage radius atomically.
-	SetStorageRadius(func(uint8) uint8) error
-
-	// SetStorageRadiusSetter sets the RadiusSetter to the given value.
-	// The given RadiusSetter will be called when radius changes.
-	SetStorageRadiusSetter(StorageRadiusSetter)
-
-	// Unreserve evict batches from the unreserve queue of the storage.
-	// During the eviction process, the given UnreserveIteratorFn is called.
-	Unreserve(UnreserveIteratorFn) error
-
 	// Reset resets chain state and reserve state of the storage.
 	Reset() error
 
@@ -110,11 +77,6 @@ type Storer interface {
 // StorageRadiusSetter is used to calculate total batch commitment of the network.
 type CommitmentGetter interface {
 	Commitment() (uint64, error)
-}
-
-// StorageRadiusSetter is used as a callback when the radius of a node changes.
-type StorageRadiusSetter interface {
-	SetStorageRadius(uint8)
 }
 
 type ChainStateGetter interface {

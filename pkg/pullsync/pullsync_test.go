@@ -10,21 +10,23 @@ import (
 	"io"
 	"testing"
 
-	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
-
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/streamtest"
+	"github.com/ethersphere/bee/pkg/postage"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/pullsync"
-	"github.com/ethersphere/bee/pkg/pullsync/pullstorage/mock"
+	"github.com/ethersphere/bee/pkg/storage"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
+	storer "github.com/ethersphere/bee/pkg/storer"
+	mock "github.com/ethersphere/bee/pkg/storer/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 var (
-	addrs  []swarm.Address
-	chunks []swarm.Chunk
+	results []*storer.BinC
+	addrs   []swarm.Address
+	chunks  []swarm.Chunk
 )
 
 func someChunks(i ...int) (c []swarm.Chunk) {
@@ -39,58 +41,35 @@ func init() {
 	n := 5
 	chunks = make([]swarm.Chunk, n)
 	addrs = make([]swarm.Address, n)
+	results = make([]*storer.BinC, n)
 	for i := 0; i < n; i++ {
 		chunks[i] = testingc.GenerateTestRandomChunk()
 		addrs[i] = chunks[i].Address()
+		results[i] = &storer.BinC{
+			Address: addrs[i],
+			BatchID: chunks[i].Stamp().BatchID(),
+			BinID:   uint64(i),
+		}
 	}
 }
 
-// TestIncoming tests that an incoming request for an interval
-// is handled correctly when no chunks are available in the interval.
-// This means the interval exists but chunks are not there (GCd).
-// Expected behavior is that an offer message with the requested
-// To value is returned to the requester, but offer.Hashes is empty.
-func TestIncoming_WantEmptyInterval(t *testing.T) {
-	t.Parallel()
-
-	var (
-		mockTopmost        = uint64(5)
-		ps, _              = newPullSync(nil, mock.WithIntervalsResp([]swarm.Address{}, mockTopmost, nil))
-		recorder           = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
-		psClient, clientDb = newPullSync(recorder)
-	)
-
-	topmost, err := psClient.SyncInterval(context.Background(), swarm.ZeroAddress, 1, 0, 5)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if topmost != mockTopmost {
-		t.Fatalf("got offer topmost %d but want %d", topmost, mockTopmost)
-	}
-
-	if clientDb.PutCalls() > 0 {
-		t.Fatal("too many puts")
-	}
-
-}
 func TestIncoming_WantNone(t *testing.T) {
 	t.Parallel()
 
 	var (
-		mockTopmost        = uint64(5)
-		ps, _              = newPullSync(nil, mock.WithIntervalsResp(addrs, mockTopmost, nil), mock.WithChunks(chunks...))
+		topMost            = uint64(4)
+		ps, _              = newPullSync(t, nil, 5, mock.WithSubscribeResp(results, nil), mock.WithChunks(chunks...))
 		recorder           = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
-		psClient, clientDb = newPullSync(recorder, mock.WithChunks(chunks...))
+		psClient, clientDb = newPullSync(t, recorder, 0, mock.WithChunks(chunks...))
 	)
 
-	topmost, err := psClient.SyncInterval(context.Background(), swarm.ZeroAddress, 0, 0, 5)
+	topmost, _, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if topmost != mockTopmost {
-		t.Fatalf("got offer topmost %d but want %d", topmost, mockTopmost)
+	if topmost != topMost {
+		t.Fatalf("got offer topmost %d but want %d", topmost, topMost)
 	}
 	if clientDb.PutCalls() > 0 {
 		t.Fatal("too many puts")
@@ -101,15 +80,14 @@ func TestIncoming_ContextTimeout(t *testing.T) {
 	t.Parallel()
 
 	var (
-		mockTopmost = uint64(5)
-		ps, _       = newPullSync(nil, mock.WithIntervalsResp(addrs, mockTopmost, nil), mock.WithChunks(chunks...))
+		ps, _       = newPullSync(t, nil, 0, mock.WithSubscribeResp(results, nil), mock.WithChunks(chunks...))
 		recorder    = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
-		psClient, _ = newPullSync(recorder, mock.WithChunks(chunks...))
+		psClient, _ = newPullSync(t, recorder, 0, mock.WithChunks(chunks...))
 	)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 0)
 	cancel()
-	_, err := psClient.SyncInterval(ctx, swarm.ZeroAddress, 0, 0, 5)
+	_, _, err := psClient.Sync(ctx, swarm.ZeroAddress, 0, 0)
 	if !errors.Is(err, context.DeadlineExceeded) {
 		t.Fatalf("wanted error %v, got %v", context.DeadlineExceeded, err)
 	}
@@ -119,25 +97,25 @@ func TestIncoming_WantOne(t *testing.T) {
 	t.Parallel()
 
 	var (
-		mockTopmost        = uint64(5)
-		ps, _              = newPullSync(nil, mock.WithIntervalsResp(addrs, mockTopmost, nil), mock.WithChunks(chunks...))
+		topMost            = uint64(4)
+		ps, _              = newPullSync(t, nil, 5, mock.WithSubscribeResp(results, nil), mock.WithChunks(chunks...))
 		recorder           = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
-		psClient, clientDb = newPullSync(recorder, mock.WithChunks(someChunks(1, 2, 3, 4)...))
+		psClient, clientDb = newPullSync(t, recorder, 0, mock.WithChunks(someChunks(1, 2, 3, 4)...))
 	)
 
-	topmost, err := psClient.SyncInterval(context.Background(), swarm.ZeroAddress, 0, 0, 5)
+	topmost, _, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if topmost != mockTopmost {
-		t.Fatalf("got offer topmost %d but want %d", topmost, mockTopmost)
+	if topmost != topMost {
+		t.Fatalf("got offer topmost %d but want %d", topmost, topMost)
 	}
 
 	// should have all
-	haveChunks(t, clientDb, addrs...)
-	if clientDb.PutCalls() > 1 {
-		t.Fatal("too many puts")
+	haveChunks(t, clientDb, chunks...)
+	if clientDb.PutCalls() != 1 {
+		t.Fatalf("want 1 puts but got %d", clientDb.PutCalls())
 	}
 }
 
@@ -145,25 +123,87 @@ func TestIncoming_WantAll(t *testing.T) {
 	t.Parallel()
 
 	var (
-		mockTopmost        = uint64(5)
-		ps, _              = newPullSync(nil, mock.WithIntervalsResp(addrs, mockTopmost, nil), mock.WithChunks(chunks...))
+		topMost            = uint64(4)
+		ps, _              = newPullSync(t, nil, 5, mock.WithSubscribeResp(results, nil), mock.WithChunks(chunks...))
 		recorder           = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
-		psClient, clientDb = newPullSync(recorder)
+		psClient, clientDb = newPullSync(t, recorder, 0)
 	)
 
-	topmost, err := psClient.SyncInterval(context.Background(), swarm.ZeroAddress, 0, 0, 5)
+	topmost, _, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if topmost != mockTopmost {
-		t.Fatalf("got offer topmost %d but want %d", topmost, mockTopmost)
+	if topmost != topMost {
+		t.Fatalf("got offer topmost %d but want %d", topmost, topMost)
 	}
 
 	// should have all
-	haveChunks(t, clientDb, addrs...)
-	if p := clientDb.PutCalls(); p != 1 {
-		t.Fatalf("want %d puts but got %d", 1, p)
+	haveChunks(t, clientDb, chunks...)
+	if p := clientDb.PutCalls(); p != len(chunks) {
+		t.Fatalf("want %d puts but got %d", len(chunks), p)
+	}
+}
+
+func TestIncoming_WantErrors(t *testing.T) {
+	t.Parallel()
+
+	tChunks := testingc.GenerateTestRandomChunks(4)
+	// add same chunk with a different batch id
+	ch := swarm.NewChunk(tChunks[3].Address(), tChunks[3].Data()).WithStamp(postagetesting.MustNewStamp())
+	tChunks = append(tChunks, ch)
+	// add invalid chunk
+	tChunks = append(tChunks, testingc.GenerateTestRandomInvalidChunk())
+
+	tResults := make([]*storer.BinC, len(tChunks))
+	for i, c := range tChunks {
+		tResults[i] = &storer.BinC{
+			Address: c.Address(),
+			BatchID: c.Stamp().BatchID(),
+			BinID:   uint64(i + 5), // start from a higher bin id
+		}
+	}
+
+	putHook := func(c swarm.Chunk) error {
+		if c.Address().Equal(tChunks[1].Address()) {
+			return storage.ErrOverwriteNewerChunk
+		}
+		return nil
+	}
+
+	validStampErr := errors.New("valid stamp error")
+	validStamp := func(c swarm.Chunk) (swarm.Chunk, error) {
+		if c.Address().Equal(tChunks[2].Address()) {
+			return nil, validStampErr
+		}
+		return c, nil
+	}
+
+	var (
+		topMost            = uint64(10)
+		ps, _              = newPullSync(t, nil, 20, mock.WithSubscribeResp(tResults, nil), mock.WithChunks(tChunks...))
+		recorder           = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
+		psClient, clientDb = newPullSyncWithStamperValidator(t, recorder, 0, validStamp, mock.WithPutHook(putHook))
+	)
+
+	topmost, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
+	for _, e := range []error{storage.ErrOverwriteNewerChunk, validStampErr, swarm.ErrInvalidChunk} {
+		if !errors.Is(err, e) {
+			t.Fatalf("expected error %v", err)
+		}
+	}
+
+	if count != 3 {
+		t.Fatalf("got %d chunks but want %d", count, 3)
+	}
+
+	if topmost != topMost {
+		t.Fatalf("got offer topmost %d but want %d", topmost, topMost)
+	}
+
+	haveChunks(t, clientDb, append(tChunks[:1], tChunks[3:5]...)...)
+	if p := clientDb.PutCalls(); p != len(chunks)-1 {
+		t.Fatalf("want %d puts but got %d", len(chunks), p)
 	}
 }
 
@@ -176,13 +216,12 @@ func TestIncoming_UnsolicitedChunk(t *testing.T) {
 	evil := swarm.NewChunk(evilAddr, evilData).WithStamp(stamp)
 
 	var (
-		mockTopmost = uint64(5)
-		ps, _       = newPullSync(nil, mock.WithIntervalsResp(addrs, mockTopmost, nil), mock.WithChunks(chunks...), mock.WithEvilChunk(addrs[4], evil))
+		ps, _       = newPullSync(t, nil, 5, mock.WithSubscribeResp(results, nil), mock.WithChunks(chunks...), mock.WithEvilChunk(addrs[4], evil))
 		recorder    = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
-		psClient, _ = newPullSync(recorder)
+		psClient, _ = newPullSync(t, recorder, 0)
 	)
 
-	_, err := psClient.SyncInterval(context.Background(), swarm.ZeroAddress, 0, 0, 5)
+	_, _, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
 	if !errors.Is(err, pullsync.ErrUnsolicitedChunk) {
 		t.Fatalf("expected err %v but got %v", pullsync.ErrUnsolicitedChunk, err)
 	}
@@ -193,9 +232,9 @@ func TestGetCursors(t *testing.T) {
 
 	var (
 		mockCursors = []uint64{100, 101, 102, 103}
-		ps, _       = newPullSync(nil, mock.WithCursors(mockCursors))
+		ps, _       = newPullSync(t, nil, 0, mock.WithCursors(mockCursors))
 		recorder    = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
-		psClient, _ = newPullSync(recorder)
+		psClient, _ = newPullSync(t, recorder, 0)
 	)
 
 	curs, err := psClient.GetCursors(context.Background(), swarm.ZeroAddress)
@@ -219,9 +258,9 @@ func TestGetCursorsError(t *testing.T) {
 
 	var (
 		e           = errors.New("erring")
-		ps, _       = newPullSync(nil, mock.WithCursorsErr(e))
+		ps, _       = newPullSync(t, nil, 0, mock.WithCursorsErr(e))
 		recorder    = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
-		psClient, _ = newPullSync(recorder)
+		psClient, _ = newPullSync(t, recorder, 0)
 	)
 
 	_, err := psClient.GetCursors(context.Background(), swarm.ZeroAddress)
@@ -233,30 +272,60 @@ func TestGetCursorsError(t *testing.T) {
 	}
 }
 
-func haveChunks(t *testing.T, s *mock.PullStorage, addrs ...swarm.Address) {
+func haveChunks(t *testing.T, s *mock.ReserveStore, chunks ...swarm.Chunk) {
 	t.Helper()
-	for _, a := range addrs {
-		have, err := s.Has(context.Background(), a)
+	for _, c := range chunks {
+		have, err := s.ReserveHas(c.Address(), c.Stamp().BatchID())
 		if err != nil {
 			t.Fatal(err)
 		}
 		if !have {
-			t.Errorf("storage does not have chunk %s", a)
+			t.Errorf("storage does not have chunk %s", c.Address())
 		}
 	}
 }
 
-func newPullSync(s p2p.Streamer, o ...mock.Option) (*pullsync.Syncer, *mock.PullStorage) {
-	storage := mock.NewPullStorage(o...)
+func newPullSync(
+	t *testing.T,
+	s p2p.Streamer,
+	maxPage uint64,
+	o ...mock.Option,
+) (*pullsync.Syncer, *mock.ReserveStore) {
+	t.Helper()
+
+	validStamp := func(ch swarm.Chunk) (swarm.Chunk, error) {
+		return ch, nil
+	}
+
+	return newPullSyncWithStamperValidator(t, s, maxPage, validStamp, o...)
+}
+
+func newPullSyncWithStamperValidator(
+	t *testing.T,
+	s p2p.Streamer,
+	maxPage uint64,
+	validStamp postage.ValidStampFn,
+	o ...mock.Option,
+) (*pullsync.Syncer, *mock.ReserveStore) {
+	t.Helper()
+
+	storage := mock.NewReserve(o...)
 	logger := log.Noop
 	unwrap := func(swarm.Chunk) {}
-	validStamp := func(ch swarm.Chunk, _ []byte) (swarm.Chunk, error) { return ch, nil }
-	return pullsync.New(
+	ps := pullsync.New(
 		s,
 		storage,
 		unwrap,
 		validStamp,
 		logger,
-		mockbatchstore.New(),
-	), storage
+		maxPage,
+	)
+
+	t.Cleanup(func() {
+		err := ps.Close()
+		if err != nil {
+			t.Errorf("failed closing pullsync: %v", err)
+		}
+	})
+	return ps, storage
 }

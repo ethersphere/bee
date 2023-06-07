@@ -23,11 +23,9 @@ import (
 	"github.com/ethersphere/bee/pkg/bzz"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds/factory"
-	"github.com/ethersphere/bee/pkg/localstore"
 	"github.com/ethersphere/bee/pkg/log"
 	mockP2P "github.com/ethersphere/bee/pkg/p2p/mock"
 	mockPingPong "github.com/ethersphere/bee/pkg/pingpong/mock"
-	pinning "github.com/ethersphere/bee/pkg/pinning/mock"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchstore"
 	mockPost "github.com/ethersphere/bee/pkg/postage/mock"
@@ -44,19 +42,18 @@ import (
 	erc20mock "github.com/ethersphere/bee/pkg/settlement/swap/erc20/mock"
 	swapmock "github.com/ethersphere/bee/pkg/settlement/swap/mock"
 	"github.com/ethersphere/bee/pkg/statestore/leveldb"
-	mockStateStore "github.com/ethersphere/bee/pkg/statestore/mock"
 	mockSteward "github.com/ethersphere/bee/pkg/steward/mock"
+	"github.com/ethersphere/bee/pkg/storage/inmemstore"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 	stakingContractMock "github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
+	storer "github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/tags"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	mockTopology "github.com/ethersphere/bee/pkg/topology/mock"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/bee/pkg/transaction/backendmock"
 	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
-	"github.com/ethersphere/bee/pkg/traversal"
 	"github.com/ethersphere/bee/pkg/util/ioutil"
 	"github.com/hashicorp/go-multierror"
 	"github.com/multiformats/go-multiaddr"
@@ -69,7 +66,6 @@ type DevBee struct {
 	localstoreCloser io.Closer
 	apiCloser        io.Closer
 	pssCloser        io.Closer
-	tagsCloser       io.Closer
 	errorLogWriter   io.Writer
 	apiServer        *http.Server
 	debugAPIServer   *http.Server
@@ -121,7 +117,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		return nil, err
 	}
 
-	batchStore, err := batchstore.New(stateStore, func(b []byte) error { return nil }, swarmAddress, logger)
+	batchStore, err := batchstore.New(stateStore, func(b []byte) error { return nil }, swarmAddress, 1000000, logger)
 	if err != nil {
 		return nil, fmt.Errorf("batchstore: %w", err)
 	}
@@ -206,7 +202,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 			return nil, fmt.Errorf("debug api listener: %w", err)
 		}
 
-		debugApiService = api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, mockTransaction, batchStore, api.DevMode, true, true, chainBackend, o.CORSAllowedOrigins)
+		debugApiService = api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, mockTransaction, batchStore, api.DevMode, true, true, chainBackend, o.CORSAllowedOrigins, inmemstore.New())
 		debugAPIServer := &http.Server{
 			IdleTimeout:       30 * time.Second,
 			ReadHeaderTimeout: 3 * time.Second,
@@ -229,26 +225,14 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		b.debugAPIServer = debugAPIServer
 	}
 
-	lo := &localstore.Options{
-		Capacity:               1000000,
-		ReserveCapacity:        o.ReserveCapacity,
-		OpenFilesLimit:         o.DBOpenFilesLimit,
-		BlockCacheCapacity:     o.DBBlockCacheCapacity,
-		WriteBufferSize:        o.DBWriteBufferSize,
-		DisableSeeksCompaction: o.DBDisableSeeksCompaction,
-		UnreserveFunc: func(postage.UnreserveIteratorFn) error {
-			return nil
-		},
-	}
-
-	storer, err := localstore.New("", swarmAddress.Bytes(), stateStore, lo, logger)
+	localStore, err := storer.New(context.Background(), "", &storer.Options{
+		Logger:        logger,
+		CacheCapacity: 1_000_000,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("localstore: %w", err)
 	}
-	b.localstoreCloser = storer
-
-	tagService := tags.NewTags(stateStore, logger)
-	b.tagsCloser = tagService
+	b.localstoreCloser = localStore
 
 	pssService := pss.New(mockKey, logger)
 	b.pssCloser = pssService
@@ -257,8 +241,6 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		pssService.TryUnwrap(chunk)
 		return &pushsync.Receipt{}, nil
 	}))
-
-	traversalService := traversal.New(storer)
 
 	post := mockPost.New()
 	postageContract := mockPostContract.New(
@@ -312,11 +294,10 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 					return []multiaddr.Multiaddr{ma}, nil
 				},
 			))
-		acc            = mockAccounting.NewAccounting()
-		kad            = mockTopology.NewTopologyDriver()
-		storeRecipient = mockStateStore.NewStateStore()
-		pseudoset      = pseudosettle.New(nil, logger, storeRecipient, nil, big.NewInt(10000), big.NewInt(10000), p2ps)
-		mockSwap       = swapmock.New(swapmock.WithCashoutStatusFunc(
+		acc       = mockAccounting.NewAccounting()
+		kad       = mockTopology.NewTopologyDriver()
+		pseudoset = pseudosettle.New(nil, logger, stateStore, nil, big.NewInt(10000), big.NewInt(10000), p2ps)
+		mockSwap  = swapmock.New(swapmock.WithCashoutStatusFunc(
 			func(ctx context.Context, peer swarm.Address) (*chequebook.CashoutStatus, error) {
 				return &chequebook.CashoutStatus{
 					Last:           &chequebook.LastCashout{},
@@ -369,9 +350,8 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		}
 	)
 
-	mockFeeds := factory.New(storer)
+	mockFeeds := factory.New(localStore.Download(true))
 	mockResolver := resolverMock.NewResolver()
-	mockPinning := pinning.NewServiceMock()
 	mockSteward := new(mockSteward.Steward)
 
 	mockStaking := stakingContractMock.New(
@@ -380,26 +360,23 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		}))
 
 	debugOpts := api.ExtraOptions{
-		Pingpong:         pingPong,
-		TopologyDriver:   kad,
-		LightNodes:       lightNodes,
-		Accounting:       acc,
-		Pseudosettle:     pseudoset,
-		Swap:             mockSwap,
-		Chequebook:       mockChequebook,
-		BlockTime:        time.Second * 2,
-		Tags:             tagService,
-		Storer:           storer,
-		Resolver:         mockResolver,
-		Pss:              pssService,
-		TraversalService: traversalService,
-		Pinning:          mockPinning,
-		FeedFactory:      mockFeeds,
-		Post:             post,
-		PostageContract:  postageContract,
-		Staking:          mockStaking,
-		Steward:          mockSteward,
-		SyncStatus:       syncStatusFn,
+		Pingpong:        pingPong,
+		TopologyDriver:  kad,
+		LightNodes:      lightNodes,
+		Accounting:      acc,
+		Pseudosettle:    pseudoset,
+		Swap:            mockSwap,
+		Chequebook:      mockChequebook,
+		BlockTime:       time.Second * 2,
+		Storer:          localStore,
+		Resolver:        mockResolver,
+		Pss:             pssService,
+		FeedFactory:     mockFeeds,
+		Post:            post,
+		PostageContract: postageContract,
+		Staking:         mockStaking,
+		Steward:         mockSteward,
+		SyncStatus:      syncStatusFn,
 	}
 
 	var erc20 = erc20mock.New(
@@ -411,7 +388,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		}),
 	)
 
-	apiService := api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, mockTransaction, batchStore, api.DevMode, true, true, chainBackend, o.CORSAllowedOrigins)
+	apiService := api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, logger, mockTransaction, batchStore, api.DevMode, true, true, chainBackend, o.CORSAllowedOrigins, inmemstore.New())
 
 	apiService.Configure(signer, authenticator, tracer, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
@@ -506,7 +483,6 @@ func (b *DevBee) Shutdown() error {
 
 	tryClose(b.pssCloser, "pss")
 	tryClose(b.tracerCloser, "tracer")
-	tryClose(b.tagsCloser, "tag persistence")
 	tryClose(b.stateStoreCloser, "statestore")
 	tryClose(b.localstoreCloser, "localstore")
 
