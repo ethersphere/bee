@@ -55,6 +55,45 @@ func TestOneSync(t *testing.T) {
 	waitSync(t, pullsync, addr)
 }
 
+// TestRefreshIntervals tests that after a round of syncing, the intervals are freshed based on a ticker.
+func TestRefreshIntervals(t *testing.T) {
+	t.Parallel()
+
+	var (
+		addr    = swarm.RandAddress(t)
+		cursors = []uint64{1000, 1000, 1000}
+		replies = []mockps.SyncReply{
+			{Bin: 1, Start: 1, Topmost: 1000, Peer: addr},
+			{Bin: 2, Start: 1001, Topmost: 1001, Peer: addr}}
+	)
+
+	_, st, kad, pullsync := newPuller(t, opts{
+		kad: []kadMock.Option{
+			kadMock.WithEachPeerRevCalls(
+				kadMock.AddrTuple{Addr: addr, PO: 1},
+			),
+		},
+		pullSync:   []mockps.Option{mockps.WithCursors(cursors), mockps.WithReplies(replies...)},
+		bins:       3,
+		refreshDur: time.Second,
+		rs:         resMock.NewReserve(resMock.WithRadius(1)),
+	})
+	time.Sleep(100 * time.Millisecond)
+	kad.Trigger()
+	waitCursorsCalled(t, pullsync, addr)
+	waitSyncCalledBins(t, pullsync, addr, 1, 2)
+	waitSync(t, pullsync, addr)
+
+	time.Sleep(time.Second)
+
+	if err := checkIntervals(st, addr, "", 1); err != nil {
+		if !errors.Is(err, storage.ErrNotFound) {
+			t.Fatal(err)
+		}
+	}
+
+}
+
 func TestSyncOutsideDepth(t *testing.T) {
 	t.Parallel()
 
@@ -92,7 +131,6 @@ func TestSyncOutsideDepth(t *testing.T) {
 
 func TestSyncIntervals(t *testing.T) {
 	t.Parallel()
-	t.Skip("skip until we have a better way to test this")
 
 	addr := swarm.RandAddress(t)
 
@@ -197,7 +235,9 @@ func TestSyncIntervals(t *testing.T) {
 			waitSyncCalledBins(t, pullsync, addr, 1)
 			waitSyncStart(t, pullsync, addr, tc.replies[len(tc.replies)-1].Start)
 			time.Sleep(100 * time.Millisecond)
-			checkIntervals(t, st, addr, tc.intervals, 1)
+			if err := checkIntervals(st, addr, tc.intervals, 1); err != nil {
+				t.Fatal(err)
+			}
 		})
 	}
 }
@@ -377,8 +417,6 @@ func TestContinueSyncing(t *testing.T) {
 		},
 		bins: 1,
 		rs:   resMock.NewReserve(resMock.WithRadius(0)),
-
-		syncSleepDur: time.Millisecond * 10,
 	})
 
 	time.Sleep(100 * time.Millisecond)
@@ -411,8 +449,6 @@ func TestPeerGone(t *testing.T) {
 		},
 		bins: 2,
 		rs:   resMock.NewReserve(resMock.WithRadius(1)),
-
-		syncSleepDur: time.Millisecond * 10,
 	})
 
 	time.Sleep(100 * time.Millisecond)
@@ -440,17 +476,18 @@ func TestPeerGone(t *testing.T) {
 	}
 }
 
-func checkIntervals(t *testing.T, s storage.StateStorer, addr swarm.Address, expInterval string, bin uint8) {
-	t.Helper()
+func checkIntervals(s storage.StateStorer, addr swarm.Address, expInterval string, bin uint8) error {
 	key := puller.PeerIntervalKey(addr, bin)
 	i := &intervalstore.Intervals{}
 	err := s.Get(key, i)
 	if err != nil {
-		t.Fatalf("error getting interval for bin %d: %v", bin, err)
+		return fmt.Errorf("error getting interval for bin %d: %w", bin, err)
 	}
 	if v := i.String(); v != expInterval {
-		t.Fatalf("got unexpected interval: %s, want %s bin %d", v, expInterval, bin)
+		return fmt.Errorf("got unexpected interval: %s, want %s bin %d", v, expInterval, bin)
 	}
+
+	return nil
 }
 
 // waitCursorsCalled waits until GetCursors are called on the given address.
@@ -518,11 +555,11 @@ func waitSyncCalledBins(t *testing.T, ps *mockps.PullSyncMock, addr swarm.Addres
 }
 
 type opts struct {
-	pullSync     []mockps.Option
-	kad          []kadMock.Option
-	rs           *resMock.ReserveStore
-	bins         uint8
-	syncSleepDur time.Duration
+	pullSync   []mockps.Option
+	kad        []kadMock.Option
+	rs         *resMock.ReserveStore
+	bins       uint8
+	refreshDur time.Duration
 }
 
 func newPuller(t *testing.T, ops opts) (*puller.Puller, storage.StateStorer, *kadMock.Mock, *mockps.PullSyncMock) {
@@ -533,10 +570,14 @@ func newPuller(t *testing.T, ops opts) (*puller.Puller, storage.StateStorer, *ka
 	kad := kadMock.NewMockKademlia(ops.kad...)
 	logger := log.Noop
 
-	o := puller.Options{
-		Bins: ops.bins,
+	if ops.refreshDur == 0 {
+		ops.refreshDur = time.Hour * 24
 	}
-	p := puller.New(s, kad, ops.rs, ps, nil, logger, o, 0)
+	o := &puller.Options{
+		Bins:                ops.bins,
+		RefreshIntervalsDur: ops.refreshDur,
+	}
+	p := puller.New(s, kad, ops.rs, ps, nil, logger, o)
 	p.Start(context.Background())
 
 	testutil.CleanupCloser(t, p)

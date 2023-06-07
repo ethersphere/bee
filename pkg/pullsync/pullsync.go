@@ -52,7 +52,7 @@ var (
 
 const (
 	makeOfferTimeout        = 5 * time.Minute
-	DefaultMaxPage   uint64 = 250
+	DefaultMaxPage   uint64 = 1000
 )
 
 // how many maximum chunks in a batch
