@@ -13,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/cmd/bee/cmd"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/node"
 	"github.com/ethersphere/bee/pkg/postage"
 	storagetest "github.com/ethersphere/bee/pkg/storage/testing"
@@ -189,7 +190,7 @@ func TestDBNuke(t *testing.T) {
 	db := newTestDB(t, ctx, &storer.Options{
 		Batchstore:      new(postage.NoOpBatchStore),
 		RadiusSetter:    kademlia.NewTopologyDriver(),
-		Logger:          testutil.NewLogger(t),
+		Logger:          log.Noop,
 		ReserveCapacity: node.ReserveCapacity,
 	}, dataDir)
 
@@ -219,7 +220,7 @@ func TestDBNuke(t *testing.T) {
 	db = newTestDB(t, ctx, &storer.Options{
 		Batchstore:      new(postage.NoOpBatchStore),
 		RadiusSetter:    kademlia.NewTopologyDriver(),
-		Logger:          testutil.NewLogger(t),
+		Logger:          log.Noop,
 		ReserveCapacity: node.ReserveCapacity,
 	}, path.Join(dataDir, "localstore"))
 	if err != nil {

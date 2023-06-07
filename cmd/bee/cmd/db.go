@@ -577,12 +577,11 @@ func dbNukeCmd(cmd *cobra.Command) {
 			defer stateStore.Close()
 
 			stateStoreCleaner, ok := stateStore.(storage.StateStorerCleaner)
-			if !ok {
-				return errors.New("statestore does not implement StateStorerCleaner interface")
-			}
-			err = stateStoreCleaner.Nuke(forgetStamps)
-			if err != nil {
-				return fmt.Errorf("statestore nuke: %w", err)
+			if ok {
+				err = stateStoreCleaner.Nuke(forgetStamps)
+				if err != nil {
+					return fmt.Errorf("statestore nuke: %w", err)
+				}
 			}
 
 			if forgetStamps {
