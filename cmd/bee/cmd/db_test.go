@@ -8,9 +8,12 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"path"
+	"strings"
 	"testing"
 
 	"github.com/ethersphere/bee/cmd/bee/cmd"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/node"
 	"github.com/ethersphere/bee/pkg/postage"
 	storagetest "github.com/ethersphere/bee/pkg/storage/testing"
@@ -176,6 +179,102 @@ func TestDBExportImportPinning(t *testing.T) {
 		if v != 1 {
 			t.Errorf("chunk %s missing", k)
 		}
+	}
+}
+
+func TestDBNuke(t *testing.T) {
+	t.Parallel()
+
+	dataDir := t.TempDir()
+	ctx := context.Background()
+	db := newTestDB(t, ctx, &storer.Options{
+		Batchstore:      new(postage.NoOpBatchStore),
+		RadiusSetter:    kademlia.NewTopologyDriver(),
+		Logger:          log.Noop,
+		ReserveCapacity: node.ReserveCapacity,
+	}, dataDir)
+
+	nChunks := 10
+	for i := 0; i < nChunks; i++ {
+		ch := storagetest.GenerateTestRandomChunk()
+		err := db.ReservePutter().Put(ctx, ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	info, err := db.DebugInfo(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Reserve.Size != nChunks {
+		t.Errorf("got reserve size before nuke: %d, want %d", info.Reserve.Size, nChunks)
+	}
+
+	db.Close()
+
+	err = newCommand(t, cmd.WithArgs("db", "nuke", "--data-dir", dataDir)).Execute()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	db = newTestDB(t, ctx, &storer.Options{
+		Batchstore:      new(postage.NoOpBatchStore),
+		RadiusSetter:    kademlia.NewTopologyDriver(),
+		Logger:          log.Noop,
+		ReserveCapacity: node.ReserveCapacity,
+	}, path.Join(dataDir, "localstore"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	info, err = db.DebugInfo(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Reserve.Size != 0 {
+		t.Errorf("got reserve size after nuke: %d, want %d", info.Reserve.Size, 0)
+	}
+}
+
+func TestDBInfo(t *testing.T) {
+	t.Parallel()
+
+	dir1 := t.TempDir()
+	ctx := context.Background()
+	db1 := newTestDB(t, ctx, &storer.Options{
+		Batchstore:      new(postage.NoOpBatchStore),
+		RadiusSetter:    kademlia.NewTopologyDriver(),
+		Logger:          testutil.NewLogger(t),
+		ReserveCapacity: node.ReserveCapacity,
+	}, dir1)
+
+	nChunks := 10
+	for i := 0; i < nChunks; i++ {
+		ch := storagetest.GenerateTestRandomChunk()
+		err := db1.ReservePutter().Put(ctx, ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	info, err := db1.DebugInfo(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Reserve.Size != nChunks {
+		t.Errorf("got reserve size before nuke: %d, want %d", info.Reserve.Size, nChunks)
+	}
+
+	db1.Close()
+
+	var buf bytes.Buffer
+	err = newCommand(t, cmd.WithArgs("db", "info", "--data-dir", dir1), cmd.WithOutput(&buf)).Execute()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(buf.String(), fmt.Sprintf("\"msg\"=\"reserve\" \"size\"=%d \"capacity\"=%d", nChunks, node.ReserveCapacity)) {
+		t.Fatal("reserve info not correct")
 	}
 }
 
