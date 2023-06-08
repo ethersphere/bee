@@ -542,6 +542,41 @@ func (a *Agent) Status() (*Status, error) {
 	return a.state.Status()
 }
 
+type SampleWithProofs struct {
+	Items    []storer.SampleItem
+	Hash     swarm.Address
+	Duration time.Duration
+}
+
+func (a *Agent) SampleWithProofs(
+	ctx context.Context,
+	anchor1 []byte,
+	storageRadius uint8,
+) (SampleWithProofs, error) {
+	sampleStartTime := time.Now()
+
+	timeLimiter, err := a.getPreviousRoundTime(ctx)
+	if err != nil {
+		return SampleWithProofs{}, err
+	}
+
+	rSample, err := a.store.ReserveSample(ctx, anchor1, storageRadius, uint64(timeLimiter), a.minBatchBalance())
+	if err != nil {
+		return SampleWithProofs{}, err
+	}
+
+	hash, err := sampleHash(rSample.Items)
+	if err != nil {
+		return SampleWithProofs{}, fmt.Errorf("sample hash: %w:", err)
+	}
+
+	return SampleWithProofs{
+		Items:    rSample.Items,
+		Hash:     hash,
+		Duration: time.Since(sampleStartTime),
+	}, nil
+}
+
 func (a *Agent) HasEnoughFundsToPlay(ctx context.Context) (*big.Int, bool, error) {
 	balance, err := a.backend.BalanceAt(ctx, a.state.ethAddress, nil)
 	if err != nil {
