@@ -146,7 +146,7 @@ type ValidStampFn func(chunk swarm.Chunk) (swarm.Chunk, error)
 func ValidStamp(batchStore Storer) ValidStampFn {
 	return func(chunk swarm.Chunk) (swarm.Chunk, error) {
 		stamp := chunk.Stamp()
-		b, err := batchStore.Get(chunk.Stamp().BatchID())
+		b, err := batchStore.Get(stamp.BatchID())
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
 				return nil, fmt.Errorf("batchstore get: %w, %w", err, ErrNotFound)

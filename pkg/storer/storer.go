@@ -351,6 +351,7 @@ type Options struct {
 	Address        swarm.Address
 	WarmupDuration time.Duration
 	Batchstore     postage.Storer
+	ValidStamp     postage.ValidStampFn
 	RadiusSetter   topology.SetStorageRadiuser
 	StateStore     storage.StateStorer
 
@@ -398,6 +399,7 @@ type DB struct {
 	reserveBinEvents *events.Subscriber
 	baseAddr         swarm.Address
 	batchstore       postage.Storer
+	validStamp       postage.ValidStampFn
 	setSyncerOnce    sync.Once
 	syncer           Syncer
 	opts             workerOpts
@@ -461,12 +463,17 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		bgCacheWorkers:   make(chan struct{}, 16),
 		dbCloser:         dbCloser,
 		batchstore:       opts.Batchstore,
+		validStamp:       opts.ValidStamp,
 		events:           events.NewSubscriber(),
 		reserveBinEvents: events.NewSubscriber(),
 		opts: workerOpts{
 			warmupDuration: opts.WarmupDuration,
 			wakeupDuration: opts.ReserveWakeUpDuration,
 		},
+	}
+
+	if db.validStamp == nil {
+		db.validStamp = postage.ValidStamp(db.batchstore)
 	}
 
 	if opts.ReserveCapacity > 0 {
