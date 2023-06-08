@@ -12,7 +12,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-type RcHashResponse storageincentives.SampleWithProofs
+type RCHashResponse storageincentives.SampleWithProofs
 
 // This API is kept for testing the sampler. As a result, no documentation or tests are added here.
 func (s *Service) rchash(w http.ResponseWriter, r *http.Request) {
@@ -41,5 +41,5 @@ func (s *Service) rchash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonhttp.OK(w, RcHashResponse(resp))
+	jsonhttp.OK(w, RCHashResponse(resp))
 }
