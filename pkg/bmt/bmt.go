@@ -54,6 +54,11 @@ func LengthToSpan(length int64) []byte {
 	return span
 }
 
+// LengthFromSpan returns length from span.
+func LengthFromSpan(span []byte) uint64 {
+	return binary.LittleEndian.Uint64(span)
+}
+
 // SetHeaderInt64 sets the metadata preamble to the little endian binary representation of int64 argument for the current hash operation.
 func (h *Hasher) SetHeaderInt64(length int64) {
 	binary.LittleEndian.PutUint64(h.span, uint64(length))

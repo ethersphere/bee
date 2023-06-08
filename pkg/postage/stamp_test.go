@@ -55,7 +55,7 @@ func TestStampIndexMarshalling(t *testing.T) {
 		expIndex  uint32 = 199999
 	)
 	index := postage.IndexToBytes(expBucket, expIndex)
-	bucket, idx := postage.BytesToIndex(index)
+	bucket, idx := postage.BucketIndexFromBytes(index)
 	if bucket != expBucket {
 		t.Fatalf("bucket mismatch. want %d, got %d", expBucket, bucket)
 	}
