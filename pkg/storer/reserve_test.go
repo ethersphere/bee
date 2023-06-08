@@ -731,7 +731,10 @@ func TestReserveSampler(t *testing.T) {
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
 		baseAddr := swarm.RandAddress(t)
-		storer, err := diskStorer(t, dbTestOps(baseAddr, 1000, nil, nil, time.Second))()
+		opts := dbTestOps(baseAddr, 1000, nil, nil, time.Second)
+		opts.ValidStamp = func(ch swarm.Chunk) (swarm.Chunk, error) { return ch, nil }
+
+		storer, err := diskStorer(t, opts)()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -740,7 +743,10 @@ func TestReserveSampler(t *testing.T) {
 	t.Run("mem", func(t *testing.T) {
 		t.Parallel()
 		baseAddr := swarm.RandAddress(t)
-		storer, err := memStorer(t, dbTestOps(baseAddr, 1000, nil, nil, time.Second))()
+		opts := dbTestOps(baseAddr, 1000, nil, nil, time.Second)
+		opts.ValidStamp = func(ch swarm.Chunk) (swarm.Chunk, error) { return ch, nil }
+
+		storer, err := memStorer(t, opts)()
 		if err != nil {
 			t.Fatal(err)
 		}
