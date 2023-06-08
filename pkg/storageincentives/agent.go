@@ -550,8 +550,7 @@ type SampleWithProofs struct {
 
 func (a *Agent) SampleWithProofs(
 	ctx context.Context,
-	anchor1,
-	anchor2 []byte,
+	anchor1 []byte,
 	storageRadius uint8,
 ) (SampleWithProofs, error) {
 	sampleStartTime := time.Now()
