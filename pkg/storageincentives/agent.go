@@ -420,13 +420,12 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 		return false, nil
 	}
 
-	now := time.Now()
 	sample, err := a.makeSample(ctx, storageRadius)
 	if err != nil {
 		return false, err
 	}
 
-	a.state.SetSampleData(round, sample, time.Since(now))
+	a.state.SetSampleData(round, sample)
 
 	return true, nil
 }
@@ -447,7 +446,8 @@ func (a *Agent) makeSample(ctx context.Context, storageRadius uint8) (SampleData
 	if err != nil {
 		return SampleData{}, err
 	}
-	a.metrics.SampleDuration.Set(time.Since(t).Seconds())
+	dur := time.Since(t)
+	a.metrics.SampleDuration.Set(dur.Seconds())
 
 	sampleHash, err := sampleHash(rSample.Items)
 	if err != nil {
@@ -457,6 +457,7 @@ func (a *Agent) makeSample(ctx context.Context, storageRadius uint8) (SampleData
 	sample := SampleData{
 		ReserveSampleHash: sampleHash,
 		StorageRadius:     storageRadius,
+		SampleDuration:    dur,
 	}
 
 	return sample, nil

@@ -52,7 +52,6 @@ type Status struct {
 	Reward            *big.Int
 	Fees              *big.Int
 	RoundData         map[uint64]RoundData
-	SampleDuration    time.Duration
 }
 
 type RoundData struct {
@@ -64,6 +63,7 @@ type RoundData struct {
 type SampleData struct {
 	ReserveSampleHash swarm.Address
 	StorageRadius     uint8
+	SampleDuration    time.Duration
 }
 
 func NewStatus() *Status {
@@ -240,14 +240,13 @@ func (r *RedistributionState) SampleData(round uint64) (SampleData, bool) {
 	return *rd.SampleData, true
 }
 
-func (r *RedistributionState) SetSampleData(round uint64, sd SampleData, dur time.Duration) {
+func (r *RedistributionState) SetSampleData(round uint64, sd SampleData) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
 	rd := r.status.RoundData[round]
 	rd.SampleData = &sd
 	r.status.RoundData[round] = rd
-	r.status.SampleDuration = dur
 
 	r.save()
 }
