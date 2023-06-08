@@ -7,6 +7,7 @@ package storer
 import (
 	"bytes"
 	"context"
+	"crypto/hmac"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
@@ -31,7 +32,7 @@ import (
 const (
 	reserveOverCapacity  = "reserveOverCapacity"
 	reserveUnreserved    = "reserveUnreserved"
-	sampleSize           = 16
+	SampleSize           = 8
 	reserveUpdateLockKey = "reserveUpdateLockKey"
 )
 
@@ -404,8 +405,8 @@ func RandSample(t *testing.T, anchor []byte) Sample {
 
 	hasher := bmt.NewTrHasher(anchor)
 
-	items := make([]SampleItem, sampleSize)
-	for i := 0; i < sampleSize; i++ {
+	items := make([]SampleItem, SampleSize)
+	for i := 0; i < SampleSize; i++ {
 		ch := chunk.GenerateTestRandomChunk()
 
 		tr, err := transformedAddress(hasher, ch, swarm.ChunkTypeContentAddressed)
@@ -487,7 +488,10 @@ func (db *DB) ReserveSample(
 
 	for i := 0; i < workers; i++ {
 		g.Go(func() error {
-			hasher := bmt.NewTrHasher(anchor)
+			// PH4_Logic:
+			// hasher := bmt.NewTrHasher(anchor)
+
+			hmacr := hmac.New(swarm.NewHasher, anchor)
 
 			for chItem := range chunkC {
 				getStart := time.Now()
@@ -507,12 +511,25 @@ func (db *DB) ReserveSample(
 					continue
 				}
 
+				// Skip chunks if they are not SOC or CAC
+				if chItem.Type != swarm.ChunkTypeContentAddressed && chItem.Type != swarm.ChunkTypeSingleOwner {
+					continue
+				}
+
 				hmacrStart := time.Now()
 
-				taddr, err := transformedAddress(hasher, chItem.Chunk, chItem.Type)
+				hmacr.Reset()
+				_, err := hmacr.Write(chItem.Chunk.Data())
 				if err != nil {
 					return err
 				}
+				taddr := swarm.NewAddress(hmacr.Sum(nil))
+
+				// PH4_Logic::
+				// taddr, err := transformedAddress(hasher, chItem.Chunk, chItem.Type)
+				// if err != nil {
+				// 	return err
+				// }
 
 				stat.HmacrDuration.Add(time.Since(hmacrStart).Nanoseconds())
 
@@ -537,7 +554,7 @@ func (db *DB) ReserveSample(
 		close(sampleItemChan)
 	}()
 
-	sampleItems := make([]SampleItem, 0, sampleSize)
+	sampleItems := make([]SampleItem, 0, SampleSize)
 	// insert function will insert the new item in its correct place. If the sample
 	// size goes beyond what we need we omit the last item.
 	insert := func(item SampleItem) {
@@ -550,15 +567,15 @@ func (db *DB) ReserveSample(
 				break
 			}
 		}
-		if len(sampleItems) > sampleSize {
-			sampleItems = sampleItems[:sampleSize]
+		if len(sampleItems) > SampleSize {
+			sampleItems = sampleItems[:SampleSize]
 		}
-		if len(sampleItems) < sampleSize && !added {
+		if len(sampleItems) < SampleSize && !added {
 			sampleItems = append(sampleItems, item)
 		}
 	}
 
-	// Phase 3: Assemble the sample. Here we need to assemble only the first sampleSize
+	// Phase 3: Assemble the sample. Here we need to assemble only the first SampleSize
 	// no of items from the results of the 2nd phase.
 	for item := range sampleItemChan {
 		currentMaxAddr := swarm.EmptyAddress
@@ -566,7 +583,7 @@ func (db *DB) ReserveSample(
 			currentMaxAddr = sampleItems[len(sampleItems)-1].TransformedAddress
 		}
 
-		if le(item.TransformedAddress, currentMaxAddr) || len(sampleItems) < sampleSize {
+		if le(item.TransformedAddress, currentMaxAddr) || len(sampleItems) < SampleSize {
 			insert(item)
 
 			// TODO: STAMP VALIDATION
