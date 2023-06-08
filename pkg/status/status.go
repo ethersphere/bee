@@ -57,6 +57,25 @@ type Service struct {
 	commitment postage.CommitmentGetter
 }
 
+// NewService creates a new status service.
+func NewService(
+	logger log.Logger,
+	streamer p2p.Streamer,
+	topology topologyDriver,
+	beeMode string,
+	commitment postage.CommitmentGetter,
+	reserve Reserve,
+) *Service {
+	return &Service{
+		logger:         logger.WithName(loggerName).Register(),
+		streamer:       streamer,
+		topologyDriver: topology,
+		beeMode:        beeMode,
+		commitment:     commitment,
+		reserve:        reserve,
+	}
+}
+
 // LocalSnapshot returns the current status snapshot of this node.
 func (s *Service) LocalSnapshot() (*Snapshot, error) {
 	var (
@@ -66,7 +85,22 @@ func (s *Service) LocalSnapshot() (*Snapshot, error) {
 		connectedPeers   uint64
 		neighborhoodSize uint64
 	)
-	err := s.topologyDriver.EachConnectedPeer(
+
+	if s.reserve != nil {
+		storageRadius = s.reserve.StorageRadius()
+		reserveSize = uint64(s.reserve.ReserveSize())
+	}
+
+	if s.sync != nil {
+		syncRate = s.sync.SyncRate()
+	}
+
+	commitment, err := s.commitment.Commitment()
+	if err != nil {
+		return nil, fmt.Errorf("batchstore commitment: %w", err)
+	}
+
+	err = s.topologyDriver.EachConnectedPeer(
 		func(_ swarm.Address, po uint8) (bool, bool, error) {
 			connectedPeers++
 			if po >= storageRadius {
@@ -78,20 +112,6 @@ func (s *Service) LocalSnapshot() (*Snapshot, error) {
 	)
 	if err != nil {
 		return nil, fmt.Errorf("iterate connected peers: %w", err)
-	}
-
-	commitment, err := s.commitment.Commitment()
-	if err != nil {
-		return nil, fmt.Errorf("batchstore commitment: %w", err)
-	}
-
-	if s.reserve != nil {
-		storageRadius = s.reserve.StorageRadius()
-		reserveSize = uint64(s.reserve.ReserveSize())
-	}
-
-	if s.sync != nil {
-		syncRate = s.sync.SyncRate()
 	}
 
 	return &Snapshot{
@@ -171,27 +191,6 @@ func (s *Service) handler(ctx context.Context, _ p2p.Peer, stream p2p.Stream) er
 	}
 
 	return nil
-}
-
-// NewService creates a new status service.
-func NewService(
-	logger log.Logger,
-	streamer p2p.Streamer,
-	topology topologyDriver,
-	beeMode string,
-	commitment postage.CommitmentGetter,
-) *Service {
-	return &Service{
-		logger:         logger.WithName(loggerName).Register(),
-		streamer:       streamer,
-		topologyDriver: topology,
-		beeMode:        beeMode,
-		commitment:     commitment,
-	}
-}
-
-func (s *Service) SetStorage(storage Reserve) {
-	s.reserve = storage
 }
 
 func (s *Service) SetSync(sync SyncReporter) {

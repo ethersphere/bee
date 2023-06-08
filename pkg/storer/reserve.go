@@ -46,7 +46,7 @@ type Syncer interface {
 
 func threshold(capacity int) int { return capacity * 5 / 10 }
 
-func (db *DB) reserveWorker(capacity int, warmupDur, wakeUpDur time.Duration, radius func() (uint8, error)) {
+func (db *DB) reserveWorker(warmupDur, wakeUpDur time.Duration, radius func() (uint8, error)) {
 	defer db.reserveWg.Done()
 
 	overCapTrigger, overCapUnsub := db.events.Subscribe(reserveOverCapacity)
@@ -91,7 +91,7 @@ func (db *DB) reserveWorker(capacity int, warmupDur, wakeUpDur time.Duration, ra
 			db.metrics.OverCapTriggerCount.Inc()
 		case <-wakeUpTicker.C:
 			radius := db.reserve.Radius()
-			if db.reserve.Size() < threshold(capacity) && db.syncer.SyncRate() == 0 && radius > 0 {
+			if db.reserve.Size() < threshold(db.reserve.Capacity()) && db.syncer.SyncRate() == 0 && radius > 0 {
 				radius--
 				err := db.reserve.SetRadius(db.repo.IndexStore(), radius)
 				if err != nil {
