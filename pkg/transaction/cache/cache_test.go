@@ -39,7 +39,7 @@ func TestNew(t *testing.T) {
 			t.Fatalf("backend calls not as expected: want %d, got %d", i+1, backendCalls)
 		}
 
-		now = now.Add(cache.DefaultBlockNumberFetchInterval).Add(time.Nanosecond)
+		now = now.Add(cache.DefaultBlockNumberCacheInterval).Add(time.Nanosecond)
 		blockNo++
 	}
 }

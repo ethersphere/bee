@@ -14,7 +14,7 @@ import (
 
 var _ transaction.Backend = (*cachedBackend)(nil)
 
-const defaultBlockNumberFetchInterval = time.Second * 20
+const defaultBlockNumberCacheInterval = time.Second * 20
 
 type cachedBackend struct {
 	transaction.Backend
@@ -22,7 +22,7 @@ type cachedBackend struct {
 	nowFn                    func() time.Time
 	blockNumber              uint64
 	blockNumberLastFetchTime time.Time
-	blockNumberFetchInterval time.Duration
+	blockNumberCacheInterval time.Duration
 
 	lock sync.Mutex
 }
@@ -32,7 +32,7 @@ func New(backend transaction.Backend) *cachedBackend {
 		Backend:                  backend,
 		backend:                  backend,
 		nowFn:                    time.Now,
-		blockNumberFetchInterval: defaultBlockNumberFetchInterval,
+		blockNumberCacheInterval: defaultBlockNumberCacheInterval,
 	}
 }
 
@@ -41,7 +41,7 @@ func (b *cachedBackend) BlockNumber(ctx context.Context) (uint64, error) {
 	defer b.lock.Unlock()
 
 	now := b.nowFn()
-	if b.blockNumberLastFetchTime.Add(b.blockNumberFetchInterval).Before(now) {
+	if b.blockNumberLastFetchTime.Add(b.blockNumberCacheInterval).Before(now) {
 		bno, err := b.backend.BlockNumber(ctx)
 		if err != nil {
 			return bno, err

@@ -10,7 +10,7 @@ import (
 	"github.com/ethersphere/bee/pkg/transaction"
 )
 
-const DefaultBlockNumberFetchInterval = defaultBlockNumberFetchInterval
+const DefaultBlockNumberCacheInterval = defaultBlockNumberCacheInterval
 
 func NewWithOptions(
 	backend transaction.Backend,
