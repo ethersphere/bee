@@ -401,14 +401,8 @@ type DB struct {
 	bgCacheWorkers   chan struct{}
 	bgCacheWorkersWg sync.WaitGroup
 	dbCloser         io.Closer
-
-	subscriptionsWG sync.WaitGroup
-
-	dirtyTagsMu sync.RWMutex
-	dirtyTags   []uint64 // tagIDs
-
-	events *events.Subscriber
-
+	subscriptionsWG  sync.WaitGroup
+	events           *events.Subscriber
 	reserve          *reserve.Reserve
 	reserveWg        sync.WaitGroup
 	reserveBinEvents *events.Subscriber
@@ -584,22 +578,3 @@ type putterSession struct {
 func (p *putterSession) Done(addr swarm.Address) error { return p.done(addr) }
 
 func (p *putterSession) Cleanup() error { return p.cleanup() }
-
-func (db *DB) markDirty(tag uint64) {
-	db.dirtyTagsMu.Lock()
-	defer db.dirtyTagsMu.Unlock()
-
-	db.dirtyTags = append(db.dirtyTags, tag)
-}
-
-func (db *DB) clearDirty(tag uint64) {
-	db.dirtyTagsMu.Lock()
-	defer db.dirtyTagsMu.Unlock()
-
-	for i, tagID := range db.dirtyTags {
-		if tag == tagID {
-			db.dirtyTags = append(db.dirtyTags[:i], db.dirtyTags[i+1:]...)
-			break
-		}
-	}
-}

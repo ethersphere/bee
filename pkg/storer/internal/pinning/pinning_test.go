@@ -75,20 +75,23 @@ func TestPinStore(t *testing.T) {
 	t.Run("create new collections", func(t *testing.T) {
 		for tCount, tc := range tests {
 			t.Run(fmt.Sprintf("create collection %d", tCount), func(t *testing.T) {
-				putter := pinstore.NewCollection(st)
+				putter, err := pinstore.NewCollection(st)
+				if err != nil {
+					t.Fatal(err)
+				}
 				for _, ch := range append(tc.uniqueChunks, tc.root) {
-					err := putter.Put(context.TODO(), ch)
+					err := putter.Put(context.Background(), st, ch)
 					if err != nil {
 						t.Fatal(err)
 					}
 				}
 				for _, ch := range tc.dupChunks {
-					err := putter.Put(context.TODO(), ch)
+					err := putter.Put(context.Background(), st, ch)
 					if err != nil {
 						t.Fatal(err)
 					}
 				}
-				err := putter.Close(tc.root.Address())
+				err = putter.Close(st, tc.root.Address())
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -252,19 +255,22 @@ func TestPinStore(t *testing.T) {
 
 	t.Run("error after close", func(t *testing.T) {
 		root := chunktest.GenerateTestRandomChunk()
-		putter := pinstore.NewCollection(st)
-
-		err := putter.Put(context.TODO(), root)
+		putter, err := pinstore.NewCollection(st)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		err = putter.Close(root.Address())
+		err = putter.Put(context.Background(), st, root)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		err = putter.Put(context.TODO(), chunktest.GenerateTestRandomChunk())
+		err = putter.Close(st, root.Address())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = putter.Put(context.Background(), st, chunktest.GenerateTestRandomChunk())
 		if !errors.Is(err, pinstore.ErrPutterAlreadyClosed) {
 			t.Fatalf("unexpected error during Put, want: %v, got: %v", pinstore.ErrPutterAlreadyClosed, err)
 		}
@@ -272,18 +278,89 @@ func TestPinStore(t *testing.T) {
 
 	t.Run("zero address close", func(t *testing.T) {
 		root := chunktest.GenerateTestRandomChunk()
-		putter := pinstore.NewCollection(st)
-
-		err := putter.Put(context.TODO(), root)
+		putter, err := pinstore.NewCollection(st)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		err = putter.Close(swarm.ZeroAddress)
+		err = putter.Put(context.Background(), st, root)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = putter.Close(st, swarm.ZeroAddress)
 		if !errors.Is(err, pinstore.ErrCollectionRootAddressIsZero) {
 			t.Fatalf("unexpected error on close, want: %v, got: %v", pinstore.ErrCollectionRootAddressIsZero, err)
 		}
 
+	})
+}
+
+func TestCleanup(t *testing.T) {
+	t.Parallel()
+
+	st := newTestStorage(t)
+
+	t.Run("cleanup putter", func(t *testing.T) {
+		chunks := chunktest.GenerateTestRandomChunks(5)
+
+		putter, err := pinstore.NewCollection(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		for _, ch := range chunks {
+			err = putter.Put(context.Background(), st, ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		err = putter.Cleanup(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		for _, ch := range chunks {
+			exists, err := st.ChunkStore().Has(context.Background(), ch.Address())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if exists {
+				t.Fatal("chunk should not exist")
+			}
+		}
+	})
+
+	t.Run("cleanup dirty", func(t *testing.T) {
+		chunks := chunktest.GenerateTestRandomChunks(5)
+
+		putter, err := pinstore.NewCollection(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		for _, ch := range chunks {
+			err = putter.Put(context.Background(), st, ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		err = pinstore.CleanupDirty(st)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		for _, ch := range chunks {
+			exists, err := st.ChunkStore().Has(context.Background(), ch.Address())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if exists {
+				t.Fatal("chunk should not exist")
+			}
+		}
 	})
 }
 
@@ -379,6 +456,16 @@ func TestPinChunkItem(t *testing.T) {
 		Item: &pinstore.PinChunkItem{
 			UUID: pinstore.NewUUID(),
 			Addr: swarm.RandAddress(t),
+		},
+	})
+}
+
+func TestDirtyCollectionsItem(t *testing.T) {
+	t.Parallel()
+
+	storagetest.TestItemClone(t, &storagetest.ItemCloneTest{
+		Item: &pinstore.DirtyCollection{
+			UUID: pinstore.NewUUID(),
 		},
 	})
 }

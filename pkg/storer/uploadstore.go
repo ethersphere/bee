@@ -27,55 +27,77 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 
 	uploadPutter, err := upload.NewPutter(txnRepo, tagID)
 	if err != nil {
-		return nil, err
+		return nil, errors.Join(err, rollback())
 	}
 
 	var pinningPutter internal.PutterCloserWithReference
 	if pin {
-		pinningPutter = pinstore.NewCollection(txnRepo)
+		pinningPutter, err = pinstore.NewCollection(txnRepo)
+		if err != nil {
+			return nil, errors.Join(err, rollback())
+		}
 	}
 
-	db.markDirty(tagID)
-	tagCloser := func() {
-		db.clearDirty(tagID)
-		db.events.Trigger(subscribePushEventKey)
+	if err := commit(); err != nil {
+		return nil, fmt.Errorf("storer: upload: %w", errors.Join(err, rollback()))
 	}
 
 	return &putterSession{
 		Putter: putterWithMetrics{
 			storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
-				return errors.Join(
-					uploadPutter.Put(ctx, chunk),
+				txnRepo, commit, rollback := db.repo.NewTx(ctx)
+				err := errors.Join(
+					uploadPutter.Put(ctx, txnRepo, chunk),
 					func() error {
 						if pinningPutter != nil {
-							return pinningPutter.Put(ctx, chunk)
+							return pinningPutter.Put(ctx, txnRepo, chunk)
 						}
 						return nil
 					}(),
 				)
+				if err != nil {
+					return fmt.Errorf("puttersession: putter.Put: %w", errors.Join(err, rollback()))
+				}
+				return commit()
 			}),
 			db.metrics,
 			"uploadstore",
 		},
 		done: func(address swarm.Address) error {
-			defer tagCloser()
-			return errors.Join(
-				uploadPutter.Close(address),
+			defer db.events.Trigger(subscribePushEventKey)
+
+			txnRepo, commit, rollback := db.repo.NewTx(ctx)
+			err := errors.Join(
+				uploadPutter.Close(txnRepo, address),
 				func() error {
 					if pinningPutter != nil {
-						return pinningPutter.Close(address)
+						return pinningPutter.Close(txnRepo, address)
 					}
 					return nil
 				}(),
-				commit(),
 			)
-		},
-		cleanup: func() error {
-			defer tagCloser()
-			if err := rollback(); err != nil {
+			if err != nil {
 				return fmt.Errorf("puttersession: putter.Put: %w", errors.Join(err, rollback()))
 			}
-			return nil
+			return commit()
+		},
+		cleanup: func() error {
+			defer db.events.Trigger(subscribePushEventKey)
+
+			txnRepo, commit, rollback := db.repo.NewTx(ctx)
+			err := errors.Join(
+				uploadPutter.Cleanup(txnRepo),
+				func() error {
+					if pinningPutter != nil {
+						return pinningPutter.Cleanup(txnRepo)
+					}
+					return nil
+				}(),
+			)
+			if err != nil {
+				return fmt.Errorf("puttersession: putter.Put: %w", errors.Join(err, rollback()))
+			}
+			return commit()
 		},
 	}, nil
 }

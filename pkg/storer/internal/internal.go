@@ -6,6 +6,7 @@ package internal
 
 import (
 	"bytes"
+	"context"
 	"errors"
 
 	storage "github.com/ethersphere/bee/pkg/storage"
@@ -23,8 +24,9 @@ type Storage interface {
 // PutterCloserWithReference provides a Putter which can be closed with a root
 // swarm reference associated with this session.
 type PutterCloserWithReference interface {
-	storage.Putter
-	Close(swarm.Address) error
+	Put(context.Context, Storage, swarm.Chunk) error
+	Close(Storage, swarm.Address) error
+	Cleanup(Storage) error
 }
 
 var emptyAddr = make([]byte, swarm.HashSize)

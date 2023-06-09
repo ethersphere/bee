@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"time"
 
+	storage "github.com/ethersphere/bee/pkg/storage"
 	pinstore "github.com/ethersphere/bee/pkg/storer/internal/pinning"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -17,25 +18,44 @@ import (
 // NewCollection is the implementation of the PinStore.NewCollection method.
 func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
 	txnRepo, commit, rollback := db.repo.NewTx(ctx)
-	pinningPutter := pinstore.NewCollection(txnRepo)
+	pinningPutter, err := pinstore.NewCollection(txnRepo)
+	if err != nil {
+		return nil, fmt.Errorf("pinstore.NewCollection: %w", errors.Join(err, rollback()))
+	}
+	if err := commit(); err != nil {
+		return nil, fmt.Errorf("pinstore.NewCollection: %w", errors.Join(err, rollback()))
+	}
 
 	return &putterSession{
 		Putter: putterWithMetrics{
-			pinningPutter,
+			storage.PutterFunc(
+				func(ctx context.Context, chunk swarm.Chunk) error {
+					txnRepo, commit, rollback := db.repo.NewTx(ctx)
+					err := pinningPutter.Put(ctx, txnRepo, chunk)
+					if err != nil {
+						return fmt.Errorf("pinstore.Put: %w", errors.Join(err, rollback()))
+					}
+					return commit()
+				},
+			),
 			db.metrics,
 			"pinstore",
 		},
 		done: func(address swarm.Address) error {
-			return errors.Join(
-				pinningPutter.Close(address),
-				commit(),
-			)
+			txnRepo, commit, rollback := db.repo.NewTx(ctx)
+			err := pinningPutter.Close(txnRepo, address)
+			if err != nil {
+				return fmt.Errorf("pinstore.Close: %w", errors.Join(err, rollback()))
+			}
+			return commit()
 		},
 		cleanup: func() error {
-			if err := rollback(); err != nil {
-				return fmt.Errorf("pinstore.NewCollection: %w", err)
+			txnRepo, commit, rollback := db.repo.NewTx(ctx)
+			err := pinningPutter.Cleanup(txnRepo)
+			if err != nil {
+				return fmt.Errorf("pinstore.Close: %w", errors.Join(err, rollback()))
 			}
-			return nil
+			return commit()
 		},
 	}, nil
 }

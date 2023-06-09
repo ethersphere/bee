@@ -395,7 +395,10 @@ func (e *epochMigrator) migratePinning(ctx context.Context) error {
 						return nil
 					}
 
-					pinningPutter := pinstore.NewCollection(pStorage)
+					pinningPutter, err := pinstore.NewCollection(pStorage)
+					if err != nil {
+						return err
+					}
 					var mu sync.Mutex
 
 					traverserFn := func(chAddr swarm.Address) error {
@@ -412,7 +415,7 @@ func (e *epochMigrator) migratePinning(ctx context.Context) error {
 
 						mu.Lock()
 						pStorage.location = l
-						err = pinningPutter.Put(egCtx, ch)
+						err = pinningPutter.Put(egCtx, pStorage, ch)
 						if err != nil {
 							mu.Unlock()
 							return err
@@ -422,12 +425,12 @@ func (e *epochMigrator) migratePinning(ctx context.Context) error {
 						return nil
 					}
 
-					err := func() error {
+					err = func() error {
 						if err := traverser.Traverse(egCtx, addr, traverserFn); err != nil {
 							return err
 						}
 
-						if err := pinningPutter.Close(addr); err != nil {
+						if err := pinningPutter.Close(pStorage, addr); err != nil {
 							return err
 						}
 						return nil
