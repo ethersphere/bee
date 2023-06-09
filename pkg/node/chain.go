@@ -32,6 +32,7 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap/swapprotocol"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/transaction"
+	"github.com/ethersphere/bee/pkg/transaction/cache"
 	"github.com/ethersphere/bee/pkg/transaction/wrapped"
 	"github.com/ethersphere/go-sw3-abi/sw3abi"
 	"github.com/prometheus/client_golang/prometheus"
@@ -75,7 +76,7 @@ func InitChain(
 
 		logger.Info("connected to ethereum backend", "version", versionString)
 
-		backend = wrapped.NewBackend(ethclient.NewClient(rpcClient))
+		backend = wrapped.NewBackend(cache.New(ethclient.NewClient(rpcClient)))
 	}
 
 	chainID, err := backend.ChainID(ctx)
