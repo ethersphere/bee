@@ -6,10 +6,12 @@ package storer_test
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 	"time"
 
+	storage "github.com/ethersphere/bee/pkg/storage"
 	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
 	storer "github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -244,6 +246,83 @@ func testUploadStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 				t.Fatalf("tag mismatch (-want +have):\n%s", diff)
 			}
 		})
+	})
+}
+
+func testListDeleteSessions(t *testing.T, newStorer func() (*storer.DB, error)) {
+	t.Helper()
+
+	t.Run("list sessions", func(t *testing.T) {
+		t.Parallel()
+
+		lstore, err := newStorer()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		for i := 0; i < 10; i++ {
+			_, err := lstore.NewSession()
+			if err != nil {
+				t.Fatalf("NewSession(): unexpected error: %v", err)
+			}
+		}
+
+		sessions, err := lstore.ListSessions(1, 3)
+		if err != nil {
+			t.Fatalf("ListSession(): unexpected error: %v", err)
+		}
+
+		if len(sessions) != 3 {
+			t.Fatalf("unexpected number of sessions: want %d have %d", 3, len(sessions))
+		}
+
+		for idx, session := range sessions {
+			if session.TagID != uint64(2+idx) {
+				t.Fatalf("unexpected tag in session list: want %d have %d", 2+idx, session.TagID)
+			}
+		}
+	})
+
+	t.Run("delete sessions", func(t *testing.T) {
+		t.Parallel()
+
+		lstore, err := newStorer()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		tag, err := lstore.NewSession()
+		if err != nil {
+			t.Fatalf("NewSession(): unexpected error: %v", err)
+		}
+
+		err = lstore.DeleteSession(tag.TagID)
+		if err != nil {
+			t.Fatalf("DeleteSession(...): unexpected error: %v", err)
+		}
+
+		_, err = lstore.Session(tag.TagID)
+		if !errors.Is(err, storage.ErrNotFound) {
+			t.Fatalf("Session(...): expected error: %v, got: %v", storage.ErrNotFound, err)
+		}
+	})
+}
+
+func TestListDeleteSessions(t *testing.T) {
+	t.Parallel()
+
+	t.Run("inmem", func(t *testing.T) {
+		t.Parallel()
+
+		testListDeleteSessions(t, func() (*storer.DB, error) {
+			return storer.New(context.Background(), "", dbTestOps(swarm.RandAddress(t), 0, nil, nil, time.Second))
+		})
+	})
+
+	t.Run("disk", func(t *testing.T) {
+		t.Parallel()
+
+		testListDeleteSessions(t, diskStorer(t, dbTestOps(swarm.RandAddress(t), 0, nil, nil, time.Second)))
 	})
 }
 
