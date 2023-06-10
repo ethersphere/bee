@@ -47,7 +47,8 @@ func (s *Service) processUploadRequest(
 		ctx = r.Context()
 	}
 
-	putter, wait, err := s.newStamperPutter(r)
+	// putter, wait, err := s.newStamperPutter(r)
+	putter, wait, err := s.newStampedPutter(r)
 	if err != nil {
 		logger.Debug("putter failed", "error", err)
 		logger.Error(nil, "putter failed")
