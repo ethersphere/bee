@@ -115,6 +115,7 @@ var (
 	errDirectoryStore                   = errors.New("could not store directory")
 	errFileStore                        = errors.New("could not store file")
 	errInvalidPostageBatch              = errors.New("invalid postage batch id")
+	errInvalidPostageStamp              = errors.New("invalid postage stamp")
 	errBatchUnusable                    = errors.New("batch not usable")
 	errUnsupportedDevNodeOperation      = errors.New("operation not supported in dev mode")
 	errOperationSupportedOnlyInFullMode = errors.New("operation is supported only in full mode")
@@ -431,19 +432,19 @@ func requestDeferred(r *http.Request) (bool, error) {
 }
 
 func requestStamp(r *http.Request) ([]byte, error) {
-	if h := strings.ToLower(r.Header.Get(SwarmPostageBatchIdHeader)); h != "" {
-		// todo - check it is a valid stamp
-		// if len(h) != 64 {
-		// 	return nil, errInvalidPostageBatch
-		// }
-		// b, err := hex.DecodeString(h)
-		// if err != nil {
-		// 	return nil, errInvalidPostageBatch
-		// }
+	if h := strings.ToLower(r.Header.Get(SwarmPostageStampHeader)); h != "" {
+		// ensure that the stamp is a valid hex string equal to 113 bytes
+		if len(h) != 226 {
+			return nil, errInvalidPostageStamp
+		}
+		b, err := hex.DecodeString(h)
+		if err != nil {
+			return nil, errInvalidPostageStamp
+		}
 		return b, nil
 	}
 
-	return nil, errInvalidPostageBatch
+	return nil, errInvalidPostageStamp
 }
 
 func requestPostageBatchId(r *http.Request) ([]byte, error) {
@@ -800,15 +801,21 @@ func equalASCIIFold(s, t string) bool {
 	return s == t
 }
 
-// newStamperPutter returns either a storingStamperPutter or a pushStamperPutter
+// newStampedPutter returns either a storingStampedPutter or a pushStampedPutter
 // according to whether the upload is a deferred upload or not. in the case of
-// direct push to the network (default) a pushStamperPutter is returned.
-// returns a function to wait on the errorgroup in case of a pushing stamper putter.
+// direct push to the network (default) a pushStampedPutter is returned.
+// returns a function to wait on the errorgroup in case of a pushing stamped putter.
 func (s *Service) newStampedPutter(r *http.Request) (storage.Storer, func() error, error) {
-	stamp, err := requestStamp(r) // TODO: extrapolate the headers parsing to the handler level!
+	marshalledStamp, err := requestStamp(r) // TODO: extrapolate the headers parsing to the handler level!
 	if err != nil {
 		return nil, noopWaitFn, fmt.Errorf("stamp: %w", err)
 	}
+
+	stamp := postage.Stamp{}
+	if err := stamp.UnmarshalBinary(marshalledStamp); err != nil {
+		return nil, noopWaitFn, fmt.Errorf("unmarshal stamp: %w", err)
+	}
+	batch := stamp.BatchID()
 
 	deferred, err := requestDeferred(r) // TODO: extrapolate the headers parsing to the handler level!
 	if err != nil {
@@ -818,10 +825,23 @@ func (s *Service) newStampedPutter(r *http.Request) (storage.Storer, func() erro
 	if !deferred && s.beeMode == DevMode {
 		return nil, noopWaitFn, errUnsupportedDevNodeOperation
 	}
+	exists, err := s.batchStore.Exists(batch)
+	if err != nil {
+		return nil, noopWaitFn, fmt.Errorf("batch exists: %w", err)
+	}
+
+	issuer, save, err := s.post.GetStampIssuer(batch)
+	if err != nil {
+		return nil, noopWaitFn, fmt.Errorf("stamp issuer: %w", err)
+	}
+
+	if usable := exists && s.post.IssuerUsable(issuer); !usable {
+		return nil, noopWaitFn, errBatchUnusable
+	}
 
 	if deferred {
 		p := newStoringStampedPutter(s.storer, stamp)
-		return p, nil
+		return p, save, nil
 	}
 	p := newPushStampedPutter(s.logger, s.storer, stamp, s.chunkPushC)
 
@@ -892,22 +912,9 @@ type pushStamperPutter struct {
 	sem     chan struct{}
 }
 
-type pushStampedPutter struct {
-	storage.Storer
-	logger  log.Logger
-	stamp string
-	eg      errgroup.Group
-	c       chan *pusher.Op
-	sem     chan struct{}
-}
-
 func newPushStamperPutter(logger log.Logger, s storage.Storer, i *postage.StampIssuer, signer crypto.Signer, cc chan *pusher.Op) *pushStamperPutter {
 	stamper := postage.NewStamper(i, signer)
 	return &pushStamperPutter{logger: logger, Storer: s, stamper: stamper, c: cc, sem: make(chan struct{}, uploadSem)}
-}
-
-func newPushStampedPutter(logger log.Logger, s storage.Storer, stamp: string, cc chan *pusher.Op) *pushStamperPutter {
-	return &pushStampedPutter{logger: logger, Storer: s, stamp: stamp, c: cc, sem: make(chan struct{}, uploadSem)}
 }
 
 func (p *pushStamperPutter) Wait() error {
@@ -967,6 +974,72 @@ func (p *pushStamperPutter) putChunk(ctx context.Context, ch swarm.Chunk) {
 	})
 }
 
+type pushStampedPutter struct {
+	storage.Storer
+	logger log.Logger
+	stamp  postage.Stamp
+	eg     errgroup.Group
+	c      chan *pusher.Op
+	sem    chan struct{}
+}
+
+func newPushStampedPutter(logger log.Logger, s storage.Storer, stamp postage.Stamp, cc chan *pusher.Op) *pushStampedPutter {
+	return &pushStampedPutter{logger: logger, Storer: s, stamp: stamp, c: cc, sem: make(chan struct{}, uploadSem)}
+}
+
+func (p *pushStampedPutter) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exists []bool, err error) {
+	exists = make([]bool, len(chs))
+
+	for i, c := range chs {
+		// skips chunk we already know about
+		has, err := p.Storer.Has(ctx, c.Address())
+		if err != nil {
+			return nil, err
+		}
+		if has || swarm.ContainsChunkWithAddress(chs[:i], c.Address()) {
+			exists[i] = true
+			continue
+		}
+
+		p.putChunk(ctx, c.WithStamp(&p.stamp))
+	}
+	return exists, nil
+}
+
+func (p *pushStampedPutter) putChunk(ctx context.Context, ch swarm.Chunk) {
+	p.sem <- struct{}{}
+	p.eg.Go(func() error {
+		defer func() {
+			<-p.sem
+		}()
+
+		for {
+			errc := make(chan error, 1)
+			p.c <- &pusher.Op{Chunk: ch, Err: errc, Direct: true}
+
+			select {
+			case err := <-errc:
+				// if we're the closest one we will store the chunk
+				if errors.Is(err, topology.ErrWantSelf) {
+					_, err := p.Storer.Put(ctx, storage.ModePutSync, ch)
+					return err
+				}
+				if err == nil {
+					return nil
+				}
+				p.logger.Debug("put chunk", "error", err)
+
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+	})
+}
+
+func (p *pushStampedPutter) Wait() error {
+	return p.eg.Wait()
+}
+
 type stamperPutter struct {
 	storage.Storer
 	stamper postage.Stamper
@@ -976,25 +1049,6 @@ func newStoringStamperPutter(s storage.Storer, i *postage.StampIssuer, signer cr
 	stamper := postage.NewStamper(i, signer)
 	return &stamperPutter{Storer: s, stamper: stamper}
 }
-
-type stampedPutter struct {
-	storage.Storer
-	stamp string
-}
-
-func newStoringStampedPutter(s storage.Storer, stamp) *stampedPutter {
-	return &stampedPutter{Storer: s, stamp: stamp}
-}
-
-// type stampedPutter struct {
-// 	storage.Storer
-// 	stamp string
-// }
-
-
-// func newStoringStampedPutter(s storage.Storer, stamp string) *stamperPutter {
-// 	return &stamperPutter{Storer: s, stamp: stamp}
-// }
 
 func (p *stamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exists []bool, err error) {
 	var (
@@ -1020,6 +1074,47 @@ func (p *stamperPutter) Put(ctx context.Context, mode storage.ModePut, chs ...sw
 			return nil, err
 		}
 		chs[i] = c.WithStamp(stamp)
+		ctp = append(ctp, chs[i])
+		idx = append(idx, i)
+	}
+
+	exists2, err := p.Storer.Put(ctx, mode, ctp...)
+	if err != nil {
+		return nil, err
+	}
+	for i, v := range idx {
+		exists[v] = exists2[i]
+	}
+	return exists, nil
+}
+
+type stampedPutter struct {
+	storage.Storer
+	stamp postage.Stamp
+}
+
+func newStoringStampedPutter(s storage.Storer, stamp postage.Stamp) *stampedPutter {
+	return &stampedPutter{Storer: s, stamp: stamp}
+}
+
+func (p *stampedPutter) Put(ctx context.Context, mode storage.ModePut, chs ...swarm.Chunk) (exists []bool, err error) {
+	var (
+		ctp = make([]swarm.Chunk, 0, len(chs))
+		idx = make([]int, 0, len(chs))
+	)
+	exists = make([]bool, len(chs))
+
+	for i, c := range chs {
+		has, err := p.Storer.Has(ctx, c.Address())
+		if err != nil {
+			return nil, err
+		}
+		if has || swarm.ContainsChunkWithAddress(chs[:i], c.Address()) {
+			exists[i] = true
+			continue
+		}
+
+		chs[i] = c.WithStamp(&p.stamp)
 		ctp = append(ctp, chs[i])
 		idx = append(idx, i)
 	}
