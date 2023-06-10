@@ -47,8 +47,20 @@ func (s *Service) processUploadRequest(
 		ctx = r.Context()
 	}
 
-	// putter, wait, err := s.newStamperPutter(r)
-	putter, wait, err := s.newStampedPutter(r)
+	// if the header SwarmPostageStampHeader is set, we use newStampedPutter,
+	// otherwise we use the newStamperPutter.
+	if str := r.Header.Get(SwarmPostageStampHeader); str != "" {
+		putter, wait, err := s.newStampedPutter(r)
+		if err != nil {
+			logger.Debug("putter failed", "error", err)
+			logger.Error(nil, "putter failed")
+			return nil, nil, nil, nil, err
+		}
+
+		return ctx, tag, putter, wait, nil
+	}
+
+	putter, wait, err := s.newStamperPutter(r)
 	if err != nil {
 		logger.Debug("putter failed", "error", err)
 		logger.Error(nil, "putter failed")
@@ -72,6 +84,8 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.NotFound(w, "batch with id not found")
 		case errors.Is(err, errInvalidPostageBatch):
 			jsonhttp.BadRequest(w, "invalid batch id")
+		case errors.Is(err, errInvalidPostageStamp):
+			jsonhttp.BadRequest(w, "invalid postage stamp")
 		case errors.Is(err, errUnsupportedDevNodeOperation):
 			jsonhttp.BadRequest(w, errUnsupportedDevNodeOperation)
 		default:
