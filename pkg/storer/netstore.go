@@ -15,7 +15,7 @@ import (
 )
 
 const (
-	directUploadWorkers = 16
+	directUploadWorkers = pusher.ConcurrentPushes
 )
 
 // DirectUpload is the implementation of the NetStore.DirectUpload method.
