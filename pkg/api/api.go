@@ -815,7 +815,9 @@ func (s *Service) newStampedPutter(r *http.Request) (storage.Storer, func() erro
 	if err := stamp.UnmarshalBinary(marshalledStamp); err != nil {
 		return nil, noopWaitFn, fmt.Errorf("unmarshal stamp: %w", err)
 	}
-	batch := stamp.BatchID()
+	batchID := stamp.BatchID()
+
+	s.logger.Debug("new stamped putter", "batch", fmt.Errorf("%x", batchID))
 
 	deferred, err := requestDeferred(r) // TODO: extrapolate the headers parsing to the handler level!
 	if err != nil {
@@ -825,14 +827,31 @@ func (s *Service) newStampedPutter(r *http.Request) (storage.Storer, func() erro
 	if !deferred && s.beeMode == DevMode {
 		return nil, noopWaitFn, errUnsupportedDevNodeOperation
 	}
-	exists, err := s.batchStore.Exists(batch)
+	exists, err := s.batchStore.Exists(batchID)
 	if err != nil {
 		return nil, noopWaitFn, fmt.Errorf("batch exists: %w", err)
 	}
 
-	issuer, save, err := s.post.GetStampIssuer(batch)
+	issuer, save, err := s.post.GetStampIssuer(batchID)
 	if err != nil {
-		return nil, noopWaitFn, fmt.Errorf("stamp issuer: %w", err)
+		// if errNotFound is returned, try to create a new issuer
+		if errors.Is(err, postage.ErrNotFound) {
+			batch, err := s.batchStore.Get(batchID)
+			if err != nil {
+				return nil, noopWaitFn, fmt.Errorf("batch get: %w", err)
+			}
+
+			// have the batch, so create a new issuer from the batch
+			err = s.post.HandleCreate(batch, batch.Value)
+			if err != nil {
+				return nil, noopWaitFn, fmt.Errorf("handle create: %w", err)
+			}
+
+			// try to get the issuer again
+			issuer, save, err = s.post.GetStampIssuer(batchID)
+		} else {
+			return nil, noopWaitFn, fmt.Errorf("stamp issuer: %w", err)
+		}
 	}
 
 	if usable := exists && s.post.IssuerUsable(issuer); !usable {
