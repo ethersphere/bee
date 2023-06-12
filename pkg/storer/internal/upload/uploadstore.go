@@ -668,3 +668,32 @@ func IterateAll(st storage.Store, iterateFn func(addr swarm.Address, isSynced bo
 		},
 	)
 }
+
+// BatchIDForChunk returns the first known batchID for the given chunk address.
+func BatchIDForChunk(st storage.Store, addr swarm.Address) ([]byte, error) {
+	var batchID []byte
+
+	err := st.Iterate(
+		storage.Query{
+			Factory: func() storage.Item { return new(uploadItem) },
+			Prefix:  addr.ByteString(),
+		},
+		func(r storage.Result) (bool, error) {
+			ui := r.Entry.(*uploadItem)
+			if ui.BatchID != nil {
+				batchID = ui.BatchID
+				return true, nil
+			}
+			return false, nil
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	if batchID == nil {
+		return nil, storage.ErrNotFound
+	}
+
+	return batchID, nil
+}

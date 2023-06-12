@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
+	postagetesting "github.com/ethersphere/bee/pkg/postage/mock"
 	"github.com/ethersphere/bee/pkg/steward"
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
@@ -32,6 +33,7 @@ func TestSteward(t *testing.T) {
 		store          = mockstorer.NewWithChunkStore(chunkStore)
 		localRetrieval = &localRetriever{ChunkStore: chunkStore}
 		s              = steward.New(store, localRetrieval)
+		stamper        = postagetesting.NewStamper()
 	)
 
 	n, err := rand.Read(data)
@@ -81,7 +83,7 @@ func TestSteward(t *testing.T) {
 		}
 	}()
 
-	err = s.Reupload(ctx, addr)
+	err = s.Reupload(ctx, addr, stamper)
 	if err != nil {
 		t.Fatal(err)
 	}

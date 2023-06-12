@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/storage"
 	storer "github.com/ethersphere/bee/pkg/storer"
@@ -22,7 +23,7 @@ import (
 type Interface interface {
 	// Reupload root hash and all of its underlying
 	// associated chunks to the network.
-	Reupload(context.Context, swarm.Address) error
+	Reupload(context.Context, swarm.Address, postage.Stamper) error
 
 	// IsRetrievable checks whether the content
 	// on the given address is retrievable.
@@ -48,7 +49,7 @@ func New(ns storer.NetStore, r retrieval.Interface) Interface {
 // addresses and push every chunk individually to the network.
 // It assumes all chunks are available locally. It is therefore
 // advisable to pin the content locally before trying to reupload it.
-func (s *steward) Reupload(ctx context.Context, root swarm.Address) error {
+func (s *steward) Reupload(ctx context.Context, root swarm.Address, stamper postage.Stamper) error {
 	uploaderSession := s.netStore.DirectUpload()
 	getter := s.netStore.Download(false)
 
@@ -58,7 +59,12 @@ func (s *steward) Reupload(ctx context.Context, root swarm.Address) error {
 			return err
 		}
 
-		return uploaderSession.Put(ctx, c)
+		stamp, err := stamper.Stamp(c.Address())
+		if err != nil {
+			return fmt.Errorf("stamping chunk %s: %w", c.Address().String(), err)
+		}
+
+		return uploaderSession.Put(ctx, c.WithStamp(stamp))
 	}
 
 	if err := s.traverser.Traverse(ctx, root, fn); err != nil {

@@ -13,6 +13,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/log"
+	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	"github.com/ethersphere/bee/pkg/steward/mock"
 	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -30,6 +31,7 @@ func TestStewardship(t *testing.T) {
 		Storer:  storer,
 		Logger:  logger,
 		Steward: stewardMock,
+		Post:    mockpost.New(mockpost.WithAcceptAll()),
 	})
 
 	t.Run("re-upload", func(t *testing.T) {
@@ -57,10 +59,12 @@ func TestStewardship(t *testing.T) {
 	})
 }
 
-func Test_stewardshipHandlers_invalidInputs(t *testing.T) {
+func TestStewardshipInvalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{})
+	client, _, _, _ := newTestServer(t, testServerOptions{
+		Storer: mockstorer.New(),
+	})
 
 	tests := []struct {
 		name    string
@@ -92,19 +96,28 @@ func Test_stewardshipHandlers_invalidInputs(t *testing.T) {
 				},
 			},
 		},
+	}, {
+		name:    "batch - does not exist",
+		address: "1234",
+		want: jsonhttp.StatusResponse{
+			Code:    http.StatusNotFound,
+			Message: "batch with id not found",
+		},
 	}}
 
 	for _, method := range []string{http.MethodGet, http.MethodPut} {
 		method := method
-		for _, tc := range tests {
+		for idx, tc := range tests {
 			tc := tc
-			t.Run(method+" "+tc.name, func(t *testing.T) {
-				t.Parallel()
+			if idx < 2 || method == http.MethodPut {
+				t.Run(method+" "+tc.name, func(t *testing.T) {
+					t.Parallel()
 
-				jsonhttptest.Request(t, client, method, "/stewardship/"+tc.address, tc.want.Code,
-					jsonhttptest.WithExpectedJSONResponse(tc.want),
-				)
-			})
+					jsonhttptest.Request(t, client, method, "/stewardship/"+tc.address, tc.want.Code,
+						jsonhttptest.WithExpectedJSONResponse(tc.want),
+					)
+				})
+			}
 		}
 	}
 }
