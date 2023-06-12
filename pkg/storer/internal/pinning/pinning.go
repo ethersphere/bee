@@ -42,9 +42,6 @@ var (
 	errCollectionRootAddressIsZero = errors.New("pin store: collection root address is zero")
 )
 
-// batchSize used for deletion
-var batchSize = 100
-
 // creates a new UUID and returns it as a byte slice
 func newUUID() []byte {
 	id := uuid.New()

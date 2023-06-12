@@ -794,7 +794,7 @@ func Iterate(ctx context.Context, s internal.Storage, consumerFn func(chunk swar
 		Factory: func() storage.Item { return &pushItem{} },
 	}, func(r storage.Result) (bool, error) {
 		pi := r.Entry.(*pushItem)
-		has, err := s.IndexStore().Has(&dirtyTagItem{TagID: uint64(pi.TagID)})
+		has, err := s.IndexStore().Has(&dirtyTagItem{TagID: pi.TagID})
 		if err != nil {
 			return true, err
 		}

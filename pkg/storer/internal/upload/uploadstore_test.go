@@ -1075,7 +1075,7 @@ func TestCleanup(t *testing.T) {
 		}
 
 		count := 0
-		err = upload.Iterate(context.Background(), ts, func(chunk swarm.Chunk) (bool, error) {
+		_ = upload.Iterate(context.Background(), ts, func(chunk swarm.Chunk) (bool, error) {
 			count++
 			return false, nil
 		})
@@ -1111,7 +1111,7 @@ func TestCleanup(t *testing.T) {
 		}
 
 		count := 0
-		err = upload.Iterate(context.Background(), ts, func(chunk swarm.Chunk) (bool, error) {
+		_ = upload.Iterate(context.Background(), ts, func(chunk swarm.Chunk) (bool, error) {
 			count++
 			return false, nil
 		})

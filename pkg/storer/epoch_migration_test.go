@@ -7,10 +7,10 @@ package storer_test
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"fmt"
 	"io"
 	"io/fs"
-	"math/rand"
 	"os"
 	"path"
 	"path/filepath"
