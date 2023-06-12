@@ -345,7 +345,9 @@ func performEpochMigration(ctx context.Context, basePath string, opts *Options) 
 	}
 
 	defer func() {
-		retErr = errors.Join(retErr, sharkyRecover.Save())
+		if sharkyRecover != nil {
+			retErr = errors.Join(retErr, sharkyRecover.Save())
+		}
 	}()
 
 	return epochMigration(ctx, basePath, opts.StateStore, store, rs, sharkyRecover, logger)
