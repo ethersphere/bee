@@ -647,7 +647,7 @@ func NewBee(
 	b.p2pService = p2ps
 	b.p2pHalter = p2ps
 
-	post, err := postage.NewService(stateStore, batchStore, chainID)
+	post, err := postage.NewService(stamperStore, batchStore, chainID)
 	if err != nil {
 		return nil, fmt.Errorf("postage service load: %w", err)
 	}

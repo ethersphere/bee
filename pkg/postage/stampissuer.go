@@ -262,6 +262,57 @@ func (si *StampIssuer) SetExpired(e bool) {
 	si.data.Expired = e
 }
 
+// stampIssuerItem is a storage.Item implementation for StampIssuer.
+type stampIssuerItem struct {
+	data stampIssuerData
+}
+
+// NewStampIssuerItem creates a new stampIssuerItem.
+func NewStampIssuerItem(ID []byte) storage.Item {
+	return &stampIssuerItem{
+		data: stampIssuerData{
+			BatchID: ID,
+		},
+	}
+}
+
+// ID is the batch ID.
+func (s *stampIssuerItem) ID() string {
+	return string(s.data.BatchID)
+}
+
+// Namespace returns the storage namespace for a stampIssuer.
+func (s *stampIssuerItem) Namespace() string {
+	return "stampIssuerItem"
+}
+
+// Marshal marshals the stampIssuerItem into a byte slice.
+func (s *stampIssuerItem) Marshal() ([]byte, error) {
+	return msgpack.Marshal(s.data)
+}
+
+// Unmarshal unmarshals a byte slice into a stampIssuerItem.
+func (s *stampIssuerItem) Unmarshal(bytes []byte) error {
+	return msgpack.Unmarshal(bytes, &s.data)
+}
+
+// Clone returns a clone of stampIssuerItem.
+func (s *stampIssuerItem) Clone() storage.Item {
+	if s == nil {
+		return nil
+	}
+	return &stampIssuerItem{
+		data: s.data,
+	}
+}
+
+// String returns the string representation of a stampIssuerItem.
+func (s stampIssuerItem) String() string {
+	return path.Join(s.Namespace(), s.ID())
+}
+
+var _ storage.Item = (*stampIssuerItem)(nil)
+
 // toBucket calculates the index of the collision bucket for a swarm address
 // bucket index := collision bucket depth number of bits as bigendian uint32
 func toBucket(depth uint8, addr swarm.Address) uint32 {

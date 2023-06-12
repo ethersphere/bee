@@ -44,27 +44,29 @@ type Service interface {
 // stores the active batches.
 type service struct {
 	lock         sync.Mutex
-	store        storage.StateStorer
+	store        storage.Store
 	postageStore Storer
 	chainID      int64
 	issuers      []*StampIssuer
 }
 
 // NewService constructs a new Service.
-func NewService(store storage.StateStorer, postageStore Storer, chainID int64) (Service, error) {
+func NewService(store storage.Store, postageStore Storer, chainID int64) (Service, error) {
 	s := &service{
 		store:        store,
 		postageStore: postageStore,
 		chainID:      chainID,
 	}
-	if err := s.store.Iterate(s.key(), func(_, value []byte) (bool, error) {
-		st := &StampIssuer{}
-		if err := st.UnmarshalBinary(value); err != nil {
-			return false, err
-		}
-		_ = s.add(st)
-		return false, nil
-	}); err != nil {
+	if err := s.store.Iterate(
+		storage.Query{
+			Factory: func() storage.Item { return new(stampIssuerItem) },
+		}, func(result storage.Result) (bool, error) {
+			stampIssuer := &StampIssuer{
+				data: result.Entry.(*stampIssuerItem).data,
+			}
+			_ = s.add(stampIssuer)
+			return false, nil
+		}); err != nil {
 		return nil, err
 	}
 
@@ -77,7 +79,9 @@ func (ps *service) Add(st *StampIssuer) error {
 	defer ps.lock.Unlock()
 
 	if ps.add(st) {
-		if err := ps.store.Put(ps.keyForIndex(st.data.BatchID), st); err != nil {
+		if err := ps.store.Put(&stampIssuerItem{
+			data: st.data,
+		}); err != nil {
 			return err
 		}
 	}
@@ -182,7 +186,9 @@ func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, func() error, e
 func (ps *service) save(st *StampIssuer) error {
 	st.bucketMu.Lock()
 	defer st.bucketMu.Unlock()
-	if err := ps.store.Put(ps.keyForIndex(st.data.BatchID), st); err != nil {
+	if err := ps.store.Put(&stampIssuerItem{
+		data: st.data,
+	}); err != nil {
 		return err
 	}
 	return nil

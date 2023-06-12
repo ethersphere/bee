@@ -5,10 +5,8 @@
 package postage_test
 
 import (
-	"bytes"
 	crand "crypto/rand"
 	"errors"
-	"fmt"
 	"io"
 	"math/big"
 	"testing"
@@ -16,13 +14,14 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	pstoremock "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
-	storemock "github.com/ethersphere/bee/pkg/statestore/mock"
+	"github.com/ethersphere/bee/pkg/storage/inmemstore"
 )
 
 // TestSaveLoad tests the idempotence of saving and loading the postage.Service
 // with all the active stamp issuers.
 func TestSaveLoad(t *testing.T) {
-	store := storemock.NewStateStore()
+	store := inmemstore.New()
+	defer store.Close()
 	pstore := pstoremock.New()
 	saved := func(id int64) postage.Service {
 		ps, err := postage.NewService(store, pstore, id)
@@ -67,7 +66,8 @@ func TestSaveLoad(t *testing.T) {
 }
 
 func TestGetStampIssuer(t *testing.T) {
-	store := storemock.NewStateStore()
+	store := inmemstore.New()
+	defer store.Close()
 	chainID := int64(0)
 	testChainState := postagetesting.NewChainState()
 	if testChainState.Block < uint64(postage.BlockThreshold) {
@@ -122,13 +122,13 @@ func TestGetStampIssuer(t *testing.T) {
 
 		// check if the save() call persisted the stamp issuers
 		for _, id := range ids[1:4] {
-			issuer := new(postage.StampIssuer)
-			err := store.Get(fmt.Sprintf("postage%d%s", chainID, id), issuer)
+			stampIssuerItem := postage.NewStampIssuerItem(id)
+			err := store.Get(stampIssuerItem)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !bytes.Equal(id, issuer.ID()) {
-				t.Fatalf("got id %s, want id %s", issuer.ID(), id)
+			if string(id) != stampIssuerItem.ID() {
+				t.Fatalf("got id %s, want id %s", stampIssuerItem.ID(), string(id))
 			}
 		}
 	})
