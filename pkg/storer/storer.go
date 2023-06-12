@@ -316,7 +316,7 @@ type noopRadiusSetter struct{}
 
 func (noopRadiusSetter) SetStorageRadius(uint8) {}
 
-func performEpochMigration(ctx context.Context, basePath string, opts *Options) error {
+func performEpochMigration(ctx context.Context, basePath string, opts *Options) (retErr error) {
 	store, err := initStore(basePath, opts)
 	if err != nil {
 		return err
@@ -344,7 +344,9 @@ func performEpochMigration(ctx context.Context, basePath string, opts *Options) 
 		}
 	}
 
-	defer sharkyRecover.Save()
+	defer func() {
+		retErr = errors.Join(retErr, sharkyRecover.Save())
+	}()
 
 	return epochMigration(ctx, basePath, opts.StateStore, store, rs, sharkyRecover, logger)
 }
