@@ -7,7 +7,6 @@ package postage
 import (
 	"bytes"
 	"errors"
-	"fmt"
 	"io"
 	"math/big"
 	"sync"
@@ -16,7 +15,6 @@ import (
 )
 
 const (
-	postagePrefix = "postage"
 	// blockThreshold is used to allow threshold no of blocks to be synced before a
 	// batch is usable.
 	blockThreshold = 10
@@ -203,17 +201,6 @@ func (ps *service) Close() error {
 	}
 
 	return closeErr
-}
-
-// keyForIndex returns the statestore key for an issuer
-func (ps *service) keyForIndex(batchID []byte) string {
-	return ps.key() + string(batchID)
-}
-
-// key returns the statestore base key for an issuer
-// to disambiguate batches on different chains, chainID is part of the key
-func (ps *service) key() string {
-	return fmt.Sprintf(postagePrefix+"%d", ps.chainID)
 }
 
 // HandleStampExpiry handles stamp expiry for a given id.
