@@ -256,35 +256,43 @@ func TestEvict(t *testing.T) {
 func TestIterate(t *testing.T) {
 	t.Parallel()
 
-	baseAddr := swarm.RandAddress(t)
+	createReserve := func(t *testing.T) (*reserve.Reserve, internal.Storage) {
+		t.Helper()
 
-	ts, closer := internal.NewInmemStorage()
-	t.Cleanup(func() {
-		if err := closer(); err != nil {
-			t.Errorf("failed closing the storage: %v", err)
-		}
-	})
+		baseAddr := swarm.RandAddress(t)
 
-	r, err := reserve.New(baseAddr, ts.IndexStore(), 0, kademlia.NewTopologyDriver(), log.Noop)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	for b := 0; b < 3; b++ {
-		for i := 0; i < 10; i++ {
-			ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, b)
-			c, err := r.Put(context.Background(), ts, ch)
-			if err != nil {
-				t.Fatal(err)
+		ts, closer := internal.NewInmemStorage()
+		t.Cleanup(func() {
+			if err := closer(); err != nil {
+				t.Errorf("failed closing the storage: %v", err)
 			}
-			if !c {
-				t.Fatal("entered unique chunk")
+		})
+
+		r, err := reserve.New(baseAddr, ts.IndexStore(), 0, kademlia.NewTopologyDriver(), log.Noop)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		for b := 0; b < 3; b++ {
+			for i := 0; i < 10; i++ {
+				ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, b)
+				c, err := r.Put(context.Background(), ts, ch)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !c {
+					t.Fatal("entered unique chunk")
+				}
 			}
 		}
+
+		return r, ts
 	}
 
 	t.Run("iterate bin", func(t *testing.T) {
 		t.Parallel()
+
+		r, ts := createReserve(t)
 
 		var id uint64 = 0
 		err := r.IterateBin(ts.IndexStore(), 1, 0, func(ch swarm.Address, binID uint64, _ []byte) (bool, error) {
@@ -305,6 +313,8 @@ func TestIterate(t *testing.T) {
 	t.Run("iterate chunks", func(t *testing.T) {
 		t.Parallel()
 
+		r, ts := createReserve(t)
+
 		count := 0
 		err := r.IterateChunks(ts, 2, func(_ swarm.Chunk) (bool, error) {
 			count++
@@ -321,6 +331,8 @@ func TestIterate(t *testing.T) {
 	t.Run("iterate chunk items", func(t *testing.T) {
 		t.Parallel()
 
+		r, ts := createReserve(t)
+
 		count := 0
 		err := r.IterateChunksItems(ts, 0, func(_ reserve.ChunkItem) (bool, error) {
 			count++
@@ -336,6 +348,8 @@ func TestIterate(t *testing.T) {
 
 	t.Run("last bin id", func(t *testing.T) {
 		t.Parallel()
+
+		r, ts := createReserve(t)
 
 		ids, err := r.LastBinIDs(ts.IndexStore())
 		if err != nil {

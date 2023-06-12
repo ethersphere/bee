@@ -1050,9 +1050,10 @@ func TestBatchIDForChunk(t *testing.T) {
 func TestCleanup(t *testing.T) {
 	t.Parallel()
 
-	ts := newTestStorage(t)
-
 	t.Run("cleanup putter", func(t *testing.T) {
+		t.Parallel()
+
+		ts := newTestStorage(t)
 		tag, err := upload.NextTag(ts.IndexStore())
 		if err != nil {
 			t.Fatal("failed creating tag", err)
@@ -1089,6 +1090,9 @@ func TestCleanup(t *testing.T) {
 	})
 
 	t.Run("cleanup dirty", func(t *testing.T) {
+		t.Parallel()
+
+		ts := newTestStorage(t)
 		tag, err := upload.NextTag(ts.IndexStore())
 		if err != nil {
 			t.Fatal("failed creating tag", err)

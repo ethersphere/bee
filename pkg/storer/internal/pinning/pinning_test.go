@@ -299,9 +299,10 @@ func TestPinStore(t *testing.T) {
 func TestCleanup(t *testing.T) {
 	t.Parallel()
 
-	st := newTestStorage(t)
-
 	t.Run("cleanup putter", func(t *testing.T) {
+		t.Parallel()
+
+		st := newTestStorage(t)
 		chunks := chunktest.GenerateTestRandomChunks(5)
 
 		putter, err := pinstore.NewCollection(st)
@@ -333,6 +334,9 @@ func TestCleanup(t *testing.T) {
 	})
 
 	t.Run("cleanup dirty", func(t *testing.T) {
+		t.Parallel()
+
+		st := newTestStorage(t)
 		chunks := chunktest.GenerateTestRandomChunks(5)
 
 		putter, err := pinstore.NewCollection(st)

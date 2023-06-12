@@ -29,6 +29,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storer/internal/cache"
 	"github.com/ethersphere/bee/pkg/storer/internal/chunkstore"
 	"github.com/ethersphere/bee/pkg/storer/internal/events"
+	pinstore "github.com/ethersphere/bee/pkg/storer/internal/pinning"
 	"github.com/ethersphere/bee/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/pkg/storer/internal/upload"
 	localmigration "github.com/ethersphere/bee/pkg/storer/migration"
@@ -502,7 +503,18 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	}
 	db.metrics.CacheSize.Set(float64(db.cacheObj.Size()))
 
-	return db, nil
+	// Cleanup any dirty state in upload and pinning stores, this could happen
+	// in case of dirty shutdowns
+	txnRepo, commit, rollback := db.repo.NewTx(ctx)
+	err = errors.Join(
+		upload.CleanupDirty(txnRepo),
+		pinstore.CleanupDirty(txnRepo),
+	)
+	if err != nil {
+		return nil, errors.Join(err, rollback())
+	}
+
+	return db, commit()
 }
 
 // Metrics returns set of prometheus collectors.
