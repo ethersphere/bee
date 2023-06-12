@@ -16,7 +16,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/shed"
 	ma "github.com/multiformats/go-multiaddr"
 
 	"github.com/ethersphere/bee/pkg/addressbook"
@@ -26,7 +25,6 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
 	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
-	pingpongmock "github.com/ethersphere/bee/pkg/pingpong/mock"
 	"github.com/ethersphere/bee/pkg/spinlock"
 	mockstate "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -959,13 +957,9 @@ func TestClosestPeer(t *testing.T) {
 	}
 
 	disc := mock.NewDiscovery()
-	ssMock := mockstate.NewStateStore()
-	ab := addressbook.New(ssMock)
-	ppm := pingpongmock.New(func(_ context.Context, _ swarm.Address, _ ...string) (time.Duration, error) {
-		return 0, nil
-	})
+	ab := addressbook.New(mockstate.NewStateStore())
 
-	kad, err := kademlia.New(base, ab, disc, p2pMock(t, ab, nil, nil, nil), ppm, logger, kademlia.Options{})
+	kad, err := kademlia.New(base, ab, disc, p2pMock(t, ab, nil, nil, nil), logger, kademlia.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1368,54 +1362,6 @@ func TestOutofDepthPrune(t *testing.T) {
 	waitBalanced(t, kad, 1)
 }
 
-// TestLatency tests that kademlia polls peers for latency.
-func TestLatency(t *testing.T) {
-	t.Parallel()
-
-	var (
-		logger = log.Noop
-		base   = swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000") // base is 0000
-		p1     = swarm.RandAddress(t)
-
-		disc   = mock.NewDiscovery()
-		ssMock = mockstate.NewStateStore()
-		ab     = addressbook.New(ssMock)
-		doneC  = make(chan struct{})
-		once   sync.Once
-		ppm    = pingpongmock.New(func(_ context.Context, _ swarm.Address, _ ...string) (time.Duration, error) {
-			once.Do(func() { close(doneC) })
-			return 0, nil
-		})
-	)
-	metricsDB, err := shed.NewDB("", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	testutil.CleanupCloser(t, metricsDB)
-
-	kad, err := kademlia.New(base, ab, disc, p2pMock(t, ab, nil, nil, nil), ppm, logger, kademlia.Options{
-		PeerPingPollTime: ptrDuration(1 * time.Second),
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := kad.Start(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	testutil.CleanupCloser(t, kad)
-
-	pk, _ := beeCrypto.GenerateSecp256k1Key()
-	signer := beeCrypto.NewDefaultSigner(pk)
-	addOne(t, signer, kad, ab, p1)
-
-	waitPeers(t, kad, 1)
-	select {
-	case <-doneC:
-	case <-time.After(5 * time.Second):
-		t.Fatal("timed out waiting for ping")
-	}
-}
-
 func TestBootnodeProtectedNodes(t *testing.T) {
 	t.Parallel()
 
@@ -1682,7 +1628,7 @@ func TestIteratorOpts(t *testing.T) {
 		if randBool.Bool() {
 			healthy[addr.ByteString()] = struct{}{}
 			totalHealthy++
-			kad.UpdatePeerHealth(addr, true)
+			kad.UpdatePeerHealth(addr, true, 0)
 		}
 		return false, false, nil
 	}, topology.Select{})
@@ -1887,12 +1833,6 @@ func newTestKademliaWithAddrDiscovery(
 ) (swarm.Address, *kademlia.Kad, addressbook.Interface, *mock.Discovery, beeCrypto.Signer) {
 	t.Helper()
 
-	metricsDB, err := shed.NewDB("", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	testutil.CleanupCloser(t, metricsDB)
-
 	var (
 		pk, _  = beeCrypto.GenerateSecp256k1Key()                       // random private key
 		signer = beeCrypto.NewDefaultSigner(pk)                         // signer
@@ -1900,11 +1840,8 @@ func newTestKademliaWithAddrDiscovery(
 		ab     = addressbook.New(ssMock)                                // address book
 		p2p    = p2pMock(t, ab, signer, connCounter, failedConnCounter) // p2p mock
 		logger = log.Noop                                               // logger
-		ppm    = pingpongmock.New(func(_ context.Context, _ swarm.Address, _ ...string) (time.Duration, error) {
-			return 0, nil
-		})
 	)
-	kad, err := kademlia.New(base, ab, disc, p2p, ppm, logger, kadOpts)
+	kad, err := kademlia.New(base, ab, disc, p2p, logger, kadOpts)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1918,7 +1855,7 @@ func newTestKademlia(t *testing.T, connCounter, failedConnCounter *int32, kadOpt
 	t.Helper()
 
 	base := swarm.RandAddress(t)
-	disc := mock.NewDiscovery() // mock discovery protocol
+	disc := mock.NewDiscovery() // mock discovery protocols
 	return newTestKademliaWithAddrDiscovery(t, base, disc, connCounter, failedConnCounter, kadOpts)
 }
 
