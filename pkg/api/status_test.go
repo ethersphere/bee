@@ -49,9 +49,9 @@ func TestGetStatus(t *testing.T) {
 			new(topologyPeersIterNoopMock),
 			mode.String(),
 			ssMock,
+			ssMock,
 		)
 
-		statusSvc.SetStorage(ssMock)
 		statusSvc.SetSync(ssMock)
 
 		client, _, _, _ := newTestServer(t, testServerOptions{
@@ -76,6 +76,7 @@ func TestGetStatus(t *testing.T) {
 				nil,
 				new(topologyPeersIterNoopMock),
 				"",
+				nil,
 				nil,
 			),
 		})

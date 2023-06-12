@@ -42,14 +42,14 @@ func TestStatus(t *testing.T) {
 		peersIterMock,
 		want.BeeMode,
 		sssMock,
+		sssMock,
 	)
 
-	peer1.SetStorage(sssMock)
 	peer1.SetSync(sssMock)
 
 	recorder := streamtest.New(streamtest.WithProtocols(peer1.Protocol()))
 
-	peer2 := status.NewService(log.Noop, recorder, peersIterMock, "", nil)
+	peer2 := status.NewService(log.Noop, recorder, peersIterMock, "", nil, nil)
 
 	address := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
 
@@ -119,11 +119,12 @@ func TestStatusLightNode(t *testing.T) {
 		peersIterMock,
 		want.BeeMode,
 		sssMock,
+		nil,
 	)
 
 	recorder := streamtest.New(streamtest.WithProtocols(peer1.Protocol()))
 
-	peer2 := status.NewService(log.Noop, recorder, peersIterMock, "", nil)
+	peer2 := status.NewService(log.Noop, recorder, peersIterMock, "", nil, nil)
 
 	address := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
 
