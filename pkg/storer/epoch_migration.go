@@ -21,9 +21,9 @@ import (
 	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/shed"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storer/internal"
 	"github.com/ethersphere/bee/pkg/storer/internal/chunkstore"
 	pinstore "github.com/ethersphere/bee/pkg/storer/internal/pinning"
-	"github.com/ethersphere/bee/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/traversal"
 	"golang.org/x/sync/errgroup"
@@ -53,7 +53,7 @@ func (epochKey) String() string { return "localstore-epoch" }
 type putOpStorage struct {
 	store    storage.Store
 	location sharky.Location
-	recovery *sharky.Recovery
+	recovery sharkyRecover
 }
 
 func (p *putOpStorage) IndexStore() storage.Store { return p.store }
@@ -83,6 +83,17 @@ func (p *putOpStorage) Release(_ context.Context, loc sharky.Location) error {
 	return errors.New("not implemented")
 }
 
+type reservePutter interface {
+	Put(context.Context, internal.Storage, swarm.Chunk) (bool, error)
+	AddSize(int)
+	Size() int
+}
+
+type sharkyRecover interface {
+	Add(sharky.Location) error
+	Read(context.Context, sharky.Location, []byte) error
+}
+
 // epochMigration performs the initial migration if it hasnt been done already. It
 // reads the old indexes and writes them in the new format.  It only migrates the
 // reserve and pinned chunks. It also creates the new epoch key in the store to
@@ -96,8 +107,8 @@ func epochMigration(
 	path string,
 	stateStore storage.StateStorer,
 	store storage.Store,
-	reserve *reserve.Reserve,
-	recovery *sharky.Recovery,
+	reserve reservePutter,
+	recovery sharkyRecover,
 	logger log.Logger,
 ) error {
 
@@ -123,7 +134,7 @@ func epochMigration(
 		}
 	}()
 
-	pullIndex, retrievalDataIndex, err := initShedIndexes(dbshed)
+	pullIndex, retrievalDataIndex, err := initShedIndexes(dbshed, swarm.ZeroAddress)
 	if err != nil {
 		return fmt.Errorf("initShedIndexes: %w", err)
 	}
@@ -132,6 +143,10 @@ func epochMigration(
 	if err != nil {
 		return fmt.Errorf("retrievalDataIndex count: %w", err)
 	}
+
+	pullIdxCnt, _ := pullIndex.Count()
+
+	logger.Debug("index counts", "retrieval index", chunkCount, "pull index", pullIdxCnt)
 
 	e := &epochMigrator{
 		stateStore:         stateStore,
@@ -177,12 +192,12 @@ func epochMigration(
 	return store.Put(epochKey{})
 }
 
-func initShedIndexes(dbshed *shed.DB) (pullIndex shed.Index, retrievalDataIndex shed.Index, err error) {
+func initShedIndexes(dbshed *shed.DB, baseAddress swarm.Address) (pullIndex shed.Index, retrievalDataIndex shed.Index, err error) {
 	// pull index allows history and live syncing per po bin
 	pullIndex, err = dbshed.NewIndex("PO|BinID->Hash", shed.IndexFuncs{
 		EncodeKey: func(fields shed.Item) (key []byte, err error) {
 			key = make([]byte, 9)
-			key[0] = 0
+			key[0] = swarm.Proximity(baseAddress.Bytes(), fields.Address)
 			binary.BigEndian.PutUint64(key[1:9], fields.BinID)
 			return key, nil
 		},
@@ -256,8 +271,8 @@ func initShedIndexes(dbshed *shed.DB) (pullIndex shed.Index, retrievalDataIndex 
 type epochMigrator struct {
 	stateStore         storage.StateStorer
 	store              storage.Store
-	recovery           *sharky.Recovery
-	reserve            *reserve.Reserve
+	recovery           sharkyRecover
+	reserve            reservePutter
 	pullIndex          shed.Index
 	retrievalDataIndex shed.Index
 	logger             log.Logger
@@ -297,7 +312,6 @@ func (e *epochMigrator) migrateReserve(ctx context.Context) error {
 					case newIdx:
 						e.reserve.AddSize(1)
 					}
-					_ = e.pullIndex.Delete(op.pIdx)
 				}
 			}
 		})
@@ -317,6 +331,7 @@ func (e *epochMigrator) migrateReserve(ctx context.Context) error {
 
 			l, err := sharky.LocationFromBinary(item.Location)
 			if err != nil {
+				e.logger.Debug("location from binary failed", "chunk_address", addr, "error", err)
 				return false, err
 			}
 
