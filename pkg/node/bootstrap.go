@@ -126,7 +126,7 @@ func bootstrapNode(
 	}
 	b.hiveCloser = hive
 
-	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, &noopPinger{}, logger,
+	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, logger,
 		kademlia.Options{Bootnodes: bootnodes, BootnodeMode: o.BootnodeMode, StaticNodes: o.StaticNodes, DataDir: o.DataDir})
 	if err != nil {
 		return nil, fmt.Errorf("unable to create kademlia: %w", err)
@@ -281,12 +281,6 @@ func waitPeers(kad *kademlia.Kad) error {
 		}, topology.Select{})
 		return count >= minPeersCount
 	})
-}
-
-type noopPinger struct{}
-
-func (p *noopPinger) Ping(context.Context, swarm.Address, ...string) (time.Duration, error) {
-	return time.Duration(1), nil
 }
 
 func getLatestSnapshot(

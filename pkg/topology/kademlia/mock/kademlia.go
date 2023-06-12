@@ -7,6 +7,7 @@ package mock
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -77,7 +78,7 @@ func (m *Mock) EachNeighborRev(topology.EachPeerFunc) error {
 	panic("not implemented") // TODO: Implement
 }
 
-func (m *Mock) UpdatePeerHealth(swarm.Address, bool) {
+func (m *Mock) UpdatePeerHealth(swarm.Address, bool, time.Duration) {
 	panic("not implemented") // TODO: Implement
 }
 

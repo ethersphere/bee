@@ -32,8 +32,8 @@ type Driver interface {
 	Halter
 	Snapshot() *KadParams
 	IsReachable() bool
-	UpdatePeerHealth(addr swarm.Address, h bool)
 	SetStorageRadiuser
+	UpdatePeerHealth(addr swarm.Address, h bool, t time.Duration)
 }
 
 type PeerAdder interface {
