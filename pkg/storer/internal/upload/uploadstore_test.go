@@ -5,6 +5,7 @@
 package upload_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
@@ -943,5 +944,35 @@ func TestDeleteTag(t *testing.T) {
 	_, err = upload.TagInfo(ts.IndexStore(), tag.TagID)
 	if !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("want: %v; have: %v", storage.ErrNotFound, err)
+	}
+}
+
+func TestBatchIDForChunk(t *testing.T) {
+	t.Parallel()
+
+	ts := newTestStorage(t)
+
+	tag, err := upload.NextTag(ts.IndexStore())
+	if err != nil {
+		t.Fatalf("failed creating tag: %v", err)
+	}
+
+	putter, err := upload.NewPutter(ts, tag.TagID)
+	if err != nil {
+		t.Fatalf("failed creating putter: %v", err)
+	}
+
+	chunk := chunktest.GenerateTestRandomChunk()
+	if err := putter.Put(context.Background(), chunk); err != nil {
+		t.Fatalf("Put(...): unexpected error: %v", err)
+	}
+
+	batchID, err := upload.BatchIDForChunk(ts.IndexStore(), chunk.Address())
+	if err != nil {
+		t.Fatalf("BatchIDForChunk(...): unexpected error: %v", err)
+	}
+
+	if !bytes.Equal(batchID, chunk.Stamp().BatchID()) {
+		t.Fatalf("BatchIDForChunk(...): want %x; got %x", chunk.Stamp().BatchID(), batchID)
 	}
 }

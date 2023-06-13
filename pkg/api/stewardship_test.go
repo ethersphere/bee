@@ -13,6 +13,7 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/log"
+	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	"github.com/ethersphere/bee/pkg/steward/mock"
 	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -30,6 +31,7 @@ func TestStewardship(t *testing.T) {
 		Storer:  storer,
 		Logger:  logger,
 		Steward: stewardMock,
+		Post:    mockpost.New(mockpost.WithAcceptAll()),
 	})
 
 	t.Run("re-upload", func(t *testing.T) {
@@ -57,10 +59,12 @@ func TestStewardship(t *testing.T) {
 	})
 }
 
-func Test_stewardshipHandlers_invalidInputs(t *testing.T) {
+func TestStewardshipInvalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{})
+	client, _, _, _ := newTestServer(t, testServerOptions{
+		Storer: mockstorer.New(),
+	})
 
 	tests := []struct {
 		name    string
@@ -107,4 +111,33 @@ func Test_stewardshipHandlers_invalidInputs(t *testing.T) {
 			})
 		}
 	}
+
+	t.Run("batch with id not found", func(t *testing.T) {
+		t.Parallel()
+
+		jsonhttptest.Request(t, client, http.MethodPut, "/stewardship/1234", http.StatusNotFound,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, "1234"),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Code:    http.StatusNotFound,
+				Message: "batch with id not found",
+			}),
+		)
+	})
+	t.Run("invalid batch id", func(t *testing.T) {
+		t.Parallel()
+
+		jsonhttptest.Request(t, client, http.MethodPut, "/stewardship/1234", http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, "1234G"),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Code:    http.StatusBadRequest,
+				Message: "invalid header params",
+				Reasons: []jsonhttp.Reason{
+					{
+						Field: api.SwarmPostageBatchIdHeader,
+						Error: api.HexInvalidByteError('G').Error(),
+					},
+				},
+			}),
+		)
+	})
 }

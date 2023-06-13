@@ -71,6 +71,8 @@ type UploadStore interface {
 	DeleteSession(tagID uint64) error
 	// ListSessions will list all the Sessions currently being tracked.
 	ListSessions(offset, limit int) ([]SessionInfo, error)
+	// BatchHint will return the batch ID hint for the chunk reference if known.
+	BatchHint(swarm.Address) ([]byte, error)
 }
 
 // PinStore is a logical component of the storer which deals with pinning
@@ -90,6 +92,8 @@ type PinStore interface {
 	HasPin(swarm.Address) (bool, error)
 }
 
+// PinIterator is a helper interface which can be used to iterate over all the
+// chunks in a pinning collection.
 type PinIterator interface {
 	IteratePinCollection(root swarm.Address, iterateFn func(swarm.Address) (bool, error)) error
 }
@@ -124,6 +128,8 @@ type NetStore interface {
 
 var _ Reserve = (*DB)(nil)
 
+// Reserve is a logical component of the storer that deals with reserve
+// content. It will implement all the core functionality required for the protocols.
 type Reserve interface {
 	ReserveStore
 	EvictBatch(ctx context.Context, batchID []byte) error
@@ -131,10 +137,14 @@ type Reserve interface {
 	ReserveSize() int
 }
 
+// ReserveIterator is a helper interface which can be used to iterate over all
+// the chunks in the reserve.
 type ReserveIterator interface {
 	ReserveIterateChunks(cb func(swarm.Chunk) (bool, error)) error
 }
 
+// ReserveStore is a logical component of the storer that deals with reserve
+// content. It will implement all the core functionality required for the protocols.
 type ReserveStore interface {
 	ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte) (swarm.Chunk, error)
 	ReserveHas(addr swarm.Address, batchID []byte) (bool, error)
@@ -144,15 +154,20 @@ type ReserveStore interface {
 	RadiusChecker
 }
 
+// RadiusChecker provides the radius related functionality.
 type RadiusChecker interface {
 	IsWithinStorageRadius(addr swarm.Address) bool
 	StorageRadius() uint8
 }
 
+// LocalStore is a read-only ChunkStore. It can be used to check if chunk is known
+// locally, but it cannot tell what is the context of the chunk (whether it is
+// pinned, uploaded, etc.).
 type LocalStore interface {
 	ChunkStore() storage.ReadOnlyChunkStore
 }
 
+// Debugger is a helper interface which can be used to debug the storer.
 type Debugger interface {
 	DebugInfo(context.Context) (Info, error)
 }
