@@ -675,13 +675,14 @@ func BatchIDForChunk(st storage.Store, addr swarm.Address) ([]byte, error) {
 
 	err := st.Iterate(
 		storage.Query{
-			Factory: func() storage.Item { return new(uploadItem) },
-			Prefix:  addr.ByteString(),
+			Factory:      func() storage.Item { return new(uploadItem) },
+			Prefix:       addr.ByteString(),
+			ItemProperty: storage.QueryItemID,
 		},
 		func(r storage.Result) (bool, error) {
-			ui := r.Entry.(*uploadItem)
-			if ui.BatchID != nil {
-				batchID = ui.BatchID
+			fields := storageutil.SplitFields(r.ID)
+			if len(fields) == 2 && len(fields[1]) > 0 {
+				batchID = []byte(fields[1])
 				return true, nil
 			}
 			return false, nil
