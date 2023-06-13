@@ -100,7 +100,7 @@ func TestStewardshipInvalidInputs(t *testing.T) {
 
 	for _, method := range []string{http.MethodGet, http.MethodPut} {
 		method := method
-		for idx, tc := range tests {
+		for _, tc := range tests {
 			tc := tc
 			t.Run(method+" "+tc.name, func(t *testing.T) {
 				t.Parallel()
@@ -120,6 +120,23 @@ func TestStewardshipInvalidInputs(t *testing.T) {
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusNotFound,
 				Message: "batch with id not found",
+			}),
+		)
+	})
+	t.Run("invalid batch id", func(t *testing.T) {
+		t.Parallel()
+
+		jsonhttptest.Request(t, client, http.MethodPut, "/stewardship/1234", http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, "1234G"),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Code:    http.StatusBadRequest,
+				Message: "invalid header params",
+				Reasons: []jsonhttp.Reason{
+					{
+						Field: api.SwarmPostageBatchIdHeader,
+						Error: api.HexInvalidByteError('G').Error(),
+					},
+				},
 			}),
 		)
 	})

@@ -9,6 +9,7 @@ import (
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/postage"
+	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -57,7 +58,7 @@ func (s *Service) stewardshipPutHandler(w http.ResponseWriter, r *http.Request) 
 		switch {
 		case errors.Is(err, errBatchUnusable) || errors.Is(err, postage.ErrNotUsable):
 			jsonhttp.UnprocessableEntity(w, "batch not usable yet or does not exist")
-		case errors.Is(err, postage.ErrNotFound):
+		case errors.Is(err, postage.ErrNotFound) || errors.Is(err, storage.ErrNotFound):
 			jsonhttp.NotFound(w, "batch with id not found")
 		case errors.Is(err, errInvalidPostageBatch):
 			jsonhttp.BadRequest(w, "invalid batch id")
