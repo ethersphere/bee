@@ -94,7 +94,7 @@ func (m *mockStorer) Upload(_ context.Context, pin bool, tagID uint64) (storer.P
 func (m *mockStorer) NewSession() (storer.SessionInfo, error) {
 	session := &storer.SessionInfo{
 		TagID:     m.sessionID.Inc(),
-		StartedAt: now().Unix(),
+		StartedAt: now().UnixNano(),
 	}
 
 	m.mu.Lock()
