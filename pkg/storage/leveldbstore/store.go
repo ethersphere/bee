@@ -271,5 +271,15 @@ func (s *Store) Delete(item storage.Item) error {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
-	return s.db.Delete(key(item), nil)
+	// this is a small hack to make the deletion of old entries work. As they
+	// don't have a namespace, we need to check for that and use the ID as key without
+	// the separator.
+	var k []byte
+	if item.Namespace() == "" {
+		k = []byte(item.ID())
+	} else {
+		k = key(item)
+	}
+
+	return s.db.Delete(k, nil)
 }
