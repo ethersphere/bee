@@ -578,7 +578,7 @@ func dbNukeCmd(cmd *cobra.Command) {
 
 			stateStoreCleaner, ok := stateStore.(storage.StateStorerCleaner)
 			if ok {
-				err = stateStoreCleaner.Nuke(forgetStamps)
+				err = stateStoreCleaner.Nuke()
 				if err != nil {
 					return fmt.Errorf("statestore nuke: %w", err)
 				}

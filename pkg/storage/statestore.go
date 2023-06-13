@@ -31,5 +31,5 @@ type StateStorer interface {
 // StateStorerCleaner is the interface for cleaning the store.
 type StateStorerCleaner interface {
 	// Nuke the store so that only the bare essential entries are left.
-	Nuke(forgetStamps bool) error
+	Nuke() error
 }

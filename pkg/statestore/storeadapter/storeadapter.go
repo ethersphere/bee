@@ -175,16 +175,12 @@ func (s *StateStorerAdapter) Iterate(prefix string, iterFunc storage.StateIterFu
 	)
 }
 
-func (s *StateStorerAdapter) Nuke(forgetStamps bool) error {
+func (s *StateStorerAdapter) Nuke() error {
 	var (
 		keys               []string
 		prefixesToPreserve = []string{"accounting", "pseudosettle", "swap", "non-mineable-overlay", "overlayV2_nonce"}
 		err                error
 	)
-
-	if !forgetStamps {
-		prefixesToPreserve = append(prefixesToPreserve, "postage")
-	}
 
 	keys, err = s.collectKeysExcept(prefixesToPreserve)
 	if err != nil {
