@@ -6,6 +6,7 @@ package feeder
 
 import (
 	"encoding/binary"
+	"sync"
 
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -19,6 +20,7 @@ type chunkFeeder struct {
 	buffer    []byte
 	bufferIdx int
 	wrote     int64
+	writePool sync.Pool
 }
 
 // newChunkFeederWriter creates a new chunkFeeder that allows for partial
@@ -29,6 +31,12 @@ func NewChunkFeederWriter(size int, next pipeline.ChainWriter) pipeline.Interfac
 		size:   size,
 		next:   next,
 		buffer: make([]byte, size),
+		writePool: sync.Pool{
+			New: func() any {
+				buf := make([]byte, span+size)
+				return &buf
+			},
+		},
 	}
 }
 
@@ -48,12 +56,14 @@ func (f *chunkFeeder) Write(b []byte) (int, error) {
 	}
 
 	// if we are here it means we have to do at least one write
-	d := make([]byte, f.size+span)
-	var sp int // span of current write
+	buf := f.writePool.Get().(*[]byte)
+	defer f.writePool.Put(buf)
+	d := *buf
+	for i := range d {
+		d[i] = 0x0
+	}
 
-	//copy from existing buffer to this one
-	sp = copy(d[span:], f.buffer[:f.bufferIdx])
-
+	sp := copy(d[span:], f.buffer[:f.bufferIdx])
 	// don't account what was already in the buffer when returning
 	// number of written bytes
 	if sp > 0 {
