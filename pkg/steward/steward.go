@@ -61,7 +61,7 @@ func (s *steward) Reupload(ctx context.Context, root swarm.Address, stamper post
 
 		stamp, err := stamper.Stamp(c.Address())
 		if err != nil {
-			return fmt.Errorf("stamping chunk %s: %w", c.Address().String(), err)
+			return fmt.Errorf("stamping chunk %s: %w", c.Address(), err)
 		}
 
 		return uploaderSession.Put(ctx, c.WithStamp(stamp))

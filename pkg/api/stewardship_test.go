@@ -96,28 +96,31 @@ func TestStewardshipInvalidInputs(t *testing.T) {
 				},
 			},
 		},
-	}, {
-		name:    "batch - does not exist",
-		address: "1234",
-		want: jsonhttp.StatusResponse{
-			Code:    http.StatusNotFound,
-			Message: "batch with id not found",
-		},
 	}}
 
 	for _, method := range []string{http.MethodGet, http.MethodPut} {
 		method := method
 		for idx, tc := range tests {
 			tc := tc
-			if idx < 2 || method == http.MethodPut {
-				t.Run(method+" "+tc.name, func(t *testing.T) {
-					t.Parallel()
+			t.Run(method+" "+tc.name, func(t *testing.T) {
+				t.Parallel()
 
-					jsonhttptest.Request(t, client, method, "/stewardship/"+tc.address, tc.want.Code,
-						jsonhttptest.WithExpectedJSONResponse(tc.want),
-					)
-				})
-			}
+				jsonhttptest.Request(t, client, method, "/stewardship/"+tc.address, tc.want.Code,
+					jsonhttptest.WithExpectedJSONResponse(tc.want),
+				)
+			})
 		}
 	}
+
+	t.Run("batch with id not found", func(t *testing.T) {
+		t.Parallel()
+
+		jsonhttptest.Request(t, client, http.MethodPut, "/stewardship/1234", http.StatusNotFound,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, "1234"),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Code:    http.StatusNotFound,
+				Message: "batch with id not found",
+			}),
+		)
+	})
 }
