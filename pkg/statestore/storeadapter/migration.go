@@ -21,6 +21,7 @@ var deleteEntries = []string{
 	"statestore_schema",
 	"tags",
 	"sync_interval",
+	"kademlia-counters",
 }
 
 func epochMigration(s storage.Store) error {
@@ -32,7 +33,7 @@ func epochMigration(s storage.Store) error {
 		}
 		for _, e := range deleteEntries {
 			if strings.HasPrefix(res.ID, e) {
-				_ = s.Delete(res.Entry)
+				_ = s.Delete(&rawItem{&proxyItem{key: res.ID}})
 				return false, nil
 			}
 		}
@@ -43,6 +44,7 @@ func epochMigration(s storage.Store) error {
 		if err := s.Put(item); err != nil {
 			return true, err
 		}
+		_ = s.Delete(&rawItem{&proxyItem{key: res.ID}})
 		return false, nil
 	})
 }
