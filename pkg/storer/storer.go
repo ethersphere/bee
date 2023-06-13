@@ -26,6 +26,7 @@ import (
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/leveldbstore"
 	"github.com/ethersphere/bee/pkg/storage/migration"
+	"github.com/ethersphere/bee/pkg/storer/internal"
 	"github.com/ethersphere/bee/pkg/storer/internal/cache"
 	"github.com/ethersphere/bee/pkg/storer/internal/chunkstore"
 	"github.com/ethersphere/bee/pkg/storer/internal/events"
@@ -505,16 +506,15 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 
 	// Cleanup any dirty state in upload and pinning stores, this could happen
 	// in case of dirty shutdowns
-	txnRepo, commit, rollback := db.repo.NewTx(ctx)
 	err = errors.Join(
-		upload.CleanupDirty(txnRepo),
-		pinstore.CleanupDirty(txnRepo),
+		upload.CleanupDirty(db),
+		pinstore.CleanupDirty(db),
 	)
 	if err != nil {
-		return nil, errors.Join(err, rollback())
+		return nil, err
 	}
 
-	return db, commit()
+	return db, nil
 }
 
 // Metrics returns set of prometheus collectors.
@@ -596,3 +596,12 @@ type putterSession struct {
 func (p *putterSession) Done(addr swarm.Address) error { return p.done(addr) }
 
 func (p *putterSession) Cleanup() error { return p.cleanup() }
+
+func (db *DB) Do(ctx context.Context, op func(internal.Storage) error) error {
+	txnRepo, commit, rollback := db.repo.NewTx(ctx)
+	err := op(txnRepo)
+	if err != nil {
+		return errors.Join(err, rollback())
+	}
+	return commit()
+}

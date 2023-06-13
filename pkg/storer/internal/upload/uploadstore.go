@@ -512,7 +512,7 @@ func (u *uploadPutter) Close(s internal.Storage, addr swarm.Address) error {
 	return nil
 }
 
-func (u *uploadPutter) Cleanup(s internal.Storage) error {
+func (u *uploadPutter) Cleanup(batch internal.BatchOperation) error {
 	u.mtx.Lock()
 	defer u.mtx.Unlock()
 
@@ -520,38 +520,55 @@ func (u *uploadPutter) Cleanup(s internal.Storage) error {
 		return nil
 	}
 
-	di := &dirtyTagItem{TagID: u.tagID}
-	err := s.IndexStore().Get(di)
-	if err != nil {
-		return fmt.Errorf("failed reading dirty tag while cleaning up: %w", err)
-	}
-
 	itemsToDelete := make([]*pushItem, 0)
 
-	err = s.IndexStore().Iterate(
-		storage.Query{
-			Factory:       func() storage.Item { return &pushItem{} },
-			PrefixAtStart: true,
-			Prefix:        fmt.Sprintf("%d", di.Started),
-		},
-		func(res storage.Result) (bool, error) {
-			pi := res.Entry.(*pushItem)
-			if pi.TagID == u.tagID {
-				itemsToDelete = append(itemsToDelete, pi)
-			}
-			return false, nil
-		},
-	)
+	err := batch.Do(context.Background(), func(st internal.Storage) error {
+		di := &dirtyTagItem{TagID: u.tagID}
+		err := st.IndexStore().Get(di)
+		if err != nil {
+			return fmt.Errorf("failed reading dirty tag while cleaning up: %w", err)
+		}
+
+		return st.IndexStore().Iterate(
+			storage.Query{
+				Factory:       func() storage.Item { return &pushItem{} },
+				PrefixAtStart: true,
+				Prefix:        fmt.Sprintf("%d", di.Started),
+			},
+			func(res storage.Result) (bool, error) {
+				pi := res.Entry.(*pushItem)
+				if pi.TagID == u.tagID {
+					itemsToDelete = append(itemsToDelete, pi)
+				}
+				return false, nil
+			},
+		)
+	})
 	if err != nil {
-		return fmt.Errorf("failed iterating push items: %w", err)
+		return fmt.Errorf("failed iterating over push items: %w", err)
 	}
 
-	for _, pi := range itemsToDelete {
-		_ = remove(s, pi.Address, pi.BatchID)
-		_ = s.IndexStore().Delete(pi)
+	batchCnt := 1000
+	for i := 0; i < len(itemsToDelete); i += batchCnt {
+		err = batch.Do(context.Background(), func(st internal.Storage) error {
+			end := i + batchCnt
+			if end > len(itemsToDelete) {
+				end = len(itemsToDelete)
+			}
+			for _, pi := range itemsToDelete[i:end] {
+				_ = remove(st, pi.Address, pi.BatchID)
+				_ = st.IndexStore().Delete(pi)
+			}
+			return nil
+		})
+		if err != nil {
+			return fmt.Errorf("failed deleting push items: %w", err)
+		}
 	}
 
-	return s.IndexStore().Delete(&dirtyTagItem{TagID: u.tagID})
+	return batch.Do(context.Background(), func(st internal.Storage) error {
+		return st.IndexStore().Delete(&dirtyTagItem{TagID: u.tagID})
+	})
 }
 
 // Remove removes all the state associated with the given address and batchID.
@@ -585,25 +602,27 @@ func remove(st internal.Storage, address swarm.Address, batchID []byte) error {
 }
 
 // CleanupDirty does a best-effort cleanup of dirty tags. This is called on startup.
-func CleanupDirty(st internal.Storage) error {
+func CleanupDirty(batch internal.BatchOperation) error {
 	dirtyTags := make([]*dirtyTagItem, 0)
 
-	err := st.IndexStore().Iterate(
-		storage.Query{
-			Factory: func() storage.Item { return &dirtyTagItem{} },
-		},
-		func(res storage.Result) (bool, error) {
-			di := res.Entry.(*dirtyTagItem)
-			dirtyTags = append(dirtyTags, di)
-			return false, nil
-		},
-	)
+	err := batch.Do(context.Background(), func(st internal.Storage) error {
+		return st.IndexStore().Iterate(
+			storage.Query{
+				Factory: func() storage.Item { return &dirtyTagItem{} },
+			},
+			func(res storage.Result) (bool, error) {
+				di := res.Entry.(*dirtyTagItem)
+				dirtyTags = append(dirtyTags, di)
+				return false, nil
+			},
+		)
+	})
 	if err != nil {
 		return fmt.Errorf("failed iterating dirty tags: %w", err)
 	}
 
 	for _, di := range dirtyTags {
-		_ = (&uploadPutter{tagID: di.TagID}).Cleanup(st)
+		_ = (&uploadPutter{tagID: di.TagID}).Cleanup(batch)
 	}
 
 	return nil

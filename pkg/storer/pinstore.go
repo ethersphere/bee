@@ -6,56 +6,51 @@ package storer
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
 	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storer/internal"
 	pinstore "github.com/ethersphere/bee/pkg/storer/internal/pinning"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 // NewCollection is the implementation of the PinStore.NewCollection method.
 func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
-	txnRepo, commit, rollback := db.repo.NewTx(ctx)
-	pinningPutter, err := pinstore.NewCollection(txnRepo)
+	var (
+		pinningPutter internal.PutterCloserWithReference
+		err           error
+	)
+	err = db.Do(ctx, func(txnRepo internal.Storage) error {
+		pinningPutter, err = pinstore.NewCollection(txnRepo)
+		if err != nil {
+			return fmt.Errorf("pinstore.NewCollection: %w", err)
+		}
+		return nil
+	})
 	if err != nil {
-		return nil, fmt.Errorf("pinstore.NewCollection: %w", errors.Join(err, rollback()))
-	}
-	if err := commit(); err != nil {
-		return nil, fmt.Errorf("pinstore.NewCollection: %w", errors.Join(err, rollback()))
+		return nil, err
 	}
 
 	return &putterSession{
 		Putter: putterWithMetrics{
 			storage.PutterFunc(
 				func(ctx context.Context, chunk swarm.Chunk) error {
-					txnRepo, commit, rollback := db.repo.NewTx(ctx)
-					err := pinningPutter.Put(ctx, txnRepo, chunk)
-					if err != nil {
-						return fmt.Errorf("pinstore.Put: %w", errors.Join(err, rollback()))
-					}
-					return commit()
+					return db.Do(ctx, func(txnRepo internal.Storage) error {
+						return pinningPutter.Put(ctx, txnRepo, chunk)
+					})
 				},
 			),
 			db.metrics,
 			"pinstore",
 		},
 		done: func(address swarm.Address) error {
-			txnRepo, commit, rollback := db.repo.NewTx(ctx)
-			err := pinningPutter.Close(txnRepo, address)
-			if err != nil {
-				return fmt.Errorf("pinstore.Close: %w", errors.Join(err, rollback()))
-			}
-			return commit()
+			return db.Do(ctx, func(txnRepo internal.Storage) error {
+				return pinningPutter.Close(txnRepo, address)
+			})
 		},
 		cleanup: func() error {
-			txnRepo, commit, rollback := db.repo.NewTx(ctx)
-			err := pinningPutter.Cleanup(txnRepo)
-			if err != nil {
-				return fmt.Errorf("pinstore.Close: %w", errors.Join(err, rollback()))
-			}
-			return commit()
+			return pinningPutter.Cleanup(db)
 		},
 	}, nil
 }
@@ -72,11 +67,7 @@ func (db *DB) DeletePin(ctx context.Context, root swarm.Address) (err error) {
 		}
 	}()
 
-	txnRepo, commit, rollback := db.repo.NewTx(ctx)
-	if err := pinstore.DeletePin(ctx, txnRepo, root); err != nil {
-		return fmt.Errorf("pinstore.DeletePin: %w", errors.Join(err, rollback()))
-	}
-	return commit()
+	return pinstore.DeletePin(ctx, db, root)
 }
 
 // Pins is the implementation of the PinStore.Pins method.

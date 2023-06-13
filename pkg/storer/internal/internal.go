@@ -26,7 +26,11 @@ type Storage interface {
 type PutterCloserWithReference interface {
 	Put(context.Context, Storage, swarm.Chunk) error
 	Close(Storage, swarm.Address) error
-	Cleanup(Storage) error
+	Cleanup(BatchOperation) error
+}
+
+type BatchOperation interface {
+	Do(context.Context, func(Storage) error) error
 }
 
 var emptyAddr = make([]byte, swarm.HashSize)
@@ -51,9 +55,15 @@ func AddressBytesOrZero(addr swarm.Address) []byte {
 	return addr.Bytes()
 }
 
+// BatchedStorage groups the Storage and BatchOperation interfaces.
+type BatchedStorage interface {
+	Storage
+	BatchOperation
+}
+
 // NewInmemStorage constructs a inmem Storage implementation which can be used
 // for the tests in the internal packages.
-func NewInmemStorage() (Storage, func() error) {
+func NewInmemStorage() (BatchedStorage, func() error) {
 	ts := &inmemRepository{
 		indexStore: inmemstore.New(),
 		chunkStore: inmemchunkstore.New(),
@@ -71,3 +81,6 @@ type inmemRepository struct {
 
 func (t *inmemRepository) IndexStore() storage.Store      { return t.indexStore }
 func (t *inmemRepository) ChunkStore() storage.ChunkStore { return t.chunkStore }
+func (t *inmemRepository) Do(ctx context.Context, f func(Storage) error) error {
+	return f(t)
+}

@@ -430,7 +430,7 @@ func TestItemDirtyTagItem(t *testing.T) {
 	}
 }
 
-func newTestStorage(t *testing.T) internal.Storage {
+func newTestStorage(t *testing.T) internal.BatchedStorage {
 	t.Helper()
 
 	storg, closer := internal.NewInmemStorage()
