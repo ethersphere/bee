@@ -93,10 +93,12 @@ func (db *DB) Session(tagID uint64) (SessionInfo, error) {
 	return upload.TagInfo(db.repo.IndexStore(), tagID)
 }
 
+// DeleteSession is the implementation of the UploadStore.DeleteSession method.
 func (db *DB) DeleteSession(tagID uint64) error {
 	return upload.DeleteTag(db.repo.IndexStore(), tagID)
 }
 
+// ListSessions is the implementation of the UploadStore.ListSessions method.
 func (db *DB) ListSessions(offset, limit int) ([]SessionInfo, error) {
 	const maxPageSize = 1000
 
@@ -119,4 +121,9 @@ func (db *DB) ListSessions(offset, limit int) ([]SessionInfo, error) {
 	})
 
 	return tags[min(offset, len(tags)):min(offset+limit, len(tags))], nil
+}
+
+// BatchHint is the implementation of the UploadStore.BatchHint method.
+func (db *DB) BatchHint(address swarm.Address) ([]byte, error) {
+	return upload.BatchIDForChunk(db.repo.IndexStore(), address)
 }

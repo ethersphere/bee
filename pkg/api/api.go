@@ -787,25 +787,33 @@ func (p *putterSessionWrapper) Done(ref swarm.Address) error {
 	return errors.Join(p.PutterSession.Done(ref), p.save())
 }
 
+func (s *Service) getStamper(batchID []byte) (postage.Stamper, func() error, error) {
+	exists, err := s.batchStore.Exists(batchID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("batch exists: %w", err)
+	}
+
+	issuer, save, err := s.post.GetStampIssuer(batchID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("stamp issuer: %w", err)
+	}
+
+	if usable := exists && s.post.IssuerUsable(issuer); !usable {
+		return nil, nil, errBatchUnusable
+	}
+
+	return postage.NewStamper(s.stamperStore, issuer, s.signer), save, nil
+}
+
 func (s *Service) newStamperPutter(ctx context.Context, opts putterOptions) (storer.PutterSession, error) {
 	if !opts.Deferred && s.beeMode == DevMode {
 		return nil, errUnsupportedDevNodeOperation
 	}
-	exists, err := s.batchStore.Exists(opts.BatchID)
+
+	stamper, save, err := s.getStamper(opts.BatchID)
 	if err != nil {
-		return nil, fmt.Errorf("batch exists: %w", err)
+		return nil, fmt.Errorf("get stamper: %w", err)
 	}
-
-	issuer, save, err := s.post.GetStampIssuer(opts.BatchID)
-	if err != nil {
-		return nil, fmt.Errorf("stamp issuer: %w", err)
-	}
-
-	if usable := exists && s.post.IssuerUsable(issuer); !usable {
-		return nil, errBatchUnusable
-	}
-
-	stamper := postage.NewStamper(s.stamperStore, issuer, s.signer)
 
 	var session storer.PutterSession
 	if opts.Deferred || opts.Pin {

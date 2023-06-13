@@ -12,3 +12,8 @@ import (
 func JoinFields(fields ...string) string {
 	return strings.Join(fields, "/")
 }
+
+// SplitFields splits the given path by slash.
+func SplitFields(path string) []string {
+	return strings.Split(path, "/")
+}

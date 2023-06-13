@@ -7,6 +7,7 @@ package mock
 import (
 	"context"
 
+	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -17,7 +18,7 @@ type Steward struct {
 
 // Reupload implements steward.Interface Reupload method.
 // The given address is recorded.
-func (s *Steward) Reupload(_ context.Context, addr swarm.Address) error {
+func (s *Steward) Reupload(_ context.Context, addr swarm.Address, _ postage.Stamper) error {
 	s.addr = addr
 	return nil
 }
