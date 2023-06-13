@@ -92,11 +92,11 @@ type Listener interface {
 
 type BatchEventListener interface {
 	HandleCreate(*Batch, *big.Int) error
-	HandleTopUp(id []byte, newBalance *big.Int)
-	HandleDepthIncrease(id []byte, newDepth uint8)
+	HandleTopUp(id []byte, newBalance *big.Int) error
+	HandleDepthIncrease(id []byte, newDepth uint8) error
 }
 
 type BatchExpiryHandler interface {
-	HandleStampExpiry([]byte)
+	HandleStampExpiry([]byte) error
 	SetExpired() error
 }

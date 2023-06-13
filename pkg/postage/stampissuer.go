@@ -133,12 +133,29 @@ type stampIssuerData struct {
 	Expired        bool     `msgpack:"expired"`        // Specifies the expiry of the batch
 }
 
+// Clone returns a deep copy of the stampIssuerData.
+func (s stampIssuerData) Clone() stampIssuerData {
+	return stampIssuerData{
+		Label:         s.Label,
+		KeyID:         s.KeyID,
+		BatchID:       append([]byte(nil), s.BatchID...),
+		BatchAmount:   new(big.Int).Set(s.BatchAmount),
+		BatchDepth:    s.BatchDepth,
+		BucketDepth:   s.BucketDepth,
+		Buckets:       append([]uint32(nil), s.Buckets...),
+		BlockNumber:   s.BlockNumber,
+		ImmutableFlag: s.ImmutableFlag,
+		Expired:       s.Expired,
+	}
+}
+
 // StampIssuer is a local extension of a batch issuing stamps for uploads.
 // A StampIssuer instance extends a batch with bucket collision tracking
 // embedded in multiple Stampers, can be used concurrently.
 type StampIssuer struct {
-	bucketMu sync.Mutex
-	data     stampIssuerData
+	bucketMu  sync.Mutex
+	expiredMu sync.RWMutex
+	data      stampIssuerData
 }
 
 // NewStampIssuer constructs a StampIssuer as an extension of a batch for local
@@ -254,31 +271,37 @@ func (si *StampIssuer) Buckets() []uint32 {
 
 // Expired returns the expired property of stamp
 func (si *StampIssuer) Expired() bool {
+	si.expiredMu.RLock()
+	defer si.expiredMu.RUnlock()
 	return si.data.Expired
 }
 
 // SetExpired is setter for Expired property
 func (si *StampIssuer) SetExpired(e bool) {
+	si.expiredMu.Lock()
+	defer si.expiredMu.Unlock()
 	si.data.Expired = e
 }
 
 // stampIssuerItem is a storage.Item implementation for StampIssuer.
 type stampIssuerItem struct {
-	data stampIssuerData
+	issuer *StampIssuer
 }
 
 // NewStampIssuerItem creates a new stampIssuerItem.
-func NewStampIssuerItem(ID []byte) storage.Item {
+func NewStampIssuerItem(ID []byte) *stampIssuerItem {
 	return &stampIssuerItem{
-		data: stampIssuerData{
-			BatchID: ID,
+		issuer: &StampIssuer{
+			data: stampIssuerData{
+				BatchID: ID,
+			},
 		},
 	}
 }
 
 // ID is the batch ID.
 func (s *stampIssuerItem) ID() string {
-	return string(s.data.BatchID)
+	return string(s.issuer.ID())
 }
 
 // Namespace returns the storage namespace for a stampIssuer.
@@ -288,12 +311,18 @@ func (s *stampIssuerItem) Namespace() string {
 
 // Marshal marshals the stampIssuerItem into a byte slice.
 func (s *stampIssuerItem) Marshal() ([]byte, error) {
-	return msgpack.Marshal(s.data)
+	return s.issuer.MarshalBinary()
 }
 
 // Unmarshal unmarshals a byte slice into a stampIssuerItem.
 func (s *stampIssuerItem) Unmarshal(bytes []byte) error {
-	return msgpack.Unmarshal(bytes, &s.data)
+	issuer := new(StampIssuer)
+	err := issuer.UnmarshalBinary(bytes)
+	if err != nil {
+		return err
+	}
+	s.issuer = issuer
+	return nil
 }
 
 // Clone returns a clone of stampIssuerItem.
@@ -302,7 +331,9 @@ func (s *stampIssuerItem) Clone() storage.Item {
 		return nil
 	}
 	return &stampIssuerItem{
-		data: s.data,
+		issuer: &StampIssuer{
+			data: s.issuer.data.Clone(),
+		},
 	}
 }
 

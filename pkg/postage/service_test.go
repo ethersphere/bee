@@ -24,12 +24,9 @@ func TestSaveLoad(t *testing.T) {
 	defer store.Close()
 	pstore := pstoremock.New()
 	saved := func(id int64) postage.Service {
-		ps, err := postage.NewService(store, pstore, id)
-		if err != nil {
-			t.Fatal(err)
-		}
+		ps := postage.NewService(store, pstore, id)
 		for i := 0; i < 16; i++ {
-			err = ps.Add(newTestStampIssuer(t, 1000))
+			err := ps.Add(newTestStampIssuer(t, 1000))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -40,22 +37,26 @@ func TestSaveLoad(t *testing.T) {
 		return ps
 	}
 	loaded := func(id int64) postage.Service {
-		ps, err := postage.NewService(store, pstore, id)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return ps
+		return postage.NewService(store, pstore, id)
 	}
 	test := func(id int64) {
 		psS := saved(id)
 		psL := loaded(id)
 
 		sMap := map[string]struct{}{}
-		for _, s := range psS.StampIssuers() {
+		stampIssuers, err := psS.StampIssuers()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, s := range stampIssuers {
 			sMap[string(s.ID())] = struct{}{}
 		}
 
-		for _, s := range psL.StampIssuers() {
+		stampIssuers, err = psL.StampIssuers()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, s := range stampIssuers {
 			if _, ok := sMap[string(s.ID())]; !ok {
 				t.Fatalf("mismatch between saved and loaded")
 			}
@@ -75,10 +76,7 @@ func TestGetStampIssuer(t *testing.T) {
 	}
 	validBlockNumber := testChainState.Block - uint64(postage.BlockThreshold+1)
 	pstore := pstoremock.New(pstoremock.WithChainState(testChainState))
-	ps, err := postage.NewService(store, pstore, chainID)
-	if err != nil {
-		t.Fatal(err)
-	}
+	ps := postage.NewService(store, pstore, chainID)
 	ids := make([][]byte, 8)
 	for i := range ids {
 		id := make([]byte, 32)
@@ -150,7 +148,7 @@ func TestGetStampIssuer(t *testing.T) {
 		b := postagetesting.MustNewBatch()
 		b.Start = validBlockNumber
 		testAmount := big.NewInt(1)
-		err = ps.HandleCreate(b, testAmount)
+		err := ps.HandleCreate(b, testAmount)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -167,26 +165,32 @@ func TestGetStampIssuer(t *testing.T) {
 		}
 	})
 	t.Run("topup", func(t *testing.T) {
-		ps.HandleTopUp(ids[1], big.NewInt(10))
-		_, _, err := ps.GetStampIssuer(ids[1])
+		err := ps.HandleTopUp(ids[1], big.NewInt(10))
+		if err != nil {
+			t.Fatal(err)
+		}
+		stampIssuer, _, err := ps.GetStampIssuer(ids[1])
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		if ps.StampIssuers()[0].Amount().Cmp(big.NewInt(13)) != 0 {
-			t.Fatalf("expected amount %d got %d", 13, ps.StampIssuers()[0].Amount().Int64())
+		if stampIssuer.Amount().Cmp(big.NewInt(13)) != 0 {
+			t.Fatalf("expected amount %d got %d", 13, stampIssuer.Amount().Int64())
 		}
 	})
 	t.Run("dilute", func(t *testing.T) {
-		ps.HandleDepthIncrease(ids[2], 17)
-		_, _, err := ps.GetStampIssuer(ids[2])
+		err := ps.HandleDepthIncrease(ids[2], 17)
+		if err != nil {
+			t.Fatal(err)
+		}
+		stampIssuer, _, err := ps.GetStampIssuer(ids[2])
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		if ps.StampIssuers()[1].Amount().Cmp(big.NewInt(3)) != 0 {
-			t.Fatalf("expected amount %d got %d", 3, ps.StampIssuers()[1].Amount().Int64())
+		if stampIssuer.Amount().Cmp(big.NewInt(3)) != 0 {
+			t.Fatalf("expected amount %d got %d", 3, stampIssuer.Amount().Int64())
 		}
-		if ps.StampIssuers()[1].Depth() != 17 {
-			t.Fatalf("expected depth %d got %d", 17, ps.StampIssuers()[1].Depth())
+		if stampIssuer.Depth() != 17 {
+			t.Fatalf("expected depth %d got %d", 17, stampIssuer.Depth())
 		}
 	})
 }

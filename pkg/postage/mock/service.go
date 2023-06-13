@@ -55,7 +55,7 @@ func (m *mockPostage) SetExpired() error {
 	return nil
 }
 
-func (m *mockPostage) HandleStampExpiry(id []byte) {
+func (m *mockPostage) HandleStampExpiry(id []byte) error {
 	m.issuerLock.Lock()
 	defer m.issuerLock.Unlock()
 
@@ -64,6 +64,7 @@ func (m *mockPostage) HandleStampExpiry(id []byte) {
 			v.SetExpired(true)
 		}
 	}
+	return nil
 }
 
 func (m *mockPostage) Add(s *postage.StampIssuer) error {
@@ -74,7 +75,7 @@ func (m *mockPostage) Add(s *postage.StampIssuer) error {
 	return nil
 }
 
-func (m *mockPostage) StampIssuers() []*postage.StampIssuer {
+func (m *mockPostage) StampIssuers() ([]*postage.StampIssuer, error) {
 	m.issuerLock.Lock()
 	defer m.issuerLock.Unlock()
 
@@ -82,7 +83,7 @@ func (m *mockPostage) StampIssuers() []*postage.StampIssuer {
 	for _, v := range m.issuersMap {
 		issuers = append(issuers, v)
 	}
-	return issuers
+	return issuers, nil
 }
 
 func (m *mockPostage) GetStampIssuer(id []byte) (*postage.StampIssuer, func() error, error) {
@@ -106,9 +107,9 @@ func (m *mockPostage) IssuerUsable(_ *postage.StampIssuer) bool {
 
 func (m *mockPostage) HandleCreate(_ *postage.Batch, _ *big.Int) error { return nil }
 
-func (m *mockPostage) HandleTopUp(_ []byte, _ *big.Int) {}
+func (m *mockPostage) HandleTopUp(_ []byte, _ *big.Int) error { return nil }
 
-func (m *mockPostage) HandleDepthIncrease(_ []byte, _ uint8) {}
+func (m *mockPostage) HandleDepthIncrease(_ []byte, _ uint8) error { return nil }
 
 func (m *mockPostage) Close() error {
 	return nil
