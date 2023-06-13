@@ -11,10 +11,16 @@ import (
 	"github.com/ethersphere/bee/pkg/storage/migration"
 )
 
-func AllSteps() migration.Steps {
+func allSteps() migration.Steps {
 	return map[uint64]migration.StepFn{
 		1: epochMigration,
 	}
+}
+
+var deleteEntries = []string{
+	"statestore_schema",
+	"tags",
+	"sync_interval",
 }
 
 func epochMigration(s storage.Store) error {
@@ -23,6 +29,12 @@ func epochMigration(s storage.Store) error {
 	}, func(res storage.Result) (stop bool, err error) {
 		if strings.HasPrefix(res.ID, stateStoreNamespace) {
 			return false, nil
+		}
+		for _, e := range deleteEntries {
+			if strings.HasPrefix(res.ID, e) {
+				_ = s.Delete(res.Entry)
+				return false, nil
+			}
 		}
 
 		item := res.Entry.(*rawItem)

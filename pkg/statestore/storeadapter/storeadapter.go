@@ -16,7 +16,7 @@ import (
 )
 
 // stateStoreNamespace is the namespace used for state storage.
-const stateStoreNamespace = "statestore"
+const stateStoreNamespace = "ss"
 
 var _ storage.Item = (*proxyItem)(nil)
 
@@ -225,7 +225,7 @@ func (s *StateStorerAdapter) deleteKeys(keys []string) error {
 
 // NewStateStorerAdapter creates a new StateStorerAdapter.
 func NewStateStorerAdapter(storage storage.Store) (*StateStorerAdapter, error) {
-	err := migration.Migrate(storage, AllSteps())
+	err := migration.Migrate(storage, allSteps())
 	if err != nil {
 		return nil, err
 	}
