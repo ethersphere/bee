@@ -22,12 +22,15 @@ var (
 	ErrOverwriteOfNewerBatch     = errOverwriteOfNewerBatch
 
 	ErrNextTagIDUnmarshalInvalidSize = errNextTagIDUnmarshalInvalidSize
+
+	ErrDirtyTagItemUnmarshalInvalidSize = errDirtyTagItemUnmarshalInvalidSize
 )
 
 type (
-	PushItem   = pushItem
-	UploadItem = uploadItem
-	NextTagID  = nextTagID
+	PushItem     = pushItem
+	UploadItem   = uploadItem
+	NextTagID    = nextTagID
+	DirtyTagItem = dirtyTagItem
 )
 
 func ReplaceTimeNow(fn func() time.Time) { now = fn }

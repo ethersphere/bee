@@ -296,6 +296,62 @@ func (i uploadItem) String() string {
 	return storageutil.JoinFields(i.Namespace(), i.ID())
 }
 
+// dirtyTagItemUnmarshalInvalidSize is returned when trying
+// to unmarshal buffer that is not of size dirtyTagItemSize.
+var errDirtyTagItemUnmarshalInvalidSize = errors.New("unmarshal dirtyTagItem: invalid size")
+
+// dirtyTagItemSize is the size of a marshaled dirtyTagItem.
+const dirtyTagItemSize = 8 + 8
+
+type dirtyTagItem struct {
+	TagID   uint64
+	Started int64
+}
+
+// ID implements the storage.Item interface.
+func (i dirtyTagItem) ID() string {
+	return strconv.FormatUint(i.TagID, 10)
+}
+
+// Namespace implements the storage.Item interface.
+func (i dirtyTagItem) Namespace() string {
+	return "DirtyTagItem"
+}
+
+// Marshal implements the storage.Item interface.
+func (i dirtyTagItem) Marshal() ([]byte, error) {
+	buf := make([]byte, dirtyTagItemSize)
+	binary.LittleEndian.PutUint64(buf, i.TagID)
+	binary.LittleEndian.PutUint64(buf[8:], uint64(i.Started))
+	return buf, nil
+}
+
+// Unmarshal implements the storage.Item interface.
+func (i *dirtyTagItem) Unmarshal(bytes []byte) error {
+	if len(bytes) != dirtyTagItemSize {
+		return errDirtyTagItemUnmarshalInvalidSize
+	}
+	i.TagID = binary.LittleEndian.Uint64(bytes[:8])
+	i.Started = int64(binary.LittleEndian.Uint64(bytes[8:]))
+	return nil
+}
+
+// Clone implements the storage.Item interface.
+func (i *dirtyTagItem) Clone() storage.Item {
+	if i == nil {
+		return nil
+	}
+	return &dirtyTagItem{
+		TagID:   i.TagID,
+		Started: i.Started,
+	}
+}
+
+// String implements the fmt.Stringer interface.
+func (i dirtyTagItem) String() string {
+	return storageutil.JoinFields(i.Namespace(), i.ID())
+}
+
 // stampIndexUploadNamespace represents the
 // namespace name of the stamp index for upload.
 const stampIndexUploadNamespace = "upload"
@@ -319,7 +375,6 @@ type uploadPutter struct {
 	mtx    sync.Mutex
 	split  uint64
 	seen   uint64
-	s      internal.Storage
 	closed bool
 }
 
@@ -333,9 +388,12 @@ func NewPutter(s internal.Storage, tagID uint64) (internal.PutterCloserWithRefer
 	if !has {
 		return nil, fmt.Errorf("upload store: tag %d not found: %w", tagID, storage.ErrNotFound)
 	}
+	err = s.IndexStore().Put(&dirtyTagItem{TagID: tagID, Started: now().UnixNano()})
+	if err != nil {
+		return nil, err
+	}
 	return &uploadPutter{
 		tagID: ti.TagID,
-		s:     s,
 	}, nil
 }
 
@@ -345,7 +403,7 @@ func NewPutter(s internal.Storage, tagID uint64) (internal.PutterCloserWithRefer
 // - uploadItem entry to keep track of this chunk.
 // - pushItem entry to make it available for PushSubscriber
 // - add chunk to the chunkstore till it is synced
-func (u *uploadPutter) Put(ctx context.Context, chunk swarm.Chunk) error {
+func (u *uploadPutter) Put(ctx context.Context, s internal.Storage, chunk swarm.Chunk) error {
 	u.mtx.Lock()
 	defer u.mtx.Unlock()
 
@@ -358,7 +416,7 @@ func (u *uploadPutter) Put(ctx context.Context, chunk swarm.Chunk) error {
 		Address: chunk.Address(),
 		BatchID: chunk.Stamp().BatchID(),
 	}
-	switch exists, err := u.s.IndexStore().Has(ui); {
+	switch exists, err := s.IndexStore().Has(ui); {
 	case err != nil:
 		return fmt.Errorf("store has item %q call failed: %w", ui, err)
 	case exists:
@@ -367,7 +425,7 @@ func (u *uploadPutter) Put(ctx context.Context, chunk swarm.Chunk) error {
 		return nil
 	}
 
-	switch item, loaded, err := stampindex.LoadOrStore(u.s.IndexStore(), stampIndexUploadNamespace, chunk); {
+	switch item, loaded, err := stampindex.LoadOrStore(s.IndexStore(), stampIndexUploadNamespace, chunk); {
 	case err != nil:
 		return fmt.Errorf("load or store stamp index for chunk %v has fail: %w", chunk, err)
 	case loaded && item.ChunkIsImmutable:
@@ -378,7 +436,7 @@ func (u *uploadPutter) Put(ctx context.Context, chunk swarm.Chunk) error {
 		if prev >= curr {
 			return errOverwriteOfNewerBatch
 		}
-		err = stampindex.Store(u.s.IndexStore(), stampIndexUploadNamespace, chunk)
+		err = stampindex.Store(s.IndexStore(), stampIndexUploadNamespace, chunk)
 		if err != nil {
 			return fmt.Errorf("failed updating stamp index: %w", err)
 		}
@@ -386,18 +444,18 @@ func (u *uploadPutter) Put(ctx context.Context, chunk swarm.Chunk) error {
 
 	u.split++
 
-	if err := u.s.ChunkStore().Put(ctx, chunk); err != nil {
+	if err := s.ChunkStore().Put(ctx, chunk); err != nil {
 		return fmt.Errorf("chunk store put chunk %q call failed: %w", chunk.Address(), err)
 	}
 
-	if err := chunkstamp.Store(u.s.IndexStore(), chunkStampNamespace, chunk); err != nil {
+	if err := chunkstamp.Store(s.IndexStore(), chunkStampNamespace, chunk); err != nil {
 		return fmt.Errorf("associate chunk with stamp %q call failed: %w", chunk.Address(), err)
 	}
 
 	ui.Uploaded = now().UnixNano()
 	ui.TagID = u.tagID
 
-	if err := u.s.IndexStore().Put(ui); err != nil {
+	if err := s.IndexStore().Put(ui); err != nil {
 		return fmt.Errorf("store put item %q call failed: %w", ui, err)
 	}
 
@@ -407,7 +465,7 @@ func (u *uploadPutter) Put(ctx context.Context, chunk swarm.Chunk) error {
 		BatchID:   chunk.Stamp().BatchID(),
 		TagID:     u.tagID,
 	}
-	if err := u.s.IndexStore().Put(pi); err != nil {
+	if err := s.IndexStore().Put(pi); err != nil {
 		return fmt.Errorf("store put item %q call failed: %w", pi, err)
 	}
 
@@ -418,12 +476,16 @@ func (u *uploadPutter) Put(ctx context.Context, chunk swarm.Chunk) error {
 // with a swarm reference. This can be useful while keeping track of uploads through
 // the tags. It will update the tag. This will be filled with the Split and Seen count
 // by the Putter.
-func (u *uploadPutter) Close(addr swarm.Address) error {
+func (u *uploadPutter) Close(s internal.Storage, addr swarm.Address) error {
 	u.mtx.Lock()
 	defer u.mtx.Unlock()
 
+	if u.closed {
+		return nil
+	}
+
 	ti := &TagItem{TagID: u.tagID}
-	err := u.s.IndexStore().Get(ti)
+	err := s.IndexStore().Get(ti)
 	if err != nil {
 		return fmt.Errorf("failed reading tag while closing: %w", err)
 	}
@@ -435,12 +497,133 @@ func (u *uploadPutter) Close(addr swarm.Address) error {
 		ti.Address = addr.Clone()
 	}
 
-	err = u.s.IndexStore().Put(ti)
+	err = s.IndexStore().Put(ti)
 	if err != nil {
 		return fmt.Errorf("failed storing tag: %w", err)
 	}
 
+	err = s.IndexStore().Delete(&dirtyTagItem{TagID: u.tagID})
+	if err != nil {
+		return fmt.Errorf("failed deleting dirty tag: %w", err)
+	}
+
 	u.closed = true
+
+	return nil
+}
+
+func (u *uploadPutter) Cleanup(batch internal.BatchOperation) error {
+	u.mtx.Lock()
+	defer u.mtx.Unlock()
+
+	if u.closed {
+		return nil
+	}
+
+	itemsToDelete := make([]*pushItem, 0)
+
+	err := batch.Do(context.Background(), func(st internal.Storage) error {
+		di := &dirtyTagItem{TagID: u.tagID}
+		err := st.IndexStore().Get(di)
+		if err != nil {
+			return fmt.Errorf("failed reading dirty tag while cleaning up: %w", err)
+		}
+
+		return st.IndexStore().Iterate(
+			storage.Query{
+				Factory:       func() storage.Item { return &pushItem{} },
+				PrefixAtStart: true,
+				Prefix:        fmt.Sprintf("%d", di.Started),
+			},
+			func(res storage.Result) (bool, error) {
+				pi := res.Entry.(*pushItem)
+				if pi.TagID == u.tagID {
+					itemsToDelete = append(itemsToDelete, pi)
+				}
+				return false, nil
+			},
+		)
+	})
+	if err != nil {
+		return fmt.Errorf("failed iterating over push items: %w", err)
+	}
+
+	batchCnt := 1000
+	for i := 0; i < len(itemsToDelete); i += batchCnt {
+		err = batch.Do(context.Background(), func(st internal.Storage) error {
+			end := i + batchCnt
+			if end > len(itemsToDelete) {
+				end = len(itemsToDelete)
+			}
+			for _, pi := range itemsToDelete[i:end] {
+				_ = remove(st, pi.Address, pi.BatchID)
+				_ = st.IndexStore().Delete(pi)
+			}
+			return nil
+		})
+		if err != nil {
+			return fmt.Errorf("failed deleting push items: %w", err)
+		}
+	}
+
+	return batch.Do(context.Background(), func(st internal.Storage) error {
+		return st.IndexStore().Delete(&dirtyTagItem{TagID: u.tagID})
+	})
+}
+
+// Remove removes all the state associated with the given address and batchID.
+func remove(st internal.Storage, address swarm.Address, batchID []byte) error {
+	ui := &uploadItem{
+		Address: address,
+		BatchID: batchID,
+	}
+
+	err := st.IndexStore().Get(ui)
+	if err != nil {
+		return fmt.Errorf("failed to read uploadItem %s: %w", ui, err)
+	}
+
+	err = st.IndexStore().Delete(ui)
+	if err != nil {
+		return fmt.Errorf("failed deleting upload item: %w", err)
+	}
+
+	if ui.Synced == 0 {
+		err = st.ChunkStore().Delete(context.Background(), address)
+		if err != nil {
+			return fmt.Errorf("failed deleting chunk: %w", err)
+		}
+		err = chunkstamp.Delete(st.IndexStore(), chunkStampNamespace, address, batchID)
+		if err != nil {
+			return fmt.Errorf("failed deleting chunk stamp %x: %w", batchID, err)
+		}
+	}
+	return nil
+}
+
+// CleanupDirty does a best-effort cleanup of dirty tags. This is called on startup.
+func CleanupDirty(batch internal.BatchOperation) error {
+	dirtyTags := make([]*dirtyTagItem, 0)
+
+	err := batch.Do(context.Background(), func(st internal.Storage) error {
+		return st.IndexStore().Iterate(
+			storage.Query{
+				Factory: func() storage.Item { return &dirtyTagItem{} },
+			},
+			func(res storage.Result) (bool, error) {
+				di := res.Entry.(*dirtyTagItem)
+				dirtyTags = append(dirtyTags, di)
+				return false, nil
+			},
+		)
+	})
+	if err != nil {
+		return fmt.Errorf("failed iterating dirty tags: %w", err)
+	}
+
+	for _, di := range dirtyTags {
+		_ = (&uploadPutter{tagID: di.TagID}).Cleanup(batch)
+	}
 
 	return nil
 }
@@ -526,7 +709,7 @@ func (p *pushReporter) Report(
 		return fmt.Errorf("failed deleting chunk %s: %w", chunk.Address(), err)
 	}
 
-	ui.Synced = now().Unix()
+	ui.Synced = now().UnixNano()
 	err = p.s.IndexStore().Put(ui)
 	if err != nil {
 		return fmt.Errorf("failed updating uploadItem %s: %w", ui, err)
@@ -593,7 +776,7 @@ func NextTag(st storage.Store) (TagItem, error) {
 	}
 
 	tag.TagID = uint64(tagID)
-	tag.StartedAt = now().Unix()
+	tag.StartedAt = now().UnixNano()
 
 	return tag, st.Put(&tag)
 }
@@ -630,6 +813,13 @@ func Iterate(ctx context.Context, s internal.Storage, consumerFn func(chunk swar
 		Factory: func() storage.Item { return &pushItem{} },
 	}, func(r storage.Result) (bool, error) {
 		pi := r.Entry.(*pushItem)
+		has, err := s.IndexStore().Has(&dirtyTagItem{TagID: pi.TagID})
+		if err != nil {
+			return true, err
+		}
+		if has {
+			return false, nil
+		}
 		chunk, err := s.ChunkStore().Get(ctx, pi.Address)
 		if err != nil {
 			return true, err
@@ -680,11 +870,10 @@ func BatchIDForChunk(st storage.Store, addr swarm.Address) ([]byte, error) {
 			ItemProperty: storage.QueryItemID,
 		},
 		func(r storage.Result) (bool, error) {
-			fields := storageutil.SplitFields(r.ID)
-			if len(fields) == 2 && len(fields[1]) > 0 {
-				batchID = []byte(fields[1])
-				return true, nil
+			if len(r.ID) < 32 {
+				return false, nil
 			}
+			batchID = []byte(r.ID[len(r.ID)-32:])
 			return false, nil
 		},
 	)

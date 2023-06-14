@@ -11,12 +11,14 @@ import (
 	"io/fs"
 	"os"
 	"path"
+	"sync"
 
 	"github.com/hashicorp/go-multierror"
 )
 
 // Recovery allows disaster recovery.
 type Recovery struct {
+	mtx        sync.Mutex
 	shards     []*slots
 	shardFiles []*os.File
 	datasize   int
@@ -55,6 +57,9 @@ func NewRecovery(dir string, shardCnt int, datasize int) (*Recovery, error) {
 
 // Add marks a location as used (not free).
 func (r *Recovery) Add(loc Location) error {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
 	sh := r.shards[loc.Shard]
 	l := len(sh.data)
 	if diff := int(loc.Slot/8) - l; diff >= 0 {
@@ -68,16 +73,24 @@ func (r *Recovery) Add(loc Location) error {
 }
 
 func (r *Recovery) Read(ctx context.Context, loc Location, buf []byte) error {
-	sh := r.shards[loc.Shard]
-	if loc.Slot >= uint32(len(sh.data)*8) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	shFile := r.shardFiles[loc.Shard]
+	if stat, err := shFile.Stat(); err != nil {
+		return err
+	} else if stat.Size() < int64(loc.Slot)*int64(r.datasize) {
 		return errors.New("slot not found")
 	}
-	_, err := r.shardFiles[loc.Shard].ReadAt(buf, int64(loc.Slot)*int64(r.datasize))
+	_, err := shFile.ReadAt(buf, int64(loc.Slot)*int64(r.datasize))
 	return err
 }
 
 // Save saves all free slots files of the recovery (without closing).
 func (r *Recovery) Save() error {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
 	err := new(multierror.Error)
 	for _, sh := range r.shards {
 		for i := range sh.data {
@@ -90,6 +103,9 @@ func (r *Recovery) Save() error {
 
 // Close closes data and free slots files of the recovery (without saving).
 func (r *Recovery) Close() error {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
 	err := new(multierror.Error)
 	for idx, sh := range r.shards {
 		err = multierror.Append(err, sh.file.Close(), r.shardFiles[idx].Close())

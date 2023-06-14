@@ -76,19 +76,23 @@ func (db *DB) Download(cache bool) storage.Getter {
 					// if chunk is not found locally, retrieve it from the network
 					ch, err = db.retrieval.RetrieveChunk(ctx, address, swarm.ZeroAddress)
 					if err == nil && cache {
-						db.bgCacheWorkers <- struct{}{}
-						db.bgCacheWorkersWg.Add(1)
-						go func() {
-							defer func() {
-								<-db.bgCacheWorkers
-								db.bgCacheWorkersWg.Done()
-							}()
+						select {
+						case <-ctx.Done():
+						case <-db.quit:
+						case db.bgCacheWorkers <- struct{}{}:
+							db.bgCacheWorkersWg.Add(1)
+							go func() {
+								defer func() {
+									<-db.bgCacheWorkers
+									db.bgCacheWorkersWg.Done()
+								}()
 
-							err := db.Cache().Put(ctx, ch)
-							if err != nil {
-								db.logger.Error(err, "failed putting chunk to cache", "chunk_address", ch.Address())
-							}
-						}()
+								err := db.Cache().Put(ctx, ch)
+								if err != nil {
+									db.logger.Error(err, "failed putting chunk to cache", "chunk_address", ch.Address())
+								}
+							}()
+						}
 					}
 				}
 			}

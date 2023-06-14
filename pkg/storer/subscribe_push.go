@@ -37,12 +37,6 @@ func (db *DB) SubscribePush(ctx context.Context) (<-chan swarm.Chunk, func()) {
 			var count int
 
 			err := upload.Iterate(ctx, db.repo, func(chunk swarm.Chunk) (bool, error) {
-
-				if db.isDirty(uint64(chunk.TagID())) {
-					// continue to see if later tags have been committed
-					return false, nil
-				}
-
 				select {
 				case chunks <- chunk:
 					count++
@@ -82,16 +76,4 @@ func (db *DB) SubscribePush(ctx context.Context) (<-chan swarm.Chunk, func()) {
 	}
 
 	return chunks, stop
-}
-
-func (db *DB) isDirty(tag uint64) bool {
-	db.dirtyTagsMu.RLock()
-	defer db.dirtyTagsMu.RUnlock()
-
-	for _, dirtyTag := range db.dirtyTags {
-		if dirtyTag == tag {
-			return true
-		}
-	}
-	return false
 }

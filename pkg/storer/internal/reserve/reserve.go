@@ -282,35 +282,51 @@ func (r *Reserve) IterateChunksItems(store internal.Storage, startBin uint8, cb 
 	return err
 }
 
-func (r *Reserve) EvictBatchBin(ctx context.Context, store internal.Storage, bin uint8, batchID []byte, cb func(swarm.Chunk)) (int, error) {
+func (r *Reserve) EvictBatchBin(ctx context.Context, batch internal.BatchOperation, bin uint8, batchID []byte, cb func(swarm.Chunk)) (int, error) {
 
 	var evicted []*batchRadiusItem
 
-	err := store.IndexStore().Iterate(storage.Query{
-		Factory: func() storage.Item { return &batchRadiusItem{} },
-		Prefix:  batchBinToString(bin, batchID),
-	}, func(res storage.Result) (bool, error) {
-		batchRadius := res.Entry.(*batchRadiusItem)
-		evicted = append(evicted, batchRadius)
-		return false, nil
+	err := batch.Do(ctx, func(store internal.Storage) error {
+		return store.IndexStore().Iterate(storage.Query{
+			Factory: func() storage.Item { return &batchRadiusItem{} },
+			Prefix:  batchBinToString(bin, batchID),
+		}, func(res storage.Result) (bool, error) {
+			batchRadius := res.Entry.(*batchRadiusItem)
+			evicted = append(evicted, batchRadius)
+			return false, nil
+		})
 	})
 	if err != nil {
 		return 0, err
 	}
 
-	for _, item := range evicted {
+	batchCnt := 1000
 
-		c, err := store.ChunkStore().Get(ctx, item.Address)
-		if err != nil {
-			if errors.Is(err, storage.ErrNotFound) {
-				continue
-			}
-			return 0, err
+	for i := 0; i < len(evicted); i += batchCnt {
+		end := i + batchCnt
+		if end > len(evicted) {
+			end = len(evicted)
 		}
 
-		cb(c)
+		err := batch.Do(ctx, func(store internal.Storage) error {
+			for _, item := range evicted[i:end] {
+				c, err := store.ChunkStore().Get(ctx, item.Address)
+				if err != nil {
+					if errors.Is(err, storage.ErrNotFound) {
+						continue
+					}
+					return err
+				}
 
-		err = removeChunk(ctx, store, item)
+				cb(c)
+
+				err = removeChunk(ctx, store, item)
+				if err != nil {
+					return err
+				}
+			}
+			return nil
+		})
 		if err != nil {
 			return 0, err
 		}

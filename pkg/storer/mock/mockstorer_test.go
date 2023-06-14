@@ -41,7 +41,7 @@ func TestMockStorer(t *testing.T) {
 			t.Fatalf("NewSession(): unexpected error: %v", err)
 		}
 
-		want := storer.SessionInfo{TagID: 1, StartedAt: now().Unix()}
+		want := storer.SessionInfo{TagID: 1, StartedAt: now().UnixNano()}
 
 		if diff := cmp.Diff(want, have); diff != "" {
 			t.Fatalf("unexpected session info: (-want +have):\n%s", diff)
@@ -54,7 +54,7 @@ func TestMockStorer(t *testing.T) {
 			t.Fatalf("Session(): unexpected error: %v", err)
 		}
 
-		want := storer.SessionInfo{TagID: 1, StartedAt: now().Unix()}
+		want := storer.SessionInfo{TagID: 1, StartedAt: now().UnixNano()}
 
 		if diff := cmp.Diff(want, have); diff != "" {
 			t.Fatalf("unexpected session info: (-want +have):\n%s", diff)
@@ -68,7 +68,7 @@ func TestMockStorer(t *testing.T) {
 		}
 
 		want := []storer.SessionInfo{
-			{TagID: 1, StartedAt: now().Unix()},
+			{TagID: 1, StartedAt: now().UnixNano()},
 		}
 
 		if diff := cmp.Diff(want, have); diff != "" {

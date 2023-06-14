@@ -14,6 +14,7 @@ import (
 type (
 	PinCollectionItem = pinCollectionItem
 	PinChunkItem      = pinChunkItem
+	DirtyCollection   = dirtyCollection
 )
 
 var (
