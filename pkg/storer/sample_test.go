@@ -51,10 +51,6 @@ func TestReserveSampler(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			// err = st.Repo().ChunkStore().Put(context.Background(), ch)
-			// if err != nil {
-			// 	t.Fatal(err)
-			// }
 		}
 
 		t.Run("reserve size", reserveSizeTest(st.Reserve(), chunkCountPerPO*maxPO))
