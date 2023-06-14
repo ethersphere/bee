@@ -380,6 +380,11 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) (bool, error) {
 func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 	storageRadius := a.store.StorageRadius()
 
+	if a.state.IsFrozen() {
+		a.logger.Info("skipping round because node is frozen")
+		return false, nil
+	}
+
 	isPlaying, err := a.contract.IsPlaying(ctx, storageRadius)
 	if err != nil {
 		a.metrics.ErrCheckIsPlaying.Inc()
@@ -389,18 +394,12 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 		a.logger.Info("not playing in this round")
 		return false, nil
 	}
-
 	a.state.SetLastSelectedRound(round + 1)
 	a.metrics.NeighborhoodSelected.Inc()
 	a.logger.Info("neighbourhood chosen", "round", round)
 
 	if !a.state.IsFullySynced() {
 		a.logger.Info("skipping round because node is not fully synced")
-		return false, nil
-	}
-
-	if a.state.IsFrozen() {
-		a.logger.Info("skipping round because node is frozen")
 		return false, nil
 	}
 
@@ -412,9 +411,7 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 	_, hasFunds, err := a.HasEnoughFundsToPlay(ctx)
 	if err != nil {
 		return false, fmt.Errorf("has enough funds to play: %w", err)
-	}
-
-	if !hasFunds {
+	} else if !hasFunds {
 		a.logger.Info("insufficient funds to play in next round", "round", round)
 		a.metrics.InsufficientFundsToPlay.Inc()
 		return false, nil
@@ -425,6 +422,8 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+
+	a.logger.Info("produce sample", "hash", sample.ReserveSampleHash, "radius", sample.StorageRadius)
 
 	a.state.SetSampleData(round, sample, time.Since(now))
 
