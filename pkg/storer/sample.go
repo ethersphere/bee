@@ -154,7 +154,7 @@ func (db *DB) ReserveSample(
 				// Skip chunks if they are not SOC or CAC
 				if chItem.Type != swarm.ChunkTypeSingleOwner &&
 					chItem.Type != swarm.ChunkTypeContentAddressed {
-					wstat.RougeChunk++
+					wstat.RogueChunk++
 					continue
 				}
 
@@ -345,7 +345,7 @@ type SampleStats struct {
 	HmacrDuration             time.Duration
 	ValidStampDuration        time.Duration
 	BatchesBelowValueDuration time.Duration
-	RougeChunk                int64
+	RogueChunk                int64
 	ChunkLoadDuration         time.Duration
 	ChunkLoadFailed           int64
 	StampLoadFailed           int64
@@ -362,7 +362,7 @@ func (s *SampleStats) add(other SampleStats) {
 	s.HmacrDuration += other.HmacrDuration
 	s.ValidStampDuration += other.ValidStampDuration
 	s.BatchesBelowValueDuration += other.BatchesBelowValueDuration
-	s.RougeChunk += other.RougeChunk
+	s.RogueChunk += other.RogueChunk
 	s.ChunkLoadDuration += other.ChunkLoadDuration
 	s.ChunkLoadFailed += other.ChunkLoadFailed
 	s.StampLoadFailed += other.StampLoadFailed
