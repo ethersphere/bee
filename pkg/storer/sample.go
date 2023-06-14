@@ -26,6 +26,8 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+const SampleSize = 8
+
 type SampleItem struct {
 	TransformedAddress swarm.Address
 	ChunkAddress       swarm.Address
@@ -34,6 +36,7 @@ type SampleItem struct {
 }
 
 type Sample struct {
+	Stats SampleStats
 	Items []SampleItem
 }
 
@@ -90,27 +93,31 @@ func (db *DB) ReserveSample(
 ) (Sample, error) {
 	g, ctx := errgroup.WithContext(ctx)
 	chunkC := make(chan reserve.ChunkItem, 64)
-	allStats := &sampleStat{}
+	allStats := &SampleStats{}
 	statsLock := sync.Mutex{}
+	addStats := func(stats SampleStats) {
+		statsLock.Lock()
+		allStats.add(stats)
+		statsLock.Unlock()
+	}
+
+	t := time.Now()
 
 	excludedBatchIDs, err := db.batchesBelowValue(minBatchBalance)
 	if err != nil {
 		db.logger.Error(err, "get batches below value")
 	}
 
-	t := time.Now()
+	allStats.BatchesBelowValueDuration = time.Since(t)
 
 	// Phase 1: Iterate chunk addresses
 	g.Go(func() error {
 		start := time.Now()
-		stats := sampleStat{}
+		stats := SampleStats{}
 		defer func() {
 			stats.IterationDuration = time.Since(start)
 			close(chunkC)
-
-			statsLock.Lock()
-			allStats.add(stats)
-			statsLock.Unlock()
+			addStats(stats)
 		}()
 
 		err := db.reserve.IterateChunksItems(db.repo, storageRadius, func(chi reserve.ChunkItem) (bool, error) {
@@ -131,11 +138,9 @@ func (db *DB) ReserveSample(
 	const workers = 6
 	for i := 0; i < workers; i++ {
 		g.Go(func() error {
-			wstat := sampleStat{}
+			wstat := SampleStats{}
 			defer func() {
-				statsLock.Lock()
-				allStats.add(wstat)
-				statsLock.Unlock()
+				addStats(wstat)
 			}()
 
 			hmacr := hmac.New(swarm.NewHasher, anchor)
@@ -149,14 +154,20 @@ func (db *DB) ReserveSample(
 				// Skip chunks if they are not SOC or CAC
 				if chItem.Type != swarm.ChunkTypeSingleOwner &&
 					chItem.Type != swarm.ChunkTypeContentAddressed {
+					wstat.RogueChunk++
 					continue
 				}
 
+				chunkLoadStart := time.Now()
+
 				chunk, err := db.ChunkStore().Get(ctx, chItem.ChunkAddress)
 				if err != nil {
+					wstat.ChunkLoadFailed++
 					db.logger.Debug("failed loading chunk", "chunk_address", chItem.ChunkAddress, "error", err)
 					continue
 				}
+
+				wstat.ChunkLoadDuration += time.Since(chunkLoadStart)
 
 				hmacrStart := time.Now()
 
@@ -172,7 +183,7 @@ func (db *DB) ReserveSample(
 				select {
 				case sampleItemChan <- SampleItem{
 					TransformedAddress: taddr,
-					ChunkAddress:       chItem.ChunkAddress,
+					ChunkAddress:       chunk.Address(),
 					ChunkData:          chunk.Data(),
 					Stamp:              postage.NewStamp(chItem.BatchID, nil, nil, nil),
 				}:
@@ -213,7 +224,8 @@ func (db *DB) ReserveSample(
 
 	// Phase 3: Assemble the sample. Here we need to assemble only the first SampleSize
 	// no of items from the results of the 2nd phase.
-	stats := sampleStat{}
+	// In this step stamps are loaded and validated only if chunk will be added to sample.
+	stats := SampleStats{}
 	for item := range sampleItemChan {
 		currentMaxAddr := swarm.EmptyAddress
 		if len(sampleItems) > 0 {
@@ -225,6 +237,7 @@ func (db *DB) ReserveSample(
 
 			stamp, err := chunkstamp.LoadWithBatchID(db.repo.IndexStore(), "reserve", item.ChunkAddress, item.Stamp.BatchID())
 			if err != nil {
+				stats.StampLoadFailed++
 				db.logger.Debug("failed loading stamp", "chunk_address", item.ChunkAddress, "error", err)
 				continue
 			}
@@ -250,17 +263,19 @@ func (db *DB) ReserveSample(
 			stats.SampleInserts++
 		}
 	}
-	allStats.add(stats)
+	addStats(stats)
+
+	allStats.TotalDuration = time.Since(t)
 
 	if err := g.Wait(); err != nil {
-		db.logger.Info("reserve sampler finished with error", "err", err, "duration", time.Since(t), "storage_radius", storageRadius, "consensus_time_ns", consensusTime, "stats", allStats)
+		db.logger.Info("reserve sampler finished with error", "err", err, "duration", time.Since(t), "storage_radius", storageRadius, "consensus_time_ns", consensusTime, "stats", fmt.Sprintf("%+v", allStats))
 
 		return Sample{}, fmt.Errorf("sampler: failed creating sample: %w", err)
 	}
 
-	db.logger.Info("reserve sampler finished", "duration", time.Since(t), "storage_radius", storageRadius, "consensus_time_ns", consensusTime, "stats", allStats)
+	db.logger.Info("reserve sampler finished", "duration", time.Since(t), "storage_radius", storageRadius, "consensus_time_ns", consensusTime, "stats", fmt.Sprintf("%+v", allStats))
 
-	return Sample{Items: sampleItems}, nil
+	return Sample{Stats: *allStats, Items: sampleItems}, nil
 }
 
 // less function uses the byte compare to check for lexicographic ordering
@@ -319,18 +334,25 @@ func transformedAddressSOC(hasher *bmt.Hasher, chunk swarm.Chunk) (swarm.Address
 	return swarm.NewAddress(sHasher.Sum(nil)), nil
 }
 
-type sampleStat struct {
-	TotalIterated       int64
-	IterationDuration   time.Duration
-	SampleInserts       int64
-	NewIgnored          int64
-	InvalidStamp        int64
-	BelowBalanceIgnored int64
-	HmacrDuration       time.Duration
-	ValidStampDuration  time.Duration
+type SampleStats struct {
+	TotalDuration             time.Duration
+	TotalIterated             int64
+	IterationDuration         time.Duration
+	SampleInserts             int64
+	NewIgnored                int64
+	InvalidStamp              int64
+	BelowBalanceIgnored       int64
+	HmacrDuration             time.Duration
+	ValidStampDuration        time.Duration
+	BatchesBelowValueDuration time.Duration
+	RogueChunk                int64
+	ChunkLoadDuration         time.Duration
+	ChunkLoadFailed           int64
+	StampLoadFailed           int64
 }
 
-func (s *sampleStat) add(other sampleStat) {
+func (s *SampleStats) add(other SampleStats) {
+	s.TotalDuration += other.TotalDuration
 	s.TotalIterated += other.TotalIterated
 	s.IterationDuration += other.IterationDuration
 	s.SampleInserts += other.SampleInserts
@@ -339,19 +361,9 @@ func (s *sampleStat) add(other sampleStat) {
 	s.BelowBalanceIgnored += other.BelowBalanceIgnored
 	s.HmacrDuration += other.HmacrDuration
 	s.ValidStampDuration += other.ValidStampDuration
-}
-
-func (s sampleStat) String() string {
-	return fmt.Sprintf(
-		"TotalChunks: %d SampleInserts: %d NewIgnored: %d InvalidStamp: %d BelowBalanceIgnored: %d "+
-			"IterationDuration: %s HmacrDuration: %s ValidStampDuration: %s",
-		s.TotalIterated,
-		s.SampleInserts,
-		s.NewIgnored,
-		s.InvalidStamp,
-		s.BelowBalanceIgnored,
-		s.IterationDuration,
-		s.HmacrDuration,
-		s.ValidStampDuration,
-	)
+	s.BatchesBelowValueDuration += other.BatchesBelowValueDuration
+	s.RogueChunk += other.RogueChunk
+	s.ChunkLoadDuration += other.ChunkLoadDuration
+	s.ChunkLoadFailed += other.ChunkLoadFailed
+	s.StampLoadFailed += other.StampLoadFailed
 }
