@@ -253,8 +253,9 @@ func (r *Reserve) IterateChunks(store internal.Storage, startBin uint8, cb func(
 }
 
 type ChunkItem struct {
-	Chunk swarm.Chunk
-	Type  swarm.ChunkType
+	ChunkAddress swarm.Address
+	BatchID      []byte
+	Type         swarm.ChunkType
 }
 
 func (r *Reserve) IterateChunksItems(store internal.Storage, startBin uint8, cb func(ChunkItem) (bool, error)) error {
@@ -265,19 +266,10 @@ func (r *Reserve) IterateChunksItems(store internal.Storage, startBin uint8, cb 
 	}, func(res storage.Result) (bool, error) {
 		item := res.Entry.(*chunkBinItem)
 
-		chunk, err := store.ChunkStore().Get(context.Background(), item.Address)
-		if err != nil {
-			return false, err
-		}
-
-		stamp, err := chunkstamp.LoadWithBatchID(store.IndexStore(), reserveNamespace, item.Address, item.BatchID)
-		if err != nil {
-			return false, err
-		}
-
 		chItem := ChunkItem{
-			Chunk: chunk.WithStamp(stamp),
-			Type:  item.ChunkType,
+			ChunkAddress: item.Address,
+			BatchID:      item.BatchID,
+			Type:         item.ChunkType,
 		}
 
 		stop, err := cb(chItem)
