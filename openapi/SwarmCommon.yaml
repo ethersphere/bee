@@ -715,7 +715,7 @@ components:
     RedistributionStatusResponse:
       type: object
       properties:
-        minimumFunds:
+        minimumGasFunds:
           $ref: "#/components/schemas/BigInt"
         hasSufficientFunds:
           type: boolean
