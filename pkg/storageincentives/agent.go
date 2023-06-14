@@ -418,7 +418,7 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 		return false, err
 	}
 
-	a.logger.Info("produce sample", "hash", sample.ReserveSampleHash, "radius", sample.StorageRadius)
+	a.logger.Info("produced sample", "hash", sample.ReserveSampleHash, "radius", sample.StorageRadius)
 
 	a.state.SetSampleData(round, sample, time.Since(now))
 
