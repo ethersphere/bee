@@ -870,11 +870,10 @@ func BatchIDForChunk(st storage.Store, addr swarm.Address) ([]byte, error) {
 			ItemProperty: storage.QueryItemID,
 		},
 		func(r storage.Result) (bool, error) {
-			fields := storageutil.SplitFields(r.ID)
-			if len(fields) == 2 && len(fields[1]) > 0 {
-				batchID = []byte(fields[1])
-				return true, nil
+			if len(r.ID) < 32 {
+				return false, nil
 			}
+			batchID = []byte(r.ID[len(r.ID)-32:])
 			return false, nil
 		},
 	)
