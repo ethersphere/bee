@@ -36,6 +36,7 @@ type SampleItem struct {
 }
 
 type Sample struct {
+	Stats SampleStats
 	Items []SampleItem
 }
 
@@ -92,9 +93,9 @@ func (db *DB) ReserveSample(
 ) (Sample, error) {
 	g, ctx := errgroup.WithContext(ctx)
 	chunkC := make(chan reserve.ChunkItem, 64)
-	allStats := &sampleStat{}
+	allStats := &SampleStats{}
 	statsLock := sync.Mutex{}
-	addStats := func(stats sampleStat) {
+	addStats := func(stats SampleStats) {
 		statsLock.Lock()
 		allStats.add(stats)
 		statsLock.Unlock()
@@ -112,7 +113,7 @@ func (db *DB) ReserveSample(
 	// Phase 1: Iterate chunk addresses
 	g.Go(func() error {
 		start := time.Now()
-		stats := sampleStat{}
+		stats := SampleStats{}
 		defer func() {
 			stats.IterationDuration = time.Since(start)
 			close(chunkC)
@@ -137,7 +138,7 @@ func (db *DB) ReserveSample(
 	const workers = 6
 	for i := 0; i < workers; i++ {
 		g.Go(func() error {
-			wstat := sampleStat{}
+			wstat := SampleStats{}
 			defer func() {
 				addStats(wstat)
 			}()
@@ -161,6 +162,7 @@ func (db *DB) ReserveSample(
 
 				chunk, err := db.ChunkStore().Get(ctx, chItem.ChunkAddress)
 				if err != nil {
+					wstat.ChunkLoadFailed++
 					db.logger.Debug("failed loading chunk", "chunk_address", chItem.ChunkAddress, "error", err)
 					continue
 				}
@@ -223,7 +225,7 @@ func (db *DB) ReserveSample(
 	// Phase 3: Assemble the sample. Here we need to assemble only the first SampleSize
 	// no of items from the results of the 2nd phase.
 	// In this step stamps are loaded and validated only if chunk will be added to sample.
-	stats := sampleStat{}
+	stats := SampleStats{}
 	for item := range sampleItemChan {
 		currentMaxAddr := swarm.EmptyAddress
 		if len(sampleItems) > 0 {
@@ -235,6 +237,7 @@ func (db *DB) ReserveSample(
 
 			stamp, err := chunkstamp.LoadWithBatchID(db.repo.IndexStore(), "reserve", item.ChunkAddress, item.Stamp.BatchID())
 			if err != nil {
+				stats.StampLoadFailed++
 				db.logger.Debug("failed loading stamp", "chunk_address", item.ChunkAddress, "error", err)
 				continue
 			}
@@ -262,6 +265,8 @@ func (db *DB) ReserveSample(
 	}
 	addStats(stats)
 
+	allStats.TotalDuration = time.Since(t)
+
 	if err := g.Wait(); err != nil {
 		db.logger.Info("reserve sampler finished with error", "err", err, "duration", time.Since(t), "storage_radius", storageRadius, "consensus_time_ns", consensusTime, "stats", fmt.Sprintf("%+v", allStats))
 
@@ -270,7 +275,7 @@ func (db *DB) ReserveSample(
 
 	db.logger.Info("reserve sampler finished", "duration", time.Since(t), "storage_radius", storageRadius, "consensus_time_ns", consensusTime, "stats", fmt.Sprintf("%+v", allStats))
 
-	return Sample{Items: sampleItems}, nil
+	return Sample{Stats: *allStats, Items: sampleItems}, nil
 }
 
 // less function uses the byte compare to check for lexicographic ordering
@@ -329,7 +334,8 @@ func transformedAddressSOC(hasher *bmt.Hasher, chunk swarm.Chunk) (swarm.Address
 	return swarm.NewAddress(sHasher.Sum(nil)), nil
 }
 
-type sampleStat struct {
+type SampleStats struct {
+	TotalDuration             time.Duration
 	TotalIterated             int64
 	IterationDuration         time.Duration
 	SampleInserts             int64
@@ -341,9 +347,12 @@ type sampleStat struct {
 	BatchesBelowValueDuration time.Duration
 	RougeChunk                int64
 	ChunkLoadDuration         time.Duration
+	ChunkLoadFailed           int64
+	StampLoadFailed           int64
 }
 
-func (s *sampleStat) add(other sampleStat) {
+func (s *SampleStats) add(other SampleStats) {
+	s.TotalDuration += other.TotalDuration
 	s.TotalIterated += other.TotalIterated
 	s.IterationDuration += other.IterationDuration
 	s.SampleInserts += other.SampleInserts
@@ -355,4 +364,6 @@ func (s *sampleStat) add(other sampleStat) {
 	s.BatchesBelowValueDuration += other.BatchesBelowValueDuration
 	s.RougeChunk += other.RougeChunk
 	s.ChunkLoadDuration += other.ChunkLoadDuration
+	s.ChunkLoadFailed += other.ChunkLoadFailed
+	s.StampLoadFailed += other.StampLoadFailed
 }

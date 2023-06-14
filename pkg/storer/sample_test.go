@@ -64,6 +64,11 @@ func TestReserveSampler(t *testing.T) {
 			}
 
 			assertValidSample(t, sample)
+			assertSampleNoErrors(t, sample)
+
+			if sample.Stats.NewIgnored != 0 {
+				t.Fatalf("sample should not have ignored chunks")
+			}
 
 			sample1 = sample
 		})
@@ -91,9 +96,15 @@ func TestReserveSampler(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if !reflect.DeepEqual(sample, sample1) {
-				t.Fatalf("samples different (-want +have):\n%s", cmp.Diff(sample, sample1))
+			if !reflect.DeepEqual(sample.Items, sample1.Items) {
+				t.Fatalf("samples different (-want +have):\n%s", cmp.Diff(sample.Items, sample1.Items))
 			}
+
+			if sample.Stats.NewIgnored == 0 {
+				t.Fatalf("sample should have some ignored chunks")
+			}
+
+			assertSampleNoErrors(t, sample)
 		})
 
 	}
@@ -163,5 +174,22 @@ func assertValidSample(t *testing.T, sample storer.Sample) {
 		if sample.Items[i].TransformedAddress.Compare(sample.Items[i+1].TransformedAddress) != -1 {
 			t.Fatalf("incorrect order of samples")
 		}
+	}
+}
+
+func assertSampleNoErrors(t *testing.T, sample storer.Sample) {
+	t.Helper()
+
+	if sample.Stats.ChunkLoadFailed != 0 {
+		t.Fatalf("got unexpected failed chunk loads")
+	}
+	if sample.Stats.RougeChunk != 0 {
+		t.Fatalf("got unexpected rouge chunks")
+	}
+	if sample.Stats.StampLoadFailed != 0 {
+		t.Fatalf("got unexpected failed stamp loads")
+	}
+	if sample.Stats.InvalidStamp != 0 {
+		t.Fatalf("got unexpected invalid stamps")
 	}
 }
