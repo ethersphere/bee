@@ -22,7 +22,6 @@ import (
 const (
 	reserveOverCapacity  = "reserveOverCapacity"
 	reserveUnreserved    = "reserveUnreserved"
-	SampleSize           = 8
 	reserveUpdateLockKey = "reserveUpdateLockKey"
 )
 
