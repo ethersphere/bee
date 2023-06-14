@@ -42,7 +42,7 @@ func newTagResponse(tag storer.SessionInfo) tagResponse {
 		Synced:    tag.Synced,
 		Uid:       tag.TagID,
 		Address:   tag.Address,
-		StartedAt: time.Unix(tag.StartedAt, 0),
+		StartedAt: time.Unix(0, tag.StartedAt),
 	}
 }
 

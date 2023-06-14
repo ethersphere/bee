@@ -6,36 +6,51 @@ package storer
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
+	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storer/internal"
 	pinstore "github.com/ethersphere/bee/pkg/storer/internal/pinning"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 // NewCollection is the implementation of the PinStore.NewCollection method.
 func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
-	txnRepo, commit, rollback := db.repo.NewTx(ctx)
-	pinningPutter := pinstore.NewCollection(txnRepo)
+	var (
+		pinningPutter internal.PutterCloserWithReference
+		err           error
+	)
+	err = db.Do(ctx, func(txnRepo internal.Storage) error {
+		pinningPutter, err = pinstore.NewCollection(txnRepo)
+		if err != nil {
+			return fmt.Errorf("pinstore.NewCollection: %w", err)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
 
 	return &putterSession{
 		Putter: putterWithMetrics{
-			pinningPutter,
+			storage.PutterFunc(
+				func(ctx context.Context, chunk swarm.Chunk) error {
+					return db.Do(ctx, func(txnRepo internal.Storage) error {
+						return pinningPutter.Put(ctx, txnRepo, chunk)
+					})
+				},
+			),
 			db.metrics,
 			"pinstore",
 		},
 		done: func(address swarm.Address) error {
-			return errors.Join(
-				pinningPutter.Close(address),
-				commit(),
-			)
+			return db.Do(ctx, func(txnRepo internal.Storage) error {
+				return pinningPutter.Close(txnRepo, address)
+			})
 		},
 		cleanup: func() error {
-			if err := rollback(); err != nil {
-				return fmt.Errorf("pinstore.NewCollection: %w", err)
-			}
-			return nil
+			return pinningPutter.Cleanup(db)
 		},
 	}, nil
 }
@@ -52,11 +67,7 @@ func (db *DB) DeletePin(ctx context.Context, root swarm.Address) (err error) {
 		}
 	}()
 
-	txnRepo, commit, rollback := db.repo.NewTx(ctx)
-	if err := pinstore.DeletePin(ctx, txnRepo, root); err != nil {
-		return fmt.Errorf("pinstore.DeletePin: %w", errors.Join(err, rollback()))
-	}
-	return commit()
+	return pinstore.DeletePin(ctx, db, root)
 }
 
 // Pins is the implementation of the PinStore.Pins method.

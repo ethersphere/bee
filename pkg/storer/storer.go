@@ -26,9 +26,11 @@ import (
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/leveldbstore"
 	"github.com/ethersphere/bee/pkg/storage/migration"
+	"github.com/ethersphere/bee/pkg/storer/internal"
 	"github.com/ethersphere/bee/pkg/storer/internal/cache"
 	"github.com/ethersphere/bee/pkg/storer/internal/chunkstore"
 	"github.com/ethersphere/bee/pkg/storer/internal/events"
+	pinstore "github.com/ethersphere/bee/pkg/storer/internal/pinning"
 	"github.com/ethersphere/bee/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/pkg/storer/internal/upload"
 	localmigration "github.com/ethersphere/bee/pkg/storer/migration"
@@ -316,7 +318,7 @@ type noopRadiusSetter struct{}
 
 func (noopRadiusSetter) SetStorageRadius(uint8) {}
 
-func performEpochMigration(ctx context.Context, basePath string, opts *Options) error {
+func performEpochMigration(ctx context.Context, basePath string, opts *Options) (retErr error) {
 	store, err := initStore(basePath, opts)
 	if err != nil {
 		return err
@@ -343,6 +345,12 @@ func performEpochMigration(ctx context.Context, basePath string, opts *Options) 
 			return err
 		}
 	}
+
+	defer func() {
+		if sharkyRecover != nil {
+			retErr = errors.Join(retErr, sharkyRecover.Save())
+		}
+	}()
 
 	return epochMigration(ctx, basePath, opts.StateStore, store, rs, sharkyRecover, logger)
 }
@@ -401,14 +409,8 @@ type DB struct {
 	bgCacheWorkers   chan struct{}
 	bgCacheWorkersWg sync.WaitGroup
 	dbCloser         io.Closer
-
-	subscriptionsWG sync.WaitGroup
-
-	dirtyTagsMu sync.RWMutex
-	dirtyTags   []uint64 // tagIDs
-
-	events *events.Subscriber
-
+	subscriptionsWG  sync.WaitGroup
+	events           *events.Subscriber
 	reserve          *reserve.Reserve
 	reserveWg        sync.WaitGroup
 	reserveBinEvents *events.Subscriber
@@ -502,6 +504,16 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	}
 	db.metrics.CacheSize.Set(float64(db.cacheObj.Size()))
 
+	// Cleanup any dirty state in upload and pinning stores, this could happen
+	// in case of dirty shutdowns
+	err = errors.Join(
+		upload.CleanupDirty(db),
+		pinstore.CleanupDirty(db),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	return db, nil
 }
 
@@ -585,21 +597,11 @@ func (p *putterSession) Done(addr swarm.Address) error { return p.done(addr) }
 
 func (p *putterSession) Cleanup() error { return p.cleanup() }
 
-func (db *DB) markDirty(tag uint64) {
-	db.dirtyTagsMu.Lock()
-	defer db.dirtyTagsMu.Unlock()
-
-	db.dirtyTags = append(db.dirtyTags, tag)
-}
-
-func (db *DB) clearDirty(tag uint64) {
-	db.dirtyTagsMu.Lock()
-	defer db.dirtyTagsMu.Unlock()
-
-	for i, tagID := range db.dirtyTags {
-		if tag == tagID {
-			db.dirtyTags = append(db.dirtyTags[:i], db.dirtyTags[i+1:]...)
-			break
-		}
+func (db *DB) Do(ctx context.Context, op func(internal.Storage) error) error {
+	txnRepo, commit, rollback := db.repo.NewTx(ctx)
+	err := op(txnRepo)
+	if err != nil {
+		return errors.Join(err, rollback())
 	}
+	return commit()
 }

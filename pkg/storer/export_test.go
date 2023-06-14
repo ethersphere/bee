@@ -12,6 +12,11 @@ import (
 	"github.com/ethersphere/bee/pkg/storer/internal/reserve"
 )
 
+var (
+	InitShedIndexes = initShedIndexes
+	EpochMigration  = epochMigration
+)
+
 func (db *DB) Reserve() *reserve.Reserve {
 	return db.reserve
 }

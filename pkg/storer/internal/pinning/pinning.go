@@ -42,9 +42,6 @@ var (
 	errCollectionRootAddressIsZero = errors.New("pin store: collection root address is zero")
 )
 
-// batchSize used for deletion
-var batchSize = 100
-
 // creates a new UUID and returns it as a byte slice
 func newUUID() []byte {
 	id := uuid.New()
@@ -169,26 +166,58 @@ func (p pinChunkItem) String() string {
 	return storageutil.JoinFields(p.Namespace(), p.ID())
 }
 
+type dirtyCollection struct {
+	UUID []byte
+}
+
+func (d *dirtyCollection) ID() string { return string(d.UUID) }
+
+func (dirtyCollection) Namespace() string { return "dirtyCollection" }
+
+func (d *dirtyCollection) Marshal() ([]byte, error) {
+	return nil, nil
+}
+
+func (d *dirtyCollection) Unmarshal(_ []byte) error {
+	return nil
+}
+
+func (d *dirtyCollection) Clone() storage.Item {
+	if d == nil {
+		return nil
+	}
+	return &dirtyCollection{
+		UUID: append([]byte(nil), d.UUID...),
+	}
+}
+
+func (d dirtyCollection) String() string {
+	return storageutil.JoinFields(d.Namespace(), d.ID())
+}
+
 // NewCollection returns a putter wrapped around the passed storage.
 // The putter will add the chunk to Chunk store if it doesnt exists within this collection.
 // It will create a new UUID for the collection which can be used to iterate on all the chunks
 // that are part of this collection. The root pin is only updated on successful close of this
 // Putter.
-func NewCollection(st internal.Storage) internal.PutterCloserWithReference {
-	return &collectionPutter{
-		collection: &pinCollectionItem{UUID: newUUID()},
-		st:         st,
+func NewCollection(st internal.Storage) (internal.PutterCloserWithReference, error) {
+	newCollectionUUID := newUUID()
+	err := st.IndexStore().Put(&dirtyCollection{UUID: newCollectionUUID})
+	if err != nil {
+		return nil, err
 	}
+	return &collectionPutter{
+		collection: &pinCollectionItem{UUID: newCollectionUUID},
+	}, nil
 }
 
 type collectionPutter struct {
 	mtx        sync.Mutex
 	collection *pinCollectionItem
-	st         internal.Storage
 	closed     bool
 }
 
-func (c *collectionPutter) Put(ctx context.Context, ch swarm.Chunk) error {
+func (c *collectionPutter) Put(ctx context.Context, st internal.Storage, ch swarm.Chunk) error {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
@@ -203,7 +232,7 @@ func (c *collectionPutter) Put(ctx context.Context, ch swarm.Chunk) error {
 	// guarantee that we dont accidentally delete common chunks across collections,
 	// a separate pinCollectionItem entry will be present for each duplicate chunk.
 	collectionChunk := &pinChunkItem{UUID: c.collection.UUID, Addr: ch.Address()}
-	found, err := c.st.IndexStore().Has(collectionChunk)
+	found, err := st.IndexStore().Has(collectionChunk)
 	if err != nil {
 		return fmt.Errorf("pin store: failed to check chunk: %w", err)
 	}
@@ -214,12 +243,12 @@ func (c *collectionPutter) Put(ctx context.Context, ch swarm.Chunk) error {
 		return nil
 	}
 
-	err = c.st.IndexStore().Put(collectionChunk)
+	err = st.IndexStore().Put(collectionChunk)
 	if err != nil {
 		return fmt.Errorf("pin store: failed putting collection chunk: %w", err)
 	}
 
-	err = c.st.ChunkStore().Put(ctx, ch)
+	err = st.ChunkStore().Put(ctx, ch)
 	if err != nil {
 		return fmt.Errorf("pin store: failled putting chunk: %w", err)
 	}
@@ -227,7 +256,7 @@ func (c *collectionPutter) Put(ctx context.Context, ch swarm.Chunk) error {
 	return nil
 }
 
-func (c *collectionPutter) Close(root swarm.Address) error {
+func (c *collectionPutter) Close(st internal.Storage, root swarm.Address) error {
 	if root.IsZero() {
 		return errCollectionRootAddressIsZero
 	}
@@ -237,12 +266,67 @@ func (c *collectionPutter) Close(root swarm.Address) error {
 
 	// Save the root pin reference.
 	c.collection.Addr = root
-	err := c.st.IndexStore().Put(c.collection)
+	err := st.IndexStore().Put(c.collection)
 	if err != nil {
 		return fmt.Errorf("pin store: failed updating collection: %w", err)
 	}
 
+	err = st.IndexStore().Delete(&dirtyCollection{UUID: c.collection.UUID})
+	if err != nil {
+		return fmt.Errorf("pin store: failed deleting dirty collection: %w", err)
+	}
+
 	c.closed = true
+	return nil
+}
+
+func (c *collectionPutter) Cleanup(batch internal.BatchOperation) error {
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
+
+	if c.closed {
+		return nil
+	}
+
+	if err := deleteCollectionChunks(context.Background(), batch, c.collection.UUID); err != nil {
+		return fmt.Errorf("pin store: failed deleting collection chunks: %w", err)
+	}
+
+	err := batch.Do(context.Background(), func(st internal.Storage) error {
+		return st.IndexStore().Delete(&dirtyCollection{UUID: c.collection.UUID})
+	})
+	if err != nil {
+		return fmt.Errorf("pin store: failed deleting dirty collection: %w", err)
+	}
+
+	c.closed = true
+	return nil
+}
+
+// CleanupDirty will iterate over all the dirty collections and delete them.
+func CleanupDirty(batch internal.BatchOperation) error {
+	dirtyCollections := make([]*dirtyCollection, 0)
+	err := batch.Do(context.Background(), func(st internal.Storage) error {
+		return st.IndexStore().Iterate(
+			storage.Query{
+				Factory:      func() storage.Item { return new(dirtyCollection) },
+				ItemProperty: storage.QueryItemID,
+			},
+			func(r storage.Result) (bool, error) {
+				di := &dirtyCollection{UUID: []byte(r.ID)}
+				dirtyCollections = append(dirtyCollections, di)
+				return false, nil
+			},
+		)
+	})
+	if err != nil {
+		return fmt.Errorf("pin store: failed iterating dirty collections: %w", err)
+	}
+
+	for _, di := range dirtyCollections {
+		_ = (&collectionPutter{collection: &pinCollectionItem{UUID: di.UUID}}).Cleanup(batch)
+	}
+
 	return nil
 }
 
@@ -274,52 +358,69 @@ func Pins(st storage.Store) ([]swarm.Address, error) {
 	return pins, nil
 }
 
+func deleteCollectionChunks(ctx context.Context, batch internal.BatchOperation, collectionUUID []byte) error {
+	chunksToDelete := make([]*pinChunkItem, 0)
+	err := batch.Do(ctx, func(st internal.Storage) error {
+		return st.IndexStore().Iterate(
+			storage.Query{
+				Factory: func() storage.Item { return &pinChunkItem{UUID: collectionUUID} },
+			}, func(r storage.Result) (bool, error) {
+				addr := swarm.NewAddress([]byte(r.ID))
+				chunk := &pinChunkItem{UUID: collectionUUID, Addr: addr}
+				chunksToDelete = append(chunksToDelete, chunk)
+				return false, nil
+			},
+		)
+	})
+	if err != nil {
+		return fmt.Errorf("pin store: failed iterating collection chunks: %w", err)
+	}
+
+	batchCnt := 1000
+	for i := 0; i < len(chunksToDelete); i += batchCnt {
+		err = batch.Do(context.Background(), func(st internal.Storage) error {
+			end := i + batchCnt
+			if end > len(chunksToDelete) {
+				end = len(chunksToDelete)
+			}
+
+			for _, chunk := range chunksToDelete[i:end] {
+				err := st.IndexStore().Delete(chunk)
+				if err != nil {
+					return fmt.Errorf("pin store: failed deleting collection chunk: %w", err)
+				}
+				err = st.ChunkStore().Delete(ctx, chunk.Addr)
+				if err != nil {
+					return fmt.Errorf("pin store: failed in batch chunk deletion: %w", err)
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			return fmt.Errorf("pin store: failed batch deleting collection chunks: %w", err)
+		}
+	}
+	return nil
+}
+
 // DeletePin will delete the root pin and all the chunks that are part of this
 // collection.
-func DeletePin(ctx context.Context, st internal.Storage, root swarm.Address) error {
+func DeletePin(ctx context.Context, batch internal.BatchOperation, root swarm.Address) error {
 	collection := &pinCollectionItem{Addr: root}
-	err := st.IndexStore().Get(collection)
+	err := batch.Do(context.Background(), func(st internal.Storage) error {
+		return st.IndexStore().Get(collection)
+	})
 	if err != nil {
 		return fmt.Errorf("pin store: failed getting collection: %w", err)
 	}
 
-	var offset uint64
-	total := collection.Stat.Total - collection.Stat.DupInCollection
-	for ; offset < total; offset += uint64(batchSize) {
-		addrsToDelete := make([]swarm.Address, 0, batchSize)
-		countInBatch := 0
-
-		err = st.IndexStore().Iterate(storage.Query{
-			Factory:      func() storage.Item { return &pinChunkItem{UUID: collection.UUID} },
-			ItemProperty: storage.QueryItemID,
-		}, func(r storage.Result) (bool, error) {
-			addr := swarm.NewAddress([]byte(r.ID))
-			addrsToDelete = append(addrsToDelete, addr)
-			countInBatch++
-			if countInBatch == batchSize {
-				return true, nil
-			}
-			return false, nil
-
-		})
-		if err != nil {
-			return fmt.Errorf("pin store: failed in iteration: %w", err)
-		}
-
-		for _, addr := range addrsToDelete {
-			chunk := &pinChunkItem{UUID: collection.UUID, Addr: addr}
-			err := st.IndexStore().Delete(chunk)
-			if err != nil {
-				return fmt.Errorf("pin store: failed in batch deletion: %w", err)
-			}
-			err = st.ChunkStore().Delete(ctx, chunk.Addr)
-			if err != nil {
-				return fmt.Errorf("pin store: failed in batch chunk deletion: %w", err)
-			}
-		}
+	if err := deleteCollectionChunks(ctx, batch, collection.UUID); err != nil {
+		return err
 	}
 
-	err = st.IndexStore().Delete(collection)
+	err = batch.Do(context.Background(), func(st internal.Storage) error {
+		return st.IndexStore().Delete(collection)
+	})
 	if err != nil {
 		return fmt.Errorf("pin store: failed deleting root collection: %w", err)
 	}
