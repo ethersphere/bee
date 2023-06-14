@@ -15,7 +15,7 @@ func Valid(ch swarm.Chunk) bool {
 		return false
 	}
 
-	address, err := s.address()
+	address, err := s.Address()
 	if err != nil {
 		return false
 	}

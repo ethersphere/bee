@@ -51,8 +51,8 @@ func NewSigned(id ID, ch swarm.Chunk, owner, sig []byte) (*SOC, error) {
 	return s, nil
 }
 
-// address returns the SOC chunk address.
-func (s *SOC) address() (swarm.Address, error) {
+// Address returns the SOC chunk address.
+func (s *SOC) Address() (swarm.Address, error) {
 	if len(s.owner) != crypto.AddressSize {
 		return swarm.ZeroAddress, errInvalidAddress
 	}
@@ -66,11 +66,26 @@ func (s *SOC) WrappedChunk() swarm.Chunk {
 
 // Chunk returns the SOC chunk.
 func (s *SOC) Chunk() (swarm.Chunk, error) {
-	socAddress, err := s.address()
+	socAddress, err := s.Address()
 	if err != nil {
 		return nil, err
 	}
 	return swarm.NewChunk(socAddress, s.toBytes()), nil
+}
+
+// Signature returns the SOC signature.
+func (s *SOC) Signature() []byte {
+	return s.signature
+}
+
+// OwnerAddress returns the ethereum address of the SOC owner.
+func (s *SOC) OwnerAddress() []byte {
+	return s.owner
+}
+
+// ID returns the SOC id.
+func (s *SOC) ID() []byte {
+	return s.id
 }
 
 // toBytes is a helper function to convert the SOC data to bytes.

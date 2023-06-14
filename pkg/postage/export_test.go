@@ -10,7 +10,6 @@ import (
 
 var (
 	IndexToBytes   = indexToBytes
-	BytesToIndex   = bytesToIndex
 	BlockThreshold = blockThreshold
 )
 

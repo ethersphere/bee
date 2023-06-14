@@ -171,7 +171,7 @@ func (s *Stamp) Valid(chunkAddr swarm.Address, ownerAddr []byte, depth, bucketDe
 	if err != nil {
 		return err
 	}
-	bucket, index := bytesToIndex(s.index)
+	bucket, index := BucketIndexFromBytes(s.index)
 	if toBucket(bucketDepth, chunkAddr) != bucket {
 		return ErrBucketMismatch
 	}
