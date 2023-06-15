@@ -61,7 +61,7 @@ type Service struct {
 
 const (
 	traceDuration     = 30 * time.Second // duration for every root tracing span
-	concurrentPushes  = 100              // how many chunks to push simultaneously
+	ConcurrentPushes  = 100              // how many chunks to push simultaneously
 	DefaultRetryCount = 6
 )
 
@@ -116,7 +116,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 		wg                sync.WaitGroup
 		span, logger, ctx = tracer.StartSpanFromContext(cctx, "pusher-sync-batch", s.logger)
 		timer             = time.NewTimer(traceDuration)
-		sem               = make(chan struct{}, concurrentPushes)
+		sem               = make(chan struct{}, ConcurrentPushes)
 		cc                = make(chan *Op)
 	)
 
