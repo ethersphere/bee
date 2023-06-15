@@ -10,7 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"sync"
+	"sync/atomic"
 
 	"github.com/ethersphere/bee/pkg/log"
 	storage "github.com/ethersphere/bee/pkg/storage"
@@ -26,23 +26,21 @@ const loggerName = "reserve"
 
 const reserveNamespace = "reserve"
 
-type Reserve struct {
-	mtx sync.Mutex
-
-	baseAddr     swarm.Address
-	radiusSetter topology.SetStorageRadiuser
-	logger       log.Logger
-
-	capacity int
-	size     int
-	radius   uint8
-}
-
 /*
 	pull by 	bin - binID
 	evict by 	bin - batchID
 	sample by 	bin
 */
+
+type Reserve struct {
+	baseAddr     swarm.Address
+	radiusSetter topology.SetStorageRadiuser
+	logger       log.Logger
+
+	capacity int
+	size     atomic.Int64
+	radius   atomic.Uint32
+}
 
 func New(
 	baseAddr swarm.Address,
@@ -63,13 +61,13 @@ func New(
 	if err != nil && !errors.Is(err, storage.ErrNotFound) {
 		return nil, err
 	}
-	rs.radius = rItem.Radius
+	rs.radius.Store(uint32(rItem.Radius))
 
 	size, err := store.Count(&batchRadiusItem{})
 	if err != nil {
 		return nil, err
 	}
-	rs.size = size
+	rs.size.Store(int64(size))
 
 	return rs, nil
 }
@@ -397,15 +395,11 @@ func (r *Reserve) LastBinIDs(store storage.Store) ([]uint64, error) {
 }
 
 func (r *Reserve) Radius() uint8 {
-	r.mtx.Lock()
-	defer r.mtx.Unlock()
-	return r.radius
+	return uint8(r.radius.Load())
 }
 
 func (r *Reserve) Size() int {
-	r.mtx.Lock()
-	defer r.mtx.Unlock()
-	return r.size
+	return int(r.size.Load())
 }
 
 func (r *Reserve) Capacity() int {
@@ -413,21 +407,15 @@ func (r *Reserve) Capacity() int {
 }
 
 func (r *Reserve) AddSize(diff int) {
-	r.mtx.Lock()
-	defer r.mtx.Unlock()
-	r.size += diff
+	r.size.Add(int64(diff))
 }
 
 func (r *Reserve) IsWithinCapacity() bool {
-	r.mtx.Lock()
-	defer r.mtx.Unlock()
-	return r.size <= r.capacity
+	return int(r.size.Load()) <= r.capacity
 }
 
 func (r *Reserve) SetRadius(store storage.Store, rad uint8) error {
-	r.mtx.Lock()
-	defer r.mtx.Unlock()
-	r.radius = rad
+	r.radius.Store(uint32(rad))
 	r.radiusSetter.SetStorageRadius(rad)
 	return store.Put(&radiusItem{Radius: rad})
 }

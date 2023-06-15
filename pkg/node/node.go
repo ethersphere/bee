@@ -320,7 +320,6 @@ func NewBee(
 			func(id []byte) error {
 				return evictFn(id)
 			},
-			swarmAddress,
 			ReserveCapacity,
 			logger,
 		)

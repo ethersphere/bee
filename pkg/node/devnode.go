@@ -117,7 +117,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		return nil, err
 	}
 
-	batchStore, err := batchstore.New(stateStore, func(b []byte) error { return nil }, swarmAddress, 1000000, logger)
+	batchStore, err := batchstore.New(stateStore, func(b []byte) error { return nil }, 1000000, logger)
 	if err != nil {
 		return nil, fmt.Errorf("batchstore: %w", err)
 	}
