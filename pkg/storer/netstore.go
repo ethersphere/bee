@@ -74,12 +74,12 @@ func (db *DB) Download(cache bool) storage.Getter {
 						select {
 						case <-ctx.Done():
 						case <-db.quit:
-						case db.bgCacheWorkers <- struct{}{}:
-							db.bgCacheWorkersWg.Add(1)
+						case db.bgCacheLimiter <- struct{}{}:
+							db.bgCacheLimiterWg.Add(1)
 							go func() {
 								defer func() {
-									<-db.bgCacheWorkers
-									db.bgCacheWorkersWg.Done()
+									<-db.bgCacheLimiter
+									db.bgCacheLimiterWg.Done()
 								}()
 
 								err := db.Cache().Put(ctx, ch)

@@ -406,13 +406,11 @@ type DB struct {
 	retrieval           retrieval.Interface
 	pusherFeed          chan *pusher.Op
 	quit                chan struct{}
-	bgCacheWorkers      chan struct{}
-	bgCacheWorkersWg    sync.WaitGroup
+	bgCacheLimiter      chan struct{}
+	bgCacheLimiterWg    sync.WaitGroup
 	dbCloser            io.Closer
 	subscriptionsWG     sync.WaitGroup
 	events              *events.Subscriber
-	bgCacheLimiter      chan struct{}
-	bgCacheLimitersWg   sync.WaitGroup
 	directUploadLimiter chan struct{}
 
 	reserve          *reserve.Reserve
@@ -543,7 +541,7 @@ func (db *DB) Close() error {
 	bgCacheWorkersClosed := make(chan struct{})
 	go func() {
 		defer close(bgCacheWorkersClosed)
-		db.bgCacheLimitersWg.Wait()
+		db.bgCacheLimiterWg.Wait()
 	}()
 
 	var err error
