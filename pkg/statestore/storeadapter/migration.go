@@ -22,6 +22,7 @@ var deleteEntries = []string{
 	"tags",
 	"sync_interval",
 	"kademlia-counters",
+	"addressbook",
 }
 
 func epochMigration(s storage.Store) error {
