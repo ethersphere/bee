@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"math/big"
 	"path"
-	"sync"
 	"time"
 
 	storage "github.com/ethersphere/bee/pkg/storage"
@@ -153,9 +152,7 @@ func (s stampIssuerData) Clone() stampIssuerData {
 // A StampIssuer instance extends a batch with bucket collision tracking
 // embedded in multiple Stampers, can be used concurrently.
 type StampIssuer struct {
-	bucketMu  sync.Mutex
-	expiredMu sync.RWMutex
-	data      stampIssuerData
+	data stampIssuerData
 }
 
 // NewStampIssuer constructs a StampIssuer as an extension of a batch for local
@@ -181,9 +178,6 @@ func NewStampIssuer(label, keyID string, batchID []byte, batchAmount *big.Int, b
 // increment increments the count in the correct collision
 // bucket for a newly stamped chunk with given addr address.
 func (si *StampIssuer) increment(addr swarm.Address) (batchIndex []byte, batchTimestamp []byte, err error) {
-	si.bucketMu.Lock()
-	defer si.bucketMu.Unlock()
-
 	bIdx := toBucket(si.BucketDepth(), addr)
 	bCnt := si.data.Buckets[bIdx]
 	if bCnt == 1<<(si.Depth()-si.BucketDepth()) {
@@ -217,8 +211,6 @@ func (si *StampIssuer) UnmarshalBinary(data []byte) error {
 // an integer between 0 and 4294967295. Batch fullness can be
 // calculated with: max_bucket_value / 2 ^ (batch_depth - bucket_depth)
 func (si *StampIssuer) Utilization() uint32 {
-	si.bucketMu.Lock()
-	defer si.bucketMu.Unlock()
 	return si.data.MaxBucketCount
 }
 
@@ -262,24 +254,18 @@ func (si *StampIssuer) ImmutableFlag() bool {
 }
 
 func (si *StampIssuer) Buckets() []uint32 {
-	si.bucketMu.Lock()
 	b := make([]uint32, len(si.data.Buckets))
 	copy(b, si.data.Buckets)
-	si.bucketMu.Unlock()
 	return b
 }
 
 // Expired returns the expired property of stamp
 func (si *StampIssuer) Expired() bool {
-	si.expiredMu.RLock()
-	defer si.expiredMu.RUnlock()
 	return si.data.Expired
 }
 
 // SetExpired is setter for Expired property
 func (si *StampIssuer) SetExpired(e bool) {
-	si.expiredMu.Lock()
-	defer si.expiredMu.Unlock()
 	si.data.Expired = e
 }
 

@@ -44,6 +44,7 @@ type service struct {
 	store        storage.Store
 	postageStore Storer
 	chainID      int64
+	issuerLocks  map[string]*sync.Mutex
 }
 
 // NewService constructs a new Service.
@@ -52,6 +53,7 @@ func NewService(store storage.Store, postageStore Storer, chainID int64) Service
 		store:        store,
 		postageStore: postageStore,
 		chainID:      chainID,
+		issuerLocks:  make(map[string]*sync.Mutex),
 	}
 }
 
@@ -142,6 +144,11 @@ func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, func() error, e
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
 
+	if _, ok := ps.issuerLocks[string(batchID)]; !ok {
+		ps.issuerLocks[string(batchID)] = &sync.Mutex{}
+	}
+	ps.issuerLocks[string(batchID)].Lock()
+
 	item := NewStampIssuerItem(batchID)
 	err := ps.store.Get(item)
 	if errors.Is(err, storage.ErrNotFound) {
@@ -155,14 +162,13 @@ func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, func() error, e
 		return nil, nil, ErrNotUsable
 	}
 	return item.issuer, func() error {
+		defer ps.issuerLocks[string(batchID)].Unlock()
 		return ps.save(item.issuer)
 	}, nil
 }
 
 // save persists the specified stamp issuer to the stamperstore.
 func (ps *service) save(st *StampIssuer) error {
-	st.bucketMu.Lock()
-	defer st.bucketMu.Unlock()
 	if err := ps.store.Put(&stampIssuerItem{
 		issuer: st,
 	}); err != nil {
