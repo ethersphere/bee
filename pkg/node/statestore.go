@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"path/filepath"
 
+	"github.com/ethersphere/bee/pkg/statestore/storeadapter"
 	"github.com/ethersphere/bee/pkg/storage/leveldbstore"
 
 	"github.com/ethersphere/bee/pkg/log"
@@ -29,7 +30,7 @@ func InitStateStore(logger log.Logger, dataDir string) (storage.StateStorer, err
 	if err != nil {
 		return nil, err
 	}
-	return storage.NewStateStorerAdapter(ldb), nil
+	return storeadapter.NewStateStorerAdapter(ldb)
 }
 
 // InitStamperStore will create new stamper store with the given path to the

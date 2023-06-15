@@ -451,6 +451,8 @@ func (e *epochMigrator) migratePinning(ctx context.Context) error {
 						return nil
 					}()
 
+					_ = e.stateStore.Delete(fmt.Sprintf("%s-%s", pinStorePrefix, addr))
+
 					// do not fail the entire migration if the collection is not migrated
 					if err != nil {
 						e.logger.Debug("pinning collection migration failed", "collection_root_address", addr, "error", err)

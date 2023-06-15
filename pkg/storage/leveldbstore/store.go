@@ -154,7 +154,12 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 		}
 		_ = iter.Prev()
 	} else {
-		prefix = q.Factory().Namespace() + separator + q.Prefix
+		// this is a small hack to make the iteration work with the
+		// old implementation of statestore. this allows us to do a
+		// full iteration without looking at the prefix.
+		if q.Factory().Namespace() != "" {
+			prefix = q.Factory().Namespace() + separator + q.Prefix
+		}
 		iter = s.db.NewIterator(util.BytesPrefix([]byte(prefix)), nil)
 	}
 
@@ -266,5 +271,15 @@ func (s *Store) Delete(item storage.Item) error {
 	s.closeLk.RLock()
 	defer s.closeLk.RUnlock()
 
-	return s.db.Delete(key(item), nil)
+	// this is a small hack to make the deletion of old entries work. As they
+	// don't have a namespace, we need to check for that and use the ID as key without
+	// the separator.
+	var k []byte
+	if item.Namespace() == "" {
+		k = []byte(item.ID())
+	} else {
+		k = key(item)
+	}
+
+	return s.db.Delete(k, nil)
 }
