@@ -400,17 +400,21 @@ type DB struct {
 	logger  log.Logger
 	metrics metrics
 
-	repo             storage.Repository
-	lock             *multex.Multex
-	cacheObj         *cache.Cache
-	retrieval        retrieval.Interface
-	pusherFeed       chan *pusher.Op
-	quit             chan struct{}
-	bgCacheWorkers   chan struct{}
-	bgCacheWorkersWg sync.WaitGroup
-	dbCloser         io.Closer
-	subscriptionsWG  sync.WaitGroup
-	events           *events.Subscriber
+	repo                storage.Repository
+	lock                *multex.Multex
+	cacheObj            *cache.Cache
+	retrieval           retrieval.Interface
+	pusherFeed          chan *pusher.Op
+	quit                chan struct{}
+	bgCacheWorkers      chan struct{}
+	bgCacheWorkersWg    sync.WaitGroup
+	dbCloser            io.Closer
+	subscriptionsWG     sync.WaitGroup
+	events              *events.Subscriber
+	bgCacheLimiter      chan struct{}
+	bgCacheLimitersWg   sync.WaitGroup
+	directUploadLimiter chan struct{}
+
 	reserve          *reserve.Reserve
 	reserveWg        sync.WaitGroup
 	reserveBinEvents *events.Subscriber
@@ -477,7 +481,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		retrieval:        noopRetrieval{},
 		pusherFeed:       make(chan *pusher.Op),
 		quit:             make(chan struct{}),
-		bgCacheWorkers:   make(chan struct{}, 16),
+		bgCacheLimiter:   make(chan struct{}, 16),
 		dbCloser:         dbCloser,
 		batchstore:       opts.Batchstore,
 		validStamp:       opts.ValidStamp,
@@ -487,6 +491,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 			warmupDuration: opts.WarmupDuration,
 			wakeupDuration: opts.ReserveWakeUpDuration,
 		},
+		directUploadLimiter: make(chan struct{}, pusher.ConcurrentPushes),
 	}
 
 	if db.validStamp == nil {
@@ -538,7 +543,7 @@ func (db *DB) Close() error {
 	bgCacheWorkersClosed := make(chan struct{})
 	go func() {
 		defer close(bgCacheWorkersClosed)
-		db.bgCacheWorkersWg.Wait()
+		db.bgCacheLimitersWg.Wait()
 	}()
 
 	var err error

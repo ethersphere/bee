@@ -14,13 +14,8 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-const (
-	directUploadWorkers = pusher.ConcurrentPushes
-)
-
 // DirectUpload is the implementation of the NetStore.DirectUpload method.
 func (db *DB) DirectUpload() PutterSession {
-	workers := make(chan struct{}, directUploadWorkers)
 	// egCtx will allow early exit of Put operations if we have
 	// already encountered error.
 	eg, egCtx := errgroup.WithContext(context.Background())
@@ -28,9 +23,9 @@ func (db *DB) DirectUpload() PutterSession {
 	return &putterSession{
 		Putter: putterWithMetrics{
 			storage.PutterFunc(func(ctx context.Context, ch swarm.Chunk) error {
-				workers <- struct{}{}
+				db.directUploadLimiter <- struct{}{}
 				eg.Go(func() error {
-					defer func() { <-workers }()
+					defer func() { <-db.directUploadLimiter }()
 
 					op := &pusher.Op{Chunk: ch, Err: make(chan error, 1), Direct: true}
 					select {
