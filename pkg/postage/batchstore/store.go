@@ -81,6 +81,9 @@ func New(st storage.StateStorer, ev evictFn, capacity int, logger log.Logger) (p
 		metrics:  newMetrics(),
 		logger:   logger.WithName(loggerName).Register(),
 	}
+
+	s.radius.Store(uint32(radius))
+
 	return s, nil
 }
 
