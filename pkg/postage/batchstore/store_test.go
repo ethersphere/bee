@@ -27,11 +27,10 @@ var noopEvictFn = func([]byte) error { return nil }
 const defaultCapacity = 2 ^ 22
 
 func TestBatchStore_Get(t *testing.T) {
-	baseAddr := swarm.RandAddress(t)
 	testBatch := postagetest.MustNewBatch()
 
 	stateStore := mock.NewStateStore()
-	batchStore, _ := batchstore.New(stateStore, nil, baseAddr, defaultCapacity, log.Noop)
+	batchStore, _ := batchstore.New(stateStore, nil, defaultCapacity, log.Noop)
 
 	err := batchStore.Save(testBatch)
 	if err != nil {
@@ -43,12 +42,11 @@ func TestBatchStore_Get(t *testing.T) {
 }
 
 func TestBatchStore_Iterate(t *testing.T) {
-	baseAddr := swarm.RandAddress(t)
 	testBatch := postagetest.MustNewBatch()
 	key := batchstore.BatchKey(testBatch.ID)
 
 	stateStore := mock.NewStateStore()
-	batchStore, _ := batchstore.New(stateStore, nil, baseAddr, defaultCapacity, log.Noop)
+	batchStore, _ := batchstore.New(stateStore, nil, defaultCapacity, log.Noop)
 
 	stateStorePut(t, stateStore, key, testBatch)
 
@@ -65,7 +63,6 @@ func TestBatchStore_Iterate(t *testing.T) {
 }
 
 func TestBatchStore_IterateStopsEarly(t *testing.T) {
-	baseAddr := swarm.RandAddress(t)
 	testBatch1 := postagetest.MustNewBatch()
 	key1 := batchstore.BatchKey(testBatch1.ID)
 
@@ -73,7 +70,7 @@ func TestBatchStore_IterateStopsEarly(t *testing.T) {
 	key2 := batchstore.BatchKey(testBatch2.ID)
 
 	stateStore := mock.NewStateStore()
-	batchStore, _ := batchstore.New(stateStore, nil, baseAddr, defaultCapacity, log.Noop)
+	batchStore, _ := batchstore.New(stateStore, nil, defaultCapacity, log.Noop)
 
 	stateStorePut(t, stateStore, key1, testBatch1)
 	stateStorePut(t, stateStore, key2, testBatch2)
@@ -116,12 +113,11 @@ func TestBatchStore_IterateStopsEarly(t *testing.T) {
 }
 
 func TestBatchStore_SaveAndUpdate(t *testing.T) {
-	baseAddr := swarm.RandAddress(t)
 	testBatch := postagetest.MustNewBatch()
 	key := batchstore.BatchKey(testBatch.ID)
 
 	stateStore := mock.NewStateStore()
-	batchStore, _ := batchstore.New(stateStore, nil, baseAddr, defaultCapacity, log.Noop)
+	batchStore, _ := batchstore.New(stateStore, nil, defaultCapacity, log.Noop)
 
 	if err := batchStore.Save(testBatch); err != nil {
 		t.Fatalf("storer.Save(...): unexpected error: %v", err)
@@ -161,11 +157,10 @@ func TestBatchStore_SaveAndUpdate(t *testing.T) {
 }
 
 func TestBatchStore_GetChainState(t *testing.T) {
-	baseAddr := swarm.RandAddress(t)
 	testChainState := postagetest.NewChainState()
 
 	stateStore := mock.NewStateStore()
-	batchStore, _ := batchstore.New(stateStore, nil, baseAddr, defaultCapacity, log.Noop)
+	batchStore, _ := batchstore.New(stateStore, nil, defaultCapacity, log.Noop)
 
 	err := batchStore.PutChainState(testChainState)
 	if err != nil {
@@ -178,9 +173,8 @@ func TestBatchStore_GetChainState(t *testing.T) {
 func TestBatchStore_PutChainState(t *testing.T) {
 	testChainState := postagetest.NewChainState()
 
-	baseAddr := swarm.RandAddress(t)
 	stateStore := mock.NewStateStore()
-	batchStore, _ := batchstore.New(stateStore, nil, baseAddr, defaultCapacity, log.Noop)
+	batchStore, _ := batchstore.New(stateStore, nil, defaultCapacity, log.Noop)
 
 	batchStorePutChainState(t, batchStore, testChainState)
 	var got postage.ChainState
@@ -194,7 +188,6 @@ func TestBatchStore_Reset(t *testing.T) {
 		postagetest.WithValue(15),
 		postagetest.WithDepth(8),
 	)
-	baseAddr := swarm.RandAddress(t)
 
 	path := t.TempDir()
 	logger := log.Noop
@@ -208,7 +201,7 @@ func TestBatchStore_Reset(t *testing.T) {
 	}
 	defer stateStore.Close()
 
-	batchStore, _ := batchstore.New(stateStore, noopEvictFn, baseAddr, defaultCapacity, log.Noop)
+	batchStore, _ := batchstore.New(stateStore, noopEvictFn, defaultCapacity, log.Noop)
 	err = batchStore.Save(testBatch)
 	if err != nil {
 		t.Fatal(err)
@@ -564,7 +557,7 @@ func setupBatchStore(t *testing.T, capacity int) postage.Storer {
 		return nil
 	}
 
-	bStore, _ := batchstore.New(stateStore, evictFn, swarm.RandAddress(t), capacity, log.Noop)
+	bStore, _ := batchstore.New(stateStore, evictFn, capacity, log.Noop)
 
 	err = bStore.PutChainState(&postage.ChainState{
 		Block:        0,
