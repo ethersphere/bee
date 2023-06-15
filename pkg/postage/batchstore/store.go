@@ -140,7 +140,7 @@ func (s *store) Save(batch *postage.Batch) error {
 			return err
 		}
 
-		s.logger.Debug("batch saved", "batch_id", hex.EncodeToString(batch.ID), "batch_depth", batch.Depth, "batch_value", batch.Value.Int64())
+		s.logger.Debug("batch saved", "batch_id", hex.EncodeToString(batch.ID), "batch_depth", batch.Depth, "batch_value", batch.Value.Int64(), "radius", s.radius.Load())
 
 		return nil
 	case err != nil:
