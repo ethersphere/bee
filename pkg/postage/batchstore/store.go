@@ -15,7 +15,7 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"go.uber.org/atomic"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -39,11 +39,10 @@ type store struct {
 	mtx sync.RWMutex
 
 	capacity int
-	base     swarm.Address
 	store    storage.StateStorer // State store backend to persist batches.
 	cs       *postage.ChainState // the chain state
 
-	radius  uint8
+	radius  *atomic.Uint32
 	evictFn evictFn // evict function
 	metrics metrics // metrics
 	logger  log.Logger
@@ -53,7 +52,7 @@ type store struct {
 
 // New constructs a new postage batch store.
 // It initialises both chain state and reserve state from the persistent state store.
-func New(st storage.StateStorer, ev evictFn, addr swarm.Address, capacity int, logger log.Logger) (postage.Storer, error) {
+func New(st storage.StateStorer, ev evictFn, capacity int, logger log.Logger) (postage.Storer, error) {
 	cs := &postage.ChainState{}
 	err := st.Get(chainStateKey, cs)
 	if err != nil {
@@ -75,11 +74,10 @@ func New(st storage.StateStorer, ev evictFn, addr swarm.Address, capacity int, l
 	}
 
 	s := &store{
-		base:     addr,
 		capacity: capacity,
 		store:    st,
 		cs:       cs,
-		radius:   radius,
+		radius:   atomic.NewUint32(uint32(radius)),
 		evictFn:  ev,
 		metrics:  newMetrics(),
 		logger:   logger.WithName(loggerName).Register(),
@@ -88,26 +86,17 @@ func New(st storage.StateStorer, ev evictFn, addr swarm.Address, capacity int, l
 }
 
 func (s *store) Radius() uint8 {
-	s.mtx.RLock()
-	defer s.mtx.RUnlock()
-	return s.radius
+	return uint8(s.radius.Load())
 }
 
 func (s *store) GetChainState() *postage.ChainState {
+	s.mtx.RLock()
+	defer s.mtx.RUnlock()
 	return s.cs
 }
 
 // Get returns a batch from the batchstore with the given ID.
 func (s *store) Get(id []byte) (*postage.Batch, error) {
-	s.mtx.RLock()
-	defer s.mtx.RUnlock()
-
-	return s.get(id)
-}
-
-// get returns the postage batch from the statestore.
-// Must be called under lock.
-func (s *store) get(id []byte) (*postage.Batch, error) {
 	b := &postage.Batch{}
 	err := s.store.Get(batchKey(id), b)
 	if err != nil {
@@ -118,8 +107,6 @@ func (s *store) get(id []byte) (*postage.Batch, error) {
 
 // Exists is implementation of postage.Storer interface Exists method.
 func (s *store) Exists(id []byte) (bool, error) {
-	s.mtx.RLock()
-	defer s.mtx.RUnlock()
 	switch err := s.store.Get(batchKey(id), new(postage.Batch)); {
 	case err == nil:
 		return true, nil
@@ -132,9 +119,6 @@ func (s *store) Exists(id []byte) (bool, error) {
 
 // Iterate is implementation of postage.Storer interface Iterate method.
 func (s *store) Iterate(cb func(*postage.Batch) (bool, error)) error {
-	s.mtx.RLock()
-	defer s.mtx.RUnlock()
-
 	return s.store.Iterate(batchKeyPrefix, func(key, value []byte) (bool, error) {
 		b := &postage.Batch{}
 		if err := b.UnmarshalBinary(value); err != nil {
@@ -147,10 +131,6 @@ func (s *store) Iterate(cb func(*postage.Batch) (bool, error)) error {
 // Save is implementation of postage.Storer interface Save method.
 // This method has side effects; it also updates the radius of the node if successful.
 func (s *store) Save(batch *postage.Batch) error {
-
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-
 	switch err := s.store.Get(batchKey(batch.ID), new(postage.Batch)); {
 	case errors.Is(err, storage.ErrNotFound):
 		if err := s.store.Put(batchKey(batch.ID), batch); err != nil {
@@ -161,9 +141,7 @@ func (s *store) Save(batch *postage.Batch) error {
 			return err
 		}
 
-		s.metrics.Radius.Set(float64(s.radius))
-
-		s.logger.Debug("batch saved", "batch_id", hex.EncodeToString(batch.ID), "batch_depth", batch.Depth, "batch_value", batch.Value.Int64(), "reserve_state_radius", s.radius)
+		s.logger.Debug("batch saved", "batch_id", hex.EncodeToString(batch.ID), "batch_depth", batch.Depth, "batch_value", batch.Value.Int64())
 
 		return nil
 	case err != nil:
@@ -176,9 +154,6 @@ func (s *store) Save(batch *postage.Batch) error {
 // Update is implementation of postage.Storer interface Update method.
 // This method has side effects; it also updates the radius of the node if successful.
 func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error {
-
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
 
 	oldBatch := &postage.Batch{}
 
@@ -208,8 +183,6 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 		return err
 	}
 
-	s.metrics.Radius.Set(float64(s.radius))
-
 	return nil
 }
 
@@ -219,9 +192,8 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 func (s *store) PutChainState(cs *postage.ChainState) error {
 
 	s.mtx.Lock()
-	defer s.mtx.Unlock()
-
 	s.cs = cs
+	s.mtx.Unlock()
 
 	s.logger.Debug("put chain state", "block", cs.Block, "amount", cs.TotalAmount.Int64(), "price", cs.CurrentPrice.Int64())
 
@@ -235,19 +207,10 @@ func (s *store) PutChainState(cs *postage.ChainState) error {
 		return fmt.Errorf("batchstore: put chain state adjust radius: %w", err)
 	}
 
-	s.metrics.Radius.Set(float64(s.radius))
-
 	return s.store.Put(chainStateKey, cs)
 }
 
 func (s *store) Commitment() (uint64, error) {
-	s.mtx.RLock()
-	defer s.mtx.RUnlock()
-	return s.commitment()
-}
-
-// Must be called under lock.
-func (s *store) commitment() (uint64, error) {
 	var totalCommitment int
 	err := s.store.Iterate(batchKeyPrefix, func(key, value []byte) (bool, error) {
 
@@ -268,10 +231,6 @@ func (s *store) commitment() (uint64, error) {
 
 // Reset is implementation of postage.Storer interface Reset method.
 func (s *store) Reset() error {
-
-	s.mtx.Lock()
-	defer s.mtx.Unlock()
-
 	const prefix = "batchstore_"
 	if err := s.store.Iterate(prefix, func(k, _ []byte) (bool, error) {
 		return false, s.store.Delete(string(k))
@@ -285,7 +244,7 @@ func (s *store) Reset() error {
 		CurrentPrice: big.NewInt(0),
 	}
 
-	s.radius = 0
+	s.radius = atomic.NewUint32(0)
 
 	return nil
 }
@@ -320,7 +279,7 @@ func (s *store) cleanup() error {
 
 	err := s.store.Iterate(valueKeyPrefix, func(key, value []byte) (stop bool, err error) {
 
-		b, err := s.get(valueKeyToID(key))
+		b, err := s.Get(valueKeyToID(key))
 		if err != nil {
 			return false, err
 		}
@@ -383,16 +342,17 @@ func (s *store) computeRadius() error {
 
 	s.metrics.Commitment.Set(float64(totalCommitment))
 
-	// edge case where the sum of all batches is below the node capacity.
-	if totalCommitment <= s.capacity {
-		s.radius = 0
-	} else {
+	var radius uint8
+	if totalCommitment > s.capacity {
 		// totalCommitment/node_capacity = 2^R
 		// log2(totalCommitment/node_capacity) = R
-		s.radius = uint8(math.Ceil(math.Log2(float64(totalCommitment) / float64(s.capacity))))
+		radius = uint8(math.Ceil(math.Log2(float64(totalCommitment) / float64(s.capacity))))
 	}
 
-	return s.store.Put(reserveRadiusKey, &s.radius)
+	s.metrics.Radius.Set(float64(radius))
+	s.radius.Store(uint32(radius))
+
+	return s.store.Put(reserveRadiusKey, &radius)
 }
 
 // exp2 returns the e-th power of 2
