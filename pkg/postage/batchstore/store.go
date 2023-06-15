@@ -11,11 +11,11 @@ import (
 	"math"
 	"math/big"
 	"sync"
+	"sync/atomic"
 
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/storage"
-	"go.uber.org/atomic"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -42,7 +42,7 @@ type store struct {
 	store    storage.StateStorer // State store backend to persist batches.
 	cs       *postage.ChainState // the chain state
 
-	radius  *atomic.Uint32
+	radius  atomic.Uint32
 	evictFn evictFn // evict function
 	metrics metrics // metrics
 	logger  log.Logger
@@ -77,7 +77,6 @@ func New(st storage.StateStorer, ev evictFn, capacity int, logger log.Logger) (p
 		capacity: capacity,
 		store:    st,
 		cs:       cs,
-		radius:   atomic.NewUint32(uint32(radius)),
 		evictFn:  ev,
 		metrics:  newMetrics(),
 		logger:   logger.WithName(loggerName).Register(),
@@ -244,7 +243,7 @@ func (s *store) Reset() error {
 		CurrentPrice: big.NewInt(0),
 	}
 
-	s.radius = atomic.NewUint32(0)
+	s.radius = atomic.Uint32{}
 
 	return nil
 }
