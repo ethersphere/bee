@@ -269,15 +269,15 @@ func (si *StampIssuer) SetExpired(e bool) {
 	si.data.Expired = e
 }
 
-// stampIssuerItem is a storage.Item implementation for StampIssuer.
-type stampIssuerItem struct {
-	issuer *StampIssuer
+// StampIssuerItem is a storage.Item implementation for StampIssuer.
+type StampIssuerItem struct {
+	Issuer *StampIssuer
 }
 
-// NewStampIssuerItem creates a new stampIssuerItem.
-func NewStampIssuerItem(ID []byte) *stampIssuerItem {
-	return &stampIssuerItem{
-		issuer: &StampIssuer{
+// NewStampIssuerItem creates a new StampIssuerItem.
+func NewStampIssuerItem(ID []byte) *StampIssuerItem {
+	return &StampIssuerItem{
+		Issuer: &StampIssuer{
 			data: stampIssuerData{
 				BatchID: ID,
 			},
@@ -286,49 +286,49 @@ func NewStampIssuerItem(ID []byte) *stampIssuerItem {
 }
 
 // ID is the batch ID.
-func (s *stampIssuerItem) ID() string {
-	return string(s.issuer.ID())
+func (s *StampIssuerItem) ID() string {
+	return string(s.Issuer.ID())
 }
 
 // Namespace returns the storage namespace for a stampIssuer.
-func (s *stampIssuerItem) Namespace() string {
-	return "stampIssuerItem"
+func (s *StampIssuerItem) Namespace() string {
+	return "StampIssuerItem"
 }
 
-// Marshal marshals the stampIssuerItem into a byte slice.
-func (s *stampIssuerItem) Marshal() ([]byte, error) {
-	return s.issuer.MarshalBinary()
+// Marshal marshals the StampIssuerItem into a byte slice.
+func (s *StampIssuerItem) Marshal() ([]byte, error) {
+	return s.Issuer.MarshalBinary()
 }
 
-// Unmarshal unmarshals a byte slice into a stampIssuerItem.
-func (s *stampIssuerItem) Unmarshal(bytes []byte) error {
+// Unmarshal unmarshals a byte slice into a StampIssuerItem.
+func (s *StampIssuerItem) Unmarshal(bytes []byte) error {
 	issuer := new(StampIssuer)
 	err := issuer.UnmarshalBinary(bytes)
 	if err != nil {
 		return err
 	}
-	s.issuer = issuer
+	s.Issuer = issuer
 	return nil
 }
 
-// Clone returns a clone of stampIssuerItem.
-func (s *stampIssuerItem) Clone() storage.Item {
+// Clone returns a clone of StampIssuerItem.
+func (s *StampIssuerItem) Clone() storage.Item {
 	if s == nil {
 		return nil
 	}
-	return &stampIssuerItem{
-		issuer: &StampIssuer{
-			data: s.issuer.data.Clone(),
+	return &StampIssuerItem{
+		Issuer: &StampIssuer{
+			data: s.Issuer.data.Clone(),
 		},
 	}
 }
 
-// String returns the string representation of a stampIssuerItem.
-func (s stampIssuerItem) String() string {
+// String returns the string representation of a StampIssuerItem.
+func (s StampIssuerItem) String() string {
 	return path.Join(s.Namespace(), s.ID())
 }
 
-var _ storage.Item = (*stampIssuerItem)(nil)
+var _ storage.Item = (*StampIssuerItem)(nil)
 
 // toBucket calculates the index of the collision bucket for a swarm address
 // bucket index := collision bucket depth number of bits as bigendian uint32

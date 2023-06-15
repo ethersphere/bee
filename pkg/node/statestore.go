@@ -9,11 +9,11 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/ethersphere/bee/pkg/statestore/storeadapter"
-	"github.com/ethersphere/bee/pkg/storage/leveldbstore"
-
 	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/statestore/storeadapter"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage/leveldbstore"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -36,13 +36,22 @@ func InitStateStore(logger log.Logger, dataDir string) (storage.StateStorer, err
 // InitStamperStore will create new stamper store with the given path to the
 // data directory. When given an empty directory path, the function will instead
 // initialize an in-memory state store that will not be persisted.
-func InitStamperStore(logger log.Logger, dataDir string) (storage.Store, error) {
+func InitStamperStore(logger log.Logger, dataDir string, stateStore storage.StateStorer) (storage.Store, error) {
 	if dataDir == "" {
 		logger.Warning("using in-mem stamper store, no node state will be persisted")
 	} else {
 		dataDir = filepath.Join(dataDir, "stamperstore")
 	}
-	return leveldbstore.New(dataDir, nil)
+	stamperStore, err := leveldbstore.New(dataDir, nil)
+	if err != nil {
+		return nil, err
+	}
+	err = migrateStamperData(stateStore, stamperStore)
+	if err != nil {
+		stamperStore.Close()
+		return nil, fmt.Errorf("migrating stamper data: %w", err)
+	}
+	return stamperStore, nil
 }
 
 const noncedOverlayKey = "nonce-overlay"
@@ -86,4 +95,19 @@ func overlayNonceExists(s storage.StateStorer) ([]byte, bool, error) {
 
 func setOverlayNonce(s storage.StateStorer, overlayNonce []byte) error {
 	return s.Put(OverlayNonce, overlayNonce)
+}
+
+func migrateStamperData(stateStore storage.StateStorer, stamperStore storage.Store) error {
+	return stateStore.Iterate("postage", func(_, value []byte) (bool, error) {
+		st := &postage.StampIssuer{}
+		if err := st.UnmarshalBinary(value); err != nil {
+			return false, err
+		}
+		if err := stamperStore.Put(&postage.StampIssuerItem{
+			Issuer: st,
+		}); err != nil {
+			return false, err
+		}
+		return false, nil
+	})
 }

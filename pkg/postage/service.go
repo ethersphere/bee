@@ -92,8 +92,8 @@ func (ps *service) HandleTopUp(batchID []byte, amount *big.Int) error {
 		return err
 	}
 
-	item.issuer.data.BatchAmount.Add(item.issuer.data.BatchAmount, amount)
-	return ps.save(item.issuer)
+	item.Issuer.data.BatchAmount.Add(item.Issuer.data.BatchAmount, amount)
+	return ps.save(item.Issuer)
 }
 
 func (ps *service) HandleDepthIncrease(batchID []byte, newDepth uint8) error {
@@ -105,8 +105,8 @@ func (ps *service) HandleDepthIncrease(batchID []byte, newDepth uint8) error {
 		return err
 	}
 
-	item.issuer.data.BatchDepth = newDepth
-	return ps.save(item.issuer)
+	item.Issuer.data.BatchDepth = newDepth
+	return ps.save(item.Issuer)
 }
 
 // StampIssuers returns the currently active stamp issuers.
@@ -116,9 +116,9 @@ func (ps *service) StampIssuers() ([]*StampIssuer, error) {
 	var issuers []*StampIssuer
 	if err := ps.store.Iterate(
 		storage.Query{
-			Factory: func() storage.Item { return new(stampIssuerItem) },
+			Factory: func() storage.Item { return new(StampIssuerItem) },
 		}, func(result storage.Result) (bool, error) {
-			issuers = append(issuers, result.Entry.(*stampIssuerItem).issuer)
+			issuers = append(issuers, result.Entry.(*StampIssuerItem).Issuer)
 			return false, nil
 		}); err != nil {
 		return nil, err
@@ -158,19 +158,19 @@ func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, func() error, e
 		return nil, nil, err
 	}
 
-	if !ps.IssuerUsable(item.issuer) {
+	if !ps.IssuerUsable(item.Issuer) {
 		return nil, nil, ErrNotUsable
 	}
-	return item.issuer, func() error {
+	return item.Issuer, func() error {
 		defer ps.issuerLocks[string(batchID)].Unlock()
-		return ps.save(item.issuer)
+		return ps.save(item.Issuer)
 	}, nil
 }
 
 // save persists the specified stamp issuer to the stamperstore.
 func (ps *service) save(st *StampIssuer) error {
-	if err := ps.store.Put(&stampIssuerItem{
-		issuer: st,
+	if err := ps.store.Put(&StampIssuerItem{
+		Issuer: st,
 	}); err != nil {
 		return err
 	}
@@ -195,8 +195,8 @@ func (ps *service) HandleStampExpiry(id []byte) error {
 		return err
 	}
 
-	item.issuer.SetExpired(true)
-	return ps.save(item.issuer)
+	item.Issuer.SetExpired(true)
+	return ps.save(item.Issuer)
 }
 
 // SetExpired sets expiry for all non-existing batches.
@@ -205,9 +205,9 @@ func (ps *service) SetExpired() error {
 	defer ps.lock.Unlock()
 	return ps.store.Iterate(
 		storage.Query{
-			Factory: func() storage.Item { return new(stampIssuerItem) },
+			Factory: func() storage.Item { return new(StampIssuerItem) },
 		}, func(result storage.Result) (bool, error) {
-			issuer := result.Entry.(*stampIssuerItem).issuer
+			issuer := result.Entry.(*StampIssuerItem).Issuer
 			exists, err := ps.postageStore.Exists(issuer.ID())
 			if err != nil {
 				return true, err

@@ -379,7 +379,7 @@ func NewBee(
 		}
 	}(probe)
 
-	stamperStore, err := InitStamperStore(logger, o.DataDir)
+	stamperStore, err := InitStamperStore(logger, o.DataDir, stateStore)
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize stamper store: %w", err)
 	}
