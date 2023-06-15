@@ -36,11 +36,11 @@ type evictFn func(batchID []byte) error
 
 // store implements postage.Storer
 type store struct {
-	mtx sync.RWMutex
-
 	capacity int
 	store    storage.StateStorer // State store backend to persist batches.
-	cs       *postage.ChainState // the chain state
+
+	csMtx sync.RWMutex
+	cs    *postage.ChainState // the chain state
 
 	radius  atomic.Uint32
 	evictFn evictFn // evict function
@@ -92,8 +92,8 @@ func (s *store) Radius() uint8 {
 }
 
 func (s *store) GetChainState() *postage.ChainState {
-	s.mtx.RLock()
-	defer s.mtx.RUnlock()
+	s.csMtx.RLock()
+	defer s.csMtx.RUnlock()
 	return s.cs
 }
 
@@ -193,9 +193,9 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 // ones before it stores the chain state in the store.
 func (s *store) PutChainState(cs *postage.ChainState) error {
 
-	s.mtx.Lock()
+	s.csMtx.Lock()
 	s.cs = cs
-	s.mtx.Unlock()
+	s.csMtx.Unlock()
 
 	s.logger.Debug("put chain state", "block", cs.Block, "amount", cs.TotalAmount.Int64(), "price", cs.CurrentPrice.Int64())
 
