@@ -24,6 +24,8 @@ var (
 	ErrNotFound = errors.New("not found")
 	// ErrNotUsable is the error returned when issuer with given batch ID is not usable.
 	ErrNotUsable = errors.New("not usable")
+	// ErrBatchInUse is the error returned when issuer with given batch ID is already in use.
+	ErrBatchInUse = errors.New("batch in use")
 )
 
 // Service is the postage service interface.
@@ -44,7 +46,7 @@ type service struct {
 	store        storage.Store
 	postageStore Storer
 	chainID      int64
-	issuerLocks  map[string]*sync.Mutex
+	issuersInUse map[string]any
 }
 
 // NewService constructs a new Service.
@@ -53,7 +55,7 @@ func NewService(store storage.Store, postageStore Storer, chainID int64) Service
 		store:        store,
 		postageStore: postageStore,
 		chainID:      chainID,
-		issuerLocks:  make(map[string]*sync.Mutex),
+		issuersInUse: make(map[string]any),
 	}
 }
 
@@ -144,11 +146,9 @@ func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, func() error, e
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
 
-	if _, ok := ps.issuerLocks[string(batchID)]; !ok {
-		ps.issuerLocks[string(batchID)] = &sync.Mutex{}
+	if _, ok := ps.issuersInUse[string(batchID)]; ok {
+		return nil, nil, ErrBatchInUse
 	}
-	ps.issuerLocks[string(batchID)].Lock()
-
 	item := NewStampIssuerItem(batchID)
 	err := ps.store.Get(item)
 	if errors.Is(err, storage.ErrNotFound) {
@@ -161,8 +161,11 @@ func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, func() error, e
 	if !ps.IssuerUsable(item.Issuer) {
 		return nil, nil, ErrNotUsable
 	}
+	ps.issuersInUse[string(batchID)] = struct{}{}
 	return item.Issuer, func() error {
-		defer ps.issuerLocks[string(batchID)].Unlock()
+		ps.lock.Lock()
+		defer ps.lock.Unlock()
+		delete(ps.issuersInUse, string(batchID))
 		return ps.save(item.Issuer)
 	}, nil
 }

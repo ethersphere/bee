@@ -169,10 +169,11 @@ func TestGetStampIssuer(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		stampIssuer, _, err := ps.GetStampIssuer(ids[1])
+		stampIssuer, save, err := ps.GetStampIssuer(ids[1])
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
+		defer save()
 		if stampIssuer.Amount().Cmp(big.NewInt(13)) != 0 {
 			t.Fatalf("expected amount %d got %d", 13, stampIssuer.Amount().Int64())
 		}
@@ -182,15 +183,33 @@ func TestGetStampIssuer(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		stampIssuer, _, err := ps.GetStampIssuer(ids[2])
+		stampIssuer, save, err := ps.GetStampIssuer(ids[2])
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
+		defer save()
 		if stampIssuer.Amount().Cmp(big.NewInt(3)) != 0 {
 			t.Fatalf("expected amount %d got %d", 3, stampIssuer.Amount().Int64())
 		}
 		if stampIssuer.Depth() != 17 {
 			t.Fatalf("expected depth %d got %d", 17, stampIssuer.Depth())
+		}
+	})
+	t.Run("in use", func(t *testing.T) {
+		_, save1, err := ps.GetStampIssuer(ids[1])
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer save1()
+		_, save2, err := ps.GetStampIssuer(ids[2])
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = save2()
+
+		_, _, err = ps.GetStampIssuer(ids[1])
+		if !errors.Is(err, postage.ErrBatchInUse) {
+			t.Fatalf("expected ErrBatchInUse, got %v", err)
 		}
 	})
 }
