@@ -338,6 +338,7 @@ func (e *epochMigrator) migrateReserve(ctx context.Context) error {
 			chData := make([]byte, l.Length)
 			err = e.recovery.Read(ctx, l, chData)
 			if err != nil {
+				e.logger.Debug("reading location failed", "chunk_address", addr, "error", err)
 				return false, nil // continue
 			}
 
