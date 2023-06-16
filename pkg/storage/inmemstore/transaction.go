@@ -20,7 +20,7 @@ type TxStore struct {
 
 	// Bookkeeping of invasive operations executed
 	// on the Store to support rollback functionality.
-	revOps *storage.TxRevStack
+	revOps *storage.TxRevertStack[storage.Key, storage.Item]
 }
 
 // release releases the TxStore transaction associated resources.
@@ -36,25 +36,21 @@ func (s *TxStore) Put(item storage.Item) error {
 	}
 
 	prev := item.Clone()
-	var reverseOp *storage.TxRevertOp
+	var reverseOp *storage.TxRevertOp[storage.Key, storage.Item]
 	switch err := s.TxStoreBase.Get(prev); {
 	case errors.Is(err, storage.ErrNotFound):
-		reverseOp = &storage.TxRevertOp{
+		reverseOp = &storage.TxRevertOp[storage.Key, storage.Item]{
 			Origin:   storage.PutCreateOp,
 			ObjectID: item.String(),
-			Revert: func() error {
-				return s.TxStoreBase.Store.Delete(item)
-			},
+			Val:      item,
 		}
 	case err != nil:
 		return err
 	default:
-		reverseOp = &storage.TxRevertOp{
+		reverseOp = &storage.TxRevertOp[storage.Key, storage.Item]{
 			Origin:   storage.PutUpdateOp,
 			ObjectID: prev.String(),
-			Revert: func() error {
-				return s.TxStoreBase.Store.Put(prev)
-			},
+			Val:      prev,
 		}
 	}
 
@@ -69,12 +65,10 @@ func (s *TxStore) Put(item storage.Item) error {
 func (s *TxStore) Delete(item storage.Item) error {
 	err := s.TxStoreBase.Delete(item)
 	if err == nil {
-		s.revOps.Append(&storage.TxRevertOp{
+		s.revOps.Append(&storage.TxRevertOp[storage.Key, storage.Item]{
 			Origin:   storage.DeleteOp,
 			ObjectID: item.String(),
-			Revert: func() error {
-				return s.TxStoreBase.Store.Put(item)
-			},
+			Val:      item,
 		})
 	}
 	return err
@@ -103,7 +97,7 @@ func (s *TxStore) Rollback() error {
 
 // NewTx implements the TxStore interface.
 func (s *TxStore) NewTx(state *storage.TxState) storage.TxStore {
-	if s.TxStoreBase.Store == nil {
+	if s.Store == nil {
 		panic(errors.New("inmemstore: nil store"))
 	}
 
@@ -112,7 +106,19 @@ func (s *TxStore) NewTx(state *storage.TxState) storage.TxStore {
 			TxState: state,
 			Store:   s.Store,
 		},
-		revOps: new(storage.TxRevStack),
+		revOps: storage.NewTxRevertStack(
+			map[storage.TxOpCode]storage.TxRevertFn[storage.Key, storage.Item]{
+				storage.PutCreateOp: func(key storage.Key, item storage.Item) error {
+					return s.Store.Delete(item)
+				},
+				storage.PutUpdateOp: func(key storage.Key, item storage.Item) error {
+					return s.Store.Put(item)
+				},
+				storage.DeleteOp: func(key storage.Key, item storage.Item) error {
+					return s.Store.Put(item)
+				},
+			},
+		),
 	}
 }
 

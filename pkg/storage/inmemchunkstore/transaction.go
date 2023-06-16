@@ -22,7 +22,7 @@ type TxChunkStore struct {
 
 	// Bookkeeping of invasive operations executed
 	// on the ChunkStore to support rollback functionality.
-	revOps *storage.TxRevStack
+	revOps *storage.TxRevertStack[swarm.Address, swarm.Chunk]
 }
 
 // release releases the TxStore transaction associated resources.
@@ -35,12 +35,10 @@ func (s *TxChunkStore) release() {
 func (s *TxChunkStore) Put(ctx context.Context, chunk swarm.Chunk) (err error) {
 	err = s.TxChunkStoreBase.Put(ctx, chunk)
 	if err == nil {
-		s.revOps.Append(&storage.TxRevertOp{
+		s.revOps.Append(&storage.TxRevertOp[swarm.Address, swarm.Chunk]{
 			Origin:   storage.PutOp,
 			ObjectID: chunk.Address().String(),
-			Revert: func() error {
-				return s.TxChunkStoreBase.ChunkStore.Delete(ctx, chunk.Address())
-			},
+			Key:      chunk.Address(),
 		})
 	}
 	return err
@@ -54,12 +52,10 @@ func (s *TxChunkStore) Delete(ctx context.Context, addr swarm.Address) error {
 	}
 	err = s.TxChunkStoreBase.Delete(ctx, addr)
 	if err == nil {
-		s.revOps.Append(&storage.TxRevertOp{
+		s.revOps.Append(&storage.TxRevertOp[swarm.Address, swarm.Chunk]{
 			Origin:   storage.DeleteOp,
 			ObjectID: addr.String(),
-			Revert: func() error {
-				return s.TxChunkStoreBase.ChunkStore.Put(ctx, chunk)
-			},
+			Val:      chunk,
 		})
 	}
 	return err
@@ -88,7 +84,7 @@ func (s *TxChunkStore) Rollback() error {
 
 // NewTx implements the TxStore interface.
 func (s *TxChunkStore) NewTx(state *storage.TxState) storage.TxChunkStore {
-	if s.TxChunkStoreBase.ChunkStore == nil {
+	if s.ChunkStore == nil {
 		panic(errors.New("inmemchunkstore: nil store"))
 	}
 
@@ -97,7 +93,16 @@ func (s *TxChunkStore) NewTx(state *storage.TxState) storage.TxChunkStore {
 			TxState:    state,
 			ChunkStore: s.ChunkStore,
 		},
-		revOps: new(storage.TxRevStack),
+		revOps: storage.NewTxRevertStack(
+			map[storage.TxOpCode]storage.TxRevertFn[swarm.Address, swarm.Chunk]{
+				storage.PutOp: func(address swarm.Address, chunk swarm.Chunk) error {
+					return s.ChunkStore.Delete(context.Background(), address)
+				},
+				storage.DeleteOp: func(address swarm.Address, chunk swarm.Chunk) error {
+					return s.ChunkStore.Put(context.Background(), chunk)
+				},
+			},
+		),
 	}
 }
 

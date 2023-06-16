@@ -23,7 +23,7 @@ type TxStore struct {
 	// Bookkeeping of invasive operations executed
 	// on the Store to support rollback functionality.
 	batch  *leveldb.Batch
-	revOps *storage.TxRevStack
+	revOps *storage.TxRevertStack[[]byte, []byte]
 }
 
 // release releases the TxStore transaction associated resources.
@@ -40,31 +40,26 @@ func (s *TxStore) Put(item storage.Item) error {
 	}
 
 	prev := item.Clone()
-	var reverseOp *storage.TxRevertOp
+	var reverseOp *storage.TxRevertOp[[]byte, []byte]
 	switch err := s.TxStoreBase.Get(prev); {
 	case errors.Is(err, storage.ErrNotFound):
-		reverseOp = &storage.TxRevertOp{
+		reverseOp = &storage.TxRevertOp[[]byte, []byte]{
 			Origin:   storage.PutCreateOp,
 			ObjectID: item.String(),
-			Revert: func() error {
-				s.batch.Delete(key(item))
-				return nil
-			},
+			Key:      key(item),
 		}
 	case err != nil:
 		return err
 	default:
-		reverseOp = &storage.TxRevertOp{
+		val, err := prev.Marshal()
+		if err != nil {
+			return err
+		}
+		reverseOp = &storage.TxRevertOp[[]byte, []byte]{
 			Origin:   storage.PutUpdateOp,
 			ObjectID: prev.String(),
-			Revert: func() error {
-				val, err := prev.Marshal()
-				if err != nil {
-					return err
-				}
-				s.batch.Put(key(prev), val)
-				return nil
-			},
+			Key:      key(prev),
+			Val:      val,
 		}
 	}
 
@@ -79,17 +74,15 @@ func (s *TxStore) Put(item storage.Item) error {
 func (s *TxStore) Delete(item storage.Item) error {
 	err := s.TxStoreBase.Delete(item)
 	if err == nil {
-		s.revOps.Append(&storage.TxRevertOp{
+		val, err := item.Marshal()
+		if err != nil {
+			return err
+		}
+		s.revOps.Append(&storage.TxRevertOp[[]byte, []byte]{
 			Origin:   storage.DeleteOp,
 			ObjectID: item.String(),
-			Revert: func() error {
-				val, err := item.Marshal()
-				if err != nil {
-					return err
-				}
-				s.batch.Put(key(item), val)
-				return nil
-			},
+			Key:      key(item),
+			Val:      val,
 		})
 	}
 	return err
@@ -124,17 +117,37 @@ func (s *TxStore) Rollback() error {
 
 // NewTx implements the TxStore interface.
 func (s *TxStore) NewTx(state *storage.TxState) storage.TxStore {
-	if s.TxStoreBase.Store == nil {
+	if s.Store == nil {
 		panic(errors.New("leveldbstore: nil store"))
 	}
 
+	batch := new(leveldb.Batch)
 	return &TxStore{
 		TxStoreBase: &storage.TxStoreBase{
 			TxState: state,
-			Store:   s.TxStoreBase.Store,
+			Store:   s.Store,
 		},
-		batch:  new(leveldb.Batch),
-		revOps: new(storage.TxRevStack),
+		// - Create rev-pending tx and update the serialized batch in the DB on every TxRevertStack.Append call
+		// - On Commit, delete the serialized batch from the rev-pending tx
+		// - On Rollback, write the batch to the DB and delete the serialized batch from the rev-pending tx (in batch)
+		// - On start check the rev-pending tx for serialized batch and apply it to the DB
+		batch: batch,
+		revOps: storage.NewTxRevertStack(
+			map[storage.TxOpCode]storage.TxRevertFn[[]byte, []byte]{
+				storage.PutCreateOp: func(key, val []byte) error {
+					batch.Delete(key)
+					return nil
+				},
+				storage.PutUpdateOp: func(k, v []byte) error {
+					batch.Put(k, v)
+					return nil
+				},
+				storage.DeleteOp: func(k, v []byte) error {
+					batch.Put(k, v)
+					return nil
+				},
+			},
+		),
 	}
 }
 

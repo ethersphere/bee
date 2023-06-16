@@ -114,53 +114,63 @@ const (
 	DeleteOp    TxOpCode = "delete"
 )
 
-// TxRevertOp represents a reverse operation that
-// can be invoked by calling its Revert function.
-type TxRevertOp struct {
-	// Origin is the TxOpCode of the operation that
-	// is the originator of the Revert operation.
-	Origin TxOpCode
+// TxRevertFn represents a function that can be invoked
+// to reverse the operation that was performed by the
+// corresponding TxOpCode.
+type TxRevertFn[K, V any] func(K, V) error
 
-	// ObjectID is a unique object identifier on
-	// which the Revert operation is invoked.
+// TxRevertOp represents a reverse operation.
+type TxRevertOp[K, V any] struct {
+	Origin   TxOpCode
 	ObjectID string
 
-	// Revert is the inverse operation to the Origin.
-	Revert func() error
+	Key K
+	Val V
 }
 
-// TxRevStack tracks reverse operations.
-type TxRevStack struct {
+// TxRevertStack tracks reverse operations.
+type TxRevertStack[K, V any] struct {
+	revOpsFn map[TxOpCode]TxRevertFn[K, V]
+
 	mu  sync.Mutex
-	ops []*TxRevertOp
+	ops []*TxRevertOp[K, V]
 }
 
 // Append appends a Revert operation to the stack.
-func (to *TxRevStack) Append(op *TxRevertOp) {
-	if to == nil {
+func (rs *TxRevertStack[K, V]) Append(op *TxRevertOp[K, V]) {
+	if rs == nil {
 		return
 	}
 
-	to.mu.Lock()
-	to.ops = append(to.ops, op)
-	to.mu.Unlock()
+	rs.mu.Lock()
+	rs.ops = append(rs.ops, op)
+	rs.mu.Unlock()
 }
 
 // Revert executes all the revere operations in the stack in reverse order.
 // If an error occurs during the call to the Revert operation, this error
 // is captured and execution continues to the top of the stack.
-func (to *TxRevStack) Revert() error {
-	if to == nil {
+func (rs *TxRevertStack[K, V]) Revert() error {
+	if rs == nil {
 		return nil
 	}
 
-	to.mu.Lock()
-	defer to.mu.Unlock()
+	rs.mu.Lock()
+	defer rs.mu.Unlock()
 
 	var errs error
-	for i := len(to.ops) - 1; i >= 0; i-- {
-		op := to.ops[i]
-		if err := op.Revert(); err != nil {
+	for i := len(rs.ops) - 1; i >= 0; i-- {
+		op := rs.ops[i]
+		fn, ok := rs.revOpsFn[op.Origin]
+		if !ok {
+			errs = errors.Join(errs, fmt.Errorf(
+				"revert operation %q for object %s not found",
+				op.Origin,
+				op.ObjectID,
+			))
+			continue
+		}
+		if err := fn(op.Key, op.Val); err != nil {
 			errs = errors.Join(errs, fmt.Errorf(
 				"revert operation %q for object %s failed: %w",
 				op.Origin,
@@ -170,6 +180,15 @@ func (to *TxRevStack) Revert() error {
 		}
 	}
 	return errs
+}
+
+// NewTxRevertStack is a convenient constructor for creating instances of TxRevertStack.
+// The revOpsFn map is used to lookup the revert function for a given TxOpCode.
+func NewTxRevertStack[K, V any](
+	// TODO: add writer for persisting revert ops
+	revOpsFn map[TxOpCode]TxRevertFn[K, V],
+) *TxRevertStack[K, V] {
+	return &TxRevertStack[K, V]{revOpsFn: revOpsFn}
 }
 
 var _ Store = (*TxStoreBase)(nil)

@@ -84,22 +84,17 @@ type txChunkStoreWrapper struct {
 
 	// Bookkeeping of invasive operations executed
 	// on the ChunkStore to support rollback functionality.
-	revOps storage.TxRevStack
+	revOps *storage.TxRevertStack[swarm.Address, swarm.Chunk]
 }
 
 // Put implements the ChunkStore interface.
 func (cs *txChunkStoreWrapper) Put(ctx context.Context, chunk swarm.Chunk) error {
 	err := cs.TxChunkStoreBase.Put(ctx, chunk)
 	if err == nil {
-		cs.revOps.Append(&storage.TxRevertOp{
+		cs.revOps.Append(&storage.TxRevertOp[swarm.Address, swarm.Chunk]{
 			Origin:   storage.PutOp,
 			ObjectID: chunk.Address().String(),
-			Revert: func() error {
-				return cs.TxChunkStoreBase.ChunkStore.Delete(
-					context.Background(),
-					chunk.Address(),
-				)
-			},
+			Key:      chunk.Address(),
 		})
 	}
 	return err
@@ -114,15 +109,10 @@ func (cs *txChunkStoreWrapper) Delete(ctx context.Context, address swarm.Address
 
 	err = cs.TxChunkStoreBase.Delete(ctx, address)
 	if err == nil {
-		cs.revOps.Append(&storage.TxRevertOp{
+		cs.revOps.Append(&storage.TxRevertOp[swarm.Address, swarm.Chunk]{
 			Origin:   storage.DeleteOp,
 			ObjectID: address.String(),
-			Revert: func() error {
-				return cs.TxChunkStoreBase.ChunkStore.Put(
-					context.Background(),
-					chunk,
-				)
-			},
+			Val:      chunk,
 		})
 	}
 	return err
@@ -165,16 +155,27 @@ func (cs *txChunkStoreWrapper) NewTx(state *storage.TxState) storage.TxChunkStor
 		toReleaseLocs: make(map[[32]byte]sharky.Location),
 		toReleaseSums: make(map[sharky.Location][32]byte),
 	}
+	chunkStore := &chunkStoreWrapper{
+		store:  cs.store,
+		sharky: txSharky,
+	}
 	return &txChunkStoreWrapper{
 		TxChunkStoreBase: &storage.TxChunkStoreBase{
-			TxState: state,
-			ChunkStore: &chunkStoreWrapper{
-				store:  cs.store,
-				sharky: txSharky,
-			},
+			TxState:    state,
+			ChunkStore: chunkStore,
 		},
 		store:    cs.store,
 		txSharky: txSharky,
+		revOps: storage.NewTxRevertStack(
+			map[storage.TxOpCode]storage.TxRevertFn[swarm.Address, swarm.Chunk]{
+				storage.PutOp: func(key swarm.Address, val swarm.Chunk) error {
+					return chunkStore.Delete(context.Background(), key)
+				},
+				storage.DeleteOp: func(key swarm.Address, val swarm.Chunk) error {
+					return chunkStore.Put(context.Background(), val)
+				},
+			},
+		),
 	}
 }
 
