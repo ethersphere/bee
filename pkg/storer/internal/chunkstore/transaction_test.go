@@ -27,7 +27,7 @@ func TestTxChunkStore(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	storagetest.TestTxChunkStore(t, chunkstore.NewTxChunkStore(inmemstore.NewTxStore(inmemstore.New()), sharky))
+	storagetest.TestTxChunkStore(t, chunkstore.NewTxChunkStore(inmemstore.New(), sharky))
 }
 
 // TestMultipleStampsRefCnt tests the behaviour of ref counting along with multiple

@@ -7,11 +7,59 @@ package leveldbstore
 import (
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 )
+
+var _ storage.TxRevertOpStore[[]byte, []byte] = (*diskTxRevertOpStore)(nil)
+
+type diskTxRevertOpStore struct {
+	revOpsFn map[storage.TxOpCode]storage.TxRevertFn[[]byte, []byte]
+	db       *leveldb.DB
+
+	mu    sync.Mutex
+	batch *leveldb.Batch
+}
+
+func (s *diskTxRevertOpStore) Append(op *storage.TxRevertOp[[]byte, []byte]) error {
+	if s == nil {
+		return nil
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var errs error
+	if fn, ok := s.revOpsFn[op.Origin]; !ok {
+		errs = errors.Join(errs, fmt.Errorf(
+			"revert operation %q for object %s not found",
+			op.Origin,
+			op.ObjectID,
+		))
+	} else if err := fn(op.Key, op.Val); err != nil {
+		errs = errors.Join(errs, fmt.Errorf(
+			"revert operation %q for object %s failed: %w",
+			op.Origin,
+			op.ObjectID,
+			err,
+		))
+	}
+	return errs
+}
+
+func (s *diskTxRevertOpStore) Revert() error {
+	if s == nil {
+		return nil
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	defer s.batch.Reset()
+	return s.db.Write(s.batch, &opt.WriteOptions{Sync: true})
+}
 
 var _ storage.TxStore = (*TxStore)(nil)
 
@@ -22,14 +70,12 @@ type TxStore struct {
 
 	// Bookkeeping of invasive operations executed
 	// on the Store to support rollback functionality.
-	batch  *leveldb.Batch
-	revOps *storage.TxRevertStack[[]byte, []byte]
+	revOps storage.TxRevertOpStore[[]byte, []byte]
 }
 
 // release releases the TxStore transaction associated resources.
 func (s *TxStore) release() {
 	s.TxStoreBase.Store = nil
-	s.batch = nil
 	s.revOps = nil
 }
 
@@ -65,7 +111,7 @@ func (s *TxStore) Put(item storage.Item) error {
 
 	err := s.TxStoreBase.Put(item)
 	if err == nil {
-		s.revOps.Append(reverseOp)
+		err = s.revOps.Append(reverseOp)
 	}
 	return err
 }
@@ -74,11 +120,11 @@ func (s *TxStore) Put(item storage.Item) error {
 func (s *TxStore) Delete(item storage.Item) error {
 	err := s.TxStoreBase.Delete(item)
 	if err == nil {
-		val, err := item.Marshal()
-		if err != nil {
-			return err
+		val, merr := item.Marshal()
+		if merr != nil {
+			return merr
 		}
-		s.revOps.Append(&storage.TxRevertOp[[]byte, []byte]{
+		err = s.revOps.Append(&storage.TxRevertOp[[]byte, []byte]{
 			Origin:   storage.DeleteOp,
 			ObjectID: item.String(),
 			Key:      key(item),
@@ -103,16 +149,10 @@ func (s *TxStore) Rollback() error {
 		return err
 	}
 
-	var errs error
 	if err := s.revOps.Revert(); err != nil {
-		errs = errors.Join(errs, fmt.Errorf("leveldbstore: unable to rollback: %w", err))
+		return fmt.Errorf("leveldbstore: unable to rollback: %w", err)
 	}
-
-	db := s.TxStoreBase.Store.(*Store).db
-	if err := db.Write(s.batch, &opt.WriteOptions{Sync: true}); err != nil {
-		errs = errors.Join(errs, fmt.Errorf("leveldbstore: unable to write rollback batch: %w", err))
-	}
-	return errs
+	return nil
 }
 
 // NewTx implements the TxStore interface.
@@ -127,16 +167,16 @@ func (s *TxStore) NewTx(state *storage.TxState) storage.TxStore {
 			TxState: state,
 			Store:   s.Store,
 		},
+
 		// - Create rev-pending tx and update the serialized batch in the DB on every TxRevertStack.Append call
 		// - On Commit, delete the serialized batch from the rev-pending tx
 		// - On Rollback, write the batch to the DB and delete the serialized batch from the rev-pending tx (in batch)
 		// - On start check the rev-pending tx for serialized batch and apply it to the DB
-		batch: batch,
-		revOps: storage.NewTxRevertStack[[]byte, []byte](
-			new(storage.InMemTxRevertOpStore[[]byte, []byte]),
-			map[storage.TxOpCode]storage.TxRevertFn[[]byte, []byte]{
-				storage.PutCreateOp: func(key, val []byte) error {
-					batch.Delete(key)
+
+		revOps: &diskTxRevertOpStore{
+			revOpsFn: map[storage.TxOpCode]storage.TxRevertFn[[]byte, []byte]{
+				storage.PutCreateOp: func(k, _ []byte) error {
+					batch.Delete(k)
 					return nil
 				},
 				storage.PutUpdateOp: func(k, v []byte) error {
@@ -148,7 +188,9 @@ func (s *TxStore) NewTx(state *storage.TxState) storage.TxStore {
 					return nil
 				},
 			},
-		),
+			db:    s.Store.(*Store).db,
+			batch: batch,
+		},
 	}
 }
 

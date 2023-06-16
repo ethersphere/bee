@@ -84,14 +84,14 @@ type txChunkStoreWrapper struct {
 
 	// Bookkeeping of invasive operations executed
 	// on the ChunkStore to support rollback functionality.
-	revOps *storage.TxRevertStack[swarm.Address, swarm.Chunk]
+	revOps storage.TxRevertOpStore[swarm.Address, swarm.Chunk]
 }
 
 // Put implements the ChunkStore interface.
 func (cs *txChunkStoreWrapper) Put(ctx context.Context, chunk swarm.Chunk) error {
 	err := cs.TxChunkStoreBase.Put(ctx, chunk)
 	if err == nil {
-		cs.revOps.Append(&storage.TxRevertOp[swarm.Address, swarm.Chunk]{
+		err = cs.revOps.Append(&storage.TxRevertOp[swarm.Address, swarm.Chunk]{
 			Origin:   storage.PutOp,
 			ObjectID: chunk.Address().String(),
 			Key:      chunk.Address(),
@@ -109,7 +109,7 @@ func (cs *txChunkStoreWrapper) Delete(ctx context.Context, address swarm.Address
 
 	err = cs.TxChunkStoreBase.Delete(ctx, address)
 	if err == nil {
-		cs.revOps.Append(&storage.TxRevertOp[swarm.Address, swarm.Chunk]{
+		err = cs.revOps.Append(&storage.TxRevertOp[swarm.Address, swarm.Chunk]{
 			Origin:   storage.DeleteOp,
 			ObjectID: address.String(),
 			Val:      chunk,
@@ -166,8 +166,7 @@ func (cs *txChunkStoreWrapper) NewTx(state *storage.TxState) storage.TxChunkStor
 		},
 		store:    cs.store,
 		txSharky: txSharky,
-		revOps: storage.NewTxRevertStack[swarm.Address, swarm.Chunk](
-			new(storage.InMemTxRevertOpStore[swarm.Address, swarm.Chunk]),
+		revOps: storage.NewInMemTxRevertOpStore(
 			map[storage.TxOpCode]storage.TxRevertFn[swarm.Address, swarm.Chunk]{
 				storage.PutOp: func(key swarm.Address, val swarm.Chunk) error {
 					return chunkStore.Delete(context.Background(), key)

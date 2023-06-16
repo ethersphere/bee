@@ -20,7 +20,7 @@ type TxStore struct {
 
 	// Bookkeeping of invasive operations executed
 	// on the Store to support rollback functionality.
-	revOps *storage.TxRevertStack[storage.Key, storage.Item]
+	revOps storage.TxRevertOpStore[storage.Key, storage.Item]
 }
 
 // release releases the TxStore transaction associated resources.
@@ -56,7 +56,7 @@ func (s *TxStore) Put(item storage.Item) error {
 
 	err := s.TxStoreBase.Put(item)
 	if err == nil {
-		s.revOps.Append(reverseOp)
+		err = s.revOps.Append(reverseOp)
 	}
 	return err
 }
@@ -65,7 +65,7 @@ func (s *TxStore) Put(item storage.Item) error {
 func (s *TxStore) Delete(item storage.Item) error {
 	err := s.TxStoreBase.Delete(item)
 	if err == nil {
-		s.revOps.Append(&storage.TxRevertOp[storage.Key, storage.Item]{
+		err = s.revOps.Append(&storage.TxRevertOp[storage.Key, storage.Item]{
 			Origin:   storage.DeleteOp,
 			ObjectID: item.String(),
 			Val:      item,
@@ -106,16 +106,15 @@ func (s *TxStore) NewTx(state *storage.TxState) storage.TxStore {
 			TxState: state,
 			Store:   s.Store,
 		},
-		revOps: storage.NewTxRevertStack[storage.Key, storage.Item](
-			new(storage.InMemTxRevertOpStore[storage.Key, storage.Item]),
+		revOps: storage.NewInMemTxRevertOpStore(
 			map[storage.TxOpCode]storage.TxRevertFn[storage.Key, storage.Item]{
-				storage.PutCreateOp: func(key storage.Key, item storage.Item) error {
+				storage.PutCreateOp: func(_ storage.Key, item storage.Item) error {
 					return s.Store.Delete(item)
 				},
-				storage.PutUpdateOp: func(key storage.Key, item storage.Item) error {
+				storage.PutUpdateOp: func(_ storage.Key, item storage.Item) error {
 					return s.Store.Put(item)
 				},
-				storage.DeleteOp: func(key storage.Key, item storage.Item) error {
+				storage.DeleteOp: func(_ storage.Key, item storage.Item) error {
 					return s.Store.Put(item)
 				},
 			},
