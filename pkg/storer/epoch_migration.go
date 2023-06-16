@@ -335,7 +335,14 @@ func (e *epochMigrator) migrateReserve(ctx context.Context) error {
 				return false, err
 			}
 
-			ch := swarm.NewChunk(addr, nil).
+			chData := make([]byte, l.Length)
+			err = e.recovery.Read(ctx, l, chData)
+			if err != nil {
+				e.logger.Debug("reading location failed", "chunk_address", addr, "error", err)
+				return false, nil // continue
+			}
+
+			ch := swarm.NewChunk(addr, chData).
 				WithStamp(postage.NewStamp(item.BatchID, item.Index, item.Timestamp, item.Sig))
 
 			select {
