@@ -173,7 +173,7 @@ func TestGetStampIssuer(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		defer save()
+		_ = save()
 		if stampIssuer.Amount().Cmp(big.NewInt(13)) != 0 {
 			t.Fatalf("expected amount %d got %d", 13, stampIssuer.Amount().Int64())
 		}
@@ -187,7 +187,7 @@ func TestGetStampIssuer(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		defer save()
+		_ = save()
 		if stampIssuer.Amount().Cmp(big.NewInt(3)) != 0 {
 			t.Fatalf("expected amount %d got %d", 3, stampIssuer.Amount().Int64())
 		}
@@ -200,7 +200,6 @@ func TestGetStampIssuer(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer save1()
 		_, save2, err := ps.GetStampIssuer(ids[2])
 		if err != nil {
 			t.Fatal(err)
@@ -211,5 +210,6 @@ func TestGetStampIssuer(t *testing.T) {
 		if !errors.Is(err, postage.ErrBatchInUse) {
 			t.Fatalf("expected ErrBatchInUse, got %v", err)
 		}
+		_ = save1()
 	})
 }

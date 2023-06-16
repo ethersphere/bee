@@ -1,3 +1,7 @@
+// Copyright 2023 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package node
 
 import (
@@ -5,6 +9,7 @@ import (
 	"fmt"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
@@ -17,7 +22,6 @@ func TestInitStamperStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer stateStore.Close()
 
 	ids := make(map[string]int)
 
@@ -41,7 +45,6 @@ func TestInitStamperStore(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer stamperStore.Close()
 
 	// check stamper store has 10 stamps
 	err = stamperStore.Iterate(
@@ -65,4 +68,10 @@ func TestInitStamperStore(t *testing.T) {
 	if nMissing > 0 {
 		t.Fatalf("missing %d stamps", nMissing)
 	}
+
+	t.Cleanup(func() {
+		_ = stateStore.Close()
+		_ = stamperStore.Close()
+		time.Sleep(1 * time.Second)
+	})
 }
