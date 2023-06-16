@@ -106,7 +106,8 @@ func (s *TxStore) NewTx(state *storage.TxState) storage.TxStore {
 			TxState: state,
 			Store:   s.Store,
 		},
-		revOps: storage.NewTxRevertStack(
+		revOps: storage.NewTxRevertStack[storage.Key, storage.Item](
+			new(storage.InMemTxRevertOpStore[storage.Key, storage.Item]),
 			map[storage.TxOpCode]storage.TxRevertFn[storage.Key, storage.Item]{
 				storage.PutCreateOp: func(key storage.Key, item storage.Item) error {
 					return s.Store.Delete(item)

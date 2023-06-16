@@ -93,7 +93,8 @@ func (s *TxChunkStore) NewTx(state *storage.TxState) storage.TxChunkStore {
 			TxState:    state,
 			ChunkStore: s.ChunkStore,
 		},
-		revOps: storage.NewTxRevertStack(
+		revOps: storage.NewTxRevertStack[swarm.Address, swarm.Chunk](
+			new(storage.InMemTxRevertOpStore[swarm.Address, swarm.Chunk]),
 			map[storage.TxOpCode]storage.TxRevertFn[swarm.Address, swarm.Chunk]{
 				storage.PutOp: func(address swarm.Address, chunk swarm.Chunk) error {
 					return s.ChunkStore.Delete(context.Background(), address)

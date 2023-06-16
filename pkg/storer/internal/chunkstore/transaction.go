@@ -166,7 +166,8 @@ func (cs *txChunkStoreWrapper) NewTx(state *storage.TxState) storage.TxChunkStor
 		},
 		store:    cs.store,
 		txSharky: txSharky,
-		revOps: storage.NewTxRevertStack(
+		revOps: storage.NewTxRevertStack[swarm.Address, swarm.Chunk](
+			new(storage.InMemTxRevertOpStore[swarm.Address, swarm.Chunk]),
 			map[storage.TxOpCode]storage.TxRevertFn[swarm.Address, swarm.Chunk]{
 				storage.PutOp: func(key swarm.Address, val swarm.Chunk) error {
 					return chunkStore.Delete(context.Background(), key)

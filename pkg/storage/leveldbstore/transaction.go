@@ -132,7 +132,8 @@ func (s *TxStore) NewTx(state *storage.TxState) storage.TxStore {
 		// - On Rollback, write the batch to the DB and delete the serialized batch from the rev-pending tx (in batch)
 		// - On start check the rev-pending tx for serialized batch and apply it to the DB
 		batch: batch,
-		revOps: storage.NewTxRevertStack(
+		revOps: storage.NewTxRevertStack[[]byte, []byte](
+			new(storage.InMemTxRevertOpStore[[]byte, []byte]),
 			map[storage.TxOpCode]storage.TxRevertFn[[]byte, []byte]{
 				storage.PutCreateOp: func(key, val []byte) error {
 					batch.Delete(key)

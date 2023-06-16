@@ -119,6 +119,36 @@ const (
 // corresponding TxOpCode.
 type TxRevertFn[K, V any] func(K, V) error
 
+// TxRevertOpStore represents a store for TxRevertOp.
+type TxRevertOpStore[K, V any] interface {
+	// Store stores a TxRevertOp.
+	Store(*TxRevertOp[K, V])
+	// Iterate iterates over all TxRevertOp in reverse order.
+	Iterate(func(*TxRevertOp[K, V]))
+}
+
+// InMemTxRevertOpStore is an in-memory implementation of TxRevertOpStore.
+type InMemTxRevertOpStore[K, V any] struct {
+	mu  sync.Mutex
+	ops []*TxRevertOp[K, V]
+}
+
+// Store implements TxRevertOpStore.
+func (w *InMemTxRevertOpStore[K, V]) Store(op *TxRevertOp[K, V]) {
+	w.mu.Lock()
+	w.ops = append(w.ops, op)
+	w.mu.Unlock()
+}
+
+// Iterate implements TxRevertOpStore.
+func (w *InMemTxRevertOpStore[K, V]) Iterate(fn func(*TxRevertOp[K, V])) {
+	w.mu.Lock()
+	for i := len(w.ops) - 1; i >= 0; i-- {
+		fn(w.ops[i])
+	}
+	w.mu.Unlock()
+}
+
 // TxRevertOp represents a reverse operation.
 type TxRevertOp[K, V any] struct {
 	Origin   TxOpCode
@@ -130,10 +160,8 @@ type TxRevertOp[K, V any] struct {
 
 // TxRevertStack tracks reverse operations.
 type TxRevertStack[K, V any] struct {
-	revOpsFn map[TxOpCode]TxRevertFn[K, V]
-
-	mu  sync.Mutex
-	ops []*TxRevertOp[K, V]
+	revOpsFn    map[TxOpCode]TxRevertFn[K, V]
+	revOpsStore TxRevertOpStore[K, V]
 }
 
 // Append appends a Revert operation to the stack.
@@ -141,10 +169,7 @@ func (rs *TxRevertStack[K, V]) Append(op *TxRevertOp[K, V]) {
 	if rs == nil {
 		return
 	}
-
-	rs.mu.Lock()
-	rs.ops = append(rs.ops, op)
-	rs.mu.Unlock()
+	rs.revOpsStore.Store(op)
 }
 
 // Revert executes all the revere operations in the stack in reverse order.
@@ -155,12 +180,8 @@ func (rs *TxRevertStack[K, V]) Revert() error {
 		return nil
 	}
 
-	rs.mu.Lock()
-	defer rs.mu.Unlock()
-
 	var errs error
-	for i := len(rs.ops) - 1; i >= 0; i-- {
-		op := rs.ops[i]
+	rs.revOpsStore.Iterate(func(op *TxRevertOp[K, V]) {
 		fn, ok := rs.revOpsFn[op.Origin]
 		if !ok {
 			errs = errors.Join(errs, fmt.Errorf(
@@ -168,7 +189,6 @@ func (rs *TxRevertStack[K, V]) Revert() error {
 				op.Origin,
 				op.ObjectID,
 			))
-			continue
 		}
 		if err := fn(op.Key, op.Val); err != nil {
 			errs = errors.Join(errs, fmt.Errorf(
@@ -178,17 +198,21 @@ func (rs *TxRevertStack[K, V]) Revert() error {
 				err,
 			))
 		}
-	}
+	})
 	return errs
 }
 
 // NewTxRevertStack is a convenient constructor for creating instances of TxRevertStack.
-// The revOpsFn map is used to lookup the revert function for a given TxOpCode.
+// The revOpsStore is used to store the reverse operations and revOpsFn map is
+// used to look up the revert function for a given TxOpCode.
 func NewTxRevertStack[K, V any](
-	// TODO: add writer for persisting revert ops
+	revOpsStore TxRevertOpStore[K, V],
 	revOpsFn map[TxOpCode]TxRevertFn[K, V],
 ) *TxRevertStack[K, V] {
-	return &TxRevertStack[K, V]{revOpsFn: revOpsFn}
+	return &TxRevertStack[K, V]{
+		revOpsFn:    revOpsFn,
+		revOpsStore: revOpsStore,
+	}
 }
 
 var _ Store = (*TxStoreBase)(nil)
