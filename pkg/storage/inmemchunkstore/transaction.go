@@ -108,5 +108,8 @@ func (s *TxChunkStore) NewTx(state *storage.TxState) storage.TxChunkStore {
 
 // NewTxChunkStore returns a new TxChunkStore instance backed by the given chunk store.
 func NewTxChunkStore(store storage.ChunkStore) *TxChunkStore {
-	return &TxChunkStore{TxChunkStoreBase: &storage.TxChunkStoreBase{ChunkStore: store}}
+	return &TxChunkStore{
+		TxChunkStoreBase: &storage.TxChunkStoreBase{ChunkStore: store},
+		revOps:           new(storage.NoOpTxRevertOpStore[swarm.Address, swarm.Chunk]),
+	}
 }

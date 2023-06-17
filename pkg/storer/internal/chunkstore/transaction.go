@@ -194,5 +194,6 @@ func NewTxChunkStore(store storage.Store, csSharky Sharky) storage.TxChunkStore 
 		},
 		store:    store,
 		txSharky: txSharky,
+		revOps:   new(storage.NoOpTxRevertOpStore[swarm.Address, swarm.Chunk]),
 	}
 }

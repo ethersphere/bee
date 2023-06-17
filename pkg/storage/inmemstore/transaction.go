@@ -124,5 +124,8 @@ func (s *TxStore) NewTx(state *storage.TxState) storage.TxStore {
 
 // NewTxStore returns a new TxStore instance backed by the given store.
 func NewTxStore(store storage.Store) *TxStore {
-	return &TxStore{TxStoreBase: &storage.TxStoreBase{Store: store}}
+	return &TxStore{
+		TxStoreBase: &storage.TxStoreBase{Store: store},
+		revOps:      new(storage.NoOpTxRevertOpStore[storage.Key, storage.Item]),
+	}
 }
