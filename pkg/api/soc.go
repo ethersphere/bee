@@ -51,24 +51,31 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tag, err := s.storer.NewSession()
-	if err != nil {
-		logger.Debug("get or create tag failed", "error", err)
-		logger.Error(nil, "get or create tag failed")
-		switch {
-		case errors.Is(err, storage.ErrNotFound):
-			jsonhttp.NotFound(w, "tag not found")
-		default:
-			jsonhttp.InternalServerError(w, "cannot get or create tag")
+	// if pinning header is set we do a deferred upload, else we do a direct upload
+	var (
+		tag uint64
+	)
+	if headers.Pin {
+		session, err := s.storer.NewSession()
+		if err != nil {
+			logger.Debug("get or create tag failed", "error", err)
+			logger.Error(nil, "get or create tag failed")
+			switch {
+			case errors.Is(err, storage.ErrNotFound):
+				jsonhttp.NotFound(w, "tag not found")
+			default:
+				jsonhttp.InternalServerError(w, "cannot get or create tag")
+			}
+			return
 		}
-		return
+		tag = session.TagID
 	}
 
 	putter, err := s.newStamperPutter(r.Context(), putterOptions{
 		BatchID:  headers.BatchID,
-		TagID:    tag.TagID,
+		TagID:    tag,
 		Pin:      headers.Pin,
-		Deferred: true,
+		Deferred: headers.Pin,
 	})
 	if err != nil {
 		logger.Debug("get putter failed", "error", err)
