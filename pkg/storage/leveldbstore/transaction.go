@@ -10,20 +10,74 @@ import (
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage/storageutil"
+	"github.com/google/uuid"
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 )
 
-var _ storage.TxRevertOpStore[[]byte, []byte] = (*diskTxRevertOpStore)(nil)
+// PendingTxNamespace is the namespace used for in-progress reverse
+// operation transactions that has not been committed or reverted yet.
+const PendingTxNamespace = "pending-tx"
 
-type diskTxRevertOpStore struct {
-	revOpsFn map[storage.TxOpCode]storage.TxRevertFn[[]byte, []byte]
-	db       *leveldb.DB
+var _ storage.Item = (*pendingTx)(nil)
 
-	mu    sync.Mutex
-	batch *leveldb.Batch
+// pendingTx is a storage.Item that holds a batch of operations.
+type pendingTx struct {
+	storage.Item
+
+	val *leveldb.Batch
 }
 
+// Namespace implements storage.Item.
+func (p *pendingTx) Namespace() string {
+	return PendingTxNamespace
+}
+
+// Unmarshal implements storage.Item.
+func (p *pendingTx) Unmarshal(bytes []byte) error {
+	p.val = new(leveldb.Batch)
+	return p.val.Load(bytes)
+}
+
+// Recovery attempts to recover from a previous crash
+// by reverting all uncommitted transactions.
+func Recovery(store storage.Store) error {
+	batch := new(leveldb.Batch)
+
+	err := store.Iterate(storage.Query{
+		Factory:      func() storage.Item { return new(pendingTx) },
+		ItemProperty: storage.QueryItem,
+	}, func(r storage.Result) (bool, error) {
+		if err := batch.Replay(r.Entry.(*pendingTx).val); err != nil {
+			return true, fmt.Errorf("unable to replay batch for %s: %w", r.ID, err)
+		}
+		batch.Delete([]byte(r.ID))
+		return false, nil
+	})
+	if err != nil {
+		return fmt.Errorf("leveldbstore: iteration failed: %w", err)
+	}
+
+	if err := store.(*Store).db.Write(batch, &opt.WriteOptions{Sync: true}); err != nil {
+		return fmt.Errorf("leveldbstore: unable to write batch: %w", err)
+	}
+	return nil
+}
+
+var _ storage.TxRevertOpStore[[]byte, []byte] = (*diskTxRevertOpStore)(nil)
+
+// diskTxRevertOpStore is a storage.TxRevertOpStore
+// that stores revert operations on disk.
+type diskTxRevertOpStore struct {
+	id       []byte // Unique identifier for this transaction.
+	db       *leveldb.DB
+	mu       sync.Mutex // mu protects the batch.
+	batch    *leveldb.Batch
+	revOpsFn map[storage.TxOpCode]storage.TxRevertFn[[]byte, []byte]
+}
+
+// Append implements storage.TxRevertOpStore.
 func (s *diskTxRevertOpStore) Append(op *storage.TxRevertOp[[]byte, []byte]) error {
 	if s == nil {
 		return nil
@@ -47,9 +101,14 @@ func (s *diskTxRevertOpStore) Append(op *storage.TxRevertOp[[]byte, []byte]) err
 			err,
 		))
 	}
-	return errs
+	if errs != nil {
+		return errs
+	}
+
+	return s.db.Put(s.id, s.batch.Dump(), &opt.WriteOptions{Sync: true})
 }
 
+// Revert implements storage.TxRevertOpStore.
 func (s *diskTxRevertOpStore) Revert() error {
 	if s == nil {
 		return nil
@@ -58,7 +117,18 @@ func (s *diskTxRevertOpStore) Revert() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	defer s.batch.Reset()
+
+	s.batch.Delete(s.id)
 	return s.db.Write(s.batch, &opt.WriteOptions{Sync: true})
+}
+
+// Clean implements storage.TxRevertOpStore.
+func (s *diskTxRevertOpStore) Clean() error {
+	if s == nil {
+		return nil
+	}
+
+	return s.db.Delete(s.id, &opt.WriteOptions{Sync: true})
 }
 
 var _ storage.TxStore = (*TxStore)(nil)
@@ -118,18 +188,28 @@ func (s *TxStore) Put(item storage.Item) error {
 
 // Delete implements the Store interface.
 func (s *TxStore) Delete(item storage.Item) error {
-	err := s.TxStoreBase.Delete(item)
-	if err == nil {
-		val, merr := item.Marshal()
-		if merr != nil {
-			return merr
+	if err := s.IsDone(); err != nil {
+		return err
+	}
+
+	prev := item.Clone()
+	var reverseOp *storage.TxRevertOp[[]byte, []byte]
+	if err := s.TxStoreBase.Get(prev); err == nil {
+		val, err := prev.Marshal()
+		if err != nil {
+			return err
 		}
-		err = s.revOps.Append(&storage.TxRevertOp[[]byte, []byte]{
+		reverseOp = &storage.TxRevertOp[[]byte, []byte]{
 			Origin:   storage.DeleteOp,
 			ObjectID: item.String(),
 			Key:      key(item),
 			Val:      val,
-		})
+		}
+	}
+
+	err := s.TxStoreBase.Delete(item)
+	if err == nil {
+		err = s.revOps.Append(reverseOp)
 	}
 	return err
 }
@@ -138,7 +218,13 @@ func (s *TxStore) Delete(item storage.Item) error {
 func (s *TxStore) Commit() error {
 	defer s.release()
 
-	return s.TxState.Done()
+	if err := s.TxState.Done(); err != nil {
+		return err
+	}
+	if err := s.revOps.Clean(); err != nil {
+		return fmt.Errorf("leveldbstore: unable to clean revert operations: %w", err)
+	}
+	return nil
 }
 
 // Rollback implements the Tx interface.
@@ -146,11 +232,11 @@ func (s *TxStore) Rollback() error {
 	defer s.release()
 
 	if err := s.TxStoreBase.Rollback(); err != nil {
-		return err
+		return fmt.Errorf("leveldbstore: unable to rollback: %w", err)
 	}
 
 	if err := s.revOps.Revert(); err != nil {
-		return fmt.Errorf("leveldbstore: unable to rollback: %w", err)
+		return fmt.Errorf("leveldbstore: unable to revert operations: %w", err)
 	}
 	return nil
 }
@@ -167,13 +253,10 @@ func (s *TxStore) NewTx(state *storage.TxState) storage.TxStore {
 			TxState: state,
 			Store:   s.Store,
 		},
-
-		// - Create rev-pending tx and update the serialized batch in the DB on every TxRevertStack.Append call
-		// - On Commit, delete the serialized batch from the rev-pending tx
-		// - On Rollback, write the batch to the DB and delete the serialized batch from the rev-pending tx (in batch)
-		// - On start check the rev-pending tx for serialized batch and apply it to the DB
-
 		revOps: &diskTxRevertOpStore{
+			id:    []byte(storageutil.JoinFields(PendingTxNamespace, uuid.NewString())),
+			db:    s.Store.(*Store).db,
+			batch: batch,
 			revOpsFn: map[storage.TxOpCode]storage.TxRevertFn[[]byte, []byte]{
 				storage.PutCreateOp: func(k, _ []byte) error {
 					batch.Delete(k)
@@ -188,8 +271,6 @@ func (s *TxStore) NewTx(state *storage.TxState) storage.TxStore {
 					return nil
 				},
 			},
-			db:    s.Store.(*Store).db,
-			batch: batch,
 		},
 	}
 }

@@ -87,6 +87,14 @@ type txChunkStoreWrapper struct {
 	revOps storage.TxRevertOpStore[swarm.Address, swarm.Chunk]
 }
 
+// release releases the txChunkStoreWrapper transaction associated resources.
+func (cs *txChunkStoreWrapper) release() {
+	cs.TxChunkStoreBase.ChunkStore = nil
+	cs.txSharky.Sharky = nil
+	cs.store = nil
+	cs.revOps = nil
+}
+
 // Put implements the ChunkStore interface.
 func (cs *txChunkStoreWrapper) Put(ctx context.Context, chunk swarm.Chunk) error {
 	err := cs.TxChunkStoreBase.Put(ctx, chunk)
@@ -119,34 +127,44 @@ func (cs *txChunkStoreWrapper) Delete(ctx context.Context, address swarm.Address
 }
 
 func (cs *txChunkStoreWrapper) Commit() error {
+	defer cs.release()
+
 	if err := cs.TxChunkStoreBase.Done(); err != nil {
 		return err
+	}
+
+	if err := cs.revOps.Clean(); err != nil {
+		return fmt.Errorf("txchunkstore: unable to clean revert operations: %w", err)
 	}
 
 	for _, loc := range cs.txSharky.toReleaseLocs {
 		err := cs.txSharky.Release(context.Background(), loc)
 		if err != nil {
-			return err
+			return fmt.Errorf("txchunkstore: unable to release location %v: %w", loc, err)
 		}
 	}
-
 	return nil
 }
 
 func (cs *txChunkStoreWrapper) Rollback() error {
+	defer cs.release()
+
 	if err := cs.TxChunkStoreBase.Rollback(); err != nil {
 		return err
 	}
 
 	if err := cs.revOps.Revert(); err != nil {
-		return fmt.Errorf("txchunkstore: unable to rollback: %w", err)
+		return fmt.Errorf("txchunkstore: unable to revert operations: %w", err)
 	}
 
 	var err error
 	for _, loc := range cs.txSharky.writtenLocs {
 		err = errors.Join(cs.txSharky.Sharky.Release(context.Background(), loc))
 	}
-	return err
+	if err != nil {
+		return fmt.Errorf("txchunkstore: unable to release locations: %w", err)
+	}
+	return nil
 }
 
 func (cs *txChunkStoreWrapper) NewTx(state *storage.TxState) storage.TxChunkStore {
@@ -180,20 +198,15 @@ func (cs *txChunkStoreWrapper) NewTx(state *storage.TxState) storage.TxChunkStor
 }
 
 func NewTxChunkStore(store storage.Store, csSharky Sharky) storage.TxChunkStore {
-	txSharky := &txSharky{
-		Sharky:        csSharky,
-		toReleaseLocs: make(map[[32]byte]sharky.Location),
-		toReleaseSums: make(map[sharky.Location][32]byte),
-	}
 	return &txChunkStoreWrapper{
 		TxChunkStoreBase: &storage.TxChunkStoreBase{
 			ChunkStore: &chunkStoreWrapper{
 				store,
-				txSharky,
+				csSharky,
 			},
 		},
 		store:    store,
-		txSharky: txSharky,
+		txSharky: &txSharky{Sharky: csSharky},
 		revOps:   new(storage.NoOpTxRevertOpStore[swarm.Address, swarm.Chunk]),
 	}
 }

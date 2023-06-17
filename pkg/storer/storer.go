@@ -272,6 +272,11 @@ func initDiskRepository(ctx context.Context, basePath string, opts *Options) (st
 		return nil, nil, fmt.Errorf("failed creating levelDB index store: %w", err)
 	}
 
+	err = leveldbstore.Recovery(store)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to recover index store: %w", err)
+	}
+
 	sharkyBasePath := path.Join(basePath, sharkyPath)
 
 	if _, err := os.Stat(sharkyBasePath); os.IsNotExist(err) {

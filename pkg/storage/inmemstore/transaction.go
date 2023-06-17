@@ -63,13 +63,23 @@ func (s *TxStore) Put(item storage.Item) error {
 
 // Delete implements the Store interface.
 func (s *TxStore) Delete(item storage.Item) error {
+	if err := s.IsDone(); err != nil {
+		return err
+	}
+
+	prev := item.Clone()
+	var reverseOp *storage.TxRevertOp[storage.Key, storage.Item]
+	if err := s.TxStoreBase.Get(prev); err == nil {
+		reverseOp = &storage.TxRevertOp[storage.Key, storage.Item]{
+			Origin:   storage.DeleteOp,
+			ObjectID: prev.String(),
+			Val:      prev,
+		}
+	}
+
 	err := s.TxStoreBase.Delete(item)
 	if err == nil {
-		err = s.revOps.Append(&storage.TxRevertOp[storage.Key, storage.Item]{
-			Origin:   storage.DeleteOp,
-			ObjectID: item.String(),
-			Val:      item,
-		})
+		err = s.revOps.Append(reverseOp)
 	}
 	return err
 }
@@ -78,7 +88,13 @@ func (s *TxStore) Delete(item storage.Item) error {
 func (s *TxStore) Commit() error {
 	defer s.release()
 
-	return s.TxState.Done()
+	if err := s.TxState.Done(); err != nil {
+		return err
+	}
+	if err := s.revOps.Clean(); err != nil {
+		return fmt.Errorf("inmemstore: unable to clean revert operations: %w", err)
+	}
+	return nil
 }
 
 // Rollback implements the Tx interface.
@@ -86,11 +102,11 @@ func (s *TxStore) Rollback() error {
 	defer s.release()
 
 	if err := s.TxStoreBase.Rollback(); err != nil {
-		return err
+		return fmt.Errorf("inmemstore: unable to rollback: %w", err)
 	}
 
 	if err := s.revOps.Revert(); err != nil {
-		return fmt.Errorf("inmemstore: unable to rollback: %w", err)
+		return fmt.Errorf("inmemstore: unable to revert operations: %w", err)
 	}
 	return nil
 }

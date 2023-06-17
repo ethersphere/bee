@@ -65,7 +65,13 @@ func (s *TxChunkStore) Delete(ctx context.Context, addr swarm.Address) error {
 func (s *TxChunkStore) Commit() error {
 	defer s.release()
 
-	return s.TxState.Done()
+	if err := s.TxState.Done(); err != nil {
+		return err
+	}
+	if err := s.revOps.Clean(); err != nil {
+		return fmt.Errorf("inmemchunkstore: unable to clean revert operations: %w", err)
+	}
+	return nil
 }
 
 // Rollback implements the Tx interface.
@@ -73,11 +79,11 @@ func (s *TxChunkStore) Rollback() error {
 	defer s.release()
 
 	if err := s.TxChunkStoreBase.Rollback(); err != nil {
-		return err
+		return fmt.Errorf("inmemchunkstore: unable to rollback: %w", err)
 	}
 
 	if err := s.revOps.Revert(); err != nil {
-		return fmt.Errorf("inmemchunkstore: unable to rollback: %w", err)
+		return fmt.Errorf("inmemchunkstore: unable to revert operations: %w", err)
 	}
 	return nil
 }

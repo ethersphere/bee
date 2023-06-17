@@ -293,6 +293,8 @@ type TxRevertOpStore[K, V any] interface {
 	// Revert executes all the revere operations
 	// in the store in reverse order.
 	Revert() error
+	// Clean cleans the store.
+	Clean() error
 }
 
 // NoOpTxRevertOpStore is a no-op implementation of TxRevertOpStore.
@@ -300,6 +302,7 @@ type NoOpTxRevertOpStore[K, V any] struct{}
 
 func (s *NoOpTxRevertOpStore[K, V]) Append(*TxRevertOp[K, V]) error { return nil }
 func (s *NoOpTxRevertOpStore[K, V]) Revert() error                  { return nil }
+func (s *NoOpTxRevertOpStore[K, V]) Clean() error                   { return nil }
 
 // InMemTxRevertOpStore is an in-memory implementation of TxRevertOpStore.
 type InMemTxRevertOpStore[K, V any] struct {
@@ -348,7 +351,20 @@ func (s *InMemTxRevertOpStore[K, V]) Revert() error {
 			))
 		}
 	}
+	s.ops = nil
 	return errs
+}
+
+// Clean implements TxRevertOpStore.
+func (s *InMemTxRevertOpStore[K, V]) Clean() error {
+	if s == nil {
+		return nil
+	}
+
+	s.mu.Lock()
+	s.ops = nil
+	s.mu.Unlock()
+	return nil
 }
 
 // NewInMemTxRevertOpStore is a convenient constructor for creating instances of
