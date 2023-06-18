@@ -9,7 +9,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"io"
-	"math/big"
 	"net/http"
 	"testing"
 	"time"
@@ -17,8 +16,6 @@ import (
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	"github.com/ethersphere/bee/pkg/postage"
-	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	testingsoc "github.com/ethersphere/bee/pkg/soc/testing"
 	"github.com/ethersphere/bee/pkg/spinlock"
 	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
@@ -30,15 +27,14 @@ func TestSOC(t *testing.T) {
 	var (
 		testData                 = []byte("foo")
 		socResource              = func(owner, id, sig string) string { return fmt.Sprintf("/soc/%s/%s?sig=%s", owner, id, sig) }
-		mp                       = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))
 		mockStorer               = mockstorer.New()
-		client, _, _, chanStorer = newTestServer(t, testServerOptions{
-			Storer:       mockStorer,
-			Post:         mp,
-			DirectUpload: true,
-		})
 	)
 	t.Run("empty data", func(t *testing.T) {
+		client, _, _, _ := newTestServer(t, testServerOptions{
+			Storer:       mockStorer,
+			Post:         newTestPostService(),
+			DirectUpload: true,
+		})
 		jsonhttptest.Request(t, client, http.MethodPost, socResource("8d3766440f0d7b949a5e32995d09619a7f86e632", "bb", "cc"), http.StatusBadRequest,
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
@@ -57,6 +53,11 @@ func TestSOC(t *testing.T) {
 		sig[12] = 0x98
 		sig[10] = 0x12
 
+		client, _, _, _ := newTestServer(t, testServerOptions{
+			Storer:       mockStorer,
+			Post:         newTestPostService(),
+			DirectUpload: true,
+		})
 		jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(sig)), http.StatusUnauthorized,
 			jsonhttptest.WithRequestBody(bytes.NewReader(s.WrappedChunk.Data())),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
@@ -69,7 +70,11 @@ func TestSOC(t *testing.T) {
 
 	t.Run("ok", func(t *testing.T) {
 		s := testingsoc.GenerateMockSOC(t, testData)
-
+		client, _, _, _ := newTestServer(t, testServerOptions{
+			Storer:       mockStorer,
+			Post:         newTestPostService(),
+			DirectUpload: true,
+		})
 		jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(s.Signature)), http.StatusCreated,
 			jsonhttptest.WithRequestHeader(api.SwarmPinHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
@@ -96,6 +101,11 @@ func TestSOC(t *testing.T) {
 		s := testingsoc.GenerateMockSOC(t, testData)
 		t.Run("err - bad batch", func(t *testing.T) {
 			hexbatch := "abcdefgg"
+			client, _, _, _ := newTestServer(t, testServerOptions{
+				Storer:       mockStorer,
+				Post:         newTestPostService(),
+				DirectUpload: true,
+			})
 			jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(s.Signature)), http.StatusBadRequest,
 				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
 				jsonhttptest.WithRequestBody(bytes.NewReader(s.WrappedChunk.Data())),
@@ -112,8 +122,14 @@ func TestSOC(t *testing.T) {
 		})
 
 		t.Run("ok batch", func(t *testing.T) {
+
 			s := testingsoc.GenerateMockSOC(t, testData)
 			hexbatch := hex.EncodeToString(batchOk)
+			client, _, _, chanStorer := newTestServer(t, testServerOptions{
+				Storer:       mockStorer,
+				Post:         newTestPostService(),
+				DirectUpload: true,
+			})
 			jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(s.Signature)), http.StatusCreated,
 				jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
 				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
@@ -127,6 +143,11 @@ func TestSOC(t *testing.T) {
 		t.Run("err - batch empty", func(t *testing.T) {
 			s := testingsoc.GenerateMockSOC(t, testData)
 			hexbatch := hex.EncodeToString(batchEmpty)
+			client, _, _, _ := newTestServer(t, testServerOptions{
+				Storer:       mockStorer,
+				Post:         newTestPostService(),
+				DirectUpload: true,
+			})
 			jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(s.Signature)), http.StatusBadRequest,
 				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
 				jsonhttptest.WithRequestBody(bytes.NewReader(s.WrappedChunk.Data())),

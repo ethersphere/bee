@@ -457,15 +457,8 @@ func TestPostageHeaderError(t *testing.T) {
 	t.Parallel()
 
 	var (
-		mockStorer      = mockstorer.New()
-		mp              = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))
-		client, _, _, _ = newTestServer(t, testServerOptions{
-			Storer:       mockStorer,
-			Post:         mp,
-			DirectUpload: true,
-		})
-
-		endpoints = []string{
+		mockStorer = mockstorer.New()
+		endpoints  = []string{
 			"bytes", "bzz", "chunks",
 		}
 	)
@@ -475,6 +468,11 @@ func TestPostageHeaderError(t *testing.T) {
 		t.Run(endpoint+": empty batch", func(t *testing.T) {
 			t.Parallel()
 
+			client, _, _, _ := newTestServer(t, testServerOptions{
+				Storer:       mockStorer,
+				Post:         newTestPostService(),
+				DirectUpload: true,
+			})
 			hexbatch := hex.EncodeToString(batchEmpty)
 			expCode := http.StatusBadRequest
 			jsonhttptest.Request(t, client, http.MethodPost, "/"+endpoint, expCode,
@@ -485,7 +483,11 @@ func TestPostageHeaderError(t *testing.T) {
 		})
 		t.Run(endpoint+": ok batch", func(t *testing.T) {
 			t.Parallel()
-
+			client, _, _, _ := newTestServer(t, testServerOptions{
+				Storer:       mockStorer,
+				Post:         newTestPostService(),
+				DirectUpload: true,
+			})
 			hexbatch := hex.EncodeToString(batchOk)
 			expCode := http.StatusCreated
 			jsonhttptest.Request(t, client, http.MethodPost, "/"+endpoint, expCode,
@@ -497,7 +499,11 @@ func TestPostageHeaderError(t *testing.T) {
 		})
 		t.Run(endpoint+": bad batch", func(t *testing.T) {
 			t.Parallel()
-
+			client, _, _, _ := newTestServer(t, testServerOptions{
+				Storer:       mockStorer,
+				Post:         newTestPostService(),
+				DirectUpload: true,
+			})
 			hexbatch := hex.EncodeToString(batchInvalid)
 			expCode := http.StatusNotFound
 			jsonhttptest.Request(t, client, http.MethodPost, "/"+endpoint, expCode,
@@ -561,19 +567,6 @@ func TestOptions(t *testing.T) {
 func TestPostageDirectAndDeferred(t *testing.T) {
 	t.Parallel()
 
-	post := mockpost.New(
-		mockpost.WithIssuer(postage.NewStampIssuer(
-			"",
-			"",
-			batchOk,
-			big.NewInt(3),
-			11,
-			10,
-			1000,
-			true,
-		)),
-	)
-
 	for _, endpoint := range []string{"bytes", "bzz", "chunks"} {
 		endpoint := endpoint
 
@@ -584,7 +577,7 @@ func TestPostageDirectAndDeferred(t *testing.T) {
 				mockStorer := mockstorer.New()
 				client, _, _, chanStorer := newTestServer(t, testServerOptions{
 					Storer:       mockStorer,
-					Post:         post,
+					Post:         newTestPostService(),
 					DirectUpload: true,
 				})
 				hexbatch := hex.EncodeToString(batchOk)
@@ -620,7 +613,7 @@ func TestPostageDirectAndDeferred(t *testing.T) {
 			mockStorer := mockstorer.New()
 			client, _, _, chanStorer := newTestServer(t, testServerOptions{
 				Storer:       mockStorer,
-				Post:         post,
+				Post:         newTestPostService(),
 				DirectUpload: true,
 			})
 			hexbatch := hex.EncodeToString(batchOk)
@@ -806,3 +799,18 @@ func (m *mockContract) Reveal(context.Context, uint8, []byte, []byte) (common.Ha
 type mockHealth struct{}
 
 func (m *mockHealth) IsHealthy() bool { return true }
+
+func newTestPostService() postage.Service {
+	return mockpost.New(
+		mockpost.WithIssuer(postage.NewStampIssuer(
+			"",
+			"",
+			batchOk,
+			big.NewInt(3),
+			11,
+			10,
+			1000,
+			true,
+		)),
+	)
+}
