@@ -73,6 +73,8 @@ func (s *Service) chunkUploadStreamHandler(w http.ResponseWriter, r *http.Reques
 			jsonhttp.BadRequest(w, "invalid batch id")
 		case errors.Is(err, errUnsupportedDevNodeOperation):
 			jsonhttp.BadRequest(w, errUnsupportedDevNodeOperation)
+		case errors.Is(err, postage.ErrBatchInUse):
+			jsonhttp.Conflict(w, "batch is in use")
 		default:
 			jsonhttp.BadRequest(w, nil)
 		}
