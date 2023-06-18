@@ -12,6 +12,7 @@ import (
 	"math/big"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -19,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
 	testingsoc "github.com/ethersphere/bee/pkg/soc/testing"
+	"github.com/ethersphere/bee/pkg/spinlock"
 	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -26,13 +28,14 @@ import (
 // nolint:paralleltest
 func TestSOC(t *testing.T) {
 	var (
-		testData        = []byte("foo")
-		socResource     = func(owner, id, sig string) string { return fmt.Sprintf("/soc/%s/%s?sig=%s", owner, id, sig) }
-		mp              = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))
-		mockStorer      = mockstorer.New()
-		client, _, _, _ = newTestServer(t, testServerOptions{
-			Storer: mockStorer,
-			Post:   mp,
+		testData                 = []byte("foo")
+		socResource              = func(owner, id, sig string) string { return fmt.Sprintf("/soc/%s/%s?sig=%s", owner, id, sig) }
+		mp                       = mockpost.New(mockpost.WithIssuer(postage.NewStampIssuer("", "", batchOk, big.NewInt(3), 11, 10, 1000, true)))
+		mockStorer               = mockstorer.New()
+		client, _, _, chanStorer = newTestServer(t, testServerOptions{
+			Storer:       mockStorer,
+			Post:         mp,
+			DirectUpload: true,
 		})
 	)
 	t.Run("empty data", func(t *testing.T) {
@@ -109,10 +112,6 @@ func TestSOC(t *testing.T) {
 		})
 
 		t.Run("ok batch", func(t *testing.T) {
-			go func() {
-				op := <-mockStorer.PusherFeed()
-				op.Err <- nil
-			}()
 			s := testingsoc.GenerateMockSOC(t, testData)
 			hexbatch := hex.EncodeToString(batchOk)
 			jsonhttptest.Request(t, client, http.MethodPost, socResource(hex.EncodeToString(s.Owner), hex.EncodeToString(s.ID), hex.EncodeToString(s.Signature)), http.StatusCreated,
@@ -120,6 +119,10 @@ func TestSOC(t *testing.T) {
 				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, hexbatch),
 				jsonhttptest.WithRequestBody(bytes.NewReader(s.WrappedChunk.Data())),
 			)
+			err := spinlock.Wait(time.Second, func() bool { return chanStorer.Has(s.Address()) })
+			if err != nil {
+				t.Fatal(err)
+			}
 		})
 		t.Run("err - batch empty", func(t *testing.T) {
 			s := testingsoc.GenerateMockSOC(t, testData)
