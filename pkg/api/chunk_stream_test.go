@@ -6,7 +6,6 @@ package api_test
 
 import (
 	"bytes"
-	"context"
 	"net/http"
 	"testing"
 	"time"
@@ -23,7 +22,6 @@ import (
 func TestChunkUploadStream(t *testing.T) {
 	wsHeaders := http.Header{}
 	wsHeaders.Set(api.ContentTypeHeader, "application/octet-stream")
-	wsHeaders.Set(api.SwarmDeferredUploadHeader, "true")
 	wsHeaders.Set(api.SwarmPostageBatchIdHeader, batchOkStr)
 
 	var (
@@ -35,6 +33,20 @@ func TestChunkUploadStream(t *testing.T) {
 			WsHeaders: wsHeaders,
 		})
 	)
+
+	done := make(chan struct{})
+	pushedChunks := map[string]swarm.Chunk{}
+	go func() {
+		for {
+			select {
+			case <-done:
+				return
+			case op := <-storerMock.PusherFeed():
+				pushedChunks[op.Chunk.Address().ByteString()] = op.Chunk
+				op.Err <- nil
+			}
+		}
+	}()
 
 	t.Run("upload and verify", func(t *testing.T) {
 		chsToGet := []swarm.Chunk{}
@@ -68,10 +80,12 @@ func TestChunkUploadStream(t *testing.T) {
 			chsToGet = append(chsToGet, ch)
 		}
 
+		close(done)
+
 		for _, c := range chsToGet {
-			ch, err := storerMock.ChunkStore().Get(context.Background(), c.Address())
-			if err != nil {
-				t.Fatal("failed to get chunk after upload", err)
+			ch, ok := pushedChunks[c.Address().ByteString()]
+			if !ok {
+				t.Fatal("chunk not pushed")
 			}
 			if !ch.Equal(c) {
 				t.Fatal("invalid chunk read")
