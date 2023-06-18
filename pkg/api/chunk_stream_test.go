@@ -12,6 +12,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/api"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
+	"github.com/ethersphere/bee/pkg/spinlock"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
 	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -25,29 +26,15 @@ func TestChunkUploadStream(t *testing.T) {
 	wsHeaders.Set(api.SwarmPostageBatchIdHeader, batchOkStr)
 
 	var (
-		storerMock      = mockstorer.New()
-		_, wsConn, _, _ = newTestServer(t, testServerOptions{
-			Storer:    storerMock,
-			Post:      mockpost.New(mockpost.WithAcceptAll()),
-			WsPath:    "/chunks/stream",
-			WsHeaders: wsHeaders,
+		storerMock               = mockstorer.New()
+		_, wsConn, _, chanStorer = newTestServer(t, testServerOptions{
+			Storer:       storerMock,
+			Post:         mockpost.New(mockpost.WithAcceptAll()),
+			WsPath:       "/chunks/stream",
+			WsHeaders:    wsHeaders,
+			DirectUpload: true,
 		})
 	)
-
-	done, finishedPushing := make(chan struct{}), make(chan struct{})
-	pushedChunks := map[string]swarm.Chunk{}
-	go func() {
-		defer close(finishedPushing)
-		for {
-			select {
-			case <-done:
-				return
-			case op := <-storerMock.PusherFeed():
-				pushedChunks[op.Chunk.Address().ByteString()] = op.Chunk
-				op.Err <- nil
-			}
-		}
-	}()
 
 	t.Run("upload and verify", func(t *testing.T) {
 		chsToGet := []swarm.Chunk{}
@@ -81,17 +68,8 @@ func TestChunkUploadStream(t *testing.T) {
 			chsToGet = append(chsToGet, ch)
 		}
 
-		close(done)
-		<-finishedPushing
-
 		for _, c := range chsToGet {
-			ch, ok := pushedChunks[c.Address().ByteString()]
-			if !ok {
-				t.Fatal("chunk not pushed")
-			}
-			if !ch.Equal(c) {
-				t.Fatal("invalid chunk read")
-			}
+			spinlock.Wait(100*time.Millisecond, func() bool { return chanStorer.Has(c.Address()) })
 		}
 	})
 
