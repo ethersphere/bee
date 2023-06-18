@@ -64,6 +64,14 @@ func (ps *service) Add(st *StampIssuer) error {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
 
+	err := ps.store.Get(NewStampIssuerItem(st.ID()))
+	if err == nil {
+		return nil
+	}
+
+	if !errors.Is(err, storage.ErrNotFound) {
+		return err
+	}
 	return ps.save(st)
 }
 
@@ -172,15 +180,6 @@ func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, func() error, e
 
 // save persists the specified stamp issuer to the stamperstore.
 func (ps *service) save(st *StampIssuer) error {
-	err := ps.store.Get(NewStampIssuerItem(st.ID()))
-	if err == nil {
-		return nil
-	}
-
-	if !errors.Is(err, storage.ErrNotFound) {
-		return err
-	}
-
 	if err := ps.store.Put(&StampIssuerItem{
 		Issuer: st,
 	}); err != nil {
