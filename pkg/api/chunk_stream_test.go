@@ -34,9 +34,10 @@ func TestChunkUploadStream(t *testing.T) {
 		})
 	)
 
-	done := make(chan struct{})
+	done, finishedPushing := make(chan struct{}), make(chan struct{})
 	pushedChunks := map[string]swarm.Chunk{}
 	go func() {
+		defer close(finishedPushing)
 		for {
 			select {
 			case <-done:
@@ -81,6 +82,7 @@ func TestChunkUploadStream(t *testing.T) {
 		}
 
 		close(done)
+		<-finishedPushing
 
 		for _, c := range chsToGet {
 			ch, ok := pushedChunks[c.Address().ByteString()]
