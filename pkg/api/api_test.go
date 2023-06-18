@@ -640,7 +640,10 @@ func TestPostageDirectAndDeferred(t *testing.T) {
 			if err := json.Unmarshal(responseBytes, &body); err != nil {
 				t.Fatal("unmarshal response body:", err)
 			}
-			spinlock.Wait(time.Second, func() bool { return chanStorer.Has(body.Reference) })
+			err := spinlock.Wait(time.Second, func() bool { return chanStorer.Has(body.Reference) })
+			if err != nil {
+				t.Fatal("chunk not found in direct channel")
+			}
 			if found, _ := mockStorer.ChunkStore().Has(context.Background(), body.Reference); found {
 				t.Fatal("chunk was not expected to be present in store")
 			}

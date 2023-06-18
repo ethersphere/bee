@@ -69,7 +69,10 @@ func TestChunkUploadStream(t *testing.T) {
 		}
 
 		for _, c := range chsToGet {
-			spinlock.Wait(100*time.Millisecond, func() bool { return chanStorer.Has(c.Address()) })
+			err := spinlock.Wait(100*time.Millisecond, func() bool { return chanStorer.Has(c.Address()) })
+			if err != nil {
+				t.Fatal(err)
+			}
 		}
 	})
 

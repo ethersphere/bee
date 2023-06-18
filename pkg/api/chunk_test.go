@@ -90,7 +90,10 @@ func TestChunkUploadDownload(t *testing.T) {
 		)
 
 		time.Sleep(time.Millisecond * 100)
-		spinlock.Wait(time.Second, func() bool { return chanStorer.Has(chunk.Address()) })
+		err := spinlock.Wait(time.Second, func() bool { return chanStorer.Has(chunk.Address()) })
+		if err != nil {
+			t.Fatal(err)
+		}
 	})
 }
 
