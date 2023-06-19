@@ -78,7 +78,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, errUnsupportedDevNodeOperation):
 			jsonhttp.BadRequest(w, errUnsupportedDevNodeOperation)
 		case errors.Is(err, postage.ErrBatchInUse):
-			jsonhttp.Conflict(w, "batch is in use")
+			jsonhttp.BadRequest(w, "batch is in use by another upload process")
 		default:
 			jsonhttp.BadRequest(w, nil)
 		}

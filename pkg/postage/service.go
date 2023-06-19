@@ -25,7 +25,7 @@ var (
 	// ErrNotUsable is the error returned when issuer with given batch ID is not usable.
 	ErrNotUsable = errors.New("not usable")
 	// ErrBatchInUse is the error returned when issuer with given batch ID is already in use.
-	ErrBatchInUse = errors.New("batch in use")
+	ErrBatchInUse = errors.New("batch is in use by another upload process")
 )
 
 // Service is the postage service interface.
