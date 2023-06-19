@@ -814,6 +814,11 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
           required: true
           description: "Root hash of content (can be of any type: collection, file, chunk)"
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
+          name: swarm-postage-batch-id
+          description: Postage batch to use for reupload. If none is provided and the file was uploaded on the same node before, it will re-use the same batch. If not found, it will return error. If a new batch is provided, the chunks are stamped again with the new batch.
       responses:
         "200":
           description: Ok
