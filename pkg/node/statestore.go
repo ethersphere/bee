@@ -98,7 +98,9 @@ func setOverlayNonce(s storage.StateStorer, overlayNonce []byte) error {
 }
 
 func migrateStamperData(stateStore storage.StateStorer, stamperStore storage.Store) error {
-	return stateStore.Iterate("postage", func(_, value []byte) (bool, error) {
+	var keys [][]byte
+	err := stateStore.Iterate("postage", func(key, value []byte) (bool, error) {
+		keys = append(keys, key)
 		st := &postage.StampIssuer{}
 		if err := st.UnmarshalBinary(value); err != nil {
 			return false, err
@@ -110,4 +112,14 @@ func migrateStamperData(stateStore storage.StateStorer, stamperStore storage.Sto
 		}
 		return false, nil
 	})
+	if err != nil {
+		return err
+	}
+
+	for _, key := range keys {
+		if err = stateStore.Delete(string(key)); err != nil {
+			return err
+		}
+	}
+	return nil
 }
