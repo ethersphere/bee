@@ -27,16 +27,8 @@ func (db *DB) DirectUpload() PutterSession {
 				eg.Go(func() error {
 					defer func() { <-db.directUploadLimiter }()
 
-				RETRY:
-					op := &pusher.Op{Chunk: ch, Err: make(chan error, 1), Direct: true}
-					select {
-					case <-ctx.Done():
-						return ctx.Err()
-					case <-egCtx.Done():
-						return egCtx.Err()
-					case <-db.quit:
-						return ErrDBQuit
-					case db.pusherFeed <- op:
+					for {
+						op := &pusher.Op{Chunk: ch, Err: make(chan error, 1), Direct: true}
 						select {
 						case <-ctx.Done():
 							return ctx.Err()
@@ -44,15 +36,23 @@ func (db *DB) DirectUpload() PutterSession {
 							return egCtx.Err()
 						case <-db.quit:
 							return ErrDBQuit
-						case err := <-op.Err:
-							// if we get a shallow receipt error, we retry the upload, the pusher will
-							// have an allowed no. of retries after which a shallow receipt will
-							// no longer be returned as error.
-							if errors.Is(err, pusher.ErrShallowReceipt) {
+						case db.pusherFeed <- op:
+							select {
+							case <-ctx.Done():
+								return ctx.Err()
+							case <-egCtx.Done():
+								return egCtx.Err()
+							case <-db.quit:
+								return ErrDBQuit
+							case err := <-op.Err:
+								// if we get a shallow receipt error, we retry the upload, the pusher will
+								// have an allowed no. of retries after which a shallow receipt will
+								// no longer be returned as error.
+								if !errors.Is(err, pusher.ErrShallowReceipt) {
+									return err
+								}
 								db.logger.Debug("direct upload: shallow receipt received, retrying", "chunk", ch.Address())
-								goto RETRY
 							}
-							return err
 						}
 					}
 				})
