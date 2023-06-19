@@ -258,34 +258,21 @@ components:
           $ref: "#/components/schemas/Uid"
         startedAt:
           $ref: "#/components/schemas/DateTime"
-        total:
-          type: integer
-        processed:
-          type: integer
-        synced:
-          type: integer
-
-    NewTagDebugResponse:
-      type: object
-      properties:
-        total:
-          type: integer
         split:
           type: integer
+          description: Number of chunks created by the splitter.
         seen:
           type: integer
+          description: Number of chunks that are already uploaded with same reference and same postage batch. These don't need to be synced again.
         stored:
           type: integer
+          description: Number of chunks that were stored locally as they lie in the uploader node's neighborhood. This is only applicable for full nodes.
         sent:
           type: integer
+          description: Number of chunks sent on the network to peers as a part of the upload. Chunks could be sent multiple times because of failures or replication.
         synced:
           type: integer
-        uid:
-          $ref: "#/components/schemas/Uid"
-        address:
-          $ref: "#/components/schemas/SwarmAddress"
-        startedAt:
-          $ref: "#/components/schemas/DateTime"
+          description: Number of chunks that were pushed with a valid receipt. The receipt will also show if they were stored at the correct depth.
 
     TagsList:
       type: object

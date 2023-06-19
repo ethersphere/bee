@@ -6,13 +6,13 @@ package api_test
 
 import (
 	"bytes"
-	"context"
 	"net/http"
 	"testing"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/api"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
+	"github.com/ethersphere/bee/pkg/spinlock"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
 	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -23,16 +23,16 @@ import (
 func TestChunkUploadStream(t *testing.T) {
 	wsHeaders := http.Header{}
 	wsHeaders.Set(api.ContentTypeHeader, "application/octet-stream")
-	wsHeaders.Set(api.SwarmDeferredUploadHeader, "true")
 	wsHeaders.Set(api.SwarmPostageBatchIdHeader, batchOkStr)
 
 	var (
-		storerMock      = mockstorer.New()
-		_, wsConn, _, _ = newTestServer(t, testServerOptions{
-			Storer:    storerMock,
-			Post:      mockpost.New(mockpost.WithAcceptAll()),
-			WsPath:    "/chunks/stream",
-			WsHeaders: wsHeaders,
+		storerMock               = mockstorer.New()
+		_, wsConn, _, chanStorer = newTestServer(t, testServerOptions{
+			Storer:       storerMock,
+			Post:         mockpost.New(mockpost.WithAcceptAll()),
+			WsPath:       "/chunks/stream",
+			WsHeaders:    wsHeaders,
+			DirectUpload: true,
 		})
 	)
 
@@ -69,12 +69,9 @@ func TestChunkUploadStream(t *testing.T) {
 		}
 
 		for _, c := range chsToGet {
-			ch, err := storerMock.ChunkStore().Get(context.Background(), c.Address())
+			err := spinlock.Wait(100*time.Millisecond, func() bool { return chanStorer.Has(c.Address()) })
 			if err != nil {
-				t.Fatal("failed to get chunk after upload", err)
-			}
-			if !ch.Equal(c) {
-				t.Fatal("invalid chunk read")
+				t.Fatal(err)
 			}
 		}
 	})

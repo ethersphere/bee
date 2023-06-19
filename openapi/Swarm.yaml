@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  version: 4.1.0
+  version: 5.0.0
   title: Bee API
   description: "A list of the currently provided Interfaces to interact with the swarm, implementing file operations and sending messages"
 
@@ -178,9 +178,7 @@ paths:
         - Chunk
       parameters:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmDeferredUpload"
       requestBody:
         description: Chunk binary data that has to have at least 8 bytes.
         content:
@@ -216,11 +214,10 @@ paths:
         - Chunk
       parameters:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
       responses:
         "200":
-          description: "Returns a Websocket connection on which stream of chunks can be uploaded. Each chunk sent is acknowledged using a binary response `0` which serves as confirmation of upload of single chunk. Chunks should be packaged as binary messages for uploading."
+          description: "Returns a Websocket connection on which stream of chunks can be uploaded. Each chunk sent is acknowledged using a binary response `0` which serves as confirmation of upload of single chunk. Chunks should be packaged as binary messages for uploading. If a tag is specified, a deferred upload will be done for the chunks once the stream is closed, if not, the chunks will be directly uploaded as they arrive."
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         default:
@@ -395,6 +392,7 @@ paths:
       summary: "Create Tag"
       tags:
         - Tag
+      description: Tags can be thought of as upload sessions which can be tracked using the tags endpoint. It will keep track of the chunks that are uploaded as part of the tag and will push them out to the network once a done split is called on the Tag. This happens internally if you use the `Swarm-Deferred-Upload` header.
       requestBody:
         required: true
         content:
@@ -816,6 +814,11 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
           required: true
           description: "Root hash of content (can be of any type: collection, file, chunk)"
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
+          name: swarm-postage-batch-id
+          description: Postage batch to use for reupload. If none is provided and the file was uploaded on the same node before, it will re-use the same batch. If not found, it will return error. If a new batch is provided, the chunks are stamped again with the new batch.
       responses:
         "200":
           description: Ok
@@ -1064,30 +1067,6 @@ paths:
           description: Default response
     head:
       summary: Check if chunk at address exists locally
-      tags:
-        - Chunk
-      parameters:
-        - in: path
-          name: address
-          schema:
-            $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
-          required: true
-          description: Swarm address of chunk
-      responses:
-        "200":
-          description: Chunk exists
-          content:
-            application/json:
-              schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/Response"
-        "400":
-          $ref: "SwarmCommon.yaml#/components/responses/400"
-        "404":
-          $ref: "SwarmCommon.yaml#/components/responses/404"
-        default:
-          description: Default response
-    delete:
-      summary: Delete a chunk from local storage
       tags:
         - Chunk
       parameters:

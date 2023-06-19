@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 3.1.0
+  version: 4.0.0
   title: Bee Debug API
   description: "A list of the currently provided debug interfaces to interact with the bee node"
 
@@ -192,30 +192,6 @@ paths:
   "/chunks/{address}":
     get:
       summary: Check if chunk at address exists locally
-      tags:
-        - Chunk
-      parameters:
-        - in: path
-          name: address
-          schema:
-            $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
-          required: true
-          description: Swarm address of chunk
-      responses:
-        "200":
-          description: Chunk exists
-          content:
-            application/json:
-              schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/Response"
-        "400":
-          $ref: "SwarmCommon.yaml#/components/responses/400"
-        "404":
-          $ref: "SwarmCommon.yaml#/components/responses/404"
-        default:
-          description: Default response
-    delete:
-      summary: Delete a chunk from local storage
       tags:
         - Chunk
       parameters:
@@ -674,32 +650,6 @@ paths:
                 $ref: "SwarmCommon.yaml#/components/schemas/TransactionResponse"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/404"
-        "500":
-          $ref: "SwarmCommon.yaml#/components/responses/500"
-        default:
-          description: Default response
-
-  "/tags/{uid}":
-    get:
-      summary: "Get Tag information using Uid"
-      tags:
-        - Tag
-      parameters:
-        - in: path
-          name: uid
-          schema:
-            $ref: "SwarmCommon.yaml#/components/schemas/Uid"
-          required: true
-          description: Uid
-      responses:
-        "200":
-          description: Tag info
-          content:
-            application/json:
-              schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/NewTagDebugResponse"
-        "400":
-          $ref: "SwarmCommon.yaml#/components/responses/400"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
