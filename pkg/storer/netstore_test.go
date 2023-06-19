@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	storage "github.com/ethersphere/bee/pkg/storage"
 	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
@@ -185,6 +186,49 @@ func testNetStore(t *testing.T, newStorer func(r retrieval.Interface) (*storer.D
 			}
 
 			verifyChunks(t, lstore.Repo(), chunks, false)
+		})
+
+		t.Run("shallow receipt retry", func(t *testing.T) {
+			t.Parallel()
+
+			chunk := chunktesting.GenerateTestRandomChunk()
+
+			lstore, err := newStorer(nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			count := 3
+			go func() {
+				for op := range lstore.PusherFeed() {
+					if !op.Chunk.Equal(chunk) {
+						op.Err <- fmt.Errorf("incorrect chunk for push: have %s", op.Chunk.Address())
+						continue
+					}
+					if count > 0 {
+						count--
+						op.Err <- pusher.ErrShallowReceipt
+					} else {
+						op.Err <- nil
+					}
+				}
+			}()
+
+			session := lstore.DirectUpload()
+
+			err = session.Put(context.Background(), chunk)
+			if err != nil {
+				t.Fatalf("session.Put(...): unexpected error: %v", err)
+			}
+
+			err = session.Done(chunk.Address())
+			if err != nil {
+				t.Fatalf("session.Done(): unexpected error: %v", err)
+			}
+
+			if count != 0 {
+				t.Fatalf("unexpected no of pusher ops want 0 have %d", count)
+			}
 		})
 	})
 
