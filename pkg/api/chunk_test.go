@@ -16,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
+	"github.com/ethersphere/bee/pkg/spinlock"
 	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
 
 	"github.com/ethersphere/bee/pkg/api"
@@ -89,13 +90,9 @@ func TestChunkUploadDownload(t *testing.T) {
 		)
 
 		time.Sleep(time.Millisecond * 100)
-
-		has, err := chanStorer.Has(context.Background(), chunk.Address())
+		err := spinlock.Wait(time.Second, func() bool { return chanStorer.Has(chunk.Address()) })
 		if err != nil {
 			t.Fatal(err)
-		}
-		if !has {
-			t.Fatal("storer check root chunk reference: have none; want one")
 		}
 	})
 }

@@ -30,30 +30,36 @@ func (s *Service) chunkUploadStreamHandler(w http.ResponseWriter, r *http.Reques
 	headers := struct {
 		BatchID  []byte `map:"Swarm-Postage-Batch-Id" validate:"required"`
 		SwarmTag uint64 `map:"Swarm-Tag"`
-		Encrypt  bool   `map:"Swarm-Encrypt"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
 		return
 	}
 
-	tag, err := s.getOrCreateSessionID(headers.SwarmTag)
-	if err != nil {
-		logger.Debug("get or create tag failed", "error", err)
-		logger.Error(nil, "get or create tag failed")
-		switch {
-		case errors.Is(err, storage.ErrNotFound):
-			jsonhttp.NotFound(w, "tag not found")
-		default:
-			jsonhttp.InternalServerError(w, "cannot get or create tag")
+	var (
+		tag uint64
+		err error
+	)
+	if headers.SwarmTag > 0 {
+		tag, err = s.getOrCreateSessionID(headers.SwarmTag)
+		if err != nil {
+			logger.Debug("get or create tag failed", "error", err)
+			logger.Error(nil, "get or create tag failed")
+			switch {
+			case errors.Is(err, storage.ErrNotFound):
+				jsonhttp.NotFound(w, "tag not found")
+			default:
+				jsonhttp.InternalServerError(w, "cannot get or create tag")
+			}
+			return
 		}
-		return
 	}
 
+	// if tag not specified use direct upload
 	putter, err := s.newStamperPutter(r.Context(), putterOptions{
 		BatchID:  headers.BatchID,
 		TagID:    tag,
-		Deferred: true,
+		Deferred: tag != 0,
 	})
 	if err != nil {
 		logger.Debug("get putter failed", "error", err)
@@ -74,8 +80,8 @@ func (s *Service) chunkUploadStreamHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	upgrader := websocket.Upgrader{
-		ReadBufferSize:  swarm.ChunkSize,
-		WriteBufferSize: swarm.ChunkSize,
+		ReadBufferSize:  swarm.SocMaxChunkSize,
+		WriteBufferSize: swarm.SocMaxChunkSize,
 		CheckOrigin:     s.checkOrigin,
 	}
 

@@ -49,6 +49,7 @@ import (
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	erc20mock "github.com/ethersphere/bee/pkg/settlement/swap/erc20/mock"
 	swapmock "github.com/ethersphere/bee/pkg/settlement/swap/mock"
+	"github.com/ethersphere/bee/pkg/spinlock"
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/status"
 	"github.com/ethersphere/bee/pkg/steward"
@@ -555,9 +556,9 @@ func TestOptions(t *testing.T) {
 	}
 }
 
-// TestPostageDirectAndDeferred_FLAKY tests that incorrect postage batch ids
+// TestPostageDirectAndDeferred tests that incorrect postage batch ids
 // provided to the api correct the appropriate error code.
-func TestPostageDirectAndDeferred_FLAKY(t *testing.T) {
+func TestPostageDirectAndDeferred(t *testing.T) {
 	t.Parallel()
 
 	post := mockpost.New(
@@ -605,7 +606,9 @@ func TestPostageDirectAndDeferred_FLAKY(t *testing.T) {
 				if found, _ := mockStorer.ChunkStore().Has(context.Background(), body.Reference); !found {
 					t.Fatal("chunk not found in the store")
 				}
-				if found, _ := chanStorer.Has(context.Background(), body.Reference); found {
+				// sleep to allow chanStorer to drain if any to ensure we havent seen the chunk
+				time.Sleep(100 * time.Millisecond)
+				if chanStorer.Has(body.Reference) {
 					t.Fatal("chunk was not expected to be present in direct channel")
 				}
 			})
@@ -637,8 +640,9 @@ func TestPostageDirectAndDeferred_FLAKY(t *testing.T) {
 			if err := json.Unmarshal(responseBytes, &body); err != nil {
 				t.Fatal("unmarshal response body:", err)
 			}
-			if found, _ := chanStorer.Has(context.Background(), body.Reference); !found {
-				t.Fatal("chunk not received through the direct channel")
+			err := spinlock.Wait(time.Second, func() bool { return chanStorer.Has(body.Reference) })
+			if err != nil {
+				t.Fatal("chunk not found in direct channel")
 			}
 			if found, _ := mockStorer.ChunkStore().Has(context.Background(), body.Reference); found {
 				t.Fatal("chunk was not expected to be present in store")
@@ -675,16 +679,17 @@ func (c *chanStorer) drain(cc <-chan *pusher.Op) {
 		}
 	}
 }
+
 func (c *chanStorer) stop() {
 	close(c.quit)
 }
 
-func (c *chanStorer) Has(ctx context.Context, addr swarm.Address) (yes bool, err error) {
+func (c *chanStorer) Has(addr swarm.Address) bool {
 	c.lock.Lock()
 	_, ok := c.chunks[addr.ByteString()]
 	c.lock.Unlock()
 
-	return ok, nil
+	return ok
 }
 
 func createRedistributionAgentService(
