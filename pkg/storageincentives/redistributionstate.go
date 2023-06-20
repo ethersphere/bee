@@ -23,7 +23,7 @@ const loggerNameNode = "nodestatus"
 
 const (
 	redistributionStatusKey = "redistribution_state"
-	purgeStaleDataThreshold = 10
+	purgeStaleDataThreshold = 2
 )
 
 type RedistributionState struct {
