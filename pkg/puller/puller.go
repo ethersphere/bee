@@ -37,8 +37,8 @@ const (
 
 	intervalPrefix           = "sync_interval"
 	recalcPeersDur           = time.Minute * 5
-	histSyncTimeout          = time.Minute * 5
-	histSyncTimeoutBlockList = time.Hour * 24
+	histSyncTimeout          = time.Minute * 10 // this timeout should always be higher than pullsync.makeOfferTimeout
+	histSyncTimeoutBlockList = time.Hour
 
 	maxHistSyncs = swarm.MaxBins * 3
 )
