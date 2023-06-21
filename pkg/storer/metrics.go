@@ -145,6 +145,6 @@ func (m getterWithMetrics) Get(ctx context.Context, address swarm.Address) (swar
 }
 
 // captureDuration returns a function that returns the duration since the given start.
-func captureDuration(start time.Time) (elapsed func() float64) {
-	return func() float64 { return time.Since(start).Seconds() }
+func captureDuration(start time.Time) func() float64 {
+	return func() float64 { return float64(time.Since(start).Nanoseconds()) }
 }
