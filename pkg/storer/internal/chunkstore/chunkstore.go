@@ -109,17 +109,17 @@ type Sharky interface {
 	Release(context.Context, sharky.Location) error
 }
 
-type chunkStoreWrapper struct {
+type ChunkStoreWrapper struct {
 	store  storage.Store
 	sharky Sharky
 }
 
-func New(store storage.Store, sharky Sharky) storage.ChunkStore {
-	return &chunkStoreWrapper{store: store, sharky: sharky}
+func New(store storage.Store, sharky Sharky) *ChunkStoreWrapper {
+	return &ChunkStoreWrapper{store: store, sharky: sharky}
 }
 
 // helper to read chunk from retrievalIndex.
-func (c *chunkStoreWrapper) readChunk(ctx context.Context, rIdx *retrievalIndexItem) (swarm.Chunk, error) {
+func (c *ChunkStoreWrapper) readChunk(ctx context.Context, rIdx *retrievalIndexItem) (swarm.Chunk, error) {
 	buf := make([]byte, rIdx.Location.Length)
 	err := c.sharky.Read(ctx, rIdx.Location, buf)
 	if err != nil {
@@ -132,7 +132,7 @@ func (c *chunkStoreWrapper) readChunk(ctx context.Context, rIdx *retrievalIndexI
 	return swarm.NewChunk(rIdx.Address, buf), nil
 }
 
-func (c *chunkStoreWrapper) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
+func (c *ChunkStoreWrapper) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
 	rIdx := &retrievalIndexItem{Address: addr}
 	err := c.store.Get(rIdx)
 	if err != nil {
@@ -141,11 +141,11 @@ func (c *chunkStoreWrapper) Get(ctx context.Context, addr swarm.Address) (swarm.
 	return c.readChunk(ctx, rIdx)
 }
 
-func (c *chunkStoreWrapper) Has(_ context.Context, addr swarm.Address) (bool, error) {
+func (c *ChunkStoreWrapper) Has(_ context.Context, addr swarm.Address) (bool, error) {
 	return c.store.Has(&retrievalIndexItem{Address: addr})
 }
 
-func (c *chunkStoreWrapper) Put(ctx context.Context, ch swarm.Chunk) error {
+func (c *ChunkStoreWrapper) Put(ctx context.Context, ch swarm.Chunk) error {
 	var (
 		rIdx  = &retrievalIndexItem{Address: ch.Address()}
 		loc   sharky.Location
@@ -187,16 +187,19 @@ func (c *chunkStoreWrapper) Put(ctx context.Context, ch swarm.Chunk) error {
 	return nil
 }
 
-func (c *chunkStoreWrapper) Delete(ctx context.Context, addr swarm.Address) error {
+func (c *ChunkStoreWrapper) Delete(ctx context.Context, addr swarm.Address) error {
 	rIdx := &retrievalIndexItem{Address: addr}
 	err := c.store.Get(rIdx)
-	if err != nil {
+	switch {
+	case errors.Is(err, storage.ErrNotFound):
+		return nil
+	case err != nil:
 		return fmt.Errorf("chunk store: failed to read retrievalIndex for address %s: %w", addr, err)
+	default:
+		rIdx.RefCnt--
 	}
 
-	rIdx.RefCnt--
-	if rIdx.RefCnt > 0 {
-		// if there are more references for this we dont delete it from sharky.
+	if rIdx.RefCnt > 0 { // If there are more references for this we don't delete it from sharky.
 		err = c.store.Put(rIdx)
 		if err != nil {
 			return fmt.Errorf("chunk store: failed updating retrievalIndex for address %s: %w", addr, err)
@@ -204,7 +207,7 @@ func (c *chunkStoreWrapper) Delete(ctx context.Context, addr swarm.Address) erro
 		return nil
 	}
 
-	// delete the chunk.
+	// Delete the chunk.
 	err = c.sharky.Release(ctx, rIdx.Location)
 	if err != nil {
 		return fmt.Errorf(
@@ -212,7 +215,6 @@ func (c *chunkStoreWrapper) Delete(ctx context.Context, addr swarm.Address) erro
 			rIdx.Location, rIdx.Address, err,
 		)
 	}
-
 	err = c.store.Delete(rIdx)
 	if err != nil {
 		return fmt.Errorf("chunk store: failed to delete retrievalIndex for address %s: %w", addr, err)
@@ -221,7 +223,7 @@ func (c *chunkStoreWrapper) Delete(ctx context.Context, addr swarm.Address) erro
 	return nil
 }
 
-func (c *chunkStoreWrapper) Iterate(ctx context.Context, fn storage.IterateChunkFn) error {
+func (c *ChunkStoreWrapper) Iterate(ctx context.Context, fn storage.IterateChunkFn) error {
 	return c.store.Iterate(
 		storage.Query{
 			Factory: func() storage.Item { return new(retrievalIndexItem) },
@@ -236,7 +238,7 @@ func (c *chunkStoreWrapper) Iterate(ctx context.Context, fn storage.IterateChunk
 	)
 }
 
-func (c *chunkStoreWrapper) Close() error { return nil }
+func (c *ChunkStoreWrapper) Close() error { return nil }
 
 func IterateChunkEntries(st storage.Store, fn func(swarm.Address, bool) (bool, error)) error {
 	return st.Iterate(

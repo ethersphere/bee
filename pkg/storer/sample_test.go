@@ -7,13 +7,12 @@ package storer_test
 import (
 	"context"
 	"math/rand"
-	"reflect"
 	"testing"
 	"time"
 
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	chunk "github.com/ethersphere/bee/pkg/storage/testing"
-	storer "github.com/ethersphere/bee/pkg/storer"
+	"github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
 )
@@ -96,8 +95,8 @@ func TestReserveSampler(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if !reflect.DeepEqual(sample.Items, sample1.Items) {
-				t.Fatalf("samples different (-want +have):\n%s", cmp.Diff(sample.Items, sample1.Items))
+			if diff := cmp.Diff(sample.Items, sample1.Items); diff != "" {
+				t.Fatalf("samples different (-want +have):\n%s", diff)
 			}
 
 			if sample.Stats.NewIgnored == 0 {

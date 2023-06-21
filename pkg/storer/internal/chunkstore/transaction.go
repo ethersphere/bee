@@ -13,14 +13,21 @@ import (
 
 	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/storage/leveldbstore"
+	"github.com/ethersphere/bee/pkg/storage/storageutil"
+	"github.com/google/uuid"
+	"github.com/syndtr/goleveldb/leveldb/opt"
+	"github.com/vmihailenco/msgpack/v5"
 )
 
 // txSharky provides a simple txn functionality over the Sharky store.
-// It mainly exist to to support the chunk store Delete operation where
+// It mainly exists to support the chunk store Delete operation where
 // the Release calls are postponed until Commit or Rollback is called.
 type txSharky struct {
 	Sharky
+
+	id    []byte
+	store leveldbstore.Storer
 
 	opsMu         sync.Mutex
 	writtenLocs   []sharky.Location
@@ -54,6 +61,11 @@ func (t *txSharky) Write(ctx context.Context, buf []byte) (sharky.Location, erro
 		t.writtenLocs = append(t.writtenLocs, loc)
 		t.toReleaseLocs[sum] = loc
 		t.toReleaseSums[loc] = sum
+
+		buf, err = msgpack.Marshal(t.writtenLocs)
+		if err == nil {
+			err = t.store.DB().Put(t.id, buf, nil)
+		}
 	}
 	return loc, err
 }
@@ -76,137 +88,93 @@ func (t *txSharky) Release(ctx context.Context, loc sharky.Location) error {
 	return nil
 }
 
-type txChunkStoreWrapper struct {
+type TxChunkStoreWrapper struct {
 	*storage.TxChunkStoreBase
 
-	store    storage.Store
+	txStore  storage.TxStore
 	txSharky *txSharky
-
-	// Bookkeeping of invasive operations executed
-	// on the ChunkStore to support rollback functionality.
-	revOps storage.TxRevertOpStore[swarm.Address, swarm.Chunk]
 }
 
-// release releases the txChunkStoreWrapper transaction associated resources.
-func (cs *txChunkStoreWrapper) release() {
+// release releases the TxChunkStoreWrapper transaction associated resources.
+func (cs *TxChunkStoreWrapper) release() {
 	cs.TxChunkStoreBase.ChunkStore = nil
 	cs.txSharky.Sharky = nil
-	cs.store = nil
-	cs.revOps = nil
 }
 
-// Put implements the ChunkStore interface.
-func (cs *txChunkStoreWrapper) Put(ctx context.Context, chunk swarm.Chunk) error {
-	err := cs.TxChunkStoreBase.Put(ctx, chunk)
-	if err == nil {
-		err = cs.revOps.Append(&storage.TxRevertOp[swarm.Address, swarm.Chunk]{
-			Origin:   storage.PutOp,
-			ObjectID: chunk.Address().String(),
-			Key:      chunk.Address(),
-		})
-	}
-	return err
-}
-
-// Delete implements the ChunkStore interface.
-func (cs *txChunkStoreWrapper) Delete(ctx context.Context, address swarm.Address) error {
-	chunk, err := cs.TxChunkStoreBase.Get(ctx, address)
-	if err != nil {
-		return err
-	}
-
-	err = cs.TxChunkStoreBase.Delete(ctx, address)
-	if err == nil {
-		err = cs.revOps.Append(&storage.TxRevertOp[swarm.Address, swarm.Chunk]{
-			Origin:   storage.DeleteOp,
-			ObjectID: address.String(),
-			Val:      chunk,
-		})
-	}
-	return err
-}
-
-func (cs *txChunkStoreWrapper) Commit() error {
+func (cs *TxChunkStoreWrapper) Commit() error {
 	defer cs.release()
 
-	if err := cs.TxChunkStoreBase.Done(); err != nil {
-		return err
+	var errs error
+	if err := cs.txStore.Commit(); err != nil {
+		errs = errors.Join(errs, fmt.Errorf("txchunkstore: unable to commit index store transaction: %w", err))
 	}
 
-	if err := cs.revOps.Clean(); err != nil {
-		return fmt.Errorf("txchunkstore: unable to clean revert operations: %w", err)
-	}
-
-	for _, loc := range cs.txSharky.toReleaseLocs {
-		err := cs.txSharky.Release(context.Background(), loc)
-		if err != nil {
-			return fmt.Errorf("txchunkstore: unable to release location %v: %w", loc, err)
+	if errs == nil {
+		for _, loc := range cs.txSharky.toReleaseLocs {
+			err := cs.txSharky.Sharky.Release(context.Background(), loc)
+			if err != nil {
+				errs = errors.Join(errs, fmt.Errorf("txchunkstore: unable to release location %v: %w", loc, err))
+				break
+			}
 		}
 	}
-	return nil
+
+	if err := cs.txSharky.store.DB().Delete(cs.txSharky.id, &opt.WriteOptions{Sync: true}); err != nil {
+		errs = errors.Join(errs, fmt.Errorf("txchunkstore: unable to delete transaction: %x: %w", cs.txSharky.id, err))
+	}
+	return errs
 }
 
-func (cs *txChunkStoreWrapper) Rollback() error {
+func (cs *TxChunkStoreWrapper) Rollback() error {
 	defer cs.release()
 
-	if err := cs.TxChunkStoreBase.Rollback(); err != nil {
-		return err
+	var errs error
+	if err := cs.txStore.Rollback(); err != nil {
+		errs = errors.Join(errs, fmt.Errorf("txchunkstore: unable to rollback index store transaction: %w", err))
 	}
 
-	if err := cs.revOps.Revert(); err != nil {
-		return fmt.Errorf("txchunkstore: unable to revert operations: %w", err)
+	if errs == nil {
+		for _, loc := range cs.txSharky.writtenLocs {
+			errs = errors.Join(errs, cs.txSharky.Sharky.Release(context.Background(), loc))
+		}
+		if errs != nil {
+			return fmt.Errorf("txchunkstore: unable to release locations: %w", errs)
+		}
 	}
 
-	var err error
-	for _, loc := range cs.txSharky.writtenLocs {
-		err = errors.Join(cs.txSharky.Sharky.Release(context.Background(), loc))
+	if err := cs.txSharky.store.DB().Delete(cs.txSharky.id, &opt.WriteOptions{Sync: true}); err != nil {
+		errs = errors.Join(errs, fmt.Errorf("txchunkstore: unable to delete transaction: %x: %w", cs.txSharky.id, err))
 	}
-	if err != nil {
-		return fmt.Errorf("txchunkstore: unable to release locations: %w", err)
-	}
-	return nil
+	return errs
 }
 
-func (cs *txChunkStoreWrapper) NewTx(state *storage.TxState) storage.TxChunkStore {
+var pendingTxNamespace = new(pendingTx).Namespace()
+
+func (cs *TxChunkStoreWrapper) NewTx(state *storage.TxState) storage.TxChunkStore {
+	txStore := cs.txStore.NewTx(state)
 	txSharky := &txSharky{
+		id:            []byte(storageutil.JoinFields(pendingTxNamespace, uuid.NewString())),
+		store:         cs.txStore.(*leveldbstore.TxStore).Store.(leveldbstore.Storer), // TODO: make this independent of the underlying store.
 		Sharky:        cs.txSharky.Sharky,
 		toReleaseLocs: make(map[[32]byte]sharky.Location),
 		toReleaseSums: make(map[sharky.Location][32]byte),
 	}
-	chunkStore := &chunkStoreWrapper{
-		store:  cs.store,
-		sharky: txSharky,
-	}
-	return &txChunkStoreWrapper{
+	return &TxChunkStoreWrapper{
 		TxChunkStoreBase: &storage.TxChunkStoreBase{
 			TxState:    state,
-			ChunkStore: chunkStore,
+			ChunkStore: New(txStore, txSharky),
 		},
-		store:    cs.store,
+		txStore:  txStore,
 		txSharky: txSharky,
-		revOps: storage.NewInMemTxRevertOpStore(
-			map[storage.TxOpCode]storage.TxRevertFn[swarm.Address, swarm.Chunk]{
-				storage.PutOp: func(key swarm.Address, val swarm.Chunk) error {
-					return chunkStore.Delete(context.Background(), key)
-				},
-				storage.DeleteOp: func(key swarm.Address, val swarm.Chunk) error {
-					return chunkStore.Put(context.Background(), val)
-				},
-			},
-		),
 	}
 }
 
-func NewTxChunkStore(store storage.Store, csSharky Sharky) storage.TxChunkStore {
-	return &txChunkStoreWrapper{
+func NewTxChunkStore(txStore storage.TxStore, csSharky Sharky) *TxChunkStoreWrapper {
+	return &TxChunkStoreWrapper{
 		TxChunkStoreBase: &storage.TxChunkStoreBase{
-			ChunkStore: &chunkStoreWrapper{
-				store,
-				csSharky,
-			},
+			ChunkStore: New(txStore, csSharky),
 		},
-		store:    store,
+		txStore:  txStore,
 		txSharky: &txSharky{Sharky: csSharky},
-		revOps:   new(storage.NoOpTxRevertOpStore[swarm.Address, swarm.Chunk]),
 	}
 }

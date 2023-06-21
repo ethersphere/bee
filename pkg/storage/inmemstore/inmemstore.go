@@ -95,9 +95,7 @@ func (s *Store) Delete(i storage.Item) error {
 }
 
 func (s *Store) delete(i storage.Item) error {
-	if _, deleted := s.st.Delete(key(i)); !deleted {
-		return storage.ErrNotFound
-	}
+	s.st.Delete(key(i))
 	return nil
 }
 

@@ -223,7 +223,7 @@ func initInmemRepository() (storage.Repository, io.Closer, error) {
 	}
 
 	txStore := leveldbstore.NewTxStore(store)
-	txChunkStore := chunkstore.NewTxChunkStore(store, sharky)
+	txChunkStore := chunkstore.NewTxChunkStore(txStore, sharky)
 
 	return storage.NewRepository(txStore, txChunkStore), closer(store, sharky), nil
 }
@@ -244,7 +244,7 @@ const (
 	sharkyPath = "sharky"
 )
 
-func initStore(basePath string, opts *Options) (storage.Store, error) {
+func initStore(basePath string, opts *Options) (*leveldbstore.Store, error) {
 	ldbBasePath := path.Join(basePath, indexPath)
 
 	if _, err := os.Stat(ldbBasePath); os.IsNotExist(err) {
@@ -272,11 +272,6 @@ func initDiskRepository(ctx context.Context, basePath string, opts *Options) (st
 		return nil, nil, fmt.Errorf("failed creating levelDB index store: %w", err)
 	}
 
-	err = leveldbstore.Recovery(store)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to recover index store: %w", err)
-	}
-
 	sharkyBasePath := path.Join(basePath, sharkyPath)
 
 	if _, err := os.Stat(sharkyBasePath); os.IsNotExist(err) {
@@ -301,7 +296,14 @@ func initDiskRepository(ctx context.Context, basePath string, opts *Options) (st
 	}
 
 	txStore := leveldbstore.NewTxStore(store)
-	txChunkStore := chunkstore.NewTxChunkStore(store, sharky)
+	if err := txStore.Recovery(); err != nil {
+		return nil, nil, fmt.Errorf("failed to recover index store: %w", err)
+	}
+
+	txChunkStore := chunkstore.NewTxChunkStore(txStore, sharky)
+	if err := txChunkStore.Recovery(store); err != nil {
+		return nil, nil, fmt.Errorf("failed to recover chunk store: %w", err)
+	}
 
 	return storage.NewRepository(txStore, txChunkStore), closer(store, sharky, recoveryCloser), nil
 }
@@ -360,10 +362,7 @@ func performEpochMigration(ctx context.Context, basePath string, opts *Options) 
 	return epochMigration(ctx, basePath, opts.StateStore, store, rs, sharkyRecover, logger)
 }
 
-const (
-	lockKeyNewSession string = "new_session"
-	lockKeySetSyncer  string = "set_syncer"
-)
+const lockKeyNewSession string = "new_session"
 
 // Options provides a container to configure different things in the storer.
 type Options struct {

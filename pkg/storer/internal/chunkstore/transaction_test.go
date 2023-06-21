@@ -11,7 +11,7 @@ import (
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/inmemstore"
+	"github.com/ethersphere/bee/pkg/storage/leveldbstore"
 	"github.com/ethersphere/bee/pkg/storage/storagetest"
 	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/storer/internal/chunkstore"
@@ -22,12 +22,17 @@ import (
 func TestTxChunkStore(t *testing.T) {
 	t.Parallel()
 
+	store, err := leveldbstore.New(t.TempDir(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	sharky, err := sharky.New(&memFS{Fs: afero.NewMemMapFs()}, 1, swarm.SocMaxChunkSize)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	storagetest.TestTxChunkStore(t, chunkstore.NewTxChunkStore(inmemstore.New(), sharky))
+	storagetest.TestTxChunkStore(t, chunkstore.NewTxChunkStore(leveldbstore.NewTxStore(store), sharky))
 }
 
 // TestMultipleStampsRefCnt tests the behaviour of ref counting along with multiple
@@ -35,19 +40,26 @@ func TestTxChunkStore(t *testing.T) {
 func TestMultipleStampsRefCnt(t *testing.T) {
 	t.Parallel()
 
+	store, err := leveldbstore.New(t.TempDir(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	sharky, err := sharky.New(&memFS{Fs: afero.NewMemMapFs()}, 1, swarm.SocMaxChunkSize)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	store := inmemstore.New()
-	chunkStore := chunkstore.NewTxChunkStore(inmemstore.NewTxStore(store), sharky)
+	chunkStore := chunkstore.NewTxChunkStore(leveldbstore.NewTxStore(store), sharky)
 
-	chunk := chunktest.GenerateTestRandomChunk()
-	stamps := []swarm.Stamp{chunk.Stamp()}
-	for i := 0; i < 2; i++ {
-		stamps = append(stamps, postagetesting.MustNewStamp())
-	}
+	var (
+		chunk  = chunktest.GenerateTestRandomChunk()
+		stamps = []swarm.Stamp{
+			chunk.Stamp(),
+			postagetesting.MustNewStamp(),
+			postagetesting.MustNewStamp(),
+		}
+	)
 
 	verifyAllIndexes := func(t *testing.T) {
 		t.Helper()
@@ -69,7 +81,7 @@ func TestMultipleStampsRefCnt(t *testing.T) {
 		cs := chunkStore.NewTx(storage.NewTxState(context.TODO()))
 
 		for _, stamp := range stamps {
-			err := chunkStore.Put(context.TODO(), chunk.WithStamp(stamp))
+			err := cs.Put(context.TODO(), chunk.WithStamp(stamp))
 			if err != nil {
 				t.Fatalf("failed to put chunk: %v", err)
 			}
@@ -87,10 +99,10 @@ func TestMultipleStampsRefCnt(t *testing.T) {
 		t.Run("less than refCnt", func(t *testing.T) {
 			cs := chunkStore.NewTx(storage.NewTxState(context.TODO()))
 
-			for i := 0; i < 2; i++ {
+			for i := 0; i < len(stamps)-1; i++ {
 				err := cs.Delete(context.TODO(), chunk.Address())
 				if err != nil {
-					t.Fatal(err)
+					t.Fatalf("failed to delete chunk %d: %v", i, err)
 				}
 			}
 
@@ -106,10 +118,10 @@ func TestMultipleStampsRefCnt(t *testing.T) {
 		t.Run("till refCnt", func(t *testing.T) {
 			cs := chunkStore.NewTx(storage.NewTxState(context.TODO()))
 
-			for i := 0; i < 3; i++ {
+			for i := 0; i < len(stamps); i++ {
 				err := cs.Delete(context.TODO(), chunk.Address())
 				if err != nil {
-					t.Fatal(err)
+					t.Fatalf("failed to delete chunk %d: %v", i, err)
 				}
 			}
 

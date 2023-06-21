@@ -16,75 +16,26 @@ import (
 	"github.com/syndtr/goleveldb/leveldb/opt"
 )
 
-// PendingTxNamespace is the namespace used for in-progress reverse
-// operation transactions that has not been committed or reverted yet.
-const PendingTxNamespace = "pending-tx"
+var _ storage.TxRevertOpStore[[]byte, []byte] = (*txRevertOpStore)(nil)
 
-var _ storage.Item = (*pendingTx)(nil)
-
-// pendingTx is a storage.Item that holds a batch of operations.
-type pendingTx struct {
-	storage.Item
-
-	val *leveldb.Batch
-}
-
-// Namespace implements storage.Item.
-func (p *pendingTx) Namespace() string {
-	return PendingTxNamespace
-}
-
-// Unmarshal implements storage.Item.
-func (p *pendingTx) Unmarshal(bytes []byte) error {
-	p.val = new(leveldb.Batch)
-	return p.val.Load(bytes)
-}
-
-// Recovery attempts to recover from a previous crash
-// by reverting all uncommitted transactions.
-func Recovery(store storage.Store) error {
-	batch := new(leveldb.Batch)
-
-	err := store.Iterate(storage.Query{
-		Factory:      func() storage.Item { return new(pendingTx) },
-		ItemProperty: storage.QueryItem,
-	}, func(r storage.Result) (bool, error) {
-		if err := batch.Replay(r.Entry.(*pendingTx).val); err != nil {
-			return true, fmt.Errorf("unable to replay batch for %s: %w", r.ID, err)
-		}
-		batch.Delete([]byte(r.ID))
-		return false, nil
-	})
-	if err != nil {
-		return fmt.Errorf("leveldbstore: iteration failed: %w", err)
-	}
-
-	if err := store.(*Store).db.Write(batch, &opt.WriteOptions{Sync: true}); err != nil {
-		return fmt.Errorf("leveldbstore: unable to write batch: %w", err)
-	}
-	return nil
-}
-
-var _ storage.TxRevertOpStore[[]byte, []byte] = (*diskTxRevertOpStore)(nil)
-
-// diskTxRevertOpStore is a storage.TxRevertOpStore
-// that stores revert operations on disk.
-type diskTxRevertOpStore struct {
-	id       []byte // Unique identifier for this transaction.
+// txRevertOpStore is a storage.TxRevertOpStore that
+// stores revert operations in the LevelDB instance.
+type txRevertOpStore struct {
+	id       []byte
 	db       *leveldb.DB
-	mu       sync.Mutex // mu protects the batch.
 	batch    *leveldb.Batch
+	batchMu  sync.Mutex
 	revOpsFn map[storage.TxOpCode]storage.TxRevertFn[[]byte, []byte]
 }
 
 // Append implements storage.TxRevertOpStore.
-func (s *diskTxRevertOpStore) Append(op *storage.TxRevertOp[[]byte, []byte]) error {
+func (s *txRevertOpStore) Append(op *storage.TxRevertOp[[]byte, []byte]) error {
 	if s == nil {
 		return nil
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.batchMu.Lock()
+	defer s.batchMu.Unlock()
 
 	var errs error
 	if fn, ok := s.revOpsFn[op.Origin]; !ok {
@@ -105,17 +56,17 @@ func (s *diskTxRevertOpStore) Append(op *storage.TxRevertOp[[]byte, []byte]) err
 		return errs
 	}
 
-	return s.db.Put(s.id, s.batch.Dump(), &opt.WriteOptions{Sync: true})
+	return s.db.Put(s.id, s.batch.Dump(), nil)
 }
 
 // Revert implements storage.TxRevertOpStore.
-func (s *diskTxRevertOpStore) Revert() error {
+func (s *txRevertOpStore) Revert() error {
 	if s == nil {
 		return nil
 	}
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	s.batchMu.Lock()
+	defer s.batchMu.Unlock()
 	defer s.batch.Reset()
 
 	s.batch.Delete(s.id)
@@ -123,7 +74,7 @@ func (s *diskTxRevertOpStore) Revert() error {
 }
 
 // Clean implements storage.TxRevertOpStore.
-func (s *diskTxRevertOpStore) Clean() error {
+func (s *txRevertOpStore) Clean() error {
 	if s == nil {
 		return nil
 	}
@@ -241,6 +192,8 @@ func (s *TxStore) Rollback() error {
 	return nil
 }
 
+var pendingTxNamespace = new(pendingTx).Namespace()
+
 // NewTx implements the TxStore interface.
 func (s *TxStore) NewTx(state *storage.TxState) storage.TxStore {
 	if s.Store == nil {
@@ -253,8 +206,8 @@ func (s *TxStore) NewTx(state *storage.TxState) storage.TxStore {
 			TxState: state,
 			Store:   s.Store,
 		},
-		revOps: &diskTxRevertOpStore{
-			id:    []byte(storageutil.JoinFields(PendingTxNamespace, uuid.NewString())),
+		revOps: &txRevertOpStore{
+			id:    []byte(storageutil.JoinFields(pendingTxNamespace, uuid.NewString())),
 			db:    s.Store.(*Store).db,
 			batch: batch,
 			revOpsFn: map[storage.TxOpCode]storage.TxRevertFn[[]byte, []byte]{

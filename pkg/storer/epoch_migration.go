@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -47,10 +46,17 @@ func (epochKey) Clone() storage.Item { return epochKey{} }
 
 func (epochKey) String() string { return "localstore-epoch" }
 
+var (
+	_ internal.Storage  = (*putOpStorage)(nil)
+	_ chunkstore.Sharky = (*putOpStorage)(nil)
+)
+
 // putOpStorage implements the internal.Storage interface which is used by
 // the internal component stores to store chunks. It also implements the sharky interface
 // which uses the recovery mechanism to recover chunks without moving them.
 type putOpStorage struct {
+	chunkstore.Sharky
+
 	store    storage.Store
 	location sharky.Location
 	recovery sharkyRecover
@@ -67,20 +73,6 @@ func (p *putOpStorage) ChunkStore() storage.ChunkStore {
 // one passed in. This is present in the old localstore indexes.
 func (p *putOpStorage) Write(_ context.Context, _ []byte) (sharky.Location, error) {
 	return p.location, p.recovery.Add(p.location)
-}
-
-// Read implements the sharky.Store interface. It is not implemented because during
-// the migration we do not need to read any chunks.
-func (p *putOpStorage) Read(ctx context.Context, l sharky.Location, buf []byte) error {
-	return errors.New("not implemented")
-}
-
-// Release implements the sharky.Store interface. It is not implemented because
-// during the migration we do not need to release any chunks. The only time this could
-// be called is if there are postage stamp index collisions. So if this happens we
-// have a bug in the current localstore logic as it should not allow collisions.
-func (p *putOpStorage) Release(_ context.Context, loc sharky.Location) error {
-	return errors.New("not implemented")
 }
 
 type reservePutter interface {
@@ -111,7 +103,6 @@ func epochMigration(
 	recovery sharkyRecover,
 	logger log.Logger,
 ) error {
-
 	has, err := store.Has(epochKey{})
 	if err != nil {
 		return fmt.Errorf("has epoch key: %w", err)
