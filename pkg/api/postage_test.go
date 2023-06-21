@@ -332,7 +332,10 @@ func TestPostageGetStamps(t *testing.T) {
 
 		esi := postage.NewStampIssuer("", "", eb.ID, big.NewInt(3), 11, 10, 1000, true)
 		emp := mockpost.New(mockpost.WithIssuer(esi))
-		emp.HandleStampExpiry(eb.ID)
+		err := emp.HandleStampExpiry(eb.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
 		ecs := &postage.ChainState{Block: 10, TotalAmount: big.NewInt(15), CurrentPrice: big.NewInt(12)}
 		ebs := mock.New(mock.WithChainState(ecs))
 		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: emp, BatchStore: ebs, BlockTime: 2 * time.Second})
@@ -366,7 +369,10 @@ func TestPostageGetStamps(t *testing.T) {
 
 		esi := postage.NewStampIssuer("", "", eb.ID, big.NewInt(3), 11, 10, 1000, true)
 		emp := mockpost.New(mockpost.WithIssuer(esi))
-		emp.HandleStampExpiry(eb.ID)
+		err := emp.HandleStampExpiry(eb.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
 		ecs := &postage.ChainState{Block: 10, TotalAmount: big.NewInt(15), CurrentPrice: big.NewInt(12)}
 		ebs := mock.New(mock.WithChainState(ecs))
 		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: emp, BatchStore: ebs, BlockTime: 2 * time.Second})

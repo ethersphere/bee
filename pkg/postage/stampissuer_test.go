@@ -37,7 +37,7 @@ func TestStampIssuerMarshalling(t *testing.T) {
 	opts := []cmp.Option{
 		cmp.AllowUnexported(postage.StampIssuer{}, big.Int{}),
 		cmpopts.IgnoreInterfaces(struct{ storage.Store }{}),
-		cmpopts.IgnoreTypes(sync.Mutex{}),
+		cmpopts.IgnoreTypes(sync.Mutex{}, sync.RWMutex{}),
 	}
 	if !cmp.Equal(want, have, opts...) {
 		t.Errorf("Marshal/Unmarshal mismatch (-want +have):\n%s", cmp.Diff(want, have))

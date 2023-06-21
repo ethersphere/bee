@@ -784,7 +784,11 @@ func (p *putterSessionWrapper) Put(ctx context.Context, chunk swarm.Chunk) error
 }
 
 func (p *putterSessionWrapper) Done(ref swarm.Address) error {
-	return errors.Join(p.PutterSession.Done(ref), p.save())
+	err := p.PutterSession.Done(ref)
+	if err != nil {
+		return err
+	}
+	return p.save()
 }
 
 func (s *Service) getStamper(batchID []byte) (postage.Stamper, func() error, error) {
