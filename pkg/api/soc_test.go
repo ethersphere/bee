@@ -25,9 +25,9 @@ import (
 // nolint:paralleltest
 func TestSOC(t *testing.T) {
 	var (
-		testData                 = []byte("foo")
-		socResource              = func(owner, id, sig string) string { return fmt.Sprintf("/soc/%s/%s?sig=%s", owner, id, sig) }
-		mockStorer               = mockstorer.New()
+		testData    = []byte("foo")
+		socResource = func(owner, id, sig string) string { return fmt.Sprintf("/soc/%s/%s?sig=%s", owner, id, sig) }
+		mockStorer  = mockstorer.New()
 	)
 	t.Run("empty data", func(t *testing.T) {
 		client, _, _, _ := newTestServer(t, testServerOptions{
