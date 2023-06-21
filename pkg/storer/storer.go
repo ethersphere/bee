@@ -296,12 +296,12 @@ func initDiskRepository(ctx context.Context, basePath string, opts *Options) (st
 	}
 
 	txStore := leveldbstore.NewTxStore(store)
-	if err := txStore.Recovery(); err != nil {
+	if err := txStore.Recover(); err != nil {
 		return nil, nil, fmt.Errorf("failed to recover index store: %w", err)
 	}
 
 	txChunkStore := chunkstore.NewTxChunkStore(txStore, sharky)
-	if err := txChunkStore.Recovery(store); err != nil {
+	if err := txChunkStore.Recover(store); err != nil {
 		return nil, nil, fmt.Errorf("failed to recover chunk store: %w", err)
 	}
 

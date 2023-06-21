@@ -35,9 +35,9 @@ func (p *pendingTx) Unmarshal(bytes []byte) error {
 	return nil
 }
 
-// Recovery attempts to recover from a previous crash
+// Recover attempts to recover from a previous crash
 // by reverting all uncommitted transactions.
-func (cs *TxChunkStoreWrapper) Recovery(store *leveldbstore.Store) error {
+func (cs *TxChunkStoreWrapper) Recover(store *leveldbstore.Store) error {
 	err := store.Iterate(storage.Query{
 		Factory:      func() storage.Item { return new(pendingTx) },
 		ItemProperty: storage.QueryItem,

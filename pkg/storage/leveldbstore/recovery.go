@@ -32,19 +32,19 @@ func (p *pendingTx) Unmarshal(bytes []byte) error {
 	return p.val.Load(bytes)
 }
 
-// Recovery attempts to recover from a previous
+// Recover attempts to recover from a previous
 // crash by reverting all uncommitted transactions.
-func (s *TxStore) Recovery() error {
+func (s *TxStore) Recover() error {
 	batch := new(leveldb.Batch)
 
 	err := s.Iterate(storage.Query{
 		Factory:      func() storage.Item { return new(pendingTx) },
 		ItemProperty: storage.QueryItem,
 	}, func(r storage.Result) (bool, error) {
-		if err := batch.Replay(r.Entry.(*pendingTx).val); err != nil {
+		if err := r.Entry.(*pendingTx).val.Replay(batch); err != nil {
 			return true, fmt.Errorf("unable to replay batch for %s: %w", r.ID, err)
 		}
-		batch.Delete([]byte(r.ID))
+		batch.Delete(id(r.ID))
 		return false, nil
 	})
 	if err != nil {

@@ -192,7 +192,13 @@ func (s *TxStore) Rollback() error {
 	return nil
 }
 
+// pendingTxNamespace exist for cashing the namespace of pendingTx
 var pendingTxNamespace = new(pendingTx).Namespace()
+
+// id returns the key for the stored revert operations.
+func id(uuid string) []byte {
+	return []byte(storageutil.JoinFields(pendingTxNamespace, uuid))
+}
 
 // NewTx implements the TxStore interface.
 func (s *TxStore) NewTx(state *storage.TxState) storage.TxStore {
@@ -207,7 +213,7 @@ func (s *TxStore) NewTx(state *storage.TxState) storage.TxStore {
 			Store:   s.Store,
 		},
 		revOps: &txRevertOpStore{
-			id:    []byte(storageutil.JoinFields(pendingTxNamespace, uuid.NewString())),
+			id:    id(uuid.NewString()),
 			db:    s.Store.(*Store).db,
 			batch: batch,
 			revOpsFn: map[storage.TxOpCode]storage.TxRevertFn[[]byte, []byte]{
