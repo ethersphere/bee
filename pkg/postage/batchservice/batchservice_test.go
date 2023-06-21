@@ -54,12 +54,14 @@ func (m *mockBatchListener) HandleCreate(b *postage.Batch, topUpAmount *big.Int)
 	return nil
 }
 
-func (m *mockBatchListener) HandleTopUp(_ []byte, _ *big.Int) {
+func (m *mockBatchListener) HandleTopUp(_ []byte, _ *big.Int) error {
 	m.topupCount++
+	return nil
 }
 
-func (m *mockBatchListener) HandleDepthIncrease(_ []byte, _ uint8) {
+func (m *mockBatchListener) HandleDepthIncrease(id []byte, newDepth uint8) error {
 	m.diluteCount++
+	return nil
 }
 
 func TestBatchServiceCreate_FLAKY(t *testing.T) {

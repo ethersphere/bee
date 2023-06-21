@@ -182,8 +182,15 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	resp := postageStampsResponse{}
-	resp.Stamps = make([]postageStampResponse, 0, len(s.post.StampIssuers()))
-	for _, v := range s.post.StampIssuers() {
+	stampIssuers, err := s.post.StampIssuers()
+	if err != nil {
+		logger.Debug("get issuers failed", "error", err)
+		logger.Error(nil, "get issuers failed")
+		jsonhttp.InternalServerError(w, "cannot get issuers")
+		return
+	}
+	resp.Stamps = make([]postageStampResponse, 0, len(stampIssuers))
+	for _, v := range stampIssuers {
 		exists, err := s.batchStore.Exists(v.ID())
 		if err != nil {
 			logger.Debug("get stamp issuer: check batch failed", "batch_id", hex.EncodeToString(v.ID()), "error", err)
@@ -318,7 +325,14 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 	hexBatchID := hex.EncodeToString(paths.BatchID)
 
 	var issuer *postage.StampIssuer
-	for _, stampIssuer := range s.post.StampIssuers() {
+	stampIssuers, err := s.post.StampIssuers()
+	if err != nil {
+		logger.Debug("get stamp issuer: get issuers failed", "batch_id", hexBatchID, "error", err)
+		logger.Error(nil, "get stamp issuer: get issuers failed")
+		jsonhttp.InternalServerError(w, "get issuers failed")
+		return
+	}
+	for _, stampIssuer := range stampIssuers {
 		if bytes.Equal(paths.BatchID, stampIssuer.ID()) {
 			issuer = stampIssuer
 			break

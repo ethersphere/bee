@@ -5,18 +5,16 @@
 package postage
 
 import (
-	"bytes"
 	"errors"
-	"fmt"
 	"io"
 	"math/big"
 	"sync"
 
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/storage"
 )
 
 const (
-	postagePrefix = "postage"
 	// blockThreshold is used to allow threshold no of blocks to be synced before a
 	// batch is usable.
 	blockThreshold = 10
@@ -27,12 +25,14 @@ var (
 	ErrNotFound = errors.New("not found")
 	// ErrNotUsable is the error returned when issuer with given batch ID is not usable.
 	ErrNotUsable = errors.New("not usable")
+	// ErrBatchInUse is the error returned when issuer with given batch ID is already in use.
+	ErrBatchInUse = errors.New("batch is in use by another upload process")
 )
 
 // Service is the postage service interface.
 type Service interface {
 	Add(*StampIssuer) error
-	StampIssuers() []*StampIssuer
+	StampIssuers() ([]*StampIssuer, error)
 	GetStampIssuer([]byte) (*StampIssuer, func() error, error)
 	IssuerUsable(*StampIssuer) bool
 	BatchEventListener
@@ -44,58 +44,36 @@ type Service interface {
 // stores the active batches.
 type service struct {
 	lock         sync.Mutex
-	store        storage.StateStorer
+	store        storage.Store
 	postageStore Storer
 	chainID      int64
-	issuers      []*StampIssuer
+	issuersInUse map[string]any
 }
 
 // NewService constructs a new Service.
-func NewService(store storage.StateStorer, postageStore Storer, chainID int64) (Service, error) {
-	s := &service{
+func NewService(store storage.Store, postageStore Storer, chainID int64) Service {
+	return &service{
 		store:        store,
 		postageStore: postageStore,
 		chainID:      chainID,
+		issuersInUse: make(map[string]any),
 	}
-	if err := s.store.Iterate(s.key(), func(_, value []byte) (bool, error) {
-		st := &StampIssuer{}
-		if err := st.UnmarshalBinary(value); err != nil {
-			return false, err
-		}
-		_ = s.add(st)
-		return false, nil
-	}); err != nil {
-		return nil, err
-	}
-
-	return s, nil
 }
 
-// Add adds a stamp issuer to the active issuers.
+// Add adds a stamp issuer to stamperstore.
 func (ps *service) Add(st *StampIssuer) error {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
 
-	if ps.add(st) {
-		if err := ps.store.Put(ps.keyForIndex(st.data.BatchID), st); err != nil {
-			return err
-		}
+	err := ps.store.Get(NewStampIssuerItem(st.ID()))
+	if err == nil {
+		return nil
 	}
 
-	return nil
-}
-
-// add adds a stamp issuer to the active issuers and returns false if it is already present.
-func (ps *service) add(st *StampIssuer) bool {
-
-	for _, v := range ps.issuers {
-		if bytes.Equal(st.data.BatchID, v.data.BatchID) {
-			return false
-		}
+	if !errors.Is(err, storage.ErrNotFound) {
+		return err
 	}
-	ps.issuers = append(ps.issuers, st)
-
-	return true
+	return ps.save(st)
 }
 
 // HandleCreate implements the BatchEventListener interface. This is fired on receiving
@@ -116,36 +94,47 @@ func (ps *service) HandleCreate(b *Batch, amount *big.Int) error {
 
 // HandleTopUp implements the BatchEventListener interface. This is fired on receiving
 // a batch topup event from the blockchain to update stampissuer details
-func (ps *service) HandleTopUp(batchID []byte, amount *big.Int) {
+func (ps *service) HandleTopUp(batchID []byte, amount *big.Int) error {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
 
-	for _, v := range ps.issuers {
-		if bytes.Equal(batchID, v.data.BatchID) {
-			v.data.BatchAmount.Add(v.data.BatchAmount, amount)
-		}
+	item := NewStampIssuerItem(batchID)
+	if err := ps.store.Get(item); err != nil {
+		return err
 	}
+
+	item.Issuer.data.BatchAmount.Add(item.Issuer.data.BatchAmount, amount)
+	return ps.save(item.Issuer)
 }
 
-func (ps *service) HandleDepthIncrease(batchID []byte, newDepth uint8) {
+func (ps *service) HandleDepthIncrease(batchID []byte, newDepth uint8) error {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
 
-	for _, v := range ps.issuers {
-		if bytes.Equal(batchID, v.data.BatchID) {
-			if newDepth > v.data.BatchDepth {
-				v.data.BatchDepth = newDepth
-			}
-			return
-		}
+	item := NewStampIssuerItem(batchID)
+	if err := ps.store.Get(item); err != nil {
+		return err
 	}
+
+	item.Issuer.data.BatchDepth = newDepth
+	return ps.save(item.Issuer)
 }
 
 // StampIssuers returns the currently active stamp issuers.
-func (ps *service) StampIssuers() []*StampIssuer {
+func (ps *service) StampIssuers() ([]*StampIssuer, error) {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
-	return ps.issuers
+	var issuers []*StampIssuer
+	if err := ps.store.Iterate(
+		storage.Query{
+			Factory: func() storage.Item { return new(StampIssuerItem) },
+		}, func(result storage.Result) (bool, error) {
+			issuers = append(issuers, result.Entry.(*StampIssuerItem).Issuer)
+			return false, nil
+		}); err != nil {
+		return nil, err
+	}
+	return issuers, nil
 }
 
 func (ps *service) IssuerUsable(st *StampIssuer) bool {
@@ -165,24 +154,36 @@ func (ps *service) IssuerUsable(st *StampIssuer) bool {
 func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, func() error, error) {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
-	for _, st := range ps.issuers {
-		if bytes.Equal(batchID, st.data.BatchID) {
-			if !ps.IssuerUsable(st) {
-				return nil, nil, ErrNotUsable
-			}
-			return st, func() error {
-				return ps.save(st)
-			}, nil
-		}
+
+	if _, ok := ps.issuersInUse[string(batchID)]; ok {
+		return nil, nil, ErrBatchInUse
 	}
-	return nil, nil, ErrNotFound
+	item := NewStampIssuerItem(batchID)
+	err := ps.store.Get(item)
+	if errors.Is(err, storage.ErrNotFound) {
+		return nil, nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if !ps.IssuerUsable(item.Issuer) {
+		return nil, nil, ErrNotUsable
+	}
+	ps.issuersInUse[string(batchID)] = struct{}{}
+	return item.Issuer, func() error {
+		ps.lock.Lock()
+		defer ps.lock.Unlock()
+		delete(ps.issuersInUse, string(batchID))
+		return ps.save(item.Issuer)
+	}, nil
 }
 
-// save persists the specified stamp issuer to the statestore.
+// save persists the specified stamp issuer to the stamperstore.
 func (ps *service) save(st *StampIssuer) error {
-	st.bucketMu.Lock()
-	defer st.bucketMu.Unlock()
-	if err := ps.store.Put(ps.keyForIndex(st.data.BatchID), st); err != nil {
+	if err := ps.store.Put(&StampIssuerItem{
+		Issuer: st,
+	}); err != nil {
 		return err
 	}
 	return nil
@@ -191,49 +192,45 @@ func (ps *service) save(st *StampIssuer) error {
 func (ps *service) Close() error {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
-	var closeErr error
-	for _, st := range ps.issuers {
-		closeErr = errors.Join(closeErr, ps.save(st))
-	}
-
-	return closeErr
-}
-
-// keyForIndex returns the statestore key for an issuer
-func (ps *service) keyForIndex(batchID []byte) string {
-	return ps.key() + string(batchID)
-}
-
-// key returns the statestore base key for an issuer
-// to disambiguate batches on different chains, chainID is part of the key
-func (ps *service) key() string {
-	return fmt.Sprintf(postagePrefix+"%d", ps.chainID)
+	return ps.store.Close()
 }
 
 // HandleStampExpiry handles stamp expiry for a given id.
-func (ps *service) HandleStampExpiry(id []byte) {
+func (ps *service) HandleStampExpiry(id []byte) error {
 
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
 
-	for _, v := range ps.issuers {
-		if bytes.Equal(id, v.ID()) {
-			v.SetExpired(true)
-		}
+	item := NewStampIssuerItem(id)
+	err := ps.store.Get(item)
+	if err != nil {
+		return err
 	}
+
+	item.Issuer.SetExpired(true)
+	return ps.save(item.Issuer)
 }
 
 // SetExpired sets expiry for all non-existing batches.
 func (ps *service) SetExpired() error {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
-
-	for _, v := range ps.issuers {
-		exists, err := ps.postageStore.Exists(v.ID())
-		if err != nil {
-			return err
-		}
-		v.SetExpired(!exists)
-	}
-	return nil
+	logger := log.NewLogger("node").WithName("postage").Register()
+	return ps.store.Iterate(
+		storage.Query{
+			Factory: func() storage.Item { return new(StampIssuerItem) },
+		}, func(result storage.Result) (bool, error) {
+			issuer := result.Entry.(*StampIssuerItem).Issuer
+			exists, err := ps.postageStore.Exists(issuer.ID())
+			if err != nil {
+				logger.Error(err, "set expired: checking if issuer exists", "id", issuer.ID())
+				return false, nil
+			}
+			issuer.SetExpired(!exists)
+			err = ps.save(issuer)
+			if err != nil {
+				return true, err
+			}
+			return false, nil
+		})
 }

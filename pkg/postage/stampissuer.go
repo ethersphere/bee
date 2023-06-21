@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"math/big"
 	"path"
-	"sync"
 	"time"
 
 	storage "github.com/ethersphere/bee/pkg/storage"
@@ -133,12 +132,27 @@ type stampIssuerData struct {
 	Expired        bool     `msgpack:"expired"`        // Specifies the expiry of the batch
 }
 
+// Clone returns a deep copy of the stampIssuerData.
+func (s stampIssuerData) Clone() stampIssuerData {
+	return stampIssuerData{
+		Label:         s.Label,
+		KeyID:         s.KeyID,
+		BatchID:       append([]byte(nil), s.BatchID...),
+		BatchAmount:   new(big.Int).Set(s.BatchAmount),
+		BatchDepth:    s.BatchDepth,
+		BucketDepth:   s.BucketDepth,
+		Buckets:       append([]uint32(nil), s.Buckets...),
+		BlockNumber:   s.BlockNumber,
+		ImmutableFlag: s.ImmutableFlag,
+		Expired:       s.Expired,
+	}
+}
+
 // StampIssuer is a local extension of a batch issuing stamps for uploads.
 // A StampIssuer instance extends a batch with bucket collision tracking
 // embedded in multiple Stampers, can be used concurrently.
 type StampIssuer struct {
-	bucketMu sync.Mutex
-	data     stampIssuerData
+	data stampIssuerData
 }
 
 // NewStampIssuer constructs a StampIssuer as an extension of a batch for local
@@ -164,9 +178,6 @@ func NewStampIssuer(label, keyID string, batchID []byte, batchAmount *big.Int, b
 // increment increments the count in the correct collision
 // bucket for a newly stamped chunk with given addr address.
 func (si *StampIssuer) increment(addr swarm.Address) (batchIndex []byte, batchTimestamp []byte, err error) {
-	si.bucketMu.Lock()
-	defer si.bucketMu.Unlock()
-
 	bIdx := toBucket(si.BucketDepth(), addr)
 	bCnt := si.data.Buckets[bIdx]
 	if bCnt == 1<<(si.Depth()-si.BucketDepth()) {
@@ -200,8 +211,6 @@ func (si *StampIssuer) UnmarshalBinary(data []byte) error {
 // an integer between 0 and 4294967295. Batch fullness can be
 // calculated with: max_bucket_value / 2 ^ (batch_depth - bucket_depth)
 func (si *StampIssuer) Utilization() uint32 {
-	si.bucketMu.Lock()
-	defer si.bucketMu.Unlock()
 	return si.data.MaxBucketCount
 }
 
@@ -245,10 +254,8 @@ func (si *StampIssuer) ImmutableFlag() bool {
 }
 
 func (si *StampIssuer) Buckets() []uint32 {
-	si.bucketMu.Lock()
 	b := make([]uint32, len(si.data.Buckets))
 	copy(b, si.data.Buckets)
-	si.bucketMu.Unlock()
 	return b
 }
 
@@ -261,6 +268,67 @@ func (si *StampIssuer) Expired() bool {
 func (si *StampIssuer) SetExpired(e bool) {
 	si.data.Expired = e
 }
+
+// StampIssuerItem is a storage.Item implementation for StampIssuer.
+type StampIssuerItem struct {
+	Issuer *StampIssuer
+}
+
+// NewStampIssuerItem creates a new StampIssuerItem.
+func NewStampIssuerItem(ID []byte) *StampIssuerItem {
+	return &StampIssuerItem{
+		Issuer: &StampIssuer{
+			data: stampIssuerData{
+				BatchID: ID,
+			},
+		},
+	}
+}
+
+// ID is the batch ID.
+func (s *StampIssuerItem) ID() string {
+	return string(s.Issuer.ID())
+}
+
+// Namespace returns the storage namespace for a stampIssuer.
+func (s *StampIssuerItem) Namespace() string {
+	return "StampIssuerItem"
+}
+
+// Marshal marshals the StampIssuerItem into a byte slice.
+func (s *StampIssuerItem) Marshal() ([]byte, error) {
+	return s.Issuer.MarshalBinary()
+}
+
+// Unmarshal unmarshals a byte slice into a StampIssuerItem.
+func (s *StampIssuerItem) Unmarshal(bytes []byte) error {
+	issuer := new(StampIssuer)
+	err := issuer.UnmarshalBinary(bytes)
+	if err != nil {
+		return err
+	}
+	s.Issuer = issuer
+	return nil
+}
+
+// Clone returns a clone of StampIssuerItem.
+func (s *StampIssuerItem) Clone() storage.Item {
+	if s == nil {
+		return nil
+	}
+	return &StampIssuerItem{
+		Issuer: &StampIssuer{
+			data: s.Issuer.data.Clone(),
+		},
+	}
+}
+
+// String returns the string representation of a StampIssuerItem.
+func (s StampIssuerItem) String() string {
+	return path.Join(s.Namespace(), s.ID())
+}
+
+var _ storage.Item = (*StampIssuerItem)(nil)
 
 // toBucket calculates the index of the collision bucket for a swarm address
 // bucket index := collision bucket depth number of bits as bigendian uint32
