@@ -10,6 +10,7 @@ import (
 	"math/big"
 	"sync"
 
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/storage"
 )
 
@@ -214,6 +215,7 @@ func (ps *service) HandleStampExpiry(id []byte) error {
 func (ps *service) SetExpired() error {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
+	logger := log.NewLogger("node").WithName("postage").Register()
 	return ps.store.Iterate(
 		storage.Query{
 			Factory: func() storage.Item { return new(StampIssuerItem) },
@@ -221,7 +223,8 @@ func (ps *service) SetExpired() error {
 			issuer := result.Entry.(*StampIssuerItem).Issuer
 			exists, err := ps.postageStore.Exists(issuer.ID())
 			if err != nil {
-				return true, err
+				logger.Error(err, "set expired: checking if issuer exists", "id", issuer.ID())
+				return false, nil
 			}
 			issuer.SetExpired(!exists)
 			err = ps.save(issuer)

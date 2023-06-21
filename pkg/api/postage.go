@@ -184,8 +184,8 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request
 	resp := postageStampsResponse{}
 	stampIssuers, err := s.post.StampIssuers()
 	if err != nil {
-		logger.Debug("get stamps: get issuers failed", "error", err)
-		logger.Error(nil, "get stamps: get issuers failed")
+		logger.Debug("get issuers failed", "error", err)
+		logger.Error(nil, "get issuers failed")
 		jsonhttp.InternalServerError(w, "cannot get issuers")
 		return
 	}

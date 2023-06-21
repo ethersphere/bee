@@ -40,13 +40,11 @@ func TestInitStamperStore(t *testing.T) {
 		ids[string(si.ID())] = 0
 	}
 
-	// init stamper store should migrate 10 stamps from state store
 	stamperStore, err := InitStamperStore(log.Noop, dataDir, stateStore)
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal("init stamper store should migrate stamps from state store", err)
 	}
 
-	// check stamper store has 10 stamps
 	err = stamperStore.Iterate(
 		storage.Query{
 			Factory: func() storage.Item { return new(postage.StampIssuerItem) },
@@ -59,19 +57,25 @@ func TestInitStamperStore(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	nMissing := 0
+	var got int
 	for _, v := range ids {
-		if v != 1 {
-			nMissing++
+		if v > 0 {
+			got++
 		}
 	}
-	if nMissing > 0 {
-		t.Fatalf("missing %d stamps", nMissing)
+	if got != 10 {
+		t.Fatalf("want %d stamps. got %d", 10, got)
 	}
 
 	t.Cleanup(func() {
-		_ = stateStore.Close()
-		_ = stamperStore.Close()
+		err = stateStore.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = stamperStore.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
 		time.Sleep(1 * time.Second)
 	})
 }

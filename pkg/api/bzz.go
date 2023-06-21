@@ -87,7 +87,7 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, errUnsupportedDevNodeOperation):
 			jsonhttp.BadRequest(w, errUnsupportedDevNodeOperation)
 		case errors.Is(err, postage.ErrBatchInUse):
-			jsonhttp.BadRequest(w, "batch is in use by another upload process")
+			jsonhttp.BadRequest(w, postage.ErrBatchInUse)
 		default:
 			jsonhttp.BadRequest(w, nil)
 		}

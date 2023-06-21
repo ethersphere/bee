@@ -54,7 +54,7 @@ func (m *mockBatchListener) HandleCreate(b *postage.Batch, topUpAmount *big.Int)
 	return nil
 }
 
-func (m *mockBatchListener) HandleTopUp(id []byte, newBalance *big.Int) error {
+func (m *mockBatchListener) HandleTopUp(_ []byte, _ *big.Int) error {
 	m.topupCount++
 	return nil
 }
