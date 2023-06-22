@@ -204,6 +204,12 @@ func (ps *service) HandleStampExpiry(id []byte) error {
 	item := NewStampIssuerItem(id)
 	err := ps.store.Get(item)
 	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			// HandleStampExpiry is fired for every expiring batch. The postage service
+			// only cares about the batches owned by the node, so we can safely ignore
+			// batches that are not found in the store.
+			return nil
+		}
 		return err
 	}
 
