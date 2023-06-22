@@ -75,7 +75,7 @@ func TestRefreshIntervals(t *testing.T) {
 		},
 		pullSync:   []mockps.Option{mockps.WithCursors(cursors), mockps.WithReplies(replies...)},
 		bins:       3,
-		refreshDur: time.Second,
+		refreshDur: 500 * time.Millisecond,
 		rs:         resMock.NewReserve(resMock.WithRadius(1)),
 	})
 	time.Sleep(100 * time.Millisecond)
@@ -84,7 +84,9 @@ func TestRefreshIntervals(t *testing.T) {
 	waitSyncCalledBins(t, pullsync, addr, 1, 2)
 	waitSync(t, pullsync, addr)
 
-	time.Sleep(time.Second)
+	time.Sleep(500 * time.Millisecond)
+	kad.Trigger()
+	time.Sleep(500 * time.Millisecond)
 
 	if err := checkIntervals(st, addr, "", 1); err != nil {
 		if !errors.Is(err, storage.ErrNotFound) {

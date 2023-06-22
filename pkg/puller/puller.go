@@ -36,6 +36,7 @@ const (
 	DefaultHistRateWindow = time.Minute * 15
 
 	intervalPrefix           = "sync_interval"
+	intervalRefresh          = "sync_interval_refresh"
 	recalcPeersDur           = time.Minute * 5
 	histSyncTimeout          = time.Minute * 10 // this timeout should always be higher than pullsync.makeOfferTimeout
 	refreshIntervalsDur      = time.Hour * 24
@@ -73,6 +74,7 @@ type Puller struct {
 	histSync        *atomic.Uint64 // current number of gorourines doing historical syncing
 	histSyncLimiter chan struct{}  // historical syncing limiter
 	rate            *rate.Rate     // rate of historical syncing
+	lastFresh       time.Time
 
 	start sync.Once
 }
@@ -118,6 +120,10 @@ func (p *Puller) Start(ctx context.Context) {
 	p.start.Do(func() {
 		cctx, cancel := context.WithCancel(ctx)
 		p.cancel = cancel
+
+		var refreshTimeStamp int64
+		_ = p.statestore.Get(intervalRefresh, &refreshTimeStamp)
+		p.lastFresh = time.Unix(refreshTimeStamp, 0)
 
 		p.wg.Add(1)
 		go p.manage(cctx)
@@ -199,19 +205,21 @@ func (p *Puller) manage(ctx context.Context) {
 		if err := p.resetIntervals(swarm.MaxBins); err != nil {
 			p.logger.Error(err, "reset all intervals")
 		}
+
+		p.lastFresh = time.Now()
+		_ = p.statestore.Put(intervalRefresh, p.lastFresh.Unix())
 	}
 
-	refreshTick := time.NewTicker(p.refreshIntervalsDur)
-	defer refreshTick.Stop()
-
 	for {
+
+		if time.Now().After(p.lastFresh.Add(p.refreshIntervalsDur)) {
+			refreshSync()
+		}
 
 		startSync()
 
 		select {
 		case <-c:
-		case <-refreshTick.C:
-			refreshSync()
 		case <-ctx.Done():
 			return
 		}
