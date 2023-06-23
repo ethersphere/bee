@@ -15,6 +15,7 @@ import (
 	pstoremock "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/storage/inmemstore"
+	"github.com/google/go-cmp/cmp"
 )
 
 // TestSaveLoad tests the idempotence of saving and loading the postage.Service
@@ -112,7 +113,7 @@ func TestGetStampIssuer(t *testing.T) {
 			if err != nil {
 				t.Fatalf("expected no error, got %v", err)
 			}
-			_ = save()
+			_ = save(true)
 			if st.Label() != string(id) {
 				t.Fatalf("wrong issuer returned")
 			}
@@ -159,7 +160,7 @@ func TestGetStampIssuer(t *testing.T) {
 		if st.Label() != "recovered" {
 			t.Fatal("wrong issuer returned")
 		}
-		err = sv()
+		err = sv(true)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -173,7 +174,7 @@ func TestGetStampIssuer(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		_ = save()
+		_ = save(true)
 		if stampIssuer.Amount().Cmp(big.NewInt(13)) != 0 {
 			t.Fatalf("expected amount %d got %d", 13, stampIssuer.Amount().Int64())
 		}
@@ -187,7 +188,7 @@ func TestGetStampIssuer(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		_ = save()
+		_ = save(true)
 		if stampIssuer.Amount().Cmp(big.NewInt(3)) != 0 {
 			t.Fatalf("expected amount %d got %d", 3, stampIssuer.Amount().Int64())
 		}
@@ -204,12 +205,39 @@ func TestGetStampIssuer(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		_ = save2()
+		_ = save2(true)
 
 		_, _, err = ps.GetStampIssuer(ids[1])
 		if !errors.Is(err, postage.ErrBatchInUse) {
 			t.Fatalf("expected ErrBatchInUse, got %v", err)
 		}
-		_ = save1()
+		_ = save1(true)
+	})
+	t.Run("save without update", func(t *testing.T) {
+		is, save, err := ps.GetStampIssuer(ids[1])
+		if err != nil {
+			t.Fatal(err)
+		}
+		data := is.Buckets()
+		modified := make([]uint32, len(data))
+		copy(modified, data)
+		for _, b := range modified {
+			b++
+		}
+
+		err = save(false)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		is, _, err = ps.GetStampIssuer(ids[1])
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !cmp.Equal(is.Buckets(), data) {
+			t.Fatal("expected buckets to be unchanged")
+		}
+
 	})
 }
