@@ -221,8 +221,9 @@ func TestGetStampIssuer(t *testing.T) {
 		data := is.Buckets()
 		modified := make([]uint32, len(data))
 		copy(modified, data)
-		for _, b := range modified {
+		for k, b := range modified {
 			b++
+			modified[k] = b
 		}
 
 		err = save(false)
