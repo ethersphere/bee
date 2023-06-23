@@ -238,7 +238,9 @@ func (c *ChunkStoreWrapper) Iterate(ctx context.Context, fn storage.IterateChunk
 	)
 }
 
-func (c *ChunkStoreWrapper) Close() error { return nil }
+func (c *ChunkStoreWrapper) Close() error {
+	return c.store.Close()
+}
 
 func IterateChunkEntries(st storage.Store, fn func(swarm.Address, bool) (bool, error)) error {
 	return st.Iterate(

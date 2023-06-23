@@ -16,7 +16,6 @@ import (
 	"github.com/ethersphere/bee/pkg/storage/leveldbstore"
 	"github.com/ethersphere/bee/pkg/storage/storageutil"
 	"github.com/google/uuid"
-	"github.com/syndtr/goleveldb/leveldb/opt"
 	"github.com/vmihailenco/msgpack/v5"
 )
 
@@ -88,6 +87,11 @@ func (t *txSharky) Release(ctx context.Context, loc sharky.Location) error {
 	return nil
 }
 
+var (
+	_ storage.ChunkStore = (*TxChunkStoreWrapper)(nil)
+	_ storage.Recoverer  = (*TxChunkStoreWrapper)(nil)
+)
+
 type TxChunkStoreWrapper struct {
 	*storage.TxChunkStoreBase
 
@@ -98,6 +102,9 @@ type TxChunkStoreWrapper struct {
 // release releases the TxChunkStoreWrapper transaction associated resources.
 func (cs *TxChunkStoreWrapper) release() {
 	cs.TxChunkStoreBase.ChunkStore = nil
+	cs.txSharky.toReleaseLocs = nil
+	cs.txSharky.toReleaseSums = nil
+	cs.txSharky.writtenLocs = nil
 	cs.txSharky.Sharky = nil
 }
 
@@ -109,17 +116,7 @@ func (cs *TxChunkStoreWrapper) Commit() error {
 		errs = errors.Join(errs, fmt.Errorf("txchunkstore: unable to commit index store transaction: %w", err))
 	}
 
-	if errs == nil {
-		for _, loc := range cs.txSharky.toReleaseLocs {
-			err := cs.txSharky.Sharky.Release(context.Background(), loc)
-			if err != nil {
-				errs = errors.Join(errs, fmt.Errorf("txchunkstore: unable to release location %v: %w", loc, err))
-				break
-			}
-		}
-	}
-
-	if err := cs.txSharky.store.DB().Delete(cs.txSharky.id, &opt.WriteOptions{Sync: true}); err != nil {
+	if err := cs.txSharky.store.DB().Delete(cs.txSharky.id, nil); err != nil {
 		errs = errors.Join(errs, fmt.Errorf("txchunkstore: unable to delete transaction: %x: %w", cs.txSharky.id, err))
 	}
 	return errs
@@ -142,7 +139,7 @@ func (cs *TxChunkStoreWrapper) Rollback() error {
 		}
 	}
 
-	if err := cs.txSharky.store.DB().Delete(cs.txSharky.id, &opt.WriteOptions{Sync: true}); err != nil {
+	if err := cs.txSharky.store.DB().Delete(cs.txSharky.id, nil); err != nil {
 		errs = errors.Join(errs, fmt.Errorf("txchunkstore: unable to delete transaction: %x: %w", cs.txSharky.id, err))
 	}
 	return errs

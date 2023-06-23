@@ -30,7 +30,7 @@ type txRevertOpStore struct {
 
 // Append implements storage.TxRevertOpStore.
 func (s *txRevertOpStore) Append(op *storage.TxRevertOp[[]byte, []byte]) error {
-	if s == nil {
+	if s == nil || op == nil {
 		return nil
 	}
 
@@ -82,7 +82,10 @@ func (s *txRevertOpStore) Clean() error {
 	return s.db.Delete(s.id, &opt.WriteOptions{Sync: true})
 }
 
-var _ storage.TxStore = (*TxStore)(nil)
+var (
+	_ storage.TxStore   = (*TxStore)(nil)
+	_ storage.Recoverer = (*TxStore)(nil)
+)
 
 // TxStore is an implementation of in-memory Store
 // where all Store operations are done in a transaction.

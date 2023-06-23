@@ -6,6 +6,7 @@ package storer_test
 
 import (
 	"context"
+	"github.com/ethersphere/bee/pkg/postage"
 	"math/rand"
 	"testing"
 	"time"
@@ -95,7 +96,7 @@ func TestReserveSampler(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			if diff := cmp.Diff(sample.Items, sample1.Items); diff != "" {
+			if diff := cmp.Diff(sample.Items, sample1.Items, cmp.AllowUnexported(postage.Stamp{})); diff != "" {
 				t.Fatalf("samples different (-want +have):\n%s", diff)
 			}
 

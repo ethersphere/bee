@@ -314,7 +314,7 @@ type InMemTxRevertOpStore[K, V any] struct {
 
 // Append implements TxRevertOpStore.
 func (s *InMemTxRevertOpStore[K, V]) Append(op *TxRevertOp[K, V]) error {
-	if s == nil {
+	if s == nil || op == nil {
 		return nil
 	}
 

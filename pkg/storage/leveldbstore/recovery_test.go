@@ -36,12 +36,12 @@ func TestTxStore_Recovery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	txStore := leveldbstore.NewTxStore(store)
 	t.Cleanup(func() {
-		if err := store.Close(); err != nil {
-			t.Fatalf("close store: %v", err)
+		if err := txStore.Close(); err != nil {
+			t.Fatalf("close: %v", err)
 		}
 	})
-	txStore := leveldbstore.NewTxStore(store)
 
 	objects := make([]*obj, 10)
 	for i := range objects {
@@ -51,7 +51,7 @@ func TestTxStore_Recovery(t *testing.T) {
 		}
 	}
 
-	// Sore half of the objects in a committed transaction.
+	// Sore half of the objects within a transaction and commit it.
 	tx := txStore.NewTx(storage.NewTxState(context.TODO()))
 	for i := 0; i < len(objects)/2; i++ {
 		if err := tx.Put(objects[i]); err != nil {
@@ -62,8 +62,8 @@ func TestTxStore_Recovery(t *testing.T) {
 		t.Fatalf("commit: %v", err)
 	}
 
-	// Delete the first stored half of the objects
-	// and store the other half in an unfinished transaction.
+	// Delete the first stored half of the objects and store
+	// the other half and don't commit or revert the transaction.
 	tx = txStore.NewTx(storage.NewTxState(context.TODO()))
 	for i := 0; i < len(objects)/2; i++ {
 		if err := tx.Delete(objects[i]); err != nil {
@@ -75,8 +75,8 @@ func TestTxStore_Recovery(t *testing.T) {
 			t.Fatalf("put %d: %v", i, err)
 		}
 	}
-	// Do not commit the transaction as if
-	// the process crashes and attempt to recover.
+	// Do not commit or rollback the transaction as
+	// if the process crashes and attempt to recover.
 	if err := txStore.Recover(); err != nil {
 		t.Fatalf("recover: %v", err)
 	}

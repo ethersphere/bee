@@ -51,6 +51,11 @@ func TestMultipleStampsRefCnt(t *testing.T) {
 	}
 
 	chunkStore := chunkstore.NewTxChunkStore(leveldbstore.NewTxStore(store), sharky)
+	t.Cleanup(func() {
+		if err := chunkStore.Close(); err != nil {
+			t.Fatalf("close chunk store: %v", err)
+		}
+	})
 
 	var (
 		chunk  = chunktest.GenerateTestRandomChunk()

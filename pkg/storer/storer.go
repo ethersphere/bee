@@ -301,7 +301,7 @@ func initDiskRepository(ctx context.Context, basePath string, opts *Options) (st
 	}
 
 	txChunkStore := chunkstore.NewTxChunkStore(txStore, sharky)
-	if err := txChunkStore.Recover(store); err != nil {
+	if err := txChunkStore.Recover(); err != nil {
 		return nil, nil, fmt.Errorf("failed to recover chunk store: %w", err)
 	}
 
