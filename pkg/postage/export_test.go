@@ -44,3 +44,7 @@ func (si *stampItem) WithBatchTimestamp(timestamp []byte) *StampItem {
 func NewStampItem() *StampItem {
 	return new(stampItem)
 }
+
+func ModifyBuckets(st *StampIssuer, buckets []uint32) {
+	st.data.Buckets = buckets
+}
