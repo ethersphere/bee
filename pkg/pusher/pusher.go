@@ -225,6 +225,13 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 		select {
 		case op := <-cc:
 			if s.inflight.set(op.Chunk) {
+				if op.Direct {
+					select {
+					case op.Err <- nil:
+					default:
+						s.logger.Debug("chunk already in flight, skipping", "chunk", op.Chunk.Address())
+					}
+				}
 				continue
 			}
 			select {
@@ -291,14 +298,13 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) error {
 	loggerV1 := logger.V(1).Build()
 
-	defer s.inflight.delete(op.Chunk)
-
 	var (
 		receipt *pushsync.Receipt
 		err     error
 	)
 
 	defer func() {
+		s.inflight.delete(op.Chunk)
 		select {
 		case op.Err <- err:
 		default:

@@ -772,7 +772,7 @@ type putterOptions struct {
 type putterSessionWrapper struct {
 	storer.PutterSession
 	stamper postage.Stamper
-	save    func() error
+	save    func(bool) error
 }
 
 func (p *putterSessionWrapper) Put(ctx context.Context, chunk swarm.Chunk) error {
@@ -788,10 +788,14 @@ func (p *putterSessionWrapper) Done(ref swarm.Address) error {
 	if err != nil {
 		return err
 	}
-	return p.save()
+	return p.save(true)
 }
 
-func (s *Service) getStamper(batchID []byte) (postage.Stamper, func() error, error) {
+func (p *putterSessionWrapper) Cleanup() error {
+	return errors.Join(p.PutterSession.Cleanup(), p.save(false))
+}
+
+func (s *Service) getStamper(batchID []byte) (postage.Stamper, func(bool) error, error) {
 	exists, err := s.batchStore.Exists(batchID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("batch exists: %w", err)
