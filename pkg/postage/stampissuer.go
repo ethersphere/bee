@@ -180,8 +180,14 @@ func NewStampIssuer(label, keyID string, batchID []byte, batchAmount *big.Int, b
 func (si *StampIssuer) increment(addr swarm.Address) (batchIndex []byte, batchTimestamp []byte, err error) {
 	bIdx := toBucket(si.BucketDepth(), addr)
 	bCnt := si.data.Buckets[bIdx]
-	if bCnt == 1<<(si.Depth()-si.BucketDepth()) {
-		return nil, nil, ErrBucketFull
+
+	if bCnt == si.BucketUpperBound() {
+		if si.ImmutableFlag() {
+			return nil, nil, ErrBucketFull
+		}
+
+		bCnt = 0
+		si.data.Buckets[bIdx] = 0
 	}
 
 	si.data.Buckets[bIdx]++
