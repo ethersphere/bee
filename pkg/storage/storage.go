@@ -172,5 +172,12 @@ type Store interface {
 	Put(Item) error
 
 	// Delete removes the given Item form the store.
+	// It will not return error if the key doesn't exist.
 	Delete(Item) error
+}
+
+// Recoverer allows store to recover from a failure when
+// the transaction was not committed or rolled back.
+type Recoverer interface {
+	Recover() error
 }

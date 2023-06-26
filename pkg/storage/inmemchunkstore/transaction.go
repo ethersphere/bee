@@ -22,7 +22,7 @@ type TxChunkStore struct {
 
 	// Bookkeeping of invasive operations executed
 	// on the ChunkStore to support rollback functionality.
-	revOps *storage.TxRevStack
+	revOps storage.TxRevertOpStore[swarm.Address, swarm.Chunk]
 }
 
 // release releases the TxStore transaction associated resources.
@@ -35,12 +35,10 @@ func (s *TxChunkStore) release() {
 func (s *TxChunkStore) Put(ctx context.Context, chunk swarm.Chunk) (err error) {
 	err = s.TxChunkStoreBase.Put(ctx, chunk)
 	if err == nil {
-		s.revOps.Append(&storage.TxRevertOp{
+		err = s.revOps.Append(&storage.TxRevertOp[swarm.Address, swarm.Chunk]{
 			Origin:   storage.PutOp,
 			ObjectID: chunk.Address().String(),
-			Revert: func() error {
-				return s.TxChunkStoreBase.ChunkStore.Delete(ctx, chunk.Address())
-			},
+			Key:      chunk.Address(),
 		})
 	}
 	return err
@@ -54,12 +52,10 @@ func (s *TxChunkStore) Delete(ctx context.Context, addr swarm.Address) error {
 	}
 	err = s.TxChunkStoreBase.Delete(ctx, addr)
 	if err == nil {
-		s.revOps.Append(&storage.TxRevertOp{
+		err = s.revOps.Append(&storage.TxRevertOp[swarm.Address, swarm.Chunk]{
 			Origin:   storage.DeleteOp,
 			ObjectID: addr.String(),
-			Revert: func() error {
-				return s.TxChunkStoreBase.ChunkStore.Put(ctx, chunk)
-			},
+			Val:      chunk,
 		})
 	}
 	return err
@@ -69,7 +65,13 @@ func (s *TxChunkStore) Delete(ctx context.Context, addr swarm.Address) error {
 func (s *TxChunkStore) Commit() error {
 	defer s.release()
 
-	return s.TxState.Done()
+	if err := s.TxState.Done(); err != nil {
+		return err
+	}
+	if err := s.revOps.Clean(); err != nil {
+		return fmt.Errorf("inmemchunkstore: unable to clean revert operations: %w", err)
+	}
+	return nil
 }
 
 // Rollback implements the Tx interface.
@@ -77,18 +79,18 @@ func (s *TxChunkStore) Rollback() error {
 	defer s.release()
 
 	if err := s.TxChunkStoreBase.Rollback(); err != nil {
-		return err
+		return fmt.Errorf("inmemchunkstore: unable to rollback: %w", err)
 	}
 
 	if err := s.revOps.Revert(); err != nil {
-		return fmt.Errorf("inmemchunkstore: unable to rollback: %w", err)
+		return fmt.Errorf("inmemchunkstore: unable to revert operations: %w", err)
 	}
 	return nil
 }
 
 // NewTx implements the TxStore interface.
 func (s *TxChunkStore) NewTx(state *storage.TxState) storage.TxChunkStore {
-	if s.TxChunkStoreBase.ChunkStore == nil {
+	if s.ChunkStore == nil {
 		panic(errors.New("inmemchunkstore: nil store"))
 	}
 
@@ -97,11 +99,23 @@ func (s *TxChunkStore) NewTx(state *storage.TxState) storage.TxChunkStore {
 			TxState:    state,
 			ChunkStore: s.ChunkStore,
 		},
-		revOps: new(storage.TxRevStack),
+		revOps: storage.NewInMemTxRevertOpStore(
+			map[storage.TxOpCode]storage.TxRevertFn[swarm.Address, swarm.Chunk]{
+				storage.PutOp: func(address swarm.Address, _ swarm.Chunk) error {
+					return s.ChunkStore.Delete(context.Background(), address)
+				},
+				storage.DeleteOp: func(_ swarm.Address, chunk swarm.Chunk) error {
+					return s.ChunkStore.Put(context.Background(), chunk)
+				},
+			},
+		),
 	}
 }
 
 // NewTxChunkStore returns a new TxChunkStore instance backed by the given chunk store.
 func NewTxChunkStore(store storage.ChunkStore) *TxChunkStore {
-	return &TxChunkStore{TxChunkStoreBase: &storage.TxChunkStoreBase{ChunkStore: store}}
+	return &TxChunkStore{
+		TxChunkStoreBase: &storage.TxChunkStoreBase{ChunkStore: store},
+		revOps:           new(storage.NoOpTxRevertOpStore[swarm.Address, swarm.Chunk]),
+	}
 }

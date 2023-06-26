@@ -90,8 +90,8 @@ func (pi proxyItem) String() string {
 	return storageutil.JoinFields(pi.Namespace(), pi.ID())
 }
 
-// newItemProxy creates a new proxyItem.
-func newItemProxy(key string, obj interface{}) *proxyItem {
+// newProxyItem creates a new proxyItem.
+func newProxyItem(key string, obj interface{}) *proxyItem {
 	return &proxyItem{ns: stateStoreNamespace, key: key, obj: obj}
 }
 
@@ -130,7 +130,10 @@ func (ri *rawItem) Unmarshal(data []byte) error {
 	return ri.proxyItem.Unmarshal(data)
 }
 
-var _ storage.StateStorer = (*StateStorerAdapter)(nil)
+var (
+	_ storage.StateStorer        = (*StateStorerAdapter)(nil)
+	_ storage.StateStorerCleaner = (*StateStorerAdapter)(nil)
+)
 
 // StateStorerAdapter is an adapter from Store to the StateStorer.
 type StateStorerAdapter struct {
@@ -144,24 +147,24 @@ func (s *StateStorerAdapter) Close() error {
 
 // Get implements StateStorer interface.
 func (s *StateStorerAdapter) Get(key string, obj interface{}) (err error) {
-	return s.storage.Get(newItemProxy(key, obj))
+	return s.storage.Get(newProxyItem(key, obj))
 }
 
 // Put implements StateStorer interface.
 func (s *StateStorerAdapter) Put(key string, obj interface{}) (err error) {
-	return s.storage.Put(newItemProxy(key, obj))
+	return s.storage.Put(newProxyItem(key, obj))
 }
 
 // Delete implements StateStorer interface.
 func (s *StateStorerAdapter) Delete(key string) (err error) {
-	return s.storage.Delete(newItemProxy(key, nil))
+	return s.storage.Delete(newProxyItem(key, nil))
 }
 
 // Iterate implements StateStorer interface.
 func (s *StateStorerAdapter) Iterate(prefix string, iterFunc storage.StateIterFunc) (err error) {
 	return s.storage.Iterate(
 		storage.Query{
-			Factory: func() storage.Item { return &rawItem{newItemProxy("", []byte(nil))} },
+			Factory: func() storage.Item { return &rawItem{newProxyItem("", []byte(nil))} },
 			Prefix:  prefix,
 		},
 		func(res storage.Result) (stop bool, err error) {
@@ -177,9 +180,15 @@ func (s *StateStorerAdapter) Iterate(prefix string, iterFunc storage.StateIterFu
 
 func (s *StateStorerAdapter) Nuke() error {
 	var (
-		keys               []string
-		prefixesToPreserve = []string{"accounting", "pseudosettle", "swap", "non-mineable-overlay", "overlayV2_nonce"}
-		err                error
+		prefixesToPreserve = []string{
+			"non-mineable-overlay",
+			"overlayV2_nonce",
+			"pseudosettle",
+			"accounting",
+			"swap",
+		}
+		keys []string
+		err  error
 	)
 
 	keys, err = s.collectKeysExcept(prefixesToPreserve)

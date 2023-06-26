@@ -345,7 +345,7 @@ func removeChunk(ctx context.Context, store internal.Storage, item *batchRadiusI
 		return err
 	}
 
-	err := indexStore.Delete(&chunkBinItem{Bin: item.Bin, BinID: item.BinID})
+	err := indexStore.Delete(&chunkBinItem{Bin: item.Bin, BinID: item.BinID, Address: item.Address})
 	if err != nil {
 		return err
 	}

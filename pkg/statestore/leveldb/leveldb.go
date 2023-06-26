@@ -24,7 +24,10 @@ import (
 // loggerName is the tree path name of the logger for this package.
 const loggerName = "leveldb"
 
-var _ storage.StateStorer = (*Store)(nil)
+var (
+	_ storage.StateStorer        = (*Store)(nil)
+	_ storage.StateStorerCleaner = (*Store)(nil)
+)
 
 // Store uses LevelDB to store values.
 type Store struct {
