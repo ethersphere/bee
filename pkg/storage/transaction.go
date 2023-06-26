@@ -250,7 +250,9 @@ func (s *TxStoreBase) Delete(item Item) error {
 // Rollback implements the TxStore interface.
 func (s *TxStoreBase) Rollback() error {
 	if s.rolledBack.CompareAndSwap(false, true) {
-		if err := s.Done(); err == nil || errors.Is(err, context.Canceled) {
+		if err := s.Done(); err == nil ||
+			errors.Is(err, context.Canceled) ||
+			errors.Is(err, context.DeadlineExceeded) {
 			return nil
 		}
 	}
@@ -319,7 +321,9 @@ func (s *TxChunkStoreBase) Delete(ctx context.Context, address swarm.Address) er
 // Rollback implements the TxChunkStore interface.
 func (s *TxChunkStoreBase) Rollback() error {
 	if s.rolledBack.CompareAndSwap(false, true) {
-		if err := s.Done(); err == nil || errors.Is(err, context.Canceled) {
+		if err := s.Done(); err == nil ||
+			errors.Is(err, context.Canceled) ||
+			errors.Is(err, context.DeadlineExceeded) {
 			return nil
 		}
 	}
