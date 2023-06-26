@@ -114,8 +114,7 @@ func TestStamperStamping(t *testing.T) {
 		testItem := postage.NewStampItem().
 			WithBatchID(st.ID()).
 			WithChunkAddress(chunkAddr).
-			WithBatchIndex(index).
-			WithBatchTimestamp([]byte{0, 0, 0, 0, 0, 0, 0, 0})
+			WithBatchIndex(index)
 		testSt := &testStore{Store: inmemstore.New(), stampItem: testItem}
 		stamper := postage.NewStamper(testSt, st, signer)
 		stamp, err := stamper.Stamp(chunkAddr)
