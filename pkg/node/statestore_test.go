@@ -18,7 +18,7 @@ import (
 
 func TestInitStamperStore(t *testing.T) {
 	dataDir := t.TempDir()
-	stateStore, err := InitStateStore(log.Noop, dataDir)
+	stateStore, err := InitStateStore(log.Noop, dataDir, 100_000)
 	if err != nil {
 		t.Fatal(err)
 	}

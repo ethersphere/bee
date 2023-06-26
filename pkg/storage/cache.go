@@ -8,20 +8,25 @@ import (
 	lru "github.com/hashicorp/golang-lru/v2"
 )
 
-type cache struct {
+var _ Store = (*Cache)(nil)
+
+type Cache struct {
 	s Store
 	c *lru.Cache[string, []byte]
 }
 
-func NewCacheLayer(store Store, capacity int) Store {
+// MemCaching adds a layer of in-memory caching to basic Store operations.
+// Should NOT be used in cases where transactions are involved.
+func MemCaching(store Store, capacity int) *Cache {
 	c, _ := lru.New[string, []byte](capacity)
-	return &cache{store, c}
+	return &Cache{store, c}
 }
 
-func (c *cache) Get(i Item) error {
+func (c *Cache) Get(i Item) error {
 	if val, ok := c.c.Get(i.ID()); ok {
 		return i.Unmarshal(val)
 	}
+
 	err := c.s.Get(i)
 	if err != nil {
 		return err
@@ -32,40 +37,40 @@ func (c *cache) Get(i Item) error {
 	return nil
 }
 
-func (c *cache) Has(k Key) (bool, error) {
+func (c *Cache) Has(k Key) (bool, error) {
 	if _, ok := c.c.Get(k.ID()); ok {
 		return true, nil
 	}
 	return c.s.Has(k)
 }
 
-func (c *cache) GetSize(k Key) (int, error) {
+func (c *Cache) GetSize(k Key) (int, error) {
 	return c.s.GetSize(k)
 }
 
-func (c *cache) Iterate(q Query, f IterateFn) error {
+func (c *Cache) Iterate(q Query, f IterateFn) error {
 	return c.s.Iterate(q, f)
 }
 
-func (c *cache) Count(k Key) (int, error) {
+func (c *Cache) Count(k Key) (int, error) {
 	return c.s.Count(k)
 }
 
-func (c *cache) Put(i Item) error {
+func (c *Cache) Put(i Item) error {
 	c.addCache(i)
 	return c.s.Put(i)
 }
 
-func (c *cache) Delete(i Item) error {
+func (c *Cache) Delete(i Item) error {
 	_ = c.c.Remove(i.ID())
 	return c.s.Delete(i)
 }
 
-func (c *cache) Close() error {
+func (c *Cache) Close() error {
 	return c.s.Close()
 }
 
-func (c *cache) addCache(i Item) {
+func (c *Cache) addCache(i Item) {
 	b, err := i.Marshal()
 	if err != nil {
 		return

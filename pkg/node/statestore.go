@@ -20,7 +20,7 @@ import (
 // InitStateStore will initialize the stateStore with the given path to the
 // data directory. When given an empty directory path, the function will instead
 // initialize an in-memory state store that will not be persisted.
-func InitStateStore(logger log.Logger, dataDir string) (storage.StateStorer, error) {
+func InitStateStore(logger log.Logger, dataDir string, cacheCapacity uint64) (storage.StateStorer, error) {
 	if dataDir == "" {
 		logger.Warning("using in-mem state store, no node state will be persisted")
 	} else {
@@ -31,7 +31,7 @@ func InitStateStore(logger log.Logger, dataDir string) (storage.StateStorer, err
 		return nil, err
 	}
 
-	return storeadapter.NewStateStorerAdapter(storage.NewCacheLayer(ldb, 100_000))
+	return storeadapter.NewStateStorerAdapter(storage.MemCaching(ldb, int(cacheCapacity)))
 }
 
 // InitStamperStore will create new stamper store with the given path to the

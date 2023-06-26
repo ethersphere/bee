@@ -570,7 +570,7 @@ func dbNukeCmd(cmd *cobra.Command) {
 				return fmt.Errorf("get forget stamps: %w", err)
 			}
 
-			stateStore, err := node.InitStateStore(logger, dataDir)
+			stateStore, err := node.InitStateStore(logger, dataDir, 0)
 			if err != nil {
 				return fmt.Errorf("new statestore: %w", err)
 			}
