@@ -41,7 +41,15 @@ func (f filters) matchAny(k string, v []byte) bool {
 	return false
 }
 
-var _ storage.Store = (*Store)(nil)
+// Storer returns the underlying db store.
+type Storer interface {
+	DB() *leveldb.DB
+}
+
+var (
+	_ Storer        = (*Store)(nil)
+	_ storage.Store = (*Store)(nil)
+)
 
 type Store struct {
 	db      *leveldb.DB
@@ -52,8 +60,10 @@ type Store struct {
 // New returns a new store the backed by leveldb.
 // If path == "", the leveldb will run with in memory backend storage.
 func New(path string, opts *opt.Options) (*Store, error) {
-	var err error
-	var db *leveldb.DB
+	var (
+		err error
+		db  *leveldb.DB
+	)
 
 	if path == "" {
 		db, err = leveldb.Open(ldbStorage.NewMemStorage(), opts)
@@ -68,12 +78,15 @@ func New(path string, opts *opt.Options) (*Store, error) {
 		return nil, err
 	}
 
-	ds := Store{
+	return &Store{
 		db:   db,
 		path: path,
-	}
+	}, nil
+}
 
-	return &ds, nil
+// DB implements the Storer interface.
+func (s *Store) DB() *leveldb.DB {
+	return s.db
 }
 
 // Close implements the storage.Store interface.

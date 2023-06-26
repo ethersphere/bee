@@ -104,74 +104,6 @@ func NewTxState(ctx context.Context) *TxState {
 	return &TxState{ctx: ctx, cancel: cancel}
 }
 
-// TxOpCode represents code for tx operations.
-type TxOpCode string
-
-const (
-	PutOp       TxOpCode = "put"
-	PutCreateOp TxOpCode = "putCreate"
-	PutUpdateOp TxOpCode = "putUpdate"
-	DeleteOp    TxOpCode = "delete"
-)
-
-// TxRevertOp represents a reverse operation that
-// can be invoked by calling its Revert function.
-type TxRevertOp struct {
-	// Origin is the TxOpCode of the operation that
-	// is the originator of the Revert operation.
-	Origin TxOpCode
-
-	// ObjectID is a unique object identifier on
-	// which the Revert operation is invoked.
-	ObjectID string
-
-	// Revert is the inverse operation to the Origin.
-	Revert func() error
-}
-
-// TxRevStack tracks reverse operations.
-type TxRevStack struct {
-	mu  sync.Mutex
-	ops []*TxRevertOp
-}
-
-// Append appends a Revert operation to the stack.
-func (to *TxRevStack) Append(op *TxRevertOp) {
-	if to == nil {
-		return
-	}
-
-	to.mu.Lock()
-	to.ops = append(to.ops, op)
-	to.mu.Unlock()
-}
-
-// Revert executes all the revere operations in the stack in reverse order.
-// If an error occurs during the call to the Revert operation, this error
-// is captured and execution continues to the top of the stack.
-func (to *TxRevStack) Revert() error {
-	if to == nil {
-		return nil
-	}
-
-	to.mu.Lock()
-	defer to.mu.Unlock()
-
-	var errs error
-	for i := len(to.ops) - 1; i >= 0; i-- {
-		op := to.ops[i]
-		if err := op.Revert(); err != nil {
-			errs = errors.Join(errs, fmt.Errorf(
-				"revert operation %q for object %s failed: %w",
-				op.Origin,
-				op.ObjectID,
-				err,
-			))
-		}
-	}
-	return errs
-}
-
 var _ Store = (*TxStoreBase)(nil)
 
 // TxStoreBase implements the Store interface where
@@ -328,4 +260,116 @@ func (s *TxChunkStoreBase) Rollback() error {
 		}
 	}
 	return s.IsDone()
+}
+
+// TxOpCode represents code for tx operations.
+type TxOpCode string
+
+const (
+	PutOp       TxOpCode = "put"
+	PutCreateOp TxOpCode = "putCreate"
+	PutUpdateOp TxOpCode = "putUpdate"
+	DeleteOp    TxOpCode = "delete"
+)
+
+// TxRevertOp represents a reverse operation.
+type TxRevertOp[K, V any] struct {
+	Origin   TxOpCode
+	ObjectID string
+
+	Key K
+	Val V
+}
+
+// TxRevertFn represents a function that can be invoked
+// to reverse the operation that was performed by the
+// corresponding TxOpCode.
+type TxRevertFn[K, V any] func(K, V) error
+
+// TxRevertOpStore represents a store for TxRevertOp.
+type TxRevertOpStore[K, V any] interface {
+	// Append appends a Revert operation to the store.
+	Append(*TxRevertOp[K, V]) error
+	// Revert executes all the revere operations
+	// in the store in reverse order.
+	Revert() error
+	// Clean cleans the store.
+	Clean() error
+}
+
+// NoOpTxRevertOpStore is a no-op implementation of TxRevertOpStore.
+type NoOpTxRevertOpStore[K, V any] struct{}
+
+func (s *NoOpTxRevertOpStore[K, V]) Append(*TxRevertOp[K, V]) error { return nil }
+func (s *NoOpTxRevertOpStore[K, V]) Revert() error                  { return nil }
+func (s *NoOpTxRevertOpStore[K, V]) Clean() error                   { return nil }
+
+// InMemTxRevertOpStore is an in-memory implementation of TxRevertOpStore.
+type InMemTxRevertOpStore[K, V any] struct {
+	revOpsFn map[TxOpCode]TxRevertFn[K, V]
+
+	mu  sync.Mutex
+	ops []*TxRevertOp[K, V]
+}
+
+// Append implements TxRevertOpStore.
+func (s *InMemTxRevertOpStore[K, V]) Append(op *TxRevertOp[K, V]) error {
+	if s == nil || op == nil {
+		return nil
+	}
+
+	s.mu.Lock()
+	s.ops = append(s.ops, op)
+	s.mu.Unlock()
+	return nil
+}
+
+// Revert implements TxRevertOpStore.
+func (s *InMemTxRevertOpStore[K, V]) Revert() error {
+	if s == nil {
+		return nil
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var errs error
+	for i := len(s.ops) - 1; i >= 0; i-- {
+		op := s.ops[i]
+		if fn, ok := s.revOpsFn[op.Origin]; !ok {
+			errs = errors.Join(errs, fmt.Errorf(
+				"revert operation %q for object %s not found",
+				op.Origin,
+				op.ObjectID,
+			))
+		} else if err := fn(op.Key, op.Val); err != nil {
+			errs = errors.Join(errs, fmt.Errorf(
+				"revert operation %q for object %s failed: %w",
+				op.Origin,
+				op.ObjectID,
+				err,
+			))
+		}
+	}
+	s.ops = nil
+	return errs
+}
+
+// Clean implements TxRevertOpStore.
+func (s *InMemTxRevertOpStore[K, V]) Clean() error {
+	if s == nil {
+		return nil
+	}
+
+	s.mu.Lock()
+	s.ops = nil
+	s.mu.Unlock()
+	return nil
+}
+
+// NewInMemTxRevertOpStore is a convenient constructor for creating instances of
+// InMemTxRevertOpStore. The revOpsFn map is used to look up the revert function
+// for a given TxOpCode.
+func NewInMemTxRevertOpStore[K, V any](revOpsFn map[TxOpCode]TxRevertFn[K, V]) *InMemTxRevertOpStore[K, V] {
+	return &InMemTxRevertOpStore[K, V]{revOpsFn: revOpsFn}
 }
