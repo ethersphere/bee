@@ -4,15 +4,17 @@
 
 package storage
 
-import lru "github.com/hashicorp/golang-lru/v2"
+import (
+	lru "github.com/hashicorp/golang-lru/v2"
+)
 
 type cache struct {
 	s Store
 	c *lru.Cache[string, []byte]
 }
 
-func NewCacheLayer(store Store, maxCapacity int) Store {
-	c, _ := lru.New[string, []byte](maxCapacity)
+func NewCacheLayer(store Store, capacity int) Store {
+	c, _ := lru.New[string, []byte](capacity)
 	return &cache{store, c}
 }
 
