@@ -297,7 +297,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameAdminPasswordHash, "", "bcrypt hash of the admin password to get the security token")
 	cmd.Flags().Bool(optionNameUsePostageSnapshot, false, "bootstrap node using postage snapshot from the network")
 	cmd.Flags().Bool(optionNameStorageIncentivesEnable, true, "enable storage incentives feature")
-	cmd.Flags().Uint64(optionNameStateStoreCacheCapacity, 250_000, "statestore memory caching capacity")
+	cmd.Flags().Uint64(optionNameStateStoreCacheCapacity, 100_000, "lru memory caching capacity in number of statestore entries")
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {
