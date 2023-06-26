@@ -60,7 +60,7 @@ func (st *stamper) Stamp(addr swarm.Address) (*Stamp, error) {
 		if err := st.store.Put(item); err != nil {
 			return nil, err
 		}
-	case err != nil:
+	default:
 		return nil, fmt.Errorf("get stamp for %s: %w", item, err)
 	}
 
