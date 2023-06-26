@@ -30,7 +30,8 @@ func InitStateStore(logger log.Logger, dataDir string) (storage.StateStorer, err
 	if err != nil {
 		return nil, err
 	}
-	return storeadapter.NewStateStorerAdapter(ldb)
+
+	return storeadapter.NewStateStorerAdapter(storage.NewCacheLayer(ldb, 100_000))
 }
 
 // InitStamperStore will create new stamper store with the given path to the
