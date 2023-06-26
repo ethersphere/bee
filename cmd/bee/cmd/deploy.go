@@ -40,7 +40,7 @@ func (c *command) initDeployCmd() error {
 			if swapEndpoint != "" {
 				blockchainRpcEndpoint = swapEndpoint
 			}
-			stateStore, err := node.InitStateStore(logger, dataDir, 1000)
+			stateStore, _, err := node.InitStateStore(logger, dataDir, 1000)
 			if err != nil {
 				return err
 			}

@@ -10,9 +10,11 @@ import (
 	"path/filepath"
 
 	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/statestore/storeadapter"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage/cache"
 	"github.com/ethersphere/bee/pkg/storage/leveldbstore"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -20,7 +22,7 @@ import (
 // InitStateStore will initialize the stateStore with the given path to the
 // data directory. When given an empty directory path, the function will instead
 // initialize an in-memory state store that will not be persisted.
-func InitStateStore(logger log.Logger, dataDir string, cacheCapacity uint64) (storage.StateStorer, error) {
+func InitStateStore(logger log.Logger, dataDir string, cacheCapacity uint64) (storage.StateStorer, metrics.Collector, error) {
 	if dataDir == "" {
 		logger.Warning("using in-mem state store, no node state will be persisted")
 	} else {
@@ -28,10 +30,13 @@ func InitStateStore(logger log.Logger, dataDir string, cacheCapacity uint64) (st
 	}
 	ldb, err := leveldbstore.New(dataDir, nil)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return storeadapter.NewStateStorerAdapter(storage.MemCaching(ldb, int(cacheCapacity)))
+	caching := cache.MemCaching(ldb, int(cacheCapacity))
+	stateStore, err := storeadapter.NewStateStorerAdapter(caching)
+
+	return stateStore, caching, err
 }
 
 // InitStamperStore will create new stamper store with the given path to the

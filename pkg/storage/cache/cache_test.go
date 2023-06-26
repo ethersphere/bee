@@ -2,12 +2,12 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package storage_test
+package cache_test
 
 import (
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage/cache"
 	"github.com/ethersphere/bee/pkg/storage/leveldbstore"
 	"github.com/ethersphere/bee/pkg/storage/storagetest"
 )
@@ -20,7 +20,7 @@ func TestCache(t *testing.T) {
 		t.Fatalf("create store failed: %v", err)
 	}
 
-	s := storage.MemCaching(store, 100_000)
+	s := cache.MemCaching(store, 100_000)
 
 	storagetest.TestStore(t, s)
 }
