@@ -44,6 +44,14 @@ func (st *stamper) Stamp(addr swarm.Address) (*Stamp, error) {
 		chunkAddress: addr,
 	}
 	switch err := st.store.Get(item); {
+	case err == nil:
+		// check if this index is in the past, it could happen that we encountered
+		// some error after assigning this index and did not save the issuer data. In
+		// this case we should assign a new index and update it.
+		if st.issuer.assigned(item.BatchIndex) {
+			break
+		}
+		fallthrough
 	case errors.Is(err, storage.ErrNotFound):
 		item.BatchIndex, item.BatchTimestamp, err = st.issuer.increment(addr)
 		if err != nil {

@@ -5,12 +5,14 @@
 package postage_test
 
 import (
+	"bytes"
 	"errors"
 	"math/big"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/inmemstore"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -104,6 +106,30 @@ func TestStamperStamping(t *testing.T) {
 		}
 	})
 
+	t.Run("incorrect old index", func(t *testing.T) {
+		st := newTestStampIssuer(t, 1000)
+		chunkAddr := swarm.RandAddress(t)
+		bIdx := postage.ToBucket(st.BucketDepth(), chunkAddr)
+		index := postage.IndexToBytes(bIdx, 100)
+		testItem := postage.NewStampItem().
+			WithBatchID(st.ID()).
+			WithChunkAddress(chunkAddr).
+			WithBatchIndex(index).
+			WithBatchTimestamp([]byte{0, 0, 0, 0, 0, 0, 0, 0})
+		testSt := &testStore{Store: inmemstore.New(), stampItem: testItem}
+		stamper := postage.NewStamper(testSt, st, signer)
+		stamp, err := stamper.Stamp(chunkAddr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := stamp.Valid(chunkAddr, owner, 12, 8, true); err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if bytes.Equal(stamp.Index(), testItem.BatchIndex) {
+			t.Fatalf("expected index to be different, got %x", stamp.Index())
+		}
+	})
+
 	// tests return with ErrOwnerMismatch
 	t.Run("owner mismatch", func(t *testing.T) {
 		owner[0] ^= 0xff // bitflip the owner first byte, this case must come last!
@@ -114,5 +140,20 @@ func TestStamperStamping(t *testing.T) {
 			t.Fatalf("expected ErrOwnerMismatch, got %v", err)
 		}
 	})
+}
 
+type testStore struct {
+	storage.Store
+	stampItem *postage.StampItem
+}
+
+func (t *testStore) Get(item storage.Item) error {
+	if item.Namespace() == (postage.StampItem{}).Namespace() {
+		if t.stampItem == nil {
+			return storage.ErrNotFound
+		}
+		*item.(*postage.StampItem) = *t.stampItem
+		return nil
+	}
+	return t.Store.Get(item)
 }
