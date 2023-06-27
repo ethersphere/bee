@@ -237,6 +237,9 @@ func DeleteAll(s storage.Store, namespace string, addr swarm.Address) error {
 func Delete(s storage.Store, namespace string, addr swarm.Address, batchId []byte) error {
 	stamp, err := LoadWithBatchID(s, namespace, addr, batchId)
 	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil
+		}
 		return err
 	}
 	return s.Delete(&item{
