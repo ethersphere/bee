@@ -11,6 +11,7 @@ import (
 var (
 	IndexToBytes   = indexToBytes
 	BlockThreshold = blockThreshold
+	ToBucket       = toBucket
 )
 
 var (
