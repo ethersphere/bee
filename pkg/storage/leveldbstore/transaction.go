@@ -13,7 +13,6 @@ import (
 	"github.com/ethersphere/bee/pkg/storage/storageutil"
 	"github.com/google/uuid"
 	"github.com/syndtr/goleveldb/leveldb"
-	"github.com/syndtr/goleveldb/leveldb/opt"
 )
 
 var _ storage.TxRevertOpStore[[]byte, []byte] = (*txRevertOpStore)(nil)
@@ -70,7 +69,7 @@ func (s *txRevertOpStore) Revert() error {
 	defer s.batch.Reset()
 
 	s.batch.Delete(s.id)
-	return s.db.Write(s.batch, &opt.WriteOptions{Sync: true})
+	return s.db.Write(s.batch, nil)
 }
 
 // Clean implements storage.TxRevertOpStore.
@@ -79,7 +78,7 @@ func (s *txRevertOpStore) Clean() error {
 		return nil
 	}
 
-	return s.db.Delete(s.id, &opt.WriteOptions{Sync: true})
+	return s.db.Delete(s.id, nil)
 }
 
 var (
