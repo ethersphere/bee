@@ -105,7 +105,6 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 	defer close(s.chunksWorkerQuitC)
 	select {
 	case <-time.After(warmupTime):
-		s.logger.Info("pusher: warmup period complete, worker starting.")
 	case <-s.quit:
 		return
 	}
