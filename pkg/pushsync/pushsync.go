@@ -43,7 +43,7 @@ const (
 	defaultTTL         = 30 * time.Second // request time to live
 	preemptiveInterval = 5 * time.Second  // P90 request time to live
 	sanctionWait       = 5 * time.Minute
-	overDraftRefresh   = time.Second
+	overDraftRefresh   = time.Millisecond * 600
 )
 
 const (

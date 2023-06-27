@@ -343,6 +343,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		AdminPasswordHash:             c.config.GetString(optionNameAdminPasswordHash),
 		UsePostageSnapshot:            c.config.GetBool(optionNameUsePostageSnapshot),
 		EnableStorageIncentives:       c.config.GetBool(optionNameStorageIncentivesEnable),
+		StatestoreCacheCapacity:       c.config.GetUint64(optionNameStateStoreCacheCapacity),
 	})
 
 	return b, err

@@ -119,7 +119,7 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 const (
 	retrieveChunkTimeout = time.Second * 10
 	preemptiveInterval   = time.Second
-	overDraftRefresh     = time.Second
+	overDraftRefresh     = time.Millisecond * 600
 	skiplistDur          = time.Minute
 	maxRetrievedErrors   = 32
 	originSuffix         = "_origin"
