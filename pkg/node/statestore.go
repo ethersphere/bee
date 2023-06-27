@@ -33,7 +33,7 @@ func InitStateStore(logger log.Logger, dataDir string, cacheCapacity uint64) (st
 		return nil, nil, err
 	}
 
-	caching := cache.MemCaching(ldb, int(cacheCapacity))
+	caching := cache.Wrap(ldb, int(cacheCapacity))
 	stateStore, err := storeadapter.NewStateStorerAdapter(caching)
 
 	return stateStore, caching, err
