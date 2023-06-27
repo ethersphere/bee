@@ -338,39 +338,19 @@ func removeChunk(ctx context.Context, store internal.Storage, item *batchRadiusI
 	indexStore := store.IndexStore()
 	chunkStore := store.ChunkStore()
 
-	if has, err := indexStore.Has(item); err != nil || !has {
-		// removeChunk is called from two places, if we collect the chunk for eviction
-		// but if it is already removed because of postage stamp index collision or
-		// vice versa, we should return early
-		return err
+	var errs error
+
+	stamp, _ := chunkstamp.LoadWithBatchID(indexStore, reserveNamespace, item.Address, item.BatchID)
+	if stamp != nil {
+		errs = stampindex.Delete(indexStore, reserveNamespace, swarm.NewChunk(item.Address, nil).WithStamp(stamp))
 	}
 
-	err := indexStore.Delete(&chunkBinItem{Bin: item.Bin, BinID: item.BinID, Address: item.Address})
-	if err != nil {
-		return err
-	}
-
-	stamp, err := chunkstamp.LoadWithBatchID(indexStore, reserveNamespace, item.Address, item.BatchID)
-	if err != nil {
-		return err
-	}
-
-	err = stampindex.Delete(indexStore, reserveNamespace, swarm.NewChunk(item.Address, nil).WithStamp(stamp))
-	if err != nil {
-		return err
-	}
-
-	err = chunkstamp.Delete(indexStore, reserveNamespace, item.Address, item.BatchID)
-	if err != nil {
-		return err
-	}
-
-	err = chunkStore.Delete(ctx, item.Address)
-	if err != nil {
-		return err
-	}
-
-	return indexStore.Delete(item)
+	return errors.Join(errs,
+		indexStore.Delete(&chunkBinItem{Bin: item.Bin, BinID: item.BinID}),
+		chunkstamp.Delete(indexStore, reserveNamespace, item.Address, item.BatchID),
+		chunkStore.Delete(ctx, item.Address),
+		indexStore.Delete(item),
+	)
 }
 
 func (r *Reserve) LastBinIDs(store storage.Store) ([]uint64, error) {

@@ -234,7 +234,6 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	}
 
 	if ps.topologyDriver.IsReachable() && ps.store.IsWithinStorageRadius(chunkAddress) {
-		ps.metrics.Storer.Inc()
 		return store(ctx)
 	}
 
