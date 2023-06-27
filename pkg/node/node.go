@@ -172,6 +172,7 @@ type Options struct {
 	AdminPasswordHash             string
 	UsePostageSnapshot            bool
 	EnableStorageIncentives       bool
+	StatestoreCacheCapacity       uint64
 }
 
 const (
@@ -246,7 +247,7 @@ func NewBee(
 		}
 	}(b)
 
-	stateStore, err := InitStateStore(logger, o.DataDir)
+	stateStore, stateStoreMetrics, err := InitStateStore(logger, o.DataDir, o.StatestoreCacheCapacity)
 	if err != nil {
 		return nil, err
 	}
@@ -1183,6 +1184,7 @@ func NewBee(
 		debugService.MustRegisterMetrics(localStore.Metrics()...)
 		debugService.MustRegisterMetrics(kad.Metrics()...)
 		debugService.MustRegisterMetrics(saludService.Metrics()...)
+		debugService.MustRegisterMetrics(stateStoreMetrics.Metrics()...)
 
 		if pullerService != nil {
 			debugService.MustRegisterMetrics(pullerService.Metrics()...)
