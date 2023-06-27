@@ -189,8 +189,6 @@ func (s *service) salud(mode string, minPeersPerbin int) {
 	s.metrics.Commitment.Set(float64(commitment))
 	s.metrics.ReserveSizePercentErr.Set(reserveSizePercentErr)
 
-	s.publishRadius(networkRadius)
-
 	s.logger.Debug("computed", "average", avgDur, "percentile", percentile, "pDur", pDur, "pConns", pConns, "network_radius", networkRadius, "neighborhood_radius", nHoodRadius, "batch_commitment", commitment)
 
 	for _, peer := range peers {
@@ -234,6 +232,8 @@ func (s *service) salud(mode string, minPeersPerbin int) {
 	}
 
 	s.isSelfHealthy.Store(selfHealth)
+
+	s.publishRadius(networkRadius)
 }
 
 func (s *service) IsHealthy() bool {
