@@ -5,81 +5,92 @@
 package cache
 
 import (
+	"errors"
 	"github.com/ethersphere/bee/pkg/storage"
-	lru "github.com/hashicorp/golang-lru/v2"
+	"github.com/hashicorp/golang-lru/v2"
 )
 
 var _ storage.Store = (*Cache)(nil)
 
+// Cache is a wrapper around a storage.Store that adds a layer
+// of in-memory caching for the Get and Has operations.
 type Cache struct {
-	s       storage.Store
-	c       *lru.Cache[string, []byte]
+	storage.Store
+
+	lru     *lru.Cache[string, []byte]
 	metrics metrics
 }
 
-// MemCaching adds a layer of in-memory caching to basic Store operations.
-// Should NOT be used in cases where transactions are involved.
-func MemCaching(store storage.Store, capacity int) *Cache {
-	c, _ := lru.New[string, []byte](capacity)
-	return &Cache{store, c, newMetrics()}
-}
-
-func (c *Cache) Get(i storage.Item) error {
-	if val, ok := c.c.Get(i.ID()); ok {
-		c.metrics.CacheHit.Inc()
-		return i.Unmarshal(val)
+// Wrap adds a layer of in-memory caching to basic Store operations.
+// This call will panic if the capacity is less than or equal to zero.
+// It will also panic if the given store implements storage.Tx.
+func Wrap(store storage.Store, capacity int) *Cache {
+	if _, ok := store.(storage.Tx); ok {
+		panic(errors.New("cache should not be used with transactions"))
 	}
 
-	err := c.s.Get(i)
+	lru, err := lru.New[string, []byte](capacity)
 	if err != nil {
-		return err
+		panic(err)
 	}
 
-	c.metrics.CacheMiss.Inc()
-	c.addCache(i)
-
-	return nil
+	return &Cache{store, lru, newMetrics()}
 }
 
-func (c *Cache) Has(k storage.Key) (bool, error) {
-	if _, ok := c.c.Get(k.ID()); ok {
-		c.metrics.CacheHit.Inc()
-		return true, nil
-	}
-	c.metrics.CacheMiss.Inc()
-	return c.s.Has(k)
-}
-
-func (c *Cache) GetSize(k storage.Key) (int, error) {
-	return c.s.GetSize(k)
-}
-
-func (c *Cache) Iterate(q storage.Query, f storage.IterateFn) error {
-	return c.s.Iterate(q, f)
-}
-
-func (c *Cache) Count(k storage.Key) (int, error) {
-	return c.s.Count(k)
-}
-
-func (c *Cache) Put(i storage.Item) error {
-	c.addCache(i)
-	return c.s.Put(i)
-}
-
-func (c *Cache) Delete(i storage.Item) error {
-	_ = c.c.Remove(i.ID())
-	return c.s.Delete(i)
-}
-
-func (c *Cache) Close() error {
-	return c.s.Close()
-}
-
-func (c *Cache) addCache(i storage.Item) {
+// add caches given item.
+func (c *Cache) add(i storage.Item) {
 	b, err := i.Marshal()
 	if err != nil {
 		return
 	}
-	c.c.Add(i.ID(), b)
+	c.lru.Add(i.ID(), b)
+}
+
+// Get implements storage.Store interface.
+// On a call it tries to first retrieve the item from cache.
+// If the item does not exist in cache, it tries to retrieve
+// it from the underlying store.
+func (c *Cache) Get(i storage.Item) error {
+	if val, ok := c.lru.Get(i.ID()); ok {
+		c.metrics.CacheHit.Inc()
+		return i.Unmarshal(val)
+	}
+
+	if err := c.Store.Get(i); err != nil {
+		return err
+	}
+
+	c.metrics.CacheMiss.Inc()
+	c.add(i)
+
+	return nil
+}
+
+// Has implements storage.Store interface.
+// On a call it tries to first retrieve the item from cache.
+// If the item does not exist in cache, it tries to retrieve
+// it from the underlying store.
+func (c *Cache) Has(k storage.Key) (bool, error) {
+	if _, ok := c.lru.Get(k.ID()); ok {
+		c.metrics.CacheHit.Inc()
+		return true, nil
+	}
+
+	c.metrics.CacheMiss.Inc()
+	return c.Store.Has(k)
+}
+
+// Put implements storage.Store interface.
+// On a call it also inserts the item into the cache so that the next
+// call to Put and Has will be able to retrieve the item from cache.
+func (c *Cache) Put(i storage.Item) error {
+	c.add(i)
+	return c.Store.Put(i)
+}
+
+// Delete implements storage.Store interface.
+// On a call it also removes the item from the cache.
+func (c *Cache) Delete(i storage.Item) error {
+	_ = c.lru.Remove(i.ID())
+	return c.Store.Delete(i)
 }

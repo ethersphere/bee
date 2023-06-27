@@ -20,7 +20,5 @@ func TestCache(t *testing.T) {
 		t.Fatalf("create store failed: %v", err)
 	}
 
-	s := cache.MemCaching(store, 100_000)
-
-	storagetest.TestStore(t, s)
+	storagetest.TestStore(t, cache.Wrap(store, 100_000))
 }
