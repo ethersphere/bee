@@ -33,6 +33,6 @@ func newMetrics() metrics {
 	}
 }
 
-func (s *Cache) Metrics() []prometheus.Collector {
-	return m.PrometheusCollectorsFromFields(s.metrics)
+func (c *Cache) Metrics() []prometheus.Collector {
+	return m.PrometheusCollectorsFromFields(c.metrics)
 }
