@@ -105,9 +105,16 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 	defer close(s.chunksWorkerQuitC)
 	select {
 	case <-time.After(warmupTime):
-		s.logger.Info("pusher: warmup period complete, worker starting.")
 	case <-s.quit:
 		return
+	}
+
+	// fetch the network radius before starting pusher worker
+	r, err := s.radius()
+	if err != nil {
+		s.logger.Error(err, "pusher: initial radius error")
+	} else {
+		s.logger.Info("pusher: warmup period complete", "radius", r)
 	}
 
 	var (
