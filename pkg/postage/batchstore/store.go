@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"math"
 	"math/big"
-	"sync"
 	"sync/atomic"
 
 	"github.com/ethersphere/bee/pkg/log"
@@ -39,8 +38,7 @@ type store struct {
 	capacity int
 	store    storage.StateStorer // State store backend to persist batches.
 
-	csMtx sync.RWMutex
-	cs    *postage.ChainState // the chain state
+	cs atomic.Pointer[postage.ChainState]
 
 	radius  atomic.Uint32
 	evictFn evictFn // evict function
@@ -76,11 +74,11 @@ func New(st storage.StateStorer, ev evictFn, capacity int, logger log.Logger) (p
 	s := &store{
 		capacity: capacity,
 		store:    st,
-		cs:       cs,
 		evictFn:  ev,
 		metrics:  newMetrics(),
 		logger:   logger.WithName(loggerName).Register(),
 	}
+	s.cs.Store(cs)
 
 	s.radius.Store(uint32(radius))
 
@@ -92,9 +90,7 @@ func (s *store) Radius() uint8 {
 }
 
 func (s *store) GetChainState() *postage.ChainState {
-	s.csMtx.RLock()
-	defer s.csMtx.RUnlock()
-	return s.cs
+	return s.cs.Load()
 }
 
 // Get returns a batch from the batchstore with the given ID.
@@ -192,10 +188,7 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 // This method has side effects; it purges expired batches and unreserves underfunded
 // ones before it stores the chain state in the store.
 func (s *store) PutChainState(cs *postage.ChainState) error {
-
-	s.csMtx.Lock()
-	s.cs = cs
-	s.csMtx.Unlock()
+	s.cs.Store(cs)
 
 	s.logger.Debug("put chain state", "block", cs.Block, "amount", cs.TotalAmount.Int64(), "price", cs.CurrentPrice.Int64())
 
@@ -240,11 +233,11 @@ func (s *store) Reset() error {
 		return err
 	}
 
-	s.cs = &postage.ChainState{
+	s.cs.Store(&postage.ChainState{
 		Block:        0,
 		TotalAmount:  big.NewInt(0),
 		CurrentPrice: big.NewInt(0),
-	}
+	})
 
 	s.radius = atomic.Uint32{}
 
@@ -287,7 +280,7 @@ func (s *store) cleanup() error {
 		}
 
 		// batches whose balance is below the total cumulative payout
-		if b.Value.Cmp(s.cs.TotalAmount) <= 0 {
+		if b.Value.Cmp(s.cs.Load().TotalAmount) <= 0 {
 			evictions = append(evictions, b)
 		} else {
 			return true, nil // stop early as an optimization at first value above the total cumulative payout
