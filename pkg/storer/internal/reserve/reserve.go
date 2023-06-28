@@ -13,6 +13,7 @@ import (
 	"sync/atomic"
 
 	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/pkg/postage"
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storer/internal"
 	"github.com/ethersphere/bee/pkg/storer/internal/chunkstamp"
@@ -306,6 +307,12 @@ func (r *Reserve) IterateBatchBin(
 		}
 		stamp, err := chunkstamp.LoadWithBatchID(store.IndexStore(), reserveNamespace, batchRadius.Address, batchRadius.BatchID)
 		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				// This is done as a best-effort cleanup. Ideally this should not happen,
+				// but if it does it will stall the node and hence its necessary to delete
+				// the remaining stale entries. Only the batch ID is required for the deletion.
+				return cb(ch.WithStamp(postage.NewStamp(batchRadius.BatchID, nil, nil, nil)))
+			}
 			return true, err
 		}
 		return cb(ch.WithStamp(stamp))
