@@ -281,9 +281,7 @@ func (r *Reserve) IterateChunksItems(store internal.Storage, startBin uint8, cb 
 }
 
 // IterateBatchBin iterates over all chunks pertaining to the batch in the particular bin.
-// The callback function should return true to stop the iteration. The stamp on the
-// chunk is not populated as it is not required. This function is used for eviction
-// purposes.
+// The callback function should return true to stop the iteration.
 func (r *Reserve) IterateBatchBin(
 	ctx context.Context,
 	store internal.Storage,
