@@ -280,57 +280,44 @@ func (r *Reserve) IterateChunksItems(store internal.Storage, startBin uint8, cb 
 	return err
 }
 
-func (r *Reserve) EvictBatchBin(ctx context.Context, batch internal.BatchOperation, bin uint8, batchID []byte, cb func(swarm.Chunk)) (int, error) {
-
-	var evicted []*batchRadiusItem
-
-	err := batch.Do(ctx, func(store internal.Storage) error {
-		return store.IndexStore().Iterate(storage.Query{
-			Factory: func() storage.Item { return &batchRadiusItem{} },
-			Prefix:  batchBinToString(bin, batchID),
-		}, func(res storage.Result) (bool, error) {
-			batchRadius := res.Entry.(*batchRadiusItem)
-			evicted = append(evicted, batchRadius)
-			return false, nil
-		})
+// IterateBatchBin iterates over all chunks pertaining to the batch in the particular bin.
+// The callback function should return true to stop the iteration.
+func (r *Reserve) IterateBatchBin(
+	ctx context.Context,
+	store internal.Storage,
+	bin uint8,
+	batchID []byte,
+	cb func(swarm.Address) (bool, error),
+) error {
+	return store.IndexStore().Iterate(storage.Query{
+		Factory: func() storage.Item { return &batchRadiusItem{} },
+		Prefix:  batchBinToString(bin, batchID),
+	}, func(res storage.Result) (bool, error) {
+		batchRadius := res.Entry.(*batchRadiusItem)
+		return cb(batchRadius.Address)
 	})
+}
+
+// DeleteChunk is the exposed function to delete a chunk from the reserve.
+func (r *Reserve) DeleteChunk(
+	ctx context.Context,
+	store internal.Storage,
+	chunkAddress swarm.Address,
+	batchID []byte,
+) error {
+	item := &batchRadiusItem{
+		Bin:     swarm.Proximity(r.baseAddr.Bytes(), chunkAddress.Bytes()),
+		BatchID: batchID,
+		Address: chunkAddress,
+	}
+	err := store.IndexStore().Get(item)
 	if err != nil {
-		return 0, err
-	}
-
-	batchCnt := 1000
-
-	for i := 0; i < len(evicted); i += batchCnt {
-		end := i + batchCnt
-		if end > len(evicted) {
-			end = len(evicted)
-		}
-
-		err := batch.Do(ctx, func(store internal.Storage) error {
-			for _, item := range evicted[i:end] {
-				c, err := store.ChunkStore().Get(ctx, item.Address)
-				if err != nil {
-					if errors.Is(err, storage.ErrNotFound) {
-						continue
-					}
-					return err
-				}
-
-				cb(c)
-
-				err = removeChunk(ctx, store, item)
-				if err != nil {
-					return err
-				}
-			}
+		if errors.Is(err, storage.ErrNotFound) {
 			return nil
-		})
-		if err != nil {
-			return 0, err
 		}
+		return err
 	}
-
-	return len(evicted), nil
+	return removeChunk(ctx, store, item)
 }
 
 func removeChunk(ctx context.Context, store internal.Storage, item *batchRadiusItem) error {

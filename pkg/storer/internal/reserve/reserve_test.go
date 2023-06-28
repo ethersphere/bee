@@ -182,7 +182,7 @@ func TestReplaceOldIndex(t *testing.T) {
 	}
 }
 
-func TestEvict(t *testing.T) {
+func TestIterateDeleteBatchBin(t *testing.T) {
 	t.Parallel()
 
 	baseAddr := swarm.RandAddress(t)
@@ -218,17 +218,30 @@ func TestEvict(t *testing.T) {
 		}
 	}
 
-	totalEvicted := 0
+	type chInfo struct {
+		Address swarm.Address
+		BatchID []byte
+	}
+	chsToDelete := make([]chInfo, 0)
 	for i := 0; i < 3; i++ {
-		evicted, err := r.EvictBatchBin(context.Background(), ts, uint8(i), evictBatch.ID, func(swarm.Chunk) {})
+		err := r.IterateBatchBin(context.Background(), ts, uint8(i), evictBatch.ID, func(addr swarm.Address) (bool, error) {
+			chsToDelete = append(chsToDelete, chInfo{Address: addr, BatchID: evictBatch.ID})
+			return false, nil
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
-		totalEvicted += evicted
 	}
 
-	if totalEvicted != chunksPerBatch {
-		t.Fatalf("got %d, want %d", totalEvicted, chunksPerBatch)
+	if len(chsToDelete) != chunksPerBatch {
+		t.Fatalf("got %d, want %d", len(chsToDelete), chunksPerBatch)
+	}
+
+	for _, ch := range chsToDelete {
+		err := r.DeleteChunk(context.Background(), ts, ch.Address, ch.BatchID)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	for i, ch := range chunks {
