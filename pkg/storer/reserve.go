@@ -47,16 +47,20 @@ func (db *DB) reserveWorker(warmupDur, wakeUpDur time.Duration, radius func() (u
 		return
 	}
 
+	initialRadius := db.reserve.Radius()
+
 	// possibly a fresh node, acquire initial radius externally
-	if db.StorageRadius() == 0 {
+	if initialRadius == 0 {
 		r, err := radius()
 		if err != nil {
 			db.logger.Error(err, "reserve worker initial radius")
 		} else {
-			if err := db.reserve.SetRadius(db.repo.IndexStore(), r); err != nil {
-				db.logger.Error(err, "reserve set radius")
-			}
+			initialRadius = r
 		}
+	}
+
+	if err := db.reserve.SetRadius(db.repo.IndexStore(), initialRadius); err != nil {
+		db.logger.Error(err, "reserve set radius")
 	}
 
 	// syncing can now begin now that the reserver worker is running
