@@ -1035,7 +1035,7 @@ func NewBee(
 		pullerService = puller.New(stateStore, kad, localStore, pullSyncProtocol, p2ps, logger, puller.Options{}, warmupTime)
 		b.pullerCloser = pullerService
 
-		localStore.StartReserveWorker(pullerService, networkRadiusFunc)
+		localStore.StartReserveWorker(ctx, pullerService, networkRadiusFunc)
 		nodeStatus.SetSync(pullerService)
 
 		if o.EnableStorageIncentives {
@@ -1313,7 +1313,7 @@ func (b *Bee) Shutdown() error {
 	}
 
 	var wg sync.WaitGroup
-	wg.Add(10)
+	wg.Add(8)
 	go func() {
 		defer wg.Done()
 		tryClose(b.chainSyncerCloser, "chain syncer")
