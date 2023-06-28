@@ -211,17 +211,20 @@ func (db *DB) evictBatch(ctx context.Context, batchID []byte, upToBin uint8) (er
 
 		var evicted int
 
-		err = db.reserve.IterateBatchBin(ctx, db.repo, b, batchID, func(chunk swarm.Chunk) (bool, error) {
+		err = db.reserve.IterateBatchBin(ctx, db.repo, b, batchID, func(address swarm.Address) (bool, error) {
 			err := db.Do(ctx, func(txnRepo internal.Storage) error {
-				err := db.Cache().Put(ctx, chunk)
-				if err != nil {
-					db.logger.Warning("reserve eviction cache put", "err", err)
+				chunk, err := db.ChunkStore().Get(ctx, address)
+				if err == nil {
+					err := db.Cache().Put(ctx, chunk)
+					if err != nil {
+						db.logger.Warning("reserve eviction cache put", "err", err)
+					}
 				}
 
 				db.lock.Lock(reserveUpdateLockKey)
 				defer db.lock.Unlock(reserveUpdateLockKey)
 
-				err = db.reserve.DeleteChunk(ctx, txnRepo, chunk)
+				err = db.reserve.DeleteChunk(ctx, txnRepo, address, batchID)
 				if err != nil {
 					return fmt.Errorf("reserve: delete chunk: %w", err)
 				}

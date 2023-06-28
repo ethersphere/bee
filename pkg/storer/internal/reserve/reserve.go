@@ -13,7 +13,6 @@ import (
 	"sync/atomic"
 
 	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/postage"
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storer/internal"
 	"github.com/ethersphere/bee/pkg/storer/internal/chunkstamp"
@@ -290,40 +289,28 @@ func (r *Reserve) IterateBatchBin(
 	store internal.Storage,
 	bin uint8,
 	batchID []byte,
-	cb func(swarm.Chunk) (bool, error),
+	cb func(swarm.Address) (bool, error),
 ) error {
 	return store.IndexStore().Iterate(storage.Query{
 		Factory: func() storage.Item { return &batchRadiusItem{} },
 		Prefix:  batchBinToString(bin, batchID),
 	}, func(res storage.Result) (bool, error) {
 		batchRadius := res.Entry.(*batchRadiusItem)
-
-		ch, err := store.ChunkStore().Get(ctx, batchRadius.Address)
-		if err != nil {
-			if errors.Is(err, storage.ErrNotFound) {
-				return false, nil
-			}
-			return true, err
-		}
-		stamp, err := chunkstamp.LoadWithBatchID(store.IndexStore(), reserveNamespace, batchRadius.Address, batchRadius.BatchID)
-		if err != nil {
-			if errors.Is(err, storage.ErrNotFound) {
-				// This is done as a best-effort cleanup. Ideally this should not happen,
-				// but if it does it will stall the node and hence its necessary to delete
-				// the remaining stale entries. Only the batch ID is required for the deletion.
-				return cb(ch.WithStamp(postage.NewStamp(batchRadius.BatchID, nil, nil, nil)))
-			}
-			return true, err
-		}
-		return cb(ch.WithStamp(stamp))
+		return cb(batchRadius.Address)
 	})
 }
 
-func (r *Reserve) DeleteChunk(ctx context.Context, store internal.Storage, ch swarm.Chunk) error {
+// DeleteChunk is the exposed function to delete a chunk from the reserve.
+func (r *Reserve) DeleteChunk(
+	ctx context.Context,
+	store internal.Storage,
+	chunkAddress swarm.Address,
+	batchID []byte,
+) error {
 	item := &batchRadiusItem{
-		Bin:     swarm.Proximity(r.baseAddr.Bytes(), ch.Address().Bytes()),
-		Address: ch.Address(),
-		BatchID: ch.Stamp().BatchID(),
+		Bin:     swarm.Proximity(r.baseAddr.Bytes(), chunkAddress.Bytes()),
+		BatchID: batchID,
+		Address: chunkAddress,
 	}
 	err := store.IndexStore().Get(item)
 	if err != nil {

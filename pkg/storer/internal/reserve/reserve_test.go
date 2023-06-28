@@ -218,10 +218,14 @@ func TestIterateDeleteBatchBin(t *testing.T) {
 		}
 	}
 
-	chsToDelete := make([]swarm.Chunk, 0)
+	type chInfo struct {
+		Address swarm.Address
+		BatchID []byte
+	}
+	chsToDelete := make([]chInfo, 0)
 	for i := 0; i < 3; i++ {
-		err := r.IterateBatchBin(context.Background(), ts, uint8(i), evictBatch.ID, func(ch swarm.Chunk) (bool, error) {
-			chsToDelete = append(chsToDelete, ch)
+		err := r.IterateBatchBin(context.Background(), ts, uint8(i), evictBatch.ID, func(addr swarm.Address) (bool, error) {
+			chsToDelete = append(chsToDelete, chInfo{Address: addr, BatchID: evictBatch.ID})
 			return false, nil
 		})
 		if err != nil {
@@ -234,7 +238,7 @@ func TestIterateDeleteBatchBin(t *testing.T) {
 	}
 
 	for _, ch := range chsToDelete {
-		err := r.DeleteChunk(context.Background(), ts, ch)
+		err := r.DeleteChunk(context.Background(), ts, ch.Address, ch.BatchID)
 		if err != nil {
 			t.Fatal(err)
 		}
