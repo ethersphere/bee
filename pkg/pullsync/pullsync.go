@@ -410,7 +410,11 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 	LOOP:
 		for limit > 0 {
 			select {
-			case c := <-chC:
+			case c, ok := <-chC:
+				if !ok {
+					break LOOP // The stream has been closed.
+				}
+
 				chs = append(chs, &storer.BinC{Address: c.Address, BatchID: c.BatchID})
 				if c.BinID > topmost {
 					topmost = c.BinID
