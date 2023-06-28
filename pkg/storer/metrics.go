@@ -6,6 +6,7 @@ package storer
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	m "github.com/ethersphere/bee/pkg/metrics"
@@ -136,7 +137,7 @@ func (m getterWithMetrics) Get(ctx context.Context, address swarm.Address) (swar
 	dur := captureDuration(time.Now())
 	chunk, err := m.Getter.Get(ctx, address)
 	m.metrics.MethodCallsDuration.WithLabelValues(m.component, "Get").Observe(dur())
-	if err == nil {
+	if err == nil || errors.Is(err, storage.ErrNotFound) {
 		m.metrics.MethodCalls.WithLabelValues(m.component, "Get", "success").Inc()
 	} else {
 		m.metrics.MethodCalls.WithLabelValues(m.component, "Get", "failure").Inc()
