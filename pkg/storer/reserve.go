@@ -236,15 +236,9 @@ func (db *DB) evictBatch(ctx context.Context, batchID []byte, upToBin uint8) (er
 
 		// if there was an error, we still need to update the chunks that have already
 		// been evicted from the reserve
-		db.lock.Lock(reserveUpdateLockKey)
-
+		db.logger.Debug("reserve eviction", "bin", b, "evicted", evicted, "batchID", hex.EncodeToString(batchID), "size", db.reserve.Size())
 		db.reserve.AddSize(-evicted)
-		newSize := db.reserve.Size()
-
-		db.lock.Unlock(reserveUpdateLockKey)
-
-		db.logger.Debug("reserve eviction", "bin", b, "evicted", evicted, "batchID", hex.EncodeToString(batchID), "size", newSize)
-		db.metrics.ReserveSize.Set(float64(newSize))
+		db.metrics.ReserveSize.Set(float64(db.reserve.Size()))
 
 		if upToBin == swarm.MaxBins {
 			db.metrics.ExpiredChunkCount.Add(float64(evicted))
