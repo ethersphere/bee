@@ -302,14 +302,14 @@ func (p *Puller) syncWorker(ctx context.Context, peer swarm.Address, bin uint8, 
 		syncStart := time.Now()
 		top, count, err := p.syncer.Sync(ctx, peer, bin, s)
 
-		if top <= cur {
-			p.rate.Add(count)
-		}
-
 		if top == math.MaxUint64 {
 			p.metrics.MaxUintErrCounter.Inc()
 			p.logger.Error(nil, "syncWorker max uint64 encountered, quitting", "peer_address", peer, "bin", bin, "from", s, "topmost", top)
 			return
+		}
+
+		if top <= cur {
+			p.rate.Add(count)
 		}
 
 		if top >= s {

@@ -76,8 +76,6 @@ func (p *PullSyncMock) Sync(ctx context.Context, peer swarm.Address, bin uint8, 
 	id := toID(peer, bin, start)
 	replies := p.replies[id]
 
-	fmt.Println("bin", bin, "start", start)
-
 	if len(replies) > 0 {
 		reply := replies[0]
 		p.replies[id] = p.replies[id][1:]
