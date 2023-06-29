@@ -210,7 +210,7 @@ paths:
   "/chunks/stream":
     get:
       summary: "Upload stream of chunks"
-      description: "Returns a WebSocket connection on which stream of chunks can be uploaded. Each chunk sent is acknowledged using a binary response `0` which serves as confirmation of upload of single chunk. Chunks should be packaged as binary messages for uploading. If a tag is specified, the chunks will be streamed into the localstore and then uploaded to the network once the stream is closed. If a tag is not specified, the chunks will bypass the localstore and be directly uploaded to the network through the stream as they arrive."
+      description: "Returns a WebSocket connection on which stream of chunks can be uploaded. Each chunk sent is acknowledged using a binary response `0` which serves as confirmation of upload of single chunk. Chunks should be packaged as binary messages for uploading. If a tag is specified, the chunks will be streamed into local storage and then be uploaded to the network once the stream is closed. If a tag is not specified, the chunks will bypass local storage and be directly uploaded to the network through the stream as they arrive."
       tags:
         - Chunk
       parameters:
