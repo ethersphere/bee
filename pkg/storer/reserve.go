@@ -284,8 +284,18 @@ func (db *DB) reserveCleanup(ctx context.Context) error {
 	removed := 0
 	defer func() {
 		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "cleanup").Observe(dur())
-		db.metrics.ReserveSize.Set(float64(db.reserve.Size()))
+		db.metrics.ReserveCleanup.Add(float64(removed))
 		db.logger.Info("cleanup finished", "removed", removed, "duration", dur())
+
+		db.lock.Lock(reserveUpdateLockKey)
+		defer db.lock.Unlock(reserveUpdateLockKey)
+
+		if err := db.reserve.RecountSize(db.repo.IndexStore()); err != nil {
+			db.logger.Error(err, "recount reserve size")
+		}
+
+		db.metrics.ReserveSize.Set(float64(db.ReserveSize()))
+
 	}()
 
 	ids := map[string]struct{}{}

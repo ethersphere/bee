@@ -20,6 +20,7 @@ type metrics struct {
 	MethodCalls         prometheus.CounterVec
 	MethodCallsDuration prometheus.HistogramVec
 	ReserveSize         prometheus.Gauge
+	ReserveCleanup      prometheus.Counter
 	StorageRadius       prometheus.Gauge
 	CacheSize           prometheus.Gauge
 	EvictedChunkCount   prometheus.Counter
@@ -56,6 +57,14 @@ func newMetrics() metrics {
 				Subsystem: subsystem,
 				Name:      "reserve_size",
 				Help:      "Number of chunks in reserve.",
+			},
+		),
+		ReserveCleanup: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "reserve_cleanup",
+				Help:      "Number of cleaned-up expired chunks.",
 			},
 		),
 		StorageRadius: prometheus.NewGauge(
