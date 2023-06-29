@@ -268,7 +268,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 				// if we paged then it means there's more things to sync on
 			case <-time.After(expectedWaitTime):
 			case <-ctx.Done():
-				return context.Canceled
+				return ctx.Err()
 			}
 			start := time.Now()
 
@@ -334,8 +334,8 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 		err := listenf()
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
-				// context cancelled is returned on shutdown,
-				// therefore we do nothing here
+				// Context cancelled is returned on shutdown, therefore we do nothing here.
+				l.logger.Debug("shutting down event listener")
 				return
 			}
 			l.logger.Error(err, "failed syncing event listener; shutting down node error")
