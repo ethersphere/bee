@@ -9,13 +9,13 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"math/big"
 	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/postage"
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storer/internal"
+	"github.com/ethersphere/bee/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -37,6 +37,16 @@ func threshold(capacity int) int { return capacity * 5 / 10 }
 
 func (db *DB) reserveWorker(warmupDur, wakeUpDur time.Duration, radius func() (uint8, error)) {
 	defer db.reserveWg.Done()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		<-db.quit
+		cancel()
+	}()
+
+	if err := db.reserveCleanup(ctx); err != nil {
+		db.logger.Error(err, "cleanup")
+	}
 
 	overCapTrigger, overCapUnsub := db.events.Subscribe(reserveOverCapacity)
 	defer overCapUnsub()
@@ -66,12 +76,6 @@ func (db *DB) reserveWorker(warmupDur, wakeUpDur time.Duration, radius func() (u
 	// syncing can now begin now that the reserver worker is running
 	db.syncer.Start()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		<-db.quit
-		cancel()
-	}()
-
 	wakeUpTicker := time.NewTicker(wakeUpDur)
 
 	for {
@@ -93,6 +97,11 @@ func (db *DB) reserveWorker(warmupDur, wakeUpDur time.Duration, radius func() (u
 				db.logger.Info("reserve radius decrease", "radius", radius)
 			}
 			db.metrics.StorageRadius.Set(float64(radius))
+
+			if err := db.reserveCleanup(ctx); err != nil {
+				db.logger.Error(err, "cleanup")
+			}
+
 		case <-db.quit:
 			return
 		}
@@ -216,24 +225,7 @@ func (db *DB) evictBatch(ctx context.Context, batchID []byte, upToBin uint8) (er
 		var evicted int
 
 		err = db.reserve.IterateBatchBin(ctx, db.repo, b, batchID, func(address swarm.Address) (bool, error) {
-			err := db.Do(ctx, func(txnRepo internal.Storage) error {
-				chunk, err := db.ChunkStore().Get(ctx, address)
-				if err == nil {
-					err := db.Cache().Put(ctx, chunk)
-					if err != nil {
-						db.logger.Warning("reserve eviction cache put", "err", err)
-					}
-				}
-
-				db.lock.Lock(reserveUpdateLockKey)
-				defer db.lock.Unlock(reserveUpdateLockKey)
-
-				err = db.reserve.DeleteChunk(ctx, txnRepo, address, batchID)
-				if err != nil {
-					return fmt.Errorf("reserve: delete chunk: %w", err)
-				}
-				return nil
-			})
+			err := db.removeChunk(ctx, address, batchID)
 			if err != nil {
 				return false, err
 			}
@@ -260,21 +252,47 @@ func (db *DB) evictBatch(ctx context.Context, batchID []byte, upToBin uint8) (er
 	return nil
 }
 
-func (db *DB) batchesBelowValue(until *big.Int) (map[string]struct{}, error) {
-	res := make(map[string]struct{})
+func (db *DB) removeChunk(ctx context.Context, address swarm.Address, batchID []byte) error {
 
-	if until == nil {
-		return res, nil
-	}
-
-	err := db.batchstore.Iterate(func(b *postage.Batch) (bool, error) {
-		if b.Value.Cmp(until) < 0 {
-			res[string(b.ID)] = struct{}{}
+	return db.Do(ctx, func(txnRepo internal.Storage) error {
+		chunk, err := db.ChunkStore().Get(ctx, address)
+		if err == nil {
+			err := db.Cache().Put(ctx, chunk)
+			if err != nil {
+				db.logger.Warning("reserve eviction cache put", "err", err)
+			}
 		}
+
+		db.lock.Lock(reserveUpdateLockKey)
+		defer db.lock.Unlock(reserveUpdateLockKey)
+
+		err = db.reserve.DeleteChunk(ctx, txnRepo, address, batchID)
+		if err != nil {
+			return fmt.Errorf("reserve: delete chunk: %w", err)
+		}
+		return nil
+	})
+}
+
+func (db *DB) reserveCleanup(ctx context.Context) error {
+	dur := captureDuration(time.Now())
+	defer func() {
+		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "cleanup").Observe(dur())
+	}()
+
+	return db.reserve.IterateChunksItems(db.repo, 0, func(ci reserve.ChunkItem) (bool, error) {
+
+		ok, err := db.batchstore.Exists(ci.BatchID)
+		if err != nil {
+			return false, err
+		}
+
+		if !ok {
+			return false, db.removeChunk(ctx, ci.ChunkAddress, ci.BatchID)
+		}
+
 		return false, nil
 	})
-
-	return res, err
 }
 
 func (db *DB) unreserve(ctx context.Context) (err error) {
