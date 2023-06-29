@@ -38,7 +38,7 @@ func threshold(capacity int) int { return capacity * 5 / 10 }
 func (db *DB) reserveWorker(ctx context.Context, warmupDur, wakeUpDur time.Duration, radius func() (uint8, error)) {
 	defer db.reserveWg.Done()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
 	go func() {
 		<-db.quit
 		cancel()
