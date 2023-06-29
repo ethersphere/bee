@@ -30,15 +30,15 @@ var errMaxRadius = errors.New("max radius reached")
 type Syncer interface {
 	// Number of active historical syncing jobs.
 	SyncRate() float64
-	Start()
+	Start(context.Context)
 }
 
 func threshold(capacity int) int { return capacity * 5 / 10 }
 
-func (db *DB) reserveWorker(warmupDur, wakeUpDur time.Duration, radius func() (uint8, error)) {
+func (db *DB) reserveWorker(ctx context.Context, warmupDur, wakeUpDur time.Duration, radius func() (uint8, error)) {
 	defer db.reserveWg.Done()
 
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(ctx)
 	go func() {
 		<-db.quit
 		cancel()
@@ -74,7 +74,7 @@ func (db *DB) reserveWorker(warmupDur, wakeUpDur time.Duration, radius func() (u
 	}
 
 	// syncing can now begin now that the reserver worker is running
-	db.syncer.Start()
+	db.syncer.Start(ctx)
 
 	wakeUpTicker := time.NewTicker(wakeUpDur)
 

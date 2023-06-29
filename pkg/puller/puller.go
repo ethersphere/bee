@@ -109,13 +109,13 @@ func New(
 	return p
 }
 
-func (p *Puller) Start() {
+func (p *Puller) Start(ctx context.Context) {
 	p.start.Do(func() {
-		ctx, cancel := context.WithCancel(context.Background())
+		cctx, cancel := context.WithCancel(ctx)
 		p.cancel = cancel
 
 		p.wg.Add(1)
-		go p.manage(ctx)
+		go p.manage(cctx)
 	})
 }
 
