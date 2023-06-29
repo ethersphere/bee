@@ -4,8 +4,10 @@
 
 package mock
 
+import "context"
+
 type mockSyncer struct{ rate float64 }
 
 func NewMockRateReporter(r float64) *mockSyncer { return &mockSyncer{r} }
 func (m *mockSyncer) SyncRate() float64         { return m.rate }
-func (m *mockSyncer) Start()                    {}
+func (m *mockSyncer) Start(context.Context)     {}

@@ -67,7 +67,7 @@ func TestIndexCollision(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.StartReserveWorker(pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
 		testF(t, baseAddr, storer)
 	})
 	t.Run("mem", func(t *testing.T) {
@@ -77,7 +77,7 @@ func TestIndexCollision(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.StartReserveWorker(pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
 		testF(t, baseAddr, storer)
 	})
 }
@@ -150,7 +150,7 @@ func TestReplaceOldIndex(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.StartReserveWorker(pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
 		testF(t, baseAddr, storer)
 	})
 	t.Run("mem", func(t *testing.T) {
@@ -160,7 +160,7 @@ func TestReplaceOldIndex(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.StartReserveWorker(pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
 		testF(t, baseAddr, storer)
 	})
 }
@@ -175,7 +175,7 @@ func TestEvictBatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	st.StartReserveWorker(pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
+	st.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
 
 	ctx := context.Background()
 
@@ -325,7 +325,7 @@ func TestUnreserveCap(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.StartReserveWorker(pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
 		testF(t, baseAddr, bs, storer)
 	})
 	t.Run("mem", func(t *testing.T) {
@@ -336,7 +336,7 @@ func TestUnreserveCap(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.StartReserveWorker(pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
 		testF(t, baseAddr, bs, storer)
 	})
 }
@@ -351,7 +351,7 @@ func TestNetworkRadius(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.StartReserveWorker(pullerMock.NewMockRateReporter(0), networkRadiusFunc(1))
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(1))
 		time.Sleep(time.Second)
 		if want, got := uint8(1), storer.StorageRadius(); want != got {
 			t.Fatalf("want radius %d, got radius %d", want, got)
@@ -364,7 +364,7 @@ func TestNetworkRadius(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.StartReserveWorker(pullerMock.NewMockRateReporter(0), networkRadiusFunc(1))
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(1))
 		time.Sleep(time.Second)
 		if want, got := uint8(1), storer.StorageRadius(); want != got {
 			t.Fatalf("want radius %d, got radius %d", want, got)
@@ -405,7 +405,7 @@ func TestRadiusManager(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.StartReserveWorker(pullerMock.NewMockRateReporter(0), networkRadiusFunc(3))
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(3))
 
 		batch := postagetesting.MustNewBatch()
 		err = bs.Save(batch)
@@ -443,7 +443,7 @@ func TestRadiusManager(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.StartReserveWorker(pullerMock.NewMockRateReporter(1), networkRadiusFunc(3))
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(1), networkRadiusFunc(3))
 		waitForRadius(t, storer.Reserve(), 3)
 	})
 }
