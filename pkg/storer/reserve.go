@@ -104,11 +104,9 @@ func (db *DB) reserveWorker(ctx context.Context, warmupDur, wakeUpDur time.Durat
 			}
 			db.metrics.StorageRadius.Set(float64(radius))
 		case <-cleanUpTicker.C:
-			go func() {
-				if err := db.reserveCleanup(ctx); err != nil {
-					db.logger.Error(err, "cleanup")
-				}
-			}()
+			if err := db.reserveCleanup(ctx); err != nil {
+				db.logger.Error(err, "cleanup")
+			}
 		case <-db.quit:
 			return
 		}
