@@ -281,11 +281,11 @@ func (db *DB) removeChunk(ctx context.Context, address swarm.Address, batchID []
 
 func (db *DB) reserveCleanup(ctx context.Context) error {
 	dur := captureDuration(time.Now())
-	count := 0
+	removed := 0
 	defer func() {
 		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "cleanup").Observe(dur())
 		db.metrics.ReserveSize.Set(float64(db.reserve.Size()))
-		db.logger.Info("cleanup finished", "total", count, "duration", dur())
+		db.logger.Info("cleanup finished", "removed", removed, "duration", dur())
 	}()
 
 	ids := map[string]struct{}{}
@@ -300,8 +300,8 @@ func (db *DB) reserveCleanup(ctx context.Context) error {
 
 	return db.reserve.IterateChunksItems(db.repo, 0, func(ci reserve.ChunkItem) (bool, error) {
 		if _, ok := ids[string(ci.BatchID)]; !ok {
-			count++
-			db.logger.Debug("cleanup", "batch_id", hex.EncodeToString(ci.BatchID))
+			removed++
+			db.logger.Debug("cleanup expired batch", "batch_id", hex.EncodeToString(ci.BatchID))
 			return false, db.removeChunk(ctx, ci.ChunkAddress, ci.BatchID)
 		}
 		return false, nil
