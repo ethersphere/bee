@@ -23,6 +23,8 @@ const (
 	reserveOverCapacity  = "reserveOverCapacity"
 	reserveUnreserved    = "reserveUnreserved"
 	reserveUpdateLockKey = "reserveUpdateLockKey"
+
+	cleanupDur = time.Hour * 6
 )
 
 var errMaxRadius = errors.New("max radius reached")
@@ -76,7 +78,11 @@ func (db *DB) reserveWorker(ctx context.Context, warmupDur, wakeUpDur time.Durat
 	// syncing can now begin now that the reserver worker is running
 	db.syncer.Start(ctx)
 
-	wakeUpTicker := time.NewTicker(wakeUpDur)
+	radiusWakeUpTicker := time.NewTicker(wakeUpDur)
+	defer radiusWakeUpTicker.Stop()
+
+	cleanUpTicker := time.NewTicker(cleanupDur)
+	defer cleanUpTicker.Stop()
 
 	for {
 		select {
@@ -86,7 +92,7 @@ func (db *DB) reserveWorker(ctx context.Context, warmupDur, wakeUpDur time.Durat
 				db.logger.Error(err, "reserve unreserve")
 			}
 			db.metrics.OverCapTriggerCount.Inc()
-		case <-wakeUpTicker.C:
+		case <-radiusWakeUpTicker.C:
 			radius := db.reserve.Radius()
 			if db.reserve.Size() < threshold(db.reserve.Capacity()) && db.syncer.SyncRate() == 0 && radius > 0 {
 				radius--
@@ -97,11 +103,12 @@ func (db *DB) reserveWorker(ctx context.Context, warmupDur, wakeUpDur time.Durat
 				db.logger.Info("reserve radius decrease", "radius", radius)
 			}
 			db.metrics.StorageRadius.Set(float64(radius))
-
-			if err := db.reserveCleanup(ctx); err != nil {
-				db.logger.Error(err, "cleanup")
-			}
-
+		case <-cleanUpTicker.C:
+			go func() {
+				if err := db.reserveCleanup(ctx); err != nil {
+					db.logger.Error(err, "cleanup")
+				}
+			}()
 		case <-db.quit:
 			return
 		}
@@ -280,17 +287,28 @@ func (db *DB) reserveCleanup(ctx context.Context) error {
 		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "cleanup").Observe(dur())
 	}()
 
+	count := 0
+	start := time.Now()
+	defer func() {
+		db.logger.Info("cleanup finished", "total", count, "duration", time.Since(start))
+	}()
+
+	ids := map[string]struct{}{}
+
+	err := db.batchstore.Iterate(func(b *postage.Batch) (bool, error) {
+		ids[string(b.ID)] = struct{}{}
+		return false, nil
+	})
+	if err != nil {
+		return err
+	}
+
 	return db.reserve.IterateChunksItems(db.repo, 0, func(ci reserve.ChunkItem) (bool, error) {
-
-		ok, err := db.batchstore.Exists(ci.BatchID)
-		if err != nil {
-			return false, err
-		}
-
-		if !ok {
+		if _, ok := ids[string(ci.BatchID)]; !ok {
+			count++
+			db.logger.Debug("cleanup", "batch_id", hex.EncodeToString(ci.BatchID))
 			return false, db.removeChunk(ctx, ci.ChunkAddress, ci.BatchID)
 		}
-
 		return false, nil
 	})
 }
