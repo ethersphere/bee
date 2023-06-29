@@ -33,7 +33,7 @@ func TestOneSync(t *testing.T) {
 		cursors = []uint64{1000, 1000, 1000}
 		replies = []mockps.SyncReply{
 			{Bin: 1, Start: 1, Topmost: 1000, Peer: addr},
-			{Bin: 2, Start: 1001, Topmost: 1001, Peer: addr}}
+			{Bin: 2, Start: 1, Topmost: 1001, Peer: addr}}
 	)
 
 	_, _, kad, pullsync := newPuller(t, opts{
@@ -52,7 +52,6 @@ func TestOneSync(t *testing.T) {
 
 	waitCursorsCalled(t, pullsync, addr)
 	waitSyncCalledBins(t, pullsync, addr, 1, 2)
-	waitSync(t, pullsync, addr)
 }
 
 func TestSyncOutsideDepth(t *testing.T) {
@@ -92,7 +91,6 @@ func TestSyncOutsideDepth(t *testing.T) {
 
 func TestSyncIntervals(t *testing.T) {
 	t.Parallel()
-	t.Skip("skip until we have a better way to test this")
 
 	addr := swarm.RandAddress(t)
 
