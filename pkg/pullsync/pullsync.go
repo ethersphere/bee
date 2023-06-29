@@ -233,7 +233,6 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		}
 
 		delete(wantChunks, addr.ByteString()+string(stamp.BatchID()))
-		s.metrics.Delivered.Inc()
 
 		chunk, err := s.validStamp(newChunk.WithStamp(stamp))
 		if err != nil {
