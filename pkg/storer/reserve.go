@@ -162,8 +162,12 @@ func (db *DB) ReservePutter() storage.Putter {
 	return putterWithMetrics{
 		storage.PutterFunc(
 			func(ctx context.Context, chunk swarm.Chunk) (err error) {
-				db.lock.Lock(reserveUpdateLockKey)
-				defer db.lock.Unlock(reserveUpdateLockKey)
+
+				db.reserveUpdateMtx.RLock()
+				defer db.reserveUpdateMtx.RUnlock()
+
+				db.lock.Lock(chunk.Address().ByteString())
+				defer db.lock.Unlock(chunk.Address().ByteString())
 
 				var (
 					newIndex bool
@@ -263,8 +267,8 @@ func (db *DB) removeChunk(ctx context.Context, address swarm.Address, batchID []
 			}
 		}
 
-		db.lock.Lock(reserveUpdateLockKey)
-		defer db.lock.Unlock(reserveUpdateLockKey)
+		db.reserveUpdateMtx.Lock()
+		defer db.reserveUpdateMtx.Unlock()
 
 		err = db.reserve.DeleteChunk(ctx, txnRepo, address, batchID)
 		if err != nil {

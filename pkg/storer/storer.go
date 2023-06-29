@@ -405,6 +405,7 @@ type DB struct {
 	metrics metrics
 
 	repo                storage.Repository
+	reserveUpdateMtx    sync.RWMutex
 	lock                *multex.Multex
 	cacheObj            *cache.Cache
 	retrieval           retrieval.Interface

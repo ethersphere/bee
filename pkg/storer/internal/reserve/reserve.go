@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
 
 	"github.com/ethersphere/bee/pkg/log"
@@ -40,6 +41,8 @@ type Reserve struct {
 	capacity int
 	size     atomic.Int64
 	radius   atomic.Uint32
+
+	binIDMtx sync.Mutex
 }
 
 func New(
@@ -389,6 +392,9 @@ func (r *Reserve) SetRadius(store storage.Store, rad uint8) error {
 
 // should be called under lock
 func (r *Reserve) incBinID(store storage.Store, bin uint8) (uint64, error) {
+	r.binIDMtx.Lock()
+	defer r.binIDMtx.Unlock()
+
 	item := &binItem{Bin: bin}
 	err := store.Get(item)
 	if err != nil {
