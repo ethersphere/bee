@@ -279,10 +279,11 @@ func (db *DB) reserveCleanup(ctx context.Context) error {
 	dur := captureDuration(time.Now())
 	removed := 0
 	defer func() {
+		db.reserve.AddSize(-removed)
+		db.logger.Info("cleanup finished", "removed", removed, "duration", dur())
 		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "cleanup").Observe(dur())
 		db.metrics.ReserveCleanup.Add(float64(removed))
-		db.logger.Info("cleanup finished", "removed", removed, "duration", dur())
-		db.reserve.AddSize(-removed)
+		db.metrics.ReserveSize.Set(float64(db.reserve.Size()))
 	}()
 
 	ids := map[string]struct{}{}
