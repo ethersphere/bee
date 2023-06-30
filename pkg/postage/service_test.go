@@ -5,11 +5,13 @@
 package postage_test
 
 import (
+	"context"
 	crand "crypto/rand"
 	"errors"
 	"io"
 	"math/big"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/postage"
 	pstoremock "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
@@ -109,7 +111,7 @@ func TestGetStampIssuer(t *testing.T) {
 	}
 	t.Run("found", func(t *testing.T) {
 		for _, id := range ids[1:4] {
-			st, save, err := ps.GetStampIssuer(id)
+			st, save, err := ps.GetStampIssuer(context.Background(), id)
 			if err != nil {
 				t.Fatalf("expected no error, got %v", err)
 			}
@@ -132,14 +134,14 @@ func TestGetStampIssuer(t *testing.T) {
 		}
 	})
 	t.Run("not found", func(t *testing.T) {
-		_, _, err := ps.GetStampIssuer(ids[0])
+		_, _, err := ps.GetStampIssuer(context.Background(), ids[0])
 		if !errors.Is(err, postage.ErrNotFound) {
 			t.Fatalf("expected ErrNotFound, got %v", err)
 		}
 	})
 	t.Run("not usable", func(t *testing.T) {
 		for _, id := range ids[4:] {
-			_, _, err := ps.GetStampIssuer(id)
+			_, _, err := ps.GetStampIssuer(context.Background(), id)
 			if !errors.Is(err, postage.ErrNotUsable) {
 				t.Fatalf("expected ErrNotUsable, got %v", err)
 			}
@@ -153,7 +155,7 @@ func TestGetStampIssuer(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		st, sv, err := ps.GetStampIssuer(b.ID)
+		st, sv, err := ps.GetStampIssuer(context.Background(), b.ID)
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -170,7 +172,7 @@ func TestGetStampIssuer(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		stampIssuer, save, err := ps.GetStampIssuer(ids[1])
+		stampIssuer, save, err := ps.GetStampIssuer(context.Background(), ids[1])
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -184,7 +186,7 @@ func TestGetStampIssuer(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		stampIssuer, save, err := ps.GetStampIssuer(ids[2])
+		stampIssuer, save, err := ps.GetStampIssuer(context.Background(), ids[2])
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
@@ -197,24 +199,27 @@ func TestGetStampIssuer(t *testing.T) {
 		}
 	})
 	t.Run("in use", func(t *testing.T) {
-		_, save1, err := ps.GetStampIssuer(ids[1])
+		_, save1, err := ps.GetStampIssuer(context.Background(), ids[1])
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, save2, err := ps.GetStampIssuer(ids[2])
+		_, save2, err := ps.GetStampIssuer(context.Background(), ids[2])
 		if err != nil {
 			t.Fatal(err)
 		}
 		_ = save2(true)
 
-		_, _, err = ps.GetStampIssuer(ids[1])
-		if !errors.Is(err, postage.ErrBatchInUse) {
-			t.Fatalf("expected ErrBatchInUse, got %v", err)
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		defer cancel()
+
+		_, _, err = ps.GetStampIssuer(ctx, ids[1])
+		if !errors.Is(err, context.DeadlineExceeded) {
+			t.Fatalf("expected context.Canceled, got %v", err)
 		}
 		_ = save1(true)
 	})
 	t.Run("save without update", func(t *testing.T) {
-		is, save, err := ps.GetStampIssuer(ids[1])
+		is, save, err := ps.GetStampIssuer(context.Background(), ids[1])
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -231,7 +236,7 @@ func TestGetStampIssuer(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		is, _, err = ps.GetStampIssuer(ids[1])
+		is, _, err = ps.GetStampIssuer(context.Background(), ids[1])
 		if err != nil {
 			t.Fatal(err)
 		}

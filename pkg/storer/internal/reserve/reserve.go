@@ -112,21 +112,14 @@ func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.C
 		// 4. Update the stamp index
 		newStampIndex = false
 
-		oldChunkPO := swarm.Proximity(r.baseAddr.Bytes(), item.ChunkAddress.Bytes())
-		oldChunk := &batchRadiusItem{Bin: oldChunkPO, BatchID: chunk.Stamp().BatchID(), Address: item.ChunkAddress}
-		err := indexStore.Get(oldChunk)
-		if err != nil {
-			return false, fmt.Errorf("failed getting old chunk item to replace: %w", err)
-		}
-
-		err = removeChunk(ctx, store, oldChunk)
+		err := r.DeleteChunk(ctx, store, item.ChunkAddress, chunk.Stamp().BatchID())
 		if err != nil {
 			return false, fmt.Errorf("failed removing older chunk: %w", err)
 		}
 		r.logger.Debug(
 			"replacing chunk stamp index",
-			"old_chunk", oldChunk.Address.String(),
-			"new_chunk", chunk.Address().String(),
+			"old_chunk", item.ChunkAddress,
+			"new_chunk", chunk.Address(),
 			"batch_id", hex.EncodeToString(chunk.Stamp().BatchID()),
 		)
 

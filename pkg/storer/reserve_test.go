@@ -203,6 +203,15 @@ func TestEvictBatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	gotUnreserveSignal := make(chan struct{})
+	go func() {
+		defer close(gotUnreserveSignal)
+		c, unsub := st.Events().Subscribe("reserveUnreserved")
+		defer unsub()
+		<-c
+	}()
+	<-gotUnreserveSignal
+
 	reserve := st.Reserve()
 
 	for _, ch := range chunks {

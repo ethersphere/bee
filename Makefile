@@ -9,7 +9,7 @@ BEEKEEPER_USE_SUDO ?= false
 BEEKEEPER_CLUSTER ?= local
 BEELOCAL_BRANCH ?= main
 BEEKEEPER_BRANCH ?= master
-REACHABILITY_OVERRIDE_PUBLIC ?= false
+REACHABILITY_OVERRIDE_PUBLIC ?= true
 BATCHFACTOR_OVERRIDE_PUBLIC ?= 5
 
 BEE_API_VERSION ?= "$(shell grep '^  version:' openapi/Swarm.yaml | awk '{print $$2}')"

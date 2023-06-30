@@ -133,7 +133,7 @@ func TestCreateBatch(t *testing.T) {
 			t.Fatalf("got wrong batchId. wanted %v, got %v", batchID, returnedID)
 		}
 
-		si, _, err := postageMock.GetStampIssuer(returnedID)
+		si, _, err := postageMock.GetStampIssuer(context.Background(), returnedID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -297,7 +297,7 @@ func TestTopUpBatch(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		si, _, err := postageMock.GetStampIssuer(batch.ID)
+		si, _, err := postageMock.GetStampIssuer(context.Background(), batch.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -483,7 +483,7 @@ func TestDiluteBatch(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		si, _, err := postageMock.GetStampIssuer(batch.ID)
+		si, _, err := postageMock.GetStampIssuer(context.Background(), batch.ID)
 		if err != nil {
 			t.Fatal(err)
 		}

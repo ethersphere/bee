@@ -795,13 +795,13 @@ func (p *putterSessionWrapper) Cleanup() error {
 	return errors.Join(p.PutterSession.Cleanup(), p.save(false))
 }
 
-func (s *Service) getStamper(batchID []byte) (postage.Stamper, func(bool) error, error) {
+func (s *Service) getStamper(ctx context.Context, batchID []byte) (postage.Stamper, func(bool) error, error) {
 	exists, err := s.batchStore.Exists(batchID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("batch exists: %w", err)
 	}
 
-	issuer, save, err := s.post.GetStampIssuer(batchID)
+	issuer, save, err := s.post.GetStampIssuer(ctx, batchID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("stamp issuer: %w", err)
 	}
@@ -818,7 +818,7 @@ func (s *Service) newStamperPutter(ctx context.Context, opts putterOptions) (sto
 		return nil, errUnsupportedDevNodeOperation
 	}
 
-	stamper, save, err := s.getStamper(opts.BatchID)
+	stamper, save, err := s.getStamper(ctx, opts.BatchID)
 	if err != nil {
 		return nil, fmt.Errorf("get stamper: %w", err)
 	}
