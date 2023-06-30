@@ -287,6 +287,10 @@ func (db *DB) reserveCleanup(ctx context.Context) error {
 		db.metrics.ReserveCleanup.Add(float64(removed))
 		db.logger.Info("cleanup finished", "removed", removed, "duration", dur())
 
+		if removed == 0 {
+			return
+		}
+
 		db.lock.Lock(reserveUpdateLockKey)
 		defer db.lock.Unlock(reserveUpdateLockKey)
 
