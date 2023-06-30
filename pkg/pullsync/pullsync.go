@@ -45,7 +45,7 @@ const (
 const (
 	MaxCursor           = math.MaxUint64
 	DefaultRateDuration = time.Minute * 15
-	batchTimeout        = time.Second
+	batchTimeout        = time.Second * 15 //max amount of time to wait for the next chunk after collecting the first addr.
 )
 
 var (
@@ -412,18 +412,13 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 		var (
 			chs     []*storer.BinC
 			topmost uint64
-			timer   *time.Timer
 			timerC  <-chan time.Time
 		)
 		chC, unsub, errC := s.store.SubscribeBin(ctx, bin, start)
-		defer func() {
-			unsub()
-			if timer != nil {
-				timer.Stop()
-			}
-		}()
+		defer unsub()
 
 		limit := s.maxPage
+		nextWindow := (1 + start/s.maxPage) * s.maxPage
 
 	LOOP:
 		for limit > 0 {
@@ -438,15 +433,16 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 					topmost = c.BinID
 				}
 				limit--
-				if timer == nil {
-					timer = time.NewTimer(batchTimeout)
-				} else {
-					if !timer.Stop() {
-						<-timer.C
-					}
-					timer.Reset(batchTimeout)
+				if timerC == nil {
+					timerC = time.After(batchTimeout)
 				}
-				timerC = timer.C
+				// by stopping at a specific position, we control the binID the next sync call will start at for all peers.
+				// as such, this increases the probability that multiple requests will fall into same single flight group.
+				if c.BinID == nextWindow {
+					s.logger.Debug("collect addr", "bin", bin, "start", start, "nextBucket", nextWindow)
+					break LOOP
+				}
+
 			case err := <-errC:
 				return nil, err
 			case <-ctx.Done():
