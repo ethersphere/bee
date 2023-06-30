@@ -135,6 +135,8 @@ func (bs *BatchStore) Get(id []byte) (*postage.Batch, error) {
 
 // Iterate mocks the Iterate method from the BatchStore
 func (bs *BatchStore) Iterate(f func(*postage.Batch) (bool, error)) error {
+	bs.mtx.Lock()
+	defer bs.mtx.Unlock()
 	if bs.batch == nil {
 		return nil
 	}
@@ -144,6 +146,8 @@ func (bs *BatchStore) Iterate(f func(*postage.Batch) (bool, error)) error {
 
 // Save mocks the Save method from the BatchStore.
 func (bs *BatchStore) Save(batch *postage.Batch) error {
+	bs.mtx.Lock()
+	defer bs.mtx.Unlock()
 	if bs.batch != nil {
 		return errors.New("batch already taken")
 	}
