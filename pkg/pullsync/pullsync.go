@@ -45,7 +45,6 @@ const (
 const (
 	MaxCursor           = math.MaxUint64
 	DefaultRateDuration = time.Minute * 15
-	batchTimeout        = time.Second * 15 //max amount of time to wait for the next chunk after collecting the first addr.
 )
 
 var (
@@ -53,8 +52,9 @@ var (
 )
 
 const (
-	makeOfferTimeout        = 5 * time.Minute
-	DefaultMaxPage   uint64 = 250
+	makeOfferTimeout           = 5 * time.Minute
+	DefaultMaxPage      uint64 = 250
+	DefaultBatchTimeout        = time.Second * 15 //max amount of time to wait for the next chunk after collecting the first addr.
 )
 
 // singleflight key for intervals
@@ -434,12 +434,11 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 				}
 				limit--
 				if timerC == nil {
-					timerC = time.After(batchTimeout)
+					timerC = time.After(DefaultBatchTimeout)
 				}
 				// by stopping at a specific position, we control the binID the next sync call will start at for all peers.
 				// as such, this increases the probability that multiple requests will fall into same single flight group.
 				if c.BinID == nextWindow {
-					s.logger.Debug("collect addr", "bin", bin, "start", start, "nextBucket", nextWindow)
 					break LOOP
 				}
 
