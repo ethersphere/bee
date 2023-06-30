@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"sync/atomic"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/log"
 	storage "github.com/ethersphere/bee/pkg/storage"
@@ -79,11 +80,13 @@ func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.C
 
 	po := swarm.Proximity(r.baseAddr.Bytes(), chunk.Address().Bytes())
 
+	start := time.Now()
 	has, err := indexStore.Has(&batchRadiusItem{
 		Bin:     po,
 		Address: chunk.Address(),
 		BatchID: chunk.Stamp().BatchID(),
 	})
+	r.logger.Debug("perf: reserve put has", "bin", po, "address", chunk.Address(), "batchID", chunk.Stamp().BatchID(), "has", has, "err", err, "took", time.Since(start))
 	if err != nil {
 		return false, err
 	}
@@ -93,6 +96,7 @@ func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.C
 
 	newStampIndex := true
 
+	start = time.Now()
 	switch item, loaded, err := stampindex.LoadOrStore(indexStore, reserveNamespace, chunk); {
 	case err != nil:
 		return false, fmt.Errorf("load or store stamp index for chunk %v has fail: %w", chunk, err)
@@ -112,7 +116,9 @@ func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.C
 		// 4. Update the stamp index
 		newStampIndex = false
 
+		start = time.Now()
 		err := r.DeleteChunk(ctx, store, item.ChunkAddress, chunk.Stamp().BatchID())
+		r.logger.Debug("perf: reserve put delete chunk", "bin", po, "address", chunk.Address(), "batchID", chunk.Stamp().BatchID(), "took", time.Since(start))
 		if err != nil {
 			return false, fmt.Errorf("failed removing older chunk: %w", err)
 		}
@@ -129,26 +135,33 @@ func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.C
 		}
 	}
 
+	start = time.Now()
 	err = chunkstamp.Store(indexStore, reserveNamespace, chunk)
+	r.logger.Debug("perf: reserve put store chunk stamp", "bin", po, "address", chunk.Address(), "batchID", chunk.Stamp().BatchID(), "took", time.Since(start))
 	if err != nil {
 		return false, err
 	}
 
+	start = time.Now()
 	binID, err := r.incBinID(indexStore, po)
+	r.logger.Debug("perf: reserve put inc bin id", "bin", po, "address", chunk.Address(), "batchID", chunk.Stamp().BatchID(), "took", time.Since(start))
 	if err != nil {
 		return false, err
 	}
 
+	start = time.Now()
 	err = indexStore.Put(&batchRadiusItem{
 		Bin:     po,
 		BinID:   binID,
 		Address: chunk.Address(),
 		BatchID: chunk.Stamp().BatchID(),
 	})
+	r.logger.Debug("perf: reserve put put batch radius item", "bin", po, "address", chunk.Address(), "batchID", chunk.Stamp().BatchID(), "took", time.Since(start))
 	if err != nil {
 		return false, err
 	}
 
+	start = time.Now()
 	err = indexStore.Put(&chunkBinItem{
 		Bin:       po,
 		BinID:     binID,
@@ -156,11 +169,14 @@ func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.C
 		BatchID:   chunk.Stamp().BatchID(),
 		ChunkType: chunkType(chunk),
 	})
+	r.logger.Debug("perf: reserve put put chunk bin item", "bin", po, "address", chunk.Address(), "batchID", chunk.Stamp().BatchID(), "took", time.Since(start))
 	if err != nil {
 		return false, err
 	}
 
+	start = time.Now()
 	err = chunkStore.Put(ctx, chunk)
+	r.logger.Debug("perf: reserve put put chunk", "bin", po, "address", chunk.Address(), "batchID", chunk.Stamp().BatchID(), "took", time.Since(start))
 	if err != nil {
 		return false, err
 	}
@@ -303,34 +319,45 @@ func (r *Reserve) DeleteChunk(
 		BatchID: batchID,
 		Address: chunkAddress,
 	}
+	start := time.Now()
 	err := store.IndexStore().Get(item)
+	r.logger.Debug("perf: reserve delete chunk get", "took", time.Since(start), "err", err, "chunk", chunkAddress.String())
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			return nil
 		}
 		return err
 	}
-	return removeChunk(ctx, store, item)
+	start = time.Now()
+	err = r.removeChunk(ctx, store, item)
+	r.logger.Debug("perf: reserve delete chunk remove", "took", time.Since(start), "chunk", chunkAddress.String(), "err", err)
+	return err
 }
 
-func removeChunk(ctx context.Context, store internal.Storage, item *batchRadiusItem) error {
-
+func (r *Reserve) removeChunk(ctx context.Context, store internal.Storage, item *batchRadiusItem) error {
 	indexStore := store.IndexStore()
 	chunkStore := store.ChunkStore()
 
 	var errs error
 
+	start := time.Now()
 	stamp, _ := chunkstamp.LoadWithBatchID(indexStore, reserveNamespace, item.Address, item.BatchID)
+	r.logger.Debug("perf: reserve delete chunk load stamp", "took", time.Since(start), "chunk", item.Address.String(), "err", errs)
 	if stamp != nil {
+		start = time.Now()
 		errs = stampindex.Delete(indexStore, reserveNamespace, swarm.NewChunk(item.Address, nil).WithStamp(stamp))
+		r.logger.Debug("perf: reserve delete chunk delete stamp", "took", time.Since(start), "chunk", item.Address.String(), "err", errs)
 	}
 
-	return errors.Join(errs,
+	start = time.Now()
+	errs = errors.Join(errs,
 		indexStore.Delete(&chunkBinItem{Bin: item.Bin, BinID: item.BinID}),
 		chunkstamp.Delete(indexStore, reserveNamespace, item.Address, item.BatchID),
 		chunkStore.Delete(ctx, item.Address),
 		indexStore.Delete(item),
 	)
+	r.logger.Debug("perf: reserve delete chunk delete all", "took", time.Since(start), "chunk", item.Address.String(), "err", errs)
+	return errs
 }
 
 func (r *Reserve) LastBinIDs(store storage.Store) ([]uint64, error) {

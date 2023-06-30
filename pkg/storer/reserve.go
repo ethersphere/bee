@@ -226,6 +226,7 @@ func (db *DB) ReservePutter() storage.Putter {
 				var (
 					newIndex bool
 				)
+				start := time.Now()
 				err = db.Do(ctx, func(trx internal.Storage) error {
 					newIndex, err = db.reserve.Put(ctx, trx, chunk)
 					if err != nil {
@@ -233,16 +234,21 @@ func (db *DB) ReservePutter() storage.Putter {
 					}
 					return nil
 				})
+				db.logger.Debug("perf: reserve putter put", "duration", time.Since(start), "address", chunk.Address(), "new", newIndex, "err", err)
 				if err != nil {
 					return err
 				}
+				start = time.Now()
 				if newIndex {
 					db.reserve.AddSize(1)
 				}
+				db.logger.Debug("perf: reserve putter put add size", "duration", time.Since(start), "address", chunk.Address())
+				start = time.Now()
 				db.reserveBinEvents.Trigger(string(db.po(chunk.Address())))
 				if !db.reserve.IsWithinCapacity() {
 					db.events.Trigger(reserveOverCapacity)
 				}
+				db.logger.Debug("perf: reserve putter put trigger", "duration", time.Since(start), "address", chunk.Address())
 				db.metrics.ReserveSize.Set(float64(db.reserve.Size()))
 				return nil
 			},
