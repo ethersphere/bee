@@ -331,5 +331,5 @@ func (m txChunkStoreWithMetrics) Iterate(ctx context.Context, fn IterateChunkFn)
 
 // captureDuration returns a function that returns the duration since the given start.
 func captureDuration(start time.Time) (elapsed func() float64) {
-	return func() float64 { return float64(time.Since(start).Nanoseconds()) }
+	return func() float64 { return time.Since(start).Seconds() }
 }

@@ -20,6 +20,7 @@ type metrics struct {
 	MethodCalls         prometheus.CounterVec
 	MethodCallsDuration prometheus.HistogramVec
 	ReserveSize         prometheus.Gauge
+	ReserveCleanup      prometheus.Counter
 	StorageRadius       prometheus.Gauge
 	CacheSize           prometheus.Gauge
 	EvictedChunkCount   prometheus.Counter
@@ -56,6 +57,14 @@ func newMetrics() metrics {
 				Subsystem: subsystem,
 				Name:      "reserve_size",
 				Help:      "Number of chunks in reserve.",
+			},
+		),
+		ReserveCleanup: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "reserve_cleanup",
+				Help:      "Number of cleaned-up expired chunks.",
 			},
 		),
 		StorageRadius: prometheus.NewGauge(
@@ -147,5 +156,5 @@ func (m getterWithMetrics) Get(ctx context.Context, address swarm.Address) (swar
 
 // captureDuration returns a function that returns the duration since the given start.
 func captureDuration(start time.Time) func() float64 {
-	return func() float64 { return float64(time.Since(start).Nanoseconds()) }
+	return func() float64 { return time.Since(start).Seconds() }
 }
