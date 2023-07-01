@@ -52,9 +52,9 @@ var (
 )
 
 const (
-	makeOfferTimeout           = 5 * time.Minute
-	DefaultMaxPage      uint64 = 250
-	DefaultBatchTimeout        = time.Second * 15 //max amount of time to wait for the next chunk after collecting the first addr.
+	makeOfferTimeout          = 5 * time.Minute
+	DefaultMaxPage     uint64 = 250
+	DefaultPageTimeout        = time.Second * 15 //max amount of time to wait for the next chunk after collecting the first addr.
 )
 
 // singleflight key for intervals
@@ -86,7 +86,8 @@ type Syncer struct {
 	syncInProgress atomic.Int32
 	binLock        *multex.Multex
 
-	maxPage uint64
+	maxPage     uint64
+	pageTimeout time.Duration
 
 	Interface
 	io.Closer
@@ -99,18 +100,20 @@ func New(
 	validStamp postage.ValidStampFn,
 	logger log.Logger,
 	maxPage uint64,
+	pageTimeout time.Duration,
 ) *Syncer {
 
 	return &Syncer{
-		streamer:   streamer,
-		store:      store,
-		metrics:    newMetrics(),
-		unwrap:     unwrap,
-		validStamp: validStamp,
-		logger:     logger.WithName(loggerName).Register(),
-		quit:       make(chan struct{}),
-		maxPage:    maxPage,
-		binLock:    multex.New(),
+		streamer:    streamer,
+		store:       store,
+		metrics:     newMetrics(),
+		unwrap:      unwrap,
+		validStamp:  validStamp,
+		logger:      logger.WithName(loggerName).Register(),
+		quit:        make(chan struct{}),
+		maxPage:     maxPage,
+		binLock:     multex.New(),
+		pageTimeout: pageTimeout,
 	}
 }
 
@@ -434,7 +437,7 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 				}
 				limit--
 				if timerC == nil {
-					timerC = time.After(DefaultBatchTimeout)
+					timerC = time.After(s.pageTimeout)
 				}
 				// by stopping at a specific position, we control the binID the next sync call will start at for all peers.
 				// as such, this increases the probability that multiple requests will fall into same single flight group.

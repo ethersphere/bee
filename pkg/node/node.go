@@ -986,7 +986,7 @@ func NewBee(
 
 	pusherService.AddFeed(localStore.PusherFeed())
 
-	pullSyncProtocol := pullsync.New(p2ps, localStore, pssService.TryUnwrap, validStamp, logger, pullsync.DefaultMaxPage)
+	pullSyncProtocol := pullsync.New(p2ps, localStore, pssService.TryUnwrap, validStamp, logger, pullsync.DefaultMaxPage, pullsync.DefaultPageTimeout)
 	b.pullSyncCloser = pullSyncProtocol
 
 	retrieveProtocolSpec := retrieve.Protocol()

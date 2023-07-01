@@ -9,6 +9,7 @@ import (
 	"errors"
 	"io"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -319,6 +320,7 @@ func newPullSyncWithStamperValidator(
 		validStamp,
 		logger,
 		maxPage,
+		time.Second,
 	)
 
 	t.Cleanup(func() {
