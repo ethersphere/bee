@@ -46,10 +46,6 @@ func (db *DB) reserveWorker(ctx context.Context, warmupDur, wakeUpDur time.Durat
 		cancel()
 	}()
 
-	if err := db.reserveCleanup(ctx); err != nil {
-		db.logger.Error(err, "cleanup")
-	}
-
 	overCapTrigger, overCapUnsub := db.events.Subscribe(reserveOverCapacity)
 	defer overCapUnsub()
 
@@ -283,23 +279,11 @@ func (db *DB) reserveCleanup(ctx context.Context) error {
 	dur := captureDuration(time.Now())
 	removed := 0
 	defer func() {
+		db.reserve.AddSize(-removed)
+		db.logger.Info("cleanup finished", "removed", removed, "duration", dur())
 		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "cleanup").Observe(dur())
 		db.metrics.ReserveCleanup.Add(float64(removed))
-		db.logger.Info("cleanup finished", "removed", removed, "duration", dur())
-
-		if removed == 0 {
-			return
-		}
-
-		db.lock.Lock(reserveUpdateLockKey)
-		defer db.lock.Unlock(reserveUpdateLockKey)
-
-		if err := db.reserve.RecountSize(db.repo.IndexStore()); err != nil {
-			db.logger.Error(err, "recount reserve size")
-		}
-
-		db.metrics.ReserveSize.Set(float64(db.ReserveSize()))
-
+		db.metrics.ReserveSize.Set(float64(db.reserve.Size()))
 	}()
 
 	ids := map[string]struct{}{}

@@ -63,10 +63,11 @@ func New(
 	}
 	rs.radius.Store(uint32(rItem.Radius))
 
-	err = rs.RecountSize(store)
+	size, err := store.Count(&batchRadiusItem{})
 	if err != nil {
 		return nil, err
 	}
+	rs.size.Store(int64(size))
 
 	return rs, nil
 }
@@ -366,18 +367,6 @@ func (r *Reserve) Radius() uint8 {
 
 func (r *Reserve) Size() int {
 	return int(r.size.Load())
-}
-
-// RecountSize recounts the entire reserve from the Store.
-// Not thread-safe so it must NOT be called along all other calls to update the size.
-func (r *Reserve) RecountSize(store storage.Store) error {
-	size, err := store.Count(&batchRadiusItem{})
-	if err != nil {
-		return err
-	}
-	r.size.Store(int64(size))
-
-	return nil
 }
 
 func (r *Reserve) Capacity() int {
