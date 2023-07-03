@@ -294,7 +294,7 @@ func (db *DB) evictBatch(ctx context.Context, batchID []byte, upToBin uint8) (re
 			batchID []byte
 		}
 
-		itemsToEvict := make([]evictItems, 0)
+		var itemsToEvict []evictItems
 
 		err := db.reserve.IterateBatchBin(ctx, db.repo, b, batchID, func(address swarm.Address) (bool, error) {
 			itemsToEvict = append(itemsToEvict, evictItems{
@@ -368,7 +368,7 @@ func (db *DB) reserveCleanup(ctx context.Context) error {
 		db.metrics.ReserveSize.Set(float64(db.reserve.Size()))
 	}()
 
-	itemsToEvict := make([]reserve.ChunkItem, 0)
+	var itemsToEvict []reserve.ChunkItem
 
 	err := db.reserve.IterateChunksItems(db.repo, 0, func(ci reserve.ChunkItem) (bool, error) {
 		if exists, err := db.batchstore.Exists(ci.BatchID); err == nil && !exists {

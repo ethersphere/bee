@@ -55,6 +55,11 @@ const (
 	DefaultMaxPage   uint64 = 250
 )
 
+// singleflight key for intervals
+func sfKey(bin uint8, start uint64) string {
+	return fmt.Sprintf("%d-%d", bin, start)
+}
+
 // how many maximum chunks in a batch
 
 // Interface is the PullSync interface.
@@ -340,7 +345,7 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 	chs, err := s.processWant(ctx, offer, &want)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			s.intervalsSF.Forget(fmt.Sprintf("%v-%v", rn.Bin, rn.Start))
+			s.intervalsSF.Forget(sfKey(uint8(rn.Bin), rn.Start))
 		}
 		return fmt.Errorf("process want: %w", err)
 	}
@@ -392,7 +397,7 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 		topmost uint64
 	}
 
-	v, _, err := s.intervalsSF.Do(ctx, fmt.Sprintf("%v-%v", bin, start), func(ctx context.Context) (interface{}, error) {
+	v, _, err := s.intervalsSF.Do(ctx, sfKey(bin, start), func(ctx context.Context) (interface{}, error) {
 		var (
 			chs     []*storer.BinC
 			topmost uint64

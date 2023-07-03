@@ -150,17 +150,20 @@ func (ps *service) IssuerUsable(st *StampIssuer) bool {
 	return true
 }
 
-// GetStampIssuer finds a stamp issuer by batch ID.
+// GetStampIssuer finds a stamp issuer by batch ID. Only one caller can use the
+// stamp issuer at a time. The caller must call the returned release function
+// when done with the stamp issuer.
 func (ps *service) GetStampIssuer(ctx context.Context, batchID []byte) (*StampIssuer, func(bool) error, error) {
 
 	var issuerAccess *semaphore.Weighted
+	key := string(batchID)
 
 	ps.lock.Lock()
-	if s, ok := ps.issuersInUse[string(batchID)]; ok {
+	if s, ok := ps.issuersInUse[key]; ok {
 		issuerAccess = s
 	} else {
 		issuerAccess = semaphore.NewWeighted(1)
-		ps.issuersInUse[string(batchID)] = issuerAccess
+		ps.issuersInUse[key] = issuerAccess
 	}
 	ps.lock.Unlock()
 

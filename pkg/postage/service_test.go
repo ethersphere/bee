@@ -209,14 +209,29 @@ func TestGetStampIssuer(t *testing.T) {
 		}
 		_ = save2(true)
 
-		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
 
 		_, _, err = ps.GetStampIssuer(ctx, ids[1])
 		if !errors.Is(err, context.DeadlineExceeded) {
-			t.Fatalf("expected context.Canceled, got %v", err)
+			t.Fatalf("expected context.DeadlineExceeded, got %v", err)
 		}
+		// ensure we get access once the first one is saved
+		done := make(chan struct{})
+		go func() {
+			_, save12, err := ps.GetStampIssuer(context.Background(), ids[1])
+			if err != nil {
+				t.Fatalf("unexpected error, got %v", err)
+			}
+			_ = save12(true)
+			close(done)
+		}()
 		_ = save1(true)
+		select {
+		case <-done:
+		case <-time.After(time.Second):
+			t.Fatal("timeout")
+		}
 	})
 	t.Run("save without update", func(t *testing.T) {
 		is, save, err := ps.GetStampIssuer(context.Background(), ids[1])
