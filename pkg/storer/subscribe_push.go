@@ -59,6 +59,12 @@ func (db *DB) SubscribePush(ctx context.Context) (<-chan swarm.Chunk, func()) {
 					db.logger.Error(err, "subscribe push: iterate error")
 					return
 				}
+				// if we get storage.ErrNotFound, it could happen that the previous
+				// iteration happened on a snapshot that was not fully updated yet.
+				// in this case, we wait for the next event to trigger the iteration
+				// again. This trigger ensures that we perform the iteration on the
+				// latest snapshot.
+				db.events.Trigger(subscribePushEventKey)
 			}
 
 			select {
