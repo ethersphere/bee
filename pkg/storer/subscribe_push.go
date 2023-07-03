@@ -6,8 +6,10 @@ package storer
 
 import (
 	"context"
+	"errors"
 	"sync"
 
+	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storer/internal/upload"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -53,7 +55,10 @@ func (db *DB) SubscribePush(ctx context.Context) (<-chan swarm.Chunk, func()) {
 			})
 
 			if err != nil {
-				return
+				if !errors.Is(err, storage.ErrNotFound) {
+					db.logger.Error(err, "subscribe push: iterate error")
+					return
+				}
 			}
 
 			select {

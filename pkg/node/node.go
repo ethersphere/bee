@@ -777,7 +777,6 @@ func NewBee(
 		lo.ReserveCapacity = ReserveCapacity
 		lo.ReserveWakeUpDuration = reserveWakeUpDuration
 		lo.RadiusSetter = kad
-		lo.ReserveInitialCleanup = true
 	}
 
 	localStore, err := storer.New(ctx, path, lo)
