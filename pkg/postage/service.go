@@ -5,6 +5,7 @@
 package postage
 
 import (
+	"context"
 	"errors"
 	"io"
 	"math/big"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/storage"
+	"golang.org/x/sync/semaphore"
 )
 
 const (
@@ -25,15 +27,13 @@ var (
 	ErrNotFound = errors.New("not found")
 	// ErrNotUsable is the error returned when issuer with given batch ID is not usable.
 	ErrNotUsable = errors.New("not usable")
-	// ErrBatchInUse is the error returned when issuer with given batch ID is already in use.
-	ErrBatchInUse = errors.New("batch is in use by another upload process")
 )
 
 // Service is the postage service interface.
 type Service interface {
 	Add(*StampIssuer) error
 	StampIssuers() ([]*StampIssuer, error)
-	GetStampIssuer([]byte) (*StampIssuer, func(bool) error, error)
+	GetStampIssuer(context.Context, []byte) (*StampIssuer, func(bool) error, error)
 	IssuerUsable(*StampIssuer) bool
 	BatchEventListener
 	BatchExpiryHandler
@@ -47,7 +47,7 @@ type service struct {
 	store        storage.Store
 	postageStore Storer
 	chainID      int64
-	issuersInUse map[string]any
+	issuersInUse map[string]*semaphore.Weighted
 }
 
 // NewService constructs a new Service.
@@ -56,7 +56,7 @@ func NewService(store storage.Store, postageStore Storer, chainID int64) Service
 		store:        store,
 		postageStore: postageStore,
 		chainID:      chainID,
-		issuersInUse: make(map[string]any),
+		issuersInUse: make(map[string]*semaphore.Weighted),
 	}
 }
 
@@ -150,31 +150,44 @@ func (ps *service) IssuerUsable(st *StampIssuer) bool {
 	return true
 }
 
-// GetStampIssuer finds a stamp issuer by batch ID.
-func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, func(bool) error, error) {
-	ps.lock.Lock()
-	defer ps.lock.Unlock()
+// GetStampIssuer finds a stamp issuer by batch ID. Only one caller can use the
+// stamp issuer at a time. The caller must call the returned release function
+// when done with the stamp issuer.
+func (ps *service) GetStampIssuer(ctx context.Context, batchID []byte) (*StampIssuer, func(bool) error, error) {
 
-	if _, ok := ps.issuersInUse[string(batchID)]; ok {
-		return nil, nil, ErrBatchInUse
+	var issuerAccess *semaphore.Weighted
+	key := string(batchID)
+
+	ps.lock.Lock()
+	if s, ok := ps.issuersInUse[key]; ok {
+		issuerAccess = s
+	} else {
+		issuerAccess = semaphore.NewWeighted(1)
+		ps.issuersInUse[key] = issuerAccess
 	}
-	item := NewStampIssuerItem(batchID)
-	err := ps.store.Get(item)
-	if errors.Is(err, storage.ErrNotFound) {
-		return nil, nil, ErrNotFound
-	}
-	if err != nil {
+	ps.lock.Unlock()
+
+	if err := issuerAccess.Acquire(ctx, 1); err != nil {
 		return nil, nil, err
 	}
 
+	item := NewStampIssuerItem(batchID)
+	err := ps.store.Get(item)
+	if errors.Is(err, storage.ErrNotFound) {
+		issuerAccess.Release(1)
+		return nil, nil, ErrNotFound
+	}
+	if err != nil {
+		issuerAccess.Release(1)
+		return nil, nil, err
+	}
 	if !ps.IssuerUsable(item.Issuer) {
+		issuerAccess.Release(1)
 		return nil, nil, ErrNotUsable
 	}
-	ps.issuersInUse[string(batchID)] = struct{}{}
+
 	return item.Issuer, func(update bool) error {
-		ps.lock.Lock()
-		defer ps.lock.Unlock()
-		delete(ps.issuersInUse, string(batchID))
+		defer issuerAccess.Release(1)
 		if !update {
 			return nil
 		}

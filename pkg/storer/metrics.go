@@ -26,6 +26,7 @@ type metrics struct {
 	EvictedChunkCount   prometheus.Counter
 	ExpiredChunkCount   prometheus.Counter
 	OverCapTriggerCount prometheus.Counter
+	ExpiredBatchCount   prometheus.Counter
 }
 
 // newMetrics is a convenient constructor for creating new metrics.
@@ -105,6 +106,14 @@ func newMetrics() metrics {
 				Subsystem: subsystem,
 				Name:      "over_cap_trigger_count",
 				Help:      "Number of times the reserve was over capacity and triggered an eviction.",
+			},
+		),
+		ExpiredBatchCount: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "expired_batch_count",
+				Help:      "Number of batches expired, that were processed.",
 			},
 		),
 	}

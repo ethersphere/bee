@@ -23,6 +23,8 @@ const (
 	reserveOverCapacity  = "reserveOverCapacity"
 	reserveUnreserved    = "reserveUnreserved"
 	reserveUpdateLockKey = "reserveUpdateLockKey"
+	batchExpiry          = "batchExpiry"
+	expiredBatchAccess   = "expiredBatchAccess"
 
 	cleanupDur = time.Hour * 6
 )
@@ -37,17 +39,21 @@ type Syncer interface {
 
 func threshold(capacity int) int { return capacity * 5 / 10 }
 
-func (db *DB) reserveWorker(ctx context.Context, warmupDur, wakeUpDur time.Duration, radius func() (uint8, error)) {
-	defer db.reserveWg.Done()
-
+func (db *DB) startReserveWorkers(
+	ctx context.Context,
+	warmupDur, wakeUpDur time.Duration,
+	radius func() (uint8, error),
+) {
 	ctx, cancel := context.WithCancel(ctx)
 	go func() {
 		<-db.quit
 		cancel()
 	}()
 
-	overCapTrigger, overCapUnsub := db.events.Subscribe(reserveOverCapacity)
-	defer overCapUnsub()
+	// start eviction worker first as there could be batch expirations because of
+	// initial contract sync
+	db.reserveWg.Add(1)
+	go db.evictionWorker(ctx)
 
 	select {
 	case <-time.After(warmupDur):
@@ -74,20 +80,20 @@ func (db *DB) reserveWorker(ctx context.Context, warmupDur, wakeUpDur time.Durat
 	// syncing can now begin now that the reserver worker is running
 	db.syncer.Start(ctx)
 
+	db.reserveWg.Add(1)
+	go db.radiusWorker(ctx, wakeUpDur)
+}
+
+func (db *DB) radiusWorker(ctx context.Context, wakeUpDur time.Duration) {
+	defer db.reserveWg.Done()
+
 	radiusWakeUpTicker := time.NewTicker(wakeUpDur)
 	defer radiusWakeUpTicker.Stop()
 
-	cleanUpTicker := time.NewTicker(cleanupDur)
-	defer cleanUpTicker.Stop()
-
 	for {
 		select {
-		case <-overCapTrigger:
-			err := db.unreserve(ctx)
-			if err != nil {
-				db.logger.Error(err, "reserve unreserve")
-			}
-			db.metrics.OverCapTriggerCount.Inc()
+		case <-ctx.Done():
+			return
 		case <-radiusWakeUpTicker.C:
 			radius := db.reserve.Radius()
 			if db.reserve.Size() < threshold(db.reserve.Capacity()) && db.syncer.SyncRate() == 0 && radius > 0 {
@@ -99,12 +105,63 @@ func (db *DB) reserveWorker(ctx context.Context, warmupDur, wakeUpDur time.Durat
 				db.logger.Info("reserve radius decrease", "radius", radius)
 			}
 			db.metrics.StorageRadius.Set(float64(radius))
+		}
+	}
+}
+
+func (db *DB) evictionWorker(ctx context.Context) {
+	defer db.reserveWg.Done()
+
+	batchExpiryTrigger, batchExpiryUnsub := db.events.Subscribe(batchExpiry)
+	defer batchExpiryUnsub()
+
+	overCapTrigger, overCapUnsub := db.events.Subscribe(reserveOverCapacity)
+	defer overCapUnsub()
+
+	cleanupExpired := func() {
+		db.lock.Lock(expiredBatchAccess)
+		batchesToEvict := make([][]byte, len(db.expiredBatches))
+		copy(batchesToEvict, db.expiredBatches)
+		db.expiredBatches = nil
+		db.lock.Unlock(expiredBatchAccess)
+
+		defer db.events.Trigger(reserveUnreserved)
+
+		if len(batchesToEvict) > 0 {
+			for _, batchID := range batchesToEvict {
+				err := db.evictBatch(ctx, batchID, swarm.MaxBins)
+				if err != nil {
+					db.logger.Error(err, "evict batch")
+				}
+				db.metrics.ExpiredBatchCount.Inc()
+			}
+		}
+	}
+
+	cleanUpTicker := time.NewTicker(cleanupDur)
+	defer cleanUpTicker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-overCapTrigger:
+			// check if there are expired batches first
+			cleanupExpired()
+
+			err := db.unreserve(ctx)
+			if err != nil {
+				db.logger.Error(err, "reserve unreserve")
+			}
+			db.metrics.OverCapTriggerCount.Inc()
+		case <-batchExpiryTrigger:
+			cleanupExpired()
 		case <-cleanUpTicker.C:
+			cleanupExpired()
+
 			if err := db.reserveCleanup(ctx); err != nil {
 				db.logger.Error(err, "cleanup")
 			}
-		case <-db.quit:
-			return
 		}
 	}
 }
@@ -201,19 +258,26 @@ func (db *DB) EvictBatch(ctx context.Context, batchID []byte) (err error) {
 		// if reserve is not configured, do nothing
 		return nil
 	}
+
+	db.lock.Lock(expiredBatchAccess)
+	db.expiredBatches = append(db.expiredBatches, batchID)
+	db.lock.Unlock(expiredBatchAccess)
+
+	db.events.Trigger(batchExpiry)
+
+	return nil
+}
+
+func (db *DB) evictBatch(ctx context.Context, batchID []byte, upToBin uint8) (retErr error) {
 	dur := captureDuration(time.Now())
 	defer func() {
 		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "EvictBatch").Observe(dur())
-		if err == nil {
+		if retErr == nil {
 			db.metrics.MethodCalls.WithLabelValues("reserve", "EvictBatch", "success").Inc()
 		} else {
 			db.metrics.MethodCalls.WithLabelValues("reserve", "EvictBatch", "failure").Inc()
 		}
 	}()
-	return db.evictBatch(ctx, batchID, swarm.MaxBins)
-}
-
-func (db *DB) evictBatch(ctx context.Context, batchID []byte, upToBin uint8) (err error) {
 
 	for b := uint8(0); b < upToBin; b++ {
 
@@ -225,14 +289,32 @@ func (db *DB) evictBatch(ctx context.Context, batchID []byte, upToBin uint8) (er
 
 		var evicted int
 
-		err = db.reserve.IterateBatchBin(ctx, db.repo, b, batchID, func(address swarm.Address) (bool, error) {
-			err := db.removeChunk(ctx, address, batchID)
-			if err != nil {
-				return false, err
-			}
-			evicted++
+		type evictItems struct {
+			address swarm.Address
+			batchID []byte
+		}
+
+		var itemsToEvict []evictItems
+
+		err := db.reserve.IterateBatchBin(ctx, db.repo, b, batchID, func(address swarm.Address) (bool, error) {
+			itemsToEvict = append(itemsToEvict, evictItems{
+				address: address,
+				batchID: batchID,
+			})
 			return false, nil
 		})
+		if err != nil {
+			return fmt.Errorf("reserve: iterate batch bin: %w", err)
+		}
+
+		for _, item := range itemsToEvict {
+			err = db.removeChunk(ctx, item.address, item.batchID)
+			if err != nil {
+				retErr = errors.Join(retErr, fmt.Errorf("reserve: remove chunk %v: %w", item, err))
+				continue
+			}
+			evicted++
+		}
 
 		// if there was an error, we still need to update the chunks that have already
 		// been evicted from the reserve
@@ -245,8 +327,8 @@ func (db *DB) evictBatch(ctx context.Context, batchID []byte, upToBin uint8) (er
 		} else {
 			db.metrics.EvictedChunkCount.Add(float64(evicted))
 		}
-		if err != nil {
-			return err
+		if retErr != nil {
+			return retErr
 		}
 	}
 
@@ -286,24 +368,35 @@ func (db *DB) reserveCleanup(ctx context.Context) error {
 		db.metrics.ReserveSize.Set(float64(db.reserve.Size()))
 	}()
 
-	ids := map[string]struct{}{}
+	var itemsToEvict []reserve.ChunkItem
 
-	err := db.batchstore.Iterate(func(b *postage.Batch) (bool, error) {
-		ids[string(b.ID)] = struct{}{}
+	err := db.reserve.IterateChunksItems(db.repo, 0, func(ci reserve.ChunkItem) (bool, error) {
+		if exists, err := db.batchstore.Exists(ci.BatchID); err == nil && !exists {
+			itemsToEvict = append(itemsToEvict, ci)
+		}
 		return false, nil
 	})
 	if err != nil {
 		return err
 	}
 
-	return db.reserve.IterateChunksItems(db.repo, 0, func(ci reserve.ChunkItem) (bool, error) {
-		if _, ok := ids[string(ci.BatchID)]; !ok {
-			removed++
-			db.logger.Debug("cleanup expired batch", "batch_id", hex.EncodeToString(ci.BatchID))
-			return false, db.removeChunk(ctx, ci.ChunkAddress, ci.BatchID)
+	expiredBatches := make(map[string]struct{})
+	var retErr error
+
+	for _, item := range itemsToEvict {
+		err = db.removeChunk(ctx, item.ChunkAddress, item.BatchID)
+		if err != nil {
+			retErr = errors.Join(retErr, fmt.Errorf("reserve: remove chunk %v: %w", item, err))
+			continue
 		}
-		return false, nil
-	})
+		removed++
+		if _, ok := expiredBatches[string(item.BatchID)]; !ok {
+			expiredBatches[string(item.BatchID)] = struct{}{}
+			db.logger.Debug("cleanup expired batch", "batch_id", hex.EncodeToString(item.BatchID))
+		}
+	}
+
+	return retErr
 }
 
 func (db *DB) unreserve(ctx context.Context) (err error) {
@@ -319,6 +412,10 @@ func (db *DB) unreserve(ctx context.Context) (err error) {
 
 	radius := db.reserve.Radius()
 	defer db.events.Trigger(reserveUnreserved)
+
+	if db.reserve.IsWithinCapacity() {
+		return nil
+	}
 
 	for radius < swarm.MaxBins {
 

@@ -6,6 +6,7 @@ package mock
 
 import (
 	"bytes"
+	"context"
 	"math/big"
 	"sync"
 
@@ -24,8 +25,7 @@ func (f optionFunc) apply(r *mockPostage) { f(r) }
 // New creates a new mock postage service.
 func New(o ...Option) postage.Service {
 	m := &mockPostage{
-		issuersMap:   make(map[string]*postage.StampIssuer),
-		issuersInUse: make(map[string]*postage.StampIssuer),
+		issuersMap: make(map[string]*postage.StampIssuer),
 	}
 	for _, v := range o {
 		v.apply(m)
@@ -47,10 +47,9 @@ func WithIssuer(s *postage.StampIssuer) Option {
 }
 
 type mockPostage struct {
-	issuersMap   map[string]*postage.StampIssuer
-	issuerLock   sync.Mutex
-	acceptAll    bool
-	issuersInUse map[string]*postage.StampIssuer
+	issuersMap map[string]*postage.StampIssuer
+	issuerLock sync.Mutex
+	acceptAll  bool
 }
 
 func (m *mockPostage) SetExpired() error {
@@ -88,7 +87,7 @@ func (m *mockPostage) StampIssuers() ([]*postage.StampIssuer, error) {
 	return issuers, nil
 }
 
-func (m *mockPostage) GetStampIssuer(id []byte) (*postage.StampIssuer, func(bool) error, error) {
+func (m *mockPostage) GetStampIssuer(_ context.Context, id []byte) (*postage.StampIssuer, func(bool) error, error) {
 	if m.acceptAll {
 		return postage.NewStampIssuer("test fallback", "test identity", id, big.NewInt(3), 24, 6, 1000, true), func(_ bool) error { return nil }, nil
 	}
@@ -101,14 +100,7 @@ func (m *mockPostage) GetStampIssuer(id []byte) (*postage.StampIssuer, func(bool
 		return nil, nil, postage.ErrNotFound
 	}
 
-	if _, inUse := m.issuersInUse[string(id)]; inUse {
-		return nil, nil, postage.ErrBatchInUse
-	}
-	m.issuersInUse[string(id)] = i
 	return i, func(_ bool) error {
-		m.issuerLock.Lock()
-		defer m.issuerLock.Unlock()
-		delete(m.issuersInUse, string(id))
 		return nil
 	}, nil
 }

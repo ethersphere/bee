@@ -382,7 +382,6 @@ type Options struct {
 	RadiusSetter   topology.SetStorageRadiuser
 	StateStore     storage.StateStorer
 
-	ReserveInitialCleanup bool
 	ReserveCapacity       int
 	ReserveWakeUpDuration time.Duration
 }
@@ -427,6 +426,7 @@ type DB struct {
 	setSyncerOnce    sync.Once
 	syncer           Syncer
 	opts             workerOpts
+	expiredBatches   [][]byte
 }
 
 type workerOpts struct {
@@ -508,13 +508,6 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		}
 		db.reserve = rs
 
-		if opts.ReserveInitialCleanup {
-			err = db.reserveCleanup(ctx)
-			if err != nil {
-				return nil, err
-			}
-		}
-
 		db.metrics.StorageRadius.Set(float64(rs.Radius()))
 		db.metrics.ReserveSize.Set(float64(rs.Size()))
 	}
@@ -588,8 +581,7 @@ func (db *DB) SetRetrievalService(r retrieval.Interface) {
 func (db *DB) StartReserveWorker(ctx context.Context, s Syncer, radius func() (uint8, error)) {
 	db.setSyncerOnce.Do(func() {
 		db.syncer = s
-		db.reserveWg.Add(1)
-		go db.reserveWorker(ctx, db.opts.warmupDuration, db.opts.wakeupDuration, radius)
+		go db.startReserveWorkers(ctx, db.opts.warmupDuration, db.opts.wakeupDuration, radius)
 	})
 }
 

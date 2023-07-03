@@ -277,7 +277,7 @@ func (s *Service) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.R
 	}
 	hexBatchID := hex.EncodeToString(paths.BatchID)
 
-	issuer, save, err := s.post.GetStampIssuer(paths.BatchID)
+	issuer, save, err := s.post.GetStampIssuer(r.Context(), paths.BatchID)
 	if err != nil {
 		logger.Debug("get stamp issuer: get issuer failed", "batch_id", hexBatchID, "error", err)
 		logger.Error(nil, "get stamp issuer: get issuer failed")
