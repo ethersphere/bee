@@ -339,6 +339,9 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 
 	chs, err := s.processWant(ctx, offer, &want)
 	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			s.intervalsSF.Forget(fmt.Sprintf("%v-%v", rn.Bin, rn.Start))
+		}
 		return fmt.Errorf("process want: %w", err)
 	}
 
