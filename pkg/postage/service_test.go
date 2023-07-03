@@ -218,10 +218,12 @@ func TestGetStampIssuer(t *testing.T) {
 		}
 		// ensure we get access once the first one is saved
 		done := make(chan struct{})
+		errC := make(chan error, 1)
 		go func() {
 			_, save12, err := ps.GetStampIssuer(context.Background(), ids[1])
 			if err != nil {
-				t.Fatalf("unexpected error, got %v", err)
+				errC <- err
+				return
 			}
 			_ = save12(true)
 			close(done)
@@ -229,6 +231,8 @@ func TestGetStampIssuer(t *testing.T) {
 		_ = save1(true)
 		select {
 		case <-done:
+		case err := <-errC:
+			t.Fatal(err)
 		case <-time.After(time.Second):
 			t.Fatal("timeout")
 		}
