@@ -534,7 +534,7 @@ func newPuller(t *testing.T, ops opts) (*puller.Puller, storage.StateStorer, *ka
 	o := puller.Options{
 		Bins: ops.bins,
 	}
-	p := puller.New(s, kad, ops.rs, ps, nil, logger, o, 0)
+	p := puller.New(s, kad, ops.rs, ps, nil, logger, o)
 	p.Start(context.Background())
 
 	testutil.CleanupCloser(t, p)

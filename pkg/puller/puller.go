@@ -77,11 +77,8 @@ func New(
 	blockLister p2p.Blocklister,
 	logger log.Logger,
 	o Options,
-	warmupTime time.Duration,
 ) *Puller {
-	var (
-		bins uint8 = swarm.MaxBins
-	)
+	bins := swarm.MaxBins
 	if o.Bins != 0 {
 		bins = o.Bins
 	}
