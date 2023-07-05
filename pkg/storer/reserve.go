@@ -24,7 +24,6 @@ const (
 	reserveUnreserved    = "reserveUnreserved"
 	reserveUpdateLockKey = "reserveUpdateLockKey"
 	batchExpiry          = "batchExpiry"
-	expiredBatchAccess   = "expiredBatchAccess"
 
 	cleanupDur = time.Hour * 6
 )
@@ -123,12 +122,6 @@ func (db *DB) evictionWorker(ctx context.Context) {
 	defer overCapUnsub()
 
 	cleanupExpired := func() {
-		db.lock.Lock(expiredBatchAccess)
-		batchesToEvict := make([][]byte, len(db.expiredBatches))
-		copy(batchesToEvict, db.expiredBatches)
-		db.expiredBatches = nil
-		db.lock.Unlock(expiredBatchAccess)
-
 		defer db.events.Trigger(reserveUnreserved)
 
 		if len(batchesToEvict) > 0 {
@@ -178,7 +171,7 @@ func (db *DB) evictionWorker(ctx context.Context) {
 			cleanupExpired()
 
 			if err := db.reserveCleanup(ctx); err != nil {
-				db.logger.Error(err, "cleanup")
+				db.logger.Error(err, "reserve cleanup")
 			}
 		}
 	}
@@ -271,18 +264,18 @@ func (db *DB) ReservePutter() storage.Putter {
 }
 
 // EvictBatch evicts all chunks belonging to a batch from the reserve.
-func (db *DB) EvictBatch(ctx context.Context, batchID []byte) (err error) {
+func (db *DB) EvictBatch(ctx context.Context, batchID []byte) error {
 	if db.reserve == nil {
 		// if reserve is not configured, do nothing
 		return nil
 	}
 
-	db.lock.Lock(expiredBatchAccess)
-	db.expiredBatches = append(db.expiredBatches, batchID)
-	db.lock.Unlock(expiredBatchAccess)
+	err := db.batchstore.SaveExpired(batchID)
+	if err != nil {
+		return fmt.Errorf("save expired batch: %w", err)
+	}
 
 	db.events.Trigger(batchExpiry)
-
 	return nil
 }
 

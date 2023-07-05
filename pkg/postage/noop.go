@@ -50,3 +50,9 @@ func (b *NoOpBatchStore) SetStorageRadius(func(uint8) uint8) error { return nil 
 func (b *NoOpBatchStore) Commitment() (uint64, error) { return 0, nil }
 
 func (b *NoOpBatchStore) Reset() error { return nil }
+
+func (b *NoOpBatchStore) SaveExpired(_ []byte) error { return nil }
+
+func (b *NoOpBatchStore) Expired() ([][]byte, error) { return nil, nil }
+
+func (b *NoOpBatchStore) DeleteExpired(_ []byte) error { return nil }
