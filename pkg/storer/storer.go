@@ -595,6 +595,15 @@ func (db *DB) ChunkStore() storage.ReadOnlyChunkStore {
 	return db.repo.ChunkStore()
 }
 
+// Execute implements the internal.TxExecutor interface.
+func (db *DB) Execute(ctx context.Context, do func(internal.Storage) error) error {
+	tx, commit, rollback := db.repo.NewTx(ctx)
+	if err := do(tx); err != nil {
+		return errors.Join(err, rollback())
+	}
+	return commit()
+}
+
 type putterSession struct {
 	storage.Putter
 	done    func(swarm.Address) error
@@ -604,12 +613,3 @@ type putterSession struct {
 func (p *putterSession) Done(addr swarm.Address) error { return p.done(addr) }
 
 func (p *putterSession) Cleanup() error { return p.cleanup() }
-
-func (db *DB) Do(ctx context.Context, op func(internal.Storage) error) error {
-	txnRepo, commit, rollback := db.repo.NewTx(ctx)
-	err := op(txnRepo)
-	if err != nil {
-		return errors.Join(err, rollback())
-	}
-	return commit()
-}

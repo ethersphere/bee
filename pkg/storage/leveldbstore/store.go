@@ -8,16 +8,14 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/syndtr/goleveldb/leveldb"
 	ldbErrors "github.com/syndtr/goleveldb/leveldb/errors"
 	"github.com/syndtr/goleveldb/leveldb/iterator"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 	ldbStorage "github.com/syndtr/goleveldb/leveldb/storage"
 	"github.com/syndtr/goleveldb/leveldb/util"
-
-	"github.com/ethersphere/bee/pkg/storage"
 )
 
 const separator = "/"
@@ -52,9 +50,8 @@ var (
 )
 
 type Store struct {
-	db      *leveldb.DB
-	path    string
-	closeLk sync.RWMutex
+	db   *leveldb.DB
+	path string
 }
 
 // New returns a new store the backed by leveldb.
@@ -91,16 +88,11 @@ func (s *Store) DB() *leveldb.DB {
 
 // Close implements the storage.Store interface.
 func (s *Store) Close() (err error) {
-	s.closeLk.Lock()
-	defer s.closeLk.Unlock()
 	return s.db.Close()
 }
 
 // Get implements the storage.Store interface.
 func (s *Store) Get(item storage.Item) error {
-	s.closeLk.RLock()
-	defer s.closeLk.RUnlock()
-
 	val, err := s.db.Get(key(item), nil)
 
 	if errors.Is(err, leveldb.ErrNotFound) {
@@ -120,17 +112,11 @@ func (s *Store) Get(item storage.Item) error {
 
 // Has implements the storage.Store interface.
 func (s *Store) Has(k storage.Key) (bool, error) {
-	s.closeLk.RLock()
-	defer s.closeLk.RUnlock()
-
 	return s.db.Has(key(k), nil)
 }
 
 // GetSize implements the storage.Store interface.
 func (s *Store) GetSize(k storage.Key) (int, error) {
-	s.closeLk.RLock()
-	defer s.closeLk.RUnlock()
-
 	val, err := s.db.Get(key(k), nil)
 
 	if errors.Is(err, leveldb.ErrNotFound) {
@@ -146,9 +132,6 @@ func (s *Store) GetSize(k storage.Key) (int, error) {
 
 // Iterate implements the storage.Store interface.
 func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
-	s.closeLk.RLock()
-	defer s.closeLk.RUnlock()
-
 	if err := q.Validate(); err != nil {
 		return fmt.Errorf("failed iteration: %w", err)
 	}
@@ -250,9 +233,6 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 
 // Count implements the storage.Store interface.
 func (s *Store) Count(key storage.Key) (int, error) {
-	s.closeLk.RLock()
-	defer s.closeLk.RUnlock()
-
 	keys := util.BytesPrefix([]byte(key.Namespace() + separator))
 	iter := s.db.NewIterator(keys, nil)
 
@@ -268,9 +248,6 @@ func (s *Store) Count(key storage.Key) (int, error) {
 
 // Put implements the storage.Store interface.
 func (s *Store) Put(item storage.Item) error {
-	s.closeLk.RLock()
-	defer s.closeLk.RUnlock()
-
 	value, err := item.Marshal()
 	if err != nil {
 		return fmt.Errorf("failed serializing: %w", err)
@@ -281,9 +258,6 @@ func (s *Store) Put(item storage.Item) error {
 
 // Delete implements the storage.Store interface.
 func (s *Store) Delete(item storage.Item) error {
-	s.closeLk.RLock()
-	defer s.closeLk.RUnlock()
-
 	// this is a small hack to make the deletion of old entries work. As they
 	// don't have a namespace, we need to check for that and use the ID as key without
 	// the separator.

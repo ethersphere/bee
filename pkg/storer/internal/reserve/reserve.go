@@ -13,7 +13,7 @@ import (
 	"sync/atomic"
 
 	"github.com/ethersphere/bee/pkg/log"
-	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storer/internal"
 	"github.com/ethersphere/bee/pkg/storer/internal/chunkstamp"
 	"github.com/ethersphere/bee/pkg/storer/internal/stampindex"
@@ -326,10 +326,10 @@ func removeChunk(ctx context.Context, store internal.Storage, item *batchRadiusI
 	}
 
 	return errors.Join(errs,
-		indexStore.Delete(&chunkBinItem{Bin: item.Bin, BinID: item.BinID}),
 		chunkstamp.Delete(indexStore, reserveNamespace, item.Address, item.BatchID),
-		chunkStore.Delete(ctx, item.Address),
+		indexStore.Delete(&chunkBinItem{Bin: item.Bin, BinID: item.BinID}),
 		indexStore.Delete(item),
+		chunkStore.Delete(ctx, item.Address),
 	)
 }
 
