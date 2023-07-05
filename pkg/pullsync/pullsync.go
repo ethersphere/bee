@@ -26,6 +26,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	storer "github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"resenje.org/multex"
 	"resenje.org/singleflight"
 )
 
@@ -82,6 +83,7 @@ type Syncer struct {
 	validStamp     postage.ValidStampFn
 	intervalsSF    singleflight.Group
 	syncInProgress atomic.Int32
+	binLock        *multex.Multex
 
 	maxPage uint64
 
@@ -107,6 +109,7 @@ func New(
 		logger:     logger.WithName(loggerName).Register(),
 		quit:       make(chan struct{}),
 		maxPage:    maxPage,
+		binLock:    multex.New(),
 	}
 }
 
@@ -261,6 +264,12 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 
 		s.metrics.Delivered.Add(float64(len(chunksToPut)))
 		s.metrics.LastReceived.WithLabelValues(fmt.Sprintf("%d", bin)).Add(float64(len(chunksToPut)))
+
+		// if we have parallel sync workers for the same bin, we need to rate limit them
+		// in order to not overload the storage with unnecessary requests as there is
+		// a chance that the same chunk is being synced by multiple workers.
+		s.binLock.Lock(fmt.Sprint(bin))
+		defer s.binLock.Unlock(fmt.Sprint(bin))
 
 		for _, c := range chunksToPut {
 			if err := s.store.ReservePutter().Put(ctx, c); err != nil {
