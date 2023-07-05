@@ -9,7 +9,7 @@ import (
 	"context"
 	"errors"
 
-	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	"github.com/ethersphere/bee/pkg/storage/inmemstore"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -26,11 +26,12 @@ type Storage interface {
 type PutterCloserWithReference interface {
 	Put(context.Context, Storage, swarm.Chunk) error
 	Close(Storage, swarm.Address) error
-	Cleanup(BatchOperation) error
+	Cleanup(TxExecutor) error
 }
 
-type BatchOperation interface {
-	Do(context.Context, func(Storage) error) error
+// TxExecutor executes a function in a transaction.
+type TxExecutor interface {
+	Execute(context.Context, func(Storage) error) error
 }
 
 var emptyAddr = make([]byte, swarm.HashSize)
@@ -55,10 +56,10 @@ func AddressBytesOrZero(addr swarm.Address) []byte {
 	return addr.Bytes()
 }
 
-// BatchedStorage groups the Storage and BatchOperation interfaces.
+// BatchedStorage groups the Storage and TxExecutor interfaces.
 type BatchedStorage interface {
 	Storage
-	BatchOperation
+	TxExecutor
 }
 
 // NewInmemStorage constructs a inmem Storage implementation which can be used
@@ -79,8 +80,6 @@ type inmemRepository struct {
 	chunkStore storage.ChunkStore
 }
 
-func (t *inmemRepository) IndexStore() storage.Store      { return t.indexStore }
-func (t *inmemRepository) ChunkStore() storage.ChunkStore { return t.chunkStore }
-func (t *inmemRepository) Do(ctx context.Context, f func(Storage) error) error {
-	return f(t)
-}
+func (t *inmemRepository) IndexStore() storage.Store                              { return t.indexStore }
+func (t *inmemRepository) ChunkStore() storage.ChunkStore                         { return t.chunkStore }
+func (t *inmemRepository) Execute(_ context.Context, f func(Storage) error) error { return f(t) }
