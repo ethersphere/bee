@@ -226,8 +226,8 @@ func (db *DB) ReservePutter() storage.Putter {
 				var (
 					newIndex bool
 				)
-				err = db.Do(ctx, func(trx internal.Storage) error {
-					newIndex, err = db.reserve.Put(ctx, trx, chunk)
+				err = db.Execute(ctx, func(tx internal.Storage) error {
+					newIndex, err = db.reserve.Put(ctx, tx, chunk)
 					if err != nil {
 						return fmt.Errorf("reserve: putter.Put: %w", err)
 					}
@@ -336,8 +336,7 @@ func (db *DB) evictBatch(ctx context.Context, batchID []byte, upToBin uint8) (re
 }
 
 func (db *DB) removeChunk(ctx context.Context, address swarm.Address, batchID []byte) error {
-
-	return db.Do(ctx, func(txnRepo internal.Storage) error {
+	return db.Execute(ctx, func(tx internal.Storage) error {
 		chunk, err := db.ChunkStore().Get(ctx, address)
 		if err == nil {
 			err := db.Cache().Put(ctx, chunk)
@@ -349,7 +348,7 @@ func (db *DB) removeChunk(ctx context.Context, address swarm.Address, batchID []
 		db.lock.Lock(reserveUpdateLockKey)
 		defer db.lock.Unlock(reserveUpdateLockKey)
 
-		err = db.reserve.DeleteChunk(ctx, txnRepo, address, batchID)
+		err = db.reserve.DeleteChunk(ctx, tx, address, batchID)
 		if err != nil {
 			return fmt.Errorf("reserve: delete chunk: %w", err)
 		}

@@ -512,7 +512,7 @@ func (u *uploadPutter) Close(s internal.Storage, addr swarm.Address) error {
 	return nil
 }
 
-func (u *uploadPutter) Cleanup(batch internal.BatchOperation) error {
+func (u *uploadPutter) Cleanup(tx internal.TxExecutor) error {
 	u.mtx.Lock()
 	defer u.mtx.Unlock()
 
@@ -522,14 +522,14 @@ func (u *uploadPutter) Cleanup(batch internal.BatchOperation) error {
 
 	itemsToDelete := make([]*pushItem, 0)
 
-	err := batch.Do(context.Background(), func(st internal.Storage) error {
+	err := tx.Execute(context.Background(), func(s internal.Storage) error {
 		di := &dirtyTagItem{TagID: u.tagID}
-		err := st.IndexStore().Get(di)
+		err := s.IndexStore().Get(di)
 		if err != nil {
 			return fmt.Errorf("failed reading dirty tag while cleaning up: %w", err)
 		}
 
-		return st.IndexStore().Iterate(
+		return s.IndexStore().Iterate(
 			storage.Query{
 				Factory:       func() storage.Item { return &pushItem{} },
 				PrefixAtStart: true,
@@ -550,14 +550,14 @@ func (u *uploadPutter) Cleanup(batch internal.BatchOperation) error {
 
 	batchCnt := 1000
 	for i := 0; i < len(itemsToDelete); i += batchCnt {
-		err = batch.Do(context.Background(), func(st internal.Storage) error {
+		err = tx.Execute(context.Background(), func(tx internal.Storage) error {
 			end := i + batchCnt
 			if end > len(itemsToDelete) {
 				end = len(itemsToDelete)
 			}
 			for _, pi := range itemsToDelete[i:end] {
-				_ = remove(st, pi.Address, pi.BatchID)
-				_ = st.IndexStore().Delete(pi)
+				_ = remove(tx, pi.Address, pi.BatchID)
+				_ = tx.IndexStore().Delete(pi)
 			}
 			return nil
 		})
@@ -566,8 +566,8 @@ func (u *uploadPutter) Cleanup(batch internal.BatchOperation) error {
 		}
 	}
 
-	return batch.Do(context.Background(), func(st internal.Storage) error {
-		return st.IndexStore().Delete(&dirtyTagItem{TagID: u.tagID})
+	return tx.Execute(context.Background(), func(tx internal.Storage) error {
+		return tx.IndexStore().Delete(&dirtyTagItem{TagID: u.tagID})
 	})
 }
 
@@ -602,11 +602,11 @@ func remove(st internal.Storage, address swarm.Address, batchID []byte) error {
 }
 
 // CleanupDirty does a best-effort cleanup of dirty tags. This is called on startup.
-func CleanupDirty(batch internal.BatchOperation) error {
+func CleanupDirty(tx internal.TxExecutor) error {
 	dirtyTags := make([]*dirtyTagItem, 0)
 
-	err := batch.Do(context.Background(), func(st internal.Storage) error {
-		return st.IndexStore().Iterate(
+	err := tx.Execute(context.Background(), func(s internal.Storage) error {
+		return s.IndexStore().Iterate(
 			storage.Query{
 				Factory: func() storage.Item { return &dirtyTagItem{} },
 			},
@@ -622,7 +622,7 @@ func CleanupDirty(batch internal.BatchOperation) error {
 	}
 
 	for _, di := range dirtyTags {
-		_ = (&uploadPutter{tagID: di.TagID}).Cleanup(batch)
+		_ = (&uploadPutter{tagID: di.TagID}).Cleanup(tx)
 	}
 
 	return nil
