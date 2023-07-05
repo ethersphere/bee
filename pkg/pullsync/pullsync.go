@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -268,8 +269,9 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		// if we have parallel sync workers for the same bin, we need to rate limit them
 		// in order to not overload the storage with unnecessary requests as there is
 		// a chance that the same chunk is being synced by multiple workers.
-		s.binLock.Lock(fmt.Sprint(bin))
-		defer s.binLock.Unlock(fmt.Sprint(bin))
+		key := strconv.Itoa(int(bin))
+		s.binLock.Lock(key)
+		defer s.binLock.Unlock(key)
 
 		for _, c := range chunksToPut {
 			if err := s.store.ReservePutter().Put(ctx, c); err != nil {
