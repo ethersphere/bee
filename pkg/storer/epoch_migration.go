@@ -57,12 +57,12 @@ var (
 type putOpStorage struct {
 	chunkstore.Sharky
 
-	store    storage.Store
+	store    storage.BatchedStore
 	location sharky.Location
 	recovery sharkyRecover
 }
 
-func (p *putOpStorage) IndexStore() storage.Store { return p.store }
+func (p *putOpStorage) IndexStore() storage.BatchedStore { return p.store }
 
 func (p *putOpStorage) ChunkStore() storage.ChunkStore {
 	return chunkstore.New(p.store, p)
@@ -98,7 +98,7 @@ func epochMigration(
 	ctx context.Context,
 	path string,
 	stateStore storage.StateStorer,
-	store storage.Store,
+	store storage.BatchedStore,
 	reserve reservePutter,
 	recovery sharkyRecover,
 	logger log.Logger,
@@ -261,7 +261,7 @@ func initShedIndexes(dbshed *shed.DB, baseAddress swarm.Address) (pullIndex shed
 // dependencies of the migration logic.
 type epochMigrator struct {
 	stateStore         storage.StateStorer
-	store              storage.Store
+	store              storage.BatchedStore
 	recovery           sharkyRecover
 	reserve            reservePutter
 	pullIndex          shed.Index

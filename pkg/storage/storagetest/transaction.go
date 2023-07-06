@@ -24,7 +24,7 @@ var _ storage.Item = (*object)(nil)
 // object is a simple struct that implements
 // the storage.Item interface.
 type object struct {
-	id   string // 4 bytes.
+	id   string // 10 bytes.
 	data []byte
 }
 
@@ -32,19 +32,19 @@ func (o object) ID() string      { return o.id }
 func (object) Namespace() string { return "object" }
 
 func (o object) Marshal() ([]byte, error) {
-	buf := make([]byte, 4+len(o.data))
-	copy(buf[:4], o.id)
-	copy(buf[4:], o.data)
+	buf := make([]byte, 10+len(o.data))
+	copy(buf[:10], o.id)
+	copy(buf[10:], o.data)
 	return buf, nil
 }
 
 func (o *object) Unmarshal(buf []byte) error {
-	if len(buf) < 4 {
+	if len(buf) < 10 {
 		return errors.New("invalid length")
 	}
-	o.id = string(buf[:4])
-	o.data = make([]byte, len(buf)-4)
-	copy(o.data, buf[4:])
+	o.id = string(buf[:10])
+	o.data = make([]byte, len(buf)-10)
+	copy(o.data, buf[10:])
 	return nil
 }
 
@@ -63,12 +63,56 @@ func (o object) String() string {
 }
 
 // initStore initializes the given store with the given objects.
-func initStore(t *testing.T, store storage.Store, objects ...*object) {
+func initStore(t *testing.T, store storage.BatchedStore, batch bool, objects ...*object) {
 	t.Helper()
 
+	var writer storage.Writer
+
+	if batch {
+		b, err := store.Batch(context.Background())
+		if err != nil {
+			t.Fatalf("Batch(): unexpected error: %v", err)
+		}
+		defer func() {
+			if err := b.Commit(); err != nil {
+				t.Fatalf("Commit(): unexpected error: %v", err)
+			}
+		}()
+		writer = b
+	} else {
+		writer = store
+	}
+
 	for _, o := range objects {
-		if err := store.Put(o); err != nil {
+		if err := writer.Put(o); err != nil {
 			t.Fatalf("Put(%q): unexpected error: %v", o.id, err)
+		}
+	}
+}
+
+func deleteStore(t *testing.T, store storage.BatchedStore, batch bool, objects ...*object) {
+	t.Helper()
+
+	var writer storage.Writer
+
+	if batch {
+		b, err := store.Batch(context.Background())
+		if err != nil {
+			t.Fatalf("Batch(): unexpected error: %v", err)
+		}
+		defer func() {
+			if err := b.Commit(); err != nil {
+				t.Fatalf("Commit(): unexpected error: %v", err)
+			}
+		}()
+		writer = b
+	} else {
+		writer = store
+	}
+
+	for _, o := range objects {
+		if err := writer.Delete(o); err != nil {
+			t.Fatalf("Delete(%q): unexpected error: %v", o.id, err)
 		}
 	}
 }
@@ -147,57 +191,65 @@ func TestTxStore(t *testing.T, store storage.TxStore) {
 		checkTxStoreFinishedTxInvariants(t, tx, storage.ErrTxDone)
 	})
 
-	t.Run("commit", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		t.Cleanup(cancel)
+	tCases := []struct {
+		name  string
+		batch bool
+	}{
+		{"single", false},
+		{"batchd", true},
+	}
 
-		objects := []*object{
-			{id: "0001", data: []byte("data1")},
-			{id: "0002", data: []byte("data2")},
-			{id: "0003", data: []byte("data3")},
-		}
+	for _, tCase := range tCases {
+		t.Run(tCase.name, func(t *testing.T) {
+			t.Run("commit", func(t *testing.T) {
+				ctx, cancel := context.WithCancel(context.Background())
+				t.Cleanup(cancel)
 
-		t.Run("add new objects", func(t *testing.T) {
-			tx := store.NewTx(storage.NewTxState(ctx))
-
-			initStore(t, tx, objects...)
-
-			if err := tx.Commit(); err != nil {
-				t.Fatalf("Commit(): unexpected error: %v", err)
-			}
-
-			for _, o := range objects {
-				err := store.Get(&object{id: o.id})
-				if err != nil {
-					t.Fatalf("Get(%q): unexpected error: %v", o.id, err)
+				objects := []*object{
+					{id: "0001", data: []byte("data1")},
+					{id: "0002", data: []byte("data2")},
+					{id: "0003", data: []byte("data3")},
 				}
-			}
 
-			checkTxStoreFinishedTxInvariants(t, tx, storage.ErrTxDone)
+				t.Run("add new objects", func(t *testing.T) {
+					tx := store.NewTx(storage.NewTxState(ctx))
+
+					initStore(t, tx, tCase.batch, objects...)
+
+					if err := tx.Commit(); err != nil {
+						t.Fatalf("Commit(): unexpected error: %v", err)
+					}
+
+					for _, o := range objects {
+						err := store.Get(&object{id: o.id})
+						if err != nil {
+							t.Fatalf("Get(%q): unexpected error: %v", o.id, err)
+						}
+					}
+
+					checkTxStoreFinishedTxInvariants(t, tx, storage.ErrTxDone)
+				})
+
+				t.Run("delete existing objects", func(t *testing.T) {
+					tx := store.NewTx(storage.NewTxState(ctx))
+
+					deleteStore(t, tx, tCase.batch, objects...)
+					if err := tx.Commit(); err != nil {
+						t.Fatalf("Commit(): unexpected error: %v", err)
+					}
+					want := storage.ErrNotFound
+					for _, o := range objects {
+						have := store.Get(&object{id: o.id})
+						if !errors.Is(have, want) {
+							t.Fatalf("Get(%q):\n\thave: %v\n\twant: %v", o.id, want, have)
+						}
+					}
+
+					checkTxStoreFinishedTxInvariants(t, tx, storage.ErrTxDone)
+				})
+			})
 		})
-
-		t.Run("delete existing objects", func(t *testing.T) {
-			tx := store.NewTx(storage.NewTxState(ctx))
-
-			for _, o := range objects {
-				if err := tx.Delete(o); err != nil {
-					t.Fatalf("Delete(%q): unexpected error: %v", o.id, err)
-				}
-			}
-			if err := tx.Commit(); err != nil {
-				t.Fatalf("Commit(): unexpected error: %v", err)
-			}
-			want := storage.ErrNotFound
-			for _, o := range objects {
-				have := store.Get(&object{id: o.id})
-				if !errors.Is(have, want) {
-					t.Fatalf("Get(%q):\n\thave: %v\n\twant: %v", o.id, want, have)
-				}
-			}
-
-			checkTxStoreFinishedTxInvariants(t, tx, storage.ErrTxDone)
-		})
-	})
+	}
 
 	t.Run("rollback empty", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
@@ -225,113 +277,113 @@ func TestTxStore(t *testing.T, store storage.TxStore) {
 		checkTxStoreFinishedTxInvariants(t, tx, context.Canceled)
 	})
 
-	t.Run("rollback added objects", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		t.Cleanup(cancel)
+	for _, tCase := range tCases {
+		t.Run(tCase.name, func(t *testing.T) {
+			t.Run("rollback added objects", func(t *testing.T) {
+				ctx, cancel := context.WithCancel(context.Background())
+				t.Cleanup(cancel)
 
-		tx := store.NewTx(storage.NewTxState(ctx))
+				tx := store.NewTx(storage.NewTxState(ctx))
 
-		objects := []*object{
-			{id: "0001", data: []byte("data1")},
-			{id: "0002", data: []byte("data2")},
-			{id: "0003", data: []byte("data3")},
-		}
-		initStore(t, tx, objects...)
+				objects := []*object{
+					{id: "0001" + tCase.name, data: []byte("data1")},
+					{id: "0002" + tCase.name, data: []byte("data2")},
+					{id: "0003" + tCase.name, data: []byte("data3")},
+				}
+				initStore(t, tx, tCase.batch, objects...)
 
-		if err := tx.Rollback(); err != nil {
-			t.Fatalf("Rollback(): unexpected error: %v", err)
-		}
+				if err := tx.Rollback(); err != nil {
+					t.Fatalf("Rollback(): unexpected error: %v", err)
+				}
 
-		want := storage.ErrNotFound
-		for _, o := range objects {
-			have := store.Get(&object{id: o.id})
-			if !errors.Is(have, want) {
-				t.Fatalf("Get(%q):\n\thave: %v\n\twant: %v", o.id, want, have)
-			}
-		}
+				want := storage.ErrNotFound
+				for _, o := range objects {
+					have := store.Get(&object{id: o.id})
+					if !errors.Is(have, want) {
+						t.Fatalf("Get(%q):\n\thave: %v\n\twant: %v", o.id, have, want)
+					}
+				}
 
-		checkTxStoreFinishedTxInvariants(t, tx, storage.ErrTxDone)
-	})
+				checkTxStoreFinishedTxInvariants(t, tx, storage.ErrTxDone)
+			})
 
-	t.Run("rollback updated objects", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		t.Cleanup(cancel)
+			t.Run("rollback updated objects", func(t *testing.T) {
+				ctx, cancel := context.WithCancel(context.Background())
+				t.Cleanup(cancel)
 
-		tx := store.NewTx(storage.NewTxState(ctx))
-		oldObjects := []*object{
-			{id: "0001", data: []byte("data1")},
-			{id: "0002", data: []byte("data2")},
-			{id: "0003", data: []byte("data3")},
-		}
-		initStore(t, tx, oldObjects...)
-		if err := tx.Commit(); err != nil {
-			t.Fatalf("Commit(): unexpected error: %v", err)
-		}
+				tx := store.NewTx(storage.NewTxState(ctx))
+				oldObjects := []*object{
+					{id: "0001" + tCase.name, data: []byte("data1")},
+					{id: "0002" + tCase.name, data: []byte("data2")},
+					{id: "0003" + tCase.name, data: []byte("data3")},
+				}
+				initStore(t, tx, tCase.batch, oldObjects...)
+				if err := tx.Commit(); err != nil {
+					t.Fatalf("Commit(): unexpected error: %v", err)
+				}
 
-		tx = store.NewTx(storage.NewTxState(ctx))
-		newObjects := []*object{
-			{id: "0001", data: []byte("data11")},
-			{id: "0002", data: []byte("data22")},
-			{id: "0003", data: []byte("data33")},
-		}
-		initStore(t, tx, newObjects...)
-		if err := tx.Rollback(); err != nil {
-			t.Fatalf("Rollback(): unexpected error: %v", err)
-		}
+				tx = store.NewTx(storage.NewTxState(ctx))
+				newObjects := []*object{
+					{id: "0001" + tCase.name, data: []byte("data11")},
+					{id: "0002" + tCase.name, data: []byte("data22")},
+					{id: "0003" + tCase.name, data: []byte("data33")},
+				}
+				initStore(t, tx, tCase.batch, newObjects...)
+				if err := tx.Rollback(); err != nil {
+					t.Fatalf("Rollback(): unexpected error: %v", err)
+				}
 
-		for _, o := range oldObjects {
-			want := o
-			have := &object{id: o.id}
-			if err := store.Get(have); err != nil {
-				t.Fatalf("Get(%q): unexpected error: %v", o.id, err)
-			}
-			if diff := cmp.Diff(want, have, cmp.AllowUnexported(object{})); diff != "" {
-				t.Errorf("Get(%q): unexpected result: (-want +have):\n%s", o.id, diff)
-			}
-		}
+				for _, o := range oldObjects {
+					want := o
+					have := &object{id: o.id}
+					if err := store.Get(have); err != nil {
+						t.Fatalf("Get(%q): unexpected error: %v", o.id, err)
+					}
+					if diff := cmp.Diff(want, have, cmp.AllowUnexported(object{})); diff != "" {
+						t.Errorf("Get(%q): unexpected result: (-want +have):\n%s", o.id, diff)
+					}
+				}
 
-		checkTxStoreFinishedTxInvariants(t, tx, storage.ErrTxDone)
-	})
+				checkTxStoreFinishedTxInvariants(t, tx, storage.ErrTxDone)
+			})
 
-	t.Run("rollback removed objects", func(t *testing.T) {
-		ctx, cancel := context.WithCancel(context.Background())
-		t.Cleanup(cancel)
+			t.Run("rollback removed objects", func(t *testing.T) {
+				ctx, cancel := context.WithCancel(context.Background())
+				t.Cleanup(cancel)
 
-		tx := store.NewTx(storage.NewTxState(ctx))
-		objects := []*object{
-			{id: "0001", data: []byte("data1")},
-			{id: "0002", data: []byte("data2")},
-			{id: "0003", data: []byte("data3")},
-		}
-		initStore(t, tx, objects...)
-		if err := tx.Commit(); err != nil {
-			t.Fatalf("Commit(): unexpected error: %v", err)
-		}
+				tx := store.NewTx(storage.NewTxState(ctx))
+				objects := []*object{
+					{id: "0001" + tCase.name, data: []byte("data1")},
+					{id: "0002" + tCase.name, data: []byte("data2")},
+					{id: "0003" + tCase.name, data: []byte("data3")},
+				}
+				initStore(t, tx, tCase.batch, objects...)
+				if err := tx.Commit(); err != nil {
+					t.Fatalf("Commit(): unexpected error: %v", err)
+				}
 
-		tx = store.NewTx(storage.NewTxState(ctx))
-		for _, o := range objects {
-			if err := tx.Delete(o); err != nil {
-				t.Fatalf("Delete(%q): unexpected error: %v", o.id, err)
-			}
-		}
-		if err := tx.Rollback(); err != nil {
-			t.Fatalf("Rollback(): unexpected error: %v", err)
-		}
-		for _, want := range objects {
-			have := &object{id: want.id}
-			if err := store.Get(have); err != nil {
-				t.Errorf("Get(%q): unexpected error: %v", want.id, err)
-			}
-			if have.id != want.id {
-				t.Errorf("Get(%q):\n\thave: %q\n\twant: %q", want.id, have.id, want.id)
-			}
-			if !bytes.Equal(have.data, want.data) {
-				t.Errorf("Get(%q):\n\thave: %x\n\twant: %x", want.id, have.data, want.data)
-			}
-		}
+				tx = store.NewTx(storage.NewTxState(ctx))
+				deleteStore(t, tx, tCase.batch, objects...)
+				if err := tx.Rollback(); err != nil {
+					t.Fatalf("Rollback(): unexpected error: %v", err)
+				}
+				for _, want := range objects {
+					have := &object{id: want.id}
+					if err := store.Get(have); err != nil {
+						t.Errorf("Get(%q): unexpected error: %v", want.id, err)
+					}
+					if have.id != want.id {
+						t.Errorf("Get(%q):\n\thave: %q\n\twant: %q", want.id, have.id, want.id)
+					}
+					if !bytes.Equal(have.data, want.data) {
+						t.Errorf("Get(%q):\n\thave: %x\n\twant: %x", want.id, have.data, want.data)
+					}
+				}
 
-		checkTxStoreFinishedTxInvariants(t, tx, storage.ErrTxDone)
-	})
+				checkTxStoreFinishedTxInvariants(t, tx, storage.ErrTxDone)
+			})
+		})
+	}
 }
 
 // initChunkStore initializes the given store with the given chunks.
