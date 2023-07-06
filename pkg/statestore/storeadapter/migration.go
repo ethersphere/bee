@@ -14,8 +14,6 @@ import (
 func allSteps() migration.Steps {
 	return map[uint64]migration.StepFn{
 		1: epochMigration,
-		2: clearBlocklist,
-		3: clearBlocklist,
 	}
 }
 
@@ -50,12 +48,5 @@ func epochMigration(s storage.Store) error {
 		}
 		_ = s.Delete(&rawItem{&proxyItem{key: res.ID}})
 		return false, nil
-	})
-}
-
-func clearBlocklist(s storage.Store) error {
-	st := &StateStorerAdapter{storage: s}
-	return st.Iterate("blocklist-", func(key, _ []byte) (stop bool, err error) {
-		return false, st.Delete(string(key))
 	})
 }

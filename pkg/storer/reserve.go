@@ -29,6 +29,10 @@ const (
 	cleanupDur = time.Hour * 6
 )
 
+func reserveUpdateBatchLockKey(batchID []byte) string {
+	return fmt.Sprintf("%s%s", reserveUpdateLockKey, hex.EncodeToString(batchID))
+}
+
 var errMaxRadius = errors.New("max radius reached")
 
 type Syncer interface {
@@ -138,6 +142,13 @@ func (db *DB) evictionWorker(ctx context.Context) {
 		}
 	}
 
+	time.AfterFunc(30*time.Minute, func() {
+		db.logger.Info("initial reserve cleanup started")
+		if err := db.reserveCleanup(ctx); err != nil {
+			db.logger.Error(err, "cleanup")
+		}
+	})
+
 	cleanUpTicker := time.NewTicker(cleanupDur)
 	defer cleanUpTicker.Stop()
 
@@ -220,12 +231,11 @@ func (db *DB) ReservePutter() storage.Putter {
 	return putterWithMetrics{
 		storage.PutterFunc(
 			func(ctx context.Context, chunk swarm.Chunk) (err error) {
-				db.lock.Lock(reserveUpdateLockKey)
-				defer db.lock.Unlock(reserveUpdateLockKey)
 
 				var (
 					newIndex bool
 				)
+				db.lock.Lock(reserveUpdateBatchLockKey(chunk.Stamp().BatchID()))
 				err = db.Execute(ctx, func(tx internal.Storage) error {
 					newIndex, err = db.reserve.Put(ctx, tx, chunk)
 					if err != nil {
@@ -233,6 +243,7 @@ func (db *DB) ReservePutter() storage.Putter {
 					}
 					return nil
 				})
+				db.lock.Unlock(reserveUpdateBatchLockKey(chunk.Stamp().BatchID()))
 				if err != nil {
 					return err
 				}
@@ -289,32 +300,55 @@ func (db *DB) evictBatch(ctx context.Context, batchID []byte, upToBin uint8) (re
 
 		var evicted int
 
-		type evictItems struct {
-			address swarm.Address
-			batchID []byte
-		}
-
-		var itemsToEvict []evictItems
+		var itemsToEvict []swarm.Address
 
 		err := db.reserve.IterateBatchBin(ctx, db.repo, b, batchID, func(address swarm.Address) (bool, error) {
-			itemsToEvict = append(itemsToEvict, evictItems{
-				address: address,
-				batchID: batchID,
-			})
+			itemsToEvict = append(itemsToEvict, address)
 			return false, nil
 		})
 		if err != nil {
 			return fmt.Errorf("reserve: iterate batch bin: %w", err)
 		}
 
-		for _, item := range itemsToEvict {
-			err = db.removeChunk(ctx, item.address, item.batchID)
-			if err != nil {
-				retErr = errors.Join(retErr, fmt.Errorf("reserve: remove chunk %v: %w", item, err))
-				continue
+		func() {
+			// reserve updates if we are expiring batches. This is because the
+			// reserve updates will not be related to these entries as the batch
+			// is no longer valid.
+			if upToBin != swarm.MaxBins {
+				db.lock.Lock(reserveUpdateBatchLockKey(batchID))
+				defer db.lock.Unlock(reserveUpdateBatchLockKey(batchID))
 			}
-			evicted++
-		}
+
+			batchCnt := 1000
+
+			for i := 0; i < len(itemsToEvict); i += batchCnt {
+				end := i + batchCnt
+				if end > len(itemsToEvict) {
+					end = len(itemsToEvict)
+				}
+
+				retErr = db.Execute(ctx, func(tx internal.Storage) error {
+					var tErr error
+					for _, item := range itemsToEvict[i:end] {
+						chunk, err := db.ChunkStore().Get(ctx, item)
+						if err == nil {
+							err := db.Cache().Put(ctx, chunk)
+							if err != nil {
+								db.logger.Warning("reserve eviction cache put", "err", err)
+							}
+						}
+
+						err = db.reserve.DeleteChunk(ctx, tx, item, batchID)
+						if err != nil {
+							tErr = errors.Join(tErr, fmt.Errorf("reserve: delete chunk: %w", err))
+							continue
+						}
+						evicted++
+					}
+					return tErr
+				})
+			}
+		}()
 
 		// if there was an error, we still need to update the chunks that have already
 		// been evicted from the reserve
@@ -333,27 +367,6 @@ func (db *DB) evictBatch(ctx context.Context, batchID []byte, upToBin uint8) (re
 	}
 
 	return nil
-}
-
-func (db *DB) removeChunk(ctx context.Context, address swarm.Address, batchID []byte) error {
-	return db.Execute(ctx, func(tx internal.Storage) error {
-		chunk, err := db.ChunkStore().Get(ctx, address)
-		if err == nil {
-			err := db.Cache().Put(ctx, chunk)
-			if err != nil {
-				db.logger.Warning("reserve eviction cache put", "err", err)
-			}
-		}
-
-		db.lock.Lock(reserveUpdateLockKey)
-		defer db.lock.Unlock(reserveUpdateLockKey)
-
-		err = db.reserve.DeleteChunk(ctx, tx, address, batchID)
-		if err != nil {
-			return fmt.Errorf("reserve: delete chunk: %w", err)
-		}
-		return nil
-	})
 }
 
 func (db *DB) reserveCleanup(ctx context.Context) error {
@@ -382,17 +395,42 @@ func (db *DB) reserveCleanup(ctx context.Context) error {
 	expiredBatches := make(map[string]struct{})
 	var retErr error
 
-	for _, item := range itemsToEvict {
-		err = db.removeChunk(ctx, item.ChunkAddress, item.BatchID)
-		if err != nil {
-			retErr = errors.Join(retErr, fmt.Errorf("reserve: remove chunk %v: %w", item, err))
-			continue
+	batchCnt := 1000
+
+	for i := 0; i < len(itemsToEvict); i += batchCnt {
+		end := i + batchCnt
+		if end > len(itemsToEvict) {
+			end = len(itemsToEvict)
 		}
-		removed++
-		if _, ok := expiredBatches[string(item.BatchID)]; !ok {
-			expiredBatches[string(item.BatchID)] = struct{}{}
-			db.logger.Debug("cleanup expired batch", "batch_id", hex.EncodeToString(item.BatchID))
-		}
+
+		retErr = db.Execute(ctx, func(tx internal.Storage) error {
+			var tErr error
+			for _, item := range itemsToEvict[i:end] {
+				chunk, err := db.ChunkStore().Get(ctx, item.ChunkAddress)
+				if err == nil {
+					err := db.Cache().Put(ctx, chunk)
+					if err != nil {
+						db.logger.Warning("reserve eviction cache put", "err", err)
+					}
+				}
+
+				err = db.reserve.DeleteChunk(ctx, tx, item.ChunkAddress, item.BatchID)
+				if err != nil {
+					if errors.Is(err, storage.ErrNotFound) {
+						db.reserve.CleanupBinIndex(ctx, tx, item.ChunkAddress, item.BinID)
+						continue
+					}
+					tErr = errors.Join(tErr, fmt.Errorf("reserve: delete chunk: %w", err))
+					continue
+				}
+				removed++
+				if _, ok := expiredBatches[string(item.BatchID)]; !ok {
+					expiredBatches[string(item.BatchID)] = struct{}{}
+					db.logger.Debug("cleanup expired batch", "batch_id", hex.EncodeToString(item.BatchID))
+				}
+			}
+			return tErr
+		})
 	}
 
 	return retErr

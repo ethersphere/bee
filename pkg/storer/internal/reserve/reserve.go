@@ -247,6 +247,7 @@ type ChunkItem struct {
 	ChunkAddress swarm.Address
 	BatchID      []byte
 	Type         swarm.ChunkType
+	BinID        uint64
 }
 
 func (r *Reserve) IterateChunksItems(store internal.Storage, startBin uint8, cb func(ChunkItem) (bool, error)) error {
@@ -261,6 +262,7 @@ func (r *Reserve) IterateChunksItems(store internal.Storage, startBin uint8, cb 
 			ChunkAddress: item.Address,
 			BatchID:      item.BatchID,
 			Type:         item.ChunkType,
+			BinID:        item.BinID,
 		}
 
 		stop, err := cb(chItem)
@@ -305,12 +307,23 @@ func (r *Reserve) DeleteChunk(
 	}
 	err := store.IndexStore().Get(item)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			return nil
-		}
 		return err
 	}
 	return removeChunk(ctx, store, item)
+}
+
+// CleanupBinIndex removes the bin index entry for the chunk. This is called mainly
+// to cleanup the bin index if other indexes are missing during reserve cleanup.
+func (r *Reserve) CleanupBinIndex(
+	ctx context.Context,
+	store internal.Storage,
+	chunkAddress swarm.Address,
+	binID uint64,
+) {
+	_ = store.IndexStore().Delete(&chunkBinItem{
+		Bin:   swarm.Proximity(r.baseAddr.Bytes(), chunkAddress.Bytes()),
+		BinID: binID,
+	})
 }
 
 func removeChunk(ctx context.Context, store internal.Storage, item *batchRadiusItem) error {
