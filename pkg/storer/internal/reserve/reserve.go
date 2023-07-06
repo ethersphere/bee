@@ -312,6 +312,8 @@ func (r *Reserve) DeleteChunk(
 	return removeChunk(ctx, store, item)
 }
 
+// CleanupBinIndex removes the bin index entry for the chunk. This is called mainly
+// to cleanup the bin index if other indexes are missing during reserve cleanup.
 func (r *Reserve) CleanupBinIndex(
 	ctx context.Context,
 	store internal.Storage,
@@ -322,7 +324,6 @@ func (r *Reserve) CleanupBinIndex(
 		Bin:   swarm.Proximity(r.baseAddr.Bytes(), chunkAddress.Bytes()),
 		BinID: binID,
 	})
-	return
 }
 
 func removeChunk(ctx context.Context, store internal.Storage, item *batchRadiusItem) error {
