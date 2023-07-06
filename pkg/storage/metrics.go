@@ -7,6 +7,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"github.com/ethersphere/bee/pkg/log"
 	"time"
 
 	m "github.com/ethersphere/bee/pkg/metrics"
@@ -83,6 +84,7 @@ var _ TxStore = (*txIndexStoreWithMetrics)(nil)
 type txIndexStoreWithMetrics struct {
 	TxStore
 
+	logger  log.Logger
 	metrics metrics
 }
 
@@ -172,6 +174,7 @@ func (m txIndexStoreWithMetrics) Iterate(query Query, fn IterateFn) error {
 	if err == nil || errors.Is(err, ErrNotFound) {
 		m.metrics.IndexStoreCalls.WithLabelValues("Iterate", "success").Inc()
 	} else {
+		m.logger.Error(err, "indexstore Iterate call failed")
 		m.metrics.IndexStoreCalls.WithLabelValues("Iterate", "failure").Inc()
 	}
 	return err
