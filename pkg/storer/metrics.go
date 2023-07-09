@@ -27,6 +27,7 @@ type metrics struct {
 	ExpiredChunkCount   prometheus.Counter
 	OverCapTriggerCount prometheus.Counter
 	ExpiredBatchCount   prometheus.Counter
+	LevelDBStats        prometheus.HistogramVec
 }
 
 // newMetrics is a convenient constructor for creating new metrics.
@@ -115,6 +116,15 @@ func newMetrics() metrics {
 				Name:      "expired_batch_count",
 				Help:      "Number of batches expired, that were processed.",
 			},
+		),
+		LevelDBStats: *prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "leveldb_stats",
+				Help:      "LevelDB statistics.",
+			},
+			[]string{"counter"},
 		),
 	}
 }
