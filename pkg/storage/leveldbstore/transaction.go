@@ -5,6 +5,7 @@
 package leveldbstore
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
@@ -28,33 +29,37 @@ type txRevertOpStore struct {
 }
 
 // Append implements storage.TxRevertOpStore.
-func (s *txRevertOpStore) Append(op *storage.TxRevertOp[[]byte, []byte]) error {
-	if s == nil || op == nil {
+func (s *txRevertOpStore) Append(ops ...*storage.TxRevertOp[[]byte, []byte]) error {
+	if s == nil || len(ops) == 0 {
 		return nil
 	}
 
 	s.batchMu.Lock()
 	defer s.batchMu.Unlock()
 
-	var errs error
-	if fn, ok := s.revOpsFn[op.Origin]; !ok {
-		errs = errors.Join(errs, fmt.Errorf(
-			"revert operation %q for object %s not found",
-			op.Origin,
-			op.ObjectID,
-		))
-	} else if err := fn(op.Key, op.Val); err != nil {
-		errs = errors.Join(errs, fmt.Errorf(
-			"revert operation %q for object %s failed: %w",
-			op.Origin,
-			op.ObjectID,
-			err,
-		))
+	for _, op := range ops {
+		if op == nil {
+			continue
+		}
+		var errs error
+		if fn, ok := s.revOpsFn[op.Origin]; !ok {
+			errs = errors.Join(errs, fmt.Errorf(
+				"revert operation %q for object %s not found",
+				op.Origin,
+				op.ObjectID,
+			))
+		} else if err := fn(op.Key, op.Val); err != nil {
+			errs = errors.Join(errs, fmt.Errorf(
+				"revert operation %q for object %s failed: %w",
+				op.Origin,
+				op.ObjectID,
+				err,
+			))
+		}
+		if errs != nil {
+			return errs
+		}
 	}
-	if errs != nil {
-		return errs
-	}
-
 	return s.db.Put(s.id, s.batch.Dump(), nil)
 }
 
@@ -81,10 +86,126 @@ func (s *txRevertOpStore) Clean() error {
 	return s.db.Delete(s.id, nil)
 }
 
+// txBatch is a batch that is used in a transaction.
+type txBatch struct {
+	batch    storage.Batch
+	store    *TxStore
+	revOpsMu sync.Mutex
+	revOps   []*storage.TxRevertOp[[]byte, []byte]
+	onCommit func(revOps ...*storage.TxRevertOp[[]byte, []byte]) error
+}
+
+// Put implements the Batch interface.
+func (b *txBatch) Put(item storage.Item) error {
+	if err := b.store.IsDone(); err != nil {
+		return err
+	}
+
+	reverseOp, err := put(b.store, b.batch, item)
+	if err == nil && reverseOp != nil {
+		b.revOpsMu.Lock()
+		b.revOps = append(b.revOps, reverseOp)
+		b.revOpsMu.Unlock()
+	}
+	return err
+}
+
+// Delete implements the Batch interface.
+func (b *txBatch) Delete(item storage.Item) error {
+	if err := b.store.IsDone(); err != nil {
+		return err
+	}
+
+	reverseOp, err := del(b.store, b.batch, item)
+	if err == nil && reverseOp != nil {
+		b.revOpsMu.Lock()
+		b.revOps = append(b.revOps, reverseOp)
+		b.revOpsMu.Unlock()
+	}
+	return err
+}
+
+// Commit implements the Batch interface.
+func (b *txBatch) Commit() error {
+	if err := b.batch.Commit(); err != nil {
+		return err
+	}
+	b.revOpsMu.Lock()
+	defer b.revOpsMu.Unlock()
+	defer func() {
+		b.revOps = nil
+	}()
+	return b.onCommit(b.revOps...)
+}
+
 var (
 	_ storage.TxStore   = (*TxStore)(nil)
+	_ storage.Batcher   = (*TxStore)(nil)
 	_ storage.Recoverer = (*TxStore)(nil)
 )
+
+func put(
+	reader storage.Reader,
+	writer storage.Writer,
+	item storage.Item,
+) (*storage.TxRevertOp[[]byte, []byte], error) {
+	prev := item.Clone()
+	var reverseOp *storage.TxRevertOp[[]byte, []byte]
+	switch err := reader.Get(prev); {
+	case errors.Is(err, storage.ErrNotFound):
+		reverseOp = &storage.TxRevertOp[[]byte, []byte]{
+			Origin:   storage.PutCreateOp,
+			ObjectID: item.String(),
+			Key:      key(item),
+		}
+	case err != nil:
+		return nil, err
+	default:
+		val, err := prev.Marshal()
+		if err != nil {
+			return nil, err
+		}
+		reverseOp = &storage.TxRevertOp[[]byte, []byte]{
+			Origin:   storage.PutUpdateOp,
+			ObjectID: prev.String(),
+			Key:      key(prev),
+			Val:      val,
+		}
+	}
+
+	err := writer.Put(item)
+	if err == nil {
+		return reverseOp, nil
+	}
+	return nil, err
+}
+
+func del(
+	reader storage.Reader,
+	writer storage.Writer,
+	item storage.Item,
+) (*storage.TxRevertOp[[]byte, []byte], error) {
+	prev := item.Clone()
+	var reverseOp *storage.TxRevertOp[[]byte, []byte]
+	if err := reader.Get(prev); err == nil {
+		val, err := prev.Marshal()
+		if err != nil {
+			return nil, err
+		}
+		reverseOp = &storage.TxRevertOp[[]byte, []byte]{
+			Origin:   storage.DeleteOp,
+			ObjectID: item.String(),
+			Key:      key(item),
+			Val:      val,
+		}
+	}
+
+	err := writer.Delete(item)
+	if err == nil {
+		return reverseOp, nil
+	}
+	return nil, err
+}
 
 // TxStore is an implementation of in-memory Store
 // where all Store operations are done in a transaction.
@@ -98,7 +219,7 @@ type TxStore struct {
 
 // release releases the TxStore transaction associated resources.
 func (s *TxStore) release() {
-	s.TxStoreBase.Store = nil
+	s.TxStoreBase.BatchedStore = nil
 	s.revOps = nil
 }
 
@@ -111,32 +232,8 @@ func (s *TxStore) Put(item storage.Item) error {
 		return err
 	}
 
-	prev := item.Clone()
-	var reverseOp *storage.TxRevertOp[[]byte, []byte]
-	switch err := s.TxStoreBase.Get(prev); {
-	case errors.Is(err, storage.ErrNotFound):
-		reverseOp = &storage.TxRevertOp[[]byte, []byte]{
-			Origin:   storage.PutCreateOp,
-			ObjectID: item.String(),
-			Key:      key(item),
-		}
-	case err != nil:
-		return err
-	default:
-		val, err := prev.Marshal()
-		if err != nil {
-			return err
-		}
-		reverseOp = &storage.TxRevertOp[[]byte, []byte]{
-			Origin:   storage.PutUpdateOp,
-			ObjectID: prev.String(),
-			Key:      key(prev),
-			Val:      val,
-		}
-	}
-
-	err := s.TxStoreBase.Put(item)
-	if err == nil {
+	reverseOp, err := put(s.TxStoreBase, s.TxStoreBase, item)
+	if err == nil && reverseOp != nil {
 		err = s.revOps.Append(reverseOp)
 	}
 	return err
@@ -151,23 +248,8 @@ func (s *TxStore) Delete(item storage.Item) error {
 		return err
 	}
 
-	prev := item.Clone()
-	var reverseOp *storage.TxRevertOp[[]byte, []byte]
-	if err := s.TxStoreBase.Get(prev); err == nil {
-		val, err := prev.Marshal()
-		if err != nil {
-			return err
-		}
-		reverseOp = &storage.TxRevertOp[[]byte, []byte]{
-			Origin:   storage.DeleteOp,
-			ObjectID: item.String(),
-			Key:      key(item),
-			Val:      val,
-		}
-	}
-
-	err := s.TxStoreBase.Delete(item)
-	if err == nil {
+	reverseOp, err := del(s.TxStoreBase, s.TxStoreBase, item)
+	if err == nil && reverseOp != nil {
 		err = s.revOps.Append(reverseOp)
 	}
 	return err
@@ -206,6 +288,22 @@ func (s *TxStore) Rollback() error {
 	return nil
 }
 
+// Batch implements the Batcher interface.
+func (s *TxStore) Batch(ctx context.Context) (storage.Batch, error) {
+	batch, err := s.TxStoreBase.BatchedStore.Batch(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return &txBatch{
+		batch: batch,
+		store: s,
+		onCommit: func(revOps ...*storage.TxRevertOp[[]byte, []byte]) error {
+			return s.revOps.Append(revOps...)
+		},
+	}, nil
+}
+
 // pendingTxNamespace exist for cashing the namespace of pendingTx
 var pendingTxNamespace = new(pendingTx).Namespace()
 
@@ -216,19 +314,19 @@ func id(uuid string) []byte {
 
 // NewTx implements the TxStore interface.
 func (s *TxStore) NewTx(state *storage.TxState) storage.TxStore {
-	if s.Store == nil {
+	if s.BatchedStore == nil {
 		panic(errors.New("leveldbstore: nil store"))
 	}
 
 	batch := new(leveldb.Batch)
 	return &TxStore{
 		TxStoreBase: &storage.TxStoreBase{
-			TxState: state,
-			Store:   s.Store,
+			TxState:      state,
+			BatchedStore: s.BatchedStore,
 		},
 		revOps: &txRevertOpStore{
 			id:    id(uuid.NewString()),
-			db:    s.Store.(*Store).db,
+			db:    s.BatchedStore.(*Store).db,
 			batch: batch,
 			revOpsFn: map[storage.TxOpCode]storage.TxRevertFn[[]byte, []byte]{
 				storage.PutCreateOp: func(k, _ []byte) error {
@@ -249,6 +347,6 @@ func (s *TxStore) NewTx(state *storage.TxState) storage.TxStore {
 }
 
 // NewTxStore returns a new TxStore instance backed by the given store.
-func NewTxStore(store storage.Store) *TxStore {
-	return &TxStore{TxStoreBase: &storage.TxStoreBase{Store: store}}
+func NewTxStore(store storage.BatchedStore) *TxStore {
+	return &TxStore{TxStoreBase: &storage.TxStoreBase{BatchedStore: store}}
 }

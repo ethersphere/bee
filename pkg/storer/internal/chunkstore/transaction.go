@@ -151,7 +151,7 @@ func (cs *TxChunkStoreWrapper) NewTx(state *storage.TxState) storage.TxChunkStor
 	txStore := cs.txStore.NewTx(state)
 	txSharky := &txSharky{
 		id:            []byte(storageutil.JoinFields(pendingTxNamespace, uuid.NewString())),
-		store:         cs.txStore.(*leveldbstore.TxStore).Store.(leveldbstore.Storer), // TODO: make this independent of the underlying store.
+		store:         cs.txStore.(*leveldbstore.TxStore).BatchedStore.(leveldbstore.Storer), // TODO: make this independent of the underlying store.
 		Sharky:        cs.txSharky.Sharky,
 		toReleaseLocs: make(map[[32]byte]sharky.Location),
 		toReleaseSums: make(map[sharky.Location][32]byte),

@@ -13,10 +13,6 @@ import (
 // call when a batch has already been committed.
 var ErrBatchCommitted = errors.New("storage: batch has already been committed")
 
-// ErrBatchNotSupported is returned by BatchedStore.Batch call when batching
-// is not supported.
-var ErrBatchNotSupported = errors.New("storage: batch operations not supported")
-
 // Batch provides set of operations that are batched.
 type Batch interface {
 	// Put adds a new item to the batch.

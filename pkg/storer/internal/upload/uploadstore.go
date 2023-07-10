@@ -425,7 +425,12 @@ func (u *uploadPutter) Put(ctx context.Context, s internal.Storage, chunk swarm.
 		return nil
 	}
 
-	switch item, loaded, err := stampindex.LoadOrStore(s.IndexStore(), stampIndexUploadNamespace, chunk); {
+	switch item, loaded, err := stampindex.LoadOrStore(
+		s.IndexStore(),
+		s.IndexStore(),
+		stampIndexUploadNamespace,
+		chunk,
+	); {
 	case err != nil:
 		return fmt.Errorf("load or store stamp index for chunk %v has fail: %w", chunk, err)
 	case loaded && item.ChunkIsImmutable:

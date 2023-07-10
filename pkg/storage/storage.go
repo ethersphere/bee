@@ -151,6 +151,12 @@ type Item interface {
 type Store interface {
 	io.Closer
 
+	Reader
+	Writer
+}
+
+// Reader groups methods that read from the store.
+type Reader interface {
 	// Get unmarshalls object with the given Item.Key.ID into the given Item.
 	Get(Item) error
 
@@ -167,13 +173,22 @@ type Store interface {
 	// Count returns the count of items in the
 	// store that are in the same Key.Namespace.
 	Count(Key) (int, error)
+}
 
+// Writer groups methods that change the state of the store.
+type Writer interface {
 	// Put inserts or updates the given Item identified by its Key.ID.
 	Put(Item) error
 
 	// Delete removes the given Item form the store.
 	// It will not return error if the key doesn't exist.
 	Delete(Item) error
+}
+
+// BatchedStore is a store that supports batching of Writer method calls.
+type BatchedStore interface {
+	Store
+	Batcher
 }
 
 // Recoverer allows store to recover from a failure when

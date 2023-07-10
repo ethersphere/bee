@@ -33,6 +33,7 @@ type Tx interface {
 type TxStore interface {
 	Tx
 	Store
+	Batcher
 
 	NewTx(*TxState) TxStore
 }
@@ -105,12 +106,13 @@ func NewTxState(ctx context.Context) *TxState {
 }
 
 var _ Store = (*TxStoreBase)(nil)
+var _ Batcher = (*TxStoreBase)(nil)
 
 // TxStoreBase implements the Store interface where
 // the operations are guarded by a transaction.
 type TxStoreBase struct {
 	*TxState
-	Store
+	BatchedStore
 
 	rolledBack atomic.Bool
 }
@@ -120,7 +122,7 @@ type TxStoreBase struct {
 // transaction is not done.
 func (s *TxStoreBase) Close() error {
 	<-s.AwaitDone()
-	return s.Store.Close()
+	return s.BatchedStore.Close()
 }
 
 // Get implements the Store interface.
@@ -128,7 +130,7 @@ func (s *TxStoreBase) Get(item Item) error {
 	if err := s.IsDone(); err != nil {
 		return err
 	}
-	return s.Store.Get(item)
+	return s.BatchedStore.Get(item)
 }
 
 // Has implements the Store interface.
@@ -136,7 +138,7 @@ func (s *TxStoreBase) Has(key Key) (bool, error) {
 	if err := s.IsDone(); err != nil {
 		return false, err
 	}
-	return s.Store.Has(key)
+	return s.BatchedStore.Has(key)
 }
 
 // GetSize implements the Store interface.
@@ -144,7 +146,7 @@ func (s *TxStoreBase) GetSize(key Key) (int, error) {
 	if err := s.IsDone(); err != nil {
 		return 0, err
 	}
-	return s.Store.GetSize(key)
+	return s.BatchedStore.GetSize(key)
 }
 
 // Iterate implements the Store interface.
@@ -152,7 +154,7 @@ func (s *TxStoreBase) Iterate(query Query, fn IterateFn) error {
 	if err := s.IsDone(); err != nil {
 		return err
 	}
-	return s.Store.Iterate(query, fn)
+	return s.BatchedStore.Iterate(query, fn)
 }
 
 // Count implements the Store interface.
@@ -160,7 +162,7 @@ func (s *TxStoreBase) Count(key Key) (int, error) {
 	if err := s.IsDone(); err != nil {
 		return 0, err
 	}
-	return s.Store.Count(key)
+	return s.BatchedStore.Count(key)
 }
 
 // Put implements the Store interface.
@@ -168,7 +170,7 @@ func (s *TxStoreBase) Put(item Item) error {
 	if err := s.IsDone(); err != nil {
 		return err
 	}
-	return s.Store.Put(item)
+	return s.BatchedStore.Put(item)
 }
 
 // Delete implements the Store interface.
@@ -176,7 +178,15 @@ func (s *TxStoreBase) Delete(item Item) error {
 	if err := s.IsDone(); err != nil {
 		return err
 	}
-	return s.Store.Delete(item)
+	return s.BatchedStore.Delete(item)
+}
+
+func (s *TxStoreBase) Batch(ctx context.Context) (Batch, error) {
+	if err := s.IsDone(); err != nil {
+		return nil, err
+	}
+
+	return s.BatchedStore.Batch(ctx)
 }
 
 // Rollback implements the TxStore interface.
@@ -289,7 +299,7 @@ type TxRevertFn[K, V any] func(K, V) error
 // TxRevertOpStore represents a store for TxRevertOp.
 type TxRevertOpStore[K, V any] interface {
 	// Append appends a Revert operation to the store.
-	Append(*TxRevertOp[K, V]) error
+	Append(...*TxRevertOp[K, V]) error
 	// Revert executes all the revere operations
 	// in the store in reverse order.
 	Revert() error
@@ -300,9 +310,9 @@ type TxRevertOpStore[K, V any] interface {
 // NoOpTxRevertOpStore is a no-op implementation of TxRevertOpStore.
 type NoOpTxRevertOpStore[K, V any] struct{}
 
-func (s *NoOpTxRevertOpStore[K, V]) Append(*TxRevertOp[K, V]) error { return nil }
-func (s *NoOpTxRevertOpStore[K, V]) Revert() error                  { return nil }
-func (s *NoOpTxRevertOpStore[K, V]) Clean() error                   { return nil }
+func (s *NoOpTxRevertOpStore[K, V]) Append(...*TxRevertOp[K, V]) error { return nil }
+func (s *NoOpTxRevertOpStore[K, V]) Revert() error                     { return nil }
+func (s *NoOpTxRevertOpStore[K, V]) Clean() error                      { return nil }
 
 // InMemTxRevertOpStore is an in-memory implementation of TxRevertOpStore.
 type InMemTxRevertOpStore[K, V any] struct {
@@ -313,13 +323,13 @@ type InMemTxRevertOpStore[K, V any] struct {
 }
 
 // Append implements TxRevertOpStore.
-func (s *InMemTxRevertOpStore[K, V]) Append(op *TxRevertOp[K, V]) error {
-	if s == nil || op == nil {
+func (s *InMemTxRevertOpStore[K, V]) Append(ops ...*TxRevertOp[K, V]) error {
+	if s == nil || len(ops) == 0 {
 		return nil
 	}
 
 	s.mu.Lock()
-	s.ops = append(s.ops, op)
+	s.ops = append(s.ops, ops...)
 	s.mu.Unlock()
 	return nil
 }
@@ -336,6 +346,9 @@ func (s *InMemTxRevertOpStore[K, V]) Revert() error {
 	var errs error
 	for i := len(s.ops) - 1; i >= 0; i-- {
 		op := s.ops[i]
+		if op == nil {
+			continue
+		}
 		if fn, ok := s.revOpsFn[op.Origin]; !ok {
 			errs = errors.Join(errs, fmt.Errorf(
 				"revert operation %q for object %s not found",

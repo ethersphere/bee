@@ -6,9 +6,9 @@ package mock
 
 import (
 	"context"
-	"github.com/ethereum/go-ethereum/common"
 	"math/big"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 )
 
@@ -38,7 +38,7 @@ func (c *contractMock) ExpireBatches(ctx context.Context) error {
 // Option is a an option passed to New
 type Option func(*contractMock)
 
-// New creates a new mock BatchStore
+// New creates a new mock BatchStore.
 func New(opts ...Option) postagecontract.Interface {
 	bs := &contractMock{}
 

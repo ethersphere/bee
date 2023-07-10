@@ -149,7 +149,12 @@ func (i Item) String() string {
 // LoadOrStore tries to first load a stamp index related record from the store.
 // If the record is not found, it will try to create and save a new record and
 // return it.
-func LoadOrStore(s storage.Store, namespace string, chunk swarm.Chunk) (item *Item, loaded bool, err error) {
+func LoadOrStore(
+	s storage.Reader,
+	w storage.Writer,
+	namespace string,
+	chunk swarm.Chunk,
+) (item *Item, loaded bool, err error) {
 	item, err = Load(s, namespace, chunk)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
@@ -160,7 +165,7 @@ func LoadOrStore(s storage.Store, namespace string, chunk swarm.Chunk) (item *It
 				StampTimestamp:   chunk.Stamp().Timestamp(),
 				ChunkAddress:     chunk.Address(),
 				ChunkIsImmutable: chunk.Immutable(),
-			}, false, Store(s, namespace, chunk)
+			}, false, Store(w, namespace, chunk)
 		}
 		return nil, false, err
 	}
@@ -169,7 +174,7 @@ func LoadOrStore(s storage.Store, namespace string, chunk swarm.Chunk) (item *It
 
 // Load returns stamp index record related to the given namespace and chunk.
 // The storage.ErrNotFound is returned if no record is found.
-func Load(s storage.Store, namespace string, chunk swarm.Chunk) (*Item, error) {
+func Load(s storage.Reader, namespace string, chunk swarm.Chunk) (*Item, error) {
 	item := &Item{
 		namespace:  []byte(namespace),
 		batchID:    chunk.Stamp().BatchID(),
@@ -184,7 +189,7 @@ func Load(s storage.Store, namespace string, chunk swarm.Chunk) (*Item, error) {
 
 // Store creates new or updated an existing stamp index
 // record related to the given namespace and chunk.
-func Store(s storage.Store, namespace string, chunk swarm.Chunk) error {
+func Store(s storage.Writer, namespace string, chunk swarm.Chunk) error {
 	item := &Item{
 		namespace:        []byte(namespace),
 		batchID:          chunk.Stamp().BatchID(),
@@ -200,7 +205,7 @@ func Store(s storage.Store, namespace string, chunk swarm.Chunk) error {
 }
 
 // Delete removes the related stamp index record from the storage.
-func Delete(s storage.Store, namespace string, chunk swarm.Chunk) error {
+func Delete(s storage.Writer, namespace string, chunk swarm.Chunk) error {
 	item := &Item{
 		namespace:  []byte(namespace),
 		batchID:    chunk.Stamp().BatchID(),

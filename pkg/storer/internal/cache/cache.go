@@ -187,7 +187,8 @@ func New(ctx context.Context, store internal.Storage, capacity uint64) (*Cache, 
 func (c *Cache) popFront(
 	ctx context.Context,
 	state *cacheState,
-	store storage.Store,
+	store storage.Reader,
+	writer storage.Writer,
 	chStore storage.ChunkStore,
 ) error {
 	// read the first entry.
@@ -204,7 +205,7 @@ func (c *Cache) popFront(
 	}
 
 	// delete the item.
-	err = store.Delete(expiredEntry)
+	err = writer.Delete(expiredEntry)
 	if err != nil {
 		return fmt.Errorf("failed deleting old head entry %s: %w", expiredEntry, err)
 	}
@@ -224,7 +225,8 @@ func (c *Cache) pushBack(
 	state *cacheState,
 	newEntry *cacheEntry,
 	chunk swarm.Chunk,
-	store storage.Store,
+	store storage.Reader,
+	writer storage.Writer,
 	chStore storage.ChunkStore,
 ) error {
 	// read the tail entry.
@@ -247,13 +249,13 @@ func (c *Cache) pushBack(
 	}
 
 	// add the new item.
-	err = store.Put(newEntry)
+	err = writer.Put(newEntry)
 	if err != nil {
 		return fmt.Errorf("failed adding the new cacheEntry %s: %w", newEntry, err)
 	}
 
 	// update the old tail entry.
-	err = store.Put(entry)
+	err = writer.Put(entry)
 	if err != nil {
 		return fmt.Errorf("failed updating the old tail entry %s: %w", entry, err)
 	}
@@ -288,6 +290,11 @@ func (c *Cache) Putter(store internal.Storage) storage.Putter {
 			return nil
 		}
 
+		batch, err := store.IndexStore().Batch(ctx)
+		if err != nil {
+			return fmt.Errorf("failed creating batch: %w", err)
+		}
+
 		state := &cacheState{}
 		err = store.IndexStore().Get(state)
 		if err != nil {
@@ -297,7 +304,15 @@ func (c *Cache) Putter(store internal.Storage) storage.Putter {
 		if state.Count != 0 {
 			// if we are here, this is a new chunk which should be added. Add it to
 			// the end.
-			err = c.pushBack(ctx, state, newEntry, chunk, store.IndexStore(), store.ChunkStore())
+			err = c.pushBack(
+				ctx,
+				state,
+				newEntry,
+				chunk,
+				store.IndexStore(),
+				batch,
+				store.ChunkStore(),
+			)
 			if err != nil {
 				return err
 			}
@@ -307,7 +322,7 @@ func (c *Cache) Putter(store internal.Storage) storage.Putter {
 			if err != nil {
 				return fmt.Errorf("failed adding chunk %s to chunkstore: %w", chunk.Address(), err)
 			}
-			err = store.IndexStore().Put(newEntry)
+			err = batch.Put(newEntry)
 			if err != nil {
 				return fmt.Errorf("failed adding new cacheEntry %s: %w", newEntry, err)
 			}
@@ -317,16 +332,20 @@ func (c *Cache) Putter(store internal.Storage) storage.Putter {
 
 		if state.Count == c.capacity {
 			// if we reach the full capacity, remove the first element.
-			err = c.popFront(ctx, state, store.IndexStore(), store.ChunkStore())
+			err = c.popFront(ctx, state, store.IndexStore(), batch, store.ChunkStore())
 			if err != nil {
 				return err
 			}
 		} else {
 			state.Count++
 		}
-		err = store.IndexStore().Put(state)
+		err = batch.Put(state)
 		if err != nil {
 			return fmt.Errorf("failed updating state %s: %w", state, err)
+		}
+
+		if err := batch.Commit(); err != nil {
+			return fmt.Errorf("batch commit: %w", err)
 		}
 
 		c.mtx.Lock()
@@ -359,6 +378,11 @@ func (c *Cache) Getter(store internal.Storage) storage.Getter {
 			return nil, fmt.Errorf("unexpected error getting indexstore entry: %w", err)
 		}
 
+		batch, err := store.IndexStore().Batch(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed creating batch: %w", err)
+		}
+
 		state := &cacheState{}
 		err = store.IndexStore().Get(state)
 		if err != nil {
@@ -373,11 +397,21 @@ func (c *Cache) Getter(store internal.Storage) storage.Getter {
 		prev := &cacheEntry{Address: entry.Prev}
 		next := &cacheEntry{Address: entry.Next}
 
-		// move the chunk to the end due to the access. Dont send duplicate
-		// chunk put operation.
-		err = c.pushBack(ctx, state, entry, nil, store.IndexStore(), store.ChunkStore())
-		if err != nil {
-			return nil, err
+		if !state.Tail.Equal(next.Address) {
+			// move the chunk to the end due to the access. Dont send duplicate
+			// chunk put operation.
+			err = c.pushBack(
+				ctx,
+				state,
+				entry,
+				nil,
+				store.IndexStore(),
+				batch,
+				store.ChunkStore(),
+			)
+			if err != nil {
+				return nil, err
+			}
 		}
 
 		// if this is first chunk we dont need to update both the prev or the
@@ -392,13 +426,16 @@ func (c *Cache) Getter(store internal.Storage) storage.Getter {
 				return nil, fmt.Errorf("failed getting next entry %s: %w", next, err)
 			}
 			prev.Next = next.Address.Clone()
-			err = store.IndexStore().Put(prev)
+			err = batch.Put(prev)
 			if err != nil {
 				return nil, fmt.Errorf("failed updating prev entry %s: %w", prev, err)
 			}
-
 			next.Prev = prev.Address.Clone()
-			err = store.IndexStore().Put(next)
+			if state.Tail.Equal(next.Address) {
+				state.Tail = address.Clone()
+				next.Next = address.Clone()
+			}
+			err = batch.Put(next)
 			if err != nil {
 				return nil, fmt.Errorf("failed updating next entry %s: %w", next, err)
 			}
@@ -408,9 +445,13 @@ func (c *Cache) Getter(store internal.Storage) storage.Getter {
 			state.Head = next.Address.Clone()
 		}
 
-		err = store.IndexStore().Put(state)
+		err = batch.Put(state)
 		if err != nil {
 			return nil, fmt.Errorf("failed updating state %s: %w", state, err)
+		}
+
+		if err := batch.Commit(); err != nil {
+			return nil, fmt.Errorf("batch commit: %w", err)
 		}
 
 		return ch, nil

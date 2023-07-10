@@ -16,7 +16,7 @@ import (
 // Repository is a collection of stores that provides a unified interface
 // to access them. Access to all stores can be guarded by a transaction.
 type Repository interface {
-	IndexStore() Store
+	IndexStore() BatchedStore
 	ChunkStore() ChunkStore
 
 	NewTx(context.Context) (repo Repository, commit func() error, rollback func() error)
@@ -31,7 +31,7 @@ type repository struct {
 }
 
 // IndexStore returns Store.
-func (r *repository) IndexStore() Store {
+func (r *repository) IndexStore() BatchedStore {
 	return r.txIndexStore
 }
 

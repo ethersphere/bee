@@ -158,12 +158,12 @@ type testStorage struct {
 	putFn func(storage.Item) error
 }
 
-func (t *testStorage) IndexStore() storage.Store {
-	return &wrappedStore{Store: t.Storage.IndexStore(), putFn: t.putFn}
+func (t *testStorage) IndexStore() storage.BatchedStore {
+	return &wrappedStore{BatchedStore: t.Storage.IndexStore(), putFn: t.putFn}
 }
 
 type wrappedStore struct {
-	storage.Store
+	storage.BatchedStore
 	putFn func(storage.Item) error
 }
 
@@ -171,7 +171,27 @@ func (w *wrappedStore) Put(i storage.Item) error {
 	if w.putFn != nil {
 		return w.putFn(i)
 	}
-	return w.Store.Put(i)
+	return w.BatchedStore.Put(i)
+}
+
+func (w *wrappedStore) Batch(ctx context.Context) (storage.Batch, error) {
+	b, err := w.BatchedStore.Batch(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &wrappedBatch{Batch: b, putFn: w.putFn}, nil
+}
+
+type wrappedBatch struct {
+	storage.Batch
+	putFn func(storage.Item) error
+}
+
+func (w *wrappedBatch) Put(i storage.Item) error {
+	if w.putFn != nil {
+		return w.putFn(i)
+	}
+	return w.Batch.Put(i)
 }
 
 func newTestStorage(t *testing.T) *testStorage {
