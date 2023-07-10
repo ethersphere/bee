@@ -17,10 +17,10 @@ import (
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	pullerMock "github.com/ethersphere/bee/pkg/puller/mock"
 	"github.com/ethersphere/bee/pkg/spinlock"
-	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/storagetest"
 	chunk "github.com/ethersphere/bee/pkg/storage/testing"
-	storer "github.com/ethersphere/bee/pkg/storer"
+	"github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/storer/internal/chunkstamp"
 	"github.com/ethersphere/bee/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/pkg/storer/internal/stampindex"
@@ -35,24 +35,24 @@ func TestIndexCollision(t *testing.T) {
 		stamp := postagetesting.MustNewBatchStamp(postagetesting.MustNewBatch().ID)
 		putter := storer.ReservePutter()
 
-		ch_1 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(stamp)
-		err := putter.Put(context.Background(), ch_1)
+		ch1 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(stamp)
+		err := putter.Put(context.Background(), ch1)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		ch_2 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(stamp)
-		err = putter.Put(context.Background(), ch_2)
+		ch2 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(stamp)
+		err = putter.Put(context.Background(), ch2)
 		if err == nil {
 			t.Fatal("expected index collision error")
 		}
 
-		_, err = storer.ReserveGet(context.Background(), ch_2.Address(), ch_2.Stamp().BatchID())
+		_, err = storer.ReserveGet(context.Background(), ch2.Address(), ch2.Stamp().BatchID())
 		if !errors.Is(err, storage.ErrNotFound) {
 			t.Fatal(err)
 		}
 
-		_, err = storer.ReserveGet(context.Background(), ch_1.Address(), ch_1.Stamp().BatchID())
+		_, err = storer.ReserveGet(context.Background(), ch1.Address(), ch1.Stamp().BatchID())
 		if err != nil {
 			t.Fatal(err)
 		}

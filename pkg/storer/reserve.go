@@ -9,15 +9,16 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"path"
 	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/postage"
-	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage/storageutil"
 	"github.com/ethersphere/bee/pkg/storer/internal"
 	"github.com/ethersphere/bee/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"golang.org/x/exp/slices"
 )
 
 const (
@@ -125,7 +126,7 @@ func (db *DB) evictionWorker(ctx context.Context) {
 	cleanupExpired := func() {
 		defer db.events.Trigger(reserveUnreserved)
 
-		batchesToEvict := make([][]byte, 0)
+		var batchesToEvict [][]byte
 		err := db.repo.IndexStore().Iterate(storage.Query{
 			Factory:      func() storage.Item { return new(expiredBatchItem) },
 			ItemProperty: storage.QueryItemID,
@@ -137,40 +138,27 @@ func (db *DB) evictionWorker(ctx context.Context) {
 			db.logger.Error(err, "iterate expired batches")
 		}
 
-		if len(batchesToEvict) > 0 {
-			for _, batchID := range batchesToEvict {
-				evicted, err := db.evictBatch(ctx, batchID, swarm.MaxBins)
-				if err != nil {
-					db.logger.Error(err, "evict batch", "batch", hex.EncodeToString(batchID))
-				}
-				if evicted > 0 {
-					db.logger.Debug(
-						"evicted expired batch",
-						"batch", hex.EncodeToString(batchID),
-						"total_evicted", evicted,
-					)
-
-					err = db.Execute(ctx, func(tx internal.Storage) error {
-						return tx.IndexStore().Delete(&expiredBatchItem{BatchID: batchID})
-					})
-					if err != nil {
-						db.logger.Error(err, "delete expired batch", "batch", hex.EncodeToString(batchID))
-					}
-				}
-				db.metrics.ExpiredBatchCount.Inc()
+		for _, batchID := range batchesToEvict {
+			evicted, err := db.evictBatch(ctx, batchID, swarm.MaxBins)
+			if err != nil {
+				db.logger.Error(err, "evict batch", "batch_id", hex.EncodeToString(batchID))
 			}
+			if evicted > 0 {
+				db.logger.Debug("evicted expired batch", "batch_id", hex.EncodeToString(batchID), "total_evicted", evicted)
+
+				err = db.Execute(ctx, func(tx internal.Storage) error {
+					return tx.IndexStore().Delete(&expiredBatchItem{BatchID: batchID})
+				})
+				if err != nil {
+					db.logger.Error(err, "delete expired batch", "batch_id", hex.EncodeToString(batchID))
+				}
+			}
+			db.metrics.ExpiredBatchCount.Inc()
 		}
 	}
 
-	// initial cleanup
-	cleanupExpired()
-
-	time.AfterFunc(30*time.Minute, func() {
-		db.logger.Info("initial reserve cleanup started")
-		if err := db.reserveCleanup(ctx); err != nil {
-			db.logger.Error(err, "cleanup")
-		}
-	})
+	// Initial cleanup.
+	db.events.Trigger(batchExpiry)
 
 	cleanUpTicker := time.NewTicker(cleanupDur)
 	defer cleanUpTicker.Stop()
@@ -286,37 +274,46 @@ func (db *DB) ReservePutter() storage.Putter {
 	}
 }
 
+// expiredBatchItem is a storage.Item implementation for expired batches.
 type expiredBatchItem struct {
 	BatchID []byte
 }
 
+// ID implements storage.Item.
 func (e *expiredBatchItem) ID() string {
 	return string(e.BatchID)
 }
 
+// Namespace implements storage.Item.
 func (e *expiredBatchItem) Namespace() string {
 	return "expiredBatchItem"
 }
 
+// Marshal implements storage.Item.
+// It is a no-op as expiredBatchItem is not serialized.
 func (e *expiredBatchItem) Marshal() ([]byte, error) {
 	return nil, nil
 }
 
+// Unmarshal implements storage.Item.
+// It is a no-op as expiredBatchItem is not serialized.
 func (e *expiredBatchItem) Unmarshal(_ []byte) error {
 	return nil
 }
 
+// Clone implements storage.Item.
 func (e *expiredBatchItem) Clone() storage.Item {
 	if e == nil {
 		return nil
 	}
 	return &expiredBatchItem{
-		BatchID: append([]byte(nil), e.BatchID...),
+		BatchID: slices.Clone(e.BatchID),
 	}
 }
 
+// String implements storage.Item.
 func (e *expiredBatchItem) String() string {
-	return path.Join(e.Namespace(), e.ID())
+	return storageutil.JoinFields(e.Namespace(), e.ID())
 }
 
 // EvictBatch evicts all chunks belonging to a batch from the reserve.
