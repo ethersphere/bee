@@ -150,8 +150,8 @@ func (db *DB) evictionWorker(ctx context.Context) {
 						"total_evicted", evicted,
 					)
 
-					err = db.Execute(ctx, func(st internal.Storage) error {
-						return st.IndexStore().Delete(&expiredBatchItem{BatchID: batchID})
+					err = db.Execute(ctx, func(tx internal.Storage) error {
+						return tx.IndexStore().Delete(&expiredBatchItem{BatchID: batchID})
 					})
 					if err != nil {
 						db.logger.Error(err, "delete expired batch", "batch", hex.EncodeToString(batchID))
@@ -324,7 +324,7 @@ func (db *DB) EvictBatch(ctx context.Context, batchID []byte) error {
 	}
 
 	err := db.Execute(ctx, func(tx internal.Storage) error {
-		return db.repo.IndexStore().Put(&expiredBatchItem{BatchID: batchID})
+		return tx.IndexStore().Put(&expiredBatchItem{BatchID: batchID})
 	})
 	if err != nil {
 		return fmt.Errorf("save expired batch: %w", err)
