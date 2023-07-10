@@ -6,8 +6,6 @@ package chunkstore_test
 
 import (
 	"context"
-	"github.com/google/go-cmp/cmp/cmpopts"
-	"golang.org/x/exp/slices"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/sharky"
@@ -17,7 +15,9 @@ import (
 	"github.com/ethersphere/bee/pkg/storer/internal/chunkstore"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/spf13/afero"
+	"golang.org/x/exp/slices"
 )
 
 func TestTxChunkStore_Recovery(t *testing.T) {

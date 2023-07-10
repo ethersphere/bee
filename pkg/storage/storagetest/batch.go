@@ -100,7 +100,7 @@ func TestBatchedStore(t *testing.T, bs BatchedStore) {
 		if err := batch.Commit(); err != nil {
 			t.Fatalf("Commit(): unexpected error: %v", err)
 		}
-		if err := batch.Commit(); err == nil { // TODO: replace with sentinel error.
+		if err := batch.Commit(); err == nil {
 			t.Fatal("Commit(): expected error; have none")
 		}
 	})

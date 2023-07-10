@@ -11,6 +11,7 @@ import (
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage/cache"
 	"github.com/ethersphere/bee/pkg/storage/storageutil"
 	"github.com/google/uuid"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -318,6 +319,15 @@ func (s *TxStore) NewTx(state *storage.TxState) storage.TxStore {
 		panic(errors.New("leveldbstore: nil store"))
 	}
 
+	// TODO: this is a quick and dirty hack to get the underlying leveldb.DB; get rid of this by leveraging DB() T store method.
+	var db *leveldb.DB
+	switch s := s.BatchedStore.(type) {
+	case *Store:
+		db = s.db
+	case *cache.Cache:
+		db = s.BatchedStore.(*Store).db
+	}
+
 	batch := new(leveldb.Batch)
 	return &TxStore{
 		TxStoreBase: &storage.TxStoreBase{
@@ -326,7 +336,7 @@ func (s *TxStore) NewTx(state *storage.TxState) storage.TxStore {
 		},
 		revOps: &txRevertOpStore{
 			id:    id(uuid.NewString()),
-			db:    s.BatchedStore.(*Store).db,
+			db:    db,
 			batch: batch,
 			revOpsFn: map[storage.TxOpCode]storage.TxRevertFn[[]byte, []byte]{
 				storage.PutCreateOp: func(k, _ []byte) error {

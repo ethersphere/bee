@@ -173,6 +173,7 @@ type Options struct {
 	UsePostageSnapshot            bool
 	EnableStorageIncentives       bool
 	StatestoreCacheCapacity       uint64
+	IndexstoreCacheCapacity       uint64
 }
 
 const (
@@ -759,16 +760,17 @@ func NewBee(
 	}
 
 	lo := &storer.Options{
-		Address:                   swarmAddress,
-		CacheCapacity:             o.CacheCapacity,
 		LdbOpenFilesLimit:         o.DBOpenFilesLimit,
 		LdbBlockCacheCapacity:     o.DBBlockCacheCapacity,
 		LdbWriteBufferSize:        o.DBWriteBufferSize,
 		LdbDisableSeeksCompaction: o.DBDisableSeeksCompaction,
+		ItemCacheCapacity:         o.IndexstoreCacheCapacity,
+		CacheCapacity:             o.CacheCapacity,
+		Address:                   swarmAddress,
+		WarmupDuration:            o.WarmupTime,
+		RadiusSetter:              kad,
 		Batchstore:                batchStore,
 		StateStore:                stateStore,
-		RadiusSetter:              kad,
-		WarmupDuration:            o.WarmupTime,
 		Logger:                    logger,
 	}
 

@@ -13,6 +13,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage/cache"
 	"github.com/ethersphere/bee/pkg/storage/leveldbstore"
 	"github.com/ethersphere/bee/pkg/storage/storageutil"
 	"github.com/google/uuid"
@@ -148,10 +149,18 @@ func (cs *TxChunkStoreWrapper) Rollback() error {
 var pendingTxNamespace = new(pendingTx).Namespace()
 
 func (cs *TxChunkStoreWrapper) NewTx(state *storage.TxState) storage.TxChunkStore {
+	// TODO: this is a quick and dirty hack to get the underlying leveldb.DB; get rid of this by leveraging DB() T store method.
+	var storer leveldbstore.Storer
+	switch s := cs.txStore.(*leveldbstore.TxStore).BatchedStore.(type) {
+	case leveldbstore.Storer:
+		storer = s
+	case *cache.Cache:
+		storer = s.BatchedStore.(leveldbstore.Storer)
+	}
 	txStore := cs.txStore.NewTx(state)
 	txSharky := &txSharky{
 		id:            []byte(storageutil.JoinFields(pendingTxNamespace, uuid.NewString())),
-		store:         cs.txStore.(*leveldbstore.TxStore).BatchedStore.(leveldbstore.Storer), // TODO: make this independent of the underlying store.
+		store:         storer,
 		Sharky:        cs.txSharky.Sharky,
 		toReleaseLocs: make(map[[32]byte]sharky.Location),
 		toReleaseSums: make(map[sharky.Location][32]byte),

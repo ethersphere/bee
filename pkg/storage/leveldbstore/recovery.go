@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage/cache"
 	"github.com/syndtr/goleveldb/leveldb"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 )
@@ -51,7 +52,16 @@ func (s *TxStore) Recover() error {
 		return fmt.Errorf("leveldbstore: recovery: iteration failed: %w", err)
 	}
 
-	if err := s.BatchedStore.(*Store).db.Write(batch, &opt.WriteOptions{Sync: true}); err != nil {
+	// TODO: this is a quick and dirty hack to get the underlying leveldb.DB; get rid of this by leveraging DB() T store method.
+	var db *leveldb.DB
+	switch s := s.BatchedStore.(type) {
+	case *Store:
+		db = s.db
+	case *cache.Cache:
+		db = s.BatchedStore.(*Store).db
+	}
+
+	if err := db.Write(batch, &opt.WriteOptions{Sync: true}); err != nil {
 		return fmt.Errorf("leveldbstore: recovery: unable to write batch: %w", err)
 	}
 	return nil

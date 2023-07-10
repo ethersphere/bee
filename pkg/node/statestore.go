@@ -7,8 +7,9 @@ package node
 import (
 	"errors"
 	"fmt"
-	"github.com/syndtr/goleveldb/leveldb/opt"
 	"path/filepath"
+
+	"github.com/syndtr/goleveldb/leveldb/opt"
 
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/metrics"
@@ -34,7 +35,7 @@ func InitStateStore(logger log.Logger, dataDir string, cacheCapacity uint64) (st
 		return nil, nil, err
 	}
 
-	caching := cache.Wrap(ldb, int(cacheCapacity))
+	caching := cache.MustWrap(ldb, int(cacheCapacity))
 	stateStore, err := storeadapter.NewStateStorerAdapter(caching)
 
 	return stateStore, caching, err

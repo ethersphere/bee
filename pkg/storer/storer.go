@@ -25,6 +25,7 @@ import (
 	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/storage"
+	scache "github.com/ethersphere/bee/pkg/storage/cache"
 	"github.com/ethersphere/bee/pkg/storage/leveldbstore"
 	"github.com/ethersphere/bee/pkg/storage/migration"
 	"github.com/ethersphere/bee/pkg/storer/internal"
@@ -270,7 +271,7 @@ func initStore(basePath string, opts *Options) (*leveldbstore.Store, error) {
 }
 
 func initDiskRepository(ctx context.Context, basePath string, opts *Options) (storage.Repository, io.Closer, error) {
-	store, err := initStore(basePath, opts)
+	ldb, err := initStore(basePath, opts)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed creating levelDB index store: %w", err)
 	}
@@ -278,7 +279,7 @@ func initDiskRepository(ctx context.Context, basePath string, opts *Options) (st
 	if opts.LdbStats.Load() != nil {
 		go func() {
 			ldbStats := opts.LdbStats.Load()
-			logger := log.NewLogger(loggerName).Register()
+			logger := opts.Logger.WithName("leveldb-stats").Register()
 			ticker := time.NewTicker(15 * time.Second)
 			defer ticker.Stop()
 
@@ -288,7 +289,7 @@ func initDiskRepository(ctx context.Context, basePath string, opts *Options) (st
 					return
 				case <-ticker.C:
 					stats := new(leveldb.DBStats)
-					switch err := store.DB().Stats(stats); {
+					switch err := ldb.DB().Stats(stats); {
 					case errors.Is(err, leveldb.ErrClosed):
 						return
 					case err != nil:
@@ -328,7 +329,7 @@ func initDiskRepository(ctx context.Context, basePath string, opts *Options) (st
 		}
 	}
 
-	recoveryCloser, err := sharkyRecovery(ctx, sharkyBasePath, store, opts)
+	recoveryCloser, err := sharkyRecovery(ctx, sharkyBasePath, ldb, opts)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to recover sharky: %w", err)
 	}
@@ -342,6 +343,11 @@ func initDiskRepository(ctx context.Context, basePath string, opts *Options) (st
 		return nil, nil, fmt.Errorf("failed creating sharky instance: %w", err)
 	}
 
+	var store storage.BatchedStore = ldb
+	if opts.ItemCacheCapacity > 0 {
+		store = scache.MustWrap(ldb, int(opts.ItemCacheCapacity))
+	}
+
 	txStore := leveldbstore.NewTxStore(store)
 	if err := txStore.Recover(); err != nil {
 		return nil, nil, fmt.Errorf("failed to recover index store: %w", err)
@@ -352,7 +358,7 @@ func initDiskRepository(ctx context.Context, basePath string, opts *Options) (st
 		return nil, nil, fmt.Errorf("failed to recover chunk store: %w", err)
 	}
 
-	return storage.NewRepository(txStore, txChunkStore), closer(store, sharky, recoveryCloser), nil
+	return storage.NewRepository(txStore, txChunkStore), closer(ldb, sharky, recoveryCloser), nil
 }
 
 func initCache(ctx context.Context, capacity uint64, repo storage.Repository) (*cache.Cache, error) {
@@ -419,18 +425,21 @@ type Options struct {
 	LdbBlockCacheCapacity     uint64
 	LdbWriteBufferSize        uint64
 	LdbDisableSeeksCompaction bool
-	CacheCapacity             uint64
-	Logger                    log.Logger
+
+	ItemCacheCapacity uint64
+	CacheCapacity     uint64
 
 	Address        swarm.Address
 	WarmupDuration time.Duration
-	Batchstore     postage.Storer
 	ValidStamp     postage.ValidStampFn
 	RadiusSetter   topology.SetStorageRadiuser
+	Batchstore     postage.Storer
 	StateStore     storage.StateStorer
 
 	ReserveCapacity       int
 	ReserveWakeUpDuration time.Duration
+
+	Logger log.Logger
 }
 
 func defaultOptions() *Options {

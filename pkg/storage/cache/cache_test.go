@@ -20,5 +20,10 @@ func TestCache(t *testing.T) {
 		t.Fatalf("create store failed: %v", err)
 	}
 
-	storagetest.TestStore(t, cache.Wrap(store, 100_000))
+	cache, err := cache.Wrap(store, 100)
+	if err != nil {
+		t.Fatalf("create cache failed: %v", err)
+
+	}
+	storagetest.TestBatchedStore(t, cache)
 }
