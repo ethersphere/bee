@@ -99,7 +99,7 @@ func New(
 }
 
 // Create will create a new batch with the given ID, owner value and depth and
-// stores it in the BatchStore.
+// stores it in the BatchedStore.
 func (svc *batchService) Create(id, owner []byte, totalAmout, normalisedBalance *big.Int, depth, bucketDepth uint8, immutable bool, txHash common.Hash) error {
 	// don't add batches which have value which equals total cumulative
 	// payout or that are going to expire already within the next couple of blocks

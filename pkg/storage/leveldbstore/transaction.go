@@ -86,8 +86,61 @@ func (s *txRevertOpStore) Clean() error {
 	return s.db.Delete(s.id, nil)
 }
 
+// txBatch is a batch that is used in a transaction.
+type txBatch struct {
+	batch    storage.Batch
+	store    *TxStore
+	revOpsMu sync.Mutex
+	revOps   []*storage.TxRevertOp[[]byte, []byte]
+	onCommit func(revOps ...*storage.TxRevertOp[[]byte, []byte]) error
+}
+
+// Put implements the Batch interface.
+func (b *txBatch) Put(item storage.Item) error {
+	if err := b.store.IsDone(); err != nil {
+		return err
+	}
+
+	reverseOp, err := put(b.store, b.batch, item)
+	if err == nil && reverseOp != nil {
+		b.revOpsMu.Lock()
+		b.revOps = append(b.revOps, reverseOp)
+		b.revOpsMu.Unlock()
+	}
+	return err
+}
+
+// Delete implements the Batch interface.
+func (b *txBatch) Delete(item storage.Item) error {
+	if err := b.store.IsDone(); err != nil {
+		return err
+	}
+
+	reverseOp, err := del(b.store, b.batch, item)
+	if err == nil && reverseOp != nil {
+		b.revOpsMu.Lock()
+		b.revOps = append(b.revOps, reverseOp)
+		b.revOpsMu.Unlock()
+	}
+	return err
+}
+
+// Commit implements the Batch interface.
+func (b *txBatch) Commit() error {
+	if err := b.batch.Commit(); err != nil {
+		return err
+	}
+	b.revOpsMu.Lock()
+	defer b.revOpsMu.Unlock()
+	defer func() {
+		b.revOps = nil
+	}()
+	return b.onCommit(b.revOps...)
+}
+
 var (
 	_ storage.TxStore   = (*TxStore)(nil)
+	_ storage.Batcher   = (*TxStore)(nil)
 	_ storage.Recoverer = (*TxStore)(nil)
 )
 
@@ -242,63 +295,13 @@ func (s *TxStore) Batch(ctx context.Context) (storage.Batch, error) {
 		return nil, err
 	}
 
-	return &txWrappedBatch{
+	return &txBatch{
 		batch: batch,
 		store: s,
 		onCommit: func(revOps ...*storage.TxRevertOp[[]byte, []byte]) error {
 			return s.revOps.Append(revOps...)
 		},
 	}, nil
-}
-
-type txWrappedBatch struct {
-	batch    storage.Batch
-	store    *TxStore
-	opsMu    sync.Mutex
-	ops      []*storage.TxRevertOp[[]byte, []byte]
-	onCommit func(revOps ...*storage.TxRevertOp[[]byte, []byte]) error
-}
-
-// Put implements the Batch interface.
-func (b *txWrappedBatch) Put(item storage.Item) error {
-	if err := b.store.IsDone(); err != nil {
-		return err
-	}
-
-	reverseOp, err := put(b.store, b.batch, item)
-	if err == nil && reverseOp != nil {
-		b.opsMu.Lock()
-		b.ops = append(b.ops, reverseOp)
-		b.opsMu.Unlock()
-	}
-	return err
-}
-
-// Delete implements the Batch interface.
-func (b *txWrappedBatch) Delete(item storage.Item) error {
-	if err := b.store.IsDone(); err != nil {
-		return err
-	}
-
-	reverseOp, err := del(b.store, b.batch, item)
-	if err == nil && reverseOp != nil {
-		b.opsMu.Lock()
-		b.ops = append(b.ops, reverseOp)
-		b.opsMu.Unlock()
-	}
-	return err
-}
-
-func (b *txWrappedBatch) Commit() error {
-	if err := b.batch.Commit(); err != nil {
-		return err
-	}
-	b.opsMu.Lock()
-	defer b.opsMu.Unlock()
-	defer func() {
-		b.ops = nil
-	}()
-	return b.onCommit(b.ops...)
 }
 
 // pendingTxNamespace exist for cashing the namespace of pendingTx

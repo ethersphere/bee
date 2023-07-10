@@ -155,7 +155,7 @@ type Store interface {
 	Writer
 }
 
-// Reader contains the read-only methods required for the Data Abstraction Layer.
+// Reader groups methods that read from the store.
 type Reader interface {
 	// Get unmarshalls object with the given Item.Key.ID into the given Item.
 	Get(Item) error
@@ -175,7 +175,7 @@ type Reader interface {
 	Count(Key) (int, error)
 }
 
-// Writer contains the write-only methods required for the Data Abstraction Layer.
+// Writer groups methods that change the state of the store.
 type Writer interface {
 	// Put inserts or updates the given Item identified by its Key.ID.
 	Put(Item) error
@@ -185,7 +185,7 @@ type Writer interface {
 	Delete(Item) error
 }
 
-// BatchedStore is a store that supports batching.
+// BatchedStore is a store that supports batching of Writer method calls.
 type BatchedStore interface {
 	Store
 	Batcher

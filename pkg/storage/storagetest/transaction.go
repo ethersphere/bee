@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/storageutil"
 	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -63,12 +63,12 @@ func (o object) String() string {
 }
 
 // initStore initializes the given store with the given objects.
-func initStore(t *testing.T, store storage.BatchedStore, batch bool, objects ...*object) {
+func initStore(t *testing.T, store storage.BatchedStore, batched bool, objects ...*object) {
 	t.Helper()
 
-	var writer storage.Writer
+	var writer storage.Writer = store
 
-	if batch {
+	if batched {
 		b, err := store.Batch(context.Background())
 		if err != nil {
 			t.Fatalf("Batch(): unexpected error: %v", err)
@@ -79,8 +79,6 @@ func initStore(t *testing.T, store storage.BatchedStore, batch bool, objects ...
 			}
 		}()
 		writer = b
-	} else {
-		writer = store
 	}
 
 	for _, o := range objects {
@@ -90,12 +88,12 @@ func initStore(t *testing.T, store storage.BatchedStore, batch bool, objects ...
 	}
 }
 
-func deleteStore(t *testing.T, store storage.BatchedStore, batch bool, objects ...*object) {
+func deleteStore(t *testing.T, store storage.BatchedStore, batched bool, objects ...*object) {
 	t.Helper()
 
-	var writer storage.Writer
+	var writer storage.Writer = store
 
-	if batch {
+	if batched {
 		b, err := store.Batch(context.Background())
 		if err != nil {
 			t.Fatalf("Batch(): unexpected error: %v", err)
@@ -106,8 +104,6 @@ func deleteStore(t *testing.T, store storage.BatchedStore, batch bool, objects .
 			}
 		}()
 		writer = b
-	} else {
-		writer = store
 	}
 
 	for _, o := range objects {
@@ -192,11 +188,11 @@ func TestTxStore(t *testing.T, store storage.TxStore) {
 	})
 
 	tCases := []struct {
-		name  string
-		batch bool
+		name    string
+		batched bool
 	}{
 		{"single", false},
-		{"batchd", true},
+		{"batched", true},
 	}
 
 	for _, tCase := range tCases {
@@ -214,7 +210,7 @@ func TestTxStore(t *testing.T, store storage.TxStore) {
 				t.Run("add new objects", func(t *testing.T) {
 					tx := store.NewTx(storage.NewTxState(ctx))
 
-					initStore(t, tx, tCase.batch, objects...)
+					initStore(t, tx, tCase.batched, objects...)
 
 					if err := tx.Commit(); err != nil {
 						t.Fatalf("Commit(): unexpected error: %v", err)
@@ -233,7 +229,7 @@ func TestTxStore(t *testing.T, store storage.TxStore) {
 				t.Run("delete existing objects", func(t *testing.T) {
 					tx := store.NewTx(storage.NewTxState(ctx))
 
-					deleteStore(t, tx, tCase.batch, objects...)
+					deleteStore(t, tx, tCase.batched, objects...)
 					if err := tx.Commit(); err != nil {
 						t.Fatalf("Commit(): unexpected error: %v", err)
 					}
@@ -290,7 +286,7 @@ func TestTxStore(t *testing.T, store storage.TxStore) {
 					{id: "0002" + tCase.name, data: []byte("data2")},
 					{id: "0003" + tCase.name, data: []byte("data3")},
 				}
-				initStore(t, tx, tCase.batch, objects...)
+				initStore(t, tx, tCase.batched, objects...)
 
 				if err := tx.Rollback(); err != nil {
 					t.Fatalf("Rollback(): unexpected error: %v", err)
@@ -317,7 +313,7 @@ func TestTxStore(t *testing.T, store storage.TxStore) {
 					{id: "0002" + tCase.name, data: []byte("data2")},
 					{id: "0003" + tCase.name, data: []byte("data3")},
 				}
-				initStore(t, tx, tCase.batch, oldObjects...)
+				initStore(t, tx, tCase.batched, oldObjects...)
 				if err := tx.Commit(); err != nil {
 					t.Fatalf("Commit(): unexpected error: %v", err)
 				}
@@ -328,7 +324,7 @@ func TestTxStore(t *testing.T, store storage.TxStore) {
 					{id: "0002" + tCase.name, data: []byte("data22")},
 					{id: "0003" + tCase.name, data: []byte("data33")},
 				}
-				initStore(t, tx, tCase.batch, newObjects...)
+				initStore(t, tx, tCase.batched, newObjects...)
 				if err := tx.Rollback(); err != nil {
 					t.Fatalf("Rollback(): unexpected error: %v", err)
 				}
@@ -357,13 +353,13 @@ func TestTxStore(t *testing.T, store storage.TxStore) {
 					{id: "0002" + tCase.name, data: []byte("data2")},
 					{id: "0003" + tCase.name, data: []byte("data3")},
 				}
-				initStore(t, tx, tCase.batch, objects...)
+				initStore(t, tx, tCase.batched, objects...)
 				if err := tx.Commit(); err != nil {
 					t.Fatalf("Commit(): unexpected error: %v", err)
 				}
 
 				tx = store.NewTx(storage.NewTxState(ctx))
-				deleteStore(t, tx, tCase.batch, objects...)
+				deleteStore(t, tx, tCase.batched, objects...)
 				if err := tx.Rollback(); err != nil {
 					t.Fatalf("Rollback(): unexpected error: %v", err)
 				}
