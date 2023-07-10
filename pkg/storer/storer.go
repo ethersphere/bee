@@ -473,7 +473,6 @@ type DB struct {
 	setSyncerOnce    sync.Once
 	syncer           Syncer
 	opts             workerOpts
-	expiredBatches   [][]byte
 }
 
 type workerOpts struct {
