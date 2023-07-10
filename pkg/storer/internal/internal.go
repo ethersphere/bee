@@ -17,7 +17,7 @@ import (
 
 // Storage groups the storage.Store and storage.ChunkStore interfaces.
 type Storage interface {
-	IndexStore() storage.Store
+	IndexStore() storage.BatchedStore
 	ChunkStore() storage.ChunkStore
 }
 
@@ -76,10 +76,10 @@ func NewInmemStorage() (BatchedStorage, func() error) {
 }
 
 type inmemRepository struct {
-	indexStore storage.Store
+	indexStore storage.BatchedStore
 	chunkStore storage.ChunkStore
 }
 
-func (t *inmemRepository) IndexStore() storage.Store                              { return t.indexStore }
+func (t *inmemRepository) IndexStore() storage.BatchedStore                       { return t.indexStore }
 func (t *inmemRepository) ChunkStore() storage.ChunkStore                         { return t.chunkStore }
 func (t *inmemRepository) Execute(_ context.Context, f func(Storage) error) error { return f(t) }

@@ -140,13 +140,13 @@ func (i item) String() string {
 
 // Load returns first found swarm.Stamp related to the given address.
 // The storage.ErrNoStampsForChunk is returned if no record is found.
-func Load(s storage.Store, namespace string, addr swarm.Address) (swarm.Stamp, error) {
+func Load(s storage.Reader, namespace string, addr swarm.Address) (swarm.Stamp, error) {
 	return LoadWithBatchID(s, namespace, addr, nil)
 }
 
 // LoadWithBatchID returns swarm.Stamp related to the given address and batchID.
 // The storage.ErrNoStampsForChunk is returned if no record is found.
-func LoadWithBatchID(s storage.Store, namespace string, addr swarm.Address, batchID []byte) (swarm.Stamp, error) {
+func LoadWithBatchID(s storage.Reader, namespace string, addr swarm.Address, batchID []byte) (swarm.Stamp, error) {
 	var stamp swarm.Stamp
 
 	cnt := 0
@@ -186,7 +186,7 @@ func LoadWithBatchID(s storage.Store, namespace string, addr swarm.Address, batc
 
 // Store creates new or updated an existing stamp index
 // record related to the given namespace and chunk.
-func Store(s storage.Store, namespace string, chunk swarm.Chunk) error {
+func Store(s storage.Writer, namespace string, chunk swarm.Chunk) error {
 	item := &item{
 		namespace: []byte(namespace),
 		address:   chunk.Address(),
@@ -243,6 +243,19 @@ func Delete(s storage.Store, namespace string, addr swarm.Address, batchId []byt
 		return err
 	}
 	return s.Delete(&item{
+		namespace: []byte(namespace),
+		address:   addr,
+		stamp:     stamp,
+	})
+}
+
+func DeleteWithStamp(
+	writer storage.Writer,
+	namespace string,
+	addr swarm.Address,
+	stamp swarm.Stamp,
+) error {
+	return writer.Delete(&item{
 		namespace: []byte(namespace),
 		address:   addr,
 		stamp:     stamp,

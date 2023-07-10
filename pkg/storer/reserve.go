@@ -133,9 +133,16 @@ func (db *DB) evictionWorker(ctx context.Context) {
 
 		if len(batchesToEvict) > 0 {
 			for _, batchID := range batchesToEvict {
-				err := db.evictBatch(ctx, batchID, swarm.MaxBins)
+				evicted, err := db.evictBatch(ctx, batchID, swarm.MaxBins)
 				if err != nil {
-					db.logger.Error(err, "evict batch")
+					db.logger.Error(err, "evict batch", "batch", hex.EncodeToString(batchID))
+				}
+				if evicted > 0 {
+					db.logger.Debug(
+						"evicted expired batch",
+						"batch", hex.EncodeToString(batchID),
+						"total_evicted", evicted,
+					)
 				}
 				db.metrics.ExpiredBatchCount.Inc()
 			}
@@ -279,14 +286,25 @@ func (db *DB) EvictBatch(ctx context.Context, batchID []byte) (err error) {
 	return nil
 }
 
-func (db *DB) evictBatch(ctx context.Context, batchID []byte, upToBin uint8) (retErr error) {
+func (db *DB) evictBatch(
+	ctx context.Context,
+	batchID []byte,
+	upToBin uint8,
+) (evicted int, err error) {
 	dur := captureDuration(time.Now())
 	defer func() {
+		db.reserve.AddSize(-evicted)
+		db.metrics.ReserveSize.Set(float64(db.reserve.Size()))
 		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "EvictBatch").Observe(dur())
-		if retErr == nil {
+		if err == nil {
 			db.metrics.MethodCalls.WithLabelValues("reserve", "EvictBatch", "success").Inc()
 		} else {
 			db.metrics.MethodCalls.WithLabelValues("reserve", "EvictBatch", "failure").Inc()
+		}
+		if upToBin == swarm.MaxBins {
+			db.metrics.ExpiredChunkCount.Add(float64(evicted))
+		} else {
+			db.metrics.EvictedChunkCount.Add(float64(evicted))
 		}
 	}()
 
@@ -294,23 +312,11 @@ func (db *DB) evictBatch(ctx context.Context, batchID []byte, upToBin uint8) (re
 
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return evicted, ctx.Err()
 		default:
 		}
 
-		var evicted int
-
-		var itemsToEvict []swarm.Address
-
-		err := db.reserve.IterateBatchBin(ctx, db.repo, b, batchID, func(address swarm.Address) (bool, error) {
-			itemsToEvict = append(itemsToEvict, address)
-			return false, nil
-		})
-		if err != nil {
-			return fmt.Errorf("reserve: iterate batch bin: %w", err)
-		}
-
-		func() {
+		binEvicted, err := func() (int, error) {
 			// reserve updates if we are expiring batches. This is because the
 			// reserve updates will not be related to these entries as the batch
 			// is no longer valid.
@@ -319,54 +325,33 @@ func (db *DB) evictBatch(ctx context.Context, batchID []byte, upToBin uint8) (re
 				defer db.lock.Unlock(reserveUpdateBatchLockKey(batchID))
 			}
 
-			batchCnt := 1000
-
-			for i := 0; i < len(itemsToEvict); i += batchCnt {
-				end := i + batchCnt
-				if end > len(itemsToEvict) {
-					end = len(itemsToEvict)
+			// cache evicted chunks
+			cache := func(c swarm.Chunk) {
+				if err := db.Cache().Put(ctx, c); err != nil {
+					db.logger.Error(err, "reserve cache")
 				}
-
-				retErr = db.Execute(ctx, func(tx internal.Storage) error {
-					var tErr error
-					for _, item := range itemsToEvict[i:end] {
-						chunk, err := db.ChunkStore().Get(ctx, item)
-						if err == nil {
-							err := db.Cache().Put(ctx, chunk)
-							if err != nil {
-								db.logger.Warning("reserve eviction cache put", "err", err)
-							}
-						}
-
-						err = db.reserve.DeleteChunk(ctx, tx, item, batchID)
-						if err != nil {
-							tErr = errors.Join(tErr, fmt.Errorf("reserve: delete chunk: %w", err))
-							continue
-						}
-						evicted++
-					}
-					return tErr
-				})
 			}
+
+			return db.reserve.EvictBatchBin(ctx, db, b, batchID, cache)
 		}()
+		evicted += binEvicted
 
 		// if there was an error, we still need to update the chunks that have already
 		// been evicted from the reserve
-		db.logger.Debug("reserve eviction", "bin", b, "evicted", evicted, "batchID", hex.EncodeToString(batchID), "size", db.reserve.Size())
-		db.reserve.AddSize(-evicted)
-		db.metrics.ReserveSize.Set(float64(db.reserve.Size()))
+		db.logger.Debug(
+			"reserve eviction",
+			"bin", b,
+			"evicted", evicted,
+			"batchID", hex.EncodeToString(batchID),
+			"new_size", db.reserve.Size(),
+		)
 
-		if upToBin == swarm.MaxBins {
-			db.metrics.ExpiredChunkCount.Add(float64(evicted))
-		} else {
-			db.metrics.EvictedChunkCount.Add(float64(evicted))
-		}
-		if retErr != nil {
-			return retErr
+		if err != nil {
+			return evicted, err
 		}
 	}
 
-	return nil
+	return evicted, nil
 }
 
 func (db *DB) reserveCleanup(ctx context.Context) error {
@@ -404,6 +389,10 @@ func (db *DB) reserveCleanup(ctx context.Context) error {
 		}
 
 		retErr = db.Execute(ctx, func(tx internal.Storage) error {
+			batch, err := tx.IndexStore().Batch(ctx)
+			if err != nil {
+				return err
+			}
 			var tErr error
 			for _, item := range itemsToEvict[i:end] {
 				chunk, err := db.ChunkStore().Get(ctx, item.ChunkAddress)
@@ -414,13 +403,12 @@ func (db *DB) reserveCleanup(ctx context.Context) error {
 					}
 				}
 
-				err = db.reserve.DeleteChunk(ctx, tx, item.ChunkAddress, item.BatchID)
+				err = db.reserve.DeleteChunk(ctx, tx, batch, item.ChunkAddress, item.BatchID)
 				if err != nil {
 					if errors.Is(err, storage.ErrNotFound) {
-						db.reserve.CleanupBinIndex(ctx, tx, item.ChunkAddress, item.BinID)
+						db.reserve.CleanupBinIndex(ctx, batch, item.ChunkAddress, item.BinID)
 						continue
 					}
-					tErr = errors.Join(tErr, fmt.Errorf("reserve: delete chunk: %w", err))
 					continue
 				}
 				removed++
@@ -450,24 +438,38 @@ func (db *DB) unreserve(ctx context.Context) (err error) {
 	radius := db.reserve.Radius()
 	defer db.events.Trigger(reserveUnreserved)
 
-	if db.reserve.IsWithinCapacity() {
+	target := db.reserve.EvictionTarget()
+	if target == 0 {
 		return nil
 	}
 
+	totalEvicted := 0
 	for radius < swarm.MaxBins {
 
 		err := db.batchstore.Iterate(func(b *postage.Batch) (bool, error) {
 
-			if db.reserve.IsWithinCapacity() {
+			if totalEvicted >= target {
 				return true, nil
 			}
 
-			return false, db.evictBatch(ctx, b.ID, radius)
+			binEvicted, err := db.evictBatch(ctx, b.ID, radius)
+
+			// eviction happens in batches, so we need to keep track of the total
+			// number of chunks evicted even if there was an error
+			totalEvicted += binEvicted
+
+			// we can only get error here for critical cases, for eg. batch commit
+			// error, which is not recoverable, so we return true to stop the iteration
+			if err != nil {
+				return true, err
+			}
+
+			return false, nil
 		})
 		if err != nil {
 			return err
 		}
-		if db.reserve.IsWithinCapacity() {
+		if totalEvicted >= target {
 			return nil
 		}
 

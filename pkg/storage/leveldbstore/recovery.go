@@ -51,7 +51,7 @@ func (s *TxStore) Recover() error {
 		return fmt.Errorf("leveldbstore: recovery: iteration failed: %w", err)
 	}
 
-	if err := s.Store.(*Store).db.Write(batch, &opt.WriteOptions{Sync: true}); err != nil {
+	if err := s.BatchedStore.(*Store).db.Write(batch, &opt.WriteOptions{Sync: true}); err != nil {
 		return fmt.Errorf("leveldbstore: recovery: unable to write batch: %w", err)
 	}
 	return nil
