@@ -192,7 +192,7 @@ func TestTxStore(t *testing.T, store storage.TxStore) {
 		batched bool
 	}{
 		{"single", false},
-		{"batched", true},
+		{"batchd", true},
 	}
 
 	for _, tCase := range tCases {
