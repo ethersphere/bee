@@ -162,6 +162,9 @@ func (db *DB) evictionWorker(ctx context.Context) {
 		}
 	}
 
+	// initial cleanup
+	cleanupExpired()
+
 	time.AfterFunc(30*time.Minute, func() {
 		db.logger.Info("initial reserve cleanup started")
 		if err := db.reserveCleanup(ctx); err != nil {
