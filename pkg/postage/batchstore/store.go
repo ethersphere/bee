@@ -25,7 +25,6 @@ const (
 	valueKeyPrefix   = "batchstore_value_"
 	chainStateKey    = "batchstore_chainstate"
 	reserveRadiusKey = "batchstore_radius"
-	expiredKeyPrefix = "batchstore_expired_"
 )
 
 // ErrNotFound signals that the element was not found.
@@ -82,6 +81,7 @@ func New(st storage.StateStorer, ev evictFn, capacity int, logger log.Logger) (p
 	s.cs.Store(cs)
 
 	s.radius.Store(uint32(radius))
+
 	return s, nil
 }
 
@@ -124,26 +124,6 @@ func (s *store) Iterate(cb func(*postage.Batch) (bool, error)) error {
 		}
 		return cb(b)
 	})
-}
-
-func (s *store) SaveExpired(batchID []byte) error {
-	return s.store.Put(expiredKeyPrefix+string(batchID), nil)
-}
-
-func (s *store) Expired() ([][]byte, error) {
-	var expired [][]byte
-	err := s.store.Iterate(expiredKeyPrefix, func(key, _ []byte) (bool, error) {
-		expired = append(expired, key[len(expiredKeyPrefix):])
-		return false, nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return expired, nil
-}
-
-func (s *store) DeleteExpired(ID []byte) error {
-	return s.store.Delete(expiredKeyPrefix + string(ID))
 }
 
 // Save is implementation of postage.Storer interface Save method.

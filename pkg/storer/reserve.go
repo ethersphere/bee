@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"path"
 	"sync"
 	"time"
 
@@ -124,6 +125,18 @@ func (db *DB) evictionWorker(ctx context.Context) {
 	cleanupExpired := func() {
 		defer db.events.Trigger(reserveUnreserved)
 
+		batchesToEvict := make([][]byte, 0)
+		err := db.repo.IndexStore().Iterate(storage.Query{
+			Factory:      func() storage.Item { return new(expiredBatchItem) },
+			ItemProperty: storage.QueryItemID,
+		}, func(result storage.Result) (bool, error) {
+			batchesToEvict = append(batchesToEvict, []byte(result.ID))
+			return false, nil
+		})
+		if err != nil {
+			db.logger.Error(err, "iterate expired batches")
+		}
+
 		if len(batchesToEvict) > 0 {
 			for _, batchID := range batchesToEvict {
 				evicted, err := db.evictBatch(ctx, batchID, swarm.MaxBins)
@@ -136,6 +149,13 @@ func (db *DB) evictionWorker(ctx context.Context) {
 						"batch", hex.EncodeToString(batchID),
 						"total_evicted", evicted,
 					)
+
+					err = db.Execute(ctx, func(st internal.Storage) error {
+						return st.IndexStore().Delete(&expiredBatchItem{BatchID: batchID})
+					})
+					if err != nil {
+						db.logger.Error(err, "delete expired batch", "batch", hex.EncodeToString(batchID))
+					}
 				}
 				db.metrics.ExpiredBatchCount.Inc()
 			}
@@ -263,6 +283,39 @@ func (db *DB) ReservePutter() storage.Putter {
 	}
 }
 
+type expiredBatchItem struct {
+	BatchID []byte
+}
+
+func (e *expiredBatchItem) ID() string {
+	return string(e.BatchID)
+}
+
+func (e *expiredBatchItem) Namespace() string {
+	return "expiredBatchItem"
+}
+
+func (e *expiredBatchItem) Marshal() ([]byte, error) {
+	return nil, nil
+}
+
+func (e *expiredBatchItem) Unmarshal(_ []byte) error {
+	return nil
+}
+
+func (e *expiredBatchItem) Clone() storage.Item {
+	if e == nil {
+		return nil
+	}
+	return &expiredBatchItem{
+		BatchID: append([]byte(nil), e.BatchID...),
+	}
+}
+
+func (e *expiredBatchItem) String() string {
+	return path.Join(e.Namespace(), e.ID())
+}
+
 // EvictBatch evicts all chunks belonging to a batch from the reserve.
 func (db *DB) EvictBatch(ctx context.Context, batchID []byte) error {
 	if db.reserve == nil {
@@ -270,7 +323,9 @@ func (db *DB) EvictBatch(ctx context.Context, batchID []byte) error {
 		return nil
 	}
 
-	err := db.batchstore.SaveExpired(batchID)
+	err := db.Execute(ctx, func(tx internal.Storage) error {
+		return db.repo.IndexStore().Put(&expiredBatchItem{BatchID: batchID})
+	})
 	if err != nil {
 		return fmt.Errorf("save expired batch: %w", err)
 	}

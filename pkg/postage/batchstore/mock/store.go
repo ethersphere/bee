@@ -34,9 +34,6 @@ type BatchStore struct {
 	existsFn func([]byte) (bool, error)
 
 	mtx sync.Mutex
-
-	expiredMu      sync.Mutex
-	expiredBatches map[string]struct{}
 }
 
 func (bs *BatchStore) SetBatchExpiryHandler(eh postage.BatchExpiryHandler) {}
@@ -52,7 +49,6 @@ func New(opts ...Option) *BatchStore {
 	for _, o := range opts {
 		o(bs)
 	}
-	bs.expiredBatches = make(map[string]struct{})
 	return bs
 }
 
@@ -225,30 +221,6 @@ func (bs *BatchStore) Reset() error {
 
 func (bs *BatchStore) ResetCalls() int {
 	return bs.resetCallCount
-}
-
-func (bs *BatchStore) SaveExpired(batchID []byte) error {
-	bs.expiredMu.Lock()
-	defer bs.expiredMu.Unlock()
-	bs.expiredBatches[string(batchID)] = struct{}{}
-	return nil
-}
-
-func (bs *BatchStore) Expired() ([][]byte, error) {
-	bs.expiredMu.Lock()
-	defer bs.expiredMu.Unlock()
-	expired := make([][]byte, 0, len(bs.expiredBatches))
-	for id := range bs.expiredBatches {
-		expired = append(expired, []byte(id))
-	}
-	return expired, nil
-}
-
-func (bs *BatchStore) DeleteExpired(batchID []byte) error {
-	bs.expiredMu.Lock()
-	defer bs.expiredMu.Unlock()
-	delete(bs.expiredBatches, string(batchID))
-	return nil
 }
 
 type MockEventUpdater struct {

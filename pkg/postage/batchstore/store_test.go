@@ -5,7 +5,6 @@
 package batchstore_test
 
 import (
-	"bytes"
 	"errors"
 	"math/big"
 	"math/rand"
@@ -225,26 +224,6 @@ func TestBatchStore_Reset(t *testing.T) {
 	// will always be there.
 	if c != 1 {
 		t.Fatalf("expected only one key in statestore, got %d", c)
-	}
-}
-
-func TestExpired(t *testing.T) {
-	st := setupBatchStore(t, defaultCapacity)
-	id := postagetest.MustNewID()
-	err := st.SaveExpired(id)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	expired, err := st.Expired()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(expired) != 1 {
-		t.Fatalf("want 1 expired batch. got %d", len(expired))
-	}
-	if !bytes.Equal(expired[0], id) {
-		t.Fatal("mismatched batch id")
 	}
 }
 

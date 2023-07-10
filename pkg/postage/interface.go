@@ -72,15 +72,6 @@ type Storer interface {
 	Reset() error
 
 	SetBatchExpiryHandler(BatchExpiryHandler)
-
-	// SaveExpired saves the expired batch id in the store.
-	SaveExpired(_ []byte) error
-
-	// Expired returns the expired batch id from the store.
-	Expired() ([][]byte, error)
-
-	// DeleteExpired deletes the expired batch id from the store.
-	DeleteExpired([]byte) error
 }
 
 // StorageRadiusSetter is used to calculate total batch commitment of the network.
