@@ -104,6 +104,9 @@ func (s *TxStore) release() {
 
 // Put implements the Store interface.
 func (s *TxStore) Put(item storage.Item) error {
+	if s.TxState == nil {
+		return s.TxStoreBase.Put(item)
+	}
 	if err := s.IsDone(); err != nil {
 		return err
 	}
@@ -141,6 +144,9 @@ func (s *TxStore) Put(item storage.Item) error {
 
 // Delete implements the Store interface.
 func (s *TxStore) Delete(item storage.Item) error {
+	if s.TxState == nil {
+		return s.TxStoreBase.Delete(item)
+	}
 	if err := s.IsDone(); err != nil {
 		return err
 	}
@@ -169,6 +175,9 @@ func (s *TxStore) Delete(item storage.Item) error {
 
 // Commit implements the Tx interface.
 func (s *TxStore) Commit() error {
+	if s.TxState == nil {
+		return nil
+	}
 	defer s.release()
 
 	if err := s.TxState.Done(); err != nil {
@@ -182,6 +191,9 @@ func (s *TxStore) Commit() error {
 
 // Rollback implements the Tx interface.
 func (s *TxStore) Rollback() error {
+	if s.TxState == nil {
+		return nil
+	}
 	defer s.release()
 
 	if err := s.TxStoreBase.Rollback(); err != nil {
@@ -238,8 +250,5 @@ func (s *TxStore) NewTx(state *storage.TxState) storage.TxStore {
 
 // NewTxStore returns a new TxStore instance backed by the given store.
 func NewTxStore(store storage.Store) *TxStore {
-	return &TxStore{
-		TxStoreBase: &storage.TxStoreBase{Store: store},
-		revOps:      new(storage.NoOpTxRevertOpStore[[]byte, []byte]),
-	}
+	return &TxStore{TxStoreBase: &storage.TxStoreBase{Store: store}}
 }
