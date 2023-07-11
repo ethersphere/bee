@@ -124,4 +124,11 @@ func TestBatchedStore(t *testing.T, bs BatchedStore) {
 			t.Fatalf("Commit(): want error: %v; have error: %v", want, have)
 		}
 	})
+
+	t.Run("close", func(t *testing.T) {
+		err := bs.Close()
+		if err != nil {
+			t.Fatalf("failed closing: %v", err)
+		}
+	})
 }
