@@ -141,6 +141,12 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 	var iter iterator.Iterator
 	var prefix string
 
+	defer func() {
+		if iter != nil {
+			iter.Release()
+		}
+	}()
+
 	if q.PrefixAtStart {
 		prefix = q.Factory().Namespace()
 		iter = s.db.NewIterator(util.BytesPrefix([]byte(prefix)), nil)
@@ -221,8 +227,6 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 			break
 		}
 	}
-
-	iter.Release()
 
 	if err := iter.Error(); err != nil {
 		retErr = errors.Join(retErr, err)
