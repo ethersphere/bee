@@ -261,7 +261,8 @@ func initStore(basePath string, opts *Options) (*leveldbstore.Store, error) {
 		BlockCacheCapacity:     int(opts.LdbBlockCacheCapacity),
 		WriteBuffer:            int(opts.LdbWriteBufferSize),
 		DisableSeeksCompaction: opts.LdbDisableSeeksCompaction,
-		BlockSize:              1024,
+		BlockSize:              1 << 20, // 1MB
+		CompactionL0Trigger:    8,
 		Filter:                 filter.NewBloomFilter(64),
 	})
 	if err != nil {
