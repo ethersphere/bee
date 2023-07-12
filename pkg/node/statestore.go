@@ -17,7 +17,6 @@ import (
 	"github.com/ethersphere/bee/pkg/storage/cache"
 	"github.com/ethersphere/bee/pkg/storage/leveldbstore"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/syndtr/goleveldb/leveldb/opt"
 )
 
 // InitStateStore will initialize the stateStore with the given path to the
