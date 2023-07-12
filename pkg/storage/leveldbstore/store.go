@@ -147,9 +147,13 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 		}
 	}()
 
+	iterOpts := &opt.ReadOptions{
+		DontFillCache: true,
+	}
+
 	if q.PrefixAtStart {
 		prefix = q.Factory().Namespace()
-		iter = s.db.NewIterator(util.BytesPrefix([]byte(prefix)), nil)
+		iter = s.db.NewIterator(util.BytesPrefix([]byte(prefix)), iterOpts)
 		exists := iter.Seek([]byte(prefix + separator + q.Prefix))
 		if !exists {
 			return nil
@@ -162,7 +166,7 @@ func (s *Store) Iterate(q storage.Query, fn storage.IterateFn) error {
 		if q.Factory().Namespace() != "" {
 			prefix = q.Factory().Namespace() + separator + q.Prefix
 		}
-		iter = s.db.NewIterator(util.BytesPrefix([]byte(prefix)), nil)
+		iter = s.db.NewIterator(util.BytesPrefix([]byte(prefix)), iterOpts)
 	}
 
 	nextF := iter.Next

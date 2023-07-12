@@ -40,6 +40,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/afero"
 	"github.com/syndtr/goleveldb/leveldb"
+	"github.com/syndtr/goleveldb/leveldb/filter"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 	"resenje.org/multex"
 )
@@ -260,7 +261,8 @@ func initStore(basePath string, opts *Options) (*leveldbstore.Store, error) {
 		BlockCacheCapacity:     int(opts.LdbBlockCacheCapacity),
 		WriteBuffer:            int(opts.LdbWriteBufferSize),
 		DisableSeeksCompaction: opts.LdbDisableSeeksCompaction,
-		Compression:            opt.NoCompression,
+		CompactionL0Trigger:    8,
+		Filter:                 filter.NewBloomFilter(64),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed creating levelDB index store: %w", err)
