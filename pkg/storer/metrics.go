@@ -132,16 +132,16 @@ func newMetrics() metrics {
 			prometheus.CounterOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
-				Name:      "expired_batch_count",
-				Help:      "Number of batches expired, that were processed.",
+				Name:      "expiry_trigger_count",
+				Help:      "Number of batches expiry triggers.",
 			},
 		),
 		ExpiryRunsCount: prometheus.NewCounter(
 			prometheus.CounterOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
-				Name:      "expired_batch_count",
-				Help:      "Number of batches expired, that were processed.",
+				Name:      "expiry_run_count",
+				Help:      "Number of times the expiry worker was fired.",
 			},
 		),
 	}
