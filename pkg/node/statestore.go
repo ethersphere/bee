@@ -7,7 +7,6 @@ package node
 import (
 	"errors"
 	"fmt"
-	"github.com/syndtr/goleveldb/leveldb/opt"
 	"path/filepath"
 
 	"github.com/ethersphere/bee/pkg/log"
@@ -18,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage/cache"
 	"github.com/ethersphere/bee/pkg/storage/leveldbstore"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/syndtr/goleveldb/leveldb/opt"
 )
 
 // InitStateStore will initialize the stateStore with the given path to the
@@ -34,7 +34,10 @@ func InitStateStore(logger log.Logger, dataDir string, cacheCapacity uint64) (st
 		return nil, nil, err
 	}
 
-	caching := cache.Wrap(ldb, int(cacheCapacity))
+	caching, err := cache.Wrap(ldb, int(cacheCapacity))
+	if err != nil {
+		return nil, nil, err
+	}
 	stateStore, err := storeadapter.NewStateStorerAdapter(caching)
 
 	return stateStore, caching, err
