@@ -6,9 +6,16 @@ package cache
 
 import (
 	"errors"
+
 	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage/storageutil"
 	"github.com/hashicorp/golang-lru/v2"
 )
+
+// key returns a string representation of the given key.
+func key(key storage.Key) string {
+	return storageutil.JoinFields(key.Namespace(), key.ID())
+}
 
 var _ storage.Store = (*Cache)(nil)
 
@@ -21,20 +28,29 @@ type Cache struct {
 	metrics metrics
 }
 
-// Wrap adds a layer of in-memory caching to basic Store operations.
-// This call will panic if the capacity is less than or equal to zero.
-// It will also panic if the given store implements storage.Tx.
-func Wrap(store storage.Store, capacity int) *Cache {
+// Wrap adds a layer of in-memory caching to storage.Reader Get and Has operations.
+// It returns an error if the capacity is less than or equal to zero or if the
+// given store implements storage.Tx
+func Wrap(store storage.Store, capacity int) (*Cache, error) {
 	if _, ok := store.(storage.Tx); ok {
-		panic(errors.New("cache should not be used with transactions"))
+		return nil, errors.New("cache should not be used with transactions")
 	}
 
 	lru, err := lru.New[string, []byte](capacity)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
-	return &Cache{store, lru, newMetrics()}
+	return &Cache{store, lru, newMetrics()}, nil
+}
+
+// MustWrap is like Wrap but panics on error.
+func MustWrap(store storage.Store, capacity int) *Cache {
+	c, err := Wrap(store, capacity)
+	if err != nil {
+		panic(err)
+	}
+	return c
 }
 
 // add caches given item.
@@ -43,7 +59,7 @@ func (c *Cache) add(i storage.Item) {
 	if err != nil {
 		return
 	}
-	c.lru.Add(i.ID(), b)
+	c.lru.Add(key(i), b)
 }
 
 // Get implements storage.Store interface.
@@ -51,7 +67,7 @@ func (c *Cache) add(i storage.Item) {
 // If the item does not exist in cache, it tries to retrieve
 // it from the underlying store.
 func (c *Cache) Get(i storage.Item) error {
-	if val, ok := c.lru.Get(i.ID()); ok {
+	if val, ok := c.lru.Get(key(i)); ok {
 		c.metrics.CacheHit.Inc()
 		return i.Unmarshal(val)
 	}
@@ -71,7 +87,7 @@ func (c *Cache) Get(i storage.Item) error {
 // If the item does not exist in cache, it tries to retrieve
 // it from the underlying store.
 func (c *Cache) Has(k storage.Key) (bool, error) {
-	if _, ok := c.lru.Get(k.ID()); ok {
+	if _, ok := c.lru.Get(key(k)); ok {
 		c.metrics.CacheHit.Inc()
 		return true, nil
 	}
@@ -91,6 +107,6 @@ func (c *Cache) Put(i storage.Item) error {
 // Delete implements storage.Store interface.
 // On a call it also removes the item from the cache.
 func (c *Cache) Delete(i storage.Item) error {
-	_ = c.lru.Remove(i.ID())
+	_ = c.lru.Remove(key(i))
 	return c.Store.Delete(i)
 }
