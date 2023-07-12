@@ -20,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"golang.org/x/exp/slices"
+	"golang.org/x/sync/semaphore"
 )
 
 const (
@@ -153,26 +154,22 @@ func (db *DB) evictionWorker(ctx context.Context) {
 	defer overCapUnsub()
 
 	var (
-		unreserveSem = make(chan struct{}, 1)
-		expirySem    = make(chan struct{}, 1)
+		unreserveSem = semaphore.NewWeighted(1)
+		expirySem    = semaphore.NewWeighted(1)
 	)
 
 	cleanupExpired := func() {
 		defer db.reserveWg.Done()
 
 		db.metrics.ExpiryTriggersCount.Inc()
-		select {
-		case expirySem <- struct{}{}:
-			defer func() { <-expirySem }()
-		default:
+		if !expirySem.TryAcquire(1) {
 			// if there is already a goroutine taking care of expirations dont wait
 			// for it to finish, instead schedule another run later if it is not
 			// already scheduled, this is to prevent pile up of expiration goroutines.
 			db.events.Trigger(batchExpiry)
 			return
 		}
-
-		defer db.events.Trigger(reserveUnreserved)
+		defer expirySem.Release(1)
 
 		batchesToEvict, err := db.getExpiredBatches()
 		if err != nil {
@@ -183,6 +180,8 @@ func (db *DB) evictionWorker(ctx context.Context) {
 		if len(batchesToEvict) == 0 {
 			return
 		}
+
+		defer db.events.Trigger(reserveUnreserved)
 
 		db.metrics.ExpiryRunsCount.Inc()
 
@@ -216,10 +215,7 @@ func (db *DB) evictionWorker(ctx context.Context) {
 			db.reserveWg.Add(1)
 			go func() {
 				defer db.reserveWg.Done()
-				select {
-				case unreserveSem <- struct{}{}:
-					defer func() { <-unreserveSem }()
-				default:
+				if !unreserveSem.TryAcquire(1) {
 					// if there is already a goroutine taking care of unreserving
 					// dont wait for it to finish, instead schedule another run
 					// later if it is not already scheduled
@@ -245,12 +241,11 @@ func (db *DB) evictionWorker(ctx context.Context) {
 				defer db.reserveWg.Done()
 				// wait till we get a slot to run the cleanup. this is to ensure we
 				// dont run cleanup when expirations are running
-				select {
-				case expirySem <- struct{}{}:
-					defer func() { <-expirySem }()
-				case <-ctx.Done():
+				err := expirySem.Acquire(ctx, 1)
+				if err != nil {
 					return
 				}
+				defer expirySem.Release(1)
 
 				if err := db.reserveCleanup(ctx); err != nil {
 					db.logger.Error(err, "reserve cleanup")
@@ -486,21 +481,13 @@ func (db *DB) reserveCleanup(ctx context.Context) error {
 
 	// these are batches that are known to be expired but have not been evicted yet,
 	// so we should let the expiration process handle them
-	knownExpiredBatches, err := db.getExpiredBatches()
-	if err != nil {
-		knownExpiredBatches = [][]byte{}
-	}
+	knownExpiredBatches, _ := db.getExpiredBatches()
 
-	err = db.reserve.IterateChunksItems(db.repo, 0, func(ci reserve.ChunkItem) (bool, error) {
+	err := db.reserve.IterateChunksItems(db.repo, 0, func(ci reserve.ChunkItem) (bool, error) {
 		if exists, err := db.batchstore.Exists(ci.BatchID); err == nil && !exists {
-			found := false
-			for _, b := range knownExpiredBatches {
-				if bytes.Equal(b, ci.BatchID) {
-					found = true
-					break
-				}
-			}
-			if !found {
+			if !slices.ContainsFunc(knownExpiredBatches, func(b []byte) bool {
+				return bytes.Equal(b, ci.BatchID)
+			}) {
 				itemsToEvict = append(itemsToEvict, ci)
 			}
 		}
