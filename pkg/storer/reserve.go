@@ -5,6 +5,7 @@
 package storer
 
 import (
+	"bytes"
 	"context"
 	"encoding/hex"
 	"errors"
@@ -30,8 +31,8 @@ const (
 	cleanupDur = time.Hour * 6
 )
 
-func reserveUpdateBatchLockKey(batchID []byte) string {
-	return fmt.Sprintf("%s%s", reserveUpdateLockKey, hex.EncodeToString(batchID))
+func reserveUpdateBatchLockKey(batchID []byte, bin uint8) string {
+	return fmt.Sprintf("%s%s%d", reserveUpdateLockKey, string(batchID), bin)
 }
 
 var errMaxRadius = errors.New("max radius reached")
@@ -114,6 +115,34 @@ func (db *DB) radiusWorker(ctx context.Context, wakeUpDur time.Duration) {
 	}
 }
 
+func (db *DB) getExpiredBatches() ([][]byte, error) {
+	var batchesToEvict [][]byte
+	err := db.repo.IndexStore().Iterate(storage.Query{
+		Factory:      func() storage.Item { return new(expiredBatchItem) },
+		ItemProperty: storage.QueryItemID,
+	}, func(result storage.Result) (bool, error) {
+		batchesToEvict = append(batchesToEvict, []byte(result.ID))
+		return false, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return batchesToEvict, nil
+}
+
+func (db *DB) removeExpiredBatch(ctx context.Context, batchID []byte) error {
+	evicted, err := db.evictBatch(ctx, batchID, swarm.MaxBins)
+	if err != nil {
+		return err
+	}
+	if evicted > 0 {
+		db.logger.Debug("evicted expired batch", "batch_id", hex.EncodeToString(batchID), "total_evicted", evicted)
+	}
+	return db.Execute(ctx, func(tx internal.Storage) error {
+		return tx.IndexStore().Delete(&expiredBatchItem{BatchID: batchID})
+	})
+}
+
 func (db *DB) evictionWorker(ctx context.Context) {
 	defer db.reserveWg.Done()
 
@@ -123,37 +152,47 @@ func (db *DB) evictionWorker(ctx context.Context) {
 	overCapTrigger, overCapUnsub := db.events.Subscribe(reserveOverCapacity)
 	defer overCapUnsub()
 
-	cleanupExpired := func() {
-		defer db.events.Trigger(reserveUnreserved)
+	var (
+		unreserveSem = make(chan struct{}, 1)
+		expirySem    = make(chan struct{}, 1)
+	)
 
-		var batchesToEvict [][]byte
-		err := db.repo.IndexStore().Iterate(storage.Query{
-			Factory:      func() storage.Item { return new(expiredBatchItem) },
-			ItemProperty: storage.QueryItemID,
-		}, func(result storage.Result) (bool, error) {
-			batchesToEvict = append(batchesToEvict, []byte(result.ID))
-			return false, nil
-		})
-		if err != nil {
-			db.logger.Error(err, "iterate expired batches")
+	cleanupExpired := func() {
+		defer db.reserveWg.Done()
+
+		db.metrics.ExpiryTriggersCount.Inc()
+		select {
+		case expirySem <- struct{}{}:
+			defer func() { <-expirySem }()
+		default:
+			// if there is already a goroutine taking care of expirations dont wait
+			// for it to finish, instead schedule another run later if it is not
+			// already scheduled, this is to prevent pile up of expiration goroutines.
+			db.events.Trigger(batchExpiry)
+			return
 		}
 
-		for _, batchID := range batchesToEvict {
-			evicted, err := db.evictBatch(ctx, batchID, swarm.MaxBins)
-			if err != nil {
-				db.logger.Error(err, "evict batch", "batch_id", hex.EncodeToString(batchID))
-			}
-			if evicted > 0 {
-				db.logger.Debug("evicted expired batch", "batch_id", hex.EncodeToString(batchID), "total_evicted", evicted)
+		defer db.events.Trigger(reserveUnreserved)
 
-				err = db.Execute(ctx, func(tx internal.Storage) error {
-					return tx.IndexStore().Delete(&expiredBatchItem{BatchID: batchID})
-				})
-				if err != nil {
-					db.logger.Error(err, "delete expired batch", "batch_id", hex.EncodeToString(batchID))
-				}
+		batchesToEvict, err := db.getExpiredBatches()
+		if err != nil {
+			db.logger.Error(err, "get expired batches")
+			return
+		}
+
+		if len(batchesToEvict) == 0 {
+			return
+		}
+
+		db.metrics.ExpiryRunsCount.Inc()
+
+		for _, batchID := range batchesToEvict {
+			err := db.removeExpiredBatch(ctx, batchID)
+			if err != nil {
+				db.logger.Error(err, "remove expired batch", "batch_id", hex.EncodeToString(batchID))
+			} else {
+				db.metrics.ExpiredBatchCount.Inc()
 			}
-			db.metrics.ExpiredBatchCount.Inc()
 		}
 	}
 
@@ -169,21 +208,54 @@ func (db *DB) evictionWorker(ctx context.Context) {
 			return
 		case <-overCapTrigger:
 			// check if there are expired batches first
-			cleanupExpired()
-
-			err := db.unreserve(ctx)
-			if err != nil {
-				db.logger.Error(err, "reserve unreserve")
-			}
 			db.metrics.OverCapTriggerCount.Inc()
-		case <-batchExpiryTrigger:
-			cleanupExpired()
-		case <-cleanUpTicker.C:
-			cleanupExpired()
 
-			if err := db.reserveCleanup(ctx); err != nil {
-				db.logger.Error(err, "reserve cleanup")
-			}
+			db.reserveWg.Add(1)
+			go cleanupExpired()
+
+			db.reserveWg.Add(1)
+			go func() {
+				defer db.reserveWg.Done()
+				select {
+				case unreserveSem <- struct{}{}:
+					defer func() { <-unreserveSem }()
+				default:
+					// if there is already a goroutine taking care of unreserving
+					// dont wait for it to finish, instead schedule another run
+					// later if it is not already scheduled
+					db.events.Trigger(reserveOverCapacity)
+					return
+				}
+				err := db.unreserve(ctx)
+				if err != nil {
+					db.logger.Error(err, "reserve unreserve")
+				}
+			}()
+
+		case <-batchExpiryTrigger:
+			db.reserveWg.Add(1)
+			go cleanupExpired()
+
+		case <-cleanUpTicker.C:
+			db.reserveWg.Add(1)
+			go cleanupExpired()
+
+			db.reserveWg.Add(1)
+			go func() {
+				defer db.reserveWg.Done()
+				// wait till we get a slot to run the cleanup. this is to ensure we
+				// dont run cleanup when expirations are running
+				select {
+				case expirySem <- struct{}{}:
+					defer func() { <-expirySem }()
+				case <-ctx.Done():
+					return
+				}
+
+				if err := db.reserveCleanup(ctx); err != nil {
+					db.logger.Error(err, "reserve cleanup")
+				}
+			}()
 		}
 	}
 }
@@ -246,7 +318,8 @@ func (db *DB) ReservePutter() storage.Putter {
 				var (
 					newIndex bool
 				)
-				db.lock.Lock(reserveUpdateBatchLockKey(chunk.Stamp().BatchID()))
+				lockKey := reserveUpdateBatchLockKey(chunk.Stamp().BatchID(), db.po(chunk.Address()))
+				db.lock.Lock(lockKey)
 				err = db.Execute(ctx, func(tx internal.Storage) error {
 					newIndex, err = db.reserve.Put(ctx, tx, chunk)
 					if err != nil {
@@ -254,7 +327,7 @@ func (db *DB) ReservePutter() storage.Putter {
 					}
 					return nil
 				})
-				db.lock.Unlock(reserveUpdateBatchLockKey(chunk.Stamp().BatchID()))
+				db.lock.Unlock(lockKey)
 				if err != nil {
 					return err
 				}
@@ -365,13 +438,9 @@ func (db *DB) evictBatch(
 		}
 
 		binEvicted, err := func() (int, error) {
-			// reserve updates if we are expiring batches. This is because the
-			// reserve updates will not be related to these entries as the batch
-			// is no longer valid.
-			if upToBin != swarm.MaxBins {
-				db.lock.Lock(reserveUpdateBatchLockKey(batchID))
-				defer db.lock.Unlock(reserveUpdateBatchLockKey(batchID))
-			}
+			lockKey := reserveUpdateBatchLockKey(batchID, b)
+			db.lock.Lock(lockKey)
+			defer db.lock.Unlock(lockKey)
 
 			// cache evicted chunks
 			cache := func(c swarm.Chunk) {
@@ -415,9 +484,25 @@ func (db *DB) reserveCleanup(ctx context.Context) error {
 
 	var itemsToEvict []reserve.ChunkItem
 
-	err := db.reserve.IterateChunksItems(db.repo, 0, func(ci reserve.ChunkItem) (bool, error) {
+	// these are batches that are known to be expired but have not been evicted yet,
+	// so we should let the expiration process handle them
+	knownExpiredBatches, err := db.getExpiredBatches()
+	if err != nil {
+		knownExpiredBatches = [][]byte{}
+	}
+
+	err = db.reserve.IterateChunksItems(db.repo, 0, func(ci reserve.ChunkItem) (bool, error) {
 		if exists, err := db.batchstore.Exists(ci.BatchID); err == nil && !exists {
-			itemsToEvict = append(itemsToEvict, ci)
+			found := false
+			for _, b := range knownExpiredBatches {
+				if bytes.Equal(b, ci.BatchID) {
+					found = true
+					break
+				}
+			}
+			if !found {
+				itemsToEvict = append(itemsToEvict, ci)
+			}
 		}
 		return false, nil
 	})
@@ -451,6 +536,8 @@ func (db *DB) reserveCleanup(ctx context.Context) error {
 					}
 				}
 
+				// safe to assume that this need not be locked as the batch is already expired
+				// and cleaned up because expiry process failed to handle it
 				err = db.reserve.DeleteChunk(ctx, tx, batch, item.ChunkAddress, item.BatchID)
 				if err != nil {
 					if errors.Is(err, storage.ErrNotFound) {
