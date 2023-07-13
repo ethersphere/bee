@@ -161,9 +161,17 @@ func (db *DB) evictionWorker(ctx context.Context) {
 		expiryWorkers   = semaphore.NewWeighted(4)
 	)
 
-	cleanupExpired := func() {
-		defer db.reserveWg.Done()
+	stopped := make(chan struct{})
+	stopWorkers := func() {
+		defer close(stopped)
 
+		// wait for all workers to finish
+		expirySem.Acquire(context.Background(), 1)
+		unreserveSem.Acquire(context.Background(), 1)
+		expiryWorkers.Acquire(context.Background(), 4)
+	}
+
+	cleanupExpired := func() {
 		db.metrics.ExpiryTriggersCount.Inc()
 		if !expirySem.TryAcquire(1) {
 			// if there is already a goroutine taking care of expirations dont wait
@@ -211,9 +219,7 @@ func (db *DB) evictionWorker(ctx context.Context) {
 				db.logger.Error(err, "acquire expiry worker semaphore")
 				return
 			}
-			db.reserveWg.Add(1)
 			go func() {
-				defer db.reserveWg.Done()
 				defer expiryWorkers.Release(1)
 
 				err := db.removeExpiredBatch(ctx, b)
@@ -241,17 +247,16 @@ func (db *DB) evictionWorker(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			stopWorkers()
+			<-stopped
 			return
 		case <-overCapTrigger:
 			// check if there are expired batches first
 			db.metrics.OverCapTriggerCount.Inc()
 
-			db.reserveWg.Add(1)
 			go cleanupExpired()
 
-			db.reserveWg.Add(1)
 			go func() {
-				defer db.reserveWg.Done()
 				if !unreserveSem.TryAcquire(1) {
 					// if there is already a goroutine taking care of unreserving
 					// dont wait for it to finish, instead schedule another run
@@ -269,16 +274,12 @@ func (db *DB) evictionWorker(ctx context.Context) {
 			}()
 
 		case <-batchExpiryTrigger:
-			db.reserveWg.Add(1)
 			go cleanupExpired()
 
 		case <-cleanUpTicker.C:
-			db.reserveWg.Add(1)
 			go cleanupExpired()
 
-			db.reserveWg.Add(1)
 			go func() {
-				defer db.reserveWg.Done()
 				// wait till we get a slot to run the cleanup. this is to ensure we
 				// dont run cleanup when expirations are running
 				err := expirySem.Acquire(ctx, 1)
