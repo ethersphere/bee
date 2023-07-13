@@ -154,8 +154,11 @@ func (db *DB) evictionWorker(ctx context.Context) {
 	defer overCapUnsub()
 
 	var (
-		unreserveSem = semaphore.NewWeighted(1)
-		expirySem    = semaphore.NewWeighted(1)
+		unreserveSem    = semaphore.NewWeighted(1)
+		unreserveCtx    context.Context
+		cancelUnreserve context.CancelFunc
+		expirySem       = semaphore.NewWeighted(1)
+		expiryWorkers   = semaphore.NewWeighted(4)
 	)
 
 	cleanupExpired := func() {
@@ -181,18 +184,52 @@ func (db *DB) evictionWorker(ctx context.Context) {
 			return
 		}
 
+		// we ensure unreserve is not running and if it is we cancel it and wait
+		// for it to finish, this is to prevent unreserve and expirations running
+		// at the same time. The expiration will free up space so the unreserve
+		// target might change. This is to prevent unreserve from running with
+		// the old target.
+		if !unreserveSem.TryAcquire(1) {
+			cancelUnreserve()
+			err := unreserveSem.Acquire(ctx, 1)
+			if err != nil {
+				db.logger.Error(err, "acquire unreserve semaphore")
+				return
+			}
+			// trigger it again at the end if required
+			defer db.events.Trigger(reserveOverCapacity)
+		}
+		defer unreserveSem.Release(1)
+
 		defer db.events.Trigger(reserveUnreserved)
 
 		db.metrics.ExpiryRunsCount.Inc()
 
 		for _, batchID := range batchesToEvict {
-			err := db.removeExpiredBatch(ctx, batchID)
-			if err != nil {
-				db.logger.Error(err, "remove expired batch", "batch_id", hex.EncodeToString(batchID))
-			} else {
-				db.metrics.ExpiredBatchCount.Inc()
+			b := batchID
+			if err := expiryWorkers.Acquire(ctx, 1); err != nil {
+				db.logger.Error(err, "acquire expiry worker semaphore")
+				return
 			}
+			db.reserveWg.Add(1)
+			go func() {
+				defer db.reserveWg.Done()
+				defer expiryWorkers.Release(1)
+
+				err := db.removeExpiredBatch(ctx, b)
+				if err != nil {
+					db.logger.Error(err, "remove expired batch", "batch_id", hex.EncodeToString(b))
+				} else {
+					db.metrics.ExpiredBatchCount.Inc()
+				}
+			}()
 		}
+
+		if err := expiryWorkers.Acquire(ctx, 4); err != nil {
+			db.logger.Error(err, "wait for expiry workers")
+			return
+		}
+		expiryWorkers.Release(4)
 	}
 
 	// Initial cleanup.
@@ -222,7 +259,10 @@ func (db *DB) evictionWorker(ctx context.Context) {
 					db.events.Trigger(reserveOverCapacity)
 					return
 				}
-				err := db.unreserve(ctx)
+				defer unreserveSem.Release(1)
+
+				unreserveCtx, cancelUnreserve = context.WithCancel(ctx)
+				err := db.unreserve(unreserveCtx)
 				if err != nil {
 					db.logger.Error(err, "reserve unreserve")
 				}
