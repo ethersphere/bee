@@ -166,9 +166,9 @@ func (db *DB) evictionWorker(ctx context.Context) {
 		defer close(stopped)
 
 		// wait for all workers to finish
-		expirySem.Acquire(context.Background(), 1)
-		unreserveSem.Acquire(context.Background(), 1)
-		expiryWorkers.Acquire(context.Background(), 4)
+		_ = expirySem.Acquire(context.Background(), 1)
+		_ = unreserveSem.Acquire(context.Background(), 1)
+		_ = expiryWorkers.Acquire(context.Background(), 4)
 	}
 
 	cleanupExpired := func() {
