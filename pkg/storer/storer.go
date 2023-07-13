@@ -262,7 +262,7 @@ func initStore(basePath string, opts *Options) (*leveldbstore.Store, error) {
 		WriteBuffer:            int(opts.LdbWriteBufferSize),
 		DisableSeeksCompaction: opts.LdbDisableSeeksCompaction,
 		CompactionL0Trigger:    8,
-		Filter:                 filter.NewBloomFilter(64),
+		Filter:                 filter.NewBloomFilter(128),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed creating levelDB index store: %w", err)
