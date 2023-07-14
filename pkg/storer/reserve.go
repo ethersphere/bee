@@ -175,9 +175,8 @@ func (db *DB) evictionWorker(ctx context.Context) {
 		db.metrics.ExpiryTriggersCount.Inc()
 		if !expirySem.TryAcquire(1) {
 			// if there is already a goroutine taking care of expirations dont wait
-			// for it to finish, instead schedule another run later if it is not
-			// already scheduled, this is to prevent pile up of expiration goroutines.
-			db.events.Trigger(batchExpiry)
+			// for it to finish. Cleanup is called from all cases, so we dont
+			// need to trigger everytime.
 			return
 		}
 		defer expirySem.Release(1)
@@ -259,9 +258,7 @@ func (db *DB) evictionWorker(ctx context.Context) {
 			go func() {
 				if !unreserveSem.TryAcquire(1) {
 					// if there is already a goroutine taking care of unreserving
-					// dont wait for it to finish, instead schedule another run
-					// later if it is not already scheduled
-					db.events.Trigger(reserveOverCapacity)
+					// dont wait for it to finish
 					return
 				}
 				defer unreserveSem.Release(1)
