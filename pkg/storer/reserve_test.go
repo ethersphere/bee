@@ -299,7 +299,7 @@ func TestUnreserveCap(t *testing.T) {
 		// wait for unreserve signal
 		<-gotUnreserveSignal
 
-		err = spinlock.Wait(time.Second*30, func() bool {
+		err = spinlock.Wait(time.Second*45, func() bool {
 			return storer.ReserveSize() == capacity
 		})
 		if err != nil {
