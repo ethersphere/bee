@@ -28,6 +28,8 @@ type metrics struct {
 	OverCapTriggerCount prometheus.Counter
 	ExpiredBatchCount   prometheus.Counter
 	LevelDBStats        prometheus.HistogramVec
+	ExpiryTriggersCount prometheus.Counter
+	ExpiryRunsCount     prometheus.Counter
 }
 
 // newMetrics is a convenient constructor for creating new metrics.
@@ -125,6 +127,22 @@ func newMetrics() metrics {
 				Help:      "LevelDB statistics.",
 			},
 			[]string{"counter"},
+		),
+		ExpiryTriggersCount: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "expiry_trigger_count",
+				Help:      "Number of batches expiry triggers.",
+			},
+		),
+		ExpiryRunsCount: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "expiry_run_count",
+				Help:      "Number of times the expiry worker was fired.",
+			},
 		),
 	}
 }
