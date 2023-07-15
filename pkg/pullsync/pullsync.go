@@ -253,7 +253,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		if cac.Valid(chunk) {
 			go s.unwrap(chunk)
 		} else if !soc.Valid(chunk) {
-			s.logger.Debug("invalid soc chunk", "error", swarm.ErrInvalidChunk, "peer_address", peer, "chunk", chunk)
+			s.logger.Debug("invalid cac/soc chunk", "error", swarm.ErrInvalidChunk, "peer_address", peer, "chunk", chunk)
 			chunkErr = errors.Join(chunkErr, swarm.ErrInvalidChunk)
 			continue
 		}
@@ -327,16 +327,16 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 		return fmt.Errorf("read get range: %w", err)
 	}
 
+	// recreate the reader to allow the first one to be garbage collected
+	// before the makeOffer function call, to reduce the total memory allocated
+	// while makeOffer is executing (waiting for the new chunks)
+	w, r := protobuf.NewWriterAndReader(stream)
+
 	// make an offer to the upstream peer in return for the requested range
 	offer, err := s.makeOffer(ctx, rn)
 	if err != nil {
 		return fmt.Errorf("make offer: %w", err)
 	}
-
-	// recreate the reader to allow the first one to be garbage collected
-	// before the makeOffer function call, to reduce the total memory allocated
-	// while makeOffer is executing (waiting for the new chunks)
-	w, r := protobuf.NewWriterAndReader(stream)
 
 	if err := w.WriteMsgWithContext(ctx, offer); err != nil {
 		return fmt.Errorf("write offer: %w", err)
