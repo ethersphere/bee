@@ -33,13 +33,13 @@ func (b *batchRadiusItem) Namespace() string {
 	return "batchRadius"
 }
 
-// batchID/bin/ChunkAddr
+// bin/batchID/ChunkAddr
 func (b *batchRadiusItem) ID() string {
-	return batchBinToString(b.BatchID, b.Bin) + b.Address.ByteString()
+	return batchBinToString(b.Bin, b.BatchID) + b.Address.ByteString()
 }
 
-func batchBinToString(batchID []byte, bin uint8) string {
-	return string(batchID) + string(bin)
+func batchBinToString(bin uint8, batchID []byte) string {
+	return string(bin) + string(batchID)
 }
 
 func (b *batchRadiusItem) String() string {

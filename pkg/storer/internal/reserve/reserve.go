@@ -286,7 +286,7 @@ func (r *Reserve) IterateChunksItems(store internal.Storage, startBin uint8, cb 
 	return err
 }
 
-// EvictBatchBin evicts all chunks from bins upto the bin provided.
+// EvictBatchBin evicts all chunks from the bin provided.
 func (r *Reserve) EvictBatchBin(
 	ctx context.Context,
 	txExecutor internal.TxExecutor,
@@ -300,12 +300,9 @@ func (r *Reserve) EvictBatchBin(
 	err := txExecutor.Execute(ctx, func(store internal.Storage) error {
 		return store.IndexStore().Iterate(storage.Query{
 			Factory: func() storage.Item { return &batchRadiusItem{} },
-			Prefix:  string(batchID),
+			Prefix:  batchBinToString(bin, batchID),
 		}, func(res storage.Result) (bool, error) {
 			batchRadius := res.Entry.(*batchRadiusItem)
-			if batchRadius.Bin >= bin {
-				return true, nil
-			}
 			evicted = append(evicted, batchRadius)
 			return false, nil
 		})
