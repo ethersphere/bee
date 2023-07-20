@@ -51,8 +51,11 @@ func (db *DB) startReserveWorkers(
 	warmupDur, wakeUpDur time.Duration,
 	radius func() (uint8, error),
 ) {
+	db.reserveWg.Add(1)
 	ctx, cancel := context.WithCancel(ctx)
 	go func() {
+		defer db.reserveWg.Done()
+
 		<-db.quit
 		cancel()
 	}()

@@ -635,7 +635,7 @@ func (db *DB) SetRetrievalService(r retrieval.Interface) {
 func (db *DB) StartReserveWorker(ctx context.Context, s Syncer, radius func() (uint8, error)) {
 	db.setSyncerOnce.Do(func() {
 		db.syncer = s
-		go db.startReserveWorkers(ctx, db.opts.warmupDuration, db.opts.wakeupDuration, radius)
+		db.startReserveWorkers(ctx, db.opts.warmupDuration, db.opts.wakeupDuration, radius)
 	})
 }
 
