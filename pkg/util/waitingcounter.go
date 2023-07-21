@@ -19,14 +19,14 @@ func (r *WaitingCounter) Add(c int32) {
 }
 
 // Done decrements the counter.
-// If the counter goes bellow zero
+// If the counter goes bellow zero a panic will be raised.
 func (r *WaitingCounter) Done() {
 	if nv := (*atomic.Int32)(r).Add(-1); nv < 0 {
 		panic("negative counter value")
 	}
 }
 
-// Wait blocks waiting for the counter to go to zero or for the timeout to be reached.
+// Wait blocks waiting for the counter value to reach zero or for the timeout to be reached.
 // Is guaranteed to wait for at least a hundred milliseconds regardless of given duration if the counter is positive value.
 func (r *WaitingCounter) Wait(waitFor time.Duration) int {
 	deadline := time.Now().Add(waitFor)
