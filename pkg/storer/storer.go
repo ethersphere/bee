@@ -468,7 +468,7 @@ type DB struct {
 	directUploadLimiter chan struct{}
 
 	reserve          *reserve.Reserve
-	reserveWg        *util.WaitingCounter
+	inFlight         *util.WaitingCounter
 	reserveBinEvents *events.Subscriber
 	baseAddr         swarm.Address
 	batchstore       postage.Storer
@@ -550,7 +550,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 			wakeupDuration: opts.ReserveWakeUpDuration,
 		},
 		directUploadLimiter: make(chan struct{}, pusher.ConcurrentPushes),
-		reserveWg:           new(util.WaitingCounter),
+		inFlight:            new(util.WaitingCounter),
 	}
 
 	if db.validStamp == nil {
@@ -597,7 +597,7 @@ func (db *DB) Close() error {
 	bgReserveWorkersClosed := make(chan struct{})
 	go func() {
 		defer close(bgReserveWorkersClosed)
-		if c := db.reserveWg.Wait(5 * time.Second); c > 0 {
+		if c := db.inFlight.Wait(5 * time.Second); c > 0 {
 			db.logger.Warning("db shutting down with running goroutines")
 		}
 	}()

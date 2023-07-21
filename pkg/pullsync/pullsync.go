@@ -27,6 +27,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	storer "github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/util"
 	"resenje.org/multex"
 	"resenje.org/singleflight"
 )
@@ -85,6 +86,7 @@ type Syncer struct {
 	intervalsSF    singleflight.Group
 	syncInProgress atomic.Int32
 	binLock        *multex.Multex
+	inFlight       *util.WaitingCounter
 
 	maxPage uint64
 
@@ -111,6 +113,7 @@ func New(
 		quit:       make(chan struct{}),
 		maxPage:    maxPage,
 		binLock:    multex.New(),
+		inFlight:   new(util.WaitingCounter),
 	}
 }
 
@@ -557,22 +560,10 @@ func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Strea
 func (s *Syncer) Close() error {
 	s.logger.Info("pull syncer shutting down")
 	close(s.quit)
-	cc := make(chan struct{})
-	go func() {
-		defer close(cc)
-		for {
-			if s.syncInProgress.Load() > 0 {
-				time.Sleep(100 * time.Millisecond)
-				continue
-			}
-			break
-		}
-	}()
 
-	select {
-	case <-cc:
-	case <-time.After(5 * time.Second):
+	if rgr := s.inFlight.Wait(5 * time.Second); rgr > 0 {
 		s.logger.Warning("pull syncer shutting down with running goroutines")
 	}
+
 	return nil
 }
