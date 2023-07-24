@@ -967,7 +967,7 @@ func (s *Service) newStreamForPeerID(ctx context.Context, peerID libp2ppeer.ID, 
 		if errors.Is(err, multistream.ErrIncorrectVersion) {
 			return nil, p2p.NewIncompatibleStreamError(err)
 		}
-		return nil, fmt.Errorf("create stream %q to %q: %w", swarmStreamName, peerID, err)
+		return nil, fmt.Errorf("create stream %s to %s: %w", swarmStreamName, peerID, err)
 	}
 	s.metrics.CreatedStreamCount.Inc()
 	return st, nil
