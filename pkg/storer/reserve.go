@@ -59,7 +59,7 @@ func (db *DB) startReserveWorkers(
 
 	// start eviction worker first as there could be batch expirations because of
 	// initial contract sync
-	db.reserveWg.Add(1)
+	db.inFlight.Add(1)
 	go db.evictionWorker(ctx)
 
 	select {
@@ -87,12 +87,12 @@ func (db *DB) startReserveWorkers(
 	// syncing can now begin now that the reserver worker is running
 	db.syncer.Start(ctx)
 
-	db.reserveWg.Add(1)
+	db.inFlight.Add(1)
 	go db.radiusWorker(ctx, wakeUpDur)
 }
 
 func (db *DB) radiusWorker(ctx context.Context, wakeUpDur time.Duration) {
-	defer db.reserveWg.Done()
+	defer db.inFlight.Done()
 
 	radiusWakeUpTicker := time.NewTicker(wakeUpDur)
 	defer radiusWakeUpTicker.Stop()
@@ -145,7 +145,7 @@ func (db *DB) removeExpiredBatch(ctx context.Context, batchID []byte) error {
 }
 
 func (db *DB) evictionWorker(ctx context.Context) {
-	defer db.reserveWg.Done()
+	defer db.inFlight.Done()
 
 	batchExpiryTrigger, batchExpiryUnsub := db.events.Subscribe(batchExpiry)
 	defer batchExpiryUnsub()
@@ -666,9 +666,9 @@ func (db *DB) SubscribeBin(ctx context.Context, bin uint8, start uint64) (<-chan
 	done := make(chan struct{})
 	errC := make(chan error, 1)
 
-	db.reserveWg.Add(1)
+	db.inFlight.Add(1)
 	go func() {
-		defer db.reserveWg.Done()
+		defer db.inFlight.Done()
 
 		trigger, unsub := db.reserveBinEvents.Subscribe(string(bin))
 		defer unsub()
