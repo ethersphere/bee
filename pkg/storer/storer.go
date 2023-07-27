@@ -397,7 +397,16 @@ func performEpochMigration(ctx context.Context, basePath string, opts *Options) 
 
 	var rs *reserve.Reserve
 	if opts.ReserveCapacity > 0 {
-		rs, err = reserve.New(opts.Address, store, opts.ReserveCapacity, noopRadiusSetter{}, logger)
+		rs, err = reserve.New(
+			opts.Address,
+			store,
+			opts.ReserveCapacity,
+			noopRadiusSetter{},
+			logger,
+			func(_ context.Context, _ internal.Storage, _ ...swarm.Address) error {
+				return nil
+			},
+		)
 		if err != nil {
 			return err
 		}
@@ -558,7 +567,19 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	}
 
 	if opts.ReserveCapacity > 0 {
-		rs, err := reserve.New(opts.Address, repo.IndexStore(), opts.ReserveCapacity, opts.RadiusSetter, logger)
+		rs, err := reserve.New(
+			opts.Address,
+			repo.IndexStore(),
+			opts.ReserveCapacity,
+			opts.RadiusSetter,
+			logger,
+			func(ctx context.Context, store internal.Storage, addrs ...swarm.Address) error {
+				db.lock.Lock(cacheAccessLockKey)
+				defer db.lock.Unlock(cacheAccessLockKey)
+
+				return cacheObj.MoveFromReserve(ctx, store, addrs...)
+			},
+		)
 		if err != nil {
 			return nil, err
 		}

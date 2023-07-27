@@ -40,6 +40,7 @@ type Reserve struct {
 	capacity int
 	size     atomic.Int64
 	radius   atomic.Uint32
+	cacheCb  func(context.Context, internal.Storage, ...swarm.Address) error
 }
 
 func New(
@@ -47,13 +48,16 @@ func New(
 	store storage.Store,
 	capacity int,
 	radiusSetter topology.SetStorageRadiuser,
-	logger log.Logger) (*Reserve, error) {
+	logger log.Logger,
+	cb func(context.Context, internal.Storage, ...swarm.Address) error,
+) (*Reserve, error) {
 
 	rs := &Reserve{
 		baseAddr:     baseAddr,
 		capacity:     capacity,
 		radiusSetter: radiusSetter,
 		logger:       logger.WithName(loggerName).Register(),
+		cacheCb:      cb,
 	}
 
 	rItem := &radiusItem{}
@@ -292,7 +296,6 @@ func (r *Reserve) EvictBatchBin(
 	txExecutor internal.TxExecutor,
 	bin uint8,
 	batchID []byte,
-	cb func(swarm.Chunk),
 ) (int, error) {
 
 	var evicted []*batchRadiusItem
@@ -319,6 +322,8 @@ func (r *Reserve) EvictBatchBin(
 			end = len(evicted)
 		}
 
+		moveToCache := make([]swarm.Address, 0, end-i)
+
 		err := txExecutor.Execute(ctx, func(store internal.Storage) error {
 			batch, err := store.IndexStore().Batch(ctx)
 			if err != nil {
@@ -326,17 +331,19 @@ func (r *Reserve) EvictBatchBin(
 			}
 
 			for _, item := range evicted[i:end] {
-				c, err := store.ChunkStore().Get(ctx, item.Address)
-				if err == nil {
-					cb(c)
-				}
-
 				err = removeChunk(ctx, store, batch, item)
 				if err != nil {
 					return err
 				}
+				moveToCache = append(moveToCache, item.Address)
 			}
 			return batch.Commit()
+		})
+		if err != nil {
+			return 0, err
+		}
+		err = txExecutor.Execute(ctx, func(store internal.Storage) error {
+			return r.cacheCb(ctx, store, moveToCache...)
 		})
 		if err != nil {
 			return 0, err
@@ -362,7 +369,11 @@ func (r *Reserve) DeleteChunk(
 	if err != nil {
 		return err
 	}
-	return removeChunk(ctx, store, batch, item)
+	err = removeChunk(ctx, store, batch, item)
+	if err != nil {
+		return err
+	}
+	return r.cacheCb(ctx, store, item.Address)
 }
 
 // CleanupBinIndex removes the bin index entry for the chunk. This is called mainly
@@ -387,7 +398,6 @@ func removeChunk(
 ) error {
 
 	indexStore := store.IndexStore()
-	chunkStore := store.ChunkStore()
 
 	var errs error
 
@@ -406,7 +416,6 @@ func removeChunk(
 	return errors.Join(errs,
 		batch.Delete(&chunkBinItem{Bin: item.Bin, BinID: item.BinID}),
 		batch.Delete(item),
-		chunkStore.Delete(ctx, item.Address),
 	)
 }
 

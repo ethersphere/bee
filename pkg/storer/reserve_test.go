@@ -130,10 +130,6 @@ func TestReplaceOldIndex(t *testing.T) {
 			if !errors.Is(err, storage.ErrNotFound) {
 				t.Fatalf("wanted err %s, got err %s", storage.ErrNotFound, err)
 			}
-			_, err = storer.Repo().ChunkStore().Get(context.Background(), ch_1.Address())
-			if !errors.Is(err, storage.ErrNotFound) {
-				t.Fatalf("wanted err %s, got err %s", storage.ErrNotFound, err)
-			}
 			_, err = storer.ReserveGet(context.Background(), ch_1.Address(), ch_1.Stamp().BatchID())
 			if !errors.Is(err, storage.ErrNotFound) {
 				t.Fatal(err)

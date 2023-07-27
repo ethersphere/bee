@@ -478,14 +478,7 @@ func (db *DB) evictBatch(
 			db.lock.Lock(lockKey)
 			defer db.lock.Unlock(lockKey)
 
-			// cache evicted chunks
-			cache := func(c swarm.Chunk) {
-				if err := db.Cache().Put(ctx, c); err != nil {
-					db.logger.Error(err, "reserve cache")
-				}
-			}
-
-			return db.reserve.EvictBatchBin(ctx, db, b, batchID, cache)
+			return db.reserve.EvictBatchBin(ctx, db, b, batchID)
 		}()
 		evicted += binEvicted
 
@@ -556,14 +549,6 @@ func (db *DB) reserveCleanup(ctx context.Context) error {
 			}
 			var tErr error
 			for _, item := range itemsToEvict[i:end] {
-				chunk, err := db.ChunkStore().Get(ctx, item.ChunkAddress)
-				if err == nil {
-					err := db.Cache().Put(ctx, chunk)
-					if err != nil {
-						db.logger.Warning("reserve eviction cache put", "err", err)
-					}
-				}
-
 				// safe to assume that this need not be locked as the batch is already expired
 				// and cleaned up because expiry process failed to handle it
 				err = db.reserve.DeleteChunk(ctx, tx, batch, item.ChunkAddress, item.BatchID)

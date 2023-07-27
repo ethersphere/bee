@@ -457,3 +457,111 @@ func (c *Cache) Getter(store internal.Storage) storage.Getter {
 		return ch, nil
 	})
 }
+
+// MoveFromReserve moves the chunks from the reserve to the cache. This is
+// called when the reserve is full and we need to move chunks from the reserve
+// to the cache. It avoids the need to delete the chunk and re-add it to the
+// cache.
+func (c *Cache) MoveFromReserve(
+	ctx context.Context,
+	store internal.Storage,
+	addrs ...swarm.Address,
+) error {
+	batch, err := store.IndexStore().Batch(ctx)
+	if err != nil {
+		return fmt.Errorf("failed creating batch: %w", err)
+	}
+
+	state := &cacheState{}
+	err = store.IndexStore().Get(state)
+	if err != nil {
+		return fmt.Errorf("failed reading cache state: %w", err)
+	}
+
+	newHead := &cacheEntry{Address: state.Head}
+	newTail := &cacheEntry{Address: state.Tail}
+
+	err = store.IndexStore().Get(newTail)
+	if err != nil && !errors.Is(err, storage.ErrNotFound) {
+		return fmt.Errorf("failed getting tail entry %s: %w", newTail, err)
+	}
+
+	if len(addrs) > int(c.capacity) {
+		addrs = addrs[len(addrs)-int(c.capacity):]
+	}
+
+	var count uint64
+	for _, addr := range addrs {
+		newEntry := &cacheEntry{Address: addr}
+		if has, err := store.IndexStore().Has(newEntry); err == nil && has {
+			continue
+		}
+
+		if !newTail.Address.IsZero() {
+			newTail.Next = addr.Clone()
+			newEntry.Prev = newTail.Address.Clone()
+			err = batch.Put(newTail)
+			if err != nil {
+				return fmt.Errorf("failed updating new tail entry %s: %w", newTail, err)
+			}
+		} else {
+			newHead = newEntry
+		}
+		newTail = newEntry
+		count++
+	}
+
+	if count == 0 {
+		return nil
+	}
+
+	err = batch.Put(newTail)
+	if err != nil {
+		return fmt.Errorf("failed updating new tail entry %s: %w", newTail, err)
+	}
+
+	var itemsToRemove uint64
+	if state.Count+count > c.capacity {
+		itemsToRemove = state.Count + count - c.capacity
+	}
+
+	if itemsToRemove > 0 {
+		for i := 0; i < int(itemsToRemove); i++ {
+			err = store.IndexStore().Get(newHead)
+			if err != nil {
+				return fmt.Errorf("failed getting head entry %s: %w", newHead, err)
+			}
+			err = batch.Delete(newHead)
+			if err != nil {
+				return fmt.Errorf("failed deleting head entry %s: %w", newHead, err)
+			}
+			err = store.ChunkStore().Delete(ctx, newHead.Address)
+			if err != nil {
+				return fmt.Errorf("failed deleting chunk %s: %w", newHead.Address, err)
+			}
+			newHead = &cacheEntry{Address: newHead.Next}
+		}
+		if newHead.Address.IsZero() {
+			newHead = &cacheEntry{Address: addrs[0]}
+		}
+	}
+
+	state.Tail = newTail.Address.Clone()
+	state.Head = newHead.Address.Clone()
+	state.Count += (count - itemsToRemove)
+
+	err = batch.Put(state)
+	if err != nil {
+		return fmt.Errorf("failed updating state %s: %w", state, err)
+	}
+
+	if err := batch.Commit(); err != nil {
+		return fmt.Errorf("batch commit: %w", err)
+	}
+
+	c.mtx.Lock()
+	c.size = state.Count
+	c.mtx.Unlock()
+
+	return nil
+}
