@@ -574,6 +574,8 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 			opts.RadiusSetter,
 			logger,
 			func(ctx context.Context, store internal.Storage, addrs ...swarm.Address) error {
+				defer func() { db.metrics.CacheSize.Set(float64(db.cacheObj.Size())) }()
+
 				db.lock.Lock(cacheAccessLockKey)
 				defer db.lock.Unlock(cacheAccessLockKey)
 

@@ -459,9 +459,8 @@ func (c *Cache) Getter(store internal.Storage) storage.Getter {
 }
 
 // MoveFromReserve moves the chunks from the reserve to the cache. This is
-// called when the reserve is full and we need to move chunks from the reserve
-// to the cache. It avoids the need to delete the chunk and re-add it to the
-// cache.
+// called when the reserve is full and we need to perform eviction.
+// It avoids the need to delete the chunk and re-add it to the cache.
 func (c *Cache) MoveFromReserve(
 	ctx context.Context,
 	store internal.Storage,
@@ -481,11 +480,16 @@ func (c *Cache) MoveFromReserve(
 	newHead := &cacheEntry{Address: state.Head}
 	newTail := &cacheEntry{Address: state.Tail}
 
+	// if newTail is not found, this is a new cache and we need to set the
+	// tail and head
 	err = store.IndexStore().Get(newTail)
 	if err != nil && !errors.Is(err, storage.ErrNotFound) {
 		return fmt.Errorf("failed getting tail entry %s: %w", newTail, err)
 	}
 
+	// this is a corner case where cache capacity is less than the no of items
+	// being added. In this case we need to only add the last c.capacity items
+	// from the addrs slice. This would generally happen in tests.
 	if len(addrs) > int(c.capacity) {
 		addrs = addrs[len(addrs)-int(c.capacity):]
 	}
@@ -505,6 +509,8 @@ func (c *Cache) MoveFromReserve(
 				return fmt.Errorf("failed updating new tail entry %s: %w", newTail, err)
 			}
 		} else {
+			// if we are here, it means its a fresh cache and we need to set
+			// the head and tail
 			newHead = newEntry
 		}
 		newTail = newEntry
@@ -515,6 +521,7 @@ func (c *Cache) MoveFromReserve(
 		return nil
 	}
 
+	// last entry after the loop is the new tail
 	err = batch.Put(newTail)
 	if err != nil {
 		return fmt.Errorf("failed updating new tail entry %s: %w", newTail, err)
@@ -541,6 +548,8 @@ func (c *Cache) MoveFromReserve(
 			}
 			newHead = &cacheEntry{Address: newHead.Next}
 		}
+		// this is again a corner case where the cache capacity no. of items
+		// are being added, so the newHead is the first item in the slice.
 		if newHead.Address.IsZero() {
 			newHead = &cacheEntry{Address: addrs[0]}
 		}
