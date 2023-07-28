@@ -494,7 +494,7 @@ func (db *DB) evictBatch(
 		db.logger.Debug(
 			"reserve eviction",
 			"bin", b,
-			"evicted", evicted,
+			"evicted", binEvicted,
 			"batchID", hex.EncodeToString(batchID),
 			"new_size", db.reserve.Size(),
 		)
