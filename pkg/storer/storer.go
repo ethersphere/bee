@@ -513,10 +513,14 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 			return nil, err
 		}
 	} else {
-		err = performEpochMigration(ctx, dirPath, opts)
-		if err != nil {
-			return nil, err
+		// only perform migration if not done already
+		if _, err := os.Stat(path.Join(dirPath, indexPath)); err != nil {
+			err = performEpochMigration(ctx, dirPath, opts)
+			if err != nil {
+				return nil, err
+			}
 		}
+
 		repo, dbCloser, err = initDiskRepository(ctx, dirPath, opts)
 		if err != nil {
 			return nil, err
