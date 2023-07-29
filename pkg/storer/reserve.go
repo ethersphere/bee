@@ -255,8 +255,6 @@ func (db *DB) evictionWorker(ctx context.Context) {
 			// check if there are expired batches first
 			db.metrics.OverCapTriggerCount.Inc()
 
-			cleanupExpired()
-
 			if !unreserveSem.TryAcquire(1) {
 				// if there is already a goroutine taking care of unreserving
 				// dont wait for it to finish

@@ -337,13 +337,10 @@ func (r *Reserve) EvictBatchBin(
 				}
 				moveToCache = append(moveToCache, item.Address)
 			}
+			if err := r.cacheCb(ctx, store, moveToCache...); err != nil {
+				return err
+			}
 			return batch.Commit()
-		})
-		if err != nil {
-			return 0, err
-		}
-		err = txExecutor.Execute(ctx, func(store internal.Storage) error {
-			return r.cacheCb(ctx, store, moveToCache...)
 		})
 		if err != nil {
 			return 0, err
