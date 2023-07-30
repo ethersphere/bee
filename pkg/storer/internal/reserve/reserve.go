@@ -318,6 +318,7 @@ func (r *Reserve) EvictBatchBin(
 	}
 
 	batchCnt := 1000
+	evictionCompleted := 0
 
 	for i := 0; i < len(evicted); i += batchCnt {
 		end := i + batchCnt
@@ -346,11 +347,12 @@ func (r *Reserve) EvictBatchBin(
 			return batch.Commit()
 		})
 		if err != nil {
-			return 0, err
+			return evictionCompleted, err
 		}
+		evictionCompleted += end - i
 	}
 
-	return len(evicted), nil
+	return evictionCompleted, nil
 }
 
 func (r *Reserve) DeleteChunk(
