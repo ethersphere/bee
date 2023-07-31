@@ -441,7 +441,7 @@ func (u *uploadPutter) Put(ctx context.Context, s internal.Storage, writer stora
 		if prev >= curr {
 			return errOverwriteOfNewerBatch
 		}
-		err = stampindex.Store(s.IndexStore(), stampIndexUploadNamespace, chunk)
+		err = stampindex.Store(writer, stampIndexUploadNamespace, chunk)
 		if err != nil {
 			return fmt.Errorf("failed updating stamp index: %w", err)
 		}

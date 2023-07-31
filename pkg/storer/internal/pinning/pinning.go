@@ -379,13 +379,18 @@ func deleteCollectionChunks(ctx context.Context, tx internal.TxExecutor, collect
 	batchCnt := 1000
 	for i := 0; i < len(chunksToDelete); i += batchCnt {
 		err = tx.Execute(context.Background(), func(s internal.Storage) error {
+			b, err := s.IndexStore().Batch(context.Background())
+			if err != nil {
+				return err
+			}
+
 			end := i + batchCnt
 			if end > len(chunksToDelete) {
 				end = len(chunksToDelete)
 			}
 
 			for _, chunk := range chunksToDelete[i:end] {
-				err := s.IndexStore().Delete(chunk)
+				err := b.Delete(chunk)
 				if err != nil {
 					return fmt.Errorf("pin store: failed deleting collection chunk: %w", err)
 				}
@@ -394,7 +399,7 @@ func deleteCollectionChunks(ctx context.Context, tx internal.TxExecutor, collect
 					return fmt.Errorf("pin store: failed in tx chunk deletion: %w", err)
 				}
 			}
-			return nil
+			return b.Commit()
 		})
 		if err != nil {
 			return fmt.Errorf("pin store: failed tx deleting collection chunks: %w", err)
