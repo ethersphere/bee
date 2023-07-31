@@ -24,8 +24,8 @@ type Storage interface {
 // PutterCloserWithReference provides a Putter which can be closed with a root
 // swarm reference associated with this session.
 type PutterCloserWithReference interface {
-	Put(context.Context, Storage, swarm.Chunk) error
-	Close(Storage, swarm.Address) error
+	Put(context.Context, Storage, storage.Writer, swarm.Chunk) error
+	Close(Storage, storage.Writer, swarm.Address) error
 	Cleanup(TxExecutor) error
 }
 

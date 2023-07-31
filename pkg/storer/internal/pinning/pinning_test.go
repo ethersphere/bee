@@ -80,18 +80,18 @@ func TestPinStore(t *testing.T) {
 					t.Fatal(err)
 				}
 				for _, ch := range append(tc.uniqueChunks, tc.root) {
-					err := putter.Put(context.Background(), st, ch)
+					err := putter.Put(context.Background(), st, st.IndexStore(), ch)
 					if err != nil {
 						t.Fatal(err)
 					}
 				}
 				for _, ch := range tc.dupChunks {
-					err := putter.Put(context.Background(), st, ch)
+					err := putter.Put(context.Background(), st, st.IndexStore(), ch)
 					if err != nil {
 						t.Fatal(err)
 					}
 				}
-				err = putter.Close(st, tc.root.Address())
+				err = putter.Close(st, st.IndexStore(), tc.root.Address())
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -260,17 +260,17 @@ func TestPinStore(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		err = putter.Put(context.Background(), st, root)
+		err = putter.Put(context.Background(), st, st.IndexStore(), root)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		err = putter.Close(st, root.Address())
+		err = putter.Close(st, st.IndexStore(), root.Address())
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		err = putter.Put(context.Background(), st, chunktest.GenerateTestRandomChunk())
+		err = putter.Put(context.Background(), st, st.IndexStore(), chunktest.GenerateTestRandomChunk())
 		if !errors.Is(err, pinstore.ErrPutterAlreadyClosed) {
 			t.Fatalf("unexpected error during Put, want: %v, got: %v", pinstore.ErrPutterAlreadyClosed, err)
 		}
@@ -283,12 +283,12 @@ func TestPinStore(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		err = putter.Put(context.Background(), st, root)
+		err = putter.Put(context.Background(), st, st.IndexStore(), root)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		err = putter.Close(st, swarm.ZeroAddress)
+		err = putter.Close(st, st.IndexStore(), swarm.ZeroAddress)
 		if !errors.Is(err, pinstore.ErrCollectionRootAddressIsZero) {
 			t.Fatalf("unexpected error on close, want: %v, got: %v", pinstore.ErrCollectionRootAddressIsZero, err)
 		}
@@ -311,7 +311,7 @@ func TestCleanup(t *testing.T) {
 		}
 
 		for _, ch := range chunks {
-			err = putter.Put(context.Background(), st, ch)
+			err = putter.Put(context.Background(), st, st.IndexStore(), ch)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -345,7 +345,7 @@ func TestCleanup(t *testing.T) {
 		}
 
 		for _, ch := range chunks {
-			err = putter.Put(context.Background(), st, ch)
+			err = putter.Put(context.Background(), st, st.IndexStore(), ch)
 			if err != nil {
 				t.Fatal(err)
 			}
