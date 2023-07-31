@@ -154,11 +154,10 @@ func (db *DB) evictionWorker(ctx context.Context) {
 	defer overCapUnsub()
 
 	var (
-		unreserveSem    = semaphore.NewWeighted(1)
-		unreserveCtx    context.Context
-		cancelUnreserve context.CancelFunc
-		expirySem       = semaphore.NewWeighted(1)
-		expiryWorkers   = semaphore.NewWeighted(4)
+		unreserveSem                  = semaphore.NewWeighted(1)
+		unreserveCtx, cancelUnreserve = context.WithCancel(ctx)
+		expirySem                     = semaphore.NewWeighted(1)
+		expiryWorkers                 = semaphore.NewWeighted(4)
 	)
 
 	stopped := make(chan struct{})
