@@ -213,40 +213,44 @@ func (db *DB) evictionWorker(ctx context.Context) {
 			// it uses the same one as reserve eviction.
 			defer db.events.Trigger(reserveUnreserved)
 
-			// this trigger ensures that if the expiry triggers were swallowed
-			// after we checked for expired batches, we re-check the batches
-			// again. It should not be fired if there are no more batches to evict.
-			defer func() {
-				_ = time.AfterFunc(1*time.Second, func() {
-					db.events.Trigger(batchExpiry)
-				})
-			}()
-
 			db.metrics.ExpiryRunsCount.Inc()
 
-			for _, batchID := range batchesToEvict {
-				b := batchID
-				if err := expiryWorkers.Acquire(ctx, 1); err != nil {
-					db.logger.Error(err, "acquire expiry worker semaphore")
+			for len(batchesToEvict) > 0 {
+				for _, batchID := range batchesToEvict {
+					b := batchID
+					if err := expiryWorkers.Acquire(ctx, 1); err != nil {
+						db.logger.Error(err, "acquire expiry worker semaphore")
+						return
+					}
+					go func() {
+						defer expiryWorkers.Release(1)
+
+						err := db.removeExpiredBatch(ctx, b)
+						if err != nil {
+							db.logger.Error(err, "remove expired batch", "batch_id", hex.EncodeToString(b))
+						} else {
+							db.metrics.ExpiredBatchCount.Inc()
+						}
+					}()
+				}
+				// ensure all workers started are finished before we check for
+				// more batches as we might miss triggers fired while we are
+				// waiting for the workers to finish.
+				if err := expiryWorkers.Acquire(ctx, 4); err != nil {
+					db.logger.Error(err, "wait for expiry workers")
 					return
 				}
-				go func() {
-					defer expiryWorkers.Release(1)
+				expiryWorkers.Release(4)
 
-					err := db.removeExpiredBatch(ctx, b)
-					if err != nil {
-						db.logger.Error(err, "remove expired batch", "batch_id", hex.EncodeToString(b))
-					} else {
-						db.metrics.ExpiredBatchCount.Inc()
-					}
-				}()
+				// check if more batches have expired. This is because we swallow
+				// the expiry trigger while the expiration process is running. So we
+				// should ensure there is nothing to evict before we return.
+				batchesToEvict, err = db.getExpiredBatches()
+				if err != nil {
+					db.logger.Error(err, "get expired batches")
+					break
+				}
 			}
-
-			if err := expiryWorkers.Acquire(ctx, 4); err != nil {
-				db.logger.Error(err, "wait for expiry workers")
-				return
-			}
-			expiryWorkers.Release(4)
 		}()
 	}
 
