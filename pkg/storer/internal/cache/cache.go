@@ -500,11 +500,16 @@ func (c *Cache) MoveFromReserve(
 
 	entriesToRemove := make([]*cacheEntry, 0, len(entriesToAdd))
 	if state.Count == 0 {
+		// this means that the cache is empty and we need to set the head and
+		// tail.
 		state.Head = entriesToAdd[0].Address.Clone()
 		state.Tail = entriesToAdd[len(entriesToAdd)-1].Address.Clone()
 	} else {
 		state.Tail = entriesToAdd[len(entriesToAdd)-1].Address.Clone()
 		if state.Count+uint64(len(entriesToAdd)) > c.capacity {
+			// this means that we need to remove some entries from the cache. The cache
+			// is kept at capacity, so we need to remove the first entries that were
+			// added to the cache.
 			removeItemCount := int(state.Count + uint64(len(entriesToAdd)) - c.capacity)
 			for i := 0; i < removeItemCount; i++ {
 				entry := &cacheEntry{Address: state.Head}
@@ -515,6 +520,9 @@ func (c *Cache) MoveFromReserve(
 				entriesToRemove = append(entriesToRemove, entry)
 				state.Head = entry.Next.Clone()
 			}
+			// if we removed all the entries from the cache, we need to set the head
+			// to the first item that we are adding. This is because the old tail Next
+			// is pointing to either nil or some incorrect address.
 			if removeItemCount == int(state.Count) {
 				state.Head = entriesToAdd[0].Address.Clone()
 			}
