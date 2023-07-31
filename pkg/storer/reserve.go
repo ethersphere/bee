@@ -179,7 +179,13 @@ func (db *DB) evictionWorker(ctx context.Context) {
 		}
 
 		go func() {
-			defer expirySem.Release(1)
+			reTrigger := false
+			defer func() {
+				expirySem.Release(1)
+				if reTrigger {
+					db.events.Trigger(batchExpiry)
+				}
+			}()
 
 			batchesToEvict, err := db.getExpiredBatches()
 			if err != nil {
@@ -190,6 +196,10 @@ func (db *DB) evictionWorker(ctx context.Context) {
 			if len(batchesToEvict) == 0 {
 				return
 			}
+
+			// After this point we start swallowing signals, so ensure we do 1 more
+			// trigger at the end.
+			reTrigger = true
 
 			// we ensure unreserve is not running and if it is we cancel it and wait
 			// for it to finish, this is to prevent unreserve and expirations running
@@ -214,42 +224,30 @@ func (db *DB) evictionWorker(ctx context.Context) {
 
 			db.metrics.ExpiryRunsCount.Inc()
 
-			for len(batchesToEvict) > 0 {
-				for _, batchID := range batchesToEvict {
-					b := batchID
-					if err := expiryWorkers.Acquire(ctx, 1); err != nil {
-						db.logger.Error(err, "acquire expiry worker semaphore")
-						return
-					}
-					go func() {
-						defer expiryWorkers.Release(1)
-
-						err := db.removeExpiredBatch(ctx, b)
-						if err != nil {
-							db.logger.Error(err, "remove expired batch", "batch_id", hex.EncodeToString(b))
-						} else {
-							db.metrics.ExpiredBatchCount.Inc()
-						}
-					}()
-				}
-				// ensure all workers started are finished before we check for
-				// more batches as we might miss triggers fired while we are
-				// waiting for the workers to finish.
-				if err := expiryWorkers.Acquire(ctx, 4); err != nil {
-					db.logger.Error(err, "wait for expiry workers")
+			for _, batchID := range batchesToEvict {
+				b := batchID
+				if err := expiryWorkers.Acquire(ctx, 1); err != nil {
+					db.logger.Error(err, "acquire expiry worker semaphore")
 					return
 				}
-				expiryWorkers.Release(4)
+				go func() {
+					defer expiryWorkers.Release(1)
 
-				// check if more batches have expired. This is because we swallow
-				// the expiry trigger while the expiration process is running. So we
-				// should ensure there is nothing to evict before we return.
-				batchesToEvict, err = db.getExpiredBatches()
-				if err != nil {
-					db.logger.Error(err, "get expired batches")
-					break
-				}
+					err := db.removeExpiredBatch(ctx, b)
+					if err != nil {
+						db.logger.Error(err, "remove expired batch", "batch_id", hex.EncodeToString(b))
+					} else {
+						db.metrics.ExpiredBatchCount.Inc()
+					}
+				}()
 			}
+
+			// wait for all workers to finish
+			if err := expiryWorkers.Acquire(ctx, 4); err != nil {
+				db.logger.Error(err, "wait for expiry workers")
+				return
+			}
+			expiryWorkers.Release(4)
 		}()
 	}
 
@@ -275,7 +273,14 @@ func (db *DB) evictionWorker(ctx context.Context) {
 				continue
 			}
 			go func() {
-				defer unreserveSem.Release(1)
+				defer func() {
+					unreserveSem.Release(1)
+					if !db.reserve.IsWithinCapacity() {
+						// if we are still over capacity trigger again as we
+						// might swallow the signal
+						db.events.Trigger(reserveOverCapacity)
+					}
+				}()
 
 				unreserveCtx, cancelUnreserve = context.WithCancel(ctx)
 				err := db.unreserve(unreserveCtx)
