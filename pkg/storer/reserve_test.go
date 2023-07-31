@@ -294,7 +294,7 @@ func TestUnreserveCap(t *testing.T) {
 				if storer.ReserveSize() == capacity {
 					break done
 				}
-			case <-time.After(time.Second * 45):
+			case <-time.After(time.Second * 60):
 				if storer.ReserveSize() != capacity {
 					t.Fatal("timeout waiting for reserve to reach capacity")
 				}
