@@ -209,6 +209,8 @@ func (db *DB) evictionWorker(ctx context.Context) {
 			}
 			defer unreserveSem.Release(1)
 
+			// this event is fired mainly for the tests right now, which is why
+			// it uses the same one as reserve eviction.
 			defer db.events.Trigger(reserveUnreserved)
 
 			db.metrics.ExpiryRunsCount.Inc()
