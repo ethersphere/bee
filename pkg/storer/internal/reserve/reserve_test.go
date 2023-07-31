@@ -24,6 +24,10 @@ import (
 	kademlia "github.com/ethersphere/bee/pkg/topology/mock"
 )
 
+func noopCacher(_ context.Context, _ internal.Storage, _ ...swarm.Address) error {
+	return nil
+}
+
 func TestReserve(t *testing.T) {
 	t.Parallel()
 
@@ -36,7 +40,13 @@ func TestReserve(t *testing.T) {
 		}
 	})
 
-	r, err := reserve.New(baseAddr, ts.IndexStore(), 0, kademlia.NewTopologyDriver(), log.Noop)
+	r, err := reserve.New(
+		baseAddr,
+		ts.IndexStore(),
+		0, kademlia.NewTopologyDriver(),
+		log.Noop,
+		noopCacher,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,7 +97,13 @@ func TestReserveChunkType(t *testing.T) {
 		}
 	})
 
-	r, err := reserve.New(baseAddr, ts.IndexStore(), 0, kademlia.NewTopologyDriver(), log.Noop)
+	r, err := reserve.New(
+		baseAddr,
+		ts.IndexStore(),
+		0, kademlia.NewTopologyDriver(),
+		log.Noop,
+		noopCacher,
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +160,21 @@ func TestReplaceOldIndex(t *testing.T) {
 		}
 	})
 
-	r, err := reserve.New(baseAddr, ts.IndexStore(), 0, kademlia.NewTopologyDriver(), log.Noop)
+	r, err := reserve.New(
+		baseAddr,
+		ts.IndexStore(),
+		0, kademlia.NewTopologyDriver(),
+		log.Noop,
+		func(ctx context.Context, st internal.Storage, addrs ...swarm.Address) error {
+			for _, addr := range addrs {
+				err := st.ChunkStore().Delete(ctx, addr)
+				if err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -199,7 +229,21 @@ func TestEvict(t *testing.T) {
 	batches := []*postage.Batch{postagetesting.MustNewBatch(), postagetesting.MustNewBatch(), postagetesting.MustNewBatch()}
 	evictBatch := batches[1]
 
-	r, err := reserve.New(baseAddr, ts.IndexStore(), 0, kademlia.NewTopologyDriver(), log.Noop)
+	r, err := reserve.New(
+		baseAddr,
+		ts.IndexStore(),
+		0, kademlia.NewTopologyDriver(),
+		log.Noop,
+		func(ctx context.Context, st internal.Storage, addrs ...swarm.Address) error {
+			for _, addr := range addrs {
+				err := st.ChunkStore().Delete(ctx, addr)
+				if err != nil {
+					return err
+				}
+			}
+			return nil
+		},
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -220,7 +264,7 @@ func TestEvict(t *testing.T) {
 
 	totalEvicted := 0
 	for i := 0; i < 3; i++ {
-		evicted, err := r.EvictBatchBin(context.Background(), ts, uint8(i), evictBatch.ID, func(swarm.Chunk) {})
+		evicted, err := r.EvictBatchBin(context.Background(), ts, uint8(i), evictBatch.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -268,7 +312,13 @@ func TestIterate(t *testing.T) {
 			}
 		})
 
-		r, err := reserve.New(baseAddr, ts.IndexStore(), 0, kademlia.NewTopologyDriver(), log.Noop)
+		r, err := reserve.New(
+			baseAddr,
+			ts.IndexStore(),
+			0, kademlia.NewTopologyDriver(),
+			log.Noop,
+			noopCacher,
+		)
 		if err != nil {
 			t.Fatal(err)
 		}

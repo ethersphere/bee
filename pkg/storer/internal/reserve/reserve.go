@@ -40,6 +40,7 @@ type Reserve struct {
 	capacity int
 	size     atomic.Int64
 	radius   atomic.Uint32
+	cacheCb  func(context.Context, internal.Storage, ...swarm.Address) error
 }
 
 func New(
@@ -47,13 +48,16 @@ func New(
 	store storage.Store,
 	capacity int,
 	radiusSetter topology.SetStorageRadiuser,
-	logger log.Logger) (*Reserve, error) {
+	logger log.Logger,
+	cb func(context.Context, internal.Storage, ...swarm.Address) error,
+) (*Reserve, error) {
 
 	rs := &Reserve{
 		baseAddr:     baseAddr,
 		capacity:     capacity,
 		radiusSetter: radiusSetter,
 		logger:       logger.WithName(loggerName).Register(),
+		cacheCb:      cb,
 	}
 
 	rItem := &radiusItem{}
@@ -286,13 +290,12 @@ func (r *Reserve) IterateChunksItems(store internal.Storage, startBin uint8, cb 
 	return err
 }
 
-// EvictBatchBin evicts all chunks from the bin provided.
+// EvictBatchBin evicts all chunks from bins upto the bin provided.
 func (r *Reserve) EvictBatchBin(
 	ctx context.Context,
 	txExecutor internal.TxExecutor,
 	bin uint8,
 	batchID []byte,
-	cb func(swarm.Chunk),
 ) (int, error) {
 
 	var evicted []*batchRadiusItem
@@ -300,9 +303,12 @@ func (r *Reserve) EvictBatchBin(
 	err := txExecutor.Execute(ctx, func(store internal.Storage) error {
 		return store.IndexStore().Iterate(storage.Query{
 			Factory: func() storage.Item { return &batchRadiusItem{} },
-			Prefix:  batchBinToString(bin, batchID),
+			Prefix:  string(batchID),
 		}, func(res storage.Result) (bool, error) {
 			batchRadius := res.Entry.(*batchRadiusItem)
+			if batchRadius.Bin >= bin {
+				return true, nil
+			}
 			evicted = append(evicted, batchRadius)
 			return false, nil
 		})
@@ -312,12 +318,15 @@ func (r *Reserve) EvictBatchBin(
 	}
 
 	batchCnt := 1000
+	evictionCompleted := 0
 
 	for i := 0; i < len(evicted); i += batchCnt {
 		end := i + batchCnt
 		if end > len(evicted) {
 			end = len(evicted)
 		}
+
+		moveToCache := make([]swarm.Address, 0, end-i)
 
 		err := txExecutor.Execute(ctx, func(store internal.Storage) error {
 			batch, err := store.IndexStore().Batch(ctx)
@@ -326,24 +335,24 @@ func (r *Reserve) EvictBatchBin(
 			}
 
 			for _, item := range evicted[i:end] {
-				c, err := store.ChunkStore().Get(ctx, item.Address)
-				if err == nil {
-					cb(c)
-				}
-
 				err = removeChunk(ctx, store, batch, item)
 				if err != nil {
 					return err
 				}
+				moveToCache = append(moveToCache, item.Address)
+			}
+			if err := r.cacheCb(ctx, store, moveToCache...); err != nil {
+				return err
 			}
 			return batch.Commit()
 		})
 		if err != nil {
-			return 0, err
+			return evictionCompleted, err
 		}
+		evictionCompleted += end - i
 	}
 
-	return len(evicted), nil
+	return evictionCompleted, nil
 }
 
 func (r *Reserve) DeleteChunk(
@@ -362,7 +371,11 @@ func (r *Reserve) DeleteChunk(
 	if err != nil {
 		return err
 	}
-	return removeChunk(ctx, store, batch, item)
+	err = removeChunk(ctx, store, batch, item)
+	if err != nil {
+		return err
+	}
+	return r.cacheCb(ctx, store, item.Address)
 }
 
 // CleanupBinIndex removes the bin index entry for the chunk. This is called mainly
@@ -387,7 +400,6 @@ func removeChunk(
 ) error {
 
 	indexStore := store.IndexStore()
-	chunkStore := store.ChunkStore()
 
 	var errs error
 
@@ -406,7 +418,6 @@ func removeChunk(
 	return errors.Join(errs,
 		batch.Delete(&chunkBinItem{Bin: item.Bin, BinID: item.BinID}),
 		batch.Delete(item),
-		chunkStore.Delete(ctx, item.Address),
 	)
 }
 

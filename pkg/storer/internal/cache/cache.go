@@ -457,3 +457,112 @@ func (c *Cache) Getter(store internal.Storage) storage.Getter {
 		return ch, nil
 	})
 }
+
+// MoveFromReserve moves the chunks from the reserve to the cache. This is
+// called when the reserve is full and we need to perform eviction.
+// It avoids the need to delete the chunk and re-add it to the cache.
+func (c *Cache) MoveFromReserve(
+	ctx context.Context,
+	store internal.Storage,
+	addrs ...swarm.Address,
+) error {
+	batch, err := store.IndexStore().Batch(ctx)
+	if err != nil {
+		return fmt.Errorf("failed creating batch: %w", err)
+	}
+
+	entriesToAdd := make([]*cacheEntry, 0, len(addrs))
+	for _, addr := range addrs {
+		entry := &cacheEntry{Address: addr}
+		if has, err := store.IndexStore().Has(entry); err == nil && has {
+			continue
+		}
+		if len(entriesToAdd) > 0 {
+			entriesToAdd[len(entriesToAdd)-1].Next = addr.Clone()
+			entry.Prev = entriesToAdd[len(entriesToAdd)-1].Address.Clone()
+		}
+		entriesToAdd = append(entriesToAdd, entry)
+	}
+
+	if len(entriesToAdd) == 0 {
+		return nil
+	}
+
+	state := &cacheState{}
+	err = store.IndexStore().Get(state)
+	if err != nil {
+		return fmt.Errorf("failed reading cache state: %w", err)
+	}
+
+	if len(entriesToAdd) > int(c.capacity) {
+		entriesToAdd = entriesToAdd[len(entriesToAdd)-int(c.capacity):]
+	}
+
+	entriesToRemove := make([]*cacheEntry, 0, len(entriesToAdd))
+	if state.Count == 0 {
+		// this means that the cache is empty and we need to set the head and
+		// tail.
+		state.Head = entriesToAdd[0].Address.Clone()
+		state.Tail = entriesToAdd[len(entriesToAdd)-1].Address.Clone()
+	} else {
+		state.Tail = entriesToAdd[len(entriesToAdd)-1].Address.Clone()
+		if state.Count+uint64(len(entriesToAdd)) > c.capacity {
+			// this means that we need to remove some entries from the cache. The cache
+			// is kept at capacity, so we need to remove the first entries that were
+			// added to the cache.
+			removeItemCount := int(state.Count + uint64(len(entriesToAdd)) - c.capacity)
+			for i := 0; i < removeItemCount; i++ {
+				entry := &cacheEntry{Address: state.Head}
+				err = store.IndexStore().Get(entry)
+				if err != nil {
+					return fmt.Errorf("failed getting entry %s: %w", entry, err)
+				}
+				entriesToRemove = append(entriesToRemove, entry)
+				state.Head = entry.Next.Clone()
+			}
+			// if we removed all the entries from the cache, we need to set the head
+			// to the first item that we are adding. This is because the old tail Next
+			// is pointing to either nil or some incorrect address.
+			if removeItemCount == int(state.Count) {
+				state.Head = entriesToAdd[0].Address.Clone()
+			}
+		}
+	}
+
+	for _, entry := range entriesToAdd {
+		err = batch.Put(entry)
+		if err != nil {
+			return fmt.Errorf("failed adding entry %s: %w", entry, err)
+		}
+	}
+
+	for _, entry := range entriesToRemove {
+		err = batch.Delete(entry)
+		if err != nil {
+			return fmt.Errorf("failed deleting entry %s: %w", entry, err)
+		}
+	}
+
+	state.Count += uint64(len(entriesToAdd)) - uint64(len(entriesToRemove))
+	err = batch.Put(state)
+	if err != nil {
+		return fmt.Errorf("failed updating state %s: %w", state, err)
+	}
+
+	if err := batch.Commit(); err != nil {
+		return fmt.Errorf("batch commit: %w", err)
+	}
+
+	for _, entry := range entriesToRemove {
+		err = store.ChunkStore().Delete(ctx, entry.Address)
+		if err != nil {
+			return fmt.Errorf("failed deleting chunk %s: %w", entry.Address, err)
+		}
+	}
+
+	c.mtx.Lock()
+	c.size = state.Count
+	c.mtx.Unlock()
+
+	return nil
+}

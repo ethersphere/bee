@@ -419,6 +419,96 @@ func TestCache(t *testing.T) {
 	})
 }
 
+func TestMoveFromReserve(t *testing.T) {
+	t.Parallel()
+
+	st := newTestStorage(t)
+	c, err := cache.New(context.Background(), st, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("move from reserve", func(t *testing.T) {
+		chunks := chunktest.GenerateTestRandomChunks(10)
+		chunksToMove := make([]swarm.Address, 0, 10)
+
+		// add the chunks to chunkstore. This simulates the reserve already populating
+		// the chunkstore with chunks.
+		for _, ch := range chunks {
+			err := st.ChunkStore().Put(context.Background(), ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+			chunksToMove = append(chunksToMove, ch.Address())
+		}
+
+		err = c.MoveFromReserve(context.Background(), st, chunksToMove...)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[9].Address(), 10)
+		verifyCacheOrder(t, c, st.IndexStore(), chunks...)
+
+		// move again, should be no-op
+		err = c.MoveFromReserve(context.Background(), st, chunksToMove...)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[9].Address(), 10)
+		verifyCacheOrder(t, c, st.IndexStore(), chunks...)
+	})
+
+	t.Run("move from reserve new chunks", func(t *testing.T) {
+		chunks := chunktest.GenerateTestRandomChunks(10)
+		chunksToMove := make([]swarm.Address, 0, 10)
+
+		// add the chunks to chunkstore. This simulates the reserve already populating
+		// the chunkstore with chunks.
+		for _, ch := range chunks {
+			err := st.ChunkStore().Put(context.Background(), ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+			chunksToMove = append(chunksToMove, ch.Address())
+		}
+
+		// move new chunks
+		err = c.MoveFromReserve(context.Background(), st, chunksToMove...)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[9].Address(), 10)
+		verifyCacheOrder(t, c, st.IndexStore(), chunks...)
+	})
+
+	t.Run("move from reserve over capacity", func(t *testing.T) {
+		chunks := chunktest.GenerateTestRandomChunks(15)
+		chunksToMove := make([]swarm.Address, 0, 15)
+
+		// add the chunks to chunkstore. This simulates the reserve already populating
+		// the chunkstore with chunks.
+		for _, ch := range chunks {
+			err := st.ChunkStore().Put(context.Background(), ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+			chunksToMove = append(chunksToMove, ch.Address())
+		}
+
+		// move new chunks
+		err = c.MoveFromReserve(context.Background(), st, chunksToMove...)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		verifyCacheState(t, st.IndexStore(), c, chunks[5].Address(), chunks[14].Address(), 10)
+		verifyCacheOrder(t, c, st.IndexStore(), chunks[5:15]...)
+	})
+}
+
 func verifyCacheState(
 	t *testing.T,
 	store storage.Store,
