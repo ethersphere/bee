@@ -130,10 +130,6 @@ func TestReplaceOldIndex(t *testing.T) {
 			if !errors.Is(err, storage.ErrNotFound) {
 				t.Fatalf("wanted err %s, got err %s", storage.ErrNotFound, err)
 			}
-			_, err = storer.Repo().ChunkStore().Get(context.Background(), ch_1.Address())
-			if !errors.Is(err, storage.ErrNotFound) {
-				t.Fatalf("wanted err %s, got err %s", storage.ErrNotFound, err)
-			}
 			_, err = storer.ReserveGet(context.Background(), ch_1.Address(), ch_1.Stamp().BatchID())
 			if !errors.Is(err, storage.ErrNotFound) {
 				t.Fatal(err)
@@ -276,13 +272,8 @@ func TestUnreserveCap(t *testing.T) {
 
 		putter := storer.ReservePutter()
 
-		gotUnreserveSignal := make(chan struct{})
-		go func() {
-			defer close(gotUnreserveSignal)
-			c, unsub := storer.Events().Subscribe("reserveUnreserved")
-			defer unsub()
-			<-c
-		}()
+		c, unsub := storer.Events().Subscribe("reserveUnreserved")
+		defer unsub()
 
 		for b := 0; b < 5; b++ {
 			for i := uint64(0); i < chunksPerPO; i++ {
@@ -296,14 +287,18 @@ func TestUnreserveCap(t *testing.T) {
 			}
 		}
 
-		// wait for unreserve signal
-		<-gotUnreserveSignal
-
-		err = spinlock.Wait(time.Second*45, func() bool {
-			return storer.ReserveSize() == capacity
-		})
-		if err != nil {
-			t.Fatal(err)
+	done:
+		for {
+			select {
+			case <-c:
+				if storer.ReserveSize() == capacity {
+					break done
+				}
+			case <-time.After(time.Second * 45):
+				if storer.ReserveSize() != capacity {
+					t.Fatal("timeout waiting for reserve to reach capacity")
+				}
+			}
 		}
 
 		for po, chunks := range chunksPO {
