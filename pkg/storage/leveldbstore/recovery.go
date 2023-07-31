@@ -41,7 +41,6 @@ func (s *TxStore) Recover() error {
 		Factory:      func() storage.Item { return new(pendingTx) },
 		ItemProperty: storage.QueryItem,
 	}, func(r storage.Result) (bool, error) {
-		fmt.Println("levelDB recovery txn", r.ID)
 		if err := r.Entry.(*pendingTx).val.Replay(batch); err != nil {
 			return true, fmt.Errorf("unable to replay batch for %s: %w", r.ID, err)
 		}
@@ -51,7 +50,6 @@ func (s *TxStore) Recover() error {
 	if err != nil {
 		return fmt.Errorf("leveldbstore: recovery: iteration failed: %w", err)
 	}
-	fmt.Println("levelDB recovery batch", batch.Len())
 
 	if err := s.BatchedStore.(*Store).db.Write(batch, &opt.WriteOptions{Sync: true}); err != nil {
 		return fmt.Errorf("leveldbstore: recovery: unable to write batch: %w", err)
