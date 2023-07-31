@@ -213,6 +213,15 @@ func (db *DB) evictionWorker(ctx context.Context) {
 			// it uses the same one as reserve eviction.
 			defer db.events.Trigger(reserveUnreserved)
 
+			// this trigger ensures that if the expiry triggers were swallowed
+			// after we checked for expired batches, we re-check the batches
+			// again. It should not be fired if there are no more batches to evict.
+			defer func() {
+				_ = time.AfterFunc(1*time.Second, func() {
+					db.events.Trigger(batchExpiry)
+				})
+			}()
+
 			db.metrics.ExpiryRunsCount.Inc()
 
 			for _, batchID := range batchesToEvict {
