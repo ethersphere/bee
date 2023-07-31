@@ -520,6 +520,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 				return nil, err
 			}
 		}
+
 		repo, dbCloser, err = initDiskRepository(ctx, dirPath, opts)
 		if err != nil {
 			return nil, err

@@ -471,94 +471,79 @@ func (c *Cache) MoveFromReserve(
 		return fmt.Errorf("failed creating batch: %w", err)
 	}
 
+	entriesToAdd := make([]*cacheEntry, 0, len(addrs))
+	for _, addr := range addrs {
+		entry := &cacheEntry{Address: addr}
+		if has, err := store.IndexStore().Has(entry); err == nil && has {
+			continue
+		}
+		if len(entriesToAdd) > 0 {
+			entriesToAdd[len(entriesToAdd)-1].Next = addr.Clone()
+			entry.Prev = entriesToAdd[len(entriesToAdd)-1].Address.Clone()
+		}
+		entriesToAdd = append(entriesToAdd, entry)
+	}
+
+	if len(entriesToAdd) == 0 {
+		return nil
+	}
+
 	state := &cacheState{}
 	err = store.IndexStore().Get(state)
 	if err != nil {
 		return fmt.Errorf("failed reading cache state: %w", err)
 	}
 
-	newHead := &cacheEntry{Address: state.Head}
-	newTail := &cacheEntry{Address: state.Tail}
-
-	// if newTail is not found, this is a new cache and we need to set the
-	// tail and head
-	err = store.IndexStore().Get(newTail)
-	if err != nil && !errors.Is(err, storage.ErrNotFound) {
-		return fmt.Errorf("failed getting tail entry %s: %w", newTail, err)
+	if len(entriesToAdd) > int(c.capacity) {
+		entriesToAdd = entriesToAdd[len(entriesToAdd)-int(c.capacity):]
 	}
 
-	// this is a corner case where cache capacity is less than the no of items
-	// being added. In this case we need to only add the last c.capacity items
-	// from the addrs slice. This would generally happen in tests.
-	if len(addrs) > int(c.capacity) {
-		addrs = addrs[len(addrs)-int(c.capacity):]
-	}
-
-	var count uint64
-	for _, addr := range addrs {
-		newEntry := &cacheEntry{Address: addr}
-		if has, err := store.IndexStore().Has(newEntry); err == nil && has {
-			continue
-		}
-
-		if !newTail.Address.IsZero() {
-			newTail.Next = addr.Clone()
-			newEntry.Prev = newTail.Address.Clone()
-			err = batch.Put(newTail)
-			if err != nil {
-				return fmt.Errorf("failed updating new tail entry %s: %w", newTail, err)
+	entriesToRemove := make([]*cacheEntry, 0, len(entriesToAdd))
+	if state.Count == 0 {
+		// this means that the cache is empty and we need to set the head and
+		// tail.
+		state.Head = entriesToAdd[0].Address.Clone()
+		state.Tail = entriesToAdd[len(entriesToAdd)-1].Address.Clone()
+	} else {
+		state.Tail = entriesToAdd[len(entriesToAdd)-1].Address.Clone()
+		if state.Count+uint64(len(entriesToAdd)) > c.capacity {
+			// this means that we need to remove some entries from the cache. The cache
+			// is kept at capacity, so we need to remove the first entries that were
+			// added to the cache.
+			removeItemCount := int(state.Count + uint64(len(entriesToAdd)) - c.capacity)
+			for i := 0; i < removeItemCount; i++ {
+				entry := &cacheEntry{Address: state.Head}
+				err = store.IndexStore().Get(entry)
+				if err != nil {
+					return fmt.Errorf("failed getting entry %s: %w", entry, err)
+				}
+				entriesToRemove = append(entriesToRemove, entry)
+				state.Head = entry.Next.Clone()
 			}
-		} else {
-			// if we are here, it means its a fresh cache and we need to set
-			// the head and tail
-			newHead = newEntry
-		}
-		newTail = newEntry
-		count++
-	}
-
-	if count == 0 {
-		return nil
-	}
-
-	// last entry after the loop is the new tail
-	err = batch.Put(newTail)
-	if err != nil {
-		return fmt.Errorf("failed updating new tail entry %s: %w", newTail, err)
-	}
-
-	var itemsToRemove uint64
-	if state.Count+count > c.capacity {
-		itemsToRemove = state.Count + count - c.capacity
-	}
-
-	if itemsToRemove > 0 {
-		for i := 0; i < int(itemsToRemove); i++ {
-			err = store.IndexStore().Get(newHead)
-			if err != nil {
-				return fmt.Errorf("failed getting head entry %s: %w", newHead, err)
+			// if we removed all the entries from the cache, we need to set the head
+			// to the first item that we are adding. This is because the old tail Next
+			// is pointing to either nil or some incorrect address.
+			if removeItemCount == int(state.Count) {
+				state.Head = entriesToAdd[0].Address.Clone()
 			}
-			err = batch.Delete(newHead)
-			if err != nil {
-				return fmt.Errorf("failed deleting head entry %s: %w", newHead, err)
-			}
-			err = store.ChunkStore().Delete(ctx, newHead.Address)
-			if err != nil {
-				return fmt.Errorf("failed deleting chunk %s: %w", newHead.Address, err)
-			}
-			newHead = &cacheEntry{Address: newHead.Next}
-		}
-		// this is again a corner case where the cache capacity no. of items
-		// are being added, so the newHead is the first item in the slice.
-		if newHead.Address.IsZero() {
-			newHead = &cacheEntry{Address: addrs[0]}
 		}
 	}
 
-	state.Tail = newTail.Address.Clone()
-	state.Head = newHead.Address.Clone()
-	state.Count += (count - itemsToRemove)
+	for _, entry := range entriesToAdd {
+		err = batch.Put(entry)
+		if err != nil {
+			return fmt.Errorf("failed adding entry %s: %w", entry, err)
+		}
+	}
 
+	for _, entry := range entriesToRemove {
+		err = batch.Delete(entry)
+		if err != nil {
+			return fmt.Errorf("failed deleting entry %s: %w", entry, err)
+		}
+	}
+
+	state.Count += uint64(len(entriesToAdd)) - uint64(len(entriesToRemove))
 	err = batch.Put(state)
 	if err != nil {
 		return fmt.Errorf("failed updating state %s: %w", state, err)
@@ -566,6 +551,13 @@ func (c *Cache) MoveFromReserve(
 
 	if err := batch.Commit(); err != nil {
 		return fmt.Errorf("batch commit: %w", err)
+	}
+
+	for _, entry := range entriesToRemove {
+		err = store.ChunkStore().Delete(ctx, entry.Address)
+		if err != nil {
+			return fmt.Errorf("failed deleting chunk %s: %w", entry.Address, err)
+		}
 	}
 
 	c.mtx.Lock()
