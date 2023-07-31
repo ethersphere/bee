@@ -32,8 +32,8 @@ const (
 	cleanupDur = time.Hour * 6
 )
 
-func reserveUpdateBatchLockKey(batchID []byte, bin uint8) string {
-	return fmt.Sprintf("%s%s%d", reserveUpdateLockKey, string(batchID), bin)
+func reserveUpdateBatchLockKey(batchID []byte) string {
+	return fmt.Sprintf("%s%s", reserveUpdateLockKey, string(batchID))
 }
 
 var errMaxRadius = errors.New("max radius reached")
@@ -352,10 +352,7 @@ func (db *DB) ReservePutter() storage.Putter {
 				var (
 					newIndex bool
 				)
-				lockKey := reserveUpdateBatchLockKey(
-					chunk.Stamp().BatchID(),
-					db.po(chunk.Address()),
-				)
+				lockKey := reserveUpdateBatchLockKey(chunk.Stamp().BatchID())
 				db.lock.Lock(lockKey)
 				err = db.Execute(ctx, func(tx internal.Storage) error {
 					newIndex, err = db.reserve.Put(ctx, tx, chunk)
@@ -464,41 +461,20 @@ func (db *DB) evictBatch(
 		} else {
 			db.metrics.EvictedChunkCount.Add(float64(evicted))
 		}
-	}()
-
-	for b := uint8(0); b < upToBin; b++ {
-
-		select {
-		case <-ctx.Done():
-			return evicted, ctx.Err()
-		default:
-		}
-
-		binEvicted, err := func() (int, error) {
-			lockKey := reserveUpdateBatchLockKey(batchID, b)
-			db.lock.Lock(lockKey)
-			defer db.lock.Unlock(lockKey)
-
-			return db.reserve.EvictBatchBin(ctx, db, b, batchID)
-		}()
-		evicted += binEvicted
-
-		// if there was an error, we still need to update the chunks that have already
-		// been evicted from the reserve
 		db.logger.Debug(
 			"reserve eviction",
-			"bin", b,
-			"evicted", binEvicted,
+			"uptoBin", upToBin,
+			"evicted", evicted,
 			"batchID", hex.EncodeToString(batchID),
 			"new_size", db.reserve.Size(),
 		)
+	}()
 
-		if err != nil {
-			return evicted, err
-		}
-	}
+	lockKey := reserveUpdateBatchLockKey(batchID)
+	db.lock.Lock(lockKey)
+	defer db.lock.Unlock(lockKey)
 
-	return evicted, nil
+	return db.reserve.EvictBatchBin(ctx, db, upToBin, batchID)
 }
 
 func (db *DB) reserveCleanup(ctx context.Context) error {

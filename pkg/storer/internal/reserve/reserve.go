@@ -290,7 +290,7 @@ func (r *Reserve) IterateChunksItems(store internal.Storage, startBin uint8, cb 
 	return err
 }
 
-// EvictBatchBin evicts all chunks from the bin provided.
+// EvictBatchBin evicts all chunks from bins upto the bin provided.
 func (r *Reserve) EvictBatchBin(
 	ctx context.Context,
 	txExecutor internal.TxExecutor,
@@ -303,9 +303,12 @@ func (r *Reserve) EvictBatchBin(
 	err := txExecutor.Execute(ctx, func(store internal.Storage) error {
 		return store.IndexStore().Iterate(storage.Query{
 			Factory: func() storage.Item { return &batchRadiusItem{} },
-			Prefix:  batchBinToString(bin, batchID),
+			Prefix:  string(batchID),
 		}, func(res storage.Result) (bool, error) {
 			batchRadius := res.Entry.(*batchRadiusItem)
+			if batchRadius.Bin >= bin {
+				return true, nil
+			}
 			evicted = append(evicted, batchRadius)
 			return false, nil
 		})
@@ -315,6 +318,7 @@ func (r *Reserve) EvictBatchBin(
 	}
 
 	batchCnt := 1000
+	evictionCompleted := 0
 
 	for i := 0; i < len(evicted); i += batchCnt {
 		end := i + batchCnt
@@ -343,11 +347,12 @@ func (r *Reserve) EvictBatchBin(
 			return batch.Commit()
 		})
 		if err != nil {
-			return 0, err
+			return evictionCompleted, err
 		}
+		evictionCompleted += end - i
 	}
 
-	return len(evicted), nil
+	return evictionCompleted, nil
 }
 
 func (r *Reserve) DeleteChunk(
