@@ -428,7 +428,7 @@ func (e *epochMigrator) migratePinning(ctx context.Context) error {
 
 						mu.Lock()
 						pStorage.location = l
-						err = pinningPutter.Put(egCtx, pStorage, ch)
+						err = pinningPutter.Put(egCtx, pStorage, pStorage.IndexStore(), ch)
 						if err != nil {
 							mu.Unlock()
 							return err
@@ -443,7 +443,7 @@ func (e *epochMigrator) migratePinning(ctx context.Context) error {
 							return err
 						}
 
-						if err := pinningPutter.Close(pStorage, addr); err != nil {
+						if err := pinningPutter.Close(pStorage, pStorage.IndexStore(), addr); err != nil {
 							return err
 						}
 						return nil

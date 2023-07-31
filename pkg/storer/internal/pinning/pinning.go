@@ -217,7 +217,7 @@ type collectionPutter struct {
 	closed     bool
 }
 
-func (c *collectionPutter) Put(ctx context.Context, st internal.Storage, ch swarm.Chunk) error {
+func (c *collectionPutter) Put(ctx context.Context, st internal.Storage, writer storage.Writer, ch swarm.Chunk) error {
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
@@ -243,7 +243,7 @@ func (c *collectionPutter) Put(ctx context.Context, st internal.Storage, ch swar
 		return nil
 	}
 
-	err = st.IndexStore().Put(collectionChunk)
+	err = writer.Put(collectionChunk)
 	if err != nil {
 		return fmt.Errorf("pin store: failed putting collection chunk: %w", err)
 	}
@@ -256,7 +256,7 @@ func (c *collectionPutter) Put(ctx context.Context, st internal.Storage, ch swar
 	return nil
 }
 
-func (c *collectionPutter) Close(st internal.Storage, root swarm.Address) error {
+func (c *collectionPutter) Close(st internal.Storage, writer storage.Writer, root swarm.Address) error {
 	if root.IsZero() {
 		return errCollectionRootAddressIsZero
 	}
@@ -266,12 +266,12 @@ func (c *collectionPutter) Close(st internal.Storage, root swarm.Address) error 
 
 	// Save the root pin reference.
 	c.collection.Addr = root
-	err := st.IndexStore().Put(c.collection)
+	err := writer.Put(c.collection)
 	if err != nil {
 		return fmt.Errorf("pin store: failed updating collection: %w", err)
 	}
 
-	err = st.IndexStore().Delete(&dirtyCollection{UUID: c.collection.UUID})
+	err = writer.Delete(&dirtyCollection{UUID: c.collection.UUID})
 	if err != nil {
 		return fmt.Errorf("pin store: failed deleting dirty collection: %w", err)
 	}

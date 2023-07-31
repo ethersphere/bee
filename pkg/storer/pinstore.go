@@ -37,7 +37,7 @@ func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
 			storage.PutterFunc(
 				func(ctx context.Context, chunk swarm.Chunk) error {
 					return db.Execute(ctx, func(s internal.Storage) error {
-						return pinningPutter.Put(ctx, s, chunk)
+						return pinningPutter.Put(ctx, s, s.IndexStore(), chunk)
 					})
 				},
 			),
@@ -46,7 +46,7 @@ func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
 		},
 		done: func(address swarm.Address) error {
 			return db.Execute(ctx, func(s internal.Storage) error {
-				return pinningPutter.Close(s, address)
+				return pinningPutter.Close(s, s.IndexStore(), address)
 			})
 		},
 		cleanup: func() error {
