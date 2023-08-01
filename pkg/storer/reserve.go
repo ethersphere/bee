@@ -154,11 +154,10 @@ func (db *DB) evictionWorker(ctx context.Context) {
 	defer overCapUnsub()
 
 	var (
-		unreserveSem    = semaphore.NewWeighted(1)
-		unreserveCtx    context.Context
-		cancelUnreserve context.CancelFunc
-		expirySem       = semaphore.NewWeighted(1)
-		expiryWorkers   = semaphore.NewWeighted(4)
+		unreserveSem                  = semaphore.NewWeighted(1)
+		unreserveCtx, cancelUnreserve = context.WithCancel(ctx)
+		expirySem                     = semaphore.NewWeighted(1)
+		expiryWorkers                 = semaphore.NewWeighted(4)
 	)
 
 	stopped := make(chan struct{})
@@ -180,7 +179,13 @@ func (db *DB) evictionWorker(ctx context.Context) {
 		}
 
 		go func() {
-			defer expirySem.Release(1)
+			reTrigger := false
+			defer func() {
+				expirySem.Release(1)
+				if reTrigger {
+					db.events.Trigger(batchExpiry)
+				}
+			}()
 
 			batchesToEvict, err := db.getExpiredBatches()
 			if err != nil {
@@ -191,6 +196,10 @@ func (db *DB) evictionWorker(ctx context.Context) {
 			if len(batchesToEvict) == 0 {
 				return
 			}
+
+			// After this point we start swallowing signals, so ensure we do 1 more
+			// trigger at the end.
+			reTrigger = true
 
 			// we ensure unreserve is not running and if it is we cancel it and wait
 			// for it to finish, this is to prevent unreserve and expirations running
@@ -233,6 +242,7 @@ func (db *DB) evictionWorker(ctx context.Context) {
 				}()
 			}
 
+			// wait for all workers to finish
 			if err := expiryWorkers.Acquire(ctx, 4); err != nil {
 				db.logger.Error(err, "wait for expiry workers")
 				return
@@ -263,7 +273,14 @@ func (db *DB) evictionWorker(ctx context.Context) {
 				continue
 			}
 			go func() {
-				defer unreserveSem.Release(1)
+				defer func() {
+					unreserveSem.Release(1)
+					if !db.reserve.IsWithinCapacity() {
+						// if we are still over capacity trigger again as we
+						// might swallow the signal
+						db.events.Trigger(reserveOverCapacity)
+					}
+				}()
 
 				unreserveCtx, cancelUnreserve = context.WithCancel(ctx)
 				err := db.unreserve(unreserveCtx)

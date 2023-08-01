@@ -482,6 +482,30 @@ func TestMoveFromReserve(t *testing.T) {
 
 		verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[9].Address(), 10)
 		verifyCacheOrder(t, c, st.IndexStore(), chunks...)
+
+		chunks2 := chunktest.GenerateTestRandomChunks(5)
+		chunksToMove2 := make([]swarm.Address, 0, 5)
+
+		// add the chunks to chunkstore. This simulates the reserve already populating
+		// the chunkstore with chunks.
+		for _, ch := range chunks2 {
+			err := st.ChunkStore().Put(context.Background(), ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+			chunksToMove2 = append(chunksToMove2, ch.Address())
+		}
+
+		// move new chunks
+		err = c.MoveFromReserve(context.Background(), st, chunksToMove2...)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		cacheChunks := append(chunks[5:], chunks2...)
+
+		verifyCacheState(t, st.IndexStore(), c, cacheChunks[0].Address(), cacheChunks[9].Address(), 10)
+		verifyCacheOrder(t, c, st.IndexStore(), cacheChunks...)
 	})
 
 	t.Run("move from reserve over capacity", func(t *testing.T) {
