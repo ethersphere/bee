@@ -505,6 +505,18 @@ func (c *Cache) MoveFromReserve(
 		state.Head = entriesToAdd[0].Address.Clone()
 		state.Tail = entriesToAdd[len(entriesToAdd)-1].Address.Clone()
 	} else {
+		// update the old tail to point to the new entry
+		tailEntry := &cacheEntry{Address: state.Tail}
+		err = store.IndexStore().Get(tailEntry)
+		if err != nil {
+			return fmt.Errorf("failed getting tail entry %s: %w", tailEntry, err)
+		}
+		tailEntry.Next = entriesToAdd[0].Address.Clone()
+		entriesToAdd[0].Prev = tailEntry.Address.Clone()
+		err = batch.Put(tailEntry)
+		if err != nil {
+			return fmt.Errorf("failed updating tail entry %s: %w", tailEntry, err)
+		}
 		state.Tail = entriesToAdd[len(entriesToAdd)-1].Address.Clone()
 		if state.Count+uint64(len(entriesToAdd)) > c.capacity {
 			// this means that we need to remove some entries from the cache. The cache
