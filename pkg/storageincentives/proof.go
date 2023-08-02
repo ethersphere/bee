@@ -22,9 +22,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// This file implements logic described here:
-// https://hackmd.io/C7EvRbghQpWr9UXiGOFgLQ?view
-
 // makeInclusionProofs creates transaction data for claim method.
 // In the document this logic, result data, is also called Proof of entitlement (POE).
 func makeInclusionProofs(
