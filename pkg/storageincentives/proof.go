@@ -17,7 +17,6 @@ import (
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/pkg/storageincentives/types"
-	. "github.com/ethersphere/bee/pkg/storageincentives/types"
 	"github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -53,7 +52,7 @@ func makeInclusionProofs(
 	anchor2Big := new(big.Int).SetBytes(anchor2)
 	segmentIndex := int(new(big.Int).Mod(anchor2Big, big.NewInt(128)).Int64())
 
-	wcp := Trio[int]{} // wcp := witness chunk position
+	wcp := types.Trio[int]{} // wcp := witness chunk position
 	wcp.A = int(new(big.Int).Mod(anchor2Big, big.NewInt(storer.SampleSize-1)).Int64())
 	wcp.B = int(new(big.Int).Mod(anchor2Big, big.NewInt(storer.SampleSize-2)).Int64())
 	if wcp.B >= wcp.A {
@@ -61,7 +60,7 @@ func makeInclusionProofs(
 	}
 	wcp.C = storer.SampleSize - 1
 
-	wc := Trio[storer.SampleItem]{} // wc = witness chunk
+	wc := types.Trio[storer.SampleItem]{} // wc = witness chunk
 	wc.A = reserveSampleItems[wcp.A]
 	wc.B = reserveSampleItems[wcp.B]
 	wc.C = reserveSampleItems[wcp.C]
@@ -114,7 +113,7 @@ func makeProofTrio(
 	segmentIndex types.Trio[int],
 ) (types.Trio[bmt.Proof], error) {
 	var err error
-	proof := Trio[bmt.Proof]{}
+	proof := types.Trio[bmt.Proof]{}
 
 	proof.A, err = makeProof(h, data.A, segmentIndex.A)
 	if err != nil {

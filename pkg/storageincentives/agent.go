@@ -368,7 +368,7 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 
 	proofs, err := makeInclusionProofs(sampleData.ReserveSampleItems, sampleData.Anchor1, sampleData.Anchor2)
 	if err != nil {
-		return fmt.Errorf("making inclusion proofs: %w:", err)
+		return fmt.Errorf("making inclusion proofs: %w", err)
 	}
 
 	txHash, err := a.contract.Claim(ctx, proofs)
@@ -585,12 +585,12 @@ func (a *Agent) SampleWithProofs(
 
 	hash, err := sampleHash(rSample.Items)
 	if err != nil {
-		return SampleWithProofs{}, fmt.Errorf("sample hash: %w:", err)
+		return SampleWithProofs{}, fmt.Errorf("sample hash: %w", err)
 	}
 
 	proofs, err := makeInclusionProofs(rSample.Items, anchor1, anchor2)
 	if err != nil {
-		return SampleWithProofs{}, fmt.Errorf("make proofs: %w:", err)
+		return SampleWithProofs{}, fmt.Errorf("make proofs: %w", err)
 	}
 
 	return SampleWithProofs{
