@@ -395,7 +395,8 @@ func performEpochMigration(ctx context.Context, basePath string, opts *Options) 
 
 	logger := opts.Logger.WithName("epochmigration").Register()
 
-	var rs *reserve.Reserve
+	var rs reservePutter
+
 	if opts.ReserveCapacity > 0 {
 		rs, err = reserve.New(
 			opts.Address,

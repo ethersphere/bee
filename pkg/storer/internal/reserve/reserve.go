@@ -466,7 +466,7 @@ func (r *Reserve) EvictionTarget() int {
 	if r.IsWithinCapacity() {
 		return 0
 	}
-	return int(r.size.Load()) - r.capacity
+	return int(r.size.Load()) - int(0.9*float64(r.capacity))
 }
 
 func (r *Reserve) SetRadius(store storage.Store, rad uint8) error {
