@@ -341,10 +341,19 @@ func (r *Reserve) EvictBatchBin(
 				}
 				moveToCache = append(moveToCache, item.Address)
 			}
-			if err := r.cacheCb(ctx, store, moveToCache...); err != nil {
+			if err := batch.Commit(); err != nil {
 				return err
 			}
-			return batch.Commit()
+			if err := r.cacheCb(ctx, store, moveToCache...); err != nil {
+				r.logger.Error(err, "evict and move to cache")
+				for _, rItem := range moveToCache {
+					err = store.ChunkStore().Delete(ctx, rItem)
+					if err != nil {
+						return err
+					}
+				}
+			}
+			return nil
 		})
 		if err != nil {
 			return evictionCompleted, err
@@ -375,7 +384,11 @@ func (r *Reserve) DeleteChunk(
 	if err != nil {
 		return err
 	}
-	return r.cacheCb(ctx, store, item.Address)
+	if err := r.cacheCb(ctx, store, item.Address); err != nil {
+		r.logger.Error(err, "delete and move to cache")
+		return store.ChunkStore().Delete(ctx, item.Address)
+	}
+	return nil
 }
 
 // CleanupBinIndex removes the bin index entry for the chunk. This is called mainly
@@ -466,7 +479,7 @@ func (r *Reserve) EvictionTarget() int {
 	if r.IsWithinCapacity() {
 		return 0
 	}
-	return int(r.size.Load()) - int(0.9*float64(r.capacity))
+	return int(r.size.Load()) - r.capacity
 }
 
 func (r *Reserve) SetRadius(store storage.Store, rad uint8) error {
