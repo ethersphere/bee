@@ -72,12 +72,20 @@ func (db *DB) startReserveWorkers(
 
 	// possibly a fresh node, acquire initial radius externally
 	if initialRadius == 0 {
-		r, err := radius()
-		if err != nil {
-			db.logger.Error(err, "reserve worker initial radius")
-		} else {
-			initialRadius = r
-		}
+
+		// August 4, 2023 18:47 CET, storage radius is 9 on the mainnet.
+		// Because the initial radius is acquired from the network, the radius needs to be boostrapped at
+		// the time of the release. The bootstrap needs to be removed after the release.
+		initialRadius = 9
+
+		/*
+			r, err := radius()
+			if err != nil {
+				db.logger.Error(err, "reserve worker initial radius")
+			} else {
+				initialRadius = r
+			}
+		*/
 	}
 
 	if err := db.reserve.SetRadius(db.repo.IndexStore(), initialRadius); err != nil {
