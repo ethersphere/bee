@@ -14,6 +14,7 @@ import (
 	"fmt"
 	"io"
 	stdlog "log"
+	"math"
 	"math/big"
 	"net"
 	"net/http"
@@ -981,6 +982,22 @@ func NewBee(
 		return uint8(radius.Load()), nil
 	}
 
+	maxReserveRadius := func() (uint8, error) {
+
+		commitment, err := batchStore.Commitment()
+		if err != nil {
+			return 0, fmt.Errorf("commitment: %w", err)
+		}
+
+		if commitment <= ReserveCapacity {
+			return 0, nil
+		} else {
+			// totalCommitment/node_capacity = 2^R
+			// log2(totalCommitment/node_capacity) = R
+			return uint8(math.Ceil(math.Log2(float64(commitment) / float64(ReserveCapacity)))), nil
+		}
+	}
+
 	pusherService := pusher.New(networkID, localStore, networkRadiusFunc, pushSyncProtocol, validStamp, logger, tracer, warmupTime, pusher.DefaultRetryCount)
 	b.pusherCloser = pusherService
 
@@ -1035,7 +1052,7 @@ func NewBee(
 		pullerService = puller.New(stateStore, kad, localStore, pullSyncProtocol, p2ps, logger, puller.Options{})
 		b.pullerCloser = pullerService
 
-		localStore.StartReserveWorker(ctx, pullerService, networkRadiusFunc)
+		localStore.StartReserveWorker(ctx, pullerService, maxReserveRadius)
 		nodeStatus.SetSync(pullerService)
 
 		if o.EnableStorageIncentives {

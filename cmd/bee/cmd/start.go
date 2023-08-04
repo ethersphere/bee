@@ -472,6 +472,14 @@ func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config
 			return nil, fmt.Errorf("swarm key: %w", err)
 		}
 		signer = crypto.NewDefaultSigner(swarmPrivateKey)
+
+		private, err := crypto.EDGSecp256_K1.Encode(swarmPrivateKey)
+		if err != nil {
+			return nil, fmt.Errorf("encode private: %w", err)
+		}
+
+		logger.Info("swarm private key", "private_key", hex.EncodeToString(private))
+
 		publicKey = &swarmPrivateKey.PublicKey
 	}
 
