@@ -586,6 +586,7 @@ func (db *DB) unreserve(ctx context.Context) (err error) {
 	if target == 0 {
 		return nil
 	}
+	db.logger.Info("unreserve", "target", target, "radius", radius)
 
 	totalEvicted := 0
 	for radius < swarm.MaxBins {
