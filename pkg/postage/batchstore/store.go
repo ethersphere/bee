@@ -224,22 +224,6 @@ func (s *store) Commitment() (uint64, error) {
 	return uint64(totalCommitment), err
 }
 
-func (s *store) MaxRadius(capacity uint64) (uint8, error) {
-
-	commitment, err := s.Commitment()
-	if err != nil {
-		return 0, fmt.Errorf("commitment: %w", err)
-	}
-
-	if commitment <= capacity {
-		return 0, nil
-	} else {
-		// totalCommitment/node_capacity = 2^R
-		// log2(totalCommitment/node_capacity) = R
-		return uint8(math.Ceil(math.Log2(float64(commitment) / float64(capacity)))), nil
-	}
-}
-
 // Reset is implementation of postage.Storer interface Reset method.
 func (s *store) Reset() error {
 	const prefix = "batchstore_"
