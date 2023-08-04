@@ -17,6 +17,10 @@ var (
 	EpochMigration  = epochMigration
 )
 
+type (
+	ReservePutter = reservePutter
+)
+
 func (db *DB) Reserve() *reserve.Reserve {
 	return db.reserve
 }
