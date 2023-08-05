@@ -5,28 +5,56 @@
 package cache
 
 import (
+	"fmt"
+
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 type (
 	CacheEntry = cacheEntry
-	CacheState = cacheState
 )
 
 var (
-	ErrUnmarshalCacheStateInvalidSize  = errUnmarshalCacheStateInvalidSize
-	ErrMarshalCacheEntryInvalidAddress = errMarshalCacheEntryInvalidAddress
-	ErrUnmarshalCacheEntryInvalidSize  = errUnmarshalCacheEntryInvalidSize
+	ErrMarshalCacheEntryInvalidAddress   = errMarshalCacheEntryInvalidAddress
+	ErrMarshalCacheEntryInvalidTimestamp = errMarshalCacheEntryInvalidTimestamp
+	ErrUnmarshalCacheEntryInvalidSize    = errUnmarshalCacheEntryInvalidSize
 )
 
+type CacheState struct {
+	Head swarm.Address
+	Tail swarm.Address
+	Size uint64
+}
+
 func (c *Cache) State(store storage.Store) CacheState {
-	state := &CacheState{}
-	err := store.Get(state)
+	state := CacheState{}
+	state.Size = c.Size()
+	runner := swarm.ZeroAddress
+
+	err := store.Iterate(
+		storage.Query{
+			Factory:      func() storage.Item { return &cacheOrderIndex{} },
+			ItemProperty: storage.QueryItemID,
+		},
+		func(res storage.Result) (bool, error) {
+			_, addr, err := idFromKey(res.ID)
+			if err != nil {
+				return false, err
+			}
+
+			if state.Head.Equal(swarm.ZeroAddress) {
+				state.Head = addr
+			}
+			runner = addr
+			return false, nil
+		},
+	)
 	if err != nil {
-		return CacheState{}
+		panic(err)
 	}
-	return *state
+	state.Tail = runner
+	return state
 }
 
 func (c *Cache) IterateOldToNew(
@@ -34,22 +62,32 @@ func (c *Cache) IterateOldToNew(
 	start, end swarm.Address,
 	iterateFn func(ch swarm.Address) (bool, error),
 ) error {
+	runner := swarm.ZeroAddress
+	err := st.Iterate(
+		storage.Query{
+			Factory:      func() storage.Item { return &cacheOrderIndex{} },
+			ItemProperty: storage.QueryItemID,
+		},
+		func(res storage.Result) (bool, error) {
+			_, addr, err := idFromKey(res.ID)
+			if err != nil {
+				return false, err
+			}
 
-	currentAddr := start
-	for !currentAddr.Equal(end) {
-		entry := &cacheEntry{Address: currentAddr}
-		err := st.Get(entry)
-		if err != nil {
-			return err
-		}
-		stop, err := iterateFn(entry.Address)
-		if err != nil {
-			return err
-		}
-		if stop {
-			return nil
-		}
-		currentAddr = entry.Next
+			if runner.Equal(swarm.ZeroAddress) {
+				if !addr.Equal(start) {
+					return false, fmt.Errorf("invalid cache order index key %s", res.ID)
+				}
+			}
+			runner = addr
+			return iterateFn(runner)
+		},
+	)
+	if err != nil {
+		return err
+	}
+	if !runner.Equal(end) {
+		return fmt.Errorf("invalid cache order index key %s", runner.String())
 	}
 
 	return nil
