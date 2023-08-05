@@ -41,7 +41,7 @@ func testCacheStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 		t.Run("rollback", func(t *testing.T) {
 			want := errors.New("dummy error")
 			lstore.SetRepoStorePutHook(func(item storage.Item) error {
-				if item.Namespace() == "cacheState" {
+				if item.Namespace() == "cacheOrderIndex" {
 					return want
 				}
 				return nil
@@ -77,7 +77,7 @@ func testCacheStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 		t.Run("rollback", func(t *testing.T) {
 			want := errors.New("dummy error")
 			lstore.SetRepoStorePutHook(func(item storage.Item) error {
-				if item.Namespace() == "cacheState" {
+				if item.Namespace() == "cacheOrderIndex" {
 					return want
 				}
 				return nil

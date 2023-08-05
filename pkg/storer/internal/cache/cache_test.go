@@ -9,7 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
+	"sync"
 	"testing"
+	"time"
 
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/storagetest"
@@ -136,6 +139,28 @@ func newTestStorage(t *testing.T) *testStorage {
 	})
 
 	return &testStorage{Storage: storg}
+}
+
+type timeProvider struct {
+	t   int64
+	mtx sync.Mutex
+}
+
+func (t *timeProvider) Now() func() time.Time {
+	return func() time.Time {
+		t.mtx.Lock()
+		defer t.mtx.Unlock()
+		t.t++
+		return time.Unix(0, t.t)
+	}
+}
+
+func TestMain(m *testing.M) {
+	p := &timeProvider{t: time.Now().UnixNano()}
+	done := cache.ReplaceTimeNow(p.Now())
+	code := m.Run()
+	done()
+	os.Exit(code)
 }
 
 func TestCache(t *testing.T) {

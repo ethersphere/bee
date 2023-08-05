@@ -6,6 +6,7 @@ package cache
 
 import (
 	"fmt"
+	"time"
 
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -20,6 +21,13 @@ var (
 	ErrMarshalCacheEntryInvalidTimestamp = errMarshalCacheEntryInvalidTimestamp
 	ErrUnmarshalCacheEntryInvalidSize    = errUnmarshalCacheEntryInvalidSize
 )
+
+func ReplaceTimeNow(fn func() time.Time) func() {
+	now = fn
+	return func() {
+		now = time.Now
+	}
+}
 
 type CacheState struct {
 	Head swarm.Address

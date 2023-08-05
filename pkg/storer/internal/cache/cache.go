@@ -152,27 +152,27 @@ type Cache struct {
 // New creates a new Cache component with the specified capacity. The store is used
 // here only to read the initial state of the cache before shutdown if there was
 // any.
-func New(ctx context.Context, store internal.Storage, capacity int) (*Cache, error) {
+func New(ctx context.Context, store internal.Storage, capacity uint64) (*Cache, error) {
 	count, err := store.IndexStore().Count(&cacheEntry{})
 	if err != nil {
 		return nil, fmt.Errorf("failed counting cache entries: %w", err)
 	}
 
-	if count > capacity {
+	if count > int(capacity) {
 		err := removeOldest(
 			ctx,
 			store.IndexStore(),
 			store.IndexStore(),
 			store.ChunkStore(),
-			count-capacity,
+			count-int(capacity),
 		)
 		if err != nil {
 			return nil, fmt.Errorf("failed removing oldest cache entries: %w", err)
 		}
-		count = capacity
+		count = int(capacity)
 	}
 
-	c := &Cache{capacity: capacity}
+	c := &Cache{capacity: int(capacity)}
 	c.size.Store(int64(count))
 
 	return c, nil
