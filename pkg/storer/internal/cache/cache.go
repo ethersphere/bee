@@ -20,6 +20,9 @@ import (
 
 var now = time.Now
 
+// exported for migration
+type CacheEntryItem = cacheEntry
+
 const cacheEntrySize = swarm.HashSize + 8
 
 var _ storage.Item = (*cacheEntry)(nil)

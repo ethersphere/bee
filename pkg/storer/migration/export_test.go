@@ -6,4 +6,5 @@ package migration
 
 var (
 	Step_01 = step_01
+	Step_02 = step_02
 )
