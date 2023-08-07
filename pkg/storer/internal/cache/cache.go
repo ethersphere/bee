@@ -84,8 +84,6 @@ func (c cacheEntry) String() string {
 	)
 }
 
-const cacheOrderIndexSize = 2*swarm.HashSize + 8
-
 var _ storage.Item = (*cacheOrderIndex)(nil)
 
 type cacheOrderIndex struct {
@@ -398,8 +396,8 @@ func (c *Cache) MoveFromReserve(
 		return nil
 	}
 
-	if len(entriesToAdd) > int(c.capacity) {
-		entriesToAdd = entriesToAdd[len(entriesToAdd)-int(c.capacity):]
+	if len(entriesToAdd) > c.capacity {
+		entriesToAdd = entriesToAdd[len(entriesToAdd)-c.capacity:]
 	}
 
 	var entriesToRemove int

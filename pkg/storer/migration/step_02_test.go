@@ -27,7 +27,7 @@ func (e *testEntry) ID() string { return e.address.ByteString() }
 
 func (e *testEntry) Marshal() ([]byte, error) {
 	buf := make([]byte, 32*3)
-	rand.Read(buf)
+	_, _ = rand.Read(buf)
 	return buf, nil
 }
 
