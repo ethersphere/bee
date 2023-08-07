@@ -200,7 +200,8 @@ func (t *testReservePutter) Size() int {
 	return t.size
 }
 
-func TestEpochMigration(t *testing.T) {
+// TestEpochMigration_FLAKY is flaky on windows.
+func TestEpochMigration_FLAKY(t *testing.T) {
 	t.Parallel()
 
 	var (
