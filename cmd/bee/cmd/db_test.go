@@ -182,7 +182,8 @@ func TestDBExportImportPinning(t *testing.T) {
 	}
 }
 
-func TestDBNuke(t *testing.T) {
+// TestDBNuke_FLAKY is flaky on windows.
+func TestDBNuke_FLAKY(t *testing.T) {
 	t.Parallel()
 
 	dataDir := t.TempDir()
