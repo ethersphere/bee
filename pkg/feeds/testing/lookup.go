@@ -149,7 +149,7 @@ func TestFinderIntervals(t *testing.T, nextf func() (bool, int64), finderf func(
 		at := ats[j]
 		diff := ats[j+1] - at
 		for now := at; now < ats[j+1]; now += int64(rand.Intn(int(diff)) + 1) {
-			after := int64(0)
+			after := uint64(0)
 			ch, current, next, err := finder.At(ctx, now, after)
 			if err != nil {
 				t.Fatal(err)

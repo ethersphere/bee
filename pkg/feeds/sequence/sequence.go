@@ -67,7 +67,7 @@ func NewFinder(getter storage.Getter, feed *feeds.Feed) feeds.Lookup {
 }
 
 // At looks for incremental feed updates from 0 upwards, if it does not find one, it assumes that the last found update is the most recent
-func (f *finder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, current, next feeds.Index, err error) {
+func (f *finder) At(ctx context.Context, at int64, _ uint64) (ch swarm.Chunk, current, next feeds.Index, err error) {
 	for i := uint64(0); ; i++ {
 		u, err := f.getter.Get(ctx, &index{i})
 		if err != nil {
@@ -147,10 +147,10 @@ type result struct {
 
 // At looks up the version valid at time `at`
 // after is a unix time hint of the latest known update
-func (f *asyncFinder) At(ctx context.Context, at, after int64) (ch swarm.Chunk, cur, next feeds.Index, err error) {
+func (f *asyncFinder) At(ctx context.Context, at int64, after uint64) (ch swarm.Chunk, cur, next feeds.Index, err error) {
 	// first lookup update at the 0 index
 	// TODO: consider receive after as uint
-	ch, err = f.get(ctx, at, uint64(after))
+	ch, err = f.get(ctx, at, after)
 	if err != nil {
 		return nil, nil, nil, err
 	}

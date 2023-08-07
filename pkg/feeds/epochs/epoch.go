@@ -50,22 +50,22 @@ func (e *epoch) Next(last int64, at uint64) feeds.Index {
 	if e.start+e.length() > at {
 		return e.childAt(at)
 	}
-	return lca(int64(at), last).childAt(at)
+	return lca(at, uint64(last)).childAt(at)
 }
 
 // lca calculates the lowest common ancestor epoch given two unix times
-func lca(at, after int64) *epoch {
+func lca(at, after uint64) *epoch {
 	if after == 0 {
 		return &epoch{0, maxLevel}
 	}
-	diff := uint64(at - after)
+	diff := at - after
 	length := uint64(1)
 	var level uint8
-	for level < maxLevel && (length < diff || uint64(at)/length != uint64(after)/length) {
+	for level < maxLevel && (length < diff || uint64(at)/length != after/length) {
 		length <<= 1
 		level++
 	}
-	start := (uint64(after) / length) * length
+	start := (after / length) * length
 	return &epoch{start, level}
 }
 
