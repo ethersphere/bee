@@ -155,7 +155,7 @@ func (f *asyncFinder) At(ctx context.Context, at int64, after uint64) (ch swarm.
 		return nil, nil, nil, err
 	}
 	if ch == nil {
-		return nil, nil, &index{uint64(after)}, nil
+		return nil, nil, &index{after}, nil
 	}
 	// if chunk exists construct an initial interval with base=0
 	c := make(chan *result)

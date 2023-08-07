@@ -61,7 +61,7 @@ func lca(at, after uint64) *epoch {
 	diff := at - after
 	length := uint64(1)
 	var level uint8
-	for level < maxLevel && (length < diff || uint64(at)/length != after/length) {
+	for level < maxLevel && (length < diff || at/length != after/length) {
 		length <<= 1
 		level++
 	}
