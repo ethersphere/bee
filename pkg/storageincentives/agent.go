@@ -219,6 +219,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 		a.state.SetCurrentEvent(currentPhase, round)
 		a.state.SetFullySynced(a.fullSyncedFunc())
+		a.state.SetHealthy(a.health.IsHealthy())
 		go a.state.purgeStaleRoundData()
 
 		isFrozen, err := a.redistributionStatuser.IsOverlayFrozen(ctx, block)
@@ -398,7 +399,7 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 		return false, nil
 	}
 
-	if !a.health.IsHealthy() {
+	if !a.state.IsHealthy() {
 		a.logger.Info("skipping round because node is unhealhy", "round", round)
 		return false, nil
 	}
