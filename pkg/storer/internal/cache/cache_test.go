@@ -158,8 +158,13 @@ func (t *timeProvider) Now() func() time.Time {
 func TestMain(m *testing.M) {
 	p := &timeProvider{t: time.Now().UnixNano()}
 	done := cache.ReplaceTimeNow(p.Now())
+	old := cache.CacheEvictionBatchSize
+	defer func() {
+		done()
+		cache.CacheEvictionBatchSize = old
+	}()
+	cache.CacheEvictionBatchSize = 1
 	code := m.Run()
-	done()
 	os.Exit(code)
 }
 

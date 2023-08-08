@@ -27,6 +27,8 @@ const cacheEntrySize = swarm.HashSize + 8
 
 var _ storage.Item = (*cacheEntry)(nil)
 
+var CacheEvictionBatchSize = 1000
+
 var (
 	errMarshalCacheEntryInvalidAddress   = errors.New("marshal cacheEntry: invalid address")
 	errMarshalCacheEntryInvalidTimestamp = errors.New("marshal cacheEntry: invalid timestamp")
@@ -206,10 +208,7 @@ func removeOldest(
 			}
 			evictItems = append(evictItems, entry)
 			count--
-			if count == 0 {
-				return true, nil
-			}
-			return false, nil
+			return count == 0, nil
 		},
 	)
 	if err != nil {
@@ -279,15 +278,15 @@ func (c *Cache) Putter(store internal.Storage) storage.Putter {
 			return fmt.Errorf("failed adding cache order index: %w", err)
 		}
 
-		addSize := true
-		if c.size.Load() == int64(c.capacity) {
-			addSize = false
+		evicted := false
+		if c.size.Load() >= int64(c.capacity) {
+			evicted = true
 			err := removeOldest(
 				ctx,
 				store.IndexStore(),
 				batch,
 				store.ChunkStore(),
-				1,
+				CacheEvictionBatchSize,
 			)
 			if err != nil {
 				return fmt.Errorf("failed removing oldest cache entries: %w", err)
@@ -303,9 +302,10 @@ func (c *Cache) Putter(store internal.Storage) storage.Putter {
 			return fmt.Errorf("failed adding chunk to chunkstore: %w", err)
 		}
 
-		if addSize {
-			c.size.Add(1)
+		if evicted {
+			c.size.Add(-int64(CacheEvictionBatchSize))
 		}
+		c.size.Add(1)
 
 		return nil
 	})
