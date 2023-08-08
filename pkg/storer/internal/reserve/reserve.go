@@ -437,27 +437,6 @@ func removeChunk(
 	)
 }
 
-func (r *Reserve) LastBinIDs(store storage.Store) ([]uint64, error) {
-
-	ids := make([]uint64, swarm.MaxBins)
-
-	for bin := uint8(0); bin < swarm.MaxBins; bin++ {
-		binItem := &binItem{Bin: bin}
-		err := store.Get(binItem)
-		if err != nil {
-			if errors.Is(err, storage.ErrNotFound) {
-				ids[bin] = 0
-			} else {
-				return nil, err
-			}
-		} else {
-			ids[bin] = binItem.BinID
-		}
-	}
-
-	return ids, nil
-}
-
 func (r *Reserve) Radius() uint8 {
 	return uint8(r.radius.Load())
 }
@@ -489,6 +468,29 @@ func (r *Reserve) SetRadius(store storage.Store, rad uint8) error {
 	r.radius.Store(uint32(rad))
 	r.radiusSetter.SetStorageRadius(rad)
 	return store.Put(&radiusItem{Radius: rad})
+}
+
+func (r *Reserve) LastBinIDs(store storage.Store) ([]uint64, error) {
+	r.binMtx.Lock()
+	defer r.binMtx.Unlock()
+
+	ids := make([]uint64, swarm.MaxBins)
+
+	for bin := uint8(0); bin < swarm.MaxBins; bin++ {
+		binItem := &binItem{Bin: bin}
+		err := store.Get(binItem)
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				ids[bin] = 0
+			} else {
+				return nil, err
+			}
+		} else {
+			ids[bin] = binItem.BinID
+		}
+	}
+
+	return ids, nil
 }
 
 // should be called under lock
