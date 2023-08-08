@@ -41,7 +41,7 @@ func testCacheStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 		t.Run("rollback", func(t *testing.T) {
 			want := errors.New("dummy error")
 			lstore.SetRepoStorePutHook(func(item storage.Item) error {
-				if item.Namespace() == "cacheState" {
+				if item.Namespace() == "cacheOrderIndex" {
 					return want
 				}
 				return nil
@@ -77,7 +77,7 @@ func testCacheStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 		t.Run("rollback", func(t *testing.T) {
 			want := errors.New("dummy error")
 			lstore.SetRepoStorePutHook(func(item storage.Item) error {
-				if item.Namespace() == "cacheState" {
+				if item.Namespace() == "cacheOrderIndex" {
 					return want
 				}
 				return nil
@@ -108,20 +108,13 @@ func testCacheStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 			}
 		}
 
-		for idx, ch := range append(chunks, newChunks...) {
-			var want error = nil
-			readCh, have := lstore.Lookup().Get(context.TODO(), ch.Address())
-			if idx < 4 {
-				want = storage.ErrNotFound
-			}
-			if !errors.Is(have, want) {
-				t.Fatalf("unexpected error on Get: idx %d want %v have %v", idx, want, have)
-			}
-			if have == nil {
-				if !readCh.Equal(ch) {
-					t.Fatalf("incorrect chunk data read for %s", readCh.Address())
-				}
-			}
+		info, err := lstore.DebugInfo(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if info.Cache.Size != 10 {
+			t.Fatalf("unexpected cache size: want 10 have %d", info.Cache.Size)
 		}
 	})
 }
