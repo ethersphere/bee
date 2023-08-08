@@ -56,7 +56,7 @@ func (db *DB) startReserveWorkers(
 	// start eviction worker first as there could be batch expirations because of
 	// initial contract sync
 	db.inFlight.Add(1)
-	go db.worker(ctx)
+	go db.evictionWorker(ctx)
 
 	select {
 	case <-time.After(warmupDur):
@@ -127,20 +127,33 @@ func (db *DB) getExpiredBatches() ([][]byte, error) {
 	return batchesToEvict, nil
 }
 
-func (db *DB) removeExpiredBatch(ctx context.Context, batchID []byte) error {
-	evicted, err := db.evictBatch(ctx, batchID, swarm.MaxBins)
+func (db *DB) evictExpiredBatches(ctx context.Context) error {
+
+	batches, err := db.getExpiredBatches()
 	if err != nil {
 		return err
 	}
-	if evicted > 0 {
-		db.logger.Debug("evicted expired batch", "batch_id", hex.EncodeToString(batchID), "total_evicted", evicted)
+
+	for _, batchID := range batches {
+		evicted, err := db.evictBatch(ctx, batchID, swarm.MaxBins)
+		if err != nil {
+			return err
+		}
+		if evicted > 0 {
+			db.logger.Debug("evicted expired batch", "batch_id", hex.EncodeToString(batchID), "total_evicted", evicted)
+		}
+		err = db.Execute(ctx, func(tx internal.Storage) error {
+			return tx.IndexStore().Delete(&expiredBatchItem{BatchID: batchID})
+		})
+		if err != nil {
+			return err
+		}
 	}
-	return db.Execute(ctx, func(tx internal.Storage) error {
-		return tx.IndexStore().Delete(&expiredBatchItem{BatchID: batchID})
-	})
+
+	return nil
 }
 
-func (db *DB) worker(ctx context.Context) {
+func (db *DB) evictionWorker(ctx context.Context) {
 
 	defer db.inFlight.Done()
 
@@ -154,21 +167,18 @@ func (db *DB) worker(ctx context.Context) {
 		select {
 		case <-batchExpiryTrigger:
 
-			batches, err := db.getExpiredBatches()
+			err := db.evictExpiredBatches(ctx)
 			if err != nil {
-				db.logger.Error(err, "eviction worker get expired batches")
+				db.logger.Error(err, "eviction worker expired batche")
 				continue
-			}
-
-			for _, batch := range batches {
-				err := db.removeExpiredBatch(ctx, batch)
-				if err != nil {
-					db.logger.Error(err, "eviction worker remove expired batch")
-				}
 			}
 
 			// testing
 			db.events.Trigger(batchExpiryDone)
+
+			if !db.reserve.IsWithinCapacity() {
+				db.events.Trigger(reserveOverCapacity)
+			}
 
 		case <-overCapTrigger:
 			err := db.unreserve(ctx)
@@ -340,7 +350,7 @@ func (db *DB) unreserve(ctx context.Context) (err error) {
 	if target == 0 {
 		return nil
 	}
-	db.logger.Info("unreserve", "target", target, "radius", radius)
+	db.logger.Info("unreserve start", "target", target, "radius", radius)
 
 	batchExpiry, unsub := db.events.Subscribe(batchExpiry)
 	defer unsub()
@@ -372,12 +382,13 @@ func (db *DB) unreserve(ctx context.Context) (err error) {
 			totalEvicted += binEvicted
 
 			// we can only get error here for critical cases, for eg. batch commit
-			// error, which is not recoverable, so we return true to stop the iteration
+			// error, which is not recoverable
 			if err != nil {
 				return err
 			}
 
 			if totalEvicted >= target {
+				db.logger.Info("unreserve finished", "evicted", totalEvicted, "radius", radius)
 				return nil
 			}
 		}
