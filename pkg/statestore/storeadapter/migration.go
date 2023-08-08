@@ -20,15 +20,10 @@ func allSteps() migration.Steps {
 
 func deletePrefix(prefix string) migration.StepFn {
 	return func(s storage.Store) error {
-		return s.Iterate(
-			storage.Query{
-				Factory: func() storage.Item { return &rawItem{newProxyItem("", []byte(nil))} },
-				Prefix:  prefix,
-			},
-			func(res storage.Result) (stop bool, err error) {
-				return false, s.Delete(res.Entry)
-			},
-		)
+		store := &StateStorerAdapter{s}
+		return store.Iterate(prefix, func(key, val []byte) (stop bool, err error) {
+			return false, store.Delete(string(key))
+		})
 	}
 }
 
