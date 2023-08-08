@@ -199,11 +199,11 @@ func TestEvictBatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	c, unsub := st.Events().Subscribe("batchExpiryDone")
+	t.Cleanup(unsub)
 	gotUnreserveSignal := make(chan struct{})
 	go func() {
 		defer close(gotUnreserveSignal)
-		c, unsub := st.Events().Subscribe("reserveUnreserved")
-		defer unsub()
 		<-c
 	}()
 	<-gotUnreserveSignal
