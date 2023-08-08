@@ -441,7 +441,7 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 				}
 				// by stopping at a specific position, we control the binID the next sync call will start at for all peers.
 				// as such, this increases the probability that multiple requests will fall into same single flight group.
-				if c.BinID == nextWindow {
+				if c.BinID >= nextWindow {
 					break LOOP
 				}
 
