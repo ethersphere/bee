@@ -494,7 +494,8 @@ func (r *Reserve) incBinID(store storage.Store, batch storage.Writer, bin uint8)
 	err := store.Get(item)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			return 0, store.Put(item)
+			item.BinID = 1
+			return 1, store.Put(item)
 		}
 
 		return 0, err
