@@ -14,19 +14,30 @@ import (
 func allSteps() migration.Steps {
 	return map[uint64]migration.StepFn{
 		1: epochMigration,
+		2: deletePrefix("sync_interval"),
 	}
 }
 
-var deleteEntries = []string{
-	"statestore_schema",
-	"tags",
-	"sync_interval",
-	"kademlia-counters",
-	"addressbook",
-	"batch",
+func deletePrefix(prefix string) migration.StepFn {
+	return func(s storage.Store) error {
+		store := &StateStorerAdapter{s}
+		return store.Iterate(prefix, func(key, val []byte) (stop bool, err error) {
+			return false, store.Delete(string(key))
+		})
+	}
 }
 
 func epochMigration(s storage.Store) error {
+
+	var deleteEntries = []string{
+		"statestore_schema",
+		"tags",
+		"sync_interval",
+		"kademlia-counters",
+		"addressbook",
+		"batch",
+	}
+
 	return s.Iterate(storage.Query{
 		Factory: func() storage.Item { return &rawItem{&proxyItem{obj: []byte(nil)}} },
 	}, func(res storage.Result) (stop bool, err error) {
