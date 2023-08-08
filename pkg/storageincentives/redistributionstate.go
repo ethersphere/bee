@@ -53,6 +53,7 @@ type Status struct {
 	Fees              *big.Int
 	RoundData         map[uint64]RoundData
 	SampleDuration    time.Duration
+	IsHealthy         bool
 }
 
 type RoundData struct {
@@ -281,6 +282,19 @@ func (r *RedistributionState) HasRevealed(round uint64) bool {
 
 	rd := r.status.RoundData[round]
 	return rd.HasRevealed
+}
+
+func (r *RedistributionState) SetHealthy(isHealthy bool) {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+	r.status.IsHealthy = isHealthy
+	r.save()
+}
+
+func (r *RedistributionState) IsHealthy() bool {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+	return r.status.IsHealthy
 }
 
 func (r *RedistributionState) SetHasRevealed(round uint64) {
