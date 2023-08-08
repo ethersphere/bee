@@ -20,33 +20,33 @@ var (
 	errUnmarshalInvalidSize  = errors.New("unmarshal: invalid size")
 )
 
-// batchRadiusItem allows iteration of the chunks with respect to bin and batchID.
+// BatchRadiusItem allows iteration of the chunks with respect to bin and batchID.
 // Used for batch evictions of certain bins.
-type batchRadiusItem struct {
+type BatchRadiusItem struct {
 	Bin     uint8
 	BatchID []byte
 	Address swarm.Address
 	BinID   uint64
 }
 
-func (b *batchRadiusItem) Namespace() string {
+func (b *BatchRadiusItem) Namespace() string {
 	return "batchRadius"
 }
 
 // batchID/bin/ChunkAddr
-func (b *batchRadiusItem) ID() string {
+func (b *BatchRadiusItem) ID() string {
 	return string(b.BatchID) + string(b.Bin) + b.Address.ByteString()
 }
 
-func (b *batchRadiusItem) String() string {
+func (b *BatchRadiusItem) String() string {
 	return path.Join(b.Namespace(), b.ID())
 }
 
-func (b *batchRadiusItem) Clone() storage.Item {
+func (b *BatchRadiusItem) Clone() storage.Item {
 	if b == nil {
 		return nil
 	}
-	return &batchRadiusItem{
+	return &BatchRadiusItem{
 		Bin:     b.Bin,
 		BatchID: copyBytes(b.BatchID),
 		Address: b.Address.Clone(),
@@ -56,7 +56,7 @@ func (b *batchRadiusItem) Clone() storage.Item {
 
 const batchRadiusItemSize = 1 + swarm.HashSize + swarm.HashSize + 8
 
-func (b *batchRadiusItem) Marshal() ([]byte, error) {
+func (b *BatchRadiusItem) Marshal() ([]byte, error) {
 
 	if b.Address.IsZero() {
 		return nil, errMarshalInvalidAddress
@@ -80,7 +80,7 @@ func (b *batchRadiusItem) Marshal() ([]byte, error) {
 	return buf, nil
 }
 
-func (b *batchRadiusItem) Unmarshal(buf []byte) error {
+func (b *BatchRadiusItem) Unmarshal(buf []byte) error {
 
 	if len(buf) != batchRadiusItemSize {
 		return errUnmarshalInvalidSize
@@ -101,9 +101,9 @@ func (b *batchRadiusItem) Unmarshal(buf []byte) error {
 	return nil
 }
 
-// chunkBinItem allows for iterating on ranges of bin and binIDs for chunks.
+// ChunkBinItem allows for iterating on ranges of bin and binIDs for chunks.
 // BinIDs come in handy when syncing the reserve contents with other peers.
-type chunkBinItem struct {
+type ChunkBinItem struct {
 	Bin       uint8
 	BinID     uint64
 	Address   swarm.Address
@@ -111,12 +111,12 @@ type chunkBinItem struct {
 	ChunkType swarm.ChunkType
 }
 
-func (c *chunkBinItem) Namespace() string {
+func (c *ChunkBinItem) Namespace() string {
 	return "chunkBin"
 }
 
 // bin/binID
-func (c *chunkBinItem) ID() string {
+func (c *ChunkBinItem) ID() string {
 	return binIDToString(c.Bin, c.BinID)
 }
 
@@ -126,15 +126,15 @@ func binIDToString(bin uint8, binID uint64) string {
 	return string(bin) + string(binIDBytes)
 }
 
-func (c *chunkBinItem) String() string {
+func (c *ChunkBinItem) String() string {
 	return path.Join(c.Namespace(), c.ID())
 }
 
-func (c *chunkBinItem) Clone() storage.Item {
+func (c *ChunkBinItem) Clone() storage.Item {
 	if c == nil {
 		return nil
 	}
-	return &chunkBinItem{
+	return &ChunkBinItem{
 		Bin:       c.Bin,
 		BinID:     c.BinID,
 		Address:   c.Address.Clone(),
@@ -145,7 +145,7 @@ func (c *chunkBinItem) Clone() storage.Item {
 
 const chunkBinItemSize = 1 + 8 + swarm.HashSize + swarm.HashSize + 1
 
-func (c *chunkBinItem) Marshal() ([]byte, error) {
+func (c *ChunkBinItem) Marshal() ([]byte, error) {
 
 	if c.Address.IsZero() {
 		return nil, errMarshalInvalidAddress
@@ -171,7 +171,7 @@ func (c *chunkBinItem) Marshal() ([]byte, error) {
 	return buf, nil
 }
 
-func (c *chunkBinItem) Unmarshal(buf []byte) error {
+func (c *ChunkBinItem) Unmarshal(buf []byte) error {
 
 	if len(buf) != chunkBinItemSize {
 		return errUnmarshalInvalidSize
@@ -195,28 +195,28 @@ func (c *chunkBinItem) Unmarshal(buf []byte) error {
 	return nil
 }
 
-// binItem stores the latest binIDs for each bin between 0 and swarm.MaxBins
-type binItem struct {
+// BinItem stores the latest binIDs for each bin between 0 and swarm.MaxBins
+type BinItem struct {
 	Bin   uint8
 	BinID uint64
 }
 
-func (b *binItem) Namespace() string {
+func (b *BinItem) Namespace() string {
 	return "binID"
 }
 
-func (b *binItem) ID() string {
+func (b *BinItem) ID() string {
 	return string(b.Bin)
 }
 
-func (c *binItem) String() string {
+func (c *BinItem) String() string {
 	return path.Join(c.Namespace(), c.ID())
 }
-func (b *binItem) Clone() storage.Item {
+func (b *BinItem) Clone() storage.Item {
 	if b == nil {
 		return nil
 	}
-	return &binItem{
+	return &BinItem{
 		Bin:   b.Bin,
 		BinID: b.BinID,
 	}
@@ -224,13 +224,13 @@ func (b *binItem) Clone() storage.Item {
 
 const binItemSize = 8
 
-func (c *binItem) Marshal() ([]byte, error) {
+func (c *BinItem) Marshal() ([]byte, error) {
 	buf := make([]byte, binItemSize)
 	binary.BigEndian.PutUint64(buf, c.BinID)
 	return buf, nil
 }
 
-func (c *binItem) Unmarshal(buf []byte) error {
+func (c *BinItem) Unmarshal(buf []byte) error {
 	if len(buf) != binItemSize {
 		return errUnmarshalInvalidSize
 	}
