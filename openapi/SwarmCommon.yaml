@@ -710,6 +710,8 @@ components:
           type: boolean
         isFullySynced:
           type: boolean
+        isHealthy:
+          type: boolean
         phase:
           type: string
         round:
