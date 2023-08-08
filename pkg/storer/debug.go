@@ -30,8 +30,9 @@ type CacheStat struct {
 }
 
 type ReserveStat struct {
-	Size     int
-	Capacity int
+	Size       int
+	Capacity   int
+	LastBinIDs []uint64
 }
 
 type ChunkStoreStat struct {
@@ -125,6 +126,11 @@ func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 		return Info{}, err
 	}
 
+	lastbinIds, err := db.ReserveLastBinIDs()
+	if err != nil {
+		return Info{}, err
+	}
+
 	return Info{
 		Upload: UploadStat{
 			TotalUploaded: uploaded,
@@ -139,8 +145,9 @@ func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 			Capacity: int(cacheCapacity),
 		},
 		Reserve: ReserveStat{
-			Size:     reserveSize,
-			Capacity: reserveCapacity,
+			Size:       reserveSize,
+			Capacity:   reserveCapacity,
+			LastBinIDs: lastbinIds,
 		},
 		ChunkStore: ChunkStoreStat{
 			TotalChunks: totalChunks,
