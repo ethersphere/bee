@@ -127,7 +127,7 @@ func TestCacheStore(t *testing.T) {
 
 		testCacheStore(t, func() (*storer.DB, error) {
 
-			opts := dbTestOps(swarm.RandAddress(t), 0, nil, nil, time.Second)
+			opts := dbTestOps(swarm.RandAddress(t), 100, nil, nil, time.Second)
 			opts.CacheCapacity = 10
 
 			return storer.New(context.Background(), "", opts)
@@ -136,7 +136,7 @@ func TestCacheStore(t *testing.T) {
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
 
-		opts := dbTestOps(swarm.RandAddress(t), 0, nil, nil, time.Second)
+		opts := dbTestOps(swarm.RandAddress(t), 100, nil, nil, time.Second)
 		opts.CacheCapacity = 10
 
 		testCacheStore(t, diskStorer(t, opts))

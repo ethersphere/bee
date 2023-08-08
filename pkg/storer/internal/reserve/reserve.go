@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"sync"
 	"sync/atomic"
 
 	"github.com/ethersphere/bee/pkg/log"
@@ -41,6 +42,8 @@ type Reserve struct {
 	size     atomic.Int64
 	radius   atomic.Uint32
 	cacheCb  func(context.Context, internal.Storage, ...swarm.Address) error
+
+	binMtx sync.Mutex
 }
 
 func New(
@@ -149,7 +152,7 @@ func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.C
 		return false, err
 	}
 
-	binID, err := r.incBinID(indexStore, storeBatch, po)
+	binID, err := r.incBinID(indexStore, po)
 	if err != nil {
 		return false, err
 	}
@@ -434,27 +437,6 @@ func removeChunk(
 	)
 }
 
-func (r *Reserve) LastBinIDs(store storage.Store) ([]uint64, error) {
-
-	ids := make([]uint64, swarm.MaxBins)
-
-	for bin := uint8(0); bin < swarm.MaxBins; bin++ {
-		binItem := &binItem{Bin: bin}
-		err := store.Get(binItem)
-		if err != nil {
-			if errors.Is(err, storage.ErrNotFound) {
-				ids[bin] = 0
-			} else {
-				return nil, err
-			}
-		} else {
-			ids[bin] = binItem.BinID
-		}
-	}
-
-	return ids, nil
-}
-
 func (r *Reserve) Radius() uint8 {
 	return uint8(r.radius.Load())
 }
@@ -488,13 +470,40 @@ func (r *Reserve) SetRadius(store storage.Store, rad uint8) error {
 	return store.Put(&radiusItem{Radius: rad})
 }
 
+func (r *Reserve) LastBinIDs(store storage.Store) ([]uint64, error) {
+	r.binMtx.Lock()
+	defer r.binMtx.Unlock()
+
+	ids := make([]uint64, swarm.MaxBins)
+
+	for bin := uint8(0); bin < swarm.MaxBins; bin++ {
+		binItem := &binItem{Bin: bin}
+		err := store.Get(binItem)
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				ids[bin] = 0
+			} else {
+				return nil, err
+			}
+		} else {
+			ids[bin] = binItem.BinID
+		}
+	}
+
+	return ids, nil
+}
+
 // should be called under lock
-func (r *Reserve) incBinID(store storage.Store, batch storage.Writer, bin uint8) (uint64, error) {
+func (r *Reserve) incBinID(store storage.Store, bin uint8) (uint64, error) {
+	r.binMtx.Lock()
+	defer r.binMtx.Unlock()
+
 	item := &binItem{Bin: bin}
 	err := store.Get(item)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			return 0, store.Put(item)
+			item.BinID = 1
+			return 1, store.Put(item)
 		}
 
 		return 0, err
@@ -502,5 +511,5 @@ func (r *Reserve) incBinID(store storage.Store, batch storage.Writer, bin uint8)
 
 	item.BinID += 1
 
-	return item.BinID, batch.Put(item)
+	return item.BinID, store.Put(item)
 }

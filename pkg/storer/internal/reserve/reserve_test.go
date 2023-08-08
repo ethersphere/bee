@@ -52,7 +52,7 @@ func TestReserve(t *testing.T) {
 	}
 
 	for b := 0; b < 2; b++ {
-		for i := 0; i < 50; i++ {
+		for i := 1; i < 51; i++ {
 			ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, b)
 			c, err := r.Put(context.Background(), ts, ch)
 			if err != nil {
@@ -195,12 +195,12 @@ func TestReplaceOldIndex(t *testing.T) {
 
 	// Chunk 1 must be gone
 	checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: 0, BatchID: ch1.Stamp().BatchID(), Address: ch1.Address()}, true)
-	checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: 0}, true)
+	checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: 1}, true)
 	checkChunk(t, ts, ch1, true)
 
 	// Chunk 2 must be stored
 	checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: 0, BatchID: ch2.Stamp().BatchID(), Address: ch2.Address()}, false)
-	checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: 1}, false)
+	checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: 2}, false)
 	checkChunk(t, ts, ch2, false)
 
 	item, err := stampindex.Load(ts.IndexStore(), "reserve", ch2)
@@ -276,7 +276,7 @@ func TestEvict(t *testing.T) {
 	}
 
 	for i, ch := range chunks {
-		binID := i % chunksPerBatch
+		binID := i%chunksPerBatch + 1
 		b := swarm.Proximity(baseAddr.Bytes(), ch.Address().Bytes())
 		_, err := r.Get(context.Background(), ts, ch.Address(), ch.Stamp().BatchID())
 		if bytes.Equal(ch.Stamp().BatchID(), evictBatch.ID) {
@@ -344,7 +344,7 @@ func TestIterate(t *testing.T) {
 
 		r, ts := createReserve(t)
 
-		var id uint64 = 0
+		var id uint64 = 1
 		err := r.IterateBin(ts.IndexStore(), 1, 0, func(ch swarm.Address, binID uint64, _ []byte) (bool, error) {
 			if binID != id {
 				t.Fatalf("got %d, want %d", binID, id)
@@ -355,8 +355,8 @@ func TestIterate(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if id != 10 {
-			t.Fatalf("got %d, want %d", id, 10)
+		if id != 11 {
+			t.Fatalf("got %d, want %d", id, 11)
 		}
 	})
 
@@ -407,8 +407,8 @@ func TestIterate(t *testing.T) {
 		}
 		for i, id := range ids {
 			if i < 3 {
-				if id != 9 {
-					t.Fatalf("got %d, want %d", id, 9)
+				if id != 10 {
+					t.Fatalf("got %d, want %d", id, 10)
 				}
 			} else {
 				if id != 0 {
