@@ -9,7 +9,7 @@ import "github.com/ethersphere/bee/pkg/storage/migration"
 // AllSteps lists all migration steps for localstore IndexStore.
 func AllSteps() migration.Steps {
 	return map[uint64]migration.StepFn{
-		// 2: step_02,
+		2: step_02,
 		1: step_01,
 	}
 }

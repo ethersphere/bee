@@ -9,7 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
+	"sync"
 	"testing"
+	"time"
 
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/storagetest"
@@ -19,76 +22,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
 )
-
-func TestCacheStateItem(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		test *storagetest.ItemMarshalAndUnmarshalTest
-	}{{
-		name: "zero values",
-		test: &storagetest.ItemMarshalAndUnmarshalTest{
-			Item:    &cache.CacheState{},
-			Factory: func() storage.Item { return new(cache.CacheState) },
-		},
-	}, {
-		name: "zero and non-zero 1",
-		test: &storagetest.ItemMarshalAndUnmarshalTest{
-			Item: &cache.CacheState{
-				Tail: swarm.NewAddress(storagetest.MaxAddressBytes[:]),
-			},
-			Factory: func() storage.Item { return new(cache.CacheState) },
-		},
-	}, {
-		name: "zero and non-zero 2",
-		test: &storagetest.ItemMarshalAndUnmarshalTest{
-			Item: &cache.CacheState{
-				Head: swarm.NewAddress(storagetest.MaxAddressBytes[:]),
-			},
-			Factory: func() storage.Item { return new(cache.CacheState) },
-		},
-	}, {
-		name: "max values",
-		test: &storagetest.ItemMarshalAndUnmarshalTest{
-			Item: &cache.CacheState{
-				Head:  swarm.NewAddress(storagetest.MaxAddressBytes[:]),
-				Tail:  swarm.NewAddress(storagetest.MaxAddressBytes[:]),
-				Count: math.MaxUint64,
-			},
-			Factory: func() storage.Item { return new(cache.CacheState) },
-		},
-	}, {
-		name: "invalid size",
-		test: &storagetest.ItemMarshalAndUnmarshalTest{
-			Item: &storagetest.ItemStub{
-				MarshalBuf:   []byte{0xFF},
-				UnmarshalBuf: []byte{0xFF},
-			},
-			Factory:      func() storage.Item { return new(cache.CacheState) },
-			UnmarshalErr: cache.ErrUnmarshalCacheStateInvalidSize,
-		},
-	}}
-
-	for _, tc := range tests {
-		tc := tc
-
-		t.Run(fmt.Sprintf("%s marshal/unmarshal", tc.name), func(t *testing.T) {
-			t.Parallel()
-
-			storagetest.TestItemMarshalAndUnmarshal(t, tc.test)
-		})
-
-		t.Run(fmt.Sprintf("%s clone", tc.name), func(t *testing.T) {
-			t.Parallel()
-
-			storagetest.TestItemClone(t, &storagetest.ItemCloneTest{
-				Item:    tc.test.Item,
-				CmpOpts: tc.test.CmpOpts,
-			})
-		})
-	}
-}
 
 func TestCacheEntryItem(t *testing.T) {
 	t.Parallel()
@@ -109,15 +42,15 @@ func TestCacheEntryItem(t *testing.T) {
 			Item: &cache.CacheEntry{
 				Address: swarm.NewAddress(storagetest.MaxAddressBytes[:]),
 			},
-			Factory: func() storage.Item { return new(cache.CacheEntry) },
+			Factory:    func() storage.Item { return new(cache.CacheEntry) },
+			MarshalErr: cache.ErrMarshalCacheEntryInvalidTimestamp,
 		},
 	}, {
 		name: "max values",
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
 			Item: &cache.CacheEntry{
-				Address: swarm.NewAddress(storagetest.MaxAddressBytes[:]),
-				Prev:    swarm.NewAddress(storagetest.MaxAddressBytes[:]),
-				Next:    swarm.NewAddress(storagetest.MaxAddressBytes[:]),
+				Address:         swarm.NewAddress(storagetest.MaxAddressBytes[:]),
+				AccessTimestamp: math.MaxInt64,
 			},
 			Factory: func() storage.Item { return new(cache.CacheEntry) },
 		},
@@ -206,6 +139,33 @@ func newTestStorage(t *testing.T) *testStorage {
 	})
 
 	return &testStorage{Storage: storg}
+}
+
+type timeProvider struct {
+	t   int64
+	mtx sync.Mutex
+}
+
+func (t *timeProvider) Now() func() time.Time {
+	return func() time.Time {
+		t.mtx.Lock()
+		defer t.mtx.Unlock()
+		t.t++
+		return time.Unix(0, t.t)
+	}
+}
+
+func TestMain(m *testing.M) {
+	p := &timeProvider{t: time.Now().UnixNano()}
+	done := cache.ReplaceTimeNow(p.Now())
+	old := cache.CacheEvictionBatchSize
+	defer func() {
+		done()
+		cache.CacheEvictionBatchSize = old
+	}()
+	cache.CacheEvictionBatchSize = 1
+	code := m.Run()
+	os.Exit(code)
 }
 
 func TestCache(t *testing.T) {
@@ -363,7 +323,7 @@ func TestCache(t *testing.T) {
 				if !readChunk.Equal(extraChunk) {
 					t.Fatalf("incorrect chunk: %s", extraChunk.Address())
 				}
-				verifyCacheState(t, st.IndexStore(), c, state.Head, state.Tail, state.Count)
+				verifyCacheState(t, st.IndexStore(), c, state.Head, state.Tail, state.Size)
 			}
 		})
 	})
@@ -387,7 +347,7 @@ func TestCache(t *testing.T) {
 		// return error for state update, which occurs at the end of Get/Put operations
 		retErr := errors.New("dummy error")
 		st.putFn = func(i storage.Item) error {
-			if i.Namespace() == "cacheState" {
+			if i.Namespace() == "cacheOrderIndex" {
 				return retErr
 			}
 			return st.Storage.IndexStore().Put(i)
@@ -543,7 +503,7 @@ func verifyCacheState(
 	t.Helper()
 
 	state := c.State(store)
-	expState := cache.CacheState{Head: expStart, Tail: expEnd, Count: expCount}
+	expState := cache.CacheState{Head: expStart, Tail: expEnd, Size: expCount}
 
 	if diff := cmp.Diff(expState, state); diff != "" {
 		t.Fatalf("state mismatch (-want +have):\n%s", diff)
@@ -560,8 +520,8 @@ func verifyCacheOrder(
 
 	state := c.State(st)
 
-	if uint64(len(chs)) != state.Count {
-		t.Fatalf("unexpected count, exp: %d found: %d", state.Count, len(chs))
+	if uint64(len(chs)) != state.Size {
+		t.Fatalf("unexpected count, exp: %d found: %d", state.Size, len(chs))
 	}
 
 	idx := 0

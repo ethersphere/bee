@@ -16,6 +16,7 @@ import (
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/migration"
 	storer "github.com/ethersphere/bee/pkg/storer"
+	"github.com/ethersphere/bee/pkg/storer/internal/cache"
 	pinstore "github.com/ethersphere/bee/pkg/storer/internal/pinning"
 	"github.com/ethersphere/bee/pkg/storer/internal/upload"
 	localmigration "github.com/ethersphere/bee/pkg/storer/migration"
@@ -95,8 +96,13 @@ func verifyPinCollection(
 // TestMain exists to adjust the time.Now function to a fixed value.
 func TestMain(m *testing.M) {
 	storer.ReplaceSharkyShardLimit(4)
+	old := cache.CacheEvictionBatchSize
+	defer func() {
+		cache.CacheEvictionBatchSize = old
+		storer.ReplaceSharkyShardLimit(32)
+	}()
+	cache.CacheEvictionBatchSize = 1
 	code := m.Run()
-	storer.ReplaceSharkyShardLimit(32)
 	os.Exit(code)
 }
 
