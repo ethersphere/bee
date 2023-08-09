@@ -9,7 +9,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/storageutil"
-	"github.com/hashicorp/golang-lru/v2"
+	lru "github.com/hashicorp/golang-lru/v2"
 )
 
 // key returns a string representation of the given key.
@@ -17,12 +17,12 @@ func key(key storage.Key) string {
 	return storageutil.JoinFields(key.Namespace(), key.ID())
 }
 
-var _ storage.Store = (*Cache)(nil)
+var _ storage.BatchedStore = (*Cache)(nil)
 
 // Cache is a wrapper around a storage.Store that adds a layer
 // of in-memory caching for the Get and Has operations.
 type Cache struct {
-	storage.Store
+	storage.BatchedStore
 
 	lru     *lru.Cache[string, []byte]
 	metrics metrics
@@ -31,7 +31,7 @@ type Cache struct {
 // Wrap adds a layer of in-memory caching to storage.Reader Get and Has operations.
 // It returns an error if the capacity is less than or equal to zero or if the
 // given store implements storage.Tx
-func Wrap(store storage.Store, capacity int) (*Cache, error) {
+func Wrap(store storage.BatchedStore, capacity int) (*Cache, error) {
 	if _, ok := store.(storage.Tx); ok {
 		return nil, errors.New("cache should not be used with transactions")
 	}
@@ -45,7 +45,7 @@ func Wrap(store storage.Store, capacity int) (*Cache, error) {
 }
 
 // MustWrap is like Wrap but panics on error.
-func MustWrap(store storage.Store, capacity int) *Cache {
+func MustWrap(store storage.BatchedStore, capacity int) *Cache {
 	c, err := Wrap(store, capacity)
 	if err != nil {
 		panic(err)
@@ -72,7 +72,7 @@ func (c *Cache) Get(i storage.Item) error {
 		return i.Unmarshal(val)
 	}
 
-	if err := c.Store.Get(i); err != nil {
+	if err := c.BatchedStore.Get(i); err != nil {
 		return err
 	}
 
@@ -93,7 +93,7 @@ func (c *Cache) Has(k storage.Key) (bool, error) {
 	}
 
 	c.metrics.CacheMiss.Inc()
-	return c.Store.Has(k)
+	return c.BatchedStore.Has(k)
 }
 
 // Put implements storage.Store interface.
@@ -101,12 +101,12 @@ func (c *Cache) Has(k storage.Key) (bool, error) {
 // call to Put and Has will be able to retrieve the item from cache.
 func (c *Cache) Put(i storage.Item) error {
 	c.add(i)
-	return c.Store.Put(i)
+	return c.BatchedStore.Put(i)
 }
 
 // Delete implements storage.Store interface.
 // On a call it also removes the item from the cache.
 func (c *Cache) Delete(i storage.Item) error {
 	_ = c.lru.Remove(key(i))
-	return c.Store.Delete(i)
+	return c.BatchedStore.Delete(i)
 }

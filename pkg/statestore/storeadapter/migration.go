@@ -19,7 +19,7 @@ func allSteps() migration.Steps {
 }
 
 func deletePrefix(prefix string) migration.StepFn {
-	return func(s storage.Store) error {
+	return func(s storage.BatchedStore) error {
 		store := &StateStorerAdapter{s}
 		return store.Iterate(prefix, func(key, val []byte) (stop bool, err error) {
 			return false, store.Delete(string(key))
@@ -27,7 +27,7 @@ func deletePrefix(prefix string) migration.StepFn {
 	}
 }
 
-func epochMigration(s storage.Store) error {
+func epochMigration(s storage.BatchedStore) error {
 
 	var deleteEntries = []string{
 		"statestore_schema",
