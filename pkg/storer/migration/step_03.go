@@ -75,7 +75,8 @@ func step_03(st storage.BatchedStore) error {
 			return err
 		}
 	}
-	logger.Info("removed all bin ids")
+	logger.Info("removed all bin ids", "total_entries", len(chunkBinItems))
+	chunkBinItems = nil
 
 	var batchRadiusItems []*reserve.BatchRadiusItem
 	err = st.Iterate(
