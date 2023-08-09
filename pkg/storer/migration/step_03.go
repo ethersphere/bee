@@ -19,9 +19,9 @@ import (
 // ChunkBinItem and BatchRadiusItem entries to use a new BinID field.
 func step_03(st storage.BatchedStore) error {
 	/*
-		STEP 1, remove all of the BinItem entired
-		STEP 2, iterate ChunkBinItem, delete old ChunkBinItem and BatchRadiusItem
-		STEP 3, get new binID using IncBinID, create new ChunkBinItem and BatchRadiusItem
+		STEP 1, remove all of the BinItem entires
+		STEP 2, remove all of the ChunkBinItem entries
+		STEP 3, iterate BatchRadiusItem, get new binID using IncBinID, create new ChunkBinItem and BatchRadiusItem
 	*/
 
 	rs := reserve.Reserve{}
@@ -37,6 +37,7 @@ func step_03(st storage.BatchedStore) error {
 	}
 	logger.Info("removed all bin index entries")
 
+	// STEP 2
 	var chunkBinItems []*reserve.ChunkBinItem
 	err := st.Iterate(
 		storage.Query{
@@ -78,6 +79,7 @@ func step_03(st storage.BatchedStore) error {
 	logger.Info("removed all bin ids", "total_entries", len(chunkBinItems))
 	chunkBinItems = nil
 
+	// STEP 3
 	var batchRadiusItems []*reserve.BatchRadiusItem
 	err = st.Iterate(
 		storage.Query{
@@ -123,7 +125,6 @@ func step_03(st storage.BatchedStore) error {
 				}
 				missingChunks++
 			} else {
-				// STEP 3
 				newBinID, err := rs.IncBinID(st, item.Bin)
 				if err != nil {
 					return err
@@ -136,11 +137,10 @@ func step_03(st storage.BatchedStore) error {
 				}
 
 				err = b.Put(&reserve.ChunkBinItem{
-					BatchID:   item.BatchID,
-					Bin:       item.Bin,
-					Address:   item.Address,
-					BinID:     newBinID,
-					ChunkType: swarm.ChunkTypeContentAddressed,
+					BatchID: item.BatchID,
+					Bin:     item.Bin,
+					Address: item.Address,
+					BinID:   newBinID,
 				})
 				if err != nil {
 					return err
