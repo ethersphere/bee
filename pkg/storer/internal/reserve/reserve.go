@@ -172,7 +172,7 @@ func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.C
 		BinID:     binID,
 		Address:   chunk.Address(),
 		BatchID:   chunk.Stamp().BatchID(),
-		ChunkType: chunkType(chunk),
+		ChunkType: ChunkType(chunk),
 	})
 	if err != nil {
 		return false, err

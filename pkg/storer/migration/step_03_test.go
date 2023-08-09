@@ -5,15 +5,14 @@
 package migration_test
 
 import (
+	"context"
 	"errors"
 	"testing"
-	"time"
 
-	"github.com/ethersphere/bee/pkg/sharky"
 	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	"github.com/ethersphere/bee/pkg/storage/inmemstore"
 	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
-	"github.com/ethersphere/bee/pkg/storer/internal/chunkstore"
 	"github.com/ethersphere/bee/pkg/storer/internal/reserve"
 	localmigration "github.com/ethersphere/bee/pkg/storer/migration"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -23,9 +22,12 @@ import (
 func Test_Step_03(t *testing.T) {
 	t.Parallel()
 
-	stepFn := localmigration.Step_03
 	store := inmemstore.New()
+	chStore := inmemchunkstore.New()
 	baseAddr := swarm.RandAddress(t)
+	stepFn := localmigration.Step_03(chStore, func(_ swarm.Chunk) swarm.ChunkType {
+		return swarm.ChunkTypeContentAddressed
+	})
 
 	var chunksPO = make([][]swarm.Chunk, 5)
 	var chunksPerPO uint64 = 2
@@ -67,20 +69,11 @@ func Test_Step_03(t *testing.T) {
 				continue
 			}
 
-			rIdx := &chunkstore.RetrievalIndexItem{
-				Address:   ch.Address(),
-				Timestamp: uint64(time.Now().Unix()),
-				RefCnt:    1,
-				Location: sharky.Location{
-					Shard:  0,
-					Slot:   1,
-					Length: swarm.ChunkSize,
-				},
-			}
-			err = store.Put(rIdx)
+			err = chStore.Put(context.Background(), ch)
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			chunksPO[b] = append(chunksPO[b], ch)
 		}
 	}
@@ -93,6 +86,9 @@ func Test_Step_03(t *testing.T) {
 		storage.Query{Factory: func() storage.Item { return &reserve.ChunkBinItem{} }},
 		func(res storage.Result) (stop bool, err error) {
 			cb := res.Entry.(*reserve.ChunkBinItem)
+			if cb.ChunkType != swarm.ChunkTypeContentAddressed {
+				return false, errors.New("chunk type should be content addressed")
+			}
 			binIDs[cb.Bin] = append(binIDs[cb.Bin], cb.BinID)
 			cbCount++
 			return false, nil

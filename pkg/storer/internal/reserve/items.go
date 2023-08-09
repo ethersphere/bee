@@ -285,7 +285,7 @@ func copyBytes(src []byte) []byte {
 	return dst
 }
 
-func chunkType(ch swarm.Chunk) swarm.ChunkType {
+func ChunkType(ch swarm.Chunk) swarm.ChunkType {
 	if cac.Valid(ch) {
 		return swarm.ChunkTypeContentAddressed
 	} else if soc.Valid(ch) {

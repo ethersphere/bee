@@ -5,14 +5,16 @@
 package migration
 
 import (
+	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/migration"
+	"github.com/ethersphere/bee/pkg/storer/internal/reserve"
 )
 
 // AllSteps lists all migration steps for localstore IndexStore.
-func AllSteps() migration.Steps {
+func AllSteps(chunkStore storage.ChunkStore) migration.Steps {
 	return map[uint64]migration.StepFn{
 		1: step_01,
 		2: step_02,
-		3: step_03,
+		3: step_03(chunkStore, reserve.ChunkType),
 	}
 }
