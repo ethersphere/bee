@@ -70,7 +70,7 @@ func New(
 	}
 	rs.radius.Store(uint32(rItem.Radius))
 
-	size, err := store.Count(&batchRadiusItem{})
+	size, err := store.Count(&BatchRadiusItem{})
 	if err != nil {
 		return nil, err
 	}
@@ -86,7 +86,7 @@ func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.C
 
 	po := swarm.Proximity(r.baseAddr.Bytes(), chunk.Address().Bytes())
 
-	has, err := indexStore.Has(&batchRadiusItem{
+	has, err := indexStore.Has(&BatchRadiusItem{
 		Bin:     po,
 		Address: chunk.Address(),
 		BatchID: chunk.Stamp().BatchID(),
@@ -152,12 +152,12 @@ func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.C
 		return false, err
 	}
 
-	binID, err := r.incBinID(indexStore, po)
+	binID, err := r.IncBinID(indexStore, po)
 	if err != nil {
 		return false, err
 	}
 
-	err = storeBatch.Put(&batchRadiusItem{
+	err = storeBatch.Put(&BatchRadiusItem{
 		Bin:     po,
 		BinID:   binID,
 		Address: chunk.Address(),
@@ -167,12 +167,12 @@ func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.C
 		return false, err
 	}
 
-	err = storeBatch.Put(&chunkBinItem{
+	err = storeBatch.Put(&ChunkBinItem{
 		Bin:       po,
 		BinID:     binID,
 		Address:   chunk.Address(),
 		BatchID:   chunk.Stamp().BatchID(),
-		ChunkType: chunkType(chunk),
+		ChunkType: ChunkType(chunk),
 	})
 	if err != nil {
 		return false, err
@@ -187,12 +187,12 @@ func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.C
 }
 
 func (r *Reserve) Has(store storage.Store, addr swarm.Address, batchID []byte) (bool, error) {
-	item := &batchRadiusItem{Bin: swarm.Proximity(r.baseAddr.Bytes(), addr.Bytes()), BatchID: batchID, Address: addr}
+	item := &BatchRadiusItem{Bin: swarm.Proximity(r.baseAddr.Bytes(), addr.Bytes()), BatchID: batchID, Address: addr}
 	return store.Has(item)
 }
 
 func (r *Reserve) Get(ctx context.Context, storage internal.Storage, addr swarm.Address, batchID []byte) (swarm.Chunk, error) {
-	item := &batchRadiusItem{Bin: swarm.Proximity(r.baseAddr.Bytes(), addr.Bytes()), BatchID: batchID, Address: addr}
+	item := &BatchRadiusItem{Bin: swarm.Proximity(r.baseAddr.Bytes(), addr.Bytes()), BatchID: batchID, Address: addr}
 	err := storage.IndexStore().Get(item)
 	if err != nil {
 		return nil, err
@@ -213,11 +213,11 @@ func (r *Reserve) Get(ctx context.Context, storage internal.Storage, addr swarm.
 
 func (r *Reserve) IterateBin(store storage.Store, bin uint8, startBinID uint64, cb func(swarm.Address, uint64, []byte) (bool, error)) error {
 	err := store.Iterate(storage.Query{
-		Factory:       func() storage.Item { return &chunkBinItem{} },
+		Factory:       func() storage.Item { return &ChunkBinItem{} },
 		Prefix:        binIDToString(bin, startBinID),
 		PrefixAtStart: true,
 	}, func(res storage.Result) (bool, error) {
-		item := res.Entry.(*chunkBinItem)
+		item := res.Entry.(*ChunkBinItem)
 		if item.Bin > bin {
 			return true, nil
 		}
@@ -235,11 +235,11 @@ func (r *Reserve) IterateBin(store storage.Store, bin uint8, startBinID uint64, 
 
 func (r *Reserve) IterateChunks(store internal.Storage, startBin uint8, cb func(swarm.Chunk) (bool, error)) error {
 	err := store.IndexStore().Iterate(storage.Query{
-		Factory:       func() storage.Item { return &chunkBinItem{} },
+		Factory:       func() storage.Item { return &ChunkBinItem{} },
 		Prefix:        binIDToString(startBin, 0),
 		PrefixAtStart: true,
 	}, func(res storage.Result) (bool, error) {
-		item := res.Entry.(*chunkBinItem)
+		item := res.Entry.(*ChunkBinItem)
 
 		chunk, err := store.ChunkStore().Get(context.Background(), item.Address)
 		if err != nil {
@@ -270,11 +270,11 @@ type ChunkItem struct {
 
 func (r *Reserve) IterateChunksItems(store internal.Storage, startBin uint8, cb func(ChunkItem) (bool, error)) error {
 	err := store.IndexStore().Iterate(storage.Query{
-		Factory:       func() storage.Item { return &chunkBinItem{} },
+		Factory:       func() storage.Item { return &ChunkBinItem{} },
 		Prefix:        binIDToString(startBin, 0),
 		PrefixAtStart: true,
 	}, func(res storage.Result) (bool, error) {
-		item := res.Entry.(*chunkBinItem)
+		item := res.Entry.(*ChunkBinItem)
 
 		chItem := ChunkItem{
 			ChunkAddress: item.Address,
@@ -301,14 +301,14 @@ func (r *Reserve) EvictBatchBin(
 	batchID []byte,
 ) (int, error) {
 
-	var evicted []*batchRadiusItem
+	var evicted []*BatchRadiusItem
 
 	err := txExecutor.Execute(ctx, func(store internal.Storage) error {
 		return store.IndexStore().Iterate(storage.Query{
-			Factory: func() storage.Item { return &batchRadiusItem{} },
+			Factory: func() storage.Item { return &BatchRadiusItem{} },
 			Prefix:  string(batchID),
 		}, func(res storage.Result) (bool, error) {
-			batchRadius := res.Entry.(*batchRadiusItem)
+			batchRadius := res.Entry.(*BatchRadiusItem)
 			if batchRadius.Bin >= bin {
 				return true, nil
 			}
@@ -374,7 +374,7 @@ func (r *Reserve) DeleteChunk(
 	chunkAddress swarm.Address,
 	batchID []byte,
 ) error {
-	item := &batchRadiusItem{
+	item := &BatchRadiusItem{
 		Bin:     swarm.Proximity(r.baseAddr.Bytes(), chunkAddress.Bytes()),
 		BatchID: batchID,
 		Address: chunkAddress,
@@ -402,7 +402,7 @@ func (r *Reserve) CleanupBinIndex(
 	chunkAddress swarm.Address,
 	binID uint64,
 ) {
-	_ = batch.Delete(&chunkBinItem{
+	_ = batch.Delete(&ChunkBinItem{
 		Bin:   swarm.Proximity(r.baseAddr.Bytes(), chunkAddress.Bytes()),
 		BinID: binID,
 	})
@@ -412,7 +412,7 @@ func removeChunk(
 	ctx context.Context,
 	store internal.Storage,
 	batch storage.Writer,
-	item *batchRadiusItem,
+	item *BatchRadiusItem,
 ) error {
 
 	indexStore := store.IndexStore()
@@ -432,7 +432,7 @@ func removeChunk(
 	}
 
 	return errors.Join(errs,
-		batch.Delete(&chunkBinItem{Bin: item.Bin, BinID: item.BinID}),
+		batch.Delete(&ChunkBinItem{Bin: item.Bin, BinID: item.BinID}),
 		batch.Delete(item),
 	)
 }
@@ -477,7 +477,7 @@ func (r *Reserve) LastBinIDs(store storage.Store) ([]uint64, error) {
 	ids := make([]uint64, swarm.MaxBins)
 
 	for bin := uint8(0); bin < swarm.MaxBins; bin++ {
-		binItem := &binItem{Bin: bin}
+		binItem := &BinItem{Bin: bin}
 		err := store.Get(binItem)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
@@ -494,11 +494,11 @@ func (r *Reserve) LastBinIDs(store storage.Store) ([]uint64, error) {
 }
 
 // should be called under lock
-func (r *Reserve) incBinID(store storage.Store, bin uint8) (uint64, error) {
+func (r *Reserve) IncBinID(store storage.Store, bin uint8) (uint64, error) {
 	r.binMtx.Lock()
 	defer r.binMtx.Unlock()
 
-	item := &binItem{Bin: bin}
+	item := &BinItem{Bin: bin}
 	err := store.Get(item)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {

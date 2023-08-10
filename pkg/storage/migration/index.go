@@ -66,7 +66,7 @@ func NewStepOnIndex(query storage.Query, opts ...option) StepFn {
 	o := defaultOptions()
 	o.applyAll(opts)
 
-	return func(s storage.Store) error {
+	return func(s storage.BatchedStore) error {
 		return stepOnIndex(s, query, o)
 	}
 }

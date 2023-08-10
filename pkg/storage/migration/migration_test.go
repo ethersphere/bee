@@ -28,9 +28,9 @@ func TestLatestVersion(t *testing.T) {
 
 	const expectedLatestVersion = 8
 	steps := migration.Steps{
-		8: func(s storage.Store) error { return nil },
-		7: func(s storage.Store) error { return nil },
-		6: func(s storage.Store) error { return nil },
+		8: func(s storage.BatchedStore) error { return nil },
+		7: func(s storage.BatchedStore) error { return nil },
+		6: func(s storage.BatchedStore) error { return nil },
 	}
 
 	latestVersion := migration.LatestVersion(steps)
@@ -98,13 +98,13 @@ func TestValidateVersions(t *testing.T) {
 		{
 			name: "missing version 3",
 			input: migration.Steps{
-				1: func(s storage.Store) error {
+				1: func(s storage.BatchedStore) error {
 					return s.Put(objT1)
 				},
-				2: func(s storage.Store) error {
+				2: func(s storage.BatchedStore) error {
 					return s.Put(objT2)
 				},
-				4: func(s storage.Store) error {
+				4: func(s storage.BatchedStore) error {
 					return s.Put(objT3)
 				},
 			},
@@ -113,13 +113,13 @@ func TestValidateVersions(t *testing.T) {
 		{
 			name: "not missing",
 			input: migration.Steps{
-				1: func(s storage.Store) error {
+				1: func(s storage.BatchedStore) error {
 					return s.Put(objT1)
 				},
-				2: func(s storage.Store) error {
+				2: func(s storage.BatchedStore) error {
 					return s.Put(objT2)
 				},
-				3: func(s storage.Store) error {
+				3: func(s storage.BatchedStore) error {
 					return s.Put(objT3)
 				},
 			},
@@ -128,13 +128,13 @@ func TestValidateVersions(t *testing.T) {
 		{
 			name: "desc order versions",
 			input: migration.Steps{
-				3: func(s storage.Store) error {
+				3: func(s storage.BatchedStore) error {
 					return s.Put(objT1)
 				},
-				2: func(s storage.Store) error {
+				2: func(s storage.BatchedStore) error {
 					return s.Put(objT2)
 				},
-				1: func(s storage.Store) error {
+				1: func(s storage.BatchedStore) error {
 					return s.Put(objT3)
 				},
 			},
@@ -143,13 +143,13 @@ func TestValidateVersions(t *testing.T) {
 		{
 			name: "desc order version missing",
 			input: migration.Steps{
-				4: func(s storage.Store) error {
+				4: func(s storage.BatchedStore) error {
 					return s.Put(objT1)
 				},
-				2: func(s storage.Store) error {
+				2: func(s storage.BatchedStore) error {
 					return s.Put(objT2)
 				},
-				1: func(s storage.Store) error {
+				1: func(s storage.BatchedStore) error {
 					return s.Put(objT3)
 				},
 			},
@@ -177,13 +177,13 @@ func TestMigrate(t *testing.T) {
 		t.Parallel()
 
 		steps := migration.Steps{
-			1: func(s storage.Store) error {
+			1: func(s storage.BatchedStore) error {
 				return s.Put(objT1)
 			},
-			2: func(s storage.Store) error {
+			2: func(s storage.BatchedStore) error {
 				return s.Put(objT2)
 			},
-			3: func(s storage.Store) error {
+			3: func(s storage.BatchedStore) error {
 				return s.Put(objT3)
 			},
 		}
@@ -209,13 +209,13 @@ func TestMigrate(t *testing.T) {
 		t.Parallel()
 
 		steps := migration.Steps{
-			8: func(s storage.Store) error {
+			8: func(s storage.BatchedStore) error {
 				return s.Put(objT1)
 			},
-			7: func(s storage.Store) error {
+			7: func(s storage.BatchedStore) error {
 				return s.Put(objT2)
 			},
-			6: func(s storage.Store) error {
+			6: func(s storage.BatchedStore) error {
 				return s.Put(objT3)
 			},
 		}
@@ -246,13 +246,13 @@ func TestMigrate(t *testing.T) {
 		t.Parallel()
 
 		steps := migration.Steps{
-			8: func(s storage.Store) error {
+			8: func(s storage.BatchedStore) error {
 				return s.Put(objT1)
 			},
-			7: func(s storage.Store) error {
+			7: func(s storage.BatchedStore) error {
 				return errStep
 			},
-			6: func(s storage.Store) error {
+			6: func(s storage.BatchedStore) error {
 				return s.Put(objT3)
 			},
 		}
@@ -279,7 +279,7 @@ func TestMigrate(t *testing.T) {
 	})
 }
 
-func assertObjectExists(t *testing.T, s storage.Store, keys ...storage.Key) {
+func assertObjectExists(t *testing.T, s storage.BatchedStore, keys ...storage.Key) {
 	t.Helper()
 
 	for _, key := range keys {
