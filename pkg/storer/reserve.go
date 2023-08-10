@@ -347,7 +347,7 @@ func (db *DB) unreserve(ctx context.Context) (err error) {
 	defer db.events.Trigger(reserveUnreserved)
 
 	target := db.reserve.EvictionTarget()
-	if target == 0 {
+	if target <= 0 {
 		return nil
 	}
 	db.logger.Info("unreserve start", "target", target, "radius", radius)

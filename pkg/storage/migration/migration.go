@@ -16,7 +16,7 @@ import (
 
 type (
 	// StepFn is a function that migrates the storage to the next version
-	StepFn func(storage.Store) error
+	StepFn func(storage.BatchedStore) error
 	// Steps is a map of versions and their migration functions
 	Steps = map[uint64]StepFn
 )
@@ -28,7 +28,7 @@ var (
 )
 
 // Migrate migrates the storage to the latest version
-func Migrate(s storage.Store, sm Steps) error {
+func Migrate(s storage.BatchedStore, sm Steps) error {
 	if err := ValidateVersions(sm); err != nil {
 		return err
 	}

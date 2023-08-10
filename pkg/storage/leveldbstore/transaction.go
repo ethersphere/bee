@@ -97,6 +97,9 @@ type txBatch struct {
 
 // Put implements the Batch interface.
 func (b *txBatch) Put(item storage.Item) error {
+	if b.store.TxState == nil {
+		return b.batch.Put(item)
+	}
 	if err := b.store.IsDone(); err != nil {
 		return err
 	}
@@ -112,6 +115,9 @@ func (b *txBatch) Put(item storage.Item) error {
 
 // Delete implements the Batch interface.
 func (b *txBatch) Delete(item storage.Item) error {
+	if b.store.TxState == nil {
+		return b.batch.Delete(item)
+	}
 	if err := b.store.IsDone(); err != nil {
 		return err
 	}
@@ -127,6 +133,9 @@ func (b *txBatch) Delete(item storage.Item) error {
 
 // Commit implements the Batch interface.
 func (b *txBatch) Commit() error {
+	if b.store.TxState == nil {
+		return b.batch.Commit()
+	}
 	if err := b.batch.Commit(); err != nil {
 		return err
 	}

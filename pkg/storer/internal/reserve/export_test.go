@@ -5,10 +5,7 @@
 package reserve
 
 type (
-	BatchRadiusItem = batchRadiusItem
-	ChunkBinItem    = chunkBinItem
-	BinItem         = binItem
-	RadiusItem      = radiusItem
+	RadiusItem = radiusItem
 )
 
 var (

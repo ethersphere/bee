@@ -15,7 +15,7 @@ import (
 // step_02 migrates the cache to the new format.
 // the old cacheEntry item has the same key, but the value is different. So only
 // a Put is needed.
-func step_02(st storage.Store) error {
+func step_02(st storage.BatchedStore) error {
 	var entries []*cache.CacheEntryItem
 	err := st.Iterate(
 		storage.Query{

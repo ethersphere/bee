@@ -18,36 +18,36 @@ import (
 )
 
 var (
-	// errMarshalInvalidRetrievalIndexAddress is returned if the retrievalIndexItem address is zero during marshaling.
-	errMarshalInvalidRetrievalIndexAddress = errors.New("marshal retrievalIndexItem: address is zero")
-	// errMarshalInvalidRetrievalIndexLocation is returned if the retrievalIndexItem location is invalid during marshaling.
-	errMarshalInvalidRetrievalIndexLocation = errors.New("marshal retrievalIndexItem: location is invalid")
+	// errMarshalInvalidRetrievalIndexAddress is returned if the RetrievalIndexItem address is zero during marshaling.
+	errMarshalInvalidRetrievalIndexAddress = errors.New("marshal RetrievalIndexItem: address is zero")
+	// errMarshalInvalidRetrievalIndexLocation is returned if the RetrievalIndexItem location is invalid during marshaling.
+	errMarshalInvalidRetrievalIndexLocation = errors.New("marshal RetrievalIndexItem: location is invalid")
 	// errUnmarshalInvalidRetrievalIndexSize is returned during unmarshaling if the passed buffer is not the expected size.
-	errUnmarshalInvalidRetrievalIndexSize = errors.New("unmarshal retrievalIndexItem: invalid size")
+	errUnmarshalInvalidRetrievalIndexSize = errors.New("unmarshal RetrievalIndexItem: invalid size")
 	// errUnmarshalInvalidRetrievalIndexLocationBytes is returned during unmarshaling if the location buffer is invalid.
-	errUnmarshalInvalidRetrievalIndexLocationBytes = errors.New("unmarshal retrievalIndexItem: invalid location bytes")
+	errUnmarshalInvalidRetrievalIndexLocationBytes = errors.New("unmarshal RetrievalIndexItem: invalid location bytes")
 )
 
-const retrievalIndexItemSize = swarm.HashSize + 8 + sharky.LocationSize + 1
+const RetrievalIndexItemSize = swarm.HashSize + 8 + sharky.LocationSize + 1
 
-var _ storage.Item = (*retrievalIndexItem)(nil)
+var _ storage.Item = (*RetrievalIndexItem)(nil)
 
-// retrievalIndexItem is the index which gives us the sharky location from the swarm.Address.
+// RetrievalIndexItem is the index which gives us the sharky location from the swarm.Address.
 // The RefCnt stores the reference of each time a Put operation is issued on this Address.
-type retrievalIndexItem struct {
+type RetrievalIndexItem struct {
 	Address   swarm.Address
 	Timestamp uint64
 	Location  sharky.Location
 	RefCnt    uint8
 }
 
-func (r *retrievalIndexItem) ID() string { return r.Address.ByteString() }
+func (r *RetrievalIndexItem) ID() string { return r.Address.ByteString() }
 
-func (retrievalIndexItem) Namespace() string { return "retrievalIdx" }
+func (RetrievalIndexItem) Namespace() string { return "retrievalIdx" }
 
 // Stored in bytes as:
 // |--Address(32)--|--Timestamp(8)--|--Location(7)--|--RefCnt(1)--|
-func (r *retrievalIndexItem) Marshal() ([]byte, error) {
+func (r *RetrievalIndexItem) Marshal() ([]byte, error) {
 	if r.Address.IsZero() {
 		return nil, errMarshalInvalidRetrievalIndexAddress
 	}
@@ -57,16 +57,16 @@ func (r *retrievalIndexItem) Marshal() ([]byte, error) {
 		return nil, errMarshalInvalidRetrievalIndexLocation
 	}
 
-	buf := make([]byte, retrievalIndexItemSize)
+	buf := make([]byte, RetrievalIndexItemSize)
 	copy(buf, r.Address.Bytes())
 	binary.LittleEndian.PutUint64(buf[swarm.HashSize:], r.Timestamp)
 	copy(buf[swarm.HashSize+8:], locBuf)
-	buf[retrievalIndexItemSize-1] = r.RefCnt
+	buf[RetrievalIndexItemSize-1] = r.RefCnt
 	return buf, nil
 }
 
-func (r *retrievalIndexItem) Unmarshal(buf []byte) error {
-	if len(buf) != retrievalIndexItemSize {
+func (r *RetrievalIndexItem) Unmarshal(buf []byte) error {
+	if len(buf) != RetrievalIndexItemSize {
 		return errUnmarshalInvalidRetrievalIndexSize
 	}
 
@@ -75,20 +75,20 @@ func (r *retrievalIndexItem) Unmarshal(buf []byte) error {
 		return errUnmarshalInvalidRetrievalIndexLocationBytes
 	}
 
-	ni := new(retrievalIndexItem)
+	ni := new(RetrievalIndexItem)
 	ni.Address = swarm.NewAddress(append(make([]byte, 0, swarm.HashSize), buf[:swarm.HashSize]...))
 	ni.Timestamp = binary.LittleEndian.Uint64(buf[swarm.HashSize:])
 	ni.Location = *loc
-	ni.RefCnt = buf[retrievalIndexItemSize-1]
+	ni.RefCnt = buf[RetrievalIndexItemSize-1]
 	*r = *ni
 	return nil
 }
 
-func (r *retrievalIndexItem) Clone() storage.Item {
+func (r *RetrievalIndexItem) Clone() storage.Item {
 	if r == nil {
 		return nil
 	}
-	return &retrievalIndexItem{
+	return &RetrievalIndexItem{
 		Address:   r.Address.Clone(),
 		Timestamp: r.Timestamp,
 		Location:  r.Location,
@@ -96,7 +96,7 @@ func (r *retrievalIndexItem) Clone() storage.Item {
 	}
 }
 
-func (r retrievalIndexItem) String() string {
+func (r RetrievalIndexItem) String() string {
 	return storageutil.JoinFields(r.Namespace(), r.ID())
 }
 
@@ -119,7 +119,7 @@ func New(store storage.Store, sharky Sharky) *ChunkStoreWrapper {
 }
 
 // helper to read chunk from retrievalIndex.
-func (c *ChunkStoreWrapper) readChunk(ctx context.Context, rIdx *retrievalIndexItem) (swarm.Chunk, error) {
+func (c *ChunkStoreWrapper) readChunk(ctx context.Context, rIdx *RetrievalIndexItem) (swarm.Chunk, error) {
 	buf := make([]byte, rIdx.Location.Length)
 	err := c.sharky.Read(ctx, rIdx.Location, buf)
 	if err != nil {
@@ -133,7 +133,7 @@ func (c *ChunkStoreWrapper) readChunk(ctx context.Context, rIdx *retrievalIndexI
 }
 
 func (c *ChunkStoreWrapper) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
-	rIdx := &retrievalIndexItem{Address: addr}
+	rIdx := &RetrievalIndexItem{Address: addr}
 	err := c.store.Get(rIdx)
 	if err != nil {
 		return nil, fmt.Errorf("chunk store: failed reading retrievalIndex for address %s: %w", addr, err)
@@ -142,12 +142,12 @@ func (c *ChunkStoreWrapper) Get(ctx context.Context, addr swarm.Address) (swarm.
 }
 
 func (c *ChunkStoreWrapper) Has(_ context.Context, addr swarm.Address) (bool, error) {
-	return c.store.Has(&retrievalIndexItem{Address: addr})
+	return c.store.Has(&RetrievalIndexItem{Address: addr})
 }
 
 func (c *ChunkStoreWrapper) Put(ctx context.Context, ch swarm.Chunk) error {
 	var (
-		rIdx  = &retrievalIndexItem{Address: ch.Address()}
+		rIdx  = &RetrievalIndexItem{Address: ch.Address()}
 		loc   sharky.Location
 		found = true
 	)
@@ -188,7 +188,7 @@ func (c *ChunkStoreWrapper) Put(ctx context.Context, ch swarm.Chunk) error {
 }
 
 func (c *ChunkStoreWrapper) Delete(ctx context.Context, addr swarm.Address) error {
-	rIdx := &retrievalIndexItem{Address: addr}
+	rIdx := &RetrievalIndexItem{Address: addr}
 	err := c.store.Get(rIdx)
 	switch {
 	case errors.Is(err, storage.ErrNotFound):
@@ -226,10 +226,10 @@ func (c *ChunkStoreWrapper) Delete(ctx context.Context, addr swarm.Address) erro
 func (c *ChunkStoreWrapper) Iterate(ctx context.Context, fn storage.IterateChunkFn) error {
 	return c.store.Iterate(
 		storage.Query{
-			Factory: func() storage.Item { return new(retrievalIndexItem) },
+			Factory: func() storage.Item { return new(RetrievalIndexItem) },
 		},
 		func(r storage.Result) (bool, error) {
-			ch, err := c.readChunk(ctx, r.Entry.(*retrievalIndexItem))
+			ch, err := c.readChunk(ctx, r.Entry.(*RetrievalIndexItem))
 			if err != nil {
 				return true, err
 			}
@@ -245,11 +245,11 @@ func (c *ChunkStoreWrapper) Close() error {
 func IterateChunkEntries(st storage.Store, fn func(swarm.Address, bool) (bool, error)) error {
 	return st.Iterate(
 		storage.Query{
-			Factory: func() storage.Item { return new(retrievalIndexItem) },
+			Factory: func() storage.Item { return new(RetrievalIndexItem) },
 		},
 		func(r storage.Result) (bool, error) {
-			addr := r.Entry.(*retrievalIndexItem).Address
-			isShared := r.Entry.(*retrievalIndexItem).RefCnt > 1
+			addr := r.Entry.(*RetrievalIndexItem).Address
+			isShared := r.Entry.(*RetrievalIndexItem).RefCnt > 1
 			return fn(addr, isShared)
 		},
 	)

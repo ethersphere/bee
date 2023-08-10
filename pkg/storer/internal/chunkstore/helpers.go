@@ -27,9 +27,9 @@ func IterateLocations(
 		defer close(locationResultC)
 
 		err := st.Iterate(storage.Query{
-			Factory: func() storage.Item { return new(retrievalIndexItem) },
+			Factory: func() storage.Item { return new(RetrievalIndexItem) },
 		}, func(r storage.Result) (bool, error) {
-			entry := r.Entry.(*retrievalIndexItem)
+			entry := r.Entry.(*RetrievalIndexItem)
 			result := LocationResult{Location: entry.Location}
 
 			select {

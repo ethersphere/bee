@@ -9,6 +9,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	"github.com/ethersphere/bee/pkg/storage/inmemstore"
 	"github.com/ethersphere/bee/pkg/storage/migration"
 	localmigration "github.com/ethersphere/bee/pkg/storer/migration"
@@ -17,12 +18,14 @@ import (
 func TestAllSteps(t *testing.T) {
 	t.Parallel()
 
-	assert.NotEmpty(t, localmigration.AllSteps())
+	chStore := inmemchunkstore.New()
+
+	assert.NotEmpty(t, localmigration.AllSteps(chStore))
 
 	t.Run("version numbers", func(t *testing.T) {
 		t.Parallel()
 
-		err := migration.ValidateVersions(localmigration.AllSteps())
+		err := migration.ValidateVersions(localmigration.AllSteps(chStore))
 		assert.NoError(t, err)
 	})
 
@@ -31,7 +34,7 @@ func TestAllSteps(t *testing.T) {
 
 		store := inmemstore.New()
 
-		err := migration.Migrate(store, localmigration.AllSteps())
+		err := migration.Migrate(store, localmigration.AllSteps(chStore))
 		assert.NoError(t, err)
 	})
 }

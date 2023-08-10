@@ -11,7 +11,7 @@ import (
 // step_01 serves as example for setting up migration step.
 //
 // In this step store is not being modified.
-func step_01(s storage.Store) error {
+func step_01(s storage.BatchedStore) error {
 	// NOOP
 	return nil
 }

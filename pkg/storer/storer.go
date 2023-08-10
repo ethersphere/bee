@@ -541,7 +541,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		}
 	}
 
-	err = migration.Migrate(repo.IndexStore(), localmigration.AllSteps())
+	err = migration.Migrate(repo.IndexStore(), localmigration.AllSteps(repo.ChunkStore()))
 	if err != nil {
 		return nil, err
 	}

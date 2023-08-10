@@ -4,10 +4,6 @@
 
 package chunkstore
 
-type (
-	RetrievalIndexItem = retrievalIndexItem
-)
-
 var (
 	ErrMarshalInvalidRetrievalIndexItemAddress = errMarshalInvalidRetrievalIndexAddress
 	ErrUnmarshalInvalidRetrievalIndexItemSize  = errUnmarshalInvalidRetrievalIndexSize

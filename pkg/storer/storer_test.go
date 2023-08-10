@@ -14,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	batchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	"github.com/ethersphere/bee/pkg/storage/migration"
 	storer "github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/storer/internal/cache"
@@ -188,7 +189,7 @@ func assertStorerVersion(t *testing.T, lstore *storer.DB) {
 		t.Fatalf("migration.Version(...): unexpected error: %v", err)
 	}
 
-	expected := migration.LatestVersion(localmigration.AllSteps())
+	expected := migration.LatestVersion(localmigration.AllSteps(inmemchunkstore.New()))
 
 	if current != expected {
 		t.Fatalf("storer is not migrated to latest version; got %d, expected %d", current, expected)

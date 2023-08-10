@@ -40,7 +40,7 @@ func TestNewStepsChain(t *testing.T) {
 				}),
 			)
 		} else {
-			stepFn = func(s storage.Store) error {
+			stepFn = func(s storage.BatchedStore) error {
 				return s.Delete(&obj{id: valForRemoval})
 			}
 		}
