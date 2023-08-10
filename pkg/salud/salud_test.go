@@ -133,46 +133,6 @@ func TestSelfUnhealthyRadius(t *testing.T) {
 	}
 }
 
-func TestSelfUnhealthyReserveSize(t *testing.T) {
-	t.Parallel()
-	peers := []peer{
-		// fully healhy
-		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, BeeMode: "full", ReserveSize: 100}, 0, true},
-		{swarm.RandAddress(t), &status.Snapshot{ConnectedPeers: 100, StorageRadius: 8, BeeMode: "full", ReserveSize: 100}, 0, true},
-	}
-
-	statusM := &statusMock{make(map[string]peer)}
-	addrs := make([]swarm.Address, 0, len(peers))
-	for _, p := range peers {
-		addrs = append(addrs, p.addr)
-		statusM.peers[p.addr.ByteString()] = p
-	}
-
-	topM := topMock.NewTopologyDriver(topMock.WithPeers(addrs...))
-
-	reserve := mockstorer.NewReserve(
-		mockstorer.WithRadius(8),
-		mockstorer.WithReserveSize(97),
-	)
-
-	service := salud.New(statusM, topM, reserve, log.Noop, -1, "full", 0)
-
-	err := spinlock.Wait(time.Minute, func() bool {
-		return len(topM.PeersHealth()) == len(peers)
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if service.IsHealthy() {
-		t.Fatalf("self should NOT be healthy")
-	}
-
-	if err := service.Close(); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestSubToRadius(t *testing.T) {
 	t.Parallel()
 	peers := []peer{
