@@ -53,8 +53,8 @@ var (
 
 const (
 	makeOfferTimeout          = 5 * time.Minute
-	DefaultMaxPage     uint64 = 250
-	DefaultPageTimeout        = time.Second * 15 //max amount of time to wait for the next chunk after collecting the first addr.
+	DefaultMaxPage     uint64 = 1000
+	DefaultPageTimeout        = time.Second * 5 //max amount of time to wait for the next chunk after collecting the first addr.
 )
 
 // singleflight key for intervals
@@ -415,7 +415,8 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 		var (
 			chs     []*storer.BinC
 			topmost uint64
-			timerC  <-chan time.Time
+			tickerC <-chan time.Time
+			ticker  *time.Ticker
 		)
 		chC, unsub, errC := s.store.SubscribeBin(ctx, bin, start)
 		defer unsub()
@@ -436,10 +437,14 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 					topmost = c.BinID
 				}
 				limit--
-				if timerC == nil {
-					timerC = time.After(s.pageTimeout)
+				if tickerC == nil {
+					ticker = time.NewTicker(s.pageTimeout)
+					defer ticker.Stop()
+					tickerC = ticker.C
+				} else {
+					ticker.Reset(s.pageTimeout)
 				}
-				// by stopping at a specific position, we control the binID the next sync call will start at for all peers.
+				// by stopping at a specific position, we control the binID the next sync call will start from for all peers.
 				// as such, this increases the probability that multiple requests will fall into same single flight group.
 				if c.BinID >= nextWindow {
 					break LOOP
@@ -449,7 +454,7 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 				return nil, err
 			case <-ctx.Done():
 				return nil, ctx.Err()
-			case <-timerC:
+			case <-tickerC:
 				loggerV2.Debug("batch timeout timer triggered")
 				// return batch if new chunks are not received after some time
 				break LOOP
