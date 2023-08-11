@@ -15,6 +15,7 @@ func allSteps() migration.Steps {
 	return map[uint64]migration.StepFn{
 		1: epochMigration,
 		2: deletePrefix("sync_interval"),
+		3: deletePrefix("sync_interval"),
 	}
 }
 
