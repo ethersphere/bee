@@ -510,6 +510,10 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		opts = defaultOptions()
 	}
 
+	if opts.Logger == nil {
+		opts.Logger = log.Noop
+	}
+
 	lock := multex.New()
 	metrics := newMetrics()
 	opts.LdbStats.CompareAndSwap(nil, &metrics.LevelDBStats)
