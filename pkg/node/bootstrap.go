@@ -176,7 +176,6 @@ func bootstrapNode(
 
 	localStore, err := storer.New(ctx, "", &storer.Options{
 		CacheCapacity: 1_000_000,
-		Logger:        logger,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("local store creation: %w", err)
