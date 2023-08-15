@@ -1,15 +1,6 @@
 version: "3"
 
 services:
-  clef-1:
-    image: ethersphere/clef:0.6.0
-    restart: unless-stopped
-    environment:
-      - CLEF_CHAINID
-    volumes:
-      - clef-1:/app/data
-    command: full
-
   bee-1:
     image: ethersphere/bee:stable
     restart: unless-stopped
@@ -18,8 +9,6 @@ services:
       - BEE_BLOCK_TIME
       - BEE_BOOTNODE
       - BEE_BOOTNODE_MODE
-      - BEE_CLEF_SIGNER_ENABLE
-      - BEE_CLEF_SIGNER_ENDPOINT=http://clef-1:8550
       - BEE_CONFIG
       - BEE_CORS_ALLOWED_ORIGINS
       - BEE_DATA_DIR
@@ -63,8 +52,6 @@ services:
     volumes:
       - bee-1:/home/bee/.bee
     command: start
-    depends_on:
-      - clef-1
+
 volumes:
-  clef-1:
   bee-1:

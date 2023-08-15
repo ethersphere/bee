@@ -1,10 +1,5 @@
 # Copy this file to .env, then update it with your own settings
 
-### CLEF
-
-## chain id to use for signing (100=mainnet(xdai), 5=testnet(goerli)) (default: 12345)
-CLEF_CHAINID=5
-
 ### BEE
 
 ## HTTP API listen address (default :1633)
@@ -15,10 +10,6 @@ CLEF_CHAINID=5
 # BEE_BOOTNODE=[/dnsaddr/testnet.ethswarm.org]
 ## cause the node to always accept incoming connections
 # BEE_BOOTNODE_MODE=false
-## enable clef signer
-BEE_CLEF_SIGNER_ENABLE=true
-## clef signer endpoint
-# BEE_CLEF_SIGNER_ENDPOINT=
 ## config file (default is /home/<user>/.bee.yaml)
 # BEE_CONFIG=/home/bee/.bee.yaml
 ## origins with CORS headers enabled
