@@ -439,7 +439,7 @@ func (e *epochMigrator) migratePinning(ctx context.Context) error {
 					}
 
 					err = func() error {
-						if err := traverser.Traverse(egCtx, addr, traverserFn); err != nil {
+						if err := traverser.Traverse(egCtx, addr, false, traverserFn); err != nil {
 							return err
 						}
 
