@@ -67,7 +67,7 @@ func (s *steward) Reupload(ctx context.Context, root swarm.Address, stamper post
 		return uploaderSession.Put(ctx, c.WithStamp(stamp))
 	}
 
-	if err := s.traverser.Traverse(ctx, root, fn); err != nil {
+	if err := s.traverser.Traverse(ctx, root, false, fn); err != nil {
 		return errors.Join(
 			fmt.Errorf("traversal of %s failed: %w", root.String(), err),
 			uploaderSession.Cleanup(),
@@ -80,7 +80,7 @@ func (s *steward) Reupload(ctx context.Context, root swarm.Address, stamper post
 // IsRetrievable implements Interface.IsRetrievable method.
 func (s *steward) IsRetrievable(ctx context.Context, root swarm.Address) (bool, error) {
 	noop := func(leaf swarm.Address) error { return nil }
-	switch err := s.netTraverser.Traverse(ctx, root, noop); {
+	switch err := s.netTraverser.Traverse(ctx, root, false, noop); {
 	case errors.Is(err, storage.ErrNotFound):
 		return false, nil
 	case errors.Is(err, topology.ErrNotFound):

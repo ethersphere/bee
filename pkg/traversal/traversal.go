@@ -25,7 +25,7 @@ import (
 // Traverser represents service which traverse through address dependent chunks.
 type Traverser interface {
 	// Traverse iterates through each address related to the supplied one, if possible.
-	Traverse(context.Context, swarm.Address, swarm.AddressIterFunc) error
+	Traverse(context.Context, swarm.Address, bool, swarm.AddressIterFunc) error
 }
 
 // New constructs for a new Traverser.
@@ -39,7 +39,7 @@ type service struct {
 }
 
 // Traverse implements Traverser.Traverse method.
-func (s *service) Traverse(ctx context.Context, addr swarm.Address, iterFn swarm.AddressIterFunc) error {
+func (s *service) Traverse(ctx context.Context, addr swarm.Address, traverseManifests bool, iterFn swarm.AddressIterFunc) error {
 	processBytes := func(ref swarm.Address) error {
 		j, _, err := joiner.New(ctx, s.store, ref)
 		if err != nil {
@@ -64,23 +64,25 @@ func (s *service) Traverse(ctx context.Context, addr swarm.Address, iterFn swarm
 		}
 	}
 
-	ls := loadsave.NewReadonly(s.store)
-	switch mf, err := manifest.NewDefaultManifestReference(addr, ls); {
-	case errors.Is(err, manifest.ErrInvalidManifestType):
-		break
-	case err != nil:
-		return fmt.Errorf("traversal: unable to create manifest reference for %q: %w", addr, err)
-	default:
-		err := mf.IterateAddresses(ctx, processBytes)
-		if errors.Is(err, mantaray.ErrTooShort) || errors.Is(err, mantaray.ErrInvalidVersionHash) {
-			// Based on the returned errors we conclude that it might
-			// not be a manifest, so we try non-manifest processing.
+	if (traverseManifests) {
+		ls := loadsave.NewReadonly(s.store)
+		switch mf, err := manifest.NewDefaultManifestReference(addr, ls); {
+		case errors.Is(err, manifest.ErrInvalidManifestType):
 			break
+		case err != nil:
+			return fmt.Errorf("traversal: unable to create manifest reference for %q: %w", addr, err)
+		default:
+			err := mf.IterateAddresses(ctx, processBytes)
+			if errors.Is(err, mantaray.ErrTooShort) || errors.Is(err, mantaray.ErrInvalidVersionHash) {
+				// Based on the returned errors we conclude that it might
+				// not be a manifest, so we try non-manifest processing.
+				break
+			}
+			if err != nil {
+				return fmt.Errorf("traversal: unable to process bytes for %q: %w", addr, err)
+			}
+			return nil
 		}
-		if err != nil {
-			return fmt.Errorf("traversal: unable to process bytes for %q: %w", addr, err)
-		}
-		return nil
 	}
 
 	// Non-manifest processing.

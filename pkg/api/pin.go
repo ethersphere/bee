@@ -52,6 +52,7 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 	err = traverser.Traverse(
 		r.Context(),
 		paths.Reference,
+		false,	// Do not iterate through manifests
 		func(address swarm.Address) error {
 			chunk, err := getter.Get(r.Context(), address)
 			if err != nil {
