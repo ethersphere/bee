@@ -307,9 +307,6 @@ func (s *store) cleanup() error {
 		}
 		if s.batchExpiry != nil {
 			s.batchExpiry.HandleStampExpiry(b.ID)
-			if err != nil {
-				return fmt.Errorf("handle stamp expiry for batch %x: %w", b.ID, err)
-			}
 		}
 	}
 

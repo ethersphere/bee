@@ -49,17 +49,16 @@ type mockBatchListener struct {
 	diluteCount int
 }
 
-func (m *mockBatchListener) HandleCreate(b *postage.Batch, topUpAmount *big.Int) error {
+func (m *mockBatchListener) HandleCreate(b *postage.Batch, _ *big.Int) error {
 	m.createCount++
 	return nil
 }
 
-func (m *mockBatchListener) HandleTopUp(id []byte, newBalance *big.Int) {
+func (m *mockBatchListener) HandleTopUp(_ []byte, _ *big.Int) {
 	m.topupCount++
-	return
 }
 
-func (m *mockBatchListener) HandleDepthIncrease(id []byte, newDepth uint8) {
+func (m *mockBatchListener) HandleDepthIncrease(_ []byte, _ uint8) {
 	m.diluteCount++
 	return
 }

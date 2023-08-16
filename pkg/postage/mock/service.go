@@ -78,7 +78,7 @@ func (m *mockPostage) StampIssuers() []*postage.StampIssuer {
 	m.issuerLock.Lock()
 	defer m.issuerLock.Unlock()
 
-	var issuers []*postage.StampIssuer
+	issuers := make([]*postage.StampIssuer, 0)
 	for _, v := range m.issuersMap {
 		issuers = append(issuers, v)
 	}
@@ -109,9 +109,9 @@ func (m *mockPostage) IssuerUsable(_ *postage.StampIssuer) bool {
 
 func (m *mockPostage) HandleCreate(_ *postage.Batch, _ *big.Int) error { return nil }
 
-func (m *mockPostage) HandleTopUp(_ []byte, _ *big.Int) { return }
+func (m *mockPostage) HandleTopUp(_ []byte, _ *big.Int) {}
 
-func (m *mockPostage) HandleDepthIncrease(_ []byte, _ uint8) { return }
+func (m *mockPostage) HandleDepthIncrease(_ []byte, _ uint8) {}
 
 func (m *mockPostage) Close() error {
 	return nil
