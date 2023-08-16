@@ -156,7 +156,7 @@ func (svc *batchService) TopUp(id []byte, totalAmout, normalisedBalance *big.Int
 	topUpAmount := big.NewInt(0).Div(totalAmout, big.NewInt(int64(1<<(b.Depth))))
 
 	if bytes.Equal(svc.owner, b.Owner) && svc.batchListener != nil {
-		err = svc.batchListener.HandleTopUp(id, topUpAmount)
+		svc.batchListener.HandleTopUp(id, topUpAmount)
 		if err != nil {
 			return fmt.Errorf("top up batch: %w", err)
 		}
@@ -184,7 +184,7 @@ func (svc *batchService) UpdateDepth(id []byte, depth uint8, normalisedBalance *
 	}
 
 	if bytes.Equal(svc.owner, b.Owner) && svc.batchListener != nil {
-		err = svc.batchListener.HandleDepthIncrease(id, depth)
+		svc.batchListener.HandleDepthIncrease(id, depth)
 		if err != nil {
 			return fmt.Errorf("handle depth increase: %w", err)
 		}
