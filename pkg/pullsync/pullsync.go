@@ -392,6 +392,7 @@ func (s *Syncer) makeOffer(ctx context.Context, rn pb.Get) (*pb.Offer, error) {
 	o.Chunks = make([]*pb.Chunk, 0, len(addrs))
 	for _, v := range addrs {
 		o.Chunks = append(o.Chunks, &pb.Chunk{Address: v.Address.Bytes(), BatchID: v.BatchID})
+		s.metrics.OutboundOffer.Inc()
 	}
 	return o, nil
 }
@@ -478,6 +479,7 @@ func (s *Syncer) processWant(ctx context.Context, o *pb.Offer, w *pb.Want) ([]sw
 	chunks := make([]swarm.Chunk, 0, len(o.Chunks))
 	for i := 0; i < len(o.Chunks); i++ {
 		if bv.Get(i) {
+			s.metrics.OutboundWant.Inc()
 			ch := o.Chunks[i]
 			c, err := s.store.ReserveGet(ctx, swarm.NewAddress(ch.Address), ch.BatchID)
 			if err != nil {
