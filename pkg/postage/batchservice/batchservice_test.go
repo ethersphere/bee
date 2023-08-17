@@ -60,7 +60,6 @@ func (m *mockBatchListener) HandleTopUp(_ []byte, _ *big.Int) {
 
 func (m *mockBatchListener) HandleDepthIncrease(_ []byte, _ uint8) {
 	m.diluteCount++
-	return
 }
 
 func TestBatchServiceCreate_FLAKY(t *testing.T) {

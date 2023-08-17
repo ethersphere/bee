@@ -63,7 +63,7 @@ func NewService(store storage.Store, postageStore Storer, chainID int64) (Servic
 			},
 		}, func(result storage.Result) (bool, error) {
 			issuer := result.Entry.(*StampIssuerItem).Issuer
-			s.add(issuer)
+			_ = s.add(issuer)
 			return false, nil
 		})
 	if err != nil {
