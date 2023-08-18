@@ -163,7 +163,7 @@ func (s *Service) bytesHeadHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Add(ContentTypeHeader, "application/octet-stream")
 	var span int64
 
-	if cac.Valid(ch) {
+	if cac.Valid(ch) == nil {
 		span = int64(binary.LittleEndian.Uint64(ch.Data()[:swarm.SpanSize]))
 	} else {
 		// soc

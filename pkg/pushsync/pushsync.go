@@ -192,7 +192,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	}
 	chunk.WithStamp(stamp)
 
-	if cac.Valid(chunk) {
+	if cac.Valid(chunk) == nil {
 		go ps.unwrap(chunk)
 	} else if !soc.Valid(chunk) {
 		return swarm.ErrInvalidChunk
@@ -338,7 +338,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				if ps.skipList.PruneExpiresAfter(ch.Address(), overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers
 					if inflight == 0 {
 						if ps.fullNode && ps.topologyDriver.IsReachable() {
-							if cac.Valid(ch) {
+							if cac.Valid(ch) == nil {
 								go ps.unwrap(ch)
 							}
 							return nil, topology.ErrWantSelf

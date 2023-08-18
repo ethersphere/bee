@@ -11,6 +11,10 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/cac"
+	"github.com/ethersphere/bee/pkg/soc"
+
+
 	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/storageutil"
@@ -138,7 +142,27 @@ func (c *ChunkStoreWrapper) Get(ctx context.Context, addr swarm.Address) (swarm.
 	if err != nil {
 		return nil, fmt.Errorf("chunk store: failed reading retrievalIndex for address %s: %w", addr, err)
 	}
-	return c.readChunk(ctx, rIdx)
+	chunk, err := c.readChunk(ctx, rIdx)
+	if err != nil {
+		return nil, err
+	}
+	err = cac.Valid(chunk)
+	if err != nil && !soc.Valid(chunk) {
+//type RetrievalIndexItem struct {
+//	Address   swarm.Address
+//	Timestamp uint64
+//	Location  sharky.Location
+//	RefCnt    uint8
+//}
+//type Location struct {
+//	Shard  uint8
+//	Slot   uint32
+//	Length uint16
+//}
+		return nil, fmt.Errorf("chunk store: read invalid chunk at address %s loc %d:%d(%d) ref %d: %w",
+								addr, rIdx.Location.Shard, rIdx.Location.Slot, rIdx.Location.Length, rIdx.RefCnt, err)
+	}
+	return chunk, nil
 }
 
 func (c *ChunkStoreWrapper) Has(_ context.Context, addr swarm.Address) (bool, error) {

@@ -330,7 +330,7 @@ func (s *Service) retrieveChunk(ctx context.Context, chunkAddr, peer swarm.Addre
 	s.metrics.TotalRetrieved.Inc()
 
 	chunk = swarm.NewChunk(chunkAddr, d.Data)
-	if !cac.Valid(chunk) {
+	if cac.Valid(chunk) != nil {
 		if !soc.Valid(chunk) {
 			s.metrics.InvalidChunkRetrieved.Inc()
 			err = swarm.ErrInvalidChunk

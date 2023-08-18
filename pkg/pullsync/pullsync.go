@@ -250,7 +250,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 			continue
 		}
 
-		if cac.Valid(chunk) {
+		if cac.Valid(chunk) == nil {
 			go s.unwrap(chunk)
 		} else if !soc.Valid(chunk) {
 			s.logger.Debug("invalid cac/soc chunk", "error", swarm.ErrInvalidChunk, "peer_address", peer, "chunk", chunk)

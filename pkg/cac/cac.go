@@ -7,6 +7,7 @@ package cac
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
 
 	"github.com/ethersphere/bee/pkg/bmtpool"
@@ -70,16 +71,21 @@ func newWithSpan(data, span []byte) (swarm.Chunk, error) {
 }
 
 // Valid checks whether the given chunk is a valid content-addressed chunk.
-func Valid(c swarm.Chunk) bool {
+func Valid(c swarm.Chunk) error {
 	data := c.Data()
 
-	if validateDataLength(len(data)-swarm.SpanSize) != nil {
-		return false
+	err := validateDataLength(len(data)-swarm.SpanSize)
+	if err != nil {
+		return err
 	}
 
 	hash, _ := doHash(data[swarm.SpanSize:], data[:swarm.SpanSize])
-
-	return bytes.Equal(hash, c.Address().Bytes())
+	if !bytes.Equal(hash, c.Address().Bytes()) {
+		return fmt.Errorf("chunk store: invalid hash expected %s got %s", c.Address(), hex.EncodeToString(hash))
+	}
+	
+	return nil
+	//return bytes.Equal(hash, c.Address().Bytes())
 }
 
 func doHash(data, span []byte) ([]byte, error) {

@@ -286,7 +286,7 @@ func copyBytes(src []byte) []byte {
 }
 
 func ChunkType(ch swarm.Chunk) swarm.ChunkType {
-	if cac.Valid(ch) {
+	if cac.Valid(ch) == nil {
 		return swarm.ChunkTypeContentAddressed
 	} else if soc.Valid(ch) {
 		return swarm.ChunkTypeSingleOwner
