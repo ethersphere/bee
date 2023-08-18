@@ -11,6 +11,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/ethersphere/bee/pkg/log"
+
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -44,7 +46,7 @@ type TxChunkStore interface {
 	Tx
 	ChunkStore
 
-	NewTx(*TxState) TxChunkStore
+	NewTx(*TxState, log.Logger) TxChunkStore
 }
 
 // TxState is a mix-in for Tx. It provides basic

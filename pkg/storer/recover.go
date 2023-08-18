@@ -40,7 +40,7 @@ func sharkyRecovery(ctx context.Context, sharkyBasePath string, store storage.St
 		logger.Info("localstore sharky recovery finished", "time", time.Since(t))
 	}(time.Now())
 
-	sharkyRecover, err := sharky.NewRecovery(sharkyBasePath, sharkyNoOfShards, swarm.SocMaxChunkSize)
+	sharkyRecover, err := sharky.NewRecovery(sharkyBasePath, sharkyNoOfShards, swarm.SocMaxChunkSize, logger)
 	if err != nil {
 		return closer, err
 	}

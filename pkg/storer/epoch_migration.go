@@ -15,6 +15,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/cac"
+	"github.com/ethersphere/bee/pkg/soc"
+
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/sharky"
@@ -60,12 +63,13 @@ type putOpStorage struct {
 	store    storage.BatchedStore
 	location sharky.Location
 	recovery sharkyRecover
+	logger	 log.Logger
 }
 
 func (p *putOpStorage) IndexStore() storage.BatchedStore { return p.store }
 
 func (p *putOpStorage) ChunkStore() storage.ChunkStore {
-	return chunkstore.New(p.store, p)
+	return chunkstore.New(p.store, p, p.logger)
 }
 
 // Write implements the sharky.Store interface. It uses the sharky recovery mechanism
@@ -295,8 +299,10 @@ func (e *epochMigrator) migrateReserve(ctx context.Context) error {
 						store:    e.store,
 						location: op.loc,
 						recovery: e.recovery,
+						logger: e.logger,
 					}
 
+					e.logger.Debug("chunkTrace: migrateReserve: put chunk", "address", op.chunk.Address(), "loc", op.loc.ToString())
 					switch newIdx, err := e.reserve.Put(egCtx, pStorage, op.chunk); {
 					case err != nil:
 						return err
@@ -336,6 +342,12 @@ func (e *epochMigrator) migrateReserve(ctx context.Context) error {
 			ch := swarm.NewChunk(addr, chData).
 				WithStamp(postage.NewStamp(item.BatchID, item.Index, item.Timestamp, item.Sig))
 
+			err = cac.Valid(ch)
+			if err != nil && !soc.Valid(ch) {
+				e.logger.Debug("chunkTrace: migrateReserve: invalid chunk", "address", addr, "loc", l.ToString(), "err", err)
+				return false, nil // continue without migrating chunk
+			}
+			
 			select {
 			case <-egCtx.Done():
 				return true, egCtx.Err()
@@ -366,7 +378,10 @@ func (e *epochMigrator) migratePinning(ctx context.Context) error {
 	pStorage := &putOpStorage{
 		store:    e.store,
 		recovery: e.recovery,
+		logger: e.logger,
 	}
+	var mu sync.Mutex	// protects the use of pStorage.Location
+
 	traverser := traversal.New(
 		storage.GetterFunc(func(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, err error) {
 			i := shed.Item{
@@ -388,7 +403,13 @@ func (e *epochMigrator) migratePinning(ctx context.Context) error {
 				return nil, err
 			}
 
-			return swarm.NewChunk(addr, chData), nil
+			ch = swarm.NewChunk(addr, chData)
+			err = cac.Valid(ch)
+			if err != nil && !soc.Valid(ch) {
+				e.logger.Debug("chunkTrace: migratePinning: invalid chunk", "address", addr, "loc", l.ToString(), "err", err)
+				return nil, err	// don't pin invalid chunks
+			}
+			return ch, nil
 		}),
 	)
 
@@ -412,7 +433,6 @@ func (e *epochMigrator) migratePinning(ctx context.Context) error {
 					if err != nil {
 						return err
 					}
-					var mu sync.Mutex
 
 					traverserFn := func(chAddr swarm.Address) error {
 						item, err := e.retrievalDataIndex.Get(shed.Item{Address: chAddr.Bytes()})
@@ -428,6 +448,7 @@ func (e *epochMigrator) migratePinning(ctx context.Context) error {
 
 						mu.Lock()
 						pStorage.location = l
+						e.logger.Debug("chunkTrace: migratePinning: put chunk", "address", chAddr, "loc", l.ToString())
 						err = pinningPutter.Put(egCtx, pStorage, pStorage.IndexStore(), ch)
 						if err != nil {
 							mu.Unlock()
