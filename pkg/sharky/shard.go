@@ -7,6 +7,7 @@ package sharky
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
 )
 
@@ -35,6 +36,10 @@ func (l *Location) UnmarshalBinary(buf []byte) error {
 	l.Slot = binary.LittleEndian.Uint32(buf[1:5])
 	l.Length = binary.LittleEndian.Uint16(buf[5:])
 	return nil
+}
+
+func (l *Location) ToString() string {
+	return fmt.Sprintf("%d:%d(%d)", l.Shard, l.Slot, l.Length);
 }
 
 // LocationFromBinary is a helper to construct a Location object from byte representation

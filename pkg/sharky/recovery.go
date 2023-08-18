@@ -13,6 +13,8 @@ import (
 	"path"
 	"sync"
 
+	"github.com/ethersphere/bee/pkg/log"
+
 	"github.com/hashicorp/go-multierror"
 )
 
@@ -22,11 +24,12 @@ type Recovery struct {
 	shards     []*slots
 	shardFiles []*os.File
 	datasize   int
+	logger	   log.Logger
 }
 
 var ErrShardNotFound = errors.New("shard not found")
 
-func NewRecovery(dir string, shardCnt int, datasize int) (*Recovery, error) {
+func NewRecovery(dir string, shardCnt int, datasize int, logger log.Logger) (*Recovery, error) {
 	shards := make([]*slots, shardCnt)
 	shardFiles := make([]*os.File, shardCnt)
 
@@ -52,7 +55,7 @@ func NewRecovery(dir string, shardCnt int, datasize int) (*Recovery, error) {
 		shards[i] = sl
 		shardFiles[i] = file
 	}
-	return &Recovery{shards: shards, shardFiles: shardFiles, datasize: datasize}, nil
+	return &Recovery{shards: shards, shardFiles: shardFiles, datasize: datasize, logger: logger}, nil
 }
 
 // Add marks a location as used (not free).
@@ -60,6 +63,7 @@ func (r *Recovery) Add(loc Location) error {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
+	r.logger.Debug("chunkTrace: sharkyRecovery.Add", "location", loc.ToString())
 	sh := r.shards[loc.Shard]
 	l := len(sh.data)
 	if diff := int(loc.Slot/8) - l; diff >= 0 {
@@ -91,6 +95,7 @@ func (r *Recovery) Save() error {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
+	r.logger.Debug("chunkTrace: sharkyRecovery.Save")
 	err := new(multierror.Error)
 	for _, sh := range r.shards {
 		for i := range sh.data {
@@ -106,6 +111,7 @@ func (r *Recovery) Close() error {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
+	r.logger.Debug("chunkTrace: sharkyRecovery.Close")
 	err := new(multierror.Error)
 	for idx, sh := range r.shards {
 		err = multierror.Append(err, sh.file.Close(), r.shardFiles[idx].Close())

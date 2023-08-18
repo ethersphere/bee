@@ -10,6 +10,8 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	
+	"github.com/ethersphere/bee/pkg/log"
 
 	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -147,7 +149,7 @@ func (cs *TxChunkStoreWrapper) Rollback() error {
 
 var pendingTxNamespace = new(pendingTx).Namespace()
 
-func (cs *TxChunkStoreWrapper) NewTx(state *storage.TxState) storage.TxChunkStore {
+func (cs *TxChunkStoreWrapper) NewTx(state *storage.TxState, logger log.Logger) storage.TxChunkStore {
 	txStore := cs.txStore.NewTx(state)
 	txSharky := &txSharky{
 		id:            []byte(storageutil.JoinFields(pendingTxNamespace, uuid.NewString())),
@@ -159,17 +161,17 @@ func (cs *TxChunkStoreWrapper) NewTx(state *storage.TxState) storage.TxChunkStor
 	return &TxChunkStoreWrapper{
 		TxChunkStoreBase: &storage.TxChunkStoreBase{
 			TxState:    state,
-			ChunkStore: New(txStore, txSharky),
+			ChunkStore: New(txStore, txSharky, logger),
 		},
 		txStore:  txStore,
 		txSharky: txSharky,
 	}
 }
 
-func NewTxChunkStore(txStore storage.TxStore, csSharky Sharky) *TxChunkStoreWrapper {
+func NewTxChunkStore(txStore storage.TxStore, csSharky Sharky, logger log.Logger) *TxChunkStoreWrapper {
 	return &TxChunkStoreWrapper{
 		TxChunkStoreBase: &storage.TxChunkStoreBase{
-			ChunkStore: New(txStore, csSharky),
+			ChunkStore: New(txStore, csSharky, logger),
 		},
 		txStore:  txStore,
 		txSharky: &txSharky{Sharky: csSharky},
