@@ -9,8 +9,6 @@ import (
 	"errors"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/log"
-
 	m "github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/prometheus/client_golang/prometheus"
@@ -32,7 +30,6 @@ type repository struct {
 	txIndexStore TxStore
 	txChunkStore TxChunkStore
 	locker       ChunkLocker
-	logger		 log.Logger
 }
 
 // IndexStore returns Store.
@@ -53,7 +50,7 @@ func (r *repository) NewTx(ctx context.Context) (Repository, func() error, func(
 		txStart:      time.Now(),
 		txIndexStore: txIndexStoreWithMetrics{r.txIndexStore.NewTx(NewTxState(ctx)), r.metrics},
 		txChunkStore: txChunkStoreWithMetrics{
-			wrapSync(r.txChunkStore.NewTx(NewTxState(ctx), r.logger), r.locker),
+			wrapSync(r.txChunkStore.NewTx(NewTxState(ctx)), r.locker),
 			r.metrics,
 		},
 	}
@@ -102,7 +99,6 @@ func NewRepository(
 	txIndexStore TxStore,
 	txChunkStore TxChunkStore,
 	locker ChunkLocker,
-	logger log.Logger,
 ) Repository {
 	metrics := newMetrics()
 	return &repository{
@@ -110,7 +106,6 @@ func NewRepository(
 		txIndexStore: txIndexStoreWithMetrics{txIndexStore, metrics},
 		txChunkStore: txChunkStoreWithMetrics{wrapSync(txChunkStore, locker), metrics},
 		locker:       locker,
-		logger:		  logger,
 	}
 }
 

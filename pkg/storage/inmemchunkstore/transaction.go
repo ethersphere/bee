@@ -9,8 +9,6 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ethersphere/bee/pkg/log"
-
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -91,7 +89,7 @@ func (s *TxChunkStore) Rollback() error {
 }
 
 // NewTx implements the TxStore interface.
-func (s *TxChunkStore) NewTx(state *storage.TxState, logger log.Logger) storage.TxChunkStore {
+func (s *TxChunkStore) NewTx(state *storage.TxState) storage.TxChunkStore {
 	if s.ChunkStore == nil {
 		panic(errors.New("inmemchunkstore: nil store"))
 	}

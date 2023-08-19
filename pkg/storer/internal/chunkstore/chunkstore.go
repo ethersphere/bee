@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/cac"
-	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/soc"
+
 
 	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -116,11 +116,10 @@ type Sharky interface {
 type ChunkStoreWrapper struct {
 	store  storage.Store
 	sharky Sharky
-	logger log.Logger
 }
 
-func New(store storage.Store, sharky Sharky, logger log.Logger) *ChunkStoreWrapper {
-	return &ChunkStoreWrapper{store: store, sharky: sharky, logger: logger}
+func New(store storage.Store, sharky Sharky) *ChunkStoreWrapper {
+	return &ChunkStoreWrapper{store: store, sharky: sharky}
 }
 
 // helper to read chunk from retrievalIndex.
@@ -160,9 +159,8 @@ func (c *ChunkStoreWrapper) Get(ctx context.Context, addr swarm.Address) (swarm.
 //	Slot   uint32
 //	Length uint16
 //}
-		c.logger.Debug("chunkTrace: chunkStore.Get invalid chunk", "address", addr, "err", err)
-		return nil, fmt.Errorf("chunk store: read invalid chunk at address %s loc %s ref %d: %w",
-								addr, rIdx.Location.ToString(), rIdx.RefCnt, err)
+		return nil, fmt.Errorf("chunk store: read invalid chunk at address %s loc %d:%d(%d) ref %d: %w",
+								addr, rIdx.Location.Shard, rIdx.Location.Slot, rIdx.Location.Length, rIdx.RefCnt, err)
 	}
 	return chunk, nil
 }
@@ -189,11 +187,8 @@ func (c *ChunkStoreWrapper) Put(ctx context.Context, ch swarm.Chunk) error {
 		rIdx.Location = loc
 		rIdx.Timestamp = uint64(time.Now().Unix())
 		found = false
-		c.logger.Debug("chunkTrace: chunkStore.Put new chunk", "address", ch.Address(), "loc", loc.ToString())
 	case err != nil:
 		return fmt.Errorf("chunk store: failed to read: %w", err)
-	case err == nil:
-		c.logger.Debug("chunkTrace: chunkStore.Put increment chunk", "address", ch.Address(), "loc", rIdx.Location.ToString(), "refCnt", rIdx.RefCnt+1)
 	}
 
 	rIdx.RefCnt++
@@ -229,14 +224,12 @@ func (c *ChunkStoreWrapper) Delete(ctx context.Context, addr swarm.Address) erro
 	}
 
 	if rIdx.RefCnt > 0 { // If there are more references for this we don't delete it from sharky.
-		c.logger.Debug("chunkTrace: chunkStore.Delete decrement chunk", "address", addr, "loc", rIdx.Location.ToString(), "refCnt", rIdx.RefCnt)
 		err = c.store.Put(rIdx)
 		if err != nil {
 			return fmt.Errorf("chunk store: failed updating retrievalIndex for address %s: %w", addr, err)
 		}
 		return nil
 	}
-	c.logger.Debug("chunkTrace: chunkStore.Delete delete chunk", "address", addr, "loc", rIdx.Location.ToString(), "refCnt", rIdx.RefCnt)
 
 	// Delete the chunk.
 	err = c.sharky.Release(ctx, rIdx.Location)

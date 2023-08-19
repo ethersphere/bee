@@ -227,9 +227,9 @@ func initInmemRepository(locker storage.ChunkLocker) (storage.Repository, io.Clo
 	}
 
 	txStore := leveldbstore.NewTxStore(store)
-	txChunkStore := chunkstore.NewTxChunkStore(txStore, sharky, log.Noop)
+	txChunkStore := chunkstore.NewTxChunkStore(txStore, sharky)
 
-	return storage.NewRepository(txStore, txChunkStore, locker, log.Noop), closer(store, sharky), nil
+	return storage.NewRepository(txStore, txChunkStore, locker), closer(store, sharky), nil
 }
 
 // loggerName is the tree path name of the logger for this package.
@@ -277,7 +277,6 @@ func initDiskRepository(
 	basePath string,
 	locker storage.ChunkLocker,
 	opts *Options,
-	logger log.Logger,
 ) (storage.Repository, io.Closer, error) {
 	store, err := initStore(basePath, opts)
 	if err != nil {
@@ -356,12 +355,12 @@ func initDiskRepository(
 		return nil, nil, fmt.Errorf("failed to recover index store: %w", err)
 	}
 
-	txChunkStore := chunkstore.NewTxChunkStore(txStore, sharky, logger)
+	txChunkStore := chunkstore.NewTxChunkStore(txStore, sharky)
 	if err := txChunkStore.Recover(); err != nil {
 		return nil, nil, fmt.Errorf("failed to recover chunk store: %w", err)
 	}
 
-	return storage.NewRepository(txStore, txChunkStore, locker, logger), closer(store, sharky, recoveryCloser), nil
+	return storage.NewRepository(txStore, txChunkStore, locker), closer(store, sharky, recoveryCloser), nil
 }
 
 func initCache(ctx context.Context, capacity uint64, repo storage.Repository) (*cache.Cache, error) {
@@ -388,18 +387,18 @@ func performEpochMigration(ctx context.Context, basePath string, opts *Options) 
 	}
 	defer store.Close()
 
-	logger := opts.Logger.WithName("epochmigration").Register()
-
 	sharkyBasePath := path.Join(basePath, sharkyPath)
 	var sharkyRecover *sharky.Recovery
 	// if this is a fresh node then perform an empty epoch migration
 	if _, err := os.Stat(sharkyBasePath); err == nil {
-		sharkyRecover, err = sharky.NewRecovery(sharkyBasePath, sharkyNoOfShards, swarm.SocMaxChunkSize, logger)
+		sharkyRecover, err = sharky.NewRecovery(sharkyBasePath, sharkyNoOfShards, swarm.SocMaxChunkSize)
 		if err != nil {
 			return err
 		}
 		defer sharkyRecover.Close()
 	}
+
+	logger := opts.Logger.WithName("epochmigration").Register()
 
 	var rs reservePutter
 
@@ -526,8 +525,6 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		}
 	}
 
-	logger := opts.Logger.WithName(loggerName).Register()
-
 	if dirPath == "" {
 		repo, dbCloser, err = initInmemRepository(locker)
 		if err != nil {
@@ -542,7 +539,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 			}
 		}
 
-		repo, dbCloser, err = initDiskRepository(ctx, dirPath, locker, opts, logger)
+		repo, dbCloser, err = initDiskRepository(ctx, dirPath, locker, opts)
 		if err != nil {
 			return nil, err
 		}
@@ -557,6 +554,8 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	logger := opts.Logger.WithName(loggerName).Register()
 
 	db := &DB{
 		metrics:          metrics,
