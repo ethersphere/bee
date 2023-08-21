@@ -1,6 +1,6 @@
 module github.com/ethersphere/bee
 
-go 1.20
+go 1.21
 
 require (
 	contrib.go.opencensus.io/exporter/prometheus v0.4.2
@@ -43,7 +43,7 @@ require (
 	go.uber.org/atomic v1.11.0
 	go.uber.org/goleak v1.2.0
 	golang.org/x/crypto v0.12.0
-	golang.org/x/exp v0.0.0-20230817173708-d852ddb80c63
+	golang.org/x/exp v0.0.0-20230817173708-d852ddb80c63 // indirect
 	golang.org/x/net v0.14.0
 	golang.org/x/sync v0.3.0
 	golang.org/x/sys v0.11.0

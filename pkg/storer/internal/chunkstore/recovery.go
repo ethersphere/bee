@@ -7,12 +7,12 @@ package chunkstore
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/storageutil"
 	"github.com/vmihailenco/msgpack/v5"
-	"golang.org/x/exp/slices"
 )
 
 var _ storage.Item = (*pendingTx)(nil)
