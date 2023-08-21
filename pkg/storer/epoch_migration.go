@@ -367,7 +367,7 @@ func (e *epochMigrator) migratePinning(ctx context.Context) error {
 		store:    e.store,
 		recovery: e.recovery,
 	}
-	var mu sync.Mutex	// used to protect pStorage.location
+	var mu sync.Mutex // used to protect pStorage.location
 
 	traverser := traversal.New(
 		storage.GetterFunc(func(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, err error) {
