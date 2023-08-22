@@ -4,9 +4,6 @@ if [ "$1" = "install" ]; then
     if ! getent passwd bee > /dev/null; then
         useradd -r -d /var/lib/bee -s /sbin/nologin -U bee
     fi
-    if getent passwd bee-clef > /dev/null; then
-        usermod -a -G bee-clef bee > /dev/null
-    fi
     if ! test -d /var/lib/bee; then
         mkdir -p /var/lib/bee
         chmod 0750 /var/lib/bee
