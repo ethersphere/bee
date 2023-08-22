@@ -116,3 +116,5 @@ func (m *mockPostage) HandleDepthIncrease(_ []byte, _ uint8) {}
 func (m *mockPostage) Close() error {
 	return nil
 }
+
+var _ postage.BatchExpiryHandler = (*mockPostage)(nil)

@@ -62,6 +62,8 @@ func (m *mockBatchListener) HandleDepthIncrease(_ []byte, _ uint8) {
 	m.diluteCount++
 }
 
+var _ postage.BatchEventListener = (*mockBatchListener)(nil)
+
 func TestBatchServiceCreate_FLAKY(t *testing.T) {
 	testChainState := postagetesting.NewChainState()
 
