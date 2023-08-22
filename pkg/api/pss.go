@@ -79,7 +79,7 @@ func (s *Service) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "pss send failed")
 		return
 	}
-	i, save, err := s.post.GetStampIssuer(r.Context(), headers.BatchID)
+	i, save, err := s.post.GetStampIssuer(headers.BatchID)
 	if err != nil {
 		logger.Debug("get postage batch issuer failed", "batch_id", hex.EncodeToString(headers.BatchID), "error", err)
 		logger.Error(nil, "get postage batch issuer failed")
