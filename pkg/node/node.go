@@ -648,7 +648,10 @@ func NewBee(
 	b.p2pService = p2ps
 	b.p2pHalter = p2ps
 
-	post := postage.NewService(stamperStore, batchStore, chainID)
+	post, err := postage.NewService(stamperStore, batchStore, chainID)
+	if err != nil {
+		return nil, fmt.Errorf("postage service: %w", err)
+	}
 	b.postageServiceCloser = post
 	batchStore.SetBatchExpiryHandler(post)
 
