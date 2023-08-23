@@ -52,7 +52,8 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	queries := struct {
-		At int64 `map:"at"`
+		At    int64  `map:"at"`
+		After uint64 `map:"after"`
 	}{}
 	if response := s.mapStructure(r.URL.Query(), &queries); response != nil {
 		response("invalid query params", logger, w)
@@ -76,7 +77,7 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ch, cur, next, err := lookup.At(r.Context(), queries.At, 0)
+	ch, cur, next, err := lookup.At(r.Context(), queries.At, queries.After)
 	if err != nil {
 		logger.Debug("lookup at failed", "at", queries.At, "error", err)
 		logger.Error(nil, "lookup at failed")
