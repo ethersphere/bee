@@ -753,6 +753,12 @@ paths:
           required: false
           description: "Timestamp of the update (default: now)"
         - in: query
+          name: after
+          schema:
+            type: integer
+          required: false
+          description: "Start index (default: 0)"
+        - in: query
           name: type
           schema:
             $ref: "SwarmCommon.yaml#/components/schemas/FeedType"
