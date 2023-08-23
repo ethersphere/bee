@@ -403,6 +403,9 @@ func (db *DB) unreserve(ctx context.Context) (err error) {
 
 // ReserveLastBinIDs returns all of the highest binIDs from all the bins in the reserve.
 func (db *DB) ReserveLastBinIDs() ([]uint64, error) {
+	if db.reserve == nil {
+		return nil, nil
+	}
 	return db.reserve.LastBinIDs(db.repo.IndexStore())
 }
 
