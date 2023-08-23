@@ -367,6 +367,8 @@ func (e *epochMigrator) migratePinning(ctx context.Context) error {
 		store:    e.store,
 		recovery: e.recovery,
 	}
+	var mu sync.Mutex // used to protect pStorage.location
+
 	traverser := traversal.New(
 		storage.GetterFunc(func(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, err error) {
 			i := shed.Item{
@@ -412,7 +414,6 @@ func (e *epochMigrator) migratePinning(ctx context.Context) error {
 					if err != nil {
 						return err
 					}
-					var mu sync.Mutex
 
 					traverserFn := func(chAddr swarm.Address) error {
 						item, err := e.retrievalDataIndex.Get(shed.Item{Address: chAddr.Bytes()})
