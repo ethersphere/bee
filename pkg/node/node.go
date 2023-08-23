@@ -574,12 +574,19 @@ func NewBee(
 		return nil, fmt.Errorf("invalid payment threshold: %s", paymentThreshold)
 	}
 
-	if paymentThreshold.Cmp(big.NewInt(minPaymentThreshold)) < 0 {
-		return nil, fmt.Errorf("payment threshold below minimum generally accepted value, need at least %d", minPaymentThreshold)
+	minThreshold := big.NewInt(2 * refreshRate)
+	maxThreshold := big.NewInt(24 * refreshRate)
+
+	if !o.FullNodeMode {
+		minThreshold = big.NewInt(2 * lightRefreshRate)
 	}
 
-	if paymentThreshold.Cmp(big.NewInt(maxPaymentThreshold)) > 0 {
-		return nil, fmt.Errorf("payment threshold above maximum generally accepted value, needs to be reduced to at most %d", maxPaymentThreshold)
+	if paymentThreshold.Cmp(minThreshold) < 0 {
+		return nil, fmt.Errorf("payment threshold below minimum generally accepted value, need at least %s", minThreshold)
+	}
+
+	if paymentThreshold.Cmp(maxThreshold) > 0 {
+		return nil, fmt.Errorf("payment threshold above maximum generally accepted value, needs to be reduced to at most %s", maxThreshold)
 	}
 
 	if o.PaymentTolerance < 0 {
@@ -836,24 +843,9 @@ func NewBee(
 		}
 	}
 
-	minThreshold := big.NewInt(2 * refreshRate)
-	maxThreshold := big.NewInt(24 * refreshRate)
-
-	if !o.FullNodeMode {
-		minThreshold = big.NewInt(2 * lightRefreshRate)
-	}
-
 	lightPaymentThreshold := new(big.Int).Div(paymentThreshold, big.NewInt(lightFactor))
 
 	pricer := pricer.NewFixedPricer(swarmAddress, basePrice)
-
-	if paymentThreshold.Cmp(minThreshold) < 0 {
-		return nil, fmt.Errorf("payment threshold below minimum generally accepted value, need at least %s", minThreshold)
-	}
-
-	if paymentThreshold.Cmp(maxThreshold) > 0 {
-		return nil, fmt.Errorf("payment threshold above maximum generally accepted value, needs to be reduced to at most %s", maxThreshold)
-	}
 
 	pricing := pricing.New(p2ps, logger, paymentThreshold, lightPaymentThreshold, minThreshold)
 
