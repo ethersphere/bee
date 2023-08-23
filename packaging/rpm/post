@@ -18,11 +18,6 @@ After you finish configuration run 'sudo bee-get-addr' and fund your node with X
     "
 fi
 
-# allow group members (bee user) to use clef's socket
-if [ -S /var/lib/bee-clef/clef.ipc ]; then
-    chmod 660 /var/lib/bee-clef/clef.ipc
-fi
-
 if [ $1 -eq 2 ] ; then
     # upgrade
     systemctl --no-reload start bee.service &>/dev/null || :
