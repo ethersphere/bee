@@ -308,7 +308,7 @@ brews:
 
         Please see https://docs.ethswarm.org/docs/installation/install for more details on how to configure your node.
 
-        After you finish configuration run 'sudo bee-get-addr' and fund your node with XDAI, and also XBZZ if so desired.
+        After you finish configuration run 'bee-get-addr' and fund your node with XDAI, and also XBZZ if so desired.
     test: |
       system "#{bin}/bee version"
     install: |
@@ -321,30 +321,11 @@ brews:
       system("openssl", "rand", "-out", var/"lib/swarm-bee/password", "-base64", "32")
       end
       system(bin/"bee", "init", "--config", etc/"swarm-bee/bee.yaml", ">/dev/null", "2>&1")
-    plist: |
-      <?xml version="1.0" encoding="UTF-8"?>
-      <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-      <plist version="1.0">
-      <dict>
-        <key>KeepAlive</key>
-        <true/>
-        <key>Label</key>
-        <string>#{plist_name}</string>
-        <key>ProgramArguments</key>
-        <array>
-          <string>#{bin}/bee</string>
-          <string>start</string>
-          <string>--config</string>
-          <string>#{etc}/swarm-bee/bee.yaml</string>
-        </array>
-        <key>RunAtLoad</key>
-        <true/>
-        <key>StandardOutPath</key>
-        <string>#{var}/log/swarm-bee/bee.log</string>
-        <key>StandardErrorPath</key>
-        <string>#{var}/log/swarm-bee/bee.log</string>
-      </dict>
-      </plist>
+    service: |
+      run [bin/"bee", "start", "--config", etc/"swarm-bee/bee.yaml"]
+      keep_alive true
+      error_log_path var/"log/swarm-bee/bee.log"
+      log_path var/"log/swarm-bee/bee.log"
 
 dockers:
 - image_templates:
