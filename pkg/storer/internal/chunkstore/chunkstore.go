@@ -7,6 +7,7 @@ package chunkstore
 import (
 	"context"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"time"
@@ -189,11 +190,15 @@ func (c *ChunkStoreWrapper) Put(ctx context.Context, ch swarm.Chunk) error {
 		rIdx.Location = loc
 		rIdx.Timestamp = uint64(time.Now().Unix())
 		found = false
-		c.logger.Debug("chunkTrace: chunkStore.Put new chunk", "address", ch.Address(), "loc", loc.ToString())
+		c.logger.Debug("chunkTrace: chunkStore.Put new chunk", "address", ch.Address(), "loc", loc.ToString(),
+						"batch_id", hex.EncodeToString(ch.Stamp().BatchID()),
+						"index", hex.EncodeToString(ch.Stamp().Index()))
 	case err != nil:
 		return fmt.Errorf("chunk store: failed to read: %w", err)
 	case err == nil:
-		c.logger.Debug("chunkTrace: chunkStore.Put increment chunk", "address", ch.Address(), "loc", rIdx.Location.ToString(), "refCnt", rIdx.RefCnt+1)
+		c.logger.Debug("chunkTrace: chunkStore.Put increment chunk", "address", ch.Address(), "loc", rIdx.Location.ToString(), "refCnt", rIdx.RefCnt+1,
+						"batch_id", hex.EncodeToString(ch.Stamp().BatchID()),
+						"index", hex.EncodeToString(ch.Stamp().Index()))
 	}
 
 	rIdx.RefCnt++
