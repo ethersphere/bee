@@ -177,6 +177,7 @@ func (c *ChunkStoreWrapper) Put(ctx context.Context, ch swarm.Chunk) error {
 		rIdx  = &RetrievalIndexItem{Address: ch.Address()}
 		loc   sharky.Location
 		found = true
+		stamp = ch.Stamp()
 	)
 	err := c.store.Get(rIdx)
 	switch {
@@ -190,15 +191,23 @@ func (c *ChunkStoreWrapper) Put(ctx context.Context, ch swarm.Chunk) error {
 		rIdx.Location = loc
 		rIdx.Timestamp = uint64(time.Now().Unix())
 		found = false
+		if stamp == nil {
+		c.logger.Debug("chunkTrace: chunkStore.Put new chunk NOstamp!", "address", ch.Address(), "loc", loc.ToString())
+		} else {
 		c.logger.Debug("chunkTrace: chunkStore.Put new chunk", "address", ch.Address(), "loc", loc.ToString(),
 						"batch_id", hex.EncodeToString(ch.Stamp().BatchID()),
 						"index", hex.EncodeToString(ch.Stamp().Index()))
+		}
 	case err != nil:
 		return fmt.Errorf("chunk store: failed to read: %w", err)
 	case err == nil:
+		if stamp == nil {
+		c.logger.Debug("chunkTrace: chunkStore.Put increment chunk NOstamp!", "address", ch.Address(), "loc", rIdx.Location.ToString(), "refCnt", rIdx.RefCnt+1)
+		} else {
 		c.logger.Debug("chunkTrace: chunkStore.Put increment chunk", "address", ch.Address(), "loc", rIdx.Location.ToString(), "refCnt", rIdx.RefCnt+1,
 						"batch_id", hex.EncodeToString(ch.Stamp().BatchID()),
 						"index", hex.EncodeToString(ch.Stamp().Index()))
+		}
 	}
 
 	rIdx.RefCnt++
