@@ -114,7 +114,17 @@ func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.C
 	case err != nil:
 		return false, fmt.Errorf("load or store stamp index for chunk %v has fail: %w", chunk, err)
 	case loaded && item.ChunkIsImmutable:
-		return false, storage.ErrOverwriteOfImmutableBatch
+		r.logger.Debug(
+			"NOT overwriting immutable batch index",
+			"old_chunk", item.ChunkAddress,
+			"new_chunk", chunk.Address(),
+			"batch_id", hex.EncodeToString(chunk.Stamp().BatchID()),
+			"index", hex.EncodeToString(chunk.Stamp().Index()),
+		)
+		return false, fmt.Errorf("batch %s index %s: %w",
+								hex.EncodeToString(chunk.Stamp().BatchID()),
+								hex.EncodeToString(chunk.Stamp().Index()),
+								storage.ErrOverwriteOfImmutableBatch)
 	case loaded && !item.ChunkIsImmutable:
 		prev := binary.BigEndian.Uint64(item.StampTimestamp)
 		curr := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
@@ -135,10 +145,11 @@ func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.C
 		}
 
 		r.logger.Debug(
-			"replacing chunk stamp index",
+			"overwriting chunk stamp index",
 			"old_chunk", item.ChunkAddress,
 			"new_chunk", chunk.Address(),
 			"batch_id", hex.EncodeToString(chunk.Stamp().BatchID()),
+			"index", hex.EncodeToString(chunk.Stamp().Index()),
 		)
 
 		err = stampindex.Store(storeBatch, reserveNamespace, chunk)
