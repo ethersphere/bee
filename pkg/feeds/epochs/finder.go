@@ -29,7 +29,7 @@ func NewFinder(getter storage.Getter, feed *feeds.Feed) feeds.Lookup {
 
 // At looks up the version valid at time `at`
 // after is a unix time hint of the latest known update
-func (f *finder) At(ctx context.Context, at, after int64) (swarm.Chunk, feeds.Index, feeds.Index, error) {
+func (f *finder) At(ctx context.Context, at int64, after uint64) (swarm.Chunk, feeds.Index, feeds.Index, error) {
 	e, ch, err := f.common(ctx, at, after)
 	if err != nil {
 		return nil, nil, nil, err
@@ -39,8 +39,8 @@ func (f *finder) At(ctx context.Context, at, after int64) (swarm.Chunk, feeds.In
 }
 
 // common returns the lowest common ancestor for which a feed update chunk is found in the chunk store
-func (f *finder) common(ctx context.Context, at, after int64) (*epoch, swarm.Chunk, error) {
-	for e := lca(at, after); ; e = e.parent() {
+func (f *finder) common(ctx context.Context, at int64, after uint64) (*epoch, swarm.Chunk, error) {
+	for e := lca(uint64(at), after); ; e = e.parent() {
 		ch, err := f.getter.Get(ctx, e)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
@@ -165,7 +165,7 @@ func (f *asyncFinder) at(ctx context.Context, at int64, p *path, e *epoch, c cha
 		}
 	}
 }
-func (f *asyncFinder) At(ctx context.Context, at, after int64) (swarm.Chunk, feeds.Index, feeds.Index, error) {
+func (f *asyncFinder) At(ctx context.Context, at int64, after uint64) (swarm.Chunk, feeds.Index, feeds.Index, error) {
 	// TODO: current and next index return values need to be implemented
 	ch, err := f.asyncAt(ctx, at, after)
 	return ch, nil, nil, err
@@ -173,7 +173,7 @@ func (f *asyncFinder) At(ctx context.Context, at, after int64) (swarm.Chunk, fee
 
 // At looks up the version valid at time `at`
 // after is a unix time hint of the latest known update
-func (f *asyncFinder) asyncAt(ctx context.Context, at, after int64) (swarm.Chunk, error) {
+func (f *asyncFinder) asyncAt(ctx context.Context, at int64, _ uint64) (swarm.Chunk, error) {
 	c := make(chan *result)
 	go f.at(ctx, at, newPath(at), &epoch{0, maxLevel}, c)
 LOOP:

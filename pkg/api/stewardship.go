@@ -53,7 +53,7 @@ func (s *Service) stewardshipPutHandler(w http.ResponseWriter, r *http.Request) 
 	} else {
 		batchID = headers.BatchID
 	}
-	stamper, save, err := s.getStamper(r.Context(), batchID)
+	stamper, save, err := s.getStamper(batchID)
 	if err != nil {
 		switch {
 		case errors.Is(err, errBatchUnusable) || errors.Is(err, postage.ErrNotUsable):

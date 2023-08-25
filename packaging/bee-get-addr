@@ -7,24 +7,9 @@ This script requires root priviledges, use sudo.
     exit 1
 fi
 
-RESP=$(/usr/bin/bee init --config /etc/bee/bee.yaml 2>&1)
-case "$RESP" in
-    Error*|*'No such file'*)
+ETH_ADDRESS=$(/usr/bin/bee init --config /etc/bee/bee.yaml 2>&1 | grep ethereum | cut -d'=' -f6 | tr -d '"')
         echo "
-The bee node has returned an error, probably because the bee-clef external signer is enabled, but the node couldn't connect to it.
-
-Check https://docs.ethswarm.org/docs/ for more info.
-
-Fix the configuration and try again.
-
-The node's output was:
-        "
-        echo "$RESP"
-        ;;
-    *)
-        ETH_ADDRESS=$(echo "$RESP" | grep ethereum | cut -d' ' -f6 | tr -d '"')
-        echo "
-Please make sure there is XDAI and, if required, XBZZ available on the following Ethereum address on Gnosis Chain: 0x$ETH_ADDRESS.
+Please make sure there is XDAI and, if required, XBZZ available on the following Ethereum address on Gnosis Chain: $ETH_ADDRESS
 
 Learn how to fund your node by visiting our docs at https://docs.ethswarm.org/docs/installation/fund-your-node
 
@@ -32,7 +17,5 @@ Once your node's wallet has received the funds it will begin joining the Swarm n
 
 See the docs for more information at https://docs.ethswarm.org/docs/.
         "
-        ;;
-esac
 
 chown -R bee:bee /var/lib/bee

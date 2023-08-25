@@ -19,11 +19,6 @@ After you finish configuration run 'sudo bee-get-addr' and fund your node with X
         "
     fi
 
-    # allow group members (bee user) to use clef's socket
-    if [ -S /var/lib/bee-clef/clef.ipc ]; then
-        chmod 660 /var/lib/bee-clef/clef.ipc
-    fi
-
     deb-systemd-helper unmask bee.service >/dev/null || true
 
     if deb-systemd-helper --quiet was-enabled bee.service; then
