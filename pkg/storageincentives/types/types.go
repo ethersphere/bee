@@ -4,6 +4,8 @@
 
 package types
 
+import "encoding/hex"
+
 // Trio is type for group of three elements.
 type Trio[T any] struct {
 	A T
@@ -19,11 +21,12 @@ func NewTrio[T any](a, b, c T) Trio[T] {
 	}
 }
 
-// ToByte32 returns 32 bytes array from supplied slice.
-func ToByte32(data []byte) [32]byte {
+// ToHexString returns hex encoded string from supplied slice.
+func ToHexString(data []byte) string {
 	_ = data[31] // bounds check
 
 	var res [32]byte
 	copy(res[:], data)
-	return res
+
+	return hex.EncodeToString(res[:])
 }

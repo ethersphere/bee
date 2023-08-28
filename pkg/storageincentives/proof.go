@@ -170,8 +170,8 @@ func newChunkInclusionProof(
 		ChunkSpan:        bmt.LengthFromSpan(proofp2.Span),
 		ProofSegments3:   proofp3Hex.ProofSegments,
 		Signature:        sampleItem.Stamp.Sig(),
-		ChunkAddr:        types.ToByte32(sampleItem.ChunkAddress.Bytes()),
-		PostageId:        types.ToByte32(sampleItem.Stamp.BatchID()),
+		ChunkAddr:        types.ToHexString(sampleItem.ChunkAddress.Bytes()),
+		PostageId:        types.ToHexString(sampleItem.Stamp.BatchID()),
 		Index:            postage.IndexFromBytes(sampleItem.Stamp.Index()),
 		TimeStamp:        postage.TimestampFromBytes(sampleItem.Stamp.Timestamp()),
 		SocProofAttached: socProof,
@@ -181,20 +181,20 @@ func newChunkInclusionProof(
 func bytesToHex(proof bmt.Proof) hexProof {
 	var proveSegment []byte
 
-	proofSegments := make([][32]byte, len(proof.ProofSegments)+1)
+	proofSegments := make([]string, len(proof.ProofSegments)+1)
 	if proof.Index%2 == 0 {
-		proofSegments[0] = types.ToByte32(proof.ProveSegment[swarm.SectionSize:])
+		proofSegments[0] = types.ToHexString(proof.ProveSegment[swarm.SectionSize:])
 		proveSegment = proof.ProveSegment[:swarm.SectionSize]
 	} else {
-		proofSegments[0] = types.ToByte32(proof.ProveSegment[:swarm.SectionSize])
+		proofSegments[0] = types.ToHexString(proof.ProveSegment[:swarm.SectionSize])
 		proveSegment = proof.ProveSegment[swarm.SectionSize:]
 	}
 	for i := 0; i < len(proof.ProofSegments); i++ {
-		proofSegments[i+1] = types.ToByte32(padZeros(proof.ProofSegments[i], 32))
+		proofSegments[i+1] = types.ToHexString(padZeros(proof.ProofSegments[i], 32))
 	}
 
 	return hexProof{
-		ProveSegment:  types.ToByte32(proveSegment),
+		ProveSegment:  types.ToHexString(proveSegment),
 		ProofSegments: proofSegments,
 	}
 }
@@ -212,8 +212,8 @@ func padZeros(data []byte, size int) []byte {
 }
 
 type hexProof struct {
-	ProofSegments [][32]byte
-	ProveSegment  [32]byte
+	ProofSegments []string
+	ProveSegment  string
 }
 
 func makeSOCProof(sampleItem storer.SampleItem) ([]redistribution.SOCProof, error) {
@@ -230,8 +230,8 @@ func makeSOCProof(sampleItem storer.SampleItem) ([]redistribution.SOCProof, erro
 	return []redistribution.SOCProof{{
 		Signer:     common.Address(socCh.OwnerAddress()),
 		Signature:  socCh.Signature(),
-		Identifier: types.ToByte32(socCh.ID()),
-		ChunkAddr:  types.ToByte32(socCh.WrappedChunk().Address().Bytes()),
+		Identifier: types.ToHexString(socCh.ID()),
+		ChunkAddr:  types.ToHexString(socCh.WrappedChunk().Address().Bytes()),
 	}}, nil
 }
 

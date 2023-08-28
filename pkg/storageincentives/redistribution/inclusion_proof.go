@@ -20,16 +20,16 @@ type ChunkInclusionProofs = types.Trio[ChunkInclusionProof]
 // github.com/ethersphere/storage-incentives/blob/ph_f2/src/Redistribution.sol
 // github.com/ethersphere/storage-incentives/blob/master/src/Redistribution.sol (when merged to master)
 type ChunkInclusionProof struct {
-	ProofSegments  [][32]byte
-	ProveSegment   [32]byte
-	ProofSegments2 [][32]byte
-	ProveSegment2  [32]byte
+	ProofSegments  []string
+	ProveSegment   string
+	ProofSegments2 []string
+	ProveSegment2  string
 	ChunkSpan      uint64
-	ProofSegments3 [][32]byte
+	ProofSegments3 []string
 
 	Signature []byte
-	ChunkAddr [32]byte
-	PostageId [32]byte
+	ChunkAddr string
+	PostageId string
 	Index     uint64
 	TimeStamp uint64
 
@@ -41,23 +41,23 @@ type ChunkInclusionProof struct {
 type SOCProof struct {
 	Signer     common.Address
 	Signature  []byte
-	Identifier [32]byte
-	ChunkAddr  [32]byte
+	Identifier string
+	ChunkAddr  string
 }
 
 func RandChunkInclusionProof(t *testing.T) ChunkInclusionProof {
 	t.Helper()
 
 	return ChunkInclusionProof{
-		ProofSegments:  [][32]byte{types.ToByte32(testutil.RandBytes(t, 32))},
-		ProveSegment:   types.ToByte32(testutil.RandBytes(t, 32)),
-		ProofSegments2: [][32]byte{types.ToByte32(testutil.RandBytes(t, 32))},
-		ProveSegment2:  types.ToByte32(testutil.RandBytes(t, 32)),
-		ProofSegments3: [][32]byte{types.ToByte32(testutil.RandBytes(t, 32))},
+		ProofSegments:  []string{types.ToHexString(testutil.RandBytes(t, 32))},
+		ProveSegment:   types.ToHexString(testutil.RandBytes(t, 32)),
+		ProofSegments2: []string{types.ToHexString(testutil.RandBytes(t, 32))},
+		ProveSegment2:  types.ToHexString(testutil.RandBytes(t, 32)),
+		ProofSegments3: []string{types.ToHexString(testutil.RandBytes(t, 32))},
 		ChunkSpan:      1,
 		Signature:      testutil.RandBytes(t, 32),
-		ChunkAddr:      types.ToByte32(testutil.RandBytes(t, 32)),
-		PostageId:      types.ToByte32(testutil.RandBytes(t, 32)),
+		ChunkAddr:      types.ToHexString(testutil.RandBytes(t, 32)),
+		PostageId:      types.ToHexString(testutil.RandBytes(t, 32)),
 		Index:          1,
 		TimeStamp:      uint64(time.Now().Unix()),
 	}
