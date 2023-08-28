@@ -5,6 +5,7 @@
 package storageincentives
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
@@ -169,7 +170,7 @@ func newChunkInclusionProof(
 		ProveSegment2:    proofp2Hex.ProveSegment,
 		ChunkSpan:        bmt.LengthFromSpan(proofp2.Span),
 		ProofSegments3:   proofp3Hex.ProofSegments,
-		Signature:        types.ToHexString(sampleItem.Stamp.Sig()),
+		Signature:        hex.EncodeToString(sampleItem.Stamp.Sig()),
 		ChunkAddr:        types.ToHexString(sampleItem.ChunkAddress.Bytes()),
 		PostageId:        types.ToHexString(sampleItem.Stamp.BatchID()),
 		Index:            postage.IndexFromBytes(sampleItem.Stamp.Index()),
@@ -229,7 +230,7 @@ func makeSOCProof(sampleItem storer.SampleItem) ([]redistribution.SOCProof, erro
 
 	return []redistribution.SOCProof{{
 		Signer:     common.Address(socCh.OwnerAddress()),
-		Signature:  types.ToHexString(socCh.Signature()),
+		Signature:  hex.EncodeToString(socCh.Signature()),
 		Identifier: types.ToHexString(socCh.ID()),
 		ChunkAddr:  types.ToHexString(socCh.WrappedChunk().Address().Bytes()),
 	}}, nil

@@ -20,29 +20,29 @@ type ChunkInclusionProofs = types.Trio[ChunkInclusionProof]
 // github.com/ethersphere/storage-incentives/blob/ph_f2/src/Redistribution.sol
 // github.com/ethersphere/storage-incentives/blob/master/src/Redistribution.sol (when merged to master)
 type ChunkInclusionProof struct {
-	ProofSegments  []string
-	ProveSegment   string
-	ProofSegments2 []string
-	ProveSegment2  string
-	ChunkSpan      uint64
-	ProofSegments3 []string
+	ProofSegments  []string `json:"proofSegments"`
+	ProveSegment   string   `json:"proveSegment"`
+	ProofSegments2 []string `json:"proofSegments2"`
+	ProveSegment2  string   `json:"proveSegment2"`
+	ChunkSpan      uint64   `json:"chunkSpan"`
+	ProofSegments3 []string `json:"proofSegments3"`
 
-	Signature string
-	ChunkAddr string
-	PostageId string
-	Index     uint64
-	TimeStamp uint64
+	Signature string `json:"signature"`
+	ChunkAddr string `json:"chunkAddr"`
+	PostageId string `json:"postageId"`
+	Index     uint64 `json:"index"`
+	TimeStamp uint64 `json:"timeStamp"`
 
-	SocProofAttached []SOCProof
+	SocProofAttached []SOCProof `json:"socProofAttached"`
 }
 
 // SOCProof structure must exactly match
 // corresponding structure (of the same name) in Redistribution.sol smart contract.
 type SOCProof struct {
-	Signer     common.Address
-	Signature  string
-	Identifier string
-	ChunkAddr  string
+	Signer     common.Address `json:"signer"`
+	Signature  string         `json:"signature"`
+	Identifier string         `json:"identifier"`
+	ChunkAddr  string         `json:"chunkAddr"`
 }
 
 func RandChunkInclusionProof(t *testing.T) ChunkInclusionProof {

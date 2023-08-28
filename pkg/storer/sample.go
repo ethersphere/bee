@@ -28,10 +28,10 @@ import (
 const SampleSize = 16
 
 type SampleItem struct {
-	TransformedAddress swarm.Address
-	ChunkAddress       swarm.Address
-	ChunkData          []byte
-	Stamp              swarm.Stamp
+	TransformedAddress swarm.Address `json:"transformedAddress"`
+	ChunkAddress       swarm.Address `json:"chunkAddress"`
+	ChunkData          []byte        `json:"chunkData"`
+	Stamp              swarm.Stamp   `json:"stamp"`
 }
 
 type Sample struct {
