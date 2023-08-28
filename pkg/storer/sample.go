@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/soc"
 	chunk "github.com/ethersphere/bee/pkg/storage/testing"
+	"github.com/ethersphere/bee/pkg/storageincentives/types"
 	"github.com/ethersphere/bee/pkg/storer/internal/chunkstamp"
 	"github.com/ethersphere/bee/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -31,7 +32,8 @@ type SampleItem struct {
 	TransformedAddress swarm.Address `json:"transformedAddress"`
 	ChunkAddress       swarm.Address `json:"chunkAddress"`
 	ChunkData          []byte        `json:"chunkData"`
-	Stamp              swarm.Stamp   `json:"stamp"`
+	Stamp              swarm.Stamp   `json:"-"`
+	BatchID            string        `json:"stamp"`
 }
 
 type Sample struct {
@@ -272,6 +274,7 @@ func (db *DB) ReserveSample(
 			stats.ValidStampDuration += time.Since(start)
 
 			item.Stamp = stamp
+			item.BatchID = types.ToHexString(stamp.BatchID())
 			insert(item)
 			stats.SampleInserts++
 		}
