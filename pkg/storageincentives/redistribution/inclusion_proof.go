@@ -27,7 +27,7 @@ type ChunkInclusionProof struct {
 	ChunkSpan      uint64
 	ProofSegments3 []string
 
-	Signature []byte
+	Signature string
 	ChunkAddr string
 	PostageId string
 	Index     uint64
@@ -40,7 +40,7 @@ type ChunkInclusionProof struct {
 // corresponding structure (of the same name) in Redistribution.sol smart contract.
 type SOCProof struct {
 	Signer     common.Address
-	Signature  []byte
+	Signature  string
 	Identifier string
 	ChunkAddr  string
 }
@@ -55,7 +55,7 @@ func RandChunkInclusionProof(t *testing.T) ChunkInclusionProof {
 		ProveSegment2:  types.ToHexString(testutil.RandBytes(t, 32)),
 		ProofSegments3: []string{types.ToHexString(testutil.RandBytes(t, 32))},
 		ChunkSpan:      1,
-		Signature:      testutil.RandBytes(t, 32),
+		Signature:      string(testutil.RandBytes(t, 32)),
 		ChunkAddr:      types.ToHexString(testutil.RandBytes(t, 32)),
 		PostageId:      types.ToHexString(testutil.RandBytes(t, 32)),
 		Index:          1,
