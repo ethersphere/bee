@@ -466,7 +466,6 @@ func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config
 			return nil, err
 		}
 	} else {
-		logger.Warning("clef is not enabled; portability and security of your keys is sub optimal")
 		swarmPrivateKey, _, err := keystore.Key("swarm", password, crypto.EDGSecp256_K1)
 		if err != nil {
 			return nil, fmt.Errorf("swarm key: %w", err)
