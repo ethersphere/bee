@@ -116,6 +116,10 @@ func (cs *TxChunkStoreWrapper) Commit() error {
 		errs = errors.Join(errs, fmt.Errorf("txchunkstore: unable to commit index store transaction: %w", err))
 	}
 
+	for _, loc := range cs.txSharky.toReleaseLocs {
+		errs = errors.Join(errs, cs.txSharky.Sharky.Release(context.Background(), loc))
+	}
+
 	if err := cs.txSharky.store.DB().Delete(cs.txSharky.id, nil); err != nil {
 		errs = errors.Join(errs, fmt.Errorf("txchunkstore: unable to delete transaction: %x: %w", cs.txSharky.id, err))
 	}
