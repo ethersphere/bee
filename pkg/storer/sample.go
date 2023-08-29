@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/bmt"
+	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/soc"
 	chunk "github.com/ethersphere/bee/pkg/storage/testing"
@@ -237,6 +238,15 @@ func (db *DB) ReserveSample(
 		}
 	}
 
+	contains := func(addr swarm.Address) int {
+		for index, item := range sampleItems {
+			if item.ChunkAddress.Compare(addr) == 0 {
+				return index
+			}
+		}
+		return -1
+	}
+
 	// Phase 3: Assemble the sample. Here we need to assemble only the first SampleSize
 	// no of items from the results of the 2nd phase.
 	// In this step stamps are loaded and validated only if chunk will be added to sample.
@@ -275,6 +285,18 @@ func (db *DB) ReserveSample(
 
 			item.Stamp = stamp
 			item.BatchID = types.ToHexString(stamp.BatchID())
+
+			// check if sample contains transformed adress
+			if index := contains(item.TransformedAddress); index != -1 {
+				// TODO change back to SOC
+				if cac.Valid(ch) {
+					continue
+				}
+				// replace the chunk at index
+				sampleItems[index] = item
+				continue
+			}
+
 			insert(item)
 			stats.SampleInserts++
 		}
