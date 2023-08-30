@@ -80,8 +80,10 @@ func Test_Step_04(t *testing.T) {
 
 	for i := 0; i < 10; i++ {
 		if i < 2 {
+			// if the chunk is deleted, the bit is set to 1
 			assert.Greater(t, buf[i/8]&(1<<(i%8)), byte(0))
 		} else {
+			// if the chunk is not deleted, the bit is 0
 			assert.Equal(t, byte(0), buf[i/8]&(1<<(i%8)))
 		}
 	}
