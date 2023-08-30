@@ -85,4 +85,6 @@ func Test_Step_04(t *testing.T) {
 			assert.Equal(t, byte(0), buf[i/8]&(1<<(i%8)))
 		}
 	}
+
+	assert.NoError(t, f.Close())
 }
