@@ -7,6 +7,7 @@ package storer_test
 import (
 	"context"
 	"os"
+	"path"
 	"testing"
 	"time"
 
@@ -147,14 +148,14 @@ func TestNew(t *testing.T) {
 			t.Parallel()
 
 			lstore := makeInmemStorer(t, dbTestOps(swarm.RandAddress(t), 0, nil, nil, time.Second))
-			assertStorerVersion(t, lstore)
+			assertStorerVersion(t, lstore, "")
 		})
 
 		t.Run("disk", func(t *testing.T) {
 			t.Parallel()
 
 			lstore := makeDiskStorer(t, dbTestOps(swarm.RandAddress(t), 0, nil, nil, time.Second))
-			assertStorerVersion(t, lstore)
+			assertStorerVersion(t, lstore, path.Join(t.TempDir(), "sharky"))
 		})
 	})
 }
@@ -181,7 +182,7 @@ func dbTestOps(baseAddr swarm.Address, reserveCapacity int, bs postage.Storer, r
 	return opts
 }
 
-func assertStorerVersion(t *testing.T, lstore *storer.DB) {
+func assertStorerVersion(t *testing.T, lstore *storer.DB, sharkyPath string) {
 	t.Helper()
 
 	current, err := migration.Version(lstore.Repo().IndexStore())
@@ -189,7 +190,7 @@ func assertStorerVersion(t *testing.T, lstore *storer.DB) {
 		t.Fatalf("migration.Version(...): unexpected error: %v", err)
 	}
 
-	expected := migration.LatestVersion(localmigration.AllSteps(inmemchunkstore.New()))
+	expected := migration.LatestVersion(localmigration.AllSteps(sharkyPath, 4, inmemchunkstore.New()))
 
 	if current != expected {
 		t.Fatalf("storer is not migrated to latest version; got %d, expected %d", current, expected)

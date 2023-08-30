@@ -6,9 +6,10 @@ package chunkstore_test
 
 import (
 	"context"
+	"testing"
+
 	"github.com/google/go-cmp/cmp/cmpopts"
 	"golang.org/x/exp/slices"
-	"testing"
 
 	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/storage"
