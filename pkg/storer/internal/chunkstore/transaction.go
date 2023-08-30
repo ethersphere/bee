@@ -58,8 +58,6 @@ func (t *txSharky) Write(ctx context.Context, buf []byte) (sharky.Location, erro
 	loc, err = t.Sharky.Write(ctx, buf)
 	if err == nil {
 		t.writtenLocs = append(t.writtenLocs, loc)
-		t.toReleaseLocs[sum] = loc
-		t.toReleaseSums[loc] = sum
 
 		buf, err = msgpack.Marshal(t.writtenLocs)
 		if err == nil {

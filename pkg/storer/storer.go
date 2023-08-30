@@ -545,9 +545,16 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		}
 	}
 
-	sharkyBasePath := path.Join(dirPath, sharkyPath)
-	err = migration.Migrate(repo.IndexStore(), localmigration.AllSteps(sharkyBasePath, repo.ChunkStore()))
+	sharkyBasePath := ""
+	if dirPath != "" {
+		sharkyBasePath = path.Join(dirPath, sharkyPath)
+	}
+	err = migration.Migrate(
+		repo.IndexStore(),
+		localmigration.AllSteps(sharkyBasePath, sharkyNoOfShards, repo.ChunkStore()),
+	)
 	if err != nil {
+		fmt.Println("migration error", err)
 		return nil, err
 	}
 

@@ -1,3 +1,7 @@
+// Copyright 2023 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package migration
 
 import (
@@ -9,15 +13,17 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// this is the constant used in the previous version of the store
-var sharkyNoOfShards = 32
-
 // step_04 is the fourth step of the migration. It forces a sharky recovery to
 // be run on the localstore.
 func step_04(
 	sharkyBasePath string,
+	sharkyNoOfShards int,
 ) func(st storage.BatchedStore) error {
 	return func(st storage.BatchedStore) error {
+
+		if sharkyBasePath == "" {
+			return nil
+		}
 
 		sharkyRecover, err := sharky.NewRecovery(sharkyBasePath, sharkyNoOfShards, swarm.SocMaxChunkSize)
 		if err != nil {

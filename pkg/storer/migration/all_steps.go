@@ -11,11 +11,15 @@ import (
 )
 
 // AllSteps lists all migration steps for localstore IndexStore.
-func AllSteps(sharkyPath string, chunkStore storage.ChunkStore) migration.Steps {
+func AllSteps(
+	sharkyPath string,
+	sharkyNoOfShards int,
+	chunkStore storage.ChunkStore,
+) migration.Steps {
 	return map[uint64]migration.StepFn{
 		1: step_01,
 		2: step_02,
 		3: step_03(chunkStore, reserve.ChunkType),
-		4: step_04(sharkyPath),
+		4: step_04(sharkyPath, sharkyNoOfShards),
 	}
 }
