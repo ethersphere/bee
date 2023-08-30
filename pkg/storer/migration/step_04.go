@@ -6,7 +6,9 @@ package migration
 
 import (
 	"context"
+	"os"
 
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/sharky"
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storer/internal/chunkstore"
@@ -21,10 +23,12 @@ func step_04(
 ) func(st storage.BatchedStore) error {
 	return func(st storage.BatchedStore) error {
 
+		logger := log.NewLogger("migration-step-04", log.WithSink(os.Stdout))
 		if sharkyBasePath == "" {
 			return nil
 		}
 
+		logger.Info("starting sharky recovery")
 		sharkyRecover, err := sharky.NewRecovery(sharkyBasePath, sharkyNoOfShards, swarm.SocMaxChunkSize)
 		if err != nil {
 			return err
@@ -46,6 +50,7 @@ func step_04(
 		if err := sharkyRecover.Save(); err != nil {
 			return err
 		}
+		logger.Info("finished sharky recovery")
 
 		return sharkyRecover.Close()
 	}
