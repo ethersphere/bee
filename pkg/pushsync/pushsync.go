@@ -210,7 +210,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 		err = ps.store.ReservePutter().Put(ctx, chunkToPut)
 		if err != nil {
-			return fmt.Errorf("chunk store: %w", err)
+			return fmt.Errorf("reserve put: %w", err)
 		}
 
 		signature, err := ps.signer.Sign(chunkToPut.Address().Bytes())
