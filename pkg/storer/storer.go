@@ -554,7 +554,6 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		localmigration.AllSteps(sharkyBasePath, sharkyNoOfShards, repo.ChunkStore()),
 	)
 	if err != nil {
-		fmt.Println("migration error", err)
 		return nil, err
 	}
 
