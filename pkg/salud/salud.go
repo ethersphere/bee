@@ -3,7 +3,7 @@
 // license that can be found in the LICENSE file.
 
 // Package salud monitors the connected peers, calculates certain thresholds, and marks peers as unhealthy that
-// fall short of the thresholds to maintain network salud (health).
+// fall short of the thresholds. Other services and protocols can filter peers based on this health calculation.
 package salud
 
 import (
@@ -24,15 +24,15 @@ import (
 const loggerName = "salud"
 
 const (
-	wakeup                      = time.Minute
-	requestTimeout              = time.Second * 10
-	DefaultMinPeersPerBin       = 3
-	maxReserveSizePercentageErr = 0.02 // 2%
+	wakeup                = time.Minute
+	requestTimeout        = time.Second * 10
+	DefaultMinPeersPerBin = 3
 )
 
 type topologyDriver interface {
 	UpdatePeerHealth(peer swarm.Address, health bool, dur time.Duration)
 	topology.PeerIterator
+	IsReachable() bool
 }
 
 type peerStatus interface {
@@ -45,14 +45,14 @@ type reserve interface {
 }
 
 type service struct {
-	wg            sync.WaitGroup
-	quit          chan struct{}
-	logger        log.Logger
-	topology      topologyDriver
-	status        peerStatus
-	metrics       metrics
-	isSelfHealthy *atomic.Bool
-	reserve       reserve
+	wg         sync.WaitGroup
+	quit       chan struct{}
+	logger     log.Logger
+	topology   topologyDriver
+	status     peerStatus
+	metrics    metrics
+	selfHealth *atomic.Bool
+	reserve    reserve
 
 	radiusSubsMtx sync.Mutex
 	radiusC       []chan uint8
@@ -71,13 +71,13 @@ func New(
 	metrics := newMetrics()
 
 	s := &service{
-		quit:          make(chan struct{}),
-		logger:        logger.WithName(loggerName).Register(),
-		status:        status,
-		topology:      topology,
-		metrics:       metrics,
-		isSelfHealthy: atomic.NewBool(true),
-		reserve:       reserve,
+		quit:       make(chan struct{}),
+		logger:     logger.WithName(loggerName).Register(),
+		status:     status,
+		topology:   topology,
+		metrics:    metrics,
+		selfHealth: atomic.NewBool(true),
+		reserve:    reserve,
 	}
 
 	s.wg.Add(1)
@@ -223,14 +223,18 @@ func (s *service) salud(mode string, minPeersPerbin int) {
 		selfHealth = false
 		s.logger.Warning("node is unhealthy due to storage radius discrepency", "self_radius", s.reserve.StorageRadius(), "network_radius", networkRadius)
 	}
+	if !s.topology.IsReachable() {
+		selfHealth = false
+		s.logger.Warning("node is unhealthy because it is not reachable externally")
+	}
 
-	s.isSelfHealthy.Store(selfHealth)
+	s.selfHealth.Store(selfHealth)
 
 	s.publishRadius(networkRadius)
 }
 
 func (s *service) IsHealthy() bool {
-	return s.isSelfHealthy.Load()
+	return s.selfHealth.Load()
 }
 
 func (s *service) publishRadius(r uint8) {

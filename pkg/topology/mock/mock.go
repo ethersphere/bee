@@ -26,6 +26,7 @@ type mock struct {
 	marshalJSONFunc func() ([]byte, error)
 	mtx             sync.Mutex
 	health          map[string]bool
+	reachable       bool
 }
 
 var _ topology.Driver = (*mock)(nil)
@@ -33,6 +34,12 @@ var _ topology.Driver = (*mock)(nil)
 func WithPeers(peers ...swarm.Address) Option {
 	return optionFunc(func(d *mock) {
 		d.peers = peers
+	})
+}
+
+func WithReachable(h bool) Option {
+	return optionFunc(func(d *mock) {
+		d.reachable = h
 	})
 }
 
@@ -177,7 +184,7 @@ func (d *mock) ClosestPeer(addr swarm.Address, wantSelf bool, _ topology.Select,
 }
 
 func (m *mock) IsReachable() bool {
-	return true
+	return m.reachable
 }
 
 func (d *mock) SubscribeTopologyChange() (c <-chan struct{}, unsubscribe func()) {
