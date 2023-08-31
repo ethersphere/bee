@@ -286,7 +286,7 @@ func (db *DB) ReserveSample(
 			item.Stamp = stamp
 			item.BatchID = types.ToHexString(stamp.BatchID())
 
-			// check if sample contains transformed adress
+			// check if sample contains transformed address
 			if index := contains(item.TransformedAddress); index != -1 {
 				// TODO change back to SOC
 				if cac.Valid(ch) {

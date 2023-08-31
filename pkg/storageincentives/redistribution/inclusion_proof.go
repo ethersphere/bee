@@ -5,6 +5,7 @@
 package redistribution
 
 import (
+	"strconv"
 	"testing"
 	"time"
 
@@ -31,7 +32,7 @@ type ChunkInclusionProof struct {
 	ChunkAddr string `json:"chunkAddr"`
 	PostageId string `json:"postageId"`
 	Index     string `json:"index"`
-	TimeStamp uint64 `json:"timeStamp"`
+	TimeStamp string `json:"timeStamp"`
 
 	SocProofAttached []SOCProof `json:"socProofAttached"`
 }
@@ -59,7 +60,7 @@ func RandChunkInclusionProof(t *testing.T) ChunkInclusionProof {
 		ChunkAddr:      types.ToHexString(testutil.RandBytes(t, 32)),
 		PostageId:      types.ToHexString(testutil.RandBytes(t, 32)),
 		Index:          types.ToHexString(testutil.RandBytes(t, 32)),
-		TimeStamp:      uint64(time.Now().Unix()),
+		TimeStamp:      strconv.Itoa(time.Now().Nanosecond()),
 	}
 }
 

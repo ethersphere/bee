@@ -14,7 +14,6 @@ import (
 	"github.com/ethersphere/bee/pkg/bmt"
 	"github.com/ethersphere/bee/pkg/bmtpool"
 	"github.com/ethersphere/bee/pkg/cac"
-	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/pkg/storageincentives/types"
@@ -174,7 +173,7 @@ func newChunkInclusionProof(
 		ChunkAddr:        types.ToHexString(sampleItem.ChunkAddress.Bytes()),
 		PostageId:        types.ToHexString(sampleItem.Stamp.BatchID()),
 		Index:            hex.EncodeToString(sampleItem.Stamp.Index()),
-		TimeStamp:        postage.TimestampFromBytes(sampleItem.Stamp.Timestamp()),
+		TimeStamp:        hex.EncodeToString(sampleItem.Stamp.Timestamp()),
 		SocProofAttached: socProof,
 	}, nil
 }
