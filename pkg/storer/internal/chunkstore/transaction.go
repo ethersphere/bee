@@ -60,8 +60,6 @@ func (t *txSharky) Write(ctx context.Context, buf []byte) (sharky.Location, erro
 	loc, err = t.Sharky.Write(ctx, buf)
 	if err == nil {
 		t.writtenLocs = append(t.writtenLocs, loc)
-		t.toReleaseLocs[sum] = loc
-		t.toReleaseSums[loc] = sum
 
 		buf, err = msgpack.Marshal(t.writtenLocs)
 		if err == nil {
@@ -116,6 +114,10 @@ func (cs *TxChunkStoreWrapper) Commit() error {
 	var errs error
 	if err := cs.txStore.Commit(); err != nil {
 		errs = errors.Join(errs, fmt.Errorf("txchunkstore: unable to commit index store transaction: %w", err))
+	}
+
+	for _, loc := range cs.txSharky.toReleaseLocs {
+		errs = errors.Join(errs, cs.txSharky.Sharky.Release(context.Background(), loc))
 	}
 
 	if err := cs.txSharky.store.DB().Delete(cs.txSharky.id, nil); err != nil {

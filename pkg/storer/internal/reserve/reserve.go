@@ -121,10 +121,7 @@ func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.C
 			"batch_id", hex.EncodeToString(chunk.Stamp().BatchID()),
 			"index", hex.EncodeToString(chunk.Stamp().Index()),
 		)
-		return false, fmt.Errorf("batch %s index %s: %w",
-								hex.EncodeToString(chunk.Stamp().BatchID()),
-								hex.EncodeToString(chunk.Stamp().Index()),
-								storage.ErrOverwriteOfImmutableBatch)
+		return false, fmt.Errorf("batch %s index %s: %w", hex.EncodeToString(chunk.Stamp().BatchID()), hex.EncodeToString(chunk.Stamp().Index()), storage.ErrOverwriteOfImmutableBatch)
 	case loaded && !item.ChunkIsImmutable:
 		prev := binary.BigEndian.Uint64(item.StampTimestamp)
 		curr := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
