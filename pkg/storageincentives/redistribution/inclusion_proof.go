@@ -30,7 +30,7 @@ type ChunkInclusionProof struct {
 	Signature string `json:"signature"`
 	ChunkAddr string `json:"chunkAddr"`
 	PostageId string `json:"postageId"`
-	Index     uint64 `json:"index"`
+	Index     string `json:"index"`
 	TimeStamp uint64 `json:"timeStamp"`
 
 	SocProofAttached []SOCProof `json:"socProofAttached"`
@@ -58,7 +58,7 @@ func RandChunkInclusionProof(t *testing.T) ChunkInclusionProof {
 		Signature:      string(testutil.RandBytes(t, 32)),
 		ChunkAddr:      types.ToHexString(testutil.RandBytes(t, 32)),
 		PostageId:      types.ToHexString(testutil.RandBytes(t, 32)),
-		Index:          1,
+		Index:          types.ToHexString(testutil.RandBytes(t, 32)),
 		TimeStamp:      uint64(time.Now().Unix()),
 	}
 }

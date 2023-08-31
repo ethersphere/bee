@@ -173,7 +173,7 @@ func newChunkInclusionProof(
 		Signature:        hex.EncodeToString(sampleItem.Stamp.Sig()),
 		ChunkAddr:        types.ToHexString(sampleItem.ChunkAddress.Bytes()),
 		PostageId:        types.ToHexString(sampleItem.Stamp.BatchID()),
-		Index:            postage.IndexFromBytes(sampleItem.Stamp.Index()),
+		Index:            hex.EncodeToString(sampleItem.Stamp.Index()),
 		TimeStamp:        postage.TimestampFromBytes(sampleItem.Stamp.Timestamp()),
 		SocProofAttached: socProof,
 	}, nil
@@ -218,14 +218,15 @@ type hexProof struct {
 }
 
 func makeSOCProof(sampleItem storer.SampleItem) ([]redistribution.SOCProof, error) {
+	var emptySOCProof = make([]redistribution.SOCProof, 0)
 	ch := swarm.NewChunk(sampleItem.ChunkAddress, sampleItem.ChunkData)
 	if !soc.Valid(ch) {
-		return nil, nil
+		return emptySOCProof, nil
 	}
 
 	socCh, err := soc.FromChunk(ch)
 	if err != nil {
-		return nil, err
+		return emptySOCProof, err
 	}
 
 	return []redistribution.SOCProof{{
