@@ -28,6 +28,7 @@ import (
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/opentracing/opentracing-go"
+	opentracinglog "github.com/opentracing/opentracing-go/log"
 	"resenje.org/singleflight"
 )
 
@@ -257,10 +258,10 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 				inflight++
 
 				go func() {
-					ctx := tracing.WithContext(context.Background(), tracing.FromContext(ctx)) // todo: replace with `ctx := context.WithoutCancel(ctx)` when go 1.21 is supported to pass all context values
-					span, _, ctx := s.tracer.StartSpanFromContext(ctx, "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: chunkAddr.String()})
+					ctx := context.WithoutCancel(ctx)
+					span, _, ctx := s.tracer.FollowSpanFromContext(ctx, "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: chunkAddr.String()})
 					defer span.Finish()
-					s.retrieveChunk(ctx, quit, chunkAddr, peer, resultC, action, origin)
+					s.retrieveChunk(ctx, quit, chunkAddr, peer, resultC, action, origin, span)
 				}()
 
 			case res := <-resultC:
@@ -294,7 +295,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 	return v, nil
 }
 
-func (s *Service) retrieveChunk(ctx context.Context, quit chan struct{}, chunkAddr, peer swarm.Address, result chan retrievalResult, action accounting.Action, isOrigin bool) {
+func (s *Service) retrieveChunk(ctx context.Context, quit chan struct{}, chunkAddr, peer swarm.Address, result chan retrievalResult, action accounting.Action, isOrigin bool, span opentracing.Span) {
 
 	var (
 		startTime = time.Now()
@@ -305,6 +306,7 @@ func (s *Service) retrieveChunk(ctx context.Context, quit chan struct{}, chunkAd
 	defer func() {
 		action.Cleanup()
 		if err != nil {
+			span.LogFields(opentracinglog.Error(err))
 			s.metrics.TotalErrors.Inc()
 		}
 		select {
@@ -447,7 +449,10 @@ func (s *Service) handler(p2pctx context.Context, p p2p.Peer, stream p2p.Stream)
 	}
 
 	span, _, ctx := s.tracer.StartSpanFromContext(ctx, "handle-retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: addr.String()})
-	defer span.Finish()
+	defer func() {
+		span.LogFields(opentracinglog.Error(err))
+		span.Finish()
+	}()
 
 	forwarded := false
 	chunk, err := s.storer.Lookup().Get(ctx, addr)

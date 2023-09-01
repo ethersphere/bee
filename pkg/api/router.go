@@ -348,14 +348,12 @@ func (s *Service) mountAPI() {
 	if s.Restricted {
 		handle("/auth", jsonhttp.MethodHandler{
 			"POST": web.ChainHandlers(
-				s.newTracingHandler("auth"),
 				jsonhttp.NewMaxBodyBytesHandler(512),
 				web.FinalHandlerFunc(s.authHandler),
 			),
 		})
 		handle("/refresh", jsonhttp.MethodHandler{
 			"POST": web.ChainHandlers(
-				s.newTracingHandler("auth"),
 				jsonhttp.NewMaxBodyBytesHandler(512),
 				web.FinalHandlerFunc(s.refreshHandler),
 			),
