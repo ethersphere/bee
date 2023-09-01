@@ -559,7 +559,6 @@ func (a *Agent) Status() (*Status, error) {
 }
 
 type SampleWithProofs struct {
-	Items    []storer.SampleItem                 `json:"items"`
 	Hash     swarm.Address                       `json:"hash"`
 	Proofs   redistribution.ChunkInclusionProofs `json:"proofs"`
 	Duration time.Duration                       `json:"duration"`
@@ -594,7 +593,6 @@ func (a *Agent) SampleWithProofs(
 	}
 
 	return SampleWithProofs{
-		Items:    rSample.Items,
 		Hash:     hash,
 		Proofs:   proofs,
 		Duration: time.Since(sampleStartTime),
