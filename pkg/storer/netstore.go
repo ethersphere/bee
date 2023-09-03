@@ -90,7 +90,7 @@ func (db *DB) Download(cache bool) storage.Getter {
 									db.bgCacheLimiterWg.Done()
 								}()
 
-								err := db.Cache().Put(ctx, ch)
+								err := db.Cache().Put(context.Background(), ch)
 								if err != nil {
 									db.logger.Error(err, "failed putting chunk to cache", "chunk_address", ch.Address())
 								}
