@@ -8,6 +8,7 @@ package steward
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 
@@ -28,6 +29,14 @@ type Interface interface {
 	// IsRetrievable checks whether the content
 	// on the given address is retrievable.
 	IsRetrievable(context.Context, swarm.Address) (bool, error)
+
+	Track(context.Context, swarm.Address) (bool, []*ChunkInfo, error)
+}
+
+type ChunkInfo struct {
+	Address swarm.Address       `json:"address"`
+	Batch string                `json:"batch"`
+//	PinCount uint64             `json:"pinCount"`
 }
 
 type steward struct {
@@ -90,6 +99,59 @@ func (s *steward) IsRetrievable(ctx context.Context, root swarm.Address) (bool, 
 	default:
 		return true, nil
 	}
+}
+
+// Track content with the given root hash to the network.
+// The service will automatically dereference and traverse all
+// addresses.
+// It assumes all chunks are available. It is therefore
+// advisable to pin the content locally before tracking it.
+func (s *steward) Track(ctx context.Context, root swarm.Address) (bool, []*ChunkInfo, error) {
+
+	var chunks []*ChunkInfo
+	getter := s.netStore.Download(false)
+
+	fn := func(addr swarm.Address) error {
+		c, err := getter.Get(ctx, addr)
+		if err != nil {
+			//s.logger.Debug("steward:Track getter.Get failed", "chunk", addr, "err", err)
+			return err
+		}
+		//stampBytes, err := c.Stamp().MarshalBinary()
+		//if err != nil {
+		//	return fmt.Errorf("pusher: valid stamp marshal: %w", err)
+		//}
+		batchID := "";
+		if (c.Stamp() != nil) {
+			batchID = hex.EncodeToString(c.Stamp().BatchID())
+		}
+		//checkFor := "0e8366a6fdac185b6f0327dc89af99e67d9d3b3f2af22432542dc5971065c1df"
+		//if (batchID != checkFor) {
+		//	s.logger.Debug("steward:Track", "chunk", addr, "batchID", batchID, "not", checkFor)
+		//}
+		//pc, err := s.getter.PinCounter(addr)
+		//if err != nil {
+		//	pc = 0
+		//}
+		//if pc == 0 {
+		//	s.logger.Debug("steward:Track NOT pinned!", "chunk", addr, "batchID", batchID)
+		//}
+		chunks = append(
+			chunks,
+			&ChunkInfo{
+				Address: addr,
+				Batch: batchID,
+		//		PinCount: pc,
+			},
+		)
+		return nil
+	}
+
+	if err := s.traverser.Traverse(ctx, root, false, fn); err != nil {
+		return false, chunks, fmt.Errorf("traversal of %s failed: %w", root.String(), err)
+	}
+
+	return true, chunks, nil
 }
 
 // netGetter implements the storage Getter.Get method in a way
