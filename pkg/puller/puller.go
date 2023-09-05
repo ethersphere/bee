@@ -24,7 +24,6 @@ import (
 	"github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
-	"go.uber.org/atomic"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -63,8 +62,7 @@ type Puller struct {
 
 	bins uint8 // how many bins do we support
 
-	sync *atomic.Uint64 // current number of gorourines doing historical syncing
-	rate *rate.Rate     // rate of historical syncing
+	rate *rate.Rate // rate of historical syncing
 
 	start sync.Once
 }
@@ -91,7 +89,6 @@ func New(
 		logger:      logger.WithName(loggerName).Register(),
 		syncPeers:   make(map[string]*syncPeer),
 		bins:        bins,
-		sync:        atomic.NewUint64(0),
 		blockLister: blockLister,
 		rate:        rate.New(DefaultHistRateWindow),
 		cancel:      func() { /* Noop, since the context is initialized in the Start(). */ },
@@ -108,10 +105,6 @@ func (p *Puller) Start(ctx context.Context) {
 		p.wg.Add(1)
 		go p.manage(cctx)
 	})
-}
-
-func (p *Puller) ActiveHistoricalSyncing() uint64 {
-	return p.sync.Load()
 }
 
 func (p *Puller) SyncRate() float64 {
@@ -189,8 +182,9 @@ func (p *Puller) disconnectPeer(addr swarm.Address) {
 
 	loggerV2.Debug("puller disconnect cleanup peer", "peer_address", addr)
 	if peer, ok := p.syncPeers[addr.ByteString()]; ok {
+		peer.mtx.Lock()
 		peer.gone()
-
+		peer.mtx.Unlock()
 	}
 	delete(p.syncPeers, addr.ByteString())
 }
@@ -200,23 +194,43 @@ func (p *Puller) disconnectPeer(addr swarm.Address) {
 func (p *Puller) recalcPeers(ctx context.Context, storageRadius uint8) {
 	loggerV2 := p.logger.V(2).Register()
 	for _, peer := range p.syncPeers {
-		peer.Lock()
+		peer.mtx.Lock()
 		err := p.syncPeer(ctx, peer, storageRadius)
 		if err != nil {
 			loggerV2.Debug("recalc peers sync failed", "bin", storageRadius, "peer", peer.address, "error", err)
 		}
-		peer.Unlock()
+		peer.mtx.Unlock()
 	}
 }
 
 // Must be called under syncPeer lock.
 func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, storageRadius uint8) error {
+
 	if peer.cursors == nil {
-		cursors, err := p.syncer.GetCursors(ctx, peer.address)
+		cursors, peerEpoch, err := p.syncer.GetCursors(ctx, peer.address)
 		if err != nil {
 			return fmt.Errorf("could not get cursors from peer %s: %w", peer.address, err)
 		}
 		peer.cursors = cursors
+
+		e, err := p.getPeerEpoch(peer.address)
+		if err != nil {
+			return fmt.Errorf("could not peer epoch from statestore %s: %w", peer.address, err)
+		}
+
+		if e != peerEpoch {
+			// cancel all bins
+			peer.gone()
+
+			err = p.resetPeerIntervals(peer.address)
+			if err != nil {
+				return fmt.Errorf("could not reset peer intervals %s: %w", peer.address, err)
+			}
+			err = p.setPeerEpoch(peer.address, peerEpoch)
+			if err != nil {
+				return fmt.Errorf("could not set peer epoch %s: %w", peer.address, err)
+			}
+		}
 	}
 
 	if len(peer.cursors) != int(p.bins) {
@@ -263,18 +277,18 @@ func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, storageRadius uin
 func (p *Puller) syncPeerBin(ctx context.Context, peer *syncPeer, bin uint8, cur uint64) {
 	binCtx, cancel := context.WithCancel(ctx)
 	peer.setBinCancel(cancel, bin)
+	peer.wg.Add(1)
 	p.wg.Add(1)
-	p.sync.Inc()
-	go p.syncWorker(binCtx, peer.address, bin, cur)
+	go p.syncWorker(binCtx, peer.address, bin, cur, peer.wg.Done)
 }
 
-func (p *Puller) syncWorker(ctx context.Context, peer swarm.Address, bin uint8, cur uint64) {
+func (p *Puller) syncWorker(ctx context.Context, peer swarm.Address, bin uint8, cur uint64, done func()) {
 	loggerV2 := p.logger.V(2).Register()
 
 	p.metrics.SyncWorkerCounter.Inc()
 	defer p.wg.Done()
 	defer p.metrics.SyncWorkerDoneCounter.Inc()
-	defer p.sync.Dec()
+	defer done()
 
 	loggerV2.Debug("syncWorker starting", "peer_address", peer, "bin", bin, "cursor", cur)
 
@@ -360,6 +374,40 @@ func (p *Puller) addPeerInterval(peer swarm.Address, bin uint8, start, end uint6
 	return p.statestore.Put(peerStreamKey, i)
 }
 
+func (p *Puller) getPeerEpoch(peer swarm.Address) (uint64, error) {
+	p.intervalMtx.Lock()
+	defer p.intervalMtx.Unlock()
+
+	var epoch uint64
+	err := p.statestore.Get(peerEpochKey(peer), &epoch)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return 0, nil
+		}
+		return 0, err
+	}
+
+	return epoch, nil
+}
+
+func (p *Puller) setPeerEpoch(peer swarm.Address, epoch uint64) error {
+	p.intervalMtx.Lock()
+	defer p.intervalMtx.Unlock()
+
+	return p.statestore.Put(peerEpochKey(peer), epoch)
+}
+
+func (p *Puller) resetPeerIntervals(peer swarm.Address) (err error) {
+	p.intervalMtx.Lock()
+	defer p.intervalMtx.Unlock()
+
+	for bin := uint8(0); bin < p.bins; bin++ {
+		err = errors.Join(err, p.statestore.Delete(peerIntervalKey(peer, bin)))
+	}
+
+	return
+}
+
 func (p *Puller) resetIntervals(upto uint8) (err error) {
 	p.intervalMtx.Lock()
 	defer p.intervalMtx.Unlock()
@@ -408,6 +456,10 @@ func (p *Puller) getOrCreateInterval(peer swarm.Address, bin uint8) (*intervalst
 	return i, nil
 }
 
+func peerEpochKey(peer swarm.Address) string {
+	return fmt.Sprintf("%s_epoch_%s", intervalPrefix, peer.ByteString())
+}
+
 func peerIntervalKey(peer swarm.Address, bin uint8) string {
 	return fmt.Sprintf("%s_%03d_%s", intervalPrefix, bin, peer.ByteString())
 }
@@ -422,7 +474,8 @@ type syncPeer struct {
 	po             uint8
 	cursors        []uint64
 
-	sync.Mutex
+	mtx sync.Mutex
+	wg  sync.WaitGroup
 }
 
 func newSyncPeer(addr swarm.Address, bins, po uint8) *syncPeer {
@@ -435,12 +488,10 @@ func newSyncPeer(addr swarm.Address, bins, po uint8) *syncPeer {
 
 // called when peer disconnects or on shutdown, cleans up ongoing sync operations
 func (p *syncPeer) gone() {
-	p.Lock()
-	defer p.Unlock()
-
 	for _, f := range p.binCancelFuncs {
 		f()
 	}
+	p.wg.Wait()
 }
 
 func (p *syncPeer) setBinCancel(cf func(), bin uint8) {

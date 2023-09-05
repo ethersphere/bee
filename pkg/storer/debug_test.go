@@ -77,6 +77,7 @@ func testDebugInfo(t *testing.T, newStorer func() (*storer.DB, swarm.Address, er
 			Reserve: storer.ReserveStat{
 				Capacity:   100,
 				LastBinIDs: emptyBinIDs(),
+				Epoch:      uint64(time.Now().Unix()),
 			},
 		}
 
@@ -117,6 +118,7 @@ func testDebugInfo(t *testing.T, newStorer func() (*storer.DB, swarm.Address, er
 			Reserve: storer.ReserveStat{
 				Capacity:   100,
 				LastBinIDs: emptyBinIDs(),
+				Epoch:      uint64(time.Now().Unix()),
 			},
 		}
 
@@ -162,6 +164,7 @@ func testDebugInfo(t *testing.T, newStorer func() (*storer.DB, swarm.Address, er
 				Size:       10,
 				Capacity:   100,
 				LastBinIDs: ids,
+				Epoch:      uint64(time.Now().Unix()),
 			},
 		}
 

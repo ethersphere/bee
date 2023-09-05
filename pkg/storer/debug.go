@@ -33,6 +33,7 @@ type ReserveStat struct {
 	Size       int
 	Capacity   int
 	LastBinIDs []uint64
+	Epoch      uint64
 }
 
 type ChunkStoreStat struct {
@@ -126,7 +127,7 @@ func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 		return Info{}, err
 	}
 
-	lastbinIds, err := db.ReserveLastBinIDs()
+	lastbinIds, epoch, err := db.ReserveLastBinIDs()
 	if err != nil {
 		return Info{}, err
 	}
@@ -148,6 +149,7 @@ func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 			Size:       reserveSize,
 			Capacity:   reserveCapacity,
 			LastBinIDs: lastbinIds,
+			Epoch:      epoch,
 		},
 		ChunkStore: ChunkStoreStat{
 			TotalChunks: totalChunks,

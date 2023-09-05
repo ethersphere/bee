@@ -401,7 +401,7 @@ func TestIterate(t *testing.T) {
 
 		r, ts := createReserve(t)
 
-		ids, err := r.LastBinIDs(ts.IndexStore())
+		ids, _, err := r.LastBinIDs(ts.IndexStore())
 		if err != nil {
 			t.Fatal(err)
 		}
