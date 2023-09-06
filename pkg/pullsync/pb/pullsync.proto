@@ -11,8 +11,8 @@ option go_package = "pb";
 message Syn {}
 
 message Ack {
-  uint64 Epoch = 1;
-  repeated uint64 Cursors = 2;
+  repeated uint64 Cursors = 1;
+  uint64 Epoch = 2;
 }
 
 message Get {

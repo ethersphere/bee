@@ -36,16 +36,9 @@ const loggerName = "pullsync"
 
 const (
 	protocolName     = "pullsync"
-	protocolVersion  = "1.4.0"
+	protocolVersion  = "1.3.0"
 	streamName       = "pullsync"
 	cursorStreamName = "cursors"
-	cancelStreamName = "cancel"
-)
-
-const (
-	MaxCursor           = math.MaxUint64
-	DefaultRateDuration = time.Minute * 15
-	batchTimeout        = time.Second
 )
 
 var (
@@ -53,16 +46,11 @@ var (
 )
 
 const (
-	makeOfferTimeout        = 5 * time.Minute
+	MaxCursor               = math.MaxUint64
 	DefaultMaxPage   uint64 = 250
+	pageTimeout             = time.Second
+	makeOfferTimeout        = 5 * time.Minute
 )
-
-// singleflight key for intervals
-func sfKey(bin uint8, start uint64) string {
-	return fmt.Sprintf("%d-%d", bin, start)
-}
-
-// how many maximum chunks in a batch
 
 // Interface is the PullSync interface.
 type Interface interface {
@@ -439,12 +427,12 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 				}
 				limit--
 				if timer == nil {
-					timer = time.NewTimer(batchTimeout)
+					timer = time.NewTimer(pageTimeout)
 				} else {
 					if !timer.Stop() {
 						<-timer.C
 					}
-					timer.Reset(batchTimeout)
+					timer.Reset(pageTimeout)
 				}
 				timerC = timer.C
 			case err := <-errC:
@@ -574,4 +562,9 @@ func (s *Syncer) Close() error {
 		s.logger.Warning("pull syncer shutting down with running goroutines")
 	}
 	return nil
+}
+
+// singleflight key for intervals
+func sfKey(bin uint8, start uint64) string {
+	return fmt.Sprintf("%d-%d", bin, start)
 }
