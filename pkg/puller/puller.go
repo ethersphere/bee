@@ -192,12 +192,11 @@ func (p *Puller) disconnectPeer(addr swarm.Address) {
 // recalcPeers starts or stops syncing process for peers per bin depending on the current sync radius.
 // Must be called under lock.
 func (p *Puller) recalcPeers(ctx context.Context, storageRadius uint8) {
-	loggerV2 := p.logger.V(2).Register()
 	for _, peer := range p.syncPeers {
 		peer.mtx.Lock()
 		err := p.syncPeer(ctx, peer, storageRadius)
 		if err != nil {
-			loggerV2.Debug("recalc peers sync failed", "bin", storageRadius, "peer", peer.address, "error", err)
+			p.logger.Debug("recalc peer failed", "peer", peer.address, "error", err)
 		}
 		peer.mtx.Unlock()
 	}
@@ -207,26 +206,28 @@ func (p *Puller) recalcPeers(ctx context.Context, storageRadius uint8) {
 func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, storageRadius uint8) error {
 
 	if peer.cursors == nil {
-		cursors, peerEpoch, err := p.syncer.GetCursors(ctx, peer.address)
+		cursors, epoch, err := p.syncer.GetCursors(ctx, peer.address)
 		if err != nil {
 			return fmt.Errorf("could not get cursors from peer %s: %w", peer.address, err)
 		}
 		peer.cursors = cursors
 
-		e, err := p.getPeerEpoch(peer.address)
+		storedEpoch, err := p.getPeerEpoch(peer.address)
 		if err != nil {
-			return fmt.Errorf("could not peer epoch from statestore %s: %w", peer.address, err)
+			return fmt.Errorf("could not get peer epoch from statestore %s: %w", peer.address, err)
 		}
 
-		if e != peerEpoch {
+		if storedEpoch != epoch {
 			// cancel all bins
 			peer.gone()
+
+			p.logger.Debug("peer epoch change detected, resetting past synced intervals", "peer", peer.address)
 
 			err = p.resetPeerIntervals(peer.address)
 			if err != nil {
 				return fmt.Errorf("could not reset peer intervals %s: %w", peer.address, err)
 			}
-			err = p.setPeerEpoch(peer.address, peerEpoch)
+			err = p.setPeerEpoch(peer.address, epoch)
 			if err != nil {
 				return fmt.Errorf("could not set peer epoch %s: %w", peer.address, err)
 			}
@@ -488,8 +489,8 @@ func newSyncPeer(addr swarm.Address, bins, po uint8) *syncPeer {
 
 // called when peer disconnects or on shutdown, cleans up ongoing sync operations
 func (p *syncPeer) gone() {
-	for _, f := range p.binCancelFuncs {
-		f()
+	for _, c := range p.binCancelFuncs {
+		c()
 	}
 	p.wg.Wait()
 }

@@ -30,6 +30,11 @@ func testDebugInfo(t *testing.T, newStorer func() (*storer.DB, swarm.Address, er
 			t.Fatal(err)
 		}
 
+		_, epoch, err := lstore.ReserveLastBinIDs()
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		tag, err := lstore.NewSession()
 		if err != nil {
 			t.Fatalf("NewSession(): unexpected error: %v", err)
@@ -77,7 +82,7 @@ func testDebugInfo(t *testing.T, newStorer func() (*storer.DB, swarm.Address, er
 			Reserve: storer.ReserveStat{
 				Capacity:   100,
 				LastBinIDs: emptyBinIDs(),
-				Epoch:      uint64(time.Now().Unix()),
+				Epoch:      epoch,
 			},
 		}
 
@@ -90,6 +95,11 @@ func testDebugInfo(t *testing.T, newStorer func() (*storer.DB, swarm.Address, er
 		t.Parallel()
 
 		lstore, _, err := newStorer()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, epoch, err := lstore.ReserveLastBinIDs()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -118,7 +128,7 @@ func testDebugInfo(t *testing.T, newStorer func() (*storer.DB, swarm.Address, er
 			Reserve: storer.ReserveStat{
 				Capacity:   100,
 				LastBinIDs: emptyBinIDs(),
-				Epoch:      uint64(time.Now().Unix()),
+				Epoch:      epoch,
 			},
 		}
 
@@ -131,6 +141,11 @@ func testDebugInfo(t *testing.T, newStorer func() (*storer.DB, swarm.Address, er
 		t.Parallel()
 
 		lstore, addr, err := newStorer()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, epoch, err := lstore.ReserveLastBinIDs()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -164,7 +179,7 @@ func testDebugInfo(t *testing.T, newStorer func() (*storer.DB, swarm.Address, er
 				Size:       10,
 				Capacity:   100,
 				LastBinIDs: ids,
-				Epoch:      uint64(time.Now().Unix()),
+				Epoch:      epoch,
 			},
 		}
 

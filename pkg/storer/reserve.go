@@ -401,7 +401,7 @@ func (db *DB) unreserve(ctx context.Context) (err error) {
 	return errMaxRadius
 }
 
-// ReserveLastBinIDs returns all of the highest binIDs from all the bins in the reserve.
+// ReserveLastBinIDs returns all of the highest binIDs from all the bins in the reserve and the epoch time of the reserve.
 func (db *DB) ReserveLastBinIDs() ([]uint64, uint64, error) {
 	if db.reserve == nil {
 		return nil, 0, nil
