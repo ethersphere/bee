@@ -274,7 +274,10 @@ func NewBee(
 		return nil, fmt.Errorf("check presence of nonce: %w", err)
 	}
 
-	var swarmAddress swarm.Address
+	swarmAddress, err := crypto.NewOverlayAddress(*pubKey, networkID, nonce)
+	if err != nil {
+		return nil, fmt.Errorf("compute overlay address: %w", err)
+	}
 
 	if !nonceExists {
 
@@ -292,10 +295,6 @@ func NewBee(
 		}
 	}
 
-	swarmAddress, err = crypto.NewOverlayAddress(*pubKey, networkID, nonce)
-	if err != nil {
-		return nil, fmt.Errorf("compute overlay address: %w", err)
-	}
 	logger.Info("using overlay address", "address", swarmAddress)
 
 	if err = checkOverlay(stateStore, swarmAddress); err != nil {
