@@ -12,6 +12,7 @@ message Syn {}
 
 message Ack {
   repeated uint64 Cursors = 1;
+  uint64 Epoch = 2;
 }
 
 message Get {

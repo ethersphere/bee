@@ -233,7 +233,7 @@ func TestEvictBatch(t *testing.T) {
 		t.Fatalf("want radius %d, got radius %d", 0, reserve.Radius())
 	}
 
-	ids, err := st.ReserveLastBinIDs()
+	ids, _, err := st.ReserveLastBinIDs()
 	if err != nil {
 		t.Fatal(err)
 	}

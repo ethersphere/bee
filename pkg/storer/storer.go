@@ -156,7 +156,7 @@ type ReserveStore interface {
 	ReserveHas(addr swarm.Address, batchID []byte) (bool, error)
 	ReservePutter() storage.Putter
 	SubscribeBin(ctx context.Context, bin uint8, start uint64) (<-chan *BinC, func(), <-chan error)
-	ReserveLastBinIDs() ([]uint64, error)
+	ReserveLastBinIDs() ([]uint64, uint64, error)
 	RadiusChecker
 }
 

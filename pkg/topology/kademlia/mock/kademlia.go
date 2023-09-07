@@ -87,6 +87,15 @@ func (m *Mock) SetStorageRadius(uint8) {
 	panic("not implemented")
 }
 
+func (m *Mock) AddRevPeers(addrs ...AddrTuple) {
+	m.mtx.Lock()
+	defer m.mtx.Unlock()
+	for _, a := range addrs {
+		a := a
+		m.eachPeerRev = append(m.eachPeerRev, a)
+	}
+}
+
 // EachConnectedPeer iterates from closest bin to farthest
 func (m *Mock) EachConnectedPeer(f topology.EachPeerFunc, _ topology.Select) error {
 	m.mtx.Lock()
