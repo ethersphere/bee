@@ -17,15 +17,15 @@ import (
 
 var errBadCharacter = errors.New("bad character in binary address")
 
-func MineOverlay(ctx context.Context, p ecdsa.PublicKey, networkID uint64, neighborhoodPrefix string) (swarm.Address, []byte, error) {
+func MineOverlay(ctx context.Context, p ecdsa.PublicKey, networkID uint64, targetNeighborhood string) (swarm.Address, []byte, error) {
 
 	nonce := make([]byte, 32)
 
-	neighborHood, err := bitStrToAddress(neighborhoodPrefix)
+	neighborhood, err := bitStrToAddress(targetNeighborhood)
 	if err != nil {
 		return swarm.ZeroAddress, nil, err
 	}
-	prox := len(neighborhoodPrefix)
+	prox := len(targetNeighborhood)
 
 	i := uint64(0)
 	for {
@@ -43,7 +43,7 @@ func MineOverlay(ctx context.Context, p ecdsa.PublicKey, networkID uint64, neigh
 			return swarm.ZeroAddress, nil, fmt.Errorf("compute overlay address: %w", err)
 		}
 
-		if swarm.Proximity(swarmAddress.Bytes(), neighborHood.Bytes()) >= uint8(prox) {
+		if swarm.Proximity(swarmAddress.Bytes(), neighborhood.Bytes()) >= uint8(prox) {
 			return swarmAddress, nonce, nil
 		}
 

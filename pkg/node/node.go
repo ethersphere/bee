@@ -174,7 +174,7 @@ type Options struct {
 	UsePostageSnapshot            bool
 	EnableStorageIncentives       bool
 	StatestoreCacheCapacity       uint64
-	NeighborhoodPrefixBinary      string
+	TargetNeighborhood            string
 }
 
 const (
@@ -343,10 +343,10 @@ func NewBee(
 		return nil, fmt.Errorf("check presence of nonce: %w", err)
 	}
 
-	if !nonceExists {
+	if !nonceExists && o.TargetNeighborhood != "" {
 
 		// mine the overlay
-		swarmAddress, minedNonce, err := neighborhood.MineOverlay(ctx, *pubKey, networkID, o.NeighborhoodPrefixBinary)
+		swarmAddress, minedNonce, err := neighborhood.MineOverlay(ctx, *pubKey, networkID, o.TargetNeighborhood)
 		if err != nil {
 			return nil, fmt.Errorf("mine overlay address: %w", err)
 		}
