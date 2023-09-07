@@ -264,6 +264,47 @@ func NewBee(
 
 	addressbook := addressbook.New(stateStore)
 
+	pubKey, err := signer.PublicKey()
+	if err != nil {
+		return nil, err
+	}
+
+	nonce, nonceExists, err := overlayNonceExists(stateStore)
+	if err != nil {
+		return nil, fmt.Errorf("check presence of nonce: %w", err)
+	}
+
+	if !nonceExists && o.TargetNeighborhood != "" {
+
+		// mine the overlay
+		swarmAddress, minedNonce, err := neighborhood.MineOverlay(ctx, *pubKey, networkID, o.TargetNeighborhood)
+		if err != nil {
+			return nil, fmt.Errorf("mine overlay address: %w", err)
+		}
+
+		err = setOverlayNonce(stateStore, minedNonce)
+		if err != nil {
+			return nil, fmt.Errorf("statestore: save new overlay nonce: %w", err)
+		}
+
+		err = SetOverlayInStore(swarmAddress, stateStore)
+		if err != nil {
+			return nil, fmt.Errorf("statestore: save new overlay: %w", err)
+		}
+
+		nonce = minedNonce
+	}
+
+	swarmAddress, err := crypto.NewOverlayAddress(*pubKey, networkID, nonce)
+	if err != nil {
+		return nil, fmt.Errorf("compute overlay address: %w", err)
+	}
+	logger.Info("using overlay address", "address", swarmAddress)
+
+	if err = CheckOverlayWithStore(swarmAddress, stateStore); err != nil {
+		return nil, err
+	}
+
 	var (
 		chainBackend       transaction.Backend
 		overlayEthAddress  common.Address
@@ -318,62 +359,6 @@ func NewBee(
 
 	b.transactionCloser = tracerCloser
 	b.transactionMonitorCloser = transactionMonitor
-
-	chainCfg, found := config.GetByChainID(chainID)
-
-	redistributionContractAddress := chainCfg.RedistributionAddress
-	if o.RedistributionContractAddress != "" {
-		if !common.IsHexAddress(o.RedistributionContractAddress) {
-			return nil, errors.New("malformed redistribution contract address")
-		}
-		redistributionContractAddress = common.HexToAddress(o.RedistributionContractAddress)
-	}
-	redistributionContractABI, err := abi.JSON(strings.NewReader(chainCfg.RedistributionABI))
-	if err != nil {
-		return nil, fmt.Errorf("unable to parse redistribution ABI: %w", err)
-	}
-
-	pubKey, err := signer.PublicKey()
-	if err != nil {
-		return nil, err
-	}
-
-	nonce, nonceExists, err := overlayNonceExists(stateStore)
-	if err != nil {
-		return nil, fmt.Errorf("check presence of nonce: %w", err)
-	}
-
-	if !nonceExists && o.TargetNeighborhood != "" {
-
-		// mine the overlay
-		swarmAddress, minedNonce, err := neighborhood.MineOverlay(ctx, *pubKey, networkID, o.TargetNeighborhood)
-		if err != nil {
-			return nil, fmt.Errorf("mine overlay address: %w", err)
-		}
-
-		err = setOverlayNonce(stateStore, minedNonce)
-		if err != nil {
-			return nil, fmt.Errorf("statestore: save new overlay nonce: %w", err)
-		}
-
-		err = SetOverlayInStore(swarmAddress, stateStore)
-		if err != nil {
-			return nil, fmt.Errorf("statestore: save new overlay: %w", err)
-		}
-
-		nonce = minedNonce
-	}
-
-	swarmAddress, err := crypto.NewOverlayAddress(*pubKey, networkID, nonce)
-	if err != nil {
-		return nil, fmt.Errorf("compute overlay address: %w", err)
-	}
-
-	if err = CheckOverlayWithStore(swarmAddress, stateStore); err != nil {
-		return nil, err
-	}
-
-	logger.Info("using overlay address", "address", swarmAddress)
 
 	var authenticator auth.Authenticator
 
@@ -684,6 +669,7 @@ func NewBee(
 		eventListener               postage.Listener
 	)
 
+	chainCfg, found := config.GetByChainID(chainID)
 	postageStampContractAddress, postageSyncStart := chainCfg.PostageStampAddress, chainCfg.PostageStampStartBlock
 	if o.PostageContractAddress != "" {
 		if !common.IsHexAddress(o.PostageContractAddress) {
@@ -1064,6 +1050,18 @@ func NewBee(
 		nodeStatus.SetSync(pullerService)
 
 		if o.EnableStorageIncentives {
+
+			redistributionContractAddress := chainCfg.RedistributionAddress
+			if o.RedistributionContractAddress != "" {
+				if !common.IsHexAddress(o.RedistributionContractAddress) {
+					return nil, errors.New("malformed redistribution contract address")
+				}
+				redistributionContractAddress = common.HexToAddress(o.RedistributionContractAddress)
+			}
+			redistributionContractABI, err := abi.JSON(strings.NewReader(chainCfg.RedistributionABI))
+			if err != nil {
+				return nil, fmt.Errorf("unable to parse redistribution ABI: %w", err)
+			}
 
 			isFullySynced := func() bool {
 				return localStore.ReserveSize() >= reserveTreshold && pullerService.SyncRate() == 0

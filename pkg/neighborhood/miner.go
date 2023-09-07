@@ -76,3 +76,9 @@ func bitStrToAddress(src string) (swarm.Address, error) {
 
 	return bytesToAddr(a), nil
 }
+
+func bytesToAddr(b []byte) swarm.Address {
+	addr := make([]byte, swarm.HashSize)
+	copy(addr, b)
+	return swarm.NewAddress(addr)
+}
