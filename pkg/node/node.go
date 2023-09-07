@@ -274,15 +274,19 @@ func NewBee(
 		return nil, fmt.Errorf("check presence of nonce: %w", err)
 	}
 
-	if !nonceExists && o.TargetNeighborhood != "" {
+	var swarmAddress swarm.Address
+
+	if !nonceExists {
 
 		// mine the overlay
-		swarmAddress, minedNonce, err := neighborhood.MineOverlay(ctx, *pubKey, networkID, o.TargetNeighborhood)
-		if err != nil {
-			return nil, fmt.Errorf("mine overlay address: %w", err)
+		if o.TargetNeighborhood != "" {
+			swarmAddress, nonce, err = neighborhood.MineOverlay(ctx, *pubKey, networkID, o.TargetNeighborhood)
+			if err != nil {
+				return nil, fmt.Errorf("mine overlay address: %w", err)
+			}
 		}
 
-		err = setOverlayNonce(stateStore, minedNonce)
+		err = setOverlayNonce(stateStore, nonce)
 		if err != nil {
 			return nil, fmt.Errorf("statestore: save new overlay nonce: %w", err)
 		}
@@ -291,11 +295,9 @@ func NewBee(
 		if err != nil {
 			return nil, fmt.Errorf("statestore: save new overlay: %w", err)
 		}
-
-		nonce = minedNonce
 	}
 
-	swarmAddress, err := crypto.NewOverlayAddress(*pubKey, networkID, nonce)
+	swarmAddress, err = crypto.NewOverlayAddress(*pubKey, networkID, nonce)
 	if err != nil {
 		return nil, fmt.Errorf("compute overlay address: %w", err)
 	}
