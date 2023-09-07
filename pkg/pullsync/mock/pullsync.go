@@ -21,9 +21,10 @@ func WithSyncError(err error) Option {
 	})
 }
 
-func WithCursors(v []uint64) Option {
+func WithCursors(v []uint64, e uint64) Option {
 	return optionFunc(func(p *PullSyncMock) {
 		p.cursors = v
+		p.epoch = e
 	})
 }
 
@@ -52,6 +53,7 @@ type PullSyncMock struct {
 	syncCalls       []SyncReply
 	syncErr         error
 	cursors         []uint64
+	epoch           uint64
 	getCursorsPeers []swarm.Address
 	replies         map[string][]SyncReply
 
@@ -88,11 +90,11 @@ func (p *PullSyncMock) Sync(ctx context.Context, peer swarm.Address, bin uint8, 
 	return 0, 0, ctx.Err()
 }
 
-func (p *PullSyncMock) GetCursors(_ context.Context, peer swarm.Address) ([]uint64, error) {
+func (p *PullSyncMock) GetCursors(_ context.Context, peer swarm.Address) ([]uint64, uint64, error) {
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
 	p.getCursorsPeers = append(p.getCursorsPeers, peer)
-	return p.cursors, nil
+	return p.cursors, p.epoch, nil
 }
 
 func (p *PullSyncMock) ResetCalls(peer swarm.Address) {
@@ -117,6 +119,12 @@ func (p *PullSyncMock) CursorsCalls(peer swarm.Address) bool {
 	p.mtx.Lock()
 	defer p.mtx.Unlock()
 	return swarm.ContainsAddress(p.getCursorsPeers, peer)
+}
+
+func (p *PullSyncMock) SetEpoch(epoch uint64) {
+	p.mtx.Lock()
+	defer p.mtx.Unlock()
+	p.epoch = epoch
 }
 
 type Option interface {
