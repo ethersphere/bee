@@ -84,7 +84,7 @@ func ParseAddress(underlay, overlay, signature, nonce []byte, validateOverlay bo
 
 	ethAddress, err := crypto.NewEthereumAddress(*recoveredPK)
 	if err != nil {
-		return nil, fmt.Errorf("extract ethereum address: %w: %w", err, ErrInvalidAddress)
+		return nil, fmt.Errorf("extract blockchain address: %w: %w", err, ErrInvalidAddress)
 	}
 
 	return &Address{
