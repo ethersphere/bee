@@ -65,16 +65,13 @@ func InitStamperStore(logger log.Logger, dataDir string, stateStore storage.Stat
 
 const noncedOverlayKey = "nonce-overlay"
 
-// CheckOverlayWithStore checks the overlay is the same as stored in the statestore
-func CheckOverlayWithStore(overlay swarm.Address, storer storage.StateStorer) error {
+// checkOverlay checks the overlay is the same as stored in the statestore
+func checkOverlay(storer storage.StateStorer, overlay swarm.Address) error {
 
 	var storedOverlay swarm.Address
 	err := storer.Get(noncedOverlayKey, &storedOverlay)
 	if err != nil {
-		if !errors.Is(err, storage.ErrNotFound) {
-			return err
-		}
-		return storer.Put(noncedOverlayKey, overlay)
+		return err
 	}
 
 	if !storedOverlay.Equal(overlay) {
@@ -83,13 +80,6 @@ func CheckOverlayWithStore(overlay swarm.Address, storer storage.StateStorer) er
 
 	return nil
 }
-
-// SetOverlayInStore sets the overlay stored in the statestore (for purpose of overlay migration)
-func SetOverlayInStore(overlay swarm.Address, storer storage.StateStorer) error {
-	return storer.Put(noncedOverlayKey, overlay)
-}
-
-const OverlayNonce = "overlayV2_nonce"
 
 func overlayNonceExists(s storage.StateStorer) ([]byte, bool, error) {
 	overlayNonce := make([]byte, 32)
@@ -102,8 +92,13 @@ func overlayNonceExists(s storage.StateStorer) ([]byte, bool, error) {
 	return overlayNonce, true, nil
 }
 
-func setOverlayNonce(s storage.StateStorer, overlayNonce []byte) error {
-	return s.Put(OverlayNonce, overlayNonce)
+const OverlayNonce = "overlayV2_nonce"
+
+func setOverlay(s storage.StateStorer, overlay swarm.Address, overlayNonce []byte) error {
+	return errors.Join(
+		s.Put(OverlayNonce, overlayNonce),
+		s.Put(noncedOverlayKey, overlay),
+	)
 }
 
 func migrateStamperData(stateStore storage.StateStorer, stamperStore storage.Store) error {

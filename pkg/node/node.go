@@ -286,12 +286,7 @@ func NewBee(
 			}
 		}
 
-		err = setOverlayNonce(stateStore, nonce)
-		if err != nil {
-			return nil, fmt.Errorf("statestore: save new overlay nonce: %w", err)
-		}
-
-		err = SetOverlayInStore(swarmAddress, stateStore)
+		err = setOverlay(stateStore, swarmAddress, nonce)
 		if err != nil {
 			return nil, fmt.Errorf("statestore: save new overlay: %w", err)
 		}
@@ -303,7 +298,7 @@ func NewBee(
 	}
 	logger.Info("using overlay address", "address", swarmAddress)
 
-	if err = CheckOverlayWithStore(swarmAddress, stateStore); err != nil {
+	if err = checkOverlay(stateStore, swarmAddress); err != nil {
 		return nil, err
 	}
 
