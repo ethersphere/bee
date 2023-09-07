@@ -81,22 +81,22 @@ func checkOverlay(storer storage.StateStorer, overlay swarm.Address) error {
 	return nil
 }
 
+const overlayNonce = "overlayV2_nonce"
+
 func overlayNonceExists(s storage.StateStorer) ([]byte, bool, error) {
-	overlayNonce := make([]byte, 32)
-	if err := s.Get(OverlayNonce, &overlayNonce); err != nil {
+	nonce := make([]byte, 32)
+	if err := s.Get(overlayNonce, &nonce); err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			return overlayNonce, false, nil
+			return nonce, false, nil
 		}
 		return nil, false, err
 	}
-	return overlayNonce, true, nil
+	return nonce, true, nil
 }
 
-const OverlayNonce = "overlayV2_nonce"
-
-func setOverlay(s storage.StateStorer, overlay swarm.Address, overlayNonce []byte) error {
+func setOverlay(s storage.StateStorer, overlay swarm.Address, nonce []byte) error {
 	return errors.Join(
-		s.Put(OverlayNonce, overlayNonce),
+		s.Put(overlayNonce, nonce),
 		s.Put(noncedOverlayKey, overlay),
 	)
 }
