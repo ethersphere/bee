@@ -138,7 +138,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 
 	overlayEthAddress, err := signer.EthereumAddress()
 	if err != nil {
-		return nil, fmt.Errorf("eth address: %w", err)
+		return nil, fmt.Errorf("blockchain address: %w", err)
 	}
 
 	var authenticator auth.Authenticator

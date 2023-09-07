@@ -268,7 +268,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNameBootnodeMode, false, "cause the node to always accept incoming connections")
 	cmd.Flags().Bool(optionNameClefSignerEnable, false, "enable clef signer")
 	cmd.Flags().String(optionNameClefSignerEndpoint, "", "clef signer endpoint")
-	cmd.Flags().String(optionNameClefSignerEthereumAddress, "", "ethereum address to use from clef signer")
+	cmd.Flags().String(optionNameClefSignerEthereumAddress, "", "blockchain address to use from clef signer")
 	cmd.Flags().String(optionNameSwapEndpoint, "", "swap blockchain endpoint") // deprecated: use rpc endpoint instead
 	cmd.Flags().String(optionNameBlockchainRpcEndpoint, "", "rpc blockchain endpoint")
 	cmd.Flags().String(optionNameSwapFactoryAddress, "", "swap factory addresses")

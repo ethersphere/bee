@@ -346,7 +346,7 @@ func NewBee(
 	logger.Info("using chain with network network", "chain_id", chainID, "network_id", networkID)
 
 	if o.ChainID != -1 && o.ChainID != chainID {
-		return nil, fmt.Errorf("connected to wrong ethereum network; network chainID %d; configured chainID %d", chainID, o.ChainID)
+		return nil, fmt.Errorf("connected to wrong blockchain network; network chainID %d; configured chainID %d", chainID, o.ChainID)
 	}
 
 	b.transactionCloser = tracerCloser
@@ -488,7 +488,7 @@ func NewBee(
 		return nil, fmt.Errorf("is synced: %w", err)
 	}
 	if !isSynced {
-		logger.Info("waiting to sync with the Ethereum backend")
+		logger.Info("waiting to sync with the blockchain backend")
 
 		err := transaction.WaitSynced(ctx, logger, chainBackend, maxDelay)
 		if err != nil {
