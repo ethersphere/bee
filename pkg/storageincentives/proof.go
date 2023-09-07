@@ -114,18 +114,24 @@ func makeProofTrio(
 ) (types.Trio[bmt.Proof], error) {
 	var err error
 	proof := types.Trio[bmt.Proof]{}
+	dataA := make([]byte, swarm.ChunkSize)
+	copy(dataA, data.A)
+	dataB := make([]byte, swarm.ChunkSize)
+	copy(dataB, data.B)
+	dataC := make([]byte, swarm.ChunkSize)
+	copy(dataC, data.C)
 
-	proof.A, err = makeProof(h, data.A, segmentIndex.A)
+	proof.A, err = makeProof(h, dataA, segmentIndex.A)
 	if err != nil {
 		return proof, fmt.Errorf("make proof #1: %w", err)
 	}
 
-	proof.B, err = makeProof(h, data.B, segmentIndex.B)
+	proof.B, err = makeProof(h, dataB, segmentIndex.B)
 	if err != nil {
 		return proof, fmt.Errorf("make proof #2: %w", err)
 	}
 
-	proof.C, err = makeProof(h, data.C, segmentIndex.C)
+	proof.C, err = makeProof(h, dataC, segmentIndex.C)
 	if err != nil {
 		return proof, fmt.Errorf("make proof #3: %w", err)
 	}
