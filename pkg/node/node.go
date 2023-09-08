@@ -75,6 +75,7 @@ import (
 	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/bee/pkg/util"
 	"github.com/ethersphere/bee/pkg/util/ioutil"
+	"github.com/ethersphere/bee/pkg/util/neighborhood"
 	"github.com/hashicorp/go-multierror"
 	ma "github.com/multiformats/go-multiaddr"
 	promc "github.com/prometheus/client_golang/prometheus"
@@ -173,6 +174,7 @@ type Options struct {
 	UsePostageSnapshot            bool
 	EnableStorageIncentives       bool
 	StatestoreCacheCapacity       uint64
+	TargetNeighborhood            string
 }
 
 const (
@@ -267,9 +269,6 @@ func NewBee(
 		return nil, err
 	}
 
-	// if theres a previous transaction hash, and not a new chequebook deployment on a node starting from scratch
-	// get old overlay
-	// mine nonce that gives similar new overlay
 	nonce, nonceExists, err := overlayNonceExists(stateStore)
 	if err != nil {
 		return nil, fmt.Errorf("check presence of nonce: %w", err)
@@ -279,21 +278,26 @@ func NewBee(
 	if err != nil {
 		return nil, fmt.Errorf("compute overlay address: %w", err)
 	}
-	logger.Info("using overlay address", "address", swarmAddress)
 
 	if !nonceExists {
-		err := setOverlayNonce(stateStore, nonce)
-		if err != nil {
-			return nil, fmt.Errorf("statestore: save new overlay nonce: %w", err)
+
+		// mine the overlay
+		if o.TargetNeighborhood != "" {
+			swarmAddress, nonce, err = neighborhood.MineOverlay(ctx, *pubKey, networkID, o.TargetNeighborhood)
+			if err != nil {
+				return nil, fmt.Errorf("mine overlay address: %w", err)
+			}
 		}
 
-		err = SetOverlayInStore(swarmAddress, stateStore)
+		err = setOverlay(stateStore, swarmAddress, nonce)
 		if err != nil {
 			return nil, fmt.Errorf("statestore: save new overlay: %w", err)
 		}
 	}
 
-	if err = CheckOverlayWithStore(swarmAddress, stateStore); err != nil {
+	logger.Info("using overlay address", "address", swarmAddress)
+
+	if err = checkOverlay(stateStore, swarmAddress); err != nil {
 		return nil, err
 	}
 

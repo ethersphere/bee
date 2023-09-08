@@ -292,3 +292,38 @@ func (c *chunk) String() string {
 func (c *chunk) Equal(cp Chunk) bool {
 	return c.Address().Equal(cp.Address()) && bytes.Equal(c.Data(), cp.Data())
 }
+
+var errBadCharacter = errors.New("bad character in binary address")
+
+// ParseBitStrAddress parses overlay addresses in binary format (eg: 111101101) to it's corresponding overlay address.
+func ParseBitStrAddress(src string) (Address, error) {
+
+	bitPos := 7
+	b := uint8(0)
+
+	var a []byte
+
+	for _, s := range src {
+		if s == '1' {
+			b |= 1 << bitPos
+		} else if s != '0' {
+			return ZeroAddress, errBadCharacter
+		}
+		bitPos--
+		if bitPos < 0 {
+			a = append(a, b)
+			b = 0
+			bitPos = 7
+		}
+	}
+
+	a = append(a, b)
+
+	return bytesToAddr(a), nil
+}
+
+func bytesToAddr(b []byte) Address {
+	addr := make([]byte, HashSize)
+	copy(addr, b)
+	return NewAddress(addr)
+}
