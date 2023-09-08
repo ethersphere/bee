@@ -170,7 +170,7 @@ func newChunkInclusionProof(
 
 	return redistribution.ChunkInclusionProof{
 		ProofSegments:    proofp1Hex.ProofSegments,
-		ProveSegment:     types.ToHexString(sampleItem.ChunkAddress.Bytes()),
+		ProveSegment:     proofp1Hex.ProveSegment,
 		ProofSegments2:   proofp2Hex.ProofSegments,
 		ProveSegment2:    proofp2Hex.ProveSegment,
 		ChunkSpan:        bmt.LengthFromSpan(proofp2.Span),
