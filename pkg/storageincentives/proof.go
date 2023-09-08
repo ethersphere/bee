@@ -196,25 +196,13 @@ func bytesToHex(proof bmt.Proof) hexProof {
 		proveSegment = proof.ProveSegment[swarm.SectionSize:]
 	}
 	for i := 0; i < len(proof.ProofSegments); i++ {
-		proofSegments[i+1] = types.ToHexString(padZeros(proof.ProofSegments[i], 32))
+		proofSegments[i+1] = types.ToHexString(proof.ProofSegments[i])
 	}
 
 	return hexProof{
 		ProveSegment:  types.ToHexString(proveSegment),
 		ProofSegments: proofSegments,
 	}
-}
-
-func padZeros(data []byte, size int) []byte {
-	l := len(data)
-	if l == size {
-		return data
-	}
-
-	result := make([]byte, size)
-	copy(result, data)
-
-	return result
 }
 
 type hexProof struct {
