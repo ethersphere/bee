@@ -10,8 +10,8 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/neighborhood"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/util/neighborhood"
 )
 
 func TestMiner(t *testing.T) {
