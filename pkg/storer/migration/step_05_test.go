@@ -47,6 +47,6 @@ func Test_Step_05(t *testing.T) {
 		assert.Equal(t, entry.Address, cEntry.Address)
 		assert.Equal(t, entry.Timestamp, cEntry.Timestamp)
 		assert.Equal(t, entry.Location, cEntry.Location)
-		assert.Equal(t, uint64(entry.RefCnt), cEntry.RefCnt)
+		assert.Equal(t, uint32(entry.RefCnt), cEntry.RefCnt)
 	}
 }

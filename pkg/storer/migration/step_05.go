@@ -136,18 +136,12 @@ func step_05(s storage.BatchedStore) error {
 
 		for _, item := range itemsToDelete[i:end] {
 
-			// delete old
-			err = b.Delete(item)
-			if err != nil {
-				return err
-			}
-
 			//create new
 			err = b.Put(&chunkstore.RetrievalIndexItem{
 				Address:   item.Address,
 				Timestamp: item.Timestamp,
 				Location:  item.Location,
-				RefCnt:    uint64(item.RefCnt),
+				RefCnt:    uint32(item.RefCnt),
 			})
 			if err != nil {
 				return err

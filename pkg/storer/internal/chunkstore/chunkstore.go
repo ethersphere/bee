@@ -38,7 +38,7 @@ type RetrievalIndexItem struct {
 	Address   swarm.Address
 	Timestamp uint64
 	Location  sharky.Location
-	RefCnt    uint64
+	RefCnt    uint32
 }
 
 func (r *RetrievalIndexItem) ID() string { return r.Address.ByteString() }
@@ -46,7 +46,7 @@ func (r *RetrievalIndexItem) ID() string { return r.Address.ByteString() }
 func (RetrievalIndexItem) Namespace() string { return "retrievalIdx" }
 
 // Stored in bytes as:
-// |--Address(32)--|--Timestamp(8)--|--Location(7)--|--RefCnt(8)--|
+// |--Address(32)--|--Timestamp(8)--|--Location(7)--|--RefCnt(4)--|
 func (r *RetrievalIndexItem) Marshal() ([]byte, error) {
 	if r.Address.IsZero() {
 		return nil, errMarshalInvalidRetrievalIndexAddress
@@ -69,7 +69,7 @@ func (r *RetrievalIndexItem) Marshal() ([]byte, error) {
 	copy(buf[i:i+7], locBuf)
 	i += 7
 
-	binary.LittleEndian.PutUint64(buf[i:], r.RefCnt)
+	binary.LittleEndian.PutUint32(buf[i:], r.RefCnt)
 
 	return buf, nil
 }
@@ -95,7 +95,7 @@ func (r *RetrievalIndexItem) Unmarshal(buf []byte) error {
 	ni.Location = *loc
 	i += 7
 
-	ni.RefCnt = binary.LittleEndian.Uint64(buf[i:])
+	ni.RefCnt = binary.LittleEndian.Uint32(buf[i:])
 
 	*r = *ni
 	return nil
