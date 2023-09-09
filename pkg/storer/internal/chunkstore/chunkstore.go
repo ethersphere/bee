@@ -66,7 +66,7 @@ func (r *RetrievalIndexItem) Marshal() ([]byte, error) {
 	binary.LittleEndian.PutUint64(buf[i:i+8], r.Timestamp)
 	i += 8
 
-	copy(buf[i:i+7], locBuf)
+	copy(buf[i:i+sharky.LocationSize], locBuf)
 	i += sharky.LocationSize
 
 	binary.LittleEndian.PutUint32(buf[i:], r.RefCnt)
@@ -89,7 +89,7 @@ func (r *RetrievalIndexItem) Unmarshal(buf []byte) error {
 	i += 8
 
 	loc := new(sharky.Location)
-	if err := loc.UnmarshalBinary(buf[i : i+7]); err != nil {
+	if err := loc.UnmarshalBinary(buf[i : i+sharky.LocationSize]); err != nil {
 		return errUnmarshalInvalidRetrievalIndexLocationBytes
 	}
 	ni.Location = *loc
