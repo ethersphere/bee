@@ -28,7 +28,7 @@ var (
 	errUnmarshalInvalidRetrievalIndexLocationBytes = errors.New("unmarshal RetrievalIndexItem: invalid location bytes")
 )
 
-const RetrievalIndexItemSize = swarm.HashSize + 8 + sharky.LocationSize + 8
+const RetrievalIndexItemSize = swarm.HashSize + 8 + sharky.LocationSize + 4
 
 var _ storage.Item = (*RetrievalIndexItem)(nil)
 
@@ -67,7 +67,7 @@ func (r *RetrievalIndexItem) Marshal() ([]byte, error) {
 	i += 8
 
 	copy(buf[i:i+7], locBuf)
-	i += 7
+	i += sharky.LocationSize
 
 	binary.LittleEndian.PutUint32(buf[i:], r.RefCnt)
 
@@ -93,7 +93,7 @@ func (r *RetrievalIndexItem) Unmarshal(buf []byte) error {
 		return errUnmarshalInvalidRetrievalIndexLocationBytes
 	}
 	ni.Location = *loc
-	i += 7
+	i += sharky.LocationSize
 
 	ni.RefCnt = binary.LittleEndian.Uint32(buf[i:])
 
