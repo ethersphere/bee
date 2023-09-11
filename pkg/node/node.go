@@ -279,13 +279,20 @@ func NewBee(
 		return nil, fmt.Errorf("compute overlay address: %w", err)
 	}
 
-	if !nonceExists {
+	if nonceExists && o.TargetNeighborhood != "" {
+		logger.Warning("an overlay has already been created before, skipping targetting a neighborhood")
+	}
 
-		// mine the overlay
+	if !nonceExists {
 		if o.TargetNeighborhood != "" {
-			swarmAddress, nonce, err = neighborhood.MineOverlay(ctx, *pubKey, networkID, o.TargetNeighborhood)
-			if err != nil {
-				return nil, fmt.Errorf("mine overlay address: %w", err)
+			logger.Info("mining an overlay address for the fresh node to target a neighborhood", "target", o.TargetNeighborhood)
+
+			// mine the overlay
+			if o.TargetNeighborhood != "" {
+				swarmAddress, nonce, err = neighborhood.MineOverlay(ctx, *pubKey, networkID, o.TargetNeighborhood)
+				if err != nil {
+					return nil, fmt.Errorf("mine overlay address: %w", err)
+				}
 			}
 		}
 
