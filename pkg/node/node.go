@@ -280,7 +280,7 @@ func NewBee(
 	}
 
 	if nonceExists && o.TargetNeighborhood != "" {
-		logger.Warning("an overlay has already been created before, skipping targetting a neighborhood")
+		logger.Warning("an overlay has already been created before, skipping targeting a neighborhood")
 	}
 
 	if !nonceExists {
