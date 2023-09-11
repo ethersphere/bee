@@ -19,7 +19,7 @@ func (s *Service) rchash(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("get_rchash").Build()
 
 	paths := struct {
-		Depth   uint8  `map:"depth" validate:"required"`
+		Depth   *uint8 `map:"depth" validate:"required"`
 		Anchor1 string `map:"anchor1" validate:"required"`
 	}{}
 	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
@@ -34,7 +34,7 @@ func (s *Service) rchash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, err := s.redistributionAgent.SampleWithProofs(r.Context(), anchor1, paths.Depth)
+	resp, err := s.redistributionAgent.SampleWithProofs(r.Context(), anchor1, *paths.Depth)
 	if err != nil {
 		logger.Error(err, "failed making sample with proofs")
 		jsonhttp.InternalServerError(w, "failed making sample with proofs")
