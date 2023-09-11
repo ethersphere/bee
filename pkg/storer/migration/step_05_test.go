@@ -8,13 +8,12 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-
 	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/storage/inmemstore"
 	"github.com/ethersphere/bee/pkg/storer/internal/chunkstore"
 	localmigration "github.com/ethersphere/bee/pkg/storer/migration"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/stretchr/testify/assert"
 )
 
 func Test_Step_05(t *testing.T) {

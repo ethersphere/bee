@@ -15,6 +15,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/storageutil"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"golang.org/x/exp/slices"
 )
 
 var (
@@ -82,7 +83,7 @@ func (r *RetrievalIndexItem) Unmarshal(buf []byte) error {
 	i := 0
 	ni := new(RetrievalIndexItem)
 
-	ni.Address = swarm.NewAddress(append(make([]byte, 0, swarm.HashSize), buf[i:i+swarm.HashSize]...))
+	ni.Address = swarm.NewAddress(slices.Clone(buf[i : i+swarm.HashSize]))
 	i += swarm.HashSize
 
 	ni.Timestamp = binary.LittleEndian.Uint64(buf[i : i+8])

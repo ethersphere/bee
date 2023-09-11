@@ -12,13 +12,13 @@ import (
 
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/sharky"
-	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/storageutil"
 	"github.com/ethersphere/bee/pkg/storer/internal/chunkstore"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-const oldretrievalIndexItemSize = swarm.HashSize + 8 + sharky.LocationSize + 1
+const oldRretrievalIndexItemSize = swarm.HashSize + 8 + sharky.LocationSize + 1
 
 var _ storage.Item = (*OldRetrievalIndexItem)(nil)
 
@@ -58,16 +58,16 @@ func (r *OldRetrievalIndexItem) Marshal() ([]byte, error) {
 		return nil, errMarshalInvalidRetrievalIndexLocation
 	}
 
-	buf := make([]byte, oldretrievalIndexItemSize)
+	buf := make([]byte, oldRretrievalIndexItemSize)
 	copy(buf, r.Address.Bytes())
 	binary.LittleEndian.PutUint64(buf[swarm.HashSize:], r.Timestamp)
 	copy(buf[swarm.HashSize+8:], locBuf)
-	buf[oldretrievalIndexItemSize-1] = r.RefCnt
+	buf[oldRretrievalIndexItemSize-1] = r.RefCnt
 	return buf, nil
 }
 
 func (r *OldRetrievalIndexItem) Unmarshal(buf []byte) error {
-	if len(buf) != oldretrievalIndexItemSize {
+	if len(buf) != oldRretrievalIndexItemSize {
 		return errUnmarshalInvalidRetrievalIndexSize
 	}
 
@@ -80,7 +80,7 @@ func (r *OldRetrievalIndexItem) Unmarshal(buf []byte) error {
 	ni.Address = swarm.NewAddress(append(make([]byte, 0, swarm.HashSize), buf[:swarm.HashSize]...))
 	ni.Timestamp = binary.LittleEndian.Uint64(buf[swarm.HashSize:])
 	ni.Location = *loc
-	ni.RefCnt = buf[oldretrievalIndexItemSize-1]
+	ni.RefCnt = buf[oldRretrievalIndexItemSize-1]
 	*r = *ni
 	return nil
 }
