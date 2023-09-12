@@ -883,6 +883,7 @@ paths:
           schema:
             type: boolean
           required: false
+          default: true
         - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
       responses:
         "201":
