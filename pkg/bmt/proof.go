@@ -36,26 +36,42 @@ func (p Prover) Proof(i int) Proof {
 	secsize := 2 * p.segmentSize
 	offset := i * secsize
 	section := p.bmt.buffer[offset : offset+secsize]
-	return Proof{section, sisters, p.span, index}
+	left := section[:p.segmentSize]
+	right := section[p.segmentSize:]
+	var segment, firstSegmentSister []byte
+	if index%2 == 0 {
+		segment, firstSegmentSister = left, right
+	} else {
+		segment, firstSegmentSister = right, left
+	}
+	sisters = append([][]byte{firstSegmentSister}, sisters...)
+	return Proof{segment, sisters, p.span, index}
 }
 
 // Verify returns the bmt hash obtained from the proof which can then be checked against
 // the BMT hash of the chunk
 func (p Prover) Verify(i int, proof Proof) (root []byte, err error) {
+	var section []byte
+	if i%2 == 0 {
+		section = append(append(section, proof.ProveSegment...), proof.ProofSegments[0]...)
+	} else {
+		section = append(append(section, proof.ProofSegments[0]...), proof.ProveSegment...)
+	}
 	i = i / 2
 	n := p.bmt.leaves[i]
+	hasher := p.hasher()
 	isLeft := n.isLeft
-	root, err = doHash(n.hasher, proof.ProveSegment)
+	root, err = doHash(hasher, section)
 	if err != nil {
 		return nil, err
 	}
 	n = n.parent
 
-	for _, sister := range proof.ProofSegments {
+	for _, sister := range proof.ProofSegments[1:] {
 		if isLeft {
-			root, err = doHash(n.hasher, root, sister)
+			root, err = doHash(hasher, root, sister)
 		} else {
-			root, err = doHash(n.hasher, sister, root)
+			root, err = doHash(hasher, sister, root)
 		}
 		if err != nil {
 			return nil, err
@@ -63,7 +79,7 @@ func (p Prover) Verify(i int, proof Proof) (root []byte, err error) {
 		isLeft = n.isLeft
 		n = n.parent
 	}
-	return doHash(n.hasher, proof.Span, root)
+	return doHash(hasher, proof.Span, root)
 }
 
 func (n *node) getSister(isLeft bool) []byte {
