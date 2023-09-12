@@ -44,7 +44,7 @@ type RetrievalIndexItem struct {
 
 func (r *RetrievalIndexItem) ID() string { return r.Address.ByteString() }
 
-func (RetrievalIndexItem) Namespace() string { return "retrievalIdx" }
+func (RetrievalIndexItem) Namespace() string { return "retrievalIdxV2" }
 
 // Stored in bytes as:
 // |--Address(32)--|--Timestamp(8)--|--Location(7)--|--RefCnt(4)--|
