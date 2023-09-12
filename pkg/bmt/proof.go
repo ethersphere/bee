@@ -63,7 +63,7 @@ func (p Prover) Verify(i int, proof Proof) (root []byte, err error) {
 		isLeft = n.isLeft
 		n = n.parent
 	}
-	return sha3hash(proof.Span, root)
+	return doHash(n.hasher, proof.Span, root)
 }
 
 func (n *node) getSister(isLeft bool) []byte {
