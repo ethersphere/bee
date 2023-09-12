@@ -17,6 +17,14 @@ type Proof struct {
 	Index         int
 }
 
+// Override base hash function of Hasher to fill buffer with zeros until chunk length
+func (p Prover) Hash(b []byte) ([]byte, error) {
+	for i := p.size; i < p.maxSize; i += len(zerosection) {
+		p.Write(zerosection)
+	}
+	return p.Hasher.Hash(b)
+}
+
 // Proof returns the inclusion proof of the i-th data segment
 func (p Prover) Proof(i int) Proof {
 	index := i

@@ -20,7 +20,8 @@ func TestProofCorrectness(t *testing.T) {
 	t.Parallel()
 
 	testData := []byte("hello world")
-	testData = append(testData, make([]byte, 4096-len(testData))...)
+	testDataPadded := make([]byte, swarm.ChunkSize)
+	copy(testDataPadded, testData)
 
 	verifySegments := func(t *testing.T, exp []string, found [][]byte) {
 		t.Helper()
@@ -58,7 +59,7 @@ func TestProofCorrectness(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	rh, err := hh.Hash(nil)
+	rh, err := bmt.Prover{hh}.Hash(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,7 +82,7 @@ func TestProofCorrectness(t *testing.T) {
 
 		verifySegments(t, expSegmentStrings, proof.ProofSegments)
 
-		if !bytes.Equal(proof.ProveSegment, testData[:hh.Size()]) {
+		if !bytes.Equal(proof.ProveSegment, testDataPadded[:hh.Size()]) {
 			t.Fatal("section incorrect")
 		}
 
@@ -107,7 +108,7 @@ func TestProofCorrectness(t *testing.T) {
 
 		verifySegments(t, expSegmentStrings, proof.ProofSegments)
 
-		if !bytes.Equal(proof.ProveSegment, testData[127*hh.Size():]) {
+		if !bytes.Equal(proof.ProveSegment, testDataPadded[127*hh.Size():]) {
 			t.Fatal("section incorrect")
 		}
 
@@ -133,7 +134,7 @@ func TestProofCorrectness(t *testing.T) {
 
 		verifySegments(t, expSegmentStrings, proof.ProofSegments)
 
-		if !bytes.Equal(proof.ProveSegment, testData[64*hh.Size():65*hh.Size()]) {
+		if !bytes.Equal(proof.ProveSegment, testDataPadded[64*hh.Size():65*hh.Size()]) {
 			t.Fatal("section incorrect")
 		}
 
@@ -164,7 +165,7 @@ func TestProofCorrectness(t *testing.T) {
 			segments = append(segments, decoded)
 		}
 
-		segment := testData[64*hh.Size() : 65*hh.Size()]
+		segment := testDataPadded[64*hh.Size() : 65*hh.Size()]
 
 		rootHash, err := bmt.Prover{hh}.Verify(64, bmt.Proof{
 			ProveSegment:  segment,
