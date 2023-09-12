@@ -283,6 +283,14 @@ func initDiskRepository(
 		return nil, nil, fmt.Errorf("failed creating levelDB index store: %w", err)
 	}
 
+	// this migration has to run before ALL other storer migration processes like
+	// sharky recovery and localmigration steps because it changes the underlying fields of the retrievalIndexItem
+	// which the other processes relies on. Because the struct is changed, unmarshalling errors will occur without this migration.
+	err = localmigration.RefCountSizeInc(store)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed migrating for chunkstore reference counter field size increase: %w", err)
+	}
+
 	if opts.LdbStats.Load() != nil {
 		go func() {
 			ldbStats := opts.LdbStats.Load()

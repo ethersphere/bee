@@ -207,8 +207,8 @@ func TestDBNuke_FLAKY(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Reserve.Size != nChunks {
-		t.Errorf("got reserve size before nuke: %d, want %d", info.Reserve.Size, nChunks)
+	if info.Reserve.TotalSize != nChunks {
+		t.Errorf("got reserve size before nuke: %d, want %d", info.Reserve.TotalSize, nChunks)
 	}
 
 	db.Close()
@@ -233,8 +233,8 @@ func TestDBNuke_FLAKY(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Reserve.Size != 0 {
-		t.Errorf("got reserve size after nuke: %d, want %d", info.Reserve.Size, 0)
+	if info.Reserve.TotalSize != 0 {
+		t.Errorf("got reserve size after nuke: %d, want %d", info.Reserve.TotalSize, 0)
 	}
 }
 
@@ -262,8 +262,8 @@ func TestDBInfo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Reserve.Size != nChunks {
-		t.Errorf("got reserve size before nuke: %d, want %d", info.Reserve.Size, nChunks)
+	if info.Reserve.TotalSize != nChunks {
+		t.Errorf("got reserve size before nuke: %d, want %d", info.Reserve.TotalSize, nChunks)
 	}
 
 	db1.Close()
