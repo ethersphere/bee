@@ -15,6 +15,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/storageutil"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"golang.org/x/exp/slices"
 )
 
 var (
@@ -28,7 +29,7 @@ var (
 	errUnmarshalInvalidRetrievalIndexLocationBytes = errors.New("unmarshal RetrievalIndexItem: invalid location bytes")
 )
 
-const RetrievalIndexItemSize = swarm.HashSize + 8 + sharky.LocationSize + 1
+const RetrievalIndexItemSize = swarm.HashSize + 8 + sharky.LocationSize + 4
 
 var _ storage.Item = (*RetrievalIndexItem)(nil)
 
@@ -38,7 +39,7 @@ type RetrievalIndexItem struct {
 	Address   swarm.Address
 	Timestamp uint64
 	Location  sharky.Location
-	RefCnt    uint8
+	RefCnt    uint32
 }
 
 func (r *RetrievalIndexItem) ID() string { return r.Address.ByteString() }
@@ -46,22 +47,31 @@ func (r *RetrievalIndexItem) ID() string { return r.Address.ByteString() }
 func (RetrievalIndexItem) Namespace() string { return "retrievalIdx" }
 
 // Stored in bytes as:
-// |--Address(32)--|--Timestamp(8)--|--Location(7)--|--RefCnt(1)--|
+// |--Address(32)--|--Timestamp(8)--|--Location(7)--|--RefCnt(4)--|
 func (r *RetrievalIndexItem) Marshal() ([]byte, error) {
 	if r.Address.IsZero() {
 		return nil, errMarshalInvalidRetrievalIndexAddress
 	}
+
+	buf := make([]byte, RetrievalIndexItemSize)
+	i := 0
 
 	locBuf, err := r.Location.MarshalBinary()
 	if err != nil {
 		return nil, errMarshalInvalidRetrievalIndexLocation
 	}
 
-	buf := make([]byte, RetrievalIndexItemSize)
-	copy(buf, r.Address.Bytes())
-	binary.LittleEndian.PutUint64(buf[swarm.HashSize:], r.Timestamp)
-	copy(buf[swarm.HashSize+8:], locBuf)
-	buf[RetrievalIndexItemSize-1] = r.RefCnt
+	copy(buf[i:swarm.HashSize], r.Address.Bytes())
+	i += swarm.HashSize
+
+	binary.LittleEndian.PutUint64(buf[i:i+8], r.Timestamp)
+	i += 8
+
+	copy(buf[i:i+sharky.LocationSize], locBuf)
+	i += sharky.LocationSize
+
+	binary.LittleEndian.PutUint32(buf[i:], r.RefCnt)
+
 	return buf, nil
 }
 
@@ -70,16 +80,24 @@ func (r *RetrievalIndexItem) Unmarshal(buf []byte) error {
 		return errUnmarshalInvalidRetrievalIndexSize
 	}
 
+	i := 0
+	ni := new(RetrievalIndexItem)
+
+	ni.Address = swarm.NewAddress(slices.Clone(buf[i : i+swarm.HashSize]))
+	i += swarm.HashSize
+
+	ni.Timestamp = binary.LittleEndian.Uint64(buf[i : i+8])
+	i += 8
+
 	loc := new(sharky.Location)
-	if err := loc.UnmarshalBinary(buf[swarm.HashSize+8:]); err != nil {
+	if err := loc.UnmarshalBinary(buf[i : i+sharky.LocationSize]); err != nil {
 		return errUnmarshalInvalidRetrievalIndexLocationBytes
 	}
-
-	ni := new(RetrievalIndexItem)
-	ni.Address = swarm.NewAddress(append(make([]byte, 0, swarm.HashSize), buf[:swarm.HashSize]...))
-	ni.Timestamp = binary.LittleEndian.Uint64(buf[swarm.HashSize:])
 	ni.Location = *loc
-	ni.RefCnt = buf[RetrievalIndexItemSize-1]
+	i += sharky.LocationSize
+
+	ni.RefCnt = binary.LittleEndian.Uint32(buf[i:])
+
 	*r = *ni
 	return nil
 }
