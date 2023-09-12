@@ -67,7 +67,7 @@ type Service struct {
 	streamer      p2p.Streamer
 	peerSuggester topology.ClosestPeerer
 	storer        Storer
-	singleflight  singleflight.Group
+	singleflight  singleflight.Group[string, swarm.Chunk]
 	logger        log.Logger
 	accounting    accounting.Interface
 	metrics       metrics
@@ -148,10 +148,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 		s.metrics.RequestAttempts.Observe(float64(totalRetrieveAttempts))
 	}()
 
-	// topCtx is passing the tracing span to the first singleflight call
-	topCtx := ctx
-
-	v, _, err := s.singleflight.Do(topCtx, flightRoute, func(ctx context.Context) (interface{}, error) {
+	v, _, err := s.singleflight.Do(ctx, flightRoute, func(ctx context.Context) (swarm.Chunk, error) {
 
 		skip := skippeers.NewList()
 		defer skip.Close()
@@ -239,7 +236,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 				inflight++
 
 				go func() {
-					ctx := tracing.WithContext(context.Background(), tracing.FromContext(topCtx))
+					ctx := tracing.WithContext(context.Background(), tracing.FromContext(ctx)) // todo: replace with `ctx := context.WithoutCancel(ctx)` when go 1.21 is supported to pass all context values
 					span, _, ctx := s.tracer.StartSpanFromContext(ctx, "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: chunkAddr.String()})
 					defer span.Finish()
 					s.retrieveChunk(ctx, chunkAddr, peer, resultC, action, origin)
@@ -272,7 +269,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 
 	s.metrics.RequestSuccessCounter.Inc()
 
-	return v.(swarm.Chunk), nil
+	return v, nil
 }
 
 func (s *Service) retrieveChunk(ctx context.Context, chunkAddr, peer swarm.Address, result chan retrievalResult, action accounting.Action, isOrigin bool) {
