@@ -38,6 +38,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/util"
+	"github.com/ethersphere/bee/pkg/util/syncutil"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/afero"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -464,6 +465,15 @@ func defaultOptions() *Options {
 	}
 }
 
+// cacheLimiter is used to limit the number
+// of concurrent cache background workers.
+type cacheLimiter struct {
+	wg     sync.WaitGroup
+	sem    chan struct{}
+	ctx    context.Context
+	cancel context.CancelFunc
+}
+
 // DB implements all the component stores described above.
 type DB struct {
 	logger  log.Logger
@@ -475,8 +485,7 @@ type DB struct {
 	retrieval           retrieval.Interface
 	pusherFeed          chan *pusher.Op
 	quit                chan struct{}
-	bgCacheLimiter      chan struct{}
-	bgCacheLimiterWg    sync.WaitGroup
+	cacheLimiter        cacheLimiter
 	dbCloser            io.Closer
 	subscriptionsWG     sync.WaitGroup
 	events              *events.Subscriber
@@ -564,17 +573,22 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 
 	logger := opts.Logger.WithName(loggerName).Register()
 
+	clCtx, clCancel := context.WithCancel(ctx)
 	db := &DB{
-		metrics:          metrics,
-		logger:           logger,
-		baseAddr:         opts.Address,
-		repo:             repo,
-		lock:             lock,
-		cacheObj:         cacheObj,
-		retrieval:        noopRetrieval{},
-		pusherFeed:       make(chan *pusher.Op),
-		quit:             make(chan struct{}),
-		bgCacheLimiter:   make(chan struct{}, 16),
+		metrics:    metrics,
+		logger:     logger,
+		baseAddr:   opts.Address,
+		repo:       repo,
+		lock:       lock,
+		cacheObj:   cacheObj,
+		retrieval:  noopRetrieval{},
+		pusherFeed: make(chan *pusher.Op),
+		quit:       make(chan struct{}),
+		cacheLimiter: cacheLimiter{
+			sem:    make(chan struct{}, defaultBgCacheWorkers),
+			ctx:    clCtx,
+			cancel: clCancel,
+		},
 		dbCloser:         dbCloser,
 		batchstore:       opts.Batchstore,
 		validStamp:       opts.ValidStamp,
@@ -654,7 +668,10 @@ func (db *DB) Close() error {
 	bgCacheWorkersClosed := make(chan struct{})
 	go func() {
 		defer close(bgCacheWorkersClosed)
-		db.bgCacheLimiterWg.Wait()
+		if !syncutil.WaitWithTimeout(&db.cacheLimiter.wg, 2*time.Second) {
+			db.logger.Warning("cache goroutines still running after the wait timeout; force closing")
+			db.cacheLimiter.cancel()
+		}
 	}()
 
 	var err error
