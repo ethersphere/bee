@@ -283,6 +283,11 @@ func initDiskRepository(
 		return nil, nil, fmt.Errorf("failed creating levelDB index store: %w", err)
 	}
 
+	err = migration.Migrate(store, "core-migration", localmigration.CoreSteps())
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed core migration: %w", err)
+	}
+
 	// this migration has to run before ALL other storer migration processes like
 	// sharky recovery and localmigration steps because it changes the underlying fields of the retrievalIndexItem
 	// which the other processes relies on. Because the struct is changed, unmarshalling errors will occur without this migration.
@@ -559,6 +564,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	}
 	err = migration.Migrate(
 		repo.IndexStore(),
+		"migration",
 		localmigration.AllSteps(sharkyBasePath, sharkyNoOfShards, repo.ChunkStore()),
 	)
 	if err != nil {

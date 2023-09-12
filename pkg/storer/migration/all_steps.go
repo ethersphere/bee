@@ -23,3 +23,9 @@ func AllSteps(
 		4: step_04(sharkyPath, sharkyNoOfShards),
 	}
 }
+
+func CoreSteps() migration.Steps {
+	return map[uint64]migration.StepFn{
+		1: RefCountSizeInc,
+	}
+}

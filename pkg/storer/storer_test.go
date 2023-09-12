@@ -185,7 +185,7 @@ func dbTestOps(baseAddr swarm.Address, reserveCapacity int, bs postage.Storer, r
 func assertStorerVersion(t *testing.T, lstore *storer.DB, sharkyPath string) {
 	t.Helper()
 
-	current, err := migration.Version(lstore.Repo().IndexStore())
+	current, err := migration.Version(lstore.Repo().IndexStore(), "migration")
 	if err != nil {
 		t.Fatalf("migration.Version(...): unexpected error: %v", err)
 	}

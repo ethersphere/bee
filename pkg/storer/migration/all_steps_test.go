@@ -34,7 +34,7 @@ func TestAllSteps(t *testing.T) {
 
 		store := inmemstore.New()
 
-		err := migration.Migrate(store, localmigration.AllSteps("", 4, chStore))
+		err := migration.Migrate(store, "migration", localmigration.AllSteps("", 4, chStore))
 		assert.NoError(t, err)
 	})
 }
