@@ -16,7 +16,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_Step_05(t *testing.T) {
+func Test_RefCntSize(t *testing.T) {
 	t.Parallel()
 
 	stepFn := localmigration.RefCountSizeInc
