@@ -68,7 +68,6 @@ func TestProofCorrectness(t *testing.T) {
 		t.Parallel()
 
 		proof := bmt.Prover{hh}.Proof(0)
-		fmt.Printf("provesegment %x, 1st sister %x", proof.ProveSegment, proof.ProofSegments[0])
 
 		expSegmentStrings := []string{
 			"0000000000000000000000000000000000000000000000000000000000000000",
