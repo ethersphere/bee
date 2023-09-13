@@ -142,11 +142,11 @@ func (db *DB) SetRepoStorePutHook(fn func(storage.Item) error) {
 
 func (db *DB) WaitForBgCacheWorkers() (unblock func()) {
 	for i := 0; i < defaultBgCacheWorkers; i++ {
-		db.bgCacheLimiter <- struct{}{}
+		db.cacheLimiter.sem <- struct{}{}
 	}
 	return func() {
 		for i := 0; i < defaultBgCacheWorkers; i++ {
-			<-db.bgCacheLimiter
+			<-db.cacheLimiter.sem
 		}
 	}
 }

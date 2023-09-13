@@ -9,7 +9,7 @@ import (
 	"errors"
 
 	"github.com/ethersphere/bee/pkg/pusher"
-	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"golang.org/x/sync/errgroup"
 )
@@ -82,17 +82,17 @@ func (db *DB) Download(cache bool) storage.Getter {
 						select {
 						case <-ctx.Done():
 						case <-db.quit:
-						case db.bgCacheLimiter <- struct{}{}:
-							db.bgCacheLimiterWg.Add(1)
+						case db.cacheLimiter.sem <- struct{}{}:
+							db.cacheLimiter.wg.Add(1)
 							go func() {
 								defer func() {
-									<-db.bgCacheLimiter
-									db.bgCacheLimiterWg.Done()
+									<-db.cacheLimiter.sem
+									db.cacheLimiter.wg.Done()
 								}()
 
-								err := db.Cache().Put(ctx, ch)
+								err := db.Cache().Put(db.cacheLimiter.ctx, ch)
 								if err != nil {
-									db.logger.Error(err, "failed putting chunk to cache", "chunk_address", ch.Address())
+									db.logger.Debug("putting chunk to cache failed", "error", err, "chunk_address", ch.Address())
 								}
 							}()
 						}
