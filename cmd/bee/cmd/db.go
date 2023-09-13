@@ -80,7 +80,7 @@ func dbInfoCmd(cmd *cobra.Command) {
 				return fmt.Errorf("fetching db info: %w", err)
 			}
 
-			logger.Info("reserve", "size", info.Reserve.Size, "capacity", info.Reserve.Capacity)
+			logger.Info("reserve", "size_within_radius", info.Reserve.SizeWithinRadius, "total_size", info.Reserve.TotalSize, "capacity", info.Reserve.Capacity)
 			logger.Info("cache", "size", info.Cache.Size, "capacity", info.Cache.Capacity)
 			logger.Info("chunk", "total", info.ChunkStore.TotalChunks, "shared", info.ChunkStore.SharedSlots)
 			logger.Info("pinning", "chunks", info.Pinning.TotalChunks, "collections", info.Pinning.TotalCollections)

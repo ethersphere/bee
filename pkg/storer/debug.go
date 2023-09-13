@@ -9,6 +9,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/storer/internal/chunkstore"
 	pinstore "github.com/ethersphere/bee/pkg/storer/internal/pinning"
+	"github.com/ethersphere/bee/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/pkg/storer/internal/upload"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"golang.org/x/sync/errgroup"
@@ -30,10 +31,11 @@ type CacheStat struct {
 }
 
 type ReserveStat struct {
-	Size       int
-	Capacity   int
-	LastBinIDs []uint64
-	Epoch      uint64
+	SizeWithinRadius int
+	TotalSize        int
+	Capacity         int
+	LastBinIDs       []uint64
+	Epoch            uint64
 }
 
 type ChunkStoreStat struct {
@@ -116,6 +118,14 @@ func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 		)
 	})
 
+	reserveSizeWithinRadius := 0
+	eg.Go(func() error {
+		return db.reserve.IterateChunksItems(db.repo, db.reserve.Radius(), func(ci reserve.ChunkItem) (bool, error) {
+			reserveSizeWithinRadius++
+			return false, nil
+		})
+	})
+
 	cacheSize, cacheCapacity := db.cacheObj.Size(), db.cacheObj.Capacity()
 
 	reserveSize, reserveCapacity := 0, 0
@@ -146,10 +156,11 @@ func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 			Capacity: int(cacheCapacity),
 		},
 		Reserve: ReserveStat{
-			Size:       reserveSize,
-			Capacity:   reserveCapacity,
-			LastBinIDs: lastbinIds,
-			Epoch:      epoch,
+			SizeWithinRadius: reserveSizeWithinRadius,
+			TotalSize:        reserveSize,
+			Capacity:         reserveCapacity,
+			LastBinIDs:       lastbinIds,
+			Epoch:            epoch,
 		},
 		ChunkStore: ChunkStoreStat{
 			TotalChunks: totalChunks,
