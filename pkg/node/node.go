@@ -31,7 +31,6 @@ import (
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/auth"
 	"github.com/ethersphere/bee/pkg/chainsync"
-	"github.com/ethersphere/bee/pkg/chainsyncer"
 	"github.com/ethersphere/bee/pkg/config"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds/factory"
@@ -302,7 +301,7 @@ func NewBee(
 	logger.Info("using overlay address", "address", swarmAddress)
 
 	if err = checkOverlay(stateStore, swarmAddress); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("check overlay address: %w", err)
 	}
 
 	var (
@@ -1101,8 +1100,6 @@ func NewBee(
 	)
 	b.resolverCloser = multiResolver
 
-	var chainSyncer *chainsyncer.ChainSyncer
-
 	if o.FullNodeMode {
 		cs, err := chainsync.New(p2ps, chainBackend)
 		if err != nil {
@@ -1111,12 +1108,6 @@ func NewBee(
 		if err = p2ps.AddProtocol(cs.Protocol()); err != nil {
 			return nil, fmt.Errorf("chainsync protocol: %w", err)
 		}
-		chainSyncer, err = chainsyncer.New(chainBackend, cs, kad, p2ps, logger, nil)
-		if err != nil {
-			return nil, fmt.Errorf("new chainsyncer: %w", err)
-		}
-
-		b.chainSyncerCloser = chainSyncer
 	}
 
 	feedFactory := factory.New(localStore.Download(true))

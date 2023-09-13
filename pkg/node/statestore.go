@@ -63,7 +63,10 @@ func InitStamperStore(logger log.Logger, dataDir string, stateStore storage.Stat
 	return stamperStore, nil
 }
 
-const noncedOverlayKey = "nonce-overlay"
+const (
+	overlayNonce     = "overlayV2_nonce"
+	noncedOverlayKey = "nonce-overlay"
+)
 
 // checkOverlay checks the overlay is the same as stored in the statestore
 func checkOverlay(storer storage.StateStorer, overlay swarm.Address) error {
@@ -80,8 +83,6 @@ func checkOverlay(storer storage.StateStorer, overlay swarm.Address) error {
 
 	return nil
 }
-
-const overlayNonce = "overlayV2_nonce"
 
 func overlayNonceExists(s storage.StateStorer) ([]byte, bool, error) {
 	nonce := make([]byte, 32)
