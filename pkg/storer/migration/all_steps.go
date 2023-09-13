@@ -10,8 +10,8 @@ import (
 	"github.com/ethersphere/bee/pkg/storer/internal/reserve"
 )
 
-// PostSteps lists all migration steps for localstore IndexStore after the localstore is intiated.
-func PostSteps(
+// AfterInitSteps lists all migration steps for localstore IndexStore after the localstore is intiated.
+func AfterInitSteps(
 	sharkyPath string,
 	sharkyNoOfShards int,
 	chunkStore storage.ChunkStore,
@@ -24,8 +24,8 @@ func PostSteps(
 	}
 }
 
-// PostSteps lists all migration steps for localstore IndexStore before the localstore is intiated.
-func PreSteps() migration.Steps {
+// BeforeIinitSteps lists all migration steps for localstore IndexStore before the localstore is intiated.
+func BeforeIinitSteps() migration.Steps {
 	return map[uint64]migration.StepFn{
 		1: RefCountSizeInc,
 	}

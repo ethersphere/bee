@@ -27,7 +27,9 @@ var (
 	errStorageVersionItemUnmarshalInvalidSize = errors.New("unmarshal StorageVersionItem: invalid size")
 )
 
-// Migrate migrates the storage to the latest version
+// Migrate migrates the storage to the latest version.
+// The steps are separated by groups so different lists of steps can run individually, for example,
+// two groups of migrations that run before and after the storer is initialized.
 func Migrate(s storage.BatchedStore, group string, sm Steps) error {
 	if err := ValidateVersions(sm); err != nil {
 		return err

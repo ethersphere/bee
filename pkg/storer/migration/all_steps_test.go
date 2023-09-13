@@ -20,12 +20,12 @@ func TestPreSteps(t *testing.T) {
 
 	chStore := inmemchunkstore.New()
 
-	assert.NotEmpty(t, localmigration.PostSteps("", 0, chStore))
+	assert.NotEmpty(t, localmigration.AfterInitSteps("", 0, chStore))
 
 	t.Run("version numbers", func(t *testing.T) {
 		t.Parallel()
 
-		err := migration.ValidateVersions(localmigration.PostSteps("", 0, chStore))
+		err := migration.ValidateVersions(localmigration.AfterInitSteps("", 0, chStore))
 		assert.NoError(t, err)
 	})
 
@@ -34,7 +34,7 @@ func TestPreSteps(t *testing.T) {
 
 		store := inmemstore.New()
 
-		err := migration.Migrate(store, "migration", localmigration.PostSteps("", 4, chStore))
+		err := migration.Migrate(store, "migration", localmigration.AfterInitSteps("", 4, chStore))
 		assert.NoError(t, err)
 	})
 }
@@ -42,12 +42,12 @@ func TestPreSteps(t *testing.T) {
 func TestPostSteps(t *testing.T) {
 	t.Parallel()
 
-	assert.NotEmpty(t, localmigration.PreSteps())
+	assert.NotEmpty(t, localmigration.BeforeIinitSteps())
 
 	t.Run("version numbers", func(t *testing.T) {
 		t.Parallel()
 
-		err := migration.ValidateVersions(localmigration.PreSteps())
+		err := migration.ValidateVersions(localmigration.BeforeIinitSteps())
 		assert.NoError(t, err)
 	})
 
@@ -56,7 +56,7 @@ func TestPostSteps(t *testing.T) {
 
 		store := inmemstore.New()
 
-		err := migration.Migrate(store, "migration", localmigration.PreSteps())
+		err := migration.Migrate(store, "migration", localmigration.BeforeIinitSteps())
 		assert.NoError(t, err)
 	})
 }

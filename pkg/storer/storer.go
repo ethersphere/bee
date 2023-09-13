@@ -283,7 +283,7 @@ func initDiskRepository(
 		return nil, nil, fmt.Errorf("failed creating levelDB index store: %w", err)
 	}
 
-	err = migration.Migrate(store, "core-migration", localmigration.PreSteps())
+	err = migration.Migrate(store, "core-migration", localmigration.BeforeIinitSteps())
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed core migration: %w", err)
 	}
@@ -557,7 +557,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	err = migration.Migrate(
 		repo.IndexStore(),
 		"migration",
-		localmigration.PostSteps(sharkyBasePath, sharkyNoOfShards, repo.ChunkStore()),
+		localmigration.AfterInitSteps(sharkyBasePath, sharkyNoOfShards, repo.ChunkStore()),
 	)
 	if err != nil {
 		return nil, err
