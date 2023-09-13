@@ -11,6 +11,7 @@ import (
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/topology"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -48,10 +49,15 @@ func (db *DB) DirectUpload() PutterSession {
 								// if we get a shallow receipt error, we retry the upload, the pusher will
 								// have an allowed no. of retries after which a shallow receipt will
 								// no longer be returned as error.
-								if !errors.Is(err, pusher.ErrShallowReceipt) {
+
+								switch err {
+								case pusher.ErrShallowReceipt:
+									db.logger.Debug("direct upload: shallow receipt received, retrying", "chunk", ch.Address())
+								case topology.ErrNotFound:
+									db.logger.Debug("direct upload: no peers available, retrying", "chunk", ch.Address())
+								default:
 									return err
 								}
-								db.logger.Debug("direct upload: shallow receipt received, retrying", "chunk", ch.Address())
 							}
 						}
 					}
