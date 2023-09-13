@@ -46,10 +46,6 @@ func (db *DB) DirectUpload() PutterSession {
 							case <-db.quit:
 								return ErrDBQuit
 							case err := <-op.Err:
-								// if we get a shallow receipt error, we retry the upload, the pusher will
-								// have an allowed no. of retries after which a shallow receipt will
-								// no longer be returned as error.
-
 								switch err {
 								case pusher.ErrShallowReceipt:
 									db.logger.Debug("direct upload: shallow receipt received, retrying", "chunk", ch.Address())
