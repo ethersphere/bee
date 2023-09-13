@@ -23,6 +23,8 @@ import (
 	"github.com/gorilla/mux"
 )
 
+var defaultImmutable = true
+
 func (s *Service) postageAccessHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !s.postageSem.TryAcquire(1) {
@@ -83,18 +85,21 @@ func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	headers := struct {
-		Immutable bool `map:"Immutable"`
+		Immutable *bool `map:"Immutable"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
 		return
+	}
+	if headers.Immutable == nil {
+		headers.Immutable = &defaultImmutable // Set the default.
 	}
 
 	txHash, batchID, err := s.postageContract.CreateBatch(
 		r.Context(),
 		paths.Amount,
 		paths.Depth,
-		headers.Immutable,
+		*headers.Immutable,
 		r.URL.Query().Get("label"),
 	)
 	if err != nil {
