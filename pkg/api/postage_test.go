@@ -48,11 +48,13 @@ func TestPostageCreateStamp(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		t.Parallel()
 
+		var immutable bool
 		contract := contractMock.New(
 			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string) (common.Hash, []byte, error) {
 				if ib.Cmp(big.NewInt(initialBalance)) != 0 {
 					return common.Hash{}, nil, fmt.Errorf("called with wrong initial balance. wanted %d, got %d", initialBalance, ib)
 				}
+				immutable = i
 				if d != depth {
 					return common.Hash{}, nil, fmt.Errorf("called with wrong depth. wanted %d, got %d", depth, d)
 				}
@@ -73,39 +75,10 @@ func TestPostageCreateStamp(t *testing.T) {
 				TxHash:  txHash.String(),
 			}),
 		)
-	})
-	t.Run("with-custom-gas", func(t *testing.T) {
-		t.Parallel()
 
-		contract := contractMock.New(
-			contractMock.WithCreateBatchFunc(func(ctx context.Context, ib *big.Int, d uint8, i bool, l string) (common.Hash, []byte, error) {
-				if ib.Cmp(big.NewInt(initialBalance)) != 0 {
-					return common.Hash{}, nil, fmt.Errorf("called with wrong initial balance. wanted %d, got %d", initialBalance, ib)
-				}
-				if d != depth {
-					return common.Hash{}, nil, fmt.Errorf("called with wrong depth. wanted %d, got %d", depth, d)
-				}
-				if l != label {
-					return common.Hash{}, nil, fmt.Errorf("called with wrong label. wanted %s, got %s", label, l)
-				}
-				if sctx.GetGasPrice(ctx).Cmp(big.NewInt(10000)) != 0 {
-					return common.Hash{}, nil, fmt.Errorf("called with wrong gas price. wanted %d, got %d", 10000, sctx.GetGasPrice(ctx))
-				}
-				return txHash, batchID, nil
-			}),
-		)
-		ts, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:        true,
-			PostageContract: contract,
-		})
-
-		jsonhttptest.Request(t, ts, http.MethodPost, createBatch(initialBalance, depth, label), http.StatusCreated,
-			jsonhttptest.WithRequestHeader(api.GasPriceHeader, "10000"),
-			jsonhttptest.WithExpectedJSONResponse(&api.PostageCreateResponse{
-				BatchID: batchID,
-				TxHash:  txHash.String(),
-			}),
-		)
+		if !immutable {
+			t.Fatalf("default batch should be immutable")
+		}
 	})
 
 	t.Run("with-error", func(t *testing.T) {
@@ -171,7 +144,7 @@ func TestPostageCreateStamp(t *testing.T) {
 		)
 	})
 
-	t.Run("immutable header", func(t *testing.T) {
+	t.Run("mutable header", func(t *testing.T) {
 		t.Parallel()
 
 		var immutable bool
@@ -187,42 +160,16 @@ func TestPostageCreateStamp(t *testing.T) {
 		})
 
 		jsonhttptest.Request(t, ts, http.MethodPost, "/stamps/1000/24", http.StatusCreated,
-			jsonhttptest.WithRequestHeader(api.ImmutableHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.ImmutableHeader, "false"),
 			jsonhttptest.WithExpectedJSONResponse(&api.PostageCreateResponse{
 				BatchID: batchID,
 				TxHash:  txHash.String(),
 			}),
 		)
 
-		if !immutable {
-			t.Fatalf("want true, got %v", immutable)
+		if immutable {
+			t.Fatalf("want false, got %v", immutable)
 		}
-	})
-
-	t.Run("gas limit header", func(t *testing.T) {
-		t.Parallel()
-
-		contract := contractMock.New(
-			contractMock.WithCreateBatchFunc(func(ctx context.Context, _ *big.Int, _ uint8, _ bool, _ string) (common.Hash, []byte, error) {
-				gasLimit := sctx.GetGasLimit(ctx)
-				if gasLimit != 2000000 {
-					t.Fatalf("want 2000000, got %d", gasLimit)
-				}
-				return txHash, batchID, nil
-			}),
-		)
-		ts, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:        true,
-			PostageContract: contract,
-		})
-
-		jsonhttptest.Request(t, ts, http.MethodPost, "/stamps/1000/24", http.StatusCreated,
-			jsonhttptest.WithRequestHeader(api.GasLimitHeader, "2000000"),
-			jsonhttptest.WithExpectedJSONResponse(&api.PostageCreateResponse{
-				BatchID: batchID,
-				TxHash:  txHash.String(),
-			}),
-		)
 	})
 
 	t.Run("syncing in progress", func(t *testing.T) {
