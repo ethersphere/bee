@@ -101,9 +101,9 @@ func (r OldRetrievalIndexItem) String() string {
 	return storageutil.JoinFields(r.Namespace(), r.ID())
 }
 
-func step_05(s storage.BatchedStore) error {
+func RefCountSizeInc(s storage.BatchedStore) error {
 
-	logger := log.NewLogger("migration-step-05", log.WithSink(os.Stdout))
+	logger := log.NewLogger("migration-RefCountSizeInc", log.WithSink(os.Stdout))
 
 	logger.Info("starting migration of replacing chunkstore items to increase refCnt capacity")
 

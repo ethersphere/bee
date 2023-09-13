@@ -176,10 +176,11 @@ func testDebugInfo(t *testing.T, newStorer func() (*storer.DB, swarm.Address, er
 				Capacity: 1000000,
 			},
 			Reserve: storer.ReserveStat{
-				Size:       10,
-				Capacity:   100,
-				LastBinIDs: ids,
-				Epoch:      epoch,
+				SizeWithinRadius: 10,
+				TotalSize:        10,
+				Capacity:         100,
+				LastBinIDs:       ids,
+				Epoch:            epoch,
 			},
 		}
 
