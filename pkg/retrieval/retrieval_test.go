@@ -96,7 +96,7 @@ func TestDelivery(t *testing.T) {
 	if !bytes.Equal(v.Data(), chunk.Data()) {
 		t.Fatalf("request and response data not equal. got %s want %s", v, chunk.Data())
 	}
-	records, err := recorder.Records(serverAddr, "retrieval", "1.3.0", "retrieval")
+	records, err := recorder.Records(serverAddr, "retrieval", "1.4.0", "retrieval")
 	if err != nil {
 		t.Fatal(err)
 	}
