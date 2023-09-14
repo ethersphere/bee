@@ -60,7 +60,7 @@
 ## enable swap (default true)
 # BEE_SWAP_ENABLE=true
 ## swap blockchain endpoint (default ws://localhost:8546)
-# BEE_SWAP_ENDPOINT=ws://localhost:8546
+# BEE_BLOCKCHAIN_RPC_ENDPOINT=ws://localhost:8546
 ## swap factory address
 # BEE_SWAP_FACTORY_ADDRESS=
 ## legacy swap factory addresses
