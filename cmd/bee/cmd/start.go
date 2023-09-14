@@ -525,13 +525,15 @@ func getConfigByNetworkID(networkID uint64, defaultBlockTimeInSeconds uint64) *n
 		blockTime: time.Duration(defaultBlockTimeInSeconds) * time.Second,
 	}
 	switch networkID {
-	case 1:
+	case 1: // mainnet
 		config.bootNodes = []string{"/dnsaddr/mainnet.ethswarm.org"}
 		config.blockTime = 5 * time.Second
 		config.chainID = chaincfg.Mainnet.ChainID
 	case 5: //staging
 		config.chainID = chaincfg.Testnet.ChainID
-	case 10: //test
+	case 10: //testnet
+		config.bootNodes = []string{"/dnsaddr/testnet.ethswarm.org"}
+		config.blockTime = 15 * time.Second
 		config.chainID = chaincfg.Testnet.ChainID
 	default: //will use the value provided by the chain
 		config.chainID = -1
