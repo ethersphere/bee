@@ -58,8 +58,8 @@ func TestProofCorrectness(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	rh, err := bmt.Prover{hh}.Hash(nil)
+	pr := bmt.Prover{hh}
+	rh, err := pr.Hash(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestProofCorrectness(t *testing.T) {
 	t.Run("proof for left most", func(t *testing.T) {
 		t.Parallel()
 
-		proof := bmt.Prover{hh}.Proof(0)
+		proof := pr.Proof(0)
 
 		expSegmentStrings := []string{
 			"0000000000000000000000000000000000000000000000000000000000000000",
@@ -93,7 +93,7 @@ func TestProofCorrectness(t *testing.T) {
 	t.Run("proof for right most", func(t *testing.T) {
 		t.Parallel()
 
-		proof := bmt.Prover{hh}.Proof(127)
+		proof := pr.Proof(127)
 
 		expSegmentStrings := []string{
 			"0000000000000000000000000000000000000000000000000000000000000000",
@@ -119,7 +119,7 @@ func TestProofCorrectness(t *testing.T) {
 	t.Run("proof for middle", func(t *testing.T) {
 		t.Parallel()
 
-		proof := bmt.Prover{hh}.Proof(64)
+		proof := pr.Proof(64)
 
 		expSegmentStrings := []string{
 			"0000000000000000000000000000000000000000000000000000000000000000",
@@ -166,7 +166,7 @@ func TestProofCorrectness(t *testing.T) {
 
 		segment := testDataPadded[64*hh.Size() : 65*hh.Size()]
 
-		rootHash, err := bmt.Prover{hh}.Verify(64, bmt.Proof{
+		rootHash, err := pr.Verify(64, bmt.Proof{
 			ProveSegment:  segment,
 			ProofSegments: segments,
 			Span:          bmt.LengthToSpan(4096),
@@ -205,6 +205,7 @@ func TestProof(t *testing.T) {
 	}
 
 	rh, err := hh.Hash(nil)
+	pr := bmt.Prover{hh}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -214,7 +215,7 @@ func TestProof(t *testing.T) {
 		t.Run(fmt.Sprintf("segmentIndex %d", i), func(t *testing.T) {
 			t.Parallel()
 
-			proof := bmt.Prover{hh}.Proof(i)
+			proof := pr.Proof(i)
 
 			h := pool.Get()
 			defer pool.Put(h)
