@@ -273,7 +273,9 @@ func TestBytesInvalidStamp(t *testing.T) {
 func TestBytesUploadHandlerInvalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{})
+	client, _, _, _ := newTestServer(t, testServerOptions{
+		Storer: mockstorer.New(),
+	})
 
 	tests := []struct {
 		name   string
