@@ -326,7 +326,6 @@ func (s *Service) retrieveChunk(ctx context.Context, chunkAddr, peer swarm.Addre
 		return
 	}
 	if d.Err != "" {
-		fmt.Println("d.Er", d.Err)
 		err = &p2p.DeliveryError{Msg: d.Err}
 		return
 	}

@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -339,7 +340,7 @@ func TestRetrieveChunk(t *testing.T) {
 		}
 	})
 
-	t.Run("propagate error", func(t *testing.T) {
+	t.Run("propagate error to origin", func(t *testing.T) {
 		t.Parallel()
 
 		chunk := testingc.FixtureChunk("0025")
@@ -362,7 +363,7 @@ func TestRetrieveChunk(t *testing.T) {
 			&testStorer{ChunkStore: inmemchunkstore.New()},
 			nil,
 			topologymock.NewTopologyDriver(),
-			captureLogger,
+			logger,
 			accountingmock.NewAccounting(),
 			pricer,
 			nil,
@@ -376,7 +377,7 @@ func TestRetrieveChunk(t *testing.T) {
 			forwarderStore, // no chunk in forwarder's store
 			streamtest.New(streamtest.WithProtocols(server.Protocol())), // connect to server
 			topologymock.NewTopologyDriver(topologymock.WithClosestPeer(serverAddress)),
-			captureLogger,
+			logger,
 			accountingmock.NewAccounting(),
 			pricer,
 			nil,
@@ -395,13 +396,14 @@ func TestRetrieveChunk(t *testing.T) {
 			false,
 		)
 
-		if got, _ := forwarderStore.Has(context.Background(), chunk.Address()); got {
-			t.Fatalf("forwarder node already has chunk")
+		_, err = client.RetrieveChunk(context.Background(), chunk.Address(), swarm.ZeroAddress)
+		if err == nil {
+			t.Fatal("should have received an error")
 		}
 
-		_, err = client.RetrieveChunk(context.Background(), chunk.Address(), swarm.ZeroAddress)
-
-		fmt.Println("error", buf.Bytes())
+		if !strings.Contains(buf.String(), "received delivery error msg: retrieve chunk: no peer found") {
+			t.Fatal("error msg did not propagate back to the origin node")
+		}
 	})
 }
 
@@ -713,7 +715,7 @@ func createRetrieval(
 	forwarderCaching bool,
 ) *retrieval.Service {
 	t.Helper()
-	ret := retrieval.New(addr, storer, streamer, chunkPeerer, log.Noop, accounting, pricer, tracer, forwarderCaching)
+	ret := retrieval.New(addr, storer, streamer, chunkPeerer, logger, accounting, pricer, tracer, forwarderCaching)
 	t.Cleanup(func() { ret.Close() })
 	return ret
 }

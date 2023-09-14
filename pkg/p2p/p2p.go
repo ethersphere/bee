@@ -232,7 +232,7 @@ type DeliveryError struct {
 
 // Error implements the error interface.
 func (e *DeliveryError) Error() string {
-	return fmt.Sprintf("%s: %v", e.Msg, errDelivery)
+	return fmt.Sprintf("%v: %s", errDelivery, e.Msg)
 }
 
 // Unwrap implements the interface required by errors.Unwrap function.

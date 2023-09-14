@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -430,7 +431,7 @@ func TestPushChunkToClosestErrorAttemptRetry(t *testing.T) {
 		}),
 	)
 
-	psPivot, pivotStorer := createPushSyncNodeWithAccounting(t, pivotNode, defaultPrices, recorder, nil, defaultSigner, pivotAccounting, mock.WithPeers(peer1, peer2, peer3, peer4))
+	psPivot, pivotStorer := createPushSyncNodeWithAccounting(t, pivotNode, defaultPrices, recorder, nil, defaultSigner, pivotAccounting, log.Noop, mock.WithPeers(peer1, peer2, peer3, peer4))
 
 	// Trigger the sending of chunk to the closest node
 	receipt, err := psPivot.PushChunkToClosest(context.Background(), chunk)
@@ -586,6 +587,44 @@ func TestHandler(t *testing.T) {
 
 	if balance.Int64() != 0 {
 		t.Fatalf("unexpected balance on closest. want %d got %d", int64(fixedPrice), balance)
+	}
+}
+
+func TestPropagateErrMsg(t *testing.T) {
+	t.Parallel()
+	// chunk data to upload
+	chunk := testingc.FixtureChunk("7000")
+
+	// create a pivot node and a mocked closest node
+	triggerPeer := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")
+	pivotPeer := swarm.MustParseHexAddress("5000000000000000000000000000000000000000000000000000000000000000")
+	closestPeer := swarm.MustParseHexAddress("7000000000000000000000000000000000000000000000000000000000000000")
+
+	faultySigner := cryptomock.New(cryptomock.WithSignFunc(func([]byte) ([]byte, error) {
+		return nil, errors.New("simulated error")
+	}))
+
+	buf := new(bytes.Buffer)
+	captureLogger := log.NewLogger("test", log.WithSink(buf))
+
+	// Create the closest peer
+	psClosestPeer, _ := createPushSyncNodeWithAccounting(t, closestPeer, defaultPrices, nil, nil, faultySigner, accountingmock.NewAccounting(), log.Noop, mock.WithClosestPeerErr(topology.ErrWantSelf))
+
+	// creating the pivot peer
+	psPivot, _ := createPushSyncNodeWithAccounting(t, pivotPeer, defaultPrices, nil, nil, defaultSigner, accountingmock.NewAccounting(), log.Noop, mock.WithPeers(closestPeer))
+
+	combinedRecorder := streamtest.New(streamtest.WithProtocols(psPivot.Protocol(), psClosestPeer.Protocol()), streamtest.WithBaseAddr(triggerPeer))
+
+	// Creating the trigger peer
+	psTriggerPeer, _ := createPushSyncNodeWithAccounting(t, triggerPeer, defaultPrices, combinedRecorder, nil, defaultSigner, accountingmock.NewAccounting(), captureLogger, mock.WithPeers(pivotPeer))
+
+	_, err := psTriggerPeer.PushChunkToClosest(context.Background(), chunk)
+	if err == nil {
+		t.Fatal("should received error")
+	}
+
+	if !strings.Contains(buf.String(), "received delivery error msg: receipt signature: simulated error") {
+		t.Fatal("error msg did not propagate back to the origin node")
 	}
 }
 
@@ -768,7 +807,7 @@ func createPushSyncNode(
 ) (*pushsync.PushSync, *testStorer, accounting.Interface) {
 	t.Helper()
 	mockAccounting := accountingmock.NewAccounting()
-	ps, mstorer := createPushSyncNodeWithAccounting(t, addr, prices, recorder, unwrap, signer, mockAccounting, mockOpts...)
+	ps, mstorer := createPushSyncNodeWithAccounting(t, addr, prices, recorder, unwrap, signer, mockAccounting, log.Noop, mockOpts...)
 	return ps, mstorer, mockAccounting
 }
 
@@ -780,10 +819,10 @@ func createPushSyncNodeWithAccounting(
 	unwrap func(swarm.Chunk),
 	signer crypto.Signer,
 	acct accounting.Interface,
+	logger log.Logger,
 	mockOpts ...mock.Option,
 ) (*pushsync.PushSync, *testStorer) {
 	t.Helper()
-	logger := log.Noop
 	storer := &testStorer{
 		chunksPut:      make(map[string]swarm.Chunk),
 		chunksReported: make(map[string]int),
