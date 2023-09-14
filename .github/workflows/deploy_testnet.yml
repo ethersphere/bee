@@ -1,0 +1,19 @@
+name: Build & Deploy to Testnet
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+      - name: Setup Go
+        uses: actions/setup-go@v3
+        with:
+          cache: true
+          go-version-file: go.mod
+      - name: Build
+        run: make build
