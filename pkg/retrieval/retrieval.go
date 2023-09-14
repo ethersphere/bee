@@ -36,7 +36,7 @@ const loggerName = "retrieval"
 
 const (
 	protocolName    = "retrieval"
-	protocolVersion = "1.3.0"
+	protocolVersion = "1.4.0"
 	streamName      = "retrieval"
 )
 
