@@ -46,12 +46,11 @@ func (db *DB) DirectUpload() PutterSession {
 							case <-db.quit:
 								return ErrDBQuit
 							case err := <-op.Err:
-								switch err {
-								case pusher.ErrShallowReceipt:
+								if errors.Is(err, pusher.ErrShallowReceipt) {
 									db.logger.Debug("direct upload: shallow receipt received, retrying", "chunk", ch.Address())
-								case topology.ErrNotFound:
+								} else if errors.Is(err, topology.ErrNotFound) {
 									db.logger.Debug("direct upload: no peers available, retrying", "chunk", ch.Address())
-								default:
+								} else {
 									return err
 								}
 							}
