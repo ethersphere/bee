@@ -139,7 +139,7 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	headers := struct {
 		BatchID  []byte `map:"Swarm-Postage-Batch-Id" validate:"required"`
 		Pin      bool   `map:"Swarm-Pin"`
-		Deferred bool   `map:"Swarm-Deferred-Upload"`
+		Deferred *bool  `map:"Swarm-Deferred-Upload"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -147,10 +147,11 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var (
-		tag storer.SessionInfo
-		err error
+		tag      storer.SessionInfo
+		err      error
+		deferred = defaultUploadMethod(headers.Deferred)
 	)
-	if headers.Deferred || headers.Pin {
+	if deferred || headers.Pin {
 		tag, err = s.storer.NewSession()
 		if err != nil {
 			logger.Debug("get or create tag failed", "error", err)
@@ -169,7 +170,7 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		BatchID:  headers.BatchID,
 		TagID:    tag.TagID,
 		Pin:      headers.Pin,
-		Deferred: headers.Deferred,
+		Deferred: deferred,
 	})
 	if err != nil {
 		logger.Debug("get putter failed", "error", err)
