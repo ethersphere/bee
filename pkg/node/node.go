@@ -73,9 +73,9 @@ import (
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/transaction"
-	"github.com/ethersphere/bee/pkg/util"
 	"github.com/ethersphere/bee/pkg/util/ioutil"
-	"github.com/ethersphere/bee/pkg/util/neighborhood"
+	"github.com/ethersphere/bee/pkg/util/nbhdutil"
+	"github.com/ethersphere/bee/pkg/util/syncutil"
 	"github.com/hashicorp/go-multierror"
 	ma "github.com/multiformats/go-multiaddr"
 	promc "github.com/prometheus/client_golang/prometheus"
@@ -119,7 +119,7 @@ type Bee struct {
 	retrievalCloser          io.Closer
 	shutdownInProgress       bool
 	shutdownMutex            sync.Mutex
-	syncingStopped           *util.Signaler
+	syncingStopped           *syncutil.Signaler
 }
 
 type Options struct {
@@ -237,7 +237,7 @@ func NewBee(
 		ctxCancel:      ctxCancel,
 		errorLogWriter: sink,
 		tracerCloser:   tracerCloser,
-		syncingStopped: util.NewSignaler(),
+		syncingStopped: syncutil.NewSignaler(),
 	}
 
 	defer func(b *Bee) {
@@ -287,7 +287,7 @@ func NewBee(
 		// mine the overlay
 		if o.TargetNeighborhood != "" {
 			logger.Info("mining an overlay address for the fresh node to target the selected neighborhood", "target", o.TargetNeighborhood)
-			swarmAddress, nonce, err = neighborhood.MineOverlay(ctx, *pubKey, networkID, o.TargetNeighborhood)
+			swarmAddress, nonce, err = nbhdutil.MineOverlay(ctx, *pubKey, networkID, o.TargetNeighborhood)
 			if err != nil {
 				return nil, fmt.Errorf("mine overlay address: %w", err)
 			}

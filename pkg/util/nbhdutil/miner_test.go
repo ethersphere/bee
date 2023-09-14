@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package neighborhood_test
+package nbhdutil_test
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/util/neighborhood"
+	"github.com/ethersphere/bee/pkg/util/nbhdutil"
 )
 
 func TestMiner(t *testing.T) {
@@ -30,7 +30,7 @@ func TestMiner(t *testing.T) {
 	randomAddr := swarm.RandAddress(t)
 	prefix := bitStr(randomAddr.Bytes(), prox)
 
-	addr, nonce, err := neighborhood.MineOverlay(context.Background(), k.PublicKey, networkID, prefix)
+	addr, nonce, err := nbhdutil.MineOverlay(context.Background(), k.PublicKey, networkID, prefix)
 	if err != nil {
 		t.Fatal(err)
 	}
