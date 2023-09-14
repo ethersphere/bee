@@ -338,6 +338,71 @@ func TestRetrieveChunk(t *testing.T) {
 			t.Fatalf("forwarder did not cache chunk")
 		}
 	})
+
+	t.Run("propagate error", func(t *testing.T) {
+		t.Parallel()
+
+		chunk := testingc.FixtureChunk("0025")
+
+		serverAddress := swarm.MustParseHexAddress("0100000000000000000000000000000000000000000000000000000000000000")
+		forwarderAddress := swarm.MustParseHexAddress("0200000000000000000000000000000000000000000000000000000000000000")
+		clientAddress := swarm.MustParseHexAddress("030000000000000000000000000000000000000000000000000000000000000000")
+
+		serverStorer := &testStorer{ChunkStore: inmemchunkstore.New()}
+		err := serverStorer.Put(context.Background(), chunk)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		buf := new(bytes.Buffer)
+		captureLogger := log.NewLogger("test", log.WithSink(buf))
+
+		server := createRetrieval(t,
+			serverAddress,
+			&testStorer{ChunkStore: inmemchunkstore.New()},
+			nil,
+			topologymock.NewTopologyDriver(),
+			captureLogger,
+			accountingmock.NewAccounting(),
+			pricer,
+			nil,
+			false,
+		)
+
+		forwarderStore := &testStorer{ChunkStore: inmemchunkstore.New()}
+
+		forwarder := createRetrieval(t,
+			forwarderAddress,
+			forwarderStore, // no chunk in forwarder's store
+			streamtest.New(streamtest.WithProtocols(server.Protocol())), // connect to server
+			topologymock.NewTopologyDriver(topologymock.WithClosestPeer(serverAddress)),
+			captureLogger,
+			accountingmock.NewAccounting(),
+			pricer,
+			nil,
+			true, // note explicit caching
+		)
+
+		client := createRetrieval(t,
+			clientAddress,
+			storemock.New(), // no chunk in clients's store
+			streamtest.New(streamtest.WithProtocols(forwarder.Protocol())), // connect to forwarder
+			topologymock.NewTopologyDriver(topologymock.WithClosestPeer(forwarderAddress)),
+			captureLogger,
+			accountingmock.NewAccounting(),
+			pricer,
+			nil,
+			false,
+		)
+
+		if got, _ := forwarderStore.Has(context.Background(), chunk.Address()); got {
+			t.Fatalf("forwarder node already has chunk")
+		}
+
+		_, err = client.RetrieveChunk(context.Background(), chunk.Address(), swarm.ZeroAddress)
+
+		fmt.Println("error", buf.Bytes())
+	})
 }
 
 func TestRetrievePreemptiveRetry(t *testing.T) {

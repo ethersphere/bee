@@ -9,6 +9,7 @@ package p2p
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"time"
 
@@ -221,4 +222,31 @@ const (
 // protocol name and version and stream name.
 func NewSwarmStreamName(protocol, version, stream string) string {
 	return "/swarm/" + protocol + "/" + version + "/" + stream
+}
+
+var errDelivery = errors.New("received delivery error msg")
+
+type DeliveryError struct {
+	Msg string
+}
+
+// Error implements the error interface.
+func (e *DeliveryError) Error() string {
+	return fmt.Sprintf("%s: %v", e.Msg, errDelivery)
+}
+
+// Unwrap implements the interface required by errors.Unwrap function.
+func (e *DeliveryError) Unwrap() error {
+	return errDelivery
+}
+
+// Equal returns true if the given error
+// type and fields are equal to this error.
+// It is used to compare errors in tests.
+func (e *DeliveryError) Equal(err error) bool {
+	var p *DeliveryError
+	if !errors.As(err, &p) {
+		return false
+	}
+	return e.Msg == p.Msg
 }

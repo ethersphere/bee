@@ -42,8 +42,6 @@ const (
 
 var _ Interface = (*Service)(nil)
 
-var ErrDelivery = errors.New("received delivery error msg")
-
 type Interface interface {
 	// RetrieveChunk retrieves a chunk from the network using the retrieval protocol.
 	// it takes as parameters a context, a chunk address to retrieve (content-addressed or single-owner) and
@@ -128,7 +126,7 @@ const (
 )
 
 func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr swarm.Address) (swarm.Chunk, error) {
-	loggerV1 := s.logger.V(1).Register()
+	loggerV1 := s.logger
 
 	s.metrics.RequestCounter.Inc()
 
@@ -328,7 +326,8 @@ func (s *Service) retrieveChunk(ctx context.Context, chunkAddr, peer swarm.Addre
 		return
 	}
 	if d.Err != "" {
-		err = fmt.Errorf("%w: %s", ErrDelivery, d.Err)
+		fmt.Println("d.Er", d.Err)
+		err = &p2p.DeliveryError{Msg: d.Err}
 		return
 	}
 

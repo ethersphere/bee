@@ -55,7 +55,6 @@ var (
 	ErrNoPush            = errors.New("could not push chunk")
 	ErrOutOfDepthStoring = errors.New("storing outside of the neighborhood")
 	ErrWarmup            = errors.New("node warmup time not complete")
-	ErrDelivery          = errors.New("received delivery error msg")
 )
 
 type PushSyncer interface {
@@ -494,7 +493,7 @@ func (ps *PushSync) pushChunkToPeer(ctx context.Context, peer swarm.Address, ch 
 		return nil, err
 	}
 	if rec.Err != "" {
-		return nil, fmt.Errorf("%w: %s", ErrDelivery, rec.Err)
+		return nil, &p2p.DeliveryError{Msg: rec.Err}
 	}
 
 	if !ch.Address().Equal(swarm.NewAddress(rec.Address)) {
