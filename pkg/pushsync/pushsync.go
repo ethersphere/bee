@@ -55,6 +55,7 @@ var (
 	ErrNoPush            = errors.New("could not push chunk")
 	ErrOutOfDepthStoring = errors.New("storing outside of the neighborhood")
 	ErrWarmup            = errors.New("node warmup time not complete")
+	ErrDelivery          = errors.New("received delivery error msg")
 )
 
 type PushSyncer interface {
@@ -157,6 +158,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	now := time.Now()
 
 	w, r := protobuf.NewWriterAndReader(stream)
+	var errOnWrite bool
 
 	ctx, cancel := context.WithTimeout(ctx, defaultTTL)
 	defer cancel()
@@ -165,6 +167,9 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		if err != nil {
 			ps.metrics.TotalHandlerTime.WithLabelValues("failure").Observe(time.Since(now).Seconds())
 			ps.metrics.TotalHandlerErrors.Inc()
+			if !errOnWrite {
+				_ = w.WriteMsgWithContext(ctx, &pb.Receipt{Err: err.Error()})
+			}
 			_ = stream.Reset()
 		} else {
 			ps.metrics.TotalHandlerTime.WithLabelValues("success").Observe(time.Since(now).Seconds())
@@ -227,6 +232,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 		receipt := pb.Receipt{Address: chunkToPut.Address().Bytes(), Signature: signature, Nonce: ps.nonce}
 		if err := w.WriteMsgWithContext(ctx, &receipt); err != nil {
+			errOnWrite = true
 			return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 		}
 
@@ -257,6 +263,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 	// pass back the receipt
 	if err := w.WriteMsgWithContext(ctx, receipt); err != nil {
+		errOnWrite = true
 		return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 	}
 
@@ -485,6 +492,9 @@ func (ps *PushSync) pushChunkToPeer(ctx context.Context, peer swarm.Address, ch 
 	var rec pb.Receipt
 	if err = r.ReadMsgWithContext(ctx, &rec); err != nil {
 		return nil, err
+	}
+	if rec.Err != "" {
+		return nil, fmt.Errorf("%w: %s", ErrDelivery, rec.Err)
 	}
 
 	if !ch.Address().Equal(swarm.NewAddress(rec.Address)) {

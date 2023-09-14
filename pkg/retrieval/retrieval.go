@@ -42,6 +42,8 @@ const (
 
 var _ Interface = (*Service)(nil)
 
+var ErrDelivery = errors.New("received delivery error msg")
+
 type Interface interface {
 	// RetrieveChunk retrieves a chunk from the network using the retrieval protocol.
 	// it takes as parameters a context, a chunk address to retrieve (content-addressed or single-owner) and
@@ -321,11 +323,15 @@ func (s *Service) retrieveChunk(ctx context.Context, chunkAddr, peer swarm.Addre
 	}
 
 	var d pb.Delivery
-	err = r.ReadMsgWithContext(ctx, &d)
-	if err != nil {
+	if err = r.ReadMsgWithContext(ctx, &d); err != nil {
 		err = fmt.Errorf("read delivery: %w peer %s", err, peer.String())
 		return
 	}
+	if d.Err != "" {
+		err = fmt.Errorf("%w: %s", ErrDelivery, d.Err)
+		return
+	}
+
 	s.metrics.ChunkRetrieveTime.Observe(time.Since(startTime).Seconds())
 	s.metrics.TotalRetrieved.Inc()
 
@@ -391,8 +397,13 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	defer cancel()
 
 	w, r := protobuf.NewWriterAndReader(stream)
+	var errOnWrite bool
+
 	defer func() {
 		if err != nil {
+			if !errOnWrite {
+				_ = w.WriteMsgWithContext(ctx, &pb.Delivery{Err: err.Error()})
+			}
 			_ = stream.Reset()
 		} else {
 			_ = stream.FullClose()
@@ -437,6 +448,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	if err := w.WriteMsgWithContext(ctx, &pb.Delivery{
 		Data: chunk.Data(),
 	}); err != nil {
+		errOnWrite = true
 		return fmt.Errorf("write delivery: %w peer %s", err, p.Address.String())
 	}
 
