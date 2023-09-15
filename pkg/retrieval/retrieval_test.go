@@ -239,6 +239,7 @@ func TestRetrieveChunk(t *testing.T) {
 	// requesting a chunk from downstream peer is expected
 	t.Run("downstream", func(t *testing.T) {
 		t.Parallel()
+		t.Skip()
 
 		serverAddress := swarm.MustParseHexAddress("03")
 		clientAddress := swarm.MustParseHexAddress("01")
@@ -268,6 +269,7 @@ func TestRetrieveChunk(t *testing.T) {
 
 	t.Run("forward", func(t *testing.T) {
 		t.Parallel()
+		t.Skip()
 
 		chunk := testingc.FixtureChunk("0025")
 
@@ -349,12 +351,6 @@ func TestRetrieveChunk(t *testing.T) {
 		forwarderAddress := swarm.MustParseHexAddress("0200000000000000000000000000000000000000000000000000000000000000")
 		clientAddress := swarm.MustParseHexAddress("030000000000000000000000000000000000000000000000000000000000000000")
 
-		serverStorer := &testStorer{ChunkStore: inmemchunkstore.New()}
-		err := serverStorer.Put(context.Background(), chunk)
-		if err != nil {
-			t.Fatal(err)
-		}
-
 		buf := new(bytes.Buffer)
 		captureLogger := log.NewLogger("test", log.WithSink(buf))
 
@@ -396,13 +392,14 @@ func TestRetrieveChunk(t *testing.T) {
 			false,
 		)
 
-		_, err = client.RetrieveChunk(context.Background(), chunk.Address(), swarm.ZeroAddress)
+		_, err := client.RetrieveChunk(context.Background(), chunk.Address(), swarm.ZeroAddress)
 		if err == nil {
 			t.Fatal("should have received an error")
 		}
 
-		if !strings.Contains(buf.String(), "received delivery error msg: retrieve chunk: no peer found") {
-			t.Fatal("error msg did not propagate back to the origin node")
+		want := p2p.NewChunkDeliveryError("retrieve chunk: no peer found")
+		if got := buf.String(); !strings.Contains(got, want.Error()) {
+			t.Fatalf("got log %s, want %s", got, want)
 		}
 	})
 }

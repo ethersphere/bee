@@ -623,8 +623,9 @@ func TestPropagateErrMsg(t *testing.T) {
 		t.Fatal("should received error")
 	}
 
-	if !strings.Contains(buf.String(), "received delivery error msg: receipt signature: simulated error") {
-		t.Fatal("error msg did not propagate back to the origin node")
+	want := p2p.NewChunkDeliveryError("receipt signature: simulated error")
+	if got := buf.String(); !strings.Contains(got, want.Error()) {
+		t.Fatalf("got log %s, want %s", got, want)
 	}
 }
 

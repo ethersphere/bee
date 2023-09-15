@@ -493,7 +493,7 @@ func (ps *PushSync) pushChunkToPeer(ctx context.Context, peer swarm.Address, ch 
 		return nil, err
 	}
 	if rec.Err != "" {
-		return nil, &p2p.DeliveryError{Msg: rec.Err}
+		return nil, p2p.NewChunkDeliveryError(rec.Err)
 	}
 
 	if !ch.Address().Equal(swarm.NewAddress(rec.Address)) {

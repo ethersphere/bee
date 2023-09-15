@@ -224,29 +224,10 @@ func NewSwarmStreamName(protocol, version, stream string) string {
 	return "/swarm/" + protocol + "/" + version + "/" + stream
 }
 
-var errDelivery = errors.New("received delivery error msg")
-
-type DeliveryError struct {
-	Msg string
-}
+type ChunkDeliveryError struct{ msg string }
 
 // Error implements the error interface.
-func (e *DeliveryError) Error() string {
-	return fmt.Sprintf("%v: %s", errDelivery, e.Msg)
-}
+func (e *ChunkDeliveryError) Error() string { return fmt.Sprintf("delivery of chunk %s", e.msg) }
 
-// Unwrap implements the interface required by errors.Unwrap function.
-func (e *DeliveryError) Unwrap() error {
-	return errDelivery
-}
-
-// Equal returns true if the given error
-// type and fields are equal to this error.
-// It is used to compare errors in tests.
-func (e *DeliveryError) Equal(err error) bool {
-	var p *DeliveryError
-	if !errors.As(err, &p) {
-		return false
-	}
-	return e.Msg == p.Msg
-}
+// NewChunkDeliveryError is a convenience constructor for ChunkDeliveryError.
+func NewChunkDeliveryError(msg string) error { return &ChunkDeliveryError{msg: msg} }
