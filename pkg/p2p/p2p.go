@@ -224,10 +224,16 @@ func NewSwarmStreamName(protocol, version, stream string) string {
 	return "/swarm/" + protocol + "/" + version + "/" + stream
 }
 
-type ChunkDeliveryError struct{ msg string }
+type ChunkDeliveryError struct {
+	msg string
+}
 
 // Error implements the error interface.
-func (e *ChunkDeliveryError) Error() string { return fmt.Sprintf("delivery of chunk %s", e.msg) }
+func (e *ChunkDeliveryError) Error() string {
+	return fmt.Sprintf("delivery of chunk failed: %s", e.msg)
+}
 
 // NewChunkDeliveryError is a convenience constructor for ChunkDeliveryError.
-func NewChunkDeliveryError(msg string) error { return &ChunkDeliveryError{msg: msg} }
+func NewChunkDeliveryError(msg string) error {
+	return &ChunkDeliveryError{msg: msg}
+}
