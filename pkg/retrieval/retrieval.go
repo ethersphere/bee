@@ -389,8 +389,6 @@ func (s *Service) closestPeer(addr swarm.Address, skipPeers []swarm.Address, all
 }
 
 func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
-	loggerV1 := s.logger.V(1).Register()
-
 	ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
 	defer cancel()
 
@@ -449,8 +447,6 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 		errOnWrite = true
 		return fmt.Errorf("write delivery: %w peer %s", err, p.Address.String())
 	}
-
-	loggerV1.Debug("retrieval protocol debiting peer", "peer_address", p.Address)
 
 	// debit price from p's balance
 	if err := debit.Apply(); err != nil {
