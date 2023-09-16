@@ -157,7 +157,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	now := time.Now()
 
 	w, r := protobuf.NewWriterAndReader(stream)
-	var errOnWrite bool
+	var attemptedWrite bool
 
 	ctx, cancel := context.WithTimeout(ctx, defaultTTL)
 	defer cancel()
@@ -166,7 +166,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		if err != nil {
 			ps.metrics.TotalHandlerTime.WithLabelValues("failure").Observe(time.Since(now).Seconds())
 			ps.metrics.TotalHandlerErrors.Inc()
-			if !errOnWrite {
+			if !attemptedWrite {
 				_ = w.WriteMsgWithContext(ctx, &pb.Receipt{Err: err.Error()})
 			}
 			_ = stream.Reset()
@@ -231,7 +231,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 		receipt := pb.Receipt{Address: chunkToPut.Address().Bytes(), Signature: signature, Nonce: ps.nonce}
 		if err := w.WriteMsgWithContext(ctx, &receipt); err != nil {
-			errOnWrite = true
+			attemptedWrite = true
 			return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 		}
 
@@ -260,9 +260,10 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	}
 	defer debit.Cleanup()
 
+	attemptedWrite = true
+
 	// pass back the receipt
 	if err := w.WriteMsgWithContext(ctx, receipt); err != nil {
-		errOnWrite = true
 		return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 	}
 

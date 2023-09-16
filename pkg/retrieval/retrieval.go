@@ -393,11 +393,11 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	defer cancel()
 
 	w, r := protobuf.NewWriterAndReader(stream)
-	var errOnWrite bool
+	var attemptedWrite bool
 
 	defer func() {
 		if err != nil {
-			if !errOnWrite {
+			if !attemptedWrite {
 				_ = w.WriteMsgWithContext(ctx, &pb.Delivery{Err: err.Error()})
 			}
 			_ = stream.Reset()
@@ -441,10 +441,11 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	}
 	defer debit.Cleanup()
 
+	attemptedWrite = true
+
 	if err := w.WriteMsgWithContext(ctx, &pb.Delivery{
 		Data: chunk.Data(),
 	}); err != nil {
-		errOnWrite = true
 		return fmt.Errorf("write delivery: %w peer %s", err, p.Address.String())
 	}
 
