@@ -74,7 +74,10 @@ func checkOverlay(storer storage.StateStorer, overlay swarm.Address) error {
 	var storedOverlay swarm.Address
 	err := storer.Get(noncedOverlayKey, &storedOverlay)
 	if err != nil {
-		return err
+		if !errors.Is(err, storage.ErrNotFound) {
+			return err
+		}
+		return storer.Put(noncedOverlayKey, overlay)
 	}
 
 	if !storedOverlay.Equal(overlay) {
