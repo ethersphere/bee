@@ -229,9 +229,10 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		}
 		defer debit.Cleanup()
 
+		attemptedWrite = true
+
 		receipt := pb.Receipt{Address: chunkToPut.Address().Bytes(), Signature: signature, Nonce: ps.nonce}
 		if err := w.WriteMsgWithContext(ctx, &receipt); err != nil {
-			attemptedWrite = true
 			return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
 		}
 
