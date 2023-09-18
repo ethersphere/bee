@@ -37,7 +37,7 @@ import (
 	localmigration "github.com/ethersphere/bee/pkg/storer/migration"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
-	"github.com/ethersphere/bee/pkg/util"
+	"github.com/ethersphere/bee/pkg/util/syncutil"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/afero"
 	"github.com/syndtr/goleveldb/leveldb"
@@ -156,7 +156,7 @@ type ReserveStore interface {
 	ReserveHas(addr swarm.Address, batchID []byte) (bool, error)
 	ReservePutter() storage.Putter
 	SubscribeBin(ctx context.Context, bin uint8, start uint64) (<-chan *BinC, func(), <-chan error)
-	ReserveLastBinIDs() ([]uint64, error)
+	ReserveLastBinIDs() ([]uint64, uint64, error)
 	RadiusChecker
 }
 
@@ -282,6 +282,11 @@ func initDiskRepository(
 	store, err := initStore(basePath, opts)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed creating levelDB index store: %w", err)
+	}
+
+	err = migration.Migrate(store, "core-migration", localmigration.BeforeIinitSteps())
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed core migration: %w", err)
 	}
 
 	if opts.LdbStats.Load() != nil {
@@ -465,6 +470,15 @@ func defaultOptions() *Options {
 	}
 }
 
+// cacheLimiter is used to limit the number
+// of concurrent cache background workers.
+type cacheLimiter struct {
+	wg     sync.WaitGroup
+	sem    chan struct{}
+	ctx    context.Context
+	cancel context.CancelFunc
+}
+
 // DB implements all the component stores described above.
 type DB struct {
 	logger  log.Logger
@@ -476,15 +490,14 @@ type DB struct {
 	retrieval           retrieval.Interface
 	pusherFeed          chan *pusher.Op
 	quit                chan struct{}
-	bgCacheLimiter      chan struct{}
-	bgCacheLimiterWg    sync.WaitGroup
+	cacheLimiter        cacheLimiter
 	dbCloser            io.Closer
 	subscriptionsWG     sync.WaitGroup
 	events              *events.Subscriber
 	directUploadLimiter chan struct{}
 
 	reserve          *reserve.Reserve
-	inFlight         *util.WaitingCounter
+	inFlight         sync.WaitGroup
 	reserveBinEvents *events.Subscriber
 	baseAddr         swarm.Address
 	batchstore       postage.Storer
@@ -554,7 +567,8 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	}
 	err = migration.Migrate(
 		repo.IndexStore(),
-		localmigration.AllSteps(sharkyBasePath, sharkyNoOfShards, repo.ChunkStore()),
+		"migration",
+		localmigration.AfterInitSteps(sharkyBasePath, sharkyNoOfShards, repo.ChunkStore()),
 	)
 	if err != nil {
 		return nil, err
@@ -565,17 +579,22 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		return nil, err
 	}
 
+	clCtx, clCancel := context.WithCancel(ctx)
 	db := &DB{
-		metrics:          metrics,
-		logger:           logger,
-		baseAddr:         opts.Address,
-		repo:             repo,
-		lock:             lock,
-		cacheObj:         cacheObj,
-		retrieval:        noopRetrieval{},
-		pusherFeed:       make(chan *pusher.Op),
-		quit:             make(chan struct{}),
-		bgCacheLimiter:   make(chan struct{}, 16),
+		metrics:    metrics,
+		logger:     logger,
+		baseAddr:   opts.Address,
+		repo:       repo,
+		lock:       lock,
+		cacheObj:   cacheObj,
+		retrieval:  noopRetrieval{},
+		pusherFeed: make(chan *pusher.Op),
+		quit:       make(chan struct{}),
+		cacheLimiter: cacheLimiter{
+			sem:    make(chan struct{}, defaultBgCacheWorkers),
+			ctx:    clCtx,
+			cancel: clCancel,
+		},
 		dbCloser:         dbCloser,
 		batchstore:       opts.Batchstore,
 		validStamp:       opts.ValidStamp,
@@ -586,7 +605,6 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 			wakeupDuration: opts.ReserveWakeUpDuration,
 		},
 		directUploadLimiter: make(chan struct{}, pusher.ConcurrentPushes),
-		inFlight:            new(util.WaitingCounter),
 	}
 
 	if db.validStamp == nil {
@@ -647,7 +665,7 @@ func (db *DB) Close() error {
 	bgReserveWorkersClosed := make(chan struct{})
 	go func() {
 		defer close(bgReserveWorkersClosed)
-		if c := db.inFlight.Wait(5 * time.Second); c > 0 {
+		if !syncutil.WaitWithTimeout(&db.inFlight, 2*time.Second) {
 			db.logger.Warning("db shutting down with running goroutines")
 		}
 	}()
@@ -655,7 +673,10 @@ func (db *DB) Close() error {
 	bgCacheWorkersClosed := make(chan struct{})
 	go func() {
 		defer close(bgCacheWorkersClosed)
-		db.bgCacheLimiterWg.Wait()
+		if !syncutil.WaitWithTimeout(&db.cacheLimiter.wg, 2*time.Second) {
+			db.logger.Warning("cache goroutines still running after the wait timeout; force closing")
+			db.cacheLimiter.cancel()
+		}
 	}()
 
 	var err error

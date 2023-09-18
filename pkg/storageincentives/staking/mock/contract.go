@@ -9,7 +9,6 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
-
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 )
 

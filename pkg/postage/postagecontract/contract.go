@@ -199,7 +199,13 @@ func (c *postageContract) sendTransaction(ctx context.Context, callData []byte, 
 	}
 
 	if receipt.Status == 0 {
-		return nil, transaction.ErrTransactionReverted
+		err := transaction.ErrTransactionReverted
+		if res, cErr := c.transactionService.Call(ctx, request); cErr == nil {
+			if reason, uErr := abi.UnpackRevert(res); uErr == nil {
+				err = fmt.Errorf("%w: reason: %s", err, reason)
+			}
+		}
+		return nil, err
 	}
 
 	return receipt, nil

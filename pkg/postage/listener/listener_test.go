@@ -20,8 +20,8 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/listener"
-	"github.com/ethersphere/bee/pkg/util"
 	"github.com/ethersphere/bee/pkg/util/abiutil"
+	"github.com/ethersphere/bee/pkg/util/syncutil"
 	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
@@ -359,7 +359,7 @@ func TestListener(t *testing.T) {
 		mf := newMockFilterer(
 			WithBlockNumberError(errors.New("dummy error")),
 		)
-		c := util.NewSignaler()
+		c := syncutil.NewSignaler()
 
 		l := listener.New(
 			c,
@@ -387,7 +387,7 @@ func TestListener(t *testing.T) {
 		mf := newMockFilterer(
 			WithBlockNumber(blockNumber),
 		)
-		c := util.NewSignaler()
+		c := syncutil.NewSignaler()
 
 		l := listener.New(c,
 			log.Noop,

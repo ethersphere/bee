@@ -219,26 +219,22 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest, boost
 }
 
 func (t *transactionService) waitForPendingTx(txHash common.Hash) {
-	loggerV1 := t.logger.V(1).Register()
-
 	t.wg.Add(1)
 	go func() {
 		defer t.wg.Done()
-		_, err := t.WaitForReceipt(t.ctx, txHash)
-		if err != nil {
-			if !errors.Is(err, ErrTransactionCancelled) {
-				t.logger.Error(err, "error while waiting for pending transaction", "tx", txHash)
-				return
-			} else {
-				t.logger.Warning("pending transaction cancelled", "tx", txHash)
+		switch _, err := t.WaitForReceipt(t.ctx, txHash); {
+		case err == nil:
+			t.logger.Info("pending transaction confirmed", "tx", txHash)
+			err = t.store.Delete(pendingTransactionKey(txHash))
+			if err != nil {
+				t.logger.Error(err, "unregistering finished pending transaction failed", "tx", txHash)
 			}
-		} else {
-			loggerV1.Debug("pending transaction confirmed", "tx", txHash)
-		}
-
-		err = t.store.Delete(pendingTransactionKey(txHash))
-		if err != nil {
-			t.logger.Error(err, "error while unregistering transaction as pending", "tx", txHash)
+		default:
+			if errors.Is(err, ErrTransactionCancelled) {
+				t.logger.Warning("pending transaction cancelled", "tx", txHash)
+			} else {
+				t.logger.Error(err, "waiting for pending transaction failed", "tx", txHash)
+			}
 		}
 	}()
 }

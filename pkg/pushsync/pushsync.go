@@ -35,7 +35,7 @@ const loggerName = "pushsync"
 
 const (
 	protocolName    = "pushsync"
-	protocolVersion = "1.2.0"
+	protocolVersion = "1.3.0"
 	streamName      = "pushsync"
 )
 
@@ -157,6 +157,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	now := time.Now()
 
 	w, r := protobuf.NewWriterAndReader(stream)
+	var attemptedWrite bool
 
 	ctx, cancel := context.WithTimeout(ctx, defaultTTL)
 	defer cancel()
@@ -165,6 +166,9 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		if err != nil {
 			ps.metrics.TotalHandlerTime.WithLabelValues("failure").Observe(time.Since(now).Seconds())
 			ps.metrics.TotalHandlerErrors.Inc()
+			if !attemptedWrite {
+				_ = w.WriteMsgWithContext(ctx, &pb.Receipt{Err: err.Error()})
+			}
 			_ = stream.Reset()
 		} else {
 			ps.metrics.TotalHandlerTime.WithLabelValues("success").Observe(time.Since(now).Seconds())
@@ -225,6 +229,8 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		}
 		defer debit.Cleanup()
 
+		attemptedWrite = true
+
 		receipt := pb.Receipt{Address: chunkToPut.Address().Bytes(), Signature: signature, Nonce: ps.nonce}
 		if err := w.WriteMsgWithContext(ctx, &receipt); err != nil {
 			return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
@@ -254,6 +260,8 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		return fmt.Errorf("prepare debit to peer %s before writeback: %w", p.Address.String(), err)
 	}
 	defer debit.Cleanup()
+
+	attemptedWrite = true
 
 	// pass back the receipt
 	if err := w.WriteMsgWithContext(ctx, receipt); err != nil {
@@ -485,6 +493,9 @@ func (ps *PushSync) pushChunkToPeer(ctx context.Context, peer swarm.Address, ch 
 	var rec pb.Receipt
 	if err = r.ReadMsgWithContext(ctx, &rec); err != nil {
 		return nil, err
+	}
+	if rec.Err != "" {
+		return nil, p2p.NewChunkDeliveryError(rec.Err)
 	}
 
 	if !ch.Address().Equal(swarm.NewAddress(rec.Address)) {

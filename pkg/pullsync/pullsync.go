@@ -39,13 +39,6 @@ const (
 	protocolVersion  = "1.3.0"
 	streamName       = "pullsync"
 	cursorStreamName = "cursors"
-	cancelStreamName = "cancel"
-)
-
-const (
-	MaxCursor           = math.MaxUint64
-	DefaultRateDuration = time.Minute * 15
-	batchTimeout        = time.Second
 )
 
 var (
@@ -53,16 +46,11 @@ var (
 )
 
 const (
-	makeOfferTimeout        = 5 * time.Minute
+	MaxCursor               = math.MaxUint64
 	DefaultMaxPage   uint64 = 250
+	pageTimeout             = time.Second
+	makeOfferTimeout        = 5 * time.Minute
 )
-
-// singleflight key for intervals
-func sfKey(bin uint8, start uint64) string {
-	return fmt.Sprintf("%d-%d", bin, start)
-}
-
-// how many maximum chunks in a batch
 
 // Interface is the PullSync interface.
 type Interface interface {
@@ -71,7 +59,7 @@ type Interface interface {
 	// batch and the total number of chunks the downstream peer has sent.
 	Sync(ctx context.Context, peer swarm.Address, bin uint8, start uint64) (topmost uint64, count int, err error)
 	// GetCursors retrieves all cursors from a downstream peer.
-	GetCursors(ctx context.Context, peer swarm.Address) ([]uint64, error)
+	GetCursors(ctx context.Context, peer swarm.Address) ([]uint64, uint64, error)
 }
 
 type Syncer struct {
@@ -440,12 +428,12 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 				}
 				limit--
 				if timer == nil {
-					timer = time.NewTimer(batchTimeout)
+					timer = time.NewTimer(pageTimeout)
 				} else {
 					if !timer.Stop() {
 						<-timer.C
 					}
-					timer.Reset(batchTimeout)
+					timer.Reset(pageTimeout)
 				}
 				timerC = timer.C
 			case err := <-errC:
@@ -491,12 +479,12 @@ func (s *Syncer) processWant(ctx context.Context, o *pb.Offer, w *pb.Want) ([]sw
 	return chunks, nil
 }
 
-func (s *Syncer) GetCursors(ctx context.Context, peer swarm.Address) (retr []uint64, err error) {
+func (s *Syncer) GetCursors(ctx context.Context, peer swarm.Address) (retr []uint64, epoch uint64, err error) {
 	loggerV2 := s.logger.V(2).Register()
 
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, cursorStreamName)
 	if err != nil {
-		return nil, fmt.Errorf("new stream: %w", err)
+		return nil, 0, fmt.Errorf("new stream: %w", err)
 	}
 	loggerV2.Debug("getting cursors from peer", "peer_address", peer)
 	defer func() {
@@ -511,17 +499,15 @@ func (s *Syncer) GetCursors(ctx context.Context, peer swarm.Address) (retr []uin
 	w, r := protobuf.NewWriterAndReader(stream)
 	syn := &pb.Syn{}
 	if err = w.WriteMsgWithContext(ctx, syn); err != nil {
-		return nil, fmt.Errorf("write syn: %w", err)
+		return nil, 0, fmt.Errorf("write syn: %w", err)
 	}
 
 	var ack pb.Ack
 	if err = r.ReadMsgWithContext(ctx, &ack); err != nil {
-		return nil, fmt.Errorf("read ack: %w", err)
+		return nil, 0, fmt.Errorf("read ack: %w", err)
 	}
 
-	retr = ack.Cursors
-
-	return retr, nil
+	return ack.Cursors, ack.Epoch, nil
 }
 
 func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
@@ -544,11 +530,12 @@ func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Strea
 	}
 
 	var ack pb.Ack
-	ints, err := s.store.ReserveLastBinIDs()
+	ints, epoch, err := s.store.ReserveLastBinIDs()
 	if err != nil {
 		return err
 	}
 	ack.Cursors = ints
+	ack.Epoch = epoch
 	if err = w.WriteMsgWithContext(ctx, &ack); err != nil {
 		return fmt.Errorf("write ack: %w", err)
 	}
@@ -577,4 +564,9 @@ func (s *Syncer) Close() error {
 		s.logger.Warning("pull syncer shutting down with running goroutines")
 	}
 	return nil
+}
+
+// singleflight key for intervals
+func sfKey(bin uint8, start uint64) string {
+	return fmt.Sprintf("%d-%d", bin, start)
 }

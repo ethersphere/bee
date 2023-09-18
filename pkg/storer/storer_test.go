@@ -14,10 +14,10 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	batchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
-	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	"github.com/ethersphere/bee/pkg/storage/migration"
-	storer "github.com/ethersphere/bee/pkg/storer"
+	"github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/storer/internal/cache"
 	pinstore "github.com/ethersphere/bee/pkg/storer/internal/pinning"
 	"github.com/ethersphere/bee/pkg/storer/internal/upload"
@@ -185,12 +185,12 @@ func dbTestOps(baseAddr swarm.Address, reserveCapacity int, bs postage.Storer, r
 func assertStorerVersion(t *testing.T, lstore *storer.DB, sharkyPath string) {
 	t.Helper()
 
-	current, err := migration.Version(lstore.Repo().IndexStore())
+	current, err := migration.Version(lstore.Repo().IndexStore(), "migration")
 	if err != nil {
 		t.Fatalf("migration.Version(...): unexpected error: %v", err)
 	}
 
-	expected := migration.LatestVersion(localmigration.AllSteps(sharkyPath, 4, inmemchunkstore.New()))
+	expected := migration.LatestVersion(localmigration.AfterInitSteps(sharkyPath, 4, inmemchunkstore.New()))
 
 	if current != expected {
 		t.Fatalf("storer is not migrated to latest version; got %d, expected %d", current, expected)

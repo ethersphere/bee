@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -69,6 +70,19 @@ func New(
 		return nil, err
 	}
 	rs.radius.Store(uint32(rItem.Radius))
+
+	epochItem := &EpochItem{}
+	err = store.Get(epochItem)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			err := store.Put(&EpochItem{Timestamp: uint64(time.Now().Unix())})
+			if err != nil {
+				return nil, err
+			}
+		} else {
+			return nil, err
+		}
+	}
 
 	size, err := store.Count(&BatchRadiusItem{})
 	if err != nil {
@@ -478,9 +492,15 @@ func (r *Reserve) SetRadius(store storage.Store, rad uint8) error {
 	return store.Put(&radiusItem{Radius: rad})
 }
 
-func (r *Reserve) LastBinIDs(store storage.Store) ([]uint64, error) {
+func (r *Reserve) LastBinIDs(store storage.Store) ([]uint64, uint64, error) {
 	r.binMtx.Lock()
 	defer r.binMtx.Unlock()
+
+	var epoch EpochItem
+	err := store.Get(&epoch)
+	if err != nil {
+		return nil, 0, err
+	}
 
 	ids := make([]uint64, swarm.MaxBins)
 
@@ -491,14 +511,14 @@ func (r *Reserve) LastBinIDs(store storage.Store) ([]uint64, error) {
 			if errors.Is(err, storage.ErrNotFound) {
 				ids[bin] = 0
 			} else {
-				return nil, err
+				return nil, 0, err
 			}
 		} else {
 			ids[bin] = binItem.BinID
 		}
 	}
 
-	return ids, nil
+	return ids, epoch.Timestamp, nil
 }
 
 // should be called under lock

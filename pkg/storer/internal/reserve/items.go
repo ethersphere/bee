@@ -238,6 +238,32 @@ func (c *BinItem) Unmarshal(buf []byte) error {
 	return nil
 }
 
+// EpochItem stores the timetamp in seconds of the initial creation of the reserve.
+type EpochItem struct {
+	Timestamp uint64
+}
+
+func (e *EpochItem) Namespace() string   { return "epochItem" }
+func (e *EpochItem) ID() string          { return "" }
+func (e *EpochItem) String() string      { return e.Namespace() }
+func (e *EpochItem) Clone() storage.Item { return &EpochItem{e.Timestamp} }
+
+const epochItemSize = 8
+
+func (e *EpochItem) Marshal() ([]byte, error) {
+	buf := make([]byte, epochItemSize)
+	binary.BigEndian.PutUint64(buf, e.Timestamp)
+	return buf, nil
+}
+
+func (e *EpochItem) Unmarshal(buf []byte) error {
+	if len(buf) != epochItemSize {
+		return errUnmarshalInvalidSize
+	}
+	e.Timestamp = binary.BigEndian.Uint64(buf)
+	return nil
+}
+
 // radiusItem stores the current storage radius of the reserve.
 type radiusItem struct {
 	Radius uint8

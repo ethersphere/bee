@@ -84,6 +84,7 @@ const (
 	optionNameUsePostageSnapshot         = "use-postage-snapshot"
 	optionNameStorageIncentivesEnable    = "storage-incentives-enable"
 	optionNameStateStoreCacheCapacity    = "statestore-cache-capacity"
+	optionNameTargetNeighborhood         = "target-neighborhood"
 )
 
 // nolint:gochecknoinits
@@ -268,7 +269,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNameBootnodeMode, false, "cause the node to always accept incoming connections")
 	cmd.Flags().Bool(optionNameClefSignerEnable, false, "enable clef signer")
 	cmd.Flags().String(optionNameClefSignerEndpoint, "", "clef signer endpoint")
-	cmd.Flags().String(optionNameClefSignerEthereumAddress, "", "ethereum address to use from clef signer")
+	cmd.Flags().String(optionNameClefSignerEthereumAddress, "", "blockchain address to use from clef signer")
 	cmd.Flags().String(optionNameSwapEndpoint, "", "swap blockchain endpoint") // deprecated: use rpc endpoint instead
 	cmd.Flags().String(optionNameBlockchainRpcEndpoint, "", "rpc blockchain endpoint")
 	cmd.Flags().String(optionNameSwapFactoryAddress, "", "swap factory addresses")
@@ -298,6 +299,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNameUsePostageSnapshot, false, "bootstrap node using postage snapshot from the network")
 	cmd.Flags().Bool(optionNameStorageIncentivesEnable, true, "enable storage incentives feature")
 	cmd.Flags().Uint64(optionNameStateStoreCacheCapacity, 100_000, "lru memory caching capacity in number of statestore entries")
+	cmd.Flags().String(optionNameTargetNeighborhood, "", "neighborhood to target in binary format (ex: 111111001) for mining the initial overlay")
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {

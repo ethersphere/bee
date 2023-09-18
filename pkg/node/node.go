@@ -31,7 +31,6 @@ import (
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/auth"
 	"github.com/ethersphere/bee/pkg/chainsync"
-	"github.com/ethersphere/bee/pkg/chainsyncer"
 	"github.com/ethersphere/bee/pkg/config"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/feeds/factory"
@@ -73,8 +72,9 @@ import (
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/transaction"
-	"github.com/ethersphere/bee/pkg/util"
 	"github.com/ethersphere/bee/pkg/util/ioutil"
+	"github.com/ethersphere/bee/pkg/util/nbhdutil"
+	"github.com/ethersphere/bee/pkg/util/syncutil"
 	"github.com/hashicorp/go-multierror"
 	ma "github.com/multiformats/go-multiaddr"
 	promc "github.com/prometheus/client_golang/prometheus"
@@ -118,7 +118,7 @@ type Bee struct {
 	retrievalCloser          io.Closer
 	shutdownInProgress       bool
 	shutdownMutex            sync.Mutex
-	syncingStopped           *util.Signaler
+	syncingStopped           *syncutil.Signaler
 }
 
 type Options struct {
@@ -173,6 +173,7 @@ type Options struct {
 	UsePostageSnapshot            bool
 	EnableStorageIncentives       bool
 	StatestoreCacheCapacity       uint64
+	TargetNeighborhood            string
 }
 
 const (
@@ -235,7 +236,7 @@ func NewBee(
 		ctxCancel:      ctxCancel,
 		errorLogWriter: sink,
 		tracerCloser:   tracerCloser,
-		syncingStopped: util.NewSignaler(),
+		syncingStopped: syncutil.NewSignaler(),
 	}
 
 	defer func(b *Bee) {
@@ -267,9 +268,6 @@ func NewBee(
 		return nil, err
 	}
 
-	// if theres a previous transaction hash, and not a new chequebook deployment on a node starting from scratch
-	// get old overlay
-	// mine nonce that gives similar new overlay
 	nonce, nonceExists, err := overlayNonceExists(stateStore)
 	if err != nil {
 		return nil, fmt.Errorf("check presence of nonce: %w", err)
@@ -279,22 +277,31 @@ func NewBee(
 	if err != nil {
 		return nil, fmt.Errorf("compute overlay address: %w", err)
 	}
-	logger.Info("using overlay address", "address", swarmAddress)
+
+	if nonceExists && o.TargetNeighborhood != "" {
+		logger.Warning("an overlay has already been created before, skipping targeting the selected neighborhood")
+	}
 
 	if !nonceExists {
-		err := setOverlayNonce(stateStore, nonce)
-		if err != nil {
-			return nil, fmt.Errorf("statestore: save new overlay nonce: %w", err)
+		// mine the overlay
+		if o.TargetNeighborhood != "" {
+			logger.Info("mining an overlay address for the fresh node to target the selected neighborhood", "target", o.TargetNeighborhood)
+			swarmAddress, nonce, err = nbhdutil.MineOverlay(ctx, *pubKey, networkID, o.TargetNeighborhood)
+			if err != nil {
+				return nil, fmt.Errorf("mine overlay address: %w", err)
+			}
 		}
 
-		err = SetOverlayInStore(swarmAddress, stateStore)
+		err = setOverlay(stateStore, swarmAddress, nonce)
 		if err != nil {
 			return nil, fmt.Errorf("statestore: save new overlay: %w", err)
 		}
 	}
 
-	if err = CheckOverlayWithStore(swarmAddress, stateStore); err != nil {
-		return nil, err
+	logger.Info("using overlay address", "address", swarmAddress)
+
+	if err = checkOverlay(stateStore, swarmAddress); err != nil {
+		return nil, fmt.Errorf("check overlay address: %w", err)
 	}
 
 	var (
@@ -346,7 +353,7 @@ func NewBee(
 	logger.Info("using chain with network network", "chain_id", chainID, "network_id", networkID)
 
 	if o.ChainID != -1 && o.ChainID != chainID {
-		return nil, fmt.Errorf("connected to wrong ethereum network; network chainID %d; configured chainID %d", chainID, o.ChainID)
+		return nil, fmt.Errorf("connected to wrong blockchain network; network chainID %d; configured chainID %d", chainID, o.ChainID)
 	}
 
 	b.transactionCloser = tracerCloser
@@ -488,7 +495,7 @@ func NewBee(
 		return nil, fmt.Errorf("is synced: %w", err)
 	}
 	if !isSynced {
-		logger.Info("waiting to sync with the Ethereum backend")
+		logger.Info("waiting to sync with the blockchain backend")
 
 		err := transaction.WaitSynced(ctx, logger, chainBackend, maxDelay)
 		if err != nil {
@@ -1093,8 +1100,6 @@ func NewBee(
 	)
 	b.resolverCloser = multiResolver
 
-	var chainSyncer *chainsyncer.ChainSyncer
-
 	if o.FullNodeMode {
 		cs, err := chainsync.New(p2ps, chainBackend)
 		if err != nil {
@@ -1103,12 +1108,6 @@ func NewBee(
 		if err = p2ps.AddProtocol(cs.Protocol()); err != nil {
 			return nil, fmt.Errorf("chainsync protocol: %w", err)
 		}
-		chainSyncer, err = chainsyncer.New(chainBackend, cs, kad, p2ps, logger, nil)
-		if err != nil {
-			return nil, fmt.Errorf("new chainsyncer: %w", err)
-		}
-
-		b.chainSyncerCloser = chainSyncer
 	}
 
 	feedFactory := factory.New(localStore.Download(true))

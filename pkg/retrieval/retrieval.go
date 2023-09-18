@@ -36,7 +36,7 @@ const loggerName = "retrieval"
 
 const (
 	protocolName    = "retrieval"
-	protocolVersion = "1.3.0"
+	protocolVersion = "1.4.0"
 	streamName      = "retrieval"
 )
 
@@ -126,7 +126,7 @@ const (
 )
 
 func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr swarm.Address) (swarm.Chunk, error) {
-	loggerV1 := s.logger.V(1).Register()
+	loggerV1 := s.logger
 
 	s.metrics.RequestCounter.Inc()
 
@@ -321,11 +321,15 @@ func (s *Service) retrieveChunk(ctx context.Context, chunkAddr, peer swarm.Addre
 	}
 
 	var d pb.Delivery
-	err = r.ReadMsgWithContext(ctx, &d)
-	if err != nil {
+	if err = r.ReadMsgWithContext(ctx, &d); err != nil {
 		err = fmt.Errorf("read delivery: %w peer %s", err, peer.String())
 		return
 	}
+	if d.Err != "" {
+		err = p2p.NewChunkDeliveryError(d.Err)
+		return
+	}
+
 	s.metrics.ChunkRetrieveTime.Observe(time.Since(startTime).Seconds())
 	s.metrics.TotalRetrieved.Inc()
 
@@ -385,14 +389,17 @@ func (s *Service) closestPeer(addr swarm.Address, skipPeers []swarm.Address, all
 }
 
 func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
-	loggerV1 := s.logger.V(1).Register()
-
 	ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
 	defer cancel()
 
 	w, r := protobuf.NewWriterAndReader(stream)
+	var attemptedWrite bool
+
 	defer func() {
 		if err != nil {
+			if !attemptedWrite {
+				_ = w.WriteMsgWithContext(ctx, &pb.Delivery{Err: err.Error()})
+			}
 			_ = stream.Reset()
 		} else {
 			_ = stream.FullClose()
@@ -434,13 +441,13 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	}
 	defer debit.Cleanup()
 
+	attemptedWrite = true
+
 	if err := w.WriteMsgWithContext(ctx, &pb.Delivery{
 		Data: chunk.Data(),
 	}); err != nil {
 		return fmt.Errorf("write delivery: %w peer %s", err, p.Address.String())
 	}
-
-	loggerV1.Debug("retrieval protocol debiting peer", "peer_address", p.Address)
 
 	// debit price from p's balance
 	if err := debit.Apply(); err != nil {
