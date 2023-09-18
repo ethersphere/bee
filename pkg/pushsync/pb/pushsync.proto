@@ -18,4 +18,5 @@ message Receipt {
   bytes Address = 1;
   bytes Signature = 2;
   bytes Nonce = 3;
+  string Err = 4;
 }
