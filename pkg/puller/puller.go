@@ -222,7 +222,7 @@ func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, storageRadius uin
 			// cancel all bins
 			peer.gone()
 
-			p.logger.Debug("peer epoch change detected, resetting past synced intervals", "peer_address", peer.address)
+			p.logger.Debug("peer epoch change detected, resetting past synced intervals", "stored_epoch", storedEpoch, "new_epoch", epoch, "peer_address", peer.address)
 
 			err = p.resetPeerIntervals(peer.address)
 			if err != nil {
