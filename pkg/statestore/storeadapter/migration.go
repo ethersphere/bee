@@ -16,6 +16,7 @@ func allSteps() migration.Steps {
 		1: epochMigration,
 		2: deletePrefix("sync_interval"),
 		3: deletePrefix("sync_interval"),
+		4: deletePrefix("blocklist"),
 	}
 }
 
