@@ -158,8 +158,6 @@ func New(ctx context.Context, store internal.Storage, capacity uint64) (*Cache, 
 		return nil, fmt.Errorf("failed counting cache entries: %w", err)
 	}
 
-	fmt.Println("capacity", capacity)
-
 	if count > int(capacity) {
 		err := removeOldest(
 			ctx,

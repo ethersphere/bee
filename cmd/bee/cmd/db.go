@@ -7,6 +7,7 @@ package cmd
 import (
 	"archive/tar"
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -76,6 +77,8 @@ func dbInfoCmd(cmd *cobra.Command) {
 			}
 			defer db.Close()
 
+			logger.Info("getting db info", "path", dataDir)
+
 			info, err := db.DebugInfo(cmd.Context())
 			if err != nil {
 				return fmt.Errorf("fetching db info: %w", err)
@@ -119,9 +122,7 @@ func dbCompactCmd(cmd *cobra.Command) {
 				return errors.New("no data-dir provided")
 			}
 
-			logger.Info("getting db indices with data-dir", "path", dataDir)
-
-			db, err := storer.New(cmd.Context(), dataDir, &storer.Options{
+			err = storer.Compact(context.Background(), dataDir, &storer.Options{
 				Logger:          logger,
 				RadiusSetter:    noopRadiusSetter{},
 				Batchstore:      new(postage.NoOpBatchStore),
@@ -130,7 +131,6 @@ func dbCompactCmd(cmd *cobra.Command) {
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
 			}
-			defer db.Close()
 
 			return nil
 		},

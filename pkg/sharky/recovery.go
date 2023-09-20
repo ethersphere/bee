@@ -104,11 +104,7 @@ func (r *Recovery) TruncateAt(ctx context.Context, shard uint8, slot uint32) err
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
-	err := r.shardFiles[shard].Truncate(int64(slot) * int64(r.datasize))
-	if err != nil {
-		return err
-	}
-	return r.shardFiles[shard].Sync()
+	return r.shardFiles[shard].Truncate(int64(slot) * int64(r.datasize))
 }
 
 // Save saves all free slots files of the recovery (without closing).

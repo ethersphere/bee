@@ -18,6 +18,9 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+// TestCompact creates two batches and puts chunks belonging to both batches.
+// The first batch is then expired, causing free slots to accumulate in sharky.
+// Next, sharky is compacted, after which, it is tested that valid chunks can still be retrieved.
 func TestCompact(t *testing.T) {
 
 	baseAddr := swarm.RandAddress(t)
