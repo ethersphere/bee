@@ -6,6 +6,7 @@ package postage
 
 import (
 	"bytes"
+	"encoding/hex"
 	"errors"
 	"io"
 	"math/big"
@@ -156,6 +157,10 @@ func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, func(bool) erro
 			if !ps.IssuerUsable(st) {
 				return nil, nil, ErrNotUsable
 			}
+			if (st.logger == nil) {
+				st.logger = log.NewLogger("node").WithName("postage").Register()
+			}
+			st.logger.Debug("postage.GetStampIssuer", "label", st.data.Label, "batch", hex.EncodeToString(st.data.BatchID))
 			return st, func(update bool) error {
 				if update {
 					return ps.save(st)
@@ -223,6 +228,10 @@ func (ps *service) add(st *StampIssuer) bool {
 			return false
 		}
 	}
+	if (st.logger == nil) {
+		st.logger = log.NewLogger("node").WithName("postage").Register()
+	}
+	st.logger.Debug("postage.add(StampIssuer)", "label", st.data.Label, "batch", hex.EncodeToString(st.data.BatchID))
 	ps.issuers = append(ps.issuers, st)
 	return true
 }
