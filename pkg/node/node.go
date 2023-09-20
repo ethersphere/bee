@@ -1004,7 +1004,11 @@ func NewBee(
 	if o.FullNodeMode && !o.BootnodeMode {
 		logger.Info("starting in full mode")
 	} else {
-		logger.Info("starting in light mode")
+		if chainEnabled {
+			logger.Info("starting in light mode")
+		} else {
+			logger.Info("starting in ultra-light mode")
+		}
 		p2p.WithBlocklistStreams(p2p.DefaultBlocklistTime, retrieveProtocolSpec)
 		p2p.WithBlocklistStreams(p2p.DefaultBlocklistTime, pushSyncProtocolSpec)
 		p2p.WithBlocklistStreams(p2p.DefaultBlocklistTime, pullSyncProtocolSpec)
