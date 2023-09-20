@@ -95,6 +95,50 @@ func dbInfoCmd(cmd *cobra.Command) {
 	cmd.AddCommand(c)
 }
 
+func dbCompactCmd(cmd *cobra.Command) {
+	c := &cobra.Command{
+		Use:   "compact",
+		Short: "Compacts the localstore sharky store.",
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			v, err := cmd.Flags().GetString(optionNameVerbosity)
+			if err != nil {
+				return fmt.Errorf("get verbosity: %w", err)
+			}
+			v = strings.ToLower(v)
+			logger, err := newLogger(cmd, v)
+			if err != nil {
+				return fmt.Errorf("new logger: %w", err)
+			}
+
+			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
+			if err != nil {
+				return fmt.Errorf("get data-dir: %w", err)
+			}
+			if dataDir == "" {
+				return errors.New("no data-dir provided")
+			}
+
+			logger.Info("getting db indices with data-dir", "path", dataDir)
+
+			db, err := storer.New(cmd.Context(), dataDir, &storer.Options{
+				Logger:          logger,
+				RadiusSetter:    noopRadiusSetter{},
+				Batchstore:      new(postage.NoOpBatchStore),
+				ReserveCapacity: node.ReserveCapacity,
+			})
+			if err != nil {
+				return fmt.Errorf("localstore: %w", err)
+			}
+			defer db.Close()
+
+			return nil
+		},
+	}
+	c.Flags().String(optionNameDataDir, "", "data directory")
+	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
+	cmd.AddCommand(c)
+}
+
 func dbExportCmd(cmd *cobra.Command) {
 	c := &cobra.Command{
 		Use:   "export",

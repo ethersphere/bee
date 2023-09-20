@@ -158,6 +158,8 @@ func New(ctx context.Context, store internal.Storage, capacity uint64) (*Cache, 
 		return nil, fmt.Errorf("failed counting cache entries: %w", err)
 	}
 
+	fmt.Println("capacity", capacity)
+
 	if count > int(capacity) {
 		err := removeOldest(
 			ctx,
@@ -396,7 +398,11 @@ func (c *Cache) MoveFromReserve(
 		return nil
 	}
 
+	//consider only the amount that can fit, the rest should be deleted from the chunkstore.
 	if len(entriesToAdd) > c.capacity {
+		for _, e := range entriesToAdd[:len(entriesToAdd)-c.capacity] {
+			_ = store.ChunkStore().Delete(ctx, e.Address)
+		}
 		entriesToAdd = entriesToAdd[len(entriesToAdd)-c.capacity:]
 	}
 

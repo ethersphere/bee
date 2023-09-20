@@ -6,6 +6,7 @@ package migration
 
 import (
 	"context"
+	"fmt"
 	"os"
 
 	"github.com/ethersphere/bee/pkg/log"
@@ -41,6 +42,8 @@ func step_04(
 			if res.Err != nil {
 				return res.Err
 			}
+
+			fmt.Println(res.Location.Shard, res.Location.Shard)
 
 			if err := sharkyRecover.Add(res.Location); err != nil {
 				return err
