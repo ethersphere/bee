@@ -99,7 +99,7 @@ func Compact(ctx context.Context, basePath string, opts *Options) error {
 
 					from.Location = to
 					if err := store.Put(from); err != nil {
-						return fmt.Errorf("sharky add: %w", err)
+						return fmt.Errorf("store put: %w", err)
 					}
 
 					start++
