@@ -196,7 +196,7 @@ func (si *StampIssuer) increment(addr swarm.Address) (batchIndex []byte, batchTi
 		if si.ImmutableFlag() {
 			return nil, nil, ErrBucketFull
 		}
-		si.logger.Debug("StampIssuer.increment mutable OVERFLOW!", "chunk", addr, "batch", hex.EncodeToString(si.data.BatchID), "bucket", bIdx, "bCnt", si.data.Buckets[bIdx], "max", si.data.MaxBucketCount)
+		si.logger.Debug("StampIssuer.increment mutable OVERFLOW!", "chunk", addr, "batch", hex.EncodeToString(si.data.BatchID), "bucket", bIdx, "bCnt", si.data.Buckets[bIdx], "maxused", si.data.MaxBucketCount, "upperbound", si.BucketUpperBound())
 
 		bCnt = 0
 		si.data.Buckets[bIdx] = 0
@@ -207,7 +207,7 @@ func (si *StampIssuer) increment(addr swarm.Address) (batchIndex []byte, batchTi
 		si.data.MaxBucketCount = si.data.Buckets[bIdx]
 	}
 	
-	si.logger.Debug("StampIssuer.increment", "chunk", addr, "batch", hex.EncodeToString(si.data.BatchID), "bucket", bIdx, "bCnt", si.data.Buckets[bIdx], "max", si.data.MaxBucketCount)
+	si.logger.Debug("StampIssuer.increment", "chunk", addr, "batch", hex.EncodeToString(si.data.BatchID), "bucket", bIdx, "bCnt", si.data.Buckets[bIdx], "maxused", si.data.MaxBucketCount, "upperbound", si.BucketUpperBound())
 
 	return indexToBytes(bIdx, bCnt), unixTime(), nil
 }
