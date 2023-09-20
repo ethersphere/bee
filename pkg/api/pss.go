@@ -98,7 +98,6 @@ func (s *Service) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = s.pss.Send(r.Context(), topic, payload, stamper, queries.Recipient, targets)
 	if err != nil {
-		err = errors.Join(err, save(false))
 		logger.Debug("send payload failed", "topic", paths.Topic, "error", err)
 		logger.Error(nil, "send payload failed")
 		switch {
@@ -110,8 +109,7 @@ func (s *Service) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = save(true)
-	if err != nil {
+	if err = save(); err != nil {
 		logger.Debug("save stamp failed", "error", err)
 		logger.Error(nil, "save stamp failed")
 		jsonhttp.InternalServerError(w, "pss send failed")
