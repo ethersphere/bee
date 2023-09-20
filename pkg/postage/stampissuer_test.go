@@ -48,6 +48,11 @@ func TestStampIssuerMarshalling(t *testing.T) {
 
 func newTestStampIssuer(t *testing.T, block uint64) *postage.StampIssuer {
 	t.Helper()
+	return newTestStampIssuerMutability(t, block, true)
+}
+
+func newTestStampIssuerMutability(t *testing.T, block uint64, immutable bool) *postage.StampIssuer {
+	t.Helper()
 	id := make([]byte, 32)
 	_, err := io.ReadFull(crand.Reader, id)
 	if err != nil {
@@ -61,7 +66,7 @@ func newTestStampIssuer(t *testing.T, block uint64) *postage.StampIssuer {
 		16,
 		8,
 		block,
-		true,
+		immutable,
 	)
 }
 
