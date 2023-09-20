@@ -34,6 +34,7 @@ func (c *command) initDBCmd() {
 	dbImportCmd(cmd)
 	dbNukeCmd(cmd)
 	dbInfoCmd(cmd)
+	dbCompactCmd(cmd)
 
 	c.root.AddCommand(cmd)
 }
