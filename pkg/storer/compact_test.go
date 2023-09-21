@@ -73,7 +73,7 @@ func TestCompact(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = storer.Compact(ctx, basePath, opts)
+	err = storer.Compact(ctx, basePath, opts, true)
 	if err != nil {
 		t.Fatal(err)
 	}

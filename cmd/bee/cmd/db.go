@@ -101,6 +101,9 @@ func dbInfoCmd(cmd *cobra.Command) {
 }
 
 func dbCompactCmd(cmd *cobra.Command) {
+
+	optionNameValidation := "validate"
+
 	c := &cobra.Command{
 		Use:   "compact",
 		Short: "Compacts the localstore sharky store.",
@@ -123,6 +126,11 @@ func dbCompactCmd(cmd *cobra.Command) {
 				return errors.New("no data-dir provided")
 			}
 
+			validation, err := cmd.Flags().GetBool(optionNameValidation)
+			if err != nil {
+				return fmt.Errorf("get validation: %w", err)
+			}
+
 			localstorePath := path.Join(dataDir, "localstore")
 
 			err = storer.Compact(context.Background(), localstorePath, &storer.Options{
@@ -130,7 +138,7 @@ func dbCompactCmd(cmd *cobra.Command) {
 				RadiusSetter:    noopRadiusSetter{},
 				Batchstore:      new(postage.NoOpBatchStore),
 				ReserveCapacity: node.ReserveCapacity,
-			})
+			}, validation)
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
 			}
@@ -140,6 +148,7 @@ func dbCompactCmd(cmd *cobra.Command) {
 	}
 	c.Flags().String(optionNameDataDir, "", "data directory")
 	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
+	c.Flags().Bool(optionNameValidation, true, "enable chunk validation")
 	cmd.AddCommand(c)
 }
 
