@@ -170,7 +170,7 @@ func validationWork(ctx context.Context, logger log.Logger, store storage.Store,
 
 	eg, ctx := errgroup.WithContext(ctx)
 
-	for i := 0; i < 4; i++ {
+	for i := 0; i < 8; i++ {
 		eg.Go(func() error {
 			buf := make([]byte, swarm.SocMaxChunkSize)
 			for item := range iteratateItemsC {
