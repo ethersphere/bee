@@ -28,8 +28,6 @@ func Compact(ctx context.Context, basePath string, opts *Options, validate bool)
 
 	logger := opts.Logger
 
-	n := time.Now()
-
 	logger.Info("starting compaction")
 
 	store, err := initStore(basePath, opts)
@@ -56,6 +54,8 @@ func Compact(ctx context.Context, basePath string, opts *Options, validate bool)
 		logger.Info("performing chunk validation before compaction")
 		validationWork(ctx, logger, store, sharkyRecover)
 	}
+
+	n := time.Now()
 
 	iteratateItemsC := make(chan chunkstore.IterateResult)
 	chunkstore.Iterate(ctx, store, iteratateItemsC)
@@ -143,6 +143,11 @@ func Compact(ctx context.Context, basePath string, opts *Options, validate bool)
 }
 
 func validationWork(ctx context.Context, logger log.Logger, store storage.Store, sharky *sharky.Recovery) {
+
+	n := time.Now()
+	defer func() {
+		logger.Info("validation finished", "duration", time.Since(n))
+	}()
 
 	iteratateItemsC := make(chan chunkstore.IterateResult)
 	chunkstore.Iterate(ctx, store, iteratateItemsC)
