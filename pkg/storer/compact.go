@@ -28,8 +28,6 @@ func Compact(ctx context.Context, basePath string, opts *Options, validate bool)
 
 	logger := opts.Logger
 
-	logger.Info("starting compaction")
-
 	store, err := initStore(basePath, opts)
 	if err != nil {
 		return fmt.Errorf("failed creating levelDB index store: %w", err)
@@ -54,6 +52,8 @@ func Compact(ctx context.Context, basePath string, opts *Options, validate bool)
 		logger.Info("performing chunk validation before compaction")
 		validationWork(ctx, logger, store, sharkyRecover)
 	}
+
+	logger.Info("starting compaction")
 
 	n := time.Now()
 
@@ -130,6 +130,10 @@ func Compact(ctx context.Context, basePath string, opts *Options, validate bool)
 		}
 	}
 
+	if err := sharkyRecover.Save(); err != nil {
+		return fmt.Errorf("sharky save: %w", err)
+	}
+
 	logger.Info("compaction finished", "duration", time.Since(n))
 
 	if validate {
@@ -137,7 +141,7 @@ func Compact(ctx context.Context, basePath string, opts *Options, validate bool)
 		validationWork(ctx, logger, store, sharkyRecover)
 	}
 
-	return sharkyRecover.Save()
+	return nil
 }
 
 func validationWork(ctx context.Context, logger log.Logger, store storage.Store, sharky *sharky.Recovery) {
