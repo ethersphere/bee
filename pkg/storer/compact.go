@@ -60,7 +60,7 @@ func Compact(ctx context.Context, basePath string, opts *Options, validate bool)
 	for shard := 0; shard < sharkyNoOfShards; shard++ {
 
 		items := make([]*chunkstore.RetrievalIndexItem, 0, 1_000_000)
-		chunkstore.Iterate(store, func(item *chunkstore.RetrievalIndexItem) error {
+		_ = chunkstore.Iterate(store, func(item *chunkstore.RetrievalIndexItem) error {
 			if item.Location.Shard == uint8(shard) {
 				items = append(items, item)
 			}
@@ -169,7 +169,7 @@ func validationWork(ctx context.Context, logger log.Logger, store storage.Store,
 	}
 
 	count := 0
-	chunkstore.Iterate(store, func(item *chunkstore.RetrievalIndexItem) error {
+	_ = chunkstore.Iterate(store, func(item *chunkstore.RetrievalIndexItem) error {
 		iteratateItemsC <- item
 		count++
 		if count%100_000 == 0 {
