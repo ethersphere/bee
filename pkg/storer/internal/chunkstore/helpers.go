@@ -57,34 +57,11 @@ func IterateLocations(
 }
 
 // IterateLocations iterates over entire retrieval index and plucks only sharky location.
-func Iterate(
-	ctx context.Context,
-	st storage.Store,
-	locationResultC chan<- IterateResult,
-) {
-	go func() {
-		defer close(locationResultC)
-
-		err := st.Iterate(storage.Query{
-			Factory: func() storage.Item { return new(RetrievalIndexItem) },
-		}, func(r storage.Result) (bool, error) {
-			entry := r.Entry.(*RetrievalIndexItem)
-
-			select {
-			case <-ctx.Done():
-				return true, ctx.Err()
-			case locationResultC <- IterateResult{Item: entry}:
-			}
-
-			return false, nil
-		})
-		if err != nil {
-			result := IterateResult{Err: fmt.Errorf("iterate retrieval index error: %w", err)}
-
-			select {
-			case <-ctx.Done():
-			case locationResultC <- result:
-			}
-		}
-	}()
+func Iterate(st storage.Store, cb func(*RetrievalIndexItem) error) error {
+	return st.Iterate(storage.Query{
+		Factory: func() storage.Item { return new(RetrievalIndexItem) },
+	}, func(r storage.Result) (bool, error) {
+		entry := r.Entry.(*RetrievalIndexItem)
+		return false, cb(entry)
+	})
 }
