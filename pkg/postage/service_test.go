@@ -7,14 +7,14 @@ package postage_test
 import (
 	crand "crypto/rand"
 	"errors"
+	"io"
+	"math/big"
+	"testing"
+
 	"github.com/ethersphere/bee/pkg/postage"
 	pstoremock "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/storage/inmemstore"
-	"github.com/google/go-cmp/cmp"
-	"io"
-	"math/big"
-	"testing"
 )
 
 // TestSaveLoad tests the idempotence of saving and loading the postage.Service
@@ -116,7 +116,7 @@ func TestGetStampIssuer(t *testing.T) {
 			if err != nil {
 				t.Fatalf("expected no error, got %v", err)
 			}
-			_ = save(true)
+			_ = save()
 			if st.Label() != string(id) {
 				t.Fatalf("wrong issuer returned")
 			}
@@ -163,7 +163,7 @@ func TestGetStampIssuer(t *testing.T) {
 		if st.Label() != "recovered" {
 			t.Fatal("wrong issuer returned")
 		}
-		err = sv(true)
+		err = sv()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -177,7 +177,7 @@ func TestGetStampIssuer(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		_ = save(true)
+		_ = save()
 		if stampIssuer.Amount().Cmp(big.NewInt(13)) != 0 {
 			t.Fatalf("expected amount %d got %d", 13, stampIssuer.Amount().Int64())
 		}
@@ -191,40 +191,12 @@ func TestGetStampIssuer(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		_ = save(true)
+		_ = save()
 		if stampIssuer.Amount().Cmp(big.NewInt(3)) != 0 {
 			t.Fatalf("expected amount %d got %d", 3, stampIssuer.Amount().Int64())
 		}
 		if stampIssuer.Depth() != 17 {
 			t.Fatalf("expected depth %d got %d", 17, stampIssuer.Depth())
 		}
-	})
-	t.Run("save without update", func(t *testing.T) {
-		is, save, err := ps.GetStampIssuer(ids[1])
-		if err != nil {
-			t.Fatal(err)
-		}
-		data := is.Buckets()
-		modified := make([]uint32, len(data))
-		copy(modified, data)
-		for k, b := range modified {
-			b++
-			modified[k] = b
-		}
-
-		err = save(false)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		is, _, err = ps.GetStampIssuer(ids[1])
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if !cmp.Equal(is.Buckets(), data) {
-			t.Fatal("expected buckets to be unchanged")
-		}
-
 	})
 }
