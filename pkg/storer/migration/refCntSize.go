@@ -123,6 +123,8 @@ func RefCountSizeInc(s storage.BatchedStore) error {
 		return err
 	}
 
+	logger.Info("actually migrating chunkstore items to increase refCnt capacity", "items", len(itemsToDelete))
+
 	for i := 0; i < len(itemsToDelete); i += 10000 {
 		end := i + 10000
 		if end > len(itemsToDelete) {
