@@ -6,6 +6,7 @@ package postage
 
 import (
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
@@ -13,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/log"
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/vmihailenco/msgpack/v5"
@@ -153,6 +155,7 @@ func (s stampIssuerData) Clone() stampIssuerData {
 // A StampIssuer instance extends a batch with bucket collision tracking
 // embedded in multiple Stampers, can be used concurrently.
 type StampIssuer struct {
+	logger    log.Logger
 	data      stampIssuerData
 	bucketMtx sync.Mutex
 }
@@ -162,7 +165,10 @@ type StampIssuer struct {
 //
 // BucketDepth must always be smaller than batchDepth otherwise increment() panics.
 func NewStampIssuer(label, keyID string, batchID []byte, batchAmount *big.Int, batchDepth, bucketDepth uint8, blockNumber uint64, immutableFlag bool) *StampIssuer {
+	logger := log.NewLogger("node").WithName("postage").Register()
+	logger.Debug("NewStampIssuer", "label", label, "batch", hex.EncodeToString(batchID))
 	return &StampIssuer{
+		logger:        logger,
 		data: stampIssuerData{
 			Label:         label,
 			KeyID:         keyID,
@@ -190,6 +196,7 @@ func (si *StampIssuer) increment(addr swarm.Address) (batchIndex []byte, batchTi
 		if si.ImmutableFlag() {
 			return nil, nil, ErrBucketFull
 		}
+		si.logger.Debug("StampIssuer.increment mutable OVERFLOW!", "chunk", addr, "batch", hex.EncodeToString(si.data.BatchID), "bucket", bIdx, "bCnt", si.data.Buckets[bIdx], "maxused", si.data.MaxBucketCount, "upperbound", si.BucketUpperBound())
 
 		bCnt = 0
 		si.data.Buckets[bIdx] = 0
@@ -199,6 +206,8 @@ func (si *StampIssuer) increment(addr swarm.Address) (batchIndex []byte, batchTi
 	if si.data.Buckets[bIdx] > si.data.MaxBucketCount {
 		si.data.MaxBucketCount = si.data.Buckets[bIdx]
 	}
+	
+	si.logger.Debug("StampIssuer.increment", "chunk", addr, "batch", hex.EncodeToString(si.data.BatchID), "bucket", bIdx, "bCnt", si.data.Buckets[bIdx], "maxused", si.data.MaxBucketCount, "upperbound", si.BucketUpperBound())
 
 	return indexToBytes(bIdx, bCnt), unixTime(), nil
 }

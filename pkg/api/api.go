@@ -10,6 +10,7 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -809,6 +810,8 @@ func (s *Service) getStamper(batchID []byte) (postage.Stamper, func() error, err
 	if usable := exists && s.post.IssuerUsable(issuer); !usable {
 		return nil, nil, errBatchUnusable
 	}
+	
+	s.logger.Debug("api:getStamper", "batch", hex.EncodeToString(batchID))
 
 	return postage.NewStamper(s.stamperStore, issuer, s.signer), save, nil
 }
