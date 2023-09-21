@@ -15,15 +15,15 @@ func NewHasher() hash.Hash {
 	return sha3.NewLegacyKeccak256()
 }
 
-type trHasher struct {
+type PrefixHasher struct {
 	hash.Hash
 	prefix []byte
 }
 
-// NewTrHasher returns new hasher which is Keccak-256 hasher
+// NewPrefixHasher returns new hasher which is Keccak-256 hasher
 // with prefix value added as initial data.
-func NewTrHasher(prefix []byte) hash.Hash {
-	h := &trHasher{
+func NewPrefixHasher(prefix []byte) hash.Hash {
+	h := &PrefixHasher{
 		Hash:   NewHasher(),
 		prefix: prefix,
 	}
@@ -32,7 +32,7 @@ func NewTrHasher(prefix []byte) hash.Hash {
 	return h
 }
 
-func (h *trHasher) Reset() {
+func (h *PrefixHasher) Reset() {
 	h.Hash.Reset()
 	_, _ = h.Write(h.prefix)
 }
