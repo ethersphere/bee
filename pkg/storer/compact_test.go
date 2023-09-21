@@ -69,8 +69,7 @@ func TestCompact(t *testing.T) {
 	}()
 	<-gotUnreserveSignal
 
-	err = st.Close()
-	if err != nil {
+	if err := st.Close(); err != nil {
 		t.Fatal(err)
 	}
 
@@ -104,4 +103,7 @@ func TestCompact(t *testing.T) {
 		}
 	}
 
+	if err := st.Close(); err != nil {
+		t.Fatal(err)
+	}
 }
