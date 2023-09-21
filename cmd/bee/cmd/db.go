@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -122,7 +123,9 @@ func dbCompactCmd(cmd *cobra.Command) {
 				return errors.New("no data-dir provided")
 			}
 
-			err = storer.Compact(context.Background(), dataDir, &storer.Options{
+			localstorePath := path.Join(dataDir, "localstore")
+
+			err = storer.Compact(context.Background(), localstorePath, &storer.Options{
 				Logger:          logger,
 				RadiusSetter:    noopRadiusSetter{},
 				Batchstore:      new(postage.NoOpBatchStore),
