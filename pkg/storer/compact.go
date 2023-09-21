@@ -80,8 +80,6 @@ func Compact(ctx context.Context, basePath string, opts *Options, validate bool)
 
 		locs := shards[shard]
 
-		logger.Info("starting shard", "shard", shard)
-
 		sort.Slice(locs, func(i, j int) bool {
 			return locs[i].Location.Slot < locs[j].Location.Slot
 		})
