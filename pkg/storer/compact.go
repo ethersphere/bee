@@ -16,6 +16,8 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+// Compact minimizes sharky disk usage by, using the current sharky locations from the storer,
+// relocating chunks starting from the end of the used slots to the first available slots.
 func Compact(ctx context.Context, basePath string, opts *Options) error {
 
 	logger := opts.Logger
@@ -82,6 +84,9 @@ func Compact(ctx context.Context, basePath string, opts *Options) error {
 			slots[l.Location.Slot] = l
 		}
 
+		// start begins at the zero slot. The loop below will increment the position of start until a free slot is found.
+		// end points to the last slot, and the loop will decrement the position of end until a used slot is found.
+		// Once start and end point to free and used slots, respectively, the swap of the chunk location will occur.
 		start := uint32(0)
 		end := lastUsedSlot
 
