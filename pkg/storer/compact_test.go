@@ -7,9 +7,11 @@ package storer_test
 import (
 	"bytes"
 	"context"
+	"os"
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	pullerMock "github.com/ethersphere/bee/pkg/puller/mock"
@@ -29,6 +31,7 @@ func TestCompact(t *testing.T) {
 
 	opts := dbTestOps(baseAddr, 10_000, nil, nil, time.Second)
 	opts.CacheCapacity = 0
+	opts.Logger = log.NewLogger("test", log.WithSink(os.Stdout))
 
 	st, err := storer.New(ctx, basePath, opts)
 	if err != nil {
@@ -45,7 +48,7 @@ func TestCompact(t *testing.T) {
 
 	for b := 0; b < len(batches); b++ {
 		for i := uint64(0); i < chunksPerPO; i++ {
-			ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, b)
+			ch := chunk.GenerateValidRandomChunkAt(baseAddr, b)
 			ch = ch.WithStamp(postagetesting.MustNewBatchStamp(batches[b].ID))
 			chunks = append(chunks, ch)
 			err := putter.Put(ctx, ch)
