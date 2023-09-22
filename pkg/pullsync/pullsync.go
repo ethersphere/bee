@@ -215,6 +215,11 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		}
 
 		addr := swarm.NewAddress(delivery.Address)
+		if addr.Equal(swarm.ZeroAddress) {
+			s.logger.Debug("received zero address chunk", "peer_address", peer)
+			continue
+		}
+
 		newChunk := swarm.NewChunk(addr, delivery.Data)
 
 		stamp := new(postage.Stamp)
@@ -343,9 +348,6 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 
 	chs, err := s.processWant(ctx, offer, &want)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			s.intervalsSF.Forget(sfKey(uint8(rn.Bin), rn.Start))
-		}
 		return fmt.Errorf("process want: %w", err)
 	}
 
@@ -467,9 +469,12 @@ func (s *Syncer) processWant(ctx context.Context, o *pb.Offer, w *pb.Want) ([]sw
 	for i := 0; i < len(o.Chunks); i++ {
 		if bv.Get(i) {
 			ch := o.Chunks[i]
+			addr := swarm.NewAddress(ch.Address)
 			c, err := s.store.ReserveGet(ctx, swarm.NewAddress(ch.Address), ch.BatchID)
 			if err != nil {
-				return nil, err
+				s.logger.Error(err, "processing want: unable to find chunk", "chunk_address", addr, "batch_id", ch.BatchID)
+				chunks = append(chunks, swarm.NewChunk(swarm.ZeroAddress, nil))
+				continue
 			}
 			chunks = append(chunks, c)
 		}
