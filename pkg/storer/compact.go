@@ -61,7 +61,7 @@ func Compact(ctx context.Context, basePath string, opts *Options, validate bool)
 
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return errors.Join(ctx.Err(), sharkyRecover.Save())
 		default:
 		}
 
