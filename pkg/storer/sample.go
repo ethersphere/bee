@@ -10,7 +10,6 @@ import (
 	"crypto/hmac"
 	"encoding/binary"
 	"fmt"
-	"hash"
 	"math/big"
 	"sort"
 	"sync"
@@ -44,13 +43,7 @@ type Sample struct {
 func RandSample(t *testing.T, anchor []byte) Sample {
 	t.Helper()
 
-	prefixHasherFactory := func() hash.Hash {
-		return swarm.NewPrefixHasher(anchor)
-	}
-	pool := bmt.NewPool(bmt.NewConf(prefixHasherFactory, swarm.BmtBranches, 8))
-
-	hasher := pool.Get()
-	defer pool.Put(hasher)
+	hasher := bmt.NewTrHasher(anchor)
 
 	items := make([]SampleItem, SampleSize)
 	for i := 0; i < SampleSize; i++ {
