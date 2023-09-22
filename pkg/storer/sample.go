@@ -7,7 +7,6 @@ package storer
 import (
 	"bytes"
 	"context"
-	"crypto/hmac"
 	"encoding/binary"
 	"fmt"
 	"hash"
@@ -18,6 +17,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/bmt"
+	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/soc"
 	chunk "github.com/ethersphere/bee/pkg/storage/testing"
@@ -27,7 +27,7 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
-const SampleSize = 8
+const SampleSize = 16
 
 type SampleItem struct {
 	TransformedAddress swarm.Address
@@ -41,24 +41,37 @@ type Sample struct {
 	Items []SampleItem
 }
 
+// RandSample returns Sample with random values.
 func RandSample(t *testing.T, anchor []byte) Sample {
 	t.Helper()
 
+	chunks := make([]swarm.Chunk, SampleSize)
+	for i := 0; i < SampleSize; i++ {
+		ch := chunk.GenerateTestRandomChunk()
+		if i%3 == 0 {
+			ch = chunk.GenerateTestRandomSoChunk(t, ch)
+		}
+		chunks[i] = ch
+	}
+
+	sample, err := MakeSampleUsingChunks(chunks, anchor)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return sample
+}
+
+// MakeSampleUsingChunks returns Sample constructed using supplied chunks.
+func MakeSampleUsingChunks(chunks []swarm.Chunk, anchor []byte) (Sample, error) {
 	prefixHasherFactory := func() hash.Hash {
 		return swarm.NewPrefixHasher(anchor)
 	}
-	pool := bmt.NewPool(bmt.NewConf(prefixHasherFactory, swarm.BmtBranches, 8))
-
-	hasher := pool.Get()
-	defer pool.Put(hasher)
-
-	items := make([]SampleItem, SampleSize)
-	for i := 0; i < SampleSize; i++ {
-		ch := chunk.GenerateTestRandomChunk()
-
-		tr, err := transformedAddress(hasher, ch, swarm.ChunkTypeContentAddressed)
+	items := make([]SampleItem, len(chunks))
+	for i, ch := range chunks {
+		tr, err := transformedAddress(bmt.NewHasher(prefixHasherFactory), ch, swarm.ChunkTypeContentAddressed)
 		if err != nil {
-			t.Fatal(err)
+			return Sample{}, err
 		}
 
 		items[i] = SampleItem{
@@ -73,7 +86,7 @@ func RandSample(t *testing.T, anchor []byte) Sample {
 		return items[i].TransformedAddress.Compare(items[j].TransformedAddress) == -1
 	})
 
-	return Sample{Items: items}
+	return Sample{Items: items}, nil
 }
 
 func newStamp(s swarm.Stamp) *postage.Stamp {
@@ -142,19 +155,25 @@ func (db *DB) ReserveSample(
 	// Phase 2: Get the chunk data and calculate transformed hash
 	sampleItemChan := make(chan SampleItem, 64)
 
+	prefixHasherFactory := func() hash.Hash {
+		return swarm.NewPrefixHasher(anchor)
+	}
+
 	const workers = 6
+
 	for i := 0; i < workers; i++ {
 		g.Go(func() error {
 			wstat := SampleStats{}
+			hasher := bmt.NewHasher(prefixHasherFactory)
 			defer func() {
 				addStats(wstat)
 			}()
 
-			hmacr := hmac.New(swarm.NewHasher, anchor)
 			for chItem := range chunkC {
 				// exclude chunks who's batches balance are below minimum
 				if _, found := excludedBatchIDs[string(chItem.BatchID)]; found {
 					wstat.BelowBalanceIgnored++
+
 					continue
 				}
 
@@ -176,16 +195,12 @@ func (db *DB) ReserveSample(
 
 				wstat.ChunkLoadDuration += time.Since(chunkLoadStart)
 
-				hmacrStart := time.Now()
-
-				hmacr.Reset()
-				_, err = hmacr.Write(chunk.Data())
+				taddrStart := time.Now()
+				taddr, err := transformedAddress(hasher, chunk, chItem.Type)
 				if err != nil {
 					return err
 				}
-				taddr := swarm.NewAddress(hmacr.Sum(nil))
-
-				wstat.HmacrDuration += time.Since(hmacrStart)
+				wstat.TaddrDuration += time.Since(taddrStart)
 
 				select {
 				case sampleItemChan <- SampleItem{
@@ -229,6 +244,15 @@ func (db *DB) ReserveSample(
 		}
 	}
 
+	contains := func(addr swarm.Address) int {
+		for index, item := range sampleItems {
+			if item.ChunkAddress.Compare(addr) == 0 {
+				return index
+			}
+		}
+		return -1
+	}
+
 	// Phase 3: Assemble the sample. Here we need to assemble only the first SampleSize
 	// no of items from the results of the 2nd phase.
 	// In this step stamps are loaded and validated only if chunk will be added to sample.
@@ -266,6 +290,17 @@ func (db *DB) ReserveSample(
 			stats.ValidStampDuration += time.Since(start)
 
 			item.Stamp = stamp
+
+			// check if sample contains transformed address
+			if index := contains(item.TransformedAddress); index != -1 {
+				// TODO change back to SOC
+				if cac.Valid(ch) {
+					continue
+				}
+				// replace the chunk at index
+				sampleItems[index] = item
+				continue
+			}
 			insert(item)
 			stats.SampleInserts++
 		}
@@ -366,7 +401,7 @@ type SampleStats struct {
 	NewIgnored                int64
 	InvalidStamp              int64
 	BelowBalanceIgnored       int64
-	HmacrDuration             time.Duration
+	TaddrDuration             time.Duration
 	ValidStampDuration        time.Duration
 	BatchesBelowValueDuration time.Duration
 	RogueChunk                int64
@@ -383,7 +418,7 @@ func (s *SampleStats) add(other SampleStats) {
 	s.NewIgnored += other.NewIgnored
 	s.InvalidStamp += other.InvalidStamp
 	s.BelowBalanceIgnored += other.BelowBalanceIgnored
-	s.HmacrDuration += other.HmacrDuration
+	s.TaddrDuration += other.TaddrDuration
 	s.ValidStampDuration += other.ValidStampDuration
 	s.BatchesBelowValueDuration += other.BatchesBelowValueDuration
 	s.RogueChunk += other.RogueChunk
