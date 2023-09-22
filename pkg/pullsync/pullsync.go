@@ -470,7 +470,7 @@ func (s *Syncer) processWant(ctx context.Context, o *pb.Offer, w *pb.Want) ([]sw
 		if bv.Get(i) {
 			ch := o.Chunks[i]
 			addr := swarm.NewAddress(ch.Address)
-			c, err := s.store.ReserveGet(ctx, swarm.NewAddress(ch.Address), ch.BatchID)
+			c, err := s.store.ReserveGet(ctx, addr, ch.BatchID)
 			if err != nil {
 				s.logger.Error(err, "processing want: unable to find chunk", "chunk_address", addr, "batch_id", ch.BatchID)
 				chunks = append(chunks, swarm.NewChunk(swarm.ZeroAddress, nil))
