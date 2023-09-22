@@ -38,7 +38,7 @@ func TestPostageCreateStamp(t *testing.T) {
 
 	batchID := []byte{1, 2, 3, 4}
 	initialBalance := int64(1000)
-	depth := uint8(1)
+	depth := uint8(24)
 	label := "label"
 	txHash := common.HexToHash("0x1234")
 	createBatch := func(amount int64, depth uint8, label string) string {
@@ -139,7 +139,13 @@ func TestPostageCreateStamp(t *testing.T) {
 		jsonhttptest.Request(t, ts, http.MethodPost, "/stamps/1000/9", http.StatusBadRequest,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusBadRequest,
-				Message: "invalid depth",
+				Message: "invalid path params",
+				Reasons: []jsonhttp.Reason{
+					{
+						Field: "depth",
+						Error: "want min:24",
+					},
+				},
 			}),
 		)
 	})
@@ -793,7 +799,7 @@ func TestPostageAccessHandler(t *testing.T) {
 		{
 			name:     "create batch ok",
 			method:   http.MethodPost,
-			url:      "/stamps/1000/17?label=test",
+			url:      "/stamps/1000/24?label=test",
 			respCode: http.StatusCreated,
 			resp: &api.PostageCreateResponse{
 				BatchID: batchOk,
@@ -826,7 +832,7 @@ func TestPostageAccessHandler(t *testing.T) {
 		{
 			name:     "create batch not ok",
 			method:   http.MethodPost,
-			url:      "/stamps/1000/17?label=test",
+			url:      "/stamps/1000/24?label=test",
 			respCode: http.StatusTooManyRequests,
 			resp: &jsonhttp.StatusResponse{
 				Code:    http.StatusTooManyRequests,

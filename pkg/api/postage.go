@@ -77,7 +77,7 @@ func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 
 	paths := struct {
 		Amount *big.Int `map:"amount" validate:"required"`
-		Depth  uint8    `map:"depth" validate:"required"`
+		Depth  uint8    `map:"depth" validate:"required,min=24"`
 	}{}
 	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
 		response("invalid path params", logger, w)
