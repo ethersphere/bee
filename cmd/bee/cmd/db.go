@@ -26,6 +26,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const optionNameValidation = "validate"
+
 func (c *command) initDBCmd() {
 	cmd := &cobra.Command{
 		Use:   "db",
@@ -101,9 +103,6 @@ func dbInfoCmd(cmd *cobra.Command) {
 }
 
 func dbCompactCmd(cmd *cobra.Command) {
-
-	optionNameValidation := "validate"
-
 	c := &cobra.Command{
 		Use:   "compact",
 		Short: "Compacts the localstore sharky store.",

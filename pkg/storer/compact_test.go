@@ -65,12 +65,7 @@ func TestCompact(t *testing.T) {
 
 	c, unsub := st.Events().Subscribe("batchExpiryDone")
 	t.Cleanup(unsub)
-	gotUnreserveSignal := make(chan struct{})
-	go func() {
-		defer close(gotUnreserveSignal)
-		<-c
-	}()
-	<-gotUnreserveSignal
+	<-c
 
 	if err := st.Close(); err != nil {
 		t.Fatal(err)

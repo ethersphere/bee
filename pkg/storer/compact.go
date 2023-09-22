@@ -50,7 +50,7 @@ func Compact(ctx context.Context, basePath string, opts *Options, validate bool)
 
 	if validate {
 		logger.Info("performing chunk validation before compaction")
-		validationWork(ctx, logger, store, sharkyRecover)
+		validationWork(logger, store, sharkyRecover)
 	}
 
 	logger.Info("starting compaction")
@@ -58,6 +58,12 @@ func Compact(ctx context.Context, basePath string, opts *Options, validate bool)
 	n := time.Now()
 
 	for shard := 0; shard < sharkyNoOfShards; shard++ {
+
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		default:
+		}
 
 		items := make([]*chunkstore.RetrievalIndexItem, 0, 1_000_000)
 		// we deliberately choose to iterate the whole store again for each shard
@@ -90,7 +96,7 @@ func Compact(ctx context.Context, basePath string, opts *Options, validate bool)
 				if slots[end] != nil { // used
 					from := slots[end]
 					to := sharky.Location{Slot: start, Length: from.Location.Length, Shard: from.Location.Shard}
-					if err := sharkyRecover.Move(ctx, from.Location, to); err != nil {
+					if err := sharkyRecover.Move(context.Background(), from.Location, to); err != nil {
 						return fmt.Errorf("sharky move: %w", err)
 					}
 					if err := sharkyRecover.Add(to); err != nil {
@@ -114,7 +120,7 @@ func Compact(ctx context.Context, basePath string, opts *Options, validate bool)
 
 		logger.Info("shard truncated", "shard", shard, "slot", end)
 
-		if err := sharkyRecover.TruncateAt(ctx, uint8(shard), end+1); err != nil {
+		if err := sharkyRecover.TruncateAt(context.Background(), uint8(shard), end+1); err != nil {
 			return fmt.Errorf("sharky truncate: %w", err)
 		}
 	}
@@ -127,13 +133,13 @@ func Compact(ctx context.Context, basePath string, opts *Options, validate bool)
 
 	if validate {
 		logger.Info("performing chunk validation after compaction")
-		validationWork(ctx, logger, store, sharkyRecover)
+		validationWork(logger, store, sharkyRecover)
 	}
 
 	return nil
 }
 
-func validationWork(ctx context.Context, logger log.Logger, store storage.Store, sharky *sharky.Recovery) {
+func validationWork(logger log.Logger, store storage.Store, sharky *sharky.Recovery) {
 
 	n := time.Now()
 	defer func() {
@@ -143,7 +149,7 @@ func validationWork(ctx context.Context, logger log.Logger, store storage.Store,
 	iteratateItemsC := make(chan *chunkstore.RetrievalIndexItem)
 
 	validChunk := func(item *chunkstore.RetrievalIndexItem, buf []byte) error {
-		err := sharky.Read(ctx, item.Location, buf)
+		err := sharky.Read(context.Background(), item.Location, buf)
 		if err != nil {
 			return err
 		}
@@ -156,7 +162,7 @@ func validationWork(ctx context.Context, logger log.Logger, store storage.Store,
 		return nil
 	}
 
-	eg, ctx := errgroup.WithContext(ctx)
+	eg := errgroup.Group{}
 
 	for i := 0; i < 8; i++ {
 		eg.Go(func() error {

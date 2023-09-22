@@ -56,12 +56,12 @@ func IterateLocations(
 	}()
 }
 
-// IterateLocations iterates over entire retrieval index and plucks only sharky location.
-func Iterate(st storage.Store, cb func(*RetrievalIndexItem) error) error {
+// Iterate iterates over entire retrieval index with a call back.
+func Iterate(st storage.Store, callBackFunc func(*RetrievalIndexItem) error) error {
 	return st.Iterate(storage.Query{
 		Factory: func() storage.Item { return new(RetrievalIndexItem) },
 	}, func(r storage.Result) (bool, error) {
 		entry := r.Entry.(*RetrievalIndexItem)
-		return false, cb(entry)
+		return false, callBackFunc(entry)
 	})
 }
