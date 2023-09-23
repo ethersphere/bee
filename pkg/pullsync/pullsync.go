@@ -474,6 +474,7 @@ func (s *Syncer) processWant(ctx context.Context, o *pb.Offer, w *pb.Want) ([]sw
 			if err != nil {
 				s.logger.Error(err, "processing want: unable to find chunk", "chunk_address", addr, "batch_id", ch.BatchID)
 				chunks = append(chunks, swarm.NewChunk(swarm.ZeroAddress, nil))
+				s.metrics.MissingChunks.Inc()
 				continue
 			}
 			chunks = append(chunks, c)
