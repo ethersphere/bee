@@ -396,7 +396,11 @@ func (c *Cache) MoveFromReserve(
 		return nil
 	}
 
+	//consider only the amount that can fit, the rest should be deleted from the chunkstore.
 	if len(entriesToAdd) > c.capacity {
+		for _, e := range entriesToAdd[:len(entriesToAdd)-c.capacity] {
+			_ = store.ChunkStore().Delete(ctx, e.Address)
+		}
 		entriesToAdd = entriesToAdd[len(entriesToAdd)-c.capacity:]
 	}
 

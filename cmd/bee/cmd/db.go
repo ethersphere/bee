@@ -7,11 +7,13 @@ package cmd
 import (
 	"archive/tar"
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -24,6 +26,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const optionNameValidation = "validate"
+
 func (c *command) initDBCmd() {
 	cmd := &cobra.Command{
 		Use:   "db",
@@ -34,6 +38,7 @@ func (c *command) initDBCmd() {
 	dbImportCmd(cmd)
 	dbNukeCmd(cmd)
 	dbInfoCmd(cmd)
+	dbCompactCmd(cmd)
 
 	c.root.AddCommand(cmd)
 }
@@ -75,6 +80,8 @@ func dbInfoCmd(cmd *cobra.Command) {
 			}
 			defer db.Close()
 
+			logger.Info("getting db info", "path", dataDir)
+
 			info, err := db.DebugInfo(cmd.Context())
 			if err != nil {
 				return fmt.Errorf("fetching db info: %w", err)
@@ -92,6 +99,55 @@ func dbInfoCmd(cmd *cobra.Command) {
 	}
 	c.Flags().String(optionNameDataDir, "", "data directory")
 	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
+	cmd.AddCommand(c)
+}
+
+func dbCompactCmd(cmd *cobra.Command) {
+	c := &cobra.Command{
+		Use:   "compact",
+		Short: "Compacts the localstore sharky store.",
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			v, err := cmd.Flags().GetString(optionNameVerbosity)
+			if err != nil {
+				return fmt.Errorf("get verbosity: %w", err)
+			}
+			v = strings.ToLower(v)
+			logger, err := newLogger(cmd, v)
+			if err != nil {
+				return fmt.Errorf("new logger: %w", err)
+			}
+
+			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
+			if err != nil {
+				return fmt.Errorf("get data-dir: %w", err)
+			}
+			if dataDir == "" {
+				return errors.New("no data-dir provided")
+			}
+
+			validation, err := cmd.Flags().GetBool(optionNameValidation)
+			if err != nil {
+				return fmt.Errorf("get validation: %w", err)
+			}
+
+			localstorePath := path.Join(dataDir, "localstore")
+
+			err = storer.Compact(context.Background(), localstorePath, &storer.Options{
+				Logger:          logger,
+				RadiusSetter:    noopRadiusSetter{},
+				Batchstore:      new(postage.NoOpBatchStore),
+				ReserveCapacity: node.ReserveCapacity,
+			}, validation)
+			if err != nil {
+				return fmt.Errorf("localstore: %w", err)
+			}
+
+			return nil
+		},
+	}
+	c.Flags().String(optionNameDataDir, "", "data directory")
+	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
+	c.Flags().Bool(optionNameValidation, false, "run chunk validation checks before and after the compaction")
 	cmd.AddCommand(c)
 }
 

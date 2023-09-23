@@ -17,6 +17,11 @@ type LocationResult struct {
 	Location sharky.Location
 }
 
+type IterateResult struct {
+	Err  error
+	Item *RetrievalIndexItem
+}
+
 // IterateLocations iterates over entire retrieval index and plucks only sharky location.
 func IterateLocations(
 	ctx context.Context,
@@ -49,4 +54,14 @@ func IterateLocations(
 			}
 		}
 	}()
+}
+
+// Iterate iterates over entire retrieval index with a call back.
+func Iterate(st storage.Store, callBackFunc func(*RetrievalIndexItem) error) error {
+	return st.Iterate(storage.Query{
+		Factory: func() storage.Item { return new(RetrievalIndexItem) },
+	}, func(r storage.Result) (bool, error) {
+		entry := r.Entry.(*RetrievalIndexItem)
+		return false, callBackFunc(entry)
+	})
 }
