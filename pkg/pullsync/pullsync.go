@@ -351,12 +351,16 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 		return fmt.Errorf("process want: %w", err)
 	}
 
-	for _, v := range chs {
-		stamp, err := v.Stamp().MarshalBinary()
-		if err != nil {
-			return fmt.Errorf("serialise stamp: %w", err)
+	for _, c := range chs {
+		var stamp []byte
+		if c.Stamp() != nil {
+			stamp, err = c.Stamp().MarshalBinary()
+			if err != nil {
+				return fmt.Errorf("serialise stamp: %w", err)
+			}
 		}
-		deliver := pb.Delivery{Address: v.Address().Bytes(), Data: v.Data(), Stamp: stamp}
+
+		deliver := pb.Delivery{Address: c.Address().Bytes(), Data: c.Data(), Stamp: stamp}
 		if err := w.WriteMsgWithContext(ctx, &deliver); err != nil {
 			return fmt.Errorf("write delivery: %w", err)
 		}
