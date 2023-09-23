@@ -20,8 +20,7 @@ func TestProofCorrectness(t *testing.T) {
 	t.Parallel()
 
 	testData := []byte("hello world")
-	testDataPadded := make([]byte, swarm.ChunkSize)
-	copy(testDataPadded, testData)
+	testData = append(testData, make([]byte, 4096-len(testData))...)
 
 	verifySegments := func(t *testing.T, exp []string, found [][]byte) {
 		t.Helper()
@@ -58,8 +57,8 @@ func TestProofCorrectness(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pr := bmt.Prover{hh}
-	rh, err := pr.Hash(nil)
+
+	rh, err := hh.Hash(nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,10 +66,9 @@ func TestProofCorrectness(t *testing.T) {
 	t.Run("proof for left most", func(t *testing.T) {
 		t.Parallel()
 
-		proof := pr.Proof(0)
+		proof := bmt.Prover{hh}.Proof(0)
 
 		expSegmentStrings := []string{
-			"0000000000000000000000000000000000000000000000000000000000000000",
 			"ad3228b676f7d3cd4284a5443f17f1962b36e491b30a40b2405849e597ba5fb5",
 			"b4c11951957c6f8f642c4af61cd6b24640fec6dc7fc607ee8206a99e92410d30",
 			"21ddb9a356815c3fac1026b6dec5df3124afbadb485c9ba5a3e3398a04b7ba85",
@@ -81,7 +79,7 @@ func TestProofCorrectness(t *testing.T) {
 
 		verifySegments(t, expSegmentStrings, proof.ProofSegments)
 
-		if !bytes.Equal(proof.ProveSegment, testDataPadded[:hh.Size()]) {
+		if !bytes.Equal(proof.ProveSegment, testData[:2*hh.Size()]) {
 			t.Fatal("section incorrect")
 		}
 
@@ -93,10 +91,9 @@ func TestProofCorrectness(t *testing.T) {
 	t.Run("proof for right most", func(t *testing.T) {
 		t.Parallel()
 
-		proof := pr.Proof(127)
+		proof := bmt.Prover{hh}.Proof(127)
 
 		expSegmentStrings := []string{
-			"0000000000000000000000000000000000000000000000000000000000000000",
 			"ad3228b676f7d3cd4284a5443f17f1962b36e491b30a40b2405849e597ba5fb5",
 			"b4c11951957c6f8f642c4af61cd6b24640fec6dc7fc607ee8206a99e92410d30",
 			"21ddb9a356815c3fac1026b6dec5df3124afbadb485c9ba5a3e3398a04b7ba85",
@@ -107,7 +104,7 @@ func TestProofCorrectness(t *testing.T) {
 
 		verifySegments(t, expSegmentStrings, proof.ProofSegments)
 
-		if !bytes.Equal(proof.ProveSegment, testDataPadded[127*hh.Size():]) {
+		if !bytes.Equal(proof.ProveSegment, testData[126*hh.Size():]) {
 			t.Fatal("section incorrect")
 		}
 
@@ -119,10 +116,9 @@ func TestProofCorrectness(t *testing.T) {
 	t.Run("proof for middle", func(t *testing.T) {
 		t.Parallel()
 
-		proof := pr.Proof(64)
+		proof := bmt.Prover{hh}.Proof(64)
 
 		expSegmentStrings := []string{
-			"0000000000000000000000000000000000000000000000000000000000000000",
 			"ad3228b676f7d3cd4284a5443f17f1962b36e491b30a40b2405849e597ba5fb5",
 			"b4c11951957c6f8f642c4af61cd6b24640fec6dc7fc607ee8206a99e92410d30",
 			"21ddb9a356815c3fac1026b6dec5df3124afbadb485c9ba5a3e3398a04b7ba85",
@@ -133,7 +129,7 @@ func TestProofCorrectness(t *testing.T) {
 
 		verifySegments(t, expSegmentStrings, proof.ProofSegments)
 
-		if !bytes.Equal(proof.ProveSegment, testDataPadded[64*hh.Size():65*hh.Size()]) {
+		if !bytes.Equal(proof.ProveSegment, testData[64*hh.Size():66*hh.Size()]) {
 			t.Fatal("section incorrect")
 		}
 
@@ -146,7 +142,6 @@ func TestProofCorrectness(t *testing.T) {
 		t.Parallel()
 
 		segmentStrings := []string{
-			"0000000000000000000000000000000000000000000000000000000000000000",
 			"ad3228b676f7d3cd4284a5443f17f1962b36e491b30a40b2405849e597ba5fb5",
 			"b4c11951957c6f8f642c4af61cd6b24640fec6dc7fc607ee8206a99e92410d30",
 			"21ddb9a356815c3fac1026b6dec5df3124afbadb485c9ba5a3e3398a04b7ba85",
@@ -164,9 +159,9 @@ func TestProofCorrectness(t *testing.T) {
 			segments = append(segments, decoded)
 		}
 
-		segment := testDataPadded[64*hh.Size() : 65*hh.Size()]
+		segment := testData[64*hh.Size() : 66*hh.Size()]
 
-		rootHash, err := pr.Verify(64, bmt.Proof{
+		rootHash, err := bmt.Prover{hh}.Verify(64, bmt.Proof{
 			ProveSegment:  segment,
 			ProofSegments: segments,
 			Span:          bmt.LengthToSpan(4096),
@@ -205,7 +200,6 @@ func TestProof(t *testing.T) {
 	}
 
 	rh, err := hh.Hash(nil)
-	pr := bmt.Prover{hh}
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +209,7 @@ func TestProof(t *testing.T) {
 		t.Run(fmt.Sprintf("segmentIndex %d", i), func(t *testing.T) {
 			t.Parallel()
 
-			proof := pr.Proof(i)
+			proof := bmt.Prover{hh}.Proof(i)
 
 			h := pool.Get()
 			defer pool.Put(h)
