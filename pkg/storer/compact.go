@@ -118,7 +118,7 @@ func Compact(ctx context.Context, basePath string, opts *Options, validate bool)
 			}
 		}
 
-		logger.Info("shard truncated", "shard", shard, "slot", end)
+		logger.Info("shard truncated", "shard", fmt.Sprintf("%d/%d", shard, sharkyNoOfShards-1), "slot", end)
 
 		if err := sharkyRecover.TruncateAt(context.Background(), uint8(shard), end+1); err != nil {
 			return fmt.Errorf("sharky truncate: %w", err)
