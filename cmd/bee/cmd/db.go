@@ -147,7 +147,7 @@ func dbCompactCmd(cmd *cobra.Command) {
 	}
 	c.Flags().String(optionNameDataDir, "", "data directory")
 	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
-	c.Flags().Bool(optionNameValidation, true, "enable chunk validation")
+	c.Flags().Bool(optionNameValidation, false, "run chunk validation checks before and after the compaction")
 	cmd.AddCommand(c)
 }
 
