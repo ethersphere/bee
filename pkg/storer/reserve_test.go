@@ -166,7 +166,6 @@ func TestEvictBatch(t *testing.T) {
 
 	baseAddr := swarm.RandAddress(t)
 
-	t.Cleanup(func() {})
 	st, err := diskStorer(t, dbTestOps(baseAddr, 100, nil, nil, time.Minute))()
 	if err != nil {
 		t.Fatal(err)
@@ -679,9 +678,14 @@ func checkSaved(t *testing.T, st *storer.DB, ch swarm.Chunk, stampSaved, chunkSt
 	if !chunkStoreSaved {
 		chunkStoreWantedErr = storage.ErrNotFound
 	}
-	_, err = st.Repo().ChunkStore().Get(context.Background(), ch.Address())
+	gotCh, err := st.Repo().ChunkStore().Get(context.Background(), ch.Address())
 	if !errors.Is(err, chunkStoreWantedErr) {
 		t.Fatalf("wanted err %s, got err %s", chunkStoreWantedErr, err)
+	}
+	if chunkStoreSaved {
+		if !bytes.Equal(ch.Data(), gotCh.Data()) {
+			t.Fatalf("chunks are not equal: %s", ch.Address())
+		}
 	}
 }
 
