@@ -10,7 +10,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 
-	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/bmt"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storer"
@@ -50,10 +49,10 @@ type PostageProof struct {
 // SOCProof structure must exactly match
 // corresponding structure (of the same name) in Redistribution.sol smart contract.
 type SOCProof struct {
-	Signer     common.Address `json:"signer"`
-	Signature  string         `json:"signature"`
-	Identifier string         `json:"identifier"`
-	ChunkAddr  string         `json:"chunkAddr"`
+	Signer     string `json:"signer"`
+	Signature  string `json:"signature"`
+	Identifier string `json:"identifier"`
+	ChunkAddr  string `json:"chunkAddr"`
 }
 
 // Transforms arguments to ChunkInclusionProof object
@@ -97,7 +96,7 @@ func makeSOCProof(sampleItem storer.SampleItem) ([]SOCProof, error) {
 	}
 
 	return []SOCProof{{
-		Signer:     common.Address(socCh.OwnerAddress()),
+		Signer:     hex.EncodeToString(socCh.OwnerAddress()),
 		Signature:  hex.EncodeToString(socCh.Signature()),
 		Identifier: hex.EncodeToString(socCh.ID()),
 		ChunkAddr:  hex.EncodeToString(socCh.WrappedChunk().Address().Bytes()),
