@@ -107,7 +107,7 @@ func TestStateRoundData(t *testing.T) {
 			ReserveSampleHash: swarm.RandAddress(t),
 			StorageRadius:     3,
 		}
-		state.SetSampleData(1, savedSample, 0)
+		state.SetSampleData(1, savedSample)
 
 		sample, exists := state.SampleData(1)
 		if !exists {
@@ -171,7 +171,7 @@ func TestPurgeRoundData(t *testing.T) {
 		}
 		commitKey := testutil.RandBytes(t, swarm.HashSize)
 
-		state.SetSampleData(round, savedSample, 0)
+		state.SetSampleData(round, savedSample)
 		state.SetCommitKey(round, commitKey)
 		state.SetHasRevealed(round)
 	}

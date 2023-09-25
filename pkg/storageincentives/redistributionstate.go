@@ -15,6 +15,7 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/storage"
+	storer "github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/transaction"
 )
@@ -63,8 +64,10 @@ type RoundData struct {
 }
 
 type SampleData struct {
-	ReserveSampleHash swarm.Address
-	StorageRadius     uint8
+	Anchor1            []byte
+	ReserveSampleItems []storer.SampleItem
+	ReserveSampleHash  swarm.Address
+	StorageRadius      uint8
 }
 
 func NewStatus() *Status {
@@ -241,14 +244,13 @@ func (r *RedistributionState) SampleData(round uint64) (SampleData, bool) {
 	return *rd.SampleData, true
 }
 
-func (r *RedistributionState) SetSampleData(round uint64, sd SampleData, dur time.Duration) {
+func (r *RedistributionState) SetSampleData(round uint64, sd SampleData) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
 	rd := r.status.RoundData[round]
 	rd.SampleData = &sd
 	r.status.RoundData[round] = rd
-	r.status.SampleDuration = dur
 
 	r.save()
 }
