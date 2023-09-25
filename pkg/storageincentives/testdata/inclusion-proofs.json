@@ -30,11 +30,12 @@
             "b68323ecaad1185a5e078f41c94c59d0b6dda5d57e109866e64d44acb8702846",
             "478adfa93a7bb904d0aa86ff0d559f43aa915ee7865592e717b72a24452181cb"
         ],
-        "signature": "a7c8d18a8279d3803169ebcf4e5a7dbdd4dffefa591eaad8d1ceaa636a793ad975e7f7b1087bcea4176525b0002edde0acbfda20dbd2dfbbe777cab38968fdc61b",
-        "chunkAddr": "7133885ac59dca7b97773acb740e978d41a4af45bd563067c8a3d863578488f1",
-        "postageId": "4c8efc14c8e3cee608174f995d7afe155897bf643a31226e4f1363bc97686aef",
-        "index": "0000000000080303",
-        "timeStamp": "0000000000030308",
+        "postageProof": {
+            "signature": "a7c8d18a8279d3803169ebcf4e5a7dbdd4dffefa591eaad8d1ceaa636a793ad975e7f7b1087bcea4176525b0002edde0acbfda20dbd2dfbbe777cab38968fdc61b",
+            "postageId": "4c8efc14c8e3cee608174f995d7afe155897bf643a31226e4f1363bc97686aef",
+            "index": "0000000000080303",
+            "timeStamp": "0000000000030308"
+        },
         "socProofAttached": [
             {
                 "signer": "0x827b44d53df2854057713b25cdd653eb70fe36c4",
@@ -75,11 +76,12 @@
             "b68323ecaad1185a5e078f41c94c59d0b6dda5d57e109866e64d44acb8702846",
             "478adfa93a7bb904d0aa86ff0d559f43aa915ee7865592e717b72a24452181cb"
         ],
-        "signature": "b0274fcda59e8aaffee803021971a764a017ce2c0f41c8ceb6eefdea807056f621a98feab5ebf33bb6065e49c050f413ec8840b008fc224d882ce5244ce3e0171c",
-        "chunkAddr": "535e6df58a122a8f5e6c851c19b3e042f4cd1b5c5a8c499581c9f6d4e3509182",
-        "postageId": "4c8efc14c8e3cee608174f995d7afe155897bf643a31226e4f1363bc97686aef",
-        "index": "0000000000080303",
-        "timeStamp": "0000000000030308",
+        "postageProof": {
+            "signature": "b0274fcda59e8aaffee803021971a764a017ce2c0f41c8ceb6eefdea807056f621a98feab5ebf33bb6065e49c050f413ec8840b008fc224d882ce5244ce3e0171c",
+            "postageId": "4c8efc14c8e3cee608174f995d7afe155897bf643a31226e4f1363bc97686aef",
+            "index": "0000000000080303",
+            "timeStamp": "0000000000030308"
+        },
         "socProofAttached": []
     },
     "proofLast": {
@@ -113,11 +115,12 @@
             "b68323ecaad1185a5e078f41c94c59d0b6dda5d57e109866e64d44acb8702846",
             "478adfa93a7bb904d0aa86ff0d559f43aa915ee7865592e717b72a24452181cb"
         ],
-        "signature": "6747c58ce8613486c696f5bb7393c9c59094371969c3a52bfaf75192c605f4ad7c70c6e71fdd320e20d005e42e94ee32102c234eb465f4f5fd9db60fcad0356b1c",
-        "chunkAddr": "5ba2c8b912fad4aeb4a11a960946d07b9f66bc40ac54d87224914d75f5aeea5f",
-        "postageId": "4c8efc14c8e3cee608174f995d7afe155897bf643a31226e4f1363bc97686aef",
-        "index": "0000000000080303",
-        "timeStamp": "0000000000030308",
+        "postageProof": {
+            "signature": "6747c58ce8613486c696f5bb7393c9c59094371969c3a52bfaf75192c605f4ad7c70c6e71fdd320e20d005e42e94ee32102c234eb465f4f5fd9db60fcad0356b1c",
+            "postageId": "4c8efc14c8e3cee608174f995d7afe155897bf643a31226e4f1363bc97686aef",
+            "index": "0000000000080303",
+            "timeStamp": "0000000000030308"
+        },
         "socProofAttached": []
     }
 }
