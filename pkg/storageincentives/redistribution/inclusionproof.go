@@ -34,7 +34,7 @@ type ChunkInclusionProof struct {
 	ChunkSpan      uint64       `json:"chunkSpan"`
 	ProofSegments3 []string     `json:"proofSegments3"`
 	PostageProof   PostageProof `json:"postageProof"`
-	SocProof       []SOCProof   `json:"socProofAttached"`
+	SocProof       []SOCProof   `json:"socProof"`
 }
 
 // SOCProof structure must exactly match
