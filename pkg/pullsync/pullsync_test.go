@@ -239,13 +239,16 @@ func TestMissingChunk(t *testing.T) {
 		psClient, _ = newPullSync(t, recorder, 0)
 	)
 
-	topmost, _, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
+	topmost, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	if topmost != topMost {
 		t.Fatalf("got offer topmost %d but want %d", topmost, topMost)
+	}
+	if count != 0 {
+		t.Fatalf("got count %d but want %d", count, 0)
 	}
 }
 
