@@ -34,7 +34,11 @@ func WithChunks(chs ...swarm.Chunk) Option {
 	return optionFunc(func(p *ReserveStore) {
 		for _, c := range chs {
 			c := c
-			p.chunks[c.Address().String()+string(c.Stamp().BatchID())] = c
+			if c.Stamp() != nil {
+				p.chunks[c.Address().String()+string(c.Stamp().BatchID())] = c
+			} else {
+				p.chunks[c.Address().String()] = c
+			}
 		}
 	})
 }
