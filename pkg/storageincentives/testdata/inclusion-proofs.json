@@ -38,7 +38,7 @@
         },
         "socProofAttached": [
             {
-                "signer": "0x827b44d53df2854057713b25cdd653eb70fe36c4",
+                "signer": "827b44d53df2854057713b25cdd653eb70fe36c4",
                 "signature": "4e9576949338e4c23f4703bf81367256ab859b32934fef4db2ee46a76bf6be354e96ac628b8784b2de0bbeae5975469783192d6d1705485fcaadd8dedde6e2aa1b",
                 "identifier": "6223cfdd75a40440ccd32d0b11b24f08562ec63b1ea3b8cb1a59dfc3e3c33595",
                 "chunkAddr": "f32442586d93d8c002372ed41fa2ea1f281f38311c161d535c3665de5d9bfd92"
