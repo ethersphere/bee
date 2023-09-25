@@ -36,7 +36,7 @@
             "index": "0000000000080303",
             "timeStamp": "0000000000030308"
         },
-        "socProofAttached": [
+        "socProof": [
             {
                 "signer": "827b44d53df2854057713b25cdd653eb70fe36c4",
                 "signature": "4e9576949338e4c23f4703bf81367256ab859b32934fef4db2ee46a76bf6be354e96ac628b8784b2de0bbeae5975469783192d6d1705485fcaadd8dedde6e2aa1b",
@@ -82,7 +82,7 @@
             "index": "0000000000080303",
             "timeStamp": "0000000000030308"
         },
-        "socProofAttached": []
+        "socProof": []
     },
     "proofLast": {
         "proofSegments": [
@@ -121,6 +121,6 @@
             "index": "0000000000080303",
             "timeStamp": "0000000000030308"
         },
-        "socProofAttached": []
+        "socProof": []
     }
 }
