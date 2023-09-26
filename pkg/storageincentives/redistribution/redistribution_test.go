@@ -7,13 +7,10 @@ package redistribution_test
 import (
 	"bytes"
 	"context"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"math/big"
-	"strconv"
 	"testing"
-	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -35,18 +32,19 @@ func randChunkInclusionProof(t *testing.T) redistribution.ChunkInclusionProof {
 	t.Helper()
 
 	return redistribution.ChunkInclusionProof{
-		ProofSegments:  []string{hex.EncodeToString(testutil.RandBytes(t, 32))},
-		ProveSegment:   hex.EncodeToString(testutil.RandBytes(t, 32)),
-		ProofSegments2: []string{hex.EncodeToString(testutil.RandBytes(t, 32))},
-		ProveSegment2:  hex.EncodeToString(testutil.RandBytes(t, 32)),
-		ProofSegments3: []string{hex.EncodeToString(testutil.RandBytes(t, 32))},
+		ProofSegments:  [][]byte{testutil.RandBytes(t, 32)},
+		ProveSegment:   testutil.RandBytes(t, 32),
+		ProofSegments2: [][]byte{testutil.RandBytes(t, 32)},
+		ProveSegment2:  testutil.RandBytes(t, 32),
+		ProofSegments3: [][]byte{testutil.RandBytes(t, 32)},
 		PostageProof: redistribution.PostageProof{
-			Signature: string(testutil.RandBytes(t, 32)),
-			PostageId: hex.EncodeToString(testutil.RandBytes(t, 32)),
-			Index:     hex.EncodeToString(testutil.RandBytes(t, 32)),
-			TimeStamp: strconv.Itoa(time.Now().Nanosecond()),
+			Signature: testutil.RandBytes(t, 32),
+			PostageId: testutil.RandBytes(t, 32),
+			Index:     testutil.RandBytes(t, 32),
+			TimeStamp: testutil.RandBytes(t, 8),
 		},
 		ChunkSpan: 1,
+		SocProof:  []redistribution.SOCProof{},
 	}
 }
 

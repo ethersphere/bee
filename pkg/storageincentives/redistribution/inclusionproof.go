@@ -6,7 +6,6 @@ package redistribution
 
 import (
 	"encoding/binary"
-	"encoding/hex"
 
 	"github.com/ethersphere/bee/pkg/bmt"
 	"github.com/ethersphere/bee/pkg/soc"
@@ -25,57 +24,53 @@ type ChunkInclusionProofs struct {
 // github.com/ethersphere/storage-incentives/blob/ph_f2/src/Redistribution.sol
 // github.com/ethersphere/storage-incentives/blob/master/src/Redistribution.sol (when merged to master)
 type ChunkInclusionProof struct {
-	ProofSegments  []string     `json:"proofSegments"`
-	ProveSegment   string       `json:"proveSegment"`
-	ProofSegments2 []string     `json:"proofSegments2"`
-	ProveSegment2  string       `json:"proveSegment2"`
-	ChunkSpan      uint64       `json:"chunkSpan"`
-	ProofSegments3 []string     `json:"proofSegments3"`
-	PostageProof   PostageProof `json:"postageProof"`
-	SocProof       []SOCProof   `json:"socProof"`
+	ProveSegment   []byte
+	ProofSegments  [][]byte
+	ProofSegments2 [][]byte
+	ProveSegment2  []byte
+	ChunkSpan      uint64
+	ProofSegments3 [][]byte
+	PostageProof   PostageProof
+	SocProof       []SOCProof
 }
 
 // SOCProof structure must exactly match
 // corresponding structure (of the same name) in Redistribution.sol smart contract.
 type PostageProof struct {
-	Signature string `json:"signature"`
-	PostageId string `json:"postageId"`
-	Index     string `json:"index"`
-	TimeStamp string `json:"timeStamp"`
+	Signature []byte
+	PostageId []byte
+	Index     []byte
+	TimeStamp []byte
 }
 
 // SOCProof structure must exactly match
 // corresponding structure (of the same name) in Redistribution.sol smart contract.
 type SOCProof struct {
-	Signer     string `json:"signer"`
-	Signature  string `json:"signature"`
-	Identifier string `json:"identifier"`
-	ChunkAddr  string `json:"chunkAddr"`
+	Signer     []byte
+	Signature  []byte
+	Identifier []byte
+	ChunkAddr  []byte
 }
 
-// NewChunkInclusionProof transforms arguments to ChunkInclusionProof object
-func NewChunkInclusionProof(proofp1, proofp2, proofp3 bmt.Proof, sampleItem storer.SampleItem) (ChunkInclusionProof, error) {
-	proofp1Hex := newHexProofs(proofp1)
-	proofp2Hex := newHexProofs(proofp2)
-	proofp3Hex := newHexProofs(proofp3)
-
+// Transforms arguments to ChunkInclusionProof object
+func NewChunkInclusionProof(proofp1, proofp2 bmt.Proof, proofp3 bmt.Proof, sampleItem storer.SampleItem) (ChunkInclusionProof, error) {
 	socProof, err := makeSOCProof(sampleItem)
 	if err != nil {
 		return ChunkInclusionProof{}, err
 	}
 
 	return ChunkInclusionProof{
-		ProofSegments:  proofp1Hex.ProofSegments,
-		ProveSegment:   proofp1Hex.ProveSegment,
-		ProofSegments2: proofp2Hex.ProofSegments,
-		ProveSegment2:  proofp2Hex.ProveSegment,
+		ProofSegments:  proofp1.ProofSegments,
+		ProveSegment:   proofp1.ProveSegment,
+		ProofSegments2: proofp2.ProofSegments,
+		ProveSegment2:  proofp2.ProveSegment,
 		ChunkSpan:      binary.LittleEndian.Uint64(proofp2.Span[:swarm.SpanSize]), // should be uint64 on the other size; copied from pkg/api/bytes.go
-		ProofSegments3: proofp3Hex.ProofSegments,
+		ProofSegments3: proofp3.ProofSegments,
 		PostageProof: PostageProof{
-			Signature: hex.EncodeToString(sampleItem.Stamp.Sig()),
-			PostageId: hex.EncodeToString(sampleItem.Stamp.BatchID()),
-			Index:     hex.EncodeToString(sampleItem.Stamp.Index()),
-			TimeStamp: hex.EncodeToString(sampleItem.Stamp.Timestamp()),
+			Signature: sampleItem.Stamp.Sig(),
+			PostageId: sampleItem.Stamp.BatchID(),
+			Index:     sampleItem.Stamp.Index(),
+			TimeStamp: sampleItem.Stamp.Timestamp(),
 		},
 		SocProof: socProof,
 	}, nil
@@ -94,27 +89,9 @@ func makeSOCProof(sampleItem storer.SampleItem) ([]SOCProof, error) {
 	}
 
 	return []SOCProof{{
-		Signer:     hex.EncodeToString(socCh.OwnerAddress()),
-		Signature:  hex.EncodeToString(socCh.Signature()),
-		Identifier: hex.EncodeToString(socCh.ID()),
-		ChunkAddr:  hex.EncodeToString(socCh.WrappedChunk().Address().Bytes()),
+		Signer:     socCh.OwnerAddress(),
+		Signature:  socCh.Signature(),
+		Identifier: socCh.ID(),
+		ChunkAddr:  socCh.WrappedChunk().Address().Bytes(),
 	}}, nil
-}
-
-type hexProof struct {
-	ProofSegments []string
-	ProveSegment  string
-}
-
-// newHexProofs transforms proof object to its hexadecimal representation
-func newHexProofs(proof bmt.Proof) hexProof {
-	proofSegments := make([]string, len(proof.ProofSegments))
-	for i := 0; i < len(proof.ProofSegments); i++ {
-		proofSegments[i] = hex.EncodeToString(proof.ProofSegments[i])
-	}
-
-	return hexProof{
-		ProveSegment:  hex.EncodeToString(proof.ProveSegment),
-		ProofSegments: proofSegments,
-	}
 }
