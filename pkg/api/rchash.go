@@ -72,23 +72,23 @@ func renderChunkInclusionProof(proof redistribution.ChunkInclusionProof) ChunkIn
 	var socProof []SOCProof
 	if len(proof.SocProof) == 1 {
 		socProof = []SOCProof{{
-			Signer:     hex.EncodeToString(proof.SocProof[0].Signer),
-			Signature:  hex.EncodeToString(proof.SocProof[0].Signature),
-			Identifier: renderCommonHash(proof.SocProof[0].Identifier)[0],
-			ChunkAddr:  renderCommonHash(proof.SocProof[0].ChunkAddr)[0],
+			Signer:     hex.EncodeToString(proof.SocProof[0].Signer.Bytes()),
+			Signature:  hex.EncodeToString(proof.SocProof[0].Signature[:]),
+			Identifier: hex.EncodeToString(proof.SocProof[0].Identifier.Bytes()),
+			ChunkAddr:  hex.EncodeToString(proof.SocProof[0].ChunkAddr.Bytes()),
 		}}
 	}
 
 	return ChunkInclusionProof{
-		ProveSegment:   renderCommonHash(proof.ProveSegment)[0],
-		ProofSegments:  renderCommonHash(proof.ProofSegments...),
-		ProveSegment2:  renderCommonHash(proof.ProveSegment2)[0],
-		ProofSegments2: renderCommonHash(proof.ProofSegments2...),
-		ProofSegments3: renderCommonHash(proof.ProofSegments3...),
+		ProveSegment:   hex.EncodeToString(proof.ProveSegment.Bytes()),
+		ProofSegments:  renderCommonHash(proof.ProofSegments),
+		ProveSegment2:  hex.EncodeToString(proof.ProveSegment2.Bytes()),
+		ProofSegments2: renderCommonHash(proof.ProofSegments2),
+		ProofSegments3: renderCommonHash(proof.ProofSegments3),
 		ChunkSpan:      proof.ChunkSpan,
 		PostageProof: PostageProof{
-			Signature: hex.EncodeToString(proof.PostageProof.Signature),
-			PostageId: hex.EncodeToString(proof.PostageProof.PostageId),
+			Signature: hex.EncodeToString(proof.PostageProof.Signature[:]),
+			PostageId: hex.EncodeToString(proof.PostageProof.PostageId[:]),
 			Index:     strconv.FormatUint(proof.PostageProof.Index, 16),
 			TimeStamp: strconv.FormatUint(proof.PostageProof.TimeStamp, 16),
 		},
@@ -96,7 +96,7 @@ func renderChunkInclusionProof(proof redistribution.ChunkInclusionProof) ChunkIn
 	}
 }
 
-func renderCommonHash(proofSegments ...common.Hash) []string {
+func renderCommonHash(proofSegments [7]common.Hash) []string {
 	output := make([]string, len(proofSegments))
 	for i, s := range proofSegments {
 		output[i] = hex.EncodeToString(s.Bytes())
