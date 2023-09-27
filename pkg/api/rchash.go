@@ -4,7 +4,6 @@
 package api
 
 import (
-	"encoding/hex"
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -20,27 +19,17 @@ func (s *Service) rchash(w http.ResponseWriter, r *http.Request) {
 
 	paths := struct {
 		Depth   uint8  `map:"depth"`
-		Anchor1 string `map:"anchor1" validate:"required"`
-		Anchor2 string `map:"anchor2" validate:"required"`
+		Anchor1 string `map:"anchor1,decHex" validate:"required"`
+		Anchor2 string `map:"anchor2,decHex" validate:"required"`
 	}{}
 	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
 		response("invalid path params", logger, w)
 		return
 	}
 
-	anchor1, err := hex.DecodeString(paths.Anchor1)
-	if err != nil {
-		logger.Error(err, "invalid hex params")
-		jsonhttp.InternalServerError(w, "invalid hex params")
-		return
-	}
+	anchor1 := []byte(paths.Anchor1)
 
-	anchor2, err := hex.DecodeString(paths.Anchor2)
-	if err != nil {
-		logger.Error(err, "invalid hex params")
-		jsonhttp.InternalServerError(w, "invalid hex params")
-		return
-	}
+	anchor2 := []byte(paths.Anchor2)
 
 	resp, err := s.redistributionAgent.SampleWithProofs(r.Context(), anchor1, anchor2, paths.Depth)
 	if err != nil {
