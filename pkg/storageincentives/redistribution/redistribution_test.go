@@ -28,7 +28,6 @@ import (
 
 var redistributionContractABI = abiutil.MustParseABI(chaincfg.Testnet.RedistributionABI)
 
-// TODO uncomment when ABI is updated
 func randChunkInclusionProof(t *testing.T) redistribution.ChunkInclusionProof {
 	t.Helper()
 

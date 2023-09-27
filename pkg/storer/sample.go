@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/bmt"
-	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/soc"
 	chunk "github.com/ethersphere/bee/pkg/storage/testing"
@@ -293,10 +292,6 @@ func (db *DB) ReserveSample(
 
 			// ensuring to pass the check order function of redistribution contract
 			if index := contains(item.TransformedAddress); index != -1 {
-				// TODO change back to SOC
-				if cac.Valid(ch) {
-					continue
-				}
 				// replace the chunk at index
 				sampleItems[index] = item
 				continue
