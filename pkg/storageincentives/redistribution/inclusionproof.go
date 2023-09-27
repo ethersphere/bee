@@ -7,6 +7,7 @@ package redistribution
 import (
 	"encoding/binary"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/bmt"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storer"
@@ -24,12 +25,12 @@ type ChunkInclusionProofs struct {
 // github.com/ethersphere/storage-incentives/blob/ph_f2/src/Redistribution.sol
 // github.com/ethersphere/storage-incentives/blob/master/src/Redistribution.sol (when merged to master)
 type ChunkInclusionProof struct {
-	ProveSegment   []byte
-	ProofSegments  [][]byte
-	ProofSegments2 [][]byte
-	ProveSegment2  []byte
+	ProveSegment   common.Hash
+	ProofSegments  []common.Hash
+	ProofSegments2 []common.Hash
+	ProveSegment2  common.Hash
 	ChunkSpan      uint64
-	ProofSegments3 [][]byte
+	ProofSegments3 []common.Hash
 	PostageProof   PostageProof
 	SocProof       []SOCProof
 }
@@ -39,8 +40,8 @@ type ChunkInclusionProof struct {
 type PostageProof struct {
 	Signature []byte
 	PostageId []byte
-	Index     []byte
-	TimeStamp []byte
+	Index     uint64
+	TimeStamp uint64
 }
 
 // SOCProof structure must exactly match
@@ -48,8 +49,8 @@ type PostageProof struct {
 type SOCProof struct {
 	Signer     []byte
 	Signature  []byte
-	Identifier []byte
-	ChunkAddr  []byte
+	Identifier common.Hash
+	ChunkAddr  common.Hash
 }
 
 // Transforms arguments to ChunkInclusionProof object
@@ -60,20 +61,28 @@ func NewChunkInclusionProof(proofp1, proofp2 bmt.Proof, proofp3 bmt.Proof, sampl
 	}
 
 	return ChunkInclusionProof{
-		ProofSegments:  proofp1.ProofSegments,
-		ProveSegment:   proofp1.ProveSegment,
-		ProofSegments2: proofp2.ProofSegments,
-		ProveSegment2:  proofp2.ProveSegment,
+		ProofSegments:  toCommonHash(proofp1.ProofSegments...),
+		ProveSegment:   toCommonHash(proofp1.ProveSegment)[0],
+		ProofSegments2: toCommonHash(proofp2.ProofSegments...),
+		ProveSegment2:  toCommonHash(proofp2.ProveSegment)[0],
 		ChunkSpan:      binary.LittleEndian.Uint64(proofp2.Span[:swarm.SpanSize]), // should be uint64 on the other size; copied from pkg/api/bytes.go
-		ProofSegments3: proofp3.ProofSegments,
+		ProofSegments3: toCommonHash(proofp3.ProofSegments...),
 		PostageProof: PostageProof{
 			Signature: sampleItem.Stamp.Sig(),
 			PostageId: sampleItem.Stamp.BatchID(),
-			Index:     sampleItem.Stamp.Index(),
-			TimeStamp: sampleItem.Stamp.Timestamp(),
+			Index:     binary.BigEndian.Uint64(sampleItem.Stamp.Index()),
+			TimeStamp: binary.BigEndian.Uint64(sampleItem.Stamp.Timestamp()),
 		},
 		SocProof: socProof,
 	}, nil
+}
+
+func toCommonHash(hashes ...[]byte) []common.Hash {
+	output := make([]common.Hash, len(hashes))
+	for i, s := range hashes {
+		output[i] = common.BytesToHash(s)
+	}
+	return output
 }
 
 func makeSOCProof(sampleItem storer.SampleItem) ([]SOCProof, error) {
@@ -91,7 +100,7 @@ func makeSOCProof(sampleItem storer.SampleItem) ([]SOCProof, error) {
 	return []SOCProof{{
 		Signer:     socCh.OwnerAddress(),
 		Signature:  socCh.Signature(),
-		Identifier: socCh.ID(),
-		ChunkAddr:  socCh.WrappedChunk().Address().Bytes(),
+		Identifier: common.BytesToHash(socCh.ID()),
+		ChunkAddr:  common.BytesToHash(socCh.WrappedChunk().Address().Bytes()),
 	}}, nil
 }

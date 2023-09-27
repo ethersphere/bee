@@ -5,8 +5,10 @@ package api
 
 import (
 	"net/http"
+	"strconv"
 	"time"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -69,37 +71,35 @@ func renderChunkInclusionProofs(proofs redistribution.ChunkInclusionProofs) Chun
 func renderChunkInclusionProof(proof redistribution.ChunkInclusionProof) ChunkInclusionProof {
 	var socProof []SOCProof
 	if len(proof.SocProof) == 1 {
-		socProof = []SOCProof{
-			SOCProof{
-				Signer:     toHexString(proof.SocProof[0].Signer)[0],
-				Signature:  toHexString(proof.SocProof[0].Signature)[0],
-				Identifier: toHexString(proof.SocProof[0].Identifier)[0],
-				ChunkAddr:  toHexString(proof.SocProof[0].ChunkAddr)[0],
-			},
-		}
+		socProof = []SOCProof{{
+			Signer:     hex.EncodeToString(proof.SocProof[0].Signer),
+			Signature:  hex.EncodeToString(proof.SocProof[0].Signature),
+			Identifier: renderCommonHash(proof.SocProof[0].Identifier)[0],
+			ChunkAddr:  renderCommonHash(proof.SocProof[0].ChunkAddr)[0],
+		}}
 	}
 
 	return ChunkInclusionProof{
-		ProveSegment:   toHexString(proof.ProveSegment)[0],
-		ProofSegments:  toHexString(proof.ProofSegments...),
-		ProveSegment2:  toHexString(proof.ProveSegment2)[0],
-		ProofSegments2: toHexString(proof.ProofSegments2...),
-		ProofSegments3: toHexString(proof.ProofSegments3...),
+		ProveSegment:   renderCommonHash(proof.ProveSegment)[0],
+		ProofSegments:  renderCommonHash(proof.ProofSegments...),
+		ProveSegment2:  renderCommonHash(proof.ProveSegment2)[0],
+		ProofSegments2: renderCommonHash(proof.ProofSegments2...),
+		ProofSegments3: renderCommonHash(proof.ProofSegments3...),
 		ChunkSpan:      proof.ChunkSpan,
 		PostageProof: PostageProof{
-			Signature: toHexString(proof.PostageProof.Signature)[0],
-			PostageId: toHexString(proof.PostageProof.PostageId)[0],
-			Index:     toHexString(proof.PostageProof.Index)[0],
-			TimeStamp: toHexString(proof.PostageProof.TimeStamp)[0],
+			Signature: hex.EncodeToString(proof.PostageProof.Signature),
+			PostageId: hex.EncodeToString(proof.PostageProof.PostageId),
+			Index:     strconv.FormatUint(proof.PostageProof.Index, 16),
+			TimeStamp: strconv.FormatUint(proof.PostageProof.TimeStamp, 16),
 		},
 		SocProof: socProof,
 	}
 }
 
-func toHexString(proofSegments ...[]byte) []string {
+func renderCommonHash(proofSegments ...common.Hash) []string {
 	output := make([]string, len(proofSegments))
 	for i, s := range proofSegments {
-		output[i] = hex.EncodeToString(s)
+		output[i] = hex.EncodeToString(s.Bytes())
 	}
 	return output
 }

@@ -7,6 +7,7 @@ package redistribution_test
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"math/big"
@@ -32,16 +33,16 @@ func randChunkInclusionProof(t *testing.T) redistribution.ChunkInclusionProof {
 	t.Helper()
 
 	return redistribution.ChunkInclusionProof{
-		ProofSegments:  [][]byte{testutil.RandBytes(t, 32)},
-		ProveSegment:   testutil.RandBytes(t, 32),
-		ProofSegments2: [][]byte{testutil.RandBytes(t, 32)},
-		ProveSegment2:  testutil.RandBytes(t, 32),
-		ProofSegments3: [][]byte{testutil.RandBytes(t, 32)},
+		ProofSegments:  []common.Hash{common.BytesToHash(testutil.RandBytes(t, 32))},
+		ProveSegment:   common.BytesToHash(testutil.RandBytes(t, 32)),
+		ProofSegments2: []common.Hash{common.BytesToHash(testutil.RandBytes(t, 32))},
+		ProveSegment2:  common.BytesToHash(testutil.RandBytes(t, 32)),
+		ProofSegments3: []common.Hash{common.BytesToHash(testutil.RandBytes(t, 32))},
 		PostageProof: redistribution.PostageProof{
-			Signature: testutil.RandBytes(t, 32),
+			Signature: testutil.RandBytes(t, 65),
 			PostageId: testutil.RandBytes(t, 32),
-			Index:     testutil.RandBytes(t, 32),
-			TimeStamp: testutil.RandBytes(t, 8),
+			Index:     binary.BigEndian.Uint64(testutil.RandBytes(t, 8)),
+			TimeStamp: binary.BigEndian.Uint64(testutil.RandBytes(t, 8)),
 		},
 		ChunkSpan: 1,
 		SocProof:  []redistribution.SOCProof{},
