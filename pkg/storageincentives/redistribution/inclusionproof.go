@@ -38,19 +38,19 @@ type ChunkInclusionProof struct {
 // SOCProof structure must exactly match
 // corresponding structure (of the same name) in Redistribution.sol smart contract.
 type PostageProof struct {
-	Signature []byte
-	PostageId common.Hash
-	Index     uint64
-	TimeStamp uint64
+	Signature []byte      `json:"signature"`
+	PostageId common.Hash `json:"postageId"`
+	Index     uint64      `json:"index"`
+	TimeStamp uint64      `json:"timeStamp"`
 }
 
 // SOCProof structure must exactly match
 // corresponding structure (of the same name) in Redistribution.sol smart contract.
 type SOCProof struct {
-	Signer     common.Address
-	Signature  []byte
-	Identifier common.Hash
-	ChunkAddr  common.Hash
+	Signer     common.Address `json:"signer"`
+	Signature  []byte         `json:"signature"`
+	Identifier common.Hash    `json:"identifier"`
+	ChunkAddr  common.Hash    `json:"chunkAddr"`
 }
 
 // Transforms arguments to ChunkInclusionProof object
@@ -86,15 +86,14 @@ func toCommonHash(hashes [][]byte) []common.Hash {
 }
 
 func makeSOCProof(sampleItem storer.SampleItem) ([]SOCProof, error) {
-	var emptySOCProof []SOCProof
 	ch := swarm.NewChunk(sampleItem.ChunkAddress, sampleItem.ChunkData)
 	if !soc.Valid(ch) {
-		return emptySOCProof, nil
+		return []SOCProof{}, nil
 	}
 
 	socCh, err := soc.FromChunk(ch)
 	if err != nil {
-		return emptySOCProof, err
+		return []SOCProof{}, err
 	}
 
 	return []SOCProof{{
