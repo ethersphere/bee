@@ -31,25 +31,21 @@ var redistributionContractABI = abiutil.MustParseABI(chaincfg.Testnet.Redistribu
 // TODO uncomment when ABI is updated
 func randChunkInclusionProof(t *testing.T) redistribution.ChunkInclusionProof {
 	t.Helper()
-	var signature [65]byte
-	var postageId [32]byte
-	copy(signature[:], testutil.RandBytes(t, 65))
-	copy(postageId[:], testutil.RandBytes(t, 32))
 
 	return redistribution.ChunkInclusionProof{
-		ProofSegments:  [7]common.Hash{common.BytesToHash(testutil.RandBytes(t, 32))},
+		ProofSegments:  []common.Hash{common.BytesToHash(testutil.RandBytes(t, 32))},
 		ProveSegment:   common.BytesToHash(testutil.RandBytes(t, 32)),
-		ProofSegments2: [7]common.Hash{common.BytesToHash(testutil.RandBytes(t, 32))},
+		ProofSegments2: []common.Hash{common.BytesToHash(testutil.RandBytes(t, 32))},
 		ProveSegment2:  common.BytesToHash(testutil.RandBytes(t, 32)),
-		ProofSegments3: [7]common.Hash{common.BytesToHash(testutil.RandBytes(t, 32))},
+		ProofSegments3: []common.Hash{common.BytesToHash(testutil.RandBytes(t, 32))},
 		PostageProof: redistribution.PostageProof{
-			Signature: signature,
-			PostageId: postageId,
+			Signature: testutil.RandBytes(t, 65),
+			PostageId: common.BytesToHash(testutil.RandBytes(t, 32)),
 			Index:     binary.BigEndian.Uint64(testutil.RandBytes(t, 8)),
 			TimeStamp: binary.BigEndian.Uint64(testutil.RandBytes(t, 8)),
 		},
 		ChunkSpan: 1,
-		SocProof:  [1]redistribution.SOCProof{},
+		SocProof:  []redistribution.SOCProof{},
 	}
 }
 

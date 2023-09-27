@@ -25,20 +25,20 @@ type ChunkInclusionProofs struct {
 // github.com/ethersphere/storage-incentives/blob/ph_f2/src/Redistribution.sol
 // github.com/ethersphere/storage-incentives/blob/master/src/Redistribution.sol (when merged to master)
 type ChunkInclusionProof struct {
-	ProveSegment   common.Hash
-	ProofSegments  [7]common.Hash
-	ProofSegments2 [7]common.Hash
-	ProveSegment2  common.Hash
-	ChunkSpan      uint64
-	ProofSegments3 [7]common.Hash
-	PostageProof   PostageProof
-	SocProof       [1]SOCProof
+	ProofSegments  []common.Hash `json:"proofSegments"`
+	ProveSegment   common.Hash   `json:"proveSegment"`
+	ProofSegments2 []common.Hash `json:"proofSegments2"`
+	ProveSegment2  common.Hash   `json:"proveSegment2"`
+	ChunkSpan      uint64        `json:"chunkSpan"`
+	ProofSegments3 []common.Hash `json:"proofSegments3"`
+	PostageProof   PostageProof  `json:"postageProof"`
+	SocProof       []SOCProof    `json:"socProof"`
 }
 
 // SOCProof structure must exactly match
 // corresponding structure (of the same name) in Redistribution.sol smart contract.
 type PostageProof struct {
-	Signature [65]byte
+	Signature []byte
 	PostageId common.Hash
 	Index     uint64
 	TimeStamp uint64
@@ -48,7 +48,7 @@ type PostageProof struct {
 // corresponding structure (of the same name) in Redistribution.sol smart contract.
 type SOCProof struct {
 	Signer     common.Address
-	Signature  [65]byte
+	Signature  []byte
 	Identifier common.Hash
 	ChunkAddr  common.Hash
 }
@@ -59,10 +59,6 @@ func NewChunkInclusionProof(proofp1, proofp2 bmt.Proof, proofp3 bmt.Proof, sampl
 	if err != nil {
 		return ChunkInclusionProof{}, err
 	}
-	var signature [65]byte
-	copy(signature[:], sampleItem.Stamp.Sig())
-	var batchId [32]byte
-	copy(batchId[:], sampleItem.Stamp.BatchID())
 
 	return ChunkInclusionProof{
 		ProofSegments:  toCommonHash(proofp1.ProofSegments),
@@ -72,8 +68,8 @@ func NewChunkInclusionProof(proofp1, proofp2 bmt.Proof, proofp3 bmt.Proof, sampl
 		ChunkSpan:      binary.LittleEndian.Uint64(proofp2.Span[:swarm.SpanSize]), // should be uint64 on the other size; copied from pkg/api/bytes.go
 		ProofSegments3: toCommonHash(proofp3.ProofSegments),
 		PostageProof: PostageProof{
-			Signature: signature,
-			PostageId: batchId,
+			Signature: sampleItem.Stamp.Sig(),
+			PostageId: common.BytesToHash(sampleItem.Stamp.BatchID()),
 			Index:     binary.BigEndian.Uint64(sampleItem.Stamp.Index()),
 			TimeStamp: binary.BigEndian.Uint64(sampleItem.Stamp.Timestamp()),
 		},
@@ -81,16 +77,16 @@ func NewChunkInclusionProof(proofp1, proofp2 bmt.Proof, proofp3 bmt.Proof, sampl
 	}, nil
 }
 
-func toCommonHash(hashes [][]byte) [7]common.Hash {
-	var output [7]common.Hash
+func toCommonHash(hashes [][]byte) []common.Hash {
+	output := make([]common.Hash, len(hashes))
 	for i, s := range hashes {
 		output[i] = common.BytesToHash(s)
 	}
 	return output
 }
 
-func makeSOCProof(sampleItem storer.SampleItem) ([1]SOCProof, error) {
-	var emptySOCProof [1]SOCProof
+func makeSOCProof(sampleItem storer.SampleItem) ([]SOCProof, error) {
+	var emptySOCProof []SOCProof
 	ch := swarm.NewChunk(sampleItem.ChunkAddress, sampleItem.ChunkData)
 	if !soc.Valid(ch) {
 		return emptySOCProof, nil
@@ -101,14 +97,9 @@ func makeSOCProof(sampleItem storer.SampleItem) ([1]SOCProof, error) {
 		return emptySOCProof, err
 	}
 
-	var signature [65]byte
-	copy(signature[:], socCh.Signature())
-	var signer [20]byte
-	copy(signer[:], socCh.OwnerAddress())
-
-	return [1]SOCProof{{
-		Signer:     signer,
-		Signature:  signature,
+	return []SOCProof{{
+		Signer:     common.BytesToAddress(socCh.OwnerAddress()),
+		Signature:  socCh.Signature(),
 		Identifier: common.BytesToHash(socCh.ID()),
 		ChunkAddr:  common.BytesToHash(socCh.WrappedChunk().Address().Bytes()),
 	}}, nil

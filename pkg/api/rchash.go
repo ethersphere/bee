@@ -96,7 +96,7 @@ func renderChunkInclusionProof(proof redistribution.ChunkInclusionProof) ChunkIn
 	}
 }
 
-func renderCommonHash(proofSegments [7]common.Hash) []string {
+func renderCommonHash(proofSegments []common.Hash) []string {
 	output := make([]string, len(proofSegments))
 	for i, s := range proofSegments {
 		output[i] = hex.EncodeToString(s.Bytes())
@@ -135,5 +135,5 @@ func (s *Service) rchash(w http.ResponseWriter, r *http.Request) {
 		Proofs:   renderChunkInclusionProofs(swp.Proofs),
 	}
 
-	jsonhttp.OK(w, RCHashResponse(resp))
+	jsonhttp.OK(w, resp)
 }
