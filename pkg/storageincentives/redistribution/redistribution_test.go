@@ -7,6 +7,7 @@ package redistribution_test
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"math/big"
@@ -27,34 +28,35 @@ import (
 
 var redistributionContractABI = abiutil.MustParseABI(chaincfg.Testnet.RedistributionABI)
 
-// TODO uncomment when ABI is updated
-// func randChunkInclusionProof(t *testing.T) redistribution.ChunkInclusionProof {
-// 	t.Helper()
+func randChunkInclusionProof(t *testing.T) redistribution.ChunkInclusionProof {
+	t.Helper()
 
-// 	return redistribution.ChunkInclusionProof{
-// 		ProofSegments:  []string{hex.EncodeToString(testutil.RandBytes(t, 32))},
-// 		ProveSegment:   hex.EncodeToString(testutil.RandBytes(t, 32)),
-// 		ProofSegments2: []string{hex.EncodeToString(testutil.RandBytes(t, 32))},
-// 		ProveSegment2:  hex.EncodeToString(testutil.RandBytes(t, 32)),
-// 		ProofSegments3: []string{hex.EncodeToString(testutil.RandBytes(t, 32))},
-// 		ChunkSpan:      1,
-// 		Signature:      string(testutil.RandBytes(t, 32)),
-// 		ChunkAddr:      hex.EncodeToString(testutil.RandBytes(t, 32)),
-// 		PostageId:      hex.EncodeToString(testutil.RandBytes(t, 32)),
-// 		Index:          hex.EncodeToString(testutil.RandBytes(t, 32)),
-// 		TimeStamp:      strconv.Itoa(time.Now().Nanosecond()),
-// 	}
-// }
+	return redistribution.ChunkInclusionProof{
+		ProofSegments:  []common.Hash{common.BytesToHash(testutil.RandBytes(t, 32))},
+		ProveSegment:   common.BytesToHash(testutil.RandBytes(t, 32)),
+		ProofSegments2: []common.Hash{common.BytesToHash(testutil.RandBytes(t, 32))},
+		ProveSegment2:  common.BytesToHash(testutil.RandBytes(t, 32)),
+		ProofSegments3: []common.Hash{common.BytesToHash(testutil.RandBytes(t, 32))},
+		PostageProof: redistribution.PostageProof{
+			Signature: testutil.RandBytes(t, 65),
+			PostageId: common.BytesToHash(testutil.RandBytes(t, 32)),
+			Index:     binary.BigEndian.Uint64(testutil.RandBytes(t, 8)),
+			TimeStamp: binary.BigEndian.Uint64(testutil.RandBytes(t, 8)),
+		},
+		ChunkSpan: 1,
+		SocProof:  []redistribution.SOCProof{},
+	}
+}
 
-// func randChunkInclusionProofs(t *testing.T) redistribution.ChunkInclusionProofs {
-// 	t.Helper()
+func randChunkInclusionProofs(t *testing.T) redistribution.ChunkInclusionProofs {
+	t.Helper()
 
-// 	return redistribution.ChunkInclusionProofs{
-// 		A: randChunkInclusionProof(t),
-// 		B: randChunkInclusionProof(t),
-// 		C: randChunkInclusionProof(t),
-// 	}
-// }
+	return redistribution.ChunkInclusionProofs{
+		A: randChunkInclusionProof(t),
+		B: randChunkInclusionProof(t),
+		C: randChunkInclusionProof(t),
+	}
+}
 
 func TestRedistribution(t *testing.T) {
 	t.Parallel()
@@ -179,98 +181,12 @@ func TestRedistribution(t *testing.T) {
 		}
 	})
 
-	// t.Run("Claim", func(t *testing.T) {
-	// 	t.Parallel()
-
-	// 	proofs := randChunkInclusionProofs(t)
-	// 	// TODO: use this when abi is updated
-	// 	// expectedCallData, err := redistributionContractABI.Pack("claim", proofs.A, proofs.B, proofs.C)
-
-	// 	expectedCallData, err := redistributionContractABI.Pack("claim")
-	// 	if err != nil {
-	// 		t.Fatal(err)
-	// 	}
-	// 	contract := redistribution.New(
-	// 		owner,
-	// 		log.Noop,
-	// 		transactionMock.New(
-	// 			transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
-	// 				if *request.To == redistributionContractAddress {
-	// 					if !bytes.Equal(expectedCallData[:32], request.Data[:32]) {
-	// 						return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
-	// 					}
-	// 					return txHashDeposited, nil
-	// 				}
-	// 				return common.Hash{}, errors.New("sent to wrong contract")
-	// 			}),
-	// 			transactionMock.WithWaitForReceiptFunc(func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
-	// 				if txHash == txHashDeposited {
-	// 					return &types.Receipt{
-	// 						Status: 1,
-	// 					}, nil
-	// 				}
-	// 				return nil, errors.New("unknown tx hash")
-	// 			}),
-	// 		),
-	// 		redistributionContractAddress,
-	// 		redistributionContractABI,
-	// 	)
-
-	// 	_, err = contract.Claim(ctx, proofs)
-	// 	if err != nil {
-	// 		t.Fatal(err)
-	// 	}
-	// })
-
-	// NOTE: skip until storage-incentives-abi gets update
-	// t.Run("Claim with tx reverted", func(t *testing.T) {
-	// 	t.Parallel()
-
-	// 	proofs := randChunkInclusionProofs(t)
-	// 	// TODO_PH4: use this when abi is updated
-	// 	// expectedCallData, err := redistributionContractABI.Pack("claim", proofs.A, proofs.B, proofs.C)
-	// 	expectedCallData, err := redistributionContractABI.Pack("claim")
-	// 	if err != nil {
-	// 		t.Fatal(err)
-	// 	}
-	// 	contract := redistribution.New(
-	// 		owner,
-	// 		log.Noop,
-	// 		transactionMock.New(
-	// 			transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
-	// 				if *request.To == redistributionContractAddress {
-	// 					if !bytes.Equal(expectedCallData[:32], request.Data[:32]) {
-	// 						return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
-	// 					}
-	// 					return txHashDeposited, nil
-	// 				}
-	// 				return common.Hash{}, errors.New("sent to wrong contract")
-	// 			}),
-	// 			transactionMock.WithWaitForReceiptFunc(func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
-	// 				if txHash == txHashDeposited {
-	// 					return &types.Receipt{
-	// 						Status: 0,
-	// 					}, nil
-	// 				}
-	// 				return nil, errors.New("unknown tx hash")
-	// 			}),
-	// 		),
-	// 		redistributionContractAddress,
-	// 		redistributionContractABI,
-	// 	)
-
-	// 	_, err = contract.Claim(ctx, proofs)
-	// 	if !errors.Is(err, transaction.ErrTransactionReverted) {
-	// 		t.Fatal(err)
-	// 	}
-	// })
-
-	t.Run("Commit", func(t *testing.T) {
+	t.Run("Claim", func(t *testing.T) {
 		t.Parallel()
-		var obfus [32]byte
-		testobfus := common.Hex2Bytes("hash")
-		copy(obfus[:], testobfus)
-		expectedCallData, err := redistributionContractABI.Pack("commit", obfus, common.BytesToHash(owner.Bytes()), big.NewInt(0))
+
+		proofs := randChunkInclusionProofs(t)
+
+		expectedCallData, err := redistributionContractABI.Pack("claim", proofs.A, proofs.B, proofs.C)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -300,7 +216,88 @@ func TestRedistribution(t *testing.T) {
 			redistributionContractABI,
 		)
 
-		_, err = contract.Commit(ctx, testobfus, big.NewInt(0))
+		_, err = contract.Claim(ctx, proofs)
+		if err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("Claim with tx reverted", func(t *testing.T) {
+		t.Parallel()
+
+		proofs := randChunkInclusionProofs(t)
+		expectedCallData, err := redistributionContractABI.Pack("claim", proofs.A, proofs.B, proofs.C)
+		if err != nil {
+			t.Fatal(err)
+		}
+		contract := redistribution.New(
+			owner,
+			log.Noop,
+			transactionMock.New(
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+					if *request.To == redistributionContractAddress {
+						if !bytes.Equal(expectedCallData[:32], request.Data[:32]) {
+							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
+						}
+						return txHashDeposited, nil
+					}
+					return common.Hash{}, errors.New("sent to wrong contract")
+				}),
+				transactionMock.WithWaitForReceiptFunc(func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
+					if txHash == txHashDeposited {
+						return &types.Receipt{
+							Status: 0,
+						}, nil
+					}
+					return nil, errors.New("unknown tx hash")
+				}),
+			),
+			redistributionContractAddress,
+			redistributionContractABI,
+		)
+
+		_, err = contract.Claim(ctx, proofs)
+		if !errors.Is(err, transaction.ErrTransactionReverted) {
+			t.Fatal(err)
+		}
+	})
+
+	t.Run("Commit", func(t *testing.T) {
+		t.Parallel()
+		var obfus [32]byte
+		testobfus := common.Hex2Bytes("hash")
+		copy(obfus[:], testobfus)
+		expectedCallData, err := redistributionContractABI.Pack("commit", obfus, common.BytesToHash(owner.Bytes()), uint32(0))
+		if err != nil {
+			t.Fatal(err)
+		}
+		contract := redistribution.New(
+			owner,
+			log.Noop,
+			transactionMock.New(
+				transactionMock.WithSendFunc(func(ctx context.Context, request *transaction.TxRequest, boost int) (txHash common.Hash, err error) {
+					if *request.To == redistributionContractAddress {
+						if !bytes.Equal(expectedCallData[:32], request.Data[:32]) {
+							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
+						}
+						return txHashDeposited, nil
+					}
+					return common.Hash{}, errors.New("sent to wrong contract")
+				}),
+				transactionMock.WithWaitForReceiptFunc(func(ctx context.Context, txHash common.Hash) (receipt *types.Receipt, err error) {
+					if txHash == txHashDeposited {
+						return &types.Receipt{
+							Status: 1,
+						}, nil
+					}
+					return nil, errors.New("unknown tx hash")
+				}),
+			),
+			redistributionContractAddress,
+			redistributionContractABI,
+		)
+
+		_, err = contract.Commit(ctx, testobfus, uint32(0))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -405,7 +402,7 @@ func TestRedistribution(t *testing.T) {
 	t.Run("invalid call data", func(t *testing.T) {
 		t.Parallel()
 
-		expectedCallData, err := redistributionContractABI.Pack("commit", common.BytesToHash(common.Hex2Bytes("some hash")), common.BytesToHash(common.Hex2Bytes("some address")), big.NewInt(0))
+		expectedCallData, err := redistributionContractABI.Pack("commit", common.BytesToHash(common.Hex2Bytes("some hash")), common.BytesToHash(common.Hex2Bytes("some address")), uint32(0))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -427,7 +424,7 @@ func TestRedistribution(t *testing.T) {
 			redistributionContractABI,
 		)
 
-		_, err = contract.Commit(ctx, common.Hex2Bytes("hash"), big.NewInt(0))
+		_, err = contract.Commit(ctx, common.Hex2Bytes("hash"), uint32(0))
 		if err == nil {
 			t.Fatal("expected error")
 		}

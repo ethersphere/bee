@@ -6,8 +6,8 @@ package redistribution
 
 import (
 	"encoding/binary"
-	"encoding/hex"
 
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/bmt"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storer"
@@ -25,96 +25,81 @@ type ChunkInclusionProofs struct {
 // github.com/ethersphere/storage-incentives/blob/ph_f2/src/Redistribution.sol
 // github.com/ethersphere/storage-incentives/blob/master/src/Redistribution.sol (when merged to master)
 type ChunkInclusionProof struct {
-	ProofSegments  []string     `json:"proofSegments"`
-	ProveSegment   string       `json:"proveSegment"`
-	ProofSegments2 []string     `json:"proofSegments2"`
-	ProveSegment2  string       `json:"proveSegment2"`
-	ChunkSpan      uint64       `json:"chunkSpan"`
-	ProofSegments3 []string     `json:"proofSegments3"`
-	PostageProof   PostageProof `json:"postageProof"`
-	SocProof       []SOCProof   `json:"socProof"`
+	ProofSegments  []common.Hash `json:"proofSegments"`
+	ProveSegment   common.Hash   `json:"proveSegment"`
+	ProofSegments2 []common.Hash `json:"proofSegments2"`
+	ProveSegment2  common.Hash   `json:"proveSegment2"`
+	ChunkSpan      uint64        `json:"chunkSpan"`
+	ProofSegments3 []common.Hash `json:"proofSegments3"`
+	PostageProof   PostageProof  `json:"postageProof"`
+	SocProof       []SOCProof    `json:"socProof"`
 }
 
 // SOCProof structure must exactly match
 // corresponding structure (of the same name) in Redistribution.sol smart contract.
 type PostageProof struct {
-	Signature string `json:"signature"`
-	PostageId string `json:"postageId"`
-	Index     string `json:"index"`
-	TimeStamp string `json:"timeStamp"`
+	Signature []byte      `json:"signature"`
+	PostageId common.Hash `json:"postageId"`
+	Index     uint64      `json:"index"`
+	TimeStamp uint64      `json:"timeStamp"`
 }
 
 // SOCProof structure must exactly match
 // corresponding structure (of the same name) in Redistribution.sol smart contract.
 type SOCProof struct {
-	Signer     string `json:"signer"`
-	Signature  string `json:"signature"`
-	Identifier string `json:"identifier"`
-	ChunkAddr  string `json:"chunkAddr"`
+	Signer     common.Address `json:"signer"`
+	Signature  []byte         `json:"signature"`
+	Identifier common.Hash    `json:"identifier"`
+	ChunkAddr  common.Hash    `json:"chunkAddr"`
 }
 
-// NewChunkInclusionProof transforms arguments to ChunkInclusionProof object
-func NewChunkInclusionProof(proofp1, proofp2, proofp3 bmt.Proof, sampleItem storer.SampleItem) (ChunkInclusionProof, error) {
-	proofp1Hex := newHexProofs(proofp1)
-	proofp2Hex := newHexProofs(proofp2)
-	proofp3Hex := newHexProofs(proofp3)
-
+// Transforms arguments to ChunkInclusionProof object
+func NewChunkInclusionProof(proofp1, proofp2 bmt.Proof, proofp3 bmt.Proof, sampleItem storer.SampleItem) (ChunkInclusionProof, error) {
 	socProof, err := makeSOCProof(sampleItem)
 	if err != nil {
 		return ChunkInclusionProof{}, err
 	}
 
 	return ChunkInclusionProof{
-		ProofSegments:  proofp1Hex.ProofSegments,
-		ProveSegment:   proofp1Hex.ProveSegment,
-		ProofSegments2: proofp2Hex.ProofSegments,
-		ProveSegment2:  proofp2Hex.ProveSegment,
+		ProofSegments:  toCommonHash(proofp1.ProofSegments),
+		ProveSegment:   common.BytesToHash(proofp1.ProveSegment),
+		ProofSegments2: toCommonHash(proofp2.ProofSegments),
+		ProveSegment2:  common.BytesToHash(proofp2.ProveSegment),
 		ChunkSpan:      binary.LittleEndian.Uint64(proofp2.Span[:swarm.SpanSize]), // should be uint64 on the other size; copied from pkg/api/bytes.go
-		ProofSegments3: proofp3Hex.ProofSegments,
+		ProofSegments3: toCommonHash(proofp3.ProofSegments),
 		PostageProof: PostageProof{
-			Signature: hex.EncodeToString(sampleItem.Stamp.Sig()),
-			PostageId: hex.EncodeToString(sampleItem.Stamp.BatchID()),
-			Index:     hex.EncodeToString(sampleItem.Stamp.Index()),
-			TimeStamp: hex.EncodeToString(sampleItem.Stamp.Timestamp()),
+			Signature: sampleItem.Stamp.Sig(),
+			PostageId: common.BytesToHash(sampleItem.Stamp.BatchID()),
+			Index:     binary.BigEndian.Uint64(sampleItem.Stamp.Index()),
+			TimeStamp: binary.BigEndian.Uint64(sampleItem.Stamp.Timestamp()),
 		},
 		SocProof: socProof,
 	}, nil
 }
 
+func toCommonHash(hashes [][]byte) []common.Hash {
+	output := make([]common.Hash, len(hashes))
+	for i, s := range hashes {
+		output[i] = common.BytesToHash(s)
+	}
+	return output
+}
+
 func makeSOCProof(sampleItem storer.SampleItem) ([]SOCProof, error) {
-	var emptySOCProof = make([]SOCProof, 0)
 	ch := swarm.NewChunk(sampleItem.ChunkAddress, sampleItem.ChunkData)
 	if !soc.Valid(ch) {
-		return emptySOCProof, nil
+		return []SOCProof{}, nil
 	}
 
 	socCh, err := soc.FromChunk(ch)
 	if err != nil {
-		return emptySOCProof, err
+		return []SOCProof{}, err
 	}
 
 	return []SOCProof{{
-		Signer:     hex.EncodeToString(socCh.OwnerAddress()),
-		Signature:  hex.EncodeToString(socCh.Signature()),
-		Identifier: hex.EncodeToString(socCh.ID()),
-		ChunkAddr:  hex.EncodeToString(socCh.WrappedChunk().Address().Bytes()),
+		Signer:     common.BytesToAddress(socCh.OwnerAddress()),
+		Signature:  socCh.Signature(),
+		Identifier: common.BytesToHash(socCh.ID()),
+		ChunkAddr:  common.BytesToHash(socCh.WrappedChunk().Address().Bytes()),
 	}}, nil
-}
-
-type hexProof struct {
-	ProofSegments []string
-	ProveSegment  string
-}
-
-// newHexProofs transforms proof object to its hexadecimal representation
-func newHexProofs(proof bmt.Proof) hexProof {
-	proofSegments := make([]string, len(proof.ProofSegments))
-	for i := 0; i < len(proof.ProofSegments); i++ {
-		proofSegments[i] = hex.EncodeToString(proof.ProofSegments[i])
-	}
-
-	return hexProof{
-		ProveSegment:  hex.EncodeToString(proof.ProveSegment),
-		ProofSegments: proofSegments,
-	}
 }

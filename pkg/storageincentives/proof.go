@@ -55,7 +55,6 @@ func makeInclusionProofs(
 		require2++
 	}
 
-	// TODO: refactor, make it global / anchor (cleanup?)
 	prefixHasherFactory := func() hash.Hash {
 		return swarm.NewPrefixHasher(anchor1)
 	}
