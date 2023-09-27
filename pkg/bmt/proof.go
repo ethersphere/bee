@@ -25,7 +25,7 @@ func (p Prover) Hash(b []byte) ([]byte, error) {
 			return nil, err
 		}
 	}
-	return p.Hash(b)
+	return p.Hasher.Hash(b)
 }
 
 // Proof returns the inclusion proof of the i-th data segment
