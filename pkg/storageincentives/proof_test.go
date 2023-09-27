@@ -6,10 +6,10 @@ package storageincentives_test
 
 import (
 	"bytes"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"math/big"
-	"os"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/cac"
@@ -37,6 +37,9 @@ func TestMakeInclusionProofs(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+//go:embed testdata/inclusion-proofs.json
+var testData []byte
 
 // Test asserts that MakeInclusionProofs will generate the same
 // output for given sample.
@@ -111,10 +114,12 @@ func TestMakeInclusionProofsRegression(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	expectedProofs := redistribution.ChunkInclusionProofs{}
+	var expectedProofs redistribution.ChunkInclusionProofs
 
-	data, _ := os.ReadFile("testdata/inclusion-proofs.json")
-	_ = json.Unmarshal(data, &expectedProofs)
+	err = json.Unmarshal(testData, &expectedProofs)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	if diff := cmp.Diff(proofs, expectedProofs); diff != "" {
 		t.Fatalf("unexpected inclusion proofs (-want +have):\n%s", diff)
