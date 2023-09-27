@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"path"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/cac"
@@ -19,7 +20,6 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storer/internal/chunkstore"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"golang.org/x/sync/errgroup"
 )
 
 // Compact minimizes sharky disk usage by, using the current sharky locations from the storer,
@@ -92,30 +92,33 @@ func Compact(ctx context.Context, basePath string, opts *Options, validate bool)
 		end := lastUsedSlot
 
 		for start < end {
-			if slots[start] == nil { // free
-				if slots[end] != nil { // used
-					from := slots[end]
-					to := sharky.Location{Slot: start, Length: from.Location.Length, Shard: from.Location.Shard}
-					if err := sharkyRecover.Move(context.Background(), from.Location, to); err != nil {
-						return fmt.Errorf("sharky move: %w", err)
-					}
-					if err := sharkyRecover.Add(to); err != nil {
-						return fmt.Errorf("sharky add: %w", err)
-					}
 
-					from.Location = to
-					if err := store.Put(from); err != nil {
-						return fmt.Errorf("store put: %w", err)
-					}
-
-					start++
-					end--
-				} else {
-					end-- // keep moving to the left until a used slot is found
-				}
-			} else {
-				start++ // keep moving to the right until a free slot is found
+			if slots[end] == nil {
+				end-- // walk to the left until a used slot found
+				continue
 			}
+
+			if slots[start] != nil {
+				start++ // walk to the right until a free slot is found
+				continue
+			}
+
+			from := slots[end]
+			to := sharky.Location{Slot: start, Length: from.Location.Length, Shard: from.Location.Shard}
+			if err := sharkyRecover.Move(context.Background(), from.Location, to); err != nil {
+				return fmt.Errorf("sharky move: %w", err)
+			}
+			if err := sharkyRecover.Add(to); err != nil {
+				return fmt.Errorf("sharky add: %w", err)
+			}
+
+			from.Location = to
+			if err := store.Put(from); err != nil {
+				return fmt.Errorf("store put: %w", err)
+			}
+
+			start++
+			end--
 		}
 
 		logger.Info("shard truncated", "shard", fmt.Sprintf("%d/%d", shard, sharkyNoOfShards-1), "slot", end)
@@ -162,18 +165,19 @@ func validationWork(logger log.Logger, store storage.Store, sharky *sharky.Recov
 		return nil
 	}
 
-	eg := errgroup.Group{}
+	var wg sync.WaitGroup
 
 	for i := 0; i < 8; i++ {
-		eg.Go(func() error {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
 			buf := make([]byte, swarm.SocMaxChunkSize)
 			for item := range iteratateItemsC {
 				if err := validChunk(item, buf[:item.Location.Length]); err != nil {
 					logger.Info("invalid chunk", "address", item.Address, "error", err)
 				}
 			}
-			return nil
-		})
+		}()
 	}
 
 	count := 0
@@ -188,5 +192,5 @@ func validationWork(logger log.Logger, store storage.Store, sharky *sharky.Recov
 
 	close(iteratateItemsC)
 
-	_ = eg.Wait()
+	wg.Wait()
 }
