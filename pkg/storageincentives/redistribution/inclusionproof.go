@@ -2,8 +2,6 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-// Used for inclusion proof utilities
-
 package redistribution
 
 import (
@@ -55,8 +53,8 @@ type SOCProof struct {
 	ChunkAddr  string `json:"chunkAddr"`
 }
 
-// Transforms arguments to ChunkInclusionProof object
-func NewChunkInclusionProof(proofp1, proofp2 bmt.Proof, proofp3 bmt.Proof, sampleItem storer.SampleItem) (ChunkInclusionProof, error) {
+// NewChunkInclusionProof transforms arguments to ChunkInclusionProof object
+func NewChunkInclusionProof(proofp1, proofp2, proofp3 bmt.Proof, sampleItem storer.SampleItem) (ChunkInclusionProof, error) {
 	proofp1Hex := newHexProofs(proofp1)
 	proofp2Hex := newHexProofs(proofp2)
 	proofp3Hex := newHexProofs(proofp3)
@@ -108,7 +106,7 @@ type hexProof struct {
 	ProveSegment  string
 }
 
-// Transforms proof object to its hexadecimal representation
+// newHexProofs transforms proof object to its hexadecimal representation
 func newHexProofs(proof bmt.Proof) hexProof {
 	proofSegments := make([]string, len(proof.ProofSegments))
 	for i := 0; i < len(proof.ProofSegments); i++ {

@@ -40,7 +40,7 @@ type Hasher struct {
 	span   []byte      // The span of the data subsumed under the chunk
 }
 
-// facade
+// NewHasher gives back an instance of a Hasher struct
 func NewHasher(hasherFact func() hash.Hash) *Hasher {
 	conf := NewConf(hasherFact, swarm.BmtBranches, 32)
 

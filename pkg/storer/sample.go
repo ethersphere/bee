@@ -291,7 +291,7 @@ func (db *DB) ReserveSample(
 
 			item.Stamp = stamp
 
-			// check if sample contains transformed address
+			// ensuring to pass the check order function of redistribution contract
 			if index := contains(item.TransformedAddress); index != -1 {
 				// TODO change back to SOC
 				if cac.Valid(ch) {

@@ -17,15 +17,15 @@ type Proof struct {
 	Index         int
 }
 
-// Override base hash function of Hasher to fill buffer with zeros until chunk length
+// Hash overrides base hash function of Hasher to fill buffer with zeros until chunk length
 func (p Prover) Hash(b []byte) ([]byte, error) {
 	for i := p.size; i < p.maxSize; i += len(zerosection) {
 		_, err := p.Write(zerosection)
 		if err != nil {
-			return []byte{}, err
+			return nil, err
 		}
 	}
-	return p.Hasher.Hash(b)
+	return p.Hash(b)
 }
 
 // Proof returns the inclusion proof of the i-th data segment
@@ -47,13 +47,9 @@ func (p Prover) Proof(i int) Proof {
 	secsize := 2 * p.segmentSize
 	offset := i * secsize
 	section := p.bmt.buffer[offset : offset+secsize]
-	left := section[:p.segmentSize]
-	right := section[p.segmentSize:]
-	var segment, firstSegmentSister []byte
-	if index%2 == 0 {
-		segment, firstSegmentSister = left, right
-	} else {
-		segment, firstSegmentSister = right, left
+	segment, firstSegmentSister := section[:p.segmentSize], section[p.segmentSize:]
+	if index%2 != 0 {
+		segment, firstSegmentSister = firstSegmentSister, segment
 	}
 	sisters = append([][]byte{firstSegmentSister}, sisters...)
 	return Proof{segment, sisters, p.span, index}

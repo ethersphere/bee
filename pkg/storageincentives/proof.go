@@ -19,9 +19,9 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-var errMessage = errors.New("reserve commitment hasher: failure in proof creation")
+var errProofCreation = errors.New("reserve commitment hasher: failure in proof creation")
 
-// returns the byte index of chunkdata where the spansize starts
+// spanOffset returns the byte index of chunkdata where the spansize starts
 func spanOffset(sampleItem storer.SampleItem) uint8 {
 	ch := swarm.NewChunk(sampleItem.ChunkAddress, sampleItem.ChunkData)
 	if soc.Valid(ch) {
@@ -66,16 +66,16 @@ func makeInclusionProofs(
 	rccontent.SetHeaderInt64(swarm.HashSize * storer.SampleSize * 2)
 	rsc, err := sampleChunk(reserveSampleItems)
 	if err != nil {
-		return redistribution.ChunkInclusionProofs{}, errMessage
+		return redistribution.ChunkInclusionProofs{}, errProofCreation
 	}
 	rscData := rsc.Data()
 	_, err = rccontent.Write(rscData[swarm.SpanSize:])
 	if err != nil {
-		return redistribution.ChunkInclusionProofs{}, errMessage
+		return redistribution.ChunkInclusionProofs{}, errProofCreation
 	}
 	_, err = rccontent.Hash(nil)
 	if err != nil {
-		return redistribution.ChunkInclusionProofs{}, errMessage
+		return redistribution.ChunkInclusionProofs{}, errProofCreation
 	}
 	proof1p1 := rccontent.Proof(int(require1) * 2)
 	proof2p1 := rccontent.Proof(int(require2) * 2)
@@ -91,11 +91,11 @@ func makeInclusionProofs(
 	chunk1ContentPayload := reserveSampleItems[require1].ChunkData[chunk1Offset+swarm.SpanSize:]
 	_, err = chunk1Content.Write(chunk1ContentPayload)
 	if err != nil {
-		return redistribution.ChunkInclusionProofs{}, errMessage
+		return redistribution.ChunkInclusionProofs{}, errProofCreation
 	}
 	_, err = chunk1Content.Hash(nil)
 	if err != nil {
-		return redistribution.ChunkInclusionProofs{}, errMessage
+		return redistribution.ChunkInclusionProofs{}, errProofCreation
 	}
 	proof1p2 := chunk1Content.Proof(segmentIndex)
 	// TR chunk proof
@@ -103,11 +103,11 @@ func makeInclusionProofs(
 	chunk1TrContent.SetHeader(reserveSampleItems[require1].ChunkData[chunk1Offset : chunk1Offset+swarm.SpanSize])
 	_, err = chunk1TrContent.Write(chunk1ContentPayload)
 	if err != nil {
-		return redistribution.ChunkInclusionProofs{}, errMessage
+		return redistribution.ChunkInclusionProofs{}, errProofCreation
 	}
 	_, err = chunk1TrContent.Hash(nil)
 	if err != nil {
-		return redistribution.ChunkInclusionProofs{}, errMessage
+		return redistribution.ChunkInclusionProofs{}, errProofCreation
 	}
 	proof1p3 := chunk1TrContent.Proof(segmentIndex)
 	// cleanup
@@ -122,11 +122,11 @@ func makeInclusionProofs(
 	chunk2Content.SetHeader(reserveSampleItems[require2].ChunkData[chunk2Offset : chunk2Offset+swarm.SpanSize])
 	_, err = chunk2Content.Write(chunk2ContentPayload)
 	if err != nil {
-		return redistribution.ChunkInclusionProofs{}, errMessage
+		return redistribution.ChunkInclusionProofs{}, errProofCreation
 	}
 	_, err = chunk2Content.Hash(nil)
 	if err != nil {
-		return redistribution.ChunkInclusionProofs{}, errMessage
+		return redistribution.ChunkInclusionProofs{}, errProofCreation
 	}
 	proof2p2 := chunk2Content.Proof(segmentIndex)
 	// TR Chunk proof
@@ -134,11 +134,11 @@ func makeInclusionProofs(
 	chunk2TrContent.SetHeader(reserveSampleItems[require2].ChunkData[chunk2Offset : chunk2Offset+swarm.SpanSize])
 	_, err = chunk2TrContent.Write(chunk2ContentPayload)
 	if err != nil {
-		return redistribution.ChunkInclusionProofs{}, errMessage
+		return redistribution.ChunkInclusionProofs{}, errProofCreation
 	}
 	_, err = chunk2TrContent.Hash(nil)
 	if err != nil {
-		return redistribution.ChunkInclusionProofs{}, errMessage
+		return redistribution.ChunkInclusionProofs{}, errProofCreation
 	}
 	proof2p3 := chunk2TrContent.Proof(segmentIndex)
 	// cleanup
@@ -153,11 +153,11 @@ func makeInclusionProofs(
 	chunkLastContentPayload := reserveSampleItems[require3].ChunkData[chunkLastOffset+swarm.SpanSize:]
 	_, err = chunkLastContent.Write(chunkLastContentPayload)
 	if err != nil {
-		return redistribution.ChunkInclusionProofs{}, errMessage
+		return redistribution.ChunkInclusionProofs{}, errProofCreation
 	}
 	_, err = chunkLastContent.Hash(nil)
 	if err != nil {
-		return redistribution.ChunkInclusionProofs{}, errMessage
+		return redistribution.ChunkInclusionProofs{}, errProofCreation
 	}
 	proofLastp2 := chunkLastContent.Proof(segmentIndex)
 	// TR Chunk Proof
@@ -165,11 +165,11 @@ func makeInclusionProofs(
 	chunkLastTrContent.SetHeader(reserveSampleItems[require3].ChunkData[chunkLastOffset : chunkLastOffset+swarm.SpanSize])
 	_, err = chunkLastTrContent.Write(chunkLastContentPayload)
 	if err != nil {
-		return redistribution.ChunkInclusionProofs{}, errMessage
+		return redistribution.ChunkInclusionProofs{}, errProofCreation
 	}
 	_, err = chunkLastTrContent.Hash(nil)
 	if err != nil {
-		return redistribution.ChunkInclusionProofs{}, errMessage
+		return redistribution.ChunkInclusionProofs{}, errProofCreation
 	}
 	proofLastp3 := chunkLastTrContent.Proof(segmentIndex)
 	// cleanup

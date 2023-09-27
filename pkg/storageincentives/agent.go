@@ -364,7 +364,6 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 	}
 
 	proofs, err := makeInclusionProofs(sampleData.ReserveSampleItems, sampleData.Anchor1, anchor2)
-
 	if err != nil {
 		return fmt.Errorf("making inclusion proofs: %w", err)
 	}
@@ -429,12 +428,12 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 		return false, nil
 	}
 
-	t := time.Now()
+	now := time.Now()
 	sample, err := a.makeSample(ctx, storageRadius)
 	if err != nil {
 		return false, err
 	}
-	dur := time.Since(t)
+	dur := time.Since(now)
 	a.metrics.SampleDuration.Set(dur.Seconds())
 
 	a.logger.Info("produced sample", "hash", sample.ReserveSampleHash, "radius", sample.StorageRadius, "round", round)

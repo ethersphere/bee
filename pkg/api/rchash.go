@@ -19,7 +19,7 @@ func (s *Service) rchash(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("get_rchash").Build()
 
 	paths := struct {
-		Depth   uint8  `map:"depth" validate:"min=0"`
+		Depth   uint8  `map:"depth"`
 		Anchor1 string `map:"anchor1" validate:"required"`
 		Anchor2 string `map:"anchor2" validate:"required"`
 	}{}
