@@ -4,6 +4,7 @@
 package api
 
 import (
+	"encoding/hex"
 	"net/http"
 	"strconv"
 	"time"
