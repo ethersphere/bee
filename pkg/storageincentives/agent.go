@@ -560,7 +560,7 @@ type SampleWithProofs struct {
 	Duration time.Duration                       `json:"duration"`
 }
 
-// Only called by rchash API
+// SampleWithProofs is called only by rchash API
 func (a *Agent) SampleWithProofs(
 	ctx context.Context,
 	anchor1 []byte,

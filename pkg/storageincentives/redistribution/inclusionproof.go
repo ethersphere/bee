@@ -53,8 +53,8 @@ type SOCProof struct {
 	ChunkAddr  common.Hash    `json:"chunkAddr"`
 }
 
-// Transforms arguments to ChunkInclusionProof object
-func NewChunkInclusionProof(proofp1, proofp2 bmt.Proof, proofp3 bmt.Proof, sampleItem storer.SampleItem) (ChunkInclusionProof, error) {
+// NewChunkInclusionProof transforms arguments to ChunkInclusionProof object
+func NewChunkInclusionProof(proofp1, proofp2, proofp3 bmt.Proof, sampleItem storer.SampleItem) (ChunkInclusionProof, error) {
 	socProof, err := makeSOCProof(sampleItem)
 	if err != nil {
 		return ChunkInclusionProof{}, err
