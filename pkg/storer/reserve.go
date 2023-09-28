@@ -16,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/storageutil"
 	"github.com/ethersphere/bee/pkg/storer/internal"
+	"github.com/ethersphere/bee/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"golang.org/x/exp/slices"
 )
@@ -26,6 +27,8 @@ const (
 	reserveUpdateLockKey = "reserveUpdateLockKey"
 	batchExpiry          = "batchExpiry"
 	batchExpiryDone      = "batchExpiryDone"
+
+	reserveSizeWithinRadiusWakeup = time.Hour
 )
 
 func reserveUpdateBatchLockKey(batchID []byte) string {
@@ -85,6 +88,9 @@ func (db *DB) startReserveWorkers(
 
 	db.inFlight.Add(1)
 	go db.radiusWorker(ctx, wakeUpDur)
+
+	db.inFlight.Add(1)
+	go db.reserveSizeWithinRadiusWorker(ctx)
 }
 
 func (db *DB) radiusWorker(ctx context.Context, wakeUpDur time.Duration) {
@@ -108,6 +114,32 @@ func (db *DB) radiusWorker(ctx context.Context, wakeUpDur time.Duration) {
 				db.logger.Info("reserve radius decrease", "radius", radius)
 			}
 			db.metrics.StorageRadius.Set(float64(radius))
+		}
+	}
+}
+
+func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
+	defer db.inFlight.Done()
+
+	ticker := time.NewTicker(reserveSizeWithinRadiusWakeup)
+	defer ticker.Stop()
+
+	for {
+		count := 0
+		err := db.reserve.IterateChunksItems(db.repo, db.StorageRadius(), func(ci reserve.ChunkItem) (bool, error) {
+			count++
+			return false, nil
+		})
+		if err != nil {
+			db.logger.Error(err, "reserve count within radius")
+		}
+
+		db.metrics.ReserveSizeWithinRadius.Set(float64(count))
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
 		}
 	}
 }
