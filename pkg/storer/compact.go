@@ -155,6 +155,7 @@ func validationWork(logger log.Logger, store storage.Store, sharky *sharky.Recov
 		err := sharky.Read(context.Background(), item.Location, buf)
 		if err != nil {
 			logger.Warning("invalid chunk", "address", item.Address, "timestamp", time.Unix(int64(item.Timestamp), 0), "error", err)
+			return
 		}
 
 		ch := swarm.NewChunk(item.Address, buf)
