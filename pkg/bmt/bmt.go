@@ -40,6 +40,19 @@ type Hasher struct {
 	span   []byte      // The span of the data subsumed under the chunk
 }
 
+// NewHasher gives back an instance of a Hasher struct
+func NewHasher(hasherFact func() hash.Hash) *Hasher {
+	conf := NewConf(hasherFact, swarm.BmtBranches, 32)
+
+	return &Hasher{
+		Conf:   conf,
+		result: make(chan []byte),
+		errc:   make(chan error, 1),
+		span:   make([]byte, SpanSize),
+		bmt:    newTree(conf.segmentSize, conf.maxSize, conf.depth, conf.hasher),
+	}
+}
+
 // Capacity returns the maximum amount of bytes that will be processed by this hasher implementation.
 // since BMT assumes a balanced binary tree, capacity it is always a power of 2
 func (h *Hasher) Capacity() int {
