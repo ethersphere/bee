@@ -93,13 +93,13 @@ func Compact(ctx context.Context, basePath string, opts *Options, validate bool)
 
 		for start < end {
 
-			if slots[end] == nil {
-				end-- // walk to the left until a used slot found
+			if slots[start] != nil {
+				start++ // walk to the right until a free slot is found
 				continue
 			}
 
-			if slots[start] != nil {
-				start++ // walk to the right until a free slot is found
+			if slots[end] == nil {
+				end-- // walk to the left until a used slot found
 				continue
 			}
 
@@ -154,7 +154,7 @@ func validationWork(logger log.Logger, store storage.Store, sharky *sharky.Recov
 	validChunk := func(item *chunkstore.RetrievalIndexItem, buf []byte) {
 		err := sharky.Read(context.Background(), item.Location, buf)
 		if err != nil {
-			logger.Warning("invalid chunk", "address", item.Address, "timestamp", time.Unix(int64(item.Timestamp), 0), "error", err)
+			logger.Warning("invalid chunk", "address", item.Address, "timestamp", time.Unix(int64(item.Timestamp), 0), "location", item.Location, "error", err)
 			return
 		}
 
