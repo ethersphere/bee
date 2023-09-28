@@ -131,7 +131,7 @@ func dbCompactCmd(cmd *cobra.Command) {
 			}
 
 			logger.Warning("Compaction is a destructive process. If the process is stopped for any reason, the localstore may become corrupted.")
-			logger.Warning("It is highly advised to perform the compaction on a copy of the localtore.")
+			logger.Warning("It is highly advised to perform the compaction on a copy of the localstore.")
 			logger.Warning("After compaction finishes, the data directory may be replaced with the compacted version.")
 			logger.Warning("you have another 10 seconds to change your mind and kill this process with CTRL-C...")
 			time.Sleep(10 * time.Second)
