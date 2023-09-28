@@ -17,19 +17,20 @@ import (
 
 // metrics groups storer related prometheus counters.
 type metrics struct {
-	MethodCalls         prometheus.CounterVec
-	MethodCallsDuration prometheus.HistogramVec
-	ReserveSize         prometheus.Gauge
-	ReserveCleanup      prometheus.Counter
-	StorageRadius       prometheus.Gauge
-	CacheSize           prometheus.Gauge
-	EvictedChunkCount   prometheus.Counter
-	ExpiredChunkCount   prometheus.Counter
-	OverCapTriggerCount prometheus.Counter
-	ExpiredBatchCount   prometheus.Counter
-	LevelDBStats        prometheus.HistogramVec
-	ExpiryTriggersCount prometheus.Counter
-	ExpiryRunsCount     prometheus.Counter
+	MethodCalls             prometheus.CounterVec
+	MethodCallsDuration     prometheus.HistogramVec
+	ReserveSize             prometheus.Gauge
+	ReserveSizeWithinRadius prometheus.Gauge
+	ReserveCleanup          prometheus.Counter
+	StorageRadius           prometheus.Gauge
+	CacheSize               prometheus.Gauge
+	EvictedChunkCount       prometheus.Counter
+	ExpiredChunkCount       prometheus.Counter
+	OverCapTriggerCount     prometheus.Counter
+	ExpiredBatchCount       prometheus.Counter
+	LevelDBStats            prometheus.HistogramVec
+	ExpiryTriggersCount     prometheus.Counter
+	ExpiryRunsCount         prometheus.Counter
 }
 
 // newMetrics is a convenient constructor for creating new metrics.
@@ -61,6 +62,14 @@ func newMetrics() metrics {
 				Subsystem: subsystem,
 				Name:      "reserve_size",
 				Help:      "Number of chunks in reserve.",
+			},
+		),
+		ReserveSizeWithinRadius: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "reserve_size_within_radius",
+				Help:      "Number of chunks in reserve with proximity >= storage radius.",
 			},
 		),
 		ReserveCleanup: prometheus.NewCounter(
