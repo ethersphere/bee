@@ -5,6 +5,7 @@
 package storageincentives
 
 var (
-	NewEvents   = newEvents
-	SampleChunk = sampleChunk
+	NewEvents           = newEvents
+	SampleChunk         = sampleChunk
+	MakeInclusionProofs = makeInclusionProofs
 )
