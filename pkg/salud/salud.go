@@ -24,10 +24,9 @@ import (
 const loggerName = "salud"
 
 const (
-	wakeup                      = time.Minute
-	requestTimeout              = time.Second * 10
-	DefaultMinPeersPerBin       = 3
-	maxReserveSizePercentageErr = 0.02 // 2%
+	wakeup                = time.Minute
+	requestTimeout        = time.Second * 10
+	DefaultMinPeersPerBin = 4
 )
 
 type topologyDriver interface {
