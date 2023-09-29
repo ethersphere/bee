@@ -180,8 +180,10 @@ func (c *contract) ReserveSalt(ctx context.Context) ([]byte, error) {
 	return salt[:], nil
 }
 
-func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest, boostPercent int) (common.Hash, error) {
-	txHash, err := c.txService.Send(ctx, request, boostPercent)
+func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest, boostPercent int) (txHash common.Hash, err error) {
+	defer func() { err = c.txService.UnwrapRevertReason(ctx, request, err) }()
+
+	txHash, err = c.txService.Send(ctx, request, boostPercent)
 	if err != nil {
 		return txHash, err
 	}
