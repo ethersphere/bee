@@ -91,15 +91,20 @@ func Compact(ctx context.Context, basePath string, opts *Options, validate bool)
 		start := uint32(0)
 		end := lastUsedSlot
 
-		for start < end {
+		batch, err := store.Batch(ctx)
+		if err != nil {
+			return err
+		}
 
-			if slots[end] == nil {
-				end-- // walk to the left until a used slot found
-				continue
-			}
+		for start < end {
 
 			if slots[start] != nil {
 				start++ // walk to the right until a free slot is found
+				continue
+			}
+
+			if slots[end] == nil {
+				end-- // walk to the left until a used slot found
 				continue
 			}
 
@@ -113,12 +118,16 @@ func Compact(ctx context.Context, basePath string, opts *Options, validate bool)
 			}
 
 			from.Location = to
-			if err := store.Put(from); err != nil {
+			if err := batch.Put(from); err != nil {
 				return fmt.Errorf("store put: %w", err)
 			}
 
 			start++
 			end--
+		}
+
+		if err := batch.Commit(); err != nil {
+			return err
 		}
 
 		logger.Info("shard truncated", "shard", fmt.Sprintf("%d/%d", shard, sharkyNoOfShards-1), "slot", end)
@@ -151,18 +160,40 @@ func validationWork(logger log.Logger, store storage.Store, sharky *sharky.Recov
 
 	iteratateItemsC := make(chan *chunkstore.RetrievalIndexItem)
 
-	validChunk := func(item *chunkstore.RetrievalIndexItem, buf []byte) error {
+	validChunk := func(item *chunkstore.RetrievalIndexItem, buf []byte) {
 		err := sharky.Read(context.Background(), item.Location, buf)
 		if err != nil {
-			return err
+			logger.Warning("invalid chunk", "address", item.Address, "timestamp", time.Unix(int64(item.Timestamp), 0), "location", item.Location, "error", err)
+			return
 		}
 
 		ch := swarm.NewChunk(item.Address, buf)
 		if !cac.Valid(ch) && !soc.Valid(ch) {
-			return errors.New("invalid chunk")
-		}
 
-		return nil
+			logger.Info("invalid cac/soc chunk ", "address", item.Address, "timestamp", time.Unix(int64(item.Timestamp), 0))
+
+			h, err := cac.DoHash(buf[swarm.SpanSize:], buf[:swarm.SpanSize])
+			if err != nil {
+				logger.Error(err, "cac hash")
+				return
+			}
+
+			computedAddr := swarm.NewAddress(h)
+
+			if !cac.Valid(swarm.NewChunk(computedAddr, buf)) {
+				logger.Info("computed chunk is also an invalid cac")
+				return
+			}
+
+			shardedEntry := chunkstore.RetrievalIndexItem{Address: computedAddr}
+			err = store.Get(&shardedEntry)
+			if err != nil {
+				logger.Info("no shared entry found")
+				return
+			}
+
+			logger.Info("retrieved chunk with shared slot", "shared_address", shardedEntry.Address, "shared_timestamp", time.Unix(int64(shardedEntry.Timestamp), 0))
+		}
 	}
 
 	var wg sync.WaitGroup
@@ -173,9 +204,7 @@ func validationWork(logger log.Logger, store storage.Store, sharky *sharky.Recov
 			defer wg.Done()
 			buf := make([]byte, swarm.SocMaxChunkSize)
 			for item := range iteratateItemsC {
-				if err := validChunk(item, buf[:item.Location.Length]); err != nil {
-					logger.Info("invalid chunk", "address", item.Address, "error", err)
-				}
+				validChunk(item, buf[:item.Location.Length])
 			}
 		}()
 	}

@@ -57,7 +57,7 @@ func validateDataLength(dataLength int) error {
 
 // newWithSpan creates a new chunk prepending the given span to the data.
 func newWithSpan(data, span []byte) (swarm.Chunk, error) {
-	hash, err := doHash(data, span)
+	hash, err := DoHash(data, span)
 	if err != nil {
 		return nil, err
 	}
@@ -77,12 +77,12 @@ func Valid(c swarm.Chunk) bool {
 		return false
 	}
 
-	hash, _ := doHash(data[swarm.SpanSize:], data[:swarm.SpanSize])
+	hash, _ := DoHash(data[swarm.SpanSize:], data[:swarm.SpanSize])
 
 	return bytes.Equal(hash, c.Address().Bytes())
 }
 
-func doHash(data, span []byte) ([]byte, error) {
+func DoHash(data, span []byte) ([]byte, error) {
 	hasher := bmtpool.Get()
 	defer bmtpool.Put(hasher)
 
