@@ -7,6 +7,7 @@ package sharky
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
 )
 
@@ -18,6 +19,10 @@ type Location struct {
 	Shard  uint8
 	Slot   uint32
 	Length uint16
+}
+
+func (l Location) String() string {
+	return fmt.Sprintf("shard: %d, slot: %d, length: %d", l.Shard, l.Slot, l.Length)
 }
 
 // MarshalBinary returns byte representation of location
