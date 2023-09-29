@@ -178,7 +178,7 @@ func (c *postageContract) sendApproveTransaction(ctx context.Context, amount *bi
 	return receipt, nil
 }
 
-func (c *postageContract) sendTransaction(ctx context.Context, callData []byte, desc string) (*types.Receipt, error) {
+func (c *postageContract) sendTransaction(ctx context.Context, callData []byte, desc string) (receipt *types.Receipt, err error) {
 	request := &transaction.TxRequest{
 		To:          &c.postageStampContractAddress,
 		Data:        callData,
@@ -187,25 +187,22 @@ func (c *postageContract) sendTransaction(ctx context.Context, callData []byte, 
 		Value:       big.NewInt(0),
 		Description: desc,
 	}
+	defer func() {
+		err = c.transactionService.UnwrapRevertReason(ctx, request, err)
+	}()
 
 	txHash, err := c.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
 	if err != nil {
 		return nil, err
 	}
 
-	receipt, err := c.transactionService.WaitForReceipt(ctx, txHash)
+	receipt, err = c.transactionService.WaitForReceipt(ctx, txHash)
 	if err != nil {
 		return nil, err
 	}
 
 	if receipt.Status == 0 {
-		err := transaction.ErrTransactionReverted
-		if res, cErr := c.transactionService.Call(ctx, request); cErr == nil {
-			if reason, uErr := abi.UnpackRevert(res); uErr == nil {
-				err = fmt.Errorf("%w: reason: %s", err, reason)
-			}
-		}
-		return nil, err
+		return nil, transaction.ErrTransactionReverted
 	}
 
 	return receipt, nil
