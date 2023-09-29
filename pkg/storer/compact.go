@@ -91,6 +91,11 @@ func Compact(ctx context.Context, basePath string, opts *Options, validate bool)
 		start := uint32(0)
 		end := lastUsedSlot
 
+		batch, err := store.Batch(ctx)
+		if err != nil {
+			return err
+		}
+
 		for start < end {
 
 			if slots[start] != nil {
@@ -113,12 +118,16 @@ func Compact(ctx context.Context, basePath string, opts *Options, validate bool)
 			}
 
 			from.Location = to
-			if err := store.Put(from); err != nil {
+			if err := batch.Put(from); err != nil {
 				return fmt.Errorf("store put: %w", err)
 			}
 
 			start++
 			end--
+		}
+
+		if err := batch.Commit(); err != nil {
+			return err
 		}
 
 		logger.Info("shard truncated", "shard", fmt.Sprintf("%d/%d", shard, sharkyNoOfShards-1), "slot", end)
