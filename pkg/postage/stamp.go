@@ -6,6 +6,7 @@ package postage
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 
@@ -115,6 +116,35 @@ func (s *Stamp) UnmarshalBinary(buf []byte) error {
 	s.index = buf[32:40]
 	s.timestamp = buf[40:48]
 	s.sig = buf[48:]
+	return nil
+}
+
+type stampJson struct {
+	BatchID   []byte
+	Index     []byte
+	Timestamp []byte
+	Sig       []byte
+}
+
+func (s *Stamp) MarshalJSON() ([]byte, error) {
+	return json.Marshal(&stampJson{
+		s.batchID,
+		s.index,
+		s.timestamp,
+		s.sig,
+	})
+}
+
+func (a *Stamp) UnmarshalJSON(b []byte) error {
+	v := &stampJson{}
+	err := json.Unmarshal(b, v)
+	if err != nil {
+		return err
+	}
+	a.batchID = v.BatchID
+	a.index = v.Index
+	a.timestamp = v.Timestamp
+	a.sig = v.Sig
 	return nil
 }
 
