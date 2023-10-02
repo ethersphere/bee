@@ -1453,8 +1453,8 @@ resenje.org/marshal v0.1.1/go.mod h1:P7Cla6Ju5CFvW4Y8JbRgWX1Hcy4L1w4qcCsyadO7G94
 resenje.org/multex v0.1.0 h1:am9Ndt8dIAeGVaztD8ClsSX+e0EP3mj6UdsvjukKZig=
 resenje.org/multex v0.1.0/go.mod h1:3rHOoMrzqLNzgGWPcl/1GfzN52g7iaPXhbvTQ8TjGaM=
 resenje.org/recovery v0.1.1/go.mod h1:3S6aCVKMJEWsSAb61oZTteaiqkIfQPTr1RdiWnRbhME=
-resenje.org/singleflight v0.2.0 h1:nJ17VAZunMiFrfrltQ4Qs4r9MIP1pZC8u+0iSUTNnvQ=
-resenje.org/singleflight v0.2.0/go.mod h1:plheHgw2rd77IH3J6aN0Lu2JvMvHXoLknDwb6vN0dsE=
+resenje.org/singleflight v0.4.0 h1:NdOEhCxEikK2S2WxGjZV9EGSsItolQKslOOi6pE1tJc=
+resenje.org/singleflight v0.4.0/go.mod h1:lAgQK7VfjG6/pgredbQfmV0RvG/uVhKo6vSuZ0vCWfk=
 resenje.org/web v0.4.3 h1:G9vceKKGvsVg0WpyafJEEMHfstoxSO8rG/1Bo7fOkhw=
 resenje.org/web v0.4.3/go.mod h1:GZw/Jt7IGIYlytsyGdAV5CytZnaQu7GV2u1LLuViihc=
 resenje.org/x v0.2.4/go.mod h1:1b2Xpo29FRc3IMvg/u46/IyjySl5IjvtuSjXTA/AOnk=
