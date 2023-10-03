@@ -5,7 +5,6 @@
 package transaction
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -96,9 +95,9 @@ type Service interface {
 	CancelTransaction(ctx context.Context, originalTxHash common.Hash) (common.Hash, error)
 	// TransactionFee retrieves the transaction fee
 	TransactionFee(ctx context.Context, txHash common.Hash) (*big.Int, error)
-	// UnwrapABIError tries to unwrap the ABI error if the given error is not nil.
-	// The original error is wrapped together with the ABI error if it exists.
-	UnwrapABIError(ctx context.Context, req *TxRequest, err error, abiErrors map[string]abi.Error) error
+	// UnwrapRevertReason tries to unwrap the revert reason if the given error is not nil.
+	// The original error is wrapped in case the revert reason exists.
+	UnwrapRevertReason(ctx context.Context, req *TxRequest, err error) error
 }
 
 type transactionService struct {
@@ -591,24 +590,14 @@ func (t *transactionService) TransactionFee(ctx context.Context, txHash common.H
 	return trx.Cost(), nil
 }
 
-func (t *transactionService) UnwrapABIError(ctx context.Context, req *TxRequest, err error, abiErrors map[string]abi.Error) error {
+func (t *transactionService) UnwrapRevertReason(ctx context.Context, req *TxRequest, err error) error {
 	if err == nil {
 		return nil
 	}
 
-	res, cErr := t.Call(ctx, req)
-	if cErr != nil {
-		return err
-	}
-
-	if reason, uErr := abi.UnpackRevert(res); uErr == nil {
-		return fmt.Errorf("%w: %s", err, reason)
-	}
-
-	for _, abiError := range abiErrors {
-		if bytes.Equal(res[:4], abiError.ID[:4]) {
-			//abiError.Unpack(res[4:])
-			return fmt.Errorf("%w: %s", err, abiError)
+	if res, cErr := t.Call(ctx, req); cErr == nil {
+		if reason, uErr := abi.UnpackRevert(res); uErr == nil {
+			err = fmt.Errorf("%w: reason: %s", err, reason)
 		}
 	}
 
