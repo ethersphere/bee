@@ -181,7 +181,14 @@ func (c *contract) ReserveSalt(ctx context.Context) ([]byte, error) {
 }
 
 func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest, boostPercent int) (txHash common.Hash, err error) {
-	defer func() { err = c.txService.UnwrapRevertReason(ctx, request, err) }()
+	defer func() {
+		err = c.txService.UnwrapABIError(
+			ctx,
+			request,
+			err,
+			c.incentivesContractABI.Errors,
+		)
+	}()
 
 	txHash, err = c.txService.Send(ctx, request, boostPercent)
 	if err != nil {

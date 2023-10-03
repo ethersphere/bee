@@ -97,7 +97,7 @@ func (m *transactionServiceMock) TransactionFee(ctx context.Context, txHash comm
 	return big.NewInt(0), nil
 }
 
-func (m *transactionServiceMock) UnwrapRevertReason(_ context.Context, _ *transaction.TxRequest, err error) error {
+func (m *transactionServiceMock) UnwrapABIError(_ context.Context, _ *transaction.TxRequest, err error, _ map[string]abi.Error) error {
 	return err
 }
 

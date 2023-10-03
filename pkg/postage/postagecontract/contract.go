@@ -148,25 +148,36 @@ func (c *postageContract) expireLimitedBatches(ctx context.Context, count *big.I
 	return nil
 }
 
-func (c *postageContract) sendApproveTransaction(ctx context.Context, amount *big.Int) (*types.Receipt, error) {
+func (c *postageContract) sendApproveTransaction(ctx context.Context, amount *big.Int) (receipt *types.Receipt, err error) {
 	callData, err := erc20ABI.Pack("approve", c.postageStampContractAddress, amount)
 	if err != nil {
 		return nil, err
 	}
 
-	txHash, err := c.transactionService.Send(ctx, &transaction.TxRequest{
+	request := &transaction.TxRequest{
 		To:          &c.bzzTokenAddress,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
 		GasLimit:    65000,
 		Value:       big.NewInt(0),
 		Description: approveDescription,
-	}, transaction.DefaultTipBoostPercent)
+	}
+
+	defer func() {
+		err = c.transactionService.UnwrapABIError(
+			ctx,
+			request,
+			err,
+			c.postageStampContractABI.Errors,
+		)
+	}()
+
+	txHash, err := c.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
 	if err != nil {
 		return nil, err
 	}
 
-	receipt, err := c.transactionService.WaitForReceipt(ctx, txHash)
+	receipt, err = c.transactionService.WaitForReceipt(ctx, txHash)
 	if err != nil {
 		return nil, err
 	}
@@ -187,8 +198,14 @@ func (c *postageContract) sendTransaction(ctx context.Context, callData []byte, 
 		Value:       big.NewInt(0),
 		Description: desc,
 	}
+
 	defer func() {
-		err = c.transactionService.UnwrapRevertReason(ctx, request, err)
+		err = c.transactionService.UnwrapABIError(
+			ctx,
+			request,
+			err,
+			c.postageStampContractABI.Errors,
+		)
 	}()
 
 	txHash, err := c.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
