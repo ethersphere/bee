@@ -32,7 +32,7 @@ type SampleItem struct {
 	TransformedAddress swarm.Address
 	ChunkAddress       swarm.Address
 	ChunkData          []byte
-	Stamp              swarm.Stamp
+	Stamp              *postage.Stamp
 }
 
 type Sample struct {
@@ -288,7 +288,7 @@ func (db *DB) ReserveSample(
 
 			stats.ValidStampDuration += time.Since(start)
 
-			item.Stamp = stamp
+			item.Stamp = postage.NewStamp(stamp.BatchID(), stamp.Index(), stamp.Timestamp(), stamp.Sig())
 
 			// ensuring to pass the check order function of redistribution contract
 			if index := contains(item.TransformedAddress); index != -1 {
