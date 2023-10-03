@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/crypto"
@@ -95,9 +94,6 @@ type Service interface {
 	CancelTransaction(ctx context.Context, originalTxHash common.Hash) (common.Hash, error)
 	// TransactionFee retrieves the transaction fee
 	TransactionFee(ctx context.Context, txHash common.Hash) (*big.Int, error)
-	// UnwrapRevertReason tries to unwrap the revert reason if the given error is not nil.
-	// The original error is wrapped in case the revert reason exists.
-	UnwrapRevertReason(ctx context.Context, req *TxRequest, err error) error
 }
 
 type transactionService struct {
@@ -587,18 +583,4 @@ func (t *transactionService) TransactionFee(ctx context.Context, txHash common.H
 		return nil, err
 	}
 	return trx.Cost(), nil
-}
-
-func (t *transactionService) UnwrapRevertReason(ctx context.Context, req *TxRequest, err error) error {
-	if err == nil {
-		return nil
-	}
-
-	if res, cErr := t.Call(ctx, req); cErr == nil {
-		if reason, uErr := abi.UnpackRevert(res); uErr == nil {
-			err = fmt.Errorf("%w: reason: %s", err, reason)
-		}
-	}
-
-	return err
 }

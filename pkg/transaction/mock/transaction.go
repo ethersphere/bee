@@ -97,10 +97,6 @@ func (m *transactionServiceMock) TransactionFee(ctx context.Context, txHash comm
 	return big.NewInt(0), nil
 }
 
-func (m *transactionServiceMock) UnwrapRevertReason(_ context.Context, _ *transaction.TxRequest, err error) error {
-	return err
-}
-
 // Option is the option passed to the mock Chequebook service
 type Option interface {
 	apply(*transactionServiceMock)
