@@ -6,6 +6,7 @@ package postage_test
 
 import (
 	"bytes"
+	"encoding/json"
 	"math/big"
 	"testing"
 
@@ -28,6 +29,24 @@ func TestStampMarshalling(t *testing.T) {
 	if err := s.UnmarshalBinary(buf); err != nil {
 		t.Fatalf("unexpected error unmarshalling stamp: %v", err)
 	}
+	compareStamps(t, sExp, s)
+}
+
+// TestStampMarshalling tests the idempotence  of binary marshal/unmarshals for Stamps.
+func TestStampJsonMarshalling(t *testing.T) {
+	sExp := postagetesting.MustNewStamp()
+
+	b, err := json.Marshal(sExp)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	s := postage.NewStamp(nil, nil, nil, nil)
+	err = json.Unmarshal(b, s)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	compareStamps(t, sExp, s)
 }
 
