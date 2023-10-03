@@ -287,7 +287,7 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 		}
 	case err == nil:
 		if err := s.checkReceipt(receipt, loggerV1); err != nil {
-			loggerV1.Error(err, "pusher: failed checking receipt")
+			loggerV1.Error(err, "pusher: failed checking receipt", "chunk_address", op.Chunk.Address())
 			return true, err
 		}
 		if err := s.storer.Report(ctx, op.Chunk, storage.ChunkSynced); err != nil {
@@ -341,7 +341,7 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 	case err == nil:
 		err = s.checkReceipt(receipt, loggerV1)
 		if err != nil {
-			loggerV1.Error(err, "pusher: failed checking receipt")
+			loggerV1.Error(err, "pusher: failed checking receipt", "chunk_address", op.Chunk.Address())
 		}
 	default:
 		loggerV1.Error(err, "pusher: failed PushChunkToClosest")
