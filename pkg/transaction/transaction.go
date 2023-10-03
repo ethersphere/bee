@@ -282,8 +282,7 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 			Data: request.Data,
 		})
 		if err != nil {
-			t.logger.Debug("estimage gas failed", "error", err)
-			gasLimit = request.MinEstimatedGasLimit
+			return nil, err
 		}
 
 		gasLimit += gasLimit / 4 // add 25% on top

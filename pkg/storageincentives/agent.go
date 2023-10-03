@@ -131,7 +131,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	phaseEvents := newEvents()
 	defer phaseEvents.Close()
 
-	logErr := func(phase PhaseType, round uint64, err error) {
+	logPhaseResult := func(phase PhaseType, round uint64, err error) {
 		if err != nil {
 			a.logger.Error(err, "phase failed", "phase", phase, "round", round)
 		}
@@ -142,13 +142,13 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 		round, _ := a.state.currentRoundAndPhase()
 		err := a.handleCommit(ctx, round)
-		logErr(commit, round, err)
+		logPhaseResult(commit, round, err)
 	})
 
 	phaseEvents.On(reveal, func(ctx context.Context) {
 		phaseEvents.Cancel(commit, sample)
 		round, _ := a.state.currentRoundAndPhase()
-		logErr(reveal, round, a.handleReveal(ctx, round))
+		logPhaseResult(reveal, round, a.handleReveal(ctx, round))
 	})
 
 	phaseEvents.On(claim, func(ctx context.Context) {
@@ -156,13 +156,13 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		phaseEvents.Publish(sample)
 
 		round, _ := a.state.currentRoundAndPhase()
-		logErr(claim, round, a.handleClaim(ctx, round))
+		logPhaseResult(claim, round, a.handleClaim(ctx, round))
 	})
 
 	phaseEvents.On(sample, func(ctx context.Context) {
 		round, _ := a.state.currentRoundAndPhase()
 		isPhasePlayed, err := a.handleSample(ctx, round)
-		logErr(sample, round, err)
+		logPhaseResult(sample, round, err)
 
 		// Sample handled could potentially take long time, therefore it could overlap with commit
 		// phase of next round. When that case happens commit event needs to be triggered once more
