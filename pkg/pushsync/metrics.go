@@ -108,7 +108,6 @@ func newMetrics() metrics {
 				Subsystem: subsystem,
 				Name:      "total_handler_time",
 				Help:      "Histogram for time taken for the handler.",
-				Buckets:   []float64{.5, 1, 2, 5, 10, 15, 30, 60, 120},
 			}, []string{"status"},
 		),
 		PushToPeerTime: *prometheus.NewHistogramVec(
@@ -117,7 +116,6 @@ func newMetrics() metrics {
 				Subsystem: subsystem,
 				Name:      "push_peer_time",
 				Help:      "Histogram for time taken to push a chunk to a peer.",
-				Buckets:   []float64{.5, 1, 2, 5, 10, 15, 30, 60, 120},
 			}, []string{"status"},
 		),
 	}
