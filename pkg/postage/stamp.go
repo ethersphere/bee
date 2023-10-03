@@ -120,10 +120,10 @@ func (s *Stamp) UnmarshalBinary(buf []byte) error {
 }
 
 type stampJson struct {
-	BatchID   []byte
-	Index     []byte
-	Timestamp []byte
-	Sig       []byte
+	BatchID   []byte `json:"batchID"`
+	Index     []byte `json:"index"`
+	Timestamp []byte `json:"timestamp"`
+	Sig       []byte `json:"sig"`
 }
 
 func (s *Stamp) MarshalJSON() ([]byte, error) {
