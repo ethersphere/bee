@@ -79,6 +79,24 @@ func (a Address) String() string {
 	return hex.EncodeToString(a.b)
 }
 
+// BitString returns the bit string representation of the overlay address limited at some number of number of bits.
+func (a Address) BitString(bits int) string {
+	var ret bytes.Buffer
+	for _, b := range a.Bytes() {
+		for i := 7; i >= 0; i-- {
+			if ret.Len() == bits {
+				return ret.String()
+			}
+			if b&(1<<i) == 0 {
+				ret.WriteString("0")
+			} else {
+				ret.WriteString("1")
+			}
+		}
+	}
+	return ret.String()
+}
+
 // Equal returns true if two addresses are identical.
 func (a Address) Equal(b Address) bool {
 	return bytes.Equal(a.b, b.b)
@@ -319,10 +337,10 @@ func ParseBitStrAddress(src string) (Address, error) {
 
 	a = append(a, b)
 
-	return bytesToAddr(a), nil
+	return BytesToAddress(a), nil
 }
 
-func bytesToAddr(b []byte) Address {
+func BytesToAddress(b []byte) Address {
 	addr := make([]byte, HashSize)
 	copy(addr, b)
 	return NewAddress(addr)

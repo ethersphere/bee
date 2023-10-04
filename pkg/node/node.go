@@ -36,6 +36,7 @@ import (
 	"github.com/ethersphere/bee/pkg/hive"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/metrics"
+	"github.com/ethersphere/bee/pkg/neighborhood"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p"
 	"github.com/ethersphere/bee/pkg/pingpong"
@@ -261,47 +262,6 @@ func NewBee(
 
 	addressbook := addressbook.New(stateStore)
 
-	pubKey, err := signer.PublicKey()
-	if err != nil {
-		return nil, err
-	}
-
-	nonce, nonceExists, err := overlayNonceExists(stateStore)
-	if err != nil {
-		return nil, fmt.Errorf("check presence of nonce: %w", err)
-	}
-
-	swarmAddress, err := crypto.NewOverlayAddress(*pubKey, networkID, nonce)
-	if err != nil {
-		return nil, fmt.Errorf("compute overlay address: %w", err)
-	}
-
-	if nonceExists && o.TargetNeighborhood != "" {
-		logger.Warning("an overlay has already been created before, skipping targeting the selected neighborhood")
-	}
-
-	if !nonceExists {
-		// mine the overlay
-		if o.TargetNeighborhood != "" {
-			logger.Info("mining an overlay address for the fresh node to target the selected neighborhood", "target", o.TargetNeighborhood)
-			swarmAddress, nonce, err = nbhdutil.MineOverlay(ctx, *pubKey, networkID, o.TargetNeighborhood)
-			if err != nil {
-				return nil, fmt.Errorf("mine overlay address: %w", err)
-			}
-		}
-
-		err = setOverlay(stateStore, swarmAddress, nonce)
-		if err != nil {
-			return nil, fmt.Errorf("statestore: save new overlay: %w", err)
-		}
-	}
-
-	logger.Info("using overlay address", "address", swarmAddress)
-
-	if err = checkOverlay(stateStore, swarmAddress); err != nil {
-		return nil, fmt.Errorf("check overlay address: %w", err)
-	}
-
 	var (
 		chainBackend       transaction.Backend
 		overlayEthAddress  common.Address
@@ -356,6 +316,79 @@ func NewBee(
 
 	b.transactionCloser = tracerCloser
 	b.transactionMonitorCloser = transactionMonitor
+
+	pubKey, err := signer.PublicKey()
+	if err != nil {
+		return nil, err
+	}
+
+	nonce, nonceExists, err := overlayNonceExists(stateStore)
+	if err != nil {
+		return nil, fmt.Errorf("check presence of nonce: %w", err)
+	}
+
+	swarmAddress, err := crypto.NewOverlayAddress(*pubKey, networkID, nonce)
+	if err != nil {
+		return nil, fmt.Errorf("compute overlay address: %w", err)
+	}
+
+	if nonceExists && o.TargetNeighborhood != "" {
+		logger.Warning("an overlay has already been created before, skipping targeting the selected neighborhood")
+	}
+
+	chainCfg, chainFound := config.GetByChainID(chainID)
+
+	var (
+		redistributionContractAddress common.Address
+		redistributionContractABI     abi.ABI
+	)
+
+	if o.FullNodeMode {
+		redistributionContractAddress = chainCfg.RedistributionAddress
+		if o.RedistributionContractAddress != "" {
+			if !common.IsHexAddress(o.RedistributionContractAddress) {
+				return nil, errors.New("malformed redistribution contract address")
+			}
+			redistributionContractAddress = common.HexToAddress(o.RedistributionContractAddress)
+		}
+		redistributionContractABI, err = abi.JSON(strings.NewReader(chainCfg.RedistributionABI))
+		if err != nil {
+			return nil, fmt.Errorf("unable to parse redistribution ABI: %w", err)
+		}
+	}
+
+	if !nonceExists {
+		// mine the overlay
+		if o.TargetNeighborhood != "" {
+			logger.Info("mining an overlay address for the fresh node to target the selected neighborhood", "target", o.TargetNeighborhood)
+			swarmAddress, nonce, err = nbhdutil.MineOverlay(ctx, *pubKey, networkID, o.TargetNeighborhood)
+			if err != nil {
+				return nil, fmt.Errorf("mine overlay address: %w", err)
+			}
+		} else if o.FullNodeMode && !o.BootnodeMode {
+			neigh, depth, err := neighborhood.OptimalNeighborhood(ctx, chainBackend, redistributionContractAddress, redistributionContractABI, storageincentives.DefaultBlocksPerRound, neighborhood.DefaultBlocksPerPage, neighborhood.DefaultBlocksPerPage, logger)
+			if err != nil {
+				return nil, fmt.Errorf("optimal neighborhood selection: %w", err)
+			}
+			target := neigh.BitString(int(depth))
+			logger.Info("mining an overlay address using automatic optimal neighborhood selection", "target", o.TargetNeighborhood)
+			swarmAddress, nonce, err = nbhdutil.MineOverlay(ctx, *pubKey, networkID, target)
+			if err != nil {
+				return nil, fmt.Errorf("mine overlay address: %w", err)
+			}
+		}
+
+		err = setOverlay(stateStore, swarmAddress, nonce)
+		if err != nil {
+			return nil, fmt.Errorf("statestore: save new overlay: %w", err)
+		}
+	}
+
+	logger.Info("using overlay address", "address", swarmAddress)
+
+	if err = checkOverlay(stateStore, swarmAddress); err != nil {
+		return nil, fmt.Errorf("check overlay address: %w", err)
+	}
 
 	var authenticator auth.Authenticator
 
@@ -666,7 +699,6 @@ func NewBee(
 		eventListener               postage.Listener
 	)
 
-	chainCfg, found := config.GetByChainID(chainID)
 	postageStampContractAddress, postageSyncStart := chainCfg.PostageStampAddress, chainCfg.PostageStampStartBlock
 	if o.PostageContractAddress != "" {
 		if !common.IsHexAddress(o.PostageContractAddress) {
@@ -677,7 +709,7 @@ func NewBee(
 			return nil, errors.New("postage contract start block option not provided")
 		}
 		postageSyncStart = o.PostageContractStartBlock
-	} else if !found {
+	} else if !chainFound {
 		return nil, errors.New("no known postage stamp addresses for this network")
 	}
 
@@ -1051,19 +1083,6 @@ func NewBee(
 		nodeStatus.SetSync(pullerService)
 
 		if o.EnableStorageIncentives {
-
-			redistributionContractAddress := chainCfg.RedistributionAddress
-			if o.RedistributionContractAddress != "" {
-				if !common.IsHexAddress(o.RedistributionContractAddress) {
-					return nil, errors.New("malformed redistribution contract address")
-				}
-				redistributionContractAddress = common.HexToAddress(o.RedistributionContractAddress)
-			}
-			redistributionContractABI, err := abi.JSON(strings.NewReader(chainCfg.RedistributionABI))
-			if err != nil {
-				return nil, fmt.Errorf("unable to parse redistribution ABI: %w", err)
-			}
-
 			isFullySynced := func() bool {
 				return localStore.ReserveSize() >= reserveTreshold && pullerService.SyncRate() == 0
 			}

@@ -191,3 +191,33 @@ func TestParseBitStr(t *testing.T) {
 		}
 	}
 }
+
+func TestBitStr(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		overlay swarm.Address
+		bitStr  string
+	}{
+		{
+			swarm.MustParseHexAddress("5c32a2fe3d217af8c943fa665ebcfbdf7ab9af0cf1b2a1c8e5fc163dad2f5c7b"),
+			"010111000",
+		},
+		{
+			swarm.MustParseHexAddress("eac0903e59ff1c1a5f1d7d218b33f819b199aa0f68a19fd5fa02b7f84982b55d"),
+			"111010101",
+		},
+		{
+			swarm.MustParseHexAddress("70143dd2863ae07edfe7c1bfee75daea06226f0678e1117337d274492226bfe0"),
+			"011100000",
+		},
+		{
+			swarm.MustParseHexAddress("91d4024136f34c0027fd3da4ab435ed5286948a204c9522e6df6f049c8c51b83"),
+			"1001000111010100000000100100000100110110111100110100110000000000001001111111110100111101101001001010101101000011010111101101010100101000011010010100100010100010000001001100100101010010001011100110110111110110111100000100100111001000110001010001101110000011",
+		},
+	} {
+		if got := tc.overlay.BitString(len(tc.bitStr)); got != tc.bitStr {
+			t.Fatalf("got %s, want %s", got, tc.bitStr)
+		}
+	}
+}
