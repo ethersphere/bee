@@ -58,7 +58,7 @@ func validateDataLength(dataLength int) error {
 
 // newWithSpan creates a new chunk prepending the given span to the data.
 func newWithSpan(data, span []byte) (swarm.Chunk, error) {
-	hash, err := doHash(data, span)
+	hash, err := DoHash(data, span)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +79,7 @@ func Valid(c swarm.Chunk) error {
 		return err
 	}
 
-	hash, _ := doHash(data[swarm.SpanSize:], data[:swarm.SpanSize])
+	hash, _ := DoHash(data[swarm.SpanSize:], data[:swarm.SpanSize])
 	if !bytes.Equal(hash, c.Address().Bytes()) {
 		return fmt.Errorf("chunk store: invalid hash expected %s got %s", c.Address(), hex.EncodeToString(hash))
 	}
@@ -88,7 +88,7 @@ func Valid(c swarm.Chunk) error {
 	//return bytes.Equal(hash, c.Address().Bytes())
 }
 
-func doHash(data, span []byte) ([]byte, error) {
+func DoHash(data, span []byte) ([]byte, error) {
 	hasher := bmtpool.Get()
 	defer bmtpool.Put(hasher)
 

@@ -21,6 +21,10 @@ type Location struct {
 	Length uint16
 }
 
+func (l Location) String() string {
+	return fmt.Sprintf("shard: %d, slot: %d, length: %d", l.Shard, l.Slot, l.Length)
+}
+
 // MarshalBinary returns byte representation of location
 func (l *Location) MarshalBinary() ([]byte, error) {
 	b := make([]byte, LocationSize)

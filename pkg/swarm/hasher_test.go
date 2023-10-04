@@ -66,7 +66,7 @@ func TestNewTrHasher(t *testing.T) {
 
 	// Run tests cases against TrHasher
 	for _, tc := range tests {
-		h := swarm.NewPrefixHasher(tc.prefix)
+		h := swarm.NewTrHasher(tc.prefix)
 
 		_, err := h.Write(tc.plaintext)
 		if err != nil {

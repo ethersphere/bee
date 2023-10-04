@@ -10,14 +10,16 @@ import (
 )
 
 type metrics struct {
-	Offered       prometheus.Counter     // number of chunks offered
-	Wanted        prometheus.Counter     // number of chunks wanted
-	Delivered     prometheus.Counter     // number of chunk deliveries
 	OutboundOffer prometheus.Counter     // number of chunks offered to peers
 	OutboundWant  prometheus.Counter     // number of chunks wanted by
-	Sent          prometheus.Counter     // number of chunks sent to peers
-	DuplicateRuid prometheus.Counter     // number of duplicate RUID requests we got
-	LastReceived  *prometheus.CounterVec // last timestamp of the received chunks per bin
+	Offered             prometheus.Counter     // number of chunks offered
+	Wanted              prometheus.Counter     // number of chunks wanted
+	MissingChunks       prometheus.Counter     // number of reserve get errs
+	ReceivedZeroAddress prometheus.Counter     // number of delivered chunks with invalid address
+	Delivered           prometheus.Counter     // number of chunk deliveries
+	Sent                prometheus.Counter     // number of chunks sent
+	DuplicateRuid       prometheus.Counter     // number of duplicate RUID requests we got
+	LastReceived        *prometheus.CounterVec // last timestamp of the received chunks per bin
 }
 
 func newMetrics() metrics {
@@ -35,6 +37,18 @@ func newMetrics() metrics {
 			Subsystem: subsystem,
 			Name:      "chunks_wanted",
 			Help:      "Total chunks wanted.",
+		}),
+		MissingChunks: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "missing_chunks",
+			Help:      "Total reserve get errors.",
+		}),
+		ReceivedZeroAddress: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "received_zero_address",
+			Help:      "Total chunks delivered with zero address and no chunk data.",
 		}),
 		Delivered: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,

@@ -69,6 +69,7 @@ jobs:
         run: |
           # patch pkg/postage/postagecontract/contract.go .github/patches/postagecontract.patch
           # patch pkg/postage/service.go .github/patches/postageservice.patch
+          patch pkg/api/postage.go .github/patches/postage_api.patch
           make binary
           mv dist/bee bee-1
       - name: Apply patches and build - 2

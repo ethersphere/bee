@@ -70,7 +70,7 @@ type Syncer struct {
 	quit           chan struct{}
 	unwrap         func(swarm.Chunk)
 	validStamp     postage.ValidStampFn
-	intervalsSF    singleflight.Group
+	intervalsSF    singleflight.Group[string, *collectAddrsResult]
 	syncInProgress atomic.Int32
 	binLock        *multex.Multex
 
@@ -215,6 +215,12 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		}
 
 		addr := swarm.NewAddress(delivery.Address)
+		if addr.Equal(swarm.ZeroAddress) {
+			s.logger.Debug("received zero address chunk", "peer_address", peer)
+			s.metrics.ReceivedZeroAddress.Inc()
+			continue
+		}
+
 		newChunk := swarm.NewChunk(addr, delivery.Data)
 
 		stamp := new(postage.Stamp)
@@ -343,18 +349,19 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 
 	chs, err := s.processWant(ctx, offer, &want)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			s.intervalsSF.Forget(sfKey(uint8(rn.Bin), rn.Start))
-		}
 		return fmt.Errorf("process want: %w", err)
 	}
 
-	for _, v := range chs {
-		stamp, err := v.Stamp().MarshalBinary()
-		if err != nil {
-			return fmt.Errorf("serialise stamp: %w", err)
+	for _, c := range chs {
+		var stamp []byte
+		if c.Stamp() != nil {
+			stamp, err = c.Stamp().MarshalBinary()
+			if err != nil {
+				return fmt.Errorf("serialise stamp: %w", err)
+			}
 		}
-		deliver := pb.Delivery{Address: v.Address().Bytes(), Data: v.Data(), Stamp: stamp}
+
+		deliver := pb.Delivery{Address: c.Address().Bytes(), Data: c.Data(), Stamp: stamp}
 		if err := w.WriteMsgWithContext(ctx, &deliver); err != nil {
 			return fmt.Errorf("write delivery: %w", err)
 		}
@@ -385,6 +392,11 @@ func (s *Syncer) makeOffer(ctx context.Context, rn pb.Get) (*pb.Offer, error) {
 	return o, nil
 }
 
+type collectAddrsResult struct {
+	chs     []*storer.BinC
+	topmost uint64
+}
+
 // collectAddrs collects chunk addresses at a bin starting at some start BinID until a limit is reached.
 // The function waits for an unbounded amount of time for the first chunk to arrive.
 // After the arrival of the first chunk, the subsequent chunks have a limited amount of time to arrive,
@@ -392,12 +404,7 @@ func (s *Syncer) makeOffer(ctx context.Context, rn pb.Get) (*pb.Offer, error) {
 func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*storer.BinC, uint64, error) {
 	loggerV2 := s.logger.V(2).Register()
 
-	type result struct {
-		chs     []*storer.BinC
-		topmost uint64
-	}
-
-	v, _, err := s.intervalsSF.Do(ctx, sfKey(bin, start), func(ctx context.Context) (interface{}, error) {
+	v, _, err := s.intervalsSF.Do(ctx, sfKey(bin, start), func(ctx context.Context) (*collectAddrsResult, error) {
 		var (
 			chs     []*storer.BinC
 			topmost uint64
@@ -447,13 +454,12 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 			}
 		}
 
-		return &result{chs: chs, topmost: topmost}, nil
+		return &collectAddrsResult{chs: chs, topmost: topmost}, nil
 	})
 	if err != nil {
 		return nil, 0, err
 	}
-	r := v.(*result)
-	return r.chs, r.topmost, nil
+	return v.chs, v.topmost, nil
 }
 
 // processWant compares a received Want to a sent Offer and returns
@@ -469,9 +475,13 @@ func (s *Syncer) processWant(ctx context.Context, o *pb.Offer, w *pb.Want) ([]sw
 		if bv.Get(i) {
 			s.metrics.OutboundWant.Inc()
 			ch := o.Chunks[i]
-			c, err := s.store.ReserveGet(ctx, swarm.NewAddress(ch.Address), ch.BatchID)
+			addr := swarm.NewAddress(ch.Address)
+			c, err := s.store.ReserveGet(ctx, addr, ch.BatchID)
 			if err != nil {
-				return nil, err
+				s.logger.Debug("processing want: unable to find chunk", "chunk_address", addr, "batch_id", ch.BatchID)
+				chunks = append(chunks, swarm.NewChunk(swarm.ZeroAddress, nil))
+				s.metrics.MissingChunks.Inc()
+				continue
 			}
 			chunks = append(chunks, c)
 		}
