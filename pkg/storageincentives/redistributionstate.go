@@ -15,8 +15,7 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/settlement/swap/erc20"
 	"github.com/ethersphere/bee/pkg/storage"
-	storer "github.com/ethersphere/bee/pkg/storer"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/storageincentives/sampler"
 	"github.com/ethersphere/bee/pkg/transaction"
 )
 
@@ -59,15 +58,8 @@ type Status struct {
 
 type RoundData struct {
 	CommitKey   []byte
-	SampleData  *SampleData
+	Data        *sampler.Data
 	HasRevealed bool
-}
-
-type SampleData struct {
-	Anchor1            []byte
-	ReserveSampleItems []storer.SampleItem
-	ReserveSampleHash  swarm.Address
-	StorageRadius      uint8
 }
 
 func NewStatus() *Status {
@@ -232,26 +224,25 @@ func (r *RedistributionState) SetBalance(ctx context.Context) error {
 	return nil
 }
 
-func (r *RedistributionState) SampleData(round uint64) (SampleData, bool) {
+func (r *RedistributionState) Data(round uint64) (sampler.Data, bool) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
 	rd, ok := r.status.RoundData[round]
-	if !ok || rd.SampleData == nil {
-		return SampleData{}, false
+	if !ok || rd.Data == nil {
+		return sampler.Data{}, false
 	}
 
-	return *rd.SampleData, true
+	return *rd.Data, true
 }
 
-func (r *RedistributionState) SetSampleData(round uint64, sd SampleData, dur time.Duration) {
+func (r *RedistributionState) SetData(round uint64, sd sampler.Data) {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
 	rd := r.status.RoundData[round]
-	rd.SampleData = &sd
+	rd.Data = &sd
 	r.status.RoundData[round] = rd
-	r.status.SampleDuration = dur
 
 	r.save()
 }

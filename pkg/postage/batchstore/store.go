@@ -126,6 +126,13 @@ func (s *store) Iterate(cb func(*postage.Batch) (bool, error)) error {
 	})
 }
 
+// IterateByValue iterates on batches by value ascending order
+func (s *store) IterateByValue(cb func(id []byte, val *big.Int) (bool, error)) error {
+	return s.store.Iterate(valueKeyPrefix, func(key, _ []byte) (bool, error) {
+		return cb(valueKeyToID(key), valueKeyToValue(key))
+	})
+}
+
 // Save is implementation of postage.Storer interface Save method.
 // This method has side effects; it also updates the radius of the node if successful.
 func (s *store) Save(batch *postage.Batch) error {
@@ -269,44 +276,38 @@ func (s *store) saveBatch(b *postage.Batch) error {
 // cleanup evicts and removes expired batch.
 // Must be called under lock.
 func (s *store) cleanup() error {
+	var ids [][]byte
+	var keys []string
+	totalAmount := s.cs.Load().TotalAmount
 
-	var evictions []*postage.Batch
-
-	err := s.store.Iterate(valueKeyPrefix, func(key, value []byte) (stop bool, err error) {
-
-		b, err := s.Get(valueKeyToID(key))
-		if err != nil {
-			return false, err
-		}
-
+	err := s.IterateByValue(func(id []byte, val *big.Int) (bool, error) {
 		// batches whose balance is below the total cumulative payout
-		if b.Value.Cmp(s.cs.Load().TotalAmount) <= 0 {
-			evictions = append(evictions, b)
-		} else {
-			return true, nil // stop early as an optimization at first value above the total cumulative payout
+		if val.Cmp(totalAmount) <= 0 {
+			ids = append(ids, id)
+			keys = append(keys, valueKey(val, id))
+			return false, nil
 		}
-
-		return false, nil
+		return true, nil // stop early as an optimization at first value above the total cumulative payout
 	})
 	if err != nil {
 		return err
 	}
 
-	for _, b := range evictions {
-		err := s.store.Delete(valueKey(b.Value, b.ID))
+	for i, id := range ids {
+		err := s.store.Delete(keys[i])
 		if err != nil {
-			return fmt.Errorf("delete value key for batch %x: %w", b.ID, err)
+			return fmt.Errorf("delete value key for batch %x: %w", id, err)
 		}
-		err = s.store.Delete(batchKey(b.ID))
+		err = s.store.Delete(batchKey(id))
 		if err != nil {
-			return fmt.Errorf("delete batch %x: %w", b.ID, err)
+			return fmt.Errorf("delete batch %x: %w", id, err)
 		}
-		err = s.evictFn(b.ID)
+		err = s.evictFn(id)
 		if err != nil {
-			return fmt.Errorf("evict batch %x: %w", b.ID, err)
+			return fmt.Errorf("evict batch %x: %w", id, err)
 		}
 		if s.batchExpiry != nil {
-			s.batchExpiry.HandleStampExpiry(b.ID)
+			s.batchExpiry.HandleStampExpiry(id)
 		}
 	}
 
@@ -371,6 +372,11 @@ func valueKey(val *big.Int, batchID []byte) string {
 func valueKeyToID(key []byte) []byte {
 	l := len(key)
 	return key[l-32 : l]
+}
+
+// valueKeyToValue extracts the value from a value key - used in value-based iteration.
+func valueKeyToValue(key []byte) *big.Int {
+	return new(big.Int).SetBytes(key[:32])
 }
 
 func (s *store) SetBatchExpiryHandler(be postage.BatchExpiryHandler) {

@@ -58,8 +58,10 @@ import (
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/storageincentives"
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
+	"github.com/ethersphere/bee/pkg/storageincentives/sampler"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 	mock2 "github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
+	storer "github.com/ethersphere/bee/pkg/storer"
 	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
@@ -213,7 +215,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	s.SetP2P(o.P2P)
 
 	if o.RedistributionAgent == nil {
-		o.RedistributionAgent, _ = createRedistributionAgentService(t, o.Overlay, o.StateStorer, erc20, transaction, backend, o.BatchStore)
+		o.RedistributionAgent, _ = createRedistributionAgentService(t, o.Overlay, backend, o.BatchStore, o.StateStorer, erc20, transaction)
 		s.SetRedistributionAgent(o.RedistributionAgent)
 	}
 	testutil.CleanupCloser(t, o.RedistributionAgent)
@@ -689,11 +691,11 @@ func (c *chanStorer) Has(addr swarm.Address) bool {
 func createRedistributionAgentService(
 	t *testing.T,
 	addr swarm.Address,
-	storer storage.StateStorer,
+	backend postage.ChainBackend,
+	batchstore sampler.Batchstore,
+	stateStore storage.StateStorer,
 	erc20Service erc20.Service,
 	tranService transaction.Service,
-	backend storageincentives.ChainBackend,
-	chainStateGetter postage.ChainStateGetter,
 ) (*storageincentives.Agent, error) {
 	t.Helper()
 
@@ -707,26 +709,32 @@ func createRedistributionAgentService(
 		return true, nil
 	}))
 	contract := &mockContract{}
-
+	fullySyncedFunc := func() bool { return true }
+	healthyFunc := func() bool { return true }
 	return storageincentives.New(
+		log.Noop,
 		addr,
 		common.Address{},
+		time.Millisecond*10,
 		backend,
 		contract,
 		postageContract,
 		stakingContract,
-		mockstorer.NewReserve(),
-		func() bool { return true },
-		time.Millisecond*10,
-		blocksPerRound,
-		blocksPerPhase,
-		storer,
-		chainStateGetter,
+		sampler.New(backend, batchstore, &mockSampler{}, fullySyncedFunc, healthyFunc),
+		stateStore,
 		erc20Service,
 		tranService,
-		&mockHealth{},
-		log.Noop,
 	)
+}
+
+type mockSampler struct{}
+
+func (*mockSampler) StorageRadius() uint8 {
+	return 0
+}
+
+func (*mockSampler) Iterate(uint8, func(storer.Chunk) (bool, error)) error {
+	return nil
 }
 
 type contractCall int
@@ -776,7 +784,7 @@ func (m *mockContract) IsWinner(context.Context) (bool, error) {
 	return false, nil
 }
 
-func (m *mockContract) Claim(context.Context, redistribution.ChunkInclusionProofs) (common.Hash, error) {
+func (m *mockContract) Claim(context.Context, []redistribution.Proof) (common.Hash, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, claimCall)

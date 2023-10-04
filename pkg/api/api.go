@@ -51,6 +51,7 @@ import (
 	"github.com/ethersphere/bee/pkg/steward"
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storageincentives"
+	"github.com/ethersphere/bee/pkg/storageincentives/sampler"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 	storer "github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -153,6 +154,7 @@ type Service struct {
 	probe           *Probe
 	metricsRegistry *prometheus.Registry
 	stakingContract staking.Contract
+	sampler         *sampler.Sampler
 	Options
 
 	http.Handler
@@ -181,6 +183,7 @@ type Service struct {
 	batchStore   postage.Storer
 	stamperStore storage.Store
 	syncStatus   func() (bool, error)
+	sample       *sampler.Sampler
 
 	swap        swap.Interface
 	transaction transaction.Service
@@ -245,6 +248,7 @@ type ExtraOptions struct {
 	Post            postage.Service
 	PostageContract postagecontract.Interface
 	Staking         staking.Contract
+	Sampler         *sampler.Sampler
 	Steward         steward.Interface
 	SyncStatus      func() (bool, error)
 	NodeStatus      *status.Service
@@ -323,6 +327,7 @@ func (s *Service) Configure(signer crypto.Signer, auth auth.Authenticator, trace
 	s.postageContract = e.PostageContract
 	s.steward = e.Steward
 	s.stakingContract = e.Staking
+	s.sampler = e.Sampler
 
 	s.pingpong = e.Pingpong
 	s.topologyDriver = e.TopologyDriver

@@ -26,6 +26,8 @@ func (b *NoOpBatchStore) Exists([]byte) (bool, error) { return false, nil }
 
 func (b *NoOpBatchStore) Iterate(func(*Batch) (bool, error)) error { return nil }
 
+func (b *NoOpBatchStore) IterateByValue(func([]byte, *big.Int) (bool, error)) error { return nil }
+
 func (b *NoOpBatchStore) Save(*Batch) error { return nil }
 
 func (b *NoOpBatchStore) Update(*Batch, *big.Int, uint8) error { return nil }
