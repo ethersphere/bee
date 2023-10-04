@@ -10,7 +10,6 @@ import (
 	"context"
 	"crypto/ecdsa"
 	"encoding/base64"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -285,10 +284,6 @@ func New(
 		},
 		"decBase64url": func(v string) (string, error) {
 			buf, err := base64.URLEncoding.DecodeString(v)
-			return string(buf), err
-		},
-		"decHex": func(v string) (string, error) {
-			buf, err := hex.DecodeString(v)
 			return string(buf), err
 		},
 	}

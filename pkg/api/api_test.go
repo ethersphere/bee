@@ -57,7 +57,6 @@ import (
 	"github.com/ethersphere/bee/pkg/storage/inmemstore"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/storageincentives"
-	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 	mock2 "github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
 	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
@@ -776,14 +775,14 @@ func (m *mockContract) IsWinner(context.Context) (bool, error) {
 	return false, nil
 }
 
-func (m *mockContract) Claim(context.Context, redistribution.ChunkInclusionProofs) (common.Hash, error) {
+func (m *mockContract) Claim(context.Context) (common.Hash, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, claimCall)
 	return common.Hash{}, nil
 }
 
-func (m *mockContract) Commit(context.Context, []byte, uint32) (common.Hash, error) {
+func (m *mockContract) Commit(context.Context, []byte, *big.Int) (common.Hash, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, commitCall)

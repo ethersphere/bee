@@ -7,7 +7,6 @@ package redistribution_test
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"math/big"
@@ -27,36 +26,6 @@ import (
 )
 
 var redistributionContractABI = abiutil.MustParseABI(chaincfg.Testnet.RedistributionABI)
-
-func randChunkInclusionProof(t *testing.T) redistribution.ChunkInclusionProof {
-	t.Helper()
-
-	return redistribution.ChunkInclusionProof{
-		ProofSegments:  []common.Hash{common.BytesToHash(testutil.RandBytes(t, 32))},
-		ProveSegment:   common.BytesToHash(testutil.RandBytes(t, 32)),
-		ProofSegments2: []common.Hash{common.BytesToHash(testutil.RandBytes(t, 32))},
-		ProveSegment2:  common.BytesToHash(testutil.RandBytes(t, 32)),
-		ProofSegments3: []common.Hash{common.BytesToHash(testutil.RandBytes(t, 32))},
-		PostageProof: redistribution.PostageProof{
-			Signature: testutil.RandBytes(t, 65),
-			PostageId: common.BytesToHash(testutil.RandBytes(t, 32)),
-			Index:     binary.BigEndian.Uint64(testutil.RandBytes(t, 8)),
-			TimeStamp: binary.BigEndian.Uint64(testutil.RandBytes(t, 8)),
-		},
-		ChunkSpan: 1,
-		SocProof:  []redistribution.SOCProof{},
-	}
-}
-
-func randChunkInclusionProofs(t *testing.T) redistribution.ChunkInclusionProofs {
-	t.Helper()
-
-	return redistribution.ChunkInclusionProofs{
-		A: randChunkInclusionProof(t),
-		B: randChunkInclusionProof(t),
-		C: randChunkInclusionProof(t),
-	}
-}
 
 func TestRedistribution(t *testing.T) {
 	t.Parallel()
@@ -184,9 +153,7 @@ func TestRedistribution(t *testing.T) {
 	t.Run("Claim", func(t *testing.T) {
 		t.Parallel()
 
-		proofs := randChunkInclusionProofs(t)
-
-		expectedCallData, err := redistributionContractABI.Pack("claim", proofs.A, proofs.B, proofs.C)
+		expectedCallData, err := redistributionContractABI.Pack("claim")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -216,7 +183,7 @@ func TestRedistribution(t *testing.T) {
 			redistributionContractABI,
 		)
 
-		_, err = contract.Claim(ctx, proofs)
+		_, err = contract.Claim(ctx)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -225,8 +192,7 @@ func TestRedistribution(t *testing.T) {
 	t.Run("Claim with tx reverted", func(t *testing.T) {
 		t.Parallel()
 
-		proofs := randChunkInclusionProofs(t)
-		expectedCallData, err := redistributionContractABI.Pack("claim", proofs.A, proofs.B, proofs.C)
+		expectedCallData, err := redistributionContractABI.Pack("claim")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -256,7 +222,7 @@ func TestRedistribution(t *testing.T) {
 			redistributionContractABI,
 		)
 
-		_, err = contract.Claim(ctx, proofs)
+		_, err = contract.Claim(ctx)
 		if !errors.Is(err, transaction.ErrTransactionReverted) {
 			t.Fatal(err)
 		}
@@ -267,7 +233,7 @@ func TestRedistribution(t *testing.T) {
 		var obfus [32]byte
 		testobfus := common.Hex2Bytes("hash")
 		copy(obfus[:], testobfus)
-		expectedCallData, err := redistributionContractABI.Pack("commit", obfus, common.BytesToHash(owner.Bytes()), uint32(0))
+		expectedCallData, err := redistributionContractABI.Pack("commit", obfus, common.BytesToHash(owner.Bytes()), big.NewInt(0))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -297,7 +263,7 @@ func TestRedistribution(t *testing.T) {
 			redistributionContractABI,
 		)
 
-		_, err = contract.Commit(ctx, testobfus, uint32(0))
+		_, err = contract.Commit(ctx, testobfus, big.NewInt(0))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -402,7 +368,7 @@ func TestRedistribution(t *testing.T) {
 	t.Run("invalid call data", func(t *testing.T) {
 		t.Parallel()
 
-		expectedCallData, err := redistributionContractABI.Pack("commit", common.BytesToHash(common.Hex2Bytes("some hash")), common.BytesToHash(common.Hex2Bytes("some address")), uint32(0))
+		expectedCallData, err := redistributionContractABI.Pack("commit", common.BytesToHash(common.Hex2Bytes("some hash")), common.BytesToHash(common.Hex2Bytes("some address")), big.NewInt(0))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -424,7 +390,7 @@ func TestRedistribution(t *testing.T) {
 			redistributionContractABI,
 		)
 
-		_, err = contract.Commit(ctx, common.Hex2Bytes("hash"), uint32(0))
+		_, err = contract.Commit(ctx, common.Hex2Bytes("hash"), big.NewInt(0))
 		if err == nil {
 			t.Fatal("expected error")
 		}
