@@ -144,6 +144,13 @@ func (bs *BatchStore) Iterate(f func(*postage.Batch) (bool, error)) error {
 	return err
 }
 
+// IterateByValue mocks the IterateByvalue method from the BatchStore
+func (bs *BatchStore) IterateByValue(f func([]byte, *big.Int) (bool, error)) error {
+	return bs.Iterate(func(b *postage.Batch) (bool, error) {
+		return f(b.ID, b.Value)
+	})
+}
+
 // Save mocks the Save method from the BatchStore.
 func (bs *BatchStore) Save(batch *postage.Batch) error {
 	bs.mtx.Lock()

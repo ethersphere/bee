@@ -7,15 +7,14 @@ package redistribution_test
 import (
 	"bytes"
 	"context"
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"math/big"
+	"math/rand"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	chaincfg "github.com/ethersphere/bee/pkg/config"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
@@ -26,35 +25,45 @@ import (
 	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
-var redistributionContractABI = abiutil.MustParseABI(chaincfg.Testnet.RedistributionABI)
+// var redistributionContractABI = abiutil.MustParseABI(chaincfg.Testnet.RedistributionABI)
+var redistributionContractABI = abiutil.MustParseABI(redistribution.TestnetRedistributionABI)
 
-func randChunkInclusionProof(t *testing.T) redistribution.ChunkInclusionProof {
+func randomHashes(t testing.TB, n int) []common.Hash {
+	rhs := make([]common.Hash, n)
+	for _, rh := range rhs {
+		copy(rh[:], testutil.RandBytes(t, 32))
+	}
+	return rhs
+}
+
+// TODO uncomment when ABI is updated
+func randProof(t *testing.T) redistribution.Proof {
 	t.Helper()
 
-	return redistribution.ChunkInclusionProof{
-		ProofSegments:  []common.Hash{common.BytesToHash(testutil.RandBytes(t, 32))},
-		ProveSegment:   common.BytesToHash(testutil.RandBytes(t, 32)),
-		ProofSegments2: []common.Hash{common.BytesToHash(testutil.RandBytes(t, 32))},
-		ProveSegment2:  common.BytesToHash(testutil.RandBytes(t, 32)),
-		ProofSegments3: []common.Hash{common.BytesToHash(testutil.RandBytes(t, 32))},
+	return redistribution.Proof{
+		Sisters:  randomHashes(t, 7),
+		Data:     randomHashes(t, 1)[0],
+		Sisters2: randomHashes(t, 7),
+		Data2:    randomHashes(t, 1)[0],
+		Sisters3: randomHashes(t, 7),
 		PostageProof: redistribution.PostageProof{
 			Signature: testutil.RandBytes(t, 65),
-			PostageId: common.BytesToHash(testutil.RandBytes(t, 32)),
-			Index:     binary.BigEndian.Uint64(testutil.RandBytes(t, 8)),
-			TimeStamp: binary.BigEndian.Uint64(testutil.RandBytes(t, 8)),
+			BatchId:   randomHashes(t, 1)[0],
+			Index:     uint64(rand.Int63()),
+			TimeStamp: uint64(rand.Int63()),
 		},
 		ChunkSpan: 1,
 		SocProof:  []redistribution.SOCProof{},
 	}
 }
 
-func randChunkInclusionProofs(t *testing.T) redistribution.ChunkInclusionProofs {
+func randProofs(t *testing.T) []redistribution.Proof {
 	t.Helper()
 
-	return redistribution.ChunkInclusionProofs{
-		A: randChunkInclusionProof(t),
-		B: randChunkInclusionProof(t),
-		C: randChunkInclusionProof(t),
+	return []redistribution.Proof{
+		randProof(t),
+		randProof(t),
+		randProof(t),
 	}
 }
 
@@ -184,9 +193,9 @@ func TestRedistribution(t *testing.T) {
 	t.Run("Claim", func(t *testing.T) {
 		t.Parallel()
 
-		proofs := randChunkInclusionProofs(t)
+		proofs := randProofs(t)
 
-		expectedCallData, err := redistributionContractABI.Pack("claim", proofs.A, proofs.B, proofs.C)
+		expectedCallData, err := redistributionContractABI.Pack("claim", proofs)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -225,8 +234,8 @@ func TestRedistribution(t *testing.T) {
 	t.Run("Claim with tx reverted", func(t *testing.T) {
 		t.Parallel()
 
-		proofs := randChunkInclusionProofs(t)
-		expectedCallData, err := redistributionContractABI.Pack("claim", proofs.A, proofs.B, proofs.C)
+		proofs := randProofs(t)
+		expectedCallData, err := redistributionContractABI.Pack("claim", proofs)
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -16,38 +16,32 @@ import (
 	"github.com/gorilla/mux"
 )
 
-type RCHashResponse struct {
-	Hash     swarm.Address        `json:"hash"`
-	Proofs   ChunkInclusionProofs `json:"proofs"`
-	Duration time.Duration        `json:"duration"`
+type SampleWithProofs struct {
+	Hash     swarm.Address `json:"hash"`
+	Proofs   []Proof       `json:"proofs"`
+	Duration time.Duration `json:"duration"`
 }
 
-type ChunkInclusionProofs struct {
-	A ChunkInclusionProof `json:"proof1"`
-	B ChunkInclusionProof `json:"proof2"`
-	C ChunkInclusionProof `json:"proofLast"`
-}
-
-// ChunkInclusionProof structure must exactly match
+// Proof structure must exactly match
 // corresponding structure (of the same name) in Redistribution.sol smart contract.
 // github.com/ethersphere/storage-incentives/blob/ph_f2/src/Redistribution.sol
 // github.com/ethersphere/storage-incentives/blob/master/src/Redistribution.sol (when merged to master)
-type ChunkInclusionProof struct {
-	ProofSegments  []string     `json:"proofSegments"`
-	ProveSegment   string       `json:"proveSegment"`
-	ProofSegments2 []string     `json:"proofSegments2"`
-	ProveSegment2  string       `json:"proveSegment2"`
-	ChunkSpan      uint64       `json:"chunkSpan"`
-	ProofSegments3 []string     `json:"proofSegments3"`
-	PostageProof   PostageProof `json:"postageProof"`
-	SocProof       []SOCProof   `json:"socProof"`
+type Proof struct {
+	Sisters      []string     `json:"sisters"`
+	Data         string       `json:"data"`
+	Sisters2     []string     `json:"sisters2"`
+	Data2        string       `json:"data2"`
+	Sisters3     []string     `json:"sisters3"`
+	ChunkSpan    uint64       `json:"chunkSpan"`
+	PostageProof PostageProof `json:"postageProof"`
+	SocProof     []SOCProof   `json:"socProof"`
 }
 
 // SOCProof structure must exactly match
 // corresponding structure (of the same name) in Redistribution.sol smart contract.
 type PostageProof struct {
 	Signature string `json:"signature"`
-	PostageId string `json:"postageId"`
+	BatchID   string `json:"BatchID"`
 	Index     string `json:"index"`
 	TimeStamp string `json:"timeStamp"`
 }
@@ -61,35 +55,37 @@ type SOCProof struct {
 	ChunkAddr  string `json:"chunkAddr"`
 }
 
-func renderChunkInclusionProofs(proofs redistribution.ChunkInclusionProofs) ChunkInclusionProofs {
-	return ChunkInclusionProofs{
-		A: renderChunkInclusionProof(proofs.A),
-		B: renderChunkInclusionProof(proofs.B),
-		C: renderChunkInclusionProof(proofs.C),
+func renderProofs(proofs []redistribution.Proof) []Proof {
+	out := make([]Proof, 3)
+	for i, p := range proofs {
+		out[i] = renderProof(p)
 	}
+	return out
 }
 
-func renderChunkInclusionProof(proof redistribution.ChunkInclusionProof) ChunkInclusionProof {
+func renderProof(proof redistribution.Proof) Proof {
 	var socProof []SOCProof
 	if len(proof.SocProof) == 1 {
-		socProof = []SOCProof{{
-			Signer:     hex.EncodeToString(proof.SocProof[0].Signer.Bytes()),
-			Signature:  hex.EncodeToString(proof.SocProof[0].Signature[:]),
-			Identifier: hex.EncodeToString(proof.SocProof[0].Identifier.Bytes()),
-			ChunkAddr:  hex.EncodeToString(proof.SocProof[0].ChunkAddr.Bytes()),
-		}}
+		socProof = []SOCProof{
+			{
+				Signer:     toHex(proof.SocProof[0].Signer),
+				Signature:  toHex(proof.SocProof[0].Signature),
+				Identifier: toHex(proof.SocProof[0].Identifier[:]),
+				ChunkAddr:  toHex(proof.SocProof[0].ChunkAddr[:]),
+			},
+		}
 	}
 
-	return ChunkInclusionProof{
-		ProveSegment:   hex.EncodeToString(proof.ProveSegment.Bytes()),
-		ProofSegments:  renderCommonHash(proof.ProofSegments),
-		ProveSegment2:  hex.EncodeToString(proof.ProveSegment2.Bytes()),
-		ProofSegments2: renderCommonHash(proof.ProofSegments2),
-		ProofSegments3: renderCommonHash(proof.ProofSegments3),
-		ChunkSpan:      proof.ChunkSpan,
+	return Proof{
+		Data:      toHex(proof.Data[:]),
+		Sisters:   renderHash(proof.Sisters...),
+		Data2:     toHex(proof.Data2[:]),
+		Sisters2:  renderHash(proof.Sisters2...),
+		Sisters3:  renderHash(proof.Sisters3...),
+		ChunkSpan: proof.ChunkSpan,
 		PostageProof: PostageProof{
-			Signature: hex.EncodeToString(proof.PostageProof.Signature[:]),
-			PostageId: hex.EncodeToString(proof.PostageProof.PostageId[:]),
+			Signature: toHex(proof.PostageProof.Signature),
+			BatchID:   toHex(proof.PostageProof.BatchId[:]),
 			Index:     strconv.FormatUint(proof.PostageProof.Index, 16),
 			TimeStamp: strconv.FormatUint(proof.PostageProof.TimeStamp, 16),
 		},
@@ -97,13 +93,15 @@ func renderChunkInclusionProof(proof redistribution.ChunkInclusionProof) ChunkIn
 	}
 }
 
-func renderCommonHash(proofSegments []common.Hash) []string {
-	output := make([]string, len(proofSegments))
-	for i, s := range proofSegments {
-		output[i] = hex.EncodeToString(s.Bytes())
+func renderHash(hs ...common.Hash) []string {
+	output := make([]string, len(hs))
+	for i, h := range hs {
+		output[i] = hex.EncodeToString(h.Bytes())
 	}
 	return output
 }
+
+var toHex func([]byte) string = hex.EncodeToString
 
 // This API is kept for testing the sampler. As a result, no documentation or tests are added here.
 func (s *Service) rchash(w http.ResponseWriter, r *http.Request) {
@@ -123,17 +121,18 @@ func (s *Service) rchash(w http.ResponseWriter, r *http.Request) {
 
 	anchor2 := []byte(paths.Anchor2)
 
-	swp, err := s.redistributionAgent.SampleWithProofs(r.Context(), anchor1, anchor2, paths.Depth)
+	var round uint64
+	swp, err := s.sampler.ReserveSampleWithProofs(r.Context(), anchor1, anchor2, paths.Depth, round)
 	if err != nil {
 		logger.Error(err, "failed making sample with proofs")
 		jsonhttp.InternalServerError(w, "failed making sample with proofs")
 		return
 	}
 
-	resp := RCHashResponse{
+	resp := SampleWithProofs{
 		Hash:     swp.Hash,
 		Duration: swp.Duration,
-		Proofs:   renderChunkInclusionProofs(swp.Proofs),
+		Proofs:   renderProofs(swp.Proofs),
 	}
 
 	jsonhttp.OK(w, resp)

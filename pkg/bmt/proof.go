@@ -11,10 +11,10 @@ type Prover struct {
 
 // Proof represents a Merkle proof of segment
 type Proof struct {
-	ProveSegment  []byte
-	ProofSegments [][]byte
-	Span          []byte
-	Index         int
+	Data    []byte
+	Sisters [][]byte
+	Span    []byte
+	Index   int
 }
 
 // Hash overrides base hash function of Hasher to fill buffer with zeros until chunk length
@@ -27,6 +27,7 @@ func (p Prover) Hash(b []byte) ([]byte, error) {
 	}
 	return p.Hasher.Hash(b)
 }
+
 
 // Proof returns the inclusion proof of the i-th data segment
 func (p Prover) Proof(i int) Proof {
@@ -60,9 +61,9 @@ func (p Prover) Proof(i int) Proof {
 func (p Prover) Verify(i int, proof Proof) (root []byte, err error) {
 	var section []byte
 	if i%2 == 0 {
-		section = append(append(section, proof.ProveSegment...), proof.ProofSegments[0]...)
+		section = append(append(section, proof.Data...), proof.Sisters[0]...)
 	} else {
-		section = append(append(section, proof.ProofSegments[0]...), proof.ProveSegment...)
+		section = append(append(section, proof.Sisters[0]...), proof.Data...)
 	}
 	i = i / 2
 	n := p.bmt.leaves[i]
@@ -74,7 +75,7 @@ func (p Prover) Verify(i int, proof Proof) (root []byte, err error) {
 	}
 	n = n.parent
 
-	for _, sister := range proof.ProofSegments[1:] {
+	for _, sister := range proof.Sisters[1:] {
 		if isLeft {
 			root, err = doHash(hasher, root, sister)
 		} else {

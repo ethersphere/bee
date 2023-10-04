@@ -37,12 +37,19 @@ type ChainSnapshot struct {
 	FirstBlockNumber uint64      `json:"firstBlockNumber"`
 	Timestamp        int64       `json:"timestamp"`
 }
+type ChainBackend interface {
+	BlockNumber(context.Context) (uint64, error)
+	HeaderByNumber(context.Context, *big.Int) (*types.Header, error)
+	BalanceAt(ctx context.Context, address common.Address, block *big.Int) (*big.Int, error)
+	SuggestGasPrice(ctx context.Context) (*big.Int, error)
+}
 
 // Storer represents the persistence layer for batches
 // on the current (highest available) block.
 type Storer interface {
 	ChainStateGetter
 	CommitmentGetter
+	ValueIterator
 
 	Radius() uint8
 
@@ -82,6 +89,11 @@ type CommitmentGetter interface {
 type ChainStateGetter interface {
 	// GetChainState returns the stored chain state from the store.
 	GetChainState() *ChainState
+}
+
+type ValueIterator interface {
+	// IterateByValue iterates on batches by value ascending order
+	IterateByValue(cb func(id []byte, val *big.Int) (bool, error)) error
 }
 
 // Listener provides a blockchain event iterator.

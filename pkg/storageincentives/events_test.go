@@ -5,7 +5,6 @@
 package storageincentives_test
 
 import (
-	"context"
 	"testing"
 	"time"
 
@@ -21,33 +20,31 @@ func TestClose(t *testing.T) {
 	done2 := make(chan struct{})
 	done3 := make(chan struct{})
 
-	ev.On(1, func(ctx context.Context) {
-		<-ctx.Done()
+	ev.On(1, func(quit chan struct{}, blockNumber uint64) {
+		<-quit
 		close(done1)
 	})
 
-	ev.On(1, func(ctx context.Context) {
-		<-ctx.Done()
+	ev.On(1, func(quit chan struct{}, blockNumber uint64) {
+		<-quit
 		close(done2)
 	})
 
-	ev.On(2, func(ctx context.Context) {
-		<-ctx.Done()
+	ev.On(2, func(quit chan struct{}, blockNumber uint64) {
+		<-quit
 		close(done3)
 	})
 
-	ev.Publish(1)
-	ev.Publish(2)
+	ev.Publish(1, 0)
+	ev.Publish(2, 0)
 
 	ev.Close()
 
-	for i := 0; i < 3; i++ {
+	for i, c := range []chan struct{}{done1, done2, done3} {
 		select {
-		case <-done1:
-		case <-done2:
-		case <-done3:
+		case <-c:
 		case <-time.After(time.Second):
-			t.Fatal("timeout")
+			t.Fatalf("timeout waiting for process %d to quit", i)
 		}
 	}
 }
@@ -59,35 +56,41 @@ func TestPhaseCancel(t *testing.T) {
 
 	done1 := make(chan struct{})
 	done2 := make(chan struct{})
+	done3 := make(chan struct{})
 	defer ev.Close()
 
 	// ensure no panics occur on an empty publish
-	ev.Publish(0)
+	ev.Publish(0, 0)
 
-	ev.On(1, func(ctx context.Context) {
-		<-ctx.Done()
+	ev.On(1, func(quit chan struct{}, blockNumber uint64) {
+		<-quit
 		close(done1)
 	})
 
-	ev.On(2, func(ctx context.Context) {
-		<-ctx.Done()
+	ev.On(2, func(quit chan struct{}, blockNumber uint64) {
+		<-quit
 		close(done2)
 	})
 
-	ev.On(3, func(ctx context.Context) {
-		ev.Cancel(1, 2)
+	ev.On(3, func(quit chan struct{}, blockNumber uint64) {
+
 	})
 
-	ev.Publish(1)
-	ev.Publish(2)
-	ev.Publish(3)
+	ev.Publish(1, 0)
+	ev.Publish(2, 0)
+	ev.Publish(3, 0)
+	ev.Cancel(1, 2)
 
-	for i := 0; i < 2; i++ {
+	for i, c := range []chan struct{}{done1, done2} {
 		select {
-		case <-done1:
-		case <-done2:
+		case <-c:
 		case <-time.After(time.Second):
-			t.Fatal("timeout")
+			t.Fatalf("timeout waiting for process %d to quit", i)
 		}
+	}
+	select {
+	case <-done3:
+		t.Fatalf("process 3 quit unexpectedly")
+	case <-time.After(50 * time.Millisecond):
 	}
 }
