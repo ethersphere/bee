@@ -180,6 +180,8 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 
 		retry()
 
+		var joinedErrs error
+
 		inflight := 0
 
 		for errorsLeft > 0 {
@@ -203,6 +205,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 							loggerV1.Debug("no peers left", "chunk_address", chunkAddr, "errors_left", errorsLeft, "isOrigin", origin, "error", err)
 							return nil, err
 						}
+						joinedErrs = errors.Join(joinedErrs, err)
 						continue // there is still an inflight request, wait for it's result
 					}
 
@@ -222,6 +225,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 						loggerV1.Debug("peer selection", "chunk_address", chunkAddr, "error", err)
 						return nil, err
 					}
+					joinedErrs = errors.Join(joinedErrs, err)
 					continue
 				}
 
@@ -229,8 +233,10 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 				if err != nil {
 					skip.Add(chunkAddr, peer, overDraftRefresh)
 					retry()
+					joinedErrs = errors.Join(joinedErrs, err)
 					continue
 				}
+
 				skip.Add(chunkAddr, peer, skippeers.MaxDuration)
 
 				inflight++
@@ -251,6 +257,8 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 					return res.chunk, nil
 				}
 
+				joinedErrs = errors.Join(joinedErrs, res.err)
+
 				loggerV1.Debug("failed to get chunk", "chunk_address", chunkAddr, "peer_address", res.peer,
 					"peer_proximity", swarm.Proximity(res.peer.Bytes(), s.addr.Bytes()), "error", res.err)
 
@@ -260,7 +268,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 			}
 		}
 
-		return nil, storage.ErrNotFound
+		return nil, errors.Join(joinedErrs, storage.ErrNotFound)
 	})
 	if err != nil {
 		s.metrics.RequestFailureCounter.Inc()

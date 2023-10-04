@@ -326,6 +326,8 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 		}
 	}
 
+	var joinedErrs error
+
 	retry()
 
 	for sentErrorsLeft > 0 {
@@ -357,6 +359,8 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 					continue // there is still an inflight request, wait for it's result
 				}
 
+				joinedErrs = errors.Join(joinedErrs, err)
+
 				ps.logger.Debug("sleeping to refresh overdraft balance", "chunk_address", ch.Address())
 
 				select {
@@ -372,6 +376,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				if inflight == 0 {
 					return nil, err
 				}
+				joinedErrs = errors.Join(joinedErrs, err)
 				ps.logger.Debug("next peer", "chunk_address", ch.Address(), "error", err)
 				continue
 			}
@@ -389,6 +394,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			if err != nil {
 				retry()
 				ps.skipList.Add(ch.Address(), peer, overDraftRefresh)
+				joinedErrs = errors.Join(joinedErrs, err)
 				continue
 			}
 			ps.skipList.Add(ch.Address(), peer, sanctionWait)
@@ -408,6 +414,8 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				return result.receipt, nil
 			}
 
+			joinedErrs = errors.Join(joinedErrs, result.err)
+
 			ps.metrics.TotalFailedSendAttempts.Inc()
 			ps.logger.Debug("could not push to peer", "chunk_address", ch.Address(), "peer_address", result.peer, "error", result.err)
 
@@ -417,7 +425,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 		}
 	}
 
-	return nil, ErrNoPush
+	return nil, errors.Join(joinedErrs, ErrNoPush)
 }
 
 func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptResult, peer swarm.Address, ch swarm.Chunk, action accounting.Action) {
