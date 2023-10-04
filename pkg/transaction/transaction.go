@@ -5,7 +5,6 @@
 package transaction
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -15,7 +14,6 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum"
-	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/pkg/crypto"
@@ -96,9 +94,6 @@ type Service interface {
 	CancelTransaction(ctx context.Context, originalTxHash common.Hash) (common.Hash, error)
 	// TransactionFee retrieves the transaction fee
 	TransactionFee(ctx context.Context, txHash common.Hash) (*big.Int, error)
-	// UnwrapABIError tries to unwrap the ABI error if the given error is not nil.
-	// The original error is wrapped together with the ABI error if it exists.
-	UnwrapABIError(ctx context.Context, req *TxRequest, err error, abiErrors map[string]abi.Error) error
 }
 
 type transactionService struct {
@@ -283,8 +278,7 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 			Data: request.Data,
 		})
 		if err != nil {
-			t.logger.Debug("estimage gas failed", "error", err)
-			gasLimit = request.MinEstimatedGasLimit
+			return nil, err
 		}
 
 		gasLimit += gasLimit / 4 // add 25% on top
@@ -589,28 +583,4 @@ func (t *transactionService) TransactionFee(ctx context.Context, txHash common.H
 		return nil, err
 	}
 	return trx.Cost(), nil
-}
-
-func (t *transactionService) UnwrapABIError(ctx context.Context, req *TxRequest, err error, abiErrors map[string]abi.Error) error {
-	if err == nil {
-		return nil
-	}
-
-	res, cErr := t.Call(ctx, req)
-	if cErr != nil {
-		return err
-	}
-
-	if reason, uErr := abi.UnpackRevert(res); uErr == nil {
-		return fmt.Errorf("%w: %s", err, reason)
-	}
-
-	for _, abiError := range abiErrors {
-		if bytes.Equal(res[:4], abiError.ID[:4]) {
-			//abiError.Unpack(res[4:])
-			return fmt.Errorf("%w: %s", err, abiError)
-		}
-	}
-
-	return err
 }

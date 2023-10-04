@@ -24,7 +24,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
-	"github.com/ethersphere/bee/pkg/storer"
+	storer "github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/transaction"
 )
@@ -131,7 +131,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 	phaseEvents := newEvents()
 	defer phaseEvents.Close()
 
-	logErr := func(phase PhaseType, round uint64, err error) {
+	logPhaseResult := func(phase PhaseType, round uint64, err error) {
 		if err != nil {
 			a.logger.Error(err, "phase failed", "phase", phase, "round", round)
 		}
@@ -142,13 +142,13 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 		round, _ := a.state.currentRoundAndPhase()
 		err := a.handleCommit(ctx, round)
-		logErr(commit, round, err)
+		logPhaseResult(commit, round, err)
 	})
 
 	phaseEvents.On(reveal, func(ctx context.Context) {
 		phaseEvents.Cancel(commit, sample)
 		round, _ := a.state.currentRoundAndPhase()
-		logErr(reveal, round, a.handleReveal(ctx, round))
+		logPhaseResult(reveal, round, a.handleReveal(ctx, round))
 	})
 
 	phaseEvents.On(claim, func(ctx context.Context) {
@@ -156,13 +156,13 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		phaseEvents.Publish(sample)
 
 		round, _ := a.state.currentRoundAndPhase()
-		logErr(claim, round, a.handleClaim(ctx, round))
+		logPhaseResult(claim, round, a.handleClaim(ctx, round))
 	})
 
 	phaseEvents.On(sample, func(ctx context.Context) {
 		round, _ := a.state.currentRoundAndPhase()
 		isPhasePlayed, err := a.handleSample(ctx, round)
-		logErr(sample, round, err)
+		logPhaseResult(sample, round, err)
 
 		// Sample handled could potentially take long time, therefore it could overlap with commit
 		// phase of next round. When that case happens commit event needs to be triggered once more
@@ -353,22 +353,7 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 		a.logger.Info("could not set balance", "err", err)
 	}
 
-	sampleData, exists := a.state.SampleData(round - 1)
-	if !exists {
-		return fmt.Errorf("sample not found")
-	}
-
-	anchor2, err := a.contract.ReserveSalt(ctx)
-	if err != nil {
-		a.logger.Info("failed getting anchor after second reveal", "err", err)
-	}
-
-	proofs, err := makeInclusionProofs(sampleData.ReserveSampleItems, sampleData.Anchor1, anchor2)
-	if err != nil {
-		return fmt.Errorf("making inclusion proofs: %w", err)
-	}
-
-	txHash, err := a.contract.Claim(ctx, proofs)
+	txHash, err := a.contract.Claim(ctx)
 	if err != nil {
 		a.metrics.ErrClaim.Inc()
 		return fmt.Errorf("claiming win: %w", err)
@@ -433,12 +418,10 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	dur := time.Since(now)
-	a.metrics.SampleDuration.Set(dur.Seconds())
 
 	a.logger.Info("produced sample", "hash", sample.ReserveSampleHash, "radius", sample.StorageRadius, "round", round)
 
-	a.state.SetSampleData(round, sample, dur)
+	a.state.SetSampleData(round, sample, time.Since(now))
 
 	return true, nil
 }
@@ -454,10 +437,12 @@ func (a *Agent) makeSample(ctx context.Context, storageRadius uint8) (SampleData
 		return SampleData{}, err
 	}
 
+	t := time.Now()
 	rSample, err := a.store.ReserveSample(ctx, salt, storageRadius, uint64(timeLimiter), a.minBatchBalance())
 	if err != nil {
 		return SampleData{}, err
 	}
+	a.metrics.SampleDuration.Set(time.Since(t).Seconds())
 
 	sampleHash, err := sampleHash(rSample.Items)
 	if err != nil {
@@ -465,10 +450,8 @@ func (a *Agent) makeSample(ctx context.Context, storageRadius uint8) (SampleData
 	}
 
 	sample := SampleData{
-		Anchor1:            salt,
-		ReserveSampleItems: rSample.Items,
-		ReserveSampleHash:  sampleHash,
-		StorageRadius:      storageRadius,
+		ReserveSampleHash: sampleHash,
+		StorageRadius:     storageRadius,
 	}
 
 	return sample, nil
@@ -510,7 +493,7 @@ func (a *Agent) commit(ctx context.Context, sample SampleData, round uint64) err
 		return err
 	}
 
-	txHash, err := a.contract.Commit(ctx, obfuscatedHash, uint32(round))
+	txHash, err := a.contract.Commit(ctx, obfuscatedHash, big.NewInt(int64(round)))
 	if err != nil {
 		a.metrics.ErrCommit.Inc()
 		return err
@@ -555,16 +538,14 @@ func (a *Agent) Status() (*Status, error) {
 }
 
 type SampleWithProofs struct {
-	Hash     swarm.Address                       `json:"hash"`
-	Proofs   redistribution.ChunkInclusionProofs `json:"proofs"`
-	Duration time.Duration                       `json:"duration"`
+	Items    []storer.SampleItem
+	Hash     swarm.Address
+	Duration time.Duration
 }
 
-// SampleWithProofs is called only by rchash API
 func (a *Agent) SampleWithProofs(
 	ctx context.Context,
 	anchor1 []byte,
-	anchor2 []byte,
 	storageRadius uint8,
 ) (SampleWithProofs, error) {
 	sampleStartTime := time.Now()
@@ -581,17 +562,12 @@ func (a *Agent) SampleWithProofs(
 
 	hash, err := sampleHash(rSample.Items)
 	if err != nil {
-		return SampleWithProofs{}, fmt.Errorf("sample hash: %w", err)
-	}
-
-	proofs, err := makeInclusionProofs(rSample.Items, anchor1, anchor2)
-	if err != nil {
-		return SampleWithProofs{}, fmt.Errorf("make proofs: %w", err)
+		return SampleWithProofs{}, fmt.Errorf("sample hash: %w:", err)
 	}
 
 	return SampleWithProofs{
+		Items:    rSample.Items,
 		Hash:     hash,
-		Proofs:   proofs,
 		Duration: time.Since(sampleStartTime),
 	}, nil
 }

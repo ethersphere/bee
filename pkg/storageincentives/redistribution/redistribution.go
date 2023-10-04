@@ -23,8 +23,8 @@ type Contract interface {
 	ReserveSalt(context.Context) ([]byte, error)
 	IsPlaying(context.Context, uint8) (bool, error)
 	IsWinner(context.Context) (bool, error)
-	Claim(context.Context, ChunkInclusionProofs) (common.Hash, error)
-	Commit(context.Context, []byte, uint32) (common.Hash, error)
+	Claim(context.Context) (common.Hash, error)
+	Commit(context.Context, []byte, *big.Int) (common.Hash, error)
 	Reveal(context.Context, uint8, []byte, []byte) (common.Hash, error)
 }
 
@@ -92,8 +92,8 @@ func (c *contract) IsWinner(ctx context.Context) (isWinner bool, err error) {
 }
 
 // Claim sends a transaction to blockchain if a win is claimed.
-func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs) (common.Hash, error) {
-	callData, err := c.incentivesContractABI.Pack("claim", proofs.A, proofs.B, proofs.C)
+func (c *contract) Claim(ctx context.Context) (common.Hash, error) {
+	callData, err := c.incentivesContractABI.Pack("claim")
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -115,7 +115,7 @@ func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs) (comm
 }
 
 // Commit submits the obfusHash hash by sending a transaction to the blockchain.
-func (c *contract) Commit(ctx context.Context, obfusHash []byte, round uint32) (common.Hash, error) {
+func (c *contract) Commit(ctx context.Context, obfusHash []byte, round *big.Int) (common.Hash, error) {
 	callData, err := c.incentivesContractABI.Pack("commit", common.BytesToHash(obfusHash), common.BytesToHash(c.overlay.Bytes()), round)
 	if err != nil {
 		return common.Hash{}, err
@@ -180,17 +180,8 @@ func (c *contract) ReserveSalt(ctx context.Context) ([]byte, error) {
 	return salt[:], nil
 }
 
-func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest, boostPercent int) (txHash common.Hash, err error) {
-	defer func() {
-		err = c.txService.UnwrapABIError(
-			ctx,
-			request,
-			err,
-			c.incentivesContractABI.Errors,
-		)
-	}()
-
-	txHash, err = c.txService.Send(ctx, request, boostPercent)
+func (c *contract) sendAndWait(ctx context.Context, request *transaction.TxRequest, boostPercent int) (common.Hash, error) {
+	txHash, err := c.txService.Send(ctx, request, boostPercent)
 	if err != nil {
 		return txHash, err
 	}
