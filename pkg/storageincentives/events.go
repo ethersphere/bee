@@ -5,7 +5,6 @@
 package storageincentives
 
 import (
-	"context"
 	"sync"
 )
 
@@ -16,6 +15,7 @@ const (
 	reveal
 	claim
 	sample
+	phaseCount
 )
 
 func (p PhaseType) String() string {
@@ -34,42 +34,34 @@ func (p PhaseType) String() string {
 }
 
 type events struct {
-	mtx sync.Mutex
-	ev  map[PhaseType]*event
+	mtx    sync.Mutex
+	events [phaseCount]event
+	quit   [phaseCount]chan struct{}
 }
 
-type event struct {
-	funcs  []func(context.Context)
-	ctx    context.Context
-	cancel context.CancelFunc
+type event []func(quit chan struct{}, blockNumber uint64)
+
+func NewEvents() *events {
+	return &events{}
 }
 
-func newEvents() *events {
-	return &events{
-		ev: make(map[PhaseType]*event),
-	}
-}
-
-func (e *events) On(phase PhaseType, f func(context.Context)) {
+func (e *events) On(phase PhaseType, f func(quit chan struct{}, blockNumber uint64)) {
 	e.mtx.Lock()
 	defer e.mtx.Unlock()
 
-	if _, ok := e.ev[phase]; !ok {
-		ctx, cancel := context.WithCancel(context.Background())
-		e.ev[phase] = &event{ctx: ctx, cancel: cancel}
+	fs := e.events[phase]
+	if len(fs) == 0 {
+		e.quit[phase] = make(chan struct{})
 	}
-
-	e.ev[phase].funcs = append(e.ev[phase].funcs, f)
+	e.events[phase] = append(fs, f)
 }
 
-func (e *events) Publish(phase PhaseType) {
+func (e *events) Publish(phase PhaseType, blockNumber uint64) {
 	e.mtx.Lock()
 	defer e.mtx.Unlock()
 
-	if ev, ok := e.ev[phase]; ok {
-		for _, v := range ev.funcs {
-			go v(ev.ctx)
-		}
+	for _, v := range e.events[phase] {
+		go v(e.quit[phase], blockNumber)
 	}
 }
 
@@ -78,12 +70,8 @@ func (e *events) Cancel(phases ...PhaseType) {
 	defer e.mtx.Unlock()
 
 	for _, phase := range phases {
-		if ev, ok := e.ev[phase]; ok {
-			ev.cancel()
-			ctx, cancel := context.WithCancel(context.Background())
-			ev.ctx = ctx
-			ev.cancel = cancel
-		}
+		close(e.quit[phase])
+		e.quit[phase] = make(chan struct{})
 	}
 }
 
@@ -91,8 +79,7 @@ func (e *events) Close() {
 	e.mtx.Lock()
 	defer e.mtx.Unlock()
 
-	for k, ev := range e.ev {
-		ev.cancel()
-		delete(e.ev, k)
+	for _, ch := range e.quit {
+		close(ch)
 	}
 }

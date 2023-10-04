@@ -61,6 +61,7 @@ import (
 	"github.com/ethersphere/bee/pkg/steward"
 	"github.com/ethersphere/bee/pkg/storageincentives"
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
+	"github.com/ethersphere/bee/pkg/storageincentives/sampler"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 	storer "github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -681,7 +682,6 @@ func NewBee(
 	}
 
 	postageStampContractABI := abiutil.MustParseABI(chainCfg.PostageStampABI)
-
 	bzzTokenAddress, err := postagecontract.LookupERC20Address(ctx, transactionService, postageStampContractAddress, postageStampContractABI, chainEnabled)
 	if err != nil {
 		return nil, err
@@ -1051,30 +1051,31 @@ func NewBee(
 				}
 				redistributionContractAddress = common.HexToAddress(o.RedistributionContractAddress)
 			}
-
 			isFullySynced := func() bool {
 				return localStore.ReserveSize() >= reserveTreshold && pullerService.SyncRate() == 0
 			}
 
 			redistributionContract := redistribution.New(swarmAddress, logger, transactionService, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionABI))
+			s := sampler.New(
+				chainBackend,
+				batchStore,
+				localStore,
+				isFullySynced,
+				saludService.IsHealthy,
+			)
 			agent, err = storageincentives.New(
+				logger,
 				swarmAddress,
 				overlayEthAddress,
+				o.BlockTime,
 				chainBackend,
 				redistributionContract,
 				postageStampContractService,
 				stakingContract,
-				localStore,
-				isFullySynced,
-				o.BlockTime,
-				storageincentives.DefaultBlocksPerRound,
-				storageincentives.DefaultBlocksPerPhase,
+				s,
 				stateStore,
-				batchStore,
 				erc20Service,
 				transactionService,
-				saludService,
-				logger,
 			)
 			if err != nil {
 				return nil, fmt.Errorf("storage incentives agent: %w", err)

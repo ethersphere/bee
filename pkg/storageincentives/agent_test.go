@@ -21,9 +21,8 @@ import (
 	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
 	"github.com/ethersphere/bee/pkg/storageincentives"
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
+	"github.com/ethersphere/bee/pkg/storageincentives/sampler"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
-	"github.com/ethersphere/bee/pkg/storer"
-	resMock "github.com/ethersphere/bee/pkg/storer/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
 	"github.com/ethersphere/bee/pkg/util/testutil"
@@ -34,55 +33,43 @@ func TestAgent(t *testing.T) {
 
 	bigBalance := big.NewInt(4_000_000_000)
 	tests := []struct {
-		name           string
-		blocksPerRound uint64
-		blocksPerPhase uint64
-		incrementBy    uint64
-		limit          uint64
-		expectedCalls  bool
-		balance        *big.Int
+		name          string
+		incrementBy   uint64
+		limit         uint64
+		expectedCalls bool
+		balance       *big.Int
 	}{{
-		name:           "3 blocks per phase, same block number returns twice",
-		blocksPerRound: 9,
-		blocksPerPhase: 3,
-		incrementBy:    1,
-		expectedCalls:  true,
-		limit:          108, // computed with blocksPerRound * (exptectedCalls + 2)
-		balance:        bigBalance,
+		name:          "3 blocks per phase, same block number returns twice",
+		incrementBy:   1,
+		expectedCalls: true,
+		limit:         108, // computed with blocksPerRound * (exptectedCalls + 2)
+		balance:       bigBalance,
 	}, {
-		name:           "3 blocks per phase, block number returns every block",
-		blocksPerRound: 9,
-		blocksPerPhase: 3,
-		incrementBy:    1,
-		expectedCalls:  true,
-		limit:          108,
-		balance:        bigBalance,
+		name:          "3 blocks per phase, block number returns every block",
+		incrementBy:   1,
+		expectedCalls: true,
+		limit:         108,
+		balance:       bigBalance,
 	}, {
-		name:           "no expected calls - block number returns late after each phase",
-		blocksPerRound: 9,
-		blocksPerPhase: 3,
-		incrementBy:    6,
-		expectedCalls:  false,
-		limit:          108,
-		balance:        bigBalance,
+		name:          "no expected calls - block number returns late after each phase",
+		incrementBy:   6,
+		expectedCalls: false,
+		limit:         108,
+		balance:       bigBalance,
 	}, {
-		name:           "4 blocks per phase, block number returns every other block",
-		blocksPerRound: 12,
-		blocksPerPhase: 4,
-		incrementBy:    2,
-		expectedCalls:  true,
-		limit:          144,
-		balance:        bigBalance,
+		name:          "4 blocks per phase, block number returns every other block",
+		incrementBy:   2,
+		expectedCalls: true,
+		limit:         144,
+		balance:       bigBalance,
 	}, {
 		// This test case is based on previous, but this time agent will not have enough
 		// balance to participate in the game so no calls are going to be made.
-		name:           "no expected calls - insufficient balance",
-		blocksPerRound: 12,
-		blocksPerPhase: 4,
-		incrementBy:    2,
-		expectedCalls:  false,
-		limit:          144,
-		balance:        big.NewInt(0),
+		name:          "no expected calls - insufficient balance",
+		incrementBy:   2,
+		expectedCalls: false,
+		limit:         144,
+		balance:       big.NewInt(0),
 	},
 	}
 
@@ -103,12 +90,11 @@ func TestAgent(t *testing.T) {
 					}
 				},
 				incrementBy: tc.incrementBy,
-				block:       tc.blocksPerRound,
 				balance:     tc.balance,
 			}
 			contract := &mockContract{}
 
-			service, _ := createService(t, addr, backend, contract, tc.blocksPerRound, tc.blocksPerPhase)
+			service, _ := createService(t, addr, backend, contract)
 			testutil.CleanupCloser(t, service)
 
 			<-wait
@@ -153,10 +139,9 @@ func TestAgent(t *testing.T) {
 func createService(
 	t *testing.T,
 	addr swarm.Address,
-	backend storageincentives.ChainBackend,
+	backend postage.ChainBackend,
 	contract redistribution.Contract,
-	blocksPerRound uint64,
-	blocksPerPhase uint64) (*storageincentives.Agent, error) {
+) (*storageincentives.Agent, error) {
 	t.Helper()
 
 	postageContract := contractMock.New(contractMock.WithExpiresBatchesFunc(func(context.Context) error {
@@ -167,29 +152,22 @@ func createService(
 		return false, nil
 	}))
 
-	reserve := resMock.NewReserve(
-		resMock.WithRadius(0),
-		resMock.WithSample(storer.RandSample(t, nil)),
-	)
-
+	var sampler *sampler.Sampler
 	return storageincentives.New(
-		addr, common.Address{},
+		log.Noop,
+		addr,
+		common.Address{},
+		time.Millisecond*100,
 		backend,
 		contract,
 		postageContract,
 		stakingContract,
-		reserve,
-		func() bool { return true },
-		time.Millisecond*100,
-		blocksPerRound,
-		blocksPerPhase,
+		sampler,
 		statestore.NewStateStore(),
-		&postage.NoOpBatchStore{},
 		erc20mock.New(),
 		transactionmock.New(),
-		&mockHealth{},
-		log.Noop,
 	)
+
 }
 
 type mockchainBackend struct {
@@ -276,7 +254,7 @@ func (m *mockContract) IsWinner(context.Context) (bool, error) {
 	return false, nil
 }
 
-func (m *mockContract) Claim(context.Context, redistribution.ChunkInclusionProofs) (common.Hash, error) {
+func (m *mockContract) Claim(context.Context, []redistribution.Proof) (common.Hash, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, claimCall)
@@ -296,7 +274,3 @@ func (m *mockContract) Reveal(context.Context, uint8, []byte, []byte) (common.Ha
 	m.callsList = append(m.callsList, revealCall)
 	return common.Hash{}, nil
 }
-
-type mockHealth struct{}
-
-func (m *mockHealth) IsHealthy() bool { return true }
