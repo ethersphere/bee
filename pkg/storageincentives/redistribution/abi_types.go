@@ -19,32 +19,32 @@ import (
 // corresponding structure (of the same name) in Redistribution.sol smart contract.
 // github.com/ethersphere/storage-incentives/blob/master/src/Redistribution.sol
 type Proof struct {
-	Sisters      []common.Hash
-	Data         common.Hash
-	Sisters2     []common.Hash
-	Data2        common.Hash
-	Sisters3     []common.Hash
-	ChunkSpan    uint64
-	PostageProof PostageProof
-	SocProof     []SOCProof
+	Sisters      []common.Hash `json:"proofSegments"`
+	Data         common.Hash   `json:"proveSegment"`
+	Sisters2     []common.Hash `json:"proofSegments2"`
+	Data2        common.Hash   `json:"proveSegment2"`
+	Sisters3     []common.Hash `json:"proofSegments3"`
+	ChunkSpan    uint64        `json:"chunkSpan"`
+	PostageProof PostageProof  `json:"postageProof"`
+	SocProof     []SOCProof    `json:"socProof"`
 }
 
 // SOCProof structure must exactly match
 // corresponding structure (of the same name) in Redistribution.sol smart contract.
 type PostageProof struct {
-	Signature []byte
-	BatchId   common.Hash
-	Index     uint64
-	TimeStamp uint64
+	Signature []byte      `json:"signature"`
+	BatchId   common.Hash `json:"batchId"`
+	Index     uint64      `json:"index"`
+	TimeStamp uint64      `json:"timeStamp"`
 }
 
 // SOCProof structure must exactly match
 // corresponding structure (of the same name) in Redistribution.sol smart contract.
 type SOCProof struct {
-	Signer     []byte
-	Signature  []byte
-	Identifier common.Hash
-	ChunkAddr  common.Hash
+	Signer     []byte      `json:"signer"`
+	Signature  []byte      `json:"signature"`
+	Identifier common.Hash `json:"identifier"`
+	ChunkAddr  common.Hash `json:"chunkAddr"`
 }
 
 func bytes32(bs ...[]byte) []common.Hash {
