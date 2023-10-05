@@ -376,7 +376,8 @@ func valueKeyToID(key []byte) []byte {
 
 // valueKeyToValue extracts the value from a value key - used in value-based iteration.
 func valueKeyToValue(key []byte) *big.Int {
-	return new(big.Int).SetBytes(key[:32])
+	offset := len(valueKeyPrefix)
+	return new(big.Int).SetBytes(key[offset : offset+32])
 }
 
 func (s *store) SetBatchExpiryHandler(be postage.BatchExpiryHandler) {
