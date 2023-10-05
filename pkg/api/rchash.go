@@ -85,7 +85,7 @@ func renderProof(proof redistribution.Proof) Proof {
 		ChunkSpan: proof.ChunkSpan,
 		PostageProof: PostageProof{
 			Signature: toHex(proof.PostageProof.Signature),
-			BatchID:   toHex(proof.PostageProof.BatchId[:]),
+			BatchID:   toHex(proof.PostageProof.PostageId[:]),
 			Index:     strconv.FormatUint(proof.PostageProof.Index, 16),
 			TimeStamp: strconv.FormatUint(proof.PostageProof.TimeStamp, 16),
 		},

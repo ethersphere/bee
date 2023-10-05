@@ -33,7 +33,7 @@ type Proof struct {
 // corresponding structure (of the same name) in Redistribution.sol smart contract.
 type PostageProof struct {
 	Signature []byte      `json:"signature"`
-	BatchId   common.Hash `json:"batchId"`
+	PostageId common.Hash `json:"batchId"`
 	Index     uint64      `json:"index"`
 	TimeStamp uint64      `json:"timeStamp"`
 }
@@ -78,7 +78,7 @@ func NewProof(wp1, wp2, wp3 bmt.Proof, stamp swarm.Stamp, sch *soc.SOC) Proof {
 		ChunkSpan:      binary.LittleEndian.Uint64(wp2.Span[:swarm.SpanSize]), // should be uint64 on the other size; copied from pkg/api/bytes.go
 		PostageProof: PostageProof{
 			Signature: stamp.Sig(),
-			BatchId:   bytes32(stamp.BatchID())[0],
+			PostageId: bytes32(stamp.BatchID())[0],
 			Index:     binary.BigEndian.Uint64(stamp.Index()),
 			TimeStamp: binary.BigEndian.Uint64(stamp.Timestamp()),
 		},

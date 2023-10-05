@@ -48,7 +48,7 @@ func randProof(t *testing.T) redistribution.Proof {
 		ProofSegments3: randomHashes(t, 7),
 		PostageProof: redistribution.PostageProof{
 			Signature: testutil.RandBytes(t, 65),
-			BatchId:   randomHashes(t, 1)[0],
+			PostageId: randomHashes(t, 1)[0],
 			Index:     uint64(rand.Int63()),
 			TimeStamp: uint64(rand.Int63()),
 		},
