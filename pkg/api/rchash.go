@@ -77,11 +77,11 @@ func renderProof(proof redistribution.Proof) Proof {
 	}
 
 	return Proof{
-		Data:      toHex(proof.Data[:]),
-		Sisters:   renderHash(proof.Sisters...),
-		Data2:     toHex(proof.Data2[:]),
-		Sisters2:  renderHash(proof.Sisters2...),
-		Sisters3:  renderHash(proof.Sisters3...),
+		Data:      toHex(proof.ProveSegment[:]),
+		Sisters:   renderHash(proof.ProofSegments...),
+		Data2:     toHex(proof.ProveSegment2[:]),
+		Sisters2:  renderHash(proof.ProofSegments2...),
+		Sisters3:  renderHash(proof.ProofSegments3...),
 		ChunkSpan: proof.ChunkSpan,
 		PostageProof: PostageProof{
 			Signature: toHex(proof.PostageProof.Signature),

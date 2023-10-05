@@ -19,14 +19,14 @@ import (
 // corresponding structure (of the same name) in Redistribution.sol smart contract.
 // github.com/ethersphere/storage-incentives/blob/master/src/Redistribution.sol
 type Proof struct {
-	Sisters      []common.Hash `json:"proofSegments"`
-	Data         common.Hash   `json:"proveSegment"`
-	Sisters2     []common.Hash `json:"proofSegments2"`
-	Data2        common.Hash   `json:"proveSegment2"`
-	Sisters3     []common.Hash `json:"proofSegments3"`
-	ChunkSpan    uint64        `json:"chunkSpan"`
-	PostageProof PostageProof  `json:"postageProof"`
-	SocProof     []SOCProof    `json:"socProof"`
+	ProofSegments  []common.Hash `json:"proofSegments"`
+	ProveSegment   common.Hash   `json:"proveSegment"`
+	ProofSegments2 []common.Hash `json:"proofSegments2"`
+	ProveSegment2  common.Hash   `json:"proveSegment2"`
+	ChunkSpan      uint64        `json:"chunkSpan"`
+	ProofSegments3 []common.Hash `json:"proofSegments3"`
+	PostageProof   PostageProof  `json:"postageProof"`
+	SocProof       []SOCProof    `json:"socProof"`
 }
 
 // SOCProof structure must exactly match
@@ -70,12 +70,12 @@ func NewProof(wp1, wp2, wp3 bmt.Proof, stamp swarm.Stamp, sch *soc.SOC) Proof {
 	}
 
 	return Proof{
-		Sisters:   bytes32(wp1.Sisters...),
-		Data:      bytes32(wp1.Data)[0],
-		Sisters2:  bytes32(wp2.Sisters...),
-		Data2:     bytes32(wp2.Data)[0],
-		Sisters3:  bytes32(wp3.Sisters...),
-		ChunkSpan: binary.LittleEndian.Uint64(wp2.Span[:swarm.SpanSize]), // should be uint64 on the other size; copied from pkg/api/bytes.go
+		ProofSegments:  bytes32(wp1.Sisters...),
+		ProveSegment:   bytes32(wp1.Data)[0],
+		ProofSegments2: bytes32(wp2.Sisters...),
+		ProveSegment2:  bytes32(wp2.Data)[0],
+		ProofSegments3: bytes32(wp3.Sisters...),
+		ChunkSpan:      binary.LittleEndian.Uint64(wp2.Span[:swarm.SpanSize]), // should be uint64 on the other size; copied from pkg/api/bytes.go
 		PostageProof: PostageProof{
 			Signature: stamp.Sig(),
 			BatchId:   bytes32(stamp.BatchID())[0],

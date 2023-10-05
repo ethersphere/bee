@@ -41,11 +41,11 @@ func randProof(t *testing.T) redistribution.Proof {
 	t.Helper()
 
 	return redistribution.Proof{
-		Sisters:  randomHashes(t, 7),
-		Data:     randomHashes(t, 1)[0],
-		Sisters2: randomHashes(t, 7),
-		Data2:    randomHashes(t, 1)[0],
-		Sisters3: randomHashes(t, 7),
+		ProofSegments:  randomHashes(t, 7),
+		ProveSegment:   randomHashes(t, 1)[0],
+		ProofSegments2: randomHashes(t, 7),
+		ProveSegment2:  randomHashes(t, 1)[0],
+		ProofSegments3: randomHashes(t, 7),
 		PostageProof: redistribution.PostageProof{
 			Signature: testutil.RandBytes(t, 65),
 			BatchId:   randomHashes(t, 1)[0],
