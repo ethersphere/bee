@@ -306,7 +306,7 @@ func TestRedistribution(t *testing.T) {
 			redistributionContractABI,
 		)
 
-		_, err = contract.Commit(ctx, testobfus, uint32(0))
+		_, err = contract.Commit(ctx, testobfus, uint64(0))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -433,7 +433,7 @@ func TestRedistribution(t *testing.T) {
 			redistributionContractABI,
 		)
 
-		_, err = contract.Commit(ctx, common.Hex2Bytes("hash"), uint32(0))
+		_, err = contract.Commit(ctx, common.Hex2Bytes("hash"), uint64(0))
 		if err == nil {
 			t.Fatal("expected error")
 		}
