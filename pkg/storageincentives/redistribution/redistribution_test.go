@@ -15,6 +15,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethersphere/bee/pkg/config"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
@@ -25,8 +26,7 @@ import (
 	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
-// var redistributionContractABI = abiutil.MustParseABI(chaincfg.Testnet.RedistributionABI)
-var redistributionContractABI = abiutil.MustParseABI(redistribution.TestnetRedistributionABI)
+var redistributionContractABI = abiutil.MustParseABI(config.Testnet.RedistributionABI)
 
 func randomHashes(t testing.TB, n int) []common.Hash {
 	rhs := make([]common.Hash, n)
