@@ -195,7 +195,7 @@ func TestRedistribution(t *testing.T) {
 
 		proofs := randProofs(t)
 
-		expectedCallData, err := redistributionContractABI.Pack("claim", proofs)
+		expectedCallData, err := redistributionContractABI.Pack("claim", proofs[0], proofs[1], proofs[2])
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -235,7 +235,7 @@ func TestRedistribution(t *testing.T) {
 		t.Parallel()
 
 		proofs := randProofs(t)
-		expectedCallData, err := redistributionContractABI.Pack("claim", proofs)
+		expectedCallData, err := redistributionContractABI.Pack("claim", proofs[0], proofs[1], proofs[2])
 		if err != nil {
 			t.Fatal(err)
 		}
