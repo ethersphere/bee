@@ -80,6 +80,8 @@ func (e *events) Close() {
 	defer e.mtx.Unlock()
 
 	for _, ch := range e.quit {
-		close(ch)
+		if ch != nil {
+			close(ch)
+		}
 	}
 }
