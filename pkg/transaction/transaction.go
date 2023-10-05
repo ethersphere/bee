@@ -18,6 +18,7 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/sctx"
@@ -596,20 +597,55 @@ func (t *transactionService) UnwrapABIError(ctx context.Context, req *TxRequest,
 		return nil
 	}
 
-	res, cErr := t.Call(ctx, req)
-	if cErr != nil {
+	_, cErr := t.Call(ctx, req)
+	if cErr == nil {
+		return err
+	}
+	err = fmt.Errorf("%w: %s", err, cErr)
+
+	var derr rpc.DataError
+	if !errors.As(cErr, &derr) {
 		return err
 	}
 
-	if reason, uErr := abi.UnpackRevert(res); uErr == nil {
+	res, ok := derr.ErrorData().(string)
+	if !ok {
+		return err
+	}
+	buf := common.FromHex(res)
+
+	if reason, uErr := abi.UnpackRevert(buf); uErr == nil {
 		return fmt.Errorf("%w: %s", err, reason)
 	}
 
 	for _, abiError := range abiErrors {
-		if bytes.Equal(res[:4], abiError.ID[:4]) {
-			//abiError.Unpack(res[4:])
-			return fmt.Errorf("%w: %s", err, abiError)
+		if !bytes.Equal(buf[:4], abiError.ID[:4]) {
+			continue
 		}
+
+		data, uErr := abiError.Unpack(buf)
+		if uErr != nil {
+			continue
+		}
+
+		values, ok := data.([]interface{})
+		if !ok {
+			values = make([]interface{}, len(abiError.Inputs))
+			for i := range values {
+				values[i] = "?"
+			}
+		}
+
+		params := make([]string, len(abiError.Inputs))
+		for i, input := range abiError.Inputs {
+			if input.Name == "" {
+				input.Name = fmt.Sprintf("arg%d", i)
+			}
+			params[i] = fmt.Sprintf("%s=%v", input.Name, values[i])
+
+		}
+
+		return fmt.Errorf("%w: %s(%s)", err, abiError.Name, strings.Join(params, ","))
 	}
 
 	return err
