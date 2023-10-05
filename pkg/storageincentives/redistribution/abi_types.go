@@ -19,23 +19,23 @@ import (
 // corresponding structure (of the same name) in Redistribution.sol smart contract.
 // github.com/ethersphere/storage-incentives/blob/master/src/Redistribution.sol
 type Proof struct {
-	ProofSegments  []common.Hash `json:"proofSegments"`
-	ProveSegment   common.Hash   `json:"proveSegment"`
-	ProofSegments2 []common.Hash `json:"proofSegments2"`
-	ProveSegment2  common.Hash   `json:"proveSegment2"`
-	ChunkSpan      uint64        `json:"chunkSpan"`
-	ProofSegments3 []common.Hash `json:"proofSegments3"`
-	PostageProof   PostageProof  `json:"postageProof"`
-	SocProof       []SOCProof    `json:"socProof"`
+	ProofSegments  []common.Hash
+	ProveSegment   common.Hash
+	ProofSegments2 []common.Hash
+	ProveSegment2  common.Hash
+	ChunkSpan      uint64
+	ProofSegments3 []common.Hash
+	PostageProof   PostageProof
+	SocProof       []SOCProof
 }
 
 // SOCProof structure must exactly match
 // corresponding structure (of the same name) in Redistribution.sol smart contract.
 type PostageProof struct {
-	Signature []byte      `json:"signature"`
-	PostageId common.Hash `json:"batchId"`
-	Index     uint64      `json:"index"`
-	TimeStamp uint64      `json:"timeStamp"`
+	Signature []byte
+	PostageId common.Hash
+	Index     uint64
+	TimeStamp uint64
 }
 
 // SOCProof structure must exactly match
