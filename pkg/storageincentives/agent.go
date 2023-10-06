@@ -510,7 +510,7 @@ func (a *Agent) commit(ctx context.Context, sample SampleData, round uint64) err
 		return err
 	}
 
-	txHash, err := a.contract.Commit(ctx, obfuscatedHash, uint32(round))
+	txHash, err := a.contract.Commit(ctx, obfuscatedHash, round)
 	if err != nil {
 		a.metrics.ErrCommit.Inc()
 		return err
