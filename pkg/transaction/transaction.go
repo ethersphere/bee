@@ -601,7 +601,7 @@ func (t *transactionService) UnwrapABIError(ctx context.Context, req *TxRequest,
 	if cErr == nil {
 		return err
 	}
-	err = fmt.Errorf("%w: %s", err, cErr)
+	err = fmt.Errorf("%w: %s", err, cErr) //nolint:errorlint
 
 	var derr rpc.DataError
 	if !errors.As(cErr, &derr) {

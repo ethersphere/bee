@@ -267,7 +267,7 @@ func TestRedistribution(t *testing.T) {
 		var obfus [32]byte
 		testobfus := common.Hex2Bytes("hash")
 		copy(obfus[:], testobfus)
-		expectedCallData, err := redistributionContractABI.Pack("commit", obfus, common.BytesToHash(owner.Bytes()), uint32(0))
+		expectedCallData, err := redistributionContractABI.Pack("commit", obfus, common.BytesToHash(owner.Bytes()), uint64(0))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -297,7 +297,7 @@ func TestRedistribution(t *testing.T) {
 			redistributionContractABI,
 		)
 
-		_, err = contract.Commit(ctx, testobfus, uint32(0))
+		_, err = contract.Commit(ctx, testobfus, 0)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -402,7 +402,7 @@ func TestRedistribution(t *testing.T) {
 	t.Run("invalid call data", func(t *testing.T) {
 		t.Parallel()
 
-		expectedCallData, err := redistributionContractABI.Pack("commit", common.BytesToHash(common.Hex2Bytes("some hash")), common.BytesToHash(common.Hex2Bytes("some address")), uint32(0))
+		expectedCallData, err := redistributionContractABI.Pack("commit", common.BytesToHash(common.Hex2Bytes("some hash")), common.BytesToHash(common.Hex2Bytes("some address")), uint64(0))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -424,7 +424,7 @@ func TestRedistribution(t *testing.T) {
 			redistributionContractABI,
 		)
 
-		_, err = contract.Commit(ctx, common.Hex2Bytes("hash"), uint32(0))
+		_, err = contract.Commit(ctx, common.Hex2Bytes("hash"), 0)
 		if err == nil {
 			t.Fatal("expected error")
 		}
