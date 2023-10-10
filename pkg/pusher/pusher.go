@@ -148,6 +148,15 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 		)
 
 		defer func() {
+			// no peer was found which may mean that the node is suffering from connections issues
+			// we must slow down the pusher to prevent constant retries
+			if errors.Is(err, topology.ErrNotFound) {
+				select {
+				case <-time.After(time.Second * 5):
+				case <-s.quit:
+				}
+			}
+
 			wg.Done()
 			<-sem
 			if doRepeat {

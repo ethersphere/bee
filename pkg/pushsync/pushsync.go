@@ -340,8 +340,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			// If no peer can be found from an origin peer, the origin peer may store the chunk.
 			// Non-origin peers store the chunk if the chunk is within depth.
 			// For non-origin peers, if the chunk is not within depth, they may store the chunk if they are the closest peer to the chunk.
-			peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), ps.fullNode && !origin, topology.Select{Reachable: true, Healthy: true}, ps.skipList.ChunkPeers(ch.Address())...)
-
+			peer, err := ps.closestPeer(ch.Address(), origin)
 			if errors.Is(err, topology.ErrNotFound) {
 				if ps.skipList.PruneExpiresAfter(ch.Address(), overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers
 					if inflight == 0 {
@@ -418,6 +417,23 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	}
 
 	return nil, ErrNoPush
+}
+
+func (ps *PushSync) closestPeer(chunkAddress swarm.Address, origin bool) (swarm.Address, error) {
+
+	skipList := ps.skipList.ChunkPeers(chunkAddress)
+	includeSelf := ps.fullNode && !origin
+
+	peer, err := ps.topologyDriver.ClosestPeer(chunkAddress, includeSelf, topology.Select{Reachable: true, Healthy: true}, skipList...)
+	if errors.Is(err, topology.ErrNotFound) {
+		peer, err := ps.topologyDriver.ClosestPeer(chunkAddress, includeSelf, topology.Select{Reachable: true}, skipList...)
+		if errors.Is(err, topology.ErrNotFound) {
+			return ps.topologyDriver.ClosestPeer(chunkAddress, includeSelf, topology.Select{}, skipList...)
+		}
+		return peer, err
+	}
+
+	return peer, err
 }
 
 func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptResult, peer swarm.Address, ch swarm.Chunk, action accounting.Action) {
