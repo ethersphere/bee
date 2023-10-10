@@ -31,6 +31,8 @@ type metrics struct {
 	LevelDBStats            prometheus.HistogramVec
 	ExpiryTriggersCount     prometheus.Counter
 	ExpiryRunsCount         prometheus.Counter
+
+	ReserveMissingBatch prometheus.Gauge
 }
 
 // newMetrics is a convenient constructor for creating new metrics.
@@ -62,6 +64,14 @@ func newMetrics() metrics {
 				Subsystem: subsystem,
 				Name:      "reserve_size",
 				Help:      "Number of chunks in reserve.",
+			},
+		),
+		ReserveMissingBatch: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "reserve_missing_batch",
+				Help:      "Number of chunks in reserve with missing batches.",
 			},
 		),
 		ReserveSizeWithinRadius: prometheus.NewGauge(
