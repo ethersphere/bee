@@ -126,12 +126,14 @@ func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
 
 	for {
 		count := 0
+		missing := 0
 		radius := db.StorageRadius()
 		err := db.reserve.IterateChunksItems(db.repo, 0, func(ci reserve.ChunkItem) (bool, error) {
 			if ci.BinID >= uint64(radius) {
 				count++
 			}
 			if exists, _ := db.batchstore.Exists(ci.BatchID); !exists {
+				missing++
 				db.logger.Debug("reserve size worker, item with invalid batch id", "batch_id", hex.EncodeToString(ci.BatchID), "chunk_address", ci.ChunkAddress)
 			}
 			return false, nil
@@ -141,6 +143,7 @@ func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
 		}
 
 		db.metrics.ReserveSizeWithinRadius.Set(float64(count))
+		db.metrics.ReserveMissingBatch.Set(float64(missing))
 
 		select {
 		case <-ctx.Done():
