@@ -791,7 +791,7 @@ func (m *mockContract) Claim(context.Context, []redistribution.Proof) (common.Ha
 	return common.Hash{}, nil
 }
 
-func (m *mockContract) Commit(context.Context, []byte, uint32) (common.Hash, error) {
+func (m *mockContract) Commit(context.Context, []byte, uint64) (common.Hash, error) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
 	m.callsList = append(m.callsList, commitCall)
