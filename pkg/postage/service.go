@@ -16,6 +16,9 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 )
 
+// loggerName is the tree path name of the logger for this package.
+const loggerName = "postage"
+
 const (
 	// blockThreshold is used to allow threshold no of blocks to be synced before a
 	// batch is usable.
@@ -43,6 +46,7 @@ type Service interface {
 // service handles postage batches
 // stores the active batches.
 type service struct {
+	logger       log.Logger
 	lock         sync.Mutex
 	store        storage.Store
 	postageStore Storer
@@ -51,8 +55,9 @@ type service struct {
 }
 
 // NewService constructs a new Service.
-func NewService(store storage.Store, postageStore Storer, chainID int64) (Service, error) {
+func NewService(logger log.Logger, store storage.Store, postageStore Storer, chainID int64) (Service, error) {
 	s := &service{
+		logger:       logger.WithName(loggerName).Register(),
 		store:        store,
 		postageStore: postageStore,
 		chainID:      chainID,
@@ -206,11 +211,10 @@ func (ps *service) HandleStampExpiry(id []byte) {
 func (ps *service) SetExpired() error {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
-	logger := log.NewLogger("node").WithName("postage").Register()
 	for _, issuer := range ps.issuers {
 		exists, err := ps.postageStore.Exists(issuer.ID())
 		if err != nil {
-			logger.Error(err, "set expired: checking if issuer exists", "id", issuer.ID())
+			ps.logger.Error(err, "set expired: checking if issuer exists", "id", issuer.ID())
 			return err
 		}
 		issuer.SetExpired(!exists)

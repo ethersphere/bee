@@ -288,6 +288,7 @@ type ChunkItem struct {
 	BatchID      []byte
 	Type         swarm.ChunkType
 	BinID        uint64
+	Bin          uint8
 }
 
 func (r *Reserve) IterateChunksItems(store internal.Storage, startBin uint8, cb func(ChunkItem) (bool, error)) error {
@@ -303,6 +304,7 @@ func (r *Reserve) IterateChunksItems(store internal.Storage, startBin uint8, cb 
 			BatchID:      item.BatchID,
 			Type:         item.ChunkType,
 			BinID:        item.BinID,
+			Bin:          item.Bin,
 		}
 
 		stop, err := cb(chItem)
