@@ -11,6 +11,7 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	pstoremock "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
@@ -24,7 +25,7 @@ func TestSaveLoad(t *testing.T) {
 	defer store.Close()
 	pstore := pstoremock.New()
 	saved := func(id int64) postage.Service {
-		ps, err := postage.NewService(store, pstore, id)
+		ps, err := postage.NewService(log.Noop, store, pstore, id)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -40,7 +41,7 @@ func TestSaveLoad(t *testing.T) {
 		return ps
 	}
 	loaded := func(id int64) postage.Service {
-		ps, err := postage.NewService(store, pstore, id)
+		ps, err := postage.NewService(log.Noop, store, pstore, id)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -77,7 +78,7 @@ func TestGetStampIssuer(t *testing.T) {
 	}
 	validBlockNumber := testChainState.Block - uint64(postage.BlockThreshold+1)
 	pstore := pstoremock.New(pstoremock.WithChainState(testChainState))
-	ps, err := postage.NewService(store, pstore, chainID)
+	ps, err := postage.NewService(log.Noop, store, pstore, chainID)
 	if err != nil {
 		t.Fatal(err)
 	}
