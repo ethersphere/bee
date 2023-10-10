@@ -126,8 +126,16 @@ func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
 
 	for {
 		count := 0
-		err := db.reserve.IterateChunksItems(db.repo, db.StorageRadius(), func(ci reserve.ChunkItem) (bool, error) {
-			count++
+		missing := 0
+		radius := db.StorageRadius()
+		err := db.reserve.IterateChunksItems(db.repo, 0, func(ci reserve.ChunkItem) (bool, error) {
+			if ci.Bin >= radius {
+				count++
+			}
+			if exists, _ := db.batchstore.Exists(ci.BatchID); !exists {
+				missing++
+				db.logger.Debug("reserve size worker, item with invalid batch id", "batch_id", hex.EncodeToString(ci.BatchID), "chunk_address", ci.ChunkAddress)
+			}
 			return false, nil
 		})
 		if err != nil {
@@ -135,6 +143,7 @@ func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
 		}
 
 		db.metrics.ReserveSizeWithinRadius.Set(float64(count))
+		db.metrics.ReserveMissingBatch.Set(float64(missing))
 
 		select {
 		case <-ctx.Done():
@@ -235,27 +244,6 @@ func (db *DB) ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte
 	}()
 
 	return db.reserve.Get(ctx, db.repo, addr, batchID)
-}
-
-func (db *DB) StorageRadius() uint8 {
-	if db.reserve == nil {
-		return 0
-	}
-	return db.reserve.Radius()
-}
-
-func (db *DB) ReserveSize() int {
-	if db.reserve == nil {
-		return 0
-	}
-	return db.reserve.Size()
-}
-
-func (db *DB) IsWithinStorageRadius(addr swarm.Address) bool {
-	if db.reserve == nil {
-		return false
-	}
-	return swarm.Proximity(addr.Bytes(), db.baseAddr.Bytes()) >= db.reserve.Radius()
 }
 
 func (db *DB) ReserveHas(addr swarm.Address, batchID []byte) (has bool, err error) {
@@ -443,6 +431,27 @@ func (db *DB) ReserveLastBinIDs() ([]uint64, uint64, error) {
 
 func (db *DB) ReserveIterateChunks(cb func(swarm.Chunk) (bool, error)) error {
 	return db.reserve.IterateChunks(db.repo, 0, cb)
+}
+
+func (db *DB) StorageRadius() uint8 {
+	if db.reserve == nil {
+		return 0
+	}
+	return db.reserve.Radius()
+}
+
+func (db *DB) ReserveSize() int {
+	if db.reserve == nil {
+		return 0
+	}
+	return db.reserve.Size()
+}
+
+func (db *DB) IsWithinStorageRadius(addr swarm.Address) bool {
+	if db.reserve == nil {
+		return false
+	}
+	return swarm.Proximity(addr.Bytes(), db.baseAddr.Bytes()) >= db.reserve.Radius()
 }
 
 // BinC is the result returned from the SubscribeBin channel that contains the chunk address and the binID
