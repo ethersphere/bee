@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/storageutil"
@@ -63,15 +64,23 @@ func (p *pendingTx) String() string {
 // Recover attempts to recover from a previous crash
 // by reverting all uncommitted transactions.
 func (cs *TxChunkStoreWrapper) Recover() error {
+	logger := log.NewLogger("node").WithName("tx_chunkstore_recovery").Register() // "node" - copies the node.LoggerName in order to avoid circular import.
+
 	if rr, ok := cs.txStore.(storage.Recoverer); ok {
 		if err := rr.Recover(); err != nil {
 			return fmt.Errorf("chunkstore: recovery: %w", err)
 		}
 	}
+
+	var found bool
+
+	logger.Info("checking for uncommitted transactions")
 	err := cs.txStore.Iterate(storage.Query{
 		Factory:      func() storage.Item { return new(pendingTx) },
 		ItemProperty: storage.QueryItem,
 	}, func(r storage.Result) (bool, error) {
+		found = true
+
 		item := r.Entry.(*pendingTx)
 		item.key = r.ID
 
@@ -81,20 +90,33 @@ func (cs *TxChunkStoreWrapper) Recover() error {
 		}
 
 		ctx := context.Background()
+		logger.Info("sharky unreleased location found", "count", len(locations), "id", r.ID)
 		for _, location := range locations {
+			logger.Debug("releasing location", "location", location)
 			if err := cs.txSharky.Sharky.Release(ctx, location); err != nil {
+				logger.Debug("unable to release location", "location", location, "err", err)
 				return true, fmt.Errorf("unable to release location %v for %s: %w", location, r.ID, err)
 			}
 		}
+		logger.Info("sharky unreleased location released", "id", r.ID)
 
+		logger.Info("cleaning uncommitted transaction log", "id", r.ID)
 		if err := cs.txStore.Delete(r.Entry); err != nil {
+			logger.Debug("unable to delete unreleased location", "id", r.ID, "err", err)
 			return true, fmt.Errorf("unable to delete %s: %w", r.ID, err)
 		}
+		logger.Info("uncommitted transaction log cleaned", "id", r.ID)
 
 		return false, nil
 	})
 	if err != nil {
 		return fmt.Errorf("chunkstore: recovery: iteration failed: %w", err)
+	}
+
+	if found {
+		logger.Info("recovery successful")
+	} else {
+		logger.Info("no uncommitted transactions found")
 	}
 
 	return nil
