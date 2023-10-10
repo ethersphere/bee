@@ -129,7 +129,7 @@ func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
 		missing := 0
 		radius := db.StorageRadius()
 		err := db.reserve.IterateChunksItems(db.repo, 0, func(ci reserve.ChunkItem) (bool, error) {
-			if ci.BinID >= uint64(radius) {
+			if ci.Bin >= radius {
 				count++
 			}
 			if exists, _ := db.batchstore.Exists(ci.BatchID); !exists {
