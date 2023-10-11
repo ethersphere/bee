@@ -117,6 +117,12 @@ func dbCompactCmd(cmd *cobra.Command) {
 				return fmt.Errorf("new logger: %w", err)
 			}
 
+			d, err := cmd.Flags().GetDuration(optionNameSleepAfter)
+			if err != nil {
+				logger.Error(err, "getting sleep value failed")
+			}
+			defer func() { time.Sleep(d) }()
+
 			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
 			if err != nil {
 				return fmt.Errorf("get data-dir: %w", err)
@@ -155,6 +161,7 @@ func dbCompactCmd(cmd *cobra.Command) {
 	c.Flags().String(optionNameDataDir, "", "data directory")
 	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
 	c.Flags().Bool(optionNameValidation, false, "run chunk validation checks before and after the compaction")
+	c.Flags().Duration(optionNameSleepAfter, time.Duration(0), "time to sleep after the operation finished")
 	cmd.AddCommand(c)
 }
 
