@@ -96,9 +96,12 @@ func Compact(ctx context.Context, basePath string, opts *Options, validate bool)
 			return err
 		}
 
-		for start < end {
+		for start <= end {
 
 			if slots[start] != nil {
+				if err := sharkyRecover.Add(slots[start].Location); err != nil {
+					return fmt.Errorf("sharky add: %w", err)
+				}
 				start++ // walk to the right until a free slot is found
 				continue
 			}
