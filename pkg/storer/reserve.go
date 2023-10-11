@@ -136,7 +136,7 @@ func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
 				missing++
 				db.logger.Debug("reserve size worker, item with invalid batch id", "batch_id", hex.EncodeToString(ci.BatchID), "chunk_address", ci.ChunkAddress)
 				if err := db.EvictBatch(ctx, ci.BatchID); err != nil {
-					db.logger.Error(err, "reserve size worker, batch eviction", "batch_id", hex.EncodeToString(ci.BatchID), "chunk_address", ci.ChunkAddress)
+					db.logger.Warning("reserve size worker, batch eviction", "batch_id", hex.EncodeToString(ci.BatchID), "chunk_address", ci.ChunkAddress, "error", err)
 				}
 			}
 			return false, nil
@@ -213,7 +213,7 @@ func (db *DB) evictionWorker(ctx context.Context) {
 
 			err := db.evictExpiredBatches(ctx)
 			if err != nil {
-				db.logger.Error(err, "eviction worker expired batches")
+				db.logger.Warning("eviction worker expired batches", "error", err)
 				continue
 			}
 
