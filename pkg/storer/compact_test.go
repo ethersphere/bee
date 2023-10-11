@@ -40,15 +40,14 @@ func TestCompact(t *testing.T) {
 	st.StartReserveWorker(ctx, pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
 
 	var chunks []swarm.Chunk
-	var chunksPerPO uint64 = 50
-	batches := []*postage.Batch{postagetesting.MustNewBatch(), postagetesting.MustNewBatch()}
-	evictBatch := batches[0]
+	batches := []*postage.Batch{postagetesting.MustNewBatch(), postagetesting.MustNewBatch(), postagetesting.MustNewBatch()}
+	evictBatch := batches[1]
 
 	putter := st.ReservePutter()
 
 	for b := 0; b < len(batches); b++ {
-		for i := uint64(0); i < chunksPerPO; i++ {
-			ch := chunk.GenerateValidRandomChunkAt(baseAddr, b)
+		for i := uint64(0); i < 100; i++ {
+			ch := chunk.GenerateTestRandomChunk()
 			ch = ch.WithStamp(postagetesting.MustNewBatchStamp(batches[b].ID))
 			chunks = append(chunks, ch)
 			err := putter.Put(ctx, ch)
@@ -81,14 +80,21 @@ func TestCompact(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	putter = st.ReservePutter()
+	for i := uint64(0); i < 100; i++ {
+		ch := chunk.GenerateTestRandomChunk()
+		ch = ch.WithStamp(postagetesting.MustNewBatchStamp(batches[0].ID))
+		chunks = append(chunks, ch)
+		err := putter.Put(ctx, ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
 	for _, ch := range chunks {
 		has, err := st.ReserveHas(ch.Address(), ch.Stamp().BatchID())
 		if err != nil {
 			t.Fatal(err)
-		}
-
-		if has {
-			checkSaved(t, st, ch, true, true)
 		}
 
 		if bytes.Equal(ch.Stamp().BatchID(), evictBatch.ID) {
@@ -98,6 +104,8 @@ func TestCompact(t *testing.T) {
 			checkSaved(t, st, ch, false, false)
 		} else if !has {
 			t.Fatal("store should have chunk")
+		} else {
+			checkSaved(t, st, ch, true, true)
 		}
 	}
 
