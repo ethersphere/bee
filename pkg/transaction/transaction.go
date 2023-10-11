@@ -112,7 +112,7 @@ type transactionService struct {
 }
 
 // NewService creates a new transaction service.
-func NewService(logger log.Logger, backend Backend, signer crypto.Signer, store storage.StateStorer, chainID *big.Int, monitor Monitor) (Service, error) {
+func NewService(logger log.Logger, overlayEthAddress common.Address, backend Backend, signer crypto.Signer, store storage.StateStorer, chainID *big.Int, monitor Monitor) (Service, error) {
 	senderAddress, err := signer.EthereumAddress()
 	if err != nil {
 		return nil, err
@@ -123,7 +123,7 @@ func NewService(logger log.Logger, backend Backend, signer crypto.Signer, store 
 	t := &transactionService{
 		ctx:     ctx,
 		cancel:  cancel,
-		logger:  logger.WithName(loggerName).Register(),
+		logger:  logger.WithName(loggerName).WithValues("sender_address", overlayEthAddress).Register(),
 		backend: backend,
 		signer:  signer,
 		sender:  senderAddress,

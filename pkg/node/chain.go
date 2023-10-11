@@ -90,7 +90,7 @@ func InitChain(
 
 	transactionMonitor := transaction.NewMonitor(logger, backend, overlayEthAddress, pollingInterval, cancellationDepth)
 
-	transactionService, err := transaction.NewService(logger, backend, signer, stateStore, chainID, transactionMonitor)
+	transactionService, err := transaction.NewService(logger, overlayEthAddress, backend, signer, stateStore, chainID, transactionMonitor)
 	if err != nil {
 		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("new transaction service: %w", err)
 	}
