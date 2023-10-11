@@ -381,7 +381,7 @@ func (s *Service) checkReceipt(receipt *pushsync.Receipt, loggerV1 log.Logger) e
 	if po < d && s.attempts.try(addr) {
 		s.metrics.ShallowReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
 		s.metrics.ShallowReceipt.Inc()
-		return fmt.Errorf("pusher: shallow receipt depth %d, want at least %d: %w", po, d, ErrShallowReceipt)
+		return fmt.Errorf("pusher: shallow receipt depth %d, want at least %d, chunk_address %s: %w", po, d, addr, ErrShallowReceipt)
 	}
 	loggerV1.Debug("chunk pushed", "chunk_address", addr, "peer_address", peer, "proximity_order", po)
 	s.metrics.ReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
