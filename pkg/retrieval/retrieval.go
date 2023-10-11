@@ -159,6 +159,9 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 			skip.Add(chunkAddr, sourcePeerAddr, skippeers.MaxDuration)
 		}
 
+		quit := make(chan struct{})
+		defer close(quit)
+
 		errorsLeft := 1
 		if origin {
 			ticker := time.NewTicker(preemptiveInterval)
@@ -239,7 +242,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 					ctx := tracing.WithContext(context.Background(), tracing.FromContext(ctx)) // todo: replace with `ctx := context.WithoutCancel(ctx)` when go 1.21 is supported to pass all context values
 					span, _, ctx := s.tracer.StartSpanFromContext(ctx, "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: chunkAddr.String()})
 					defer span.Finish()
-					s.retrieveChunk(ctx, chunkAddr, peer, resultC, action, origin)
+					s.retrieveChunk(ctx, quit, chunkAddr, peer, resultC, action, origin)
 				}()
 
 			case res := <-resultC:
@@ -273,7 +276,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 	return v, nil
 }
 
-func (s *Service) retrieveChunk(ctx context.Context, chunkAddr, peer swarm.Address, result chan retrievalResult, action accounting.Action, isOrigin bool) {
+func (s *Service) retrieveChunk(ctx context.Context, quit chan struct{}, chunkAddr, peer swarm.Address, result chan retrievalResult, action accounting.Action, isOrigin bool) {
 
 	var (
 		startTime = time.Now()
@@ -281,21 +284,20 @@ func (s *Service) retrieveChunk(ctx context.Context, chunkAddr, peer swarm.Addre
 		chunk     swarm.Chunk
 	)
 
-	ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
-	defer cancel()
-
 	defer func() {
+		action.Cleanup()
 		if err != nil {
 			s.metrics.TotalErrors.Inc()
 		}
 		select {
 		case result <- retrievalResult{err: err, chunk: chunk, peer: peer}:
-		case <-ctx.Done():
+		case <-quit:
 			return
 		}
 	}()
 
-	defer action.Cleanup()
+	ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
+	defer cancel()
 
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
 	if err != nil {
