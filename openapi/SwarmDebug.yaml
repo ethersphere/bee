@@ -871,7 +871,7 @@ paths:
           schema:
             type: integer
           required: true
-          description: Batch depth which specifies how many chunks can be signed with the batch. It is a logarithm. Must be higher than default bucket depth (16)
+          description: Batch depth which specifies how many chunks can be signed with the batch. It is a logarithm. Minimum batch depth is 24.
         - in: query
           name: label
           schema:
