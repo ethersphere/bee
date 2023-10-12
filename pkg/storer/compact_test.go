@@ -111,6 +111,7 @@ func TestCompact(t *testing.T) {
 	}
 }
 
+// TestCompactNoEvictions compacts a store that has no free slots to ensure that no chunks get lost.
 func TestCompactNoEvictions(t *testing.T) {
 
 	baseAddr := swarm.RandAddress(t)
