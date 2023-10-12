@@ -176,8 +176,11 @@ func (sh *shard) offset(slot uint32) int64 {
 
 // read reads loc.Length bytes to the buffer from the blob slot loc.Slot
 func (sh *shard) read(r read) error {
-	_, err := sh.file.ReadAt(r.buf, sh.offset(r.slot))
-	return err
+	n, err := sh.file.ReadAt(r.buf, sh.offset(r.slot))
+	if err != nil {
+		return fmt.Errorf("read %d: %w", n, err)
+	}
+	return nil
 }
 
 // write writes loc.Length bytes to the buffer from the blob slot loc.Slot
