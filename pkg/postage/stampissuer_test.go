@@ -10,8 +10,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/big"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/postage"
@@ -20,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"golang.org/x/sync/errgroup"
 )
 
 // TestStampIssuerMarshalling tests the idempotence  of binary marshal/unmarshal.
@@ -201,6 +204,38 @@ func Test_StampIssuer_inc(t *testing.T) {
 			}
 		}
 	})
+}
+
+func TestUtilization(t *testing.T) {
+	t.Skip("meant to be run for ad hoc testing")
+
+	for depth := uint8(17); depth < 25; depth++ {
+		sti := postage.NewStampIssuer("label", "keyID", make([]byte, 32), big.NewInt(3), depth, postage.BucketDepth, 0, true)
+
+		var count uint64
+
+		var eg errgroup.Group
+
+		for i := 0; i < 8; i++ {
+			eg.Go(func() error {
+				for {
+					_, _, err := sti.Increment(swarm.RandAddress(t))
+					if err != nil {
+						return err
+					}
+					atomic.AddUint64(&count, 1)
+				}
+			})
+		}
+
+		err := eg.Wait()
+		if !errors.Is(err, postage.ErrBucketFull) {
+			t.Fatalf("want: %v; have: %v", postage.ErrBucketFull, err)
+		}
+
+		t.Logf("depth: %d, actual utilization: %f", depth, float64(count)/math.Pow(2, float64(depth)))
+	}
+
 }
 
 func bytesToIndex(buf []byte) (bucket, index uint32) {
