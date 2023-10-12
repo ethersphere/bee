@@ -22,6 +22,7 @@ import (
 // The first batch is then expired, causing free slots to accumulate in sharky.
 // Next, sharky is compacted, after which, it is tested that valid chunks can still be retrieved.
 func TestCompact(t *testing.T) {
+	t.Parallel()
 
 	baseAddr := swarm.RandAddress(t)
 	ctx := context.Background()
@@ -113,6 +114,7 @@ func TestCompact(t *testing.T) {
 
 // TestCompactNoEvictions compacts a store that has no free slots to ensure that no chunks get lost.
 func TestCompactNoEvictions(t *testing.T) {
+	t.Parallel()
 
 	baseAddr := swarm.RandAddress(t)
 	ctx := context.Background()
