@@ -25,7 +25,7 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.5
 	github.com/ipfs/go-cid v0.4.1
 	github.com/kardianos/service v1.2.0
-	github.com/libp2p/go-libp2p v0.31.0
+	github.com/libp2p/go-libp2p v0.30.0
 	github.com/multiformats/go-multiaddr v0.11.0
 	github.com/multiformats/go-multiaddr-dns v0.3.1
 	github.com/multiformats/go-multihash v0.2.3

@@ -4,7 +4,7 @@ linters:
   enable:
     - asciicheck
     - bidichk
-    - depguard
+    # - depguard disable temporary until this issue is resolved: https://github.com/golangci/golangci-lint/issues/3906
     - dogsled
     - durationcheck
     - errcheck
