@@ -143,7 +143,7 @@ func TestPostageCreateStamp(t *testing.T) {
 				Reasons: []jsonhttp.Reason{
 					{
 						Field: "depth",
-						Error: "want min:24",
+						Error: "want min:17",
 					},
 				},
 			}),
