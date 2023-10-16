@@ -15,4 +15,5 @@ message Request {
 message Delivery {
   bytes Data = 1;
   bytes Stamp = 2;
+  string Err = 3;
 }

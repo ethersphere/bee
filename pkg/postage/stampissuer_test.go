@@ -6,10 +6,14 @@ package postage_test
 
 import (
 	crand "crypto/rand"
+	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
+	"math"
 	"math/big"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/postage"
@@ -18,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
+	"golang.org/x/sync/errgroup"
 )
 
 // TestStampIssuerMarshalling tests the idempotence  of binary marshal/unmarshal.
@@ -46,6 +51,11 @@ func TestStampIssuerMarshalling(t *testing.T) {
 
 func newTestStampIssuer(t *testing.T, block uint64) *postage.StampIssuer {
 	t.Helper()
+	return newTestStampIssuerMutability(t, block, true)
+}
+
+func newTestStampIssuerMutability(t *testing.T, block uint64, immutable bool) *postage.StampIssuer {
+	t.Helper()
 	id := make([]byte, 32)
 	_, err := io.ReadFull(crand.Reader, id)
 	if err != nil {
@@ -59,7 +69,7 @@ func newTestStampIssuer(t *testing.T, block uint64) *postage.StampIssuer {
 		16,
 		8,
 		block,
-		true,
+		immutable,
 	)
 }
 
@@ -138,4 +148,99 @@ func TestStampItem(t *testing.T) {
 			})
 		})
 	}
+}
+
+func Test_StampIssuer_inc(t *testing.T) {
+	t.Parallel()
+
+	addr := swarm.NewAddress([]byte{1, 2, 3, 4})
+
+	t.Run("mutable", func(t *testing.T) {
+		t.Parallel()
+
+		sti := postage.NewStampIssuer("label", "keyID", make([]byte, 32), big.NewInt(3), 16, 8, 0, false)
+		count := sti.BucketUpperBound()
+
+		// Increment to upper bound (fill bucket to max cap)
+		for i := uint32(0); i < count; i++ {
+			_, _, err := sti.Increment(addr)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		// Incrementing stamp issuer above upper bound should return index starting from 0
+		for i := uint32(0); i < count; i++ {
+			idxb, _, err := sti.Increment(addr)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			if _, idx := bytesToIndex(idxb); idx != i {
+				t.Fatalf("bucket should be full %v", idx)
+			}
+		}
+	})
+
+	t.Run("immutable", func(t *testing.T) {
+		t.Parallel()
+
+		sti := postage.NewStampIssuer("label", "keyID", make([]byte, 32), big.NewInt(3), 16, 8, 0, true)
+		count := sti.BucketUpperBound()
+
+		// Increment to upper bound (fill bucket to max cap)
+		for i := uint32(0); i < count; i++ {
+			_, _, err := sti.Increment(addr)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+
+		// Incrementing stamp issuer above upper bound should return error
+		for i := uint32(0); i < count; i++ {
+			_, _, err := sti.Increment(addr)
+			if !errors.Is(err, postage.ErrBucketFull) {
+				t.Fatal("bucket should be full")
+			}
+		}
+	})
+}
+
+func TestUtilization(t *testing.T) {
+	t.Skip("meant to be run for ad hoc testing")
+
+	for depth := uint8(17); depth < 25; depth++ {
+		sti := postage.NewStampIssuer("label", "keyID", make([]byte, 32), big.NewInt(3), depth, postage.BucketDepth, 0, true)
+
+		var count uint64
+
+		var eg errgroup.Group
+
+		for i := 0; i < 8; i++ {
+			eg.Go(func() error {
+				for {
+					_, _, err := sti.Increment(swarm.RandAddress(t))
+					if err != nil {
+						return err
+					}
+					atomic.AddUint64(&count, 1)
+				}
+			})
+		}
+
+		err := eg.Wait()
+		if !errors.Is(err, postage.ErrBucketFull) {
+			t.Fatalf("want: %v; have: %v", postage.ErrBucketFull, err)
+		}
+
+		t.Logf("depth: %d, actual utilization: %f", depth, float64(count)/math.Pow(2, float64(depth)))
+	}
+
+}
+
+func bytesToIndex(buf []byte) (bucket, index uint32) {
+	index64 := binary.BigEndian.Uint64(buf)
+	bucket = uint32(index64 >> 32)
+	index = uint32(index64)
+	return bucket, index
 }

@@ -34,7 +34,11 @@ func WithChunks(chs ...swarm.Chunk) Option {
 	return optionFunc(func(p *ReserveStore) {
 		for _, c := range chs {
 			c := c
-			p.chunks[c.Address().String()+string(c.Stamp().BatchID())] = c
+			if c.Stamp() != nil {
+				p.chunks[c.Address().String()+string(c.Stamp().BatchID())] = c
+			} else {
+				p.chunks[c.Address().String()] = c
+			}
 		}
 	})
 }
@@ -48,9 +52,10 @@ func WithEvilChunk(addr swarm.Address, ch swarm.Chunk) Option {
 	})
 }
 
-func WithCursors(c []uint64) Option {
+func WithCursors(c []uint64, e uint64) Option {
 	return optionFunc(func(p *ReserveStore) {
 		p.cursors = c
+		p.epoch = e
 	})
 }
 
@@ -98,6 +103,7 @@ type ReserveStore struct {
 
 	cursors    []uint64
 	cursorsErr error
+	epoch      uint64
 
 	radius      uint8
 	reservesize int
@@ -164,8 +170,8 @@ func (s *ReserveStore) ReserveSize() int {
 	return s.reservesize
 }
 
-func (s *ReserveStore) ReserveLastBinIDs() (curs []uint64, err error) {
-	return s.cursors, s.cursorsErr
+func (s *ReserveStore) ReserveLastBinIDs() (curs []uint64, epoch uint64, err error) {
+	return s.cursors, s.epoch, s.cursorsErr
 }
 
 // PutCalls returns the amount of times Put was called.

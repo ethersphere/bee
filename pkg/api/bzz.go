@@ -40,7 +40,7 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		BatchID     []byte `map:"Swarm-Postage-Batch-Id" validate:"required"`
 		SwarmTag    uint64 `map:"Swarm-Tag"`
 		Pin         bool   `map:"Swarm-Pin"`
-		Deferred    bool   `map:"Swarm-Deferred-Upload"`
+		Deferred    *bool  `map:"Swarm-Deferred-Upload"`
 		Encrypt     bool   `map:"Swarm-Encrypt"`
 		IsDir       bool   `map:"Swarm-Collection"`
 	}{}
@@ -50,10 +50,12 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var (
-		tag uint64
-		err error
+		tag      uint64
+		err      error
+		deferred = defaultUploadMethod(headers.Deferred)
 	)
-	if headers.Deferred || headers.Pin {
+
+	if deferred || headers.Pin {
 		tag, err = s.getOrCreateSessionID(headers.SwarmTag)
 		if err != nil {
 			logger.Debug("get or create tag failed", "error", err)
@@ -72,7 +74,7 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		BatchID:  headers.BatchID,
 		TagID:    tag,
 		Pin:      headers.Pin,
-		Deferred: headers.Deferred,
+		Deferred: deferred,
 	})
 	if err != nil {
 		logger.Debug("putter failed", "error", err)
@@ -86,8 +88,6 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.BadRequest(w, "invalid batch id")
 		case errors.Is(err, errUnsupportedDevNodeOperation):
 			jsonhttp.BadRequest(w, errUnsupportedDevNodeOperation)
-		case errors.Is(err, postage.ErrBatchInUse):
-			jsonhttp.BadRequest(w, postage.ErrBatchInUse)
 		default:
 			jsonhttp.BadRequest(w, nil)
 		}

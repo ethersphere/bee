@@ -200,7 +200,8 @@ func (t *testReservePutter) Size() int {
 	return t.size
 }
 
-func TestEpochMigration(t *testing.T) {
+// TestEpochMigration_FLAKY is flaky on windows.
+func TestEpochMigration_FLAKY(t *testing.T) {
 	t.Parallel()
 
 	var (
@@ -235,11 +236,11 @@ func TestEpochMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !strings.ContainsAny(logBytes.String(), "migrating pinning collections done") {
+	if !strings.Contains(logBytes.String(), "migrating pinning collections done") {
 		t.Fatalf("expected log to contain 'migrating pinning collections done', got %s", logBytes.String())
 	}
 
-	if !strings.ContainsAny(logBytes.String(), "migrating reserve contents done") {
+	if !strings.Contains(logBytes.String(), "migrating reserve contents done") {
 		t.Fatalf("expected log to contain 'migrating pinning collections done', got %s", logBytes.String())
 	}
 
@@ -253,6 +254,67 @@ func TestEpochMigration(t *testing.T) {
 
 	if reserve.size != 10 {
 		t.Fatalf("expected 10 reserve size, got %d", reserve.size)
+	}
+
+	pins, err := pinstore.Pins(indexStore)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(pins) != 1 {
+		t.Fatalf("expected 1 pin, got %d", len(pins))
+	}
+
+	if !strings.Contains(logBytes.String(), pins[0].String()) {
+		t.Fatalf("expected log to contain root pin reference, got %s", logBytes.String())
+	}
+}
+
+func TestEpochMigrationLightNode(t *testing.T) {
+	t.Parallel()
+
+	var (
+		dataPath    = t.TempDir()
+		baseAddress = swarm.RandAddress(t)
+		stateStore  = mockstatestore.NewStateStore()
+		reserve     storer.ReservePutter
+		logBytes    = bytes.NewBuffer(nil)
+		logger      = log.NewLogger("test", log.WithSink(logBytes))
+		indexStore  = inmemstore.New()
+	)
+
+	createOldDataDir(t, dataPath, baseAddress, stateStore)
+
+	r, err := sharky.NewRecovery(path.Join(dataPath, "sharky"), 2, swarm.SocMaxChunkSize)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sharkyRecovery := &testSharkyRecovery{Recovery: r}
+
+	err = storer.EpochMigration(
+		context.Background(),
+		dataPath,
+		stateStore,
+		indexStore,
+		reserve,
+		sharkyRecovery,
+		logger,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !strings.Contains(logBytes.String(), "migrating pinning collections done") {
+		t.Fatalf("expected log to contain 'migrating pinning collections done', got %s", logBytes.String())
+	}
+
+	if strings.Contains(logBytes.String(), "migrating reserve contents done") {
+		t.Fatalf("expected log to not contain 'migrating reserve contents done', got %s", logBytes.String())
+	}
+
+	if sharkyRecovery.addCalls != 21 {
+		t.Fatalf("expected 31 add calls, got %d", sharkyRecovery.addCalls)
 	}
 
 	pins, err := pinstore.Pins(indexStore)

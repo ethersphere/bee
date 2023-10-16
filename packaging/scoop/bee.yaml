@@ -4,12 +4,8 @@
 # api-addr: :1633
 ## chain block time (default 15)
 # block-time: 15
-## initial nodes to connect to (default [/dnsaddr/testnet.ethswarm.org])
-# bootnode: [/dnsaddr/testnet.ethswarm.org]
-## enable clef signer
-# clef-signer-enable: false
-## clef signer endpoint
-# clef-signer-endpoint: /usr/local/var/lib/swarm-clef/clef.ipc
+## initial nodes to connect to (default [/dnsaddr/mainnet.ethswarm.org])
+# bootnode: [/dnsaddr/mainnet.ethswarm.org]
 ## config file (default is /home/<user>/.bee.yaml)
 config: ./bee.yaml
 ## origins with CORS headers enabled
@@ -73,4 +69,4 @@ password-file: ./password
 ## send a welcome message string during handshakes
 # welcome-message: ""
 ## triggers connection to main network
-# mainnet: false
+# mainnet: true

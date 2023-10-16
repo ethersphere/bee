@@ -23,6 +23,8 @@ import (
 	"github.com/gorilla/mux"
 )
 
+var defaultImmutable = true
+
 func (s *Service) postageAccessHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !s.postageSem.TryAcquire(1) {
@@ -75,7 +77,7 @@ func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 
 	paths := struct {
 		Amount *big.Int `map:"amount" validate:"required"`
-		Depth  uint8    `map:"depth" validate:"required"`
+		Depth  uint8    `map:"depth" validate:"required,min=17"`
 	}{}
 	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
 		response("invalid path params", logger, w)
@@ -83,18 +85,21 @@ func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	headers := struct {
-		Immutable bool `map:"Immutable"`
+		Immutable *bool `map:"Immutable"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
 		return
+	}
+	if headers.Immutable == nil {
+		headers.Immutable = &defaultImmutable // Set the default.
 	}
 
 	txHash, batchID, err := s.postageContract.CreateBatch(
 		r.Context(),
 		paths.Amount,
 		paths.Depth,
-		headers.Immutable,
+		*headers.Immutable,
 		r.URL.Query().Get("label"),
 	)
 	if err != nil {
@@ -182,13 +187,7 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request
 	}
 
 	resp := postageStampsResponse{}
-	stampIssuers, err := s.post.StampIssuers()
-	if err != nil {
-		logger.Debug("get issuers failed", "error", err)
-		logger.Error(nil, "get issuers failed")
-		jsonhttp.InternalServerError(w, "cannot get issuers")
-		return
-	}
+	stampIssuers := s.post.StampIssuers()
 	resp.Stamps = make([]postageStampResponse, 0, len(stampIssuers))
 	for _, v := range stampIssuers {
 		exists, err := s.batchStore.Exists(v.ID())
@@ -277,7 +276,7 @@ func (s *Service) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.R
 	}
 	hexBatchID := hex.EncodeToString(paths.BatchID)
 
-	issuer, save, err := s.post.GetStampIssuer(paths.BatchID)
+	issuer, _, err := s.post.GetStampIssuer(paths.BatchID)
 	if err != nil {
 		logger.Debug("get stamp issuer: get issuer failed", "batch_id", hexBatchID, "error", err)
 		logger.Error(nil, "get stamp issuer: get issuer failed")
@@ -304,13 +303,6 @@ func (s *Service) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.R
 		resp.Buckets[i] = bucketData{BucketID: uint32(i), Collisions: v}
 	}
 
-	if err := save(false); err != nil {
-		logger.Debug("get stamp issuer: save issuer failed", "batch_id", hexBatchID, "error", err)
-		logger.Error(nil, "get stamp issuer: save issuer failed")
-		jsonhttp.InternalServerError(w, "save issuer failed")
-		return
-	}
-
 	jsonhttp.OK(w, resp)
 }
 
@@ -327,13 +319,7 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 	hexBatchID := hex.EncodeToString(paths.BatchID)
 
 	var issuer *postage.StampIssuer
-	stampIssuers, err := s.post.StampIssuers()
-	if err != nil {
-		logger.Debug("get stamp issuer: get issuers failed", "batch_id", hexBatchID, "error", err)
-		logger.Error(nil, "get stamp issuer: get issuers failed")
-		jsonhttp.InternalServerError(w, "get issuers failed")
-		return
-	}
+	stampIssuers := s.post.StampIssuers()
 	for _, stampIssuer := range stampIssuers {
 		if bytes.Equal(paths.BatchID, stampIssuer.ID()) {
 			issuer = stampIssuer

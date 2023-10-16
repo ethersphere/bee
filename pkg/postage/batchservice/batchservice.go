@@ -99,7 +99,7 @@ func New(
 }
 
 // Create will create a new batch with the given ID, owner value and depth and
-// stores it in the BatchStore.
+// stores it in the BatchedStore.
 func (svc *batchService) Create(id, owner []byte, totalAmout, normalisedBalance *big.Int, depth, bucketDepth uint8, immutable bool, txHash common.Hash) error {
 	// don't add batches which have value which equals total cumulative
 	// payout or that are going to expire already within the next couple of blocks
@@ -156,10 +156,7 @@ func (svc *batchService) TopUp(id []byte, totalAmout, normalisedBalance *big.Int
 	topUpAmount := big.NewInt(0).Div(totalAmout, big.NewInt(int64(1<<(b.Depth))))
 
 	if bytes.Equal(svc.owner, b.Owner) && svc.batchListener != nil {
-		err = svc.batchListener.HandleTopUp(id, topUpAmount)
-		if err != nil {
-			return fmt.Errorf("top up batch: %w", err)
-		}
+		svc.batchListener.HandleTopUp(id, topUpAmount)
 	}
 
 	cs, err := svc.updateChecksum(txHash)
@@ -184,10 +181,7 @@ func (svc *batchService) UpdateDepth(id []byte, depth uint8, normalisedBalance *
 	}
 
 	if bytes.Equal(svc.owner, b.Owner) && svc.batchListener != nil {
-		err = svc.batchListener.HandleDepthIncrease(id, depth)
-		if err != nil {
-			return fmt.Errorf("handle depth increase: %w", err)
-		}
+		svc.batchListener.HandleDepthIncrease(id, depth)
 	}
 
 	cs, err := svc.updateChecksum(txHash)

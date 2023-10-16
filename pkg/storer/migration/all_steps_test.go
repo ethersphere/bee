@@ -9,20 +9,23 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	"github.com/ethersphere/bee/pkg/storage/inmemstore"
 	"github.com/ethersphere/bee/pkg/storage/migration"
 	localmigration "github.com/ethersphere/bee/pkg/storer/migration"
 )
 
-func TestAllSteps(t *testing.T) {
+func TestPreSteps(t *testing.T) {
 	t.Parallel()
 
-	assert.NotEmpty(t, localmigration.AllSteps())
+	chStore := inmemchunkstore.New()
+
+	assert.NotEmpty(t, localmigration.AfterInitSteps("", 0, chStore))
 
 	t.Run("version numbers", func(t *testing.T) {
 		t.Parallel()
 
-		err := migration.ValidateVersions(localmigration.AllSteps())
+		err := migration.ValidateVersions(localmigration.AfterInitSteps("", 0, chStore))
 		assert.NoError(t, err)
 	})
 
@@ -31,7 +34,29 @@ func TestAllSteps(t *testing.T) {
 
 		store := inmemstore.New()
 
-		err := migration.Migrate(store, localmigration.AllSteps())
+		err := migration.Migrate(store, "migration", localmigration.AfterInitSteps("", 4, chStore))
+		assert.NoError(t, err)
+	})
+}
+
+func TestPostSteps(t *testing.T) {
+	t.Parallel()
+
+	assert.NotEmpty(t, localmigration.BeforeIinitSteps())
+
+	t.Run("version numbers", func(t *testing.T) {
+		t.Parallel()
+
+		err := migration.ValidateVersions(localmigration.BeforeIinitSteps())
+		assert.NoError(t, err)
+	})
+
+	t.Run("zero store migration", func(t *testing.T) {
+		t.Parallel()
+
+		store := inmemstore.New()
+
+		err := migration.Migrate(store, "migration", localmigration.BeforeIinitSteps())
 		assert.NoError(t, err)
 	})
 }

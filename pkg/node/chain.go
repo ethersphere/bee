@@ -63,17 +63,17 @@ func InitChain(
 		// connect to the real one
 		rpcClient, err := rpc.DialContext(ctx, endpoint)
 		if err != nil {
-			return nil, common.Address{}, 0, nil, nil, fmt.Errorf("dial eth client: %w", err)
+			return nil, common.Address{}, 0, nil, nil, fmt.Errorf("dial blockchain client: %w", err)
 		}
 
 		var versionString string
 		err = rpcClient.CallContext(ctx, &versionString, "web3_clientVersion")
 		if err != nil {
 			logger.Info("could not connect to backend; in a swap-enabled network a working blockchain node (for xdai network in production, goerli in testnet) is required; check your node or specify another node using --swap-endpoint.", "backend_endpoint", endpoint)
-			return nil, common.Address{}, 0, nil, nil, fmt.Errorf("eth client get version: %w", err)
+			return nil, common.Address{}, 0, nil, nil, fmt.Errorf("blockchain client get version: %w", err)
 		}
 
-		logger.Info("connected to ethereum backend", "version", versionString)
+		logger.Info("connected to blockchain backend", "version", versionString)
 
 		backend = wrapped.NewBackend(ethclient.NewClient(rpcClient))
 	}
@@ -85,12 +85,12 @@ func InitChain(
 
 	overlayEthAddress, err := signer.EthereumAddress()
 	if err != nil {
-		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("eth address: %w", err)
+		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("blockchain address: %w", err)
 	}
 
 	transactionMonitor := transaction.NewMonitor(logger, backend, overlayEthAddress, pollingInterval, cancellationDepth)
 
-	transactionService, err := transaction.NewService(logger, backend, signer, stateStore, chainID, transactionMonitor)
+	transactionService, err := transaction.NewService(logger, overlayEthAddress, backend, signer, stateStore, chainID, transactionMonitor)
 	if err != nil {
 		return nil, common.Address{}, 0, nil, nil, fmt.Errorf("new transaction service: %w", err)
 	}

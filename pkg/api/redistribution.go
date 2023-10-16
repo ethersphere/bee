@@ -28,6 +28,7 @@ type redistributionStatusResponse struct {
 	Block              uint64         `json:"block"`
 	Reward             *bigint.BigInt `json:"reward"`
 	Fees               *bigint.BigInt `json:"fees"`
+	IsHealthy          bool           `json:"isHealthy"`
 }
 
 func (s *Service) redistributionStatusHandler(w http.ResponseWriter, r *http.Request) {
@@ -69,5 +70,6 @@ func (s *Service) redistributionStatusHandler(w http.ResponseWriter, r *http.Req
 		Block:              status.Block,
 		Reward:             bigint.Wrap(status.Reward),
 		Fees:               bigint.Wrap(status.Fees),
+		IsHealthy:          status.IsHealthy,
 	})
 }

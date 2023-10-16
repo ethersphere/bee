@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -26,6 +27,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	storer "github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"resenje.org/multex"
 	"resenje.org/singleflight"
 )
 
@@ -37,13 +39,6 @@ const (
 	protocolVersion  = "1.3.0"
 	streamName       = "pullsync"
 	cursorStreamName = "cursors"
-	cancelStreamName = "cancel"
-)
-
-const (
-	MaxCursor           = math.MaxUint64
-	DefaultRateDuration = time.Minute * 15
-	batchTimeout        = time.Second
 )
 
 var (
@@ -51,11 +46,11 @@ var (
 )
 
 const (
-	makeOfferTimeout        = 5 * time.Minute
+	MaxCursor               = math.MaxUint64
 	DefaultMaxPage   uint64 = 250
+	pageTimeout             = time.Second
+	makeOfferTimeout        = 5 * time.Minute
 )
-
-// how many maximum chunks in a batch
 
 // Interface is the PullSync interface.
 type Interface interface {
@@ -64,7 +59,7 @@ type Interface interface {
 	// batch and the total number of chunks the downstream peer has sent.
 	Sync(ctx context.Context, peer swarm.Address, bin uint8, start uint64) (topmost uint64, count int, err error)
 	// GetCursors retrieves all cursors from a downstream peer.
-	GetCursors(ctx context.Context, peer swarm.Address) ([]uint64, error)
+	GetCursors(ctx context.Context, peer swarm.Address) ([]uint64, uint64, error)
 }
 
 type Syncer struct {
@@ -75,8 +70,9 @@ type Syncer struct {
 	quit           chan struct{}
 	unwrap         func(swarm.Chunk)
 	validStamp     postage.ValidStampFn
-	intervalsSF    singleflight.Group
+	intervalsSF    singleflight.Group[string, *collectAddrsResult]
 	syncInProgress atomic.Int32
+	binLock        *multex.Multex
 
 	maxPage uint64
 
@@ -102,6 +98,7 @@ func New(
 		logger:     logger.WithName(loggerName).Register(),
 		quit:       make(chan struct{}),
 		maxPage:    maxPage,
+		binLock:    multex.New(),
 	}
 }
 
@@ -218,6 +215,12 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		}
 
 		addr := swarm.NewAddress(delivery.Address)
+		if addr.Equal(swarm.ZeroAddress) {
+			s.logger.Debug("received zero address chunk", "peer_address", peer)
+			s.metrics.ReceivedZeroAddress.Inc()
+			continue
+		}
+
 		newChunk := swarm.NewChunk(addr, delivery.Data)
 
 		stamp := new(postage.Stamp)
@@ -233,7 +236,6 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		}
 
 		delete(wantChunks, addr.ByteString()+string(stamp.BatchID()))
-		s.metrics.Delivered.Inc()
 
 		chunk, err := s.validStamp(newChunk.WithStamp(stamp))
 		if err != nil {
@@ -245,7 +247,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		if cac.Valid(chunk) {
 			go s.unwrap(chunk)
 		} else if !soc.Valid(chunk) {
-			s.logger.Debug("invalid soc chunk", "error", swarm.ErrInvalidChunk, "peer_address", peer, "chunk", chunk)
+			s.logger.Debug("invalid cac/soc chunk", "error", swarm.ErrInvalidChunk, "peer_address", peer, "chunk", chunk)
 			chunkErr = errors.Join(chunkErr, swarm.ErrInvalidChunk)
 			continue
 		}
@@ -257,6 +259,13 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 
 		s.metrics.Delivered.Add(float64(len(chunksToPut)))
 		s.metrics.LastReceived.WithLabelValues(fmt.Sprintf("%d", bin)).Add(float64(len(chunksToPut)))
+
+		// if we have parallel sync workers for the same bin, we need to rate limit them
+		// in order to not overload the storage with unnecessary requests as there is
+		// a chance that the same chunk is being synced by multiple workers.
+		key := strconv.Itoa(int(bin))
+		s.binLock.Lock(key)
+		defer s.binLock.Unlock(key)
 
 		for _, c := range chunksToPut {
 			if err := s.store.ReservePutter().Put(ctx, c); err != nil {
@@ -312,16 +321,16 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 		return fmt.Errorf("read get range: %w", err)
 	}
 
+	// recreate the reader to allow the first one to be garbage collected
+	// before the makeOffer function call, to reduce the total memory allocated
+	// while makeOffer is executing (waiting for the new chunks)
+	w, r := protobuf.NewWriterAndReader(stream)
+
 	// make an offer to the upstream peer in return for the requested range
 	offer, err := s.makeOffer(ctx, rn)
 	if err != nil {
 		return fmt.Errorf("make offer: %w", err)
 	}
-
-	// recreate the reader to allow the first one to be garbage collected
-	// before the makeOffer function call, to reduce the total memory allocated
-	// while makeOffer is executing (waiting for the new chunks)
-	w, r := protobuf.NewWriterAndReader(stream)
 
 	if err := w.WriteMsgWithContext(ctx, offer); err != nil {
 		return fmt.Errorf("write offer: %w", err)
@@ -343,12 +352,16 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 		return fmt.Errorf("process want: %w", err)
 	}
 
-	for _, v := range chs {
-		stamp, err := v.Stamp().MarshalBinary()
-		if err != nil {
-			return fmt.Errorf("serialise stamp: %w", err)
+	for _, c := range chs {
+		var stamp []byte
+		if c.Stamp() != nil {
+			stamp, err = c.Stamp().MarshalBinary()
+			if err != nil {
+				return fmt.Errorf("serialise stamp: %w", err)
+			}
 		}
-		deliver := pb.Delivery{Address: v.Address().Bytes(), Data: v.Data(), Stamp: stamp}
+
+		deliver := pb.Delivery{Address: c.Address().Bytes(), Data: c.Data(), Stamp: stamp}
 		if err := w.WriteMsgWithContext(ctx, &deliver); err != nil {
 			return fmt.Errorf("write delivery: %w", err)
 		}
@@ -378,6 +391,11 @@ func (s *Syncer) makeOffer(ctx context.Context, rn pb.Get) (*pb.Offer, error) {
 	return o, nil
 }
 
+type collectAddrsResult struct {
+	chs     []*storer.BinC
+	topmost uint64
+}
+
 // collectAddrs collects chunk addresses at a bin starting at some start BinID until a limit is reached.
 // The function waits for an unbounded amount of time for the first chunk to arrive.
 // After the arrival of the first chunk, the subsequent chunks have a limited amount of time to arrive,
@@ -385,12 +403,7 @@ func (s *Syncer) makeOffer(ctx context.Context, rn pb.Get) (*pb.Offer, error) {
 func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*storer.BinC, uint64, error) {
 	loggerV2 := s.logger.V(2).Register()
 
-	type result struct {
-		chs     []*storer.BinC
-		topmost uint64
-	}
-
-	v, _, err := s.intervalsSF.Do(ctx, fmt.Sprintf("%v-%v", bin, start), func(ctx context.Context) (interface{}, error) {
+	v, _, err := s.intervalsSF.Do(ctx, sfKey(bin, start), func(ctx context.Context) (*collectAddrsResult, error) {
 		var (
 			chs     []*storer.BinC
 			topmost uint64
@@ -410,19 +423,23 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 	LOOP:
 		for limit > 0 {
 			select {
-			case c := <-chC:
+			case c, ok := <-chC:
+				if !ok {
+					break LOOP // The stream has been closed.
+				}
+
 				chs = append(chs, &storer.BinC{Address: c.Address, BatchID: c.BatchID})
 				if c.BinID > topmost {
 					topmost = c.BinID
 				}
 				limit--
 				if timer == nil {
-					timer = time.NewTimer(batchTimeout)
+					timer = time.NewTimer(pageTimeout)
 				} else {
 					if !timer.Stop() {
 						<-timer.C
 					}
-					timer.Reset(batchTimeout)
+					timer.Reset(pageTimeout)
 				}
 				timerC = timer.C
 			case err := <-errC:
@@ -436,13 +453,12 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 			}
 		}
 
-		return &result{chs: chs, topmost: topmost}, nil
+		return &collectAddrsResult{chs: chs, topmost: topmost}, nil
 	})
 	if err != nil {
 		return nil, 0, err
 	}
-	r := v.(*result)
-	return r.chs, r.topmost, nil
+	return v.chs, v.topmost, nil
 }
 
 // processWant compares a received Want to a sent Offer and returns
@@ -457,9 +473,13 @@ func (s *Syncer) processWant(ctx context.Context, o *pb.Offer, w *pb.Want) ([]sw
 	for i := 0; i < len(o.Chunks); i++ {
 		if bv.Get(i) {
 			ch := o.Chunks[i]
-			c, err := s.store.ReserveGet(ctx, swarm.NewAddress(ch.Address), ch.BatchID)
+			addr := swarm.NewAddress(ch.Address)
+			c, err := s.store.ReserveGet(ctx, addr, ch.BatchID)
 			if err != nil {
-				return nil, err
+				s.logger.Debug("processing want: unable to find chunk", "chunk_address", addr, "batch_id", ch.BatchID)
+				chunks = append(chunks, swarm.NewChunk(swarm.ZeroAddress, nil))
+				s.metrics.MissingChunks.Inc()
+				continue
 			}
 			chunks = append(chunks, c)
 		}
@@ -467,12 +487,12 @@ func (s *Syncer) processWant(ctx context.Context, o *pb.Offer, w *pb.Want) ([]sw
 	return chunks, nil
 }
 
-func (s *Syncer) GetCursors(ctx context.Context, peer swarm.Address) (retr []uint64, err error) {
+func (s *Syncer) GetCursors(ctx context.Context, peer swarm.Address) (retr []uint64, epoch uint64, err error) {
 	loggerV2 := s.logger.V(2).Register()
 
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, cursorStreamName)
 	if err != nil {
-		return nil, fmt.Errorf("new stream: %w", err)
+		return nil, 0, fmt.Errorf("new stream: %w", err)
 	}
 	loggerV2.Debug("getting cursors from peer", "peer_address", peer)
 	defer func() {
@@ -487,17 +507,15 @@ func (s *Syncer) GetCursors(ctx context.Context, peer swarm.Address) (retr []uin
 	w, r := protobuf.NewWriterAndReader(stream)
 	syn := &pb.Syn{}
 	if err = w.WriteMsgWithContext(ctx, syn); err != nil {
-		return nil, fmt.Errorf("write syn: %w", err)
+		return nil, 0, fmt.Errorf("write syn: %w", err)
 	}
 
 	var ack pb.Ack
 	if err = r.ReadMsgWithContext(ctx, &ack); err != nil {
-		return nil, fmt.Errorf("read ack: %w", err)
+		return nil, 0, fmt.Errorf("read ack: %w", err)
 	}
 
-	retr = ack.Cursors
-
-	return retr, nil
+	return ack.Cursors, ack.Epoch, nil
 }
 
 func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
@@ -520,11 +538,12 @@ func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Strea
 	}
 
 	var ack pb.Ack
-	ints, err := s.store.ReserveLastBinIDs()
+	ints, epoch, err := s.store.ReserveLastBinIDs()
 	if err != nil {
 		return err
 	}
 	ack.Cursors = ints
+	ack.Epoch = epoch
 	if err = w.WriteMsgWithContext(ctx, &ack); err != nil {
 		return fmt.Errorf("write ack: %w", err)
 	}
@@ -553,4 +572,9 @@ func (s *Syncer) Close() error {
 		s.logger.Warning("pull syncer shutting down with running goroutines")
 	}
 	return nil
+}
+
+// singleflight key for intervals
+func sfKey(bin uint8, start uint64) string {
+	return fmt.Sprintf("%d-%d", bin, start)
 }

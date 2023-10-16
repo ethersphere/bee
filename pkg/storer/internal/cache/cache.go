@@ -9,27 +9,35 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"sync"
+	"strconv"
+	"sync/atomic"
+	"time"
 
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storer/internal"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-const cacheEntrySize = 3 * swarm.HashSize
+var now = time.Now
+
+// exported for migration
+type CacheEntryItem = cacheEntry
+
+const cacheEntrySize = swarm.HashSize + 8
 
 var _ storage.Item = (*cacheEntry)(nil)
 
+var CacheEvictionBatchSize = 1000
+
 var (
-	errMarshalCacheEntryInvalidAddress = errors.New("marshal cacheEntry: invalid address")
-	errUnmarshalCacheEntryInvalidSize  = errors.New("unmarshal cacheEntry: invalid size")
-	errUnmarshalCacheStateInvalidSize  = errors.New("unmarshal cacheState: invalid size")
+	errMarshalCacheEntryInvalidAddress   = errors.New("marshal cacheEntry: invalid address")
+	errMarshalCacheEntryInvalidTimestamp = errors.New("marshal cacheEntry: invalid timestamp")
+	errUnmarshalCacheEntryInvalidSize    = errors.New("unmarshal cacheEntry: invalid size")
 )
 
 type cacheEntry struct {
-	Address swarm.Address
-	Prev    swarm.Address
-	Next    swarm.Address
+	Address         swarm.Address
+	AccessTimestamp int64
 }
 
 func (c *cacheEntry) ID() string { return c.Address.ByteString() }
@@ -41,9 +49,11 @@ func (c *cacheEntry) Marshal() ([]byte, error) {
 	if c.Address.IsZero() {
 		return nil, errMarshalCacheEntryInvalidAddress
 	}
+	if c.AccessTimestamp <= 0 {
+		return nil, errMarshalCacheEntryInvalidTimestamp
+	}
 	copy(entryBuf[:swarm.HashSize], c.Address.Bytes())
-	copy(entryBuf[swarm.HashSize:2*swarm.HashSize], internal.AddressBytesOrZero(c.Prev))
-	copy(entryBuf[2*swarm.HashSize:], internal.AddressBytesOrZero(c.Next))
+	binary.LittleEndian.PutUint64(entryBuf[swarm.HashSize:], uint64(c.AccessTimestamp))
 	return entryBuf, nil
 }
 
@@ -53,8 +63,7 @@ func (c *cacheEntry) Unmarshal(buf []byte) error {
 	}
 	newEntry := new(cacheEntry)
 	newEntry.Address = swarm.NewAddress(append(make([]byte, 0, swarm.HashSize), buf[:swarm.HashSize]...))
-	newEntry.Prev = internal.AddressOrZero(buf[swarm.HashSize : 2*swarm.HashSize])
-	newEntry.Next = internal.AddressOrZero(buf[2*swarm.HashSize:])
+	newEntry.AccessTimestamp = int64(binary.LittleEndian.Uint64(buf[swarm.HashSize:]))
 	*c = *newEntry
 	return nil
 }
@@ -64,214 +73,176 @@ func (c *cacheEntry) Clone() storage.Item {
 		return nil
 	}
 	return &cacheEntry{
-		Address: c.Address.Clone(),
-		Prev:    c.Prev.Clone(),
-		Next:    c.Next.Clone(),
+		Address:         c.Address.Clone(),
+		AccessTimestamp: c.AccessTimestamp,
 	}
 }
 
 func (c cacheEntry) String() string {
-	return fmt.Sprintf("cacheEntry { Address: %s Prev: %s Next: %s }", c.Address, c.Prev, c.Next)
+	return fmt.Sprintf(
+		"cacheEntry { Address: %s AccessTimestamp: %s }",
+		c.Address,
+		time.Unix(c.AccessTimestamp, 0).UTC().Format(time.RFC3339),
+	)
 }
 
-const cacheStateSize = 2*swarm.HashSize + 8
+var _ storage.Item = (*cacheOrderIndex)(nil)
 
-var _ storage.Item = (*cacheState)(nil)
-
-type cacheState struct {
-	Head  swarm.Address
-	Tail  swarm.Address
-	Count uint64
+type cacheOrderIndex struct {
+	AccessTimestamp int64
+	Address         swarm.Address
 }
 
-func (cacheState) ID() string { return "entry" }
-
-func (cacheState) Namespace() string { return "cacheState" }
-
-func (c *cacheState) Marshal() ([]byte, error) {
-	entryBuf := make([]byte, cacheStateSize)
-	copy(entryBuf[:swarm.HashSize], internal.AddressBytesOrZero(c.Head))
-	copy(entryBuf[swarm.HashSize:2*swarm.HashSize], internal.AddressBytesOrZero(c.Tail))
-	binary.LittleEndian.PutUint64(entryBuf[2*swarm.HashSize:], c.Count)
-	return entryBuf, nil
+func keyFromID(ts int64, addr swarm.Address) string {
+	tsStr := fmt.Sprintf("%d", ts)
+	return tsStr + addr.ByteString()
 }
 
-func (c *cacheState) Unmarshal(buf []byte) error {
-	if len(buf) != cacheStateSize {
-		return errUnmarshalCacheStateInvalidSize
+func idFromKey(key string) (int64, swarm.Address, error) {
+	ts := key[:len(key)-swarm.HashSize]
+	addr := key[len(key)-swarm.HashSize:]
+	n, err := strconv.ParseInt(ts, 10, 64)
+	if err != nil {
+		return 0, swarm.ZeroAddress, err
 	}
-	newEntry := new(cacheState)
-	newEntry.Head = internal.AddressOrZero(buf[:swarm.HashSize])
-	newEntry.Tail = internal.AddressOrZero(buf[swarm.HashSize : 2*swarm.HashSize])
-	newEntry.Count = binary.LittleEndian.Uint64(buf[2*swarm.HashSize:])
-	*c = *newEntry
+	return n, swarm.NewAddress([]byte(addr)), nil
+}
+
+func (c *cacheOrderIndex) ID() string {
+	return keyFromID(c.AccessTimestamp, c.Address)
+}
+
+func (cacheOrderIndex) Namespace() string { return "cacheOrderIndex" }
+
+func (cacheOrderIndex) Marshal() ([]byte, error) {
+	return nil, nil
+}
+
+func (cacheOrderIndex) Unmarshal(_ []byte) error {
 	return nil
 }
 
-func (c *cacheState) Clone() storage.Item {
+func (c *cacheOrderIndex) Clone() storage.Item {
 	if c == nil {
 		return nil
 	}
-	return &cacheState{
-		Head:  c.Head.Clone(),
-		Tail:  c.Tail.Clone(),
-		Count: c.Count,
+	return &cacheOrderIndex{
+		AccessTimestamp: c.AccessTimestamp,
+		Address:         c.Address.Clone(),
 	}
 }
 
-func (c cacheState) String() string {
-	return fmt.Sprintf("cacheState { Head: %s Tail: %s Count: %d }", c.Head, c.Tail, c.Count)
+func (c cacheOrderIndex) String() string {
+	return fmt.Sprintf(
+		"cacheOrderIndex { AccessTimestamp: %d Address: %s }",
+		c.AccessTimestamp,
+		c.Address.ByteString(),
+	)
 }
 
 // Cache is the part of the localstore which keeps track of the chunks that are not
 // part of the reserve but are potentially useful to store for obtaining bandwidth
 // incentives. In order to avoid GC we will only keep track of a fixed no. of chunks
-// as part of the cache and evict a chunk as soon as we go above capacity. In order
-// to achieve this we will use some additional cache state in-mem and stored on disk
-// to create a double-ended queue. The typical operations required here would be
-// a pushBack which adds an item to the end and popFront, which removed the first item.
-// The different operations:
-// 1. New item will be added to the end.
-// 2. Item pushed to end on access.
-// 3. Removal happens from the front.
+// as part of the cache and evict a chunk as soon as we go above capacity.
 type Cache struct {
-	mtx      sync.Mutex
-	size     uint64
-	capacity uint64
+	size     atomic.Int64
+	capacity int
 }
 
 // New creates a new Cache component with the specified capacity. The store is used
 // here only to read the initial state of the cache before shutdown if there was
 // any.
 func New(ctx context.Context, store internal.Storage, capacity uint64) (*Cache, error) {
-	state := &cacheState{}
-	err := store.IndexStore().Get(state)
-	if err != nil && !errors.Is(err, storage.ErrNotFound) {
-		return nil, fmt.Errorf("failed reading cache state: %w", err)
-	}
-
-	if capacity < state.Count {
-		entry := &cacheEntry{Address: state.Head}
-		var i uint64
-		itemsToRemove := state.Count - capacity
-		for i = 0; i < itemsToRemove; i++ {
-			err = store.IndexStore().Get(entry)
-			if err != nil {
-				return nil, fmt.Errorf("failed reading cache entry %s: %w", state.Head, err)
-			}
-			err = store.ChunkStore().Delete(ctx, entry.Address)
-			if err != nil {
-				return nil, fmt.Errorf("failed deleting chunk %s: %w", entry.Address, err)
-			}
-			err = store.IndexStore().Delete(entry)
-			if err != nil {
-				return nil, fmt.Errorf("failed deleting cache entry item %s: %w", entry, err)
-			}
-			entry.Address = entry.Next
-			state.Head = entry.Next.Clone()
-			state.Count--
-		}
-	}
-	err = store.IndexStore().Put(state)
+	count, err := store.IndexStore().Count(&cacheEntry{})
 	if err != nil {
-		return nil, fmt.Errorf("failed updating state: %w", err)
+		return nil, fmt.Errorf("failed counting cache entries: %w", err)
 	}
 
-	return &Cache{size: state.Count, capacity: capacity}, nil
-}
-
-// popFront will pop the first item in the queue. It will update the cache state so
-// should be called under lock. The state will not be updated to DB here as there
-// could be more changes involved, so the caller has to take care of updating the
-// cache state.
-func (c *Cache) popFront(
-	ctx context.Context,
-	state *cacheState,
-	store storage.Store,
-	chStore storage.ChunkStore,
-) error {
-	// read the first entry.
-	expiredEntry := &cacheEntry{Address: state.Head}
-	err := store.Get(expiredEntry)
-	if err != nil {
-		return fmt.Errorf("failed getting old head entry %s: %w", state.Head, err)
-	}
-
-	// remove the chunk.
-	err = chStore.Delete(ctx, expiredEntry.Address)
-	if err != nil {
-		return fmt.Errorf("failed deleting chunk %s from chunkstore: %w", expiredEntry.Address, err)
-	}
-
-	// delete the item.
-	err = store.Delete(expiredEntry)
-	if err != nil {
-		return fmt.Errorf("failed deleting old head entry %s: %w", expiredEntry, err)
-	}
-
-	// update new front.
-	state.Head = expiredEntry.Next.Clone()
-
-	return nil
-}
-
-// pushBack will add the new entry to the end of the queue. It will update the state
-// so again should be called under lock. Also, we could pushBack an entry which is
-// already existing, in which case a duplicate chunk Put operation need not be done.
-// The state will not be updated to DB here as there could be more potential changes.
-func (c *Cache) pushBack(
-	ctx context.Context,
-	state *cacheState,
-	newEntry *cacheEntry,
-	chunk swarm.Chunk,
-	store storage.Store,
-	chStore storage.ChunkStore,
-) error {
-	// read the tail entry.
-	entry := &cacheEntry{Address: state.Tail}
-	err := store.Get(entry)
-	if err != nil {
-		return fmt.Errorf("failed reading tail entry %s: %w", state.Tail, err)
-	}
-
-	// update the pointers.
-	entry.Next = newEntry.Address.Clone()
-	newEntry.Prev = entry.Address.Clone()
-
-	// add the new chunk to chunkstore if requested.
-	if chunk != nil {
-		err = chStore.Put(ctx, chunk)
+	if count > int(capacity) {
+		err := removeOldest(
+			ctx,
+			store.IndexStore(),
+			store.IndexStore(),
+			store.ChunkStore(),
+			count-int(capacity),
+		)
 		if err != nil {
-			return fmt.Errorf("failed to add chunk to chunkstore %s: %w", chunk.Address(), err)
+			return nil, fmt.Errorf("failed removing oldest cache entries: %w", err)
+		}
+		count = int(capacity)
+	}
+
+	c := &Cache{capacity: int(capacity)}
+	c.size.Store(int64(count))
+
+	return c, nil
+}
+
+// removeOldest removes the oldest cache entries from the store. The count
+// specifies the number of entries to remove.
+func removeOldest(
+	ctx context.Context,
+	store storage.Reader,
+	writer storage.Writer,
+	chStore storage.ChunkStore,
+	count int,
+) error {
+	if count <= 0 {
+		return nil
+	}
+
+	evictItems := make([]*cacheEntry, 0, count)
+	err := store.Iterate(
+		storage.Query{
+			Factory:      func() storage.Item { return &cacheOrderIndex{} },
+			ItemProperty: storage.QueryItemID,
+		},
+		func(res storage.Result) (bool, error) {
+			accessTime, addr, err := idFromKey(res.ID)
+			if err != nil {
+				return false, fmt.Errorf("failed to parse cache order index %s: %w", res.ID, err)
+			}
+			entry := &cacheEntry{
+				Address:         addr,
+				AccessTimestamp: accessTime,
+			}
+			evictItems = append(evictItems, entry)
+			count--
+			return count == 0, nil
+		},
+	)
+	if err != nil {
+		return fmt.Errorf("failed iterating over cache order index: %w", err)
+	}
+
+	for _, entry := range evictItems {
+		err = writer.Delete(entry)
+		if err != nil {
+			return fmt.Errorf("failed deleting cache entry %s: %w", entry, err)
+		}
+		err = writer.Delete(&cacheOrderIndex{
+			Address:         entry.Address,
+			AccessTimestamp: entry.AccessTimestamp,
+		})
+		if err != nil {
+			return fmt.Errorf("failed deleting cache order index %s: %w", entry.Address, err)
+		}
+		err = chStore.Delete(ctx, entry.Address)
+		if err != nil {
+			return fmt.Errorf("failed deleting chunk %s from chunkstore: %w", entry.Address, err)
 		}
 	}
-
-	// add the new item.
-	err = store.Put(newEntry)
-	if err != nil {
-		return fmt.Errorf("failed adding the new cacheEntry %s: %w", newEntry, err)
-	}
-
-	// update the old tail entry.
-	err = store.Put(entry)
-	if err != nil {
-		return fmt.Errorf("failed updating the old tail entry %s: %w", entry, err)
-	}
-
-	// update state.
-	state.Tail = newEntry.Address.Clone()
 
 	return nil
 }
 
+// Size returns the current size of the cache.
 func (c *Cache) Size() uint64 {
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
-
-	return c.size
+	return uint64(c.size.Load())
 }
 
-func (c *Cache) Capacity() uint64 { return c.capacity }
+// Capacity returns the capacity of the cache.
+func (c *Cache) Capacity() uint64 { return uint64(c.capacity) }
 
 // Putter returns a Storage.Putter instance which adds the chunk to the underlying
 // chunkstore and also adds a Cache entry for the chunk.
@@ -288,57 +259,60 @@ func (c *Cache) Putter(store internal.Storage) storage.Putter {
 			return nil
 		}
 
-		state := &cacheState{}
-		err = store.IndexStore().Get(state)
+		batch, err := store.IndexStore().Batch(ctx)
 		if err != nil {
-			return fmt.Errorf("failed reading cache state: %w", err)
+			return fmt.Errorf("failed creating batch: %w", err)
 		}
 
-		if state.Count != 0 {
-			// if we are here, this is a new chunk which should be added. Add it to
-			// the end.
-			err = c.pushBack(ctx, state, newEntry, chunk, store.IndexStore(), store.ChunkStore())
-			if err != nil {
-				return err
-			}
-		} else {
-			// first entry
-			err = store.ChunkStore().Put(ctx, chunk)
-			if err != nil {
-				return fmt.Errorf("failed adding chunk %s to chunkstore: %w", chunk.Address(), err)
-			}
-			err = store.IndexStore().Put(newEntry)
-			if err != nil {
-				return fmt.Errorf("failed adding new cacheEntry %s: %w", newEntry, err)
-			}
-			state.Head = newEntry.Address.Clone()
-			state.Tail = newEntry.Address.Clone()
-		}
-
-		if state.Count == c.capacity {
-			// if we reach the full capacity, remove the first element.
-			err = c.popFront(ctx, state, store.IndexStore(), store.ChunkStore())
-			if err != nil {
-				return err
-			}
-		} else {
-			state.Count++
-		}
-		err = store.IndexStore().Put(state)
+		newEntry.AccessTimestamp = now().UnixNano()
+		err = batch.Put(newEntry)
 		if err != nil {
-			return fmt.Errorf("failed updating state %s: %w", state, err)
+			return fmt.Errorf("failed adding cache entry: %w", err)
 		}
 
-		c.mtx.Lock()
-		c.size = state.Count
-		c.mtx.Unlock()
+		err = batch.Put(&cacheOrderIndex{
+			Address:         newEntry.Address,
+			AccessTimestamp: newEntry.AccessTimestamp,
+		})
+		if err != nil {
+			return fmt.Errorf("failed adding cache order index: %w", err)
+		}
+
+		evicted := false
+		if c.size.Load() >= int64(c.capacity) {
+			evicted = true
+			err := removeOldest(
+				ctx,
+				store.IndexStore(),
+				batch,
+				store.ChunkStore(),
+				CacheEvictionBatchSize,
+			)
+			if err != nil {
+				return fmt.Errorf("failed removing oldest cache entries: %w", err)
+			}
+		}
+
+		if err := batch.Commit(); err != nil {
+			return fmt.Errorf("batch commit: %w", err)
+		}
+
+		err = store.ChunkStore().Put(ctx, chunk)
+		if err != nil {
+			return fmt.Errorf("failed adding chunk to chunkstore: %w", err)
+		}
+
+		if evicted {
+			c.size.Add(-int64(CacheEvictionBatchSize))
+		}
+		c.size.Add(1)
 
 		return nil
 	})
 }
 
 // Getter returns a Storage.Getter instance which checks if the chunks accessed are
-// part of cache it will update the cache queue. If the operation to update the
+// part of cache it will update the cache indexes. If the operation to update the
 // cache indexes fail, we need to fail the operation as this should signal the user
 // of this getter to rollback the operation.
 func (c *Cache) Getter(store internal.Storage) storage.Getter {
@@ -359,60 +333,114 @@ func (c *Cache) Getter(store internal.Storage) storage.Getter {
 			return nil, fmt.Errorf("unexpected error getting indexstore entry: %w", err)
 		}
 
-		state := &cacheState{}
-		err = store.IndexStore().Get(state)
+		batch, err := store.IndexStore().Batch(ctx)
 		if err != nil {
-			return nil, fmt.Errorf("failed reading cache state: %w", err)
+			return nil, fmt.Errorf("failed creating batch: %w", err)
 		}
 
-		// if the chunk is already the tail return early.
-		if state.Tail.Equal(address) {
-			return ch, nil
-		}
-
-		prev := &cacheEntry{Address: entry.Prev}
-		next := &cacheEntry{Address: entry.Next}
-
-		// move the chunk to the end due to the access. Dont send duplicate
-		// chunk put operation.
-		err = c.pushBack(ctx, state, entry, nil, store.IndexStore(), store.ChunkStore())
+		err = batch.Delete(&cacheOrderIndex{
+			Address:         entry.Address,
+			AccessTimestamp: entry.AccessTimestamp,
+		})
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed deleting cache order index: %w", err)
 		}
 
-		// if this is first chunk we dont need to update both the prev or the
-		// next.
-		if !state.Head.Equal(address) {
-			err = store.IndexStore().Get(prev)
-			if err != nil {
-				return nil, fmt.Errorf("failed getting previous entry %s: %w", prev, err)
-			}
-			err = store.IndexStore().Get(next)
-			if err != nil {
-				return nil, fmt.Errorf("failed getting next entry %s: %w", next, err)
-			}
-			prev.Next = next.Address.Clone()
-			err = store.IndexStore().Put(prev)
-			if err != nil {
-				return nil, fmt.Errorf("failed updating prev entry %s: %w", prev, err)
-			}
-
-			next.Prev = prev.Address.Clone()
-			err = store.IndexStore().Put(next)
-			if err != nil {
-				return nil, fmt.Errorf("failed updating next entry %s: %w", next, err)
-			}
-		}
-
-		if state.Head.Equal(address) {
-			state.Head = next.Address.Clone()
-		}
-
-		err = store.IndexStore().Put(state)
+		entry.AccessTimestamp = now().UnixNano()
+		err = batch.Put(&cacheOrderIndex{
+			Address:         entry.Address,
+			AccessTimestamp: entry.AccessTimestamp,
+		})
 		if err != nil {
-			return nil, fmt.Errorf("failed updating state %s: %w", state, err)
+			return nil, fmt.Errorf("failed adding cache order index: %w", err)
+		}
+
+		err = batch.Put(entry)
+		if err != nil {
+			return nil, fmt.Errorf("failed adding cache entry: %w", err)
+		}
+
+		err = batch.Commit()
+		if err != nil {
+			return nil, fmt.Errorf("batch commit: %w", err)
 		}
 
 		return ch, nil
 	})
+}
+
+// MoveFromReserve moves the chunks from the reserve to the cache. This is
+// called when the reserve is full and we need to perform eviction.
+// It avoids the need to delete the chunk and re-add it to the cache.
+func (c *Cache) MoveFromReserve(
+	ctx context.Context,
+	store internal.Storage,
+	addrs ...swarm.Address,
+) error {
+	batch, err := store.IndexStore().Batch(ctx)
+	if err != nil {
+		return fmt.Errorf("failed creating batch: %w", err)
+	}
+
+	entriesToAdd := make([]*cacheEntry, 0, len(addrs))
+	for _, addr := range addrs {
+		entry := &cacheEntry{Address: addr}
+		if has, err := store.IndexStore().Has(entry); err == nil && has {
+			continue
+		}
+		entry.AccessTimestamp = now().UnixNano()
+		entriesToAdd = append(entriesToAdd, entry)
+	}
+
+	if len(entriesToAdd) == 0 {
+		return nil
+	}
+
+	//consider only the amount that can fit, the rest should be deleted from the chunkstore.
+	if len(entriesToAdd) > c.capacity {
+		for _, e := range entriesToAdd[:len(entriesToAdd)-c.capacity] {
+			_ = store.ChunkStore().Delete(ctx, e.Address)
+		}
+		entriesToAdd = entriesToAdd[len(entriesToAdd)-c.capacity:]
+	}
+
+	var entriesToRemove int
+	if c.size.Load()+int64(len(entriesToAdd)) > int64(c.capacity) {
+		entriesToRemove = int(c.size.Load() + int64(len(entriesToAdd)) - int64(c.capacity))
+	}
+
+	if entriesToRemove > 0 {
+		err := removeOldest(
+			ctx,
+			store.IndexStore(),
+			batch,
+			store.ChunkStore(),
+			entriesToRemove,
+		)
+		if err != nil {
+			return fmt.Errorf("failed removing oldest cache entries: %w", err)
+		}
+	}
+
+	for _, entry := range entriesToAdd {
+		err = batch.Put(entry)
+		if err != nil {
+			return fmt.Errorf("failed adding entry %s: %w", entry, err)
+		}
+		err = batch.Put(&cacheOrderIndex{
+			Address:         entry.Address,
+			AccessTimestamp: entry.AccessTimestamp,
+		})
+		if err != nil {
+			return fmt.Errorf("failed adding cache order index: %w", err)
+		}
+	}
+
+	if err := batch.Commit(); err != nil {
+		return fmt.Errorf("batch commit: %w", err)
+	}
+
+	c.size.Add(int64(len(entriesToAdd)) - int64(entriesToRemove))
+
+	return nil
 }

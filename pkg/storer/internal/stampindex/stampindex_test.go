@@ -230,7 +230,9 @@ func TestLoadOrStore(t *testing.T) {
 			want.ChunkAddress = chunk.Address()
 			want.ChunkIsImmutable = chunk.Immutable()
 
-			have, loaded, err := stampindex.LoadOrStore(ts.IndexStore(), ns, chunk)
+			r, w := ts.IndexStore(), ts.IndexStore()
+
+			have, loaded, err := stampindex.LoadOrStore(r, w, ns, chunk)
 			if err != nil {
 				t.Fatalf("LoadOrStore(...): unexpected error: %v", err)
 			}
@@ -242,7 +244,7 @@ func TestLoadOrStore(t *testing.T) {
 				t.Fatalf("Get(...): mismatch (-want +have):\n%s", diff)
 			}
 
-			have, loaded, err = stampindex.LoadOrStore(ts.IndexStore(), ns, chunk)
+			have, loaded, err = stampindex.LoadOrStore(r, w, ns, chunk)
 			if err != nil {
 				t.Fatalf("LoadOrStore(...): unexpected error: %v", err)
 			}

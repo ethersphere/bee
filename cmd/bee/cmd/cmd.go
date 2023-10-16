@@ -83,6 +83,8 @@ const (
 	optionNameAdminPasswordHash          = "admin-password"
 	optionNameUsePostageSnapshot         = "use-postage-snapshot"
 	optionNameStorageIncentivesEnable    = "storage-incentives-enable"
+	optionNameStateStoreCacheCapacity    = "statestore-cache-capacity"
+	optionNameTargetNeighborhood         = "target-neighborhood"
 )
 
 // nolint:gochecknoinits
@@ -239,9 +241,9 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameDataDir, filepath.Join(c.homeDir, ".bee"), "data directory")
 	cmd.Flags().Uint64(optionNameCacheCapacity, 1000000, fmt.Sprintf("cache capacity in chunks, multiply by %d to get approximate capacity in bytes", swarm.ChunkSize))
 	cmd.Flags().Uint64(optionNameDBOpenFilesLimit, 200, "number of open files allowed by database")
-	cmd.Flags().Uint64(optionNameDBBlockCacheCapacity, 4*1024*1024, "size of block cache of the database in bytes")
-	cmd.Flags().Uint64(optionNameDBWriteBufferSize, 4*1024*1024, "size of the database write buffer in bytes")
-	cmd.Flags().Bool(optionNameDBDisableSeeksCompaction, false, "disables db compactions triggered by seeks")
+	cmd.Flags().Uint64(optionNameDBBlockCacheCapacity, 32*1024*1024, "size of block cache of the database in bytes")
+	cmd.Flags().Uint64(optionNameDBWriteBufferSize, 32*1024*1024, "size of the database write buffer in bytes")
+	cmd.Flags().Bool(optionNameDBDisableSeeksCompaction, true, "disables db compactions triggered by seeks")
 	cmd.Flags().String(optionNamePassword, "", "password for decrypting keys")
 	cmd.Flags().String(optionNamePasswordFile, "", "path to a file that contains password for decrypting keys")
 	cmd.Flags().String(optionNameAPIAddr, ":1633", "HTTP API listen address")
@@ -267,13 +269,13 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNameBootnodeMode, false, "cause the node to always accept incoming connections")
 	cmd.Flags().Bool(optionNameClefSignerEnable, false, "enable clef signer")
 	cmd.Flags().String(optionNameClefSignerEndpoint, "", "clef signer endpoint")
-	cmd.Flags().String(optionNameClefSignerEthereumAddress, "", "ethereum address to use from clef signer")
+	cmd.Flags().String(optionNameClefSignerEthereumAddress, "", "blockchain address to use from clef signer")
 	cmd.Flags().String(optionNameSwapEndpoint, "", "swap blockchain endpoint") // deprecated: use rpc endpoint instead
 	cmd.Flags().String(optionNameBlockchainRpcEndpoint, "", "rpc blockchain endpoint")
 	cmd.Flags().String(optionNameSwapFactoryAddress, "", "swap factory addresses")
 	cmd.Flags().StringSlice(optionNameSwapLegacyFactoryAddresses, nil, "legacy swap factory addresses")
 	cmd.Flags().String(optionNameSwapInitialDeposit, "0", "initial deposit if deploying a new chequebook")
-	cmd.Flags().Bool(optionNameSwapEnable, true, "enable swap")
+	cmd.Flags().Bool(optionNameSwapEnable, false, "enable swap")
 	cmd.Flags().Bool(optionNameChequebookEnable, true, "enable chequebook")
 	cmd.Flags().Bool(optionNameFullNode, false, "cause the node to start in full mode")
 	cmd.Flags().String(optionNamePostageContractAddress, "", "postage stamp contract address")
@@ -296,6 +298,8 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameAdminPasswordHash, "", "bcrypt hash of the admin password to get the security token")
 	cmd.Flags().Bool(optionNameUsePostageSnapshot, false, "bootstrap node using postage snapshot from the network")
 	cmd.Flags().Bool(optionNameStorageIncentivesEnable, true, "enable storage incentives feature")
+	cmd.Flags().Uint64(optionNameStateStoreCacheCapacity, 100_000, "lru memory caching capacity in number of statestore entries")
+	cmd.Flags().String(optionNameTargetNeighborhood, "", "neighborhood to target in binary format (ex: 111111001) for mining the initial overlay")
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {

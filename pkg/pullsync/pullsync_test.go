@@ -9,6 +9,7 @@ import (
 	"errors"
 	"io"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -18,7 +19,7 @@ import (
 	"github.com/ethersphere/bee/pkg/pullsync"
 	"github.com/ethersphere/bee/pkg/storage"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
-	storer "github.com/ethersphere/bee/pkg/storer"
+	"github.com/ethersphere/bee/pkg/storer"
 	mock "github.com/ethersphere/bee/pkg/storer/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -227,23 +228,52 @@ func TestIncoming_UnsolicitedChunk(t *testing.T) {
 	}
 }
 
-func TestGetCursors(t *testing.T) {
+func TestMissingChunk(t *testing.T) {
 	t.Parallel()
 
 	var (
-		mockCursors = []uint64{100, 101, 102, 103}
-		ps, _       = newPullSync(t, nil, 0, mock.WithCursors(mockCursors))
+		zeroChunk   = swarm.NewChunk(swarm.ZeroAddress, nil)
+		topMost     = uint64(4)
+		ps, _       = newPullSync(t, nil, 5, mock.WithSubscribeResp(results, nil), mock.WithChunks([]swarm.Chunk{zeroChunk}...))
 		recorder    = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
 		psClient, _ = newPullSync(t, recorder, 0)
 	)
 
-	curs, err := psClient.GetCursors(context.Background(), swarm.ZeroAddress)
+	topmost, count, err := psClient.Sync(context.Background(), swarm.ZeroAddress, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if topmost != topMost {
+		t.Fatalf("got offer topmost %d but want %d", topmost, topMost)
+	}
+	if count != 0 {
+		t.Fatalf("got count %d but want %d", count, 0)
+	}
+}
+
+func TestGetCursors(t *testing.T) {
+	t.Parallel()
+
+	var (
+		epochTs     = uint64(time.Now().Unix())
+		mockCursors = []uint64{100, 101, 102, 103}
+		ps, _       = newPullSync(t, nil, 0, mock.WithCursors(mockCursors, epochTs))
+		recorder    = streamtest.New(streamtest.WithProtocols(ps.Protocol()))
+		psClient, _ = newPullSync(t, recorder, 0)
+	)
+
+	curs, epoch, err := psClient.GetCursors(context.Background(), swarm.ZeroAddress)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	if len(curs) != len(mockCursors) {
 		t.Fatalf("length mismatch got %d want %d", len(curs), len(mockCursors))
+	}
+
+	if epochTs != epoch {
+		t.Fatalf("epochs do not match got %d want %d", epoch, epochTs)
 	}
 
 	for i, v := range mockCursors {
@@ -263,7 +293,7 @@ func TestGetCursorsError(t *testing.T) {
 		psClient, _ = newPullSync(t, recorder, 0)
 	)
 
-	_, err := psClient.GetCursors(context.Background(), swarm.ZeroAddress)
+	_, _, err := psClient.GetCursors(context.Background(), swarm.ZeroAddress)
 	if err == nil {
 		t.Fatal("expected error but got none")
 	}

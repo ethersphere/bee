@@ -7,15 +7,18 @@ package storer_test
 import (
 	"context"
 	"os"
+	"path"
 	"testing"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	batchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
-	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	"github.com/ethersphere/bee/pkg/storage/migration"
-	storer "github.com/ethersphere/bee/pkg/storer"
+	"github.com/ethersphere/bee/pkg/storer"
+	"github.com/ethersphere/bee/pkg/storer/internal/cache"
 	pinstore "github.com/ethersphere/bee/pkg/storer/internal/pinning"
 	"github.com/ethersphere/bee/pkg/storer/internal/upload"
 	localmigration "github.com/ethersphere/bee/pkg/storer/migration"
@@ -95,8 +98,13 @@ func verifyPinCollection(
 // TestMain exists to adjust the time.Now function to a fixed value.
 func TestMain(m *testing.M) {
 	storer.ReplaceSharkyShardLimit(4)
+	old := cache.CacheEvictionBatchSize
+	defer func() {
+		cache.CacheEvictionBatchSize = old
+		storer.ReplaceSharkyShardLimit(32)
+	}()
+	cache.CacheEvictionBatchSize = 1
 	code := m.Run()
-	storer.ReplaceSharkyShardLimit(32)
 	os.Exit(code)
 }
 
@@ -140,14 +148,14 @@ func TestNew(t *testing.T) {
 			t.Parallel()
 
 			lstore := makeInmemStorer(t, dbTestOps(swarm.RandAddress(t), 0, nil, nil, time.Second))
-			assertStorerVersion(t, lstore)
+			assertStorerVersion(t, lstore, "")
 		})
 
 		t.Run("disk", func(t *testing.T) {
 			t.Parallel()
 
 			lstore := makeDiskStorer(t, dbTestOps(swarm.RandAddress(t), 0, nil, nil, time.Second))
-			assertStorerVersion(t, lstore)
+			assertStorerVersion(t, lstore, path.Join(t.TempDir(), "sharky"))
 		})
 	})
 }
@@ -174,15 +182,15 @@ func dbTestOps(baseAddr swarm.Address, reserveCapacity int, bs postage.Storer, r
 	return opts
 }
 
-func assertStorerVersion(t *testing.T, lstore *storer.DB) {
+func assertStorerVersion(t *testing.T, lstore *storer.DB, sharkyPath string) {
 	t.Helper()
 
-	current, err := migration.Version(lstore.Repo().IndexStore())
+	current, err := migration.Version(lstore.Repo().IndexStore(), "migration")
 	if err != nil {
 		t.Fatalf("migration.Version(...): unexpected error: %v", err)
 	}
 
-	expected := migration.LatestVersion(localmigration.AllSteps())
+	expected := migration.LatestVersion(localmigration.AfterInitSteps(sharkyPath, 4, inmemchunkstore.New()))
 
 	if current != expected {
 		t.Fatalf("storer is not migrated to latest version; got %d, expected %d", current, expected)

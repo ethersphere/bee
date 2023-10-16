@@ -7,6 +7,7 @@ package sharky
 import (
 	"context"
 	"encoding/binary"
+	"fmt"
 	"io"
 )
 
@@ -18,6 +19,10 @@ type Location struct {
 	Shard  uint8
 	Slot   uint32
 	Length uint16
+}
+
+func (l Location) String() string {
+	return fmt.Sprintf("shard: %d, slot: %d, length: %d", l.Shard, l.Slot, l.Length)
 }
 
 // MarshalBinary returns byte representation of location
@@ -167,8 +172,11 @@ func (sh *shard) offset(slot uint32) int64 {
 
 // read reads loc.Length bytes to the buffer from the blob slot loc.Slot
 func (sh *shard) read(r read) error {
-	_, err := sh.file.ReadAt(r.buf, sh.offset(r.slot))
-	return err
+	n, err := sh.file.ReadAt(r.buf, sh.offset(r.slot))
+	if err != nil {
+		return fmt.Errorf("read %d: %w", n, err)
+	}
+	return nil
 }
 
 // write writes loc.Length bytes to the buffer from the blob slot loc.Slot

@@ -1,0 +1,4 @@
+80c80
+< 		Depth  uint8    `map:"depth" validate:"required,min=17"`
+---
+> 		Depth  uint8    `map:"depth" validate:"required"`

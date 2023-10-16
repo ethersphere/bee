@@ -17,10 +17,10 @@ import (
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	pullerMock "github.com/ethersphere/bee/pkg/puller/mock"
 	"github.com/ethersphere/bee/pkg/spinlock"
-	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/storagetest"
 	chunk "github.com/ethersphere/bee/pkg/storage/testing"
-	storer "github.com/ethersphere/bee/pkg/storer"
+	"github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/storer/internal/chunkstamp"
 	"github.com/ethersphere/bee/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/pkg/storer/internal/stampindex"
@@ -35,24 +35,24 @@ func TestIndexCollision(t *testing.T) {
 		stamp := postagetesting.MustNewBatchStamp(postagetesting.MustNewBatch().ID)
 		putter := storer.ReservePutter()
 
-		ch_1 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(stamp)
-		err := putter.Put(context.Background(), ch_1)
+		ch1 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(stamp)
+		err := putter.Put(context.Background(), ch1)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		ch_2 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(stamp)
-		err = putter.Put(context.Background(), ch_2)
+		ch2 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(stamp)
+		err = putter.Put(context.Background(), ch2)
 		if err == nil {
 			t.Fatal("expected index collision error")
 		}
 
-		_, err = storer.ReserveGet(context.Background(), ch_2.Address(), ch_2.Stamp().BatchID())
+		_, err = storer.ReserveGet(context.Background(), ch2.Address(), ch2.Stamp().BatchID())
 		if !errors.Is(err, storage.ErrNotFound) {
 			t.Fatal(err)
 		}
 
-		_, err = storer.ReserveGet(context.Background(), ch_1.Address(), ch_1.Stamp().BatchID())
+		_, err = storer.ReserveGet(context.Background(), ch1.Address(), ch1.Stamp().BatchID())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -67,7 +67,7 @@ func TestIndexCollision(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.StartReserveWorker(pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
 		testF(t, baseAddr, storer)
 	})
 	t.Run("mem", func(t *testing.T) {
@@ -77,7 +77,7 @@ func TestIndexCollision(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.StartReserveWorker(pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
 		testF(t, baseAddr, storer)
 	})
 }
@@ -130,10 +130,6 @@ func TestReplaceOldIndex(t *testing.T) {
 			if !errors.Is(err, storage.ErrNotFound) {
 				t.Fatalf("wanted err %s, got err %s", storage.ErrNotFound, err)
 			}
-			_, err = storer.Repo().ChunkStore().Get(context.Background(), ch_1.Address())
-			if !errors.Is(err, storage.ErrNotFound) {
-				t.Fatalf("wanted err %s, got err %s", storage.ErrNotFound, err)
-			}
 			_, err = storer.ReserveGet(context.Background(), ch_1.Address(), ch_1.Stamp().BatchID())
 			if !errors.Is(err, storage.ErrNotFound) {
 				t.Fatal(err)
@@ -150,7 +146,7 @@ func TestReplaceOldIndex(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.StartReserveWorker(pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
 		testF(t, baseAddr, storer)
 	})
 	t.Run("mem", func(t *testing.T) {
@@ -160,7 +156,7 @@ func TestReplaceOldIndex(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.StartReserveWorker(pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
 		testF(t, baseAddr, storer)
 	})
 }
@@ -170,12 +166,11 @@ func TestEvictBatch(t *testing.T) {
 
 	baseAddr := swarm.RandAddress(t)
 
-	t.Cleanup(func() {})
 	st, err := diskStorer(t, dbTestOps(baseAddr, 100, nil, nil, time.Minute))()
 	if err != nil {
 		t.Fatal(err)
 	}
-	st.StartReserveWorker(pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
+	st.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
 
 	ctx := context.Background()
 
@@ -203,6 +198,15 @@ func TestEvictBatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	c, unsub := st.Events().Subscribe("batchExpiryDone")
+	t.Cleanup(unsub)
+	gotUnreserveSignal := make(chan struct{})
+	go func() {
+		defer close(gotUnreserveSignal)
+		<-c
+	}()
+	<-gotUnreserveSignal
+
 	reserve := st.Reserve()
 
 	for _, ch := range chunks {
@@ -228,14 +232,14 @@ func TestEvictBatch(t *testing.T) {
 		t.Fatalf("want radius %d, got radius %d", 0, reserve.Radius())
 	}
 
-	ids, err := st.ReserveLastBinIDs()
+	ids, _, err := st.ReserveLastBinIDs()
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	for bin, id := range ids {
-		if bin < 3 && id != 9 {
-			t.Fatalf("bin %d got binID %d, want %d", bin, id, 9)
+		if bin < 3 && id != 10 {
+			t.Fatalf("bin %d got binID %d, want %d", bin, id, 10)
 		}
 		if bin >= 3 && id != 0 {
 			t.Fatalf("bin %d  got binID %d, want %d", bin, id, 0)
@@ -267,13 +271,8 @@ func TestUnreserveCap(t *testing.T) {
 
 		putter := storer.ReservePutter()
 
-		gotUnreserveSignal := make(chan struct{})
-		go func() {
-			defer close(gotUnreserveSignal)
-			c, unsub := storer.Events().Subscribe("reserveUnreserved")
-			defer unsub()
-			<-c
-		}()
+		c, unsub := storer.Events().Subscribe("reserveUnreserved")
+		defer unsub()
 
 		for b := 0; b < 5; b++ {
 			for i := uint64(0); i < chunksPerPO; i++ {
@@ -287,14 +286,18 @@ func TestUnreserveCap(t *testing.T) {
 			}
 		}
 
-		// wait for unreserve signal
-		<-gotUnreserveSignal
-
-		err = spinlock.Wait(time.Second*30, func() bool {
-			return storer.ReserveSize() == capacity
-		})
-		if err != nil {
-			t.Fatal(err)
+	done:
+		for {
+			select {
+			case <-c:
+				if storer.ReserveSize() == capacity {
+					break done
+				}
+			case <-time.After(time.Second * 30):
+				if storer.ReserveSize() != capacity {
+					t.Fatal("timeout waiting for reserve to reach capacity")
+				}
+			}
 		}
 
 		for po, chunks := range chunksPO {
@@ -325,7 +328,7 @@ func TestUnreserveCap(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.StartReserveWorker(pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
 		testF(t, baseAddr, bs, storer)
 	})
 	t.Run("mem", func(t *testing.T) {
@@ -336,7 +339,7 @@ func TestUnreserveCap(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.StartReserveWorker(pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(0))
 		testF(t, baseAddr, bs, storer)
 	})
 }
@@ -351,7 +354,7 @@ func TestNetworkRadius(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.StartReserveWorker(pullerMock.NewMockRateReporter(0), networkRadiusFunc(1))
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(1))
 		time.Sleep(time.Second)
 		if want, got := uint8(1), storer.StorageRadius(); want != got {
 			t.Fatalf("want radius %d, got radius %d", want, got)
@@ -364,7 +367,7 @@ func TestNetworkRadius(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.StartReserveWorker(pullerMock.NewMockRateReporter(0), networkRadiusFunc(1))
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(1))
 		time.Sleep(time.Second)
 		if want, got := uint8(1), storer.StorageRadius(); want != got {
 			t.Fatalf("want radius %d, got radius %d", want, got)
@@ -405,7 +408,7 @@ func TestRadiusManager(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.StartReserveWorker(pullerMock.NewMockRateReporter(0), networkRadiusFunc(3))
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(0), networkRadiusFunc(3))
 
 		batch := postagetesting.MustNewBatch()
 		err = bs.Save(batch)
@@ -443,7 +446,7 @@ func TestRadiusManager(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		storer.StartReserveWorker(pullerMock.NewMockRateReporter(1), networkRadiusFunc(3))
+		storer.StartReserveWorker(context.Background(), pullerMock.NewMockRateReporter(1), networkRadiusFunc(3))
 		waitForRadius(t, storer.Reserve(), 3)
 	})
 }
@@ -505,7 +508,7 @@ func TestSubscribeBin(t *testing.T) {
 		t.Run("subscribe range higher bin", func(t *testing.T) {
 			t.Parallel()
 
-			binC, _, _ := storer.SubscribeBin(context.Background(), 0, 1)
+			binC, _, _ := storer.SubscribeBin(context.Background(), 0, 2)
 
 			i := uint64(1)
 			for c := range binC {
@@ -522,7 +525,7 @@ func TestSubscribeBin(t *testing.T) {
 		t.Run("subscribe beyond range", func(t *testing.T) {
 			t.Parallel()
 
-			binC, _, _ := storer.SubscribeBin(context.Background(), 0, 1)
+			binC, _, _ := storer.SubscribeBin(context.Background(), 0, 2)
 			i := uint64(1)
 			timer := time.After(time.Millisecond * 500)
 
@@ -587,7 +590,7 @@ func TestSubscribeBinTrigger(t *testing.T) {
 			}
 		}
 
-		binC, _, _ := storer.SubscribeBin(context.Background(), 0, 1)
+		binC, _, _ := storer.SubscribeBin(context.Background(), 0, 2)
 		i := uint64(1)
 		timer := time.After(time.Millisecond * 500)
 
@@ -675,9 +678,14 @@ func checkSaved(t *testing.T, st *storer.DB, ch swarm.Chunk, stampSaved, chunkSt
 	if !chunkStoreSaved {
 		chunkStoreWantedErr = storage.ErrNotFound
 	}
-	_, err = st.Repo().ChunkStore().Get(context.Background(), ch.Address())
+	gotCh, err := st.Repo().ChunkStore().Get(context.Background(), ch.Address())
 	if !errors.Is(err, chunkStoreWantedErr) {
 		t.Fatalf("wanted err %s, got err %s", chunkStoreWantedErr, err)
+	}
+	if chunkStoreSaved {
+		if !bytes.Equal(ch.Data(), gotCh.Data()) {
+			t.Fatalf("chunks are not equal: %s", ch.Address())
+		}
 	}
 }
 

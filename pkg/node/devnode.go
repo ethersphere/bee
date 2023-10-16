@@ -46,7 +46,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage/inmemstore"
 	"github.com/ethersphere/bee/pkg/storageincentives/staking"
 	stakingContractMock "github.com/ethersphere/bee/pkg/storageincentives/staking/mock"
-	storer "github.com/ethersphere/bee/pkg/storer"
+	"github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	mockTopology "github.com/ethersphere/bee/pkg/topology/mock"
@@ -138,7 +138,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 
 	overlayEthAddress, err := signer.EthereumAddress()
 	if err != nil {
-		return nil, fmt.Errorf("eth address: %w", err)
+		return nil, fmt.Errorf("blockchain address: %w", err)
 	}
 
 	var authenticator auth.Authenticator
@@ -357,7 +357,17 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 	mockStaking := stakingContractMock.New(
 		stakingContractMock.WithDepositStake(func(ctx context.Context, stakedAmount *big.Int) (common.Hash, error) {
 			return common.Hash{}, staking.ErrNotImplemented
-		}))
+		}),
+		stakingContractMock.WithGetStake(func(ctx context.Context) (*big.Int, error) {
+			return nil, staking.ErrNotImplemented
+		}),
+		stakingContractMock.WithWithdrawAllStake(func(ctx context.Context) (common.Hash, error) {
+			return common.Hash{}, staking.ErrNotImplemented
+		}),
+		stakingContractMock.WithIsFrozen(func(ctx context.Context, block uint64) (bool, error) {
+			return false, staking.ErrNotImplemented
+		}),
+	)
 
 	debugOpts := api.ExtraOptions{
 		Pingpong:        pingPong,
@@ -489,7 +499,7 @@ func (b *DevBee) Shutdown() error {
 	return mErr
 }
 
-func pong(ctx context.Context, address swarm.Address, msgs ...string) (rtt time.Duration, err error) {
+func pong(_ context.Context, _ swarm.Address, _ ...string) (rtt time.Duration, err error) {
 	return time.Millisecond, nil
 }
 

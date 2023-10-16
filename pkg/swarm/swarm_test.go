@@ -162,3 +162,32 @@ func TestCloser(t *testing.T) {
 		t.Fatal("x is closer")
 	}
 }
+
+func TestParseBitStr(t *testing.T) {
+	t.Parallel()
+
+	for _, tc := range []struct {
+		overlay swarm.Address
+		bitStr  string
+	}{
+		{
+			swarm.MustParseHexAddress("5c32a2fe3d217af8c943fa665ebcfbdf7ab9af0cf1b2a1c8e5fc163dad2f5c7b"),
+			"010111000",
+		},
+		{
+			swarm.MustParseHexAddress("eac0903e59ff1c1a5f1d7d218b33f819b199aa0f68a19fd5fa02b7f84982b55d"),
+			"111010101",
+		},
+		{
+			swarm.MustParseHexAddress("70143dd2863ae07edfe7c1bfee75daea06226f0678e1117337d274492226bfe0"),
+			"011100000",
+		},
+	} {
+
+		if addr, err := swarm.ParseBitStrAddress(tc.bitStr); err != nil {
+			t.Fatal(err)
+		} else if got := swarm.Proximity(addr.Bytes(), tc.overlay.Bytes()); got < uint8(len(tc.bitStr)) {
+			t.Fatalf("got proximiy %d want %d", got, len(tc.bitStr))
+		}
+	}
+}

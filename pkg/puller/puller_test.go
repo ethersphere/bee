@@ -5,6 +5,7 @@
 package puller_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -21,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	kadMock "github.com/ethersphere/bee/pkg/topology/kademlia/mock"
 	"github.com/ethersphere/bee/pkg/util/testutil"
+	"github.com/google/go-cmp/cmp"
 )
 
 // test that adding one peer starts syncing
@@ -32,7 +34,7 @@ func TestOneSync(t *testing.T) {
 		cursors = []uint64{1000, 1000, 1000}
 		replies = []mockps.SyncReply{
 			{Bin: 1, Start: 1, Topmost: 1000, Peer: addr},
-			{Bin: 2, Start: 1001, Topmost: 1001, Peer: addr}}
+			{Bin: 2, Start: 1, Topmost: 1001, Peer: addr}}
 	)
 
 	_, _, kad, pullsync := newPuller(t, opts{
@@ -41,7 +43,7 @@ func TestOneSync(t *testing.T) {
 				kadMock.AddrTuple{Addr: addr, PO: 1},
 			),
 		},
-		pullSync: []mockps.Option{mockps.WithCursors(cursors), mockps.WithReplies(replies...)},
+		pullSync: []mockps.Option{mockps.WithCursors(cursors, 0), mockps.WithReplies(replies...)},
 		bins:     3,
 		rs:       resMock.NewReserve(resMock.WithRadius(1)),
 	})
@@ -51,7 +53,6 @@ func TestOneSync(t *testing.T) {
 
 	waitCursorsCalled(t, pullsync, addr)
 	waitSyncCalledBins(t, pullsync, addr, 1, 2)
-	waitSync(t, pullsync, addr)
 }
 
 func TestSyncOutsideDepth(t *testing.T) {
@@ -74,7 +75,7 @@ func TestSyncOutsideDepth(t *testing.T) {
 				kadMock.AddrTuple{Addr: addr2, PO: 0},
 			),
 		},
-		pullSync: []mockps.Option{mockps.WithCursors(cursors), mockps.WithReplies(replies...)},
+		pullSync: []mockps.Option{mockps.WithCursors(cursors, 0), mockps.WithReplies(replies...)},
 		bins:     4,
 		rs:       resMock.NewReserve(resMock.WithRadius(2)),
 	})
@@ -91,7 +92,6 @@ func TestSyncOutsideDepth(t *testing.T) {
 
 func TestSyncIntervals(t *testing.T) {
 	t.Parallel()
-	t.Skip("skip until we have a better way to test this")
 
 	addr := swarm.RandAddress(t)
 
@@ -186,7 +186,7 @@ func TestSyncIntervals(t *testing.T) {
 						kadMock.AddrTuple{Addr: addr, PO: 1},
 					),
 				},
-				pullSync: []mockps.Option{mockps.WithCursors(tc.cursors), mockps.WithReplies(tc.replies...)},
+				pullSync: []mockps.Option{mockps.WithCursors(tc.cursors, 0), mockps.WithReplies(tc.replies...)},
 				bins:     2,
 				rs:       resMock.NewReserve(resMock.WithRadius(1)),
 			})
@@ -213,7 +213,7 @@ func TestPeerDisconnected(t *testing.T) {
 				kadMock.AddrTuple{Addr: addr, PO: 1},
 			),
 		},
-		pullSync: []mockps.Option{mockps.WithCursors(cursors)},
+		pullSync: []mockps.Option{mockps.WithCursors(cursors, 0)},
 		bins:     5,
 		rs:       resMock.NewReserve(resMock.WithRadius(2)),
 	})
@@ -232,6 +232,62 @@ func TestPeerDisconnected(t *testing.T) {
 	}
 }
 
+func TestEpochReset(t *testing.T) {
+	t.Parallel()
+
+	cursors := []uint64{0, 50}
+
+	beforeEpoch := 900
+	afterEpoch := 1000
+
+	addr := swarm.RandAddress(t)
+	s := mock.NewStateStore()
+
+	replies := []mockps.SyncReply{
+		{Bin: 1, Start: 1, Topmost: 50, Peer: addr},
+		{Bin: 1, Start: 1, Topmost: 50, Peer: addr},
+	}
+
+	peer := kadMock.AddrTuple{Addr: addr, PO: 1}
+
+	p, kad, pullsync := newPullerWithState(t, s, opts{
+		kad:      []kadMock.Option{kadMock.WithEachPeerRevCalls(peer)},
+		pullSync: []mockps.Option{mockps.WithCursors(cursors, uint64(beforeEpoch)), mockps.WithReplies(replies...)},
+		bins:     2,
+		rs:       resMock.NewReserve(resMock.WithRadius(1)),
+	})
+
+	time.Sleep(100 * time.Millisecond)
+	kad.Trigger()
+	waitSync(t, pullsync, addr)
+	if !p.IsSyncing(addr) {
+		t.Fatalf("peer is not syncing but should")
+	}
+	kad.ResetPeers()
+	kad.Trigger()
+	time.Sleep(100 * time.Millisecond)
+	if p.IsSyncing(addr) {
+		t.Fatalf("peer is syncing but shouldnt")
+	}
+
+	beforeCalls := pullsync.SyncCalls(addr)
+
+	pullsync.SetEpoch(uint64(afterEpoch))
+	pullsync.ResetCalls(addr)
+
+	kad.AddRevPeers(peer)
+	kad.Trigger()
+	waitSync(t, pullsync, addr)
+
+	afterCalls := pullsync.SyncCalls(addr)
+
+	// after resetting the epoch, the peer will resync all intervals again.
+	// Hence why the sync calls from before and now should be the same.
+	if diff := cmp.Diff(beforeCalls, afterCalls); diff != "" {
+		t.Fatalf("invalid calls (+want -have):\n%s", diff)
+	}
+}
+
 func TestBinReset(t *testing.T) {
 	t.Parallel()
 
@@ -246,7 +302,7 @@ func TestBinReset(t *testing.T) {
 				kadMock.AddrTuple{Addr: addr, PO: 1},
 			),
 		},
-		pullSync: []mockps.Option{mockps.WithCursors(cursors), mockps.WithReplies(mockps.SyncReply{Bin: 1, Start: 1, Topmost: 1, Peer: addr})},
+		pullSync: []mockps.Option{mockps.WithCursors(cursors, 0), mockps.WithReplies(mockps.SyncReply{Bin: 1, Start: 1, Topmost: 1, Peer: addr})},
 		bins:     3,
 		rs:       resMock.NewReserve(resMock.WithRadius(2)),
 	})
@@ -292,7 +348,7 @@ func TestRadiusDecrease(t *testing.T) {
 				kadMock.AddrTuple{Addr: addr, PO: 2},
 			),
 		},
-		pullSync: []mockps.Option{mockps.WithCursors(cursors), mockps.WithReplies(replies...)},
+		pullSync: []mockps.Option{mockps.WithCursors(cursors, 0), mockps.WithReplies(replies...)},
 		bins:     4,
 		rs:       rs,
 	})
@@ -331,7 +387,7 @@ func TestRadiusIncrease(t *testing.T) {
 				kadMock.AddrTuple{Addr: addr, PO: 1},
 			),
 		},
-		pullSync: []mockps.Option{mockps.WithCursors(cursors), mockps.WithReplies(replies...)},
+		pullSync: []mockps.Option{mockps.WithCursors(cursors, 0), mockps.WithReplies(replies...)},
 		bins:     4,
 		rs:       rs,
 	})
@@ -366,7 +422,7 @@ func TestContinueSyncing(t *testing.T) {
 			kadMock.WithEachPeerRevCalls(kadMock.AddrTuple{Addr: addr, PO: 0}),
 		},
 		pullSync: []mockps.Option{
-			mockps.WithCursors([]uint64{1}),
+			mockps.WithCursors([]uint64{1}, 0),
 			mockps.WithSyncError(errors.New("sync error")),
 			mockps.WithReplies(
 				mockps.SyncReply{Start: 1, Topmost: 2, Peer: addr},
@@ -405,7 +461,7 @@ func TestPeerGone(t *testing.T) {
 			kadMock.WithEachPeerRevCalls(kadMock.AddrTuple{Addr: addr, PO: 1}),
 		},
 		pullSync: []mockps.Option{
-			mockps.WithCursors([]uint64{1, 1}),
+			mockps.WithCursors([]uint64{1, 1}, 0),
 			mockps.WithReplies(replies...),
 		},
 		bins: 2,
@@ -535,10 +591,28 @@ func newPuller(t *testing.T, ops opts) (*puller.Puller, storage.StateStorer, *ka
 	o := puller.Options{
 		Bins: ops.bins,
 	}
-	p := puller.New(s, kad, ops.rs, ps, nil, logger, o, 0)
-	p.Start()
+	p := puller.New(s, kad, ops.rs, ps, nil, logger, o)
+	p.Start(context.Background())
 
 	testutil.CleanupCloser(t, p)
 
 	return p, s, kad, ps
+}
+
+func newPullerWithState(t *testing.T, s storage.StateStorer, ops opts) (*puller.Puller, *kadMock.Mock, *mockps.PullSyncMock) {
+	t.Helper()
+
+	ps := mockps.NewPullSync(ops.pullSync...)
+	kad := kadMock.NewMockKademlia(ops.kad...)
+	logger := log.Noop
+
+	o := puller.Options{
+		Bins: ops.bins,
+	}
+	p := puller.New(s, kad, ops.rs, ps, nil, logger, o)
+	p.Start(context.Background())
+
+	testutil.CleanupCloser(t, p)
+
+	return p, kad, ps
 }

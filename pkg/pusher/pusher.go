@@ -105,9 +105,16 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 	defer close(s.chunksWorkerQuitC)
 	select {
 	case <-time.After(warmupTime):
-		s.logger.Info("pusher: warmup period complete, worker starting.")
 	case <-s.quit:
 		return
+	}
+
+	// fetch the network radius before starting pusher worker
+	r, err := s.radius()
+	if err != nil {
+		s.logger.Error(err, "pusher: initial radius error")
+	} else {
+		s.logger.Info("pusher: warmup period complete", "radius", r)
 	}
 
 	var (
@@ -122,7 +129,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 
 	// inflight.set handles the backpressure for the maximum amount of inflight chunks
 	// and duplicate handling.
-	chunks, unsubscribe := s.storer.SubscribePush(ctx)
+	chunks, unsubscribe := s.storer.SubscribePush(cctx)
 	defer func() {
 		unsubscribe()
 		cancel()
@@ -141,6 +148,15 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 		)
 
 		defer func() {
+			// no peer was found which may mean that the node is suffering from connections issues
+			// we must slow down the pusher to prevent constant retries
+			if errors.Is(err, topology.ErrNotFound) {
+				select {
+				case <-time.After(time.Second * 5):
+				case <-s.quit:
+				}
+			}
+
 			wg.Done()
 			<-sem
 			if doRepeat {
@@ -365,7 +381,7 @@ func (s *Service) checkReceipt(receipt *pushsync.Receipt, loggerV1 log.Logger) e
 	if po < d && s.attempts.try(addr) {
 		s.metrics.ShallowReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
 		s.metrics.ShallowReceipt.Inc()
-		return fmt.Errorf("pusher: shallow receipt depth %d, want at least %d: %w", po, d, ErrShallowReceipt)
+		return fmt.Errorf("pusher: shallow receipt depth %d, want at least %d, chunk_address %s: %w", po, d, addr, ErrShallowReceipt)
 	}
 	loggerV1.Debug("chunk pushed", "chunk_address", addr, "peer_address", peer, "proximity_order", po)
 	s.metrics.ReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()

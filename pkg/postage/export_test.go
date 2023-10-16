@@ -11,6 +11,7 @@ import (
 var (
 	IndexToBytes   = indexToBytes
 	BlockThreshold = blockThreshold
+	ToBucket       = toBucket
 )
 
 var (
@@ -47,4 +48,8 @@ func NewStampItem() *StampItem {
 
 func ModifyBuckets(st *StampIssuer, buckets []uint32) {
 	st.data.Buckets = buckets
+}
+
+func (si *StampIssuer) Increment(addr swarm.Address) ([]byte, []byte, error) {
+	return si.increment(addr)
 }

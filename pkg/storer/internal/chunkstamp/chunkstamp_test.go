@@ -201,8 +201,14 @@ func TestStoreLoadDelete(t *testing.T) {
 			})
 
 			t.Run("delete stored stamp", func(t *testing.T) {
-				if err := chunkstamp.Delete(ts.IndexStore(), ns, chunk.Address(), chunk.Stamp().BatchID()); err != nil {
-					t.Fatalf("Delete(...): unexpected error: %v", err)
+				if i%2 == 0 {
+					if err := chunkstamp.Delete(ts.IndexStore(), ns, chunk.Address(), chunk.Stamp().BatchID()); err != nil {
+						t.Fatalf("Delete(...): unexpected error: %v", err)
+					}
+				} else {
+					if err := chunkstamp.DeleteWithStamp(ts.IndexStore(), ns, chunk.Address(), chunk.Stamp()); err != nil {
+						t.Fatalf("DeleteWithStamp(...): unexpected error: %v", err)
+					}
 				}
 
 				have, err := chunkstamp.LoadWithBatchID(ts.IndexStore(), ns, chunk.Address(), chunk.Stamp().BatchID())

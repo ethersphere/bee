@@ -6,6 +6,7 @@ package storer
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	m "github.com/ethersphere/bee/pkg/metrics"
@@ -16,14 +17,22 @@ import (
 
 // metrics groups storer related prometheus counters.
 type metrics struct {
-	MethodCalls         prometheus.CounterVec
-	MethodCallsDuration prometheus.HistogramVec
-	ReserveSize         prometheus.Gauge
-	StorageRadius       prometheus.Gauge
-	CacheSize           prometheus.Gauge
-	EvictedChunkCount   prometheus.Counter
-	ExpiredChunkCount   prometheus.Counter
-	OverCapTriggerCount prometheus.Counter
+	MethodCalls             prometheus.CounterVec
+	MethodCallsDuration     prometheus.HistogramVec
+	ReserveSize             prometheus.Gauge
+	ReserveSizeWithinRadius prometheus.Gauge
+	ReserveCleanup          prometheus.Counter
+	StorageRadius           prometheus.Gauge
+	CacheSize               prometheus.Gauge
+	EvictedChunkCount       prometheus.Counter
+	ExpiredChunkCount       prometheus.Counter
+	OverCapTriggerCount     prometheus.Counter
+	ExpiredBatchCount       prometheus.Counter
+	LevelDBStats            prometheus.HistogramVec
+	ExpiryTriggersCount     prometheus.Counter
+	ExpiryRunsCount         prometheus.Counter
+
+	ReserveMissingBatch prometheus.Gauge
 }
 
 // newMetrics is a convenient constructor for creating new metrics.
@@ -55,6 +64,30 @@ func newMetrics() metrics {
 				Subsystem: subsystem,
 				Name:      "reserve_size",
 				Help:      "Number of chunks in reserve.",
+			},
+		),
+		ReserveMissingBatch: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "reserve_missing_batch",
+				Help:      "Number of chunks in reserve with missing batches.",
+			},
+		),
+		ReserveSizeWithinRadius: prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "reserve_size_within_radius",
+				Help:      "Number of chunks in reserve with proximity >= storage radius.",
+			},
+		),
+		ReserveCleanup: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "reserve_cleanup",
+				Help:      "Number of cleaned-up expired chunks.",
 			},
 		),
 		StorageRadius: prometheus.NewGauge(
@@ -97,6 +130,39 @@ func newMetrics() metrics {
 				Help:      "Number of times the reserve was over capacity and triggered an eviction.",
 			},
 		),
+		ExpiredBatchCount: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "expired_batch_count",
+				Help:      "Number of batches expired, that were processed.",
+			},
+		),
+		LevelDBStats: *prometheus.NewHistogramVec(
+			prometheus.HistogramOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "leveldb_stats",
+				Help:      "LevelDB statistics.",
+			},
+			[]string{"counter"},
+		),
+		ExpiryTriggersCount: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "expiry_trigger_count",
+				Help:      "Number of batches expiry triggers.",
+			},
+		),
+		ExpiryRunsCount: prometheus.NewCounter(
+			prometheus.CounterOpts{
+				Namespace: m.Namespace,
+				Subsystem: subsystem,
+				Name:      "expiry_run_count",
+				Help:      "Number of times the expiry worker was fired.",
+			},
+		),
 	}
 }
 
@@ -136,7 +202,7 @@ func (m getterWithMetrics) Get(ctx context.Context, address swarm.Address) (swar
 	dur := captureDuration(time.Now())
 	chunk, err := m.Getter.Get(ctx, address)
 	m.metrics.MethodCallsDuration.WithLabelValues(m.component, "Get").Observe(dur())
-	if err == nil {
+	if err == nil || errors.Is(err, storage.ErrNotFound) {
 		m.metrics.MethodCalls.WithLabelValues(m.component, "Get", "success").Inc()
 	} else {
 		m.metrics.MethodCalls.WithLabelValues(m.component, "Get", "failure").Inc()
@@ -146,5 +212,5 @@ func (m getterWithMetrics) Get(ctx context.Context, address swarm.Address) (swar
 
 // captureDuration returns a function that returns the duration since the given start.
 func captureDuration(start time.Time) func() float64 {
-	return func() float64 { return float64(time.Since(start).Nanoseconds()) }
+	return func() float64 { return time.Since(start).Seconds() }
 }

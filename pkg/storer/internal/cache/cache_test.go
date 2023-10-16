@@ -9,7 +9,10 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
+	"sync"
 	"testing"
+	"time"
 
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/storagetest"
@@ -19,76 +22,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
 )
-
-func TestCacheStateItem(t *testing.T) {
-	t.Parallel()
-
-	tests := []struct {
-		name string
-		test *storagetest.ItemMarshalAndUnmarshalTest
-	}{{
-		name: "zero values",
-		test: &storagetest.ItemMarshalAndUnmarshalTest{
-			Item:    &cache.CacheState{},
-			Factory: func() storage.Item { return new(cache.CacheState) },
-		},
-	}, {
-		name: "zero and non-zero 1",
-		test: &storagetest.ItemMarshalAndUnmarshalTest{
-			Item: &cache.CacheState{
-				Tail: swarm.NewAddress(storagetest.MaxAddressBytes[:]),
-			},
-			Factory: func() storage.Item { return new(cache.CacheState) },
-		},
-	}, {
-		name: "zero and non-zero 2",
-		test: &storagetest.ItemMarshalAndUnmarshalTest{
-			Item: &cache.CacheState{
-				Head: swarm.NewAddress(storagetest.MaxAddressBytes[:]),
-			},
-			Factory: func() storage.Item { return new(cache.CacheState) },
-		},
-	}, {
-		name: "max values",
-		test: &storagetest.ItemMarshalAndUnmarshalTest{
-			Item: &cache.CacheState{
-				Head:  swarm.NewAddress(storagetest.MaxAddressBytes[:]),
-				Tail:  swarm.NewAddress(storagetest.MaxAddressBytes[:]),
-				Count: math.MaxUint64,
-			},
-			Factory: func() storage.Item { return new(cache.CacheState) },
-		},
-	}, {
-		name: "invalid size",
-		test: &storagetest.ItemMarshalAndUnmarshalTest{
-			Item: &storagetest.ItemStub{
-				MarshalBuf:   []byte{0xFF},
-				UnmarshalBuf: []byte{0xFF},
-			},
-			Factory:      func() storage.Item { return new(cache.CacheState) },
-			UnmarshalErr: cache.ErrUnmarshalCacheStateInvalidSize,
-		},
-	}}
-
-	for _, tc := range tests {
-		tc := tc
-
-		t.Run(fmt.Sprintf("%s marshal/unmarshal", tc.name), func(t *testing.T) {
-			t.Parallel()
-
-			storagetest.TestItemMarshalAndUnmarshal(t, tc.test)
-		})
-
-		t.Run(fmt.Sprintf("%s clone", tc.name), func(t *testing.T) {
-			t.Parallel()
-
-			storagetest.TestItemClone(t, &storagetest.ItemCloneTest{
-				Item:    tc.test.Item,
-				CmpOpts: tc.test.CmpOpts,
-			})
-		})
-	}
-}
 
 func TestCacheEntryItem(t *testing.T) {
 	t.Parallel()
@@ -109,15 +42,15 @@ func TestCacheEntryItem(t *testing.T) {
 			Item: &cache.CacheEntry{
 				Address: swarm.NewAddress(storagetest.MaxAddressBytes[:]),
 			},
-			Factory: func() storage.Item { return new(cache.CacheEntry) },
+			Factory:    func() storage.Item { return new(cache.CacheEntry) },
+			MarshalErr: cache.ErrMarshalCacheEntryInvalidTimestamp,
 		},
 	}, {
 		name: "max values",
 		test: &storagetest.ItemMarshalAndUnmarshalTest{
 			Item: &cache.CacheEntry{
-				Address: swarm.NewAddress(storagetest.MaxAddressBytes[:]),
-				Prev:    swarm.NewAddress(storagetest.MaxAddressBytes[:]),
-				Next:    swarm.NewAddress(storagetest.MaxAddressBytes[:]),
+				Address:         swarm.NewAddress(storagetest.MaxAddressBytes[:]),
+				AccessTimestamp: math.MaxInt64,
 			},
 			Factory: func() storage.Item { return new(cache.CacheEntry) },
 		},
@@ -158,12 +91,12 @@ type testStorage struct {
 	putFn func(storage.Item) error
 }
 
-func (t *testStorage) IndexStore() storage.Store {
-	return &wrappedStore{Store: t.Storage.IndexStore(), putFn: t.putFn}
+func (t *testStorage) IndexStore() storage.BatchedStore {
+	return &wrappedStore{BatchedStore: t.Storage.IndexStore(), putFn: t.putFn}
 }
 
 type wrappedStore struct {
-	storage.Store
+	storage.BatchedStore
 	putFn func(storage.Item) error
 }
 
@@ -171,7 +104,27 @@ func (w *wrappedStore) Put(i storage.Item) error {
 	if w.putFn != nil {
 		return w.putFn(i)
 	}
-	return w.Store.Put(i)
+	return w.BatchedStore.Put(i)
+}
+
+func (w *wrappedStore) Batch(ctx context.Context) (storage.Batch, error) {
+	b, err := w.BatchedStore.Batch(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &wrappedBatch{Batch: b, putFn: w.putFn}, nil
+}
+
+type wrappedBatch struct {
+	storage.Batch
+	putFn func(storage.Item) error
+}
+
+func (w *wrappedBatch) Put(i storage.Item) error {
+	if w.putFn != nil {
+		return w.putFn(i)
+	}
+	return w.Batch.Put(i)
 }
 
 func newTestStorage(t *testing.T) *testStorage {
@@ -186,6 +139,33 @@ func newTestStorage(t *testing.T) *testStorage {
 	})
 
 	return &testStorage{Storage: storg}
+}
+
+type timeProvider struct {
+	t   int64
+	mtx sync.Mutex
+}
+
+func (t *timeProvider) Now() func() time.Time {
+	return func() time.Time {
+		t.mtx.Lock()
+		defer t.mtx.Unlock()
+		t.t++
+		return time.Unix(0, t.t)
+	}
+}
+
+func TestMain(m *testing.M) {
+	p := &timeProvider{t: time.Now().UnixNano()}
+	done := cache.ReplaceTimeNow(p.Now())
+	old := cache.CacheEvictionBatchSize
+	defer func() {
+		done()
+		cache.CacheEvictionBatchSize = old
+	}()
+	cache.CacheEvictionBatchSize = 1
+	code := m.Run()
+	os.Exit(code)
 }
 
 func TestCache(t *testing.T) {
@@ -343,7 +323,7 @@ func TestCache(t *testing.T) {
 				if !readChunk.Equal(extraChunk) {
 					t.Fatalf("incorrect chunk: %s", extraChunk.Address())
 				}
-				verifyCacheState(t, st.IndexStore(), c, state.Head, state.Tail, state.Count)
+				verifyCacheState(t, st.IndexStore(), c, state.Head, state.Tail, state.Size)
 			}
 		})
 	})
@@ -367,7 +347,7 @@ func TestCache(t *testing.T) {
 		// return error for state update, which occurs at the end of Get/Put operations
 		retErr := errors.New("dummy error")
 		st.putFn = func(i storage.Item) error {
-			if i.Namespace() == "cacheState" {
+			if i.Namespace() == "cacheOrderIndex" {
 				return retErr
 			}
 			return st.Storage.IndexStore().Put(i)
@@ -399,6 +379,120 @@ func TestCache(t *testing.T) {
 	})
 }
 
+func TestMoveFromReserve(t *testing.T) {
+	t.Parallel()
+
+	st := newTestStorage(t)
+	c, err := cache.New(context.Background(), st, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("move from reserve", func(t *testing.T) {
+		chunks := chunktest.GenerateTestRandomChunks(10)
+		chunksToMove := make([]swarm.Address, 0, 10)
+
+		// add the chunks to chunkstore. This simulates the reserve already populating
+		// the chunkstore with chunks.
+		for _, ch := range chunks {
+			err := st.ChunkStore().Put(context.Background(), ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+			chunksToMove = append(chunksToMove, ch.Address())
+		}
+
+		err = c.MoveFromReserve(context.Background(), st, chunksToMove...)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[9].Address(), 10)
+		verifyCacheOrder(t, c, st.IndexStore(), chunks...)
+
+		// move again, should be no-op
+		err = c.MoveFromReserve(context.Background(), st, chunksToMove...)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[9].Address(), 10)
+		verifyCacheOrder(t, c, st.IndexStore(), chunks...)
+	})
+
+	t.Run("move from reserve new chunks", func(t *testing.T) {
+		chunks := chunktest.GenerateTestRandomChunks(10)
+		chunksToMove := make([]swarm.Address, 0, 10)
+
+		// add the chunks to chunkstore. This simulates the reserve already populating
+		// the chunkstore with chunks.
+		for _, ch := range chunks {
+			err := st.ChunkStore().Put(context.Background(), ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+			chunksToMove = append(chunksToMove, ch.Address())
+		}
+
+		// move new chunks
+		err = c.MoveFromReserve(context.Background(), st, chunksToMove...)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[9].Address(), 10)
+		verifyCacheOrder(t, c, st.IndexStore(), chunks...)
+
+		chunks2 := chunktest.GenerateTestRandomChunks(5)
+		chunksToMove2 := make([]swarm.Address, 0, 5)
+
+		// add the chunks to chunkstore. This simulates the reserve already populating
+		// the chunkstore with chunks.
+		for _, ch := range chunks2 {
+			err := st.ChunkStore().Put(context.Background(), ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+			chunksToMove2 = append(chunksToMove2, ch.Address())
+		}
+
+		// move new chunks
+		err = c.MoveFromReserve(context.Background(), st, chunksToMove2...)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		cacheChunks := append(chunks[5:], chunks2...)
+
+		verifyCacheState(t, st.IndexStore(), c, cacheChunks[0].Address(), cacheChunks[9].Address(), 10)
+		verifyCacheOrder(t, c, st.IndexStore(), cacheChunks...)
+	})
+
+	t.Run("move from reserve over capacity", func(t *testing.T) {
+		chunks := chunktest.GenerateTestRandomChunks(15)
+		chunksToMove := make([]swarm.Address, 0, 15)
+
+		// add the chunks to chunkstore. This simulates the reserve already populating
+		// the chunkstore with chunks.
+		for _, ch := range chunks {
+			err := st.ChunkStore().Put(context.Background(), ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+			chunksToMove = append(chunksToMove, ch.Address())
+		}
+
+		// move new chunks
+		err = c.MoveFromReserve(context.Background(), st, chunksToMove...)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		verifyCacheState(t, st.IndexStore(), c, chunks[5].Address(), chunks[14].Address(), 10)
+		verifyCacheOrder(t, c, st.IndexStore(), chunks[5:15]...)
+	})
+}
+
 func verifyCacheState(
 	t *testing.T,
 	store storage.Store,
@@ -409,7 +503,7 @@ func verifyCacheState(
 	t.Helper()
 
 	state := c.State(store)
-	expState := cache.CacheState{Head: expStart, Tail: expEnd, Count: expCount}
+	expState := cache.CacheState{Head: expStart, Tail: expEnd, Size: expCount}
 
 	if diff := cmp.Diff(expState, state); diff != "" {
 		t.Fatalf("state mismatch (-want +have):\n%s", diff)
@@ -426,8 +520,8 @@ func verifyCacheOrder(
 
 	state := c.State(st)
 
-	if uint64(len(chs)) != state.Count {
-		t.Fatalf("unexpected count, exp: %d found: %d", state.Count, len(chs))
+	if uint64(len(chs)) != state.Size {
+		t.Fatalf("unexpected count, exp: %d found: %d", state.Size, len(chs))
 	}
 
 	idx := 0

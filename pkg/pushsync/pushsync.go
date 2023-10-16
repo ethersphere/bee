@@ -35,7 +35,7 @@ const loggerName = "pushsync"
 
 const (
 	protocolName    = "pushsync"
-	protocolVersion = "1.2.0"
+	protocolVersion = "1.3.0"
 	streamName      = "pushsync"
 )
 
@@ -43,7 +43,7 @@ const (
 	defaultTTL         = 30 * time.Second // request time to live
 	preemptiveInterval = 5 * time.Second  // P90 request time to live
 	sanctionWait       = 5 * time.Minute
-	overDraftRefresh   = time.Second
+	overDraftRefresh   = time.Millisecond * 600
 )
 
 const (
@@ -157,6 +157,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	now := time.Now()
 
 	w, r := protobuf.NewWriterAndReader(stream)
+	var attemptedWrite bool
 
 	ctx, cancel := context.WithTimeout(ctx, defaultTTL)
 	defer cancel()
@@ -165,6 +166,9 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		if err != nil {
 			ps.metrics.TotalHandlerTime.WithLabelValues("failure").Observe(time.Since(now).Seconds())
 			ps.metrics.TotalHandlerErrors.Inc()
+			if !attemptedWrite {
+				_ = w.WriteMsgWithContext(ctx, &pb.Receipt{Err: err.Error()})
+			}
 			_ = stream.Reset()
 		} else {
 			ps.metrics.TotalHandlerTime.WithLabelValues("success").Observe(time.Since(now).Seconds())
@@ -210,7 +214,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 
 		err = ps.store.ReservePutter().Put(ctx, chunkToPut)
 		if err != nil {
-			return fmt.Errorf("chunk store: %w", err)
+			return fmt.Errorf("reserve put: %w", err)
 		}
 
 		signature, err := ps.signer.Sign(chunkToPut.Address().Bytes())
@@ -225,6 +229,8 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		}
 		defer debit.Cleanup()
 
+		attemptedWrite = true
+
 		receipt := pb.Receipt{Address: chunkToPut.Address().Bytes(), Signature: signature, Nonce: ps.nonce}
 		if err := w.WriteMsgWithContext(ctx, &receipt); err != nil {
 			return fmt.Errorf("send receipt to peer %s: %w", p.Address.String(), err)
@@ -234,7 +240,6 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	}
 
 	if ps.topologyDriver.IsReachable() && ps.store.IsWithinStorageRadius(chunkAddress) {
-		ps.metrics.Storer.Inc()
 		return store(ctx)
 	}
 
@@ -255,6 +260,8 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 		return fmt.Errorf("prepare debit to peer %s before writeback: %w", p.Address.String(), err)
 	}
 	defer debit.Cleanup()
+
+	attemptedWrite = true
 
 	// pass back the receipt
 	if err := w.WriteMsgWithContext(ctx, receipt); err != nil {
@@ -333,8 +340,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			// If no peer can be found from an origin peer, the origin peer may store the chunk.
 			// Non-origin peers store the chunk if the chunk is within depth.
 			// For non-origin peers, if the chunk is not within depth, they may store the chunk if they are the closest peer to the chunk.
-			peer, err := ps.topologyDriver.ClosestPeer(ch.Address(), ps.fullNode && !origin, topology.Select{Reachable: true, Healthy: true}, ps.skipList.ChunkPeers(ch.Address())...)
-
+			peer, err := ps.closestPeer(ch.Address(), origin)
 			if errors.Is(err, topology.ErrNotFound) {
 				if ps.skipList.PruneExpiresAfter(ch.Address(), overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers
 					if inflight == 0 {
@@ -413,6 +419,23 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 	return nil, ErrNoPush
 }
 
+func (ps *PushSync) closestPeer(chunkAddress swarm.Address, origin bool) (swarm.Address, error) {
+
+	skipList := ps.skipList.ChunkPeers(chunkAddress)
+	includeSelf := ps.fullNode && !origin
+
+	peer, err := ps.topologyDriver.ClosestPeer(chunkAddress, includeSelf, topology.Select{Reachable: true, Healthy: true}, skipList...)
+	if errors.Is(err, topology.ErrNotFound) {
+		peer, err := ps.topologyDriver.ClosestPeer(chunkAddress, includeSelf, topology.Select{Reachable: true}, skipList...)
+		if errors.Is(err, topology.ErrNotFound) {
+			return ps.topologyDriver.ClosestPeer(chunkAddress, includeSelf, topology.Select{}, skipList...)
+		}
+		return peer, err
+	}
+
+	return peer, err
+}
+
 func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptResult, peer swarm.Address, ch swarm.Chunk, action accounting.Action) {
 
 	span := tracing.FromContext(parentCtx)
@@ -486,6 +509,9 @@ func (ps *PushSync) pushChunkToPeer(ctx context.Context, peer swarm.Address, ch 
 	var rec pb.Receipt
 	if err = r.ReadMsgWithContext(ctx, &rec); err != nil {
 		return nil, err
+	}
+	if rec.Err != "" {
+		return nil, p2p.NewChunkDeliveryError(rec.Err)
 	}
 
 	if !ch.Address().Equal(swarm.NewAddress(rec.Address)) {

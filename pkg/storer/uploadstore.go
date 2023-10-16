@@ -29,7 +29,7 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 		err           error
 	)
 
-	err = db.Do(ctx, func(txnRepo internal.Storage) error {
+	err = db.Execute(ctx, func(txnRepo internal.Storage) error {
 		uploadPutter, err = upload.NewPutter(txnRepo, tagID)
 		if err != nil {
 			return fmt.Errorf("upload.NewPutter: %w", err)
@@ -51,16 +51,25 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 	return &putterSession{
 		Putter: putterWithMetrics{
 			storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
-				return db.Do(ctx, func(txnRepo internal.Storage) error {
-					return errors.Join(
-						uploadPutter.Put(ctx, txnRepo, chunk),
+				return db.Execute(ctx, func(s internal.Storage) error {
+
+					b, err := s.IndexStore().Batch(ctx)
+					if err != nil {
+						return err
+					}
+					err = errors.Join(
+						uploadPutter.Put(ctx, s, b, chunk),
 						func() error {
 							if pinningPutter != nil {
-								return pinningPutter.Put(ctx, txnRepo, chunk)
+								return pinningPutter.Put(ctx, s, b, chunk)
 							}
 							return nil
 						}(),
 					)
+					if err != nil {
+						return err
+					}
+					return b.Commit()
 				})
 			}),
 			db.metrics,
@@ -69,16 +78,26 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 		done: func(address swarm.Address) error {
 			defer db.events.Trigger(subscribePushEventKey)
 
-			return db.Do(ctx, func(txnRepo internal.Storage) error {
-				return errors.Join(
-					uploadPutter.Close(txnRepo, address),
+			return db.Execute(ctx, func(s internal.Storage) error {
+
+				b, err := s.IndexStore().Batch(ctx)
+				if err != nil {
+					return err
+				}
+
+				err = errors.Join(
+					uploadPutter.Close(s, b, address),
 					func() error {
 						if pinningPutter != nil {
-							return pinningPutter.Close(txnRepo, address)
+							return pinningPutter.Close(s, b, address)
 						}
 						return nil
 					}(),
 				)
+				if err != nil {
+					return err
+				}
+				return b.Commit()
 			})
 		},
 		cleanup: func() error {

@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 3.2.3
+  version: 3.2.5
   title: Common Data Types
   description: |
     \*****bzzz*****
@@ -710,6 +710,8 @@ components:
           type: boolean
         isFullySynced:
           type: boolean
+        isHealthy:
+          type: boolean
         phase:
           type: string
         round:
@@ -980,10 +982,10 @@ components:
       name: swarm-deferred-upload
       schema:
         type: boolean
-        default: "true"
+        default: "false"
       required: false
       description: >
-        Determines if the uploaded data should be sent to the network immediately or in a deferred fashion. By default the upload will be deferred.
+        Determines if the uploaded data should be sent to the network immediately or in a deferred fashion. By default the upload will be direct.
 
   responses:
     "204":

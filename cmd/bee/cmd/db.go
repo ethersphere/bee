@@ -7,11 +7,13 @@ package cmd
 import (
 	"archive/tar"
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -24,6 +26,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const optionNameValidation = "validate"
+
 func (c *command) initDBCmd() {
 	cmd := &cobra.Command{
 		Use:   "db",
@@ -34,6 +38,7 @@ func (c *command) initDBCmd() {
 	dbImportCmd(cmd)
 	dbNukeCmd(cmd)
 	dbInfoCmd(cmd)
+	dbCompactCmd(cmd)
 
 	c.root.AddCommand(cmd)
 }
@@ -75,12 +80,14 @@ func dbInfoCmd(cmd *cobra.Command) {
 			}
 			defer db.Close()
 
+			logger.Info("getting db info", "path", dataDir)
+
 			info, err := db.DebugInfo(cmd.Context())
 			if err != nil {
 				return fmt.Errorf("fetching db info: %w", err)
 			}
 
-			logger.Info("reserve", "size", info.Reserve.Size, "capacity", info.Reserve.Capacity)
+			logger.Info("reserve", "size_within_radius", info.Reserve.SizeWithinRadius, "total_size", info.Reserve.TotalSize, "capacity", info.Reserve.Capacity)
 			logger.Info("cache", "size", info.Cache.Size, "capacity", info.Cache.Capacity)
 			logger.Info("chunk", "total", info.ChunkStore.TotalChunks, "shared", info.ChunkStore.SharedSlots)
 			logger.Info("pinning", "chunks", info.Pinning.TotalChunks, "collections", info.Pinning.TotalCollections)
@@ -92,6 +99,69 @@ func dbInfoCmd(cmd *cobra.Command) {
 	}
 	c.Flags().String(optionNameDataDir, "", "data directory")
 	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
+	cmd.AddCommand(c)
+}
+
+func dbCompactCmd(cmd *cobra.Command) {
+	c := &cobra.Command{
+		Use:   "compact",
+		Short: "Compacts the localstore sharky store.",
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			v, err := cmd.Flags().GetString(optionNameVerbosity)
+			if err != nil {
+				return fmt.Errorf("get verbosity: %w", err)
+			}
+			v = strings.ToLower(v)
+			logger, err := newLogger(cmd, v)
+			if err != nil {
+				return fmt.Errorf("new logger: %w", err)
+			}
+
+			d, err := cmd.Flags().GetDuration(optionNameSleepAfter)
+			if err != nil {
+				logger.Error(err, "getting sleep value failed")
+			}
+			defer func() { time.Sleep(d) }()
+
+			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
+			if err != nil {
+				return fmt.Errorf("get data-dir: %w", err)
+			}
+			if dataDir == "" {
+				return errors.New("no data-dir provided")
+			}
+
+			validation, err := cmd.Flags().GetBool(optionNameValidation)
+			if err != nil {
+				return fmt.Errorf("get validation: %w", err)
+			}
+
+			logger.Warning("Compaction is a destructive process. If the process is stopped for any reason, the localstore may become corrupted.")
+			logger.Warning("It is highly advised to perform the compaction on a copy of the localstore.")
+			logger.Warning("After compaction finishes, the data directory may be replaced with the compacted version.")
+			logger.Warning("you have another 10 seconds to change your mind and kill this process with CTRL-C...")
+			time.Sleep(10 * time.Second)
+			logger.Warning("proceeding with database compaction...")
+
+			localstorePath := path.Join(dataDir, "localstore")
+
+			err = storer.Compact(context.Background(), localstorePath, &storer.Options{
+				Logger:          logger,
+				RadiusSetter:    noopRadiusSetter{},
+				Batchstore:      new(postage.NoOpBatchStore),
+				ReserveCapacity: node.ReserveCapacity,
+			}, validation)
+			if err != nil {
+				return fmt.Errorf("localstore: %w", err)
+			}
+
+			return nil
+		},
+	}
+	c.Flags().String(optionNameDataDir, "", "data directory")
+	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
+	c.Flags().Bool(optionNameValidation, false, "run chunk validation checks before and after the compaction")
+	c.Flags().Duration(optionNameSleepAfter, time.Duration(0), "time to sleep after the operation finished")
 	cmd.AddCommand(c)
 }
 
@@ -570,7 +640,7 @@ func dbNukeCmd(cmd *cobra.Command) {
 				return fmt.Errorf("get forget stamps: %w", err)
 			}
 
-			stateStore, err := node.InitStateStore(logger, dataDir)
+			stateStore, _, err := node.InitStateStore(logger, dataDir, 1000)
 			if err != nil {
 				return fmt.Errorf("new statestore: %w", err)
 			}

@@ -182,7 +182,8 @@ func TestDBExportImportPinning(t *testing.T) {
 	}
 }
 
-func TestDBNuke(t *testing.T) {
+// TestDBNuke_FLAKY is flaky on windows.
+func TestDBNuke_FLAKY(t *testing.T) {
 	t.Parallel()
 
 	dataDir := t.TempDir()
@@ -206,8 +207,8 @@ func TestDBNuke(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Reserve.Size != nChunks {
-		t.Errorf("got reserve size before nuke: %d, want %d", info.Reserve.Size, nChunks)
+	if info.Reserve.TotalSize != nChunks {
+		t.Errorf("got reserve size before nuke: %d, want %d", info.Reserve.TotalSize, nChunks)
 	}
 
 	db.Close()
@@ -232,8 +233,8 @@ func TestDBNuke(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Reserve.Size != 0 {
-		t.Errorf("got reserve size after nuke: %d, want %d", info.Reserve.Size, 0)
+	if info.Reserve.TotalSize != 0 {
+		t.Errorf("got reserve size after nuke: %d, want %d", info.Reserve.TotalSize, 0)
 	}
 }
 
@@ -261,8 +262,8 @@ func TestDBInfo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Reserve.Size != nChunks {
-		t.Errorf("got reserve size before nuke: %d, want %d", info.Reserve.Size, nChunks)
+	if info.Reserve.TotalSize != nChunks {
+		t.Errorf("got reserve size before nuke: %d, want %d", info.Reserve.TotalSize, nChunks)
 	}
 
 	db1.Close()
@@ -273,7 +274,7 @@ func TestDBInfo(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !strings.Contains(buf.String(), fmt.Sprintf("\"msg\"=\"reserve\" \"size\"=%d \"capacity\"=%d", nChunks, node.ReserveCapacity)) {
+	if !strings.Contains(buf.String(), fmt.Sprintf("\"msg\"=\"reserve\" \"size_within_radius\"=%d \"total_size\"=%d \"capacity\"=%d", nChunks, nChunks, node.ReserveCapacity)) {
 		t.Fatal("reserve info not correct")
 	}
 }

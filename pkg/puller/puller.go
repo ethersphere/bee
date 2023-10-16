@@ -24,7 +24,6 @@ import (
 	"github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
-	"go.uber.org/atomic"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -35,12 +34,8 @@ var errCursorsLength = errors.New("cursors length mismatch")
 const (
 	DefaultHistRateWindow = time.Minute * 15
 
-	intervalPrefix           = "sync_interval"
-	recalcPeersDur           = time.Minute * 5
-	histSyncTimeout          = time.Minute * 10 // this timeout should always be higher than pullsync.makeOfferTimeout
-	histSyncTimeoutBlockList = time.Hour
-
-	maxHistSyncs = swarm.MaxBins * 3
+	intervalPrefix = "sync_interval"
+	recalcPeersDur = time.Minute * 5
 )
 
 type Options struct {
@@ -67,9 +62,7 @@ type Puller struct {
 
 	bins uint8 // how many bins do we support
 
-	histSync        *atomic.Uint64 // current number of gorourines doing historical syncing
-	histSyncLimiter chan struct{}  // historical syncing limiter
-	rate            *rate.Rate     // rate of historical syncing
+	rate *rate.Rate // rate of historical syncing
 
 	start sync.Once
 }
@@ -82,45 +75,36 @@ func New(
 	blockLister p2p.Blocklister,
 	logger log.Logger,
 	o Options,
-	warmupTime time.Duration,
 ) *Puller {
-	var (
-		bins uint8 = swarm.MaxBins
-	)
+	bins := swarm.MaxBins
 	if o.Bins != 0 {
 		bins = o.Bins
 	}
 	p := &Puller{
-		statestore:      stateStore,
-		topology:        topology,
-		radius:          reserveState,
-		syncer:          pullSync,
-		metrics:         newMetrics(),
-		logger:          logger.WithName(loggerName).Register(),
-		syncPeers:       make(map[string]*syncPeer),
-		bins:            bins,
-		histSync:        atomic.NewUint64(0),
-		blockLister:     blockLister,
-		histSyncLimiter: make(chan struct{}, maxHistSyncs),
-		rate:            rate.New(DefaultHistRateWindow),
-		cancel:          func() { /* Noop, since the context is initialized in the Start(). */ },
+		statestore:  stateStore,
+		topology:    topology,
+		radius:      reserveState,
+		syncer:      pullSync,
+		metrics:     newMetrics(),
+		logger:      logger.WithName(loggerName).Register(),
+		syncPeers:   make(map[string]*syncPeer),
+		bins:        bins,
+		blockLister: blockLister,
+		rate:        rate.New(DefaultHistRateWindow),
+		cancel:      func() { /* Noop, since the context is initialized in the Start(). */ },
 	}
 
 	return p
 }
 
-func (p *Puller) Start() {
+func (p *Puller) Start(ctx context.Context) {
 	p.start.Do(func() {
-		ctx, cancel := context.WithCancel(context.Background())
+		cctx, cancel := context.WithCancel(ctx)
 		p.cancel = cancel
 
 		p.wg.Add(1)
-		go p.manage(ctx)
+		go p.manage(cctx)
 	})
-}
-
-func (p *Puller) ActiveHistoricalSyncing() uint64 {
-	return p.histSync.Load()
 }
 
 func (p *Puller) SyncRate() float64 {
@@ -133,7 +117,7 @@ func (p *Puller) manage(ctx context.Context) {
 	c, unsubscribe := p.topology.SubscribeTopologyChange()
 	defer unsubscribe()
 
-	p.logger.Info("puller: warmup period complete, worker starting.")
+	p.logger.Info("warmup period complete, starting worker")
 
 	var prevRadius uint8
 
@@ -155,7 +139,7 @@ func (p *Puller) manage(ctx context.Context) {
 		if newRadius < prevRadius {
 			err := p.resetIntervals(prevRadius)
 			if err != nil {
-				p.logger.Error(err, "reset lower sync radius")
+				p.logger.Debug("reset lower sync radius failed", "error", err)
 			}
 		}
 		prevRadius = newRadius
@@ -196,10 +180,11 @@ func (p *Puller) manage(ctx context.Context) {
 func (p *Puller) disconnectPeer(addr swarm.Address) {
 	loggerV2 := p.logger.V(2).Register()
 
-	loggerV2.Debug("puller disconnect cleanup peer", "peer_address", addr)
+	loggerV2.Debug("disconnecting peer", "peer_address", addr)
 	if peer, ok := p.syncPeers[addr.ByteString()]; ok {
+		peer.mtx.Lock()
 		peer.gone()
-
+		peer.mtx.Unlock()
 	}
 	delete(p.syncPeers, addr.ByteString())
 }
@@ -207,25 +192,47 @@ func (p *Puller) disconnectPeer(addr swarm.Address) {
 // recalcPeers starts or stops syncing process for peers per bin depending on the current sync radius.
 // Must be called under lock.
 func (p *Puller) recalcPeers(ctx context.Context, storageRadius uint8) {
-	loggerV2 := p.logger.V(2).Register()
+	var errs error
 	for _, peer := range p.syncPeers {
-		peer.Lock()
-		err := p.syncPeer(ctx, peer, storageRadius)
-		if err != nil {
-			loggerV2.Debug("recalc peers sync failed", "bin", storageRadius, "peer", peer.address, "error", err)
-		}
-		peer.Unlock()
+		peer.mtx.Lock()
+		errs = errors.Join(p.syncPeer(ctx, peer, storageRadius))
+		peer.mtx.Unlock()
+	}
+	if errs != nil {
+		p.logger.Debug("recalculation failed", "error", errs)
 	}
 }
 
 // Must be called under syncPeer lock.
 func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, storageRadius uint8) error {
+
 	if peer.cursors == nil {
-		cursors, err := p.syncer.GetCursors(ctx, peer.address)
+		cursors, epoch, err := p.syncer.GetCursors(ctx, peer.address)
 		if err != nil {
 			return fmt.Errorf("could not get cursors from peer %s: %w", peer.address, err)
 		}
 		peer.cursors = cursors
+
+		storedEpoch, err := p.getPeerEpoch(peer.address)
+		if err != nil {
+			return fmt.Errorf("retrieve epoch for peer %s: %w", peer.address, err)
+		}
+
+		if storedEpoch != epoch {
+			// cancel all bins
+			peer.gone()
+
+			p.logger.Debug("peer epoch change detected, resetting past synced intervals", "stored_epoch", storedEpoch, "new_epoch", epoch, "peer_address", peer.address)
+
+			err = p.resetPeerIntervals(peer.address)
+			if err != nil {
+				return fmt.Errorf("reset intervals for peer %s: %w", peer.address, err)
+			}
+			err = p.setPeerEpoch(peer.address, epoch)
+			if err != nil {
+				return fmt.Errorf("set epoch for peer %s: %w", peer.address, err)
+			}
+		}
 	}
 
 	if len(peer.cursors) != int(p.bins) {
@@ -272,140 +279,74 @@ func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, storageRadius uin
 func (p *Puller) syncPeerBin(ctx context.Context, peer *syncPeer, bin uint8, cur uint64) {
 	binCtx, cancel := context.WithCancel(ctx)
 	peer.setBinCancel(cancel, bin)
-	if cur > 0 {
-		p.wg.Add(1)
-		p.histSync.Inc()
-		go p.histSyncWorker(binCtx, peer.address, bin, cur)
-	}
-	// start live
+	peer.wg.Add(1)
 	p.wg.Add(1)
-	go p.liveSyncWorker(binCtx, peer.address, bin, cur)
+	go p.syncWorker(binCtx, peer.address, bin, cur, peer.wg.Done)
 }
 
-func (p *Puller) histSyncWorker(ctx context.Context, peer swarm.Address, bin uint8, cur uint64) {
+func (p *Puller) syncWorker(ctx context.Context, peer swarm.Address, bin uint8, cur uint64, done func()) {
 	loggerV2 := p.logger.V(2).Register()
 
+	p.metrics.SyncWorkerCounter.Inc()
 	defer p.wg.Done()
-	defer p.metrics.HistWorkerDoneCounter.Inc()
-	defer p.histSync.Dec()
+	defer p.metrics.SyncWorkerDoneCounter.Inc()
+	defer done()
 
-	loopStart := time.Now()
-	loggerV2.Debug("histSyncWorker starting", "peer_address", peer, "bin", bin, "cursor", cur)
-
-	sync := func() bool {
-		s, _, _, err := p.nextPeerInterval(peer, bin)
-		if err != nil {
-			p.metrics.HistWorkerErrCounter.Inc()
-			p.logger.Error(err, "histSyncWorker nextPeerInterval failed, quitting...")
-			return true
-		}
-		if s > cur {
-			p.logger.Debug("histSyncWorker syncing finished", "bin", bin, "cursor", cur, "total_duration", time.Since(loopStart), "peer_address", peer)
-			return true
-		}
-
-		syncStart := time.Now()
-		ctx, cancel := context.WithTimeout(ctx, histSyncTimeout)
-		top, count, err := p.syncer.Sync(ctx, peer, bin, s)
-		cancel()
-
-		p.rate.Add(count)
-
-		if top >= s {
-			if err := p.addPeerInterval(peer, bin, s, top); err != nil {
-				p.metrics.HistWorkerErrCounter.Inc()
-				p.logger.Error(err, "histSyncWorker could not persist interval for peer", "peer_address", peer)
-				return false
-			}
-			loggerV2.Debug("histSyncWorker pulled", "bin", bin, "start", s, "topmost", top, "duration", time.Since(syncStart), "peer_address", peer)
-		}
-
-		if err != nil {
-			p.metrics.HistWorkerErrCounter.Inc()
-			p.logger.Debug("histSyncWorker interval failed", "peer_address", peer, "bin", bin, "cursor", cur, "start", s, "topmost", top, "err", err)
-			// DeadlineExceeded err could come from any other context timeouts
-			// so we explicitly check for duration of the sync time
-			if errors.Is(err, context.DeadlineExceeded) && time.Since(syncStart) >= histSyncTimeout {
-				p.logger.Debug("histSyncWorker interval timeout, exiting", "total_duration", time.Since(loopStart), "peer_address", peer, "error", err)
-				_ = p.blockLister.Blocklist(peer, histSyncTimeoutBlockList, "sync interval timeout")
-				p.metrics.HistSyncTimeout.Inc()
-				return true
-			}
-			if errors.Is(err, p2p.ErrPeerNotFound) {
-				return true
-			}
-		}
-
-		return false
-	}
+	loggerV2.Debug("syncWorker starting", "peer_address", peer, "bin", bin, "cursor", cur)
 
 	for {
-		p.metrics.HistWorkerIterCounter.Inc()
 
 		select {
 		case <-ctx.Done():
-			loggerV2.Debug("histSyncWorker context cancelled", "peer_address", peer, "bin", bin, "cursor", cur)
-			return
-		case p.histSyncLimiter <- struct{}{}:
-		}
-
-		stop := sync()
-
-		<-p.histSyncLimiter
-
-		if stop {
-			return
-		}
-	}
-}
-
-func (p *Puller) liveSyncWorker(ctx context.Context, peer swarm.Address, bin uint8, cur uint64) {
-	loggerV2 := p.logger.V(2).Register()
-
-	defer p.wg.Done()
-	loggerV2.Debug("liveSyncWorker starting", "peer_address", peer, "bin", bin, "cursor", cur)
-	from := cur + 1
-
-	for {
-		p.metrics.LiveWorkerIterCounter.Inc()
-
-		select {
-		case <-ctx.Done():
-			loggerV2.Debug("liveSyncWorker context cancelled", "peer_address", peer, "bin", bin, "cursor", cur)
+			loggerV2.Debug("syncWorker context cancelled", "peer_address", peer, "bin", bin)
 			return
 		default:
 		}
 
-		top, _, err := p.syncer.Sync(ctx, peer, bin, from)
+		p.metrics.SyncWorkerIterCounter.Inc()
 
-		if top == math.MaxUint64 {
-			p.metrics.MaxUintErrCounter.Inc()
-			p.logger.Error(nil, "liveSyncWorker max uint64 encountered, quitting", "peer_address", peer, "bin", bin, "from", from, "topmost", top)
+		s, _, _, err := p.nextPeerInterval(peer, bin)
+		if err != nil {
+			p.metrics.SyncWorkerErrCounter.Inc()
+			p.logger.Error(err, "syncWorker nextPeerInterval failed, quitting")
 			return
 		}
 
-		if top >= from {
-			if err := p.addPeerInterval(peer, bin, from, top); err != nil {
-				p.metrics.LiveWorkerErrCounter.Inc()
-				p.logger.Error(err, "liveSyncWorker exit on add peer interval", "peer_address", peer, "bin", bin, "from", from, "error", err)
-				continue
+		syncStart := time.Now()
+		top, count, err := p.syncer.Sync(ctx, peer, bin, s)
+
+		if top == math.MaxUint64 {
+			p.metrics.MaxUintErrCounter.Inc()
+			p.logger.Error(nil, "syncWorker max uint64 encountered, quitting", "peer_address", peer, "bin", bin, "from", s, "topmost", top)
+			return
+		}
+
+		if top <= cur {
+			p.rate.Add(count)
+		}
+
+		if top >= s {
+			if err := p.addPeerInterval(peer, bin, s, top); err != nil {
+				p.metrics.SyncWorkerErrCounter.Inc()
+				p.logger.Error(err, "syncWorker could not persist interval for peer, quitting", "peer_address", peer)
+				return
 			}
-			loggerV2.Debug("liveSyncWorker pulled bin", "bin", bin, "from", from, "topmost", top, "peer_address", peer)
-			from = top + 1
+			loggerV2.Debug("syncWorker pulled", "bin", bin, "start", s, "topmost", top, "duration", time.Since(syncStart), "peer_address", peer)
 		}
 
 		if err != nil {
-			p.metrics.LiveWorkerErrCounter.Inc()
-			p.logger.Debug("liveSyncWorker sync error", "peer_address", peer, "bin", bin, "from", from, "topmost", top, "err", err)
+			p.metrics.SyncWorkerErrCounter.Inc()
 			if errors.Is(err, p2p.ErrPeerNotFound) {
+				p.logger.Debug("syncWorker interval failed, quitting", "error", err, "peer_address", peer, "bin", bin, "cursor", cur, "start", s, "topmost", top)
 				return
 			}
+			p.logger.Debug("syncWorker interval failed", "error", err, "peer_address", peer, "bin", bin, "cursor", cur, "start", s, "topmost", top)
 		}
 	}
 }
 
 func (p *Puller) Close() error {
-	p.logger.Info("puller shutting down")
+	p.logger.Info("shutting down")
 	p.cancel()
 	cc := make(chan struct{})
 	go func() {
@@ -415,7 +356,7 @@ func (p *Puller) Close() error {
 	select {
 	case <-cc:
 	case <-time.After(10 * time.Second):
-		p.logger.Warning("puller shutting down with running goroutines")
+		p.logger.Warning("shut down timeout, some goroutines may still be running")
 	}
 
 	return nil
@@ -434,6 +375,40 @@ func (p *Puller) addPeerInterval(peer swarm.Address, bin uint8, start, end uint6
 	i.Add(start, end)
 
 	return p.statestore.Put(peerStreamKey, i)
+}
+
+func (p *Puller) getPeerEpoch(peer swarm.Address) (uint64, error) {
+	p.intervalMtx.Lock()
+	defer p.intervalMtx.Unlock()
+
+	var epoch uint64
+	err := p.statestore.Get(peerEpochKey(peer), &epoch)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return 0, nil
+		}
+		return 0, err
+	}
+
+	return epoch, nil
+}
+
+func (p *Puller) setPeerEpoch(peer swarm.Address, epoch uint64) error {
+	p.intervalMtx.Lock()
+	defer p.intervalMtx.Unlock()
+
+	return p.statestore.Put(peerEpochKey(peer), epoch)
+}
+
+func (p *Puller) resetPeerIntervals(peer swarm.Address) (err error) {
+	p.intervalMtx.Lock()
+	defer p.intervalMtx.Unlock()
+
+	for bin := uint8(0); bin < p.bins; bin++ {
+		err = errors.Join(err, p.statestore.Delete(peerIntervalKey(peer, bin)))
+	}
+
+	return
 }
 
 func (p *Puller) resetIntervals(upto uint8) (err error) {
@@ -468,20 +443,23 @@ func (p *Puller) nextPeerInterval(peer swarm.Address, bin uint8) (start, end uin
 func (p *Puller) getOrCreateInterval(peer swarm.Address, bin uint8) (*intervalstore.Intervals, error) {
 	// check that an interval entry exists
 	key := peerIntervalKey(peer, bin)
-	i := &intervalstore.Intervals{}
-	err := p.statestore.Get(key, i)
-	if err != nil {
+	itv := &intervalstore.Intervals{}
+	if err := p.statestore.Get(key, itv); err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			// key interval values are ALWAYS > 0
-			i = intervalstore.NewIntervals(1)
-			if err := p.statestore.Put(key, i); err != nil {
+			itv = intervalstore.NewIntervals(1)
+			if err := p.statestore.Put(key, itv); err != nil {
 				return nil, err
 			}
 		} else {
-			return nil, fmt.Errorf("get peer interval: %w", err)
+			return nil, err
 		}
 	}
-	return i, nil
+	return itv, nil
+}
+
+func peerEpochKey(peer swarm.Address) string {
+	return fmt.Sprintf("%s_epoch_%s", intervalPrefix, peer.ByteString())
 }
 
 func peerIntervalKey(peer swarm.Address, bin uint8) string {
@@ -498,7 +476,8 @@ type syncPeer struct {
 	po             uint8
 	cursors        []uint64
 
-	sync.Mutex
+	mtx sync.Mutex
+	wg  sync.WaitGroup
 }
 
 func newSyncPeer(addr swarm.Address, bins, po uint8) *syncPeer {
@@ -511,12 +490,10 @@ func newSyncPeer(addr swarm.Address, bins, po uint8) *syncPeer {
 
 // called when peer disconnects or on shutdown, cleans up ongoing sync operations
 func (p *syncPeer) gone() {
-	p.Lock()
-	defer p.Unlock()
-
-	for _, f := range p.binCancelFuncs {
-		f()
+	for _, c := range p.binCancelFuncs {
+		c()
 	}
+	p.wg.Wait()
 }
 
 func (p *syncPeer) setBinCancel(cf func(), bin uint8) {

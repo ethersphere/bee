@@ -11,11 +11,11 @@ import (
 	"math/big"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
 	pstoremock "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/storage/inmemstore"
-	"github.com/google/go-cmp/cmp"
 )
 
 // TestSaveLoad tests the idempotence of saving and loading the postage.Service
@@ -25,7 +25,10 @@ func TestSaveLoad(t *testing.T) {
 	defer store.Close()
 	pstore := pstoremock.New()
 	saved := func(id int64) postage.Service {
-		ps := postage.NewService(store, pstore, id)
+		ps, err := postage.NewService(log.Noop, store, pstore, id)
+		if err != nil {
+			t.Fatal(err)
+		}
 		for i := 0; i < 16; i++ {
 			err := ps.Add(newTestStampIssuer(t, 1000))
 			if err != nil {
@@ -38,25 +41,23 @@ func TestSaveLoad(t *testing.T) {
 		return ps
 	}
 	loaded := func(id int64) postage.Service {
-		return postage.NewService(store, pstore, id)
+		ps, err := postage.NewService(log.Noop, store, pstore, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return ps
 	}
 	test := func(id int64) {
 		psS := saved(id)
 		psL := loaded(id)
 
 		sMap := map[string]struct{}{}
-		stampIssuers, err := psS.StampIssuers()
-		if err != nil {
-			t.Fatal(err)
-		}
+		stampIssuers := psS.StampIssuers()
 		for _, s := range stampIssuers {
 			sMap[string(s.ID())] = struct{}{}
 		}
 
-		stampIssuers, err = psL.StampIssuers()
-		if err != nil {
-			t.Fatal(err)
-		}
+		stampIssuers = psL.StampIssuers()
 		for _, s := range stampIssuers {
 			if _, ok := sMap[string(s.ID())]; !ok {
 				t.Fatalf("mismatch between saved and loaded")
@@ -77,7 +78,10 @@ func TestGetStampIssuer(t *testing.T) {
 	}
 	validBlockNumber := testChainState.Block - uint64(postage.BlockThreshold+1)
 	pstore := pstoremock.New(pstoremock.WithChainState(testChainState))
-	ps := postage.NewService(store, pstore, chainID)
+	ps, err := postage.NewService(log.Noop, store, pstore, chainID)
+	if err != nil {
+		t.Fatal(err)
+	}
 	ids := make([][]byte, 8)
 	for i := range ids {
 		id := make([]byte, 32)
@@ -113,7 +117,7 @@ func TestGetStampIssuer(t *testing.T) {
 			if err != nil {
 				t.Fatalf("expected no error, got %v", err)
 			}
-			_ = save(true)
+			_ = save()
 			if st.Label() != string(id) {
 				t.Fatalf("wrong issuer returned")
 			}
@@ -160,13 +164,13 @@ func TestGetStampIssuer(t *testing.T) {
 		if st.Label() != "recovered" {
 			t.Fatal("wrong issuer returned")
 		}
-		err = sv(true)
+		err = sv()
 		if err != nil {
 			t.Fatal(err)
 		}
 	})
 	t.Run("topup", func(t *testing.T) {
-		err := ps.HandleTopUp(ids[1], big.NewInt(10))
+		ps.HandleTopUp(ids[1], big.NewInt(10))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -174,13 +178,13 @@ func TestGetStampIssuer(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		_ = save(true)
+		_ = save()
 		if stampIssuer.Amount().Cmp(big.NewInt(13)) != 0 {
 			t.Fatalf("expected amount %d got %d", 13, stampIssuer.Amount().Int64())
 		}
 	})
 	t.Run("dilute", func(t *testing.T) {
-		err := ps.HandleDepthIncrease(ids[2], 17)
+		ps.HandleDepthIncrease(ids[2], 17)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -188,57 +192,12 @@ func TestGetStampIssuer(t *testing.T) {
 		if err != nil {
 			t.Fatalf("expected no error, got %v", err)
 		}
-		_ = save(true)
+		_ = save()
 		if stampIssuer.Amount().Cmp(big.NewInt(3)) != 0 {
 			t.Fatalf("expected amount %d got %d", 3, stampIssuer.Amount().Int64())
 		}
 		if stampIssuer.Depth() != 17 {
 			t.Fatalf("expected depth %d got %d", 17, stampIssuer.Depth())
 		}
-	})
-	t.Run("in use", func(t *testing.T) {
-		_, save1, err := ps.GetStampIssuer(ids[1])
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, save2, err := ps.GetStampIssuer(ids[2])
-		if err != nil {
-			t.Fatal(err)
-		}
-		_ = save2(true)
-
-		_, _, err = ps.GetStampIssuer(ids[1])
-		if !errors.Is(err, postage.ErrBatchInUse) {
-			t.Fatalf("expected ErrBatchInUse, got %v", err)
-		}
-		_ = save1(true)
-	})
-	t.Run("save without update", func(t *testing.T) {
-		is, save, err := ps.GetStampIssuer(ids[1])
-		if err != nil {
-			t.Fatal(err)
-		}
-		data := is.Buckets()
-		modified := make([]uint32, len(data))
-		copy(modified, data)
-		for k, b := range modified {
-			b++
-			modified[k] = b
-		}
-
-		err = save(false)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		is, _, err = ps.GetStampIssuer(ids[1])
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if !cmp.Equal(is.Buckets(), data) {
-			t.Fatal("expected buckets to be unchanged")
-		}
-
 	})
 }

@@ -17,6 +17,10 @@ var (
 	EpochMigration  = epochMigration
 )
 
+type (
+	ReservePutter = reservePutter
+)
+
 func (db *DB) Reserve() *reserve.Reserve {
 	return db.reserve
 }
@@ -39,16 +43,16 @@ type wrappedRepo struct {
 	putHook    func(storage.Item) error
 }
 
-func (w *wrappedRepo) IndexStore() storage.Store {
+func (w *wrappedRepo) IndexStore() storage.BatchedStore {
 	return &wrappedStore{
-		Store:      w.Repository.IndexStore(),
-		deleteHook: w.deleteHook,
-		putHook:    w.putHook,
+		BatchedStore: w.Repository.IndexStore(),
+		deleteHook:   w.deleteHook,
+		putHook:      w.putHook,
 	}
 }
 
 type wrappedStore struct {
-	storage.Store
+	storage.BatchedStore
 	deleteHook func(storage.Item) error
 	putHook    func(storage.Item) error
 }
@@ -60,7 +64,7 @@ func (w *wrappedStore) Put(item storage.Item) error {
 			return err
 		}
 	}
-	return w.Store.Put(item)
+	return w.BatchedStore.Put(item)
 }
 
 func (w *wrappedStore) Delete(item storage.Item) error {
@@ -70,7 +74,45 @@ func (w *wrappedStore) Delete(item storage.Item) error {
 			return err
 		}
 	}
-	return w.Store.Delete(item)
+	return w.BatchedStore.Delete(item)
+}
+
+func (w *wrappedStore) Batch(ctx context.Context) (storage.Batch, error) {
+	batch, err := w.BatchedStore.Batch(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &wrappedBatch{
+		Batch:      batch,
+		deleteHook: w.deleteHook,
+		putHook:    w.putHook,
+	}, nil
+}
+
+type wrappedBatch struct {
+	storage.Batch
+	deleteHook func(storage.Item) error
+	putHook    func(storage.Item) error
+}
+
+func (w *wrappedBatch) Put(item storage.Item) error {
+	if w.putHook != nil {
+		err := w.putHook(item)
+		if err != nil {
+			return err
+		}
+	}
+	return w.Batch.Put(item)
+}
+
+func (w *wrappedBatch) Delete(item storage.Item) error {
+	if w.deleteHook != nil {
+		err := w.deleteHook(item)
+		if err != nil {
+			return err
+		}
+	}
+	return w.Batch.Delete(item)
 }
 
 func (w *wrappedRepo) NewTx(ctx context.Context) (storage.Repository, func() error, func() error) {
@@ -100,11 +142,11 @@ func (db *DB) SetRepoStorePutHook(fn func(storage.Item) error) {
 
 func (db *DB) WaitForBgCacheWorkers() (unblock func()) {
 	for i := 0; i < defaultBgCacheWorkers; i++ {
-		db.bgCacheLimiter <- struct{}{}
+		db.cacheLimiter.sem <- struct{}{}
 	}
 	return func() {
 		for i := 0; i < defaultBgCacheWorkers; i++ {
-			<-db.bgCacheLimiter
+			<-db.cacheLimiter.sem
 		}
 	}
 }

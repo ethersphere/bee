@@ -15,7 +15,8 @@ import (
 
 var (
 	// ErrBucketFull is the error when a collision bucket is full.
-	ErrBucketFull = errors.New("bucket full")
+	ErrBucketFull              = errors.New("bucket full")
+	ErrOverwriteImmutableIndex = errors.New("immutable batch old index overwrite due to previous faulty save")
 )
 
 // Stamper can issue stamps from the given address of chunk.
@@ -44,6 +45,16 @@ func (st *stamper) Stamp(addr swarm.Address) (*Stamp, error) {
 		chunkAddress: addr,
 	}
 	switch err := st.store.Get(item); {
+	case err == nil:
+		// The index should be in the past. It could happen that we encountered
+		// some error after assigning this index and did not save the issuer data. In
+		// this case we should assign a new index and update it.
+		if st.issuer.assigned(item.BatchIndex) {
+			break
+		} else if st.issuer.ImmutableFlag() {
+			return nil, ErrOverwriteImmutableIndex
+		}
+		fallthrough
 	case errors.Is(err, storage.ErrNotFound):
 		item.BatchIndex, item.BatchTimestamp, err = st.issuer.increment(addr)
 		if err != nil {
@@ -52,7 +63,7 @@ func (st *stamper) Stamp(addr swarm.Address) (*Stamp, error) {
 		if err := st.store.Put(item); err != nil {
 			return nil, err
 		}
-	case err != nil:
+	default:
 		return nil, fmt.Errorf("get stamp for %s: %w", item, err)
 	}
 

@@ -8,7 +8,6 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -47,16 +46,23 @@ func (epochKey) Clone() storage.Item { return epochKey{} }
 
 func (epochKey) String() string { return "localstore-epoch" }
 
+var (
+	_ internal.Storage  = (*putOpStorage)(nil)
+	_ chunkstore.Sharky = (*putOpStorage)(nil)
+)
+
 // putOpStorage implements the internal.Storage interface which is used by
 // the internal component stores to store chunks. It also implements the sharky interface
 // which uses the recovery mechanism to recover chunks without moving them.
 type putOpStorage struct {
-	store    storage.Store
+	chunkstore.Sharky
+
+	store    storage.BatchedStore
 	location sharky.Location
 	recovery sharkyRecover
 }
 
-func (p *putOpStorage) IndexStore() storage.Store { return p.store }
+func (p *putOpStorage) IndexStore() storage.BatchedStore { return p.store }
 
 func (p *putOpStorage) ChunkStore() storage.ChunkStore {
 	return chunkstore.New(p.store, p)
@@ -67,20 +73,6 @@ func (p *putOpStorage) ChunkStore() storage.ChunkStore {
 // one passed in. This is present in the old localstore indexes.
 func (p *putOpStorage) Write(_ context.Context, _ []byte) (sharky.Location, error) {
 	return p.location, p.recovery.Add(p.location)
-}
-
-// Read implements the sharky.Store interface. It is not implemented because during
-// the migration we do not need to read any chunks.
-func (p *putOpStorage) Read(ctx context.Context, l sharky.Location, buf []byte) error {
-	return errors.New("not implemented")
-}
-
-// Release implements the sharky.Store interface. It is not implemented because
-// during the migration we do not need to release any chunks. The only time this could
-// be called is if there are postage stamp index collisions. So if this happens we
-// have a bug in the current localstore logic as it should not allow collisions.
-func (p *putOpStorage) Release(_ context.Context, loc sharky.Location) error {
-	return errors.New("not implemented")
 }
 
 type reservePutter interface {
@@ -106,12 +98,11 @@ func epochMigration(
 	ctx context.Context,
 	path string,
 	stateStore storage.StateStorer,
-	store storage.Store,
+	store storage.BatchedStore,
 	reserve reservePutter,
 	recovery sharkyRecover,
 	logger log.Logger,
 ) error {
-
 	has, err := store.Has(epochKey{})
 	if err != nil {
 		return fmt.Errorf("has epoch key: %w", err)
@@ -270,7 +261,7 @@ func initShedIndexes(dbshed *shed.DB, baseAddress swarm.Address) (pullIndex shed
 // dependencies of the migration logic.
 type epochMigrator struct {
 	stateStore         storage.StateStorer
-	store              storage.Store
+	store              storage.BatchedStore
 	recovery           sharkyRecover
 	reserve            reservePutter
 	pullIndex          shed.Index
@@ -376,6 +367,8 @@ func (e *epochMigrator) migratePinning(ctx context.Context) error {
 		store:    e.store,
 		recovery: e.recovery,
 	}
+	var mu sync.Mutex // used to protect pStorage.location
+
 	traverser := traversal.New(
 		storage.GetterFunc(func(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, err error) {
 			i := shed.Item{
@@ -421,7 +414,6 @@ func (e *epochMigrator) migratePinning(ctx context.Context) error {
 					if err != nil {
 						return err
 					}
-					var mu sync.Mutex
 
 					traverserFn := func(chAddr swarm.Address) error {
 						item, err := e.retrievalDataIndex.Get(shed.Item{Address: chAddr.Bytes()})
@@ -437,7 +429,7 @@ func (e *epochMigrator) migratePinning(ctx context.Context) error {
 
 						mu.Lock()
 						pStorage.location = l
-						err = pinningPutter.Put(egCtx, pStorage, ch)
+						err = pinningPutter.Put(egCtx, pStorage, pStorage.IndexStore(), ch)
 						if err != nil {
 							mu.Unlock()
 							return err
@@ -452,7 +444,7 @@ func (e *epochMigrator) migratePinning(ctx context.Context) error {
 							return err
 						}
 
-						if err := pinningPutter.Close(pStorage, addr); err != nil {
+						if err := pinningPutter.Close(pStorage, pStorage.IndexStore(), addr); err != nil {
 							return err
 						}
 						return nil

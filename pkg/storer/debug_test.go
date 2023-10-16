@@ -15,13 +15,22 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-func testDebugInfo(t *testing.T, newStorer func() (*storer.DB, error)) {
+func emptyBinIDs() []uint64 {
+	return make([]uint64, swarm.MaxBins)
+}
+
+func testDebugInfo(t *testing.T, newStorer func() (*storer.DB, swarm.Address, error)) {
 	t.Helper()
 
 	t.Run("upload and pin", func(t *testing.T) {
 		t.Parallel()
 
-		lstore, err := newStorer()
+		lstore, _, err := newStorer()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, epoch, err := lstore.ReserveLastBinIDs()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -71,7 +80,9 @@ func testDebugInfo(t *testing.T, newStorer func() (*storer.DB, error)) {
 				Capacity: 1000000,
 			},
 			Reserve: storer.ReserveStat{
-				Capacity: 100,
+				Capacity:   100,
+				LastBinIDs: emptyBinIDs(),
+				Epoch:      epoch,
 			},
 		}
 
@@ -83,7 +94,12 @@ func testDebugInfo(t *testing.T, newStorer func() (*storer.DB, error)) {
 	t.Run("cache", func(t *testing.T) {
 		t.Parallel()
 
-		lstore, err := newStorer()
+		lstore, _, err := newStorer()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, epoch, err := lstore.ReserveLastBinIDs()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -110,7 +126,9 @@ func testDebugInfo(t *testing.T, newStorer func() (*storer.DB, error)) {
 				Capacity: 1000000,
 			},
 			Reserve: storer.ReserveStat{
-				Capacity: 100,
+				Capacity:   100,
+				LastBinIDs: emptyBinIDs(),
+				Epoch:      epoch,
 			},
 		}
 
@@ -122,16 +140,21 @@ func testDebugInfo(t *testing.T, newStorer func() (*storer.DB, error)) {
 	t.Run("reserve", func(t *testing.T) {
 		t.Parallel()
 
-		lstore, err := newStorer()
+		lstore, addr, err := newStorer()
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, epoch, err := lstore.ReserveLastBinIDs()
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		putter := lstore.ReservePutter()
 
-		chunks := chunktest.GenerateTestRandomChunks(10)
-		for _, ch := range chunks {
-			err := putter.Put(context.Background(), ch)
+		for i := 0; i < 10; i++ {
+			chunk := chunktest.GenerateTestRandomChunkAt(t, addr, 0)
+			err := putter.Put(context.Background(), chunk)
 			if err != nil {
 				t.Fatalf("session.Put(...): unexpected error: %v", err)
 			}
@@ -142,6 +165,9 @@ func testDebugInfo(t *testing.T, newStorer func() (*storer.DB, error)) {
 			t.Fatalf("DebugInfo(...): unexpected error: %v", err)
 		}
 
+		ids := emptyBinIDs()
+		ids[0] = 10
+
 		wantInfo := storer.Info{
 			ChunkStore: storer.ChunkStoreStat{
 				TotalChunks: 10,
@@ -150,8 +176,11 @@ func testDebugInfo(t *testing.T, newStorer func() (*storer.DB, error)) {
 				Capacity: 1000000,
 			},
 			Reserve: storer.ReserveStat{
-				Size:     10,
-				Capacity: 100,
+				SizeWithinRadius: 10,
+				TotalSize:        10,
+				Capacity:         100,
+				LastBinIDs:       ids,
+				Epoch:            epoch,
 			},
 		}
 
@@ -168,13 +197,19 @@ func TestDebugInfo(t *testing.T) {
 	t.Run("inmem", func(t *testing.T) {
 		t.Parallel()
 
-		testDebugInfo(t, func() (*storer.DB, error) {
-			return storer.New(context.Background(), "", dbTestOps(swarm.RandAddress(t), 100, nil, nil, time.Second))
+		testDebugInfo(t, func() (*storer.DB, swarm.Address, error) {
+			addr := swarm.RandAddress(t)
+			store, err := storer.New(context.Background(), "", dbTestOps(addr, 100, nil, nil, time.Second))
+			return store, addr, err
 		})
 	})
 	t.Run("disk", func(t *testing.T) {
 		t.Parallel()
 
-		testDebugInfo(t, diskStorer(t, dbTestOps(swarm.RandAddress(t), 100, nil, nil, time.Second)))
+		testDebugInfo(t, func() (*storer.DB, swarm.Address, error) {
+			addr := swarm.RandAddress(t)
+			store, err := diskStorer(t, dbTestOps(addr, 100, nil, nil, time.Second))()
+			return store, addr, err
+		})
 	})
 }

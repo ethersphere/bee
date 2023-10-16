@@ -14,21 +14,32 @@ import (
 func allSteps() migration.Steps {
 	return map[uint64]migration.StepFn{
 		1: epochMigration,
-		2: clearBlocklist,
-		3: clearBlocklist,
+		2: deletePrefix("sync_interval"),
+		3: deletePrefix("sync_interval"),
+		4: deletePrefix("blocklist"),
 	}
 }
 
-var deleteEntries = []string{
-	"statestore_schema",
-	"tags",
-	"sync_interval",
-	"kademlia-counters",
-	"addressbook",
-	"batch",
+func deletePrefix(prefix string) migration.StepFn {
+	return func(s storage.BatchedStore) error {
+		store := &StateStorerAdapter{s}
+		return store.Iterate(prefix, func(key, val []byte) (stop bool, err error) {
+			return false, store.Delete(string(key))
+		})
+	}
 }
 
-func epochMigration(s storage.Store) error {
+func epochMigration(s storage.BatchedStore) error {
+
+	var deleteEntries = []string{
+		"statestore_schema",
+		"tags",
+		"sync_interval",
+		"kademlia-counters",
+		"addressbook",
+		"batch",
+	}
+
 	return s.Iterate(storage.Query{
 		Factory: func() storage.Item { return &rawItem{&proxyItem{obj: []byte(nil)}} },
 	}, func(res storage.Result) (stop bool, err error) {
@@ -50,12 +61,5 @@ func epochMigration(s storage.Store) error {
 		}
 		_ = s.Delete(&rawItem{&proxyItem{key: res.ID}})
 		return false, nil
-	})
-}
-
-func clearBlocklist(s storage.Store) error {
-	st := &StateStorerAdapter{storage: s}
-	return st.Iterate("blocklist-", func(key, _ []byte) (stop bool, err error) {
-		return false, st.Delete(string(key))
 	})
 }

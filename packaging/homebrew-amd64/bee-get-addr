@@ -1,18 +1,8 @@
 #!/bin/sh
 
-RESP=$(/usr/local/bin/bee init --config /usr/local/etc/swarm-bee/bee.yaml 2>&1)
-case "$RESP" in
-    Error*)
+ETH_ADDRESS=$(/opt/homebrew/bin/bee init --config /opt/homebrew/etc/swarm-bee/bee.yaml 2>&1 | grep ethereum | cut -d'=' -f6 | tr -d '"')
         echo "
-Enabled clef-signer but clef is not running.
-Check https://docs.ethswarm.org/docs/ for more info.
-After you fix configuration run 'bee-get-addr' again.
-        "
-        ;;
-    *)
-        ETH_ADDRESS=$(echo "$RESP" | grep ethereum | cut -d' ' -f6 | tr -d '"')
-        echo "
-Please make sure there is XDAI and, if required, XBZZ available on the following Ethereum address on Gnosis Chain: 0x$ETH_ADDRESS.
+Please make sure there is XDAI and, if required, XBZZ available on the following Ethereum address on Gnosis Chain: $ETH_ADDRESS
 
 Learn how to fund your node by visiting our docs at https://docs.ethswarm.org/docs/installation/fund-your-node
 
@@ -20,5 +10,3 @@ Once your node's wallet has received the funds start service with 'brew services
 
 See the docs for more information at https://docs.ethswarm.org/docs/.
         "
-        ;;
-esac

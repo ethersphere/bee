@@ -283,6 +283,23 @@ func le(a, b swarm.Address) bool {
 	return bytes.Compare(a.Bytes(), b.Bytes()) == -1
 }
 
+func (db *DB) batchesBelowValue(until *big.Int) (map[string]struct{}, error) {
+	res := make(map[string]struct{})
+
+	if until == nil {
+		return res, nil
+	}
+
+	err := db.batchstore.Iterate(func(b *postage.Batch) (bool, error) {
+		if b.Value.Cmp(until) < 0 {
+			res[string(b.ID)] = struct{}{}
+		}
+		return false, nil
+	})
+
+	return res, err
+}
+
 func transformedAddress(hasher *bmt.Hasher, chunk swarm.Chunk, chType swarm.ChunkType) (swarm.Address, error) {
 	switch chType {
 	case swarm.ChunkTypeContentAddressed:

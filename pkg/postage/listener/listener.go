@@ -20,7 +20,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/batchservice"
 	"github.com/ethersphere/bee/pkg/transaction"
-	"github.com/ethersphere/bee/pkg/util"
+	"github.com/ethersphere/bee/pkg/util/syncutil"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -59,7 +59,7 @@ type listener struct {
 	metrics                     metrics
 	stallingTimeout             time.Duration
 	backoffTime                 time.Duration
-	syncingStopped              *util.Signaler
+	syncingStopped              *syncutil.Signaler
 
 	// Cached postage stamp contract event topics.
 	batchCreatedTopic       common.Hash
@@ -69,7 +69,7 @@ type listener struct {
 }
 
 func New(
-	syncingStopped *util.Signaler,
+	syncingStopped *syncutil.Signaler,
 	logger log.Logger,
 	ev BlockHeightContractFilterer,
 	postageStampContractAddress common.Address,
@@ -268,7 +268,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 				// if we paged then it means there's more things to sync on
 			case <-time.After(expectedWaitTime):
 			case <-ctx.Done():
-				return context.Canceled
+				return ctx.Err()
 			}
 			start := time.Now()
 
@@ -334,8 +334,8 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 		err := listenf()
 		if err != nil {
 			if errors.Is(err, context.Canceled) {
-				// context cancelled is returned on shutdown,
-				// therefore we do nothing here
+				// Context cancelled is returned on shutdown, therefore we do nothing here.
+				l.logger.Debug("shutting down event listener")
 				return
 			}
 			l.logger.Error(err, "failed syncing event listener; shutting down node error")

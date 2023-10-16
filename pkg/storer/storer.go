@@ -15,6 +15,7 @@ import (
 	"path"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/log"
@@ -23,7 +24,7 @@ import (
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/retrieval"
 	"github.com/ethersphere/bee/pkg/sharky"
-	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/leveldbstore"
 	"github.com/ethersphere/bee/pkg/storage/migration"
 	"github.com/ethersphere/bee/pkg/storer/internal"
@@ -36,8 +37,11 @@ import (
 	localmigration "github.com/ethersphere/bee/pkg/storer/migration"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
+	"github.com/ethersphere/bee/pkg/util/syncutil"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/afero"
+	"github.com/syndtr/goleveldb/leveldb"
+	"github.com/syndtr/goleveldb/leveldb/filter"
 	"github.com/syndtr/goleveldb/leveldb/opt"
 	"resenje.org/multex"
 )
@@ -152,7 +156,7 @@ type ReserveStore interface {
 	ReserveHas(addr swarm.Address, batchID []byte) (bool, error)
 	ReservePutter() storage.Putter
 	SubscribeBin(ctx context.Context, bin uint8, start uint64) (<-chan *BinC, func(), <-chan error)
-	ReserveLastBinIDs() ([]uint64, error)
+	ReserveLastBinIDs() ([]uint64, uint64, error)
 	RadiusChecker
 }
 
@@ -207,7 +211,7 @@ func closer(closers ...io.Closer) io.Closer {
 	})
 }
 
-func initInmemRepository() (storage.Repository, io.Closer, error) {
+func initInmemRepository(locker storage.ChunkLocker) (storage.Repository, io.Closer, error) {
 	store, err := leveldbstore.New("", nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed creating inmem levelDB index store: %w", err)
@@ -223,9 +227,9 @@ func initInmemRepository() (storage.Repository, io.Closer, error) {
 	}
 
 	txStore := leveldbstore.NewTxStore(store)
-	txChunkStore := chunkstore.NewTxChunkStore(store, sharky)
+	txChunkStore := chunkstore.NewTxChunkStore(txStore, sharky)
 
-	return storage.NewRepository(txStore, txChunkStore), closer(store, sharky), nil
+	return storage.NewRepository(txStore, txChunkStore, locker), closer(store, sharky), nil
 }
 
 // loggerName is the tree path name of the logger for this package.
@@ -244,7 +248,7 @@ const (
 	sharkyPath = "sharky"
 )
 
-func initStore(basePath string, opts *Options) (storage.Store, error) {
+func initStore(basePath string, opts *Options) (*leveldbstore.Store, error) {
 	ldbBasePath := path.Join(basePath, indexPath)
 
 	if _, err := os.Stat(ldbBasePath); os.IsNotExist(err) {
@@ -258,6 +262,8 @@ func initStore(basePath string, opts *Options) (storage.Store, error) {
 		BlockCacheCapacity:     int(opts.LdbBlockCacheCapacity),
 		WriteBuffer:            int(opts.LdbWriteBufferSize),
 		DisableSeeksCompaction: opts.LdbDisableSeeksCompaction,
+		CompactionL0Trigger:    8,
+		Filter:                 filter.NewBloomFilter(64),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed creating levelDB index store: %w", err)
@@ -266,10 +272,64 @@ func initStore(basePath string, opts *Options) (storage.Store, error) {
 	return store, nil
 }
 
-func initDiskRepository(ctx context.Context, basePath string, opts *Options) (storage.Repository, io.Closer, error) {
+func initDiskRepository(
+	ctx context.Context,
+	basePath string,
+	locker storage.ChunkLocker,
+	opts *Options,
+) (storage.Repository, io.Closer, error) {
 	store, err := initStore(basePath, opts)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed creating levelDB index store: %w", err)
+	}
+
+	err = migration.Migrate(store, "core-migration", localmigration.BeforeIinitSteps())
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed core migration: %w", err)
+	}
+
+	if opts.LdbStats.Load() != nil {
+		go func() {
+			ldbStats := opts.LdbStats.Load()
+			logger := log.NewLogger(loggerName).Register()
+			ticker := time.NewTicker(15 * time.Second)
+			defer ticker.Stop()
+
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-ticker.C:
+					stats := new(leveldb.DBStats)
+					switch err := store.DB().Stats(stats); {
+					case errors.Is(err, leveldb.ErrClosed):
+						return
+					case err != nil:
+						logger.Error(err, "snapshot levelDB stats")
+					default:
+						ldbStats.WithLabelValues("write_delay_count").Observe(float64(stats.WriteDelayCount))
+						ldbStats.WithLabelValues("write_delay_duration").Observe(stats.WriteDelayDuration.Seconds())
+						ldbStats.WithLabelValues("alive_snapshots").Observe(float64(stats.AliveSnapshots))
+						ldbStats.WithLabelValues("alive_iterators").Observe(float64(stats.AliveIterators))
+						ldbStats.WithLabelValues("io_write").Observe(float64(stats.IOWrite))
+						ldbStats.WithLabelValues("io_read").Observe(float64(stats.IORead))
+						ldbStats.WithLabelValues("block_cache_size").Observe(float64(stats.BlockCacheSize))
+						ldbStats.WithLabelValues("opened_tables_count").Observe(float64(stats.OpenedTablesCount))
+						ldbStats.WithLabelValues("mem_comp").Observe(float64(stats.MemComp))
+						ldbStats.WithLabelValues("level_0_comp").Observe(float64(stats.Level0Comp))
+						ldbStats.WithLabelValues("non_level_0_comp").Observe(float64(stats.NonLevel0Comp))
+						ldbStats.WithLabelValues("seek_comp").Observe(float64(stats.SeekComp))
+						for i := 0; i < len(stats.LevelSizes); i++ {
+							ldbStats.WithLabelValues(fmt.Sprintf("level_%d_size", i)).Observe(float64(stats.LevelSizes[i]))
+							ldbStats.WithLabelValues(fmt.Sprintf("level_%d_tables_count", i)).Observe(float64(stats.LevelTablesCounts[i]))
+							ldbStats.WithLabelValues(fmt.Sprintf("level_%d_read", i)).Observe(float64(stats.LevelRead[i]))
+							ldbStats.WithLabelValues(fmt.Sprintf("level_%d_write", i)).Observe(float64(stats.LevelWrite[i]))
+							ldbStats.WithLabelValues(fmt.Sprintf("level_%d_duration", i)).Observe(stats.LevelDurations[i].Seconds())
+						}
+					}
+				}
+			}
+		}()
 	}
 
 	sharkyBasePath := path.Join(basePath, sharkyPath)
@@ -296,9 +356,16 @@ func initDiskRepository(ctx context.Context, basePath string, opts *Options) (st
 	}
 
 	txStore := leveldbstore.NewTxStore(store)
-	txChunkStore := chunkstore.NewTxChunkStore(store, sharky)
+	if err := txStore.Recover(); err != nil {
+		return nil, nil, fmt.Errorf("failed to recover index store: %w", err)
+	}
 
-	return storage.NewRepository(txStore, txChunkStore), closer(store, sharky, recoveryCloser), nil
+	txChunkStore := chunkstore.NewTxChunkStore(txStore, sharky)
+	if err := txChunkStore.Recover(); err != nil {
+		return nil, nil, fmt.Errorf("failed to recover chunk store: %w", err)
+	}
+
+	return storage.NewRepository(txStore, txChunkStore, locker), closer(store, sharky, recoveryCloser), nil
 }
 
 func initCache(ctx context.Context, capacity uint64, repo storage.Repository) (*cache.Cache, error) {
@@ -338,9 +405,19 @@ func performEpochMigration(ctx context.Context, basePath string, opts *Options) 
 
 	logger := opts.Logger.WithName("epochmigration").Register()
 
-	var rs *reserve.Reserve
+	var rs reservePutter
+
 	if opts.ReserveCapacity > 0 {
-		rs, err = reserve.New(opts.Address, store, opts.ReserveCapacity, noopRadiusSetter{}, logger)
+		rs, err = reserve.New(
+			opts.Address,
+			store,
+			opts.ReserveCapacity,
+			noopRadiusSetter{},
+			logger,
+			func(_ context.Context, _ internal.Storage, _ ...swarm.Address) error {
+				return nil
+			},
+		)
 		if err != nil {
 			return err
 		}
@@ -355,15 +432,12 @@ func performEpochMigration(ctx context.Context, basePath string, opts *Options) 
 	return epochMigration(ctx, basePath, opts.StateStore, store, rs, sharkyRecover, logger)
 }
 
-const (
-	lockKeyNewSession string = "new_session"
-	lockKeySetSyncer  string = "set_syncer"
-)
+const lockKeyNewSession string = "new_session"
 
 // Options provides a container to configure different things in the storer.
 type Options struct {
-	// These are options related to levelDB. Currently the underlying storage used
-	// is levelDB.
+	// These are options related to levelDB. Currently, the underlying storage used is levelDB.
+	LdbStats                  atomic.Pointer[prometheus.HistogramVec]
 	LdbOpenFilesLimit         uint64
 	LdbBlockCacheCapacity     uint64
 	LdbWriteBufferSize        uint64
@@ -395,6 +469,15 @@ func defaultOptions() *Options {
 	}
 }
 
+// cacheLimiter is used to limit the number
+// of concurrent cache background workers.
+type cacheLimiter struct {
+	wg     sync.WaitGroup
+	sem    chan struct{}
+	ctx    context.Context
+	cancel context.CancelFunc
+}
+
 // DB implements all the component stores described above.
 type DB struct {
 	logger  log.Logger
@@ -406,15 +489,14 @@ type DB struct {
 	retrieval           retrieval.Interface
 	pusherFeed          chan *pusher.Op
 	quit                chan struct{}
-	bgCacheLimiter      chan struct{}
-	bgCacheLimiterWg    sync.WaitGroup
+	cacheLimiter        cacheLimiter
 	dbCloser            io.Closer
 	subscriptionsWG     sync.WaitGroup
 	events              *events.Subscriber
 	directUploadLimiter chan struct{}
 
 	reserve          *reserve.Reserve
-	reserveWg        sync.WaitGroup
+	inFlight         sync.WaitGroup
 	reserveBinEvents *events.Subscriber
 	baseAddr         swarm.Address
 	batchstore       postage.Storer
@@ -441,23 +523,50 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		opts = defaultOptions()
 	}
 
+	if opts.Logger == nil {
+		opts.Logger = log.Noop
+	}
+
+	lock := multex.New()
+	metrics := newMetrics()
+	opts.LdbStats.CompareAndSwap(nil, &metrics.LevelDBStats)
+
+	locker := func(addr swarm.Address) func() {
+		lock.Lock(addr.ByteString())
+		return func() {
+			lock.Unlock(addr.ByteString())
+		}
+	}
+
 	if dirPath == "" {
-		repo, dbCloser, err = initInmemRepository()
+		repo, dbCloser, err = initInmemRepository(locker)
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		err = performEpochMigration(ctx, dirPath, opts)
-		if err != nil {
-			return nil, err
+		// only perform migration if not done already
+		if _, err := os.Stat(path.Join(dirPath, indexPath)); err != nil {
+			err = performEpochMigration(ctx, dirPath, opts)
+			if err != nil {
+				return nil, err
+			}
 		}
-		repo, dbCloser, err = initDiskRepository(ctx, dirPath, opts)
+
+		repo, dbCloser, err = initDiskRepository(ctx, dirPath, locker, opts)
 		if err != nil {
 			return nil, err
 		}
 	}
 
-	err = migration.Migrate(repo.IndexStore(), localmigration.AllSteps())
+	sharkyBasePath := ""
+	if dirPath != "" {
+		sharkyBasePath = path.Join(dirPath, sharkyPath)
+	}
+	err = migration.Migrate(
+		repo.IndexStore(),
+		"migration",
+		localmigration.AfterInitSteps(sharkyBasePath, sharkyNoOfShards, repo.ChunkStore()),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -469,17 +578,22 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 
 	logger := opts.Logger.WithName(loggerName).Register()
 
+	clCtx, clCancel := context.WithCancel(ctx)
 	db := &DB{
-		metrics:          newMetrics(),
-		logger:           logger,
-		baseAddr:         opts.Address,
-		repo:             repo,
-		lock:             multex.New(),
-		cacheObj:         cacheObj,
-		retrieval:        noopRetrieval{},
-		pusherFeed:       make(chan *pusher.Op),
-		quit:             make(chan struct{}),
-		bgCacheLimiter:   make(chan struct{}, 16),
+		metrics:    metrics,
+		logger:     logger,
+		baseAddr:   opts.Address,
+		repo:       repo,
+		lock:       lock,
+		cacheObj:   cacheObj,
+		retrieval:  noopRetrieval{},
+		pusherFeed: make(chan *pusher.Op),
+		quit:       make(chan struct{}),
+		cacheLimiter: cacheLimiter{
+			sem:    make(chan struct{}, defaultBgCacheWorkers),
+			ctx:    clCtx,
+			cancel: clCancel,
+		},
 		dbCloser:         dbCloser,
 		batchstore:       opts.Batchstore,
 		validStamp:       opts.ValidStamp,
@@ -497,11 +611,26 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	}
 
 	if opts.ReserveCapacity > 0 {
-		rs, err := reserve.New(opts.Address, repo.IndexStore(), opts.ReserveCapacity, opts.RadiusSetter, logger)
+		rs, err := reserve.New(
+			opts.Address,
+			repo.IndexStore(),
+			opts.ReserveCapacity,
+			opts.RadiusSetter,
+			logger,
+			func(ctx context.Context, store internal.Storage, addrs ...swarm.Address) error {
+				defer func() { db.metrics.CacheSize.Set(float64(db.cacheObj.Size())) }()
+
+				db.lock.Lock(cacheAccessLockKey)
+				defer db.lock.Unlock(cacheAccessLockKey)
+
+				return cacheObj.MoveFromReserve(ctx, store, addrs...)
+			},
+		)
 		if err != nil {
 			return nil, err
 		}
 		db.reserve = rs
+
 		db.metrics.StorageRadius.Set(float64(rs.Radius()))
 		db.metrics.ReserveSize.Set(float64(rs.Size()))
 	}
@@ -535,13 +664,18 @@ func (db *DB) Close() error {
 	bgReserveWorkersClosed := make(chan struct{})
 	go func() {
 		defer close(bgReserveWorkersClosed)
-		db.reserveWg.Wait()
+		if !syncutil.WaitWithTimeout(&db.inFlight, 2*time.Second) {
+			db.logger.Warning("db shutting down with running goroutines")
+		}
 	}()
 
 	bgCacheWorkersClosed := make(chan struct{})
 	go func() {
 		defer close(bgCacheWorkersClosed)
-		db.bgCacheLimiterWg.Wait()
+		if !syncutil.WaitWithTimeout(&db.cacheLimiter.wg, 2*time.Second) {
+			db.logger.Warning("cache goroutines still running after the wait timeout; force closing")
+			db.cacheLimiter.cancel()
+		}
 	}()
 
 	var err error
@@ -572,11 +706,10 @@ func (db *DB) SetRetrievalService(r retrieval.Interface) {
 	db.retrieval = r
 }
 
-func (db *DB) StartReserveWorker(s Syncer, radius func() (uint8, error)) {
+func (db *DB) StartReserveWorker(ctx context.Context, s Syncer, radius func() (uint8, error)) {
 	db.setSyncerOnce.Do(func() {
 		db.syncer = s
-		db.reserveWg.Add(1)
-		go db.reserveWorker(db.opts.warmupDuration, db.opts.wakeupDuration, radius)
+		go db.startReserveWorkers(ctx, db.opts.warmupDuration, db.opts.wakeupDuration, radius)
 	})
 }
 
@@ -590,6 +723,15 @@ func (db *DB) ChunkStore() storage.ReadOnlyChunkStore {
 	return db.repo.ChunkStore()
 }
 
+// Execute implements the internal.TxExecutor interface.
+func (db *DB) Execute(ctx context.Context, do func(internal.Storage) error) error {
+	tx, commit, rollback := db.repo.NewTx(ctx)
+	if err := do(tx); err != nil {
+		return errors.Join(err, rollback())
+	}
+	return commit()
+}
+
 type putterSession struct {
 	storage.Putter
 	done    func(swarm.Address) error
@@ -599,12 +741,3 @@ type putterSession struct {
 func (p *putterSession) Done(addr swarm.Address) error { return p.done(addr) }
 
 func (p *putterSession) Cleanup() error { return p.cleanup() }
-
-func (db *DB) Do(ctx context.Context, op func(internal.Storage) error) error {
-	txnRepo, commit, rollback := db.repo.NewTx(ctx)
-	err := op(txnRepo)
-	if err != nil {
-		return errors.Join(err, rollback())
-	}
-	return commit()
-}

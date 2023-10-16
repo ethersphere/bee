@@ -16,7 +16,7 @@ import (
 
 type (
 	// StepFn is a function that migrates the storage to the next version
-	StepFn func(storage.Store) error
+	StepFn func(storage.BatchedStore) error
 	// Steps is a map of versions and their migration functions
 	Steps = map[uint64]StepFn
 )
@@ -27,13 +27,15 @@ var (
 	errStorageVersionItemUnmarshalInvalidSize = errors.New("unmarshal StorageVersionItem: invalid size")
 )
 
-// Migrate migrates the storage to the latest version
-func Migrate(s storage.Store, sm Steps) error {
+// Migrate migrates the storage to the latest version.
+// The steps are separated by groups so different lists of steps can run individually, for example,
+// two groups of migrations that run before and after the storer is initialized.
+func Migrate(s storage.BatchedStore, group string, sm Steps) error {
 	if err := ValidateVersions(sm); err != nil {
 		return err
 	}
 
-	currentVersion, err := Version(s)
+	currentVersion, err := Version(s, group)
 	if err != nil {
 		return err
 	}
@@ -47,7 +49,7 @@ func Migrate(s storage.Store, sm Steps) error {
 		if err != nil {
 			return err
 		}
-		err = setVersion(s, nextVersion)
+		err = setVersion(s, nextVersion, group)
 		if err != nil {
 			return err
 		}
@@ -80,6 +82,7 @@ const storageVersionItemSize = 8
 
 type StorageVersionItem struct {
 	Version uint64
+	Group   string
 }
 
 // ID implements the storage.Item interface.
@@ -89,7 +92,7 @@ func (s *StorageVersionItem) ID() string {
 
 // Namespace implements the storage.Item interface.
 func (s StorageVersionItem) Namespace() string {
-	return "migration"
+	return s.Group
 }
 
 // Marshal implements the storage.Item interface.
@@ -124,8 +127,8 @@ func (s StorageVersionItem) String() string {
 }
 
 // Version returns the current version of the storage
-func Version(s storage.Store) (uint64, error) {
-	item := StorageVersionItem{}
+func Version(s storage.Store, group string) (uint64, error) {
+	item := StorageVersionItem{Group: group}
 	err := s.Get(&item)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
@@ -137,8 +140,8 @@ func Version(s storage.Store) (uint64, error) {
 }
 
 // setVersion sets the current version of the storage
-func setVersion(s storage.Store, v uint64) error {
-	return s.Put(&StorageVersionItem{Version: v})
+func setVersion(s storage.Store, v uint64, g string) error {
+	return s.Put(&StorageVersionItem{Version: v, Group: g})
 }
 
 // LatestVersion returns latest version from supplied migration steps.

@@ -211,17 +211,18 @@ func (f *factoryMock) NewLookup(t feeds.Type, feed *feeds.Feed) (feeds.Lookup, e
 }
 
 type mockLookup struct {
-	at, after int64
+	at        int64
+	after     uint64
 	chunk     swarm.Chunk
 	err       error
 	cur, next feeds.Index
 }
 
-func newMockLookup(at, after int64, ch swarm.Chunk, err error, cur, next feeds.Index) *mockLookup {
+func newMockLookup(at int64, after uint64, ch swarm.Chunk, err error, cur, next feeds.Index) *mockLookup {
 	return &mockLookup{at: at, after: after, chunk: ch, err: err, cur: cur, next: next}
 }
 
-func (l *mockLookup) At(_ context.Context, at, after int64) (swarm.Chunk, feeds.Index, feeds.Index, error) {
+func (l *mockLookup) At(_ context.Context, at int64, after uint64) (swarm.Chunk, feeds.Index, feeds.Index, error) {
 	if l.at == -1 {
 		// shortcut to ignore the value in the call since time.Now() is a moving target
 		return l.chunk, l.cur, l.next, nil

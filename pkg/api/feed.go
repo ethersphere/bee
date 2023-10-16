@@ -52,7 +52,8 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	queries := struct {
-		At int64 `map:"at"`
+		At    int64  `map:"at"`
+		After uint64 `map:"after"`
 	}{}
 	if response := s.mapStructure(r.URL.Query(), &queries); response != nil {
 		response("invalid query params", logger, w)
@@ -76,7 +77,7 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ch, cur, next, err := lookup.At(r.Context(), queries.At, 0)
+	ch, cur, next, err := lookup.At(r.Context(), queries.At, queries.After)
 	if err != nil {
 		logger.Debug("lookup at failed", "at", queries.At, "error", err)
 		logger.Error(nil, "lookup at failed")
@@ -138,7 +139,7 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	headers := struct {
 		BatchID  []byte `map:"Swarm-Postage-Batch-Id" validate:"required"`
 		Pin      bool   `map:"Swarm-Pin"`
-		Deferred bool   `map:"Swarm-Deferred-Upload"`
+		Deferred *bool  `map:"Swarm-Deferred-Upload"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -146,10 +147,11 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var (
-		tag storer.SessionInfo
-		err error
+		tag      storer.SessionInfo
+		err      error
+		deferred = defaultUploadMethod(headers.Deferred)
 	)
-	if headers.Deferred || headers.Pin {
+	if deferred || headers.Pin {
 		tag, err = s.storer.NewSession()
 		if err != nil {
 			logger.Debug("get or create tag failed", "error", err)
@@ -168,7 +170,7 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		BatchID:  headers.BatchID,
 		TagID:    tag.TagID,
 		Pin:      headers.Pin,
-		Deferred: headers.Deferred,
+		Deferred: deferred,
 	})
 	if err != nil {
 		logger.Debug("get putter failed", "error", err)
@@ -182,8 +184,6 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.BadRequest(w, "invalid batch id")
 		case errors.Is(err, errUnsupportedDevNodeOperation):
 			jsonhttp.BadRequest(w, errUnsupportedDevNodeOperation)
-		case errors.Is(err, postage.ErrBatchInUse):
-			jsonhttp.BadRequest(w, postage.ErrBatchInUse)
 		default:
 			jsonhttp.BadRequest(w, nil)
 		}

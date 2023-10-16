@@ -13,13 +13,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-// BatchedStore is a store that provides batch operations.
-type BatchedStore interface {
-	storage.Store
-	storage.Batcher
-}
-
-func TestBatchedStore(t *testing.T, bs BatchedStore) {
+func TestBatchedStore(t *testing.T, bs storage.BatchedStore) {
 	item := &obj1{Id: "id", SomeInt: 1, Buf: []byte("data")}
 
 	t.Run("duplicates are rejected", func(t *testing.T) {
@@ -100,7 +94,7 @@ func TestBatchedStore(t *testing.T, bs BatchedStore) {
 		if err := batch.Commit(); err != nil {
 			t.Fatalf("Commit(): unexpected error: %v", err)
 		}
-		if err := batch.Commit(); err == nil { // TODO: replace with sentinel error.
+		if err := batch.Commit(); err == nil {
 			t.Fatal("Commit(): expected error; have none")
 		}
 	})
@@ -122,6 +116,13 @@ func TestBatchedStore(t *testing.T, bs BatchedStore) {
 		want := context.Canceled
 		if !errors.Is(have, want) {
 			t.Fatalf("Commit(): want error: %v; have error: %v", want, have)
+		}
+	})
+
+	t.Run("close", func(t *testing.T) {
+		err := bs.Close()
+		if err != nil {
+			t.Fatalf("failed closing: %v", err)
 		}
 	})
 }

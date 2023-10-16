@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"math/big"
 	"path"
+	"sync"
 	"time"
 
 	storage "github.com/ethersphere/bee/pkg/storage"
@@ -152,7 +153,8 @@ func (s stampIssuerData) Clone() stampIssuerData {
 // A StampIssuer instance extends a batch with bucket collision tracking
 // embedded in multiple Stampers, can be used concurrently.
 type StampIssuer struct {
-	data stampIssuerData
+	data      stampIssuerData
+	bucketMtx sync.Mutex
 }
 
 // NewStampIssuer constructs a StampIssuer as an extension of a batch for local
@@ -178,10 +180,19 @@ func NewStampIssuer(label, keyID string, batchID []byte, batchAmount *big.Int, b
 // increment increments the count in the correct collision
 // bucket for a newly stamped chunk with given addr address.
 func (si *StampIssuer) increment(addr swarm.Address) (batchIndex []byte, batchTimestamp []byte, err error) {
+	si.bucketMtx.Lock()
+	defer si.bucketMtx.Unlock()
+
 	bIdx := toBucket(si.BucketDepth(), addr)
 	bCnt := si.data.Buckets[bIdx]
-	if bCnt == 1<<(si.Depth()-si.BucketDepth()) {
-		return nil, nil, ErrBucketFull
+
+	if bCnt == si.BucketUpperBound() {
+		if si.ImmutableFlag() {
+			return nil, nil, ErrBucketFull
+		}
+
+		bCnt = 0
+		si.data.Buckets[bIdx] = 0
 	}
 
 	si.data.Buckets[bIdx]++
@@ -190,6 +201,14 @@ func (si *StampIssuer) increment(addr swarm.Address) (batchIndex []byte, batchTi
 	}
 
 	return indexToBytes(bIdx, bCnt), unixTime(), nil
+}
+
+// check if this stamp index has already been assigned
+func (si *StampIssuer) assigned(stampIdx []byte) bool {
+	si.bucketMtx.Lock()
+	defer si.bucketMtx.Unlock()
+	b, idx := BucketIndexFromBytes(stampIdx)
+	return idx < si.data.Buckets[b]
 }
 
 // Label returns the label of the issuer.
@@ -254,6 +273,8 @@ func (si *StampIssuer) ImmutableFlag() bool {
 }
 
 func (si *StampIssuer) Buckets() []uint32 {
+	si.bucketMtx.Lock()
+	defer si.bucketMtx.Unlock()
 	b := make([]uint32, len(si.data.Buckets))
 	copy(b, si.data.Buckets)
 	return b
