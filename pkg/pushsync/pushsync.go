@@ -47,8 +47,8 @@ const (
 )
 
 const (
-	nPeersToReplicate = 2 // number of peers to replicate to as receipt is sent upstream
-	maxPushErrors     = 32
+	maxMultiplexForwards = 2 // number of extra peers to forward the request from the multiplex node
+	maxPushErrors        = 32
 )
 
 var (
@@ -304,7 +304,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 		sentErrorsLeft   = 1
 		preemptiveTicker <-chan time.Time
 		inflight         int
-		parallelForwards = nPeersToReplicate
+		parallelForwards = maxMultiplexForwards
 	)
 
 	if origin {
