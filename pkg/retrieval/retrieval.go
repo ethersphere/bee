@@ -236,7 +236,9 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 				}
 
 				// since we can reach into the neighborhood of the chunk
-				// act as the multiplexer and push the chunk in parallel to multiple peers
+				// act as the multiplexer and push the chunk in parallel to multiple peers.
+				// neighbor peers will also have multiple retries, which means almost the entire neighborhood
+				// will be scanned for the chunk, starting from the closest to the furthest peer in the neighborhood.
 				if radius, err := s.radiusFunc(); err == nil && swarm.Proximity(peer.Bytes(), chunkAddr.Bytes()) >= radius {
 					for ; forwards > 0; forwards-- {
 						retry()
