@@ -976,7 +976,7 @@ func NewBee(
 
 	radiusFunc := func() (uint8, error) {
 		currentRadius := localStore.StorageRadius()
-		if currentRadius == 0 && networkR.Load() != 0 {
+		if currentRadius == 0 { // the radius has not been set by localstore yet
 			currentRadius = uint8(networkR.Load())
 		}
 		return currentRadius, nil
