@@ -250,12 +250,12 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 				inflight--
 
 				if res.err == nil {
-					loggerV1.Debug("retrieved chunk", "chunk_address", chunkAddr, "peer_address", res.peer)
+					loggerV1.Debug("retrieved chunk", "chunk_address", chunkAddr, "peer_address", res.peer, "peer_proximity", swarm.Proximity(res.peer.Bytes(), chunkAddr.Bytes()))
 					return res.chunk, nil
 				}
 
 				loggerV1.Debug("failed to get chunk", "chunk_address", chunkAddr, "peer_address", res.peer,
-					"peer_proximity", swarm.Proximity(res.peer.Bytes(), s.addr.Bytes()), "error", res.err)
+					"peer_proximity", swarm.Proximity(res.peer.Bytes(), chunkAddr.Bytes()), "error", res.err)
 
 				errorsLeft--
 				s.errSkip.Add(chunkAddr, res.peer, skiplistDur)
