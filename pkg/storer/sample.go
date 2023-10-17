@@ -233,6 +233,14 @@ func (db *DB) ReserveSample(
 				sampleItems[i] = item
 				added = true
 				break
+			} else if item.TransformedAddress.Compare(sItem.TransformedAddress) == 0 { // ensuring to pass the check order function of redistribution contract
+				// replace the chunk at index if the chunk is CAC
+				ch := swarm.NewChunk(item.ChunkAddress, item.ChunkData)
+				_, err := soc.FromChunk(ch)
+				if err != nil {
+					sampleItems[i] = item
+				}
+				return
 			}
 		}
 		if len(sampleItems) > SampleSize {
@@ -241,15 +249,6 @@ func (db *DB) ReserveSample(
 		if len(sampleItems) < SampleSize && !added {
 			sampleItems = append(sampleItems, item)
 		}
-	}
-
-	contains := func(addr swarm.Address) int {
-		for index, item := range sampleItems {
-			if item.ChunkAddress.Compare(addr) == 0 {
-				return index
-			}
-		}
-		return -1
 	}
 
 	// Phase 3: Assemble the sample. Here we need to assemble only the first SampleSize
@@ -290,12 +289,6 @@ func (db *DB) ReserveSample(
 
 			item.Stamp = postage.NewStamp(stamp.BatchID(), stamp.Index(), stamp.Timestamp(), stamp.Sig())
 
-			// ensuring to pass the check order function of redistribution contract
-			if index := contains(item.TransformedAddress); index != -1 {
-				// replace the chunk at index
-				sampleItems[index] = item
-				continue
-			}
 			insert(item)
 			stats.SampleInserts++
 		}
