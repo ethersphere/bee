@@ -974,6 +974,14 @@ func NewBee(
 		}
 	}()
 
+	radiusFunc := func() (uint8, error) {
+		currentRadius := localStore.StorageRadius()
+		if currentRadius == 0 && networkR.Load() != 0 {
+			currentRadius = uint8(networkR.Load())
+		}
+		return currentRadius, nil
+	}
+
 	waitNetworkRFunc := func() (uint8, error) {
 		if networkR.Load() == uint32(swarm.MaxBins) {
 			select {
@@ -983,20 +991,7 @@ func NewBee(
 			}
 		}
 
-		// radius has not been set by the localstore, use networkR instead
-		if localStore.StorageRadius() == 0 && networkR.Load() != 0 {
-			return uint8(networkR.Load()), nil
-		}
-
-		return localStore.StorageRadius(), nil
-	}
-
-	radiusFunc := func() (uint8, error) {
-		currentRadius := localStore.StorageRadius()
-		if currentRadius == 0 && networkR.Load() != 0 {
-			currentRadius = uint8(networkR.Load())
-		}
-		return currentRadius, nil
+		return radiusFunc()
 	}
 
 	retrieve := retrieval.New(swarmAddress, radiusFunc, localStore, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching)
