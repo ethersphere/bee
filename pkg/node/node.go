@@ -934,9 +934,6 @@ func NewBee(
 
 	pricing.SetPaymentThresholdObserver(acc)
 
-	retrieve := retrieval.New(swarmAddress, localStore, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching)
-	localStore.SetRetrievalService(retrieve)
-
 	pssService := pss.New(pssPrivateKey, logger)
 	b.pssCloser = pssService
 
@@ -958,16 +955,16 @@ func NewBee(
 
 	rC, unsub := saludService.SubscribeNetworkStorageRadius()
 	initialRadiusC := make(chan struct{})
-	var radius atomic.Uint32
-	radius.Store(uint32(swarm.MaxPO))
+	var networkR atomic.Uint32
+	networkR.Store(uint32(swarm.MaxBins))
 
 	go func() {
 		for {
 			select {
 			case r := <-rC:
-				prev := radius.Load()
-				radius.Store(uint32(r))
-				if prev == uint32(swarm.MaxPO) {
+				prev := networkR.Load()
+				networkR.Store(uint32(r))
+				if prev == uint32(swarm.MaxBins) {
 					close(initialRadiusC)
 				}
 			case <-ctx.Done():
@@ -977,8 +974,8 @@ func NewBee(
 		}
 	}()
 
-	networkRadiusFunc := func() (uint8, error) {
-		if radius.Load() == uint32(swarm.MaxPO) {
+	waitNetworkRFunc := func() (uint8, error) {
+		if networkR.Load() == uint32(swarm.MaxBins) {
 			select {
 			case <-initialRadiusC:
 			case <-ctx.Done():
@@ -986,10 +983,26 @@ func NewBee(
 			}
 		}
 
-		return uint8(radius.Load()), nil
+		// radius has not been set by the localstore, use networkR instead
+		if localStore.StorageRadius() == 0 && networkR.Load() != 0 {
+			return uint8(networkR.Load()), nil
+		}
+
+		return localStore.StorageRadius(), nil
 	}
 
-	pusherService := pusher.New(networkID, localStore, networkRadiusFunc, pushSyncProtocol, validStamp, logger, tracer, warmupTime, pusher.DefaultRetryCount)
+	radiusFunc := func() (uint8, error) {
+		currentRadius := localStore.StorageRadius()
+		if currentRadius == 0 && networkR.Load() != 0 {
+			currentRadius = uint8(networkR.Load())
+		}
+		return currentRadius, nil
+	}
+
+	retrieve := retrieval.New(swarmAddress, radiusFunc, localStore, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching)
+	localStore.SetRetrievalService(retrieve)
+
+	pusherService := pusher.New(networkID, localStore, waitNetworkRFunc, pushSyncProtocol, validStamp, logger, tracer, warmupTime, pusher.DefaultRetryCount)
 	b.pusherCloser = pusherService
 
 	pusherService.AddFeed(localStore.PusherFeed())
@@ -1047,7 +1060,7 @@ func NewBee(
 		pullerService = puller.New(stateStore, kad, localStore, pullSyncProtocol, p2ps, logger, puller.Options{})
 		b.pullerCloser = pullerService
 
-		localStore.StartReserveWorker(ctx, pullerService, networkRadiusFunc)
+		localStore.StartReserveWorker(ctx, pullerService, waitNetworkRFunc)
 		nodeStatus.SetSync(pullerService)
 
 		if o.EnableStorageIncentives {
