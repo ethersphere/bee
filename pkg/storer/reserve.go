@@ -148,9 +148,7 @@ func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
 
 	for {
 
-		if activeEviction.Load() {
-			continue
-		}
+		skipInvalidCheck := activeEviction.Load()
 
 		count := 0
 		missing := 0
@@ -159,6 +157,11 @@ func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
 			if ci.Bin >= radius {
 				count++
 			}
+
+			if skipInvalidCheck {
+				return false, nil
+			}
+
 			if exists, _ := db.batchstore.Exists(ci.BatchID); !exists {
 				missing++
 				db.logger.Debug("reserve size worker, item with invalid batch id", "batch_id", hex.EncodeToString(ci.BatchID), "chunk_address", ci.ChunkAddress)
@@ -173,7 +176,9 @@ func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
 		}
 
 		db.metrics.ReserveSizeWithinRadius.Set(float64(count))
-		db.metrics.ReserveMissingBatch.Set(float64(missing))
+		if !skipInvalidCheck {
+			db.metrics.ReserveMissingBatch.Set(float64(missing))
+		}
 
 		select {
 		case <-ctx.Done():
