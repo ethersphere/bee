@@ -713,9 +713,9 @@ func createRetrieval(
 ) *retrieval.Service {
 	t.Helper()
 
-	r := func() (uint8, error) { return swarm.MaxBins, nil }
+	radiusF := func() (uint8, error) { return swarm.MaxBins, nil }
 
-	ret := retrieval.New(addr, r, storer, streamer, chunkPeerer, logger, accounting, pricer, tracer, forwarderCaching)
+	ret := retrieval.New(addr, radiusF, storer, streamer, chunkPeerer, logger, accounting, pricer, tracer, forwarderCaching)
 	t.Cleanup(func() { ret.Close() })
 	return ret
 }

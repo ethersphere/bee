@@ -994,8 +994,8 @@ func NewBee(
 		return radiusFunc()
 	}
 
-	retrieve := retrieval.New(swarmAddress, radiusFunc, localStore, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching)
-	localStore.SetRetrievalService(retrieve)
+	retrieval := retrieval.New(swarmAddress, radiusFunc, localStore, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching)
+	localStore.SetRetrievalService(retrieval)
 
 	pusherService := pusher.New(networkID, localStore, waitNetworkRFunc, pushSyncProtocol, validStamp, logger, tracer, warmupTime, pusher.DefaultRetryCount)
 	b.pusherCloser = pusherService
@@ -1005,7 +1005,7 @@ func NewBee(
 	pullSyncProtocol := pullsync.New(p2ps, localStore, pssService.TryUnwrap, validStamp, logger, pullsync.DefaultMaxPage)
 	b.pullSyncCloser = pullSyncProtocol
 
-	retrieveProtocolSpec := retrieve.Protocol()
+	retrieveProtocolSpec := retrieval.Protocol()
 	pushSyncProtocolSpec := pushSyncProtocol.Protocol()
 	pullSyncProtocolSpec := pullSyncProtocol.Protocol()
 
@@ -1111,7 +1111,7 @@ func NewBee(
 	b.resolverCloser = multiResolver
 
 	feedFactory := factory.New(localStore.Download(true))
-	steward := steward.New(localStore, retrieve)
+	steward := steward.New(localStore, retrieval)
 
 	extraOpts := api.ExtraOptions{
 		Pingpong:        pingPong,
@@ -1199,7 +1199,7 @@ func NewBee(
 		debugService.MustRegisterMetrics(pushSyncProtocol.Metrics()...)
 		debugService.MustRegisterMetrics(pusherService.Metrics()...)
 		debugService.MustRegisterMetrics(pullSyncProtocol.Metrics()...)
-		debugService.MustRegisterMetrics(retrieve.Metrics()...)
+		debugService.MustRegisterMetrics(retrieval.Metrics()...)
 		debugService.MustRegisterMetrics(lightNodes.Metrics()...)
 		debugService.MustRegisterMetrics(hive.Metrics()...)
 
