@@ -30,6 +30,12 @@ func (k *Kad) IsWithinDepth(addr swarm.Address) bool {
 	return swarm.Proximity(k.base.Bytes(), addr.Bytes()) >= k.NeighborhoodDepth()
 }
 
+func (k *Kad) ConnectionDepth() uint8 {
+	k.depthMu.RLock()
+	defer k.depthMu.RUnlock()
+	return k.depth
+}
+
 // IsBalanced returns if Kademlia is balanced to bin.
 func (k *Kad) IsBalanced(bin uint8) bool {
 	if int(bin) >= len(k.commonBinPrefixes) {

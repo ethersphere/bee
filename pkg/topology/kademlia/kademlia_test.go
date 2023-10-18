@@ -381,6 +381,7 @@ func TestManage(t *testing.T) {
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
 			BitSuffixLength: ptrInt(-1),
 			FilterFunc:      defaultFilterFunc,
+			IgnoreRadius:    true,
 		})
 	)
 
@@ -476,6 +477,7 @@ func TestBinSaturation(t *testing.T) {
 			SaturationPeers: ptrInt(2),
 			BitSuffixLength: ptrInt(-1),
 			FilterFunc:      defaultFilterFunc,
+			IgnoreRadius:    true,
 		})
 	)
 
@@ -829,7 +831,8 @@ func TestAddressBookPrune(t *testing.T) {
 	var (
 		conns, failedConns       int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, &failedConns, kademlia.Options{
-			TimeToRetry: ptrDuration(20 * time.Millisecond),
+			TimeToRetry:  ptrDuration(20 * time.Millisecond),
+			IgnoreRadius: true,
 		})
 	)
 
@@ -1287,6 +1290,7 @@ func TestOutofDepthPrune(t *testing.T) {
 			OverSaturationPeers: ptrInt(overSaturationPeers),
 			PruneFunc:           pruneFunc,
 			FilterFunc:          defaultFilterFunc,
+			IgnoreRadius:        true,
 		})
 	)
 
@@ -1545,6 +1549,7 @@ func TestAnnounceNeighborhoodToNeighbor(t *testing.T) {
 			FilterFunc:          defaultFilterFunc,
 			OverSaturationPeers: ptrInt(4),
 			SaturationPeers:     ptrInt(4),
+			IgnoreRadius:        true,
 		})
 	)
 
@@ -1980,7 +1985,7 @@ func kDepth(t *testing.T, k *kademlia.Kad, d int) {
 
 	var depth int
 	err := spinlock.Wait(spinLockWaitTime, func() bool {
-		depth = int(k.NeighborhoodDepth())
+		depth = int(k.ConnectionDepth())
 		return depth == d
 	})
 	if err != nil {

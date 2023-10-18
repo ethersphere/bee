@@ -445,9 +445,7 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 		k.metrics.TotalOutboundConnections.Inc()
 		k.collector.Record(peer.addr, im.PeerLogIn(time.Now(), im.PeerConnectionDirectionOutbound))
 
-		k.depthMu.Lock()
 		k.recalcDepth()
-		k.depthMu.Unlock()
 
 		k.logger.Info("connected to peer", "peer_address", peer.addr, "proximity_order", peer.po)
 		k.notifyManageLoop()
@@ -835,6 +833,9 @@ func binSaturated(oversaturationAmount int, staticNode staticPeerFunc) binSatura
 // recalcDepth calculates, assigns the new depth, and returns if depth has changed
 func (k *Kad) recalcDepth() {
 
+	k.depthMu.Lock()
+	defer k.depthMu.Unlock()
+
 	var (
 		peers                 = k.connectedPeers
 		filter                = k.opt.FilterFunc(im.Reachability(false))
@@ -1147,9 +1148,7 @@ func (k *Kad) onConnected(ctx context.Context, addr swarm.Address) error {
 
 	k.waitNext.Remove(addr)
 
-	k.depthMu.Lock()
 	k.recalcDepth()
-	k.depthMu.Unlock()
 
 	k.notifyManageLoop()
 	k.notifyPeerSig()
@@ -1168,9 +1167,7 @@ func (k *Kad) Disconnected(peer p2p.Peer) {
 	k.metrics.TotalInboundDisconnections.Inc()
 	k.collector.Record(peer.Address, im.PeerLogOut(time.Now()))
 
-	k.depthMu.Lock()
 	k.recalcDepth()
-	k.depthMu.Unlock()
 
 	k.notifyManageLoop()
 	k.notifyPeerSig()
@@ -1288,9 +1285,7 @@ func (k *Kad) Reachable(addr swarm.Address, status p2p.ReachabilityStatus) {
 	k.collector.Record(addr, im.PeerReachability(status))
 	k.logger.Debug("reachability of peer updated", "peer_address", addr, "reachability", status)
 	if status == p2p.ReachabilityStatusPublic {
-		k.depthMu.Lock()
 		k.recalcDepth()
-		k.depthMu.Unlock()
 		k.notifyManageLoop()
 	}
 }
@@ -1361,7 +1356,11 @@ func (k *Kad) NeighborhoodDepth() uint8 {
 	k.depthMu.RLock()
 	defer k.depthMu.RUnlock()
 
-	return k.depth
+	if k.opt.IgnoreRadius {
+		return k.depth // ultra-light nodes
+	}
+
+	return k.storageRadius
 }
 
 func (k *Kad) SetStorageRadius(d uint8) {
@@ -1377,13 +1376,8 @@ func (k *Kad) SetStorageRadius(d uint8) {
 	k.metrics.CurrentStorageDepth.Set(float64(k.storageRadius))
 	k.logger.Debug("kademlia set storage radius", "radius", k.storageRadius)
 
-	oldDepth := k.depth
-	k.recalcDepth()
-
-	if oldDepth != k.depth {
-		k.notifyManageLoop()
-		k.notifyPeerSig()
-	}
+	k.notifyManageLoop()
+	k.notifyPeerSig()
 }
 
 func (k *Kad) Snapshot() *topology.KadParams {
