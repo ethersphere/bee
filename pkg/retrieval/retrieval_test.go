@@ -712,7 +712,10 @@ func createRetrieval(
 	forwarderCaching bool,
 ) *retrieval.Service {
 	t.Helper()
-	ret := retrieval.New(addr, storer, streamer, chunkPeerer, logger, accounting, pricer, tracer, forwarderCaching)
+
+	radiusF := func() (uint8, error) { return swarm.MaxBins, nil }
+
+	ret := retrieval.New(addr, radiusF, storer, streamer, chunkPeerer, logger, accounting, pricer, tracer, forwarderCaching)
 	t.Cleanup(func() { ret.Close() })
 	return ret
 }

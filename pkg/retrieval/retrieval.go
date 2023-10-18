@@ -64,6 +64,7 @@ type Storer interface {
 
 type Service struct {
 	addr          swarm.Address
+	radiusFunc    func() (uint8, error)
 	streamer      p2p.Streamer
 	peerSuggester topology.ClosestPeerer
 	storer        Storer
@@ -79,6 +80,7 @@ type Service struct {
 
 func New(
 	addr swarm.Address,
+	radiusFunc func() (uint8, error),
 	storer Storer,
 	streamer p2p.Streamer,
 	chunkPeerer topology.ClosestPeerer,
@@ -90,6 +92,7 @@ func New(
 ) *Service {
 	return &Service{
 		addr:          addr,
+		radiusFunc:    radiusFunc,
 		streamer:      streamer,
 		peerSuggester: chunkPeerer,
 		storer:        storer,
@@ -121,8 +124,9 @@ const (
 	preemptiveInterval   = time.Second
 	overDraftRefresh     = time.Millisecond * 600
 	skiplistDur          = time.Minute
-	maxRetrievedErrors   = 32
 	originSuffix         = "_origin"
+	maxOriginErrors      = 16
+	maxMultiplexForwards = 2
 )
 
 func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr swarm.Address) (swarm.Chunk, error) {
@@ -162,16 +166,19 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 		quit := make(chan struct{})
 		defer close(quit)
 
+		var forwards = maxMultiplexForwards
+
+		// if we are the origin node, allow many preemptive retries to speed up the retrieval of the chunk.
 		errorsLeft := 1
 		if origin {
 			ticker := time.NewTicker(preemptiveInterval)
 			defer ticker.Stop()
 			preemptiveTicker = ticker.C
-			errorsLeft = maxRetrievedErrors
+			errorsLeft = maxOriginErrors
 		}
 
 		resultC := make(chan retrievalResult, 1)
-		retryC := make(chan struct{}, 1)
+		retryC := make(chan struct{}, forwards)
 
 		retry := func() {
 			select {
@@ -226,6 +233,17 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 						return nil, err
 					}
 					continue
+				}
+
+				// since we can reach into the neighborhood of the chunk
+				// act as the multiplexer and push the chunk in parallel to multiple peers.
+				// neighbor peers will also have multiple retries, which means almost the entire neighborhood
+				// will be scanned for the chunk, starting from the closest to the furthest peer in the neighborhood.
+				if radius, err := s.radiusFunc(); err == nil && swarm.Proximity(peer.Bytes(), chunkAddr.Bytes()) >= radius {
+					for ; forwards > 0; forwards-- {
+						retry()
+						errorsLeft++
+					}
 				}
 
 				action, err := s.prepareCredit(ctx, peer, chunkAddr, origin)
