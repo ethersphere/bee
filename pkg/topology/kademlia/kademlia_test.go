@@ -126,7 +126,6 @@ func TestNeighborhoodDepth(t *testing.T) {
 	kad.SetStorageRadius(6)
 	kRadius(t, kad, 6)
 
-	// set the radius to MaxPO again so that intermediate checks can run
 	kad.SetStorageRadius(0)
 
 	// expect shallow peers not in depth
@@ -343,18 +342,6 @@ func TestNeighborhoodDepthWithReachability(t *testing.T) {
 	}
 }
 
-// TestManage explicitly tests that new connections are made according to
-// the addition or subtraction of peers to the knownPeers and connectedPeers
-// data structures. It tests that kademlia will try to initiate (emphesis on _initiate_,
-// since right now this test does not test for a mark-and-sweep behaviour of kademlia
-// that will prune or disconnect old or less performent nodes when a certain condition
-// in a bin has been met - these are future optimizations that still need be sketched out)
-// connections when a certain bin is _not_ saturated, and that kademlia does _not_ try
-// to initiate connections on a saturated bin.
-// Saturation from the local node's perspective means whether a bin has enough connections
-// on a given bin.
-// What Saturation does _not_ mean: that all nodes are performent, that all nodes we know of
-// in a given bin are connected (since some of them might be offline)
 func TestManage(t *testing.T) {
 	t.Parallel()
 
@@ -362,9 +349,8 @@ func TestManage(t *testing.T) {
 		conns                    int32 // how many connect calls were made to the p2p mock
 		saturation               = kademlia.DefaultSaturationPeers
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			BitSuffixLength:     ptrInt(-1),
-			FilterFunc:          defaultFilterFunc,
-			IgnoreStorageRadius: true,
+			BitSuffixLength: ptrInt(-1),
+			FilterFunc:      defaultFilterFunc,
 		})
 	)
 
@@ -372,6 +358,8 @@ func TestManage(t *testing.T) {
 		t.Fatal(err)
 	}
 	testutil.CleanupCloser(t, kad)
+
+	kad.SetStorageRadius(0)
 
 	// first, we add peers to bin 0
 	for i := 0; i < saturation; i++ {
@@ -388,6 +376,8 @@ func TestManage(t *testing.T) {
 	}
 
 	waitCounter(t, &conns, int32(saturation))
+
+	kad.SetStorageRadius(1)
 
 	// here, we attempt to add to bin 0, but bin is saturated, so no new peers should connect to it
 	for i := 0; i < saturation; i++ {
@@ -457,10 +447,9 @@ func TestBinSaturation(t *testing.T) {
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			SaturationPeers:     ptrInt(2),
-			BitSuffixLength:     ptrInt(-1),
-			FilterFunc:          defaultFilterFunc,
-			IgnoreStorageRadius: true,
+			SaturationPeers: ptrInt(2),
+			BitSuffixLength: ptrInt(-1),
+			FilterFunc:      defaultFilterFunc,
 		})
 	)
 
@@ -468,6 +457,8 @@ func TestBinSaturation(t *testing.T) {
 		t.Fatal(err)
 	}
 	testutil.CleanupCloser(t, kad)
+
+	kad.SetStorageRadius(0)
 
 	// add two peers in a few bins to generate some depth >= 0, this will
 	// make the next iteration result in binSaturated==true, causing no new
@@ -479,6 +470,8 @@ func TestBinSaturation(t *testing.T) {
 		}
 	}
 	waitCounter(t, &conns, 10)
+
+	kad.SetStorageRadius(3)
 
 	// add one more peer in each bin shallower than depth and
 	// expect no connections due to saturation. if we add a peer within
@@ -814,8 +807,7 @@ func TestAddressBookPrune(t *testing.T) {
 	var (
 		conns, failedConns       int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, &failedConns, kademlia.Options{
-			TimeToRetry:         ptrDuration(20 * time.Millisecond),
-			IgnoreStorageRadius: true,
+			TimeToRetry: ptrDuration(20 * time.Millisecond),
 		})
 	)
 
@@ -1273,9 +1265,10 @@ func TestOutofDepthPrune(t *testing.T) {
 			OverSaturationPeers: ptrInt(overSaturationPeers),
 			PruneFunc:           pruneFunc,
 			FilterFunc:          defaultFilterFunc,
-			IgnoreStorageRadius: true,
 		})
 	)
+
+	kad.SetStorageRadius(0)
 
 	// implement empty prune func
 	pruneMux.Lock()
@@ -1320,6 +1313,8 @@ func TestOutofDepthPrune(t *testing.T) {
 			t.Fatalf("bin %d, got %d, want more than %d", i, bins[i], overSaturationPeers)
 		}
 	}
+
+	kad.SetStorageRadius(6)
 
 	// set prune func to the default
 	pruneMux.Lock()
@@ -1532,9 +1527,10 @@ func TestAnnounceNeighborhoodToNeighbor(t *testing.T) {
 			FilterFunc:          defaultFilterFunc,
 			OverSaturationPeers: ptrInt(4),
 			SaturationPeers:     ptrInt(4),
-			IgnoreStorageRadius: true,
 		})
 	)
+
+	kad.SetStorageRadius(0)
 
 	neighborAddr = swarm.RandAddressAt(t, base, 2)
 

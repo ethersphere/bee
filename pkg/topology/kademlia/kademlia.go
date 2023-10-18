@@ -79,14 +79,13 @@ var noopSanctionedPeerFn = func(_ swarm.Address) bool { return false }
 
 // Options for injecting services to Kademlia.
 type Options struct {
-	SaturationFunc      binSaturationFunc
-	Bootnodes           []ma.Multiaddr
-	BootnodeMode        bool
-	PruneFunc           pruneFunc
-	StaticNodes         []swarm.Address
-	FilterFunc          filtersFunc
-	IgnoreStorageRadius bool
-	DataDir             string
+	SaturationFunc binSaturationFunc
+	Bootnodes      []ma.Multiaddr
+	BootnodeMode   bool
+	PruneFunc      pruneFunc
+	StaticNodes    []swarm.Address
+	FilterFunc     filtersFunc
+	DataDir        string
 
 	BitSuffixLength             *int
 	TimeToRetry                 *time.Duration
@@ -106,7 +105,6 @@ type kadOptions struct {
 	PruneFunc      pruneFunc
 	StaticNodes    []swarm.Address
 	FilterFunc     filtersFunc
-	IgnoreRadius   bool
 
 	TimeToRetry                 time.Duration
 	ShortRetry                  time.Duration
@@ -127,7 +125,6 @@ func newKadOptions(o Options) kadOptions {
 		PruneFunc:      o.PruneFunc,
 		StaticNodes:    o.StaticNodes,
 		FilterFunc:     o.FilterFunc,
-		IgnoreRadius:   o.IgnoreStorageRadius,
 		// copy or use default
 		TimeToRetry:                 defaultValDuration(o.TimeToRetry, defaultTimeToRetry),
 		ShortRetry:                  defaultValDuration(o.ShortRetry, defaultShortRetry),
@@ -1351,10 +1348,6 @@ func filterOps(filter topology.Select) []im.FilterOp {
 func (k *Kad) neighborhoodDepth() uint8 {
 	k.depthMu.RLock()
 	defer k.depthMu.RUnlock()
-
-	if k.opt.IgnoreRadius {
-		return k.depth // ultra-light nodes
-	}
 
 	return k.storageRadius
 }
