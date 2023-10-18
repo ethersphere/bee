@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/postage"
@@ -58,7 +59,6 @@ func (db *DB) startReserveWorkers(
 
 	// start eviction worker first as there could be batch expirations because of
 	// initial contract sync
-	db.inFlight.Add(1)
 	go db.evictionWorker(ctx)
 
 	select {
@@ -86,14 +86,13 @@ func (db *DB) startReserveWorkers(
 	// syncing can now begin now that the reserver worker is running
 	db.syncer.Start(ctx)
 
-	db.inFlight.Add(1)
 	go db.radiusWorker(ctx, wakeUpDur)
 
-	db.inFlight.Add(1)
 	go db.reserveSizeWithinRadiusWorker(ctx)
 }
 
 func (db *DB) radiusWorker(ctx context.Context, wakeUpDur time.Duration) {
+	db.inFlight.Add(1)
 	defer db.inFlight.Done()
 
 	radiusWakeUpTicker := time.NewTicker(wakeUpDur)
@@ -119,12 +118,40 @@ func (db *DB) radiusWorker(ctx context.Context, wakeUpDur time.Duration) {
 }
 
 func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
+	db.inFlight.Add(2)
 	defer db.inFlight.Done()
 
 	ticker := time.NewTicker(reserveSizeWithinRadiusWakeup)
 	defer ticker.Stop()
 
+	var activeEviction atomic.Bool
+	go func() {
+		defer db.inFlight.Done()
+
+		expiryTrigger, expiryUnsub := db.events.Subscribe(batchExpiry)
+		defer expiryUnsub()
+
+		expiryDoneTrigger, expiryDoneUnsub := db.events.Subscribe(batchExpiryDone)
+		defer expiryDoneUnsub()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-expiryTrigger:
+				activeEviction.Store(true)
+			case <-expiryDoneTrigger:
+				activeEviction.Store(false)
+			}
+		}
+	}()
+
 	for {
+
+		if activeEviction.Load() {
+			continue
+		}
+
 		count := 0
 		missing := 0
 		radius := db.StorageRadius()
@@ -198,7 +225,7 @@ func (db *DB) evictExpiredBatches(ctx context.Context) error {
 }
 
 func (db *DB) evictionWorker(ctx context.Context) {
-
+	db.inFlight.Add(1)
 	defer db.inFlight.Done()
 
 	batchExpiryTrigger, batchExpiryUnsub := db.events.Subscribe(batchExpiry)
@@ -214,10 +241,8 @@ func (db *DB) evictionWorker(ctx context.Context) {
 			err := db.evictExpiredBatches(ctx)
 			if err != nil {
 				db.logger.Warning("eviction worker expired batches", "error", err)
-				continue
 			}
 
-			// testing
 			db.events.Trigger(batchExpiryDone)
 
 			if !db.reserve.IsWithinCapacity() {
