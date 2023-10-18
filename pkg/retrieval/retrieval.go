@@ -203,7 +203,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 				if errors.Is(err, topology.ErrNotFound) {
 					if skip.PruneExpiresAfter(chunkAddr, overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers
 						if inflight == 0 {
-							loggerV1.Debug("no peers left", "chunk_address", chunkAddr, "errors_left", errorsLeft, "isOrigin", origin, "error", err)
+							loggerV1.Debug("no peers left", "chunk_address", chunkAddr, "errors_left", errorsLeft, "isOrigin", origin, "own_proximity", swarm.Proximity(s.addr.Bytes(), chunkAddr.Bytes()), "error", err)
 							return nil, err
 						}
 						continue // there is still an inflight request, wait for it's result
