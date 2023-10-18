@@ -87,10 +87,12 @@ func TestNeighborhoodDepth(t *testing.T) {
 	}
 
 	for _, a := range shallowPeers {
-		if !kad.IsWithinDepth(a) {
+		if !kad.IsWithinConnectionDepth(a) {
 			t.Fatal("expected address to be within depth")
 		}
 	}
+
+	kad.SetStorageRadius(0)
 
 	// depth 0 - bin 0 is unsaturated
 	kDepth(t, kad, 0)
@@ -122,14 +124,14 @@ func TestNeighborhoodDepth(t *testing.T) {
 
 	// set the radius to be lower than unsaturated, expect radius as depth
 	kad.SetStorageRadius(6)
-	kDepth(t, kad, 6)
+	kRadius(t, kad, 6)
 
 	// set the radius to MaxPO again so that intermediate checks can run
-	kad.SetStorageRadius(swarm.MaxPO)
+	kad.SetStorageRadius(0)
 
 	// expect shallow peers not in depth
 	for _, a := range shallowPeers {
-		if kad.IsWithinDepth(a) {
+		if kad.IsWithinConnectionDepth(a) {
 			t.Fatal("expected address to outside of depth")
 		}
 	}
@@ -155,13 +157,6 @@ func TestNeighborhoodDepth(t *testing.T) {
 	addOne(t, signer, kad, ab, addr)
 	waitConn(t, &conns)
 	kDepth(t, kad, 8)
-
-	// again set radius to lower value, expect that as depth
-	kad.SetStorageRadius(5)
-	kDepth(t, kad, 5)
-
-	// reset radius to MaxPO for the rest of the checks
-	kad.SetStorageRadius(swarm.MaxPO)
 
 	var addrs []swarm.Address
 	// fill the rest up to the bin before last and check that everything works at the edges
@@ -194,7 +189,7 @@ func TestNeighborhoodDepth(t *testing.T) {
 	}
 	kDepth(t, kad, 9)
 
-	if !kad.IsWithinDepth(addrs[0]) {
+	if !kad.IsWithinConnectionDepth(addrs[0]) {
 		t.Fatal("expected address to be within depth")
 	}
 
@@ -215,6 +210,8 @@ func TestNeighborhoodDepthWithReachability(t *testing.T) {
 		t.Fatal(err)
 	}
 	testutil.CleanupCloser(t, kad)
+
+	kad.SetStorageRadius(0)
 
 	// add 2 peers in bin 8
 	for i := 0; i < 2; i++ {
@@ -241,7 +238,7 @@ func TestNeighborhoodDepthWithReachability(t *testing.T) {
 	}
 
 	for _, a := range shallowPeers {
-		if !kad.IsWithinDepth(a) {
+		if !kad.IsWithinConnectionDepth(a) {
 			t.Fatal("expected address to be within depth")
 		}
 	}
@@ -276,16 +273,9 @@ func TestNeighborhoodDepthWithReachability(t *testing.T) {
 	// depth is 7 because bin 7 is unsaturated (1 peer)
 	kDepth(t, kad, 7)
 
-	// set the radius to be lower than unsaturated, expect radius as depth
-	kad.SetStorageRadius(6)
-	kDepth(t, kad, 6)
-
-	// set the radius to MaxPO again so that intermediate checks can run
-	kad.SetStorageRadius(swarm.MaxPO)
-
 	// expect shallow peers not in depth
 	for _, a := range shallowPeers {
-		if kad.IsWithinDepth(a) {
+		if kad.IsWithinConnectionDepth(a) {
 			t.Fatal("expected address to outside of depth")
 		}
 	}
@@ -314,13 +304,6 @@ func TestNeighborhoodDepthWithReachability(t *testing.T) {
 	kad.Reachable(addr, p2p.ReachabilityStatusPublic)
 	waitConn(t, &conns)
 	kDepth(t, kad, 8)
-
-	// again set radius to lower value, expect that as depth
-	kad.SetStorageRadius(5)
-	kDepth(t, kad, 5)
-
-	// reset radius to MaxPO for the rest of the checks
-	kad.SetStorageRadius(swarm.MaxPO)
 
 	var addrs []swarm.Address
 	// fill the rest up to the bin before last and check that everything works at the edges
@@ -355,7 +338,7 @@ func TestNeighborhoodDepthWithReachability(t *testing.T) {
 	}
 	kDepth(t, kad, 9)
 
-	if !kad.IsWithinDepth(addrs[0]) {
+	if !kad.IsWithinConnectionDepth(addrs[0]) {
 		t.Fatal("expected address to be within depth")
 	}
 }
@@ -379,9 +362,9 @@ func TestManage(t *testing.T) {
 		conns                    int32 // how many connect calls were made to the p2p mock
 		saturation               = kademlia.DefaultSaturationPeers
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			BitSuffixLength: ptrInt(-1),
-			FilterFunc:      defaultFilterFunc,
-			IgnoreRadius:    true,
+			BitSuffixLength:     ptrInt(-1),
+			FilterFunc:          defaultFilterFunc,
+			IgnoreStorageRadius: true,
 		})
 	)
 
@@ -474,10 +457,10 @@ func TestBinSaturation(t *testing.T) {
 	var (
 		conns                    int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, nil, kademlia.Options{
-			SaturationPeers: ptrInt(2),
-			BitSuffixLength: ptrInt(-1),
-			FilterFunc:      defaultFilterFunc,
-			IgnoreRadius:    true,
+			SaturationPeers:     ptrInt(2),
+			BitSuffixLength:     ptrInt(-1),
+			FilterFunc:          defaultFilterFunc,
+			IgnoreStorageRadius: true,
 		})
 	)
 
@@ -831,8 +814,8 @@ func TestAddressBookPrune(t *testing.T) {
 	var (
 		conns, failedConns       int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, &failedConns, kademlia.Options{
-			TimeToRetry:  ptrDuration(20 * time.Millisecond),
-			IgnoreRadius: true,
+			TimeToRetry:         ptrDuration(20 * time.Millisecond),
+			IgnoreStorageRadius: true,
 		})
 	)
 
@@ -1290,7 +1273,7 @@ func TestOutofDepthPrune(t *testing.T) {
 			OverSaturationPeers: ptrInt(overSaturationPeers),
 			PruneFunc:           pruneFunc,
 			FilterFunc:          defaultFilterFunc,
-			IgnoreRadius:        true,
+			IgnoreStorageRadius: true,
 		})
 	)
 
@@ -1549,7 +1532,7 @@ func TestAnnounceNeighborhoodToNeighbor(t *testing.T) {
 			FilterFunc:          defaultFilterFunc,
 			OverSaturationPeers: ptrInt(4),
 			SaturationPeers:     ptrInt(4),
-			IgnoreRadius:        true,
+			IgnoreStorageRadius: true,
 		})
 	)
 
@@ -1990,6 +1973,19 @@ func kDepth(t *testing.T, k *kademlia.Kad, d int) {
 	})
 	if err != nil {
 		t.Fatalf("timed out waiting for depth. want %d got %d", d, depth)
+	}
+}
+
+func kRadius(t *testing.T, k *kademlia.Kad, d int) {
+	t.Helper()
+
+	var radius int
+	err := spinlock.Wait(spinLockWaitTime, func() bool {
+		radius = int(k.StorageRadius())
+		return radius == d
+	})
+	if err != nil {
+		t.Fatalf("timed out waiting for radius. want %d got %d", d, radius)
 	}
 }
 

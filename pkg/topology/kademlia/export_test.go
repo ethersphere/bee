@@ -26,14 +26,20 @@ const (
 type PeerFilterFunc = peerFilterFunc
 type FilterFunc = filtersFunc
 
-func (k *Kad) IsWithinDepth(addr swarm.Address) bool {
-	return swarm.Proximity(k.base.Bytes(), addr.Bytes()) >= k.NeighborhoodDepth()
+func (k *Kad) IsWithinConnectionDepth(addr swarm.Address) bool {
+	return swarm.Proximity(k.base.Bytes(), addr.Bytes()) >= k.ConnectionDepth()
 }
 
 func (k *Kad) ConnectionDepth() uint8 {
 	k.depthMu.RLock()
 	defer k.depthMu.RUnlock()
 	return k.depth
+}
+
+func (k *Kad) StorageRadius() uint8 {
+	k.depthMu.RLock()
+	defer k.depthMu.RUnlock()
+	return k.storageRadius
 }
 
 // IsBalanced returns if Kademlia is balanced to bin.

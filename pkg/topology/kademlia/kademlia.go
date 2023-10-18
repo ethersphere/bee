@@ -79,14 +79,14 @@ var noopSanctionedPeerFn = func(_ swarm.Address) bool { return false }
 
 // Options for injecting services to Kademlia.
 type Options struct {
-	SaturationFunc binSaturationFunc
-	Bootnodes      []ma.Multiaddr
-	BootnodeMode   bool
-	PruneFunc      pruneFunc
-	StaticNodes    []swarm.Address
-	FilterFunc     filtersFunc
-	IgnoreRadius   bool
-	DataDir        string
+	SaturationFunc      binSaturationFunc
+	Bootnodes           []ma.Multiaddr
+	BootnodeMode        bool
+	PruneFunc           pruneFunc
+	StaticNodes         []swarm.Address
+	FilterFunc          filtersFunc
+	IgnoreStorageRadius bool
+	DataDir             string
 
 	BitSuffixLength             *int
 	TimeToRetry                 *time.Duration
@@ -127,7 +127,7 @@ func newKadOptions(o Options) kadOptions {
 		PruneFunc:      o.PruneFunc,
 		StaticNodes:    o.StaticNodes,
 		FilterFunc:     o.FilterFunc,
-		IgnoreRadius:   o.IgnoreRadius,
+		IgnoreRadius:   o.IgnoreStorageRadius,
 		// copy or use default
 		TimeToRetry:                 defaultValDuration(o.TimeToRetry, defaultTimeToRetry),
 		ShortRetry:                  defaultValDuration(o.ShortRetry, defaultShortRetry),
@@ -285,7 +285,7 @@ func (k *Kad) connectBalanced(wg *sync.WaitGroup, peerConnChan chan<- *peerConnI
 		return false
 	}
 
-	depth := k.NeighborhoodDepth()
+	depth := k.neighborhoodDepth()
 
 	for i := range k.commonBinPrefixes {
 
@@ -351,7 +351,7 @@ func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerCon
 	_ = k.knownPeers.EachBinRev(func(addr swarm.Address, po uint8) (bool, bool, error) {
 
 		// out of depth, skip bin
-		if po < k.NeighborhoodDepth() {
+		if po < k.neighborhoodDepth() {
 			return false, true, nil
 		}
 
@@ -578,7 +578,7 @@ func (k *Kad) manage() {
 			}
 
 			if k.bootnode {
-				depth := k.NeighborhoodDepth()
+				depth := k.neighborhoodDepth()
 
 				k.metrics.CurrentDepth.Set(float64(depth))
 				k.metrics.CurrentlyKnownPeers.Set(float64(k.knownPeers.Length()))
@@ -587,12 +587,12 @@ func (k *Kad) manage() {
 				continue
 			}
 
-			oldDepth := k.NeighborhoodDepth()
+			oldDepth := k.neighborhoodDepth()
 			k.connectBalanced(&wg, balanceChan)
 			k.connectNeighbours(&wg, neighbourhoodChan)
 			wg.Wait()
 
-			depth := k.NeighborhoodDepth()
+			depth := k.neighborhoodDepth()
 
 			k.opt.PruneFunc(depth)
 
@@ -894,10 +894,6 @@ func (k *Kad) recalcDepth() {
 		return false, false, nil
 	})
 
-	if k.storageRadius < depth && !k.opt.IgnoreRadius {
-		depth = k.storageRadius
-	}
-
 	if depth > candidate {
 		depth = candidate
 	}
@@ -975,7 +971,7 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 func (k *Kad) Announce(ctx context.Context, peer swarm.Address, fullnode bool) error {
 	var addrs []swarm.Address
 
-	depth := k.NeighborhoodDepth()
+	depth := k.neighborhoodDepth()
 	isNeighbor := swarm.Proximity(peer.Bytes(), k.base.Bytes()) >= depth
 
 outer:
@@ -1352,7 +1348,7 @@ func filterOps(filter topology.Select) []im.FilterOp {
 }
 
 // NeighborhoodDepth returns the current Kademlia depth.
-func (k *Kad) NeighborhoodDepth() uint8 {
+func (k *Kad) neighborhoodDepth() uint8 {
 	k.depthMu.RLock()
 	defer k.depthMu.RUnlock()
 
@@ -1427,7 +1423,7 @@ func (k *Kad) Snapshot() *topology.KadParams {
 		Connected:           k.connectedPeers.Length(),
 		Timestamp:           time.Now(),
 		NNLowWatermark:      k.opt.LowWaterMark,
-		Depth:               k.NeighborhoodDepth(),
+		Depth:               k.neighborhoodDepth(),
 		Reachability:        k.reachability.String(),
 		NetworkAvailability: k.p2p.NetworkStatus().String(),
 		Bins: topology.KadBins{
