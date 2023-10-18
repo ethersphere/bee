@@ -58,6 +58,7 @@ func TestNeighborhoodDepth(t *testing.T) {
 			FilterFunc:      defaultFilterFunc,
 		})
 	)
+	kad.SetStorageRadius(0)
 
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
@@ -708,6 +709,8 @@ func TestDiscoveryHooks(t *testing.T) {
 		p1, p2, p3 = swarm.RandAddress(t), swarm.RandAddress(t), swarm.RandAddress(t)
 	)
 
+	kad.SetStorageRadius(0)
+
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -770,6 +773,7 @@ func TestBackoff(t *testing.T) {
 			TimeToRetry: ptrDuration(500 * time.Millisecond),
 		})
 	)
+	kad.SetStorageRadius(0)
 
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
@@ -810,6 +814,8 @@ func TestAddressBookPrune(t *testing.T) {
 			TimeToRetry: ptrDuration(20 * time.Millisecond),
 		})
 	)
+
+	kad.SetStorageRadius(0)
 
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
@@ -881,6 +887,7 @@ func TestAddressBookQuickPrune(t *testing.T) {
 			TimeToRetry: ptrDuration(50 * time.Millisecond),
 		})
 	)
+	kad.SetStorageRadius(0)
 
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
