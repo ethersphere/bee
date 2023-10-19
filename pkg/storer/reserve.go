@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/postage"
@@ -89,7 +90,7 @@ func (db *DB) startReserveWorkers(
 	db.inFlight.Add(1)
 	go db.radiusWorker(ctx, wakeUpDur)
 
-	db.inFlight.Add(1)
+	db.inFlight.Add(2)
 	go db.reserveSizeWithinRadiusWorker(ctx)
 }
 
@@ -124,7 +125,32 @@ func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
 	ticker := time.NewTicker(reserveSizeWithinRadiusWakeup)
 	defer ticker.Stop()
 
+	var activeEviction atomic.Bool
+	go func() {
+		defer db.inFlight.Done()
+
+		expiryTrigger, expiryUnsub := db.events.Subscribe(batchExpiry)
+		defer expiryUnsub()
+
+		expiryDoneTrigger, expiryDoneUnsub := db.events.Subscribe(batchExpiryDone)
+		defer expiryDoneUnsub()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-expiryTrigger:
+				activeEviction.Store(true)
+			case <-expiryDoneTrigger:
+				activeEviction.Store(false)
+			}
+		}
+	}()
+
 	for {
+
+		skipInvalidCheck := activeEviction.Load()
+
 		count := 0
 		missing := 0
 		radius := db.StorageRadius()
@@ -132,6 +158,11 @@ func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
 			if ci.Bin >= radius {
 				count++
 			}
+
+			if skipInvalidCheck {
+				return false, nil
+			}
+
 			if exists, _ := db.batchstore.Exists(ci.BatchID); !exists {
 				missing++
 				db.logger.Debug("reserve size worker, item with invalid batch id", "batch_id", hex.EncodeToString(ci.BatchID), "chunk_address", ci.ChunkAddress)
@@ -146,7 +177,9 @@ func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
 		}
 
 		db.metrics.ReserveSizeWithinRadius.Set(float64(count))
-		db.metrics.ReserveMissingBatch.Set(float64(missing))
+		if !skipInvalidCheck {
+			db.metrics.ReserveMissingBatch.Set(float64(missing))
+		}
 
 		select {
 		case <-ctx.Done():
@@ -198,7 +231,6 @@ func (db *DB) evictExpiredBatches(ctx context.Context) error {
 }
 
 func (db *DB) evictionWorker(ctx context.Context) {
-
 	defer db.inFlight.Done()
 
 	batchExpiryTrigger, batchExpiryUnsub := db.events.Subscribe(batchExpiry)
@@ -214,10 +246,8 @@ func (db *DB) evictionWorker(ctx context.Context) {
 			err := db.evictExpiredBatches(ctx)
 			if err != nil {
 				db.logger.Warning("eviction worker expired batches", "error", err)
-				continue
 			}
 
-			// testing
 			db.events.Trigger(batchExpiryDone)
 
 			if !db.reserve.IsWithinCapacity() {
