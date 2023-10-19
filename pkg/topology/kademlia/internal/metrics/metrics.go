@@ -140,13 +140,6 @@ type Snapshot struct {
 	Healthy                    bool
 }
 
-// HasAtMaxOneConnectionAttempt returns true if the snapshot represents a new
-// peer which has at maximum one session connection attempt, but it still isn't
-// logged in.
-func (ss *Snapshot) HasAtMaxOneConnectionAttempt() bool {
-	return ss.LastSeenTimestamp == 0 && ss.SessionConnectionRetry <= 1
-}
-
 // persistentCounters is a helper struct used for persisting selected counters.
 type persistentCounters struct {
 	PeerAddress       swarm.Address `json:"peerAddress"`
