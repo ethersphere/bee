@@ -553,7 +553,7 @@ func (k *Kad) manage() {
 				return
 			case <-time.After(5 * time.Minute):
 				var neighbors []swarm.Address
-				k.connectedPeers.EachBin(func(addr swarm.Address, bin uint8) (stop bool, jumpToNext bool, err error) {
+				_ = k.connectedPeers.EachBin(func(addr swarm.Address, bin uint8) (stop bool, jumpToNext bool, err error) {
 					if bin < k.neighborhoodDepth() {
 						return true, false, nil
 					}

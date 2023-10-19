@@ -22,13 +22,6 @@ const (
 	retryAfterDuration = time.Minute * 5
 )
 
-type peerState int
-
-const (
-	waiting peerState = iota
-	inProgress
-)
-
 type peer struct {
 	overlay    swarm.Address
 	addr       ma.Multiaddr
