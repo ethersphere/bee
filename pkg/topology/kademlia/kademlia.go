@@ -38,6 +38,7 @@ const loggerName = "kademlia"
 const (
 	maxConnAttempts     = 1 // when there is maxConnAttempts failed connect calls for a given peer it is considered non-connectable
 	maxBootNodeAttempts = 3 // how many attempts to dial to boot-nodes before giving up
+	maxNeighborAttempts = 3 // how many attempts to dial to boot-nodes before giving up
 
 	addPeerBatchSize = 500
 
@@ -548,10 +549,22 @@ func (k *Kad) manage() {
 		defer k.wg.Done()
 		for {
 			select {
-			case <-k.halt:
-				return
 			case <-k.quit:
 				return
+			case <-time.After(5 * time.Minute):
+				var neighbors []swarm.Address
+				k.connectedPeers.EachBin(func(addr swarm.Address, bin uint8) (stop bool, jumpToNext bool, err error) {
+					if bin < k.neighborhoodDepth() {
+						return true, false, nil
+					}
+					neighbors = append(neighbors, addr)
+					return false, false, nil
+				})
+				for i, peer := range neighbors {
+					if err := k.discovery.BroadcastPeers(ctx, peer, append(neighbors[:i], neighbors[i+1:]...)...); err != nil {
+						k.logger.Debug("broadcast neighborhood failure", "peer_address", peer, "error", err)
+					}
+				}
 			}
 		}
 	}()
@@ -940,9 +953,14 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 		k.metrics.TotalOutboundConnectionFailedAttempts.Inc()
 		k.collector.Record(peer, im.IncSessionConnectionRetry())
 
+		maxAttempts := maxConnAttempts
+		if swarm.Proximity(k.base.Bytes(), peer.Bytes()) >= k.neighborhoodDepth() {
+			maxAttempts = maxNeighborAttempts
+		}
+
 		ss := k.collector.Inspect(peer)
 		quickPrune := (ss == nil || ss.HasAtMaxOneConnectionAttempt()) && isNetworkError(err)
-		if (k.connectedPeers.Length() > 0 && quickPrune) || failedAttempts >= maxConnAttempts {
+		if (k.connectedPeers.Length() > 0 && quickPrune) || failedAttempts >= maxAttempts {
 			k.waitNext.Remove(peer)
 			k.knownPeers.Remove(peer)
 			if err := k.addressBook.Remove(peer); err != nil {
@@ -980,9 +998,9 @@ outer:
 		)
 
 		if bin >= depth && isNeighbor {
-			connectedPeers = k.binReachablePeers(bin) // broadcast all neighborhood peers
+			connectedPeers = k.binPeers(bin, false) // broadcast all neighborhood peers
 		} else {
-			connectedPeers, err = randomSubset(k.binReachablePeers(bin), k.opt.BroadcastBinSize)
+			connectedPeers, err = randomSubset(k.binPeers(bin, true), k.opt.BroadcastBinSize)
 			if err != nil {
 				return err
 			}
@@ -1075,7 +1093,7 @@ func (k *Kad) Pick(peer p2p.Peer) bool {
 	return false
 }
 
-func (k *Kad) binReachablePeers(bin uint8) (peers []swarm.Address) {
+func (k *Kad) binPeers(bin uint8, reachable bool) (peers []swarm.Address) {
 
 	_ = k.EachConnectedPeerRev(func(p swarm.Address, po uint8) (bool, bool, error) {
 
@@ -1090,7 +1108,7 @@ func (k *Kad) binReachablePeers(bin uint8) (peers []swarm.Address) {
 
 		return false, true, nil
 
-	}, topology.Select{Reachable: true})
+	}, topology.Select{Reachable: reachable})
 
 	return
 }

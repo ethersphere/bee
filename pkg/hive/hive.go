@@ -28,7 +28,6 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/ratelimit"
 	"github.com/ethersphere/bee/pkg/swarm"
-	lru "github.com/hashicorp/golang-lru"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 )
@@ -70,17 +69,11 @@ type Service struct {
 	wg                sync.WaitGroup
 	peersChan         chan pb.Peers
 	sem               *semaphore.Weighted
-	lru               *lru.Cache // cache for unreachable peers
 	bootnode          bool
 	allowPrivateCIDRs bool
 }
 
-func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, networkID uint64, bootnode bool, allowPrivateCIDRs bool, logger log.Logger) (*Service, error) {
-	lruCache, err := lru.New(cacheSize)
-	if err != nil {
-		return nil, err
-	}
-
+func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, networkID uint64, bootnode bool, allowPrivateCIDRs bool, logger log.Logger) *Service {
 	svc := &Service{
 		streamer:          streamer,
 		logger:            logger.WithName(loggerName).Register(),
@@ -92,7 +85,6 @@ func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, network
 		quit:              make(chan struct{}),
 		peersChan:         make(chan pb.Peers),
 		sem:               semaphore.NewWeighted(int64(31)),
-		lru:               lruCache,
 		bootnode:          bootnode,
 		allowPrivateCIDRs: allowPrivateCIDRs,
 	}
@@ -101,7 +93,7 @@ func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, network
 		svc.startCheckPeersHandler()
 	}
 
-	return svc, nil
+	return svc
 }
 
 func (s *Service) Protocol() p2p.ProtocolSpec {
@@ -304,14 +296,8 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 		overlay := swarm.NewAddress(p.Overlay)
 		cacheOverlay := overlay.ByteString()[:cachePrefix]
 
-		// cached peer, skip
-		if _, ok := s.lru.Get(cacheOverlay); ok {
-			continue
-		}
-
 		// if peer exists already in the addressBook, skip
 		if _, err := s.addressBook.Get(overlay); err == nil {
-			_ = s.lru.Add(cacheOverlay, nil)
 			continue
 		}
 
@@ -327,8 +313,6 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 
 			defer func() {
 				s.sem.Release(1)
-				// mark peer as seen
-				_ = s.lru.Add(cacheOverlay, nil)
 				wg.Done()
 			}()
 

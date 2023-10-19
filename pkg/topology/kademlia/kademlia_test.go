@@ -815,7 +815,7 @@ func TestAddressBookPrune(t *testing.T) {
 		})
 	)
 
-	kad.SetStorageRadius(0)
+	kad.SetStorageRadius(2)
 
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
@@ -887,7 +887,7 @@ func TestAddressBookQuickPrune(t *testing.T) {
 			TimeToRetry: ptrDuration(50 * time.Millisecond),
 		})
 	)
-	kad.SetStorageRadius(0)
+	kad.SetStorageRadius(2)
 
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
