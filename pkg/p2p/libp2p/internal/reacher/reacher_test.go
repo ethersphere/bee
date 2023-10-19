@@ -20,7 +20,6 @@ import (
 
 var defaultOptions = reacher.Options{
 	PingTimeout:        time.Second * 5,
-	PingMaxAttempts:    3,
 	Workers:            8,
 	RetryAfterDuration: time.Millisecond,
 }
@@ -81,6 +80,8 @@ func TestPingSuccess(t *testing.T) {
 				t.Fatalf("test timed out")
 			case <-done:
 			}
+
+			testutil.CleanupCloser(t, r)
 		})
 	}
 }
@@ -123,6 +124,8 @@ func TestDisconnected(t *testing.T) {
 	r.Disconnected(disconnectedOverlay)
 
 	time.Sleep(time.Millisecond * 50) // wait for reachable func to be called
+
+	testutil.CleanupCloser(t, r)
 }
 
 type mock struct {
