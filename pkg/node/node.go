@@ -750,7 +750,7 @@ func NewBee(
 	var swapService *swap.Service
 
 	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, logger,
-		kademlia.Options{Bootnodes: bootnodes, BootnodeMode: o.BootnodeMode, StaticNodes: o.StaticNodes, IgnoreRadius: !chainEnabled, DataDir: o.DataDir})
+		kademlia.Options{Bootnodes: bootnodes, BootnodeMode: o.BootnodeMode, StaticNodes: o.StaticNodes, DataDir: o.DataDir})
 	if err != nil {
 		return nil, fmt.Errorf("unable to create kademlia: %w", err)
 	}
@@ -966,6 +966,9 @@ func NewBee(
 				networkR.Store(uint32(r))
 				if prev == uint32(swarm.MaxBins) {
 					close(initialRadiusC)
+				}
+				if !o.FullNodeMode { // light and ultra-light nodes do not have a reserve worker to set the radius.
+					kad.SetStorageRadius(r)
 				}
 			case <-ctx.Done():
 				unsub()

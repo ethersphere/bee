@@ -26,7 +26,6 @@ type Driver interface {
 	PeerAdder
 	ClosestPeerer
 	PeerIterator
-	NeighborhoodDepther
 	SubscribeTopologyChange() (c <-chan struct{}, unsubscribe func())
 	io.Closer
 	Halter
@@ -146,10 +145,6 @@ type Halter interface {
 	// Halt the topology from initiating new connections
 	// while allowing it to still run.
 	Halt()
-}
-
-type NeighborhoodDepther interface {
-	NeighborhoodDepth() uint8
 }
 
 type SetStorageRadiuser interface {

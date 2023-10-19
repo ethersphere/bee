@@ -85,7 +85,6 @@ type Options struct {
 	PruneFunc      pruneFunc
 	StaticNodes    []swarm.Address
 	FilterFunc     filtersFunc
-	IgnoreRadius   bool
 	DataDir        string
 
 	BitSuffixLength             *int
@@ -106,7 +105,6 @@ type kadOptions struct {
 	PruneFunc      pruneFunc
 	StaticNodes    []swarm.Address
 	FilterFunc     filtersFunc
-	IgnoreRadius   bool
 
 	TimeToRetry                 time.Duration
 	ShortRetry                  time.Duration
@@ -127,7 +125,6 @@ func newKadOptions(o Options) kadOptions {
 		PruneFunc:      o.PruneFunc,
 		StaticNodes:    o.StaticNodes,
 		FilterFunc:     o.FilterFunc,
-		IgnoreRadius:   o.IgnoreRadius,
 		// copy or use default
 		TimeToRetry:                 defaultValDuration(o.TimeToRetry, defaultTimeToRetry),
 		ShortRetry:                  defaultValDuration(o.ShortRetry, defaultShortRetry),
@@ -285,7 +282,7 @@ func (k *Kad) connectBalanced(wg *sync.WaitGroup, peerConnChan chan<- *peerConnI
 		return false
 	}
 
-	depth := k.NeighborhoodDepth()
+	depth := k.neighborhoodDepth()
 
 	for i := range k.commonBinPrefixes {
 
@@ -351,7 +348,7 @@ func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerCon
 	_ = k.knownPeers.EachBinRev(func(addr swarm.Address, po uint8) (bool, bool, error) {
 
 		// out of depth, skip bin
-		if po < k.NeighborhoodDepth() {
+		if po < k.neighborhoodDepth() {
 			return false, true, nil
 		}
 
@@ -445,9 +442,7 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 		k.metrics.TotalOutboundConnections.Inc()
 		k.collector.Record(peer.addr, im.PeerLogIn(time.Now(), im.PeerConnectionDirectionOutbound))
 
-		k.depthMu.Lock()
 		k.recalcDepth()
-		k.depthMu.Unlock()
 
 		k.logger.Info("connected to peer", "peer_address", peer.addr, "proximity_order", peer.po)
 		k.notifyManageLoop()
@@ -580,7 +575,7 @@ func (k *Kad) manage() {
 			}
 
 			if k.bootnode {
-				depth := k.NeighborhoodDepth()
+				depth := k.neighborhoodDepth()
 
 				k.metrics.CurrentDepth.Set(float64(depth))
 				k.metrics.CurrentlyKnownPeers.Set(float64(k.knownPeers.Length()))
@@ -589,12 +584,12 @@ func (k *Kad) manage() {
 				continue
 			}
 
-			oldDepth := k.NeighborhoodDepth()
+			oldDepth := k.neighborhoodDepth()
 			k.connectBalanced(&wg, balanceChan)
 			k.connectNeighbours(&wg, neighbourhoodChan)
 			wg.Wait()
 
-			depth := k.NeighborhoodDepth()
+			depth := k.neighborhoodDepth()
 
 			k.opt.PruneFunc(depth)
 
@@ -835,6 +830,9 @@ func binSaturated(oversaturationAmount int, staticNode staticPeerFunc) binSatura
 // recalcDepth calculates, assigns the new depth, and returns if depth has changed
 func (k *Kad) recalcDepth() {
 
+	k.depthMu.Lock()
+	defer k.depthMu.Unlock()
+
 	var (
 		peers                 = k.connectedPeers
 		filter                = k.opt.FilterFunc(im.Reachability(false))
@@ -892,10 +890,6 @@ func (k *Kad) recalcDepth() {
 		}
 		return false, false, nil
 	})
-
-	if k.storageRadius < depth && !k.opt.IgnoreRadius {
-		depth = k.storageRadius
-	}
 
 	if depth > candidate {
 		depth = candidate
@@ -974,7 +968,7 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 func (k *Kad) Announce(ctx context.Context, peer swarm.Address, fullnode bool) error {
 	var addrs []swarm.Address
 
-	depth := k.NeighborhoodDepth()
+	depth := k.neighborhoodDepth()
 	isNeighbor := swarm.Proximity(peer.Bytes(), k.base.Bytes()) >= depth
 
 outer:
@@ -1147,9 +1141,7 @@ func (k *Kad) onConnected(ctx context.Context, addr swarm.Address) error {
 
 	k.waitNext.Remove(addr)
 
-	k.depthMu.Lock()
 	k.recalcDepth()
-	k.depthMu.Unlock()
 
 	k.notifyManageLoop()
 	k.notifyPeerSig()
@@ -1168,9 +1160,7 @@ func (k *Kad) Disconnected(peer p2p.Peer) {
 	k.metrics.TotalInboundDisconnections.Inc()
 	k.collector.Record(peer.Address, im.PeerLogOut(time.Now()))
 
-	k.depthMu.Lock()
 	k.recalcDepth()
-	k.depthMu.Unlock()
 
 	k.notifyManageLoop()
 	k.notifyPeerSig()
@@ -1288,9 +1278,7 @@ func (k *Kad) Reachable(addr swarm.Address, status p2p.ReachabilityStatus) {
 	k.collector.Record(addr, im.PeerReachability(status))
 	k.logger.Debug("reachability of peer updated", "peer_address", addr, "reachability", status)
 	if status == p2p.ReachabilityStatusPublic {
-		k.depthMu.Lock()
 		k.recalcDepth()
-		k.depthMu.Unlock()
 		k.notifyManageLoop()
 	}
 }
@@ -1357,11 +1345,11 @@ func filterOps(filter topology.Select) []im.FilterOp {
 }
 
 // NeighborhoodDepth returns the current Kademlia depth.
-func (k *Kad) NeighborhoodDepth() uint8 {
+func (k *Kad) neighborhoodDepth() uint8 {
 	k.depthMu.RLock()
 	defer k.depthMu.RUnlock()
 
-	return k.depth
+	return k.storageRadius
 }
 
 func (k *Kad) SetStorageRadius(d uint8) {
@@ -1377,13 +1365,8 @@ func (k *Kad) SetStorageRadius(d uint8) {
 	k.metrics.CurrentStorageDepth.Set(float64(k.storageRadius))
 	k.logger.Debug("kademlia set storage radius", "radius", k.storageRadius)
 
-	oldDepth := k.depth
-	k.recalcDepth()
-
-	if oldDepth != k.depth {
-		k.notifyManageLoop()
-		k.notifyPeerSig()
-	}
+	k.notifyManageLoop()
+	k.notifyPeerSig()
 }
 
 func (k *Kad) Snapshot() *topology.KadParams {
@@ -1433,7 +1416,7 @@ func (k *Kad) Snapshot() *topology.KadParams {
 		Connected:           k.connectedPeers.Length(),
 		Timestamp:           time.Now(),
 		NNLowWatermark:      k.opt.LowWaterMark,
-		Depth:               k.NeighborhoodDepth(),
+		Depth:               k.neighborhoodDepth(),
 		Reachability:        k.reachability.String(),
 		NetworkAvailability: k.p2p.NetworkStatus().String(),
 		Bins: topology.KadBins{
