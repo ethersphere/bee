@@ -95,6 +95,7 @@ type Bee struct {
 	errorLogWriter           io.Writer
 	tracerCloser             io.Closer
 	stateStoreCloser         io.Closer
+	stamperStoreCloser       io.Closer
 	localstoreCloser         io.Closer
 	topologyCloser           io.Closer
 	topologyHalter           topology.Halter
@@ -389,6 +390,7 @@ func NewBee(
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize stamper store: %w", err)
 	}
+	b.stamperStoreCloser = stamperStore
 
 	var debugService *api.Service
 
@@ -1380,6 +1382,7 @@ func (b *Bee) Shutdown() error {
 	tryClose(b.topologyCloser, "topology driver")
 	tryClose(b.storageIncetivesCloser, "storage incentives agent")
 	tryClose(b.stateStoreCloser, "statestore")
+	tryClose(b.stamperStoreCloser, "stamperstore")
 	tryClose(b.localstoreCloser, "localstore")
 	tryClose(b.resolverCloser, "resolver service")
 
