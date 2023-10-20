@@ -55,6 +55,7 @@ func InitStamperStore(logger log.Logger, dataDir string, stateStore storage.Stat
 	if err != nil {
 		return nil, err
 	}
+	// TODO: remove migration
 	err = migrateStamperData(stateStore, stamperStore)
 	if err != nil {
 		stamperStore.Close()

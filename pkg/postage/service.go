@@ -6,6 +6,7 @@ package postage
 
 import (
 	"bytes"
+	"encoding/hex"
 	"errors"
 	"io"
 	"math/big"
@@ -61,20 +62,8 @@ func NewService(logger log.Logger, store storage.Store, postageStore Storer, cha
 		postageStore: postageStore,
 		chainID:      chainID,
 	}
-	err := store.Iterate(
-		storage.Query{
-			Factory: func() storage.Item {
-				return new(StampIssuerItem)
-			},
-		}, func(result storage.Result) (bool, error) {
-			issuer := result.Entry.(*StampIssuerItem).Issuer
-			_ = s.add(issuer)
-			return false, nil
-		})
-	if err != nil {
-		return nil, err
-	}
-	return s, nil
+
+	return s, s.reload()
 }
 
 // Add adds a stamp issuer to the active issuers.
@@ -202,22 +191,48 @@ func (ps *service) HandleStampExpiry(id []byte) {
 	}
 }
 
-// SetExpired sets expiry for all non-existing batches.
+// SetExpired removes all expired batches from the stamp issuers.
 func (ps *service) SetExpired() error {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
+
 	for _, issuer := range ps.issuers {
 		exists, err := ps.postageStore.Exists(issuer.ID())
 		if err != nil {
 			ps.logger.Error(err, "set expired: checking if issuer exists", "id", issuer.ID())
 			return err
 		}
-		issuer.SetExpired(!exists)
+		if !exists {
+			err := ps.store.Delete(&StampIssuerItem{Issuer: issuer})
+			if err != nil {
+				ps.logger.Error(err, "set expired: delete stamp data", "id", issuer.ID())
+				return err
+			}
+			ps.logger.Debug("removed expired stamp issuer", "id", hex.EncodeToString(issuer.ID()))
+		}
 	}
-	return nil
+
+	return ps.reload()
+}
+
+// reload reconstructs the list of stamp issuers from the statestore.
+// Must be mutex locked before usage.
+func (ps *service) reload() error {
+	ps.issuers = nil
+	return ps.store.Iterate(
+		storage.Query{
+			Factory: func() storage.Item {
+				return new(StampIssuerItem)
+			},
+		}, func(result storage.Result) (bool, error) {
+			issuer := result.Entry.(*StampIssuerItem).Issuer
+			_ = ps.add(issuer)
+			return false, nil
+		})
 }
 
 // add adds a stamp issuer to the active issuers and returns false if it is already present.
+// Must be mutex locked before usage.
 func (ps *service) add(st *StampIssuer) bool {
 	for _, v := range ps.issuers {
 		if bytes.Equal(st.data.BatchID, v.data.BatchID) {
