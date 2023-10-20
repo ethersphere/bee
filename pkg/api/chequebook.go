@@ -22,7 +22,6 @@ import (
 
 const (
 	errChequebookBalance           = "cannot get chequebook balance"
-	errChequebookNoAmount          = "did not specify amount"
 	errChequebookNoWithdraw        = "cannot withdraw"
 	errChequebookNoDeposit         = "cannot deposit"
 	errChequebookInsufficientFunds = "insufficient funds"
@@ -64,23 +63,23 @@ func (s *Service) chequebookBalanceHandler(w http.ResponseWriter, r *http.Reques
 
 	balance, err := s.chequebook.Balance(r.Context())
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
-		logger.Debug("get balance failed", "error", err)
-		logger.Error(nil, "get balance failed")
+		logger.Debug("unable to get balance", "error", err)
+		logger.Warning("unable to get balance")
 		jsonhttp.MethodNotAllowed(w, err)
 		return
 	}
 	if err != nil {
 		jsonhttp.InternalServerError(w, errChequebookBalance)
-		logger.Debug("get balance failed", "error", err)
-		logger.Error(nil, "get balance failed")
+		logger.Debug("unable to get balance", "error", err)
+		logger.Warning("unable to get balance")
 		return
 	}
 
 	availableBalance, err := s.chequebook.AvailableBalance(r.Context())
 	if err != nil {
 		jsonhttp.InternalServerError(w, errChequebookBalance)
-		logger.Debug("get available balance failed", "error", err)
-		logger.Error(nil, "get available balance failed")
+		logger.Debug("unable to get available balance", "error", err)
+		logger.Warning("unable to get available balance")
 		return
 	}
 
@@ -105,14 +104,14 @@ func (s *Service) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reque
 	var lastSentResponse *chequebookLastChequePeerResponse
 	lastSent, err := s.swap.LastSentCheque(paths.Peer)
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
-		logger.Debug("get last sent cheque failed", "peer_address", paths.Peer, "error", err)
-		logger.Error(nil, "get last sent cheque failed", "peer_address", paths.Peer)
+		logger.Debug("unable to get last sent cheque", "peer_address", paths.Peer, "error", err)
+		logger.Warning("unable to get last sent cheque")
 		jsonhttp.MethodNotAllowed(w, err)
 		return
 	}
 	if err != nil && !errors.Is(err, chequebook.ErrNoCheque) && !errors.Is(err, swap.ErrNoChequebook) {
-		logger.Debug("get last sent cheque failed", "peer_address", paths.Peer, "error", err)
-		logger.Error(nil, "get last sent cheque failed", "peer_address", paths.Peer)
+		logger.Debug("unable to get last sent cheque", "peer_address", paths.Peer, "error", err)
+		logger.Warning("unable to get last sent cheque")
 		jsonhttp.InternalServerError(w, errCantLastChequePeer)
 		return
 	}
@@ -127,8 +126,8 @@ func (s *Service) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reque
 	var lastReceivedResponse *chequebookLastChequePeerResponse
 	lastReceived, err := s.swap.LastReceivedCheque(paths.Peer)
 	if err != nil && !errors.Is(err, chequebook.ErrNoCheque) {
-		logger.Debug("get last received cheque failed", "peer_address", paths.Peer, "error", err)
-		logger.Error(nil, "get last received cheque failed", "peer_address", paths.Peer)
+		logger.Debug("unable to get last received cheque", "peer_address", paths.Peer, "error", err)
+		logger.Warning("unable to get last received cheque")
 		jsonhttp.InternalServerError(w, errCantLastChequePeer)
 		return
 	}
@@ -152,15 +151,15 @@ func (s *Service) chequebookAllLastHandler(w http.ResponseWriter, _ *http.Reques
 
 	lastchequessent, err := s.swap.LastSentCheques()
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
-		logger.Debug("get all last sent cheque failed", "error", err)
-		logger.Error(nil, "get all last sent cheque failed")
+		logger.Debug("unable to get all last sent cheques", "error", err)
+		logger.Warning("unable to get all last sent cheques")
 		jsonhttp.MethodNotAllowed(w, err)
 		return
 	}
 	if err != nil {
 		if !errors.Is(err, swap.ErrNoChequebook) {
-			logger.Debug("get all last sent cheque failed", "error", err)
-			logger.Error(nil, "get all last sent cheque failed")
+			logger.Debug("unable to get all last sent cheques", "error", err)
+			logger.Warning("unable to get all last sent cheques")
 			jsonhttp.InternalServerError(w, errCantLastCheque)
 			return
 		}
@@ -168,8 +167,8 @@ func (s *Service) chequebookAllLastHandler(w http.ResponseWriter, _ *http.Reques
 	}
 	lastchequesreceived, err := s.swap.LastReceivedCheques()
 	if err != nil {
-		logger.Debug("get all last received cheque failed", "error", err)
-		logger.Error(nil, "get all last received cheque failed")
+		logger.Debug("unable to get all last received cheques", "error", err)
+		logger.Debug("unable to get all last received cheques")
 		jsonhttp.InternalServerError(w, errCantLastCheque)
 		return
 	}
@@ -235,7 +234,7 @@ func (s *Service) swapCashoutHandler(w http.ResponseWriter, r *http.Request) {
 
 	if !s.cashOutChequeSem.TryAcquire(1) {
 		logger.Debug("simultaneous on-chain operations not supported")
-		logger.Error(nil, "simultaneous on-chain operations not supported")
+		logger.Warning("simultaneous on-chain operations not supported")
 		jsonhttp.TooManyRequests(w, "simultaneous on-chain operations not supported")
 		return
 	}
@@ -243,14 +242,14 @@ func (s *Service) swapCashoutHandler(w http.ResponseWriter, r *http.Request) {
 
 	txHash, err := s.swap.CashCheque(r.Context(), paths.Peer)
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
-		logger.Debug("cash cheque failed", "peer_address", paths.Peer, "error", err)
-		logger.Error(nil, "cash cheque failed", "peer_address", paths.Peer)
+		logger.Debug("unable to cashout cheque", "peer_address", paths.Peer, "error", err)
+		logger.Warning("unable to cashout cheque")
 		jsonhttp.MethodNotAllowed(w, err)
 		return
 	}
 	if err != nil {
-		logger.Debug("cash cheque failed", "peer_address", paths.Peer, "error", err)
-		logger.Error(nil, "cash cheque failed", "peer_address", paths.Peer)
+		logger.Debug("unable to cashout cheque", "peer_address", paths.Peer, "error", err)
+		logger.Warning("unable to cashout cheque")
 		jsonhttp.InternalServerError(w, errCannotCash)
 		return
 	}
@@ -285,26 +284,26 @@ func (s *Service) swapCashoutStatusHandler(w http.ResponseWriter, r *http.Reques
 
 	status, err := s.swap.CashoutStatus(r.Context(), paths.Peer)
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
-		logger.Debug("get cashout status failed", "peer_address", paths.Peer, "error", err)
-		logger.Error(nil, "get cashout status failed", "peer_address", paths.Peer)
+		logger.Debug("unable to get cashout status", "peer_address", paths.Peer, "error", err)
+		logger.Warning("unable to get cashout status")
 		jsonhttp.MethodNotAllowed(w, err)
 		return
 	}
 	if err != nil {
 		if errors.Is(err, chequebook.ErrNoCheque) {
-			logger.Debug("get cashout status failed", "peer_address", paths.Peer, "error", err)
-			logger.Error(nil, "get cashout status failed", "peer_address", paths.Peer)
+			logger.Debug("unable to get cashout status", "peer_address", paths.Peer, "error", err)
+			logger.Warning("unable to get cashout status")
 			jsonhttp.NotFound(w, errNoCheque)
 			return
 		}
 		if errors.Is(err, chequebook.ErrNoCashout) {
-			logger.Debug("get cashout status failed", "peer_address", paths.Peer, "error", err)
-			logger.Error(nil, "get cashout status failed", "peer_address", paths.Peer)
+			logger.Debug("unable to get cashout status", "peer_address", paths.Peer, "error", err)
+			logger.Warning("unable to get cashout status")
 			jsonhttp.NotFound(w, errNoCashout)
 			return
 		}
-		logger.Debug("get cashout status failed", "peer_address", paths.Peer, "error", err)
-		logger.Error(nil, "get cashout status failed", "peer_address", paths.Peer)
+		logger.Debug("unable to get cashout status", "peer_address", paths.Peer, "error", err)
+		logger.Warning("unable to get cashout status")
 		jsonhttp.InternalServerError(w, errCannotCashStatus)
 		return
 	}
@@ -354,14 +353,14 @@ func (s *Service) chequebookWithdrawHandler(w http.ResponseWriter, r *http.Reque
 
 	txHash, err := s.chequebook.Withdraw(r.Context(), queries.Amount)
 	if errors.Is(err, chequebook.ErrInsufficientFunds) {
-		logger.Debug("withdraw failed", "error", err)
-		logger.Error(nil, "withdraw failed")
+		logger.Debug("unable to withdraw from chequebook", "error", err)
+		logger.Warning("unable to withdraw from chequebook")
 		jsonhttp.BadRequest(w, errChequebookInsufficientFunds)
 		return
 	}
 	if err != nil {
-		logger.Debug("withdraw failed", "error", err)
-		logger.Error(nil, "withdraw failed")
+		logger.Debug("unable to withdraw from chequebook", "error", err)
+		logger.Warning("unable to withdraw from chequebook")
 		jsonhttp.InternalServerError(w, errChequebookNoWithdraw)
 		return
 	}
@@ -382,14 +381,14 @@ func (s *Service) chequebookDepositHandler(w http.ResponseWriter, r *http.Reques
 
 	txHash, err := s.chequebook.Deposit(r.Context(), queries.Amount)
 	if errors.Is(err, chequebook.ErrInsufficientFunds) {
-		logger.Debug("chequebook deposit: deposit failed", "error", err)
-		logger.Error(nil, "chequebook deposit: deposit failed")
+		logger.Debug("unable to make chequebook deposit", "error", err)
+		logger.Warning("unable to make chequebook deposit")
 		jsonhttp.BadRequest(w, errChequebookInsufficientFunds)
 		return
 	}
 	if err != nil {
-		logger.Debug("chequebook deposit: deposit failed", "error", err)
-		logger.Error(nil, "chequebook deposit: deposit failed")
+		logger.Debug("unable to make chequebook deposit", "error", err)
+		logger.Warning("unable to make chequebook deposit")
 		jsonhttp.InternalServerError(w, errChequebookNoDeposit)
 		return
 	}

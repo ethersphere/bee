@@ -44,13 +44,13 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if headers.SwarmTag > 0 {
 		tag, err = s.getOrCreateSessionID(headers.SwarmTag)
 		if err != nil {
-			logger.Debug("get or create tag failed", "error", err)
-			logger.Error(nil, "get or create tag failed")
+			logger.Debug("unable to get/create tag", "error", err)
+			logger.Warning("unable to get/create tag")
 			switch {
 			case errors.Is(err, storage.ErrNotFound):
 				jsonhttp.NotFound(w, "tag not found")
 			default:
-				jsonhttp.InternalServerError(w, "cannot get or create tag")
+				jsonhttp.InternalServerError(w, "unable to get/create tag")
 			}
 			return
 		}
@@ -68,8 +68,8 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		Deferred: deferred,
 	})
 	if err != nil {
-		logger.Debug("get putter failed", "error", err)
-		logger.Error(nil, "get putter failed")
+		logger.Debug("unable to get putter", "batch_id", headers.BatchID, "tag_id", tag, "deferred", deferred, "error", err)
+		logger.Warning("unable to get putter")
 		switch {
 		case errors.Is(err, errBatchUnusable) || errors.Is(err, postage.ErrNotUsable):
 			jsonhttp.UnprocessableEntity(w, "batch not usable yet or does not exist")
@@ -96,34 +96,34 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		if jsonhttp.HandleBodyReadError(err, ow) {
 			return
 		}
-		logger.Debug("chunk upload: read chunk data failed", "error", err)
-		logger.Error(nil, "chunk upload: read chunk data failed")
-		jsonhttp.InternalServerError(ow, "cannot read chunk data")
+		logger.Debug("unable to read chunk data", "error", err)
+		logger.Warning("unable to read chunk data")
+		jsonhttp.InternalServerError(ow, "unable to read chunk data")
 		return
 	}
 
 	if len(data) < swarm.SpanSize {
-		logger.Debug("chunk upload: insufficient data length")
-		logger.Error(nil, "chunk upload: insufficient data length")
+		logger.Debug("insufficient data length")
+		logger.Warning("insufficient data length")
 		jsonhttp.BadRequest(ow, "insufficient data length")
 		return
 	}
 
 	chunk, err := cac.NewWithDataSpan(data)
 	if err != nil {
-		logger.Debug("chunk upload: create chunk failed", "error", err)
-		logger.Error(nil, "chunk upload: create chunk error")
-		jsonhttp.InternalServerError(ow, "create chunk error")
+		logger.Debug("unable to create chunk", "error", err)
+		logger.Error(nil, "unable to create chunk")
+		jsonhttp.InternalServerError(ow, "create chunk")
 		return
 	}
 
 	err = putter.Put(r.Context(), chunk)
 	if err != nil {
-		logger.Debug("chunk upload: write chunk failed", "chunk_address", chunk.Address(), "error", err)
-		logger.Error(nil, "chunk upload: write chunk failed")
+		logger.Debug("unable to write chunk", "chunk_address", chunk.Address(), "error", err)
+		logger.Warning("unable to write chunk")
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):
-			jsonhttp.PaymentRequired(ow, "batch is overissued")
+			jsonhttp.PaymentRequired(ow, "batch is over-issued")
 		default:
 			jsonhttp.InternalServerError(ow, "chunk write error")
 		}
@@ -132,9 +132,9 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = putter.Done(swarm.ZeroAddress)
 	if err != nil {
-		logger.Debug("done split failed", "error", err)
-		logger.Error(nil, "done split failed")
-		jsonhttp.InternalServerError(ow, "done split failed")
+		logger.Debug("unable to close session", "error", err)
+		logger.Warning("unable to close session")
+		jsonhttp.InternalServerError(ow, "unable to close session")
 		return
 	}
 
@@ -148,7 +148,6 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 func (s *Service) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("get_chunk_by_address").Build()
-	loggerV1 := logger.V(1).Build()
 
 	paths := struct {
 		Address swarm.Address `map:"address,resolve" validate:"required"`
@@ -161,14 +160,14 @@ func (s *Service) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 	chunk, err := s.storer.Download(true).Get(r.Context(), paths.Address)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			loggerV1.Debug("chunk not found", "address", paths.Address)
+			logger.Debug("chunk not found", "address", paths.Address)
 			jsonhttp.NotFound(w, "chunk not found")
 			return
 
 		}
-		logger.Debug("read chunk failed", "chunk_address", paths.Address, "error", err)
-		logger.Error(nil, "read chunk failed")
-		jsonhttp.InternalServerError(w, "read chunk failed")
+		logger.Debug("unable to read chunk", "chunk_address", paths.Address, "error", err)
+		logger.Warning("unable to read chunk")
+		jsonhttp.InternalServerError(w, "read chunk")
 		return
 	}
 	w.Header().Set(ContentTypeHeader, "binary/octet-stream")

@@ -11,14 +11,14 @@ import (
 	"github.com/ethersphere/bee/pkg/tracing"
 )
 
-func (s *Service) debugStorage(w http.ResponseWriter, r *http.Request) {
-	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger.WithName("debug_storage").Build())
+func (s *Service) debugStorageHandler(w http.ResponseWriter, r *http.Request) {
+	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger.WithName("get_debug_storage").Build())
 
 	info, err := s.storer.DebugInfo(r.Context())
 	if err != nil {
-		logger.Debug("get debug storage info failed", "error", err)
-		logger.Error(nil, "get debug storage info failed")
-		jsonhttp.InternalServerError(w, "debug storage info not available")
+		logger.Debug("unable to get debug storage info", "error", err)
+		logger.Warning("unable to get debug storage info")
+		jsonhttp.InternalServerError(w, "debug store info")
 		return
 	}
 

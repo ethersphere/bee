@@ -676,13 +676,13 @@ func (s *Service) mapStructure(input, output interface{}) func(string, log.Logge
 			var merr *multierror.Error
 			if !errors.As(err, &merr) {
 				logger.Debug("mapping and validation failed", "error", err)
-				logger.Error(err, "mapping and validation failed")
+				logger.Warning("mapping and validation failed")
 				jsonhttp.InternalServerError(w, err)
 				return
 			}
 
 			logger.Debug(msg, "error", err)
-			logger.Error(err, msg)
+			logger.Warning(msg)
 
 			resp := jsonhttp.StatusResponse{
 				Message: msg,

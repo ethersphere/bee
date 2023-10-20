@@ -120,7 +120,7 @@ func (s *Service) mountTechnicalDebug() {
 	s.router.Handle("/debugstore", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
 			httpaccess.NewHTTPAccessSuppressLogHandler(),
-			web.FinalHandlerFunc(s.debugStorage),
+			web.FinalHandlerFunc(s.debugStorageHandler),
 		),
 	})
 

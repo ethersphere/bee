@@ -70,7 +70,7 @@ func TestPingpong(t *testing.T) {
 		jsonhttptest.Request(t, ts, http.MethodPost, "/pingpong/"+errorPeerID.String(), http.StatusInternalServerError,
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
 				Code:    http.StatusInternalServerError,
-				Message: "pingpong: ping failed",
+				Message: "ping peer failed",
 			}),
 		)
 	})
