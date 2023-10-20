@@ -811,11 +811,11 @@ func TestAddressBookPrune(t *testing.T) {
 	var (
 		conns, failedConns       int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, &failedConns, kademlia.Options{
-			TimeToRetry: ptrDuration(20 * time.Millisecond),
+			TimeToRetry: ptrDuration(0),
 		})
 	)
 
-	kad.SetStorageRadius(2)
+	kad.SetStorageRadius(0)
 
 	if err := kad.Start(context.Background()); err != nil {
 		t.Fatal(err)
@@ -833,6 +833,10 @@ func TestAddressBookPrune(t *testing.T) {
 	// add non connectable peer, check connection and failed connection counters
 	kad.AddPeers(nonConnPeer.Overlay)
 	waitCounter(t, &conns, 0)
+	waitCounter(t, &failedConns, 1)
+	kad.Trigger()
+	waitCounter(t, &failedConns, 1)
+	kad.Trigger()
 	waitCounter(t, &failedConns, 1)
 
 	_, err = ab.Get(nonConnPeer.Overlay)

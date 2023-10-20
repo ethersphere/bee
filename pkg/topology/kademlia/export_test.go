@@ -93,3 +93,7 @@ func closestPeer(peers *pslice.PSlice, addr swarm.Address) (swarm.Address, error
 
 	return closest, nil
 }
+
+func (k *Kad) Trigger() {
+	k.manageC <- struct{}{}
+}

@@ -542,6 +542,7 @@ func (k *Kad) manage() {
 		}
 	}()
 
+	// tell each neighbor about other neighbors periodically
 	k.wg.Add(1)
 	go func() {
 		defer k.wg.Done()
