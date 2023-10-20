@@ -164,8 +164,10 @@ func (r *reacher) tryAcquirePeer() (*peer, time.Duration) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	now := time.Now()
-	nextClosest := time.Time{}
+	var (
+		now         = time.Now()
+		nextClosest time.Time
+	)
 
 	for _, p := range r.peers {
 
