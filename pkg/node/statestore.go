@@ -55,7 +55,7 @@ func InitStamperStore(logger log.Logger, dataDir string, stateStore storage.Stat
 	if err != nil {
 		return nil, err
 	}
-	// TODO: remove migration
+	// TODO: remove migration after it has been a few months after the localstoreV2 release
 	err = migrateStamperData(stateStore, stamperStore)
 	if err != nil {
 		stamperStore.Close()

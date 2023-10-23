@@ -205,7 +205,7 @@ func TestGetStampIssuer(t *testing.T) {
 
 func TestSetExpired(t *testing.T) {
 	store := inmemstore.New()
-	defer store.Close()
+	testutil.CleanupCloser(t, store)
 
 	pstore := pstoremock.New(pstoremock.WithExistsFunc(func(b []byte) (bool, error) {
 		return false, nil

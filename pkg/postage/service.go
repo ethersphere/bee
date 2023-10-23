@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"math/big"
 	"sync"
@@ -199,14 +200,12 @@ func (ps *service) SetExpired() error {
 	for _, issuer := range ps.issuers {
 		exists, err := ps.postageStore.Exists(issuer.ID())
 		if err != nil {
-			ps.logger.Error(err, "set expired: checking if issuer exists", "id", issuer.ID())
-			return err
+			return fmt.Errorf("set expired: checking if issuer exists for batch %s: %w", hex.EncodeToString(issuer.ID()), err)
 		}
 		if !exists {
 			err := ps.store.Delete(&StampIssuerItem{Issuer: issuer})
 			if err != nil {
-				ps.logger.Error(err, "set expired: delete stamp data", "id", issuer.ID())
-				return err
+				return fmt.Errorf("set expired: delete stamp data for batch %s: %w", hex.EncodeToString(issuer.ID()), err)
 			}
 			ps.logger.Debug("removed expired stamp issuer", "id", hex.EncodeToString(issuer.ID()))
 		}
