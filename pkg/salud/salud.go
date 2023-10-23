@@ -27,6 +27,7 @@ const (
 	wakeup                = time.Minute
 	requestTimeout        = time.Second * 10
 	DefaultMinPeersPerBin = 4
+	DefaultPercentile     = 0.4 // consider 40% as healthy, lower percentile = stricter health/performance check
 )
 
 type topologyDriver interface {
@@ -65,6 +66,7 @@ func New(
 	warmup time.Duration,
 	mode string,
 	minPeersPerbin int,
+	percentile float64,
 ) *service {
 
 	metrics := newMetrics()
@@ -80,13 +82,13 @@ func New(
 	}
 
 	s.wg.Add(1)
-	go s.worker(warmup, mode, minPeersPerbin)
+	go s.worker(warmup, mode, minPeersPerbin, percentile)
 
 	return s
 
 }
 
-func (s *service) worker(warmup time.Duration, mode string, minPeersPerbin int) {
+func (s *service) worker(warmup time.Duration, mode string, minPeersPerbin int, percentile float64) {
 	defer s.wg.Done()
 
 	select {
@@ -97,7 +99,7 @@ func (s *service) worker(warmup time.Duration, mode string, minPeersPerbin int) 
 
 	for {
 
-		s.salud(mode, minPeersPerbin)
+		s.salud(mode, minPeersPerbin, percentile)
 
 		select {
 		case <-s.quit:
@@ -124,7 +126,7 @@ type peer struct {
 // salud acquires the status snapshot of every peer and computes an nth percentile of response duration and connected
 // per count, the most common storage radius, and the batch commitment, and based on these values, marks peers as unhealhy that fall beyond
 // the allowed thresholds.
-func (s *service) salud(mode string, minPeersPerbin int) {
+func (s *service) salud(mode string, minPeersPerbin int, percentile float64) {
 
 	var (
 		mtx      sync.Mutex
@@ -170,7 +172,6 @@ func (s *service) salud(mode string, minPeersPerbin int) {
 		return
 	}
 
-	percentile := 0.8
 	networkRadius, nHoodRadius := s.radius(peers)
 	avgDur := totaldur / float64(len(peers))
 	pDur := percentileDur(peers, percentile)

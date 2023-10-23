@@ -125,7 +125,7 @@ const (
 	overDraftRefresh     = time.Millisecond * 600
 	skiplistDur          = time.Minute
 	originSuffix         = "_origin"
-	maxOriginErrors      = 16
+	maxOriginErrors      = 32
 	maxMultiplexForwards = 2
 )
 
