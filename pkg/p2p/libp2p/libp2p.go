@@ -55,7 +55,7 @@ import (
 
 	ocprom "contrib.go.opencensus.io/exporter/prometheus"
 	m2 "github.com/ethersphere/bee/pkg/metrics"
-	rcmgrObs "github.com/libp2p/go-libp2p/p2p/host/resource-manager/obs"
+	rcmgrObs "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -174,14 +174,6 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 		return nil, err
 	}
 
-	cfg := rcmgr.InfiniteLimits
-
-	cfg.ProtocolPeerDefault.Streams = IncomingStreamCountLimit + OutgoingStreamCountLimit
-	cfg.ProtocolPeerDefault.StreamsInbound = IncomingStreamCountLimit
-	cfg.ProtocolPeerDefault.StreamsOutbound = OutgoingStreamCountLimit
-
-	limiter := rcmgr.NewFixedLimiter(cfg)
-
 	if o.Registry != nil {
 		rcmgrObs.MustRegisterWith(o.Registry)
 	}
@@ -193,6 +185,21 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	if err != nil {
 		return nil, err
 	}
+
+	// Tweak certain settings
+	cfg := rcmgr.PartialLimitConfig{
+		System: rcmgr.ResourceLimits{
+			Streams:         IncomingStreamCountLimit + OutgoingStreamCountLimit,
+			StreamsOutbound: OutgoingStreamCountLimit,
+			StreamsInbound:  IncomingStreamCountLimit,
+		},
+	}
+
+	// Create our limits by using our cfg and replacing the default values with values from `scaledDefaultLimits`
+	limits := cfg.Build(rcmgr.InfiniteLimits)
+
+	// The resource manager expects a limiter, se we create one from our limits.
+	limiter := rcmgr.NewFixedLimiter(limits)
 
 	str, err := rcmgrObs.NewStatsTraceReporter()
 	if err != nil {
