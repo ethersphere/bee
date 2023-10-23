@@ -8,13 +8,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/leveldbstore"
 	"github.com/ethersphere/bee/pkg/storage/storageutil"
 	"github.com/google/go-cmp/cmp"
-	"golang.org/x/exp/slices"
 )
 
 type obj struct {

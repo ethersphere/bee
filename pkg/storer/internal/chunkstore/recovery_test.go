@@ -8,8 +8,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/google/go-cmp/cmp/cmpopts"
-	"golang.org/x/exp/slices"
+	"slices"
 
 	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -18,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storer/internal/chunkstore"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/spf13/afero"
 )
 
