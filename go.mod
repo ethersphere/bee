@@ -21,7 +21,8 @@ require (
 	github.com/gorilla/mux v1.8.0
 	github.com/gorilla/websocket v1.5.0
 	github.com/hashicorp/go-multierror v1.1.1
-	github.com/ipfs/go-cid v0.3.2
+	github.com/hashicorp/golang-lru/v2 v2.0.5
+	github.com/ipfs/go-cid v0.4.1
 	github.com/kardianos/service v1.2.0
 	github.com/libp2p/go-libp2p v0.30.0
 	github.com/multiformats/go-multiaddr v0.11.0
