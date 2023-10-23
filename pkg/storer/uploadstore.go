@@ -138,13 +138,6 @@ func (db *DB) DeleteSession(tagID uint64) error {
 func (db *DB) ListSessions(offset, limit int) ([]SessionInfo, error) {
 	const maxPageSize = 1000
 
-	min := func(a, b int) int {
-		if a < b {
-			return a
-		}
-		return b
-	}
-
 	limit = min(limit, maxPageSize)
 
 	tags, err := upload.ListAllTags(db.repo.IndexStore())
