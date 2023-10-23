@@ -16,6 +16,7 @@ import (
 	pstoremock "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
 	"github.com/ethersphere/bee/pkg/storage/inmemstore"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
 // TestSaveLoad tests the idempotence of saving and loading the postage.Service
@@ -200,4 +201,41 @@ func TestGetStampIssuer(t *testing.T) {
 			t.Fatalf("expected depth %d got %d", 17, stampIssuer.Depth())
 		}
 	})
+}
+
+func TestSetExpired(t *testing.T) {
+	store := inmemstore.New()
+	testutil.CleanupCloser(t, store)
+
+	pstore := pstoremock.New(pstoremock.WithExistsFunc(func(b []byte) (bool, error) {
+		return false, nil
+	}))
+
+	ps, err := postage.NewService(log.Noop, store, pstore, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	issuer := newTestStampIssuer(t, 1000)
+	err = ps.Add(issuer)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, err = ps.GetStampIssuer(issuer.ID())
+	if !errors.Is(err, postage.ErrNotUsable) {
+		t.Fatalf("expected %v, got %v", postage.ErrNotUsable, err)
+	}
+
+	err = ps.SetExpired()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, err = ps.GetStampIssuer(issuer.ID())
+	if !errors.Is(err, postage.ErrNotFound) {
+		t.Fatalf("expected %v, got %v", postage.ErrNotFound, err)
+	}
+
+	testutil.CleanupCloser(t, ps)
 }
