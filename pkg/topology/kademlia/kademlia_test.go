@@ -888,7 +888,7 @@ func TestAddressBookQuickPrune(t *testing.T) {
 	var (
 		conns, failedConns       int32 // how many connect calls were made to the p2p mock
 		base, kad, ab, _, signer = newTestKademlia(t, &conns, &failedConns, kademlia.Options{
-			TimeToRetry: ptrDuration(50 * time.Millisecond),
+			TimeToRetry: ptrDuration(time.Millisecond),
 		})
 	)
 	kad.SetStorageRadius(2)
