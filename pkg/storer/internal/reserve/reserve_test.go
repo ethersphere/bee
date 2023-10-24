@@ -276,7 +276,7 @@ func TestEvict(t *testing.T) {
 		t.Fatalf("got %d, want %d", totalEvicted, chunksPerBatch)
 	}
 
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(time.Second)
 
 	for i, ch := range chunks {
 		binID := i%chunksPerBatch + 1

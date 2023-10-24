@@ -365,7 +365,6 @@ func (r *Reserve) EvictBatchBin(
 			}
 
 			go func(addrs []swarm.Address) {
-				ctx := context.Background()
 				_ = txExecutor.Execute(ctx, func(store internal.Storage) error {
 					if err := r.cacheCb(ctx, store, addrs...); err != nil {
 						r.logger.Error(err, "evict and move to cache")
