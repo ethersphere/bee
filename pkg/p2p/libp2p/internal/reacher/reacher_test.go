@@ -80,8 +80,6 @@ func TestPingSuccess(t *testing.T) {
 				t.Fatalf("test timed out")
 			case <-done:
 			}
-
-			testutil.CleanupCloser(t, r)
 		})
 	}
 }
@@ -122,10 +120,6 @@ func TestDisconnected(t *testing.T) {
 	r.Connected(swarm.RandAddress(t), nil)
 	r.Connected(disconnectedOverlay, disconnectedMa)
 	r.Disconnected(disconnectedOverlay)
-
-	time.Sleep(time.Millisecond * 50) // wait for reachable func to be called
-
-	testutil.CleanupCloser(t, r)
 }
 
 type mock struct {
