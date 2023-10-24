@@ -66,7 +66,7 @@ type Select struct {
 }
 
 // EachPeerFunc is a callback that is called with a peer and its PO
-type EachPeerFunc func(swarm.Address, uint8) (stop, jumpToNext bool, err error)
+type EachPeerFunc func(addr swarm.Address, bin uint8) (stop, jumpToNext bool, err error)
 
 // PeerInfo is a view of peer information exposed to a user.
 type PeerInfo struct {
