@@ -13,7 +13,7 @@ var ErrTimedOut = errors.New("timed out waiting for condition")
 
 // Wait blocks execution until condition is satisfied or until it times out.
 func Wait(timeoutDur time.Duration, cond func() bool) error {
-	return WaitWithInterval(timeoutDur, time.Millisecond*20, cond)
+	return WaitWithInterval(timeoutDur, time.Millisecond*50, cond)
 }
 
 // WaitWithInterval blocks execution until condition is satisfied or until it times out.

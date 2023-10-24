@@ -28,7 +28,6 @@ import (
 	"github.com/ethersphere/bee/pkg/p2p/protobuf"
 	"github.com/ethersphere/bee/pkg/ratelimit"
 	"github.com/ethersphere/bee/pkg/swarm"
-	lru "github.com/hashicorp/golang-lru"
 	ma "github.com/multiformats/go-multiaddr"
 	manet "github.com/multiformats/go-multiaddr/net"
 )
@@ -42,11 +41,8 @@ const (
 	peersStreamName        = "peers"
 	messageTimeout         = 1 * time.Minute // maximum allowed time for a message to be read or written.
 	maxBatchSize           = 30
-	pingTimeout            = time.Second * 5 // time to wait for ping to succeed
-	batchValidationTimeout = 5 * time.Minute // prevent lock contention on peer validation
-	cacheSize              = 100000
-	bitsPerByte            = 8
-	cachePrefix            = swarm.MaxBins / bitsPerByte // enough bytes (32 bits) to uniquely identify a peer
+	pingTimeout            = time.Second * 15 // time to wait for ping to succeed
+	batchValidationTimeout = 5 * time.Minute  // prevent lock contention on peer validation
 )
 
 var (
@@ -70,17 +66,11 @@ type Service struct {
 	wg                sync.WaitGroup
 	peersChan         chan pb.Peers
 	sem               *semaphore.Weighted
-	lru               *lru.Cache // cache for unreachable peers
 	bootnode          bool
 	allowPrivateCIDRs bool
 }
 
-func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, networkID uint64, bootnode bool, allowPrivateCIDRs bool, logger log.Logger) (*Service, error) {
-	lruCache, err := lru.New(cacheSize)
-	if err != nil {
-		return nil, err
-	}
-
+func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, networkID uint64, bootnode bool, allowPrivateCIDRs bool, logger log.Logger) *Service {
 	svc := &Service{
 		streamer:          streamer,
 		logger:            logger.WithName(loggerName).Register(),
@@ -91,8 +81,7 @@ func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, network
 		outLimiter:        ratelimit.New(limitRate, limitBurst),
 		quit:              make(chan struct{}),
 		peersChan:         make(chan pb.Peers),
-		sem:               semaphore.NewWeighted(int64(31)),
-		lru:               lruCache,
+		sem:               semaphore.NewWeighted(int64(swarm.MaxBins)),
 		bootnode:          bootnode,
 		allowPrivateCIDRs: allowPrivateCIDRs,
 	}
@@ -101,7 +90,7 @@ func New(streamer p2p.StreamerPinger, addressbook addressbook.GetPutter, network
 		svc.startCheckPeersHandler()
 	}
 
-	return svc, nil
+	return svc
 }
 
 func (s *Service) Protocol() p2p.ProtocolSpec {
@@ -299,21 +288,7 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 	mtx := sync.Mutex{}
 	wg := sync.WaitGroup{}
 
-	for _, p := range peers.Peers {
-
-		overlay := swarm.NewAddress(p.Overlay)
-		cacheOverlay := overlay.ByteString()[:cachePrefix]
-
-		// cached peer, skip
-		if _, ok := s.lru.Get(cacheOverlay); ok {
-			continue
-		}
-
-		// if peer exists already in the addressBook, skip
-		if _, err := s.addressBook.Get(overlay); err == nil {
-			_ = s.lru.Add(cacheOverlay, nil)
-			continue
-		}
+	addPeer := func(newPeer *pb.BzzAddress, multiUnderlay ma.Multiaddr) {
 
 		err := s.sem.Acquire(ctx, 1)
 		if err != nil {
@@ -321,23 +296,13 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 		}
 
 		wg.Add(1)
-		go func(newPeer *pb.BzzAddress, cacheOverlay string) {
-
+		go func() {
 			s.metrics.PeerConnectAttempts.Inc()
 
 			defer func() {
 				s.sem.Release(1)
-				// mark peer as seen
-				_ = s.lru.Add(cacheOverlay, nil)
 				wg.Done()
 			}()
-
-			multiUnderlay, err := ma.NewMultiaddrBytes(newPeer.Underlay)
-			if err != nil {
-				s.metrics.PeerUnderlayErr.Inc()
-				s.logger.Error(err, "multi address underlay")
-				return
-			}
 
 			ctx, cancel := context.WithTimeout(ctx, pingTimeout)
 			defer cancel()
@@ -345,7 +310,7 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 			start := time.Now()
 
 			// check if the underlay is usable by doing a raw ping using libp2p
-			if _, err = s.streamer.Ping(ctx, multiUnderlay); err != nil {
+			if _, err := s.streamer.Ping(ctx, multiUnderlay); err != nil {
 				s.metrics.PingFailureTime.Observe(time.Since(start).Seconds())
 				s.metrics.UnreachablePeers.Inc()
 				s.logger.Debug("unreachable peer underlay", "peer_address", hex.EncodeToString(newPeer.Overlay), "underlay", multiUnderlay)
@@ -362,7 +327,7 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 				Nonce:     newPeer.Nonce,
 			}
 
-			err = s.addressBook.Put(bzzAddress.Overlay, bzzAddress)
+			err := s.addressBook.Put(bzzAddress.Overlay, bzzAddress)
 			if err != nil {
 				s.metrics.StorePeerErr.Inc()
 				s.logger.Warning("skipping peer in response", "peer_address", newPeer.String(), "error", err)
@@ -372,7 +337,28 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 			mtx.Lock()
 			peersToAdd = append(peersToAdd, bzzAddress.Overlay)
 			mtx.Unlock()
-		}(p, cacheOverlay)
+		}()
+
+	}
+
+	for _, p := range peers.Peers {
+
+		multiUnderlay, err := ma.NewMultiaddrBytes(p.Underlay)
+		if err != nil {
+			s.metrics.PeerUnderlayErr.Inc()
+			s.logger.Debug("multi address underlay", "error", err)
+			continue
+		}
+
+		// if peer exists already in the addressBook
+		// and if the underlays match, skip
+		addr, err := s.addressBook.Get(swarm.NewAddress(p.Overlay))
+		if err == nil && addr.Underlay.Equal(multiUnderlay) {
+			continue
+		}
+
+		// add peer does not exist in the addressbook
+		addPeer(p, multiUnderlay)
 	}
 	wg.Wait()
 

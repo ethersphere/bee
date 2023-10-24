@@ -17,25 +17,15 @@ import (
 )
 
 const (
-	pingTimeout        = time.Second * 5
-	pingMaxAttempts    = 3
+	pingTimeout        = time.Second * 15
 	workers            = 8
-	retryAfterDuration = time.Second * 15
-)
-
-type peerState int
-
-const (
-	waiting peerState = iota
-	inProgress
+	retryAfterDuration = time.Minute * 5
 )
 
 type peer struct {
 	overlay    swarm.Address
 	addr       ma.Multiaddr
 	retryAfter time.Time
-	attempts   int
-	state      peerState
 }
 
 type reacher struct {
@@ -56,7 +46,6 @@ type reacher struct {
 
 type Options struct {
 	PingTimeout        time.Duration
-	PingMaxAttempts    int
 	Workers            int
 	RetryAfterDuration time.Duration
 }
@@ -75,7 +64,6 @@ func New(streamer p2p.Pinger, notifier p2p.ReachableNotifier, o *Options) *reach
 	if o == nil {
 		o = &Options{
 			PingTimeout:        pingTimeout,
-			PingMaxAttempts:    pingMaxAttempts,
 			Workers:            workers,
 			RetryAfterDuration: retryAfterDuration,
 		}
@@ -148,11 +136,7 @@ func (r *reacher) ping(c chan *peer, ctx context.Context) {
 	for p := range c {
 
 		r.mu.Lock()
-		p.attempts++
-		var (
-			overlay  = p.overlay
-			attempts = p.attempts
-		)
+		overlay := p.overlay
 		r.mu.Unlock()
 
 		now := time.Now()
@@ -166,25 +150,11 @@ func (r *reacher) ping(c chan *peer, ctx context.Context) {
 			r.metrics.Pings.WithLabelValues("success").Inc()
 			r.metrics.PingTime.WithLabelValues("success").Observe(time.Since(now).Seconds())
 			r.notifier.Reachable(overlay, p2p.ReachabilityStatusPublic)
-			r.deletePeer(p)
-			continue
-		}
-
-		r.metrics.Pings.WithLabelValues("failure").Inc()
-		r.metrics.PingTime.WithLabelValues("failure").Observe(time.Since(now).Seconds())
-
-		// max attempts have been reached
-		if attempts >= r.options.PingMaxAttempts {
+		} else {
+			r.metrics.Pings.WithLabelValues("failure").Inc()
+			r.metrics.PingTime.WithLabelValues("failure").Observe(time.Since(now).Seconds())
 			r.notifier.Reachable(overlay, p2p.ReachabilityStatusPrivate)
-			r.deletePeer(p)
-			continue
 		}
-
-		// mark peer as 'waiting', increase retry-after duration, and notify workers about more work
-		r.mu.Lock()
-		p.state = waiting
-		p.retryAfter = time.Now().Add(r.options.RetryAfterDuration * time.Duration(attempts))
-		r.mu.Unlock()
 
 		r.notifyManage()
 	}
@@ -194,18 +164,16 @@ func (r *reacher) tryAcquirePeer() (*peer, time.Duration) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	now := time.Now()
-	nextClosest := time.Time{}
+	var (
+		now         = time.Now()
+		nextClosest time.Time
+	)
 
 	for _, p := range r.peers {
 
-		if p.state == inProgress {
-			continue
-		}
-
-		// here, retry after is in the past so we can ping this peer
+		// retry after has expired, retry
 		if now.After(p.retryAfter) {
-			p.state = inProgress
+			p.retryAfter = time.Now().Add(r.options.RetryAfterDuration)
 			return p, 0
 		}
 
@@ -228,13 +196,6 @@ func (r *reacher) notifyManage() {
 	case r.work <- struct{}{}:
 	default:
 	}
-}
-
-func (r *reacher) deletePeer(p *peer) {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	delete(r.peers, p.overlay.ByteString())
 }
 
 // Connected adds a new peer to the queue for testing reachability.
