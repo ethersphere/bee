@@ -64,6 +64,8 @@ func TestCompact(t *testing.T) {
 	t.Cleanup(unsub)
 	<-c
 
+	time.Sleep(time.Second)
+
 	if err := st.Close(); err != nil {
 		t.Fatal(err)
 	}
