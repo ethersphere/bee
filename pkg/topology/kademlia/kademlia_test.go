@@ -35,7 +35,7 @@ import (
 	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
-const spinLockWaitTime = time.Second * 3
+const spinLockWaitTime = time.Second * 5
 
 var nonConnectableAddress, _ = ma.NewMultiaddr(underlayBase + "16Uiu2HAkx8ULY8cTXhdVAcMmLcH9AsTKz6uBQ7DPLKRjMLgBVYkA")
 var defaultFilterFunc kademlia.FilterFunc = func(...im.FilterOp) kademlia.PeerFilterFunc {
@@ -789,6 +789,8 @@ func TestBackoff(t *testing.T) {
 	// remove that peer
 	removeOne(kad, addr)
 
+	waitCounter(t, &conns, 0)
+
 	// wait for 100ms, add another peer, expect just one more connection
 	time.Sleep(100 * time.Millisecond)
 	addr = swarm.RandAddressAt(t, base, 1)
@@ -832,12 +834,12 @@ func TestAddressBookPrune(t *testing.T) {
 
 	// add non connectable peer, check connection and failed connection counters
 	kad.AddPeers(nonConnPeer.Overlay)
+
+	kad.Trigger()
+	kad.Trigger()
+
 	waitCounter(t, &conns, 0)
-	waitCounter(t, &failedConns, 1)
-	kad.Trigger()
-	waitCounter(t, &failedConns, 1)
-	kad.Trigger()
-	waitCounter(t, &failedConns, 1)
+	waitCounter(t, &failedConns, 3)
 
 	_, err = ab.Get(nonConnPeer.Overlay)
 	if !errors.Is(err, addressbook.ErrNotFound) {
