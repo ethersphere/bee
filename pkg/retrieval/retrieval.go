@@ -486,11 +486,11 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 
 	// cache the request last, so that putting to the localstore does not slow down the request flow
 	if s.caching && forwarded {
-		err = s.storer.Cache().Put(ctx, chunk)
-		if err != nil {
-			return fmt.Errorf("retrieve cache put: %w", err)
+		if err := s.storer.Cache().Put(context.Background(), chunk); err != nil {
+			s.logger.Debug("retrieve cache put", "error", err)
 		}
 	}
+
 	return nil
 }
 

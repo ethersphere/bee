@@ -363,15 +363,17 @@ func (r *Reserve) EvictBatchBin(
 			if err := batch.Commit(); err != nil {
 				return err
 			}
-			if err := r.cacheCb(ctx, store, moveToCache...); err != nil {
-				r.logger.Error(err, "evict and move to cache")
-				for _, rItem := range moveToCache {
-					err = store.ChunkStore().Delete(ctx, rItem)
-					if err != nil {
-						return err
+
+			go func(addrs []swarm.Address) {
+				ctx := context.Background()
+				txExecutor.Execute(ctx, func(store internal.Storage) error {
+					if err := r.cacheCb(ctx, store, addrs...); err != nil {
+						r.logger.Error(err, "evict and move to cache")
 					}
-				}
-			}
+					return nil
+				})
+			}(moveToCache)
+
 			return nil
 		})
 		if err != nil {
@@ -405,7 +407,7 @@ func (r *Reserve) DeleteChunk(
 	}
 	if err := r.cacheCb(ctx, store, item.Address); err != nil {
 		r.logger.Error(err, "delete and move to cache")
-		return store.ChunkStore().Delete(ctx, item.Address)
+		return err
 	}
 	return nil
 }
