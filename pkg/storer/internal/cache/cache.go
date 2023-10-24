@@ -376,7 +376,16 @@ func (c *Cache) MoveFromReserve(
 	ctx context.Context,
 	store internal.Storage,
 	addrs ...swarm.Address,
-) error {
+) (err error) {
+
+	defer func() {
+		if err != nil {
+			for _, addr := range addrs {
+				err = errors.Join(store.ChunkStore().Delete(context.Background(), addr))
+			}
+		}
+	}()
+
 	batch, err := store.IndexStore().Batch(ctx)
 	if err != nil {
 		return fmt.Errorf("failed creating batch: %w", err)

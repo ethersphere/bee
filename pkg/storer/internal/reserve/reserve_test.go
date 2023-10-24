@@ -10,6 +10,7 @@ import (
 	"errors"
 	"math/rand"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
@@ -274,6 +275,8 @@ func TestEvict(t *testing.T) {
 	if totalEvicted != chunksPerBatch {
 		t.Fatalf("got %d, want %d", totalEvicted, chunksPerBatch)
 	}
+
+	time.Sleep(time.Second)
 
 	for i, ch := range chunks {
 		binID := i%chunksPerBatch + 1
