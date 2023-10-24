@@ -41,11 +41,8 @@ const (
 	peersStreamName        = "peers"
 	messageTimeout         = 1 * time.Minute // maximum allowed time for a message to be read or written.
 	maxBatchSize           = 30
-	pingTimeout            = time.Second * 5 // time to wait for ping to succeed
-	batchValidationTimeout = 5 * time.Minute // prevent lock contention on peer validation
-	cacheSize              = 100000
-	bitsPerByte            = 8
-	cachePrefix            = swarm.MaxBins / bitsPerByte // enough bytes (32 bits) to uniquely identify a peer
+	pingTimeout            = time.Second * 15 // time to wait for ping to succeed
+	batchValidationTimeout = 5 * time.Minute  // prevent lock contention on peer validation
 )
 
 var (
