@@ -154,6 +154,9 @@ func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
 		count := 0
 		missing := 0
 		radius := db.StorageRadius()
+
+		evictBatches := make(map[string]bool)
+
 		err := db.reserve.IterateChunksItems(db.repo, 0, func(ci reserve.ChunkItem) (bool, error) {
 			if ci.Bin >= radius {
 				count++
@@ -163,17 +166,21 @@ func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
 				return false, nil
 			}
 
-			if exists, _ := db.batchstore.Exists(ci.BatchID); !exists {
+			if exists, err := db.batchstore.Exists(ci.BatchID); err == nil && !exists {
 				missing++
-				db.logger.Debug("reserve size worker, item with invalid batch id", "batch_id", hex.EncodeToString(ci.BatchID), "chunk_address", ci.ChunkAddress)
-				if err := db.EvictBatch(ctx, ci.BatchID); err != nil {
-					db.logger.Warning("reserve size worker, batch eviction", "batch_id", hex.EncodeToString(ci.BatchID), "chunk_address", ci.ChunkAddress, "error", err)
-				}
+				evictBatches[string(ci.BatchID)] = true
 			}
 			return false, nil
 		})
 		if err != nil {
 			db.logger.Error(err, "reserve count within radius")
+		}
+
+		for batch := range evictBatches {
+			db.logger.Debug("reserve size worker, invalid batch id", "batch_id", hex.EncodeToString([]byte(batch)))
+			if err := db.EvictBatch(ctx, []byte(batch)); err != nil {
+				db.logger.Warning("reserve size worker, batch eviction", "batch_id", hex.EncodeToString([]byte(batch)), "error", err)
+			}
 		}
 
 		db.metrics.ReserveSizeWithinRadius.Set(float64(count))
