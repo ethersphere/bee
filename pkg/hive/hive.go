@@ -349,7 +349,7 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 		multiUnderlay, err := ma.NewMultiaddrBytes(p.Underlay)
 		if err != nil {
 			s.metrics.PeerUnderlayErr.Inc()
-			s.logger.Error(err, "multi address underlay")
+			s.logger.Debug("multi address underlay", "error", err)
 			continue
 		}
 
