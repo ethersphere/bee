@@ -30,8 +30,8 @@ func newTransferLog(address, from, to common.Address, value *big.Int) *types.Log
 	return &types.Log{
 		Topics: []common.Hash{
 			erc20ABI.Events["Transfer"].ID,
-			from.Hash(),
-			to.Hash(),
+			common.BytesToHash(from.Bytes()),
+			common.BytesToHash(to.Bytes()),
 		},
 		Data:    value.FillBytes(make([]byte, 32)),
 		Address: address,

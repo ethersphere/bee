@@ -69,8 +69,13 @@ func TestCashout(t *testing.T) {
 					Logs: []*types.Log{
 						{
 							Address: chequebookAddress,
-							Topics:  []common.Hash{chequeCashedEventType.ID, cheque.Beneficiary.Hash(), recipientAddress.Hash(), cheque.Beneficiary.Hash()},
-							Data:    logData,
+							Topics: []common.Hash{
+								chequeCashedEventType.ID,
+								common.BytesToHash(cheque.Beneficiary.Bytes()),
+								common.BytesToHash(recipientAddress.Bytes()),
+								common.BytesToHash(cheque.Beneficiary.Bytes()),
+							},
+							Data: logData,
 						},
 					},
 				}, nil
@@ -165,8 +170,13 @@ func TestCashoutBounced(t *testing.T) {
 					Logs: []*types.Log{
 						{
 							Address: chequebookAddress,
-							Topics:  []common.Hash{chequeCashedEventType.ID, cheque.Beneficiary.Hash(), recipientAddress.Hash(), cheque.Beneficiary.Hash()},
-							Data:    chequeCashedLogData,
+							Topics: []common.Hash{
+								chequeCashedEventType.ID,
+								common.BytesToHash(cheque.Beneficiary.Bytes()),
+								common.BytesToHash(recipientAddress.Bytes()),
+								common.BytesToHash(cheque.Beneficiary.Bytes()),
+							},
+							Data: chequeCashedLogData,
 						},
 						{
 							Address: chequebookAddress,
