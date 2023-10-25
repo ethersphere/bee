@@ -303,6 +303,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		DebugAPIAddr:                  debugAPIAddr,
 		Addr:                          c.config.GetString(optionNameP2PAddr),
 		NATAddr:                       c.config.GetString(optionNameNATAddr),
+		EnableQUIC:                    c.config.GetBool(optionNameP2PQUICEnable),
 		EnableWS:                      c.config.GetBool(optionNameP2PWSEnable),
 		WelcomeMessage:                c.config.GetString(optionWelcomeMessage),
 		Bootnodes:                     networkConfig.bootNodes,

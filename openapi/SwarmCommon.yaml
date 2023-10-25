@@ -320,7 +320,18 @@ components:
           type: array
           nullable: false
           items:
-            $ref: "#/components/schemas/Address"
+            type: object
+            properties:
+              address:
+                $ref: "#/components/schemas/Address"
+              fullNode:
+                type: boolean
+              p2pTransport:
+                type: array
+                nullable: true
+                items:
+                  type: string
+
 
     BlockListedPeers:
       type: array
