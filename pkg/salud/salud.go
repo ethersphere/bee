@@ -24,10 +24,11 @@ import (
 const loggerName = "salud"
 
 const (
-	wakeup                = time.Minute * 5
-	requestTimeout        = time.Second * 10
-	DefaultMinPeersPerBin = 4
-	DefaultPercentile     = 0.4 // consider 40% as healthy, lower percentile = stricter health/performance check
+	wakeup                 = time.Minute * 5
+	requestTimeout         = time.Second * 10
+	DefaultMinPeersPerBin  = 4
+	DefaultDurPercentile   = 0.4 // consider 40% as healthy, lower percentile = stricter duration check
+	DefaultConnsPercentile = 0.8 // consider 80% as healthy, lower percentile = stricter conns check
 )
 
 type topologyDriver interface {
@@ -66,7 +67,8 @@ func New(
 	warmup time.Duration,
 	mode string,
 	minPeersPerbin int,
-	percentile float64,
+	durPercentile float64,
+	connsPercentile float64,
 ) *service {
 
 	metrics := newMetrics()
@@ -82,13 +84,13 @@ func New(
 	}
 
 	s.wg.Add(1)
-	go s.worker(warmup, mode, minPeersPerbin, percentile)
+	go s.worker(warmup, mode, minPeersPerbin, durPercentile, connsPercentile)
 
 	return s
 
 }
 
-func (s *service) worker(warmup time.Duration, mode string, minPeersPerbin int, percentile float64) {
+func (s *service) worker(warmup time.Duration, mode string, minPeersPerbin int, durPercentile float64, connsPercentile float64) {
 	defer s.wg.Done()
 
 	select {
@@ -99,7 +101,7 @@ func (s *service) worker(warmup time.Duration, mode string, minPeersPerbin int, 
 
 	for {
 
-		s.salud(mode, minPeersPerbin, percentile)
+		s.salud(mode, minPeersPerbin, durPercentile, connsPercentile)
 
 		select {
 		case <-s.quit:
@@ -126,7 +128,7 @@ type peer struct {
 // salud acquires the status snapshot of every peer and computes an nth percentile of response duration and connected
 // per count, the most common storage radius, and the batch commitment, and based on these values, marks peers as unhealhy that fall beyond
 // the allowed thresholds.
-func (s *service) salud(mode string, minPeersPerbin int, percentile float64) {
+func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, connsPercentile float64) {
 
 	var (
 		mtx      sync.Mutex
@@ -174,8 +176,8 @@ func (s *service) salud(mode string, minPeersPerbin int, percentile float64) {
 
 	networkRadius, nHoodRadius := s.radius(peers)
 	avgDur := totaldur / float64(len(peers))
-	pDur := percentileDur(peers, percentile)
-	pConns := percentileConns(peers, percentile)
+	pDur := percentileDur(peers, durPercentile)
+	pConns := percentileConns(peers, connsPercentile)
 	commitment := commitment(peers)
 
 	s.metrics.AvgDur.Set(avgDur)
@@ -185,7 +187,7 @@ func (s *service) salud(mode string, minPeersPerbin int, percentile float64) {
 	s.metrics.NeighborhoodRadius.Set(float64(nHoodRadius))
 	s.metrics.Commitment.Set(float64(commitment))
 
-	s.logger.Debug("computed", "average", avgDur, "percentile", percentile, "pDur", pDur, "pConns", pConns, "network_radius", networkRadius, "neighborhood_radius", nHoodRadius, "batch_commitment", commitment)
+	s.logger.Debug("computed", "average", avgDur, "pDur", pDur, "pConns", pConns, "network_radius", networkRadius, "neighborhood_radius", nHoodRadius, "batch_commitment", commitment)
 
 	for _, peer := range peers {
 
