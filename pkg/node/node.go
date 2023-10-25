@@ -131,6 +131,7 @@ type Options struct {
 	DebugAPIAddr                  string
 	Addr                          string
 	NATAddr                       string
+	EnableQUIC                    bool
 	EnableWS                      bool
 	WelcomeMessage                string
 	Bootnodes                     []string
@@ -639,6 +640,7 @@ func NewBee(
 	p2ps, err := libp2p.New(ctx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
 		PrivateKey:      libp2pPrivateKey,
 		NATAddr:         o.NATAddr,
+		EnableQUIC:      o.EnableQUIC,
 		EnableWS:        o.EnableWS,
 		WelcomeMessage:  o.WelcomeMessage,
 		FullNode:        o.FullNodeMode,

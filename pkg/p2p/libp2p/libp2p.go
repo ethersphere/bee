@@ -17,46 +17,45 @@ import (
 	"sync"
 	"time"
 
+	ocprom "contrib.go.opencensus.io/exporter/prometheus"
 	"github.com/ethersphere/bee"
 	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/bzz"
 	beecrypto "github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/log"
+	m2 "github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/p2p"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/blocklist"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/breaker"
-	handshake "github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
+	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
 	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/reacher"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/pkg/tracing"
-	libp2p "github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/host"
-	network "github.com/libp2p/go-libp2p/core/network"
+	"github.com/libp2p/go-libp2p/core/network"
 	libp2ppeer "github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
-	protocol "github.com/libp2p/go-libp2p/core/protocol"
-	autonat "github.com/libp2p/go-libp2p/p2p/host/autonat"
+	"github.com/libp2p/go-libp2p/core/protocol"
+	"github.com/libp2p/go-libp2p/p2p/host/autonat"
 	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
+	rcmgrObs "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	lp2pswarm "github.com/libp2p/go-libp2p/p2p/net/swarm"
 	libp2pping "github.com/libp2p/go-libp2p/p2p/protocol/ping"
+	libp2pquic "github.com/libp2p/go-libp2p/p2p/transport/quic"
 	"github.com/libp2p/go-libp2p/p2p/transport/tcp"
 	ws "github.com/libp2p/go-libp2p/p2p/transport/websocket"
-
 	ma "github.com/multiformats/go-multiaddr"
 	"github.com/multiformats/go-multistream"
-	"go.uber.org/atomic"
-
-	ocprom "contrib.go.opencensus.io/exporter/prometheus"
-	m2 "github.com/ethersphere/bee/pkg/metrics"
-	rcmgrObs "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	"github.com/prometheus/client_golang/prometheus"
+	"go.uber.org/atomic"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -122,6 +121,7 @@ type lightnodes interface {
 type Options struct {
 	PrivateKey       *ecdsa.PrivateKey
 	NATAddr          string
+	EnableQUIC       bool
 	EnableWS         bool
 	FullNode         bool
 	LightNodeLimit   int
@@ -156,6 +156,9 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	var listenAddrs []string
 	if ip4Addr != "" {
 		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s", ip4Addr, port))
+		if o.EnableQUIC {
+			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/udp/%s/quic-v1", ip4Addr, port))
+		}
 		if o.EnableWS {
 			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip4/%s/tcp/%s/ws", ip4Addr, port))
 		}
@@ -163,6 +166,9 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 
 	if ip6Addr != "" {
 		listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s", ip6Addr, port))
+		if o.EnableQUIC {
+			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/udp/%s/quic-v1", ip6Addr, port))
+		}
 		if o.EnableWS {
 			listenAddrs = append(listenAddrs, fmt.Sprintf("/ip6/%s/tcp/%s/ws", ip6Addr, port))
 		}
@@ -244,7 +250,9 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	transports := []libp2p.Option{
 		libp2p.Transport(tcp.NewTCPTransport, tcp.DisableReuseport()),
 	}
-
+	if o.EnableQUIC {
+		transports = append(transports, libp2p.Transport(libp2pquic.NewTransport))
+	}
 	if o.EnableWS {
 		transports = append(transports, libp2p.Transport(ws.New))
 	}
@@ -695,7 +703,7 @@ func (s *Service) Blocklist(overlay swarm.Address, duration time.Duration, reaso
 }
 
 func buildHostAddress(peerID libp2ppeer.ID) (ma.Multiaddr, error) {
-	return ma.NewMultiaddr(fmt.Sprintf("/p2p/%s", peerID.Pretty()))
+	return ma.NewMultiaddr(fmt.Sprintf("/p2p/%s", peerID))
 }
 
 func buildUnderlayAddress(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) {

@@ -33,6 +33,7 @@ const (
 	optionNameP2PAddr                    = "p2p-addr"
 	optionNameNATAddr                    = "nat-addr"
 	optionNameP2PWSEnable                = "p2p-ws-enable"
+	optionNameP2PQUICEnable              = "p2p-quic-enable"
 	optionNameDebugAPIEnable             = "debug-api-enable"
 	optionNameDebugAPIAddr               = "debug-api-addr"
 	optionNameBootnodes                  = "bootnode"
@@ -249,6 +250,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameAPIAddr, ":1633", "HTTP API listen address")
 	cmd.Flags().String(optionNameP2PAddr, ":1634", "P2P listen address")
 	cmd.Flags().String(optionNameNATAddr, "", "NAT exposed address")
+	cmd.Flags().Bool(optionNameP2PQUICEnable, true, "enable P2P QUIC transport")
 	cmd.Flags().Bool(optionNameP2PWSEnable, false, "enable P2P WebSocket transport")
 	cmd.Flags().StringSlice(optionNameBootnodes, []string{""}, "initial nodes to connect to")
 	cmd.Flags().Bool(optionNameDebugAPIEnable, false, "enable debug HTTP API")
