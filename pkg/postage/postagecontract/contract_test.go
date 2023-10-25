@@ -883,7 +883,7 @@ func TestLookupERC20Address(t *testing.T) {
 				if *request.To != postageStampContractAddress {
 					return nil, fmt.Errorf("called wrong contract. wanted %v, got %v", postageStampContractAddress, request.To)
 				}
-				return erc20Address.Hash().Bytes(), nil
+				return common.BytesToHash(erc20Address.Bytes()).Bytes(), nil
 			}),
 		),
 		postageStampContractAddress,
