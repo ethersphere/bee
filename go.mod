@@ -8,7 +8,7 @@ require (
 	github.com/btcsuite/btcd v0.22.3
 	github.com/casbin/casbin/v2 v2.35.0
 	github.com/coreos/go-semver v0.3.0
-	github.com/ethereum/go-ethereum v1.13.2
+	github.com/ethereum/go-ethereum v1.13.4
 	github.com/ethersphere/go-price-oracle-abi v0.1.0
 	github.com/ethersphere/go-storage-incentives-abi v0.6.0-rc13
 	github.com/ethersphere/go-sw3-abi v0.4.0
@@ -44,7 +44,7 @@ require (
 	go.uber.org/atomic v1.11.0
 	go.uber.org/goleak v1.2.0
 	golang.org/x/crypto v0.14.0
-	golang.org/x/exp v0.0.0-20230817173708-d852ddb80c63
+	golang.org/x/exp v0.0.0-20230905200255-921286631fa9
 	golang.org/x/net v0.17.0
 	golang.org/x/sync v0.3.0
 	golang.org/x/sys v0.13.0
@@ -63,12 +63,12 @@ require (
 	github.com/StackExchange/wmi v1.2.1 // indirect
 	github.com/benbjohnson/clock v1.3.5 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
-	github.com/bits-and-blooms/bitset v1.5.0 // indirect
+	github.com/bits-and-blooms/bitset v1.7.0 // indirect
 	github.com/btcsuite/btcd/btcec/v2 v2.2.0 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/codahale/hdrhistogram v0.0.0-00010101000000-000000000000 // indirect
 	github.com/consensys/bavard v0.1.13 // indirect
-	github.com/consensys/gnark-crypto v0.10.0 // indirect
+	github.com/consensys/gnark-crypto v0.12.1 // indirect
 	github.com/containerd/cgroups v1.1.0 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
 	github.com/crate-crypto/go-kzg-4844 v0.3.0 // indirect
@@ -171,7 +171,7 @@ require (
 	go.uber.org/zap v1.25.0 // indirect
 	golang.org/x/mod v0.12.0 // indirect
 	golang.org/x/text v0.13.0 // indirect
-	golang.org/x/tools v0.12.1-0.20230815132531-74c255bcf846 // indirect
+	golang.org/x/tools v0.13.0 // indirect
 	google.golang.org/protobuf v1.30.0 // indirect
 	gopkg.in/ini.v1 v1.57.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
