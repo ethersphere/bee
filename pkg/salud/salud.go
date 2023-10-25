@@ -24,7 +24,7 @@ import (
 const loggerName = "salud"
 
 const (
-	wakeup                = time.Minute
+	wakeup                = time.Minute * 5
 	requestTimeout        = time.Second * 10
 	DefaultMinPeersPerBin = 4
 	DefaultPercentile     = 0.4 // consider 40% as healthy, lower percentile = stricter health/performance check
