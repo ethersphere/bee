@@ -44,6 +44,7 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		Deferred    *bool  `map:"Swarm-Deferred-Upload"`
 		Encrypt     bool   `map:"Swarm-Encrypt"`
 		IsDir       bool   `map:"Swarm-Collection"`
+		RsParity    uint8  `map:"Swarm-RS-Parity"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -95,6 +96,12 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Custom validation for Swarm-RS-Parity
+	err = ValidateRsParity(headers.Encrypt, headers.RsParity)
+	if err != nil {
+		jsonhttp.BadRequest(w, err)
+	}
+
 	ow := &cleanupOnErrWriter{
 		ResponseWriter: w,
 		onErr:          putter.Cleanup,
@@ -105,7 +112,7 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		s.dirUploadHandler(logger, ow, r, putter, r.Header.Get(ContentTypeHeader), headers.Encrypt, tag)
 		return
 	}
-	s.fileUploadHandler(logger, ow, r, putter, headers.Encrypt, tag)
+	s.fileUploadHandler(logger, ow, r, putter, headers.Encrypt, tag, headers.RsParity)
 }
 
 // fileUploadResponse is returned when an HTTP request to upload a file is successful
@@ -122,6 +129,7 @@ func (s *Service) fileUploadHandler(
 	putter storer.PutterSession,
 	encrypt bool,
 	tagID uint64,
+	rsParity uint8,
 ) {
 	queries := struct {
 		FileName string `map:"name" validate:"startsnotwith=/"`
@@ -131,7 +139,7 @@ func (s *Service) fileUploadHandler(
 		return
 	}
 
-	p := requestPipelineFn(putter, encrypt)
+	p := requestPipelineFn(putter, encrypt, rsParity)
 	ctx := r.Context()
 
 	// first store the file and get its reference
@@ -171,7 +179,7 @@ func (s *Service) fileUploadHandler(
 		}
 	}
 
-	factory := requestPipelineFactory(ctx, putter, encrypt)
+	factory := requestPipelineFactory(ctx, putter, encrypt, rsParity)
 	l := loadsave.New(s.storer.ChunkStore(), factory)
 
 	m, err := manifest.NewDefaultManifest(l, encrypt)

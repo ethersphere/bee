@@ -63,6 +63,12 @@ func (s *Service) dirUploadHandler(
 	}
 	defer r.Body.Close()
 
+	rsParity, err := strconv.ParseUint(r.Header.Get(SwarmRsParity), 10, 1)
+	if err != nil {
+		logger.Debug("store dir failed", "rsParity parsing error")
+		logger.Error(nil, "store dir failed")
+	}
+
 	reference, err := storeDir(
 		r.Context(),
 		encrypt,
@@ -72,6 +78,7 @@ func (s *Service) dirUploadHandler(
 		s.storer.ChunkStore(),
 		r.Header.Get(SwarmIndexDocumentHeader),
 		r.Header.Get(SwarmErrorDocumentHeader),
+		uint8(rsParity),
 	)
 	if err != nil {
 		logger.Debug("store dir failed", "error", err)
@@ -117,13 +124,14 @@ func storeDir(
 	getter storage.Getter,
 	indexFilename,
 	errorFilename string,
+	rsParity uint8,
 ) (swarm.Address, error) {
 
 	logger := tracing.NewLoggerWithTraceID(ctx, log)
 	loggerV1 := logger.V(1).Build()
 
-	p := requestPipelineFn(putter, encrypt)
-	ls := loadsave.New(getter, requestPipelineFactory(ctx, putter, encrypt))
+	p := requestPipelineFn(putter, encrypt, rsParity)
+	ls := loadsave.New(getter, requestPipelineFactory(ctx, putter, encrypt, rsParity))
 
 	dirManifest, err := manifest.NewDefaultManifest(ls, encrypt)
 	if err != nil {

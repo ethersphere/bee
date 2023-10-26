@@ -34,6 +34,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		Pin      bool   `map:"Swarm-Pin"`
 		Deferred *bool  `map:"Swarm-Deferred-Upload"`
 		Encrypt  bool   `map:"Swarm-Encrypt"`
+		RsParity uint8  `map:"Swarm-RS-Parity"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -59,6 +60,12 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
+	}
+
+	// Custom validation for Swarm-RS-Parity
+	err = ValidateRsParity(headers.Encrypt, headers.RsParity)
+	if err != nil {
+		jsonhttp.BadRequest(w, err)
 	}
 
 	putter, err := s.newStamperPutter(r.Context(), putterOptions{
@@ -91,7 +98,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		logger:         logger,
 	}
 
-	p := requestPipelineFn(putter, headers.Encrypt)
+	p := requestPipelineFn(putter, headers.Encrypt, headers.RsParity)
 	address, err := p(r.Context(), r.Body)
 	if err != nil {
 		logger.Debug("split write all failed", "error", err)

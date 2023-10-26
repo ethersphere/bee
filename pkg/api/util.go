@@ -66,6 +66,19 @@ func (e *parseError) Equal(err error) bool {
 	return e.Entry == p.Entry && e.Value == p.Value && errors.Is(e.Cause, p.Cause)
 }
 
+// ValidateRsParity validates Swarm-RS-Parity value
+func ValidateRsParity(encryption bool, rsParity uint8) error {
+	// Custom validation for Swarm-RS-Parity
+	if !encryption && rsParity > swarm.BmtBranches-2 {
+		return errors.New("Reed-Solomon parity number cannot be above 126 for unencrypted chunks")
+	}
+	if encryption && rsParity > swarm.BmtBranches/2-2 {
+		return errors.New("Reed-Solomon parity number cannot be above 62 for encrypted chunks")
+	}
+
+	return nil
+}
+
 // newParseError returns a new mapStructure error.
 // If the cause is strconv.NumError, its
 // underlying error is unwrapped and

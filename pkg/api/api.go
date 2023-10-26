@@ -78,6 +78,7 @@ const (
 	SwarmCollectionHeader     = "Swarm-Collection"
 	SwarmPostageBatchIdHeader = "Swarm-Postage-Batch-Id"
 	SwarmDeferredUploadHeader = "Swarm-Deferred-Upload"
+	SwarmRsParity             = "Swarm-RS-parity"
 
 	ImmutableHeader = "Immutable"
 	GasPriceHeader  = "Gas-Price"
@@ -617,7 +618,7 @@ func (s *Service) corsHandler(h http.Handler) http.Handler {
 	allowedHeaders := []string{
 		"User-Agent", "Accept", "X-Requested-With", "Access-Control-Request-Headers", "Access-Control-Request-Method", "Accept-Ranges", "Content-Encoding",
 		AuthorizationHeader, AcceptEncodingHeader, ContentTypeHeader, ContentDispositionHeader, RangeHeader, OriginHeader,
-		SwarmTagHeader, SwarmPinHeader, SwarmEncryptHeader, SwarmIndexDocumentHeader, SwarmErrorDocumentHeader, SwarmCollectionHeader, SwarmPostageBatchIdHeader, SwarmDeferredUploadHeader,
+		SwarmTagHeader, SwarmPinHeader, SwarmEncryptHeader, SwarmIndexDocumentHeader, SwarmErrorDocumentHeader, SwarmCollectionHeader, SwarmPostageBatchIdHeader, SwarmDeferredUploadHeader, SwarmRsParity,
 		GasPriceHeader, GasLimitHeader, ImmutableHeader,
 	}
 	allowedHeadersStr := strings.Join(allowedHeaders, ", ")
@@ -843,16 +844,16 @@ func (s *Service) newStamperPutter(ctx context.Context, opts putterOptions) (sto
 
 type pipelineFunc func(context.Context, io.Reader) (swarm.Address, error)
 
-func requestPipelineFn(s storage.Putter, encrypt bool) pipelineFunc {
+func requestPipelineFn(s storage.Putter, encrypt bool, rsParity uint8) pipelineFunc {
 	return func(ctx context.Context, r io.Reader) (swarm.Address, error) {
-		pipe := builder.NewPipelineBuilder(ctx, s, encrypt)
+		pipe := builder.NewPipelineBuilder(ctx, s, encrypt, rsParity)
 		return builder.FeedPipeline(ctx, pipe, r)
 	}
 }
 
-func requestPipelineFactory(ctx context.Context, s storage.Putter, encrypt bool) func() pipeline.Interface {
+func requestPipelineFactory(ctx context.Context, s storage.Putter, encrypt bool, rsParity uint8) func() pipeline.Interface {
 	return func() pipeline.Interface {
-		return builder.NewPipelineBuilder(ctx, s, encrypt)
+		return builder.NewPipelineBuilder(ctx, s, encrypt, rsParity)
 	}
 }
 

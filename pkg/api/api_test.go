@@ -320,9 +320,9 @@ func request(t *testing.T, client *http.Client, method, resource string, body io
 	return resp
 }
 
-func pipelineFactory(s storage.Putter, encrypt bool) func() pipeline.Interface {
+func pipelineFactory(s storage.Putter, encrypt bool, rsParity uint8) func() pipeline.Interface {
 	return func() pipeline.Interface {
-		return builder.NewPipelineBuilder(context.Background(), s, encrypt)
+		return builder.NewPipelineBuilder(context.Background(), s, encrypt, rsParity)
 	}
 }
 
