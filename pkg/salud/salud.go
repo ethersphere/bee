@@ -24,10 +24,11 @@ import (
 const loggerName = "salud"
 
 const (
-	wakeup                = time.Minute
-	requestTimeout        = time.Second * 10
-	DefaultMinPeersPerBin = 4
-	DefaultPercentile     = 0.4 // consider 40% as healthy, lower percentile = stricter health/performance check
+	wakeup                 = time.Minute * 5
+	requestTimeout         = time.Second * 10
+	DefaultMinPeersPerBin  = 4
+	DefaultDurPercentile   = 0.4 // consider 40% as healthy, lower percentile = stricter duration check
+	DefaultConnsPercentile = 0.8 // consider 80% as healthy, lower percentile = stricter conns check
 )
 
 type topologyDriver interface {
@@ -66,7 +67,8 @@ func New(
 	warmup time.Duration,
 	mode string,
 	minPeersPerbin int,
-	percentile float64,
+	durPercentile float64,
+	connsPercentile float64,
 ) *service {
 
 	metrics := newMetrics()
@@ -82,13 +84,13 @@ func New(
 	}
 
 	s.wg.Add(1)
-	go s.worker(warmup, mode, minPeersPerbin, percentile)
+	go s.worker(warmup, mode, minPeersPerbin, durPercentile, connsPercentile)
 
 	return s
 
 }
 
-func (s *service) worker(warmup time.Duration, mode string, minPeersPerbin int, percentile float64) {
+func (s *service) worker(warmup time.Duration, mode string, minPeersPerbin int, durPercentile float64, connsPercentile float64) {
 	defer s.wg.Done()
 
 	select {
@@ -99,7 +101,7 @@ func (s *service) worker(warmup time.Duration, mode string, minPeersPerbin int, 
 
 	for {
 
-		s.salud(mode, minPeersPerbin, percentile)
+		s.salud(mode, minPeersPerbin, durPercentile, connsPercentile)
 
 		select {
 		case <-s.quit:
@@ -126,7 +128,7 @@ type peer struct {
 // salud acquires the status snapshot of every peer and computes an nth percentile of response duration and connected
 // per count, the most common storage radius, and the batch commitment, and based on these values, marks peers as unhealhy that fall beyond
 // the allowed thresholds.
-func (s *service) salud(mode string, minPeersPerbin int, percentile float64) {
+func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, connsPercentile float64) {
 
 	var (
 		mtx      sync.Mutex
@@ -174,8 +176,8 @@ func (s *service) salud(mode string, minPeersPerbin int, percentile float64) {
 
 	networkRadius, nHoodRadius := s.radius(peers)
 	avgDur := totaldur / float64(len(peers))
-	pDur := percentileDur(peers, percentile)
-	pConns := percentileConns(peers, percentile)
+	pDur := percentileDur(peers, durPercentile)
+	pConns := percentileConns(peers, connsPercentile)
 	commitment := commitment(peers)
 
 	s.metrics.AvgDur.Set(avgDur)
@@ -185,7 +187,7 @@ func (s *service) salud(mode string, minPeersPerbin int, percentile float64) {
 	s.metrics.NeighborhoodRadius.Set(float64(nHoodRadius))
 	s.metrics.Commitment.Set(float64(commitment))
 
-	s.logger.Debug("computed", "average", avgDur, "percentile", percentile, "pDur", pDur, "pConns", pConns, "network_radius", networkRadius, "neighborhood_radius", nHoodRadius, "batch_commitment", commitment)
+	s.logger.Debug("computed", "avg_dur", avgDur, "pDur", pDur, "pConns", pConns, "network_radius", networkRadius, "neighborhood_radius", nHoodRadius, "batch_commitment", commitment)
 
 	for _, peer := range peers {
 
@@ -193,6 +195,7 @@ func (s *service) salud(mode string, minPeersPerbin int, percentile float64) {
 
 		// every bin should have at least some peers, healthy or not
 		if bins[peer.bin] <= minPeersPerbin {
+			s.metrics.Healthy.Inc()
 			s.topology.UpdatePeerHealth(peer.addr, true, peer.dur)
 			continue
 		}
@@ -200,11 +203,11 @@ func (s *service) salud(mode string, minPeersPerbin int, percentile float64) {
 		if networkRadius > 0 && peer.status.StorageRadius < uint32(networkRadius-1) {
 			s.logger.Debug("radius health failure", "radius", peer.status.StorageRadius, "peer_address", peer.addr)
 		} else if peer.dur.Seconds() > pDur {
-			s.logger.Debug("dur health failure", "dur", peer.dur, "peer_address", peer.addr)
+			s.logger.Debug("response duration below threshold", "duration", peer.dur, "peer_address", peer.addr)
 		} else if peer.status.ConnectedPeers < pConns {
-			s.logger.Debug("connections health failure", "connections", peer.status.ConnectedPeers, "peer_address", peer.addr)
+			s.logger.Debug("connections count below threshold", "connections", peer.status.ConnectedPeers, "peer_address", peer.addr)
 		} else if peer.status.BatchCommitment != commitment {
-			s.logger.Debug("batch commitment health failure", "commitment", peer.status.BatchCommitment, "peer_address", peer.addr)
+			s.logger.Debug("batch commitment check failure", "commitment", peer.status.BatchCommitment, "peer_address", peer.addr)
 		} else {
 			healthy = true
 		}
