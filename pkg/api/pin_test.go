@@ -95,6 +95,10 @@ func TestPinHandlers(t *testing.T) {
 		checkPinHandlers(t, client, rootHash, true)
 	})
 
+	t.Run("bytes missing", func(t *testing.T) {
+		jsonhttptest.Request(t, client, http.MethodPost, "/pins/"+swarm.RandAddress(t).String(), http.StatusNotFound)
+	})
+
 	t.Run("bzz", func(t *testing.T) {
 		tarReader := tarFiles(t, []f{{
 			data: []byte("<h1>Swarm"),
