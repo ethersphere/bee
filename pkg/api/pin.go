@@ -70,7 +70,8 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 				return err
 			}
 			wg.Add(1)
-			go func() (err error) {
+			go func() {
+				var err error
 				defer func() {
 					sem.Release(1)
 					wg.Done()
@@ -82,13 +83,12 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 				}()
 				chunk, err := getter.Get(r.Context(), address)
 				if err != nil {
-					return err
+					return
 				}
 				err = putter.Put(r.Context(), chunk)
 				if err != nil {
-					return err
+					return
 				}
-				return nil
 			}()
 			return nil
 		},
