@@ -33,16 +33,16 @@ func (s *Service) peerConnectHandler(w http.ResponseWriter, r *http.Request) {
 
 	bzzAddr, err := s.p2p.Connect(r.Context(), paths.MultiAddress)
 	if err != nil {
-		logger.Debug("p2p connect failed", "addresses", paths.MultiAddress, "error", err)
-		logger.Error(nil, "p2p connect failed", "addresses", paths.MultiAddress)
+		logger.Debug("unable to connect to the peer", "peer_addresses", paths.MultiAddress, "error", err)
+		logger.Warning("unable to connect to the peer")
 		jsonhttp.InternalServerError(w, err)
 		return
 	}
 
 	if err := s.topologyDriver.Connected(r.Context(), p2p.Peer{Address: bzzAddr.Overlay}, true); err != nil {
 		_ = s.p2p.Disconnect(bzzAddr.Overlay, "failed to notify topology")
-		logger.Debug("connect to peer failed", "addresses", paths.MultiAddress, "error", err)
-		logger.Error(nil, "connect to peer failed", "addresses", paths.MultiAddress)
+		logger.Debug("unable to connect to the peer", "addresses", paths.MultiAddress, "error", err)
+		logger.Warning("unable to connect to the peer")
 		jsonhttp.InternalServerError(w, err)
 		return
 	}
@@ -64,12 +64,12 @@ func (s *Service) peerDisconnectHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if err := s.p2p.Disconnect(paths.Address, "user requested disconnect"); err != nil {
-		logger.Debug("p2p disconnect failed", "peer_address", paths.Address, "error", err)
+		logger.Debug("unable to disconnect from the peer", "peer_address", paths.Address, "error", err)
 		if errors.Is(err, p2p.ErrPeerNotFound) {
 			jsonhttp.NotFound(w, "peer not found")
 			return
 		}
-		logger.Error(nil, "p2p disconnect failed", "peer_address", paths.Address)
+		logger.Warning("unable to disconnect from the peer")
 		jsonhttp.InternalServerError(w, err)
 		return
 	}
@@ -108,7 +108,8 @@ func (s *Service) blocklistedPeersHandler(w http.ResponseWriter, _ *http.Request
 
 	peers, err := s.p2p.BlocklistedPeers()
 	if err != nil {
-		logger.Debug("get blocklisted peers failed", "error", err)
+		logger.Debug("unable to get blocklisted peers", "error", err)
+		logger.Warning("unable to get blocklisted peers")
 		jsonhttp.InternalServerError(w, "get blocklisted peers failed")
 		return
 	}

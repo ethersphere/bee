@@ -39,8 +39,8 @@ func (s *Service) balancesHandler(w http.ResponseWriter, _ *http.Request) {
 	balances, err := s.accounting.Balances()
 	if err != nil {
 		jsonhttp.InternalServerError(w, errCantBalances)
-		logger.Debug("get balances failed", "error", err)
-		logger.Error(nil, "get balances failed")
+		logger.Debug("unable to get accounting balances", "error", err)
+		logger.Warning("unable to get accounting balances")
 		return
 	}
 
@@ -74,8 +74,8 @@ func (s *Service) peerBalanceHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.NotFound(w, errNoBalance)
 			return
 		}
-		logger.Debug("get peer balance failed", "peer_address", paths.Peer, "error", err)
-		logger.Error(nil, "get peer balance failed", "peer_address", paths.Peer)
+		logger.Debug("unable to get accounting balance for peer", "peer_address", paths.Peer, "error", err)
+		logger.Warning("unable to get accounting balance for peer", "peer_address", paths.Peer)
 		jsonhttp.InternalServerError(w, errCantBalance)
 		return
 	}
@@ -92,8 +92,8 @@ func (s *Service) compensatedBalancesHandler(w http.ResponseWriter, _ *http.Requ
 	balances, err := s.accounting.CompensatedBalances()
 	if err != nil {
 		jsonhttp.InternalServerError(w, errCantBalances)
-		logger.Debug("get compensated balances failed", "error", err)
-		logger.Error(nil, "get compensated balances failed")
+		logger.Debug("unable to get compensated balances", "error", err)
+		logger.Warning("unable to get compensated balances")
 		return
 	}
 
@@ -127,8 +127,8 @@ func (s *Service) compensatedPeerBalanceHandler(w http.ResponseWriter, r *http.R
 			jsonhttp.NotFound(w, errNoBalance)
 			return
 		}
-		s.logger.Debug("get compensated balances failed", "peer_address", paths.Peer, "error", err)
-		s.logger.Error(nil, "get compensated balances failed", "peer_address", paths.Peer)
+		logger.Debug("unable to get compensated balances for peer", "peer_address", paths.Peer, "error", err)
+		logger.Warning("unable to get compensated balances for peer", "peer_address", paths.Peer)
 		jsonhttp.InternalServerError(w, errCantBalance)
 		return
 	}

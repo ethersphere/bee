@@ -38,8 +38,8 @@ func (s *Service) accountingInfoHandler(w http.ResponseWriter, _ *http.Request) 
 	infos, err := s.accounting.PeerAccounting()
 	if err != nil {
 		jsonhttp.InternalServerError(w, httpErrGetAccountingInfo)
-		logger.Debug("accounting info failed to load balances")
-		logger.Error(err, "can not get accounting info")
+		logger.Debug("unable to get accounting info", "error", err)
+		logger.Warning("unable to get accounting info")
 		return
 	}
 

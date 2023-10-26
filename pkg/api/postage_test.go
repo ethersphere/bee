@@ -97,7 +97,7 @@ func TestPostageCreateStamp(t *testing.T) {
 		jsonhttptest.Request(t, ts, http.MethodPost, createBatch(initialBalance, depth, label), http.StatusInternalServerError,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusInternalServerError,
-				Message: "cannot create batch",
+				Message: "create batch failed",
 			}),
 		)
 	})
@@ -592,7 +592,7 @@ func TestPostageTopUpStamp(t *testing.T) {
 		jsonhttptest.Request(t, ts, http.MethodPatch, topupBatch(batchOkStr, topupAmount), http.StatusInternalServerError,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusInternalServerError,
-				Message: "cannot topup batch",
+				Message: "topup batch failed",
 			}),
 		)
 	})
@@ -727,7 +727,7 @@ func TestPostageDiluteStamp(t *testing.T) {
 		jsonhttptest.Request(t, ts, http.MethodPatch, diluteBatch(batchOkStr, newBatchDepth), http.StatusInternalServerError,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
 				Code:    http.StatusInternalServerError,
-				Message: "cannot dilute batch",
+				Message: "dilute batch failed",
 			}),
 		)
 	})

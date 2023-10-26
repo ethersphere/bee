@@ -28,9 +28,9 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 
 	has, err := s.storer.HasPin(paths.Reference)
 	if err != nil {
-		logger.Debug("pin root hash: has pin failed", "chunk_address", paths.Reference, "error", err)
-		logger.Error(nil, "pin root hash: has pin failed")
-		jsonhttp.InternalServerError(w, "pin root hash: checking of tracking pin failed")
+		logger.Debug("unable to check pin", "chunk_address", paths.Reference, "error", err)
+		logger.Warning("unable to check pin")
+		jsonhttp.InternalServerError(w, "check pin failed")
 		return
 	}
 	if has {
@@ -40,9 +40,9 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 
 	putter, err := s.storer.NewCollection(r.Context())
 	if err != nil {
-		logger.Debug("pin root hash: failed to create collection", "error", err)
-		logger.Error(nil, "pin root hash: failed to create collection")
-		jsonhttp.InternalServerError(w, "pin root hash: create collection failed")
+		logger.Debug("unable to create collection", "error", err)
+		logger.Warning("unable to create collection")
+		jsonhttp.InternalServerError(w, "create collection failed")
 		return
 	}
 
@@ -65,17 +65,17 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 		},
 	)
 	if err != nil {
-		logger.Debug("pin collection failed", "error", errors.Join(err, putter.Cleanup()))
-		logger.Error(nil, "pin collection failed")
+		logger.Debug("unable to pin collection", "error", errors.Join(err, putter.Cleanup()))
+		logger.Warning("unable to pin collection")
 		jsonhttp.InternalServerError(w, "pin collection failed")
 		return
 	}
 
 	err = putter.Done(paths.Reference)
 	if err != nil {
-		logger.Debug("pin collection failed on done", "error", err)
-		logger.Error(nil, "pin collection failed")
-		jsonhttp.InternalServerError(w, "pin collection failed")
+		logger.Debug("unable to close session", "error", err)
+		logger.Warning("unable to close session")
+		jsonhttp.InternalServerError(w, "unable to close session")
 		return
 	}
 
@@ -96,9 +96,9 @@ func (s *Service) unpinRootHash(w http.ResponseWriter, r *http.Request) {
 
 	has, err := s.storer.HasPin(paths.Reference)
 	if err != nil {
-		logger.Debug("unpin root hash: has pin failed", "chunk_address", paths.Reference, "error", err)
-		logger.Error(nil, "unpin root hash: has pin failed")
-		jsonhttp.InternalServerError(w, "pin root hash: checking of tracking pin")
+		logger.Debug("unable to check pin", "chunk_address", paths.Reference, "error", err)
+		logger.Warning("unable to check pin")
+		jsonhttp.InternalServerError(w, "check pin failed")
 		return
 	}
 	if !has {
@@ -107,9 +107,9 @@ func (s *Service) unpinRootHash(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := s.storer.DeletePin(r.Context(), paths.Reference); err != nil {
-		logger.Debug("unpin root hash: delete pin failed", "chunk_address", paths.Reference, "error", err)
-		logger.Error(nil, "unpin root hash: delete pin failed")
-		jsonhttp.InternalServerError(w, "unpin root hash: deletion of pin failed")
+		logger.Debug("unable to delete pin", "chunk_address", paths.Reference, "error", err)
+		logger.Warning("unable to delete pin")
+		jsonhttp.InternalServerError(w, "deletion of pin failed")
 		return
 	}
 
@@ -130,9 +130,9 @@ func (s *Service) getPinnedRootHash(w http.ResponseWriter, r *http.Request) {
 
 	has, err := s.storer.HasPin(paths.Reference)
 	if err != nil {
-		logger.Debug("pinned root hash: has pin failed", "chunk_address", paths.Reference, "error", err)
-		logger.Error(nil, "pinned root hash: has pin failed")
-		jsonhttp.InternalServerError(w, "pinned root hash: check reference failed")
+		logger.Debug("unable to check pin", "chunk_address", paths.Reference, "error", err)
+		logger.Warning("unable to check pin")
+		jsonhttp.InternalServerError(w, "check pin failed")
 		return
 	}
 
@@ -154,8 +154,8 @@ func (s *Service) listPinnedRootHashes(w http.ResponseWriter, r *http.Request) {
 
 	pinned, err := s.storer.Pins()
 	if err != nil {
-		logger.Debug("list pinned root references: unable to list references", "error", err)
-		logger.Error(nil, "list pinned root references: unable to list references")
+		logger.Debug("unable to list pins", "error", err)
+		logger.Warning("unable to list pins")
 		jsonhttp.InternalServerError(w, "list pinned root references failed")
 		return
 	}

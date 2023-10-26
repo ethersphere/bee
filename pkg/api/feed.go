@@ -21,8 +21,8 @@ import (
 	"github.com/ethersphere/bee/pkg/manifest/simple"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/soc"
-	storage "github.com/ethersphere/bee/pkg/storage"
-	storer "github.com/ethersphere/bee/pkg/storer"
+	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
 )
@@ -66,54 +66,54 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 	f := feeds.New(paths.Topic, paths.Owner)
 	lookup, err := s.feedFactory.NewLookup(feeds.Sequence, f)
 	if err != nil {
-		logger.Debug("new lookup failed", "owner", paths.Owner, "error", err)
-		logger.Error(nil, "new lookup failed")
+		logger.Debug("unable to create feed lookup", "topic", paths.Topic, "owner", paths.Owner, "error", err)
+		logger.Warning("unable to create feed lookup")
 		switch {
 		case errors.Is(err, feeds.ErrFeedTypeNotFound):
 			jsonhttp.NotFound(w, "feed type not found")
 		default:
-			jsonhttp.InternalServerError(w, "new lookup failed")
+			jsonhttp.InternalServerError(w, "create feed lookup")
 		}
 		return
 	}
 
 	ch, cur, next, err := lookup.At(r.Context(), queries.At, queries.After)
 	if err != nil {
-		logger.Debug("lookup at failed", "at", queries.At, "error", err)
-		logger.Error(nil, "lookup at failed")
-		jsonhttp.NotFound(w, "lookup at failed")
+		logger.Debug("unable to lookup", "at", queries.At, "after", queries.After, "error", err)
+		logger.Warning("unable to lookup")
+		jsonhttp.NotFound(w, "lookup")
 		return
 	}
 
 	// KLUDGE: if a feed was never updated, the chunk will be nil
 	if ch == nil {
 		logger.Debug("no update found")
-		logger.Error(nil, "no update found")
+		logger.Warning("no update found")
 		jsonhttp.NotFound(w, "no update found")
 		return
 	}
 
 	ref, _, err := parseFeedUpdate(ch)
 	if err != nil {
-		logger.Debug("mapStructure feed update failed", "error", err)
-		logger.Error(nil, "mapStructure feed update failed")
-		jsonhttp.InternalServerError(w, "mapStructure feed update failed")
+		logger.Debug("unable to parse feed update for chunk", "chunk", ch.Address(), "error", err)
+		logger.Warning("unable to parse feed update for chunk")
+		jsonhttp.InternalServerError(w, "feed update parse")
 		return
 	}
 
 	curBytes, err := cur.MarshalBinary()
 	if err != nil {
-		logger.Debug("marshal current index failed", "error", err)
-		logger.Error(nil, "marshal current index failed")
-		jsonhttp.InternalServerError(w, "marshal current index failed")
+		logger.Debug("unable to marshal current index", "index", cur, "error", err)
+		logger.Warning("unable to marshal current index")
+		jsonhttp.InternalServerError(w, "marshal current index")
 		return
 	}
 
 	nextBytes, err := next.MarshalBinary()
 	if err != nil {
-		logger.Debug("marshal next index failed", "error", err)
-		logger.Error(nil, "marshal next index failed")
-		jsonhttp.InternalServerError(w, "marshal next index failed")
+		logger.Debug("unable to marshal next index", "index", cur, "error", err)
+		logger.Warning("unable to marshal next index")
+		jsonhttp.InternalServerError(w, "marshal next index")
 		return
 	}
 
@@ -154,13 +154,13 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	if deferred || headers.Pin {
 		tag, err = s.storer.NewSession()
 		if err != nil {
-			logger.Debug("get or create tag failed", "error", err)
-			logger.Error(nil, "get or create tag failed")
+			logger.Debug("unable to get/create tag", "error", err)
+			logger.Warning("unable to get/create tag")
 			switch {
 			case errors.Is(err, storage.ErrNotFound):
 				jsonhttp.NotFound(w, "tag not found")
 			default:
-				jsonhttp.InternalServerError(w, "cannot get or create tag")
+				jsonhttp.InternalServerError(w, "get/create tag")
 			}
 			return
 		}
@@ -173,8 +173,8 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		Deferred: deferred,
 	})
 	if err != nil {
-		logger.Debug("get putter failed", "error", err)
-		logger.Error(nil, "get putter failed")
+		logger.Debug("unable to get putter", "batch_id", headers.BatchID, "tag_id", tag, "pin", headers.Pin, "deferred", deferred, "error", err)
+		logger.Warning("unable to get putter")
 		switch {
 		case errors.Is(err, errBatchUnusable) || errors.Is(err, postage.ErrNotUsable):
 			jsonhttp.UnprocessableEntity(w, "batch not usable yet or does not exist")
@@ -199,8 +199,8 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	l := loadsave.New(s.storer.ChunkStore(), requestPipelineFactory(r.Context(), putter, false))
 	feedManifest, err := manifest.NewDefaultManifest(l, false)
 	if err != nil {
-		logger.Debug("create manifest failed", "error", err)
-		logger.Error(nil, "create manifest failed")
+		logger.Debug("unable to create manifest", "error", err)
+		logger.Warning("unable to create manifest")
 		switch {
 		case errors.Is(err, manifest.ErrInvalidManifestType):
 			jsonhttp.BadRequest(ow, "invalid manifest type")
@@ -220,8 +220,8 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	// a feed manifest stores the metadata at the root "/" path
 	err = feedManifest.Add(r.Context(), "/", manifest.NewEntry(swarm.NewAddress(emptyAddr), meta))
 	if err != nil {
-		logger.Debug("add manifest entry failed", "error", err)
-		logger.Error(nil, "add manifest entry failed")
+		logger.Debug("unable to add manifest entry", "metadata", meta, "error", err)
+		logger.Warning("unable to add manifest entry")
 		switch {
 		case errors.Is(err, simple.ErrEmptyPath):
 			jsonhttp.NotFound(ow, "invalid or empty path")
@@ -234,11 +234,11 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	ref, err := feedManifest.Store(r.Context())
 	if err != nil {
-		logger.Debug("store manifest failed", "error", err)
-		logger.Error(nil, "store manifest failed")
+		logger.Debug("unable to store manifest", "metadata", meta, "error", err)
+		logger.Warning("unable to store manifest")
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):
-			jsonhttp.PaymentRequired(ow, "batch is overissued")
+			jsonhttp.PaymentRequired(ow, "batch is over-issued")
 		default:
 			jsonhttp.InternalServerError(ow, "store manifest failed")
 		}
@@ -247,9 +247,9 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = putter.Done(ref)
 	if err != nil {
-		logger.Debug("done split failed", "error", err)
-		logger.Error(nil, "done split failed")
-		jsonhttp.InternalServerError(ow, "done split failed")
+		logger.Debug("unable to close session", "error", err)
+		logger.Warning("unable to close session")
+		jsonhttp.InternalServerError(ow, "unable to close session")
 		return
 	}
 

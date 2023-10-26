@@ -14,7 +14,7 @@ import (
 	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/postage"
-	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/gorilla/mux"
@@ -49,13 +49,13 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if deferred || headers.Pin {
 		tag, err = s.getOrCreateSessionID(headers.SwarmTag)
 		if err != nil {
-			logger.Debug("get or create tag failed", "error", err)
-			logger.Error(nil, "get or create tag failed")
+			logger.Debug("unable to get/create session", "tag", headers.SwarmTag, "error", err)
+			logger.Warning("unable to get/create session")
 			switch {
 			case errors.Is(err, storage.ErrNotFound):
 				jsonhttp.NotFound(w, "tag not found")
 			default:
-				jsonhttp.InternalServerError(w, "cannot get or create tag")
+				jsonhttp.InternalServerError(w, "get/create tag")
 			}
 			return
 		}
@@ -68,8 +68,8 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		Deferred: deferred,
 	})
 	if err != nil {
-		logger.Debug("get putter failed", "error", err)
-		logger.Error(nil, "get putter failed")
+		logger.Debug("unable to get putter", "batch_id", headers.BatchID, "tag_id", tag, "pin", headers.Pin, "deferred", deferred, "error", err)
+		logger.Warning("unable to get putter")
 		switch {
 		case errors.Is(err, errBatchUnusable) || errors.Is(err, postage.ErrNotUsable):
 			jsonhttp.UnprocessableEntity(w, "batch not usable yet or does not exist")
@@ -94,22 +94,22 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	p := requestPipelineFn(putter, headers.Encrypt)
 	address, err := p(r.Context(), r.Body)
 	if err != nil {
-		logger.Debug("split write all failed", "error", err)
-		logger.Error(nil, "split write all failed")
+		logger.Debug("unable to write to the pipeline", "encrypt", headers.Encrypt, "error", err)
+		logger.Warning("unable to write to the pipeline")
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):
-			jsonhttp.PaymentRequired(ow, "batch is overissued")
+			jsonhttp.PaymentRequired(ow, "batch is over-issued")
 		default:
-			jsonhttp.InternalServerError(ow, "split write all failed")
+			jsonhttp.InternalServerError(ow, "unable to write to pipeline")
 		}
 		return
 	}
 
 	err = putter.Done(address)
 	if err != nil {
-		logger.Debug("done split failed", "error", err)
-		logger.Error(nil, "done split failed")
-		jsonhttp.InternalServerError(ow, "done split failed")
+		logger.Debug("unable to close session", "tag_id", tag, "error", err)
+		logger.Warning("unable to close session")
+		jsonhttp.InternalServerError(ow, "unable to close session")
 		return
 	}
 
@@ -152,12 +152,10 @@ func (s *Service) bytesHeadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	getter := s.storer.Download(true)
-
-	ch, err := getter.Get(r.Context(), paths.Address)
+	ch, err := s.storer.Download(true).Get(r.Context(), paths.Address)
 	if err != nil {
-		logger.Debug("get root chunk failed", "chunk_address", paths.Address, "error", err)
-		logger.Error(nil, "get rook chunk failed")
+		logger.Debug("unable to get root chunk", "chunk_address", paths.Address, "error", err)
+		logger.Warning("unable to get root chunk")
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}

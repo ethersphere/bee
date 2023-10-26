@@ -14,8 +14,8 @@ import (
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/postage"
-	storage "github.com/ethersphere/bee/pkg/storage"
-	storer "github.com/ethersphere/bee/pkg/storer"
+	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/websocket"
 )
@@ -43,8 +43,8 @@ func (s *Service) chunkUploadStreamHandler(w http.ResponseWriter, r *http.Reques
 	if headers.SwarmTag > 0 {
 		tag, err = s.getOrCreateSessionID(headers.SwarmTag)
 		if err != nil {
-			logger.Debug("get or create tag failed", "error", err)
-			logger.Error(nil, "get or create tag failed")
+			logger.Debug("unable to get/create session", "tag", headers.SwarmTag, "error", err)
+			logger.Warning("unable to get/create session")
 			switch {
 			case errors.Is(err, storage.ErrNotFound):
 				jsonhttp.NotFound(w, "tag not found")
@@ -56,14 +56,15 @@ func (s *Service) chunkUploadStreamHandler(w http.ResponseWriter, r *http.Reques
 	}
 
 	// if tag not specified use direct upload
+	deferred := tag != 0
 	putter, err := s.newStamperPutter(r.Context(), putterOptions{
 		BatchID:  headers.BatchID,
 		TagID:    tag,
-		Deferred: tag != 0,
+		Deferred: deferred,
 	})
 	if err != nil {
-		logger.Debug("get putter failed", "error", err)
-		logger.Error(nil, "get putter failed")
+		logger.Debug("unable to get putter", "batch_id", headers.BatchID, "tag_id", tag, "deferred", deferred, "error", err)
+		logger.Warning("unable to get putter")
 		switch {
 		case errors.Is(err, errBatchUnusable) || errors.Is(err, postage.ErrNotUsable):
 			jsonhttp.UnprocessableEntity(w, "batch not usable yet or does not exist")
@@ -87,9 +88,9 @@ func (s *Service) chunkUploadStreamHandler(w http.ResponseWriter, r *http.Reques
 
 	wsConn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		logger.Debug("chunk upload: upgrade failed", "error", err)
-		logger.Error(nil, "chunk upload: upgrade failed")
-		jsonhttp.BadRequest(w, "upgrade failed")
+		logger.Debug("unable to upgrade chunk", "error", err)
+		logger.Warning("unable to upgrade chunk")
+		jsonhttp.BadRequest(w, "upgrade chunk")
 		return
 	}
 
@@ -114,12 +115,12 @@ func (s *Service) handleUploadStream(
 		cancel()
 		_ = conn.Close()
 		if err = putter.Done(swarm.ZeroAddress); err != nil {
-			logger.Error(err, "chunk upload stream: syncing chunks failed")
+			logger.Debug("unable to syncing chunks", "error", err)
 		}
 	}()
 
 	conn.SetCloseHandler(func(code int, text string) error {
-		logger.Debug("chunk upload stream: client gone", "code", code, "message", text)
+		logger.Debug("client gone", "code", code, "message", text)
 		close(gone)
 		return nil
 	})
@@ -143,7 +144,7 @@ func (s *Service) handleUploadStream(
 			time.Now().Add(writeDeadline),
 		)
 		if err != nil {
-			logger.Error(err, "chunk upload stream: failed sending close message")
+			logger.Debug("unable to send close message", "error", err)
 		}
 	}
 
@@ -162,44 +163,44 @@ func (s *Service) handleUploadStream(
 
 		err = conn.SetReadDeadline(time.Now().Add(streamReadTimeout))
 		if err != nil {
-			logger.Debug("chunk upload stream: set read deadline failed", "error", err)
-			logger.Error(nil, "chunk upload stream: set read deadline failed")
+			logger.Debug("unable to set read deadline", "error", err)
+			logger.Warning("unable to set read deadline")
 			return
 		}
 
 		mt, msg, err := conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				logger.Debug("chunk upload stream: read message failed", "error", err)
-				logger.Error(nil, "chunk upload stream: read message failed")
+				logger.Debug("unable to read message", "error", err)
+				logger.Warning("unable to read message")
 			}
 			return
 		}
 
 		if mt != websocket.BinaryMessage {
-			logger.Debug("chunk upload stream: unexpected message received from client", "message_type", mt)
-			logger.Error(nil, "chunk upload stream: unexpected message received from client")
+			logger.Debug("unexpected message received from client", "message_type", mt)
+			logger.Warning("unexpected message received from client")
 			sendErrorClose(websocket.CloseUnsupportedData, "invalid message")
 			return
 		}
 
 		if len(msg) < swarm.SpanSize {
-			logger.Debug("chunk upload stream: insufficient data")
-			logger.Error(nil, "chunk upload stream: insufficient data")
+			logger.Debug("insufficient data", "message_length", len(msg))
+			logger.Warning("insufficient data")
 			return
 		}
 
 		chunk, err := cac.NewWithDataSpan(msg)
 		if err != nil {
-			logger.Debug("chunk upload stream: create chunk failed", "error", err)
-			logger.Error(nil, "chunk upload stream: create chunk failed")
+			logger.Debug("unable to create chunk", "error", err)
+			logger.Warning("unable to create chunk")
 			return
 		}
 
 		err = putter.Put(ctx, chunk)
 		if err != nil {
-			logger.Debug("chunk upload stream: write chunk failed", "address", chunk.Address(), "error", err)
-			logger.Error(nil, "chunk upload stream: write chunk failed")
+			logger.Debug("unable to write chunk", "address", chunk.Address(), "error", err)
+			logger.Warning("unable to write chunk")
 			switch {
 			case errors.Is(err, postage.ErrBucketFull):
 				sendErrorClose(websocket.CloseInternalServerErr, "batch is overissued")
@@ -211,8 +212,8 @@ func (s *Service) handleUploadStream(
 
 		err = sendMsg(websocket.BinaryMessage, successWsMsg)
 		if err != nil {
-			s.logger.Debug("chunk upload stream: sending success message failed", "error", err)
-			s.logger.Error(nil, "chunk upload stream: sending success message failed")
+			logger.Debug("unable to send success message", "error", err)
+			logger.Warning("unable to send success message")
 			return
 		}
 	}

@@ -23,8 +23,8 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/manifest"
 	"github.com/ethersphere/bee/pkg/postage"
-	storage "github.com/ethersphere/bee/pkg/storage"
-	storer "github.com/ethersphere/bee/pkg/storer"
+	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tracing"
 )
@@ -42,7 +42,7 @@ func (s *Service) dirUploadHandler(
 	tag uint64,
 ) {
 	if r.Body == http.NoBody {
-		logger.Error(nil, "request has no body")
+		logger.Warning("no body found")
 		jsonhttp.BadRequest(w, errInvalidRequest)
 		return
 	}
@@ -57,12 +57,14 @@ func (s *Service) dirUploadHandler(
 	case multiPartFormData:
 		dReader = &multipartReader{r: multipart.NewReader(r.Body, params["boundary"])}
 	default:
-		logger.Error(nil, "invalid content-type for directory upload")
+		logger.Debug("invalid content-type for directory upload", "content-type", mediaType)
+		logger.Warning("invalid content-type for directory upload")
 		jsonhttp.BadRequest(w, errInvalidContentType)
 		return
 	}
 	defer r.Body.Close()
 
+	indexFilename := r.Header.Get(SwarmIndexDocumentHeader)
 	reference, err := storeDir(
 		r.Context(),
 		encrypt,
@@ -70,15 +72,15 @@ func (s *Service) dirUploadHandler(
 		logger,
 		putter,
 		s.storer.ChunkStore(),
-		r.Header.Get(SwarmIndexDocumentHeader),
+		indexFilename,
 		r.Header.Get(SwarmErrorDocumentHeader),
 	)
 	if err != nil {
-		logger.Debug("store dir failed", "error", err)
-		logger.Error(nil, "store dir failed")
+		logger.Debug("unable to store directory", "index", indexFilename, "error", err)
+		logger.Warning("unable to store directory")
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):
-			jsonhttp.PaymentRequired(w, "batch is overissued")
+			jsonhttp.PaymentRequired(w, "batch is over-issued")
 		case errors.Is(err, errEmptyDir):
 			jsonhttp.BadRequest(w, errEmptyDir)
 		case errors.Is(err, tar.ErrHeader):
@@ -91,8 +93,8 @@ func (s *Service) dirUploadHandler(
 
 	err = putter.Done(reference)
 	if err != nil {
-		logger.Debug("store dir failed", "error", err)
-		logger.Error(nil, "store dir failed")
+		logger.Debug("unable to store directory", "swarm_address", reference, "error", err)
+		logger.Warning("unable to store directory")
 		jsonhttp.InternalServerError(w, errDirectoryStore)
 		return
 	}
@@ -118,9 +120,7 @@ func storeDir(
 	indexFilename,
 	errorFilename string,
 ) (swarm.Address, error) {
-
-	logger := tracing.NewLoggerWithTraceID(ctx, log)
-	loggerV1 := logger.V(1).Build()
+	loggerV1 := tracing.NewLoggerWithTraceID(ctx, log).V(1).Build()
 
 	p := requestPipelineFn(putter, encrypt)
 	ls := loadsave.New(getter, requestPipelineFactory(ctx, putter, encrypt))
@@ -149,7 +149,7 @@ func storeDir(
 		if err != nil {
 			return swarm.ZeroAddress, fmt.Errorf("store dir file: %w", err)
 		}
-		loggerV1.Debug("bzz upload dir: file dir uploaded", "file_path", fileInfo.Path, "address", fileReference)
+		loggerV1.Debug("file directory uploaded", "file_path", fileInfo.Path, "swarm_address", fileReference)
 
 		fileMtdt := map[string]string{
 			manifest.EntryMetadataContentTypeKey: fileInfo.ContentType,
@@ -190,7 +190,7 @@ func storeDir(
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("store manifest: %w", err)
 	}
-	loggerV1.Debug("bzz upload dir: uploaded dir finished", "address", manifestReference)
+	loggerV1.Debug("directory uploaded successfully", "swarm_address", manifestReference)
 
 	return manifestReference, nil
 }
@@ -234,7 +234,7 @@ func (t *tarReader) Next() (*FileInfo, error) {
 		}
 		// only store regular files
 		if !fileHeader.FileInfo().Mode().IsRegular() {
-			t.logger.Warning("bzz upload dir: skipping file upload as it is not a regular file", "file_path", filePath)
+			t.logger.Warning("skipping file upload as it is not a regular file", "file_path", filePath)
 			continue
 		}
 

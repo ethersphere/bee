@@ -35,18 +35,17 @@ func (s *Service) pingpongHandler(w http.ResponseWriter, r *http.Request) {
 
 	rtt, err := s.pingpong.Ping(ctx, paths.Address, "ping")
 	if err != nil {
-		logger.Debug("pingpong: ping failed", "peer_address", paths.Address, "error", err)
+		logger.Debug("unable to ping peer", "peer_address", paths.Address, "error", err)
 		if errors.Is(err, p2p.ErrPeerNotFound) {
 			jsonhttp.NotFound(w, "peer not found")
 			return
 		}
 
-		logger.Error(nil, "pingpong: ping failed", "peer_address", paths.Address)
-		jsonhttp.InternalServerError(w, "pingpong: ping failed")
+		logger.Warning("unable to ping peer")
+		jsonhttp.InternalServerError(w, "ping peer failed")
 		return
 	}
 
-	logger.Info("pingpong: ping succeeded", "peer_address", paths.Address)
 	jsonhttp.OK(w, pingpongResponse{
 		RTT: rtt.String(),
 	})
