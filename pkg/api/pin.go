@@ -76,20 +76,17 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 				defer func() {
 					sem.Release(1)
 					wg.Done()
-					mtxErr.Lock()
 					if err != nil {
+						mtxErr.Lock()
 						errTraverse = errors.Join(errTraverse, err)
+						mtxErr.Unlock()
 					}
-					mtxErr.Unlock()
 				}()
 				chunk, err := getter.Get(r.Context(), address)
 				if err != nil {
 					return
 				}
 				err = putter.Put(r.Context(), chunk)
-				if err != nil {
-					return
-				}
 			}()
 			return nil
 		},
