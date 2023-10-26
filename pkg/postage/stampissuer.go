@@ -33,9 +33,9 @@ var (
 
 const stampItemSize = swarm.HashSize + swarm.HashSize + swarm.StampIndexSize + swarm.StampTimestampSize
 
-type stampItem struct {
+type StampItem struct {
 	// Keys.
-	batchID      []byte
+	BatchID      []byte
 	chunkAddress swarm.Address
 
 	// Values.
@@ -44,19 +44,19 @@ type stampItem struct {
 }
 
 // ID implements the storage.Item interface.
-func (si stampItem) ID() string {
-	return fmt.Sprintf("%s/%s", string(si.batchID), si.chunkAddress.String())
+func (si StampItem) ID() string {
+	return fmt.Sprintf("%s/%s", string(si.BatchID), si.chunkAddress.String())
 }
 
 // Namespace implements the storage.Item interface.
-func (si stampItem) Namespace() string {
+func (si StampItem) Namespace() string {
 	return "stampItem"
 }
 
 // Marshal implements the storage.Item interface.
-func (si stampItem) Marshal() ([]byte, error) {
+func (si StampItem) Marshal() ([]byte, error) {
 	switch {
-	case len(si.batchID) != swarm.HashSize:
+	case len(si.BatchID) != swarm.HashSize:
 		return nil, errStampItemMarshalBatchIDInvalid
 	case len(si.chunkAddress.Bytes()) != swarm.HashSize:
 		return nil, errStampItemMarshalChunkAddressInvalid
@@ -65,7 +65,7 @@ func (si stampItem) Marshal() ([]byte, error) {
 	buf := make([]byte, stampItemSize+1)
 
 	l := 0
-	copy(buf[l:l+swarm.HashSize], si.batchID)
+	copy(buf[l:l+swarm.HashSize], si.BatchID)
 	l += swarm.HashSize
 	copy(buf[l:l+swarm.HashSize], si.chunkAddress.Bytes())
 	l += swarm.HashSize
@@ -77,15 +77,15 @@ func (si stampItem) Marshal() ([]byte, error) {
 }
 
 // Unmarshal implements the storage.Item interface.
-func (si *stampItem) Unmarshal(bytes []byte) error {
+func (si *StampItem) Unmarshal(bytes []byte) error {
 	if len(bytes) != stampItemSize+1 {
 		return errStampItemUnmarshalInvalidSize
 	}
 
-	ni := new(stampItem)
+	ni := new(StampItem)
 
 	l := 0
-	ni.batchID = append(make([]byte, 0, swarm.HashSize), bytes[l:l+swarm.HashSize]...)
+	ni.BatchID = append(make([]byte, 0, swarm.HashSize), bytes[l:l+swarm.HashSize]...)
 	l += swarm.HashSize
 	ni.chunkAddress = swarm.NewAddress(bytes[l : l+swarm.HashSize])
 	l += swarm.HashSize
@@ -98,12 +98,12 @@ func (si *stampItem) Unmarshal(bytes []byte) error {
 }
 
 // Clone  implements the storage.Item interface.
-func (si *stampItem) Clone() storage.Item {
+func (si *StampItem) Clone() storage.Item {
 	if si == nil {
 		return nil
 	}
-	return &stampItem{
-		batchID:        append([]byte(nil), si.batchID...),
+	return &StampItem{
+		BatchID:        append([]byte(nil), si.BatchID...),
 		chunkAddress:   si.chunkAddress.Clone(),
 		BatchIndex:     append([]byte(nil), si.BatchIndex...),
 		BatchTimestamp: append([]byte(nil), si.BatchTimestamp...),
@@ -111,7 +111,7 @@ func (si *stampItem) Clone() storage.Item {
 }
 
 // String implements the fmt.Stringer interface.
-func (si stampItem) String() string {
+func (si StampItem) String() string {
 	return path.Join(si.Namespace(), si.ID())
 }
 

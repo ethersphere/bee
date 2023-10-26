@@ -40,8 +40,8 @@ func NewStamper(store storage.Store, issuer *StampIssuer, signer crypto.Signer) 
 // Stamp takes chunk, see if the chunk can included in the batch and
 // signs it with the owner of the batch of this Stamp issuer.
 func (st *stamper) Stamp(addr swarm.Address) (*Stamp, error) {
-	item := &stampItem{
-		batchID:      st.issuer.data.BatchID,
+	item := &StampItem{
+		BatchID:      st.issuer.data.BatchID,
 		chunkAddress: addr,
 	}
 	switch err := st.store.Get(item); {
