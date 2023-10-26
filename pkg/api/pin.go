@@ -7,11 +7,14 @@ package api
 import (
 	"errors"
 	"net/http"
+	"sync"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/traversal"
 	"github.com/gorilla/mux"
+	"golang.org/x/sync/semaphore"
 )
 
 // pinRootHash pins root hash of given reference. This method is idempotent.
@@ -49,24 +52,51 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 	getter := s.storer.Download(true)
 	traverser := traversal.New(getter)
 
+	sem := semaphore.NewWeighted(100)
+	var errTraverse error
+	var mtxErr sync.Mutex
+
 	err = traverser.Traverse(
 		r.Context(),
 		paths.Reference,
 		func(address swarm.Address) error {
-			chunk, err := getter.Get(r.Context(), address)
-			if err != nil {
+			mtxErr.Lock()
+			defer mtxErr.Unlock()
+			if errTraverse != nil {
+				return errTraverse
+			}
+			if err := sem.Acquire(r.Context(), 1); err != nil {
 				return err
 			}
-			err = putter.Put(r.Context(), chunk)
-			if err != nil {
-				return err
-			}
+			go func() (err error) {
+				defer func() {
+					sem.Release(1)
+					mtxErr.Lock()
+					defer mtxErr.Unlock()
+					if err != nil {
+						errTraverse = errors.Join(errTraverse, err)
+					}
+				}()
+				chunk, err := getter.Get(r.Context(), address)
+				if err != nil {
+					return err
+				}
+				err = putter.Put(r.Context(), chunk)
+				if err != nil {
+					return err
+				}
+				return nil
+			}()
 			return nil
 		},
 	)
 	if err != nil {
 		logger.Debug("pin collection failed", "error", errors.Join(err, putter.Cleanup()))
 		logger.Error(nil, "pin collection failed")
+		if errors.Is(err, storage.ErrNotFound) {
+			jsonhttp.NotFound(w, "pin collection failed")
+			return
+		}
 		jsonhttp.InternalServerError(w, "pin collection failed")
 		return
 	}
