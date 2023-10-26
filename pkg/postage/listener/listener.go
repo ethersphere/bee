@@ -259,6 +259,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 				nextExpectedBatchBlock := (lastConfirmedBlock/batchFactor + 1) * batchFactor
 				remainingBlocks := nextExpectedBatchBlock - lastConfirmedBlock
 				expectedWaitTime = l.blockTime * time.Duration(remainingBlocks)
+				l.logger.Debug("sleeping until next block batch", "duration", expectedWaitTime)
 			} else {
 				expectedWaitTime = l.backoffTime
 			}

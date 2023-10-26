@@ -120,7 +120,7 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 }
 
 const (
-	retrieveChunkTimeout = time.Second * 10
+	retrieveChunkTimeout = time.Second * 30
 	preemptiveInterval   = time.Second
 	overDraftRefresh     = time.Millisecond * 600
 	skiplistDur          = time.Minute
