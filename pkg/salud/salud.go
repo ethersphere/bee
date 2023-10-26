@@ -195,6 +195,7 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 
 		// every bin should have at least some peers, healthy or not
 		if bins[peer.bin] <= minPeersPerbin {
+			s.metrics.Healthy.Inc()
 			s.topology.UpdatePeerHealth(peer.addr, true, peer.dur)
 			continue
 		}
