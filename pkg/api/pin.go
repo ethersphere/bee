@@ -55,6 +55,7 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 	sem := semaphore.NewWeighted(100)
 	var errTraverse error
 	var mtxErr sync.Mutex
+	var wg sync.WaitGroup
 
 	err = traverser.Traverse(
 		r.Context(),
@@ -68,9 +69,11 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 			if err := sem.Acquire(r.Context(), 1); err != nil {
 				return err
 			}
+			wg.Add(1)
 			go func() (err error) {
 				defer func() {
 					sem.Release(1)
+					wg.Done()
 					mtxErr.Lock()
 					defer mtxErr.Unlock()
 					if err != nil {
@@ -99,6 +102,8 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "pin collection failed")
 		return
 	}
+
+	wg.Wait()
 
 	err = putter.Done(paths.Reference)
 	if err != nil {

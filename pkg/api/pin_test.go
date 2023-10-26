@@ -96,8 +96,7 @@ func TestPinHandlers(t *testing.T) {
 	})
 
 	t.Run("bytes missing", func(t *testing.T) {
-		const rootHash = "838d0a193ecd1152d1bb1432d5ecc02398533b2494889e23b8bd5ace30ac2aeb"
-		jsonhttptest.Request(t, client, http.MethodPost, "/pins/"+rootHash, http.StatusNotFound)
+		jsonhttptest.Request(t, client, http.MethodPost, "/pins/"+swarm.RandAddress(t).String(), http.StatusNotFound)
 	})
 
 	t.Run("bzz", func(t *testing.T) {
