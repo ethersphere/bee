@@ -178,7 +178,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 		}
 
 		resultC := make(chan retrievalResult, 1)
-		retryC := make(chan struct{}, forwards)
+		retryC := make(chan struct{}, forwards+1)
 
 		retry := func() {
 			select {
