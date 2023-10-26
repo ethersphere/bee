@@ -9,7 +9,6 @@ import (
 	"errors"
 
 	"github.com/ethersphere/bee/pkg/cac"
-	"github.com/ethersphere/bee/pkg/encryption"
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/klauspost/reedsolomon"
@@ -26,18 +25,17 @@ type hashTrieWriter struct {
 	branching      int
 	chunkSize      int
 	refSize        int
-	fullChunk      int                       // full chunk size in terms of the data represented in the buffer (span+refsize)
-	cursors        []int                     // level cursors, key is level. level 0 is data level holds how many chunks were processed. Intermediate higher levels will always have LOWER cursor values.
-	buffer         []byte                    // keeps intermediate level data
-	full           bool                      // indicates whether the trie is full. currently we support (128^7)*4096 = 2305843009213693952 bytes
-	rsParity       uint8                     // Reed-Solomon Parity number
-	dataBuffer     [][]byte                  // keeps bytes of data level chunks for producing erasure coded data
-	metadataBuffer [][]byte                  // keeps reference and encryption key data for the data level chunks
-	enc            encryption.ChunkEncrypter // encrypt parity chunks in case of reed solomon
+	fullChunk      int      // full chunk size in terms of the data represented in the buffer (span+refsize)
+	cursors        []int    // level cursors, key is level. level 0 is data level holds how many chunks were processed. Intermediate higher levels will always have LOWER cursor values.
+	buffer         []byte   // keeps intermediate level data
+	full           bool     // indicates whether the trie is full. currently we support (128^7)*4096 = 2305843009213693952 bytes
+	rsParity       uint8    // Reed-Solomon Parity number
+	dataBuffer     [][]byte // keeps bytes of data level chunks for producing erasure coded data
+	metadataBuffer [][]byte // keeps reference and encryption key data for the data level chunks
 	pipelineFn     pipeline.PipelineFunc
 }
 
-func NewHashTrieWriter(chunkSize, branching, refLen int, rsParity uint8, enc encryption.ChunkEncrypter, pipelineFn pipeline.PipelineFunc) pipeline.ChainWriter {
+func NewHashTrieWriter(chunkSize, branching, refLen int, rsParity uint8, pipelineFn pipeline.PipelineFunc) pipeline.ChainWriter {
 	// init dataBuffer
 	dataBufferLength := 0
 	if rsParity != 0 {
@@ -60,7 +58,6 @@ func NewHashTrieWriter(chunkSize, branching, refLen int, rsParity uint8, enc enc
 		rsParity:       rsParity,
 		dataBuffer:     dataBuffer,
 		metadataBuffer: metadataBuffer,
-		enc:            enc,
 		pipelineFn:     pipelineFn,
 	}
 }
@@ -77,13 +74,13 @@ func (h *hashTrieWriter) ChainWrite(p *pipeline.PipeWriteArgs) error {
 		return errTrieFull
 	}
 	if h.rsParity == 0 {
-		return h.writeToLevel(1, p.Span, p.Ref, p.Key)
+		return h.writeToIntermediateLevel(1, p.Span, p.Ref, p.Key)
 	} else {
 		return h.writeToDataLevel(p.Span, p.Ref, p.Key, p.Data)
 	}
 }
 
-func (h *hashTrieWriter) writeToLevel(level int, span, ref, key []byte) error {
+func (h *hashTrieWriter) writeToIntermediateLevel(level int, span, ref, key []byte) error {
 	copy(h.buffer[h.cursors[level]:h.cursors[level]+len(span)], span)
 	h.cursors[level] += len(span)
 	copy(h.buffer[h.cursors[level]:h.cursors[level]+len(ref)], ref)
@@ -103,7 +100,7 @@ func (h *hashTrieWriter) writeToDataLevel(span, ref, key, data []byte) error {
 	h.cursors[0]++
 
 	// write dataChunks to the level above
-	err := h.writeToLevel(1, span, ref, key)
+	err := h.writeToIntermediateLevel(1, span, ref, key)
 	if err != nil {
 		return err
 	}
@@ -126,17 +123,6 @@ func (h *hashTrieWriter) writeToDataLevel(span, ref, key, data []byte) error {
 		for i < n {
 			chunkData := h.dataBuffer[i]
 			span := make([]byte, 8)
-			key := make([]byte, 0)
-
-			// encrypt data if that is necessary
-			if len(key) != 0 {
-				key, span, chunkData, err = h.enc.EncryptChunk(chunkData)
-				if err != nil {
-					return err
-				}
-			} else {
-				binary.LittleEndian.PutUint64(span, swarm.ChunkSize)
-			}
 
 			// getting address
 			c, err := cac.New(chunkData)
@@ -150,14 +136,13 @@ func (h *hashTrieWriter) writeToDataLevel(span, ref, key, data []byte) error {
 				Data: chunkData,
 				Span: span,
 				Ref:  address,
-				Key:  key,
 			}
 			err = h.ChainWrite(&args)
 			if err != nil {
 				return err
 			}
 
-			h.writeToLevel(1, span, address, key)
+			h.writeToIntermediateLevel(1, span, address, key)
 		}
 		// reset cursor of dataBuffer and metadataBuffer
 		h.cursors[0] = 0
@@ -200,7 +185,7 @@ func (h *hashTrieWriter) wrapFullLevel(level int) error {
 	if err != nil {
 		return err
 	}
-	err = h.writeToLevel(level+1, args.Span, args.Ref, args.Key)
+	err = h.writeToIntermediateLevel(level+1, args.Span, args.Ref, args.Key)
 	if err != nil {
 		return err
 	}

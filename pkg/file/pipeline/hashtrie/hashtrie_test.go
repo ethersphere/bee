@@ -10,7 +10,6 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/encryption"
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/file/pipeline/bmt"
 	"github.com/ethersphere/bee/pkg/file/pipeline/hashtrie"
@@ -101,7 +100,7 @@ func TestLevels(t *testing.T) {
 				return bmt.NewBmtWriter(lsw)
 			}
 
-			ht := hashtrie.NewHashTrieWriter(chunkSize, branching, hashSize, 0, encryption.NewChunkEncrypter(), pf)
+			ht := hashtrie.NewHashTrieWriter(chunkSize, branching, hashSize, 0, pf)
 
 			for i := 0; i < tc.writes; i++ {
 				a := &pipeline.PipeWriteArgs{Ref: addr.Bytes(), Span: span}
@@ -144,7 +143,7 @@ func TestLevels_TrieFull(t *testing.T) {
 			return bmt.NewBmtWriter(lsw)
 		}
 
-		ht = hashtrie.NewHashTrieWriter(chunkSize, branching, hashSize, 0, encryption.NewChunkEncrypter(), pf)
+		ht = hashtrie.NewHashTrieWriter(chunkSize, branching, hashSize, 0, pf)
 	)
 
 	// to create a level wrap we need to do branching^(level-1) writes
@@ -187,7 +186,7 @@ func TestRegression(t *testing.T) {
 			lsw := store.NewStoreWriter(ctx, s, nil)
 			return bmt.NewBmtWriter(lsw)
 		}
-		ht = hashtrie.NewHashTrieWriter(chunkSize, branching, hashSize, 0, encryption.NewChunkEncrypter(), pf)
+		ht = hashtrie.NewHashTrieWriter(chunkSize, branching, hashSize, 0, pf)
 	)
 	binary.LittleEndian.PutUint64(span, 4096)
 

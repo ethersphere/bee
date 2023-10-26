@@ -33,7 +33,7 @@ func NewPipelineBuilder(ctx context.Context, s storage.Putter, encrypt bool, rsP
 // a merkle-tree of hashes that represent the given arbitrary size byte stream. Partial
 // writes are supported. The pipeline flow is: Data -> Feeder -> BMT -> Storage -> HashTrie.
 func newPipeline(ctx context.Context, s storage.Putter, rsParity uint8) pipeline.Interface {
-	tw := hashtrie.NewHashTrieWriter(swarm.ChunkSize, swarm.Branches, swarm.HashSize, rsParity, encryption.NewChunkEncrypter(), newShortPipelineFunc(ctx, s))
+	tw := hashtrie.NewHashTrieWriter(swarm.ChunkSize, swarm.Branches, swarm.HashSize, rsParity, newShortPipelineFunc(ctx, s))
 	lsw := store.NewStoreWriter(ctx, s, tw)
 	b := bmt.NewBmtWriter(lsw)
 	return feeder.NewChunkFeederWriter(swarm.ChunkSize, rsParity, b)
@@ -54,11 +54,10 @@ func newShortPipelineFunc(ctx context.Context, s storage.Putter) func() pipeline
 // Note that the encryption writer will mutate the data to contain the encrypted span, but the span field
 // with the unencrypted span is preserved.
 func newEncryptionPipeline(ctx context.Context, s storage.Putter, rsParity uint8) pipeline.Interface {
-	encrypter := encryption.NewChunkEncrypter()
-	tw := hashtrie.NewHashTrieWriter(swarm.ChunkSize, 64, swarm.HashSize+encryption.KeyLength, rsParity, encrypter, newShortEncryptionPipelineFunc(ctx, s))
+	tw := hashtrie.NewHashTrieWriter(swarm.ChunkSize, 64, swarm.HashSize+encryption.KeyLength, rsParity, newShortEncryptionPipelineFunc(ctx, s))
 	lsw := store.NewStoreWriter(ctx, s, tw)
 	b := bmt.NewBmtWriter(lsw)
-	enc := enc.NewEncryptionWriter(encrypter, b)
+	enc := enc.NewEncryptionWriter(encryption.NewChunkEncrypter(), b)
 	return feeder.NewChunkFeederWriter(swarm.ChunkSize, rsParity, enc)
 }
 
