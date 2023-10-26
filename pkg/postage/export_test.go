@@ -20,30 +20,28 @@ var (
 	ErrStampItemUnmarshalInvalidSize       = errStampItemUnmarshalInvalidSize
 )
 
-type StampItem = stampItem
-
-func (si *stampItem) WithBatchID(id []byte) *StampItem {
-	si.batchID = id
+func (si *StampItem) WithBatchID(id []byte) *StampItem {
+	si.BatchID = id
 	return si
 }
 
-func (si *stampItem) WithChunkAddress(addr swarm.Address) *StampItem {
+func (si *StampItem) WithChunkAddress(addr swarm.Address) *StampItem {
 	si.chunkAddress = addr
 	return si
 }
 
-func (si *stampItem) WithBatchIndex(index []byte) *StampItem {
+func (si *StampItem) WithBatchIndex(index []byte) *StampItem {
 	si.BatchIndex = index
 	return si
 }
 
-func (si *stampItem) WithBatchTimestamp(timestamp []byte) *StampItem {
+func (si *StampItem) WithBatchTimestamp(timestamp []byte) *StampItem {
 	si.BatchTimestamp = timestamp
 	return si
 }
 
 func NewStampItem() *StampItem {
-	return new(stampItem)
+	return new(StampItem)
 }
 
 func ModifyBuckets(st *StampIssuer, buckets []uint32) {

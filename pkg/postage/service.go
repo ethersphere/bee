@@ -200,14 +200,41 @@ func (ps *service) SetExpired() error {
 	for _, issuer := range ps.issuers {
 		exists, err := ps.postageStore.Exists(issuer.ID())
 		if err != nil {
-			return fmt.Errorf("set expired: checking if issuer exists for batch %s: %w", hex.EncodeToString(issuer.ID()), err)
+			return fmt.Errorf("set expired: checking if batch exists for stamp issuer %s: %w", hex.EncodeToString(issuer.ID()), err)
 		}
 		if !exists {
-			err := ps.store.Delete(&StampIssuerItem{Issuer: issuer})
-			if err != nil {
+			if err := ps.store.Delete(&StampIssuerItem{Issuer: issuer}); err != nil {
 				return fmt.Errorf("set expired: delete stamp data for batch %s: %w", hex.EncodeToString(issuer.ID()), err)
 			}
 			ps.logger.Debug("removed expired stamp issuer", "id", hex.EncodeToString(issuer.ID()))
+		}
+	}
+
+	var deleteItems []*StampItem
+
+	err := ps.store.Iterate(
+		storage.Query{
+			Factory: func() storage.Item {
+				return new(StampItem)
+			},
+		}, func(result storage.Result) (bool, error) {
+			item := result.Entry.(*StampItem)
+			exists, err := ps.postageStore.Exists(item.BatchID)
+			if err != nil {
+				return false, fmt.Errorf("set expired: checking if batch exists for stamp item %s: %w", hex.EncodeToString(item.BatchID), err)
+			}
+			if !exists {
+				deleteItems = append(deleteItems, item)
+			}
+			return false, nil
+		})
+	if err != nil {
+		return err
+	}
+
+	for _, item := range deleteItems {
+		if err := ps.store.Delete(item); err != nil {
+			return fmt.Errorf("set expired: delete stamp for expired batch %s: %w", hex.EncodeToString(item.BatchID), err)
 		}
 	}
 
