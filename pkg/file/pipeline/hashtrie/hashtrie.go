@@ -8,8 +8,11 @@ import (
 	"encoding/binary"
 	"errors"
 
+	"github.com/ethersphere/bee/pkg/cac"
+	"github.com/ethersphere/bee/pkg/encryption"
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/klauspost/reedsolomon"
 )
 
 var (
@@ -20,25 +23,45 @@ var (
 const maxLevel = 8
 
 type hashTrieWriter struct {
-	branching  int
-	chunkSize  int
-	refSize    int
-	fullChunk  int    // full chunk size in terms of the data represented in the buffer (span+refsize)
-	cursors    []int  // level cursors, key is level. level 0 is data level and is not represented in this package. writes always start at level 1. higher levels will always have LOWER cursor values.
-	buffer     []byte // keeps all level data
-	full       bool   // indicates whether the trie is full. currently we support (128^7)*4096 = 2305843009213693952 bytes
-	pipelineFn pipeline.PipelineFunc
+	branching      int
+	chunkSize      int
+	refSize        int
+	fullChunk      int                       // full chunk size in terms of the data represented in the buffer (span+refsize)
+	cursors        []int                     // level cursors, key is level. level 0 is data level holds how many chunks were processed. Intermediate higher levels will always have LOWER cursor values.
+	buffer         []byte                    // keeps intermediate level data
+	full           bool                      // indicates whether the trie is full. currently we support (128^7)*4096 = 2305843009213693952 bytes
+	rsParity       uint8                     // Reed-Solomon Parity number
+	dataBuffer     [][]byte                  // keeps bytes of data level chunks for producing erasure coded data
+	metadataBuffer [][]byte                  // keeps reference and encryption key data for the data level chunks
+	enc            encryption.ChunkEncrypter // encrypt parity chunks in case of reed solomon
+	pipelineFn     pipeline.PipelineFunc
 }
 
-func NewHashTrieWriter(chunkSize, branching, refLen int, pipelineFn pipeline.PipelineFunc) pipeline.ChainWriter {
+func NewHashTrieWriter(chunkSize, branching, refLen int, rsParity uint8, enc encryption.ChunkEncrypter, pipelineFn pipeline.PipelineFunc) pipeline.ChainWriter {
+	// init dataBuffer
+	dataBufferLength := 0
+	if rsParity != 0 {
+		dataBufferLength = branching
+	}
+	dataBuffer := make([][]byte, dataBufferLength)
+	metadataBuffer := make([][]byte, dataBufferLength)
+	for i := range dataBuffer {
+		dataBuffer[i] = make([]byte, swarm.ChunkWithSpanSize)
+		metadataBuffer[i] = make([]byte, refLen) // store reference and encrypted key
+	}
+
 	return &hashTrieWriter{
-		cursors:    make([]int, 9),
-		buffer:     make([]byte, swarm.ChunkWithSpanSize*9*2), // double size as temp workaround for weak calculation of needed buffer space
-		branching:  branching,
-		chunkSize:  chunkSize,
-		refSize:    refLen,
-		fullChunk:  (refLen + swarm.SpanSize) * branching,
-		pipelineFn: pipelineFn,
+		cursors:        make([]int, 9),
+		buffer:         make([]byte, swarm.ChunkWithSpanSize*9*2), // double size as temp workaround for weak calculation of needed buffer space
+		branching:      branching,
+		chunkSize:      chunkSize,
+		refSize:        refLen,
+		fullChunk:      (refLen + swarm.SpanSize) * branching,
+		rsParity:       rsParity,
+		dataBuffer:     dataBuffer,
+		metadataBuffer: metadataBuffer,
+		enc:            enc,
+		pipelineFn:     pipelineFn,
 	}
 }
 
@@ -53,7 +76,11 @@ func (h *hashTrieWriter) ChainWrite(p *pipeline.PipeWriteArgs) error {
 	if h.full {
 		return errTrieFull
 	}
-	return h.writeToLevel(1, p.Span, p.Ref, p.Key)
+	if h.rsParity == 0 {
+		return h.writeToLevel(1, p.Span, p.Ref, p.Key)
+	} else {
+		return h.writeToDataLevel(p.Span, p.Ref, p.Key, p.Data)
+	}
 }
 
 func (h *hashTrieWriter) writeToLevel(level int, span, ref, key []byte) error {
@@ -63,11 +90,79 @@ func (h *hashTrieWriter) writeToLevel(level int, span, ref, key []byte) error {
 	h.cursors[level] += len(ref)
 	copy(h.buffer[h.cursors[level]:h.cursors[level]+len(key)], key)
 	h.cursors[level] += len(key)
-	howLong := (h.refSize + swarm.SpanSize) * h.branching
+	howLong := (h.refSize+swarm.SpanSize)*h.branching - h.refSize*int(h.rsParity)
 
 	if h.levelSize(level) == howLong {
 		return h.wrapFullLevel(level)
 	}
+	return nil
+}
+
+func (h *hashTrieWriter) writeToDataLevel(span, ref, key, data []byte) error {
+	h.dataBuffer[h.cursors[0]] = data
+	h.cursors[0]++
+
+	// write dataChunks to the level above
+	err := h.writeToLevel(1, span, ref, key)
+	if err != nil {
+		return err
+	}
+
+	// handle erasure coding
+	rsShards := h.branching - int(h.rsParity)
+	if h.cursors[0] == rsShards {
+		// append erasure coded data
+		enc, err := reedsolomon.New(rsShards, int(h.rsParity))
+		if err != nil {
+			return err
+		}
+		err = enc.Encode(h.dataBuffer)
+		if err != nil {
+			return err
+		}
+
+		i := h.cursors[0]
+		n := len(h.metadataBuffer)
+		for i < n {
+			chunkData := h.dataBuffer[i]
+			span := make([]byte, 8)
+			key := make([]byte, 0)
+
+			// encrypt data if that is necessary
+			if len(key) != 0 {
+				key, span, chunkData, err = h.enc.EncryptChunk(chunkData)
+				if err != nil {
+					return err
+				}
+			} else {
+				binary.LittleEndian.PutUint64(span, swarm.ChunkSize)
+			}
+
+			// getting address
+			c, err := cac.New(chunkData)
+			if err != nil {
+				return err
+			}
+			address := c.Address().Bytes()
+
+			// store data chunk
+			args := pipeline.PipeWriteArgs{
+				Data: chunkData,
+				Span: span,
+				Ref:  address,
+				Key:  key,
+			}
+			err = h.ChainWrite(&args)
+			if err != nil {
+				return err
+			}
+
+			h.writeToLevel(1, span, address, key)
+		}
+		// reset cursor of dataBuffer and metadataBuffer
+		h.cursors[0] = 0
+	}
+
 	return nil
 }
 
