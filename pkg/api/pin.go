@@ -91,8 +91,7 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 		},
 	)
 	if err != nil {
-		logger.Debug("pin collection failed", "error", errors.Join(err, putter.Cleanup()))
-		logger.Error(nil, "pin collection failed")
+		logger.Error(errors.Join(err, putter.Cleanup()), "pin collection failed")
 		if errors.Is(err, storage.ErrNotFound) {
 			jsonhttp.NotFound(w, "pin collection failed")
 			return
