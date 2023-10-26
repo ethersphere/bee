@@ -62,10 +62,11 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 		paths.Reference,
 		func(address swarm.Address) error {
 			mtxErr.Lock()
-			defer mtxErr.Unlock()
 			if errTraverse != nil {
+				mtxErr.Unlock()
 				return errTraverse
 			}
+			mtxErr.Unlock()
 			if err := sem.Acquire(r.Context(), 1); err != nil {
 				return err
 			}
@@ -76,10 +77,10 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 					sem.Release(1)
 					wg.Done()
 					mtxErr.Lock()
-					defer mtxErr.Unlock()
 					if err != nil {
 						errTraverse = errors.Join(errTraverse, err)
 					}
+					mtxErr.Unlock()
 				}()
 				chunk, err := getter.Get(r.Context(), address)
 				if err != nil {
