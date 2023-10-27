@@ -32,13 +32,12 @@ func (db *DB) cacheWorker(ctx context.Context) {
 		select {
 		case <-overCapTrigger:
 
-			capc := db.cacheObj.Capacity()
-
-			if db.cacheObj.Size() <= capc {
+			var size, capc = db.cacheObj.Size(), db.cacheObj.Capacity()
+			if size <= capc {
 				continue
 			}
 
-			evict := (float64(capc) * 0.01) // evict 1% of the capacty
+			evict := (size - capc) + uint64(float64(capc)*0.01) // evict (size - cap) + some buffer
 
 			dur := captureDuration(time.Now())
 			err := db.Execute(ctx, func(s internal.Storage) error {
@@ -49,7 +48,7 @@ func (db *DB) cacheWorker(ctx context.Context) {
 				db.metrics.MethodCalls.WithLabelValues("cachestore", "RemoveOldest", "failure").Inc()
 				db.logger.Warning("cache eviction failure", "error", err)
 			} else {
-				db.logger.Debug("cache eviction finished", "evicted", evict, "duration", dur())
+				db.logger.Debug("cache eviction finished", "evicted", evict, "duration_sec", dur())
 				db.metrics.MethodCalls.WithLabelValues("cachestore", "RemoveOldest", "success").Inc()
 			}
 			db.triggerCacheEviction()
@@ -116,11 +115,7 @@ func (db *DB) CacheShallowCopy(ctx context.Context, store internal.Storage, addr
 
 func (db *DB) triggerCacheEviction() {
 
-	var (
-		size = db.cacheObj.Size()
-		capc = db.cacheObj.Capacity()
-	)
-
+	var size, capc = db.cacheObj.Size(), db.cacheObj.Capacity()
 	db.metrics.CacheSize.Set(float64(size))
 
 	if size > capc {

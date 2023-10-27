@@ -195,24 +195,10 @@ func (ps *service) HandleStampExpiry(id []byte) {
 
 // SetExpired removes all expired batches from the stamp issuers.
 func (ps *service) SetExpired(ctx context.Context) error {
-	ps.lock.Lock()
-	defer ps.lock.Unlock()
 
-	for _, issuer := range ps.issuers {
-		exists, err := ps.postageStore.Exists(issuer.ID())
-		if err != nil {
-			return fmt.Errorf("set expired: checking if batch exists for stamp issuer %s: %w", hex.EncodeToString(issuer.ID()), err)
-		}
-		if !exists {
-			if err := ps.store.Delete(&StampIssuerItem{Issuer: issuer}); err != nil {
-				return fmt.Errorf("set expired: delete stamp data for batch %s: %w", hex.EncodeToString(issuer.ID()), err)
-			}
-			ps.logger.Debug("removed expired stamp issuer", "id", hex.EncodeToString(issuer.ID()))
-		}
-	}
+	ps.logger.Debug("removing expired stamp data from stamperstore. this may take a while if the node has not been restarted in a while.")
 
 	deleteItemC := make(chan *StampItem)
-
 	go func() {
 		for item := range deleteItemC {
 			_ = ps.store.Delete(item)
@@ -225,8 +211,6 @@ func (ps *service) SetExpired(ctx context.Context) error {
 			close(deleteItemC)
 			ps.logger.Debug("removed expired stamps", "count", count)
 		}()
-
-		ps.logger.Debug("removing expired stamp data from stamperstore. this may take a while if the node has not been restarted in a while.")
 
 		err := ps.store.Iterate(
 			storage.Query{
@@ -260,6 +244,22 @@ func (ps *service) SetExpired(ctx context.Context) error {
 			ps.logger.Warning("removing expired stamp iterator failed", "error", err)
 		}
 	}()
+
+	ps.lock.Lock()
+	defer ps.lock.Unlock()
+
+	for _, issuer := range ps.issuers {
+		exists, err := ps.postageStore.Exists(issuer.ID())
+		if err != nil {
+			return fmt.Errorf("set expired: checking if batch exists for stamp issuer %s: %w", hex.EncodeToString(issuer.ID()), err)
+		}
+		if !exists {
+			if err := ps.store.Delete(&StampIssuerItem{Issuer: issuer}); err != nil {
+				return fmt.Errorf("set expired: delete stamp data for batch %s: %w", hex.EncodeToString(issuer.ID()), err)
+			}
+			ps.logger.Debug("removed expired stamp issuer", "id", hex.EncodeToString(issuer.ID()))
+		}
+	}
 
 	return ps.reload()
 }
