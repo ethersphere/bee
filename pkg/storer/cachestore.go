@@ -41,13 +41,18 @@ func (db *DB) cacheWorker(ctx context.Context) {
 				continue
 			}
 
-			evict := size - uint64((float64(capc) * 0.90)) // evict until cache size is 90% of capacity
+			evict := (size - capc)
 
+			dur := captureDuration(time.Now())
 			err := db.Execute(ctx, func(s internal.Storage) error {
 				return db.cacheObj.RemoveOldest(ctx, s, s.ChunkStore(), evict)
 			})
+			db.metrics.MethodCallsDuration.WithLabelValues("cachestore", "RemoveOldest").Observe(dur())
 			if err != nil {
+				db.metrics.MethodCalls.WithLabelValues("cachestore", "RemoveOldest", "failure").Inc()
 				db.logger.Warning("cache eviction failure", "error", err)
+			} else {
+				db.metrics.MethodCalls.WithLabelValues("cachestore", "RemoveOldest", "success").Inc()
 			}
 		case <-db.quit:
 			return

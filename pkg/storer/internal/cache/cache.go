@@ -261,9 +261,6 @@ func (c *Cache) RemoveOldest(
 		return nil
 	}
 
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
-
 	evictItems := make([]*cacheEntry, 0, count)
 	err := store.IndexStore().Iterate(
 		storage.Query{
@@ -292,6 +289,9 @@ func (c *Cache) RemoveOldest(
 	if err != nil {
 		return fmt.Errorf("failed creating batch: %w", err)
 	}
+
+	c.mtx.Lock()
+	defer c.mtx.Unlock()
 
 	for _, entry := range evictItems {
 		err = batch.Delete(entry)
