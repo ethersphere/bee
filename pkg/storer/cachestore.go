@@ -49,7 +49,7 @@ func (db *DB) cacheWorker(ctx context.Context) {
 			if err != nil {
 				db.logger.Warning("cache eviction failure", "error", err)
 			}
-		case <-ctx.Done():
+		case <-db.quit:
 			return
 		}
 	}

@@ -238,6 +238,8 @@ func (ps *service) SetExpired() error {
 		}
 	}
 
+	ps.logger.Debug("removed expired stamps", "count", len(deleteItems))
+
 	return ps.reload()
 }
 
