@@ -36,8 +36,7 @@ var (
 
 // Cache is the part of the localstore which keeps track of the chunks that are not
 // part of the reserve but are potentially useful to store for obtaining bandwidth
-// incentives. In order to avoid GC we will only keep track of a fixed no. of chunks
-// as part of the cache and evict a chunk as soon as we go above capacity.
+// incentives.
 type Cache struct {
 	size     atomic.Int64
 	capacity int
@@ -73,8 +72,8 @@ func (c *Cache) Capacity() uint64 { return uint64(c.capacity) }
 func (c *Cache) Putter(store internal.Storage) storage.Putter {
 	return storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
 
-		c.mtx.Lock()
-		defer c.mtx.Unlock()
+		c.mtx.RLock()
+		defer c.mtx.RUnlock()
 
 		newEntry := &cacheEntry{Address: chunk.Address()}
 		found, err := store.IndexStore().Has(newEntry)
@@ -190,8 +189,8 @@ func (c *Cache) ShallowCopy(
 	addrs ...swarm.Address,
 ) (err error) {
 
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
+	c.mtx.RLock()
+	defer c.mtx.RUnlock()
 
 	defer func() {
 		if err != nil {
@@ -211,11 +210,10 @@ func (c *Cache) ShallowCopy(
 
 	entriesToAdd := make([]*cacheEntry, 0, len(addrs))
 	for _, addr := range addrs {
-		entry := &cacheEntry{Address: addr}
+		entry := &cacheEntry{Address: addr, AccessTimestamp: now().UnixNano()}
 		if has, err := store.IndexStore().Has(entry); err == nil && has {
 			continue
 		}
-		entry.AccessTimestamp = now().UnixNano()
 		entriesToAdd = append(entriesToAdd, entry)
 	}
 
