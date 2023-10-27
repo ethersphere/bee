@@ -311,7 +311,14 @@ func (c *Cache) RemoveOldest(
 		}
 	}
 
-	return batch.Commit()
+	err = batch.Commit()
+	if err != nil {
+		return err
+	}
+
+	c.size.Add(-int64(len(evictItems)))
+
+	return nil
 }
 
 type cacheEntry struct {
