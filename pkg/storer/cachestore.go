@@ -41,7 +41,7 @@ func (db *DB) cacheWorker(ctx context.Context) {
 
 			dur := captureDuration(time.Now())
 			err := db.Execute(ctx, func(s internal.Storage) error {
-				return db.cacheObj.RemoveOldest(ctx, s, s.ChunkStore(), uint64(evict))
+				return db.cacheObj.RemoveOldest(ctx, s, s.ChunkStore(), evict)
 			})
 			db.metrics.MethodCallsDuration.WithLabelValues("cachestore", "RemoveOldest").Observe(dur())
 			if err != nil {
