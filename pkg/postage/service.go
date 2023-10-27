@@ -15,6 +15,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/storage"
+	"golang.org/x/sync/errgroup"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -197,6 +198,8 @@ func (ps *service) SetExpired() error {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
 
+	ps.logger.Debug("running set expired")
+
 	for _, issuer := range ps.issuers {
 		exists, err := ps.postageStore.Exists(issuer.ID())
 		if err != nil {
@@ -210,8 +213,19 @@ func (ps *service) SetExpired() error {
 		}
 	}
 
-	var deleteItems []*StampItem
+	deleteItemC := make(chan *StampItem)
+	var eg errgroup.Group
 
+	eg.Go(func() error {
+		for item := range deleteItemC {
+			if err := ps.store.Delete(item); err != nil {
+				return fmt.Errorf("set expired: delete stamp for expired batch %s: %w", hex.EncodeToString(item.BatchID), err)
+			}
+		}
+		return nil
+	})
+
+	count := 0
 	err := ps.store.Iterate(
 		storage.Query{
 			Factory: func() storage.Item {
@@ -224,7 +238,8 @@ func (ps *service) SetExpired() error {
 				return false, fmt.Errorf("set expired: checking if batch exists for stamp item %s: %w", hex.EncodeToString(item.BatchID), err)
 			}
 			if !exists {
-				deleteItems = append(deleteItems, item)
+				count++
+				deleteItemC <- item
 			}
 			return false, nil
 		})
@@ -232,13 +247,14 @@ func (ps *service) SetExpired() error {
 		return err
 	}
 
-	for _, item := range deleteItems {
-		if err := ps.store.Delete(item); err != nil {
-			return fmt.Errorf("set expired: delete stamp for expired batch %s: %w", hex.EncodeToString(item.BatchID), err)
-		}
+	close(deleteItemC)
+
+	err = eg.Wait()
+	if err != nil {
+		return err
 	}
 
-	ps.logger.Debug("removed expired stamps", "count", len(deleteItems))
+	ps.logger.Debug("removed expired stamps", "count", count)
 
 	return ps.reload()
 }
