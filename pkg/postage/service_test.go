@@ -6,6 +6,7 @@ package postage_test
 
 import (
 	"bytes"
+	"context"
 	crand "crypto/rand"
 	"errors"
 	"io"
@@ -243,7 +244,7 @@ func TestSetExpired(t *testing.T) {
 		t.Fatalf("expected %v, got %v", postage.ErrNotUsable, err)
 	}
 
-	err = ps.SetExpired()
+	err = ps.SetExpired(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}

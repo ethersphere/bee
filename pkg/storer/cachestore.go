@@ -32,30 +32,26 @@ func (db *DB) cacheWorker(ctx context.Context) {
 		select {
 		case <-overCapTrigger:
 
-			var (
-				size = db.cacheObj.Size()
-				capc = db.cacheObj.Capacity()
-			)
+			capc := db.cacheObj.Capacity()
 
-			if size <= capc {
+			if db.cacheObj.Size() <= capc {
 				continue
 			}
 
-			evict := size - capc
+			evict := (float64(capc) * 0.01) // evict 1% of the capacty
 
 			dur := captureDuration(time.Now())
 			err := db.Execute(ctx, func(s internal.Storage) error {
-				return db.cacheObj.RemoveOldest(ctx, s, s.ChunkStore(), evict)
+				return db.cacheObj.RemoveOldest(ctx, s, s.ChunkStore(), uint64(evict))
 			})
 			db.metrics.MethodCallsDuration.WithLabelValues("cachestore", "RemoveOldest").Observe(dur())
 			if err != nil {
 				db.metrics.MethodCalls.WithLabelValues("cachestore", "RemoveOldest", "failure").Inc()
 				db.logger.Warning("cache eviction failure", "error", err)
 			} else {
-				db.logger.Debug("cache eviction finished", "evicted", evict)
+				db.logger.Debug("cache eviction finished", "evicted", evict, "duration", dur())
 				db.metrics.MethodCalls.WithLabelValues("cachestore", "RemoveOldest", "success").Inc()
 			}
-
 			db.triggerCacheEviction()
 		case <-db.quit:
 			return
