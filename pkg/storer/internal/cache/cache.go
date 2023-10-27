@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -40,8 +39,6 @@ var (
 type Cache struct {
 	size     atomic.Int64
 	capacity int
-
-	mtx sync.RWMutex
 }
 
 // New creates a new Cache component with the specified capacity. The store is used
@@ -71,9 +68,6 @@ func (c *Cache) Capacity() uint64 { return uint64(c.capacity) }
 // chunkstore and also adds a Cache entry for the chunk.
 func (c *Cache) Putter(store internal.Storage) storage.Putter {
 	return storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
-
-		c.mtx.RLock()
-		defer c.mtx.RUnlock()
 
 		newEntry := &cacheEntry{Address: chunk.Address()}
 		found, err := store.IndexStore().Has(newEntry)
@@ -126,9 +120,6 @@ func (c *Cache) Putter(store internal.Storage) storage.Putter {
 // of this getter to rollback the operation.
 func (c *Cache) Getter(store internal.Storage) storage.Getter {
 	return storage.GetterFunc(func(ctx context.Context, address swarm.Address) (swarm.Chunk, error) {
-
-		c.mtx.RLock()
-		defer c.mtx.RUnlock()
 
 		ch, err := store.ChunkStore().Get(ctx, address)
 		if err != nil {
@@ -188,9 +179,6 @@ func (c *Cache) ShallowCopy(
 	store internal.Storage,
 	addrs ...swarm.Address,
 ) (err error) {
-
-	c.mtx.RLock()
-	defer c.mtx.RUnlock()
 
 	defer func() {
 		if err != nil {
@@ -289,9 +277,6 @@ func (c *Cache) RemoveOldest(
 	if err != nil {
 		return fmt.Errorf("failed creating batch: %w", err)
 	}
-
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
 
 	for _, entry := range evictItems {
 		err = batch.Delete(entry)

@@ -41,7 +41,7 @@ func (db *DB) cacheWorker(ctx context.Context) {
 				continue
 			}
 
-			evict := (size - capc)
+			evict := size - capc
 
 			dur := captureDuration(time.Now())
 			err := db.Execute(ctx, func(s internal.Storage) error {
@@ -52,8 +52,11 @@ func (db *DB) cacheWorker(ctx context.Context) {
 				db.metrics.MethodCalls.WithLabelValues("cachestore", "RemoveOldest", "failure").Inc()
 				db.logger.Warning("cache eviction failure", "error", err)
 			} else {
+				db.logger.Debug("cache eviction finished", "evicted", evict)
 				db.metrics.MethodCalls.WithLabelValues("cachestore", "RemoveOldest", "success").Inc()
 			}
+
+			db.triggerCacheEviction()
 		case <-db.quit:
 			return
 		}
