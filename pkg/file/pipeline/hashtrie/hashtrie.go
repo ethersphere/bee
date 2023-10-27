@@ -22,17 +22,16 @@ var (
 const maxLevel = 8
 
 type hashTrieWriter struct {
-	branching      int
-	chunkSize      int
-	refSize        int
-	fullChunk      int      // full chunk size in terms of the data represented in the buffer (span+refsize)
-	cursors        []int    // level cursors, key is level. level 0 is data level holds how many chunks were processed. Intermediate higher levels will always have LOWER cursor values.
-	buffer         []byte   // keeps intermediate level data
-	full           bool     // indicates whether the trie is full. currently we support (128^7)*4096 = 2305843009213693952 bytes
-	rsParity       uint8    // Reed-Solomon Parity number
-	dataBuffer     [][]byte // keeps bytes of data level chunks for producing erasure coded data
-	metadataBuffer [][]byte // keeps reference and encryption key data for the data level chunks
-	pipelineFn     pipeline.PipelineFunc
+	branching  int
+	chunkSize  int
+	refSize    int
+	fullChunk  int      // full chunk size in terms of the data represented in the buffer (span+refsize)
+	cursors    []int    // level cursors, key is level. level 0 is data level holds how many chunks were processed. Intermediate higher levels will always have LOWER cursor values.
+	buffer     []byte   // keeps intermediate level data
+	full       bool     // indicates whether the trie is full. currently we support (128^7)*4096 = 2305843009213693952 bytes
+	rsParity   uint8    // Reed-Solomon Parity number
+	dataBuffer [][]byte // keeps bytes of data level chunks for producing erasure coded data
+	pipelineFn pipeline.PipelineFunc
 }
 
 func NewHashTrieWriter(chunkSize, branching, refLen int, rsParity uint8, pipelineFn pipeline.PipelineFunc) pipeline.ChainWriter {
@@ -42,23 +41,20 @@ func NewHashTrieWriter(chunkSize, branching, refLen int, rsParity uint8, pipelin
 		dataBufferLength = branching
 	}
 	dataBuffer := make([][]byte, dataBufferLength)
-	metadataBuffer := make([][]byte, dataBufferLength)
 	for i := range dataBuffer {
 		dataBuffer[i] = make([]byte, swarm.ChunkWithSpanSize)
-		metadataBuffer[i] = make([]byte, refLen) // store reference and encrypted key
 	}
 
 	return &hashTrieWriter{
-		cursors:        make([]int, 9),
-		buffer:         make([]byte, swarm.ChunkWithSpanSize*9*2), // double size as temp workaround for weak calculation of needed buffer space
-		branching:      branching,
-		chunkSize:      chunkSize,
-		refSize:        refLen,
-		fullChunk:      (refLen + swarm.SpanSize) * branching,
-		rsParity:       rsParity,
-		dataBuffer:     dataBuffer,
-		metadataBuffer: metadataBuffer,
-		pipelineFn:     pipelineFn,
+		cursors:    make([]int, 9),
+		buffer:     make([]byte, swarm.ChunkWithSpanSize*9*2), // double size as temp workaround for weak calculation of needed buffer space
+		branching:  branching,
+		chunkSize:  chunkSize,
+		refSize:    refLen,
+		fullChunk:  (refLen + swarm.SpanSize) * branching,
+		rsParity:   rsParity,
+		dataBuffer: dataBuffer,
+		pipelineFn: pipelineFn,
 	}
 }
 
@@ -118,9 +114,8 @@ func (h *hashTrieWriter) writeToDataLevel(span, ref, key, data []byte) error {
 			return err
 		}
 
-		i := h.cursors[0]
-		n := len(h.metadataBuffer)
-		for i < n {
+		n := len(h.dataBuffer)
+		for i := h.cursors[0]; i < n; i++ {
 			chunkData := h.dataBuffer[i]
 			span := make([]byte, 8)
 
@@ -144,7 +139,7 @@ func (h *hashTrieWriter) writeToDataLevel(span, ref, key, data []byte) error {
 
 			h.writeToIntermediateLevel(1, span, address, key)
 		}
-		// reset cursor of dataBuffer and metadataBuffer
+		// reset cursor of dataBuffer
 		h.cursors[0] = 0
 	}
 
