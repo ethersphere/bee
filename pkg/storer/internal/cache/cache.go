@@ -28,8 +28,6 @@ const cacheEntrySize = swarm.HashSize + 8
 
 var _ storage.Item = (*cacheEntry)(nil)
 
-var CacheEvictionBatchSize = 10_000
-
 var (
 	errMarshalCacheEntryInvalidAddress   = errors.New("marshal cacheEntry: invalid address")
 	errMarshalCacheEntryInvalidTimestamp = errors.New("marshal cacheEntry: invalid timestamp")
