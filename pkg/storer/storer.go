@@ -617,14 +617,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 			opts.ReserveCapacity,
 			opts.RadiusSetter,
 			logger,
-			func(ctx context.Context, store internal.Storage, addrs ...swarm.Address) error {
-				defer func() { db.metrics.CacheSize.Set(float64(db.cacheObj.Size())) }()
-
-				db.lock.Lock(cacheAccessLockKey)
-				defer db.lock.Unlock(cacheAccessLockKey)
-
-				return cacheObj.MoveFromReserve(ctx, store, addrs...)
-			},
+			db.CacheShallowCopy,
 		)
 		if err != nil {
 			return nil, err
@@ -645,6 +638,9 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	db.inFlight.Add(1)
+	go db.cacheWorker(ctx)
 
 	return db, nil
 }

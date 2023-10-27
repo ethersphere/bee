@@ -8,14 +8,53 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storer/internal"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 const (
 	cacheAccessLockKey = "cachestoreAccess"
+	cacheOverCapacity  = "cacheOverCapacity"
 )
+
+func (db *DB) cacheWorker(ctx context.Context) {
+
+	defer db.inFlight.Done()
+
+	overCapTrigger, overCapUnsub := db.events.Subscribe(cacheOverCapacity)
+	defer overCapUnsub()
+
+	db.triggerCacheEviction()
+
+	for {
+		select {
+		case <-overCapTrigger:
+
+			var (
+				size = db.cacheObj.Size()
+				capc = db.cacheObj.Capacity()
+			)
+
+			if size <= capc {
+				continue
+			}
+
+			newSize := size - uint64((float64(capc) * 0.90)) // evict until cache size is 90% of capacity
+
+			err := db.Execute(ctx, func(s internal.Storage) error {
+				return db.cacheObj.RemoveOldest(ctx, s, s.ChunkStore(), newSize)
+			})
+			if err != nil {
+				db.logger.Warning("cache eviction failure", "error", err)
+			}
+		case <-ctx.Done():
+			return
+		}
+	}
+}
 
 // Lookup is the implementation of the CacheStore.Lookup method.
 func (db *DB) Lookup() storage.Getter {
@@ -50,6 +89,7 @@ func (db *DB) Lookup() storage.Getter {
 func (db *DB) Cache() storage.Putter {
 	return putterWithMetrics{
 		storage.PutterFunc(func(ctx context.Context, ch swarm.Chunk) error {
+			defer db.triggerCacheEviction()
 			// the cacheObj resets its state on failures and expects the transaction
 			// rollback to undo all the updates, so we need a lock here to prevent
 			// concurrent access to the cacheObj.
@@ -61,10 +101,38 @@ func (db *DB) Cache() storage.Putter {
 			if err != nil {
 				return fmt.Errorf("cache.Put: %w", errors.Join(err, rollback()))
 			}
-			db.metrics.CacheSize.Set(float64(db.cacheObj.Size()))
 			return errors.Join(err, commit())
 		}),
 		db.metrics,
 		"cachestore",
+	}
+}
+
+// CacheShallowCopy creates cache entries with the expectation that the chunk already exists in the chunkstore.
+func (db *DB) CacheShallowCopy(ctx context.Context, store internal.Storage, addrs ...swarm.Address) error {
+	defer db.triggerCacheEviction()
+	dur := captureDuration(time.Now())
+	err := db.cacheObj.ShallowCopy(ctx, store, addrs...)
+	db.metrics.MethodCallsDuration.WithLabelValues("cachestore", "ShallowCopy").Observe(dur())
+	if err != nil {
+		err = fmt.Errorf("cache shallow copy: %w", err)
+		db.metrics.MethodCalls.WithLabelValues("cachestore", "ShallowCopy", "failure").Inc()
+	} else {
+		db.metrics.MethodCalls.WithLabelValues("cachestore", "ShallowCopy", "success").Inc()
+	}
+	return err
+}
+
+func (db *DB) triggerCacheEviction() {
+
+	var (
+		size = db.cacheObj.Size()
+		capc = db.cacheObj.Capacity()
+	)
+
+	db.metrics.CacheSize.Set(float64(size))
+
+	if size > capc {
+		db.events.Trigger(cacheOverCapacity)
 	}
 }
