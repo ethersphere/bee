@@ -198,7 +198,7 @@ func (ps *service) SetExpired() error {
 	ps.lock.Lock()
 	defer ps.lock.Unlock()
 
-	ps.logger.Debug("running set expired")
+	ps.logger.Debug("removing expired stamp issuers and stamp data")
 
 	for _, issuer := range ps.issuers {
 		exists, err := ps.postageStore.Exists(issuer.ID())
