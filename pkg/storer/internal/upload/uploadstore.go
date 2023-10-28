@@ -7,6 +7,7 @@ package upload
 import (
 	"context"
 	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"strconv"
@@ -14,6 +15,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/encryption"
+	"github.com/ethersphere/bee/pkg/log"
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/storageutil"
 	"github.com/ethersphere/bee/pkg/storer/internal"
@@ -825,7 +827,7 @@ func ListAllTags(st storage.Store) ([]TagItem, error) {
 	return tags, nil
 }
 
-func Iterate(ctx context.Context, s internal.Storage, consumerFn func(chunk swarm.Chunk) (bool, error)) error {
+func Iterate(ctx context.Context, s internal.Storage, logger log.Logger, consumerFn func(chunk swarm.Chunk) (bool, error)) error {
 	return s.IndexStore().Iterate(storage.Query{
 		Factory: func() storage.Item { return &pushItem{} },
 	}, func(r storage.Result) (bool, error) {
@@ -839,12 +841,20 @@ func Iterate(ctx context.Context, s internal.Storage, consumerFn func(chunk swar
 		}
 		chunk, err := s.ChunkStore().Get(ctx, pi.Address)
 		if err != nil {
-			return true, err
+			logger.Error(err, "upload.Iterate ChunkStore.Get err", "chunk", chunk.Address())
+			return false, nil
+			//return true, err
 		}
 
 		stamp, err := chunkstamp.LoadWithBatchID(s.IndexStore(), chunkStampNamespace, chunk.Address(), pi.BatchID)
 		if err != nil {
-			return true, err
+			logger.Error(err, "upload.Iterate LoadWithBatchID err", "chunk", chunk.Address(), "batch", hex.EncodeToString(pi.BatchID))
+			stamp, err := chunkstamp.LoadWithBatchID(s.IndexStore(), chunkStampNamespace, chunk.Address(), nil)
+			if err == nil {
+				logger.Warning("upload.Iterate LoadWithBatchID found", "chunk", chunk.Address(), "batch", hex.EncodeToString(stamp.BatchID()))
+			}
+			return false, nil
+			//return true, err
 		}
 
 		chunk = chunk.

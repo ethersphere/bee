@@ -38,25 +38,30 @@ func (db *DB) SubscribePush(ctx context.Context) (<-chan swarm.Chunk, func()) {
 
 			var count int
 
-			err := upload.Iterate(ctx, db.repo, func(chunk swarm.Chunk) (bool, error) {
+			db.logger.Info("subscribe push: invoking upload.Iterate")
+			err := upload.Iterate(ctx, db.repo, db.logger, func(chunk swarm.Chunk) (bool, error) {
 				select {
 				case chunks <- chunk:
+					db.logger.Debug("subscribe push: upload.Iterate", "chunk", chunk.Address())
 					count++
 					return false, nil
 				case <-stopChan:
+					db.logger.Debug("subscribe push: upload.Iterate stopChan")
 					// gracefully stop the iteration
 					// on stop
 					return true, nil
 				case <-db.quit:
+					db.logger.Debug("subscribe push: upload.Iterate db.quit")
 					return true, ErrDBQuit
 				case <-ctx.Done():
+					db.logger.Error(ctx.Err(), "subscribe push: upload.Iterate ctx.Done (err?)")
 					return true, ctx.Err()
 				}
 			})
 
 			if err != nil {
 				if !errors.Is(err, storage.ErrNotFound) {
-					db.logger.Error(err, "subscribe push: iterate error")
+					db.logger.Error(err, "subscribe push: upload.Iterate error")
 					return
 				}
 				// if we get storage.ErrNotFound, it could happen that the previous
@@ -64,17 +69,23 @@ func (db *DB) SubscribePush(ctx context.Context) (<-chan swarm.Chunk, func()) {
 				// in this case, we wait for the next event to trigger the iteration
 				// again. This trigger ensures that we perform the iteration on the
 				// latest snapshot.
+				db.logger.Error(err, "subscribe push: upload.Iterate error, retriggering")
 				db.events.Trigger(subscribePushEventKey)
 			}
 
+			db.logger.Debug("subscribe push: upload.Iterate complete", "count", count)
 			select {
 			case <-db.quit:
+				db.logger.Debug("subscribe push: upload.Iterate eol db.quit")
 				return
 			case <-ctx.Done():
+				db.logger.Debug("subscribe push: upload.Iterate eol ctx.Done")
 				return
 			case <-stopChan:
+				db.logger.Debug("subscribe push: upload.Iterate eol stopChan")
 				return
 			case <-trigger:
+				db.logger.Debug("subscribe push: upload.Iterate eol triggered")
 				// wait for the next event
 			}
 		}
