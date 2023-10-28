@@ -85,10 +85,10 @@ func validateWork(logger log.Logger, store storage.Store, sharky *sharky.Store) 
 		if err != nil {
 			if soc.Valid(ch) {
 				socCount++
-				logger.Debug("found soc chunk ", "address", item.Address, "timestamp", time.Unix(int64(item.Timestamp), 0))
+				logger.Debug("found soc chunk", "address", item.Address, "timestamp", time.Unix(int64(item.Timestamp), 0))
 			} else {
 				invalidCount++
-				logger.Warning("invalid cac/soc chunk ", "address", item.Address, "timestamp", time.Unix(int64(item.Timestamp), 0), "err", err)
+				logger.Warning("invalid cac/soc chunk", "address", item.Address, "timestamp", time.Unix(int64(item.Timestamp), 0), "err", err)
 
 				h, err := cac.DoHash(buf[swarm.SpanSize:], buf[:swarm.SpanSize])
 				if err != nil {
@@ -142,7 +142,7 @@ func validateWork(logger log.Logger, store storage.Store, sharky *sharky.Store) 
 		iteratateItemsC <- item
 		count++
 		if count%100_000 == 0 {
-			logger.Info("..still validating chunks", "count", count, "total", total, "percent", fmt.Sprintf("%.2f", (float64(count)*100.0)/float64(total)))
+			logger.Info("..still validating chunks", "count", count, "total", "invalid", invalidCount, "soc", socCount, total, "percent", fmt.Sprintf("%.2f", (float64(count)*100.0)/float64(total)))
 		}
 		return nil
 	})
