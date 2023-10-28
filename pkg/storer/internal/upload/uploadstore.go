@@ -635,19 +635,10 @@ func CleanupDirty(tx internal.TxExecutor) error {
 	return nil
 }
 
-type pushReporter struct {
-	s internal.Storage
-}
-
-// NewPushReporter returns a new storage.PushReporter which can be used by the
-// pusher component to report chunk state information.
-func NewPushReporter(s internal.Storage) storage.PushReporter {
-	return &pushReporter{s: s}
-}
-
 // Report is the implementation of the PushReporter interface.
-func (p *pushReporter) Report(
+func Report(
 	ctx context.Context,
+	s internal.Storage,
 	chunk swarm.Chunk,
 	state storage.ChunkState,
 ) error {
@@ -656,7 +647,7 @@ func (p *pushReporter) Report(
 		BatchID: chunk.Stamp().BatchID(),
 	}
 
-	err := p.s.IndexStore().Get(ui)
+	err := s.IndexStore().Get(ui)
 	if err != nil {
 		return fmt.Errorf("failed to read uploadItem %s: %w", ui, err)
 	}
@@ -665,7 +656,7 @@ func (p *pushReporter) Report(
 		TagID: ui.TagID,
 	}
 
-	err = p.s.IndexStore().Get(ti)
+	err = s.IndexStore().Get(ti)
 	if err != nil {
 		return fmt.Errorf("failed getting tag: %w", err)
 	}
@@ -683,13 +674,18 @@ func (p *pushReporter) Report(
 		break
 	}
 
-	err = p.s.IndexStore().Put(ti)
+	batch, err := s.IndexStore().Batch(ctx)
+	if err != nil {
+		return err
+	}
+
+	err = batch.Put(ti)
 	if err != nil {
 		return fmt.Errorf("failed updating tag: %w", err)
 	}
 
 	if state == storage.ChunkSent {
-		return nil
+		return batch.Commit()
 	}
 
 	// Once the chunk is stored/synced/failed to sync, it is deleted from the upload store as
@@ -701,28 +697,28 @@ func (p *pushReporter) Report(
 		BatchID:   chunk.Stamp().BatchID(),
 	}
 
-	err = p.s.IndexStore().Delete(pi)
+	err = batch.Delete(pi)
 	if err != nil {
 		return fmt.Errorf("failed deleting pushItem %s: %w", pi, err)
 	}
 
-	err = chunkstamp.Delete(p.s.IndexStore(), chunkStampNamespace, pi.Address, pi.BatchID)
+	err = chunkstamp.Delete(s.IndexStore(), chunkStampNamespace, pi.Address, pi.BatchID)
 	if err != nil {
 		return fmt.Errorf("failed deleting chunk stamp %x: %w", pi.BatchID, err)
 	}
 
-	err = p.s.ChunkStore().Delete(ctx, chunk.Address())
+	err = s.ChunkStore().Delete(ctx, chunk.Address())
 	if err != nil {
 		return fmt.Errorf("failed deleting chunk %s: %w", chunk.Address(), err)
 	}
 
 	ui.Synced = now().UnixNano()
-	err = p.s.IndexStore().Put(ui)
+	err = batch.Put(ui)
 	if err != nil {
 		return fmt.Errorf("failed updating uploadItem %s: %w", ui, err)
 	}
 
-	return nil
+	return batch.Commit()
 }
 
 var (

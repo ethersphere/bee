@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"sort"
-	"sync"
 
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storer/internal"
@@ -17,6 +16,24 @@ import (
 	"github.com/ethersphere/bee/pkg/storer/internal/upload"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
+
+const uploadStoreKey = "uploadstore"
+
+// Report implements the storage.PushReporter by wrapping the internal reporter
+// with a transaction.
+func (db *DB) Report(ctx context.Context, chunk swarm.Chunk, state storage.ChunkState) error {
+
+	db.lock.Lock(uploadStoreKey)
+	defer db.lock.Unlock(uploadStoreKey)
+
+	txnRepo, commit, rollback := db.repo.NewTx(ctx)
+	err := upload.Report(ctx, txnRepo, chunk, state)
+	if err != nil {
+		return fmt.Errorf("reporter.Report: %w", errors.Join(err, rollback()))
+	}
+
+	return commit()
+}
 
 // Upload is the implementation of UploadStore.Upload method.
 func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession, error) {
@@ -49,14 +66,11 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 		return nil, err
 	}
 
-	var mtx sync.Mutex
-
 	return &putterSession{
 		Putter: putterWithMetrics{
 			storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
-				mtx.Lock()
-				defer mtx.Unlock()
-
+				db.lock.Lock(uploadStoreKey)
+				defer db.lock.Unlock(uploadStoreKey)
 				return db.Execute(ctx, func(s internal.Storage) error {
 
 					b, err := s.IndexStore().Batch(ctx)
@@ -82,10 +96,9 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 			"uploadstore",
 		},
 		done: func(address swarm.Address) error {
-			mtx.Lock()
-			defer mtx.Unlock()
 			defer db.events.Trigger(subscribePushEventKey)
-
+			db.lock.Lock(uploadStoreKey)
+			defer db.lock.Unlock(uploadStoreKey)
 			return db.Execute(ctx, func(s internal.Storage) error {
 
 				b, err := s.IndexStore().Batch(ctx)
@@ -109,9 +122,9 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 			})
 		},
 		cleanup: func() error {
-			mtx.Lock()
-			defer mtx.Unlock()
 			defer db.events.Trigger(subscribePushEventKey)
+			db.lock.Lock(uploadStoreKey)
+			defer db.lock.Unlock(uploadStoreKey)
 			return errors.Join(
 				uploadPutter.Cleanup(db),
 				func() error {
