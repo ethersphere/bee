@@ -63,7 +63,7 @@ func (r *Recovery) Add(loc Location) error {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
-	r.logger.Debug("chunkTrace: sharkyRecovery.Add", "location", loc.ToString())
+	//r.logger.Debug("chunkTrace: sharkyRecovery.Add", "location", loc.ToString())
 	sh := r.shards[loc.Shard]
 	l := len(sh.data)
 	if diff := int(loc.Slot/8) - l; diff >= 0 {

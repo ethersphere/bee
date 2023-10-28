@@ -834,9 +834,11 @@ func Iterate(ctx context.Context, s internal.Storage, logger log.Logger, consume
 		pi := r.Entry.(*pushItem)
 		has, err := s.IndexStore().Has(&dirtyTagItem{TagID: pi.TagID})
 		if err != nil {
+			logger.Error(err, "upload.Iterate Has(dirtyTagItem) err", "chunk", pi.Address, "tag", pi.TagID)
 			return true, err
 		}
 		if has {
+			//logger.Debug("upload.Iterate Has(dirtyTagItem)", "chunk", pi.Address, "tag", pi.TagID)
 			return false, nil
 		}
 		chunk, err := s.ChunkStore().Get(ctx, pi.Address)
@@ -861,7 +863,14 @@ func Iterate(ctx context.Context, s internal.Storage, logger log.Logger, consume
 			WithStamp(stamp).
 			WithTagID(uint32(pi.TagID))
 
-		return consumerFn(chunk)
+		stop, err := consumerFn(chunk)
+		if err != nil {
+			logger.Error(err, "upload.Iterate consumerFn err", "chunk", chunk.Address())
+		}
+		if stop {
+			logger.Debug("upload.Iterate consumerFn stopped", "chunk", chunk.Address())
+		}
+		return stop, err
 	})
 }
 

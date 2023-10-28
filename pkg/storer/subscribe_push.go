@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storer/internal/upload"
@@ -34,9 +35,11 @@ func (db *DB) SubscribePush(ctx context.Context) (<-chan swarm.Chunk, func()) {
 		// close the returned chunkInfo channel at the end to
 		// signal that the subscription is done
 		defer close(chunks)
+
 		for {
 
 			var count int
+			start := time.Now()
 
 			db.logger.Info("subscribe push: invoking upload.Iterate")
 			err := upload.Iterate(ctx, db.repo, db.logger, func(chunk swarm.Chunk) (bool, error) {
@@ -59,6 +62,8 @@ func (db *DB) SubscribePush(ctx context.Context) (<-chan swarm.Chunk, func()) {
 				}
 			})
 
+			db.logger.Debug("subscribe push: upload.Iterate complete", "count", count, "elapsed", time.Since(start))
+
 			if err != nil {
 				if !errors.Is(err, storage.ErrNotFound) {
 					db.logger.Error(err, "subscribe push: upload.Iterate error")
@@ -73,19 +78,19 @@ func (db *DB) SubscribePush(ctx context.Context) (<-chan swarm.Chunk, func()) {
 				db.events.Trigger(subscribePushEventKey)
 			}
 
-			db.logger.Debug("subscribe push: upload.Iterate complete", "count", count)
+			idle := time.Now()
 			select {
 			case <-db.quit:
-				db.logger.Debug("subscribe push: upload.Iterate eol db.quit")
+				db.logger.Debug("subscribe push: upload.Iterate eol db.quit", "idle", time.Since(idle))
 				return
 			case <-ctx.Done():
-				db.logger.Debug("subscribe push: upload.Iterate eol ctx.Done")
+				db.logger.Debug("subscribe push: upload.Iterate eol ctx.Done", "idle", time.Since(idle))
 				return
 			case <-stopChan:
-				db.logger.Debug("subscribe push: upload.Iterate eol stopChan")
+				db.logger.Debug("subscribe push: upload.Iterate eol stopChan", "idle", time.Since(idle))
 				return
 			case <-trigger:
-				db.logger.Debug("subscribe push: upload.Iterate eol triggered")
+				db.logger.Debug("subscribe push: upload.Iterate eol triggered", "idle", time.Since(idle))
 				// wait for the next event
 			}
 		}
