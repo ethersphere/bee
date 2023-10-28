@@ -336,7 +336,7 @@ func (r *Reserve) EvictBatchBin(
 		return 0, err
 	}
 
-	batchCnt := 10_000
+	batchCnt := 1_000
 	evictionCompleted := 0
 
 	for i := 0; i < len(evicted); i += batchCnt {

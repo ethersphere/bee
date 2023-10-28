@@ -273,35 +273,44 @@ func (c *Cache) RemoveOldest(
 		return fmt.Errorf("failed iterating over cache order index: %w", err)
 	}
 
-	batch, err := store.IndexStore().Batch(ctx)
-	if err != nil {
-		return fmt.Errorf("failed creating batch: %w", err)
-	}
+	batchCnt := 1_000
 
-	for _, entry := range evictItems {
-		err = batch.Delete(entry)
-		if err != nil {
-			return fmt.Errorf("failed deleting cache entry %s: %w", entry, err)
+	for i := 0; i < len(evictItems); i += batchCnt {
+		end := i + batchCnt
+		if end > len(evictItems) {
+			end = len(evictItems)
 		}
-		err = batch.Delete(&cacheOrderIndex{
-			Address:         entry.Address,
-			AccessTimestamp: entry.AccessTimestamp,
-		})
-		if err != nil {
-			return fmt.Errorf("failed deleting cache order index %s: %w", entry.Address, err)
-		}
-		err = chStore.Delete(ctx, entry.Address)
-		if err != nil {
-			return fmt.Errorf("failed deleting chunk %s from chunkstore: %w", entry.Address, err)
-		}
-	}
 
-	err = batch.Commit()
-	if err != nil {
-		return err
-	}
+		batch, err := store.IndexStore().Batch(ctx)
+		if err != nil {
+			return fmt.Errorf("failed creating batch: %w", err)
+		}
 
-	c.size.Add(-int64(len(evictItems)))
+		for _, entry := range evictItems[i:end] {
+			err = batch.Delete(entry)
+			if err != nil {
+				return fmt.Errorf("failed deleting cache entry %s: %w", entry, err)
+			}
+			err = batch.Delete(&cacheOrderIndex{
+				Address:         entry.Address,
+				AccessTimestamp: entry.AccessTimestamp,
+			})
+			if err != nil {
+				return fmt.Errorf("failed deleting cache order index %s: %w", entry.Address, err)
+			}
+			err = chStore.Delete(ctx, entry.Address)
+			if err != nil {
+				return fmt.Errorf("failed deleting chunk %s from chunkstore: %w", entry.Address, err)
+			}
+		}
+
+		err = batch.Commit()
+		if err != nil {
+			return err
+		}
+
+		c.size.Add(-int64(len(evictItems)))
+	}
 
 	return nil
 }

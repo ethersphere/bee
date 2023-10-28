@@ -30,6 +30,8 @@ func (db *DB) cacheWorker(ctx context.Context) {
 
 	for {
 		select {
+		case <-ctx.Done():
+			return
 		case <-overCapTrigger:
 
 			var (
@@ -40,7 +42,7 @@ func (db *DB) cacheWorker(ctx context.Context) {
 				continue
 			}
 
-			evict := (size - capc)
+			evict := min(1_000, (size - capc))
 
 			dur := captureDuration(time.Now())
 			err := db.Execute(ctx, func(s internal.Storage) error {
