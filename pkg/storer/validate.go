@@ -43,8 +43,6 @@ func Validate(ctx context.Context, basePath string, opts *Options) error {
 		}
 	}()
 
-
-
 	sharky, err := sharky.New(&dirFS{basedir: path.Join(basePath, sharkyPath)},
 								sharkyNoOfShards, swarm.SocMaxChunkSize)
 	if err != nil {
@@ -112,6 +110,15 @@ func validateWork(logger log.Logger, store storage.Store, sharky *sharky.Store) 
 		}
 	}
 
+	s := time.Now()
+
+	total := 0
+	_ = chunkstore.Iterate(store, func(item *chunkstore.RetrievalIndexItem) error {
+		total++
+		return nil
+	})
+	logger.Info("validation count finished", "duration", time.Since(s), "total", total)
+
 	var wg sync.WaitGroup
 
 	for i := 0; i < 8; i++ {
@@ -130,7 +137,7 @@ func validateWork(logger log.Logger, store storage.Store, sharky *sharky.Store) 
 		iteratateItemsC <- item
 		count++
 		if count%100_000 == 0 {
-			logger.Info("..still validating chunks", "count", count)
+			logger.Info("..still validating chunks", "count", count, "total", total)
 		}
 		return nil
 	})
