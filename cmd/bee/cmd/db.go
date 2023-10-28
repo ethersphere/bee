@@ -39,6 +39,7 @@ func (c *command) initDBCmd() {
 	dbNukeCmd(cmd)
 	dbInfoCmd(cmd)
 	dbCompactCmd(cmd)
+	dbValidateCmd(cmd)
 
 	c.root.AddCommand(cmd)
 }
