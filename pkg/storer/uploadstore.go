@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"sync"
 
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storer/internal"
@@ -48,9 +49,14 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 		return nil, err
 	}
 
+	var mtx sync.Mutex
+
 	return &putterSession{
 		Putter: putterWithMetrics{
 			storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
+				mtx.Lock()
+				defer mtx.Unlock()
+
 				return db.Execute(ctx, func(s internal.Storage) error {
 
 					b, err := s.IndexStore().Batch(ctx)
@@ -76,6 +82,8 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 			"uploadstore",
 		},
 		done: func(address swarm.Address) error {
+			mtx.Lock()
+			defer mtx.Unlock()
 			defer db.events.Trigger(subscribePushEventKey)
 
 			return db.Execute(ctx, func(s internal.Storage) error {
@@ -101,8 +109,9 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 			})
 		},
 		cleanup: func() error {
+			mtx.Lock()
+			defer mtx.Unlock()
 			defer db.events.Trigger(subscribePushEventKey)
-
 			return errors.Join(
 				uploadPutter.Cleanup(db),
 				func() error {
