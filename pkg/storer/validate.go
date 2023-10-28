@@ -55,12 +55,12 @@ func Validate(ctx context.Context, basePath string, opts *Options) error {
 	}()
 
 	logger.Info("performing chunk validation")
-	validateWork(logger, store, sharky)
+	validateWork(logger, store, sharky.Read)
 
 	return nil
 }
 
-func validateWork(logger log.Logger, store storage.Store, sharky *sharky.Store) {
+func validateWork(logger log.Logger, store storage.Store, readFn func(context.Context, sharky.Location, []byte) (error)) {
 
 	total := 0
 	socCount := 0
@@ -74,7 +74,7 @@ func validateWork(logger log.Logger, store storage.Store, sharky *sharky.Store) 
 	iteratateItemsC := make(chan *chunkstore.RetrievalIndexItem)
 	
 	validChunk := func(item *chunkstore.RetrievalIndexItem, buf []byte) {
-		err := sharky.Read(context.Background(), item.Location, buf)
+		err := readFn(context.Background(), item.Location, buf)
 		if err != nil {
 			logger.Warning("invalid chunk", "address", item.Address, "timestamp", time.Unix(int64(item.Timestamp), 0), "location", item.Location, "error", err)
 			return
