@@ -190,6 +190,9 @@ func dbValidateCmd(cmd *cobra.Command) {
 			}
 
 			logger.Warning("Validation ensures that sharky returns a chunk that hashes to the expected reference.")
+			logger.Warning("    Invalid chunks logged at Warning level.")
+			logger.Warning("    Progress logged at Info level.")
+			logger.Warning("    SOC chunks logged at Debug level.")
 
 			localstorePath := path.Join(dataDir, "localstore")
 
