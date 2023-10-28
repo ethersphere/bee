@@ -142,7 +142,7 @@ func validateWork(logger log.Logger, store storage.Store, sharky *sharky.Store) 
 		iteratateItemsC <- item
 		count++
 		if count%100_000 == 0 {
-			logger.Info("..still validating chunks", "count", count, "total", "invalid", invalidCount, "soc", socCount, total, "percent", fmt.Sprintf("%.2f", (float64(count)*100.0)/float64(total)))
+			logger.Info("..still validating chunks", "count", count, "invalid", invalidCount, "soc", socCount, "total", total, "percent", fmt.Sprintf("%.2f", (float64(count)*100.0)/float64(total)))
 		}
 		return nil
 	})
