@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"time"
 
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storer/internal/upload"
@@ -64,6 +65,12 @@ func (db *DB) SubscribePush(ctx context.Context) (<-chan swarm.Chunk, func()) {
 				// in this case, we wait for the next event to trigger the iteration
 				// again. This trigger ensures that we perform the iteration on the
 				// latest snapshot.
+
+				select {
+				case <-ctx.Done():
+					return
+				case <-time.After(time.Second):
+				}
 				db.events.Trigger(subscribePushEventKey)
 			}
 
