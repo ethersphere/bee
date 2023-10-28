@@ -32,12 +32,15 @@ func (db *DB) cacheWorker(ctx context.Context) {
 		select {
 		case <-overCapTrigger:
 
-			var size, capc = db.cacheObj.Size(), db.cacheObj.Capacity()
+			var (
+				size = db.cacheObj.Size()
+				capc = db.cacheObj.Capacity()
+			)
 			if size <= capc {
 				continue
 			}
 
-			evict := (size - capc) + uint64(float64(capc)*0.01) // evict (size - cap) + some buffer
+			evict := (size - capc)
 
 			dur := captureDuration(time.Now())
 			err := db.Execute(ctx, func(s internal.Storage) error {
@@ -115,7 +118,10 @@ func (db *DB) CacheShallowCopy(ctx context.Context, store internal.Storage, addr
 
 func (db *DB) triggerCacheEviction() {
 
-	var size, capc = db.cacheObj.Size(), db.cacheObj.Capacity()
+	var (
+		size = db.cacheObj.Size()
+		capc = db.cacheObj.Capacity()
+	)
 	db.metrics.CacheSize.Set(float64(size))
 
 	if size > capc {
