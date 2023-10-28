@@ -26,13 +26,14 @@ func (db *DB) Report(ctx context.Context, chunk swarm.Chunk, state storage.Chunk
 	db.lock.Lock(uploadStoreKey)
 	defer db.lock.Unlock(uploadStoreKey)
 
-	txnRepo, commit, rollback := db.repo.NewTx(ctx)
-	err := upload.Report(ctx, txnRepo, chunk, state)
+	err := db.Execute(ctx, func(s internal.Storage) error {
+		return upload.Report(ctx, s, chunk, state)
+	})
 	if err != nil {
-		return fmt.Errorf("reporter.Report: %w", errors.Join(err, rollback()))
+		return fmt.Errorf("reporter.Report: %w", err)
 	}
 
-	return commit()
+	return nil
 }
 
 // Upload is the implementation of UploadStore.Upload method.

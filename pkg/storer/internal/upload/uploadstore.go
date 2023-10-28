@@ -477,7 +477,6 @@ func (u *uploadPutter) Put(ctx context.Context, s internal.Storage, writer stora
 // the tags. It will update the tag. This will be filled with the Split and Seen count
 // by the Putter.
 func (u *uploadPutter) Close(s internal.Storage, writer storage.Writer, addr swarm.Address) error {
-
 	if u.closed {
 		return nil
 	}
@@ -702,7 +701,7 @@ func Report(
 		return fmt.Errorf("failed deleting pushItem %s: %w", pi, err)
 	}
 
-	err = chunkstamp.Delete(s.IndexStore(), chunkStampNamespace, pi.Address, pi.BatchID)
+	err = chunkstamp.Delete(s.IndexStore(), batch, chunkStampNamespace, pi.Address, pi.BatchID)
 	if err != nil {
 		return fmt.Errorf("failed deleting chunk stamp %x: %w", pi.BatchID, err)
 	}
