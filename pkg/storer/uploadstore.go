@@ -23,8 +23,8 @@ const uploadStoreKey = "uploadstore"
 // with a transaction.
 func (db *DB) Report(ctx context.Context, chunk swarm.Chunk, state storage.ChunkState) error {
 
-	db.lock.Lock(fmt.Sprintf("tag_%d", chunk.TagID()))
-	defer db.lock.Unlock(fmt.Sprintf("tag_%d", chunk.TagID()))
+	db.lock.Lock(uploadStoreKey)
+	defer db.lock.Unlock(uploadStoreKey)
 
 	err := db.Execute(ctx, func(s internal.Storage) error {
 		return upload.Report(ctx, s, chunk, state)
