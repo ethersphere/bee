@@ -20,14 +20,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-//type dirFS struct {
-//	basedir string
-//}
-
-//func (d *dirFS) Open(path string) (fs.File, error) {
-//	return os.OpenFile(filepath.Join(d.basedir, path), os.O_RDWR|os.O_CREATE, 0644)
-//}
-
 // Validate ensures that all retrievalIndex chunks are correctly stored in sharky.
 func Validate(ctx context.Context, basePath string, opts *Options) error {
 
@@ -102,14 +94,14 @@ func validateWork(logger log.Logger, store storage.Store, readFn func(context.Co
 					return
 				}
 
-				shardedEntry := chunkstore.RetrievalIndexItem{Address: computedAddr}
-				err = store.Get(&shardedEntry)
+				sharedEntry := chunkstore.RetrievalIndexItem{Address: computedAddr}
+				err = store.Get(&sharedEntry)
 				if err != nil {
 					logger.Warning("no shared entry found")
 					return
 				}
 
-				logger.Warning("retrieved chunk with shared slot", "shared_address", shardedEntry.Address, "shared_timestamp", time.Unix(int64(shardedEntry.Timestamp), 0))
+				logger.Warning("retrieved chunk with shared slot", "shared_address", sharedEntry.Address, "shared_timestamp", time.Unix(int64(sharedEntry.Timestamp), 0))
 			}
 		}
 	}
