@@ -136,6 +136,10 @@ func TestBytes(t *testing.T) {
 			}),
 		)
 	})
+
+	t.Run("not found", func(t *testing.T) {
+		jsonhttptest.Request(t, client, http.MethodGet, resource+"/"+swarm.EmptyAddress.String(), http.StatusNotFound)
+	})
 }
 
 // nolint:paralleltest,tparallel
