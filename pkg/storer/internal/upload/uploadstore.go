@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/encryption"
@@ -372,7 +371,6 @@ var (
 
 type uploadPutter struct {
 	tagID  uint64
-	mtx    sync.Mutex
 	split  uint64
 	seen   uint64
 	closed bool
@@ -404,9 +402,6 @@ func NewPutter(s internal.Storage, tagID uint64) (internal.PutterCloserWithRefer
 // - pushItem entry to make it available for PushSubscriber
 // - add chunk to the chunkstore till it is synced
 func (u *uploadPutter) Put(ctx context.Context, s internal.Storage, writer storage.Writer, chunk swarm.Chunk) error {
-	u.mtx.Lock()
-	defer u.mtx.Unlock()
-
 	if u.closed {
 		return errPutterAlreadyClosed
 	}
@@ -482,9 +477,6 @@ func (u *uploadPutter) Put(ctx context.Context, s internal.Storage, writer stora
 // the tags. It will update the tag. This will be filled with the Split and Seen count
 // by the Putter.
 func (u *uploadPutter) Close(s internal.Storage, writer storage.Writer, addr swarm.Address) error {
-	u.mtx.Lock()
-	defer u.mtx.Unlock()
-
 	if u.closed {
 		return nil
 	}
@@ -518,9 +510,6 @@ func (u *uploadPutter) Close(s internal.Storage, writer storage.Writer, addr swa
 }
 
 func (u *uploadPutter) Cleanup(tx internal.TxExecutor) error {
-	u.mtx.Lock()
-	defer u.mtx.Unlock()
-
 	if u.closed {
 		return nil
 	}
@@ -645,19 +634,10 @@ func CleanupDirty(tx internal.TxExecutor) error {
 	return nil
 }
 
-type pushReporter struct {
-	s internal.Storage
-}
-
-// NewPushReporter returns a new storage.PushReporter which can be used by the
-// pusher component to report chunk state information.
-func NewPushReporter(s internal.Storage) storage.PushReporter {
-	return &pushReporter{s: s}
-}
-
 // Report is the implementation of the PushReporter interface.
-func (p *pushReporter) Report(
+func Report(
 	ctx context.Context,
+	s internal.Storage,
 	chunk swarm.Chunk,
 	state storage.ChunkState,
 ) error {
@@ -666,7 +646,7 @@ func (p *pushReporter) Report(
 		BatchID: chunk.Stamp().BatchID(),
 	}
 
-	err := p.s.IndexStore().Get(ui)
+	err := s.IndexStore().Get(ui)
 	if err != nil {
 		return fmt.Errorf("failed to read uploadItem %s: %w", ui, err)
 	}
@@ -675,7 +655,7 @@ func (p *pushReporter) Report(
 		TagID: ui.TagID,
 	}
 
-	err = p.s.IndexStore().Get(ti)
+	err = s.IndexStore().Get(ti)
 	if err != nil {
 		return fmt.Errorf("failed getting tag: %w", err)
 	}
@@ -693,13 +673,18 @@ func (p *pushReporter) Report(
 		break
 	}
 
-	err = p.s.IndexStore().Put(ti)
+	batch, err := s.IndexStore().Batch(ctx)
+	if err != nil {
+		return err
+	}
+
+	err = batch.Put(ti)
 	if err != nil {
 		return fmt.Errorf("failed updating tag: %w", err)
 	}
 
 	if state == storage.ChunkSent {
-		return nil
+		return batch.Commit()
 	}
 
 	// Once the chunk is stored/synced/failed to sync, it is deleted from the upload store as
@@ -711,28 +696,28 @@ func (p *pushReporter) Report(
 		BatchID:   chunk.Stamp().BatchID(),
 	}
 
-	err = p.s.IndexStore().Delete(pi)
+	err = batch.Delete(pi)
 	if err != nil {
 		return fmt.Errorf("failed deleting pushItem %s: %w", pi, err)
 	}
 
-	err = chunkstamp.Delete(p.s.IndexStore(), chunkStampNamespace, pi.Address, pi.BatchID)
+	err = chunkstamp.Delete(s.IndexStore(), batch, chunkStampNamespace, pi.Address, pi.BatchID)
 	if err != nil {
 		return fmt.Errorf("failed deleting chunk stamp %x: %w", pi.BatchID, err)
 	}
 
-	err = p.s.ChunkStore().Delete(ctx, chunk.Address())
+	err = s.ChunkStore().Delete(ctx, chunk.Address())
 	if err != nil {
 		return fmt.Errorf("failed deleting chunk %s: %w", chunk.Address(), err)
 	}
 
 	ui.Synced = now().UnixNano()
-	err = p.s.IndexStore().Put(ui)
+	err = batch.Put(ui)
 	if err != nil {
 		return fmt.Errorf("failed updating uploadItem %s: %w", ui, err)
 	}
 
-	return nil
+	return batch.Commit()
 }
 
 var (

@@ -149,7 +149,6 @@ func Load(s storage.Reader, namespace string, addr swarm.Address) (swarm.Stamp, 
 func LoadWithBatchID(s storage.Reader, namespace string, addr swarm.Address, batchID []byte) (swarm.Stamp, error) {
 	var stamp swarm.Stamp
 
-	cnt := 0
 	found := false
 	err := s.Iterate(
 		storage.Query{
@@ -161,7 +160,6 @@ func LoadWithBatchID(s storage.Reader, namespace string, addr swarm.Address, bat
 			},
 		},
 		func(res storage.Result) (bool, error) {
-			cnt++
 			item := res.Entry.(*item)
 			if batchID == nil || bytes.Equal(batchID, item.stamp.BatchID()) {
 				stamp = item.stamp
@@ -173,9 +171,6 @@ func LoadWithBatchID(s storage.Reader, namespace string, addr swarm.Address, bat
 	)
 	if err != nil {
 		return nil, err
-	}
-	if cnt == 0 {
-		return nil, storage.ErrNoStampsForChunk
 	}
 	if !found {
 		return nil, fmt.Errorf("stamp not found for batchID %x: %w", batchID, storage.ErrNotFound)
@@ -234,7 +229,7 @@ func DeleteAll(s storage.Store, namespace string, addr swarm.Address) error {
 }
 
 // Delete removes a stamp associated with an chunk and batchID.
-func Delete(s storage.Store, namespace string, addr swarm.Address, batchId []byte) error {
+func Delete(s storage.Store, batch storage.Writer, namespace string, addr swarm.Address, batchId []byte) error {
 	stamp, err := LoadWithBatchID(s, namespace, addr, batchId)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
@@ -242,7 +237,7 @@ func Delete(s storage.Store, namespace string, addr swarm.Address, batchId []byt
 		}
 		return err
 	}
-	return s.Delete(&item{
+	return batch.Delete(&item{
 		namespace: []byte(namespace),
 		address:   addr,
 		stamp:     stamp,

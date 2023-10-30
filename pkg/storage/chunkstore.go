@@ -12,11 +12,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-var (
-	// ErrNoStampsForChunk is returned when chunk was found but there were no associated stamps.
-	ErrNoStampsForChunk = fmt.Errorf("no stamp for existing chunk: %w", ErrNotFound)
-)
-
 // Getter is the interface that wraps the basic Get method.
 type Getter interface {
 	// Get a chunk by its swarm.Address. Returns the chunk associated with
