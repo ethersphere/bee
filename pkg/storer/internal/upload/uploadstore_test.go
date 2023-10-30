@@ -636,8 +636,6 @@ func TestChunkReporter(t *testing.T) {
 		t.Fatalf("failed creating putter: %v", err)
 	}
 
-	reporter := upload.NewPushReporter(ts)
-
 	for idx, chunk := range chunktest.GenerateTestRandomChunks(10) {
 		t.Run(fmt.Sprintf("chunk %s", chunk.Address()), func(t *testing.T) {
 			err := putter.Put(context.Background(), ts, ts.IndexStore(), chunk)
@@ -646,7 +644,7 @@ func TestChunkReporter(t *testing.T) {
 			}
 
 			t.Run("mark sent", func(t *testing.T) {
-				err := reporter.Report(context.Background(), chunk, storage.ChunkSent)
+				err := upload.Report(context.Background(), ts, chunk, storage.ChunkSent)
 				if err != nil {
 					t.Fatalf("Report(...): unexpected error: %v", err)
 				}
@@ -654,7 +652,7 @@ func TestChunkReporter(t *testing.T) {
 
 			if idx < 4 {
 				t.Run("mark stored", func(t *testing.T) {
-					err := reporter.Report(context.Background(), chunk, storage.ChunkStored)
+					err := upload.Report(context.Background(), ts, chunk, storage.ChunkStored)
 					if err != nil {
 						t.Fatalf("Report(...): unexpected error: %v", err)
 					}
@@ -663,7 +661,7 @@ func TestChunkReporter(t *testing.T) {
 
 			if idx >= 4 && idx < 8 {
 				t.Run("mark synced", func(t *testing.T) {
-					err := reporter.Report(context.Background(), chunk, storage.ChunkSynced)
+					err := upload.Report(context.Background(), ts, chunk, storage.ChunkSynced)
 					if err != nil {
 						t.Fatalf("Report(...): unexpected error: %v", err)
 					}
@@ -672,7 +670,7 @@ func TestChunkReporter(t *testing.T) {
 
 			if idx >= 8 {
 				t.Run("mark could not sync", func(t *testing.T) {
-					err := reporter.Report(context.Background(), chunk, storage.ChunkCouldNotSync)
+					err := upload.Report(context.Background(), ts, chunk, storage.ChunkCouldNotSync)
 					if err != nil {
 						t.Fatalf("Report(...): unexpected error: %v", err)
 					}
