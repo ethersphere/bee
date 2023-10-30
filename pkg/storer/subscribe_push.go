@@ -61,7 +61,11 @@ func (db *DB) SubscribePush(ctx context.Context) (<-chan swarm.Chunk, func()) {
 				// latest snapshot.
 				db.logger.Error(err, "subscribe push: iterate error")
 				select {
+				case <-db.quit:
+					return
 				case <-ctx.Done():
+					return
+				case <-stopChan:
 					return
 				case <-time.After(time.Second):
 				}
