@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/ethersphere/bee/pkg/topology"
 	"net/http"
 	"path"
 	"path/filepath"
@@ -441,9 +442,9 @@ func (s *Service) serveManifestEntry(
 func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *http.Request, reference swarm.Address, additionalHeaders http.Header, etag bool) {
 	reader, l, err := joiner.New(r.Context(), s.storer.Download(true), reference)
 	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
+		if errors.Is(err, storage.ErrNotFound) || errors.Is(err, topology.ErrNotFound) {
 			logger.Debug("api download: not found ", "address", reference, "error", err)
-			logger.Error(nil, "not found")
+			logger.Error(nil, err.Error())
 			jsonhttp.NotFound(w, nil)
 			return
 		}
