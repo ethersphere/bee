@@ -8,10 +8,9 @@ import (
 	"encoding/binary"
 	"errors"
 
-	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/file/pipeline"
+	"github.com/ethersphere/bee/pkg/file/pipeline/redundancy"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/klauspost/reedsolomon"
 )
 
 var (
@@ -25,35 +24,24 @@ type hashTrieWriter struct {
 	branching  int
 	chunkSize  int
 	refSize    int
-	fullChunk  int      // full chunk size in terms of the data represented in the buffer (span+refsize)
-	cursors    []int    // level cursors, key is level. level 0 is data level holds how many chunks were processed. Intermediate higher levels will always have LOWER cursor values.
-	buffer     []byte   // keeps intermediate level data
-	full       bool     // indicates whether the trie is full. currently we support (128^7)*4096 = 2305843009213693952 bytes
-	rsParity   uint8    // Reed-Solomon Parity number
-	dataBuffer [][]byte // keeps bytes of data level chunks for producing erasure coded data
+	fullChunk  int    // full chunk size in terms of the data represented in the buffer (span+refsize)
+	cursors    []int  // level cursors, key is level. level 0 is data level holds how many chunks were processed. Intermediate higher levels will always have LOWER cursor values.
+	buffer     []byte // keeps intermediate level data
+	full       bool   // indicates whether the trie is full. currently we support (128^7)*4096 = 2305843009213693952 bytes
+	rParams    *redundancy.Params
 	pipelineFn pipeline.PipelineFunc
 }
 
-func NewHashTrieWriter(chunkSize, branching, refLen int, rsParity uint8, pipelineFn pipeline.PipelineFunc) pipeline.ChainWriter {
-	// init dataBuffer
-	dataBufferLength := 0
-	if rsParity != 0 {
-		dataBufferLength = branching
-	}
-	dataBuffer := make([][]byte, dataBufferLength)
-	for i := range dataBuffer {
-		dataBuffer[i] = make([]byte, swarm.ChunkWithSpanSize)
-	}
+func NewHashTrieWriter(chunkSize, branching, refLen int, rParams *redundancy.Params, pipelineFn pipeline.PipelineFunc) pipeline.ChainWriter {
 
 	return &hashTrieWriter{
-		cursors:    make([]int, 9),
-		buffer:     make([]byte, swarm.ChunkWithSpanSize*9*2), // double size as temp workaround for weak calculation of needed buffer space
 		branching:  branching,
 		chunkSize:  chunkSize,
 		refSize:    refLen,
 		fullChunk:  (refLen + swarm.SpanSize) * branching,
-		rsParity:   rsParity,
-		dataBuffer: dataBuffer,
+		cursors:    make([]int, 9),
+		buffer:     make([]byte, swarm.ChunkWithSpanSize*9*2), // double size as temp workaround for weak calculation of needed buffer space
+		rParams:    rParams,
 		pipelineFn: pipelineFn,
 	}
 }
@@ -69,7 +57,7 @@ func (h *hashTrieWriter) ChainWrite(p *pipeline.PipeWriteArgs) error {
 	if h.full {
 		return errTrieFull
 	}
-	if h.rsParity == 0 {
+	if h.rParams.Level() == redundancy.NONE {
 		return h.writeToIntermediateLevel(1, p.Span, p.Ref, p.Key)
 	} else {
 		return h.writeToDataLevel(p.Span, p.Ref, p.Key, p.Data)
@@ -83,7 +71,7 @@ func (h *hashTrieWriter) writeToIntermediateLevel(level int, span, ref, key []by
 	h.cursors[level] += len(ref)
 	copy(h.buffer[h.cursors[level]:h.cursors[level]+len(key)], key)
 	h.cursors[level] += len(key)
-	howLong := (h.refSize+swarm.SpanSize)*h.branching - h.refSize*int(h.rsParity)
+	howLong := (h.refSize + swarm.SpanSize) * h.branching
 
 	if h.levelSize(level) == howLong {
 		return h.wrapFullLevel(level)
@@ -92,58 +80,13 @@ func (h *hashTrieWriter) writeToIntermediateLevel(level int, span, ref, key []by
 }
 
 func (h *hashTrieWriter) writeToDataLevel(span, ref, key, data []byte) error {
-	h.dataBuffer[h.cursors[0]] = data
-	h.cursors[0]++
-
 	// write dataChunks to the level above
 	err := h.writeToIntermediateLevel(1, span, ref, key)
 	if err != nil {
 		return err
 	}
 
-	// handle erasure coding
-	rsShards := h.branching - int(h.rsParity)
-	if h.cursors[0] == rsShards {
-		// append erasure coded data
-		enc, err := reedsolomon.New(rsShards, int(h.rsParity))
-		if err != nil {
-			return err
-		}
-		err = enc.Encode(h.dataBuffer)
-		if err != nil {
-			return err
-		}
-
-		n := len(h.dataBuffer)
-		for i := h.cursors[0]; i < n; i++ {
-			chunkData := h.dataBuffer[i]
-			span := make([]byte, 8)
-
-			// getting address
-			c, err := cac.New(chunkData)
-			if err != nil {
-				return err
-			}
-			address := c.Address().Bytes()
-
-			// store data chunk
-			args := pipeline.PipeWriteArgs{
-				Data: chunkData,
-				Span: span,
-				Ref:  address,
-			}
-			err = h.ChainWrite(&args)
-			if err != nil {
-				return err
-			}
-
-			h.writeToIntermediateLevel(1, span, address, key)
-		}
-		// reset cursor of dataBuffer
-		h.cursors[0] = 0
-	}
-
-	return nil
+	return h.rParams.ChainWrite(0, span, ref, data, h.writeToIntermediateLevel)
 }
 
 // wrapLevel wraps an existing level and writes the resulting hash to the following level
@@ -180,6 +123,12 @@ func (h *hashTrieWriter) wrapFullLevel(level int) error {
 	if err != nil {
 		return err
 	}
+
+	err = h.rParams.ChainWrite(level, spb, args.Ref, data, h.writeToIntermediateLevel)
+	if err != nil {
+		return err
+	}
+
 	err = h.writeToIntermediateLevel(level+1, args.Span, args.Ref, args.Key)
 	if err != nil {
 		return err
