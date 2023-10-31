@@ -13,6 +13,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/file/pipeline/bmt"
 	"github.com/ethersphere/bee/pkg/file/pipeline/hashtrie"
+	"github.com/ethersphere/bee/pkg/file/pipeline/redundancy"
 	"github.com/ethersphere/bee/pkg/file/pipeline/store"
 	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -100,7 +101,7 @@ func TestLevels(t *testing.T) {
 				return bmt.NewBmtWriter(lsw)
 			}
 
-			ht := hashtrie.NewHashTrieWriter(chunkSize, branching, hashSize, 0, pf)
+			ht := hashtrie.NewHashTrieWriter(chunkSize, branching, hashSize, redundancy.New(0, false, pf), pf)
 
 			for i := 0; i < tc.writes; i++ {
 				a := &pipeline.PipeWriteArgs{Ref: addr.Bytes(), Span: span}
@@ -143,7 +144,7 @@ func TestLevels_TrieFull(t *testing.T) {
 			return bmt.NewBmtWriter(lsw)
 		}
 
-		ht = hashtrie.NewHashTrieWriter(chunkSize, branching, hashSize, 0, pf)
+		ht = hashtrie.NewHashTrieWriter(chunkSize, branching, hashSize, redundancy.New(0, false, pf), pf)
 	)
 
 	// to create a level wrap we need to do branching^(level-1) writes
@@ -186,7 +187,7 @@ func TestRegression(t *testing.T) {
 			lsw := store.NewStoreWriter(ctx, s, nil)
 			return bmt.NewBmtWriter(lsw)
 		}
-		ht = hashtrie.NewHashTrieWriter(chunkSize, branching, hashSize, 0, pf)
+		ht = hashtrie.NewHashTrieWriter(chunkSize, branching, hashSize, redundancy.New(0, false, pf), pf)
 	)
 	binary.LittleEndian.PutUint64(span, 4096)
 

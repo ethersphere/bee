@@ -80,7 +80,7 @@ func TestFeeder(t *testing.T) {
 			t.Parallel()
 			var results pipeline.PipeWriteArgs
 			rr := newMockResultWriter(&results)
-			cf := feeder.NewChunkFeederWriter(chunkSize, 0, rr)
+			cf := feeder.NewChunkFeederWriter(chunkSize, rr)
 			i := 0
 			for _, v := range tc.dataSize {
 				d := data[i : i+v]
@@ -185,7 +185,7 @@ func TestFeederFlush(t *testing.T) {
 
 			var results pipeline.PipeWriteArgs
 			rr := newMockResultWriter(&results)
-			cf := feeder.NewChunkFeederWriter(chunkSize, 0, rr)
+			cf := feeder.NewChunkFeederWriter(chunkSize, rr)
 			i := 0
 			for _, v := range tc.dataSize {
 				d := data[i : i+v]
