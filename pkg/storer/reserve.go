@@ -196,47 +196,6 @@ func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
 	}
 }
 
-func (db *DB) getExpiredBatches() ([][]byte, error) {
-	var batchesToEvict [][]byte
-	err := db.repo.IndexStore().Iterate(storage.Query{
-		Factory:      func() storage.Item { return new(expiredBatchItem) },
-		ItemProperty: storage.QueryItemID,
-	}, func(result storage.Result) (bool, error) {
-		batchesToEvict = append(batchesToEvict, []byte(result.ID))
-		return false, nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	return batchesToEvict, nil
-}
-
-func (db *DB) evictExpiredBatches(ctx context.Context) error {
-
-	batches, err := db.getExpiredBatches()
-	if err != nil {
-		return err
-	}
-
-	for _, batchID := range batches {
-		evicted, err := db.evictBatch(ctx, batchID, swarm.MaxBins)
-		if err != nil {
-			return err
-		}
-		if evicted > 0 {
-			db.logger.Debug("evicted expired batch", "batch_id", hex.EncodeToString(batchID), "total_evicted", evicted)
-		}
-		err = db.Execute(ctx, func(tx internal.Storage) error {
-			return tx.IndexStore().Delete(&expiredBatchItem{BatchID: batchID})
-		})
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 func (db *DB) evictionWorker(ctx context.Context) {
 	defer db.inFlight.Done()
 
@@ -270,6 +229,65 @@ func (db *DB) evictionWorker(ctx context.Context) {
 			return
 		}
 	}
+}
+
+func (db *DB) evictExpiredBatches(ctx context.Context) error {
+
+	batches, err := db.getExpiredBatches()
+	if err != nil {
+		return err
+	}
+
+	for _, batchID := range batches {
+		evicted, err := db.evictBatch(ctx, batchID, swarm.MaxBins)
+		if err != nil {
+			return err
+		}
+		if evicted > 0 {
+			db.logger.Debug("evicted expired batch", "batch_id", hex.EncodeToString(batchID), "total_evicted", evicted)
+		}
+		err = db.Execute(ctx, func(tx internal.Storage) error {
+			return tx.IndexStore().Delete(&expiredBatchItem{BatchID: batchID})
+		})
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func (db *DB) getExpiredBatches() ([][]byte, error) {
+	var batchesToEvict [][]byte
+	err := db.repo.IndexStore().Iterate(storage.Query{
+		Factory:      func() storage.Item { return new(expiredBatchItem) },
+		ItemProperty: storage.QueryItemID,
+	}, func(result storage.Result) (bool, error) {
+		batchesToEvict = append(batchesToEvict, []byte(result.ID))
+		return false, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return batchesToEvict, nil
+}
+
+// EvictBatch evicts all chunks belonging to a batch from the reserve.
+func (db *DB) EvictBatch(ctx context.Context, batchID []byte) error {
+	if db.reserve == nil {
+		// if reserve is not configured, do nothing
+		return nil
+	}
+
+	err := db.Execute(ctx, func(tx internal.Storage) error {
+		return tx.IndexStore().Put(&expiredBatchItem{BatchID: batchID})
+	})
+	if err != nil {
+		return fmt.Errorf("save expired batch: %w", err)
+	}
+
+	db.events.Trigger(batchExpiry)
+	return nil
 }
 
 func (db *DB) ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte) (chunk swarm.Chunk, err error) {
@@ -336,24 +354,6 @@ func (db *DB) ReservePutter() storage.Putter {
 		db.metrics,
 		"reserve",
 	}
-}
-
-// EvictBatch evicts all chunks belonging to a batch from the reserve.
-func (db *DB) EvictBatch(ctx context.Context, batchID []byte) error {
-	if db.reserve == nil {
-		// if reserve is not configured, do nothing
-		return nil
-	}
-
-	err := db.Execute(ctx, func(tx internal.Storage) error {
-		return tx.IndexStore().Put(&expiredBatchItem{BatchID: batchID})
-	})
-	if err != nil {
-		return fmt.Errorf("save expired batch: %w", err)
-	}
-
-	db.events.Trigger(batchExpiry)
-	return nil
 }
 
 func (db *DB) evictBatch(

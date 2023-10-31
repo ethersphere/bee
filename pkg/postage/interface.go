@@ -98,5 +98,5 @@ type BatchEventListener interface {
 
 type BatchExpiryHandler interface {
 	HandleStampExpiry([]byte)
-	SetExpired() error
+	SetExpired(context.Context) error
 }

@@ -158,12 +158,9 @@ func (t *timeProvider) Now() func() time.Time {
 func TestMain(m *testing.M) {
 	p := &timeProvider{t: time.Now().UnixNano()}
 	done := cache.ReplaceTimeNow(p.Now())
-	old := cache.CacheEvictionBatchSize
 	defer func() {
 		done()
-		cache.CacheEvictionBatchSize = old
 	}()
-	cache.CacheEvictionBatchSize = 1
 	code := m.Run()
 	os.Exit(code)
 }
@@ -211,35 +208,6 @@ func TestCache(t *testing.T) {
 			}
 			verifyCacheState(t, st.IndexStore(), c2, chunks[0].Address(), chunks[len(chunks)-1].Address(), uint64(len(chunks)))
 			verifyCacheOrder(t, c2, st.IndexStore(), chunks...)
-		})
-
-		chunks2 := chunktest.GenerateTestRandomChunks(10)
-
-		t.Run("add over capacity", func(t *testing.T) {
-			for idx, ch := range chunks2 {
-				err := c.Putter(st).Put(context.TODO(), ch)
-				if err != nil {
-					t.Fatal(err)
-				}
-				if idx == len(chunks)-1 {
-					verifyCacheState(t, st.IndexStore(), c, chunks2[0].Address(), chunks2[idx].Address(), 10)
-					verifyCacheOrder(t, c, st.IndexStore(), chunks2...)
-				} else {
-					verifyCacheState(t, st.IndexStore(), c, chunks[idx+1].Address(), chunks2[idx].Address(), 10)
-					verifyCacheOrder(t, c, st.IndexStore(), append(chunks[idx+1:], chunks2[:idx+1]...)...)
-				}
-			}
-			verifyChunksDeleted(t, st.ChunkStore(), chunks...)
-		})
-
-		t.Run("new with lower capacity", func(t *testing.T) {
-			c2, err := cache.New(context.TODO(), st, 5)
-			if err != nil {
-				t.Fatal(err)
-			}
-			verifyCacheState(t, st.IndexStore(), c2, chunks2[5].Address(), chunks2[len(chunks)-1].Address(), 5)
-			verifyCacheOrder(t, c2, st.IndexStore(), chunks2[5:]...)
-			verifyChunksDeleted(t, st.ChunkStore(), chunks[:5]...)
 		})
 	})
 
@@ -379,7 +347,7 @@ func TestCache(t *testing.T) {
 	})
 }
 
-func TestMoveFromReserve(t *testing.T) {
+func TestShallowCopy(t *testing.T) {
 	t.Parallel()
 
 	st := newTestStorage(t)
@@ -388,109 +356,103 @@ func TestMoveFromReserve(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	t.Run("move from reserve", func(t *testing.T) {
-		chunks := chunktest.GenerateTestRandomChunks(10)
-		chunksToMove := make([]swarm.Address, 0, 10)
+	chunks := chunktest.GenerateTestRandomChunks(10)
+	chunksToMove := make([]swarm.Address, 0, 10)
 
-		// add the chunks to chunkstore. This simulates the reserve already populating
-		// the chunkstore with chunks.
-		for _, ch := range chunks {
-			err := st.ChunkStore().Put(context.Background(), ch)
-			if err != nil {
-				t.Fatal(err)
-			}
-			chunksToMove = append(chunksToMove, ch.Address())
-		}
-
-		err = c.MoveFromReserve(context.Background(), st, chunksToMove...)
+	// add the chunks to chunkstore. This simulates the reserve already populating
+	// the chunkstore with chunks.
+	for _, ch := range chunks {
+		err := st.ChunkStore().Put(context.Background(), ch)
 		if err != nil {
 			t.Fatal(err)
 		}
+		chunksToMove = append(chunksToMove, ch.Address())
+	}
 
-		verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[9].Address(), 10)
-		verifyCacheOrder(t, c, st.IndexStore(), chunks...)
+	err = c.ShallowCopy(context.Background(), st, chunksToMove...)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-		// move again, should be no-op
-		err = c.MoveFromReserve(context.Background(), st, chunksToMove...)
+	verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[9].Address(), 10)
+	verifyCacheOrder(t, c, st.IndexStore(), chunks...)
+
+	// move again, should be no-op
+	err = c.ShallowCopy(context.Background(), st, chunksToMove...)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[9].Address(), 10)
+	verifyCacheOrder(t, c, st.IndexStore(), chunks...)
+
+	chunks1 := chunktest.GenerateTestRandomChunks(10)
+	chunksToMove1 := make([]swarm.Address, 0, 10)
+
+	// add the chunks to chunkstore. This simulates the reserve already populating
+	// the chunkstore with chunks.
+	for _, ch := range chunks1 {
+		err := st.ChunkStore().Put(context.Background(), ch)
 		if err != nil {
 			t.Fatal(err)
 		}
+		chunksToMove1 = append(chunksToMove1, ch.Address())
+	}
 
-		verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[9].Address(), 10)
-		verifyCacheOrder(t, c, st.IndexStore(), chunks...)
-	})
+	// move new chunks
+	err = c.ShallowCopy(context.Background(), st, chunksToMove1...)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	t.Run("move from reserve new chunks", func(t *testing.T) {
-		chunks := chunktest.GenerateTestRandomChunks(10)
-		chunksToMove := make([]swarm.Address, 0, 10)
+	verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks1[9].Address(), 20)
+	verifyCacheOrder(t, c, st.IndexStore(), append(chunks, chunks1...)...)
 
-		// add the chunks to chunkstore. This simulates the reserve already populating
-		// the chunkstore with chunks.
-		for _, ch := range chunks {
-			err := st.ChunkStore().Put(context.Background(), ch)
-			if err != nil {
-				t.Fatal(err)
-			}
-			chunksToMove = append(chunksToMove, ch.Address())
-		}
+	err = c.RemoveOldest(context.Background(), st, st.ChunkStore(), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-		// move new chunks
-		err = c.MoveFromReserve(context.Background(), st, chunksToMove...)
+	verifyChunksDeleted(t, st.ChunkStore(), chunks...)
+}
+
+func TestShallowCopyOverCap(t *testing.T) {
+	t.Parallel()
+
+	st := newTestStorage(t)
+	c, err := cache.New(context.Background(), st, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	chunks := chunktest.GenerateTestRandomChunks(15)
+	chunksToMove := make([]swarm.Address, 0, 15)
+
+	// add the chunks to chunkstore. This simulates the reserve already populating
+	// the chunkstore with chunks.
+	for _, ch := range chunks {
+		err := st.ChunkStore().Put(context.Background(), ch)
 		if err != nil {
 			t.Fatal(err)
 		}
+		chunksToMove = append(chunksToMove, ch.Address())
+	}
 
-		verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[9].Address(), 10)
-		verifyCacheOrder(t, c, st.IndexStore(), chunks...)
+	// move new chunks
+	err = c.ShallowCopy(context.Background(), st, chunksToMove...)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-		chunks2 := chunktest.GenerateTestRandomChunks(5)
-		chunksToMove2 := make([]swarm.Address, 0, 5)
+	verifyCacheState(t, st.IndexStore(), c, chunks[5].Address(), chunks[14].Address(), 10)
+	verifyCacheOrder(t, c, st.IndexStore(), chunks[5:15]...)
 
-		// add the chunks to chunkstore. This simulates the reserve already populating
-		// the chunkstore with chunks.
-		for _, ch := range chunks2 {
-			err := st.ChunkStore().Put(context.Background(), ch)
-			if err != nil {
-				t.Fatal(err)
-			}
-			chunksToMove2 = append(chunksToMove2, ch.Address())
-		}
+	err = c.RemoveOldest(context.Background(), st, st.ChunkStore(), 5)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-		// move new chunks
-		err = c.MoveFromReserve(context.Background(), st, chunksToMove2...)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		cacheChunks := append(chunks[5:], chunks2...)
-
-		verifyCacheState(t, st.IndexStore(), c, cacheChunks[0].Address(), cacheChunks[9].Address(), 10)
-		verifyCacheOrder(t, c, st.IndexStore(), cacheChunks...)
-	})
-
-	t.Run("move from reserve over capacity", func(t *testing.T) {
-		chunks := chunktest.GenerateTestRandomChunks(15)
-		chunksToMove := make([]swarm.Address, 0, 15)
-
-		// add the chunks to chunkstore. This simulates the reserve already populating
-		// the chunkstore with chunks.
-		for _, ch := range chunks {
-			err := st.ChunkStore().Put(context.Background(), ch)
-			if err != nil {
-				t.Fatal(err)
-			}
-			chunksToMove = append(chunksToMove, ch.Address())
-		}
-
-		// move new chunks
-		err = c.MoveFromReserve(context.Background(), st, chunksToMove...)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		verifyCacheState(t, st.IndexStore(), c, chunks[5].Address(), chunks[14].Address(), 10)
-		verifyCacheOrder(t, c, st.IndexStore(), chunks[5:15]...)
-	})
+	verifyChunksDeleted(t, st.ChunkStore(), chunks[5:10]...)
 }
 
 func verifyCacheState(

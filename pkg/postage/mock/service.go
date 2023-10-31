@@ -6,6 +6,7 @@ package mock
 
 import (
 	"bytes"
+	"context"
 	"math/big"
 	"sync"
 
@@ -51,7 +52,7 @@ type mockPostage struct {
 	acceptAll  bool
 }
 
-func (m *mockPostage) SetExpired() error {
+func (m *mockPostage) SetExpired(ctx context.Context) error {
 	return nil
 }
 

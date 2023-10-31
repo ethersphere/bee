@@ -617,14 +617,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 			opts.ReserveCapacity,
 			opts.RadiusSetter,
 			logger,
-			func(ctx context.Context, store internal.Storage, addrs ...swarm.Address) error {
-				defer func() { db.metrics.CacheSize.Set(float64(db.cacheObj.Size())) }()
-
-				db.lock.Lock(cacheAccessLockKey)
-				defer db.lock.Unlock(cacheAccessLockKey)
-
-				return cacheObj.MoveFromReserve(ctx, store, addrs...)
-			},
+			db.CacheShallowCopy,
 		)
 		if err != nil {
 			return nil, err
@@ -646,6 +639,9 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		return nil, err
 	}
 
+	db.inFlight.Add(1)
+	go db.cacheWorker(ctx)
+
 	return db, nil
 }
 
@@ -664,7 +660,7 @@ func (db *DB) Close() error {
 	bgReserveWorkersClosed := make(chan struct{})
 	go func() {
 		defer close(bgReserveWorkersClosed)
-		if !syncutil.WaitWithTimeout(&db.inFlight, 2*time.Second) {
+		if !syncutil.WaitWithTimeout(&db.inFlight, 5*time.Second) {
 			db.logger.Warning("db shutting down with running goroutines")
 		}
 	}()
@@ -672,7 +668,7 @@ func (db *DB) Close() error {
 	bgCacheWorkersClosed := make(chan struct{})
 	go func() {
 		defer close(bgCacheWorkersClosed)
-		if !syncutil.WaitWithTimeout(&db.cacheLimiter.wg, 2*time.Second) {
+		if !syncutil.WaitWithTimeout(&db.cacheLimiter.wg, 5*time.Second) {
 			db.logger.Warning("cache goroutines still running after the wait timeout; force closing")
 			db.cacheLimiter.cancel()
 		}
