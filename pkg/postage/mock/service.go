@@ -52,19 +52,16 @@ type mockPostage struct {
 	acceptAll  bool
 }
 
-func (m *mockPostage) SetExpired(ctx context.Context) error {
-	return nil
-}
-
-func (m *mockPostage) HandleStampExpiry(id []byte) {
+func (m *mockPostage) HandleStampExpiry(ctx context.Context, id []byte) error {
 	m.issuerLock.Lock()
 	defer m.issuerLock.Unlock()
 
-	for _, v := range m.issuersMap {
+	for k, v := range m.issuersMap {
 		if bytes.Equal(id, v.ID()) {
-			v.SetExpired(true)
+			delete(m.issuersMap, k)
 		}
 	}
+	return nil
 }
 
 func (m *mockPostage) Add(s *postage.StampIssuer) error {

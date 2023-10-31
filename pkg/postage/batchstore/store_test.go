@@ -506,8 +506,8 @@ func TestBatchExpiry(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !esi.Expired() {
-		t.Fatalf("Want %v, got %v", true, esi.Expired())
+	if exists, err := store.Exists(esi.ID()); err != nil || exists {
+		t.Fatalf("Want %v, got %v, error %v", false, exists, err)
 	}
 }
 
@@ -537,8 +537,8 @@ func TestUnexpiredBatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if esi.Expired() {
-		t.Fatalf("Want %v, got %v", false, esi.Expired())
+	if exists, err := store.Exists(esi.ID()); err != nil || !exists {
+		t.Fatalf("Want %v, got %v, error %v", false, exists, err)
 	}
 }
 
