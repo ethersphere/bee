@@ -208,14 +208,15 @@ func (p *Params) Encode(chunkLevel int, callback parityChunkCallback) error {
 	if err != nil {
 		return err
 	}
+	n := shards + parities
 	// realloc for parity chunks if it does not override the prev one
 	// caculate parity chunks
-	err = enc.Encode(p.buffer[chunkLevel])
+	err = enc.Encode(p.buffer[chunkLevel][:n])
 	if err != nil {
 		return err
 	}
 	// store and pass newly created parity chunks
-	for i := shards; i < len(p.buffer[chunkLevel]); i++ {
+	for i := shards; i < n; i++ {
 		chunkData := p.buffer[chunkLevel][i]
 		span := chunkData[:swarm.SpanSize]
 
