@@ -12,6 +12,7 @@ import (
 	"strconv"
 
 	"github.com/ethersphere/bee/pkg/cac"
+	"github.com/ethersphere/bee/pkg/file/pipeline/redundancy"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/postage"
 	storage "github.com/ethersphere/bee/pkg/storage"
@@ -29,12 +30,12 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger.WithName("post_bytes").Build())
 
 	headers := struct {
-		BatchID  []byte `map:"Swarm-Postage-Batch-Id" validate:"required"`
-		SwarmTag uint64 `map:"Swarm-Tag"`
-		Pin      bool   `map:"Swarm-Pin"`
-		Deferred *bool  `map:"Swarm-Deferred-Upload"`
-		Encrypt  bool   `map:"Swarm-Encrypt"`
-		RsParity uint8  `map:"Swarm-RS-Parity"`
+		BatchID  []byte           `map:"Swarm-Postage-Batch-Id" validate:"required"`
+		SwarmTag uint64           `map:"Swarm-Tag"`
+		Pin      bool             `map:"Swarm-Pin"`
+		Deferred *bool            `map:"Swarm-Deferred-Upload"`
+		Encrypt  bool             `map:"Swarm-Encrypt"`
+		RLevel   redundancy.Level `map:"Swarm-Redundancy-Level"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -60,12 +61,6 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 			}
 			return
 		}
-	}
-
-	// Custom validation for Swarm-RS-Parity
-	err = ValidateRsParity(headers.Encrypt, headers.RsParity)
-	if err != nil {
-		jsonhttp.BadRequest(w, err)
 	}
 
 	putter, err := s.newStamperPutter(r.Context(), putterOptions{
@@ -98,7 +93,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		logger:         logger,
 	}
 
-	p := requestPipelineFn(putter, headers.Encrypt, headers.RsParity)
+	p := requestPipelineFn(putter, headers.Encrypt, headers.RLevel)
 	address, err := p(r.Context(), r.Body)
 	if err != nil {
 		logger.Debug("split write all failed", "error", err)

@@ -32,6 +32,7 @@ import (
 	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
+	"github.com/ethersphere/bee/pkg/file/pipeline/redundancy"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -78,7 +79,7 @@ const (
 	SwarmCollectionHeader     = "Swarm-Collection"
 	SwarmPostageBatchIdHeader = "Swarm-Postage-Batch-Id"
 	SwarmDeferredUploadHeader = "Swarm-Deferred-Upload"
-	SwarmRsParity             = "Swarm-RS-parity"
+	SwarmRLevel               = "Swarm-Redundancy-Level"
 
 	ImmutableHeader = "Immutable"
 	GasPriceHeader  = "Gas-Price"
@@ -618,7 +619,7 @@ func (s *Service) corsHandler(h http.Handler) http.Handler {
 	allowedHeaders := []string{
 		"User-Agent", "Accept", "X-Requested-With", "Access-Control-Request-Headers", "Access-Control-Request-Method", "Accept-Ranges", "Content-Encoding",
 		AuthorizationHeader, AcceptEncodingHeader, ContentTypeHeader, ContentDispositionHeader, RangeHeader, OriginHeader,
-		SwarmTagHeader, SwarmPinHeader, SwarmEncryptHeader, SwarmIndexDocumentHeader, SwarmErrorDocumentHeader, SwarmCollectionHeader, SwarmPostageBatchIdHeader, SwarmDeferredUploadHeader, SwarmRsParity,
+		SwarmTagHeader, SwarmPinHeader, SwarmEncryptHeader, SwarmIndexDocumentHeader, SwarmErrorDocumentHeader, SwarmCollectionHeader, SwarmPostageBatchIdHeader, SwarmDeferredUploadHeader, SwarmRLevel,
 		GasPriceHeader, GasLimitHeader, ImmutableHeader,
 	}
 	allowedHeadersStr := strings.Join(allowedHeaders, ", ")
@@ -844,16 +845,16 @@ func (s *Service) newStamperPutter(ctx context.Context, opts putterOptions) (sto
 
 type pipelineFunc func(context.Context, io.Reader) (swarm.Address, error)
 
-func requestPipelineFn(s storage.Putter, encrypt bool, rsParity uint8) pipelineFunc {
+func requestPipelineFn(s storage.Putter, encrypt bool, rLevel redundancy.Level) pipelineFunc {
 	return func(ctx context.Context, r io.Reader) (swarm.Address, error) {
-		pipe := builder.NewPipelineBuilder(ctx, s, encrypt, rsParity)
+		pipe := builder.NewPipelineBuilder(ctx, s, encrypt, rLevel)
 		return builder.FeedPipeline(ctx, pipe, r)
 	}
 }
 
-func requestPipelineFactory(ctx context.Context, s storage.Putter, encrypt bool, rsParity uint8) func() pipeline.Interface {
+func requestPipelineFactory(ctx context.Context, s storage.Putter, encrypt bool, rLevel redundancy.Level) func() pipeline.Interface {
 	return func() pipeline.Interface {
-		return builder.NewPipelineBuilder(ctx, s, encrypt, rsParity)
+		return builder.NewPipelineBuilder(ctx, s, encrypt, rLevel)
 	}
 }
 
