@@ -16,27 +16,35 @@ import (
 	enc "github.com/ethersphere/bee/pkg/file/pipeline/encryption"
 	"github.com/ethersphere/bee/pkg/file/pipeline/feeder"
 	"github.com/ethersphere/bee/pkg/file/pipeline/hashtrie"
+	"github.com/ethersphere/bee/pkg/file/pipeline/redundancy"
 	"github.com/ethersphere/bee/pkg/file/pipeline/store"
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 // NewPipelineBuilder returns the appropriate pipeline according to the specified parameters
-func NewPipelineBuilder(ctx context.Context, s storage.Putter, encrypt bool, rsParity uint8) pipeline.Interface {
+func NewPipelineBuilder(ctx context.Context, s storage.Putter, encrypt bool, rLevel redundancy.Level) pipeline.Interface {
 	if encrypt {
-		return newEncryptionPipeline(ctx, s, rsParity)
+		return newEncryptionPipeline(ctx, s, rLevel)
 	}
-	return newPipeline(ctx, s, rsParity)
+	return newPipeline(ctx, s, rLevel)
 }
 
 // newPipeline creates a standard pipeline that only hashes content with BMT to create
 // a merkle-tree of hashes that represent the given arbitrary size byte stream. Partial
 // writes are supported. The pipeline flow is: Data -> Feeder -> BMT -> Storage -> HashTrie.
-func newPipeline(ctx context.Context, s storage.Putter, rsParity uint8) pipeline.Interface {
-	tw := hashtrie.NewHashTrieWriter(swarm.ChunkSize, swarm.Branches, swarm.HashSize, rsParity, newShortPipelineFunc(ctx, s))
+func newPipeline(ctx context.Context, s storage.Putter, rLevel redundancy.Level) pipeline.Interface {
+	pipeline := newShortPipelineFunc(ctx, s)
+	tw := hashtrie.NewHashTrieWriter(
+		swarm.ChunkSize,
+		swarm.Branches,
+		swarm.HashSize,
+		redundancy.New(rLevel, false, pipeline),
+		pipeline,
+	)
 	lsw := store.NewStoreWriter(ctx, s, tw)
 	b := bmt.NewBmtWriter(lsw)
-	return feeder.NewChunkFeederWriter(swarm.ChunkSize, rsParity, b)
+	return feeder.NewChunkFeederWriter(swarm.ChunkSize, b)
 }
 
 // newShortPipelineFunc returns a constructor function for an ephemeral hashing pipeline
@@ -53,12 +61,18 @@ func newShortPipelineFunc(ctx context.Context, s storage.Putter) func() pipeline
 // writes are supported. The pipeline flow is: Data -> Feeder -> Encryption -> BMT -> Storage -> HashTrie.
 // Note that the encryption writer will mutate the data to contain the encrypted span, but the span field
 // with the unencrypted span is preserved.
-func newEncryptionPipeline(ctx context.Context, s storage.Putter, rsParity uint8) pipeline.Interface {
-	tw := hashtrie.NewHashTrieWriter(swarm.ChunkSize, 64, swarm.HashSize+encryption.KeyLength, rsParity, newShortEncryptionPipelineFunc(ctx, s))
+func newEncryptionPipeline(ctx context.Context, s storage.Putter, rLevel redundancy.Level) pipeline.Interface {
+	tw := hashtrie.NewHashTrieWriter(
+		swarm.ChunkSize,
+		64,
+		swarm.HashSize+encryption.KeyLength,
+		redundancy.New(rLevel, true, newShortPipelineFunc(ctx, s)),
+		newShortEncryptionPipelineFunc(ctx, s),
+	)
 	lsw := store.NewStoreWriter(ctx, s, tw)
 	b := bmt.NewBmtWriter(lsw)
 	enc := enc.NewEncryptionWriter(encryption.NewChunkEncrypter(), b)
-	return feeder.NewChunkFeederWriter(swarm.ChunkSize, rsParity, enc)
+	return feeder.NewChunkFeederWriter(swarm.ChunkSize, enc)
 }
 
 // newShortEncryptionPipelineFunc returns a constructor function for an ephemeral hashing pipeline
