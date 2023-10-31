@@ -49,7 +49,7 @@ type Service interface {
 // stores the active batches.
 type service struct {
 	logger       log.Logger
-	lock         sync.Mutex
+	mtx          sync.Mutex
 	store        storage.Store
 	postageStore Storer
 	chainID      int64
@@ -79,8 +79,8 @@ func NewService(logger log.Logger, store storage.Store, postageStore Storer, cha
 
 // Add adds a stamp issuer to the active issuers.
 func (ps *service) Add(st *StampIssuer) error {
-	ps.lock.Lock()
-	defer ps.lock.Unlock()
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
 
 	if !ps.add(st) {
 		return nil
@@ -107,19 +107,20 @@ func (ps *service) HandleCreate(b *Batch, amount *big.Int) error {
 // HandleTopUp implements the BatchEventListener interface. This is fired on receiving
 // a batch topup event from the blockchain to update stampissuer details
 func (ps *service) HandleTopUp(batchID []byte, amount *big.Int) {
-	ps.lock.Lock()
-	defer ps.lock.Unlock()
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
 
 	for _, v := range ps.issuers {
 		if bytes.Equal(v.data.BatchID, batchID) {
 			v.data.BatchAmount.Add(v.data.BatchAmount, amount)
+			return
 		}
 	}
 }
 
 func (ps *service) HandleDepthIncrease(batchID []byte, newDepth uint8) {
-	ps.lock.Lock()
-	defer ps.lock.Unlock()
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
 
 	for _, v := range ps.issuers {
 		if bytes.Equal(batchID, v.data.BatchID) {
@@ -133,8 +134,8 @@ func (ps *service) HandleDepthIncrease(batchID []byte, newDepth uint8) {
 
 // StampIssuers returns the currently active stamp issuers.
 func (ps *service) StampIssuers() []*StampIssuer {
-	ps.lock.Lock()
-	defer ps.lock.Unlock()
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
 	return ps.issuers
 }
 
@@ -153,8 +154,8 @@ func (ps *service) IssuerUsable(st *StampIssuer) bool {
 
 // GetStampIssuer finds a stamp issuer by batch ID.
 func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, func() error, error) {
-	ps.lock.Lock()
-	defer ps.lock.Unlock()
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
 
 	for _, st := range ps.issuers {
 		if bytes.Equal(batchID, st.data.BatchID) {
@@ -162,8 +163,8 @@ func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, func() error, e
 				return nil, nil, ErrNotUsable
 			}
 			return st, func() error {
-				ps.lock.Lock()
-				defer ps.lock.Unlock()
+				ps.mtx.Lock()
+				defer ps.mtx.Unlock()
 				return ps.save(st)
 			}, nil
 		}
@@ -185,8 +186,8 @@ func (ps *service) save(st *StampIssuer) error {
 }
 
 func (ps *service) Close() error {
-	ps.lock.Lock()
-	defer ps.lock.Unlock()
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
 	var err error
 	for _, issuer := range ps.issuers {
 		err = errors.Join(err, ps.save(issuer))
@@ -196,17 +197,23 @@ func (ps *service) Close() error {
 
 // HandleStampExpiry handles stamp expiry for a given id.
 func (ps *service) HandleStampExpiry(ctx context.Context, id []byte) error {
-	if err := ps.removeIssuer(ctx, id); err != nil {
+
+	exists, err := ps.removeIssuer(ctx, id)
+	if err != nil {
 		return err
 	}
 
-	return ps.removeStampItems(ctx, id)
+	if exists {
+		return ps.removeStampItems(ctx, id)
+	}
+
+	return nil
 }
 
 // removeStampItems
 func (ps *service) removeStampItems(ctx context.Context, batchID []byte) error {
 
-	ps.logger.Info("removing expired stamp items", "batchID", hex.EncodeToString(batchID))
+	ps.logger.Debug("removing expired stamp items", "batchID", hex.EncodeToString(batchID))
 
 	deleteItemC := make(chan *StampItem)
 	go func() {
@@ -219,7 +226,7 @@ func (ps *service) removeStampItems(ctx context.Context, batchID []byte) error {
 
 	defer func() {
 		close(deleteItemC)
-		ps.logger.Info("removed expired stamps", "batchID", hex.EncodeToString(batchID), "count", count)
+		ps.logger.Debug("removed expired stamps", "batchID", hex.EncodeToString(batchID), "count", count)
 	}()
 
 	return ps.store.Iterate(
@@ -238,21 +245,21 @@ func (ps *service) removeStampItems(ctx context.Context, batchID []byte) error {
 }
 
 // SetExpired removes all expired batches from the stamp issuers.
-func (ps *service) removeIssuer(ctx context.Context, batchID []byte) error {
-	ps.lock.Lock()
-	defer ps.lock.Unlock()
+func (ps *service) removeIssuer(ctx context.Context, batchID []byte) (bool, error) {
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
 
 	for i, issuer := range ps.issuers {
 		if bytes.Equal(batchID, issuer.data.BatchID) {
 			if err := ps.store.Delete(&StampIssuerItem{Issuer: issuer}); err != nil {
-				return fmt.Errorf("set expired: delete stamp data for batch %s: %w", hex.EncodeToString(issuer.ID()), err)
+				return true, fmt.Errorf("set expired: delete stamp data for batch %s: %w", hex.EncodeToString(issuer.ID()), err)
 			}
 			ps.issuers = append(ps.issuers[:i], ps.issuers[i+1:]...)
-			break
+			return true, nil
 		}
 	}
 
-	return nil
+	return false, nil
 }
 
 // add adds a stamp issuer to the active issuers and returns false if it is already present.
