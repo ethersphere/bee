@@ -246,17 +246,6 @@ func TestPostageGetStamps(t *testing.T) {
 		)
 	})
 
-	t.Run("expired batch", func(t *testing.T) {
-		t.Parallel()
-
-		bsForNonExistingBatch := mock.New(mock.WithChainState(cs))
-		tsForNonExistingBatch, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: mp, BatchStore: bsForNonExistingBatch, BlockTime: 2 * time.Second})
-
-		jsonhttptest.Request(t, tsForNonExistingBatch, http.MethodGet, "/stamps", http.StatusOK,
-			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampsResponse{Stamps: []api.PostageStampResponse{}}),
-		)
-	})
-
 	t.Run("single expired Stamp", func(t *testing.T) {
 		t.Parallel()
 

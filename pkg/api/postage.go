@@ -180,14 +180,6 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request
 	stampIssuers := s.post.StampIssuers()
 	resp.Stamps = make([]postageStampResponse, 0, len(stampIssuers))
 	for _, v := range stampIssuers {
-		exists, err := s.batchStore.Exists(v.ID())
-		if err != nil {
-			logger.Debug("get stamp issuer: check batch failed", "batch_id", hex.EncodeToString(v.ID()), "error", err)
-			logger.Error(nil, "get stamp issuer: check batch failed")
-			jsonhttp.InternalServerError(w, "unable to check batch")
-			return
-		}
-
 		batchTTL, err := s.estimateBatchTTLFromID(v.ID())
 		if err != nil {
 			logger.Debug("get stamp issuer: estimate batch expiration failed", "batch_id", hex.EncodeToString(v.ID()), "error", err)
@@ -195,21 +187,19 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request
 			jsonhttp.InternalServerError(w, "unable to estimate batch expiration")
 			return
 		}
-		if exists {
-			resp.Stamps = append(resp.Stamps, postageStampResponse{
-				BatchID:       v.ID(),
-				Utilization:   v.Utilization(),
-				Usable:        s.post.IssuerUsable(v),
-				Label:         v.Label(),
-				Depth:         v.Depth(),
-				Amount:        bigint.Wrap(v.Amount()),
-				BucketDepth:   v.BucketDepth(),
-				BlockNumber:   v.BlockNumber(),
-				ImmutableFlag: v.ImmutableFlag(),
-				Exists:        true,
-				BatchTTL:      batchTTL,
-			})
-		}
+		resp.Stamps = append(resp.Stamps, postageStampResponse{
+			BatchID:       v.ID(),
+			Utilization:   v.Utilization(),
+			Usable:        s.post.IssuerUsable(v),
+			Label:         v.Label(),
+			Depth:         v.Depth(),
+			Amount:        bigint.Wrap(v.Amount()),
+			BucketDepth:   v.BucketDepth(),
+			BlockNumber:   v.BlockNumber(),
+			ImmutableFlag: v.ImmutableFlag(),
+			Exists:        true,
+			BatchTTL:      batchTTL,
+		})
 	}
 
 	jsonhttp.OK(w, resp)
