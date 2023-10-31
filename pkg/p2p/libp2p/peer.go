@@ -120,12 +120,11 @@ func (r *peerRegistry) peers() []p2p.Peer {
 	peers := make([]p2p.Peer, 0, len(r.overlays))
 	for p, a := range r.overlays {
 		peer := p2p.Peer{
-			Address:      a,
-			FullNode:     r.full[p],
-			P2PTransport: make(map[string]struct{}),
+			Address:  a,
+			FullNode: r.full[p],
 		}
 		for conn := range r.connections[p] {
-			peer.P2PTransport[conn.ConnState().Transport] = struct{}{}
+			peer.Underlay = append(peer.Underlay, conn.RemoteMultiaddr())
 		}
 		peers = append(peers, peer)
 	}
