@@ -129,17 +129,6 @@ type Params struct {
 }
 
 func New(level Level, encryption bool, pipeLine pipeline.PipelineFunc) *Params {
-	// init dataBuffer for erasure coding
-	rsChunkLevels := 0
-	if level != NONE {
-		rsChunkLevels = maxLevel
-	}
-	Buffer := make([][][]byte, rsChunkLevels)
-	for i := 0; i < rsChunkLevels; i++ {
-
-		Buffer[i] = make([][]byte, swarm.Branches) // not exact
-	}
-
 	maxShards := 0
 	maxParity := 0
 	if encryption {
@@ -148,6 +137,15 @@ func New(level Level, encryption bool, pipeLine pipeline.PipelineFunc) *Params {
 	} else {
 		maxShards = level.GetMaxShards()
 		maxParity = level.GetParities(swarm.BmtBranches)
+	}
+	// init dataBuffer for erasure coding
+	rsChunkLevels := 0
+	if level != NONE {
+		rsChunkLevels = maxLevel
+	}
+	Buffer := make([][][]byte, rsChunkLevels)
+	for i := 0; i < rsChunkLevels; i++ {
+		Buffer[i] = make([][]byte, maxShards+maxParity)
 	}
 
 	return &Params{
@@ -182,6 +180,10 @@ func (p *Params) Parity(shards int) int {
 
 // ChainWrite caches the chunk data on the given chunk level and if it is full then it calls Encode
 func (p *Params) ChainWrite(chunkLevel int, span, ref, data []byte, callback parityChunkCallback) error {
+	if p.level == NONE {
+		return nil
+	}
+
 	// append chunk to the buffer
 	p.buffer[chunkLevel][p.cursor[chunkLevel]] = data
 	p.cursor[chunkLevel]++
@@ -196,6 +198,10 @@ func (p *Params) ChainWrite(chunkLevel int, span, ref, data []byte, callback par
 
 // Encode produces and stores parity chunks that will be also passed back to the caller
 func (p *Params) Encode(chunkLevel int, callback parityChunkCallback) error {
+	if p.level == NONE {
+		return nil
+	}
+
 	shards := p.cursor[chunkLevel]
 	parities := p.Parity(shards)
 	enc, err := reedsolomon.New(shards, parities)
