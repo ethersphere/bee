@@ -13,7 +13,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/gorilla/mux"
 	"github.com/multiformats/go-multiaddr"
-	"golang.org/x/exp/maps"
 )
 
 type peerConnectResponse struct {
@@ -80,9 +79,9 @@ func (s *Service) peerDisconnectHandler(w http.ResponseWriter, r *http.Request) 
 
 // Peer holds information about a Peer.
 type Peer struct {
-	Address      swarm.Address `json:"address"`
-	FullNode     bool          `json:"fullNode"`
-	P2PTransport []string      `json:"p2pTransport,omitempty"`
+	Address  swarm.Address         `json:"address"`
+	FullNode bool                  `json:"fullNode"`
+	Underlay []multiaddr.Multiaddr `json:"underlay,omitempty"`
 }
 
 type BlockListedPeer struct {
@@ -124,9 +123,9 @@ func mapPeers(peers []p2p.Peer) (out []Peer) {
 	out = make([]Peer, 0, len(peers))
 	for _, peer := range peers {
 		out = append(out, Peer{
-			Address:      peer.Address,
-			FullNode:     peer.FullNode,
-			P2PTransport: maps.Keys(peer.P2PTransport),
+			Address:  peer.Address,
+			FullNode: peer.FullNode,
+			Underlay: peer.Underlay,
 		})
 	}
 	return

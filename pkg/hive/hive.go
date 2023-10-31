@@ -304,6 +304,8 @@ func (s *Service) checkAndAddPeers(ctx context.Context, peers pb.Peers) {
 				wg.Done()
 			}()
 
+			s.logger.Debug("received peer", "overlay", swarm.NewAddress(newPeer.Overlay), "underlay", multiUnderlay)
+
 			ctx, cancel := context.WithTimeout(ctx, pingTimeout)
 			defer cancel()
 
