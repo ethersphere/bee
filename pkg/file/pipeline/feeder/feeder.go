@@ -19,18 +19,16 @@ type chunkFeeder struct {
 	buffer    []byte
 	bufferIdx int
 	wrote     int64
-	rsParity  uint8
 }
 
 // newChunkFeederWriter creates a new chunkFeeder that allows for partial
 // writes into the pipeline. Any pending data in the buffer is flushed to
 // subsequent writers when Sum() is called.
-func NewChunkFeederWriter(size int, rsParity uint8, next pipeline.ChainWriter) pipeline.Interface {
+func NewChunkFeederWriter(size int, next pipeline.ChainWriter) pipeline.Interface {
 	return &chunkFeeder{
-		size:     size,
-		rsParity: rsParity,
-		next:     next,
-		buffer:   make([]byte, size),
+		size:   size,
+		next:   next,
+		buffer: make([]byte, size),
 	}
 }
 
@@ -77,11 +75,6 @@ func (f *chunkFeeder) Write(b []byte) (int, error) {
 		sp += n
 
 		binary.LittleEndian.PutUint64(d[:span], uint64(sp))
-		if f.rsParity > 0 {
-			// encode Reed-Solomon parity number into span
-			// on the most significant byte
-			d[span-1] = f.rsParity
-		}
 
 		args := &pipeline.PipeWriteArgs{Data: d[:span+sp], Span: d[:span]}
 		err := f.next.ChainWrite(args)
