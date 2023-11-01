@@ -5,7 +5,6 @@
 package api
 
 import (
-	"bytes"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -145,7 +144,6 @@ type postageStampResponse struct {
 	ImmutableFlag bool           `json:"immutableFlag"`
 	Exists        bool           `json:"exists"`
 	BatchTTL      int64          `json:"batchTTL"`
-	Expired       bool           `json:"expired"`
 }
 
 type postageStampsResponse struct {
@@ -178,26 +176,10 @@ type bucketData struct {
 func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("get_stamps").Build()
 
-	queries := struct {
-		All bool `map:"all"`
-	}{}
-	if response := s.mapStructure(r.URL.Query(), &queries); response != nil {
-		response("invalid query params", logger, w)
-		return
-	}
-
 	resp := postageStampsResponse{}
 	stampIssuers := s.post.StampIssuers()
 	resp.Stamps = make([]postageStampResponse, 0, len(stampIssuers))
 	for _, v := range stampIssuers {
-		exists, err := s.batchStore.Exists(v.ID())
-		if err != nil {
-			logger.Debug("get stamp issuer: check batch failed", "batch_id", hex.EncodeToString(v.ID()), "error", err)
-			logger.Error(nil, "get stamp issuer: check batch failed")
-			jsonhttp.InternalServerError(w, "unable to check batch")
-			return
-		}
-
 		batchTTL, err := s.estimateBatchTTLFromID(v.ID())
 		if err != nil {
 			logger.Debug("get stamp issuer: estimate batch expiration failed", "batch_id", hex.EncodeToString(v.ID()), "error", err)
@@ -205,22 +187,19 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request
 			jsonhttp.InternalServerError(w, "unable to estimate batch expiration")
 			return
 		}
-		if queries.All || exists {
-			resp.Stamps = append(resp.Stamps, postageStampResponse{
-				BatchID:       v.ID(),
-				Utilization:   v.Utilization(),
-				Usable:        exists && s.post.IssuerUsable(v),
-				Label:         v.Label(),
-				Depth:         v.Depth(),
-				Amount:        bigint.Wrap(v.Amount()),
-				BucketDepth:   v.BucketDepth(),
-				BlockNumber:   v.BlockNumber(),
-				ImmutableFlag: v.ImmutableFlag(),
-				Exists:        exists,
-				BatchTTL:      batchTTL,
-				Expired:       v.Expired(),
-			})
-		}
+		resp.Stamps = append(resp.Stamps, postageStampResponse{
+			BatchID:       v.ID(),
+			Utilization:   v.Utilization(),
+			Usable:        s.post.IssuerUsable(v),
+			Label:         v.Label(),
+			Depth:         v.Depth(),
+			Amount:        bigint.Wrap(v.Amount()),
+			BucketDepth:   v.BucketDepth(),
+			BlockNumber:   v.BlockNumber(),
+			ImmutableFlag: v.ImmutableFlag(),
+			Exists:        true,
+			BatchTTL:      batchTTL,
+		})
 	}
 
 	jsonhttp.OK(w, resp)
@@ -318,28 +297,21 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 	}
 	hexBatchID := hex.EncodeToString(paths.BatchID)
 
-	var issuer *postage.StampIssuer
-	stampIssuers := s.post.StampIssuers()
-	for _, stampIssuer := range stampIssuers {
-		if bytes.Equal(paths.BatchID, stampIssuer.ID()) {
-			issuer = stampIssuer
-			break
+	issuer, _, err := s.post.GetStampIssuer(paths.BatchID)
+	if err != nil {
+		logger.Debug("get stamp issuer: get issuer failed", "batch_id", hexBatchID, "error", err)
+		logger.Error(nil, "get stamp issuer: get issuer failed")
+		switch {
+		case errors.Is(err, postage.ErrNotUsable):
+			jsonhttp.BadRequest(w, "batch not usable")
+		case errors.Is(err, postage.ErrNotFound):
+			jsonhttp.NotFound(w, "unable to get stamp issuer")
+		default:
+			jsonhttp.InternalServerError(w, "get issuer failed")
 		}
-	}
-	if issuer == nil {
-		logger.Debug("get issuer failed", "batch_id", hexBatchID)
-		logger.Error(nil, "get issuer failed")
-		jsonhttp.BadRequest(w, "cannot find batch")
 		return
 	}
 
-	exists, err := s.batchStore.Exists(paths.BatchID)
-	if err != nil {
-		logger.Debug("exist check failed", "batch_id", hexBatchID, "error", err)
-		logger.Error(nil, "exist check failed")
-		jsonhttp.InternalServerError(w, "unable to check batch")
-		return
-	}
 	batchTTL, err := s.estimateBatchTTLFromID(paths.BatchID)
 	if err != nil {
 		logger.Debug("estimate batch expiration failed", "batch_id", hexBatchID, "error", err)
@@ -353,14 +325,13 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 		Depth:         issuer.Depth(),
 		BucketDepth:   issuer.BucketDepth(),
 		ImmutableFlag: issuer.ImmutableFlag(),
-		Exists:        exists,
+		Exists:        true,
 		BatchTTL:      batchTTL,
 		Utilization:   issuer.Utilization(),
-		Usable:        exists && s.post.IssuerUsable(issuer),
+		Usable:        s.post.IssuerUsable(issuer),
 		Label:         issuer.Label(),
 		Amount:        bigint.Wrap(issuer.Amount()),
 		BlockNumber:   issuer.BlockNumber(),
-		Expired:       issuer.Expired(),
 	})
 }
 

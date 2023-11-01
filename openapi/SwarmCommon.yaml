@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 3.2.5
+  version: 3.2.6
   title: Common Data Types
   description: |
     \*****bzzz*****
@@ -470,8 +470,6 @@ components:
           type: boolean
         batchTTL:
           type: integer
-        expired:
-          type: boolean
 
     PostageBatchNoIssuer:
       type: object

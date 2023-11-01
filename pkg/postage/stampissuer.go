@@ -130,7 +130,6 @@ type stampIssuerData struct {
 	MaxBucketCount uint32   `msgpack:"maxBucketCount"` // the count of the fullest bucket
 	BlockNumber    uint64   `msgpack:"blockNumber"`    // BlockNumber when this batch was created
 	ImmutableFlag  bool     `msgpack:"immutableFlag"`  // Specifies immutability of the created batch.
-	Expired        bool     `msgpack:"expired"`        // Specifies the expiry of the batch
 }
 
 // Clone returns a deep copy of the stampIssuerData.
@@ -145,7 +144,6 @@ func (s stampIssuerData) Clone() stampIssuerData {
 		Buckets:       append([]uint32(nil), s.Buckets...),
 		BlockNumber:   s.BlockNumber,
 		ImmutableFlag: s.ImmutableFlag,
-		Expired:       s.Expired,
 	}
 }
 
@@ -278,16 +276,6 @@ func (si *StampIssuer) Buckets() []uint32 {
 	b := make([]uint32, len(si.data.Buckets))
 	copy(b, si.data.Buckets)
 	return b
-}
-
-// Expired returns the expired property of stamp
-func (si *StampIssuer) Expired() bool {
-	return si.data.Expired
-}
-
-// SetExpired is setter for Expired property
-func (si *StampIssuer) SetExpired(e bool) {
-	si.data.Expired = e
 }
 
 // StampIssuerItem is a storage.Item implementation for StampIssuer.

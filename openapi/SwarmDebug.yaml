@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 4.0.2
+  version: 4.1.0
   title: Bee Debug API
   description: "A list of the currently provided debug interfaces to interact with the bee node"
 
@@ -783,13 +783,6 @@ paths:
           description: Default response
 
   "/stamps":
-    parameters:
-      - in: query
-        name: all
-        schema:
-          type: string
-          required: false
-        description: Gets all stamps. Default is null.
     get:
       summary: Get stamps for this node
       tags:
@@ -801,6 +794,8 @@ paths:
             application/json:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/DebugPostageBatchesResponse"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
 
         default:
           description: Default response
@@ -824,6 +819,8 @@ paths:
             application/json:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/DebugPostageBatch"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         default:
@@ -848,6 +845,8 @@ paths:
             application/json:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/PostageStampBuckets"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         default:

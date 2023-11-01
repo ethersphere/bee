@@ -244,7 +244,7 @@ func TestSetExpired(t *testing.T) {
 		t.Fatalf("expected %v, got %v", postage.ErrNotUsable, err)
 	}
 
-	err = ps.SetExpired(context.Background())
+	err = ps.HandleStampExpiry(context.Background(), issuer.ID())
 	if err != nil {
 		t.Fatal(err)
 	}
