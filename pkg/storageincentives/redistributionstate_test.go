@@ -13,6 +13,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	erc20mock "github.com/ethersphere/bee/pkg/settlement/swap/erc20/mock"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
+	"github.com/ethersphere/bee/pkg/storageincentives/sampler"
 	"github.com/ethersphere/bee/pkg/swarm"
 	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
 	"github.com/ethersphere/bee/pkg/util/testutil"
@@ -93,23 +94,23 @@ func TestState(t *testing.T) {
 func TestStateRoundData(t *testing.T) {
 	t.Parallel()
 
-	t.Run("sample data", func(t *testing.T) {
+	t.Run("sample Data", func(t *testing.T) {
 		t.Parallel()
 
 		state := createRedistribution(t, nil, nil)
 
-		_, exists := state.SampleData(1)
+		_, exists := state.Data(1)
 		if exists {
 			t.Error("should not exists")
 		}
 
-		savedSample := SampleData{
-			ReserveSampleHash: swarm.RandAddress(t),
-			StorageRadius:     3,
+		savedSample := sampler.Data{
+			Hash:  swarm.RandAddress(t),
+			Depth: 3,
 		}
-		state.SetSampleData(1, savedSample, 0)
+		state.SetData(1, savedSample)
 
-		sample, exists := state.SampleData(1)
+		sample, exists := state.Data(1)
 		if !exists {
 			t.Error("should exist")
 		}
@@ -163,30 +164,30 @@ func TestPurgeRoundData(t *testing.T) {
 
 	state := createRedistribution(t, nil, nil)
 
-	// helper function which populates data at specified round
+	// helper function which populates sampler.Data at specified round
 	populateDataAtRound := func(round uint64) {
-		savedSample := SampleData{
-			ReserveSampleHash: swarm.RandAddress(t),
-			StorageRadius:     3,
+		savedSample := sampler.Data{
+			Hash:  swarm.RandAddress(t),
+			Depth: 3,
 		}
 		commitKey := testutil.RandBytes(t, swarm.HashSize)
 
-		state.SetSampleData(round, savedSample, 0)
+		state.SetData(round, savedSample)
 		state.SetCommitKey(round, commitKey)
 		state.SetHasRevealed(round)
 	}
 
-	// asserts if there is, or there isn't, data at specified round
+	// asserts if there is, or there isn't, sampler.Data at specified round
 	assertHasDataAtRound := func(round uint64, shouldHaveData bool) {
 		check := func(exists bool) {
 			if shouldHaveData && !exists {
-				t.Error("should have data")
+				t.Error("should have sampler.Data")
 			} else if !shouldHaveData && exists {
-				t.Error("should not have data")
+				t.Error("should not have sampler.Data")
 			}
 		}
 
-		_, exists1 := state.SampleData(round)
+		_, exists1 := state.Data(round)
 		_, exists2 := state.CommitKey(round)
 		exists3 := state.HasRevealed(round)
 
@@ -198,7 +199,7 @@ func TestPurgeRoundData(t *testing.T) {
 	const roundsCount = 100
 	hasRoundData := make([]bool, roundsCount)
 
-	// Populate data at random rounds
+	// Populate sampler.Data at random rounds
 	for i := uint64(0); i < roundsCount; i++ {
 		v := rand.Int()%2 == 0
 		hasRoundData[i] = v
@@ -208,8 +209,8 @@ func TestPurgeRoundData(t *testing.T) {
 		assertHasDataAtRound(i, v)
 	}
 
-	// Run purge successively and assert that all data is purged up to
-	// currentRound - purgeDataOlderThenXRounds
+	// Run purge successively and assert that all sampler.Data is purged up to
+	// currentRound - purgesampler.DataOlderThenXRounds
 	for i := uint64(0); i < roundsCount; i++ {
 		state.SetCurrentEvent(0, i)
 		state.purgeStaleRoundData()
@@ -223,7 +224,7 @@ func TestPurgeRoundData(t *testing.T) {
 		}
 	}
 
-	// Purge remaining data in single go
+	// Purge remaining sampler.Data in single go
 	round := uint64(roundsCount + purgeStaleDataThreshold)
 	state.SetCurrentEvent(0, round)
 	state.purgeStaleRoundData()

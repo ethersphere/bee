@@ -79,9 +79,9 @@ func TestProofCorrectness(t *testing.T) {
 			"887c22bd8750d34016ac3c66b5ff102dacdd73f6b014e710b51e8022af9a1968",
 		}
 
-		verifySegments(t, expSegmentStrings, proof.ProofSegments)
+		verifySegments(t, expSegmentStrings, proof.Sisters)
 
-		if !bytes.Equal(proof.ProveSegment, testDataPadded[:hh.Size()]) {
+		if !bytes.Equal(proof.Data, testDataPadded[:hh.Size()]) {
 			t.Fatal("section incorrect")
 		}
 
@@ -105,9 +105,9 @@ func TestProofCorrectness(t *testing.T) {
 			"745bae095b6ff5416b4a351a167f731db6d6f5924f30cd88d48e74261795d27b",
 		}
 
-		verifySegments(t, expSegmentStrings, proof.ProofSegments)
+		verifySegments(t, expSegmentStrings, proof.Sisters)
 
-		if !bytes.Equal(proof.ProveSegment, testDataPadded[127*hh.Size():]) {
+		if !bytes.Equal(proof.Data, testDataPadded[127*hh.Size():]) {
 			t.Fatal("section incorrect")
 		}
 
@@ -131,9 +131,9 @@ func TestProofCorrectness(t *testing.T) {
 			"745bae095b6ff5416b4a351a167f731db6d6f5924f30cd88d48e74261795d27b",
 		}
 
-		verifySegments(t, expSegmentStrings, proof.ProofSegments)
+		verifySegments(t, expSegmentStrings, proof.Sisters)
 
-		if !bytes.Equal(proof.ProveSegment, testDataPadded[64*hh.Size():65*hh.Size()]) {
+		if !bytes.Equal(proof.Data, testDataPadded[64*hh.Size():65*hh.Size()]) {
 			t.Fatal("section incorrect")
 		}
 
@@ -167,9 +167,9 @@ func TestProofCorrectness(t *testing.T) {
 		segment := testDataPadded[64*hh.Size() : 65*hh.Size()]
 
 		rootHash, err := pr.Verify(64, bmt.Proof{
-			ProveSegment:  segment,
-			ProofSegments: segments,
-			Span:          bmt.LengthToSpan(4096),
+			Data:    segment,
+			Sisters: segments,
+			Span:    bmt.LengthToSpan(4096),
 		})
 		if err != nil {
 			t.Fatal(err)

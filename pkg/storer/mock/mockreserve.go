@@ -6,7 +6,6 @@ package mockstorer
 
 import (
 	"context"
-	"math/big"
 	"sync"
 
 	storage "github.com/ethersphere/bee/pkg/storage"
@@ -83,12 +82,6 @@ func WithPutHook(f func(swarm.Chunk) error) Option {
 	})
 }
 
-func WithSample(s storer.Sample) Option {
-	return optionFunc(func(p *ReserveStore) {
-		p.sample = s
-	})
-}
-
 var _ storer.ReserveStore = (*ReserveStore)(nil)
 
 type ReserveStore struct {
@@ -110,8 +103,6 @@ type ReserveStore struct {
 
 	subResponses []chunksResponse
 	putHook      func(swarm.Chunk) error
-
-	sample storer.Sample
 }
 
 // NewReserve returns a new Reserve mock.
@@ -236,10 +227,6 @@ func (s *ReserveStore) ReserveHas(addr swarm.Address, batchID []byte) (bool, err
 		return false, nil
 	}
 	return true, nil
-}
-
-func (s *ReserveStore) ReserveSample(context.Context, []byte, uint8, uint64, *big.Int) (storer.Sample, error) {
-	return s.sample, nil
 }
 
 type Option interface {
