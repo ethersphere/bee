@@ -240,72 +240,6 @@ func TestPostageGetStamps(t *testing.T) {
 						ImmutableFlag: si.ImmutableFlag(),
 						Exists:        true,
 						BatchTTL:      15, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
-						Expired:       false,
-					},
-				},
-			}),
-		)
-	})
-
-	t.Run("expired batch", func(t *testing.T) {
-		t.Parallel()
-
-		bsForNonExistingBatch := mock.New(mock.WithChainState(cs))
-		tsForNonExistingBatch, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: mp, BatchStore: bsForNonExistingBatch, BlockTime: 2 * time.Second})
-
-		jsonhttptest.Request(t, tsForNonExistingBatch, http.MethodGet, "/stamps", http.StatusOK,
-			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampsResponse{Stamps: []api.PostageStampResponse{}}),
-		)
-
-		jsonhttptest.Request(t, tsForNonExistingBatch, http.MethodGet, "/stamps?all=true", http.StatusOK,
-			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampsResponse{
-				Stamps: []api.PostageStampResponse{
-					{
-						BatchID:       b.ID,
-						Utilization:   si.Utilization(),
-						Usable:        false,
-						Label:         si.Label(),
-						Depth:         si.Depth(),
-						Amount:        bigint.Wrap(si.Amount()),
-						BucketDepth:   si.BucketDepth(),
-						BlockNumber:   si.BlockNumber(),
-						ImmutableFlag: si.ImmutableFlag(),
-						Exists:        false,
-						BatchTTL:      -1,
-					},
-				},
-			}),
-		)
-	})
-
-	t.Run("expired Stamp", func(t *testing.T) {
-		t.Parallel()
-
-		eb := postagetesting.MustNewBatch(postagetesting.WithValue(20))
-
-		esi := postage.NewStampIssuer("", "", eb.ID, big.NewInt(3), 11, 10, 1000, true)
-		emp := mockpost.New(mockpost.WithIssuer(esi))
-		emp.HandleStampExpiry(eb.ID)
-		ecs := &postage.ChainState{Block: 10, TotalAmount: big.NewInt(15), CurrentPrice: big.NewInt(12)}
-		ebs := mock.New(mock.WithChainState(ecs))
-		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: emp, BatchStore: ebs, BlockTime: 2 * time.Second})
-
-		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps?all=true", http.StatusOK,
-			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampsResponse{
-				Stamps: []api.PostageStampResponse{
-					{
-						BatchID:       eb.ID,
-						Utilization:   esi.Utilization(),
-						Usable:        false,
-						Label:         esi.Label(),
-						Depth:         esi.Depth(),
-						Amount:        bigint.Wrap(si.Amount()),
-						BucketDepth:   esi.BucketDepth(),
-						BlockNumber:   esi.BlockNumber(),
-						ImmutableFlag: esi.ImmutableFlag(),
-						Exists:        false,
-						BatchTTL:      -1, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
-						Expired:       true,
 					},
 				},
 			}),
@@ -319,25 +253,18 @@ func TestPostageGetStamps(t *testing.T) {
 
 		esi := postage.NewStampIssuer("", "", eb.ID, big.NewInt(3), 11, 10, 1000, true)
 		emp := mockpost.New(mockpost.WithIssuer(esi))
-		emp.HandleStampExpiry(eb.ID)
+		err := emp.HandleStampExpiry(context.Background(), eb.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
 		ecs := &postage.ChainState{Block: 10, TotalAmount: big.NewInt(15), CurrentPrice: big.NewInt(12)}
 		ebs := mock.New(mock.WithChainState(ecs))
 		ts, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true, Post: emp, BatchStore: ebs, BlockTime: 2 * time.Second})
 
-		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps/"+hex.EncodeToString(eb.ID), http.StatusOK,
-			jsonhttptest.WithExpectedJSONResponse(&api.PostageStampResponse{
-				BatchID:       eb.ID,
-				Utilization:   esi.Utilization(),
-				Usable:        false,
-				Label:         esi.Label(),
-				Depth:         esi.Depth(),
-				Amount:        bigint.Wrap(esi.Amount()),
-				BucketDepth:   esi.BucketDepth(),
-				BlockNumber:   esi.BlockNumber(),
-				ImmutableFlag: esi.ImmutableFlag(),
-				Exists:        false,
-				BatchTTL:      -1, // ((value-totalAmount)/pricePerBlock)*blockTime=((20-5)/2)*2.
-				Expired:       true,
+		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps/"+hex.EncodeToString(eb.ID), http.StatusNotFound,
+			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
+				Message: "unable to get stamp issuer",
+				Code:    404,
 			}),
 		)
 	})
@@ -951,42 +878,6 @@ func Test_postageCreateHandler_invalidInputs(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			jsonhttptest.Request(t, client, http.MethodPost, "/stamps/"+tc.amount+"/"+tc.depth, tc.want.Code,
-				jsonhttptest.WithExpectedJSONResponse(tc.want),
-			)
-		})
-	}
-}
-
-func Test_postageGetStampsHandler_invalidInputs(t *testing.T) {
-	t.Parallel()
-
-	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
-
-	tests := []struct {
-		name string
-		all  string
-		want jsonhttp.StatusResponse
-	}{{
-		name: "all - invalid value",
-		all:  "123",
-		want: jsonhttp.StatusResponse{
-			Code:    http.StatusBadRequest,
-			Message: "invalid query params",
-			Reasons: []jsonhttp.Reason{
-				{
-					Field: "all",
-					Error: strconv.ErrSyntax.Error(),
-				},
-			},
-		},
-	}}
-
-	for _, tc := range tests {
-		tc := tc
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-
-			jsonhttptest.Request(t, client, http.MethodGet, "/stamps?all="+tc.all, tc.want.Code,
 				jsonhttptest.WithExpectedJSONResponse(tc.want),
 			)
 		})

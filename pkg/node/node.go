@@ -795,11 +795,6 @@ func NewBee(
 			if err != nil {
 				syncErr.Store(err)
 				return nil, fmt.Errorf("unable to start batch service: %w", err)
-			} else {
-				err = post.SetExpired(ctx)
-				if err != nil {
-					return nil, fmt.Errorf("unable to set expirations: %w", err)
-				}
 			}
 		} else {
 			go func() {
@@ -810,11 +805,6 @@ func NewBee(
 					syncErr.Store(err)
 					logger.Error(err, "unable to sync batches")
 					b.syncingStopped.Signal() // trigger shutdown in start.go
-				} else {
-					err = post.SetExpired(ctx)
-					if err != nil {
-						logger.Error(err, "unable to set expirations")
-					}
 				}
 			}()
 		}

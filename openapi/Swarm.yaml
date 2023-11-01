@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  version: 5.0.0
+  version: 5.1.0
   title: Bee API
   description: "A list of the currently provided Interfaces to interact with the swarm, implementing file operations and sending messages"
 
@@ -1651,12 +1651,6 @@ paths:
           description: Default response
 
   "/stamps":
-    parameters:
-      - in: query
-        name: all
-        schema:
-          $ref: "SwarmCommon.yaml#/components/schemas/isAll"
-        description: Gets all stamps. Default is null.
     get:
       summary: Get stamps for this node
       description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
@@ -1671,6 +1665,8 @@ paths:
             application/json:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/DebugPostageBatchesResponse"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
 
         default:
           description: Default response
@@ -1697,6 +1693,8 @@ paths:
             application/json:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/DebugPostageBatch"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         default:
@@ -1724,6 +1722,8 @@ paths:
             application/json:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/PostageStampBuckets"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         default:
