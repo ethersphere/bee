@@ -191,17 +191,21 @@ func (p *Params) ChainWrite(chunkLevel int, span, ref, data []byte, callback par
 	// add parity chunk if it is necessary
 	if p.cursor[chunkLevel] == p.maxShards {
 		// append erasure coded data
-		return p.Encode(chunkLevel, callback)
+		return p.encode(chunkLevel, callback)
 	}
 	return nil
 }
 
-// Encode produces and stores parity chunks that will be also passed back to the caller
 func (p *Params) Encode(chunkLevel int, callback parityChunkCallback) error {
 	if p.level == NONE {
 		return nil
 	}
 
+	return p.encode(chunkLevel, callback)
+}
+
+// Encode produces and stores parity chunks that will be also passed back to the caller
+func (p *Params) encode(chunkLevel int, callback parityChunkCallback) error {
 	shards := p.cursor[chunkLevel]
 	parities := p.Parity(shards)
 	enc, err := reedsolomon.New(shards, parities)
