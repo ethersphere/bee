@@ -8,7 +8,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
+	"sort"
+	"strings"
 
 	ma "github.com/multiformats/go-multiaddr"
 	madns "github.com/multiformats/go-multiaddr-dns"
@@ -35,9 +36,11 @@ func Discover(ctx context.Context, addr ma.Multiaddr, f func(ma.Multiaddr) (bool
 		return false, errors.New("non-resolvable API endpoint")
 	}
 
-	rand.Shuffle(len(addrs), func(i, j int) {
-		addrs[i], addrs[j] = addrs[j], addrs[i]
+	// sort addrs so that quic is tried first
+	sort.Slice(addrs, func(i, j int) bool {
+		return strings.Contains(addrs[i].String(), "/quic")
 	})
+
 	for _, addr := range addrs {
 		stopped, err := Discover(ctx, addr, f)
 		if err != nil {
