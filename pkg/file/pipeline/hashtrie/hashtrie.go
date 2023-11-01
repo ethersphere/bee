@@ -124,12 +124,12 @@ func (h *hashTrieWriter) wrapFullLevel(level int) error {
 		return err
 	}
 
-	err = h.rParams.ChainWrite(level, spb, args.Ref, data, h.writeToIntermediateLevel)
+	err = h.writeToIntermediateLevel(level+1, args.Span, args.Ref, args.Key)
 	if err != nil {
 		return err
 	}
 
-	err = h.writeToIntermediateLevel(level+1, args.Span, args.Ref, args.Key)
+	err = h.rParams.ChainWrite(level, spb, args.Ref, data, h.writeToIntermediateLevel)
 	if err != nil {
 		return err
 	}
