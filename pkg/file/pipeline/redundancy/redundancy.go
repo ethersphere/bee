@@ -145,7 +145,7 @@ func New(level Level, encryption bool, pipeLine pipeline.PipelineFunc) *Params {
 	}
 	Buffer := make([][][]byte, rsChunkLevels)
 	for i := 0; i < rsChunkLevels; i++ {
-		Buffer[i] = make([][]byte, maxShards+maxParity)
+		Buffer[i] = make([][]byte, swarm.BmtBranches) // 128 long always because buffer varies at encrypted chunks
 	}
 
 	return &Params{
