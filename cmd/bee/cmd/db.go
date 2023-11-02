@@ -642,8 +642,6 @@ func dbNukeCmd(cmd *cobra.Command) {
 				logger.Error(err, "getting sleep value failed")
 			}
 
-			defer func() { time.Sleep(d) }()
-
 			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
 			if err != nil {
 				return fmt.Errorf("get data-dir: %w", err)
@@ -713,6 +711,8 @@ func dbNukeCmd(cmd *cobra.Command) {
 			}
 
 			logger.Info("nuke finished")
+
+			time.Sleep(d)
 
 			return nil
 		}}
