@@ -709,6 +709,9 @@ func dbNukeCmd(cmd *cobra.Command) {
 					return fmt.Errorf("remove stamperstore: %w", err)
 				}
 			}
+
+			logger.Info("nuke finished")
+
 			return nil
 		}}
 	c.Flags().String(optionNameDataDir, "", "data directory")
