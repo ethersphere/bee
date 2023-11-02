@@ -5,7 +5,6 @@
 package mock
 
 import (
-	"bytes"
 	"context"
 	"math/big"
 	"sync"
@@ -55,12 +54,7 @@ type mockPostage struct {
 func (m *mockPostage) HandleStampExpiry(ctx context.Context, id []byte) error {
 	m.issuerLock.Lock()
 	defer m.issuerLock.Unlock()
-
-	for k, v := range m.issuersMap {
-		if bytes.Equal(id, v.ID()) {
-			delete(m.issuersMap, k)
-		}
-	}
+	delete(m.issuersMap, string(id))
 	return nil
 }
 

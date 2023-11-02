@@ -180,13 +180,24 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request
 	stampIssuers := s.post.StampIssuers()
 	resp.Stamps = make([]postageStampResponse, 0, len(stampIssuers))
 	for _, v := range stampIssuers {
+
+		exists, err := s.batchStore.Exists(v.ID())
+		if err != nil {
+			logger.Error(err, "get stamp issuer: check batch failed", "batch_id", hex.EncodeToString(v.ID()))
+			jsonhttp.InternalServerError(w, "unable to check batch")
+			return
+		}
+		if !exists {
+			continue
+		}
+
 		batchTTL, err := s.estimateBatchTTLFromID(v.ID())
 		if err != nil {
-			logger.Debug("get stamp issuer: estimate batch expiration failed", "batch_id", hex.EncodeToString(v.ID()), "error", err)
-			logger.Error(nil, "get stamp issuer: estimate batch expiration failed")
+			logger.Error(err, "get stamp issuer: estimate batch expiration failed", "batch_id", hex.EncodeToString(v.ID()))
 			jsonhttp.InternalServerError(w, "unable to estimate batch expiration")
 			return
 		}
+
 		resp.Stamps = append(resp.Stamps, postageStampResponse{
 			BatchID:       v.ID(),
 			Utilization:   v.Utilization(),
@@ -205,7 +216,7 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request
 	jsonhttp.OK(w, resp)
 }
 
-func (s *Service) postageGetAllStampsHandler(w http.ResponseWriter, _ *http.Request) {
+func (s *Service) postageGetAllBatchesHandler(w http.ResponseWriter, _ *http.Request) {
 	logger := s.logger.WithName("get_batches").Build()
 
 	batches := make([]postageBatchResponse, 0)
@@ -263,7 +274,7 @@ func (s *Service) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.R
 		case errors.Is(err, postage.ErrNotUsable):
 			jsonhttp.BadRequest(w, "batch not usable")
 		case errors.Is(err, postage.ErrNotFound):
-			jsonhttp.NotFound(w, "cannot get batch")
+			jsonhttp.NotFound(w, "issuer does not exist")
 		default:
 			jsonhttp.InternalServerError(w, "get issuer failed")
 		}
@@ -305,10 +316,23 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 		case errors.Is(err, postage.ErrNotUsable):
 			jsonhttp.BadRequest(w, "batch not usable")
 		case errors.Is(err, postage.ErrNotFound):
-			jsonhttp.NotFound(w, "unable to get stamp issuer")
+			jsonhttp.NotFound(w, "issuer does not exist")
 		default:
 			jsonhttp.InternalServerError(w, "get issuer failed")
 		}
+		return
+	}
+
+	exists, err := s.batchStore.Exists(paths.BatchID)
+	if err != nil {
+		logger.Debug("exist check failed", "batch_id", hexBatchID, "error", err)
+		logger.Error(nil, "exist check failed")
+		jsonhttp.InternalServerError(w, "unable to check batch")
+		return
+	}
+	if !exists {
+		logger.Debug("batch does not exists", "batch_id", hexBatchID)
+		jsonhttp.NotFound(w, "issuer does not exist")
 		return
 	}
 

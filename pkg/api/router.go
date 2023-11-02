@@ -549,7 +549,7 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 
 	handle("/batches", web.ChainHandlers(
 		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.postageGetAllStampsHandler),
+			"GET": http.HandlerFunc(s.postageGetAllBatchesHandler),
 		})),
 	)
 
