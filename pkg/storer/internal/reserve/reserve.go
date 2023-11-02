@@ -344,7 +344,7 @@ func (r *Reserve) EvictBatchBin(
 		return 0, err
 	}
 
-	batchCnt := 1000
+	batchCnt := 1_000
 	evictionCompleted := 0
 
 	for i := 0; i < len(evicted); i += batchCnt {
@@ -371,15 +371,11 @@ func (r *Reserve) EvictBatchBin(
 			if err := batch.Commit(); err != nil {
 				return err
 			}
+
 			if err := r.cacheCb(ctx, store, moveToCache...); err != nil {
 				r.logger.Error(err, "evict and move to cache")
-				for _, rItem := range moveToCache {
-					err = store.ChunkStore().Delete(ctx, rItem)
-					if err != nil {
-						return err
-					}
-				}
 			}
+
 			return nil
 		})
 		if err != nil {
@@ -413,23 +409,9 @@ func (r *Reserve) DeleteChunk(
 	}
 	if err := r.cacheCb(ctx, store, item.Address); err != nil {
 		r.logger.Error(err, "delete and move to cache")
-		return store.ChunkStore().Delete(ctx, item.Address)
+		return err
 	}
 	return nil
-}
-
-// CleanupBinIndex removes the bin index entry for the chunk. This is called mainly
-// to cleanup the bin index if other indexes are missing during reserve cleanup.
-func (r *Reserve) CleanupBinIndex(
-	ctx context.Context,
-	batch storage.Batch,
-	chunkAddress swarm.Address,
-	binID uint64,
-) {
-	_ = batch.Delete(&ChunkBinItem{
-		Bin:   swarm.Proximity(r.baseAddr.Bytes(), chunkAddress.Bytes()),
-		BinID: binID,
-	})
 }
 
 func removeChunk(

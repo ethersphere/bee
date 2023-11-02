@@ -99,6 +99,117 @@ Some useful logging recommendations for cleaner output:
 - Avoid errors that are not really errors and can confuse the node operator. This sometimes happens when an application error is part of a successful execution flow.
 - Do not log the same or similar errors repeatedly. It can quickly clutter the log and hide the real cause. The frequency of error types is best addressed by monitoring, and logs need to capture details for only some of these errors.
 
+### Logger API
+
+In the current Bee code base, it is possible to change the granularity of logging for some services on the fly without the need to restart the node.
+These services and their corresponding loggers can be found using the `/loggers` endpoint. Example of the output:
+
+```json
+{
+  "tree": {
+    "node": {
+      "/": {
+        "api": {
+          "+": [
+            "info|node/api[0][]>>824634933256"
+          ]
+        },
+        "batchstore": {
+          "+": [
+            "info|node/batchstore[0][]>>824634933256"
+          ]
+        },
+        "leveldb": {
+          "+": [
+            "info|node/leveldb[0][]>>824634933256"
+          ]
+        },
+        "pseudosettle": {
+          "+": [
+            "info|node/pseudosettle[0][]>>824634933256"
+          ]
+        },
+        "pss": {
+          "+": [
+            "info|node/pss[0][]>>824634933256"
+          ]
+        },
+        "storer": {
+          "+": [
+            "info|node/storer[0][]>>824634933256"
+          ]
+        }
+      },
+      "+": [
+        "info|node[0][]>>824634933256"
+      ]
+    }
+  },
+  "loggers": [
+    {
+      "logger": "node/api",
+      "verbosity": "info",
+      "subsystem": "node/api[0][]>>824634933256",
+      "id": "bm9kZS9hcGlbMF1bXT4-ODI0NjM0OTMzMjU2"
+    },
+    {
+      "logger": "node/storer",
+      "verbosity": "info",
+      "subsystem": "node/storer[0][]>>824634933256",
+      "id": "bm9kZS9zdG9yZXJbMF1bXT4-ODI0NjM0OTMzMjU2"
+    },
+    {
+      "logger": "node/pss",
+      "verbosity": "info",
+      "subsystem": "node/pss[0][]>>824634933256",
+      "id": "bm9kZS9wc3NbMF1bXT4-ODI0NjM0OTMzMjU2"
+    },
+    {
+      "logger": "node/pseudosettle",
+      "verbosity": "info",
+      "subsystem": "node/pseudosettle[0][]>>824634933256",
+      "id": "bm9kZS9wc2V1ZG9zZXR0bGVbMF1bXT4-ODI0NjM0OTMzMjU2"
+    },
+    {
+      "logger": "node",
+      "verbosity": "info",
+      "subsystem": "node[0][]>>824634933256",
+      "id": "bm9kZVswXVtdPj44MjQ2MzQ5MzMyNTY="
+    },
+    {
+      "logger": "node/leveldb",
+      "verbosity": "info",
+      "subsystem": "node/leveldb[0][]>>824634933256",
+      "id": "bm9kZS9sZXZlbGRiWzBdW10-PjgyNDYzNDkzMzI1Ng=="
+    },
+    {
+      "logger": "node/batchstore",
+      "verbosity": "info",
+      "subsystem": "node/batchstore[0][]>>824634933256",
+      "id": "bm9kZS9iYXRjaHN0b3JlWzBdW10-PjgyNDYzNDkzMzI1Ng=="
+    }
+  ]
+}
+```
+
+The recorders come in two versions. The first is the tree version and the second is the flattened version. The `subsystem` field is the unique identifier of the logger.
+The `id` field is a version of the `subsystem` field encoded in base 64 for easier reference to a particular logger.
+The node name of the version tree is composed of the subsystem with the log level prefix and delimited by the `|` character.
+The number in the first square bracket indicates the logger's V-level.
+
+The logger endpoint uses HTTP PUT requests to modify the verbosity of the logger(s).
+The request must have the following parameters `/loggers/{subsystem}/{verbosity}`.
+The `{subsytem}` parameter is the base64 version of the subsytem field or regular expression corresponding to multiple subsystems.
+Since the loggers are arranged in tree structure, it is possible to turn on/off or change the logging level of the entire tree or just its branches with a single command.
+The verbosity can be one of `none`, `error`, `warning`, `info`, `debug` or a number in the range `1` to `1<<<31 - 1` to enable the verbosity of a particular V-level, if available for a given logger.
+A value of `all` will enable the highest verbosity of V-level.
+
+Examples:
+
+`curl -XPUT http://localhost:1635/loggers/bm9kZS8q/none` - will disable all loggers; `bm9kZS8q` is base64 encoded `node/*` regular expression.
+
+`curl -XPUT http://localhost:1635/loggers/bm9kZS9hcGlbMV1bXT4-ODI0NjM0OTMzMjU2/error` - will set the verbosity of the logger with the subsystem `node/api[1][]>>824634933256` to `error`.
+
 ## Commit Messages
 
 For commit messages, follow [this guideline](https://www.conventionalcommits.org/en/v1.0.0/). Use reasonable length for the subject and body, ideally no longer than 72 characters. Use the imperative mood for subject lines. A few examples:

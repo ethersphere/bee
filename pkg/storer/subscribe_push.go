@@ -6,11 +6,9 @@ package storer
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"time"
 
-	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storer/internal/upload"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -65,15 +63,21 @@ func (db *DB) SubscribePush(ctx context.Context) (<-chan swarm.Chunk, func()) {
 			db.logger.Debug("subscribe push: upload.Iterate complete", "count", count, "elapsed", time.Since(start))
 
 			if err != nil {
-				if !errors.Is(err, storage.ErrNotFound) {
-					db.logger.Error(err, "subscribe push: upload.Iterate error")
-					return
-				}
 				// if we get storage.ErrNotFound, it could happen that the previous
 				// iteration happened on a snapshot that was not fully updated yet.
 				// in this case, we wait for the next event to trigger the iteration
 				// again. This trigger ensures that we perform the iteration on the
 				// latest snapshot.
+				db.logger.Error(err, "subscribe push: iterate error")
+				select {
+				case <-db.quit:
+					return
+				case <-ctx.Done():
+					return
+				case <-stopChan:
+					return
+				case <-time.After(time.Second):
+				}
 				db.logger.Error(err, "subscribe push: upload.Iterate error, retriggering")
 				db.events.Trigger(subscribePushEventKey)
 			}

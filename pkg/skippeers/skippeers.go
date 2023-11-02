@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/swarm"
-	"golang.org/x/exp/maps"
 )
 
 const MaxDuration time.Duration = math.MaxInt64
@@ -131,7 +130,7 @@ func (l *List) Close() error {
 	l.wg.Wait()
 
 	l.mtx.Lock()
-	maps.Clear(l.skip)
+	clear(l.skip)
 	l.mtx.Unlock()
 
 	return nil

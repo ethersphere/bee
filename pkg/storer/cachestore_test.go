@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/spinlock"
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/storagetest"
 	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
@@ -99,6 +100,7 @@ func testCacheStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 		lstore.SetRepoStorePutHook(nil)
 		// add chunks beyond capacity and verify the correct chunks are removed
 		// from the cache based on last access order
+
 		newChunks := chunktesting.GenerateTestRandomChunks(5)
 		putter := lstore.Cache()
 		for _, ch := range newChunks {
@@ -113,8 +115,23 @@ func testCacheStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 			t.Fatal(err)
 		}
 
-		if info.Cache.Size != 10 {
-			t.Fatalf("unexpected cache size: want 10 have %d", info.Cache.Size)
+		info, err = lstore.DebugInfo(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = spinlock.WaitWithInterval(time.Second*5, time.Second, func() bool {
+			info, err = lstore.DebugInfo(context.Background())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if info.Cache.Size == 10 {
+				return true
+			}
+			return false
+		})
+		if err != nil {
+			t.Fatal(err)
 		}
 	})
 }

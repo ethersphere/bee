@@ -116,10 +116,7 @@ func bootstrapNode(
 	b.p2pService = p2ps
 	b.p2pHalter = p2ps
 
-	hive, err := hive.New(p2ps, addressbook, networkID, o.BootnodeMode, o.AllowPrivateCIDRs, logger)
-	if err != nil {
-		return nil, fmt.Errorf("hive: %w", err)
-	}
+	hive := hive.New(p2ps, addressbook, networkID, o.BootnodeMode, o.AllowPrivateCIDRs, logger)
 
 	if err = p2ps.AddProtocol(hive.Protocol()); err != nil {
 		return nil, fmt.Errorf("hive service: %w", err)
@@ -182,7 +179,9 @@ func bootstrapNode(
 	}
 	b.localstoreCloser = localStore
 
-	retrieve := retrieval.New(swarmAddress, localStore, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching)
+	radiusF := func() (uint8, error) { return swarm.MaxBins, nil }
+
+	retrieve := retrieval.New(swarmAddress, radiusF, localStore, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching)
 	if err = p2ps.AddProtocol(retrieve.Protocol()); err != nil {
 		return nil, fmt.Errorf("retrieval service: %w", err)
 	}

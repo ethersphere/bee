@@ -148,4 +148,3 @@ func Compact(ctx context.Context, basePath string, opts *Options, validate bool)
 
 	return nil
 }
-

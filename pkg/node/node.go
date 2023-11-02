@@ -95,6 +95,7 @@ type Bee struct {
 	errorLogWriter           io.Writer
 	tracerCloser             io.Closer
 	stateStoreCloser         io.Closer
+	stamperStoreCloser       io.Closer
 	localstoreCloser         io.Closer
 	topologyCloser           io.Closer
 	topologyHalter           topology.Halter
@@ -389,6 +390,7 @@ func NewBee(
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize stamper store: %w", err)
 	}
+	b.stamperStoreCloser = stamperStore
 
 	var debugService *api.Service
 
@@ -710,26 +712,6 @@ func NewBee(
 		return nil, err
 	}
 
-	if natManager := p2ps.NATManager(); natManager != nil {
-		// wait for nat manager to init
-		logger.Debug("initializing NAT manager")
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-natManager.Ready():
-			// this is magic sleep to give NAT time to sync the mappings
-			// this is a hack, kind of alchemy and should be improved
-			select {
-			case <-ctx.Done():
-				return nil, ctx.Err()
-			case <-time.After(3 * time.Second):
-			}
-			logger.Debug("NAT manager initialized")
-		case <-time.After(10 * time.Second):
-			logger.Warning("NAT manager init timeout")
-		}
-	}
-
 	// Construct protocols.
 	pingPong := pingpong.New(p2ps, logger, tracer)
 
@@ -737,10 +719,7 @@ func NewBee(
 		return nil, fmt.Errorf("pingpong service: %w", err)
 	}
 
-	hive, err := hive.New(p2ps, addressbook, networkID, o.BootnodeMode, o.AllowPrivateCIDRs, logger)
-	if err != nil {
-		return nil, fmt.Errorf("hive: %w", err)
-	}
+	hive := hive.New(p2ps, addressbook, networkID, o.BootnodeMode, o.AllowPrivateCIDRs, logger)
 
 	if err = p2ps.AddProtocol(hive.Protocol()); err != nil {
 		return nil, fmt.Errorf("hive service: %w", err)
@@ -750,7 +729,7 @@ func NewBee(
 	var swapService *swap.Service
 
 	kad, err := kademlia.New(swarmAddress, addressbook, hive, p2ps, logger,
-		kademlia.Options{Bootnodes: bootnodes, BootnodeMode: o.BootnodeMode, StaticNodes: o.StaticNodes, IgnoreRadius: !chainEnabled, DataDir: o.DataDir})
+		kademlia.Options{Bootnodes: bootnodes, BootnodeMode: o.BootnodeMode, StaticNodes: o.StaticNodes, DataDir: o.DataDir})
 	if err != nil {
 		return nil, fmt.Errorf("unable to create kademlia: %w", err)
 	}
@@ -816,11 +795,6 @@ func NewBee(
 			if err != nil {
 				syncErr.Store(err)
 				return nil, fmt.Errorf("unable to start batch service: %w", err)
-			} else {
-				err = post.SetExpired()
-				if err != nil {
-					return nil, fmt.Errorf("unable to set expirations: %w", err)
-				}
 			}
 		} else {
 			go func() {
@@ -831,11 +805,6 @@ func NewBee(
 					syncErr.Store(err)
 					logger.Error(err, "unable to sync batches")
 					b.syncingStopped.Signal() // trigger shutdown in start.go
-				} else {
-					err = post.SetExpired()
-					if err != nil {
-						logger.Error(err, "unable to set expirations")
-					}
 				}
 			}()
 		}
@@ -934,9 +903,6 @@ func NewBee(
 
 	pricing.SetPaymentThresholdObserver(acc)
 
-	retrieve := retrieval.New(swarmAddress, localStore, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching)
-	localStore.SetRetrievalService(retrieve)
-
 	pssService := pss.New(pssPrivateKey, logger)
 	b.pssCloser = pssService
 
@@ -953,22 +919,25 @@ func NewBee(
 		return nil, fmt.Errorf("status service: %w", err)
 	}
 
-	saludService := salud.New(nodeStatus, kad, localStore, logger, warmupTime, api.FullMode.String(), salud.DefaultMinPeersPerBin)
+	saludService := salud.New(nodeStatus, kad, localStore, logger, warmupTime, api.FullMode.String(), salud.DefaultMinPeersPerBin, salud.DefaultDurPercentile, salud.DefaultConnsPercentile)
 	b.saludCloser = saludService
 
 	rC, unsub := saludService.SubscribeNetworkStorageRadius()
 	initialRadiusC := make(chan struct{})
-	var radius atomic.Uint32
-	radius.Store(uint32(swarm.MaxPO))
+	var networkR atomic.Uint32
+	networkR.Store(uint32(swarm.MaxBins))
 
 	go func() {
 		for {
 			select {
 			case r := <-rC:
-				prev := radius.Load()
-				radius.Store(uint32(r))
-				if prev == uint32(swarm.MaxPO) {
+				prev := networkR.Load()
+				networkR.Store(uint32(r))
+				if prev == uint32(swarm.MaxBins) {
 					close(initialRadiusC)
+				}
+				if !o.FullNodeMode { // light and ultra-light nodes do not have a reserve worker to set the radius.
+					kad.SetStorageRadius(r)
 				}
 			case <-ctx.Done():
 				unsub()
@@ -977,8 +946,16 @@ func NewBee(
 		}
 	}()
 
-	networkRadiusFunc := func() (uint8, error) {
-		if radius.Load() == uint32(swarm.MaxPO) {
+	radiusFunc := func() (uint8, error) {
+		currentRadius := localStore.StorageRadius()
+		if currentRadius == 0 { // the radius has not been set by localstore yet
+			currentRadius = uint8(networkR.Load())
+		}
+		return currentRadius, nil
+	}
+
+	waitNetworkRFunc := func() (uint8, error) {
+		if networkR.Load() == uint32(swarm.MaxBins) {
 			select {
 			case <-initialRadiusC:
 			case <-ctx.Done():
@@ -986,10 +963,13 @@ func NewBee(
 			}
 		}
 
-		return uint8(radius.Load()), nil
+		return radiusFunc()
 	}
 
-	pusherService := pusher.New(networkID, localStore, networkRadiusFunc, pushSyncProtocol, validStamp, logger, tracer, warmupTime, pusher.DefaultRetryCount)
+	retrieval := retrieval.New(swarmAddress, radiusFunc, localStore, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching)
+	localStore.SetRetrievalService(retrieval)
+
+	pusherService := pusher.New(networkID, localStore, waitNetworkRFunc, pushSyncProtocol, validStamp, logger, tracer, warmupTime, pusher.DefaultRetryCount)
 	b.pusherCloser = pusherService
 
 	pusherService.AddFeed(localStore.PusherFeed())
@@ -997,7 +977,7 @@ func NewBee(
 	pullSyncProtocol := pullsync.New(p2ps, localStore, pssService.TryUnwrap, validStamp, logger, pullsync.DefaultMaxPage)
 	b.pullSyncCloser = pullSyncProtocol
 
-	retrieveProtocolSpec := retrieve.Protocol()
+	retrieveProtocolSpec := retrieval.Protocol()
 	pushSyncProtocolSpec := pushSyncProtocol.Protocol()
 	pullSyncProtocolSpec := pullSyncProtocol.Protocol()
 
@@ -1047,7 +1027,7 @@ func NewBee(
 		pullerService = puller.New(stateStore, kad, localStore, pullSyncProtocol, p2ps, logger, puller.Options{})
 		b.pullerCloser = pullerService
 
-		localStore.StartReserveWorker(ctx, pullerService, networkRadiusFunc)
+		localStore.StartReserveWorker(ctx, pullerService, waitNetworkRFunc)
 		nodeStatus.SetSync(pullerService)
 
 		if o.EnableStorageIncentives {
@@ -1103,7 +1083,7 @@ func NewBee(
 	b.resolverCloser = multiResolver
 
 	feedFactory := factory.New(localStore.Download(true))
-	steward := steward.New(localStore, retrieve)
+	steward := steward.New(localStore, retrieval)
 
 	extraOpts := api.ExtraOptions{
 		Pingpong:        pingPong,
@@ -1191,7 +1171,7 @@ func NewBee(
 		debugService.MustRegisterMetrics(pushSyncProtocol.Metrics()...)
 		debugService.MustRegisterMetrics(pusherService.Metrics()...)
 		debugService.MustRegisterMetrics(pullSyncProtocol.Metrics()...)
-		debugService.MustRegisterMetrics(retrieve.Metrics()...)
+		debugService.MustRegisterMetrics(retrieval.Metrics()...)
 		debugService.MustRegisterMetrics(lightNodes.Metrics()...)
 		debugService.MustRegisterMetrics(hive.Metrics()...)
 
@@ -1369,6 +1349,7 @@ func (b *Bee) Shutdown() error {
 	tryClose(b.topologyCloser, "topology driver")
 	tryClose(b.storageIncetivesCloser, "storage incentives agent")
 	tryClose(b.stateStoreCloser, "statestore")
+	tryClose(b.stamperStoreCloser, "stamperstore")
 	tryClose(b.localstoreCloser, "localstore")
 	tryClose(b.resolverCloser, "resolver service")
 

@@ -37,7 +37,7 @@ func TestFactoryERC20Address(t *testing.T) {
 			transactionmock.WithABICall(
 				&factoryABI,
 				factoryAddress,
-				erc20Address.Hash().Bytes(),
+				common.BytesToHash(erc20Address.Bytes()).Bytes(),
 				"ERC20Address",
 			),
 		),

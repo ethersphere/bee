@@ -249,6 +249,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		} else if !soc.Valid(chunk) {
 			s.logger.Debug("invalid cac/soc chunk", "error", swarm.ErrInvalidChunk, "peer_address", peer, "chunk", chunk)
 			chunkErr = errors.Join(chunkErr, swarm.ErrInvalidChunk)
+			s.metrics.ReceivedInvalidChunk.Inc()
 			continue
 		}
 		chunksToPut = append(chunksToPut, chunk)

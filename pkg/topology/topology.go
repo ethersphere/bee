@@ -26,7 +26,6 @@ type Driver interface {
 	PeerAdder
 	ClosestPeerer
 	PeerIterator
-	NeighborhoodDepther
 	SubscribeTopologyChange() (c <-chan struct{}, unsubscribe func())
 	io.Closer
 	Halter
@@ -67,7 +66,7 @@ type Select struct {
 }
 
 // EachPeerFunc is a callback that is called with a peer and its PO
-type EachPeerFunc func(swarm.Address, uint8) (stop, jumpToNext bool, err error)
+type EachPeerFunc func(addr swarm.Address, bin uint8) (stop, jumpToNext bool, err error)
 
 // PeerInfo is a view of peer information exposed to a user.
 type PeerInfo struct {
@@ -146,10 +145,6 @@ type Halter interface {
 	// Halt the topology from initiating new connections
 	// while allowing it to still run.
 	Halt()
-}
-
-type NeighborhoodDepther interface {
-	NeighborhoodDepth() uint8
 }
 
 type SetStorageRadiuser interface {

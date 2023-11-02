@@ -6,8 +6,10 @@ package postage
 
 import (
 	"bytes"
+	"context"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"math/big"
 	"sync"
@@ -47,7 +49,7 @@ type Service interface {
 // stores the active batches.
 type service struct {
 	logger       log.Logger
-	lock         sync.Mutex
+	mtx          sync.Mutex
 	store        storage.Store
 	postageStore Storer
 	chainID      int64
@@ -62,7 +64,8 @@ func NewService(logger log.Logger, store storage.Store, postageStore Storer, cha
 		postageStore: postageStore,
 		chainID:      chainID,
 	}
-	err := store.Iterate(
+
+	return s, s.store.Iterate(
 		storage.Query{
 			Factory: func() storage.Item {
 				return new(StampIssuerItem)
@@ -72,16 +75,12 @@ func NewService(logger log.Logger, store storage.Store, postageStore Storer, cha
 			_ = s.add(issuer)
 			return false, nil
 		})
-	if err != nil {
-		return nil, err
-	}
-	return s, nil
 }
 
 // Add adds a stamp issuer to the active issuers.
 func (ps *service) Add(st *StampIssuer) error {
-	ps.lock.Lock()
-	defer ps.lock.Unlock()
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
 
 	if !ps.add(st) {
 		return nil
@@ -108,19 +107,20 @@ func (ps *service) HandleCreate(b *Batch, amount *big.Int) error {
 // HandleTopUp implements the BatchEventListener interface. This is fired on receiving
 // a batch topup event from the blockchain to update stampissuer details
 func (ps *service) HandleTopUp(batchID []byte, amount *big.Int) {
-	ps.lock.Lock()
-	defer ps.lock.Unlock()
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
 
 	for _, v := range ps.issuers {
 		if bytes.Equal(v.data.BatchID, batchID) {
 			v.data.BatchAmount.Add(v.data.BatchAmount, amount)
+			return
 		}
 	}
 }
 
 func (ps *service) HandleDepthIncrease(batchID []byte, newDepth uint8) {
-	ps.lock.Lock()
-	defer ps.lock.Unlock()
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
 
 	for _, v := range ps.issuers {
 		if bytes.Equal(batchID, v.data.BatchID) {
@@ -134,8 +134,8 @@ func (ps *service) HandleDepthIncrease(batchID []byte, newDepth uint8) {
 
 // StampIssuers returns the currently active stamp issuers.
 func (ps *service) StampIssuers() []*StampIssuer {
-	ps.lock.Lock()
-	defer ps.lock.Unlock()
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
 	return ps.issuers
 }
 
@@ -154,8 +154,8 @@ func (ps *service) IssuerUsable(st *StampIssuer) bool {
 
 // GetStampIssuer finds a stamp issuer by batch ID.
 func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, func() error, error) {
-	ps.lock.Lock()
-	defer ps.lock.Unlock()
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
 
 	for _, st := range ps.issuers {
 		if bytes.Equal(batchID, st.data.BatchID) {
@@ -167,6 +167,8 @@ func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, func() error, e
 			}
 			st.logger.Debug("postage.GetStampIssuer", "label", st.data.Label, "batch", hex.EncodeToString(st.data.BatchID))
 			return st, func() error {
+				ps.mtx.Lock()
+				defer ps.mtx.Unlock()
 				return ps.save(st)
 			}, nil
 		}
@@ -178,6 +180,7 @@ func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, func() error, e
 func (ps *service) save(st *StampIssuer) error {
 	st.bucketMtx.Lock()
 	defer st.bucketMtx.Unlock()
+
 	if err := ps.store.Put(&StampIssuerItem{
 		Issuer: st,
 	}); err != nil {
@@ -187,8 +190,8 @@ func (ps *service) save(st *StampIssuer) error {
 }
 
 func (ps *service) Close() error {
-	ps.lock.Lock()
-	defer ps.lock.Unlock()
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
 	var err error
 	for _, issuer := range ps.issuers {
 		err = errors.Join(err, ps.save(issuer))
@@ -197,32 +200,74 @@ func (ps *service) Close() error {
 }
 
 // HandleStampExpiry handles stamp expiry for a given id.
-func (ps *service) HandleStampExpiry(id []byte) {
-	ps.lock.Lock()
-	defer ps.lock.Unlock()
-	for _, v := range ps.issuers {
-		if bytes.Equal(id, v.ID()) {
-			v.SetExpired(true)
-		}
-	}
-}
+func (ps *service) HandleStampExpiry(ctx context.Context, id []byte) error {
 
-// SetExpired sets expiry for all non-existing batches.
-func (ps *service) SetExpired() error {
-	ps.lock.Lock()
-	defer ps.lock.Unlock()
-	for _, issuer := range ps.issuers {
-		exists, err := ps.postageStore.Exists(issuer.ID())
-		if err != nil {
-			ps.logger.Error(err, "set expired: checking if issuer exists", "id", issuer.ID())
-			return err
-		}
-		issuer.SetExpired(!exists)
+	exists, err := ps.removeIssuer(ctx, id)
+	if err != nil {
+		return err
 	}
+
+	if exists {
+		return ps.removeStampItems(ctx, id)
+	}
+
 	return nil
 }
 
+// removeStampItems
+func (ps *service) removeStampItems(ctx context.Context, batchID []byte) error {
+
+	ps.logger.Debug("removing expired stamp items", "batchID", hex.EncodeToString(batchID))
+
+	deleteItemC := make(chan *StampItem)
+	go func() {
+		for item := range deleteItemC {
+			_ = ps.store.Delete(item)
+		}
+	}()
+
+	count := 0
+
+	defer func() {
+		close(deleteItemC)
+		ps.logger.Debug("removed expired stamps", "batchID", hex.EncodeToString(batchID), "count", count)
+	}()
+
+	return ps.store.Iterate(
+		storage.Query{
+			Factory: func() storage.Item { return new(StampItem) },
+			Prefix:  string(batchID),
+		}, func(result storage.Result) (bool, error) {
+			select {
+			case deleteItemC <- result.Entry.(*StampItem):
+			case <-ctx.Done():
+				return false, ctx.Err()
+			}
+			count++
+			return false, nil
+		})
+}
+
+// SetExpired removes all expired batches from the stamp issuers.
+func (ps *service) removeIssuer(ctx context.Context, batchID []byte) (bool, error) {
+	ps.mtx.Lock()
+	defer ps.mtx.Unlock()
+
+	for i, issuer := range ps.issuers {
+		if bytes.Equal(batchID, issuer.data.BatchID) {
+			if err := ps.store.Delete(&StampIssuerItem{Issuer: issuer}); err != nil {
+				return true, fmt.Errorf("set expired: delete stamp data for batch %s: %w", hex.EncodeToString(issuer.ID()), err)
+			}
+			ps.issuers = append(ps.issuers[:i], ps.issuers[i+1:]...)
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 // add adds a stamp issuer to the active issuers and returns false if it is already present.
+// Must be mutex locked before usage.
 func (ps *service) add(st *StampIssuer) bool {
 	for _, v := range ps.issuers {
 		if bytes.Equal(st.data.BatchID, v.data.BatchID) {

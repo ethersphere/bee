@@ -5,6 +5,8 @@
 package postage_test
 
 import (
+	"bytes"
+	"context"
 	crand "crypto/rand"
 	"errors"
 	"io"
@@ -15,7 +17,10 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	pstoremock "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/inmemstore"
+	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
 // TestSaveLoad tests the idempotence of saving and loading the postage.Service
@@ -200,4 +205,81 @@ func TestGetStampIssuer(t *testing.T) {
 			t.Fatalf("expected depth %d got %d", 17, stampIssuer.Depth())
 		}
 	})
+}
+
+func TestSetExpired(t *testing.T) {
+	store := inmemstore.New()
+	testutil.CleanupCloser(t, store)
+
+	batch := swarm.RandAddress(t).Bytes()
+	notExistsBatch := swarm.RandAddress(t).Bytes()
+
+	pstore := pstoremock.New(pstoremock.WithExistsFunc(func(b []byte) (bool, error) {
+		return bytes.Equal(b, batch), nil
+	}))
+
+	ps, err := postage.NewService(log.Noop, store, pstore, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = store.Put(postage.NewStampItem().WithChunkAddress(swarm.RandAddress(t)).WithBatchID(batch))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = store.Put(postage.NewStampItem().WithChunkAddress(swarm.RandAddress(t)).WithBatchID(notExistsBatch))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	issuer := newTestStampIssuer(t, 1000)
+	err = ps.Add(issuer)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, err = ps.GetStampIssuer(issuer.ID())
+	if !errors.Is(err, postage.ErrNotUsable) {
+		t.Fatalf("expected %v, got %v", postage.ErrNotUsable, err)
+	}
+
+	err = ps.HandleStampExpiry(context.Background(), issuer.ID())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, err = ps.GetStampIssuer(issuer.ID())
+	if !errors.Is(err, postage.ErrNotFound) {
+		t.Fatalf("expected %v, got %v", postage.ErrNotFound, err)
+	}
+
+	err = store.Iterate(
+		storage.Query{
+			Factory: func() storage.Item {
+				return new(postage.StampItem)
+			},
+		}, func(result storage.Result) (bool, error) {
+			item := result.Entry.(*postage.StampItem)
+			exists, err := pstore.Exists(item.BatchID)
+			if err != nil {
+				return false, err
+			}
+
+			if bytes.Equal(item.BatchID, notExistsBatch) && exists {
+				return false, errors.New("found stamp item belonging to a non-existent batch")
+			}
+
+			if bytes.Equal(item.BatchID, batch) && !exists {
+				return false, errors.New("found stamp item belonging to a batch that should exist")
+			}
+
+			return false, nil
+		},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	testutil.CleanupCloser(t, ps)
 }
