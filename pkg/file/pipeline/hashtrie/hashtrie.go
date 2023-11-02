@@ -21,29 +21,35 @@ var (
 const maxLevel = 8
 
 type hashTrieWriter struct {
-	branching  int
-	chunkSize  int
-	refSize    int
-	fullChunk  int    // full chunk size in terms of the data represented in the buffer (span+refsize)
-	cursors    []int  // level cursors, key is level. level 0 is data level holds how many chunks were processed. Intermediate higher levels will always have LOWER cursor values.
-	buffer     []byte // keeps intermediate level data
-	full       bool   // indicates whether the trie is full. currently we support (128^7)*4096 = 2305843009213693952 bytes
-	rParams    *redundancy.Params
-	pipelineFn pipeline.PipelineFunc
+	branching              int
+	chunkSize              int
+	refSize                int
+	cursors                []int  // level cursors, key is level. level 0 is data level holds how many chunks were processed. Intermediate higher levels will always have LOWER cursor values.
+	buffer                 []byte // keeps intermediate level data
+	full                   bool   // indicates whether the trie is full. currently we support (128^7)*4096 = 2305843009213693952 bytes
+	pipelineFn             pipeline.PipelineFunc
+	rParams                *redundancy.Params
+	parityChunkFn          redundancy.ParityChunkCallback
+	effectiveChunkCounters []uint8 // counts the effective chunk references in intermediate chunks. key is the chunk level.
+	effectiveChunkMax      uint8   // maximum number of effective chunk references in intermediate chunks.
 }
 
 func NewHashTrieWriter(chunkSize, branching, refLen int, rParams *redundancy.Params, pipelineFn pipeline.PipelineFunc) pipeline.ChainWriter {
-
-	return &hashTrieWriter{
-		branching:  branching,
-		chunkSize:  chunkSize,
-		refSize:    refLen,
-		fullChunk:  (refLen + swarm.SpanSize) * branching,
-		cursors:    make([]int, 9),
-		buffer:     make([]byte, swarm.ChunkWithSpanSize*9*2), // double size as temp workaround for weak calculation of needed buffer space
-		rParams:    rParams,
-		pipelineFn: pipelineFn,
+	h := &hashTrieWriter{
+		branching:         branching,
+		chunkSize:         chunkSize,
+		refSize:           refLen,
+		cursors:           make([]int, 9),
+		buffer:            make([]byte, swarm.ChunkWithSpanSize*9*2), // double size as temp workaround for weak calculation of needed buffer space
+		rParams:           rParams,
+		pipelineFn:        pipelineFn,
+		effectiveChunkMax: uint8(rParams.MaxShards()),
 	}
+	h.parityChunkFn = func(level int, span, address []byte) error {
+		return h.writeToIntermediateLevel(level, true, span, address, []byte{})
+	}
+
+	return h
 }
 
 // accepts writes of hashes from the previous writer in the chain, by definition these writes
@@ -58,35 +64,39 @@ func (h *hashTrieWriter) ChainWrite(p *pipeline.PipeWriteArgs) error {
 		return errTrieFull
 	}
 	if h.rParams.Level() == redundancy.NONE {
-		return h.writeToIntermediateLevel(1, p.Span, p.Ref, p.Key)
+		return h.writeToIntermediateLevel(1, false, p.Span, p.Ref, p.Key)
 	} else {
 		return h.writeToDataLevel(p.Span, p.Ref, p.Key, p.Data)
 	}
 }
 
-func (h *hashTrieWriter) writeToIntermediateLevel(level int, span, ref, key []byte) error {
+func (h *hashTrieWriter) writeToIntermediateLevel(level int, parityChunk bool, span, ref, key []byte) error {
 	copy(h.buffer[h.cursors[level]:h.cursors[level]+len(span)], span)
 	h.cursors[level] += len(span)
 	copy(h.buffer[h.cursors[level]:h.cursors[level]+len(ref)], ref)
 	h.cursors[level] += len(ref)
 	copy(h.buffer[h.cursors[level]:h.cursors[level]+len(key)], key)
 	h.cursors[level] += len(key)
-	howLong := (h.refSize + swarm.SpanSize) * h.branching
+	if !parityChunk {
+		h.effectiveChunkCounters[level]++
+	}
 
-	if h.levelSize(level) == howLong {
-		return h.wrapFullLevel(level)
+	if h.effectiveChunkCounters[level] == h.effectiveChunkMax {
+		err := h.wrapFullLevel(level)
+		h.effectiveChunkCounters[level] = 0
+		return err
 	}
 	return nil
 }
 
 func (h *hashTrieWriter) writeToDataLevel(span, ref, key, data []byte) error {
 	// write dataChunks to the level above
-	err := h.writeToIntermediateLevel(1, span, ref, key)
+	err := h.writeToIntermediateLevel(1, false, span, ref, key)
 	if err != nil {
 		return err
 	}
 
-	return h.rParams.ChainWrite(0, span, ref, data, h.writeToIntermediateLevel)
+	return h.rParams.ChunkWrite(0, span, ref, data, h.parityChunkFn)
 }
 
 // wrapLevel wraps an existing level and writes the resulting hash to the following level
@@ -124,12 +134,12 @@ func (h *hashTrieWriter) wrapFullLevel(level int) error {
 		return err
 	}
 
-	err = h.writeToIntermediateLevel(level+1, args.Span, args.Ref, args.Key)
+	err = h.writeToIntermediateLevel(level+1, false, args.Span, args.Ref, args.Key)
 	if err != nil {
 		return err
 	}
 
-	err = h.rParams.ChainWrite(level, spb, args.Ref, data, h.writeToIntermediateLevel)
+	err = h.rParams.ChunkWrite(level, spb, args.Ref, data, h.parityChunkFn)
 	if err != nil {
 		return err
 	}
@@ -141,13 +151,6 @@ func (h *hashTrieWriter) wrapFullLevel(level int) error {
 		h.full = true
 	}
 	return nil
-}
-
-func (h *hashTrieWriter) levelSize(level int) int {
-	if level == 8 {
-		return h.cursors[level]
-	}
-	return h.cursors[level] - h.cursors[level+1]
 }
 
 // Sum returns the Swarm merkle-root content-addressed hash
@@ -166,17 +169,13 @@ func (h *hashTrieWriter) levelSize(level int) int {
 //   - more than one hash, in which case we _do_ perform a hashing operation, appending the hash to
 //     the next level
 func (h *hashTrieWriter) Sum() ([]byte, error) {
-	oneRef := h.refSize + swarm.SpanSize
 	for i := 1; i < maxLevel; i++ {
-		l := h.levelSize(i)
-		if l%oneRef != 0 {
-			return nil, errInconsistentRefs
-		}
+		l := h.effectiveChunkCounters[i]
 		switch {
 		case l == 0:
 			// level empty, continue to the next.
 			continue
-		case l == h.fullChunk:
+		case l == h.effectiveChunkMax:
 			// this case is possible and necessary due to the carry over
 			// in the next switch case statement. normal writes done
 			// through writeToLevel will automatically wrap a full level.
@@ -184,7 +183,7 @@ func (h *hashTrieWriter) Sum() ([]byte, error) {
 			if err != nil {
 				return nil, err
 			}
-		case l == oneRef:
+		case l == 1:
 			// this cursor assignment basically means:
 			// take the hash|span|key from this level, and append it to
 			// the data of the next level. you may wonder how this works:
@@ -199,6 +198,8 @@ func (h *hashTrieWriter) Sum() ([]byte, error) {
 			// that might or might not have data. the eventual result is that the last
 			// hash generated will always be carried over to the last level (8), then returned.
 			h.cursors[i+1] = h.cursors[i]
+			h.effectiveChunkCounters[i]--
+			h.effectiveChunkCounters[i+1]++
 		default:
 			// more than 0 but smaller than chunk size - wrap the level to the one above it
 			err := h.wrapFullLevel(i)
@@ -207,12 +208,12 @@ func (h *hashTrieWriter) Sum() ([]byte, error) {
 			}
 		}
 	}
-	levelLen := h.levelSize(8)
-	if levelLen != oneRef {
+	levelLen := h.effectiveChunkCounters[maxLevel]
+	if levelLen != 1 {
 		return nil, errInconsistentRefs
 	}
 
 	// return the hash in the highest level, that's all we need
-	data := h.buffer[0:h.cursors[8]]
-	return data[8:], nil
+	data := h.buffer[0:h.cursors[maxLevel]]
+	return data[swarm.SpanSize:], nil
 }

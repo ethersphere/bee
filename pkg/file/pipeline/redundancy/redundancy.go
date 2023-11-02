@@ -116,7 +116,8 @@ func (l Level) GetMaxEncShards() int {
 	return (swarm.Branches - p) / 2
 }
 
-type parityChunkCallback func(level int, span, address, key []byte) error
+// ParityChunkCallback is called when a new parity chunk has been created
+type ParityChunkCallback func(level int, span, address []byte) error
 
 type Params struct {
 	level      Level
@@ -178,8 +179,8 @@ func (p *Params) Parity(shards int) int {
 	return p.level.GetParities(shards)
 }
 
-// ChainWrite caches the chunk data on the given chunk level and if it is full then it calls Encode
-func (p *Params) ChainWrite(chunkLevel int, span, ref, data []byte, callback parityChunkCallback) error {
+// ChunkWrite caches the chunk data on the given chunk level and if it is full then it calls Encode
+func (p *Params) ChunkWrite(chunkLevel int, span, ref, data []byte, callback ParityChunkCallback) error {
 	if p.level == NONE {
 		return nil
 	}
@@ -196,7 +197,7 @@ func (p *Params) ChainWrite(chunkLevel int, span, ref, data []byte, callback par
 	return nil
 }
 
-func (p *Params) Encode(chunkLevel int, callback parityChunkCallback) error {
+func (p *Params) Encode(chunkLevel int, callback ParityChunkCallback) error {
 	if p.level == NONE {
 		return nil
 	}
@@ -205,7 +206,7 @@ func (p *Params) Encode(chunkLevel int, callback parityChunkCallback) error {
 }
 
 // Encode produces and stores parity chunks that will be also passed back to the caller
-func (p *Params) encode(chunkLevel int, callback parityChunkCallback) error {
+func (p *Params) encode(chunkLevel int, callback ParityChunkCallback) error {
 	shards := p.cursor[chunkLevel]
 	parities := p.Parity(shards)
 	enc, err := reedsolomon.New(shards, parities)
@@ -236,7 +237,7 @@ func (p *Params) encode(chunkLevel int, callback parityChunkCallback) error {
 		}
 
 		// write parity chunk to the level above
-		callback(chunkLevel+1, span, args.Ref, args.Key)
+		callback(chunkLevel+1, span, args.Ref)
 	}
 	// reset cursor of dataBuffer in case it was a full chunk
 	p.cursor[chunkLevel] = 0
