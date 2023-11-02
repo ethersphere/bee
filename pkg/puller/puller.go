@@ -195,7 +195,9 @@ func (p *Puller) recalcPeers(ctx context.Context, storageRadius uint8) {
 	var wg sync.WaitGroup
 	for _, peer := range p.syncPeers {
 		wg.Add(1)
+		p.wg.Add(1)
 		go func(peer *syncPeer) {
+			defer p.wg.Done()
 			defer wg.Done()
 			if err := p.syncPeer(ctx, peer, storageRadius); err != nil {
 				p.logger.Debug("sync peer failed", "peer_address", peer.address, "error", err)
@@ -325,7 +327,10 @@ func (p *Puller) syncWorker(ctx context.Context, peer swarm.Address, bin uint8, 
 		}
 
 		if top <= cur {
+			p.metrics.SyncedCounter.WithLabelValues("historical").Add(float64(count))
 			p.rate.Add(count)
+		} else {
+			p.metrics.SyncedCounter.WithLabelValues("live").Add(float64(count))
 		}
 
 		if top >= s {
