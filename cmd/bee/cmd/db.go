@@ -684,6 +684,8 @@ func dbNukeCmd(cmd *cobra.Command) {
 				return nil
 			}
 
+			logger.Info("nuking statestore...")
+
 			forgetStamps, err := cmd.Flags().GetBool(optionNameForgetStamps)
 			if err != nil {
 				return fmt.Errorf("get forget stamps: %w", err)
