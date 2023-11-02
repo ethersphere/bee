@@ -263,7 +263,7 @@ func TestPostageGetStamps(t *testing.T) {
 
 		jsonhttptest.Request(t, ts, http.MethodGet, "/stamps/"+hex.EncodeToString(eb.ID), http.StatusNotFound,
 			jsonhttptest.WithExpectedJSONResponse(&jsonhttp.StatusResponse{
-				Message: "unable to get stamp issuer",
+				Message: "issuer does not exist",
 				Code:    404,
 			}),
 		)
