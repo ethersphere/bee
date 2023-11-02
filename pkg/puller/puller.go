@@ -192,19 +192,22 @@ func (p *Puller) disconnectPeer(addr swarm.Address) {
 // recalcPeers starts or stops syncing process for peers per bin depending on the current sync radius.
 // Must be called under lock.
 func (p *Puller) recalcPeers(ctx context.Context, storageRadius uint8) {
-	var errs error
+	var wg sync.WaitGroup
 	for _, peer := range p.syncPeers {
-		peer.mtx.Lock()
-		errs = errors.Join(p.syncPeer(ctx, peer, storageRadius))
-		peer.mtx.Unlock()
+		wg.Add(1)
+		go func(peer *syncPeer) {
+			defer wg.Done()
+			if err := p.syncPeer(ctx, peer, storageRadius); err != nil {
+				p.logger.Debug("sync peer failed", "peer_address", peer.address, "error", err)
+			}
+		}(peer)
 	}
-	if errs != nil {
-		p.logger.Debug("recalculation failed", "error", errs)
-	}
+	wg.Wait()
 }
 
-// Must be called under syncPeer lock.
 func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, storageRadius uint8) error {
+	peer.mtx.Lock()
+	defer peer.mtx.Unlock()
 
 	if peer.cursors == nil {
 		cursors, epoch, err := p.syncer.GetCursors(ctx, peer.address)
@@ -490,8 +493,9 @@ func newSyncPeer(addr swarm.Address, bins, po uint8) *syncPeer {
 
 // called when peer disconnects or on shutdown, cleans up ongoing sync operations
 func (p *syncPeer) gone() {
-	for _, c := range p.binCancelFuncs {
+	for bin, c := range p.binCancelFuncs {
 		c()
+		delete(p.binCancelFuncs, bin)
 	}
 	p.wg.Wait()
 }
