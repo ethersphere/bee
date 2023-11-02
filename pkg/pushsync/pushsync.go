@@ -28,7 +28,7 @@ import (
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
 	opentracing "github.com/opentracing/opentracing-go"
-	opentracinglog "github.com/opentracing/opentracing-go/log"
+	"github.com/opentracing/opentracing-go/ext"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -187,10 +187,10 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	chunk := swarm.NewChunk(swarm.NewAddress(ch.Address), ch.Data)
 	chunkAddress := chunk.Address()
 
-	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, opentracing.Tag{Key: "address", Value: chunkAddress.String()})
+	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, opentracing.Tag{Key: "address", Value: chunkAddress.String()}, opentracing.Tag{Key: "tagID", Value: chunk.TagID()}, opentracing.Tag{Key: "sender_address", Value: p.Address.String()})
 	defer func() {
 		if err != nil {
-			span.LogFields(opentracinglog.Error(err))
+			ext.LogError(span, err)
 		}
 		span.Finish()
 	}()
@@ -456,11 +456,11 @@ func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptRes
 
 	now := time.Now()
 
-	spanInner, _, ctx := ps.tracer.FollowSpanFromContext(tracing.WithContext(ctx, span), "push-chunk", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
+	spanInner, _, ctx := ps.tracer.FollowSpanFromContext(tracing.WithContext(ctx, span), "push-chunk-async", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
 
 	defer func() {
 		if err != nil {
-			spanInner.LogFields(opentracinglog.Error(err))
+			ext.LogError(spanInner, err)
 		}
 		spanInner.Finish()
 		select {

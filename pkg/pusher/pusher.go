@@ -25,6 +25,8 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go/ext"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -57,6 +59,7 @@ type Service struct {
 	inflight          *inflight
 	attempts          *attempts
 	smuggler          chan OpChan
+	tracer            *tracing.Tracer
 }
 
 const (
@@ -94,6 +97,7 @@ func New(
 		inflight:          newInflight(),
 		attempts:          &attempts{retryCount: retryCount, attempts: make(map[string]int)},
 		smuggler:          make(chan OpChan),
+		tracer:            tracer,
 	}
 	go p.chunksWorker(warmupTime, tracer)
 	return p
@@ -167,9 +171,14 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 			}
 		}()
 
+		pSpan := tracing.FromContext(ctx)
+
 		s.metrics.TotalToPush.Inc()
 		ctx, logger := ctxLogger()
 		startTime := time.Now()
+
+		pushSpan, _, ctx := s.tracer.FollowSpanFromContext(tracing.WithContext(ctx, pSpan), "chunks-worker-push", s.logger, opentracing.Tag{Key: "tagID", Value: op.Chunk.TagID()}, opentracing.Tag{Key: "address", Value: op.Chunk.Address()})
+		defer pushSpan.Finish()
 
 		if op.Direct {
 			err = s.pushDirect(ctx, logger, op)
@@ -180,6 +189,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 		if err != nil {
 			s.metrics.TotalErrors.Inc()
 			s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())
+			ext.LogError(pushSpan, err)
 		}
 
 		s.metrics.SyncTime.Observe(time.Since(startTime).Seconds())
