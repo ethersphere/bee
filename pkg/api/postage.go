@@ -183,8 +183,7 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request
 
 		exists, err := s.batchStore.Exists(v.ID())
 		if err != nil {
-			logger.Debug("get stamp issuer: check batch failed", "batch_id", hex.EncodeToString(v.ID()), "error", err)
-			logger.Error(nil, "get stamp issuer: check batch failed")
+			logger.Error(err, "get stamp issuer: check batch failed", "batch_id", hex.EncodeToString(v.ID()))
 			jsonhttp.InternalServerError(w, "unable to check batch")
 			return
 		}
@@ -194,8 +193,7 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request
 
 		batchTTL, err := s.estimateBatchTTLFromID(v.ID())
 		if err != nil {
-			logger.Debug("get stamp issuer: estimate batch expiration failed", "batch_id", hex.EncodeToString(v.ID()), "error", err)
-			logger.Error(nil, "get stamp issuer: estimate batch expiration failed")
+			logger.Error(err, "get stamp issuer: estimate batch expiration failed", "batch_id", hex.EncodeToString(v.ID()))
 			jsonhttp.InternalServerError(w, "unable to estimate batch expiration")
 			return
 		}
