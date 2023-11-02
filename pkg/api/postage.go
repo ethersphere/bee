@@ -176,10 +176,26 @@ type bucketData struct {
 func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("get_stamps").Build()
 
+	queries := struct {
+		All bool `map:"all"`
+	}{}
+	if response := s.mapStructure(r.URL.Query(), &queries); response != nil {
+		response("invalid query params", logger, w)
+		return
+	}
+
 	resp := postageStampsResponse{}
 	stampIssuers := s.post.StampIssuers()
 	resp.Stamps = make([]postageStampResponse, 0, len(stampIssuers))
 	for _, v := range stampIssuers {
+		exists, err := s.batchStore.Exists(v.ID())
+		if err != nil {
+			logger.Debug("get stamp issuer: check batch failed", "batch_id", hex.EncodeToString(v.ID()), "error", err)
+			logger.Error(nil, "get stamp issuer: check batch failed")
+			jsonhttp.InternalServerError(w, "unable to check batch")
+			return
+		}
+
 		batchTTL, err := s.estimateBatchTTLFromID(v.ID())
 		if err != nil {
 			logger.Debug("get stamp issuer: estimate batch expiration failed", "batch_id", hex.EncodeToString(v.ID()), "error", err)
@@ -187,25 +203,27 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request
 			jsonhttp.InternalServerError(w, "unable to estimate batch expiration")
 			return
 		}
-		resp.Stamps = append(resp.Stamps, postageStampResponse{
-			BatchID:       v.ID(),
-			Utilization:   v.Utilization(),
-			Usable:        s.post.IssuerUsable(v),
-			Label:         v.Label(),
-			Depth:         v.Depth(),
-			Amount:        bigint.Wrap(v.Amount()),
-			BucketDepth:   v.BucketDepth(),
-			BlockNumber:   v.BlockNumber(),
-			ImmutableFlag: v.ImmutableFlag(),
-			Exists:        true,
-			BatchTTL:      batchTTL,
-		})
+		if exists {
+			resp.Stamps = append(resp.Stamps, postageStampResponse{
+				BatchID:       v.ID(),
+				Utilization:   v.Utilization(),
+				Usable:        exists && s.post.IssuerUsable(v),
+				Label:         v.Label(),
+				Depth:         v.Depth(),
+				Amount:        bigint.Wrap(v.Amount()),
+				BucketDepth:   v.BucketDepth(),
+				BlockNumber:   v.BlockNumber(),
+				ImmutableFlag: v.ImmutableFlag(),
+				Exists:        exists,
+				BatchTTL:      batchTTL,
+			})
+		}
 	}
 
 	jsonhttp.OK(w, resp)
 }
 
-func (s *Service) postageGetAllStampsHandler(w http.ResponseWriter, _ *http.Request) {
+func (s *Service) postageGetAllBatchesHandler(w http.ResponseWriter, _ *http.Request) {
 	logger := s.logger.WithName("get_batches").Build()
 
 	batches := make([]postageBatchResponse, 0)
@@ -263,7 +281,7 @@ func (s *Service) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.R
 		case errors.Is(err, postage.ErrNotUsable):
 			jsonhttp.BadRequest(w, "batch not usable")
 		case errors.Is(err, postage.ErrNotFound):
-			jsonhttp.NotFound(w, "cannot get batch")
+			jsonhttp.NotFound(w, "issuer does not exist")
 		default:
 			jsonhttp.InternalServerError(w, "get issuer failed")
 		}
@@ -305,13 +323,20 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 		case errors.Is(err, postage.ErrNotUsable):
 			jsonhttp.BadRequest(w, "batch not usable")
 		case errors.Is(err, postage.ErrNotFound):
-			jsonhttp.NotFound(w, "unable to get stamp issuer")
+			jsonhttp.NotFound(w, "issuer does not exist")
 		default:
 			jsonhttp.InternalServerError(w, "get issuer failed")
 		}
 		return
 	}
 
+	exists, err := s.batchStore.Exists(paths.BatchID)
+	if err != nil {
+		logger.Debug("exist check failed", "batch_id", hexBatchID, "error", err)
+		logger.Error(nil, "exist check failed")
+		jsonhttp.InternalServerError(w, "unable to check batch")
+		return
+	}
 	batchTTL, err := s.estimateBatchTTLFromID(paths.BatchID)
 	if err != nil {
 		logger.Debug("estimate batch expiration failed", "batch_id", hexBatchID, "error", err)
@@ -325,10 +350,10 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 		Depth:         issuer.Depth(),
 		BucketDepth:   issuer.BucketDepth(),
 		ImmutableFlag: issuer.ImmutableFlag(),
-		Exists:        true,
+		Exists:        exists,
 		BatchTTL:      batchTTL,
 		Utilization:   issuer.Utilization(),
-		Usable:        s.post.IssuerUsable(issuer),
+		Usable:        exists && s.post.IssuerUsable(issuer),
 		Label:         issuer.Label(),
 		Amount:        bigint.Wrap(issuer.Amount()),
 		BlockNumber:   issuer.BlockNumber(),
