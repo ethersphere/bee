@@ -68,7 +68,6 @@ var mediumEt = NewErasureTable(
 	[]int{94, 68, 46, 28, 14, 5, 1},
 	[]int{9, 8, 7, 6, 5, 4, 3},
 )
-
 var encMediumEt = NewErasureTable(
 	[]int{47, 34, 23, 14, 7, 2},
 	[]int{9, 8, 7, 6, 5, 4},
