@@ -46,7 +46,7 @@ func NewHashTrieWriter(chunkSize, branching, refLen int, rParams *redundancy.Par
 		pipelineFn:             pipelineFn,
 		chunkCounters:          make([]uint8, 9),
 		effectiveChunkCounters: make([]uint8, 9),
-		maxChildrenChunks:      uint8(rParams.MaxShards() + rParams.Parity(rParams.MaxShards())),
+		maxChildrenChunks:      uint8(rParams.MaxShards() + rParams.Parities(rParams.MaxShards())),
 	}
 	h.parityChunkFn = func(level int, span, address []byte) error {
 		return h.writeToIntermediateLevel(level, true, span, address, []byte{})
@@ -138,6 +138,11 @@ func (h *hashTrieWriter) wrapFullLevel(level int) error {
 	}
 	spb := make([]byte, 8)
 	binary.LittleEndian.PutUint64(spb, sp)
+
+	if h.rParams.Level() != redundancy.NONE {
+		redundancy.EncodeParity(spb, h.rParams.Parities(int(h.effectiveChunkCounters[level])))
+	}
+
 	hashes = append(spb, hashes...)
 	writer := h.pipelineFn()
 	args := pipeline.PipeWriteArgs{
