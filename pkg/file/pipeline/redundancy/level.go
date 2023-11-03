@@ -26,59 +26,9 @@ func (l Level) GetParities(shards int) int {
 	case INSANE:
 		return 31
 	case STRONG:
-		switch s := shards; {
-		case s >= 104:
-			return 21
-		case s >= 95:
-			return 20
-		case s >= 86:
-			return 19
-		case s >= 77:
-			return 18
-		case s >= 69:
-			return 17
-		case s >= 61:
-			return 16
-		case s >= 53:
-			return 15
-		case s >= 46:
-			return 14
-		case s >= 39:
-			return 13
-		case s >= 32:
-			return 12
-		case s >= 26:
-			return 11
-		case s >= 20:
-			return 10
-		case s >= 15:
-			return 9
-		case s >= 10:
-			return 8
-		case s >= 6:
-			return 7
-		case s >= 3:
-			return 6
-		default:
-			return 5
-		}
+		return strongEt.GetParities(shards)
 	case MEDIUM:
-		switch s := shards; {
-		case s >= 94:
-			return 9
-		case s >= 68:
-			return 8
-		case s >= 46:
-			return 7
-		case s >= 28:
-			return 6
-		case s >= 14:
-			return 5
-		case s >= 5:
-			return 4
-		default:
-			return 3
-		}
+		return mediumEt.GetParities(shards)
 	default:
 		return 0
 	}
@@ -111,3 +61,15 @@ func (l Level) GetMaxEncShards() int {
 	p := l.GetParities(swarm.EncryptedBranches)
 	return (swarm.Branches - p) / 2
 }
+
+// TABLE INITS
+
+var strongEt = NewErasureTable(
+	[]int{104, 95, 86, 77, 69, 61, 53, 46, 39, 32, 26, 20, 15, 10, 6, 3, 1},
+	[]int{21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5},
+)
+
+var mediumEt = NewErasureTable(
+	[]int{94, 68, 46, 28, 14, 5, 1},
+	[]int{9, 8, 7, 6, 5, 4, 3},
+)
