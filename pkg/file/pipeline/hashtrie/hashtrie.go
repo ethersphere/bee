@@ -30,20 +30,23 @@ type hashTrieWriter struct {
 	pipelineFn             pipeline.PipelineFunc
 	rParams                *redundancy.Params
 	parityChunkFn          redundancy.ParityChunkCallback
-	effectiveChunkCounters []uint8 // counts the effective chunk references in intermediate chunks. key is the chunk level.
-	effectiveChunkMax      uint8   // maximum number of effective chunk references in intermediate chunks.
+	chunkCounters          []uint8 // counts the chunk references in intermediate chunks. key is the chunk level.
+	effectiveChunkCounters []uint8 // counts the effective  chunk references in intermediate chunks. key is the chunk level.
+	maxChildrenChunks      uint8   // maximum number of chunk references in intermediate chunks.
 }
 
 func NewHashTrieWriter(chunkSize, branching, refLen int, rParams *redundancy.Params, pipelineFn pipeline.PipelineFunc) pipeline.ChainWriter {
 	h := &hashTrieWriter{
-		branching:         branching,
-		chunkSize:         chunkSize,
-		refSize:           refLen,
-		cursors:           make([]int, 9),
-		buffer:            make([]byte, swarm.ChunkWithSpanSize*9*2), // double size as temp workaround for weak calculation of needed buffer space
-		rParams:           rParams,
-		pipelineFn:        pipelineFn,
-		effectiveChunkMax: uint8(rParams.MaxShards()),
+		branching:              branching,
+		chunkSize:              chunkSize,
+		refSize:                refLen,
+		cursors:                make([]int, 9),
+		buffer:                 make([]byte, swarm.ChunkWithSpanSize*9*2), // double size as temp workaround for weak calculation of needed buffer space
+		rParams:                rParams,
+		pipelineFn:             pipelineFn,
+		chunkCounters:          make([]uint8, 9),
+		effectiveChunkCounters: make([]uint8, 9),
+		maxChildrenChunks:      uint8(rParams.MaxShards() + rParams.Parity(rParams.MaxShards())),
 	}
 	h.parityChunkFn = func(level int, span, address []byte) error {
 		return h.writeToIntermediateLevel(level, true, span, address, []byte{})
@@ -77,13 +80,15 @@ func (h *hashTrieWriter) writeToIntermediateLevel(level int, parityChunk bool, s
 	h.cursors[level] += len(ref)
 	copy(h.buffer[h.cursors[level]:h.cursors[level]+len(key)], key)
 	h.cursors[level] += len(key)
+
+	// update counters
 	if !parityChunk {
 		h.effectiveChunkCounters[level]++
 	}
-
-	if h.effectiveChunkCounters[level] == h.effectiveChunkMax {
+	h.chunkCounters[level]++
+	if h.chunkCounters[level] == h.maxChildrenChunks {
+		// at this point the erasure coded chunk has been written
 		err := h.wrapFullLevel(level)
-		h.effectiveChunkCounters[level] = 0
 		return err
 	}
 	return nil
@@ -96,7 +101,7 @@ func (h *hashTrieWriter) writeToDataLevel(span, ref, key, data []byte) error {
 		return err
 	}
 
-	return h.rParams.ChunkWrite(0, span, ref, data, h.parityChunkFn)
+	return h.rParams.ChunkWrite(0, data, h.parityChunkFn)
 }
 
 // wrapLevel wraps an existing level and writes the resulting hash to the following level
@@ -114,11 +119,21 @@ func (h *hashTrieWriter) wrapFullLevel(level int) error {
 	data := h.buffer[h.cursors[level+1]:h.cursors[level]]
 	sp := uint64(0)
 	var hashes []byte
-	for i := 0; i < len(data); i += h.refSize + 8 {
+	offset := 0
+	for i := uint8(0); i < h.effectiveChunkCounters[level]; i++ {
 		// sum up the spans of the level, then we need to bmt them and store it as a chunk
 		// then write the chunk address to the next level up
-		sp += binary.LittleEndian.Uint64(data[i : i+8])
-		hash := data[i+8 : i+h.refSize+8]
+		sp += binary.LittleEndian.Uint64(data[offset : offset+swarm.SpanSize])
+		offset += +swarm.SpanSize
+		hash := data[offset : offset+h.refSize]
+		offset += h.refSize
+		hashes = append(hashes, hash...)
+	}
+	for offset < len(data) {
+		// we do not add span of parity chunks to the common because that is gibberish
+		offset += +swarm.SpanSize
+		hash := data[offset : offset+swarm.HashSize] // parity reference has always hash length
+		offset += swarm.HashSize
 		hashes = append(hashes, hash...)
 	}
 	spb := make([]byte, 8)
@@ -139,7 +154,7 @@ func (h *hashTrieWriter) wrapFullLevel(level int) error {
 		return err
 	}
 
-	err = h.rParams.ChunkWrite(level, spb, args.Ref, data, h.parityChunkFn)
+	err = h.rParams.ChunkWrite(level, data, h.parityChunkFn)
 	if err != nil {
 		return err
 	}
@@ -147,6 +162,7 @@ func (h *hashTrieWriter) wrapFullLevel(level int) error {
 	// this "truncates" the current level that was wrapped
 	// by setting the cursors to the cursors of one level above
 	h.cursors[level] = h.cursors[level+1]
+	h.chunkCounters[level], h.effectiveChunkCounters[level] = 0, 0
 	if level+1 == 8 {
 		h.full = true
 	}
@@ -170,15 +186,16 @@ func (h *hashTrieWriter) wrapFullLevel(level int) error {
 //     the next level
 func (h *hashTrieWriter) Sum() ([]byte, error) {
 	for i := 1; i < maxLevel; i++ {
-		l := h.effectiveChunkCounters[i]
+		l := h.chunkCounters[i]
 		switch {
 		case l == 0:
 			// level empty, continue to the next.
 			continue
-		case l == h.effectiveChunkMax:
+		case l == h.maxChildrenChunks:
 			// this case is possible and necessary due to the carry over
 			// in the next switch case statement. normal writes done
 			// through writeToLevel will automatically wrap a full level.
+			// erasure encoding call is not necessary since ElevateCarrierChunk solves that
 			err := h.wrapFullLevel(i)
 			if err != nil {
 				return nil, err
@@ -198,17 +215,28 @@ func (h *hashTrieWriter) Sum() ([]byte, error) {
 			// that might or might not have data. the eventual result is that the last
 			// hash generated will always be carried over to the last level (8), then returned.
 			h.cursors[i+1] = h.cursors[i]
-			h.effectiveChunkCounters[i]--
+			// replace cached chunk to the level as well
+			err := h.rParams.ElevateCarrierChunk(i, h.parityChunkFn)
+			if err != nil {
+				return nil, err
+			}
+			// update counters, substracting from current level is not necessary
 			h.effectiveChunkCounters[i+1]++
+			h.chunkCounters[i+1]++
 		default:
+			// call erasure encoding before writing the last chunk on the level
+			err := h.rParams.Encode(i, h.parityChunkFn)
+			if err != nil {
+				return nil, err
+			}
 			// more than 0 but smaller than chunk size - wrap the level to the one above it
-			err := h.wrapFullLevel(i)
+			err = h.wrapFullLevel(i)
 			if err != nil {
 				return nil, err
 			}
 		}
 	}
-	levelLen := h.effectiveChunkCounters[maxLevel]
+	levelLen := h.chunkCounters[maxLevel]
 	if levelLen != 1 {
 		return nil, errInconsistentRefs
 	}

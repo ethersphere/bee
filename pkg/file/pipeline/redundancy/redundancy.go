@@ -5,6 +5,8 @@
 package redundancy
 
 import (
+	"errors"
+
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/klauspost/reedsolomon"
@@ -180,11 +182,16 @@ func (p *Params) Parity(shards int) int {
 }
 
 // ChunkWrite caches the chunk data on the given chunk level and if it is full then it calls Encode
-func (p *Params) ChunkWrite(chunkLevel int, span, ref, data []byte, callback ParityChunkCallback) error {
+func (p *Params) ChunkWrite(chunkLevel int, data []byte, callback ParityChunkCallback) error {
 	if p.level == NONE {
 		return nil
 	}
 
+	return p.chunkWrite(chunkLevel, data, callback)
+}
+
+// ChunkWrite caches the chunk data on the given chunk level and if it is full then it calls Encode
+func (p *Params) chunkWrite(chunkLevel int, data []byte, callback ParityChunkCallback) error {
 	// append chunk to the buffer
 	p.buffer[chunkLevel][p.cursor[chunkLevel]] = data
 	p.cursor[chunkLevel]++
@@ -197,6 +204,7 @@ func (p *Params) ChunkWrite(chunkLevel int, span, ref, data []byte, callback Par
 	return nil
 }
 
+// Encode produces and stores parity chunks that will be also passed back to the caller
 func (p *Params) Encode(chunkLevel int, callback ParityChunkCallback) error {
 	if p.level == NONE {
 		return nil
@@ -205,7 +213,6 @@ func (p *Params) Encode(chunkLevel int, callback ParityChunkCallback) error {
 	return p.encode(chunkLevel, callback)
 }
 
-// Encode produces and stores parity chunks that will be also passed back to the caller
 func (p *Params) encode(chunkLevel int, callback ParityChunkCallback) error {
 	shards := p.cursor[chunkLevel]
 	parities := p.Parity(shards)
@@ -243,4 +250,17 @@ func (p *Params) encode(chunkLevel int, callback ParityChunkCallback) error {
 	p.cursor[chunkLevel] = 0
 
 	return nil
+}
+
+// ElevateCarrierChunk moves the last poor orphan chunk to the level above where it can fit and there are other chunks as well.
+func (p *Params) ElevateCarrierChunk(chunkLevel int, callback ParityChunkCallback) error {
+	if p.level == NONE {
+		return nil
+	}
+	if p.cursor[chunkLevel] != 1 {
+		return errors.New("redundancy: cannot elevate carrier chunk because it is not the only chunk on the level")
+	}
+
+	// not necessary to update current level since we will not work with it anymore
+	return p.chunkWrite(chunkLevel, p.buffer[chunkLevel][p.cursor[chunkLevel]], callback)
 }
