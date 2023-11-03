@@ -29,6 +29,7 @@ import (
 	"github.com/ethersphere/bee/pkg/tracing"
 	opentracing "github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
+	olog "github.com/opentracing/opentracing-go/log"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -191,6 +192,8 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	defer func() {
 		if err != nil {
 			ext.LogError(span, err)
+		} else {
+			span.LogFields(olog.String("result", "success"))
 		}
 		span.Finish()
 	}()
@@ -443,9 +446,6 @@ func (ps *PushSync) closestPeer(chunkAddress swarm.Address, origin bool) (swarm.
 }
 
 func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptResult, peer swarm.Address, ch swarm.Chunk, action accounting.Action) {
-
-	span := tracing.FromContext(parentCtx)
-
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTTL)
 	defer cancel()
 
@@ -456,11 +456,13 @@ func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptRes
 
 	now := time.Now()
 
-	spanInner, _, ctx := ps.tracer.FollowSpanFromContext(tracing.WithContext(ctx, span), "push-chunk-async", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
+	spanInner, _, _ := ps.tracer.FollowSpanFromContext(context.WithoutCancel(parentCtx), "push-chunk-async", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
 
 	defer func() {
 		if err != nil {
 			ext.LogError(spanInner, err)
+		} else {
+			spanInner.LogFields(olog.String("result", "success"))
 		}
 		spanInner.Finish()
 		select {
@@ -470,6 +472,8 @@ func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptRes
 	}()
 
 	defer action.Cleanup()
+
+	spanInner.LogFields(olog.String("peer_address", peer.String()))
 
 	receipt, err = ps.pushChunkToPeer(ctx, peer, ch)
 	if err != nil {

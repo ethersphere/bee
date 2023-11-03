@@ -12,6 +12,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
+	"github.com/opentracing/opentracing-go/ext"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -23,13 +24,21 @@ func (db *DB) DirectUpload() PutterSession {
 
 	return &putterSession{
 		Putter: putterWithMetrics{
-			storage.PutterFunc(func(ctx context.Context, ch swarm.Chunk) error {
+			storage.PutterFunc(func(ctx context.Context, ch swarm.Chunk) (err error) {
 				db.directUploadLimiter <- struct{}{}
 				eg.Go(func() error {
 					defer func() { <-db.directUploadLimiter }()
 
+					span, _, _ := db.tracer.FollowSpanFromContext(ctx, "put-direct-upload", db.logger)
+					defer func() {
+						if err != nil {
+							ext.LogError(span, err)
+						}
+						span.Finish()
+					}()
+
 					for {
-						op := &pusher.Op{Chunk: ch, Err: make(chan error, 1), Direct: true}
+						op := &pusher.Op{Chunk: ch, Err: make(chan error, 1), Direct: true, Span: span}
 						select {
 						case <-ctx.Done():
 							return ctx.Err()
