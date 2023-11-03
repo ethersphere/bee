@@ -19,7 +19,7 @@ type ErasureTable struct {
 //		example usage:
 //			shards := []int{94, 68, 46, 28, 14, 5, 1}
 //			parities := []int{9, 8, 7, 6, 5, 4, 3}
-//			et := NewErasureTable(forward, reverse)
+//			var et = NewErasureTable(shards, parities)
 func NewErasureTable(shards, parities []int) *ErasureTable {
 	if len(shards) != len(parities) {
 		panic("redundancy table: shards and parities arrays must be of equal size")
