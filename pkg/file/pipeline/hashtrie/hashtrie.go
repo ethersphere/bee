@@ -138,11 +138,6 @@ func (h *hashTrieWriter) wrapFullLevel(level int) error {
 	}
 	spb := make([]byte, 8)
 	binary.LittleEndian.PutUint64(spb, sp)
-
-	if h.rParams.Level() != redundancy.NONE {
-		redundancy.EncodeParity(spb, h.rParams.Parities(int(h.effectiveChunkCounters[level])))
-	}
-
 	hashes = append(spb, hashes...)
 	writer := h.pipelineFn()
 	args := pipeline.PipeWriteArgs{
