@@ -489,7 +489,7 @@ func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptRes
 
 	spanInner.LogFields(olog.String("peer_address", peer.String()))
 
-	receipt, err = ps.pushChunkToPeer(ctx, peer, ch)
+	receipt, err = ps.pushChunkToPeer(tracing.WithContext(ctx, spanInner.Context()), peer, ch)
 	if err != nil {
 		return
 	}
