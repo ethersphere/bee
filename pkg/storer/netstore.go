@@ -29,7 +29,7 @@ func (db *DB) DirectUpload() PutterSession {
 				eg.Go(func() error {
 					defer func() { <-db.directUploadLimiter }()
 
-					span, _, _ := db.tracer.FollowSpanFromContext(ctx, "put-direct-upload", db.logger)
+					span, logger, ctx := db.tracer.FollowSpanFromContext(ctx, "put-direct-upload", db.logger)
 					defer func() {
 						if err != nil {
 							ext.LogError(span, err)
@@ -56,9 +56,9 @@ func (db *DB) DirectUpload() PutterSession {
 								return ErrDBQuit
 							case err := <-op.Err:
 								if errors.Is(err, pusher.ErrShallowReceipt) {
-									db.logger.Debug("direct upload: shallow receipt received, retrying", "chunk", ch.Address())
+									logger.Debug("direct upload: shallow receipt received, retrying", "chunk", ch.Address())
 								} else if errors.Is(err, topology.ErrNotFound) {
-									db.logger.Debug("direct upload: no peers available, retrying", "chunk", ch.Address())
+									logger.Debug("direct upload: no peers available, retrying", "chunk", ch.Address())
 								} else {
 									return err
 								}
@@ -71,7 +71,7 @@ func (db *DB) DirectUpload() PutterSession {
 			db.metrics,
 			"netstore",
 		},
-		done:    func(_ swarm.Address) error { return eg.Wait() },
+		done:    func(swarm.Address) error { return eg.Wait() },
 		cleanup: func() error { _ = eg.Wait(); return nil },
 	}
 }

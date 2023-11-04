@@ -168,10 +168,12 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 		s.metrics.TotalToPush.Inc()
 		startTime := time.Now()
 
+		spanCtx := tracing.WithContext(ctx, op.Span.Context())
+
 		if op.Direct {
-			err = s.pushDirect(ctx, s.logger, op)
+			err = s.pushDirect(spanCtx, s.logger, op)
 		} else {
-			doRepeat, err = s.pushDeferred(ctx, s.logger, op)
+			doRepeat, err = s.pushDeferred(spanCtx, s.logger, op)
 		}
 
 		if err != nil {

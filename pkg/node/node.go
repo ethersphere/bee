@@ -757,6 +757,7 @@ func NewBee(
 		RadiusSetter:              kad,
 		WarmupDuration:            o.WarmupTime,
 		Logger:                    logger,
+		Tracer:                    tracer,
 	}
 
 	if o.FullNodeMode && !o.BootnodeMode {
