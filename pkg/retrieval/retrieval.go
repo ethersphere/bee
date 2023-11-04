@@ -28,7 +28,8 @@ import (
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/opentracing/opentracing-go"
-	opentracinglog "github.com/opentracing/opentracing-go/log"
+	"github.com/opentracing/opentracing-go/ext"
+	olog "github.com/opentracing/opentracing-go/log"
 	"resenje.org/singleflight"
 )
 
@@ -306,8 +307,10 @@ func (s *Service) retrieveChunk(ctx context.Context, quit chan struct{}, chunkAd
 	defer func() {
 		action.Cleanup()
 		if err != nil {
-			span.LogFields(opentracinglog.Error(err))
+			ext.LogError(span, err)
 			s.metrics.TotalErrors.Inc()
+		} else {
+			span.LogFields(olog.Bool("success", true))
 		}
 		select {
 		case result <- retrievalResult{err: err, chunk: chunk, peer: peer}:
@@ -448,13 +451,19 @@ func (s *Service) handler(p2pctx context.Context, p p2p.Peer, stream p2p.Stream)
 		return fmt.Errorf("invalid address queried by peer %s", p.Address.String())
 	}
 
+	var forwarded bool
+
 	span, _, ctx := s.tracer.StartSpanFromContext(ctx, "handle-retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: addr.String()})
 	defer func() {
-		span.LogFields(opentracinglog.Error(err))
+		if err != nil {
+			ext.LogError(span, err)
+		} else {
+			span.LogFields(olog.Bool("success", true))
+		}
+		span.LogFields(olog.Bool("forwarded", forwarded))
 		span.Finish()
 	}()
 
-	forwarded := false
 	chunk, err := s.storer.Lookup().Get(ctx, addr)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {

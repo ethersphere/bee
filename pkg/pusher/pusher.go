@@ -180,9 +180,9 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 			s.metrics.TotalErrors.Inc()
 			s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())
 			ext.LogError(op.Span, err)
+		} else {
+			op.Span.LogFields(olog.Bool("success", true))
 		}
-
-		op.Span.LogFields(olog.String("result", "success"))
 
 		s.metrics.SyncTime.Observe(time.Since(startTime).Seconds())
 		s.metrics.TotalSynced.Inc()

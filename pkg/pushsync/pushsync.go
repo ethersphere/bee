@@ -189,11 +189,23 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	chunkAddress := chunk.Address()
 
 	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, opentracing.Tag{Key: "address", Value: chunkAddress.String()}, opentracing.Tag{Key: "tagID", Value: chunk.TagID()}, opentracing.Tag{Key: "sender_address", Value: p.Address.String()})
+
+	var (
+		stored bool
+		reason string
+	)
+
 	defer func() {
 		if err != nil {
 			ext.LogError(span, err)
 		} else {
-			span.LogFields(olog.String("result", "success"))
+			var logs []olog.Field
+			logs = append(logs, olog.Bool("success", true))
+			if stored {
+				logs = append(logs, olog.Bool("stored", true))
+				logs = append(logs, olog.String("reason", reason))
+			}
+			span.LogFields(logs...)
 		}
 		span.Finish()
 	}()
@@ -249,12 +261,14 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	}
 
 	if ps.topologyDriver.IsReachable() && ps.store.IsWithinStorageRadius(chunkAddress) {
+		stored, reason = true, "is within AOR"
 		return store(ctx)
 	}
 
 	receipt, err := ps.pushToClosest(ctx, chunk, false)
 	if err != nil {
 		if errors.Is(err, topology.ErrWantSelf) {
+			stored, reason = true, "want self"
 			return store(ctx)
 		}
 
@@ -462,7 +476,7 @@ func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptRes
 		if err != nil {
 			ext.LogError(spanInner, err)
 		} else {
-			spanInner.LogFields(olog.String("result", "success"))
+			spanInner.LogFields(olog.Bool("success", true))
 		}
 		spanInner.Finish()
 		select {

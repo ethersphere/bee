@@ -128,7 +128,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(SwarmTagHeader, fmt.Sprint(tag))
 	}
 
-	span.LogFields(olog.String("result", "success"))
+	span.LogFields(olog.Bool("success", true))
 
 	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
 	jsonhttp.Created(w, bytesPostResponse{
