@@ -24,9 +24,9 @@ func (db *DB) DirectUpload() PutterSession {
 
 	return &putterSession{
 		Putter: putterWithMetrics{
-			storage.PutterFunc(func(ctx context.Context, ch swarm.Chunk) (err error) {
+			storage.PutterFunc(func(ctx context.Context, ch swarm.Chunk) error {
 				db.directUploadLimiter <- struct{}{}
-				eg.Go(func() error {
+				eg.Go(func() (err error) {
 					defer func() { <-db.directUploadLimiter }()
 
 					span, logger, ctx := db.tracer.FollowSpanFromContext(ctx, "put-direct-upload", db.logger)
