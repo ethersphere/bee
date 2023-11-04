@@ -168,7 +168,12 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 		s.metrics.TotalToPush.Inc()
 		startTime := time.Now()
 
-		spanCtx := tracing.WithContext(ctx, op.Span.Context())
+		spanCtx := ctx
+		if op.Span != nil {
+			spanCtx = tracing.WithContext(spanCtx, op.Span.Context())
+		} else {
+			op.Span = opentracing.NoopTracer{}.StartSpan("noOp")
+		}
 
 		if op.Direct {
 			err = s.pushDirect(spanCtx, s.logger, op)

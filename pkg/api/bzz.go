@@ -247,6 +247,7 @@ func (s *Service) fileUploadHandler(
 	}
 
 	span.LogFields(olog.Bool("success", true))
+	span.SetTag("root_address", manifestReference)
 
 	if tagID != 0 {
 		w.Header().Set(SwarmTagHeader, fmt.Sprint(tagID))
