@@ -745,7 +745,7 @@ func removeContent(path string) error {
 			return err
 		}
 	}
-	return os.Remove(path)
+	return nil
 }
 
 func MarshalChunkToBinary(c swarm.Chunk) ([]byte, error) {
