@@ -154,6 +154,8 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 		s.metrics.RequestAttempts.Observe(float64(totalRetrieveAttempts))
 	}()
 
+	spanCtx := context.WithoutCancel(ctx)
+
 	v, _, err := s.singleflight.Do(ctx, flightRoute, func(ctx context.Context) (swarm.Chunk, error) {
 
 		skip := skippeers.NewList()
@@ -259,8 +261,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 				inflight++
 
 				go func() {
-					ctx := context.WithoutCancel(ctx)
-					span, _, ctx := s.tracer.FollowSpanFromContext(ctx, "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: chunkAddr.String()})
+					span, _, ctx := s.tracer.FollowSpanFromContext(spanCtx, "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: chunkAddr.String()})
 					defer span.Finish()
 					s.retrieveChunk(ctx, quit, chunkAddr, peer, resultC, action, origin, span)
 				}()
