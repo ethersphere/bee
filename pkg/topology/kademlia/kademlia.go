@@ -13,6 +13,8 @@ import (
 	"math/big"
 	"math/rand"
 	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -134,6 +136,11 @@ func newKadOptions(o Options) kadOptions {
 		BroadcastBinSize:            defaultValInt(o.BroadcastBinSize, defaultBroadcastBinSize),
 		LowWaterMark:                defaultValInt(o.LowWaterMark, defaultLowWaterMark),
 	}
+
+	// Prioritize QUIC transport connections over the others.
+	sort.Slice(ko.Bootnodes, func(i, j int) bool {
+		return strings.Contains(ko.Bootnodes[i].String(), "/quic")
+	})
 
 	if ko.SaturationFunc == nil {
 		ko.SaturationFunc = makeSaturationFunc(ko)
