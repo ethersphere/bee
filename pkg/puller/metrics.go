@@ -10,11 +10,12 @@ import (
 )
 
 type metrics struct {
-	SyncWorkerIterCounter prometheus.Counter // counts the number of syncing iterations
-	SyncWorkerCounter     prometheus.Counter // count number of syncing jobs
-	SyncWorkerDoneCounter prometheus.Counter // count number of finished syncing jobs
-	SyncWorkerErrCounter  prometheus.Counter // count number of errors
-	MaxUintErrCounter     prometheus.Counter // how many times we got maxuint as topmost
+	SyncWorkerIterCounter prometheus.Counter    // counts the number of syncing iterations
+	SyncWorkerCounter     prometheus.Counter    // count number of syncing jobs
+	SyncedCounter         prometheus.CounterVec // number of synced chunks
+	SyncWorkerDoneCounter prometheus.Counter    // count number of finished syncing jobs
+	SyncWorkerErrCounter  prometheus.Counter    // count number of errors
+	MaxUintErrCounter     prometheus.Counter    // how many times we got maxuint as topmost
 }
 
 func newMetrics() metrics {
@@ -25,25 +26,31 @@ func newMetrics() metrics {
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "worker_iterations",
-			Help:      "Total history worker iterations.",
+			Help:      "Total worker iterations.",
 		}),
 		SyncWorkerCounter: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "worker",
-			Help:      "Total history active worker jobs.",
+			Help:      "Total active worker jobs.",
 		}),
+		SyncedCounter: *prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace: m.Namespace,
+			Subsystem: subsystem,
+			Name:      "synced_chunks",
+			Help:      "Total synced chunks.",
+		}, []string{"type"}),
 		SyncWorkerDoneCounter: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "worker_done",
-			Help:      "Total history worker jobs done.",
+			Help:      "Total worker jobs done.",
 		}),
 		SyncWorkerErrCounter: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "worker_errors",
-			Help:      "Total history worker errors.",
+			Help:      "Total worker errors.",
 		}),
 		MaxUintErrCounter: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,

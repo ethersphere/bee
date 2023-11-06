@@ -642,8 +642,6 @@ func dbNukeCmd(cmd *cobra.Command) {
 				logger.Error(err, "getting sleep value failed")
 			}
 
-			defer func() { time.Sleep(d) }()
-
 			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
 			if err != nil {
 				return fmt.Errorf("get data-dir: %w", err)
@@ -684,6 +682,8 @@ func dbNukeCmd(cmd *cobra.Command) {
 				return nil
 			}
 
+			logger.Info("nuking statestore...")
+
 			forgetStamps, err := cmd.Flags().GetBool(optionNameForgetStamps)
 			if err != nil {
 				return fmt.Errorf("get forget stamps: %w", err)
@@ -709,6 +709,11 @@ func dbNukeCmd(cmd *cobra.Command) {
 					return fmt.Errorf("remove stamperstore: %w", err)
 				}
 			}
+
+			logger.Info("nuke finished")
+
+			time.Sleep(d)
+
 			return nil
 		}}
 	c.Flags().String(optionNameDataDir, "", "data directory")
@@ -740,7 +745,7 @@ func removeContent(path string) error {
 			return err
 		}
 	}
-	return os.Remove(path)
+	return nil
 }
 
 func MarshalChunkToBinary(c swarm.Chunk) ([]byte, error) {
