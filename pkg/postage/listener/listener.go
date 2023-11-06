@@ -235,8 +235,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 
 	synced := make(chan error)
 	closeOnce := new(sync.Once)
-	paged := make(chan struct{}, 1)
-	paged <- struct{}{}
+	paged := true
 
 	lastProgress := time.Now()
 	lastConfirmedBlock := uint64(0)
@@ -252,6 +251,12 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 				return ErrPostageSyncingStalled
 			}
 
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+
 			// if we have a last blocknumber from the backend we can make a good estimate on when we need to requery
 			// otherwise we just use the backoff time
 			var expectedWaitTime time.Duration
@@ -259,18 +264,20 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 				nextExpectedBatchBlock := (lastConfirmedBlock/batchFactor + 1) * batchFactor
 				remainingBlocks := nextExpectedBatchBlock - lastConfirmedBlock
 				expectedWaitTime = l.blockTime * time.Duration(remainingBlocks)
-				l.logger.Debug("sleeping until next block batch", "duration", expectedWaitTime)
 			} else {
 				expectedWaitTime = l.backoffTime
 			}
 
-			select {
-			case <-paged:
-				// if we paged then it means there's more things to sync on
-			case <-time.After(expectedWaitTime):
-			case <-ctx.Done():
-				return ctx.Err()
+			if !paged {
+				l.logger.Debug("sleeping until next block batch", "duration", expectedWaitTime)
+				select {
+				case <-time.After(expectedWaitTime):
+				case <-ctx.Done():
+					return ctx.Err()
+				}
 			}
+			paged = false
+
 			start := time.Now()
 
 			l.metrics.BackendCalls.Inc()
@@ -305,7 +312,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 
 			// do some paging (sub-optimal)
 			if to-from >= blockPage {
-				paged <- struct{}{}
+				paged = true
 				to = from + blockPage - 1
 			} else {
 				closeOnce.Do(func() { synced <- nil })
