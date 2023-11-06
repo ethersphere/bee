@@ -128,6 +128,14 @@ func TestLevels(t *testing.T) {
 	}
 }
 
+type redundancyMock struct {
+	redundancy.Params
+}
+
+func (r redundancyMock) MaxShards() int {
+	return 4
+}
+
 func TestLevels_TrieFull(t *testing.T) {
 	t.Parallel()
 
@@ -139,8 +147,12 @@ func TestLevels_TrieFull(t *testing.T) {
 			lsw := store.NewStoreWriter(ctx, s, nil)
 			return bmt.NewBmtWriter(lsw)
 		}
+		r     = redundancy.New(0, false, pf)
+		rMock = &redundancyMock{
+			Params: *r,
+		}
 
-		ht = hashtrie.NewHashTrieWriter(hashSize, redundancy.New(0, false, pf), pf)
+		ht = hashtrie.NewHashTrieWriter(hashSize, rMock, pf)
 	)
 
 	// to create a level wrap we need to do branching^(level-1) writes

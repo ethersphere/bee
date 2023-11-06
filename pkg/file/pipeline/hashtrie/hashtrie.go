@@ -26,14 +26,14 @@ type hashTrieWriter struct {
 	buffer                 []byte // keeps intermediate level data
 	full                   bool   // indicates whether the trie is full. currently we support (128^7)*4096 = 2305843009213693952 bytes
 	pipelineFn             pipeline.PipelineFunc
-	rParams                *redundancy.Params
+	rParams                redundancy.IParams
 	parityChunkFn          redundancy.ParityChunkCallback
 	chunkCounters          []uint8 // counts the chunk references in intermediate chunks. key is the chunk level.
 	effectiveChunkCounters []uint8 // counts the effective  chunk references in intermediate chunks. key is the chunk level.
 	maxChildrenChunks      uint8   // maximum number of chunk references in intermediate chunks.
 }
 
-func NewHashTrieWriter(refLen int, rParams *redundancy.Params, pipelineFn pipeline.PipelineFunc) pipeline.ChainWriter {
+func NewHashTrieWriter(refLen int, rParams redundancy.IParams, pipelineFn pipeline.PipelineFunc) pipeline.ChainWriter {
 	h := &hashTrieWriter{
 		refSize:                refLen,
 		cursors:                make([]int, 9),

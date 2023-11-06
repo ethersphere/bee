@@ -15,6 +15,15 @@ import (
 // ParityChunkCallback is called when a new parity chunk has been created
 type ParityChunkCallback func(level int, span, address []byte) error
 
+type IParams interface {
+	MaxShards() int
+	Level() Level
+	Parities(int) int
+	ChunkWrite(int, []byte, ParityChunkCallback) error
+	ElevateCarrierChunk(int, ParityChunkCallback) error
+	Encode(int, ParityChunkCallback) error
+}
+
 type Params struct {
 	level      Level
 	pipeLine   pipeline.PipelineFunc
