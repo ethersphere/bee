@@ -21,8 +21,6 @@ var (
 const maxLevel = 8
 
 type hashTrieWriter struct {
-	branching              int
-	chunkSize              int
 	refSize                int
 	cursors                []int  // level cursors, key is level. level 0 is data level holds how many chunks were processed. Intermediate higher levels will always have LOWER cursor values.
 	buffer                 []byte // keeps intermediate level data
@@ -35,10 +33,8 @@ type hashTrieWriter struct {
 	maxChildrenChunks      uint8   // maximum number of chunk references in intermediate chunks.
 }
 
-func NewHashTrieWriter(chunkSize, branching, refLen int, rParams *redundancy.Params, pipelineFn pipeline.PipelineFunc) pipeline.ChainWriter {
+func NewHashTrieWriter(refLen int, rParams *redundancy.Params, pipelineFn pipeline.PipelineFunc) pipeline.ChainWriter {
 	h := &hashTrieWriter{
-		branching:              branching,
-		chunkSize:              chunkSize,
 		refSize:                refLen,
 		cursors:                make([]int, 9),
 		buffer:                 make([]byte, swarm.ChunkWithSpanSize*9*2), // double size as temp workaround for weak calculation of needed buffer space
@@ -114,7 +110,8 @@ func (h *hashTrieWriter) writeToDataLevel(span, ref, key, data []byte) error {
 //   - get the hash that was created, append it one level above, and if necessary, wrap that level too
 //   - remove already hashed data from buffer
 //
-// assumes that the function has been called when refsize+span*branching has been reached
+// assumes that h.chunkCounters[level] has reached h.maxChildrenChunks at fullchunk
+// or redundancy.Encode was called in case of rightmost chunks
 func (h *hashTrieWriter) wrapFullLevel(level int) error {
 	data := h.buffer[h.cursors[level+1]:h.cursors[level]]
 	sp := uint64(0)

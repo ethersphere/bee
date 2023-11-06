@@ -39,9 +39,7 @@ func TestLevels(t *testing.T) {
 	t.Parallel()
 
 	var (
-		branching = 4
-		chunkSize = 128
-		hashSize  = 32
+		hashSize = 32
 	)
 
 	// to create a level wrap we need to do branching^(level-1) writes
@@ -101,7 +99,7 @@ func TestLevels(t *testing.T) {
 				return bmt.NewBmtWriter(lsw)
 			}
 
-			ht := hashtrie.NewHashTrieWriter(chunkSize, branching, hashSize, redundancy.New(0, false, pf), pf)
+			ht := hashtrie.NewHashTrieWriter(hashSize, redundancy.New(0, false, pf), pf)
 
 			for i := 0; i < tc.writes; i++ {
 				a := &pipeline.PipeWriteArgs{Ref: addr.Bytes(), Span: span}
@@ -134,17 +132,15 @@ func TestLevels_TrieFull(t *testing.T) {
 	t.Parallel()
 
 	var (
-		branching = 4
-		chunkSize = 128
-		hashSize  = 32
-		writes    = 16384 // this is to get a balanced trie
-		s         = inmemchunkstore.New()
-		pf        = func() pipeline.ChainWriter {
+		hashSize = 32
+		writes   = 16384 // this is to get a balanced trie
+		s        = inmemchunkstore.New()
+		pf       = func() pipeline.ChainWriter {
 			lsw := store.NewStoreWriter(ctx, s, nil)
 			return bmt.NewBmtWriter(lsw)
 		}
 
-		ht = hashtrie.NewHashTrieWriter(chunkSize, branching, hashSize, redundancy.New(0, false, pf), pf)
+		ht = hashtrie.NewHashTrieWriter(hashSize, redundancy.New(0, false, pf), pf)
 	)
 
 	// to create a level wrap we need to do branching^(level-1) writes
@@ -177,17 +173,15 @@ func TestRegression(t *testing.T) {
 	t.Parallel()
 
 	var (
-		branching = 128
-		chunkSize = 4096
-		hashSize  = 32
-		writes    = 67100000 / 4096
-		span      = make([]byte, 8)
-		s         = inmemchunkstore.New()
-		pf        = func() pipeline.ChainWriter {
+		hashSize = 32
+		writes   = 67100000 / 4096
+		span     = make([]byte, 8)
+		s        = inmemchunkstore.New()
+		pf       = func() pipeline.ChainWriter {
 			lsw := store.NewStoreWriter(ctx, s, nil)
 			return bmt.NewBmtWriter(lsw)
 		}
-		ht = hashtrie.NewHashTrieWriter(chunkSize, branching, hashSize, redundancy.New(0, false, pf), pf)
+		ht = hashtrie.NewHashTrieWriter(hashSize, redundancy.New(0, false, pf), pf)
 	)
 	binary.LittleEndian.PutUint64(span, 4096)
 
