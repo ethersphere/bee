@@ -34,8 +34,6 @@ func (db *DB) DirectUpload() PutterSession {
 					defer func() {
 						if err != nil {
 							ext.LogError(span, err)
-						} else {
-							span.LogFields(olog.Bool("success", true))
 						}
 						span.Finish()
 					}()
