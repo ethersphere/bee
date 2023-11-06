@@ -326,11 +326,11 @@ components:
                 $ref: "#/components/schemas/Address"
               fullNode:
                 type: boolean
-              p2pTransport:
+              underlay:
                 type: array
                 nullable: true
                 items:
-                  type: string
+                  $ref: "SwarmCommon.yaml#/components/schemas/MultiAddress"
 
 
     BlockListedPeers:

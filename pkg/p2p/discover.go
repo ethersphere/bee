@@ -36,7 +36,7 @@ func Discover(ctx context.Context, addr ma.Multiaddr, f func(ma.Multiaddr) (bool
 		return false, errors.New("non-resolvable API endpoint")
 	}
 
-	// sort addrs so that quic is tried first
+	// Prioritize QUIC transport connections over the others.
 	sort.Slice(addrs, func(i, j int) bool {
 		return strings.Contains(addrs[i].String(), "/quic")
 	})
