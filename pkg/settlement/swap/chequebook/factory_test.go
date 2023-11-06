@@ -82,7 +82,7 @@ func TestFactoryVerifySelf(t *testing.T) {
 
 		factory := chequebook.NewFactory(
 			backendWithCodeAt(map[common.Address]string{
-				factoryAddress: sw3abi.SimpleSwapFactoryDeployedBinv0_4_0,
+				factoryAddress: sw3abi.SimpleSwapFactoryDeployedBinv0_5_4,
 				legacyFactory1: sw3abi.SimpleSwapFactoryDeployedBinv0_3_1,
 				legacyFactory2: sw3abi.SimpleSwapFactoryDeployedBinv0_3_1,
 			}),
@@ -123,7 +123,7 @@ func TestFactoryVerifySelf(t *testing.T) {
 
 		factory := chequebook.NewFactory(
 			backendWithCodeAt(map[common.Address]string{
-				factoryAddress: sw3abi.SimpleSwapFactoryDeployedBinv0_4_0,
+				factoryAddress: sw3abi.SimpleSwapFactoryDeployedBinv0_5_4,
 				legacyFactory1: sw3abi.SimpleSwapFactoryDeployedBinv0_3_1,
 				legacyFactory2: "abcd",
 			}),
