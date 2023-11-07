@@ -24,6 +24,28 @@ type IParams interface {
 	Encode(int, ParityChunkCallback) error
 }
 
+type ErasureEncoder interface {
+	Encode([][]byte) error
+}
+
+var erasureEncoderFunc = func(shards, parities int) (ErasureEncoder, error) {
+	return reedsolomon.New(shards, parities)
+}
+
+// setErasureEncoder changes erasureEncoderFunc to a new erasureEncoder facade
+//
+//	used for testing
+func setErasureEncoder(f func(shards, parities int) (ErasureEncoder, error)) {
+	erasureEncoderFunc = f
+}
+
+// getErasureEncoder returns erasureEncoderFunc
+//
+//	used for testing
+func getErasureEncoder() func(shards, parities int) (ErasureEncoder, error) {
+	return erasureEncoderFunc
+}
+
 type Params struct {
 	level      Level
 	pipeLine   pipeline.PipelineFunc
@@ -119,17 +141,20 @@ func (p *Params) Encode(chunkLevel int, callback ParityChunkCallback) error {
 func (p *Params) encode(chunkLevel int, callback ParityChunkCallback) error {
 	shards := p.cursor[chunkLevel]
 	parities := p.Parities(shards)
-	enc, err := reedsolomon.New(shards, parities)
-	if err != nil {
-		return err
-	}
+
 	n := shards + parities
 	// realloc for parity chunks if it does not override the prev one
 	// caculate parity chunks
-	err = enc.Encode(p.buffer[chunkLevel][:n])
+	enc, err := erasureEncoderFunc(shards, parities)
 	if err != nil {
 		return err
 	}
+	// make parity data
+	pz := len(p.buffer[chunkLevel][0])
+	for i := shards; i < n; i++ {
+		p.buffer[chunkLevel][i] = make([]byte, pz)
+	}
+	enc.Encode(p.buffer[chunkLevel][:n])
 	// store and pass newly created parity chunks
 	for i := shards; i < n; i++ {
 		chunkData := p.buffer[chunkLevel][i]
