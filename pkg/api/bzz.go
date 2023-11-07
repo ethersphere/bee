@@ -38,7 +38,7 @@ import (
 )
 
 func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
-	span, logger, ctx := s.tracer.StartSpanFromContext(r.Context(), "post-bzz", s.logger.WithName("post-bzz").Build())
+	span, logger, ctx := s.tracer.StartSpanFromContext(r.Context(), "post_bzz", s.logger.WithName("post_bzz").Build())
 	defer span.Finish()
 
 	headers := struct {
