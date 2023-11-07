@@ -22,5 +22,5 @@ func DecodeParity(span []byte) int {
 // IsParityEncoded checks whether parity is encoded in the chunk's span.
 // it assumes span is LittleEndian
 func IsParityEncoded(span []byte) bool {
-	return span[swarm.SpanSize-1] > 1<<7
+	return span[swarm.SpanSize-1] > 128
 }
