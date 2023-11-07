@@ -83,7 +83,7 @@ func (h *hashTrieWriter) writeToIntermediateLevel(level int, parityChunk bool, s
 	}
 	h.chunkCounters[level]++
 	if h.chunkCounters[level] == h.maxChildrenChunks {
-		// at this point the erasure coded chunk has been written
+		// at this point the erasure coded chunks have been written
 		err := h.wrapFullLevel(level)
 		return err
 	}
