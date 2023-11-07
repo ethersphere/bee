@@ -4,23 +4,19 @@
 
 package redundancy
 
-import (
-	"fmt"
-)
-
-type ErasureTable struct {
+type erasureTable struct {
 	shards   []int
 	parities []int
 }
 
-// NewErasureTable initializes a shards<->parities table
+// newErasureTable initializes a shards<->parities table
 //
 //	 the value order must be strictly descending in both arrays
 //		example usage:
 //			shards := []int{94, 68, 46, 28, 14, 5, 1}
 //			parities := []int{9, 8, 7, 6, 5, 4, 3}
-//			var et = NewErasureTable(shards, parities)
-func NewErasureTable(shards, parities []int) *ErasureTable {
+//			var et = newErasureTable(shards, parities)
+func newErasureTable(shards, parities []int) *erasureTable {
 	if len(shards) != len(parities) {
 		panic("redundancy table: shards and parities arrays must be of equal size")
 	}
@@ -39,28 +35,18 @@ func NewErasureTable(shards, parities []int) *ErasureTable {
 		maxShards, maxParities = s, p
 	}
 
-	return &ErasureTable{
+	return &erasureTable{
 		shards:   shards,
 		parities: parities,
 	}
 }
 
-// GetParities gives back the optimal parity number for a given shard
-func (et *ErasureTable) GetParities(maxShards int) int {
+// getParities gives back the optimal parity number for a given shard
+func (et *erasureTable) getParities(maxShards int) int {
 	for k, s := range et.shards {
 		if maxShards >= s {
 			return et.parities[k]
 		}
 	}
 	return 0
-}
-
-// GetShards is used after the parity has been decoded from span
-func (et *ErasureTable) GetShards(maxParities int) (int, error) {
-	for k, p := range et.parities {
-		if maxParities == p {
-			return et.shards[k], nil
-		}
-	}
-	return 0, fmt.Errorf("redundancy table: there is no corresponding record for the given parity %d", maxParities)
 }
