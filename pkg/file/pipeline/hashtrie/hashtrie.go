@@ -222,7 +222,7 @@ func (h *hashTrieWriter) Sum() ([]byte, error) {
 			if err != nil {
 				return nil, err
 			}
-			// update counters, substracting from current level is not necessary
+			// update counters, subtracting from current level is not necessary
 			h.effectiveChunkCounters[i+1]++
 			h.chunkCounters[i+1]++
 		default:

@@ -154,7 +154,10 @@ func (p *Params) encode(chunkLevel int, callback ParityChunkCallback) error {
 	for i := shards; i < n; i++ {
 		p.buffer[chunkLevel][i] = make([]byte, pz)
 	}
-	enc.Encode(p.buffer[chunkLevel][:n])
+	err = enc.Encode(p.buffer[chunkLevel][:n])
+	if err != nil {
+		return err
+	}
 	// store and pass newly created parity chunks
 	for i := shards; i < n; i++ {
 		chunkData := p.buffer[chunkLevel][i]

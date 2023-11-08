@@ -115,12 +115,21 @@ func TestEncode(t *testing.T) {
 
 					for i := 0; i < shardCount; i++ {
 						buffer := make([]byte, 32)
-						io.ReadFull(rand.Reader, buffer)
-						params.ChunkWrite(0, buffer, parityCallback)
+						_, err := io.ReadFull(rand.Reader, buffer)
+						if err != nil {
+							t.Error(err)
+						}
+						err = params.ChunkWrite(0, buffer, parityCallback)
+						if err != nil {
+							t.Error(err)
+						}
 					}
 					if shardCount != maxShards {
 						// encode should be called automatically when reaching maxshards
-						params.Encode(0, parityCallback)
+						err := params.Encode(0, parityCallback)
+						if err != nil {
+							t.Error(err)
+						}
 					}
 
 					// CHECKS
