@@ -211,7 +211,7 @@ func closer(closers ...io.Closer) io.Closer {
 	})
 }
 
-func initInmemRepository(locker storage.ChunkLocker) (storage.Repository, io.Closer, error) {
+func initInmemRepository() (storage.Repository, io.Closer, error) {
 	store, err := leveldbstore.New("", nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed creating inmem levelDB index store: %w", err)
@@ -229,7 +229,7 @@ func initInmemRepository(locker storage.ChunkLocker) (storage.Repository, io.Clo
 	txStore := leveldbstore.NewTxStore(store)
 	txChunkStore := chunkstore.NewTxChunkStore(txStore, sharky)
 
-	return storage.NewRepository(txStore, txChunkStore, locker), closer(store, sharky), nil
+	return storage.NewRepository(txStore, txChunkStore), closer(store, sharky), nil
 }
 
 // loggerName is the tree path name of the logger for this package.
@@ -275,7 +275,6 @@ func initStore(basePath string, opts *Options) (*leveldbstore.Store, error) {
 func initDiskRepository(
 	ctx context.Context,
 	basePath string,
-	locker storage.ChunkLocker,
 	opts *Options,
 ) (storage.Repository, io.Closer, error) {
 	store, err := initStore(basePath, opts)
@@ -365,7 +364,7 @@ func initDiskRepository(
 		return nil, nil, fmt.Errorf("failed to recover chunk store: %w", err)
 	}
 
-	return storage.NewRepository(txStore, txChunkStore, locker), closer(store, sharky, recoveryCloser), nil
+	return storage.NewRepository(txStore, txChunkStore), closer(store, sharky, recoveryCloser), nil
 }
 
 func initCache(ctx context.Context, capacity uint64, repo storage.Repository) (*cache.Cache, error) {
@@ -531,15 +530,8 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	metrics := newMetrics()
 	opts.LdbStats.CompareAndSwap(nil, &metrics.LevelDBStats)
 
-	locker := func(addr swarm.Address) func() {
-		lock.Lock(addr.ByteString())
-		return func() {
-			lock.Unlock(addr.ByteString())
-		}
-	}
-
 	if dirPath == "" {
-		repo, dbCloser, err = initInmemRepository(locker)
+		repo, dbCloser, err = initInmemRepository()
 		if err != nil {
 			return nil, err
 		}
@@ -552,7 +544,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 			}
 		}
 
-		repo, dbCloser, err = initDiskRepository(ctx, dirPath, locker, opts)
+		repo, dbCloser, err = initDiskRepository(ctx, dirPath, opts)
 		if err != nil {
 			return nil, err
 		}

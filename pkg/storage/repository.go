@@ -7,6 +7,7 @@ package storage
 import (
 	"context"
 	"errors"
+	"sync"
 	"time"
 
 	m "github.com/ethersphere/bee/pkg/metrics"
@@ -29,7 +30,6 @@ type repository struct {
 
 	txIndexStore TxStore
 	txChunkStore TxChunkStore
-	locker       ChunkLocker
 }
 
 // IndexStore returns Store.
@@ -50,7 +50,7 @@ func (r *repository) NewTx(ctx context.Context) (Repository, func() error, func(
 		txStart:      time.Now(),
 		txIndexStore: txIndexStoreWithMetrics{r.txIndexStore.NewTx(NewTxState(ctx)), r.metrics},
 		txChunkStore: txChunkStoreWithMetrics{
-			wrapSync(r.txChunkStore.NewTx(NewTxState(ctx)), r.locker),
+			wrapSync(r.txChunkStore.NewTx(NewTxState(ctx))),
 			r.metrics,
 		},
 	}
@@ -92,40 +92,36 @@ func (r *repository) Metrics() []prometheus.Collector {
 	return m.PrometheusCollectorsFromFields(r.metrics)
 }
 
-type ChunkLocker func(chunk swarm.Address) func()
-
 // NewRepository returns a new Repository instance.
 func NewRepository(
 	txIndexStore TxStore,
 	txChunkStore TxChunkStore,
-	locker ChunkLocker,
 ) Repository {
 	metrics := newMetrics()
 	return &repository{
 		metrics:      metrics,
 		txIndexStore: txIndexStoreWithMetrics{txIndexStore, metrics},
-		txChunkStore: txChunkStoreWithMetrics{wrapSync(txChunkStore, locker), metrics},
-		locker:       locker,
+		txChunkStore: txChunkStoreWithMetrics{txChunkStore, metrics},
 	}
 }
 
 type syncChunkStore struct {
 	TxChunkStore
-	locker ChunkLocker
+	mu *sync.Mutex
 }
 
-func wrapSync(store TxChunkStore, locker ChunkLocker) TxChunkStore {
-	return &syncChunkStore{store, locker}
+func wrapSync(store TxChunkStore) TxChunkStore {
+	return &syncChunkStore{store, new(sync.Mutex)}
 }
 
 func (s *syncChunkStore) Put(ctx context.Context, chunk swarm.Chunk) error {
-	unlock := s.locker(chunk.Address())
-	defer unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.TxChunkStore.Put(ctx, chunk)
 }
 
 func (s *syncChunkStore) Delete(ctx context.Context, addr swarm.Address) error {
-	unlock := s.locker(addr)
-	defer unlock()
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	return s.TxChunkStore.Delete(ctx, addr)
 }
