@@ -20,5 +20,14 @@ func EncodeParity(span []byte, parities int) {
 // DecodeSpan decodes parity from span keeping the real byte count for the chunk.
 // it assumes span is LittleEndian
 func DecodeSpan(span []byte) (int, uint64) {
-	return int(span[swarm.SpanSize-1] & ((1 << 7) - 1)), binary.LittleEndian.Uint64(span[:swarm.SpanSize-1])
+	if !IsParityEncoded(span) {
+		return 0, binary.LittleEndian.Uint64(span)
+	}
+	return int(span[swarm.SpanSize-1] & ((1 << 7) - 1)), binary.LittleEndian.Uint64(append(span[:swarm.SpanSize-1], 0))
+}
+
+// IsParityEncoded checks whether the parity is encoded in the span
+// it assumes span is LittleEndian
+func IsParityEncoded(span []byte) bool {
+	return span[swarm.SpanSize-1] > 128
 }
