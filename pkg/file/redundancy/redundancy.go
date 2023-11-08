@@ -131,7 +131,7 @@ func (p *Params) chunkWrite(chunkLevel int, data []byte, callback ParityChunkCal
 
 // Encode produces and stores parity chunks that will be also passed back to the caller
 func (p *Params) Encode(chunkLevel int, callback ParityChunkCallback) error {
-	if p.level == NONE {
+	if p.level == NONE || p.cursor[chunkLevel] == 0 {
 		return nil
 	}
 

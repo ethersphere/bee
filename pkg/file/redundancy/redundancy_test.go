@@ -6,6 +6,7 @@ package redundancy_test
 
 import (
 	"crypto/rand"
+	"fmt"
 	"io"
 	"sync"
 	"testing"
@@ -90,42 +91,50 @@ func TestEncode(t *testing.T) {
 	}()
 	redundancy.SetErasureEncoder(newMockEncoder)
 
-	parityChainWriter := NewParityChainWriter()
-	ppf := func() pipeline.ChainWriter {
-		return bmt.NewBmtWriter(parityChainWriter)
-	}
-	params := redundancy.New(1, false, ppf)
-	// checks parity pipelinecalls are valid
-
-	parityCount := 0
-	parityCallback := func(level int, span, address []byte) error {
-		parityCount++
-		return nil
-	}
-
 	// test on the data level
-	shardCount := 5
-	for i := 0; i < shardCount; i++ {
-		buffer := make([]byte, 32)
-		io.ReadFull(rand.Reader, buffer)
-		params.ChunkWrite(0, buffer, parityCallback)
-	}
-	params.Encode(0, parityCallback)
+	for _, level := range []redundancy.Level{redundancy.MEDIUM, redundancy.STRONG, redundancy.INSANE, redundancy.PARANOID} {
+		for shardCount := 1; shardCount <= level.GetMaxShards(); shardCount++ {
+			t.Run(fmt.Sprintf("redundancy level %d is checked with %d shards", level, shardCount), func(t *testing.T) {
+				parityChainWriter := NewParityChainWriter()
+				ppf := func() pipeline.ChainWriter {
+					return bmt.NewBmtWriter(parityChainWriter)
+				}
+				params := redundancy.New(level, false, ppf)
+				// checks parity pipelinecalls are valid
 
-	// CHECKS
+				parityCount := 0
+				parityCallback := func(level int, span, address []byte) error {
+					parityCount++
+					return nil
+				}
 
-	if parityCount != parityChainWriter.chainWriteCalls {
-		t.Fatalf("parity callback was called %d times meanwhile chainwrite was called %d times", parityCount, parityChainWriter.chainWriteCalls)
-	}
+				for i := 0; i < shardCount; i++ {
+					buffer := make([]byte, 32)
+					io.ReadFull(rand.Reader, buffer)
+					params.ChunkWrite(0, buffer, parityCallback)
+				}
+				if shardCount != level.GetMaxShards() {
+					// encode should be called automatically when reaching maxshards
+					params.Encode(0, parityCallback)
+				}
 
-	expectedParityCount := params.Level().GetParities(shardCount)
-	if parityCount != expectedParityCount {
-		t.Fatalf("parity callback was called %d times meanwhile expected parity number should be %d", parityCount, expectedParityCount)
-	}
+				// CHECKS
 
-	for i, validCall := range parityChainWriter.validCalls {
-		if !validCall {
-			t.Fatalf("parity chunk data is wrong at parity index %d", i)
+				if parityCount != parityChainWriter.chainWriteCalls {
+					t.Fatalf("parity callback was called %d times meanwhile chainwrite was called %d times", parityCount, parityChainWriter.chainWriteCalls)
+				}
+
+				expectedParityCount := params.Level().GetParities(shardCount)
+				if parityCount != expectedParityCount {
+					t.Fatalf("parity callback was called %d times meanwhile expected parity number should be %d", parityCount, expectedParityCount)
+				}
+
+				for i, validCall := range parityChainWriter.validCalls {
+					if !validCall {
+						t.Fatalf("parity chunk data is wrong at parity index %d", i)
+					}
+				}
+			})
 		}
 	}
 }
