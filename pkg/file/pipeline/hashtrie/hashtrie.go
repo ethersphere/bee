@@ -126,15 +126,20 @@ func (h *hashTrieWriter) wrapFullLevel(level int) error {
 		offset += h.refSize
 		hashes = append(hashes, hash...)
 	}
+	parities := 0
 	for offset < len(data) {
 		// we do not add span of parity chunks to the common because that is gibberish
 		offset += +swarm.SpanSize
 		hash := data[offset : offset+swarm.HashSize] // parity reference has always hash length
 		offset += swarm.HashSize
 		hashes = append(hashes, hash...)
+		parities++
 	}
 	spb := make([]byte, 8)
 	binary.LittleEndian.PutUint64(spb, sp)
+	if parities > 0 {
+		redundancy.EncodeParity(spb, parities)
+	}
 	hashes = append(spb, hashes...)
 	writer := h.pipelineFn()
 	args := pipeline.PipeWriteArgs{

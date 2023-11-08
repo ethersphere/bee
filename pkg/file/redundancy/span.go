@@ -4,7 +4,11 @@
 
 package redundancy
 
-import "github.com/ethersphere/bee/pkg/swarm"
+import (
+	"encoding/binary"
+
+	"github.com/ethersphere/bee/pkg/swarm"
+)
 
 // EncodeParity encodes parities into span keeping the real byte count for the chunk.
 // it assumes span is LittleEndian
@@ -13,14 +17,8 @@ func EncodeParity(span []byte, parities int) {
 	span[swarm.SpanSize-1] = uint8(parities) | 1<<7 // p + 128
 }
 
-// DecodeParity decodes parity from span keeping the real byte count for the chunk.
+// DecodeSpan decodes parity from span keeping the real byte count for the chunk.
 // it assumes span is LittleEndian
-func DecodeParity(span []byte) int {
-	return int(span[swarm.SpanSize-1] & ((1 << 7) - 1)) // p - 128, keep lower part
-}
-
-// IsParityEncoded checks whether parity is encoded in the chunk's span.
-// it assumes span is LittleEndian
-func IsParityEncoded(span []byte) bool {
-	return span[swarm.SpanSize-1] > 128
+func DecodeSpan(span []byte) (int, uint64) {
+	return int(span[swarm.SpanSize-1] & ((1 << 7) - 1)), binary.LittleEndian.Uint64(span[:swarm.SpanSize-1])
 }
