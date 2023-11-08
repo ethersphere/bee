@@ -175,7 +175,10 @@ func (p *Params) encode(chunkLevel int, callback ParityChunkCallback) error {
 		}
 
 		// write parity chunk to the level above
-		callback(chunkLevel+1, span, args.Ref)
+		err = callback(chunkLevel+1, span, args.Ref)
+		if err != nil {
+			return err
+		}
 	}
 	// reset cursor of dataBuffer in case it was a full chunk
 	p.cursor[chunkLevel] = 0
