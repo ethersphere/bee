@@ -34,6 +34,12 @@ func TestStaticAddressResolver(t *testing.T) {
 			want:              "/ip4/192.168.1.34/tcp/7071/p2p/16Uiu2HAkyyGKpjBiCkVqCKoJa6RzzZw9Nr7hGogsMPcdad1KyMmd",
 		},
 		{
+			name:              "replace ip v4 with quic",
+			natAddr:           "192.168.1.34:",
+			observableAddress: "/ip4/127.0.0.1/udp/7071/quic-v1/p2p/16Uiu2HAkyyGKpjBiCkVqCKoJa6RzzZw9Nr7hGogsMPcdad1KyMmd",
+			want:              "/ip4/192.168.1.34/udp/7071/quic-v1/p2p/16Uiu2HAkyyGKpjBiCkVqCKoJa6RzzZw9Nr7hGogsMPcdad1KyMmd",
+		},
+		{
 			name:              "replace ip v6",
 			natAddr:           "[2001:db8::8a2e:370:1111]:",
 			observableAddress: "/ip6/2001:db8::8a2e:370:7334/tcp/7071/p2p/16Uiu2HAkyyGKpjBiCkVqCKoJa6RzzZw9Nr7hGogsMPcdad1KyMmd",
@@ -105,13 +111,13 @@ func TestStaticAddressResolver(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			got, err := r.Resolve(observableAddress)
+			have, err := r.Resolve(observableAddress)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			if got.String() != tc.want {
-				t.Errorf("got %s, want %s", got, tc.want)
+			if have.String() != tc.want {
+				t.Errorf("Resolve(%s):\nhave %s\nwant %s", observableAddress, have, tc.want)
 			}
 		})
 	}
