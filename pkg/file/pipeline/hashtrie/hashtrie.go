@@ -156,7 +156,7 @@ func (h *hashTrieWriter) wrapFullLevel(level int) error {
 		return err
 	}
 
-	err = h.rParams.ChunkWrite(level, data, h.parityChunkFn)
+	err = h.rParams.ChunkWrite(level, args.Data, h.parityChunkFn)
 	if err != nil {
 		return err
 	}
@@ -218,7 +218,7 @@ func (h *hashTrieWriter) Sum() ([]byte, error) {
 			// hash generated will always be carried over to the last level (8), then returned.
 			h.cursors[i+1] = h.cursors[i]
 			// replace cached chunk to the level as well
-			err := h.rParams.ElevateCarrierChunk(i, h.parityChunkFn)
+			err := h.rParams.ElevateCarrierChunk(i-1, h.parityChunkFn)
 			if err != nil {
 				return nil, err
 			}
@@ -227,7 +227,7 @@ func (h *hashTrieWriter) Sum() ([]byte, error) {
 			h.chunkCounters[i+1]++
 		default:
 			// call erasure encoding before writing the last chunk on the level
-			err := h.rParams.Encode(i, h.parityChunkFn)
+			err := h.rParams.Encode(i-1, h.parityChunkFn)
 			if err != nil {
 				return nil, err
 			}

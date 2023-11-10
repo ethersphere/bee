@@ -5,7 +5,7 @@
 package redundancy
 
 import (
-	"errors"
+	"fmt"
 
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -192,9 +192,9 @@ func (p *Params) ElevateCarrierChunk(chunkLevel int, callback ParityChunkCallbac
 		return nil
 	}
 	if p.cursor[chunkLevel] != 1 {
-		return errors.New("redundancy: cannot elevate carrier chunk because it is not the only chunk on the level")
+		return fmt.Errorf("redundancy: cannot elevate carrier chunk because it is not the only chunk on the level. It has %d chunks", p.cursor[chunkLevel])
 	}
 
 	// not necessary to update current level since we will not work with it anymore
-	return p.chunkWrite(chunkLevel, p.buffer[chunkLevel][p.cursor[chunkLevel]], callback)
+	return p.chunkWrite(chunkLevel+1, p.buffer[chunkLevel][p.cursor[chunkLevel]], callback)
 }
