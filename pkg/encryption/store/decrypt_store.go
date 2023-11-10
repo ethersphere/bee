@@ -37,7 +37,7 @@ func (s *decryptingStore) Get(ctx context.Context, addr swarm.Address) (ch swarm
 			return nil, err
 		}
 
-		d, err := decryptChunkData(ch.Data(), ref[swarm.HashSize:])
+		d, err := DecryptChunkData(ch.Data(), ref[swarm.HashSize:])
 		if err != nil {
 			return nil, err
 		}
@@ -48,7 +48,7 @@ func (s *decryptingStore) Get(ctx context.Context, addr swarm.Address) (ch swarm
 	}
 }
 
-func decryptChunkData(chunkData []byte, encryptionKey encryption.Key) ([]byte, error) {
+func DecryptChunkData(chunkData []byte, encryptionKey encryption.Key) ([]byte, error) {
 	decryptedSpan, decryptedData, err := decrypt(chunkData, encryptionKey)
 	if err != nil {
 		return nil, err
