@@ -56,6 +56,7 @@ import (
 	"github.com/multiformats/go-multistream"
 	"github.com/prometheus/client_golang/prometheus"
 	"go.uber.org/atomic"
+	"golang.org/x/exp/maps"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -652,24 +653,26 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 	return nil
 }
 
-func (s *Service) Addresses() (addreses []ma.Multiaddr, err error) {
+func (s *Service) Addresses() ([]ma.Multiaddr, error) {
+	addresses := make(map[string]ma.Multiaddr)
 	for _, addr := range s.host.Addrs() {
 		a, err := buildUnderlayAddress(addr, s.host.ID())
 		if err != nil {
 			return nil, err
 		}
-
-		addreses = append(addreses, a)
+		addresses[a.String()] = a
 	}
-	if s.natAddrResolver != nil && len(addreses) > 0 {
-		a, err := s.natAddrResolver.Resolve(addreses[0])
-		if err != nil {
-			return nil, err
+	if s.natAddrResolver != nil {
+		for _, addr := range addresses {
+			a, err := s.natAddrResolver.Resolve(addr)
+			if err != nil {
+				return nil, err
+			}
+			addresses[a.String()] = a
 		}
-		addreses = append(addreses, a)
 	}
 
-	return addreses, nil
+	return maps.Values(addresses), nil
 }
 
 func (s *Service) NATManager() basichost.NATManager {
