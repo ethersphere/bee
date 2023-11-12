@@ -111,6 +111,10 @@ func (p *Params) ChunkWrite(chunkLevel int, data []byte, callback ParityChunkCal
 	if p.level == NONE {
 		return nil
 	}
+	if len(data) != swarm.ChunkWithSpanSize {
+		zeros := make([]byte, swarm.ChunkWithSpanSize-len(data))
+		data = append(data, zeros...)
+	}
 
 	return p.chunkWrite(chunkLevel, data, callback)
 }
