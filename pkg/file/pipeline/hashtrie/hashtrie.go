@@ -56,7 +56,7 @@ func NewHashTrieWriter(refLen int, rParams redundancy.IParams, pipelineFn pipeli
 func (h *hashTrieWriter) ChainWrite(p *pipeline.PipeWriteArgs) error {
 	oneRef := h.refSize + swarm.SpanSize
 	l := len(p.Span) + len(p.Ref) + len(p.Key)
-	if l%oneRef != 0 {
+	if l%oneRef != 0 || l == 0 {
 		return errInconsistentRefs
 	}
 	if h.full {
