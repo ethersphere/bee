@@ -5,14 +5,21 @@
 package hashtrie_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"errors"
 	"testing"
 
+	bmtUtils "github.com/ethersphere/bee/pkg/bmt"
+	"github.com/ethersphere/bee/pkg/cac"
+	"github.com/ethersphere/bee/pkg/encryption"
+	dec "github.com/ethersphere/bee/pkg/encryption/store"
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/file/pipeline/bmt"
+	enc "github.com/ethersphere/bee/pkg/file/pipeline/encryption"
 	"github.com/ethersphere/bee/pkg/file/pipeline/hashtrie"
+	"github.com/ethersphere/bee/pkg/file/pipeline/mock"
 	"github.com/ethersphere/bee/pkg/file/pipeline/store"
 	"github.com/ethersphere/bee/pkg/file/redundancy"
 	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
@@ -218,5 +225,120 @@ func TestRegression(t *testing.T) {
 	sp := binary.LittleEndian.Uint64(rootch.Data()[:swarm.SpanSize])
 	if sp != uint64(writes*4096) {
 		t.Fatalf("want span %d got %d", writes*4096, sp)
+	}
+}
+
+// TestRedundancy using erasure coding library and checks carrierChunk function and modified span in intermediate chunk
+func TestRedundancy(t *testing.T) {
+	t.Parallel()
+	// chunks need to have data so that it will not throw error on redundancy caching
+	ch, err := cac.New(make([]byte, swarm.ChunkSize))
+	if err != nil {
+		t.Fatal(err)
+	}
+	chData := ch.Data()
+	chSpan := chData[:swarm.SpanSize]
+	chAddr := ch.Address().Bytes()
+
+	// test logic assumes a simple 2 level chunk tree with carrier chunk
+	for _, tc := range []struct {
+		desc       string
+		level      redundancy.Level
+		encryption bool
+		writes     int
+		parities   int
+	}{
+		{
+			desc:       "redundancy write for not encrypted data",
+			level:      redundancy.INSANE,
+			encryption: false,
+			writes:     98, // 97 chunk references fit into one chunk + 1 carrier
+			parities:   38, // 31 (full ch) + 7 (2 ref)
+		},
+		{
+			desc:       "redundancy write for encrypted data",
+			level:      redundancy.PARANOID,
+			encryption: true,
+			writes:     21,  // 21 encrypted chunk references fit into one chunk + 1 carrier
+			parities:   118, // // 88 (full ch) + 30 (2 ref)
+		},
+	} {
+		tc := tc
+		t.Run(tc.desc, func(t *testing.T) {
+			t.Parallel()
+
+			s := inmemchunkstore.New()
+			intermediateChunkCounter := mock.NewChainWriter()
+			parityChunkCounter := mock.NewChainWriter()
+			pf := func() pipeline.ChainWriter {
+				lsw := store.NewStoreWriter(ctx, s, intermediateChunkCounter)
+				return bmt.NewBmtWriter(lsw)
+			}
+			if tc.encryption {
+				pf = func() pipeline.ChainWriter {
+					lsw := store.NewStoreWriter(ctx, s, intermediateChunkCounter)
+					b := bmt.NewBmtWriter(lsw)
+					return enc.NewEncryptionWriter(encryption.NewChunkEncrypter(), b)
+				}
+			}
+			ppf := func() pipeline.ChainWriter {
+				lsw := store.NewStoreWriter(ctx, s, parityChunkCounter)
+				return bmt.NewBmtWriter(lsw)
+			}
+
+			var key []byte
+			hashSize := swarm.HashSize
+			if tc.encryption {
+				hashSize *= 2
+				key = addr.Bytes()
+			}
+
+			r := redundancy.New(tc.level, tc.encryption, ppf)
+			ht := hashtrie.NewHashTrieWriter(hashSize, r, pf)
+
+			for i := 0; i < tc.writes; i++ {
+				a := &pipeline.PipeWriteArgs{Data: chData, Span: chSpan, Ref: chAddr, Key: key}
+				err := ht.ChainWrite(a)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			ref, err := ht.Sum()
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			// sanity check for the test samples
+			if tc.parities != parityChunkCounter.ChainWriteCalls() {
+				t.Errorf("generated parities should be %d. Got: %d", tc.parities, parityChunkCounter.ChainWriteCalls())
+			}
+			if intermediateChunkCounter.ChainWriteCalls() != 2 { // root chunk and the chunk which was written before carrierChunk movement
+				t.Errorf("effective chunks should be %d. Got: %d", tc.writes, intermediateChunkCounter.ChainWriteCalls())
+			}
+
+			rootch, err := s.Get(ctx, swarm.NewAddress(ref[:swarm.HashSize]))
+			if err != nil {
+				t.Fatal(err)
+			}
+			chData := rootch.Data()
+			if tc.encryption {
+				chData, err = dec.DecryptChunkData(chData, ref[swarm.HashSize:])
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			// span check
+			parity, sp := redundancy.DecodeSpan(chData[:swarm.SpanSize])
+			expectedSpan := bmtUtils.LengthToSpan(int64(tc.writes * swarm.ChunkSize))
+			if !bytes.Equal(expectedSpan, sp) {
+				t.Fatalf("want span %d got %d", expectedSpan, span)
+			}
+			expectedParities := tc.parities - r.Parities(r.MaxShards())
+			if expectedParities != parity {
+				t.Fatalf("want parity %d got %d", expectedParities, parity)
+			}
+		})
 	}
 }
