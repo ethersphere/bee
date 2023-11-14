@@ -158,6 +158,11 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
           required: true
           description: Swarm address reference to content
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
+          name: swarm-cache
+          required: false
       responses:
         "200":
           description: Retrieved content specified by reference
@@ -300,6 +305,11 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
           required: true
           description: Swarm address of content
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
+          name: swarm-cache
+          required: false
       responses:
         "200":
           description: Ok
