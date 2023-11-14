@@ -267,7 +267,18 @@ func (s *Service) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathVar string, w http.ResponseWriter, r *http.Request) {
 	loggerV1 := logger.V(1).Build()
 
-	ls := loadsave.NewReadonly(s.storer.Download(true))
+	headers := struct {
+		Cache *bool `map:"Swarm-Cache"`
+	}{}
+	if response := s.mapStructure(r.Header, &headers); response != nil {
+		response("invalid header params", logger, w)
+		return
+	}
+	cache := true
+	if headers.Cache != nil {
+		cache = *headers.Cache
+	}
+	ls := loadsave.NewReadonly(s.storer.Download(cache))
 	feedDereferenced := false
 
 	ctx := r.Context()
@@ -440,7 +451,18 @@ func (s *Service) serveManifestEntry(
 
 // downloadHandler contains common logic for dowloading Swarm file from API
 func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *http.Request, reference swarm.Address, additionalHeaders http.Header, etag bool) {
-	reader, l, err := joiner.New(r.Context(), s.storer.Download(true), reference)
+	headers := struct {
+		Cache *bool `map:"Swarm-Cache"`
+	}{}
+	if response := s.mapStructure(r.Header, &headers); response != nil {
+		response("invalid header params", logger, w)
+		return
+	}
+	cache := true
+	if headers.Cache != nil {
+		cache = *headers.Cache
+	}
+	reader, l, err := joiner.New(r.Context(), s.storer.Download(cache), reference)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) || errors.Is(err, topology.ErrNotFound) {
 			logger.Debug("api download: not found ", "address", reference, "error", err)
