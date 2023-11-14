@@ -7,29 +7,33 @@ package joiner
 
 import (
 	"context"
-	"encoding/binary"
 	"errors"
 	"io"
 	"sync"
 	"sync/atomic"
 
+	"github.com/ethersphere/bee/pkg/bmt"
 	"github.com/ethersphere/bee/pkg/encryption"
 	"github.com/ethersphere/bee/pkg/encryption/store"
 	"github.com/ethersphere/bee/pkg/file"
+	"github.com/ethersphere/bee/pkg/file/redundancy"
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"golang.org/x/sync/errgroup"
 )
 
 type joiner struct {
-	addr      swarm.Address
-	rootData  []byte
-	span      int64
-	off       int64
-	refLength int
+	addr       swarm.Address
+	rootData   []byte
+	span       int64
+	off        int64
+	refLength  int
+	rootParity int
 
 	ctx    context.Context
 	getter storage.Getter
+
+	chunkToSpan func(data []byte) (int, int64) // returns parity and span value from chunkData
 }
 
 // New creates a new Joiner. A Joiner provides Read, Seek and Size functionalities.
@@ -43,15 +47,23 @@ func New(ctx context.Context, getter storage.Getter, address swarm.Address) (fil
 
 	var chunkData = rootChunk.Data()
 
-	span := int64(binary.LittleEndian.Uint64(chunkData[:swarm.SpanSize]))
+	rootParity, span := chunkToSpan(chunkData)
+	spanFn := chunkToSpan
+	if rootParity > 0 {
+		spanFn = func(data []byte) (int, int64) {
+			return 0, int64(bmt.LengthFromSpan(data[:swarm.SpanSize]))
+		}
+	}
 
 	j := &joiner{
-		addr:      rootChunk.Address(),
-		refLength: len(address.Bytes()),
-		ctx:       ctx,
-		getter:    getter,
-		span:      span,
-		rootData:  chunkData[swarm.SpanSize:],
+		addr:        rootChunk.Address(),
+		refLength:   len(address.Bytes()),
+		ctx:         ctx,
+		getter:      getter,
+		span:        span,
+		rootData:    chunkData[swarm.SpanSize:],
+		rootParity:  rootParity,
+		chunkToSpan: spanFn,
 	}
 
 	return j, span, nil
@@ -81,7 +93,7 @@ func (j *joiner) ReadAt(buffer []byte, off int64) (read int, err error) {
 	}
 	var bytesRead int64
 	var eg errgroup.Group
-	j.readAtOffset(buffer, j.rootData, 0, j.span, off, 0, readLen, &bytesRead, &eg)
+	j.readAtOffset(buffer, j.rootData, 0, j.span, off, 0, readLen, &bytesRead, j.rootParity, &eg)
 
 	err = eg.Wait()
 	if err != nil {
@@ -93,7 +105,13 @@ func (j *joiner) ReadAt(buffer []byte, off int64) (read int, err error) {
 
 var ErrMalformedTrie = errors.New("malformed tree")
 
-func (j *joiner) readAtOffset(b, data []byte, cur, subTrieSize, off, bufferOffset, bytesToRead int64, bytesRead *int64, eg *errgroup.Group) {
+func (j *joiner) readAtOffset(
+	b, data []byte,
+	cur, subTrieSize, off, bufferOffset, bytesToRead int64,
+	bytesRead *int64,
+	parity int,
+	eg *errgroup.Group,
+) {
 	// we are at a leaf data chunk
 	if subTrieSize <= int64(len(data)) {
 		dataOffsetStart := off - cur
@@ -145,13 +163,13 @@ func (j *joiner) readAtOffset(b, data []byte, cur, subTrieSize, off, bufferOffse
 				}
 
 				chunkData := ch.Data()[8:]
-				subtrieSpan := int64(chunkToSpan(ch.Data()))
+				subtrieParity, subtrieSpan := j.chunkToSpan(ch.Data())
 
 				if subtrieSpan > subtrieSpanLimit {
 					return ErrMalformedTrie
 				}
 
-				j.readAtOffset(b, chunkData, cur, subtrieSpan, off, bufferOffset, currentReadSize, bytesRead, eg)
+				j.readAtOffset(b, chunkData, cur, subtrieSpan, off, bufferOffset, currentReadSize, bytesRead, subtrieParity, eg)
 				return nil
 			})
 		}(address, b, cur, subtrieSpan, off, bufferOffset, currentReadSize, subtrieSpanLimit)
@@ -229,10 +247,10 @@ func (j *joiner) IterateChunkAddresses(fn swarm.AddressIterFunc) error {
 		return err
 	}
 
-	return j.processChunkAddresses(j.ctx, fn, j.rootData, j.span)
+	return j.processChunkAddresses(j.ctx, fn, j.rootData, j.span, j.rootParity)
 }
 
-func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIterFunc, data []byte, subTrieSize int64) error {
+func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIterFunc, data []byte, subTrieSize int64, parity int) error {
 	// we are at a leaf data chunk
 	if subTrieSize <= int64(len(data)) {
 		return nil
@@ -279,9 +297,9 @@ func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIter
 				}
 
 				chunkData := ch.Data()[8:]
-				subtrieSpan := int64(chunkToSpan(ch.Data()))
+				subtrieParity, subtrieSpan := j.chunkToSpan(ch.Data())
 
-				return j.processChunkAddresses(ectx, fn, chunkData, subtrieSpan)
+				return j.processChunkAddresses(ectx, fn, chunkData, subtrieSpan, subtrieParity)
 			})
 		}(address, eg)
 
@@ -295,6 +313,7 @@ func (j *joiner) Size() int64 {
 	return j.span
 }
 
-func chunkToSpan(data []byte) uint64 {
-	return binary.LittleEndian.Uint64(data[:8])
+func chunkToSpan(data []byte) (int, int64) {
+	parity, spanBytes := redundancy.DecodeSpan(data[:swarm.SpanSize])
+	return parity, int64(bmt.LengthFromSpan(spanBytes))
 }
