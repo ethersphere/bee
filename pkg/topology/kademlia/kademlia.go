@@ -37,8 +37,8 @@ const loggerName = "kademlia"
 
 const (
 	maxConnAttempts     = 1 // when there is maxConnAttempts failed connect calls for a given peer it is considered non-connectable
-	maxBootNodeAttempts = 3 // how many attempts to dial to boot-nodes before giving up
-	maxNeighborAttempts = 3 // how many attempts to dial to boot-nodes before giving up
+	maxBootNodeAttempts = 3 // how many attempts to dial to one boot-node before giving up
+	maxNeighborAttempts = 3 // how many attempts to dial to neighbor before giving up
 
 	addPeerBatchSize = 500
 
@@ -781,53 +781,50 @@ func (k *Kad) previouslyConnected() []swarm.Address {
 func (k *Kad) connectBootNodes(ctx context.Context) {
 	loggerV1 := k.logger.V(1).Register()
 
-	var attempts, connected int
-	totalAttempts := maxBootNodeAttempts * len(k.opt.Bootnodes)
-
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
-	for _, addr := range k.opt.Bootnodes {
-		if attempts >= totalAttempts || connected >= 3 {
-			return
-		}
-
-		if _, err := p2p.Discover(ctx, addr, func(addr ma.Multiaddr) (stop bool, err error) {
-			loggerV1.Debug("connecting to bootnode", "bootnode_address", addr)
-			if attempts >= maxBootNodeAttempts {
-				return true, nil
-			}
-			bzzAddress, err := k.p2p.Connect(ctx, addr)
-
-			attempts++
-			k.metrics.TotalBootNodesConnectionAttempts.Inc()
-
-			if err != nil {
-				if !errors.Is(err, p2p.ErrAlreadyConnected) {
+	var connected int
+	for i := maxBootNodeAttempts; i > 0; i-- {
+		for _, addr := range k.opt.Bootnodes {
+			stop, err := p2p.Discover(ctx, addr, func(addr ma.Multiaddr) (bool, error) {
+				loggerV1.Debug("connecting to bootnode", "bootnode_address", addr)
+				k.metrics.TotalBootNodesConnectionAttempts.Inc()
+				bzzAddress, err := k.p2p.Connect(ctx, addr)
+				if err != nil {
+					if !errors.Is(err, p2p.ErrAlreadyConnected) {
+						k.logger.Debug("connect to bootnode failed", "bootnode_address", addr, "error", err)
+						k.logger.Warning("connect to bootnode failed", "bootnode_address", addr)
+						return false, err
+					}
 					k.logger.Debug("connect to bootnode failed", "bootnode_address", addr, "error", err)
-					k.logger.Warning("connect to bootnode failed", "bootnode_address", addr)
+					return false, nil
+				}
+
+				if err := k.onConnected(ctx, bzzAddress.Overlay); err != nil {
 					return false, err
 				}
-				k.logger.Debug("connect to bootnode failed", "bootnode_address", addr, "error", err)
-				return false, nil
+
+				k.metrics.TotalOutboundConnections.Inc()
+				k.collector.Record(bzzAddress.Overlay, im.PeerLogIn(time.Now(), im.PeerConnectionDirectionOutbound))
+				loggerV1.Debug("connected to bootnode", "bootnode_address", addr)
+				connected++
+
+				// connect to max 3 bootnodes
+				return connected >= 3, nil
+			})
+			if err != nil && !errors.Is(err, context.Canceled) {
+				k.logger.Debug("discover to bootnode failed", "bootnode_address", addr, "error", err)
+				k.logger.Warning("discover to bootnode failed", "bootnode_address", addr)
 			}
-
-			if err := k.onConnected(ctx, bzzAddress.Overlay); err != nil {
-				return false, err
+			if stop {
+				return
 			}
-
-			k.metrics.TotalOutboundConnections.Inc()
-			k.collector.Record(bzzAddress.Overlay, im.PeerLogIn(time.Now(), im.PeerConnectionDirectionOutbound))
-			loggerV1.Debug("connected to bootnode", "bootnode_address", addr)
-			connected++
-
-			// connect to max 3 bootnodes
-			return connected >= 3, nil
-		}); err != nil && !errors.Is(err, context.Canceled) {
-			k.logger.Debug("discover to bootnode failed", "bootnode_address", addr, "error", err)
-			k.logger.Warning("discover to bootnode failed", "bootnode_address", addr)
-			return
 		}
+	}
+
+	if connected == 0 {
+		k.logger.Warning("could not connect to any bootnode", "bootnode_addresses", k.opt.Bootnodes)
 	}
 }
 
