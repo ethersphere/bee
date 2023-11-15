@@ -56,9 +56,12 @@ func New(ctx context.Context, getter storage.Getter, address swarm.Address) (fil
 	}
 	rootParity, span := chunkToSpan(chunkData)
 	maxBranching := swarm.ChunkSize / refLength
-	payloadSize, err := chunkPayloadSize(rootData)
-	if err != nil {
-		return nil, 0, err
+	payloadSize := int(span)
+	if span > swarm.ChunkSize {
+		payloadSize, err = chunkPayloadSize(rootData)
+		if err != nil {
+			return nil, 0, err
+		}
 	}
 	rootShards := payloadSize - (rootParity*swarm.HashSize)/refLength
 	rLevel, err := redundancy.GetLevel(rootParity, rootShards, encryption)
@@ -69,7 +72,7 @@ func New(ctx context.Context, getter storage.Getter, address swarm.Address) (fil
 		return 0, int64(bmt.LengthFromSpan(data[:swarm.SpanSize]))
 	}
 	// override stuff if root chunk has redundancy
-	if rootParity > 0 {
+	if rLevel != redundancy.NONE {
 		spanFn = chunkToSpan
 		if encryption {
 			maxBranching = rLevel.GetMaxEncShards()
@@ -357,7 +360,7 @@ func (j *joiner) Size() int64 {
 // chunkPayloadSize returns the effective byte length of an intermediate chunk
 // assumes data is always chunk size (without span)
 func chunkPayloadSize(data []byte) (int, error) {
-	l := swarm.ChunkSize
+	l := len(data)
 	for l > swarm.HashSize {
 		if !bytes.Equal(data[l-swarm.HashSize:l], swarm.ZeroAddress.Bytes()) {
 			return l, nil
