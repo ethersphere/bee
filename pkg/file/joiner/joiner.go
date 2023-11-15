@@ -323,7 +323,7 @@ func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIter
 			return err
 		}
 
-		sec := j.subtrieSection(data, cursor, eSize, j.refLength, subTrieSize)
+		sec := j.subtrieSection(data, cursor, eSize, parity, subTrieSize)
 		if sec <= swarm.ChunkSize {
 			continue
 		}
