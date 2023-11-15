@@ -159,6 +159,7 @@ func (j *joiner) readAtOffset(
 		eg.Go(func() error {
 			return err
 		})
+		return
 	}
 	for cursor := 0; cursor < len(data); cursor += j.refLength {
 		if bytesToRead == 0 {
@@ -361,7 +362,7 @@ func (j *joiner) Size() int64 {
 // assumes data is always chunk size (without span)
 func chunkPayloadSize(data []byte) (int, error) {
 	l := len(data)
-	for l > swarm.HashSize {
+	for l >= swarm.HashSize {
 		if !bytes.Equal(data[l-swarm.HashSize:l], swarm.ZeroAddress.Bytes()) {
 			return l, nil
 		}
