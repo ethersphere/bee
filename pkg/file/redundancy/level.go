@@ -4,7 +4,12 @@
 
 package redundancy
 
-import "github.com/ethersphere/bee/pkg/swarm"
+import (
+	"errors"
+	"fmt"
+
+	"github.com/ethersphere/bee/pkg/swarm"
+)
 
 type Level uint8
 
@@ -16,22 +21,19 @@ const (
 	PARANOID
 )
 
+var (
+	allRedundancyLevels = [4]Level{MEDIUM, STRONG, INSANE, PARANOID}
+)
+
 const maxLevel = 8
 
 // GetParities returns number of parities based on appendix F table 5
 func (l Level) GetParities(shards int) int {
-	switch l {
-	case MEDIUM:
-		return mediumEt.getParities(shards)
-	case STRONG:
-		return strongEt.getParities(shards)
-	case INSANE:
-		return insaneEt.getParities(shards)
-	case PARANOID:
-		return paranoidEt.getParities(shards)
-	default:
+	et, err := l.getErasureTable()
+	if err != nil {
 		return 0
 	}
+	return et.getParities(shards)
 }
 
 // GetMaxShards returns back the maximum number of effective data chunks
@@ -42,17 +44,40 @@ func (l Level) GetMaxShards() int {
 
 // GetEncParities returns number of parities for encrypted chunks based on appendix F table 6
 func (l Level) GetEncParities(shards int) int {
+	et, err := l.getEncErasureTable()
+	if err != nil {
+		return 0
+	}
+	return et.getParities(shards)
+}
+
+func (l Level) getErasureTable() (erasureTable, error) {
 	switch l {
 	case MEDIUM:
-		return encMediumEt.getParities(shards)
+		return *mediumEt, nil
 	case STRONG:
-		return encStrongEt.getParities(shards)
+		return *strongEt, nil
 	case INSANE:
-		return encInsaneEt.getParities(shards)
+		return *insaneEt, nil
 	case PARANOID:
-		return encParanoidEt.getParities(shards)
+		return *paranoidEt, nil
 	default:
-		return 0
+		return erasureTable{}, errors.New("redundancy: level NONE does not have erasure table")
+	}
+}
+
+func (l Level) getEncErasureTable() (erasureTable, error) {
+	switch l {
+	case MEDIUM:
+		return *encMediumEt, nil
+	case STRONG:
+		return *encStrongEt, nil
+	case INSANE:
+		return *encInsaneEt, nil
+	case PARANOID:
+		return *encParanoidEt, nil
+	default:
+		return erasureTable{}, errors.New("redundancy: level NONE does not have erasure table")
 	}
 }
 
@@ -60,6 +85,51 @@ func (l Level) GetEncParities(shards int) int {
 func (l Level) GetMaxEncShards() int {
 	p := l.GetEncParities(swarm.EncryptedBranches)
 	return (swarm.Branches - p) / 2
+}
+
+// UTILITIES
+
+// GetLevel returns back the redundancy level based on the parameters
+// assumes erasure tables of levels do not overlap each other in shard range / parity
+func GetLevel(parities, shards int, encryption bool) (Level, error) {
+	if parities == 0 {
+		return NONE, nil
+	}
+
+	for _, l := range allRedundancyLevels {
+		// init maxShards and erasure table
+		maxShards := l.GetMaxShards()
+		t, err := l.getErasureTable()
+		if err != nil {
+			return 0, err
+		}
+		if encryption {
+			t, err = l.getEncErasureTable()
+			if err != nil {
+				return 0, err
+			}
+			maxShards = l.GetMaxEncShards()
+		}
+
+		// check whether shards in [sMin, sMax[ range
+		sMin, err := t.GetMinShards(parities)
+		if err != nil {
+			continue // presumably parities number is too big for the current level
+		}
+		if sMin <= shards {
+			sMax, err := t.GetMinShards(parities + 1)
+			if err != nil {
+				if shards <= maxShards {
+					return l, nil
+				}
+				continue // presumably shards number is too big for the current level with the given parity
+			}
+			if sMax > shards {
+				return l, nil
+			}
+		}
+	}
+	return 0, fmt.Errorf("redundancy: cannot decide level from parities %d and shards %d", parities, shards)
 }
 
 // TABLE INITS
