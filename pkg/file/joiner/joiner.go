@@ -6,6 +6,7 @@
 package joiner
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -23,12 +24,13 @@ import (
 )
 
 type joiner struct {
-	addr       swarm.Address
-	rootData   []byte
-	span       int64
-	off        int64
-	refLength  int
-	rootParity int
+	addr         swarm.Address
+	rootData     []byte
+	span         int64
+	off          int64
+	refLength    int
+	rootParity   int
+	maxBranching int // maximum branching in an intermediate chunk
 
 	ctx    context.Context
 	getter storage.Getter
@@ -45,25 +47,47 @@ func New(ctx context.Context, getter storage.Getter, address swarm.Address) (fil
 		return nil, 0, err
 	}
 
-	var chunkData = rootChunk.Data()
-
+	chunkData := rootChunk.Data()
+	rootData := chunkData[swarm.SpanSize:]
+	refLength := len(address.Bytes())
+	encryption := false
+	if refLength != swarm.HashSize {
+		encryption = true
+	}
 	rootParity, span := chunkToSpan(chunkData)
-	spanFn := chunkToSpan
+	maxBranching := swarm.ChunkSize / refLength
+	payloadSize, err := chunkPayloadSize(rootData)
+	if err != nil {
+		return nil, 0, err
+	}
+	rootShards := payloadSize - (rootParity*swarm.HashSize)/refLength
+	rLevel, err := redundancy.GetLevel(rootParity, rootShards, encryption)
+	if err != nil {
+		return nil, 0, err
+	}
+	spanFn := func(data []byte) (int, int64) {
+		return 0, int64(bmt.LengthFromSpan(data[:swarm.SpanSize]))
+	}
+	// override stuff if root chunk has redundancy
 	if rootParity > 0 {
-		spanFn = func(data []byte) (int, int64) {
-			return 0, int64(bmt.LengthFromSpan(data[:swarm.SpanSize]))
+		spanFn = chunkToSpan
+		if encryption {
+			maxBranching = rLevel.GetMaxEncShards()
+		} else {
+			maxBranching = rLevel.GetMaxShards()
 		}
 	}
 
 	j := &joiner{
-		addr:        rootChunk.Address(),
-		refLength:   len(address.Bytes()),
-		ctx:         ctx,
-		getter:      getter,
-		span:        span,
-		rootData:    chunkData[swarm.SpanSize:],
-		rootParity:  rootParity,
-		chunkToSpan: spanFn,
+		addr:         rootChunk.Address(),
+		refLength:    refLength,
+		ctx:          ctx,
+		getter:       getter,
+		span:         span,
+		rootData:     rootData,
+		rootParity:   rootParity,
+		maxBranching: maxBranching,
+		chunkToSpan:  spanFn,
 	}
 
 	return j, span, nil
@@ -127,13 +151,19 @@ func (j *joiner) readAtOffset(
 		return
 	}
 
+	pSize, err := chunkPayloadSize(data)
+	if err != nil {
+		eg.Go(func() error {
+			return err
+		})
+	}
 	for cursor := 0; cursor < len(data); cursor += j.refLength {
 		if bytesToRead == 0 {
 			break
 		}
 
 		// fast forward the cursor
-		sec := subtrieSection(data, cursor, j.refLength, subTrieSize)
+		sec := j.subtrieSection(data, cursor, pSize, parity, subTrieSize)
 		if cur+sec < off {
 			cur += sec
 			continue
@@ -181,8 +211,13 @@ func (j *joiner) readAtOffset(
 	}
 }
 
+// getShards returns the effective reference number respective to the intermediate chunk payload length and its parities
+func (j *joiner) getShards(payloadSize, parities int) int {
+	return (payloadSize - parities*swarm.HashSize) / j.refLength
+}
+
 // brute-forces the subtrie size for each of the sections in this intermediate chunk
-func subtrieSection(data []byte, startIdx, refLen int, subtrieSize int64) int64 {
+func (j *joiner) subtrieSection(data []byte, startIdx, payloadSize, parities int, subtrieSize int64) int64 {
 	// assume we have a trie of size `y` then we can assume that all of
 	// the forks except for the last one on the right are of equal size
 	// this is due to how the splitter wraps levels.
@@ -191,9 +226,9 @@ func subtrieSection(data []byte, startIdx, refLen int, subtrieSize int64) int64 
 	// where y is the size of the subtrie, refs are the number of references
 	// x is constant (the brute forced value) and l is the size of the last subtrie
 	var (
-		refs       = int64(len(data) / refLen) // how many references in the intermediate chunk
-		branching  = int64(4096 / refLen)      // branching factor is chunkSize divided by reference length
-		branchSize = int64(4096)
+		refs       = int64(j.getShards(payloadSize, parities)) // how many effective references in the intermediate chunk
+		branching  = int64(j.maxBranching)                     // branching factor is chunkSize divided by reference length
+		branchSize = int64(swarm.ChunkSize)
 	)
 	for {
 		whatsLeft := subtrieSize - (branchSize * (refs - 1))
@@ -204,7 +239,7 @@ func subtrieSection(data []byte, startIdx, refLen int, subtrieSize int64) int64 
 	}
 
 	// handle last branch edge case
-	if startIdx == int(refs-1)*refLen {
+	if startIdx == int(refs-1)*j.refLength {
 		return subtrieSize - (refs-1)*branchSize
 	}
 	return branchSize
@@ -266,6 +301,10 @@ func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIter
 
 	var wg sync.WaitGroup
 
+	eSize, err := chunkPayloadSize(data)
+	if err != nil {
+		return err
+	}
 	for cursor := 0; cursor < len(data); cursor += j.refLength {
 		ref := data[cursor : cursor+j.refLength]
 		var reportAddr swarm.Address
@@ -280,7 +319,7 @@ func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIter
 			return err
 		}
 
-		sec := subtrieSection(data, cursor, j.refLength, subTrieSize)
+		sec := j.subtrieSection(data, cursor, eSize, j.refLength, subTrieSize)
 		if sec <= swarm.ChunkSize {
 			continue
 		}
@@ -311,6 +350,23 @@ func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIter
 
 func (j *joiner) Size() int64 {
 	return j.span
+}
+
+// UTILITIES
+
+// chunkPayloadSize returns the effective byte length of an intermediate chunk
+// assumes data is always chunk size (without span)
+func chunkPayloadSize(data []byte) (int, error) {
+	l := swarm.ChunkSize
+	for l > swarm.HashSize {
+		if !bytes.Equal(data[l-swarm.HashSize:l], swarm.ZeroAddress.Bytes()) {
+			return l, nil
+		}
+
+		l -= swarm.HashSize
+	}
+
+	return 0, errors.New("joiner: intermediate chunk does not have at least a child")
 }
 
 func chunkToSpan(data []byte) (int, int64) {
