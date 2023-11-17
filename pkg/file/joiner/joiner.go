@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/encryption/store"
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/redundancy"
+	"github.com/ethersphere/bee/pkg/file/redundancy/getter"
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"golang.org/x/sync/errgroup"
@@ -161,6 +162,8 @@ func (j *joiner) readAtOffset(
 		})
 		return
 	}
+	sAddresses, pAddresses := chunkAddresses(data[:pSize], parity, j.refLength)
+	getter := getter.New(sAddresses, pAddresses, j.getter)
 	for cursor := 0; cursor < len(data); cursor += j.refLength {
 		if bytesToRead == 0 {
 			break
@@ -191,7 +194,7 @@ func (j *joiner) readAtOffset(
 
 		func(address swarm.Address, b []byte, cur, subTrieSize, off, bufferOffset, bytesToRead, subtrieSpanLimit int64) {
 			eg.Go(func() error {
-				ch, err := j.getter.Get(j.ctx, address)
+				ch, err := getter.Get(j.ctx, address)
 				if err != nil {
 					return err
 				}
@@ -309,6 +312,8 @@ func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIter
 	if err != nil {
 		return err
 	}
+	sAddresses, pAddresses := chunkAddresses(data[:eSize], parity, j.refLength)
+	getter := getter.New(sAddresses, pAddresses, j.getter)
 	for cursor := 0; cursor < len(data); cursor += j.refLength {
 		ref := data[cursor : cursor+j.refLength]
 		var reportAddr swarm.Address
@@ -334,7 +339,7 @@ func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIter
 			eg.Go(func() error {
 				defer wg.Done()
 
-				ch, err := j.getter.Get(ectx, address)
+				ch, err := getter.Get(ectx, address)
 				if err != nil {
 					return err
 				}
@@ -371,6 +376,24 @@ func chunkPayloadSize(data []byte) (int, error) {
 	}
 
 	return 0, errors.New("joiner: intermediate chunk does not have at least a child")
+}
+
+// chunkAddresses returns data shards and parities of the intermediate chunk
+func chunkAddresses(data []byte, parities, reflen int) (sAddresses, pAddresses []swarm.Address) {
+	shards := (len(data) - parities*swarm.HashSize) / reflen
+	sAddresses = make([]swarm.Address, shards)
+	pAddresses = make([]swarm.Address, parities)
+	offset := 0
+	for i := 0; i < shards; i++ {
+		sAddresses[i] = swarm.NewAddress(data[offset : offset+reflen])
+		offset += reflen
+	}
+	for i := 0; i < parities; i++ {
+		pAddresses[i] = swarm.NewAddress(data[offset : offset+reflen])
+		offset += swarm.HashSize
+	}
+
+	return sAddresses, pAddresses
 }
 
 func chunkToSpan(data []byte) (int, int64) {
