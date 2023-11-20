@@ -19,12 +19,10 @@ import (
 	"net/http"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/ethereum/go-ethereum/accounts/abi"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/accounting"
 	"github.com/ethersphere/bee/pkg/addressbook"
@@ -71,6 +69,7 @@ import (
 	"github.com/ethersphere/bee/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/transaction"
+	"github.com/ethersphere/bee/pkg/util/abiutil"
 	"github.com/ethersphere/bee/pkg/util/ioutil"
 	"github.com/ethersphere/bee/pkg/util/nbhdutil"
 	"github.com/ethersphere/bee/pkg/util/syncutil"
@@ -683,10 +682,7 @@ func NewBee(
 		return nil, errors.New("no known postage stamp addresses for this network")
 	}
 
-	postageStampContractABI, err := abi.JSON(strings.NewReader(chainCfg.PostageStampABI))
-	if err != nil {
-		return nil, fmt.Errorf("unable to parse postage stamp ABI: %w", err)
-	}
+	postageStampContractABI := abiutil.MustParseABI(chainCfg.PostageStampABI)
 
 	bzzTokenAddress, err := postagecontract.LookupERC20Address(ctx, transactionService, postageStampContractAddress, postageStampContractABI, chainEnabled)
 	if err != nil {
@@ -1012,11 +1008,7 @@ func NewBee(
 		stakingContractAddress = common.HexToAddress(o.StakingContractAddress)
 	}
 
-	stakingContractABI, err := abi.JSON(strings.NewReader(chainCfg.StakingABI))
-	if err != nil {
-		return nil, fmt.Errorf("unable to parse staking ABI: %w", err)
-	}
-	stakingContract := staking.New(swarmAddress, overlayEthAddress, stakingContractAddress, stakingContractABI, bzzTokenAddress, transactionService, common.BytesToHash(nonce))
+	stakingContract := staking.New(swarmAddress, overlayEthAddress, stakingContractAddress, abiutil.MustParseABI(chainCfg.StakingABI), bzzTokenAddress, transactionService, common.BytesToHash(nonce))
 
 	var (
 		pullerService *puller.Puller
@@ -1039,16 +1031,12 @@ func NewBee(
 				}
 				redistributionContractAddress = common.HexToAddress(o.RedistributionContractAddress)
 			}
-			redistributionContractABI, err := abi.JSON(strings.NewReader(chainCfg.RedistributionABI))
-			if err != nil {
-				return nil, fmt.Errorf("unable to parse redistribution ABI: %w", err)
-			}
 
 			isFullySynced := func() bool {
 				return localStore.ReserveSize() >= reserveTreshold && pullerService.SyncRate() == 0
 			}
 
-			redistributionContract := redistribution.New(swarmAddress, logger, transactionService, redistributionContractAddress, redistributionContractABI)
+			redistributionContract := redistribution.New(swarmAddress, logger, transactionService, redistributionContractAddress, abiutil.MustParseABI(chainCfg.RedistributionABI))
 			agent, err = storageincentives.New(
 				swarmAddress,
 				overlayEthAddress,
