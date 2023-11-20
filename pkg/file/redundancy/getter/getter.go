@@ -172,7 +172,7 @@ func (g *getter) cautiousStrategy(ctx context.Context) error {
 		close(retrievedCh)
 	}()
 	retrieved := 0
-	for i := 0; i < requiredChunks; i++ {
+	for retrieved < requiredChunks {
 		_, ok := <-retrievedCh
 		if !ok {
 			break
