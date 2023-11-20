@@ -17,8 +17,8 @@ import (
 	"github.com/klauspost/reedsolomon"
 )
 
-// chunk is initialized if recovery happened already
-type chunk struct {
+// inflightChunk is initialized if recovery happened already
+type inflightChunk struct {
 	data []byte        // chunk data, can be encrypted
 	wait chan struct{} // chunk is under retrieval
 }
@@ -27,15 +27,15 @@ type chunk struct {
 // it caches sibling chunks if erasure decoding was called on the level already
 type getter struct {
 	storage.Getter
-	sAddresses []swarm.Address  // shard addresses
-	pAddresses []swarm.Address  // parity addresses
-	cache      map[string]chunk // map from chunk address to cached shard chunk data; TODO mutex
-	encrypted  bool             // swarm datashards are encrypted
+	sAddresses []swarm.Address          // shard addresses
+	pAddresses []swarm.Address          // parity addresses
+	cache      map[string]inflightChunk // map from chunk address to cached shard chunk data; TODO mutex
+	encrypted  bool                     // swarm datashards are encrypted
 }
 
 // New returns a getter object which is used to retrieve children of an intermediate chunk
 func New(sAddresses, pAddresses []swarm.Address, g storage.Getter) storage.Getter {
-	cache := make(map[string]chunk)
+	cache := make(map[string]inflightChunk)
 	encrypted := len(sAddresses[0].Bytes()) == swarm.HashSize*2
 
 	return &getter{
@@ -125,7 +125,7 @@ func (g *getter) explorerStrategy(ctx context.Context, addr swarm.Address) error
 	for _, a := range addresses {
 		go func(a swarm.Address) {
 			defer wg.Done()
-			c := &chunk{
+			c := &inflightChunk{
 				wait: make(chan struct{}),
 			}
 			g.cache[a.String()] = *c
@@ -138,7 +138,7 @@ func (g *getter) explorerStrategy(ctx context.Context, addr swarm.Address) error
 				return
 			}
 			c.data = ch.Data()
-			c.wait <- struct{}{}
+			close(c.wait)
 		}(a)
 	}
 	wg.Wait()
@@ -188,7 +188,7 @@ func (g *getter) erasureDecode() error {
 		c, ok := g.cache[addr.String()]
 		if ok {
 			c.data = data[i]
-			c.wait <- struct{}{}
+			close(c.wait)
 			// not necessary to update `available` since decoding was successful
 		}
 	}
