@@ -252,3 +252,91 @@ func TestNewEthereumAddress(t *testing.T) {
 		t.Fatalf("address mismatch %x %x", address, expectAddress)
 	}
 }
+
+func TestNewOverlayFromEthereumAddress(t *testing.T) {
+	t.Parallel()
+
+	// Test Case 1
+	ethAddress := "1815cac638d1525b47f848daf02b7953e4edd15c"
+	ethAddressBytes, err := hex.DecodeString(ethAddress)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	newAddress1, err := crypto.NewOverlayFromEthereumAddress(ethAddressBytes, 1, common.HexToHash("0x1").Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if l := len(newAddress1.Bytes()); l != 32 {
+		t.Errorf("got address length %v, want %v", l, 32)
+	}
+
+	expectedAddress1 := "a38f7a814d4b249ae9d3821e9b898019c78ac9abe248fff171782c32a3849a17"
+
+	if newAddress1.String() != expectedAddress1 {
+		t.Errorf("Expected %s, but got %s", expectedAddress1, newAddress1.String())
+	}
+
+	// Test Case 2
+	newAddress2, err := crypto.NewOverlayFromEthereumAddress(ethAddressBytes, 1, common.HexToHash("0x2").Bytes())
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if l := len(newAddress2.Bytes()); l != 32 {
+		t.Errorf("got address length %v, want %v", l, 32)
+	}
+
+	expectedAddress2 := "c63c10b1728dfc463c64c264f71a621fe640196979375840be42dc496b702610"
+
+	if newAddress2.String() != expectedAddress2 {
+		t.Errorf("Expected %s, but got %s", expectedAddress2, newAddress2.String())
+	}
+
+	// Test Case 3
+	ethAddress2 := "d26bc1715e933bd5f8fad16310042f13abc16159"
+	ethAddressBytes2, err := hex.DecodeString(ethAddress2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	newAddress3, err := crypto.NewOverlayFromEthereumAddress(ethAddressBytes2, 2, common.HexToHash("0x1").Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if l := len(newAddress3.Bytes()); l != 32 {
+		t.Errorf("got address length %v, want %v", l, 32)
+	}
+
+	expectedAddress3 := "9f421f9149b8e31e238cfbdc6e5e833bacf1e42f77f60874d49291292858968e"
+
+	if newAddress3.String() != expectedAddress3 {
+		t.Errorf("Expected %s, but got %s", expectedAddress3, newAddress3.String())
+	}
+
+	// Test Case 4
+	ethAddress3 := "ac485e3c63dcf9b4cda9f007628bb0b6fed1c063"
+	ethAddressBytes4, err := hex.DecodeString(ethAddress3)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	newAddress4, err := crypto.NewOverlayFromEthereumAddress(ethAddressBytes4, 1, common.HexToHash("0x0").Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if l := len(newAddress4.Bytes()); l != 32 {
+		t.Errorf("got address length %v, want %v", l, 32)
+	}
+
+	expectedAddress4 := "fe3a6d582c577404fb19df64a44e00d3a3b71230a8464c0dd34af3f0791b45f2"
+
+	if newAddress4.String() != expectedAddress4 {
+		t.Errorf("Expected %s, but got %s", expectedAddress4, newAddress4.String())
+	}
+
+}
