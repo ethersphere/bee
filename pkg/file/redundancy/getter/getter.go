@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"sync"
-	"sync/atomic"
 
 	"github.com/ethersphere/bee/pkg/encryption/store"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -19,7 +18,7 @@ import (
 
 // inflightChunk is initialized if recovery happened already
 type inflightChunk struct {
-	data []byte        // chunk data, can be encrypted
+	pos  int           // chunk index in the erasureData/intermediate chunk
 	wait chan struct{} // chunk is under retrieval
 }
 
@@ -27,27 +26,34 @@ type inflightChunk struct {
 // it caches sibling chunks if erasure decoding was called on the level already
 type getter struct {
 	storage.Getter
-	sAddresses []swarm.Address          // shard addresses
-	pAddresses []swarm.Address          // parity addresses
-	cache      map[string]inflightChunk // map from chunk address to cached shard chunk data; TODO mutex
-	encrypted  bool                     // swarm datashards are encrypted
+	sAddresses  []swarm.Address          // shard addresses
+	pAddresses  []swarm.Address          // parity addresses
+	cache       map[string]inflightChunk // map from chunk address to cached shard chunk data
+	erasureData [][]byte                 // data + parity shards for erasure decoding; TODO mutex
+	encrypted   bool                     // swarm datashards are encrypted
 }
 
 // New returns a getter object which is used to retrieve children of an intermediate chunk
 func New(sAddresses, pAddresses []swarm.Address, g storage.Getter) storage.Getter {
-	cache := make(map[string]inflightChunk)
 	encrypted := len(sAddresses[0].Bytes()) == swarm.HashSize*2
+	shards := len(sAddresses)
+	parities := len(pAddresses)
+	n := shards + parities
+	erasureData := make([][]byte, n)
+	cache := make(map[string]inflightChunk, n)
 
 	return &getter{
-		Getter:     g,
-		sAddresses: sAddresses,
-		pAddresses: pAddresses,
-		cache:      cache,
-		encrypted:  encrypted,
+		Getter:      g,
+		sAddresses:  sAddresses,
+		pAddresses:  pAddresses,
+		cache:       cache,
+		encrypted:   encrypted,
+		erasureData: erasureData,
 	}
 }
 
 // Get will call parities and other sibling chunks if the chunk address cannot be retrieved
+// assumes it is called for data shards only
 func (g *getter) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
 	if g.processing(addr) {
 		return g.getAfterProcessed(ctx, addr)
@@ -83,13 +89,13 @@ func (g *getter) getAfterProcessed(ctx context.Context, addr swarm.Address) (swa
 		return nil, fmt.Errorf("redundancy getter: chunk %s should have been in the cache", addr.String())
 	}
 
-	if c.data != nil {
-		return g.cacheDataToChunk(addr, c.data)
+	if g.erasureData[c.pos] != nil {
+		return g.cacheDataToChunk(addr, g.erasureData[c.pos])
 	}
 
 	select {
 	case <-c.wait:
-		return g.cacheDataToChunk(addr, c.data)
+		return g.cacheDataToChunk(addr, g.erasureData[c.pos])
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
@@ -97,54 +103,86 @@ func (g *getter) getAfterProcessed(ctx context.Context, addr swarm.Address) (swa
 
 // executeStrategies executes recovery strategies from redundancy for the given swarm address
 func (g *getter) executeStrategies(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
-	err := g.explorerStrategy(ctx, addr)
+	g.initCache()
+	err := g.cautiousStrategy(ctx)
 	if err != nil {
-		// TODO cautious strategy, retrieve all chunks, stop when it is enough
+		return nil, err
 	}
 
 	return g.getAfterProcessed(ctx, addr)
 }
 
-// explorerStrategy identifies how many shards are missing outside of the current missing address
-// also fills up cache the first time
-func (g *getter) explorerStrategy(ctx context.Context, addr swarm.Address) error {
-	var addresses []swarm.Address
-	for _, a := range g.sAddresses {
-		if a.Compare(addr) != 0 {
-			addresses = append(addresses, a)
+// initCache initializes the cache mapping values for chunks with which indicating the start of the recovery process as well
+func (g *getter) initCache() {
+	for i, addr := range g.sAddresses {
+		g.cache[addr.String()] = inflightChunk{
+			pos:  i,
+			wait: make(chan struct{}),
 		}
 	}
-	// add one parity chunk since addr cannot be retrieved
-	addresses = append(addresses, g.pAddresses[0])
+	for i, addr := range g.pAddresses {
+		g.cache[addr.String()] = inflightChunk{
+			pos: len(g.sAddresses) + i,
+			// no wait channel initialization is needed
+		}
+	}
+}
 
-	var (
-		wg            sync.WaitGroup
-		missingChunks uint32
-	)
-	wg.Add(len(addresses))
-	for _, a := range addresses {
-		go func(a swarm.Address) {
+// cautiousStrategy requests all chunks (data and parity) on the level
+// and if it has enough data for erasure decoding then it cancel other requests
+func (g *getter) cautiousStrategy(ctx context.Context) error {
+	requiredChunks := len(g.sAddresses)
+	subContext, cancelContext := context.WithCancel(ctx)
+	retrievedCh := make(chan struct{}, requiredChunks)
+	var wg sync.WaitGroup
+
+	for _, a := range g.sAddresses {
+		wg.Add(1)
+		c := g.cache[a.String()]
+		go func(a swarm.Address, c inflightChunk) {
 			defer wg.Done()
-			c := &inflightChunk{
-				wait: make(chan struct{}),
-			}
-			g.cache[a.String()] = *c
 			// enrypted chunk data should remain encrypted
 			address := swarm.NewAddress(a.Bytes()[:swarm.HashSize])
-			ch, err := g.Getter.Get(ctx, address)
+			ch, err := g.Getter.Get(subContext, address)
 			if err != nil {
-				// available map holds which chunks exactly
-				atomic.AddUint32(&missingChunks, 1)
 				return
 			}
-			c.data = ch.Data()
+			g.erasureData[c.pos] = ch.Data()
 			close(c.wait)
-		}(a)
+			retrievedCh <- struct{}{}
+		}(a, c)
 	}
-	wg.Wait()
+	for _, a := range g.pAddresses {
+		wg.Add(1)
+		c := g.cache[a.String()]
+		go func(address swarm.Address, c inflightChunk) {
+			defer wg.Done()
+			ch, err := g.Getter.Get(subContext, address)
+			if err != nil {
+				return
+			}
+			g.erasureData[c.pos] = ch.Data()
+			retrievedCh <- struct{}{}
+		}(a, c)
+	}
 
-	if missingChunks > 0 {
-		return fmt.Errorf("redundancy getter: there are %d missing chunks in order to do recovery", missingChunks)
+	// Goroutine to wait for WaitGroup completion
+	go func() {
+		wg.Wait()
+		close(retrievedCh)
+	}()
+	retrieved := 0
+	for i := 0; i < requiredChunks; i++ {
+		_, ok := <-retrievedCh
+		if !ok {
+			break
+		}
+		retrieved++
+	}
+	cancelContext()
+
+	if retrieved < requiredChunks {
+		return fmt.Errorf("redundancy getter: there are %d missing chunks in order to do recovery", requiredChunks-retrieved)
 	}
 
 	return g.erasureDecode()
@@ -155,44 +193,23 @@ func (g *getter) explorerStrategy(ctx context.Context, addr swarm.Address) error
 func (g *getter) erasureDecode() error {
 	shards := len(g.sAddresses)
 	parities := len(g.pAddresses)
-	n := shards + parities
-	data := make([][]byte, n)
 	enc, err := reedsolomon.New(shards, parities)
 	if err != nil {
 		return err
 	}
 
-	var missingShardIndices []int
-	for i, addr := range g.sAddresses {
-		c, ok := g.cache[addr.String()]
-		if !ok {
-			missingShardIndices = append(missingShardIndices, i)
-		}
-		data[i] = c.data
-	}
-	for i := shards; i < n; i++ {
-		addr := g.pAddresses[i-shards]
-		c, ok := g.cache[addr.String()]
-		if ok {
-			data[i] = c.data // later strategies may require parity data
-		}
-	}
-
-	err = enc.ReconstructData(data)
+	err = enc.ReconstructData(g.erasureData)
 	if err != nil {
 		return err
 	}
 
-	for _, i := range missingShardIndices {
-		addr := g.sAddresses[i]
+	// close wait channels
+	for _, addr := range g.sAddresses {
 		c, ok := g.cache[addr.String()]
-		if ok {
-			c.data = data[i]
+		if ok && channelIsClosed(c.wait) {
 			close(c.wait)
-			// not necessary to update `available` since decoding was successful
 		}
 	}
-
 	return nil
 }
 
@@ -207,4 +224,13 @@ func (g *getter) cacheDataToChunk(addr swarm.Address, chData []byte) (swarm.Chun
 	}
 
 	return swarm.NewChunk(addr, chData), nil
+}
+
+func channelIsClosed(wait <-chan struct{}) bool {
+	select {
+	case <-wait:
+		return true
+	default:
+		return false
+	}
 }
