@@ -191,9 +191,7 @@ func (g *getter) cautiousStrategy(ctx context.Context) error {
 // erasureDecode perform Reed-Solomon recovery on data
 // assumes it is called after filling up cache with the required amount of shards and parities
 func (g *getter) erasureDecode() error {
-	shards := len(g.sAddresses)
-	parities := len(g.pAddresses)
-	enc, err := reedsolomon.New(shards, parities)
+	enc, err := reedsolomon.New(len(g.sAddresses), len(g.pAddresses))
 	if err != nil {
 		return err
 	}
