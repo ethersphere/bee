@@ -7,13 +7,17 @@ package transaction_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"math/big"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
+	"github.com/ethereum/go-ethereum/rpc"
 	"github.com/ethersphere/bee/pkg/crypto"
 	signermock "github.com/ethersphere/bee/pkg/crypto/mock"
 	"github.com/ethersphere/bee/pkg/log"
@@ -22,6 +26,7 @@ import (
 	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/ethersphere/bee/pkg/transaction/backendmock"
 	"github.com/ethersphere/bee/pkg/transaction/monitormock"
+	"github.com/ethersphere/bee/pkg/util/abiutil"
 	"github.com/ethersphere/bee/pkg/util/testutil"
 )
 
@@ -128,6 +133,126 @@ func TestTransactionSend(t *testing.T) {
 						t.Fatal("estimating with wrong data")
 					}
 					return estimatedGasLimit, nil
+				}),
+				backendmock.WithSuggestGasPriceFunc(func(ctx context.Context) (*big.Int, error) {
+					return suggestedGasPrice, nil
+				}),
+				backendmock.WithPendingNonceAtFunc(func(ctx context.Context, account common.Address) (uint64, error) {
+					return nonce - 1, nil
+				}),
+				backendmock.WithSuggestGasTipCapFunc(func(ctx context.Context) (*big.Int, error) {
+					return suggestedGasTip, nil
+				}),
+			),
+			signerMockForTransaction(t, signedTx, sender, chainID),
+			store,
+			chainID,
+			monitormock.New(
+				monitormock.WithWatchTransactionFunc(func(txHash common.Hash, nonce uint64) (<-chan types.Receipt, <-chan error, error) {
+					return nil, nil, nil
+				}),
+			),
+		)
+		if err != nil {
+			t.Fatal(err)
+		}
+		testutil.CleanupCloser(t, transactionService)
+
+		txHash, err := transactionService.Send(context.Background(), request, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if !bytes.Equal(txHash.Bytes(), signedTx.Hash().Bytes()) {
+			t.Fatal("returning wrong transaction hash")
+		}
+
+		var storedNonce uint64
+		err = store.Get(nonceKey(sender), &storedNonce)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if storedNonce != nonce+1 {
+			t.Fatalf("nonce not stored correctly: want %d, got %d", nonce+1, storedNonce)
+		}
+
+		storedTransaction, err := transactionService.StoredTransaction(txHash)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if storedTransaction.To == nil || *storedTransaction.To != recipient {
+			t.Fatalf("got wrong recipient in stored transaction. wanted %x, got %x", recipient, storedTransaction.To)
+		}
+
+		if !bytes.Equal(storedTransaction.Data, request.Data) {
+			t.Fatalf("got wrong data in stored transaction. wanted %x, got %x", request.Data, storedTransaction.Data)
+		}
+
+		if storedTransaction.Description != request.Description {
+			t.Fatalf("got wrong description in stored transaction. wanted %x, got %x", request.Description, storedTransaction.Description)
+		}
+
+		if storedTransaction.GasLimit != estimatedGasLimit {
+			t.Fatalf("got wrong gas limit in stored transaction. wanted %d, got %d", estimatedGasLimit, storedTransaction.GasLimit)
+		}
+
+		if defaultGasFee.Cmp(storedTransaction.GasPrice) != 0 {
+			t.Fatalf("got wrong gas price in stored transaction. wanted %d, got %d", defaultGasFee, storedTransaction.GasPrice)
+		}
+
+		if storedTransaction.Nonce != nonce {
+			t.Fatalf("got wrong nonce in stored transaction. wanted %d, got %d", nonce, storedTransaction.Nonce)
+		}
+
+		pending, err := transactionService.PendingTransactions()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(pending) != 1 {
+			t.Fatalf("expected one pending transaction, got %d", len(pending))
+		}
+
+		if pending[0] != txHash {
+			t.Fatalf("got wrong pending transaction. wanted %x, got %x", txHash, pending[0])
+		}
+	})
+
+	t.Run("send with estimate error", func(t *testing.T) {
+		t.Parallel()
+
+		signedTx := types.NewTx(&types.DynamicFeeTx{
+			ChainID:   chainID,
+			Nonce:     nonce,
+			To:        &recipient,
+			Value:     value,
+			Gas:       estimatedGasLimit,
+			GasFeeCap: defaultGasFee,
+			GasTipCap: suggestedGasTip,
+			Data:      txData,
+		})
+		request := &transaction.TxRequest{
+			To:                   &recipient,
+			Data:                 txData,
+			Value:                value,
+			MinEstimatedGasLimit: estimatedGasLimit,
+		}
+		store := storemock.NewStateStore()
+		err := store.Put(nonceKey(sender), nonce)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		transactionService, err := transaction.NewService(logger, sender,
+			backendmock.New(
+				backendmock.WithSendTransactionFunc(func(ctx context.Context, tx *types.Transaction) error {
+					if tx != signedTx {
+						t.Fatal("not sending signed transaction")
+					}
+					return nil
+				}),
+				backendmock.WithEstimateGasFunc(func(ctx context.Context, call ethereum.CallMsg) (gas uint64, err error) {
+					return 0, errors.New("estimate failure")
 				}),
 				backendmock.WithSuggestGasPriceFunc(func(ctx context.Context) (*big.Int, error) {
 					return suggestedGasPrice, nil
@@ -779,4 +904,90 @@ func TestTransactionCancel(t *testing.T) {
 			t.Fatalf("returned wrong hash. wanted %v, got %v", cancelTx.Hash(), cancelTxHash)
 		}
 	})
+}
+
+// rpcAPIError is a copy of engine.EngineAPIError from go-ethereum pkg.
+type rpcAPIError struct {
+	code int
+	msg  string
+	err  string
+}
+
+func (e *rpcAPIError) ErrorCode() int         { return e.code }
+func (e *rpcAPIError) Error() string          { return e.msg }
+func (e *rpcAPIError) ErrorData() interface{} { return e.err }
+
+var _ rpc.DataError = (*rpcAPIError)(nil)
+
+func TestTransactionService_UnwrapABIError(t *testing.T) {
+	t.Parallel()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	var (
+		sender    = common.HexToAddress("0xddff")
+		recipient = common.HexToAddress("0xbbbddd")
+		chainID   = big.NewInt(5)
+		nonce     = uint64(10)
+		gasTip    = big.NewInt(100)
+		gasFee    = big.NewInt(1100)
+		txData    = common.Hex2Bytes("0xabcdee")
+		value     = big.NewInt(1)
+
+		// This is the ABI of the following contract: https://goerli.etherscan.io/address/0xd29d9e385f19d888557cd609006bb1934cb5d1e2#code
+		contractABI = abiutil.MustParseABI(`[{"inputs":[{"internalType":"uint256","name":"available","type":"uint256"},{"internalType":"uint256","name":"required","type":"uint256"}],"name":"InsufficientBalance","type":"error"},{"inputs":[{"internalType":"address","name":"to","type":"address"},{"internalType":"uint256","name":"amount","type":"uint256"}],"name":"transfer","outputs":[],"stateMutability":"nonpayable","type":"function"}]`)
+		rpcAPIErr   = &rpcAPIError{
+			code: 3,
+			msg:  "execution reverted",
+			err:  "0xcf4791810000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000006f", // This is the ABI encoded error form the following failed transaction: https://goerli.etherscan.io/tx/0x74a2577db1c325c41e38977aa1eb32ab03dfa17cc1fa0649e84f3d8c0f0882ee
+		}
+	)
+
+	gasTipCap := new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(10)+100), gasTip), big.NewInt(100))
+	gasFeeCap := new(big.Int).Add(gasFee, gasTipCap)
+
+	signedTx := types.NewTx(&types.DynamicFeeTx{
+		ChainID:   chainID,
+		Nonce:     nonce,
+		To:        &recipient,
+		Value:     value,
+		Gas:       21000,
+		GasTipCap: gasTipCap,
+		GasFeeCap: gasFeeCap,
+		Data:      txData,
+	})
+	request := &transaction.TxRequest{
+		To:    &recipient,
+		Data:  txData,
+		Value: value,
+	}
+
+	transactionService, err := transaction.NewService(log.Noop, sender,
+		backendmock.New(
+			backendmock.WithCallContractFunc(func(ctx context.Context, call ethereum.CallMsg, blockNumber *big.Int) ([]byte, error) {
+				return nil, rpcAPIErr
+			}),
+		),
+		signerMockForTransaction(t, signedTx, recipient, chainID),
+		storemock.NewStateStore(),
+		chainID,
+		monitormock.New(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testutil.CleanupCloser(t, transactionService)
+
+	originErr := errors.New("origin error")
+	wrappedErr := transactionService.UnwrapABIError(ctx, request, originErr, contractABI.Errors)
+	if !errors.Is(wrappedErr, originErr) {
+		t.Fatal("origin error not wrapped")
+	}
+	if !strings.Contains(wrappedErr.Error(), rpcAPIErr.Error()) {
+		t.Fatal("wrapped error without rpc api main error")
+	}
+	if !strings.Contains(wrappedErr.Error(), "InsufficientBalance(available=0,required=111)") {
+		t.Fatal("wrapped error without rpc api error data")
+	}
 }
