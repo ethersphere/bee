@@ -24,7 +24,7 @@ var (
 	ErrNotDeployedByFactory = errors.New("chequebook not deployed by factory")
 	errDecodeABI            = errors.New("could not decode abi data")
 
-	factoryABI                  = abiutil.MustParseABI(sw3abi.SimpleSwapFactoryABIv0_4_0)
+	factoryABI                  = abiutil.MustParseABI(sw3abi.SimpleSwapFactoryABIv0_5_4)
 	simpleSwapDeployedEventType = factoryABI.Events["SimpleSwapDeployed"]
 )
 
