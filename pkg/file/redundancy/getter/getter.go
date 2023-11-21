@@ -26,6 +26,7 @@ type inflightChunk struct {
 // it caches sibling chunks if erasure decoding was called on the level already
 type getter struct {
 	storage.Getter
+	mu          sync.Mutex
 	sAddresses  []swarm.Address          // shard addresses
 	pAddresses  []swarm.Address          // parity addresses
 	cache       map[string]inflightChunk // map from chunk address to cached shard chunk data
@@ -75,8 +76,15 @@ func (g *getter) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, erro
 	return g.executeStrategies(ctx, addr)
 }
 
+// Inc increments the counter for the given key.
+func (g *getter) setErasureData(index int, data []byte) {
+	g.mu.Lock()
+	g.erasureData[index] = data
+	g.mu.Unlock()
+}
+
 // processing returns whether the recovery workflow has been started
-func (g getter) processing(addr swarm.Address) bool {
+func (g *getter) processing(addr swarm.Address) bool {
 	_, ok := g.cache[addr.String()]
 	return ok
 }
@@ -147,7 +155,7 @@ func (g *getter) cautiousStrategy(ctx context.Context) error {
 			if err != nil {
 				return
 			}
-			g.erasureData[c.pos] = ch.Data()
+			g.setErasureData(c.pos, ch.Data())
 			close(c.wait)
 			retrievedCh <- struct{}{}
 		}(a, c)
@@ -161,7 +169,7 @@ func (g *getter) cautiousStrategy(ctx context.Context) error {
 			if err != nil {
 				return
 			}
-			g.erasureData[c.pos] = ch.Data()
+			g.setErasureData(c.pos, ch.Data())
 			retrievedCh <- struct{}{}
 		}(a, c)
 	}
