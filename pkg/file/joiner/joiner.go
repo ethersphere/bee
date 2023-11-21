@@ -35,12 +35,13 @@ type joiner struct {
 
 	ctx    context.Context
 	getter storage.Getter
+	putter storage.Putter // required to save recovered data
 
 	chunkToSpan func(data []byte) (int, int64) // returns parity and span value from chunkData
 }
 
 // New creates a new Joiner. A Joiner provides Read, Seek and Size functionalities.
-func New(ctx context.Context, getter storage.Getter, address swarm.Address) (file.Joiner, int64, error) {
+func New(ctx context.Context, getter storage.Getter, putter storage.Putter, address swarm.Address) (file.Joiner, int64, error) {
 	getter = store.New(getter)
 	// retrieve the root chunk to read the total data length the be retrieved
 	rootChunk, err := getter.Get(ctx, address)
@@ -87,6 +88,7 @@ func New(ctx context.Context, getter storage.Getter, address swarm.Address) (fil
 		refLength:    refLength,
 		ctx:          ctx,
 		getter:       getter,
+		putter:       putter,
 		span:         span,
 		rootData:     rootData,
 		rootParity:   rootParity,
@@ -163,7 +165,7 @@ func (j *joiner) readAtOffset(
 		return
 	}
 	sAddresses, pAddresses := chunkAddresses(data[:pSize], parity, j.refLength)
-	getter := getter.New(sAddresses, pAddresses, j.getter)
+	getter := getter.New(sAddresses, pAddresses, j.getter, j.putter)
 	for cursor := 0; cursor < len(data); cursor += j.refLength {
 		if bytesToRead == 0 {
 			break
@@ -313,7 +315,7 @@ func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIter
 		return err
 	}
 	sAddresses, pAddresses := chunkAddresses(data[:eSize], parity, j.refLength)
-	getter := getter.New(sAddresses, pAddresses, j.getter)
+	getter := getter.New(sAddresses, pAddresses, j.getter, j.putter)
 	for cursor := 0; cursor < len(data); cursor += j.refLength {
 		ref := data[cursor : cursor+j.refLength]
 		var reportAddr swarm.Address

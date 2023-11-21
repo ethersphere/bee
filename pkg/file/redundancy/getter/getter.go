@@ -26,6 +26,7 @@ type inflightChunk struct {
 // it caches sibling chunks if erasure decoding was called on the level already
 type getter struct {
 	storage.Getter
+	storage.Putter
 	mu          sync.Mutex
 	sAddresses  []swarm.Address          // shard addresses
 	pAddresses  []swarm.Address          // parity addresses
@@ -35,7 +36,7 @@ type getter struct {
 }
 
 // New returns a getter object which is used to retrieve children of an intermediate chunk
-func New(sAddresses, pAddresses []swarm.Address, g storage.Getter) storage.Getter {
+func New(sAddresses, pAddresses []swarm.Address, g storage.Getter, p storage.Putter) storage.Getter {
 	encrypted := len(sAddresses[0].Bytes()) == swarm.HashSize*2
 	shards := len(sAddresses)
 	parities := len(pAddresses)
@@ -45,6 +46,7 @@ func New(sAddresses, pAddresses []swarm.Address, g storage.Getter) storage.Gette
 
 	return &getter{
 		Getter:      g,
+		Putter:      p,
 		sAddresses:  sAddresses,
 		pAddresses:  pAddresses,
 		cache:       cache,
@@ -193,15 +195,24 @@ func (g *getter) cautiousStrategy(ctx context.Context) error {
 		return fmt.Errorf("redundancy getter: there are %d missing chunks in order to do recovery", requiredChunks-retrieved)
 	}
 
-	return g.erasureDecode()
+	return g.erasureDecode(ctx)
 }
 
 // erasureDecode perform Reed-Solomon recovery on data
 // assumes it is called after filling up cache with the required amount of shards and parities
-func (g *getter) erasureDecode() error {
+func (g *getter) erasureDecode(ctx context.Context) error {
 	enc, err := reedsolomon.New(len(g.sAddresses), len(g.pAddresses))
 	if err != nil {
 		return err
+	}
+
+	// missing chunks
+	missingAddresses := make([]swarm.Address, len(g.sAddresses))
+	for _, addr := range g.sAddresses {
+		c := g.erasureData[g.cache[addr.String()].pos]
+		if c == nil {
+			missingAddresses = append(missingAddresses, addr)
+		}
 	}
 
 	err = enc.ReconstructData(g.erasureData)
@@ -214,6 +225,14 @@ func (g *getter) erasureDecode() error {
 		c, ok := g.cache[addr.String()]
 		if ok && channelIsClosed(c.wait) {
 			close(c.wait)
+		}
+	}
+	// save missing chunks
+	for _, addr := range missingAddresses {
+		data := g.erasureData[g.cache[addr.String()].pos]
+		err := g.Putter.Put(ctx, swarm.NewChunk(addr, data))
+		if err != nil {
+			return err
 		}
 	}
 	return nil
