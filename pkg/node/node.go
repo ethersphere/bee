@@ -1094,6 +1094,7 @@ func NewBee(
 		Steward:         steward,
 		SyncStatus:      syncStatusFn,
 		NodeStatus:      nodeStatus,
+		AddressBook:     addressbook,
 	}
 
 	if o.APIAddr != "" {
