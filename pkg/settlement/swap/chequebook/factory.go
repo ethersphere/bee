@@ -54,12 +54,11 @@ type simpleSwapDeployedEvent struct {
 }
 
 // the bytecode of factories which can be used for deployment
-var currentDeployVersion []byte = common.FromHex(sw3abi.SimpleSwapFactoryDeployedBinv0_5_4)
+var currentDeployVersion = common.FromHex(sw3abi.SimpleSwapFactoryDeployedBinv0_5_4)
 
 // the bytecode of factories from which we accept chequebooks
 var supportedVersions = [][]byte{
 	currentDeployVersion,
-	common.FromHex(sw3abi.SimpleSwapFactoryDeployedBinv0_3_1),
 }
 
 // NewFactory creates a new factory service for the provided factory contract.
