@@ -433,7 +433,7 @@ func (u *uploadPutter) Put(ctx context.Context, s internal.Storage, writer stora
 	case loaded && !item.ChunkIsImmutable:
 		prev := binary.BigEndian.Uint64(item.StampTimestamp)
 		curr := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
-		if prev >= curr {
+		if prev > curr {
 			return errOverwriteOfNewerBatch
 		}
 		err = stampindex.Store(writer, stampIndexUploadNamespace, chunk)
