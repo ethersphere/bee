@@ -124,7 +124,7 @@ func (r *peerRegistry) peers() []p2p.Peer {
 			FullNode: r.full[p],
 		}
 		for conn := range r.connections[p] {
-			peer.Underlay = append(peer.Underlay, conn.RemoteMultiaddr())
+			peer.Connections = append(peer.Connections, conn.RemoteMultiaddr())
 		}
 		peers = append(peers, peer)
 	}
