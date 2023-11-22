@@ -38,7 +38,7 @@ var (
 	// ErrInsufficientFunds is the error when the chequebook has not enough free funds for a user action
 	ErrInsufficientFunds = errors.New("insufficient token balance")
 
-	chequebookABI          = abiutil.MustParseABI(sw3abi.ERC20SimpleSwapABIv0_3_1)
+	chequebookABI          = abiutil.MustParseABI(sw3abi.ERC20SimpleSwapABIv0_5_4)
 	chequeCashedEventType  = chequebookABI.Events["ChequeCashed"]
 	chequeBouncedEventType = chequebookABI.Events["ChequeBounced"]
 )

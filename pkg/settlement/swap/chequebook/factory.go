@@ -24,7 +24,7 @@ var (
 	ErrNotDeployedByFactory = errors.New("chequebook not deployed by factory")
 	errDecodeABI            = errors.New("could not decode abi data")
 
-	factoryABI                  = abiutil.MustParseABI(sw3abi.SimpleSwapFactoryABIv0_4_0)
+	factoryABI                  = abiutil.MustParseABI(sw3abi.SimpleSwapFactoryABIv0_5_4)
 	simpleSwapDeployedEventType = factoryABI.Events["SimpleSwapDeployed"]
 )
 
@@ -54,12 +54,11 @@ type simpleSwapDeployedEvent struct {
 }
 
 // the bytecode of factories which can be used for deployment
-var currentDeployVersion []byte = common.FromHex(sw3abi.SimpleSwapFactoryDeployedBinv0_4_0)
+var currentDeployVersion = common.FromHex(sw3abi.SimpleSwapFactoryDeployedBinv0_5_4)
 
 // the bytecode of factories from which we accept chequebooks
 var supportedVersions = [][]byte{
 	currentDeployVersion,
-	common.FromHex(sw3abi.SimpleSwapFactoryDeployedBinv0_3_1),
 }
 
 // NewFactory creates a new factory service for the provided factory contract.
