@@ -79,9 +79,10 @@ func (s *Service) peerDisconnectHandler(w http.ResponseWriter, r *http.Request) 
 
 // Peer holds information about a Peer.
 type Peer struct {
-	Address  swarm.Address         `json:"address"`
-	FullNode bool                  `json:"fullNode"`
-	Underlay []multiaddr.Multiaddr `json:"underlay,omitempty"`
+	Address     swarm.Address         `json:"address"`
+	Underlay    multiaddr.Multiaddr   `json:"underlay,omitempty"`
+	FullNode    bool                  `json:"fullNode"`
+	Connections []multiaddr.Multiaddr `json:"connections,omitempty"`
 }
 
 type BlockListedPeer struct {
@@ -100,7 +101,7 @@ type blockListedPeersResponse struct {
 
 func (s *Service) peersHandler(w http.ResponseWriter, _ *http.Request) {
 	jsonhttp.OK(w, peersResponse{
-		Peers: mapPeers(s.p2p.Peers()),
+		Peers: s.mapPeers(s.p2p.Peers()),
 	})
 }
 
@@ -119,14 +120,22 @@ func (s *Service) blocklistedPeersHandler(w http.ResponseWriter, _ *http.Request
 	})
 }
 
-func mapPeers(peers []p2p.Peer) (out []Peer) {
+func (s *Service) mapPeers(peers []p2p.Peer) (out []Peer) {
 	out = make([]Peer, 0, len(peers))
 	for _, peer := range peers {
-		out = append(out, Peer{
-			Address:  peer.Address,
-			FullNode: peer.FullNode,
-			Underlay: peer.Underlay,
-		})
+		bzz, err := s.addressBook.Get(peer.Address)
+		if err != nil {
+			s.logger.Debug("get bzz address from addressbook", "address", peer.Address, "error", err)
+		}
+		p := Peer{
+			Address:     peer.Address,
+			FullNode:    peer.FullNode,
+			Connections: peer.Connections,
+		}
+		if bzz != nil {
+			p.Underlay = bzz.Underlay
+		}
+		out = append(out, p)
 	}
 	return
 }

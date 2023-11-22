@@ -24,6 +24,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	accountingmock "github.com/ethersphere/bee/pkg/accounting/mock"
+	"github.com/ethersphere/bee/pkg/addressbook"
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/auth"
 	mockauth "github.com/ethersphere/bee/pkg/auth/mock"
@@ -169,6 +170,8 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	chequebook := chequebookmock.NewChequebook(o.ChequebookOpts...)
 	ln := lightnode.NewContainer(o.Overlay)
 
+	addressBook := addressbook.New(statestore.NewStateStore())
+
 	transaction := transactionmock.New(o.TransactionOpts...)
 
 	storeRecipient := statestore.NewStateStore()
@@ -199,6 +202,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		SyncStatus:      o.SyncStatus,
 		Staking:         o.StakingContract,
 		NodeStatus:      o.NodeStatus,
+		AddressBook:     addressBook,
 	}
 
 	// By default bee mode is set to full mode.
