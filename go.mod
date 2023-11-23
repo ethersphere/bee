@@ -9,9 +9,9 @@ require (
 	github.com/casbin/casbin/v2 v2.35.0
 	github.com/coreos/go-semver v0.3.0
 	github.com/ethereum/go-ethereum v1.13.4
-	github.com/ethersphere/go-price-oracle-abi v0.1.0
-	github.com/ethersphere/go-storage-incentives-abi v0.5.0
-	github.com/ethersphere/go-sw3-abi v0.4.0
+	github.com/ethersphere/go-price-oracle-abi v0.2.0
+	github.com/ethersphere/go-storage-incentives-abi v0.6.1-rc3
+	github.com/ethersphere/go-sw3-abi v0.5.4
 	github.com/ethersphere/langos v1.0.0
 	github.com/go-playground/validator/v10 v10.11.1
 	github.com/gogo/protobuf v1.3.2

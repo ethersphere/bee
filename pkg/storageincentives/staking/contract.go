@@ -23,7 +23,7 @@ import (
 var (
 	MinimumStakeAmount = big.NewInt(100000000000000000)
 
-	erc20ABI = abiutil.MustParseABI(sw3abi.ERC20ABIv0_3_1)
+	erc20ABI = abiutil.MustParseABI(sw3abi.ERC20ABIv0_5_4)
 
 	ErrInsufficientStakeAmount = errors.New("insufficient stake amount")
 	ErrInsufficientFunds       = errors.New("insufficient token balance")
@@ -77,25 +77,36 @@ func New(
 	}
 }
 
-func (c *contract) sendApproveTransaction(ctx context.Context, amount *big.Int) (*types.Receipt, error) {
+func (c *contract) sendApproveTransaction(ctx context.Context, amount *big.Int) (receipt *types.Receipt, err error) {
 	callData, err := erc20ABI.Pack("approve", c.stakingContractAddress, amount)
 	if err != nil {
 		return nil, err
 	}
 
-	txHash, err := c.transactionService.Send(ctx, &transaction.TxRequest{
+	request := &transaction.TxRequest{
 		To:          &c.bzzTokenAddress,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
 		GasLimit:    65000,
 		Value:       big.NewInt(0),
 		Description: approveDescription,
-	}, 0)
+	}
+
+	defer func() {
+		err = c.transactionService.UnwrapABIError(
+			ctx,
+			request,
+			err,
+			c.stakingContractABI.Errors,
+		)
+	}()
+
+	txHash, err := c.transactionService.Send(ctx, request, 0)
 	if err != nil {
 		return nil, err
 	}
 
-	receipt, err := c.transactionService.WaitForReceipt(ctx, txHash)
+	receipt, err = c.transactionService.WaitForReceipt(ctx, txHash)
 	if err != nil {
 		return nil, err
 	}
@@ -107,7 +118,7 @@ func (c *contract) sendApproveTransaction(ctx context.Context, amount *big.Int) 
 	return receipt, nil
 }
 
-func (c *contract) sendTransaction(ctx context.Context, callData []byte, desc string) (*types.Receipt, error) {
+func (c *contract) sendTransaction(ctx context.Context, callData []byte, desc string) (receipt *types.Receipt, err error) {
 	request := &transaction.TxRequest{
 		To:          &c.stakingContractAddress,
 		Data:        callData,
@@ -117,12 +128,21 @@ func (c *contract) sendTransaction(ctx context.Context, callData []byte, desc st
 		Description: desc,
 	}
 
+	defer func() {
+		err = c.transactionService.UnwrapABIError(
+			ctx,
+			request,
+			err,
+			c.stakingContractABI.Errors,
+		)
+	}()
+
 	txHash, err := c.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
 	if err != nil {
 		return nil, err
 	}
 
-	receipt, err := c.transactionService.WaitForReceipt(ctx, txHash)
+	receipt, err = c.transactionService.WaitForReceipt(ctx, txHash)
 	if err != nil {
 		return nil, err
 	}

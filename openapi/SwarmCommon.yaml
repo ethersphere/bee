@@ -985,6 +985,15 @@ components:
       description: >
         Determines if the uploaded data should be sent to the network immediately or in a deferred fashion. By default the upload will be direct.
 
+    SwarmCache:
+      in: header
+      name: swarm-cache
+      schema:
+        type: boolean
+        default: "true"
+      required: false
+      description: "Determines if the download data should be cached on the node. By default the download will be cached"
+
   responses:
     "204":
       description: The resource was deleted successfully.
