@@ -77,7 +77,7 @@ var schemaMigrations = []migration{
 	{name: dBSchemaInterval, fn: noOpMigration},
 	{name: dBSchemaClearAddressBook, fn: clearAddressBook},
 	{name: dBSResetInterval, fn: clearIntervals},
-	{name: dBSchemaBatchStoreV5, fn: migrateBatchstore},
+	{name: dBSchemaBatchStoreV5, fn: migrateStamp},
 }
 
 func migrateFB(s *Store) error {
