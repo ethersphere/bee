@@ -143,10 +143,11 @@ func (g *getter) initCache() {
 func (g *getter) cautiousStrategy(ctx context.Context) error {
 	requiredChunks := len(g.sAddresses)
 	subContext, cancelContext := context.WithCancel(ctx)
-	retrievedCh := make(chan struct{}, requiredChunks)
+	retrievedCh := make(chan struct{}, requiredChunks+len(g.pAddresses))
 	var wg sync.WaitGroup
 
-	for _, a := range g.sAddresses {
+	addresses := append(g.sAddresses, g.pAddresses...)
+	for _, a := range addresses {
 		wg.Add(1)
 		c := g.cache[a.String()]
 		go func(a swarm.Address, c inflightChunk) {
@@ -158,20 +159,9 @@ func (g *getter) cautiousStrategy(ctx context.Context) error {
 				return
 			}
 			g.setErasureData(c.pos, ch.Data())
-			close(c.wait)
-			retrievedCh <- struct{}{}
-		}(a, c)
-	}
-	for _, a := range g.pAddresses {
-		wg.Add(1)
-		c := g.cache[a.String()]
-		go func(address swarm.Address, c inflightChunk) {
-			defer wg.Done()
-			ch, err := g.Getter.Get(subContext, address)
-			if err != nil {
-				return
+			if c.pos < len(g.sAddresses) {
+				close(c.wait)
 			}
-			g.setErasureData(c.pos, ch.Data())
 			retrievedCh <- struct{}{}
 		}(a, c)
 	}
