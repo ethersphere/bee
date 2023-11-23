@@ -197,11 +197,10 @@ func (g *getter) erasureDecode(ctx context.Context) error {
 	}
 
 	// missing chunks
-	missingAddresses := make([]swarm.Address, len(g.sAddresses))
-	for _, addr := range g.sAddresses {
-		c := g.erasureData[g.cache[addr.String()].pos]
-		if c == nil {
-			missingAddresses = append(missingAddresses, addr)
+	var missingIndices []int
+	for i := range g.sAddresses {
+		if g.erasureData[i] == nil {
+			missingIndices = append(missingIndices, i)
 		}
 	}
 
@@ -218,8 +217,9 @@ func (g *getter) erasureDecode(ctx context.Context) error {
 		}
 	}
 	// save missing chunks
-	for _, addr := range missingAddresses {
-		data := g.erasureData[g.cache[addr.String()].pos]
+	for _, index := range missingIndices {
+		data := g.erasureData[index]
+		addr := g.sAddresses[index]
 		err := g.Putter.Put(ctx, swarm.NewChunk(addr, data))
 		if err != nil {
 			return err
