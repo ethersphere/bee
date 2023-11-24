@@ -6,7 +6,6 @@
 package joiner
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"io"
@@ -60,7 +59,7 @@ func New(ctx context.Context, getter storage.Getter, putter storage.Putter, addr
 	maxBranching := swarm.ChunkSize / refLength
 	payloadSize := int(span)
 	if span > swarm.ChunkSize {
-		payloadSize, err = chunkPayloadSize(rootData)
+		payloadSize, err = file.ChunkPayloadSize(rootData)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -157,14 +156,14 @@ func (j *joiner) readAtOffset(
 		return
 	}
 
-	pSize, err := chunkPayloadSize(data)
+	pSize, err := file.ChunkPayloadSize(data)
 	if err != nil {
 		eg.Go(func() error {
 			return err
 		})
 		return
 	}
-	sAddresses, pAddresses := chunkAddresses(data[:pSize], parity, j.refLength)
+	sAddresses, pAddresses := file.ChunkAddresses(data[:pSize], parity, j.refLength)
 	getter := getter.New(sAddresses, pAddresses, j.getter, j.putter)
 	for cursor := 0; cursor < len(data); cursor += j.refLength {
 		if bytesToRead == 0 {
@@ -310,11 +309,11 @@ func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIter
 
 	var wg sync.WaitGroup
 
-	eSize, err := chunkPayloadSize(data)
+	eSize, err := file.ChunkPayloadSize(data)
 	if err != nil {
 		return err
 	}
-	sAddresses, pAddresses := chunkAddresses(data[:eSize], parity, j.refLength)
+	sAddresses, pAddresses := file.ChunkAddresses(data[:eSize], parity, j.refLength)
 	getter := getter.New(sAddresses, pAddresses, j.getter, j.putter)
 	for cursor := 0; cursor < len(data); cursor += j.refLength {
 		ref := data[cursor : cursor+j.refLength]
@@ -364,39 +363,6 @@ func (j *joiner) Size() int64 {
 }
 
 // UTILITIES
-
-// chunkPayloadSize returns the effective byte length of an intermediate chunk
-// assumes data is always chunk size (without span)
-func chunkPayloadSize(data []byte) (int, error) {
-	l := len(data)
-	for l >= swarm.HashSize {
-		if !bytes.Equal(data[l-swarm.HashSize:l], swarm.ZeroAddress.Bytes()) {
-			return l, nil
-		}
-
-		l -= swarm.HashSize
-	}
-
-	return 0, errors.New("joiner: intermediate chunk does not have at least a child")
-}
-
-// chunkAddresses returns data shards and parities of the intermediate chunk
-func chunkAddresses(data []byte, parities, reflen int) (sAddresses, pAddresses []swarm.Address) {
-	shards := (len(data) - parities*swarm.HashSize) / reflen
-	sAddresses = make([]swarm.Address, shards)
-	pAddresses = make([]swarm.Address, parities)
-	offset := 0
-	for i := 0; i < shards; i++ {
-		sAddresses[i] = swarm.NewAddress(data[offset : offset+reflen])
-		offset += reflen
-	}
-	for i := 0; i < parities; i++ {
-		pAddresses[i] = swarm.NewAddress(data[offset : offset+reflen])
-		offset += swarm.HashSize
-	}
-
-	return sAddresses, pAddresses
-}
 
 func chunkToSpan(data []byte) (int, int64) {
 	parity, spanBytes := redundancy.DecodeSpan(data[:swarm.SpanSize])
