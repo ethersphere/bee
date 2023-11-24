@@ -23,7 +23,7 @@ import (
 var (
 	MinimumStakeAmount = big.NewInt(100000000000000000)
 
-	erc20ABI = abiutil.MustParseABI(sw3abi.ERC20ABIv0_5_4)
+	erc20ABI = abiutil.MustParseABI(sw3abi.ERC20ABIv0_6_1)
 
 	ErrInsufficientStakeAmount = errors.New("insufficient stake amount")
 	ErrInsufficientFunds       = errors.New("insufficient token balance")

@@ -17,7 +17,7 @@ import (
 )
 
 var (
-	erc20ABI = abiutil.MustParseABI(sw3abi.ERC20ABIv0_5_4)
+	erc20ABI = abiutil.MustParseABI(sw3abi.ERC20ABIv0_6_1)
 )
 
 type transferEvent struct {
