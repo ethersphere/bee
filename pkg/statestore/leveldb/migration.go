@@ -48,11 +48,10 @@ const (
 	dBSchemaInterval         = "interval"
 	dBSchemaClearAddressBook = "address-book"
 	dBSResetInterval         = "interval-reset"
-	dBSchemaBatchStoreV5     = "batchstoreV5"
 )
 
 var (
-	dbSchemaCurrent = dBSchemaBatchStoreV5
+	dbSchemaCurrent = dBSResetInterval
 )
 
 type migration struct {
@@ -77,7 +76,6 @@ var schemaMigrations = []migration{
 	{name: dBSchemaInterval, fn: noOpMigration},
 	{name: dBSchemaClearAddressBook, fn: clearAddressBook},
 	{name: dBSResetInterval, fn: clearIntervals},
-	{name: dBSchemaBatchStoreV5, fn: migrateBatchstore},
 }
 
 func migrateFB(s *Store) error {
