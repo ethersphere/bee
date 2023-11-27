@@ -16,6 +16,18 @@ import (
 	"github.com/klauspost/reedsolomon"
 )
 
+type errCannotRecover struct {
+	missingChunks int
+}
+
+func (e errCannotRecover) Error() string {
+	return fmt.Sprintf("redundancy getter: there are %d missing chunks in order to do recovery", e.missingChunks)
+}
+
+func IsCannotRecoverError(err error, missingChunks int) bool {
+	return errors.Is(err, errCannotRecover{missingChunks})
+}
+
 // inflightChunk is initialized if recovery happened already
 type inflightChunk struct {
 	pos  int           // chunk index in the erasureData/intermediate chunk
@@ -193,7 +205,7 @@ func (g *getter) cautiousStrategy(ctx context.Context) error {
 	cancelContext()
 
 	if retrieved < requiredChunks {
-		return fmt.Errorf("redundancy getter: there are %d missing chunks in order to do recovery", requiredChunks-retrieved)
+		return errCannotRecover{requiredChunks - retrieved}
 	}
 
 	return g.erasureDecode(ctx)
