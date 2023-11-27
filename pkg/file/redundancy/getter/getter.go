@@ -16,6 +16,8 @@ import (
 	"github.com/klauspost/reedsolomon"
 )
 
+/// ERRORS
+
 type errCannotRecover struct {
 	missingChunks int
 }
@@ -27,6 +29,20 @@ func (e errCannotRecover) Error() string {
 func IsCannotRecoverError(err error, missingChunks int) bool {
 	return errors.Is(err, errCannotRecover{missingChunks})
 }
+
+type errIsNotRecovered struct {
+	chAddress string
+}
+
+func (e errIsNotRecovered) Error() string {
+	return fmt.Sprintf("redundancy getter: chunk with address %s is not recovered", e.chAddress)
+}
+
+func IsNotRecoveredError(err error, chAddress string) bool {
+	return errors.Is(err, errIsNotRecovered{chAddress})
+}
+
+/// TYPES
 
 // inflightChunk is initialized if recovery happened already
 type inflightChunk struct {
@@ -146,6 +162,7 @@ func (g *getter) executeStrategies(ctx context.Context, addr swarm.Address) (swa
 	g.initWaitChannels()
 	err := g.cautiousStrategy(ctx)
 	if err != nil {
+		g.closeWaitChannels()
 		return nil, err
 	}
 
@@ -158,6 +175,16 @@ func (g *getter) initWaitChannels() {
 		iCh := g.cache[addr.String()]
 		iCh.wait = make(chan struct{})
 		g.cache[addr.String()] = iCh
+	}
+}
+
+// closeChannls closes all pending channels
+func (g *getter) closeWaitChannels() {
+	for _, addr := range g.sAddresses {
+		c := g.cache[addr.String()]
+		if !channelIsClosed(c.wait) {
+			close(c.wait)
+		}
 	}
 }
 
@@ -232,13 +259,7 @@ func (g *getter) erasureDecode(ctx context.Context) error {
 		return err
 	}
 
-	// close wait channels
-	for _, addr := range g.sAddresses {
-		c := g.cache[addr.String()]
-		if !channelIsClosed(c.wait) {
-			close(c.wait)
-		}
-	}
+	g.closeWaitChannels()
 	// save missing chunks
 	for _, index := range missingIndices {
 		data := g.erasureData[index]
@@ -253,6 +274,9 @@ func (g *getter) erasureDecode(ctx context.Context) error {
 
 // cacheDataToChunk transforms passed chunk data to legit swarm chunk
 func (g *getter) cacheDataToChunk(addr swarm.Address, chData []byte) (swarm.Chunk, error) {
+	if chData == nil {
+		return nil, errIsNotRecovered{addr.String()}
+	}
 	if g.encrypted {
 		data, err := store.DecryptChunkData(chData, addr.Bytes()[swarm.HashSize:])
 		if err != nil {
