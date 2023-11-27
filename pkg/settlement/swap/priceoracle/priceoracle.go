@@ -47,7 +47,7 @@ type Service interface {
 }
 
 var (
-	priceOracleABI = abiutil.MustParseABI(priceoracleabi.PriceOracleABIv0_2_0)
+	priceOracleABI = abiutil.MustParseABI(priceoracleabi.PriceOracleABIv0_1_0)
 )
 
 func New(logger log.Logger, priceOracleAddress common.Address, transactionService transaction.Service, timeDivisor int64) Service {
