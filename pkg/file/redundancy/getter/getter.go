@@ -222,8 +222,8 @@ func (g *getter) erasureDecode(ctx context.Context) error {
 
 	// close wait channels
 	for _, addr := range g.sAddresses {
-		c, ok := g.cache[addr.String()]
-		if ok && channelIsClosed(c.wait) {
+		c := g.cache[addr.String()]
+		if !channelIsClosed(c.wait) {
 			close(c.wait)
 		}
 	}
@@ -254,8 +254,8 @@ func (g *getter) cacheDataToChunk(addr swarm.Address, chData []byte) (swarm.Chun
 
 func channelIsClosed(wait <-chan struct{}) bool {
 	select {
-	case <-wait:
-		return true
+	case _, ok := <-wait:
+		return !ok
 	default:
 		return false
 	}
