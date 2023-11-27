@@ -43,6 +43,19 @@ func New(sAddresses, pAddresses []swarm.Address, g storage.Getter, p storage.Put
 	n := shards + parities
 	erasureData := make([][]byte, n)
 	cache := make(map[string]inflightChunk, n)
+	// init cache
+	for i, addr := range sAddresses {
+		cache[addr.String()] = inflightChunk{
+			pos: i,
+			// wait channel initialization is needed when recovery starts
+		}
+	}
+	for i, addr := range pAddresses {
+		cache[addr.String()] = inflightChunk{
+			pos: len(sAddresses) + i,
+			// no wait channel initialization is needed
+		}
+	}
 
 	return &getter{
 		Getter:      g,
@@ -58,6 +71,11 @@ func New(sAddresses, pAddresses []swarm.Address, g storage.Getter, p storage.Put
 // Get will call parities and other sibling chunks if the chunk address cannot be retrieved
 // assumes it is called for data shards only
 func (g *getter) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
+	_, ok := g.cache[addr.String()]
+	if !ok {
+		return nil, fmt.Errorf("redundancy getter: no data shard address given as chunk address %s", addr)
+	}
+
 	if g.processing(addr) {
 		return g.getAfterProcessed(ctx, addr)
 	}
@@ -87,8 +105,8 @@ func (g *getter) setErasureData(index int, data []byte) {
 
 // processing returns whether the recovery workflow has been started
 func (g *getter) processing(addr swarm.Address) bool {
-	_, ok := g.cache[addr.String()]
-	return ok
+	iCh := g.cache[addr.String()]
+	return iCh.wait != nil
 }
 
 // getAfterProcessed returns chunk from the cache
@@ -113,7 +131,7 @@ func (g *getter) getAfterProcessed(ctx context.Context, addr swarm.Address) (swa
 
 // executeStrategies executes recovery strategies from redundancy for the given swarm address
 func (g *getter) executeStrategies(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
-	g.initCache()
+	g.initWaitChannels()
 	err := g.cautiousStrategy(ctx)
 	if err != nil {
 		return nil, err
@@ -122,19 +140,12 @@ func (g *getter) executeStrategies(ctx context.Context, addr swarm.Address) (swa
 	return g.getAfterProcessed(ctx, addr)
 }
 
-// initCache initializes the cache mapping values for chunks with which indicating the start of the recovery process as well
-func (g *getter) initCache() {
-	for i, addr := range g.sAddresses {
-		g.cache[addr.String()] = inflightChunk{
-			pos:  i,
-			wait: make(chan struct{}),
-		}
-	}
-	for i, addr := range g.pAddresses {
-		g.cache[addr.String()] = inflightChunk{
-			pos: len(g.sAddresses) + i,
-			// no wait channel initialization is needed
-		}
+// initWaitChannels initializes the wait channels in the cache mapping which indicates the start of the recovery process as well
+func (g *getter) initWaitChannels() {
+	for _, addr := range g.sAddresses {
+		iCh := g.cache[addr.String()]
+		iCh.wait = make(chan struct{})
+		g.cache[addr.String()] = iCh
 	}
 }
 
