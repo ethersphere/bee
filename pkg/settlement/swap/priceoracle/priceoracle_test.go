@@ -18,7 +18,7 @@ import (
 )
 
 var (
-	priceOracleABI = abiutil.MustParseABI(priceoracleabi.PriceOracleABIv0_2_0)
+	priceOracleABI = abiutil.MustParseABI(priceoracleabi.PriceOracleABIv0_1_0)
 )
 
 func TestExchangeGetPrice(t *testing.T) {
