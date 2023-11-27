@@ -42,6 +42,30 @@ func IsNotRecoveredError(err error, chAddress string) bool {
 	return errors.Is(err, errIsNotRecovered{chAddress})
 }
 
+type errNoDataAddressIncluded struct {
+	chAddress string
+}
+
+func (e errNoDataAddressIncluded) Error() string {
+	return fmt.Sprintf("redundancy getter: no data shard address given with chunk address %s", e.chAddress)
+}
+
+func IsNoDataAddressIncludedError(err error, chAddress string) bool {
+	return errors.Is(err, errNoDataAddressIncluded{chAddress})
+}
+
+type errNoRedundancy struct {
+	chAddress string
+}
+
+func (e errNoRedundancy) Error() string {
+	return fmt.Sprintf("redundancy getter: cannot get chunk %s because no redundancy added", e.chAddress)
+}
+
+func IsNoRedundancyError(err error, chAddress string) bool {
+	return errors.Is(err, errNoRedundancy{chAddress})
+}
+
 /// TYPES
 
 // inflightChunk is initialized if recovery happened already
@@ -99,9 +123,9 @@ func New(sAddresses, pAddresses []swarm.Address, g storage.Getter, p storage.Put
 // Get will call parities and other sibling chunks if the chunk address cannot be retrieved
 // assumes it is called for data shards only
 func (g *getter) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
-	_, ok := g.cache[addr.String()]
-	if !ok {
-		return nil, fmt.Errorf("redundancy getter: no data shard address given as chunk address %s", addr)
+	cValue, ok := g.cache[addr.String()]
+	if !ok || cValue.pos >= len(g.sAddresses) {
+		return nil, errNoDataAddressIncluded{addr.String()}
 	}
 
 	if g.processing(addr) {
@@ -113,7 +137,7 @@ func (g *getter) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, erro
 		return ch, nil
 	}
 	if errors.Is(storage.ErrNotFound, err) && len(g.pAddresses) == 0 {
-		return nil, fmt.Errorf("redundancy getter: cannot get chunk %s because no redundancy added", addr.ByteString())
+		return nil, errNoRedundancy{addr.String()}
 	}
 
 	// during the get, the recovery may have started by other process
