@@ -13,13 +13,12 @@ import (
 
 	bmtUtils "github.com/ethersphere/bee/pkg/bmt"
 	"github.com/ethersphere/bee/pkg/cac"
-	"github.com/ethersphere/bee/pkg/encryption"
 	dec "github.com/ethersphere/bee/pkg/encryption/store"
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/file/pipeline/bmt"
-	enc "github.com/ethersphere/bee/pkg/file/pipeline/encryption"
 	"github.com/ethersphere/bee/pkg/file/pipeline/hashtrie"
+	"github.com/ethersphere/bee/pkg/file/pipeline/hashtrie/tools"
 	"github.com/ethersphere/bee/pkg/file/pipeline/mock"
 	"github.com/ethersphere/bee/pkg/file/pipeline/store"
 	"github.com/ethersphere/bee/pkg/file/redundancy"
@@ -271,32 +270,14 @@ func TestRedundancy(t *testing.T) {
 			s := inmemchunkstore.New()
 			intermediateChunkCounter := mock.NewChainWriter()
 			parityChunkCounter := mock.NewChainWriter()
-			pf := func() pipeline.ChainWriter {
-				lsw := store.NewStoreWriter(ctx, s, intermediateChunkCounter)
-				return bmt.NewBmtWriter(lsw)
-			}
-			if tc.encryption {
-				pf = func() pipeline.ChainWriter {
-					lsw := store.NewStoreWriter(ctx, s, intermediateChunkCounter)
-					b := bmt.NewBmtWriter(lsw)
-					return enc.NewEncryptionWriter(encryption.NewChunkEncrypter(), b)
-				}
-			}
-			ppf := func() pipeline.ChainWriter {
-				lsw := store.NewStoreWriter(ctx, s, parityChunkCounter)
-				return bmt.NewBmtWriter(lsw)
-			}
 
+			r, ht := tools.NewErasureHashTrieWriter(ctx, s, tc.level, tc.encryption, intermediateChunkCounter, parityChunkCounter)
+
+			// write data to the hashTrie
 			var key []byte
-			hashSize := swarm.HashSize
 			if tc.encryption {
-				hashSize *= 2
-				key = addr.Bytes()
+				key = make([]byte, swarm.HashSize)
 			}
-
-			r := redundancy.New(tc.level, tc.encryption, ppf)
-			ht := hashtrie.NewHashTrieWriter(hashSize, r, pf)
-
 			for i := 0; i < tc.writes; i++ {
 				a := &pipeline.PipeWriteArgs{Data: chData, Span: chSpan, Ref: chAddr, Key: key}
 				err := ht.ChainWrite(a)
