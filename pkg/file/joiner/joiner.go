@@ -64,7 +64,7 @@ func New(ctx context.Context, getter storage.Getter, putter storage.Putter, addr
 			return nil, 0, err
 		}
 	}
-	rootShards := payloadSize - (rootParity*swarm.HashSize)/refLength
+	rootShards := (payloadSize - rootParity*swarm.HashSize) / refLength
 	rLevel, err := redundancy.GetLevel(rootParity, rootShards, encryption)
 	if err != nil {
 		return nil, 0, err
