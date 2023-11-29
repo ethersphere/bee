@@ -157,6 +157,8 @@ func (g *getter) setErasureData(index int, data []byte) {
 
 // processing returns whether the recovery workflow has been started
 func (g *getter) processing(addr swarm.Address) bool {
+	g.mu.Lock()
+	defer g.mu.Unlock()
 	iCh := g.cache[addr.String()]
 	return iCh.wait != nil
 }
