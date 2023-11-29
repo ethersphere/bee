@@ -200,5 +200,5 @@ func (p *Params) ElevateCarrierChunk(chunkLevel int, callback ParityChunkCallbac
 	}
 
 	// not necessary to update current level since we will not work with it anymore
-	return p.chunkWrite(chunkLevel+1, p.buffer[chunkLevel][p.cursor[chunkLevel]], callback)
+	return p.chunkWrite(chunkLevel+1, p.buffer[chunkLevel][p.cursor[chunkLevel]-1], callback)
 }
