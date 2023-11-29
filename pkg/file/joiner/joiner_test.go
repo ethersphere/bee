@@ -7,6 +7,7 @@ package joiner_test
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -20,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/pkg/encryption/store"
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
+	"github.com/ethersphere/bee/pkg/file/redundancy"
 	"github.com/ethersphere/bee/pkg/file/splitter"
 	filetest "github.com/ethersphere/bee/pkg/file/testing"
 	storage "github.com/ethersphere/bee/pkg/storage"
@@ -950,4 +952,84 @@ func TestJoinerIterateChunkAddresses_Encrypted(t *testing.T) {
 			t.Fatalf("got wrong ref size %d, %s", len(v), v)
 		}
 	}
+}
+
+func TestJoinerRedundancy(t *testing.T) {
+	ctx := context.Background()
+	store := inmemchunkstore.New()
+	rLevel := redundancy.PARANOID
+	pipe := builder.NewPipelineBuilder(ctx, store, false, rLevel)
+
+	// generate and store chunks
+	dataChunkCount := rLevel.GetMaxShards() + 1 // generate a carrier chunk
+	dataChunks := make([]swarm.Chunk, dataChunkCount)
+	chunkSize := swarm.ChunkSize
+	for i := 0; i < dataChunkCount; i++ {
+		chunkData := make([]byte, chunkSize)
+		_, err := io.ReadFull(rand.Reader, chunkData)
+		if err != nil {
+			t.Fatal(err)
+		}
+		dataChunks[i], err = cac.New(chunkData)
+		if err != nil {
+			t.Fatal(err)
+		}
+		store.Put(ctx, dataChunks[i])
+		pipe.Write(chunkData)
+	}
+
+	// reader init
+	sum, err := pipe.Sum()
+	if err != nil {
+		t.Fatal(err)
+	}
+	swarmAddr := swarm.NewAddress(sum)
+	joinReader, rootSpan, err := joiner.New(ctx, store, store, swarmAddr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// sanity checks
+	expectedRootSpan := chunkSize * dataChunkCount
+	if int64(expectedRootSpan) != rootSpan {
+		t.Fatalf("Expected root span %d. Got: %d", expectedRootSpan, rootSpan)
+	}
+	// all data can be read back
+	readCheck := func() {
+		offset := int64(0)
+		for i := 0; i < dataChunkCount; i++ {
+			chunkData := make([]byte, chunkSize)
+			_, err = joinReader.ReadAt(chunkData, offset)
+			if err != nil {
+				t.Fatalf("read error check at chunkdata comparisation on %d index: %s", i, err.Error())
+			}
+			expectedChunkData := dataChunks[i].Data()[swarm.SpanSize:]
+			if !bytes.Equal(expectedChunkData, chunkData) {
+				t.Fatalf("read error check at chunkdata comparisation on %d index. Data are not the same", i)
+			}
+			offset += int64(chunkSize)
+		}
+	}
+	readCheck()
+
+	// remove data chunks in order to trigger recovery
+	maxShards := rLevel.GetMaxShards()
+	maxParities := rLevel.GetParities(maxShards)
+	removeCount := maxParities
+	if maxParities > maxShards {
+		removeCount = maxShards
+	}
+	for i := 0; i < removeCount; i++ {
+		err := store.Delete(ctx, dataChunks[i].Address())
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	// remove parity chunk
+	err = store.Delete(ctx, dataChunks[len(dataChunks)-1].Address())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// check whether the data still be readable
+	readCheck()
 }
