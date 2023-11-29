@@ -365,6 +365,8 @@ func (j *joiner) Size() int64 {
 // UTILITIES
 
 func chunkToSpan(data []byte) (int, int64) {
-	parity, spanBytes := redundancy.DecodeSpan(data[:swarm.SpanSize])
+	span := make([]byte, swarm.SpanSize)
+	copy(span, data)
+	parity, spanBytes := redundancy.DecodeSpan(span)
 	return parity, int64(bmt.LengthFromSpan(spanBytes))
 }
