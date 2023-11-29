@@ -1,3 +1,7 @@
+// Copyright 2023 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package cmd
 
 import (
@@ -54,6 +58,15 @@ func (c *command) initSplitCmd() error {
 		Use:   "split",
 		Short: "Split a file into a list chunks. The 1st line is the root hash",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			inputFileName, err := cmd.Flags().GetString(optionNameInputFile)
+			if err != nil {
+				return fmt.Errorf("get input file name: %w", err)
+			}
+			outputFileName, err := cmd.Flags().GetString(optionNameOutputFile)
+			if err != nil {
+				return fmt.Errorf("get output file name: %w", err)
+			}
+
 			v, err := cmd.Flags().GetString(optionNameVerbosity)
 			if err != nil {
 				return fmt.Errorf("get verbosity: %w", err)
@@ -62,11 +75,6 @@ func (c *command) initSplitCmd() error {
 			logger, err := newLogger(cmd, v)
 			if err != nil {
 				return fmt.Errorf("new logger: %w", err)
-			}
-
-			inputFileName, err := cmd.Flags().GetString(optionNameInputFile)
-			if err != nil {
-				return fmt.Errorf("get input file name: %w", err)
 			}
 
 			reader, err := os.Open(inputFileName)
@@ -87,11 +95,6 @@ func (c *command) initSplitCmd() error {
 				return fmt.Errorf("split write: %w", err)
 			}
 			store.rootHash = rootHash.String()
-
-			outputFileName, err := cmd.Flags().GetString(optionNameOutputFile)
-			if err != nil {
-				return fmt.Errorf("get output file name: %w", err)
-			}
 
 			logger.Info("writing output", "file", outputFileName)
 			writer, err := os.OpenFile(outputFileName, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
