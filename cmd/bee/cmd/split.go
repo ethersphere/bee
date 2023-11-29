@@ -14,7 +14,6 @@ import (
 	"github.com/ethersphere/bee/pkg/file/splitter"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-
 	"github.com/spf13/cobra"
 )
 

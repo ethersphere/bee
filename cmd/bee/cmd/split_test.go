@@ -7,10 +7,9 @@ package cmd_test
 import (
 	"bufio"
 	crand "crypto/rand"
-	"errors"
-	"io"
 	"math/rand"
 	"os"
+	"path"
 	"testing"
 
 	"github.com/ethersphere/bee/cmd/bee/cmd"
@@ -27,13 +26,13 @@ func TestDBSplit(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	inputFileName := t.TempDir() + "/input"
+	inputFileName := path.Join(t.TempDir(), "input")
 	err = os.WriteFile(inputFileName, buf, 0644)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	outputFileName := t.TempDir() + "/output"
+	outputFileName := path.Join(t.TempDir(), "output")
 
 	err = newCommand(t, cmd.WithArgs("split", "--input-file", inputFileName, "--output-file", outputFileName)).Execute()
 	if err != nil {
@@ -52,15 +51,8 @@ func TestDBSplit(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer f.Close()
-	reader := bufio.NewReader(f)
-	for {
-		_, err = reader.ReadString('\n')
-		if err != nil {
-			if errors.Is(err, io.EOF) {
-				break
-			}
-			t.Fatal(err)
-		}
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
 		gotHashes++
 	}
 
