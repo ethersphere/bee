@@ -17,38 +17,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// splitterStore is a store that stores all the split chunk addresses of a file
-type splitterStore struct {
+// putter is a putter that stores all the split chunk addresses of a file
+type putter struct {
 	rootHash       string
 	chunkAddresses []string
 }
 
-func (s *splitterStore) Iterate(ctx context.Context, fn storage.IterateChunkFn) error {
-	return nil
-}
-
-func (s *splitterStore) Close() error {
-	return nil
-}
-
-func (s *splitterStore) Get(ctx context.Context, address swarm.Address) (swarm.Chunk, error) {
-	return nil, nil
-}
-
-func (s *splitterStore) Put(ctx context.Context, chunk swarm.Chunk) error {
+func (s *putter) Put(ctx context.Context, chunk swarm.Chunk) error {
 	s.chunkAddresses = append(s.chunkAddresses, chunk.Address().String())
 	return nil
 }
 
-func (s *splitterStore) Delete(ctx context.Context, address swarm.Address) error {
-	return nil
-}
-
-func (s *splitterStore) Has(ctx context.Context, address swarm.Address) (bool, error) {
-	return false, nil
-}
-
-var _ storage.ChunkStore = (*splitterStore)(nil)
+var _ storage.Putter = (*putter)(nil)
 
 func (c *command) initSplitCmd() error {
 	optionNameInputFile := "input-file"
@@ -83,7 +63,7 @@ func (c *command) initSplitCmd() error {
 			defer reader.Close()
 
 			logger.Info("splitting", "file", inputFileName)
-			store := new(splitterStore)
+			store := new(putter)
 			s := splitter.NewSimpleSplitter(store)
 			stat, err := reader.Stat()
 			if err != nil {
