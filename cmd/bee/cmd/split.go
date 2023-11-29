@@ -112,7 +112,7 @@ func (c *command) initSplitCmd() error {
 					return fmt.Errorf("write chunk address: %w", err)
 				}
 			}
-			logger.Info("done", "chunks", len(store.chunkAddresses))
+			logger.Info("done", "hashes", len(store.chunkAddresses))
 			return nil
 		},
 	}
