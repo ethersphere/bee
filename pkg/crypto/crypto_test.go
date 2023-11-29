@@ -252,3 +252,79 @@ func TestNewEthereumAddress(t *testing.T) {
 		t.Fatalf("address mismatch %x %x", address, expectAddress)
 	}
 }
+
+func TestNewOverlayFromEthereumAddress(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name          string
+		ethAddress    string
+		overlay       uint64
+		hash          string
+		expectedHex   string
+		expectedError error
+	}{
+		{
+			name:          "Test Case 1",
+			ethAddress:    "1815cac638d1525b47f848daf02b7953e4edd15c",
+			overlay:       1,
+			hash:          "0x1",
+			expectedHex:   "a38f7a814d4b249ae9d3821e9b898019c78ac9abe248fff171782c32a3849a17",
+			expectedError: nil,
+		},
+		{
+			name:          "Test Case 2",
+			ethAddress:    "1815cac638d1525b47f848daf02b7953e4edd15c",
+			overlay:       1,
+			hash:          "0x2",
+			expectedHex:   "c63c10b1728dfc463c64c264f71a621fe640196979375840be42dc496b702610",
+			expectedError: nil,
+		},
+		{
+			name:          "Test Case 3",
+			ethAddress:    "d26bc1715e933bd5f8fad16310042f13abc16159",
+			overlay:       2,
+			hash:          "0x1",
+			expectedHex:   "9f421f9149b8e31e238cfbdc6e5e833bacf1e42f77f60874d49291292858968e",
+			expectedError: nil,
+		},
+		{
+			name:          "Test Case 4",
+			ethAddress:    "ac485e3c63dcf9b4cda9f007628bb0b6fed1c063",
+			overlay:       1,
+			hash:          "0x0",
+			expectedHex:   "fe3a6d582c577404fb19df64a44e00d3a3b71230a8464c0dd34af3f0791b45f2",
+			expectedError: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ethAddressBytes, err := hex.DecodeString(tt.ethAddress)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			newAddress, err := crypto.NewOverlayFromEthereumAddress(ethAddressBytes, tt.overlay, common.HexToHash(tt.hash).Bytes())
+			if err != nil {
+				if tt.expectedError == nil {
+					t.Fatalf("unexpected error: %v", err)
+				}
+
+				if tt.expectedError.Error() != err.Error() {
+					t.Fatalf("expected error %v, but got %v", tt.expectedError, err)
+				}
+
+				return
+			}
+
+			if l := len(newAddress.Bytes()); l != 32 {
+				t.Errorf("got address length %v, want %v", l, 32)
+			}
+
+			if newAddress.String() != tt.expectedHex {
+				t.Errorf("Expected %s, but got %s", tt.expectedHex, newAddress.String())
+			}
+		})
+	}
+}
