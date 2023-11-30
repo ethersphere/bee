@@ -12,6 +12,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/crypto"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 func TestGenerateSecp256k1Key(t *testing.T) {
@@ -60,7 +61,7 @@ func TestGenerateSecp256k1EDG(t *testing.T) {
 	}
 }
 
-func TestNewAddress(t *testing.T) {
+func TestgotAddress(t *testing.T) {
 	t.Parallel()
 
 	k, err := crypto.GenerateSecp256k1Key()
@@ -256,75 +257,56 @@ func TestNewEthereumAddress(t *testing.T) {
 func TestNewOverlayFromEthereumAddress(t *testing.T) {
 	t.Parallel()
 
-	tests := []struct {
-		name          string
-		ethAddress    string
-		overlay       uint64
-		hash          string
-		expectedHex   string
-		expectedError error
+	testCases := []struct {
+		wantAddress     swarm.Address
+		overlayID       uint64
+		hash            []byte
+		expectedAddress string
 	}{
 		{
-			name:          "Test Case 1",
-			ethAddress:    "1815cac638d1525b47f848daf02b7953e4edd15c",
-			overlay:       1,
-			hash:          "0x1",
-			expectedHex:   "a38f7a814d4b249ae9d3821e9b898019c78ac9abe248fff171782c32a3849a17",
-			expectedError: nil,
+			wantAddress:     swarm.MustParseHexAddress("1815cac638d1525b47f848daf02b7953e4edd15c"),
+			overlayID:       1,
+			hash:            common.HexToHash("0x1").Bytes(),
+			expectedAddress: "a38f7a814d4b249ae9d3821e9b898019c78ac9abe248fff171782c32a3849a17",
 		},
 		{
-			name:          "Test Case 2",
-			ethAddress:    "1815cac638d1525b47f848daf02b7953e4edd15c",
-			overlay:       1,
-			hash:          "0x2",
-			expectedHex:   "c63c10b1728dfc463c64c264f71a621fe640196979375840be42dc496b702610",
-			expectedError: nil,
+			wantAddress:     swarm.MustParseHexAddress("1815cac638d1525b47f848daf02b7953e4edd15c"),
+			overlayID:       1,
+			hash:            common.HexToHash("0x2").Bytes(),
+			expectedAddress: "c63c10b1728dfc463c64c264f71a621fe640196979375840be42dc496b702610",
 		},
 		{
-			name:          "Test Case 3",
-			ethAddress:    "d26bc1715e933bd5f8fad16310042f13abc16159",
-			overlay:       2,
-			hash:          "0x1",
-			expectedHex:   "9f421f9149b8e31e238cfbdc6e5e833bacf1e42f77f60874d49291292858968e",
-			expectedError: nil,
+			wantAddress:     swarm.MustParseHexAddress("d26bc1715e933bd5f8fad16310042f13abc16159"),
+			overlayID:       2,
+			hash:            common.HexToHash("0x1").Bytes(),
+			expectedAddress: "9f421f9149b8e31e238cfbdc6e5e833bacf1e42f77f60874d49291292858968e",
 		},
 		{
-			name:          "Test Case 4",
-			ethAddress:    "ac485e3c63dcf9b4cda9f007628bb0b6fed1c063",
-			overlay:       1,
-			hash:          "0x0",
-			expectedHex:   "fe3a6d582c577404fb19df64a44e00d3a3b71230a8464c0dd34af3f0791b45f2",
-			expectedError: nil,
+			wantAddress:     swarm.MustParseHexAddress("ac485e3c63dcf9b4cda9f007628bb0b6fed1c063"),
+			overlayID:       1,
+			hash:            common.HexToHash("0x0").Bytes(),
+			expectedAddress: "fe3a6d582c577404fb19df64a44e00d3a3b71230a8464c0dd34af3f0791b45f2",
 		},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			ethAddressBytes, err := hex.DecodeString(tt.ethAddress)
-			if err != nil {
-				t.Fatal(err)
-			}
+	for _, tc := range testCases {
 
-			newAddress, err := crypto.NewOverlayFromEthereumAddress(ethAddressBytes, tt.overlay, common.HexToHash(tt.hash).Bytes())
-			if err != nil {
-				if tt.expectedError == nil {
-					t.Fatalf("unexpected error: %v", err)
-				}
+		gotAddress, err := crypto.NewOverlayFromEthereumAddress(tc.wantAddress.Bytes(), tc.overlayID, tc.hash)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-				if tt.expectedError.Error() != err.Error() {
-					t.Fatalf("expected error %v, but got %v", tt.expectedError, err)
-				}
+		if l := len(gotAddress.Bytes()); l != swarm.HashSize {
+			t.Errorf("got address length %v, want %v", l, swarm.HashSize)
+		}
 
-				return
-			}
+		wantAddress, err := swarm.ParseHexAddress(tc.expectedAddress)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-			if l := len(newAddress.Bytes()); l != 32 {
-				t.Errorf("got address length %v, want %v", l, 32)
-			}
-
-			if newAddress.String() != tt.expectedHex {
-				t.Errorf("Expected %s, but got %s", tt.expectedHex, newAddress.String())
-			}
-		})
+		if !wantAddress.Equal(gotAddress) {
+			t.Errorf("Expected %s, but got %s", wantAddress, gotAddress)
+		}
 	}
 }
