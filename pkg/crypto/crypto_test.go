@@ -61,7 +61,7 @@ func TestGenerateSecp256k1EDG(t *testing.T) {
 	}
 }
 
-func TestgotAddress(t *testing.T) {
+func TestNewAddress(t *testing.T) {
 	t.Parallel()
 
 	k, err := crypto.GenerateSecp256k1Key()
