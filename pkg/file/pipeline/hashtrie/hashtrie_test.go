@@ -13,15 +13,17 @@ import (
 
 	bmtUtils "github.com/ethersphere/bee/pkg/bmt"
 	"github.com/ethersphere/bee/pkg/cac"
+	"github.com/ethersphere/bee/pkg/encryption"
 	dec "github.com/ethersphere/bee/pkg/encryption/store"
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/file/pipeline/bmt"
+	enc "github.com/ethersphere/bee/pkg/file/pipeline/encryption"
 	"github.com/ethersphere/bee/pkg/file/pipeline/hashtrie"
-	"github.com/ethersphere/bee/pkg/file/pipeline/hashtrie/tools"
 	"github.com/ethersphere/bee/pkg/file/pipeline/mock"
 	"github.com/ethersphere/bee/pkg/file/pipeline/store"
 	"github.com/ethersphere/bee/pkg/file/redundancy"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -40,6 +42,41 @@ func init() {
 
 	span = make([]byte, 8)
 	binary.LittleEndian.PutUint64(span, 1)
+}
+
+// NewErasureHashTrieWriter returns back an redundancy param and a HastTrieWriter pipeline
+// which are using simple BMT and StoreWriter pipelines for chunk writes
+func newErasureHashTrieWriter(
+	ctx context.Context,
+	s storage.Putter,
+	rLevel redundancy.Level,
+	encryptChunks bool,
+	intermediateChunkPipeline, parityChunkPipeline pipeline.ChainWriter,
+) (redundancy.IParams, pipeline.ChainWriter) {
+	pf := func() pipeline.ChainWriter {
+		lsw := store.NewStoreWriter(ctx, s, intermediateChunkPipeline)
+		return bmt.NewBmtWriter(lsw)
+	}
+	if encryptChunks {
+		pf = func() pipeline.ChainWriter {
+			lsw := store.NewStoreWriter(ctx, s, intermediateChunkPipeline)
+			b := bmt.NewBmtWriter(lsw)
+			return enc.NewEncryptionWriter(encryption.NewChunkEncrypter(), b)
+		}
+	}
+	ppf := func() pipeline.ChainWriter {
+		lsw := store.NewStoreWriter(ctx, s, parityChunkPipeline)
+		return bmt.NewBmtWriter(lsw)
+	}
+
+	hashSize := swarm.HashSize
+	if encryptChunks {
+		hashSize *= 2
+	}
+
+	r := redundancy.New(rLevel, encryptChunks, ppf)
+	ht := hashtrie.NewHashTrieWriter(hashSize, r, pf)
+	return r, ht
 }
 
 func TestLevels(t *testing.T) {
@@ -271,7 +308,7 @@ func TestRedundancy(t *testing.T) {
 			intermediateChunkCounter := mock.NewChainWriter()
 			parityChunkCounter := mock.NewChainWriter()
 
-			r, ht := tools.NewErasureHashTrieWriter(ctx, s, tc.level, tc.encryption, intermediateChunkCounter, parityChunkCounter)
+			r, ht := newErasureHashTrieWriter(ctx, s, tc.level, tc.encryption, intermediateChunkCounter, parityChunkCounter)
 
 			// write data to the hashTrie
 			var key []byte
