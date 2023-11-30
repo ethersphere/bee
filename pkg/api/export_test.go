@@ -57,10 +57,6 @@ func (s *Service) ResolveNameOrAddress(str string) (swarm.Address, error) {
 	return s.resolveNameOrAddress(str)
 }
 
-func CalculateNumberOfChunks(contentLength int64, isEncrypted bool) int64 {
-	return calculateNumberOfChunks(contentLength, isEncrypted)
-}
-
 type (
 	HealthStatusResponse              = healthStatusResponse
 	NodeResponse                      = nodeResponse
