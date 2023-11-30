@@ -9,13 +9,14 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/ethersphere/bee/pkg/topology"
 	"net/http"
 	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/ethersphere/bee/pkg/topology"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/feeds"
@@ -175,7 +176,7 @@ func (s *Service) fileUploadHandler(
 	}
 
 	factory := requestPipelineFactory(ctx, putter, encrypt, rLevel)
-	l := loadsave.New(s.storer.ChunkStore(), factory)
+	l := loadsave.New(s.storer.ChunkStore(), s.storer.Cache(), factory)
 
 	m, err := manifest.NewDefaultManifest(l, encrypt)
 	if err != nil {
@@ -443,7 +444,7 @@ func (s *Service) serveManifestEntry(
 
 // downloadHandler contains common logic for dowloading Swarm file from API
 func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *http.Request, reference swarm.Address, additionalHeaders http.Header, etag bool) {
-	reader, l, err := joiner.New(r.Context(), s.storer.Download(true), reference)
+	reader, l, err := joiner.New(r.Context(), s.storer.Download(true), s.storer.Cache(), reference)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) || errors.Is(err, topology.ErrNotFound) {
 			logger.Debug("api download: not found ", "address", reference, "error", err)
