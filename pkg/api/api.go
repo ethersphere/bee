@@ -878,9 +878,9 @@ func (r *cleanupOnErrWriter) WriteHeader(statusCode int) {
 	r.ResponseWriter.WriteHeader(statusCode)
 }
 
-// calculateNumberOfChunks calculates the number of chunks in an arbitrary
+// CalculateNumberOfChunks calculates the number of chunks in an arbitrary
 // content length.
-func calculateNumberOfChunks(contentLength int64, isEncrypted bool) int64 {
+func CalculateNumberOfChunks(contentLength int64, isEncrypted bool) int64 {
 	if contentLength <= swarm.ChunkSize {
 		return 1
 	}
