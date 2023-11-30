@@ -150,6 +150,18 @@ func (s *Service) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("get_chunk_by_address").Build()
 	loggerV1 := logger.V(1).Build()
 
+	headers := struct {
+		Cache *bool `map:"Swarm-Cache"`
+	}{}
+	if response := s.mapStructure(r.Header, &headers); response != nil {
+		response("invalid header params", logger, w)
+		return
+	}
+	cache := true
+	if headers.Cache != nil {
+		cache = *headers.Cache
+	}
+
 	paths := struct {
 		Address swarm.Address `map:"address,resolve" validate:"required"`
 	}{}
@@ -158,7 +170,7 @@ func (s *Service) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	chunk, err := s.storer.Download(true).Get(r.Context(), paths.Address)
+	chunk, err := s.storer.Download(cache).Get(r.Context(), paths.Address)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
 			loggerV1.Debug("chunk not found", "address", paths.Address)

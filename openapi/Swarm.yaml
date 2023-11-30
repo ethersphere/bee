@@ -1066,6 +1066,11 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
           required: true
           description: Swarm address of chunk
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
+          name: swarm-cache
+          required: false
       responses:
         "200":
           description: Retrieved chunk content
