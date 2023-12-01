@@ -197,11 +197,13 @@ func (g *getter) executeStrategies(ctx context.Context, addr swarm.Address) (swa
 
 // initWaitChannels initializes the wait channels in the cache mapping which indicates the start of the recovery process as well
 func (g *getter) initWaitChannels() {
+	g.mu.Lock()
 	for _, addr := range g.sAddresses {
 		iCh := g.cache[addr.String()]
 		iCh.wait = make(chan struct{})
 		g.cache[addr.String()] = iCh
 	}
+	g.mu.Unlock()
 }
 
 // closeChannls closes all pending channels
