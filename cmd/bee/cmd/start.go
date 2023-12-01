@@ -23,9 +23,6 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/external"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/rpc"
-	"github.com/kardianos/service"
-	"github.com/spf13/cobra"
-
 	"github.com/ethersphere/bee"
 	chaincfg "github.com/ethersphere/bee/pkg/config"
 	"github.com/ethersphere/bee/pkg/crypto"
@@ -38,6 +35,8 @@ import (
 	"github.com/ethersphere/bee/pkg/resolver/multiresolver"
 	"github.com/ethersphere/bee/pkg/spinlock"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/kardianos/service"
+	"github.com/spf13/cobra"
 )
 
 const (
@@ -244,7 +243,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 	// if mainnet is true then we only accept networkID value 1, error otherwise
 	// if the user has not provided a network ID but mainnet is true - just overwrite with mainnet network ID (1)
 	// in all the other cases we default to test network ID (10)
-	var networkID = defaultTestNetworkID
+	networkID := defaultTestNetworkID
 
 	if userHasSetNetworkID {
 		networkID = c.config.GetUint64(optionNameNetworkID)
@@ -523,7 +522,7 @@ type networkConfig struct {
 }
 
 func getConfigByNetworkID(networkID uint64, defaultBlockTimeInSeconds uint64) *networkConfig {
-	var config = networkConfig{
+	config := networkConfig{
 		blockTime: time.Duration(defaultBlockTimeInSeconds) * time.Second,
 	}
 	switch networkID {
@@ -531,13 +530,13 @@ func getConfigByNetworkID(networkID uint64, defaultBlockTimeInSeconds uint64) *n
 		config.bootNodes = []string{"/dnsaddr/mainnet.ethswarm.org"}
 		config.blockTime = 5 * time.Second
 		config.chainID = chaincfg.Mainnet.ChainID
-	case 5: //staging
+	case 5: // staging
 		config.chainID = chaincfg.Testnet.ChainID
-	case 10: //testnet
+	case 10: // testnet
 		config.bootNodes = []string{"/dnsaddr/testnet.ethswarm.org"}
 		config.blockTime = 15 * time.Second
 		config.chainID = chaincfg.Testnet.ChainID
-	default: //will use the value provided by the chain
+	default: // will use the value provided by the chain
 		config.chainID = -1
 	}
 
