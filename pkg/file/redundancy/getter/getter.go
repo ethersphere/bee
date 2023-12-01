@@ -123,12 +123,14 @@ func New(sAddresses, pAddresses []swarm.Address, g storage.Getter, p storage.Put
 // Get will call parities and other sibling chunks if the chunk address cannot be retrieved
 // assumes it is called for data shards only
 func (g *getter) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
+	g.mu.Lock()
 	cValue, ok := g.cache[addr.String()]
+	g.mu.Unlock()
 	if !ok || cValue.pos >= len(g.sAddresses) {
 		return nil, noDataAddressIncludedError{addr.String()}
 	}
 
-	if g.processing(addr) {
+	if cValue.wait != nil { // equals to g.processing but does not need lock again
 		return g.getAfterProcessed(ctx, addr)
 	}
 
@@ -165,13 +167,13 @@ func (g *getter) processing(addr swarm.Address) bool {
 
 // getAfterProcessed returns chunk from the cache
 func (g *getter) getAfterProcessed(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
+	g.mu.Lock()
 	c, ok := g.cache[addr.String()]
 	// sanity check
 	if !ok {
 		return nil, fmt.Errorf("redundancy getter: chunk %s should have been in the cache", addr.String())
 	}
 
-	g.mu.Lock()
 	cacheData := g.erasureData[c.pos]
 	g.mu.Unlock()
 	if cacheData != nil {
