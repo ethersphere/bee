@@ -171,13 +171,16 @@ func (g *getter) getAfterProcessed(ctx context.Context, addr swarm.Address) (swa
 		return nil, fmt.Errorf("redundancy getter: chunk %s should have been in the cache", addr.String())
 	}
 
-	if g.erasureData[c.pos] != nil {
-		return g.cacheDataToChunk(addr, g.erasureData[c.pos])
+	g.mu.Lock()
+	cacheData := g.erasureData[c.pos]
+	g.mu.Unlock()
+	if cacheData != nil {
+		return g.cacheDataToChunk(addr, cacheData)
 	}
 
 	select {
 	case <-c.wait:
-		return g.cacheDataToChunk(addr, g.erasureData[c.pos])
+		return g.cacheDataToChunk(addr, cacheData)
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
