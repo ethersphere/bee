@@ -172,7 +172,7 @@ func (j *joiner) readAtOffset(
 
 		// fast forward the cursor
 		sec := j.subtrieSection(data, cursor, pSize, parity, subTrieSize)
-		if cur+sec < off {
+		if cur+sec <= off {
 			cur += sec
 			continue
 		}
