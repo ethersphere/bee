@@ -24,6 +24,7 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.5
 	github.com/ipfs/go-cid v0.4.1
 	github.com/kardianos/service v1.2.0
+	github.com/klauspost/reedsolomon v1.11.8
 	github.com/libp2p/go-libp2p v0.30.0
 	github.com/multiformats/go-multiaddr v0.11.0
 	github.com/multiformats/go-multiaddr-dns v0.3.1
@@ -106,7 +107,6 @@ require (
 	github.com/jbenet/go-temp-err-catcher v0.1.0 // indirect
 	github.com/klauspost/compress v1.16.7 // indirect
 	github.com/klauspost/cpuid/v2 v2.2.6 // indirect
-	github.com/klauspost/reedsolomon v1.11.8 // indirect
 	github.com/koron/go-ssdp v0.0.4 // indirect
 	github.com/leodido/go-urn v1.2.1 // indirect
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
