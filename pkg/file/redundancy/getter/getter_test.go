@@ -52,7 +52,10 @@ func initData(ctx context.Context, erasureBuffer [][]byte, dataShardCount int, s
 		if err != nil {
 			return nil, nil, err
 		}
-		s.Put(ctx, chunk)
+		err = s.Put(ctx, chunk)
+		if err != nil {
+			return nil, nil, err
+		}
 		sAddresses = append(sAddresses, chunk.Address())
 	}
 	for i := dataShardCount; i < len(erasureBuffer); i++ {
@@ -60,7 +63,10 @@ func initData(ctx context.Context, erasureBuffer [][]byte, dataShardCount int, s
 		if err != nil {
 			return nil, nil, err
 		}
-		s.Put(ctx, chunk)
+		err = s.Put(ctx, chunk)
+		if err != nil {
+			return nil, nil, err
+		}
 		pAddresses = append(pAddresses, chunk.Address())
 	}
 

@@ -974,8 +974,14 @@ func TestJoinerRedundancy(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		store.Put(ctx, dataChunks[i])
-		pipe.Write(chunkData)
+		err = store.Put(ctx, dataChunks[i])
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = pipe.Write(chunkData)
+		if err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	// reader init
