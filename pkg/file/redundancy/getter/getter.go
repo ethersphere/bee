@@ -280,7 +280,9 @@ func (g *getter) erasureDecode(ctx context.Context) error {
 		}
 	}
 
+	g.mu.Lock()
 	err = enc.ReconstructData(g.erasureData)
+	g.mu.Unlock()
 	if err != nil {
 		return err
 	}
