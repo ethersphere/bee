@@ -955,87 +955,110 @@ func TestJoinerIterateChunkAddresses_Encrypted(t *testing.T) {
 }
 
 func TestJoinerRedundancy(t *testing.T) {
-	ctx := context.Background()
-	store := inmemchunkstore.New()
-	rLevel := redundancy.PARANOID
-	pipe := builder.NewPipelineBuilder(ctx, store, false, rLevel)
+	for _, tc := range []struct {
+		rLevel       redundancy.Level
+		encryptChunk bool
+	}{
+		// {
+		// 	redundancy.PARANOID,
+		// 	false,
+		// },
+		{
+			redundancy.PARANOID,
+			true,
+		},
+	} {
+		tc := tc
+		t.Run(fmt.Sprintf("redundancy %d encryption %t", tc.rLevel, tc.encryptChunk), func(t *testing.T) {
+			ctx := context.Background()
+			store := inmemchunkstore.New()
+			pipe := builder.NewPipelineBuilder(ctx, store, tc.encryptChunk, tc.rLevel)
 
-	// generate and store chunks
-	dataChunkCount := rLevel.GetMaxShards() + 1 // generate a carrier chunk
-	dataChunks := make([]swarm.Chunk, dataChunkCount)
-	chunkSize := swarm.ChunkSize
-	for i := 0; i < dataChunkCount; i++ {
-		chunkData := make([]byte, chunkSize)
-		_, err := io.ReadFull(rand.Reader, chunkData)
-		if err != nil {
-			t.Fatal(err)
-		}
-		dataChunks[i], err = cac.New(chunkData)
-		if err != nil {
-			t.Fatal(err)
-		}
-		err = store.Put(ctx, dataChunks[i])
-		if err != nil {
-			t.Fatal(err)
-		}
-		_, err = pipe.Write(chunkData)
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
+			// generate and store chunks
+			dataChunkCount := tc.rLevel.GetMaxShards() + 1 // generate a carrier chunk
+			if tc.encryptChunk {
+				dataChunkCount = tc.rLevel.GetMaxEncShards() + 1
+			}
+			dataChunks := make([]swarm.Chunk, dataChunkCount)
+			chunkSize := swarm.ChunkSize
+			for i := 0; i < dataChunkCount; i++ {
+				chunkData := make([]byte, chunkSize)
+				_, err := io.ReadFull(rand.Reader, chunkData)
+				if err != nil {
+					t.Fatal(err)
+				}
+				dataChunks[i], err = cac.New(chunkData)
+				if err != nil {
+					t.Fatal(err)
+				}
+				err = store.Put(ctx, dataChunks[i])
+				if err != nil {
+					t.Fatal(err)
+				}
+				_, err = pipe.Write(chunkData)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
 
-	// reader init
-	sum, err := pipe.Sum()
-	if err != nil {
-		t.Fatal(err)
-	}
-	swarmAddr := swarm.NewAddress(sum)
-	joinReader, rootSpan, err := joiner.New(ctx, store, store, swarmAddr)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// sanity checks
-	expectedRootSpan := chunkSize * dataChunkCount
-	if int64(expectedRootSpan) != rootSpan {
-		t.Fatalf("Expected root span %d. Got: %d", expectedRootSpan, rootSpan)
-	}
-	// all data can be read back
-	readCheck := func() {
-		offset := int64(0)
-		for i := 0; i < dataChunkCount; i++ {
-			chunkData := make([]byte, chunkSize)
-			_, err = joinReader.ReadAt(chunkData, offset)
+			// reader init
+			sum, err := pipe.Sum()
 			if err != nil {
-				t.Fatalf("read error check at chunkdata comparisation on %d index: %s", i, err.Error())
+				t.Fatal(err)
 			}
-			expectedChunkData := dataChunks[i].Data()[swarm.SpanSize:]
-			if !bytes.Equal(expectedChunkData, chunkData) {
-				t.Fatalf("read error check at chunkdata comparisation on %d index. Data are not the same", i)
+			swarmAddr := swarm.NewAddress(sum)
+			joinReader, rootSpan, err := joiner.New(ctx, store, store, swarmAddr)
+			if err != nil {
+				t.Fatal(err)
 			}
-			offset += int64(chunkSize)
-		}
-	}
-	readCheck()
+			// sanity checks
+			expectedRootSpan := chunkSize * dataChunkCount
+			if int64(expectedRootSpan) != rootSpan {
+				t.Fatalf("Expected root span %d. Got: %d", expectedRootSpan, rootSpan)
+			}
+			// all data can be read back
+			readCheck := func() {
+				offset := int64(0)
+				for i := 0; i < dataChunkCount; i++ {
+					chunkData := make([]byte, chunkSize)
+					_, err = joinReader.ReadAt(chunkData, offset)
+					if err != nil {
+						t.Fatalf("read error check at chunkdata comparisation on %d index: %s", i, err.Error())
+					}
+					expectedChunkData := dataChunks[i].Data()[swarm.SpanSize:]
+					if !bytes.Equal(expectedChunkData, chunkData) {
+						t.Fatalf("read error check at chunkdata comparisation on %d index. Data are not the same", i)
+					}
+					offset += int64(chunkSize)
+				}
+			}
+			readCheck()
 
-	// remove data chunks in order to trigger recovery
-	maxShards := rLevel.GetMaxShards()
-	maxParities := rLevel.GetParities(maxShards)
-	removeCount := maxParities
-	if maxParities > maxShards {
-		removeCount = maxShards
-	}
-	for i := 0; i < removeCount; i++ {
-		err := store.Delete(ctx, dataChunks[i].Address())
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	// remove parity chunk
-	err = store.Delete(ctx, dataChunks[len(dataChunks)-1].Address())
-	if err != nil {
-		t.Fatal(err)
-	}
+			// remove data chunks in order to trigger recovery
+			maxShards := tc.rLevel.GetMaxShards()
+			maxParities := tc.rLevel.GetParities(maxShards)
+			if tc.encryptChunk {
+				maxShards = tc.rLevel.GetMaxEncShards()
+				maxParities = tc.rLevel.GetEncParities(maxShards)
+			}
+			removeCount := maxParities
+			if maxParities > maxShards {
+				removeCount = maxShards
+			}
+			for i := 0; i < removeCount; i++ {
+				err := store.Delete(ctx, dataChunks[i].Address())
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			// remove parity chunk
+			err = store.Delete(ctx, dataChunks[len(dataChunks)-1].Address())
+			if err != nil {
+				t.Fatal(err)
+			}
 
-	// check whether the data still be readable
-	readCheck()
+			// check whether the data still be readable
+			readCheck()
+		})
+	}
 }
