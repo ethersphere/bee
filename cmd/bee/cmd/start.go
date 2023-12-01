@@ -23,6 +23,9 @@ import (
 	"github.com/ethereum/go-ethereum/accounts/external"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/kardianos/service"
+	"github.com/spf13/cobra"
+
 	"github.com/ethersphere/bee"
 	chaincfg "github.com/ethersphere/bee/pkg/config"
 	"github.com/ethersphere/bee/pkg/crypto"
@@ -35,12 +38,11 @@ import (
 	"github.com/ethersphere/bee/pkg/resolver/multiresolver"
 	"github.com/ethersphere/bee/pkg/spinlock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/kardianos/service"
-	"github.com/spf13/cobra"
 )
 
 const (
-	serviceName = "SwarmBeeSvc"
+	serviceName      = "SwarmBeeSvc"
+	libp2pPKFilename = "libp2p_v2"
 )
 
 // default values for network IDs
@@ -413,7 +415,7 @@ func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config
 		// if libp2p key exists we can assume all required keys exist
 		// so prompt for a password to unlock them
 		// otherwise prompt for new password with confirmation to create them
-		exists, err := keystore.Exists("libp2p")
+		exists, err := keystore.Exists(libp2pPKFilename)
 		if err != nil {
 			return nil, err
 		}
@@ -477,7 +479,7 @@ func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config
 
 	logger.Info("swarm public key", "public_key", hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(publicKey)))
 
-	libp2pPrivateKey, created, err := keystore.Key("libp2p_v2", password, crypto.EDGSecp256_R1)
+	libp2pPrivateKey, created, err := keystore.Key(libp2pPKFilename, password, crypto.EDGSecp256_R1)
 	if err != nil {
 		return nil, fmt.Errorf("libp2p v2 key: %w", err)
 	}
