@@ -20,10 +20,6 @@ const (
 	PARANOID
 )
 
-var (
-	allRedundancyLevels = [4]Level{MEDIUM, STRONG, INSANE, PARANOID}
-)
-
 const maxLevel = 8
 
 // GetParities returns number of parities based on appendix F table 5
