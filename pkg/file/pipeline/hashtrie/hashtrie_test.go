@@ -15,6 +15,7 @@ import (
 	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/encryption"
 	dec "github.com/ethersphere/bee/pkg/encryption/store"
+	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/file/pipeline/bmt"
 	enc "github.com/ethersphere/bee/pkg/file/pipeline/encryption"
@@ -330,12 +331,16 @@ func TestRedundancy(t *testing.T) {
 			}
 
 			// span check
-			parity, sp := redundancy.DecodeSpan(chData[:swarm.SpanSize])
+			level, sp := redundancy.DecodeSpan(chData[:swarm.SpanSize])
 			expectedSpan := bmtUtils.LengthToSpan(int64(tc.writes * swarm.ChunkSize))
 			if !bytes.Equal(expectedSpan, sp) {
 				t.Fatalf("want span %d got %d", expectedSpan, span)
 			}
+			if level != tc.level {
+				t.Fatalf("encoded level differs from the uploaded one %d. Got: %d", tc.level, level)
+			}
 			expectedParities := tc.parities - r.Parities(r.MaxShards())
+			_, parity := file.ReferenceCount(bmtUtils.LengthFromSpan(sp), level, tc.encryption)
 			if expectedParities != parity {
 				t.Fatalf("want parity %d got %d", expectedParities, parity)
 			}

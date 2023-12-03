@@ -8,25 +8,27 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// EncodeParity encodes parities into span keeping the real byte count for the chunk.
-// it assumes span is LittleEndian
-func EncodeParity(span []byte, parities int) {
+// EncodeLevel encodes used redundancy level for uploading into span keeping the real byte count for the chunk.
+// assumes span is LittleEndian
+func EncodeLevel(span []byte, level Level) {
 	// set parity in the most signifact byte
-	span[swarm.SpanSize-1] = uint8(parities) | 1<<7 // p + 128
+	span[swarm.SpanSize-1] = uint8(level) | 1<<7 // p + 128
 }
 
-// DecodeSpan decodes parity from span keeping the real byte count for the chunk.
-// it assumes span is LittleEndian
-func DecodeSpan(span []byte) (int, []byte) {
-	if !IsParityEncoded(span) {
-		return 0, span
+// DecodeSpan decodes the used redundancy level from span keeping the real byte count for the chunk.
+// assumes span is LittleEndian
+func DecodeSpan(span []byte) (Level, []byte) {
+	spanCopy := make([]byte, swarm.SpanSize)
+	copy(spanCopy, span)
+	if !IsLevelEncoded(spanCopy) {
+		return 0, spanCopy
 	}
-	pByte := span[swarm.SpanSize-1]
-	return int(pByte & ((1 << 7) - 1)), append(span[:swarm.SpanSize-1], 0)
+	pByte := spanCopy[swarm.SpanSize-1]
+	return Level(pByte & ((1 << 7) - 1)), append(spanCopy[:swarm.SpanSize-1], 0)
 }
 
-// IsParityEncoded checks whether the parity is encoded in the span
-// it assumes span is LittleEndian
-func IsParityEncoded(span []byte) bool {
+// IsLevelEncoded checks whether the redundancy level is encoded in the span
+// assumes span is LittleEndian
+func IsLevelEncoded(span []byte) bool {
 	return span[swarm.SpanSize-1] > 128
 }

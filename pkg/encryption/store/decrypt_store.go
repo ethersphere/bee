@@ -9,6 +9,8 @@ import (
 	"encoding/binary"
 
 	"github.com/ethersphere/bee/pkg/encryption"
+	"github.com/ethersphere/bee/pkg/file"
+	"github.com/ethersphere/bee/pkg/file/redundancy"
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"golang.org/x/crypto/sha3"
@@ -55,12 +57,12 @@ func DecryptChunkData(chunkData []byte, encryptionKey encryption.Key) ([]byte, e
 	}
 
 	// removing extra bytes which were just added for padding
-	length := binary.LittleEndian.Uint64(decryptedSpan)
-	refSize := int64(swarm.HashSize + encryption.KeyLength)
-	for length > swarm.ChunkSize {
-		length = length + (swarm.ChunkSize - 1)
-		length = length / swarm.ChunkSize
-		length *= uint64(refSize)
+	level, span := redundancy.DecodeSpan(decryptedSpan)
+	length := binary.LittleEndian.Uint64(span)
+	if length > swarm.ChunkSize {
+		dataRefSize := uint64(swarm.HashSize + encryption.KeyLength)
+		dataShards, parities := file.ReferenceCount(length, level, true)
+		length = dataRefSize*uint64(dataShards) + uint64(parities*swarm.HashSize)
 	}
 
 	c := make([]byte, length+8)

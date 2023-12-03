@@ -138,7 +138,7 @@ func (h *hashTrieWriter) wrapFullLevel(level int) error {
 	spb := make([]byte, 8)
 	binary.LittleEndian.PutUint64(spb, sp)
 	if parities > 0 {
-		redundancy.EncodeParity(spb, parities)
+		redundancy.EncodeLevel(spb, h.rParams.Level())
 	}
 	hashes = append(spb, hashes...)
 	writer := h.pipelineFn()
