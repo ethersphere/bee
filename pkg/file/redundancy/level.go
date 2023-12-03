@@ -6,7 +6,6 @@ package redundancy
 
 import (
 	"errors"
-	"fmt"
 
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -85,51 +84,6 @@ func (l Level) getEncErasureTable() (erasureTable, error) {
 func (l Level) GetMaxEncShards() int {
 	p := l.GetEncParities(swarm.EncryptedBranches)
 	return (swarm.Branches - p) / 2
-}
-
-// UTILITIES
-
-// GetLevel returns back the redundancy level based on the parameters
-// assumes erasure tables of levels do not overlap each other in shard range / parity
-func GetLevel(parities, shards int, encryption bool) (Level, error) {
-	if parities == 0 {
-		return NONE, nil
-	}
-
-	for _, l := range allRedundancyLevels {
-		// init maxShards and erasure table
-		maxShards := l.GetMaxShards()
-		t, err := l.getErasureTable()
-		if err != nil {
-			return 0, err
-		}
-		if encryption {
-			t, err = l.getEncErasureTable()
-			if err != nil {
-				return 0, err
-			}
-			maxShards = l.GetMaxEncShards()
-		}
-
-		// check whether shards in [sMin, sMax[ range
-		sMin, err := t.GetMinShards(parities)
-		if err != nil {
-			continue // presumably parities number is too big for the current level
-		}
-		if sMin <= shards {
-			sMax, err := t.GetMinShards(parities + 1)
-			if err != nil {
-				if shards <= maxShards {
-					return l, nil
-				}
-				continue // presumably shards number is too big for the current level with the given parity
-			}
-			if sMax > shards {
-				return l, nil
-			}
-		}
-	}
-	return 0, fmt.Errorf("redundancy: cannot decide level from parities %d and shards %d", parities, shards)
 }
 
 // TABLE INITS
