@@ -39,7 +39,7 @@ func ChunkAddresses(data []byte, parities, reflen int) (sAddresses, pAddresses [
 		offset += reflen
 	}
 	for i := 0; i < parities; i++ {
-		pAddresses[i] = swarm.NewAddress(data[offset : offset+reflen])
+		pAddresses[i] = swarm.NewAddress(data[offset : offset+swarm.HashSize])
 		offset += swarm.HashSize
 	}
 
