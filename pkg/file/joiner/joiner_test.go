@@ -955,17 +955,26 @@ func TestJoinerIterateChunkAddresses_Encrypted(t *testing.T) {
 }
 
 func TestJoinerRedundancy(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		rLevel       redundancy.Level
 		encryptChunk bool
 	}{
-		// {
-		// 	redundancy.PARANOID,
-		// 	false,
-		// },
+		{
+			redundancy.MEDIUM,
+			true,
+		},
+		{
+			redundancy.STRONG,
+			false,
+		},
+		{
+			redundancy.INSANE,
+			true,
+		},
 		{
 			redundancy.PARANOID,
-			true,
+			false,
 		},
 	} {
 		tc := tc

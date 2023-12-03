@@ -36,7 +36,7 @@ type joiner struct {
 	getter storage.Getter
 	putter storage.Putter // required to save recovered data
 
-	chunkToSpan func(data []byte) (int, int64) // returns parity and span value from chunkData
+	chunkToSpan func(data []byte) (redundancy.Level, int64) // returns parity and span value from chunkData
 }
 
 // New creates a new Joiner. A Joiner provides Read, Seek and Size functionalities.
@@ -55,25 +55,16 @@ func New(ctx context.Context, getter storage.Getter, putter storage.Putter, addr
 	if refLength != swarm.HashSize {
 		encryption = true
 	}
-	rootParity, span := chunkToSpan(chunkData)
+	rLevel, span := chunkToSpan(chunkData)
+	rootParity := 0
 	maxBranching := swarm.ChunkSize / refLength
-	payloadSize := int(span)
-	if span > swarm.ChunkSize {
-		payloadSize, err = file.ChunkPayloadSize(rootData)
-		if err != nil {
-			return nil, 0, err
-		}
-	}
-	rootShards := (payloadSize - rootParity*swarm.HashSize) / refLength
-	rLevel, err := redundancy.GetLevel(rootParity, rootShards, encryption)
-	if err != nil {
-		return nil, 0, err
-	}
-	spanFn := func(data []byte) (int, int64) {
+	spanFn := func(data []byte) (redundancy.Level, int64) {
 		return 0, int64(bmt.LengthFromSpan(data[:swarm.SpanSize]))
 	}
 	// override stuff if root chunk has redundancy
 	if rLevel != redundancy.NONE {
+		_, parities := file.ReferenceCount(uint64(span), rLevel, encryption)
+		rootParity = parities
 		spanFn = chunkToSpan
 		if encryption {
 			maxBranching = rLevel.GetMaxEncShards()
@@ -201,7 +192,8 @@ func (j *joiner) readAtOffset(
 				}
 
 				chunkData := ch.Data()[8:]
-				subtrieParity, subtrieSpan := j.chunkToSpan(ch.Data())
+				subtrieLevel, subtrieSpan := j.chunkToSpan(ch.Data())
+				_, subtrieParity := file.ReferenceCount(uint64(subtrieSpan), subtrieLevel, j.refLength != swarm.HashSize)
 
 				if subtrieSpan > subtrieSpanLimit {
 					return ErrMalformedTrie
@@ -346,9 +338,10 @@ func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIter
 				}
 
 				chunkData := ch.Data()[8:]
-				subtrieParity, subtrieSpan := j.chunkToSpan(ch.Data())
+				subtrieLevel, subtrieSpan := j.chunkToSpan(ch.Data())
+				_, parities := file.ReferenceCount(uint64(subtrieSpan), subtrieLevel, j.refLength != swarm.HashSize)
 
-				return j.processChunkAddresses(ectx, fn, chunkData, subtrieSpan, subtrieParity)
+				return j.processChunkAddresses(ectx, fn, chunkData, subtrieSpan, parities)
 			})
 		}(address, eg)
 
@@ -364,9 +357,7 @@ func (j *joiner) Size() int64 {
 
 // UTILITIES
 
-func chunkToSpan(data []byte) (int, int64) {
-	span := make([]byte, swarm.SpanSize)
-	copy(span, data)
-	parity, spanBytes := redundancy.DecodeSpan(span)
-	return parity, int64(bmt.LengthFromSpan(spanBytes))
+func chunkToSpan(data []byte) (redundancy.Level, int64) {
+	level, spanBytes := redundancy.DecodeSpan(data[:swarm.SpanSize])
+	return level, int64(bmt.LengthFromSpan(spanBytes))
 }
