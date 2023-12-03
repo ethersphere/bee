@@ -679,6 +679,8 @@ paths:
           name: swarm-postage-batch-id
           required: true
       requestBody:
+        required: true
+        description: The SOC binary data is composed of the span (8 bytes) and the at most 4KB payload.
         content:
           application/octet-stream:
             schema:
