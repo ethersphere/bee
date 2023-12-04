@@ -28,7 +28,7 @@ func TestLoadSave(t *testing.T) {
 	t.Parallel()
 
 	store := inmemchunkstore.New()
-	ls := loadsave.New(store, pipelineFn(store))
+	ls := loadsave.New(store, store, pipelineFn(store))
 	ref, err := ls.Save(context.Background(), data)
 
 	if err != nil {
