@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/ethersphere/bee/pkg/file/loadsave"
+	"github.com/ethersphere/bee/pkg/file/redundancy"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/manifest"
@@ -63,6 +64,12 @@ func (s *Service) dirUploadHandler(
 	}
 	defer r.Body.Close()
 
+	rsParity, err := strconv.ParseUint(r.Header.Get(SwarmRLevel), 10, 1)
+	if err != nil {
+		logger.Debug("store dir failed", "rsParity parsing error")
+		logger.Error(nil, "store dir failed")
+	}
+
 	reference, err := storeDir(
 		r.Context(),
 		encrypt,
@@ -72,6 +79,7 @@ func (s *Service) dirUploadHandler(
 		s.storer.ChunkStore(),
 		r.Header.Get(SwarmIndexDocumentHeader),
 		r.Header.Get(SwarmErrorDocumentHeader),
+		redundancy.Level(rsParity),
 	)
 	if err != nil {
 		logger.Debug("store dir failed", "error", err)
@@ -117,13 +125,14 @@ func storeDir(
 	getter storage.Getter,
 	indexFilename,
 	errorFilename string,
+	rLevel redundancy.Level,
 ) (swarm.Address, error) {
 
 	logger := tracing.NewLoggerWithTraceID(ctx, log)
 	loggerV1 := logger.V(1).Build()
 
-	p := requestPipelineFn(putter, encrypt)
-	ls := loadsave.New(getter, requestPipelineFactory(ctx, putter, encrypt))
+	p := requestPipelineFn(putter, encrypt, rLevel)
+	ls := loadsave.New(getter, requestPipelineFactory(ctx, putter, encrypt, rLevel))
 
 	dirManifest, err := manifest.NewDefaultManifest(ls, encrypt)
 	if err != nil {

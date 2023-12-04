@@ -934,6 +934,17 @@ components:
       description: >
         Represents the encrypting state of the file
 
+    SwarmRedundancyParameter:
+      in: header
+      name: swarm-redundancy-level
+      schema:
+        type: integer
+        enum: [0, 1, 2, 3, 4]
+      required: false
+      description: >
+        Add redundancy to the data being uploaded so that downloaders can download it with better UX.
+        0 value is default and does not add any redundancy to the file.
+
     ContentTypePreserved:
       in: header
       name: Content-Type

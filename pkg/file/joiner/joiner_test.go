@@ -182,7 +182,7 @@ func TestJoinerMalformed(t *testing.T) {
 	defer cancel()
 
 	subTrie := []byte{8085: 1}
-	pb := builder.NewPipelineBuilder(ctx, store, false)
+	pb := builder.NewPipelineBuilder(ctx, store, false, 0)
 	c1addr, _ := builder.FeedPipeline(ctx, pb, bytes.NewReader(subTrie))
 
 	chunk2 := testingc.GenerateTestRandomChunk()
@@ -248,7 +248,7 @@ func TestEncryptDecrypt(t *testing.T) {
 				t.Fatal(err)
 			}
 			ctx := context.Background()
-			pipe := builder.NewPipelineBuilder(ctx, store, true)
+			pipe := builder.NewPipelineBuilder(ctx, store, true, 0)
 			testDataReader := bytes.NewReader(testData)
 			resultAddress, err := builder.FeedPipeline(ctx, pipe, testDataReader)
 			if err != nil {
@@ -911,7 +911,7 @@ func TestJoinerIterateChunkAddresses_Encrypted(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	pipe := builder.NewPipelineBuilder(ctx, store, true)
+	pipe := builder.NewPipelineBuilder(ctx, store, true, 0)
 	testDataReader := bytes.NewReader(testData)
 	resultAddress, err := builder.FeedPipeline(ctx, pipe, testDataReader)
 	if err != nil {
