@@ -127,7 +127,7 @@ func TestGetter(t *testing.T) {
 	var tests []test
 	for _, f := range failures {
 		for level, c := range replicas.Counts {
-			for j := 0; j <= 17; j++ {
+			for j := 0; j <= c*2+1; j++ {
 				tests = append(tests, test{
 					name:    fmt.Sprintf("%s level %d count %d found %d", f.name, level, c, j),
 					failure: f,
@@ -152,7 +152,7 @@ func TestGetter(t *testing.T) {
 	// reset retry interval to speed up tests
 	retryInterval := replicas.RetryInterval
 	defer func() { replicas.RetryInterval = retryInterval }()
-	replicas.RetryInterval = 50 * time.Millisecond
+	replicas.RetryInterval = 100 * time.Millisecond
 
 	// run the tests
 	for _, tc := range tests {
