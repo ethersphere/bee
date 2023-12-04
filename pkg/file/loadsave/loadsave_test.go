@@ -73,6 +73,6 @@ func TestReadonlyLoadSave(t *testing.T) {
 
 func pipelineFn(s storage.Putter) func() pipeline.Interface {
 	return func() pipeline.Interface {
-		return builder.NewPipelineBuilder(context.Background(), s, false)
+		return builder.NewPipelineBuilder(context.Background(), s, false, 0)
 	}
 }

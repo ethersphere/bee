@@ -44,7 +44,7 @@ func TestSteward(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	pipe := builder.NewPipelineBuilder(ctx, chunkStore, false)
+	pipe := builder.NewPipelineBuilder(ctx, chunkStore, false, 0)
 	addr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data))
 	if err != nil {
 		t.Fatal(err)
