@@ -152,7 +152,7 @@ func TestGetter(t *testing.T) {
 	// reset retry interval to speed up tests
 	retryInterval := replicas.RetryInterval
 	defer func() { replicas.RetryInterval = retryInterval }()
-	replicas.RetryInterval = 30 * time.Millisecond
+	replicas.RetryInterval = 50 * time.Millisecond
 
 	// run the tests
 	for _, tc := range tests {
