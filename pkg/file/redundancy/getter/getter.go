@@ -242,7 +242,7 @@ func (g *getter) cautiousStrategy(ctx context.Context) error {
 				return
 			}
 			g.setErasureData(c.pos, ch.Data())
-			if c.pos < len(g.sAddresses) {
+			if c.pos < len(g.sAddresses) && !channelIsClosed(c.wait) {
 				close(c.wait)
 			}
 			retrievedCh <- struct{}{}
