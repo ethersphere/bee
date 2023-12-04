@@ -288,8 +288,8 @@ func (g *getter) erasureDecode(ctx context.Context) error {
 	}
 
 	g.mu.Lock()
+	defer g.mu.Unlock()
 	err = enc.ReconstructData(g.erasureData)
-	g.mu.Unlock()
 	if err != nil {
 		return err
 	}
