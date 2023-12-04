@@ -24,6 +24,7 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.5
 	github.com/ipfs/go-cid v0.4.1
 	github.com/kardianos/service v1.2.0
+	github.com/klauspost/reedsolomon v1.11.8
 	github.com/libp2p/go-libp2p v0.30.0
 	github.com/multiformats/go-multiaddr v0.11.0
 	github.com/multiformats/go-multiaddr-dns v0.3.1
@@ -46,7 +47,7 @@ require (
 	golang.org/x/exp v0.0.0-20230905200255-921286631fa9
 	golang.org/x/net v0.17.0
 	golang.org/x/sync v0.3.0
-	golang.org/x/sys v0.13.0
+	golang.org/x/sys v0.14.0
 	golang.org/x/term v0.13.0
 	golang.org/x/time v0.3.0
 	gopkg.in/yaml.v2 v2.4.0
@@ -105,7 +106,7 @@ require (
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
 	github.com/jbenet/go-temp-err-catcher v0.1.0 // indirect
 	github.com/klauspost/compress v1.16.7 // indirect
-	github.com/klauspost/cpuid/v2 v2.2.5 // indirect
+	github.com/klauspost/cpuid/v2 v2.2.6 // indirect
 	github.com/koron/go-ssdp v0.0.4 // indirect
 	github.com/leodido/go-urn v1.2.1 // indirect
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect

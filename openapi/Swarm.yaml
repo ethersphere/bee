@@ -120,6 +120,11 @@ paths:
             $ref: "SwarmCommon.yaml#/components/parameters/SwarmEncryptParameter"
           name: swarm-encrypt
           required: false
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevel"
+          name: swarm-redundancy-level
+          required: false
 
       requestBody:
         content:
@@ -254,6 +259,7 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmErrorDocumentParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmDeferredUpload"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyParameter"
       requestBody:
         content:
           multipart/form-data:
