@@ -161,7 +161,7 @@ func TestTraversalBytes(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			pipe := builder.NewPipelineBuilder(ctx, storerMock, false)
+			pipe := builder.NewPipelineBuilder(ctx, storerMock, false, 0)
 			address, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data))
 			if err != nil {
 				t.Fatal(err)
@@ -256,7 +256,7 @@ func TestTraversalFiles(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			pipe := builder.NewPipelineBuilder(ctx, storerMock, false)
+			pipe := builder.NewPipelineBuilder(ctx, storerMock, false, 0)
 			fr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data))
 			if err != nil {
 				t.Fatal(err)
@@ -430,7 +430,7 @@ func TestTraversalManifest(t *testing.T) {
 			for _, f := range tc.files {
 				data := generateSample(f.size)
 
-				pipe := builder.NewPipelineBuilder(ctx, storerMock, false)
+				pipe := builder.NewPipelineBuilder(ctx, storerMock, false, 0)
 				fr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data))
 				if err != nil {
 					t.Fatal(err)
@@ -506,6 +506,6 @@ func TestTraversalSOC(t *testing.T) {
 
 func pipelineFactory(s storage.Putter, encrypt bool) func() pipeline.Interface {
 	return func() pipeline.Interface {
-		return builder.NewPipelineBuilder(context.Background(), s, encrypt)
+		return builder.NewPipelineBuilder(context.Background(), s, encrypt, 0)
 	}
 }
