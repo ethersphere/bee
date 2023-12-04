@@ -24,15 +24,16 @@ import (
 
 func TestSteward(t *testing.T) {
 	t.Parallel()
+	inmem := inmemchunkstore.New()
 
 	var (
 		ctx            = context.Background()
 		chunks         = 1000
 		data           = make([]byte, chunks*4096) //1k chunks
-		chunkStore     = inmemchunkstore.New()
+		chunkStore     = inmem
 		store          = mockstorer.NewWithChunkStore(chunkStore)
 		localRetrieval = &localRetriever{ChunkStore: chunkStore}
-		s              = steward.New(store, localRetrieval)
+		s              = steward.New(store, localRetrieval, inmem)
 		stamper        = postagetesting.NewStamper()
 	)
 

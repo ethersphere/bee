@@ -132,7 +132,7 @@ func storeDir(
 	loggerV1 := logger.V(1).Build()
 
 	p := requestPipelineFn(putter, encrypt, rLevel)
-	ls := loadsave.New(getter, requestPipelineFactory(ctx, putter, encrypt, rLevel))
+	ls := loadsave.New(getter, putter, requestPipelineFactory(ctx, putter, encrypt, rLevel))
 
 	dirManifest, err := manifest.NewDefaultManifest(ls, encrypt)
 	if err != nil {
