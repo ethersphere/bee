@@ -392,6 +392,7 @@ func (e *epochMigrator) migratePinning(ctx context.Context) error {
 
 			return swarm.NewChunk(addr, chData), nil
 		}),
+		pStorage.ChunkStore(),
 	)
 
 	e.logger.Debug("migrating pinning collections, if all the chunks in the collection" +
