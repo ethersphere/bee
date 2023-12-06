@@ -75,7 +75,7 @@ func newErasureHashTrieWriter(
 	}
 
 	r := redundancy.New(rLevel, encryptChunks, ppf)
-	ht := hashtrie.NewHashTrieWriter(hashSize, r, pf)
+	ht := hashtrie.NewHashTrieWriter(ctx, hashSize, r, pf, s)
 	return r, ht
 }
 
@@ -143,7 +143,7 @@ func TestLevels(t *testing.T) {
 				return bmt.NewBmtWriter(lsw)
 			}
 
-			ht := hashtrie.NewHashTrieWriter(hashSize, redundancy.New(0, false, pf), pf)
+			ht := hashtrie.NewHashTrieWriter(ctx, hashSize, redundancy.New(0, false, pf), pf, s)
 
 			for i := 0; i < tc.writes; i++ {
 				a := &pipeline.PipeWriteArgs{Ref: addr.Bytes(), Span: span}
@@ -196,7 +196,7 @@ func TestLevels_TrieFull(t *testing.T) {
 			Params: *r,
 		}
 
-		ht = hashtrie.NewHashTrieWriter(hashSize, rMock, pf)
+		ht = hashtrie.NewHashTrieWriter(ctx, hashSize, rMock, pf, s)
 	)
 
 	// to create a level wrap we need to do branching^(level-1) writes
@@ -237,7 +237,7 @@ func TestRegression(t *testing.T) {
 			lsw := store.NewStoreWriter(ctx, s, nil)
 			return bmt.NewBmtWriter(lsw)
 		}
-		ht = hashtrie.NewHashTrieWriter(hashSize, redundancy.New(0, false, pf), pf)
+		ht = hashtrie.NewHashTrieWriter(ctx, hashSize, redundancy.New(0, false, pf), pf, s)
 	)
 	binary.LittleEndian.PutUint64(span, 4096)
 

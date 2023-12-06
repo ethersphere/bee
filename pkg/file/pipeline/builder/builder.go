@@ -36,9 +36,11 @@ func NewPipelineBuilder(ctx context.Context, s storage.Putter, encrypt bool, rLe
 func newPipeline(ctx context.Context, s storage.Putter, rLevel redundancy.Level) pipeline.Interface {
 	pipeline := newShortPipelineFunc(ctx, s)
 	tw := hashtrie.NewHashTrieWriter(
+		ctx,
 		swarm.HashSize,
 		redundancy.New(rLevel, false, pipeline),
 		pipeline,
+		s,
 	)
 	lsw := store.NewStoreWriter(ctx, s, tw)
 	b := bmt.NewBmtWriter(lsw)
@@ -61,9 +63,11 @@ func newShortPipelineFunc(ctx context.Context, s storage.Putter) func() pipeline
 // with the unencrypted span is preserved.
 func newEncryptionPipeline(ctx context.Context, s storage.Putter, rLevel redundancy.Level) pipeline.Interface {
 	tw := hashtrie.NewHashTrieWriter(
+		ctx,
 		swarm.HashSize+encryption.KeyLength,
 		redundancy.New(rLevel, true, newShortPipelineFunc(ctx, s)),
 		newShortEncryptionPipelineFunc(ctx, s),
+		s,
 	)
 	lsw := store.NewStoreWriter(ctx, s, tw)
 	b := bmt.NewBmtWriter(lsw)
