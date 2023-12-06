@@ -5,11 +5,15 @@
 package hashtrie
 
 import (
+	"context"
 	"encoding/binary"
 	"errors"
+	"fmt"
 
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/file/redundancy"
+	"github.com/ethersphere/bee/pkg/replicas"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -21,6 +25,7 @@ var (
 const maxLevel = 8
 
 type hashTrieWriter struct {
+	ctx                    context.Context // context for put function of dispersed replica chunks
 	refSize                int
 	cursors                []int  // level cursors, key is level. level 0 is data level holds how many chunks were processed. Intermediate higher levels will always have LOWER cursor values.
 	buffer                 []byte // keeps intermediate level data
@@ -28,13 +33,21 @@ type hashTrieWriter struct {
 	pipelineFn             pipeline.PipelineFunc
 	rParams                redundancy.IParams
 	parityChunkFn          redundancy.ParityChunkCallback
-	chunkCounters          []uint8 // counts the chunk references in intermediate chunks. key is the chunk level.
-	effectiveChunkCounters []uint8 // counts the effective  chunk references in intermediate chunks. key is the chunk level.
-	maxChildrenChunks      uint8   // maximum number of chunk references in intermediate chunks.
+	chunkCounters          []uint8        // counts the chunk references in intermediate chunks. key is the chunk level.
+	effectiveChunkCounters []uint8        // counts the effective  chunk references in intermediate chunks. key is the chunk level.
+	maxChildrenChunks      uint8          // maximum number of chunk references in intermediate chunks.
+	replicaPutter          storage.Putter // putter to save dispersed replicas of the root chunk
 }
 
-func NewHashTrieWriter(refLen int, rParams redundancy.IParams, pipelineFn pipeline.PipelineFunc) pipeline.ChainWriter {
+func NewHashTrieWriter(
+	ctx context.Context,
+	refLen int,
+	rParams redundancy.IParams,
+	pipelineFn pipeline.PipelineFunc,
+	replicaPutter storage.Putter,
+) pipeline.ChainWriter {
 	h := &hashTrieWriter{
+		ctx:                    ctx,
 		refSize:                refLen,
 		cursors:                make([]int, 9),
 		buffer:                 make([]byte, swarm.ChunkWithSpanSize*9*2), // double size as temp workaround for weak calculation of needed buffer space
@@ -43,6 +56,7 @@ func NewHashTrieWriter(refLen int, rParams redundancy.IParams, pipelineFn pipeli
 		chunkCounters:          make([]uint8, 9),
 		effectiveChunkCounters: make([]uint8, 9),
 		maxChildrenChunks:      uint8(rParams.MaxShards() + rParams.Parities(rParams.MaxShards())),
+		replicaPutter:          replicaPutter,
 	}
 	h.parityChunkFn = func(level int, span, address []byte) error {
 		return h.writeToIntermediateLevel(level, true, span, address, []byte{})
@@ -245,5 +259,19 @@ func (h *hashTrieWriter) Sum() ([]byte, error) {
 
 	// return the hash in the highest level, that's all we need
 	data := h.buffer[0:h.cursors[maxLevel]]
-	return data[swarm.SpanSize:], nil
+	rootHash := data[swarm.SpanSize:]
+
+	// save disperse replicas of the root chunk
+	if h.rParams.Level() != redundancy.NONE {
+		rootData, err := h.rParams.GetRootData()
+		if err != nil {
+			return nil, err
+		}
+		putter := replicas.NewPutter(h.replicaPutter)
+		err = putter.Put(h.ctx, swarm.NewChunk(swarm.NewAddress(rootHash), rootData))
+		if err != nil {
+			return nil, fmt.Errorf("hashtrie: cannot put dispersed replica %s", err.Error())
+		}
+	}
+	return rootHash, nil
 }

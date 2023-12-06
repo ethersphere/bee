@@ -22,6 +22,7 @@ type IParams interface {
 	ChunkWrite(int, []byte, ParityChunkCallback) error
 	ElevateCarrierChunk(int, ParityChunkCallback) error
 	Encode(int, ParityChunkCallback) error
+	GetRootData() ([]byte, error)
 }
 
 type ErasureEncoder interface {
@@ -201,4 +202,18 @@ func (p *Params) ElevateCarrierChunk(chunkLevel int, callback ParityChunkCallbac
 
 	// not necessary to update current level since we will not work with it anymore
 	return p.chunkWrite(chunkLevel+1, p.buffer[chunkLevel][p.cursor[chunkLevel]-1], callback)
+}
+
+// GetRootData returns the topmost chunk in the tree.
+// throws and error if the encoding has not been finished in the BMT
+// OR redundancy is not used in the BMT
+func (p *Params) GetRootData() ([]byte, error) {
+	if p.level == NONE {
+		return nil, fmt.Errorf("redundancy: no redundancy level is used for the file in order to cache root data")
+	}
+	lastBuffer := p.buffer[maxLevel-1]
+	if len(lastBuffer[0]) != swarm.ChunkWithSpanSize {
+		return nil, fmt.Errorf("redundancy: hashtrie sum has not finished in order to cache root data")
+	}
+	return lastBuffer[0], nil
 }
