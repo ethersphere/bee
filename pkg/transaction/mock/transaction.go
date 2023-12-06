@@ -97,6 +97,10 @@ func (m *transactionServiceMock) TransactionFee(ctx context.Context, txHash comm
 	return big.NewInt(0), nil
 }
 
+func (m *transactionServiceMock) UnwrapABIError(_ context.Context, _ *transaction.TxRequest, err error, _ map[string]abi.Error) error {
+	return err
+}
+
 // Option is the option passed to the mock Chequebook service
 type Option interface {
 	apply(*transactionServiceMock)

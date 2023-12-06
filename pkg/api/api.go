@@ -287,6 +287,10 @@ func New(
 			buf, err := base64.URLEncoding.DecodeString(v)
 			return string(buf), err
 		},
+		"decHex": func(v string) (string, error) {
+			buf, err := hex.DecodeString(v)
+			return string(buf), err
+		},
 	}
 	s.validate = validator.New()
 	s.validate.RegisterTagNameFunc(func(fld reflect.StructField) string {
@@ -876,9 +880,9 @@ func (r *cleanupOnErrWriter) WriteHeader(statusCode int) {
 	r.ResponseWriter.WriteHeader(statusCode)
 }
 
-// calculateNumberOfChunks calculates the number of chunks in an arbitrary
+// CalculateNumberOfChunks calculates the number of chunks in an arbitrary
 // content length.
-func calculateNumberOfChunks(contentLength int64, isEncrypted bool) int64 {
+func CalculateNumberOfChunks(contentLength int64, isEncrypted bool) int64 {
 	if contentLength <= swarm.ChunkSize {
 		return 1
 	}
