@@ -27,9 +27,6 @@ import (
 const loggerName = "reserve"
 const reserveNamespace = "reserve"
 
-// hack: make sures the network's storage radius does not fall below a certain value
-const minRadius = 9
-
 /*
 	pull by 	bin - binID
 	evict by 	bin - batchID
@@ -37,9 +34,10 @@ const minRadius = 9
 */
 
 type Reserve struct {
-	baseAddr     swarm.Address
-	radiusSetter topology.SetStorageRadiuser
-	logger       log.Logger
+	baseAddr      swarm.Address
+	radiusSetter  topology.SetStorageRadiuser
+	minimumRadius uint8
+	logger        log.Logger
 
 	capacity int
 	size     atomic.Int64
@@ -54,16 +52,18 @@ func New(
 	store storage.Store,
 	capacity int,
 	radiusSetter topology.SetStorageRadiuser,
+	minimumRadius uint8,
 	logger log.Logger,
 	cb func(context.Context, internal.Storage, ...swarm.Address) error,
 ) (*Reserve, error) {
 
 	rs := &Reserve{
-		baseAddr:     baseAddr,
-		capacity:     capacity,
-		radiusSetter: radiusSetter,
-		logger:       logger.WithName(loggerName).Register(),
-		cacheCb:      cb,
+		baseAddr:      baseAddr,
+		capacity:      capacity,
+		radiusSetter:  radiusSetter,
+		minimumRadius: minimumRadius,
+		logger:        logger.WithName(loggerName).Register(),
+		cacheCb:       cb,
 	}
 
 	rItem := &radiusItem{}
@@ -71,7 +71,7 @@ func New(
 	if err != nil && !errors.Is(err, storage.ErrNotFound) {
 		return nil, err
 	}
-	rs.radius.Store(uint32(max(rItem.Radius, minRadius)))
+	rs.radius.Store(uint32(max(rItem.Radius, minimumRadius)))
 
 	epochItem := &EpochItem{}
 	err = store.Get(epochItem)
@@ -465,7 +465,7 @@ func (r *Reserve) EvictionTarget() int {
 }
 
 func (r *Reserve) SetRadius(store storage.Store, rad uint8) error {
-	rad = max(rad, minRadius)
+	rad = max(rad, r.minimumRadius)
 	r.radius.Store(uint32(rad))
 	r.radiusSetter.SetStorageRadius(rad)
 	return store.Put(&radiusItem{Radius: rad})

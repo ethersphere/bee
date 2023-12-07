@@ -187,6 +187,7 @@ const (
 	ReserveCapacity               = 4_194_304                 // 2^22 chunks
 	reserveWakeUpDuration         = 15 * time.Minute          // time to wait before waking up reserveWorker
 	reserveTreshold               = ReserveCapacity * 5 / 10
+	reserveMinimumRadius          = 9
 )
 
 func NewBee(
@@ -760,6 +761,7 @@ func NewBee(
 		lo.ReserveCapacity = ReserveCapacity
 		lo.ReserveWakeUpDuration = reserveWakeUpDuration
 		lo.RadiusSetter = kad
+		lo.ReserveMinimumRadius = reserveMinimumRadius
 	}
 
 	localStore, err := storer.New(ctx, path, lo)
