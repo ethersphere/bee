@@ -44,7 +44,7 @@ func TestReserve(t *testing.T) {
 	r, err := reserve.New(
 		baseAddr,
 		ts.IndexStore(),
-		0, kademlia.NewTopologyDriver(),
+		0, kademlia.NewTopologyDriver(), 0,
 		log.Noop,
 		noopCacher,
 	)
@@ -101,7 +101,7 @@ func TestReserveChunkType(t *testing.T) {
 	r, err := reserve.New(
 		baseAddr,
 		ts.IndexStore(),
-		0, kademlia.NewTopologyDriver(),
+		0, kademlia.NewTopologyDriver(), 0,
 		log.Noop,
 		noopCacher,
 	)
@@ -164,7 +164,7 @@ func TestReplaceOldIndex(t *testing.T) {
 	r, err := reserve.New(
 		baseAddr,
 		ts.IndexStore(),
-		0, kademlia.NewTopologyDriver(),
+		0, kademlia.NewTopologyDriver(), 0,
 		log.Noop,
 		func(ctx context.Context, st internal.Storage, addrs ...swarm.Address) error {
 			for _, addr := range addrs {
@@ -233,7 +233,7 @@ func TestEvict(t *testing.T) {
 	r, err := reserve.New(
 		baseAddr,
 		ts.IndexStore(),
-		0, kademlia.NewTopologyDriver(),
+		0, kademlia.NewTopologyDriver(), 0,
 		log.Noop,
 		func(ctx context.Context, st internal.Storage, addrs ...swarm.Address) error {
 			for _, addr := range addrs {
@@ -318,7 +318,7 @@ func TestIterate(t *testing.T) {
 		r, err := reserve.New(
 			baseAddr,
 			ts.IndexStore(),
-			0, kademlia.NewTopologyDriver(),
+			0, kademlia.NewTopologyDriver(), 0,
 			log.Noop,
 			noopCacher,
 		)
