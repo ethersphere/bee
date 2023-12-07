@@ -16,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/cache"
 	"github.com/ethersphere/bee/pkg/storage/leveldbstore"
+	"github.com/ethersphere/bee/pkg/storage/migration"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -61,7 +62,8 @@ func InitStamperStore(logger log.Logger, dataDir string, stateStore storage.Stat
 		stamperStore.Close()
 		return nil, fmt.Errorf("migrating stamper data: %w", err)
 	}
-	return stamperStore, nil
+
+	return stamperStore, migration.Migrate(stamperStore, "migration", allStamperSteps(logger))
 }
 
 const (
@@ -131,4 +133,41 @@ func migrateStamperData(stateStore storage.StateStorer, stamperStore storage.Sto
 		}
 	}
 	return nil
+}
+
+func allStamperSteps(logger log.Logger) migration.Steps {
+	return map[uint64]migration.StepFn{
+		1: deleteAll(logger),
+	}
+}
+
+func deleteAll(logger log.Logger) func(s storage.BatchedStore) error {
+	return func(s storage.BatchedStore) error {
+
+		itemsC := make(chan storage.Item)
+		go func() {
+			for item := range itemsC {
+				if err := s.Delete(item); err != nil {
+					logger.Debug("stamperStore migration delete failed", "entry", item)
+				}
+			}
+		}()
+
+		return errors.Join(
+			s.Iterate(
+				storage.Query{
+					Factory: func() storage.Item { return new(postage.StampIssuerItem) },
+				}, func(r storage.Result) (bool, error) {
+					itemsC <- r.Entry
+					return false, nil
+				}),
+			s.Iterate(
+				storage.Query{
+					Factory: func() storage.Item { return new(postage.StampItem) },
+				}, func(r storage.Result) (bool, error) {
+					itemsC <- r.Entry
+					return false, nil
+				}),
+		)
+	}
 }
