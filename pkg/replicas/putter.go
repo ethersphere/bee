@@ -29,14 +29,14 @@ func NewPutter(p storage.Putter) storage.Putter {
 
 // Put makes the getter satisfy the storage.Getter interface
 func (p *putter) Put(ctx context.Context, ch swarm.Chunk) (err error) {
-	rlevel := getLevelFromContext(ctx)
+	rlevel := GetLevelFromContext(ctx)
 	errs := []error{p.putter.Put(ctx, ch)}
 	if rlevel == 0 {
 		return errs[0]
 	}
 
-	rr := newReplicator(ch.Address(), uint8(rlevel))
-	errc := make(chan error, counts[rlevel])
+	rr := newReplicator(ch.Address(), rlevel)
+	errc := make(chan error, rlevel.GetReplicaCount())
 	wg := sync.WaitGroup{}
 	for r := range rr.c {
 		r := r

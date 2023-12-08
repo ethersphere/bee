@@ -107,7 +107,7 @@ func TestPutter(t *testing.T) {
 				}
 			})
 			t.Run("attempts", func(t *testing.T) {
-				count := replicas.Counts[tc.level]
+				count := tc.level.GetReplicaCount()
 				if len(addrs) != count {
 					t.Fatalf("incorrect number of attempts. want %v, got %v", count, len(addrs))
 				}
