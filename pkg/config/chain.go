@@ -16,6 +16,7 @@ import (
 type ChainConfig struct {
 	// General.
 	ChainID                int64
+	NetworkID              uint64
 	PostageStampStartBlock uint64
 	NativeTokenSymbol      string
 	SwarmTokenSymbol       string
@@ -37,6 +38,7 @@ type ChainConfig struct {
 var (
 	Testnet = ChainConfig{
 		ChainID:                abi.TestnetChainID,
+		NetworkID:              abi.TestnetNetworkID,
 		PostageStampStartBlock: abi.TestnetPostageStampBlockNumber,
 		NativeTokenSymbol:      "ETH",
 		SwarmTokenSymbol:       "gBZZ",
@@ -57,6 +59,7 @@ var (
 
 	Mainnet = ChainConfig{
 		ChainID:                abi.MainnetChainID,
+		NetworkID:              abi.MainnetNetworkID,
 		PostageStampStartBlock: abi.MainnetPostageStampBlockNumber,
 		NativeTokenSymbol:      "xDAI",
 		SwarmTokenSymbol:       "xBZZ",

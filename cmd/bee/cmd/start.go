@@ -43,12 +43,6 @@ const (
 	serviceName = "SwarmBeeSvc"
 )
 
-// default values for network IDs
-const (
-	defaultMainNetworkID uint64 = 1
-	defaultTestNetworkID uint64 = 10
-)
-
 //go:embed bee-welcome-message.txt
 var beeWelcomeMessage string
 
@@ -242,15 +236,15 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 	// if mainnet is true then we only accept networkID value 1, error otherwise
 	// if the user has not provided a network ID but mainnet is true - just overwrite with mainnet network ID (1)
 	// in all the other cases we default to test network ID (10)
-	var networkID = defaultTestNetworkID
+	var networkID = chaincfg.Testnet.NetworkID
 
 	if userHasSetNetworkID {
 		networkID = c.config.GetUint64(optionNameNetworkID)
-		if mainnet && networkID != defaultMainNetworkID {
+		if mainnet && networkID != chaincfg.Mainnet.NetworkID {
 			return nil, errors.New("provided network ID does not match mainnet")
 		}
 	} else if mainnet {
-		networkID = defaultMainNetworkID
+		networkID = chaincfg.Mainnet.NetworkID
 	}
 
 	bootnodes := c.config.GetStringSlice(optionNameBootnodes)
@@ -525,17 +519,17 @@ func getConfigByNetworkID(networkID uint64, defaultBlockTimeInSeconds uint64) *n
 		blockTime: time.Duration(defaultBlockTimeInSeconds) * time.Second,
 	}
 	switch networkID {
-	case 1: // mainnet
+	case chaincfg.Mainnet.NetworkID:
 		config.bootNodes = []string{"/dnsaddr/mainnet.ethswarm.org"}
 		config.blockTime = 5 * time.Second
 		config.chainID = chaincfg.Mainnet.ChainID
-	case 5: //staging
+	case 5: // Staging.
 		config.chainID = chaincfg.Testnet.ChainID
-	case 10: //testnet
+	case chaincfg.Testnet.NetworkID:
 		config.bootNodes = []string{"/dnsaddr/testnet.ethswarm.org"}
 		config.blockTime = 15 * time.Second
 		config.chainID = chaincfg.Testnet.ChainID
-	default: //will use the value provided by the chain
+	default: // Will use the value provided by the chain.
 		config.chainID = -1
 	}
 
