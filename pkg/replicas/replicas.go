@@ -27,16 +27,9 @@ var (
 	redundancyLevel redundancyLevelType
 	// RetryInterval is the duration between successive additional requests
 	RetryInterval = 300 * time.Millisecond
-	//
-	// counts of replicas used for levels of increasing security
-	// the actual number of replicas needed to keep the error rate below 1/10^6
-	// for the five levels of redundancy are 0, 2, 4, 5, 19
-	// we use an approximation as the successive powers of 2
-	counts     = [5]int{0, 2, 4, 8, 16}
-	sums       = [5]int{0, 2, 6, 14, 30}
-	privKey, _ = crypto.DecodeSecp256k1PrivateKey(append([]byte{1}, make([]byte, 31)...))
-	signer     = crypto.NewDefaultSigner(privKey)
-	owner, _   = hex.DecodeString("dc5b20847f43d67928f49cd4f85d696b5a7617b5")
+	privKey, _    = crypto.DecodeSecp256k1PrivateKey(append([]byte{1}, make([]byte, 31)...))
+	signer        = crypto.NewDefaultSigner(privKey)
+	owner, _      = hex.DecodeString("dc5b20847f43d67928f49cd4f85d696b5a7617b5")
 )
 
 // SetLevel sets the redundancy level in the context
@@ -44,8 +37,8 @@ func SetLevel(ctx context.Context, level redundancy.Level) context.Context {
 	return context.WithValue(ctx, redundancyLevel, level)
 }
 
-// getLevelFromContext is a helper function to extract the redundancy level from the context
-func getLevelFromContext(ctx context.Context) redundancy.Level {
+// GetLevelFromContext is a helper function to extract the redundancy level from the context
+func GetLevelFromContext(ctx context.Context) redundancy.Level {
 	rlevel := redundancy.PARANOID
 	if val := ctx.Value(redundancyLevel); val != nil {
 		rlevel = val.(redundancy.Level)
@@ -55,21 +48,21 @@ func getLevelFromContext(ctx context.Context) redundancy.Level {
 
 // replicator running the find for replicas
 type replicator struct {
-	addr  []byte       // chunk address
-	queue [16]*replica // to sort addresses according to di
-	exist [30]bool     //  maps the 16 distinct nibbles on all levels
-	sizes [5]int       // number of distinct neighnourhoods redcorded for each depth
-	c     chan *replica
-	depth uint8
+	addr   []byte       // chunk address
+	queue  [16]*replica // to sort addresses according to di
+	exist  [30]bool     //  maps the 16 distinct nibbles on all levels
+	sizes  [5]int       // number of distinct neighnourhoods redcorded for each depth
+	c      chan *replica
+	rLevel redundancy.Level
 }
 
 // newReplicator replicator constructor
-func newReplicator(addr swarm.Address, depth uint8) *replicator {
+func newReplicator(addr swarm.Address, rLevel redundancy.Level) *replicator {
 	rr := &replicator{
-		addr:  addr.Bytes(),
-		sizes: counts,
-		c:     make(chan *replica, 16),
-		depth: depth,
+		addr:   addr.Bytes(),
+		sizes:  redundancy.GetReplicaCounts(),
+		c:      make(chan *replica, 16),
+		rLevel: rLevel,
 	}
 	go rr.replicas()
 	return rr
@@ -93,12 +86,6 @@ func (rr *replicator) replicate(i uint8) (sp *replica) {
 	return &replica{h.Sum(nil), id}
 }
 
-// nh returns the lookup key for the neighbourhood of depth d
-// to be used as index to the replicators exist array
-func (r *replica) nh(d uint8) (nh int) {
-	return sums[d-1] + int(r.addr[0]>>(8-d))
-}
-
 // replicas enumerates replica parameters (SOC ID) pushing it in a channel given as argument
 // the order of replicas is so that addresses are always maximally dispersed
 // in successive sets of addresses.
@@ -106,11 +93,11 @@ func (r *replica) nh(d uint8) (nh int) {
 func (rr *replicator) replicas() {
 	defer close(rr.c)
 	n := 0
-	for i := uint8(0); n < counts[rr.depth] && i < 255; i++ {
+	for i := uint8(0); n < rr.rLevel.GetReplicaCount() && i < 255; i++ {
 		// create soc replica (ID and address using constant owner)
 		// the soc is added to neighbourhoods of depths in the closed interval [from...to]
 		r := rr.replicate(i)
-		d, m := rr.add(r, rr.depth)
+		d, m := rr.add(r, rr.rLevel)
 		if d == 0 {
 			continue
 		}
@@ -125,21 +112,30 @@ func (rr *replicator) replicas() {
 }
 
 // add inserts the soc replica into a replicator so that addresses are balanced
-func (rr *replicator) add(r *replica, d uint8) (depth int, rank int) {
-	if d == 0 {
+func (rr *replicator) add(r *replica, rLevel redundancy.Level) (depth int, rank int) {
+	if rLevel == redundancy.NONE {
 		return 0, 0
 	}
-	nh := r.nh(d)
+	nh := nh(rLevel, r.addr)
 	if rr.exist[nh] {
 		return 0, 0
 	}
 	rr.exist[nh] = true
-	l, o := rr.add(r, d-1)
+	l, o := rr.add(r, rLevel.Decrement())
 	if l == 0 {
-		o = rr.sizes[d-1]
-		rr.sizes[d-1]++
+		o = rr.sizes[uint8(rLevel.Decrement())]
+		rr.sizes[uint8(rLevel.Decrement())]++
 		rr.queue[o] = r
-		l = int(d)
+		l = rLevel.GetReplicaCount()
 	}
 	return l, o
+}
+
+// UTILS
+
+// nh returns the lookup key based on the redundancy level
+// to be used as index to the replicators exist array
+func nh(rLevel redundancy.Level, addr []byte) int {
+	d := uint8(rLevel)
+	return rLevel.GetReplicaIndexBase() + int(addr[0]>>(8-d))
 }

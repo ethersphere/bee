@@ -126,7 +126,7 @@ func TestGetter(t *testing.T) {
 
 	var tests []test
 	for _, f := range failures {
-		for level, c := range replicas.Counts {
+		for level, c := range redundancy.GetReplicaCounts() {
 			for j := 0; j <= c*2+1; j++ {
 				tests = append(tests, test{
 					name:    fmt.Sprintf("%s level %d count %d found %d", f.name, level, c, j),
@@ -257,10 +257,10 @@ func TestGetter(t *testing.T) {
 			})
 
 			t.Run("latency", func(t *testing.T) {
-
+				counts := redundancy.GetReplicaCounts()
 				for i, latency := range latencies {
 					multiplier := latency / replicas.RetryInterval
-					if multiplier > 0 && i < replicas.Counts[multiplier-1] {
+					if multiplier > 0 && i < counts[multiplier-1] {
 						t.Fatalf("incorrect latency for retrieving replica %d: %v", i, err)
 					}
 				}
