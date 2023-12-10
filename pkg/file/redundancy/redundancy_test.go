@@ -17,8 +17,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// MOCK ENCODER
-
 type mockEncoder struct {
 	shards, parities int
 }
@@ -43,8 +41,6 @@ func (m *mockEncoder) Encode(buffer [][]byte) error {
 	return nil
 }
 
-// PARITY CHAIN WRITER
-
 type ParityChainWriter struct {
 	sync.Mutex
 	chainWriteCalls int
@@ -56,16 +52,12 @@ func NewParityChainWriter() *ParityChainWriter {
 	return &ParityChainWriter{}
 }
 
-// ACCESSORS
-
 func (c *ParityChainWriter) ChainWriteCalls() int {
 	c.Lock()
 	defer c.Unlock()
 	return c.chainWriteCalls
 }
 func (c *ParityChainWriter) SumCalls() int { c.Lock(); defer c.Unlock(); return c.sumCalls }
-
-// METHODS
 
 func (c *ParityChainWriter) ChainWrite(args *pipeline.PipeWriteArgs) error {
 	c.Lock()
@@ -117,18 +109,18 @@ func TestEncode(t *testing.T) {
 						buffer := make([]byte, 32)
 						_, err := io.ReadFull(rand.Reader, buffer)
 						if err != nil {
-							t.Error(err)
+							t.Fatal(err)
 						}
 						err = params.ChunkWrite(0, buffer, parityCallback)
 						if err != nil {
-							t.Error(err)
+							t.Fatal(err)
 						}
 					}
 					if shardCount != maxShards {
 						// encode should be called automatically when reaching maxshards
 						err := params.Encode(0, parityCallback)
 						if err != nil {
-							t.Error(err)
+							t.Fatal(err)
 						}
 					}
 

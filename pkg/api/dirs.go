@@ -64,10 +64,14 @@ func (s *Service) dirUploadHandler(
 	}
 	defer r.Body.Close()
 
-	rsParity, err := strconv.ParseUint(r.Header.Get(SwarmRLevel), 10, 1)
+	rLevelNum, err := strconv.ParseUint(r.Header.Get(SwarmRedunancyLevel), 10, 1)
 	if err != nil {
-		logger.Debug("store dir failed", "rsParity parsing error")
-		logger.Error(nil, "store dir failed")
+		logger.Debug("store directory failed failed", "redundancy level parsing error")
+		logger.Error(nil, "store directory failed")
+	}
+	rLevel, err := redundancy.NewLevel(uint8(rLevelNum))
+	if err != nil {
+		jsonhttp.BadRequest(w, err.Error())
 	}
 
 	reference, err := storeDir(
@@ -79,7 +83,7 @@ func (s *Service) dirUploadHandler(
 		s.storer.ChunkStore(),
 		r.Header.Get(SwarmIndexDocumentHeader),
 		r.Header.Get(SwarmErrorDocumentHeader),
-		redundancy.Level(rsParity),
+		rLevel,
 	)
 	if err != nil {
 		logger.Debug("store dir failed", "error", err)
