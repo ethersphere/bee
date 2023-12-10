@@ -16,8 +16,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/topology"
-
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/file/joiner"
@@ -30,6 +28,7 @@ import (
 	storage "github.com/ethersphere/bee/pkg/storage"
 	storer "github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/langos"
 	"github.com/gorilla/mux"

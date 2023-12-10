@@ -51,10 +51,7 @@ func New(ctx context.Context, getter storage.Getter, putter storage.Putter, addr
 	chunkData := rootChunk.Data()
 	rootData := chunkData[swarm.SpanSize:]
 	refLength := len(address.Bytes())
-	encryption := false
-	if refLength != swarm.HashSize {
-		encryption = true
-	}
+	encryption := refLength != swarm.HashSize
 	rLevel, span := chunkToSpan(chunkData)
 	rootParity := 0
 	maxBranching := swarm.ChunkSize / refLength
@@ -355,8 +352,8 @@ func (j *joiner) Size() int64 {
 	return j.span
 }
 
-// UTILITIES
-
+// chunkToSpan returns redundancy level and span value
+// in the types that the package uses
 func chunkToSpan(data []byte) (redundancy.Level, int64) {
 	level, spanBytes := redundancy.DecodeSpan(data[:swarm.SpanSize])
 	return level, int64(bmt.LengthFromSpan(spanBytes))

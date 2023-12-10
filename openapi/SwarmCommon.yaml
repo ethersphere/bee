@@ -934,7 +934,7 @@ components:
       description: >
         Represents the encrypting state of the file
 
-    SwarmRedundancyParameter:
+    SwarmRedundancyLevelParameter:
       in: header
       name: swarm-redundancy-level
       schema:

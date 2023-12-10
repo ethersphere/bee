@@ -4,8 +4,6 @@
 
 package redundancy
 
-import "fmt"
-
 type erasureTable struct {
 	shards   []int
 	parities []int
@@ -18,7 +16,7 @@ type erasureTable struct {
 //			shards := []int{94, 68, 46, 28, 14, 5, 1}
 //			parities := []int{9, 8, 7, 6, 5, 4, 3}
 //			var et = newErasureTable(shards, parities)
-func newErasureTable(shards, parities []int) *erasureTable {
+func newErasureTable(shards, parities []int) erasureTable {
 	if len(shards) != len(parities) {
 		panic("redundancy table: shards and parities arrays must be of equal size")
 	}
@@ -37,7 +35,7 @@ func newErasureTable(shards, parities []int) *erasureTable {
 		maxShards, maxParities = s, p
 	}
 
-	return &erasureTable{
+	return erasureTable{
 		shards:   shards,
 		parities: parities,
 	}
@@ -51,14 +49,4 @@ func (et *erasureTable) getParities(maxShards int) int {
 		}
 	}
 	return 0
-}
-
-// getMinShards returns back the minimum shard number respect to the given parity number
-func (et *erasureTable) GetMinShards(parities int) (int, error) {
-	for k, p := range et.parities {
-		if p == parities {
-			return et.shards[k], nil
-		}
-	}
-	return 0, fmt.Errorf("parity table: there is no minimum shard number for given parity %d", parities)
 }

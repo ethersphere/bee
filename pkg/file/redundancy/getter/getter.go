@@ -18,52 +18,28 @@ import (
 
 /// ERRORS
 
-type cannotRecoverError struct {
-	missingChunks int
-}
+type cannotRecoverError int
 
 func (e cannotRecoverError) Error() string {
-	return fmt.Sprintf("redundancy getter: there are %d missing chunks in order to do recovery", e.missingChunks)
+	return fmt.Sprintf("redundancy getter: there are %d missing chunks in order to do recovery", e)
 }
 
-func IsCannotRecoverError(err error, missingChunks int) bool {
-	return errors.Is(err, cannotRecoverError{missingChunks})
+type notRecoveredError string
+
+func (e notRecoveredError) Error() string {
+	return fmt.Sprintf("redundancy getter: chunk with address %s is not recovered", string(e))
 }
 
-type isNotRecoveredError struct {
-	chAddress string
-}
-
-func (e isNotRecoveredError) Error() string {
-	return fmt.Sprintf("redundancy getter: chunk with address %s is not recovered", e.chAddress)
-}
-
-func IsNotRecoveredError(err error, chAddress string) bool {
-	return errors.Is(err, isNotRecoveredError{chAddress})
-}
-
-type noDataAddressIncludedError struct {
-	chAddress string
-}
+type noDataAddressIncludedError string
 
 func (e noDataAddressIncludedError) Error() string {
-	return fmt.Sprintf("redundancy getter: no data shard address given with chunk address %s", e.chAddress)
+	return fmt.Sprintf("redundancy getter: no data shard address given with chunk address %s", string(e))
 }
 
-func IsNoDataAddressIncludedError(err error, chAddress string) bool {
-	return errors.Is(err, noDataAddressIncludedError{chAddress})
-}
-
-type noRedundancyError struct {
-	chAddress string
-}
+type noRedundancyError string
 
 func (e noRedundancyError) Error() string {
-	return fmt.Sprintf("redundancy getter: cannot get chunk %s because no redundancy added", e.chAddress)
-}
-
-func IsNoRedundancyError(err error, chAddress string) bool {
-	return errors.Is(err, noRedundancyError{chAddress})
+	return fmt.Sprintf("redundancy getter: cannot get chunk %s because no redundancy added", string(e))
 }
 
 /// TYPES
@@ -79,11 +55,11 @@ type inflightChunk struct {
 type getter struct {
 	storage.Getter
 	storage.Putter
-	mu          sync.Mutex
+	mu          sync.Mutex               // guards erasureData and cache
 	sAddresses  []swarm.Address          // shard addresses
 	pAddresses  []swarm.Address          // parity addresses
 	cache       map[string]inflightChunk // map from chunk address to cached shard chunk data
-	erasureData [][]byte                 // data + parity shards for erasure decoding; TODO mutex
+	erasureData [][]byte                 // data + parity shards for erasure decoding;
 	encrypted   bool                     // swarm datashards are encrypted
 }
 
@@ -95,7 +71,6 @@ func New(sAddresses, pAddresses []swarm.Address, g storage.Getter, p storage.Put
 	n := shards + parities
 	erasureData := make([][]byte, n)
 	cache := make(map[string]inflightChunk, n)
-	// init cache
 	for i, addr := range sAddresses {
 		cache[addr.String()] = inflightChunk{
 			pos: i,
@@ -105,7 +80,7 @@ func New(sAddresses, pAddresses []swarm.Address, g storage.Getter, p storage.Put
 	for i, addr := range pAddresses {
 		cache[addr.String()] = inflightChunk{
 			pos: len(sAddresses) + i,
-			// no wait channel initialization is needed
+			// no wait channel initialization is needed since parity chunk addresses shouldn't be requested directly
 		}
 	}
 
@@ -127,7 +102,7 @@ func (g *getter) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, erro
 	cValue, ok := g.cache[addr.String()]
 	g.mu.Unlock()
 	if !ok || cValue.pos >= len(g.sAddresses) {
-		return nil, noDataAddressIncludedError{addr.String()}
+		return nil, noDataAddressIncludedError(addr.String())
 	}
 
 	if cValue.wait != nil { // equals to g.processing but does not need lock again
@@ -139,7 +114,7 @@ func (g *getter) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, erro
 		return ch, nil
 	}
 	if errors.Is(storage.ErrNotFound, err) && len(g.pAddresses) == 0 {
-		return nil, noRedundancyError{addr.String()}
+		return nil, noRedundancyError(addr.String())
 	}
 
 	// during the get, the recovery may have started by other process
@@ -265,7 +240,7 @@ func (g *getter) cautiousStrategy(ctx context.Context) error {
 	cancelContext()
 
 	if retrieved < requiredChunks {
-		return cannotRecoverError{requiredChunks - retrieved}
+		return cannotRecoverError(requiredChunks - retrieved)
 	}
 
 	return g.erasureDecode(ctx)
@@ -310,7 +285,7 @@ func (g *getter) erasureDecode(ctx context.Context) error {
 // cacheDataToChunk transforms passed chunk data to legit swarm chunk
 func (g *getter) cacheDataToChunk(addr swarm.Address, chData []byte) (swarm.Chunk, error) {
 	if chData == nil {
-		return nil, isNotRecoveredError{addr.String()}
+		return nil, notRecoveredError(addr.String())
 	}
 	if g.encrypted {
 		data, err := store.DecryptChunkData(chData, addr.Bytes()[swarm.HashSize:])
