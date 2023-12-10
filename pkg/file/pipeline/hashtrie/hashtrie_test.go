@@ -52,7 +52,7 @@ func newErasureHashTrieWriter(
 	rLevel redundancy.Level,
 	encryptChunks bool,
 	intermediateChunkPipeline, parityChunkPipeline pipeline.ChainWriter,
-) (redundancy.IParams, pipeline.ChainWriter) {
+) (redundancy.RedundancyParams, pipeline.ChainWriter) {
 	pf := func() pipeline.ChainWriter {
 		lsw := store.NewStoreWriter(ctx, s, intermediateChunkPipeline)
 		return bmt.NewBmtWriter(lsw)

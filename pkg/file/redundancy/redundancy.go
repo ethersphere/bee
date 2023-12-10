@@ -15,13 +15,13 @@ import (
 // ParityChunkCallback is called when a new parity chunk has been created
 type ParityChunkCallback func(level int, span, address []byte) error
 
-type IParams interface {
-	MaxShards() int
+type RedundancyParams interface {
+	MaxShards() int // returns the maximum data shard number being used in an intermediate chunk
 	Level() Level
-	Parities(int) int
-	ChunkWrite(int, []byte, ParityChunkCallback) error
-	ElevateCarrierChunk(int, ParityChunkCallback) error
-	Encode(int, ParityChunkCallback) error
+	Parities(int) int                                   // returns the optimal parity number for a given
+	ChunkWrite(int, []byte, ParityChunkCallback) error  // caches the chunk data on the given chunk level and call encode
+	ElevateCarrierChunk(int, ParityChunkCallback) error //  moves the carrier chunk to the level above
+	Encode(int, ParityChunkCallback) error              // add parities on the given level
 }
 
 type ErasureEncoder interface {
@@ -30,20 +30,6 @@ type ErasureEncoder interface {
 
 var erasureEncoderFunc = func(shards, parities int) (ErasureEncoder, error) {
 	return reedsolomon.New(shards, parities)
-}
-
-// setErasureEncoder changes erasureEncoderFunc to a new erasureEncoder facade
-//
-//	used for testing
-func setErasureEncoder(f func(shards, parities int) (ErasureEncoder, error)) {
-	erasureEncoderFunc = f
-}
-
-// getErasureEncoder returns erasureEncoderFunc
-//
-//	used for testing
-func getErasureEncoder() func(shards, parities int) (ErasureEncoder, error) {
-	return erasureEncoderFunc
 }
 
 type Params struct {
@@ -69,7 +55,7 @@ func New(level Level, encryption bool, pipeLine pipeline.PipelineFunc) *Params {
 	// init dataBuffer for erasure coding
 	rsChunkLevels := 0
 	if level != NONE {
-		rsChunkLevels = maxLevel
+		rsChunkLevels = 8
 	}
 	Buffer := make([][][]byte, rsChunkLevels)
 	for i := 0; i < rsChunkLevels; i++ {
@@ -87,8 +73,6 @@ func New(level Level, encryption bool, pipeLine pipeline.PipelineFunc) *Params {
 	}
 }
 
-// ACCESSORS
-
 func (p *Params) MaxShards() int {
 	return p.maxShards
 }
@@ -96,8 +80,6 @@ func (p *Params) MaxShards() int {
 func (p *Params) Level() Level {
 	return p.level
 }
-
-// METHODS
 
 func (p *Params) Parities(shards int) int {
 	if p.encryption {
@@ -148,12 +130,12 @@ func (p *Params) encode(chunkLevel int, callback ParityChunkCallback) error {
 
 	n := shards + parities
 	// realloc for parity chunks if it does not override the prev one
-	// caculate parity chunks
+	// calculate parity chunks
 	enc, err := erasureEncoderFunc(shards, parities)
 	if err != nil {
 		return err
 	}
-	// make parity data
+
 	pz := len(p.buffer[chunkLevel][0])
 	for i := shards; i < n; i++ {
 		p.buffer[chunkLevel][i] = make([]byte, pz)
@@ -162,12 +144,11 @@ func (p *Params) encode(chunkLevel int, callback ParityChunkCallback) error {
 	if err != nil {
 		return err
 	}
-	// store and pass newly created parity chunks
+
 	for i := shards; i < n; i++ {
 		chunkData := p.buffer[chunkLevel][i]
 		span := chunkData[:swarm.SpanSize]
 
-		// store data chunk
 		writer := p.pipeLine()
 		args := pipeline.PipeWriteArgs{
 			Data: chunkData,
@@ -178,13 +159,11 @@ func (p *Params) encode(chunkLevel int, callback ParityChunkCallback) error {
 			return err
 		}
 
-		// write parity chunk to the level above
 		err = callback(chunkLevel+1, span, args.Ref)
 		if err != nil {
 			return err
 		}
 	}
-	// reset cursor of dataBuffer in case it was a full chunk
 	p.cursor[chunkLevel] = 0
 
 	return nil

@@ -4,5 +4,12 @@
 
 package redundancy
 
-var SetErasureEncoder = setErasureEncoder
-var GetErasureEncoder = getErasureEncoder
+// SetErasureEncoder changes erasureEncoderFunc to a new erasureEncoder facade
+func SetErasureEncoder(f func(shards, parities int) (ErasureEncoder, error)) {
+	erasureEncoderFunc = f
+}
+
+// GetErasureEncoder returns erasureEncoderFunc
+func GetErasureEncoder() func(shards, parities int) (ErasureEncoder, error) {
+	return erasureEncoderFunc
+}

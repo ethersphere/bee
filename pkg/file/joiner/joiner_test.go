@@ -1032,11 +1032,11 @@ func TestJoinerRedundancy(t *testing.T) {
 					chunkData := make([]byte, chunkSize)
 					_, err = joinReader.ReadAt(chunkData, offset)
 					if err != nil {
-						t.Fatalf("read error check at chunkdata comparisation on %d index: %s", i, err.Error())
+						t.Fatalf("joiner %d: read data at offset %v: %v", i, offset, err.Error())
 					}
 					expectedChunkData := dataChunks[i].Data()[swarm.SpanSize:]
 					if !bytes.Equal(expectedChunkData, chunkData) {
-						t.Fatalf("read error check at chunkdata comparisation on %d index. Data are not the same", i)
+						t.Fatalf("joiner %d: read data at offset %v: %v", i, offset, err.Error())
 					}
 					offset += int64(chunkSize)
 				}
@@ -1050,10 +1050,7 @@ func TestJoinerRedundancy(t *testing.T) {
 				maxShards = tc.rLevel.GetMaxEncShards()
 				maxParities = tc.rLevel.GetEncParities(maxShards)
 			}
-			removeCount := maxParities
-			if maxParities > maxShards {
-				removeCount = maxShards
-			}
+			removeCount := min(maxParities, maxParities)
 			for i := 0; i < removeCount; i++ {
 				err := store.Delete(ctx, dataChunks[i].Address())
 				if err != nil {
