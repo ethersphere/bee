@@ -23,6 +23,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file/pipeline/mock"
 	"github.com/ethersphere/bee/pkg/file/pipeline/store"
 	"github.com/ethersphere/bee/pkg/file/redundancy"
+	"github.com/ethersphere/bee/pkg/replicas"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -52,6 +53,7 @@ func newErasureHashTrieWriter(
 	rLevel redundancy.Level,
 	encryptChunks bool,
 	intermediateChunkPipeline, parityChunkPipeline pipeline.ChainWriter,
+	replicaPutter storage.Putter,
 ) (redundancy.RedundancyParams, pipeline.ChainWriter) {
 	pf := func() pipeline.ChainWriter {
 		lsw := store.NewStoreWriter(ctx, s, intermediateChunkPipeline)
@@ -75,7 +77,7 @@ func newErasureHashTrieWriter(
 	}
 
 	r := redundancy.New(rLevel, encryptChunks, ppf)
-	ht := hashtrie.NewHashTrieWriter(ctx, hashSize, r, pf, s)
+	ht := hashtrie.NewHashTrieWriter(ctx, hashSize, r, pf, replicaPutter)
 	return r, ht
 }
 
@@ -265,6 +267,16 @@ func TestRegression(t *testing.T) {
 	}
 }
 
+type replicaPutter struct {
+	storage.Putter
+	replicaCount uint8
+}
+
+func (r *replicaPutter) Put(ctx context.Context, chunk swarm.Chunk) error {
+	r.replicaCount++
+	return r.Putter.Put(ctx, chunk)
+}
+
 // TestRedundancy using erasure coding library and checks carrierChunk function and modified span in intermediate chunk
 func TestRedundancy(t *testing.T) {
 	t.Parallel()
@@ -303,12 +315,14 @@ func TestRedundancy(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
+			subCtx := replicas.SetLevel(ctx, tc.level)
 
 			s := inmemchunkstore.New()
 			intermediateChunkCounter := mock.NewChainWriter()
 			parityChunkCounter := mock.NewChainWriter()
+			replicaChunkCounter := &replicaPutter{Putter: s}
 
-			r, ht := newErasureHashTrieWriter(ctx, s, tc.level, tc.encryption, intermediateChunkCounter, parityChunkCounter)
+			r, ht := newErasureHashTrieWriter(subCtx, s, tc.level, tc.encryption, intermediateChunkCounter, parityChunkCounter, replicaChunkCounter)
 
 			// write data to the hashTrie
 			var key []byte
@@ -336,7 +350,7 @@ func TestRedundancy(t *testing.T) {
 				t.Errorf("effective chunks should be %d. Got: %d", tc.writes, intermediateChunkCounter.ChainWriteCalls())
 			}
 
-			rootch, err := s.Get(ctx, swarm.NewAddress(ref[:swarm.HashSize]))
+			rootch, err := s.Get(subCtx, swarm.NewAddress(ref[:swarm.HashSize]))
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -361,6 +375,9 @@ func TestRedundancy(t *testing.T) {
 			_, parity := file.ReferenceCount(bmtUtils.LengthFromSpan(sp), level, tc.encryption)
 			if expectedParities != parity {
 				t.Fatalf("want parity %d got %d", expectedParities, parity)
+			}
+			if tc.level.GetReplicaCount()+1 != int(replicaChunkCounter.replicaCount) { // +1 is the original chunk
+				t.Fatalf("unexpected number of replicas: want %d. Got: %d", tc.level.GetReplicaCount(), int(replicaChunkCounter.replicaCount))
 			}
 		})
 	}
