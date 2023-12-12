@@ -1050,7 +1050,7 @@ func TestJoinerRedundancy(t *testing.T) {
 				maxShards = tc.rLevel.GetMaxEncShards()
 				maxParities = tc.rLevel.GetEncParities(maxShards)
 			}
-			removeCount := min(maxParities, maxParities)
+			removeCount := min(maxParities, maxShards)
 			for i := 0; i < removeCount; i++ {
 				err := store.Delete(ctx, dataChunks[i].Address())
 				if err != nil {
