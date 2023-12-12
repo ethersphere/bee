@@ -20,7 +20,6 @@ import (
 // Compact minimizes sharky disk usage by, using the current sharky locations from the storer,
 // relocating chunks starting from the end of the used slots to the first available slots.
 func Compact(ctx context.Context, basePath string, opts *Options, validate bool) error {
-
 	logger := opts.Logger
 
 	store, err := initStore(basePath, opts)
@@ -74,6 +73,9 @@ func Compact(ctx context.Context, basePath string, opts *Options, validate bool)
 			return items[i].Location.Slot < items[j].Location.Slot
 		})
 
+		if len(items) < 1 {
+			return errors.New("no data to compact")
+		}
 		lastUsedSlot := items[len(items)-1].Location.Slot
 		slots := make([]*chunkstore.RetrievalIndexItem, lastUsedSlot+1) // marks free and used slots
 		for _, l := range items {
