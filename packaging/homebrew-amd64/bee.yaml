@@ -52,8 +52,8 @@ password-file: /usr/local/var/lib/swarm-bee/password
 # postage-stamp-address: ""
 ## ENS compatible API endpoint for a TLD and with contract address, can be repeated, format [tld:][contract-addr@]url
 # resolver-options: []
-## enable swap (default true)
-# swap-enable: true
+## enable swap (default false)
+# swap-enable: false
 ## swap blockchain endpoint (default "") [deprecated]
 # swap-endpoint: ""
 ## blockchain rpc endpoint (default "")

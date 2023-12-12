@@ -57,8 +57,8 @@
 # BEE_POSTAGE_STAMP_ADDRESS=
 ## ENS compatible API endpoint for a TLD and with contract address, can be repeated, format [tld:][contract-addr@]url
 # BEE_RESOLVER_OPTIONS=[]
-## enable swap (default true)
-# BEE_SWAP_ENABLE=true
+## enable swap (default false)
+# BEE_SWAP_ENABLE=false
 ## swap blockchain endpoint (default ws://localhost:8546)
 # BEE_BLOCKCHAIN_RPC_ENDPOINT=ws://localhost:8546
 ## swap factory address
