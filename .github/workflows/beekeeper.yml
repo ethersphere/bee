@@ -69,7 +69,6 @@ jobs:
         run: |
           patch pkg/api/postage.go .github/patches/postage_api.patch
           patch pkg/retrieval/retrieval.go .github/patches/retrieval.patch
-          patch pkg/node/node.go .github/patches/minradius.patch
           make binary
           mv dist/bee bee-1
       - name: Install beekeeper

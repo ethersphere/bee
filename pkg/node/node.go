@@ -187,7 +187,7 @@ const (
 	ReserveCapacity               = 4_194_304                 // 2^22 chunks
 	reserveWakeUpDuration         = 15 * time.Minute          // time to wait before waking up reserveWorker
 	reserveTreshold               = ReserveCapacity * 5 / 10
-	reserveMinimumRadius          = 9
+	reserveMinimumRadius          = 0
 )
 
 func NewBee(
@@ -761,7 +761,6 @@ func NewBee(
 		lo.ReserveCapacity = ReserveCapacity
 		lo.ReserveWakeUpDuration = reserveWakeUpDuration
 		lo.RadiusSetter = kad
-		lo.ReserveMinimumRadius = reserveMinimumRadius
 	}
 
 	localStore, err := storer.New(ctx, path, lo)
@@ -944,14 +943,6 @@ func NewBee(
 		}
 	}()
 
-	radiusFunc := func() (uint8, error) {
-		currentRadius := localStore.StorageRadius()
-		if currentRadius == 0 { // the radius has not been set by localstore yet
-			currentRadius = uint8(networkR.Load())
-		}
-		return currentRadius, nil
-	}
-
 	waitNetworkRFunc := func() (uint8, error) {
 		if networkR.Load() == uint32(swarm.MaxBins) {
 			select {
@@ -961,10 +952,15 @@ func NewBee(
 			}
 		}
 
-		return radiusFunc()
+		local, network := localStore.StorageRadius(), uint8(networkR.Load())
+		if local <= reserveMinimumRadius {
+			return network, nil
+		} else {
+			return local, nil
+		}
 	}
 
-	retrieval := retrieval.New(swarmAddress, radiusFunc, localStore, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching)
+	retrieval := retrieval.New(swarmAddress, waitNetworkRFunc, localStore, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching)
 	localStore.SetRetrievalService(retrieval)
 
 	pusherService := pusher.New(networkID, localStore, waitNetworkRFunc, pushSyncProtocol, validStamp, logger, tracer, warmupTime, pusher.DefaultRetryCount)
