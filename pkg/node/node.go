@@ -761,7 +761,6 @@ func NewBee(
 		lo.ReserveCapacity = ReserveCapacity
 		lo.ReserveWakeUpDuration = reserveWakeUpDuration
 		lo.RadiusSetter = kad
-		lo.ReserveMinimumRadius = reserveMinimumRadius
 	}
 
 	localStore, err := storer.New(ctx, path, lo)
@@ -953,7 +952,12 @@ func NewBee(
 			}
 		}
 
-		return max(localStore.StorageRadius(), uint8(networkR.Load())), nil
+		local, network := localStore.StorageRadius(), uint8(networkR.Load())
+		if local <= reserveMinimumRadius {
+			return network, nil
+		} else {
+			return local, nil
+		}
 	}
 
 	retrieval := retrieval.New(swarmAddress, waitNetworkRFunc, localStore, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching)

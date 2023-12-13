@@ -171,7 +171,6 @@ func dbTestOps(baseAddr swarm.Address, reserveCapacity int, bs postage.Storer, r
 	opts.Address = baseAddr
 	opts.RadiusSetter = radiusSetter
 	opts.ReserveCapacity = reserveCapacity
-	opts.ReserveMinimumRadius = 0
 	opts.Batchstore = bs
 	opts.ReserveWakeUpDuration = reserveWakeUpTime
 	opts.Logger = log.Noop

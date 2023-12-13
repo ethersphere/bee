@@ -412,7 +412,7 @@ func performEpochMigration(ctx context.Context, basePath string, opts *Options) 
 			opts.Address,
 			store,
 			opts.ReserveCapacity,
-			noopRadiusSetter{}, 0,
+			noopRadiusSetter{},
 			logger,
 			func(_ context.Context, _ internal.Storage, _ ...swarm.Address) error {
 				return nil
@@ -454,7 +454,6 @@ type Options struct {
 
 	ReserveCapacity       int
 	ReserveWakeUpDuration time.Duration
-	ReserveMinimumRadius  uint8
 }
 
 func defaultOptions() *Options {
@@ -617,7 +616,6 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 			repo.IndexStore(),
 			opts.ReserveCapacity,
 			opts.RadiusSetter,
-			opts.ReserveMinimumRadius,
 			logger,
 			db.CacheShallowCopy,
 		)

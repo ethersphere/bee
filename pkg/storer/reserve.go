@@ -68,18 +68,14 @@ func (db *DB) startReserveWorkers(
 		return
 	}
 
-	initialRadius := db.reserve.Radius()
-
 	r, err := radius()
 	if err != nil {
 		db.logger.Error(err, "reserve worker initial radius")
 	} else {
-		initialRadius = max(initialRadius, r)
+		r = db.reserve.Radius()
 	}
 
-	db.logger.Info("reserve worker setting radius", "local_radius", initialRadius, "network_radius", r)
-
-	if err := db.reserve.SetRadius(db.repo.IndexStore(), initialRadius); err != nil {
+	if err := db.reserve.SetRadius(db.repo.IndexStore(), r); err != nil {
 		db.logger.Error(err, "reserve set radius")
 	}
 
