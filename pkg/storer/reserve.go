@@ -71,8 +71,7 @@ func (db *DB) startReserveWorkers(
 	r, err := radius()
 	if err != nil {
 		db.logger.Error(err, "reserve worker initial radius")
-	} else {
-		r = db.reserve.Radius()
+		return // node shutdown
 	}
 
 	if err := db.reserve.SetRadius(db.repo.IndexStore(), r); err != nil {
