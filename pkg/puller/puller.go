@@ -95,7 +95,7 @@ func New(
 		blockLister: blockLister,
 		rate:        rate.New(DefaultHistRateWindow),
 		cancel:      func() { /* Noop, since the context is initialized in the Start(). */ },
-		limiter:     ratelimit.NewLimiter(ratelimit.Every(time.Second), 64), // allows for 1 sync per second, and 64 bursts
+		limiter:     ratelimit.NewLimiter(ratelimit.Every(time.Second), int(swarm.MaxBins)), // allows for 1 sync per second, max bins bursts
 	}
 
 	return p
@@ -305,7 +305,10 @@ func (p *Puller) syncWorker(ctx context.Context, peer swarm.Address, bin uint8, 
 
 	for {
 
-		_ = p.limiter.Wait(ctx)
+		// rate limit within neighborhood
+		if bin >= p.radius.StorageRadius() {
+			_ = p.limiter.Wait(ctx)
+		}
 
 		select {
 		case <-ctx.Done():
