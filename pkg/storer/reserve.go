@@ -68,19 +68,13 @@ func (db *DB) startReserveWorkers(
 		return
 	}
 
-	initialRadius := db.reserve.Radius()
-
-	// possibly a fresh node, acquire initial radius externally
-	if initialRadius == 0 {
-		r, err := radius()
-		if err != nil {
-			db.logger.Error(err, "reserve worker initial radius")
-		} else {
-			initialRadius = r
-		}
+	r, err := radius()
+	if err != nil {
+		db.logger.Error(err, "reserve worker initial radius")
+		return // node shutdown
 	}
 
-	if err := db.reserve.SetRadius(db.repo.IndexStore(), initialRadius); err != nil {
+	if err := db.reserve.SetRadius(db.repo.IndexStore(), r); err != nil {
 		db.logger.Error(err, "reserve set radius")
 	}
 
