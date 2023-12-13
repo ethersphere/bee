@@ -317,6 +317,8 @@ func (p *Puller) syncWorker(ctx context.Context, peer swarm.Address, bin uint8, 
 		default:
 		}
 
+		p.metrics.SyncWorkerIterCounter.Inc()
+
 		s, _, _, err := p.nextPeerInterval(peer, bin)
 		if err != nil {
 			p.metrics.SyncWorkerErrCounter.Inc()
