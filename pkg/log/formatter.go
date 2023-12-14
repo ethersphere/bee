@@ -90,16 +90,18 @@ func newFormatter(opts fmtOptions) *formatter {
 	return &formatter{opts: opts}
 }
 
-func makeKV(args ...interface{}) LogItemSlice { 
+func makeKV(args ...interface{}) LogItemSlice {
 	logItemArray := []LogItem{}
-	for i := 0; i<len(args); i+=2{
-		 var tempV interface{}= noValue
-		 if len(args)>i+1 {
-			tempV= args[i+1]
-		 }
-	logItemArray=append(logItemArray, LogItem{args[i], tempV} )
-	}  
-	return LogItemSlice(logItemArray) }
+	for i := 0; i < len(args); i += 2 {
+		var li LogItem
+		li.Key = args[i]
+		if len(args) > i+1 {
+			li.Value = args[i+1]
+		}
+		logItemArray = append(logItemArray, li)
+	}
+	return LogItemSlice(logItemArray)
+}
 
 // formatter is responsible for formatting the output of the log messages.
 type formatter struct {
@@ -130,7 +132,7 @@ func (f *formatter) render(base, args []LogItem) []byte {
 func (f *formatter) flatten(buf *bytes.Buffer, kvList []LogItem, continuing bool, escapeKeys bool) {
 	// This logic overlaps with sanitize() but saves one type-cast per key,
 	// which can be measurable.
-	
+
 	for index, logItem := range kvList {
 		k, ok := logItem.Key.(string)
 		if !ok {
@@ -147,10 +149,6 @@ func (f *formatter) flatten(buf *bytes.Buffer, kvList []LogItem, continuing bool
 			}
 		}
 
-		if logItem.Key == "" {
-			logItem.Key = "Undefined key"
-		}
-
 		if escapeKeys {
 			buf.WriteString(prettyString(logItem.Key.(string)))
 		} else {
@@ -164,6 +162,12 @@ func (f *formatter) flatten(buf *bytes.Buffer, kvList []LogItem, continuing bool
 		} else {
 			buf.WriteByte('=')
 		}
+
+		v, ok := logItem.Value.(string)
+		if (ok && v == "") || logItem.Value == nil {
+			logItem.Value = noValue
+		}
+
 		buf.WriteString(f.prettyWithFlags(logItem.Value, 0, 0))
 	}
 }
@@ -232,11 +236,11 @@ func (f *formatter) prettyWithFlags(value interface{}, flags uint32, depth int) 
 		buf := bytes.NewBuffer(make([]byte, 0, 1024))
 
 		iv := []interface{}(v)
-		liv :=makeKV(iv...)
+		liv := makeKV(iv...)
 		if flags&flagRawStruct == 0 {
 			buf.WriteByte('{')
 		}
-		for i , logItem:=range f.sanitize(liv) {
+		for i, logItem := range f.sanitize(liv) {
 			if i > 0 {
 				buf.WriteByte(',')
 			}
@@ -419,13 +423,13 @@ func (f *formatter) snippet(v interface{}) string {
 // (adding a value if needed) and that each key is a string (substituting a key
 // if needed).
 func (f *formatter) sanitize(kvList []LogItem) []LogItem {
-	for _, logItem := range kvList {
-		if logItem.Value==nil {
-			logItem.Value=noValue
+	for i, logItem := range kvList {
+		if logItem.Value == nil {
+			kvList[i].Value = noValue
 		}
 
-		if _ , ok:=logItem.Key.(string); !ok {
-			logItem.Key=f.nonStringKey(logItem.Key)
+		if _, ok := logItem.Key.(string); !ok {
+			kvList[i].Key = f.nonStringKey(logItem.Key)
 		}
 	}
 	return kvList

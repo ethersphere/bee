@@ -168,12 +168,12 @@ type Logger interface {
 }
 
 type LogItem struct {
-	Key interface{}
+	Key   interface{}
 	Value interface{}
 }
 
 func (l LogItem) toPseudoStruct() PseudoStruct {
-    return PseudoStruct([]interface{}{l.Key,l.Value})
+	return []interface{}{l.Key, l.Value}
 }
 
 type LogItemSlice []LogItem
