@@ -7,7 +7,6 @@ package replicas
 import "github.com/ethersphere/bee/pkg/storage"
 
 var (
-	Counts = counts
 	Signer = signer
 )
 

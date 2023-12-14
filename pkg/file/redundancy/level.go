@@ -98,6 +98,16 @@ func (l Level) GetMaxEncShards() int {
 	return (swarm.Branches - p) / 2
 }
 
+// GetReplicaCount returns back the dispersed replica number
+func (l Level) GetReplicaCount() int {
+	return replicaCounts[int(l)]
+}
+
+// Decrement returns a weaker redundancy level compare to the current one
+func (l Level) Decrement() Level {
+	return Level(uint8(l) - 1)
+}
+
 // TABLE INITS
 
 var mediumEt = newErasureTable(
@@ -151,3 +161,16 @@ var encParanoidEt = newErasureTable(
 		55, 51, 48, 44, 39, 35, 30, 24,
 	},
 )
+
+// DISPERSED REPLICAS INIT
+
+// GetReplicaCounts returns back the ascending dispersed replica counts for all redundancy levels
+func GetReplicaCounts() [5]int {
+	c := replicaCounts
+	return c
+}
+
+// the actual number of replicas needed to keep the error rate below 1/10^6
+// for the five levels of redundancy are 0, 2, 4, 5, 19
+// we use an approximation as the successive powers of 2
+var replicaCounts = [5]int{0, 2, 4, 8, 16}
