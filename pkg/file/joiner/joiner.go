@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/redundancy"
 	"github.com/ethersphere/bee/pkg/file/redundancy/getter"
+	"github.com/ethersphere/bee/pkg/replicas"
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"golang.org/x/sync/errgroup"
@@ -41,9 +42,13 @@ type joiner struct {
 
 // New creates a new Joiner. A Joiner provides Read, Seek and Size functionalities.
 func New(ctx context.Context, getter storage.Getter, putter storage.Putter, address swarm.Address) (file.Joiner, int64, error) {
-	getter = store.New(getter)
 	// retrieve the root chunk to read the total data length the be retrieved
-	rootChunk, err := getter.Get(ctx, address)
+	rLevel := replicas.GetLevelFromContext(ctx)
+	rootChunkGetter := store.New(getter)
+	if rLevel != redundancy.NONE {
+		rootChunkGetter = store.New(replicas.NewGetter(getter, rLevel))
+	}
+	rootChunk, err := rootChunkGetter.Get(ctx, address)
 	if err != nil {
 		return nil, 0, err
 	}
