@@ -533,7 +533,7 @@ func TestPretty(t *testing.T) {
 	}, {
 		val: embedJSONTagsTest{},
 	}, {
-		val: PseudoStruct(makeKV("f1", 1, "f2", true, "f3", []int{})),
+		val: makeKV("f1", 1, "f2", true, "f3", []int{}).toPseudoStruct(),
 		exp: `{"f1":1,"f2":true,"f3":[]}`,
 	}, {
 		val: map[jsonTagsStringTest]int{
@@ -607,7 +607,7 @@ func TestPretty(t *testing.T) {
 	}, {
 		val: embedJSONTagsTest{},
 	}, {
-		val: PseudoStruct(makeKV("f1", 1, "f2", true, "f3", []int{})),
+		val: makeKV("f1", 1, "f2", true, "f3", []int{}).toPseudoStruct(),
 		exp: `{"f1":1,"f2":true,"f3":[]}`,
 	}, {
 		val: map[jsonTagsStringTest]int{
@@ -628,7 +628,7 @@ func TestPretty(t *testing.T) {
 
 	o := *defaults.options
 	f := newFormatter(o.fmtOptions)
-	for _, tc := range testCases {
+	for index, tc := range testCases {
 		t.Run("", func(t *testing.T) {
 			var want string
 			have := f.prettyWithFlags(tc.val, 0, 0)
@@ -644,19 +644,17 @@ func TestPretty(t *testing.T) {
 			}
 
 			if have != want {
-				t.Errorf("prettyWithFlags(...):\n\twant %q\n\thave %q", want, have)
+				t.Errorf("prettyWithFlags(...):\n\twant %q\n\thave %q, %d", want, have, index)
 			}
 		})
 	}
 }
 
-func makeKV(args ...interface{}) []interface{} { return args }
-
 func TestRender(t *testing.T) {
 	testCases := []struct {
 		name     string
-		builtins []interface{}
-		args     []interface{}
+		builtins []LogItem
+		args     []LogItem
 		wantKV   string
 		wantJSON string
 	}{{
@@ -665,8 +663,8 @@ func TestRender(t *testing.T) {
 		wantJSON: "{}",
 	}, {
 		name:     "empty",
-		builtins: []interface{}{},
-		args:     []interface{}{},
+		builtins: []LogItem{},
+		args:     []LogItem{},
 		wantKV:   "",
 		wantJSON: "{}",
 	}, {
@@ -677,8 +675,8 @@ func TestRender(t *testing.T) {
 		wantJSON: `{"int1":1,"int2":2,"bool1":true,"bool2":false}`,
 	}, {
 		name:     "pseudo structs",
-		builtins: makeKV("int", PseudoStruct(makeKV("intsub", 1))),
-		args:     makeKV("bool", PseudoStruct(makeKV("boolsub", true))),
+		builtins: makeKV("int", makeKV("intsub", 1).toPseudoStruct()),
+		args:     makeKV("bool", makeKV("boolsub", true).toPseudoStruct()),
 		wantKV:   `"int"={"intsub":1} "bool"={"boolsub":true}`,
 		wantJSON: `{"int":{"intsub":1},"bool":{"boolsub":true}}`,
 	}, {
@@ -739,12 +737,12 @@ func TestRender(t *testing.T) {
 func TestSanitize(t *testing.T) {
 	testCases := []struct {
 		name string
-		kv   []interface{}
-		want []interface{}
+		kv   []LogItem
+		want []LogItem
 	}{{
 		name: "empty",
-		kv:   []interface{}{},
-		want: []interface{}{},
+		kv:   []LogItem{},
+		want: []LogItem{},
 	}, {
 		name: "already sane",
 		kv:   makeKV("int", 1, "str", "ABC", "bool", true),

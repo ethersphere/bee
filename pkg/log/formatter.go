@@ -90,6 +90,17 @@ func newFormatter(opts fmtOptions) *formatter {
 	return &formatter{opts: opts}
 }
 
+func makeKV(args ...interface{}) LogItemSlice { 
+	logItemArray := []LogItem{}
+	for i := 0; i<len(args); i+=2{
+		 var tempV interface{}= noValue
+		 if len(args)>i+1 {
+			tempV= args[i+1]
+		 }
+	logItemArray=append(logItemArray, LogItem{args[i], tempV} )
+	}  
+	return LogItemSlice(logItemArray) }
+
 // formatter is responsible for formatting the output of the log messages.
 type formatter struct {
 	opts fmtOptions
@@ -97,7 +108,7 @@ type formatter struct {
 
 // render produces a log line where the base is
 // never escaped; the opposite is true for args.
-func (f *formatter) render(base, args []interface{}) []byte {
+func (f *formatter) render(base, args []LogItem) []byte {
 	buf := bytes.NewBuffer(make([]byte, 0, 1024))
 	if f.opts.jsonOutput {
 		buf.WriteByte('{')
@@ -116,21 +127,17 @@ func (f *formatter) render(base, args []interface{}) []byte {
 // separator (which depends on the output format) before the first pair is
 // written. If escapeKeys is true, the keys are assumed to have
 // non-JSON-compatible characters in them and must be evaluated for escapes.
-func (f *formatter) flatten(buf *bytes.Buffer, kvList []interface{}, continuing bool, escapeKeys bool) {
+func (f *formatter) flatten(buf *bytes.Buffer, kvList []LogItem, continuing bool, escapeKeys bool) {
 	// This logic overlaps with sanitize() but saves one type-cast per key,
 	// which can be measurable.
-	if len(kvList)%2 != 0 {
-		kvList = append(kvList, noValue)
-	}
-	for i := 0; i < len(kvList); i += 2 {
-		k, ok := kvList[i].(string)
+	
+	for index, logItem := range kvList {
+		k, ok := logItem.Key.(string)
 		if !ok {
-			k = f.nonStringKey(kvList[i])
-			kvList[i] = k
+			k = f.nonStringKey(logItem.Key)
+			logItem.Key = k
 		}
-		v := kvList[i+1]
-
-		if i > 0 || continuing {
+		if index > 0 || continuing {
 			if f.opts.jsonOutput {
 				buf.WriteByte(',')
 			} else {
@@ -140,12 +147,16 @@ func (f *formatter) flatten(buf *bytes.Buffer, kvList []interface{}, continuing 
 			}
 		}
 
+		if logItem.Key == "" {
+			logItem.Key = "Undefined key"
+		}
+
 		if escapeKeys {
-			buf.WriteString(prettyString(k))
+			buf.WriteString(prettyString(logItem.Key.(string)))
 		} else {
 			// The following is faster.
 			buf.WriteByte('"')
-			buf.WriteString(k)
+			buf.WriteString(logItem.Key.(string))
 			buf.WriteByte('"')
 		}
 		if f.opts.jsonOutput {
@@ -153,7 +164,7 @@ func (f *formatter) flatten(buf *bytes.Buffer, kvList []interface{}, continuing 
 		} else {
 			buf.WriteByte('=')
 		}
-		buf.WriteString(f.prettyWithFlags(v, 0, 0))
+		buf.WriteString(f.prettyWithFlags(logItem.Value, 0, 0))
 	}
 }
 
@@ -219,18 +230,20 @@ func (f *formatter) prettyWithFlags(value interface{}, flags uint32, depth int) 
 		return `"` + strconv.FormatComplex(v, 'f', -1, 128) + `"`
 	case PseudoStruct:
 		buf := bytes.NewBuffer(make([]byte, 0, 1024))
-		v = f.sanitize(v)
+
+		iv := []interface{}(v)
+		liv :=makeKV(iv...)
 		if flags&flagRawStruct == 0 {
 			buf.WriteByte('{')
 		}
-		for i := 0; i < len(v); i += 2 {
+		for i , logItem:=range f.sanitize(liv) {
 			if i > 0 {
 				buf.WriteByte(',')
 			}
-			k, _ := v[i].(string) // sanitize() above means no need to check success arbitrary keys might need escaping.
+			k, _ := logItem.Key.(string) // sanitize() above means no need to check success arbitrary keys might need escaping.
 			buf.WriteString(prettyString(k))
 			buf.WriteByte(':')
-			buf.WriteString(f.prettyWithFlags(v[i+1], 0, depth+1))
+			buf.WriteString(f.prettyWithFlags(logItem.Value, 0, depth+1))
 		}
 		if flags&flagRawStruct == 0 {
 			buf.WriteByte('}')
@@ -405,14 +418,14 @@ func (f *formatter) snippet(v interface{}) string {
 // sanitize ensures that a list of key-value pairs has a value for every key
 // (adding a value if needed) and that each key is a string (substituting a key
 // if needed).
-func (f *formatter) sanitize(kvList []interface{}) []interface{} {
-	if len(kvList)%2 != 0 {
-		kvList = append(kvList, noValue)
-	}
-	for i := 0; i < len(kvList); i += 2 {
-		_, ok := kvList[i].(string)
-		if !ok {
-			kvList[i] = f.nonStringKey(kvList[i])
+func (f *formatter) sanitize(kvList []LogItem) []LogItem {
+	for _, logItem := range kvList {
+		if logItem.Value==nil {
+			logItem.Value=noValue
+		}
+
+		if _ , ok:=logItem.Key.(string); !ok {
+			logItem.Key=f.nonStringKey(logItem.Key)
 		}
 	}
 	return kvList

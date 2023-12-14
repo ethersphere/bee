@@ -116,7 +116,7 @@ func TestSetVerbosity(t *testing.T) {
 
 	NewLogger("root").Register()
 	NewLogger("root").WithName("child1").Register()
-	NewLogger("root").WithName("child1").WithValues("abc", 123).Register()
+	NewLogger("root").WithName("child1").WithValues(LogItem{"abc", 123}).Register()
 
 	registered := make(map[string]*logger)
 	loggers.Range(func(k, v interface{}) bool {
@@ -182,7 +182,7 @@ func TestRegistryRange(t *testing.T) {
 
 	NewLogger("root").Register()
 	NewLogger("root").WithName("child1").Register()
-	NewLogger("root").WithName("child1").WithValues("abc", 123).Register()
+	NewLogger("root").WithName("child1").WithValues(LogItem{"abc", 123}).Register()
 
 	registered := make(map[string]*logger)
 	loggers.Range(func(k, v interface{}) bool {

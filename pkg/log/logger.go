@@ -58,7 +58,7 @@ type builder struct {
 
 	// values holds additional key/value pairs
 	// that are included on every log call.
-	values []interface{}
+	values []LogItem
 
 	// valuesStr is a cache of render values slice, so
 	// we don't have to render them on each Build call.
@@ -83,7 +83,7 @@ func (b *builder) WithName(name string) Builder {
 }
 
 // WithValues implements the Builder interface WithValues method.
-func (b *builder) WithValues(keysAndValues ...interface{}) Builder {
+func (b *builder) WithValues(keysAndValues ...LogItem) Builder {
 	c := b.clone()
 	c.values = append(c.values, keysAndValues...)
 	return c
@@ -133,7 +133,7 @@ func (b *builder) clone() *builder {
 	c := *b
 	c.cloned = true
 	c.names = append(make([]string, 0, len(c.names)), c.names...)
-	c.values = append(make([]interface{}, 0, len(c.values)), c.values...)
+	c.values = append(make([]LogItem, 0, len(c.values)), c.values...)
 	return &c
 }
 
@@ -176,7 +176,7 @@ func (l *logger) Verbosity() Level {
 }
 
 // Debug implements the Logger interface Debug method.
-func (l *logger) Debug(msg string, keysAndValues ...interface{}) {
+func (l *logger) Debug(msg string, keysAndValues ...LogItem) {
 	if int(l.verbosity.get()) >= int(l.v) {
 		if err := l.log(VerbosityDebug, CategoryDebug, nil, msg, keysAndValues...); err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -185,7 +185,7 @@ func (l *logger) Debug(msg string, keysAndValues ...interface{}) {
 }
 
 // Info implements the Logger interface Info method.
-func (l *logger) Info(msg string, keysAndValues ...interface{}) {
+func (l *logger) Info(msg string, keysAndValues ...LogItem) {
 	if l.verbosity.get() >= VerbosityInfo {
 		if err := l.log(VerbosityInfo, CategoryInfo, nil, msg, keysAndValues...); err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -194,7 +194,7 @@ func (l *logger) Info(msg string, keysAndValues ...interface{}) {
 }
 
 // Warning implements the Logger interface Warning method.
-func (l *logger) Warning(msg string, keysAndValues ...interface{}) {
+func (l *logger) Warning(msg string, keysAndValues ...LogItem) {
 	if l.verbosity.get() >= VerbosityWarning {
 		if err := l.log(VerbosityWarning, CategoryWarning, nil, msg, keysAndValues...); err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -203,7 +203,7 @@ func (l *logger) Warning(msg string, keysAndValues ...interface{}) {
 }
 
 // Error implements the Logger interface Error method.
-func (l *logger) Error(err error, msg string, keysAndValues ...interface{}) {
+func (l *logger) Error(err error, msg string, keysAndValues ...LogItem) {
 	if l.verbosity.get() >= VerbosityError {
 		if err := l.log(VerbosityError, CategoryError, err, msg, keysAndValues...); err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -218,22 +218,24 @@ func (l *logger) setVerbosity(v Level) {
 
 // log logs the given msg and key-value pairs with the given level
 // and the given message category caller (if enabled) to the sink.
-func (l *logger) log(vl Level, mc MessageCategory, err error, msg string, keysAndValues ...interface{}) error {
-	base := make([]interface{}, 0, 14+len(keysAndValues))
+
+
+func (l *logger) log(vl Level, mc MessageCategory, err error, msg string, keysAndValues ...LogItem) error {
+	base := make([]LogItem, 0, 14+len(keysAndValues))
 	if l.formatter.opts.logTimestamp {
-		base = append(base, "time", time.Now().Format(l.formatter.opts.timestampLayout))
+		base = append(base, LogItem{"time", time.Now().Format(l.formatter.opts.timestampLayout)})
 	}
-	base = append(base, "level", vl.String(), "logger", l.namesStr)
+	base = append(base, LogItem{"level", vl.String()}, LogItem{"logger", l.namesStr})
 	if vl == VerbosityDebug && l.v > 0 {
-		base = append(base, "v", l.v)
+		base = append(base, LogItem{"v", l.v})
 	}
 	if policy := l.formatter.opts.caller; policy == CategoryAll || policy == mc {
-		base = append(base, "caller", l.formatter.caller())
+		base = append(base, LogItem{"caller", l.formatter.caller()})
 	}
-	base = append(base, "msg", msg)
+	base = append(base, LogItem{"msg", msg})
 	if vl == VerbosityError {
 		if err != nil {
-			base = append(base, "error", err.Error())
+			base = append(base, LogItem{"error", err.Error()})
 		}
 	}
 	if len(l.values) > 0 {

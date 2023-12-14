@@ -19,10 +19,10 @@ func Example() {
 	)
 
 	logger := log.NewLogger("example").Build()
-	logger.Error(nil, "error should work", "k", 1, "k", 2)
-	logger.Warning("warning should work", "address", 12345)
-	logger.Info("info should work", "k", 3, "k", 4)
-	logger.Debug("debug should work", "error", errors.New("failed"))
+	logger.Error(nil, "error should work", log.LogItem{"k", 1}, log.LogItem{"k", 2})
+	logger.Warning("warning should work", log.LogItem{"address", 12345})
+	logger.Info("info should work", log.LogItem{"k", 3}, log.LogItem{"k", 4})
+	logger.Debug("debug should work", log.LogItem{"error", errors.New("failed")})
 	fmt.Println()
 
 	loggerV1 := logger.V(1).Build()

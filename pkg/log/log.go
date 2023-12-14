@@ -116,7 +116,7 @@ type Builder interface {
 
 	// WithValues specifies additional key/value pairs
 	// to be logged with each log line.
-	WithValues(keysAndValues ...interface{}) Builder
+	WithValues(keysAndValues ...LogItem) Builder
 
 	// Build returns a new or existing Logger
 	// instance, if such instance already exists.
@@ -143,28 +143,49 @@ type Logger interface {
 	// the log line. The key/value pairs can then be used to add additional
 	// variable information. The key/value pairs must alternate string keys
 	// and arbitrary values.
-	Debug(msg string, keysAndValues ...interface{})
+	Debug(msg string, keysAndValues ...LogItem)
 
 	// Info logs an info message with the given key/value pairs as context.
 	// The msg argument should be used to add some constant description to
 	// the log line. The key/value pairs can then be used to add additional
 	// variable information. The key/value pairs must alternate string keys
 	// and arbitrary values.
-	Info(msg string, keysAndValues ...interface{})
+	Info(msg string, keysAndValues ...LogItem)
 
 	// Warning logs a warning message with the given key/value pairs as context.
 	// The msg argument should be used to add some constant description to
 	// the log line. The key/value pairs can then be used to add additional
 	// variable information. The key/value pairs must alternate string keys
 	// and arbitrary values.
-	Warning(msg string, keysAndValues ...interface{})
+	Warning(msg string, keysAndValues ...LogItem)
 
 	// Error logs an error, with the given message and key/value pairs as context.
 	// The msg argument should be used to add context to any underlying error,
 	// while the err argument should be used to attach the actual error that
 	// triggered this log line, if present. The err parameter is optional
 	// and nil may be passed instead of an error instance.
-	Error(err error, msg string, keysAndValues ...interface{})
+	Error(err error, msg string, keysAndValues ...LogItem)
+}
+
+type LogItem struct {
+	Key interface{}
+	Value interface{}
+}
+
+func (l LogItem) toPseudoStruct() PseudoStruct {
+    return PseudoStruct([]interface{}{l.Key,l.Value})
+}
+
+type LogItemSlice []LogItem
+
+func (s LogItemSlice) toPseudoStruct() PseudoStruct {
+	temp := []interface{}{}
+
+	for _, v := range s {
+		temp = append(temp, v.Key, v.Value)
+	}
+
+	return PseudoStruct(temp)
 }
 
 // Lock wraps io.Writer in a mutex to make it safe for concurrent use.

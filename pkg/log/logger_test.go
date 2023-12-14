@@ -30,8 +30,8 @@ func (h *hook) Fire(Level) error {
 }
 
 // applyError is a higher order function that returns the given fn with an applied err.
-func applyError(fn func(error, string, ...interface{}), err error) func(string, ...interface{}) {
-	return func(msg string, kvs ...interface{}) {
+func applyError(fn func(error, string, ...LogItem), err error) func(string, ...LogItem) {
+	return func(msg string, kvs ...LogItem) {
 		fn(err, msg, kvs...)
 	}
 }
@@ -73,7 +73,7 @@ func TestLoggerOptionsLevelHooks(t *testing.T) {
 		logger, _ := newLogger(WithLevelHooks(VerbosityNone, &have))
 
 		tests := []struct {
-			fn   func(string, ...interface{})
+			fn   func(string, ...LogItem)
 			want bool
 		}{{
 			fn:   logger.Build().Debug,
@@ -102,7 +102,7 @@ func TestLoggerOptionsLevelHooks(t *testing.T) {
 		logger, _ := newLogger(WithLevelHooks(VerbosityDebug, &have))
 
 		tests := []struct {
-			fn   func(string, ...interface{})
+			fn   func(string, ...LogItem)
 			want bool
 		}{{
 			fn:   logger.Build().Debug,
@@ -131,7 +131,7 @@ func TestLoggerOptionsLevelHooks(t *testing.T) {
 		logger, _ := newLogger(WithLevelHooks(VerbosityInfo, &have))
 
 		tests := []struct {
-			fn   func(string, ...interface{})
+			fn   func(string, ...LogItem)
 			want bool
 		}{{
 			fn:   logger.Build().Debug,
@@ -160,7 +160,7 @@ func TestLoggerOptionsLevelHooks(t *testing.T) {
 		logger, _ := newLogger(WithLevelHooks(VerbosityWarning, &have))
 
 		tests := []struct {
-			fn   func(string, ...interface{})
+			fn   func(string, ...LogItem)
 			want bool
 		}{{
 			fn:   logger.Build().Debug,
@@ -189,7 +189,7 @@ func TestLoggerOptionsLevelHooks(t *testing.T) {
 		logger, _ := newLogger(WithLevelHooks(VerbosityError, &have))
 
 		tests := []struct {
-			fn   func(string, ...interface{})
+			fn   func(string, ...LogItem)
 			want bool
 		}{{
 			fn:   logger.Build().Debug,
@@ -218,7 +218,7 @@ func TestLoggerOptionsLevelHooks(t *testing.T) {
 		logger, _ := newLogger(WithLevelHooks(VerbosityAll, &have))
 
 		tests := []struct {
-			fn   func(string, ...interface{})
+			fn   func(string, ...LogItem)
 			want bool
 		}{{
 			fn:   logger.Build().Debug,
@@ -275,8 +275,8 @@ func TestLogger(t *testing.T) {
 
 	testCases := []struct {
 		name  string
-		logFn func(string, ...interface{})
-		args  []interface{}
+		logFn func(string, ...LogItem)
+		args  []LogItem
 		want  string
 	}{{
 		name:  "just msg",
@@ -626,8 +626,8 @@ func TestLoggerWithName(t *testing.T) {
 
 	testCases := []struct {
 		name  string
-		logFn func(string, ...interface{})
-		args  []interface{}
+		logFn func(string, ...LogItem)
+		args  []LogItem
 		want  string
 	}{{
 		name:  "one",
@@ -694,8 +694,8 @@ func TestLoggerWithValues(t *testing.T) {
 
 	testCases := []struct {
 		name  string
-		logFn func(string, ...interface{})
-		args  []interface{}
+		logFn func(string, ...LogItem)
+		args  []LogItem
 		want  string
 	}{{
 		name:  "zero",
@@ -704,17 +704,17 @@ func TestLoggerWithValues(t *testing.T) {
 		want:  `"level"="debug" "logger"="root" "msg"="msg" "k"="v"`,
 	}, {
 		name:  "one",
-		logFn: logger.WithValues("one", 1).Build().Debug,
+		logFn: logger.WithValues(LogItem{"one", 1}).Build().Debug,
 		args:  makeKV("k", "v"),
 		want:  `"level"="debug" "logger"="root" "msg"="msg" "one"=1 "k"="v"`,
 	}, {
 		name:  "two",
-		logFn: logger.WithValues("one", 1, "two", 2).Build().Debug,
+		logFn: logger.WithValues(LogItem{"one", 1}, LogItem{ "two", 2}).Build().Debug,
 		args:  makeKV("k", "v"),
 		want:  `"level"="debug" "logger"="root" "msg"="msg" "one"=1 "two"=2 "k"="v"`,
 	}, {
 		name:  "dangling",
-		logFn: logger.WithValues("dangling").Build().Debug,
+		logFn: logger.WithValues(LogItem{"dangling", ""}).Build().Debug,
 		args:  makeKV("k", "v"),
 		want:  `"level"="debug" "logger"="root" "msg"="msg" "dangling"="<no-value>" "k"="v"`,
 	}, {
@@ -724,17 +724,17 @@ func TestLoggerWithValues(t *testing.T) {
 		want:  `"level"="info" "logger"="root" "msg"="msg" "k"="v"`,
 	}, {
 		name:  "one",
-		logFn: logger.WithValues("one", 1).Build().Info,
+		logFn: logger.WithValues(LogItem{"one", 1}).Build().Info,
 		args:  makeKV("k", "v"),
 		want:  `"level"="info" "logger"="root" "msg"="msg" "one"=1 "k"="v"`,
 	}, {
 		name:  "two",
-		logFn: logger.WithValues("one", 1, "two", 2).Build().Info,
+		logFn: logger.WithValues(LogItem{"one", 1}, LogItem{"two", 2}).Build().Info,
 		args:  makeKV("k", "v"),
 		want:  `"level"="info" "logger"="root" "msg"="msg" "one"=1 "two"=2 "k"="v"`,
 	}, {
 		name:  "dangling",
-		logFn: logger.WithValues("dangling").Build().Info,
+		logFn: logger.WithValues(LogItem{"dangling", ""}).Build().Info,
 		args:  makeKV("k", "v"),
 		want:  `"level"="info" "logger"="root" "msg"="msg" "dangling"="<no-value>" "k"="v"`,
 	}, {
@@ -744,17 +744,17 @@ func TestLoggerWithValues(t *testing.T) {
 		want:  `"level"="warning" "logger"="root" "msg"="msg" "k"="v"`,
 	}, {
 		name:  "one",
-		logFn: logger.WithValues("one", 1).Build().Warning,
+		logFn: logger.WithValues(LogItem{"one", 1}).Build().Warning,
 		args:  makeKV("k", "v"),
 		want:  `"level"="warning" "logger"="root" "msg"="msg" "one"=1 "k"="v"`,
 	}, {
 		name:  "two",
-		logFn: logger.WithValues("one", 1, "two", 2).Build().Warning,
+		logFn: logger.WithValues(LogItem{"one", 1}, LogItem{"two", 2}).Build().Warning,
 		args:  makeKV("k", "v"),
 		want:  `"level"="warning" "logger"="root" "msg"="msg" "one"=1 "two"=2 "k"="v"`,
 	}, {
 		name:  "dangling",
-		logFn: logger.WithValues("dangling").Build().Warning,
+		logFn: logger.WithValues(LogItem{"dangling", ""}).Build().Warning,
 		args:  makeKV("k", "v"),
 		want:  `"level"="warning" "logger"="root" "msg"="msg" "dangling"="<no-value>" "k"="v"`,
 	}, {
@@ -764,17 +764,17 @@ func TestLoggerWithValues(t *testing.T) {
 		want:  `"level"="error" "logger"="root" "msg"="msg" "error"="err" "k"="v"`,
 	}, {
 		name:  "one",
-		logFn: applyError(logger.WithValues("one", 1).Build().Error, errors.New("err")),
+		logFn: applyError(logger.WithValues(LogItem{"one", 1}).Build().Error, errors.New("err")),
 		args:  makeKV("k", "v"),
 		want:  `"level"="error" "logger"="root" "msg"="msg" "error"="err" "one"=1 "k"="v"`,
 	}, {
 		name:  "two",
-		logFn: applyError(logger.WithValues("one", 1, "two", 2).Build().Error, errors.New("err")),
+		logFn: applyError(logger.WithValues(LogItem{"one", 1}, LogItem{"two", 2}).Build().Error, errors.New("err")),
 		args:  makeKV("k", "v"),
 		want:  `"level"="error" "logger"="root" "msg"="msg" "error"="err" "one"=1 "two"=2 "k"="v"`,
 	}, {
 		name:  "dangling",
-		logFn: applyError(logger.WithValues("dangling").Build().Error, errors.New("err")),
+		logFn: applyError(logger.WithValues(LogItem{"dangling", ""}).Build().Error, errors.New("err")),
 		args:  makeKV("k", "v"),
 		want:  `"level"="error" "logger"="root" "msg"="msg" "error"="err" "dangling"="<no-value>" "k"="v"`,
 	}}
