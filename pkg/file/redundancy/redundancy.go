@@ -190,7 +190,7 @@ func (p *Params) GetRootData() ([]byte, error) {
 	if p.level == NONE {
 		return nil, fmt.Errorf("redundancy: no redundancy level is used for the file in order to cache root data")
 	}
-	lastBuffer := p.buffer[maxLevel-1]
+	lastBuffer := p.buffer[len(p.buffer)-1]
 	if len(lastBuffer[0]) != swarm.ChunkWithSpanSize {
 		return nil, fmt.Errorf("redundancy: hashtrie sum has not finished in order to cache root data")
 	}
