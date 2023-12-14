@@ -24,6 +24,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
+	ratelimit "golang.org/x/time/rate"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -65,6 +66,8 @@ type Puller struct {
 	rate *rate.Rate // rate of historical syncing
 
 	start sync.Once
+
+	limiter *ratelimit.Limiter
 }
 
 func New(
@@ -92,6 +95,7 @@ func New(
 		blockLister: blockLister,
 		rate:        rate.New(DefaultHistRateWindow),
 		cancel:      func() { /* Noop, since the context is initialized in the Start(). */ },
+		limiter:     ratelimit.NewLimiter(ratelimit.Every(time.Second/2), int(swarm.MaxBins)), // allows for 2 syncs per second, max bins bursts
 	}
 
 	return p
@@ -301,6 +305,18 @@ func (p *Puller) syncWorker(ctx context.Context, peer swarm.Address, bin uint8, 
 
 	for {
 
+		s, _, _, err := p.nextPeerInterval(peer, bin)
+		if err != nil {
+			p.metrics.SyncWorkerErrCounter.Inc()
+			p.logger.Error(err, "syncWorker nextPeerInterval failed, quitting")
+			return
+		}
+
+		// rate limit historical syncing
+		if s <= cur {
+			_ = p.limiter.Wait(ctx)
+		}
+
 		select {
 		case <-ctx.Done():
 			loggerV2.Debug("syncWorker context cancelled", "peer_address", peer, "bin", bin)
@@ -309,13 +325,6 @@ func (p *Puller) syncWorker(ctx context.Context, peer swarm.Address, bin uint8, 
 		}
 
 		p.metrics.SyncWorkerIterCounter.Inc()
-
-		s, _, _, err := p.nextPeerInterval(peer, bin)
-		if err != nil {
-			p.metrics.SyncWorkerErrCounter.Inc()
-			p.logger.Error(err, "syncWorker nextPeerInterval failed, quitting")
-			return
-		}
 
 		syncStart := time.Now()
 		top, count, err := p.syncer.Sync(ctx, peer, bin, s)
