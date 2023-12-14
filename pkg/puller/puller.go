@@ -95,7 +95,7 @@ func New(
 		blockLister: blockLister,
 		rate:        rate.New(DefaultHistRateWindow),
 		cancel:      func() { /* Noop, since the context is initialized in the Start(). */ },
-		limiter:     ratelimit.NewLimiter(ratelimit.Every(time.Second), int(swarm.MaxBins)), // allows for 1 sync per second, max bins bursts
+		limiter:     ratelimit.NewLimiter(ratelimit.Every(time.Second/2), int(swarm.MaxBins)), // allows for 2 syncs per second, max bins bursts
 	}
 
 	return p
