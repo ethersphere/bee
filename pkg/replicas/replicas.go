@@ -133,9 +133,12 @@ func (rr *replicator) add(r *replica, rLevel redundancy.Level) (depth int, rank 
 
 // UTILS
 
+// index bases needed to keep track how many addresses were mined for a level.
+var replicaIndexBases = [5]int{0, 2, 6, 14}
+
 // nh returns the lookup key based on the redundancy level
 // to be used as index to the replicators exist array
 func nh(rLevel redundancy.Level, addr []byte) int {
 	d := uint8(rLevel)
-	return rLevel.GetReplicaIndexBase() + int(addr[0]>>(8-d))
+	return replicaIndexBases[d-1] + int(addr[0]>>(8-d))
 }

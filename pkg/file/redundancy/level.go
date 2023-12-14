@@ -103,11 +103,6 @@ func (l Level) GetReplicaCount() int {
 	return replicaCounts[int(l)]
 }
 
-// GetReplicaIndexBase returns back the dispersed replica index base of the level
-func (l Level) GetReplicaIndexBase() int {
-	return replicaIndexBases[int(l)-1]
-}
-
 // Decrement returns a weaker redundancy level compare to the current one
 func (l Level) Decrement() Level {
 	return Level(uint8(l) - 1)
@@ -179,6 +174,3 @@ func GetReplicaCounts() [5]int {
 // for the five levels of redundancy are 0, 2, 4, 5, 19
 // we use an approximation as the successive powers of 2
 var replicaCounts = [5]int{0, 2, 4, 8, 16}
-
-// index bases needed to keep track how many addresses were mined for a level.
-var replicaIndexBases = [5]int{0, 2, 6, 14}
