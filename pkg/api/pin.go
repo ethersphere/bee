@@ -7,6 +7,7 @@ package api
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -150,6 +151,12 @@ func (s *Service) unpinRootHash(w http.ResponseWriter, r *http.Request) {
 	jsonhttp.OK(w, nil)
 }
 
+type getResponse struct {
+	Reference swarm.Address `json:"reference"`
+	ChunkCount int64 `json:"chunkCount"`
+	Chunks []*swarm.Address `json:"chunks"`
+}
+
 // getPinnedRootHash returns back the given reference if its root hash is pinned.
 func (s *Service) getPinnedRootHash(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("get_pin").Build()
@@ -175,18 +182,64 @@ func (s *Service) getPinnedRootHash(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonhttp.OK(w, struct {
-		Reference swarm.Address `json:"reference"`
-	}{
-		Reference: paths.Reference,
+	var chunks []*swarm.Address
+	var nChunks int64
+	err = s.storer.IteratePinCollection(paths.Reference, func(addr swarm.Address) (stop bool, err error) {
+		chunks = append(chunks, &addr)
+		nChunks++
+		return false, nil
 	})
+
+	if err != nil {
+		logger.Debug("pinned root hash: iterate pin failed", "chunk_address", paths.Reference, "error", err)
+		logger.Error(nil, "pinned root hash: iterate pin failed")
+		jsonhttp.InternalServerError(w, "pinned root hash: iterate reference failed")
+		return
+	}
+
+	jsonhttp.OK(w, getResponse{
+		Reference: paths.Reference,
+		ChunkCount: nChunks,
+		Chunks: chunks,
+	})
+
+//	jsonhttp.OK(w, struct {
+//		Reference swarm.Address `json:"reference"`
+//	}{
+//		Reference: paths.Reference,
+//	})
 }
 
 // listPinnedRootHashes lists all the references of the pinned root hashes.
 func (s *Service) listPinnedRootHashes(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("get_pins").Build()
 
-	pinned, err := s.storer.Pins()
+	var (
+			err           error
+			offset, limit = 0, 0 // default offset is 0, default limit unlimited (0) 
+	)
+
+	if v := r.URL.Query().Get("offset"); v != "" {
+			offset, err = strconv.Atoi(v)
+			if err != nil {
+					logger.Debug("list pins: parse offset string failed", "string", v, "error", err)
+					logger.Error(nil, "list pins: parse offset string failed")
+					jsonhttp.BadRequest(w, "bad offset")
+		return
+			}
+	}
+	if v := r.URL.Query().Get("limit"); v != "" {
+			limit, err = strconv.Atoi(v)
+			if err != nil {
+					logger.Debug("list pins: parse limit string failed", "string", v, "error", err)
+					logger.Error(nil, "list pins: parse limit string failed")
+					jsonhttp.BadRequest(w, "bad limit")
+		return
+			}
+	}
+
+	pinned, err := s.storer.Pins(offset, limit)
+//	pinned, err := s.storer.Pins()
 	if err != nil {
 		logger.Debug("list pinned root references: unable to list references", "error", err)
 		logger.Error(nil, "list pinned root references: unable to list references")

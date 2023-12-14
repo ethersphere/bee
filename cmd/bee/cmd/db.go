@@ -365,7 +365,7 @@ func dbExportPinningCmd(cmd *cobra.Command) {
 			}
 
 			tw := tar.NewWriter(out)
-			pins, err := db.Pins()
+			pins, err := db.Pins(0,0)
 			if err != nil {
 				return fmt.Errorf("error getting pins: %w", err)
 			}

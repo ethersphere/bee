@@ -341,14 +341,24 @@ func HasPin(st storage.Store, root swarm.Address) (bool, error) {
 }
 
 // Pins lists all the added pinning collections.
-func Pins(st storage.Store) ([]swarm.Address, error) {
+func Pins(st storage.Store, offset, limit int) ([]swarm.Address, error) {
 	var pins []swarm.Address
 	err := st.Iterate(storage.Query{
 		Factory:      func() storage.Item { return new(pinCollectionItem) },
 		ItemProperty: storage.QueryItemID,
 	}, func(r storage.Result) (bool, error) {
+		if offset > 0 {
+			offset--
+			return false, nil
+		}
 		addr := swarm.NewAddress([]byte(r.ID))
 		pins = append(pins, addr)
+		if limit > 0 {
+			limit--
+			if limit == 0 {
+				return true, nil
+			}
+		}
 		return false, nil
 	})
 	if err != nil {

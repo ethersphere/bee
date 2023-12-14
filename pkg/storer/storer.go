@@ -92,10 +92,11 @@ type PinStore interface {
 	// by the swarm.Address passed in.
 	DeletePin(context.Context, swarm.Address) error
 	// Pins returns all the root references of pinning collections.
-	Pins() ([]swarm.Address, error)
+	Pins(offset, limit int) ([]swarm.Address, error)
 	// HasPin is a helper which checks if a collection exists with the root
 	// reference passed in.
 	HasPin(swarm.Address) (bool, error)
+	IteratePinCollection(swarm.Address, func(swarm.Address) (bool, error)) (error)
 }
 
 // PinIterator is a helper interface which can be used to iterate over all the
