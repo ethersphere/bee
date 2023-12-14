@@ -961,22 +961,22 @@ func TestJoinerRedundancy(t *testing.T) {
 		rLevel       redundancy.Level
 		encryptChunk bool
 	}{
-		// {
-		// 	redundancy.MEDIUM,
-		// 	true,
-		// },
+		{
+			redundancy.MEDIUM,
+			true,
+		},
 		{
 			redundancy.STRONG,
 			false,
 		},
-		// {
-		// 	redundancy.INSANE,
-		// 	true,
-		// },
-		// {
-		// 	redundancy.PARANOID,
-		// 	false,
-		// },
+		{
+			redundancy.INSANE,
+			true,
+		},
+		{
+			redundancy.PARANOID,
+			false,
+		},
 	} {
 		tc := tc
 		t.Run(fmt.Sprintf("redundancy %d encryption %t", tc.rLevel, tc.encryptChunk), func(t *testing.T) {

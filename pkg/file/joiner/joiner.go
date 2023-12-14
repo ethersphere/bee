@@ -157,7 +157,7 @@ func (j *joiner) readAtOffset(
 		return
 	}
 	sAddresses, pAddresses := file.ChunkAddresses(data[:pSize], parity, j.refLength)
-	getter := getter.New(sAddresses, pAddresses, j.getter, j.putter)
+	getter := store.New(getter.New(sAddresses, pAddresses, j.getter, j.putter))
 	for cursor := 0; cursor < len(data); cursor += j.refLength {
 		if bytesToRead == 0 {
 			break

@@ -37,7 +37,7 @@ func ChunkAddresses(data []byte, parities, reflen int) (sAddresses, pAddresses [
 	pAddresses = make([]swarm.Address, parities)
 	offset := 0
 	for i := 0; i < shards; i++ {
-		sAddresses[i] = swarm.NewAddress(data[offset : offset+reflen])
+		sAddresses[i] = swarm.NewAddress(data[offset : offset+swarm.HashSize])
 		offset += reflen
 	}
 	for i := 0; i < parities; i++ {
