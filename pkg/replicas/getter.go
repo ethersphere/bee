@@ -88,12 +88,12 @@ func (g *getter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, e
 		}
 	}()
 	// counters
-	n := 0                   // counts the replica addresses tried
-	target := 2              // the number of replicas attempted to download in this batch
-	total := counts[g.level] // total number of replicas allowed (and makes sense) to retrieve
+	n := 0      // counts the replica addresses tried
+	target := 2 // the number of replicas attempted to download in this batch
+	total := g.level.GetReplicaCount()
 
 	//
-	rr := newReplicator(addr, uint8(g.level))
+	rr := newReplicator(addr, g.level)
 	next := rr.c
 	var wait <-chan time.Time // nil channel to disable case
 	// addresses used are doubling each period of search expansion

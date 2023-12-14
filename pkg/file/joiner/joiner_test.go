@@ -24,6 +24,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file/redundancy"
 	"github.com/ethersphere/bee/pkg/file/splitter"
 	filetest "github.com/ethersphere/bee/pkg/file/testing"
+	"github.com/ethersphere/bee/pkg/replicas"
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
@@ -980,6 +981,7 @@ func TestJoinerRedundancy(t *testing.T) {
 		tc := tc
 		t.Run(fmt.Sprintf("redundancy %d encryption %t", tc.rLevel, tc.encryptChunk), func(t *testing.T) {
 			ctx := context.Background()
+			ctx = replicas.SetLevel(ctx, tc.rLevel)
 			store := inmemchunkstore.New()
 			pipe := builder.NewPipelineBuilder(ctx, store, tc.encryptChunk, tc.rLevel)
 
@@ -997,10 +999,6 @@ func TestJoinerRedundancy(t *testing.T) {
 					t.Fatal(err)
 				}
 				dataChunks[i], err = cac.New(chunkData)
-				if err != nil {
-					t.Fatal(err)
-				}
-				err = store.Put(ctx, dataChunks[i])
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -1064,6 +1062,17 @@ func TestJoinerRedundancy(t *testing.T) {
 			}
 
 			// check whether the data still be readable
+			readCheck()
+
+			// remove root chunk and try to get it by disperse replica
+			err = store.Delete(ctx, swarmAddr)
+			if err != nil {
+				t.Fatal(err)
+			}
+			joinReader, _, err = joiner.New(ctx, store, store, swarmAddr)
+			if err != nil {
+				t.Fatal(err)
+			}
 			readCheck()
 		})
 	}

@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/ethersphere/bee/pkg/encryption/store"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/klauspost/reedsolomon"
@@ -59,13 +58,11 @@ type getter struct {
 	sAddresses  []swarm.Address          // shard addresses
 	pAddresses  []swarm.Address          // parity addresses
 	cache       map[string]inflightChunk // map from chunk address to cached shard chunk data
-	erasureData [][]byte                 // data + parity shards for erasure decoding;
-	encrypted   bool                     // swarm datashards are encrypted
+	erasureData [][]byte                 // data + parity shards for erasure decoding; TODO mutex
 }
 
 // New returns a getter object which is used to retrieve children of an intermediate chunk
 func New(sAddresses, pAddresses []swarm.Address, g storage.Getter, p storage.Putter) storage.Getter {
-	encrypted := len(sAddresses[0].Bytes()) == swarm.HashSize*2
 	shards := len(sAddresses)
 	parities := len(pAddresses)
 	n := shards + parities
@@ -90,7 +87,6 @@ func New(sAddresses, pAddresses []swarm.Address, g storage.Getter, p storage.Put
 		sAddresses:  sAddresses,
 		pAddresses:  pAddresses,
 		cache:       cache,
-		encrypted:   encrypted,
 		erasureData: erasureData,
 	}
 }
@@ -287,13 +283,13 @@ func (g *getter) cacheDataToChunk(addr swarm.Address, chData []byte) (swarm.Chun
 	if chData == nil {
 		return nil, notRecoveredError(addr.String())
 	}
-	if g.encrypted {
-		data, err := store.DecryptChunkData(chData, addr.Bytes()[swarm.HashSize:])
-		if err != nil {
-			return nil, err
-		}
-		chData = data
-	}
+	// if g.encrypted {
+	// 	data, err := store.DecryptChunkData(chData, addr.Bytes()[swarm.HashSize:])
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// 	chData = data
+	// }
 
 	return swarm.NewChunk(addr, chData), nil
 }

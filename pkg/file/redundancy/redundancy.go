@@ -18,10 +18,11 @@ type ParityChunkCallback func(level int, span, address []byte) error
 type RedundancyParams interface {
 	MaxShards() int // returns the maximum data shard number being used in an intermediate chunk
 	Level() Level
-	Parities(int) int                                   // returns the optimal parity number for a given
-	ChunkWrite(int, []byte, ParityChunkCallback) error  // caches the chunk data on the given chunk level and call encode
-	ElevateCarrierChunk(int, ParityChunkCallback) error //  moves the carrier chunk to the level above
-	Encode(int, ParityChunkCallback) error              // add parities on the given level
+	Parities(int) int
+	ChunkWrite(int, []byte, ParityChunkCallback) error
+	ElevateCarrierChunk(int, ParityChunkCallback) error
+	Encode(int, ParityChunkCallback) error
+	GetRootData() ([]byte, error)
 }
 
 type ErasureEncoder interface {
@@ -180,4 +181,18 @@ func (p *Params) ElevateCarrierChunk(chunkLevel int, callback ParityChunkCallbac
 
 	// not necessary to update current level since we will not work with it anymore
 	return p.chunkWrite(chunkLevel+1, p.buffer[chunkLevel][p.cursor[chunkLevel]-1], callback)
+}
+
+// GetRootData returns the topmost chunk in the tree.
+// throws and error if the encoding has not been finished in the BMT
+// OR redundancy is not used in the BMT
+func (p *Params) GetRootData() ([]byte, error) {
+	if p.level == NONE {
+		return nil, fmt.Errorf("redundancy: no redundancy level is used for the file in order to cache root data")
+	}
+	lastBuffer := p.buffer[len(p.buffer)-1]
+	if len(lastBuffer[0]) != swarm.ChunkWithSpanSize {
+		return nil, fmt.Errorf("redundancy: hashtrie sum has not finished in order to cache root data")
+	}
+	return lastBuffer[0], nil
 }

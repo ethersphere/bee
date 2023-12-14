@@ -12,12 +12,14 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+var ZeroAddress = [32]byte{}
+
 // ChunkPayloadSize returns the effective byte length of an intermediate chunk
 // assumes data is always chunk size (without span)
 func ChunkPayloadSize(data []byte) (int, error) {
 	l := len(data)
 	for l >= swarm.HashSize {
-		if !bytes.Equal(data[l-swarm.HashSize:l], swarm.ZeroAddress.Bytes()) {
+		if !bytes.Equal(data[l-swarm.HashSize:l], ZeroAddress[:]) {
 			return l, nil
 		}
 
@@ -35,7 +37,7 @@ func ChunkAddresses(data []byte, parities, reflen int) (sAddresses, pAddresses [
 	pAddresses = make([]swarm.Address, parities)
 	offset := 0
 	for i := 0; i < shards; i++ {
-		sAddresses[i] = swarm.NewAddress(data[offset : offset+reflen])
+		sAddresses[i] = swarm.NewAddress(data[offset : offset+swarm.HashSize])
 		offset += reflen
 	}
 	for i := 0; i < parities; i++ {
