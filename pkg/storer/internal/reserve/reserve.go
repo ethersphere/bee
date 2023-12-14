@@ -27,9 +27,6 @@ import (
 const loggerName = "reserve"
 const reserveNamespace = "reserve"
 
-// hack: make sures the network's storage radius does not fall below a certain value
-const minRadius = 9
-
 /*
 	pull by 	bin - binID
 	evict by 	bin - batchID
@@ -71,7 +68,7 @@ func New(
 	if err != nil && !errors.Is(err, storage.ErrNotFound) {
 		return nil, err
 	}
-	rs.radius.Store(uint32(max(rItem.Radius, minRadius)))
+	rs.radius.Store(uint32(rItem.Radius))
 
 	epochItem := &EpochItem{}
 	err = store.Get(epochItem)
@@ -473,7 +470,6 @@ func (r *Reserve) EvictionTarget() int {
 }
 
 func (r *Reserve) SetRadius(store storage.Store, rad uint8) error {
-	rad = max(rad, minRadius)
 	r.radius.Store(uint32(rad))
 	r.radiusSetter.SetStorageRadius(rad)
 	return store.Put(&radiusItem{Radius: rad})

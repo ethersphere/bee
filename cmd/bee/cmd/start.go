@@ -40,13 +40,8 @@ import (
 )
 
 const (
-	serviceName = "SwarmBeeSvc"
-)
-
-// default values for network IDs
-const (
-	defaultMainNetworkID uint64 = 1
-	defaultTestNetworkID uint64 = 10
+	serviceName      = "SwarmBeeSvc"
+	libp2pPKFilename = "libp2p_v2"
 )
 
 //go:embed bee-welcome-message.txt
@@ -242,15 +237,15 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 	// if mainnet is true then we only accept networkID value 1, error otherwise
 	// if the user has not provided a network ID but mainnet is true - just overwrite with mainnet network ID (1)
 	// in all the other cases we default to test network ID (10)
-	var networkID = defaultTestNetworkID
+	networkID := chaincfg.Testnet.NetworkID
 
 	if userHasSetNetworkID {
 		networkID = c.config.GetUint64(optionNameNetworkID)
-		if mainnet && networkID != defaultMainNetworkID {
+		if mainnet && networkID != chaincfg.Mainnet.NetworkID {
 			return nil, errors.New("provided network ID does not match mainnet")
 		}
 	} else if mainnet {
-		networkID = defaultMainNetworkID
+		networkID = chaincfg.Mainnet.NetworkID
 	}
 
 	bootnodes := c.config.GetStringSlice(optionNameBootnodes)
@@ -413,7 +408,7 @@ func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config
 		// if libp2p key exists we can assume all required keys exist
 		// so prompt for a password to unlock them
 		// otherwise prompt for new password with confirmation to create them
-		exists, err := keystore.Exists("libp2p")
+		exists, err := keystore.Exists(libp2pPKFilename)
 		if err != nil {
 			return nil, err
 		}
@@ -477,7 +472,7 @@ func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config
 
 	logger.Info("swarm public key", "public_key", hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(publicKey)))
 
-	libp2pPrivateKey, created, err := keystore.Key("libp2p_v2", password, crypto.EDGSecp256_R1)
+	libp2pPrivateKey, created, err := keystore.Key(libp2pPKFilename, password, crypto.EDGSecp256_R1)
 	if err != nil {
 		return nil, fmt.Errorf("libp2p v2 key: %w", err)
 	}
@@ -521,21 +516,21 @@ type networkConfig struct {
 }
 
 func getConfigByNetworkID(networkID uint64, defaultBlockTimeInSeconds uint64) *networkConfig {
-	var config = networkConfig{
+	config := networkConfig{
 		blockTime: time.Duration(defaultBlockTimeInSeconds) * time.Second,
 	}
 	switch networkID {
-	case 1: // mainnet
+	case chaincfg.Mainnet.NetworkID:
 		config.bootNodes = []string{"/dnsaddr/mainnet.ethswarm.org"}
 		config.blockTime = 5 * time.Second
 		config.chainID = chaincfg.Mainnet.ChainID
-	case 5: //staging
+	case 5: // Staging.
 		config.chainID = chaincfg.Testnet.ChainID
-	case 10: //testnet
+	case chaincfg.Testnet.NetworkID:
 		config.bootNodes = []string{"/dnsaddr/testnet.ethswarm.org"}
 		config.blockTime = 15 * time.Second
 		config.chainID = chaincfg.Testnet.ChainID
-	default: //will use the value provided by the chain
+	default: // Will use the value provided by the chain.
 		config.chainID = -1
 	}
 
