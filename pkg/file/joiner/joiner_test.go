@@ -18,19 +18,19 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/cac"
-	"github.com/ethersphere/bee/pkg/encryption/store"
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/file/redundancy"
+	"github.com/ethersphere/bee/pkg/file/redundancy/getter"
 	"github.com/ethersphere/bee/pkg/file/splitter"
 	filetest "github.com/ethersphere/bee/pkg/file/testing"
-	"github.com/ethersphere/bee/pkg/replicas"
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/util/testutil"
 	"gitlab.com/nolash/go-mockbytes"
+	"golang.org/x/sync/errgroup"
 )
 
 func TestJoiner_ErrReferenceLength(t *testing.T) {
@@ -89,7 +89,6 @@ func TestJoinerDecryptingStore_NormalChunk(t *testing.T) {
 	t.Parallel()
 
 	st := inmemchunkstore.New()
-	store := store.New(st)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -107,7 +106,7 @@ func TestJoinerDecryptingStore_NormalChunk(t *testing.T) {
 	}
 
 	// read back data and compare
-	joinReader, l, err := joiner.New(ctx, store, st, mockAddr)
+	joinReader, l, err := joiner.New(ctx, st, st, mockAddr)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,34 +127,34 @@ func TestJoinerDecryptingStore_NormalChunk(t *testing.T) {
 func TestJoinerWithReference(t *testing.T) {
 	t.Parallel()
 
-	store := inmemchunkstore.New()
+	st := inmemchunkstore.New()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	// create root chunk and two data chunks referenced in the root chunk
 	rootChunk := filetest.GenerateTestRandomFileChunk(swarm.ZeroAddress, swarm.ChunkSize*2, swarm.SectionSize*2)
-	err := store.Put(ctx, rootChunk)
+	err := st.Put(ctx, rootChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	firstAddress := swarm.NewAddress(rootChunk.Data()[8 : swarm.SectionSize+8])
 	firstChunk := filetest.GenerateTestRandomFileChunk(firstAddress, swarm.ChunkSize, swarm.ChunkSize)
-	err = store.Put(ctx, firstChunk)
+	err = st.Put(ctx, firstChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	secondAddress := swarm.NewAddress(rootChunk.Data()[swarm.SectionSize+8:])
 	secondChunk := filetest.GenerateTestRandomFileChunk(secondAddress, swarm.ChunkSize, swarm.ChunkSize)
-	err = store.Put(ctx, secondChunk)
+	err = st.Put(ctx, secondChunk)
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	// read back data and compare
-	joinReader, l, err := joiner.New(ctx, store, store, rootChunk.Address())
+	joinReader, l, err := joiner.New(ctx, st, st, rootChunk.Address())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -955,18 +954,98 @@ func TestJoinerIterateChunkAddresses_Encrypted(t *testing.T) {
 	}
 }
 
+type mockPutter struct {
+	storage.ChunkStore
+	shards, parities chan swarm.Chunk
+	done             chan struct{}
+}
+
+func newMockPutter(store storage.ChunkStore, shardCnt, parityCnt int) *mockPutter {
+	return &mockPutter{
+		ChunkStore: store,
+		done:       make(chan struct{}, 1),
+		shards:     make(chan swarm.Chunk, shardCnt),
+		parities:   make(chan swarm.Chunk, parityCnt),
+	}
+}
+
+func (m *mockPutter) Put(ctx context.Context, ch swarm.Chunk) error {
+	if len(m.shards) < cap(m.shards) {
+		m.shards <- ch
+		return nil
+	}
+	if len(m.parities) < cap(m.parities) {
+		m.parities <- ch
+		return nil
+	}
+	err := m.ChunkStore.Put(context.Background(), ch)
+	select {
+	case m.done <- struct{}{}:
+	default:
+	}
+	return err
+}
+
+func (m *mockPutter) wait(ctx context.Context) {
+	select {
+	case <-m.done:
+	case <-ctx.Done():
+	}
+	close(m.parities)
+	close(m.shards)
+}
+
+func (m *mockPutter) store(cnt int) error {
+	n := 0
+	for ch := range m.parities {
+		if err := m.ChunkStore.Put(context.Background(), ch); err != nil {
+			return err
+		}
+		n++
+		if n == cnt {
+			return nil
+		}
+	}
+	for ch := range m.shards {
+		if err := m.ChunkStore.Put(context.Background(), ch); err != nil {
+			return err
+		}
+		n++
+		if n == cnt {
+			break
+		}
+	}
+	return nil
+}
+
 func TestJoinerRedundancy(t *testing.T) {
-	t.Parallel()
+
+	strategyTimeout := getter.StrategyTimeout
+	defer func() { getter.StrategyTimeout = strategyTimeout }()
+	getter.StrategyTimeout = 100 * time.Millisecond
+
 	for _, tc := range []struct {
 		rLevel       redundancy.Level
 		encryptChunk bool
 	}{
 		{
 			redundancy.MEDIUM,
+			false,
+		},
+		{
+			redundancy.MEDIUM,
 			true,
 		},
 		{
 			redundancy.STRONG,
+			false,
+		},
+		{
+			redundancy.STRONG,
+			true,
+		},
+		{
+			redundancy.INSANE,
 			false,
 		},
 		{
@@ -977,22 +1056,29 @@ func TestJoinerRedundancy(t *testing.T) {
 			redundancy.PARANOID,
 			false,
 		},
+		{
+			redundancy.PARANOID,
+			true,
+		},
 	} {
 		tc := tc
 		t.Run(fmt.Sprintf("redundancy %d encryption %t", tc.rLevel, tc.encryptChunk), func(t *testing.T) {
-			ctx := context.Background()
-			ctx = replicas.SetLevel(ctx, tc.rLevel)
-			store := inmemchunkstore.New()
-			pipe := builder.NewPipelineBuilder(ctx, store, tc.encryptChunk, tc.rLevel)
 
-			// generate and store chunks
-			dataChunkCount := tc.rLevel.GetMaxShards() + 1 // generate a carrier chunk
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			shardCnt := tc.rLevel.GetMaxShards()
+			parityCnt := tc.rLevel.GetParities(shardCnt)
 			if tc.encryptChunk {
-				dataChunkCount = tc.rLevel.GetMaxEncShards() + 1
+				shardCnt = tc.rLevel.GetMaxEncShards()
+				parityCnt = tc.rLevel.GetEncParities(shardCnt)
 			}
-			dataChunks := make([]swarm.Chunk, dataChunkCount)
+			store := inmemchunkstore.New()
+			putter := newMockPutter(store, shardCnt, parityCnt)
+			pipe := builder.NewPipelineBuilder(ctx, putter, tc.encryptChunk, tc.rLevel)
+			dataChunks := make([]swarm.Chunk, shardCnt)
 			chunkSize := swarm.ChunkSize
-			for i := 0; i < dataChunkCount; i++ {
+			for i := 0; i < shardCnt; i++ {
 				chunkData := make([]byte, chunkSize)
 				_, err := io.ReadFull(rand.Reader, chunkData)
 				if err != nil {
@@ -1014,66 +1100,91 @@ func TestJoinerRedundancy(t *testing.T) {
 				t.Fatal(err)
 			}
 			swarmAddr := swarm.NewAddress(sum)
-			joinReader, rootSpan, err := joiner.New(ctx, store, store, swarmAddr)
+			putter.wait(ctx)
+			_, err = store.Get(ctx, swarm.NewAddress(sum[:swarm.HashSize]))
 			if err != nil {
 				t.Fatal(err)
 			}
-			// sanity checks
-			expectedRootSpan := chunkSize * dataChunkCount
-			if int64(expectedRootSpan) != rootSpan {
-				t.Fatalf("Expected root span %d. Got: %d", expectedRootSpan, rootSpan)
-			}
 			// all data can be read back
-			readCheck := func() {
-				offset := int64(0)
-				for i := 0; i < dataChunkCount; i++ {
-					chunkData := make([]byte, chunkSize)
-					_, err = joinReader.ReadAt(chunkData, offset)
-					if err != nil {
-						t.Fatalf("joiner %d: read data at offset %v: %v", i, offset, err.Error())
-					}
-					expectedChunkData := dataChunks[i].Data()[swarm.SpanSize:]
-					if !bytes.Equal(expectedChunkData, chunkData) {
-						t.Fatalf("joiner %d: read data at offset %v: %v", i, offset, err.Error())
-					}
-					offset += int64(chunkSize)
-				}
-			}
-			readCheck()
+			readCheck := func(t *testing.T, expErr error) {
+				t.Helper()
 
-			// remove data chunks in order to trigger recovery
-			maxShards := tc.rLevel.GetMaxShards()
-			maxParities := tc.rLevel.GetParities(maxShards)
-			if tc.encryptChunk {
-				maxShards = tc.rLevel.GetMaxEncShards()
-				maxParities = tc.rLevel.GetEncParities(maxShards)
-			}
-			removeCount := min(maxParities, maxShards)
-			for i := 0; i < removeCount; i++ {
-				err := store.Delete(ctx, dataChunks[i].Address())
+				ctx, cancel := context.WithTimeout(context.Background(), 8*getter.StrategyTimeout)
+				defer cancel()
+				ctx = getter.SetFetchTimeout(ctx, getter.StrategyTimeout)
+				joinReader, rootSpan, err := joiner.New(ctx, store, store, swarmAddr)
 				if err != nil {
 					t.Fatal(err)
 				}
+				// sanity checks
+				expectedRootSpan := chunkSize * shardCnt
+				if int64(expectedRootSpan) != rootSpan {
+					t.Fatalf("Expected root span %d. Got: %d", expectedRootSpan, rootSpan)
+				}
+				i := 0
+				eg, ectx := errgroup.WithContext(ctx)
+				for ; i < shardCnt; i++ {
+					select {
+					case <-ectx.Done():
+						break
+					default:
+					}
+					i := i
+					eg.Go(func() error {
+						chunkData := make([]byte, chunkSize)
+						_, err := joinReader.ReadAt(chunkData, int64(i*chunkSize))
+						if err != nil {
+							return err
+						}
+						select {
+						case <-ectx.Done():
+							return ectx.Err()
+						default:
+						}
+						expectedChunkData := dataChunks[i].Data()[swarm.SpanSize:]
+						if !bytes.Equal(expectedChunkData, chunkData) {
+							return fmt.Errorf("data mismatch on chunk position %d", i)
+						}
+						return nil
+					})
+				}
+				err = eg.Wait()
+				if !errors.Is(err, expErr) {
+					t.Fatalf("unexpected error reading chunkdata at chunk position %d: expected %v. got %v", i, expErr, err)
+				}
 			}
-			// remove parity chunk
-			err = store.Delete(ctx, dataChunks[len(dataChunks)-1].Address())
-			if err != nil {
-				t.Fatal(err)
-			}
+			t.Run("no recovery possible with no chunk stored", func(t *testing.T) {
+				readCheck(t, context.DeadlineExceeded)
+			})
 
-			// check whether the data still be readable
-			readCheck()
+			if err := putter.store(shardCnt - 1); err != nil {
+				t.Fatal(err)
+			}
+			t.Run("no recovery possible with 1 short of shardCnt chunks stored", func(t *testing.T) {
+				readCheck(t, context.DeadlineExceeded)
+			})
 
-			// remove root chunk and try to get it by disperse replica
-			err = store.Delete(ctx, swarmAddr)
-			if err != nil {
+			if err := putter.store(1); err != nil {
 				t.Fatal(err)
 			}
-			joinReader, _, err = joiner.New(ctx, store, store, swarmAddr)
-			if err != nil {
+			t.Run("recovery given shardCnt chunks stored", func(t *testing.T) {
+				readCheck(t, nil)
+			})
+
+			if err := putter.store(shardCnt + parityCnt); err != nil {
 				t.Fatal(err)
 			}
-			readCheck()
+			t.Run("success given shardCnt data chunks stored, no need for recovery", func(t *testing.T) {
+				readCheck(t, nil)
+			})
+			// success after rootChunk deleted using replicas given shardCnt data chunks stored, no need for recovery
+			if err := store.Delete(ctx, swarm.NewAddress(swarmAddr.Bytes()[:swarm.HashSize])); err != nil {
+				t.Fatal(err)
+			}
+			t.Run("recover from replica if root deleted", func(t *testing.T) {
+				readCheck(t, nil)
+			})
+
 		})
 	}
 }
