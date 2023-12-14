@@ -56,7 +56,7 @@ func NewHashTrieWriter(
 		chunkCounters:          make([]uint8, 9),
 		effectiveChunkCounters: make([]uint8, 9),
 		maxChildrenChunks:      uint8(rParams.MaxShards() + rParams.Parities(rParams.MaxShards())),
-		replicaPutter:          replicaPutter,
+		replicaPutter:          replicas.NewPutter(replicaPutter),
 	}
 	h.parityChunkFn = func(level int, span, address []byte) error {
 		return h.writeToIntermediateLevel(level, true, span, address, []byte{})
@@ -268,8 +268,7 @@ func (h *hashTrieWriter) Sum() ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		putter := replicas.NewPutter(h.replicaPutter)
-		err = putter.Put(h.ctx, swarm.NewChunk(swarm.NewAddress(rootHash), rootData))
+		err = h.replicaPutter.Put(h.ctx, swarm.NewChunk(swarm.NewAddress(rootHash), rootData))
 		if err != nil {
 			return nil, fmt.Errorf("hashtrie: cannot put dispersed replica %s", err.Error())
 		}
