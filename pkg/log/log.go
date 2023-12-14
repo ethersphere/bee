@@ -172,20 +172,16 @@ type LogItem struct {
 	Value interface{}
 }
 
-func (l LogItem) toPseudoStruct() PseudoStruct {
-	return []interface{}{l.Key, l.Value}
-}
-
 type LogItemSlice []LogItem
 
 func (s LogItemSlice) toPseudoStruct() PseudoStruct {
-	temp := []interface{}{}
+	temp := make([]interface{}, 0)
 
 	for _, v := range s {
 		temp = append(temp, v.Key, v.Value)
 	}
 
-	return PseudoStruct(temp)
+	return temp
 }
 
 // Lock wraps io.Writer in a mutex to make it safe for concurrent use.

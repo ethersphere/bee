@@ -134,10 +134,8 @@ func (f *formatter) flatten(buf *bytes.Buffer, kvList []LogItem, continuing bool
 	// which can be measurable.
 
 	for index, logItem := range kvList {
-		k, ok := logItem.Key.(string)
-		if !ok {
-			k = f.nonStringKey(logItem.Key)
-			logItem.Key = k
+		if _, ok := logItem.Key.(string); !ok {
+			logItem.Key = f.nonStringKey(logItem.Key)
 		}
 		if index > 0 || continuing {
 			if f.opts.jsonOutput {
@@ -164,7 +162,7 @@ func (f *formatter) flatten(buf *bytes.Buffer, kvList []LogItem, continuing bool
 		}
 
 		v, ok := logItem.Value.(string)
-		if (ok && v == "") || logItem.Value == nil {
+		if (ok && v == "") || (!ok && logItem.Value == nil) {
 			logItem.Value = noValue
 		}
 
@@ -240,7 +238,7 @@ func (f *formatter) prettyWithFlags(value interface{}, flags uint32, depth int) 
 		if flags&flagRawStruct == 0 {
 			buf.WriteByte('{')
 		}
-		for i, logItem := range f.sanitize(liv) {
+		for i, logItem := range liv {
 			if i > 0 {
 				buf.WriteByte(',')
 			}
@@ -424,7 +422,8 @@ func (f *formatter) snippet(v interface{}) string {
 // if needed).
 func (f *formatter) sanitize(kvList []LogItem) []LogItem {
 	for i, logItem := range kvList {
-		if logItem.Value == nil {
+		v, ok := logItem.Value.(string)
+		if (ok && v == "") || (!ok && logItem.Value == nil) {
 			kvList[i].Value = noValue
 		}
 

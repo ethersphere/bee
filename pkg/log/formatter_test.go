@@ -628,7 +628,7 @@ func TestPretty(t *testing.T) {
 
 	o := *defaults.options
 	f := newFormatter(o.fmtOptions)
-	for index, tc := range testCases {
+	for _, tc := range testCases {
 		t.Run("", func(t *testing.T) {
 			var want string
 			have := f.prettyWithFlags(tc.val, 0, 0)
@@ -644,7 +644,7 @@ func TestPretty(t *testing.T) {
 			}
 
 			if have != want {
-				t.Errorf("prettyWithFlags(...):\n\twant %q\n\thave %q, %d", want, have, index)
+				t.Errorf("prettyWithFlags(...):\n\twant %q\n\thave %q", want, have)
 			}
 		})
 	}
