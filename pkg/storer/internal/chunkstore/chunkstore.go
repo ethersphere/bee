@@ -186,6 +186,15 @@ func (c *ChunkStoreWrapper) Get(ctx context.Context, addr swarm.Address) (swarm.
 	return chunk, nil
 }
 
+func (c *ChunkStoreWrapper) GetRefCnt(ctx context.Context, addr swarm.Address) (uint32, error) {
+	rIdx := &RetrievalIndexItem{Address: addr}
+	err := c.store.Get(rIdx)
+	if err != nil {
+		return 0, fmt.Errorf("chunk store: failed reading retrievalIndex for address %s: %w", addr, err)
+	}
+	return rIdx.RefCnt, nil
+}
+
 func (c *ChunkStoreWrapper) Has(_ context.Context, addr swarm.Address) (bool, error) {
 	return c.store.Has(&RetrievalIndexItem{Address: addr})
 }

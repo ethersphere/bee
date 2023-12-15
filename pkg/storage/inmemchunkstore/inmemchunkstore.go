@@ -47,6 +47,15 @@ func (c *ChunkStore) Put(_ context.Context, ch swarm.Chunk) error {
 	return nil
 }
 
+func (c *ChunkStore) GetRefCnt(ctx context.Context, addr swarm.Address) (uint32, error) {
+	h, e := c.Has(ctx, addr)
+	if h {
+		return 1, e
+	} else {
+		return 0, e
+	}
+}
+
 func (c *ChunkStore) Has(_ context.Context, addr swarm.Address) (bool, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()

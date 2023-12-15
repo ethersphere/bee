@@ -39,6 +39,7 @@ type Deleter interface {
 type Hasser interface {
 	// Has checks whether a chunk exists in the store.
 	Has(context.Context, swarm.Address) (bool, error)
+	GetRefCnt(context.Context, swarm.Address) (uint32, error)
 }
 
 // PutterFunc type is an adapter to allow the use of
