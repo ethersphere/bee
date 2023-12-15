@@ -5,6 +5,7 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"sync"
@@ -150,10 +151,19 @@ func (s *Service) unpinRootHash(w http.ResponseWriter, r *http.Request) {
 	jsonhttp.OK(w, nil)
 }
 
+
+type refInfo struct {
+	Address swarm.Address       `json:"address"`
+	Error   bool                `json:"err"`
+	Local   bool                `json:"local"`
+	Cached  bool                `json:"cached"`
+	RefCnt  uint32              `json:"refCnt"`
+}
+
 type getResponse struct {
 	Reference swarm.Address `json:"reference"`
 	ChunkCount int64 `json:"chunkCount"`
-	Chunks []*swarm.Address `json:"chunks"`
+	Chunks []*refInfo `json:"chunks"`
 }
 
 // getPinnedRootHash returns back the given reference if its root hash is pinned.
@@ -195,11 +205,39 @@ func (s *Service) getPinnedRootHash(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "pinned root hash: iterate reference failed")
 		return
 	}
+	
+	var refs []*refInfo
+	for _, c := range chunks {
+		good := true
+		h, e := s.storer.ChunkStore().Has(context.Background(), *c)
+		if e != nil {
+			good = false
+			logger.Debug("pinned root hash: ChunkStore.Has failed", "chunk_address", *c, "error", e)
+		}
+		r, e := s.storer.ChunkStore().GetRefCnt(context.Background(), *c)
+		if e != nil {
+			good = false
+			logger.Debug("pinned root hash: ChunkStore.GetRefCnt failed", "chunk_address", *c, "error", e)
+		}
+		cached, e := s.storer.IsCached(*c)
+		if e != nil {
+			good = false
+			logger.Debug("pinned root hash: CacheStore.IsCached failed", "chunk_address", *c, "error", e)
+		}
+		refs = append(refs, &refInfo{
+			Address: *c,
+			Error: !good,
+			Local: h,
+			RefCnt: r,
+			Cached: cached,
+		})
+		
+	}
 
 	jsonhttp.OK(w, getResponse{
 		Reference: paths.Reference,
 		ChunkCount: nChunks,
-		Chunks: chunks,
+		Chunks: refs,
 	})
 
 //	jsonhttp.OK(w, struct {
