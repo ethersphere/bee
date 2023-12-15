@@ -7,7 +7,6 @@ package api
 import (
 	"errors"
 	"net/http"
-	"strconv"
 	"sync"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -214,32 +213,17 @@ func (s *Service) getPinnedRootHash(w http.ResponseWriter, r *http.Request) {
 func (s *Service) listPinnedRootHashes(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("get_pins").Build()
 
-	var (
-			err           error
-			offset, limit = 0, 0 // default offset is 0, default limit unlimited (0) 
-	)
+	queries := struct {
+		Offset    int  `map:"offset"`
+		Limit     int  `map:"limit"`
+	}{}
 
-	if v := r.URL.Query().Get("offset"); v != "" {
-			offset, err = strconv.Atoi(v)
-			if err != nil {
-					logger.Debug("list pins: parse offset string failed", "string", v, "error", err)
-					logger.Error(nil, "list pins: parse offset string failed")
-					jsonhttp.BadRequest(w, "bad offset")
+	if response := s.mapStructure(r.URL.Query(), &queries); response != nil {
+		response("invalid query params", logger, w)
 		return
-			}
-	}
-	if v := r.URL.Query().Get("limit"); v != "" {
-			limit, err = strconv.Atoi(v)
-			if err != nil {
-					logger.Debug("list pins: parse limit string failed", "string", v, "error", err)
-					logger.Error(nil, "list pins: parse limit string failed")
-					jsonhttp.BadRequest(w, "bad limit")
-		return
-			}
 	}
 
-	pinned, err := s.storer.Pins(offset, limit)
-//	pinned, err := s.storer.Pins()
+	pinned, err := s.storer.Pins(queries.Offset, queries.Limit)
 	if err != nil {
 		logger.Debug("list pinned root references: unable to list references", "error", err)
 		logger.Error(nil, "list pinned root references: unable to list references")
