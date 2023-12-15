@@ -168,6 +168,11 @@ paths:
             $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
           name: swarm-cache
           required: false
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"
+          name: swarm-redundancy-strategy
+          required: false
       responses:
         "200":
           description: Retrieved content specified by reference
@@ -316,6 +321,11 @@ paths:
             $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
           name: swarm-cache
           required: false
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"
+          name: swarm-redundancy-strategy
+          required: false
       responses:
         "200":
           description: Ok
@@ -341,6 +351,11 @@ paths:
       tags:
         - BZZ
       parameters:
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"
+          name: swarm-redundancy-strategy
+          required: false
         - in: path
           name: reference
           schema:

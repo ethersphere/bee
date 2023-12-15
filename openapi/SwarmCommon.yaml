@@ -945,6 +945,17 @@ components:
         Add redundancy to the data being uploaded so that downloaders can download it with better UX.
         0 value is default and does not add any redundancy to the file.
 
+    SwarmRedundancyStrategyParameter:
+      in: header
+      name: swarm-redundancy-parameter
+      schema:
+        type: integer
+        enum: [0, 1, 2, 3, 4]
+      required: false
+      description: >
+        Force different retrieve strategies on redundant data.
+        The mumbers stand for NONE, DATA, PROX and RACE, respectively.
+
     ContentTypePreserved:
       in: header
       name: Content-Type
