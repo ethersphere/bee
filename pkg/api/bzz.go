@@ -301,6 +301,7 @@ FETCH:
 	// unmarshal as mantaray first and possibly resolve the feed, otherwise
 	// go on normally.
 	if !feedDereferenced {
+		start := time.Now()
 		if l, err := s.manifestFeed(ctx, m); err == nil {
 			//we have a feed manifest here
 			ch, cur, _, err := l.At(ctx, time.Now().Unix(), 0)
@@ -323,6 +324,7 @@ FETCH:
 				jsonhttp.InternalServerError(w, "mapStructure feed update")
 				return
 			}
+			logger.Debug("bzz download: derefenceFeed", "feed", address, "reference", ref, "index", cur, "elapsed", time.Since(start))
 			address = ref
 			feedDereferenced = true
 			curBytes, err := cur.MarshalBinary()
@@ -333,12 +335,13 @@ FETCH:
 				return
 			}
 
+			w.Header().Set(SwarmFeedReferenceHeader, address.String())
 			w.Header().Set(SwarmFeedIndexHeader, hex.EncodeToString(curBytes))
 			// this header might be overriding others. handle with care. in the future
 			// we should implement an append functionality for this specific header,
 			// since different parts of handlers might be overriding others' values
 			// resulting in inconsistent headers in the response.
-			w.Header().Set("Access-Control-Expose-Headers", SwarmFeedIndexHeader)
+			w.Header().Set("Access-Control-Expose-Headers", fmt.Sprintf("%s, %s", SwarmFeedIndexHeader, SwarmFeedReferenceHeader))
 			goto FETCH
 		}
 	}

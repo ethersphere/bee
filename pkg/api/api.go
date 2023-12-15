@@ -76,6 +76,7 @@ const (
 	SwarmErrorDocumentHeader  = "Swarm-Error-Document"
 	SwarmFeedIndexHeader      = "Swarm-Feed-Index"
 	SwarmFeedIndexNextHeader  = "Swarm-Feed-Index-Next"
+	SwarmFeedReferenceHeader  = "Swarm-Feed-Reference"
 	SwarmCollectionHeader     = "Swarm-Collection"
 	SwarmPostageBatchIdHeader = "Swarm-Postage-Batch-Id"
 	SwarmDeferredUploadHeader = "Swarm-Deferred-Upload"
