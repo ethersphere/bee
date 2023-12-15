@@ -308,7 +308,7 @@ func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIter
 		return err
 	}
 	sAddresses, pAddresses := file.ChunkAddresses(data[:eSize], parity, j.refLength)
-	getter := getter.New(sAddresses, pAddresses, j.getter, j.putter)
+	getter := store.New(getter.New(sAddresses, pAddresses, j.getter, j.putter))
 	for cursor := 0; cursor < len(data); cursor += j.refLength {
 		ref := data[cursor : cursor+j.refLength]
 		var reportAddr swarm.Address
