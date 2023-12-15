@@ -63,6 +63,12 @@ func (db *DB) cacheWorker(ctx context.Context) {
 	}
 }
 
+// IsCached is the implementation of the CacheStore.Lookup method.
+func (db *DB) IsCached(address swarm.Address) (bool, error) {
+	return db.cacheObj.IsCached(db.repo, address)
+//	return false, nil
+}
+
 // Lookup is the implementation of the CacheStore.Lookup method.
 func (db *DB) Lookup() storage.Getter {
 	return getterWithMetrics{

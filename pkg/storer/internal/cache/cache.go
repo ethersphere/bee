@@ -64,6 +64,18 @@ func (c *Cache) Size() uint64 {
 // Capacity returns the capacity of the cache.
 func (c *Cache) Capacity() uint64 { return uint64(c.capacity) }
 
+func (c *Cache) IsCached(store internal.Storage, address swarm.Address) (bool, error) {
+	entry := &cacheEntry{Address: address}
+	err := store.IndexStore().Get(entry)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return false, nil
+		}
+		return false, fmt.Errorf("unexpected error getting indexstore entry: %w", err)
+	}
+	return true, nil
+}
+
 // Putter returns a Storage.Putter instance which adds the chunk to the underlying
 // chunkstore and also adds a Cache entry for the chunk.
 func (c *Cache) Putter(store internal.Storage) storage.Putter {

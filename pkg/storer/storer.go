@@ -116,6 +116,8 @@ type CacheStore interface {
 	// This will add the chunk to underlying store as well as new indexes which
 	// will keep track of the chunk in the cache.
 	Cache() storage.Putter
+	IsCached(swarm.Address) (bool, error)
+
 }
 
 // NetStore is a logical component of the storer that deals with network. It will
