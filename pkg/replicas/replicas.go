@@ -122,9 +122,10 @@ func (rr *replicator) add(r *replica, rLevel redundancy.Level) (depth int, rank 
 	}
 	rr.exist[nh] = true
 	l, o := rr.add(r, rLevel.Decrement())
+	d := uint8(rLevel) - 1
 	if l == 0 {
-		o = rr.sizes[uint8(rLevel.Decrement())]
-		rr.sizes[uint8(rLevel.Decrement())]++
+		o = rr.sizes[d]
+		rr.sizes[d]++
 		rr.queue[o] = r
 		l = rLevel.GetReplicaCount()
 	}
