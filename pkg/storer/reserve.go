@@ -83,43 +83,12 @@ func (db *DB) startReserveWorkers(
 	// syncing can now begin now that the reserver worker is running
 	db.syncer.Start(ctx)
 
-	db.inFlight.Add(1)
-	go db.radiusWorker(ctx, wakeUpDur)
-
 	db.inFlight.Add(2)
 	go db.reserveSizeWithinRadiusWorker(ctx)
 }
 
-func (db *DB) radiusWorker(ctx context.Context, wakeUpDur time.Duration) {
-	defer db.inFlight.Done()
-
-	radiusWakeUpTicker := time.NewTicker(wakeUpDur)
-	defer radiusWakeUpTicker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-radiusWakeUpTicker.C:
-			radius := db.reserve.Radius()
-			if db.reserve.Size() < threshold(db.reserve.Capacity()) && db.syncer.SyncRate() == 0 && radius > 0 {
-				radius--
-				err := db.reserve.SetRadius(db.repo.IndexStore(), radius)
-				if err != nil {
-					db.logger.Error(err, "reserve set radius")
-				}
-				db.logger.Info("reserve radius decrease", "radius", radius)
-			}
-			db.metrics.StorageRadius.Set(float64(radius))
-		}
-	}
-}
-
 func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
 	defer db.inFlight.Done()
-
-	ticker := time.NewTicker(reserveSizeWithinRadiusWakeup)
-	defer ticker.Stop()
 
 	var activeEviction atomic.Bool
 	go func() {
@@ -143,7 +112,16 @@ func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
 		}
 	}()
 
+	ticker := time.NewTicker(reserveSizeWithinRadiusWakeup)
+	defer ticker.Stop()
+
 	for {
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
 
 		skipInvalidCheck := activeEviction.Load()
 
@@ -184,11 +162,16 @@ func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
 			db.metrics.ReserveMissingBatch.Set(float64(missing))
 		}
 
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
+		if count < threshold(db.reserve.Capacity()) && db.syncer.SyncRate() == 0 && radius > 0 {
+			radius--
+			err := db.reserve.SetRadius(db.repo.IndexStore(), radius)
+			if err != nil {
+				db.logger.Error(err, "reserve set radius")
+			}
+			db.logger.Info("reserve radius decrease", "radius", radius)
 		}
+		db.metrics.StorageRadius.Set(float64(radius))
+
 	}
 }
 
