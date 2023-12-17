@@ -115,14 +115,7 @@ func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
 	ticker := time.NewTicker(reserveSizeWithinRadiusWakeup)
 	defer ticker.Stop()
 
-	for {
-
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
-
+	countF := func() int {
 		skipInvalidCheck := activeEviction.Load()
 
 		count := 0
@@ -162,6 +155,23 @@ func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
 			db.metrics.ReserveMissingBatch.Set(float64(missing))
 		}
 
+		return count
+	}
+
+	// inital run for the metrics
+	_ = countF()
+
+	for {
+
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+
+		count := countF()
+		radius := db.StorageRadius()
+
 		if count < threshold(db.reserve.Capacity()) && db.syncer.SyncRate() == 0 && radius > 0 {
 			radius--
 			err := db.reserve.SetRadius(db.repo.IndexStore(), radius)
@@ -171,7 +181,6 @@ func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
 			db.logger.Info("reserve radius decrease", "radius", radius)
 		}
 		db.metrics.StorageRadius.Set(float64(radius))
-
 	}
 }
 
