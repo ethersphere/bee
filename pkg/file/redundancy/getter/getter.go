@@ -6,299 +6,219 @@ package getter
 
 import (
 	"context"
-	"errors"
-	"fmt"
+	"io"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/klauspost/reedsolomon"
 )
 
-/// ERRORS
-
-type cannotRecoverError int
-
-func (e cannotRecoverError) Error() string {
-	return fmt.Sprintf("redundancy getter: there are %d missing chunks in order to do recovery", e)
+// decoder is a private implementation of storage.Getter
+// if retrieves children of an intermediate chunk potentially using erasure decoding
+// it caches sibling chunks if erasure decoding started already
+type decoder struct {
+	fetcher      storage.Getter  // network retrieval interface to fetch chunks
+	putter       storage.Putter  // interface to local storage to save reconstructed chunks
+	addrs        []swarm.Address // all addresses of the intermediate chunk
+	inflight     []atomic.Bool   // locks to protect wait channels and RS buffer
+	cache        map[string]int  // map from chunk address shard position index
+	waits        []chan struct{} // wait channels for each chunk
+	rsbuf        [][]byte        // RS buffer of data + parity shards for erasure decoding
+	ready        chan struct{}   // signal channel for successful retrieval of shardCnt chunks
+	shardCnt     int             // number of data shards
+	parityCnt    int             // number of parity shards
+	wg           sync.WaitGroup  // wait group to wait for all goroutines to finish
+	mu           sync.Mutex      // mutex to protect buffer
+	fetchTimeout time.Duration   // timeout for each fetch
+	fetchedCnt   atomic.Int32    // count successful retrievals
+	cancel       func()          // cancel function for RS decoding
+	remove       func()          // callback to remove decoder from decoders cache
 }
 
-type notRecoveredError string
-
-func (e notRecoveredError) Error() string {
-	return fmt.Sprintf("redundancy getter: chunk with address %s is not recovered", string(e))
-}
-
-type noDataAddressIncludedError string
-
-func (e noDataAddressIncludedError) Error() string {
-	return fmt.Sprintf("redundancy getter: no data shard address given with chunk address %s", string(e))
-}
-
-type noRedundancyError string
-
-func (e noRedundancyError) Error() string {
-	return fmt.Sprintf("redundancy getter: cannot get chunk %s because no redundancy added", string(e))
-}
-
-/// TYPES
-
-// inflightChunk is initialized if recovery happened already
-type inflightChunk struct {
-	pos  int           // chunk index in the erasureData/intermediate chunk
-	wait chan struct{} // chunk is under retrieval
-}
-
-// getter retrieves children of an intermediate chunk
-// it caches sibling chunks if erasure decoding was called on the level already
-type getter struct {
+type Getter interface {
 	storage.Getter
-	storage.Putter
-	mu          sync.Mutex               // guards erasureData and cache
-	sAddresses  []swarm.Address          // shard addresses
-	pAddresses  []swarm.Address          // parity addresses
-	cache       map[string]inflightChunk // map from chunk address to cached shard chunk data
-	erasureData [][]byte                 // data + parity shards for erasure decoding; TODO mutex
+	io.Closer
 }
 
-// New returns a getter object which is used to retrieve children of an intermediate chunk
-func New(sAddresses, pAddresses []swarm.Address, g storage.Getter, p storage.Putter) storage.Getter {
-	shards := len(sAddresses)
-	parities := len(pAddresses)
-	n := shards + parities
-	erasureData := make([][]byte, n)
-	cache := make(map[string]inflightChunk, n)
-	for i, addr := range sAddresses {
-		cache[addr.String()] = inflightChunk{
-			pos: i,
-			// wait channel initialization is needed when recovery starts
-		}
-	}
-	for i, addr := range pAddresses {
-		cache[addr.String()] = inflightChunk{
-			pos: len(sAddresses) + i,
-			// no wait channel initialization is needed since parity chunk addresses shouldn't be requested directly
-		}
+// New returns a decoder object used tos retrieve children of an intermediate chunk
+func New(addrs []swarm.Address, shardCnt int, g storage.Getter, p storage.Putter, strategy Strategy, strict bool, timeout time.Duration, remove func()) Getter {
+	ctx, cancel := context.WithCancel(context.Background())
+	size := len(addrs)
+
+	rsg := &decoder{
+		fetcher:      g,
+		putter:       p,
+		addrs:        addrs,
+		inflight:     make([]atomic.Bool, size),
+		cache:        make(map[string]int, size),
+		waits:        make([]chan struct{}, shardCnt),
+		rsbuf:        make([][]byte, size),
+		ready:        make(chan struct{}, 1),
+		cancel:       cancel,
+		remove:       remove,
+		shardCnt:     shardCnt,
+		parityCnt:    size - shardCnt,
+		fetchTimeout: timeout,
 	}
 
-	return &getter{
-		Getter:      g,
-		Putter:      p,
-		sAddresses:  sAddresses,
-		pAddresses:  pAddresses,
-		cache:       cache,
-		erasureData: erasureData,
+	// after init, cache and wait channels are immutable, need no locking
+	for i := 0; i < shardCnt; i++ {
+		rsg.cache[addrs[i].ByteString()] = i
+		rsg.waits[i] = make(chan struct{})
 	}
+
+	// prefetch chunks according to strategy
+	rsg.wg.Add(1)
+	go func() {
+		rsg.prefetch(ctx, strategy, strict)
+		rsg.wg.Done()
+	}()
+	return rsg
 }
 
 // Get will call parities and other sibling chunks if the chunk address cannot be retrieved
 // assumes it is called for data shards only
-func (g *getter) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
-	g.mu.Lock()
-	cValue, ok := g.cache[addr.String()]
-	g.mu.Unlock()
-	if !ok || cValue.pos >= len(g.sAddresses) {
-		return nil, noDataAddressIncludedError(addr.String())
-	}
-
-	if cValue.wait != nil { // equals to g.processing but does not need lock again
-		return g.getAfterProcessed(ctx, addr)
-	}
-
-	ch, err := g.Getter.Get(ctx, addr)
-	if err == nil {
-		return ch, nil
-	}
-	if errors.Is(storage.ErrNotFound, err) && len(g.pAddresses) == 0 {
-		return nil, noRedundancyError(addr.String())
-	}
-
-	// during the get, the recovery may have started by other process
-	if g.processing(addr) {
-		return g.getAfterProcessed(ctx, addr)
-	}
-
-	return g.executeStrategies(ctx, addr)
-}
-
-// Inc increments the counter for the given key.
-func (g *getter) setErasureData(index int, data []byte) {
-	g.mu.Lock()
-	g.erasureData[index] = data
-	g.mu.Unlock()
-}
-
-// processing returns whether the recovery workflow has been started
-func (g *getter) processing(addr swarm.Address) bool {
-	g.mu.Lock()
-	defer g.mu.Unlock()
-	iCh := g.cache[addr.String()]
-	return iCh.wait != nil
-}
-
-// getAfterProcessed returns chunk from the cache
-func (g *getter) getAfterProcessed(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
-	g.mu.Lock()
-	c, ok := g.cache[addr.String()]
-	// sanity check
+func (g *decoder) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
+	i, ok := g.cache[addr.ByteString()]
 	if !ok {
-		return nil, fmt.Errorf("redundancy getter: chunk %s should have been in the cache", addr.String())
+		return nil, storage.ErrNotFound
 	}
-
-	cacheData := g.erasureData[c.pos]
-	g.mu.Unlock()
-	if cacheData != nil {
-		return g.cacheDataToChunk(addr, cacheData)
+	if g.fly(i, true) {
+		g.wg.Add(1)
+		go func() {
+			g.fetch(ctx, i)
+			g.wg.Done()
+		}()
 	}
-
 	select {
-	case <-c.wait:
-		return g.cacheDataToChunk(addr, cacheData)
+	case <-g.waits[i]:
+		return swarm.NewChunk(addr, g.rsbuf[i]), nil
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
 }
 
-// executeStrategies executes recovery strategies from redundancy for the given swarm address
-func (g *getter) executeStrategies(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
-	g.initWaitChannels()
-	err := g.cautiousStrategy(ctx)
+// fly commits to retrieve the chunk (fly and land)
+// it marks a chunk as inflight and returns true unless it is already inflight
+// the atomic bool implements a singleflight pattern
+func (g *decoder) fly(i int, up bool) (success bool) {
+	return g.inflight[i].CompareAndSwap(!up, up)
+}
+
+// fetch retrieves a chunk from the underlying storage
+// it must be called asynchonously and only once for each chunk (singleflight pattern)
+// it races with erasure recovery which takes precedence even if it started later
+// due to the fact that erasure recovery could only implement global locking on all shards
+func (g *decoder) fetch(ctx context.Context, i int) {
+	ch, err := g.fetcher.Get(ctx, g.addrs[i])
 	if err != nil {
-		g.closeWaitChannels()
-		return nil, err
-	}
-
-	return g.getAfterProcessed(ctx, addr)
-}
-
-// initWaitChannels initializes the wait channels in the cache mapping which indicates the start of the recovery process as well
-func (g *getter) initWaitChannels() {
-	g.mu.Lock()
-	for _, addr := range g.sAddresses {
-		iCh := g.cache[addr.String()]
-		iCh.wait = make(chan struct{})
-		g.cache[addr.String()] = iCh
-	}
-	g.mu.Unlock()
-}
-
-// closeChannls closes all pending channels
-func (g *getter) closeWaitChannels() {
-	for _, addr := range g.sAddresses {
-		c := g.cache[addr.String()]
-		if !channelIsClosed(c.wait) {
-			close(c.wait)
-		}
-	}
-}
-
-// cautiousStrategy requests all chunks (data and parity) on the level
-// and if it has enough data for erasure decoding then it cancel other requests
-func (g *getter) cautiousStrategy(ctx context.Context) error {
-	requiredChunks := len(g.sAddresses)
-	subContext, cancelContext := context.WithCancel(ctx)
-	retrievedCh := make(chan struct{}, requiredChunks+len(g.pAddresses))
-	var wg sync.WaitGroup
-
-	addresses := append(g.sAddresses, g.pAddresses...)
-	for _, a := range addresses {
-		wg.Add(1)
-		c := g.cache[a.String()]
-		go func(a swarm.Address, c inflightChunk) {
-			defer wg.Done()
-			// enrypted chunk data should remain encrypted
-			address := swarm.NewAddress(a.Bytes()[:swarm.HashSize])
-			ch, err := g.Getter.Get(subContext, address)
-			if err != nil {
-				return
-			}
-			g.setErasureData(c.pos, ch.Data())
-			if c.pos < len(g.sAddresses) && !channelIsClosed(c.wait) {
-				close(c.wait)
-			}
-			retrievedCh <- struct{}{}
-		}(a, c)
-	}
-
-	// Goroutine to wait for WaitGroup completion
-	go func() {
-		wg.Wait()
-		close(retrievedCh)
-	}()
-	retrieved := 0
-	for retrieved < requiredChunks {
-		_, ok := <-retrievedCh
-		if !ok {
-			break
-		}
-		retrieved++
-	}
-	cancelContext()
-
-	if retrieved < requiredChunks {
-		return cannotRecoverError(requiredChunks - retrieved)
-	}
-
-	return g.erasureDecode(ctx)
-}
-
-// erasureDecode perform Reed-Solomon recovery on data
-// assumes it is called after filling up cache with the required amount of shards and parities
-func (g *getter) erasureDecode(ctx context.Context) error {
-	enc, err := reedsolomon.New(len(g.sAddresses), len(g.pAddresses))
-	if err != nil {
-		return err
-	}
-
-	// missing chunks
-	var missingIndices []int
-	for i := range g.sAddresses {
-		if g.erasureData[i] == nil {
-			missingIndices = append(missingIndices, i)
-		}
+		_ = g.fly(i, false) // unset inflight
+		return
 	}
 
 	g.mu.Lock()
 	defer g.mu.Unlock()
-	err = enc.ReconstructData(g.erasureData)
+	if i < len(g.waits) {
+		select {
+		case <-g.waits[i]: // if chunk is retrieved, ignore
+			return
+		default:
+		}
+	}
+
+	select {
+	case <-ctx.Done(): // if context is cancelled, ignore
+		_ = g.fly(i, false) // unset inflight
+		return
+	default:
+	}
+
+	//  write chunk to rsbuf and signal waiters
+	g.rsbuf[i] = ch.Data() // save the chunk in the RS buffer
+	if i < len(g.waits) {
+		close(g.waits[i]) // signal that the chunk is retrieved
+	}
+
+	// if all chunks are retrieved, signal ready
+	n := g.fetchedCnt.Add(1)
+	if n == int32(g.shardCnt) {
+		close(g.ready) // signal that just enough chunks are retrieved for decoding
+	}
+}
+
+// missing gathers missing data shards not yet retrieved
+// it sets the chunk as inflight and returns the index of the missing data shards
+func (g *decoder) missing() (m []int) {
+	for i := 0; i < g.shardCnt; i++ {
+		select {
+		case <-g.waits[i]: // if chunk is retrieved, ignore
+			continue
+		default:
+		}
+		_ = g.fly(i, true) // commit (RS) or will commit to retrieve the chunk
+		m = append(m, i)   // remember the missing chunk
+	}
+	return m
+}
+
+// decode uses Reed-Solomon erasure coding decoder to recover data shards
+// it must be called after shqrdcnt shards are retrieved
+// it must be called under g.mu mutex protection
+func (g *decoder) decode(ctx context.Context) error {
+	enc, err := reedsolomon.New(g.shardCnt, g.parityCnt)
 	if err != nil {
 		return err
 	}
 
-	g.closeWaitChannels()
-	// save missing chunks
-	for _, index := range missingIndices {
-		data := g.erasureData[index]
-		addr := g.sAddresses[index]
-		err := g.Putter.Put(ctx, swarm.NewChunk(addr, data))
-		if err != nil {
+	// decode data
+	return enc.ReconstructData(g.rsbuf)
+}
+
+// recover wraps the stages of data shard recovery:
+// 1. gather missing data shards
+// 2. decode using Reed-Solomon decoder
+// 3. save reconstructed chunks
+func (g *decoder) recover(ctx context.Context) error {
+	// buffer lock acquired
+	g.mu.Lock()
+	defer g.mu.Unlock()
+
+	// gather missing shards
+	m := g.missing()
+	if len(m) == 0 {
+		return nil
+	}
+
+	// decode using Reed-Solomon decoder
+	if err := g.decode(ctx); err != nil {
+		return err
+	}
+
+	// close wait channels for missing chunks
+	for _, i := range m {
+		close(g.waits[i])
+	}
+
+	// save chunks
+	return g.save(ctx, m)
+}
+
+// save iterate over reconstructed shards and puts the corresponding chunks to local storage
+func (g *decoder) save(ctx context.Context, missing []int) error {
+	for _, i := range missing {
+		if err := g.putter.Put(ctx, swarm.NewChunk(g.addrs[i], g.rsbuf[i])); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// cacheDataToChunk transforms passed chunk data to legit swarm chunk
-func (g *getter) cacheDataToChunk(addr swarm.Address, chData []byte) (swarm.Chunk, error) {
-	if chData == nil {
-		return nil, notRecoveredError(addr.String())
-	}
-	// if g.encrypted {
-	// 	data, err := store.DecryptChunkData(chData, addr.Bytes()[swarm.HashSize:])
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
-	// 	chData = data
-	// }
-
-	return swarm.NewChunk(addr, chData), nil
-}
-
-func channelIsClosed(wait <-chan struct{}) bool {
-	select {
-	case _, ok := <-wait:
-		return !ok
-	default:
-		return false
-	}
+func (g *decoder) Close() error {
+	g.cancel()
+	g.wg.Wait()
+	g.remove()
+	return nil
 }
