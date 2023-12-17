@@ -25,7 +25,6 @@ import (
 
 // loggerName is the tree path name of the logger for this package.
 const loggerName = "reserve"
-
 const reserveNamespace = "reserve"
 
 /*

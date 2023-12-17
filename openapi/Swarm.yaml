@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  version: 5.1.0
+  version: 5.1.1
   title: Bee API
   description: "A list of the currently provided Interfaces to interact with the swarm, implementing file operations and sending messages"
 
@@ -678,6 +678,14 @@ paths:
             $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
           name: swarm-postage-batch-id
           required: true
+      requestBody:
+        required: true
+        description: The SOC binary data is composed of the span (8 bytes) and the at most 4KB payload.
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
       responses:
         "201":
           description: Created
@@ -1066,6 +1074,11 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
           required: true
           description: Swarm address of chunk
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
+          name: swarm-cache
+          required: false
       responses:
         "200":
           description: Retrieved chunk content

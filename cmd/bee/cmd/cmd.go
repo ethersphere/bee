@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	chaincfg "github.com/ethersphere/bee/pkg/config"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/node"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -156,6 +157,9 @@ func newCommand(opts ...option) (c *command, err error) {
 
 	c.initVersionCmd()
 	c.initDBCmd()
+	if err := c.initSplitCmd(); err != nil {
+		return nil, err
+	}
 
 	if err := c.initConfigurateOptionsCmd(); err != nil {
 		return nil, err
@@ -253,7 +257,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().StringSlice(optionNameBootnodes, []string{""}, "initial nodes to connect to")
 	cmd.Flags().Bool(optionNameDebugAPIEnable, false, "enable debug HTTP API")
 	cmd.Flags().String(optionNameDebugAPIAddr, ":1635", "debug HTTP API listen address")
-	cmd.Flags().Uint64(optionNameNetworkID, 1, "ID of the Swarm network")
+	cmd.Flags().Uint64(optionNameNetworkID, chaincfg.Mainnet.NetworkID, "ID of the Swarm network")
 	cmd.Flags().StringSlice(optionCORSAllowedOrigins, []string{}, "origins with CORS headers enabled")
 	cmd.Flags().Bool(optionNameTracingEnabled, false, "enable tracing")
 	cmd.Flags().String(optionNameTracingEndpoint, "127.0.0.1:6831", "endpoint to send tracing data")
