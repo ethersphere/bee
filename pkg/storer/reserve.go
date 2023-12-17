@@ -158,7 +158,7 @@ func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
 		return count
 	}
 
-	// inital run for the metrics
+	// initial run for the metrics
 	_ = countF()
 
 	for {
