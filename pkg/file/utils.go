@@ -12,14 +12,16 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-var ZeroAddress = [32]byte{}
+var (
+	zeroAddress = [32]byte{}
+)
 
 // ChunkPayloadSize returns the effective byte length of an intermediate chunk
 // assumes data is always chunk size (without span)
 func ChunkPayloadSize(data []byte) (int, error) {
 	l := len(data)
 	for l >= swarm.HashSize {
-		if !bytes.Equal(data[l-swarm.HashSize:l], ZeroAddress[:]) {
+		if !bytes.Equal(data[l-swarm.HashSize:l], zeroAddress[:]) {
 			return l, nil
 		}
 
@@ -31,21 +33,16 @@ func ChunkPayloadSize(data []byte) (int, error) {
 
 // ChunkAddresses returns data shards and parities of the intermediate chunk
 // assumes data is truncated by ChunkPayloadSize
-func ChunkAddresses(data []byte, parities, reflen int) (sAddresses, pAddresses []swarm.Address) {
-	shards := (len(data) - parities*swarm.HashSize) / reflen
-	sAddresses = make([]swarm.Address, shards)
-	pAddresses = make([]swarm.Address, parities)
-	offset := 0
-	for i := 0; i < shards; i++ {
-		sAddresses[i] = swarm.NewAddress(data[offset : offset+swarm.HashSize])
-		offset += reflen
+func ChunkAddresses(data []byte, parities, reflen int) (addrs []swarm.Address, shardCnt int) {
+	shardCnt = (len(data) - parities*swarm.HashSize) / reflen
+	for offset := 0; offset < len(data); offset += reflen {
+		addrs = append(addrs, swarm.NewAddress(data[offset:offset+swarm.HashSize]))
+		if len(addrs) == shardCnt && reflen != swarm.HashSize {
+			reflen = swarm.HashSize
+			offset += reflen
+		}
 	}
-	for i := 0; i < parities; i++ {
-		pAddresses[i] = swarm.NewAddress(data[offset : offset+swarm.HashSize])
-		offset += swarm.HashSize
-	}
-
-	return sAddresses, pAddresses
+	return addrs, shardCnt
 }
 
 // ReferenceCount brute-forces the data shard count from which identify the parity count as well in a substree
