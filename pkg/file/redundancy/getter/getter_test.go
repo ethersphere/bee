@@ -9,9 +9,13 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
+	mrand "math/rand"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/file/redundancy/getter"
@@ -19,199 +23,383 @@ import (
 	inmem "github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/klauspost/reedsolomon"
+	"golang.org/x/sync/errgroup"
 )
 
-func initData(ctx context.Context, erasureBuffer [][]byte, dataShardCount int, s storage.ChunkStore) ([]swarm.Address, []swarm.Address, error) {
+type delayed struct {
+	storage.ChunkStore
+	cache map[string]time.Duration
+	mu    sync.Mutex
+}
+
+func (d *delayed) delay(addr swarm.Address, delay time.Duration) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.cache[addr.String()] = delay
+}
+
+func (d *delayed) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, err error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	if delay, ok := d.cache[addr.String()]; ok && delay > 0 {
+		select {
+		case <-time.After(delay):
+			delete(d.cache, addr.String())
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+	return d.ChunkStore.Get(ctx, addr)
+}
+
+// TestGetter tests the retrieval of chunks with missing data shards
+// using the RACE strategy for a number of erasure code parameters
+func TestGetterRACE(t *testing.T) {
+	type getterTest struct {
+		bufSize    int
+		shardCnt   int
+		erasureCnt int
+	}
+
+	var tcs []getterTest
+	for bufSize := 3; bufSize <= 128; bufSize += 21 {
+		for shardCnt := bufSize/2 + 1; shardCnt <= bufSize; shardCnt += 21 {
+			parityCnt := bufSize - shardCnt
+			erasures := mrand.Perm(parityCnt - 1)
+			if len(erasures) > 3 {
+				erasures = erasures[:3]
+			}
+			for _, erasureCnt := range erasures {
+				tcs = append(tcs, getterTest{bufSize, shardCnt, erasureCnt})
+			}
+			tcs = append(tcs, getterTest{bufSize, shardCnt, parityCnt}, getterTest{bufSize, shardCnt, parityCnt + 1})
+			erasures = mrand.Perm(shardCnt - 1)
+			if len(erasures) > 3 {
+				erasures = erasures[:3]
+			}
+			for _, erasureCnt := range erasures {
+				tcs = append(tcs, getterTest{bufSize, shardCnt, erasureCnt + parityCnt + 1})
+			}
+		}
+	}
+	t.Run("GET with RACE", func(t *testing.T) {
+		t.Parallel()
+
+		for _, tc := range tcs {
+			t.Run(fmt.Sprintf("data/total/missing=%d/%d/%d", tc.shardCnt, tc.bufSize, tc.erasureCnt), func(t *testing.T) {
+				testDecodingRACE(t, tc.bufSize, tc.shardCnt, tc.erasureCnt)
+			})
+		}
+	})
+}
+
+// TestGetterFallback tests the retrieval of chunks with missing data shards
+// using the strict or fallback mode starting with NONE and DATA strategies
+func TestGetterFallback(t *testing.T) {
+	t.Run("GET", func(t *testing.T) {
+		t.Run("NONE", func(t *testing.T) {
+			t.Run("strict", func(t *testing.T) {
+				testDecodingFallback(t, getter.NONE, true)
+			})
+			t.Run("fallback", func(t *testing.T) {
+				testDecodingFallback(t, getter.NONE, false)
+			})
+		})
+		t.Run("DATA", func(t *testing.T) {
+			t.Run("strict", func(t *testing.T) {
+				testDecodingFallback(t, getter.DATA, true)
+			})
+			t.Run("fallback", func(t *testing.T) {
+				testDecodingFallback(t, getter.DATA, false)
+			})
+		})
+	})
+}
+
+func testDecodingRACE(t *testing.T, bufSize, shardCnt, erasureCnt int) {
+	t.Helper()
+
+	strategyTimeout := getter.StrategyTimeout
+	defer func() { getter.StrategyTimeout = strategyTimeout }()
+	getter.StrategyTimeout = 100 * time.Millisecond
+
+	store := inmem.New()
+	buf := make([][]byte, bufSize)
+	addrs := initData(t, buf, shardCnt, store)
+
+	var addr swarm.Address
+	erasures := forget(t, store, addrs, erasureCnt)
+	for _, i := range erasures {
+		if i < shardCnt {
+			addr = addrs[i]
+			break
+		}
+	}
+	if len(addr.Bytes()) == 0 {
+		t.Skip("no data shard erased")
+	}
+	ctx, cancel := context.WithCancel(context.TODO())
+	defer cancel()
+	g := getter.New(addrs, shardCnt, store, store, getter.RACE, false, 2*getter.StrategyTimeout, func() {})
+	defer g.Close()
+	parityCnt := len(buf) - shardCnt
+	q := make(chan error, 1)
+	go func() {
+		_, err := g.Get(ctx, addr)
+		q <- err
+	}()
+	err := context.DeadlineExceeded
+	select {
+	case err = <-q:
+	case <-time.After(getter.StrategyTimeout * 4):
+	}
+	switch {
+	case erasureCnt > parityCnt:
+		t.Run("unable to recover", func(t *testing.T) {
+			if !errors.Is(err, storage.ErrNotFound) &&
+				!errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("expected not found error or deadline exceeded, got %v", err)
+			}
+		})
+	case erasureCnt <= parityCnt:
+		t.Run("will recover", func(t *testing.T) {
+			if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+			checkShardsAvailable(t, store, addrs[:shardCnt], buf[:shardCnt])
+		})
+	}
+}
+
+// testDecodingFallback tests the retrieval of chunks with missing data shards
+func testDecodingFallback(t *testing.T, s getter.Strategy, strict bool) {
+	t.Helper()
+
+	strategyTimeout := getter.StrategyTimeout
+	defer func() { getter.StrategyTimeout = strategyTimeout }()
+	getter.StrategyTimeout = 100 * time.Millisecond
+
+	bufSize := 12
+	shardCnt := 6
+	store := &delayed{ChunkStore: inmem.New(), cache: make(map[string]time.Duration)}
+	buf := make([][]byte, bufSize)
+	addrs := initData(t, buf, shardCnt, store)
+
+	// erase two data shards
+	delayed, erased := 1, 0
+	ctx := context.TODO()
+	err := store.Delete(ctx, addrs[erased])
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// context for enforced retrievals with long timeout
+	ctx, cancel := context.WithCancel(context.TODO())
+	defer cancel()
+
+	// signal channels for delayed and erased chunk retrieval
+	waitDelayed, waitErased := make(chan error, 1), make(chan error, 1)
+
+	// complete retrieval of delayed chunk by putting it into the store after a while
+	delay := +getter.StrategyTimeout / 4
+	if s == getter.NONE {
+		delay += getter.StrategyTimeout
+	}
+	store.delay(addrs[delayed], delay)
+	// create getter
+	start := time.Now()
+	g := getter.New(addrs, shardCnt, store, store, s, strict, getter.StrategyTimeout/2, func() {})
+	defer g.Close()
+
+	// launch delayed and erased chunk retrieval
+	wg := sync.WaitGroup{}
+	// defer wg.Wait()
+	wg.Add(2)
+	// signal using the waitDelayed and waitErased channels when
+	// delayed and erased chunk retrieval completes
+	go func() {
+		defer wg.Done()
+		_, err := g.Get(ctx, addrs[delayed])
+		waitDelayed <- err
+	}()
+	go func() {
+		defer wg.Done()
+		_, err := g.Get(ctx, addrs[erased])
+		waitErased <- err
+	}()
+
+	// set timeouts for the cases
+	var timeout time.Duration
+	switch {
+	case strict:
+		timeout = 2*getter.StrategyTimeout - 10*time.Millisecond
+	case s == getter.NONE:
+		timeout = 4*getter.StrategyTimeout - 10*time.Millisecond
+	case s == getter.DATA:
+		timeout = 3*getter.StrategyTimeout - 10*time.Millisecond
+	}
+
+	// wait for delayed chunk retrieval to complete
+	select {
+	case err := <-waitDelayed:
+		if err != nil {
+			t.Fatal("unexpected error", err)
+		}
+		round := time.Since(start) / getter.StrategyTimeout
+		switch {
+		case strict && s == getter.NONE:
+			if round < 1 {
+				t.Fatalf("unexpected completion of delayed chunk retrieval. got round %d", round)
+			}
+		case s == getter.NONE:
+			if round < 1 {
+				t.Fatalf("unexpected completion of delayed chunk retrieval. got round %d", round)
+			}
+			if round > 2 {
+				t.Fatalf("unexpected late completion of delayed chunk retrieval. got round %d", round)
+			}
+		case s == getter.DATA:
+			if round > 0 {
+				t.Fatalf("unexpected late completion of delayed chunk retrieval. got round %d", round)
+			}
+		}
+
+		checkShardsAvailable(t, store, addrs[delayed:], buf[delayed:])
+		// wait for erased chunk retrieval to complete
+		select {
+		case err := <-waitErased:
+			if err != nil {
+				t.Fatal("unexpected error", err)
+			}
+			round = time.Since(start) / getter.StrategyTimeout
+			switch {
+			case strict:
+				t.Fatalf("unexpected completion of erased chunk retrieval. got round %d", round)
+			case s == getter.NONE:
+				if round < 2 {
+					t.Fatalf("unexpected early completion of erased chunk retrieval. got round %d", round)
+				}
+				if round > 2 {
+					t.Fatalf("unexpected late completion of erased chunk retrieval. got round %d", round)
+				}
+			case s == getter.DATA:
+				if round < 1 {
+					t.Fatalf("unexpected early completion of erased chunk retrieval. got round %d", round)
+				}
+				if round > 1 {
+					t.Fatalf("unexpected late completion of delayed chunk retrieval. got round %d", round)
+				}
+			}
+			checkShardsAvailable(t, store, addrs[:erased], buf[:erased])
+
+		case <-time.After(getter.StrategyTimeout * 2):
+			if !strict {
+				t.Fatal("unexpected timeout using strategy", s, "with strict", strict)
+			}
+		}
+	case <-time.After(timeout):
+		if !strict || s != getter.NONE {
+			t.Fatal("unexpected timeout using strategy", s, "with strict", strict)
+		}
+	}
+}
+
+func initData(t *testing.T, buf [][]byte, shardCnt int, s storage.ChunkStore) []swarm.Address {
+	t.Helper()
 	spanBytes := make([]byte, 8)
 	binary.LittleEndian.PutUint64(spanBytes, swarm.ChunkSize)
-	for i := 0; i < dataShardCount; i++ {
-		erasureBuffer[i] = make([]byte, swarm.HashSize)
-		_, err := io.ReadFull(rand.Reader, erasureBuffer[i])
-		if err != nil {
-			return nil, nil, err
+
+	for i := 0; i < len(buf); i++ {
+		buf[i] = make([]byte, swarm.ChunkWithSpanSize)
+		if i >= shardCnt {
+			continue
 		}
-		copy(erasureBuffer[i], spanBytes)
+		_, err := io.ReadFull(rand.Reader, buf[i])
+		if err != nil {
+			t.Fatal(err)
+		}
+		copy(buf[i], spanBytes)
 	}
-	// make parity shards
-	for i := dataShardCount; i < len(erasureBuffer); i++ {
-		erasureBuffer[i] = make([]byte, swarm.HashSize)
-	}
-	// generate parity chunks
-	rs, err := reedsolomon.New(dataShardCount, len(erasureBuffer)-dataShardCount)
+
+	// fill in parity chunks
+	rs, err := reedsolomon.New(shardCnt, len(buf)-shardCnt)
 	if err != nil {
-		return nil, nil, err
+		t.Fatal(err)
 	}
-	err = rs.Encode(erasureBuffer)
+	err = rs.Encode(buf)
 	if err != nil {
-		return nil, nil, err
+		t.Fatal(err)
 	}
+
 	// calculate chunk addresses and upload to the store
-	var sAddresses, pAddresses []swarm.Address
-	for i := 0; i < dataShardCount; i++ {
-		chunk, err := cac.NewWithDataSpan(erasureBuffer[i])
+	addrs := make([]swarm.Address, len(buf))
+	ctx := context.TODO()
+	for i := 0; i < len(buf); i++ {
+		chunk, err := cac.NewWithDataSpan(buf[i])
 		if err != nil {
-			return nil, nil, err
+			t.Fatal(err)
 		}
 		err = s.Put(ctx, chunk)
 		if err != nil {
-			return nil, nil, err
+			t.Fatal(err)
 		}
-		sAddresses = append(sAddresses, chunk.Address())
-	}
-	for i := dataShardCount; i < len(erasureBuffer); i++ {
-		chunk, err := cac.NewWithDataSpan(erasureBuffer[i])
-		if err != nil {
-			return nil, nil, err
-		}
-		err = s.Put(ctx, chunk)
-		if err != nil {
-			return nil, nil, err
-		}
-		pAddresses = append(pAddresses, chunk.Address())
+		addrs[i] = chunk.Address()
 	}
 
-	return sAddresses, pAddresses, err
+	return addrs
 }
 
-func dataShardsAvailable(ctx context.Context, sAddresses []swarm.Address, s storage.ChunkStore) error {
-	for i := 0; i < len(sAddresses); i++ {
-		has, err := s.Has(ctx, sAddresses[i])
-		if err != nil {
+func checkShardsAvailable(t *testing.T, s storage.ChunkStore, addrs []swarm.Address, data [][]byte) {
+	t.Helper()
+	eg, ctx := errgroup.WithContext(context.Background())
+	for i, addr := range addrs {
+		i := i
+		addr := addr
+		eg.Go(func() (err error) {
+			var delay time.Duration
+			var ch swarm.Chunk
+			for i := 0; i < 30; i++ {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				default:
+					<-time.After(delay)
+					delay = 50 * time.Millisecond
+				}
+				ch, err = s.Get(ctx, addr)
+				if err == nil {
+					break
+				}
+				err = fmt.Errorf("datashard %d with address %v is not available: %w", i, addr, err)
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				default:
+					<-time.After(delay)
+					delay = 50 * time.Millisecond
+				}
+			}
+			if err == nil && !bytes.Equal(ch.Data(), data[i]) {
+				return fmt.Errorf("datashard %d has incorrect data", i)
+			}
 			return err
-		}
-		if !has {
-			return fmt.Errorf("datashard %d is not available", i)
-		}
+		})
 	}
-	return nil
-}
-
-func TestDecoding(t *testing.T) {
-	s := inmem.New()
-
-	erasureBuffer := make([][]byte, 128)
-	dataShardCount := 100
-	ctx := context.TODO()
-
-	sAddresses, pAddresses, err := initData(ctx, erasureBuffer, dataShardCount, s)
-	if err != nil {
+	if err := eg.Wait(); err != nil {
 		t.Fatal(err)
 	}
+}
 
-	getter := getter.New(sAddresses, pAddresses, s, s)
-	// sanity check - all data shards are retrievable
-	for i := 0; i < dataShardCount; i++ {
-		ch, err := getter.Get(ctx, sAddresses[i])
-		if err != nil {
-			t.Fatalf("address %s at index %d is not retrievable by redundancy getter", sAddresses[i], i)
-		}
-		if !bytes.Equal(ch.Data(), erasureBuffer[i]) {
-			t.Fatalf("retrieved chunk data differ from the original at index %d", i)
-		}
-	}
+func forget(t *testing.T, store storage.ChunkStore, addrs []swarm.Address, erasureCnt int) (erasures []int) {
+	t.Helper()
 
-	// remove maximum possible chunks from storage
-	removeChunkCount := len(erasureBuffer) - dataShardCount
-	for i := 0; i < removeChunkCount; i++ {
-		err := s.Delete(ctx, sAddresses[i])
+	ctx := context.TODO()
+	erasures = mrand.Perm(len(addrs))[:erasureCnt]
+	for _, i := range erasures {
+		err := store.Delete(ctx, addrs[i])
 		if err != nil {
 			t.Fatal(err)
 		}
 	}
-
-	err = dataShardsAvailable(ctx, sAddresses, s) // sanity check
-	if err == nil {
-		t.Fatalf("some data shards should be missing")
-	}
-	ch, err := getter.Get(ctx, sAddresses[0])
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !bytes.Equal(ch.Data(), erasureBuffer[0]) {
-		t.Fatalf("retrieved chunk data differ from the original at index %d", 0)
-	}
-	err = dataShardsAvailable(ctx, sAddresses, s)
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestRecoveryLimits(t *testing.T) {
-	s := inmem.New()
-
-	erasureBuffer := make([][]byte, 8)
-	dataShardCount := 5
-	ctx := context.TODO()
-
-	sAddresses, pAddresses, err := initData(ctx, erasureBuffer, dataShardCount, s)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_getter := getter.New(sAddresses, pAddresses, s, s)
-
-	// remove more chunks that can be corrected by erasure code
-	removeChunkCount := len(erasureBuffer) - dataShardCount + 1
-	for i := 0; i < removeChunkCount; i++ {
-		err := s.Delete(ctx, sAddresses[i])
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-	_, err = _getter.Get(ctx, sAddresses[0])
-	if !getter.IsCannotRecoverError(err, 1) {
-		t.Fatal(err)
-	}
-
-	// call once more
-	_, err = _getter.Get(ctx, sAddresses[0])
-	if !getter.IsNotRecoveredError(err, sAddresses[0].String()) {
-		t.Fatal(err)
-	}
-}
-
-func TestNoRedundancyOnRecovery(t *testing.T) {
-	s := inmem.New()
-
-	dataShardCount := 5
-	erasureBuffer := make([][]byte, dataShardCount)
-	ctx := context.TODO()
-
-	sAddresses, pAddresses, err := initData(ctx, erasureBuffer, dataShardCount, s)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_getter := getter.New(sAddresses, pAddresses, s, s)
-
-	// remove one chunk that trying to request later
-	err = s.Delete(ctx, sAddresses[0])
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, err = _getter.Get(ctx, sAddresses[0])
-	if !getter.IsNoRedundancyError(err, sAddresses[0].String()) {
-		t.Fatal(err)
-	}
-}
-
-func TestNoDataAddressIncluded(t *testing.T) {
-	s := inmem.New()
-
-	erasureBuffer := make([][]byte, 8)
-	dataShardCount := 5
-	ctx := context.TODO()
-
-	sAddresses, pAddresses, err := initData(ctx, erasureBuffer, dataShardCount, s)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_getter := getter.New(sAddresses, pAddresses, s, s)
-
-	// trying to retrieve a parity address
-	_, err = _getter.Get(ctx, pAddresses[0])
-	if !getter.IsNoDataAddressIncludedError(err, pAddresses[0].String()) {
-		t.Fatal(err)
-	}
+	return erasures
 }
