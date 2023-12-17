@@ -28,8 +28,6 @@ const (
 	reserveUpdateLockKey = "reserveUpdateLockKey"
 	batchExpiry          = "batchExpiry"
 	batchExpiryDone      = "batchExpiryDone"
-
-	reserveSizeWithinRadiusWakeup = time.Hour
 )
 
 func reserveUpdateBatchLockKey(batchID []byte) string {
@@ -112,9 +110,6 @@ func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
 		}
 	}()
 
-	ticker := time.NewTicker(reserveSizeWithinRadiusWakeup)
-	defer ticker.Stop()
-
 	countF := func() int {
 		skipInvalidCheck := activeEviction.Load()
 
@@ -160,6 +155,9 @@ func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
 
 	// initial run for the metrics
 	_ = countF()
+
+	ticker := time.NewTicker(db.opts.wakeupDuration)
+	defer ticker.Stop()
 
 	for {
 

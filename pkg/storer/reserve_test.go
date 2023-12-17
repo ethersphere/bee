@@ -382,7 +382,7 @@ func TestRadiusManager(t *testing.T) {
 
 	waitForRadius := func(t *testing.T, reserve *reserve.Reserve, expectedRadius uint8) {
 		t.Helper()
-		err := spinlock.Wait(time.Second*30, func() bool {
+		err := spinlock.Wait(time.Second*10, func() bool {
 			return reserve.Radius() == expectedRadius
 		})
 		if err != nil {
@@ -392,7 +392,7 @@ func TestRadiusManager(t *testing.T) {
 
 	waitForSize := func(t *testing.T, reserve *reserve.Reserve, size int) {
 		t.Helper()
-		err := spinlock.Wait(time.Second*30, func() bool {
+		err := spinlock.Wait(time.Second*10, func() bool {
 			return reserve.Size() == size
 		})
 		if err != nil {
@@ -429,14 +429,12 @@ func TestRadiusManager(t *testing.T) {
 		}
 
 		waitForSize(t, storer.Reserve(), 10)
-
 		waitForRadius(t, storer.Reserve(), 3)
 
 		err = storer.EvictBatch(context.Background(), batch.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
-
 		waitForRadius(t, storer.Reserve(), 0)
 	})
 
