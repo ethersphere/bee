@@ -6,6 +6,7 @@ package api
 
 import (
 	"errors"
+	"github.com/ethersphere/bee/pkg/log"
 	"math/big"
 	"net/http"
 
@@ -55,24 +56,24 @@ func (s *Service) stakingDepositHandler(w http.ResponseWriter, r *http.Request) 
 	txHash, err := s.stakingContract.DepositStake(r.Context(), paths.Amount)
 	if err != nil {
 		if errors.Is(err, staking.ErrInsufficientStakeAmount) {
-			logger.Debug("insufficient stake amount", "minimum_stake", staking.MinimumStakeAmount, "error", err)
+			logger.Debug("insufficient stake amount", log.LogItem{"minimum_stake", staking.MinimumStakeAmount}, log.LogItem{"error", err})
 			logger.Error(nil, "insufficient stake amount")
 			jsonhttp.BadRequest(w, "insufficient stake amount")
 			return
 		}
 		if errors.Is(err, staking.ErrNotImplemented) {
-			logger.Debug("not implemented", "error", err)
+			logger.Debug("not implemented", log.LogItem{"error", err})
 			logger.Error(nil, "not implemented")
 			jsonhttp.NotImplemented(w, "not implemented")
 			return
 		}
 		if errors.Is(err, staking.ErrInsufficientFunds) {
-			logger.Debug("out of funds", "error", err)
+			logger.Debug("out of funds", log.LogItem{"error", err})
 			logger.Error(nil, "out of funds")
 			jsonhttp.BadRequest(w, "out of funds")
 			return
 		}
-		logger.Debug("deposit failed", "error", err)
+		logger.Debug("deposit failed", log.LogItem{"error", err})
 		logger.Error(nil, "deposit failed")
 		jsonhttp.InternalServerError(w, "cannot stake")
 		return
@@ -87,7 +88,7 @@ func (s *Service) getStakedAmountHandler(w http.ResponseWriter, r *http.Request)
 
 	stakedAmount, err := s.stakingContract.GetStake(r.Context())
 	if err != nil {
-		logger.Debug("get staked amount failed", "overlayAddr", s.overlay, "error", err)
+		logger.Debug("get staked amount failed", log.LogItem{"overlayAddr", s.overlay}, log.LogItem{"error", err})
 		logger.Error(nil, "get staked amount failed")
 		jsonhttp.InternalServerError(w, "get staked amount failed")
 		return
@@ -102,12 +103,12 @@ func (s *Service) withdrawAllStakeHandler(w http.ResponseWriter, r *http.Request
 	txHash, err := s.stakingContract.WithdrawAllStake(r.Context())
 	if err != nil {
 		if errors.Is(err, staking.ErrInsufficientStake) {
-			logger.Debug("insufficient stake", "overlayAddr", s.overlay, "error", err)
+			logger.Debug("insufficient stake", log.LogItem{"overlayAddr", s.overlay}, log.LogItem{"error", err})
 			logger.Error(nil, "insufficient stake")
 			jsonhttp.BadRequest(w, "insufficient stake to withdraw")
 			return
 		}
-		logger.Debug("withdraw stake failed", "error", err)
+		logger.Debug("withdraw stake failed", log.LogItem{"error", err})
 		logger.Error(nil, "withdraw stake failed")
 		jsonhttp.InternalServerError(w, "cannot withdraw stake")
 		return

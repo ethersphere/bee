@@ -6,6 +6,7 @@ package api
 
 import (
 	"errors"
+	"github.com/ethersphere/bee/pkg/log"
 	"io"
 	"net/http"
 
@@ -58,7 +59,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if headers.Pin {
 		session, err := s.storer.NewSession()
 		if err != nil {
-			logger.Debug("get or create tag failed", "error", err)
+			logger.Debug("get or create tag failed", log.LogItem{"error", err})
 			logger.Error(nil, "get or create tag failed")
 			switch {
 			case errors.Is(err, storage.ErrNotFound):
@@ -78,7 +79,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		Deferred: headers.Pin,
 	})
 	if err != nil {
-		logger.Debug("get putter failed", "error", err)
+		logger.Debug("get putter failed", log.LogItem{"error", err})
 		logger.Error(nil, "get putter failed")
 		switch {
 		case errors.Is(err, errBatchUnusable) || errors.Is(err, postage.ErrNotUsable):
@@ -104,7 +105,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		if jsonhttp.HandleBodyReadError(err, ow) {
 			return
 		}
-		logger.Debug("read body failed", "error", err)
+		logger.Debug("read body failed", log.LogItem{"error", err})
 		logger.Error(nil, "read body failed")
 		jsonhttp.InternalServerError(ow, "cannot read chunk data")
 		return
@@ -118,7 +119,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(data) > swarm.ChunkSize+swarm.SpanSize {
-		logger.Debug("chunk data exceeds required length", "required_length", swarm.ChunkSize+swarm.SpanSize)
+		logger.Debug("chunk data exceeds required length", log.LogItem{"required_length", swarm.ChunkSize + swarm.SpanSize})
 		logger.Error(nil, "chunk data exceeds required length")
 		jsonhttp.RequestEntityTooLarge(ow, "payload too large")
 		return
@@ -126,7 +127,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	ch, err := cac.NewWithDataSpan(data)
 	if err != nil {
-		logger.Debug("create content addressed chunk failed", "error", err)
+		logger.Debug("create content addressed chunk failed", log.LogItem{"error", err})
 		logger.Error(nil, "create content addressed chunk failed")
 		jsonhttp.BadRequest(ow, "chunk data error")
 		return
@@ -134,7 +135,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	ss, err := soc.NewSigned(paths.ID, ch, paths.Owner, queries.Sig)
 	if err != nil {
-		logger.Debug("create soc failed", "id", paths.ID, "owner", paths.Owner, "error", err)
+		logger.Debug("create soc failed", log.LogItem{"id", paths.ID}, log.LogItem{"owner", paths.Owner}, log.LogItem{"error", err})
 		logger.Error(nil, "create soc failed")
 		jsonhttp.Unauthorized(ow, "invalid address")
 		return
@@ -142,14 +143,14 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	sch, err := ss.Chunk()
 	if err != nil {
-		logger.Debug("read chunk data failed", "error", err)
+		logger.Debug("read chunk data failed", log.LogItem{"error", err})
 		logger.Error(nil, "read chunk data failed")
 		jsonhttp.InternalServerError(ow, "cannot read chunk data")
 		return
 	}
 
 	if !soc.Valid(sch) {
-		logger.Debug("invalid chunk", "error", err)
+		logger.Debug("invalid chunk", log.LogItem{"error", err})
 		logger.Error(nil, "invalid chunk")
 		jsonhttp.Unauthorized(ow, "invalid chunk")
 		return
@@ -157,7 +158,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = putter.Put(r.Context(), sch)
 	if err != nil {
-		logger.Debug("write chunk failed", "chunk_address", sch.Address(), "error", err)
+		logger.Debug("write chunk failed", log.LogItem{"chunk_address", sch.Address()}, log.LogItem{"error", err})
 		logger.Error(nil, "write chunk failed")
 		jsonhttp.BadRequest(ow, "chunk write error")
 		return
@@ -165,7 +166,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = putter.Done(sch.Address())
 	if err != nil {
-		logger.Debug("done split failed", "error", err)
+		logger.Debug("done split failed", log.LogItem{"error", err})
 		logger.Error(nil, "done split failed")
 		jsonhttp.InternalServerError(ow, "done split failed")
 		return

@@ -7,6 +7,7 @@ package storer
 import (
 	"context"
 	"errors"
+	"github.com/ethersphere/bee/pkg/log"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -37,7 +38,7 @@ func sharkyRecovery(ctx context.Context, sharkyBasePath string, store storage.St
 
 	logger.Info("localstore sharky .DIRTY file exists: starting recovery due to previous dirty exit")
 	defer func(t time.Time) {
-		logger.Info("localstore sharky recovery finished", "time", time.Since(t))
+		logger.Info("localstore sharky recovery finished", log.LogItem{"time", time.Since(t)})
 	}(time.Now())
 
 	sharkyRecover, err := sharky.NewRecovery(sharkyBasePath, sharkyNoOfShards, swarm.SocMaxChunkSize)

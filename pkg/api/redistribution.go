@@ -5,6 +5,7 @@
 package api
 
 import (
+	"github.com/ethersphere/bee/pkg/log"
 	"net/http"
 	"time"
 
@@ -41,7 +42,7 @@ func (s *Service) redistributionStatusHandler(w http.ResponseWriter, r *http.Req
 
 	status, err := s.redistributionAgent.Status()
 	if err != nil {
-		logger.Debug("get redistribution status", "overlay_address", s.overlay.String(), "error", err)
+		logger.Debug("get redistribution status", log.LogItem{"overlay_address", s.overlay.String()}, log.LogItem{"error", err})
 		logger.Error(nil, "get redistribution status")
 		jsonhttp.InternalServerError(w, "failed to get redistribution status")
 		return
@@ -49,7 +50,7 @@ func (s *Service) redistributionStatusHandler(w http.ResponseWriter, r *http.Req
 
 	minGasFunds, hasSufficientFunds, err := s.redistributionAgent.HasEnoughFundsToPlay(r.Context())
 	if err != nil {
-		logger.Debug("has enough funds to play", "overlay_address", s.overlay.String(), "error", err)
+		logger.Debug("has enough funds to play", log.LogItem{"overlay_address", s.overlay.String()}, log.LogItem{"error", err})
 		logger.Error(nil, "has enough funds to play")
 		jsonhttp.InternalServerError(w, "failed to calculate if node has enough funds to play")
 		return

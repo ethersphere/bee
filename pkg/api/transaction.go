@@ -6,6 +6,7 @@ package api
 
 import (
 	"errors"
+	"github.com/ethersphere/bee/pkg/log"
 	"math/big"
 	"net/http"
 	"time"
@@ -50,7 +51,7 @@ func (s *Service) transactionListHandler(w http.ResponseWriter, _ *http.Request)
 
 	txHashes, err := s.transaction.PendingTransactions()
 	if err != nil {
-		logger.Debug("get pending transactions failed", "error", err)
+		logger.Debug("get pending transactions failed", log.LogItem{"error", err})
 		logger.Error(nil, "get pending transactions failed")
 		jsonhttp.InternalServerError(w, errCantGetTransaction)
 		return
@@ -60,8 +61,8 @@ func (s *Service) transactionListHandler(w http.ResponseWriter, _ *http.Request)
 	for _, txHash := range txHashes {
 		storedTransaction, err := s.transaction.StoredTransaction(txHash)
 		if err != nil {
-			logger.Debug("get stored transaction failed", "tx_hash", txHash, "error", err)
-			logger.Error(nil, "get stored transaction failed", "tx_hash", txHash)
+			logger.Debug("get stored transaction failed", log.LogItem{"tx_hash", txHash}, log.LogItem{"error", err})
+			logger.Error(nil, "get stored transaction failed", log.LogItem{"tx_hash", txHash})
 			jsonhttp.InternalServerError(w, errCantGetTransaction)
 			return
 		}
@@ -101,8 +102,8 @@ func (s *Service) transactionDetailHandler(w http.ResponseWriter, r *http.Reques
 
 	storedTransaction, err := s.transaction.StoredTransaction(paths.Hash)
 	if err != nil {
-		logger.Debug("get stored transaction failed", "tx_hash", paths.Hash, "error", err)
-		logger.Error(nil, "get stored transaction failed", "tx_hash", paths.Hash)
+		logger.Debug("get stored transaction failed", log.LogItem{"tx_hash", paths.Hash}, log.LogItem{"error", err})
+		logger.Error(nil, "get stored transaction failed", log.LogItem{"tx_hash", paths.Hash})
 		if errors.Is(err, transaction.ErrUnknownTransaction) {
 			jsonhttp.NotFound(w, errUnknownTransaction)
 		} else {
@@ -144,8 +145,8 @@ func (s *Service) transactionResendHandler(w http.ResponseWriter, r *http.Reques
 
 	err := s.transaction.ResendTransaction(r.Context(), paths.Hash)
 	if err != nil {
-		logger.Debug("resend transaction failed", "tx_hash", paths.Hash, "error", err)
-		logger.Error(nil, "resend transaction failed", "tx_hash", paths.Hash)
+		logger.Debug("resend transaction failed", log.LogItem{"tx_hash", paths.Hash}, log.LogItem{"error", err})
+		logger.Error(nil, "resend transaction failed", log.LogItem{"tx_hash", paths.Hash})
 		if errors.Is(err, transaction.ErrUnknownTransaction) {
 			jsonhttp.NotFound(w, errUnknownTransaction)
 		} else if errors.Is(err, transaction.ErrAlreadyImported) {
@@ -183,8 +184,8 @@ func (s *Service) transactionCancelHandler(w http.ResponseWriter, r *http.Reques
 
 	txHash, err := s.transaction.CancelTransaction(ctx, paths.Hash)
 	if err != nil {
-		logger.Debug("cancel transaction failed", "tx_hash", paths.Hash, "error", err, "canceled_tx_hash", txHash)
-		logger.Error(nil, "cancel transaction failed", "tx_hash", paths.Hash)
+		logger.Debug("cancel transaction failed", log.LogItem{"tx_hash", paths.Hash}, log.LogItem{"error", err}, log.LogItem{"canceled_tx_hash", txHash})
+		logger.Error(nil, "cancel transaction failed", log.LogItem{"tx_hash", paths.Hash})
 		if errors.Is(err, transaction.ErrUnknownTransaction) {
 			jsonhttp.NotFound(w, errUnknownTransaction)
 		} else if errors.Is(err, transaction.ErrAlreadyImported) {

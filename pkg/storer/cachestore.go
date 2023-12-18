@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/ethersphere/bee/pkg/log"
 	"time"
 
 	storage "github.com/ethersphere/bee/pkg/storage"
@@ -51,9 +52,9 @@ func (db *DB) cacheWorker(ctx context.Context) {
 			db.metrics.MethodCallsDuration.WithLabelValues("cachestore", "RemoveOldest").Observe(dur())
 			if err != nil {
 				db.metrics.MethodCalls.WithLabelValues("cachestore", "RemoveOldest", "failure").Inc()
-				db.logger.Warning("cache eviction failure", "error", err)
+				db.logger.Warning("cache eviction failure", log.LogItem{"error", err})
 			} else {
-				db.logger.Debug("cache eviction finished", "evicted", evict, "duration_sec", dur())
+				db.logger.Debug("cache eviction finished", log.LogItem{"evicted", evict}, log.LogItem{"duration_sec", dur()})
 				db.metrics.MethodCalls.WithLabelValues("cachestore", "RemoveOldest", "success").Inc()
 			}
 			db.triggerCacheEviction()

@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/ethersphere/bee/pkg/log"
 	"math/big"
 	"net/http"
 	"time"
@@ -42,7 +43,7 @@ func (s *Service) postageSyncStatusCheckHandler(h http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		done, err := s.syncStatus()
 		if err != nil {
-			s.logger.Debug("postage access: syncing failed", "error", err)
+			s.logger.Debug("postage access: syncing failed", log.LogItem{"error", err})
 			s.logger.Error(nil, "postage access: syncing failed")
 			jsonhttp.ServiceUnavailable(w, "syncing failed")
 			return
@@ -103,24 +104,24 @@ func (s *Service) postageCreateHandler(w http.ResponseWriter, r *http.Request) {
 	)
 	if err != nil {
 		if errors.Is(err, postagecontract.ErrChainDisabled) {
-			logger.Debug("create batch: no chain backend", "error", err)
+			logger.Debug("create batch: no chain backend", log.LogItem{"error", err})
 			logger.Error(nil, "create batch: no chain backend")
 			jsonhttp.MethodNotAllowed(w, "no chain backend")
 			return
 		}
 		if errors.Is(err, postagecontract.ErrInsufficientFunds) {
-			logger.Debug("create batch: out of funds", "error", err)
+			logger.Debug("create batch: out of funds", log.LogItem{"error", err})
 			logger.Error(nil, "create batch: out of funds")
 			jsonhttp.BadRequest(w, "out of funds")
 			return
 		}
 		if errors.Is(err, postagecontract.ErrInvalidDepth) {
-			logger.Debug("create batch: invalid depth", "error", err)
+			logger.Debug("create batch: invalid depth", log.LogItem{"error", err})
 			logger.Error(nil, "create batch: invalid depth")
 			jsonhttp.BadRequest(w, "invalid depth")
 			return
 		}
-		logger.Debug("create batch: create failed", "error", err)
+		logger.Debug("create batch: create failed", log.LogItem{"error", err})
 		logger.Error(nil, "create batch: create failed")
 		jsonhttp.InternalServerError(w, "cannot create batch")
 		return
@@ -183,7 +184,7 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request
 
 		exists, err := s.batchStore.Exists(v.ID())
 		if err != nil {
-			logger.Error(err, "get stamp issuer: check batch failed", "batch_id", hex.EncodeToString(v.ID()))
+			logger.Error(err, "get stamp issuer: check batch failed", log.LogItem{"batch_id", hex.EncodeToString(v.ID())})
 			jsonhttp.InternalServerError(w, "unable to check batch")
 			return
 		}
@@ -193,7 +194,7 @@ func (s *Service) postageGetStampsHandler(w http.ResponseWriter, r *http.Request
 
 		batchTTL, err := s.estimateBatchTTLFromID(v.ID())
 		if err != nil {
-			logger.Error(err, "get stamp issuer: estimate batch expiration failed", "batch_id", hex.EncodeToString(v.ID()))
+			logger.Error(err, "get stamp issuer: estimate batch expiration failed", log.LogItem{"batch_id", hex.EncodeToString(v.ID())})
 			jsonhttp.InternalServerError(w, "unable to estimate batch expiration")
 			return
 		}
@@ -239,7 +240,7 @@ func (s *Service) postageGetAllBatchesHandler(w http.ResponseWriter, _ *http.Req
 		return false, nil
 	})
 	if err != nil {
-		logger.Debug("iterate batches: iteration failed", "error", err)
+		logger.Debug("iterate batches: iteration failed", log.LogItem{"error", err})
 		logger.Error(nil, "iterate batches: iteration failed")
 		jsonhttp.InternalServerError(w, "unable to iterate all batches")
 		return
@@ -268,7 +269,7 @@ func (s *Service) postageGetStampBucketsHandler(w http.ResponseWriter, r *http.R
 
 	issuer, _, err := s.post.GetStampIssuer(paths.BatchID)
 	if err != nil {
-		logger.Debug("get stamp issuer: get issuer failed", "batch_id", hexBatchID, "error", err)
+		logger.Debug("get stamp issuer: get issuer failed", log.LogItem{"batch_id", hexBatchID}, log.LogItem{"error", err})
 		logger.Error(nil, "get stamp issuer: get issuer failed")
 		switch {
 		case errors.Is(err, postage.ErrNotUsable):
@@ -310,7 +311,7 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 
 	issuer, _, err := s.post.GetStampIssuer(paths.BatchID)
 	if err != nil {
-		logger.Debug("get stamp issuer: get issuer failed", "batch_id", hexBatchID, "error", err)
+		logger.Debug("get stamp issuer: get issuer failed", log.LogItem{"batch_id", hexBatchID}, log.LogItem{"error", err})
 		logger.Error(nil, "get stamp issuer: get issuer failed")
 		switch {
 		case errors.Is(err, postage.ErrNotUsable):
@@ -325,20 +326,20 @@ func (s *Service) postageGetStampHandler(w http.ResponseWriter, r *http.Request)
 
 	exists, err := s.batchStore.Exists(paths.BatchID)
 	if err != nil {
-		logger.Debug("exist check failed", "batch_id", hexBatchID, "error", err)
+		logger.Debug("exist check failed", log.LogItem{"batch_id", hexBatchID}, log.LogItem{"error", err})
 		logger.Error(nil, "exist check failed")
 		jsonhttp.InternalServerError(w, "unable to check batch")
 		return
 	}
 	if !exists {
-		logger.Debug("batch does not exists", "batch_id", hexBatchID)
+		logger.Debug("batch does not exists", log.LogItem{"batch_id", hexBatchID})
 		jsonhttp.NotFound(w, "issuer does not exist")
 		return
 	}
 
 	batchTTL, err := s.estimateBatchTTLFromID(paths.BatchID)
 	if err != nil {
-		logger.Debug("estimate batch expiration failed", "batch_id", hexBatchID, "error", err)
+		logger.Debug("estimate batch expiration failed", log.LogItem{"batch_id", hexBatchID}, log.LogItem{"error", err})
 		logger.Error(nil, "estimate batch expiration failed")
 		jsonhttp.InternalServerError(w, "unable to estimate batch expiration")
 		return
@@ -377,7 +378,7 @@ func (s *Service) reserveStateHandler(w http.ResponseWriter, _ *http.Request) {
 
 	commitment, err := s.batchStore.Commitment()
 	if err != nil {
-		logger.Debug("batch store commitment calculation failed", "error", err)
+		logger.Debug("batch store commitment calculation failed", log.LogItem{"error", err})
 		logger.Error(nil, "batch store commitment calculation failed")
 		jsonhttp.InternalServerError(w, "unable to calculate commitment")
 		return
@@ -397,7 +398,7 @@ func (s *Service) chainStateHandler(w http.ResponseWriter, r *http.Request) {
 	state := s.batchStore.GetChainState()
 	chainTip, err := s.chainBackend.BlockNumber(r.Context())
 	if err != nil {
-		logger.Debug("get block number failed", "error", err)
+		logger.Debug("get block number failed", log.LogItem{"error", err})
 		logger.Error(nil, "get block number failed")
 		jsonhttp.InternalServerError(w, "block number unavailable")
 		return
@@ -460,18 +461,18 @@ func (s *Service) postageTopUpHandler(w http.ResponseWriter, r *http.Request) {
 	txHash, err := s.postageContract.TopUpBatch(r.Context(), paths.BatchID, paths.Amount)
 	if err != nil {
 		if errors.Is(err, postagecontract.ErrInsufficientFunds) {
-			logger.Debug("topup batch: out of funds", "batch_id", hexBatchID, "amount", paths.Amount, "error", err)
+			logger.Debug("topup batch: out of funds", log.LogItem{"batch_id", hexBatchID}, log.LogItem{"amount", paths.Amount}, log.LogItem{"error", err})
 			logger.Error(nil, "topup batch: out of funds")
 			jsonhttp.PaymentRequired(w, "out of funds")
 			return
 		}
 		if errors.Is(err, postagecontract.ErrNotImplemented) {
-			logger.Debug("topup batch: not implemented", "error", err)
+			logger.Debug("topup batch: not implemented", log.LogItem{"error", err})
 			logger.Error(nil, "topup batch: not implemented")
 			jsonhttp.NotImplemented(w, nil)
 			return
 		}
-		logger.Debug("topup batch: topup failed", "batch_id", hexBatchID, "amount", paths.Amount, "error", err)
+		logger.Debug("topup batch: topup failed", log.LogItem{"batch_id", hexBatchID}, log.LogItem{"amount", paths.Amount}, log.LogItem{"error", err})
 		logger.Error(nil, "topup batch: topup failed")
 		jsonhttp.InternalServerError(w, "cannot topup batch")
 		return
@@ -499,18 +500,18 @@ func (s *Service) postageDiluteHandler(w http.ResponseWriter, r *http.Request) {
 	txHash, err := s.postageContract.DiluteBatch(r.Context(), paths.BatchID, paths.Depth)
 	if err != nil {
 		if errors.Is(err, postagecontract.ErrInvalidDepth) {
-			logger.Debug("dilute batch: invalid depth", "error", err)
+			logger.Debug("dilute batch: invalid depth", log.LogItem{"error", err})
 			logger.Error(nil, "dilute batch: invalid depth")
 			jsonhttp.BadRequest(w, "invalid depth")
 			return
 		}
 		if errors.Is(err, postagecontract.ErrNotImplemented) {
-			logger.Debug("dilute batch: not implemented", "error")
+			logger.Debug("dilute batch: not implemented", log.LogItem{"error", ""})
 			logger.Error(nil, "dilute batch: not implemented")
 			jsonhttp.NotImplemented(w, nil)
 			return
 		}
-		logger.Debug("dilute batch: dilute failed", "batch_id", hexBatchID, "depth", paths.Depth, "error", err)
+		logger.Debug("dilute batch: dilute failed", log.LogItem{"batch_id", hexBatchID}, log.LogItem{"depth", paths.Depth}, log.LogItem{"error", err})
 		logger.Error(nil, "dilute batch: dilute failed")
 		jsonhttp.InternalServerError(w, "cannot dilute batch")
 		return

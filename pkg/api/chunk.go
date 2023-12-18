@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/ethersphere/bee/pkg/log"
 	"io"
 	"net/http"
 	"strconv"
@@ -44,7 +45,7 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if headers.SwarmTag > 0 {
 		tag, err = s.getOrCreateSessionID(headers.SwarmTag)
 		if err != nil {
-			logger.Debug("get or create tag failed", "error", err)
+			logger.Debug("get or create tag failed", log.LogItem{"error", err})
 			logger.Error(nil, "get or create tag failed")
 			switch {
 			case errors.Is(err, storage.ErrNotFound):
@@ -68,7 +69,7 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		Deferred: deferred,
 	})
 	if err != nil {
-		logger.Debug("get putter failed", "error", err)
+		logger.Debug("get putter failed", log.LogItem{"error", err})
 		logger.Error(nil, "get putter failed")
 		switch {
 		case errors.Is(err, errBatchUnusable) || errors.Is(err, postage.ErrNotUsable):
@@ -96,7 +97,7 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		if jsonhttp.HandleBodyReadError(err, ow) {
 			return
 		}
-		logger.Debug("chunk upload: read chunk data failed", "error", err)
+		logger.Debug("chunk upload: read chunk data failed", log.LogItem{"error", err})
 		logger.Error(nil, "chunk upload: read chunk data failed")
 		jsonhttp.InternalServerError(ow, "cannot read chunk data")
 		return
@@ -111,7 +112,7 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	chunk, err := cac.NewWithDataSpan(data)
 	if err != nil {
-		logger.Debug("chunk upload: create chunk failed", "error", err)
+		logger.Debug("chunk upload: create chunk failed", log.LogItem{"error", err})
 		logger.Error(nil, "chunk upload: create chunk error")
 		jsonhttp.InternalServerError(ow, "create chunk error")
 		return
@@ -119,7 +120,7 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = putter.Put(r.Context(), chunk)
 	if err != nil {
-		logger.Debug("chunk upload: write chunk failed", "chunk_address", chunk.Address(), "error", err)
+		logger.Debug("chunk upload: write chunk failed", log.LogItem{"chunk_address", chunk.Address()}, log.LogItem{"error", err})
 		logger.Error(nil, "chunk upload: write chunk failed")
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):
@@ -132,7 +133,7 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = putter.Done(swarm.ZeroAddress)
 	if err != nil {
-		logger.Debug("done split failed", "error", err)
+		logger.Debug("done split failed", log.LogItem{"error", err})
 		logger.Error(nil, "done split failed")
 		jsonhttp.InternalServerError(ow, "done split failed")
 		return
@@ -173,12 +174,12 @@ func (s *Service) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 	chunk, err := s.storer.Download(cache).Get(r.Context(), paths.Address)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			loggerV1.Debug("chunk not found", "address", paths.Address)
+			loggerV1.Debug("chunk not found", log.LogItem{"address", paths.Address})
 			jsonhttp.NotFound(w, "chunk not found")
 			return
 
 		}
-		logger.Debug("read chunk failed", "chunk_address", paths.Address, "error", err)
+		logger.Debug("read chunk failed", log.LogItem{"chunk_address", paths.Address}, log.LogItem{"error", err})
 		logger.Error(nil, "read chunk failed")
 		jsonhttp.InternalServerError(w, "read chunk failed")
 		return

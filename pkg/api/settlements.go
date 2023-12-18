@@ -6,6 +6,7 @@ package api
 
 import (
 	"errors"
+	"github.com/ethersphere/bee/pkg/log"
 	"math/big"
 	"net/http"
 
@@ -39,20 +40,20 @@ func (s *Service) settlementsHandler(w http.ResponseWriter, _ *http.Request) {
 
 	settlementsSent, err := s.swap.SettlementsSent()
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
-		logger.Debug("sent settlements failed", "error", err)
+		logger.Debug("sent settlements failed", log.LogItem{"error", err})
 		logger.Error(nil, "sent settlements failed")
 		jsonhttp.MethodNotAllowed(w, err)
 		return
 	}
 	if err != nil {
-		logger.Debug("sent settlements failed", "error", err)
+		logger.Debug("sent settlements failed", log.LogItem{"error", err})
 		logger.Error(nil, "sent settlements failed")
 		jsonhttp.InternalServerError(w, errCantSettlements)
 		return
 	}
 	settlementsReceived, err := s.swap.SettlementsReceived()
 	if err != nil {
-		logger.Debug("get received settlements failed", "error", err)
+		logger.Debug("get received settlements failed", log.LogItem{"error", err})
 		logger.Error(nil, "get received settlements failed")
 		jsonhttp.InternalServerError(w, errCantSettlements)
 		return
@@ -112,15 +113,15 @@ func (s *Service) peerSettlementsHandler(w http.ResponseWriter, r *http.Request)
 
 	received, err := s.swap.TotalReceived(paths.Peer)
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
-		logger.Debug("get total received failed", "peer_address", paths.Peer, "error", err)
-		logger.Error(nil, "get total received failed", "peer_address", paths.Peer)
+		logger.Debug("get total received failed", log.LogItem{"peer_address", paths.Peer}, log.LogItem{"error", err})
+		logger.Error(nil, "get total received failed", log.LogItem{"peer_address", paths.Peer})
 		jsonhttp.MethodNotAllowed(w, err)
 		return
 	}
 	if err != nil {
 		if !errors.Is(err, settlement.ErrPeerNoSettlements) {
-			logger.Debug("get total received failed", "peer_address", paths.Peer, "error", err)
-			logger.Error(nil, "get total received failed", "peer_address", paths.Peer)
+			logger.Debug("get total received failed", log.LogItem{"peer_address", paths.Peer}, log.LogItem{"error", err})
+			logger.Error(nil, "get total received failed", log.LogItem{"peer_address", paths.Peer})
 			jsonhttp.InternalServerError(w, errCantSettlementsPeer)
 			return
 		} else {
@@ -135,8 +136,8 @@ func (s *Service) peerSettlementsHandler(w http.ResponseWriter, r *http.Request)
 	sent, err := s.swap.TotalSent(paths.Peer)
 	if err != nil {
 		if !errors.Is(err, settlement.ErrPeerNoSettlements) {
-			logger.Debug("get total sent failed", "peer_address", paths.Peer, "error", err)
-			logger.Error(nil, "get total sent failed", "peer_address", paths.Peer)
+			logger.Debug("get total sent failed", log.LogItem{"peer_address", paths.Peer}, log.LogItem{"error", err})
+			logger.Error(nil, "get total sent failed", log.LogItem{"peer_address", paths.Peer})
 			jsonhttp.InternalServerError(w, errCantSettlementsPeer)
 			return
 		} else {
@@ -166,14 +167,14 @@ func (s *Service) settlementsHandlerPseudosettle(w http.ResponseWriter, _ *http.
 	settlementsSent, err := s.pseudosettle.SettlementsSent()
 	if err != nil {
 		jsonhttp.InternalServerError(w, errCantSettlements)
-		logger.Debug("sent settlements failed", "error", err)
+		logger.Debug("sent settlements failed", log.LogItem{"error", err})
 		logger.Error(nil, "sent settlements failed")
 		return
 	}
 	settlementsReceived, err := s.pseudosettle.SettlementsReceived()
 	if err != nil {
 		jsonhttp.InternalServerError(w, errCantSettlements)
-		logger.Debug("get received settlements failed", "error", err)
+		logger.Debug("get received settlements failed", log.LogItem{"error", err})
 		logger.Error(nil, "get received settlements failed")
 		return
 	}

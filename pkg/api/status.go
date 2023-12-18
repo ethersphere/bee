@@ -6,6 +6,7 @@ package api
 
 import (
 	"context"
+	"github.com/ethersphere/bee/pkg/log"
 	"net/http"
 	"sort"
 	"sync"
@@ -63,7 +64,7 @@ func (s *Service) statusGetHandler(w http.ResponseWriter, _ *http.Request) {
 
 	ss, err := s.statusService.LocalSnapshot()
 	if err != nil {
-		logger.Debug("status snapshot", "error", err)
+		logger.Debug("status snapshot", log.LogItem{"error", err})
 		logger.Error(nil, "status snapshot")
 		jsonhttp.InternalServerError(w, err)
 		return
@@ -113,7 +114,7 @@ func (s *Service) statusGetPeersHandler(w http.ResponseWriter, r *http.Request) 
 
 			ss, err := s.statusService.PeerSnapshot(ctx, address)
 			if err != nil {
-				logger.Debug("unable to get status snapshot for peer", "peer_address", address, "error", err)
+				logger.Debug("unable to get status snapshot for peer", log.LogItem{"peer_address", address}, log.LogItem{"error", err})
 				snapshot.RequestFailed = true
 			} else {
 				snapshot.BeeMode = ss.BeeMode
@@ -139,7 +140,7 @@ func (s *Service) statusGetPeersHandler(w http.ResponseWriter, r *http.Request) 
 		topology.Select{},
 	)
 	if err != nil {
-		logger.Debug("status snapshot", "error", err)
+		logger.Debug("status snapshot", log.LogItem{"error", err})
 		logger.Error(nil, "status snapshot")
 		jsonhttp.InternalServerError(w, err)
 		return

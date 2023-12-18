@@ -6,6 +6,7 @@ package api
 
 import (
 	"errors"
+	"github.com/ethersphere/bee/pkg/log"
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -35,18 +36,18 @@ func (s *Service) pingpongHandler(w http.ResponseWriter, r *http.Request) {
 
 	rtt, err := s.pingpong.Ping(ctx, paths.Address, "ping")
 	if err != nil {
-		logger.Debug("pingpong: ping failed", "peer_address", paths.Address, "error", err)
+		logger.Debug("pingpong: ping failed", log.LogItem{"peer_address", paths.Address}, log.LogItem{"error", err})
 		if errors.Is(err, p2p.ErrPeerNotFound) {
 			jsonhttp.NotFound(w, "peer not found")
 			return
 		}
 
-		logger.Error(nil, "pingpong: ping failed", "peer_address", paths.Address)
+		logger.Error(nil, "pingpong: ping failed", log.LogItem{"peer_address", paths.Address})
 		jsonhttp.InternalServerError(w, "pingpong: ping failed")
 		return
 	}
 
-	logger.Info("pingpong: ping succeeded", "peer_address", paths.Address)
+	logger.Info("pingpong: ping succeeded", log.LogItem{"peer_address", paths.Address})
 	jsonhttp.OK(w, pingpongResponse{
 		RTT: rtt.String(),
 	})

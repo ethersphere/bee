@@ -9,6 +9,7 @@ import (
 	"crypto/ecdsa"
 	"encoding/hex"
 	"errors"
+	"github.com/ethersphere/bee/pkg/log"
 	"io"
 	"net/http"
 	"strings"
@@ -74,14 +75,14 @@ func (s *Service) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 
 	payload, err := io.ReadAll(r.Body)
 	if err != nil {
-		logger.Debug("read body failed", "error", err)
+		logger.Debug("read body failed", log.LogItem{"error", err})
 		logger.Error(nil, "read body failed")
 		jsonhttp.InternalServerError(w, "pss send failed")
 		return
 	}
 	i, save, err := s.post.GetStampIssuer(headers.BatchID)
 	if err != nil {
-		logger.Debug("get postage batch issuer failed", "batch_id", hex.EncodeToString(headers.BatchID), "error", err)
+		logger.Debug("get postage batch issuer failed", log.LogItem{"batch_id", hex.EncodeToString(headers.BatchID)}, log.LogItem{"error", err})
 		logger.Error(nil, "get postage batch issuer failed")
 		switch {
 		case errors.Is(err, postage.ErrNotFound):
@@ -98,7 +99,7 @@ func (s *Service) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = s.pss.Send(r.Context(), topic, payload, stamper, queries.Recipient, targets)
 	if err != nil {
-		logger.Debug("send payload failed", "topic", paths.Topic, "error", err)
+		logger.Debug("send payload failed", log.LogItem{"topic", paths.Topic}, log.LogItem{"error", err})
 		logger.Error(nil, "send payload failed")
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):
@@ -110,7 +111,7 @@ func (s *Service) pssPostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err = save(); err != nil {
-		logger.Debug("save stamp failed", "error", err)
+		logger.Debug("save stamp failed", log.LogItem{"error", err})
 		logger.Error(nil, "save stamp failed")
 		jsonhttp.InternalServerError(w, "pss send failed")
 		return
@@ -138,7 +139,7 @@ func (s *Service) pssWsHandler(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		logger.Debug("upgrade failed", "error", err)
+		logger.Debug("upgrade failed", log.LogItem{"error", err})
 		logger.Error(nil, "upgrade failed")
 		jsonhttp.InternalServerError(w, "upgrade failed")
 		return
@@ -177,7 +178,7 @@ func (s *Service) pumpWs(conn *websocket.Conn, t string) {
 	defer cleanup()
 
 	conn.SetCloseHandler(func(code int, text string) error {
-		s.logger.Debug("pss ws: client gone", "code", code, "message", text)
+		s.logger.Debug("pss ws: client gone", log.LogItem{"code", code}, log.LogItem{"message", text})
 		close(gone)
 		return nil
 	})
@@ -187,13 +188,13 @@ func (s *Service) pumpWs(conn *websocket.Conn, t string) {
 		case b := <-dataC:
 			err = conn.SetWriteDeadline(time.Now().Add(writeDeadline))
 			if err != nil {
-				s.logger.Debug("pss ws: set write deadline failed", "error", err)
+				s.logger.Debug("pss ws: set write deadline failed", log.LogItem{"error", err})
 				return
 			}
 
 			err = conn.WriteMessage(websocket.BinaryMessage, b)
 			if err != nil {
-				s.logger.Debug("pss ws: write message failed", "error", err)
+				s.logger.Debug("pss ws: write message failed", log.LogItem{"error", err})
 				return
 			}
 
@@ -201,12 +202,12 @@ func (s *Service) pumpWs(conn *websocket.Conn, t string) {
 			// shutdown
 			err = conn.SetWriteDeadline(time.Now().Add(writeDeadline))
 			if err != nil {
-				s.logger.Debug("pss ws: set write deadline failed", "error", err)
+				s.logger.Debug("pss ws: set write deadline failed", log.LogItem{"error", err})
 				return
 			}
 			err = conn.WriteMessage(websocket.CloseMessage, []byte{})
 			if err != nil {
-				s.logger.Debug("pss ws: write close message failed", "error", err)
+				s.logger.Debug("pss ws: write close message failed", log.LogItem{"error", err})
 			}
 			return
 		case <-gone:
@@ -215,7 +216,7 @@ func (s *Service) pumpWs(conn *websocket.Conn, t string) {
 		case <-ticker.C:
 			err = conn.SetWriteDeadline(time.Now().Add(writeDeadline))
 			if err != nil {
-				s.logger.Debug("pss ws: set write deadline failed", "error", err)
+				s.logger.Debug("pss ws: set write deadline failed", log.LogItem{"error", err})
 				return
 			}
 			if err = conn.WriteMessage(websocket.PingMessage, nil); err != nil {

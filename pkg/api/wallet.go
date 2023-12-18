@@ -5,6 +5,7 @@
 package api
 
 import (
+	"github.com/ethersphere/bee/pkg/log"
 	"net/http"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -25,7 +26,7 @@ func (s *Service) walletHandler(w http.ResponseWriter, r *http.Request) {
 
 	nativeToken, err := s.chainBackend.BalanceAt(r.Context(), s.ethereumAddress, nil)
 	if err != nil {
-		logger.Debug("unable to acquire balance from the chain backend", "error", err)
+		logger.Debug("unable to acquire balance from the chain backend", log.LogItem{"error", err})
 		logger.Error(nil, "unable to acquire balance from the chain backend")
 		jsonhttp.InternalServerError(w, "unable to acquire balance from the chain backend")
 		return
@@ -33,7 +34,7 @@ func (s *Service) walletHandler(w http.ResponseWriter, r *http.Request) {
 
 	bzz, err := s.erc20Service.BalanceOf(r.Context(), s.ethereumAddress)
 	if err != nil {
-		logger.Debug("unable to acquire erc20 balance", "error", err)
+		logger.Debug("unable to acquire erc20 balance", log.LogItem{"error", err})
 		logger.Error(nil, "unable to acquire erc20 balance")
 		jsonhttp.InternalServerError(w, "unable to acquire erc20 balance")
 		return

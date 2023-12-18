@@ -6,6 +6,7 @@ package api
 
 import (
 	"encoding/json"
+	"github.com/ethersphere/bee/pkg/log"
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -34,13 +35,13 @@ func (s *Service) setWelcomeMessageHandler(w http.ResponseWriter, r *http.Reques
 	var data welcomeMessageRequest
 	err := json.NewDecoder(r.Body).Decode(&data)
 	if err != nil {
-		logger.Debug("failed to read body", "error", err)
+		logger.Debug("failed to read body", log.LogItem{"error", err})
 		jsonhttp.BadRequest(w, err)
 		return
 	}
 
 	if err := s.p2p.SetWelcomeMessage(data.WelcomeMesssage); err != nil {
-		logger.Debug("set welcome message failed", "error", err)
+		logger.Debug("set welcome message failed", log.LogItem{"error", err})
 		logger.Error(nil, "set welcome message failed")
 		jsonhttp.InternalServerError(w, err)
 		return

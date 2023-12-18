@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/ethersphere/bee/pkg/log"
 	"path"
 	"sort"
 	"time"
@@ -130,7 +131,7 @@ func Compact(ctx context.Context, basePath string, opts *Options, validate bool)
 			return err
 		}
 
-		logger.Info("shard truncated", "shard", fmt.Sprintf("%d/%d", shard, sharkyNoOfShards-1), "slot", end)
+		logger.Info("shard truncated", log.LogItem{"shard", fmt.Sprintf("%d/%d", shard, sharkyNoOfShards-1)}, log.LogItem{"slot", end})
 
 		if err := sharkyRecover.TruncateAt(context.Background(), uint8(shard), end+1); err != nil {
 			return fmt.Errorf("sharky truncate: %w", err)
@@ -141,7 +142,7 @@ func Compact(ctx context.Context, basePath string, opts *Options, validate bool)
 		return fmt.Errorf("sharky save: %w", err)
 	}
 
-	logger.Info("compaction finished", "duration", time.Since(n))
+	logger.Info("compaction finished", log.LogItem{"duration", time.Since(n)})
 
 	if validate {
 		logger.Info("performing chunk validation after compaction")

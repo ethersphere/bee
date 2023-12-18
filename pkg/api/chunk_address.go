@@ -5,6 +5,7 @@
 package api
 
 import (
+	"github.com/ethersphere/bee/pkg/log"
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -25,7 +26,7 @@ func (s *Service) hasChunkHandler(w http.ResponseWriter, r *http.Request) {
 
 	has, err := s.storer.ChunkStore().Has(r.Context(), paths.Address)
 	if err != nil {
-		logger.Debug("has chunk failed", "chunk_address", paths.Address, "error", err)
+		logger.Debug("has chunk failed", log.LogItem{"chunk_address", paths.Address}, log.LogItem{"error", err})
 		jsonhttp.BadRequest(w, err)
 		return
 	}

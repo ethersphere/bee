@@ -5,6 +5,7 @@
 package api
 
 import (
+	"github.com/ethersphere/bee/pkg/log"
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -16,7 +17,7 @@ func (s *Service) debugStorage(w http.ResponseWriter, r *http.Request) {
 
 	info, err := s.storer.DebugInfo(r.Context())
 	if err != nil {
-		logger.Debug("get debug storage info failed", "error", err)
+		logger.Debug("get debug storage info failed", log.LogItem{"error", err})
 		logger.Error(nil, "get debug storage info failed")
 		jsonhttp.InternalServerError(w, "debug storage info not available")
 		return

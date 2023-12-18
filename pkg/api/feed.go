@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/ethersphere/bee/pkg/log"
 	"net/http"
 	"time"
 
@@ -66,7 +67,7 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 	f := feeds.New(paths.Topic, paths.Owner)
 	lookup, err := s.feedFactory.NewLookup(feeds.Sequence, f)
 	if err != nil {
-		logger.Debug("new lookup failed", "owner", paths.Owner, "error", err)
+		logger.Debug("new lookup failed", log.LogItem{"owner", paths.Owner}, log.LogItem{"error", err})
 		logger.Error(nil, "new lookup failed")
 		switch {
 		case errors.Is(err, feeds.ErrFeedTypeNotFound):
@@ -79,7 +80,7 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 
 	ch, cur, next, err := lookup.At(r.Context(), queries.At, queries.After)
 	if err != nil {
-		logger.Debug("lookup at failed", "at", queries.At, "error", err)
+		logger.Debug("lookup at failed", log.LogItem{"at", queries.At}, log.LogItem{"error", err})
 		logger.Error(nil, "lookup at failed")
 		jsonhttp.NotFound(w, "lookup at failed")
 		return
@@ -95,7 +96,7 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 
 	ref, _, err := parseFeedUpdate(ch)
 	if err != nil {
-		logger.Debug("mapStructure feed update failed", "error", err)
+		logger.Debug("mapStructure feed update failed", log.LogItem{"error", err})
 		logger.Error(nil, "mapStructure feed update failed")
 		jsonhttp.InternalServerError(w, "mapStructure feed update failed")
 		return
@@ -103,7 +104,7 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 
 	curBytes, err := cur.MarshalBinary()
 	if err != nil {
-		logger.Debug("marshal current index failed", "error", err)
+		logger.Debug("marshal current index failed", log.LogItem{"error", err})
 		logger.Error(nil, "marshal current index failed")
 		jsonhttp.InternalServerError(w, "marshal current index failed")
 		return
@@ -111,7 +112,7 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 
 	nextBytes, err := next.MarshalBinary()
 	if err != nil {
-		logger.Debug("marshal next index failed", "error", err)
+		logger.Debug("marshal next index failed", log.LogItem{"error", err})
 		logger.Error(nil, "marshal next index failed")
 		jsonhttp.InternalServerError(w, "marshal next index failed")
 		return
@@ -154,7 +155,7 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	if deferred || headers.Pin {
 		tag, err = s.storer.NewSession()
 		if err != nil {
-			logger.Debug("get or create tag failed", "error", err)
+			logger.Debug("get or create tag failed", log.LogItem{"error", err})
 			logger.Error(nil, "get or create tag failed")
 			switch {
 			case errors.Is(err, storage.ErrNotFound):
@@ -173,7 +174,7 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		Deferred: deferred,
 	})
 	if err != nil {
-		logger.Debug("get putter failed", "error", err)
+		logger.Debug("get putter failed", log.LogItem{"error", err})
 		logger.Error(nil, "get putter failed")
 		switch {
 		case errors.Is(err, errBatchUnusable) || errors.Is(err, postage.ErrNotUsable):
@@ -199,7 +200,7 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	l := loadsave.New(s.storer.ChunkStore(), requestPipelineFactory(r.Context(), putter, false))
 	feedManifest, err := manifest.NewDefaultManifest(l, false)
 	if err != nil {
-		logger.Debug("create manifest failed", "error", err)
+		logger.Debug("create manifest failed", log.LogItem{"error", err})
 		logger.Error(nil, "create manifest failed")
 		switch {
 		case errors.Is(err, manifest.ErrInvalidManifestType):
@@ -220,7 +221,7 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	// a feed manifest stores the metadata at the root "/" path
 	err = feedManifest.Add(r.Context(), "/", manifest.NewEntry(swarm.NewAddress(emptyAddr), meta))
 	if err != nil {
-		logger.Debug("add manifest entry failed", "error", err)
+		logger.Debug("add manifest entry failed", log.LogItem{"error", err})
 		logger.Error(nil, "add manifest entry failed")
 		switch {
 		case errors.Is(err, simple.ErrEmptyPath):
@@ -234,7 +235,7 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	ref, err := feedManifest.Store(r.Context())
 	if err != nil {
-		logger.Debug("store manifest failed", "error", err)
+		logger.Debug("store manifest failed", log.LogItem{"error", err})
 		logger.Error(nil, "store manifest failed")
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):
@@ -247,7 +248,7 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = putter.Done(ref)
 	if err != nil {
-		logger.Debug("done split failed", "error", err)
+		logger.Debug("done split failed", log.LogItem{"error", err})
 		logger.Error(nil, "done split failed")
 		jsonhttp.InternalServerError(ow, "done split failed")
 		return

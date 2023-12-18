@@ -20,6 +20,7 @@ package leveldb
 import (
 	"errors"
 	"fmt"
+	"github.com/ethersphere/bee/pkg/log"
 	"strings"
 	"time"
 
@@ -151,7 +152,7 @@ func migrateGrace(s *Store) error {
 			len(k) > 32 &&
 			!strings.Contains(stk, "swap") &&
 			!strings.Contains(stk, "peer") {
-			s.logger.Debug("found key designated to deletion", "key", k)
+			s.logger.Debug("found key designated to deletion", log.LogItem{"key", k})
 			collectedKeys = append(collectedKeys, stk)
 		}
 
@@ -163,12 +164,12 @@ func migrateGrace(s *Store) error {
 	for _, v := range collectedKeys {
 		err := s.Delete(v)
 		if err != nil {
-			s.logger.Debug("error deleting key", "key", v)
+			s.logger.Debug("error deleting key", log.LogItem{"key", v})
 			continue
 		}
-		s.logger.Debug("deleted key", "key", v)
+		s.logger.Debug("deleted key", log.LogItem{"key", v})
 	}
-	s.logger.Debug("keys deleted", "count", len(collectedKeys))
+	s.logger.Debug("keys deleted", log.LogItem{"count", len(collectedKeys)})
 
 	return nil
 }
@@ -187,7 +188,7 @@ func migrateSwap(s *Store) error {
 			}
 
 			if len(split[1]) != 20 {
-				s.logger.Debug("skipping already migrated key", "key", key)
+				s.logger.Debug("skipping already migrated key", log.LogItem{"key", key})
 				continue
 			}
 
@@ -196,7 +197,7 @@ func migrateSwap(s *Store) error {
 
 			var val string
 			if err = s.Get(fixed, &val); err == nil {
-				s.logger.Debug("skipping duplicate key", "key", key)
+				s.logger.Debug("skipping duplicate key", log.LogItem{"key", key})
 				if err = s.Delete(key); err != nil {
 					return err
 				}
@@ -233,7 +234,7 @@ func migrateSwap(s *Store) error {
 func migrateKademliaMetrics(s *Store) error {
 	for _, prefix := range []string{"peer-last-seen-timestamp", "peer-total-connection-duration"} {
 		start := time.Now()
-		s.logger.Debug("removing kademlia metrics", "metrics_prefix", prefix)
+		s.logger.Debug("removing kademlia metrics", log.LogItem{"metrics_prefix", prefix})
 
 		keys, err := collectKeys(s, prefix)
 		if err != nil {
@@ -244,7 +245,7 @@ func migrateKademliaMetrics(s *Store) error {
 			return err
 		}
 
-		s.logger.Debug("removing kademlia metrics done", "metrics_prefix", prefix, "elapsed", time.Since(start))
+		s.logger.Debug("removing kademlia metrics done", log.LogItem{"metrics_prefix", prefix}, log.LogItem{"elapsed", time.Since(start)})
 	}
 	return nil
 }
@@ -260,7 +261,7 @@ func (s *Store) migrate(schemaName string) error {
 		return nil
 	}
 
-	s.logger.Debug("statestore: need to run data migrations to schema", "migration_count", len(migrations), "schema_name", schemaName)
+	s.logger.Debug("statestore: need to run data migrations to schema", log.LogItem{"migration_count", len(migrations)}, log.LogItem{"schema_name", schemaName})
 	for i := 0; i < len(migrations); i++ {
 		err := migrations[i].fn(s)
 		if err != nil {
@@ -274,7 +275,7 @@ func (s *Store) migrate(schemaName string) error {
 		if err != nil {
 			return err
 		}
-		s.logger.Debug("statestore: successfully ran migration", "migration_number", i, "schema_name", schemaName)
+		s.logger.Debug("statestore: successfully ran migration", log.LogItem{"migration_number", i}, log.LogItem{"schema_name", schemaName})
 	}
 	return nil
 }
@@ -295,7 +296,7 @@ func getMigrations(currentSchema, targetSchema string, allSchemeMigrations []mig
 				return nil, errors.New("found schema name for the second time when looking for migrations")
 			}
 			foundCurrent = true
-			store.logger.Debug("statestore migration: migrating schema", "current_schema_name", currentSchema, "next_schema_name", dbSchemaCurrent, "total_migration_count", len(allSchemeMigrations)-i)
+			store.logger.Debug("statestore migration: migrating schema", log.LogItem{"current_schema_name", currentSchema}, log.LogItem{"next_schema_name", dbSchemaCurrent}, log.LogItem{"total_migration_count", len(allSchemeMigrations) - i})
 			continue // current schema migration should not be executed (already has been when schema was migrated to)
 		case targetSchema:
 			foundTarget = true
@@ -353,7 +354,7 @@ func deleteKeys(s *Store, keys []string) error {
 			return fmt.Errorf("error deleting key %s: %w", v, err)
 		}
 	}
-	s.logger.Debug("keys deleted", "count", len(keys))
+	s.logger.Debug("keys deleted", log.LogItem{"count", len(keys)})
 	return nil
 }
 

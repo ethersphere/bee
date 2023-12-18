@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"github.com/ethersphere/bee/pkg/log"
 	"net/http"
 	"strconv"
 
@@ -49,7 +50,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if deferred || headers.Pin {
 		tag, err = s.getOrCreateSessionID(headers.SwarmTag)
 		if err != nil {
-			logger.Debug("get or create tag failed", "error", err)
+			logger.Debug("get or create tag failed", log.LogItem{"error", err})
 			logger.Error(nil, "get or create tag failed")
 			switch {
 			case errors.Is(err, storage.ErrNotFound):
@@ -68,7 +69,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		Deferred: deferred,
 	})
 	if err != nil {
-		logger.Debug("get putter failed", "error", err)
+		logger.Debug("get putter failed", log.LogItem{"error", err})
 		logger.Error(nil, "get putter failed")
 		switch {
 		case errors.Is(err, errBatchUnusable) || errors.Is(err, postage.ErrNotUsable):
@@ -94,7 +95,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	p := requestPipelineFn(putter, headers.Encrypt)
 	address, err := p(r.Context(), r.Body)
 	if err != nil {
-		logger.Debug("split write all failed", "error", err)
+		logger.Debug("split write all failed", log.LogItem{"error", err})
 		logger.Error(nil, "split write all failed")
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):
@@ -107,7 +108,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	err = putter.Done(address)
 	if err != nil {
-		logger.Debug("done split failed", "error", err)
+		logger.Debug("done split failed", log.LogItem{"error", err})
 		logger.Error(nil, "done split failed")
 		jsonhttp.InternalServerError(ow, "done split failed")
 		return
@@ -156,7 +157,7 @@ func (s *Service) bytesHeadHandler(w http.ResponseWriter, r *http.Request) {
 
 	ch, err := getter.Get(r.Context(), paths.Address)
 	if err != nil {
-		logger.Debug("get root chunk failed", "chunk_address", paths.Address, "error", err)
+		logger.Debug("get root chunk failed", log.LogItem{"chunk_address", paths.Address}, log.LogItem{"error", err})
 		logger.Error(nil, "get rook chunk failed")
 		w.WriteHeader(http.StatusNotFound)
 		return

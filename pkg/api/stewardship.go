@@ -6,6 +6,7 @@ package api
 
 import (
 	"errors"
+	"github.com/ethersphere/bee/pkg/log"
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/postage"
@@ -45,7 +46,7 @@ func (s *Service) stewardshipPutHandler(w http.ResponseWriter, r *http.Request) 
 		logger.Debug("missing postage batch id for re-upload")
 		batchID, err = s.storer.BatchHint(paths.Address)
 		if err != nil {
-			logger.Debug("unable to find old batch for reference", "error", err)
+			logger.Debug("unable to find old batch for reference", log.LogItem{"error", err})
 			logger.Error(nil, "unable to find old batch for reference")
 			jsonhttp.NotFound(w, "unable to find old batch for reference, provide new batch id")
 			return
@@ -71,14 +72,14 @@ func (s *Service) stewardshipPutHandler(w http.ResponseWriter, r *http.Request) 
 	err = s.steward.Reupload(r.Context(), paths.Address, stamper)
 	if err != nil {
 		err = errors.Join(err, save())
-		logger.Debug("re-upload failed", "chunk_address", paths.Address, "error", err)
+		logger.Debug("re-upload failed", log.LogItem{"chunk_address", paths.Address}, log.LogItem{"error", err})
 		logger.Error(nil, "re-upload failed")
 		jsonhttp.InternalServerError(w, "re-upload failed")
 		return
 	}
 
 	if err = save(); err != nil {
-		logger.Debug("unable to save stamper data", "batchID", batchID, "error", err)
+		logger.Debug("unable to save stamper data", log.LogItem{"batchID", batchID}, log.LogItem{"error", err})
 		logger.Error(nil, "unable to save stamper data")
 		jsonhttp.InternalServerError(w, "unable to save stamper data")
 		return
@@ -105,7 +106,7 @@ func (s *Service) stewardshipGetHandler(w http.ResponseWriter, r *http.Request) 
 
 	res, err := s.steward.IsRetrievable(r.Context(), paths.Address)
 	if err != nil {
-		logger.Debug("is retrievable check failed", "chunk_address", paths.Address, "error", err)
+		logger.Debug("is retrievable check failed", log.LogItem{"chunk_address", paths.Address}, log.LogItem{"error", err})
 		logger.Error(nil, "is retrievable")
 		jsonhttp.InternalServerError(w, "is retrievable check failed")
 		return

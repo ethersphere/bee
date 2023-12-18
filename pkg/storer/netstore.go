@@ -7,6 +7,7 @@ package storer
 import (
 	"context"
 	"errors"
+	"github.com/ethersphere/bee/pkg/log"
 
 	"github.com/ethersphere/bee/pkg/pusher"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -47,9 +48,9 @@ func (db *DB) DirectUpload() PutterSession {
 								return ErrDBQuit
 							case err := <-op.Err:
 								if errors.Is(err, pusher.ErrShallowReceipt) {
-									db.logger.Debug("direct upload: shallow receipt received, retrying", "chunk", ch.Address())
+									db.logger.Debug("direct upload: shallow receipt received, retrying", log.LogItem{"chunk", ch.Address()})
 								} else if errors.Is(err, topology.ErrNotFound) {
-									db.logger.Debug("direct upload: no peers available, retrying", "chunk", ch.Address())
+									db.logger.Debug("direct upload: no peers available, retrying", log.LogItem{"chunk", ch.Address()})
 								} else {
 									return err
 								}
@@ -93,7 +94,7 @@ func (db *DB) Download(cache bool) storage.Getter {
 
 								err := db.Cache().Put(db.cacheLimiter.ctx, ch)
 								if err != nil {
-									db.logger.Debug("putting chunk to cache failed", "error", err, "chunk_address", ch.Address())
+									db.logger.Debug("putting chunk to cache failed", log.LogItem{"error", err}, log.LogItem{"chunk_address", ch.Address()})
 								}
 							}()
 						}

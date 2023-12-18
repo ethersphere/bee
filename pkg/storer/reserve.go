@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/ethersphere/bee/pkg/log"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -108,7 +109,7 @@ func (db *DB) radiusWorker(ctx context.Context, wakeUpDur time.Duration) {
 				if err != nil {
 					db.logger.Error(err, "reserve set radius")
 				}
-				db.logger.Info("reserve radius decrease", "radius", radius)
+				db.logger.Info("reserve radius decrease", log.LogItem{"radius", radius})
 			}
 			db.metrics.StorageRadius.Set(float64(radius))
 		}
@@ -173,9 +174,9 @@ func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
 		}
 
 		for batch := range evictBatches {
-			db.logger.Debug("reserve size worker, invalid batch id", "batch_id", hex.EncodeToString([]byte(batch)))
+			db.logger.Debug("reserve size worker, invalid batch id", log.LogItem{"batch_id", hex.EncodeToString([]byte(batch))})
 			if err := db.EvictBatch(ctx, []byte(batch)); err != nil {
-				db.logger.Warning("reserve size worker, batch eviction", "batch_id", hex.EncodeToString([]byte(batch)), "error", err)
+				db.logger.Warning("reserve size worker, batch eviction", log.LogItem{"batch_id", hex.EncodeToString([]byte(batch))}, log.LogItem{"error", err})
 			}
 		}
 
@@ -207,7 +208,7 @@ func (db *DB) evictionWorker(ctx context.Context) {
 
 			err := db.evictExpiredBatches(ctx)
 			if err != nil {
-				db.logger.Warning("eviction worker expired batches", "error", err)
+				db.logger.Warning("eviction worker expired batches", log.LogItem{"error", err})
 			}
 
 			db.events.Trigger(batchExpiryDone)
@@ -240,7 +241,7 @@ func (db *DB) evictExpiredBatches(ctx context.Context) error {
 			return err
 		}
 		if evicted > 0 {
-			db.logger.Debug("evicted expired batch", "batch_id", hex.EncodeToString(batchID), "total_evicted", evicted)
+			db.logger.Debug("evicted expired batch", log.LogItem{"batch_id", hex.EncodeToString(batchID)}, log.LogItem{"total_evicted", evicted})
 		}
 		err = db.Execute(ctx, func(tx internal.Storage) error {
 			return tx.IndexStore().Delete(&expiredBatchItem{BatchID: batchID})
@@ -374,10 +375,10 @@ func (db *DB) evictBatch(
 		}
 		db.logger.Debug(
 			"reserve eviction",
-			"uptoBin", upToBin,
-			"evicted", evicted,
-			"batchID", hex.EncodeToString(batchID),
-			"new_size", db.reserve.Size(),
+			log.LogItem{"uptoBin", upToBin},
+			log.LogItem{"evicted", evicted},
+			log.LogItem{"batchID", hex.EncodeToString(batchID)},
+			log.LogItem{"new_size", db.reserve.Size()},
 		)
 	}()
 
@@ -406,7 +407,7 @@ func (db *DB) unreserve(ctx context.Context) (err error) {
 	if target <= 0 {
 		return nil
 	}
-	db.logger.Info("unreserve start", "target", target, "radius", radius)
+	db.logger.Info("unreserve start", log.LogItem{"target", target}, log.LogItem{"radius", radius})
 
 	batchExpiry, unsub := db.events.Subscribe(batchExpiry)
 	defer unsub()
@@ -444,13 +445,13 @@ func (db *DB) unreserve(ctx context.Context) (err error) {
 			}
 
 			if totalEvicted >= target {
-				db.logger.Info("unreserve finished", "evicted", totalEvicted, "radius", radius)
+				db.logger.Info("unreserve finished", log.LogItem{"evicted", totalEvicted}, log.LogItem{"radius", radius})
 				return nil
 			}
 		}
 
 		radius++
-		db.logger.Info("reserve radius increase", "radius", radius)
+		db.logger.Info("reserve radius increase", log.LogItem{"radius", radius})
 		_ = db.reserve.SetRadius(db.repo.IndexStore(), radius)
 	}
 

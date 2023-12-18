@@ -9,6 +9,7 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"github.com/ethersphere/bee/pkg/log"
 	"hash"
 	"math/big"
 	"sort"
@@ -188,7 +189,7 @@ func (db *DB) ReserveSample(
 				chunk, err := db.ChunkStore().Get(ctx, chItem.ChunkAddress)
 				if err != nil {
 					wstat.ChunkLoadFailed++
-					db.logger.Debug("failed loading chunk", "chunk_address", chItem.ChunkAddress, "error", err)
+					db.logger.Debug("failed loading chunk", log.LogItem{"chunk_address", chItem.ChunkAddress}, log.LogItem{"error", err})
 					continue
 				}
 
@@ -267,7 +268,7 @@ func (db *DB) ReserveSample(
 			stamp, err := chunkstamp.LoadWithBatchID(db.repo.IndexStore(), "reserve", item.ChunkAddress, item.Stamp.BatchID())
 			if err != nil {
 				stats.StampLoadFailed++
-				db.logger.Debug("failed loading stamp", "chunk_address", item.ChunkAddress, "error", err)
+				db.logger.Debug("failed loading stamp", log.LogItem{"chunk_address", item.ChunkAddress}, log.LogItem{"error", err})
 				continue
 			}
 
@@ -281,7 +282,7 @@ func (db *DB) ReserveSample(
 
 			if _, err := db.validStamp(ch); err != nil {
 				stats.InvalidStamp++
-				db.logger.Debug("invalid stamp for chunk", "chunk_address", ch.Address(), "error", err)
+				db.logger.Debug("invalid stamp for chunk", log.LogItem{"chunk_address", ch.Address()}, log.LogItem{"error", err})
 				continue
 			}
 
@@ -298,12 +299,12 @@ func (db *DB) ReserveSample(
 	allStats.TotalDuration = time.Since(t)
 
 	if err := g.Wait(); err != nil {
-		db.logger.Info("reserve sampler finished with error", "err", err, "duration", time.Since(t), "storage_radius", storageRadius, "consensus_time_ns", consensusTime, "stats", fmt.Sprintf("%+v", allStats))
+		db.logger.Info("reserve sampler finished with error", log.LogItem{"err", err}, log.LogItem{"duration", time.Since(t)}, log.LogItem{"storage_radius", storageRadius}, log.LogItem{"consensus_time_ns", consensusTime}, log.LogItem{"stats", fmt.Sprintf("%+v", allStats)})
 
 		return Sample{}, fmt.Errorf("sampler: failed creating sample: %w", err)
 	}
 
-	db.logger.Info("reserve sampler finished", "duration", time.Since(t), "storage_radius", storageRadius, "consensus_time_ns", consensusTime, "stats", fmt.Sprintf("%+v", allStats))
+	db.logger.Info("reserve sampler finished", log.LogItem{"duration", time.Since(t)}, log.LogItem{"storage_radius", storageRadius}, log.LogItem{"consensus_time_ns", consensusTime}, log.LogItem{"stats", fmt.Sprintf("%+v", allStats)})
 
 	return Sample{Stats: *allStats, Items: sampleItems}, nil
 }

@@ -6,6 +6,7 @@ package api
 
 import (
 	"errors"
+	"github.com/ethersphere/bee/pkg/log"
 	"math/big"
 	"net/http"
 
@@ -64,14 +65,14 @@ func (s *Service) chequebookBalanceHandler(w http.ResponseWriter, r *http.Reques
 
 	balance, err := s.chequebook.Balance(r.Context())
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
-		logger.Debug("get balance failed", "error", err)
+		logger.Debug("get balance failed", log.LogItem{"error", err})
 		logger.Error(nil, "get balance failed")
 		jsonhttp.MethodNotAllowed(w, err)
 		return
 	}
 	if err != nil {
 		jsonhttp.InternalServerError(w, errChequebookBalance)
-		logger.Debug("get balance failed", "error", err)
+		logger.Debug("get balance failed", log.LogItem{"error", err})
 		logger.Error(nil, "get balance failed")
 		return
 	}
@@ -79,7 +80,7 @@ func (s *Service) chequebookBalanceHandler(w http.ResponseWriter, r *http.Reques
 	availableBalance, err := s.chequebook.AvailableBalance(r.Context())
 	if err != nil {
 		jsonhttp.InternalServerError(w, errChequebookBalance)
-		logger.Debug("get available balance failed", "error", err)
+		logger.Debug("get available balance failed", log.LogItem{"error", err})
 		logger.Error(nil, "get available balance failed")
 		return
 	}
@@ -105,14 +106,14 @@ func (s *Service) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reque
 	var lastSentResponse *chequebookLastChequePeerResponse
 	lastSent, err := s.swap.LastSentCheque(paths.Peer)
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
-		logger.Debug("get last sent cheque failed", "peer_address", paths.Peer, "error", err)
-		logger.Error(nil, "get last sent cheque failed", "peer_address", paths.Peer)
+		logger.Debug("get last sent cheque failed", log.LogItem{"peer_address", paths.Peer}, log.LogItem{"error", err})
+		logger.Error(nil, "get last sent cheque failed", log.LogItem{"peer_address", paths.Peer})
 		jsonhttp.MethodNotAllowed(w, err)
 		return
 	}
 	if err != nil && !errors.Is(err, chequebook.ErrNoCheque) && !errors.Is(err, swap.ErrNoChequebook) {
-		logger.Debug("get last sent cheque failed", "peer_address", paths.Peer, "error", err)
-		logger.Error(nil, "get last sent cheque failed", "peer_address", paths.Peer)
+		logger.Debug("get last sent cheque failed", log.LogItem{"peer_address", paths.Peer}, log.LogItem{"error", err})
+		logger.Error(nil, "get last sent cheque failed", log.LogItem{"peer_address", paths.Peer})
 		jsonhttp.InternalServerError(w, errCantLastChequePeer)
 		return
 	}
@@ -127,8 +128,8 @@ func (s *Service) chequebookLastPeerHandler(w http.ResponseWriter, r *http.Reque
 	var lastReceivedResponse *chequebookLastChequePeerResponse
 	lastReceived, err := s.swap.LastReceivedCheque(paths.Peer)
 	if err != nil && !errors.Is(err, chequebook.ErrNoCheque) {
-		logger.Debug("get last received cheque failed", "peer_address", paths.Peer, "error", err)
-		logger.Error(nil, "get last received cheque failed", "peer_address", paths.Peer)
+		logger.Debug("get last received cheque failed", log.LogItem{"peer_address", paths.Peer}, log.LogItem{"error", err})
+		logger.Error(nil, "get last received cheque failed", log.LogItem{"peer_address", paths.Peer})
 		jsonhttp.InternalServerError(w, errCantLastChequePeer)
 		return
 	}
@@ -152,14 +153,14 @@ func (s *Service) chequebookAllLastHandler(w http.ResponseWriter, _ *http.Reques
 
 	lastchequessent, err := s.swap.LastSentCheques()
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
-		logger.Debug("get all last sent cheque failed", "error", err)
+		logger.Debug("get all last sent cheque failed", log.LogItem{"error", err})
 		logger.Error(nil, "get all last sent cheque failed")
 		jsonhttp.MethodNotAllowed(w, err)
 		return
 	}
 	if err != nil {
 		if !errors.Is(err, swap.ErrNoChequebook) {
-			logger.Debug("get all last sent cheque failed", "error", err)
+			logger.Debug("get all last sent cheque failed", log.LogItem{"error", err})
 			logger.Error(nil, "get all last sent cheque failed")
 			jsonhttp.InternalServerError(w, errCantLastCheque)
 			return
@@ -168,7 +169,7 @@ func (s *Service) chequebookAllLastHandler(w http.ResponseWriter, _ *http.Reques
 	}
 	lastchequesreceived, err := s.swap.LastReceivedCheques()
 	if err != nil {
-		logger.Debug("get all last received cheque failed", "error", err)
+		logger.Debug("get all last received cheque failed", log.LogItem{"error", err})
 		logger.Error(nil, "get all last received cheque failed")
 		jsonhttp.InternalServerError(w, errCantLastCheque)
 		return
@@ -243,14 +244,14 @@ func (s *Service) swapCashoutHandler(w http.ResponseWriter, r *http.Request) {
 
 	txHash, err := s.swap.CashCheque(r.Context(), paths.Peer)
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
-		logger.Debug("cash cheque failed", "peer_address", paths.Peer, "error", err)
-		logger.Error(nil, "cash cheque failed", "peer_address", paths.Peer)
+		logger.Debug("cash cheque failed", log.LogItem{"peer_address", paths.Peer}, log.LogItem{"error", err})
+		logger.Error(nil, "cash cheque failed", log.LogItem{"peer_address", paths.Peer})
 		jsonhttp.MethodNotAllowed(w, err)
 		return
 	}
 	if err != nil {
-		logger.Debug("cash cheque failed", "peer_address", paths.Peer, "error", err)
-		logger.Error(nil, "cash cheque failed", "peer_address", paths.Peer)
+		logger.Debug("cash cheque failed", log.LogItem{"peer_address", paths.Peer}, log.LogItem{"error", err})
+		logger.Error(nil, "cash cheque failed", log.LogItem{"peer_address", paths.Peer})
 		jsonhttp.InternalServerError(w, errCannotCash)
 		return
 	}
@@ -285,26 +286,26 @@ func (s *Service) swapCashoutStatusHandler(w http.ResponseWriter, r *http.Reques
 
 	status, err := s.swap.CashoutStatus(r.Context(), paths.Peer)
 	if errors.Is(err, postagecontract.ErrChainDisabled) {
-		logger.Debug("get cashout status failed", "peer_address", paths.Peer, "error", err)
-		logger.Error(nil, "get cashout status failed", "peer_address", paths.Peer)
+		logger.Debug("get cashout status failed", log.LogItem{"peer_address", paths.Peer}, log.LogItem{"error", err})
+		logger.Error(nil, "get cashout status failed", log.LogItem{"peer_address", paths.Peer})
 		jsonhttp.MethodNotAllowed(w, err)
 		return
 	}
 	if err != nil {
 		if errors.Is(err, chequebook.ErrNoCheque) {
-			logger.Debug("get cashout status failed", "peer_address", paths.Peer, "error", err)
-			logger.Error(nil, "get cashout status failed", "peer_address", paths.Peer)
+			logger.Debug("get cashout status failed", log.LogItem{"peer_address", paths.Peer}, log.LogItem{"error", err})
+			logger.Error(nil, "get cashout status failed", log.LogItem{"peer_address", paths.Peer})
 			jsonhttp.NotFound(w, errNoCheque)
 			return
 		}
 		if errors.Is(err, chequebook.ErrNoCashout) {
-			logger.Debug("get cashout status failed", "peer_address", paths.Peer, "error", err)
-			logger.Error(nil, "get cashout status failed", "peer_address", paths.Peer)
+			logger.Debug("get cashout status failed", log.LogItem{"peer_address", paths.Peer}, log.LogItem{"error", err})
+			logger.Error(nil, "get cashout status failed", log.LogItem{"peer_address", paths.Peer})
 			jsonhttp.NotFound(w, errNoCashout)
 			return
 		}
-		logger.Debug("get cashout status failed", "peer_address", paths.Peer, "error", err)
-		logger.Error(nil, "get cashout status failed", "peer_address", paths.Peer)
+		logger.Debug("get cashout status failed", log.LogItem{"peer_address", paths.Peer}, log.LogItem{"error", err})
+		logger.Error(nil, "get cashout status failed", log.LogItem{"peer_address", paths.Peer})
 		jsonhttp.InternalServerError(w, errCannotCashStatus)
 		return
 	}
@@ -354,13 +355,13 @@ func (s *Service) chequebookWithdrawHandler(w http.ResponseWriter, r *http.Reque
 
 	txHash, err := s.chequebook.Withdraw(r.Context(), queries.Amount)
 	if errors.Is(err, chequebook.ErrInsufficientFunds) {
-		logger.Debug("withdraw failed", "error", err)
+		logger.Debug("withdraw failed", log.LogItem{"error", err})
 		logger.Error(nil, "withdraw failed")
 		jsonhttp.BadRequest(w, errChequebookInsufficientFunds)
 		return
 	}
 	if err != nil {
-		logger.Debug("withdraw failed", "error", err)
+		logger.Debug("withdraw failed", log.LogItem{"error", err})
 		logger.Error(nil, "withdraw failed")
 		jsonhttp.InternalServerError(w, errChequebookNoWithdraw)
 		return
@@ -382,13 +383,13 @@ func (s *Service) chequebookDepositHandler(w http.ResponseWriter, r *http.Reques
 
 	txHash, err := s.chequebook.Deposit(r.Context(), queries.Amount)
 	if errors.Is(err, chequebook.ErrInsufficientFunds) {
-		logger.Debug("chequebook deposit: deposit failed", "error", err)
+		logger.Debug("chequebook deposit: deposit failed", log.LogItem{"error", err})
 		logger.Error(nil, "chequebook deposit: deposit failed")
 		jsonhttp.BadRequest(w, errChequebookInsufficientFunds)
 		return
 	}
 	if err != nil {
-		logger.Debug("chequebook deposit: deposit failed", "error", err)
+		logger.Debug("chequebook deposit: deposit failed", log.LogItem{"error", err})
 		logger.Error(nil, "chequebook deposit: deposit failed")
 		jsonhttp.InternalServerError(w, errChequebookNoDeposit)
 		return

@@ -6,6 +6,7 @@ package libp2p
 
 import (
 	"errors"
+	"github.com/ethersphere/bee/pkg/log"
 	"strings"
 
 	"github.com/coreos/go-semver/semver"
@@ -48,7 +49,7 @@ func (s *Service) protocolSemverMatcher(base protocol.ID) (func(protocol.ID) boo
 
 		chvers, err := semver.NewVersion(chparts[chpartsLen-2])
 		if err != nil {
-			s.logger.Debug("invalid protocol version", "version", check, "error", err)
+			s.logger.Debug("invalid protocol version", log.LogItem{"version", check}, log.LogItem{"error", err})
 			return false
 		}
 

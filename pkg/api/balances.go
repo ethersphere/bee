@@ -6,6 +6,7 @@ package api
 
 import (
 	"errors"
+	"github.com/ethersphere/bee/pkg/log"
 	"net/http"
 
 	"github.com/ethersphere/bee/pkg/accounting"
@@ -39,7 +40,7 @@ func (s *Service) balancesHandler(w http.ResponseWriter, _ *http.Request) {
 	balances, err := s.accounting.Balances()
 	if err != nil {
 		jsonhttp.InternalServerError(w, errCantBalances)
-		logger.Debug("get balances failed", "error", err)
+		logger.Debug("get balances failed", log.LogItem{"error", err})
 		logger.Error(nil, "get balances failed")
 		return
 	}
@@ -74,8 +75,8 @@ func (s *Service) peerBalanceHandler(w http.ResponseWriter, r *http.Request) {
 			jsonhttp.NotFound(w, errNoBalance)
 			return
 		}
-		logger.Debug("get peer balance failed", "peer_address", paths.Peer, "error", err)
-		logger.Error(nil, "get peer balance failed", "peer_address", paths.Peer)
+		logger.Debug("get peer balance failed", log.LogItem{"peer_address", paths.Peer}, log.LogItem{"error", err})
+		logger.Error(nil, "get peer balance failed", log.LogItem{"peer_address", paths.Peer})
 		jsonhttp.InternalServerError(w, errCantBalance)
 		return
 	}
@@ -92,7 +93,7 @@ func (s *Service) compensatedBalancesHandler(w http.ResponseWriter, _ *http.Requ
 	balances, err := s.accounting.CompensatedBalances()
 	if err != nil {
 		jsonhttp.InternalServerError(w, errCantBalances)
-		logger.Debug("get compensated balances failed", "error", err)
+		logger.Debug("get compensated balances failed", log.LogItem{"error", err})
 		logger.Error(nil, "get compensated balances failed")
 		return
 	}
@@ -127,8 +128,8 @@ func (s *Service) compensatedPeerBalanceHandler(w http.ResponseWriter, r *http.R
 			jsonhttp.NotFound(w, errNoBalance)
 			return
 		}
-		s.logger.Debug("get compensated balances failed", "peer_address", paths.Peer, "error", err)
-		s.logger.Error(nil, "get compensated balances failed", "peer_address", paths.Peer)
+		s.logger.Debug("get compensated balances failed", log.LogItem{"peer_address", paths.Peer}, log.LogItem{"error", err})
+		s.logger.Error(nil, "get compensated balances failed", log.LogItem{"peer_address", paths.Peer})
 		jsonhttp.InternalServerError(w, errCantBalance)
 		return
 	}

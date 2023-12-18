@@ -7,6 +7,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
+	"github.com/ethersphere/bee/pkg/log"
 	"io"
 	"net/http"
 	"time"
@@ -55,7 +56,7 @@ func (s *Service) createTagHandler(w http.ResponseWriter, r *http.Request) {
 
 	tag, err := s.storer.NewSession()
 	if err != nil {
-		logger.Debug("create tag failed", "error", err)
+		logger.Debug("create tag failed", log.LogItem{"error", err})
 		logger.Error(nil, "create tag failed")
 		jsonhttp.InternalServerError(w, "cannot create tag")
 		return
@@ -78,13 +79,13 @@ func (s *Service) getTagHandler(w http.ResponseWriter, r *http.Request) {
 	tag, err := s.storer.Session(paths.TagID)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			logger.Debug("tag not found", "tag_id", paths.TagID)
+			logger.Debug("tag not found", log.LogItem{"tag_id", paths.TagID})
 			logger.Error(nil, "tag not found")
 			jsonhttp.NotFound(w, "tag not present")
 			return
 		}
-		logger.Debug("get tag failed", "tag_id", paths.TagID, "error", err)
-		logger.Error(nil, "get tag failed", "tag_id", paths.TagID)
+		logger.Debug("get tag failed", log.LogItem{"tag_id", paths.TagID}, log.LogItem{"error", err})
+		logger.Error(nil, "get tag failed", log.LogItem{"tag_id", paths.TagID})
 		jsonhttp.InternalServerError(w, "cannot get tag")
 		return
 	}
@@ -106,13 +107,13 @@ func (s *Service) deleteTagHandler(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.storer.DeleteSession(paths.TagID); err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			logger.Debug("tag not found", "tag_id", paths.TagID)
+			logger.Debug("tag not found", log.LogItem{"tag_id", paths.TagID})
 			logger.Error(nil, "tag not found")
 			jsonhttp.NotFound(w, "tag not present")
 			return
 		}
-		logger.Debug("get tag failed", "tag_id", paths.TagID, "error", err)
-		logger.Error(nil, "get tag failed", "tag_id", paths.TagID)
+		logger.Debug("get tag failed", log.LogItem{"tag_id", paths.TagID}, log.LogItem{"error", err})
+		logger.Error(nil, "get tag failed", log.LogItem{"tag_id", paths.TagID})
 		jsonhttp.InternalServerError(w, "cannot get tag")
 		return
 	}
@@ -136,7 +137,7 @@ func (s *Service) doneSplitHandler(w http.ResponseWriter, r *http.Request) {
 		if jsonhttp.HandleBodyReadError(err, w) {
 			return
 		}
-		logger.Debug("read request body failed", "error", err)
+		logger.Debug("read request body failed", log.LogItem{"error", err})
 		logger.Error(nil, "read request body failed")
 		jsonhttp.InternalServerError(w, "cannot read request")
 		return
@@ -146,7 +147,7 @@ func (s *Service) doneSplitHandler(w http.ResponseWriter, r *http.Request) {
 	if len(body) > 0 {
 		err = json.Unmarshal(body, &tagr)
 		if err != nil {
-			logger.Debug("unmarshal tag name failed", "error", err)
+			logger.Debug("unmarshal tag name failed", log.LogItem{"error", err})
 			logger.Error(nil, "unmarshal tag name failed")
 			jsonhttp.InternalServerError(w, "error unmarshaling metadata")
 			return
@@ -156,29 +157,29 @@ func (s *Service) doneSplitHandler(w http.ResponseWriter, r *http.Request) {
 	tag, err := s.storer.Session(paths.TagID)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			logger.Debug("tag not found", "tag_id", paths.TagID)
+			logger.Debug("tag not found", log.LogItem{"tag_id", paths.TagID})
 			logger.Error(nil, "tag not found")
 			jsonhttp.NotFound(w, "tag not present")
 			return
 		}
-		logger.Debug("get tag failed", "tag_id", paths.TagID, "error", err)
-		logger.Error(nil, "get tag failed", "tag_id", paths.TagID)
+		logger.Debug("get tag failed", log.LogItem{"tag_id", paths.TagID}, log.LogItem{"error", err})
+		logger.Error(nil, "get tag failed", log.LogItem{"tag_id", paths.TagID})
 		jsonhttp.InternalServerError(w, "cannot get tag")
 		return
 	}
 
 	putter, err := s.storer.Upload(r.Context(), false, tag.TagID)
 	if err != nil {
-		logger.Debug("get tag failed", "tag_id", paths.TagID, "error", err)
-		logger.Error(nil, "get tag failed", "tag_id", paths.TagID)
+		logger.Debug("get tag failed", log.LogItem{"tag_id", paths.TagID}, log.LogItem{"error", err})
+		logger.Error(nil, "get tag failed", log.LogItem{"tag_id", paths.TagID})
 		jsonhttp.InternalServerError(w, "cannot get tag")
 		return
 	}
 
 	err = putter.Done(tagr.Address)
 	if err != nil {
-		logger.Debug("done split failed", "address", tagr.Address, "error", err)
-		logger.Error(nil, "done split failed", "address", tagr.Address)
+		logger.Debug("done split failed", log.LogItem{"address", tagr.Address}, log.LogItem{"error", err})
+		logger.Error(nil, "done split failed", log.LogItem{"address", tagr.Address})
 		jsonhttp.InternalServerError(w, "done split: failed")
 		return
 	}
@@ -201,7 +202,7 @@ func (s *Service) listTagsHandler(w http.ResponseWriter, r *http.Request) {
 
 	tagList, err := s.storer.ListSessions(queries.Offset, queries.Limit)
 	if err != nil {
-		logger.Debug("listing failed", "offset", queries.Offset, "limit", queries.Limit, "error", err)
+		logger.Debug("listing failed", log.LogItem{"offset", queries.Offset}, log.LogItem{"limit", queries.Limit}, log.LogItem{"error", err})
 		logger.Error(nil, "listing failed")
 		jsonhttp.InternalServerError(w, err)
 		return
