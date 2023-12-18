@@ -21,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/loadsave"
 	"github.com/ethersphere/bee/pkg/file/redundancy"
+	"github.com/ethersphere/bee/pkg/file/redundancy/getter"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/manifest"
@@ -455,7 +456,10 @@ func (s *Service) serveManifestEntry(
 // downloadHandler contains common logic for dowloading Swarm file from API
 func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *http.Request, reference swarm.Address, additionalHeaders http.Header, etag bool) {
 	headers := struct {
-		Cache *bool `map:"Swarm-Cache"`
+		Cache                 *bool           `map:"Swarm-Cache"`
+		Strategy              getter.Strategy `map:"Swarm-Redundancy-Strategy"`
+		FallbackMode          bool            `map:"Swarm-Redundancy-Fallback-Mode"`
+		ChunkRetrievalTimeout time.Duration   `map:"Swarm-Chunk-Retrieval-Timeout"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -465,7 +469,12 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 	if headers.Cache != nil {
 		cache = *headers.Cache
 	}
-	reader, l, err := joiner.New(r.Context(), s.storer.Download(cache), s.storer.Cache(), reference)
+
+	ctx := r.Context()
+	ctx = getter.SetStrategy(ctx, headers.Strategy)
+	ctx = getter.SetStrict(ctx, headers.FallbackMode)
+	ctx = getter.SetFetchTimeout(ctx, headers.ChunkRetrievalTimeout)
+	reader, l, err := joiner.New(ctx, s.storer.Download(cache), s.storer.Cache(), reference)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) || errors.Is(err, topology.ErrNotFound) {
 			logger.Debug("api download: not found ", "address", reference, "error", err)
