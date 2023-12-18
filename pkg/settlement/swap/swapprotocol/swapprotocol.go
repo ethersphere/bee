@@ -232,7 +232,7 @@ func (s *Service) EmitCheque(ctx context.Context, peer swarm.Address, beneficiar
 		}
 
 		// sending cheque
-		loggerV1.Debug("sending cheque message to peer", "peer_address", peer, "cheque", cheque)
+		loggerV1.Debug("sending cheque message to peer", log.LogItem{"peer_address", peer}, log.LogItem{"cheque", cheque})
 
 		w := protobuf.NewWriter(stream)
 		return w.WriteMsgWithContext(ctx, &pb.EmitCheque{

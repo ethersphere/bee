@@ -350,13 +350,13 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 							}
 							return nil, topology.ErrWantSelf
 						}
-						ps.logger.Debug("no peers left", "chunk_address", ch.Address(), "error", err)
+						ps.logger.Debug("no peers left", log.LogItem{"chunk_address", ch.Address()}, log.LogItem{"error", err})
 						return nil, err
 					}
 					continue // there is still an inflight request, wait for it's result
 				}
 
-				ps.logger.Debug("sleeping to refresh overdraft balance", "chunk_address", ch.Address())
+				ps.logger.Debug("sleeping to refresh overdraft balance", log.LogItem{"chunk_address", ch.Address()})
 
 				select {
 				case <-time.After(overDraftRefresh):
@@ -371,7 +371,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 				if inflight == 0 {
 					return nil, err
 				}
-				ps.logger.Debug("next peer", "chunk_address", ch.Address(), "error", err)
+				ps.logger.Debug("next peer", log.LogItem{"chunk_address", ch.Address()}, log.LogItem{"error", err})
 				continue
 			}
 
@@ -408,7 +408,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			}
 
 			ps.metrics.TotalFailedSendAttempts.Inc()
-			ps.logger.Debug("could not push to peer", "chunk_address", ch.Address(), "peer_address", result.peer, "error", result.err)
+			ps.logger.Debug("could not push to peer", log.LogItem{"chunk_address", ch.Address()}, log.LogItem{"peer_address", result.peer}, log.LogItem{"error", result.err})
 
 			sentErrorsLeft--
 

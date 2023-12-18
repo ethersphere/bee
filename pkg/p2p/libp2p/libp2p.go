@@ -386,7 +386,7 @@ func (s *Service) reachabilityWorker() error {
 					case <-s.halt:
 						return
 					}
-					s.logger.Debug("reachability changed", "new_reachability", r.Reachability.String())
+					s.logger.Debug("reachability changed", log.LogItem{"new_reachability", r.Reachability.String()})
 					s.notifier.UpdateReachability(p2p.ReachabilityStatus(r.Reachability))
 				}
 			}
@@ -412,8 +412,8 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	handshakeStream := newStream(stream, s.metrics)
 	i, err := s.handshakeService.Handle(s.ctx, handshakeStream, stream.Conn().RemoteMultiaddr(), peerID)
 	if err != nil {
-		s.logger.Debug("stream handler: handshake: handle failed", "peer_id", peerID, "error", err)
-		s.logger.Error(nil, "stream handler: handshake: handle failed", "peer_id", peerID)
+		s.logger.Debug("stream handler: handshake: handle failed", log.LogItem{"peer_id", peerID}, log.LogItem{"error", err})
+		s.logger.Error(nil, "stream handler: handshake: handle failed", log.LogItem{"peer_id", peerID})
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(peerID)
 		return
@@ -423,33 +423,33 @@ func (s *Service) handleIncoming(stream network.Stream) {
 
 	blocked, err := s.blocklist.Exists(overlay)
 	if err != nil {
-		s.logger.Debug("stream handler: blocklisting: exists failed", "peer_address", overlay, "error", err)
-		s.logger.Error(nil, "stream handler: internal error while connecting with peer", "peer_address", overlay)
+		s.logger.Debug("stream handler: blocklisting: exists failed", log.LogItem{"peer_address", overlay}, log.LogItem{"error", err})
+		s.logger.Error(nil, "stream handler: internal error while connecting with peer", log.LogItem{"peer_address", overlay})
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(peerID)
 		return
 	}
 
 	if blocked {
-		s.logger.Error(nil, "stream handler: blocked connection from blocklisted peer", "peer_address", overlay)
+		s.logger.Error(nil, "stream handler: blocked connection from blocklisted peer", log.LogItem{"peer_address", overlay})
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(peerID)
 		return
 	}
 
 	if exists := s.peers.addIfNotExists(stream.Conn(), overlay, i.FullNode); exists {
-		s.logger.Debug("stream handler: peer already exists", "peer_address", overlay)
+		s.logger.Debug("stream handler: peer already exists", log.LogItem{"peer_address", overlay})
 		if err = handshakeStream.FullClose(); err != nil {
-			s.logger.Debug("stream handler: could not close stream", "peer_address", overlay, "error", err)
-			s.logger.Error(nil, "stream handler: unable to handshake with peer", "peer_address", overlay)
+			s.logger.Debug("stream handler: could not close stream", log.LogItem{"peer_address", overlay}, log.LogItem{"error", err})
+			s.logger.Error(nil, "stream handler: unable to handshake with peer", log.LogItem{"peer_address", overlay})
 			_ = s.Disconnect(overlay, "unable to close handshake stream")
 		}
 		return
 	}
 
 	if err = handshakeStream.FullClose(); err != nil {
-		s.logger.Debug("stream handler: could not close stream", "peer_address", overlay, "error", err)
-		s.logger.Error(nil, "stream handler: unable to handshake with peer", "peer_address", overlay)
+		s.logger.Debug("stream handler: could not close stream", log.LogItem{"peer_address", overlay}, log.LogItem{"error", err})
+		s.logger.Error(nil, "stream handler: unable to handshake with peer", log.LogItem{"peer_address", overlay})
 		_ = s.Disconnect(overlay, "could not fully close stream on handshake")
 		return
 	}
@@ -457,8 +457,8 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	if i.FullNode {
 		err = s.addressbook.Put(i.BzzAddress.Overlay, *i.BzzAddress)
 		if err != nil {
-			s.logger.Debug("stream handler: addressbook put error", "peer_id", peerID, "error", err)
-			s.logger.Error(nil, "stream handler: unable to persist peer", "peer_id", peerID)
+			s.logger.Debug("stream handler: addressbook put error", log.LogItem{"peer_id", peerID}, log.LogItem{"error", err})
+			s.logger.Error(nil, "stream handler: unable to persist peer", log.LogItem{"peer_id", peerID})
 			_ = s.Disconnect(i.BzzAddress.Overlay, "unable to persist peer in addressbook")
 			return
 		}
@@ -470,7 +470,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 	for _, tn := range s.protocols {
 		if tn.ConnectIn != nil {
 			if err := tn.ConnectIn(s.ctx, peer); err != nil {
-				s.logger.Debug("stream handler: connectIn failed", "protocol", tn.Name, "version", tn.Version, "peer", overlay, "error", err)
+				s.logger.Debug("stream handler: connectIn failed", log.LogItem{"protocol", tn.Name}, log.LogItem{"version", tn.Version}, log.LogItem{"peer", overlay}, log.LogItem{"error", err})
 				_ = s.Disconnect(overlay, "failed to process inbound connection notifier")
 				s.protocolsmu.RUnlock()
 				return
@@ -484,18 +484,18 @@ func (s *Service) handleIncoming(stream network.Stream) {
 			s.lightNodes.Connected(s.ctx, peer)
 			// light node announces explicitly
 			if err := s.notifier.Announce(s.ctx, peer.Address, i.FullNode); err != nil {
-				s.logger.Debug("stream handler: notifier.Announce failed", "peer", peer.Address, "error", err)
+				s.logger.Debug("stream handler: notifier.Announce failed", log.LogItem{"peer", peer.Address}, log.LogItem{"error", err})
 			}
 
 			if s.lightNodes.Count() > s.lightNodeLimit {
 				// kick another node to fit this one in
 				p, err := s.lightNodes.RandomPeer(peer.Address)
 				if err != nil {
-					s.logger.Debug("stream handler: cant find a peer slot for light node", "error", err)
+					s.logger.Debug("stream handler: cant find a peer slot for light node", log.LogItem{"error", err})
 					_ = s.Disconnect(peer.Address, "unable to find peer slot for light node")
 					return
 				} else {
-					loggerV1.Debug("stream handler: kicking away light node to make room for new node", "old_peer", p.String(), "new_peer", peer.Address)
+					loggerV1.Debug("stream handler: kicking away light node to make room for new node", log.LogItem{"old_peer", p.String()}, log.LogItem{"new_peer", peer.Address})
 					s.metrics.KickedOutPeersCount.Inc()
 					_ = s.Disconnect(p, "kicking away light node to make room for peer")
 					return
@@ -503,7 +503,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 			}
 		} else {
 			if err := s.notifier.Connected(s.ctx, peer, false); err != nil {
-				s.logger.Debug("stream handler: notifier.Connected: peer disconnected", "peer", i.BzzAddress.Overlay, "error", err)
+				s.logger.Debug("stream handler: notifier.Connected: peer disconnected", log.LogItem{"peer", i.BzzAddress.Overlay}, log.LogItem{"error", err})
 				// note: this cannot be unit tested since the node
 				// waiting on handshakeStream.FullClose() on the other side
 				// might actually get a stream reset when we disconnect here
@@ -522,7 +522,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 			_ = s.lightNodes.EachPeer(func(addr swarm.Address, _ uint8) (bool, bool, error) {
 				go func(addressee, peer swarm.Address, fullnode bool) {
 					if err := s.notifier.AnnounceTo(s.ctx, addressee, peer, fullnode); err != nil {
-						s.logger.Debug("stream handler: notifier.AnnounceTo failed", "addressee", addressee, "peer", peer, "error", err)
+						s.logger.Debug("stream handler: notifier.AnnounceTo failed", log.LogItem{"addressee", addressee}, log.LogItem{"peer", peer}, log.LogItem{"error", err})
 					}
 				}(addr, peer.Address, i.FullNode)
 				return false, false, nil
@@ -532,7 +532,7 @@ func (s *Service) handleIncoming(stream network.Stream) {
 
 	s.metrics.HandledStreamCount.Inc()
 	if !s.peers.Exists(overlay) {
-		s.logger.Warning("stream handler: inbound peer does not exist, disconnecting", "peer", overlay)
+		s.logger.Warning("stream handler: inbound peer does not exist, disconnecting", log.LogItem{"peer", overlay})
 		_ = s.Disconnect(overlay, "unknown inbound peer")
 		return
 	}
@@ -543,8 +543,8 @@ func (s *Service) handleIncoming(stream network.Stream) {
 
 	peerUserAgent := appendSpace(s.peerUserAgent(s.ctx, peerID))
 
-	loggerV1.Debug("stream handler: successfully connected to peer (inbound)", "addresses", i.BzzAddress.ShortString(), "light", i.LightString(), "user_agent", peerUserAgent)
-	s.logger.Debug("stream handler: successfully connected to peer (inbound)", "address", i.BzzAddress.Overlay, "light", i.LightString(), "user_agent", peerUserAgent)
+	loggerV1.Debug("stream handler: successfully connected to peer (inbound)", log.LogItem{"addresses", i.BzzAddress.ShortString()}, log.LogItem{"light", i.LightString()}, log.LogItem{"user_agent", peerUserAgent})
+	s.logger.Debug("stream handler: successfully connected to peer (inbound)", log.LogItem{"address", i.BzzAddress.Overlay}, log.LogItem{"light", i.LightString()}, log.LogItem{"user_agent", peerUserAgent})
 }
 
 func (s *Service) SetPickyNotifier(n p2p.PickyNotifier) {
@@ -568,13 +568,13 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			overlay, found := s.peers.overlay(peerID)
 			if !found {
 				_ = streamlibp2p.Reset()
-				s.logger.Debug("overlay address for peer not found", "peer_id", peerID)
+				s.logger.Debug("overlay address for peer not found", log.LogItem{"peer_id", peerID})
 				return
 			}
 			full, found := s.peers.fullnode(peerID)
 			if !found {
 				_ = streamlibp2p.Reset()
-				s.logger.Debug("fullnode info for peer not found", "peer_id", peerID)
+				s.logger.Debug("fullnode info for peer not found", log.LogItem{"peer_id", peerID})
 				return
 			}
 
@@ -584,7 +584,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			ctx, cancel := context.WithTimeout(s.ctx, s.HeadersRWTimeout)
 			defer cancel()
 			if err := handleHeaders(ctx, ss.Headler, stream, overlay); err != nil {
-				s.logger.Debug("handle protocol: handle headers failed", "protocol", p.Name, "version", p.Version, "stream", ss.Name, "peer", overlay, "error", err)
+				s.logger.Debug("handle protocol: handle headers failed", log.LogItem{"protocol", p.Name}, log.LogItem{"version", p.Version}, log.LogItem{"stream", ss.Name}, log.LogItem{"peer", overlay}, log.LogItem{"error", err})
 				_ = stream.Reset()
 				return
 			}
@@ -599,7 +599,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			// silently ignore if the peer is not providing tracing
 			ctx, err := s.tracer.WithContextFromHeaders(ctx, stream.Headers())
 			if err != nil && !errors.Is(err, tracing.ErrContextNotFound) {
-				s.logger.Debug("handle protocol: get tracing context failed", "protocol", p.Name, "version", p.Version, "stream", ss.Name, "peer", overlay, "error", err)
+				s.logger.Debug("handle protocol: get tracing context failed", log.LogItem{"protocol", p.Name}, log.LogItem{"version", p.Version}, log.LogItem{"stream", ss.Name}, log.LogItem{"peer", overlay}, log.LogItem{"error", err})
 				_ = stream.Reset()
 				return
 			}
@@ -611,7 +611,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 			if err := ss.Handler(ctx, p2p.Peer{Address: overlay, FullNode: full}, stream); err != nil {
 				var de *p2p.DisconnectError
 				if errors.As(err, &de) {
-					loggerV1.Debug("libp2p handler: disconnecting due to disconnect error", "protocol", p.Name, "address", overlay)
+					loggerV1.Debug("libp2p handler: disconnecting due to disconnect error", log.LogItem{"protocol", p.Name}, log.LogItem{"address", overlay})
 					_ = stream.Reset()
 					_ = s.Disconnect(overlay, de.Error())
 				}
@@ -620,10 +620,10 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 				if errors.As(err, &bpe) {
 					_ = stream.Reset()
 					if err := s.Blocklist(overlay, bpe.Duration(), bpe.Error()); err != nil {
-						logger.Debug("blocklist: could not blocklist peer", "peer_id", peerID, "error", err)
-						logger.Error(nil, "unable to blocklist peer", "peer_id", peerID)
+						logger.Debug("blocklist: could not blocklist peer", log.LogItem{"peer_id", peerID}, log.LogItem{"error", err})
+						logger.Error(nil, "unable to blocklist peer", log.LogItem{"peer_id", peerID})
 					}
-					loggerV1.Debug("handler: peer blocklisted", "protocol", p.Name, "peer_address", overlay)
+					loggerV1.Debug("handler: peer blocklisted", log.LogItem{"protocol", p.Name}, log.LogItem{"peer_address", overlay})
 				}
 				// count unexpected requests
 				if errors.Is(err, p2p.ErrUnexpected) {
@@ -632,7 +632,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 				if errors.Is(err, network.ErrReset) {
 					s.metrics.StreamHandlerErrResetCount.Inc()
 				}
-				logger.Debug("handle protocol failed", "protocol", p.Name, "version", p.Version, "stream", ss.Name, "peer", overlay, "error", err)
+				logger.Debug("handle protocol failed", log.LogItem{"protocol", p.Name}, log.LogItem{"version", p.Version}, log.LogItem{"stream", ss.Name}, log.LogItem{"peer", overlay}, log.LogItem{"error", err})
 				return
 			}
 		})
@@ -682,7 +682,7 @@ func (s *Service) Blocklist(overlay swarm.Address, duration time.Duration, reaso
 
 	full, _ := s.peers.fullnode(id)
 
-	loggerV1.Debug("libp2p blocklisting peer", "peer_address", overlay.String(), "duration", duration, "reason", reason)
+	loggerV1.Debug("libp2p blocklisting peer", log.LogItem{"peer_address", overlay.String()}, log.LogItem{"duration", duration}, log.LogItem{"reason", reason})
 	if err := s.blocklist.Add(overlay, duration, reason, full); err != nil {
 		s.metrics.BlocklistedPeerErrCount.Inc()
 		_ = s.Disconnect(overlay, "failed blocklisting peer")
@@ -768,15 +768,15 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 
 	blocked, err := s.blocklist.Exists(overlay)
 	if err != nil {
-		s.logger.Debug("blocklisting: exists failed", "peer_id", info.ID, "error", err)
-		s.logger.Error(nil, "internal error while connecting with peer", "peer_id", info.ID)
+		s.logger.Debug("blocklisting: exists failed", log.LogItem{"peer_id", info.ID}, log.LogItem{"error", err})
+		s.logger.Error(nil, "internal error while connecting with peer", log.LogItem{"peer_id", info.ID})
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(info.ID)
 		return nil, err
 	}
 
 	if blocked {
-		s.logger.Error(nil, "blocked connection to blocklisted peer", "peer_id", info.ID)
+		s.logger.Error(nil, "blocked connection to blocklisted peer", log.LogItem{"peer_id", info.ID})
 		_ = handshakeStream.Reset()
 		_ = s.host.Network().ClosePeer(info.ID)
 		return nil, p2p.ErrPeerBlocklisted
@@ -808,7 +808,7 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 	for _, tn := range s.protocols {
 		if tn.ConnectOut != nil {
 			if err := tn.ConnectOut(ctx, p2p.Peer{Address: overlay, FullNode: i.FullNode, EthereumAddress: i.BzzAddress.EthereumAddress}); err != nil {
-				s.logger.Debug("connectOut: failed to connect", "protocol", tn.Name, "version", tn.Version, "peer", overlay, "error", err)
+				s.logger.Debug("connectOut: failed to connect", log.LogItem{"protocol", tn.Name}, log.LogItem{"version", tn.Version}, log.LogItem{"peer", overlay}, log.LogItem{"error", err})
 				_ = s.Disconnect(overlay, "failed to process outbound connection notifier")
 				s.protocolsmu.RUnlock()
 				return nil, fmt.Errorf("connectOut: protocol: %s, version:%s: %w", tn.Name, tn.Version, err)
@@ -830,15 +830,15 @@ func (s *Service) Connect(ctx context.Context, addr ma.Multiaddr) (address *bzz.
 
 	peerUserAgent := appendSpace(s.peerUserAgent(ctx, info.ID))
 
-	loggerV1.Debug("successfully connected to peer (outbound)", "addresses", i.BzzAddress.ShortString(), "light", i.LightString(), "user_agent", peerUserAgent)
-	s.logger.Debug("successfully connected to peer (outbound)", "address", i.BzzAddress.Overlay, "light", i.LightString(), "user_agent", peerUserAgent)
+	loggerV1.Debug("successfully connected to peer (outbound)", log.LogItem{"addresses", i.BzzAddress.ShortString()}, log.LogItem{"light", i.LightString()}, log.LogItem{"user_agent", peerUserAgent})
+	s.logger.Debug("successfully connected to peer (outbound)", log.LogItem{"address", i.BzzAddress.Overlay}, log.LogItem{"light", i.LightString()}, log.LogItem{"user_agent", peerUserAgent})
 	return i.BzzAddress, nil
 }
 
 func (s *Service) Disconnect(overlay swarm.Address, reason string) (err error) {
 	s.metrics.DisconnectCount.Inc()
 
-	s.logger.Debug("libp2p disconnect: disconnecting peer", "peer_address", overlay, "reason", reason)
+	s.logger.Debug("libp2p disconnect: disconnecting peer", log.LogItem{"peer_address", overlay}, log.LogItem{"reason", reason})
 
 	// found is checked at the bottom of the function
 	found, full, peerID := s.peers.remove(overlay)
@@ -851,7 +851,7 @@ func (s *Service) Disconnect(overlay swarm.Address, reason string) (err error) {
 	for _, tn := range s.protocols {
 		if tn.DisconnectOut != nil {
 			if err := tn.DisconnectOut(peer); err != nil {
-				s.logger.Debug("disconnectOut failed", "protocol", tn.Name, "version", tn.Version, "peer", overlay, "error", err)
+				s.logger.Debug("disconnectOut failed", log.LogItem{"protocol", tn.Name}, log.LogItem{"version", tn.Version}, log.LogItem{"peer", overlay}, log.LogItem{"error", err})
 			}
 		}
 	}
@@ -868,7 +868,7 @@ func (s *Service) Disconnect(overlay swarm.Address, reason string) (err error) {
 	}
 
 	if !found {
-		s.logger.Debug("libp2p disconnect: peer not found", "peer_address", overlay)
+		s.logger.Debug("libp2p disconnect: peer not found", log.LogItem{"peer_address", overlay})
 		return p2p.ErrPeerNotFound
 	}
 
@@ -890,7 +890,7 @@ func (s *Service) disconnected(address swarm.Address) {
 	for _, tn := range s.protocols {
 		if tn.DisconnectIn != nil {
 			if err := tn.DisconnectIn(peer); err != nil {
-				s.logger.Debug("disconnectIn failed", tn.Name, "version", tn.Version, "peer", address, "error", err)
+				s.logger.Debug("disconnectIn failed", log.LogItem{"name", tn.Name}, log.LogItem{"version", tn.Version}, log.LogItem{"peer", address}, log.LogItem{"error", err})
 			}
 		}
 	}

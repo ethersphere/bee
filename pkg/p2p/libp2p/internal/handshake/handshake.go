@@ -158,7 +158,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 
 	if s.libp2pID != observedUnderlayAddrInfo.ID {
 		//NOTE eventually we will return error here, but for now we want to gather some statistics
-		s.logger.Warning("received peer ID does not match ours", "their", observedUnderlayAddrInfo.ID, "ours", s.libp2pID)
+		s.logger.Warning("received peer ID does not match ours", log.LogItem{"their", observedUnderlayAddrInfo.ID}, log.LogItem{"ours", s.libp2pID})
 	}
 
 	advertisableUnderlay, err := s.advertisableAddresser.Resolve(observedUnderlay)
@@ -203,9 +203,9 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 		return nil, fmt.Errorf("write ack message: %w", err)
 	}
 
-	loggerV1.Debug("handshake finished for peer (outbound)", "peer_address", remoteBzzAddress.Overlay)
+	loggerV1.Debug("handshake finished for peer (outbound)", log.LogItem{"peer_address", remoteBzzAddress.Overlay})
 	if len(resp.Ack.WelcomeMessage) > 0 {
-		s.logger.Debug("greeting message from peer", "peer_address", remoteBzzAddress.Overlay, "message", resp.Ack.WelcomeMessage)
+		s.logger.Debug("greeting message from peer", log.LogItem{"peer_address", remoteBzzAddress.Overlay}, log.LogItem{"message", resp.Ack.WelcomeMessage})
 	}
 
 	return &Info{
@@ -306,9 +306,9 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 		return nil, err
 	}
 
-	loggerV1.Debug("handshake finished for peer (inbound)", "peer_address", remoteBzzAddress.Overlay)
+	loggerV1.Debug("handshake finished for peer (inbound)", log.LogItem{"peer_address", remoteBzzAddress.Overlay})
 	if len(ack.WelcomeMessage) > 0 {
-		loggerV1.Debug("greeting message from peer", "peer_address", remoteBzzAddress.Overlay, "message", ack.WelcomeMessage)
+		loggerV1.Debug("greeting message from peer", log.LogItem{"peer_address", remoteBzzAddress.Overlay}, log.LogItem{"message", ack.WelcomeMessage})
 	}
 
 	return &Info{

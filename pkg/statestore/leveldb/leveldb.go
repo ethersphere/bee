@@ -63,7 +63,7 @@ func NewStateStore(path string, l log.Logger) (*Store, error) {
 			return nil, err
 		}
 
-		l.Warning("statestore open failed, attempting recovery", "error", err)
+		l.Warning("statestore open failed, attempting recovery", log.LogItem{"error", err})
 		db, err = leveldb.RecoverFile(path, nil)
 		if err != nil {
 			return nil, fmt.Errorf("statestore recovery: %w", err)

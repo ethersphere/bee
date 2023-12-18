@@ -114,7 +114,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 	if err != nil {
 		s.logger.Error(err, "pusher: initial radius error")
 	} else {
-		s.logger.Info("pusher: warmup period complete", "radius", r)
+		s.logger.Info("pusher: warmup period complete", log.LogItem{"radius", r})
 	}
 
 	var (
@@ -245,7 +245,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 					select {
 					case op.Err <- nil:
 					default:
-						s.logger.Debug("chunk already in flight, skipping", "chunk", op.Chunk.Address())
+						s.logger.Debug("chunk already in flight, skipping", log.LogItem{"chunk", op.Chunk.Address()})
 					}
 				}
 				continue
@@ -272,9 +272,9 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 	if _, err := s.validStamp(op.Chunk); err != nil {
 		loggerV1.Warning(
 			"stamp with is no longer valid, skipping syncing for chunk",
-			"batch_id", hex.EncodeToString(op.Chunk.Stamp().BatchID()),
-			"chunk_address", op.Chunk.Address(),
-			"error", err,
+			log.LogItem{"batch_id", hex.EncodeToString(op.Chunk.Stamp().BatchID())},
+			log.LogItem{"chunk_address", op.Chunk.Address()},
+			log.LogItem{"error", err},
 		)
 
 		return false, errors.Join(err, s.storer.Report(ctx, op.Chunk, storage.ChunkCouldNotSync))
@@ -283,7 +283,7 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 	switch receipt, err := s.pushSyncer.PushChunkToClosest(ctx, op.Chunk); {
 	case errors.Is(err, topology.ErrWantSelf):
 		// store the chunk
-		loggerV1.Debug("chunk stays here, i'm the closest node", "chunk_address", op.Chunk.Address())
+		loggerV1.Debug("chunk stays here, i'm the closest node", log.LogItem{"chunk_address", op.Chunk.Address()})
 		err = s.storer.ReservePutter().Put(ctx, op.Chunk)
 		if err != nil {
 			loggerV1.Error(err, "pusher: failed to store chunk")
@@ -296,7 +296,7 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 		}
 	case err == nil:
 		if err := s.checkReceipt(receipt, loggerV1); err != nil {
-			loggerV1.Error(err, "pusher: failed checking receipt", "chunk_address", op.Chunk.Address())
+			loggerV1.Error(err, "pusher: failed checking receipt", log.LogItem{"chunk_address", op.Chunk.Address()})
 			return true, err
 		}
 		if err := s.storer.Report(ctx, op.Chunk, storage.ChunkSynced); err != nil {
@@ -332,9 +332,9 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 	if err != nil {
 		logger.Warning(
 			"stamp with is no longer valid, skipping direct upload for chunk",
-			"batch_id", hex.EncodeToString(op.Chunk.Stamp().BatchID()),
-			"chunk_address", op.Chunk.Address(),
-			"error", err,
+			log.LogItem{"batch_id", hex.EncodeToString(op.Chunk.Stamp().BatchID())},
+			log.LogItem{"chunk_address", op.Chunk.Address()},
+			log.LogItem{"error", err},
 		)
 		return err
 	}
@@ -342,7 +342,7 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 	switch receipt, err = s.pushSyncer.PushChunkToClosest(ctx, op.Chunk); {
 	case errors.Is(err, topology.ErrWantSelf):
 		// store the chunk
-		loggerV1.Debug("chunk stays here, i'm the closest node", "chunk_address", op.Chunk.Address())
+		loggerV1.Debug("chunk stays here, i'm the closest node", log.LogItem{"chunk_address", op.Chunk.Address()})
 		err = s.storer.ReservePutter().Put(ctx, op.Chunk)
 		if err != nil {
 			loggerV1.Error(err, "pusher: failed to store chunk")
@@ -350,7 +350,7 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 	case err == nil:
 		err = s.checkReceipt(receipt, loggerV1)
 		if err != nil {
-			loggerV1.Error(err, "pusher: failed checking receipt", "chunk_address", op.Chunk.Address())
+			loggerV1.Error(err, "pusher: failed checking receipt", log.LogItem{"chunk_address", op.Chunk.Address()})
 		}
 	default:
 		loggerV1.Error(err, "pusher: failed PushChunkToClosest")
@@ -383,7 +383,7 @@ func (s *Service) checkReceipt(receipt *pushsync.Receipt, loggerV1 log.Logger) e
 		s.metrics.ShallowReceipt.Inc()
 		return fmt.Errorf("pusher: shallow receipt depth %d, want at least %d, chunk_address %s: %w", po, d, addr, ErrShallowReceipt)
 	}
-	loggerV1.Debug("chunk pushed", "chunk_address", addr, "peer_address", peer, "proximity_order", po)
+	loggerV1.Debug("chunk pushed", log.LogItem{"chunk_address", addr}, log.LogItem{"peer_address", peer}, log.LogItem{"proximity_order", po})
 	s.metrics.ReceiptDepth.WithLabelValues(strconv.Itoa(int(po))).Inc()
 	s.attempts.delete(addr)
 	return nil

@@ -131,7 +131,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
-			s.logger.Debug("error syncing peer", "peer_address", peer, "bin", bin, "start", start, "error", err)
+			s.logger.Debug("error syncing peer", log.LogItem{"peer_address", peer}, log.LogItem{"bin", bin}, log.LogItem{"start", start}, log.LogItem{"error", err})
 		} else {
 			stream.FullClose()
 		}
@@ -180,14 +180,14 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		a := swarm.NewAddress(addr)
 		if a.Equal(swarm.ZeroAddress) {
 			// i'd like to have this around to see we don't see any of these in the logs
-			s.logger.Debug("syncer got a zero address hash on offer", "peer_address", peer)
+			s.logger.Debug("syncer got a zero address hash on offer", log.LogItem{"peer_address", peer})
 			continue
 		}
 		s.metrics.Offered.Inc()
 		if s.store.IsWithinStorageRadius(a) {
 			have, err = s.store.ReserveHas(a, batchID)
 			if err != nil {
-				s.logger.Debug("storage has", "error", err)
+				s.logger.Debug("storage has", log.LogItem{"error", err})
 				continue
 			}
 
@@ -216,7 +216,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 
 		addr := swarm.NewAddress(delivery.Address)
 		if addr.Equal(swarm.ZeroAddress) {
-			s.logger.Debug("received zero address chunk", "peer_address", peer)
+			s.logger.Debug("received zero address chunk", log.LogItem{"peer_address", peer})
 			s.metrics.ReceivedZeroAddress.Inc()
 			continue
 		}
@@ -230,7 +230,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		}
 
 		if _, ok := wantChunks[addr.ByteString()+string(stamp.BatchID())]; !ok {
-			s.logger.Debug("want chunks", "error", ErrUnsolicitedChunk, "peer_address", peer, "chunk_address", addr)
+			s.logger.Debug("want chunks", log.LogItem{"error", ErrUnsolicitedChunk}, log.LogItem{"peer_address", peer}, log.LogItem{"chunk_address", addr})
 			chunkErr = errors.Join(chunkErr, ErrUnsolicitedChunk)
 			continue
 		}
@@ -239,7 +239,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 
 		chunk, err := s.validStamp(newChunk.WithStamp(stamp))
 		if err != nil {
-			s.logger.Debug("unverified stamp", "error", err, "peer_address", peer, "chunk_address", newChunk)
+			s.logger.Debug("unverified stamp", log.LogItem{"error", err}, log.LogItem{"peer_address", peer}, log.LogItem{"chunk_address", newChunk})
 			chunkErr = errors.Join(chunkErr, err)
 			continue
 		}
@@ -247,7 +247,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		if cac.Valid(chunk) {
 			go s.unwrap(chunk)
 		} else if !soc.Valid(chunk) {
-			s.logger.Debug("invalid cac/soc chunk", "error", swarm.ErrInvalidChunk, "peer_address", peer, "chunk", chunk)
+			s.logger.Debug("invalid cac/soc chunk", log.LogItem{"error", swarm.ErrInvalidChunk}, log.LogItem{"peer_address", peer}, log.LogItem{"chunk", chunk})
 			chunkErr = errors.Join(chunkErr, swarm.ErrInvalidChunk)
 			s.metrics.ReceivedInvalidChunk.Inc()
 			continue
@@ -273,7 +273,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 				// in case of these errors, no new items are added to the storage, so it
 				// is safe to continue with the next chunk
 				if errors.Is(err, storage.ErrOverwriteNewerChunk) || errors.Is(err, storage.ErrOverwriteOfImmutableBatch) {
-					s.logger.Debug("overwrite newer chunk", "error", err, "peer_address", peer, "chunk", c)
+					s.logger.Debug("overwrite newer chunk", log.LogItem{"error", err}, log.LogItem{"peer_address", peer}, log.LogItem{"chunk", c})
 					chunkErr = errors.Join(chunkErr, err)
 					continue
 				}
@@ -477,7 +477,7 @@ func (s *Syncer) processWant(ctx context.Context, o *pb.Offer, w *pb.Want) ([]sw
 			addr := swarm.NewAddress(ch.Address)
 			c, err := s.store.ReserveGet(ctx, addr, ch.BatchID)
 			if err != nil {
-				s.logger.Debug("processing want: unable to find chunk", "chunk_address", addr, "batch_id", ch.BatchID)
+				s.logger.Debug("processing want: unable to find chunk", log.LogItem{"chunk_address", addr}, log.LogItem{"batch_id", ch.BatchID})
 				chunks = append(chunks, swarm.NewChunk(swarm.ZeroAddress, nil))
 				s.metrics.MissingChunks.Inc()
 				continue
@@ -495,11 +495,11 @@ func (s *Syncer) GetCursors(ctx context.Context, peer swarm.Address) (retr []uin
 	if err != nil {
 		return nil, 0, fmt.Errorf("new stream: %w", err)
 	}
-	loggerV2.Debug("getting cursors from peer", "peer_address", peer)
+	loggerV2.Debug("getting cursors from peer", log.LogItem{"peer_address", peer})
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
-			loggerV2.Debug("error getting cursors from peer", "peer_address", peer, "error", err)
+			loggerV2.Debug("error getting cursors from peer", log.LogItem{"peer_address", peer}, log.LogItem{"error", err})
 		} else {
 			stream.FullClose()
 		}
@@ -523,11 +523,11 @@ func (s *Syncer) cursorHandler(ctx context.Context, p p2p.Peer, stream p2p.Strea
 	loggerV2 := s.logger.V(2).Register()
 
 	w, r := protobuf.NewWriterAndReader(stream)
-	loggerV2.Debug("peer wants cursors", "peer_address", p.Address)
+	loggerV2.Debug("peer wants cursors", log.LogItem{"peer_address", p.Address})
 	defer func() {
 		if err != nil {
 			_ = stream.Reset()
-			loggerV2.Debug("error getting cursors for peer", "peer_address", p.Address, "error", err)
+			loggerV2.Debug("error getting cursors for peer", log.LogItem{"peer_address", p.Address}, log.LogItem{"error", err})
 		} else {
 			_ = stream.FullClose()
 		}

@@ -39,19 +39,31 @@ type windowsEventLogger struct {
 	winlog debug.Log
 }
 
-func (l windowsEventLogger) Debug(_ string, _ ...interface{}) {}
+func (l windowsEventLogger) Debug(_ string, _ ...log.LogItem) {}
 
-func (l windowsEventLogger) Info(msg string, keysAndValues ...interface{}) {
-	_ = l.winlog.Info(1633, fmt.Sprintf("%s %s", msg, fmt.Sprintln(keysAndValues...)))
+func (l windowsEventLogger) Info(msg string, logItems ...log.LogItem) {
+	data := createInterfaceSliceFromLogItems(logItems)
+	_ = l.winlog.Info(1633, fmt.Sprintf("%s %s", msg, fmt.Sprintln(data...)))
 }
 
-func (l windowsEventLogger) Warning(msg string, keysAndValues ...interface{}) {
-	_ = l.winlog.Warning(1633, fmt.Sprintf("%s %s", msg, fmt.Sprintln(keysAndValues...)))
+func (l windowsEventLogger) Warning(msg string, logItems ...log.LogItem) {
+	data := createInterfaceSliceFromLogItems(logItems)
+	_ = l.winlog.Warning(1633, fmt.Sprintf("%s %s", msg, fmt.Sprintln(data...)))
 }
 
-func (l windowsEventLogger) Error(err error, msg string, keysAndValues ...interface{}) {
+func (l windowsEventLogger) Error(err error, msg string, logItems ...log.LogItem) {
+	data := createInterfaceSliceFromLogItems(logItems)
 	if err != nil {
-		keysAndValues = append(keysAndValues, "error", err)
+		data = append(data, "error", err)
 	}
-	_ = l.winlog.Error(1633, fmt.Sprintf("%s %s", msg, fmt.Sprintln(keysAndValues...)))
+	_ = l.winlog.Error(1633, fmt.Sprintf("%s %s", msg, fmt.Sprintln(data...)))
+}
+
+func createInterfaceSliceFromLogItems(logItems []log.LogItem) []interface{} {
+	data := make([]interface{}, 0, len(logItems)*2)
+	for i := 0; i < len(logItems); i++ {
+		data[i*2] = logItems[i].Key
+		data[i*2+1] = logItems[i].Value
+	}
+	return data
 }

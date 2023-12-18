@@ -317,7 +317,7 @@ func (k *Kad) connectBalanced(wg *sync.WaitGroup, peerConnChan chan<- *peerConnI
 
 			blocklisted, err := k.p2p.Blocklisted(closestKnownPeer)
 			if err != nil {
-				k.logger.Warning("peer blocklist check failed", "error", err)
+				k.logger.Warning("peer blocklist check failed", log.LogItem{"error", err})
 			}
 			if blocklisted {
 				continue
@@ -362,7 +362,7 @@ func (k *Kad) connectNeighbours(wg *sync.WaitGroup, peerConnChan chan<- *peerCon
 
 		blocklisted, err := k.p2p.Blocklisted(addr)
 		if err != nil {
-			k.logger.Warning("peer blocklist check failed", "error", err)
+			k.logger.Warning("peer blocklist check failed", log.LogItem{"error", err})
 		}
 		if blocklisted {
 			return false, false, nil
@@ -396,11 +396,11 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 		bzzAddr, err := k.addressBook.Get(peer.addr)
 		switch {
 		case errors.Is(err, addressbook.ErrNotFound):
-			k.logger.Debug("empty address book entry for peer", "peer_address", peer.addr)
+			k.logger.Debug("empty address book entry for peer", log.LogItem{"peer_address", peer.addr})
 			k.knownPeers.Remove(peer.addr)
 			return
 		case err != nil:
-			k.logger.Debug("failed to get address book entry for peer", "peer_address", peer.addr, "error", err)
+			k.logger.Debug("failed to get address book entry for peer", log.LogItem{"peer_address", peer.addr}, log.LogItem{"error", err})
 			return
 		}
 
@@ -408,28 +408,28 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 			k.waitNext.Remove(peer.addr)
 			k.knownPeers.Remove(peer.addr)
 			if err := k.addressBook.Remove(peer.addr); err != nil {
-				k.logger.Debug("could not remove peer from addressbook", "peer_address", peer.addr)
+				k.logger.Debug("could not remove peer from addressbook", log.LogItem{"peer_address", peer.addr})
 			}
 		}
 
 		switch err = k.connect(ctx, peer.addr, bzzAddr.Underlay); {
 		case errors.Is(err, p2p.ErrNetworkUnavailable):
-			k.logger.Debug("network unavailable when reaching peer", "peer_overlay_address", peer.addr, "peer_underlay_address", bzzAddr.Underlay)
+			k.logger.Debug("network unavailable when reaching peer", log.LogItem{"peer_overlay_address", peer.addr}, log.LogItem{"peer_underlay_address", bzzAddr.Underlay})
 			return
 		case errors.Is(err, errPruneEntry):
-			k.logger.Debug("dial to light node", "peer_overlay_address", peer.addr, "peer_underlay_address", bzzAddr.Underlay)
+			k.logger.Debug("dial to light node", log.LogItem{"peer_overlay_address", peer.addr}, log.LogItem{"peer_underlay_address", bzzAddr.Underlay})
 			remove(peer)
 			return
 		case errors.Is(err, errOverlayMismatch):
-			k.logger.Debug("overlay mismatch has occurred", "peer_overlay_address", peer.addr, "peer_underlay_address", bzzAddr.Underlay)
+			k.logger.Debug("overlay mismatch has occurred", log.LogItem{"peer_overlay_address", peer.addr}, log.LogItem{"peer_underlay_address", bzzAddr.Underlay})
 			remove(peer)
 			return
 		case errors.Is(err, p2p.ErrPeerBlocklisted):
-			k.logger.Debug("peer still in blocklist", "peer_address", bzzAddr)
+			k.logger.Debug("peer still in blocklist", log.LogItem{"peer_address", bzzAddr})
 			k.logger.Warning("peer still in blocklist")
 			return
 		case err != nil:
-			k.logger.Debug("peer not reachable from kademlia", "peer_address", bzzAddr, "error", err)
+			k.logger.Debug("peer not reachable from kademlia", log.LogItem{"peer_address", bzzAddr}, log.LogItem{"error", err})
 			k.logger.Warning("peer not reachable when attempting to connect")
 			return
 		}
@@ -443,7 +443,7 @@ func (k *Kad) connectionAttemptsHandler(ctx context.Context, wg *sync.WaitGroup,
 
 		k.recalcDepth()
 
-		k.logger.Info("connected to peer", "peer_address", peer.addr, "proximity_order", peer.po)
+		k.logger.Info("connected to peer", log.LogItem{"peer_address", peer.addr}, log.LogItem{"proximity_order", peer.po})
 		k.notifyManageLoop()
 		k.notifyPeerSig()
 	}
@@ -530,13 +530,13 @@ func (k *Kad) manage() {
 				return
 			case <-time.After(5 * time.Minute):
 				start := time.Now()
-				loggerV1.Debug("starting to flush metrics", "start_time", start)
+				loggerV1.Debug("starting to flush metrics", log.LogItem{"start_time", start})
 				if err := k.collector.Flush(); err != nil {
 					k.metrics.InternalMetricsFlushTotalErrors.Inc()
-					k.logger.Debug("unable to flush metrics counters to the persistent store", "error", err)
+					k.logger.Debug("unable to flush metrics counters to the persistent store", log.LogItem{"error", err})
 				} else {
 					k.metrics.InternalMetricsFlushTime.Observe(time.Since(start).Seconds())
-					loggerV1.Debug("flush metrics done", "elapsed", time.Since(start))
+					loggerV1.Debug("flush metrics done", log.LogItem{"elapsed", time.Since(start)})
 				}
 			}
 		}
@@ -563,7 +563,7 @@ func (k *Kad) manage() {
 				})
 				for i, peer := range neighbors {
 					if err := k.discovery.BroadcastPeers(ctx, peer, append(neighbors[:i], neighbors[i+1:]...)...); err != nil {
-						k.logger.Debug("broadcast neighborhood failure", "peer_address", peer, "error", err)
+						k.logger.Debug("broadcast neighborhood failure", log.LogItem{"peer_address", peer}, log.LogItem{"error", err})
 					}
 				}
 			}
@@ -607,7 +607,7 @@ func (k *Kad) manage() {
 
 			k.opt.PruneFunc(depth)
 
-			loggerV1.Debug("connector finished", "elapsed", time.Since(start), "old_depth", oldDepth, "new_depth", depth)
+			loggerV1.Debug("connector finished", log.LogItem{"elapsed", time.Since(start)}, log.LogItem{"old_depth", oldDepth}, log.LogItem{"new_depth", depth})
 
 			k.metrics.CurrentDepth.Set(float64(depth))
 			k.metrics.CurrentlyKnownPeers.Set(float64(k.knownPeers.Length()))
@@ -689,11 +689,11 @@ func (k *Kad) pruneOversaturatedBins(depth uint8) {
 
 			err := k.p2p.Disconnect(disconnectPeer, "pruned from oversaturated bin")
 			if err != nil {
-				k.logger.Debug("prune disconnect failed", "error", err)
+				k.logger.Debug("prune disconnect failed", log.LogItem{"error", err})
 			}
 		}
 
-		k.logger.Debug("pruning", "bin", i, "oldBinSize", binPeersCount, "newBinSize", k.connectedPeers.BinSize(uint8(i)))
+		k.logger.Debug("pruning", log.LogItem{"bin", i}, log.LogItem{"oldBinSize", binPeersCount}, log.LogItem{"newBinSize", k.connectedPeers.BinSize(uint8(i))})
 	}
 }
 
@@ -758,7 +758,7 @@ func (k *Kad) previouslyConnected() []swarm.Address {
 
 	now := time.Now()
 	ss := k.collector.Snapshot(now)
-	loggerV1.Debug("metrics snapshot taken", "elapsed", time.Since(now))
+	loggerV1.Debug("metrics snapshot taken", log.LogItem{"elapsed", time.Since(now)})
 
 	var peers []swarm.Address
 
@@ -786,7 +786,7 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 		}
 
 		if _, err := p2p.Discover(ctx, addr, func(addr ma.Multiaddr) (stop bool, err error) {
-			loggerV1.Debug("connecting to bootnode", "bootnode_address", addr)
+			loggerV1.Debug("connecting to bootnode", log.LogItem{"bootnode_address", addr})
 			if attempts >= maxBootNodeAttempts {
 				return true, nil
 			}
@@ -797,11 +797,11 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 
 			if err != nil {
 				if !errors.Is(err, p2p.ErrAlreadyConnected) {
-					k.logger.Debug("connect to bootnode failed", "bootnode_address", addr, "error", err)
-					k.logger.Warning("connect to bootnode failed", "bootnode_address", addr)
+					k.logger.Debug("connect to bootnode failed", log.LogItem{"bootnode_address", addr}, log.LogItem{"error", err})
+					k.logger.Warning("connect to bootnode failed", log.LogItem{"bootnode_address", addr})
 					return false, err
 				}
-				k.logger.Debug("connect to bootnode failed", "bootnode_address", addr, "error", err)
+				k.logger.Debug("connect to bootnode failed", log.LogItem{"bootnode_address", addr}, log.LogItem{"error", err})
 				return false, nil
 			}
 
@@ -811,14 +811,14 @@ func (k *Kad) connectBootNodes(ctx context.Context) {
 
 			k.metrics.TotalOutboundConnections.Inc()
 			k.collector.Record(bzzAddress.Overlay, im.PeerLogIn(time.Now(), im.PeerConnectionDirectionOutbound))
-			loggerV1.Debug("connected to bootnode", "bootnode_address", addr)
+			loggerV1.Debug("connected to bootnode", log.LogItem{"bootnode_address", addr})
 			connected++
 
 			// connect to max 3 bootnodes
 			return connected >= 3, nil
 		}); err != nil && !errors.Is(err, context.Canceled) {
-			k.logger.Debug("discover to bootnode failed", "bootnode_address", addr, "error", err)
-			k.logger.Warning("discover to bootnode failed", "bootnode_address", addr)
+			k.logger.Debug("discover to bootnode failed", log.LogItem{"bootnode_address", addr}, log.LogItem{"error", err})
+			k.logger.Warning("discover to bootnode failed", log.LogItem{"bootnode_address", addr})
 			return
 		}
 	}
@@ -915,7 +915,7 @@ func (k *Kad) recalcDepth() {
 // connect connects to a peer and gossips its address to our connected peers,
 // as well as sends the peers we are connected to to the newly connected peer
 func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) error {
-	k.logger.Debug("attempting connect to peer", "peer_address", peer)
+	k.logger.Debug("attempting connect to peer", log.LogItem{"peer_address", peer})
 
 	ctx, cancel := context.WithTimeout(ctx, peerConnectionAttemptTimeout)
 	defer cancel()
@@ -939,7 +939,7 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 	case errors.Is(err, p2p.ErrPeerBlocklisted):
 		return err
 	case err != nil:
-		k.logger.Debug("could not connect to peer", "peer_address", peer, "error", err)
+		k.logger.Debug("could not connect to peer", log.LogItem{"peer_address", peer}, log.LogItem{"error", err})
 
 		retryTime := time.Now().Add(k.opt.TimeToRetry)
 		var e *p2p.ConnectionBackoffError
@@ -963,9 +963,9 @@ func (k *Kad) connect(ctx context.Context, peer swarm.Address, ma ma.Multiaddr) 
 			k.waitNext.Remove(peer)
 			k.knownPeers.Remove(peer)
 			if err := k.addressBook.Remove(peer); err != nil {
-				k.logger.Debug("could not remove peer from addressbook", "peer_address", peer)
+				k.logger.Debug("could not remove peer from addressbook", log.LogItem{"peer_address", peer})
 			}
-			k.logger.Debug("peer pruned from address book", "peer_address", peer)
+			k.logger.Debug("peer pruned from address book", log.LogItem{"peer_address", peer})
 		} else {
 			k.waitNext.Set(peer, retryTime, failedAttempts)
 		}
@@ -1033,7 +1033,7 @@ outer:
 				defer cCancel()
 
 				if err := k.discovery.BroadcastPeers(cCtx, connectedPeer, peer); err != nil {
-					k.logger.Debug("peer gossip failed", "new_peer_address", peer, "connected_peer_address", connectedPeer, "error", err)
+					k.logger.Debug("peer gossip failed", log.LogItem{"new_peer_address", peer}, log.LogItem{"connected_peer_address", connectedPeer}, log.LogItem{"error", err})
 				}
 			}(connectedPeer)
 		}
@@ -1051,7 +1051,7 @@ outer:
 
 	err := k.discovery.BroadcastPeers(ctx, peer, addrs...)
 	if err != nil {
-		k.logger.Error(err, "could not broadcast to peer", "peer_address", peer)
+		k.logger.Error(err, "could not broadcast to peer", log.LogItem{"peer_address", peer})
 		_ = k.p2p.Disconnect(peer, "failed broadcasting to peer")
 	}
 
@@ -1168,7 +1168,7 @@ func (k *Kad) onConnected(ctx context.Context, addr swarm.Address) error {
 
 // Disconnected is called when peer disconnects.
 func (k *Kad) Disconnected(peer p2p.Peer) {
-	k.logger.Info("disconnected peer", "peer_address", peer.Address)
+	k.logger.Info("disconnected peer", log.LogItem{"peer_address", peer.Address})
 
 	k.connectedPeers.Remove(peer.Address)
 
@@ -1243,7 +1243,7 @@ func (k *Kad) ClosestPeer(addr swarm.Address, includeSelf bool, filter topology.
 			closest = peer
 		}
 		if err != nil {
-			k.logger.Debug("closest peer", "peer", peer, "addr", addr, "error", err)
+			k.logger.Debug("closest peer", log.LogItem{"peer", peer}, log.LogItem{"addr", addr}, log.LogItem{"error", err})
 		}
 		return false, false, nil
 	}, filter)
@@ -1293,7 +1293,7 @@ func (k *Kad) PeersCount(filter topology.Select) int {
 // Reachable sets the peer reachability status.
 func (k *Kad) Reachable(addr swarm.Address, status p2p.ReachabilityStatus) {
 	k.collector.Record(addr, im.PeerReachability(status))
-	k.logger.Debug("reachability of peer updated", "peer_address", addr, "reachability", status)
+	k.logger.Debug("reachability of peer updated", log.LogItem{"peer_address", addr}, log.LogItem{"reachability", status})
 	if status == p2p.ReachabilityStatusPublic {
 		k.recalcDepth()
 		k.notifyManageLoop()
@@ -1307,7 +1307,7 @@ func (k *Kad) UpdateReachability(status p2p.ReachabilityStatus) {
 	if status == p2p.ReachabilityStatusUnknown {
 		return
 	}
-	k.logger.Debug("reachability updated", "reachability", status)
+	k.logger.Debug("reachability updated", log.LogItem{"reachability", status})
 	k.reachability = status
 	k.metrics.ReachabilityStatus.WithLabelValues(status.String()).Set(0)
 }
@@ -1380,7 +1380,7 @@ func (k *Kad) SetStorageRadius(d uint8) {
 
 	k.storageRadius = d
 	k.metrics.CurrentStorageDepth.Set(float64(k.storageRadius))
-	k.logger.Debug("kademlia set storage radius", "radius", k.storageRadius)
+	k.logger.Debug("kademlia set storage radius", log.LogItem{"radius", k.storageRadius})
 
 	k.notifyManageLoop()
 	k.notifyPeerSig()
@@ -1531,9 +1531,9 @@ func (k *Kad) Close() error {
 	k.logger.Info("kademlia persisting peer metrics")
 	start := time.Now()
 	if err := k.collector.Finalize(start, false); err != nil {
-		k.logger.Debug("unable to finalize open sessions", "error", err)
+		k.logger.Debug("unable to finalize open sessions", log.LogItem{"error", err})
 	}
-	k.logger.Debug("metrics collector finalized", "elapsed", time.Since(start))
+	k.logger.Debug("metrics collector finalized", log.LogItem{"elapsed", time.Since(start)})
 
 	return err
 }

@@ -43,7 +43,7 @@ func (s *Service) chunkUploadStreamHandler(w http.ResponseWriter, r *http.Reques
 	if headers.SwarmTag > 0 {
 		tag, err = s.getOrCreateSessionID(headers.SwarmTag)
 		if err != nil {
-			logger.Debug("get or create tag failed", "error", err)
+			logger.Debug("get or create tag failed", log.LogItem{"error", err})
 			logger.Error(nil, "get or create tag failed")
 			switch {
 			case errors.Is(err, storage.ErrNotFound):
@@ -62,7 +62,7 @@ func (s *Service) chunkUploadStreamHandler(w http.ResponseWriter, r *http.Reques
 		Deferred: tag != 0,
 	})
 	if err != nil {
-		logger.Debug("get putter failed", "error", err)
+		logger.Debug("get putter failed", log.LogItem{"error", err})
 		logger.Error(nil, "get putter failed")
 		switch {
 		case errors.Is(err, errBatchUnusable) || errors.Is(err, postage.ErrNotUsable):
@@ -87,7 +87,7 @@ func (s *Service) chunkUploadStreamHandler(w http.ResponseWriter, r *http.Reques
 
 	wsConn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		logger.Debug("chunk upload: upgrade failed", "error", err)
+		logger.Debug("chunk upload: upgrade failed", log.LogItem{"error", err})
 		logger.Error(nil, "chunk upload: upgrade failed")
 		jsonhttp.BadRequest(w, "upgrade failed")
 		return
@@ -119,7 +119,7 @@ func (s *Service) handleUploadStream(
 	}()
 
 	conn.SetCloseHandler(func(code int, text string) error {
-		logger.Debug("chunk upload stream: client gone", "code", code, "message", text)
+		logger.Debug("chunk upload stream: client gone", log.LogItem{"code", code}, log.LogItem{"message", text})
 		close(gone)
 		return nil
 	})
@@ -162,7 +162,7 @@ func (s *Service) handleUploadStream(
 
 		err = conn.SetReadDeadline(time.Now().Add(streamReadTimeout))
 		if err != nil {
-			logger.Debug("chunk upload stream: set read deadline failed", "error", err)
+			logger.Debug("chunk upload stream: set read deadline failed", log.LogItem{"error", err})
 			logger.Error(nil, "chunk upload stream: set read deadline failed")
 			return
 		}
@@ -170,14 +170,14 @@ func (s *Service) handleUploadStream(
 		mt, msg, err := conn.ReadMessage()
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
-				logger.Debug("chunk upload stream: read message failed", "error", err)
+				logger.Debug("chunk upload stream: read message failed", log.LogItem{"error", err})
 				logger.Error(nil, "chunk upload stream: read message failed")
 			}
 			return
 		}
 
 		if mt != websocket.BinaryMessage {
-			logger.Debug("chunk upload stream: unexpected message received from client", "message_type", mt)
+			logger.Debug("chunk upload stream: unexpected message received from client", log.LogItem{"message_type", mt})
 			logger.Error(nil, "chunk upload stream: unexpected message received from client")
 			sendErrorClose(websocket.CloseUnsupportedData, "invalid message")
 			return
@@ -191,14 +191,14 @@ func (s *Service) handleUploadStream(
 
 		chunk, err := cac.NewWithDataSpan(msg)
 		if err != nil {
-			logger.Debug("chunk upload stream: create chunk failed", "error", err)
+			logger.Debug("chunk upload stream: create chunk failed", log.LogItem{"error", err})
 			logger.Error(nil, "chunk upload stream: create chunk failed")
 			return
 		}
 
 		err = putter.Put(ctx, chunk)
 		if err != nil {
-			logger.Debug("chunk upload stream: write chunk failed", "address", chunk.Address(), "error", err)
+			logger.Debug("chunk upload stream: write chunk failed", log.LogItem{"address", chunk.Address()}, log.LogItem{"error", err})
 			logger.Error(nil, "chunk upload stream: write chunk failed")
 			switch {
 			case errors.Is(err, postage.ErrBucketFull):
@@ -211,7 +211,7 @@ func (s *Service) handleUploadStream(
 
 		err = sendMsg(websocket.BinaryMessage, successWsMsg)
 		if err != nil {
-			s.logger.Debug("chunk upload stream: sending success message failed", "error", err)
+			s.logger.Debug("chunk upload stream: sending success message failed", log.LogItem{"error", err})
 			s.logger.Error(nil, "chunk upload stream: sending success message failed")
 			return
 		}

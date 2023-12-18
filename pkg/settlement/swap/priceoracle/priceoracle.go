@@ -78,7 +78,7 @@ func (s *service) Start() {
 			if err != nil {
 				s.logger.Error(err, "could not get price")
 			} else {
-				loggerV1.Debug("updated exchange rate and deduction", "new_exchange_rate", exchangeRate, "new_deduction", deduction)
+				loggerV1.Debug("updated exchange rate and deduction", log.LogItem{"new_exchange_rate", exchangeRate}, log.LogItem{"new_deduction", deduction})
 				s.exchangeRate = exchangeRate
 				s.deduction = deduction
 			}

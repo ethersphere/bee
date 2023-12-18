@@ -91,7 +91,7 @@ func (s *Service) loggerGetHandler(w http.ResponseWriter, r *http.Request) {
 	})
 
 	if len(result.Loggers) == 0 && err != nil {
-		logger.Debug("invalid path params", "error", err)
+		logger.Debug("invalid path params", log.LogItem{"error", err})
 		logger.Error(nil, "invalid path params")
 		jsonhttp.BadRequest(w, jsonhttp.StatusResponse{
 			Message: "invalid path params",
@@ -121,7 +121,7 @@ func (s *Service) loggerSetVerbosityHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	if err := logSetVerbosityByExp(paths.Exp, log.MustParseVerbosityLevel(paths.Verbosity)); err != nil {
-		logger.Debug("invalid path params", "error", err)
+		logger.Debug("invalid path params", log.LogItem{"error", err})
 		logger.Error(nil, "invalid path params")
 		jsonhttp.BadRequest(w, jsonhttp.StatusResponse{
 			Message: "invalid path params",

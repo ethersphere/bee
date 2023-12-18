@@ -112,7 +112,7 @@ func epochMigration(
 		return nil
 	}
 
-	logger.Debug("started", "path", path, "start_time", time.Now())
+	logger.Debug("started", log.LogItem{"path", path}, log.LogItem{"start_time", time.Now()})
 
 	dbshed, err := shed.NewDB(path, nil)
 	if err != nil {
@@ -137,7 +137,7 @@ func epochMigration(
 
 	pullIdxCnt, _ := pullIndex.Count()
 
-	logger.Debug("index counts", "retrieval index", chunkCount, "pull index", pullIdxCnt)
+	logger.Debug("index counts", log.LogItem{"retrieval index", chunkCount}, log.LogItem{"pull index", pullIdxCnt})
 
 	e := &epochMigrator{
 		stateStore:         stateStore,
@@ -316,20 +316,20 @@ func (e *epochMigrator) migrateReserve(ctx context.Context) error {
 
 			item, err := e.retrievalDataIndex.Get(i)
 			if err != nil {
-				e.logger.Debug("retrieval data index read failed", "chunk_address", addr, "error", err)
+				e.logger.Debug("retrieval data index read failed", log.LogItem{"chunk_address", addr}, log.LogItem{"error", err})
 				return false, nil //continue
 			}
 
 			l, err := sharky.LocationFromBinary(item.Location)
 			if err != nil {
-				e.logger.Debug("location from binary failed", "chunk_address", addr, "error", err)
+				e.logger.Debug("location from binary failed", log.LogItem{"chunk_address", addr}, log.LogItem{"error", err})
 				return false, err
 			}
 
 			chData := make([]byte, l.Length)
 			err = e.recovery.Read(ctx, l, chData)
 			if err != nil {
-				e.logger.Debug("reading location failed", "chunk_address", addr, "error", err)
+				e.logger.Debug("reading location failed", log.LogItem{"chunk_address", addr}, log.LogItem{"error", err})
 				return false, nil // continue
 			}
 
@@ -352,7 +352,7 @@ func (e *epochMigrator) migrateReserve(ctx context.Context) error {
 		return err
 	}
 
-	e.logger.Debug("migrating reserve contents done", "reserve_size", e.reserve.Size())
+	e.logger.Debug("migrating reserve contents done", log.LogItem{"reserve_size", e.reserve.Size()})
 
 	return nil
 }
@@ -454,9 +454,9 @@ func (e *epochMigrator) migratePinning(ctx context.Context) error {
 
 					// do not fail the entire migration if the collection is not migrated
 					if err != nil {
-						e.logger.Debug("pinning collection migration failed", "collection_root_address", addr, "error", err)
+						e.logger.Debug("pinning collection migration failed", log.LogItem{"collection_root_address", addr}, log.LogItem{"error", err})
 					} else {
-						e.logger.Debug("pinning collection migration successful", "collection_root_address", addr)
+						e.logger.Debug("pinning collection migration successful", log.LogItem{"collection_root_address", addr})
 					}
 				}
 			}

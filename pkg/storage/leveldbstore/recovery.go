@@ -45,9 +45,9 @@ func (s *TxStore) Recover() error {
 		Factory:      func() storage.Item { return new(pendingTx) },
 		ItemProperty: storage.QueryItem,
 	}, func(r storage.Result) (bool, error) {
-		logger.Info("uncommitted transaction found", "id", r.ID)
+		logger.Info("uncommitted transaction found", log.LogItem{"id", r.ID})
 		if err := r.Entry.(*pendingTx).val.Replay(batch); err != nil {
-			logger.Debug("unable to replay uncommitted transaction", "id", r.ID, "err", err)
+			logger.Debug("unable to replay uncommitted transaction", log.LogItem{"id", r.ID}, log.LogItem{"err", err})
 			return true, fmt.Errorf("unable to replay batch for %s: %w", r.ID, err)
 		}
 		batch.Delete(id(r.ID))
@@ -62,7 +62,7 @@ func (s *TxStore) Recover() error {
 		return nil
 	}
 
-	logger.Info("reversing uncommitted transactions", "count", batch.Len())
+	logger.Info("reversing uncommitted transactions", log.LogItem{"count", batch.Len()})
 	if err := s.BatchedStore.(*Store).db.Write(batch, &opt.WriteOptions{Sync: true}); err != nil {
 		return fmt.Errorf("leveldbstore: recovery: unable to write batch: %w", err)
 	}

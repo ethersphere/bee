@@ -149,9 +149,9 @@ func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.C
 
 		r.logger.Debug(
 			"replacing chunk stamp index",
-			"old_chunk", item.ChunkAddress,
-			"new_chunk", chunk.Address(),
-			"batch_id", hex.EncodeToString(chunk.Stamp().BatchID()),
+			log.LogItem{"old_chunk", item.ChunkAddress},
+			log.LogItem{"new_chunk", chunk.Address()},
+			log.LogItem{"batch_id", hex.EncodeToString(chunk.Stamp().BatchID())},
 		)
 
 		err = stampindex.Store(storeBatch, reserveNamespace, chunk)

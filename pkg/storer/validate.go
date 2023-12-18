@@ -60,7 +60,7 @@ func validateWork(logger log.Logger, store storage.Store, readFn func(context.Co
 
 	n := time.Now()
 	defer func() {
-		logger.Info("validation finished", "duration", time.Since(n), "invalid", invalidCount, "soc", socCount, "total", total)
+		logger.Info("validation finished", log.LogItem{"duration", time.Since(n)}, log.LogItem{"invalid", invalidCount}, log.LogItem{"soc", socCount}, log.LogItem{"total", total})
 	}()
 
 	iteratateItemsC := make(chan *chunkstore.RetrievalIndexItem)
@@ -68,7 +68,7 @@ func validateWork(logger log.Logger, store storage.Store, readFn func(context.Co
 	validChunk := func(item *chunkstore.RetrievalIndexItem, buf []byte) {
 		err := readFn(context.Background(), item.Location, buf)
 		if err != nil {
-			logger.Warning("invalid chunk", "address", item.Address, "timestamp", time.Unix(int64(item.Timestamp), 0), "location", item.Location, "error", err)
+			logger.Warning("invalid chunk", log.LogItem{"address", item.Address}, log.LogItem{"timestamp", time.Unix(int64(item.Timestamp), 0)}, log.LogItem{"location", item.Location}, log.LogItem{"error", err})
 			return
 		}
 
@@ -76,10 +76,10 @@ func validateWork(logger log.Logger, store storage.Store, readFn func(context.Co
 		if !cac.Valid(ch) {
 			if soc.Valid(ch) {
 				socCount++
-				logger.Debug("found soc chunk", "address", item.Address, "timestamp", time.Unix(int64(item.Timestamp), 0))
+				logger.Debug("found soc chunk", log.LogItem{"address", item.Address}, log.LogItem{"timestamp", time.Unix(int64(item.Timestamp), 0)})
 			} else {
 				invalidCount++
-				logger.Warning("invalid cac/soc chunk", "address", item.Address, "timestamp", time.Unix(int64(item.Timestamp), 0))
+				logger.Warning("invalid cac/soc chunk", log.LogItem{"address", item.Address}, log.LogItem{"timestamp", time.Unix(int64(item.Timestamp), 0)})
 
 				h, err := cac.DoHash(buf[swarm.SpanSize:], buf[:swarm.SpanSize])
 				if err != nil {
@@ -90,7 +90,7 @@ func validateWork(logger log.Logger, store storage.Store, readFn func(context.Co
 				computedAddr := swarm.NewAddress(h)
 
 				if !cac.Valid(swarm.NewChunk(computedAddr, buf)) {
-					logger.Warning("computed chunk is also an invalid cac", "err", err)
+					logger.Warning("computed chunk is also an invalid cac", log.LogItem{"err", err})
 					return
 				}
 
@@ -101,7 +101,7 @@ func validateWork(logger log.Logger, store storage.Store, readFn func(context.Co
 					return
 				}
 
-				logger.Warning("retrieved chunk with shared slot", "shared_address", sharedEntry.Address, "shared_timestamp", time.Unix(int64(sharedEntry.Timestamp), 0))
+				logger.Warning("retrieved chunk with shared slot", log.LogItem{"shared_address", sharedEntry.Address}, log.LogItem{"shared_timestamp", time.Unix(int64(sharedEntry.Timestamp), 0)})
 			}
 		}
 	}
@@ -112,7 +112,7 @@ func validateWork(logger log.Logger, store storage.Store, readFn func(context.Co
 		total++
 		return nil
 	})
-	logger.Info("validation count finished", "duration", time.Since(s), "total", total)
+	logger.Info("validation count finished", log.LogItem{"duration", time.Since(s)}, log.LogItem{"total", total})
 
 	var wg sync.WaitGroup
 
@@ -132,7 +132,7 @@ func validateWork(logger log.Logger, store storage.Store, readFn func(context.Co
 		iteratateItemsC <- item
 		count++
 		if count%100_000 == 0 {
-			logger.Info("..still validating chunks", "count", count, "invalid", invalidCount, "soc", socCount, "total", total, "percent", fmt.Sprintf("%.2f", (float64(count)*100.0)/float64(total)))
+			logger.Info("..still validating chunks", log.LogItem{"count", count}, log.LogItem{"invalid", invalidCount}, log.LogItem{"soc", socCount}, log.LogItem{"total", total}, log.LogItem{"percent", fmt.Sprintf("%.2f", (float64(count)*100.0)/float64(total))})
 		}
 		return nil
 	})

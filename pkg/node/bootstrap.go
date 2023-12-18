@@ -220,7 +220,7 @@ func bootstrapNode(
 
 		snapshotReference, err = getLatestSnapshot(ctx, localStore.Download(true), snapshotFeed)
 		if err != nil {
-			logger.Warning("bootstrap: fetching snapshot failed", "error", err)
+			logger.Warning("bootstrap: fetching snapshot failed", log.LogItem{"error", err})
 			continue
 		}
 		break
@@ -239,19 +239,19 @@ func bootstrapNode(
 
 		reader, l, err = joiner.New(ctx, localStore.Download(true), snapshotReference)
 		if err != nil {
-			logger.Warning("bootstrap: file joiner failed", "error", err)
+			logger.Warning("bootstrap: file joiner failed", log.LogItem{"error", err})
 			continue
 		}
 
 		eventsJSON, err = io.ReadAll(reader)
 		if err != nil {
-			logger.Warning("bootstrap: reading failed", "error", err)
+			logger.Warning("bootstrap: reading failed", log.LogItem{"error", err})
 			continue
 		}
 
 		if len(eventsJSON) != int(l) {
 			err = errDataMismatch
-			logger.Warning("bootstrap: count mismatch", "error", err)
+			logger.Warning("bootstrap: count mismatch", log.LogItem{"error", err})
 			continue
 		}
 		break

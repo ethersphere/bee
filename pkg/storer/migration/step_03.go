@@ -80,7 +80,7 @@ func step_03(
 				return err
 			}
 		}
-		logger.Info("removed all bin ids", "total_entries", len(chunkBinItems))
+		logger.Info("removed all bin ids", log.LogItem{"total_entries", len(chunkBinItems)})
 		chunkBinItems = nil
 
 		// STEP 3
@@ -100,7 +100,7 @@ func step_03(
 			return err
 		}
 
-		logger.Info("found reserve chunk entries, adding new entries", "total_entries", len(batchRadiusItems))
+		logger.Info("found reserve chunk entries, adding new entries", log.LogItem{"total_entries", len(batchRadiusItems)})
 
 		batchSize := 10000
 		missingChunks := 0
@@ -159,7 +159,7 @@ func step_03(
 				return err
 			}
 		}
-		logger.Info("migrated all chunk entries", "new_size", len(batchRadiusItems)-missingChunks, "missing_chunks", missingChunks)
+		logger.Info("migrated all chunk entries", log.LogItem{"new_size", len(batchRadiusItems) - missingChunks}, log.LogItem{"missing_chunks", missingChunks})
 		return nil
 
 	}

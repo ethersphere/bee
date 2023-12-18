@@ -74,7 +74,7 @@ func (s *Service) dirUploadHandler(
 		r.Header.Get(SwarmErrorDocumentHeader),
 	)
 	if err != nil {
-		logger.Debug("store dir failed", "error", err)
+		logger.Debug("store dir failed", log.LogItem{"error", err})
 		logger.Error(nil, "store dir failed")
 		switch {
 		case errors.Is(err, postage.ErrBucketFull):
@@ -91,7 +91,7 @@ func (s *Service) dirUploadHandler(
 
 	err = putter.Done(reference)
 	if err != nil {
-		logger.Debug("store dir failed", "error", err)
+		logger.Debug("store dir failed", log.LogItem{"error", err})
 		logger.Error(nil, "store dir failed")
 		jsonhttp.InternalServerError(w, errDirectoryStore)
 		return
@@ -112,15 +112,15 @@ func storeDir(
 	ctx context.Context,
 	encrypt bool,
 	reader dirReader,
-	log log.Logger,
+	logger log.Logger,
 	putter storage.Putter,
 	getter storage.Getter,
 	indexFilename,
 	errorFilename string,
 ) (swarm.Address, error) {
 
-	logger := tracing.NewLoggerWithTraceID(ctx, log)
-	loggerV1 := logger.V(1).Build()
+	newLogger := tracing.NewLoggerWithTraceID(ctx, logger)
+	loggerV1 := newLogger.V(1).Build()
 
 	p := requestPipelineFn(putter, encrypt)
 	ls := loadsave.New(getter, requestPipelineFactory(ctx, putter, encrypt))
@@ -149,7 +149,7 @@ func storeDir(
 		if err != nil {
 			return swarm.ZeroAddress, fmt.Errorf("store dir file: %w", err)
 		}
-		loggerV1.Debug("bzz upload dir: file dir uploaded", "file_path", fileInfo.Path, "address", fileReference)
+		loggerV1.Debug("bzz upload dir: file dir uploaded", log.LogItem{"file_path", fileInfo.Path}, log.LogItem{"address", fileReference})
 
 		fileMtdt := map[string]string{
 			manifest.EntryMetadataContentTypeKey: fileInfo.ContentType,
@@ -190,7 +190,7 @@ func storeDir(
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("store manifest: %w", err)
 	}
-	loggerV1.Debug("bzz upload dir: uploaded dir finished", "address", manifestReference)
+	loggerV1.Debug("bzz upload dir: uploaded dir finished", log.LogItem{"address", manifestReference})
 
 	return manifestReference, nil
 }
@@ -234,7 +234,7 @@ func (t *tarReader) Next() (*FileInfo, error) {
 		}
 		// only store regular files
 		if !fileHeader.FileInfo().Mode().IsRegular() {
-			t.logger.Warning("bzz upload dir: skipping file upload as it is not a regular file", "file_path", filePath)
+			t.logger.Warning("bzz upload dir: skipping file upload as it is not a regular file", log.LogItem{"file_path", filePath})
 			continue
 		}
 

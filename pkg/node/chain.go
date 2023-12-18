@@ -69,11 +69,11 @@ func InitChain(
 		var versionString string
 		err = rpcClient.CallContext(ctx, &versionString, "web3_clientVersion")
 		if err != nil {
-			logger.Info("could not connect to backend; in a swap-enabled network a working blockchain node (for xdai network in production, goerli in testnet) is required; check your node or specify another node using --swap-endpoint.", "backend_endpoint", endpoint)
+			logger.Info("could not connect to backend; in a swap-enabled network a working blockchain node (for xdai network in production, goerli in testnet) is required; check your node or specify another node using --swap-endpoint.", log.LogItem{"backend_endpoint", endpoint})
 			return nil, common.Address{}, 0, nil, nil, fmt.Errorf("blockchain client get version: %w", err)
 		}
 
-		logger.Info("connected to blockchain backend", "version", versionString)
+		logger.Info("connected to blockchain backend", log.LogItem{"version", versionString})
 
 		backend = wrapped.NewBackend(ethclient.NewClient(rpcClient))
 	}
@@ -119,12 +119,12 @@ func InitChequebookFactory(
 			return nil, fmt.Errorf("no known factory address for this network (chain id: %d)", chainID)
 		}
 		currentFactory = foundFactory
-		logger.Info("using default factory address", "chain_id", chainID, "factory_address", currentFactory)
+		logger.Info("using default factory address", log.LogItem{"chain_id", chainID}, log.LogItem{"factory_address", currentFactory})
 	} else if !common.IsHexAddress(factoryAddress) {
 		return nil, errors.New("malformed factory address")
 	} else {
 		currentFactory = common.HexToAddress(factoryAddress)
-		logger.Info("using custom factory address", "factory_address", currentFactory)
+		logger.Info("using custom factory address", log.LogItem{"factory_address", currentFactory})
 	}
 
 	if len(legacyFactoryAddresses) == 0 {
@@ -297,7 +297,7 @@ func GetTxHash(stateStore storage.StateStorer, logger log.Logger, trxString stri
 		if err != nil {
 			return nil, err
 		}
-		logger.Info("using the provided transaction hash", "tx_hash", txHashTrimmed)
+		logger.Info("using the provided transaction hash", log.LogItem{"tx_hash", txHashTrimmed})
 		return txHash, nil
 	}
 
@@ -310,7 +310,7 @@ func GetTxHash(stateStore storage.StateStorer, logger log.Logger, trxString stri
 		return nil, err
 	}
 
-	logger.Info("using the chequebook transaction hash", "tx_hash", txHash)
+	logger.Info("using the chequebook transaction hash", log.LogItem{"tx_hash", txHash})
 	return txHash.Bytes(), nil
 }
 
@@ -325,7 +325,7 @@ func GetTxNextBlock(ctx context.Context, logger log.Logger, backend transaction.
 		if err != nil {
 			return nil, err
 		}
-		logger.Info("using the provided block hash", "block_hash", hex.EncodeToString(blockHash))
+		logger.Info("using the provided block hash", log.LogItem{"block_hash", hex.EncodeToString(blockHash)})
 		return blockHash, nil
 	}
 
@@ -337,7 +337,7 @@ func GetTxNextBlock(ctx context.Context, logger log.Logger, backend transaction.
 	hash := block.Hash()
 	hashBytes := hash.Bytes()
 
-	logger.Info("using the next block hash from the blockchain", "block_hash", hex.EncodeToString(hashBytes))
+	logger.Info("using the next block hash from the blockchain", log.LogItem{"block_hash", hex.EncodeToString(hashBytes)})
 
 	return hashBytes, nil
 }

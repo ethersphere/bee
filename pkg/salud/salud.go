@@ -187,7 +187,7 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 	s.metrics.NeighborhoodRadius.Set(float64(nHoodRadius))
 	s.metrics.Commitment.Set(float64(commitment))
 
-	s.logger.Debug("computed", "avg_dur", avgDur, "pDur", pDur, "pConns", pConns, "network_radius", networkRadius, "neighborhood_radius", nHoodRadius, "batch_commitment", commitment)
+	s.logger.Debug("computed", log.LogItem{"avg_dur", avgDur}, log.LogItem{"pDur", pDur}, log.LogItem{"pConns", pConns}, log.LogItem{"network_radius", networkRadius}, log.LogItem{"neighborhood_radius", nHoodRadius}, log.LogItem{"batch_commitment", commitment})
 
 	for _, peer := range peers {
 
@@ -201,13 +201,13 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 		}
 
 		if networkRadius > 0 && peer.status.StorageRadius < uint32(networkRadius-1) {
-			s.logger.Debug("radius health failure", "radius", peer.status.StorageRadius, "peer_address", peer.addr)
+			s.logger.Debug("radius health failure", log.LogItem{"radius", peer.status.StorageRadius}, log.LogItem{"peer_address", peer.addr})
 		} else if peer.dur.Seconds() > pDur {
-			s.logger.Debug("response duration below threshold", "duration", peer.dur, "peer_address", peer.addr)
+			s.logger.Debug("response duration below threshold", log.LogItem{"duration", peer.dur}, log.LogItem{"peer_address", peer.addr})
 		} else if peer.status.ConnectedPeers < pConns {
-			s.logger.Debug("connections count below threshold", "connections", peer.status.ConnectedPeers, "peer_address", peer.addr)
+			s.logger.Debug("connections count below threshold", log.LogItem{"connections", peer.status.ConnectedPeers}, log.LogItem{"peer_address", peer.addr})
 		} else if peer.status.BatchCommitment != commitment {
-			s.logger.Debug("batch commitment check failure", "commitment", peer.status.BatchCommitment, "peer_address", peer.addr)
+			s.logger.Debug("batch commitment check failure", log.LogItem{"commitment", peer.status.BatchCommitment}, log.LogItem{"peer_address", peer.addr})
 		} else {
 			healthy = true
 		}
@@ -224,7 +224,7 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 	selfHealth := true
 	if s.reserve.StorageRadius() != networkRadius {
 		selfHealth = false
-		s.logger.Warning("node is unhealthy due to storage radius discrepency", "self_radius", s.reserve.StorageRadius(), "network_radius", networkRadius)
+		s.logger.Warning("node is unhealthy due to storage radius discrepency", log.LogItem{"self_radius", s.reserve.StorageRadius()}, log.LogItem{"network_radius", networkRadius})
 	}
 
 	s.isSelfHealthy.Store(selfHealth)

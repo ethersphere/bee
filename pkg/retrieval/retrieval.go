@@ -210,13 +210,13 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 				if errors.Is(err, topology.ErrNotFound) {
 					if skip.PruneExpiresAfter(chunkAddr, overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers
 						if inflight == 0 {
-							loggerV1.Debug("no peers left", "chunk_address", chunkAddr, "errors_left", errorsLeft, "isOrigin", origin, "own_proximity", swarm.Proximity(s.addr.Bytes(), chunkAddr.Bytes()), "error", err)
+							loggerV1.Debug("no peers left", log.LogItem{"chunk_address", chunkAddr}, log.LogItem{"errors_left", errorsLeft}, log.LogItem{"isOrigin", origin}, log.LogItem{"own_proximity", swarm.Proximity(s.addr.Bytes(), chunkAddr.Bytes())}, log.LogItem{"error", err})
 							return nil, err
 						}
 						continue // there is still an inflight request, wait for it's result
 					}
 
-					loggerV1.Debug("sleeping to refresh overdraft balance", "chunk_address", chunkAddr)
+					loggerV1.Debug("sleeping to refresh overdraft balance", log.LogItem{"chunk_address", chunkAddr})
 
 					select {
 					case <-time.After(overDraftRefresh):
@@ -229,7 +229,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 
 				if err != nil {
 					if inflight == 0 {
-						loggerV1.Debug("peer selection", "chunk_address", chunkAddr, "error", err)
+						loggerV1.Debug("peer selection", log.LogItem{"chunk_address", chunkAddr}, log.LogItem{"error", err})
 						return nil, err
 					}
 					continue
@@ -268,12 +268,12 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 				inflight--
 
 				if res.err == nil {
-					loggerV1.Debug("retrieved chunk", "chunk_address", chunkAddr, "peer_address", res.peer, "peer_proximity", swarm.Proximity(res.peer.Bytes(), chunkAddr.Bytes()))
+					loggerV1.Debug("retrieved chunk", log.LogItem{"chunk_address", chunkAddr}, log.LogItem{"peer_address", res.peer}, log.LogItem{"peer_proximity", swarm.Proximity(res.peer.Bytes(), chunkAddr.Bytes())})
 					return res.chunk, nil
 				}
 
-				loggerV1.Debug("failed to get chunk", "chunk_address", chunkAddr, "peer_address", res.peer,
-					"peer_proximity", swarm.Proximity(res.peer.Bytes(), chunkAddr.Bytes()), "error", res.err)
+				loggerV1.Debug("failed to get chunk", log.LogItem{"chunk_address", chunkAddr}, log.LogItem{"peer_address", res.peer},
+					log.LogItem{"peer_proximity", swarm.Proximity(res.peer.Bytes(), chunkAddr.Bytes())}, log.LogItem{"error", res.err})
 
 				errorsLeft--
 				s.errSkip.Add(chunkAddr, res.peer, skiplistDur)
@@ -285,7 +285,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 	})
 	if err != nil {
 		s.metrics.RequestFailureCounter.Inc()
-		s.logger.Debug("retrieval failed", "chunk_address", chunkAddr, "error", err)
+		s.logger.Debug("retrieval failed", log.LogItem{"chunk_address", chunkAddr}, log.LogItem{"error", err})
 		return nil, err
 	}
 
@@ -487,7 +487,7 @@ func (s *Service) handler(p2pctx context.Context, p p2p.Peer, stream p2p.Stream)
 	// cache the request last, so that putting to the localstore does not slow down the request flow
 	if s.caching && forwarded {
 		if err := s.storer.Cache().Put(p2pctx, chunk); err != nil {
-			s.logger.Debug("retrieve cache put", "error", err)
+			s.logger.Debug("retrieve cache put", log.LogItem{"error", err})
 		}
 	}
 

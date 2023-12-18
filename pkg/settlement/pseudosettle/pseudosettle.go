@@ -218,7 +218,7 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 	if allowance.Cmp(attemptedAmount) < 0 {
 		paymentAmount.Set(allowance)
 	}
-	loggerV1.Debug("pseudosettle accepting payment message from peer", "peer_address", p.Address, "amount", paymentAmount)
+	loggerV1.Debug("pseudosettle accepting payment message from peer", log.LogItem{"peer_address", p.Address}, log.LogItem{"amount", paymentAmount})
 
 	if paymentAmount.Cmp(big.NewInt(0)) < 0 {
 		paymentAmount.Set(big.NewInt(0))
@@ -293,7 +293,7 @@ func (s *Service) Pay(ctx context.Context, peer swarm.Address, amount *big.Int) 
 		}
 	}()
 
-	loggerV1.Debug("pseudosettle sending payment message to peer", "peer_address", peer, "amount", amount)
+	loggerV1.Debug("pseudosettle sending payment message to peer", log.LogItem{"peer_address", peer}, log.LogItem{"amount", amount})
 	w, r := protobuf.NewWriterAndReader(stream)
 
 	err = w.WriteMsgWithContext(ctx, &pb.Payment{

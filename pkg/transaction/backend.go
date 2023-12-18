@@ -75,7 +75,7 @@ func WaitSynced(ctx context.Context, logger log.Logger, backend Backend, maxDela
 			return nil
 		}
 
-		logger.Info("still waiting for Ethereum to sync", "block_time", blockTime)
+		logger.Info("still waiting for Ethereum to sync", log.LogItem{"block_time", blockTime})
 
 		select {
 		case <-ctx.Done():

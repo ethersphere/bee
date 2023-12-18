@@ -105,7 +105,7 @@ func (b *Blocker) block() {
 
 		if 0 < peer.blockAfter && peer.blockAfter < b.sequence.Load() {
 			if err := b.blocklister.Blocklist(peer.address, b.blockDuration, "blocker: flag timeout"); err != nil {
-				b.logger.Warning("blocking peer failed", "peer_address", peer.address, "error", err)
+				b.logger.Warning("blocking peer failed", log.LogItem{"peer_address", peer.address}, log.LogItem{"error", err})
 			}
 			if b.blocklistCallback != nil {
 				b.blocklistCallback(peer.address)

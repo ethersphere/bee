@@ -100,7 +100,7 @@ func (tm *transactionMonitor) WatchTransaction(txHash common.Hash, nonce uint64)
 	default:
 	}
 
-	loggerV1.Debug("starting to watch transaction", "tx", txHash, "nonce", nonce)
+	loggerV1.Debug("starting to watch transaction", log.LogItem{"tx", txHash}, log.LogItem{"nonce", nonce})
 
 	return receiptC, errC, nil
 }
@@ -162,7 +162,7 @@ func (tm *transactionMonitor) watchPending() {
 		}
 
 		if err := tm.checkPending(block); err != nil {
-			loggerV1.Debug("error while checking pending transactions", "error", err)
+			loggerV1.Debug("error while checking pending transactions", log.LogItem{"error", err})
 			continue
 		}
 		lastBlock = block

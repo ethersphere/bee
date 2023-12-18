@@ -258,7 +258,7 @@ func (s *Service) Handshake(peer swarm.Address, beneficiary common.Address) erro
 		return err
 	}
 	if known && !peer.Equal(oldPeer) {
-		s.logger.Debug("migrating swap addresses", "old_peer_address", oldPeer, "new_peer_address", peer)
+		s.logger.Debug("migrating swap addresses", log.LogItem{"old_peer_address", oldPeer}, log.LogItem{"new_peer_address", peer})
 		return s.addressbook.MigratePeer(oldPeer, peer)
 	}
 
@@ -267,7 +267,7 @@ func (s *Service) Handshake(peer swarm.Address, beneficiary common.Address) erro
 		return err
 	}
 	if !known {
-		loggerV1.Debug("initial swap handshake", "peer_address", peer, "beneficiary_address", beneficiary)
+		loggerV1.Debug("initial swap handshake", log.LogItem{"peer_address", peer}, log.LogItem{"beneficiary_address", beneficiary})
 		return s.addressbook.PutBeneficiary(peer, beneficiary)
 	}
 

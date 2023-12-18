@@ -214,10 +214,10 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		debugApiService.SetProbe(probe)
 
 		go func() {
-			logger.Info("starting debug api server", "address", debugAPIListener.Addr())
+			logger.Info("starting debug api server", log.LogItem{"address", debugAPIListener.Addr()})
 
 			if err := debugAPIServer.Serve(debugAPIListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				logger.Debug("debug api server failed to start", "error", err)
+				logger.Debug("debug api server failed to start", log.LogItem{"error", err})
 				logger.Error(nil, "debug api server failed to start")
 			}
 		}()
@@ -438,10 +438,10 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		ErrorLog:          stdlog.New(b.errorLogWriter, "", 0),
 	}
 	go func() {
-		logger.Info("starting api server", "address", apiListener.Addr())
+		logger.Info("starting api server", log.LogItem{"address", apiListener.Addr()})
 
 		if err := apiServer.Serve(apiListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			logger.Debug("api server failed to start", "error", err)
+			logger.Debug("api server failed to start", log.LogItem{"error", err})
 			logger.Error(nil, "api server failed to start")
 		}
 	}()

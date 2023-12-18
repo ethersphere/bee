@@ -169,24 +169,24 @@ func (s *Service) handler(ctx context.Context, _ p2p.Peer, stream p2p.Stream) er
 	w, r := protobuf.NewWriterAndReader(stream)
 	defer func() {
 		if err := stream.FullClose(); err != nil {
-			loggerV2.Debug("stream full close failed: %v", "error", err)
+			loggerV2.Debug("stream full close failed: %v", log.LogItem{"error", err})
 		}
 	}()
 
 	var msgGet pb.Get
 	if err := r.ReadMsgWithContext(ctx, &msgGet); err != nil {
-		loggerV2.Debug("read message failed", "error", err)
+		loggerV2.Debug("read message failed", log.LogItem{"error", err})
 		return fmt.Errorf("read message: %w", err)
 	}
 
 	snapshot, err := s.LocalSnapshot()
 	if err != nil {
-		loggerV2.Debug("local snapshot failed", "error", err)
+		loggerV2.Debug("local snapshot failed", log.LogItem{"error", err})
 		return fmt.Errorf("local snapshot: %w", err)
 	}
 
 	if err := w.WriteMsgWithContext(ctx, (*pb.Snapshot)(snapshot)); err != nil {
-		loggerV2.Debug("write message failed", "error", err)
+		loggerV2.Debug("write message failed", log.LogItem{"error", err})
 		return fmt.Errorf("write message: %w", err)
 	}
 

@@ -284,7 +284,7 @@ func NewBee(
 	if !nonceExists {
 		// mine the overlay
 		if o.TargetNeighborhood != "" {
-			logger.Info("mining an overlay address for the fresh node to target the selected neighborhood", "target", o.TargetNeighborhood)
+			logger.Info("mining an overlay address for the fresh node to target the selected neighborhood", log.LogItem{"target", o.TargetNeighborhood})
 			swarmAddress, nonce, err = nbhdutil.MineOverlay(ctx, *pubKey, networkID, o.TargetNeighborhood)
 			if err != nil {
 				return nil, fmt.Errorf("mine overlay address: %w", err)
@@ -297,7 +297,7 @@ func NewBee(
 		}
 	}
 
-	logger.Info("using overlay address", "address", swarmAddress)
+	logger.Info("using overlay address", log.LogItem{"address", swarmAddress})
 
 	if err = checkOverlay(stateStore, swarmAddress); err != nil {
 		return nil, fmt.Errorf("check overlay address: %w", err)
@@ -349,7 +349,7 @@ func NewBee(
 	}
 	b.ethClientCloser = chainBackend.Close
 
-	logger.Info("using chain with network network", "chain_id", chainID, "network_id", networkID)
+	logger.Info("using chain with network network", log.LogItem{"chain_id", chainID}, log.LogItem{"network_id", networkID})
 
 	if o.ChainID != -1 && o.ChainID != chainID {
 		return nil, fmt.Errorf("connected to wrong blockchain network; network chainID %d; configured chainID %d", chainID, o.ChainID)
@@ -433,10 +433,10 @@ func NewBee(
 		}
 
 		go func() {
-			logger.Info("starting debug server", "address", debugAPIListener.Addr())
+			logger.Info("starting debug server", log.LogItem{"address", debugAPIListener.Addr()})
 
 			if err := debugAPIServer.Serve(debugAPIListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				logger.Debug("debug api server failed to start", "error", err)
+				logger.Debug("debug api server failed to start", log.LogItem{"error", err})
 				logger.Error(nil, "debug api server failed to start")
 			}
 		}()
@@ -477,10 +477,10 @@ func NewBee(
 		}
 
 		go func() {
-			logger.Info("starting debug & api server", "address", apiListener.Addr())
+			logger.Info("starting debug & api server", log.LogItem{"address", apiListener.Addr()})
 
 			if err := apiServer.Serve(apiListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				logger.Debug("debug & api server failed to start", "error", err)
+				logger.Debug("debug & api server failed to start", log.LogItem{"error", err})
 				logger.Error(nil, "debug & api server failed to start")
 			}
 		}()
@@ -566,8 +566,8 @@ func NewBee(
 	for _, a := range o.Bootnodes {
 		addr, err := ma.NewMultiaddr(a)
 		if err != nil {
-			logger.Debug("create bootnode multiaddress from string failed", "string", a, "error", err)
-			logger.Warning("create bootnode multiaddress from string failed", "string", a)
+			logger.Debug("create bootnode multiaddress from string failed", log.LogItem{"string", a}, log.LogItem{"error", err})
+			logger.Warning("create bootnode multiaddress from string failed", log.LogItem{"string", a})
 			continue
 		}
 
@@ -624,7 +624,7 @@ func NewBee(
 			libp2pPrivateKey,
 			o,
 		)
-		logger.Info("bootstrapper created", "elapsed", time.Since(start))
+		logger.Info("bootstrapper created", log.LogItem{"elapsed", time.Since(start)})
 		if err != nil {
 			logger.Error(err, "bootstrapper failed to fetch batch state")
 		}
@@ -738,7 +738,7 @@ func NewBee(
 	var path string
 
 	if o.DataDir != "" {
-		logger.Info("using datadir", "path", o.DataDir)
+		logger.Info("using datadir", log.LogItem{"path", o.DataDir})
 		path = filepath.Join(o.DataDir, "localstore")
 	}
 
@@ -838,7 +838,7 @@ func NewBee(
 	}
 
 	for _, addr := range addrs {
-		logger.Debug("p2p address", "address", addr)
+		logger.Debug("p2p address", log.LogItem{"address", addr})
 	}
 
 	var enforcedRefreshRate *big.Int
@@ -1121,9 +1121,9 @@ func NewBee(
 			}
 
 			go func() {
-				logger.Info("starting api server", "address", apiListener.Addr())
+				logger.Info("starting api server", log.LogItem{"address", apiListener.Addr()})
 				if err := apiServer.Serve(apiListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-					logger.Debug("api server failed to start", "error", err)
+					logger.Debug("api server failed to start", log.LogItem{"error", err})
 					logger.Error(nil, "api server failed to start")
 				}
 			}()

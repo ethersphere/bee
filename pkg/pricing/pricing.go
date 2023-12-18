@@ -92,15 +92,15 @@ func (s *Service) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) (e
 
 	var req pb.AnnouncePaymentThreshold
 	if err := r.ReadMsgWithContext(ctx, &req); err != nil {
-		s.logger.Debug("could not receive payment threshold and/or price table announcement from peer", "peer_address", p.Address)
+		s.logger.Debug("could not receive payment threshold and/or price table announcement from peer", log.LogItem{"peer_address", p.Address})
 		return fmt.Errorf("read request from peer %v: %w", p.Address, err)
 	}
 
 	paymentThreshold := big.NewInt(0).SetBytes(req.PaymentThreshold)
-	loggerV1.Debug("received payment threshold announcement from peer", "peer_address", p.Address, "payment_threshold", paymentThreshold)
+	loggerV1.Debug("received payment threshold announcement from peer", log.LogItem{"peer_address", p.Address}, log.LogItem{"payment_threshold", paymentThreshold})
 
 	if paymentThreshold.Cmp(s.minPaymentThreshold) < 0 {
-		loggerV1.Debug("payment threshold from peer too small, need at least min payment threshold", "peer_address", p.Address, "payment_threshold", paymentThreshold, "min_payment_threshold", s.minPaymentThreshold)
+		loggerV1.Debug("payment threshold from peer too small, need at least min payment threshold", log.LogItem{"peer_address", p.Address}, log.LogItem{"payment_threshold", paymentThreshold}, log.LogItem{"min_payment_threshold", s.minPaymentThreshold})
 		return p2p.NewDisconnectError(ErrThresholdTooLow)
 	}
 
@@ -119,7 +119,7 @@ func (s *Service) init(ctx context.Context, p p2p.Peer) error {
 
 	err := s.AnnouncePaymentThreshold(ctx, p.Address, threshold)
 	if err != nil {
-		s.logger.Warning("could not send payment threshold announcement to peer", "peer_address", p.Address)
+		s.logger.Warning("could not send payment threshold announcement to peer", log.LogItem{"peer_address", p.Address})
 	}
 	return err
 }
@@ -143,7 +143,7 @@ func (s *Service) AnnouncePaymentThreshold(ctx context.Context, peer swarm.Addre
 		}
 	}()
 
-	loggerV1.Debug("sending payment threshold announcement to peer", "peer_address", peer, "payment_threshold", paymentThreshold)
+	loggerV1.Debug("sending payment threshold announcement to peer", log.LogItem{"peer_address", peer}, log.LogItem{"payment_threshold", paymentThreshold})
 	w := protobuf.NewWriter(stream)
 	err = w.WriteMsgWithContext(ctx, &pb.AnnouncePaymentThreshold{
 		PaymentThreshold: paymentThreshold.Bytes(),

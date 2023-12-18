@@ -140,7 +140,7 @@ func (s *store) Save(batch *postage.Batch) error {
 			return err
 		}
 
-		s.logger.Debug("batch saved", "batch_id", hex.EncodeToString(batch.ID), "batch_depth", batch.Depth, "batch_value", batch.Value.Int64(), "radius", s.radius.Load())
+		s.logger.Debug("batch saved", log.LogItem{"batch_id", hex.EncodeToString(batch.ID)}, log.LogItem{"batch_depth", batch.Depth}, log.LogItem{"batch_value", batch.Value.Int64()}, log.LogItem{"radius", s.radius.Load()})
 
 		return nil
 	case err != nil:
@@ -156,7 +156,7 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 
 	oldBatch := &postage.Batch{}
 
-	s.logger.Debug("update batch", "batch_id", hex.EncodeToString(batch.ID), "new_batch_depth", depth, "new_batch_value", value.Int64())
+	s.logger.Debug("update batch", log.LogItem{"batch_id", hex.EncodeToString(batch.ID)}, log.LogItem{"new_batch_depth", depth}, log.LogItem{"new_batch_value", value.Int64()})
 
 	switch err := s.store.Get(batchKey(batch.ID), oldBatch); {
 	case errors.Is(err, storage.ErrNotFound):
@@ -191,7 +191,7 @@ func (s *store) Update(batch *postage.Batch, value *big.Int, depth uint8) error 
 func (s *store) PutChainState(cs *postage.ChainState) error {
 	s.cs.Store(cs)
 
-	s.logger.Debug("put chain state", "block", cs.Block, "amount", cs.TotalAmount.Int64(), "price", cs.CurrentPrice.Int64())
+	s.logger.Debug("put chain state", log.LogItem{"block", cs.Block}, log.LogItem{"amount", cs.TotalAmount.Int64()}, log.LogItem{"price", cs.CurrentPrice.Int64()})
 
 	err := s.cleanup()
 	if err != nil {
@@ -294,7 +294,7 @@ func (s *store) cleanup() error {
 	}
 
 	for _, b := range evictions {
-		s.logger.Debug("batch expired", "batch_id", hex.EncodeToString(b.ID))
+		s.logger.Debug("batch expired", log.LogItem{"batch_id", hex.EncodeToString(b.ID)})
 		if s.batchExpiry != nil {
 			err = s.batchExpiry.HandleStampExpiry(context.Background(), b.ID)
 			if err != nil {

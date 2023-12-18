@@ -201,7 +201,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 				if !errors.Is(err, batchservice.ErrZeroValueBatch) {
 					return err
 				}
-				l.logger.Debug("failed processing event", "error", err)
+				l.logger.Debug("failed processing event", log.LogItem{"error", err})
 			}
 			totalTimeMetric(l.metrics.EventProcessDuration, startEv)
 		}
@@ -227,11 +227,11 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 
 	batchFactor, err := strconv.ParseUint(batchFactorOverridePublic, 10, 64)
 	if err != nil {
-		l.logger.Warning("batch factor conversation failed", "batch_factor", batchFactor, "error", err)
+		l.logger.Warning("batch factor conversation failed", log.LogItem{"batch_factor", batchFactor}, log.LogItem{"error", err})
 		batchFactor = defaultBatchFactor
 	}
 
-	l.logger.Debug("batch factor", "value", batchFactor)
+	l.logger.Debug("batch factor", log.LogItem{"value", batchFactor})
 
 	synced := make(chan error)
 	closeOnce := new(sync.Once)
@@ -269,7 +269,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 			}
 
 			if !paged {
-				l.logger.Debug("sleeping until next block batch", "duration", expectedWaitTime)
+				l.logger.Debug("sleeping until next block batch", log.LogItem{"duration", expectedWaitTime})
 				select {
 				case <-time.After(expectedWaitTime):
 				case <-ctx.Done():
@@ -288,7 +288,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 				}
 
 				l.metrics.BackendErrors.Inc()
-				l.logger.Warning("could not get block number", "error", err)
+				l.logger.Warning("could not get block number", log.LogItem{"error", err})
 				lastConfirmedBlock = 0
 				continue
 			}
@@ -322,7 +322,7 @@ func (l *listener) Listen(ctx context.Context, from uint64, updater postage.Even
 			events, err := l.ev.FilterLogs(ctx, l.filterQuery(big.NewInt(int64(from)), big.NewInt(int64(to))))
 			if err != nil {
 				l.metrics.BackendErrors.Inc()
-				l.logger.Warning("could not get logs", "error", err)
+				l.logger.Warning("could not get logs", log.LogItem{"error", err})
 				lastConfirmedBlock = 0
 				continue
 			}

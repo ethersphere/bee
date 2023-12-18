@@ -136,7 +136,7 @@ func (svc *batchService) Create(id, owner []byte, totalAmout, normalisedBalance 
 		return fmt.Errorf("update checksum: %w", err)
 	}
 
-	svc.logger.Debug("batch created", "batch_id", hex.EncodeToString(batch.ID), "tx", txHash, "tx_checksum", cs)
+	svc.logger.Debug("batch created", log.LogItem{"batch_id", hex.EncodeToString(batch.ID)}, log.LogItem{"tx", txHash}, log.LogItem{"tx_checksum", cs})
 	return nil
 }
 
@@ -164,7 +164,7 @@ func (svc *batchService) TopUp(id []byte, totalAmout, normalisedBalance *big.Int
 		return fmt.Errorf("update checksum: %w", err)
 	}
 
-	svc.logger.Debug("topped up batch", "batch_id", hex.EncodeToString(b.ID), "old_value", b.Value, "new_value", normalisedBalance, "tx", txHash, "tx_checksum", cs)
+	svc.logger.Debug("topped up batch", log.LogItem{"batch_id", hex.EncodeToString(b.ID)}, log.LogItem{"old_value", b.Value}, log.LogItem{"new_value", normalisedBalance}, log.LogItem{"tx", txHash}, log.LogItem{"tx_checksum", cs})
 	return nil
 }
 
@@ -189,7 +189,7 @@ func (svc *batchService) UpdateDepth(id []byte, depth uint8, normalisedBalance *
 		return fmt.Errorf("update checksum: %w", err)
 	}
 
-	svc.logger.Debug("updated depth of batch", "batch_id", hex.EncodeToString(b.ID), "old_depth", b.Depth, "new_depth", depth, "tx", txHash, "tx_checksum", cs)
+	svc.logger.Debug("updated depth of batch", log.LogItem{"batch_id", hex.EncodeToString(b.ID)}, log.LogItem{"old_depth", b.Depth}, log.LogItem{"new_depth", depth}, log.LogItem{"tx", txHash}, log.LogItem{"tx_checksum", cs})
 	return nil
 }
 
@@ -207,7 +207,7 @@ func (svc *batchService) UpdatePrice(price *big.Int, txHash common.Hash) error {
 		return fmt.Errorf("update checksum: %w", err)
 	}
 
-	svc.logger.Debug("updated chain price", "new_price", price, "tx_hash", txHash, "tx_checksum", sum)
+	svc.logger.Debug("updated chain price", log.LogItem{"new_price", price}, log.LogItem{"tx_hash", txHash}, log.LogItem{"tx_checksum", sum})
 	return nil
 }
 
@@ -227,7 +227,7 @@ func (svc *batchService) UpdateBlockNumber(blockNumber uint64) error {
 		return fmt.Errorf("put chain state: %w", err)
 	}
 
-	svc.logger.Debug("block height updated", "new_block", blockNumber)
+	svc.logger.Debug("block height updated", log.LogItem{"new_block", blockNumber})
 	return nil
 }
 func (svc *batchService) TransactionStart() error {

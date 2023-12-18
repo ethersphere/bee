@@ -90,13 +90,13 @@ func checkBalance(
 
 			if insufficientETH && insufficientERC20 {
 				msg := fmt.Sprintf("cannot continue until there is at least min %s (for Gas) and at least min %s available on address", nativeTokenName, swarmTokenName)
-				logger.Warning(msg, "min_amount", neededETH, "min_bzz_amount", neededERC20, "address", overlayEthAddress)
+				logger.Warning(msg, log.LogItem{"min_amount", neededETH}, log.LogItem{"min_bzz_amount", neededERC20}, log.LogItem{"address", overlayEthAddress})
 			} else if insufficientETH {
 				msg := fmt.Sprintf("cannot continue until there is at least min %s (for Gas) available on address", nativeTokenName)
-				logger.Warning(msg, "min_amount", neededETH, "address", overlayEthAddress)
+				logger.Warning(msg, log.LogItem{"min_amount", neededETH}, log.LogItem{"address", overlayEthAddress})
 			} else {
 				msg := fmt.Sprintf("cannot continue until there is at least min %s available on address", swarmTokenName)
-				logger.Warning(msg, "min_amount", neededERC20, "address", overlayEthAddress)
+				logger.Warning(msg, log.LogItem{"min_amount", neededERC20}, log.LogItem{"address", overlayEthAddress})
 			}
 			if chainId == chaincfg.Testnet.ChainID {
 				logger.Warning("learn how to fund your node by visiting our docs at https://docs.ethswarm.org/docs/installation/fund-your-node")
@@ -170,14 +170,14 @@ func Init(
 				return nil, err
 			}
 
-			logger.Info("deploying new chequebook", "tx", txHash)
+			logger.Info("deploying new chequebook", log.LogItem{"tx", txHash})
 
 			err = stateStore.Put(ChequebookDeploymentKey, txHash)
 			if err != nil {
 				return nil, err
 			}
 		} else {
-			logger.Info("waiting for chequebook deployment", "tx", txHash)
+			logger.Info("waiting for chequebook deployment", log.LogItem{"tx", txHash})
 		}
 
 		chequebookAddress, err = chequebookFactory.WaitDeployed(ctx, txHash)
@@ -185,7 +185,7 @@ func Init(
 			return nil, err
 		}
 
-		logger.Info("chequebook deployed", "chequebook_address", chequebookAddress)
+		logger.Info("chequebook deployed", log.LogItem{"chequebook_address", chequebookAddress})
 
 		// save the address for later use
 		err = stateStore.Put(chequebookKey, chequebookAddress)
@@ -199,13 +199,13 @@ func Init(
 		}
 
 		if swapInitialDeposit.Cmp(big.NewInt(0)) != 0 {
-			logger.Info("depositing token into new chequebook", "amount", swapInitialDeposit)
+			logger.Info("depositing token into new chequebook", log.LogItem{"amount", swapInitialDeposit})
 			depositHash, err := chequebookService.Deposit(ctx, swapInitialDeposit)
 			if err != nil {
 				return nil, err
 			}
 
-			logger.Info("sent deposit transaction", "tx", depositHash)
+			logger.Info("sent deposit transaction", log.LogItem{"tx", depositHash})
 			err = chequebookService.WaitForDeposit(ctx, depositHash)
 			if err != nil {
 				return nil, err
@@ -219,7 +219,7 @@ func Init(
 			return nil, err
 		}
 
-		logger.Info("using existing chequebook", "chequebook_address", chequebookAddress)
+		logger.Info("using existing chequebook", log.LogItem{"chequebook_address", chequebookAddress})
 	}
 
 	// regardless of how the chequebook service was initialised make sure that the chequebook is valid

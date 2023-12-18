@@ -90,22 +90,22 @@ func (cs *TxChunkStoreWrapper) Recover() error {
 		}
 
 		ctx := context.Background()
-		logger.Info("sharky unreleased location found", "count", len(locations), "id", r.ID)
+		logger.Info("sharky unreleased location found", log.LogItem{"count", len(locations)}, log.LogItem{"id", r.ID})
 		for _, location := range locations {
-			logger.Debug("releasing location", "location", location)
+			logger.Debug("releasing location", log.LogItem{"location", location})
 			if err := cs.txSharky.Sharky.Release(ctx, location); err != nil {
-				logger.Debug("unable to release location", "location", location, "err", err)
+				logger.Debug("unable to release location", log.LogItem{"location", location}, log.LogItem{"err", err})
 				return true, fmt.Errorf("unable to release location %v for %s: %w", location, r.ID, err)
 			}
 		}
-		logger.Info("sharky unreleased location released", "id", r.ID)
+		logger.Info("sharky unreleased location released", log.LogItem{"id", r.ID})
 
-		logger.Info("cleaning uncommitted transaction log", "id", r.ID)
+		logger.Info("cleaning uncommitted transaction log", log.LogItem{"id", r.ID})
 		if err := cs.txStore.Delete(r.Entry); err != nil {
-			logger.Debug("unable to delete unreleased location", "id", r.ID, "err", err)
+			logger.Debug("unable to delete unreleased location", log.LogItem{"id", r.ID}, log.LogItem{"err", err})
 			return true, fmt.Errorf("unable to delete %s: %w", r.ID, err)
 		}
-		logger.Info("uncommitted transaction log cleaned", "id", r.ID)
+		logger.Info("uncommitted transaction log cleaned", log.LogItem{"id", r.ID})
 
 		return false, nil
 	})

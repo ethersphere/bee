@@ -202,7 +202,7 @@ func (r *RedistributionState) AddFee(ctx context.Context, txHash common.Hash) {
 func (r *RedistributionState) CalculateWinnerReward(ctx context.Context) error {
 	currentBalance, err := r.erc20Service.BalanceOf(ctx, r.ethAddress)
 	if err != nil {
-		r.logger.Debug("error getting balance", "error", err)
+		r.logger.Debug("error getting balance", log.LogItem{"error", err})
 		return err
 	}
 
@@ -219,7 +219,7 @@ func (r *RedistributionState) SetBalance(ctx context.Context) error {
 	// get current balance
 	currentBalance, err := r.erc20Service.BalanceOf(ctx, r.ethAddress)
 	if err != nil {
-		r.logger.Debug("error getting balance", "error", err)
+		r.logger.Debug("error getting balance", log.LogItem{"error", err})
 		return err
 	}
 

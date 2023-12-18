@@ -400,7 +400,7 @@ func (s *Service) resolveNameOrAddress(str string) (swarm.Address, error) {
 	// Try and mapStructure the name as a bzz address.
 	addr, err := swarm.ParseHexAddress(str)
 	if err == nil {
-		s.loggerV1.Debug("resolve name: parsing bzz address successful", "string", str, "address", addr)
+		s.loggerV1.Debug("resolve name: parsing bzz address successful", log.LogItem{"string", str}, log.LogItem{"address", addr})
 		return addr, nil
 	}
 
@@ -410,10 +410,10 @@ func (s *Service) resolveNameOrAddress(str string) (swarm.Address, error) {
 	}
 
 	// Try and resolve the name using the provided resolver.
-	s.logger.Debug("resolve name: attempting to resolve string to address", "string", str)
+	s.logger.Debug("resolve name: attempting to resolve string to address", log.LogItem{"string", str})
 	addr, err = s.resolver.Resolve(str)
 	if err == nil {
-		s.loggerV1.Debug("resolve name: address resolved successfully", "string", str, "address", addr)
+		s.loggerV1.Debug("resolve name: address resolved successfully", log.LogItem{"string", str}, log.LogItem{"address", addr})
 		return addr, nil
 	}
 
@@ -448,7 +448,7 @@ func (s *Service) authHandler(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		s.logger.Debug("auth handler: read request body failed", "error", err)
+		s.logger.Debug("auth handler: read request body failed", log.LogItem{"error", err})
 		s.logger.Error(nil, "auth handler: read request body failed")
 		jsonhttp.BadRequest(w, "Read request body")
 		return
@@ -456,7 +456,7 @@ func (s *Service) authHandler(w http.ResponseWriter, r *http.Request) {
 
 	var payload securityTokenReq
 	if err = json.Unmarshal(body, &payload); err != nil {
-		s.logger.Debug("auth handler: unmarshal request body failed", "error", err)
+		s.logger.Debug("auth handler: unmarshal request body failed", log.LogItem{"error", err})
 		s.logger.Error(nil, "auth handler: unmarshal request body failed")
 		jsonhttp.BadRequest(w, "Unmarshal json body")
 		return
@@ -464,13 +464,13 @@ func (s *Service) authHandler(w http.ResponseWriter, r *http.Request) {
 
 	key, err := s.auth.GenerateKey(payload.Role, time.Duration(payload.Expiry)*time.Second)
 	if errors.Is(err, auth.ErrExpiry) {
-		s.logger.Debug("auth handler: generate key failed", "error", err)
+		s.logger.Debug("auth handler: generate key failed", log.LogItem{"error", err})
 		s.logger.Error(nil, "auth handler: generate key failed")
 		jsonhttp.BadRequest(w, "Expiry duration must be a positive number")
 		return
 	}
 	if err != nil {
-		s.logger.Debug("auth handler: add auth token failed", "error", err)
+		s.logger.Debug("auth handler: add auth token failed", log.LogItem{"error", err})
 		s.logger.Error(nil, "auth handler: add auth token failed")
 		jsonhttp.InternalServerError(w, "Error generating authorization token")
 		return
@@ -499,7 +499,7 @@ func (s *Service) refreshHandler(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
-		s.logger.Debug("auth handler: read request body failed", "error", err)
+		s.logger.Debug("auth handler: read request body failed", log.LogItem{"error", err})
 		s.logger.Error(nil, "auth handler: read request body failed")
 		jsonhttp.BadRequest(w, "Read request body")
 		return
@@ -507,7 +507,7 @@ func (s *Service) refreshHandler(w http.ResponseWriter, r *http.Request) {
 
 	var payload securityTokenReq
 	if err = json.Unmarshal(body, &payload); err != nil {
-		s.logger.Debug("auth handler: unmarshal request body failed", "error", err)
+		s.logger.Debug("auth handler: unmarshal request body failed", log.LogItem{"error", err})
 		s.logger.Error(nil, "auth handler: unmarshal request body failed")
 		jsonhttp.BadRequest(w, "Unmarshal json body")
 		return
@@ -515,14 +515,14 @@ func (s *Service) refreshHandler(w http.ResponseWriter, r *http.Request) {
 
 	key, err := s.auth.RefreshKey(authToken, time.Duration(payload.Expiry)*time.Second)
 	if errors.Is(err, auth.ErrTokenExpired) {
-		s.logger.Debug("auth handler: refresh key failed", "error", err)
+		s.logger.Debug("auth handler: refresh key failed", log.LogItem{"error", err})
 		s.logger.Error(nil, "auth handler: refresh key failed")
 		jsonhttp.BadRequest(w, "Token expired")
 		return
 	}
 
 	if err != nil {
-		s.logger.Debug("auth handler: refresh token failed", "error", err)
+		s.logger.Debug("auth handler: refresh token failed", log.LogItem{"error", err})
 		s.logger.Error(nil, "auth handler: refresh token failed")
 		jsonhttp.InternalServerError(w, "Error refreshing authorization token")
 		return
@@ -538,7 +538,7 @@ func (s *Service) newTracingHandler(spanName string) func(h http.Handler) http.H
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx, err := s.tracer.WithContextFromHTTPHeaders(r.Context(), r.Header)
 			if err != nil && !errors.Is(err, tracing.ErrContextNotFound) {
-				s.logger.Debug("extract tracing context failed", "span_name", spanName, "error", err)
+				s.logger.Debug("extract tracing context failed", log.LogItem{"span_name", spanName}, log.LogItem{"error", err})
 				// ignore
 			}
 
@@ -547,7 +547,7 @@ func (s *Service) newTracingHandler(spanName string) func(h http.Handler) http.H
 
 			err = s.tracer.AddContextHTTPHeader(ctx, r.Header)
 			if err != nil {
-				s.logger.Debug("inject tracing context failed", "span_name", spanName, "error", err)
+				s.logger.Debug("inject tracing context failed", log.LogItem{"span_name", spanName}, log.LogItem{"error", err})
 				// ignore
 			}
 
@@ -571,7 +571,7 @@ func (s *Service) contentLengthMetricMiddleware() func(h http.Handler) http.Hand
 
 				contentLength, err := strconv.Atoi(hdr)
 				if err != nil {
-					s.logger.Debug("int conversion failed", "content_length", hdr, "error", err)
+					s.logger.Debug("int conversion failed", log.LogItem{"content_length", hdr}, log.LogItem{"error", err})
 					return
 				}
 				if contentLength > 0 {
@@ -680,13 +680,13 @@ func (s *Service) mapStructure(input, output interface{}) func(string, log.Logge
 		return func(msg string, logger log.Logger, w http.ResponseWriter) {
 			var merr *multierror.Error
 			if !errors.As(err, &merr) {
-				logger.Debug("mapping and validation failed", "error", err)
+				logger.Debug("mapping and validation failed", log.LogItem{"error", err})
 				logger.Error(err, "mapping and validation failed")
 				jsonhttp.InternalServerError(w, err)
 				return
 			}
 
-			logger.Debug(msg, "error", err)
+			logger.Debug(msg, log.LogItem{"error", err})
 			logger.Error(err, msg)
 
 			resp := jsonhttp.StatusResponse{
@@ -872,7 +872,7 @@ func (r *cleanupOnErrWriter) WriteHeader(statusCode int) {
 	if statusCode >= http.StatusBadRequest {
 		err := r.onErr()
 		if err != nil {
-			r.logger.Debug("failed cleaning up", "err", err)
+			r.logger.Debug("failed cleaning up", log.LogItem{"err", err})
 		}
 	}
 	r.ResponseWriter.WriteHeader(statusCode)

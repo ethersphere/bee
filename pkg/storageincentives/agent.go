@@ -133,7 +133,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 
 	logErr := func(phase PhaseType, round uint64, err error) {
 		if err != nil {
-			a.logger.Error(err, "phase failed", "phase", phase, "round", round)
+			a.logger.Error(err, "phase failed", log.LogItem{"phase", phase}, log.LogItem{"round", round})
 		}
 	}
 
@@ -215,7 +215,7 @@ func (a *Agent) start(blockTime time.Duration, blocksPerRound, blocksPerPhase ui
 		prevPhase = currentPhase
 		a.metrics.CurrentPhase.Set(float64(currentPhase))
 
-		a.logger.Info("entered new phase", "phase", currentPhase.String(), "round", round, "block", block)
+		a.logger.Info("entered new phase", log.LogItem{"phase", currentPhase.String()}, log.LogItem{"round", round}, log.LogItem{"block", block})
 
 		a.state.SetCurrentEvent(currentPhase, round)
 		a.state.SetFullySynced(a.fullSyncedFunc())
@@ -343,14 +343,14 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 	// To prevent this, node should first expire batches before Claiming a reward.
 	err = a.batchExpirer.ExpireBatches(ctx)
 	if err != nil {
-		a.logger.Info("expire batches failed", "err", err)
+		a.logger.Info("expire batches failed", log.LogItem{"err", err})
 		// Even when error happens, proceed with claim handler
 		// because this should not prevent node from claiming a reward
 	}
 
 	errBalance := a.state.SetBalance(ctx)
 	if errBalance != nil {
-		a.logger.Info("could not set balance", "err", err)
+		a.logger.Info("could not set balance", log.LogItem{"err", err})
 	}
 
 	sampleData, exists := a.state.SampleData(round - 1)
@@ -360,7 +360,7 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 
 	anchor2, err := a.contract.ReserveSalt(ctx)
 	if err != nil {
-		a.logger.Info("failed getting anchor after second reveal", "err", err)
+		a.logger.Info("failed getting anchor after second reveal", log.LogItem{"err", err})
 	}
 
 	proofs, err := makeInclusionProofs(sampleData.ReserveSampleItems, sampleData.Anchor1, anchor2)
@@ -379,7 +379,7 @@ func (a *Agent) handleClaim(ctx context.Context, round uint64) error {
 	if errBalance == nil {
 		errReward := a.state.CalculateWinnerReward(ctx)
 		if errReward != nil {
-			a.logger.Info("calculate winner reward", "err", err)
+			a.logger.Info("calculate winner reward", log.LogItem{"err", err})
 		}
 	}
 
@@ -407,7 +407,7 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 	}
 	a.state.SetLastSelectedRound(round + 1)
 	a.metrics.NeighborhoodSelected.Inc()
-	a.logger.Info("neighbourhood chosen", "round", round)
+	a.logger.Info("neighbourhood chosen", log.LogItem{"round", round})
 
 	if !a.state.IsFullySynced() {
 		a.logger.Info("skipping round because node is not fully synced")
@@ -415,7 +415,7 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 	}
 
 	if !a.state.IsHealthy() {
-		a.logger.Info("skipping round because node is unhealhy", "round", round)
+		a.logger.Info("skipping round because node is unhealhy", log.LogItem{"round", round})
 		return false, nil
 	}
 
@@ -423,7 +423,7 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("has enough funds to play: %w", err)
 	} else if !hasFunds {
-		a.logger.Info("insufficient funds to play in next round", "round", round)
+		a.logger.Info("insufficient funds to play in next round", log.LogItem{"round", round})
 		a.metrics.InsufficientFundsToPlay.Inc()
 		return false, nil
 	}
@@ -436,7 +436,7 @@ func (a *Agent) handleSample(ctx context.Context, round uint64) (bool, error) {
 	dur := time.Since(now)
 	a.metrics.SampleDuration.Set(dur.Seconds())
 
-	a.logger.Info("produced sample", "hash", sample.ReserveSampleHash, "radius", sample.StorageRadius, "round", round)
+	a.logger.Info("produced sample", log.LogItem{"hash", sample.ReserveSampleHash}, log.LogItem{"radius", sample.StorageRadius}, log.LogItem{"round", round})
 
 	a.state.SetSampleData(round, sample, dur)
 

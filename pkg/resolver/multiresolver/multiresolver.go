@@ -194,19 +194,19 @@ func getTLD(name string) string {
 }
 
 func (mr *MultiResolver) connectENSClient(tld, address, endpoint string) {
-	log := mr.logger
+	logger := mr.logger
 
 	if address == "" {
-		log.Debug("connecting to endpoint", "tld", tld, "endpoint", endpoint)
+		logger.Debug("connecting to endpoint", log.LogItem{"tld", tld}, log.LogItem{"endpoint", endpoint})
 	} else {
-		log.Debug("connecting to endpoint with contract address", "tld", tld, "endpoint", endpoint, "contract_address", address)
+		logger.Debug("connecting to endpoint with contract address", log.LogItem{"tld", tld}, log.LogItem{"endpoint", endpoint}, log.LogItem{"contract_address", address})
 	}
 
 	ensCl, err := ens.NewClient(endpoint, ens.WithContractAddress(address))
 	if err != nil {
-		log.Error(err, "resolver on endpoint failed", "tld", tld, "endpoint", endpoint)
+		logger.Error(err, "resolver on endpoint failed", log.LogItem{"tld", tld}, log.LogItem{"endpoint", endpoint})
 	} else {
-		log.Info("connected", "tld", tld, "endpoint", endpoint)
+		logger.Info("connected", log.LogItem{"tld", tld}, log.LogItem{"endpoint", endpoint})
 		mr.PushResolver(tld, ensCl)
 	}
 }
