@@ -11,6 +11,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/multiformats/go-multiaddr"
 )
@@ -24,7 +25,7 @@ type addressesResponse struct {
 }
 
 func (s *Service) addressesHandler(w http.ResponseWriter, _ *http.Request) {
-	logger := s.logger.WithValues("get_addresses").Build()
+	logger := s.logger.WithValues(log.LogItem{"get_addresses", ""}).Build()
 
 	// initialize variable to json encode as [] instead null if p2p is nil
 	underlay := make([]multiaddr.Multiaddr, 0)
@@ -33,7 +34,7 @@ func (s *Service) addressesHandler(w http.ResponseWriter, _ *http.Request) {
 	if s.p2p != nil {
 		u, err := s.p2p.Addresses()
 		if err != nil {
-			logger.Debug("get address failed", "error", err)
+			logger.Debug("get address failed", log.LogItem{"error", err})
 			jsonhttp.InternalServerError(w, err)
 			return
 		}

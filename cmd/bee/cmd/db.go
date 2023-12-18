@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/node"
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -68,7 +69,7 @@ func dbInfoCmd(cmd *cobra.Command) {
 				return errors.New("no data-dir provided")
 			}
 
-			logger.Info("getting db indices with data-dir", "path", dataDir)
+			logger.Info("getting db indices with data-dir", log.LogItem{"path", dataDir})
 
 			db, err := storer.New(cmd.Context(), dataDir, &storer.Options{
 				Logger:          logger,
@@ -81,19 +82,19 @@ func dbInfoCmd(cmd *cobra.Command) {
 			}
 			defer db.Close()
 
-			logger.Info("getting db info", "path", dataDir)
+			logger.Info("getting db info", log.LogItem{"path", dataDir})
 
 			info, err := db.DebugInfo(cmd.Context())
 			if err != nil {
 				return fmt.Errorf("fetching db info: %w", err)
 			}
 
-			logger.Info("reserve", "size_within_radius", info.Reserve.SizeWithinRadius, "total_size", info.Reserve.TotalSize, "capacity", info.Reserve.Capacity)
-			logger.Info("cache", "size", info.Cache.Size, "capacity", info.Cache.Capacity)
-			logger.Info("chunk", "total", info.ChunkStore.TotalChunks, "shared", info.ChunkStore.SharedSlots)
-			logger.Info("pinning", "chunks", info.Pinning.TotalChunks, "collections", info.Pinning.TotalCollections)
-			logger.Info("upload", "uploaded", info.Upload.TotalUploaded, "synced", info.Upload.TotalSynced)
-			logger.Info("done", "elapsed", time.Since(start))
+			logger.Info("reserve", log.LogItem{"size_within_radius", info.Reserve.SizeWithinRadius}, log.LogItem{"total_size", info.Reserve.TotalSize}, log.LogItem{"capacity", info.Reserve.Capacity})
+			logger.Info("cache", log.LogItem{"size", info.Cache.Size}, log.LogItem{"capacity", info.Cache.Capacity})
+			logger.Info("chunk", log.LogItem{"total", info.ChunkStore.TotalChunks}, log.LogItem{"shared", info.ChunkStore.SharedSlots})
+			logger.Info("pinning", log.LogItem{"chunks", info.Pinning.TotalChunks}, log.LogItem{"collections", info.Pinning.TotalCollections})
+			logger.Info("upload", log.LogItem{"uploaded", info.Upload.TotalUploaded}, log.LogItem{"synced", info.Upload.TotalSynced})
+			logger.Info("done", log.LogItem{"elapsed", time.Since(start)})
 
 			return nil
 		},
@@ -257,7 +258,7 @@ func dbExportReserveCmd(cmd *cobra.Command) {
 				return errors.New("no data-dir provided")
 			}
 
-			logger.Info("starting export process with data-dir", "path", dataDir)
+			logger.Info("starting export process with data-dir", log.LogItem{"path", dataDir})
 
 			db, err := storer.New(cmd.Context(), dataDir, &storer.Options{
 				Logger:          logger,
@@ -285,7 +286,7 @@ func dbExportReserveCmd(cmd *cobra.Command) {
 			tw := tar.NewWriter(out)
 			var counter int64
 			err = db.ReserveIterateChunks(func(chunk swarm.Chunk) (stop bool, err error) {
-				logger.Debug("exporting chunk", "address", chunk.Address().String())
+				logger.Debug("exporting chunk", log.LogItem{"address", chunk.Address().String()})
 				b, err := MarshalChunkToBinary(chunk)
 				if err != nil {
 					return true, fmt.Errorf("marshaling chunk: %w", err)
@@ -307,7 +308,7 @@ func dbExportReserveCmd(cmd *cobra.Command) {
 			if err != nil {
 				return fmt.Errorf("exporting database: %w", err)
 			}
-			logger.Info("database exported successfully", "file", args[0], "total_records", counter)
+			logger.Info("database exported successfully", log.LogItem{"file", args[0]}, log.LogItem{"total_records", counter})
 			return nil
 		},
 	}
@@ -340,7 +341,7 @@ func dbExportPinningCmd(cmd *cobra.Command) {
 				return errors.New("no data-dir provided")
 			}
 
-			logger.Info("starting export process with data-dir", "path", dataDir)
+			logger.Info("starting export process with data-dir", log.LogItem{"path", dataDir})
 			db, err := storer.New(cmd.Context(), dataDir, &storer.Options{
 				Logger:          logger,
 				RadiusSetter:    noopRadiusSetter{},
@@ -373,7 +374,7 @@ func dbExportPinningCmd(cmd *cobra.Command) {
 			for _, root := range pins {
 				var nChunks int64
 				err = db.IteratePinCollection(root, func(addr swarm.Address) (stop bool, err error) {
-					logger.Debug("exporting chunk", "root", root.String(), "address", addr.String())
+					logger.Debug("exporting chunk", log.LogItem{"root", root.String()}, log.LogItem{"address", addr.String()})
 					chunk, err := db.ChunkStore().Get(cmd.Context(), addr)
 					if err != nil {
 						return true, fmt.Errorf("error getting chunk: %w", err)
@@ -401,9 +402,9 @@ func dbExportPinningCmd(cmd *cobra.Command) {
 					return fmt.Errorf("error exporting database: %w", err)
 				}
 				nTotalChunks += nChunks
-				logger.Info("exported collection successfully", "root", root.String(), "total_records", nChunks)
+				logger.Info("exported collection successfully", log.LogItem{"root", root.String()}, log.LogItem{"total_records", nChunks})
 			}
-			logger.Info("pinning database exported successfully", "file", args[0], "total_collections", len(pins), "total_records", nTotalChunks)
+			logger.Info("pinning database exported successfully", log.LogItem{"file", args[0]}, log.LogItem{"total_collections", len(pins)}, log.LogItem{"total_records", nTotalChunks})
 			return nil
 		},
 	}
@@ -492,13 +493,13 @@ func dbImportReserveCmd(cmd *cobra.Command) {
 				if err != nil {
 					return fmt.Errorf("unmarshaling chunk: %w", err)
 				}
-				logger.Debug("importing chunk", "address", chunk.Address().String())
+				logger.Debug("importing chunk", log.LogItem{"address", chunk.Address().String()})
 				if err := db.ReservePutter().Put(cmd.Context(), chunk); err != nil {
 					return fmt.Errorf("error importing chunk: %w", err)
 				}
 				counter++
 			}
-			logger.Info("database imported successfully", "file", args[0], "total_records", counter)
+			logger.Info("database imported successfully", log.LogItem{"file", args[0]}, log.LogItem{"total_records", counter})
 			return nil
 		},
 	}
@@ -572,7 +573,7 @@ func dbImportPinningCmd(cmd *cobra.Command) {
 					return fmt.Errorf("invalid address format: %s", hdr.Name)
 				}
 				rootAddr, chunkAddr := addresses[0], addresses[1]
-				logger.Debug("importing pinning", "root", rootAddr, "chunk", chunkAddr)
+				logger.Debug("importing pinning", log.LogItem{"root", rootAddr}, log.LogItem{"chunk", chunkAddr})
 
 				collection, ok := collections[rootAddr]
 				if !ok {
@@ -606,7 +607,7 @@ func dbImportPinningCmd(cmd *cobra.Command) {
 				}
 			}
 
-			logger.Info("pinning database imported successfully", "file", args[0], "total_collections", len(collections), "total_records", nChunks)
+			logger.Info("pinning database imported successfully", log.LogItem{"file", args[0]}, log.LogItem{"total_collections", len(collections)}, log.LogItem{"total_records", nChunks})
 			return nil
 		},
 	}
@@ -650,7 +651,7 @@ func dbNukeCmd(cmd *cobra.Command) {
 				return errors.New("no data-dir provided")
 			}
 
-			logger.Warning("starting to nuke the DB with data-dir", "path", dataDir)
+			logger.Warning("starting to nuke the DB with data-dir", log.LogItem{"path", dataDir})
 			logger.Warning("this process will erase all persisted chunks in your local storage")
 			logger.Warning("it will NOT discriminate any pinned content, in case you were wondering")
 			logger.Warning("you have another 10 seconds to change your mind and kill this process with CTRL-C...")

@@ -256,5 +256,5 @@ func loggerWithTraceID(sc opentracing.SpanContext, l log.Logger) log.Logger {
 	if !traceID.IsValid() {
 		return l
 	}
-	return l.WithValues(LogField, traceID).Build()
+	return l.WithValues(log.LogItem{LogField, traceID}).Build()
 }

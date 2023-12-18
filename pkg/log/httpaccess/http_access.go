@@ -58,27 +58,27 @@ func NewHTTPAccessLogHandler(logger log.Logger, tracer *tracing.Tracer, message 
 				ip = r.RemoteAddr
 			}
 
-			fields := []interface{}{
-				"ip", ip,
-				"method", r.Method,
-				"host", r.Host,
-				"uri", r.RequestURI,
-				"proto", r.Proto,
-				"status", status,
-				"size", rr.size,
-				"duration", duration,
+			fields := []log.LogItem{
+				{"ip", ip},
+				{"method", r.Method},
+				{"host", r.Host},
+				{"uri", r.RequestURI},
+				{"proto", r.Proto},
+				{"status", status},
+				{"size", rr.size},
+				{"duration", duration},
 			}
 			if v := r.Referer(); v != "" {
-				fields = append(fields, "referrer", v)
+				fields = append(fields, log.LogItem{"referrer", v})
 			}
 			if v := r.UserAgent(); v != "" {
-				fields = append(fields, "user-agent", v)
+				fields = append(fields, log.LogItem{"user-agent", v})
 			}
 			if v := r.Header.Get("X-Forwarded-For"); v != "" {
-				fields = append(fields, "x-forwarded-for", v)
+				fields = append(fields, log.LogItem{"x-forwarded-for", v})
 			}
 			if v := r.Header.Get("X-Real-Ip"); v != "" {
-				fields = append(fields, "x-real-ip", v)
+				fields = append(fields, log.LogItem{"x-real-ip", v})
 			}
 
 			logger.WithValues(fields...).Build().Info(message)

@@ -12,6 +12,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/file/splitter"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/spf13/cobra"
@@ -62,7 +63,7 @@ func (c *command) initSplitCmd() error {
 			}
 			defer reader.Close()
 
-			logger.Info("splitting", "file", inputFileName)
+			logger.Info("splitting", log.LogItem{"file", inputFileName})
 			store := new(putter)
 			s := splitter.NewSimpleSplitter(store)
 			stat, err := reader.Stat()
@@ -75,26 +76,26 @@ func (c *command) initSplitCmd() error {
 			}
 			store.rootHash = rootHash.String()
 
-			logger.Info("writing output", "file", outputFileName)
+			logger.Info("writing output", log.LogItem{"file", outputFileName})
 			writer, err := os.OpenFile(outputFileName, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
 			if err != nil {
 				return fmt.Errorf("open output file: %w", err)
 			}
 			defer writer.Close()
 
-			logger.Debug("write root", "hash", store.rootHash)
+			logger.Debug("write root", log.LogItem{"hash", store.rootHash})
 			_, err = writer.WriteString(fmt.Sprintf("%s\n", store.rootHash))
 			if err != nil {
 				return fmt.Errorf("write root hash: %w", err)
 			}
 			for _, chunkAddress := range store.chunkAddresses {
-				logger.Debug("write chunk", "hash", chunkAddress)
+				logger.Debug("write chunk", log.LogItem{"hash", chunkAddress})
 				_, err = writer.WriteString(fmt.Sprintf("%s\n", chunkAddress))
 				if err != nil {
 					return fmt.Errorf("write chunk address: %w", err)
 				}
 			}
-			logger.Info("done", "hashes", len(store.chunkAddresses))
+			logger.Info("done", log.LogItem{"hashes", len(store.chunkAddresses)})
 			return nil
 		},
 	}

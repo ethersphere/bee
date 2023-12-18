@@ -73,7 +73,7 @@ func (c *command) initStartCmd() (err error) {
 
 			fmt.Print(beeWelcomeMessage)
 			fmt.Printf("\n\nversion: %v - planned to be supported until %v, please follow https://ethswarm.org/\n\n", bee.Version, endSupportDate())
-			logger.Info("bee version", "version", bee.Version)
+			logger.Info("bee version", log.LogItem{"version", bee.Version})
 
 			go startTimeBomb(logger)
 
@@ -379,7 +379,7 @@ func waitForClef(logger log.Logger, maxRetries uint64, endpoint string) (externa
 		return err == nil
 	})
 	if spinErr != nil {
-		logger.Warning("connect to clef signer failed", "error", err)
+		logger.Warning("connect to clef signer failed", log.LogItem{"error", err})
 	}
 	return
 }
@@ -470,7 +470,7 @@ func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config
 		publicKey = &swarmPrivateKey.PublicKey
 	}
 
-	logger.Info("swarm public key", "public_key", hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(publicKey)))
+	logger.Info("swarm public key", log.LogItem{"public_key", hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(publicKey))})
 
 	libp2pPrivateKey, created, err := keystore.Key(libp2pPKFilename, password, crypto.EDGSecp256_R1)
 	if err != nil {
@@ -492,14 +492,14 @@ func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config
 		logger.Debug("using existing pss key")
 	}
 
-	logger.Info("pss public key", "public_key", hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&pssPrivateKey.PublicKey)))
+	logger.Info("pss public key", log.LogItem{"public_key", hex.EncodeToString(crypto.EncodeSecp256k1PublicKey(&pssPrivateKey.PublicKey))})
 
 	// postinst and post scripts inside packaging/{deb,rpm} depend and parse on this log output
 	overlayEthAddress, err := signer.EthereumAddress()
 	if err != nil {
 		return nil, err
 	}
-	logger.Info("using ethereum address", "address", overlayEthAddress)
+	logger.Info("using ethereum address", log.LogItem{"address", overlayEthAddress})
 
 	return &signerConfig{
 		signer:           signer,

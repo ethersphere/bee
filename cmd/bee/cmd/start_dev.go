@@ -11,6 +11,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/node"
 	"github.com/kardianos/service"
 	"github.com/spf13/cobra"
@@ -91,7 +92,7 @@ func (c *command) initStartDevCmd() (err error) {
 					// Block main goroutine until it is interrupted
 					sig := <-interruptChannel
 
-					logger.Debug("signal received", "signal", sig)
+					logger.Debug("signal received", log.LogItem{"signal", sig})
 					logger.Info("shutting down")
 				},
 				stop: func() {
@@ -108,7 +109,7 @@ func (c *command) initStartDevCmd() (err error) {
 					// allow process termination by receiving another signal.
 					select {
 					case sig := <-interruptChannel:
-						logger.Debug("signal received", "signal", sig)
+						logger.Debug("signal received", log.LogItem{"signal", sig})
 					case <-done:
 					}
 				},

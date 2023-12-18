@@ -129,7 +129,7 @@ func NewService(logger log.Logger, overlayEthAddress common.Address, backend Bac
 	t := &transactionService{
 		ctx:     ctx,
 		cancel:  cancel,
-		logger:  logger.WithName(loggerName).WithValues("sender_address", overlayEthAddress).Register(),
+		logger:  logger.WithName(loggerName).WithValues(log.LogItem{"sender_address", overlayEthAddress}).Register(),
 		backend: backend,
 		signer:  signer,
 		sender:  senderAddress,
@@ -183,7 +183,7 @@ func (t *transactionService) Send(ctx context.Context, request *TxRequest, boost
 		return common.Hash{}, err
 	}
 
-	loggerV1.Debug("sending transaction", "tx", signedTx.Hash(), "nonce", nonce)
+	loggerV1.Debug("sending transaction", log.LogItem{"tx", signedTx.Hash()}, log.LogItem{"nonce", nonce})
 
 	err = t.backend.SendTransaction(ctx, signedTx)
 	if err != nil {
@@ -230,16 +230,16 @@ func (t *transactionService) waitForPendingTx(txHash common.Hash) {
 		defer t.wg.Done()
 		switch _, err := t.WaitForReceipt(t.ctx, txHash); {
 		case err == nil:
-			t.logger.Info("pending transaction confirmed", "tx", txHash)
+			t.logger.Info("pending transaction confirmed", log.LogItem{"tx", txHash})
 			err = t.store.Delete(pendingTransactionKey(txHash))
 			if err != nil {
-				t.logger.Error(err, "unregistering finished pending transaction failed", "tx", txHash)
+				t.logger.Error(err, "unregistering finished pending transaction failed", log.LogItem{"tx", txHash})
 			}
 		default:
 			if errors.Is(err, ErrTransactionCancelled) {
-				t.logger.Warning("pending transaction cancelled", "tx", txHash)
+				t.logger.Warning("pending transaction cancelled", log.LogItem{"tx", txHash})
 			} else {
-				t.logger.Error(err, "waiting for pending transaction failed", "tx", txHash)
+				t.logger.Error(err, "waiting for pending transaction failed", log.LogItem{"tx", txHash})
 			}
 		}
 	}()
@@ -284,7 +284,7 @@ func (t *transactionService) prepareTransaction(ctx context.Context, request *Tx
 			Data: request.Data,
 		})
 		if err != nil {
-			t.logger.Debug("estimage gas failed", "error", err)
+			t.logger.Debug("estimage gas failed", log.LogItem{"error", err})
 			gasLimit = request.MinEstimatedGasLimit
 		}
 
@@ -344,7 +344,7 @@ func (t *transactionService) suggestedFeeAndTip(ctx context.Context, gasPrice *b
 	gasTipCap = new(big.Int).Div(new(big.Int).Mul(big.NewInt(int64(boostPercent)+100), gasTipCap), big.NewInt(100))
 	gasFeeCap := new(big.Int).Add(gasTipCap, gasPrice)
 
-	t.logger.Debug("prepare transaction", "gas_price", gasPrice, "gas_max_fee", gasFeeCap, "gas_max_tip", gasTipCap)
+	t.logger.Debug("prepare transaction", log.LogItem{"gas_price", gasPrice}, log.LogItem{"gas_max_fee", gasFeeCap}, log.LogItem{"gas_max_tip", gasTipCap})
 
 	return gasFeeCap, gasTipCap, nil
 
@@ -447,7 +447,7 @@ func (t *transactionService) filterPendingTransactions(ctx context.Context, txHa
 		// unless it was not found
 		if err != nil {
 			if errors.Is(err, ethereum.NotFound) {
-				t.logger.Error(err, "pending transactions not found", "tx", txHash)
+				t.logger.Error(err, "pending transactions not found", log.LogItem{"tx", txHash})
 
 				isPending = false
 			} else {
@@ -460,7 +460,7 @@ func (t *transactionService) filterPendingTransactions(ctx context.Context, txHa
 		} else {
 			err := t.store.Delete(pendingTransactionKey(txHash))
 			if err != nil {
-				t.logger.Error(err, "error while unregistering transaction as pending", "tx", txHash)
+				t.logger.Error(err, "error while unregistering transaction as pending", log.LogItem{"tx", txHash})
 			}
 		}
 	}
