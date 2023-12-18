@@ -187,6 +187,28 @@ func TestBzzFiles(t *testing.T) {
 		)
 	})
 
+	t.Run("redundancy", func(t *testing.T) {
+		fileName := "my-pictures.jpeg"
+
+		var resp api.BzzUploadResponse
+		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource+"?name="+fileName, http.StatusCreated,
+			jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
+			jsonhttptest.WithRequestHeader(api.SwarmEncryptHeader, "True"),
+			jsonhttptest.WithRequestHeader(api.SwarmRedundancyLevelHeader, "4"),
+			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "image/jpeg; charset=utf-8"),
+			jsonhttptest.WithUnmarshalJSONResponse(&resp),
+		)
+
+		jsonhttptest.Request(t, client, http.MethodGet, fileDownloadResource(resp.Reference.String()), http.StatusOK,
+			jsonhttptest.WithExpectedContentLength(len(simpleData)),
+			jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "image/jpeg; charset=utf-8"),
+			jsonhttptest.WithExpectedResponseHeader(api.ContentDispositionHeader, fmt.Sprintf(`inline; filename="%s"`, fileName)),
+			jsonhttptest.WithExpectedResponse(simpleData),
+		)
+	})
+
 	t.Run("filter out filename path", func(t *testing.T) {
 		fileName := "my-pictures.jpeg"
 		fileNameWithPath := "../../" + fileName
