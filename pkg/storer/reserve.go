@@ -207,6 +207,7 @@ func (db *DB) evictionWorker(ctx context.Context) {
 			}
 
 		case <-overCapTrigger:
+			db.metrics.OverCapTriggerCount.Inc()
 			err := db.unreserve(ctx)
 			if err != nil {
 				db.logger.Error(err, "eviction worker unreserve")
