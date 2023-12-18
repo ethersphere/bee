@@ -1078,8 +1078,12 @@ func TestJoinerRedundancy(t *testing.T) {
 			pipe := builder.NewPipelineBuilder(ctx, putter, tc.encryptChunk, tc.rLevel)
 			dataChunks := make([]swarm.Chunk, shardCnt)
 			chunkSize := swarm.ChunkSize
+			size := chunkSize
 			for i := 0; i < shardCnt; i++ {
-				chunkData := make([]byte, chunkSize)
+				if i == shardCnt-1 {
+					size = 5
+				}
+				chunkData := make([]byte, size)
 				_, err := io.ReadFull(rand.Reader, chunkData)
 				if err != nil {
 					t.Fatal(err)
@@ -1117,7 +1121,7 @@ func TestJoinerRedundancy(t *testing.T) {
 					t.Fatal(err)
 				}
 				// sanity checks
-				expectedRootSpan := chunkSize * shardCnt
+				expectedRootSpan := chunkSize*(shardCnt-1) + 5
 				if int64(expectedRootSpan) != rootSpan {
 					t.Fatalf("Expected root span %d. Got: %d", expectedRootSpan, rootSpan)
 				}
@@ -1132,7 +1136,7 @@ func TestJoinerRedundancy(t *testing.T) {
 					i := i
 					eg.Go(func() error {
 						chunkData := make([]byte, chunkSize)
-						_, err := joinReader.ReadAt(chunkData, int64(i*chunkSize))
+						n, err := joinReader.ReadAt(chunkData, int64(i*chunkSize))
 						if err != nil {
 							return err
 						}
@@ -1142,7 +1146,7 @@ func TestJoinerRedundancy(t *testing.T) {
 						default:
 						}
 						expectedChunkData := dataChunks[i].Data()[swarm.SpanSize:]
-						if !bytes.Equal(expectedChunkData, chunkData) {
+						if !bytes.Equal(expectedChunkData, chunkData[:n]) {
 							return fmt.Errorf("data mismatch on chunk position %d", i)
 						}
 						return nil
