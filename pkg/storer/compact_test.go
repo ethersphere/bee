@@ -28,7 +28,7 @@ func TestCompact(t *testing.T) {
 	ctx := context.Background()
 	basePath := t.TempDir()
 
-	opts := dbTestOps(baseAddr, 10_000, nil, nil, time.Second)
+	opts := dbTestOps(baseAddr, 10_000, nil, nil, time.Minute)
 	opts.CacheCapacity = 0
 
 	st, err := storer.New(ctx, basePath, opts)
@@ -122,7 +122,7 @@ func TestCompactNoEvictions(t *testing.T) {
 	ctx := context.Background()
 	basePath := t.TempDir()
 
-	opts := dbTestOps(baseAddr, 10_000, nil, nil, time.Second)
+	opts := dbTestOps(baseAddr, 10_000, nil, nil, time.Minute)
 	opts.CacheCapacity = 0
 
 	st, err := storer.New(ctx, basePath, opts)
