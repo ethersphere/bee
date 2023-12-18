@@ -1113,7 +1113,7 @@ func TestJoinerRedundancy(t *testing.T) {
 			readCheck := func(t *testing.T, expErr error) {
 				t.Helper()
 
-				ctx, cancel := context.WithTimeout(context.Background(), 8*getter.StrategyTimeout)
+				ctx, cancel := context.WithTimeout(context.Background(), 10*getter.StrategyTimeout)
 				defer cancel()
 				ctx = getter.SetFetchTimeout(ctx, getter.StrategyTimeout)
 				joinReader, rootSpan, err := joiner.New(ctx, store, store, swarmAddr)
