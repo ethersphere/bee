@@ -110,7 +110,7 @@ func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
 		}
 	}()
 
-	countF := func() int {
+	countFn := func() int {
 		skipInvalidCheck := activeEviction.Load()
 
 		count := 0
@@ -154,7 +154,7 @@ func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
 	}
 
 	// initial run for the metrics
-	_ = countF()
+	_ = countFn()
 
 	ticker := time.NewTicker(db.opts.wakeupDuration)
 	defer ticker.Stop()
@@ -167,7 +167,7 @@ func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
 		case <-ticker.C:
 		}
 
-		count := countF()
+		count := countFn()
 		radius := db.StorageRadius()
 
 		if count < threshold(db.reserve.Capacity()) && db.syncer.SyncRate() == 0 && radius > 0 {
