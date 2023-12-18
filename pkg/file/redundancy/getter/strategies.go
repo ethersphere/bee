@@ -31,11 +31,7 @@ const (
 
 // GetParamsFromContext extracts the strategy and strict mode from the context
 func GetParamsFromContext(ctx context.Context) (s Strategy, strict bool, fetcherTimeout time.Duration) {
-	var ok bool
-	s, ok = ctx.Value(strategyKey{}).(Strategy)
-	if !ok {
-		s = RACE
-	}
+	s, _ = ctx.Value(strategyKey{}).(Strategy)
 	strict, _ = ctx.Value(modeKey{}).(bool)
 	fetcherTimeout, _ = ctx.Value(fetcherTimeoutKey{}).(time.Duration)
 	return s, strict, fetcherTimeout
@@ -56,11 +52,10 @@ func SetStrict(ctx context.Context, strict bool) context.Context {
 	return context.WithValue(ctx, modeKey{}, strict)
 }
 
-func (g *decoder) prefetch(ctx context.Context, strategy int, strict bool) {
+func (g *decoder) prefetch(ctx context.Context, strategy int, strict bool, strategyTimeout, fetchTimeout time.Duration) {
 	if strict && strategy == NONE {
 		return
 	}
-
 	defer g.remove()
 	var cancels []func()
 	cancelAll := func() {
@@ -76,11 +71,11 @@ func (g *decoder) prefetch(ctx context.Context, strategy int, strict bool) {
 
 		var stop <-chan time.Time
 		if s < RACE {
-			timer := time.NewTimer(StrategyTimeout)
+			timer := time.NewTimer(strategyTimeout)
 			defer timer.Stop()
 			stop = timer.C
 		}
-		lctx, cancel := context.WithTimeout(ctx, g.fetchTimeout)
+		lctx, cancel := context.WithTimeout(ctx, fetchTimeout)
 		cancels = append(cancels, cancel)
 		prefetch(lctx, g, s)
 

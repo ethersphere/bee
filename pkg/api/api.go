@@ -70,17 +70,20 @@ import (
 const loggerName = "api"
 
 const (
-	SwarmPinHeader            = "Swarm-Pin"
-	SwarmTagHeader            = "Swarm-Tag"
-	SwarmEncryptHeader        = "Swarm-Encrypt"
-	SwarmIndexDocumentHeader  = "Swarm-Index-Document"
-	SwarmErrorDocumentHeader  = "Swarm-Error-Document"
-	SwarmFeedIndexHeader      = "Swarm-Feed-Index"
-	SwarmFeedIndexNextHeader  = "Swarm-Feed-Index-Next"
-	SwarmCollectionHeader     = "Swarm-Collection"
-	SwarmPostageBatchIdHeader = "Swarm-Postage-Batch-Id"
-	SwarmDeferredUploadHeader = "Swarm-Deferred-Upload"
-	SwarmRedundancyLevel      = "Swarm-Redundancy-Level"
+	SwarmPinHeader                    = "Swarm-Pin"
+	SwarmTagHeader                    = "Swarm-Tag"
+	SwarmEncryptHeader                = "Swarm-Encrypt"
+	SwarmIndexDocumentHeader          = "Swarm-Index-Document"
+	SwarmErrorDocumentHeader          = "Swarm-Error-Document"
+	SwarmFeedIndexHeader              = "Swarm-Feed-Index"
+	SwarmFeedIndexNextHeader          = "Swarm-Feed-Index-Next"
+	SwarmCollectionHeader             = "Swarm-Collection"
+	SwarmPostageBatchIdHeader         = "Swarm-Postage-Batch-Id"
+	SwarmDeferredUploadHeader         = "Swarm-Deferred-Upload"
+	SwarmRedundancyLevelHeader        = "Swarm-Redundancy-Level"
+	SwarmRedundancyStrategyHeader     = "Swarm-Redundancy-Strategy"
+	SwarmRedundancyFallbackModeHeader = "Swarm-Redundancy-Fallback-Mode"
+	SwarmChunkRetrievalTimeoutHeader  = "Swarm-Chunk-Retrieval-Timeout-Level"
 
 	ImmutableHeader = "Immutable"
 	GasPriceHeader  = "Gas-Price"
@@ -624,8 +627,7 @@ func (s *Service) corsHandler(h http.Handler) http.Handler {
 	allowedHeaders := []string{
 		"User-Agent", "Accept", "X-Requested-With", "Access-Control-Request-Headers", "Access-Control-Request-Method", "Accept-Ranges", "Content-Encoding",
 		AuthorizationHeader, AcceptEncodingHeader, ContentTypeHeader, ContentDispositionHeader, RangeHeader, OriginHeader,
-		SwarmTagHeader, SwarmPinHeader, SwarmEncryptHeader, SwarmIndexDocumentHeader, SwarmErrorDocumentHeader, SwarmCollectionHeader, SwarmPostageBatchIdHeader, SwarmDeferredUploadHeader, SwarmRedundancyLevel,
-		GasPriceHeader, GasLimitHeader, ImmutableHeader,
+		SwarmTagHeader, SwarmPinHeader, SwarmEncryptHeader, SwarmIndexDocumentHeader, SwarmErrorDocumentHeader, SwarmCollectionHeader, SwarmPostageBatchIdHeader, SwarmDeferredUploadHeader, SwarmRedundancyLevelHeader, SwarmRedundancyStrategyHeader, SwarmRedundancyFallbackModeHeader, SwarmChunkRetrievalTimeoutHeader, SwarmFeedIndexHeader, SwarmFeedIndexNextHeader, GasPriceHeader, GasLimitHeader, ImmutableHeader,
 	}
 	allowedHeadersStr := strings.Join(allowedHeaders, ", ")
 

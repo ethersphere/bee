@@ -64,9 +64,9 @@ func (s *Service) dirUploadHandler(
 	}
 	defer r.Body.Close()
 
-	rLevelNum, err := strconv.ParseUint(r.Header.Get(SwarmRedundancyLevel), 10, 8)
+	rLevelNum, err := strconv.ParseUint(r.Header.Get(SwarmRedundancyLevelHeader), 10, 8)
 	if err != nil {
-		logger.Debug("store directory failed failed", "redundancy level parsing error")
+		logger.Debug("store directory failed", "redundancy level parsing error")
 		logger.Error(nil, "store directory failed")
 	}
 	rLevel, err := redundancy.NewLevel(uint8(rLevelNum))
