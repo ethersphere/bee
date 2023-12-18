@@ -1062,7 +1062,7 @@ func TestJoinerRedundancy(t *testing.T) {
 		},
 	} {
 		tc := tc
-		t.Run(fmt.Sprintf("redundancy %d encryption %t", tc.rLevel, tc.encryptChunk), func(t *testing.T) {
+		t.Run(fmt.Sprintf("redundancy=%d encryption=%t", tc.rLevel, tc.encryptChunk), func(t *testing.T) {
 
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -1188,7 +1188,6 @@ func TestJoinerRedundancy(t *testing.T) {
 			t.Run("recover from replica if root deleted", func(t *testing.T) {
 				readCheck(t, nil)
 			})
-
 		})
 	}
 }
