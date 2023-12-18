@@ -5,7 +5,7 @@ go 1.21
 require (
 	contrib.go.opencensus.io/exporter/prometheus v0.4.2
 	github.com/armon/go-radix v1.0.0
-	github.com/btcsuite/btcd v0.22.3
+	github.com/btcsuite/btcd/btcec/v2 v2.3.2
 	github.com/casbin/casbin/v2 v2.35.0
 	github.com/coreos/go-semver v0.3.0
 	github.com/ethereum/go-ethereum v1.13.4
@@ -63,7 +63,7 @@ require (
 	github.com/benbjohnson/clock v1.3.5 // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/bits-and-blooms/bitset v1.7.0 // indirect
-	github.com/btcsuite/btcd/btcec/v2 v2.2.0 // indirect
+	github.com/btcsuite/btcd/chaincfg/chainhash v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
 	github.com/codahale/hdrhistogram v0.0.0-00010101000000-000000000000 // indirect
 	github.com/consensys/bavard v0.1.13 // indirect
