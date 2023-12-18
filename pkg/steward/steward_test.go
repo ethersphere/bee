@@ -15,7 +15,9 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
+	"github.com/ethersphere/bee/pkg/file/redundancy"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/mock"
+	"github.com/ethersphere/bee/pkg/replicas"
 	"github.com/ethersphere/bee/pkg/steward"
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
@@ -34,7 +36,6 @@ func (c *counter) Put(ctx context.Context, ch swarm.Chunk) (err error) {
 }
 
 func TestSteward(t *testing.T) {
-	t.Skip("skipping test until we indentify the cause of the flakiness")
 	t.Parallel()
 	inmem := &counter{ChunkStore: inmemchunkstore.New()}
 
@@ -48,6 +49,7 @@ func TestSteward(t *testing.T) {
 		s              = steward.New(store, localRetrieval, inmem)
 		stamper        = postagetesting.NewStamper()
 	)
+	ctx = replicas.SetLevel(ctx, redundancy.NONE)
 
 	n, err := rand.Read(data)
 	if n != cap(data) {
