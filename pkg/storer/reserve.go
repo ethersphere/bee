@@ -177,7 +177,7 @@ func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
 			if err != nil {
 				db.logger.Error(err, "reserve set radius")
 			}
-			db.logger.Info("reserve radius decrease", "radius", radius)
+			db.logger.Info("reserve radius decrease", log.LogItem{"radius", radius})
 		}
 		db.metrics.StorageRadius.Set(float64(radius))
 	}
