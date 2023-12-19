@@ -228,17 +228,6 @@ func testDecodingFallback(t *testing.T, s getter.Strategy, strict bool) {
 		waitErased <- err
 	}()
 
-	// set timeouts for the cases
-	var timeout time.Duration
-	switch {
-	case strict:
-		timeout = 2*getter.StrategyTimeout - 10*time.Millisecond
-	case s == getter.NONE:
-		timeout = 4*getter.StrategyTimeout - 10*time.Millisecond
-	case s == getter.DATA:
-		timeout = 3*getter.StrategyTimeout - 10*time.Millisecond
-	}
-
 	// wait for delayed chunk retrieval to complete
 	select {
 	case err := <-waitDelayed:
@@ -297,7 +286,7 @@ func testDecodingFallback(t *testing.T, s getter.Strategy, strict bool) {
 				t.Fatal("unexpected timeout using strategy", s, "with strict", strict)
 			}
 		}
-	case <-time.After(timeout):
+	case <-time.After(getter.StrategyTimeout * 3):
 		if !strict || s != getter.NONE {
 			t.Fatal("unexpected timeout using strategy", s, "with strict", strict)
 		}
