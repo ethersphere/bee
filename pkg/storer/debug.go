@@ -54,7 +54,10 @@ type Info struct {
 func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 	eg, ctx := errgroup.WithContext(ctx)
 
-	totalChunks, sharedSlots := 0, 0
+	var (
+		totalChunks int
+		sharedSlots int
+	)
 	eg.Go(func() error {
 		return chunkstore.IterateChunkEntries(
 			db.repo.IndexStore(),
@@ -76,7 +79,10 @@ func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 		)
 	})
 
-	uploaded, synced := 0, 0
+	var (
+		uploaded int
+		synced   int
+	)
 	eg.Go(func() error {
 		return upload.IterateAll(
 			db.repo.IndexStore(),
@@ -98,7 +104,10 @@ func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 		)
 	})
 
-	collections, chunkCount := 0, 0
+	var (
+		collections int
+		chunkCount  int
+	)
 	eg.Go(func() error {
 		return pinstore.IterateCollectionStats(
 			db.repo.IndexStore(),
@@ -118,29 +127,37 @@ func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 		)
 	})
 
-	reserveSizeWithinRadius := 0
-	eg.Go(func() error {
-		return db.reserve.IterateChunksItems(db.repo, db.reserve.Radius(), func(ci reserve.ChunkItem) (bool, error) {
-			reserveSizeWithinRadius++
-			return false, nil
-		})
-	})
+	var (
+		reserveCapacity         int
+		reserveSize             int
+		reserveSizeWithinRadius int
 
-	cacheSize, cacheCapacity := db.cacheObj.Size(), db.cacheObj.Capacity()
-
-	reserveSize, reserveCapacity := 0, 0
+		lastBinIDs []uint64
+		epoch      uint64
+	)
 	if db.reserve != nil {
-		reserveSize, reserveCapacity = db.reserve.Size(), db.reserve.Capacity()
+		reserveCapacity = db.reserve.Capacity()
+		reserveSize = db.reserve.Size()
+		eg.Go(func() error {
+			return db.reserve.IterateChunksItems(db.repo, db.reserve.Radius(), func(ci reserve.ChunkItem) (bool, error) {
+				reserveSizeWithinRadius++
+				return false, nil
+			})
+		})
+
+		var err error
+		lastBinIDs, epoch, err = db.ReserveLastBinIDs()
+		if err != nil {
+			return Info{}, err
+		}
 	}
 
 	if err := eg.Wait(); err != nil {
 		return Info{}, err
 	}
 
-	lastbinIds, epoch, err := db.ReserveLastBinIDs()
-	if err != nil {
-		return Info{}, err
-	}
+	cacheSize := db.cacheObj.Size()
+	cacheCapacity := db.cacheObj.Capacity()
 
 	return Info{
 		Upload: UploadStat{
@@ -159,7 +176,7 @@ func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 			SizeWithinRadius: reserveSizeWithinRadius,
 			TotalSize:        reserveSize,
 			Capacity:         reserveCapacity,
-			LastBinIDs:       lastbinIds,
+			LastBinIDs:       lastBinIDs,
 			Epoch:            epoch,
 		},
 		ChunkStore: ChunkStoreStat{
