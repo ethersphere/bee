@@ -38,7 +38,7 @@ var (
 )
 
 var (
-	// Ethereum Address of the for Dispersed Replicas writes
+	// Ethereum Address for SOC owner of Dispersed Replicas
 	// generated from private key 0x0100000000000000000000000000000000000000000000000000000000000000
 	ReplicasOwner, _ = hex.DecodeString("dc5b20847f43d67928f49cd4f85d696b5a7617b5")
 )
