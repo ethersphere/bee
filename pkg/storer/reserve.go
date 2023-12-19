@@ -78,7 +78,7 @@ func (db *DB) startReserveWorkers(
 		db.logger.Error(err, "reserve set radius")
 	}
 
-	db.metrics.StorageRadius.Set(float64(db.reserve.Size()))
+	db.metrics.StorageRadius.Set(float64(r))
 
 	// syncing can now begin now that the reserver worker is running
 	db.syncer.Start(ctx)
