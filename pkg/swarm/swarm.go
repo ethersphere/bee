@@ -38,6 +38,12 @@ var (
 )
 
 var (
+	// Ethereum Address for SOC owner of Dispersed Replicas
+	// generated from private key 0x0100000000000000000000000000000000000000000000000000000000000000
+	ReplicasOwner, _ = hex.DecodeString("dc5b20847f43d67928f49cd4f85d696b5a7617b5")
+)
+
+var (
 	// EmptyAddress is the address that is all zeroes.
 	EmptyAddress = NewAddress(make([]byte, HashSize))
 	// ZeroAddress is the address that has no value.

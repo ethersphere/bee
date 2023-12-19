@@ -12,7 +12,6 @@ package replicas
 
 import (
 	"context"
-	"encoding/hex"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/crypto"
@@ -29,7 +28,6 @@ var (
 	RetryInterval = 300 * time.Millisecond
 	privKey, _    = crypto.DecodeSecp256k1PrivateKey(append([]byte{1}, make([]byte, 31)...))
 	signer        = crypto.NewDefaultSigner(privKey)
-	owner, _      = hex.DecodeString("dc5b20847f43d67928f49cd4f85d696b5a7617b5")
 )
 
 // SetLevel sets the redundancy level in the context
@@ -82,7 +80,7 @@ func (rr *replicator) replicate(i uint8) (sp *replica) {
 	// calculate SOC address for potential replica
 	h := swarm.NewHasher()
 	_, _ = h.Write(id)
-	_, _ = h.Write(owner)
+	_, _ = h.Write(swarm.ReplicasOwner)
 	return &replica{h.Sum(nil), id}
 }
 
