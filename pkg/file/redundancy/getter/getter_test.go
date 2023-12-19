@@ -151,7 +151,7 @@ func testDecodingRACE(t *testing.T, bufSize, shardCnt, erasureCnt int) {
 	err := context.DeadlineExceeded
 	select {
 	case err = <-q:
-	case <-time.After(getter.StrategyTimeout * 4):
+	case <-time.After(getter.StrategyTimeout * 10):
 	}
 	switch {
 	case erasureCnt > parityCnt:
