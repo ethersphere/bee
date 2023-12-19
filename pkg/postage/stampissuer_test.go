@@ -54,6 +54,20 @@ func newTestStampIssuer(t *testing.T, block uint64) *postage.StampIssuer {
 	return newTestStampIssuerMutability(t, block, true)
 }
 
+func newTestStampIssuerID(t *testing.T, block uint64, id []byte) *postage.StampIssuer {
+	t.Helper()
+	return postage.NewStampIssuer(
+		"label",
+		"keyID",
+		id,
+		big.NewInt(3),
+		16,
+		8,
+		block,
+		true,
+	)
+}
+
 func newTestStampIssuerMutability(t *testing.T, block uint64, immutable bool) *postage.StampIssuer {
 	t.Helper()
 	id := make([]byte, 32)

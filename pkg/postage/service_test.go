@@ -223,33 +223,32 @@ func TestSetExpired(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = store.Put(postage.NewStampItem().WithChunkAddress(swarm.RandAddress(t)).WithBatchID(batch))
+	itemExists := postage.NewStampItem().WithChunkAddress(swarm.RandAddress(t)).WithBatchID(batch)
+	err = store.Put(itemExists)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	err = store.Put(postage.NewStampItem().WithChunkAddress(swarm.RandAddress(t)).WithBatchID(notExistsBatch))
+	itemNotExists := postage.NewStampItem().WithChunkAddress(swarm.RandAddress(t)).WithBatchID(notExistsBatch)
+	err = store.Put(itemNotExists)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	issuer := newTestStampIssuer(t, 1000)
-	err = ps.Add(issuer)
+	err = ps.Add(newTestStampIssuerID(t, 1000, itemExists.BatchID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = ps.Add(newTestStampIssuerID(t, 1000, itemNotExists.BatchID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = ps.HandleStampExpiry(context.Background(), itemNotExists.BatchID)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_, _, err = ps.GetStampIssuer(issuer.ID())
-	if !errors.Is(err, postage.ErrNotUsable) {
-		t.Fatalf("expected %v, got %v", postage.ErrNotUsable, err)
-	}
-
-	err = ps.HandleStampExpiry(context.Background(), issuer.ID())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	_, _, err = ps.GetStampIssuer(issuer.ID())
+	_, _, err = ps.GetStampIssuer(itemNotExists.BatchID)
 	if !errors.Is(err, postage.ErrNotFound) {
 		t.Fatalf("expected %v, got %v", postage.ErrNotFound, err)
 	}
@@ -278,6 +277,16 @@ func TestSetExpired(t *testing.T) {
 		},
 	)
 	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = store.Get(itemExists)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = store.Get(itemNotExists)
+	if err == nil {
 		t.Fatal(err)
 	}
 

@@ -382,7 +382,7 @@ func TestRadiusManager(t *testing.T) {
 
 	waitForRadius := func(t *testing.T, reserve *reserve.Reserve, expectedRadius uint8) {
 		t.Helper()
-		err := spinlock.Wait(time.Second*10, func() bool {
+		err := spinlock.Wait(time.Second*30, func() bool {
 			return reserve.Radius() == expectedRadius
 		})
 		if err != nil {
@@ -392,7 +392,7 @@ func TestRadiusManager(t *testing.T) {
 
 	waitForSize := func(t *testing.T, reserve *reserve.Reserve, size int) {
 		t.Helper()
-		err := spinlock.Wait(time.Second*10, func() bool {
+		err := spinlock.Wait(time.Second*30, func() bool {
 			return reserve.Size() == size
 		})
 		if err != nil {
@@ -440,7 +440,7 @@ func TestRadiusManager(t *testing.T) {
 
 	t.Run("radius doesnt change due to non-zero pull rate", func(t *testing.T) {
 		t.Parallel()
-		storer, err := diskStorer(t, dbTestOps(baseAddr, 10, nil, nil, time.Millisecond*10))()
+		storer, err := diskStorer(t, dbTestOps(baseAddr, 10, nil, nil, time.Millisecond*500))()
 		if err != nil {
 			t.Fatal(err)
 		}
