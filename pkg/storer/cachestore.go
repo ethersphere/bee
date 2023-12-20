@@ -42,7 +42,7 @@ func (db *DB) cacheWorker(ctx context.Context) {
 				continue
 			}
 
-			evict := min(1_000, (size - capc))
+			evict := min(10_000, (size - capc))
 
 			dur := captureDuration(time.Now())
 			err := db.Execute(ctx, func(s internal.Storage) error {

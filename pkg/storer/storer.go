@@ -126,7 +126,7 @@ type NetStore interface {
 	// Download provides a getter which can be used to download data. If the data
 	// is found locally, its returned immediately, otherwise it is retrieved from
 	// the network.
-	Download(pin bool) storage.Getter
+	Download(cache bool) storage.Getter
 	// PusherFeed is the feed for direct push chunks. This can be used by the
 	// pusher component to push out the chunks.
 	PusherFeed() <-chan *pusher.Op

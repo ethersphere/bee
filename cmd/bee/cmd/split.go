@@ -7,11 +7,11 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
-	"github.com/ethersphere/bee/pkg/file"
-	"github.com/ethersphere/bee/pkg/file/splitter"
+	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/spf13/cobra"
@@ -19,7 +19,6 @@ import (
 
 // putter is a putter that stores all the split chunk addresses of a file
 type putter struct {
-	rootHash       string
 	chunkAddresses []string
 }
 
@@ -29,6 +28,15 @@ func (s *putter) Put(ctx context.Context, chunk swarm.Chunk) error {
 }
 
 var _ storage.Putter = (*putter)(nil)
+
+type pipelineFunc func(context.Context, io.Reader) (swarm.Address, error)
+
+func requestPipelineFn(s storage.Putter, encrypt bool) pipelineFunc {
+	return func(ctx context.Context, r io.Reader) (swarm.Address, error) {
+		pipe := builder.NewPipelineBuilder(ctx, s, encrypt)
+		return builder.FeedPipeline(ctx, pipe, r)
+	}
+}
 
 func (c *command) initSplitCmd() error {
 	optionNameInputFile := "input-file"
@@ -64,16 +72,12 @@ func (c *command) initSplitCmd() error {
 
 			logger.Info("splitting", "file", inputFileName)
 			store := new(putter)
-			s := splitter.NewSimpleSplitter(store)
-			stat, err := reader.Stat()
+
+			p := requestPipelineFn(store, false)
+			address, err := p(context.Background(), reader)
 			if err != nil {
-				return fmt.Errorf("stat file: %w", err)
+				return fmt.Errorf("bmt pipeline: %w", err)
 			}
-			rootHash, err := file.SplitWriteAll(context.Background(), s, reader, stat.Size(), false)
-			if err != nil {
-				return fmt.Errorf("split write: %w", err)
-			}
-			store.rootHash = rootHash.String()
 
 			logger.Info("writing output", "file", outputFileName)
 			writer, err := os.OpenFile(outputFileName, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
@@ -82,8 +86,8 @@ func (c *command) initSplitCmd() error {
 			}
 			defer writer.Close()
 
-			logger.Debug("write root", "hash", store.rootHash)
-			_, err = writer.WriteString(fmt.Sprintf("%s\n", store.rootHash))
+			logger.Debug("write root", "hash", address)
+			_, err = writer.WriteString(fmt.Sprintf("%s\n", address))
 			if err != nil {
 				return fmt.Errorf("write root hash: %w", err)
 			}
