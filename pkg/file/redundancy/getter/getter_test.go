@@ -21,36 +21,11 @@ import (
 	"github.com/ethersphere/bee/pkg/file/redundancy/getter"
 	"github.com/ethersphere/bee/pkg/storage"
 	inmem "github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
+	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/klauspost/reedsolomon"
 	"golang.org/x/sync/errgroup"
 )
-
-type delayed struct {
-	storage.ChunkStore
-	cache map[string]time.Duration
-	mu    sync.Mutex
-}
-
-func (d *delayed) delay(addr swarm.Address, delay time.Duration) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	d.cache[addr.String()] = delay
-}
-
-func (d *delayed) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, err error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if delay, ok := d.cache[addr.String()]; ok && delay > 0 {
-		select {
-		case <-time.After(delay):
-			delete(d.cache, addr.String())
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
-	}
-	return d.ChunkStore.Get(ctx, addr)
-}
 
 // TestGetter tests the retrieval of chunks with missing data shards
 // using the RACE strategy for a number of erasure code parameters
@@ -181,7 +156,7 @@ func testDecodingFallback(t *testing.T, s getter.Strategy, strict bool) {
 
 	bufSize := 12
 	shardCnt := 6
-	store := &delayed{ChunkStore: inmem.New(), cache: make(map[string]time.Duration)}
+	store := mockstorer.NewDelayedStore(inmem.New())	
 	buf := make([][]byte, bufSize)
 	addrs := initData(t, buf, shardCnt, store)
 
@@ -205,7 +180,7 @@ func testDecodingFallback(t *testing.T, s getter.Strategy, strict bool) {
 	if s == getter.NONE {
 		delay += getter.StrategyTimeout
 	}
-	store.delay(addrs[delayed], delay)
+	store.Delay(addrs[delayed], delay)
 	// create getter
 	start := time.Now()
 	g := getter.New(addrs, shardCnt, store, store, s, strict, getter.StrategyTimeout/2, func() {})
