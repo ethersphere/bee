@@ -274,6 +274,7 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 	headers := struct {
 		Cache *bool `map:"Swarm-Cache"`
 	}{}
+
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
 		return
@@ -459,8 +460,9 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 		Cache                 *bool           `map:"Swarm-Cache"`
 		Strategy              getter.Strategy `map:"Swarm-Redundancy-Strategy"`
 		FallbackMode          bool            `map:"Swarm-Redundancy-Fallback-Mode"`
-		ChunkRetrievalTimeout time.Duration   `map:"Swarm-Chunk-Retrieval-Timeout"`
+		ChunkRetrievalTimeout string          `map:"Swarm-Chunk-Retrieval-Timeout"`
 	}{}
+
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
 		return
@@ -471,6 +473,7 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 	}
 
 	ctx := r.Context()
+	fmt.Println("downloadHandler", "Strategy", headers.Strategy, "FallbackMode", headers.FallbackMode, "ChunkRetrievalTimeout", headers.ChunkRetrievalTimeout)
 	ctx = getter.SetStrategy(ctx, headers.Strategy)
 	ctx = getter.SetStrict(ctx, headers.FallbackMode)
 	ctx = getter.SetFetchTimeout(ctx, headers.ChunkRetrievalTimeout)

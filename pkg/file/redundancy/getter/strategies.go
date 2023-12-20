@@ -30,15 +30,29 @@ const (
 )
 
 // GetParamsFromContext extracts the strategy and strict mode from the context
-func GetParamsFromContext(ctx context.Context) (s Strategy, strict bool, fetcherTimeout time.Duration) {
-	s, _ = ctx.Value(strategyKey{}).(Strategy)
-	strict, _ = ctx.Value(modeKey{}).(bool)
-	fetcherTimeout, _ = ctx.Value(fetcherTimeoutKey{}).(time.Duration)
-	return s, strict, fetcherTimeout
+func GetParamsFromContext(ctx context.Context) (s Strategy, strict bool, fetcherTimeout time.Duration, err error) {
+	var ok bool
+	s, ok = ctx.Value(strategyKey{}).(Strategy)
+	if !ok {
+		return s, strict, fetcherTimeout, fmt.Errorf("error setting strategy from context")
+	}
+	strict, ok = ctx.Value(modeKey{}).(bool)
+	if !ok {
+		return s, strict, fetcherTimeout, fmt.Errorf("error setting fallback mode from context")
+	}
+	fetcherTimeoutVal, ok := ctx.Value(fetcherTimeoutKey{}).(string)
+	if !ok {
+		return s, strict, fetcherTimeout, fmt.Errorf("error setting fetcher timeout from context")
+	}
+	fetcherTimeout, err = time.ParseDuration(fetcherTimeoutVal)
+	if err != nil {
+		return s, strict, fetcherTimeout, fmt.Errorf("error parsing fetcher timeout from context")
+	}
+	return s, strict, fetcherTimeout, nil
 }
 
 // SetFetchTimeout sets the timeout for each fetch
-func SetFetchTimeout(ctx context.Context, timeout time.Duration) context.Context {
+func SetFetchTimeout(ctx context.Context, timeout string) context.Context {
 	return context.WithValue(ctx, fetcherTimeoutKey{}, timeout)
 }
 

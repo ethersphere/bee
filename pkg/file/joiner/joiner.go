@@ -125,7 +125,10 @@ func New(ctx context.Context, g storage.Getter, putter storage.Putter, address s
 	if rLevel != redundancy.NONE {
 		_, parities := file.ReferenceCount(uint64(span), rLevel, encryption)
 		rootParity = parities
-		strategy, strict, fetcherTimeout = getter.GetParamsFromContext(ctx)
+		strategy, strict, fetcherTimeout, err = getter.GetParamsFromContext(ctx)
+		if err != nil {
+			return nil, 0, err
+		}
 		spanFn = chunkToSpan
 		if encryption {
 			maxBranching = rLevel.GetMaxEncShards()
