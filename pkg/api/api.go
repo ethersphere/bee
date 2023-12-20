@@ -83,7 +83,7 @@ const (
 	SwarmRedundancyLevelHeader        = "Swarm-Redundancy-Level"
 	SwarmRedundancyStrategyHeader     = "Swarm-Redundancy-Strategy"
 	SwarmRedundancyFallbackModeHeader = "Swarm-Redundancy-Fallback-Mode"
-	SwarmChunkRetrievalTimeoutHeader  = "Swarm-Chunk-Retrieval-Timeout-Level"
+	SwarmChunkRetrievalTimeoutHeader  = "Swarm-Chunk-Retrieval-Timeout"
 
 	ImmutableHeader = "Immutable"
 	GasPriceHeader  = "Gas-Price"
