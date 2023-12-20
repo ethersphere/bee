@@ -29,15 +29,6 @@ const (
 	PARANOID
 )
 
-// NewLevel returns a Level coresponding to the passed number parameter
-// throws an error if there is no level for the passed number
-func NewLevel(n uint8) (Level, error) {
-	if n > uint8(PARANOID) {
-		return 0, fmt.Errorf("redundancy: number %d does not have corresponding level", n)
-	}
-	return Level(n), nil
-}
-
 // GetParities returns number of parities based on appendix F table 5
 func (l Level) GetParities(shards int) int {
 	et, err := l.getErasureTable()
@@ -64,6 +55,8 @@ func (l Level) GetEncParities(shards int) int {
 
 func (l Level) getErasureTable() (erasureTable, error) {
 	switch l {
+	case NONE:
+		return erasureTable{}, errors.New("redundancy: level NONE does not have erasure table")
 	case MEDIUM:
 		return mediumEt, nil
 	case STRONG:
@@ -73,12 +66,14 @@ func (l Level) getErasureTable() (erasureTable, error) {
 	case PARANOID:
 		return paranoidEt, nil
 	default:
-		return erasureTable{}, errors.New("redundancy: level NONE does not have erasure table")
+		return erasureTable{}, fmt.Errorf("redundancy: level value %d is not a legit redundancy level", l)
 	}
 }
 
 func (l Level) getEncErasureTable() (erasureTable, error) {
 	switch l {
+	case NONE:
+		return erasureTable{}, errors.New("redundancy: level NONE does not have erasure table")
 	case MEDIUM:
 		return encMediumEt, nil
 	case STRONG:
@@ -88,7 +83,7 @@ func (l Level) getEncErasureTable() (erasureTable, error) {
 	case PARANOID:
 		return encParanoidEt, nil
 	default:
-		return erasureTable{}, errors.New("redundancy: level NONE does not have erasure table")
+		return erasureTable{}, fmt.Errorf("redundancy: level value %d is not a legit redundancy level", l)
 	}
 }
 
@@ -161,8 +156,6 @@ var encParanoidEt = newErasureTable(
 		55, 51, 48, 44, 39, 35, 30, 24,
 	},
 )
-
-// DISPERSED REPLICAS INIT
 
 // GetReplicaCounts returns back the ascending dispersed replica counts for all redundancy levels
 func GetReplicaCounts() [5]int {

@@ -41,6 +41,7 @@ func (s *Service) dirUploadHandler(
 	contentTypeString string,
 	encrypt bool,
 	tag uint64,
+	rLevel redundancy.Level,
 ) {
 	if r.Body == http.NoBody {
 		logger.Error(nil, "request has no body")
@@ -63,16 +64,6 @@ func (s *Service) dirUploadHandler(
 		return
 	}
 	defer r.Body.Close()
-
-	rLevelNum, err := strconv.ParseUint(r.Header.Get(SwarmRedundancyLevelHeader), 10, 8)
-	if err != nil {
-		logger.Debug("store directory failed", "redundancy level parsing error")
-		logger.Error(nil, "store directory failed")
-	}
-	rLevel, err := redundancy.NewLevel(uint8(rLevelNum))
-	if err != nil {
-		jsonhttp.BadRequest(w, err.Error())
-	}
 
 	reference, err := storeDir(
 		r.Context(),
