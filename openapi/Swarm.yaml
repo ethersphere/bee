@@ -122,7 +122,7 @@ paths:
           required: false
         - in: header
           schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevel"
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
           name: swarm-redundancy-level
           required: false
 
@@ -258,7 +258,7 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmErrorDocumentParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmDeferredUpload"
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
       requestBody:
         content:
           multipart/form-data:
