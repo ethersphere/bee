@@ -6,12 +6,13 @@ package crypto_test
 
 import (
 	"bytes"
+	"crypto/ecdsa"
 	"crypto/rand"
 	"encoding/hex"
 	"io"
 	"testing"
 
-	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/btcsuite/btcd/btcec"
 	"github.com/ethersphere/bee/pkg/crypto"
 )
 
@@ -65,7 +66,7 @@ func TestSharedKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	pubkey, err := btcec.ParsePubKey(data)
+	pubkey, err := btcec.ParsePubKey(data, btcec.S256())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -75,7 +76,7 @@ func TestSharedKey(t *testing.T) {
 	}
 
 	dh := crypto.NewDH(privKey)
-	sk, err := dh.SharedKey(pubkey.ToECDSA(), salt)
+	sk, err := dh.SharedKey((*ecdsa.PublicKey)(pubkey), salt)
 	if err != nil {
 		t.Fatal(err)
 	}

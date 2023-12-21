@@ -13,7 +13,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/btcsuite/btcd/btcec"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"golang.org/x/crypto/sha3"
 )
@@ -66,16 +66,12 @@ func GenerateSecp256k1Key() (*ecdsa.PrivateKey, error) {
 
 // EncodeSecp256k1PrivateKey encodes raw ECDSA private key.
 func EncodeSecp256k1PrivateKey(k *ecdsa.PrivateKey) ([]byte, error) {
-	pvk, _ := btcec.PrivKeyFromBytes(k.D.Bytes())
-	return pvk.Serialize(), nil
+	return (*btcec.PrivateKey)(k).Serialize(), nil
 }
 
 // EncodeSecp256k1PublicKey encodes raw ECDSA public key in a 33-byte compressed format.
 func EncodeSecp256k1PublicKey(k *ecdsa.PublicKey) []byte {
-	var x, y btcec.FieldVal
-	x.SetByteSlice(k.X.Bytes())
-	y.SetByteSlice(k.Y.Bytes())
-	return btcec.NewPublicKey(&x, &y).SerializeCompressed()
+	return (*btcec.PublicKey)(k).SerializeCompressed()
 }
 
 // DecodeSecp256k1PrivateKey decodes raw ECDSA private key.
@@ -83,8 +79,8 @@ func DecodeSecp256k1PrivateKey(data []byte) (*ecdsa.PrivateKey, error) {
 	if l := len(data); l != btcec.PrivKeyBytesLen {
 		return nil, fmt.Errorf("secp256k1 data size %d expected %d", l, btcec.PrivKeyBytesLen)
 	}
-	pvk, _ := btcec.PrivKeyFromBytes(data)
-	return pvk.ToECDSA(), nil
+	privk, _ := btcec.PrivKeyFromBytes(btcec.S256(), data)
+	return (*ecdsa.PrivateKey)(privk), nil
 }
 
 // GenerateSecp256k1Key generates an ECDSA private key using
@@ -106,8 +102,8 @@ func DecodeSecp256r1PrivateKey(data []byte) (*ecdsa.PrivateKey, error) {
 // Secp256k1PrivateKeyFromBytes returns an ECDSA private key based on
 // the byte slice.
 func Secp256k1PrivateKeyFromBytes(data []byte) *ecdsa.PrivateKey {
-	pvk, _ := btcec.PrivKeyFromBytes(data)
-	return pvk.ToECDSA()
+	privk, _ := btcec.PrivKeyFromBytes(btcec.S256(), data)
+	return (*ecdsa.PrivateKey)(privk)
 }
 
 // NewEthereumAddress returns a binary representation of ethereum blockchain address.

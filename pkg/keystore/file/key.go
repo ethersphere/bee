@@ -16,7 +16,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/btcsuite/btcd/btcec"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/keystore"
 	"github.com/google/uuid"

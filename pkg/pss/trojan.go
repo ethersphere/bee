@@ -15,7 +15,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/btcsuite/btcd/btcec"
 	"github.com/ethersphere/bee/pkg/bmtpool"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/encryption"
@@ -96,7 +96,7 @@ func Wrap(ctx context.Context, topic Topic, msg []byte, recipient *ecdsa.PublicK
 	// NOTE: only the random bytes of the compressed public key are used
 	// in order not to leak anything, the one bit parity info of the magic byte
 	// is encoded in the parity of the 28th byte of the mined nonce
-	ephpubBytes := crypto.EncodeSecp256k1PublicKey(ephpub)
+	ephpubBytes := (*btcec.PublicKey)(ephpub).SerializeCompressed()
 	payload := append(ephpubBytes[1:], ciphertext...)
 	odd := ephpubBytes[0]&0x1 != 0
 
@@ -259,11 +259,8 @@ func extractPublicKey(chunkData []byte) (*ecdsa.PublicKey, error) {
 	if chunkData[36]|0x1 != 0 {
 		pubkeyBytes[0] |= 0x1
 	}
-	pubkey, err := btcec.ParsePubKey(pubkeyBytes)
-	if err != nil {
-		return nil, err
-	}
-	return pubkey.ToECDSA(), err
+	pubkey, err := btcec.ParsePubKey(pubkeyBytes, btcec.S256())
+	return (*ecdsa.PublicKey)(pubkey), err
 }
 
 // topic is needed to decrypt the trojan payload, but no need to perform decryption with each
@@ -315,9 +312,9 @@ func ParseRecipient(recipientHexString string) (*ecdsa.PublicKey, error) {
 	if err != nil {
 		return nil, err
 	}
-	pubkey, err := btcec.ParsePubKey(publicKeyBytes)
+	pubkey, err := btcec.ParsePubKey(publicKeyBytes, btcec.S256())
 	if err != nil {
 		return nil, err
 	}
-	return pubkey.ToECDSA(), err
+	return (*ecdsa.PublicKey)(pubkey), err
 }
