@@ -66,7 +66,6 @@ func (db *DB) cacheWorker(ctx context.Context) {
 // IsCached is the implementation of the CacheStore.Lookup method.
 func (db *DB) IsCached(address swarm.Address) (bool, error) {
 	return db.cacheObj.IsCached(db.repo, address)
-//	return false, nil
 }
 
 // Lookup is the implementation of the CacheStore.Lookup method.
@@ -95,10 +94,10 @@ func (db *DB) Lookup() storage.Getter {
 // Cache is the implementation of the CacheStore.Cache method.
 func (db *DB) Cache() storage.Putter {
 	return putterWithMetrics{
-		storage.PutterFunc(func(ctx context.Context, ch swarm.Chunk) error {
+		storage.PutterFunc(func(ctx context.Context, ch swarm.Chunk, why string) error {
 			defer db.triggerCacheEviction()
 			txnRepo, commit, rollback := db.repo.NewTx(ctx)
-			err := db.cacheObj.Putter(txnRepo).Put(ctx, ch)
+			err := db.cacheObj.Putter(txnRepo).Put(ctx, ch, why)
 			if err != nil {
 				return fmt.Errorf("cache.Put: %w", errors.Join(err, rollback()))
 			}

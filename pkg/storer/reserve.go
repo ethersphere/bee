@@ -318,7 +318,7 @@ func (db *DB) ReserveHas(addr swarm.Address, batchID []byte) (has bool, err erro
 func (db *DB) ReservePutter() storage.Putter {
 	return putterWithMetrics{
 		storage.PutterFunc(
-			func(ctx context.Context, chunk swarm.Chunk) (err error) {
+			func(ctx context.Context, chunk swarm.Chunk, why string) (err error) {
 
 				var (
 					newIndex bool
@@ -326,7 +326,7 @@ func (db *DB) ReservePutter() storage.Putter {
 				lockKey := reserveUpdateBatchLockKey(chunk.Stamp().BatchID())
 				db.lock.Lock(lockKey)
 				err = db.Execute(ctx, func(tx internal.Storage) error {
-					newIndex, err = db.reserve.Put(ctx, tx, chunk)
+					newIndex, err = db.reserve.Put(ctx, tx, chunk, "ReservePutter("+why+")")
 					if err != nil {
 						return fmt.Errorf("reserve: putter.Put: %w", err)
 					}

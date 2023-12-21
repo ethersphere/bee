@@ -9,6 +9,7 @@ import (
 	"errors"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -57,6 +58,8 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 	var errTraverse error
 	var mtxErr sync.Mutex
 	var wg sync.WaitGroup
+	
+	var count uint32
 
 	err = traverser.Traverse(
 		r.Context(),
@@ -70,6 +73,7 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 			}
 			mtxErr.Unlock()
 			if err := sem.Acquire(r.Context(), 1); err != nil {
+				logger.Debug("pin root hash: failed to acquire sem", "error", err)
 				return err
 			}
 			wg.Add(1)
@@ -84,11 +88,21 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 						mtxErr.Unlock()
 					}
 				}()
+				logger.Debug("pin root hash: pre-get", "reference", paths.Reference, "address", address)
 				chunk, err := getter.Get(r.Context(), address)
 				if err != nil {
+					logger.Debug("pin root hash: failed to get", "address", address, "error", err)
 					return
 				}
-				err = putter.Put(r.Context(), chunk)
+				logger.Debug("pin root hash: post-get", "reference", paths.Reference, "address", address)
+				time.Sleep(5*time.Second)
+				logger.Debug("pin root hash: pre-put", "reference", paths.Reference, "address", address)
+				err = putter.Put(r.Context(), chunk, "pinRootHash")
+				if err != nil {
+					logger.Debug("pin root hash: failed to put", "address", address, "error", err)
+				}
+				logger.Debug("pin root hash: post-put", "reference", paths.Reference, "address", address)
+				count = count + 1
 			}()
 			return nil
 		},
@@ -113,7 +127,8 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.InternalServerError(w, "pin collection failed")
 		return
 	}
-
+	logger.Debug("pin root hash: pinned", "reference", paths.Reference, "count", count)
+	time.Sleep(time.Second)
 	jsonhttp.Created(w, nil)
 }
 

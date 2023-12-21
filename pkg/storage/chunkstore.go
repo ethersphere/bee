@@ -26,13 +26,13 @@ type Getter interface {
 // Putter is the interface that wraps the basic Put method.
 type Putter interface {
 	// Put a chunk into the store alongside with its postage stamp.
-	Put(context.Context, swarm.Chunk) error
+	Put(context.Context, swarm.Chunk, string) error
 }
 
 // Deleter is the interface that wraps the basic Delete method.
 type Deleter interface {
 	// Delete a chunk by the given swarm.Address.
-	Delete(context.Context, swarm.Address) error
+	Delete(context.Context, swarm.Address, string) error
 }
 
 // Hasser is the interface that wraps the basic Has method.
@@ -46,11 +46,11 @@ type Hasser interface {
 // ChunkStore as Putter interface. If f is a function
 // with the appropriate signature, PutterFunc(f) is a
 // Putter that calls f.
-type PutterFunc func(context.Context, swarm.Chunk) error
+type PutterFunc func(context.Context, swarm.Chunk, string) error
 
 // Put calls f(ctx, chunk).
-func (f PutterFunc) Put(ctx context.Context, chunk swarm.Chunk) error {
-	return f(ctx, chunk)
+func (f PutterFunc) Put(ctx context.Context, chunk swarm.Chunk, why string) error {
+	return f(ctx, chunk, why)
 }
 
 type GetterFunc func(context.Context, swarm.Address) (swarm.Chunk, error)

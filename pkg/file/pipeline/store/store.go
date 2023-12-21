@@ -31,7 +31,7 @@ func (w *storeWriter) ChainWrite(p *pipeline.PipeWriteArgs) error {
 	if p.Ref == nil || p.Data == nil {
 		return errInvalidData
 	}
-	err := w.l.Put(w.ctx, swarm.NewChunk(swarm.NewAddress(p.Ref), p.Data))
+	err := w.l.Put(w.ctx, swarm.NewChunk(swarm.NewAddress(p.Ref), p.Data), "ChainWrite")
 	if err != nil {
 		return err
 	}

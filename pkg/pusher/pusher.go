@@ -160,6 +160,7 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 			wg.Done()
 			<-sem
 			if doRepeat {
+				s.logger.Debug("chunksWorker: repeating...", "chunk", op.Chunk.Address())
 				select {
 				case cc <- op:
 				case <-s.quit:
@@ -247,6 +248,8 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 					default:
 						s.logger.Debug("chunk already in flight, skipping", "chunk", op.Chunk.Address())
 					}
+				} else {
+					s.logger.Debug("chunk already in flight, skipping", "chunk", op.Chunk.Address())
 				}
 				continue
 			}
@@ -269,6 +272,7 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 
 	defer s.inflight.delete(op.Chunk)
 
+	loggerV1.Debug("pushDeferred", "chunk", op.Chunk.Address())
 	if _, err := s.validStamp(op.Chunk); err != nil {
 		loggerV1.Warning(
 			"stamp with is no longer valid, skipping syncing for chunk",
@@ -284,7 +288,7 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 	case errors.Is(err, topology.ErrWantSelf):
 		// store the chunk
 		loggerV1.Debug("chunk stays here, i'm the closest node", "chunk_address", op.Chunk.Address())
-		err = s.storer.ReservePutter().Put(ctx, op.Chunk)
+		err = s.storer.ReservePutter().Put(ctx, op.Chunk, "PushDeferred")
 		if err != nil {
 			loggerV1.Error(err, "pusher: failed to store chunk")
 			return true, err
@@ -295,10 +299,14 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 			return true, err
 		}
 	case err == nil:
+		if receipt.Address.String() != op.Chunk.Address().String() {
+			loggerV1.Error(err, "pusher: receipt address mismatch", "expected", op.Chunk.Address(), "receipt", receipt.Address)
+		}
 		if err := s.checkReceipt(receipt, loggerV1); err != nil {
 			loggerV1.Error(err, "pusher: failed checking receipt", "chunk_address", op.Chunk.Address())
 			return true, err
 		}
+		loggerV1.Debug("reporting", "chunk_address", op.Chunk.Address())
 		if err := s.storer.Report(ctx, op.Chunk, storage.ChunkSynced); err != nil {
 			loggerV1.Error(err, "pusher: failed to report sync status")
 			return true, err
@@ -307,6 +315,7 @@ func (s *Service) pushDeferred(ctx context.Context, logger log.Logger, op *Op) (
 		loggerV1.Error(err, "pusher: failed PushChunkToClosest")
 		return true, err
 	}
+	loggerV1.Debug("pushDeferred: pushed", "chunk", op.Chunk.Address())
 
 	return false, nil
 }
@@ -343,7 +352,7 @@ func (s *Service) pushDirect(ctx context.Context, logger log.Logger, op *Op) err
 	case errors.Is(err, topology.ErrWantSelf):
 		// store the chunk
 		loggerV1.Debug("chunk stays here, i'm the closest node", "chunk_address", op.Chunk.Address())
-		err = s.storer.ReservePutter().Put(ctx, op.Chunk)
+		err = s.storer.ReservePutter().Put(ctx, op.Chunk, "PushDirect")
 		if err != nil {
 			loggerV1.Error(err, "pusher: failed to store chunk")
 		}

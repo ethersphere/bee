@@ -403,7 +403,7 @@ func NewPutter(s internal.Storage, tagID uint64) (internal.PutterCloserWithRefer
 // - uploadItem entry to keep track of this chunk.
 // - pushItem entry to make it available for PushSubscriber
 // - add chunk to the chunkstore till it is synced
-func (u *uploadPutter) Put(ctx context.Context, s internal.Storage, writer storage.Writer, chunk swarm.Chunk) error {
+func (u *uploadPutter) Put(ctx context.Context, s internal.Storage, writer storage.Writer, chunk swarm.Chunk, why string) error {
 	if u.closed {
 		return errPutterAlreadyClosed
 	}
@@ -446,7 +446,7 @@ func (u *uploadPutter) Put(ctx context.Context, s internal.Storage, writer stora
 
 	u.split++
 
-	if err := s.ChunkStore().Put(ctx, chunk); err != nil {
+	if err := s.ChunkStore().Put(ctx, chunk, "Upload("+why+")"); err != nil {
 		return fmt.Errorf("chunk store put chunk %q call failed: %w", chunk.Address(), err)
 	}
 
@@ -591,7 +591,7 @@ func remove(st internal.Storage, writer storage.Writer, address swarm.Address, b
 	}
 
 	if ui.Synced == 0 {
-		err = st.ChunkStore().Delete(context.Background(), address)
+		err = st.ChunkStore().Delete(context.Background(), address, "Upload.Remove")
 		if err != nil {
 			return fmt.Errorf("failed deleting chunk: %w", err)
 		}
@@ -708,7 +708,7 @@ func Report(
 		return fmt.Errorf("failed deleting chunk stamp %x: %w", pi.BatchID, err)
 	}
 
-	err = s.ChunkStore().Delete(ctx, chunk.Address())
+	err = s.ChunkStore().Delete(ctx, chunk.Address(), "Upload.Report")
 	if err != nil {
 		return fmt.Errorf("failed deleting chunk %s: %w", chunk.Address(), err)
 	}
@@ -828,7 +828,7 @@ func Iterate(ctx context.Context, s internal.Storage, logger log.Logger, consume
 		}
 		chunk, err := s.ChunkStore().Get(ctx, pi.Address)
 		if err != nil {
-			logger.Error(err, "upload.Iterate ChunkStore.Get err", "chunk", chunk.Address())
+			logger.Error(err, "upload.Iterate ChunkStore.Get err", "chunk", pi.Address)
 			return false, nil
 			//return true, err
 		}
@@ -876,6 +876,18 @@ func IterateAll(st storage.Store, iterateFn func(addr swarm.Address, isSynced bo
 			address := swarm.NewAddress([]byte(r.ID[:32]))
 			synced := r.Entry.(*uploadItem).Synced != 0
 			return iterateFn(address, synced)
+		},
+	)
+}
+
+func IterateAllPushItems(st storage.Store, iterateFn func(addr swarm.Address) (bool, error)) error {
+	return st.Iterate(
+		storage.Query{
+			Factory: func() storage.Item { return new(pushItem) },
+		},
+		func(r storage.Result) (bool, error) {
+			address := r.Entry.(*pushItem).Address
+			return iterateFn(address)
 		},
 	)
 }

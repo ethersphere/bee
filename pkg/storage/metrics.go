@@ -278,9 +278,9 @@ func (m txChunkStoreWithMetrics) Get(ctx context.Context, address swarm.Address)
 }
 
 // Put implements the TxChunkStore interface.
-func (m txChunkStoreWithMetrics) Put(ctx context.Context, chunk swarm.Chunk) error {
+func (m txChunkStoreWithMetrics) Put(ctx context.Context, chunk swarm.Chunk, why string) error {
 	dur := captureDuration(time.Now())
-	err := m.TxChunkStore.Put(ctx, chunk)
+	err := m.TxChunkStore.Put(ctx, chunk, why)
 	m.metrics.ChunkStoreCallsDuration.WithLabelValues("Put").Observe(dur())
 	if err == nil || errors.Is(err, ErrNotFound) {
 		m.metrics.ChunkStoreCalls.WithLabelValues("Put", "success").Inc()
@@ -291,9 +291,9 @@ func (m txChunkStoreWithMetrics) Put(ctx context.Context, chunk swarm.Chunk) err
 }
 
 // Delete implements the TxChunkStore interface.
-func (m txChunkStoreWithMetrics) Delete(ctx context.Context, address swarm.Address) error {
+func (m txChunkStoreWithMetrics) Delete(ctx context.Context, address swarm.Address, why string) error {
 	dur := captureDuration(time.Now())
-	err := m.TxChunkStore.Delete(ctx, address)
+	err := m.TxChunkStore.Delete(ctx, address, why)
 	m.metrics.ChunkStoreCallsDuration.WithLabelValues("Delete").Observe(dur())
 	if err == nil || errors.Is(err, ErrNotFound) {
 		m.metrics.ChunkStoreCalls.WithLabelValues("Delete", "success").Inc()

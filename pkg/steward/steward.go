@@ -73,7 +73,7 @@ func (s *steward) Reupload(ctx context.Context, root swarm.Address, stamper post
 			return fmt.Errorf("stamping chunk %s: %w", c.Address(), err)
 		}
 
-		return uploaderSession.Put(ctx, c.WithStamp(stamp))
+		return uploaderSession.Put(ctx, c.WithStamp(stamp), "Steward.Reupload")
 	}
 
 	if err := s.traverser.Traverse(ctx, root, false, fn); err != nil {

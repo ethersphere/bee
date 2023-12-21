@@ -34,8 +34,8 @@ func (s *TxChunkStore) release() {
 }
 
 // Put implements the Store interface.
-func (s *TxChunkStore) Put(ctx context.Context, chunk swarm.Chunk) (err error) {
-	err = s.TxChunkStoreBase.Put(ctx, chunk)
+func (s *TxChunkStore) Put(ctx context.Context, chunk swarm.Chunk, why string) (err error) {
+	err = s.TxChunkStoreBase.Put(ctx, chunk, why)
 	if err == nil {
 		err = s.revOps.Append(&storage.TxRevertOp[swarm.Address, swarm.Chunk]{
 			Origin:   storage.PutOp,
@@ -47,12 +47,12 @@ func (s *TxChunkStore) Put(ctx context.Context, chunk swarm.Chunk) (err error) {
 }
 
 // Delete implements the Store interface.
-func (s *TxChunkStore) Delete(ctx context.Context, addr swarm.Address) error {
+func (s *TxChunkStore) Delete(ctx context.Context, addr swarm.Address, why string) error {
 	chunk, err := s.Get(ctx, addr)
 	if err != nil {
 		return err
 	}
-	err = s.TxChunkStoreBase.Delete(ctx, addr)
+	err = s.TxChunkStoreBase.Delete(ctx, addr, why)
 	if err == nil {
 		err = s.revOps.Append(&storage.TxRevertOp[swarm.Address, swarm.Chunk]{
 			Origin:   storage.DeleteOp,
@@ -104,10 +104,10 @@ func (s *TxChunkStore) NewTx(state *storage.TxState, logger log.Logger) storage.
 		revOps: storage.NewInMemTxRevertOpStore(
 			map[storage.TxOpCode]storage.TxRevertFn[swarm.Address, swarm.Chunk]{
 				storage.PutOp: func(address swarm.Address, _ swarm.Chunk) error {
-					return s.ChunkStore.Delete(context.Background(), address)
+					return s.ChunkStore.Delete(context.Background(), address, "ReversePut")
 				},
 				storage.DeleteOp: func(_ swarm.Address, chunk swarm.Chunk) error {
-					return s.ChunkStore.Put(context.Background(), chunk)
+					return s.ChunkStore.Put(context.Background(), chunk, "ReverseDelete")
 				},
 			},
 		),

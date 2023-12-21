@@ -123,14 +123,14 @@ func wrapSync(store TxChunkStore, locker ChunkLocker) TxChunkStore {
 	return &syncChunkStore{store, locker}
 }
 
-func (s *syncChunkStore) Put(ctx context.Context, chunk swarm.Chunk) error {
+func (s *syncChunkStore) Put(ctx context.Context, chunk swarm.Chunk, why string) error {
 	unlock := s.locker(chunk.Address())
 	defer unlock()
-	return s.TxChunkStore.Put(ctx, chunk)
+	return s.TxChunkStore.Put(ctx, chunk, why)
 }
 
-func (s *syncChunkStore) Delete(ctx context.Context, addr swarm.Address) error {
+func (s *syncChunkStore) Delete(ctx context.Context, addr swarm.Address, why string) error {
 	unlock := s.locker(addr)
 	defer unlock()
-	return s.TxChunkStore.Delete(ctx, addr)
+	return s.TxChunkStore.Delete(ctx, addr, why)
 }

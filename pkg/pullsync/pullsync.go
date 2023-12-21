@@ -269,7 +269,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		defer s.binLock.Unlock(key)
 
 		for _, c := range chunksToPut {
-			if err := s.store.ReservePutter().Put(ctx, c); err != nil {
+			if err := s.store.ReservePutter().Put(ctx, c, "Pullsync.Sync"); err != nil {
 				// in case of these errors, no new items are added to the storage, so it
 				// is safe to continue with the next chunk
 				if errors.Is(err, storage.ErrOverwriteNewerChunk) || errors.Is(err, storage.ErrOverwriteOfImmutableBatch) {

@@ -231,11 +231,11 @@ func (s *TxChunkStoreBase) Get(ctx context.Context, address swarm.Address) (swar
 }
 
 // Put implements the ChunkStore interface.
-func (s *TxChunkStoreBase) Put(ctx context.Context, chunk swarm.Chunk) error {
+func (s *TxChunkStoreBase) Put(ctx context.Context, chunk swarm.Chunk, why string) error {
 	if err := s.IsDone(); err != nil {
 		return err
 	}
-	return s.ChunkStore.Put(ctx, chunk)
+	return s.ChunkStore.Put(ctx, chunk, why)
 }
 
 // Iterate implements the ChunkStore interface.
@@ -255,11 +255,11 @@ func (s *TxChunkStoreBase) Has(ctx context.Context, address swarm.Address) (bool
 }
 
 // Delete implements the ChunkStore interface.
-func (s *TxChunkStoreBase) Delete(ctx context.Context, address swarm.Address) error {
+func (s *TxChunkStoreBase) Delete(ctx context.Context, address swarm.Address, why string) error {
 	if err := s.IsDone(); err != nil {
 		return err
 	}
-	return s.ChunkStore.Delete(ctx, address)
+	return s.ChunkStore.Delete(ctx, address, why)
 }
 
 // Rollback implements the TxChunkStore interface.

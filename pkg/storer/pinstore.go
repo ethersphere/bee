@@ -22,7 +22,7 @@ func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
 		err           error
 	)
 	err = db.Execute(ctx, func(txnRepo internal.Storage) error {
-		pinningPutter, err = pinstore.NewCollection(txnRepo)
+		pinningPutter, err = pinstore.NewCollection(txnRepo, db.logger)
 		if err != nil {
 			return fmt.Errorf("pinstore.NewCollection: %w", err)
 		}
@@ -35,9 +35,10 @@ func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
 	return &putterSession{
 		Putter: putterWithMetrics{
 			storage.PutterFunc(
-				func(ctx context.Context, chunk swarm.Chunk) error {
+				func(ctx context.Context, chunk swarm.Chunk, why string) error {
+					db.logger.Debug("NewCollection.Putter", "chunk", chunk.Address)
 					return db.Execute(ctx, func(s internal.Storage) error {
-						return pinningPutter.Put(ctx, s, s.IndexStore(), chunk)
+						return pinningPutter.Put(ctx, s, s.IndexStore(), chunk, "NewPinCollection("+why+")")
 					})
 				},
 			),
@@ -67,7 +68,7 @@ func (db *DB) DeletePin(ctx context.Context, root swarm.Address) (err error) {
 		}
 	}()
 
-	return pinstore.DeletePin(ctx, db, root)
+	return pinstore.DeletePin(ctx, db, root, db.logger)
 }
 
 // Pins is the implementation of the PinStore.Pins method.

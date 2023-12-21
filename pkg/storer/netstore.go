@@ -23,7 +23,7 @@ func (db *DB) DirectUpload() PutterSession {
 
 	return &putterSession{
 		Putter: putterWithMetrics{
-			storage.PutterFunc(func(ctx context.Context, ch swarm.Chunk) error {
+			storage.PutterFunc(func(ctx context.Context, ch swarm.Chunk, why string) error {
 				db.directUploadLimiter <- struct{}{}
 				eg.Go(func() error {
 					defer func() { <-db.directUploadLimiter }()
@@ -91,7 +91,7 @@ func (db *DB) Download(cache bool) storage.Getter {
 									db.cacheLimiter.wg.Done()
 								}()
 
-								err := db.Cache().Put(db.cacheLimiter.ctx, ch)
+								err := db.Cache().Put(db.cacheLimiter.ctx, ch, "Cache(Download)")
 								if err != nil {
 									db.logger.Debug("putting chunk to cache failed", "error", err, "chunk_address", ch.Address())
 								}

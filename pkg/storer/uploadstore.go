@@ -55,7 +55,7 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 		}
 
 		if pin {
-			pinningPutter, err = pinstore.NewCollection(txnRepo)
+			pinningPutter, err = pinstore.NewCollection(txnRepo, db.logger)
 			if err != nil {
 				return fmt.Errorf("pinstore.NewCollection: %w", err)
 			}
@@ -69,7 +69,7 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 
 	return &putterSession{
 		Putter: putterWithMetrics{
-			storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
+			storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk, why string) error {
 				db.lock.Lock(uploadStoreKey)
 				defer db.lock.Unlock(uploadStoreKey)
 				return db.Execute(ctx, func(s internal.Storage) error {
@@ -79,10 +79,10 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 						return err
 					}
 					err = errors.Join(
-						uploadPutter.Put(ctx, s, b, chunk),
+						uploadPutter.Put(ctx, s, b, chunk, "UploadPut("+why+")"),
 						func() error {
 							if pinningPutter != nil {
-								return pinningPutter.Put(ctx, s, b, chunk)
+								return pinningPutter.Put(ctx, s, b, chunk, "UploadPin("+why+")")
 							}
 							return nil
 						}(),

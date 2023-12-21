@@ -486,7 +486,7 @@ func (s *Service) handler(p2pctx context.Context, p p2p.Peer, stream p2p.Stream)
 
 	// cache the request last, so that putting to the localstore does not slow down the request flow
 	if s.caching && forwarded {
-		if err := s.storer.Cache().Put(p2pctx, chunk); err != nil {
+		if err := s.storer.Cache().Put(p2pctx, chunk, "RetrievalCache"); err != nil {
 			s.logger.Debug("retrieve cache put", "error", err)
 		}
 	}

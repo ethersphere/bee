@@ -117,7 +117,7 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = putter.Put(r.Context(), chunk)
+	err = putter.Put(r.Context(), chunk, "chunkUpload")
 	if err != nil {
 		logger.Debug("chunk upload: write chunk failed", "chunk_address", chunk.Address(), "error", err)
 		logger.Error(nil, "chunk upload: write chunk failed")

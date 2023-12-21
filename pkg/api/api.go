@@ -781,12 +781,12 @@ type putterSessionWrapper struct {
 	save    func() error
 }
 
-func (p *putterSessionWrapper) Put(ctx context.Context, chunk swarm.Chunk) error {
+func (p *putterSessionWrapper) Put(ctx context.Context, chunk swarm.Chunk, why string) error {
 	stamp, err := p.stamper.Stamp(chunk.Address())
 	if err != nil {
 		return err
 	}
-	return p.PutterSession.Put(ctx, chunk.WithStamp(stamp))
+	return p.PutterSession.Put(ctx, chunk.WithStamp(stamp), "api.Put("+why+")")
 }
 
 func (p *putterSessionWrapper) Done(ref swarm.Address) error {

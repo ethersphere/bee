@@ -93,7 +93,7 @@ func New(
 }
 
 // Put stores a new chunk in the reserve and returns if the reserve size should increase.
-func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.Chunk) (bool, error) {
+func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.Chunk, why string) (bool, error) {
 	indexStore := store.IndexStore()
 	chunkStore := store.ChunkStore()
 
@@ -199,7 +199,7 @@ func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.C
 		return false, err
 	}
 
-	err = chunkStore.Put(ctx, chunk)
+	err = chunkStore.Put(ctx, chunk, "Reserve("+why+")")
 	if err != nil {
 		return false, err
 	}
@@ -316,6 +316,22 @@ func (r *Reserve) IterateChunksItems(store internal.Storage, startBin uint8, cb 
 	return err
 }
 
+func IterateReserve(store storage.Store, cb func(*BatchRadiusItem) (bool, error)) error {
+	err := store.Iterate(storage.Query{
+		Factory:       func() storage.Item { return &BatchRadiusItem{} },
+	}, func(res storage.Result) (bool, error) {
+		item := res.Entry.(*BatchRadiusItem)
+
+		stop, err := cb(item)
+		if stop || err != nil {
+			return true, err
+		}
+		return false, nil
+	})
+
+	return err
+}
+
 // EvictBatchBin evicts all chunks from bins upto the bin provided.
 func (r *Reserve) EvictBatchBin(
 	ctx context.Context,
@@ -365,6 +381,7 @@ func (r *Reserve) EvictBatchBin(
 				if err != nil {
 					return err
 				}
+				r.logger.Debug("chunkTrace: reserve.EvictBatchBin:moveToCache", "address", item.Address)
 				moveToCache = append(moveToCache, item.Address)
 			}
 			if err := batch.Commit(); err != nil {
@@ -406,6 +423,7 @@ func (r *Reserve) DeleteChunk(
 	if err != nil {
 		return err
 	}
+	r.logger.Debug("chunkTrace: reserve.DeleteChunk:moveToCache", "address", item.Address)
 	if err := r.cacheCb(ctx, store, item.Address); err != nil {
 		r.logger.Error(err, "delete and move to cache")
 		return err

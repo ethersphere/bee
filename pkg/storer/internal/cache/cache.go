@@ -14,6 +14,7 @@ import (
 	"time"
 
 	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage/leveldbstore"
 	"github.com/ethersphere/bee/pkg/storer/internal"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -76,10 +77,34 @@ func (c *Cache) IsCached(store internal.Storage, address swarm.Address) (bool, e
 	return true, nil
 }
 
+//storage.Store
+//*leveldbstore.Store
+func HasCache(store *leveldbstore.Store, address swarm.Address) (bool, error) {
+	entry := &cacheEntry{Address: address}
+	err := store.Get(entry)
+	if err != nil {
+		if errors.Is(err, storage.ErrNotFound) {
+			return false, nil
+		}
+		return false, fmt.Errorf("unexpected error getting indexstore entry: %w", err)
+	}
+	return true, nil
+}
+
+// Iterate iterates over entire cache with a call back.
+func IterateCachedChunks(st storage.Store, callBackFunc func(address swarm.Address) error) error {
+	return st.Iterate(storage.Query{
+		Factory: func() storage.Item { return new(cacheEntry) },
+	}, func(r storage.Result) (bool, error) {
+		entry := r.Entry.(*cacheEntry)
+		return false, callBackFunc(entry.Address)
+	})
+}
+
 // Putter returns a Storage.Putter instance which adds the chunk to the underlying
 // chunkstore and also adds a Cache entry for the chunk.
 func (c *Cache) Putter(store internal.Storage) storage.Putter {
-	return storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
+	return storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk, why string) error {
 
 		newEntry := &cacheEntry{Address: chunk.Address()}
 		found, err := store.IndexStore().Has(newEntry)
@@ -115,7 +140,7 @@ func (c *Cache) Putter(store internal.Storage) storage.Putter {
 			return fmt.Errorf("batch commit: %w", err)
 		}
 
-		err = store.ChunkStore().Put(ctx, chunk)
+		err = store.ChunkStore().Put(ctx, chunk, "CachePutter("+why+")")
 		if err != nil {
 			return fmt.Errorf("failed adding chunk to chunkstore: %w", err)
 		}
@@ -195,7 +220,7 @@ func (c *Cache) ShallowCopy(
 	defer func() {
 		if err != nil {
 			for _, addr := range addrs {
-				err = errors.Join(store.ChunkStore().Delete(context.Background(), addr))
+				err = errors.Join(store.ChunkStore().Delete(context.Background(), addr, "Cache.ShallowCopy-err"))
 			}
 		}
 	}()
@@ -203,7 +228,7 @@ func (c *Cache) ShallowCopy(
 	//consider only the amount that can fit, the rest should be deleted from the chunkstore.
 	if len(addrs) > c.capacity {
 		for _, addr := range addrs[:len(addrs)-c.capacity] {
-			_ = store.ChunkStore().Delete(ctx, addr)
+			_ = store.ChunkStore().Delete(ctx, addr, "Cache.ShallowCopy-overflow")
 		}
 		addrs = addrs[len(addrs)-c.capacity:]
 	}
@@ -310,7 +335,7 @@ func (c *Cache) RemoveOldest(
 			if err != nil {
 				return fmt.Errorf("failed deleting cache order index %s: %w", entry.Address, err)
 			}
-			err = chStore.Delete(ctx, entry.Address)
+			err = chStore.Delete(ctx, entry.Address, "Cache.RemoveOldest")
 			if err != nil {
 				return fmt.Errorf("failed deleting chunk %s from chunkstore: %w", entry.Address, err)
 			}

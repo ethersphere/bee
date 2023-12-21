@@ -80,7 +80,7 @@ func (p *putOpStorage) Write(_ context.Context, _ []byte) (sharky.Location, erro
 }
 
 type reservePutter interface {
-	Put(context.Context, internal.Storage, swarm.Chunk) (bool, error)
+	Put(context.Context, internal.Storage, swarm.Chunk, string) (bool, error)
 	AddSize(int)
 	Size() int
 }
@@ -303,7 +303,7 @@ func (e *epochMigrator) migrateReserve(ctx context.Context) error {
 					}
 
 					e.logger.Debug("chunkTrace: migrateReserve: put chunk", "address", op.chunk.Address(), "loc", op.loc.ToString())
-					switch newIdx, err := e.reserve.Put(egCtx, pStorage, op.chunk); {
+					switch newIdx, err := e.reserve.Put(egCtx, pStorage, op.chunk, "migrateReserve"); {
 					case err != nil:
 						return err
 					case newIdx:
@@ -429,7 +429,7 @@ func (e *epochMigrator) migratePinning(ctx context.Context) error {
 						return nil
 					}
 
-					pinningPutter, err := pinstore.NewCollection(pStorage)
+					pinningPutter, err := pinstore.NewCollection(pStorage, e.logger)
 					if err != nil {
 						return err
 					}
@@ -449,7 +449,7 @@ func (e *epochMigrator) migratePinning(ctx context.Context) error {
 						mu.Lock()
 						pStorage.location = l
 						e.logger.Debug("chunkTrace: migratePinning: put chunk", "address", chAddr, "loc", l.ToString())
-						err = pinningPutter.Put(egCtx, pStorage, pStorage.IndexStore(), ch)
+						err = pinningPutter.Put(egCtx, pStorage, pStorage.IndexStore(), ch, "MigratePins")
 						if err != nil {
 							mu.Unlock()
 							return err

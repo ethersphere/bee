@@ -199,7 +199,7 @@ func (c *ChunkStoreWrapper) Has(_ context.Context, addr swarm.Address) (bool, er
 	return c.store.Has(&RetrievalIndexItem{Address: addr})
 }
 
-func (c *ChunkStoreWrapper) Put(ctx context.Context, ch swarm.Chunk) error {
+func (c *ChunkStoreWrapper) Put(ctx context.Context, ch swarm.Chunk, why string) error {
 	var (
 		rIdx  = &RetrievalIndexItem{Address: ch.Address()}
 		loc   sharky.Location
@@ -219,9 +219,9 @@ func (c *ChunkStoreWrapper) Put(ctx context.Context, ch swarm.Chunk) error {
 		rIdx.Timestamp = uint64(time.Now().Unix())
 		found = false
 		if stamp == nil {
-		c.logger.Debug("chunkTrace: chunkStore.Put new chunk NOstamp!", "address", ch.Address(), "loc", loc.ToString())
+		c.logger.Debug("chunkTrace: chunkStore.Put new chunk NOstamp!", "why", why, "address", ch.Address(), "loc", loc.ToString())
 		} else {
-		c.logger.Debug("chunkTrace: chunkStore.Put new chunk", "address", ch.Address(), "loc", loc.ToString(),
+		c.logger.Debug("chunkTrace: chunkStore.Put new chunk", "why", why, "address", ch.Address(), "loc", loc.ToString(),
 						"batch_id", hex.EncodeToString(ch.Stamp().BatchID()),
 						"index", hex.EncodeToString(ch.Stamp().Index()))
 		}
@@ -229,9 +229,9 @@ func (c *ChunkStoreWrapper) Put(ctx context.Context, ch swarm.Chunk) error {
 		return fmt.Errorf("chunk store: failed to read: %w", err)
 	case err == nil:
 		if stamp == nil {
-		c.logger.Debug("chunkTrace: chunkStore.Put increment chunk NOstamp!", "address", ch.Address(), "loc", rIdx.Location.ToString(), "refCnt", rIdx.RefCnt+1)
+		c.logger.Debug("chunkTrace: chunkStore.Put increment chunk NOstamp!", "why", why, "address", ch.Address(), "loc", rIdx.Location.ToString(), "refCnt", rIdx.RefCnt+1)
 		} else {
-		c.logger.Debug("chunkTrace: chunkStore.Put increment chunk", "address", ch.Address(), "loc", rIdx.Location.ToString(), "refCnt", rIdx.RefCnt+1,
+		c.logger.Debug("chunkTrace: chunkStore.Put increment chunk", "why", why, "address", ch.Address(), "loc", rIdx.Location.ToString(), "refCnt", rIdx.RefCnt+1,
 						"batch_id", hex.EncodeToString(ch.Stamp().BatchID()),
 						"index", hex.EncodeToString(ch.Stamp().Index()))
 		}
@@ -257,7 +257,7 @@ func (c *ChunkStoreWrapper) Put(ctx context.Context, ch swarm.Chunk) error {
 	return nil
 }
 
-func (c *ChunkStoreWrapper) Delete(ctx context.Context, addr swarm.Address) error {
+func (c *ChunkStoreWrapper) Delete(ctx context.Context, addr swarm.Address, why string) error {
 	rIdx := &RetrievalIndexItem{Address: addr}
 	err := c.store.Get(rIdx)
 	switch {
@@ -270,14 +270,14 @@ func (c *ChunkStoreWrapper) Delete(ctx context.Context, addr swarm.Address) erro
 	}
 
 	if rIdx.RefCnt > 0 { // If there are more references for this we don't delete it from sharky.
-		c.logger.Debug("chunkTrace: chunkStore.Delete decrement chunk", "address", addr, "loc", rIdx.Location.ToString(), "refCnt", rIdx.RefCnt)
+		c.logger.Debug("chunkTrace: chunkStore.Delete decrement chunk", "why", why, "address", addr, "loc", rIdx.Location.ToString(), "refCnt", rIdx.RefCnt)
 		err = c.store.Put(rIdx)
 		if err != nil {
 			return fmt.Errorf("chunk store: failed updating retrievalIndex for address %s: %w", addr, err)
 		}
 		return nil
 	}
-	c.logger.Debug("chunkTrace: chunkStore.Delete delete chunk", "address", addr, "loc", rIdx.Location.ToString(), "refCnt", rIdx.RefCnt)
+	c.logger.Debug("chunkTrace: chunkStore.Delete delete chunk", "why", why, "address", addr, "loc", rIdx.Location.ToString(), "refCnt", rIdx.RefCnt)
 
 	// Delete the chunk.
 	err = c.sharky.Release(ctx, rIdx.Location)

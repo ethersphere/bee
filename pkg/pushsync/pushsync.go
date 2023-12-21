@@ -212,7 +212,7 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 			return fmt.Errorf("invalid stamp: %w", err)
 		}
 
-		err = ps.store.ReservePutter().Put(ctx, chunkToPut)
+		err = ps.store.ReservePutter().Put(ctx, chunkToPut, "PushSyncReserve")
 		if err != nil {
 			return fmt.Errorf("reserve put: %w", err)
 		}

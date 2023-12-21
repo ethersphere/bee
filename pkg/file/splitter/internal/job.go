@@ -150,7 +150,7 @@ func (s *SimpleSplitterJob) sumLevel(lvl int) ([]byte, error) {
 		return nil, err
 	}
 
-	err = s.putter.Put(s.ctx, ch)
+	err = s.putter.Put(s.ctx, ch, "SimpleSplitterJob")
 	if err != nil {
 		return nil, err
 	}

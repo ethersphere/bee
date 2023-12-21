@@ -155,7 +155,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = putter.Put(r.Context(), sch)
+	err = putter.Put(r.Context(), sch, "socUpload")
 	if err != nil {
 		logger.Debug("write chunk failed", "chunk_address", sch.Address(), "error", err)
 		logger.Error(nil, "write chunk failed")

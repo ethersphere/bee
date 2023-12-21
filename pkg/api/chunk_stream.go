@@ -196,7 +196,7 @@ func (s *Service) handleUploadStream(
 			return
 		}
 
-		err = putter.Put(ctx, chunk)
+		err = putter.Put(ctx, chunk, "chunkUploadStream")
 		if err != nil {
 			logger.Debug("chunk upload stream: write chunk failed", "address", chunk.Address(), "error", err)
 			logger.Error(nil, "chunk upload stream: write chunk failed")

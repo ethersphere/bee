@@ -176,9 +176,9 @@ type putterWithMetrics struct {
 	component string
 }
 
-func (m putterWithMetrics) Put(ctx context.Context, chunk swarm.Chunk) error {
+func (m putterWithMetrics) Put(ctx context.Context, chunk swarm.Chunk, why string) error {
 	dur := captureDuration(time.Now())
-	err := m.Putter.Put(ctx, chunk)
+	err := m.Putter.Put(ctx, chunk, why)
 	m.metrics.MethodCallsDuration.WithLabelValues(m.component, "Put").Observe(dur())
 	if err == nil {
 		m.metrics.MethodCalls.WithLabelValues(m.component, "Put", "success").Inc()

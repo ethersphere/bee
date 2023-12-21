@@ -23,7 +23,7 @@ type putter struct {
 	chunkAddresses []string
 }
 
-func (s *putter) Put(ctx context.Context, chunk swarm.Chunk) error {
+func (s *putter) Put(ctx context.Context, chunk swarm.Chunk, why string) error {
 	s.chunkAddresses = append(s.chunkAddresses, chunk.Address().String())
 	return nil
 }
