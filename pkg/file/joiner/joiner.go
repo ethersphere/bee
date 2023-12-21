@@ -8,6 +8,7 @@ package joiner
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -52,6 +53,7 @@ type decoderCache struct {
 
 // NewDecoderCache creates a new decoder cache
 func NewDecoderCache(g storage.Getter, p storage.Putter, strategy getter.Strategy, strict bool, fetcherTimeout time.Duration) *decoderCache {
+	fmt.Println("NewDecoderCache", strategy, strict, fetcherTimeout)
 	return &decoderCache{
 		fetcher:        g,
 		putter:         p,
@@ -118,23 +120,26 @@ func New(ctx context.Context, g storage.Getter, putter storage.Putter, address s
 	spanFn := func(data []byte) (redundancy.Level, int64) {
 		return 0, int64(bmt.LengthFromSpan(data[:swarm.SpanSize]))
 	}
-	var strategy getter.Strategy
-	var strict bool
-	var fetcherTimeout time.Duration
+	strategy, strict, fetcherTimeout, err := getter.GetParamsFromContext(ctx)
+	if err != nil {
+		fmt.Printf("get params from context: %v\n", err)
+		return nil, 0, err
+	}
 	// override stuff if root chunk has redundancy
 	if rLevel != redundancy.NONE {
 		_, parities := file.ReferenceCount(uint64(span), rLevel, encryption)
 		rootParity = parities
-		strategy, strict, fetcherTimeout, err = getter.GetParamsFromContext(ctx)
-		if err != nil {
-			return nil, 0, err
-		}
+
 		spanFn = chunkToSpan
 		if encryption {
 			maxBranching = rLevel.GetMaxEncShards()
 		} else {
 			maxBranching = rLevel.GetMaxShards()
 		}
+	} else {
+		// if root chunk has no redundancy, strategy is ignored and set to NONE and strict is set to true
+		strategy = getter.NONE
+		strict = true
 	}
 
 	j := &joiner{

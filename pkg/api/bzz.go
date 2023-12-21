@@ -134,6 +134,7 @@ func (s *Service) fileUploadHandler(
 		response("invalid query params", logger, w)
 		return
 	}
+	fmt.Println("fileUploadHandler", "rlevel", rLevel)
 
 	p := requestPipelineFn(putter, encrypt, rLevel)
 	ctx := r.Context()
@@ -252,6 +253,7 @@ func (s *Service) fileUploadHandler(
 func (s *Service) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger.WithName("get_bzz_by_path").Build())
 
+	fmt.Println("bzzDownloadHandler", "r.URL.Path", r.URL.Path)
 	paths := struct {
 		Address swarm.Address `map:"address,resolve" validate:"required"`
 		Path    string        `map:"path"`
@@ -272,10 +274,14 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 	loggerV1 := logger.V(1).Build()
 
 	headers := struct {
-		Cache *bool `map:"Swarm-Cache"`
+		Cache                 *bool           `map:"Swarm-Cache"`
+		Strategy              getter.Strategy `map:"Swarm-Redundancy-Strategy"`
+		FallbackMode          bool            `map:"Swarm-Redundancy-Fallback-Mode"`
+		ChunkRetrievalTimeout string          `map:"Swarm-Chunk-Retrieval-Timeout"`
 	}{}
 
 	if response := s.mapStructure(r.Header, &headers); response != nil {
+		fmt.Println("downloadHandler", "invalid header params")
 		response("invalid header params", logger, w)
 		return
 	}
@@ -283,10 +289,14 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 	if headers.Cache != nil {
 		cache = *headers.Cache
 	}
+
+	fmt.Println("serveReference", "address", address, "pathVar", pathVar, "cache", cache)
 	ls := loadsave.NewReadonly(s.storer.Download(cache))
 	feedDereferenced := false
 
 	ctx := r.Context()
+	fmt.Println("serveReference", "Strategy", headers.Strategy, "FallbackMode", headers.FallbackMode, "ChunkRetrievalTimeout", headers.ChunkRetrievalTimeout)
+	getter.SetParamsInContext(ctx, headers.Strategy, headers.FallbackMode, headers.ChunkRetrievalTimeout)
 
 FETCH:
 	// read manifest entry
@@ -367,7 +377,7 @@ FETCH:
 		jsonhttp.NotFound(w, "address not found or incorrect")
 		return
 	}
-
+	fmt.Println("bzz download: path", pathVar)
 	me, err := m.Lookup(ctx, pathVar)
 	if err != nil {
 		loggerV1.Debug("bzz download: invalid path", "address", address, "path", pathVar, "error", err)
@@ -475,9 +485,7 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 
 	ctx := r.Context()
 	fmt.Println("downloadHandler", "Strategy", headers.Strategy, "FallbackMode", headers.FallbackMode, "ChunkRetrievalTimeout", headers.ChunkRetrievalTimeout)
-	ctx = getter.SetStrategy(ctx, headers.Strategy)
-	ctx = getter.SetStrict(ctx, !headers.FallbackMode)
-	ctx = getter.SetFetchTimeout(ctx, headers.ChunkRetrievalTimeout)
+	getter.SetParamsInContext(ctx, headers.Strategy, headers.FallbackMode, headers.ChunkRetrievalTimeout)
 	reader, l, err := joiner.New(ctx, s.storer.Download(cache), s.storer.Cache(), reference)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) || errors.Is(err, topology.ErrNotFound) {

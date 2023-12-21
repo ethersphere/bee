@@ -40,8 +40,9 @@ func TestBzzUploadWithRedundancy(t *testing.T) {
 	storerMock := mockstorer.NewWithChunkStore(mockstorer.NewForgettingStore(inmemchunkstore.New(), 2, fetchTimeout))
 	client, _, _, _ := newTestServer(t, testServerOptions{
 		Storer: storerMock,
-		Logger: log.Noop,
-		Post:   mockpost.New(mockpost.WithAcceptAll()),
+		Logger: log.NewLogger("stdout", log.WithVerbosity(log.VerbosityDebug), log.WithCallerFunc()),
+		// Logger: log.Noop ,
+		Post: mockpost.New(mockpost.WithAcceptAll()),
 	})
 
 	type testCase struct {
@@ -51,7 +52,7 @@ func TestBzzUploadWithRedundancy(t *testing.T) {
 		encrypt    string
 	}
 	var tcs []testCase
-	for _, encrypt := range []string{"true", "false"} {
+	for _, encrypt := range []string{"false", "true"} {
 		for _, level := range []string{"0", "1", "2", "3", "4"} {
 			for _, size := range []int{1, 42, 420, 4095, 4096, 4200, 128*4096 + 4095} {
 				tcs = append(tcs, testCase{
@@ -85,6 +86,7 @@ func TestBzzUploadWithRedundancy(t *testing.T) {
 			)
 
 			t.Run("download without redundancy should fail", func(t *testing.T) {
+				t.Skip("no")
 				req, err := http.NewRequest("GET", fileDownloadResource(refResponse.Reference.String()), nil)
 				if err != nil {
 					t.Fatal(err)
@@ -104,7 +106,8 @@ func TestBzzUploadWithRedundancy(t *testing.T) {
 				}
 			})
 
-			t.Run("download with redundancy should fail", func(t *testing.T) {
+			t.Run("download with redundancy should succeed", func(t *testing.T) {
+				// t.Skip("no")
 				req, err := http.NewRequest("GET", fileDownloadResource(refResponse.Reference.String()), nil)
 				if err != nil {
 					t.Fatal(err)

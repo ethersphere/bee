@@ -7,6 +7,7 @@ package getter
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"time"
 )
 
@@ -31,14 +32,24 @@ const (
 
 // GetParamsFromContext extracts the strategy and strict mode from the context
 func GetParamsFromContext(ctx context.Context) (s Strategy, strict bool, fetcherTimeout time.Duration, err error) {
-	var ok bool
-	s, ok = ctx.Value(strategyKey{}).(Strategy)
+	// var ok bool
+	sStr, ok := ctx.Value(strategyKey{}).(string)
 	if !ok {
 		return s, strict, fetcherTimeout, fmt.Errorf("error setting strategy from context")
 	}
-	strict, ok = ctx.Value(modeKey{}).(bool)
+	sNum, err := strconv.ParseUint(sStr, 10, 2)
+	if err != nil {
+		return s, strict, fetcherTimeout, fmt.Errorf("error parsing strategy from context")
+	}
+	s = Strategy(sNum)
+
+	strictStr, ok := ctx.Value(modeKey{}).(string)
 	if !ok {
 		return s, strict, fetcherTimeout, fmt.Errorf("error setting fallback mode from context")
+	}
+	strict, err = strconv.ParseBool(strictStr)
+	if err != nil {
+		return s, strict, fetcherTimeout, fmt.Errorf("error parsing fallback mode from context")
 	}
 	fetcherTimeoutVal, ok := ctx.Value(fetcherTimeoutKey{}).(string)
 	if !ok {
@@ -58,7 +69,7 @@ func SetFetchTimeout(ctx context.Context, timeout string) context.Context {
 
 // SetStrategy sets the strategy for the retrieval
 func SetStrategy(ctx context.Context, s Strategy) context.Context {
-	return context.WithValue(ctx, strategyKey{}, s)
+	return context.WithValue(ctx, strategyKey{}, int(s))
 }
 
 // SetStrict sets the strict mode for the retrieval
@@ -66,6 +77,12 @@ func SetStrict(ctx context.Context, strict bool) context.Context {
 	return context.WithValue(ctx, modeKey{}, strict)
 }
 
+func SetParamsInContext(ctx context.Context, s Strategy, fallbackmode bool, fetchTimeout string) context.Context {
+	ctx = SetStrategy(ctx, s)
+	ctx = SetStrict(ctx, !fallbackmode)
+	ctx = SetFetchTimeout(ctx, fetchTimeout)
+	return ctx
+}
 func (g *decoder) prefetch(ctx context.Context, strategy int, strict bool, strategyTimeout, fetchTimeout time.Duration) {
 	if strict && strategy == NONE {
 		return
