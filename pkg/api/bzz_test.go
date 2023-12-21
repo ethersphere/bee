@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/file/loadsave"
@@ -25,11 +26,111 @@ import (
 	"github.com/ethersphere/bee/pkg/manifest"
 	mockbatchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
+	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/util/ioutil/pseudorand"
 )
 
 // nolint:paralleltest,tparallel
+func TestBzzUploadWithRedundancy(t *testing.T) {
+	fileUploadResource := "/bzz"
+	fileDownloadResource := func(addr string) string { return "/bzz/" + addr }
+	fetchTimeout := 200 * time.Millisecond
+	storerMock := mockstorer.NewWithChunkStore(mockstorer.NewForgettingStore(inmemchunkstore.New(), 2, fetchTimeout))
+	client, _, _, _ := newTestServer(t, testServerOptions{
+		Storer: storerMock,
+		Logger: log.Noop,
+		Post:   mockpost.New(mockpost.WithAcceptAll()),
+	})
+
+	type testCase struct {
+		name       string
+		redundancy string
+		size       int
+		encrypt    string
+	}
+	var tcs []testCase
+	for _, encrypt := range []string{"true", "false"} {
+		for _, level := range []string{"0", "1", "2", "3", "4"} {
+			for _, size := range []int{1, 42, 420, 4095, 4096, 4200, 128*4096 + 4095} {
+				tcs = append(tcs, testCase{
+					name:       fmt.Sprintf("level-%s-encrypt-%s-size-%d", level, encrypt, size),
+					redundancy: level,
+					size:       size,
+					encrypt:    encrypt,
+				})
+			}
+		}
+	}
+
+	for _, tc := range tcs {
+		t.Run(tc.name, func(t *testing.T) {
+			seed, err := pseudorand.NewSeed()
+			if err != nil {
+				t.Fatal(err)
+			}
+			reader := pseudorand.NewReader(seed, tc.size)
+
+			var refResponse api.BzzUploadResponse
+			jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource,
+				http.StatusCreated,
+				jsonhttptest.WithRequestHeader(api.SwarmDeferredUploadHeader, "True"),
+				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+				jsonhttptest.WithRequestBody(reader),
+				jsonhttptest.WithRequestHeader(api.SwarmEncryptHeader, tc.encrypt),
+				jsonhttptest.WithRequestHeader(api.SwarmRedundancyLevelHeader, tc.redundancy),
+				jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "image/jpeg; charset=utf-8"),
+				jsonhttptest.WithUnmarshalJSONResponse(&refResponse),
+			)
+
+			t.Run("download without redundancy should fail", func(t *testing.T) {
+				req, err := http.NewRequest("GET", fileDownloadResource(refResponse.Reference.String()), nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				req.Header.Set(api.SwarmRedundancyStrategyHeader, "0")
+				req.Header.Set(api.SwarmRedundancyFallbackModeHeader, "false")
+				req.Header.Set(api.SwarmChunkRetrievalTimeoutHeader, fetchTimeout.String())
+
+				resp, err := client.Do(req)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer resp.Body.Close()
+
+				if resp.StatusCode != http.StatusNotFound {
+					t.Fatalf("expected status %d; got %d", http.StatusNotFound, resp.StatusCode)
+				}
+			})
+
+			t.Run("download with redundancy should fail", func(t *testing.T) {
+				req, err := http.NewRequest("GET", fileDownloadResource(refResponse.Reference.String()), nil)
+				if err != nil {
+					t.Fatal(err)
+				}
+				req.Header.Set(api.SwarmRedundancyStrategyHeader, "0")
+				req.Header.Set(api.SwarmRedundancyFallbackModeHeader, "true")
+				req.Header.Set(api.SwarmChunkRetrievalTimeoutHeader, fetchTimeout.String())
+
+				resp, err := client.Do(req)
+				if err != nil {
+					t.Fatal(err)
+				}
+				defer resp.Body.Close()
+
+				if resp.StatusCode != http.StatusOK {
+					t.Fatalf("expected status %d; got %d", http.StatusOK, resp.StatusCode)
+				}
+
+				if !reader.Equal(resp.Body) {
+					t.Fatalf("content mismatch")
+				}
+			})
+		})
+	}
+}
+
 func TestBzzFiles(t *testing.T) {
 	t.Parallel()
 
