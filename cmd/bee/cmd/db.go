@@ -27,6 +27,7 @@ import (
 )
 
 const optionNameValidation = "validate"
+const optionNameRepair = "repair"
 
 func (c *command) initDBCmd() {
 	cmd := &cobra.Command{
@@ -39,6 +40,8 @@ func (c *command) initDBCmd() {
 	dbNukeCmd(cmd)
 	dbInfoCmd(cmd)
 	dbCompactCmd(cmd)
+	dbFixRefCntCmd(cmd)
+	dbFixSharkyCmd(cmd)
 	dbValidateCmd(cmd)
 
 	c.root.AddCommand(cmd)
@@ -163,6 +166,144 @@ func dbCompactCmd(cmd *cobra.Command) {
 	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
 	c.Flags().Bool(optionNameValidation, false, "run chunk validation checks before and after the compaction")
 	c.Flags().Duration(optionNameSleepAfter, time.Duration(0), "time to sleep after the operation finished")
+	cmd.AddCommand(c)
+}
+
+func dbFixRefCntCmd(cmd *cobra.Command) {
+	c := &cobra.Command{
+		Use:   "fixrefcnt",
+		Short: "Recalculates chunk reference counters.",
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			v, err := cmd.Flags().GetString(optionNameVerbosity)
+			if err != nil {
+				return fmt.Errorf("get verbosity: %w", err)
+			}
+			v = strings.ToLower(v)
+			logger, err := newLogger(cmd, v)
+			if err != nil {
+				return fmt.Errorf("new logger: %w", err)
+			}
+
+			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
+			if err != nil {
+				return fmt.Errorf("get data-dir: %w", err)
+			}
+			if dataDir == "" {
+				return errors.New("no data-dir provided")
+			}
+
+			repair, err := cmd.Flags().GetBool(optionNameRepair)
+			if err != nil {
+				return fmt.Errorf("get repair: %w", err)
+			}
+
+			logger.Warning("fixrefcnt recalculates the chunk reference counter for all known chunks.")
+			if (!repair) {
+				logger.Warning("By default, it will only report discrepancies unless --"+optionNameRepair+" is specified.")
+			}
+			logger.Warning("Also, fixrefcnt will not reduce the RefCnt below 1.   This may change in the future.")
+			logger.Warning("    Discrepancies logged at Warning level.")
+			logger.Warning("    Progress logged at Info level.")
+			logger.Warning("    ???? logged at Debug level.")
+			
+			if repair {
+				logger.Warning("starting to repair the DB with data-dir", "path", dataDir)
+				logger.Warning("this is VERY experimental and may completely corrupt your localstore!")
+				logger.Warning("you have another 10 seconds to change your mind and kill this process with CTRL-C...")
+				time.Sleep(10 * time.Second)
+				logger.Warning("proceeding with database repair...")
+			}
+
+			localstorePath := path.Join(dataDir, "localstore")
+
+			err = storer.FixRefCnt(context.Background(), localstorePath, &storer.Options{
+				Logger:          logger,
+				RadiusSetter:    noopRadiusSetter{},
+				Batchstore:      new(postage.NoOpBatchStore),
+				ReserveCapacity: node.ReserveCapacity,
+			}, repair)
+			if err != nil {
+				return fmt.Errorf("localstore: %w", err)
+			}
+
+			return nil
+		},
+	}
+	c.Flags().String(optionNameDataDir, "", "data directory")
+	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
+	c.Flags().Bool(optionNameRepair, false, "actually (attempt to) FIX any discovered discrepancies")
+	cmd.AddCommand(c)
+}
+
+func dbFixSharkyCmd(cmd *cobra.Command) {
+	c := &cobra.Command{
+		Use:   "fixsharky",
+		Short: "Removes invalid references to the sharky store.",
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			v, err := cmd.Flags().GetString(optionNameVerbosity)
+			if err != nil {
+				return fmt.Errorf("get verbosity: %w", err)
+			}
+			v = strings.ToLower(v)
+			logger, err := newLogger(cmd, v)
+			if err != nil {
+				return fmt.Errorf("new logger: %w", err)
+			}
+
+			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
+			if err != nil {
+				return fmt.Errorf("get data-dir: %w", err)
+			}
+			if dataDir == "" {
+				return errors.New("no data-dir provided")
+			}
+
+			validation, err := cmd.Flags().GetBool(optionNameValidation)
+			if err != nil {
+				return fmt.Errorf("get validation: %w", err)
+			}
+
+			repair, err := cmd.Flags().GetBool(optionNameRepair)
+			if err != nil {
+				return fmt.Errorf("get repair: %w", err)
+			}
+
+			logger.Warning("fixsharky ensures that all references to sharky return a chunk that hashes to the expected reference.")
+			if !repair {
+				logger.Warning("By default, it will only report issues (like validate) unless --"+optionNameRepair+" is specified.")
+			}
+			logger.Warning("Note: This WILL leave (hopefully less impactful) inconsistencies in your localstore.")
+			logger.Warning("    Discrepancies logged at Warning level.")
+			logger.Warning("    Progress logged at Info level.")
+			logger.Warning("    SOC chunks logged at Debug level.")
+			
+			if repair {
+				logger.Warning("starting to repair the DB with data-dir", "path", dataDir)
+				logger.Warning("this is VERY experimental and may completely corrupt your localstore!")
+				logger.Warning("you have another 10 seconds to change your mind and kill this process with CTRL-C...")
+				time.Sleep(10 * time.Second)
+				logger.Warning("proceeding with database repair...")
+			}
+
+			localstorePath := path.Join(dataDir, "localstore")
+
+			err = storer.FixSharky(context.Background(), localstorePath, &storer.Options{
+				Logger:          logger,
+				RadiusSetter:    noopRadiusSetter{},
+				Batchstore:      new(postage.NoOpBatchStore),
+				ReserveCapacity: node.ReserveCapacity,
+			}, repair, validation)
+			if err != nil {
+				return fmt.Errorf("localstore: %w", err)
+			}
+
+			return nil
+		},
+	}
+	c.Flags().String(optionNameDataDir, "", "data directory")
+	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
+	c.Flags().Bool(optionNameRepair, false, "actually (attempt to) FIX any discovered inconsistencies")
+	c.Flags().Bool(optionNameValidation, false, "run chunk validation checks again after any repairs")
 	cmd.AddCommand(c)
 }
 
@@ -493,7 +634,7 @@ func dbImportReserveCmd(cmd *cobra.Command) {
 					return fmt.Errorf("unmarshaling chunk: %w", err)
 				}
 				logger.Debug("importing chunk", "address", chunk.Address().String())
-				if err := db.ReservePutter().Put(cmd.Context(), chunk); err != nil {
+				if err := db.ReservePutter().Put(cmd.Context(), chunk, "importReserve"); err != nil {
 					return fmt.Errorf("error importing chunk: %w", err)
 				}
 				counter++
@@ -591,7 +732,7 @@ func dbImportPinningCmd(cmd *cobra.Command) {
 				if err != nil {
 					return fmt.Errorf("error unmarshaling chunk: %w", err)
 				}
-				err = collection.Put(cmd.Context(), chunk)
+				err = collection.Put(cmd.Context(), chunk, "importPins")
 				if err != nil {
 					return fmt.Errorf("error putting chunk: %w", err)
 				}

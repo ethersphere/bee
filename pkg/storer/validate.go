@@ -6,6 +6,7 @@ package storer
 
 import (
 	"context"
+//	"errors"
 	"fmt"
 	"path"
 	"sync"
@@ -47,16 +48,20 @@ func Validate(ctx context.Context, basePath string, opts *Options) error {
 	}()
 
 	logger.Info("performing chunk validation")
-	validateWork(logger, store, sharky.Read)
+	_ = validateWork(logger, store, sharky.Read)
 
 	return nil
 }
 
-func validateWork(logger log.Logger, store storage.Store, readFn func(context.Context, sharky.Location, []byte) error) {
+func validateWork(logger log.Logger, store storage.Store, readFn func(context.Context, sharky.Location, []byte) error) []*swarm.Address {
 
 	total := 0
 	socCount := 0
 	invalidCount := 0
+	var (
+		muChunks = &sync.Mutex{}
+		chunks  = make([]*swarm.Address, 0)
+	)
 
 	n := time.Now()
 	defer func() {
@@ -65,11 +70,11 @@ func validateWork(logger log.Logger, store storage.Store, readFn func(context.Co
 
 	iteratateItemsC := make(chan *chunkstore.RetrievalIndexItem)
 
-	validChunk := func(item *chunkstore.RetrievalIndexItem, buf []byte) {
+	validChunk := func(item *chunkstore.RetrievalIndexItem, buf []byte) (bool, error) {
 		err := readFn(context.Background(), item.Location, buf)
 		if err != nil {
 			logger.Warning("invalid chunk", "address", item.Address, "timestamp", time.Unix(int64(item.Timestamp), 0), "location", item.Location, "error", err)
-			return
+			return false, err
 		}
 
 		ch := swarm.NewChunk(item.Address, buf)
@@ -78,6 +83,7 @@ func validateWork(logger log.Logger, store storage.Store, readFn func(context.Co
 			if soc.Valid(ch) {
 				socCount++
 				logger.Debug("found soc chunk", "address", item.Address, "timestamp", time.Unix(int64(item.Timestamp), 0))
+				return true, nil
 			} else {
 				invalidCount++
 				logger.Warning("invalid cac/soc chunk", "address", item.Address, "timestamp", time.Unix(int64(item.Timestamp), 0), "err", err)
@@ -85,7 +91,7 @@ func validateWork(logger log.Logger, store storage.Store, readFn func(context.Co
 				h, err := cac.DoHash(buf[swarm.SpanSize:], buf[:swarm.SpanSize])
 				if err != nil {
 					logger.Error(err, "cac hash")
-					return
+					return false, err
 				}
 
 				computedAddr := swarm.NewAddress(h)
@@ -93,18 +99,21 @@ func validateWork(logger log.Logger, store storage.Store, readFn func(context.Co
 				err = cac.Valid(swarm.NewChunk(computedAddr, buf))
 				if err != nil {
 					logger.Warning("computed chunk is also an invalid cac", "err", err)
-					return
+					return false, err
 				}
 
 				sharedEntry := chunkstore.RetrievalIndexItem{Address: computedAddr}
 				err = store.Get(&sharedEntry)
 				if err != nil {
 					logger.Warning("no shared entry found")
-					return
+					return false, nil
 				}
 
 				logger.Warning("retrieved chunk with shared slot", "shared_address", sharedEntry.Address, "shared_timestamp", time.Unix(int64(sharedEntry.Timestamp), 0))
+				return false, nil
 			}
+		} else {
+			return true, nil
 		}
 	}
 
@@ -112,6 +121,9 @@ func validateWork(logger log.Logger, store storage.Store, readFn func(context.Co
 
 	_ = chunkstore.Iterate(store, func(item *chunkstore.RetrievalIndexItem) error {
 		total++
+		if total%10_000_000 == 0 {
+			logger.Info("..still counting chunks", "total", total)
+		}
 		return nil
 	})
 	logger.Info("validation count finished", "duration", time.Since(s), "total", total)
@@ -124,7 +136,12 @@ func validateWork(logger log.Logger, store storage.Store, readFn func(context.Co
 			defer wg.Done()
 			buf := make([]byte, swarm.SocMaxChunkSize)
 			for item := range iteratateItemsC {
-				validChunk(item, buf[:item.Location.Length])
+				valid, err := validChunk(item, buf[:item.Location.Length])
+				if !valid && err == nil {
+					muChunks.Lock()
+					chunks = append(chunks, &item.Address)
+					muChunks.Unlock()
+				}
 			}
 		}()
 	}
@@ -136,10 +153,17 @@ func validateWork(logger log.Logger, store storage.Store, readFn func(context.Co
 		if count%100_000 == 0 {
 			logger.Info("..still validating chunks", "count", count, "invalid", invalidCount, "soc", socCount, "total", total, "percent", fmt.Sprintf("%.2f", (float64(count)*100.0)/float64(total)))
 		}
+		// ToDo: Hack for testing!
+		//if len(chunks) > 0 {
+		//	logger.Warning("HACK: found an invalid", "count", len(chunks))
+		//	return errors.New("found (at least) one invalid")
+		//}
 		return nil
 	})
 
 	close(iteratateItemsC)
 
 	wg.Wait()
+	
+	return chunks
 }
