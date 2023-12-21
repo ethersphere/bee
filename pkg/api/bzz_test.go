@@ -36,42 +36,44 @@ import (
 func TestBzzUploadWithRedundancy(t *testing.T) {
 	fileUploadResource := "/bzz"
 	fileDownloadResource := func(addr string) string { return "/bzz/" + addr }
-	fetchTimeout := 200 * time.Millisecond
-	storerMock := mockstorer.NewWithChunkStore(mockstorer.NewForgettingStore(inmemchunkstore.New(), 2, 8*fetchTimeout))
-	client, _, _, _ := newTestServer(t, testServerOptions{
-		Storer: storerMock,
-		Logger: log.NewLogger("stdout", log.WithVerbosity(log.VerbosityDebug), log.WithCallerFunc()),
-		// Logger: log.Noop ,
-		Post: mockpost.New(mockpost.WithAcceptAll()),
-	})
 
 	type testCase struct {
-		name       string
-		redundancy string
-		size       int
-		encrypt    string
+		name    string
+		level   int
+		size    int
+		encrypt string
 	}
 	var tcs []testCase
 	for _, encrypt := range []string{"false", "true"} {
-		for _, level := range []string{"0", "1", "2", "3", "4"} {
+		for _, level := range []int{0, 1, 2, 3, 4} {
 			// for _, size := range []int{4095, 4096, 42 * 420} {
 			for _, size := range []int{31 * 4096, 128 * 4096, 128*4096 + 4095} {
 				tcs = append(tcs, testCase{
-					name:       fmt.Sprintf("level-%s-encrypt-%s-size-%d", level, encrypt, size),
-					redundancy: level,
-					size:       size,
-					encrypt:    encrypt,
+					name:    fmt.Sprintf("level-%d-encrypt-%s-size-%d", level, encrypt, size),
+					level:   level,
+					size:    size,
+					encrypt: encrypt,
 				})
 			}
 		}
 	}
 
+	oneIns := []int{0, 100, 20, 10, 2}
 	for _, tc := range tcs {
 		t.Run(tc.name, func(t *testing.T) {
 			seed, err := pseudorand.NewSeed()
 			if err != nil {
 				t.Fatal(err)
 			}
+			fetchTimeout := 200 * time.Millisecond
+			storerMock := mockstorer.NewWithChunkStore(mockstorer.NewForgettingStore(inmemchunkstore.New(), oneIns[tc.level], fetchTimeout))
+			client, _, _, _ := newTestServer(t, testServerOptions{
+				Storer: storerMock,
+				Logger: log.NewLogger("stdout", log.WithVerbosity(log.VerbosityDebug), log.WithCallerFunc()),
+				// Logger: log.Noop ,
+				Post: mockpost.New(mockpost.WithAcceptAll()),
+			})
+
 			reader := pseudorand.NewReader(seed, tc.size)
 
 			var refResponse api.BzzUploadResponse
@@ -81,13 +83,15 @@ func TestBzzUploadWithRedundancy(t *testing.T) {
 				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 				jsonhttptest.WithRequestBody(reader),
 				jsonhttptest.WithRequestHeader(api.SwarmEncryptHeader, tc.encrypt),
-				jsonhttptest.WithRequestHeader(api.SwarmRedundancyLevelHeader, tc.redundancy),
+				jsonhttptest.WithRequestHeader(api.SwarmRedundancyLevelHeader, fmt.Sprintf("%d", tc.level)),
 				jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "image/jpeg; charset=utf-8"),
 				jsonhttptest.WithUnmarshalJSONResponse(&refResponse),
 			)
 
 			t.Run("download without redundancy should fail", func(t *testing.T) {
-				// t.Skip("no")
+				if tc.level == 0 {
+					t.Skip("NA")
+				}
 				req, err := http.NewRequest("GET", fileDownloadResource(refResponse.Reference.String()), nil)
 				if err != nil {
 					t.Fatal(err)
@@ -101,7 +105,7 @@ func TestBzzUploadWithRedundancy(t *testing.T) {
 					t.Fatal(err)
 				}
 				defer resp.Body.Close()
-				if resp.StatusCode != http.StatusOK && !reader.Equal(resp.Body) {
+				if resp.StatusCode == http.StatusOK && !reader.Equal(resp.Body) {
 					t.Fatalf("content mismatch")
 				}
 				if resp.StatusCode != http.StatusNotFound {

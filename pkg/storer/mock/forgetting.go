@@ -40,6 +40,7 @@ func (d *DelayedStore) Get(ctx context.Context, addr swarm.Address) (ch swarm.Ch
 		select {
 		case <-time.After(delay):
 			delete(d.cache, addr.String())
+			_ = d.ChunkStore.Delete(ctx, addr)
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
