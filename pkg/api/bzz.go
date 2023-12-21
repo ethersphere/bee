@@ -464,6 +464,7 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 	}{}
 
 	if response := s.mapStructure(r.Header, &headers); response != nil {
+		fmt.Println("downloadHandler", "invalid header params")
 		response("invalid header params", logger, w)
 		return
 	}
@@ -475,7 +476,7 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 	ctx := r.Context()
 	fmt.Println("downloadHandler", "Strategy", headers.Strategy, "FallbackMode", headers.FallbackMode, "ChunkRetrievalTimeout", headers.ChunkRetrievalTimeout)
 	ctx = getter.SetStrategy(ctx, headers.Strategy)
-	ctx = getter.SetStrict(ctx, headers.FallbackMode)
+	ctx = getter.SetStrict(ctx, !headers.FallbackMode)
 	ctx = getter.SetFetchTimeout(ctx, headers.ChunkRetrievalTimeout)
 	reader, l, err := joiner.New(ctx, s.storer.Download(cache), s.storer.Cache(), reference)
 	if err != nil {
