@@ -429,20 +429,18 @@ func TestRadiusManager(t *testing.T) {
 		}
 
 		waitForSize(t, storer.Reserve(), 10)
-
 		waitForRadius(t, storer.Reserve(), 3)
 
 		err = storer.EvictBatch(context.Background(), batch.ID)
 		if err != nil {
 			t.Fatal(err)
 		}
-
 		waitForRadius(t, storer.Reserve(), 0)
 	})
 
 	t.Run("radius doesnt change due to non-zero pull rate", func(t *testing.T) {
 		t.Parallel()
-		storer, err := diskStorer(t, dbTestOps(baseAddr, 10, nil, nil, time.Millisecond*10))()
+		storer, err := diskStorer(t, dbTestOps(baseAddr, 10, nil, nil, time.Millisecond*500))()
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -19,7 +19,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/btcsuite/btcd/btcec"
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
@@ -171,7 +170,7 @@ func TestPssSend(t *testing.T) {
 		done            bool
 
 		privk, _       = crypto.GenerateSecp256k1Key()
-		publicKeyBytes = (*btcec.PublicKey)(&privk.PublicKey).SerializeCompressed()
+		publicKeyBytes = crypto.EncodeSecp256k1PublicKey(&privk.PublicKey)
 
 		sendFn = func(ctx context.Context, targets pss.Targets, chunk swarm.Chunk) error {
 			mtx.Lock()
