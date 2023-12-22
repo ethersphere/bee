@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/cac"
@@ -205,7 +206,11 @@ func (c *ChunkStoreWrapper) Put(ctx context.Context, ch swarm.Chunk, why string)
 		loc   sharky.Location
 		found = true
 		stamp = ch.Stamp()
+		n uint32 = 1
 	)
+	if strings.Contains(why,"PIN") {	// HACK to boost refCnt for pinning operations
+		n = 100
+	}
 	err := c.store.Get(rIdx)
 	switch {
 	case errors.Is(err, storage.ErrNotFound):
@@ -231,13 +236,13 @@ func (c *ChunkStoreWrapper) Put(ctx context.Context, ch swarm.Chunk, why string)
 		if stamp == nil {
 		c.logger.Debug("chunkTrace: chunkStore.Put increment chunk NOstamp!", "why", why, "address", ch.Address(), "loc", rIdx.Location.ToString(), "refCnt", rIdx.RefCnt+1)
 		} else {
-		c.logger.Debug("chunkTrace: chunkStore.Put increment chunk", "why", why, "address", ch.Address(), "loc", rIdx.Location.ToString(), "refCnt", rIdx.RefCnt+1,
+		c.logger.Debug("chunkTrace: chunkStore.Put increment chunk", "why", why, "address", ch.Address(), "loc", rIdx.Location.ToString(), "refCnt", rIdx.RefCnt+n,
 						"batch_id", hex.EncodeToString(ch.Stamp().BatchID()),
 						"index", hex.EncodeToString(ch.Stamp().Index()))
 		}
 	}
 
-	rIdx.RefCnt++
+	rIdx.RefCnt += n
 
 	err = func() error {
 		err = c.store.Put(rIdx)

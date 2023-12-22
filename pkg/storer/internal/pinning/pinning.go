@@ -263,7 +263,7 @@ func (c *collectionPutter) Put(ctx context.Context, st internal.Storage, writer 
 		return fmt.Errorf("pin store: failed putting collection chunk: %w", err)
 	}
 
-	err = st.ChunkStore().Put(ctx, ch, "Pinning("+why+")")
+	err = st.ChunkStore().Put(ctx, ch, "PINning("+why+")")	// Hack: All caps PIN triggers bigger refCnt increment
 	if err != nil {
 		return fmt.Errorf("pin store: failled putting chunk: %w", err)
 	}
