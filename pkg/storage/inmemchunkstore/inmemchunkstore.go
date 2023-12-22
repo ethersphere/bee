@@ -34,7 +34,7 @@ func (c *ChunkStore) Get(_ context.Context, addr swarm.Address) (swarm.Chunk, er
 	return chunk, nil
 }
 
-func (c *ChunkStore) Put(_ context.Context, ch swarm.Chunk, why string) error {
+func (c *ChunkStore) Put(_ context.Context, ch swarm.Chunk, _ string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
