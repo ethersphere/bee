@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/encryption"
@@ -36,6 +37,12 @@ var (
 	// errPushItemUnmarshalInvalidSize is returned when trying
 	// to unmarshal buffer that is not of size pushItemSize.
 	errPushItemUnmarshalInvalidSize = errors.New("unmarshal pushItem: invalid size")
+)
+
+// In memory cache of reference counts by address currently in the pending upload store
+var (
+	counts	map[string]uint32
+	countsMutex sync.RWMutex
 )
 
 // pushItemSize is the size of a marshaled pushItem.
@@ -470,6 +477,11 @@ func (u *uploadPutter) Put(ctx context.Context, s internal.Storage, writer stora
 	if err := writer.Put(pi); err != nil {
 		return fmt.Errorf("store put item %q call failed: %w", pi, err)
 	}
+	if counts != nil {
+		countsMutex.Lock()
+		counts[pi.Address.String()]++
+		countsMutex.Unlock()
+	}
 
 	return nil
 }
@@ -560,6 +572,11 @@ func (u *uploadPutter) Cleanup(tx internal.TxExecutor) error {
 			for _, pi := range itemsToDelete[i:end] {
 				_ = remove(st, b, pi.Address, pi.BatchID)
 				_ = b.Delete(pi)
+				if counts != nil {
+					countsMutex.Lock()
+					counts[pi.Address.String()]--
+					countsMutex.Unlock()
+				}
 			}
 			return b.Commit()
 		})
@@ -701,6 +718,11 @@ func Report(
 	err = batch.Delete(pi)
 	if err != nil {
 		return fmt.Errorf("failed deleting pushItem %s: %w", pi, err)
+	}
+	if counts != nil {
+		countsMutex.Lock()
+		counts[pi.Address.String()]--
+		countsMutex.Unlock()
 	}
 
 	err = chunkstamp.Delete(s.IndexStore(), batch, chunkStampNamespace, pi.Address, pi.BatchID)
@@ -922,13 +944,19 @@ func BatchIDForChunk(st storage.Store, addr swarm.Address) ([]byte, error) {
 }
 
 func IsPendingUpload(store storage.Store, address swarm.Address) (uint32, error) {
-	var found uint32
 	addressString := address.String()
+	if counts != nil {
+		countsMutex.RLock()
+		defer countsMutex.RUnlock()
+		return counts[addressString], nil
+	}
+
+	newCounts := make(map[string]uint32)
 	err := IterateAllPushItems(store, func(address swarm.Address) (bool, error) {
-		if address.String() == addressString {
-			found++
-		}
+		newCounts[address.String()]++
 		return false, nil
 	})
-	return found, err
+	
+	counts = newCounts	// Atomically move the cache into place
+	return counts[addressString], err
 }

@@ -232,34 +232,46 @@ func (s *Service) getPinnedRootHash(w http.ResponseWriter, r *http.Request) {
 	}
 	
 	var refs []*refInfo
+	var dHas, dGetRefCnt, dIsCached, dIsReserved, dIsPendingUpload time.Duration
+	start := time.Now()
 	for _, c := range chunks {
 		good := true
+		dStart := time.Now()
 		h, e := s.storer.ChunkStore().Has(context.Background(), *c)
 		if e != nil {
 			good = false
 			logger.Debug("pinned root hash: ChunkStore.Has failed", "chunk_address", *c, "error", e)
 		}
+		dHas += time.Since(dStart)
+		dStart = time.Now()
 		r, e := s.storer.ChunkStore().GetRefCnt(context.Background(), *c)
 		if e != nil {
 			good = false
 			logger.Debug("pinned root hash: ChunkStore.GetRefCnt failed", "chunk_address", *c, "error", e)
 		}
+		dGetRefCnt += time.Since(dStart)
+		dStart = time.Now()
 		cached, e := s.storer.IsCached(*c)
 		if e != nil {
 			good = false
 			logger.Debug("pinned root hash: IsCached failed", "chunk_address", *c, "error", e)
 		}
+		dIsCached += time.Since(dStart)
 
+		dStart = time.Now()
 		reserved, e := s.storer.IsReserved(*c)
 		if e != nil {
 			good = false
 			logger.Debug("pinned root hash: IsReserved failed", "chunk_address", *c, "error", e)
 		}
+		dIsReserved += time.Since(dStart)
+		dStart = time.Now()
 		uploading, e := s.storer.IsPendingUpload(*c)
 		if e != nil {
 			good = false
 			logger.Debug("pinned root hash: IsPendingUpload failed", "chunk_address", *c, "error", e)
 		}
+		dIsPendingUpload += time.Since(dStart)
 		refs = append(refs, &refInfo{
 			Address: *c,
 			Error: !good,
@@ -269,6 +281,11 @@ func (s *Service) getPinnedRootHash(w http.ResponseWriter, r *http.Request) {
 			Reserve: reserved,
 			Upload: uploading,
 		})
+	}
+	delta := time.Since(start)
+	if delta > time.Second {
+		logger.Debug("pinned root has: SLOW", "count", len(refs), "elapsed", delta,
+					"has", dHas, "refCnt", dGetRefCnt, "cache", dIsCached, "rsv", dIsReserved, "upl", dIsPendingUpload)
 	}
 
 	if queries.Repair != nil && *queries.Repair {	// ToDo: This should really be in a POST or PUT
