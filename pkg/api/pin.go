@@ -170,9 +170,12 @@ func (s *Service) unpinRootHash(w http.ResponseWriter, r *http.Request) {
 type refInfo struct {
 	Address swarm.Address       `json:"address"`
 	Error   bool                `json:"err"`
+	RefCnt  uint32              `json:"refCnt"`
 	Local   bool                `json:"local"`
 	Cached  bool                `json:"cached"`
-	RefCnt  uint32              `json:"refCnt"`
+	Reserve uint32              `json:"reserve"`
+	Upload  uint32              `json:"upload"`
+	Repaired bool				`json:"repaired"`
 }
 
 type getResponse struct {
@@ -190,6 +193,13 @@ func (s *Service) getPinnedRootHash(w http.ResponseWriter, r *http.Request) {
 	}{}
 	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
 		response("invalid path params", logger, w)
+		return
+	}
+	queries := struct {
+		Repair *bool `map:"repair"`
+	}{}
+	if response := s.mapStructure(r.URL.Query(), &queries); response != nil {
+		response("invalid query params", logger, w)
 		return
 	}
 
@@ -237,7 +247,18 @@ func (s *Service) getPinnedRootHash(w http.ResponseWriter, r *http.Request) {
 		cached, e := s.storer.IsCached(*c)
 		if e != nil {
 			good = false
-			logger.Debug("pinned root hash: CacheStore.IsCached failed", "chunk_address", *c, "error", e)
+			logger.Debug("pinned root hash: IsCached failed", "chunk_address", *c, "error", e)
+		}
+
+		reserved, e := s.storer.IsReserved(*c)
+		if e != nil {
+			good = false
+			logger.Debug("pinned root hash: IsReserved failed", "chunk_address", *c, "error", e)
+		}
+		uploading, e := s.storer.IsPendingUpload(*c)
+		if e != nil {
+			good = false
+			logger.Debug("pinned root hash: IsPendingUpload failed", "chunk_address", *c, "error", e)
 		}
 		refs = append(refs, &refInfo{
 			Address: *c,
@@ -245,8 +266,38 @@ func (s *Service) getPinnedRootHash(w http.ResponseWriter, r *http.Request) {
 			Local: h,
 			RefCnt: r,
 			Cached: cached,
+			Reserve: reserved,
+			Upload: uploading,
 		})
-		
+	}
+
+	if queries.Repair != nil && *queries.Repair {	// ToDo: This should really be in a POST or PUT
+		getter := s.storer.Download(true)
+		for _, ref := range refs {
+			var newRefCnt uint32 = 1	// Need at least 1 for the pin
+			if ref.Cached {
+				newRefCnt++
+			}
+			newRefCnt += ref.Reserve
+			newRefCnt += ref.Upload
+			if !ref.Local {
+				_, err := getter.Get(r.Context(), ref.Address)
+				if err != nil {
+					logger.Warning("pinned root hash: Download failed", "address", ref.Address, "error", err)
+				} else {
+					ref.Repaired = true
+				}
+			}
+			if ref.RefCnt < newRefCnt {
+				delta := newRefCnt-ref.RefCnt + 100	// 100 more to ensure pin doesn't erode
+				_, err := s.storer.ChunkStore().IncRefCnt(context.Background(), ref.Address, delta)
+				if err != nil {
+					logger.Warning("pinned root hash: IncRefCnt failed", "address", ref.Address, "delta", delta, "error", err)
+				} else {
+					ref.Repaired = true
+				}
+			}
+		}
 	}
 
 	jsonhttp.OK(w, getResponse{

@@ -314,6 +314,20 @@ func (db *DB) ReserveHas(addr swarm.Address, batchID []byte) (has bool, err erro
 	return db.reserve.Has(db.repo.IndexStore(), addr, batchID)
 }
 
+func (db *DB) IsReserved(addr swarm.Address) (count uint32, err error) {
+	dur := captureDuration(time.Now())
+	defer func() {
+		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "IsReserved").Observe(dur())
+		if err == nil {
+			db.metrics.MethodCalls.WithLabelValues("reserve", "IsReserved", "success").Inc()
+		} else {
+			db.metrics.MethodCalls.WithLabelValues("reserve", "IsReserved", "failure").Inc()
+		}
+	}()
+
+	return db.reserve.IsReserved(db.repo.IndexStore(), addr)
+}
+
 // ReservePutter returns a Putter for inserting chunks into the reserve.
 func (db *DB) ReservePutter() storage.Putter {
 	return putterWithMetrics{

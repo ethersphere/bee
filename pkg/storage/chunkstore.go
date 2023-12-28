@@ -40,6 +40,7 @@ type Hasser interface {
 	// Has checks whether a chunk exists in the store.
 	Has(context.Context, swarm.Address) (bool, error)
 	GetRefCnt(context.Context, swarm.Address) (uint32, error)
+	IncRefCnt(context.Context, swarm.Address, uint32) (uint32, error)	// ToDo: This really doesn't belong here!
 }
 
 // PutterFunc type is an adapter to allow the use of

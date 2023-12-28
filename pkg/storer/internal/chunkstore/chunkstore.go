@@ -196,6 +196,20 @@ func (c *ChunkStoreWrapper) GetRefCnt(ctx context.Context, addr swarm.Address) (
 	return rIdx.RefCnt, nil
 }
 
+func (c *ChunkStoreWrapper) IncRefCnt(ctx context.Context, addr swarm.Address, n uint32) (uint32, error) {
+	rIdx := &RetrievalIndexItem{Address: addr}
+	err := c.store.Get(rIdx)
+	if err != nil {
+		return 0, fmt.Errorf("chunk store: failed reading retrievalIndex for address %s: %w", addr, err)
+	}
+	rIdx.RefCnt += n
+	err = c.store.Put(rIdx)
+	if err != nil {
+		return 0, fmt.Errorf("chunk store: failed updating retrievalIndex for address %s: %w", addr, err)
+	}
+	return rIdx.RefCnt, nil
+}
+
 func (c *ChunkStoreWrapper) Has(_ context.Context, addr swarm.Address) (bool, error) {
 	return c.store.Has(&RetrievalIndexItem{Address: addr})
 }

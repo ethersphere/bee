@@ -44,6 +44,9 @@ type Reserve struct {
 	cacheCb  func(context.Context, internal.Storage, ...swarm.Address) error
 
 	binMtx sync.Mutex
+	
+	counts	map[string]uint32
+	countsMutex sync.RWMutex
 }
 
 func New(
@@ -61,6 +64,8 @@ func New(
 		radiusSetter: radiusSetter,
 		logger:       logger.WithName(loggerName).Register(),
 		cacheCb:      cb,
+		counts:		  nil,
+		countsMutex:  sync.RWMutex{},
 	}
 
 	rItem := &radiusItem{}
@@ -204,12 +209,53 @@ func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.C
 		return false, err
 	}
 
+	if r.counts != nil {
+		r.countsMutex.Lock()
+		r.counts[chunk.Address().String()]++
+		r.countsMutex.Unlock()
+	}
+
 	return newStampIndex, storeBatch.Commit()
 }
 
 func (r *Reserve) Has(store storage.Store, addr swarm.Address, batchID []byte) (bool, error) {
 	item := &BatchRadiusItem{Bin: swarm.Proximity(r.baseAddr.Bytes(), addr.Bytes()), BatchID: batchID, Address: addr}
 	return store.Has(item)
+}
+
+func (r *Reserve) IsReserved(store storage.Store, addr swarm.Address) (uint32, error) {
+	addrString := addr.String()
+	if r.counts != nil {
+		r.countsMutex.RLock()
+		defer r.countsMutex.RUnlock()
+		return r.counts[addrString], nil
+	}
+	r.logger.Info("Building reserve shadow counts")
+	start := time.Now()
+	counts := make(map[string]uint32)
+//	var found uint32
+	err := IterateReserve(store, func(bri *BatchRadiusItem) (bool, error) {
+		counts[bri.Address.String()]++
+		if counts[bri.Address.String()] > 1 {
+			r.logger.Debug("shadow reserve > 1", "address", bri.Address, "count", counts[bri.Address.String()])
+		}
+//		_, exists := counts[bri.Address.String()]
+//		if exists {
+//			*counts[bri.Address.String()]++
+//		} else {
+//			counts[bri.Address.String()] = new uint32
+//		}
+
+//		if bri.Address.String() == addrString {
+//			found++
+//		}
+		return false, nil
+	})
+	r.counts = counts
+	r.logger.Info("Built reserve shadow counts", "count", len(counts), "elapsed", time.Since(start).Round(time.Millisecond))
+	r.countsMutex.RLock()
+	defer r.countsMutex.RUnlock()
+	return r.counts[addrString], err
 }
 
 func (r *Reserve) Get(ctx context.Context, storage internal.Storage, addr swarm.Address, batchID []byte) (swarm.Chunk, error) {
@@ -377,6 +423,11 @@ func (r *Reserve) EvictBatchBin(
 			}
 
 			for _, item := range evicted[i:end] {
+				if r.counts != nil {
+					r.countsMutex.Lock()
+					r.counts[item.Address.String()]--
+					r.countsMutex.Unlock()
+				}
 				err = removeChunk(ctx, store, batch, item)
 				if err != nil {
 					return err

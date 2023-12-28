@@ -920,3 +920,15 @@ func BatchIDForChunk(st storage.Store, addr swarm.Address) ([]byte, error) {
 
 	return batchID, nil
 }
+
+func IsPendingUpload(store storage.Store, address swarm.Address) (uint32, error) {
+	var found uint32
+	addressString := address.String()
+	err := IterateAllPushItems(store, func(address swarm.Address) (bool, error) {
+		if address.String() == addressString {
+			found++
+		}
+		return false, nil
+	})
+	return found, err
+}

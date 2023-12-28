@@ -179,3 +179,7 @@ func (db *DB) ListSessions(offset, limit int) ([]SessionInfo, error) {
 func (db *DB) BatchHint(address swarm.Address) ([]byte, error) {
 	return upload.BatchIDForChunk(db.repo.IndexStore(), address)
 }
+
+func (db *DB) IsPendingUpload(address swarm.Address) (uint32, error) {
+	return upload.IsPendingUpload(db.repo.IndexStore(), address)
+}

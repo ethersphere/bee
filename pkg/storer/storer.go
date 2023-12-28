@@ -79,6 +79,7 @@ type UploadStore interface {
 	ListSessions(offset, limit int) ([]SessionInfo, error)
 	// BatchHint will return the batch ID hint for the chunk reference if known.
 	BatchHint(swarm.Address) ([]byte, error)
+	IsPendingUpload(swarm.Address) (uint32, error)
 }
 
 // PinStore is a logical component of the storer which deals with pinning
@@ -144,6 +145,7 @@ type Reserve interface {
 	EvictBatch(ctx context.Context, batchID []byte) error
 	ReserveSample(context.Context, []byte, uint8, uint64, *big.Int) (Sample, error)
 	ReserveSize() int
+	IsReserved(swarm.Address) (uint32, error)
 }
 
 // ReserveIterator is a helper interface which can be used to iterate over all

@@ -136,6 +136,7 @@ type Storer interface {
 	storer.LocalStore
 	storer.RadiusChecker
 	storer.Debugger
+	storer.Reserve
 }
 
 type Service struct {
