@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 
 	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/inmemstore"
+	"github.com/ethersphere/bee/pkg/storer/internal"
 	"github.com/ethersphere/bee/pkg/storer/internal/cache"
 	localmigration "github.com/ethersphere/bee/pkg/storer/migration"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -49,23 +49,25 @@ func Test_Step_02(t *testing.T) {
 	t.Parallel()
 
 	stepFn := localmigration.Step_02
-	store := inmemstore.New()
+	store := internal.NewInmemStorage()
 
 	// simulate old cacheEntryItem with some random bytes.
 	var addrs []*testEntry
 	for i := 0; i < 10; i++ {
 		entry := &testEntry{address: swarm.RandAddress(t)}
 		addrs = append(addrs, entry)
-		err := store.Put(entry)
+		err := store.Run(func(s internal.Store) error {
+			return s.IndexStore().Put(entry)
+		})
 		assert.NoError(t, err)
 	}
 
-	assert.NoError(t, stepFn(store))
+	assert.NoError(t, stepFn(store)())
 
 	// check if all entries are migrated.
 	for _, entry := range addrs {
 		cEntry := &cache.CacheEntryItem{Address: entry.address}
-		err := store.Get(cEntry)
+		err := store.ReadOnly().IndexStore().Get(cEntry)
 		assert.NoError(t, err)
 		assert.Equal(t, entry.address, cEntry.Address)
 		assert.Greater(t, cEntry.AccessTimestamp, int64(0))

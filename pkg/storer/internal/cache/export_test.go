@@ -35,7 +35,7 @@ type CacheState struct {
 	Size uint64
 }
 
-func (c *Cache) State(store storage.Store) CacheState {
+func (c *Cache) State(store storage.Reader) CacheState {
 	state := CacheState{}
 	state.Size = c.Size()
 	runner := swarm.ZeroAddress
@@ -66,7 +66,7 @@ func (c *Cache) State(store storage.Store) CacheState {
 }
 
 func (c *Cache) IterateOldToNew(
-	st storage.Store,
+	st storage.Reader,
 	start, end swarm.Address,
 	iterateFn func(ch swarm.Address) (bool, error),
 ) error {

@@ -14,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/storage/inmemstore"
 	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
+	"github.com/ethersphere/bee/pkg/storer/internal"
 	"github.com/ethersphere/bee/pkg/storer/internal/chunkstore"
 	localmigration "github.com/ethersphere/bee/pkg/storer/migration"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -36,34 +37,40 @@ func Test_Step_04(t *testing.T) {
 	assert.NoError(t, err)
 
 	store := inmemstore.New()
-	chStore := chunkstore.New(store, sharkyStore)
-	stepFn := localmigration.Step_04(sharkyDir, 1)
+
+	storage := internal.NewStorage(sharkyStore, store)
+
+	stepFn := localmigration.Step_04(sharkyDir, 1, storage)
 
 	chunks := chunktest.GenerateTestRandomChunks(10)
 
 	for _, ch := range chunks {
-		err := chStore.Put(context.Background(), ch)
+		err = storage.Run(func(s internal.Store) error {
+			return s.ChunkStore().Put(context.Background(), ch)
+		})
 		assert.NoError(t, err)
 	}
 
 	for _, ch := range chunks[:2] {
-		err := store.Delete(&chunkstore.RetrievalIndexItem{Address: ch.Address()})
+		err = storage.Run(func(s internal.Store) error {
+			return s.IndexStore().Delete(&chunkstore.RetrievalIndexItem{Address: ch.Address()})
+		})
 		assert.NoError(t, err)
 	}
 
 	err = sharkyStore.Close()
 	assert.NoError(t, err)
 
-	assert.NoError(t, stepFn(store))
+	assert.NoError(t, stepFn())
 
 	sharkyStore, err = sharky.New(&dirFS{basedir: sharkyDir}, 1, swarm.SocMaxChunkSize)
 	assert.NoError(t, err)
 
-	chStore = chunkstore.New(store, sharkyStore)
+	store2 := internal.NewStorage(sharkyStore, store)
 
 	// check that the chunks are still there
 	for _, ch := range chunks[2:] {
-		_, err := chStore.Get(context.Background(), ch.Address())
+		_, err := store2.ReadOnly().ChunkStore().Get(context.Background(), ch.Address())
 		assert.NoError(t, err)
 	}
 

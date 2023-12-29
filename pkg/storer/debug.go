@@ -60,7 +60,7 @@ func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 	)
 	eg.Go(func() error {
 		return chunkstore.IterateChunkEntries(
-			db.repo.IndexStore(),
+			db.storage.ReadOnly().IndexStore(),
 			func(_ swarm.Address, isShared bool) (bool, error) {
 				select {
 				case <-ctx.Done():
@@ -85,7 +85,7 @@ func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 	)
 	eg.Go(func() error {
 		return upload.IterateAll(
-			db.repo.IndexStore(),
+			db.storage.ReadOnly().IndexStore(),
 			func(_ swarm.Address, isSynced bool) (bool, error) {
 				select {
 				case <-ctx.Done():
@@ -110,7 +110,7 @@ func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 	)
 	eg.Go(func() error {
 		return pinstore.IterateCollectionStats(
-			db.repo.IndexStore(),
+			db.storage.ReadOnly().IndexStore(),
 			func(stat pinstore.CollectionStat) (bool, error) {
 				select {
 				case <-ctx.Done():
@@ -139,7 +139,7 @@ func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 		reserveCapacity = db.reserve.Capacity()
 		reserveSize = db.reserve.Size()
 		eg.Go(func() error {
-			return db.reserve.IterateChunksItems(db.repo, db.reserve.Radius(), func(ci reserve.ChunkItem) (bool, error) {
+			return db.reserve.IterateChunksItems(db.reserve.Radius(), func(ci reserve.ChunkItem) (bool, error) {
 				reserveSizeWithinRadius++
 				return false, nil
 			})

@@ -62,7 +62,7 @@ func Compact(ctx context.Context, basePath string, opts *Options, validate bool)
 		items := make([]*chunkstore.RetrievalIndexItem, 0, 1_000_000)
 		// we deliberately choose to iterate the whole store again for each shard
 		// so that we do not store all the items in memory (for operators with huge localstores)
-		_ = chunkstore.Iterate(store, func(item *chunkstore.RetrievalIndexItem) error {
+		_ = chunkstore.IterateItems(store, func(item *chunkstore.RetrievalIndexItem) error {
 			if item.Location.Shard == uint8(shard) {
 				items = append(items, item)
 			}

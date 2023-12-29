@@ -5,8 +5,9 @@
 package migration
 
 import (
-	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/migration"
+	"github.com/ethersphere/bee/pkg/storer/internal"
 	"github.com/ethersphere/bee/pkg/storer/internal/reserve"
 )
 
@@ -14,19 +15,19 @@ import (
 func AfterInitSteps(
 	sharkyPath string,
 	sharkyNoOfShards int,
-	chunkStore storage.ChunkStore,
+	st internal.Storage,
 ) migration.Steps {
 	return map[uint64]migration.StepFn{
 		1: step_01,
-		2: step_02,
-		3: step_03(chunkStore, reserve.ChunkType),
-		4: step_04(sharkyPath, sharkyNoOfShards),
+		2: step_02(st),
+		3: step_03(st, reserve.ChunkType),
+		4: step_04(sharkyPath, sharkyNoOfShards, st),
 	}
 }
 
-// BeforeIinitSteps lists all migration steps for localstore IndexStore before the localstore is intiated.
-func BeforeIinitSteps() migration.Steps {
+// BeforeInitSteps lists all migration steps for localstore IndexStore before the localstore is intiated.
+func BeforeInitSteps(st storage.BatchedStore) migration.Steps {
 	return map[uint64]migration.StepFn{
-		1: RefCountSizeInc,
+		1: RefCountSizeInc(st),
 	}
 }

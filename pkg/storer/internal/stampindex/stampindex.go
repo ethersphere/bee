@@ -150,8 +150,7 @@ func (i Item) String() string {
 // If the record is not found, it will try to create and save a new record and
 // return it.
 func LoadOrStore(
-	s storage.Reader,
-	w storage.Writer,
+	s storage.IndexStore,
 	namespace string,
 	chunk swarm.Chunk,
 ) (item *Item, loaded bool, err error) {
@@ -165,7 +164,7 @@ func LoadOrStore(
 				StampTimestamp:   chunk.Stamp().Timestamp(),
 				ChunkAddress:     chunk.Address(),
 				ChunkIsImmutable: chunk.Immutable(),
-			}, false, Store(w, namespace, chunk)
+			}, false, Store(s, namespace, chunk)
 		}
 		return nil, false, err
 	}
@@ -189,7 +188,7 @@ func Load(s storage.Reader, namespace string, chunk swarm.Chunk) (*Item, error) 
 
 // Store creates new or updated an existing stamp index
 // record related to the given namespace and chunk.
-func Store(s storage.Writer, namespace string, chunk swarm.Chunk) error {
+func Store(s storage.IndexStore, namespace string, chunk swarm.Chunk) error {
 	item := &Item{
 		namespace:        []byte(namespace),
 		batchID:          chunk.Stamp().BatchID(),

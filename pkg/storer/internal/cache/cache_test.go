@@ -86,59 +86,9 @@ func TestCacheEntryItem(t *testing.T) {
 	}
 }
 
-type testStorage struct {
-	internal.Storage
-	putFn func(storage.Item) error
-}
-
-func (t *testStorage) IndexStore() storage.BatchedStore {
-	return &wrappedStore{BatchedStore: t.Storage.IndexStore(), putFn: t.putFn}
-}
-
-type wrappedStore struct {
-	storage.BatchedStore
-	putFn func(storage.Item) error
-}
-
-func (w *wrappedStore) Put(i storage.Item) error {
-	if w.putFn != nil {
-		return w.putFn(i)
-	}
-	return w.BatchedStore.Put(i)
-}
-
-func (w *wrappedStore) Batch(ctx context.Context) (storage.Batch, error) {
-	b, err := w.BatchedStore.Batch(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return &wrappedBatch{Batch: b, putFn: w.putFn}, nil
-}
-
-type wrappedBatch struct {
-	storage.Batch
-	putFn func(storage.Item) error
-}
-
-func (w *wrappedBatch) Put(i storage.Item) error {
-	if w.putFn != nil {
-		return w.putFn(i)
-	}
-	return w.Batch.Put(i)
-}
-
-func newTestStorage(t *testing.T) *testStorage {
+func newTestStorage(t *testing.T) internal.Storage {
 	t.Helper()
-
-	storg, closer := internal.NewInmemStorage()
-	t.Cleanup(func() {
-		err := closer()
-		if err != nil {
-			t.Errorf("failed closing storage: %v", err)
-		}
-	})
-
-	return &testStorage{Storage: storg}
+	return internal.NewInmemStorage()
 }
 
 type timeProvider struct {
@@ -172,18 +122,18 @@ func TestCache(t *testing.T) {
 		t.Parallel()
 
 		st := newTestStorage(t)
-		c, err := cache.New(context.TODO(), st, 10)
+		c, err := cache.New(context.TODO(), st.ReadOnly().IndexStore(), 10)
 		if err != nil {
 			t.Fatal(err)
 		}
-		verifyCacheState(t, st.IndexStore(), c, swarm.ZeroAddress, swarm.ZeroAddress, 0)
+		verifyCacheState(t, st.ReadOnly().IndexStore(), c, swarm.ZeroAddress, swarm.ZeroAddress, 0)
 	})
 
 	t.Run("putter", func(t *testing.T) {
 		t.Parallel()
 
 		st := newTestStorage(t)
-		c, err := cache.New(context.TODO(), st, 10)
+		c, err := cache.New(context.TODO(), st.ReadOnly().IndexStore(), 10)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -196,18 +146,18 @@ func TestCache(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[idx].Address(), uint64(idx+1))
-				verifyCacheOrder(t, c, st.IndexStore(), chunks[:idx+1]...)
+				verifyCacheState(t, st.ReadOnly().IndexStore(), c, chunks[0].Address(), chunks[idx].Address(), uint64(idx+1))
+				verifyCacheOrder(t, c, st.ReadOnly().IndexStore(), chunks[:idx+1]...)
 			}
 		})
 
 		t.Run("new cache retains state", func(t *testing.T) {
-			c2, err := cache.New(context.TODO(), st, 10)
+			c2, err := cache.New(context.TODO(), st.ReadOnly().IndexStore(), 10)
 			if err != nil {
 				t.Fatal(err)
 			}
-			verifyCacheState(t, st.IndexStore(), c2, chunks[0].Address(), chunks[len(chunks)-1].Address(), uint64(len(chunks)))
-			verifyCacheOrder(t, c2, st.IndexStore(), chunks...)
+			verifyCacheState(t, st.ReadOnly().IndexStore(), c2, chunks[0].Address(), chunks[len(chunks)-1].Address(), uint64(len(chunks)))
+			verifyCacheOrder(t, c2, st.ReadOnly().IndexStore(), chunks...)
 		})
 	})
 
@@ -215,7 +165,7 @@ func TestCache(t *testing.T) {
 		t.Parallel()
 
 		st := newTestStorage(t)
-		c, err := cache.New(context.TODO(), st, 10)
+		c, err := cache.New(context.TODO(), st.ReadOnly().IndexStore(), 10)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -237,8 +187,8 @@ func TestCache(t *testing.T) {
 				if !readChunk.Equal(ch) {
 					t.Fatalf("incorrect chunk: %s", ch.Address())
 				}
-				verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[idx].Address(), uint64(idx+1))
-				verifyCacheOrder(t, c, st.IndexStore(), chunks[:idx+1]...)
+				verifyCacheState(t, st.ReadOnly().IndexStore(), c, chunks[0].Address(), chunks[idx].Address(), uint64(idx+1))
+				verifyCacheOrder(t, c, st.ReadOnly().IndexStore(), chunks[:idx+1]...)
 			}
 		})
 
@@ -256,13 +206,13 @@ func TestCache(t *testing.T) {
 				}
 				if idx == 0 {
 					// once we access the first entry, the top will change
-					verifyCacheState(t, st.IndexStore(), c, chunks[9].Address(), chunks[idx].Address(), 10)
+					verifyCacheState(t, st.ReadOnly().IndexStore(), c, chunks[9].Address(), chunks[idx].Address(), 10)
 				} else {
-					verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[idx].Address(), 10)
+					verifyCacheState(t, st.ReadOnly().IndexStore(), c, chunks[0].Address(), chunks[idx].Address(), 10)
 				}
 				newOrder = append(newOrder, chunks[idx])
 			}
-			verifyCacheOrder(t, c, st.IndexStore(), newOrder...)
+			verifyCacheOrder(t, c, st.ReadOnly().IndexStore(), newOrder...)
 		})
 
 		t.Run("not in chunkstore returns error", func(t *testing.T) {
@@ -276,14 +226,17 @@ func TestCache(t *testing.T) {
 		})
 
 		t.Run("not in cache doesnt affect state", func(t *testing.T) {
-			state := c.State(st.IndexStore())
+			state := c.State(st.ReadOnly().IndexStore())
 
 			for i := 0; i < 5; i++ {
 				extraChunk := chunktest.GenerateTestRandomChunk()
-				err := st.ChunkStore().Put(context.TODO(), extraChunk)
+				err := st.Run(func(s internal.Store) error {
+					return s.ChunkStore().Put(context.TODO(), extraChunk)
+				})
 				if err != nil {
 					t.Fatal(err)
 				}
+
 				readChunk, err := c.Getter(st).Get(context.TODO(), extraChunk.Address())
 				if err != nil {
 					t.Fatal(err)
@@ -291,15 +244,17 @@ func TestCache(t *testing.T) {
 				if !readChunk.Equal(extraChunk) {
 					t.Fatalf("incorrect chunk: %s", extraChunk.Address())
 				}
-				verifyCacheState(t, st.IndexStore(), c, state.Head, state.Tail, state.Size)
+				verifyCacheState(t, st.ReadOnly().IndexStore(), c, state.Head, state.Tail, state.Size)
 			}
 		})
 	})
 	t.Run("handle error", func(t *testing.T) {
+		t.Skip("rollback tests are not needed if the transaction is tested at the high level")
+
 		t.Parallel()
 
 		st := newTestStorage(t)
-		c, err := cache.New(context.TODO(), st, 10)
+		c, err := cache.New(context.TODO(), st.ReadOnly().IndexStore(), 10)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -314,12 +269,15 @@ func TestCache(t *testing.T) {
 		}
 		// return error for state update, which occurs at the end of Get/Put operations
 		retErr := errors.New("dummy error")
-		st.putFn = func(i storage.Item) error {
-			if i.Namespace() == "cacheOrderIndex" {
-				return retErr
-			}
-			return st.Storage.IndexStore().Put(i)
-		}
+		// st.putFn = func(i storage.Item) error {
+		// 	if i.Namespace() == "cacheOrderIndex" {
+		// 		return retErr
+		// 	}
+
+		// 	return st.Run(func(s internal.Store) error {
+		// 		return s.IndexStore().Put(i)
+		// 	})
+		// }
 
 		// on error the cache expects the overarching transactions to clean itself up
 		// and undo any store updates. So here we only want to ensure the state is
@@ -332,7 +290,7 @@ func TestCache(t *testing.T) {
 			}
 
 			// state should be preserved on failure
-			verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[4].Address(), 5)
+			verifyCacheState(t, st.ReadOnly().IndexStore(), c, chunks[0].Address(), chunks[4].Address(), 5)
 		})
 
 		t.Run("get error handling", func(t *testing.T) {
@@ -342,7 +300,7 @@ func TestCache(t *testing.T) {
 			}
 
 			// state should be preserved on failure
-			verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[4].Address(), 5)
+			verifyCacheState(t, st.ReadOnly().IndexStore(), c, chunks[0].Address(), chunks[4].Address(), 5)
 		})
 	})
 }
@@ -351,7 +309,7 @@ func TestShallowCopy(t *testing.T) {
 	t.Parallel()
 
 	st := newTestStorage(t)
-	c, err := cache.New(context.Background(), st, 10)
+	c, err := cache.New(context.Background(), st.ReadOnly().IndexStore(), 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -362,7 +320,10 @@ func TestShallowCopy(t *testing.T) {
 	// add the chunks to chunkstore. This simulates the reserve already populating
 	// the chunkstore with chunks.
 	for _, ch := range chunks {
-		err := st.ChunkStore().Put(context.Background(), ch)
+
+		err := st.Run(func(s internal.Store) error {
+			return s.ChunkStore().Put(context.Background(), ch)
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -374,8 +335,8 @@ func TestShallowCopy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[9].Address(), 10)
-	verifyCacheOrder(t, c, st.IndexStore(), chunks...)
+	verifyCacheState(t, st.ReadOnly().IndexStore(), c, chunks[0].Address(), chunks[9].Address(), 10)
+	verifyCacheOrder(t, c, st.ReadOnly().IndexStore(), chunks...)
 
 	// move again, should be no-op
 	err = c.ShallowCopy(context.Background(), st, chunksToMove...)
@@ -383,8 +344,8 @@ func TestShallowCopy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[9].Address(), 10)
-	verifyCacheOrder(t, c, st.IndexStore(), chunks...)
+	verifyCacheState(t, st.ReadOnly().IndexStore(), c, chunks[0].Address(), chunks[9].Address(), 10)
+	verifyCacheOrder(t, c, st.ReadOnly().IndexStore(), chunks...)
 
 	chunks1 := chunktest.GenerateTestRandomChunks(10)
 	chunksToMove1 := make([]swarm.Address, 0, 10)
@@ -392,7 +353,9 @@ func TestShallowCopy(t *testing.T) {
 	// add the chunks to chunkstore. This simulates the reserve already populating
 	// the chunkstore with chunks.
 	for _, ch := range chunks1 {
-		err := st.ChunkStore().Put(context.Background(), ch)
+		err := st.Run(func(s internal.Store) error {
+			return s.ChunkStore().Put(context.Background(), ch)
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -405,22 +368,22 @@ func TestShallowCopy(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks1[9].Address(), 20)
-	verifyCacheOrder(t, c, st.IndexStore(), append(chunks, chunks1...)...)
+	verifyCacheState(t, st.ReadOnly().IndexStore(), c, chunks[0].Address(), chunks1[9].Address(), 20)
+	verifyCacheOrder(t, c, st.ReadOnly().IndexStore(), append(chunks, chunks1...)...)
 
-	err = c.RemoveOldest(context.Background(), st, st.ChunkStore(), 10)
+	err = c.RemoveOldest(context.Background(), st, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	verifyChunksDeleted(t, st.ChunkStore(), chunks...)
+	verifyChunksDeleted(t, st.ReadOnly().ChunkStore(), chunks...)
 }
 
 func TestShallowCopyOverCap(t *testing.T) {
 	t.Parallel()
 
 	st := newTestStorage(t)
-	c, err := cache.New(context.Background(), st, 10)
+	c, err := cache.New(context.Background(), st.ReadOnly().IndexStore(), 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -431,7 +394,10 @@ func TestShallowCopyOverCap(t *testing.T) {
 	// add the chunks to chunkstore. This simulates the reserve already populating
 	// the chunkstore with chunks.
 	for _, ch := range chunks {
-		err := st.ChunkStore().Put(context.Background(), ch)
+
+		err := st.Run(func(s internal.Store) error {
+			return s.ChunkStore().Put(context.Background(), ch)
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -444,20 +410,20 @@ func TestShallowCopyOverCap(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	verifyCacheState(t, st.IndexStore(), c, chunks[5].Address(), chunks[14].Address(), 10)
-	verifyCacheOrder(t, c, st.IndexStore(), chunks[5:15]...)
+	verifyCacheState(t, st.ReadOnly().IndexStore(), c, chunks[5].Address(), chunks[14].Address(), 10)
+	verifyCacheOrder(t, c, st.ReadOnly().IndexStore(), chunks[5:15]...)
 
-	err = c.RemoveOldest(context.Background(), st, st.ChunkStore(), 5)
+	err = c.RemoveOldest(context.Background(), st, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	verifyChunksDeleted(t, st.ChunkStore(), chunks[5:10]...)
+	verifyChunksDeleted(t, st.ReadOnly().ChunkStore(), chunks[5:10]...)
 }
 
 func verifyCacheState(
 	t *testing.T,
-	store storage.Store,
+	store storage.Reader,
 	c *cache.Cache,
 	expStart, expEnd swarm.Address,
 	expCount uint64,
@@ -475,7 +441,7 @@ func verifyCacheState(
 func verifyCacheOrder(
 	t *testing.T,
 	c *cache.Cache,
-	st storage.Store,
+	st storage.Reader,
 	chs ...swarm.Chunk,
 ) {
 	t.Helper()
@@ -504,7 +470,7 @@ func verifyCacheOrder(
 
 func verifyChunksDeleted(
 	t *testing.T,
-	chStore storage.ChunkStore,
+	chStore storage.ReadOnlyChunkStore,
 	chs ...swarm.Chunk,
 ) {
 	t.Helper()

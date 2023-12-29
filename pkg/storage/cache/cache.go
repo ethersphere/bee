@@ -5,8 +5,6 @@
 package cache
 
 import (
-	"errors"
-
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/storageutil"
 	lru "github.com/hashicorp/golang-lru/v2"
@@ -32,10 +30,6 @@ type Cache struct {
 // It returns an error if the capacity is less than or equal to zero or if the
 // given store implements storage.Tx
 func Wrap(store storage.BatchedStore, capacity int) (*Cache, error) {
-	if _, ok := store.(storage.Tx); ok {
-		return nil, errors.New("cache should not be used with transactions")
-	}
-
 	lru, err := lru.New[string, []byte](capacity)
 	if err != nil {
 		return nil, err

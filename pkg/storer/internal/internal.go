@@ -7,7 +7,6 @@ package internal
 import (
 	"bytes"
 	"context"
-	"errors"
 
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
@@ -15,23 +14,12 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-// Storage groups the storage.Store and storage.ChunkStore interfaces.
-type Storage interface {
-	IndexStore() storage.BatchedStore
-	ChunkStore() storage.ChunkStore
-}
-
 // PutterCloserWithReference provides a Putter which can be closed with a root
 // swarm reference associated with this session.
 type PutterCloserWithReference interface {
-	Put(context.Context, Storage, storage.Writer, swarm.Chunk) error
-	Close(Storage, storage.Writer, swarm.Address) error
-	Cleanup(TxExecutor) error
-}
-
-// TxExecutor executes a function in a transaction.
-type TxExecutor interface {
-	Execute(context.Context, func(Storage) error) error
+	Put(context.Context, Store, swarm.Chunk) error
+	Close(storage.IndexStore, swarm.Address) error
+	Cleanup(Storage) error
 }
 
 var emptyAddr = make([]byte, swarm.HashSize)
@@ -56,30 +44,47 @@ func AddressBytesOrZero(addr swarm.Address) []byte {
 	return addr.Bytes()
 }
 
-// BatchedStorage groups the Storage and TxExecutor interfaces.
-type BatchedStorage interface {
-	Storage
-	TxExecutor
-}
-
 // NewInmemStorage constructs a inmem Storage implementation which can be used
 // for the tests in the internal packages.
-func NewInmemStorage() (BatchedStorage, func() error) {
-	ts := &inmemRepository{
+func NewInmemStorage() Storage {
+	ts := &inmemStorage{
 		indexStore: inmemstore.New(),
 		chunkStore: inmemchunkstore.New(),
 	}
 
-	return ts, func() error {
-		return errors.Join(ts.indexStore.Close(), ts.chunkStore.Close())
-	}
+	return ts
 }
 
-type inmemRepository struct {
-	indexStore storage.BatchedStore
+type inmemStorage struct {
+	indexStore storage.IndexStore
 	chunkStore storage.ChunkStore
 }
 
-func (t *inmemRepository) IndexStore() storage.BatchedStore                       { return t.indexStore }
-func (t *inmemRepository) ChunkStore() storage.ChunkStore                         { return t.chunkStore }
-func (t *inmemRepository) Execute(_ context.Context, f func(Storage) error) error { return f(t) }
+func (t *inmemStorage) NewTransaction() (Transaction, func()) {
+	return &inmemTrx{t.indexStore, t.chunkStore}, func() {}
+}
+
+type inmemTrx struct {
+	indexStore storage.IndexStore
+	chunkStore storage.ChunkStore
+}
+
+type inmemReadOnly struct {
+	indexStore storage.Reader
+	chunkStore storage.ReadOnlyChunkStore
+}
+
+func (t *inmemReadOnly) IndexStore() storage.Reader             { return t.indexStore }
+func (t *inmemReadOnly) ChunkStore() storage.ReadOnlyChunkStore { return t.chunkStore }
+
+func (t *inmemTrx) IndexStore() storage.IndexStore { return t.indexStore }
+func (t *inmemTrx) ChunkStore() storage.ChunkStore { return t.chunkStore }
+func (t *inmemTrx) Commit() error                  { return nil }
+
+func (t *inmemStorage) ReadOnly() ReadOnlyStore { return &inmemReadOnly{t.indexStore, t.chunkStore} }
+func (t *inmemStorage) Close() error            { return nil }
+func (t *inmemStorage) Run(f func(s Store) error) error {
+	trx, done := t.NewTransaction()
+	defer done()
+	return f(trx)
+}
