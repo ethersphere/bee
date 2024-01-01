@@ -8,7 +8,6 @@ package joiner
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -53,7 +52,6 @@ type decoderCache struct {
 
 // NewDecoderCache creates a new decoder cache
 func NewDecoderCache(g storage.Getter, p storage.Putter, strategy getter.Strategy, strict bool, fetcherTimeout time.Duration) *decoderCache {
-	fmt.Println("NewDecoderCache", strategy, strict, fetcherTimeout)
 	return &decoderCache{
 		fetcher:        g,
 		putter:         p,
@@ -122,7 +120,6 @@ func New(ctx context.Context, g storage.Getter, putter storage.Putter, address s
 	}
 	strategy, strict, fetcherTimeout, err := getter.GetParamsFromContext(ctx)
 	if err != nil {
-		fmt.Printf("get params from context: %v\n", err)
 		return nil, 0, err
 	}
 	// override stuff if root chunk has redundancy
@@ -254,7 +251,9 @@ func (j *joiner) readAtOffset(
 
 		func(address swarm.Address, b []byte, cur, subTrieSize, off, bufferOffset, bytesToRead, subtrieSpanLimit int64) {
 			eg.Go(func() error {
-				ch, err := g.Get(j.ctx, addr)
+				ctx, cancel := context.WithTimeout(j.ctx, j.decoders.fetcherTimeout)
+				defer cancel()
+				ch, err := g.Get(ctx, addr)
 				if err != nil {
 					return err
 				}
