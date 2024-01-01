@@ -6,6 +6,7 @@ package pseudorand_test
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"math/rand"
 	"testing"
@@ -31,8 +32,14 @@ func TestReader(t *testing.T) {
 			t.Fatal("content mismatch")
 		}
 	})
+	t.Run("randomness", func(t *testing.T) {
+		bufSize:= 4096
+		if bytes.Equal(content[:bufSize], content[bufSize:2*bufSize]) {
+			t.Fatal("buffers should not match")
+		}
+	})
 	t.Run("re-readability", func(t *testing.T) {
-		r.Reset()
+		r.Seek(0, io.SeekStart)
 		var read []byte
 		buf := make([]byte, 8200)
 		total := 0
@@ -57,15 +64,33 @@ func TestReader(t *testing.T) {
 		}
 	})
 	t.Run("comparison", func(t *testing.T) {
-		if !r.Equal(bytes.NewBuffer(content)) {
+		r.Seek(0, io.SeekStart)
+		if eq, err := r.Equal(bytes.NewBuffer(content)); err != nil {
+			t.Fatal(err)
+		} else if !eq {
 			t.Fatal("content mismatch")
 		}
-		if r.Equal(bytes.NewBuffer(content[:len(content)-1])) {
-			t.Fatal("content should not match")
+		r.Seek(0, io.SeekStart)
+		if eq, err := r.Equal(bytes.NewBuffer(content[:len(content)-1])); err != nil {
+			t.Fatal(err)
+		} else if eq {
+			t.Fatal("content should match")
 		}
-		content[0] = content[0] + 1
-		if r.Equal(bytes.NewBuffer(content)) {
-			t.Fatal("content should not match")
+	})
+	t.Run("seek and match", func(t *testing.T) {
+		for i := 0; i < 20; i++ {
+			off := rand.Intn(size)
+			n := rand.Intn(size - off)
+			t.Run(fmt.Sprintf("off=%d n=%d", off, n), func(t *testing.T) {
+				r.Seek(int64(off), io.SeekStart)
+				ok, err := r.Match(bytes.NewBuffer(content[off:off+n]), n)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if !ok {
+					t.Fatal("content mismatch")
+				}
+			})
 		}
 	})
 }

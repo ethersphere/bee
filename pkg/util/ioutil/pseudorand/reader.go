@@ -46,11 +46,12 @@ func NewReader(seed []byte, len int) *Reader {
 
 // Read reads len(buf) bytes into buf.	It returns the number of bytes	 read (0 <= n <= len(buf))	and any error encountered.	Even if Read returns n < len(buf), it may use all of buf as scratch space during the call. If some data is available but not len(buf) bytes, Read conventionally returns what is available instead of waiting for more.
 func (r *Reader) Read(buf []byte) (n int, err error) {
-	toRead := r.len - r.cur
+	cur := r.cur % bufSize
+	toRead := min(bufSize-cur, r.len-r.cur)
 	if toRead < len(buf) {
 		buf = buf[:toRead]
 	}
-	n = copy(buf, r.buf[r.cur%bufSize:])
+	n = copy(buf, r.buf[cur:])
 	r.cur += n
 	if r.cur == r.len {
 		return n, io.EOF
@@ -61,18 +62,27 @@ func (r *Reader) Read(buf []byte) (n int, err error) {
 	return n, nil
 }
 
-// Reset resets the reader to the beginning of the stream.
-func (r *Reader) Reset() {
-	r.Seek(0, 0)
-	r.fill()
-}
-
 // Equal compares the contents of the reader with the contents of
 // the given reader. It returns true if the contents are equal upto n bytes
-func (r1 *Reader) Equal(r2 io.Reader) bool {
-	r1.Reset()
-	buf1 := make([]byte, bufSize)
-	buf2 := make([]byte, bufSize)
+func (r1 *Reader) Equal(r2 io.Reader) (bool, error) {
+	ok, err := r1.Match(r2, r1.len)
+	if err != nil {
+		return false, err
+	}
+	if !ok {
+		return false, nil
+	}
+	n, err := io.ReadFull(r2, make([]byte, 1))
+	if err == io.EOF || err == io.ErrUnexpectedEOF {
+		return n == 0, nil
+	}
+	return false, err
+}
+
+// Match compares the contents of the reader with the contents of
+// the given reader. It returns true if the contents are equal upto n bytes
+func (r1 *Reader) Match(r2 io.Reader, l int) (bool, error) {
+
 	read := func(r io.Reader, buf []byte) (n int, err error) {
 		for n < len(buf) && err == nil {
 			i, e := r.Read(buf[n:])
@@ -87,22 +97,32 @@ func (r1 *Reader) Equal(r2 io.Reader) bool {
 		}
 		return n, err
 	}
-	for {
+
+	buf1 := make([]byte, bufSize)
+	buf2 := make([]byte, bufSize)
+	for l > 0 {
+		if l <= len(buf1) {
+			buf1 = buf1[:l]
+			buf2 = buf2[:l]
+		}
+
 		n1, err := read(r1, buf1)
 		if err != nil {
-			return false
+			return false, err
 		}
 		n2, err := read(r2, buf2)
 		if err != nil {
-			return false
+			return false, err
 		}
-		if n1 < bufSize || n2 < bufSize {
-			return n1 == n2 && bytes.Equal(buf1[:n1], buf2[:n2])
+		if n1 != n2 {
+			return false, nil
 		}
-		if !bytes.Equal(buf1, buf2) {
-			return false
+		if !bytes.Equal(buf1[:n1], buf2[:n2]) {
+			return false, nil
 		}
+		l -= n1
 	}
+	return true, nil
 }
 
 // Seek sets the offset for the next Read to offset, interpreted
@@ -116,8 +136,9 @@ func (r *Reader) Seek(offset int64, whence int) (int64, error) {
 	case 1:
 		r.cur += int(offset)
 	case 2:
-		r.cur = 4096 + int(offset)
+		r.cur = r.len - int(offset)
 	}
+	r.fill()
 	return int64(r.cur), nil
 }
 
@@ -128,17 +149,25 @@ func (r *Reader) Offset() int64 {
 
 // ReadAt reads len(buf) bytes into buf starting at offset off.
 func (r *Reader) ReadAt(buf []byte, off int64) (n int, err error) {
-	r.cur = int(off)
+	if _, err := r.Seek(off, io.SeekStart); err != nil {
+		return 0, err
+	}
 	return r.Read(buf)
 }
 
 // fill fills the buffer with the hash of the current segment.
 func (r *Reader) fill() {
+	if r.cur >= r.len {
+		return
+	}
+	bufSegments := bufSize / 32
+	start := r.cur / bufSegments
+	rem := (r.cur % bufSize) / 32
 	h := swarm.NewHasher()
-	for i := 0; i < len(r.buf); i += 32 {
-		binary.BigEndian.PutUint64(r.seg[:], uint64((r.cur+i)/32))
+	for i := 32 * rem; i < len(r.buf); i += 32 {
+		binary.BigEndian.PutUint64(r.seg[:], uint64((start+i)/32))
 		h.Reset()
 		_, _ = h.Write(r.seg[:])
-		copy(r.buf[i:i+32], h.Sum(nil))
+		copy(r.buf[i:], h.Sum(nil))
 	}
 }
