@@ -28,6 +28,8 @@ type decoder struct {
 	waits      []chan struct{} // wait channels for each chunk
 	rsbuf      [][]byte        // RS buffer of data + parity shards for erasure decoding
 	ready      chan struct{}   // signal channel for successful retrieval of shardCnt chunks
+	lastIdx    int             // index of the last data chunk in the RS buffer
+	lastLen    int             // length of the last data chunk in the RS buffer
 	shardCnt   int             // number of data shards
 	parityCnt  int             // number of parity shards
 	wg         sync.WaitGroup  // wait group to wait for all goroutines to finish
@@ -42,7 +44,7 @@ type Getter interface {
 	io.Closer
 }
 
-// New returns a decoder object used tos retrieve children of an intermediate chunk
+// New returns a decoder object used to retrieve children of an intermediate chunk
 func New(addrs []swarm.Address, shardCnt int, g storage.Getter, p storage.Putter, strategy Strategy, strict bool, fetchTimeout time.Duration, remove func()) Getter {
 	ctx, cancel := context.WithCancel(context.Background())
 	size := len(addrs)
@@ -97,10 +99,40 @@ func (g *decoder) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, err
 	}
 	select {
 	case <-g.waits[i]:
-		return swarm.NewChunk(addr, g.rsbuf[i]), nil
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		select {
+		case <-g.ready:
+			select {
+			case <-g.waits[i]:
+			case <-time.After(1 * time.Second):
+				return nil, ctx.Err()
+			}
+		default:
+			return nil, ctx.Err()
+		}
 	}
+	return swarm.NewChunk(addr, g.getData(i)), nil
+}
+
+// setData sets the data shard in the RS buffer
+func (g *decoder) setData(i int, chdata []byte) {
+	data := chdata
+	// pad the chunk with zeros if it is smaller than swarm.ChunkSize
+	if len(data) < swarm.ChunkWithSpanSize {
+		g.lastIdx = i
+		g.lastLen = len(data)
+		data = make([]byte, swarm.ChunkWithSpanSize)
+		copy(data, chdata)
+	}
+	g.rsbuf[i] = data
+}
+
+// getData returns the data shard from the RS buffer
+func (g *decoder) getData(i int) []byte {
+	if i > 0 && i == g.lastIdx { // zero value of g.lastIdx is impossible
+		return g.rsbuf[i][:g.lastLen] // cut padding
+	}
+	return g.rsbuf[i]
 }
 
 // fly commits to retrieve the chunk (fly and land)
@@ -139,8 +171,8 @@ func (g *decoder) fetch(ctx context.Context, i int) {
 	}
 
 	//  write chunk to rsbuf and signal waiters
-	g.rsbuf[i] = ch.Data() // save the chunk in the RS buffer
-	if i < len(g.waits) {
+	g.setData(i, ch.Data()) // save the chunk in the RS buffer
+	if i < len(g.waits) {   // if the chunk is a data shard
 		close(g.waits[i]) // signal that the chunk is retrieved
 	}
 

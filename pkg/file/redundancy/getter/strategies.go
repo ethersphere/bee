@@ -31,31 +31,13 @@ const (
 
 // GetParamsFromContext extracts the strategy and strict mode from the context
 func GetParamsFromContext(ctx context.Context) (s Strategy, strict bool, fetcherTimeout time.Duration, err error) {
-	// // var ok bool
-	// sStr, ok := ctx.Value(strategyKey{}).(string)
-	// if !ok {
-	// 	return s, strict, fetcherTimeout, fmt.Errorf("error setting strategy from context")
-	// }
-	// sNum, err := strconv.ParseUint(sStr, 10, 2)
-	// if err != nil {
-	// 	return s, strict, fetcherTimeout, fmt.Errorf("error parsing strategy from context")
-	// }
-	// s = Strategy(sNum)
 	s, ok := ctx.Value(strategyKey{}).(Strategy)
 	if !ok {
 		return s, strict, fetcherTimeout, fmt.Errorf("error setting strategy from context")
 	}
-	// strictStr, ok := ctx.Value(modeKey{}).(string)
-	// if !ok {
-	// 	return s, strict, fetcherTimeout, fmt.Errorf("error setting fallback mode from context")
-	// }
-	// strict, err = strconv.ParseBool(strictStr)
 	strict, ok = ctx.Value(modeKey{}).(bool)
 	if !ok {
 		return s, strict, fetcherTimeout, fmt.Errorf("error setting fallback mode from context")
-	}
-	if err != nil {
-		return s, strict, fetcherTimeout, fmt.Errorf("error parsing fallback mode from context")
 	}
 	fetcherTimeoutVal, ok := ctx.Value(fetcherTimeoutKey{}).(string)
 	if !ok {
