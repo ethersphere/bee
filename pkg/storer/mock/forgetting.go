@@ -40,7 +40,6 @@ func (d *DelayedStore) Get(ctx context.Context, addr swarm.Address) (ch swarm.Ch
 		select {
 		case <-time.After(delay):
 			delete(d.cache, addr.String())
-			_ = d.ChunkStore.Delete(ctx, addr)
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
@@ -49,23 +48,81 @@ func (d *DelayedStore) Get(ctx context.Context, addr swarm.Address) (ch swarm.Ch
 }
 
 type ForgettingStore struct {
-	*DelayedStore
-	oneIn int
-	delay time.Duration
-	n     atomic.Uint32
+	storage.ChunkStore
+	record atomic.Bool
+	mu     sync.Mutex
+	n      atomic.Int64
+	missed map[string]struct{}
 }
 
-func NewForgettingStore(s storage.ChunkStore, oneIn int, delay time.Duration) *ForgettingStore {
-	return &ForgettingStore{
-		DelayedStore: NewDelayedStore(s),
-		oneIn:        oneIn,
-		delay:        delay,
+func NewForgettingStore(s storage.ChunkStore) *ForgettingStore {
+	return &ForgettingStore{ChunkStore: s, missed: make(map[string]struct{})}
+}
+
+func (f *ForgettingStore) Stored() int64 {
+	return f.n.Load()
+}
+
+func (f *ForgettingStore) Record() {
+	f.record.Store(true)
+}
+
+func (f *ForgettingStore) Unrecord() {
+	f.record.Store(false)
+}
+
+func (f *ForgettingStore) Miss(addr swarm.Address) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.miss(addr)
+}
+
+func (f *ForgettingStore) Unmiss(addr swarm.Address) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.unmiss(addr)
+}
+
+func (f *ForgettingStore) miss(addr swarm.Address) {
+	f.missed[addr.String()] = struct{}{}
+}
+
+func (f *ForgettingStore) unmiss(addr swarm.Address) {
+	delete(f.missed, addr.String())
+}
+
+func (f *ForgettingStore) isMiss(addr swarm.Address) bool {
+	_, ok := f.missed[addr.String()]
+	return ok
+}
+
+func (f *ForgettingStore) Reset() {
+	f.missed = make(map[string]struct{})
+}
+
+func (f *ForgettingStore) Missed() int {
+	return len(f.missed)
+}
+
+// Get implements the ChunkStore interface.
+// if in recording phase, record the chunk address as miss and returns Get on the embedded store
+// if in forgetting phase, returns ErrNotFound if the chunk address is recorded as miss
+func (f *ForgettingStore) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.record.Load() {
+		f.miss(addr)
+	} else if f.isMiss(addr) {
+		return nil, storage.ErrNotFound
 	}
+	return f.ChunkStore.Get(ctx, addr)
 }
 
+// Put implements the ChunkStore interface.
 func (f *ForgettingStore) Put(ctx context.Context, ch swarm.Chunk) (err error) {
-	if f.oneIn > 0 && int(f.n.Add(1))%f.oneIn == 0 {
-		f.DelayedStore.Delay(ch.Address(), f.delay)
+	f.n.Add(1)
+	if !f.record.Load() {
+		f.Unmiss(ch.Address())
 	}
-	return f.DelayedStore.Put(ctx, ch)
+	return f.ChunkStore.Put(ctx, ch)
 }
