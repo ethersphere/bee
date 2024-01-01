@@ -46,7 +46,7 @@ func init() {
 	binary.LittleEndian.PutUint64(span, 1)
 }
 
-// NewErasureHashTrieWriter returns back an redundancy param and a HastTrieWriter pipeline
+// newErasureHashTrieWriter returns back an redundancy param and a HastTrieWriter pipeline
 // which are using simple BMT and StoreWriter pipelines for chunk writes
 func newErasureHashTrieWriter(
 	ctx context.Context,
