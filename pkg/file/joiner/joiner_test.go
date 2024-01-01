@@ -24,10 +24,13 @@ import (
 	"github.com/ethersphere/bee/pkg/file/redundancy/getter"
 	"github.com/ethersphere/bee/pkg/file/splitter"
 	filetest "github.com/ethersphere/bee/pkg/file/testing"
+	"github.com/ethersphere/bee/pkg/replicas"
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
+	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/util/ioutil/pseudorand"
 	"github.com/ethersphere/bee/pkg/util/testutil"
 	"gitlab.com/nolash/go-mockbytes"
 	"golang.org/x/sync/errgroup"
@@ -1063,10 +1066,8 @@ func TestJoinerRedundancy(t *testing.T) {
 	} {
 		tc := tc
 		t.Run(fmt.Sprintf("redundancy=%d encryption=%t", tc.rLevel, tc.encryptChunk), func(t *testing.T) {
-
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-
 			shardCnt := tc.rLevel.GetMaxShards()
 			parityCnt := tc.rLevel.GetParities(shardCnt)
 			if tc.encryptChunk {
@@ -1111,11 +1112,9 @@ func TestJoinerRedundancy(t *testing.T) {
 			}
 			// all data can be read back
 			readCheck := func(t *testing.T, expErr error) {
-				t.Helper()
-
 				ctx, cancel := context.WithTimeout(context.Background(), 15*getter.StrategyTimeout)
 				defer cancel()
-				ctx = getter.SetFetchTimeout(ctx, getter.StrategyTimeout.String())
+				ctx = getter.SetParamsInContext(ctx, getter.RACE, true, (10 * getter.StrategyTimeout).String())
 				joinReader, rootSpan, err := joiner.New(ctx, store, store, swarmAddr)
 				if err != nil {
 					t.Fatal(err)
@@ -1153,6 +1152,7 @@ func TestJoinerRedundancy(t *testing.T) {
 					})
 				}
 				err = eg.Wait()
+
 				if !errors.Is(err, expErr) {
 					t.Fatalf("unexpected error reading chunkdata at chunk position %d: expected %v. got %v", i, expErr, err)
 				}
@@ -1188,6 +1188,138 @@ func TestJoinerRedundancy(t *testing.T) {
 			t.Run("recover from replica if root deleted", func(t *testing.T) {
 				readCheck(t, nil)
 			})
+		})
+	}
+}
+
+func TestJoinerRedundancyMultilevel(t *testing.T) {
+
+	strategyTimeout := getter.StrategyTimeout
+	defer func() { getter.StrategyTimeout = strategyTimeout }()
+	getter.StrategyTimeout = 100 * time.Millisecond
+
+	test := func(t *testing.T, rLevel redundancy.Level, encrypt bool, size int) {
+		store := mockstorer.NewForgettingStore(inmemchunkstore.New())
+		testutil.CleanupCloser(t, store)
+		seed, err := pseudorand.NewSeed()
+		if err != nil {
+			t.Fatal(err)
+		}
+		dataReader := pseudorand.NewReader(seed, size*swarm.ChunkSize)
+		ctx := context.Background()
+		ctx = replicas.SetLevel(ctx, redundancy.NONE)
+		pipe := builder.NewPipelineBuilder(ctx, store, encrypt, rLevel)
+		addr, err := builder.FeedPipeline(ctx, pipe, dataReader)
+		if err != nil {
+			t.Fatal(err)
+		}
+		expRead := swarm.ChunkSize
+		buf := make([]byte, expRead)
+		offset := 0
+		// mrand.Intn(tc.size) * expRead
+		canReadRange := func(t *testing.T, s getter.Strategy, fallback bool, canRead bool) {
+			ctx := context.Background()
+			ctx = getter.SetParamsInContext(ctx, s, fallback, (8 * getter.StrategyTimeout).String())
+			ctx, cancel := context.WithTimeout(ctx, 4*getter.StrategyTimeout)
+			defer cancel()
+			j, _, err := joiner.New(ctx, store, store, addr)
+			if err != nil {
+				t.Fatal(err)
+			}
+			n, err := j.ReadAt(buf, int64(offset))
+			if !canRead {
+				if !errors.Is(err, storage.ErrNotFound) && !errors.Is(err, context.DeadlineExceeded) {
+					t.Fatalf("expected error %v or %v. got %v", storage.ErrNotFound, context.DeadlineExceeded, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if n != expRead {
+				t.Errorf("read %d bytes out of %d", n, expRead)
+			}
+			dataReader.Seek(int64(offset), io.SeekStart)
+			ok, err := dataReader.Match(bytes.NewBuffer(buf), expRead)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !ok {
+				t.Error("content mismatch")
+			}
+		}
+
+		// first sanity check and and recover a range
+		t.Run("NONE w/o fallback CAN retrieve", func(t *testing.T) {
+			store.Record()
+			defer store.Unrecord()
+			canReadRange(t, getter.NONE, false, true)
+		})
+
+		// do not forget the root chunk
+		store.Unmiss(swarm.NewAddress(addr.Bytes()[:swarm.HashSize]))
+		// after we forget the chunks on the way to the range, we should not be able to retrieve
+		t.Run("NONE w/o fallback CANNOT retrieve", func(t *testing.T) {
+			canReadRange(t, getter.NONE, false, false)
+		})
+
+		// we lost a data chunk, we cannot recover using DATA only strategy with no fallback
+		t.Run("DATA w/o fallback CANNOT retrieve", func(t *testing.T) {
+			canReadRange(t, getter.DATA, false, false)
+		})
+
+		if rLevel == 0 {
+			// allowing fallback mode will not help if no redundancy used for upload
+			t.Run("DATA w fallback CANNOT retrieve", func(t *testing.T) {
+				canReadRange(t, getter.DATA, true, false)
+			})
+			return
+		}
+		// allowing fallback mode will make the range retrievable using erasure decoding
+		t.Run("DATA w fallback CAN retrieve", func(t *testing.T) {
+			canReadRange(t, getter.RACE, true, true)
+		})
+		// after the reconstructed data is stored, we can retrieve the range using DATA only mode
+		t.Run("after recovery, NONE w/o fallback CAN retrieve", func(t *testing.T) {
+			canReadRange(t, getter.NONE, false, true)
+		})
+	}
+	_ = test
+	for _, rLevel := range []redundancy.Level{0, 1, 2, 3, 4} {
+		rLevel := rLevel
+		t.Run(fmt.Sprintf("rLevel=%v", rLevel), func(t *testing.T) {
+			for _, encrypt := range []bool{false, true} {
+				encrypt := encrypt
+				shardCnt := rLevel.GetMaxShards()
+				if encrypt {
+					shardCnt = rLevel.GetMaxEncShards()
+				}
+				for _, levels := range []int{1, 2, 3} {
+					chunkCnt := 1
+					switch levels {
+					case 1:
+						chunkCnt = 2
+					case 2:
+						chunkCnt = shardCnt + 1
+					case 3:
+						chunkCnt = shardCnt*shardCnt + 1
+					}
+					t.Run(fmt.Sprintf("encrypt=%v levels=%d chunks=%d incomplete", encrypt, levels, chunkCnt), func(t *testing.T) {
+						test(t, rLevel, encrypt, chunkCnt)
+					})
+					switch levels {
+					case 1:
+						chunkCnt = shardCnt
+					case 2:
+						chunkCnt = shardCnt * shardCnt
+					case 3:
+						continue
+					}
+					t.Run(fmt.Sprintf("encrypt=%v levels=%d chunks=%d full", encrypt, levels, chunkCnt), func(t *testing.T) {
+						test(t, rLevel, encrypt, chunkCnt)
+					})
+				}
+			}
 		})
 	}
 }
