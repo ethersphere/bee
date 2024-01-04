@@ -31,7 +31,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
-	"github.com/ethersphere/langos"
 	"github.com/gorilla/mux"
 )
 
@@ -377,7 +376,6 @@ FETCH:
 		jsonhttp.NotFound(w, "address not found or incorrect")
 		return
 	}
-	fmt.Println("bzz download: path", pathVar)
 	me, err := m.Lookup(ctx, pathVar)
 	if err != nil {
 		loggerV1.Debug("bzz download: invalid path", "address", address, "path", pathVar, "error", err)
@@ -474,7 +472,6 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 	}{}
 
 	if response := s.mapStructure(r.Header, &headers); response != nil {
-		fmt.Println("downloadHandler", "invalid header params")
 		response("invalid header params", logger, w)
 		return
 	}
@@ -484,7 +481,6 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 	}
 
 	ctx := r.Context()
-	fmt.Println("downloadHandler", "Strategy", headers.Strategy, "FallbackMode", headers.FallbackMode, "ChunkRetrievalTimeout", headers.ChunkRetrievalTimeout)
 	ctx = getter.SetParamsInContext(ctx, headers.Strategy, headers.FallbackMode, headers.ChunkRetrievalTimeout)
 	reader, l, err := joiner.New(ctx, s.storer.Download(cache), s.storer.Cache(), reference)
 	if err != nil {
@@ -509,7 +505,9 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 	}
 	w.Header().Set(ContentLengthHeader, strconv.FormatInt(l, 10))
 	w.Header().Set("Access-Control-Expose-Headers", ContentDispositionHeader)
-	http.ServeContent(w, r, "", time.Now(), langos.NewBufferedLangos(reader, lookaheadBufferSize(l)))
+	http.ServeContent(w, r, "", time.Now(), reader)
+	// NOTE: temporary workaround for testing, watch this...
+	// http.ServeContent(w, r, "", time.Now(), langos.NewBufferedLangos(reader, lookaheadBufferSize(l)))
 }
 
 // manifestMetadataLoad returns the value for a key stored in the metadata of
