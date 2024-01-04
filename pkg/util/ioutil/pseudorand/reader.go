@@ -13,6 +13,7 @@ import (
 	"crypto/rand"
 	"encoding/binary"
 	"errors"
+	"fmt"
 	"io"
 
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -42,6 +43,11 @@ func NewReader(seed []byte, len int) *Reader {
 	_ = copy(r.buf[8:], seed)
 	r.fill()
 	return r
+}
+
+// Size returns the size of the reader.
+func (r *Reader) Size() int {
+	return r.len
 }
 
 // Read reads len(buf) bytes into buf.	It returns the number of bytes	 read (0 <= n <= len(buf))	and any error encountered.	Even if Read returns n < len(buf), it may use all of buf as scratch space during the call. If some data is available but not len(buf) bytes, Read conventionally returns what is available instead of waiting for more.
@@ -137,6 +143,9 @@ func (r *Reader) Seek(offset int64, whence int) (int64, error) {
 		r.cur += int(offset)
 	case 2:
 		r.cur = r.len - int(offset)
+	}
+	if r.cur < 0 || r.cur > r.len {
+		return 0, fmt.Errorf("seek: invalid offset %d", r.cur)
 	}
 	r.fill()
 	return int64(r.cur), nil
