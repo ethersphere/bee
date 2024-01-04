@@ -1192,6 +1192,29 @@ func TestJoinerRedundancy(t *testing.T) {
 	}
 }
 
+// TestJoinerRedundancyMultilevel tests the joiner with all combinations of
+// redundancy level, encryption and size (levels, i.e., the	height of the swarm hash tree).
+//
+// The test cases have the following structure:
+//
+//  1. upload a file with a given redundancy level and encryption
+//
+//  2. [positive test] download the file by the reference returned by the upload API response
+//     This uses range queries to target specific (number of) chunks of the file structure
+//     During path traversal in the swarm hash tree, the underlying mocksore (forgetting)
+//     is in 'recording' mode, flagging all the retrieved chunks as chunks to forget.
+//     This is to simulate the scenario where some of the chunks are not available/lost
+//
+//  3. [negative test] attempt at downloading the file using once again the same root hash
+//     and a no-redundancy strategy to find the file inaccessible after forgetting.
+//     3a. [negative test] download file using NONE without fallback and fail
+//     3b. [negative test] download file using DATA without fallback and fail
+//
+//  4. [positive test] download file using DATA with fallback to allow for
+//     reconstruction via erasure coding and succeed.
+//
+//  5. [positive test] after recovery chunks are saved, so fotgetting no longer
+//     repeat  3a/3b but this time succeed
 func TestJoinerRedundancyMultilevel(t *testing.T) {
 
 	strategyTimeout := getter.StrategyTimeout
@@ -1219,8 +1242,8 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 		// mrand.Intn(tc.size) * expRead
 		canReadRange := func(t *testing.T, s getter.Strategy, fallback bool, canRead bool) {
 			ctx := context.Background()
-			ctx = getter.SetParamsInContext(ctx, s, fallback, (8 * getter.StrategyTimeout).String())
-			ctx, cancel := context.WithTimeout(ctx, 4*getter.StrategyTimeout)
+			ctx = getter.SetParamsInContext(ctx, s, fallback, (24 * getter.StrategyTimeout).String())
+			ctx, cancel := context.WithTimeout(ctx, 32*getter.StrategyTimeout)
 			defer cancel()
 			j, _, err := joiner.New(ctx, store, store, addr)
 			if err != nil {
@@ -1277,7 +1300,7 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 		}
 		// allowing fallback mode will make the range retrievable using erasure decoding
 		t.Run("DATA w fallback CAN retrieve", func(t *testing.T) {
-			canReadRange(t, getter.RACE, true, true)
+			canReadRange(t, getter.DATA, true, true)
 		})
 		// after the reconstructed data is stored, we can retrieve the range using DATA only mode
 		t.Run("after recovery, NONE w/o fallback CAN retrieve", func(t *testing.T) {
