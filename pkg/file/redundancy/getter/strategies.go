@@ -31,17 +31,25 @@ const (
 
 // GetParamsFromContext extracts the strategy and strict mode from the context
 func GetParamsFromContext(ctx context.Context) (s Strategy, strict bool, fetcherTimeout time.Duration, err error) {
-	s, ok := ctx.Value(strategyKey{}).(Strategy)
-	if !ok {
-		return s, strict, fetcherTimeout, fmt.Errorf("error setting strategy from context")
+	var ok bool
+	s, strict, fetcherTimeoutVal := NONE, true, "30s"
+	if val := ctx.Value(strategyKey{}); val != nil {
+		s, ok = val.(Strategy)
+		if !ok {
+			return s, strict, fetcherTimeout, fmt.Errorf("error setting strategy from context")
+		}
 	}
-	strict, ok = ctx.Value(modeKey{}).(bool)
-	if !ok {
-		return s, strict, fetcherTimeout, fmt.Errorf("error setting fallback mode from context")
+	if val := ctx.Value(modeKey{}); val != nil {
+		strict, ok = val.(bool)
+		if !ok {
+			return s, strict, fetcherTimeout, fmt.Errorf("error setting fallback mode from context")
+		}
 	}
-	fetcherTimeoutVal, ok := ctx.Value(fetcherTimeoutKey{}).(string)
-	if !ok {
-		return s, strict, fetcherTimeout, fmt.Errorf("error setting fetcher timeout from context")
+	if val := ctx.Value(fetcherTimeoutKey{}); val != nil {
+		fetcherTimeoutVal, ok = val.(string)
+		if !ok {
+			return s, strict, fetcherTimeout, fmt.Errorf("error setting fetcher timeout from context")
+		}
 	}
 	if fetcherTimeoutVal == "" {
 		fetcherTimeoutVal = "30s"
@@ -90,7 +98,6 @@ func (g *decoder) prefetch(ctx context.Context, strategy int, strict bool, strat
 		if s == PROX { // NOT IMPLEMENTED
 			return fmt.Errorf("strategy %d not implemented", s)
 		}
-		fmt.Printf("prefetching starts with strategy %d", s)
 
 		var stop <-chan time.Time
 		if s < RACE {
@@ -105,10 +112,8 @@ func (g *decoder) prefetch(ctx context.Context, strategy int, strict bool, strat
 		select {
 		// successfully retrieved shardCnt number of chunks
 		case <-g.ready:
-			fmt.Printf("prefetching with strategy %d provided enough shards for decoding", s)
 			cancelAll()
 		case <-stop:
-			fmt.Printf("prefetching with strategy %d timed out", s)
 			return fmt.Errorf("prefetching with strategy %d timed out", s)
 		case <-ctx.Done():
 			return nil
