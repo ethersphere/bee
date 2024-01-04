@@ -291,7 +291,7 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 	feedDereferenced := false
 
 	ctx := r.Context()
-f	ctx = getter.SetParamsInContext(ctx, headers.Strategy, headers.FallbackMode, headers.ChunkRetrievalTimeout)
+	ctx = getter.SetParamsInContext(ctx, headers.Strategy, headers.FallbackMode, headers.ChunkRetrievalTimeout)
 
 FETCH:
 	// read manifest entry
