@@ -31,6 +31,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/ethersphere/langos"
 	"github.com/gorilla/mux"
 )
 
@@ -133,7 +134,6 @@ func (s *Service) fileUploadHandler(
 		response("invalid query params", logger, w)
 		return
 	}
-	fmt.Println("fileUploadHandler", "rlevel", rLevel)
 
 	p := requestPipelineFn(putter, encrypt, rLevel)
 	ctx := r.Context()
@@ -252,7 +252,6 @@ func (s *Service) fileUploadHandler(
 func (s *Service) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger.WithName("get_bzz_by_path").Build())
 
-	fmt.Println("bzzDownloadHandler", "r.URL.Path", r.URL.Path)
 	paths := struct {
 		Address swarm.Address `map:"address,resolve" validate:"required"`
 		Path    string        `map:"path"`
@@ -280,7 +279,6 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 	}{}
 
 	if response := s.mapStructure(r.Header, &headers); response != nil {
-		fmt.Println("downloadHandler", "invalid header params")
 		response("invalid header params", logger, w)
 		return
 	}
@@ -289,13 +287,11 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 		cache = *headers.Cache
 	}
 
-	fmt.Println("serveReference", "address", address, "pathVar", pathVar, "cache", cache)
 	ls := loadsave.NewReadonly(s.storer.Download(cache))
 	feedDereferenced := false
 
 	ctx := r.Context()
-	fmt.Println("serveReference", "Strategy", headers.Strategy, "FallbackMode", headers.FallbackMode, "ChunkRetrievalTimeout", headers.ChunkRetrievalTimeout)
-	ctx = getter.SetParamsInContext(ctx, headers.Strategy, headers.FallbackMode, headers.ChunkRetrievalTimeout)
+f	ctx = getter.SetParamsInContext(ctx, headers.Strategy, headers.FallbackMode, headers.ChunkRetrievalTimeout)
 
 FETCH:
 	// read manifest entry
@@ -505,9 +501,9 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 	}
 	w.Header().Set(ContentLengthHeader, strconv.FormatInt(l, 10))
 	w.Header().Set("Access-Control-Expose-Headers", ContentDispositionHeader)
-	http.ServeContent(w, r, "", time.Now(), reader)
+	// http.ServeContent(w, r, "", time.Now(), reader)
 	// NOTE: temporary workaround for testing, watch this...
-	// http.ServeContent(w, r, "", time.Now(), langos.NewBufferedLangos(reader, lookaheadBufferSize(l)))
+	http.ServeContent(w, r, "", time.Now(), langos.NewBufferedLangos(reader, lookaheadBufferSize(l)))
 }
 
 // manifestMetadataLoad returns the value for a key stored in the metadata of
