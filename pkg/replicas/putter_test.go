@@ -75,7 +75,7 @@ func TestPutter(t *testing.T) {
 				t.Fatal(err)
 			}
 			ctx := context.Background()
-			ctx = replicas.SetLevel(ctx, tc.level)
+			ctx = redundancy.SetLevelInContext(ctx, tc.level)
 
 			ch, err := cac.New(buf)
 			if err != nil {
@@ -174,7 +174,7 @@ func TestPutter(t *testing.T) {
 				ctx := context.Background()
 				ctx, cancel := context.WithTimeout(ctx, 50*time.Millisecond)
 				defer cancel()
-				ctx = replicas.SetLevel(ctx, tc.level)
+				ctx = redundancy.SetLevelInContext(ctx, tc.level)
 				ch, err := cac.New(buf)
 				if err != nil {
 					t.Fatal(err)

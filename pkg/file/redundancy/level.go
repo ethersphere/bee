@@ -5,6 +5,7 @@
 package redundancy
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -167,3 +168,19 @@ func GetReplicaCounts() [5]int {
 // for the five levels of redundancy are 0, 2, 4, 5, 19
 // we use an approximation as the successive powers of 2
 var replicaCounts = [5]int{0, 2, 4, 8, 16}
+
+type levelKey struct{}
+
+// SetLevelInContext sets the redundancy level in the context
+func SetLevelInContext(ctx context.Context, level Level) context.Context {
+	return context.WithValue(ctx, levelKey{}, level)
+}
+
+// GetLevelFromContext is a helper function to extract the redundancy level from the context
+func GetLevelFromContext(ctx context.Context) Level {
+	rlevel := NONE
+	if val := ctx.Value(levelKey{}); val != nil {
+		rlevel = val.(Level)
+	}
+	return rlevel
+}

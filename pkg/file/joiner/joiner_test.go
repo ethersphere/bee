@@ -24,7 +24,6 @@ import (
 	"github.com/ethersphere/bee/pkg/file/redundancy/getter"
 	"github.com/ethersphere/bee/pkg/file/splitter"
 	filetest "github.com/ethersphere/bee/pkg/file/testing"
-	"github.com/ethersphere/bee/pkg/replicas"
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
@@ -1230,7 +1229,7 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 		}
 		dataReader := pseudorand.NewReader(seed, size*swarm.ChunkSize)
 		ctx := context.Background()
-		ctx = replicas.SetLevel(ctx, redundancy.NONE)
+		ctx = redundancy.SetLevelInContext(ctx, redundancy.NONE)
 		pipe := builder.NewPipelineBuilder(ctx, store, encrypt, rLevel)
 		addr, err := builder.FeedPipeline(ctx, pipe, dataReader)
 		if err != nil {

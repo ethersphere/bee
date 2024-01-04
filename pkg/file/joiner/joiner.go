@@ -8,6 +8,7 @@ package joiner
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -98,7 +99,7 @@ func (g *decoderCache) GetOrCreate(addrs []swarm.Address, shardCnt int) storage.
 // New creates a new Joiner. A Joiner provides Read, Seek and Size functionalities.
 func New(ctx context.Context, g storage.Getter, putter storage.Putter, address swarm.Address) (file.Joiner, int64, error) {
 	// retrieve the root chunk to read the total data length the be retrieved
-	rLevel := replicas.GetLevelFromContext(ctx)
+	rLevel := redundancy.GetLevelFromContext(ctx)
 	rootChunkGetter := store.New(g)
 	if rLevel != redundancy.NONE {
 		rootChunkGetter = store.New(replicas.NewGetter(g, rLevel))
@@ -120,6 +121,7 @@ func New(ctx context.Context, g storage.Getter, putter storage.Putter, address s
 	}
 	strategy, strict, fetcherTimeout, err := getter.GetParamsFromContext(ctx)
 	if err != nil {
+		fmt.Println("error getting params from context", err)
 		return nil, 0, err
 	}
 	// override stuff if root chunk has redundancy

@@ -11,6 +11,7 @@ import (
 	"errors"
 	"sync"
 
+	"github.com/ethersphere/bee/pkg/file/redundancy"
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -29,7 +30,7 @@ func NewPutter(p storage.Putter) storage.Putter {
 
 // Put makes the getter satisfy the storage.Getter interface
 func (p *putter) Put(ctx context.Context, ch swarm.Chunk) (err error) {
-	rlevel := GetLevelFromContext(ctx)
+	rlevel := redundancy.GetLevelFromContext(ctx)
 	errs := []error{p.putter.Put(ctx, ch)}
 	if rlevel == 0 {
 		return errs[0]

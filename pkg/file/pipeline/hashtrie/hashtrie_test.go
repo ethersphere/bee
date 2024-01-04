@@ -24,7 +24,6 @@ import (
 	"github.com/ethersphere/bee/pkg/file/pipeline/mock"
 	"github.com/ethersphere/bee/pkg/file/pipeline/store"
 	"github.com/ethersphere/bee/pkg/file/redundancy"
-	"github.com/ethersphere/bee/pkg/replicas"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -316,7 +315,7 @@ func TestRedundancy(t *testing.T) {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			subCtx := replicas.SetLevel(ctx, tc.level)
+			subCtx := redundancy.SetLevelInContext(ctx, tc.level)
 
 			s := inmemchunkstore.New()
 			intermediateChunkCounter := mock.NewChainWriter()
