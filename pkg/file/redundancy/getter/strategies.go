@@ -43,9 +43,12 @@ func GetParamsFromContext(ctx context.Context) (s Strategy, strict bool, fetcher
 	if !ok {
 		return s, strict, fetcherTimeout, fmt.Errorf("error setting fetcher timeout from context")
 	}
+	if fetcherTimeoutVal == "" {
+		fetcherTimeoutVal = "30s"
+	}
 	fetcherTimeout, err = time.ParseDuration(fetcherTimeoutVal)
 	if err != nil {
-		return s, strict, fetcherTimeout, fmt.Errorf("error parsing fetcher timeout from context")
+		return s, strict, fetcherTimeout, fmt.Errorf("error parsing fetcher timeout from context: %w", err)
 	}
 	return s, strict, fetcherTimeout, nil
 }
@@ -87,6 +90,7 @@ func (g *decoder) prefetch(ctx context.Context, strategy int, strict bool, strat
 		if s == PROX { // NOT IMPLEMENTED
 			return fmt.Errorf("strategy %d not implemented", s)
 		}
+		fmt.Printf("prefetching starts with strategy %d", s)
 
 		var stop <-chan time.Time
 		if s < RACE {
@@ -101,8 +105,10 @@ func (g *decoder) prefetch(ctx context.Context, strategy int, strict bool, strat
 		select {
 		// successfully retrieved shardCnt number of chunks
 		case <-g.ready:
+			fmt.Printf("prefetching with strategy %d provided enough shards for decoding", s)
 			cancelAll()
 		case <-stop:
+			fmt.Printf("prefetching with strategy %d timed out", s)
 			return fmt.Errorf("prefetching with strategy %d timed out", s)
 		case <-ctx.Done():
 			return nil

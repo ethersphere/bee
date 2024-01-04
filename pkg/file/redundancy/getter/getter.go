@@ -250,6 +250,9 @@ func (g *decoder) save(ctx context.Context, missing []int) error {
 	return nil
 }
 
+// Close terminates the prefetch loop, waits for all goroutines to finish and
+// removes the decoder from the cache
+// it implements the io.Closer interface
 func (g *decoder) Close() error {
 	g.cancel()
 	g.wg.Wait()
