@@ -33,7 +33,7 @@ import (
 	"github.com/ethersphere/bee/pkg/util/ioutil/pseudorand"
 )
 
-// nolint:paralleltest,tparallel
+// nolint:paralleltest,tparallel,thelper
 
 // TestBzzUploadDownloadWithRedundancy tests the API for upload and download files
 // with all combinations of redundancy level, encryption and size (levels, i.e., the
@@ -61,8 +61,9 @@ import (
 //
 //  4. [positive test] attempt at downloading the file using a strategy that allows for
 //     using redundancy to reconstruct the file and find the file recoverable.
+//
+// nolint:thelper
 func TestBzzUploadDownloadWithRedundancy(t *testing.T) {
-	t.Skip("skipping until we sort out langos lookaheadbuffer functionality")
 	fileUploadResource := "/bzz"
 	fileDownloadResource := func(addr string) string { return "/bzz/" + addr + "/" }
 
@@ -117,7 +118,6 @@ func TestBzzUploadDownloadWithRedundancy(t *testing.T) {
 				pre := i * gap
 				ranges[i] = [2]int{pre + start, pre + end}
 			}
-			fmt.Println("size", chunkCnt*swarm.ChunkSize, "ranges", ranges)
 			rangeHeader, want := createRangeHeader(dataReader, ranges)
 
 			var body []byte
@@ -149,7 +149,7 @@ func TestBzzUploadDownloadWithRedundancy(t *testing.T) {
 			if rLevel == 0 {
 				t.Skip("NA")
 			}
-			req, err := http.NewRequest("GET", fileDownloadResource(refResponse.Reference.String()), nil)
+			req, err := http.NewRequestWithContext(context.Background(), "GET", fileDownloadResource(refResponse.Reference.String()), nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -166,13 +166,13 @@ func TestBzzUploadDownloadWithRedundancy(t *testing.T) {
 				t.Fatalf("expected status %d; got %d", http.StatusOK, resp.StatusCode)
 			}
 			_, err = io.ReadAll(resp.Body)
-			if err != io.ErrUnexpectedEOF {
+			if !errors.Is(err, io.ErrUnexpectedEOF) {
 				t.Fatalf("expected error %v; got %v", io.ErrUnexpectedEOF, err)
 			}
 		})
 
 		t.Run("download with redundancy should succeed", func(t *testing.T) {
-			req, err := http.NewRequest("GET", fileDownloadResource(refResponse.Reference.String()), nil)
+			req, err := http.NewRequestWithContext(context.TODO(), "GET", fileDownloadResource(refResponse.Reference.String()), nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -189,26 +189,17 @@ func TestBzzUploadDownloadWithRedundancy(t *testing.T) {
 			if resp.StatusCode != http.StatusOK {
 				t.Fatalf("expected status %d; got %d", http.StatusOK, resp.StatusCode)
 			}
-			dataReader.Seek(0, io.SeekStart)
-			data, err := io.ReadAll(resp.Body)
+			_, err = dataReader.Seek(0, io.SeekStart)
 			if err != nil {
 				t.Fatal(err)
 			}
-			expdata, err := io.ReadAll(dataReader)
+			ok, err := dataReader.Equal(resp.Body)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if !bytes.Equal(data, expdata) {
-				fmt.Printf("exp %x\ngot %x\n", expdata, data)
+			if !ok {
 				t.Fatalf("content mismatch")
 			}
-			// ok, err := dataReader.Equal(resp.Body)
-			// if err != nil {
-			// 	t.Fatal(err)
-			// }
-			// if !ok {
-			// 	t.Fatalf("content mismatch")
-			// }
 		})
 	}
 	for _, rLevel := range []redundancy.Level{1, 2, 3, 4} {
@@ -672,27 +663,26 @@ func TestBzzFilesRangeRequests(t *testing.T) {
 
 func createRangeHeader(data interface{}, ranges [][2]int) (header string, parts [][]byte) {
 	getLen := func() int {
-		switch data.(type) {
+		switch data := data.(type) {
 		case []byte:
-			return len(data.([]byte))
+			return len(data)
 		case interface{ Size() int }:
-			return data.(interface{ Size() int }).Size()
+			return data.Size()
 		default:
 			panic("unknown data type")
 		}
 	}
 	getRange := func(start, end int) []byte {
-		switch data.(type) {
+		switch data := data.(type) {
 		case []byte:
-			return data.([]byte)[start:end]
+			return data[start:end]
 		case io.ReadSeeker:
 			buf := make([]byte, end-start)
-			r := data.(io.ReadSeeker)
-			_, err := r.Seek(int64(start), io.SeekStart)
+			_, err := data.Seek(int64(start), io.SeekStart)
 			if err != nil {
 				panic(err)
 			}
-			_, err = io.ReadFull(r, buf)
+			_, err = io.ReadFull(data, buf)
 			if err != nil {
 				panic(err)
 			}

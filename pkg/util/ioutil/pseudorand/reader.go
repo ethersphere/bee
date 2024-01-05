@@ -38,8 +38,8 @@ func NewSeed() ([]byte, error) {
 }
 
 // New creates a new pseudorandom reader seeded with the given seed.
-func NewReader(seed []byte, len int) *Reader {
-	r := &Reader{len: len}
+func NewReader(seed []byte, l int) *Reader {
+	r := &Reader{len: l}
 	_ = copy(r.buf[8:], seed)
 	r.fill()
 	return r
@@ -79,7 +79,7 @@ func (r1 *Reader) Equal(r2 io.Reader) (bool, error) {
 		return false, nil
 	}
 	n, err := io.ReadFull(r2, make([]byte, 1))
-	if err == io.EOF || err == io.ErrUnexpectedEOF {
+	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 		return n == 0, nil
 	}
 	return false, err

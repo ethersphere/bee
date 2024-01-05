@@ -68,7 +68,7 @@ func SetFetchTimeout(ctx context.Context, timeout string) context.Context {
 
 // SetStrategy sets the strategy for the retrieval
 func SetStrategy(ctx context.Context, s Strategy) context.Context {
-	return context.WithValue(ctx, strategyKey{}, int(s))
+	return context.WithValue(ctx, strategyKey{}, s)
 }
 
 // SetStrict sets the strict mode for the retrieval

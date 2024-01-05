@@ -8,7 +8,6 @@ package joiner
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -121,7 +120,6 @@ func New(ctx context.Context, g storage.Getter, putter storage.Putter, address s
 	}
 	strategy, strict, fetcherTimeout, err := getter.GetParamsFromContext(ctx)
 	if err != nil {
-		fmt.Println("error getting params from context", err)
 		return nil, 0, err
 	}
 	// override stuff if root chunk has redundancy

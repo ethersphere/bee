@@ -35,6 +35,8 @@ import (
 	"golang.org/x/sync/errgroup"
 )
 
+// nolint:paralleltest,tparallel,thelper
+
 func TestJoiner_ErrReferenceLength(t *testing.T) {
 	t.Parallel()
 
@@ -1020,6 +1022,7 @@ func (m *mockPutter) store(cnt int) error {
 	return nil
 }
 
+// nolint:thelper
 func TestJoinerRedundancy(t *testing.T) {
 
 	strategyTimeout := getter.StrategyTimeout
@@ -1214,6 +1217,8 @@ func TestJoinerRedundancy(t *testing.T) {
 //
 //  5. [positive test] after recovery chunks are saved, so fotgetting no longer
 //     repeat  3a/3b but this time succeed
+//
+// nolint:thelper
 func TestJoinerRedundancyMultilevel(t *testing.T) {
 
 	strategyTimeout := getter.StrategyTimeout
@@ -1237,8 +1242,7 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 		}
 		expRead := swarm.ChunkSize
 		buf := make([]byte, expRead)
-		offset := 0
-		// mrand.Intn(tc.size) * expRead
+		offset := mrand.Intn(size) * expRead
 		canReadRange := func(t *testing.T, s getter.Strategy, fallback bool, canRead bool) {
 			ctx := context.Background()
 			ctx = getter.SetParamsInContext(ctx, s, fallback, (24 * getter.StrategyTimeout).String())
@@ -1261,7 +1265,10 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 			if n != expRead {
 				t.Errorf("read %d bytes out of %d", n, expRead)
 			}
-			dataReader.Seek(int64(offset), io.SeekStart)
+			_, err = dataReader.Seek(int64(offset), io.SeekStart)
+			if err != nil {
+				t.Fatal(err)
+			}
 			ok, err := dataReader.Match(bytes.NewBuffer(buf), expRead)
 			if err != nil {
 				t.Fatal(err)

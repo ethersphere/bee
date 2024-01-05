@@ -156,7 +156,7 @@ func testDecodingFallback(t *testing.T, s getter.Strategy, strict bool) {
 
 	bufSize := 12
 	shardCnt := 6
-	store := mockstorer.NewDelayedStore(inmem.New())	
+	store := mockstorer.NewDelayedStore(inmem.New())
 	buf := make([][]byte, bufSize)
 	addrs := initData(t, buf, shardCnt, store)
 

@@ -6,6 +6,7 @@ package pseudorand_test
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -33,13 +34,19 @@ func TestReader(t *testing.T) {
 		}
 	})
 	t.Run("randomness", func(t *testing.T) {
-		bufSize:= 4096
+		bufSize := 4096
 		if bytes.Equal(content[:bufSize], content[bufSize:2*bufSize]) {
 			t.Fatal("buffers should not match")
 		}
 	})
 	t.Run("re-readability", func(t *testing.T) {
-		r.Seek(0, io.SeekStart)
+		ns, err := r.Seek(0, io.SeekStart)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ns != 0 {
+			t.Fatal("seek mismatch")
+		}
 		var read []byte
 		buf := make([]byte, 8200)
 		total := 0
@@ -48,7 +55,7 @@ func TestReader(t *testing.T) {
 			n, err := r.Read(buf[:s])
 			total += n
 			read = append(read, buf[:n]...)
-			if err == io.EOF {
+			if errors.Is(err, io.EOF) {
 				break
 			}
 			if err != nil {
@@ -64,13 +71,25 @@ func TestReader(t *testing.T) {
 		}
 	})
 	t.Run("comparison", func(t *testing.T) {
-		r.Seek(0, io.SeekStart)
+		ns, err := r.Seek(0, io.SeekStart)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ns != 0 {
+			t.Fatal("seek mismatch")
+		}
 		if eq, err := r.Equal(bytes.NewBuffer(content)); err != nil {
 			t.Fatal(err)
 		} else if !eq {
 			t.Fatal("content mismatch")
 		}
-		r.Seek(0, io.SeekStart)
+		ns, err = r.Seek(0, io.SeekStart)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ns != 0 {
+			t.Fatal("seek mismatch")
+		}
 		if eq, err := r.Equal(bytes.NewBuffer(content[:len(content)-1])); err != nil {
 			t.Fatal(err)
 		} else if eq {
@@ -82,7 +101,13 @@ func TestReader(t *testing.T) {
 			off := rand.Intn(size)
 			n := rand.Intn(size - off)
 			t.Run(fmt.Sprintf("off=%d n=%d", off, n), func(t *testing.T) {
-				r.Seek(int64(off), io.SeekStart)
+				ns, err := r.Seek(int64(off), io.SeekStart)
+				if err != nil {
+					t.Fatal(err)
+				}
+				if ns != int64(off) {
+					t.Fatal("seek mismatch")
+				}
 				ok, err := r.Match(bytes.NewBuffer(content[off:off+n]), n)
 				if err != nil {
 					t.Fatal(err)
