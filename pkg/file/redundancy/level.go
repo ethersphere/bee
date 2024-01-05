@@ -178,7 +178,7 @@ func SetLevelInContext(ctx context.Context, level Level) context.Context {
 
 // GetLevelFromContext is a helper function to extract the redundancy level from the context
 func GetLevelFromContext(ctx context.Context) Level {
-	rlevel := NONE
+	rlevel := PARANOID
 	if val := ctx.Value(levelKey{}); val != nil {
 		rlevel = val.(Level)
 	}
