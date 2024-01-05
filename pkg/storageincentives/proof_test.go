@@ -44,8 +44,6 @@ var testData []byte
 // Test asserts that MakeInclusionProofs will generate the same
 // output for given sample.
 func TestMakeInclusionProofsRegression(t *testing.T) {
-	t.Parallel()
-
 	const sampleSize = 16
 
 	keyRaw := `00000000000000000000000000000000`
