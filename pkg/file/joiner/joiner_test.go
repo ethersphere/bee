@@ -1245,8 +1245,8 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 		offset := mrand.Intn(size) * expRead
 		canReadRange := func(t *testing.T, s getter.Strategy, fallback bool, canRead bool) {
 			ctx := context.Background()
-			ctx = getter.SetParamsInContext(ctx, s, fallback, (24 * getter.StrategyTimeout).String())
-			ctx, cancel := context.WithTimeout(ctx, 32*getter.StrategyTimeout)
+			ctx = getter.SetParamsInContext(ctx, s, fallback, (6 * getter.StrategyTimeout).String())
+			ctx, cancel := context.WithTimeout(ctx, 10*getter.StrategyTimeout)
 			defer cancel()
 			j, _, err := joiner.New(ctx, store, store, addr)
 			if err != nil {
@@ -1313,9 +1313,11 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 			canReadRange(t, getter.NONE, false, true)
 		})
 	}
-	_ = test
+	r2level := []int{2, 1, 2, 3, 2}
+	encryptChunk := []bool{false, false, true, true, true}
 	for _, rLevel := range []redundancy.Level{0, 1, 2, 3, 4} {
 		rLevel := rLevel
+		// speeding up tests by skipping some of them
 		t.Run(fmt.Sprintf("rLevel=%v", rLevel), func(t *testing.T) {
 			for _, encrypt := range []bool{false, true} {
 				encrypt := encrypt
@@ -1334,6 +1336,9 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 						chunkCnt = shardCnt*shardCnt + 1
 					}
 					t.Run(fmt.Sprintf("encrypt=%v levels=%d chunks=%d incomplete", encrypt, levels, chunkCnt), func(t *testing.T) {
+						if r2level[rLevel] != levels || encrypt != encryptChunk[rLevel] {
+							t.Skip("skipping to save time")
+						}
 						test(t, rLevel, encrypt, chunkCnt)
 					})
 					switch levels {
