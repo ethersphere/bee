@@ -28,7 +28,6 @@ type decoder struct {
 	waits      []chan struct{} // wait channels for each chunk
 	rsbuf      [][]byte        // RS buffer of data + parity shards for erasure decoding
 	ready      chan struct{}   // signal channel for successful retrieval of shardCnt chunks
-	lastIdx    int             // index of the last data chunk in the RS buffer
 	lastLen    int             // length of the last data chunk in the RS buffer
 	shardCnt   int             // number of data shards
 	parityCnt  int             // number of parity shards
@@ -119,7 +118,6 @@ func (g *decoder) setData(i int, chdata []byte) {
 	data := chdata
 	// pad the chunk with zeros if it is smaller than swarm.ChunkSize
 	if len(data) < swarm.ChunkWithSpanSize {
-		g.lastIdx = i
 		g.lastLen = len(data)
 		data = make([]byte, swarm.ChunkWithSpanSize)
 		copy(data, chdata)
@@ -129,7 +127,7 @@ func (g *decoder) setData(i int, chdata []byte) {
 
 // getData returns the data shard from the RS buffer
 func (g *decoder) getData(i int) []byte {
-	if i > 0 && i == g.lastIdx { // zero value of g.lastIdx is impossible
+	if i == g.shardCnt-1 && g.lastLen > 0 {
 		return g.rsbuf[i][:g.lastLen] // cut padding
 	}
 	return g.rsbuf[i]
