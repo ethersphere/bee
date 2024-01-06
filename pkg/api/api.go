@@ -99,18 +99,6 @@ const (
 	OriginHeader             = "Origin"
 )
 
-// The size of buffer used for prefetching content with Langos.
-// Warning: This value influences the number of chunk requests and chunker join goroutines
-// per file request.
-// Recommended value is 8 or 16 times the io.Copy default buffer value which is 32kB, depending
-// on the file size. Use lookaheadBufferSize() to get the correct buffer size for the request.
-const (
-	smallFileBufferSize = 8 * 32 * 1024
-	largeFileBufferSize = 16 * 32 * 1024
-
-	largeBufferFilesizeThreshold = 10 * 1000000 // ten megs
-)
-
 const (
 	multiPartFormData  = "multipart/form-data"
 	contentTypeTar     = "application/x-tar"
@@ -613,13 +601,6 @@ func (s *Service) gasConfigMiddleware(handlerName string) func(h http.Handler) h
 			h.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
-}
-
-func lookaheadBufferSize(size int64) int {
-	if size <= largeBufferFilesizeThreshold {
-		return smallFileBufferSize
-	}
-	return largeFileBufferSize
 }
 
 // corsHandler sets CORS headers to HTTP response if allowed origins are configured.
