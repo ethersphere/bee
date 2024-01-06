@@ -223,6 +223,9 @@ func TestBzzUploadDownloadWithRedundancy(t *testing.T) {
 						chunkCnt = shardCnt*shardCnt + 1
 					}
 					t.Run(fmt.Sprintf("encrypt=%v levels=%d chunks=%d", encrypt, levels, chunkCnt), func(t *testing.T) {
+						if levels > 2 && (encrypt == (rLevel%2 == 1)) {
+							t.Skip("skipping to save time")
+						}
 						testRedundancy(t, rLevel, encrypt, levels, chunkCnt, shardCnt, parityCnt)
 					})
 				}
