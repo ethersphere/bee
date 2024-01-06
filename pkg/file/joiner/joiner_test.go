@@ -1245,7 +1245,7 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 		offset := mrand.Intn(size) * expRead
 		canReadRange := func(t *testing.T, s getter.Strategy, fallback bool, canRead bool) {
 			ctx := context.Background()
-			ctx = getter.SetParamsInContext(ctx, s, fallback, (6 * getter.StrategyTimeout).String())
+			ctx = getter.SetParamsInContext(ctx, s, fallback, (10 * getter.StrategyTimeout).String())
 			ctx, cancel := context.WithTimeout(ctx, 10*getter.StrategyTimeout)
 			defer cancel()
 			j, _, err := joiner.New(ctx, store, store, addr)
