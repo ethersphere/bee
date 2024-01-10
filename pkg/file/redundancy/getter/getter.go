@@ -20,22 +20,23 @@ import (
 // if retrieves children of an intermediate chunk potentially using erasure decoding
 // it caches sibling chunks if erasure decoding started already
 type decoder struct {
-	fetcher    storage.Getter  // network retrieval interface to fetch chunks
-	putter     storage.Putter  // interface to local storage to save reconstructed chunks
-	addrs      []swarm.Address // all addresses of the intermediate chunk
-	inflight   []atomic.Bool   // locks to protect wait channels and RS buffer
-	cache      map[string]int  // map from chunk address shard position index
-	waits      []chan struct{} // wait channels for each chunk
-	rsbuf      [][]byte        // RS buffer of data + parity shards for erasure decoding
-	ready      chan struct{}   // signal channel for successful retrieval of shardCnt chunks
-	lastLen    int             // length of the last data chunk in the RS buffer
-	shardCnt   int             // number of data shards
-	parityCnt  int             // number of parity shards
-	wg         sync.WaitGroup  // wait group to wait for all goroutines to finish
-	mu         sync.Mutex      // mutex to protect buffer
-	fetchedCnt atomic.Int32    // count successful retrievals
-	cancel     func()          // cancel function for RS decoding
-	remove     func()          // callback to remove decoder from decoders cache
+	fetcher      storage.Getter  // network retrieval interface to fetch chunks
+	putter       storage.Putter  // interface to local storage to save reconstructed chunks
+	addrs        []swarm.Address // all addresses of the intermediate chunk
+	inflight     []atomic.Bool   // locks to protect wait channels and RS buffer
+	cache        map[string]int  // map from chunk address shard position index
+	waits        []chan struct{} // wait channels for each chunk
+	rsbuf        [][]byte        // RS buffer of data + parity shards for erasure decoding
+	ready        chan struct{}   // signal channel for successful retrieval of shardCnt chunks
+	lastLen      int             // length of the last data chunk in the RS buffer
+	shardCnt     int             // number of data shards
+	parityCnt    int             // number of parity shards
+	wg           sync.WaitGroup  // wait group to wait for all goroutines to finish
+	mu           sync.Mutex      // mutex to protect buffer
+	fetchedCnt   atomic.Int32    // count successful retrievals
+	fetchTimeout time.Duration   // timeout for fetching a chunk
+	cancel       func()          // cancel function for RS decoding
+	remove       func()          // callback to remove decoder from decoders cache
 }
 
 type Getter interface {
@@ -53,18 +54,19 @@ func New(addrs []swarm.Address, shardCnt int, g storage.Getter, p storage.Putter
 	strategyTimeout := StrategyTimeout
 
 	rsg := &decoder{
-		fetcher:   g,
-		putter:    p,
-		addrs:     addrs,
-		inflight:  make([]atomic.Bool, size),
-		cache:     make(map[string]int, size),
-		waits:     make([]chan struct{}, shardCnt),
-		rsbuf:     make([][]byte, size),
-		ready:     make(chan struct{}, 1),
-		cancel:    cancel,
-		remove:    remove,
-		shardCnt:  shardCnt,
-		parityCnt: size - shardCnt,
+		fetcher:      g,
+		putter:       p,
+		addrs:        addrs,
+		inflight:     make([]atomic.Bool, size),
+		cache:        make(map[string]int, size),
+		waits:        make([]chan struct{}, shardCnt),
+		rsbuf:        make([][]byte, size),
+		ready:        make(chan struct{}, 1),
+		cancel:       cancel,
+		remove:       remove,
+		shardCnt:     shardCnt,
+		parityCnt:    size - shardCnt,
+		fetchTimeout: fetchTimeout,
 	}
 
 	// after init, cache and wait channels are immutable, need no locking
@@ -76,7 +78,7 @@ func New(addrs []swarm.Address, shardCnt int, g storage.Getter, p storage.Putter
 	// prefetch chunks according to strategy
 	rsg.wg.Add(1)
 	go func() {
-		rsg.prefetch(ctx, strategy, strict, strategyTimeout, fetchTimeout)
+		rsg.prefetch(ctx, strategy, strict, strategyTimeout)
 		rsg.wg.Done()
 	}()
 	return rsg
@@ -145,7 +147,9 @@ func (g *decoder) fly(i int, up bool) (success bool) {
 // it races with erasure recovery which takes precedence even if it started later
 // due to the fact that erasure recovery could only implement global locking on all shards
 func (g *decoder) fetch(ctx context.Context, i int) {
-	ch, err := g.fetcher.Get(ctx, g.addrs[i])
+	fctx, cancel := context.WithTimeout(ctx, g.fetchTimeout)
+	defer cancel()
+	ch, err := g.fetcher.Get(fctx, g.addrs[i])
 	if err != nil {
 		_ = g.fly(i, false) // unset inflight
 		return

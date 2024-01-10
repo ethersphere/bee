@@ -82,7 +82,7 @@ func SetParamsInContext(ctx context.Context, s Strategy, fallbackmode bool, fetc
 	ctx = SetFetchTimeout(ctx, fetchTimeout)
 	return ctx
 }
-func (g *decoder) prefetch(ctx context.Context, strategy int, strict bool, strategyTimeout, fetchTimeout time.Duration) {
+func (g *decoder) prefetch(ctx context.Context, strategy int, strict bool, strategyTimeout time.Duration) {
 	if strict && strategy == NONE {
 		return
 	}
@@ -105,7 +105,7 @@ func (g *decoder) prefetch(ctx context.Context, strategy int, strict bool, strat
 			defer timer.Stop()
 			stop = timer.C
 		}
-		lctx, cancel := context.WithTimeout(ctx, fetchTimeout)
+		lctx, cancel := context.WithCancel(ctx)
 		cancels = append(cancels, cancel)
 		prefetch(lctx, g, s)
 

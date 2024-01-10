@@ -72,7 +72,7 @@ func TestBzzUploadDownloadWithRedundancy(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		fetchTimeout := 200 * time.Millisecond
+		fetchTimeout := 100 * time.Millisecond
 		store := mockstorer.NewForgettingStore(inmemchunkstore.New())
 		storerMock := mockstorer.NewWithChunkStore(store)
 		client, _, _, _ := newTestServer(t, testServerOptions{
@@ -149,7 +149,9 @@ func TestBzzUploadDownloadWithRedundancy(t *testing.T) {
 			if rLevel == 0 {
 				t.Skip("NA")
 			}
-			req, err := http.NewRequestWithContext(context.Background(), "GET", fileDownloadResource(refResponse.Reference.String()), nil)
+			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+			defer cancel()
+			req, err := http.NewRequestWithContext(ctx, "GET", fileDownloadResource(refResponse.Reference.String()), nil)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -157,16 +159,8 @@ func TestBzzUploadDownloadWithRedundancy(t *testing.T) {
 			req.Header.Set(api.SwarmRedundancyFallbackModeHeader, "false")
 			req.Header.Set(api.SwarmChunkRetrievalTimeoutHeader, fetchTimeout.String())
 
-			resp, err := client.Do(req)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer resp.Body.Close()
-			if resp.StatusCode != http.StatusOK {
-				t.Fatalf("expected status %d; got %d", http.StatusOK, resp.StatusCode)
-			}
-			_, err = io.ReadAll(resp.Body)
-			if !errors.Is(err, io.ErrUnexpectedEOF) {
+			_, err = client.Do(req)
+			if !errors.Is(err, context.DeadlineExceeded) {
 				t.Fatalf("expected error %v; got %v", io.ErrUnexpectedEOF, err)
 			}
 		})

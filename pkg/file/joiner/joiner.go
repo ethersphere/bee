@@ -251,9 +251,7 @@ func (j *joiner) readAtOffset(
 
 		func(address swarm.Address, b []byte, cur, subTrieSize, off, bufferOffset, bytesToRead, subtrieSpanLimit int64) {
 			eg.Go(func() error {
-				ctx, cancel := context.WithTimeout(j.ctx, j.decoders.fetcherTimeout)
-				defer cancel()
-				ch, err := g.Get(ctx, addr)
+				ch, err := g.Get(j.ctx, addr)
 				if err != nil {
 					return err
 				}

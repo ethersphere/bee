@@ -176,7 +176,7 @@ func testDecodingFallback(t *testing.T, s getter.Strategy, strict bool) {
 	waitDelayed, waitErased := make(chan error, 1), make(chan error, 1)
 
 	// complete retrieval of delayed chunk by putting it into the store after a while
-	delay := +getter.StrategyTimeout / 4
+	delay := getter.StrategyTimeout / 4
 	if s == getter.NONE {
 		delay += getter.StrategyTimeout
 	}
@@ -194,11 +194,15 @@ func testDecodingFallback(t *testing.T, s getter.Strategy, strict bool) {
 	// delayed and erased chunk retrieval completes
 	go func() {
 		defer wg.Done()
+		ctx, cancel := context.WithTimeout(ctx, getter.StrategyTimeout*time.Duration(5-s))
+		defer cancel()
 		_, err := g.Get(ctx, addrs[delayed])
 		waitDelayed <- err
 	}()
 	go func() {
 		defer wg.Done()
+		ctx, cancel := context.WithTimeout(ctx, getter.StrategyTimeout*time.Duration(5-s))
+		defer cancel()
 		_, err := g.Get(ctx, addrs[erased])
 		waitErased <- err
 	}()
@@ -240,10 +244,10 @@ func testDecodingFallback(t *testing.T, s getter.Strategy, strict bool) {
 			case strict:
 				t.Fatalf("unexpected completion of erased chunk retrieval. got round %d", round)
 			case s == getter.NONE:
-				if round < 2 {
+				if round < 3 {
 					t.Fatalf("unexpected early completion of erased chunk retrieval. got round %d", round)
 				}
-				if round > 2 {
+				if round > 3 {
 					t.Fatalf("unexpected late completion of erased chunk retrieval. got round %d", round)
 				}
 			case s == getter.DATA:
