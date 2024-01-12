@@ -1128,10 +1128,11 @@ func TestJoinerRedundancy(t *testing.T) {
 				}
 				i := 0
 				eg, ectx := errgroup.WithContext(ctx)
+			scnt:
 				for ; i < shardCnt; i++ {
 					select {
 					case <-ectx.Done():
-						break
+						break scnt
 					default:
 					}
 					i := i
@@ -1226,6 +1227,7 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 	getter.StrategyTimeout = 100 * time.Millisecond
 
 	test := func(t *testing.T, rLevel redundancy.Level, encrypt bool, size int) {
+		t.Helper()
 		store := mockstorer.NewForgettingStore(inmemchunkstore.New())
 		testutil.CleanupCloser(t, store)
 		seed, err := pseudorand.NewSeed()
@@ -1319,6 +1321,7 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 		rLevel := rLevel
 		// speeding up tests by skipping some of them
 		t.Run(fmt.Sprintf("rLevel=%v", rLevel), func(t *testing.T) {
+			t.Parallel()
 			for _, encrypt := range []bool{false, true} {
 				encrypt := encrypt
 				shardCnt := rLevel.GetMaxShards()
