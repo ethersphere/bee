@@ -83,6 +83,7 @@ func encryptKey(k *ecdsa.PrivateKey, password string, edg keystore.EDG) ([]byte,
 		}
 		addr = a
 	case elliptic.P256():
+		//lint:ignore SA1019 to be addressed soon
 		addr = elliptic.Marshal(elliptic.P256(), k.PublicKey.X, k.PublicKey.Y)
 	default:
 		return nil, fmt.Errorf("unsupported curve: %v", k.PublicKey.Curve)

@@ -86,6 +86,7 @@ format:
 
 .PHONY: lint
 lint: linter
+	$(GOBIN)/staticcheck ./...
 	$(GOLANGCI_LINT) run ./...
 
 .PHONY: linter

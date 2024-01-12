@@ -192,7 +192,7 @@ func (bb *bitsForBytes) set(b byte) {
 	bb.bits[b/8] |= 1 << (b % 8)
 }
 
-//nolint:unused
+//lint:ignore U1000 we keep this around for now
 func (bb *bitsForBytes) get(b byte) bool {
 	return bb.getUint8(b)
 }
