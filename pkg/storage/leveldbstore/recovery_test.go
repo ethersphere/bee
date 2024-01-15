@@ -23,7 +23,7 @@ type obj struct {
 }
 
 func (o *obj) ID() string                 { return o.Key }
-func (_ *obj) Namespace() string          { return "obj" }
+func (*obj) Namespace() string            { return "obj" }
 func (o *obj) Marshal() ([]byte, error)   { return json.Marshal(o) }
 func (o *obj) Unmarshal(buf []byte) error { return json.Unmarshal(buf, o) }
 func (o *obj) Clone() storage.Item        { return &obj{Key: o.Key, Val: slices.Clone(o.Val)} }

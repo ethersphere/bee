@@ -108,8 +108,7 @@ type UpgradedResponseWriter interface {
 	http.Pusher
 	http.Hijacker
 	http.Flusher
-	// lint:ignore SA1019 CloseNotifier interface is required by gorilla compress handler
-	// nolint:staticcheck
+	//lint:ignore SA1019 CloseNotifier interface is required by gorilla compress handler
 	http.CloseNotifier
 }
 

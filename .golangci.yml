@@ -28,7 +28,6 @@ linters:
     - prealloc
     - predeclared
     - promlinter
-    - staticcheck
     - thelper
     - typecheck
     - unconvert

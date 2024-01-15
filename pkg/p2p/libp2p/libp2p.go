@@ -55,7 +55,6 @@ import (
 
 	ocprom "contrib.go.opencensus.io/exporter/prometheus"
 	m2 "github.com/ethersphere/bee/pkg/metrics"
-	rcmgrObs "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
@@ -175,7 +174,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	}
 
 	if o.Registry != nil {
-		rcmgrObs.MustRegisterWith(o.Registry)
+		rcmgr.MustRegisterWith(o.Registry)
 	}
 
 	_, err = ocprom.NewExporter(ocprom.Options{
@@ -201,7 +200,7 @@ func New(ctx context.Context, signer beecrypto.Signer, networkID uint64, overlay
 	// The resource manager expects a limiter, se we create one from our limits.
 	limiter := rcmgr.NewFixedLimiter(limits)
 
-	str, err := rcmgrObs.NewStatsTraceReporter()
+	str, err := rcmgr.NewStatsTraceReporter()
 	if err != nil {
 		return nil, err
 	}
