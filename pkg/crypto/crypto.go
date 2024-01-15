@@ -116,7 +116,7 @@ func NewEthereumAddress(p ecdsa.PublicKey) ([]byte, error) {
 	if p.X == nil || p.Y == nil {
 		return nil, errors.New("invalid public key")
 	}
-	pubBytes, _ := p.ECDH() //  elliptic.Marshal(btcec.S256(), p.X, p.Y)
+	pubBytes, _ := p.ECDH()
 	pubHash, err := LegacyKeccak256(pubBytes.Bytes()[1:])
 	if err != nil {
 		return nil, err
