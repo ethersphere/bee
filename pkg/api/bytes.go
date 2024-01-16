@@ -18,6 +18,9 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/gorilla/mux"
+	"github.com/opentracing/opentracing-go/ext"
+	"github.com/opentracing/opentracing-go/log"
+	olog "github.com/opentracing/opentracing-go/log"
 )
 
 type bytesPostResponse struct {
@@ -26,7 +29,8 @@ type bytesPostResponse struct {
 
 // bytesUploadHandler handles upload of raw binary data of arbitrary length.
 func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
-	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger.WithName("post_bytes").Build())
+	span, logger, ctx := s.tracer.StartSpanFromContext(r.Context(), "post_bytes", s.logger.WithName("post_bytes").Build())
+	defer span.Finish()
 
 	headers := struct {
 		BatchID  []byte `map:"Swarm-Postage-Batch-Id" validate:"required"`
@@ -57,11 +61,13 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 			default:
 				jsonhttp.InternalServerError(w, "cannot get or create tag")
 			}
+			ext.LogError(span, err, log.String("action", "tag.create"))
 			return
 		}
+		span.SetTag("tagID", tag)
 	}
 
-	putter, err := s.newStamperPutter(r.Context(), putterOptions{
+	putter, err := s.newStamperPutter(ctx, putterOptions{
 		BatchID:  headers.BatchID,
 		TagID:    tag,
 		Pin:      headers.Pin,
@@ -82,6 +88,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		default:
 			jsonhttp.BadRequest(w, nil)
 		}
+		ext.LogError(span, err, log.String("action", "new.StamperPutter"))
 		return
 	}
 
@@ -92,7 +99,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	p := requestPipelineFn(putter, headers.Encrypt)
-	address, err := p(r.Context(), r.Body)
+	address, err := p(ctx, r.Body)
 	if err != nil {
 		logger.Debug("split write all failed", "error", err)
 		logger.Error(nil, "split write all failed")
@@ -102,20 +109,27 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		default:
 			jsonhttp.InternalServerError(ow, "split write all failed")
 		}
+		ext.LogError(span, err, log.String("action", "split.WriteAll"))
 		return
 	}
+
+	span.SetTag("root_address", address)
 
 	err = putter.Done(address)
 	if err != nil {
 		logger.Debug("done split failed", "error", err)
 		logger.Error(nil, "done split failed")
 		jsonhttp.InternalServerError(ow, "done split failed")
+		ext.LogError(span, err, log.String("action", "putter.Done"))
 		return
 	}
 
 	if tag != 0 {
 		w.Header().Set(SwarmTagHeader, fmt.Sprint(tag))
 	}
+
+	span.LogFields(olog.Bool("success", true))
+
 	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
 	jsonhttp.Created(w, bytesPostResponse{
 		Reference: address,
