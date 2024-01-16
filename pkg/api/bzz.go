@@ -9,13 +9,17 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/ethersphere/bee/pkg/topology"
 	"net/http"
 	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/ethersphere/bee/pkg/topology"
+	"github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go/ext"
+	olog "github.com/opentracing/opentracing-go/log"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/feeds"
@@ -34,7 +38,8 @@ import (
 )
 
 func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
-	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger.WithName("post_bzz").Build())
+	span, logger, ctx := s.tracer.StartSpanFromContext(r.Context(), "post_bzz", s.logger.WithName("post_bzz").Build())
+	defer span.Finish()
 
 	headers := struct {
 		ContentType string `map:"Content-Type,mimeMediaType" validate:"required"`
@@ -67,11 +72,13 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 			default:
 				jsonhttp.InternalServerError(w, "cannot get or create tag")
 			}
+			ext.LogError(span, err, olog.String("action", "tag.create"))
 			return
 		}
+		span.SetTag("tagID", tag)
 	}
 
-	putter, err := s.newStamperPutter(r.Context(), putterOptions{
+	putter, err := s.newStamperPutter(ctx, putterOptions{
 		BatchID:  headers.BatchID,
 		TagID:    tag,
 		Pin:      headers.Pin,
@@ -92,6 +99,7 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		default:
 			jsonhttp.BadRequest(w, nil)
 		}
+		ext.LogError(span, err, olog.String("action", "new.StamperPutter"))
 		return
 	}
 
@@ -102,10 +110,10 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if headers.IsDir || headers.ContentType == multiPartFormData {
-		s.dirUploadHandler(logger, ow, r, putter, r.Header.Get(ContentTypeHeader), headers.Encrypt, tag)
+		s.dirUploadHandler(ctx, logger, span, ow, r, putter, r.Header.Get(ContentTypeHeader), headers.Encrypt, tag)
 		return
 	}
-	s.fileUploadHandler(logger, ow, r, putter, headers.Encrypt, tag)
+	s.fileUploadHandler(ctx, logger, span, ow, r, putter, headers.Encrypt, tag)
 }
 
 // fileUploadResponse is returned when an HTTP request to upload a file is successful
@@ -116,7 +124,9 @@ type bzzUploadResponse struct {
 // fileUploadHandler uploads the file and its metadata supplied in the file body and
 // the headers
 func (s *Service) fileUploadHandler(
+	ctx context.Context,
 	logger log.Logger,
+	span opentracing.Span,
 	w http.ResponseWriter,
 	r *http.Request,
 	putter storer.PutterSession,
@@ -132,7 +142,6 @@ func (s *Service) fileUploadHandler(
 	}
 
 	p := requestPipelineFn(putter, encrypt)
-	ctx := r.Context()
 
 	// first store the file and get its reference
 	fr, err := p(ctx, r.Body)
@@ -145,6 +154,7 @@ func (s *Service) fileUploadHandler(
 		default:
 			jsonhttp.InternalServerError(w, errFileStore)
 		}
+		ext.LogError(span, err, olog.String("action", "file.store"))
 		return
 	}
 
@@ -232,11 +242,16 @@ func (s *Service) fileUploadHandler(
 		logger.Debug("done split failed", "error", err)
 		logger.Error(nil, "done split failed")
 		jsonhttp.InternalServerError(w, "done split failed")
+		ext.LogError(span, err, olog.String("action", "putter.Done"))
 		return
 	}
 
+	span.LogFields(olog.Bool("success", true))
+	span.SetTag("root_address", manifestReference)
+
 	if tagID != 0 {
 		w.Header().Set(SwarmTagHeader, fmt.Sprint(tagID))
+		span.SetTag("tagID", tagID)
 	}
 	w.Header().Set(ETagHeader, fmt.Sprintf("%q", manifestReference.String()))
 	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)

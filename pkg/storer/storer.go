@@ -37,6 +37,7 @@ import (
 	localmigration "github.com/ethersphere/bee/pkg/storer/migration"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
+	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/util/syncutil"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/afero"
@@ -444,6 +445,7 @@ type Options struct {
 	LdbDisableSeeksCompaction bool
 	CacheCapacity             uint64
 	Logger                    log.Logger
+	Tracer                    *tracing.Tracer
 
 	Address        swarm.Address
 	WarmupDuration time.Duration
@@ -480,7 +482,9 @@ type cacheLimiter struct {
 
 // DB implements all the component stores described above.
 type DB struct {
-	logger  log.Logger
+	logger log.Logger
+	tracer *tracing.Tracer
+
 	metrics metrics
 
 	repo                storage.Repository
@@ -582,6 +586,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	db := &DB{
 		metrics:    metrics,
 		logger:     logger,
+		tracer:     opts.Tracer,
 		baseAddr:   opts.Address,
 		repo:       repo,
 		lock:       lock,
