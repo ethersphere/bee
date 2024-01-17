@@ -24,15 +24,7 @@ import (
 	"resenje.org/multex"
 )
 
-// loggerName is the tree path name of the logger for this package.
-const loggerName = "reserve"
 const reserveNamespace = "reserve"
-
-/*
-	pull by 	bin - binID
-	evict by 	bin - batchID
-	sample by 	bin
-*/
 
 type Reserve struct {
 	baseAddr     swarm.Address
@@ -59,7 +51,7 @@ func New(
 		baseAddr:     baseAddr,
 		capacity:     capacity,
 		radiusSetter: radiusSetter,
-		logger:       logger.WithName(loggerName).Register(),
+		logger:       logger.WithName(reserveNamespace).Register(),
 		mutx:         multex.New(),
 	}
 
