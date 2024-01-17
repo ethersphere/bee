@@ -334,7 +334,6 @@ func (db *DB) evictBatch(
 ) (evicted int, err error) {
 	dur := captureDuration(time.Now())
 	defer func() {
-		db.reserve.AddSize(-evicted)
 		db.metrics.ReserveSize.Set(float64(db.reserve.Size()))
 		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "EvictBatch").Observe(dur())
 		if err == nil {

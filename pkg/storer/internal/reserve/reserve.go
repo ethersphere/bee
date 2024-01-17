@@ -10,7 +10,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -353,6 +352,9 @@ func (r *Reserve) EvictBatchBin(
 				return true, nil
 			}
 			evicted = append(evicted, batchRadius)
+			if len(evicted) == count {
+				return true, nil
+			}
 			return false, nil
 		})
 	})
@@ -360,16 +362,11 @@ func (r *Reserve) EvictBatchBin(
 		return 0, err
 	}
 
-	// evict oldest chunks first
-	sort.Slice(evicted, func(i, j int) bool {
-		return evicted[i].BinID < evicted[j].BinID
-	})
-
-	// evict only count many items
-	evicted = evicted[:min(len(evicted), count)]
-
 	batchCnt := 1_000
 	evictionCompleted := 0
+	defer func() {
+		r.size.Add(-int64(evictionCompleted))
+	}()
 
 	for i := 0; i < len(evicted); i += batchCnt {
 		end := i + batchCnt
@@ -468,16 +465,18 @@ func (r *Reserve) Radius() uint8 {
 	return uint8(r.radius.Load())
 }
 
+func (r *Reserve) SetRadius(store storage.Store, rad uint8) error {
+	r.radius.Store(uint32(rad))
+	r.radiusSetter.SetStorageRadius(rad)
+	return store.Put(&radiusItem{Radius: rad})
+}
+
 func (r *Reserve) Size() int {
 	return int(r.size.Load())
 }
 
 func (r *Reserve) Capacity() int {
 	return r.capacity
-}
-
-func (r *Reserve) AddSize(diff int) {
-	r.size.Add(int64(diff))
 }
 
 func (r *Reserve) IsWithinCapacity() bool {
@@ -489,12 +488,6 @@ func (r *Reserve) EvictionTarget() int {
 		return 0
 	}
 	return int(r.size.Load()) - r.capacity
-}
-
-func (r *Reserve) SetRadius(store storage.Store, rad uint8) error {
-	r.radius.Store(uint32(rad))
-	r.radiusSetter.SetStorageRadius(rad)
-	return store.Put(&radiusItem{Radius: rad})
 }
 
 func (r *Reserve) LastBinIDs(store storage.Store) ([]uint64, uint64, error) {

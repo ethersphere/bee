@@ -283,23 +283,15 @@ func TestEvictMaxCount(t *testing.T) {
 		}
 	})
 
-	r, err := reserve.New(
-		baseAddr,
-		ts.IndexStore(),
-		0, kademlia.NewTopologyDriver(),
-		log.Noop,
-	)
+	r, err := reserve.New(baseAddr, ts.IndexStore(), 0, kademlia.NewTopologyDriver(), log.Noop)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	var chunks []swarm.Chunk
 
 	batch := postagetesting.MustNewBatch()
 
 	for i := 0; i < 50; i++ {
 		ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewBatchStamp(batch.ID))
-		chunks = append(chunks, ch)
 		err := r.Put(context.Background(), ts, ch)
 		if err != nil {
 			t.Fatal(err)
@@ -314,16 +306,8 @@ func TestEvictMaxCount(t *testing.T) {
 		t.Fatalf("wanted evicted count 10, got %d", evicted)
 	}
 
-	for i, ch := range chunks {
-		if i < 10 {
-			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: 0, BatchID: ch.Stamp().BatchID(), Address: ch.Address()}, true)
-			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: uint64(i + 1)}, true)
-			checkChunk(t, ts, ch, true)
-		} else {
-			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: 0, BatchID: ch.Stamp().BatchID(), Address: ch.Address()}, false)
-			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: uint64(i + 1)}, false)
-			checkChunk(t, ts, ch, false)
-		}
+	if r.Size() != 40 {
+		t.Fatalf("wanted size 40, got %d", r.Size())
 	}
 }
 
