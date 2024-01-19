@@ -49,7 +49,7 @@ import (
 //  1. upload a file with a given redundancy level and encryption
 //
 //  2. [positive test] download the file by the reference returned by the upload API response
-//     This uses range queries to target specific (number of) chunks of the file structure
+//     This uses range queries to target specific (number of) chunks of the file structure.
 //     During path traversal in the swarm hash tree, the underlying mocksore (forgetting)
 //     is in 'recording' mode, flagging all the retrieved chunks as chunks to forget.
 //     This is to simulate the scenario where some of the chunks are not available/lost
