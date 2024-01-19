@@ -68,6 +68,7 @@ func TestBzzUploadDownloadWithRedundancy(t *testing.T) {
 	fileDownloadResource := func(addr string) string { return "/bzz/" + addr + "/" }
 
 	testRedundancy := func(t *testing.T, rLevel redundancy.Level, encrypt bool, levels int, chunkCnt int, shardCnt int, parityCnt int) {
+		t.Helper()
 		seed, err := pseudorand.NewSeed()
 		if err != nil {
 			t.Fatal(err)
@@ -197,6 +198,7 @@ func TestBzzUploadDownloadWithRedundancy(t *testing.T) {
 		})
 	}
 	for _, rLevel := range []redundancy.Level{1, 2, 3, 4} {
+		rLevel := rLevel
 		t.Run(fmt.Sprintf("level=%d", rLevel), func(t *testing.T) {
 			for _, encrypt := range []bool{false, true} {
 				encrypt := encrypt
@@ -216,17 +218,18 @@ func TestBzzUploadDownloadWithRedundancy(t *testing.T) {
 					case 3:
 						chunkCnt = shardCnt*shardCnt + 1
 					}
+					levels := levels
 					t.Run(fmt.Sprintf("encrypt=%v levels=%d chunks=%d", encrypt, levels, chunkCnt), func(t *testing.T) {
 						if levels > 2 && (encrypt == (rLevel%2 == 1)) {
 							t.Skip("skipping to save time")
 						}
+						t.Parallel()
 						testRedundancy(t, rLevel, encrypt, levels, chunkCnt, shardCnt, parityCnt)
 					})
 				}
 			}
 		})
 	}
-
 }
 
 func TestBzzFiles(t *testing.T) {
