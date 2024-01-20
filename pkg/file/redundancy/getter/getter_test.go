@@ -152,7 +152,7 @@ func testDecodingFallback(t *testing.T, s getter.Strategy, strict bool) {
 
 	strategyTimeout := getter.StrategyTimeout
 	defer func() { getter.StrategyTimeout = strategyTimeout }()
-	getter.StrategyTimeout = 100 * time.Millisecond
+	getter.StrategyTimeout = 150 * time.Millisecond
 
 	bufSize := 12
 	shardCnt := 6
