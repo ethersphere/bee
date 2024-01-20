@@ -29,8 +29,8 @@ import (
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
 	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/util/ioutil/pseudorand"
 	"github.com/ethersphere/bee/pkg/util/testutil"
+	"github.com/ethersphere/bee/pkg/util/testutil/pseudorand"
 	"gitlab.com/nolash/go-mockbytes"
 	"golang.org/x/sync/errgroup"
 )

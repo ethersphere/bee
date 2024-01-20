@@ -30,7 +30,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/util/ioutil/pseudorand"
+	"github.com/ethersphere/bee/pkg/util/testutil/pseudorand"
 )
 
 // nolint:paralleltest,tparallel,thelper

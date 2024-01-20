@@ -12,7 +12,7 @@ import (
 	"math/rand"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/util/ioutil/pseudorand"
+	"github.com/ethersphere/bee/pkg/util/testutil/pseudorand"
 )
 
 func TestReader(t *testing.T) {
