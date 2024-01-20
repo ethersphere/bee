@@ -302,14 +302,14 @@ func TestRedundancy(t *testing.T) {
 			level:      redundancy.INSANE,
 			encryption: false,
 			writes:     98, // 97 chunk references fit into one chunk + 1 carrier
-			parities:   38, // 31 (full ch) + 7 (2 ref)
+			parities:   37, // 31 (full ch) + 6 (2 ref)
 		},
 		{
 			desc:       "redundancy write for encrypted data",
 			level:      redundancy.PARANOID,
 			encryption: true,
 			writes:     21,  // 21 encrypted chunk references fit into one chunk + 1 carrier
-			parities:   118, // // 88 (full ch) + 30 (2 ref)
+			parities:   116, // // 87 (full ch) + 29 (2 ref)
 		},
 	} {
 		tc := tc
