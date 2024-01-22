@@ -129,24 +129,27 @@ func (p *Puller) manage(ctx context.Context) {
 		p.syncPeersMtx.Lock()
 		defer p.syncPeersMtx.Unlock()
 
-		// peersDisconnected is used to mark and prune peers that are no longer connected.
-		peersDisconnected := make(map[string]*syncPeer)
-		for _, peer := range p.syncPeers {
-			peersDisconnected[peer.address.ByteString()] = peer
-		}
-
 		newRadius := p.radius.StorageRadius()
 
 		// reset all intervals below the new radius to resync:
 		// 1. previously evicted chunks
 		// 2. previously ignored chunks due to a higher radius
 		if newRadius < prevRadius {
+			for _, peer := range p.syncPeers {
+				p.disconnectPeer(peer.address)
+			}
 			err := p.resetIntervals(prevRadius)
 			if err != nil {
 				p.logger.Debug("reset lower sync radius failed", "error", err)
 			}
 		}
 		prevRadius = newRadius
+
+		// peersDisconnected is used to mark and prune peers that are no longer connected.
+		peersDisconnected := make(map[string]*syncPeer)
+		for _, peer := range p.syncPeers {
+			peersDisconnected[peer.address.ByteString()] = peer
+		}
 
 		_ = p.topology.EachConnectedPeerRev(func(addr swarm.Address, po uint8) (stop, jumpToNext bool, err error) {
 			if _, ok := p.syncPeers[addr.ByteString()]; !ok {
@@ -187,7 +190,7 @@ func (p *Puller) disconnectPeer(addr swarm.Address) {
 	loggerV2.Debug("disconnecting peer", "peer_address", addr)
 	if peer, ok := p.syncPeers[addr.ByteString()]; ok {
 		peer.mtx.Lock()
-		peer.gone()
+		peer.stop()
 		peer.mtx.Unlock()
 	}
 	delete(p.syncPeers, addr.ByteString())
@@ -229,7 +232,7 @@ func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, storageRadius uin
 
 		if storedEpoch != epoch {
 			// cancel all bins
-			peer.gone()
+			peer.stop()
 
 			p.logger.Debug("peer epoch change detected, resetting past synced intervals", "stored_epoch", storedEpoch, "new_epoch", epoch, "peer_address", peer.address)
 
@@ -285,10 +288,10 @@ func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, storageRadius uin
 
 // syncPeerBin will start historical and live syncing for the peer for a particular bin.
 // Must be called under syncPeer lock.
-func (p *Puller) syncPeerBin(ctx context.Context, peer *syncPeer, bin uint8, cursor uint64) {
+func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint8, cursor uint64) {
 	loggerV2 := p.logger.V(2).Register()
 
-	ctx, cancel := context.WithCancel(ctx)
+	ctx, cancel := context.WithCancel(parentCtx)
 	peer.setBinCancel(cancel, bin)
 
 	sync := func(isHistorical bool, address swarm.Address, cursor uint64, bin uint8, done func()) {
@@ -299,7 +302,7 @@ func (p *Puller) syncPeerBin(ctx context.Context, peer *syncPeer, bin uint8, cur
 		defer done()
 
 		for {
-			s, _, _, err := p.nextPeerInterval(address, bin)
+			s, err := p.nextPeerInterval(address, bin)
 			if err != nil {
 				p.metrics.SyncWorkerErrCounter.Inc()
 				p.logger.Error(err, "syncWorker nextPeerInterval failed, quitting")
@@ -307,11 +310,15 @@ func (p *Puller) syncPeerBin(ctx context.Context, peer *syncPeer, bin uint8, cur
 			}
 
 			if isHistorical {
+				// historical sync has caught up to the cursor, exit
 				if s > cursor {
 					return
 				}
 				// rate limit historical syncing
 				_ = p.limiter.Wait(ctx)
+			} else if s < cursor {
+				// livesync always starts at >= cursor
+				s = cursor
 			}
 
 			select {
@@ -356,7 +363,7 @@ func (p *Puller) syncPeerBin(ctx context.Context, peer *syncPeer, bin uint8, cur
 					p.logger.Debug("syncWorker interval failed, quitting", "error", err, "peer_address", address, "bin", bin, "cursor", address, "start", s, "topmost", top)
 					return
 				}
-				p.logger.Debug("syncWorker interval failed", "error", err, "peer_address", address, "bin", bin, "cursor", address, "start", s, "topmost", top)
+				loggerV2.Debug("syncWorker interval failed", "error", err, "peer_address", address, "bin", bin, "cursor", address, "start", s, "topmost", top)
 			}
 		}
 	}
@@ -453,17 +460,17 @@ func (p *Puller) resetIntervals(upto uint8) (err error) {
 	return
 }
 
-func (p *Puller) nextPeerInterval(peer swarm.Address, bin uint8) (start, end uint64, empty bool, err error) {
+func (p *Puller) nextPeerInterval(peer swarm.Address, bin uint8) (uint64, error) {
 	p.intervalMtx.Lock()
 	defer p.intervalMtx.Unlock()
 
 	i, err := p.getOrCreateInterval(peer, bin)
 	if err != nil {
-		return 0, 0, false, err
+		return 0, err
 	}
 
-	start, end, empty = i.Next(0)
-	return start, end, empty, nil
+	start, _, _ := i.Next(0)
+	return start, nil
 }
 
 // Must be called underlock.
@@ -516,7 +523,7 @@ func newSyncPeer(addr swarm.Address, bins, po uint8) *syncPeer {
 }
 
 // called when peer disconnects or on shutdown, cleans up ongoing sync operations
-func (p *syncPeer) gone() {
+func (p *syncPeer) stop() {
 	for bin, c := range p.binCancelFuncs {
 		c()
 		delete(p.binCancelFuncs, bin)
