@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/intervalstore"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/puller"
+	"github.com/ethersphere/bee/pkg/puller/intervalstore"
 	mockps "github.com/ethersphere/bee/pkg/pullsync/mock"
 	"github.com/ethersphere/bee/pkg/spinlock"
 	"github.com/ethersphere/bee/pkg/statestore/mock"

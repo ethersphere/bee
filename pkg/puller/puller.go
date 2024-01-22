@@ -15,9 +15,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/intervalstore"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/pkg/puller/intervalstore"
 	"github.com/ethersphere/bee/pkg/pullsync"
 	"github.com/ethersphere/bee/pkg/rate"
 	"github.com/ethersphere/bee/pkg/storage"
@@ -288,78 +288,84 @@ func (p *Puller) syncPeer(ctx context.Context, peer *syncPeer, storageRadius uin
 func (p *Puller) syncPeerBin(ctx context.Context, peer *syncPeer, bin uint8, cur uint64) {
 	binCtx, cancel := context.WithCancel(ctx)
 	peer.setBinCancel(cancel, bin)
-	peer.wg.Add(1)
-	p.wg.Add(1)
-	go p.syncWorker(binCtx, peer.address, bin, cur, peer.wg.Done)
+	peer.wg.Add(2)
+	p.wg.Add(2)
+	p.syncWorkers(binCtx, peer.address, bin, cur, peer.wg.Done)
 }
 
-func (p *Puller) syncWorker(ctx context.Context, peer swarm.Address, bin uint8, cur uint64, done func()) {
+func (p *Puller) syncWorkers(ctx context.Context, peer swarm.Address, bin uint8, cursor uint64) {
 	loggerV2 := p.logger.V(2).Register()
 
-	p.metrics.SyncWorkerCounter.Inc()
-	defer p.wg.Done()
-	defer p.metrics.SyncWorkerDoneCounter.Inc()
-	defer done()
+	sync := func(isHistorical bool) {
+		p.metrics.SyncWorkerCounter.Inc()
+		defer p.wg.Done()
+		defer p.metrics.SyncWorkerDoneCounter.Inc()
+		defer done()
 
-	loggerV2.Debug("syncWorker starting", "peer_address", peer, "bin", bin, "cursor", cur)
+		for {
 
-	for {
-
-		s, _, _, err := p.nextPeerInterval(peer, bin)
-		if err != nil {
-			p.metrics.SyncWorkerErrCounter.Inc()
-			p.logger.Error(err, "syncWorker nextPeerInterval failed, quitting")
-			return
-		}
-
-		// rate limit historical syncing
-		if s <= cur {
-			_ = p.limiter.Wait(ctx)
-		}
-
-		select {
-		case <-ctx.Done():
-			loggerV2.Debug("syncWorker context cancelled", "peer_address", peer, "bin", bin)
-			return
-		default:
-		}
-
-		p.metrics.SyncWorkerIterCounter.Inc()
-
-		syncStart := time.Now()
-		top, count, err := p.syncer.Sync(ctx, peer, bin, s)
-
-		if top == math.MaxUint64 {
-			p.metrics.MaxUintErrCounter.Inc()
-			p.logger.Error(nil, "syncWorker max uint64 encountered, quitting", "peer_address", peer, "bin", bin, "from", s, "topmost", top)
-			return
-		}
-
-		if top <= cur {
-			p.metrics.SyncedCounter.WithLabelValues("historical").Add(float64(count))
-			p.rate.Add(count)
-		} else {
-			p.metrics.SyncedCounter.WithLabelValues("live").Add(float64(count))
-		}
-
-		if top >= s {
-			if err := p.addPeerInterval(peer, bin, s, top); err != nil {
+			s, _, _, err := p.nextPeerInterval(peer, bin)
+			if err != nil {
 				p.metrics.SyncWorkerErrCounter.Inc()
-				p.logger.Error(err, "syncWorker could not persist interval for peer, quitting", "peer_address", peer)
+				p.logger.Error(err, "syncWorker nextPeerInterval failed, quitting")
 				return
 			}
-			loggerV2.Debug("syncWorker pulled", "bin", bin, "start", s, "topmost", top, "duration", time.Since(syncStart), "peer_address", peer)
-		}
 
-		if err != nil {
-			p.metrics.SyncWorkerErrCounter.Inc()
-			if errors.Is(err, p2p.ErrPeerNotFound) {
-				p.logger.Debug("syncWorker interval failed, quitting", "error", err, "peer_address", peer, "bin", bin, "cursor", cur, "start", s, "topmost", top)
+			if isHistorical {
+				if s > cursor {
+					return
+				}
+				// rate limit historical syncing
+				_ = p.limiter.Wait(ctx)
+			}
+
+			select {
+			case <-ctx.Done():
+				loggerV2.Debug("syncWorker context cancelled", "peer_address", peer, "bin", bin)
+				return
+			default:
+			}
+
+			p.metrics.SyncWorkerIterCounter.Inc()
+
+			syncStart := time.Now()
+			top, count, err := p.syncer.Sync(ctx, peer, bin, s)
+
+			if top == math.MaxUint64 {
+				p.metrics.MaxUintErrCounter.Inc()
+				p.logger.Error(nil, "syncWorker max uint64 encountered, quitting", "peer_address", peer, "bin", bin, "from", s, "topmost", top)
 				return
 			}
-			p.logger.Debug("syncWorker interval failed", "error", err, "peer_address", peer, "bin", bin, "cursor", cur, "start", s, "topmost", top)
+
+			if isHistorical {
+				p.metrics.SyncedCounter.WithLabelValues("historical").Add(float64(count))
+				p.rate.Add(count)
+			} else {
+				p.metrics.SyncedCounter.WithLabelValues("live").Add(float64(count))
+			}
+
+			if top >= s {
+				if err := p.addPeerInterval(peer, bin, s, top); err != nil {
+					p.metrics.SyncWorkerErrCounter.Inc()
+					p.logger.Error(err, "syncWorker could not persist interval for peer, quitting", "peer_address", peer)
+					return
+				}
+				loggerV2.Debug("syncWorker pulled", "bin", bin, "start", s, "topmost", top, "duration", time.Since(syncStart), "peer_address", peer)
+			}
+
+			if err != nil {
+				p.metrics.SyncWorkerErrCounter.Inc()
+				if errors.Is(err, p2p.ErrPeerNotFound) {
+					p.logger.Debug("syncWorker interval failed, quitting", "error", err, "peer_address", peer, "bin", bin, "cursor", cur, "start", s, "topmost", top)
+					return
+				}
+				p.logger.Debug("syncWorker interval failed", "error", err, "peer_address", peer, "bin", bin, "cursor", cur, "start", s, "topmost", top)
+			}
 		}
 	}
+
+	sync(false)
+
 }
 
 func (p *Puller) Close() error {
