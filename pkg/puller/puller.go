@@ -321,8 +321,6 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 				}
 				// rate limit historical syncing
 				_ = p.limiter.Wait(ctx)
-			} else {
-				start += 1
 			}
 
 			select {
@@ -366,8 +364,8 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 					p.logger.Error(err, "syncWorker could not persist interval for peer, quitting", "peer_address", address)
 					return
 				}
-				loggerV2.Debug("syncWorker pulled", "bin", bin, "start", start, "topmost", top, "duration", time.Since(syncStart), "peer_address", address)
-				start = top
+				loggerV2.Debug("syncWorker pulled", "bin", bin, "start", start, "topmost", top, "isHistorical", isHistorical, "duration", time.Since(syncStart), "peer_address", address)
+				start = top + 1
 			}
 		}
 	}
@@ -380,7 +378,7 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 
 	peer.wg.Add(1)
 	p.wg.Add(1)
-	go sync(false, peer.address, cursor, bin, peer.wg.Done)
+	go sync(false, peer.address, cursor+1, bin, peer.wg.Done)
 }
 
 func (p *Puller) Close() error {
