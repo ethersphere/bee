@@ -18,7 +18,7 @@ import (
 )
 
 var (
-	erc20ABI     = abiutil.MustParseABI(sw3abi.ERC20ABIv0_5_4)
+	erc20ABI     = abiutil.MustParseABI(sw3abi.ERC20ABIv0_6_3)
 	errDecodeABI = errors.New("could not decode abi data")
 )
 

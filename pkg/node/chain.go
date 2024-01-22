@@ -383,7 +383,7 @@ func (m noOpChainBackend) Metrics() []prometheus.Collector {
 }
 
 func (m noOpChainBackend) CodeAt(context.Context, common.Address, *big.Int) ([]byte, error) {
-	return common.FromHex(sw3abi.SimpleSwapFactoryDeployedBinv0_5_4), nil
+	return common.FromHex(sw3abi.SimpleSwapFactoryDeployedBinv0_6_3), nil
 }
 func (m noOpChainBackend) CallContract(context.Context, ethereum.CallMsg, *big.Int) ([]byte, error) {
 	return nil, errors.New("disabled chain backend")

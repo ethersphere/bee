@@ -22,7 +22,7 @@ import (
 )
 
 var (
-	factoryABI              = abiutil.MustParseABI(sw3abi.SimpleSwapFactoryABIv0_5_4)
+	factoryABI              = abiutil.MustParseABI(sw3abi.SimpleSwapFactoryABIv0_6_3)
 	simpleSwapDeployedEvent = factoryABI.Events["SimpleSwapDeployed"]
 )
 
@@ -82,9 +82,9 @@ func TestFactoryVerifySelf(t *testing.T) {
 
 		factory := chequebook.NewFactory(
 			backendWithCodeAt(map[common.Address]string{
-				factoryAddress: sw3abi.SimpleSwapFactoryDeployedBinv0_5_4,
-				legacyFactory1: sw3abi.SimpleSwapFactoryDeployedBinv0_5_4,
-				legacyFactory2: sw3abi.SimpleSwapFactoryDeployedBinv0_5_4,
+				factoryAddress: sw3abi.SimpleSwapFactoryDeployedBinv0_6_3,
+				legacyFactory1: sw3abi.SimpleSwapFactoryDeployedBinv0_6_3,
+				legacyFactory2: sw3abi.SimpleSwapFactoryDeployedBinv0_6_3,
 			}),
 			transactionmock.New(),
 			factoryAddress,
@@ -123,8 +123,8 @@ func TestFactoryVerifySelf(t *testing.T) {
 
 		factory := chequebook.NewFactory(
 			backendWithCodeAt(map[common.Address]string{
-				factoryAddress: sw3abi.SimpleSwapFactoryDeployedBinv0_5_4,
-				legacyFactory1: sw3abi.SimpleSwapFactoryDeployedBinv0_5_4,
+				factoryAddress: sw3abi.SimpleSwapFactoryDeployedBinv0_6_3,
+				legacyFactory1: sw3abi.SimpleSwapFactoryDeployedBinv0_6_3,
 				legacyFactory2: "abcd",
 			}),
 			transactionmock.New(),
