@@ -346,8 +346,6 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 				p.metrics.SyncedCounter.WithLabelValues("live").Add(float64(count))
 			}
 
-			fmt.Println("isHistorical", isHistorical, "start", s, "top", top, err)
-
 			if top >= s {
 				if err := p.addPeerInterval(address, bin, s, top); err != nil {
 					p.metrics.SyncWorkerErrCounter.Inc()
