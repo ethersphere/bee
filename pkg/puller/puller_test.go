@@ -438,10 +438,16 @@ func TestContinueSyncing(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 	kad.Trigger()
-	time.Sleep(time.Second)
+
+	err := spinlock.WaitWithInterval(time.Second, time.Millisecond*100, func() bool {
+		return len(pullsync.SyncCalls(addr)) == 2
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	calls := len(pullsync.SyncCalls(addr))
-	if calls != 1 {
+	if calls != 2 {
 		t.Fatalf("unexpected amount of calls, got %d", calls)
 	}
 }
