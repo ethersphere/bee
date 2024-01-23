@@ -7,11 +7,11 @@ package postage
 import (
 	"errors"
 	"fmt"
-	"resenje.org/multex"
 
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"resenje.org/multex"
 )
 
 var (
@@ -50,7 +50,7 @@ func (st *stamper) Stamp(addr swarm.Address) (*Stamp, error) {
 	}
 	switch err := st.store.Get(item); {
 	case err == nil:
-		if st.issuer.assigned(item.BatchIndex) || st.issuer.ImmutableFlag() {
+		if st.issuer.ImmutableFlag() {
 			break
 		}
 		item.BatchTimestamp = unixTime()
