@@ -11,7 +11,6 @@ import (
 	"io"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/ethersphere/bee/pkg/bmt"
 	"github.com/ethersphere/bee/pkg/encryption"
@@ -41,24 +40,20 @@ type joiner struct {
 
 // decoderCache is cache of decoders for intermediate chunks
 type decoderCache struct {
-	fetcher        storage.Getter            // network retrieval interface to fetch chunks
-	putter         storage.Putter            // interface to local storage to save reconstructed chunks
-	mu             sync.Mutex                // mutex to protect cache
-	cache          map[string]storage.Getter // map from chunk address to RS getter
-	strategy       getter.Strategy           // strategy to use for retrieval
-	strict         bool                      // strict mode
-	fetcherTimeout time.Duration             // timeout for each fetch
+	fetcher storage.Getter            // network retrieval interface to fetch chunks
+	putter  storage.Putter            // interface to local storage to save reconstructed chunks
+	mu      sync.Mutex                // mutex to protect cache
+	cache   map[string]storage.Getter // map from chunk address to RS getter
+	config  getter.Config             // getter configuration
 }
 
 // NewDecoderCache creates a new decoder cache
-func NewDecoderCache(g storage.Getter, p storage.Putter, strategy getter.Strategy, strict bool, fetcherTimeout time.Duration) *decoderCache {
+func NewDecoderCache(g storage.Getter, p storage.Putter, conf getter.Config) *decoderCache {
 	return &decoderCache{
-		fetcher:        g,
-		putter:         p,
-		cache:          make(map[string]storage.Getter),
-		strategy:       strategy,
-		strict:         strict,
-		fetcherTimeout: fetcherTimeout,
+		fetcher: g,
+		putter:  p,
+		cache:   make(map[string]storage.Getter),
+		config:  conf,
 	}
 }
 
@@ -90,7 +85,7 @@ func (g *decoderCache) GetOrCreate(addrs []swarm.Address, shardCnt int) storage.
 		defer g.mu.Unlock()
 		g.cache[key] = nil
 	}
-	d = getter.New(addrs, shardCnt, g.fetcher, g.putter, g.strategy, g.strict, g.fetcherTimeout, remove)
+	d = getter.New(addrs, shardCnt, g.fetcher, g.putter, remove, g.config)
 	g.cache[key] = d
 	return d
 }
@@ -118,7 +113,7 @@ func New(ctx context.Context, g storage.Getter, putter storage.Putter, address s
 	spanFn := func(data []byte) (redundancy.Level, int64) {
 		return 0, int64(bmt.LengthFromSpan(data[:swarm.SpanSize]))
 	}
-	strategy, strict, fetcherTimeout, err := getter.GetParamsFromContext(ctx)
+	conf, err := getter.NewConfigFromContext(ctx, getter.DefaultConfig)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -135,15 +130,15 @@ func New(ctx context.Context, g storage.Getter, putter storage.Putter, address s
 		}
 	} else {
 		// if root chunk has no redundancy, strategy is ignored and set to NONE and strict is set to true
-		strategy = getter.NONE
-		strict = true
+		conf.Strategy = getter.DATA
+		conf.Strict = true
 	}
 
 	j := &joiner{
 		addr:         rootChunk.Address(),
 		refLength:    refLength,
 		ctx:          ctx,
-		decoders:     NewDecoderCache(g, putter, strategy, strict, fetcherTimeout),
+		decoders:     NewDecoderCache(g, putter, conf),
 		span:         span,
 		rootData:     rootData,
 		rootParity:   rootParity,

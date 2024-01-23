@@ -6,20 +6,33 @@ package getter
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 )
 
-var (
-	StrategyTimeout = 500 * time.Millisecond // timeout for each strategy
+const (
+	DefaultStrategy        = NONE                   // default prefetching strategy
+	DefaultStrict          = true                   // default fallback modes
+	DefaultFetchTimeout    = 30 * time.Second       // timeout for each chunk retrieval
+	DefaultStrategyTimeout = 300 * time.Millisecond // timeout for each strategy
 )
 
 type (
-	strategyKey       struct{}
-	modeKey           struct{}
-	fetcherTimeoutKey struct{}
-	Strategy          = int
+	strategyKey        struct{}
+	modeKey            struct{}
+	fetchTimeoutKey    struct{}
+	strategyTimeoutKey struct{}
+	Strategy           = int
 )
+
+// Config is the configuration for the getter - public
+type Config struct {
+	Strategy        Strategy
+	Strict          bool
+	FetchTimeout    time.Duration
+	StrategyTimeout time.Duration
+}
 
 const (
 	NONE Strategy = iota // no prefetching and no decoding
@@ -29,41 +42,57 @@ const (
 	strategyCnt
 )
 
-// GetParamsFromContext extracts the strategy and strict mode from the context
-func GetParamsFromContext(ctx context.Context) (s Strategy, strict bool, fetcherTimeout time.Duration, err error) {
+// DefaultConfig is the default configuration for the getter
+var DefaultConfig = Config{
+	Strategy:        DefaultStrategy,
+	Strict:          DefaultStrict,
+	FetchTimeout:    DefaultFetchTimeout,
+	StrategyTimeout: DefaultStrategyTimeout,
+}
+
+// NewConfigFromContext returns a new Config based on the context
+func NewConfigFromContext(ctx context.Context, def Config) (conf Config, err error) {
 	var ok bool
-	s, strict, fetcherTimeoutVal := NONE, true, "30s"
+	conf = def
+	e := func(s string, errs ...error) error {
+		if len(errs) > 0 {
+			return fmt.Errorf("error setting %s from context: %w", s, errors.Join(errs...))
+		}
+		return fmt.Errorf("error setting %s from context", s)
+	}
 	if val := ctx.Value(strategyKey{}); val != nil {
-		s, ok = val.(Strategy)
+		conf.Strategy, ok = val.(Strategy)
 		if !ok {
-			return s, strict, fetcherTimeout, fmt.Errorf("error setting strategy from context")
+			return conf, e("strategy")
 		}
 	}
 	if val := ctx.Value(modeKey{}); val != nil {
-		strict, ok = val.(bool)
+		conf.Strict, ok = val.(bool)
 		if !ok {
-			return s, strict, fetcherTimeout, fmt.Errorf("error setting fallback mode from context")
+			return conf, e("fallback mode")
 		}
 	}
-	if val := ctx.Value(fetcherTimeoutKey{}); val != nil {
-		fetcherTimeoutVal, ok = val.(string)
+	if val := ctx.Value(fetchTimeoutKey{}); val != nil {
+		fetchTimeoutVal, ok := val.(string)
 		if !ok {
-			return s, strict, fetcherTimeout, fmt.Errorf("error setting fetcher timeout from context")
+			return conf, e("fetcher timeout")
+		}
+		conf.FetchTimeout, err = time.ParseDuration(fetchTimeoutVal)
+		if err != nil {
+			return conf, e("fetcher timeout", err)
 		}
 	}
-	if fetcherTimeoutVal == "" {
-		fetcherTimeoutVal = "30s"
+	if val := ctx.Value(strategyTimeoutKey{}); val != nil {
+		strategyTimeoutVal, ok := val.(string)
+		if !ok {
+			return conf, e("fetcher timeout")
+		}
+		conf.StrategyTimeout, err = time.ParseDuration(strategyTimeoutVal)
+		if err != nil {
+			return conf, e("fetcher timeout", err)
+		}
 	}
-	fetcherTimeout, err = time.ParseDuration(fetcherTimeoutVal)
-	if err != nil {
-		return s, strict, fetcherTimeout, fmt.Errorf("error parsing fetcher timeout from context: %w", err)
-	}
-	return s, strict, fetcherTimeout, nil
-}
-
-// SetFetchTimeout sets the timeout for each fetch
-func SetFetchTimeout(ctx context.Context, timeout string) context.Context {
-	return context.WithValue(ctx, fetcherTimeoutKey{}, timeout)
+	return conf, nil
 }
 
 // SetStrategy sets the strategy for the retrieval
@@ -76,14 +105,27 @@ func SetStrict(ctx context.Context, strict bool) context.Context {
 	return context.WithValue(ctx, modeKey{}, strict)
 }
 
-func SetParamsInContext(ctx context.Context, s Strategy, fallbackmode bool, fetchTimeout string) context.Context {
+// SetFetchTimeout sets the timeout for each fetch
+func SetFetchTimeout(ctx context.Context, timeout string) context.Context {
+	return context.WithValue(ctx, fetchTimeoutKey{}, timeout)
+}
+
+// SetStrategyTimeout sets the timeout for each strategy
+func SetStrategyTimeout(ctx context.Context, timeout string) context.Context {
+	return context.WithValue(ctx, fetchTimeoutKey{}, timeout)
+}
+
+// SetConfigInContext sets the config params in the context
+func SetConfigInContext(ctx context.Context, s Strategy, fallbackmode bool, fetchTimeout, strategyTimeout string) context.Context {
 	ctx = SetStrategy(ctx, s)
 	ctx = SetStrict(ctx, !fallbackmode)
 	ctx = SetFetchTimeout(ctx, fetchTimeout)
+	ctx = SetStrategyTimeout(ctx, strategyTimeout)
 	return ctx
 }
-func (g *decoder) prefetch(ctx context.Context, strategy int, strict bool, strategyTimeout time.Duration) {
-	if strict && strategy == NONE {
+
+func (g *decoder) prefetch(ctx context.Context) {
+	if g.config.Strict && g.config.Strategy == NONE {
 		return
 	}
 	defer g.remove()
@@ -101,7 +143,7 @@ func (g *decoder) prefetch(ctx context.Context, strategy int, strict bool, strat
 
 		var stop <-chan time.Time
 		if s < RACE {
-			timer := time.NewTimer(strategyTimeout)
+			timer := time.NewTimer(g.config.StrategyTimeout)
 			defer timer.Stop()
 			stop = timer.C
 		}
@@ -123,8 +165,15 @@ func (g *decoder) prefetch(ctx context.Context, strategy int, strict bool, strat
 		return g.recover(ctx) // context to cancel when shardCnt chunks are retrieved
 	}
 	var err error
-	for s := strategy; s == strategy || (err != nil && !strict && s < strategyCnt); s++ {
+	for s := g.config.Strategy; s < strategyCnt; s++ {
 		err = run(s)
+		if g.config.Strict || err == nil {
+			break
+		}
+	}
+
+	if err != nil {
+		g.err = err
 	}
 }
 

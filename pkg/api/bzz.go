@@ -290,7 +290,7 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 	feedDereferenced := false
 
 	ctx := r.Context()
-	ctx = getter.SetParamsInContext(ctx, headers.Strategy, headers.FallbackMode, headers.ChunkRetrievalTimeout)
+	ctx = getter.SetConfigInContext(ctx, headers.Strategy, headers.FallbackMode, headers.ChunkRetrievalTimeout, getter.DefaultStrategyTimeout.String())
 
 FETCH:
 	// read manifest entry
@@ -476,7 +476,7 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 	}
 
 	ctx := r.Context()
-	ctx = getter.SetParamsInContext(ctx, headers.Strategy, headers.FallbackMode, headers.ChunkRetrievalTimeout)
+	ctx = getter.SetConfigInContext(ctx, headers.Strategy, headers.FallbackMode, headers.ChunkRetrievalTimeout, getter.DefaultStrategyTimeout.String())
 	reader, l, err := joiner.New(ctx, s.storer.Download(cache), s.storer.Cache(), reference)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) || errors.Is(err, topology.ErrNotFound) {
