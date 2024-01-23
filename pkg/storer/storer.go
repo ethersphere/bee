@@ -563,7 +563,6 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 			opts.ReserveCapacity,
 			opts.RadiusSetter,
 			logger,
-			db.CacheShallowCopy,
 		)
 		if err != nil {
 			return nil, err
