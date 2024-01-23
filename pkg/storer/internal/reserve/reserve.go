@@ -111,13 +111,11 @@ func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.C
 		return err
 	}
 
-	newStampIndex := true
-
-	item, loaded, err := stampindex.LoadOrStore(indexStore, storeBatch, reserveNamespace, chunk)
+	item, loadedStamp, err := stampindex.LoadOrStore(indexStore, storeBatch, reserveNamespace, chunk)
 	if err != nil {
 		return fmt.Errorf("load or store stamp index for chunk %v has fail: %w", chunk, err)
 	}
-	if loaded {
+	if loadedStamp {
 		prev := binary.BigEndian.Uint64(item.StampTimestamp)
 		curr := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
 		if prev >= curr {
@@ -129,7 +127,6 @@ func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.C
 		// 2. Delete the old chunk's stamp data.
 		// 3. Delete ALL old chunk related items from the reserve.
 		// 4. Update the stamp index.
-		newStampIndex = false
 
 		err := r.removeChunk(ctx, store, storeBatch, item.ChunkAddress, chunk.Stamp().BatchID())
 		if err != nil {
@@ -190,7 +187,7 @@ func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.C
 		return err
 	}
 
-	if newStampIndex {
+	if !loadedStamp {
 		r.size.Add(1)
 	}
 
