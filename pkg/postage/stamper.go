@@ -11,12 +11,12 @@ import (
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"resenje.org/multex"
 )
 
 var (
 	// ErrBucketFull is the error when a collision bucket is full.
-	ErrBucketFull              = errors.New("bucket full")
-	ErrOverwriteImmutableIndex = errors.New("immutable batch old index overwrite due to previous faulty save")
+	ErrBucketFull = errors.New("bucket full")
 )
 
 // Stamper can issue stamps from the given address of chunk.
@@ -30,31 +30,33 @@ type stamper struct {
 	store  storage.Store
 	issuer *StampIssuer
 	signer crypto.Signer
+	mu     *multex.Multex
 }
 
 // NewStamper constructs a Stamper.
 func NewStamper(store storage.Store, issuer *StampIssuer, signer crypto.Signer) Stamper {
-	return &stamper{store, issuer, signer}
+	return &stamper{store, issuer, signer, multex.New()}
 }
 
-// Stamp takes chunk, see if the chunk can included in the batch and
+// Stamp takes chunk, see if the chunk can be included in the batch and
 // signs it with the owner of the batch of this Stamp issuer.
 func (st *stamper) Stamp(addr swarm.Address) (*Stamp, error) {
+	st.mu.Lock(addr.ByteString())
+	defer st.mu.Unlock(addr.ByteString())
+
 	item := &StampItem{
 		BatchID:      st.issuer.data.BatchID,
 		chunkAddress: addr,
 	}
 	switch err := st.store.Get(item); {
 	case err == nil:
-		// The index should be in the past. It could happen that we encountered
-		// some error after assigning this index and did not save the issuer data. In
-		// this case we should assign a new index and update it.
-		if st.issuer.assigned(item.BatchIndex) {
+		if st.issuer.ImmutableFlag() {
 			break
-		} else if st.issuer.ImmutableFlag() {
-			return nil, ErrOverwriteImmutableIndex
 		}
-		fallthrough
+		item.BatchTimestamp = unixTime()
+		if err = st.store.Put(item); err != nil {
+			return nil, err
+		}
 	case errors.Is(err, storage.ErrNotFound):
 		item.BatchIndex, item.BatchTimestamp, err = st.issuer.increment(addr)
 		if err != nil {
