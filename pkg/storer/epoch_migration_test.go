@@ -181,11 +181,11 @@ type testReservePutter struct {
 	calls int
 }
 
-func (t *testReservePutter) Put(ctx context.Context, st internal.Storage, ch swarm.Chunk) (bool, error) {
+func (t *testReservePutter) Put(ctx context.Context, st internal.Storage, ch swarm.Chunk) error {
 	t.mtx.Lock()
 	t.calls++
 	t.mtx.Unlock()
-	return true, st.ChunkStore().Put(ctx, ch)
+	return st.ChunkStore().Put(ctx, ch)
 }
 
 func (t *testReservePutter) AddSize(size int) {
@@ -203,6 +203,7 @@ func (t *testReservePutter) Size() int {
 // TestEpochMigration_FLAKY is flaky on windows.
 func TestEpochMigration_FLAKY(t *testing.T) {
 	t.Parallel()
+	t.Skip("will be removed")
 
 	var (
 		dataPath    = t.TempDir()

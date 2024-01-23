@@ -415,9 +415,6 @@ func performEpochMigration(ctx context.Context, basePath string, opts *Options) 
 			opts.ReserveCapacity,
 			noopRadiusSetter{},
 			logger,
-			func(_ context.Context, _ internal.Storage, _ ...swarm.Address) error {
-				return nil
-			},
 		)
 		if err != nil {
 			return err
@@ -622,7 +619,6 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 			opts.ReserveCapacity,
 			opts.RadiusSetter,
 			logger,
-			db.CacheShallowCopy,
 		)
 		if err != nil {
 			return nil, err

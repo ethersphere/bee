@@ -76,8 +76,7 @@ func (p *putOpStorage) Write(_ context.Context, _ []byte) (sharky.Location, erro
 }
 
 type reservePutter interface {
-	Put(context.Context, internal.Storage, swarm.Chunk) (bool, error)
-	AddSize(int)
+	Put(context.Context, internal.Storage, swarm.Chunk) error
 	Size() int
 }
 
@@ -297,11 +296,9 @@ func (e *epochMigrator) migrateReserve(ctx context.Context) error {
 						recovery: e.recovery,
 					}
 
-					switch newIdx, err := e.reserve.Put(egCtx, pStorage, op.chunk); {
-					case err != nil:
+					err := e.reserve.Put(egCtx, pStorage, op.chunk)
+					if err != nil {
 						return err
-					case newIdx:
-						e.reserve.AddSize(1)
 					}
 				}
 			}
