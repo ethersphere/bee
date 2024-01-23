@@ -138,7 +138,7 @@ func (g *decoder) prefetch(ctx context.Context) {
 	defer cancelAll()
 	run := func(s Strategy) error {
 		if s == PROX { // NOT IMPLEMENTED
-			return fmt.Errorf("strategy %d not implemented", s)
+			return errors.New("strategy not implemented")
 		}
 
 		var stop <-chan time.Time
@@ -172,9 +172,7 @@ func (g *decoder) prefetch(ctx context.Context) {
 		}
 	}
 
-	if err != nil {
-		g.err = err
-	}
+	g.err = err
 }
 
 // prefetch launches the retrieval of chunks based on the strategy
