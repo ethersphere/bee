@@ -19,6 +19,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
+// TODO(esad): remove contexts from sharky and any other storage call
+
 /*
 The rules of the transction is as follows:
 
