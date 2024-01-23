@@ -9,7 +9,6 @@ import (
 	"io"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -76,7 +75,7 @@ func New(addrs []swarm.Address, shardCnt int, g storage.Getter, p storage.Putter
 	if !conf.Strict || conf.Strategy != NONE {
 		rsg.wg.Add(1)
 		go func() {
-			rsg.prefetch(ctx)
+			rsg.err = rsg.prefetch(ctx)
 			rsg.wg.Done()
 		}()
 	}
@@ -100,16 +99,7 @@ func (g *decoder) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, err
 	select {
 	case <-g.waits[i]:
 	case <-ctx.Done():
-		select {
-		case <-g.ready:
-			select {
-			case <-g.waits[i]:
-			case <-time.After(1 * time.Second):
-				return nil, ctx.Err()
-			}
-		default:
-			return nil, ctx.Err()
-		}
+		return nil, ctx.Err()
 	}
 	return swarm.NewChunk(addr, g.getData(i)), nil
 }

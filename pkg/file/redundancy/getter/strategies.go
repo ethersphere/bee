@@ -124,9 +124,9 @@ func SetConfigInContext(ctx context.Context, s Strategy, fallbackmode bool, fetc
 	return ctx
 }
 
-func (g *decoder) prefetch(ctx context.Context) {
+func (g *decoder) prefetch(ctx context.Context) error {
 	if g.config.Strict && g.config.Strategy == NONE {
-		return
+		return nil
 	}
 	defer g.remove()
 	var cancels []func()
@@ -172,7 +172,7 @@ func (g *decoder) prefetch(ctx context.Context) {
 		}
 	}
 
-	g.err = err
+	return err
 }
 
 // prefetch launches the retrieval of chunks based on the strategy
