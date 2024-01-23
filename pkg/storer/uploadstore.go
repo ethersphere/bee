@@ -13,6 +13,7 @@ import (
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storer/internal"
 	pinstore "github.com/ethersphere/bee/pkg/storer/internal/pinning"
+	"github.com/ethersphere/bee/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/pkg/storer/internal/upload"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -26,7 +27,7 @@ func (db *DB) Report(ctx context.Context, chunk swarm.Chunk, state storage.Chunk
 	unlock := db.Lock(uploadsLock)
 	defer unlock()
 
-	err := db.storage.Run(func(s internal.Store) error {
+	err := db.storage.Run(func(s transaction.Store) error {
 		return upload.Report(ctx, s, chunk, state)
 	})
 	if err != nil {
@@ -48,7 +49,7 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 		err           error
 	)
 
-	err = db.storage.Run(func(s internal.Store) error {
+	err = db.storage.Run(func(s transaction.Store) error {
 		uploadPutter, err = upload.NewPutter(s.IndexStore(), tagID)
 		if err != nil {
 			return fmt.Errorf("upload.NewPutter: %w", err)
@@ -72,7 +73,7 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 			storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
 				unlock := db.Lock(uploadsLock)
 				defer unlock()
-				return db.storage.Run(func(s internal.Store) error {
+				return db.storage.Run(func(s transaction.Store) error {
 					return errors.Join(
 						uploadPutter.Put(ctx, s, chunk),
 						func() error {
@@ -91,7 +92,7 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 			defer db.events.Trigger(subscribePushEventKey)
 			unlock := db.Lock(uploadsLock)
 			defer unlock()
-			return db.storage.Run(func(s internal.Store) error {
+			return db.storage.Run(func(s transaction.Store) error {
 				return errors.Join(
 					uploadPutter.Close(s.IndexStore(), address),
 					func() error {
@@ -142,7 +143,7 @@ func (db *DB) Session(tagID uint64) (SessionInfo, error) {
 
 // DeleteSession is the implementation of the UploadStore.DeleteSession method.
 func (db *DB) DeleteSession(tagID uint64) error {
-	return db.storage.Run(func(s internal.Store) error {
+	return db.storage.Run(func(s transaction.Store) error {
 		return upload.DeleteTag(s.IndexStore(), tagID)
 	})
 }

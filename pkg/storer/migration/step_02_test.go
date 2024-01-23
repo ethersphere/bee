@@ -13,6 +13,7 @@ import (
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storer/internal"
 	"github.com/ethersphere/bee/pkg/storer/internal/cache"
+	"github.com/ethersphere/bee/pkg/storer/internal/transaction"
 	localmigration "github.com/ethersphere/bee/pkg/storer/migration"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -56,7 +57,7 @@ func Test_Step_02(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		entry := &testEntry{address: swarm.RandAddress(t)}
 		addrs = append(addrs, entry)
-		err := store.Run(func(s internal.Store) error {
+		err := store.Run(func(s transaction.Store) error {
 			return s.IndexStore().Put(entry)
 		})
 		assert.NoError(t, err)

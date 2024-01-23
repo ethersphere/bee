@@ -20,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storer/internal"
 	cs "github.com/ethersphere/bee/pkg/storer/internal/chunkstore"
 	pinstore "github.com/ethersphere/bee/pkg/storer/internal/pinning"
+	"github.com/ethersphere/bee/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/pkg/storer/internal/upload"
 	localmigration "github.com/ethersphere/bee/pkg/storer/migration"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -29,7 +30,7 @@ import (
 
 func verifyChunks(
 	t *testing.T,
-	st internal.Storage,
+	st transaction.Storage,
 	chunks []swarm.Chunk,
 	has bool,
 ) {
@@ -69,7 +70,7 @@ func verifyChunkRefCount(
 
 func verifySessionInfo(
 	t *testing.T,
-	st internal.Storage,
+	st transaction.Storage,
 	sessionID uint64,
 	chunks []swarm.Chunk,
 	has bool,
@@ -95,7 +96,7 @@ func verifySessionInfo(
 
 func verifyPinCollection(
 	t *testing.T,
-	st internal.Storage,
+	st transaction.Storage,
 	root swarm.Chunk,
 	chunks []swarm.Chunk,
 	has bool,

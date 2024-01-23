@@ -15,7 +15,7 @@ import (
 	"time"
 
 	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storer/internal"
+	"github.com/ethersphere/bee/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"resenje.org/multex"
 )
@@ -72,7 +72,7 @@ func (c *Cache) Capacity() uint64 { return uint64(c.capacity) }
 
 // Putter returns a Storage.Putter instance which adds the chunk to the underlying
 // chunkstore and also adds a Cache entry for the chunk.
-func (c *Cache) Putter(store internal.Storage) storage.Putter {
+func (c *Cache) Putter(store transaction.Storage) storage.Putter {
 	return storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
 
 		c.chunkLock.Lock(chunk.Address().ByteString())
@@ -127,7 +127,7 @@ func (c *Cache) Putter(store internal.Storage) storage.Putter {
 // part of cache it will update the cache indexes. If the operation to update the
 // cache indexes fail, we need to fail the operation as this should signal the user
 // of this getter to rollback the operation.
-func (c *Cache) Getter(store internal.Storage) storage.Getter {
+func (c *Cache) Getter(store transaction.Storage) storage.Getter {
 	return storage.GetterFunc(func(ctx context.Context, address swarm.Address) (swarm.Chunk, error) {
 
 		c.chunkLock.Lock(address.ByteString())
@@ -188,7 +188,7 @@ func (c *Cache) Getter(store internal.Storage) storage.Getter {
 // ShallowCopy creates cache entries with the expectation that the chunk already exists in the chunkstore.
 func (c *Cache) ShallowCopy(
 	ctx context.Context,
-	store internal.Storage,
+	store transaction.Storage,
 	addrs ...swarm.Address,
 ) (err error) {
 
@@ -197,7 +197,7 @@ func (c *Cache) ShallowCopy(
 
 	defer func() {
 		if err != nil {
-			err = store.Run(func(s internal.Store) error {
+			err = store.Run(func(s transaction.Store) error {
 				var rerr error
 				for _, addr := range addrs {
 					rerr = errors.Join(rerr, s.ChunkStore().Delete(context.Background(), addr))
@@ -210,7 +210,7 @@ func (c *Cache) ShallowCopy(
 	//consider only the amount that can fit, the rest should be deleted from the chunkstore.
 	if len(addrs) > c.capacity {
 
-		_ = store.Run(func(s internal.Store) error {
+		_ = store.Run(func(s transaction.Store) error {
 			for _, addr := range addrs[:len(addrs)-c.capacity] {
 				_ = s.ChunkStore().Delete(ctx, addr)
 			}
@@ -221,7 +221,7 @@ func (c *Cache) ShallowCopy(
 
 	entriesToAdd := make([]*cacheEntry, 0, len(addrs))
 
-	err = store.Run(func(s internal.Store) error {
+	err = store.Run(func(s transaction.Store) error {
 		for _, addr := range addrs {
 			entry := &cacheEntry{Address: addr, AccessTimestamp: now().UnixNano()}
 			if has, err := s.IndexStore().Has(entry); err == nil && has {
@@ -257,7 +257,7 @@ func (c *Cache) ShallowCopy(
 // specifies the number of entries to remove.
 func (c *Cache) RemoveOldest(
 	ctx context.Context,
-	st internal.Storage,
+	st transaction.Storage,
 	count uint64,
 ) error {
 	if count <= 0 {
@@ -299,7 +299,7 @@ func (c *Cache) RemoveOldest(
 			end = len(evictItems)
 		}
 
-		err := st.Run(func(s internal.Store) error {
+		err := st.Run(func(s transaction.Store) error {
 			for _, entry := range evictItems[i:end] {
 				err = s.IndexStore().Delete(entry)
 				if err != nil {

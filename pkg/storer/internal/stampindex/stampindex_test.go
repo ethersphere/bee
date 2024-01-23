@@ -14,13 +14,14 @@ import (
 	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/storer/internal"
 	"github.com/ethersphere/bee/pkg/storer/internal/stampindex"
+	"github.com/ethersphere/bee/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
 	"github.com/stretchr/testify/assert"
 )
 
 // newTestStorage is a helper function that creates a new storage.
-func newTestStorage(t *testing.T) internal.Storage {
+func newTestStorage(t *testing.T) transaction.Storage {
 	t.Helper()
 	inmemStorage := internal.NewInmemStorage()
 	return inmemStorage
@@ -122,7 +123,7 @@ func TestStoreLoadDelete(t *testing.T) {
 		t.Run(ns, func(t *testing.T) {
 			t.Run("store new stamp index", func(t *testing.T) {
 
-				err := ts.Run(func(s internal.Store) error {
+				err := ts.Run(func(s transaction.Store) error {
 					return stampindex.Store(s.IndexStore(), ns, chunk)
 
 				})
@@ -176,7 +177,7 @@ func TestStoreLoadDelete(t *testing.T) {
 
 			t.Run("delete stored stamp index", func(t *testing.T) {
 
-				err := ts.Run(func(s internal.Store) error {
+				err := ts.Run(func(s transaction.Store) error {
 					return stampindex.Delete(s.IndexStore(), ns, chunk)
 				})
 				if err != nil {

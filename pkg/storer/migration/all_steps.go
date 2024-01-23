@@ -7,15 +7,15 @@ package migration
 import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/migration"
-	"github.com/ethersphere/bee/pkg/storer/internal"
 	"github.com/ethersphere/bee/pkg/storer/internal/reserve"
+	"github.com/ethersphere/bee/pkg/storer/internal/transaction"
 )
 
 // AfterInitSteps lists all migration steps for localstore IndexStore after the localstore is intiated.
 func AfterInitSteps(
 	sharkyPath string,
 	sharkyNoOfShards int,
-	st internal.Storage,
+	st transaction.Storage,
 ) migration.Steps {
 	return map[uint64]migration.StepFn{
 		1: step_01,

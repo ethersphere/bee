@@ -22,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storer/internal/chunkstamp"
 	"github.com/ethersphere/bee/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/pkg/storer/internal/stampindex"
+	"github.com/ethersphere/bee/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/pkg/swarm"
 	kademlia "github.com/ethersphere/bee/pkg/topology/mock"
 )
@@ -429,7 +430,7 @@ func checkStore(t *testing.T, s storage.Reader, k storage.Key, gone bool) {
 	}
 }
 
-func checkChunk(t *testing.T, s internal.ReadOnlyStore, ch swarm.Chunk, gone bool) {
+func checkChunk(t *testing.T, s transaction.ReadOnlyStore, ch swarm.Chunk, gone bool) {
 	t.Helper()
 	h, err := s.ChunkStore().Has(context.Background(), ch.Address())
 	if err != nil {

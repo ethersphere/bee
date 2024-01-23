@@ -15,6 +15,7 @@ import (
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/storageutil"
 	"github.com/ethersphere/bee/pkg/storer/internal"
+	"github.com/ethersphere/bee/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/google/uuid"
 )
@@ -81,7 +82,7 @@ type collectionPutter struct {
 
 // Put adds a chunk to the pin collection.
 // The user of the putter MUST mutex lock the call to prevent data-races across multiple upload sessions.
-func (c *collectionPutter) Put(ctx context.Context, st internal.Store, ch swarm.Chunk) error {
+func (c *collectionPutter) Put(ctx context.Context, st transaction.Store, ch swarm.Chunk) error {
 
 	// do not allow any Puts after putter was closed
 	if c.closed {
@@ -154,7 +155,7 @@ func (c *collectionPutter) Close(st storage.IndexStore, root swarm.Address) erro
 	return nil
 }
 
-func (c *collectionPutter) Cleanup(st internal.Storage) error {
+func (c *collectionPutter) Cleanup(st transaction.Storage) error {
 	if c.closed {
 		return nil
 	}
@@ -163,7 +164,7 @@ func (c *collectionPutter) Cleanup(st internal.Storage) error {
 		return fmt.Errorf("pin store: failed deleting collection chunks: %w", err)
 	}
 
-	err := st.Run(func(s internal.Store) error {
+	err := st.Run(func(s transaction.Store) error {
 		return s.IndexStore().Delete(&dirtyCollection{UUID: c.collection.UUID})
 	})
 	if err != nil {
@@ -175,7 +176,7 @@ func (c *collectionPutter) Cleanup(st internal.Storage) error {
 }
 
 // CleanupDirty will iterate over all the dirty collections and delete them.
-func CleanupDirty(st internal.Storage) error {
+func CleanupDirty(st transaction.Storage) error {
 
 	dirtyCollections := make([]*dirtyCollection, 0)
 	err := st.ReadOnly().IndexStore().Iterate(
@@ -228,7 +229,7 @@ func Pins(st storage.Reader) ([]swarm.Address, error) {
 	return pins, nil
 }
 
-func deleteCollectionChunks(ctx context.Context, st internal.Storage, collectionUUID []byte) error {
+func deleteCollectionChunks(ctx context.Context, st transaction.Storage, collectionUUID []byte) error {
 	chunksToDelete := make([]*pinChunkItem, 0)
 
 	err := st.ReadOnly().IndexStore().Iterate(
@@ -248,7 +249,7 @@ func deleteCollectionChunks(ctx context.Context, st internal.Storage, collection
 	batchCnt := 1000
 	for i := 0; i < len(chunksToDelete); i += batchCnt {
 
-		err := st.Run(func(s internal.Store) error {
+		err := st.Run(func(s transaction.Store) error {
 			end := i + batchCnt
 			if end > len(chunksToDelete) {
 				end = len(chunksToDelete)
@@ -274,7 +275,7 @@ func deleteCollectionChunks(ctx context.Context, st internal.Storage, collection
 }
 
 // DeletePin will delete the root pin and all the chunks that are part of this collection.
-func DeletePin(ctx context.Context, st internal.Storage, root swarm.Address) error {
+func DeletePin(ctx context.Context, st transaction.Storage, root swarm.Address) error {
 	collection := &pinCollectionItem{Addr: root}
 
 	err := st.ReadOnly().IndexStore().Get(collection)
@@ -286,7 +287,7 @@ func DeletePin(ctx context.Context, st internal.Storage, root swarm.Address) err
 		return err
 	}
 
-	return st.Run(func(s internal.Store) error {
+	return st.Run(func(s transaction.Store) error {
 		err := s.IndexStore().Delete(collection)
 		if err != nil {
 			return fmt.Errorf("pin store: failed deleting root collection: %w", err)

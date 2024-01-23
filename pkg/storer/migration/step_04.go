@@ -10,8 +10,8 @@ import (
 
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/sharky"
-	"github.com/ethersphere/bee/pkg/storer/internal"
 	"github.com/ethersphere/bee/pkg/storer/internal/chunkstore"
+	"github.com/ethersphere/bee/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -20,7 +20,7 @@ import (
 func step_04(
 	sharkyBasePath string,
 	sharkyNoOfShards int,
-	st internal.Storage,
+	st transaction.Storage,
 ) func() error {
 	return func() error {
 		// for in-mem store, skip this step

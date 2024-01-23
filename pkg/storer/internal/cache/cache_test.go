@@ -19,6 +19,7 @@ import (
 	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
 	"github.com/ethersphere/bee/pkg/storer/internal"
 	"github.com/ethersphere/bee/pkg/storer/internal/cache"
+	"github.com/ethersphere/bee/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
 )
@@ -86,7 +87,7 @@ func TestCacheEntryItem(t *testing.T) {
 	}
 }
 
-func newTestStorage(t *testing.T) internal.Storage {
+func newTestStorage(t *testing.T) transaction.Storage {
 	t.Helper()
 	return internal.NewInmemStorage()
 }
@@ -230,7 +231,7 @@ func TestCache(t *testing.T) {
 
 			for i := 0; i < 5; i++ {
 				extraChunk := chunktest.GenerateTestRandomChunk()
-				err := st.Run(func(s internal.Store) error {
+				err := st.Run(func(s transaction.Store) error {
 					return s.ChunkStore().Put(context.TODO(), extraChunk)
 				})
 				if err != nil {
@@ -274,7 +275,7 @@ func TestCache(t *testing.T) {
 		// 		return retErr
 		// 	}
 
-		// 	return st.Run(func(s internal.Store) error {
+		// 	return st.Run(func(s transaction.Store) error {
 		// 		return s.IndexStore().Put(i)
 		// 	})
 		// }
@@ -321,7 +322,7 @@ func TestShallowCopy(t *testing.T) {
 	// the chunkstore with chunks.
 	for _, ch := range chunks {
 
-		err := st.Run(func(s internal.Store) error {
+		err := st.Run(func(s transaction.Store) error {
 			return s.ChunkStore().Put(context.Background(), ch)
 		})
 		if err != nil {
@@ -353,7 +354,7 @@ func TestShallowCopy(t *testing.T) {
 	// add the chunks to chunkstore. This simulates the reserve already populating
 	// the chunkstore with chunks.
 	for _, ch := range chunks1 {
-		err := st.Run(func(s internal.Store) error {
+		err := st.Run(func(s transaction.Store) error {
 			return s.ChunkStore().Put(context.Background(), ch)
 		})
 		if err != nil {
@@ -395,7 +396,7 @@ func TestShallowCopyOverCap(t *testing.T) {
 	// the chunkstore with chunks.
 	for _, ch := range chunks {
 
-		err := st.Run(func(s internal.Store) error {
+		err := st.Run(func(s transaction.Store) error {
 			return s.ChunkStore().Put(context.Background(), ch)
 		})
 		if err != nil {

@@ -12,6 +12,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage/inmemstore"
 	"github.com/ethersphere/bee/pkg/storage/migration"
 	"github.com/ethersphere/bee/pkg/storer/internal"
+	"github.com/ethersphere/bee/pkg/storer/internal/transaction"
 	localmigration "github.com/ethersphere/bee/pkg/storer/migration"
 )
 
@@ -33,7 +34,7 @@ func TestPreSteps(t *testing.T) {
 		t.Parallel()
 
 		store := internal.NewInmemStorage()
-		err := store.Run(func(s internal.Store) error {
+		err := store.Run(func(s transaction.Store) error {
 			return migration.Migrate(s.IndexStore(), "migration", localmigration.AfterInitSteps("", 4, store))
 		})
 		assert.NoError(t, err)

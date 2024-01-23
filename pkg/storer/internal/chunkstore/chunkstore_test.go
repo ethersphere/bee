@@ -18,8 +18,8 @@ import (
 	"github.com/ethersphere/bee/pkg/storage/inmemstore"
 	"github.com/ethersphere/bee/pkg/storage/storagetest"
 	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
-	"github.com/ethersphere/bee/pkg/storer/internal"
 	"github.com/ethersphere/bee/pkg/storer/internal/chunkstore"
+	"github.com/ethersphere/bee/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/spf13/afero"
 	"github.com/stretchr/testify/assert"
@@ -119,7 +119,7 @@ func TestChunkStore(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	st := internal.NewStorage(sharky, store)
+	st := transaction.NewStorage(sharky, store)
 
 	t.Cleanup(func() {
 		if err := store.Close(); err != nil {
@@ -131,7 +131,7 @@ func TestChunkStore(t *testing.T) {
 
 	t.Run("put chunks", func(t *testing.T) {
 		for _, ch := range testChunks {
-			err := st.Run(func(s internal.Store) error {
+			err := st.Run(func(s transaction.Store) error {
 				return s.ChunkStore().Put(context.TODO(), ch)
 			})
 			if err != nil {
@@ -144,7 +144,7 @@ func TestChunkStore(t *testing.T) {
 		for idx, ch := range testChunks {
 			// only put duplicates for odd numbered indexes
 			if idx%2 != 0 {
-				err := st.Run(func(s internal.Store) error {
+				err := st.Run(func(s transaction.Store) error {
 					return s.ChunkStore().Put(context.TODO(), ch)
 				})
 				if err != nil {
@@ -216,7 +216,7 @@ func TestChunkStore(t *testing.T) {
 		for idx, ch := range testChunks {
 			// Delete all even numbered indexes along with 0
 			if idx%2 == 0 {
-				err := st.Run(func(s internal.Store) error {
+				err := st.Run(func(s transaction.Store) error {
 					return s.ChunkStore().Delete(context.TODO(), ch.Address())
 				})
 				if err != nil {
@@ -279,7 +279,7 @@ func TestChunkStore(t *testing.T) {
 	t.Run("delete duplicate chunks", func(t *testing.T) {
 		for idx, ch := range testChunks {
 			if idx%2 != 0 {
-				err := st.Run(func(s internal.Store) error {
+				err := st.Run(func(s transaction.Store) error {
 					return s.ChunkStore().Delete(context.TODO(), ch.Address())
 				})
 				if err != nil {
@@ -313,7 +313,7 @@ func TestChunkStore(t *testing.T) {
 	t.Run("delete duplicate chunks again", func(t *testing.T) {
 		for idx, ch := range testChunks {
 			if idx%2 != 0 {
-				err := st.Run(func(s internal.Store) error {
+				err := st.Run(func(s transaction.Store) error {
 					return s.ChunkStore().Delete(context.TODO(), ch.Address())
 				})
 				if err != nil {
@@ -357,7 +357,7 @@ func TestIterateLocations(t *testing.T) {
 	ctx := context.Background()
 
 	for _, ch := range testChunks {
-		assert.NoError(t, st.Run(func(s internal.Store) error { return s.ChunkStore().Put(ctx, ch) }))
+		assert.NoError(t, st.Run(func(s transaction.Store) error { return s.ChunkStore().Put(ctx, ch) }))
 	}
 
 	readCount := 0
@@ -391,7 +391,7 @@ func TestIterateLocations_Stop(t *testing.T) {
 	defer cancel()
 
 	for _, ch := range testChunks {
-		assert.NoError(t, st.Run(func(s internal.Store) error { return s.ChunkStore().Put(ctx, ch) }))
+		assert.NoError(t, st.Run(func(s transaction.Store) error { return s.ChunkStore().Put(ctx, ch) }))
 	}
 
 	readCount := 0
@@ -422,7 +422,7 @@ func TestIterateLocations_Stop(t *testing.T) {
 }
 
 type chunkStore struct {
-	internal.Storage
+	transaction.Storage
 	sharky *sharky.Store
 }
 
@@ -438,5 +438,5 @@ func makeStorage(t *testing.T) *chunkStore {
 		assert.NoError(t, sharky.Close())
 	})
 
-	return &chunkStore{internal.NewStorage(sharky, store), sharky}
+	return &chunkStore{transaction.NewStorage(sharky, store), sharky}
 }

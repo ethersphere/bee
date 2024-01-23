@@ -5,16 +5,16 @@
 package storer
 
 import (
-	"github.com/ethersphere/bee/pkg/storer/internal"
 	"github.com/ethersphere/bee/pkg/storer/internal/events"
 	"github.com/ethersphere/bee/pkg/storer/internal/reserve"
+	"github.com/ethersphere/bee/pkg/storer/internal/transaction"
 )
 
 func (db *DB) Reserve() *reserve.Reserve {
 	return db.reserve
 }
 
-func (db *DB) Storage() internal.Storage {
+func (db *DB) Storage() transaction.Storage {
 	return db.storage
 }
 

@@ -27,11 +27,11 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/leveldbstore"
 	"github.com/ethersphere/bee/pkg/storage/migration"
-	"github.com/ethersphere/bee/pkg/storer/internal"
 	"github.com/ethersphere/bee/pkg/storer/internal/cache"
 	"github.com/ethersphere/bee/pkg/storer/internal/events"
 	pinstore "github.com/ethersphere/bee/pkg/storer/internal/pinning"
 	"github.com/ethersphere/bee/pkg/storer/internal/reserve"
+	"github.com/ethersphere/bee/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/pkg/storer/internal/upload"
 	localmigration "github.com/ethersphere/bee/pkg/storer/migration"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -211,7 +211,7 @@ func closer(closers ...io.Closer) io.Closer {
 	})
 }
 
-func initInmemRepository() (internal.Storage, io.Closer, error) {
+func initInmemRepository() (transaction.Storage, io.Closer, error) {
 	store, err := leveldbstore.New("", nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed creating inmem levelDB index store: %w", err)
@@ -226,7 +226,7 @@ func initInmemRepository() (internal.Storage, io.Closer, error) {
 		return nil, nil, fmt.Errorf("failed creating inmem sharky instance: %w", err)
 	}
 
-	return internal.NewStorage(sharky, store), closer(store, sharky), nil
+	return transaction.NewStorage(sharky, store), closer(store, sharky), nil
 }
 
 // loggerName is the tree path name of the logger for this package.
@@ -273,7 +273,7 @@ func initDiskRepository(
 	ctx context.Context,
 	basePath string,
 	opts *Options,
-) (internal.Storage, io.Closer, error) {
+) (transaction.Storage, io.Closer, error) {
 
 	store, err := initStore(basePath, opts)
 	if err != nil {
@@ -352,7 +352,7 @@ func initDiskRepository(
 		return nil, nil, fmt.Errorf("failed creating sharky instance: %w", err)
 	}
 
-	return internal.NewStorage(sharky, store), closer(store, sharky, recoveryCloser), nil
+	return transaction.NewStorage(sharky, store), closer(store, sharky, recoveryCloser), nil
 }
 
 const lockKeyNewSession string = "new_session"
@@ -408,7 +408,7 @@ type DB struct {
 	tracer *tracing.Tracer
 
 	metrics             metrics
-	storage             internal.Storage
+	storage             transaction.Storage
 	lock                *multex.Multex
 	cacheObj            *cache.Cache
 	retrieval           retrieval.Interface
@@ -440,7 +440,7 @@ type workerOpts struct {
 // component stores.
 func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	var (
-		st       internal.Storage
+		st       transaction.Storage
 		err      error
 		dbCloser io.Closer
 	)
@@ -473,7 +473,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		sharkyBasePath = path.Join(dirPath, sharkyPath)
 	}
 
-	err = st.Run(func(s internal.Store) error {
+	err = st.Run(func(s transaction.Store) error {
 		return migration.Migrate(
 			s.IndexStore(),
 			"migration",
@@ -561,9 +561,9 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 // Metrics returns set of prometheus collectors.
 func (db *DB) Metrics() []prometheus.Collector {
 	collectors := m.PrometheusCollectorsFromFields(db.metrics)
-	// if v, ok := db.repo.(m.Collector); ok {
-	// 	collectors = append(collectors, v.Metrics()...)
-	// }
+	if v, ok := db.storage.(m.Collector); ok {
+		collectors = append(collectors, v.Metrics()...)
+	}
 	return collectors
 }
 

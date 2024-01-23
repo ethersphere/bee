@@ -17,9 +17,9 @@ import (
 
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storer/internal"
 	"github.com/ethersphere/bee/pkg/storer/internal/chunkstamp"
 	"github.com/ethersphere/bee/pkg/storer/internal/stampindex"
+	"github.com/ethersphere/bee/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	"resenje.org/multex"
@@ -37,12 +37,12 @@ type Reserve struct {
 	radius   atomic.Uint32
 
 	multx *multex.Multex
-	st    internal.Storage
+	st    transaction.Storage
 }
 
 func New(
 	baseAddr swarm.Address,
-	st internal.Storage,
+	st transaction.Storage,
 	capacity int,
 	radiusSetter topology.SetStorageRadiuser,
 	logger log.Logger,
@@ -57,7 +57,7 @@ func New(
 		multx:        multex.New(),
 	}
 
-	err := st.Run(func(s internal.Store) error {
+	err := st.Run(func(s transaction.Store) error {
 		rItem := &radiusItem{}
 		err := s.IndexStore().Get(rItem)
 		if err != nil && !errors.Is(err, storage.ErrNotFound) {
@@ -284,7 +284,7 @@ func (r *Reserve) EvictBatchBin(
 			end = len(evicted)
 		}
 
-		err := r.st.Run(func(s internal.Store) error {
+		err := r.st.Run(func(s transaction.Store) error {
 			for _, item := range evicted[i:end] {
 				err = r.removeChunkWithItem(ctx, s, item)
 				if err != nil {
@@ -304,7 +304,7 @@ func (r *Reserve) EvictBatchBin(
 
 func (r *Reserve) removeChunk(
 	ctx context.Context,
-	trx internal.Store,
+	trx transaction.Store,
 	chunkAddress swarm.Address,
 	batchID []byte,
 ) error {
@@ -322,7 +322,7 @@ func (r *Reserve) removeChunk(
 
 func (r *Reserve) removeChunkWithItem(
 	ctx context.Context,
-	trx internal.Store,
+	trx transaction.Store,
 	item *BatchRadiusItem,
 ) error {
 
@@ -461,7 +461,7 @@ func (r *Reserve) EvictionTarget() int {
 func (r *Reserve) SetRadius(rad uint8) error {
 	r.radius.Store(uint32(rad))
 	r.radiusSetter.SetStorageRadius(rad)
-	return r.st.Run(func(s internal.Store) error {
+	return r.st.Run(func(s transaction.Store) error {
 		return s.IndexStore().Put(&radiusItem{Radius: rad})
 	})
 }

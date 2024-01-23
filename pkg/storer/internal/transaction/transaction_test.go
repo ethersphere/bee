@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package internal_test
+package transaction_test
 
 import (
 	"context"
@@ -15,8 +15,8 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/leveldbstore"
 	test "github.com/ethersphere/bee/pkg/storage/testing"
-	"github.com/ethersphere/bee/pkg/storer/internal"
 	"github.com/ethersphere/bee/pkg/storer/internal/cache"
+	"github.com/ethersphere/bee/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/stretchr/testify/assert"
 )
@@ -38,7 +38,7 @@ func Test_TransactionStorage(t *testing.T) {
 	store, err := leveldbstore.New("", nil)
 	assert.NoError(t, err)
 
-	st := internal.NewStorage(sharkyStore, store)
+	st := transaction.NewStorage(sharkyStore, store)
 	t.Cleanup(func() {
 		assert.NoError(t, st.Close())
 	})
@@ -106,7 +106,7 @@ func Test_TransactionStorage(t *testing.T) {
 		ch1 := test.GenerateTestRandomChunk()
 		ch2 := test.GenerateTestRandomChunk()
 
-		_ = st.Run(func(s internal.Store) error {
+		_ = st.Run(func(s transaction.Store) error {
 			assert.NoError(t, s.IndexStore().Put(&cache.CacheEntryItem{Address: ch1.Address(), AccessTimestamp: 1}))
 			assert.NoError(t, s.ChunkStore().Put(context.Background(), ch1))
 			assert.NoError(t, s.IndexStore().Put(&cache.CacheEntryItem{Address: ch2.Address(), AccessTimestamp: 1}))
@@ -132,7 +132,7 @@ func Test_TransactionStorage(t *testing.T) {
 		assert.Equal(t, ch1.Data(), ch2_get.Data())
 		assert.Equal(t, ch1.Address(), ch2_get.Address())
 
-		_ = st.Run(func(s internal.Store) error {
+		_ = st.Run(func(s transaction.Store) error {
 			assert.NoError(t, s.IndexStore().Delete(&cache.CacheEntryItem{Address: ch1.Address(), AccessTimestamp: 1}))
 			assert.NoError(t, s.ChunkStore().Delete(context.Background(), ch1.Address()))
 			assert.NoError(t, s.IndexStore().Delete(&cache.CacheEntryItem{Address: ch2.Address(), AccessTimestamp: 1}))

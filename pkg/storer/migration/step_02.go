@@ -8,15 +8,15 @@ import (
 	"time"
 
 	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storer/internal"
 	"github.com/ethersphere/bee/pkg/storer/internal/cache"
+	"github.com/ethersphere/bee/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 // step_02 migrates the cache to the new format.
 // the old cacheEntry item has the same key, but the value is different. So only
 // a Put is needed.
-func step_02(st internal.Storage) func() error {
+func step_02(st transaction.Storage) func() error {
 
 	return func() error {
 

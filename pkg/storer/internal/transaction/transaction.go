@@ -2,21 +2,22 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package internal
+package transaction
 
 import (
 	"context"
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
+	m "github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storer/internal/chunkstore"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/prometheus/client_golang/prometheus"
 )
-
-// TODO(esad): metrics
 
 /*
 The rules of the transction is as follows:
@@ -55,10 +56,12 @@ type store struct {
 	bstore storage.BatchedStore
 
 	chunkStoreMtx *sync.Mutex
+
+	metrics metrics
 }
 
 func NewStorage(sharky *sharky.Store, bstore storage.BatchedStore) Storage {
-	return &store{sharky, bstore, &sync.Mutex{}}
+	return &store{sharky, bstore, &sync.Mutex{}, newMetrics()}
 }
 
 type transaction struct {
@@ -68,6 +71,7 @@ type transaction struct {
 	sharkyTrx     *sharkyTrx
 	chunkStoreMtx *sync.Mutex
 	cleanup       bool
+	metrics       metrics
 }
 
 type chunkStoreTrx struct {
@@ -91,39 +95,25 @@ func (c *chunkStoreTrx) Iterate(ctx context.Context, fn storage.IterateChunkFn) 
 	return chunkstore.Iterate(ctx, c.indexStore, c.sharkyTrx, fn)
 }
 
-type indexTrx struct {
-	store storage.Reader
-	batch storage.Batch
-}
-
-func (s *indexTrx) Get(i storage.Item) error           { return s.store.Get(i) }
-func (s *indexTrx) Has(k storage.Key) (bool, error)    { return s.store.Has(k) }
-func (s *indexTrx) GetSize(k storage.Key) (int, error) { return s.store.GetSize(k) }
-func (s *indexTrx) Iterate(q storage.Query, f storage.IterateFn) error {
-	return s.store.Iterate(q, f)
-}
-func (s *indexTrx) Count(k storage.Key) (int, error) { return s.store.Count(k) }
-func (s *indexTrx) Put(i storage.Item) error         { return s.batch.Put(i) }
-func (s *indexTrx) Delete(i storage.Item) error      { return s.batch.Delete(i) }
-
 // NewTransaction returns a new storage transaction.
 // Commit must be called to persist data to the disk.
 // The callback function must be the final call of the transaction whether or not any errors
 // were returned from the storage ops or commit. Safest option is to do a defer call immediately after
 // creating the transaction.
 // Calls made to the transaction are NOT thread-safe.
-func (x *store) NewTransaction() (Transaction, func()) {
+func (s *store) NewTransaction() (Transaction, func()) {
 
-	b, _ := x.bstore.Batch(context.TODO())
-	indexTrx := &indexTrx{x.bstore, b}
-	sharyTrx := &sharkyTrx{sharky: x.sharky}
+	b, _ := s.bstore.Batch(context.TODO())
+	indexTrx := &indexTrx{s.bstore, b}
+	sharyTrx := &sharkyTrx{sharky: s.sharky}
 
 	t := &transaction{
 		batch:         b,
 		indexstore:    indexTrx,
 		chunkStore:    &chunkStoreTrx{indexTrx, sharyTrx},
 		sharkyTrx:     sharyTrx,
-		chunkStoreMtx: x.chunkStoreMtx,
+		chunkStoreMtx: s.chunkStoreMtx,
+		metrics:       s.metrics,
 	}
 
 	return t, func() {
@@ -143,14 +133,14 @@ type readOnly struct {
 	chunkStore *chunkStoreTrx
 }
 
-func (x *store) ReadOnly() ReadOnlyStore {
-	indexStore := &indexTrx{store: x.bstore}
-	sharyTrx := &sharkyTrx{sharky: x.sharky}
+func (s *store) ReadOnly() ReadOnlyStore {
+	indexStore := &indexTrx{store: s.bstore}
+	sharyTrx := &sharkyTrx{sharky: s.sharky}
 	return &readOnly{indexStore, &chunkStoreTrx{indexStore, sharyTrx}}
 }
 
-func (x *store) Run(f func(Store) error) error {
-	trx, done := x.NewTransaction()
+func (s *store) Run(f func(Store) error) error {
+	trx, done := s.NewTransaction()
 	defer done()
 
 	err := f(trx)
@@ -160,8 +150,13 @@ func (x *store) Run(f func(Store) error) error {
 	return trx.Commit()
 }
 
-func (x *store) Close() error {
-	return errors.Join(x.bstore.Close(), x.sharky.Close())
+// Metrics returns set of prometheus collectors.
+func (s *store) Metrics() []prometheus.Collector {
+	return m.PrometheusCollectorsFromFields(s.metrics)
+}
+
+func (s *store) Close() error {
+	return errors.Join(s.bstore.Close(), s.sharky.Close())
 }
 
 func (t *readOnly) IndexStore() storage.Reader {
@@ -171,6 +166,21 @@ func (t *readOnly) IndexStore() storage.Reader {
 func (t *readOnly) ChunkStore() storage.ReadOnlyChunkStore {
 	return t.chunkStore
 }
+
+type indexTrx struct {
+	store storage.Reader
+	batch storage.Batch
+}
+
+func (s *indexTrx) Get(i storage.Item) error           { return s.store.Get(i) }
+func (s *indexTrx) Has(k storage.Key) (bool, error)    { return s.store.Has(k) }
+func (s *indexTrx) GetSize(k storage.Key) (int, error) { return s.store.GetSize(k) }
+func (s *indexTrx) Iterate(q storage.Query, f storage.IterateFn) error {
+	return s.store.Iterate(q, f)
+}
+func (s *indexTrx) Count(k storage.Key) (int, error) { return s.store.Count(k) }
+func (s *indexTrx) Put(i storage.Item) error         { return s.batch.Put(i) }
+func (s *indexTrx) Delete(i storage.Item) error      { return s.batch.Delete(i) }
 
 // IndexStore gives acces to the index store of the transaction.
 // Note that no writes are persisted to the disk until the commit is called.
@@ -191,13 +201,20 @@ func (t *transaction) ChunkStore() storage.ChunkStore {
 	return t.chunkStore
 }
 
-func (t *transaction) Commit() error {
+func (t *transaction) Commit() (err error) {
 
-	defer func() {
-		t.sharkyTrx.writtenLocs = nil
-	}()
+	defer func(ti time.Time) {
+		t.sharkyTrx.writtenLocs = nil // clear written locs so that the done callback does not remove them
+		if err != nil {
+			t.metrics.CommitCalls.WithLabelValues("failure").Inc()
+			t.metrics.CommitDuration.WithLabelValues("failure").Observe(float64(time.Since(ti)))
+		} else {
+			t.metrics.CommitCalls.WithLabelValues("success").Inc()
+			t.metrics.CommitDuration.WithLabelValues("success").Observe(float64(time.Since(ti)))
+		}
+	}(time.Now())
 
-	err := t.batch.Commit()
+	err = t.batch.Commit()
 	if err != nil {
 		for _, l := range t.sharkyTrx.writtenLocs {
 			if rerr := t.sharkyTrx.sharky.Release(context.TODO(), l); rerr != nil {

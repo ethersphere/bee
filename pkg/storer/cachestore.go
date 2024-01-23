@@ -11,7 +11,7 @@ import (
 	"time"
 
 	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storer/internal"
+	"github.com/ethersphere/bee/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -97,7 +97,7 @@ func (db *DB) Cache() storage.Putter {
 }
 
 // CacheShallowCopy creates cache entries with the expectation that the chunk already exists in the chunkstore.
-func (db *DB) CacheShallowCopy(ctx context.Context, store internal.Storage, addrs ...swarm.Address) error {
+func (db *DB) CacheShallowCopy(ctx context.Context, store transaction.Storage, addrs ...swarm.Address) error {
 	defer db.triggerCacheEviction()
 	dur := captureDuration(time.Now())
 	err := db.cacheObj.ShallowCopy(ctx, store, addrs...)

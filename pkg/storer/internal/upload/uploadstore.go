@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storer/internal"
 	"github.com/ethersphere/bee/pkg/storer/internal/chunkstamp"
 	"github.com/ethersphere/bee/pkg/storer/internal/stampindex"
+	"github.com/ethersphere/bee/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -403,7 +404,7 @@ func NewPutter(s storage.IndexStore, tagID uint64) (internal.PutterCloserWithRef
 // - pushItem entry to make it available for PushSubscriber
 // - add chunk to the chunkstore till it is synced
 // The user of the putter MUST mutex lock the call to prevent data-races across multiple upload sessions.
-func (u *uploadPutter) Put(ctx context.Context, st internal.Store, chunk swarm.Chunk) error {
+func (u *uploadPutter) Put(ctx context.Context, st transaction.Store, chunk swarm.Chunk) error {
 	if u.closed {
 		return errPutterAlreadyClosed
 	}
@@ -510,7 +511,7 @@ func (u *uploadPutter) Close(s storage.IndexStore, addr swarm.Address) error {
 	return nil
 }
 
-func (u *uploadPutter) Cleanup(st internal.Storage) error {
+func (u *uploadPutter) Cleanup(st transaction.Storage) error {
 	if u.closed {
 		return nil
 	}
@@ -544,7 +545,7 @@ func (u *uploadPutter) Cleanup(st internal.Storage) error {
 	batchCnt := 1000
 	for i := 0; i < len(itemsToDelete); i += batchCnt {
 
-		_ = st.Run(func(s internal.Store) error {
+		_ = st.Run(func(s transaction.Store) error {
 			end := i + batchCnt
 			if end > len(itemsToDelete) {
 				end = len(itemsToDelete)
@@ -557,13 +558,13 @@ func (u *uploadPutter) Cleanup(st internal.Storage) error {
 		})
 	}
 
-	return st.Run(func(s internal.Store) error {
+	return st.Run(func(s transaction.Store) error {
 		return s.IndexStore().Delete(&dirtyTagItem{TagID: u.tagID})
 	})
 }
 
 // Remove removes all the state associated with the given address and batchID.
-func remove(st internal.Store, address swarm.Address, batchID []byte) error {
+func remove(st transaction.Store, address swarm.Address, batchID []byte) error {
 	ui := &uploadItem{
 		Address: address,
 		BatchID: batchID,
@@ -599,7 +600,7 @@ func remove(st internal.Store, address swarm.Address, batchID []byte) error {
 }
 
 // CleanupDirty does a best-effort cleanup of dirty tags. This is called on startup.
-func CleanupDirty(st internal.Storage) error {
+func CleanupDirty(st transaction.Storage) error {
 	dirtyTags := make([]*dirtyTagItem, 0)
 
 	err := st.ReadOnly().IndexStore().Iterate(
@@ -626,7 +627,7 @@ func CleanupDirty(st internal.Storage) error {
 // Report is the implementation of the PushReporter interface.
 func Report(
 	ctx context.Context,
-	trx internal.Store,
+	trx transaction.Store,
 	chunk swarm.Chunk,
 	state storage.ChunkState,
 ) error {
@@ -796,7 +797,7 @@ func ListAllTags(st storage.Reader) ([]TagItem, error) {
 	return tags, nil
 }
 
-func Iterate(ctx context.Context, s internal.ReadOnlyStore, consumerFn func(chunk swarm.Chunk) (bool, error)) error {
+func Iterate(ctx context.Context, s transaction.ReadOnlyStore, consumerFn func(chunk swarm.Chunk) (bool, error)) error {
 	return s.IndexStore().Iterate(storage.Query{
 		Factory: func() storage.Item { return &pushItem{} },
 	}, func(r storage.Result) (bool, error) {

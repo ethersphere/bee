@@ -11,15 +11,16 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	"github.com/ethersphere/bee/pkg/storage/inmemstore"
+	"github.com/ethersphere/bee/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 // PutterCloserWithReference provides a Putter which can be closed with a root
 // swarm reference associated with this session.
 type PutterCloserWithReference interface {
-	Put(context.Context, Store, swarm.Chunk) error
+	Put(context.Context, transaction.Store, swarm.Chunk) error
 	Close(storage.IndexStore, swarm.Address) error
-	Cleanup(Storage) error
+	Cleanup(transaction.Storage) error
 }
 
 var emptyAddr = make([]byte, swarm.HashSize)
@@ -46,7 +47,7 @@ func AddressBytesOrZero(addr swarm.Address) []byte {
 
 // NewInmemStorage constructs a inmem Storage implementation which can be used
 // for the tests in the internal packages.
-func NewInmemStorage() Storage {
+func NewInmemStorage() transaction.Storage {
 	ts := &inmemStorage{
 		indexStore: inmemstore.New(),
 		chunkStore: inmemchunkstore.New(),
@@ -60,7 +61,7 @@ type inmemStorage struct {
 	chunkStore storage.ChunkStore
 }
 
-func (t *inmemStorage) NewTransaction() (Transaction, func()) {
+func (t *inmemStorage) NewTransaction() (transaction.Transaction, func()) {
 	return &inmemTrx{t.indexStore, t.chunkStore}, func() {}
 }
 
@@ -81,9 +82,11 @@ func (t *inmemTrx) IndexStore() storage.IndexStore { return t.indexStore }
 func (t *inmemTrx) ChunkStore() storage.ChunkStore { return t.chunkStore }
 func (t *inmemTrx) Commit() error                  { return nil }
 
-func (t *inmemStorage) ReadOnly() ReadOnlyStore { return &inmemReadOnly{t.indexStore, t.chunkStore} }
-func (t *inmemStorage) Close() error            { return nil }
-func (t *inmemStorage) Run(f func(s Store) error) error {
+func (t *inmemStorage) ReadOnly() transaction.ReadOnlyStore {
+	return &inmemReadOnly{t.indexStore, t.chunkStore}
+}
+func (t *inmemStorage) Close() error { return nil }
+func (t *inmemStorage) Run(f func(s transaction.Store) error) error {
 	trx, done := t.NewTransaction()
 	defer done()
 	return f(trx)
