@@ -242,8 +242,8 @@ github.com/ethersphere/go-price-oracle-abi v0.2.0 h1:wtIcYLgNZHY4BjYwJCnu93SvJdV
 github.com/ethersphere/go-price-oracle-abi v0.2.0/go.mod h1:sI/Qj4/zJ23/b1enzwMMv0/hLTpPNVNacEwCWjo6yBk=
 github.com/ethersphere/go-storage-incentives-abi v0.6.1-rc3 h1:qvVPM1UUel3yJMAxSxEWjBo4sIo3HSCOXdcNrBVSizI=
 github.com/ethersphere/go-storage-incentives-abi v0.6.1-rc3/go.mod h1:SXvJVtM4sEsaSKD0jc1ClpDLw8ErPoROZDme4Wrc/Nc=
-github.com/ethersphere/go-sw3-abi v0.6.3 h1:l01tUDfzLtdQk3vdsuG5XUlu/IGCxErMeAXFm92MPZ4=
-github.com/ethersphere/go-sw3-abi v0.6.3/go.mod h1:BmpsvJ8idQZdYEtWnvxA8POYQ8Rl/NhyCdF0zLMOOJU=
+github.com/ethersphere/go-sw3-abi v0.6.4 h1:sTtV4KoN5OowEfUghHgobQQ76/zXz2VlIYn3nbQztvI=
+github.com/ethersphere/go-sw3-abi v0.6.4/go.mod h1:BmpsvJ8idQZdYEtWnvxA8POYQ8Rl/NhyCdF0zLMOOJU=
 github.com/ethersphere/langos v1.0.0 h1:NBtNKzXTTRSue95uOlzPN4py7Aofs0xWPzyj4AI1Vcc=
 github.com/ethersphere/langos v1.0.0/go.mod h1:dlcN2j4O8sQ+BlCaxeBu43bgr4RQ+inJ+pHwLeZg5Tw=
 github.com/fatih/color v1.7.0/go.mod h1:Zm6kSWBoL9eyXnKyktHP6abPY2pDugNf5KwzbycvMj4=
