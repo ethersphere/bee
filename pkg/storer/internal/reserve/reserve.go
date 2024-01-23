@@ -53,7 +53,7 @@ func New(
 		st:           st,
 		capacity:     capacity,
 		radiusSetter: radiusSetter,
-		logger:       logger.WithName(loggerName).Register(),
+		logger:       logger.WithName(reserveNamespace).Register(),
 		multx:        multex.New(),
 	}
 
@@ -91,9 +91,6 @@ func New(
 
 // Put stores a new chunk in the reserve and returns if the reserve size should increase.
 func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
-
-	unlock := r.lock(chunk.Address(), chunk.Stamp().BatchID())
-	defer unlock()
 
 	po := swarm.Proximity(r.baseAddr.Bytes(), chunk.Address().Bytes())
 

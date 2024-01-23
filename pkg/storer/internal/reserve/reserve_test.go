@@ -302,46 +302,6 @@ func TestEvictMaxCount(t *testing.T) {
 	}
 }
 
-func TestEvictMaxCount(t *testing.T) {
-	t.Parallel()
-
-	baseAddr := swarm.RandAddress(t)
-
-	ts, closer := internal.NewInmemStorage()
-	t.Cleanup(func() {
-		if err := closer(); err != nil {
-			t.Errorf("failed closing the storage: %v", err)
-		}
-	})
-
-	r, err := reserve.New(baseAddr, ts.IndexStore(), 0, kademlia.NewTopologyDriver(), log.Noop)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	batch := postagetesting.MustNewBatch()
-
-	for i := 0; i < 50; i++ {
-		ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewBatchStamp(batch.ID))
-		err := r.Put(context.Background(), ts, ch)
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	evicted, err := r.EvictBatchBin(context.Background(), ts, batch.ID, 10, 1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if evicted != 10 {
-		t.Fatalf("wanted evicted count 10, got %d", evicted)
-	}
-
-	if r.Size() != 40 {
-		t.Fatalf("wanted size 40, got %d", r.Size())
-	}
-}
-
 func TestIterate(t *testing.T) {
 	t.Parallel()
 
