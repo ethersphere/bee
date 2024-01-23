@@ -55,13 +55,13 @@ func TestCompact(t *testing.T) {
 		}
 	}
 
+	c, unsub := st.Events().Subscribe("batchExpiryDone")
+	t.Cleanup(unsub)
+
 	err = st.EvictBatch(ctx, evictBatch.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	c, unsub := st.Events().Subscribe("batchExpiryDone")
-	t.Cleanup(unsub)
 	<-c
 
 	time.Sleep(time.Second)
