@@ -42,7 +42,6 @@ func threshold(capacity int) int { return capacity * 5 / 10 }
 
 func (db *DB) startReserveWorkers(
 	ctx context.Context,
-	warmupDur, wakeUpDur time.Duration,
 	radius func() (uint8, error),
 ) {
 	ctx, cancel := context.WithCancel(ctx)
@@ -57,7 +56,7 @@ func (db *DB) startReserveWorkers(
 	go db.evictionWorker(ctx)
 
 	select {
-	case <-time.After(warmupDur):
+	case <-time.After(db.opts.warmupDuration):
 	case <-db.quit:
 		return
 	}
