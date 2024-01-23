@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"math"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -29,10 +30,6 @@ const (
 	batchExpiry          = "batchExpiry"
 	batchExpiryDone      = "batchExpiryDone"
 )
-
-func reserveUpdateBatchLockKey(batchID []byte) string {
-	return fmt.Sprintf("%s%s", reserveUpdateLockKey, string(batchID))
-}
 
 var errMaxRadius = errors.New("max radius reached")
 var reserveSizeWithinRadius atomic.Uint64
@@ -228,7 +225,7 @@ func (db *DB) evictExpiredBatches(ctx context.Context) error {
 	}
 
 	for _, batchID := range batches {
-		evicted, err := db.evictBatch(ctx, batchID, swarm.MaxBins)
+		evicted, err := db.evictBatch(ctx, batchID, math.MaxInt, swarm.MaxBins)
 		if err != nil {
 			return err
 		}
@@ -312,25 +309,11 @@ func (db *DB) ReservePutter() storage.Putter {
 	return putterWithMetrics{
 		storage.PutterFunc(
 			func(ctx context.Context, chunk swarm.Chunk) (err error) {
-
-				var (
-					newIndex bool
-				)
-				lockKey := reserveUpdateBatchLockKey(chunk.Stamp().BatchID())
-				db.lock.Lock(lockKey)
 				err = db.Execute(ctx, func(tx internal.Storage) error {
-					newIndex, err = db.reserve.Put(ctx, tx, chunk)
-					if err != nil {
-						return fmt.Errorf("reserve: putter.Put: %w", err)
-					}
-					return nil
+					return db.reserve.Put(ctx, tx, chunk)
 				})
-				db.lock.Unlock(lockKey)
 				if err != nil {
-					return err
-				}
-				if newIndex {
-					db.reserve.AddSize(1)
+					return fmt.Errorf("reserve: putter.Put: %w", err)
 				}
 				db.reserveBinEvents.Trigger(string(db.po(chunk.Address())))
 				if !db.reserve.IsWithinCapacity() {
@@ -348,11 +331,11 @@ func (db *DB) ReservePutter() storage.Putter {
 func (db *DB) evictBatch(
 	ctx context.Context,
 	batchID []byte,
+	evictCount int,
 	upToBin uint8,
 ) (evicted int, err error) {
 	dur := captureDuration(time.Now())
 	defer func() {
-		db.reserve.AddSize(-evicted)
 		db.metrics.ReserveSize.Set(float64(db.reserve.Size()))
 		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "EvictBatch").Observe(dur())
 		if err == nil {
@@ -374,11 +357,7 @@ func (db *DB) evictBatch(
 		)
 	}()
 
-	lockKey := reserveUpdateBatchLockKey(batchID)
-	db.lock.Lock(lockKey)
-	defer db.lock.Unlock(lockKey)
-
-	return db.reserve.EvictBatchBin(ctx, db, upToBin, batchID)
+	return db.reserve.EvictBatchBin(ctx, db, batchID, evictCount, upToBin)
 }
 
 func (db *DB) unreserve(ctx context.Context) (err error) {
@@ -425,7 +404,7 @@ func (db *DB) unreserve(ctx context.Context) (err error) {
 			default:
 			}
 
-			binEvicted, err := db.evictBatch(ctx, b, radius)
+			binEvicted, err := db.evictBatch(ctx, b, target-totalEvicted, radius)
 			// eviction happens in batches, so we need to keep track of the total
 			// number of chunks evicted even if there was an error
 			totalEvicted += binEvicted

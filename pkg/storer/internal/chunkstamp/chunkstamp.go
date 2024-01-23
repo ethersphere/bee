@@ -139,13 +139,11 @@ func (i item) String() string {
 }
 
 // Load returns first found swarm.Stamp related to the given address.
-// The storage.ErrNoStampsForChunk is returned if no record is found.
 func Load(s storage.Reader, namespace string, addr swarm.Address) (swarm.Stamp, error) {
 	return LoadWithBatchID(s, namespace, addr, nil)
 }
 
 // LoadWithBatchID returns swarm.Stamp related to the given address and batchID.
-// The storage.ErrNoStampsForChunk is returned if no record is found.
 func LoadWithBatchID(s storage.Reader, namespace string, addr swarm.Address, batchID []byte) (swarm.Stamp, error) {
 	var stamp swarm.Stamp
 

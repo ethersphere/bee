@@ -193,19 +193,14 @@ func TestEvictBatch(t *testing.T) {
 		}
 	}
 
+	c, unsub := st.Events().Subscribe("batchExpiryDone")
+	t.Cleanup(unsub)
+
 	err = st.EvictBatch(ctx, evictBatch.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	c, unsub := st.Events().Subscribe("batchExpiryDone")
-	t.Cleanup(unsub)
-	gotUnreserveSignal := make(chan struct{})
-	go func() {
-		defer close(gotUnreserveSignal)
-		<-c
-	}()
-	<-gotUnreserveSignal
+	<-c
 
 	reserve := st.Reserve()
 
@@ -219,7 +214,7 @@ func TestEvictBatch(t *testing.T) {
 			if has {
 				t.Fatal("store should NOT have chunk")
 			}
-			checkSaved(t, st, ch, false, true)
+			checkSaved(t, st, ch, false, false)
 		} else if !has {
 			t.Fatal("store should have chunk")
 			checkSaved(t, st, ch, true, true)
@@ -310,7 +305,7 @@ func TestUnreserveCap(t *testing.T) {
 					if has {
 						t.Fatal("store should NOT have chunk at PO", po)
 					}
-					checkSaved(t, storer, ch, false, true)
+					checkSaved(t, storer, ch, false, false)
 				} else if !has {
 					t.Fatal("store should have chunk at PO", po)
 				} else {
