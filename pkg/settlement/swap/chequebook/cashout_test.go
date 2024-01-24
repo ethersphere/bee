@@ -21,7 +21,7 @@ import (
 )
 
 var (
-	chequebookABI          = abiutil.MustParseABI(sw3abi.ERC20SimpleSwapABIv0_6_4)
+	chequebookABI          = abiutil.MustParseABI(sw3abi.ERC20SimpleSwapABIv0_6_5)
 	chequeCashedEventType  = chequebookABI.Events["ChequeCashed"]
 	chequeBouncedEventType = chequebookABI.Events["ChequeBounced"]
 )
