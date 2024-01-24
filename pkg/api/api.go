@@ -800,6 +800,53 @@ func (p *putterSessionWrapper) Cleanup() error {
 	return errors.Join(p.PutterSession.Cleanup(), p.save())
 }
 
+// putterSessionWrapperWithSaver is a wrapper around the putter session that saves the stamp issuer periodically while the session is active.
+type putterSessionWrapperWithSaver struct {
+	*putterSessionWrapper
+	shutdownC chan any
+	once      *sync.Once
+	logger    log.Logger
+}
+
+func (p *putterSessionWrapperWithSaver) Put(ctx context.Context, chunk swarm.Chunk) error {
+	err := p.putterSessionWrapper.Put(ctx, chunk)
+	if err != nil {
+		return err
+	}
+
+	// when upload starts and the first put is called, start the saver goroutine
+	p.once.Do(func() {
+		go p.saver()
+	})
+	return nil
+}
+
+func (p *putterSessionWrapperWithSaver) Done(ref swarm.Address) error {
+	close(p.shutdownC)
+	return p.putterSessionWrapper.Done(ref)
+}
+
+func (p *putterSessionWrapperWithSaver) Cleanup() error {
+	close(p.shutdownC)
+	return p.putterSessionWrapper.Cleanup()
+}
+
+func (p *putterSessionWrapperWithSaver) saver() {
+	ticker := time.NewTicker(1 * time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-p.shutdownC:
+			return
+		case <-ticker.C:
+			err := p.save()
+			if err != nil {
+				p.logger.Error(err, "save failed")
+			}
+		}
+	}
+}
+
 func (s *Service) getStamper(batchID []byte) (postage.Stamper, func() error, error) {
 	exists, err := s.batchStore.Exists(batchID)
 	if err != nil {
@@ -839,10 +886,15 @@ func (s *Service) newStamperPutter(ctx context.Context, opts putterOptions) (sto
 		return nil, fmt.Errorf("failed creating session: %w", err)
 	}
 
-	return &putterSessionWrapper{
-		PutterSession: session,
-		stamper:       stamper,
-		save:          save,
+	return &putterSessionWrapperWithSaver{
+		putterSessionWrapper: &putterSessionWrapper{
+			PutterSession: session,
+			stamper:       stamper,
+			save:          save,
+		},
+		logger:    s.logger.WithName("putter_session_wrapper_with_saver").Build(),
+		shutdownC: make(chan any),
+		once:      new(sync.Once),
 	}, nil
 }
 
