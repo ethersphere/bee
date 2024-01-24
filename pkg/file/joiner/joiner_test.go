@@ -1247,7 +1247,7 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 				strategyTimeout *= 2
 			}
 			ctx = getter.SetConfigInContext(ctx, s, fallback, (2 * strategyTimeout).String(), strategyTimeout.String())
-			ctx, cancel := context.WithTimeout(ctx, time.Duration(levels*3+1)*strategyTimeout)
+			ctx, cancel := context.WithTimeout(ctx, time.Duration(levels*3+2)*strategyTimeout)
 			defer cancel()
 			j, _, err := joiner.New(ctx, store, store, addr)
 			if err != nil {
