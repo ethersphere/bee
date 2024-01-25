@@ -23,6 +23,7 @@ import (
 	inmem "github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/util/testutil/racedetection"
 	"github.com/klauspost/reedsolomon"
 	"golang.org/x/sync/errgroup"
 )
@@ -125,9 +126,13 @@ func testDecodingRACE(t *testing.T, bufSize, shardCnt, erasureCnt int) {
 		q <- err
 	}()
 	err := context.DeadlineExceeded
+	wait := strategyTimeout * 2
+	if racedetection.On {
+		wait = strategyTimeout * 3
+	}
 	select {
 	case err = <-q:
-	case <-time.After(strategyTimeout * 2):
+	case <-time.After(wait):
 	}
 	switch {
 	case erasureCnt > parityCnt:
