@@ -243,6 +243,16 @@ func (c *collectionPutter) Put(ctx context.Context, st internal.Storage, writer 
 		return nil
 	}
 
+	rootCollection := &pinCollectionItem{Addr: ch.Address()}
+	has, err := st.IndexStore().Has(rootCollection)
+	if err != nil {
+		return fmt.Errorf("pin store: check previous root: %w", err)
+	}
+	if has {
+		// duplicate PUT of the same root address
+		return nil
+	}
+
 	err = writer.Put(collectionChunk)
 	if err != nil {
 		return fmt.Errorf("pin store: failed putting collection chunk: %w", err)
@@ -264,11 +274,19 @@ func (c *collectionPutter) Close(st internal.Storage, writer storage.Writer, roo
 	c.mtx.Lock()
 	defer c.mtx.Unlock()
 
-	// Save the root pin reference.
-	c.collection.Addr = root
-	err := writer.Put(c.collection)
+	collection := &pinCollectionItem{Addr: root}
+	has, err := st.IndexStore().Has(collection)
 	if err != nil {
-		return fmt.Errorf("pin store: failed updating collection: %w", err)
+		return fmt.Errorf("pin store: check previous root: %w", err)
+	}
+
+	if !has {
+		// Save the root pin reference.
+		c.collection.Addr = root
+		err := writer.Put(c.collection)
+		if err != nil {
+			return fmt.Errorf("pin store: failed updating collection: %w", err)
+		}
 	}
 
 	err = writer.Delete(&dirtyCollection{UUID: c.collection.UUID})
