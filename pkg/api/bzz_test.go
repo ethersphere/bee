@@ -126,6 +126,7 @@ func TestBzzUploadDownloadWithRedundancy(t *testing.T) {
 				fileDownloadResource(refResponse.Reference.String()),
 				http.StatusPartialContent,
 				jsonhttptest.WithRequestHeader(api.RangeHeader, rangeHeader),
+				jsonhttptest.WithRequestHeader(api.SwarmLookAheadBufferSizeHeader, "0"),
 				// set for the replicas so that no replica gets deleted
 				jsonhttptest.WithRequestHeader(api.SwarmRedundancyLevelHeader, "0"),
 				jsonhttptest.WithRequestHeader(api.SwarmRedundancyStrategyHeader, "0"),

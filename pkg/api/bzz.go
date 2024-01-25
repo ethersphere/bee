@@ -31,8 +31,28 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/ethersphere/langos"
 	"github.com/gorilla/mux"
 )
+
+// The size of buffer used for prefetching content with Langos when not using erasure coding
+// Warning: This value influences the number of chunk requests and chunker join goroutines
+// per file request.
+// Recommended value is 8 or 16 times the io.Copy default buffer value which is 32kB, depending
+// on the file size. Use lookaheadBufferSize() to get the correct buffer size for the request.
+const (
+	smallFileBufferSize = 8 * 32 * 1024
+	largeFileBufferSize = 16 * 32 * 1024
+
+	largeBufferFilesizeThreshold = 10 * 1000000 // ten megs
+)
+
+func lookaheadBufferSize(size int64) int {
+	if size <= largeBufferFilesizeThreshold {
+		return smallFileBufferSize
+	}
+	return largeFileBufferSize
+}
 
 func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger.WithName("post_bzz").Build())
@@ -275,6 +295,7 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 		Strategy              getter.Strategy `map:"Swarm-Redundancy-Strategy"`
 		FallbackMode          bool            `map:"Swarm-Redundancy-Fallback-Mode"`
 		ChunkRetrievalTimeout string          `map:"Swarm-Chunk-Retrieval-Timeout"`
+		LookaheadBufferSize   string          `map:"Swarm-Lookahead-Buffer-Size"`
 	}{}
 
 	if response := s.mapStructure(r.Header, &headers); response != nil {
@@ -464,6 +485,7 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 		Strategy              getter.Strategy `map:"Swarm-Redundancy-Strategy"`
 		FallbackMode          bool            `map:"Swarm-Redundancy-Fallback-Mode"`
 		ChunkRetrievalTimeout string          `map:"Swarm-Chunk-Retrieval-Timeout"`
+		LookaheadBufferSize   *string         `map:"Swarm-Lookahead-Buffer-Size"`
 	}{}
 
 	if response := s.mapStructure(r.Header, &headers); response != nil {
@@ -500,9 +522,18 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 	}
 	w.Header().Set(ContentLengthHeader, strconv.FormatInt(l, 10))
 	w.Header().Set("Access-Control-Expose-Headers", ContentDispositionHeader)
+	bufSize := int64(lookaheadBufferSize(l))
+	if headers.LookaheadBufferSize != nil {
+		bufSize, err = strconv.ParseInt(*headers.LookaheadBufferSize, 10, 64)
+		if err != nil {
+			logger.Debug("parsing lookahead buffer size", "error", err)
+			bufSize = 0
+		}
+	}
+	if bufSize > 0 {
+		http.ServeContent(w, r, "", time.Now(), langos.NewBufferedLangos(reader, int(bufSize)))
+	}
 	http.ServeContent(w, r, "", time.Now(), reader)
-	// NOTE: temporary workaround for testing, watch this...
-	// http.ServeContent(w, r, "", time.Now(), langos.NewBufferedLangos(reader, lookaheadBufferSize(l)))
 }
 
 // manifestMetadataLoad returns the value for a key stored in the metadata of
