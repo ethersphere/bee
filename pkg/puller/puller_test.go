@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/intervalstore"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/puller"
+	"github.com/ethersphere/bee/pkg/puller/intervalstore"
 	mockps "github.com/ethersphere/bee/pkg/pullsync/mock"
 	"github.com/ethersphere/bee/pkg/spinlock"
 	"github.com/ethersphere/bee/pkg/statestore/mock"
@@ -438,11 +438,12 @@ func TestContinueSyncing(t *testing.T) {
 
 	time.Sleep(100 * time.Millisecond)
 	kad.Trigger()
-	time.Sleep(time.Second)
 
-	calls := len(pullsync.SyncCalls(addr))
-	if calls != 1 {
-		t.Fatalf("unexpected amount of calls, got %d", calls)
+	err := spinlock.Wait(time.Second, func() bool {
+		return len(pullsync.SyncCalls(addr)) == 1
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 
