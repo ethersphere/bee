@@ -55,7 +55,7 @@ func verifyChunkRefCount(
 	t.Helper()
 
 	for _, ch := range chunks {
-		repo.IndexStore().Iterate(storage.Query{
+		_ = repo.IndexStore().Iterate(storage.Query{
 			Factory: func() storage.Item { return new(cs.RetrievalIndexItem) },
 		}, func(r storage.Result) (bool, error) {
 			entry := r.Entry.(*cs.RetrievalIndexItem)
