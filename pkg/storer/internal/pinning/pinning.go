@@ -272,7 +272,8 @@ func (c *collectionPutter) Close(st internal.Storage, writer storage.Writer, roo
 	}
 
 	if has {
-		return fmt.Errorf("pin store: duplicate collection: %w", err) // will trigger the Cleanup
+		// trigger the Cleanup
+		return fmt.Errorf("pin store: duplicate collection")
 	}
 
 	// Save the root pin reference.
