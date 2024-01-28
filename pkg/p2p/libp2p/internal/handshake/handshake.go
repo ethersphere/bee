@@ -297,6 +297,7 @@ func (s *Service) Handle(ctx context.Context, stream p2p.Stream, remoteMultiaddr
 
 	if s.picker != nil {
 		if !s.picker.Pick(p2p.Peer{Address: overlay, FullNode: ack.FullNode}) {
+			loggerV1.Debug("Pick Rejected", "peer_address", overlay, "FullNode", ack.FullNode)
 			return nil, ErrPicker
 		}
 	}

@@ -632,7 +632,7 @@ func (s *Service) AddProtocol(p p2p.ProtocolSpec) (err error) {
 				if errors.Is(err, network.ErrReset) {
 					s.metrics.StreamHandlerErrResetCount.Inc()
 				}
-				logger.Debug("handle protocol failed", "protocol", p.Name, "version", p.Version, "stream", ss.Name, "peer", overlay, "error", err)
+				logger.Debug("handle protocol failed", "protocol", p.Name, "version", p.Version, "stream", ss.Name, "peer", overlay, "error", err, "elapsed", time.Since(start))
 				return
 			}
 		})
