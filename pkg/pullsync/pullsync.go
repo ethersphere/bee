@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"sync/atomic"
 	"time"
-
+	
 	"github.com/ethersphere/bee/pkg/bitvector"
 	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/log"
@@ -330,7 +330,7 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 	// make an offer to the upstream peer in return for the requested range
 	offer, err := s.makeOffer(ctx, rn)
 	if err != nil {
-		return fmt.Errorf("make offer: %w", err)
+		return fmt.Errorf("make offer(%d,%d): %w", rn.Bin, rn.Start, err)
 	}
 
 	if err := w.WriteMsgWithContext(ctx, offer); err != nil {
@@ -375,6 +375,8 @@ func (s *Syncer) handler(streamCtx context.Context, p p2p.Peer, stream p2p.Strea
 // makeOffer tries to assemble an offer for a given requested interval.
 func (s *Syncer) makeOffer(ctx context.Context, rn pb.Get) (*pb.Offer, error) {
 
+	start := time.Now()
+	
 	ctx, cancel := context.WithTimeout(ctx, makeOfferTimeout)
 	defer cancel()
 
@@ -390,6 +392,7 @@ func (s *Syncer) makeOffer(ctx context.Context, rn pb.Get) (*pb.Offer, error) {
 		o.Chunks = append(o.Chunks, &pb.Chunk{Address: v.Address.Bytes(), BatchID: v.BatchID})
 		s.metrics.OutboundOffer.Inc()
 	}
+	s.logger.Debug("makeOffer", "bin", rn.Bin, "start", rn.Start, "got", len(addrs), "elapsed", time.Since(start))
 	return o, nil
 }
 
