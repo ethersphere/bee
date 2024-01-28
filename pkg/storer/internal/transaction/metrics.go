@@ -10,8 +10,8 @@ import (
 )
 
 type metrics struct {
-	CommitCalls    *prometheus.CounterVec
-	CommitDuration *prometheus.HistogramVec
+	MethodCalls    *prometheus.CounterVec
+	MethodDuration *prometheus.HistogramVec
 }
 
 // newMetrics is a convenient constructor for creating new metrics.
@@ -19,23 +19,23 @@ func newMetrics() metrics {
 	const subsystem = "transaction"
 
 	return metrics{
-		CommitCalls: prometheus.NewCounterVec(
+		MethodCalls: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
 				Name:      "commit_calls",
 				Help:      "Number of commit calls.",
 			},
-			[]string{"status"},
+			[]string{"method", "status"},
 		),
-		CommitDuration: prometheus.NewHistogramVec(
+		MethodDuration: prometheus.NewHistogramVec(
 			prometheus.HistogramOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
 				Name:      "commit_duration",
 				Help:      "The duration each commit call took.",
 			},
-			[]string{"status"},
+			[]string{"method", "status"},
 		),
 	}
 }

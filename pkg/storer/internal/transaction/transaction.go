@@ -20,6 +20,7 @@ import (
 )
 
 // TODO(esad): remove contexts from sharky and any other storage call
+// TODO(esad): continue metrics
 
 /*
 The rules of the transction is as follows:
@@ -208,11 +209,11 @@ func (t *transaction) Commit() (err error) {
 	defer func(ti time.Time) {
 		t.sharkyTrx.writtenLocs = nil // clear written locs so that the done callback does not remove them
 		if err != nil {
-			t.metrics.CommitCalls.WithLabelValues("failure").Inc()
-			t.metrics.CommitDuration.WithLabelValues("failure").Observe(float64(time.Since(ti)))
+			t.metrics.MethodCalls.WithLabelValues("commit", "failure").Inc()
+			t.metrics.MethodDuration.WithLabelValues("commit", "failure").Observe(float64(time.Since(ti)))
 		} else {
-			t.metrics.CommitCalls.WithLabelValues("success").Inc()
-			t.metrics.CommitDuration.WithLabelValues("success").Observe(float64(time.Since(ti)))
+			t.metrics.MethodCalls.WithLabelValues("commit", "success").Inc()
+			t.metrics.MethodDuration.WithLabelValues("commit", "success").Observe(float64(time.Since(ti)))
 		}
 	}(time.Now())
 
