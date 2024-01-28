@@ -108,7 +108,7 @@ func (s *store) NewTransaction() (Transaction, func()) {
 
 	b, _ := s.bstore.Batch(context.TODO())
 	indexTrx := &indexTrx{s.bstore, b}
-	sharyTrx := &sharkyTrx{sharky: s.sharky}
+	sharyTrx := &sharkyTrx{sharky: s.sharky, metrics: s.metrics}
 
 	t := &transaction{
 		batch:         b,
@@ -138,7 +138,7 @@ type readOnly struct {
 
 func (s *store) ReadOnly() ReadOnlyStore {
 	indexStore := &indexTrx{store: s.bstore}
-	sharyTrx := &sharkyTrx{sharky: s.sharky}
+	sharyTrx := &sharkyTrx{sharky: s.sharky, metrics: s.metrics}
 	return &readOnly{indexStore, &chunkStoreTrx{indexStore, sharyTrx}}
 }
 
@@ -227,6 +227,16 @@ func (t *transaction) Commit() (err error) {
 		return err
 	}
 
+	defer func(ti time.Time) {
+		if err != nil {
+			t.metrics.MethodCalls.WithLabelValues("sharky_release", "failure").Inc()
+			t.metrics.MethodDuration.WithLabelValues("sharky_release", "failure").Observe(float64(time.Since(ti)))
+		} else {
+			t.metrics.MethodCalls.WithLabelValues("sharky_release", "success").Inc()
+			t.metrics.MethodDuration.WithLabelValues("sharky_release", "success").Observe(float64(time.Since(ti)))
+		}
+	}(time.Now())
+
 	for _, l := range t.sharkyTrx.releasedLocs {
 		if rerr := t.sharkyTrx.sharky.Release(context.TODO(), l); rerr != nil {
 			err = errors.Join(err, fmt.Errorf("failed releasing location afer commit %s: %w", l, rerr))
@@ -240,6 +250,7 @@ type sharkyTrx struct {
 	sharky       *sharky.Store
 	writtenLocs  []sharky.Location
 	releasedLocs []sharky.Location
+	metrics      metrics
 }
 
 func (s *sharkyTrx) Read(ctx context.Context, loc sharky.Location, buf []byte) error {
@@ -247,6 +258,17 @@ func (s *sharkyTrx) Read(ctx context.Context, loc sharky.Location, buf []byte) e
 }
 
 func (s *sharkyTrx) Write(ctx context.Context, data []byte) (sharky.Location, error) {
+	var err error
+	defer func(ti time.Time) {
+		if err != nil {
+			s.metrics.MethodCalls.WithLabelValues("sharky_write", "failure").Inc()
+			s.metrics.MethodDuration.WithLabelValues("sharky_write", "failure").Observe(float64(time.Since(ti)))
+		} else {
+			s.metrics.MethodCalls.WithLabelValues("sharky_write", "success").Inc()
+			s.metrics.MethodDuration.WithLabelValues("sharky_write", "success").Observe(float64(time.Since(ti)))
+		}
+	}(time.Now())
+
 	loc, err := s.sharky.Write(ctx, data)
 	if err != nil {
 		return sharky.Location{}, err
