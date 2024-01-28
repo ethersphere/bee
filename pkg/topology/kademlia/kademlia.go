@@ -51,7 +51,7 @@ const (
 	defaultBitSuffixLength             = 4 // the number of bits used to create pseudo addresses for balancing, 2^4, 16 addresses
 	defaultLowWaterMark                = 3 // the number of peers in consecutive deepest bins that constitute as nearest neighbours
 	defaultSaturationPeers             = 8
-	defaultOverSaturationPeers         = 20
+	defaultOverSaturationPeers         = 200
 	defaultBootNodeOverSaturationPeers = 20
 	defaultShortRetry                  = 30 * time.Second
 	defaultTimeToRetry                 = 2 * defaultShortRetry
@@ -605,7 +605,7 @@ func (k *Kad) manage() {
 
 			depth := k.neighborhoodDepth()
 
-			k.opt.PruneFunc(depth)
+			//k.opt.PruneFunc(depth)	// We don't want to prune anything, keep the peers if we're connected
 
 			loggerV1.Debug("connector finished", "elapsed", time.Since(start), "old_depth", oldDepth, "new_depth", depth)
 
