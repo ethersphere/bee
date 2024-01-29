@@ -243,7 +243,7 @@ func FixRefCnt(ctx context.Context, basePath string, opts *Options, repair bool)
 		refs := make(map[uint32]uint32)
 		for _, item := range items {
 			refs[item.item.RefCnt]++
-			newRefCnt := item.pinCnt + item.reserveCnt + item.cacheCnt + item.uploadCnt
+			newRefCnt := item.pinCnt*100 + item.reserveCnt + item.cacheCnt + item.uploadCnt
 			if newRefCnt != item.item.RefCnt {
 				discovered++
 				if item.item.RefCnt == 1 && newRefCnt == 0 {
