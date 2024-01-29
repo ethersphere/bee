@@ -7,9 +7,12 @@ package storer
 import (
 	"context"
 	"fmt"
+	"os"
 	"path"
 	"sync"
 	"time"
+
+	"sync/atomic"
 
 	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/log"
@@ -17,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storer/internal/chunkstore"
+	pinstore "github.com/ethersphere/bee/pkg/storer/internal/pinning"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -140,4 +144,148 @@ func validateWork(logger log.Logger, store storage.Store, readFn func(context.Co
 	close(iteratateItemsC)
 
 	wg.Wait()
+}
+
+// ValidatePinCollectionChunks collects all chunk addresses that are present in a pin collection but
+// are either invalid or missing altogether.
+func ValidatePinCollectionChunks(ctx context.Context, basePath, pin string, opts *Options) error {
+	logger := opts.Logger
+
+	store, err := initStore(basePath, opts)
+	if err != nil {
+		return fmt.Errorf("failed creating levelDB index store: %w", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			logger.Error(err, "failed closing store")
+		}
+	}()
+
+	fs := &dirFS{basedir: path.Join(basePath, sharkyPath)}
+	sharky, err := sharky.New(fs, sharkyNoOfShards, swarm.SocMaxChunkSize)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := sharky.Close(); err != nil {
+			logger.Error(err, "failed closing sharky")
+		}
+	}()
+
+	logger.Info("performing chunk validation")
+	validatePins(logger, store, pin, sharky.Read)
+
+	return nil
+}
+
+func validatePins(logger log.Logger, store storage.Store, pin string, readFn func(context.Context, sharky.Location, []byte) error) {
+	var stats struct {
+		total, read, invalid atomic.Int32
+	}
+
+	n := time.Now()
+	defer func() {
+		logger.Info("done", "duration", time.Since(n), "read", stats.read.Load(), "invalid", stats.invalid.Load(), "total", stats.total.Load())
+	}()
+
+	validChunk := func(item *chunkstore.RetrievalIndexItem, buf []byte) bool {
+		stats.total.Add(1)
+
+		if err := readFn(context.Background(), item.Location, buf); err != nil {
+			stats.read.Add(1)
+			return true
+		}
+
+		ch := swarm.NewChunk(item.Address, buf)
+
+		if cac.Valid(ch) {
+			return true
+		}
+
+		if soc.Valid(ch) {
+			return true
+		}
+
+		stats.invalid.Add(1)
+
+		return false
+	}
+
+	var pins []swarm.Address
+
+	if pin != "" {
+		addr, err := swarm.ParseHexAddress(pin)
+		if err != nil {
+			panic(fmt.Sprintf("parse provided pin: %s", err))
+		}
+		pins = append(pins, addr)
+	} else {
+		var err error
+		pins, err = pinstore.Pins(store)
+		if err != nil {
+			logger.Error(err, "get pins")
+			return
+		}
+	}
+
+	logger.Info("got a total number of pins", "size", len(pins))
+
+	f, err := os.OpenFile("address.csv", os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		logger.Error(err, "open file for writing")
+		return
+	}
+
+	if _, err := f.WriteString("invalid\tmissing\ttotal\taddress\n"); err != nil {
+		logger.Error(err, "write title")
+		return
+	}
+
+	defer f.Close()
+
+	for _, pin := range pins {
+		var wg sync.WaitGroup
+		var (
+			total, missing, invalid atomic.Int32
+		)
+
+		iteratateItemsC := make(chan *chunkstore.RetrievalIndexItem)
+
+		for i := 0; i < 8; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				buf := make([]byte, swarm.SocMaxChunkSize)
+				for item := range iteratateItemsC {
+					if !validChunk(item, buf[:item.Location.Length]) {
+						invalid.Add(1)
+					}
+				}
+			}()
+		}
+
+		logger.Info("start iteration", "pin", pin)
+
+		pinstore.IterateCollection(store, pin, func(addr swarm.Address) (bool, error) {
+			total.Add(1)
+			rIdx := &chunkstore.RetrievalIndexItem{Address: addr}
+			if err := store.Get(rIdx); err != nil {
+				missing.Add(1)
+			} else {
+				iteratateItemsC <- rIdx
+			}
+			return false, nil
+		})
+
+		close(iteratateItemsC)
+
+		wg.Wait()
+
+		report := fmt.Sprintf("%d\t%d\t%d\t%s\n", invalid.Load(), missing.Load(), total.Load(), pin)
+
+		if _, err := f.WriteString(report); err != nil {
+			logger.Error(err, "write report line")
+			return
+		}
+	}
 }

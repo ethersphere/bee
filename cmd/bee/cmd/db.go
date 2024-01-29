@@ -26,7 +26,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const optionNameValidation = "validate"
+const (
+	optionNameValidation    = "validate"
+	optionNameValidationPin = "validate-pin"
+)
 
 func (c *command) initDBCmd() {
 	cmd := &cobra.Command{
@@ -40,6 +43,7 @@ func (c *command) initDBCmd() {
 	dbInfoCmd(cmd)
 	dbCompactCmd(cmd)
 	dbValidateCmd(cmd)
+	dbValidatePinsCmd(cmd)
 
 	c.root.AddCommand(cmd)
 }
@@ -163,6 +167,55 @@ func dbCompactCmd(cmd *cobra.Command) {
 	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
 	c.Flags().Bool(optionNameValidation, false, "run chunk validation checks before and after the compaction")
 	c.Flags().Duration(optionNameSleepAfter, time.Duration(0), "time to sleep after the operation finished")
+	cmd.AddCommand(c)
+}
+
+func dbValidatePinsCmd(cmd *cobra.Command) {
+	c := &cobra.Command{
+		Use:   "validate-pin",
+		Short: "Validates pin collection chunks with sharky store.",
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			v, err := cmd.Flags().GetString(optionNameVerbosity)
+			if err != nil {
+				return fmt.Errorf("get verbosity: %w", err)
+			}
+			v = strings.ToLower(v)
+			logger, err := newLogger(cmd, v)
+			if err != nil {
+				return fmt.Errorf("new logger: %w", err)
+			}
+
+			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
+			if err != nil {
+				return fmt.Errorf("get data-dir: %w", err)
+			}
+			if dataDir == "" {
+				return errors.New("no data-dir provided")
+			}
+
+			providedPin, err := cmd.Flags().GetString("pin")
+			if err != nil {
+				return fmt.Errorf("get pin: %w", err)
+			}
+
+			localstorePath := path.Join(dataDir, "localstore")
+
+			err = storer.ValidatePinCollectionChunks(context.Background(), localstorePath, providedPin, &storer.Options{
+				Logger:          logger,
+				RadiusSetter:    noopRadiusSetter{},
+				Batchstore:      new(postage.NoOpBatchStore),
+				ReserveCapacity: node.ReserveCapacity,
+			})
+			if err != nil {
+				return fmt.Errorf("localstore: %w", err)
+			}
+
+			return nil
+		},
+	}
+	c.Flags().String(optionNameDataDir, "", "data directory")
+	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
+	c.Flags().String("pin", "", "only validate given pin")
 	cmd.AddCommand(c)
 }
 
