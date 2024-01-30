@@ -107,11 +107,6 @@ func (s *store) NewTransaction(ctx context.Context) (Transaction, func()) {
 	}
 }
 
-type readOnly struct {
-	indexStore *indexTrx
-	chunkStore *chunkStoreTrx
-}
-
 func (s *store) ReadOnly() ReadOnlyStore {
 	indexStore := &indexTrx{s.bstore, nil}
 	sharyTrx := &sharkyTrx{s.sharky, s.metrics, nil, nil}
@@ -139,40 +134,16 @@ func (s *store) Close() error {
 	return errors.Join(s.bstore.Close(), s.sharky.Close())
 }
 
+type readOnly struct {
+	indexStore *indexTrx
+	chunkStore *chunkStoreTrx
+}
+
 func (t *readOnly) IndexStore() storage.Reader {
 	return t.indexStore
 }
 
 func (t *readOnly) ChunkStore() storage.ReadOnlyChunkStore {
-	return t.chunkStore
-}
-
-type indexTrx struct {
-	store storage.Reader
-	batch storage.Batch
-}
-
-func (s *indexTrx) Get(i storage.Item) error           { return s.store.Get(i) }
-func (s *indexTrx) Has(k storage.Key) (bool, error)    { return s.store.Has(k) }
-func (s *indexTrx) GetSize(k storage.Key) (int, error) { return s.store.GetSize(k) }
-func (s *indexTrx) Iterate(q storage.Query, f storage.IterateFn) error {
-	return s.store.Iterate(q, f)
-}
-func (s *indexTrx) Count(k storage.Key) (int, error) { return s.store.Count(k) }
-func (s *indexTrx) Put(i storage.Item) error         { return s.batch.Put(i) }
-func (s *indexTrx) Delete(i storage.Item) error      { return s.batch.Delete(i) }
-
-// IndexStore gives acces to the index store of the transaction.
-// Note that no writes are persisted to the disk until the commit is called.
-// Reads return data from the disk and not what has been written to the transaction before the commit call.
-func (t *transaction) IndexStore() storage.IndexStore {
-	return t.indexstore
-}
-
-// ChunkStore gives acces to the chunkstore of the transaction.
-// Note that no writes are persisted to the disk until the commit is called.
-// Reads return data from the disk and not what has been written to the transaction before the commit call.
-func (t *transaction) ChunkStore() storage.ChunkStore {
 	return t.chunkStore
 }
 
@@ -209,6 +180,20 @@ func (t *transaction) Commit() (err error) {
 	}
 
 	return err
+}
+
+// IndexStore gives acces to the index store of the transaction.
+// Note that no writes are persisted to the disk until the commit is called.
+// Reads return data from the disk and not what has been written to the transaction before the commit call.
+func (t *transaction) IndexStore() storage.IndexStore {
+	return t.indexstore
+}
+
+// ChunkStore gives acces to the chunkstore of the transaction.
+// Note that no writes are persisted to the disk until the commit is called.
+// Reads return data from the disk and not what has been written to the transaction before the commit call.
+func (t *transaction) ChunkStore() storage.ChunkStore {
+	return t.chunkStore
 }
 
 type chunkStoreTrx struct {
@@ -265,6 +250,21 @@ func (c *chunkStoreTrx) lock(addr swarm.Address) func() {
 
 	return func() {} // unlocking the chunk will be done in the Commit()
 }
+
+type indexTrx struct {
+	store storage.Reader
+	batch storage.Batch
+}
+
+func (s *indexTrx) Get(i storage.Item) error           { return s.store.Get(i) }
+func (s *indexTrx) Has(k storage.Key) (bool, error)    { return s.store.Has(k) }
+func (s *indexTrx) GetSize(k storage.Key) (int, error) { return s.store.GetSize(k) }
+func (s *indexTrx) Iterate(q storage.Query, f storage.IterateFn) error {
+	return s.store.Iterate(q, f)
+}
+func (s *indexTrx) Count(k storage.Key) (int, error) { return s.store.Count(k) }
+func (s *indexTrx) Put(i storage.Item) error         { return s.batch.Put(i) }
+func (s *indexTrx) Delete(i storage.Item) error      { return s.batch.Delete(i) }
 
 type sharkyTrx struct {
 	sharky       *sharky.Store
