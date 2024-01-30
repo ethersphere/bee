@@ -88,11 +88,7 @@ func Compact(ctx context.Context, basePath string, opts *Options, validate bool)
 		start := uint32(0)
 		end := lastUsedSlot
 
-		batch, err := store.Batch(ctx)
-		if err != nil {
-			return err
-		}
-
+		batch := store.Batch(ctx)
 		for start <= end {
 
 			if slots[start] != nil {

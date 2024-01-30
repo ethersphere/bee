@@ -17,10 +17,7 @@ func TestBatchedStore(t *testing.T, bs storage.BatchedStore) {
 	item := &obj1{Id: "id", SomeInt: 1, Buf: []byte("data")}
 
 	t.Run("duplicates are rejected", func(t *testing.T) {
-		batch, err := bs.Batch(context.Background())
-		if err != nil {
-			t.Fatalf("Batch(...): unexpected error: %v", err)
-		}
+		batch := bs.Batch(context.Background())
 
 		if err := batch.Put(item); err != nil {
 			t.Fatalf("Put(...): unexpected error: %v", err)
@@ -34,7 +31,7 @@ func TestBatchedStore(t *testing.T, bs storage.BatchedStore) {
 		}
 
 		var cnt int
-		err = bs.Iterate(storage.Query{
+		err := bs.Iterate(storage.Query{
 			Factory:      func() storage.Item { return new(obj1) },
 			ItemProperty: storage.QueryItem,
 		}, func(r storage.Result) (bool, error) {
@@ -58,10 +55,7 @@ func TestBatchedStore(t *testing.T, bs storage.BatchedStore) {
 			t.Fatalf("Put(...): unexpected error: %v", err)
 		}
 
-		batch, err := bs.Batch(context.Background())
-		if err != nil {
-			t.Fatalf("Batch(...): unexpected error: %v", err)
-		}
+		batch := bs.Batch(context.Background())
 
 		if err := batch.Put(item); err != nil {
 			t.Fatalf("Put(...): unexpected error: %v", err)
@@ -74,7 +68,7 @@ func TestBatchedStore(t *testing.T, bs storage.BatchedStore) {
 			t.Fatalf("Commit(): unexpected error: %v", err)
 		}
 
-		err = bs.Iterate(storage.Query{
+		err := bs.Iterate(storage.Query{
 			Factory:      func() storage.Item { return new(obj1) },
 			ItemProperty: storage.QueryItem,
 		}, func(r storage.Result) (bool, error) {
@@ -87,10 +81,7 @@ func TestBatchedStore(t *testing.T, bs storage.BatchedStore) {
 	})
 
 	t.Run("batch not reusable after commit", func(t *testing.T) {
-		batch, err := bs.Batch(context.Background())
-		if err != nil {
-			t.Fatalf("Batch(...): unexpected error: %v", err)
-		}
+		batch := bs.Batch(context.Background())
 		if err := batch.Commit(); err != nil {
 			t.Fatalf("Commit(): unexpected error: %v", err)
 		}
@@ -102,10 +93,7 @@ func TestBatchedStore(t *testing.T, bs storage.BatchedStore) {
 	t.Run("batch not usable with expired context", func(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 
-		batch, err := bs.Batch(ctx)
-		if err != nil {
-			t.Fatalf("Batch(...): unexpected error: %v", err)
-		}
+		batch := bs.Batch(ctx)
 
 		if err := batch.Put(item); err != nil {
 			t.Fatalf("Put(...): unexpected error: %v", err)

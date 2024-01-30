@@ -948,7 +948,7 @@ func BenchmarkWriteSequential(b *testing.B, db storage.Store) {
 
 func BenchmarkWriteInBatches(b *testing.B, bs storage.BatchedStore) {
 	g := newSequentialEntryGenerator(b.N)
-	batch, _ := bs.Batch(context.Background())
+	batch := bs.Batch(context.Background())
 	resetBenchmark(b)
 	for i := 0; i < b.N; i++ {
 		key := g.Key(i)
@@ -1020,7 +1020,7 @@ func BenchmarkDeleteInBatches(b *testing.B, bs storage.BatchedStore) {
 	g := newSequentialEntryGenerator(b.N)
 	doWrite(b, bs, g)
 	resetBenchmark(b)
-	batch, _ := bs.Batch(context.Background())
+	batch := bs.Batch(context.Background())
 	for i := 0; i < b.N; i++ {
 		item := &obj1{
 			Id: string(g.Key(i)),

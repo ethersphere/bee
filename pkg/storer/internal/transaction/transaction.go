@@ -84,7 +84,7 @@ type transaction struct {
 // Calls made to the transaction are NOT thread-safe.
 func (s *store) NewTransaction(ctx context.Context) (Transaction, func()) {
 
-	b, _ := s.bstore.Batch(ctx) // error can be ignored
+	b := s.bstore.Batch(ctx)
 	indexTrx := &indexTrx{s.bstore, b}
 	sharyTrx := &sharkyTrx{s.sharky, s.metrics, nil, nil}
 

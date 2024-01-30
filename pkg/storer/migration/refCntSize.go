@@ -129,11 +129,7 @@ func RefCountSizeInc(s storage.BatchedStore) func() error {
 				end = len(itemsToDelete)
 			}
 
-			b, err := s.Batch(context.Background())
-			if err != nil {
-				return err
-			}
-
+			b := s.Batch(context.Background())
 			for _, item := range itemsToDelete[i:end] {
 
 				//create new
