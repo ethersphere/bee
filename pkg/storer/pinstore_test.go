@@ -127,6 +127,51 @@ func testPinStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 			verifyPinCollection(t, lstore.Repo(), testCases[0].chunks[0], testCases[0].chunks, true)
 		})
 	})
+
+	t.Run("duplicate parallel upload does not leave orphaned chunks", func(t *testing.T) {
+		chunks := chunktesting.GenerateTestRandomChunks(4)
+
+		session1, err := lstore.NewCollection(context.TODO())
+		if err != nil {
+			t.Fatalf("NewCollection(...): unexpected error: %v", err)
+		}
+
+		session2, err := lstore.NewCollection(context.TODO())
+		if err != nil {
+			t.Fatalf("NewCollection2(...): unexpected error: %v", err)
+		}
+
+		for _, ch := range chunks {
+			err := session2.Put(context.TODO(), ch)
+			if err != nil {
+				t.Fatalf("session2.Put(...): unexpected error: %v", err)
+				t.Fatal(err)
+			}
+
+			err = session1.Put(context.TODO(), ch)
+			if err != nil {
+				t.Fatalf("session1.Put(...): unexpected error: %v", err)
+				t.Fatal(err)
+			}
+		}
+
+		err = session1.Done(chunks[0].Address())
+		if err != nil {
+			t.Fatalf("session1.Done(...): unexpected error: %v", err)
+		}
+
+		err = session2.Done(chunks[0].Address())
+		if err == nil {
+			t.Fatalf("session2.Done(...): expected error, got nil")
+		}
+
+		if err := session2.Cleanup(); err != nil {
+			t.Fatalf("session2.Done(...): unexpected error: %v", err)
+		}
+
+		verifyPinCollection(t, lstore.Repo(), chunks[0], chunks, true)
+		verifyChunkRefCount(t, lstore.Repo(), chunks)
+	})
 }
 
 func TestPinStore(t *testing.T) {

@@ -18,6 +18,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	"github.com/ethersphere/bee/pkg/storage/migration"
 	"github.com/ethersphere/bee/pkg/storer"
+	cs "github.com/ethersphere/bee/pkg/storer/internal/chunkstore"
 	pinstore "github.com/ethersphere/bee/pkg/storer/internal/pinning"
 	"github.com/ethersphere/bee/pkg/storer/internal/upload"
 	localmigration "github.com/ethersphere/bee/pkg/storer/migration"
@@ -44,7 +45,26 @@ func verifyChunks(
 			t.Fatalf("unexpected chunk has state: want %t have %t", has, hasFound)
 		}
 	}
+}
 
+func verifyChunkRefCount(
+	t *testing.T,
+	repo storage.Repository,
+	chunks []swarm.Chunk,
+) {
+	t.Helper()
+
+	for _, ch := range chunks {
+		_ = repo.IndexStore().Iterate(storage.Query{
+			Factory: func() storage.Item { return new(cs.RetrievalIndexItem) },
+		}, func(r storage.Result) (bool, error) {
+			entry := r.Entry.(*cs.RetrievalIndexItem)
+			if entry.Address.Equal(ch.Address()) && entry.RefCnt != 1 {
+				t.Errorf("chunk %s has refCnt=%d", ch.Address(), entry.RefCnt)
+			}
+			return false, nil
+		})
+	}
 }
 
 func verifySessionInfo(
