@@ -14,12 +14,12 @@ import (
 )
 
 // Batch implements storage.BatchedStore interface Batch method.
-func (s *Store) Batch(ctx context.Context) (storage.Batch, error) {
+func (s *Store) Batch(ctx context.Context) storage.Batch {
 	return &Batch{
 		ctx:   ctx,
 		batch: new(ldb.Batch),
 		store: s,
-	}, nil
+	}
 }
 
 type Batch struct {

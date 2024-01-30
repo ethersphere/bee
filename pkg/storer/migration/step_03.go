@@ -12,16 +12,17 @@ import (
 	"github.com/ethersphere/bee/pkg/log"
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storer/internal/reserve"
+	"github.com/ethersphere/bee/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 // step_03 is a migration step that removes all BinItem entries and migrates
 // ChunkBinItem and BatchRadiusItem entries to use a new BinID field.
 func step_03(
-	chunkStore storage.ChunkStore,
+	st transaction.Storage,
 	chunkType func(swarm.Chunk) swarm.ChunkType,
-) func(st storage.BatchedStore) error {
-	return func(st storage.BatchedStore) error {
+) func() error {
+	return func() error {
 		/*
 			STEP 1, remove all of the BinItem entires
 			STEP 2, remove all of the ChunkBinItem entries
@@ -33,17 +34,25 @@ func step_03(
 		logger.Info("starting migration for reconstructing reserve bin IDs, do not interrupt or kill the process...")
 
 		// STEP 1
-		for i := uint8(0); i < swarm.MaxBins; i++ {
-			err := st.Delete(&reserve.BinItem{Bin: i})
-			if err != nil {
-				return err
+
+		err := st.Run(context.Background(), func(s transaction.Store) error {
+			for i := uint8(0); i < swarm.MaxBins; i++ {
+				err := s.IndexStore().Delete(&reserve.BinItem{Bin: i})
+				if err != nil {
+					return err
+				}
 			}
+			return nil
+		})
+		if err != nil {
+			return err
 		}
+
 		logger.Info("removed all bin index entries")
 
 		// STEP 2
 		var chunkBinItems []*reserve.ChunkBinItem
-		err := st.Iterate(
+		err = st.ReadOnly().IndexStore().Iterate(
 			storage.Query{
 				Factory: func() storage.Item { return &reserve.ChunkBinItem{} },
 			},
@@ -63,19 +72,15 @@ func step_03(
 				end = len(chunkBinItems)
 			}
 
-			b, err := st.Batch(context.Background())
-			if err != nil {
-				return err
-			}
-
-			for _, item := range chunkBinItems[i:end] {
-				err = b.Delete(item)
-				if err != nil {
-					return err
+			err := st.Run(context.Background(), func(s transaction.Store) error {
+				for _, item := range chunkBinItems[i:end] {
+					err := s.IndexStore().Delete(item)
+					if err != nil {
+						return err
+					}
 				}
-			}
-
-			err = b.Commit()
+				return nil
+			})
 			if err != nil {
 				return err
 			}
@@ -85,7 +90,7 @@ func step_03(
 
 		// STEP 3
 		var batchRadiusItems []*reserve.BatchRadiusItem
-		err = st.Iterate(
+		err = st.ReadOnly().IndexStore().Iterate(
 			storage.Query{
 				Factory: func() storage.Item { return &reserve.BatchRadiusItem{} },
 			},
@@ -111,56 +116,57 @@ func step_03(
 				end = len(batchRadiusItems)
 			}
 
-			b, err := st.Batch(context.Background())
-			if err != nil {
-				return err
-			}
+			err := st.Run(context.Background(), func(s transaction.Store) error {
+				for _, item := range batchRadiusItems[i:end] {
+					chunk, err := s.ChunkStore().Get(context.Background(), item.Address)
+					if err != nil && !errors.Is(err, storage.ErrNotFound) {
+						return err
+					}
+					hasChunkEntry := err == nil
 
-			for _, item := range batchRadiusItems[i:end] {
-				chunk, err := chunkStore.Get(context.Background(), item.Address)
-				if err != nil && !errors.Is(err, storage.ErrNotFound) {
-					return err
+					if !hasChunkEntry {
+						err = s.IndexStore().Delete(item)
+						if err != nil {
+							return err
+						}
+						missingChunks++
+					} else {
+
+						var newBinID uint64
+						err = st.Run(context.Background(), func(s transaction.Store) error {
+							newBinID, err = rs.IncBinID(s.IndexStore(), item.Bin)
+							return err
+						})
+						if err != nil {
+							return err
+						}
+
+						item.BinID = newBinID
+						err = s.IndexStore().Put(item)
+						if err != nil {
+							return err
+						}
+
+						err = s.IndexStore().Put(&reserve.ChunkBinItem{
+							BatchID:   item.BatchID,
+							Bin:       item.Bin,
+							Address:   item.Address,
+							BinID:     newBinID,
+							ChunkType: chunkType(chunk),
+						})
+						if err != nil {
+							return err
+						}
+					}
 				}
-				hasChunkEntry := err == nil
-
-				if !hasChunkEntry {
-					err = b.Delete(item)
-					if err != nil {
-						return err
-					}
-					missingChunks++
-				} else {
-					newBinID, err := rs.IncBinID(st, item.Bin)
-					if err != nil {
-						return err
-					}
-
-					item.BinID = newBinID
-					err = b.Put(item)
-					if err != nil {
-						return err
-					}
-
-					err = b.Put(&reserve.ChunkBinItem{
-						BatchID:   item.BatchID,
-						Bin:       item.Bin,
-						Address:   item.Address,
-						BinID:     newBinID,
-						ChunkType: chunkType(chunk),
-					})
-					if err != nil {
-						return err
-					}
-				}
-			}
-
-			err = b.Commit()
+				return nil
+			})
 			if err != nil {
 				return err
 			}
 		}
+
 		logger.Info("migrated all chunk entries", "new_size", len(batchRadiusItems)-missingChunks, "missing_chunks", missingChunks)
 		return nil
-
 	}
 }

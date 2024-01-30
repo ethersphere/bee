@@ -15,11 +15,12 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	batchstore "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
 	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	"github.com/ethersphere/bee/pkg/storage/migration"
 	"github.com/ethersphere/bee/pkg/storer"
+	"github.com/ethersphere/bee/pkg/storer/internal"
 	cs "github.com/ethersphere/bee/pkg/storer/internal/chunkstore"
 	pinstore "github.com/ethersphere/bee/pkg/storer/internal/pinning"
+	"github.com/ethersphere/bee/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/pkg/storer/internal/upload"
 	localmigration "github.com/ethersphere/bee/pkg/storer/migration"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -29,14 +30,14 @@ import (
 
 func verifyChunks(
 	t *testing.T,
-	repo storage.Repository,
+	st transaction.Storage,
 	chunks []swarm.Chunk,
 	has bool,
 ) {
 	t.Helper()
 
 	for _, ch := range chunks {
-		hasFound, err := repo.ChunkStore().Has(context.TODO(), ch.Address())
+		hasFound, err := st.ReadOnly().ChunkStore().Has(context.TODO(), ch.Address())
 		if err != nil {
 			t.Fatalf("ChunkStore.Has(...): unexpected error: %v", err)
 		}
@@ -49,13 +50,13 @@ func verifyChunks(
 
 func verifyChunkRefCount(
 	t *testing.T,
-	repo storage.Repository,
+	st transaction.ReadOnlyStore,
 	chunks []swarm.Chunk,
 ) {
 	t.Helper()
 
 	for _, ch := range chunks {
-		_ = repo.IndexStore().Iterate(storage.Query{
+		_ = st.IndexStore().Iterate(storage.Query{
 			Factory: func() storage.Item { return new(cs.RetrievalIndexItem) },
 		}, func(r storage.Result) (bool, error) {
 			entry := r.Entry.(*cs.RetrievalIndexItem)
@@ -69,17 +70,17 @@ func verifyChunkRefCount(
 
 func verifySessionInfo(
 	t *testing.T,
-	repo storage.Repository,
+	st transaction.Storage,
 	sessionID uint64,
 	chunks []swarm.Chunk,
 	has bool,
 ) {
 	t.Helper()
 
-	verifyChunks(t, repo, chunks, has)
+	verifyChunks(t, st, chunks, has)
 
 	if has {
-		tagInfo, err := upload.TagInfo(repo.IndexStore(), sessionID)
+		tagInfo, err := upload.TagInfo(st.ReadOnly().IndexStore(), sessionID)
 		if err != nil {
 			t.Fatalf("upload.TagInfo(...): unexpected error: %v", err)
 		}
@@ -95,14 +96,14 @@ func verifySessionInfo(
 
 func verifyPinCollection(
 	t *testing.T,
-	repo storage.Repository,
+	st transaction.Storage,
 	root swarm.Chunk,
 	chunks []swarm.Chunk,
 	has bool,
 ) {
 	t.Helper()
 
-	hasFound, err := pinstore.HasPin(repo.IndexStore(), root.Address())
+	hasFound, err := pinstore.HasPin(st.ReadOnly().IndexStore(), root.Address())
 	if err != nil {
 		t.Fatalf("pinstore.HasPin(...): unexpected error: %v", err)
 	}
@@ -111,7 +112,7 @@ func verifyPinCollection(
 		t.Fatalf("unexpected pin collection state: want %t have %t", has, hasFound)
 	}
 
-	verifyChunks(t, repo, chunks, has)
+	verifyChunks(t, st, chunks, has)
 }
 
 // TestMain exists to adjust the time.Now function to a fixed value.
@@ -164,14 +165,14 @@ func TestNew(t *testing.T) {
 			t.Parallel()
 
 			lstore := makeInmemStorer(t, dbTestOps(swarm.RandAddress(t), 0, nil, nil, time.Second))
-			assertStorerVersion(t, lstore, "")
+			assertStorerVersion(t, lstore.Storage().ReadOnly().IndexStore(), "")
 		})
 
 		t.Run("disk", func(t *testing.T) {
 			t.Parallel()
 
 			lstore := makeDiskStorer(t, dbTestOps(swarm.RandAddress(t), 0, nil, nil, time.Second))
-			assertStorerVersion(t, lstore, path.Join(t.TempDir(), "sharky"))
+			assertStorerVersion(t, lstore.Storage().ReadOnly().IndexStore(), path.Join(t.TempDir(), "sharky"))
 		})
 	})
 }
@@ -198,16 +199,15 @@ func dbTestOps(baseAddr swarm.Address, reserveCapacity int, bs postage.Storer, r
 	return opts
 }
 
-func assertStorerVersion(t *testing.T, lstore *storer.DB, sharkyPath string) {
+func assertStorerVersion(t *testing.T, r storage.Reader, sharkyPath string) {
 	t.Helper()
 
-	current, err := migration.Version(lstore.Repo().IndexStore(), "migration")
+	current, err := migration.Version(r, "migration")
 	if err != nil {
 		t.Fatalf("migration.Version(...): unexpected error: %v", err)
 	}
 
-	expected := migration.LatestVersion(localmigration.AfterInitSteps(sharkyPath, 4, inmemchunkstore.New()))
-
+	expected := migration.LatestVersion(localmigration.AfterInitSteps(sharkyPath, 4, internal.NewInmemStorage()))
 	if current != expected {
 		t.Fatalf("storer is not migrated to latest version; got %d, expected %d", current, expected)
 	}
