@@ -4,14 +4,10 @@
 
 package migration
 
-import (
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
-)
-
 // step_01 serves as example for setting up migration step.
 //
 // In this step store is not being modified.
-func step_01(s storage.BatchedStore) error {
+func step_01() error {
 	// NOOP
 	return nil
 }

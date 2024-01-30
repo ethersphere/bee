@@ -74,7 +74,7 @@ func testDebugInfo(t *testing.T, newStorer func() (*storer.DB, swarm.Address, er
 			},
 			ChunkStore: storer.ChunkStoreStat{
 				TotalChunks: 10,
-				SharedSlots: 10,
+				SharedSlots: 0,
 			},
 			Cache: storer.CacheStat{
 				Capacity: 1000000,

@@ -6,12 +6,10 @@ package storer_test
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"testing"
 	"time"
 
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	chunktesting "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	storer "github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -71,7 +69,7 @@ func testPinStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 					t.Fatalf("session.Done(...): unexpected error: %v", err)
 				}
 			}
-			verifyPinCollection(t, lstore.Repo(), tc.chunks[0], tc.chunks, !tc.fail)
+			verifyPinCollection(t, lstore.Storage(), tc.chunks[0], tc.chunks, !tc.fail)
 		})
 	}
 
@@ -106,25 +104,7 @@ func testPinStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 				t.Fatalf("DeletePin(...): unexpected error: %v", err)
 			}
 
-			verifyPinCollection(t, lstore.Repo(), testCases[2].chunks[0], testCases[2].chunks, false)
-		})
-		t.Run("rollback", func(t *testing.T) {
-			want := errors.New("dummy error")
-			lstore.SetRepoStoreDeleteHook(func(item storage.Item) error {
-				// return error for delete of second last item in collection
-				// this should trigger a rollback
-				if item.ID() == testCases[0].chunks[8].Address().ByteString() {
-					return want
-				}
-				return nil
-			})
-
-			have := lstore.DeletePin(context.TODO(), testCases[0].chunks[0].Address())
-			if !errors.Is(have, want) {
-				t.Fatalf("DeletePin(...): unexpected error: want %v have %v", want, have)
-			}
-
-			verifyPinCollection(t, lstore.Repo(), testCases[0].chunks[0], testCases[0].chunks, true)
+			verifyPinCollection(t, lstore.Storage(), testCases[2].chunks[0], testCases[2].chunks, false)
 		})
 	})
 
@@ -169,8 +149,8 @@ func testPinStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 			t.Fatalf("session2.Done(...): unexpected error: %v", err)
 		}
 
-		verifyPinCollection(t, lstore.Repo(), chunks[0], chunks, true)
-		verifyChunkRefCount(t, lstore.Repo(), chunks)
+		verifyPinCollection(t, lstore.Storage(), chunks[0], chunks, true)
+		verifyChunkRefCount(t, lstore.Storage().ReadOnly(), chunks)
 	})
 }
 

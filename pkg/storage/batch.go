@@ -28,5 +28,5 @@ type Batch interface {
 // Batcher specifies a constructor for creating new batches.
 type Batcher interface {
 	// Batch returns a new Batch.
-	Batch(context.Context) (Batch, error)
+	Batch(context.Context) Batch
 }

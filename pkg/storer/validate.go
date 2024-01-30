@@ -112,7 +112,7 @@ func validateWork(logger log.Logger, store storage.Store, readFn func(context.Co
 
 	s := time.Now()
 
-	_ = chunkstore.Iterate(store, func(item *chunkstore.RetrievalIndexItem) error {
+	_ = chunkstore.IterateItems(store, func(item *chunkstore.RetrievalIndexItem) error {
 		total++
 		return nil
 	})
@@ -132,7 +132,7 @@ func validateWork(logger log.Logger, store storage.Store, readFn func(context.Co
 	}
 
 	count := 0
-	_ = chunkstore.Iterate(store, func(item *chunkstore.RetrievalIndexItem) error {
+	_ = chunkstore.IterateItems(store, func(item *chunkstore.RetrievalIndexItem) error {
 		iteratateItemsC <- item
 		count++
 		if count%100_000 == 0 {

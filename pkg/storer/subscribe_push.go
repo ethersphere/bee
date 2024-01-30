@@ -37,7 +37,7 @@ func (db *DB) SubscribePush(ctx context.Context) (<-chan swarm.Chunk, func()) {
 
 			var count int
 
-			err := upload.Iterate(ctx, db.repo, func(chunk swarm.Chunk) (bool, error) {
+			err := upload.Iterate(ctx, db.storage.ReadOnly(), func(chunk swarm.Chunk) (bool, error) {
 				select {
 				case chunks <- chunk:
 					count++
