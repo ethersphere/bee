@@ -8,7 +8,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"sync"
 	"time"
 
 	m "github.com/ethersphere/bee/pkg/metrics"
@@ -17,6 +16,8 @@ import (
 	"github.com/ethersphere/bee/pkg/storer/internal/chunkstore"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/segmentio/ksuid"
+	"resenje.org/multex"
 )
 
 // TODO(esad): remove contexts from sharky and any other storage call
@@ -31,6 +32,8 @@ The rules of the transction is as follows:
 -on commit		-> if batch_commit succeeds, release sharky_release locations from the disk
 				-> if batch_commit fails or is not called, release all sharky_write location from the disk, do nothing for sharky_release
 */
+
+const globalLockerKey = "global"
 
 type Transaction interface {
 	Store
@@ -55,47 +58,22 @@ type Storage interface {
 }
 
 type store struct {
-	sharky *sharky.Store
-	bstore storage.BatchedStore
-
-	chunkStoreMtx *sync.Mutex
-
-	metrics metrics
+	sharky           *sharky.Store
+	bstore           storage.BatchedStore
+	metrics          metrics
+	chunkStoreLocker *chunkStoreLocker
 }
 
 func NewStorage(sharky *sharky.Store, bstore storage.BatchedStore) Storage {
-	return &store{sharky, bstore, &sync.Mutex{}, newMetrics()}
+	return &store{sharky, bstore, newMetrics(), &chunkStoreLocker{multex.New(), make(map[string]map[string]struct{})}}
 }
 
 type transaction struct {
-	batch         storage.Batch
-	indexstore    *indexTrx
-	chunkStore    *chunkStoreTrx
-	sharkyTrx     *sharkyTrx
-	chunkStoreMtx *sync.Mutex
-	cleanup       bool
-	metrics       metrics
-}
-
-type chunkStoreTrx struct {
-	indexStore *indexTrx
+	batch      storage.Batch
+	indexstore *indexTrx
+	chunkStore *chunkStoreTrx
 	sharkyTrx  *sharkyTrx
-}
-
-func (c *chunkStoreTrx) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, error) {
-	return chunkstore.Get(ctx, c.indexStore, c.sharkyTrx, addr)
-}
-func (c *chunkStoreTrx) Has(ctx context.Context, addr swarm.Address) (bool, error) {
-	return chunkstore.Has(ctx, c.indexStore, addr)
-}
-func (c *chunkStoreTrx) Put(ctx context.Context, ch swarm.Chunk) error {
-	return chunkstore.Put(ctx, c.indexStore, c.sharkyTrx, ch)
-}
-func (c *chunkStoreTrx) Delete(ctx context.Context, addr swarm.Address) error {
-	return chunkstore.Delete(ctx, c.indexStore, c.sharkyTrx, addr)
-}
-func (c *chunkStoreTrx) Iterate(ctx context.Context, fn storage.IterateChunkFn) error {
-	return chunkstore.Iterate(ctx, c.indexStore, c.sharkyTrx, fn)
+	metrics    metrics
 }
 
 // NewTransaction returns a new storage transaction.
@@ -108,15 +86,14 @@ func (s *store) NewTransaction() (Transaction, func()) {
 
 	b, _ := s.bstore.Batch(context.TODO())
 	indexTrx := &indexTrx{s.bstore, b}
-	sharyTrx := &sharkyTrx{sharky: s.sharky, metrics: s.metrics}
+	sharyTrx := &sharkyTrx{s.sharky, s.metrics, nil, nil}
 
 	t := &transaction{
-		batch:         b,
-		indexstore:    indexTrx,
-		chunkStore:    &chunkStoreTrx{indexTrx, sharyTrx},
-		sharkyTrx:     sharyTrx,
-		chunkStoreMtx: s.chunkStoreMtx,
-		metrics:       s.metrics,
+		batch:      b,
+		indexstore: indexTrx,
+		chunkStore: &chunkStoreTrx{indexTrx, sharyTrx, s.chunkStoreLocker, s.chunkStoreLocker.newID(), s.metrics, false},
+		sharkyTrx:  sharyTrx,
+		metrics:    s.metrics,
 	}
 
 	return t, func() {
@@ -125,9 +102,7 @@ func (s *store) NewTransaction() (Transaction, func()) {
 		for _, l := range t.sharkyTrx.writtenLocs {
 			_ = t.sharkyTrx.sharky.Release(context.TODO(), l)
 		}
-		if t.cleanup {
-			t.chunkStoreMtx.Unlock()
-		}
+		t.chunkStore.chunkStoreLocker.unlockTrx(t.chunkStore.id)
 	}
 }
 
@@ -137,9 +112,10 @@ type readOnly struct {
 }
 
 func (s *store) ReadOnly() ReadOnlyStore {
-	indexStore := &indexTrx{store: s.bstore}
-	sharyTrx := &sharkyTrx{sharky: s.sharky, metrics: s.metrics}
-	return &readOnly{indexStore, &chunkStoreTrx{indexStore, sharyTrx}}
+	indexStore := &indexTrx{s.bstore, nil}
+	sharyTrx := &sharkyTrx{s.sharky, s.metrics, nil, nil}
+
+	return &readOnly{indexStore, &chunkStoreTrx{indexStore, sharyTrx, s.chunkStoreLocker, "", s.metrics, true}}
 }
 
 func (s *store) Run(f func(Store) error) error {
@@ -196,28 +172,20 @@ func (t *transaction) IndexStore() storage.IndexStore {
 // Note that no writes are persisted to the disk until the commit is called.
 // Reads return data from the disk and not what has been written to the transaction before the commit call.
 func (t *transaction) ChunkStore() storage.ChunkStore {
-	// acquire the global chunkstore lock here
-	if !t.cleanup {
-		t.cleanup = true
-		t.chunkStoreMtx.Lock()
-	}
 	return t.chunkStore
 }
 
 func (t *transaction) Commit() (err error) {
 
-	defer func(ti time.Time) {
-		t.sharkyTrx.writtenLocs = nil // clear written locs so that the done callback does not remove them
-		if err != nil {
-			t.metrics.MethodCalls.WithLabelValues("commit", "failure").Inc()
-			t.metrics.MethodDuration.WithLabelValues("commit", "failure").Observe(float64(time.Since(ti)))
-		} else {
-			t.metrics.MethodCalls.WithLabelValues("commit", "success").Inc()
-			t.metrics.MethodDuration.WithLabelValues("commit", "success").Observe(float64(time.Since(ti)))
-		}
-	}(time.Now())
+	defer handleMetric("commit", t.metrics)(err)
+	defer func() {
+		t.chunkStore.chunkStoreLocker.unlockTrx(t.chunkStore.id)
+		t.sharkyTrx.writtenLocs = nil
+	}()
 
+	h := handleMetric("batch_commit", t.metrics)
 	err = t.batch.Commit()
+	h(err)
 	if err != nil {
 		for _, l := range t.sharkyTrx.writtenLocs {
 			if rerr := t.sharkyTrx.sharky.Release(context.TODO(), l); rerr != nil {
@@ -227,48 +195,76 @@ func (t *transaction) Commit() (err error) {
 		return err
 	}
 
-	defer func(ti time.Time) {
-		if err != nil {
-			t.metrics.MethodCalls.WithLabelValues("sharky_release", "failure").Inc()
-			t.metrics.MethodDuration.WithLabelValues("sharky_release", "failure").Observe(float64(time.Since(ti)))
-		} else {
-			t.metrics.MethodCalls.WithLabelValues("sharky_release", "success").Inc()
-			t.metrics.MethodDuration.WithLabelValues("sharky_release", "success").Observe(float64(time.Since(ti)))
-		}
-	}(time.Now())
-
 	for _, l := range t.sharkyTrx.releasedLocs {
+		h := handleMetric("sharky_release", t.metrics)
 		if rerr := t.sharkyTrx.sharky.Release(context.TODO(), l); rerr != nil {
 			err = errors.Join(err, fmt.Errorf("failed releasing location afer commit %s: %w", l, rerr))
+			h(err)
 		}
 	}
 
 	return err
 }
 
-type sharkyTrx struct {
-	sharky       *sharky.Store
-	writtenLocs  []sharky.Location
-	releasedLocs []sharky.Location
-	metrics      metrics
+type chunkStoreTrx struct {
+	indexStore       *indexTrx
+	sharkyTrx        *sharkyTrx
+	chunkStoreLocker *chunkStoreLocker
+	id               string
+	metrics          metrics
+	readOnly         bool
 }
 
-func (s *sharkyTrx) Read(ctx context.Context, loc sharky.Location, buf []byte) error {
+func (c *chunkStoreTrx) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, err error) {
+	defer handleMetric("chunkstore_get", c.metrics)(err)
+	defer c.lock(addr)()
+	ch, err = chunkstore.Get(ctx, c.indexStore, c.sharkyTrx, addr)
+	return ch, err
+}
+func (c *chunkStoreTrx) Has(ctx context.Context, addr swarm.Address) (_ bool, err error) {
+	defer handleMetric("chunkstore_has", c.metrics)(err)
+	defer c.lock(addr)()
+	return chunkstore.Has(ctx, c.indexStore, addr)
+}
+func (c *chunkStoreTrx) Put(ctx context.Context, ch swarm.Chunk) (err error) {
+	defer handleMetric("chunkstore_put", c.metrics)(err)
+	defer c.lock(ch.Address())()
+	return chunkstore.Put(ctx, c.indexStore, c.sharkyTrx, ch)
+}
+func (c *chunkStoreTrx) Delete(ctx context.Context, addr swarm.Address) (err error) {
+	defer handleMetric("chunkstore_delete", c.metrics)(err)
+	defer c.lock(addr)()
+	return chunkstore.Delete(ctx, c.indexStore, c.sharkyTrx, addr)
+}
+func (c *chunkStoreTrx) Iterate(ctx context.Context, fn storage.IterateChunkFn) error {
+	return chunkstore.Iterate(ctx, c.indexStore, c.sharkyTrx, fn)
+}
+
+func (c *chunkStoreTrx) lock(addr swarm.Address) func() {
+	return func() {
+		if c.readOnly {
+			c.chunkStoreLocker.lock(addr)
+			defer c.chunkStoreLocker.unlock(addr)
+		} else {
+			c.chunkStoreLocker.lockTrx(addr, c.id)
+		}
+	}
+}
+
+type sharkyTrx struct {
+	sharky       *sharky.Store
+	metrics      metrics
+	writtenLocs  []sharky.Location
+	releasedLocs []sharky.Location
+}
+
+func (s *sharkyTrx) Read(ctx context.Context, loc sharky.Location, buf []byte) (err error) {
+	defer handleMetric("sharky_read", s.metrics)(err)
 	return s.sharky.Read(ctx, loc, buf)
 }
 
-func (s *sharkyTrx) Write(ctx context.Context, data []byte) (sharky.Location, error) {
-	var err error
-	defer func(ti time.Time) {
-		if err != nil {
-			s.metrics.MethodCalls.WithLabelValues("sharky_write", "failure").Inc()
-			s.metrics.MethodDuration.WithLabelValues("sharky_write", "failure").Observe(float64(time.Since(ti)))
-		} else {
-			s.metrics.MethodCalls.WithLabelValues("sharky_write", "success").Inc()
-			s.metrics.MethodDuration.WithLabelValues("sharky_write", "success").Observe(float64(time.Since(ti)))
-		}
-	}(time.Now())
-
+func (s *sharkyTrx) Write(ctx context.Context, data []byte) (_ sharky.Location, err error) {
+	defer handleMetric("sharky_write", s.metrics)(err)
 	loc, err := s.sharky.Write(ctx, data)
 	if err != nil {
 		return sharky.Location{}, err
@@ -281,4 +277,69 @@ func (s *sharkyTrx) Write(ctx context.Context, data []byte) (sharky.Location, er
 func (s *sharkyTrx) Release(ctx context.Context, loc sharky.Location) error {
 	s.releasedLocs = append(s.releasedLocs, loc)
 	return nil
+}
+
+type chunkStoreLocker struct {
+	mtx         *multex.Multex
+	chunkLocked map[string]map[string]struct{} // transactionID -> chunkAddress, one to many mapping
+}
+
+// lock globally locks the chunk address.
+func (c *chunkStoreLocker) lock(addr swarm.Address) {
+	c.mtx.Lock(addr.ByteString())
+}
+
+// lock globally unlocks the chunk address.
+func (c *chunkStoreLocker) unlock(addr swarm.Address) {
+	c.mtx.Unlock(addr.ByteString())
+}
+
+// lockTrx globally locks the chunk address, also making sure that the same address is locked only once by the same transaction.
+func (c *chunkStoreLocker) lockTrx(addr swarm.Address, id string) {
+	c.mtx.Lock(globalLockerKey)
+	defer c.mtx.Unlock(globalLockerKey)
+
+	if c.chunkLocked[id] == nil {
+		c.chunkLocked[id] = make(map[string]struct{})
+	}
+
+	// chunk already globally locked as part of this transaction
+	if _, ok := c.chunkLocked[id][addr.ByteString()]; ok {
+		return
+	}
+
+	c.chunkLocked[id][addr.ByteString()] = struct{}{}
+
+	// acquire global chunk lock
+	c.lock(addr)
+}
+
+// unlockTrx globally unlocks any chunk addresses that was part of the transaction.
+func (c *chunkStoreLocker) unlockTrx(id string) {
+
+	c.mtx.Lock(globalLockerKey)
+	defer c.mtx.Unlock(globalLockerKey)
+
+	for addr := range c.chunkLocked[id] {
+		c.mtx.Unlock(addr)
+	}
+
+	delete(c.chunkLocked, id)
+}
+
+func (c *chunkStoreLocker) newID() string {
+	return ksuid.New().String()
+}
+
+func handleMetric(key string, m metrics) func(err error) {
+	t := time.Now()
+	return func(err error) {
+		if err != nil {
+			m.MethodCalls.WithLabelValues(key, "failure").Inc()
+			m.MethodDuration.WithLabelValues(key, "failure").Observe(float64(time.Since(t)))
+		} else {
+			m.MethodCalls.WithLabelValues(key, "success").Inc()
+			m.MethodDuration.WithLabelValues(key, "success").Observe(float64(time.Since(t)))
+		}
+	}
 }

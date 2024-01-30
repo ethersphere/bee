@@ -23,8 +23,8 @@ func newMetrics() metrics {
 			prometheus.CounterOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
-				Name:      "commit_calls",
-				Help:      "Number of commit calls.",
+				Name:      "method_calls",
+				Help:      "The number of method calls.",
 			},
 			[]string{"method", "status"},
 		),
@@ -32,8 +32,8 @@ func newMetrics() metrics {
 			prometheus.HistogramOpts{
 				Namespace: m.Namespace,
 				Subsystem: subsystem,
-				Name:      "commit_duration",
-				Help:      "The duration each commit call took.",
+				Name:      "method_duration",
+				Help:      "The duration each method call took.",
 			},
 			[]string{"method", "status"},
 		),
