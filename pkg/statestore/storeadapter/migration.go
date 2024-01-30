@@ -19,6 +19,7 @@ func allSteps() migration.Steps {
 		4: deletePrefix("blocklist"),
 		5: deletePrefix("batchstore"),
 		6: deletePrefix("sync_interval"),
+		7: deletePrefix("sync_interval"),
 	}
 }
 

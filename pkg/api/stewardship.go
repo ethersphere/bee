@@ -70,7 +70,6 @@ func (s *Service) stewardshipPutHandler(w http.ResponseWriter, r *http.Request) 
 
 	err = s.steward.Reupload(r.Context(), paths.Address, stamper)
 	if err != nil {
-		err = errors.Join(err, save())
 		logger.Debug("re-upload failed", "chunk_address", paths.Address, "error", err)
 		logger.Error(nil, "re-upload failed")
 		jsonhttp.InternalServerError(w, "re-upload failed")
