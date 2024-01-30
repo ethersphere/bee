@@ -25,6 +25,7 @@ func TestNewStepOnIndex(t *testing.T) {
 		populateStore(t, store, populateItemsCount)
 
 		stepFn := migration.NewStepOnIndex(
+			store,
 			storage.Query{
 				Factory: newObjFactory,
 			},
@@ -38,7 +39,7 @@ func TestNewStepOnIndex(t *testing.T) {
 			t.Fatalf("have %d, want %d", initialCount, populateItemsCount)
 		}
 
-		if err := stepFn(store); err != nil {
+		if err := stepFn(); err != nil {
 			t.Fatalf("step migration should successed: %v", err)
 		}
 
@@ -59,7 +60,7 @@ func TestNewStepOnIndex(t *testing.T) {
 		store := inmemstore.New()
 		populateStore(t, store, populateItemsCount)
 
-		stepFn := migration.NewStepOnIndex(
+		stepFn := migration.NewStepOnIndex(store,
 			storage.Query{
 				Factory:      newObjFactory,
 				ItemProperty: storage.QueryItem,
@@ -71,7 +72,7 @@ func TestNewStepOnIndex(t *testing.T) {
 			migration.WithOpPerBatch(3),
 		)
 
-		if err := stepFn(store); err != nil {
+		if err := stepFn(); err != nil {
 			t.Fatalf("step migration should successed: %v", err)
 		}
 
@@ -86,7 +87,7 @@ func TestNewStepOnIndex(t *testing.T) {
 		store := inmemstore.New()
 		populateStore(t, store, populateItemsCount)
 
-		stepFn := migration.NewStepOnIndex(
+		stepFn := migration.NewStepOnIndex(store,
 			storage.Query{
 				Factory:      newObjFactory,
 				ItemProperty: storage.QueryItem,
@@ -104,7 +105,7 @@ func TestNewStepOnIndex(t *testing.T) {
 			migration.WithOpPerBatch(3),
 		)
 
-		if err := stepFn(store); err != nil {
+		if err := stepFn(); err != nil {
 			t.Fatalf("step migration should successed: %v", err)
 		}
 
@@ -119,6 +120,7 @@ func TestNewStepOnIndex(t *testing.T) {
 		populateStore(t, store, populateItemsCount)
 
 		step := migration.NewStepOnIndex(
+			store,
 			storage.Query{
 				Factory:      newObjFactory,
 				ItemProperty: storage.QueryItem,
@@ -141,7 +143,7 @@ func TestNewStepOnIndex(t *testing.T) {
 			migration.WithOpPerBatch(3),
 		)
 
-		if err := step(store); err != nil {
+		if err := step(); err != nil {
 			t.Fatalf("step migration should successed: %v", err)
 		}
 
@@ -156,6 +158,7 @@ func TestNewStepOnIndex(t *testing.T) {
 		populateStore(t, store, populateItemsCount)
 
 		step := migration.NewStepOnIndex(
+			store,
 			storage.Query{
 				Factory:      newObjFactory,
 				ItemProperty: storage.QueryItem,
@@ -168,7 +171,7 @@ func TestNewStepOnIndex(t *testing.T) {
 			migration.WithOpPerBatch(3),
 		)
 
-		if err := step(store); err == nil {
+		if err := step(); err == nil {
 			t.Fatalf("step migration should fail")
 		}
 
@@ -192,6 +195,7 @@ func TestStepIndex_BatchSize(t *testing.T) {
 			updateItemCallMap := make(map[int]struct{})
 
 			stepFn := migration.NewStepOnIndex(
+				store,
 				storage.Query{
 					Factory:      newObjFactory,
 					ItemProperty: storage.QueryItem,
@@ -217,7 +221,7 @@ func TestStepIndex_BatchSize(t *testing.T) {
 				migration.WithOpPerBatch(i),
 			)
 
-			if err := stepFn(store); err != nil {
+			if err := stepFn(); err != nil {
 				t.Fatalf("step migration should successed: %v", err)
 			}
 

@@ -179,7 +179,7 @@ func LoadWithBatchID(s storage.Reader, namespace string, addr swarm.Address, bat
 
 // Store creates new or updated an existing stamp index
 // record related to the given namespace and chunk.
-func Store(s storage.Writer, namespace string, chunk swarm.Chunk) error {
+func Store(s storage.IndexStore, namespace string, chunk swarm.Chunk) error {
 	item := &item{
 		namespace: []byte(namespace),
 		address:   chunk.Address(),
@@ -192,7 +192,7 @@ func Store(s storage.Writer, namespace string, chunk swarm.Chunk) error {
 }
 
 // DeleteAll removes all swarm.Stamp related to the given address.
-func DeleteAll(s storage.Store, namespace string, addr swarm.Address) error {
+func DeleteAll(s storage.IndexStore, namespace string, addr swarm.Address) error {
 	var stamps []swarm.Stamp
 	err := s.Iterate(
 		storage.Query{
@@ -227,7 +227,7 @@ func DeleteAll(s storage.Store, namespace string, addr swarm.Address) error {
 }
 
 // Delete removes a stamp associated with an chunk and batchID.
-func Delete(s storage.Store, batch storage.Writer, namespace string, addr swarm.Address, batchId []byte) error {
+func Delete(s storage.IndexStore, namespace string, addr swarm.Address, batchId []byte) error {
 	stamp, err := LoadWithBatchID(s, namespace, addr, batchId)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
@@ -235,7 +235,7 @@ func Delete(s storage.Store, batch storage.Writer, namespace string, addr swarm.
 		}
 		return err
 	}
-	return batch.Delete(&item{
+	return s.Delete(&item{
 		namespace: []byte(namespace),
 		address:   addr,
 		stamp:     stamp,
