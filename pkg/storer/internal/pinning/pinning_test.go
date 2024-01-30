@@ -296,22 +296,36 @@ func TestPinStore(t *testing.T) {
 
 	t.Run("duplicate collection", func(t *testing.T) {
 		root := chunktest.GenerateTestRandomChunk()
-		putter, err := pinstore.NewCollection(st)
+
+		var (
+			putter internal.PutterCloserWithReference
+			err    error
+		)
+		err = st.Run(context.Background(), func(s transaction.Store) error {
+			putter, err = pinstore.NewCollection(s.IndexStore())
+			return err
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		err = putter.Put(context.Background(), st, st.IndexStore(), root)
+		err = st.Run(context.Background(), func(s transaction.Store) error {
+			return putter.Put(context.Background(), s, root)
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		err = putter.Close(st, st.IndexStore(), root.Address())
+		err = st.Run(context.Background(), func(s transaction.Store) error {
+			return putter.Close(s.IndexStore(), root.Address())
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		err = putter.Close(st, st.IndexStore(), root.Address())
+		err = st.Run(context.Background(), func(s transaction.Store) error {
+			return putter.Close(s.IndexStore(), root.Address())
+		})
 		if err == nil || !errors.Is(err, pinstore.ErrDuplicatePinCollection) {
 			t.Fatalf("unexpected error during CLose, want: %v, got: %v", pinstore.ErrDuplicatePinCollection, err)
 		}

@@ -124,11 +124,8 @@ func (c *collectionPutter) Close(st storage.IndexStore, root swarm.Address) erro
 		return errCollectionRootAddressIsZero
 	}
 
-	c.mtx.Lock()
-	defer c.mtx.Unlock()
-
 	collection := &pinCollectionItem{Addr: root}
-	has, err := st.IndexStore().Has(collection)
+	has, err := st.Has(collection)
 
 	if err != nil {
 		return fmt.Errorf("pin store: check previous root: %w", err)
@@ -141,7 +138,7 @@ func (c *collectionPutter) Close(st storage.IndexStore, root swarm.Address) erro
 
 	// Save the root pin reference.
 	c.collection.Addr = root
-	err = writer.Put(c.collection)
+	err = st.Put(c.collection)
 	if err != nil {
 		return fmt.Errorf("pin store: failed updating collection: %w", err)
 	}
