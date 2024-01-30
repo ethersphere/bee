@@ -101,7 +101,7 @@ func (r OldRetrievalIndexItem) String() string {
 	return storageutil.JoinFields(r.Namespace(), r.ID())
 }
 
-func RefCountSizeInc(s storage.BatchedStore) func() error {
+func RefCountSizeInc(s storage.BatchStore) func() error {
 	return func() error {
 		logger := log.NewLogger("migration-RefCountSizeInc", log.WithSink(os.Stdout))
 

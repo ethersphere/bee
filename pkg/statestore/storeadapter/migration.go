@@ -11,7 +11,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage/migration"
 )
 
-func allSteps(st storage.BatchedStore) migration.Steps {
+func allSteps(st storage.BatchStore) migration.Steps {
 	return map[uint64]migration.StepFn{
 		1: epochMigration(st),
 		2: deletePrefix(st, "sync_interval"),
@@ -23,7 +23,7 @@ func allSteps(st storage.BatchedStore) migration.Steps {
 	}
 }
 
-func deletePrefix(s storage.BatchedStore, prefix string) migration.StepFn {
+func deletePrefix(s storage.BatchStore, prefix string) migration.StepFn {
 	return func() error {
 		store := &StateStorerAdapter{s}
 		return store.Iterate(prefix, func(key, val []byte) (stop bool, err error) {
@@ -32,7 +32,7 @@ func deletePrefix(s storage.BatchedStore, prefix string) migration.StepFn {
 	}
 }
 
-func epochMigration(s storage.BatchedStore) migration.StepFn {
+func epochMigration(s storage.BatchStore) migration.StepFn {
 
 	return func() error {
 

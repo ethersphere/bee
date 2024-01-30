@@ -26,7 +26,7 @@ func AfterInitSteps(
 }
 
 // BeforeInitSteps lists all migration steps for localstore IndexStore before the localstore is intiated.
-func BeforeInitSteps(st storage.BatchedStore) migration.Steps {
+func BeforeInitSteps(st storage.BatchStore) migration.Steps {
 	return map[uint64]migration.StepFn{
 		1: RefCountSizeInc(st),
 	}

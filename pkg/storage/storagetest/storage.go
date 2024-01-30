@@ -851,7 +851,7 @@ func BenchmarkStore(b *testing.B, s storage.Store) {
 
 // BenchmarkBatchedStore provides a benchmark suite for the
 // storage.BatchedStore. Only the Write and Delete methods are tested.
-func BenchmarkBatchedStore(b *testing.B, bs storage.BatchedStore) {
+func BenchmarkBatchedStore(b *testing.B, bs storage.BatchStore) {
 	b.Run("WriteInBatches", func(b *testing.B) {
 		BenchmarkWriteInBatches(b, bs)
 	})
@@ -946,7 +946,7 @@ func BenchmarkWriteSequential(b *testing.B, db storage.Store) {
 	doWrite(b, db, g)
 }
 
-func BenchmarkWriteInBatches(b *testing.B, bs storage.BatchedStore) {
+func BenchmarkWriteInBatches(b *testing.B, bs storage.BatchStore) {
 	g := newSequentialEntryGenerator(b.N)
 	batch := bs.Batch(context.Background())
 	resetBenchmark(b)
@@ -965,7 +965,7 @@ func BenchmarkWriteInBatches(b *testing.B, bs storage.BatchedStore) {
 	}
 }
 
-func BenchmarkWriteInFixedSizeBatches(b *testing.B, bs storage.BatchedStore) {
+func BenchmarkWriteInFixedSizeBatches(b *testing.B, bs storage.BatchStore) {
 	g := newSequentialEntryGenerator(b.N)
 	writer := newBatchDBWriter(bs)
 	resetBenchmark(b)
@@ -1016,7 +1016,7 @@ func BenchmarkDeleteSequential(b *testing.B, db storage.Store) {
 	doDelete(b, db, g)
 }
 
-func BenchmarkDeleteInBatches(b *testing.B, bs storage.BatchedStore) {
+func BenchmarkDeleteInBatches(b *testing.B, bs storage.BatchStore) {
 	g := newSequentialEntryGenerator(b.N)
 	doWrite(b, bs, g)
 	resetBenchmark(b)
@@ -1034,7 +1034,7 @@ func BenchmarkDeleteInBatches(b *testing.B, bs storage.BatchedStore) {
 	}
 }
 
-func BenchmarkDeleteInFixedSizeBatches(b *testing.B, bs storage.BatchedStore) {
+func BenchmarkDeleteInFixedSizeBatches(b *testing.B, bs storage.BatchStore) {
 	g := newSequentialEntryGenerator(b.N)
 	doWrite(b, bs, g)
 	resetBenchmark(b)

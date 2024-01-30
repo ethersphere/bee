@@ -189,8 +189,8 @@ type Writer interface {
 	Delete(Item) error
 }
 
-// BatchedStore is a store that supports batching of Writer method calls.
-type BatchedStore interface {
+// BatchStore is a store that supports batching of Writer method calls.
+type BatchStore interface {
 	Store
 	Batcher
 }

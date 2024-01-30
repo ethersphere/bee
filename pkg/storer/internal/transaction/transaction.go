@@ -55,12 +55,12 @@ type Storage interface {
 
 type store struct {
 	sharky      *sharky.Store
-	bstore      storage.BatchedStore
+	bstore      storage.BatchStore
 	metrics     metrics
 	chunkLocker *multex.Multex
 }
 
-func NewStorage(sharky *sharky.Store, bstore storage.BatchedStore) Storage {
+func NewStorage(sharky *sharky.Store, bstore storage.BatchStore) Storage {
 	return &store{sharky, bstore, newMetrics(), multex.New()}
 }
 
@@ -201,9 +201,10 @@ func (t *transaction) Commit() (err error) {
 
 	for _, l := range t.sharkyTrx.releasedLocs {
 		h := handleMetric("sharky_release", t.metrics)
-		if rerr := t.sharkyTrx.sharky.Release(context.TODO(), l); rerr != nil {
+		rerr := t.sharkyTrx.sharky.Release(context.TODO(), l)
+		h(rerr)
+		if rerr != nil {
 			err = errors.Join(err, fmt.Errorf("failed releasing location afer commit %s: %w", l, rerr))
-			h(err)
 		}
 	}
 
@@ -250,18 +251,19 @@ func (c *chunkStoreTrx) Iterate(ctx context.Context, fn storage.IterateChunkFn) 
 }
 
 func (c *chunkStoreTrx) lock(addr swarm.Address) func() {
-	if c.readOnly { // directly lock
+	// directly lock
+	if c.readOnly {
 		c.globalLocker.Lock(addr.ByteString())
-	} else if _, ok := c.lockedAddrs[addr.ByteString()]; !ok { // lock chunk only once in the same transaction
+		return func() { c.globalLocker.Unlock(addr.ByteString()) }
+	}
+
+	// lock chunk only once in the same transaction
+	if _, ok := c.lockedAddrs[addr.ByteString()]; !ok {
 		c.globalLocker.Lock(addr.ByteString())
 		c.lockedAddrs[addr.ByteString()] = struct{}{}
 	}
 
-	return func() {
-		if c.readOnly {
-			c.globalLocker.Unlock(addr.ByteString())
-		}
-	}
+	return func() {} // unlocking the chunk will be done in the Commit()
 }
 
 type sharkyTrx struct {

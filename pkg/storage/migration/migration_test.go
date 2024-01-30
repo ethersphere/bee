@@ -281,7 +281,7 @@ func TestMigrate(t *testing.T) {
 	})
 }
 
-func assertObjectExists(t *testing.T, s storage.BatchedStore, keys ...storage.Key) {
+func assertObjectExists(t *testing.T, s storage.BatchStore, keys ...storage.Key) {
 	t.Helper()
 
 	for _, key := range keys {

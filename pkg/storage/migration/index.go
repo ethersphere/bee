@@ -62,7 +62,7 @@ func (o *options) applyAll(opts []option) {
 // NewStepOnIndex creates new migration step with update and/or delete operation.
 // Migration will iterate on all elements selected by query and delete or update items
 // based on supplied callback functions.
-func NewStepOnIndex(s storage.BatchedStore, query storage.Query, opts ...option) StepFn {
+func NewStepOnIndex(s storage.BatchStore, query storage.Query, opts ...option) StepFn {
 	o := defaultOptions()
 	o.applyAll(opts)
 

@@ -13,7 +13,7 @@ import (
 	"github.com/google/go-cmp/cmp"
 )
 
-func TestBatchedStore(t *testing.T, bs storage.BatchedStore) {
+func TestBatchedStore(t *testing.T, bs storage.BatchStore) {
 	item := &obj1{Id: "id", SomeInt: 1, Buf: []byte("data")}
 
 	t.Run("duplicates are rejected", func(t *testing.T) {
