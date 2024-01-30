@@ -31,7 +31,6 @@ require (
 	github.com/multiformats/go-multistream v0.4.1
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/prometheus/client_golang v1.14.0
-	github.com/segmentio/ksuid v1.0.4
 	github.com/spf13/afero v1.6.0
 	github.com/spf13/cobra v1.5.0
 	github.com/spf13/viper v1.7.0
