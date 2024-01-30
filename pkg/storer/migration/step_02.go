@@ -5,6 +5,7 @@
 package migration
 
 import (
+	"context"
 	"time"
 
 	storage "github.com/ethersphere/bee/pkg/storage"
@@ -20,7 +21,7 @@ func step_02(st transaction.Storage) func() error {
 
 	return func() error {
 
-		trx, done := st.NewTransaction()
+		trx, done := st.NewTransaction(context.Background())
 		defer done()
 
 		var entries []*cache.CacheEntryItem

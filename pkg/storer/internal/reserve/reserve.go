@@ -57,7 +57,7 @@ func New(
 		multx:        multex.New(),
 	}
 
-	err := st.Run(func(s transaction.Store) error {
+	err := st.Run(context.Background(), func(s transaction.Store) error {
 		rItem := &radiusItem{}
 		err := s.IndexStore().Get(rItem)
 		if err != nil && !errors.Is(err, storage.ErrNotFound) {
@@ -102,7 +102,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 	r.multx.Lock(strconv.Itoa(int(po)))
 	defer r.multx.Unlock(strconv.Itoa(int(po)))
 
-	trx, done := r.st.NewTransaction()
+	trx, done := r.st.NewTransaction(ctx)
 	defer done()
 
 	indexStore := trx.IndexStore()
@@ -284,7 +284,7 @@ func (r *Reserve) EvictBatchBin(
 			end = len(evicted)
 		}
 
-		err := r.st.Run(func(s transaction.Store) error {
+		err := r.st.Run(ctx, func(s transaction.Store) error {
 			for _, item := range evicted[i:end] {
 				err = r.removeChunkWithItem(ctx, s, item)
 				if err != nil {
@@ -461,7 +461,7 @@ func (r *Reserve) EvictionTarget() int {
 func (r *Reserve) SetRadius(rad uint8) error {
 	r.radius.Store(uint32(rad))
 	r.radiusSetter.SetStorageRadius(rad)
-	return r.st.Run(func(s transaction.Store) error {
+	return r.st.Run(context.Background(), func(s transaction.Store) error {
 		return s.IndexStore().Put(&radiusItem{Radius: rad})
 	})
 }

@@ -80,7 +80,7 @@ func (c *Cache) Putter(store transaction.Storage) storage.Putter {
 		c.removeLock.RLock()
 		defer c.removeLock.RUnlock()
 
-		trx, done := store.NewTransaction()
+		trx, done := store.NewTransaction(ctx)
 		defer done()
 
 		newEntry := &cacheEntry{Address: chunk.Address()}
@@ -135,7 +135,7 @@ func (c *Cache) Getter(store transaction.Storage) storage.Getter {
 		c.removeLock.RLock()
 		defer c.removeLock.RUnlock()
 
-		trx, done := store.NewTransaction()
+		trx, done := store.NewTransaction(ctx)
 		defer done()
 
 		ch, err := trx.ChunkStore().Get(ctx, address)
@@ -197,7 +197,7 @@ func (c *Cache) ShallowCopy(
 
 	defer func() {
 		if err != nil {
-			err = store.Run(func(s transaction.Store) error {
+			err = store.Run(ctx, func(s transaction.Store) error {
 				var rerr error
 				for _, addr := range addrs {
 					rerr = errors.Join(rerr, s.ChunkStore().Delete(context.Background(), addr))
@@ -210,7 +210,7 @@ func (c *Cache) ShallowCopy(
 	//consider only the amount that can fit, the rest should be deleted from the chunkstore.
 	if len(addrs) > c.capacity {
 
-		_ = store.Run(func(s transaction.Store) error {
+		_ = store.Run(ctx, func(s transaction.Store) error {
 			for _, addr := range addrs[:len(addrs)-c.capacity] {
 				_ = s.ChunkStore().Delete(ctx, addr)
 			}
@@ -221,7 +221,7 @@ func (c *Cache) ShallowCopy(
 
 	entriesToAdd := make([]*cacheEntry, 0, len(addrs))
 
-	err = store.Run(func(s transaction.Store) error {
+	err = store.Run(ctx, func(s transaction.Store) error {
 		for _, addr := range addrs {
 			entry := &cacheEntry{Address: addr, AccessTimestamp: now().UnixNano()}
 			if has, err := s.IndexStore().Has(entry); err == nil && has {
@@ -299,7 +299,7 @@ func (c *Cache) RemoveOldest(
 			end = len(evictItems)
 		}
 
-		err := st.Run(func(s transaction.Store) error {
+		err := st.Run(ctx, func(s transaction.Store) error {
 			for _, entry := range evictItems[i:end] {
 				err = s.IndexStore().Delete(entry)
 				if err != nil {

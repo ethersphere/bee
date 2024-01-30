@@ -46,7 +46,7 @@ func Test_TransactionStorage(t *testing.T) {
 	t.Run("put", func(t *testing.T) {
 		t.Parallel()
 
-		tx, done := st.NewTransaction()
+		tx, done := st.NewTransaction(context.Background())
 		defer done()
 
 		ch1 := test.GenerateTestRandomChunk()
@@ -80,7 +80,7 @@ func Test_TransactionStorage(t *testing.T) {
 	t.Run("put-forget commit", func(t *testing.T) {
 		t.Parallel()
 
-		tx, done := st.NewTransaction()
+		tx, done := st.NewTransaction(context.Background())
 
 		ch1 := test.GenerateTestRandomChunk()
 		ch2 := test.GenerateTestRandomChunk()
@@ -106,7 +106,7 @@ func Test_TransactionStorage(t *testing.T) {
 		ch1 := test.GenerateTestRandomChunk()
 		ch2 := test.GenerateTestRandomChunk()
 
-		_ = st.Run(func(s transaction.Store) error {
+		_ = st.Run(context.Background(), func(s transaction.Store) error {
 			assert.NoError(t, s.IndexStore().Put(&cache.CacheEntryItem{Address: ch1.Address(), AccessTimestamp: 1}))
 			assert.NoError(t, s.ChunkStore().Put(context.Background(), ch1))
 			assert.NoError(t, s.IndexStore().Put(&cache.CacheEntryItem{Address: ch2.Address(), AccessTimestamp: 1}))
@@ -132,7 +132,7 @@ func Test_TransactionStorage(t *testing.T) {
 		assert.Equal(t, ch1.Data(), ch2_get.Data())
 		assert.Equal(t, ch1.Address(), ch2_get.Address())
 
-		_ = st.Run(func(s transaction.Store) error {
+		_ = st.Run(context.Background(), func(s transaction.Store) error {
 			assert.NoError(t, s.IndexStore().Delete(&cache.CacheEntryItem{Address: ch1.Address(), AccessTimestamp: 1}))
 			assert.NoError(t, s.ChunkStore().Delete(context.Background(), ch1.Address()))
 			assert.NoError(t, s.IndexStore().Delete(&cache.CacheEntryItem{Address: ch2.Address(), AccessTimestamp: 1}))

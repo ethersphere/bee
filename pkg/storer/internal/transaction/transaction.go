@@ -51,9 +51,9 @@ type ReadOnlyStore interface {
 }
 
 type Storage interface {
-	NewTransaction() (Transaction, func())
+	NewTransaction(context.Context) (Transaction, func())
 	ReadOnly() ReadOnlyStore
-	Run(func(Store) error) error
+	Run(context.Context, func(Store) error) error
 	Close() error
 }
 
@@ -82,9 +82,9 @@ type transaction struct {
 // were returned from the storage ops or commit. Safest option is to do a defer call immediately after
 // creating the transaction.
 // Calls made to the transaction are NOT thread-safe.
-func (s *store) NewTransaction() (Transaction, func()) {
+func (s *store) NewTransaction(ctx context.Context) (Transaction, func()) {
 
-	b, _ := s.bstore.Batch(context.TODO())
+	b, _ := s.bstore.Batch(ctx) // error can be ignored
 	indexTrx := &indexTrx{s.bstore, b}
 	sharyTrx := &sharkyTrx{s.sharky, s.metrics, nil, nil}
 
@@ -118,8 +118,8 @@ func (s *store) ReadOnly() ReadOnlyStore {
 	return &readOnly{indexStore, &chunkStoreTrx{indexStore, sharyTrx, s.chunkStoreLocker, "", s.metrics, true}}
 }
 
-func (s *store) Run(f func(Store) error) error {
-	trx, done := s.NewTransaction()
+func (s *store) Run(ctx context.Context, f func(Store) error) error {
+	trx, done := s.NewTransaction(ctx)
 	defer done()
 
 	err := f(trx)

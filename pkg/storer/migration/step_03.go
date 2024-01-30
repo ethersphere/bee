@@ -35,7 +35,7 @@ func step_03(
 
 		// STEP 1
 
-		err := st.Run(func(s transaction.Store) error {
+		err := st.Run(context.Background(), func(s transaction.Store) error {
 			for i := uint8(0); i < swarm.MaxBins; i++ {
 				err := s.IndexStore().Delete(&reserve.BinItem{Bin: i})
 				if err != nil {
@@ -72,7 +72,7 @@ func step_03(
 				end = len(chunkBinItems)
 			}
 
-			err := st.Run(func(s transaction.Store) error {
+			err := st.Run(context.Background(), func(s transaction.Store) error {
 				for _, item := range chunkBinItems[i:end] {
 					err := s.IndexStore().Delete(item)
 					if err != nil {
@@ -116,7 +116,7 @@ func step_03(
 				end = len(batchRadiusItems)
 			}
 
-			err := st.Run(func(s transaction.Store) error {
+			err := st.Run(context.Background(), func(s transaction.Store) error {
 				for _, item := range batchRadiusItems[i:end] {
 					chunk, err := s.ChunkStore().Get(context.Background(), item.Address)
 					if err != nil && !errors.Is(err, storage.ErrNotFound) {
@@ -133,7 +133,7 @@ func step_03(
 					} else {
 
 						var newBinID uint64
-						err = st.Run(func(s transaction.Store) error {
+						err = st.Run(context.Background(), func(s transaction.Store) error {
 							newBinID, err = rs.IncBinID(s.IndexStore(), item.Bin)
 							return err
 						})

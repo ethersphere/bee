@@ -5,6 +5,7 @@
 package chunkstamp_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -153,7 +154,7 @@ func TestStoreLoadDelete(t *testing.T) {
 					t.Fatalf("Get(...): unexpected error: have: %v; want: %v", err, storage.ErrNotFound)
 				}
 
-				if err := ts.Run(func(s transaction.Store) error {
+				if err := ts.Run(context.Background(), func(s transaction.Store) error {
 					return chunkstamp.Store(s.IndexStore(), ns, chunk)
 				}); err != nil {
 					t.Fatalf("Store(...): unexpected error: %v", err)
@@ -200,13 +201,13 @@ func TestStoreLoadDelete(t *testing.T) {
 
 			t.Run("delete stored stamp", func(t *testing.T) {
 				if i%2 == 0 {
-					if err := ts.Run(func(s transaction.Store) error {
+					if err := ts.Run(context.Background(), func(s transaction.Store) error {
 						return chunkstamp.Delete(s.IndexStore(), ns, chunk.Address(), chunk.Stamp().BatchID())
 					}); err != nil {
 						t.Fatalf("Delete(...): unexpected error: %v", err)
 					}
 				} else {
-					if err := ts.Run(func(s transaction.Store) error {
+					if err := ts.Run(context.Background(), func(s transaction.Store) error {
 						return chunkstamp.DeleteWithStamp(s.IndexStore(), ns, chunk.Address(), chunk.Stamp())
 					}); err != nil {
 						t.Fatalf("DeleteWithStamp(...): unexpected error: %v", err)
@@ -224,13 +225,13 @@ func TestStoreLoadDelete(t *testing.T) {
 
 			t.Run("delete all stored stamp index", func(t *testing.T) {
 
-				if err := ts.Run(func(s transaction.Store) error {
+				if err := ts.Run(context.Background(), func(s transaction.Store) error {
 					return chunkstamp.Store(s.IndexStore(), ns, chunk)
 				}); err != nil {
 					t.Fatalf("Store(...): unexpected error: %v", err)
 				}
 
-				if err := ts.Run(func(s transaction.Store) error {
+				if err := ts.Run(context.Background(), func(s transaction.Store) error {
 					return chunkstamp.DeleteAll(s.IndexStore(), ns, chunk.Address())
 				}); err != nil {
 					t.Fatalf("DeleteAll(...): unexpected error: %v", err)

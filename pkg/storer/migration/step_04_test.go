@@ -45,14 +45,14 @@ func Test_Step_04(t *testing.T) {
 	chunks := chunktest.GenerateTestRandomChunks(10)
 
 	for _, ch := range chunks {
-		err = storage.Run(func(s transaction.Store) error {
+		err = storage.Run(context.Background(), func(s transaction.Store) error {
 			return s.ChunkStore().Put(context.Background(), ch)
 		})
 		assert.NoError(t, err)
 	}
 
 	for _, ch := range chunks[:2] {
-		err = storage.Run(func(s transaction.Store) error {
+		err = storage.Run(context.Background(), func(s transaction.Store) error {
 			return s.IndexStore().Delete(&chunkstore.RetrievalIndexItem{Address: ch.Address()})
 		})
 		assert.NoError(t, err)

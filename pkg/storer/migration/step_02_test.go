@@ -5,6 +5,7 @@
 package migration_test
 
 import (
+	"context"
 	"crypto/rand"
 	"testing"
 
@@ -57,7 +58,7 @@ func Test_Step_02(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		entry := &testEntry{address: swarm.RandAddress(t)}
 		addrs = append(addrs, entry)
-		err := store.Run(func(s transaction.Store) error {
+		err := store.Run(context.Background(), func(s transaction.Store) error {
 			return s.IndexStore().Put(entry)
 		})
 		assert.NoError(t, err)

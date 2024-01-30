@@ -443,7 +443,7 @@ func TestChunkPutter(t *testing.T) {
 
 	ts := newTestStorage(t)
 
-	tx, done := ts.NewTransaction()
+	tx, done := ts.NewTransaction(context.Background())
 	defer done()
 	tag, err := upload.NextTag(tx.IndexStore())
 	if err != nil {
@@ -459,7 +459,7 @@ func TestChunkPutter(t *testing.T) {
 	for _, chunk := range chunktest.GenerateTestRandomChunks(10) {
 		t.Run(fmt.Sprintf("chunk %s", chunk.Address()), func(t *testing.T) {
 			t.Run("put new chunk", func(t *testing.T) {
-				err := ts.Run(func(s transaction.Store) error {
+				err := ts.Run(context.Background(), func(s transaction.Store) error {
 					return putter.Put(context.Background(), s, chunk)
 				})
 				if err != nil {
@@ -468,7 +468,7 @@ func TestChunkPutter(t *testing.T) {
 			})
 
 			t.Run("put existing chunk", func(t *testing.T) {
-				err := ts.Run(func(s transaction.Store) error {
+				err := ts.Run(context.Background(), func(s transaction.Store) error {
 					return putter.Put(context.Background(), s, chunk)
 				})
 				if err != nil {
@@ -554,7 +554,7 @@ func TestChunkPutter(t *testing.T) {
 	t.Run("close with reference", func(t *testing.T) {
 		addr := swarm.RandAddress(t)
 
-		err := ts.Run(func(s transaction.Store) error {
+		err := ts.Run(context.Background(), func(s transaction.Store) error {
 			return putter.Close(s.IndexStore(), addr)
 		})
 		if err != nil {
@@ -563,7 +563,7 @@ func TestChunkPutter(t *testing.T) {
 
 		var ti upload.TagItem
 
-		err = ts.Run(func(s transaction.Store) error {
+		err = ts.Run(context.Background(), func(s transaction.Store) error {
 			ti, err = upload.TagInfo(s.IndexStore(), tag.TagID)
 			return err
 		})
@@ -584,7 +584,7 @@ func TestChunkPutter(t *testing.T) {
 	})
 
 	t.Run("error after close", func(t *testing.T) {
-		err := ts.Run(func(s transaction.Store) error {
+		err := ts.Run(context.Background(), func(s transaction.Store) error {
 			return putter.Put(context.Background(), s, chunktest.GenerateTestRandomChunk())
 		})
 		if !errors.Is(err, upload.ErrPutterAlreadyClosed) {
@@ -596,7 +596,7 @@ func TestChunkPutter(t *testing.T) {
 
 		var putter internal.PutterCloserWithReference
 
-		err = ts.Run(func(s transaction.Store) error {
+		err = ts.Run(context.Background(), func(s transaction.Store) error {
 			putter, err = upload.NewPutter(s.IndexStore(), tag.TagID)
 			return err
 		})
@@ -605,7 +605,7 @@ func TestChunkPutter(t *testing.T) {
 		}
 
 		for _, chunk := range chunktest.GenerateTestRandomChunks(5) {
-			if err := ts.Run(func(s transaction.Store) error {
+			if err := ts.Run(context.Background(), func(s transaction.Store) error {
 				return putter.Put(context.Background(), s, chunk)
 			}); err != nil {
 				t.Fatalf("Put(...): unexpected error: %v", err)
@@ -614,7 +614,7 @@ func TestChunkPutter(t *testing.T) {
 
 		// close with different address
 		addr := swarm.RandAddress(t)
-		if err := ts.Run(func(s transaction.Store) error {
+		if err := ts.Run(context.Background(), func(s transaction.Store) error {
 			return putter.Close(s.IndexStore(), addr)
 		}); err != nil {
 			t.Fatalf("Close(...): unexpected error %v", err)
@@ -649,14 +649,14 @@ func TestChunkReporter(t *testing.T) {
 		putter internal.PutterCloserWithReference
 		err    error
 	)
-	if err := ts.Run(func(s transaction.Store) error {
+	if err := ts.Run(context.Background(), func(s transaction.Store) error {
 		tag, err = upload.NextTag(s.IndexStore())
 		return err
 	}); err != nil {
 		t.Fatalf("failed creating tag: %v", err)
 	}
 
-	if err := ts.Run(func(s transaction.Store) error {
+	if err := ts.Run(context.Background(), func(s transaction.Store) error {
 		putter, err = upload.NewPutter(s.IndexStore(), tag.TagID)
 		return err
 	}); err != nil {
@@ -666,7 +666,7 @@ func TestChunkReporter(t *testing.T) {
 	for idx, chunk := range chunktest.GenerateTestRandomChunks(10) {
 		t.Run(fmt.Sprintf("chunk %s", chunk.Address()), func(t *testing.T) {
 
-			if err := ts.Run(func(s transaction.Store) error {
+			if err := ts.Run(context.Background(), func(s transaction.Store) error {
 				return putter.Put(context.Background(), s, chunk)
 			}); err != nil {
 				t.Fatalf("Put(...): unexpected error: %v", err)
@@ -674,7 +674,7 @@ func TestChunkReporter(t *testing.T) {
 
 			report := func(ch swarm.Chunk, state int) {
 				t.Helper()
-				if err := ts.Run(func(s transaction.Store) error {
+				if err := ts.Run(context.Background(), func(s transaction.Store) error {
 					return upload.Report(context.Background(), s, ch, state)
 				}); err != nil {
 					t.Fatalf("Report(...): unexpected error: %v", err)
@@ -780,13 +780,13 @@ func TestChunkReporter(t *testing.T) {
 	t.Run("close with reference", func(t *testing.T) {
 		addr := swarm.RandAddress(t)
 
-		err := ts.Run(func(s transaction.Store) error { return putter.Close(s.IndexStore(), addr) })
+		err := ts.Run(context.Background(), func(s transaction.Store) error { return putter.Close(s.IndexStore(), addr) })
 		if err != nil {
 			t.Fatalf("Close(...): unexpected error %v", err)
 		}
 
 		var ti upload.TagItem
-		err = ts.Run(func(s transaction.Store) error {
+		err = ts.Run(context.Background(), func(s transaction.Store) error {
 			ti, err = upload.TagInfo(s.IndexStore(), tag.TagID)
 			return err
 		})
@@ -817,7 +817,7 @@ func TestStampIndexHandling(t *testing.T) {
 
 	var tag upload.TagItem
 	var err error
-	err = ts.Run(func(s transaction.Store) error {
+	err = ts.Run(context.Background(), func(s transaction.Store) error {
 		tag, err = upload.NextTag(s.IndexStore())
 		return err
 	})
@@ -826,7 +826,7 @@ func TestStampIndexHandling(t *testing.T) {
 	}
 
 	var putter internal.PutterCloserWithReference
-	err = ts.Run(func(s transaction.Store) error {
+	err = ts.Run(context.Background(), func(s transaction.Store) error {
 		putter, err = upload.NewPutter(s.IndexStore(), tag.TagID)
 		return err
 	})
@@ -915,7 +915,7 @@ func TestNextTagID(t *testing.T) {
 	for i := 1; i < 4; i++ {
 		var tag upload.TagItem
 		var err error
-		err = ts.Run(func(s transaction.Store) error {
+		err = ts.Run(context.Background(), func(s transaction.Store) error {
 			tag, err = upload.NextTag(s.IndexStore())
 			return err
 		})
@@ -948,7 +948,7 @@ func TestListTags(t *testing.T) {
 	for i := range want {
 		var tag upload.TagItem
 		var err error
-		err = ts.Run(func(s transaction.Store) error {
+		err = ts.Run(context.Background(), func(s transaction.Store) error {
 			tag, err = upload.NextTag(s.IndexStore())
 			return err
 		})
@@ -987,7 +987,7 @@ func TestIterate(t *testing.T) {
 	t.Run("iterates chunks", func(t *testing.T) {
 		var tag upload.TagItem
 		var err error
-		err = ts.Run(func(s transaction.Store) error {
+		err = ts.Run(context.Background(), func(s transaction.Store) error {
 			tag, err = upload.NextTag(s.IndexStore())
 			return err
 		})
@@ -996,7 +996,7 @@ func TestIterate(t *testing.T) {
 		}
 
 		var putter internal.PutterCloserWithReference
-		err = ts.Run(func(s transaction.Store) error {
+		err = ts.Run(context.Background(), func(s transaction.Store) error {
 			putter, err = upload.NewPutter(s.IndexStore(), tag.TagID)
 			return err
 		})
@@ -1031,7 +1031,7 @@ func TestIterate(t *testing.T) {
 			t.Fatalf("expected to iterate 0 chunks, got: %v", count)
 		}
 
-		err = ts.Run(func(s transaction.Store) error { return putter.Close(s.IndexStore(), swarm.ZeroAddress) })
+		err = ts.Run(context.Background(), func(s transaction.Store) error { return putter.Close(s.IndexStore(), swarm.ZeroAddress) })
 		if err != nil {
 			t.Fatalf("Close(...) error: %v", err)
 		}
@@ -1060,7 +1060,7 @@ func TestDeleteTag(t *testing.T) {
 
 	var tag upload.TagItem
 	var err error
-	err = ts.Run(func(s transaction.Store) error {
+	err = ts.Run(context.Background(), func(s transaction.Store) error {
 		tag, err = upload.NextTag(s.IndexStore())
 		return err
 	})
@@ -1068,7 +1068,7 @@ func TestDeleteTag(t *testing.T) {
 		t.Fatalf("failed creating tag: %v", err)
 	}
 
-	err = ts.Run(func(s transaction.Store) error {
+	err = ts.Run(context.Background(), func(s transaction.Store) error {
 		return upload.DeleteTag(s.IndexStore(), tag.TagID)
 	})
 	if err != nil {
@@ -1088,7 +1088,7 @@ func TestBatchIDForChunk(t *testing.T) {
 
 	var tag upload.TagItem
 	var err error
-	err = ts.Run(func(s transaction.Store) error {
+	err = ts.Run(context.Background(), func(s transaction.Store) error {
 		tag, err = upload.NextTag(s.IndexStore())
 		return err
 	})
@@ -1097,7 +1097,7 @@ func TestBatchIDForChunk(t *testing.T) {
 	}
 
 	var putter internal.PutterCloserWithReference
-	err = ts.Run(func(s transaction.Store) error {
+	err = ts.Run(context.Background(), func(s transaction.Store) error {
 		putter, err = upload.NewPutter(s.IndexStore(), tag.TagID)
 		return err
 	})
@@ -1130,7 +1130,7 @@ func TestCleanup(t *testing.T) {
 
 		var tag upload.TagItem
 		var err error
-		err = ts.Run(func(s transaction.Store) error {
+		err = ts.Run(context.Background(), func(s transaction.Store) error {
 			tag, err = upload.NextTag(s.IndexStore())
 			return err
 		})
@@ -1139,7 +1139,7 @@ func TestCleanup(t *testing.T) {
 		}
 
 		var putter internal.PutterCloserWithReference
-		err = ts.Run(func(s transaction.Store) error {
+		err = ts.Run(context.Background(), func(s transaction.Store) error {
 			putter, err = upload.NewPutter(s.IndexStore(), tag.TagID)
 			return err
 		})
@@ -1179,7 +1179,7 @@ func TestCleanup(t *testing.T) {
 
 		var tag upload.TagItem
 		var err error
-		err = ts.Run(func(s transaction.Store) error {
+		err = ts.Run(context.Background(), func(s transaction.Store) error {
 			tag, err = upload.NextTag(s.IndexStore())
 			return err
 		})
@@ -1188,7 +1188,7 @@ func TestCleanup(t *testing.T) {
 		}
 
 		var putter internal.PutterCloserWithReference
-		err = ts.Run(func(s transaction.Store) error {
+		err = ts.Run(context.Background(), func(s transaction.Store) error {
 			putter, err = upload.NewPutter(s.IndexStore(), tag.TagID)
 			return err
 		})
@@ -1224,7 +1224,7 @@ func TestCleanup(t *testing.T) {
 
 func put(t *testing.T, ts transaction.Storage, putter internal.PutterCloserWithReference, ch swarm.Chunk) error {
 	t.Helper()
-	return ts.Run(func(s transaction.Store) error {
+	return ts.Run(context.Background(), func(s transaction.Store) error {
 		return putter.Put(context.Background(), s, ch)
 	})
 }

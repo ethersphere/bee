@@ -115,7 +115,7 @@ func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
 
 		evictBatches := make(map[string]bool)
 
-		err := db.storage.Run(func(t transaction.Store) error {
+		err := db.storage.Run(ctx, func(t transaction.Store) error {
 			return db.reserve.IterateChunksItems(0, func(ci reserve.ChunkItem) (bool, error) {
 				if ci.Bin >= radius {
 					count++
@@ -232,7 +232,7 @@ func (db *DB) evictExpiredBatches(ctx context.Context) error {
 		if evicted > 0 {
 			db.logger.Debug("evicted expired batch", "batch_id", hex.EncodeToString(batchID), "total_evicted", evicted)
 		}
-		err = db.storage.Run(func(st transaction.Store) error {
+		err = db.storage.Run(ctx, func(st transaction.Store) error {
 			return st.IndexStore().Delete(&expiredBatchItem{BatchID: batchID})
 		})
 		if err != nil {
@@ -297,7 +297,7 @@ func (db *DB) EvictBatch(ctx context.Context, batchID []byte) error {
 		return nil
 	}
 
-	err := db.storage.Run(func(tx transaction.Store) error {
+	err := db.storage.Run(ctx, func(tx transaction.Store) error {
 		return tx.IndexStore().Put(&expiredBatchItem{BatchID: batchID})
 	})
 	if err != nil {

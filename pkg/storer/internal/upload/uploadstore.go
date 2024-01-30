@@ -545,7 +545,7 @@ func (u *uploadPutter) Cleanup(st transaction.Storage) error {
 	batchCnt := 1000
 	for i := 0; i < len(itemsToDelete); i += batchCnt {
 
-		_ = st.Run(func(s transaction.Store) error {
+		_ = st.Run(context.Background(), func(s transaction.Store) error {
 			end := i + batchCnt
 			if end > len(itemsToDelete) {
 				end = len(itemsToDelete)
@@ -558,7 +558,7 @@ func (u *uploadPutter) Cleanup(st transaction.Storage) error {
 		})
 	}
 
-	return st.Run(func(s transaction.Store) error {
+	return st.Run(context.Background(), func(s transaction.Store) error {
 		return s.IndexStore().Delete(&dirtyTagItem{TagID: u.tagID})
 	})
 }

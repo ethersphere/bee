@@ -32,7 +32,7 @@ func Test_Step_03(t *testing.T) {
 	var chunksPerPO uint64 = 2
 
 	for i := uint8(0); i < swarm.MaxBins; i++ {
-		err := store.Run(func(s transaction.Store) error {
+		err := store.Run(context.Background(), func(s transaction.Store) error {
 			return s.IndexStore().Put(&reserve.BinItem{Bin: i, BinID: 10})
 		})
 		assert.NoError(t, err)
@@ -49,7 +49,7 @@ func Test_Step_03(t *testing.T) {
 				BatchID:   ch.Stamp().BatchID(),
 				ChunkType: swarm.ChunkTypeContentAddressed,
 			}
-			err := store.Run(func(s transaction.Store) error {
+			err := store.Run(context.Background(), func(s transaction.Store) error {
 				return s.IndexStore().Put(cb)
 			})
 			if err != nil {
@@ -62,7 +62,7 @@ func Test_Step_03(t *testing.T) {
 				Address: ch.Address(),
 				BinID:   0,
 			}
-			err = store.Run(func(s transaction.Store) error {
+			err = store.Run(context.Background(), func(s transaction.Store) error {
 				return s.IndexStore().Put(br)
 			})
 			if err != nil {
@@ -74,7 +74,7 @@ func Test_Step_03(t *testing.T) {
 				continue
 			}
 
-			err = store.Run(func(s transaction.Store) error {
+			err = store.Run(context.Background(), func(s transaction.Store) error {
 				return s.ChunkStore().Put(context.Background(), ch)
 			})
 			if err != nil {

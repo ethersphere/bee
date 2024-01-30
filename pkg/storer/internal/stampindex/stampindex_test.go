@@ -5,6 +5,7 @@
 package stampindex_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
@@ -123,7 +124,7 @@ func TestStoreLoadDelete(t *testing.T) {
 		t.Run(ns, func(t *testing.T) {
 			t.Run("store new stamp index", func(t *testing.T) {
 
-				err := ts.Run(func(s transaction.Store) error {
+				err := ts.Run(context.Background(), func(s transaction.Store) error {
 					return stampindex.Store(s.IndexStore(), ns, chunk)
 
 				})
@@ -177,7 +178,7 @@ func TestStoreLoadDelete(t *testing.T) {
 
 			t.Run("delete stored stamp index", func(t *testing.T) {
 
-				err := ts.Run(func(s transaction.Store) error {
+				err := ts.Run(context.Background(), func(s transaction.Store) error {
 					return stampindex.Delete(s.IndexStore(), ns, chunk)
 				})
 				if err != nil {
@@ -233,7 +234,7 @@ func TestLoadOrStore(t *testing.T) {
 			want.ChunkAddress = chunk.Address()
 			want.ChunkIsImmutable = chunk.Immutable()
 
-			trx, done := ts.NewTransaction()
+			trx, done := ts.NewTransaction(context.Background())
 
 			have, loaded, err := stampindex.LoadOrStore(trx.IndexStore(), ns, chunk)
 			if err != nil {
@@ -248,7 +249,7 @@ func TestLoadOrStore(t *testing.T) {
 			assert.NoError(t, trx.Commit())
 			done()
 
-			trx, done = ts.NewTransaction()
+			trx, done = ts.NewTransaction(context.Background())
 			defer done()
 
 			have, loaded, err = stampindex.LoadOrStore(trx.IndexStore(), ns, chunk)

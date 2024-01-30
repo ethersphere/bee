@@ -164,7 +164,7 @@ func (c *collectionPutter) Cleanup(st transaction.Storage) error {
 		return fmt.Errorf("pin store: failed deleting collection chunks: %w", err)
 	}
 
-	err := st.Run(func(s transaction.Store) error {
+	err := st.Run(context.Background(), func(s transaction.Store) error {
 		return s.IndexStore().Delete(&dirtyCollection{UUID: c.collection.UUID})
 	})
 	if err != nil {
@@ -249,7 +249,7 @@ func deleteCollectionChunks(ctx context.Context, st transaction.Storage, collect
 	batchCnt := 1000
 	for i := 0; i < len(chunksToDelete); i += batchCnt {
 
-		err := st.Run(func(s transaction.Store) error {
+		err := st.Run(ctx, func(s transaction.Store) error {
 			end := i + batchCnt
 			if end > len(chunksToDelete) {
 				end = len(chunksToDelete)
@@ -287,7 +287,7 @@ func DeletePin(ctx context.Context, st transaction.Storage, root swarm.Address) 
 		return err
 	}
 
-	return st.Run(func(s transaction.Store) error {
+	return st.Run(ctx, func(s transaction.Store) error {
 		err := s.IndexStore().Delete(collection)
 		if err != nil {
 			return fmt.Errorf("pin store: failed deleting root collection: %w", err)

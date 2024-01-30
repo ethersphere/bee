@@ -22,7 +22,7 @@ func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
 		pinningPutter internal.PutterCloserWithReference
 		err           error
 	)
-	err = db.storage.Run(func(store transaction.Store) error {
+	err = db.storage.Run(ctx, func(store transaction.Store) error {
 		pinningPutter, err = pinstore.NewCollection(store.IndexStore())
 		if err != nil {
 			return fmt.Errorf("pinstore.NewCollection: %w", err)
@@ -37,7 +37,7 @@ func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
 		Putter: putterWithMetrics{
 			storage.PutterFunc(
 				func(ctx context.Context, chunk swarm.Chunk) error {
-					return db.storage.Run(func(s transaction.Store) error {
+					return db.storage.Run(ctx, func(s transaction.Store) error {
 						unlock := db.Lock(uploadsLock)
 						defer unlock()
 						return pinningPutter.Put(ctx, s, chunk)
@@ -50,7 +50,7 @@ func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
 		done: func(address swarm.Address) error {
 			unlock := db.Lock(uploadsLock)
 			defer unlock()
-			return db.storage.Run(func(s transaction.Store) error {
+			return db.storage.Run(ctx, func(s transaction.Store) error {
 				return pinningPutter.Close(s.IndexStore(), address)
 			})
 		},

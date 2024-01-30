@@ -71,7 +71,7 @@ func TestPinStore(t *testing.T) {
 
 				var putter internal.PutterCloserWithReference
 				var err error
-				err = st.Run(func(s transaction.Store) error {
+				err = st.Run(context.Background(), func(s transaction.Store) error {
 					putter, err = pinstore.NewCollection(s.IndexStore())
 					return err
 				})
@@ -80,21 +80,21 @@ func TestPinStore(t *testing.T) {
 				}
 
 				for _, ch := range append(tc.uniqueChunks, tc.root) {
-					if err := st.Run(func(s transaction.Store) error {
+					if err := st.Run(context.Background(), func(s transaction.Store) error {
 						return putter.Put(context.Background(), s, ch)
 					}); err != nil {
 						t.Fatal(err)
 					}
 				}
 				for _, ch := range tc.dupChunks {
-					if err := st.Run(func(s transaction.Store) error {
+					if err := st.Run(context.Background(), func(s transaction.Store) error {
 						return putter.Put(context.Background(), s, ch)
 					}); err != nil {
 						t.Fatal(err)
 					}
 				}
 
-				if err := st.Run(func(s transaction.Store) error {
+				if err := st.Run(context.Background(), func(s transaction.Store) error {
 					return putter.Close(s.IndexStore(), tc.root.Address())
 				}); err != nil {
 					t.Fatal(err)
@@ -264,7 +264,7 @@ func TestPinStore(t *testing.T) {
 			putter internal.PutterCloserWithReference
 			err    error
 		)
-		err = st.Run(func(s transaction.Store) error {
+		err = st.Run(context.Background(), func(s transaction.Store) error {
 			putter, err = pinstore.NewCollection(s.IndexStore())
 			return err
 		})
@@ -272,21 +272,21 @@ func TestPinStore(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		err = st.Run(func(s transaction.Store) error {
+		err = st.Run(context.Background(), func(s transaction.Store) error {
 			return putter.Put(context.Background(), s, root)
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		err = st.Run(func(s transaction.Store) error {
+		err = st.Run(context.Background(), func(s transaction.Store) error {
 			return putter.Close(s.IndexStore(), root.Address())
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		err = st.Run(func(s transaction.Store) error {
+		err = st.Run(context.Background(), func(s transaction.Store) error {
 			return putter.Put(context.Background(), s, chunktest.GenerateTestRandomChunk())
 		})
 		if !errors.Is(err, pinstore.ErrPutterAlreadyClosed) {
@@ -324,7 +324,7 @@ func TestPinStore(t *testing.T) {
 			putter internal.PutterCloserWithReference
 			err    error
 		)
-		err = st.Run(func(s transaction.Store) error {
+		err = st.Run(context.Background(), func(s transaction.Store) error {
 			putter, err = pinstore.NewCollection(s.IndexStore())
 			return err
 		})
@@ -332,14 +332,14 @@ func TestPinStore(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		err = st.Run(func(s transaction.Store) error {
+		err = st.Run(context.Background(), func(s transaction.Store) error {
 			return putter.Put(context.Background(), s, root)
 		})
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		err = st.Run(func(s transaction.Store) error {
+		err = st.Run(context.Background(), func(s transaction.Store) error {
 			return putter.Close(s.IndexStore(), swarm.ZeroAddress)
 		})
 		if !errors.Is(err, pinstore.ErrCollectionRootAddressIsZero) {
@@ -361,7 +361,7 @@ func TestCleanup(t *testing.T) {
 			putter internal.PutterCloserWithReference
 			err    error
 		)
-		err = st.Run(func(s transaction.Store) error {
+		err = st.Run(context.Background(), func(s transaction.Store) error {
 			putter, err = pinstore.NewCollection(s.IndexStore())
 			return err
 		})
@@ -370,7 +370,7 @@ func TestCleanup(t *testing.T) {
 		}
 
 		for _, ch := range chunks {
-			err = st.Run(func(s transaction.Store) error {
+			err = st.Run(context.Background(), func(s transaction.Store) error {
 				return putter.Put(context.Background(), s, ch)
 			})
 			if err != nil {
@@ -404,7 +404,7 @@ func TestCleanup(t *testing.T) {
 			putter internal.PutterCloserWithReference
 			err    error
 		)
-		err = st.Run(func(s transaction.Store) error {
+		err = st.Run(context.Background(), func(s transaction.Store) error {
 			putter, err = pinstore.NewCollection(s.IndexStore())
 			return err
 		})
@@ -413,7 +413,7 @@ func TestCleanup(t *testing.T) {
 		}
 
 		for _, ch := range chunks {
-			err = st.Run(func(s transaction.Store) error {
+			err = st.Run(context.Background(), func(s transaction.Store) error {
 				return putter.Put(context.Background(), s, ch)
 			})
 			if err != nil {

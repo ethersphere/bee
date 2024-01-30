@@ -473,7 +473,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		sharkyBasePath = path.Join(dirPath, sharkyPath)
 	}
 
-	err = st.Run(func(s transaction.Store) error {
+	err = st.Run(ctx, func(s transaction.Store) error {
 		return migration.Migrate(
 			s.IndexStore(),
 			"migration",

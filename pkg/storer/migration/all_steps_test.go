@@ -5,6 +5,7 @@
 package migration_test
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -34,7 +35,7 @@ func TestPreSteps(t *testing.T) {
 		t.Parallel()
 
 		store := internal.NewInmemStorage()
-		err := store.Run(func(s transaction.Store) error {
+		err := store.Run(context.Background(), func(s transaction.Store) error {
 			return migration.Migrate(s.IndexStore(), "migration", localmigration.AfterInitSteps("", 4, store))
 		})
 		assert.NoError(t, err)

@@ -231,7 +231,7 @@ func TestCache(t *testing.T) {
 
 			for i := 0; i < 5; i++ {
 				extraChunk := chunktest.GenerateTestRandomChunk()
-				err := st.Run(func(s transaction.Store) error {
+				err := st.Run(context.Background(), func(s transaction.Store) error {
 					return s.ChunkStore().Put(context.TODO(), extraChunk)
 				})
 				if err != nil {
@@ -275,7 +275,7 @@ func TestCache(t *testing.T) {
 		// 		return retErr
 		// 	}
 
-		// 	return st.Run(func(s transaction.Store) error {
+		// 	return st.Run(context.Background(), func(s transaction.Store) error {
 		// 		return s.IndexStore().Put(i)
 		// 	})
 		// }
@@ -322,7 +322,7 @@ func TestShallowCopy(t *testing.T) {
 	// the chunkstore with chunks.
 	for _, ch := range chunks {
 
-		err := st.Run(func(s transaction.Store) error {
+		err := st.Run(context.Background(), func(s transaction.Store) error {
 			return s.ChunkStore().Put(context.Background(), ch)
 		})
 		if err != nil {
@@ -354,7 +354,7 @@ func TestShallowCopy(t *testing.T) {
 	// add the chunks to chunkstore. This simulates the reserve already populating
 	// the chunkstore with chunks.
 	for _, ch := range chunks1 {
-		err := st.Run(func(s transaction.Store) error {
+		err := st.Run(context.Background(), func(s transaction.Store) error {
 			return s.ChunkStore().Put(context.Background(), ch)
 		})
 		if err != nil {
@@ -396,7 +396,7 @@ func TestShallowCopyOverCap(t *testing.T) {
 	// the chunkstore with chunks.
 	for _, ch := range chunks {
 
-		err := st.Run(func(s transaction.Store) error {
+		err := st.Run(context.Background(), func(s transaction.Store) error {
 			return s.ChunkStore().Put(context.Background(), ch)
 		})
 		if err != nil {

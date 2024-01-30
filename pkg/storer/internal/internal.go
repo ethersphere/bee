@@ -61,7 +61,7 @@ type inmemStorage struct {
 	chunkStore storage.ChunkStore
 }
 
-func (t *inmemStorage) NewTransaction() (transaction.Transaction, func()) {
+func (t *inmemStorage) NewTransaction(ctx context.Context) (transaction.Transaction, func()) {
 	return &inmemTrx{t.indexStore, t.chunkStore}, func() {}
 }
 
@@ -86,8 +86,8 @@ func (t *inmemStorage) ReadOnly() transaction.ReadOnlyStore {
 	return &inmemReadOnly{t.indexStore, t.chunkStore}
 }
 func (t *inmemStorage) Close() error { return nil }
-func (t *inmemStorage) Run(f func(s transaction.Store) error) error {
-	trx, done := t.NewTransaction()
+func (t *inmemStorage) Run(ctx context.Context, f func(s transaction.Store) error) error {
+	trx, done := t.NewTransaction(ctx)
 	defer done()
 	return f(trx)
 }
