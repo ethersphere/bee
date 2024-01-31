@@ -573,6 +573,28 @@ func TestChunkPutter(t *testing.T) {
 		if diff := cmp.Diff(wantTI, ti); diff != "" {
 			t.Fatalf("Get(...): unexpected TagItem (-want +have):\n%s", diff)
 		}
+
+		t.Run("iterate all tag items", func(t *testing.T) {
+			var tagItemsCount, uploaded, synced uint64
+			err := upload.IterateAllTagItems(ts.IndexStore(), func(ti *upload.TagItem) (bool, error) {
+				uploaded += ti.Split
+				synced += ti.Synced
+				tagItemsCount++
+				return false, nil
+			})
+			if err != nil {
+				t.Fatalf("IterateAllTagItems(...): unexpected error %v", err)
+			}
+			if tagItemsCount != 1 {
+				t.Fatalf("unexpected tagItemsCount: want 1 have %d", tagItemsCount)
+			}
+			if uploaded != 20 {
+				t.Fatalf("unexpected uploaded: want 10 have %d", uploaded)
+			}
+			if synced != 0 {
+				t.Fatalf("unexpected synced: want 0 have %d", synced)
+			}
+		})
 	})
 
 	t.Run("error after close", func(t *testing.T) {
