@@ -50,9 +50,6 @@ func (st *stamper) Stamp(addr swarm.Address) (*Stamp, error) {
 	}
 	switch err := st.store.Get(item); {
 	case err == nil:
-		if st.issuer.ImmutableFlag() {
-			break
-		}
 		item.BatchTimestamp = unixTime()
 		if err = st.store.Put(item); err != nil {
 			return nil, err
