@@ -17,7 +17,6 @@ import (
 	"github.com/ethersphere/bee/pkg/storage/storageutil"
 	"github.com/ethersphere/bee/pkg/storer/internal"
 	"github.com/ethersphere/bee/pkg/storer/internal/chunkstamp"
-	"github.com/ethersphere/bee/pkg/storer/internal/stampindex"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -351,10 +350,6 @@ func (i dirtyTagItem) String() string {
 	return storageutil.JoinFields(i.Namespace(), i.ID())
 }
 
-// stampIndexUploadNamespace represents the
-// namespace name of the stamp index for upload.
-const stampIndexUploadNamespace = "upload"
-
 var (
 	// errPutterAlreadyClosed is returned when trying to Put a new chunk
 	// after the putter has been closed.
@@ -418,28 +413,6 @@ func (u *uploadPutter) Put(ctx context.Context, s internal.Storage, writer stora
 		u.seen++
 		u.split++
 		return nil
-	}
-
-	switch item, loaded, err := stampindex.LoadOrStore(
-		s.IndexStore(),
-		writer,
-		stampIndexUploadNamespace,
-		chunk,
-	); {
-	case err != nil:
-		return fmt.Errorf("load or store stamp index for chunk %v has fail: %w", chunk, err)
-	case loaded && item.ChunkIsImmutable:
-		return errOverwriteOfImmutableBatch
-	case loaded && !item.ChunkIsImmutable:
-		prev := binary.BigEndian.Uint64(item.StampTimestamp)
-		curr := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
-		if prev > curr {
-			return errOverwriteOfNewerBatch
-		}
-		err = stampindex.Store(writer, stampIndexUploadNamespace, chunk)
-		if err != nil {
-			return fmt.Errorf("failed updating stamp index: %w", err)
-		}
 	}
 
 	u.split++
