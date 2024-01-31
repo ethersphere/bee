@@ -201,14 +201,6 @@ func (si *StampIssuer) increment(addr swarm.Address) (batchIndex []byte, batchTi
 	return indexToBytes(bIdx, bCnt), unixTime(), nil
 }
 
-// check if this stamp index has already been assigned
-func (si *StampIssuer) assigned(stampIdx []byte) bool {
-	si.bucketMtx.Lock()
-	defer si.bucketMtx.Unlock()
-	b, idx := BucketIndexFromBytes(stampIdx)
-	return idx < si.data.Buckets[b]
-}
-
 // Label returns the label of the issuer.
 func (si *StampIssuer) Label() string {
 	return si.data.Label

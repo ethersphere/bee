@@ -106,11 +106,11 @@ func TestStamperStamping(t *testing.T) {
 		}
 	})
 
-	t.Run("incorrect old index", func(t *testing.T) {
+	t.Run("reuse index but get new timestamp for mutable or immutable batch", func(t *testing.T) {
 		st := newTestStampIssuerMutability(t, 1000, false)
 		chunkAddr := swarm.RandAddress(t)
 		bIdx := postage.ToBucket(st.BucketDepth(), chunkAddr)
-		index := postage.IndexToBytes(bIdx, 100)
+		index := postage.IndexToBytes(bIdx, 4)
 		testItem := postage.NewStampItem().
 			WithBatchID(st.ID()).
 			WithChunkAddress(chunkAddr).
@@ -121,28 +121,16 @@ func TestStamperStamping(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if err := stamp.Valid(chunkAddr, owner, 12, 8, true); err != nil {
-			t.Fatalf("expected no error, got %v", err)
-		}
-		if bytes.Equal(stamp.Index(), testItem.BatchIndex) {
-			t.Fatalf("expected index to be different, got %x", stamp.Index())
-		}
-	})
-
-	t.Run("incorrect old index immutable", func(t *testing.T) {
-		st := newTestStampIssuerMutability(t, 1000, true)
-		chunkAddr := swarm.RandAddress(t)
-		bIdx := postage.ToBucket(st.BucketDepth(), chunkAddr)
-		index := postage.IndexToBytes(bIdx, 100)
-		testItem := postage.NewStampItem().
-			WithBatchID(st.ID()).
-			WithChunkAddress(chunkAddr).
-			WithBatchIndex(index)
-		testSt := &testStore{Store: inmemstore.New(), stampItem: testItem}
-		stamper := postage.NewStamper(testSt, st, signer)
-		_, err := stamper.Stamp(chunkAddr)
-		if !errors.Is(err, postage.ErrOverwriteImmutableIndex) {
-			t.Fatalf("got err %v, wanted %v", err, postage.ErrOverwriteImmutableIndex)
+		for _, mutability := range []bool{true, false} {
+			if err := stamp.Valid(chunkAddr, owner, 12, 8, mutability); err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
+			if bytes.Equal(stamp.Timestamp(), testItem.BatchTimestamp) {
+				t.Fatalf("expected timestamp to be different, got %x", stamp.Index())
+			}
+			if !bytes.Equal(stamp.Index(), testItem.BatchIndex) {
+				t.Fatalf("expected index to be the same, got %x", stamp.Index())
+			}
 		}
 	})
 
