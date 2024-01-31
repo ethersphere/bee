@@ -711,10 +711,9 @@ func Report(
 		return fmt.Errorf("failed deleting chunk %s: %w", chunk.Address(), err)
 	}
 
-	ui.Synced = now().UnixNano()
-	err = batch.Put(ui)
+	err = batch.Delete(ui)
 	if err != nil {
-		return fmt.Errorf("failed updating uploadItem %s: %w", ui, err)
+		return fmt.Errorf("failed deleting uploadItem %s: %w", ui, err)
 	}
 
 	return batch.Commit()

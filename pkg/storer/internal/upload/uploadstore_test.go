@@ -733,20 +733,12 @@ func TestChunkReporter(t *testing.T) {
 					Address: chunk.Address(),
 					BatchID: chunk.Stamp().BatchID(),
 				}
-				err = ts.IndexStore().Get(ui)
+				has, err := ts.IndexStore().Has(ui)
 				if err != nil {
-					t.Fatalf("Get(...): unexpected error: %v", err)
+					t.Fatalf("unexpected error: %v", err)
 				}
-				wantUI := &upload.UploadItem{
-					Address:  chunk.Address(),
-					BatchID:  chunk.Stamp().BatchID(),
-					TagID:    tag.TagID,
-					Uploaded: now().UnixNano(),
-					Synced:   now().UnixNano(),
-				}
-
-				if diff := cmp.Diff(wantUI, ui); diff != "" {
-					t.Fatalf("Get(...): unexpected UploadItem (-want +have):\n%s", diff)
+				if has {
+					t.Fatalf("expected to not be found: %s", ui)
 				}
 
 				pi := &upload.PushItem{
@@ -754,7 +746,7 @@ func TestChunkReporter(t *testing.T) {
 					Address:   chunk.Address(),
 					BatchID:   chunk.Stamp().BatchID(),
 				}
-				has, err := ts.IndexStore().Has(pi)
+				has, err = ts.IndexStore().Has(pi)
 				if err != nil {
 					t.Fatalf("Has(...): unexpected error: %v", err)
 				}
