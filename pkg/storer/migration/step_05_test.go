@@ -1,3 +1,7 @@
+// Copyright 2024 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package migration_test
 
 import (
@@ -55,6 +59,7 @@ func Test_Step_05(t *testing.T) {
 	}
 
 	wantCount := func(t *testing.T, want int) {
+		t.Helper()
 		count := 0
 		err = upload.IterateAll(st.IndexStore(), func(_ storage.Item) (bool, error) {
 			count++
