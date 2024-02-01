@@ -820,19 +820,6 @@ func DeleteTag(st storage.Store, tagID uint64) error {
 	return nil
 }
 
-func IterateAll(st storage.Store, iterateFn func(addr swarm.Address, isSynced bool) (bool, error)) error {
-	return st.Iterate(
-		storage.Query{
-			Factory: func() storage.Item { return new(uploadItem) },
-		},
-		func(r storage.Result) (bool, error) {
-			address := swarm.NewAddress([]byte(r.ID[:32]))
-			synced := r.Entry.(*uploadItem).Synced != 0
-			return iterateFn(address, synced)
-		},
-	)
-}
-
 func IterateAllTagItems(st storage.Store, cb func(ti *TagItem) (bool, error)) error {
 	return st.Iterate(
 		storage.Query{

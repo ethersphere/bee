@@ -526,20 +526,27 @@ func TestChunkPutter(t *testing.T) {
 
 	t.Run("iterate all", func(t *testing.T) {
 		count := 0
-		err := upload.IterateAll(ts.IndexStore(), func(addr swarm.Address, synced bool) (bool, error) {
-			count++
-			if synced {
-				t.Fatal("expected synced to be false")
-			}
-			has, err := ts.ChunkStore().Has(context.Background(), addr)
-			if err != nil {
-				t.Fatalf("unexpected error in Has(...): %v", err)
-			}
-			if !has {
-				t.Fatalf("expected chunk to be present %s", addr.String())
-			}
-			return false, nil
-		})
+		err := ts.IndexStore().Iterate(
+			storage.Query{
+				Factory: func() storage.Item { return new(upload.UploadItem) },
+			},
+			func(r storage.Result) (bool, error) {
+				address := swarm.NewAddress([]byte(r.ID[:32]))
+				synced := r.Entry.(*upload.UploadItem).Synced != 0
+				count++
+				if synced {
+					t.Fatal("expected synced to be false")
+				}
+				has, err := ts.ChunkStore().Has(context.Background(), address)
+				if err != nil {
+					t.Fatalf("unexpected error in Has(...): %v", err)
+				}
+				if !has {
+					t.Fatalf("expected chunk to be present %s", address.String())
+				}
+				return false, nil
+			},
+		)
 		if err != nil {
 			t.Fatalf("IterateAll(...): unexpected error %v", err)
 		}
@@ -587,7 +594,7 @@ func TestChunkPutter(t *testing.T) {
 				t.Fatalf("unexpected tagItemsCount: want 1 have %d", tagItemsCount)
 			}
 			if uploaded != 20 {
-				t.Fatalf("unexpected uploaded: want 10 have %d", uploaded)
+				t.Fatalf("unexpected uploaded: want 20 have %d", uploaded)
 			}
 			if synced != 0 {
 				t.Fatalf("unexpected synced: want 0 have %d", synced)
