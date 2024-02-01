@@ -148,7 +148,7 @@ func validateWork(logger log.Logger, store storage.Store, readFn func(context.Co
 
 // ValidatePinCollectionChunks collects all chunk addresses that are present in a pin collection but
 // are either invalid or missing altogether.
-func ValidatePinCollectionChunks(ctx context.Context, basePath, pin string, opts *Options) error {
+func ValidatePinCollectionChunks(ctx context.Context, basePath, pin, location string, opts *Options) error {
 	logger := opts.Logger
 
 	store, err := initStore(basePath, opts)
@@ -173,12 +173,12 @@ func ValidatePinCollectionChunks(ctx context.Context, basePath, pin string, opts
 	}()
 
 	logger.Info("performing chunk validation")
-	validatePins(logger, store, pin, sharky.Read)
+	validatePins(logger, store, pin, location, sharky.Read)
 
 	return nil
 }
 
-func validatePins(logger log.Logger, store storage.Store, pin string, readFn func(context.Context, sharky.Location, []byte) error) {
+func validatePins(logger log.Logger, store storage.Store, pin, location string, readFn func(context.Context, sharky.Location, []byte) error) {
 	var stats struct {
 		total, read, invalid atomic.Int32
 	}
@@ -230,9 +230,25 @@ func validatePins(logger log.Logger, store storage.Store, pin string, readFn fun
 
 	logger.Info("got a total number of pins", "size", len(pins))
 
-	f, err := os.OpenFile("address.csv", os.O_CREATE|os.O_WRONLY, 0644)
+	var (
+		fileName = "address.csv"
+		fileLoc  = "."
+	)
+
+	if location != "" {
+		if path.Ext(location) != "" {
+			fileName = path.Base(location)
+		}
+		fileLoc = path.Dir(location)
+	}
+
+	logger.Info("saving stats to", "location", fileLoc, "name", fileName)
+
+	location = path.Join(fileLoc, fileName)
+
+	f, err := os.OpenFile(location, os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		logger.Error(err, "open file for writing")
+		logger.Error(err, "open output file for writing")
 		return
 	}
 

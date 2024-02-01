@@ -27,8 +27,10 @@ import (
 )
 
 const (
-	optionNameValidation    = "validate"
-	optionNameValidationPin = "validate-pin"
+	optionNameValidation     = "validate"
+	optionNameValidationPin  = "validate-pin"
+	optionNameCollectionPin  = "pin"
+	optionNameOutputLocation = "output"
 )
 
 func (c *command) initDBCmd() {
@@ -193,14 +195,19 @@ func dbValidatePinsCmd(cmd *cobra.Command) {
 				return errors.New("no data-dir provided")
 			}
 
-			providedPin, err := cmd.Flags().GetString("pin")
+			providedPin, err := cmd.Flags().GetString(optionNameCollectionPin)
 			if err != nil {
-				return fmt.Errorf("get pin: %w", err)
+				return fmt.Errorf("read pin option: %w", err)
+			}
+
+			outputLoc, err := cmd.Flags().GetString(optionNameOutputLocation)
+			if err != nil {
+				return fmt.Errorf("read location option: %w", err)
 			}
 
 			localstorePath := path.Join(dataDir, "localstore")
 
-			err = storer.ValidatePinCollectionChunks(context.Background(), localstorePath, providedPin, &storer.Options{
+			err = storer.ValidatePinCollectionChunks(context.Background(), localstorePath, providedPin, outputLoc, &storer.Options{
 				Logger:          logger,
 				RadiusSetter:    noopRadiusSetter{},
 				Batchstore:      new(postage.NoOpBatchStore),
@@ -215,7 +222,8 @@ func dbValidatePinsCmd(cmd *cobra.Command) {
 	}
 	c.Flags().String(optionNameDataDir, "", "data directory")
 	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
-	c.Flags().String("pin", "", "only validate given pin")
+	c.Flags().String(optionNameCollectionPin, "", "only validate given pin")
+	c.Flags().String(optionNameOutputLocation, "", "location and name of the output file")
 	cmd.AddCommand(c)
 }
 
