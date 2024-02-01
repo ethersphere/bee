@@ -97,7 +97,7 @@ func (s *Service) pinRootHash(w http.ResponseWriter, r *http.Request) {
 				logger.Debug("pin root hash: post-get", "reference", paths.Reference, "address", address)
 				time.Sleep(5*time.Second)
 				logger.Debug("pin root hash: pre-put", "reference", paths.Reference, "address", address)
-				err = putter.Put(r.Context(), chunk, "pinRootHash")
+				err = putter.Put(r.Context(), chunk, "PINRootHash")	// All caps triggers larger RefCnt increment for pin
 				if err != nil {
 					logger.Debug("pin root hash: failed to put", "address", address, "error", err)
 				}
@@ -291,7 +291,7 @@ func (s *Service) getPinnedRootHash(w http.ResponseWriter, r *http.Request) {
 	if queries.Repair != nil && *queries.Repair {	// ToDo: This should really be in a POST or PUT
 		getter := s.storer.Download(true)
 		for _, ref := range refs {
-			var newRefCnt uint32 = 1	// Need at least 1 for the pin
+			var newRefCnt uint32 = 100	// Need at least 100 for the pin
 			if ref.Cached {
 				newRefCnt++
 			}
@@ -306,7 +306,7 @@ func (s *Service) getPinnedRootHash(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 			if ref.RefCnt < newRefCnt {
-				delta := newRefCnt-ref.RefCnt + 100	// 100 more to ensure pin doesn't erode
+				delta := newRefCnt-ref.RefCnt + 100	// 100 more to double-protect the pin against erosion
 				_, err := s.storer.ChunkStore().IncRefCnt(context.Background(), ref.Address, delta)
 				if err != nil {
 					logger.Warning("pinned root hash: IncRefCnt failed", "address", ref.Address, "delta", delta, "error", err)
