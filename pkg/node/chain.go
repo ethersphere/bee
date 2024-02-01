@@ -69,7 +69,7 @@ func InitChain(
 		var versionString string
 		err = rpcClient.CallContext(ctx, &versionString, "web3_clientVersion")
 		if err != nil {
-			logger.Info("could not connect to backend; in a swap-enabled network a working blockchain node (for xdai network in production, goerli in testnet) is required; check your node or specify another node using --swap-endpoint.", "backend_endpoint", endpoint)
+			logger.Info("could not connect to backend; in a swap-enabled network a working blockchain node (for xdai network in production, sepolia in testnet) is required; check your node or specify another node using --swap-endpoint.", "backend_endpoint", endpoint)
 			return nil, common.Address{}, 0, nil, nil, fmt.Errorf("blockchain client get version: %w", err)
 		}
 
