@@ -230,10 +230,17 @@ type uploadItem struct {
 	TagID    uint64
 	Uploaded int64
 	Synced   int64
+
+	// idFunc overrides the ID method.
+	// This used to get the ID from the item where the address and batchID were not marshalled.
+	idFunc func() string
 }
 
 // ID implements the storage.Item interface.
 func (i uploadItem) ID() string {
+	if i.idFunc != nil {
+		return i.idFunc()
+	}
 	return storageutil.JoinFields(i.Address.ByteString(), string(i.BatchID))
 }
 
@@ -818,6 +825,21 @@ func DeleteTag(st storage.Store, tagID uint64) error {
 		return fmt.Errorf("uploadstore: failed to delete tag %d: %w", tagID, err)
 	}
 	return nil
+}
+
+func IterateAll(st storage.Store, iterateFn func(item storage.Item) (bool, error)) error {
+	return st.Iterate(
+		storage.Query{
+			Factory: func() storage.Item { return new(uploadItem) },
+		},
+		func(r storage.Result) (bool, error) {
+			ui := r.Entry.(*uploadItem)
+			ui.idFunc = func() string {
+				return r.ID
+			}
+			return iterateFn(ui)
+		},
+	)
 }
 
 func IterateAllTagItems(st storage.Store, cb func(ti *TagItem) (bool, error)) error {
