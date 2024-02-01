@@ -238,6 +238,7 @@ func FixRefCnt(ctx context.Context, basePath string, opts *Options, repair bool)
 		if err != nil {
 			logger.Error(err, "Failed to create batch")
 		}
+		batchHits := 0
 
 		logger.Info("Summarizing refCnts")
 		refs := make(map[uint32]uint32)
@@ -249,12 +250,23 @@ func FixRefCnt(ctx context.Context, basePath string, opts *Options, repair bool)
 				if item.item.RefCnt == 1 && newRefCnt == 0 {
 					shouldBeZero++
 				} else {
-					logger.Warning("Mismatched RefCnt", "original", item.item.RefCnt, "new", newRefCnt, "chunk", item.item.Address, "pins", item.pinCnt, "reserve", item.reserveCnt, "cache", item.cacheCnt, "upload", item.uploadCnt)
+					logger.Warning("Mismatched RefCnt", "original", item.item.RefCnt, "new", newRefCnt, "chunk", item.item.Address, "pins", item.pinCnt, "reserve", item.reserveCnt, "cache", item.cacheCnt, "upload", item.uploadCnt, "batchHits", batchHits)
 					if repair {
 						orgRefCnt := item.item.RefCnt
 						item.item.RefCnt = max(1,newRefCnt)
 						if err := batch.Put(item.item); err != nil {
 							logger.Error(err,"Failed to update RefCnt", "chunk", item.item.Address, "from", orgRefCnt, "to", newRefCnt)
+						}
+						batchHits = batchHits + 1
+						if batchHits >= 20000 {
+							if err := batch.Commit(); err != nil {
+								logger.Error(err, "batch.Commit failed")
+							}
+							batch, err = store.Batch(ctx)
+							if err != nil {
+								logger.Error(err, "Failed to create batch")
+							}
+							batchHits = 0
 						}
 						repaired++
 					} else if newRefCnt == 0 {
