@@ -231,15 +231,15 @@ type uploadItem struct {
 	Uploaded int64
 	Synced   int64
 
-	// idFunc overrides the ID method.
+	// IdFunc overrides the ID method.
 	// This used to get the ID from the item where the address and batchID were not marshalled.
-	idFunc func() string
+	IdFunc func() string
 }
 
 // ID implements the storage.Item interface.
 func (i uploadItem) ID() string {
-	if i.idFunc != nil {
-		return i.idFunc()
+	if i.IdFunc != nil {
+		return i.IdFunc()
 	}
 	return storageutil.JoinFields(i.Address.ByteString(), string(i.BatchID))
 }
@@ -834,7 +834,7 @@ func IterateAll(st storage.Store, iterateFn func(item storage.Item) (bool, error
 		},
 		func(r storage.Result) (bool, error) {
 			ui := r.Entry.(*uploadItem)
-			ui.idFunc = func() string {
+			ui.IdFunc = func() string {
 				return r.ID
 			}
 			return iterateFn(ui)
