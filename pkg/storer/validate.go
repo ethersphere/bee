@@ -282,7 +282,7 @@ func validatePins(logger log.Logger, store storage.Store, pin, location string, 
 
 		logger.Info("start iteration", "pin", pin)
 
-		pinstore.IterateCollection(store, pin, func(addr swarm.Address) (bool, error) {
+		_ = pinstore.IterateCollection(store, pin, func(addr swarm.Address) (bool, error) {
 			total.Add(1)
 			rIdx := &chunkstore.RetrievalIndexItem{Address: addr}
 			if err := store.Get(rIdx); err != nil {
