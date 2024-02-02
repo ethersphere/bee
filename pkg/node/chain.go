@@ -69,7 +69,7 @@ func InitChain(
 		var versionString string
 		err = rpcClient.CallContext(ctx, &versionString, "web3_clientVersion")
 		if err != nil {
-			logger.Info("could not connect to backend; in a swap-enabled network a working blockchain node (for xdai network in production, goerli in testnet) is required; check your node or specify another node using --swap-endpoint.", "backend_endpoint", endpoint)
+			logger.Info("could not connect to backend; in a swap-enabled network a working blockchain node (for xdai network in production, sepolia in testnet) is required; check your node or specify another node using --swap-endpoint.", "backend_endpoint", endpoint)
 			return nil, common.Address{}, 0, nil, nil, fmt.Errorf("blockchain client get version: %w", err)
 		}
 
@@ -383,7 +383,7 @@ func (m noOpChainBackend) Metrics() []prometheus.Collector {
 }
 
 func (m noOpChainBackend) CodeAt(context.Context, common.Address, *big.Int) ([]byte, error) {
-	return common.FromHex(sw3abi.SimpleSwapFactoryDeployedBinv0_4_0), nil
+	return common.FromHex(sw3abi.SimpleSwapFactoryDeployedBinv0_6_5), nil
 }
 func (m noOpChainBackend) CallContract(context.Context, ethereum.CallMsg, *big.Int) ([]byte, error) {
 	return nil, errors.New("disabled chain backend")
