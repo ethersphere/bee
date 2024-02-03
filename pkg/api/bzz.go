@@ -295,7 +295,7 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 		Strategy              getter.Strategy `map:"Swarm-Redundancy-Strategy"`
 		FallbackMode          bool            `map:"Swarm-Redundancy-Fallback-Mode"`
 		ChunkRetrievalTimeout string          `map:"Swarm-Chunk-Retrieval-Timeout"`
-		LookaheadBufferSize   string          `map:"Swarm-Lookahead-Buffer-Size"`
+		LookaheadBufferSize   *string         `map:"Swarm-Lookahead-Buffer-Size"`
 	}{}
 
 	if response := s.mapStructure(r.Header, &headers); response != nil {
@@ -532,6 +532,7 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 	}
 	if bufSize > 0 {
 		http.ServeContent(w, r, "", time.Now(), langos.NewBufferedLangos(reader, int(bufSize)))
+		return
 	}
 	http.ServeContent(w, r, "", time.Now(), reader)
 }
