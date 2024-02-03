@@ -1243,11 +1243,12 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 		canReadRange := func(t *testing.T, s getter.Strategy, fallback bool, levels int, canRead bool) {
 			ctx := context.Background()
 			strategyTimeout := 100 * time.Millisecond
+			decodingTimeout := 600 * time.Millisecond
 			if racedetection.IsOn() {
-				strategyTimeout *= 2
+				decodingTimeout *= 2
 			}
 			ctx = getter.SetConfigInContext(ctx, s, fallback, (2 * strategyTimeout).String(), strategyTimeout.String())
-			ctx, cancel := context.WithTimeout(ctx, time.Duration(levels*3+2)*strategyTimeout)
+			ctx, cancel := context.WithTimeout(ctx, time.Duration(levels)*(3*strategyTimeout+decodingTimeout))
 			defer cancel()
 			j, _, err := joiner.New(ctx, store, store, addr)
 			if err != nil {

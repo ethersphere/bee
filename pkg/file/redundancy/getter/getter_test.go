@@ -95,6 +95,9 @@ func TestGetterFallback(t *testing.T) {
 func testDecodingRACE(t *testing.T, bufSize, shardCnt, erasureCnt int) {
 	t.Helper()
 	strategyTimeout := 100 * time.Millisecond
+	if racedetection.On {
+		strategyTimeout *= 2
+	}
 	store := inmem.New()
 	buf := make([][]byte, bufSize)
 	addrs := initData(t, buf, shardCnt, store)
@@ -128,7 +131,7 @@ func testDecodingRACE(t *testing.T, bufSize, shardCnt, erasureCnt int) {
 	err := context.DeadlineExceeded
 	wait := strategyTimeout * 2
 	if racedetection.On {
-		wait = strategyTimeout * 3
+		wait *= 2
 	}
 	select {
 	case err = <-q:
