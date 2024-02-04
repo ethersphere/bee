@@ -152,12 +152,30 @@ func expectPeersEventually(t *testing.T, s *libp2p.Service, addrs ...swarm.Addre
 	}
 }
 
-func serviceUnderlayAddress(t *testing.T, s *libp2p.Service) multiaddr.Multiaddr {
+// serviceUnderlayAddress returns the first multiaddress of the service that
+// contains the given protocol code. If no protocol code is given, the first
+// address is returned.
+func serviceUnderlayAddress(t *testing.T, s *libp2p.Service, codes ...int) multiaddr.Multiaddr {
 	t.Helper()
 
 	addrs, err := s.Addresses()
 	if err != nil {
 		t.Fatal(err)
 	}
-	return addrs[0]
+
+	if len(codes) == 0 {
+		return addrs[0]
+	}
+
+	for _, addr := range addrs {
+		for _, proto := range addr.Protocols() {
+			for _, code := range codes {
+				if proto.Code == code {
+					return addr
+				}
+			}
+		}
+	}
+
+	return nil
 }

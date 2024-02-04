@@ -1129,6 +1129,37 @@ func TestReachabilityUpdate(t *testing.T) {
 	}
 }
 
+func TestConnectWithEnabledQUICTransports(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	n1, overlay1 := newService(t, 1, libp2pServiceOpts{
+		libp2pOpts: libp2p.Options{
+			EnableQUIC: true,
+			FullNode:   true,
+		},
+	})
+
+	n2, overlay2 := newService(t, 1, libp2pServiceOpts{
+		libp2pOpts: libp2p.Options{
+			EnableQUIC: true,
+			FullNode:   true,
+		},
+	})
+
+	addr1 := serviceUnderlayAddress(t, n1, ma.P_QUIC_V1)
+	if addr1 == nil {
+		t.Fatal("QUIC protocol address not found")
+	}
+
+	if _, err := n2.Connect(ctx, addr1); err != nil {
+		t.Fatal(err)
+	}
+
+	expectPeers(t, n2, overlay1)
+	expectPeersEventually(t, n1, overlay2)
+}
+
 func testUserAgentLogLine(t *testing.T, logs *buffer, substring string) {
 	t.Helper()
 

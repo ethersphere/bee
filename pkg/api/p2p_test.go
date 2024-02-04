@@ -35,6 +35,7 @@ func TestAddresses(t *testing.T) {
 	addresses := []multiaddr.Multiaddr{
 		mustMultiaddr(t, "/ip4/127.0.0.1/tcp/7071/p2p/16Uiu2HAmTBuJT9LvNmBiQiNoTsxE5mtNy6YG3paw79m94CRa9sRb"),
 		mustMultiaddr(t, "/ip4/192.168.0.101/tcp/7071/p2p/16Uiu2HAmTBuJT9LvNmBiQiNoTsxE5mtNy6YG3paw79m94CRa9sRb"),
+		mustMultiaddr(t, "/ip4/127.0.0.1/udp/7071/quic-v1/p2p/16Uiu2HAmTBuJT9LvNmBiQiNoTsxE5mtNy6YG3paw79m94CRa9sRb"),
 	}
 
 	ethereumAddress := common.HexToAddress("abcd")
