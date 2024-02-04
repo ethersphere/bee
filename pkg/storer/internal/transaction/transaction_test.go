@@ -147,4 +147,43 @@ func Test_TransactionStorage(t *testing.T) {
 		_, err = st.ReadOnly().ChunkStore().Get(context.Background(), ch2.Address())
 		assert.ErrorIs(t, err, storage.ErrNotFound)
 	})
+
+	t.Run("put-delete-chunk", func(t *testing.T) {
+		t.Parallel()
+
+		ch1 := test.GenerateTestRandomChunk()
+
+		_ = st.Run(context.Background(), func(s transaction.Store) error {
+			assert.NoError(t, s.ChunkStore().Put(context.Background(), ch1))
+			assert.NoError(t, s.ChunkStore().Put(context.Background(), ch1))
+			assert.NoError(t, s.ChunkStore().Delete(context.Background(), ch1.Address()))
+			return nil
+		})
+
+		has, err := st.ReadOnly().ChunkStore().Has(context.Background(), ch1.Address())
+		assert.NoError(t, err)
+		if !has {
+			t.Fatal("should have chunk")
+		}
+	})
+
+	t.Run("put-delete-chunk-twice", func(t *testing.T) {
+		t.Parallel()
+
+		ch1 := test.GenerateTestRandomChunk()
+
+		_ = st.Run(context.Background(), func(s transaction.Store) error {
+			assert.NoError(t, s.ChunkStore().Put(context.Background(), ch1))
+			assert.NoError(t, s.ChunkStore().Put(context.Background(), ch1))
+			assert.NoError(t, s.ChunkStore().Delete(context.Background(), ch1.Address()))
+			assert.NoError(t, s.ChunkStore().Delete(context.Background(), ch1.Address()))
+			return nil
+		})
+
+		has, err := st.ReadOnly().ChunkStore().Has(context.Background(), ch1.Address())
+		assert.NoError(t, err)
+		if has {
+			t.Fatal("should NOT have chunk")
+		}
+	})
 }
