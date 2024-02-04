@@ -268,17 +268,7 @@ func TestCache(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		// return error for state update, which occurs at the end of Get/Put operations
 		retErr := errors.New("dummy error")
-		// st.putFn = func(i storage.Item) error {
-		// 	if i.Namespace() == "cacheOrderIndex" {
-		// 		return retErr
-		// 	}
-
-		// 	return st.Run(context.Background(), func(s transaction.Store) error {
-		// 		return s.IndexStore().Put(i)
-		// 	})
-		// }
 
 		// on error the cache expects the overarching transactions to clean itself up
 		// and undo any store updates. So here we only want to ensure the state is
