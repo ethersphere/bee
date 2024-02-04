@@ -350,11 +350,11 @@ func TestUploadStore(t *testing.T) {
 			return storer.New(context.Background(), "", dbTestOps(swarm.RandAddress(t), 0, nil, nil, time.Second))
 		})
 	})
-	// t.Run("disk", func(t *testing.T) {
-	// 	t.Parallel()
+	t.Run("disk", func(t *testing.T) {
+		t.Parallel()
 
-	// 	testUploadStore(t, diskStorer(t, dbTestOps(swarm.RandAddress(t), 0, nil, nil, time.Second)))
-	// })
+		testUploadStore(t, diskStorer(t, dbTestOps(swarm.RandAddress(t), 0, nil, nil, time.Second)))
+	})
 }
 
 func testReporter(t *testing.T, newStorer func() (*storer.DB, error)) {
@@ -372,7 +372,7 @@ func testReporter(t *testing.T, newStorer func() (*storer.DB, error)) {
 		t.Fatal(err)
 	}
 
-	putter, err := lstore.Upload(context.Background(), false, session.TagID)
+	putter, err := lstore.Upload(context.Background(), true, session.TagID)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -384,6 +384,13 @@ func testReporter(t *testing.T, newStorer func() (*storer.DB, error)) {
 		}
 	}
 
+	root := chunktesting.GenerateTestRandomChunk()
+
+	err = putter.Done(root.Address())
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	t.Run("report", func(t *testing.T) {
 		t.Run("commit", func(t *testing.T) {
 			err := lstore.Report(context.Background(), chunks[0], storage.ChunkSynced)
@@ -393,12 +400,13 @@ func testReporter(t *testing.T, newStorer func() (*storer.DB, error)) {
 
 			wantTI := storer.SessionInfo{
 				TagID:     session.TagID,
-				Split:     0,
+				Split:     3,
 				Seen:      0,
 				Sent:      0,
 				Synced:    1,
 				Stored:    0,
 				StartedAt: session.StartedAt,
+				Address:   root.Address(),
 			}
 
 			gotTI, err := lstore.Session(session.TagID)
@@ -414,7 +422,7 @@ func testReporter(t *testing.T, newStorer func() (*storer.DB, error)) {
 			if err != nil {
 				t.Fatalf("ChunkStore.Has(...): unexpected error: %v", err)
 			}
-			if has {
+			if !has {
 				t.Fatalf("expected chunk %s to not be found", chunks[0].Address())
 			}
 		})
