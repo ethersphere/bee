@@ -229,7 +229,7 @@ func (s *StateStorerAdapter) deleteKeys(keys []string) error {
 }
 
 // NewStateStorerAdapter creates a new StateStorerAdapter.
-func NewStateStorerAdapter(storage storage.BatchStore) (*StateStorerAdapter, error) {
+func NewStateStorerAdapter(storage storage.Store) (*StateStorerAdapter, error) {
 	err := migration.Migrate(storage, "migration", allSteps(storage))
 	if err != nil {
 		return nil, err
