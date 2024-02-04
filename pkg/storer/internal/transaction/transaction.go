@@ -8,13 +8,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math"
 	"time"
 
 	m "github.com/ethersphere/bee/pkg/metrics"
 	"github.com/ethersphere/bee/pkg/sharky"
 	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/cache"
 	"github.com/ethersphere/bee/pkg/storer/internal/chunkstore"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/prometheus/client_golang/prometheus"
@@ -83,7 +81,7 @@ type transaction struct {
 func (s *store) NewTransaction(ctx context.Context) (Transaction, func()) {
 
 	b := s.bstore.Batch(ctx)
-	indexTrx := cache.MustWrap(&indexTrx{s.bstore, b}, math.MaxInt)
+	indexTrx := &indexTrx{s.bstore, b}
 	sharyTrx := &sharkyTrx{s.sharky, s.metrics, nil, nil}
 
 	t := &transaction{
@@ -185,15 +183,13 @@ func (t *transaction) Commit() (err error) {
 }
 
 // IndexStore gives acces to the index store of the transaction.
-// Write operations are cached, so following Reads returns what was recently written to the transaction.
-// Note that writes are not persisted to the disk until the commit is called.
+// Note that no writes are persisted to the disk until the commit is called.
 func (t *transaction) IndexStore() storage.IndexStore {
 	return t.indexstore
 }
 
 // ChunkStore gives acces to the chunkstore of the transaction.
-// Write operations are cached, so following Reads returns what was recently written to the transaction.
-// Note that writes are not persisted to the disk until the commit is called.
+// Note that no writes are persisted to the disk until the commit is called.
 func (t *transaction) ChunkStore() storage.ChunkStore {
 	return t.chunkStore
 }

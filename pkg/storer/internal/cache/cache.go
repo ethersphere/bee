@@ -196,6 +196,8 @@ func (c *Cache) ShallowCopy(
 
 	entries := make([]*cacheEntry, 0, len(addrs))
 
+	entriesToAdd := make([]*cacheEntry, 0, len(addrs))
+
 	defer func() {
 		if err != nil {
 			for _, entry := range entries {
