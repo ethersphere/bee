@@ -447,7 +447,7 @@ func TestShallowCopyAlreadyCached(t *testing.T) {
 	t.Parallel()
 
 	st := newTestStorage(t)
-	c, err := cache.New(context.Background(), st, 1000)
+	c, err := cache.New(context.Background(), st.ReadOnly().IndexStore(), 1000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -457,7 +457,10 @@ func TestShallowCopyAlreadyCached(t *testing.T) {
 
 	for _, ch := range chunks {
 		// add the chunks to chunkstore. This simulates the reserve already populating the chunkstore with chunks.
-		err := st.ChunkStore().Put(context.Background(), ch)
+
+		err := st.Run(context.Background(), func(s transaction.Store) error {
+			return s.ChunkStore().Put(context.Background(), ch)
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -475,14 +478,14 @@ func TestShallowCopyAlreadyCached(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	verifyChunksExist(t, st.ChunkStore(), chunks...)
+	verifyChunksExist(t, st.ReadOnly().ChunkStore(), chunks...)
 
-	err = c.RemoveOldest(context.Background(), st, st.ChunkStore(), 10)
+	err = c.RemoveOldest(context.Background(), st, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	verifyChunksDeleted(t, st.ChunkStore(), chunks...)
+	verifyChunksDeleted(t, st.ReadOnly().ChunkStore(), chunks...)
 }
 
 func verifyCacheState(
@@ -556,7 +559,7 @@ func verifyChunksDeleted(
 
 func verifyChunksExist(
 	t *testing.T,
-	chStore storage.ChunkStore,
+	chStore storage.ReadOnlyChunkStore,
 	chs ...swarm.Chunk,
 ) {
 	t.Helper()

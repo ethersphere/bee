@@ -196,23 +196,24 @@ func (c *Cache) ShallowCopy(
 
 	entries := make([]*cacheEntry, 0, len(addrs))
 
-	entriesToAdd := make([]*cacheEntry, 0, len(addrs))
-
 	defer func() {
 		if err != nil {
-			for _, entry := range entries {
-				err = errors.Join(store.ChunkStore().Delete(context.Background(), entry.Address))
-			}
+			_ = store.Run(context.Background(), func(s transaction.Store) error {
+				for _, entry := range entries {
+					err = errors.Join(s.ChunkStore().Delete(context.Background(), entry.Address))
+				}
+				return nil
+			})
 		}
 	}()
 
 	for _, addr := range addrs {
 		entry := &cacheEntry{Address: addr, AccessTimestamp: now().UnixNano()}
-		if has, err := store.IndexStore().Has(entry); err == nil && has {
+		if has, err := store.ReadOnly().IndexStore().Has(entry); err == nil && has {
 			// Since the caller has previously referenced the chunk (+1 refCnt), and if the chunk is already referenced
 			// by the cache store (+1 refCnt), then we must decrement the refCnt by one ( -1 refCnt to bring the total to +1).
 			// See https://github.com/ethersphere/bee/issues/4530.
-			_ = store.ChunkStore().Delete(ctx, addr)
+			_ = store.Run(ctx, func(s transaction.Store) error { return s.ChunkStore().Delete(ctx, addr) })
 			continue
 		}
 		entries = append(entries, entry)
@@ -225,23 +226,13 @@ func (c *Cache) ShallowCopy(
 	//consider only the amount that can fit, the rest should be deleted from the chunkstore.
 	if len(entries) > c.capacity {
 		for _, addr := range entries[:len(entries)-c.capacity] {
-			_ = store.ChunkStore().Delete(ctx, addr.Address)
+			_ = store.Run(ctx, func(s transaction.Store) error { return s.ChunkStore().Delete(ctx, addr.Address) })
 		}
 		entries = entries[len(entries)-c.capacity:]
 	}
 
-	batch, err := store.IndexStore().Batch(ctx)
-	if err != nil {
-		return fmt.Errorf("failed creating batch: %w", err)
-	}
-
-	for _, entry := range entries {
-		err = batch.Put(entry)
-		if err != nil {
-			return fmt.Errorf("failed adding entry %s: %w", entry, err)
-		}
-
-		for _, entry := range entriesToAdd {
+	err = store.Run(ctx, func(s transaction.Store) error {
+		for _, entry := range entries {
 			err = s.IndexStore().Put(entry)
 			if err != nil {
 				return fmt.Errorf("failed adding entry %s: %w", entry, err)
@@ -254,14 +245,11 @@ func (c *Cache) ShallowCopy(
 				return fmt.Errorf("failed adding cache order index: %w", err)
 			}
 		}
-
 		return nil
 	})
 	if err == nil {
-		c.size.Add(int64(len(entriesToAdd)))
+		c.size.Add(int64(len(entries)))
 	}
-
-	c.size.Add(int64(len(entries)))
 
 	return nil
 }
