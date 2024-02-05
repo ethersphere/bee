@@ -21,6 +21,7 @@ func AfterInitSteps(
 		2: step_02,
 		3: step_03(chunkStore, reserve.ChunkType),
 		4: step_04(sharkyPath, sharkyNoOfShards),
+		5: step_05,
 	}
 }
 

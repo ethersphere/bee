@@ -16,8 +16,8 @@ import (
 )
 
 type UploadStat struct {
-	TotalUploaded int
-	TotalSynced   int
+	TotalUploaded uint64
+	TotalSynced   uint64
 }
 
 type PinningStat struct {
@@ -80,28 +80,22 @@ func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 	})
 
 	var (
-		uploaded int
-		synced   int
+		uploaded uint64
+		synced   uint64
 	)
 	eg.Go(func() error {
-		return upload.IterateAll(
-			db.repo.IndexStore(),
-			func(_ swarm.Address, isSynced bool) (bool, error) {
-				select {
-				case <-ctx.Done():
-					return true, ctx.Err()
-				case <-db.quit:
-					return true, ErrDBQuit
-				default:
-				}
-
-				uploaded++
-				if isSynced {
-					synced++
-				}
-				return false, nil
-			},
-		)
+		return upload.IterateAllTagItems(db.repo.IndexStore(), func(ti *upload.TagItem) (bool, error) {
+			select {
+			case <-ctx.Done():
+				return true, ctx.Err()
+			case <-db.quit:
+				return true, ErrDBQuit
+			default:
+			}
+			uploaded += ti.Split
+			synced += ti.Synced
+			return false, nil
+		})
 	})
 
 	var (
