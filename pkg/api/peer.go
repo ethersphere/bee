@@ -77,6 +77,40 @@ func (s *Service) peerDisconnectHandler(w http.ResponseWriter, r *http.Request) 
 	jsonhttp.OK(w, nil)
 }
 
+type peerCursorsResponse struct {
+	Epoch uint64 `json:"epoch"`
+	Cursors []uint64 `json:"cursors"`
+}
+
+func (s *Service) peerCursorsHandler(w http.ResponseWriter, r *http.Request) {
+	logger := s.logger.WithValues("peer_cursors").Build()
+
+	paths := struct {
+		Address swarm.Address `map:"address" validate:"required"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
+		return
+	}
+	
+	bins, epoch, err := s.pullsync.GetCursors(r.Context(), paths.Address)
+	if err != nil {
+		logger.Debug("pullsync GetCursors failed", "peer_address", paths.Address, "error", err)
+		if errors.Is(err, p2p.ErrPeerNotFound) {
+			jsonhttp.NotFound(w, "peer not found")
+			return
+		}
+		logger.Error(nil, "pullsync GetCursors failed", "peer_address", paths.Address)
+		jsonhttp.InternalServerError(w, err)
+		return
+	}
+
+	jsonhttp.OK(w, peerCursorsResponse{
+		Epoch: epoch,
+		Cursors: bins,
+	})
+}
+
 // Peer holds information about a Peer.
 type Peer struct {
 	Address  swarm.Address `json:"address"`

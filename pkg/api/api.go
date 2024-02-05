@@ -40,6 +40,7 @@ import (
 	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/postage/postagecontract"
 	"github.com/ethersphere/bee/pkg/pss"
+	"github.com/ethersphere/bee/pkg/pullsync"
 	"github.com/ethersphere/bee/pkg/resolver"
 	"github.com/ethersphere/bee/pkg/resolver/client/ens"
 	"github.com/ethersphere/bee/pkg/sctx"
@@ -179,6 +180,7 @@ type Service struct {
 	chequebook     chequebook.Service
 	pseudosettle   settlement.Interface
 	pingpong       pingpong.Interface
+	pullsync	   pullsync.Interface
 
 	batchStore   postage.Storer
 	stamperStore storage.Store
@@ -250,6 +252,7 @@ type ExtraOptions struct {
 	Steward         steward.Interface
 	SyncStatus      func() (bool, error)
 	NodeStatus      *status.Service
+	PullSync		pullsync.Interface
 }
 
 func New(
@@ -327,6 +330,7 @@ func (s *Service) Configure(signer crypto.Signer, auth auth.Authenticator, trace
 	s.stakingContract = e.Staking
 
 	s.pingpong = e.Pingpong
+	s.pullsync = e.PullSync
 	s.topologyDriver = e.TopologyDriver
 	s.accounting = e.Accounting
 	s.chequebook = e.Chequebook
