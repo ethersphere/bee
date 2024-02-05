@@ -14,12 +14,17 @@ import (
 
 type ChunkStore struct {
 	mu     sync.Mutex
-	chunks map[string]swarm.Chunk
+	chunks map[string]chunkCount
+}
+
+type chunkCount struct {
+	chunk swarm.Chunk
+	count int
 }
 
 func New() *ChunkStore {
 	return &ChunkStore{
-		chunks: make(map[string]swarm.Chunk),
+		chunks: make(map[string]chunkCount),
 	}
 }
 
@@ -31,18 +36,19 @@ func (c *ChunkStore) Get(_ context.Context, addr swarm.Address) (swarm.Chunk, er
 	if !ok {
 		return nil, storage.ErrNotFound
 	}
-	return chunk, nil
+	return chunk.chunk, nil
 }
 
 func (c *ChunkStore) Put(_ context.Context, ch swarm.Chunk) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	chunk, ok := c.chunks[ch.Address().ByteString()]
+	chunkCount, ok := c.chunks[ch.Address().ByteString()]
 	if !ok {
-		chunk = swarm.NewChunk(ch.Address(), ch.Data()).WithStamp(ch.Stamp())
+		chunkCount.chunk = swarm.NewChunk(ch.Address(), ch.Data()).WithStamp(ch.Stamp())
 	}
-	c.chunks[ch.Address().ByteString()] = chunk
+	chunkCount.count++
+	c.chunks[ch.Address().ByteString()] = chunkCount
 
 	return nil
 }
@@ -60,7 +66,13 @@ func (c *ChunkStore) Delete(_ context.Context, addr swarm.Address) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	delete(c.chunks, addr.ByteString())
+	chunkCount := c.chunks[addr.ByteString()]
+	chunkCount.count--
+	if chunkCount.count <= 0 {
+		delete(c.chunks, addr.ByteString())
+	} else {
+		c.chunks[addr.ByteString()] = chunkCount
+	}
 
 	return nil
 }
@@ -69,8 +81,8 @@ func (c *ChunkStore) Iterate(_ context.Context, fn storage.IterateChunkFn) error
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	for _, chunk := range c.chunks {
-		stop, err := fn(chunk)
+	for _, chunkCount := range c.chunks {
+		stop, err := fn(chunkCount.chunk)
 		if err != nil {
 			return err
 		}
