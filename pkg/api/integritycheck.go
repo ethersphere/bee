@@ -31,7 +31,8 @@ func (s *Service) pinIntegrityHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	out := make(chan storer.PinStat)
-	go s.pinIntegrity.Check(logger, querie.Ref.String(), out)
+
+	go s.pinIntegrity.Check(r.Context(), logger, querie.Ref.String(), out)
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
