@@ -30,12 +30,6 @@ func TestStateStoreAdapter(t *testing.T) {
 			}
 		})
 
-		// The test requires the state store to have
-		// a schema, otherwise the delete test fails.
-		if err := store.Put("test_schema", "name"); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
 		return store
 	})
 

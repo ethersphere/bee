@@ -222,7 +222,7 @@ func TestBatchStore_Reset(t *testing.T) {
 
 	// we expect one key in the statestore since the schema name
 	// will always be there.
-	if c != 1 {
+	if c != 0 {
 		t.Fatalf("expected only one key in statestore, got %d", c)
 	}
 }

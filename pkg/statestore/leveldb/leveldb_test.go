@@ -43,24 +43,3 @@ func TestPersistentStateStore(t *testing.T) {
 		return store
 	})
 }
-
-func TestGetSchemaName(t *testing.T) {
-	dir := t.TempDir()
-
-	store, err := leveldb.NewStateStore(dir, log.Noop)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		if err := store.Close(); err != nil {
-			t.Fatal(err)
-		}
-	})
-	n, err := store.GetSchemaName() // expect current
-	if err != nil {
-		t.Fatal(err)
-	}
-	if n != leveldb.DbSchemaCurrent {
-		t.Fatalf("wanted current db schema but got '%s'", n)
-	}
-}

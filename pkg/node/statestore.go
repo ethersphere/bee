@@ -11,7 +11,6 @@ import (
 
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/metrics"
-	"github.com/ethersphere/bee/pkg/postage"
 	"github.com/ethersphere/bee/pkg/statestore/storeadapter"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/cache"
@@ -55,12 +54,7 @@ func InitStamperStore(logger log.Logger, dataDir string, stateStore storage.Stat
 	if err != nil {
 		return nil, err
 	}
-	// TODO: remove migration after it has been a few months after the localstoreV2 release
-	err = migrateStamperData(stateStore, stamperStore)
-	if err != nil {
-		stamperStore.Close()
-		return nil, fmt.Errorf("migrating stamper data: %w", err)
-	}
+
 	return stamperStore, nil
 }
 
@@ -104,31 +98,4 @@ func setOverlay(s storage.StateStorer, overlay swarm.Address, nonce []byte) erro
 		s.Put(overlayNonce, nonce),
 		s.Put(noncedOverlayKey, overlay),
 	)
-}
-
-func migrateStamperData(stateStore storage.StateStorer, stamperStore storage.Store) error {
-	var keys []string
-	err := stateStore.Iterate("postage", func(key, value []byte) (bool, error) {
-		keys = append(keys, string(key))
-		st := &postage.StampIssuer{}
-		if err := st.UnmarshalBinary(value); err != nil {
-			return false, err
-		}
-		if err := stamperStore.Put(&postage.StampIssuerItem{
-			Issuer: st,
-		}); err != nil {
-			return false, err
-		}
-		return false, nil
-	})
-	if err != nil {
-		return err
-	}
-
-	for _, key := range keys {
-		if err = stateStore.Delete(key); err != nil {
-			return err
-		}
-	}
-	return nil
 }

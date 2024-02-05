@@ -7,7 +7,6 @@ package mock
 import (
 	"encoding"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"sync"
 
@@ -15,8 +14,6 @@ import (
 )
 
 var _ storage.StateStorer = (*store)(nil)
-
-const mockSchemaNameKey = "schema_name"
 
 type store struct {
 	store map[string][]byte
@@ -26,10 +23,6 @@ type store struct {
 func NewStateStore() storage.StateStorer {
 	s := &store{
 		store: make(map[string][]byte),
-	}
-
-	if err := s.Put(mockSchemaNameKey, "mock_schema"); err != nil {
-		panic(fmt.Errorf("put schema name: %w", err))
 	}
 
 	return s
