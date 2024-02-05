@@ -599,4 +599,10 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 			"GET": http.HandlerFunc(s.rchash),
 		}),
 	))
+
+	handle("/check/pin", web.ChainHandlers(
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.pinIntegrityHandler),
+		}),
+	))
 }

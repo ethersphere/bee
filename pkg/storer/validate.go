@@ -173,27 +173,81 @@ func ValidatePinCollectionChunks(ctx context.Context, basePath, pin, location st
 	}()
 
 	logger.Info("performing chunk validation")
-	validatePins(logger, store, pin, location, sharky.Read)
+
+	pv := PinIntegrity{
+		Store:  store,
+		Sharky: sharky,
+	}
+
+	var (
+		fileName = "address.csv"
+		fileLoc  = "."
+	)
+
+	if location != "" {
+		if path.Ext(location) != "" {
+			fileName = path.Base(location)
+		}
+		fileLoc = path.Dir(location)
+	}
+
+	logger.Info("saving stats", "location", fileLoc, "name", fileName)
+
+	location = path.Join(fileLoc, fileName)
+
+	f, err := os.OpenFile(location, os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("open output file for writing: %w", err)
+	}
+
+	if _, err := f.WriteString("invalid\tmissing\ttotal\taddress\n"); err != nil {
+		return fmt.Errorf("write title: %w", err)
+	}
+
+	defer f.Close()
+
+	var ch = make(chan PinStat)
+	go pv.Check(logger, pin, ch)
+
+	for st := range ch {
+		report := fmt.Sprintf("%d\t%d\t%d\t%s\n", st.Invalid, st.Missing, st.Total, st.Ref)
+
+		if _, err := f.WriteString(report); err != nil {
+			logger.Error(err, "write report line")
+			break
+		}
+	}
 
 	return nil
 }
 
-func validatePins(logger log.Logger, store storage.Store, pin, location string, readFn func(context.Context, sharky.Location, []byte) error) {
+type PinIntegrity struct {
+	Store  storage.Store
+	Sharky *sharky.Store
+}
+
+type PinStat struct {
+	Ref                     swarm.Address
+	Total, Missing, Invalid int
+}
+
+func (p *PinIntegrity) Check(logger log.Logger, pin string, out chan PinStat) {
 	var stats struct {
 		total, read, invalid atomic.Int32
 	}
 
 	n := time.Now()
 	defer func() {
+		close(out)
 		logger.Info("done", "duration", time.Since(n), "read", stats.read.Load(), "invalid", stats.invalid.Load(), "total", stats.total.Load())
 	}()
 
 	validChunk := func(item *chunkstore.RetrievalIndexItem, buf []byte) bool {
 		stats.total.Add(1)
 
-		if err := readFn(context.Background(), item.Location, buf); err != nil {
+		if err := p.Sharky.Read(context.Background(), item.Location, buf); err != nil {
 			stats.read.Add(1)
-			return true
+			return false
 		}
 
 		ch := swarm.NewChunk(item.Address, buf)
@@ -221,7 +275,7 @@ func validatePins(logger log.Logger, store storage.Store, pin, location string, 
 		pins = append(pins, addr)
 	} else {
 		var err error
-		pins, err = pinstore.Pins(store)
+		pins, err = pinstore.Pins(p.Store)
 		if err != nil {
 			logger.Error(err, "get pins")
 			return
@@ -229,35 +283,6 @@ func validatePins(logger log.Logger, store storage.Store, pin, location string, 
 	}
 
 	logger.Info("got a total number of pins", "size", len(pins))
-
-	var (
-		fileName = "address.csv"
-		fileLoc  = "."
-	)
-
-	if location != "" {
-		if path.Ext(location) != "" {
-			fileName = path.Base(location)
-		}
-		fileLoc = path.Dir(location)
-	}
-
-	logger.Info("saving stats to", "location", fileLoc, "name", fileName)
-
-	location = path.Join(fileLoc, fileName)
-
-	f, err := os.OpenFile(location, os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		logger.Error(err, "open output file for writing")
-		return
-	}
-
-	if _, err := f.WriteString("invalid\tmissing\ttotal\taddress\n"); err != nil {
-		logger.Error(err, "write title")
-		return
-	}
-
-	defer f.Close()
 
 	for _, pin := range pins {
 		var wg sync.WaitGroup
@@ -282,10 +307,10 @@ func validatePins(logger log.Logger, store storage.Store, pin, location string, 
 
 		logger.Info("start iteration", "pin", pin)
 
-		_ = pinstore.IterateCollection(store, pin, func(addr swarm.Address) (bool, error) {
+		err := pinstore.IterateCollection(p.Store, pin, func(addr swarm.Address) (bool, error) {
 			total.Add(1)
 			rIdx := &chunkstore.RetrievalIndexItem{Address: addr}
-			if err := store.Get(rIdx); err != nil {
+			if err := p.Store.Get(rIdx); err != nil {
 				missing.Add(1)
 			} else {
 				iteratateItemsC <- rIdx
@@ -293,15 +318,18 @@ func validatePins(logger log.Logger, store storage.Store, pin, location string, 
 			return false, nil
 		})
 
+		if err != nil {
+			logger.Error(err, "iterate pin", "pin", pin)
+		}
+
 		close(iteratateItemsC)
 
 		wg.Wait()
 
-		report := fmt.Sprintf("%d\t%d\t%d\t%s\n", invalid.Load(), missing.Load(), total.Load(), pin)
-
-		if _, err := f.WriteString(report); err != nil {
-			logger.Error(err, "write report line")
-			return
-		}
+		out <- PinStat{
+			Ref:     pin,
+			Total:   int(total.Load()),
+			Missing: int(missing.Load()),
+			Invalid: int(invalid.Load())}
 	}
 }

@@ -174,7 +174,9 @@ type Service struct {
 
 	batchStore   postage.Storer
 	stamperStore storage.Store
-	syncStatus   func() (bool, error)
+	pinIntegrity *storer.PinIntegrity
+
+	syncStatus func() (bool, error)
 
 	swap        swap.Interface
 	transaction transaction.Service
@@ -242,6 +244,7 @@ type ExtraOptions struct {
 	Steward         steward.Interface
 	SyncStatus      func() (bool, error)
 	NodeStatus      *status.Service
+	PinIntegrity    *storer.PinIntegrity
 }
 
 func New(
@@ -348,6 +351,8 @@ func (s *Service) Configure(signer crypto.Signer, auth auth.Authenticator, trace
 			return "", err
 		}
 	}
+
+	s.pinIntegrity = e.PinIntegrity
 }
 
 func (s *Service) SetProbe(probe *Probe) {
