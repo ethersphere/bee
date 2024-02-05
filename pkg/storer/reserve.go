@@ -423,6 +423,7 @@ func (db *DB) unreserve(ctx context.Context) (err error) {
 		radius++
 		db.logger.Info("reserve radius increase", "radius", radius)
 		_ = db.reserve.SetRadius(radius)
+		db.metrics.StorageRadius.Set(float64(radius))
 	}
 
 	return errMaxRadius
