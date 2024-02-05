@@ -527,7 +527,7 @@ func TestChunkPutter(t *testing.T) {
 
 	t.Run("iterate all", func(t *testing.T) {
 		count := 0
-		err := ts.IndexStore().Iterate(
+		err := ts.ReadOnly().IndexStore().Iterate(
 			storage.Query{
 				Factory: func() storage.Item { return new(upload.UploadItem) },
 			},
@@ -538,7 +538,7 @@ func TestChunkPutter(t *testing.T) {
 				if synced {
 					t.Fatal("expected synced to be false")
 				}
-				has, err := ts.ChunkStore().Has(context.Background(), address)
+				has, err := ts.ReadOnly().ChunkStore().Has(context.Background(), address)
 				if err != nil {
 					t.Fatalf("unexpected error in Has(...): %v", err)
 				}
@@ -589,7 +589,7 @@ func TestChunkPutter(t *testing.T) {
 
 		t.Run("iterate all tag items", func(t *testing.T) {
 			var tagItemsCount, uploaded, synced uint64
-			err := upload.IterateAllTagItems(ts.IndexStore(), func(ti *upload.TagItem) (bool, error) {
+			err := upload.IterateAllTagItems(ts.ReadOnly().IndexStore(), func(ti *upload.TagItem) (bool, error) {
 				uploaded += ti.Split
 				synced += ti.Synced
 				tagItemsCount++
@@ -764,7 +764,7 @@ func TestChunkReporter(t *testing.T) {
 					Address: chunk.Address(),
 					BatchID: chunk.Stamp().BatchID(),
 				}
-				has, err := ts.IndexStore().Has(ui)
+				has, err := ts.ReadOnly().IndexStore().Has(ui)
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
 				}
@@ -777,7 +777,7 @@ func TestChunkReporter(t *testing.T) {
 					Address:   chunk.Address(),
 					BatchID:   chunk.Stamp().BatchID(),
 				}
-				has, err = ts.IndexStore().Has(pi)
+				has, err = ts.ReadOnly().IndexStore().Has(pi)
 				if err != nil {
 					t.Fatalf("Has(...): unexpected error: %v", err)
 				}
