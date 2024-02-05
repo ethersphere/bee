@@ -84,7 +84,7 @@ func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 		synced   uint64
 	)
 	eg.Go(func() error {
-		return upload.IterateAllTagItems(db.repo.IndexStore(), func(ti *upload.TagItem) (bool, error) {
+		return upload.IterateAllTagItems(db.storage.ReadOnly().IndexStore(), func(ti *upload.TagItem) (bool, error) {
 			select {
 			case <-ctx.Done():
 				return true, ctx.Err()

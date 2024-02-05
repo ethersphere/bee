@@ -35,9 +35,7 @@ func Test_Step_04(t *testing.T) {
 	sharkyDir := t.TempDir()
 	sharkyStore, err := sharky.New(&dirFS{basedir: sharkyDir}, 1, swarm.SocMaxChunkSize)
 	assert.NoError(t, err)
-
 	store := inmemstore.New()
-
 	storage := transaction.NewStorage(sharkyStore, store)
 
 	stepFn := localmigration.Step_04(sharkyDir, 1, storage)
@@ -58,7 +56,7 @@ func Test_Step_04(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	err = sharkyStore.Close()
+	err = storage.Close()
 	assert.NoError(t, err)
 
 	assert.NoError(t, stepFn())

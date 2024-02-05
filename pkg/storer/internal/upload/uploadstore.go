@@ -679,7 +679,7 @@ func Report(
 		return fmt.Errorf("failed deleting chunk %s: %w", chunk.Address(), err)
 	}
 
-	err = batch.Delete(ui)
+	err = indexStore.Delete(ui)
 	if err != nil {
 		return fmt.Errorf("failed deleting uploadItem %s: %w", ui, err)
 	}
@@ -815,7 +815,7 @@ func DeleteTag(st storage.Writer, tagID uint64) error {
 	return nil
 }
 
-func IterateAll(st storage.Store, iterateFn func(item storage.Item) (bool, error)) error {
+func IterateAll(st storage.Reader, iterateFn func(item storage.Item) (bool, error)) error {
 	return st.Iterate(
 		storage.Query{
 			Factory: func() storage.Item { return new(uploadItem) },
@@ -830,7 +830,7 @@ func IterateAll(st storage.Store, iterateFn func(item storage.Item) (bool, error
 	)
 }
 
-func IterateAllTagItems(st storage.Store, cb func(ti *TagItem) (bool, error)) error {
+func IterateAllTagItems(st storage.Reader, cb func(ti *TagItem) (bool, error)) error {
 	return st.Iterate(
 		storage.Query{
 			Factory: func() storage.Item {

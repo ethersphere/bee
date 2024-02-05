@@ -5,16 +5,18 @@
 package migration
 
 import (
+	"context"
 	"fmt"
 	"os"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/upload"
 )
 
 // step_05 is a migration step that removes all upload items from the store.
-func step_05(st storage.BatchedStore) error {
+func step_05(st transaction.Storage) error {
 	logger := log.NewLogger("migration-step-05", log.WithSink(os.Stdout))
 	logger.Info("start removing upload items")
 
@@ -22,7 +24,9 @@ func step_05(st storage.BatchedStore) error {
 	errC := make(chan error)
 	go func() {
 		for item := range itemC {
-			err := st.Delete(item)
+			err := st.Run(context.Background(), func(s transaction.Store) error {
+				return s.IndexStore().Delete(item)
+			})
 			if err != nil {
 				errC <- fmt.Errorf("delete upload item: %w", err)
 				return
@@ -31,23 +35,19 @@ func step_05(st storage.BatchedStore) error {
 		close(errC)
 	}()
 
-	go func() {
-		defer close(itemC)
-		err := upload.IterateAll(st, func(u storage.Item) (bool, error) {
-			itemC <- u
-			return false, nil
-		})
-		if err != nil {
-			errC <- fmt.Errorf("iterate upload items: %w", err)
-			return
+	err := upload.IterateAll(st.ReadOnly().IndexStore(), func(u storage.Item) (bool, error) {
+		select {
+		case itemC <- u:
+		case err := <-errC:
+			return true, err
 		}
-	}()
-
-	err := <-errC
+		return false, nil
+	})
+	close(itemC)
 	if err != nil {
 		return err
 	}
 
 	logger.Info("finished removing upload items")
-	return nil
+	return <-errC
 }
