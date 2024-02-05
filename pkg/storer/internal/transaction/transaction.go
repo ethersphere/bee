@@ -65,6 +65,7 @@ func NewStorage(sharky *sharky.Store, bstore storage.BatchStore) Storage {
 }
 
 type transaction struct {
+	start      time.Time
 	batch      storage.Batch
 	indexstore storage.IndexStore
 	chunkStore *chunkStoreTrx
@@ -81,10 +82,11 @@ type transaction struct {
 func (s *store) NewTransaction(ctx context.Context) (Transaction, func()) {
 
 	b := s.bstore.Batch(ctx)
-	indexTrx := &indexTrx{s.bstore, b}
+	indexTrx := &indexTrx{s.bstore, b, s.metrics}
 	sharyTrx := &sharkyTrx{s.sharky, s.metrics, nil, nil}
 
 	t := &transaction{
+		start:      time.Now(),
 		batch:      b,
 		indexstore: indexTrx,
 		chunkStore: &chunkStoreTrx{indexTrx, sharyTrx, s.chunkLocker, make(map[string]struct{}), s.metrics, false},
@@ -108,7 +110,7 @@ func (s *store) NewTransaction(ctx context.Context) (Transaction, func()) {
 }
 
 func (s *store) ReadOnly() ReadOnlyStore {
-	indexStore := &indexTrx{s.bstore, nil}
+	indexStore := &indexTrx{s.bstore, nil, s.metrics}
 	sharyTrx := &sharkyTrx{s.sharky, s.metrics, nil, nil}
 
 	return &readOnly{indexStore, &chunkStoreTrx{indexStore, sharyTrx, s.chunkLocker, nil, s.metrics, true}}
@@ -148,6 +150,10 @@ func (t *readOnly) ChunkStore() storage.ReadOnlyChunkStore {
 }
 
 func (t *transaction) Commit() (err error) {
+
+	defer func() {
+		t.metrics.MethodDuration.WithLabelValues("transaction", "success").Observe(float64(time.Since(t.start).Seconds()))
+	}()
 
 	defer handleMetric("commit", t.metrics)(err)
 	defer func() {
@@ -250,14 +256,16 @@ func (c *chunkStoreTrx) lock(addr swarm.Address) func() {
 }
 
 type indexTrx struct {
-	store storage.Reader
-	batch storage.Batch
+	store   storage.Reader
+	batch   storage.Batch
+	metrics metrics
 }
 
 func (s *indexTrx) Get(i storage.Item) error           { return s.store.Get(i) }
 func (s *indexTrx) Has(k storage.Key) (bool, error)    { return s.store.Has(k) }
 func (s *indexTrx) GetSize(k storage.Key) (int, error) { return s.store.GetSize(k) }
-func (s *indexTrx) Iterate(q storage.Query, f storage.IterateFn) error {
+func (s *indexTrx) Iterate(q storage.Query, f storage.IterateFn) (err error) {
+	defer handleMetric("index_iterate", s.metrics)(err)
 	return s.store.Iterate(q, f)
 }
 func (s *indexTrx) Count(k storage.Key) (int, error) { return s.store.Count(k) }
@@ -297,10 +305,10 @@ func handleMetric(key string, m metrics) func(err error) {
 	return func(err error) {
 		if err != nil {
 			m.MethodCalls.WithLabelValues(key, "failure").Inc()
-			m.MethodDuration.WithLabelValues(key, "failure").Observe(float64(time.Since(t)))
+			m.MethodDuration.WithLabelValues(key, "failure").Observe(float64(time.Since(t).Seconds()))
 		} else {
 			m.MethodCalls.WithLabelValues(key, "success").Inc()
-			m.MethodDuration.WithLabelValues(key, "success").Observe(float64(time.Since(t)))
+			m.MethodDuration.WithLabelValues(key, "success").Observe(float64(time.Since(t).Seconds()))
 		}
 	}
 }
