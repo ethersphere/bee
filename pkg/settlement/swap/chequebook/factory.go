@@ -49,14 +49,6 @@ type simpleSwapDeployedEvent struct {
 	ContractAddress common.Address
 }
 
-// the bytecode of factories which can be used for deployment
-var currentDeployVersion = common.FromHex(sw3abi.SimpleSwapFactoryDeployedBinv0_6_5)
-
-// the bytecode of factories from which we accept chequebooks
-var supportedVersions = [][]byte{
-	currentDeployVersion,
-}
-
 // NewFactory creates a new factory service for the provided factory contract.
 func NewFactory(backend transaction.Backend, transactionService transaction.Service, address common.Address) Factory {
 	return &factory{

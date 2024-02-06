@@ -24,7 +24,6 @@ type factoryMock struct {
 	erc20Address     func(ctx context.Context) (common.Address, error)
 	deploy           func(ctx context.Context, issuer common.Address, defaultHardDepositTimeoutDuration *big.Int, nonce common.Hash) (common.Hash, error)
 	waitDeployed     func(ctx context.Context, txHash common.Hash) (common.Address, error)
-	verifyBytecode   func(ctx context.Context) error
 	verifyChequebook func(ctx context.Context, chequebook common.Address) error
 }
 
