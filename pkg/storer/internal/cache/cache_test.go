@@ -347,6 +347,37 @@ func TestCache(t *testing.T) {
 	})
 }
 
+func TestRemoveOldest(t *testing.T) {
+	t.Parallel()
+
+	st := newTestStorage(t)
+	c, err := cache.New(context.Background(), st, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	chunks := chunktest.GenerateTestRandomChunks(30)
+
+	for _, ch := range chunks {
+		err = c.Putter(st).Put(context.Background(), ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[29].Address(), 30)
+	verifyCacheOrder(t, c, st.IndexStore(), chunks...)
+
+	err = c.RemoveOldestMaxBatch(context.Background(), st, st.ChunkStore(), 30, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	verifyCacheState(t, st.IndexStore(), c, swarm.ZeroAddress, swarm.ZeroAddress, 0)
+
+	verifyChunksDeleted(t, st.ChunkStore(), chunks...)
+}
+
 func TestShallowCopy(t *testing.T) {
 	t.Parallel()
 
