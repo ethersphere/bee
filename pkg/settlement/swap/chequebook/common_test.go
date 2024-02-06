@@ -41,11 +41,6 @@ func (m *factoryMock) WaitDeployed(ctx context.Context, txHash common.Hash) (com
 	return m.waitDeployed(ctx, txHash)
 }
 
-// VerifyBytecode checks that the factory is valid.
-func (m *factoryMock) VerifyBytecode(ctx context.Context) error {
-	return m.verifyBytecode(ctx)
-}
-
 // VerifyChequebook checks that the supplied chequebook has been deployed by this factory.
 func (m *factoryMock) VerifyChequebook(ctx context.Context, chequebook common.Address) error {
 	return m.verifyChequebook(ctx, chequebook)
