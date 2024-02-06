@@ -8,6 +8,7 @@ package pullsync
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -54,10 +55,16 @@ const (
 
 // Interface is the PullSync interface.
 type Interface interface {
+
+	// SyncBatch scans the remote peer bin for chunks owned by a specific batch.
+	// Eventually, the chunks will be returned to the caller for disposition.
+	SyncBatch(ctx context.Context, peer swarm.Address, bin uint8, start uint64) (topmost uint64, count int, chunks []swarm.Chunk, err error)
+
 	// Sync syncs a batch of chunks starting at a start BinID.
 	// It returns the BinID of highest chunk that was synced from the given
 	// batch and the total number of chunks the downstream peer has sent.
 	Sync(ctx context.Context, peer swarm.Address, bin uint8, start uint64) (topmost uint64, count int, err error)
+
 	// GetCursors retrieves all cursors from a downstream peer.
 	GetCursors(ctx context.Context, peer swarm.Address) ([]uint64, uint64, error)
 }
@@ -117,6 +124,170 @@ func (s *Syncer) Protocol() p2p.ProtocolSpec {
 			},
 		},
 	}
+}
+
+// Sync syncs a batch of chunks starting at a start BinID.
+// It returns the BinID of highest chunk that was synced from the given
+// batch and the total number of chunks the downstream peer has sent.
+func (s *Syncer) SyncBatch(ctx context.Context, peer swarm.Address, bin uint8, start uint64) (uint64, int, []swarm.Chunk, error) {
+
+	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
+	if err != nil {
+		return 0, 0, nil,fmt.Errorf("new stream: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			_ = stream.Reset()
+			s.logger.Debug("error syncing peer", "peer_address", peer, "bin", bin, "start", start, "error", err)
+		} else {
+			stream.FullClose()
+		}
+	}()
+
+	w, r := protobuf.NewWriterAndReader(stream)
+
+	rangeMsg := &pb.Get{Bin: int32(bin), Start: start}
+	if err = w.WriteMsgWithContext(ctx, rangeMsg); err != nil {
+		return 0, 0, nil,fmt.Errorf("write get range: %w", err)
+	}
+
+	var offer pb.Offer
+	if err = r.ReadMsgWithContext(ctx, &offer); err != nil {
+		return 0, 0, nil,fmt.Errorf("read offer: %w", err)
+	}
+
+	// empty interval (no chunks present in interval).
+	// return the end of the requested range as topmost.
+	if len(offer.Chunks) == 0 {
+		return offer.Topmost, 0, nil,nil
+	}
+
+	topmost := offer.Topmost
+
+	var (
+		bvLen      = len(offer.Chunks)
+		wantChunks = make(map[string]struct{}, bvLen)
+		ctr        = 0
+		//have       bool
+	)
+
+	bv, err := bitvector.New(bvLen)
+	if err != nil {
+		return 0, 0, nil,fmt.Errorf("new bitvector: %w", err)
+	}
+
+	for i := 0; i < len(offer.Chunks); i++ {
+
+		addr := offer.Chunks[i].Address
+		batchID := offer.Chunks[i].BatchID
+		if len(addr) != swarm.HashSize {
+			return 0, 0, nil,fmt.Errorf("inconsistent hash length")
+		}
+
+		a := swarm.NewAddress(addr)
+		if a.Equal(swarm.ZeroAddress) {
+			// i'd like to have this around to see we don't see any of these in the logs
+			s.logger.Debug("syncer got a zero address hash on offer", "peer_address", peer)
+			continue
+		}
+//		s.metrics.Offered.Inc()
+
+		batchString := hex.EncodeToString(batchID)
+		s.logger.Debug("SyncBatch:offered", "address", a, "batch", batchString)
+		if batchString == "0e8366a6fdac185b6f0327dc89af99e67d9d3b3f2af22432542dc5971065c1df" {
+				s.logger.Debug("SyncBatch:wanted", "address", a, "batch", batchString)
+				wantChunks[a.ByteString()+string(batchID)] = struct{}{}
+				ctr++
+//				s.metrics.Wanted.Inc()
+				bv.Set(i)
+		}
+	}
+
+	wantMsg := &pb.Want{BitVector: bv.Bytes()}
+	if err = w.WriteMsgWithContext(ctx, wantMsg); err != nil {
+		return 0, 0, nil,fmt.Errorf("write want: %w", err)
+	}
+
+	chunksToPut := make([]swarm.Chunk, 0, ctr)
+
+	var chunkErr error
+	for ; ctr > 0; ctr-- {
+		var delivery pb.Delivery
+		if err = r.ReadMsgWithContext(ctx, &delivery); err != nil {
+			return 0, 0, nil,errors.Join(chunkErr, fmt.Errorf("read delivery: %w", err))
+		}
+
+		addr := swarm.NewAddress(delivery.Address)
+		if addr.Equal(swarm.ZeroAddress) {
+			s.logger.Debug("received zero address chunk", "peer_address", peer)
+//			s.metrics.ReceivedZeroAddress.Inc()
+			continue
+		}
+
+		newChunk := swarm.NewChunk(addr, delivery.Data)
+
+		stamp := new(postage.Stamp)
+		if err = stamp.UnmarshalBinary(delivery.Stamp); err != nil {
+			chunkErr = errors.Join(chunkErr, err)
+			continue
+		}
+
+		if _, ok := wantChunks[addr.ByteString()+string(stamp.BatchID())]; !ok {
+			s.logger.Debug("want chunks", "error", ErrUnsolicitedChunk, "peer_address", peer, "chunk_address", addr)
+			chunkErr = errors.Join(chunkErr, ErrUnsolicitedChunk)
+			continue
+		}
+
+		delete(wantChunks, addr.ByteString()+string(stamp.BatchID()))
+
+		chunk, err := s.validStamp(newChunk.WithStamp(stamp))
+		if err != nil {
+			s.logger.Debug("unverified stamp", "error", err, "peer_address", peer, "chunk_address", newChunk)
+			chunkErr = errors.Join(chunkErr, err)
+			continue
+		}
+
+		if cac.Valid(chunk) == nil {
+//			go s.unwrap(chunk)
+		} else if !soc.Valid(chunk) {
+			s.logger.Debug("invalid cac/soc chunk", "error", swarm.ErrInvalidChunk, "peer_address", peer, "chunk", chunk)
+			chunkErr = errors.Join(chunkErr, swarm.ErrInvalidChunk)
+//			s.metrics.ReceivedInvalidChunk.Inc()
+			continue
+		}
+		chunksToPut = append(chunksToPut, chunk)
+	}
+
+	chunksPut := 0
+	if len(chunksToPut) > 0 {
+
+//		s.metrics.Delivered.Add(float64(len(chunksToPut)))
+//		s.metrics.LastReceived.WithLabelValues(fmt.Sprintf("%d", bin)).Add(float64(len(chunksToPut)))
+
+		// if we have parallel sync workers for the same bin, we need to rate limit them
+		// in order to not overload the storage with unnecessary requests as there is
+		// a chance that the same chunk is being synced by multiple workers.
+		key := strconv.Itoa(int(bin))
+		s.binLock.Lock(key)
+		defer s.binLock.Unlock(key)
+
+		for _, _ = range chunksToPut {
+//		for _, c := range chunksToPut {
+//			if err := s.store.ReservePutter().Put(ctx, c, "Pullsync.Sync"); err != nil {
+//				// in case of these errors, no new items are added to the storage, so it
+//				// is safe to continue with the next chunk
+//				if errors.Is(err, storage.ErrOverwriteNewerChunk) || errors.Is(err, storage.ErrOverwriteOfImmutableBatch) {
+//					s.logger.Debug("overwrite newer chunk", "error", err, "peer_address", peer, "chunk", c)
+//					chunkErr = errors.Join(chunkErr, err)
+//					continue
+//				}
+//				return 0, 0, errors.Join(chunkErr, err)
+//			}
+			chunksPut++
+		}
+	}
+
+	return topmost, chunksPut, chunksToPut, chunkErr
 }
 
 // Sync syncs a batch of chunks starting at a start BinID.

@@ -408,6 +408,10 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 		"GET": http.HandlerFunc(s.peerCursorsHandler),
 	})
 
+	handle("/syncbatch/{address}/{bin}/{start}", jsonhttp.MethodHandler{
+		"GET": http.HandlerFunc(s.peerSyncBatchHandler),
+	})
+
 	handle("/chunks/{address}", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.hasChunkHandler),
 	})

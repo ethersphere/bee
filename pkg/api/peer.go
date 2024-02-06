@@ -111,6 +111,69 @@ func (s *Service) peerCursorsHandler(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+type peerSyncBatchResponse struct {
+	Topmost uint64 `json:"topmost"`
+	Count int `json:"count"`
+	Chunks []Chunk `json:"chunks"`
+}
+
+func (s *Service) peerSyncBatchHandler(w http.ResponseWriter, r *http.Request) {
+	logger := s.logger.WithValues("peer_syncbatch").Build()
+
+//	SyncBatch(ctx context.Context, peer swarm.Address, bin uint8, start uint64) (topmost uint64, count int, err error) {
+
+	paths := struct {
+		Address swarm.Address `map:"address" validate:"required"`
+		Bin uint8 `map:"bin" validate:"required"`
+		Start uint64 `map:"start" validate:"required"`
+
+//		BatchID []byte `map:"batch_id" validate:"required,len=32"`
+//		Depth   uint8  `map:"depth" validate:"required"`
+
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
+		return
+	}
+	
+	topmost, count, chunks, err := s.pullsync.SyncBatch(r.Context(), paths.Address, paths.Bin, paths.Start)
+	if err != nil {
+		logger.Debug("pullsync SyncBatch failed", "peer_address", paths.Address, "error", err)
+		if errors.Is(err, p2p.ErrPeerNotFound) {
+			jsonhttp.NotFound(w, "peer not found")
+			return
+		}
+		logger.Error(nil, "pullsync SyncBatch failed", "peer_address", paths.Address)
+		jsonhttp.InternalServerError(w, err)
+		return
+	}
+
+	jsonhttp.OK(w, peerSyncBatchResponse{
+		Topmost: topmost,
+		Count: count,
+		Chunks: mapChunks(chunks),
+	})
+}
+
+type Chunk struct {
+	Address  swarm.Address `json:"address"`
+//	FullNode bool          `json:"fullNode"`
+}
+
+func mapChunks(chunks []swarm.Chunk) (out []Chunk) {
+	out = make([]Chunk, 0, len(chunks))
+	for _, chunk := range chunks {
+		out = append(out, Chunk{
+			Address:  chunk.Address(),
+			//FullNode: peer.FullNode,
+		})
+	}
+	return
+}
+
+
+
+
 // Peer holds information about a Peer.
 type Peer struct {
 	Address  swarm.Address `json:"address"`
