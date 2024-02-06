@@ -10,7 +10,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"sort"
 	"strconv"
 	"sync/atomic"
 	"time"
@@ -258,19 +257,15 @@ func (r *Reserve) EvictBatchBin(
 			return true, nil
 		}
 		evicted = append(evicted, batchRadius)
+		count--
+		if count == 0 {
+			return true, nil
+		}
 		return false, nil
 	})
 	if err != nil {
 		return 0, err
 	}
-
-	// evict oldest chunks first
-	sort.Slice(evicted, func(i, j int) bool {
-		return evicted[i].BinID < evicted[j].BinID
-	})
-
-	// evict only count many items
-	evicted = evicted[:min(len(evicted), count)]
 
 	batchCnt := 1_000
 	evictionCompleted := 0

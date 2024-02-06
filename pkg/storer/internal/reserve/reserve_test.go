@@ -272,12 +272,14 @@ func TestEvictMaxCount(t *testing.T) {
 
 	batch := postagetesting.MustNewBatch()
 
-	for i := 0; i < 50; i++ {
-		ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewBatchStamp(batch.ID))
-		chunks = append(chunks, ch)
-		err := r.Put(context.Background(), ch)
-		if err != nil {
-			t.Fatal(err)
+	for b := 0; b < 2; b++ {
+		for i := 0; i < 10; i++ {
+			ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, b).WithStamp(postagetesting.MustNewBatchStamp(batch.ID))
+			chunks = append(chunks, ch)
+			err := r.Put(context.Background(), ch)
+			if err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 
@@ -295,8 +297,8 @@ func TestEvictMaxCount(t *testing.T) {
 			checkStore(t, ts.ReadOnly().IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: uint64(i + 1)}, true)
 			checkChunk(t, ts.ReadOnly(), ch, true)
 		} else {
-			checkStore(t, ts.ReadOnly().IndexStore(), &reserve.BatchRadiusItem{Bin: 0, BatchID: ch.Stamp().BatchID(), Address: ch.Address()}, false)
-			checkStore(t, ts.ReadOnly().IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: uint64(i + 1)}, false)
+			checkStore(t, ts.ReadOnly().IndexStore(), &reserve.BatchRadiusItem{Bin: 1, BatchID: ch.Stamp().BatchID(), Address: ch.Address()}, false)
+			checkStore(t, ts.ReadOnly().IndexStore(), &reserve.ChunkBinItem{Bin: 1, BinID: uint64(i - 10 + 1)}, false)
 			checkChunk(t, ts.ReadOnly(), ch, false)
 		}
 	}
