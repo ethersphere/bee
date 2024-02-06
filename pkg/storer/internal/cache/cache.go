@@ -260,14 +260,8 @@ func (c *Cache) ShallowCopy(
 	return nil
 }
 
-// RemoveOldest removes the oldest cache entries from the store. The count
-// specifies the number of entries to remove.
-func (c *Cache) RemoveOldest(
-	ctx context.Context,
-	store internal.Storage,
-	chStore storage.ChunkStore,
-	count uint64,
-) error {
+func (c *Cache) removeOldest(ctx context.Context, store internal.Storage, chStore storage.ChunkStore, count uint64, batchCnt int) error {
+
 	if count <= 0 {
 		return nil
 	}
@@ -299,8 +293,6 @@ func (c *Cache) RemoveOldest(
 		return fmt.Errorf("failed iterating over cache order index: %w", err)
 	}
 
-	batchCnt := 1_000
-
 	for i := 0; i < len(evictItems); i += batchCnt {
 		end := i + batchCnt
 		if end > len(evictItems) {
@@ -312,7 +304,9 @@ func (c *Cache) RemoveOldest(
 			return fmt.Errorf("failed creating batch: %w", err)
 		}
 
-		for _, entry := range evictItems[i:end] {
+		items := evictItems[i:end]
+
+		for _, entry := range items {
 			err = batch.Delete(entry)
 			if err != nil {
 				return fmt.Errorf("failed deleting cache entry %s: %w", entry, err)
@@ -335,10 +329,16 @@ func (c *Cache) RemoveOldest(
 			return err
 		}
 
-		c.size.Add(-int64(len(evictItems)))
+		c.size.Add(-int64(len(items)))
 	}
 
 	return nil
+}
+
+// RemoveOldest removes the oldest cache entries from the store. The count
+// specifies the number of entries to remove.
+func (c *Cache) RemoveOldest(ctx context.Context, store internal.Storage, chStore storage.ChunkStore, count uint64) error {
+	return c.removeOldest(ctx, store, store.ChunkStore(), count, 1000)
 }
 
 type cacheEntry struct {
