@@ -50,8 +50,6 @@ password-file: ./password
 # blockchain-rpc-endpoint: ""
 ## swap factory address
 # swap-factory-address: ""
-## legacy swap factory addresses
-# swap-legacy-factory-addresses: ""
 ## initial deposit if deploying a new chequebook (default 0)
 # swap-initial-deposit: 0
 ## gas price in wei to use for deployment and funding (default "")
