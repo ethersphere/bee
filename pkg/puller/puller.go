@@ -294,17 +294,14 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 	ctx, cancel := context.WithCancel(parentCtx)
 	peer.setBinCancel(cancel, bin)
 
-	sync := func(isHistorical bool, address swarm.Address, start uint64, bin uint8, done func()) {
+	sync := func(isHistorical bool, address swarm.Address, start uint64) {
 		p.metrics.SyncWorkerCounter.Inc()
 
 		defer p.wg.Done()
-		defer p.metrics.SyncWorkerDoneCounter.Inc()
-		defer done()
+		defer peer.wg.Done()
+		defer p.metrics.SyncWorkerCounter.Dec()
 
-		var (
-			cursor = start
-			err    error
-		)
+		var err error
 
 		for {
 			if isHistorical { // overide start with the next interval if historical syncing
@@ -373,12 +370,12 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 	if cursor > 0 {
 		peer.wg.Add(1)
 		p.wg.Add(1)
-		go sync(true, peer.address, cursor, bin, peer.wg.Done)
+		go sync(true, peer.address, cursor)
 	}
 
 	peer.wg.Add(1)
 	p.wg.Add(1)
-	go sync(false, peer.address, cursor+1, bin, peer.wg.Done)
+	go sync(false, peer.address, cursor+1)
 }
 
 func (p *Puller) Close() error {
