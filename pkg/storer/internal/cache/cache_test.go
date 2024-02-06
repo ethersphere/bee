@@ -300,7 +300,7 @@ func TestRemoveOldest(t *testing.T) {
 	t.Parallel()
 
 	st := newTestStorage(t)
-	c, err := cache.New(context.Background(), st, 10)
+	c, err := cache.New(context.Background(), st.ReadOnly().IndexStore(), 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -314,17 +314,17 @@ func TestRemoveOldest(t *testing.T) {
 		}
 	}
 
-	verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[29].Address(), 30)
-	verifyCacheOrder(t, c, st.IndexStore(), chunks...)
+	verifyCacheState(t, st.ReadOnly().IndexStore(), c, chunks[0].Address(), chunks[29].Address(), 30)
+	verifyCacheOrder(t, c, st.ReadOnly().IndexStore(), chunks...)
 
-	err = c.RemoveOldestMaxBatch(context.Background(), st, st.ChunkStore(), 30, 5)
+	err = c.RemoveOldestMaxBatch(context.Background(), st, 30, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	verifyCacheState(t, st.IndexStore(), c, swarm.ZeroAddress, swarm.ZeroAddress, 0)
+	verifyCacheState(t, st.ReadOnly().IndexStore(), c, swarm.ZeroAddress, swarm.ZeroAddress, 0)
 
-	verifyChunksDeleted(t, st.ChunkStore(), chunks...)
+	verifyChunksDeleted(t, st.ReadOnly().ChunkStore(), chunks...)
 }
 
 func TestShallowCopy(t *testing.T) {
