@@ -133,12 +133,6 @@ func Init(
 ) (chequebookService Service, err error) {
 	logger = logger.WithName(loggerName).Register()
 
-	// verify that the supplied factory is valid
-	err = chequebookFactory.VerifyBytecode(ctx)
-	if err != nil {
-		return nil, err
-	}
-
 	var chequebookAddress common.Address
 	err = stateStore.Get(chequebookKey, &chequebookAddress)
 	if err != nil {

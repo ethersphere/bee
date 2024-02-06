@@ -27,7 +27,6 @@ type ChainConfig struct {
 	RedistributionAddress  common.Address
 	SwapPriceOracleAddress common.Address
 	CurrentFactoryAddress  common.Address
-	LegacyFactoryAddresses []common.Address
 
 	// ABIs.
 	StakingABI        string

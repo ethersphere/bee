@@ -71,14 +71,7 @@ func (c *command) initDeployCmd() error {
 			defer swapBackend.Close()
 			defer transactionMonitor.Close()
 
-			chequebookFactory, err := node.InitChequebookFactory(
-				logger,
-				swapBackend,
-				chainID,
-				transactionService,
-				factoryAddress,
-				nil,
-			)
+			chequebookFactory, err := node.InitChequebookFactory(logger, swapBackend, chainID, transactionService, factoryAddress)
 			if err != nil {
 				return err
 			}
