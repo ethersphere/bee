@@ -247,24 +247,28 @@ func (c *Cache) ShallowCopy(
 		}
 		return nil
 	})
-	if err == nil {
-		c.size.Add(int64(len(entries)))
+	if err != nil {
+		return err
 	}
 
+	c.size.Add(int64(len(entries)))
 	return nil
 }
 
 // RemoveOldest removes the oldest cache entries from the store. The count
 // specifies the number of entries to remove.
-func (c *Cache) RemoveOldest(ctx context.Context, store internal.Storage, chStore storage.ChunkStore, count uint64) error {
-	return c.removeOldest(ctx, store, store.ChunkStore(), count, 1000)
+func (c *Cache) RemoveOldest(ctx context.Context, st transaction.Storage, count uint64) error {
+	return c.removeOldest(ctx, st, count, 1000)
 }
 
-func (c *Cache) removeOldest(ctx context.Context, store internal.Storage, chStore storage.ChunkStore, count uint64, batchCnt int) error {
+func (c *Cache) removeOldest(ctx context.Context, st transaction.Storage, count uint64, batchCnt int) error {
 
 	if count <= 0 {
 		return nil
 	}
+
+	c.glock.Lock()
+	defer c.glock.Unlock()
 
 	evictItems := make([]*cacheEntry, 0, count)
 	err := st.ReadOnly().IndexStore().Iterate(
@@ -290,17 +294,15 @@ func (c *Cache) removeOldest(ctx context.Context, store internal.Storage, chStor
 		return fmt.Errorf("failed iterating over cache order index: %w", err)
 	}
 
-	c.glock.Lock()
-	defer c.glock.Unlock()
-
 	for i := 0; i < len(evictItems); i += batchCnt {
 		end := i + batchCnt
 		if end > len(evictItems) {
 			end = len(evictItems)
 		}
 
+		items := evictItems[i:end]
 		err := st.Run(ctx, func(s transaction.Store) error {
-			for _, entry := range evictItems[i:end] {
+			for _, entry := range items {
 				err = s.IndexStore().Delete(entry)
 				if err != nil {
 					return fmt.Errorf("failed deleting cache entry %s: %w", entry, err)

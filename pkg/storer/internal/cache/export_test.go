@@ -10,7 +10,7 @@ import (
 	"time"
 
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
-	"github.com/ethersphere/bee/v2/pkg/storer/internal"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
@@ -37,11 +37,11 @@ type CacheState struct {
 	Size uint64
 }
 
-func (c *Cache) RemoveOldestMaxBatch(ctx context.Context, store internal.Storage, chStore storage.ChunkStore, count uint64, batchCnt int) error {
-	return c.removeOldest(ctx, store, store.ChunkStore(), count, batchCnt)
+func (c *Cache) RemoveOldestMaxBatch(ctx context.Context, st transaction.Storage, count uint64, batchCnt int) error {
+	return c.removeOldest(ctx, st, count, batchCnt)
 }
 
-func (c *Cache) State(store storage.Store) CacheState {
+func (c *Cache) State(store storage.Reader) CacheState {
 	state := CacheState{}
 	state.Size = c.Size()
 	runner := swarm.ZeroAddress

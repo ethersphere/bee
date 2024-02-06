@@ -152,7 +152,7 @@ func (t *readOnly) ChunkStore() storage.ReadOnlyChunkStore {
 func (t *transaction) Commit() (err error) {
 
 	defer func() {
-		t.metrics.MethodDuration.WithLabelValues("transaction", "success").Observe(float64(time.Since(t.start).Seconds()))
+		t.metrics.MethodDuration.WithLabelValues("transaction", "success").Observe(time.Since(t.start).Seconds())
 	}()
 
 	defer handleMetric("commit", t.metrics)(err)
@@ -305,10 +305,10 @@ func handleMetric(key string, m metrics) func(err error) {
 	return func(err error) {
 		if err != nil {
 			m.MethodCalls.WithLabelValues(key, "failure").Inc()
-			m.MethodDuration.WithLabelValues(key, "failure").Observe(float64(time.Since(t).Seconds()))
+			m.MethodDuration.WithLabelValues(key, "failure").Observe(time.Since(t).Seconds())
 		} else {
 			m.MethodCalls.WithLabelValues(key, "success").Inc()
-			m.MethodDuration.WithLabelValues(key, "success").Observe(float64(time.Since(t).Seconds()))
+			m.MethodDuration.WithLabelValues(key, "success").Observe(time.Since(t).Seconds())
 		}
 	}
 }
