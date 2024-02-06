@@ -5,10 +5,12 @@
 package cache
 
 import (
+	"context"
 	"fmt"
 	"time"
 
 	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/pkg/storer/internal"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -33,6 +35,10 @@ type CacheState struct {
 	Head swarm.Address
 	Tail swarm.Address
 	Size uint64
+}
+
+func (c *Cache) RemoveOldestMaxBatch(ctx context.Context, store internal.Storage, chStore storage.ChunkStore, count uint64, batchCnt int) error {
+	return c.removeOldest(ctx, store, store.ChunkStore(), count, batchCnt)
 }
 
 func (c *Cache) State(store storage.Store) CacheState {

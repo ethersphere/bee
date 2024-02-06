@@ -884,7 +884,7 @@ func TestAddressBookPrune(t *testing.T) {
 }
 
 // test pruning addressbook after successive failed connect attempts
-func TestAddressBookQuickPrune(t *testing.T) {
+func TestAddressBookQuickPrune_FLAKY(t *testing.T) {
 	t.Parallel()
 
 	var (
