@@ -119,14 +119,14 @@ func TestReplaceOldIndex(t *testing.T) {
 			}
 
 			// Chunk 1 must be missing
-			item, err := stampindex.Load(storer.Storage().ReadOnly().IndexStore(), "reserve", ch_1)
+			item, err := stampindex.Load(storer.Storage().IndexStore(), "reserve", ch_1)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if !item.ChunkAddress.Equal(ch_2.Address()) {
 				t.Fatalf("wanted addr %s, got %s", ch_1.Address(), item.ChunkAddress)
 			}
-			_, err = chunkstamp.Load(storer.Storage().ReadOnly().IndexStore(), "reserve", ch_1.Address())
+			_, err = chunkstamp.Load(storer.Storage().IndexStore(), "reserve", ch_1.Address())
 			if !errors.Is(err, storage.ErrNotFound) {
 				t.Fatalf("wanted err %s, got err %s", storage.ErrNotFound, err)
 			}
@@ -658,11 +658,11 @@ func checkSaved(t *testing.T, st *storer.DB, ch swarm.Chunk, stampSaved, chunkSt
 	if !stampSaved {
 		stampWantedErr = storage.ErrNotFound
 	}
-	_, err := stampindex.Load(st.Storage().ReadOnly().IndexStore(), "reserve", ch)
+	_, err := stampindex.Load(st.Storage().IndexStore(), "reserve", ch)
 	if !errors.Is(err, stampWantedErr) {
 		t.Fatalf("wanted err %s, got err %s", stampWantedErr, err)
 	}
-	_, err = chunkstamp.Load(st.Storage().ReadOnly().IndexStore(), "reserve", ch.Address())
+	_, err = chunkstamp.Load(st.Storage().IndexStore(), "reserve", ch.Address())
 	if !errors.Is(err, stampWantedErr) {
 		t.Fatalf("wanted err %s, got err %s", stampWantedErr, err)
 	}
@@ -671,7 +671,7 @@ func checkSaved(t *testing.T, st *storer.DB, ch swarm.Chunk, stampSaved, chunkSt
 	if !chunkStoreSaved {
 		chunkStoreWantedErr = storage.ErrNotFound
 	}
-	gotCh, err := st.Storage().ReadOnly().ChunkStore().Get(context.Background(), ch.Address())
+	gotCh, err := st.Storage().ChunkStore().Get(context.Background(), ch.Address())
 	if !errors.Is(err, chunkStoreWantedErr) {
 		t.Fatalf("wanted err %s, got err %s", chunkStoreWantedErr, err)
 	}

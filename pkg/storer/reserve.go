@@ -245,7 +245,7 @@ func (db *DB) evictExpiredBatches(ctx context.Context) error {
 
 func (db *DB) getExpiredBatches() ([][]byte, error) {
 	var batchesToEvict [][]byte
-	err := db.storage.ReadOnly().IndexStore().Iterate(storage.Query{
+	err := db.storage.IndexStore().Iterate(storage.Query{
 		Factory:      func() storage.Item { return new(expiredBatchItem) },
 		ItemProperty: storage.QueryItemID,
 	}, func(result storage.Result) (bool, error) {

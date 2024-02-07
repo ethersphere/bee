@@ -52,7 +52,7 @@ func step_03(
 
 		// STEP 2
 		var chunkBinItems []*reserve.ChunkBinItem
-		err = st.ReadOnly().IndexStore().Iterate(
+		err = st.IndexStore().Iterate(
 			storage.Query{
 				Factory: func() storage.Item { return &reserve.ChunkBinItem{} },
 			},
@@ -90,7 +90,7 @@ func step_03(
 
 		// STEP 3
 		var batchRadiusItems []*reserve.BatchRadiusItem
-		err = st.ReadOnly().IndexStore().Iterate(
+		err = st.IndexStore().Iterate(
 			storage.Query{
 				Factory: func() storage.Item { return &reserve.BatchRadiusItem{} },
 			},

@@ -151,7 +151,7 @@ func TestStoreLoadDelete(t *testing.T) {
 
 				have := want.Clone()
 
-				if err := ts.ReadOnly().IndexStore().Get(have); !errors.Is(err, storage.ErrNotFound) {
+				if err := ts.IndexStore().Get(have); !errors.Is(err, storage.ErrNotFound) {
 					t.Fatalf("Get(...): unexpected error: have: %v; want: %v", err, storage.ErrNotFound)
 				}
 
@@ -161,7 +161,7 @@ func TestStoreLoadDelete(t *testing.T) {
 					t.Fatalf("Store(...): unexpected error: %v", err)
 				}
 
-				if err := ts.ReadOnly().IndexStore().Get(have); err != nil {
+				if err := ts.IndexStore().Get(have); err != nil {
 					t.Fatalf("Get(...): unexpected error: %v", err)
 				}
 
@@ -177,7 +177,7 @@ func TestStoreLoadDelete(t *testing.T) {
 			t.Run("load stored chunk stamp", func(t *testing.T) {
 				want := chunk.Stamp()
 
-				have, err := chunkstamp.Load(ts.ReadOnly().IndexStore(), ns, chunk.Address())
+				have, err := chunkstamp.Load(ts.IndexStore(), ns, chunk.Address())
 				if err != nil {
 					t.Fatalf("Load(...): unexpected error: %v", err)
 				}
@@ -190,7 +190,7 @@ func TestStoreLoadDelete(t *testing.T) {
 			t.Run("load stored chunk stamp with batch id", func(t *testing.T) {
 				want := chunk.Stamp()
 
-				have, err := chunkstamp.LoadWithBatchID(ts.ReadOnly().IndexStore(), ns, chunk.Address(), chunk.Stamp().BatchID())
+				have, err := chunkstamp.LoadWithBatchID(ts.IndexStore(), ns, chunk.Address(), chunk.Stamp().BatchID())
 				if err != nil {
 					t.Fatalf("LoadWithBatchID(...): unexpected error: %v", err)
 				}
@@ -215,7 +215,7 @@ func TestStoreLoadDelete(t *testing.T) {
 					}
 				}
 
-				have, err := chunkstamp.LoadWithBatchID(ts.ReadOnly().IndexStore(), ns, chunk.Address(), chunk.Stamp().BatchID())
+				have, err := chunkstamp.LoadWithBatchID(ts.IndexStore(), ns, chunk.Address(), chunk.Stamp().BatchID())
 				if !errors.Is(err, storage.ErrNotFound) {
 					t.Fatalf("Load(...): unexpected error: %v", err)
 				}
@@ -238,7 +238,7 @@ func TestStoreLoadDelete(t *testing.T) {
 					t.Fatalf("DeleteAll(...): unexpected error: %v", err)
 				}
 
-				have, err := chunkstamp.Load(ts.ReadOnly().IndexStore(), ns, chunk.Address())
+				have, err := chunkstamp.Load(ts.IndexStore(), ns, chunk.Address())
 				if !errors.Is(err, storage.ErrNotFound) {
 					t.Fatalf("Load(...): unexpected error: %v", err)
 				}
@@ -247,7 +247,7 @@ func TestStoreLoadDelete(t *testing.T) {
 				}
 
 				cnt := 0
-				err = ts.ReadOnly().IndexStore().Iterate(
+				err = ts.IndexStore().Iterate(
 					storage.Query{
 						Factory: func() storage.Item {
 							return new(chunkstamp.Item)

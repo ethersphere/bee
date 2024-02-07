@@ -204,7 +204,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 
 func (r *Reserve) Has(addr swarm.Address, batchID []byte) (bool, error) {
 	item := &BatchRadiusItem{Bin: swarm.Proximity(r.baseAddr.Bytes(), addr.Bytes()), BatchID: batchID, Address: addr}
-	return r.st.ReadOnly().IndexStore().Has(item)
+	return r.st.IndexStore().Has(item)
 }
 
 func (r *Reserve) Get(ctx context.Context, addr swarm.Address, batchID []byte) (swarm.Chunk, error) {
@@ -212,18 +212,17 @@ func (r *Reserve) Get(ctx context.Context, addr swarm.Address, batchID []byte) (
 	defer r.multx.Unlock(string(batchID))
 
 	item := &BatchRadiusItem{Bin: swarm.Proximity(r.baseAddr.Bytes(), addr.Bytes()), BatchID: batchID, Address: addr}
-	st := r.st.ReadOnly()
-	err := st.IndexStore().Get(item)
+	err := r.st.IndexStore().Get(item)
 	if err != nil {
 		return nil, err
 	}
 
-	stamp, err := chunkstamp.LoadWithBatchID(st.IndexStore(), reserveNamespace, addr, item.BatchID)
+	stamp, err := chunkstamp.LoadWithBatchID(r.st.IndexStore(), reserveNamespace, addr, item.BatchID)
 	if err != nil {
 		return nil, err
 	}
 
-	ch, err := st.ChunkStore().Get(ctx, addr)
+	ch, err := r.st.ChunkStore().Get(ctx, addr)
 	if err != nil {
 		return nil, err
 	}
@@ -248,7 +247,7 @@ func (r *Reserve) EvictBatchBin(
 		return 0, nil
 	}
 
-	err := r.st.ReadOnly().IndexStore().Iterate(storage.Query{
+	err := r.st.IndexStore().Iterate(storage.Query{
 		Factory: func() storage.Item { return &BatchRadiusItem{} },
 		Prefix:  string(batchID),
 	}, func(res storage.Result) (bool, error) {
@@ -345,7 +344,7 @@ func (r *Reserve) removeChunkWithItem(
 }
 
 func (r *Reserve) IterateBin(bin uint8, startBinID uint64, cb func(swarm.Address, uint64, []byte) (bool, error)) error {
-	err := r.st.ReadOnly().IndexStore().Iterate(storage.Query{
+	err := r.st.IndexStore().Iterate(storage.Query{
 		Factory:       func() storage.Item { return &ChunkBinItem{} },
 		Prefix:        binIDToString(bin, startBinID),
 		PrefixAtStart: true,
@@ -367,20 +366,19 @@ func (r *Reserve) IterateBin(bin uint8, startBinID uint64, cb func(swarm.Address
 }
 
 func (r *Reserve) IterateChunks(startBin uint8, cb func(swarm.Chunk) (bool, error)) error {
-	store := r.st.ReadOnly()
-	err := store.IndexStore().Iterate(storage.Query{
+	err := r.st.IndexStore().Iterate(storage.Query{
 		Factory:       func() storage.Item { return &ChunkBinItem{} },
 		Prefix:        binIDToString(startBin, 0),
 		PrefixAtStart: true,
 	}, func(res storage.Result) (bool, error) {
 		item := res.Entry.(*ChunkBinItem)
 
-		chunk, err := store.ChunkStore().Get(context.Background(), item.Address)
+		chunk, err := r.st.ChunkStore().Get(context.Background(), item.Address)
 		if err != nil {
 			return false, err
 		}
 
-		stamp, err := chunkstamp.LoadWithBatchID(store.IndexStore(), reserveNamespace, item.Address, item.BatchID)
+		stamp, err := chunkstamp.LoadWithBatchID(r.st.IndexStore(), reserveNamespace, item.Address, item.BatchID)
 		if err != nil {
 			return false, err
 		}
@@ -396,8 +394,7 @@ func (r *Reserve) IterateChunks(startBin uint8, cb func(swarm.Chunk) (bool, erro
 }
 
 func (r *Reserve) IterateChunksItems(startBin uint8, cb func(*ChunkBinItem) (bool, error)) error {
-	store := r.st.ReadOnly()
-	err := store.IndexStore().Iterate(storage.Query{
+	err := r.st.IndexStore().Iterate(storage.Query{
 		Factory:       func() storage.Item { return &ChunkBinItem{} },
 		Prefix:        binIDToString(startBin, 0),
 		PrefixAtStart: true,
@@ -447,7 +444,7 @@ func (r *Reserve) SetRadius(rad uint8) error {
 
 func (r *Reserve) LastBinIDs() ([]uint64, uint64, error) {
 	var epoch EpochItem
-	err := r.st.ReadOnly().IndexStore().Get(&epoch)
+	err := r.st.IndexStore().Get(&epoch)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -456,7 +453,7 @@ func (r *Reserve) LastBinIDs() ([]uint64, uint64, error) {
 
 	for bin := uint8(0); bin < swarm.MaxBins; bin++ {
 		binItem := &BinItem{Bin: bin}
-		err := r.st.ReadOnly().IndexStore().Get(binItem)
+		err := r.st.IndexStore().Get(binItem)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
 				ids[bin] = 0

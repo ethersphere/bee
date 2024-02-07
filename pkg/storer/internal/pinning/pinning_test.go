@@ -110,14 +110,14 @@ func TestPinStore(t *testing.T) {
 				allChunks := append(tc.uniqueChunks, tc.root)
 				allChunks = append(allChunks, tc.dupChunks...)
 				for _, ch := range allChunks {
-					exists, err := st.ReadOnly().ChunkStore().Has(context.TODO(), ch.Address())
+					exists, err := st.ChunkStore().Has(context.TODO(), ch.Address())
 					if err != nil {
 						t.Fatal(err)
 					}
 					if !exists {
 						t.Fatal("chunk should exist")
 					}
-					rch, err := st.ReadOnly().ChunkStore().Get(context.TODO(), ch.Address())
+					rch, err := st.ChunkStore().Get(context.TODO(), ch.Address())
 					if err != nil {
 						t.Fatal(err)
 					}
@@ -130,7 +130,7 @@ func TestPinStore(t *testing.T) {
 	})
 
 	t.Run("verify root pins", func(t *testing.T) {
-		pins, err := pinstore.Pins(st.ReadOnly().IndexStore())
+		pins, err := pinstore.Pins(st.IndexStore())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -153,7 +153,7 @@ func TestPinStore(t *testing.T) {
 
 	t.Run("has pin", func(t *testing.T) {
 		for _, tc := range tests {
-			found, err := pinstore.HasPin(st.ReadOnly().IndexStore(), tc.root.Address())
+			found, err := pinstore.HasPin(st.IndexStore(), tc.root.Address())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -166,7 +166,7 @@ func TestPinStore(t *testing.T) {
 	t.Run("verify internal state", func(t *testing.T) {
 		for _, tc := range tests {
 			count := 0
-			err := pinstore.IterateCollection(st.ReadOnly().IndexStore(), tc.root.Address(), func(addr swarm.Address) (bool, error) {
+			err := pinstore.IterateCollection(st.IndexStore(), tc.root.Address(), func(addr swarm.Address) (bool, error) {
 				count++
 				return false, nil
 			})
@@ -176,7 +176,7 @@ func TestPinStore(t *testing.T) {
 			if count != len(tc.uniqueChunks)+2 {
 				t.Fatalf("incorrect no of chunks in collection, expected %d found %d", len(tc.uniqueChunks)+2, count)
 			}
-			stat, err := pinstore.GetStat(st.ReadOnly().IndexStore(), tc.root.Address())
+			stat, err := pinstore.GetStat(st.IndexStore(), tc.root.Address())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -191,7 +191,7 @@ func TestPinStore(t *testing.T) {
 
 	t.Run("iterate stats", func(t *testing.T) {
 		count, total, dup := 0, 0, 0
-		err := pinstore.IterateCollectionStats(st.ReadOnly().IndexStore(), func(stat pinstore.CollectionStat) (bool, error) {
+		err := pinstore.IterateCollectionStats(st.IndexStore(), func(stat pinstore.CollectionStat) (bool, error) {
 			count++
 			total += int(stat.Total)
 			dup += int(stat.DupInCollection)
@@ -225,7 +225,7 @@ func TestPinStore(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		found, err := pinstore.HasPin(st.ReadOnly().IndexStore(), tests[0].root.Address())
+		found, err := pinstore.HasPin(st.IndexStore(), tests[0].root.Address())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -233,7 +233,7 @@ func TestPinStore(t *testing.T) {
 			t.Fatal("expected pin to not be found")
 		}
 
-		pins, err := pinstore.Pins(st.ReadOnly().IndexStore())
+		pins, err := pinstore.Pins(st.IndexStore())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -244,14 +244,14 @@ func TestPinStore(t *testing.T) {
 		allChunks := append(tests[0].uniqueChunks, tests[0].root)
 		allChunks = append(allChunks, tests[0].dupChunks...)
 		for _, ch := range allChunks {
-			exists, err := st.ReadOnly().ChunkStore().Has(context.TODO(), ch.Address())
+			exists, err := st.ChunkStore().Has(context.TODO(), ch.Address())
 			if err != nil {
 				t.Fatal(err)
 			}
 			if exists {
 				t.Fatal("chunk should not exist")
 			}
-			_, err = st.ReadOnly().ChunkStore().Get(context.TODO(), ch.Address())
+			_, err = st.ChunkStore().Get(context.TODO(), ch.Address())
 			if !errors.Is(err, storage.ErrNotFound) {
 				t.Fatal(err)
 			}
@@ -399,7 +399,7 @@ func TestCleanup(t *testing.T) {
 		}
 
 		for _, ch := range chunks {
-			exists, err := st.ReadOnly().ChunkStore().Has(context.Background(), ch.Address())
+			exists, err := st.ChunkStore().Has(context.Background(), ch.Address())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -442,7 +442,7 @@ func TestCleanup(t *testing.T) {
 		}
 
 		for _, ch := range chunks {
-			exists, err := st.ReadOnly().ChunkStore().Has(context.Background(), ch.Address())
+			exists, err := st.ChunkStore().Has(context.Background(), ch.Address())
 			if err != nil {
 				t.Fatal(err)
 			}

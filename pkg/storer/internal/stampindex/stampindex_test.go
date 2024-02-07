@@ -147,7 +147,7 @@ func TestStoreLoadDelete(t *testing.T) {
 					chunk.Stamp().BatchID(),
 					chunk.Stamp().Index(),
 				)
-				err = ts.ReadOnly().IndexStore().Get(have)
+				err = ts.IndexStore().Get(have)
 				if err != nil {
 					t.Fatalf("Get(...): unexpected error: %v", err)
 				}
@@ -167,7 +167,7 @@ func TestStoreLoadDelete(t *testing.T) {
 				want.ChunkAddress = chunk.Address()
 				want.ChunkIsImmutable = chunk.Immutable()
 
-				have, err := stampindex.Load(ts.ReadOnly().IndexStore(), ns, chunk)
+				have, err := stampindex.Load(ts.IndexStore(), ns, chunk)
 				if err != nil {
 					t.Fatalf("Load(...): unexpected error: %v", err)
 				}
@@ -186,7 +186,7 @@ func TestStoreLoadDelete(t *testing.T) {
 					t.Fatalf("Delete(...): unexpected error: %v", err)
 				}
 
-				have, err := stampindex.Load(ts.ReadOnly().IndexStore(), ns, chunk)
+				have, err := stampindex.Load(ts.IndexStore(), ns, chunk)
 				if have != nil {
 					t.Fatalf("Load(...): unexpected item %v", have)
 				}
@@ -195,7 +195,7 @@ func TestStoreLoadDelete(t *testing.T) {
 				}
 
 				cnt := 0
-				err = ts.ReadOnly().IndexStore().Iterate(
+				err = ts.IndexStore().Iterate(
 					storage.Query{
 						Factory: func() storage.Item {
 							return new(stampindex.Item)
@@ -267,7 +267,7 @@ func TestLoadOrStore(t *testing.T) {
 			assert.NoError(t, trx.Commit())
 
 			cnt := 0
-			err = ts.ReadOnly().IndexStore().Iterate(
+			err = ts.IndexStore().Iterate(
 				storage.Query{
 					Factory: func() storage.Item {
 						return new(stampindex.Item)

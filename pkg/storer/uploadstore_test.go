@@ -404,7 +404,7 @@ func testReporter(t *testing.T, newStorer func() (*storer.DB, error)) {
 				t.Fatalf("unexpected tag item (-want +have):\n%s", diff)
 			}
 
-			has, err := lstore.Storage().ReadOnly().ChunkStore().Has(context.Background(), chunks[0].Address())
+			has, err := lstore.Storage().ChunkStore().Has(context.Background(), chunks[0].Address())
 			if err != nil {
 				t.Fatalf("ChunkStore.Has(...): unexpected error: %v", err)
 			}

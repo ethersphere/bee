@@ -92,7 +92,7 @@ func (db *DB) Pins() (address []swarm.Address, err error) {
 		}
 	}()
 
-	return pinstore.Pins(db.storage.ReadOnly().IndexStore())
+	return pinstore.Pins(db.storage.IndexStore())
 }
 
 // HasPin is the implementation of the PinStore.HasPin method.
@@ -107,9 +107,9 @@ func (db *DB) HasPin(root swarm.Address) (has bool, err error) {
 		}
 	}()
 
-	return pinstore.HasPin(db.storage.ReadOnly().IndexStore(), root)
+	return pinstore.HasPin(db.storage.IndexStore(), root)
 }
 
 func (db *DB) IteratePinCollection(root swarm.Address, iterateFn func(swarm.Address) (bool, error)) error {
-	return pinstore.IterateCollection(db.storage.ReadOnly().IndexStore(), root, iterateFn)
+	return pinstore.IterateCollection(db.storage.IndexStore(), root, iterateFn)
 }

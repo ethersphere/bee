@@ -36,7 +36,7 @@ func step_04(
 		}
 
 		locationResultC := make(chan chunkstore.LocationResult)
-		chunkstore.IterateLocations(context.Background(), st.ReadOnly().IndexStore(), locationResultC)
+		chunkstore.IterateLocations(context.Background(), st.IndexStore(), locationResultC)
 
 		for res := range locationResultC {
 			if res.Err != nil {

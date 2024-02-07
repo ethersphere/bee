@@ -35,7 +35,7 @@ func step_05(st transaction.Storage) error {
 		close(errC)
 	}()
 
-	err := upload.IterateAll(st.ReadOnly().IndexStore(), func(u storage.Item) (bool, error) {
+	err := upload.IterateAll(st.IndexStore(), func(u storage.Item) (bool, error) {
 		select {
 		case itemC <- u:
 		case err := <-errC:

@@ -89,7 +89,7 @@ func Test_Step_03(t *testing.T) {
 
 	binIDs := make(map[uint8][]uint64)
 	cbCount := 0
-	err := store.ReadOnly().IndexStore().Iterate(
+	err := store.IndexStore().Iterate(
 		storage.Query{Factory: func() storage.Item { return &reserve.ChunkBinItem{} }},
 		func(res storage.Result) (stop bool, err error) {
 			cb := res.Entry.(*reserve.ChunkBinItem)
@@ -117,7 +117,7 @@ func Test_Step_03(t *testing.T) {
 	}
 
 	brCount := 0
-	err = store.ReadOnly().IndexStore().Iterate(
+	err = store.IndexStore().Iterate(
 		storage.Query{Factory: func() storage.Item { return &reserve.BatchRadiusItem{} }},
 		func(res storage.Result) (stop bool, err error) {
 			br := res.Entry.(*reserve.BatchRadiusItem)

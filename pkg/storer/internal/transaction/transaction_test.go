@@ -59,19 +59,19 @@ func Test_TransactionStorage(t *testing.T) {
 		assert.NoError(t, tx.Commit())
 
 		item := cache.CacheEntryItem{Address: ch1.Address()}
-		assert.NoError(t, st.ReadOnly().IndexStore().Get(&item))
+		assert.NoError(t, st.IndexStore().Get(&item))
 		assert.Equal(t, item, cache.CacheEntryItem{Address: ch1.Address(), AccessTimestamp: 1})
 
-		ch1_get, err := st.ReadOnly().ChunkStore().Get(context.Background(), ch1.Address())
+		ch1_get, err := st.ChunkStore().Get(context.Background(), ch1.Address())
 		assert.NoError(t, err)
 		assert.Equal(t, ch1.Data(), ch1_get.Data())
 		assert.Equal(t, ch1.Address(), ch1_get.Address())
 
 		item = cache.CacheEntryItem{Address: ch2.Address()}
-		assert.NoError(t, st.ReadOnly().IndexStore().Get(&item))
+		assert.NoError(t, st.IndexStore().Get(&item))
 		assert.Equal(t, item, cache.CacheEntryItem{Address: ch2.Address(), AccessTimestamp: 1})
 
-		ch2_get, err := st.ReadOnly().ChunkStore().Get(context.Background(), ch1.Address())
+		ch2_get, err := st.ChunkStore().Get(context.Background(), ch1.Address())
 		assert.NoError(t, err)
 		assert.Equal(t, ch1.Data(), ch2_get.Data())
 		assert.Equal(t, ch1.Address(), ch2_get.Address())
@@ -92,11 +92,11 @@ func Test_TransactionStorage(t *testing.T) {
 
 		done()
 
-		assert.ErrorIs(t, st.ReadOnly().IndexStore().Get(&cache.CacheEntryItem{Address: ch1.Address()}), storage.ErrNotFound)
-		assert.ErrorIs(t, st.ReadOnly().IndexStore().Get(&cache.CacheEntryItem{Address: ch2.Address()}), storage.ErrNotFound)
-		_, err := st.ReadOnly().ChunkStore().Get(context.Background(), ch1.Address())
+		assert.ErrorIs(t, st.IndexStore().Get(&cache.CacheEntryItem{Address: ch1.Address()}), storage.ErrNotFound)
+		assert.ErrorIs(t, st.IndexStore().Get(&cache.CacheEntryItem{Address: ch2.Address()}), storage.ErrNotFound)
+		_, err := st.ChunkStore().Get(context.Background(), ch1.Address())
 		assert.ErrorIs(t, err, storage.ErrNotFound)
-		_, err = st.ReadOnly().ChunkStore().Get(context.Background(), ch2.Address())
+		_, err = st.ChunkStore().Get(context.Background(), ch2.Address())
 		assert.ErrorIs(t, err, storage.ErrNotFound)
 	})
 
@@ -115,19 +115,19 @@ func Test_TransactionStorage(t *testing.T) {
 		})
 
 		item := cache.CacheEntryItem{Address: ch1.Address()}
-		assert.NoError(t, st.ReadOnly().IndexStore().Get(&item))
+		assert.NoError(t, st.IndexStore().Get(&item))
 		assert.Equal(t, item, cache.CacheEntryItem{Address: ch1.Address(), AccessTimestamp: 1})
 
-		ch1_get, err := st.ReadOnly().ChunkStore().Get(context.Background(), ch1.Address())
+		ch1_get, err := st.ChunkStore().Get(context.Background(), ch1.Address())
 		assert.NoError(t, err)
 		assert.Equal(t, ch1.Data(), ch1_get.Data())
 		assert.Equal(t, ch1.Address(), ch1_get.Address())
 
 		item = cache.CacheEntryItem{Address: ch2.Address()}
-		assert.NoError(t, st.ReadOnly().IndexStore().Get(&item))
+		assert.NoError(t, st.IndexStore().Get(&item))
 		assert.Equal(t, item, cache.CacheEntryItem{Address: ch2.Address(), AccessTimestamp: 1})
 
-		ch2_get, err := st.ReadOnly().ChunkStore().Get(context.Background(), ch1.Address())
+		ch2_get, err := st.ChunkStore().Get(context.Background(), ch1.Address())
 		assert.NoError(t, err)
 		assert.Equal(t, ch1.Data(), ch2_get.Data())
 		assert.Equal(t, ch1.Address(), ch2_get.Address())
@@ -140,11 +140,11 @@ func Test_TransactionStorage(t *testing.T) {
 			return nil
 		})
 
-		assert.ErrorIs(t, st.ReadOnly().IndexStore().Get(&cache.CacheEntryItem{Address: ch1.Address()}), storage.ErrNotFound)
-		assert.ErrorIs(t, st.ReadOnly().IndexStore().Get(&cache.CacheEntryItem{Address: ch2.Address()}), storage.ErrNotFound)
-		_, err = st.ReadOnly().ChunkStore().Get(context.Background(), ch1.Address())
+		assert.ErrorIs(t, st.IndexStore().Get(&cache.CacheEntryItem{Address: ch1.Address()}), storage.ErrNotFound)
+		assert.ErrorIs(t, st.IndexStore().Get(&cache.CacheEntryItem{Address: ch2.Address()}), storage.ErrNotFound)
+		_, err = st.ChunkStore().Get(context.Background(), ch1.Address())
 		assert.ErrorIs(t, err, storage.ErrNotFound)
-		_, err = st.ReadOnly().ChunkStore().Get(context.Background(), ch2.Address())
+		_, err = st.ChunkStore().Get(context.Background(), ch2.Address())
 		assert.ErrorIs(t, err, storage.ErrNotFound)
 	})
 
@@ -160,7 +160,7 @@ func Test_TransactionStorage(t *testing.T) {
 			return nil
 		})
 
-		has, err := st.ReadOnly().ChunkStore().Has(context.Background(), ch1.Address())
+		has, err := st.ChunkStore().Has(context.Background(), ch1.Address())
 		assert.NoError(t, err)
 		if !has {
 			t.Fatal("should have chunk")
@@ -180,7 +180,7 @@ func Test_TransactionStorage(t *testing.T) {
 			return nil
 		})
 
-		has, err := st.ReadOnly().ChunkStore().Has(context.Background(), ch1.Address())
+		has, err := st.ChunkStore().Has(context.Background(), ch1.Address())
 		assert.NoError(t, err)
 		if !has {
 			t.Fatal("should NOT have chunk")

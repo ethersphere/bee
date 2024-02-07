@@ -70,21 +70,13 @@ type inmemTrx struct {
 	chunkStore storage.ChunkStore
 }
 
-type inmemReadOnly struct {
-	indexStore storage.Reader
-	chunkStore storage.ReadOnlyChunkStore
-}
-
-func (t *inmemReadOnly) IndexStore() storage.Reader             { return t.indexStore }
-func (t *inmemReadOnly) ChunkStore() storage.ReadOnlyChunkStore { return t.chunkStore }
+func (t *inmemStorage) IndexStore() storage.Reader             { return t.indexStore }
+func (t *inmemStorage) ChunkStore() storage.ReadOnlyChunkStore { return t.chunkStore }
 
 func (t *inmemTrx) IndexStore() storage.IndexStore { return t.indexStore }
 func (t *inmemTrx) ChunkStore() storage.ChunkStore { return t.chunkStore }
 func (t *inmemTrx) Commit() error                  { return nil }
 
-func (t *inmemStorage) ReadOnly() transaction.ReadOnlyStore {
-	return &inmemReadOnly{t.indexStore, t.chunkStore}
-}
 func (t *inmemStorage) Close() error { return nil }
 func (t *inmemStorage) Run(ctx context.Context, f func(s transaction.Store) error) error {
 	trx, done := t.NewTransaction(ctx)
