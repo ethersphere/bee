@@ -50,9 +50,9 @@ func TestReserve(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			checkStore(t, ts.ReadOnly().IndexStore(), &reserve.BatchRadiusItem{Bin: uint8(b), BatchID: ch.Stamp().BatchID(), Address: ch.Address()}, false)
-			checkStore(t, ts.ReadOnly().IndexStore(), &reserve.ChunkBinItem{Bin: uint8(b), BinID: uint64(i)}, false)
-			checkChunk(t, ts.ReadOnly(), ch, false)
+			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: uint8(b), BatchID: ch.Stamp().BatchID(), Address: ch.Address()}, false)
+			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: uint8(b), BinID: uint64(i)}, false)
+			checkChunk(t, ts, ch, false)
 
 			h, err := r.Has(ch.Address(), ch.Stamp().BatchID())
 			if err != nil {
@@ -106,7 +106,7 @@ func TestReserveChunkType(t *testing.T) {
 		}
 	}
 
-	err = ts.ReadOnly().IndexStore().Iterate(storage.Query{
+	err = ts.IndexStore().Iterate(storage.Query{
 		Factory: func() storage.Item { return &reserve.ChunkBinItem{} },
 	}, func(res storage.Result) (bool, error) {
 		item := res.Entry.(*reserve.ChunkBinItem)
@@ -163,16 +163,16 @@ func TestReplaceOldIndex(t *testing.T) {
 	}
 
 	// Chunk 1 must be gone
-	checkStore(t, ts.ReadOnly().IndexStore(), &reserve.BatchRadiusItem{Bin: 0, BatchID: ch1.Stamp().BatchID(), Address: ch1.Address()}, true)
-	checkStore(t, ts.ReadOnly().IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: 1}, true)
-	checkChunk(t, ts.ReadOnly(), ch1, true)
+	checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: 0, BatchID: ch1.Stamp().BatchID(), Address: ch1.Address()}, true)
+	checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: 1}, true)
+	checkChunk(t, ts, ch1, true)
 
 	// Chunk 2 must be stored
-	checkStore(t, ts.ReadOnly().IndexStore(), &reserve.BatchRadiusItem{Bin: 0, BatchID: ch2.Stamp().BatchID(), Address: ch2.Address()}, false)
-	checkStore(t, ts.ReadOnly().IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: 2}, false)
-	checkChunk(t, ts.ReadOnly(), ch2, false)
+	checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: 0, BatchID: ch2.Stamp().BatchID(), Address: ch2.Address()}, false)
+	checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: 2}, false)
+	checkChunk(t, ts, ch2, false)
 
-	item, err := stampindex.Load(ts.ReadOnly().IndexStore(), "reserve", ch2)
+	item, err := stampindex.Load(ts.IndexStore(), "reserve", ch2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -237,16 +237,16 @@ func TestEvict(t *testing.T) {
 			if !errors.Is(err, storage.ErrNotFound) {
 				t.Fatalf("got err %v, want %v", err, storage.ErrNotFound)
 			}
-			checkStore(t, ts.ReadOnly().IndexStore(), &reserve.BatchRadiusItem{Bin: b, BatchID: ch.Stamp().BatchID(), Address: ch.Address()}, true)
-			checkStore(t, ts.ReadOnly().IndexStore(), &reserve.ChunkBinItem{Bin: b, BinID: uint64(binID)}, true)
-			checkChunk(t, ts.ReadOnly(), ch, true)
+			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: b, BatchID: ch.Stamp().BatchID(), Address: ch.Address()}, true)
+			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: b, BinID: uint64(binID)}, true)
+			checkChunk(t, ts, ch, true)
 		} else {
 			if err != nil {
 				t.Fatal(err)
 			}
-			checkStore(t, ts.ReadOnly().IndexStore(), &reserve.BatchRadiusItem{Bin: b, BatchID: ch.Stamp().BatchID(), Address: ch.Address()}, false)
-			checkStore(t, ts.ReadOnly().IndexStore(), &reserve.ChunkBinItem{Bin: b, BinID: uint64(binID)}, false)
-			checkChunk(t, ts.ReadOnly(), ch, false)
+			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: b, BatchID: ch.Stamp().BatchID(), Address: ch.Address()}, false)
+			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: b, BinID: uint64(binID)}, false)
+			checkChunk(t, ts, ch, false)
 		}
 	}
 }
@@ -293,13 +293,13 @@ func TestEvictMaxCount(t *testing.T) {
 
 	for i, ch := range chunks {
 		if i < 10 {
-			checkStore(t, ts.ReadOnly().IndexStore(), &reserve.BatchRadiusItem{Bin: 0, BatchID: ch.Stamp().BatchID(), Address: ch.Address()}, true)
-			checkStore(t, ts.ReadOnly().IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: uint64(i + 1)}, true)
-			checkChunk(t, ts.ReadOnly(), ch, true)
+			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: 0, BatchID: ch.Stamp().BatchID(), Address: ch.Address()}, true)
+			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: uint64(i + 1)}, true)
+			checkChunk(t, ts, ch, true)
 		} else {
-			checkStore(t, ts.ReadOnly().IndexStore(), &reserve.BatchRadiusItem{Bin: 1, BatchID: ch.Stamp().BatchID(), Address: ch.Address()}, false)
-			checkStore(t, ts.ReadOnly().IndexStore(), &reserve.ChunkBinItem{Bin: 1, BinID: uint64(i - 10 + 1)}, false)
-			checkChunk(t, ts.ReadOnly(), ch, false)
+			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: 1, BatchID: ch.Stamp().BatchID(), Address: ch.Address()}, false)
+			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 1, BinID: uint64(i - 10 + 1)}, false)
+			checkChunk(t, ts, ch, false)
 		}
 	}
 }

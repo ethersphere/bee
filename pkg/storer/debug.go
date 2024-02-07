@@ -60,7 +60,7 @@ func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 	)
 	eg.Go(func() error {
 		return chunkstore.IterateChunkEntries(
-			db.storage.ReadOnly().IndexStore(),
+			db.storage.IndexStore(),
 			func(_ swarm.Address, isShared bool) (bool, error) {
 				select {
 				case <-ctx.Done():
@@ -84,7 +84,7 @@ func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 		synced   uint64
 	)
 	eg.Go(func() error {
-		return upload.IterateAllTagItems(db.storage.ReadOnly().IndexStore(), func(ti *upload.TagItem) (bool, error) {
+		return upload.IterateAllTagItems(db.storage.IndexStore(), func(ti *upload.TagItem) (bool, error) {
 			select {
 			case <-ctx.Done():
 				return true, ctx.Err()
@@ -104,7 +104,7 @@ func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 	)
 	eg.Go(func() error {
 		return pinstore.IterateCollectionStats(
-			db.storage.ReadOnly().IndexStore(),
+			db.storage.IndexStore(),
 			func(stat pinstore.CollectionStat) (bool, error) {
 				select {
 				case <-ctx.Done():

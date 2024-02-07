@@ -492,7 +492,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		return nil, err
 	}
 
-	cacheObj, err := cache.New(ctx, st.ReadOnly().IndexStore(), opts.CacheCapacity)
+	cacheObj, err := cache.New(ctx, st.IndexStore(), opts.CacheCapacity)
 	if err != nil {
 		return nil, err
 	}
@@ -638,7 +638,7 @@ func (noopRetrieval) RetrieveChunk(_ context.Context, _ swarm.Address, _ swarm.A
 }
 
 func (db *DB) ChunkStore() storage.ReadOnlyChunkStore {
-	return db.storage.ReadOnly().ChunkStore()
+	return db.storage.ChunkStore()
 }
 
 func (db *DB) PinIntegrity() *PinIntegrity {

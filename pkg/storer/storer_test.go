@@ -37,7 +37,7 @@ func verifyChunks(
 	t.Helper()
 
 	for _, ch := range chunks {
-		hasFound, err := st.ReadOnly().ChunkStore().Has(context.TODO(), ch.Address())
+		hasFound, err := st.ChunkStore().Has(context.TODO(), ch.Address())
 		if err != nil {
 			t.Fatalf("ChunkStore.Has(...): unexpected error: %v", err)
 		}
@@ -80,7 +80,7 @@ func verifySessionInfo(
 	verifyChunks(t, st, chunks, has)
 
 	if has {
-		tagInfo, err := upload.TagInfo(st.ReadOnly().IndexStore(), sessionID)
+		tagInfo, err := upload.TagInfo(st.IndexStore(), sessionID)
 		if err != nil {
 			t.Fatalf("upload.TagInfo(...): unexpected error: %v", err)
 		}
@@ -103,7 +103,7 @@ func verifyPinCollection(
 ) {
 	t.Helper()
 
-	hasFound, err := pinstore.HasPin(st.ReadOnly().IndexStore(), root.Address())
+	hasFound, err := pinstore.HasPin(st.IndexStore(), root.Address())
 	if err != nil {
 		t.Fatalf("pinstore.HasPin(...): unexpected error: %v", err)
 	}
@@ -165,14 +165,14 @@ func TestNew(t *testing.T) {
 			t.Parallel()
 
 			lstore := makeInmemStorer(t, dbTestOps(swarm.RandAddress(t), 0, nil, nil, time.Second))
-			assertStorerVersion(t, lstore.Storage().ReadOnly().IndexStore(), "")
+			assertStorerVersion(t, lstore.Storage().IndexStore(), "")
 		})
 
 		t.Run("disk", func(t *testing.T) {
 			t.Parallel()
 
 			lstore := makeDiskStorer(t, dbTestOps(swarm.RandAddress(t), 0, nil, nil, time.Second))
-			assertStorerVersion(t, lstore.Storage().ReadOnly().IndexStore(), path.Join(t.TempDir(), "sharky"))
+			assertStorerVersion(t, lstore.Storage().IndexStore(), path.Join(t.TempDir(), "sharky"))
 		})
 	})
 }

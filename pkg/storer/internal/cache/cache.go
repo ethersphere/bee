@@ -209,7 +209,7 @@ func (c *Cache) ShallowCopy(
 
 	for _, addr := range addrs {
 		entry := &cacheEntry{Address: addr, AccessTimestamp: now().UnixNano()}
-		if has, err := store.ReadOnly().IndexStore().Has(entry); err == nil && has {
+		if has, err := store.IndexStore().Has(entry); err == nil && has {
 			// Since the caller has previously referenced the chunk (+1 refCnt), and if the chunk is already referenced
 			// by the cache store (+1 refCnt), then we must decrement the refCnt by one ( -1 refCnt to bring the total to +1).
 			// See https://github.com/ethersphere/bee/issues/4530.
@@ -271,7 +271,7 @@ func (c *Cache) removeOldest(ctx context.Context, st transaction.Storage, count 
 	defer c.glock.Unlock()
 
 	evictItems := make([]*cacheEntry, 0, count)
-	err := st.ReadOnly().IndexStore().Iterate(
+	err := st.IndexStore().Iterate(
 		storage.Query{
 			Factory:      func() storage.Item { return &cacheOrderIndex{} },
 			ItemProperty: storage.QueryItemID,

@@ -68,7 +68,7 @@ func Test_Step_02(t *testing.T) {
 	// check if all entries are migrated.
 	for _, entry := range addrs {
 		cEntry := &cache.CacheEntryItem{Address: entry.address}
-		err := store.ReadOnly().IndexStore().Get(cEntry)
+		err := store.IndexStore().Get(cEntry)
 		assert.NoError(t, err)
 		assert.Equal(t, entry.address, cEntry.Address)
 		assert.Greater(t, cEntry.AccessTimestamp, int64(0))
