@@ -21,36 +21,12 @@ import (
 	"github.com/ethersphere/bee/pkg/file/redundancy/getter"
 	"github.com/ethersphere/bee/pkg/storage"
 	inmem "github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
+	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/pkg/util/testutil/racedetection"
 	"github.com/klauspost/reedsolomon"
 	"golang.org/x/sync/errgroup"
 )
-
-type delayed struct {
-	storage.ChunkStore
-	cache map[string]time.Duration
-	mu    sync.Mutex
-}
-
-func (d *delayed) delay(addr swarm.Address, delay time.Duration) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	d.cache[addr.String()] = delay
-}
-
-func (d *delayed) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, err error) {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-	if delay, ok := d.cache[addr.String()]; ok && delay > 0 {
-		select {
-		case <-time.After(delay):
-			delete(d.cache, addr.String())
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
-	}
-	return d.ChunkStore.Get(ctx, addr)
-}
 
 // TestGetter tests the retrieval of chunks with missing data shards
 // using the RACE strategy for a number of erasure code parameters
@@ -118,11 +94,10 @@ func TestGetterFallback(t *testing.T) {
 
 func testDecodingRACE(t *testing.T, bufSize, shardCnt, erasureCnt int) {
 	t.Helper()
-
-	strategyTimeout := getter.StrategyTimeout
-	defer func() { getter.StrategyTimeout = strategyTimeout }()
-	getter.StrategyTimeout = 100 * time.Millisecond
-
+	strategyTimeout := 100 * time.Millisecond
+	if racedetection.On {
+		strategyTimeout *= 2
+	}
 	store := inmem.New()
 	buf := make([][]byte, bufSize)
 	addrs := initData(t, buf, shardCnt, store)
@@ -140,7 +115,12 @@ func testDecodingRACE(t *testing.T, bufSize, shardCnt, erasureCnt int) {
 	}
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
-	g := getter.New(addrs, shardCnt, store, store, getter.RACE, false, 2*getter.StrategyTimeout, func() {})
+	conf := getter.Config{
+		Strategy:        getter.RACE,
+		FetchTimeout:    2 * strategyTimeout,
+		StrategyTimeout: strategyTimeout,
+	}
+	g := getter.New(addrs, shardCnt, store, store, func() {}, conf)
 	defer g.Close()
 	parityCnt := len(buf) - shardCnt
 	q := make(chan error, 1)
@@ -149,9 +129,13 @@ func testDecodingRACE(t *testing.T, bufSize, shardCnt, erasureCnt int) {
 		q <- err
 	}()
 	err := context.DeadlineExceeded
+	wait := strategyTimeout * 2
+	if racedetection.On {
+		wait *= 2
+	}
 	select {
 	case err = <-q:
-	case <-time.After(getter.StrategyTimeout * 10):
+	case <-time.After(wait):
 	}
 	switch {
 	case erasureCnt > parityCnt:
@@ -175,13 +159,11 @@ func testDecodingRACE(t *testing.T, bufSize, shardCnt, erasureCnt int) {
 func testDecodingFallback(t *testing.T, s getter.Strategy, strict bool) {
 	t.Helper()
 
-	strategyTimeout := getter.StrategyTimeout
-	defer func() { getter.StrategyTimeout = strategyTimeout }()
-	getter.StrategyTimeout = 100 * time.Millisecond
+	strategyTimeout := 150 * time.Millisecond
 
 	bufSize := 12
 	shardCnt := 6
-	store := &delayed{ChunkStore: inmem.New(), cache: make(map[string]time.Duration)}
+	store := mockstorer.NewDelayedStore(inmem.New())
 	buf := make([][]byte, bufSize)
 	addrs := initData(t, buf, shardCnt, store)
 
@@ -201,14 +183,20 @@ func testDecodingFallback(t *testing.T, s getter.Strategy, strict bool) {
 	waitDelayed, waitErased := make(chan error, 1), make(chan error, 1)
 
 	// complete retrieval of delayed chunk by putting it into the store after a while
-	delay := +getter.StrategyTimeout / 4
+	delay := strategyTimeout / 4
 	if s == getter.NONE {
-		delay += getter.StrategyTimeout
+		delay += strategyTimeout
 	}
-	store.delay(addrs[delayed], delay)
+	store.Delay(addrs[delayed], delay)
 	// create getter
 	start := time.Now()
-	g := getter.New(addrs, shardCnt, store, store, s, strict, getter.StrategyTimeout/2, func() {})
+	conf := getter.Config{
+		Strategy:        s,
+		Strict:          strict,
+		FetchTimeout:    strategyTimeout / 2,
+		StrategyTimeout: strategyTimeout,
+	}
+	g := getter.New(addrs, shardCnt, store, store, func() {}, conf)
 	defer g.Close()
 
 	// launch delayed and erased chunk retrieval
@@ -219,11 +207,15 @@ func testDecodingFallback(t *testing.T, s getter.Strategy, strict bool) {
 	// delayed and erased chunk retrieval completes
 	go func() {
 		defer wg.Done()
+		ctx, cancel := context.WithTimeout(ctx, strategyTimeout*time.Duration(5-s))
+		defer cancel()
 		_, err := g.Get(ctx, addrs[delayed])
 		waitDelayed <- err
 	}()
 	go func() {
 		defer wg.Done()
+		ctx, cancel := context.WithTimeout(ctx, strategyTimeout*time.Duration(5-s))
+		defer cancel()
 		_, err := g.Get(ctx, addrs[erased])
 		waitErased <- err
 	}()
@@ -234,7 +226,7 @@ func testDecodingFallback(t *testing.T, s getter.Strategy, strict bool) {
 		if err != nil {
 			t.Fatal("unexpected error", err)
 		}
-		round := time.Since(start) / getter.StrategyTimeout
+		round := time.Since(start) / strategyTimeout
 		switch {
 		case strict && s == getter.NONE:
 			if round < 1 {
@@ -260,15 +252,15 @@ func testDecodingFallback(t *testing.T, s getter.Strategy, strict bool) {
 			if err != nil {
 				t.Fatal("unexpected error", err)
 			}
-			round = time.Since(start) / getter.StrategyTimeout
+			round = time.Since(start) / strategyTimeout
 			switch {
 			case strict:
 				t.Fatalf("unexpected completion of erased chunk retrieval. got round %d", round)
 			case s == getter.NONE:
-				if round < 2 {
+				if round < 3 {
 					t.Fatalf("unexpected early completion of erased chunk retrieval. got round %d", round)
 				}
-				if round > 2 {
+				if round > 3 {
 					t.Fatalf("unexpected late completion of erased chunk retrieval. got round %d", round)
 				}
 			case s == getter.DATA:
@@ -281,12 +273,12 @@ func testDecodingFallback(t *testing.T, s getter.Strategy, strict bool) {
 			}
 			checkShardsAvailable(t, store, addrs[:erased], buf[:erased])
 
-		case <-time.After(getter.StrategyTimeout * 2):
+		case <-time.After(strategyTimeout * 2):
 			if !strict {
 				t.Fatal("unexpected timeout using strategy", s, "with strict", strict)
 			}
 		}
-	case <-time.After(getter.StrategyTimeout * 3):
+	case <-time.After(strategyTimeout * 3):
 		if !strict || s != getter.NONE {
 			t.Fatal("unexpected timeout using strategy", s, "with strict", strict)
 		}

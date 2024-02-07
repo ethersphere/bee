@@ -195,18 +195,11 @@ func TestGetter(t *testing.T) {
 				}
 
 				t.Run("returns correct error", func(t *testing.T) {
-					var esg *replicas.ErrSwarmageddon
-					if !errors.As(err, &esg) {
+					if !errors.Is(err, replicas.ErrSwarmageddon) {
 						t.Fatalf("incorrect error. want Swarmageddon. got %v", err)
 					}
-					errs := esg.Unwrap()
-					for _, err := range errs {
-						if !errors.Is(err, tc.failure.err) {
-							t.Fatalf("incorrect error. want it to wrap %v. got %v", tc.failure.err, err)
-						}
-					}
-					if len(errs) != tc.count+1 {
-						t.Fatalf("incorrect error. want %d. got %d", tc.count+1, len(errs))
+					if !errors.Is(err, tc.failure.err) {
+						t.Fatalf("incorrect error. want it to wrap %v. got %v", tc.failure.err, err)
 					}
 				})
 			}
@@ -265,7 +258,6 @@ func TestGetter(t *testing.T) {
 					}
 				}
 			})
-
 		})
 	}
 }

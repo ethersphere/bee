@@ -24,7 +24,6 @@ import (
 	"github.com/ethersphere/bee/pkg/file/pipeline/mock"
 	"github.com/ethersphere/bee/pkg/file/pipeline/store"
 	"github.com/ethersphere/bee/pkg/file/redundancy"
-	"github.com/ethersphere/bee/pkg/replicas"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -46,7 +45,7 @@ func init() {
 	binary.LittleEndian.PutUint64(span, 1)
 }
 
-// NewErasureHashTrieWriter returns back an redundancy param and a HastTrieWriter pipeline
+// newErasureHashTrieWriter returns back an redundancy param and a HastTrieWriter pipeline
 // which are using simple BMT and StoreWriter pipelines for chunk writes
 func newErasureHashTrieWriter(
 	ctx context.Context,
@@ -303,20 +302,20 @@ func TestRedundancy(t *testing.T) {
 			level:      redundancy.INSANE,
 			encryption: false,
 			writes:     98, // 97 chunk references fit into one chunk + 1 carrier
-			parities:   38, // 31 (full ch) + 7 (2 ref)
+			parities:   37, // 31 (full ch) + 6 (2 ref)
 		},
 		{
 			desc:       "redundancy write for encrypted data",
 			level:      redundancy.PARANOID,
 			encryption: true,
 			writes:     21,  // 21 encrypted chunk references fit into one chunk + 1 carrier
-			parities:   118, // // 88 (full ch) + 30 (2 ref)
+			parities:   116, // // 87 (full ch) + 29 (2 ref)
 		},
 	} {
 		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
-			subCtx := replicas.SetLevel(ctx, tc.level)
+			subCtx := redundancy.SetLevelInContext(ctx, tc.level)
 
 			s := inmemchunkstore.New()
 			intermediateChunkCounter := mock.NewChainWriter()

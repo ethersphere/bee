@@ -27,11 +27,16 @@ import (
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
+	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/util/testutil"
+	"github.com/ethersphere/bee/pkg/util/testutil/pseudorand"
+	"github.com/ethersphere/bee/pkg/util/testutil/racedetection"
 	"gitlab.com/nolash/go-mockbytes"
 	"golang.org/x/sync/errgroup"
 )
+
+// nolint:paralleltest,tparallel,thelper
 
 func TestJoiner_ErrReferenceLength(t *testing.T) {
 	t.Parallel()
@@ -1018,12 +1023,9 @@ func (m *mockPutter) store(cnt int) error {
 	return nil
 }
 
+// nolint:thelper
 func TestJoinerRedundancy(t *testing.T) {
-
-	strategyTimeout := getter.StrategyTimeout
-	defer func() { getter.StrategyTimeout = strategyTimeout }()
-	getter.StrategyTimeout = 100 * time.Millisecond
-
+	t.Parallel()
 	for _, tc := range []struct {
 		rLevel       redundancy.Level
 		encryptChunk bool
@@ -1063,10 +1065,8 @@ func TestJoinerRedundancy(t *testing.T) {
 	} {
 		tc := tc
 		t.Run(fmt.Sprintf("redundancy=%d encryption=%t", tc.rLevel, tc.encryptChunk), func(t *testing.T) {
-
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-
 			shardCnt := tc.rLevel.GetMaxShards()
 			parityCnt := tc.rLevel.GetParities(shardCnt)
 			if tc.encryptChunk {
@@ -1109,13 +1109,12 @@ func TestJoinerRedundancy(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			strategyTimeout := 100 * time.Millisecond
 			// all data can be read back
 			readCheck := func(t *testing.T, expErr error) {
-				t.Helper()
-
-				ctx, cancel := context.WithTimeout(context.Background(), 15*getter.StrategyTimeout)
+				ctx, cancel := context.WithTimeout(context.Background(), 15*strategyTimeout)
 				defer cancel()
-				ctx = getter.SetFetchTimeout(ctx, getter.StrategyTimeout)
+				ctx = getter.SetConfigInContext(ctx, getter.RACE, true, (10 * strategyTimeout).String(), strategyTimeout.String())
 				joinReader, rootSpan, err := joiner.New(ctx, store, store, swarmAddr)
 				if err != nil {
 					t.Fatal(err)
@@ -1127,10 +1126,11 @@ func TestJoinerRedundancy(t *testing.T) {
 				}
 				i := 0
 				eg, ectx := errgroup.WithContext(ctx)
+			scnt:
 				for ; i < shardCnt; i++ {
 					select {
 					case <-ectx.Done():
-						break
+						break scnt
 					default:
 					}
 					i := i
@@ -1153,6 +1153,7 @@ func TestJoinerRedundancy(t *testing.T) {
 					})
 				}
 				err = eg.Wait()
+
 				if !errors.Is(err, expErr) {
 					t.Fatalf("unexpected error reading chunkdata at chunk position %d: expected %v. got %v", i, expErr, err)
 				}
@@ -1188,6 +1189,174 @@ func TestJoinerRedundancy(t *testing.T) {
 			t.Run("recover from replica if root deleted", func(t *testing.T) {
 				readCheck(t, nil)
 			})
+		})
+	}
+}
+
+// TestJoinerRedundancyMultilevel tests the joiner with all combinations of
+// redundancy level, encryption and size (levels, i.e., the	height of the swarm hash tree).
+//
+// The test cases have the following structure:
+//
+//  1. upload a file with a given redundancy level and encryption
+//
+//  2. [positive test] download the file by the reference returned by the upload API response
+//     This uses range queries to target specific (number of) chunks of the file structure
+//     During path traversal in the swarm hash tree, the underlying mocksore (forgetting)
+//     is in 'recording' mode, flagging all the retrieved chunks as chunks to forget.
+//     This is to simulate the scenario where some of the chunks are not available/lost
+//
+//  3. [negative test] attempt at downloading the file using once again the same root hash
+//     and a no-redundancy strategy to find the file inaccessible after forgetting.
+//     3a. [negative test] download file using NONE without fallback and fail
+//     3b. [negative test] download file using DATA without fallback and fail
+//
+//  4. [positive test] download file using DATA with fallback to allow for
+//     reconstruction via erasure coding and succeed.
+//
+//  5. [positive test] after recovery chunks are saved, so fotgetting no longer
+//     repeat  3a/3b but this time succeed
+//
+// nolint:thelper
+func TestJoinerRedundancyMultilevel(t *testing.T) {
+	t.Parallel()
+	test := func(t *testing.T, rLevel redundancy.Level, encrypt bool, levels, size int) {
+		t.Helper()
+		store := mockstorer.NewForgettingStore(inmemchunkstore.New())
+		testutil.CleanupCloser(t, store)
+		seed, err := pseudorand.NewSeed()
+		if err != nil {
+			t.Fatal(err)
+		}
+		dataReader := pseudorand.NewReader(seed, size*swarm.ChunkSize)
+		ctx := context.Background()
+		// ctx = redundancy.SetLevelInContext(ctx, rLevel)
+		ctx = redundancy.SetLevelInContext(ctx, redundancy.NONE)
+		pipe := builder.NewPipelineBuilder(ctx, store, encrypt, rLevel)
+		addr, err := builder.FeedPipeline(ctx, pipe, dataReader)
+		if err != nil {
+			t.Fatal(err)
+		}
+		expRead := swarm.ChunkSize
+		buf := make([]byte, expRead)
+		offset := mrand.Intn(size) * expRead
+		canReadRange := func(t *testing.T, s getter.Strategy, fallback bool, levels int, canRead bool) {
+			ctx := context.Background()
+			strategyTimeout := 100 * time.Millisecond
+			decodingTimeout := 600 * time.Millisecond
+			if racedetection.IsOn() {
+				decodingTimeout *= 2
+			}
+			ctx = getter.SetConfigInContext(ctx, s, fallback, (2 * strategyTimeout).String(), strategyTimeout.String())
+			ctx, cancel := context.WithTimeout(ctx, time.Duration(levels)*(3*strategyTimeout+decodingTimeout))
+			defer cancel()
+			j, _, err := joiner.New(ctx, store, store, addr)
+			if err != nil {
+				t.Fatal(err)
+			}
+			n, err := j.ReadAt(buf, int64(offset))
+			if !canRead {
+				if !errors.Is(err, storage.ErrNotFound) && !errors.Is(err, context.DeadlineExceeded) {
+					t.Fatalf("expected error %v or %v. got %v", storage.ErrNotFound, context.DeadlineExceeded, err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if n != expRead {
+				t.Errorf("read %d bytes out of %d", n, expRead)
+			}
+			_, err = dataReader.Seek(int64(offset), io.SeekStart)
+			if err != nil {
+				t.Fatal(err)
+			}
+			ok, err := dataReader.Match(bytes.NewBuffer(buf), expRead)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !ok {
+				t.Error("content mismatch")
+			}
+		}
+
+		// first sanity check and and recover a range
+		t.Run("NONE w/o fallback CAN retrieve", func(t *testing.T) {
+			store.Record()
+			defer store.Unrecord()
+			canReadRange(t, getter.NONE, false, levels, true)
+		})
+
+		// do not forget the root chunk
+		store.Unmiss(swarm.NewAddress(addr.Bytes()[:swarm.HashSize]))
+		// after we forget the chunks on the way to the range, we should not be able to retrieve
+		t.Run("NONE w/o fallback CANNOT retrieve", func(t *testing.T) {
+			canReadRange(t, getter.NONE, false, levels, false)
+		})
+
+		// we lost a data chunk, we cannot recover using DATA only strategy with no fallback
+		t.Run("DATA w/o fallback CANNOT retrieve", func(t *testing.T) {
+			canReadRange(t, getter.DATA, false, levels, false)
+		})
+
+		if rLevel == 0 {
+			// allowing fallback mode will not help if no redundancy used for upload
+			t.Run("DATA w fallback CANNOT retrieve", func(t *testing.T) {
+				canReadRange(t, getter.DATA, true, levels, false)
+			})
+			return
+		}
+		// allowing fallback mode will make the range retrievable using erasure decoding
+		t.Run("DATA w fallback CAN retrieve", func(t *testing.T) {
+			canReadRange(t, getter.DATA, true, levels, true)
+		})
+		// after the reconstructed data is stored, we can retrieve the range using DATA only mode
+		t.Run("after recovery, NONE w/o fallback CAN retrieve", func(t *testing.T) {
+			canReadRange(t, getter.NONE, false, levels, true)
+		})
+	}
+	r2level := []int{2, 1, 2, 3, 2}
+	encryptChunk := []bool{false, false, true, true, true}
+	for _, rLevel := range []redundancy.Level{0, 1, 2, 3, 4} {
+		rLevel := rLevel
+		// speeding up tests by skipping some of them
+		t.Run(fmt.Sprintf("rLevel=%v", rLevel), func(t *testing.T) {
+			t.Parallel()
+			for _, encrypt := range []bool{false, true} {
+				encrypt := encrypt
+				shardCnt := rLevel.GetMaxShards()
+				if encrypt {
+					shardCnt = rLevel.GetMaxEncShards()
+				}
+				for _, levels := range []int{1, 2, 3} {
+					chunkCnt := 1
+					switch levels {
+					case 1:
+						chunkCnt = 2
+					case 2:
+						chunkCnt = shardCnt + 1
+					case 3:
+						chunkCnt = shardCnt*shardCnt + 1
+					}
+					t.Run(fmt.Sprintf("encrypt=%v levels=%d chunks=%d incomplete", encrypt, levels, chunkCnt), func(t *testing.T) {
+						if r2level[rLevel] != levels || encrypt != encryptChunk[rLevel] {
+							t.Skip("skipping to save time")
+						}
+						test(t, rLevel, encrypt, levels, chunkCnt)
+					})
+					switch levels {
+					case 1:
+						chunkCnt = shardCnt
+					case 2:
+						chunkCnt = shardCnt * shardCnt
+					case 3:
+						continue
+					}
+					t.Run(fmt.Sprintf("encrypt=%v levels=%d chunks=%d full", encrypt, levels, chunkCnt), func(t *testing.T) {
+						test(t, rLevel, encrypt, levels, chunkCnt)
+					})
+				}
+			}
 		})
 	}
 }

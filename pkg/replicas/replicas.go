@@ -1,4 +1,4 @@
-// Copyright 2020 The Swarm Authors. All rights reserved.
+// Copyright 2023 The Swarm Authors. All rights reserved.
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
@@ -11,7 +11,6 @@
 package replicas
 
 import (
-	"context"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/crypto"
@@ -19,30 +18,12 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-type redundancyLevelType struct{}
-
 var (
-	// redundancyLevel is the context key for the redundancy level
-	redundancyLevel redundancyLevelType
 	// RetryInterval is the duration between successive additional requests
 	RetryInterval = 300 * time.Millisecond
 	privKey, _    = crypto.DecodeSecp256k1PrivateKey(append([]byte{1}, make([]byte, 31)...))
 	signer        = crypto.NewDefaultSigner(privKey)
 )
-
-// SetLevel sets the redundancy level in the context
-func SetLevel(ctx context.Context, level redundancy.Level) context.Context {
-	return context.WithValue(ctx, redundancyLevel, level)
-}
-
-// GetLevelFromContext is a helper function to extract the redundancy level from the context
-func GetLevelFromContext(ctx context.Context) redundancy.Level {
-	rlevel := redundancy.PARANOID
-	if val := ctx.Value(redundancyLevel); val != nil {
-		rlevel = val.(redundancy.Level)
-	}
-	return rlevel
-}
 
 // replicator running the find for replicas
 type replicator struct {

@@ -9,7 +9,6 @@ import (
 	"io"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -28,13 +27,16 @@ type decoder struct {
 	waits      []chan struct{} // wait channels for each chunk
 	rsbuf      [][]byte        // RS buffer of data + parity shards for erasure decoding
 	ready      chan struct{}   // signal channel for successful retrieval of shardCnt chunks
+	lastLen    int             // length of the last data chunk in the RS buffer
 	shardCnt   int             // number of data shards
 	parityCnt  int             // number of parity shards
 	wg         sync.WaitGroup  // wait group to wait for all goroutines to finish
 	mu         sync.Mutex      // mutex to protect buffer
+	err        error           // error of the last erasure decoding
 	fetchedCnt atomic.Int32    // count successful retrievals
 	cancel     func()          // cancel function for RS decoding
 	remove     func()          // callback to remove decoder from decoders cache
+	config     Config          // configuration
 }
 
 type Getter interface {
@@ -42,14 +44,10 @@ type Getter interface {
 	io.Closer
 }
 
-// New returns a decoder object used tos retrieve children of an intermediate chunk
-func New(addrs []swarm.Address, shardCnt int, g storage.Getter, p storage.Putter, strategy Strategy, strict bool, fetchTimeout time.Duration, remove func()) Getter {
+// New returns a decoder object used to retrieve children of an intermediate chunk
+func New(addrs []swarm.Address, shardCnt int, g storage.Getter, p storage.Putter, remove func(), conf Config) Getter {
 	ctx, cancel := context.WithCancel(context.Background())
 	size := len(addrs)
-	if fetchTimeout == 0 {
-		fetchTimeout = 30 * time.Second
-	}
-	strategyTimeout := StrategyTimeout
 
 	rsg := &decoder{
 		fetcher:   g,
@@ -64,6 +62,7 @@ func New(addrs []swarm.Address, shardCnt int, g storage.Getter, p storage.Putter
 		remove:    remove,
 		shardCnt:  shardCnt,
 		parityCnt: size - shardCnt,
+		config:    conf,
 	}
 
 	// after init, cache and wait channels are immutable, need no locking
@@ -73,11 +72,13 @@ func New(addrs []swarm.Address, shardCnt int, g storage.Getter, p storage.Putter
 	}
 
 	// prefetch chunks according to strategy
-	rsg.wg.Add(1)
-	go func() {
-		rsg.prefetch(ctx, strategy, strict, strategyTimeout, fetchTimeout)
-		rsg.wg.Done()
-	}()
+	if !conf.Strict || conf.Strategy != NONE {
+		rsg.wg.Add(1)
+		go func() {
+			rsg.err = rsg.prefetch(ctx)
+			rsg.wg.Done()
+		}()
+	}
 	return rsg
 }
 
@@ -97,10 +98,30 @@ func (g *decoder) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, err
 	}
 	select {
 	case <-g.waits[i]:
-		return swarm.NewChunk(addr, g.rsbuf[i]), nil
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	}
+	return swarm.NewChunk(addr, g.getData(i)), nil
+}
+
+// setData sets the data shard in the RS buffer
+func (g *decoder) setData(i int, chdata []byte) {
+	data := chdata
+	// pad the chunk with zeros if it is smaller than swarm.ChunkSize
+	if len(data) < swarm.ChunkWithSpanSize {
+		g.lastLen = len(data)
+		data = make([]byte, swarm.ChunkWithSpanSize)
+		copy(data, chdata)
+	}
+	g.rsbuf[i] = data
+}
+
+// getData returns the data shard from the RS buffer
+func (g *decoder) getData(i int) []byte {
+	if i == g.shardCnt-1 && g.lastLen > 0 {
+		return g.rsbuf[i][:g.lastLen] // cut padding
+	}
+	return g.rsbuf[i]
 }
 
 // fly commits to retrieve the chunk (fly and land)
@@ -115,7 +136,9 @@ func (g *decoder) fly(i int, up bool) (success bool) {
 // it races with erasure recovery which takes precedence even if it started later
 // due to the fact that erasure recovery could only implement global locking on all shards
 func (g *decoder) fetch(ctx context.Context, i int) {
-	ch, err := g.fetcher.Get(ctx, g.addrs[i])
+	fctx, cancel := context.WithTimeout(ctx, g.config.FetchTimeout)
+	defer cancel()
+	ch, err := g.fetcher.Get(fctx, g.addrs[i])
 	if err != nil {
 		_ = g.fly(i, false) // unset inflight
 		return
@@ -139,8 +162,8 @@ func (g *decoder) fetch(ctx context.Context, i int) {
 	}
 
 	//  write chunk to rsbuf and signal waiters
-	g.rsbuf[i] = ch.Data() // save the chunk in the RS buffer
-	if i < len(g.waits) {
+	g.setData(i, ch.Data()) // save the chunk in the RS buffer
+	if i < len(g.waits) {   // if the chunk is a data shard
 		close(g.waits[i]) // signal that the chunk is retrieved
 	}
 
@@ -218,6 +241,9 @@ func (g *decoder) save(ctx context.Context, missing []int) error {
 	return nil
 }
 
+// Close terminates the prefetch loop, waits for all goroutines to finish and
+// removes the decoder from the cache
+// it implements the io.Closer interface
 func (g *decoder) Close() error {
 	g.cancel()
 	g.wg.Wait()

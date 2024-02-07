@@ -24,20 +24,7 @@ import (
 // then the probability of Swarmageddon is less than 0.000001
 // assuming the error rate of chunk retrievals stays below the level expressed
 // as depth by the publisher.
-type ErrSwarmageddon struct {
-	error
-}
-
-func (err *ErrSwarmageddon) Unwrap() []error {
-	if err == nil || err.error == nil {
-		return nil
-	}
-	var uwe interface{ Unwrap() []error }
-	if !errors.As(err.error, &uwe) {
-		return nil
-	}
-	return uwe.Unwrap()
-}
+var ErrSwarmageddon = errors.New("swarmageddon has begun")
 
 // getter is the private implementation of storage.Getter, an interface for
 // retrieving chunks. This getter embeds the original simple chunk getter and extends it
@@ -69,7 +56,7 @@ func (g *getter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, e
 	resultC := make(chan swarm.Chunk)
 	// errc collects the errors
 	errc := make(chan error, 17)
-	var errs []error
+	var errs error
 	errcnt := 0
 
 	// concurrently call to retrieve chunk using original CAC address
@@ -108,10 +95,10 @@ func (g *getter) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, e
 			return chunk, nil
 
 		case err = <-errc:
-			errs = append(errs, err)
+			errs = errors.Join(errs, err)
 			errcnt++
 			if errcnt > total {
-				return nil, &ErrSwarmageddon{errors.Join(errs...)}
+				return nil, errors.Join(ErrSwarmageddon, errs)
 			}
 
 			// ticker switches on the address channel
