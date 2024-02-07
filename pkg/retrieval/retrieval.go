@@ -371,13 +371,10 @@ func (s *Service) retrieveChunk(ctx context.Context, quit chan struct{}, chunkAd
 
 func (s *Service) prepareCredit(ctx context.Context, peer, chunk swarm.Address, origin bool) (accounting.Action, error) {
 
-	creditCtx, cancel := context.WithTimeout(ctx, time.Second)
-	defer cancel()
-
 	price := s.pricer.PeerPrice(peer, chunk)
 	s.metrics.ChunkPrice.Observe(float64(price))
 
-	creditAction, err := s.accounting.PrepareCredit(creditCtx, peer, price, origin)
+	creditAction, err := s.accounting.PrepareCredit(ctx, peer, price, origin)
 	if err != nil {
 		return nil, err
 	}
