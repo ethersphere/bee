@@ -348,17 +348,17 @@ func TestNetStore(t *testing.T) {
 			return db, err
 		})
 	})
-	// t.Run("disk", func(t *testing.T) {
-	// 	t.Parallel()
+	t.Run("disk", func(t *testing.T) {
+		t.Parallel()
 
-	// 	testNetStore(t, func(r retrieval.Interface) (*storer.DB, error) {
-	// 		opts := dbTestOps(swarm.RandAddress(t), 0, nil, nil, time.Second)
+		testNetStore(t, func(r retrieval.Interface) (*storer.DB, error) {
+			opts := dbTestOps(swarm.RandAddress(t), 0, nil, nil, time.Second)
 
-	// 		db, err := diskStorer(t, opts)()
-	// 		if err == nil {
-	// 			db.SetRetrievalService(r)
-	// 		}
-	// 		return db, err
-	// 	})
-	// })
+			db, err := diskStorer(t, opts)()
+			if err == nil {
+				db.SetRetrievalService(r)
+			}
+			return db, err
+		})
+	})
 }
