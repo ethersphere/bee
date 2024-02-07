@@ -148,11 +148,11 @@ func step_03(
 						}
 
 						err = s.IndexStore().Put(&reserve.ChunkBinItem{
-							BatchID:   item.BatchID,
-							Bin:       item.Bin,
-							Address:   item.Address,
-							BinID:     newBinID,
-							ChunkType: chunkType(chunk),
+							BatchID: item.BatchID,
+							Bin:     item.Bin,
+							Address: item.Address,
+							BinID:   newBinID,
+							Type:    chunkType(chunk),
 						})
 						if err != nil {
 							return err
