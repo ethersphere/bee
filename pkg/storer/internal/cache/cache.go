@@ -260,14 +260,17 @@ func (c *Cache) ShallowCopy(
 	return nil
 }
 
+// RemoveOldest removes the oldest cache entries from the store. The count
+// specifies the number of entries to remove.
+func (c *Cache) RemoveOldest(ctx context.Context, store internal.Storage, chStore storage.ChunkStore, count uint64) error {
+	return c.removeOldest(ctx, store, store.ChunkStore(), count, 1000)
+}
+
 func (c *Cache) removeOldest(ctx context.Context, store internal.Storage, chStore storage.ChunkStore, count uint64, batchCnt int) error {
 
 	if count <= 0 {
 		return nil
 	}
-
-	// we are okay to not lock here because RemoveOldest removes entries from the beginning of the list
-	// while all the functions above adds new entries.
 
 	evictItems := make([]*cacheEntry, 0, count)
 	err := store.IndexStore().Iterate(
@@ -293,6 +296,9 @@ func (c *Cache) removeOldest(ctx context.Context, store internal.Storage, chStor
 		return fmt.Errorf("failed iterating over cache order index: %w", err)
 	}
 
+	c.glock.Lock()
+	defer c.glock.Unlock()
+
 	for i := 0; i < len(evictItems); i += batchCnt {
 		end := i + batchCnt
 		if end > len(evictItems) {
@@ -304,9 +310,7 @@ func (c *Cache) removeOldest(ctx context.Context, store internal.Storage, chStor
 			return fmt.Errorf("failed creating batch: %w", err)
 		}
 
-		items := evictItems[i:end]
-
-		for _, entry := range items {
+		for _, entry := range evictItems[i:end] {
 			err = batch.Delete(entry)
 			if err != nil {
 				return fmt.Errorf("failed deleting cache entry %s: %w", entry, err)
@@ -329,16 +333,10 @@ func (c *Cache) removeOldest(ctx context.Context, store internal.Storage, chStor
 			return err
 		}
 
-		c.size.Add(-int64(len(items)))
+		c.size.Add(-int64(end - i))
 	}
 
 	return nil
-}
-
-// RemoveOldest removes the oldest cache entries from the store. The count
-// specifies the number of entries to remove.
-func (c *Cache) RemoveOldest(ctx context.Context, store internal.Storage, chStore storage.ChunkStore, count uint64) error {
-	return c.removeOldest(ctx, store, store.ChunkStore(), count, 1000)
 }
 
 type cacheEntry struct {
