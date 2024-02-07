@@ -37,6 +37,7 @@ import (
 	localmigration "github.com/ethersphere/bee/pkg/storer/migration"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
+	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/bee/pkg/util/syncutil"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/spf13/afero"
@@ -381,57 +382,6 @@ func initCache(ctx context.Context, capacity uint64, repo storage.Repository) (*
 	return c, commit()
 }
 
-type noopRadiusSetter struct{}
-
-func (noopRadiusSetter) SetStorageRadius(uint8) {}
-
-func performEpochMigration(ctx context.Context, basePath string, opts *Options) (retErr error) {
-	store, err := initStore(basePath, opts)
-	if err != nil {
-		return err
-	}
-	defer store.Close()
-
-	sharkyBasePath := path.Join(basePath, sharkyPath)
-	var sharkyRecover *sharky.Recovery
-	// if this is a fresh node then perform an empty epoch migration
-	if _, err := os.Stat(sharkyBasePath); err == nil {
-		sharkyRecover, err = sharky.NewRecovery(sharkyBasePath, sharkyNoOfShards, swarm.SocMaxChunkSize)
-		if err != nil {
-			return err
-		}
-		defer sharkyRecover.Close()
-	}
-
-	logger := opts.Logger.WithName("epochmigration").Register()
-
-	var rs reservePutter
-
-	if opts.ReserveCapacity > 0 {
-		rs, err = reserve.New(
-			opts.Address,
-			store,
-			opts.ReserveCapacity,
-			noopRadiusSetter{},
-			logger,
-			func(_ context.Context, _ internal.Storage, _ ...swarm.Address) error {
-				return nil
-			},
-		)
-		if err != nil {
-			return err
-		}
-	}
-
-	defer func() {
-		if sharkyRecover != nil {
-			retErr = errors.Join(retErr, sharkyRecover.Save())
-		}
-	}()
-
-	return epochMigration(ctx, basePath, opts.StateStore, store, rs, sharkyRecover, logger)
-}
-
 const lockKeyNewSession string = "new_session"
 
 // Options provides a container to configure different things in the storer.
@@ -444,6 +394,7 @@ type Options struct {
 	LdbDisableSeeksCompaction bool
 	CacheCapacity             uint64
 	Logger                    log.Logger
+	Tracer                    *tracing.Tracer
 
 	Address        swarm.Address
 	WarmupDuration time.Duration
@@ -480,7 +431,9 @@ type cacheLimiter struct {
 
 // DB implements all the component stores described above.
 type DB struct {
-	logger  log.Logger
+	logger log.Logger
+	tracer *tracing.Tracer
+
 	metrics metrics
 
 	repo                storage.Repository
@@ -544,14 +497,6 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 			return nil, err
 		}
 	} else {
-		// only perform migration if not done already
-		if _, err := os.Stat(path.Join(dirPath, indexPath)); err != nil {
-			err = performEpochMigration(ctx, dirPath, opts)
-			if err != nil {
-				return nil, err
-			}
-		}
-
 		repo, dbCloser, err = initDiskRepository(ctx, dirPath, locker, opts)
 		if err != nil {
 			return nil, err
@@ -582,6 +527,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	db := &DB{
 		metrics:    metrics,
 		logger:     logger,
+		tracer:     opts.Tracer,
 		baseAddr:   opts.Address,
 		repo:       repo,
 		lock:       lock,

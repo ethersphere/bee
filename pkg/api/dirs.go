@@ -28,13 +28,18 @@ import (
 	storer "github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go/ext"
+	olog "github.com/opentracing/opentracing-go/log"
 )
 
 var errEmptyDir = errors.New("no files in root directory")
 
 // dirUploadHandler uploads a directory supplied as a tar in an HTTP request
 func (s *Service) dirUploadHandler(
+	ctx context.Context,
 	logger log.Logger,
+	span opentracing.Span,
 	w http.ResponseWriter,
 	r *http.Request,
 	putter storer.PutterSession,
@@ -66,7 +71,7 @@ func (s *Service) dirUploadHandler(
 	defer r.Body.Close()
 
 	reference, err := storeDir(
-		r.Context(),
+		ctx,
 		encrypt,
 		dReader,
 		logger,
@@ -89,6 +94,7 @@ func (s *Service) dirUploadHandler(
 		default:
 			jsonhttp.InternalServerError(w, errDirectoryStore)
 		}
+		ext.LogError(span, err, olog.String("action", "dir.store"))
 		return
 	}
 
@@ -97,11 +103,13 @@ func (s *Service) dirUploadHandler(
 		logger.Debug("store dir failed", "error", err)
 		logger.Error(nil, "store dir failed")
 		jsonhttp.InternalServerError(w, errDirectoryStore)
+		ext.LogError(span, err, olog.String("action", "putter.Done"))
 		return
 	}
 
 	if tag != 0 {
 		w.Header().Set(SwarmTagHeader, fmt.Sprint(tag))
+		span.LogFields(olog.Bool("success", true))
 	}
 	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
 	jsonhttp.Created(w, bzzUploadResponse{

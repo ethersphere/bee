@@ -95,6 +95,15 @@ func TestChunkStore(t *testing.T, st storage.ChunkStore) {
 				if err != nil {
 					t.Fatalf("failed deleting chunk: %v", err)
 				}
+				_, err = st.Get(context.TODO(), ch.Address())
+				if err != nil {
+					t.Fatalf("expected no error, found: %v", err)
+				}
+				// delete twice as it was put twice
+				err = st.Delete(context.TODO(), ch.Address())
+				if err != nil {
+					t.Fatalf("failed deleting chunk: %v", err)
+				}
 			}
 		}
 	})

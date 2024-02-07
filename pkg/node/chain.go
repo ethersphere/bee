@@ -69,7 +69,7 @@ func InitChain(
 		var versionString string
 		err = rpcClient.CallContext(ctx, &versionString, "web3_clientVersion")
 		if err != nil {
-			logger.Info("could not connect to backend; in a swap-enabled network a working blockchain node (for xdai network in production, goerli in testnet) is required; check your node or specify another node using --swap-endpoint.", "backend_endpoint", endpoint)
+			logger.Info("could not connect to backend; in a swap-enabled network a working blockchain node (for xdai network in production, sepolia in testnet) is required; check your node or specify another node using --swap-endpoint.", "backend_endpoint", endpoint)
 			return nil, common.Address{}, 0, nil, nil, fmt.Errorf("blockchain client get version: %w", err)
 		}
 
@@ -100,20 +100,11 @@ func InitChain(
 
 // InitChequebookFactory will initialize the chequebook factory with the given
 // chain backend.
-func InitChequebookFactory(
-	logger log.Logger,
-	backend transaction.Backend,
-	chainID int64,
-	transactionService transaction.Service,
-	factoryAddress string,
-	legacyFactoryAddresses []string,
-) (chequebook.Factory, error) {
+func InitChequebookFactory(logger log.Logger, backend transaction.Backend, chainID int64, transactionService transaction.Service, factoryAddress string) (chequebook.Factory, error) {
 	var currentFactory common.Address
-	var legacyFactories []common.Address
-
 	chainCfg, found := config.GetByChainID(chainID)
 
-	foundFactory, foundLegacyFactories := chainCfg.CurrentFactoryAddress, chainCfg.LegacyFactoryAddresses
+	foundFactory := chainCfg.CurrentFactoryAddress
 	if factoryAddress == "" {
 		if !found {
 			return nil, fmt.Errorf("no known factory address for this network (chain id: %d)", chainID)
@@ -127,25 +118,7 @@ func InitChequebookFactory(
 		logger.Info("using custom factory address", "factory_address", currentFactory)
 	}
 
-	if len(legacyFactoryAddresses) == 0 {
-		if found {
-			legacyFactories = foundLegacyFactories
-		}
-	} else {
-		for _, legacyAddress := range legacyFactoryAddresses {
-			if !common.IsHexAddress(legacyAddress) {
-				return nil, errors.New("malformed factory address")
-			}
-			legacyFactories = append(legacyFactories, common.HexToAddress(legacyAddress))
-		}
-	}
-
-	return chequebook.NewFactory(
-		backend,
-		transactionService,
-		currentFactory,
-		legacyFactories,
-	), nil
+	return chequebook.NewFactory(backend, transactionService, currentFactory), nil
 }
 
 // InitChequebookService will initialize the chequebook service with the given
@@ -383,7 +356,7 @@ func (m noOpChainBackend) Metrics() []prometheus.Collector {
 }
 
 func (m noOpChainBackend) CodeAt(context.Context, common.Address, *big.Int) ([]byte, error) {
-	return common.FromHex(sw3abi.SimpleSwapFactoryDeployedBinv0_4_0), nil
+	return common.FromHex(sw3abi.SimpleSwapFactoryDeployedBinv0_6_5), nil
 }
 func (m noOpChainBackend) CallContract(context.Context, ethereum.CallMsg, *big.Int) ([]byte, error) {
 	return nil, errors.New("disabled chain backend")

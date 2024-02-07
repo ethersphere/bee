@@ -347,6 +347,37 @@ func TestCache(t *testing.T) {
 	})
 }
 
+func TestRemoveOldest(t *testing.T) {
+	t.Parallel()
+
+	st := newTestStorage(t)
+	c, err := cache.New(context.Background(), st, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	chunks := chunktest.GenerateTestRandomChunks(30)
+
+	for _, ch := range chunks {
+		err = c.Putter(st).Put(context.Background(), ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[29].Address(), 30)
+	verifyCacheOrder(t, c, st.IndexStore(), chunks...)
+
+	err = c.RemoveOldestMaxBatch(context.Background(), st, st.ChunkStore(), 30, 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	verifyCacheState(t, st.IndexStore(), c, swarm.ZeroAddress, swarm.ZeroAddress, 0)
+
+	verifyChunksDeleted(t, st.ChunkStore(), chunks...)
+}
+
 func TestShallowCopy(t *testing.T) {
 	t.Parallel()
 
@@ -455,6 +486,48 @@ func TestShallowCopyOverCap(t *testing.T) {
 	verifyChunksDeleted(t, st.ChunkStore(), chunks[5:10]...)
 }
 
+func TestShallowCopyAlreadyCached(t *testing.T) {
+	t.Parallel()
+
+	st := newTestStorage(t)
+	c, err := cache.New(context.Background(), st, 1000)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	chunks := chunktest.GenerateTestRandomChunks(10)
+	chunksToMove := make([]swarm.Address, 0, 10)
+
+	for _, ch := range chunks {
+		// add the chunks to chunkstore. This simulates the reserve already populating the chunkstore with chunks.
+		err := st.ChunkStore().Put(context.Background(), ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// already cached
+		err = c.Putter(st).Put(context.Background(), ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		chunksToMove = append(chunksToMove, ch.Address())
+	}
+
+	// move new chunks
+	err = c.ShallowCopy(context.Background(), st, chunksToMove...)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	verifyChunksExist(t, st.ChunkStore(), chunks...)
+
+	err = c.RemoveOldest(context.Background(), st, st.ChunkStore(), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	verifyChunksDeleted(t, st.ChunkStore(), chunks...)
+}
+
 func verifyCacheState(
 	t *testing.T,
 	store storage.Store,
@@ -520,6 +593,24 @@ func verifyChunksDeleted(
 		_, err = chStore.Get(context.TODO(), ch.Address())
 		if !errors.Is(err, storage.ErrNotFound) {
 			t.Fatalf("expected error %v but found %v", storage.ErrNotFound, err)
+		}
+	}
+}
+
+func verifyChunksExist(
+	t *testing.T,
+	chStore storage.ChunkStore,
+	chs ...swarm.Chunk,
+) {
+	t.Helper()
+
+	for _, ch := range chs {
+		found, err := chStore.Has(context.TODO(), ch.Address())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !found {
+			t.Fatalf("chunk %s expected to be found but not exists", ch.Address())
 		}
 	}
 }

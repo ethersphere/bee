@@ -783,7 +783,7 @@ func (p *putterSessionWrapper) Done(ref swarm.Address) error {
 }
 
 func (p *putterSessionWrapper) Cleanup() error {
-	return errors.Join(p.PutterSession.Cleanup(), p.save())
+	return p.PutterSession.Cleanup()
 }
 
 func (s *Service) getStamper(batchID []byte) (postage.Stamper, func() error, error) {
