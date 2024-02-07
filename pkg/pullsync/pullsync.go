@@ -190,7 +190,7 @@ func (s *Syncer) SyncBatch(ctx context.Context, peer swarm.Address, bin uint8, s
 			s.logger.Debug("syncer got a zero address hash on offer", "peer_address", peer)
 			continue
 		}
-//		s.metrics.Offered.Inc()
+		s.metrics.Offered.Inc()
 
 		batchString := hex.EncodeToString(batchID)
 		s.logger.Debug("SyncBatch:offered", "address", a, "batch", batchString)
@@ -198,7 +198,7 @@ func (s *Syncer) SyncBatch(ctx context.Context, peer swarm.Address, bin uint8, s
 				s.logger.Debug("SyncBatch:wanted", "address", a, "batch", batchString)
 				wantChunks[a.ByteString()+string(batchID)] = struct{}{}
 				ctr++
-//				s.metrics.Wanted.Inc()
+				s.metrics.Wanted.Inc()
 				bv.Set(i)
 		}
 	}
@@ -220,7 +220,7 @@ func (s *Syncer) SyncBatch(ctx context.Context, peer swarm.Address, bin uint8, s
 		addr := swarm.NewAddress(delivery.Address)
 		if addr.Equal(swarm.ZeroAddress) {
 			s.logger.Debug("received zero address chunk", "peer_address", peer)
-//			s.metrics.ReceivedZeroAddress.Inc()
+			s.metrics.ReceivedZeroAddress.Inc()
 			continue
 		}
 
@@ -252,7 +252,7 @@ func (s *Syncer) SyncBatch(ctx context.Context, peer swarm.Address, bin uint8, s
 		} else if !soc.Valid(chunk) {
 			s.logger.Debug("invalid cac/soc chunk", "error", swarm.ErrInvalidChunk, "peer_address", peer, "chunk", chunk)
 			chunkErr = errors.Join(chunkErr, swarm.ErrInvalidChunk)
-//			s.metrics.ReceivedInvalidChunk.Inc()
+			s.metrics.ReceivedInvalidChunk.Inc()
 			continue
 		}
 		chunksToPut = append(chunksToPut, chunk)
@@ -261,8 +261,8 @@ func (s *Syncer) SyncBatch(ctx context.Context, peer swarm.Address, bin uint8, s
 	chunksPut := 0
 	if len(chunksToPut) > 0 {
 
-//		s.metrics.Delivered.Add(float64(len(chunksToPut)))
-//		s.metrics.LastReceived.WithLabelValues(fmt.Sprintf("%d", bin)).Add(float64(len(chunksToPut)))
+		s.metrics.Delivered.Add(float64(len(chunksToPut)))
+		s.metrics.LastReceived.WithLabelValues(fmt.Sprintf("%d", bin)).Add(float64(len(chunksToPut)))
 
 		// if we have parallel sync workers for the same bin, we need to rate limit them
 		// in order to not overload the storage with unnecessary requests as there is
