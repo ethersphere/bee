@@ -150,7 +150,7 @@ func testPinStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 		}
 
 		verifyPinCollection(t, lstore.Storage(), chunks[0], chunks, true)
-		verifyChunkRefCount(t, lstore.Storage().ReadOnly(), chunks)
+		verifyChunkRefCount(t, lstore.Storage(), chunks)
 	})
 }
 

@@ -156,7 +156,7 @@ func TestChunkStore(t *testing.T) {
 
 	t.Run("get chunks", func(t *testing.T) {
 		for _, ch := range testChunks {
-			readCh, err := st.ReadOnly().ChunkStore().Get(context.TODO(), ch.Address())
+			readCh, err := st.ChunkStore().Get(context.TODO(), ch.Address())
 			if err != nil {
 				t.Fatalf("failed getting chunk: %v", err)
 			}
@@ -168,7 +168,7 @@ func TestChunkStore(t *testing.T) {
 
 	t.Run("has chunks", func(t *testing.T) {
 		for _, ch := range testChunks {
-			exists, err := st.ReadOnly().ChunkStore().Has(context.TODO(), ch.Address())
+			exists, err := st.ChunkStore().Has(context.TODO(), ch.Address())
 			if err != nil {
 				t.Fatalf("failed getting chunk: %v", err)
 			}
@@ -230,11 +230,11 @@ func TestChunkStore(t *testing.T) {
 		for idx, ch := range testChunks {
 			if idx%2 == 0 {
 				// Check even numbered indexes are deleted
-				_, err := st.ReadOnly().ChunkStore().Get(context.TODO(), ch.Address())
+				_, err := st.ChunkStore().Get(context.TODO(), ch.Address())
 				if !errors.Is(err, storage.ErrNotFound) {
 					t.Fatalf("expected storage not found error found: %v", err)
 				}
-				found, err := st.ReadOnly().ChunkStore().Has(context.TODO(), ch.Address())
+				found, err := st.ChunkStore().Has(context.TODO(), ch.Address())
 				if err != nil {
 					t.Fatalf("unexpected error in Has: %v", err)
 				}
@@ -243,14 +243,14 @@ func TestChunkStore(t *testing.T) {
 				}
 			} else {
 				// Check rest of the entries are intact
-				readCh, err := st.ReadOnly().ChunkStore().Get(context.TODO(), ch.Address())
+				readCh, err := st.ChunkStore().Get(context.TODO(), ch.Address())
 				if err != nil {
 					t.Fatalf("failed getting chunk: %v", err)
 				}
 				if !readCh.Equal(ch) {
 					t.Fatal("read chunk doesnt match")
 				}
-				exists, err := st.ReadOnly().ChunkStore().Has(context.TODO(), ch.Address())
+				exists, err := st.ChunkStore().Has(context.TODO(), ch.Address())
 				if err != nil {
 					t.Fatalf("failed getting chunk: %v", err)
 				}
@@ -292,14 +292,14 @@ func TestChunkStore(t *testing.T) {
 	t.Run("check chunks still exists", func(t *testing.T) {
 		for idx, ch := range testChunks {
 			if idx%2 != 0 {
-				readCh, err := st.ReadOnly().ChunkStore().Get(context.TODO(), ch.Address())
+				readCh, err := st.ChunkStore().Get(context.TODO(), ch.Address())
 				if err != nil {
 					t.Fatalf("failed getting chunk: %v", err)
 				}
 				if !readCh.Equal(ch) {
 					t.Fatal("read chunk doesnt match")
 				}
-				exists, err := st.ReadOnly().ChunkStore().Has(context.TODO(), ch.Address())
+				exists, err := st.ChunkStore().Has(context.TODO(), ch.Address())
 				if err != nil {
 					t.Fatalf("failed getting chunk: %v", err)
 				}
@@ -362,7 +362,7 @@ func TestIterateLocations(t *testing.T) {
 
 	readCount := 0
 	respC := make(chan chunkstore.LocationResult, chunksCount)
-	chunkstore.IterateLocations(ctx, st.ReadOnly().IndexStore(), respC)
+	chunkstore.IterateLocations(ctx, st.IndexStore(), respC)
 
 	for resp := range respC {
 		assert.NoError(t, resp.Err)
@@ -396,7 +396,7 @@ func TestIterateLocations_Stop(t *testing.T) {
 
 	readCount := 0
 	respC := make(chan chunkstore.LocationResult)
-	chunkstore.IterateLocations(ctx, st.ReadOnly().IndexStore(), respC)
+	chunkstore.IterateLocations(ctx, st.IndexStore(), respC)
 
 	for resp := range respC {
 		if resp.Err != nil {

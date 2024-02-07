@@ -264,7 +264,7 @@ func (db *DB) ReserveSample(
 		if le(item.TransformedAddress, currentMaxAddr) || len(sampleItems) < SampleSize {
 			start := time.Now()
 
-			stamp, err := chunkstamp.LoadWithBatchID(db.storage.ReadOnly().IndexStore(), "reserve", item.ChunkAddress, item.Stamp.BatchID())
+			stamp, err := chunkstamp.LoadWithBatchID(db.storage.IndexStore(), "reserve", item.ChunkAddress, item.Stamp.BatchID())
 			if err != nil {
 				stats.StampLoadFailed++
 				db.logger.Debug("failed loading stamp", "chunk_address", item.ChunkAddress, "error", err)

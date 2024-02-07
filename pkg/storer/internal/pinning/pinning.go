@@ -176,7 +176,7 @@ func (c *collectionPutter) Cleanup(st transaction.Storage) error {
 func CleanupDirty(st transaction.Storage) error {
 
 	dirtyCollections := make([]*dirtyCollection, 0)
-	err := st.ReadOnly().IndexStore().Iterate(
+	err := st.IndexStore().Iterate(
 		storage.Query{
 			Factory:      func() storage.Item { return new(dirtyCollection) },
 			ItemProperty: storage.QueryItemID,
@@ -229,7 +229,7 @@ func Pins(st storage.Reader) ([]swarm.Address, error) {
 func deleteCollectionChunks(ctx context.Context, st transaction.Storage, collectionUUID []byte) error {
 	chunksToDelete := make([]*pinChunkItem, 0)
 
-	err := st.ReadOnly().IndexStore().Iterate(
+	err := st.IndexStore().Iterate(
 		storage.Query{
 			Factory: func() storage.Item { return &pinChunkItem{UUID: collectionUUID} },
 		}, func(r storage.Result) (bool, error) {
@@ -275,7 +275,7 @@ func deleteCollectionChunks(ctx context.Context, st transaction.Storage, collect
 func DeletePin(ctx context.Context, st transaction.Storage, root swarm.Address) error {
 	collection := &pinCollectionItem{Addr: root}
 
-	err := st.ReadOnly().IndexStore().Get(collection)
+	err := st.IndexStore().Get(collection)
 	if err != nil {
 		return fmt.Errorf("pin store: failed getting collection: %w", err)
 	}

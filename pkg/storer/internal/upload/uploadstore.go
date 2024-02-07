@@ -500,12 +500,12 @@ func (u *uploadPutter) Cleanup(st transaction.Storage) error {
 	itemsToDelete := make([]*pushItem, 0)
 
 	di := &dirtyTagItem{TagID: u.tagID}
-	err := st.ReadOnly().IndexStore().Get(di)
+	err := st.IndexStore().Get(di)
 	if err != nil {
 		return fmt.Errorf("failed reading dirty tag while cleaning up: %w", err)
 	}
 
-	err = st.ReadOnly().IndexStore().Iterate(
+	err = st.IndexStore().Iterate(
 		storage.Query{
 			Factory:       func() storage.Item { return &pushItem{} },
 			PrefixAtStart: true,
@@ -584,7 +584,7 @@ func remove(st transaction.Store, address swarm.Address, batchID []byte) error {
 func CleanupDirty(st transaction.Storage) error {
 	dirtyTags := make([]*dirtyTagItem, 0)
 
-	err := st.ReadOnly().IndexStore().Iterate(
+	err := st.IndexStore().Iterate(
 		storage.Query{
 			Factory: func() storage.Item { return &dirtyTagItem{} },
 		},

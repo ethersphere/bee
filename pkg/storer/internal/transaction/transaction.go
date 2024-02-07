@@ -47,8 +47,8 @@ type ReadOnlyStore interface {
 }
 
 type Storage interface {
+	ReadOnlyStore
 	NewTransaction(context.Context) (Transaction, func())
-	ReadOnly() ReadOnlyStore
 	Run(context.Context, func(Store) error) error
 	Close() error
 }
@@ -109,11 +109,14 @@ func (s *store) NewTransaction(ctx context.Context) (Transaction, func()) {
 	}
 }
 
-func (s *store) ReadOnly() ReadOnlyStore {
+func (s *store) IndexStore() storage.Reader {
+	return &indexTrx{s.bstore, nil, s.metrics}
+}
+
+func (s *store) ChunkStore() storage.ReadOnlyChunkStore {
 	indexStore := &indexTrx{s.bstore, nil, s.metrics}
 	sharyTrx := &sharkyTrx{s.sharky, s.metrics, nil, nil}
-
-	return &readOnly{indexStore, &chunkStoreTrx{indexStore, sharyTrx, s.chunkLocker, nil, s.metrics, true}}
+	return &chunkStoreTrx{indexStore, sharyTrx, s.chunkLocker, nil, s.metrics, true}
 }
 
 func (s *store) Run(ctx context.Context, f func(Store) error) error {
@@ -134,19 +137,6 @@ func (s *store) Metrics() []prometheus.Collector {
 
 func (s *store) Close() error {
 	return errors.Join(s.bstore.Close(), s.sharky.Close())
-}
-
-type readOnly struct {
-	indexStore *indexTrx
-	chunkStore *chunkStoreTrx
-}
-
-func (t *readOnly) IndexStore() storage.Reader {
-	return t.indexStore
-}
-
-func (t *readOnly) ChunkStore() storage.ReadOnlyChunkStore {
-	return t.chunkStore
 }
 
 func (t *transaction) Commit() (err error) {

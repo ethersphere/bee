@@ -142,7 +142,7 @@ func (db *DB) NewSession() (SessionInfo, error) {
 
 // Session is the implementation of the UploadStore.Session method.
 func (db *DB) Session(tagID uint64) (SessionInfo, error) {
-	return upload.TagInfo(db.storage.ReadOnly().IndexStore(), tagID)
+	return upload.TagInfo(db.storage.IndexStore(), tagID)
 }
 
 // DeleteSession is the implementation of the UploadStore.DeleteSession method.
@@ -158,7 +158,7 @@ func (db *DB) ListSessions(offset, limit int) ([]SessionInfo, error) {
 
 	limit = min(limit, maxPageSize)
 
-	tags, err := upload.ListAllTags(db.storage.ReadOnly().IndexStore())
+	tags, err := upload.ListAllTags(db.storage.IndexStore())
 	if err != nil {
 		return nil, err
 	}
@@ -172,5 +172,5 @@ func (db *DB) ListSessions(offset, limit int) ([]SessionInfo, error) {
 
 // BatchHint is the implementation of the UploadStore.BatchHint method.
 func (db *DB) BatchHint(address swarm.Address) ([]byte, error) {
-	return upload.BatchIDForChunk(db.storage.ReadOnly().IndexStore(), address)
+	return upload.BatchIDForChunk(db.storage.IndexStore(), address)
 }

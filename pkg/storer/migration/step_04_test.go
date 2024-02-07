@@ -68,7 +68,7 @@ func Test_Step_04(t *testing.T) {
 
 	// check that the chunks are still there
 	for _, ch := range chunks[2:] {
-		_, err := store2.ReadOnly().ChunkStore().Get(context.Background(), ch.Address())
+		_, err := store2.ChunkStore().Get(context.Background(), ch.Address())
 		assert.NoError(t, err)
 	}
 

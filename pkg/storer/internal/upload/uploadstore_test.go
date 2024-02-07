@@ -479,7 +479,7 @@ func TestChunkPutter(t *testing.T) {
 					Address: chunk.Address(),
 					BatchID: chunk.Stamp().BatchID(),
 				}
-				err := ts.ReadOnly().IndexStore().Get(ui)
+				err := ts.IndexStore().Get(ui)
 				if err != nil {
 					t.Fatalf("Get(...): unexpected error: %v", err)
 				}
@@ -499,7 +499,7 @@ func TestChunkPutter(t *testing.T) {
 					Address:   chunk.Address(),
 					BatchID:   chunk.Stamp().BatchID(),
 				}
-				err = ts.ReadOnly().IndexStore().Get(pi)
+				err = ts.IndexStore().Get(pi)
 				if err != nil {
 					t.Fatalf("Get(...): unexpected error: %v", err)
 				}
@@ -514,7 +514,7 @@ func TestChunkPutter(t *testing.T) {
 					t.Fatalf("Get(...): unexpected UploadItem (-want +have):\n%s", diff)
 				}
 
-				have, err := ts.ReadOnly().ChunkStore().Get(context.Background(), chunk.Address())
+				have, err := ts.ChunkStore().Get(context.Background(), chunk.Address())
 				if err != nil {
 					t.Fatalf("Get(...): unexpected error: %v", err)
 				}
@@ -527,7 +527,7 @@ func TestChunkPutter(t *testing.T) {
 
 	t.Run("iterate all", func(t *testing.T) {
 		count := 0
-		err := ts.ReadOnly().IndexStore().Iterate(
+		err := ts.IndexStore().Iterate(
 			storage.Query{
 				Factory: func() storage.Item { return new(upload.UploadItem) },
 			},
@@ -538,7 +538,7 @@ func TestChunkPutter(t *testing.T) {
 				if synced {
 					t.Fatal("expected synced to be false")
 				}
-				has, err := ts.ReadOnly().ChunkStore().Has(context.Background(), address)
+				has, err := ts.ChunkStore().Has(context.Background(), address)
 				if err != nil {
 					t.Fatalf("unexpected error in Has(...): %v", err)
 				}
@@ -589,7 +589,7 @@ func TestChunkPutter(t *testing.T) {
 
 		t.Run("iterate all tag items", func(t *testing.T) {
 			var tagItemsCount, uploaded, synced uint64
-			err := upload.IterateAllTagItems(ts.ReadOnly().IndexStore(), func(ti *upload.TagItem) (bool, error) {
+			err := upload.IterateAllTagItems(ts.IndexStore(), func(ti *upload.TagItem) (bool, error) {
 				uploaded += ti.Split
 				synced += ti.Synced
 				tagItemsCount++
@@ -647,7 +647,7 @@ func TestChunkPutter(t *testing.T) {
 			t.Fatalf("Close(...): unexpected error %v", err)
 		}
 
-		ti, err := upload.TagInfo(ts.ReadOnly().IndexStore(), tag.TagID)
+		ti, err := upload.TagInfo(ts.IndexStore(), tag.TagID)
 		if err != nil {
 			t.Fatalf("TagInfo(...): unexpected error %v", err)
 		}
@@ -734,7 +734,7 @@ func TestChunkReporter(t *testing.T) {
 				ti := &upload.TagItem{
 					TagID: tag.TagID,
 				}
-				err := ts.ReadOnly().IndexStore().Get(ti)
+				err := ts.IndexStore().Get(ti)
 				if err != nil {
 					t.Fatalf("Get(...): unexpected error: %v", err)
 				}
@@ -764,7 +764,7 @@ func TestChunkReporter(t *testing.T) {
 					Address: chunk.Address(),
 					BatchID: chunk.Stamp().BatchID(),
 				}
-				has, err := ts.ReadOnly().IndexStore().Has(ui)
+				has, err := ts.IndexStore().Has(ui)
 				if err != nil {
 					t.Fatalf("unexpected error: %v", err)
 				}
@@ -777,7 +777,7 @@ func TestChunkReporter(t *testing.T) {
 					Address:   chunk.Address(),
 					BatchID:   chunk.Stamp().BatchID(),
 				}
-				has, err = ts.ReadOnly().IndexStore().Has(pi)
+				has, err = ts.IndexStore().Has(pi)
 				if err != nil {
 					t.Fatalf("Has(...): unexpected error: %v", err)
 				}
@@ -785,7 +785,7 @@ func TestChunkReporter(t *testing.T) {
 					t.Fatalf("Has(...): expected to not be found: %s", pi)
 				}
 
-				have, err := ts.ReadOnly().ChunkStore().Has(context.Background(), chunk.Address())
+				have, err := ts.ChunkStore().Has(context.Background(), chunk.Address())
 				if err != nil {
 					t.Fatalf("Get(...): unexpected error: %v", err)
 				}
@@ -851,7 +851,7 @@ func TestNextTagID(t *testing.T) {
 	}
 
 	var lastTag upload.NextTagID
-	err := ts.ReadOnly().IndexStore().Get(&lastTag)
+	err := ts.IndexStore().Get(&lastTag)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -880,7 +880,7 @@ func TestListTags(t *testing.T) {
 		want[i] = tag
 	}
 
-	have, err := upload.ListAllTags(ts.ReadOnly().IndexStore())
+	have, err := upload.ListAllTags(ts.IndexStore())
 	if err != nil {
 		t.Fatalf("upload.ListAllTags(): unexpected error: %v", err)
 	}
@@ -897,7 +897,7 @@ func TestIterate(t *testing.T) {
 	ts := newTestStorage(t)
 
 	t.Run("on empty storage does not call the callback fn", func(t *testing.T) {
-		err := upload.Iterate(context.Background(), ts.ReadOnly(), func(chunk swarm.Chunk) (bool, error) {
+		err := upload.Iterate(context.Background(), ts, func(chunk swarm.Chunk) (bool, error) {
 			t.Fatal("unexpected call")
 			return false, nil
 		})
@@ -938,7 +938,7 @@ func TestIterate(t *testing.T) {
 
 		var count int
 
-		err = upload.Iterate(context.Background(), ts.ReadOnly(), func(chunk swarm.Chunk) (bool, error) {
+		err = upload.Iterate(context.Background(), ts, func(chunk swarm.Chunk) (bool, error) {
 			count++
 			if !chunk.Equal(chunk1) && !chunk.Equal(chunk2) {
 				return true, fmt.Errorf("unknown chunk %s", chunk.Address())
@@ -958,7 +958,7 @@ func TestIterate(t *testing.T) {
 			t.Fatalf("Close(...) error: %v", err)
 		}
 
-		err = upload.Iterate(context.Background(), ts.ReadOnly(), func(chunk swarm.Chunk) (bool, error) {
+		err = upload.Iterate(context.Background(), ts, func(chunk swarm.Chunk) (bool, error) {
 			count++
 			if !chunk.Equal(chunk1) && !chunk.Equal(chunk2) {
 				return true, fmt.Errorf("unknown chunk %s", chunk.Address())
@@ -997,7 +997,7 @@ func TestDeleteTag(t *testing.T) {
 		t.Fatalf("upload.DeleteTag(): unexpected error: %v", err)
 	}
 
-	_, err = upload.TagInfo(ts.ReadOnly().IndexStore(), tag.TagID)
+	_, err = upload.TagInfo(ts.IndexStore(), tag.TagID)
 	if !errors.Is(err, storage.ErrNotFound) {
 		t.Fatalf("want: %v; have: %v", storage.ErrNotFound, err)
 	}
@@ -1032,7 +1032,7 @@ func TestBatchIDForChunk(t *testing.T) {
 		t.Fatalf("Put(...): unexpected error: %v", err)
 	}
 
-	batchID, err := upload.BatchIDForChunk(ts.ReadOnly().IndexStore(), chunk.Address())
+	batchID, err := upload.BatchIDForChunk(ts.IndexStore(), chunk.Address())
 	if err != nil {
 		t.Fatalf("BatchIDForChunk(...): unexpected error: %v", err)
 	}
@@ -1081,7 +1081,7 @@ func TestCleanup(t *testing.T) {
 		}
 
 		count := 0
-		_ = upload.Iterate(context.Background(), ts.ReadOnly(), func(chunk swarm.Chunk) (bool, error) {
+		_ = upload.Iterate(context.Background(), ts, func(chunk swarm.Chunk) (bool, error) {
 			count++
 			return false, nil
 		})
@@ -1089,7 +1089,7 @@ func TestCleanup(t *testing.T) {
 			t.Fatalf("expected to iterate 0 chunks, got: %v", count)
 		}
 
-		if _, err := ts.ReadOnly().ChunkStore().Get(context.Background(), chunk.Address()); !errors.Is(err, storage.ErrNotFound) {
+		if _, err := ts.ChunkStore().Get(context.Background(), chunk.Address()); !errors.Is(err, storage.ErrNotFound) {
 			t.Fatalf("expected chunk not found error, got: %v", err)
 		}
 	})
@@ -1130,7 +1130,7 @@ func TestCleanup(t *testing.T) {
 		}
 
 		count := 0
-		_ = upload.Iterate(context.Background(), ts.ReadOnly(), func(chunk swarm.Chunk) (bool, error) {
+		_ = upload.Iterate(context.Background(), ts, func(chunk swarm.Chunk) (bool, error) {
 			count++
 			return false, nil
 		})
@@ -1138,7 +1138,7 @@ func TestCleanup(t *testing.T) {
 			t.Fatalf("expected to iterate 0 chunks, got: %v", count)
 		}
 
-		if _, err := ts.ReadOnly().ChunkStore().Get(context.Background(), chunk.Address()); !errors.Is(err, storage.ErrNotFound) {
+		if _, err := ts.ChunkStore().Get(context.Background(), chunk.Address()); !errors.Is(err, storage.ErrNotFound) {
 			t.Fatalf("expected chunk not found error, got: %v", err)
 		}
 	})

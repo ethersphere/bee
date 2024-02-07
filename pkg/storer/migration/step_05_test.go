@@ -95,11 +95,11 @@ func Test_Step_05(t *testing.T) {
 		t.Fatalf("close putter: %v", err)
 	}
 
-	wantCount(t, store.ReadOnly().IndexStore(), 10)
+	wantCount(t, store.IndexStore(), 10)
 
 	err = localmigration.Step_05(store)
 	if err != nil {
 		t.Fatalf("step 05: %v", err)
 	}
-	wantCount(t, store.ReadOnly().IndexStore(), 0)
+	wantCount(t, store.IndexStore(), 0)
 }
