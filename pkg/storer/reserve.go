@@ -116,22 +116,20 @@ func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
 
 		evictBatches := make(map[string]bool)
 
-		err := db.storage.Run(ctx, func(t transaction.Store) error {
-			return db.reserve.IterateChunksItems(0, func(ci reserve.ChunkItem) (bool, error) {
-				if ci.Bin >= radius {
-					count++
-				}
+		err := db.reserve.IterateChunksItems(0, func(ci *reserve.ChunkBinItem) (bool, error) {
+			if ci.Bin >= radius {
+				count++
+			}
 
-				if skipInvalidCheck {
-					return false, nil
-				}
-
-				if exists, err := db.batchstore.Exists(ci.BatchID); err == nil && !exists {
-					missing++
-					evictBatches[string(ci.BatchID)] = true
-				}
+			if skipInvalidCheck {
 				return false, nil
-			})
+			}
+
+			if exists, err := db.batchstore.Exists(ci.BatchID); err == nil && !exists {
+				missing++
+				evictBatches[string(ci.BatchID)] = true
+			}
+			return false, nil
 		})
 		if err != nil {
 			db.logger.Error(err, "reserve count within radius")

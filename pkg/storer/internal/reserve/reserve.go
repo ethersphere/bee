@@ -175,11 +175,11 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 	}
 
 	err = indexStore.Put(&ChunkBinItem{
-		Bin:       po,
-		BinID:     binID,
-		Address:   chunk.Address(),
-		BatchID:   chunk.Stamp().BatchID(),
-		ChunkType: ChunkType(chunk),
+		Bin:     po,
+		BinID:   binID,
+		Address: chunk.Address(),
+		BatchID: chunk.Stamp().BatchID(),
+		Type:    ChunkType(chunk),
 	})
 	if err != nil {
 		return err
@@ -395,15 +395,7 @@ func (r *Reserve) IterateChunks(startBin uint8, cb func(swarm.Chunk) (bool, erro
 	return err
 }
 
-type ChunkItem struct {
-	ChunkAddress swarm.Address
-	BatchID      []byte
-	Type         swarm.ChunkType
-	BinID        uint64
-	Bin          uint8
-}
-
-func (r *Reserve) IterateChunksItems(startBin uint8, cb func(ChunkItem) (bool, error)) error {
+func (r *Reserve) IterateChunksItems(startBin uint8, cb func(*ChunkBinItem) (bool, error)) error {
 	store := r.st.ReadOnly()
 	err := store.IndexStore().Iterate(storage.Query{
 		Factory:       func() storage.Item { return &ChunkBinItem{} },
@@ -412,15 +404,7 @@ func (r *Reserve) IterateChunksItems(startBin uint8, cb func(ChunkItem) (bool, e
 	}, func(res storage.Result) (bool, error) {
 		item := res.Entry.(*ChunkBinItem)
 
-		chItem := ChunkItem{
-			ChunkAddress: item.Address,
-			BatchID:      item.BatchID,
-			Type:         item.ChunkType,
-			BinID:        item.BinID,
-			Bin:          item.Bin,
-		}
-
-		stop, err := cb(chItem)
+		stop, err := cb(item)
 		if stop || err != nil {
 			return true, err
 		}
