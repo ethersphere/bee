@@ -133,7 +133,7 @@ func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 		reserveCapacity = db.reserve.Capacity()
 		reserveSize = db.reserve.Size()
 		eg.Go(func() error {
-			return db.reserve.IterateChunksItems(db.reserve.Radius(), func(ci reserve.ChunkItem) (bool, error) {
+			return db.reserve.IterateChunksItems(db.reserve.Radius(), func(ci *reserve.ChunkBinItem) (bool, error) {
 				reserveSizeWithinRadius++
 				return false, nil
 			})
