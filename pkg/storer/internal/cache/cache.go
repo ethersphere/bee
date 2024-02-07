@@ -184,77 +184,6 @@ func (c *Cache) Getter(store transaction.Storage) storage.Getter {
 	})
 }
 
-// ShallowCopy creates cache entries with the expectation that the chunk already exists in the chunkstore.
-func (c *Cache) ShallowCopy(
-	ctx context.Context,
-	store transaction.Storage,
-	addrs ...swarm.Address,
-) (err error) {
-
-	c.glock.Lock()
-	defer c.glock.Unlock()
-
-	entries := make([]*cacheEntry, 0, len(addrs))
-
-	defer func() {
-		if err != nil {
-			_ = store.Run(context.Background(), func(s transaction.Store) error {
-				for _, entry := range entries {
-					err = errors.Join(s.ChunkStore().Delete(context.Background(), entry.Address))
-				}
-				return nil
-			})
-		}
-	}()
-
-	for _, addr := range addrs {
-		entry := &cacheEntry{Address: addr, AccessTimestamp: now().UnixNano()}
-		if has, err := store.IndexStore().Has(entry); err == nil && has {
-			// Since the caller has previously referenced the chunk (+1 refCnt), and if the chunk is already referenced
-			// by the cache store (+1 refCnt), then we must decrement the refCnt by one ( -1 refCnt to bring the total to +1).
-			// See https://github.com/ethersphere/bee/issues/4530.
-			_ = store.Run(ctx, func(s transaction.Store) error { return s.ChunkStore().Delete(ctx, addr) })
-			continue
-		}
-		entries = append(entries, entry)
-	}
-
-	if len(entries) == 0 {
-		return nil
-	}
-
-	//consider only the amount that can fit, the rest should be deleted from the chunkstore.
-	if len(entries) > c.capacity {
-		for _, addr := range entries[:len(entries)-c.capacity] {
-			_ = store.Run(ctx, func(s transaction.Store) error { return s.ChunkStore().Delete(ctx, addr.Address) })
-		}
-		entries = entries[len(entries)-c.capacity:]
-	}
-
-	err = store.Run(ctx, func(s transaction.Store) error {
-		for _, entry := range entries {
-			err = s.IndexStore().Put(entry)
-			if err != nil {
-				return fmt.Errorf("failed adding entry %s: %w", entry, err)
-			}
-			err = s.IndexStore().Put(&cacheOrderIndex{
-				Address:         entry.Address,
-				AccessTimestamp: entry.AccessTimestamp,
-			})
-			if err != nil {
-				return fmt.Errorf("failed adding cache order index: %w", err)
-			}
-		}
-		return nil
-	})
-	if err != nil {
-		return err
-	}
-
-	c.size.Add(int64(len(entries)))
-	return nil
-}
-
 // RemoveOldest removes the oldest cache entries from the store. The count
 // specifies the number of entries to remove.
 func (c *Cache) RemoveOldest(ctx context.Context, st transaction.Storage, count uint64) error {
@@ -328,6 +257,77 @@ func (c *Cache) removeOldest(ctx context.Context, st transaction.Storage, count 
 		c.size.Add(-int64(end - i))
 	}
 
+	return nil
+}
+
+// ShallowCopy creates cache entries with the expectation that the chunk already exists in the chunkstore.
+func (c *Cache) ShallowCopy(
+	ctx context.Context,
+	store transaction.Storage,
+	addrs ...swarm.Address,
+) (err error) {
+
+	c.glock.Lock()
+	defer c.glock.Unlock()
+
+	entries := make([]*cacheEntry, 0, len(addrs))
+
+	defer func() {
+		if err != nil {
+			_ = store.Run(context.Background(), func(s transaction.Store) error {
+				for _, entry := range entries {
+					err = errors.Join(s.ChunkStore().Delete(context.Background(), entry.Address))
+				}
+				return nil
+			})
+		}
+	}()
+
+	for _, addr := range addrs {
+		entry := &cacheEntry{Address: addr, AccessTimestamp: now().UnixNano()}
+		if has, err := store.IndexStore().Has(entry); err == nil && has {
+			// Since the caller has previously referenced the chunk (+1 refCnt), and if the chunk is already referenced
+			// by the cache store (+1 refCnt), then we must decrement the refCnt by one ( -1 refCnt to bring the total to +1).
+			// See https://github.com/ethersphere/bee/issues/4530.
+			_ = store.Run(ctx, func(s transaction.Store) error { return s.ChunkStore().Delete(ctx, addr) })
+			continue
+		}
+		entries = append(entries, entry)
+	}
+
+	if len(entries) == 0 {
+		return nil
+	}
+
+	//consider only the amount that can fit, the rest should be deleted from the chunkstore.
+	if len(entries) > c.capacity {
+		for _, addr := range entries[:len(entries)-c.capacity] {
+			_ = store.Run(ctx, func(s transaction.Store) error { return s.ChunkStore().Delete(ctx, addr.Address) })
+		}
+		entries = entries[len(entries)-c.capacity:]
+	}
+
+	err = store.Run(ctx, func(s transaction.Store) error {
+		for _, entry := range entries {
+			err = s.IndexStore().Put(entry)
+			if err != nil {
+				return fmt.Errorf("failed adding entry %s: %w", entry, err)
+			}
+			err = s.IndexStore().Put(&cacheOrderIndex{
+				Address:         entry.Address,
+				AccessTimestamp: entry.AccessTimestamp,
+			})
+			if err != nil {
+				return fmt.Errorf("failed adding cache order index: %w", err)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+
+	c.size.Add(int64(len(entries)))
 	return nil
 }
 
