@@ -29,20 +29,19 @@ type Traverser interface {
 }
 
 // New constructs for a new Traverser.
-func New(getter storage.Getter, putter storage.Putter) Traverser {
-	return &service{getter: getter, putter: putter}
+func New(store storage.Getter) Traverser {
+	return &service{store: store}
 }
 
 // service is implementation of Traverser using storage.Storer as its storage.
 type service struct {
-	getter storage.Getter
-	putter storage.Putter
+	store storage.Getter
 }
 
 // Traverse implements Traverser.Traverse method.
 func (s *service) Traverse(ctx context.Context, addr swarm.Address, iterFn swarm.AddressIterFunc) error {
 	processBytes := func(ref swarm.Address) error {
-		j, _, err := joiner.New(ctx, s.getter, s.putter, ref)
+		j, _, err := joiner.New(ctx, s.store, ref)
 		if err != nil {
 			return fmt.Errorf("traversal: joiner error on %q: %w", ref, err)
 		}
@@ -55,7 +54,7 @@ func (s *service) Traverse(ctx context.Context, addr swarm.Address, iterFn swarm
 
 	// skip SOC check for encrypted references
 	if addr.IsValidLength() {
-		ch, err := s.getter.Get(ctx, addr)
+		ch, err := s.store.Get(ctx, addr)
 		if err != nil {
 			return fmt.Errorf("traversal: failed to get root chunk %s: %w", addr.String(), err)
 		}
@@ -65,7 +64,7 @@ func (s *service) Traverse(ctx context.Context, addr swarm.Address, iterFn swarm
 		}
 	}
 
-	ls := loadsave.NewReadonly(s.getter)
+	ls := loadsave.NewReadonly(s.store)
 	switch mf, err := manifest.NewDefaultManifestReference(addr, ls); {
 	case errors.Is(err, manifest.ErrInvalidManifestType):
 		break

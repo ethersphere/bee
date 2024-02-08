@@ -5,8 +5,6 @@
 package soc
 
 import (
-	"bytes"
-
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -14,11 +12,6 @@ import (
 func Valid(ch swarm.Chunk) bool {
 	s, err := FromChunk(ch)
 	if err != nil {
-		return false
-	}
-
-	// disperse replica validation
-	if bytes.Equal(s.owner, swarm.ReplicasOwner) && !bytes.Equal(s.WrappedChunk().Address().Bytes()[1:32], s.id[1:32]) {
 		return false
 	}
 

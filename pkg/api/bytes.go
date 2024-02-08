@@ -12,7 +12,6 @@ import (
 	"strconv"
 
 	"github.com/ethersphere/bee/pkg/cac"
-	"github.com/ethersphere/bee/pkg/file/redundancy"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/postage"
 	storage "github.com/ethersphere/bee/pkg/storage"
@@ -34,12 +33,11 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 	defer span.Finish()
 
 	headers := struct {
-		BatchID  []byte           `map:"Swarm-Postage-Batch-Id" validate:"required"`
-		SwarmTag uint64           `map:"Swarm-Tag"`
-		Pin      bool             `map:"Swarm-Pin"`
-		Deferred *bool            `map:"Swarm-Deferred-Upload"`
-		Encrypt  bool             `map:"Swarm-Encrypt"`
-		RLevel   redundancy.Level `map:"Swarm-Redundancy-Level"`
+		BatchID  []byte `map:"Swarm-Postage-Batch-Id" validate:"required"`
+		SwarmTag uint64 `map:"Swarm-Tag"`
+		Pin      bool   `map:"Swarm-Pin"`
+		Deferred *bool  `map:"Swarm-Deferred-Upload"`
+		Encrypt  bool   `map:"Swarm-Encrypt"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -100,7 +98,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		logger:         logger,
 	}
 
-	p := requestPipelineFn(putter, headers.Encrypt, headers.RLevel)
+	p := requestPipelineFn(putter, headers.Encrypt)
 	address, err := p(ctx, r.Body)
 	if err != nil {
 		logger.Debug("split write all failed", "error", err)

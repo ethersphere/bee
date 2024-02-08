@@ -161,13 +161,13 @@ func TestTraversalBytes(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			pipe := builder.NewPipelineBuilder(ctx, storerMock, false, 0)
+			pipe := builder.NewPipelineBuilder(ctx, storerMock, false)
 			address, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data))
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			err = traversal.New(storerMock, storerMock).Traverse(ctx, address, iter.Next)
+			err = traversal.New(storerMock).Traverse(ctx, address, iter.Next)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -256,13 +256,13 @@ func TestTraversalFiles(t *testing.T) {
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
 
-			pipe := builder.NewPipelineBuilder(ctx, storerMock, false, 0)
+			pipe := builder.NewPipelineBuilder(ctx, storerMock, false)
 			fr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data))
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			ls := loadsave.New(storerMock, storerMock, pipelineFactory(storerMock, false))
+			ls := loadsave.New(storerMock, pipelineFactory(storerMock, false))
 			fManifest, err := manifest.NewDefaultManifest(ls, false)
 			if err != nil {
 				t.Fatal(err)
@@ -294,7 +294,7 @@ func TestTraversalFiles(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			err = traversal.New(storerMock, storerMock).Traverse(ctx, address, iter.Next)
+			err = traversal.New(storerMock).Traverse(ctx, address, iter.Next)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -421,7 +421,7 @@ func TestTraversalManifest(t *testing.T) {
 			}
 			wantHashes = append(wantHashes, tc.manifestHashes...)
 
-			ls := loadsave.New(storerMock, storerMock, pipelineFactory(storerMock, false))
+			ls := loadsave.New(storerMock, pipelineFactory(storerMock, false))
 			dirManifest, err := manifest.NewMantarayManifest(ls, false)
 			if err != nil {
 				t.Fatal(err)
@@ -430,7 +430,7 @@ func TestTraversalManifest(t *testing.T) {
 			for _, f := range tc.files {
 				data := generateSample(f.size)
 
-				pipe := builder.NewPipelineBuilder(ctx, storerMock, false, 0)
+				pipe := builder.NewPipelineBuilder(ctx, storerMock, false)
 				fr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data))
 				if err != nil {
 					t.Fatal(err)
@@ -452,7 +452,7 @@ func TestTraversalManifest(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			err = traversal.New(storerMock, storerMock).Traverse(ctx, address, iter.Next)
+			err = traversal.New(storerMock).Traverse(ctx, address, iter.Next)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -490,7 +490,7 @@ func TestTraversalSOC(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = traversal.New(store, store).Traverse(ctx, sch.Address(), iter.Next)
+	err = traversal.New(store).Traverse(ctx, sch.Address(), iter.Next)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -506,6 +506,6 @@ func TestTraversalSOC(t *testing.T) {
 
 func pipelineFactory(s storage.Putter, encrypt bool) func() pipeline.Interface {
 	return func() pipeline.Interface {
-		return builder.NewPipelineBuilder(context.Background(), s, encrypt, 0)
+		return builder.NewPipelineBuilder(context.Background(), s, encrypt)
 	}
 }

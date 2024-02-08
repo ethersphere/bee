@@ -9,7 +9,7 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	"github.com/ethersphere/bee/pkg/storer"
+	storer "github.com/ethersphere/bee/pkg/storer"
 	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
 )
 

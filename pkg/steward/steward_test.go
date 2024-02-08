@@ -10,12 +10,10 @@ import (
 	"crypto/rand"
 	"errors"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
-	"github.com/ethersphere/bee/pkg/file/redundancy"
 	postagetesting "github.com/ethersphere/bee/pkg/postage/mock"
 	"github.com/ethersphere/bee/pkg/steward"
 	storage "github.com/ethersphere/bee/pkg/storage"
@@ -24,31 +22,19 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-type counter struct {
-	storage.ChunkStore
-	count atomic.Int32
-}
-
-func (c *counter) Put(ctx context.Context, ch swarm.Chunk) (err error) {
-	c.count.Add(1)
-	return c.ChunkStore.Put(ctx, ch)
-}
-
 func TestSteward(t *testing.T) {
 	t.Parallel()
-	inmem := &counter{ChunkStore: inmemchunkstore.New()}
 
 	var (
 		ctx            = context.Background()
 		chunks         = 1000
 		data           = make([]byte, chunks*4096) //1k chunks
-		chunkStore     = inmem
+		chunkStore     = inmemchunkstore.New()
 		store          = mockstorer.NewWithChunkStore(chunkStore)
 		localRetrieval = &localRetriever{ChunkStore: chunkStore}
-		s              = steward.New(store, localRetrieval, inmem)
+		s              = steward.New(store, localRetrieval)
 		stamper        = postagetesting.NewStamper()
 	)
-	ctx = redundancy.SetLevelInContext(ctx, redundancy.NONE)
 
 	n, err := rand.Read(data)
 	if n != cap(data) {
@@ -58,13 +44,21 @@ func TestSteward(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	pipe := builder.NewPipelineBuilder(ctx, chunkStore, false, 0)
+	pipe := builder.NewPipelineBuilder(ctx, chunkStore, false)
 	addr, err := builder.FeedPipeline(ctx, pipe, bytes.NewReader(data))
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	chunkCount := int(inmem.count.Load())
+	chunkCount := 0
+	err = chunkStore.Iterate(context.Background(), func(ch swarm.Chunk) (bool, error) {
+		chunkCount++
+		return false, nil
+	})
+	if err != nil {
+		t.Fatalf("failed iterating: %v", err)
+	}
+
 	done := make(chan struct{})
 	errc := make(chan error, 1)
 	go func() {

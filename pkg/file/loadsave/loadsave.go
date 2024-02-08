@@ -27,15 +27,13 @@ var errReadonlyLoadSave = errors.New("readonly manifest loadsaver")
 // load all of the subtrie of a given hash in memory.
 type loadSave struct {
 	getter     storage.Getter
-	putter     storage.Putter
 	pipelineFn func() pipeline.Interface
 }
 
 // New returns a new read-write load-saver.
-func New(getter storage.Getter, putter storage.Putter, pipelineFn func() pipeline.Interface) file.LoadSaver {
+func New(getter storage.Getter, pipelineFn func() pipeline.Interface) file.LoadSaver {
 	return &loadSave{
 		getter:     getter,
-		putter:     putter,
 		pipelineFn: pipelineFn,
 	}
 }
@@ -49,7 +47,7 @@ func NewReadonly(getter storage.Getter) file.LoadSaver {
 }
 
 func (ls *loadSave) Load(ctx context.Context, ref []byte) ([]byte, error) {
-	j, _, err := joiner.New(ctx, ls.getter, ls.putter, swarm.NewAddress(ref))
+	j, _, err := joiner.New(ctx, ls.getter, swarm.NewAddress(ref))
 	if err != nil {
 		return nil, err
 	}

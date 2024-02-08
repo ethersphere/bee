@@ -28,7 +28,7 @@ func TestLoadSave(t *testing.T) {
 	t.Parallel()
 
 	store := inmemchunkstore.New()
-	ls := loadsave.New(store, store, pipelineFn(store))
+	ls := loadsave.New(store, pipelineFn(store))
 	ref, err := ls.Save(context.Background(), data)
 
 	if err != nil {
@@ -73,6 +73,6 @@ func TestReadonlyLoadSave(t *testing.T) {
 
 func pipelineFn(s storage.Putter) func() pipeline.Interface {
 	return func() pipeline.Interface {
-		return builder.NewPipelineBuilder(context.Background(), s, false, 0)
+		return builder.NewPipelineBuilder(context.Background(), s, false)
 	}
 }

@@ -33,7 +33,7 @@ type pipelineFunc func(context.Context, io.Reader) (swarm.Address, error)
 
 func requestPipelineFn(s storage.Putter, encrypt bool) pipelineFunc {
 	return func(ctx context.Context, r io.Reader) (swarm.Address, error) {
-		pipe := builder.NewPipelineBuilder(ctx, s, encrypt, 0)
+		pipe := builder.NewPipelineBuilder(ctx, s, encrypt)
 		return builder.FeedPipeline(ctx, pipe, r)
 	}
 }

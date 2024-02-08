@@ -19,7 +19,6 @@ import (
 	"strings"
 
 	"github.com/ethersphere/bee/pkg/file/loadsave"
-	"github.com/ethersphere/bee/pkg/file/redundancy"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/manifest"
@@ -46,7 +45,6 @@ func (s *Service) dirUploadHandler(
 	contentTypeString string,
 	encrypt bool,
 	tag uint64,
-	rLevel redundancy.Level,
 ) {
 	if r.Body == http.NoBody {
 		logger.Error(nil, "request has no body")
@@ -79,7 +77,6 @@ func (s *Service) dirUploadHandler(
 		s.storer.ChunkStore(),
 		r.Header.Get(SwarmIndexDocumentHeader),
 		r.Header.Get(SwarmErrorDocumentHeader),
-		rLevel,
 	)
 	if err != nil {
 		logger.Debug("store dir failed", "error", err)
@@ -128,14 +125,13 @@ func storeDir(
 	getter storage.Getter,
 	indexFilename,
 	errorFilename string,
-	rLevel redundancy.Level,
 ) (swarm.Address, error) {
 
 	logger := tracing.NewLoggerWithTraceID(ctx, log)
 	loggerV1 := logger.V(1).Build()
 
-	p := requestPipelineFn(putter, encrypt, rLevel)
-	ls := loadsave.New(getter, putter, requestPipelineFactory(ctx, putter, encrypt, rLevel))
+	p := requestPipelineFn(putter, encrypt)
+	ls := loadsave.New(getter, requestPipelineFactory(ctx, putter, encrypt))
 
 	dirManifest, err := manifest.NewDefaultManifest(ls, encrypt)
 	if err != nil {

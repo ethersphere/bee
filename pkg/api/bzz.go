@@ -16,6 +16,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/opentracing/opentracing-go"
 	"github.com/opentracing/opentracing-go/ext"
 	olog "github.com/opentracing/opentracing-go/log"
@@ -24,8 +25,6 @@ import (
 	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/file/joiner"
 	"github.com/ethersphere/bee/pkg/file/loadsave"
-	"github.com/ethersphere/bee/pkg/file/redundancy"
-	"github.com/ethersphere/bee/pkg/file/redundancy/getter"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/manifest"
@@ -33,44 +32,23 @@ import (
 	storage "github.com/ethersphere/bee/pkg/storage"
 	storer "github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/ethersphere/langos"
 	"github.com/gorilla/mux"
 )
-
-// The size of buffer used for prefetching content with Langos when not using erasure coding
-// Warning: This value influences the number of chunk requests and chunker join goroutines
-// per file request.
-// Recommended value is 8 or 16 times the io.Copy default buffer value which is 32kB, depending
-// on the file size. Use lookaheadBufferSize() to get the correct buffer size for the request.
-const (
-	smallFileBufferSize = 8 * 32 * 1024
-	largeFileBufferSize = 16 * 32 * 1024
-
-	largeBufferFilesizeThreshold = 10 * 1000000 // ten megs
-)
-
-func lookaheadBufferSize(size int64) int {
-	if size <= largeBufferFilesizeThreshold {
-		return smallFileBufferSize
-	}
-	return largeFileBufferSize
-}
 
 func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 	span, logger, ctx := s.tracer.StartSpanFromContext(r.Context(), "post_bzz", s.logger.WithName("post_bzz").Build())
 	defer span.Finish()
 
 	headers := struct {
-		ContentType string           `map:"Content-Type,mimeMediaType" validate:"required"`
-		BatchID     []byte           `map:"Swarm-Postage-Batch-Id" validate:"required"`
-		SwarmTag    uint64           `map:"Swarm-Tag"`
-		Pin         bool             `map:"Swarm-Pin"`
-		Deferred    *bool            `map:"Swarm-Deferred-Upload"`
-		Encrypt     bool             `map:"Swarm-Encrypt"`
-		IsDir       bool             `map:"Swarm-Collection"`
-		RLevel      redundancy.Level `map:"Swarm-Redundancy-Level"`
+		ContentType string `map:"Content-Type,mimeMediaType" validate:"required"`
+		BatchID     []byte `map:"Swarm-Postage-Batch-Id" validate:"required"`
+		SwarmTag    uint64 `map:"Swarm-Tag"`
+		Pin         bool   `map:"Swarm-Pin"`
+		Deferred    *bool  `map:"Swarm-Deferred-Upload"`
+		Encrypt     bool   `map:"Swarm-Encrypt"`
+		IsDir       bool   `map:"Swarm-Collection"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -132,10 +110,10 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if headers.IsDir || headers.ContentType == multiPartFormData {
-		s.dirUploadHandler(ctx, logger, span, ow, r, putter, r.Header.Get(ContentTypeHeader), headers.Encrypt, tag, headers.RLevel)
+		s.dirUploadHandler(ctx, logger, span, ow, r, putter, r.Header.Get(ContentTypeHeader), headers.Encrypt, tag)
 		return
 	}
-	s.fileUploadHandler(ctx, logger, span, ow, r, putter, headers.Encrypt, tag, headers.RLevel)
+	s.fileUploadHandler(ctx, logger, span, ow, r, putter, headers.Encrypt, tag)
 }
 
 // fileUploadResponse is returned when an HTTP request to upload a file is successful
@@ -154,7 +132,6 @@ func (s *Service) fileUploadHandler(
 	putter storer.PutterSession,
 	encrypt bool,
 	tagID uint64,
-	rLevel redundancy.Level,
 ) {
 	queries := struct {
 		FileName string `map:"name" validate:"startsnotwith=/"`
@@ -164,7 +141,7 @@ func (s *Service) fileUploadHandler(
 		return
 	}
 
-	p := requestPipelineFn(putter, encrypt, rLevel)
+	p := requestPipelineFn(putter, encrypt)
 
 	// first store the file and get its reference
 	fr, err := p(ctx, r.Body)
@@ -204,8 +181,8 @@ func (s *Service) fileUploadHandler(
 		}
 	}
 
-	factory := requestPipelineFactory(ctx, putter, encrypt, rLevel)
-	l := loadsave.New(s.storer.ChunkStore(), s.storer.Cache(), factory)
+	factory := requestPipelineFactory(ctx, putter, encrypt)
+	l := loadsave.New(s.storer.ChunkStore(), factory)
 
 	m, err := manifest.NewDefaultManifest(l, encrypt)
 	if err != nil {
@@ -306,13 +283,8 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 	loggerV1 := logger.V(1).Build()
 
 	headers := struct {
-		Cache                 *bool           `map:"Swarm-Cache"`
-		Strategy              getter.Strategy `map:"Swarm-Redundancy-Strategy"`
-		FallbackMode          bool            `map:"Swarm-Redundancy-Fallback-Mode"`
-		ChunkRetrievalTimeout string          `map:"Swarm-Chunk-Retrieval-Timeout"`
-		LookaheadBufferSize   *string         `map:"Swarm-Lookahead-Buffer-Size"`
+		Cache *bool `map:"Swarm-Cache"`
 	}{}
-
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
 		return
@@ -321,12 +293,10 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 	if headers.Cache != nil {
 		cache = *headers.Cache
 	}
-
 	ls := loadsave.NewReadonly(s.storer.Download(cache))
 	feedDereferenced := false
 
 	ctx := r.Context()
-	ctx = getter.SetConfigInContext(ctx, headers.Strategy, headers.FallbackMode, headers.ChunkRetrievalTimeout, getter.DefaultStrategyTimeout.String())
 
 FETCH:
 	// read manifest entry
@@ -407,6 +377,7 @@ FETCH:
 		jsonhttp.NotFound(w, "address not found or incorrect")
 		return
 	}
+
 	me, err := m.Lookup(ctx, pathVar)
 	if err != nil {
 		loggerV1.Debug("bzz download: invalid path", "address", address, "path", pathVar, "error", err)
@@ -496,13 +467,8 @@ func (s *Service) serveManifestEntry(
 // downloadHandler contains common logic for dowloading Swarm file from API
 func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *http.Request, reference swarm.Address, additionalHeaders http.Header, etag bool) {
 	headers := struct {
-		Cache                 *bool           `map:"Swarm-Cache"`
-		Strategy              getter.Strategy `map:"Swarm-Redundancy-Strategy"`
-		FallbackMode          bool            `map:"Swarm-Redundancy-Fallback-Mode"`
-		ChunkRetrievalTimeout string          `map:"Swarm-Chunk-Retrieval-Timeout"`
-		LookaheadBufferSize   *string         `map:"Swarm-Lookahead-Buffer-Size"`
+		Cache *bool `map:"Swarm-Cache"`
 	}{}
-
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
 		return
@@ -511,10 +477,7 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 	if headers.Cache != nil {
 		cache = *headers.Cache
 	}
-
-	ctx := r.Context()
-	ctx = getter.SetConfigInContext(ctx, headers.Strategy, headers.FallbackMode, headers.ChunkRetrievalTimeout, getter.DefaultStrategyTimeout.String())
-	reader, l, err := joiner.New(ctx, s.storer.Download(cache), s.storer.Cache(), reference)
+	reader, l, err := joiner.New(r.Context(), s.storer.Download(cache), reference)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) || errors.Is(err, topology.ErrNotFound) {
 			logger.Debug("api download: not found ", "address", reference, "error", err)
@@ -537,19 +500,7 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 	}
 	w.Header().Set(ContentLengthHeader, strconv.FormatInt(l, 10))
 	w.Header().Set("Access-Control-Expose-Headers", ContentDispositionHeader)
-	bufSize := int64(lookaheadBufferSize(l))
-	if headers.LookaheadBufferSize != nil {
-		bufSize, err = strconv.ParseInt(*headers.LookaheadBufferSize, 10, 64)
-		if err != nil {
-			logger.Debug("parsing lookahead buffer size", "error", err)
-			bufSize = 0
-		}
-	}
-	if bufSize > 0 {
-		http.ServeContent(w, r, "", time.Now(), langos.NewBufferedLangos(reader, int(bufSize)))
-		return
-	}
-	http.ServeContent(w, r, "", time.Now(), reader)
+	http.ServeContent(w, r, "", time.Now(), langos.NewBufferedLangos(reader, lookaheadBufferSize(l)))
 }
 
 // manifestMetadataLoad returns the value for a key stored in the metadata of
