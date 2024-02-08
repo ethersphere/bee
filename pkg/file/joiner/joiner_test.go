@@ -1230,7 +1230,6 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 	test := func(t *testing.T, rLevel redundancy.Level, encrypt bool, size int) {
 		t.Helper()
 		store := mockstorer.NewForgettingStore(inmemchunkstore.New())
-		testutil.CleanupCloser(t, store)
 		seed, err := pseudorand.NewSeed()
 		if err != nil {
 			t.Fatal(err)
