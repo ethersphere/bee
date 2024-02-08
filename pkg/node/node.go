@@ -1016,7 +1016,7 @@ func NewBee(
 	)
 
 	if o.FullNodeMode && !o.BootnodeMode {
-		pullerService = puller.New(stateStore, kad, localStore, pullSyncProtocol, p2ps, logger, puller.Options{})
+		pullerService = puller.New(swarmAddress, stateStore, kad, localStore, pullSyncProtocol, p2ps, logger, puller.Options{})
 		b.pullerCloser = pullerService
 
 		localStore.StartReserveWorker(ctx, pullerService, waitNetworkRFunc)

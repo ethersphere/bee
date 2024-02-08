@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"sync"
 	"time"
@@ -44,6 +45,8 @@ type Options struct {
 }
 
 type Puller struct {
+	base swarm.Address
+
 	topology    topology.Driver
 	radius      storer.RadiusChecker
 	statestore  storage.StateStorer
@@ -71,6 +74,7 @@ type Puller struct {
 }
 
 func New(
+	addr swarm.Address,
 	stateStore storage.StateStorer,
 	topology topology.Driver,
 	reserveState storer.RadiusChecker,
@@ -84,6 +88,7 @@ func New(
 		bins = o.Bins
 	}
 	p := &Puller{
+		base:        addr,
 		statestore:  stateStore,
 		topology:    topology,
 		radius:      reserveState,
@@ -138,18 +143,15 @@ func (p *Puller) manage(ctx context.Context) {
 			for _, peer := range p.syncPeers {
 				p.disconnectPeer(peer.address)
 			}
-			err := p.resetIntervals(prevRadius)
-			if err != nil {
+			if err := p.resetIntervals(prevRadius); err != nil {
 				p.logger.Debug("reset lower sync radius failed", "error", err)
 			}
+			p.logger.Debug("radius decrease", "old_radius", prevRadius, "new_radius", newRadius)
 		}
 		prevRadius = newRadius
 
 		// peersDisconnected is used to mark and prune peers that are no longer connected.
-		peersDisconnected := make(map[string]*syncPeer)
-		for _, peer := range p.syncPeers {
-			peersDisconnected[peer.address.ByteString()] = peer
-		}
+		peersDisconnected := maps.Clone(p.syncPeers)
 
 		_ = p.topology.EachConnectedPeerRev(func(addr swarm.Address, po uint8) (stop, jumpToNext bool, err error) {
 			if _, ok := p.syncPeers[addr.ByteString()]; !ok {
@@ -444,19 +446,37 @@ func (p *Puller) resetPeerIntervals(peer swarm.Address) (err error) {
 	return
 }
 
-func (p *Puller) resetIntervals(upto uint8) (err error) {
+func (p *Puller) resetIntervals(oldRadius uint8) (err error) {
 	p.intervalMtx.Lock()
 	defer p.intervalMtx.Unlock()
 
-	for bin := uint8(0); bin < upto; bin++ {
+	var deleteKeys []string
+
+	for bin := uint8(0); bin < p.bins; bin++ {
 		err = errors.Join(err,
 			p.statestore.Iterate(binIntervalKey(bin), func(key, _ []byte) (stop bool, err error) {
-				return false, p.statestore.Delete(string(key))
+
+				po := swarm.Proximity(addressFromKey(key).Bytes(), p.base.Bytes())
+
+				// 1. for neighbor peers, only reset the bins below the current radius
+				// 2. for non-neighbor peers, we must reset the entire history
+				if po >= oldRadius {
+					if bin < oldRadius {
+						deleteKeys = append(deleteKeys, string(key))
+					}
+				} else {
+					deleteKeys = append(deleteKeys, string(key))
+				}
+				return false, nil
 			}),
 		)
 	}
 
-	return
+	for _, k := range deleteKeys {
+		err = errors.Join(err, p.statestore.Delete(k))
+	}
+
+	return err
 }
 
 func (p *Puller) nextPeerInterval(peer swarm.Address, bin uint8) (uint64, error) {
@@ -501,6 +521,11 @@ func peerIntervalKey(peer swarm.Address, bin uint8) string {
 
 func binIntervalKey(bin uint8) string {
 	return fmt.Sprintf("%s_%03d", intervalPrefix, bin)
+}
+
+func addressFromKey(key []byte) swarm.Address {
+	addr := key[len(fmt.Sprintf("%s_%03d_", intervalPrefix, 0)):]
+	return swarm.NewAddress(addr)
 }
 
 type syncPeer struct {
