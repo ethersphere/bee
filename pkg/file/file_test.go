@@ -48,7 +48,7 @@ func testSplitThenJoin(t *testing.T) {
 		paramstring = strings.Split(t.Name(), "/")
 		dataIdx, _  = strconv.ParseInt(paramstring[1], 10, 0)
 		store       = inmemchunkstore.New()
-		p           = builder.NewPipelineBuilder(context.Background(), store, false)
+		p           = builder.NewPipelineBuilder(context.Background(), store, false, 0)
 		data, _     = test.GetVector(t, int(dataIdx))
 	)
 
@@ -62,7 +62,7 @@ func testSplitThenJoin(t *testing.T) {
 	}
 
 	// then join
-	r, l, err := joiner.New(ctx, store, resultAddress)
+	r, l, err := joiner.New(ctx, store, store, resultAddress)
 	if err != nil {
 		t.Fatal(err)
 	}

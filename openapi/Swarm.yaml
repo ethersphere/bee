@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  version: 5.1.1
+  version: 5.2.0
   title: Bee API
   description: "A list of the currently provided Interfaces to interact with the swarm, implementing file operations and sending messages"
 
@@ -120,6 +120,11 @@ paths:
             $ref: "SwarmCommon.yaml#/components/parameters/SwarmEncryptParameter"
           name: swarm-encrypt
           required: false
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
+          name: swarm-redundancy-level
+          required: false
 
       requestBody:
         content:
@@ -158,11 +163,10 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
           required: true
           description: Swarm address reference to content
-        - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
-          name: swarm-cache
-          required: false
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyFallbackModeParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmChunkRetrievalTimeoutParameter"
       responses:
         "200":
           description: Retrieved content specified by reference
@@ -254,6 +258,7 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmErrorDocumentParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmDeferredUpload"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
       requestBody:
         content:
           multipart/form-data:
@@ -305,11 +310,10 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmReference"
           required: true
           description: Swarm address of content
-        - in: header
-          schema:
-            $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
-          name: swarm-cache
-          required: false
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyFallbackModeParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmChunkRetrievalTimeoutParameter"
       responses:
         "200":
           description: Ok
@@ -347,6 +351,9 @@ paths:
             type: string
           required: true
           description: Path to the file in the collection.
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyFallbackModeParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmChunkRetrievalTimeoutParameter"
       responses:
         "200":
           description: Ok

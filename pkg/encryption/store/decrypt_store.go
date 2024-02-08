@@ -9,6 +9,8 @@ import (
 	"encoding/binary"
 
 	"github.com/ethersphere/bee/pkg/encryption"
+	"github.com/ethersphere/bee/pkg/file"
+	"github.com/ethersphere/bee/pkg/file/redundancy"
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"golang.org/x/crypto/sha3"
@@ -37,7 +39,7 @@ func (s *decryptingStore) Get(ctx context.Context, addr swarm.Address) (ch swarm
 			return nil, err
 		}
 
-		d, err := decryptChunkData(ch.Data(), ref[swarm.HashSize:])
+		d, err := DecryptChunkData(ch.Data(), ref[swarm.HashSize:])
 		if err != nil {
 			return nil, err
 		}
@@ -48,19 +50,19 @@ func (s *decryptingStore) Get(ctx context.Context, addr swarm.Address) (ch swarm
 	}
 }
 
-func decryptChunkData(chunkData []byte, encryptionKey encryption.Key) ([]byte, error) {
+func DecryptChunkData(chunkData []byte, encryptionKey encryption.Key) ([]byte, error) {
 	decryptedSpan, decryptedData, err := decrypt(chunkData, encryptionKey)
 	if err != nil {
 		return nil, err
 	}
 
 	// removing extra bytes which were just added for padding
-	length := binary.LittleEndian.Uint64(decryptedSpan)
-	refSize := int64(swarm.HashSize + encryption.KeyLength)
-	for length > swarm.ChunkSize {
-		length = length + (swarm.ChunkSize - 1)
-		length = length / swarm.ChunkSize
-		length *= uint64(refSize)
+	level, span := redundancy.DecodeSpan(decryptedSpan)
+	length := binary.LittleEndian.Uint64(span)
+	if length > swarm.ChunkSize {
+		dataRefSize := uint64(swarm.HashSize + encryption.KeyLength)
+		dataShards, parities := file.ReferenceCount(length, level, true)
+		length = dataRefSize*uint64(dataShards) + uint64(parities*swarm.HashSize)
 	}
 
 	c := make([]byte, length+8)

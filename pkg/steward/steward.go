@@ -36,11 +36,11 @@ type steward struct {
 	netTraverser traversal.Traverser
 }
 
-func New(ns storer.NetStore, r retrieval.Interface) Interface {
+func New(ns storer.NetStore, r retrieval.Interface, joinerPutter storage.Putter) Interface {
 	return &steward{
 		netStore:     ns,
-		traverser:    traversal.New(ns.Download(true)),
-		netTraverser: traversal.New(&netGetter{r}),
+		traverser:    traversal.New(ns.Download(true), joinerPutter),
+		netTraverser: traversal.New(&netGetter{r}, joinerPutter),
 	}
 }
 
