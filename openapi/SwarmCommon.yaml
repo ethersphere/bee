@@ -934,6 +934,52 @@ components:
       description: >
         Represents the encrypting state of the file
 
+    SwarmRedundancyLevelParameter:
+      in: header
+      name: swarm-redundancy-level
+      schema:
+        type: integer
+        enum: [0, 1, 2, 3, 4]
+      required: false
+      description: >
+        Add redundancy to the data being uploaded so that downloaders can download it with better UX.
+        0 value is default and does not add any redundancy to the file.
+
+    SwarmRedundancyStrategyParameter:
+      in: header
+      name: swarm-redundancy-strategy
+      schema:
+        type: integer
+        enum: [0, 1, 2, 3]
+      required: false
+      description: >
+        Specify the retrieve strategy on redundant data.
+        The numbers stand for NONE, DATA, PROX and RACE, respectively.
+        Strategy NONE means no prefetching takes place.
+        Strategy DATA means only data chunks are prefetched.
+        Strategy PROX means only chunks that are close to the node are prefetched.
+        Strategy RACE means all chunks are prefetched: n data chunks and k parity chunks. The first n chunks to arrive are used to reconstruct the file.
+        Multiple strategies can be used in a fallback cascade if the swarm redundancy fallback mode is set to true.
+        The default strategy is NONE, DATA, falling back to PROX, falling back to RACE
+
+    SwarmRedundancyFallbackModeParameter:
+      in: header
+      name: swarm-redundancy-fallback-mode
+      schema:
+        type: boolean
+      required: false
+      description: >
+        Specify if the retrieve strategies (chunk prefetching on redundant data) are used in a fallback cascade. The default is true.
+
+    SwarmChunkRetrievalTimeoutParameter:
+      in: header
+      name: swarm-chunk-retrieval-timeout
+      schema:
+        $ref: "#/components/schemas/Duration"
+      required: false
+      description: >
+        Specify the timeout for chunk retrieval. The default is 30 seconds.
+
     ContentTypePreserved:
       in: header
       name: Content-Type
