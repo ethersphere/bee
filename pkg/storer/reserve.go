@@ -12,7 +12,6 @@ import (
 	"math"
 	"slices"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/ethersphere/bee/pkg/postage"
@@ -50,10 +49,8 @@ func (db *DB) startReserveWorkers(
 		cancel()
 	}()
 
-	// start eviction worker first as there could be batch expirations because of
-	// initial contract sync
 	db.inFlight.Add(1)
-	go db.evictionWorker(ctx)
+	go db.reserveWorker(ctx)
 
 	select {
 	case <-time.After(db.opts.warmupDuration):
@@ -76,110 +73,43 @@ func (db *DB) startReserveWorkers(
 
 	// syncing can now begin now that the reserver worker is running
 	db.syncer.Start(ctx)
-
-	db.inFlight.Add(2)
-	go db.reserveSizeWithinRadiusWorker(ctx)
 }
 
-func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
-	defer db.inFlight.Done()
+func (db *DB) countWithinRadius(ctx context.Context) (int, error) {
 
-	var activeEviction atomic.Bool
-	go func() {
-		defer db.inFlight.Done()
+	count := 0
+	missing := 0
+	radius := db.StorageRadius()
 
-		expiryTrigger, expiryUnsub := db.events.Subscribe(batchExpiry)
-		defer expiryUnsub()
+	evictBatches := make(map[string]bool)
 
-		expiryDoneTrigger, expiryDoneUnsub := db.events.Subscribe(batchExpiryDone)
-		defer expiryDoneUnsub()
-
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-expiryTrigger:
-				activeEviction.Store(true)
-			case <-expiryDoneTrigger:
-				activeEviction.Store(false)
-			}
-		}
-	}()
-
-	countFn := func() int {
-		skipInvalidCheck := activeEviction.Load()
-
-		count := 0
-		missing := 0
-		radius := db.StorageRadius()
-
-		evictBatches := make(map[string]bool)
-
-		err := db.reserve.IterateChunksItems(0, func(ci *reserve.ChunkBinItem) (bool, error) {
-			if ci.Bin >= radius {
-				count++
-			}
-
-			if skipInvalidCheck {
-				return false, nil
-			}
-
-			if exists, err := db.batchstore.Exists(ci.BatchID); err == nil && !exists {
-				missing++
-				evictBatches[string(ci.BatchID)] = true
-			}
-			return false, nil
-		})
-		if err != nil {
-			db.logger.Error(err, "reserve count within radius")
+	err := db.reserve.IterateChunksItems(0, func(ci *reserve.ChunkBinItem) (bool, error) {
+		if ci.Bin >= radius {
+			count++
 		}
 
-		for batch := range evictBatches {
-			db.logger.Debug("reserve size worker, invalid batch id", "batch_id", hex.EncodeToString([]byte(batch)))
-			if err := db.EvictBatch(ctx, []byte(batch)); err != nil {
-				db.logger.Warning("reserve size worker, batch eviction", "batch_id", hex.EncodeToString([]byte(batch)), "error", err)
-			}
+		if exists, err := db.batchstore.Exists(ci.BatchID); err == nil && !exists {
+			missing++
+			evictBatches[string(ci.BatchID)] = true
 		}
-
-		db.metrics.ReserveSizeWithinRadius.Set(float64(count))
-		if !skipInvalidCheck {
-			db.metrics.ReserveMissingBatch.Set(float64(missing))
-		}
-
-		return count
+		return false, nil
+	})
+	if err != nil {
+		return 0, err
 	}
 
-	// initial run for the metrics
-	_ = countFn()
-
-	ticker := time.NewTicker(db.opts.wakeupDuration)
-	defer ticker.Stop()
-
-	for {
-
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-		}
-
-		count := countFn()
-		radius := db.StorageRadius()
-
-		if count < threshold(db.reserve.Capacity()) && db.syncer.SyncRate() == 0 && radius > 0 {
-			radius--
-			err := db.reserve.SetRadius(radius)
-			if err != nil {
-				db.logger.Error(err, "reserve set radius")
-			}
-
-			db.logger.Info("reserve radius decrease", "radius", radius)
-		}
-		db.metrics.StorageRadius.Set(float64(radius))
+	for batch := range evictBatches {
+		db.logger.Debug("reserve: invalid batch", "batch_id", hex.EncodeToString([]byte(batch)))
+		err = errors.Join(err, db.EvictBatch(ctx, []byte(batch)))
 	}
+
+	db.metrics.ReserveSizeWithinRadius.Set(float64(count))
+	db.metrics.ReserveMissingBatch.Set(float64(missing))
+
+	return count, err
 }
 
-func (db *DB) evictionWorker(ctx context.Context) {
+func (db *DB) reserveWorker(ctx context.Context) {
 	defer db.inFlight.Done()
 
 	batchExpiryTrigger, batchExpiryUnsub := db.events.Subscribe(batchExpiry)
@@ -188,13 +118,20 @@ func (db *DB) evictionWorker(ctx context.Context) {
 	overCapTrigger, overCapUnsub := db.events.Subscribe(reserveOverCapacity)
 	defer overCapUnsub()
 
+	thresholdTicker := time.NewTicker(db.opts.wakeupDuration)
+	defer thresholdTicker.Stop()
+
+	_, _ = db.countWithinRadius(ctx)
+
 	for {
 		select {
+		case <-ctx.Done():
+			return
 		case <-batchExpiryTrigger:
 
 			err := db.evictExpiredBatches(ctx)
 			if err != nil {
-				db.logger.Warning("eviction worker expired batches", "error", err)
+				db.logger.Warning("reserve worker evict expired batches", "error", err)
 			}
 
 			db.events.Trigger(batchExpiryDone)
@@ -204,13 +141,29 @@ func (db *DB) evictionWorker(ctx context.Context) {
 			}
 
 		case <-overCapTrigger:
+
 			db.metrics.OverCapTriggerCount.Inc()
-			err := db.unreserve(ctx)
-			if err != nil {
-				db.logger.Error(err, "eviction worker unreserve")
+			if err := db.unreserve(ctx); err != nil {
+				db.logger.Warning("reserve worker unreserve", "error", err)
 			}
-		case <-ctx.Done():
-			return
+
+		case <-thresholdTicker.C:
+
+			radius := db.reserve.Radius()
+			count, err := db.countWithinRadius(ctx)
+			if err != nil {
+				db.logger.Warning("reserve worker count within radius", "error", err)
+				continue
+			}
+
+			if count < threshold(db.reserve.Capacity()) && db.syncer.SyncRate() == 0 && radius > 0 {
+				radius--
+				if err := db.reserve.SetRadius(radius); err != nil {
+					db.logger.Error(err, "reserve set radius")
+				}
+				db.metrics.StorageRadius.Set(float64(radius))
+				db.logger.Info("reserve radius decrease", "radius", radius)
+			}
 		}
 	}
 }
@@ -375,6 +328,7 @@ func (db *DB) unreserve(ctx context.Context) (err error) {
 	if target <= 0 {
 		return nil
 	}
+
 	db.logger.Info("unreserve start", "target", target, "radius", radius)
 
 	batchExpiry, unsub := db.events.Subscribe(batchExpiry)
@@ -397,6 +351,7 @@ func (db *DB) unreserve(ctx context.Context) (err error) {
 
 			select {
 			case <-batchExpiry:
+				db.logger.Debug("stopping unreserve, received batch expiration signal")
 				return nil
 			default:
 			}

@@ -91,15 +91,15 @@ func New(
 // Put stores a new chunk in the reserve and returns if the reserve size should increase.
 func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 
-	po := swarm.Proximity(r.baseAddr.Bytes(), chunk.Address().Bytes())
+	bin := swarm.Proximity(r.baseAddr.Bytes(), chunk.Address().Bytes())
 
 	// batchID lock, Put vs Eviction
 	r.multx.Lock(string(chunk.Stamp().BatchID()))
 	defer r.multx.Unlock(string(chunk.Stamp().BatchID()))
 
 	// bin lock
-	r.multx.Lock(strconv.Itoa(int(po)))
-	defer r.multx.Unlock(strconv.Itoa(int(po)))
+	r.multx.Lock(strconv.Itoa(int(bin)))
+	defer r.multx.Unlock(strconv.Itoa(int(bin)))
 
 	trx, done := r.st.NewTransaction(ctx)
 	defer done()
@@ -108,7 +108,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 	chunkStore := trx.ChunkStore()
 
 	has, err := indexStore.Has(&BatchRadiusItem{
-		Bin:     po,
+		Bin:     bin,
 		Address: chunk.Address(),
 		BatchID: chunk.Stamp().BatchID(),
 	})
@@ -159,13 +159,13 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 		return err
 	}
 
-	binID, err := r.IncBinID(indexStore, po)
+	binID, err := r.IncBinID(indexStore, bin)
 	if err != nil {
 		return err
 	}
 
 	err = indexStore.Put(&BatchRadiusItem{
-		Bin:     po,
+		Bin:     bin,
 		BinID:   binID,
 		Address: chunk.Address(),
 		BatchID: chunk.Stamp().BatchID(),
@@ -175,7 +175,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 	}
 
 	err = indexStore.Put(&ChunkBinItem{
-		Bin:     po,
+		Bin:     bin,
 		BinID:   binID,
 		Address: chunk.Address(),
 		BatchID: chunk.Stamp().BatchID(),
