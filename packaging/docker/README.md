@@ -12,7 +12,7 @@ Set all configuration variables inside `.env`
 If you want to run node in full mode, set `BEE_FULL_NODE=true`
 
 Bee requires an Ethereum endpoint to function. Obtain a free Infura account and set:
-- `BEE_BLOCKCHAIN_RPC_ENDPOINT=wss://sepolia.infura.io/ws/v3/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
+- `BEE_BLOCKCHAIN_RPC_ENDPOINT=wss://goerli.infura.io/ws/v3/xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx`
 
 Set bee password by either setting `BEE_PASSWORD` or `BEE_PASSWORD_FILE`
 
@@ -30,7 +30,7 @@ Start it with
 docker-compose up -d
 ```
 
-From logs find URL line with `on sepolia you can get both sepolia eth and sepolia bzz from` and prefund your node
+From logs find URL line with `on goerli you can get both goerli eth and goerli bzz from` and prefund your node
 ```
 docker-compose logs -f bee-1
 ```
