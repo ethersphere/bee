@@ -500,7 +500,7 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 		Strategy              getter.Strategy `map:"Swarm-Redundancy-Strategy"`
 		FallbackMode          bool            `map:"Swarm-Redundancy-Fallback-Mode"`
 		ChunkRetrievalTimeout string          `map:"Swarm-Chunk-Retrieval-Timeout"`
-		LookaheadBufferSize   *string         `map:"Swarm-Lookahead-Buffer-Size"`
+		LookaheadBufferSize   *int            `map:"Swarm-Lookahead-Buffer-Size"`
 	}{}
 
 	if response := s.mapStructure(r.Header, &headers); response != nil {
@@ -537,16 +537,12 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 	}
 	w.Header().Set(ContentLengthHeader, strconv.FormatInt(l, 10))
 	w.Header().Set("Access-Control-Expose-Headers", ContentDispositionHeader)
-	bufSize := int64(lookaheadBufferSize(l))
+	bufSize := lookaheadBufferSize(l)
 	if headers.LookaheadBufferSize != nil {
-		bufSize, err = strconv.ParseInt(*headers.LookaheadBufferSize, 10, 64)
-		if err != nil {
-			logger.Debug("parsing lookahead buffer size", "error", err)
-			bufSize = 0
-		}
+		bufSize = *(headers.LookaheadBufferSize)
 	}
 	if bufSize > 0 {
-		http.ServeContent(w, r, "", time.Now(), langos.NewBufferedLangos(reader, int(bufSize)))
+		http.ServeContent(w, r, "", time.Now(), langos.NewBufferedLangos(reader, bufSize))
 		return
 	}
 	http.ServeContent(w, r, "", time.Now(), reader)
