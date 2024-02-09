@@ -182,7 +182,7 @@ func Test_TransactionStorage(t *testing.T) {
 
 		has, err := st.ChunkStore().Has(context.Background(), ch1.Address())
 		assert.NoError(t, err)
-		if !has {
+		if has {
 			t.Fatal("should NOT have chunk")
 		}
 	})

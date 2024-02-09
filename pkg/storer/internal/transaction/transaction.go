@@ -2,6 +2,23 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+/*
+Package transaction provides transaction support for localstore operations.
+All writes to the localstore (both indexstore and chunkstore) must be made using a transaction.
+The transaction must be commited for the writes to be stored on the disk.
+Writes to the transaction are cached in memory so that future Reads return the cached entries, or if not available, entries stored on the disk.
+
+The rules of the transction is as follows:
+
+-sharky_write 		-> write to disk, keep sharky location in memory
+-sharky_release		-> keep location in memory, do not release from the disk
+-indexstore write	-> write to batch
+-on commit			-> if batch_commit succeeds, release sharky_release locations from the disk
+					-> if batch_commit fails or is not called, release all sharky_write location from the disk, do nothing for sharky_release
+
+See the transaction method for more details.
+*/
+
 package transaction
 
 import (
@@ -18,18 +35,6 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"resenje.org/multex"
 )
-
-// TODO(esad): remove contexts from sharky and any other storage call
-
-/*
-The rules of the transction is as follows:
-
--sharky_write 	-> write to disk, keep sharky location in memory
--sharky_release -> keep location in memory, do not release from the disk
--store write 	-> write to batch
--on commit		-> if batch_commit succeeds, release sharky_release locations from the disk
-				-> if batch_commit fails or is not called, release all sharky_write location from the disk, do nothing for sharky_release
-*/
 
 type Transaction interface {
 	Store
@@ -79,18 +84,26 @@ type transaction struct {
 // were returned from the storage ops or commit. Safest option is to do a defer call immediately after
 // creating the transaction.
 // Calls made to the transaction are NOT thread-safe.
+// Write operations are stored in memory so that future Read operations return what is currently captured in the transaciton.
+// For example, calling chunkstore.Put twice and then chunkstore.Delete once will cause the chunk to be stored with a refCnt of 1.
+// This is important for certain operations like storing the same chunk multiple times in the same transaction with the
+// expectation that the refCnt in the chunkstore correctly responds to number of Put calls.
+// Note that the indexstore iterator returns items based on the snapshot of what's currently stored on the disk, and no
+// write operations to the transaction affect what is returned from the iterator.
 func (s *store) NewTransaction(ctx context.Context) (Transaction, func()) {
 
 	b := s.bstore.Batch(ctx)
-	indexTrx := &indexTrx{s.bstore, b, s.metrics}
-	sharyTrx := &sharkyTrx{s.sharky, s.metrics, nil, nil}
+
+	index := NewMemCache(&indexTrx{s.bstore, b, s.metrics})
+
+	sharky := &sharkyTrx{s.sharky, s.metrics, nil, nil}
 
 	t := &transaction{
 		start:      time.Now(),
 		batch:      b,
-		indexstore: indexTrx,
-		chunkStore: &chunkStoreTrx{indexTrx, sharyTrx, s.chunkLocker, make(map[string]struct{}), s.metrics, false},
-		sharkyTrx:  sharyTrx,
+		indexstore: index,
+		chunkStore: &chunkStoreTrx{index, sharky, s.chunkLocker, make(map[string]struct{}), s.metrics, false},
+		sharkyTrx:  sharky,
 		metrics:    s.metrics,
 	}
 
@@ -119,6 +132,9 @@ func (s *store) ChunkStore() storage.ReadOnlyChunkStore {
 	return &chunkStoreTrx{indexStore, sharyTrx, s.chunkLocker, nil, s.metrics, true}
 }
 
+// Run creates a new transaction and gives the caller access to the transaction
+// in the form of a callback function. After the callback returns, the transaction
+// is commited to the disk. See the Transaction method for more details on how transactions operate internally.
 func (s *store) Run(ctx context.Context, f func(Store) error) error {
 	trx, done := s.NewTransaction(ctx)
 	defer done()
