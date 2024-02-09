@@ -162,8 +162,3 @@ func (db *DB) ListSessions(offset, limit int) ([]SessionInfo, error) {
 
 	return tags[min(offset, len(tags)):min(offset+limit, len(tags))], nil
 }
-
-// BatchHint is the implementation of the UploadStore.BatchHint method.
-func (db *DB) BatchHint(address swarm.Address) ([]byte, error) {
-	return upload.BatchIDForChunk(db.storage.IndexStore(), address)
-}

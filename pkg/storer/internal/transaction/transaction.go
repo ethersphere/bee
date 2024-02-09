@@ -5,7 +5,7 @@
 /*
 Package transaction provides transaction support for localstore operations.
 All writes to the localstore (both indexstore and chunkstore) must be made using a transaction.
-The transaction must be commited for the writes to be stored on the disk.
+The transaction must be committed for the writes to be stored on the disk.
 Writes to the transaction are cached in memory so that future Reads return the cached entries, or if not available, entries stored on the disk.
 
 The rules of the transction is as follows:
@@ -84,7 +84,7 @@ type transaction struct {
 // were returned from the storage ops or commit. Safest option is to do a defer call immediately after
 // creating the transaction.
 // Calls made to the transaction are NOT thread-safe.
-// Write operations are stored in memory so that future Read operations return what is currently captured in the transaciton.
+// Write operations are stored in memory so that future Read operations return what is currently captured in the transaction.
 // For example, calling chunkstore.Put twice and then chunkstore.Delete once will cause the chunk to be stored with a refCnt of 1.
 // This is important for certain operations like storing the same chunk multiple times in the same transaction with the
 // expectation that the refCnt in the chunkstore correctly responds to number of Put calls.
@@ -134,7 +134,7 @@ func (s *store) ChunkStore() storage.ReadOnlyChunkStore {
 
 // Run creates a new transaction and gives the caller access to the transaction
 // in the form of a callback function. After the callback returns, the transaction
-// is commited to the disk. See the Transaction method for more details on how transactions operate internally.
+// is committed to the disk. See the Transaction method for more details on how transactions operate internally.
 func (s *store) Run(ctx context.Context, f func(Store) error) error {
 	trx, done := s.NewTransaction(ctx)
 	defer done()
