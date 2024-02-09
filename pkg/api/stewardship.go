@@ -29,7 +29,7 @@ func (s *Service) stewardshipPutHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	headers := struct {
-		BatchID []byte `map:"Swarm-Postage-Batch-Id"`
+		BatchID []byte `map:"Swarm-Postage-Batch-Id" validate:"required"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -41,18 +41,7 @@ func (s *Service) stewardshipPutHandler(w http.ResponseWriter, r *http.Request) 
 		err     error
 	)
 
-	if len(headers.BatchID) == 0 {
-		logger.Debug("missing postage batch id for re-upload")
-		batchID, err = s.storer.BatchHint(paths.Address)
-		if err != nil {
-			logger.Debug("unable to find old batch for reference", "error", err)
-			logger.Error(nil, "unable to find old batch for reference")
-			jsonhttp.NotFound(w, "unable to find old batch for reference, provide new batch id")
-			return
-		}
-	} else {
-		batchID = headers.BatchID
-	}
+	batchID = headers.BatchID
 	stamper, save, err := s.getStamper(batchID)
 	if err != nil {
 		switch {
