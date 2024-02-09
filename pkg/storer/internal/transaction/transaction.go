@@ -16,7 +16,7 @@ The rules of the transction is as follows:
 -on commit			-> if batch_commit succeeds, release sharky_release locations from the disk
 					-> if batch_commit fails or is not called, release all sharky_write location from the disk, do nothing for sharky_release
 
-See the transaction method for more details.
+See the NewTransaction method for more details.
 */
 
 package transaction
@@ -134,7 +134,7 @@ func (s *store) ChunkStore() storage.ReadOnlyChunkStore {
 
 // Run creates a new transaction and gives the caller access to the transaction
 // in the form of a callback function. After the callback returns, the transaction
-// is committed to the disk. See the Transaction method for more details on how transactions operate internally.
+// is committed to the disk. See the NewTransaction method for more details on how transactions operate internally.
 func (s *store) Run(ctx context.Context, f func(Store) error) error {
 	trx, done := s.NewTransaction(ctx)
 	defer done()
