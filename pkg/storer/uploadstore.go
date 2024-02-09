@@ -73,19 +73,15 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 			storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
 				unlock := db.Lock(uploadsLock)
 				defer unlock()
-				return errors.Join(
-					db.storage.Run(ctx, func(s transaction.Store) error {
-						return uploadPutter.Put(ctx, s, chunk)
-					}),
-					func() error {
-						if pinningPutter != nil {
-							return db.storage.Run(ctx, func(s transaction.Store) error {
+				return db.storage.Run(ctx, func(s transaction.Store) error {
+					return errors.Join(uploadPutter.Put(ctx, s, chunk),
+						func() error {
+							if pinningPutter != nil {
 								return pinningPutter.Put(ctx, s, chunk)
-							})
-						}
-						return nil
-					}(),
-				)
+							}
+							return nil
+						}())
+				})
 			}),
 			db.metrics,
 			"uploadstore",
@@ -94,19 +90,16 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 			defer db.events.Trigger(subscribePushEventKey)
 			unlock := db.Lock(uploadsLock)
 			defer unlock()
-			return errors.Join(
-				db.storage.Run(ctx, func(s transaction.Store) error {
-					return uploadPutter.Close(s.IndexStore(), address)
-				}),
-				func() error {
-					if pinningPutter != nil {
-						return db.storage.Run(ctx, func(s transaction.Store) error {
+			return db.storage.Run(ctx, func(s transaction.Store) error {
+				return errors.Join(
+					uploadPutter.Close(s.IndexStore(), address),
+					func() error {
+						if pinningPutter != nil {
 							return pinningPutter.Close(s.IndexStore(), address)
-						})
-					}
-					return nil
-				}(),
-			)
+						}
+						return nil
+					}())
+			})
 		},
 		cleanup: func() error {
 			defer db.events.Trigger(subscribePushEventKey)
