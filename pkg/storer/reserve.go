@@ -261,7 +261,7 @@ func (db *DB) EvictBatch(ctx context.Context, batchID []byte) error {
 	return nil
 }
 
-func (db *DB) ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte) (chunk swarm.Chunk, err error) {
+func (db *DB) ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte) (ch swarm.Chunk, err error) {
 	dur := captureDuration(time.Now())
 	defer func() {
 		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "ReserveGet").Observe(dur())
@@ -269,6 +269,7 @@ func (db *DB) ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte
 			db.metrics.MethodCalls.WithLabelValues("reserve", "ReserveGet", "success").Inc()
 		} else {
 			db.metrics.MethodCalls.WithLabelValues("reserve", "ReserveGet", "failure").Inc()
+			db.logger.Debug("reserve get error", "error", err)
 		}
 	}()
 
@@ -283,6 +284,7 @@ func (db *DB) ReserveHas(addr swarm.Address, batchID []byte) (has bool, err erro
 			db.metrics.MethodCalls.WithLabelValues("reserve", "ReserveHas", "success").Inc()
 		} else {
 			db.metrics.MethodCalls.WithLabelValues("reserve", "ReserveHas", "failure").Inc()
+			db.logger.Debug("reserve has error", "error", err)
 		}
 	}()
 
@@ -297,7 +299,7 @@ func (db *DB) ReservePutter() storage.Putter {
 				err := db.reserve.Put(ctx, chunk)
 				if err != nil {
 					db.logger.Debug("reserve put error", "error", err)
-					return fmt.Errorf("reserve: putter.Put: %w", err)
+					return fmt.Errorf("reserve putter.Put: %w", err)
 				}
 				db.reserveBinEvents.Trigger(string(db.po(chunk.Address())))
 				if !db.reserve.IsWithinCapacity() {

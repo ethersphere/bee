@@ -255,7 +255,7 @@ func (s *indexTrx) Get(i storage.Item) error           { return s.store.Get(i) }
 func (s *indexTrx) Has(k storage.Key) (bool, error)    { return s.store.Has(k) }
 func (s *indexTrx) GetSize(k storage.Key) (int, error) { return s.store.GetSize(k) }
 func (s *indexTrx) Iterate(q storage.Query, f storage.IterateFn) (err error) {
-	defer handleMetric("index_iterate", s.metrics)(err)
+	defer handleMetric("iterate", s.metrics)(err)
 	return s.store.Iterate(q, f)
 }
 func (s *indexTrx) Count(k storage.Key) (int, error) { return s.store.Count(k) }
