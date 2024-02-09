@@ -77,8 +77,6 @@ type UploadStore interface {
 	DeleteSession(tagID uint64) error
 	// ListSessions will list all the Sessions currently being tracked.
 	ListSessions(offset, limit int) ([]SessionInfo, error)
-	// BatchHint will return the batch ID hint for the chunk reference if known.
-	BatchHint(swarm.Address) ([]byte, error)
 }
 
 // PinStore is a logical component of the storer which deals with pinning
