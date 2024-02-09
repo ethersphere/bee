@@ -217,14 +217,15 @@ func TestScenario_CornerCase(t *testing.T) {
 ```
 
 Ideally, try to use nested tests that would cause the test runner to automatically assemble the different test cases in separate entries:
+
 ```go
 func TestSomething(t *testing.T) {
   ...
   t.Run("edge case", func(t *testing.T) { ... })
 }
+```
 
-Lastly, please, goodness, don't use the word "fail" when naming tests. Since the go test runner uses the same keyword to denote failed tests, this just prolongs the search for relevant information when inspecting build artifacts.
-
+Avoid using the word "fail" when naming tests. Since the go test runner uses the same keyword to denote failed tests, this just prolongs the search for relevant information when inspecting build artifacts.
 
 ## Group Declarations by Meaning
 
@@ -249,8 +250,6 @@ var (
   someOtherPrefix   = "some_other_balance_"
   ErrLimitExceeded  = errors.New("limit exeeded")
 )
-
-
 ```
 
 </td><td>
@@ -275,7 +274,6 @@ var ErrLimitExceeded = errors.New("limit exeeded)
 
 </td></tr>
 </tbody></table>
-
 
 ## Make Zero-value Useful
 
@@ -818,6 +816,8 @@ return p.count
 </tbody></table>
 
 Defer has an extremely small overhead and should be avoided only if you can prove that your function execution time is in the order of nanoseconds. The readability win of using defers is worth the miniscule cost of using them. This is especially true for larger methods that have more than simple memory accesses, where the other computations are more significant than the `defer`.
+
+Most importantly the deferred function is going to be executed even in the case of a panic, so we avoid leaving some mutex on 'lock' and potentially leaving the system in an inconsistent state.
 
 ## Channel Size is One or None
 
