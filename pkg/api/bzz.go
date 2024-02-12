@@ -306,11 +306,11 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 	loggerV1 := logger.V(1).Build()
 
 	headers := struct {
-		Cache                 *bool           `map:"Swarm-Cache"`
-		Strategy              getter.Strategy `map:"Swarm-Redundancy-Strategy"`
-		FallbackMode          bool            `map:"Swarm-Redundancy-Fallback-Mode"`
-		ChunkRetrievalTimeout string          `map:"Swarm-Chunk-Retrieval-Timeout"`
-		LookaheadBufferSize   *string         `map:"Swarm-Lookahead-Buffer-Size"`
+		Cache                 *bool            `map:"Swarm-Cache"`
+		Strategy              *getter.Strategy `map:"Swarm-Redundancy-Strategy"`
+		FallbackMode          *bool            `map:"Swarm-Redundancy-Fallback-Mode"`
+		ChunkRetrievalTimeout *string          `map:"Swarm-Chunk-Retrieval-Timeout"`
+		LookaheadBufferSize   *string          `map:"Swarm-Lookahead-Buffer-Size"`
 	}{}
 
 	if response := s.mapStructure(r.Header, &headers); response != nil {
@@ -325,8 +325,15 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 	ls := loadsave.NewReadonly(s.storer.Download(cache))
 	feedDereferenced := false
 
+	strategyTimeout := getter.DefaultStrategyTimeout.String()
+
 	ctx := r.Context()
-	ctx = getter.SetConfigInContext(ctx, headers.Strategy, headers.FallbackMode, headers.ChunkRetrievalTimeout, getter.DefaultStrategyTimeout.String())
+	ctx, err := getter.SetConfigInContext(ctx, headers.Strategy, headers.FallbackMode, headers.ChunkRetrievalTimeout, &strategyTimeout)
+	if err != nil {
+		logger.Error(err, err.Error())
+		jsonhttp.BadRequest(w, "could not parse headers")
+		return
+	}
 
 FETCH:
 	// read manifest entry
@@ -496,11 +503,11 @@ func (s *Service) serveManifestEntry(
 // downloadHandler contains common logic for dowloading Swarm file from API
 func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *http.Request, reference swarm.Address, additionalHeaders http.Header, etag bool) {
 	headers := struct {
-		Cache                 *bool           `map:"Swarm-Cache"`
-		Strategy              getter.Strategy `map:"Swarm-Redundancy-Strategy"`
-		FallbackMode          bool            `map:"Swarm-Redundancy-Fallback-Mode"`
-		ChunkRetrievalTimeout string          `map:"Swarm-Chunk-Retrieval-Timeout"`
-		LookaheadBufferSize   *int            `map:"Swarm-Lookahead-Buffer-Size"`
+		Strategy              *getter.Strategy `map:"Swarm-Redundancy-Strategy"`
+		FallbackMode          *bool            `map:"Swarm-Redundancy-Fallback-Mode"`
+		ChunkRetrievalTimeout *string          `map:"Swarm-Chunk-Retrieval-Timeout"`
+		LookaheadBufferSize   *int             `map:"Swarm-Lookahead-Buffer-Size"`
+		Cache                 *bool            `map:"Swarm-Cache"`
 	}{}
 
 	if response := s.mapStructure(r.Header, &headers); response != nil {
@@ -512,8 +519,16 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 		cache = *headers.Cache
 	}
 
+	strategyTimeout := getter.DefaultStrategyTimeout.String()
+
 	ctx := r.Context()
-	ctx = getter.SetConfigInContext(ctx, headers.Strategy, headers.FallbackMode, headers.ChunkRetrievalTimeout, getter.DefaultStrategyTimeout.String())
+	ctx, err := getter.SetConfigInContext(ctx, headers.Strategy, headers.FallbackMode, headers.ChunkRetrievalTimeout, &strategyTimeout)
+	if err != nil {
+		logger.Error(err, err.Error())
+		jsonhttp.BadRequest(w, "could not parse headers")
+		return
+	}
+
 	reader, l, err := joiner.New(ctx, s.storer.Download(cache), s.storer.Cache(), reference)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) || errors.Is(err, topology.ErrNotFound) {

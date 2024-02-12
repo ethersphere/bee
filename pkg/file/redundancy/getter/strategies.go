@@ -9,13 +9,15 @@ import (
 	"errors"
 	"fmt"
 	"time"
+
+	"github.com/ethersphere/bee/pkg/retrieval"
 )
 
 const (
-	DefaultStrategy        = NONE                   // default prefetching strategy
-	DefaultStrict          = true                   // default fallback modes
-	DefaultFetchTimeout    = 30 * time.Second       // timeout for each chunk retrieval
-	DefaultStrategyTimeout = 300 * time.Millisecond // timeout for each strategy
+	DefaultStrategy        = NONE                           // default prefetching strategy
+	DefaultStrict          = true                           // default fallback modes
+	DefaultFetchTimeout    = retrieval.RetrieveChunkTimeout // timeout for each chunk retrieval
+	DefaultStrategyTimeout = 300 * time.Millisecond         // timeout for each strategy
 )
 
 type (
@@ -73,25 +75,18 @@ func NewConfigFromContext(ctx context.Context, def Config) (conf Config, err err
 		}
 	}
 	if val := ctx.Value(fetchTimeoutKey{}); val != nil {
-		fetchTimeoutVal, ok := val.(string)
+		conf.FetchTimeout, ok = val.(time.Duration)
 		if !ok {
 			return conf, e("fetcher timeout")
-		}
-		conf.FetchTimeout, err = time.ParseDuration(fetchTimeoutVal)
-		if err != nil {
-			return conf, e("fetcher timeout", err)
 		}
 	}
 	if val := ctx.Value(strategyTimeoutKey{}); val != nil {
-		strategyTimeoutVal, ok := val.(string)
+		conf.StrategyTimeout, ok = val.(time.Duration)
 		if !ok {
-			return conf, e("fetcher timeout")
-		}
-		conf.StrategyTimeout, err = time.ParseDuration(strategyTimeoutVal)
-		if err != nil {
-			return conf, e("fetcher timeout", err)
+			return conf, e("strategy timeout")
 		}
 	}
+
 	return conf, nil
 }
 
@@ -106,22 +101,42 @@ func SetStrict(ctx context.Context, strict bool) context.Context {
 }
 
 // SetFetchTimeout sets the timeout for each fetch
-func SetFetchTimeout(ctx context.Context, timeout string) context.Context {
+func SetFetchTimeout(ctx context.Context, timeout time.Duration) context.Context {
 	return context.WithValue(ctx, fetchTimeoutKey{}, timeout)
 }
 
 // SetStrategyTimeout sets the timeout for each strategy
-func SetStrategyTimeout(ctx context.Context, timeout string) context.Context {
-	return context.WithValue(ctx, fetchTimeoutKey{}, timeout)
+func SetStrategyTimeout(ctx context.Context, timeout time.Duration) context.Context {
+	return context.WithValue(ctx, strategyTimeoutKey{}, timeout)
 }
 
 // SetConfigInContext sets the config params in the context
-func SetConfigInContext(ctx context.Context, s Strategy, fallbackmode bool, fetchTimeout, strategyTimeout string) context.Context {
-	ctx = SetStrategy(ctx, s)
-	ctx = SetStrict(ctx, !fallbackmode)
-	ctx = SetFetchTimeout(ctx, fetchTimeout)
-	ctx = SetStrategyTimeout(ctx, strategyTimeout)
-	return ctx
+func SetConfigInContext(ctx context.Context, s *Strategy, fallbackmode *bool, fetchTimeout, strategyTimeout *string) (context.Context, error) {
+	if s != nil {
+		ctx = SetStrategy(ctx, *s)
+	}
+
+	if fallbackmode != nil {
+		ctx = SetStrict(ctx, !(*fallbackmode))
+	}
+
+	if fetchTimeout != nil {
+		dur, err := time.ParseDuration(*fetchTimeout)
+		if err != nil {
+			return nil, err
+		}
+		ctx = SetFetchTimeout(ctx, dur)
+	}
+
+	if strategyTimeout != nil {
+		dur, err := time.ParseDuration(*strategyTimeout)
+		if err != nil {
+			return nil, err
+		}
+		ctx = SetStrategyTimeout(ctx, dur)
+	}
+
+	return ctx, nil
 }
 
 func (g *decoder) prefetch(ctx context.Context) error {
