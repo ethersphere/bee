@@ -339,6 +339,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		EnableStorageIncentives:       c.config.GetBool(optionNameStorageIncentivesEnable),
 		StatestoreCacheCapacity:       c.config.GetUint64(optionNameStateStoreCacheCapacity),
 		TargetNeighborhood:            c.config.GetString(optionNameTargetNeighborhood),
+		NeighborhoodSuggester:         c.config.GetString(optionNameNeighborhoodSuggester),
 	})
 
 	return b, err

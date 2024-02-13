@@ -10,6 +10,7 @@ package node
 import (
 	"context"
 	"crypto/ecdsa"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -17,6 +18,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"runtime"
 	"sync"
@@ -171,6 +173,7 @@ type Options struct {
 	EnableStorageIncentives       bool
 	StatestoreCacheCapacity       uint64
 	TargetNeighborhood            string
+	NeighborhoodSuggester         string
 }
 
 const (
@@ -282,9 +285,40 @@ func NewBee(
 
 	if !nonceExists {
 		// mine the overlay
-		if o.TargetNeighborhood != "" {
-			logger.Info("mining an overlay address for the fresh node to target the selected neighborhood", "target", o.TargetNeighborhood)
-			swarmAddress, nonce, err = nbhdutil.MineOverlay(ctx, *pubKey, networkID, o.TargetNeighborhood)
+		targetNeighborhood := o.TargetNeighborhood
+		if o.TargetNeighborhood == "" && o.NeighborhoodSuggester != "" {
+			_, err = url.Parse(o.NeighborhoodSuggester)
+			if err != nil {
+				return nil, fmt.Errorf("invalid neighborhood suggester: %w", err)
+			}
+			logger.Info("fetching target neighborhood from suggester", "url", o.NeighborhoodSuggester)
+			type suggestionRes struct {
+				Neighborhood string `json:"neighborhood"`
+			}
+			res, err := http.Get(o.NeighborhoodSuggester)
+			if err != nil {
+				return nil, fmt.Errorf("get neighborhood suggestion: %w", err)
+			}
+			defer res.Body.Close()
+			var suggestion suggestionRes
+			d, err := io.ReadAll(res.Body)
+			if err != nil {
+				return nil, fmt.Errorf("read neighborhood suggestion: %w", err)
+			}
+			err = json.Unmarshal(d, &suggestion)
+			if err != nil {
+				return nil, fmt.Errorf("unmarshal neighborhood suggestion: %w", err)
+			}
+			_, err = swarm.ParseBitStrAddress(suggestion.Neighborhood)
+			if err != nil {
+				return nil, fmt.Errorf("invalid neighborhood suggestion. %s", suggestion.Neighborhood)
+			}
+			targetNeighborhood = suggestion.Neighborhood
+		}
+
+		if targetNeighborhood != "" {
+			logger.Info("mining an overlay address for the fresh node to target the selected neighborhood", "target", targetNeighborhood)
+			swarmAddress, nonce, err = nbhdutil.MineOverlay(ctx, *pubKey, networkID, targetNeighborhood)
 			if err != nil {
 				return nil, fmt.Errorf("mine overlay address: %w", err)
 			}
