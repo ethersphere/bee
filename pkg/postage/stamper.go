@@ -11,7 +11,6 @@ import (
 	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"resenje.org/multex"
 )
 
 var (
@@ -30,19 +29,18 @@ type stamper struct {
 	store  storage.Store
 	issuer *StampIssuer
 	signer crypto.Signer
-	mu     *multex.Multex
 }
 
 // NewStamper constructs a Stamper.
 func NewStamper(store storage.Store, issuer *StampIssuer, signer crypto.Signer) Stamper {
-	return &stamper{store, issuer, signer, multex.New()}
+	return &stamper{store, issuer, signer}
 }
 
 // Stamp takes chunk, see if the chunk can be included in the batch and
 // signs it with the owner of the batch of this Stamp issuer.
 func (st *stamper) Stamp(addr swarm.Address) (*Stamp, error) {
-	st.mu.Lock(addr.ByteString())
-	defer st.mu.Unlock(addr.ByteString())
+	st.issuer.mtx.Lock()
+	defer st.issuer.mtx.Unlock()
 
 	item := &StampItem{
 		BatchID:      st.issuer.data.BatchID,

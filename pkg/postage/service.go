@@ -174,8 +174,8 @@ func (ps *service) GetStampIssuer(batchID []byte) (*StampIssuer, func() error, e
 
 // save persists the specified stamp issuer to the stamperstore.
 func (ps *service) save(st *StampIssuer) error {
-	st.bucketMtx.Lock()
-	defer st.bucketMtx.Unlock()
+	st.mtx.Lock()
+	defer st.mtx.Unlock()
 
 	if err := ps.store.Put(&StampIssuerItem{
 		Issuer: st,
