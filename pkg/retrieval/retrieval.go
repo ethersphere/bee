@@ -122,7 +122,7 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 }
 
 const (
-	retrieveChunkTimeout = time.Second * 30
+	RetrieveChunkTimeout = time.Second * 30
 	preemptiveInterval   = time.Second
 	overDraftRefresh     = time.Millisecond * 600
 	skiplistDur          = time.Minute
@@ -320,7 +320,7 @@ func (s *Service) retrieveChunk(ctx context.Context, quit chan struct{}, chunkAd
 		}
 	}()
 
-	ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
+	ctx, cancel := context.WithTimeout(ctx, RetrieveChunkTimeout)
 	defer cancel()
 
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
@@ -425,7 +425,7 @@ func (s *Service) closestPeer(addr swarm.Address, skipPeers []swarm.Address, all
 }
 
 func (s *Service) handler(p2pctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
-	ctx, cancel := context.WithTimeout(p2pctx, retrieveChunkTimeout)
+	ctx, cancel := context.WithTimeout(p2pctx, RetrieveChunkTimeout)
 	defer cancel()
 
 	w, r := protobuf.NewWriterAndReader(stream)

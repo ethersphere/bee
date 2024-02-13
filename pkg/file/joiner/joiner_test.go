@@ -1114,7 +1114,17 @@ func TestJoinerRedundancy(t *testing.T) {
 			readCheck := func(t *testing.T, expErr error) {
 				ctx, cancel := context.WithTimeout(context.Background(), 15*strategyTimeout)
 				defer cancel()
-				ctx = getter.SetConfigInContext(ctx, getter.RACE, true, (10 * strategyTimeout).String(), strategyTimeout.String())
+
+				strategyTimeoutStr := strategyTimeout.String()
+				decodeTimeoutStr := (10 * strategyTimeout).String()
+				fallback := true
+				s := getter.RACE
+
+				ctx, err := getter.SetConfigInContext(ctx, &s, &fallback, &decodeTimeoutStr, &strategyTimeoutStr)
+				if err != nil {
+					t.Fatal(err)
+				}
+
 				joinReader, rootSpan, err := joiner.New(ctx, store, store, swarmAddr)
 				if err != nil {
 					t.Fatal(err)
@@ -1247,7 +1257,15 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 			if racedetection.IsOn() {
 				decodingTimeout *= 2
 			}
-			ctx = getter.SetConfigInContext(ctx, s, fallback, (2 * strategyTimeout).String(), strategyTimeout.String())
+
+			strategyTimeoutStr := strategyTimeout.String()
+			decodingTimeoutStr := (2 * strategyTimeout).String()
+
+			ctx, err := getter.SetConfigInContext(ctx, &s, &fallback, &decodingTimeoutStr, &strategyTimeoutStr)
+			if err != nil {
+				t.Fatal(err)
+			}
+
 			ctx, cancel := context.WithTimeout(ctx, time.Duration(levels)*(3*strategyTimeout+decodingTimeout))
 			defer cancel()
 			j, _, err := joiner.New(ctx, store, store, addr)
