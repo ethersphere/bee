@@ -20,7 +20,6 @@ import (
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/gorilla/mux"
 	"github.com/opentracing/opentracing-go/ext"
-	"github.com/opentracing/opentracing-go/log"
 	olog "github.com/opentracing/opentracing-go/log"
 )
 
@@ -63,7 +62,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 			default:
 				jsonhttp.InternalServerError(w, "cannot get or create tag")
 			}
-			ext.LogError(span, err, log.String("action", "tag.create"))
+			ext.LogError(span, err, olog.String("action", "tag.create"))
 			return
 		}
 		span.SetTag("tagID", tag)
@@ -90,7 +89,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		default:
 			jsonhttp.BadRequest(w, nil)
 		}
-		ext.LogError(span, err, log.String("action", "new.StamperPutter"))
+		ext.LogError(span, err, olog.String("action", "new.StamperPutter"))
 		return
 	}
 
@@ -111,7 +110,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		default:
 			jsonhttp.InternalServerError(ow, "split write all failed")
 		}
-		ext.LogError(span, err, log.String("action", "split.WriteAll"))
+		ext.LogError(span, err, olog.String("action", "split.WriteAll"))
 		return
 	}
 
@@ -122,7 +121,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		logger.Debug("done split failed", "error", err)
 		logger.Error(nil, "done split failed")
 		jsonhttp.InternalServerError(ow, "done split failed")
-		ext.LogError(span, err, log.String("action", "putter.Done"))
+		ext.LogError(span, err, olog.String("action", "putter.Done"))
 		return
 	}
 

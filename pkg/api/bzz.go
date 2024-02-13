@@ -310,7 +310,6 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 		Strategy              *getter.Strategy `map:"Swarm-Redundancy-Strategy"`
 		FallbackMode          *bool            `map:"Swarm-Redundancy-Fallback-Mode"`
 		ChunkRetrievalTimeout *string          `map:"Swarm-Chunk-Retrieval-Timeout"`
-		LookaheadBufferSize   *string          `map:"Swarm-Lookahead-Buffer-Size"`
 	}{}
 
 	if response := s.mapStructure(r.Header, &headers); response != nil {
