@@ -264,7 +264,7 @@ func prefetch(ctx context.Context, g *decoder, s Strategy) error {
 	// as the number of data shards.
 	// DATA strategy has a max error tolerance of zero.
 	// RACE strategy has a max error tolerance of number of parity chunks.
-	var maxErr int
+	var allowedErrs int
 	var m []int
 
 	switch s {
@@ -273,13 +273,13 @@ func prefetch(ctx context.Context, g *decoder, s Strategy) error {
 	case DATA:
 		// only retrieve data shards
 		m = g.unattemptedDataShards()
-		maxErr = 0
+		allowedErrs = 0
 	case PROX:
 		// proximity driven selective fetching
 		// NOT IMPLEMENTED
 		return errors.New("prefetch not allowed")
 	case RACE:
-		maxErr = g.parityCnt
+		allowedErrs = g.parityCnt
 		// retrieve all chunks at once enabling race among chunks
 		m = g.unattemptedDataShards()
 		for i := g.shardCnt; i < len(g.addrs); i++ {
@@ -305,8 +305,8 @@ func prefetch(ctx context.Context, g *decoder, s Strategy) error {
 			return ctx.Err()
 		case err := <-errC:
 			if err != nil {
-				if g.failedCnt.Load() >= int32(maxErr) {
-					fmt.Println("strategy", s, "maxErr", maxErr, "shards", g.shardCnt, "parity", g.parityCnt, "missing", len(m))
+				if g.failedCnt.Load() > int32(allowedErrs) {
+					fmt.Println("strategy", s, "maxErr", allowedErrs, "shards", g.shardCnt, "parity", g.parityCnt, "missing", len(m))
 					return errors.New("strategy failed")
 				}
 			}
