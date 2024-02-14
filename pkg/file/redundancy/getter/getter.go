@@ -180,7 +180,7 @@ func (g *decoder) unattemptedDataShards() (m []int) {
 	return m
 }
 
-func (g *decoder) missing() (m []int) {
+func (g *decoder) missingDataShards() (m []int) {
 	for i := 0; i < g.shardCnt; i++ {
 		if g.getData(i) == nil {
 			m = append(m, i)
@@ -211,7 +211,7 @@ func (g *decoder) decode(ctx context.Context) error {
 func (g *decoder) recover(ctx context.Context) error {
 
 	// gather missing shards
-	m := g.missing()
+	m := g.missingDataShards()
 	if len(m) == 0 {
 		fmt.Println("skipping recovery")
 		return nil
@@ -259,18 +259,27 @@ func (g *decoder) prefetch(ctx context.Context) error {
 
 // prefetch launches the retrieval of chunks based on the strategy
 func prefetch(ctx context.Context, g *decoder, s Strategy) error {
+
+	// across the different strategies, the common goal is to fetch at least as many chunks
+	// as the number of data shards.
+	// DATA strategy has a max error tolerance of zero.
+	// RACE strategy has a max error tolerance of number of parity chunks.
+	var maxErr int
 	var m []int
+
 	switch s {
 	case NONE:
 		return errors.New("prefetch not allowed")
 	case DATA:
 		// only retrieve data shards
 		m = g.unattemptedDataShards()
+		maxErr = 0
 	case PROX:
 		// proximity driven selective fetching
 		// NOT IMPLEMENTED
 		return errors.New("prefetch not allowed")
 	case RACE:
+		maxErr = g.parityCnt
 		// retrieve all chunks at once enabling race among chunks
 		m = g.unattemptedDataShards()
 		for i := g.shardCnt; i < len(g.addrs); i++ {
@@ -278,11 +287,6 @@ func prefetch(ctx context.Context, g *decoder, s Strategy) error {
 		}
 	}
 
-	// across the different strategies, the common goal is to fetch at least as many chunks
-	// as the number of data shards including both data and parity chunks.
-	// DATA strategy has a max error tolerance of zero.
-	// RACE strategy has a max error tolerance of number of parity chunks.
-	maxErr := int(g.fetchedCnt.Load()) + int(g.failedCnt.Load()) + len(m) - g.shardCnt
 	errC := make(chan error, len(m))
 
 	for _, i := range m {
@@ -293,7 +297,6 @@ func prefetch(ctx context.Context, g *decoder, s Strategy) error {
 		}(i)
 	}
 
-	errCount := 0
 	cnt := 0
 
 	for {
@@ -302,8 +305,7 @@ func prefetch(ctx context.Context, g *decoder, s Strategy) error {
 			return ctx.Err()
 		case err := <-errC:
 			if err != nil {
-				errCount++
-				if errCount >= maxErr {
+				if g.failedCnt.Load() >= int32(maxErr) {
 					fmt.Println("strategy", s, "maxErr", maxErr, "shards", g.shardCnt, "parity", g.parityCnt, "missing", len(m))
 					return errors.New("strategy failed")
 				}
