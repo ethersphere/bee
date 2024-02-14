@@ -58,7 +58,7 @@ type Interface interface {
 
 	// SyncBatch scans the remote peer bin for chunks owned by a specific batch.
 	// Eventually, the chunks will be returned to the caller for disposition.
-	SyncBatch(ctx context.Context, peer swarm.Address, bin uint8, start uint64) (topmost uint64, count int, chunks []swarm.Chunk, err error)
+	SyncBatch(ctx context.Context, peer swarm.Address, bin uint8, start uint64) (topmost uint64, offered int, chunks []swarm.Chunk, err error)
 
 	// Sync syncs a batch of chunks starting at a start BinID.
 	// It returns the BinID of highest chunk that was synced from the given
@@ -194,7 +194,7 @@ func (s *Syncer) SyncBatch(ctx context.Context, peer swarm.Address, bin uint8, s
 
 		batchString := hex.EncodeToString(batchID)
 		s.logger.Debug("SyncBatch:offered", "address", a, "batch", batchString)
-		if batchString == "0e8366a6fdac185b6f0327dc89af99e67d9d3b3f2af22432542dc5971065c1df" {
+		if batchString == "0e8366a6fdac185b6f0327dc89af99e67d9d3b3f2af22432542dc5971065c1df" {	// OSM stamp batch
 				s.logger.Debug("SyncBatch:wanted", "address", a, "batch", batchString)
 				wantChunks[a.ByteString()+string(batchID)] = struct{}{}
 				ctr++
@@ -287,7 +287,7 @@ func (s *Syncer) SyncBatch(ctx context.Context, peer swarm.Address, bin uint8, s
 		}
 	}
 
-	return topmost, chunksPut, chunksToPut, chunkErr
+	return topmost, len(offer.Chunks), chunksToPut, chunkErr
 }
 
 // Sync syncs a batch of chunks starting at a start BinID.
