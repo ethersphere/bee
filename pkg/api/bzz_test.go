@@ -151,8 +151,6 @@ func TestBzzUploadDownloadWithRedundancy(t *testing.T) {
 			if rLevel == 0 {
 				t.Skip("NA")
 			}
-			// ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-			// defer cancel()
 			req, err := http.NewRequestWithContext(context.Background(), "GET", fileDownloadResource(refResponse.Reference.String()), nil)
 			if err != nil {
 				t.Fatal(err)
