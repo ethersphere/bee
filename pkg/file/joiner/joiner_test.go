@@ -1169,14 +1169,14 @@ func TestJoinerRedundancy(t *testing.T) {
 				}
 			}
 			t.Run("no recovery possible with no chunk stored", func(t *testing.T) {
-				readCheck(t, context.DeadlineExceeded)
+				readCheck(t, storage.ErrNotFound)
 			})
 
 			if err := putter.store(shardCnt - 1); err != nil {
 				t.Fatal(err)
 			}
 			t.Run("no recovery possible with 1 short of shardCnt chunks stored", func(t *testing.T) {
-				readCheck(t, context.DeadlineExceeded)
+				readCheck(t, storage.ErrNotFound)
 			})
 
 			if err := putter.store(1); err != nil {

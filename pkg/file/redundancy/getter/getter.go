@@ -7,7 +7,6 @@ package getter
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -121,13 +120,10 @@ func (g *decoder) fetch(ctx context.Context, i int, waitForRecovery bool) (err e
 
 		select {
 		case <-g.badRecovery:
-			fmt.Println("bad recovery")
 			return storage.ErrNotFound
 		case <-g.goodRecovery:
-			fmt.Println("good recovery")
 			return nil
 		case <-ctx.Done():
-			fmt.Println("ctx done")
 			return ctx.Err()
 		}
 	}
@@ -213,7 +209,6 @@ func (g *decoder) recover(ctx context.Context) error {
 	// gather missing shards
 	m := g.missingDataShards()
 	if len(m) == 0 {
-		fmt.Println("skipping recovery")
 		return nil
 	}
 
@@ -230,7 +225,7 @@ func (g *decoder) prefetch(ctx context.Context) error {
 	defer g.remove()
 
 	run := func(s Strategy) error {
-		if err := prefetch(ctx, g, s); err != nil {
+		if err := g.runStrategy(ctx, s); err != nil {
 			return err
 		}
 
@@ -239,8 +234,7 @@ func (g *decoder) prefetch(ctx context.Context) error {
 
 	var err error
 	for s := g.config.Strategy; s < strategyCnt; s++ {
-		err = run(s)
-		if err == nil {
+		if err = run(s); err == nil {
 			close(g.goodRecovery)
 			break
 		}
@@ -257,8 +251,7 @@ func (g *decoder) prefetch(ctx context.Context) error {
 	return err
 }
 
-// prefetch launches the retrieval of chunks based on the strategy
-func prefetch(ctx context.Context, g *decoder, s Strategy) error {
+func (g *decoder) runStrategy(ctx context.Context, s Strategy) error {
 
 	// across the different strategies, the common goal is to fetch at least as many chunks
 	// as the number of data shards.
@@ -303,12 +296,9 @@ func prefetch(ctx context.Context, g *decoder, s Strategy) error {
 		select {
 		case <-ctx.Done():
 			return ctx.Err()
-		case err := <-errC:
-			if err != nil {
-				if g.failedCnt.Load() > int32(allowedErrs) {
-					fmt.Println("strategy", s, "maxErr", allowedErrs, "shards", g.shardCnt, "parity", g.parityCnt, "missing", len(m))
-					return errors.New("strategy failed")
-				}
+		case <-errC:
+			if g.failedCnt.Load() > int32(allowedErrs) {
+				return errors.New("strategy failed")
 			}
 			cnt++
 			if cnt == len(m) {
