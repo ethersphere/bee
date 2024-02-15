@@ -11,6 +11,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/klauspost/reedsolomon"
@@ -40,6 +41,7 @@ type decoder struct {
 	cancel       func()          // cancel function for RS decoding
 	remove       func()          // callback to remove decoder from decoders cache
 	config       Config          // configuration
+	logger       log.Logger
 }
 
 type Getter interface {
@@ -67,6 +69,7 @@ func New(addrs []swarm.Address, shardCnt int, g storage.Getter, p storage.Putter
 		shardCnt:     shardCnt,
 		parityCnt:    size - shardCnt,
 		config:       conf,
+		logger:       conf.Logger.WithName("redundancy").Build(),
 	}
 
 	// after init, cache and wait channels are immutable, need no locking
@@ -122,6 +125,7 @@ func (g *decoder) fetch(ctx context.Context, i int, waitForRecovery bool) (err e
 		case <-g.badRecovery:
 			return storage.ErrNotFound
 		case <-g.goodRecovery:
+			g.logger.Debug("recovered chunk", "address", g.addrs[i])
 			return nil
 		case <-ctx.Done():
 			return ctx.Err()
@@ -234,7 +238,17 @@ func (g *decoder) prefetch(ctx context.Context) error {
 
 	var err error
 	for s := g.config.Strategy; s < strategyCnt; s++ {
-		if err = run(s); err == nil {
+
+		err = run(s)
+		if err != nil {
+			if s == DATA || s == RACE {
+				g.logger.Debug("failed recovery", "strategy", s)
+			}
+		}
+		if err == nil {
+			if s > DATA {
+				g.logger.Debug("successful recovery", "strategy", s)
+			}
 			close(g.goodRecovery)
 			break
 		}

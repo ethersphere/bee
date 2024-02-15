@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/retrieval"
 )
 
@@ -25,6 +26,7 @@ type (
 	modeKey            struct{}
 	fetchTimeoutKey    struct{}
 	strategyTimeoutKey struct{}
+	loggerKey          struct{}
 	Strategy           = int
 )
 
@@ -34,6 +36,7 @@ type Config struct {
 	Strict          bool
 	FetchTimeout    time.Duration
 	StrategyTimeout time.Duration
+	Logger          log.Logger
 }
 
 const (
@@ -50,6 +53,7 @@ var DefaultConfig = Config{
 	Strict:          DefaultStrict,
 	FetchTimeout:    DefaultFetchTimeout,
 	StrategyTimeout: DefaultStrategyTimeout,
+	Logger:          log.Noop,
 }
 
 // NewConfigFromContext returns a new Config based on the context
@@ -86,6 +90,12 @@ func NewConfigFromContext(ctx context.Context, def Config) (conf Config, err err
 			return conf, e("strategy timeout")
 		}
 	}
+	if val := ctx.Value(loggerKey{}); val != nil {
+		conf.Logger, ok = val.(log.Logger)
+		if !ok {
+			return conf, e("strategy timeout")
+		}
+	}
 
 	return conf, nil
 }
@@ -110,8 +120,13 @@ func SetStrategyTimeout(ctx context.Context, timeout time.Duration) context.Cont
 	return context.WithValue(ctx, strategyTimeoutKey{}, timeout)
 }
 
+// SetStrategyTimeout sets the timeout for each strategy
+func SetLogger(ctx context.Context, l log.Logger) context.Context {
+	return context.WithValue(ctx, loggerKey{}, l)
+}
+
 // SetConfigInContext sets the config params in the context
-func SetConfigInContext(ctx context.Context, s *Strategy, fallbackmode *bool, fetchTimeout, strategyTimeout *string) (context.Context, error) {
+func SetConfigInContext(ctx context.Context, s *Strategy, fallbackmode *bool, fetchTimeout, strategyTimeout *string, logger log.Logger) (context.Context, error) {
 	if s != nil {
 		ctx = SetStrategy(ctx, *s)
 	}
@@ -134,6 +149,10 @@ func SetConfigInContext(ctx context.Context, s *Strategy, fallbackmode *bool, fe
 			return nil, err
 		}
 		ctx = SetStrategyTimeout(ctx, dur)
+	}
+
+	if logger != nil {
+		ctx = SetLogger(ctx, logger)
 	}
 
 	return ctx, nil

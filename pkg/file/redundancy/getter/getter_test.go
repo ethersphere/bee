@@ -19,6 +19,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/file/redundancy/getter"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/storage"
 	inmem "github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
@@ -120,6 +121,7 @@ func testDecodingRACE(t *testing.T, bufSize, shardCnt, erasureCnt int) {
 		Strategy:        getter.RACE,
 		FetchTimeout:    2 * strategyTimeout,
 		StrategyTimeout: strategyTimeout,
+		Logger:          log.Noop,
 	}
 	g := getter.New(addrs, shardCnt, store, store, func() {}, conf)
 	defer g.Close()

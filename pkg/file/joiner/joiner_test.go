@@ -24,6 +24,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file/redundancy/getter"
 	"github.com/ethersphere/bee/pkg/file/splitter"
 	filetest "github.com/ethersphere/bee/pkg/file/testing"
+	"github.com/ethersphere/bee/pkg/log"
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
@@ -1120,7 +1121,7 @@ func TestJoinerRedundancy(t *testing.T) {
 				fallback := true
 				s := getter.RACE
 
-				ctx, err := getter.SetConfigInContext(ctx, &s, &fallback, &decodeTimeoutStr, &strategyTimeoutStr)
+				ctx, err := getter.SetConfigInContext(ctx, &s, &fallback, &decodeTimeoutStr, &strategyTimeoutStr, log.Noop)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -1261,7 +1262,7 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 			strategyTimeoutStr := strategyTimeout.String()
 			decodingTimeoutStr := (2 * strategyTimeout).String()
 
-			ctx, err := getter.SetConfigInContext(ctx, &s, &fallback, &decodingTimeoutStr, &strategyTimeoutStr)
+			ctx, err := getter.SetConfigInContext(ctx, &s, &fallback, &decodingTimeoutStr, &strategyTimeoutStr, log.Noop)
 			if err != nil {
 				t.Fatal(err)
 			}
