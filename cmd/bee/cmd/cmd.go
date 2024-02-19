@@ -85,6 +85,7 @@ const (
 	optionNameStorageIncentivesEnable   = "storage-incentives-enable"
 	optionNameStateStoreCacheCapacity   = "statestore-cache-capacity"
 	optionNameTargetNeighborhood        = "target-neighborhood"
+	optionNameNeighborhoodSuggester     = "neighborhood-suggester"
 )
 
 // nolint:gochecknoinits
@@ -302,6 +303,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNameStorageIncentivesEnable, true, "enable storage incentives feature")
 	cmd.Flags().Uint64(optionNameStateStoreCacheCapacity, 100_000, "lru memory caching capacity in number of statestore entries")
 	cmd.Flags().String(optionNameTargetNeighborhood, "", "neighborhood to target in binary format (ex: 111111001) for mining the initial overlay")
+	cmd.Flags().String(optionNameNeighborhoodSuggester, "https://api.swarmscan.io/v1/network/neighborhoods/suggestion", "suggester for target neighborhood")
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {
