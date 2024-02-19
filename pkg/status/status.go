@@ -37,6 +37,7 @@ type SyncReporter interface {
 // Reserve defines the reserve storage related information required.
 type Reserve interface {
 	ReserveSize() int
+	ReserveSizeWithinRadius(uint8) (uint64, error)
 	StorageRadius() uint8
 }
 
@@ -79,16 +80,22 @@ func NewService(
 // LocalSnapshot returns the current status snapshot of this node.
 func (s *Service) LocalSnapshot() (*Snapshot, error) {
 	var (
-		storageRadius    uint8
-		syncRate         float64
-		reserveSize      uint64
-		connectedPeers   uint64
-		neighborhoodSize uint64
+		storageRadius           uint8
+		syncRate                float64
+		reserveSize             uint64
+		reserveSizeWithinRadius uint64
+		connectedPeers          uint64
+		neighborhoodSize        uint64
 	)
 
 	if s.reserve != nil {
 		storageRadius = s.reserve.StorageRadius()
 		reserveSize = uint64(s.reserve.ReserveSize())
+		sizeWithinRadius, err := s.reserve.ReserveSizeWithinRadius(storageRadius)
+		if err != nil {
+			return nil, fmt.Errorf("reserve size within radius: %w", err)
+		}
+		reserveSizeWithinRadius = sizeWithinRadius
 	}
 
 	if s.sync != nil {
@@ -115,14 +122,15 @@ func (s *Service) LocalSnapshot() (*Snapshot, error) {
 	}
 
 	return &Snapshot{
-		BeeMode:          s.beeMode,
-		ReserveSize:      reserveSize,
-		PullsyncRate:     syncRate,
-		StorageRadius:    uint32(storageRadius),
-		ConnectedPeers:   connectedPeers,
-		NeighborhoodSize: neighborhoodSize,
-		BatchCommitment:  commitment,
-		IsReachable:      s.topologyDriver.IsReachable(),
+		BeeMode:                 s.beeMode,
+		ReserveSize:             reserveSize,
+		ReserveSizeWithinRadius: reserveSizeWithinRadius,
+		PullsyncRate:            syncRate,
+		StorageRadius:           uint32(storageRadius),
+		ConnectedPeers:          connectedPeers,
+		NeighborhoodSize:        neighborhoodSize,
+		BatchCommitment:         commitment,
+		IsReachable:             s.topologyDriver.IsReachable(),
 	}, nil
 }
 

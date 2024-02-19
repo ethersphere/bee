@@ -474,6 +474,18 @@ func (db *DB) ReserveSize() int {
 	return db.reserve.Size()
 }
 
+func (db *DB) ReserveSizeWithinRadius(radius uint8) (uint64, error) {
+	var count uint64
+	err := db.reserve.IterateChunksItems(db.repo, radius, func(_ reserve.ChunkItem) (bool, error) {
+		count++
+		return false, nil
+	})
+	if err != nil {
+		return 0, err
+	}
+	return count, nil
+}
+
 func (db *DB) IsWithinStorageRadius(addr swarm.Address) bool {
 	if db.reserve == nil {
 		return false

@@ -26,21 +26,23 @@ func TestGetStatus(t *testing.T) {
 
 		mode := api.FullMode
 		ssr := api.StatusSnapshotResponse{
-			BeeMode:          mode.String(),
-			ReserveSize:      128,
-			PullsyncRate:     64,
-			StorageRadius:    8,
-			ConnectedPeers:   0,
-			NeighborhoodSize: 0,
-			BatchCommitment:  1,
-			IsReachable:      true,
+			BeeMode:                 mode.String(),
+			ReserveSize:             128,
+			ReserveSizeWithinRadius: 64,
+			PullsyncRate:            64,
+			StorageRadius:           8,
+			ConnectedPeers:          0,
+			NeighborhoodSize:        0,
+			BatchCommitment:         1,
+			IsReachable:             true,
 		}
 
 		ssMock := &statusSnapshotMock{
-			syncRate:      ssr.PullsyncRate,
-			reserveSize:   int(ssr.ReserveSize),
-			storageRadius: ssr.StorageRadius,
-			commitment:    ssr.BatchCommitment,
+			syncRate:                ssr.PullsyncRate,
+			reserveSize:             int(ssr.ReserveSize),
+			reserveSizeWithinRadius: ssr.ReserveSizeWithinRadius,
+			storageRadius:           ssr.StorageRadius,
+			commitment:              ssr.BatchCommitment,
 		}
 
 		statusSvc := status.NewService(
@@ -109,13 +111,17 @@ func (m *topologyPeersIterNoopMock) IsReachable() bool {
 //   - status.SyncReporter
 //   - postage.CommitmentGetter
 type statusSnapshotMock struct {
-	syncRate      float64
-	reserveSize   int
-	storageRadius uint8
-	commitment    uint64
+	syncRate                float64
+	reserveSize             int
+	reserveSizeWithinRadius uint64
+	storageRadius           uint8
+	commitment              uint64
 }
 
 func (m *statusSnapshotMock) SyncRate() float64           { return m.syncRate }
 func (m *statusSnapshotMock) ReserveSize() int            { return m.reserveSize }
 func (m *statusSnapshotMock) StorageRadius() uint8        { return m.storageRadius }
 func (m *statusSnapshotMock) Commitment() (uint64, error) { return m.commitment, nil }
+func (m *statusSnapshotMock) ReserveSizeWithinRadius(uint8) (uint64, error) {
+	return m.reserveSizeWithinRadius, nil
+}
