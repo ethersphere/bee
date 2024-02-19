@@ -30,8 +30,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/manifest"
 	"github.com/ethersphere/bee/v2/pkg/postage"
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
-	storer "github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/ethersphere/bee/v2/pkg/tracing"
@@ -63,14 +63,16 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 	defer span.Finish()
 
 	headers := struct {
-		ContentType string           `map:"Content-Type,mimeMediaType" validate:"required"`
-		BatchID     []byte           `map:"Swarm-Postage-Batch-Id" validate:"required"`
-		SwarmTag    uint64           `map:"Swarm-Tag"`
-		Pin         bool             `map:"Swarm-Pin"`
-		Deferred    *bool            `map:"Swarm-Deferred-Upload"`
-		Encrypt     bool             `map:"Swarm-Encrypt"`
-		IsDir       bool             `map:"Swarm-Collection"`
-		RLevel      redundancy.Level `map:"Swarm-Redundancy-Level"`
+		ContentType    string           `map:"Content-Type,mimeMediaType" validate:"required"`
+		BatchID        []byte           `map:"Swarm-Postage-Batch-Id" validate:"required"`
+		SwarmTag       uint64           `map:"Swarm-Tag"`
+		Pin            bool             `map:"Swarm-Pin"`
+		Deferred       *bool            `map:"Swarm-Deferred-Upload"`
+		Encrypt        bool             `map:"Swarm-Encrypt"`
+		IsDir          bool             `map:"Swarm-Collection"`
+		RLevel         redundancy.Level `map:"Swarm-Redundancy-Level"`
+		Act            bool             `map:"Swarm-Act"`
+		HistoryAddress swarm.Address    `map:"Swarm-Act-History-Address"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -134,10 +136,10 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if headers.IsDir || headers.ContentType == multiPartFormData {
-		s.dirUploadHandler(ctx, logger, span, ow, r, putter, r.Header.Get(ContentTypeHeader), headers.Encrypt, tag, headers.RLevel)
+		s.dirUploadHandler(ctx, logger, span, ow, r, putter, r.Header.Get(ContentTypeHeader), headers.Encrypt, tag, headers.RLevel, headers.Act, headers.HistoryAddress)
 		return
 	}
-	s.fileUploadHandler(ctx, logger, span, ow, r, putter, headers.Encrypt, tag, headers.RLevel)
+	s.fileUploadHandler(ctx, logger, span, ow, r, putter, headers.Encrypt, tag, headers.RLevel, headers.Act, headers.HistoryAddress)
 }
 
 // fileUploadResponse is returned when an HTTP request to upload a file is successful
@@ -157,6 +159,8 @@ func (s *Service) fileUploadHandler(
 	encrypt bool,
 	tagID uint64,
 	rLevel redundancy.Level,
+	act bool,
+	historyAddress swarm.Address,
 ) {
 	queries := struct {
 		FileName string `map:"name" validate:"startsnotwith=/"`
@@ -262,6 +266,15 @@ func (s *Service) fileUploadHandler(
 	}
 	logger.Debug("store", "manifest_reference", manifestReference)
 
+	encryptedReference := manifestReference
+	if act {
+		encryptedReference, err = s.actEncryptionHandler(r.Context(), w, putter, manifestReference, historyAddress)
+		if err != nil {
+			jsonhttp.InternalServerError(w, errActUpload)
+			return
+		}
+	}
+
 	err = putter.Done(manifestReference)
 	if err != nil {
 		logger.Debug("done split failed", "error", err)
@@ -270,18 +283,18 @@ func (s *Service) fileUploadHandler(
 		ext.LogError(span, err, olog.String("action", "putter.Done"))
 		return
 	}
-
 	span.LogFields(olog.Bool("success", true))
-	span.SetTag("root_address", manifestReference)
+	span.SetTag("root_address", encryptedReference)
 
 	if tagID != 0 {
 		w.Header().Set(SwarmTagHeader, fmt.Sprint(tagID))
 		span.SetTag("tagID", tagID)
 	}
-	w.Header().Set(ETagHeader, fmt.Sprintf("%q", manifestReference.String()))
+	w.Header().Set(ETagHeader, fmt.Sprintf("%q", encryptedReference.String()))
 	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
+
 	jsonhttp.Created(w, bzzUploadResponse{
-		Reference: manifestReference,
+		Reference: encryptedReference,
 	})
 }
 
@@ -297,11 +310,16 @@ func (s *Service) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	address := paths.Address
+	if v := getAddressFromContext(r.Context()); !v.IsZero() {
+		address = v
+	}
+
 	if strings.HasSuffix(paths.Path, "/") {
 		paths.Path = strings.TrimRight(paths.Path, "/") + "/" // NOTE: leave one slash if there was some.
 	}
 
-	s.serveReference(logger, paths.Address, paths.Path, w, r, false)
+	s.serveReference(logger, address, paths.Path, w, r, false)
 }
 
 func (s *Service) bzzHeadHandler(w http.ResponseWriter, r *http.Request) {
@@ -316,11 +334,16 @@ func (s *Service) bzzHeadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	address := paths.Address
+	if v := getAddressFromContext(r.Context()); !v.IsZero() {
+		address = v
+	}
+
 	if strings.HasSuffix(paths.Path, "/") {
 		paths.Path = strings.TrimRight(paths.Path, "/") + "/" // NOTE: leave one slash if there was some.
 	}
 
-	s.serveReference(logger, paths.Address, paths.Path, w, r, true)
+	s.serveReference(logger, address, paths.Path, w, r, true)
 }
 
 func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathVar string, w http.ResponseWriter, r *http.Request, headerOnly bool) {

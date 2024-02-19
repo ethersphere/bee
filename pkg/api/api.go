@@ -28,6 +28,7 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/accounting"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/dynamicaccess"
 	"github.com/ethersphere/bee/v2/pkg/feeds"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline/builder"
@@ -84,6 +85,10 @@ const (
 	SwarmRedundancyFallbackModeHeader = "Swarm-Redundancy-Fallback-Mode"
 	SwarmChunkRetrievalTimeoutHeader  = "Swarm-Chunk-Retrieval-Timeout"
 	SwarmLookAheadBufferSizeHeader    = "Swarm-Lookahead-Buffer-Size"
+	SwarmActHeader                    = "Swarm-Act"
+	SwarmActTimestampHeader           = "Swarm-Act-Timestamp"
+	SwarmActPublisherHeader           = "Swarm-Act-Publisher"
+	SwarmActHistoryAddressHeader      = "Swarm-Act-History-Address"
 
 	ImmutableHeader = "Immutable"
 	GasPriceHeader  = "Gas-Price"
@@ -116,6 +121,8 @@ var (
 	errBatchUnusable                    = errors.New("batch not usable")
 	errUnsupportedDevNodeOperation      = errors.New("operation not supported in dev mode")
 	errOperationSupportedOnlyInFullMode = errors.New("operation is supported only in full mode")
+	errActDownload                      = errors.New("act download failed")
+	errActUpload                        = errors.New("act upload failed")
 
 	batchIdOrStampSig = fmt.Sprintf("Either '%s' or '%s' header must be set in the request", SwarmPostageStampHeader, SwarmPostageBatchIdHeader)
 )
@@ -147,6 +154,7 @@ type Service struct {
 	feedFactory     feeds.Factory
 	signer          crypto.Signer
 	post            postage.Service
+	dac             dynamicaccess.Controller
 	postageContract postagecontract.Interface
 	probe           *Probe
 	metricsRegistry *prometheus.Registry
@@ -243,6 +251,7 @@ type ExtraOptions struct {
 	Pss             pss.Interface
 	FeedFactory     feeds.Factory
 	Post            postage.Service
+	Dac             dynamicaccess.Controller
 	PostageContract postagecontract.Interface
 	Staking         staking.Contract
 	Steward         steward.Interface
@@ -325,6 +334,7 @@ func (s *Service) Configure(signer crypto.Signer, tracer *tracing.Tracer, o Opti
 	s.pss = e.Pss
 	s.feedFactory = e.FeedFactory
 	s.post = e.Post
+	s.dac = e.Dac
 	s.postageContract = e.PostageContract
 	s.steward = e.Steward
 	s.stakingContract = e.Staking

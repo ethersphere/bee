@@ -5,6 +5,7 @@
 package testing
 
 import (
+	"crypto/ecdsa"
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/cac"
@@ -40,6 +41,41 @@ func GenerateMockSOC(t *testing.T, data []byte) *MockSOC {
 	if err != nil {
 		t.Fatal(err)
 	}
+	signer := crypto.NewDefaultSigner(privKey)
+	owner, err := signer.EthereumAddress()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ch, err := cac.New(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	id := make([]byte, swarm.HashSize)
+	hasher := swarm.NewHasher()
+	_, err = hasher.Write(append(id, ch.Address().Bytes()...))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	signature, err := signer.Sign(hasher.Sum(nil))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return &MockSOC{
+		ID:           id,
+		Owner:        owner.Bytes(),
+		Signature:    signature,
+		WrappedChunk: ch,
+	}
+}
+
+// GenerateMockSOC generates a valid mocked SOC from given data and key.
+func GenerateMockSOCWithKey(t *testing.T, data []byte, privKey *ecdsa.PrivateKey) *MockSOC {
+	t.Helper()
+
 	signer := crypto.NewDefaultSigner(privKey)
 	owner, err := signer.EthereumAddress()
 	if err != nil {

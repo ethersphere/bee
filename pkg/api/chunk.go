@@ -31,9 +31,11 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("post_chunk").Build()
 
 	headers := struct {
-		BatchID  []byte `map:"Swarm-Postage-Batch-Id"`
-		StampSig []byte `map:"Swarm-Postage-Stamp"`
-		SwarmTag uint64 `map:"Swarm-Tag"`
+		BatchID        []byte        `map:"Swarm-Postage-Batch-Id"`
+		StampSig       []byte        `map:"Swarm-Postage-Stamp"`
+		SwarmTag       uint64        `map:"Swarm-Tag"`
+		Act            bool          `map:"Swarm-Act"`
+		HistoryAddress swarm.Address `map:"Swarm-Act-History-Address"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -166,6 +168,15 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	encryptedReference := chunk.Address()
+	if headers.Act {
+		encryptedReference, err = s.actEncryptionHandler(r.Context(), w, putter, chunk.Address(), headers.HistoryAddress)
+		if err != nil {
+			jsonhttp.InternalServerError(w, errActUpload)
+			return
+		}
+	}
+
 	err = putter.Put(r.Context(), chunk)
 	if err != nil {
 		logger.Debug("chunk upload: write chunk failed", "chunk_address", chunk.Address(), "error", err)
@@ -194,7 +205,7 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
-	jsonhttp.Created(w, chunkAddressResponse{Reference: chunk.Address()})
+	jsonhttp.Created(w, chunkAddressResponse{Reference: encryptedReference})
 }
 
 func (s *Service) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
@@ -221,15 +232,20 @@ func (s *Service) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	chunk, err := s.storer.Download(cache).Get(r.Context(), paths.Address)
+	address := paths.Address
+	if v := getAddressFromContext(r.Context()); !v.IsZero() {
+		address = v
+	}
+
+	chunk, err := s.storer.Download(cache).Get(r.Context(), address)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			loggerV1.Debug("chunk not found", "address", paths.Address)
+			loggerV1.Debug("chunk not found", "address", address)
 			jsonhttp.NotFound(w, "chunk not found")
 			return
 
 		}
-		logger.Debug("read chunk failed", "chunk_address", paths.Address, "error", err)
+		logger.Debug("read chunk failed", "chunk_address", address, "error", err)
 		logger.Error(nil, "read chunk failed")
 		jsonhttp.InternalServerError(w, "read chunk failed")
 		return
