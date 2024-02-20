@@ -477,3 +477,31 @@ func IterateCollectionStats(st storage.Store, iterateFn func(st CollectionStat) 
 		},
 	)
 }
+
+func IteratePinnedChunks(st storage.Store, fn func(addr swarm.Address) (bool, error)) error {
+	var stop bool
+	err := st.Iterate(storage.Query{
+		Factory: func() storage.Item { return new(pinCollectionItem) },
+	}, func(r storage.Result) (bool, error) {
+		UUID := r.Entry.(*pinCollectionItem).UUID
+		err := st.Iterate(storage.Query{
+			Factory:      func() storage.Item { return &pinChunkItem{UUID: UUID} },
+			ItemProperty: storage.QueryItemID,
+		}, func(r storage.Result) (bool, error) {
+			addr := swarm.NewAddress([]byte(r.ID))
+			stop, err := fn(addr)
+			if err != nil {
+				return true, err
+			}
+			return stop, nil
+		})
+		if err != nil {
+			return true, err
+		}
+		return stop, nil
+	})
+	if err != nil {
+		return fmt.Errorf("pin store: failed iterating root refs: %w", err)
+	}
+	return nil
+}

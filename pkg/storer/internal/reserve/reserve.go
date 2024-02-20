@@ -510,3 +510,19 @@ func (r *Reserve) IncBinID(store storage.Store, bin uint8) (uint64, error) {
 
 	return item.BinID, store.Put(item)
 }
+
+func IterateReserve(store storage.Store, cb func(*BatchRadiusItem) (bool, error)) error {
+	err := store.Iterate(storage.Query{
+		Factory: func() storage.Item { return &BatchRadiusItem{} },
+	}, func(res storage.Result) (bool, error) {
+		item := res.Entry.(*BatchRadiusItem)
+
+		stop, err := cb(item)
+		if stop || err != nil {
+			return true, err
+		}
+		return false, nil
+	})
+
+	return err
+}
