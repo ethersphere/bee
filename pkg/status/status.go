@@ -37,7 +37,7 @@ type SyncReporter interface {
 // Reserve defines the reserve storage related information required.
 type Reserve interface {
 	ReserveSize() int
-	ReserveSizeWithinRadius(uint8) (uint64, error)
+	ReserveSizeWithinRadius() uint64
 	StorageRadius() uint8
 }
 
@@ -91,11 +91,7 @@ func (s *Service) LocalSnapshot() (*Snapshot, error) {
 	if s.reserve != nil {
 		storageRadius = s.reserve.StorageRadius()
 		reserveSize = uint64(s.reserve.ReserveSize())
-		sizeWithinRadius, err := s.reserve.ReserveSizeWithinRadius(storageRadius)
-		if err != nil {
-			return nil, fmt.Errorf("reserve size within radius: %w", err)
-		}
-		reserveSizeWithinRadius = sizeWithinRadius
+		reserveSizeWithinRadius = s.reserve.ReserveSizeWithinRadius()
 	}
 
 	if s.sync != nil {

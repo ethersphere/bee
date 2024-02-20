@@ -191,6 +191,6 @@ func (m *statusSnapshotMock) SyncRate() float64           { return m.Snapshot.Pu
 func (m *statusSnapshotMock) ReserveSize() int            { return int(m.Snapshot.ReserveSize) }
 func (m *statusSnapshotMock) StorageRadius() uint8        { return uint8(m.Snapshot.StorageRadius) }
 func (m *statusSnapshotMock) Commitment() (uint64, error) { return m.Snapshot.BatchCommitment, nil }
-func (m *statusSnapshotMock) ReserveSizeWithinRadius(uint8) (uint64, error) {
-	return m.Snapshot.ReserveSizeWithinRadius, nil
+func (m *statusSnapshotMock) ReserveSizeWithinRadius() uint64 {
+	return m.Snapshot.ReserveSizeWithinRadius
 }
