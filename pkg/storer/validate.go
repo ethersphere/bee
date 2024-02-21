@@ -357,7 +357,7 @@ func getInvalidChunks(logger log.Logger, store storage.Store, readFn func(contex
 				err = store.Get(&sharedEntry)
 				if err != nil {
 					logger.Warning("no shared entry found")
-					return false, nil
+					return false, err
 				}
 
 				logger.Warning("retrieved chunk with shared slot", "shared_address", sharedEntry.Address, "shared_timestamp", time.Unix(int64(sharedEntry.Timestamp), 0))
