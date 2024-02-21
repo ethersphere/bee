@@ -1043,6 +1043,8 @@ components:
       description: "Determines if the download data should be cached on the node. By default the download will be cached"
 
   responses:
+    "200":
+      description: OK.
     "204":
       description: The resource was deleted successfully.
     "400":
