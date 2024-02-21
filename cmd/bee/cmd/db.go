@@ -47,6 +47,8 @@ func (c *command) initDBCmd() {
 	dbCompactCmd(cmd)
 	dbValidateCmd(cmd)
 	dbValidatePinsCmd(cmd)
+	dbFixRefCntCmd(cmd)
+	dbFixSharkyCmd(cmd)
 
 	c.root.AddCommand(cmd)
 }
