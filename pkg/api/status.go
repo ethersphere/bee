@@ -17,17 +17,18 @@ import (
 )
 
 type statusSnapshotResponse struct {
-	Peer             string  `json:"peer"`
-	Proximity        uint8   `json:"proximity"`
-	BeeMode          string  `json:"beeMode"`
-	ReserveSize      uint64  `json:"reserveSize"`
-	PullsyncRate     float64 `json:"pullsyncRate"`
-	StorageRadius    uint8   `json:"storageRadius"`
-	ConnectedPeers   uint64  `json:"connectedPeers"`
-	NeighborhoodSize uint64  `json:"neighborhoodSize"`
-	RequestFailed    bool    `json:"requestFailed,omitempty"`
-	BatchCommitment  uint64  `json:"batchCommitment"`
-	IsReachable      bool    `json:"isReachable"`
+	Peer                    string  `json:"peer"`
+	Proximity               uint8   `json:"proximity"`
+	BeeMode                 string  `json:"beeMode"`
+	ReserveSize             uint64  `json:"reserveSize"`
+	ReserveSizeWithinRadius uint64  `json:"reserveSizeWithinRadius"`
+	PullsyncRate            float64 `json:"pullsyncRate"`
+	StorageRadius           uint8   `json:"storageRadius"`
+	ConnectedPeers          uint64  `json:"connectedPeers"`
+	NeighborhoodSize        uint64  `json:"neighborhoodSize"`
+	RequestFailed           bool    `json:"requestFailed,omitempty"`
+	BatchCommitment         uint64  `json:"batchCommitment"`
+	IsReachable             bool    `json:"isReachable"`
 }
 
 type statusResponse struct {
@@ -70,15 +71,16 @@ func (s *Service) statusGetHandler(w http.ResponseWriter, _ *http.Request) {
 	}
 
 	jsonhttp.OK(w, statusSnapshotResponse{
-		Peer:             s.overlay.String(),
-		BeeMode:          ss.BeeMode,
-		ReserveSize:      ss.ReserveSize,
-		PullsyncRate:     ss.PullsyncRate,
-		StorageRadius:    uint8(ss.StorageRadius),
-		ConnectedPeers:   ss.ConnectedPeers,
-		NeighborhoodSize: ss.NeighborhoodSize,
-		BatchCommitment:  ss.BatchCommitment,
-		IsReachable:      ss.IsReachable,
+		Peer:                    s.overlay.String(),
+		BeeMode:                 ss.BeeMode,
+		ReserveSize:             ss.ReserveSize,
+		ReserveSizeWithinRadius: ss.ReserveSizeWithinRadius,
+		PullsyncRate:            ss.PullsyncRate,
+		StorageRadius:           uint8(ss.StorageRadius),
+		ConnectedPeers:          ss.ConnectedPeers,
+		NeighborhoodSize:        ss.NeighborhoodSize,
+		BatchCommitment:         ss.BatchCommitment,
+		IsReachable:             ss.IsReachable,
 	})
 }
 
@@ -118,6 +120,7 @@ func (s *Service) statusGetPeersHandler(w http.ResponseWriter, r *http.Request) 
 			} else {
 				snapshot.BeeMode = ss.BeeMode
 				snapshot.ReserveSize = ss.ReserveSize
+				snapshot.ReserveSizeWithinRadius = ss.ReserveSizeWithinRadius
 				snapshot.PullsyncRate = ss.PullsyncRate
 				snapshot.StorageRadius = uint8(ss.StorageRadius)
 				snapshot.ConnectedPeers = ss.ConnectedPeers
