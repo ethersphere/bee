@@ -35,6 +35,7 @@ func reserveUpdateBatchLockKey(batchID []byte) string {
 }
 
 var errMaxRadius = errors.New("max radius reached")
+var reserveSizeWithinRadius atomic.Uint64
 
 type Syncer interface {
 	// Number of active historical syncing jobs.
@@ -137,6 +138,7 @@ func (db *DB) reserveSizeWithinRadiusWorker(ctx context.Context) {
 		if err != nil {
 			db.logger.Error(err, "reserve count within radius")
 		}
+		reserveSizeWithinRadius.Store(uint64(count))
 
 		for batch := range evictBatches {
 			db.logger.Debug("reserve size worker, invalid batch id", "batch_id", hex.EncodeToString([]byte(batch)))
@@ -472,6 +474,10 @@ func (db *DB) ReserveSize() int {
 		return 0
 	}
 	return db.reserve.Size()
+}
+
+func (db *DB) ReserveSizeWithinRadius() uint64 {
+	return reserveSizeWithinRadius.Load()
 }
 
 func (db *DB) IsWithinStorageRadius(addr swarm.Address) bool {
