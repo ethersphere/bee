@@ -4,14 +4,12 @@
 
 package migration
 
-import storage "github.com/ethersphere/bee/pkg/storage"
-
 // NewStepsChain returns new StepFn which combines all supplied StepFn
 // into single StepFn.
 func NewStepsChain(steps ...StepFn) StepFn {
-	return func(s storage.BatchedStore) error {
+	return func() error {
 		for _, stepFn := range steps {
-			if err := stepFn(s); err != nil {
+			if err := stepFn(); err != nil {
 				return err
 			}
 		}

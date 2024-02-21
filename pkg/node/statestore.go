@@ -32,10 +32,7 @@ func InitStateStore(logger log.Logger, dataDir string, cacheCapacity uint64) (st
 		return nil, nil, err
 	}
 
-	caching, err := cache.Wrap(ldb, int(cacheCapacity))
-	if err != nil {
-		return nil, nil, err
-	}
+	caching := cache.MustWrap(ldb, int(cacheCapacity))
 	stateStore, err := storeadapter.NewStateStorerAdapter(caching)
 
 	return stateStore, caching, err

@@ -6,8 +6,6 @@ package storage
 
 import (
 	"context"
-	"fmt"
-	"io"
 
 	"github.com/ethersphere/bee/pkg/swarm"
 )
@@ -68,7 +66,6 @@ type ChunkGetterDeleter interface {
 }
 
 type ChunkStore interface {
-	io.Closer
 	Getter
 	Putter
 	Deleter
@@ -81,54 +78,4 @@ type ChunkStore interface {
 type ReadOnlyChunkStore interface {
 	Getter
 	Hasser
-}
-
-type SizeReporter interface {
-	Size() (uint64, error)
-	Capacity() uint64
-}
-
-// Descriptor holds information required for Pull syncing. This struct
-// is provided by subscribing to pull index.
-type Descriptor struct {
-	Address swarm.Address
-	BinID   uint64
-}
-
-func (d *Descriptor) String() string {
-	if d == nil {
-		return ""
-	}
-	return fmt.Sprintf("%s bin id %v", d.Address, d.BinID)
-}
-
-type PullSubscriber interface {
-	SubscribePull(ctx context.Context, bin uint8, since, until uint64) (c <-chan Descriptor, closed <-chan struct{}, stop func())
-}
-
-type PushSubscriber interface {
-	SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, stop func())
-}
-
-type ChunkState = int
-
-const (
-	// ChunkSent is used by the pusher component to notify about successful push of chunk from
-	// the node. A chunk could be retried on failure so, this sent count is maintained to
-	// understand how many attempts were made by the node while pushing. The attempts are
-	// registered only when an actual request was sent from this node.
-	ChunkSent ChunkState = iota
-	// ChunkStored is used by the pusher component to notify that the uploader node is
-	// the closest node and has stored the chunk.
-	ChunkStored
-	// ChunkSynced is used by the pusher component to notify that the chunk is synced to the
-	// network. This is reported when a valid receipt was received after the chunk was
-	// pushed.
-	ChunkSynced
-	ChunkCouldNotSync
-)
-
-// PushReporter is used to report chunk state.
-type PushReporter interface {
-	Report(context.Context, swarm.Chunk, ChunkState) error
 }

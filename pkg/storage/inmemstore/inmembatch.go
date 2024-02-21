@@ -38,12 +38,12 @@ type Batch struct {
 }
 
 // Batch implements storage.BatchedStore interface Batch method.
-func (s *Store) Batch(ctx context.Context) (storage.Batch, error) {
+func (s *Store) Batch(ctx context.Context) storage.Batch {
 	return &Batch{
 		ctx:   ctx,
 		ops:   make(map[string]batchOp),
 		store: s,
-	}, nil
+	}
 }
 
 // Put implements storage.Batch interface Put method.

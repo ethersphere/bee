@@ -46,7 +46,6 @@ func TestDBExportImport(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		fmt.Println("put chunk: ", ch.Address().String())
 		chunks[ch.Address().String()] = 0
 	}
 	db1.Close()
@@ -115,7 +114,6 @@ func TestDBExportImportPinning(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			fmt.Println("collection ", rootAddr.String(), " put chunk: ", ch.Address().String())
 			chunks[ch.Address().String()] = 0
 		}
 		err = collection.Done(rootAddr)
@@ -125,16 +123,9 @@ func TestDBExportImportPinning(t *testing.T) {
 		pins[rootAddr.String()] = nil
 	}
 
-	addresses, err := db1.Pins()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, addr := range addresses {
-		fmt.Println("pin: ", addr.String())
-	}
 	db1.Close()
 
-	err = newCommand(t, cmd.WithArgs("db", "export", "pinning", export, "--data-dir", dir1)).Execute()
+	err := newCommand(t, cmd.WithArgs("db", "export", "pinning", export, "--data-dir", dir1)).Execute()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +141,7 @@ func TestDBExportImportPinning(t *testing.T) {
 		Logger:          testutil.NewLogger(t),
 		ReserveCapacity: node.ReserveCapacity,
 	}, dir2)
-	addresses, err = db2.Pins()
+	addresses, err := db2.Pins()
 	if err != nil {
 		t.Fatal(err)
 	}
