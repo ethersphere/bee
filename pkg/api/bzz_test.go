@@ -507,8 +507,18 @@ func TestBzzFiles(t *testing.T) {
 			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "text/html; charset=utf-8"),
 			jsonhttptest.WithNonEmptyResponseHeader(api.SwarmTagHeader),
 		)
-	})
 
+		t.Run("head", func(t *testing.T) {
+			rootHash := "65148cd89b58e91616773f5acea433f7b5a6274f2259e25f4893a332b74a7e28"
+
+			jsonhttptest.Request(t, client, http.MethodHead, fileDownloadResource(rootHash), http.StatusOK,
+				jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+				jsonhttptest.WithRequestBody(bytes.NewReader(simpleData)),
+				jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "text/html; charset=utf-8"),
+				jsonhttptest.WithExpectedContentLength(21),
+			)
+		})
+	})
 }
 
 // TestRangeRequests validates that all endpoints are serving content with
