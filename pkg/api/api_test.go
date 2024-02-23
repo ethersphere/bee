@@ -399,7 +399,6 @@ func TestParseName(t *testing.T) {
 		s.Configure(signer, nil, nil, api.Options{}, api.ExtraOptions{Resolver: tC.res}, 1, nil)
 		s.MountAPI()
 
-		tC := tC
 		t.Run(tC.desc, func(t *testing.T) {
 			t.Parallel()
 
@@ -555,7 +554,7 @@ func TestOptions(t *testing.T) {
 			expectedMethods: "GET, HEAD",
 		},
 	} {
-		tc := tc
+
 		t.Run(tc.endpoint+" options test", func(t *testing.T) {
 			t.Parallel()
 
