@@ -179,6 +179,26 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         default:
           description: Default response
+    head:
+      summary: Requests the headers containing the content type and length for the reference
+      tags:
+        - Bytes
+      parameters:
+        - in: path
+          name: address
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
+          required: true
+          description: Swarm address of chunk
+      responses:
+        "200":
+          description: Chunk exists
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
+        default:
+          description: Default response
 
   "/chunks":
     post:
@@ -330,6 +350,26 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/404"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+    head:
+      summary: Get the headers containing the content type and length for the reference
+      tags:
+        - BZZ
+      parameters:
+        - in: path
+          name: address
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
+          required: true
+          description: Swarm address of chunk
+      responses:
+        "200":
+          description: Chunk exists
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
         default:
           description: Default response
 
