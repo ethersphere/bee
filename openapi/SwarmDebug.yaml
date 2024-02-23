@@ -1133,3 +1133,34 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         default:
           description: Default response.
+
+  "/split":
+    post:
+      summary: "Split data into chunks with redundancy"
+      tags:
+        - Chunk
+      parameters:
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
+      requestBody:
+        description: Binary data to be split into chunks
+        content:
+          application/octet-stream:
+            schema:
+              type: string
+              format: binary
+      responses:
+        "200":
+          description: Chunks [reference+data]
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "402":
+          $ref: "SwarmCommon.yaml#/components/responses/402"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response

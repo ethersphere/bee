@@ -403,6 +403,10 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 		"GET": http.HandlerFunc(s.hasChunkHandler),
 	})
 
+	handle("/split", jsonhttp.MethodHandler{
+		"POST": http.HandlerFunc(s.splitHandler),
+	})
+
 	handle("/topology", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.topologyHandler),
 	})
