@@ -332,7 +332,7 @@ func (s *Service) GetWelcomeMessage() string {
 }
 
 func buildFullMA(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) {
-	return ma.NewMultiaddr(fmt.Sprintf("%s/p2p/%s", addr.String(), peerID.Pretty()))
+	return ma.NewMultiaddr(fmt.Sprintf("%s/p2p/%s", addr.String(), peerID.String()))
 }
 
 func (s *Service) parseCheckAck(ack *pb.Ack) (*bzz.Address, error) {

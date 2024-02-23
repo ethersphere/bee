@@ -165,7 +165,6 @@ Run tests in parallel where possible but don't forget about variable scope gotch
 
 ```go
 for tc := range tt {
-  tc := tc // must not forget this
   t.Run(tc.name, func(t *testing.T) {
     t.Parallel()
     //execute

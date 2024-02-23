@@ -695,7 +695,7 @@ func (s *Service) Blocklist(overlay swarm.Address, duration time.Duration, reaso
 }
 
 func buildHostAddress(peerID libp2ppeer.ID) (ma.Multiaddr, error) {
-	return ma.NewMultiaddr(fmt.Sprintf("/p2p/%s", peerID.Pretty()))
+	return ma.NewMultiaddr(fmt.Sprintf("/p2p/%s", peerID.String()))
 }
 
 func buildUnderlayAddress(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) {
