@@ -56,7 +56,7 @@ issues:
     - linters:
         - goheader
       text: "go-ethereum Authors" ## disable check for other authors
-    - path: _test\.go
+    - path: '(.+)_test\.go'
       linters:
         - goconst ## temporally disable goconst in test
     - linters:
