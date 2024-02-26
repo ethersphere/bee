@@ -145,7 +145,6 @@ func TestStampItem(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
 
 		t.Run(fmt.Sprintf("%s marshal/unmarshal", tc.name), func(t *testing.T) {
 			t.Parallel()

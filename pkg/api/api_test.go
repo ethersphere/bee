@@ -467,7 +467,6 @@ func TestPostageHeaderError(t *testing.T) {
 	)
 	content := []byte{7: 0} // 8 zeros
 	for _, endpoint := range endpoints {
-		endpoint := endpoint
 		t.Run(endpoint+": empty batch", func(t *testing.T) {
 			t.Parallel()
 
@@ -571,7 +570,6 @@ func TestPostageDirectAndDeferred(t *testing.T) {
 	t.Parallel()
 
 	for _, endpoint := range []string{"bytes", "bzz", "chunks"} {
-		endpoint := endpoint
 
 		if endpoint != "chunks" {
 			t.Run(endpoint+" deferred", func(t *testing.T) {

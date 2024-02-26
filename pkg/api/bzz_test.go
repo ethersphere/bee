@@ -209,10 +209,9 @@ func TestBzzUploadDownloadWithRedundancy(t *testing.T) {
 		})
 	}
 	for _, rLevel := range []redundancy.Level{1, 2, 3, 4} {
-		rLevel := rLevel
+
 		t.Run(fmt.Sprintf("level=%d", rLevel), func(t *testing.T) {
 			for _, encrypt := range []bool{false, true} {
-				encrypt := encrypt
 				shardCnt := rLevel.GetMaxShards()
 				parityCnt := rLevel.GetParities(shardCnt)
 				if encrypt {
@@ -229,7 +228,6 @@ func TestBzzUploadDownloadWithRedundancy(t *testing.T) {
 					case 3:
 						chunkCnt = shardCnt*shardCnt + 1
 					}
-					levels := levels
 					t.Run(fmt.Sprintf("encrypt=%v levels=%d chunks=%d", encrypt, levels, chunkCnt), func(t *testing.T) {
 						if levels > 2 && (encrypt == (rLevel%2 == 1)) {
 							t.Skip("skipping to save time")
@@ -618,7 +616,7 @@ func TestBzzFilesRangeRequests(t *testing.T) {
 	}
 
 	for _, upload := range uploads {
-		upload := upload
+
 		t.Run(upload.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -885,7 +883,6 @@ func Test_bzzDownloadHandler_invalidInputs(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

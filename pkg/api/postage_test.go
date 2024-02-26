@@ -790,8 +790,6 @@ func TestPostageAccessHandler(t *testing.T) {
 
 	for _, op1 := range success {
 		for _, op2 := range failure {
-			op1 := op1
-			op2 := op2
 			t.Run(op1.name+"-"+op2.name, func(t *testing.T) {
 				t.Parallel()
 
@@ -935,7 +933,7 @@ func Test_postageGetStampBucketsHandler_invalidInputs(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
+
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -997,7 +995,7 @@ func Test_postageGetStampHandler_invalidInputs(t *testing.T) {
 	}}
 
 	for _, tc := range tests {
-		tc := tc
+
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

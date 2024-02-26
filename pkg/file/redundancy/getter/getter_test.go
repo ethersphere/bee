@@ -337,8 +337,7 @@ func checkShardsAvailable(t *testing.T, s storage.ChunkStore, addrs []swarm.Addr
 	t.Helper()
 	eg, ctx := errgroup.WithContext(context.Background())
 	for i, addr := range addrs {
-		i := i
-		addr := addr
+
 		eg.Go(func() (err error) {
 			var delay time.Duration
 			var ch swarm.Chunk

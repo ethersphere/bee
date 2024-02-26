@@ -42,7 +42,7 @@ func TestAuthorize(t *testing.T) {
 		},
 	}
 	for _, tC := range tt {
-		tC := tC
+
 		t.Run(tC.desc, func(t *testing.T) {
 			t.Parallel()
 
@@ -130,7 +130,7 @@ func TestEnforce(t *testing.T) {
 	}
 
 	for _, tC := range tt {
-		tC := tC
+
 		t.Run(tC.desc, func(t *testing.T) {
 			t.Parallel()
 

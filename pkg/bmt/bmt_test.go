@@ -60,7 +60,7 @@ func TestHasherEmptyData(t *testing.T) {
 	t.Parallel()
 
 	for _, count := range testSegmentCounts {
-		count := count
+
 		t.Run(fmt.Sprintf("%d_segments", count), func(t *testing.T) {
 			t.Parallel()
 
@@ -88,7 +88,7 @@ func TestSyncHasherCorrectness(t *testing.T) {
 	testData := testutil.RandBytesWithSeed(t, 4096, seed)
 
 	for _, count := range testSegmentCounts {
-		count := count
+
 		t.Run(fmt.Sprintf("segments_%v", count), func(t *testing.T) {
 			t.Parallel()
 			max := count * hashSize

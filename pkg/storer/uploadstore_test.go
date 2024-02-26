@@ -83,7 +83,7 @@ func testUploadStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 			pin:    true,
 		},
 	} {
-		tc := tc
+
 		testName := fmt.Sprintf("upload_%d_chunks", len(tc.chunks))
 		if tc.pin {
 			testName += "_with_pin"

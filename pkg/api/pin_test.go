@@ -172,9 +172,9 @@ func TestPinHandlersInvalidInputs(t *testing.T) {
 	}}
 
 	for _, method := range []string{http.MethodGet, http.MethodPost, http.MethodDelete} {
-		method := method
+
 		for _, tc := range tests {
-			tc := tc
+
 			t.Run(method+" "+tc.name, func(t *testing.T) {
 				t.Parallel()
 

@@ -100,7 +100,7 @@ func TestEntries(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range makeTestCases(t) {
-		tc := tc
+
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -198,7 +198,7 @@ func TestMarshal(t *testing.T) {
 	t.Parallel()
 
 	for _, tc := range makeTestCases(t) {
-		tc := tc
+
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -271,7 +271,7 @@ func TestHasPrefix(t *testing.T) {
 			},
 		},
 	} {
-		tc := tc
+
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

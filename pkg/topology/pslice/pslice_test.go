@@ -276,7 +276,7 @@ func TestBinPeers(t *testing.T) {
 			label:      "full-bins",
 		},
 	} {
-		tc := tc
+
 		t.Run(tc.label, func(t *testing.T) {
 			t.Parallel()
 

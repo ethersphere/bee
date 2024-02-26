@@ -173,7 +173,7 @@ func TestNewMaxBodyBytesHandler(t *testing.T) {
 			wantCode:             http.StatusRequestEntityTooLarge,
 		},
 	} {
-		tc := tc
+
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

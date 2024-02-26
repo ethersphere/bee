@@ -125,7 +125,7 @@ func makeChunks(t *testing.T, signer crypto.Signer, sampleSize int, filterSOCAdd
 	count := 8 // number of parallel workers
 	wg := sync.WaitGroup{}
 	for i := 0; i < count; i++ {
-		i := i
+
 		wg.Add(1)
 		eg.Go(func() (err error) {
 			offset := i * 4

@@ -41,7 +41,6 @@ func TestWalkNode(t *testing.T) {
 		},
 	} {
 		ctx := context.Background()
-		tc := tc
 
 		createTree := func(t *testing.T, toAdd [][]byte) *mantaray.Node {
 			t.Helper()
@@ -198,7 +197,6 @@ func TestWalk(t *testing.T) {
 			return pathFound
 		}
 
-		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

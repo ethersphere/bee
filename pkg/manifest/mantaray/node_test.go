@@ -136,7 +136,7 @@ func TestAddAndLookupNode(t *testing.T) {
 		},
 	} {
 		ctx := context.Background()
-		tc := tc
+
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -264,7 +264,7 @@ func TestRemove(t *testing.T) {
 		},
 	} {
 		ctx := context.Background()
-		tc := tc
+
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -354,7 +354,7 @@ func TestHasPrefix(t *testing.T) {
 		},
 	} {
 		ctx := context.Background()
-		tc := tc
+
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

@@ -89,7 +89,6 @@ func TestChunkInvariantsNew(t *testing.T) {
 			wantErr: nil,
 		},
 	} {
-		cc := cc
 		t.Run(cc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -135,7 +134,6 @@ func TestChunkInvariantsNewWithDataSpan(t *testing.T) {
 			wantErr: nil,
 		},
 	} {
-		cc := cc
 		t.Run(cc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -219,7 +217,7 @@ func TestInvalid(t *testing.T) {
 			),
 		},
 	} {
-		tc := tc
+
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

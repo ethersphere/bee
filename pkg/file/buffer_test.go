@@ -34,7 +34,7 @@ func TestChunkPipe(t *testing.T) {
 		{swarm.ChunkSize, swarm.ChunkSize},            // on, on
 	}
 	for i, tc := range dataWrites {
-		tc := tc
+
 		t.Run(strconv.Itoa(i), func(t *testing.T) {
 			t.Parallel()
 
@@ -130,7 +130,7 @@ func TestCopyBuffer(t *testing.T) {
 	}
 
 	for _, tc := range testCases {
-		tc := tc
+
 		t.Run(fmt.Sprintf("buf_%-4d/data_size_%d", tc.readBufferSize, tc.dataSize), func(t *testing.T) {
 			t.Parallel()
 
