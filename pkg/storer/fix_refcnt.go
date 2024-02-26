@@ -19,6 +19,15 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
+type ItemInfo struct {
+	item       *chunkstore.RetrievalIndexItem
+	pinCnt     uint32
+	reserveCnt uint32
+	cacheCnt   uint32
+	uploadCnt  uint32
+	batches    [][]byte
+}
+
 // FixRefCnt attempts to correct the RefCnt in all RetrievalIndexItems by scanning the actual chunk referers.
 func FixRefCnt(ctx context.Context, basePath string, opts *Options, repair bool) error {
 	logger := opts.Logger
@@ -69,15 +78,6 @@ func FixRefCnt(ctx context.Context, basePath string, opts *Options, repair bool)
 			return false, nil
 		})
 		logger.Info("pin count finished", "total", pinTotal, "elapsed", time.Since(startPinCount).Round(time.Second))
-	}
-
-	type ItemInfo struct {
-		item       *chunkstore.RetrievalIndexItem
-		pinCnt     uint32
-		reserveCnt uint32
-		cacheCnt   uint32
-		uploadCnt  uint32
-		batches    [][]byte
 	}
 
 	start := time.Now()
@@ -226,7 +226,7 @@ func FixRefCnt(ctx context.Context, basePath string, opts *Options, repair bool)
 		refs := make(map[uint32]uint32)
 		for _, item := range items {
 			refs[item.item.RefCnt]++
-			newRefCnt := item.pinCnt*100 + item.reserveCnt + item.cacheCnt + item.uploadCnt
+			newRefCnt := item.pinCnt + item.reserveCnt + item.cacheCnt + item.uploadCnt
 			if newRefCnt != item.item.RefCnt {
 				discovered++
 				if item.item.RefCnt == 1 && newRefCnt == 0 {
