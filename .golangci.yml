@@ -72,6 +72,9 @@ issues:
       # temporally disable paralleltest in following packages
     - linters:
         - paralleltest
+      text: Range statement for test (.+) does not reinitialise the variable (.+)
+    - linters:
+        - paralleltest
       path: pkg/postage
     - linters:
         - paralleltest
