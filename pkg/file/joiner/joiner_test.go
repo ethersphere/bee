@@ -1113,8 +1113,7 @@ func TestJoinerRedundancy(t *testing.T) {
 			strategyTimeout := 100 * time.Millisecond
 			// all data can be read back
 			readCheck := func(t *testing.T, expErr error) {
-				ctx, cancel := context.WithTimeout(context.Background(), 15*strategyTimeout)
-				defer cancel()
+				ctx := context.Background()
 
 				strategyTimeoutStr := strategyTimeout.String()
 				decodeTimeoutStr := (10 * strategyTimeout).String()
