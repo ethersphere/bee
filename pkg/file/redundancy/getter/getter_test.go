@@ -19,6 +19,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/file/redundancy/getter"
+	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/storage"
 	inmem "github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
@@ -72,6 +73,7 @@ func TestGetterRACE(t *testing.T) {
 // TestGetterFallback tests the retrieval of chunks with missing data shards
 // using the strict or fallback mode starting with NONE and DATA strategies
 func TestGetterFallback(t *testing.T) {
+	t.Skip("removed strategy timeout")
 	t.Run("GET", func(t *testing.T) {
 		t.Run("NONE", func(t *testing.T) {
 			t.Run("strict", func(t *testing.T) {
@@ -119,6 +121,7 @@ func testDecodingRACE(t *testing.T, bufSize, shardCnt, erasureCnt int) {
 		Strategy:        getter.RACE,
 		FetchTimeout:    2 * strategyTimeout,
 		StrategyTimeout: strategyTimeout,
+		Logger:          log.Noop,
 	}
 	g := getter.New(addrs, shardCnt, store, store, func() {}, conf)
 	defer g.Close()

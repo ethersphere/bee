@@ -24,6 +24,7 @@ import (
 	"github.com/ethersphere/bee/pkg/file/redundancy/getter"
 	"github.com/ethersphere/bee/pkg/file/splitter"
 	filetest "github.com/ethersphere/bee/pkg/file/testing"
+	"github.com/ethersphere/bee/pkg/log"
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	testingc "github.com/ethersphere/bee/pkg/storage/testing"
@@ -31,7 +32,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/util/testutil"
 	"github.com/ethersphere/bee/pkg/util/testutil/pseudorand"
-	"github.com/ethersphere/bee/pkg/util/testutil/racedetection"
 	"gitlab.com/nolash/go-mockbytes"
 	"golang.org/x/sync/errgroup"
 )
@@ -1112,15 +1112,14 @@ func TestJoinerRedundancy(t *testing.T) {
 			strategyTimeout := 100 * time.Millisecond
 			// all data can be read back
 			readCheck := func(t *testing.T, expErr error) {
-				ctx, cancel := context.WithTimeout(context.Background(), 15*strategyTimeout)
-				defer cancel()
+				ctx := context.Background()
 
 				strategyTimeoutStr := strategyTimeout.String()
 				decodeTimeoutStr := (10 * strategyTimeout).String()
 				fallback := true
 				s := getter.RACE
 
-				ctx, err := getter.SetConfigInContext(ctx, &s, &fallback, &decodeTimeoutStr, &strategyTimeoutStr)
+				ctx, err := getter.SetConfigInContext(ctx, &s, &fallback, &decodeTimeoutStr, &strategyTimeoutStr, log.Noop)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -1169,14 +1168,14 @@ func TestJoinerRedundancy(t *testing.T) {
 				}
 			}
 			t.Run("no recovery possible with no chunk stored", func(t *testing.T) {
-				readCheck(t, context.DeadlineExceeded)
+				readCheck(t, storage.ErrNotFound)
 			})
 
 			if err := putter.store(shardCnt - 1); err != nil {
 				t.Fatal(err)
 			}
 			t.Run("no recovery possible with 1 short of shardCnt chunks stored", func(t *testing.T) {
-				readCheck(t, context.DeadlineExceeded)
+				readCheck(t, storage.ErrNotFound)
 			})
 
 			if err := putter.store(1); err != nil {
@@ -1253,21 +1252,15 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 		canReadRange := func(t *testing.T, s getter.Strategy, fallback bool, levels int, canRead bool) {
 			ctx := context.Background()
 			strategyTimeout := 100 * time.Millisecond
-			decodingTimeout := 600 * time.Millisecond
-			if racedetection.IsOn() {
-				decodingTimeout *= 2
-			}
 
 			strategyTimeoutStr := strategyTimeout.String()
 			decodingTimeoutStr := (2 * strategyTimeout).String()
 
-			ctx, err := getter.SetConfigInContext(ctx, &s, &fallback, &decodingTimeoutStr, &strategyTimeoutStr)
+			ctx, err := getter.SetConfigInContext(ctx, &s, &fallback, &decodingTimeoutStr, &strategyTimeoutStr, log.Noop)
 			if err != nil {
 				t.Fatal(err)
 			}
 
-			ctx, cancel := context.WithTimeout(ctx, time.Duration(levels)*(3*strategyTimeout+decodingTimeout))
-			defer cancel()
 			j, _, err := joiner.New(ctx, store, store, addr)
 			if err != nil {
 				t.Fatal(err)

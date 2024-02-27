@@ -129,7 +129,7 @@ func New(ctx context.Context, g storage.Getter, putter storage.Putter, address s
 			maxBranching = rLevel.GetMaxShards()
 		}
 	} else {
-		// if root chunk has no redundancy, strategy is ignored and set to NONE and strict is set to true
+		// if root chunk has no redundancy, strategy is ignored and set to DATA and strict is set to true
 		conf.Strategy = getter.DATA
 		conf.Strict = true
 	}
