@@ -109,14 +109,15 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	chunk, err := cac.NewWithDataSpan(data)
+	hash, err := cac.DoHash(data[swarm.SpanSize:], data[:swarm.SpanSize])
 	if err != nil {
-		logger.Debug("chunk upload: create chunk failed", "error", err)
-		logger.Error(nil, "chunk upload: create chunk error")
-		jsonhttp.InternalServerError(ow, "create chunk error")
+		logger.Debug("chunk upload: hash data", "error", err)
+		logger.Error(nil, "chunk upload: hash data error")
+		jsonhttp.InternalServerError(ow, "hash data error")
 		return
 	}
 
+	chunk := swarm.NewChunk(swarm.NewAddress(hash), data)
 	err = putter.Put(r.Context(), chunk)
 	if err != nil {
 		logger.Debug("chunk upload: write chunk failed", "chunk_address", chunk.Address(), "error", err)

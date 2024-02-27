@@ -162,6 +162,9 @@ jobs:
       - name: Test staking
         id: stake
         run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks ci-stake
+      - name: Test redundancy
+        id: redundancy
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks ci-redundancy
       - name: Collect debug artifacts
         if: failure()
         run: |
