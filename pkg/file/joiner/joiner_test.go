@@ -32,7 +32,6 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/util/testutil"
 	"github.com/ethersphere/bee/pkg/util/testutil/pseudorand"
-	"github.com/ethersphere/bee/pkg/util/testutil/racedetection"
 	"gitlab.com/nolash/go-mockbytes"
 	"golang.org/x/sync/errgroup"
 )
@@ -1253,10 +1252,6 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 		canReadRange := func(t *testing.T, s getter.Strategy, fallback bool, levels int, canRead bool) {
 			ctx := context.Background()
 			strategyTimeout := 100 * time.Millisecond
-			decodingTimeout := 600 * time.Millisecond
-			if racedetection.IsOn() {
-				decodingTimeout *= 2
-			}
 
 			strategyTimeoutStr := strategyTimeout.String()
 			decodingTimeoutStr := (2 * strategyTimeout).String()
@@ -1266,8 +1261,6 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			ctx, cancel := context.WithTimeout(ctx, time.Duration(levels)*(3*strategyTimeout+decodingTimeout))
-			defer cancel()
 			j, _, err := joiner.New(ctx, store, store, addr)
 			if err != nil {
 				t.Fatal(err)

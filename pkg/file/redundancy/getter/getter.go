@@ -145,17 +145,17 @@ func (g *decoder) fetch(ctx context.Context, i int, waitForRecovery bool) (err e
 		g.wg.Add(1)
 		defer g.wg.Done()
 
-		defer close(g.waits[i])
-
 		// retrieval
 		ch, err := g.fetcher.Get(fctx, g.addrs[i])
 		if err != nil {
 			g.failedCnt.Add(1)
+			close(g.waits[i])
 			return waitRecovery(err)
 		}
 
 		g.fetchedCnt.Add(1)
 		g.setData(i, ch.Data())
+		close(g.waits[i])
 		return nil
 	}
 
