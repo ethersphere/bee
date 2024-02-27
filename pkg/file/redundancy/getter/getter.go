@@ -241,6 +241,10 @@ func (g *decoder) runStrategy(ctx context.Context, s Strategy) error {
 		}
 	}
 
+	if len(m) == 0 {
+		return nil
+	}
+
 	c := make(chan error, len(m))
 
 	for _, i := range m {
