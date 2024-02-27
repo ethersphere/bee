@@ -131,6 +131,7 @@ type testServerOptions struct {
 	BeeMode             api.BeeNodeMode
 	RedistributionAgent *storageincentives.Agent
 	NodeStatus          *status.Service
+	PinIntegrity        api.PinIntegrity
 }
 
 func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.Conn, string, *chanStorer) {
@@ -201,6 +202,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		SyncStatus:      o.SyncStatus,
 		Staking:         o.StakingContract,
 		NodeStatus:      o.NodeStatus,
+		PinIntegrity:    o.PinIntegrity,
 	}
 
 	// By default bee mode is set to full mode.
