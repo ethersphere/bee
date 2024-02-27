@@ -1065,6 +1065,7 @@ func TestJoinerRedundancy(t *testing.T) {
 	} {
 		tc := tc
 		t.Run(fmt.Sprintf("redundancy=%d encryption=%t", tc.rLevel, tc.encryptChunk), func(t *testing.T) {
+			t.Parallel()
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
 			shardCnt := tc.rLevel.GetMaxShards()
