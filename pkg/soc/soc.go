@@ -9,6 +9,7 @@ package soc
 import (
 	"bytes"
 	"errors"
+	"fmt"
 
 	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/crypto"
@@ -149,20 +150,24 @@ func FromChunk(sch swarm.Chunk) (*SOC, error) {
 
 	ch, err := cac.NewWithDataSpan(chunkData[cursor:])
 	if err != nil {
+		fmt.Printf("soc cac.newWithDataSpan: %v\n", err)
 		return nil, err
 	}
 
 	toSignBytes, err := hash(s.id, ch.Address().Bytes())
 	if err != nil {
+		fmt.Printf("soc hash: %v\n", err)
 		return nil, err
 	}
 
 	// recover owner information
 	recoveredOwnerAddress, err := recoverAddress(s.signature, toSignBytes)
 	if err != nil {
+		fmt.Printf("soc recoverAddress: %v\n", err)
 		return nil, err
 	}
 	if len(recoveredOwnerAddress) != crypto.AddressSize {
+		fmt.Printf("soc invalid address\n")
 		return nil, errInvalidAddress
 	}
 	s.owner = recoveredOwnerAddress
