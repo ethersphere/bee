@@ -866,6 +866,83 @@ components:
           items:
             $ref: "#/components/schemas/StatusSnapshotResponse"
 
+    ApiChunkInclusionProof:
+      type: object
+      properties:
+        chunkSpan:
+          minimum: 0
+          type: integer
+        postageProof:
+          $ref: '#/components/schemas/ApiPostageProof'
+        proofSegments:
+          items:
+            type: string
+          nullable: true
+          type: array
+        proofSegments2:
+          items:
+            type: string
+          nullable: true
+          type: array
+        proofSegments3:
+          items:
+            type: string
+          nullable: true
+          type: array
+        proveSegment:
+          type: string
+        proveSegment2:
+          type: string
+        socProof:
+          items:
+            $ref: '#/components/schemas/ApiSOCProof'
+          nullable: true
+          type: array
+
+    ApiChunkInclusionProofs:
+      type: object
+      properties:
+        proof1:
+          $ref: '#/components/schemas/ApiChunkInclusionProof'
+        proof2:
+          $ref: '#/components/schemas/ApiChunkInclusionProof'
+        proofLast:
+          $ref: '#/components/schemas/ApiChunkInclusionProof'
+
+    ApiPostageProof:
+      type: object
+      properties:
+        index:
+          type: string
+        postageId:
+          type: string
+        signature:
+          type: string
+        timeStamp:
+          type: string
+
+    ApiRCHashResponse:
+      type: object
+      properties:
+        duration:
+          type: integer
+        hash:
+          $ref: '#/components/schemas/SwarmAddress'
+        proofs:
+          $ref: '#/components/schemas/ApiChunkInclusionProofs'
+
+    ApiSOCProof:
+      type: object
+      properties:
+        chunkAddr:
+          type: string
+        identifier:
+          type: string
+        signature:
+          type: string
+        signer:
+          type: string
+
   headers:
     SwarmTag:
       description: "Tag UID"
