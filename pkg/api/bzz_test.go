@@ -151,33 +151,20 @@ func TestBzzUploadDownloadWithRedundancy(t *testing.T) {
 			if rLevel == 0 {
 				t.Skip("NA")
 			}
-			req, err := http.NewRequestWithContext(context.Background(), "GET", fileDownloadResource(refResponse.Reference.String()), nil)
+			ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+			defer cancel()
+			req, err := http.NewRequestWithContext(ctx, "GET", fileDownloadResource(refResponse.Reference.String()), nil)
 			if err != nil {
 				t.Fatal(err)
 			}
+			req.Header.Set(api.SwarmLookAheadBufferSizeHeader, "0")
 			req.Header.Set(api.SwarmRedundancyStrategyHeader, "0")
 			req.Header.Set(api.SwarmRedundancyFallbackModeHeader, "false")
 			req.Header.Set(api.SwarmChunkRetrievalTimeoutHeader, fetchTimeout.String())
 
-			resp, err := client.Do(req)
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer resp.Body.Close()
-
-			if resp.StatusCode != http.StatusOK {
-				t.Fatalf("expected status %d; got %d", http.StatusOK, resp.StatusCode)
-			}
-			_, err = dataReader.Seek(0, io.SeekStart)
-			if err != nil {
-				t.Fatal(err)
-			}
-			ok, err := dataReader.Equal(resp.Body)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if ok {
-				t.Fatal("there should be missing data")
+			_, err = client.Do(req)
+			if !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("expected error %v; got %v", io.ErrUnexpectedEOF, err)
 			}
 		})
 
@@ -186,6 +173,7 @@ func TestBzzUploadDownloadWithRedundancy(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
+			req.Header.Set(api.SwarmLookAheadBufferSizeHeader, "0")
 			req.Header.Set(api.SwarmRedundancyStrategyHeader, "3")
 			req.Header.Set(api.SwarmRedundancyFallbackModeHeader, "true")
 			req.Header.Set(api.SwarmChunkRetrievalTimeoutHeader, fetchTimeout.String())

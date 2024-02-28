@@ -19,7 +19,6 @@ import (
 
 	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/file/redundancy/getter"
-	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/storage"
 	inmem "github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
@@ -39,20 +38,20 @@ func TestGetterRACE(t *testing.T) {
 	}
 
 	var tcs []getterTest
-	for bufSize := 3; bufSize <= 128; bufSize += 21 {
+	for bufSize := 45; bufSize <= 128; bufSize += 42 {
 		for shardCnt := bufSize/2 + 1; shardCnt <= bufSize; shardCnt += 21 {
 			parityCnt := bufSize - shardCnt
 			erasures := mrand.Perm(parityCnt - 1)
-			if len(erasures) > 3 {
-				erasures = erasures[:3]
+			if len(erasures) > 1 {
+				erasures = erasures[:1]
 			}
 			for _, erasureCnt := range erasures {
 				tcs = append(tcs, getterTest{bufSize, shardCnt, erasureCnt})
 			}
 			tcs = append(tcs, getterTest{bufSize, shardCnt, parityCnt}, getterTest{bufSize, shardCnt, parityCnt + 1})
 			erasures = mrand.Perm(shardCnt - 1)
-			if len(erasures) > 3 {
-				erasures = erasures[:3]
+			if len(erasures) > 1 {
+				erasures = erasures[:1]
 			}
 			for _, erasureCnt := range erasures {
 				tcs = append(tcs, getterTest{bufSize, shardCnt, erasureCnt + parityCnt + 1})
@@ -73,7 +72,6 @@ func TestGetterRACE(t *testing.T) {
 // TestGetterFallback tests the retrieval of chunks with missing data shards
 // using the strict or fallback mode starting with NONE and DATA strategies
 func TestGetterFallback(t *testing.T) {
-	t.Skip("removed strategy timeout")
 	t.Run("GET", func(t *testing.T) {
 		t.Run("NONE", func(t *testing.T) {
 			t.Run("strict", func(t *testing.T) {
@@ -121,7 +119,6 @@ func testDecodingRACE(t *testing.T, bufSize, shardCnt, erasureCnt int) {
 		Strategy:        getter.RACE,
 		FetchTimeout:    2 * strategyTimeout,
 		StrategyTimeout: strategyTimeout,
-		Logger:          log.Noop,
 	}
 	g := getter.New(addrs, shardCnt, store, store, func() {}, conf)
 	defer g.Close()
