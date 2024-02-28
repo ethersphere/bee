@@ -6,6 +6,7 @@ package soc
 
 import (
 	"bytes"
+	"encoding/hex"
 	"fmt"
 
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -29,6 +30,10 @@ func Valid(ch swarm.Chunk) bool {
 	if err != nil {
 		fmt.Printf("soc get address\n")
 		return false
+	}
+
+	if !ch.Address().Equal(address) {
+		fmt.Printf("soc address not equal to chunk address. chunkaddress= %s, soc owner=%s, soc id=%s", ch.Address().String(), hex.EncodeToString(s.owner), hex.EncodeToString(s.id))
 	}
 	return ch.Address().Equal(address)
 }
