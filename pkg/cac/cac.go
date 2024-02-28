@@ -49,7 +49,7 @@ func validateDataLength(dataLength int) error {
 		spanLength := swarm.SpanSize + dataLength
 		return fmt.Errorf("invalid CAC span length %d: %w", spanLength, ErrChunkSpanShort)
 	}
-	if dataLength > swarm.ChunkSize {
+	if dataLength > swarm.RedundancyChunkSize {
 		return fmt.Errorf("invalid CAC data length %d: %w", dataLength, ErrChunkDataLarge)
 	}
 	return nil

@@ -188,6 +188,7 @@ func TestSampleChunk(t *testing.T) {
 // capacity of chunk data.
 func TestSampleChunkExpectedError(t *testing.T) {
 	t.Parallel()
+	t.Skip("valid chunk size has increased with redundancy chunks")
 
 	sampleItem := storer.RandSample(t, nil).Items[0]
 

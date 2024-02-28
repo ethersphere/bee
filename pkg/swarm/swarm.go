@@ -15,22 +15,24 @@ import (
 )
 
 const (
-	StampIndexSize           = 8 // TODO: use this size in related code.
-	StampTimestampSize       = 8 // TODO: use this size in related code.
-	SpanSize                 = 8
-	SectionSize              = 32
-	Branches                 = 128
-	EncryptedBranches        = Branches / 2
-	BmtBranches              = 128
-	ChunkSize                = SectionSize * Branches
-	HashSize                 = 32
-	MaxPO              uint8 = 31
-	ExtendedPO         uint8 = MaxPO + 5
-	MaxBins                  = MaxPO + 1
-	ChunkWithSpanSize        = ChunkSize + SpanSize
-	SocSignatureSize         = 65
-	SocMinChunkSize          = HashSize + SocSignatureSize + SpanSize
-	SocMaxChunkSize          = SocMinChunkSize + ChunkSize
+	StampIndexSize            = 8 // TODO: use this size in related code.
+	StampTimestampSize        = 8 // TODO: use this size in related code.
+	SpanSize                  = 8
+	SectionSize               = 32
+	Branches                  = 128
+	EncryptedBranches         = Branches / 2
+	BmtBranches               = 128
+	ChunkSize                 = SectionSize * Branches
+	HashSize                  = 32
+	MaxPO               uint8 = 31
+	ExtendedPO          uint8 = MaxPO + 5
+	MaxBins                   = MaxPO + 1
+	ChunkWithSpanSize         = ChunkSize + SpanSize
+	SocSignatureSize          = 65
+	RedundancyData            = 65
+	SocMinChunkSize           = HashSize + SocSignatureSize + SpanSize
+	SocMaxChunkSize           = SocMinChunkSize + ChunkSize
+	RedundancyChunkSize       = ChunkSize + HashSize + RedundancyData
 )
 
 var (

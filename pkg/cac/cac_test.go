@@ -80,7 +80,7 @@ func TestChunkInvariantsNew(t *testing.T) {
 		},
 		{
 			name:    "too large data chunk",
-			data:    testutil.RandBytes(t, swarm.ChunkSize+1),
+			data:    testutil.RandBytes(t, swarm.RedundancyChunkSize+1),
 			wantErr: cac.ErrChunkDataLarge,
 		},
 		{
@@ -126,7 +126,7 @@ func TestChunkInvariantsNewWithDataSpan(t *testing.T) {
 		},
 		{
 			name:    "too large data chunk",
-			data:    testutil.RandBytes(t, swarm.ChunkSize+swarm.SpanSize+1),
+			data:    testutil.RandBytes(t, swarm.RedundancyChunkSize+1+swarm.SpanSize),
 			wantErr: cac.ErrChunkDataLarge,
 		},
 		{
