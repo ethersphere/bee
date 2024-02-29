@@ -1913,6 +1913,44 @@ paths:
         default:
           description: Default response
 
+  "/rchash/{depth}/{anchor1}/{anchor2}":
+    get:
+      summary: Get reserve commitment hash with sample proofs
+      tags:
+        - RChash
+      parameters:
+        - in: path
+          name: depth
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+          required: true
+          description: The storage depth.
+        - in: path
+          name: anchor1
+          schema:
+            $ref: "#/components/schemas/HexString"
+          required: true
+          description: The first anchor.
+        - in: path
+          name: anchor2
+          schema:
+            $ref: "#/components/schemas/HexString"
+          required: true
+          description: The second anchor.
+      responses:
+        "200":
+          description: Reserve sample response
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/ApiRCHashResponse"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+
 components:
   securitySchemes:
     basicAuth:
