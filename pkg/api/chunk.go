@@ -13,6 +13,7 @@ import (
 	"strconv"
 
 	"github.com/ethersphere/bee/pkg/cac"
+	"github.com/ethersphere/bee/pkg/soc"
 
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/postage"
@@ -111,10 +112,29 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	chunk, err := cac.NewWithDataSpan(data)
 	if err != nil {
+		// not a valid cac chunk. Check if it's a replica soc chunk.
 		logger.Debug("chunk upload: create chunk failed", "error", err)
-		logger.Error(nil, "chunk upload: create chunk error")
-		jsonhttp.InternalServerError(ow, "create chunk error")
-		return
+		sch, err := soc.FromChunk(swarm.NewChunk(swarm.EmptyAddress, data))
+		if err != nil {
+			logger.Debug("chunk upload: create soc chunk from data failed", "error", err)
+			logger.Error(nil, "chunk upload: create chunk error")
+			jsonhttp.InternalServerError(ow, "create chunk error")
+			return
+		}
+		chunk, err = sch.Chunk()
+		if err != nil {
+			logger.Debug("chunk upload: create chunk from soc failed", "error", err)
+			logger.Error(nil, "chunk upload: create chunk error")
+			jsonhttp.InternalServerError(ow, "create chunk error")
+			return
+		}
+
+		if !soc.Valid(chunk) {
+			logger.Debug("chunk upload: invalid soc chunk")
+			logger.Error(nil, "chunk upload: create chunk error")
+			jsonhttp.InternalServerError(ow, "create chunk error")
+			return
+		}
 	}
 
 	err = putter.Put(r.Context(), chunk)
