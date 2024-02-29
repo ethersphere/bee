@@ -6,7 +6,6 @@ package getter
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"time"
 
@@ -15,8 +14,8 @@ import (
 )
 
 const (
-	DefaultStrategy        = NONE                           // default prefetching strategy
-	DefaultStrict          = true                           // default fallback modes
+	DefaultStrategy        = DATA                           // default prefetching strategy
+	DefaultStrict          = false                          // default fallback modes
 	DefaultFetchTimeout    = retrieval.RetrieveChunkTimeout // timeout for each chunk retrieval
 	DefaultStrategyTimeout = 300 * time.Millisecond         // timeout for each strategy
 )
@@ -60,10 +59,7 @@ var DefaultConfig = Config{
 func NewConfigFromContext(ctx context.Context, def Config) (conf Config, err error) {
 	var ok bool
 	conf = def
-	e := func(s string, errs ...error) error {
-		if len(errs) > 0 {
-			return fmt.Errorf("error setting %s from context: %w", s, errors.Join(errs...))
-		}
+	e := func(s string) error {
 		return fmt.Errorf("error setting %s from context", s)
 	}
 	if val := ctx.Value(strategyKey{}); val != nil {
