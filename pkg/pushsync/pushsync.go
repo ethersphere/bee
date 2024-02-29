@@ -367,7 +367,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			if errors.Is(err, topology.ErrNotFound) {
 				if ps.skipList.PruneExpiresAfter(ch.Address(), overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers
 					if inflight == 0 {
-						if ps.fullNode && ps.topologyDriver.IsReachable() {
+						if ps.fullNode {
 							if cac.Valid(ch) {
 								go ps.unwrap(ch)
 							}
