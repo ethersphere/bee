@@ -114,6 +114,8 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		// not a valid cac chunk. Check if it's a replica soc chunk.
 		logger.Debug("chunk upload: create chunk failed", "error", err)
+
+		// FromChunk only uses the chunk data to recreate the soc chunk. So the address is irrelevant.
 		sch, err := soc.FromChunk(swarm.NewChunk(swarm.EmptyAddress, data))
 		if err != nil {
 			logger.Debug("chunk upload: create soc chunk from data failed", "error", err)
