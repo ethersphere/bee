@@ -220,7 +220,7 @@ func (s *Service) mountAPI() {
 
 	handle("/chunks", jsonhttp.MethodHandler{
 		"POST": web.ChainHandlers(
-			jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkWithSpanSize),
+			jsonhttp.NewMaxBodyBytesHandler(swarm.SocMaxChunkSize),
 			web.FinalHandlerFunc(s.chunkUploadHandler),
 		),
 	})
