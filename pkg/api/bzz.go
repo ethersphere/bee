@@ -299,10 +299,29 @@ func (s *Service) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 		paths.Path = strings.TrimRight(paths.Path, "/") + "/" // NOTE: leave one slash if there was some.
 	}
 
-	s.serveReference(logger, paths.Address, paths.Path, w, r)
+	s.serveReference(logger, paths.Address, paths.Path, w, r, false)
 }
 
-func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathVar string, w http.ResponseWriter, r *http.Request) {
+func (s *Service) bzzHeadHandler(w http.ResponseWriter, r *http.Request) {
+	logger := tracing.NewLoggerWithTraceID(r.Context(), s.logger.WithName("head_bzz_by_path").Build())
+
+	paths := struct {
+		Address swarm.Address `map:"address,resolve" validate:"required"`
+		Path    string        `map:"path"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
+		return
+	}
+
+	if strings.HasSuffix(paths.Path, "/") {
+		paths.Path = strings.TrimRight(paths.Path, "/") + "/" // NOTE: leave one slash if there was some.
+	}
+
+	s.serveReference(logger, paths.Address, paths.Path, w, r, true)
+}
+
+func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathVar string, w http.ResponseWriter, r *http.Request, headerOnly bool) {
 	loggerV1 := logger.V(1).Build()
 
 	headers := struct {
@@ -404,7 +423,7 @@ FETCH:
 				// index document exists
 				logger.Debug("bzz download: serving path", "path", pathWithIndex)
 
-				s.serveManifestEntry(logger, w, r, indexDocumentManifestEntry, !feedDereferenced)
+				s.serveManifestEntry(logger, w, r, indexDocumentManifestEntry, !feedDereferenced, headerOnly)
 				return
 			}
 		}
@@ -447,7 +466,7 @@ FETCH:
 						// index document exists
 						logger.Debug("bzz download: serving path", "path", pathWithIndex)
 
-						s.serveManifestEntry(logger, w, r, indexDocumentManifestEntry, !feedDereferenced)
+						s.serveManifestEntry(logger, w, r, indexDocumentManifestEntry, !feedDereferenced, headerOnly)
 						return
 					}
 				}
@@ -461,7 +480,7 @@ FETCH:
 						// error document exists
 						logger.Debug("bzz download: serving path", "path", errorDocumentPath)
 
-						s.serveManifestEntry(logger, w, r, errorDocumentManifestEntry, !feedDereferenced)
+						s.serveManifestEntry(logger, w, r, errorDocumentManifestEntry, !feedDereferenced, headerOnly)
 						return
 					}
 				}
@@ -475,7 +494,7 @@ FETCH:
 	}
 
 	// serve requested path
-	s.serveManifestEntry(logger, w, r, me, !feedDereferenced)
+	s.serveManifestEntry(logger, w, r, me, !feedDereferenced, headerOnly)
 }
 
 func (s *Service) serveManifestEntry(
@@ -483,7 +502,7 @@ func (s *Service) serveManifestEntry(
 	w http.ResponseWriter,
 	r *http.Request,
 	manifestEntry manifest.Entry,
-	etag bool,
+	etag, headersOnly bool,
 ) {
 	additionalHeaders := http.Header{}
 	mtdt := manifestEntry.Metadata()
@@ -496,11 +515,11 @@ func (s *Service) serveManifestEntry(
 		additionalHeaders[ContentTypeHeader] = []string{mimeType}
 	}
 
-	s.downloadHandler(logger, w, r, manifestEntry.Reference(), additionalHeaders, etag)
+	s.downloadHandler(logger, w, r, manifestEntry.Reference(), additionalHeaders, etag, headersOnly)
 }
 
 // downloadHandler contains common logic for dowloading Swarm file from API
-func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *http.Request, reference swarm.Address, additionalHeaders http.Header, etag bool) {
+func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *http.Request, reference swarm.Address, additionalHeaders http.Header, etag, headersOnly bool) {
 	headers := struct {
 		Strategy              *getter.Strategy `map:"Swarm-Redundancy-Strategy"`
 		FallbackMode          *bool            `map:"Swarm-Redundancy-Fallback-Mode"`
@@ -551,6 +570,12 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 	}
 	w.Header().Set(ContentLengthHeader, strconv.FormatInt(l, 10))
 	w.Header().Set("Access-Control-Expose-Headers", ContentDispositionHeader)
+
+	if headersOnly {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	bufSize := lookaheadBufferSize(l)
 	if headers.LookaheadBufferSize != nil {
 		bufSize = *(headers.LookaheadBufferSize)

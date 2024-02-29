@@ -28,5 +28,5 @@ func (s *Service) subdomainHandler(w http.ResponseWriter, r *http.Request) {
 		paths.Path = strings.TrimRight(paths.Path, "/") + "/" // NOTE: leave one slash if there was some.
 	}
 
-	s.serveReference(logger, paths.Subdomain, paths.Path, w, r)
+	s.serveReference(logger, paths.Subdomain, paths.Path, w, r, false)
 }
