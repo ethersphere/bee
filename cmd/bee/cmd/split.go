@@ -64,7 +64,7 @@ func splitRefs(cmd *cobra.Command) {
 
 	c := &cobra.Command{
 		Use:   "refs",
-		Short: "Write only the chunk referencs to the output file",
+		Short: "Write only the chunk reference to the output file",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			inputFileName, err := cmd.Flags().GetString(optionNameInputFile)
 			if err != nil {
@@ -228,10 +228,10 @@ func splitChunks(cmd *cobra.Command) {
 func writeChunkToFile(outputDir string, chunk swarm.Chunk) error {
 	path := filepath.Join(outputDir, chunk.Address().String())
 	writer, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
-	defer writer.Close()
 	if err != nil {
 		return fmt.Errorf("open output file: %w", err)
 	}
+	defer writer.Close()
 	_, err = writer.Write(chunk.Data())
 	if err != nil {
 		return fmt.Errorf("write chunk: %w", err)
