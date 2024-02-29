@@ -16,7 +16,7 @@ import (
 	"github.com/ethersphere/bee/pkg/api"
 )
 
-func TestDBSplit(t *testing.T) {
+func TestDBSplitRefs(t *testing.T) {
 	t.Parallel()
 
 	s := (rand.Intn(10) + 10) * 1024 // rand between 10 and 20 KB
@@ -34,7 +34,7 @@ func TestDBSplit(t *testing.T) {
 
 	outputFileName := path.Join(t.TempDir(), "output")
 
-	err = newCommand(t, cmd.WithArgs("split", "--input-file", inputFileName, "--output-file", outputFileName)).Execute()
+	err = newCommand(t, cmd.WithArgs("split", "refs", "--input-file", inputFileName, "--output-file", outputFileName)).Execute()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -58,5 +58,48 @@ func TestDBSplit(t *testing.T) {
 
 	if gotHashes != wantHashes {
 		t.Fatalf("got %d hashes, want %d", gotHashes, wantHashes)
+	}
+}
+
+func TestDBSplitChunks(t *testing.T) {
+	t.Parallel()
+
+	s := (rand.Intn(10) + 10) * 1024 // rand between 10 and 20 KB
+	buf := make([]byte, s)
+	_, err := crand.Read(buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	inputFileName := path.Join(t.TempDir(), "input")
+	err = os.WriteFile(inputFileName, buf, 0644)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dir := path.Join(t.TempDir(), "chunks")
+	err = os.Mkdir(dir, os.ModePerm)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = newCommand(t, cmd.WithArgs("split", "chunks", "--input-file", inputFileName, "--output-dir", dir)).Execute()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stat, err := os.Stat(inputFileName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantHashes := api.CalculateNumberOfChunks(stat.Size(), false)
+
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if int64(len(entries)) != wantHashes {
+		t.Fatalf("got %d hashes, want %d", len(entries), wantHashes)
 	}
 }
