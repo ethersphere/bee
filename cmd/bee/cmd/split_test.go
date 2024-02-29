@@ -83,7 +83,7 @@ func TestDBSplitChunks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = newCommand(t, cmd.WithArgs("split", "chunks", "--input-file", inputFileName, "--output-dir", dir)).Execute()
+	err = newCommand(t, cmd.WithArgs("split", "chunks", "--input-file", inputFileName, "--output-dir", dir, "--r-level", "3")).Execute()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,14 +92,15 @@ func TestDBSplitChunks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantHashes := api.CalculateNumberOfChunks(stat.Size(), false)
+	want := api.CalculateNumberOfChunks(stat.Size(), false)
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	if int64(len(entries)) != wantHashes {
-		t.Fatalf("got %d hashes, want %d", len(entries), wantHashes)
+	if int64(len(entries)) < want {
+		t.Fatalf("want at least %d chunks", want)
 	}
+
 }

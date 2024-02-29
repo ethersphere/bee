@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
+	"github.com/ethersphere/bee/pkg/file/redundancy"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/spf13/cobra"
@@ -37,9 +38,9 @@ var _ storage.Putter = (*putter)(nil)
 
 type pipelineFunc func(context.Context, io.Reader) (swarm.Address, error)
 
-func requestPipelineFn(s storage.Putter, encrypt bool) pipelineFunc {
+func requestPipelineFn(s storage.Putter, encrypt bool, rLevel redundancy.Level) pipelineFunc {
 	return func(ctx context.Context, r io.Reader) (swarm.Address, error) {
-		pipe := builder.NewPipelineBuilder(ctx, s, encrypt, 0)
+		pipe := builder.NewPipelineBuilder(ctx, s, encrypt, rLevel)
 		return builder.FeedPipeline(ctx, pipe, r)
 	}
 }
@@ -59,6 +60,7 @@ func (c *command) initSplitCmd() error {
 func splitRefs(cmd *cobra.Command) {
 	optionNameInputFile := "input-file"
 	optionNameOutputFile := "output-file"
+	optionNameRedundancyLevel := "r-level"
 
 	c := &cobra.Command{
 		Use:   "refs",
@@ -71,6 +73,10 @@ func splitRefs(cmd *cobra.Command) {
 			outputFileName, err := cmd.Flags().GetString(optionNameOutputFile)
 			if err != nil {
 				return fmt.Errorf("get output file name: %w", err)
+			}
+			rLevel, err := cmd.Flags().GetInt(optionNameRedundancyLevel)
+			if err != nil {
+				return fmt.Errorf("get redundancy level: %w", err)
 			}
 
 			v, err := cmd.Flags().GetString(optionNameVerbosity)
@@ -89,7 +95,7 @@ func splitRefs(cmd *cobra.Command) {
 			}
 			defer reader.Close()
 
-			logger.Info("splitting", "file", inputFileName)
+			logger.Info("splitting", "file", inputFileName, "rLevel", rLevel)
 			logger.Info("writing output", "file", outputFileName)
 
 			store := newPutter()
@@ -106,7 +112,7 @@ func splitRefs(cmd *cobra.Command) {
 				}
 			}()
 
-			p := requestPipelineFn(store, false)
+			p := requestPipelineFn(store, false, redundancy.Level(rLevel))
 			rootRef, err := p(context.Background(), reader)
 			close(store.c)
 			if err != nil {
@@ -132,6 +138,7 @@ func splitRefs(cmd *cobra.Command) {
 
 	c.Flags().String(optionNameInputFile, "", "input file")
 	c.Flags().String(optionNameOutputFile, "", "output file")
+	c.Flags().Int(optionNameRedundancyLevel, 0, "redundancy level")
 	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
 
 	c.MarkFlagsRequiredTogether(optionNameInputFile, optionNameOutputFile)
@@ -142,6 +149,7 @@ func splitRefs(cmd *cobra.Command) {
 func splitChunks(cmd *cobra.Command) {
 	optionNameInputFile := "input-file"
 	optionNameOutputDir := "output-dir"
+	optionNameRedundancyLevel := "r-level"
 
 	c := &cobra.Command{
 		Use:   "chunks",
@@ -162,6 +170,10 @@ func splitChunks(cmd *cobra.Command) {
 			if !info.IsDir() {
 				return fmt.Errorf("output dir %s is not a directory", outputDir)
 			}
+			rLevel, err := cmd.Flags().GetInt(optionNameRedundancyLevel)
+			if err != nil {
+				return fmt.Errorf("get redundancy level: %w", err)
+			}
 			v, err := cmd.Flags().GetString(optionNameVerbosity)
 			if err != nil {
 				return fmt.Errorf("get verbosity: %w", err)
@@ -177,7 +189,7 @@ func splitChunks(cmd *cobra.Command) {
 			}
 			defer reader.Close()
 
-			logger.Info("splitting", "file", inputFileName)
+			logger.Info("splitting", "file", inputFileName, "rLevel", rLevel)
 			logger.Info("writing output", "dir", outputDir)
 
 			store := newPutter()
@@ -194,7 +206,7 @@ func splitChunks(cmd *cobra.Command) {
 				}
 			}()
 
-			p := requestPipelineFn(store, false)
+			p := requestPipelineFn(store, false, redundancy.Level(rLevel))
 			rootRef, err := p(ctx, reader)
 			close(store.c)
 			if err != nil {
@@ -206,6 +218,7 @@ func splitChunks(cmd *cobra.Command) {
 	}
 	c.Flags().String(optionNameInputFile, "", "input file")
 	c.Flags().String(optionNameOutputDir, "", "output dir")
+	c.Flags().Int(optionNameRedundancyLevel, 0, "redundancy level")
 	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
 	c.MarkFlagsRequiredTogether(optionNameInputFile, optionNameOutputDir)
 
