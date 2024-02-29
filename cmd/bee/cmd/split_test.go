@@ -10,10 +10,14 @@ import (
 	"math/rand"
 	"os"
 	"path"
+	"path/filepath"
 	"testing"
 
 	"github.com/ethersphere/bee/cmd/bee/cmd"
 	"github.com/ethersphere/bee/pkg/api"
+	"github.com/ethersphere/bee/pkg/cac"
+	"github.com/ethersphere/bee/pkg/soc"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 func TestDBSplitRefs(t *testing.T) {
@@ -103,4 +107,29 @@ func TestDBSplitChunks(t *testing.T) {
 		t.Fatalf("want at least %d chunks", want)
 	}
 
+	for _, entry := range entries {
+		d, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		ch, err := cac.NewWithDataSpan(d)
+		if err != nil {
+			sch, err := soc.FromChunk(swarm.NewChunk(swarm.EmptyAddress, d))
+			if err != nil {
+				t.Fatal("invalid cac/soc chunk", err)
+			}
+			ch, err = sch.Chunk()
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !soc.Valid(ch) {
+				t.Fatal("invalid soc chunk")
+			}
+		}
+
+		if ch.Address().String() != entry.Name() {
+			t.Fatal("expected chunk reference to equal file name")
+		}
+	}
 }

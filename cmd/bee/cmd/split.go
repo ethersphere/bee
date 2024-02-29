@@ -197,7 +197,8 @@ func splitChunks(cmd *cobra.Command) {
 			var chunksCount int64
 			go func() {
 				for chunk := range store.c {
-					err := writeChunkToFile(outputDir, chunk)
+					filePath := filepath.Join(outputDir, chunk.Address().String())
+					err := os.WriteFile(filePath, chunk.Data(), 0644)
 					if err != nil {
 						logger.Error(err, "write chunk")
 						cancel()
@@ -223,18 +224,4 @@ func splitChunks(cmd *cobra.Command) {
 	c.MarkFlagsRequiredTogether(optionNameInputFile, optionNameOutputDir)
 
 	cmd.AddCommand(c)
-}
-
-func writeChunkToFile(outputDir string, chunk swarm.Chunk) error {
-	path := filepath.Join(outputDir, chunk.Address().String())
-	writer, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0644)
-	if err != nil {
-		return fmt.Errorf("open output file: %w", err)
-	}
-	defer writer.Close()
-	_, err = writer.Write(chunk.Data())
-	if err != nil {
-		return fmt.Errorf("write chunk: %w", err)
-	}
-	return nil
 }
