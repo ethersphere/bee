@@ -16,7 +16,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/ethersphere/bee/pkg/api"
 	"github.com/ethersphere/bee/pkg/file/loadsave"
@@ -64,6 +63,7 @@ import (
 //
 // nolint:thelper
 func TestBzzUploadDownloadWithRedundancy(t *testing.T) {
+	t.Parallel()
 	fileUploadResource := "/bzz"
 	fileDownloadResource := func(addr string) string { return "/bzz/" + addr + "/" }
 
@@ -73,7 +73,6 @@ func TestBzzUploadDownloadWithRedundancy(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		fetchTimeout := 100 * time.Millisecond
 		store := mockstorer.NewForgettingStore(inmemchunkstore.New())
 		storerMock := mockstorer.NewWithChunkStore(store)
 		client, _, _, _ := newTestServer(t, testServerOptions{
@@ -131,7 +130,6 @@ func TestBzzUploadDownloadWithRedundancy(t *testing.T) {
 				jsonhttptest.WithRequestHeader(api.SwarmRedundancyLevelHeader, "0"),
 				jsonhttptest.WithRequestHeader(api.SwarmRedundancyStrategyHeader, "0"),
 				jsonhttptest.WithRequestHeader(api.SwarmRedundancyFallbackModeHeader, "false"),
-				jsonhttptest.WithRequestHeader(api.SwarmChunkRetrievalTimeoutHeader, fetchTimeout.String()),
 				jsonhttptest.WithPutResponseBody(&body),
 			)
 
@@ -157,7 +155,6 @@ func TestBzzUploadDownloadWithRedundancy(t *testing.T) {
 			}
 			req.Header.Set(api.SwarmRedundancyStrategyHeader, "0")
 			req.Header.Set(api.SwarmRedundancyFallbackModeHeader, "false")
-			req.Header.Set(api.SwarmChunkRetrievalTimeoutHeader, fetchTimeout.String())
 
 			resp, err := client.Do(req)
 			if err != nil {
@@ -188,7 +185,6 @@ func TestBzzUploadDownloadWithRedundancy(t *testing.T) {
 			}
 			req.Header.Set(api.SwarmRedundancyStrategyHeader, "3")
 			req.Header.Set(api.SwarmRedundancyFallbackModeHeader, "true")
-			req.Header.Set(api.SwarmChunkRetrievalTimeoutHeader, fetchTimeout.String())
 
 			resp, err := client.Do(req)
 			if err != nil {
