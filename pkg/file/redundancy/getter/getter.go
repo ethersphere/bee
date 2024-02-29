@@ -282,7 +282,7 @@ func (g *decoder) recover(ctx context.Context) error {
 	}
 
 	// decode using Reed-Solomon decoder
-	if err := g.decode(ctx); err != nil {
+	if err := g.decode(); err != nil {
 		return err
 	}
 
@@ -292,7 +292,7 @@ func (g *decoder) recover(ctx context.Context) error {
 
 // decode uses Reed-Solomon erasure coding decoder to recover data shards
 // it must be called after shqrdcnt shards are retrieved
-func (g *decoder) decode(ctx context.Context) error {
+func (g *decoder) decode() error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 

@@ -222,7 +222,7 @@ func (j *joiner) readAtOffset(
 		}
 
 		// fast forward the cursor
-		sec := j.subtrieSection(data, cursor, pSize, parity, subTrieSize)
+		sec := j.subtrieSection(cursor, pSize, parity, subTrieSize)
 		if cur+sec <= off {
 			cur += sec
 			continue
@@ -277,7 +277,7 @@ func (j *joiner) getShards(payloadSize, parities int) int {
 }
 
 // brute-forces the subtrie size for each of the sections in this intermediate chunk
-func (j *joiner) subtrieSection(data []byte, startIdx, payloadSize, parities int, subtrieSize int64) int64 {
+func (j *joiner) subtrieSection(startIdx, payloadSize, parities int, subtrieSize int64) int64 {
 	// assume we have a trie of size `y` then we can assume that all of
 	// the forks except for the last one on the right are of equal size
 	// this is due to how the splitter wraps levels.
@@ -375,7 +375,7 @@ func (j *joiner) processChunkAddresses(ctx context.Context, fn swarm.AddressIter
 		if j.refLength == encryption.ReferenceSize {
 			cursor += swarm.HashSize * min(i, shardCnt)
 		}
-		sec := j.subtrieSection(data, cursor, eSize, parity, subTrieSize)
+		sec := j.subtrieSection(cursor, eSize, parity, subTrieSize)
 		if sec <= swarm.ChunkSize {
 			continue
 		}
