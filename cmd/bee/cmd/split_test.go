@@ -6,7 +6,10 @@ package cmd_test
 
 import (
 	"bufio"
+	"bytes"
+	"context"
 	crand "crypto/rand"
+	"io"
 	"math/rand"
 	"os"
 	"path"
@@ -15,8 +18,9 @@ import (
 
 	"github.com/ethersphere/bee/cmd/bee/cmd"
 	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/cac"
-	"github.com/ethersphere/bee/pkg/soc"
+	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
+	"github.com/ethersphere/bee/pkg/file/redundancy"
+	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -92,44 +96,71 @@ func TestDBSplitChunks(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	stat, err := os.Stat(inputFileName)
+	// split the file manually and compare output with the split commands output.
+	putter := &putter{chunks: make(map[string]swarm.Chunk)}
+	p := requestPipelineFn(putter, false, redundancy.Level(3))
+	_, err = p(context.Background(), bytes.NewReader(buf))
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := api.CalculateNumberOfChunks(stat.Size(), false)
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	if int64(len(entries)) < want {
-		t.Fatalf("want at least %d chunks", want)
-	}
-
 	for _, entry := range entries {
-		d, err := os.ReadFile(filepath.Join(dir, entry.Name()))
+		ref := entry.Name()
+		if _, ok := putter.chunks[ref]; !ok {
+			t.Fatalf("chunk %s not found", ref)
+		}
+		err, ok := compare(filepath.Join(dir, ref), putter.chunks[ref])
 		if err != nil {
 			t.Fatal(err)
 		}
-
-		ch, err := cac.NewWithDataSpan(d)
-		if err != nil {
-			sch, err := soc.FromChunk(swarm.NewChunk(swarm.EmptyAddress, d))
-			if err != nil {
-				t.Fatal("invalid cac/soc chunk", err)
-			}
-			ch, err = sch.Chunk()
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !soc.Valid(ch) {
-				t.Fatal("invalid soc chunk")
-			}
+		if !ok {
+			t.Fatalf("chunk %s does not match", ref)
 		}
+		delete(putter.chunks, ref)
+	}
 
-		if ch.Address().String() != entry.Name() {
-			t.Fatal("expected chunk reference to equal file name")
-		}
+	if len(putter.chunks) != 0 {
+		t.Fatalf("want 0 chunks left, got %d", len(putter.chunks))
+	}
+}
+
+func compare(path string, chunk swarm.Chunk) (error, bool) {
+	f, err := os.Open(path)
+	if err != nil {
+		return err, false
+	}
+	defer f.Close()
+
+	b, err := io.ReadAll(f)
+	if err != nil {
+		return err, false
+	}
+
+	if !bytes.Equal(b, chunk.Data()) {
+		return nil, false
+	}
+
+	return nil, true
+}
+
+type putter struct {
+	chunks map[string]swarm.Chunk
+}
+
+func (s *putter) Put(_ context.Context, chunk swarm.Chunk) error {
+	s.chunks[chunk.Address().String()] = chunk
+	return nil
+}
+
+type pipelineFunc func(context.Context, io.Reader) (swarm.Address, error)
+
+func requestPipelineFn(s storage.Putter, encrypt bool, rLevel redundancy.Level) pipelineFunc {
+	return func(ctx context.Context, r io.Reader) (swarm.Address, error) {
+		pipe := builder.NewPipelineBuilder(ctx, s, encrypt, rLevel)
+		return builder.FeedPipeline(ctx, pipe, r)
 	}
 }
