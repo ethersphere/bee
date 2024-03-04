@@ -491,6 +491,12 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 			handle("/wallet", jsonhttp.MethodHandler{
 				"GET": http.HandlerFunc(s.walletHandler),
 			})
+			handle("/wallet/withdraw/{coin}/{addr}", jsonhttp.MethodHandler{
+				"POST": web.ChainHandlers(
+					s.gasConfigMiddleware("wallet withdraw"),
+					web.FinalHandlerFunc(s.walletWithdrawHandler),
+				),
+			})
 		}
 	}
 

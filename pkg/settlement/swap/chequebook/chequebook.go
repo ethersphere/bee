@@ -69,7 +69,8 @@ type service struct {
 	lock               sync.Mutex
 	transactionService transaction.Service
 
-	address      common.Address
+	address common.Address
+
 	contract     *chequebookContract
 	ownerAddress common.Address
 

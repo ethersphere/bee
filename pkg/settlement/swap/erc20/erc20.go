@@ -25,6 +25,7 @@ var (
 type Service interface {
 	BalanceOf(ctx context.Context, address common.Address) (*big.Int, error)
 	Transfer(ctx context.Context, address common.Address, value *big.Int) (common.Hash, error)
+	Withdraw(ctx context.Context, address common.Address, value *big.Int) (common.Hash, error)
 }
 
 type erc20Service struct {
@@ -77,6 +78,29 @@ func (c *erc20Service) Transfer(ctx context.Context, address common.Address, val
 
 	request := &transaction.TxRequest{
 		To:          &c.address,
+		Data:        callData,
+		GasPrice:    sctx.GetGasPrice(ctx),
+		GasLimit:    90000,
+		Value:       big.NewInt(0),
+		Description: "token transfer",
+	}
+
+	txHash, err := c.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
+	if err != nil {
+		return common.Hash{}, err
+	}
+
+	return txHash, nil
+}
+
+func (c *erc20Service) Withdraw(ctx context.Context, address common.Address, value *big.Int) (common.Hash, error) {
+	callData, err := erc20ABI.Pack("transfer", c.address, value)
+	if err != nil {
+		return common.Hash{}, err
+	}
+
+	request := &transaction.TxRequest{
+		To:          &address,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
 		GasLimit:    90000,

@@ -16,6 +16,7 @@ import (
 type Service struct {
 	balanceOfFunc func(ctx context.Context, address common.Address) (*big.Int, error)
 	transferFunc  func(ctx context.Context, address common.Address, value *big.Int) (common.Hash, error)
+	withdrawFunc  func(ctx context.Context, address common.Address, value *big.Int) (common.Hash, error)
 }
 
 func WithBalanceOfFunc(f func(ctx context.Context, address common.Address) (*big.Int, error)) Option {
@@ -48,6 +49,13 @@ func (s *Service) BalanceOf(ctx context.Context, address common.Address) (*big.I
 func (s *Service) Transfer(ctx context.Context, address common.Address, value *big.Int) (common.Hash, error) {
 	if s.transferFunc != nil {
 		return s.transferFunc(ctx, address, value)
+	}
+	return common.Hash{}, errors.New("Error")
+}
+
+func (s *Service) Withdraw(ctx context.Context, address common.Address, value *big.Int) (common.Hash, error) {
+	if s.transferFunc != nil {
+		return s.withdrawFunc(ctx, address, value)
 	}
 	return common.Hash{}, errors.New("Error")
 }
