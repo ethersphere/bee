@@ -91,6 +91,10 @@ func (s *Service) dirUploadHandler(
 			jsonhttp.BadRequest(w, errEmptyDir)
 		case errors.Is(err, tar.ErrHeader):
 			jsonhttp.BadRequest(w, "invalid filename in tar archive")
+		case errors.Is(err, ErrMissingContentLenHeader):
+			jsonhttp.BadRequest(w, "missing Content-Length header")
+		case errors.Is(err, ErrMissingContentTypeHeader):
+			jsonhttp.BadRequest(w, "missing Content-Type header")
 		default:
 			jsonhttp.InternalServerError(w, errDirectoryStore)
 		}
@@ -266,6 +270,11 @@ type multipartReader struct {
 	r *multipart.Reader
 }
 
+var (
+	ErrMissingContentLenHeader  = errors.New("content-length missing")
+	ErrMissingContentTypeHeader = errors.New("content-type missing")
+)
+
 func (m *multipartReader) Next() (*FileInfo, error) {
 	part, err := m.r.NextPart()
 	if err != nil {
@@ -284,12 +293,12 @@ func (m *multipartReader) Next() (*FileInfo, error) {
 
 	contentType := part.Header.Get(ContentTypeHeader)
 	if contentType == "" {
-		return nil, errors.New("content-type missing")
+		return nil, ErrMissingContentTypeHeader
 	}
 
 	contentLength := part.Header.Get(ContentLengthHeader)
 	if contentLength == "" {
-		return nil, errors.New("content-length missing")
+		return nil, ErrMissingContentLenHeader
 	}
 	fileSize, err := strconv.ParseInt(contentLength, 10, 64)
 	if err != nil {
