@@ -14,6 +14,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"sync"
 	"testing"
 
 	"github.com/ethersphere/bee/cmd/bee/cmd"
@@ -108,6 +109,10 @@ func TestDBSplitChunks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
+	if len(entries) != len(putter.chunks) {
+		t.Fatal("number of chunks does not match")
+	}
 	for _, entry := range entries {
 		ref := entry.Name()
 		if _, ok := putter.chunks[ref]; !ok {
@@ -149,9 +154,12 @@ func compare(path string, chunk swarm.Chunk) (error, bool) {
 
 type putter struct {
 	chunks map[string]swarm.Chunk
+	mu     sync.Mutex
 }
 
 func (s *putter) Put(_ context.Context, chunk swarm.Chunk) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	s.chunks[chunk.Address().String()] = chunk
 	return nil
 }
