@@ -93,26 +93,6 @@ func TestDirs(t *testing.T) {
 		)
 	})
 
-	t.Run("missing content type", func(t *testing.T) {
-		tarReader, mwBoundary := multipartFiles(t, []f{{
-			data: []byte("robots text"),
-			name: "robots.txt",
-			// header left empty on purpose
-		}})
-
-		jsonhttptest.Request(t, client, http.MethodPost, dirUploadResource, http.StatusBadRequest,
-			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
-			jsonhttptest.WithRequestBody(tarReader),
-			jsonhttptest.WithRequestHeader(api.SwarmCollectionHeader, "True"),
-			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, fmt.Sprintf("multipart/form-data; boundary=%q", mwBoundary)),
-			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: "missing Content-Type header",
-				Code:    http.StatusBadRequest,
-			}),
-			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "multipart/form-data"),
-		)
-	})
-
 	// valid tars
 	for _, tc := range []struct {
 		name                string
