@@ -96,9 +96,9 @@ func TestGetterFallback(t *testing.T) {
 
 func testDecodingRACE(t *testing.T, bufSize, shardCnt, erasureCnt int) {
 	t.Helper()
-	strategyTimeout := 100 * time.Millisecond
+	timeout := 100 * time.Millisecond
 	if racedetection.On {
-		strategyTimeout *= 2
+		timeout *= 2
 	}
 	store := inmem.New()
 	buf := make([][]byte, bufSize)
@@ -118,10 +118,9 @@ func testDecodingRACE(t *testing.T, bufSize, shardCnt, erasureCnt int) {
 	ctx, cancel := context.WithCancel(context.TODO())
 	defer cancel()
 	conf := getter.Config{
-		Strategy:        getter.RACE,
-		FetchTimeout:    2 * strategyTimeout,
-		StrategyTimeout: strategyTimeout,
-		Logger:          log.Noop,
+		Strategy:     getter.RACE,
+		FetchTimeout: 2 * timeout,
+		Logger:       log.Noop,
 	}
 	g := getter.New(addrs, shardCnt, store, store, func(error) {}, conf)
 	defer g.Close()
@@ -132,7 +131,7 @@ func testDecodingRACE(t *testing.T, bufSize, shardCnt, erasureCnt int) {
 		q <- err
 	}()
 	err := context.DeadlineExceeded
-	wait := strategyTimeout * 2
+	wait := timeout * 2
 	if racedetection.On {
 		wait *= 2
 	}
@@ -194,10 +193,9 @@ func testDecodingFallback(t *testing.T, s getter.Strategy, strict bool) {
 	// create getter
 	start := time.Now()
 	conf := getter.Config{
-		Strategy:        s,
-		Strict:          strict,
-		FetchTimeout:    strategyTimeout / 2,
-		StrategyTimeout: strategyTimeout,
+		Strategy:     s,
+		Strict:       strict,
+		FetchTimeout: strategyTimeout / 2,
 	}
 	g := getter.New(addrs, shardCnt, store, store, func(error) {}, conf)
 	defer g.Close()

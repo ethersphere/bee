@@ -41,7 +41,6 @@ type decoder struct {
 	parityCnt    int             // number of parity shards
 	wg           sync.WaitGroup  // wait group to wait for all goroutines to finish
 	mu           sync.Mutex      // mutex to protect buffer
-	err          error           // error of the last erasure decoding
 	fetchedCnt   atomic.Int32    // count successful retrievals
 	failedCnt    atomic.Int32    // count successful retrievals
 	cancel       func()          // cancel function for RS decoding
@@ -57,6 +56,7 @@ type Getter interface {
 
 // New returns a decoder object used to retrieve children of an intermediate chunk
 func New(addrs []swarm.Address, shardCnt int, g storage.Getter, p storage.Putter, remove func(error), conf Config) Getter {
+	// global context is canceled when the Close is called or when the prefetch terminates
 	ctx, cancel := context.WithCancel(context.Background())
 	size := len(addrs)
 
@@ -94,7 +94,7 @@ func New(addrs []swarm.Address, shardCnt int, g storage.Getter, p storage.Putter
 		d.wg.Add(1)
 		go func() {
 			defer d.wg.Done()
-			d.err = d.prefetch(ctx)
+			_ = d.prefetch(ctx)
 		}()
 	} else { // recovery not allowed
 		close(d.badRecovery)
