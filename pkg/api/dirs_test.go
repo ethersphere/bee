@@ -75,8 +75,7 @@ func TestDirs(t *testing.T) {
 	t.Run("wrong content type", func(t *testing.T) {
 		tarReader := tarFiles(t, []f{{
 			data: []byte("some data"),
-			name: "some-name",
-			dir:  "./dir",
+			name: "binary-file",
 		}})
 
 		// submit valid tar, but with wrong content-type
