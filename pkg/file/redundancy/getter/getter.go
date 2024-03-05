@@ -26,6 +26,7 @@ var (
 // if retrieves children of an intermediate chunk potentially using erasure decoding
 // it caches sibling chunks if erasure decoding started already
 type decoder struct {
+	ctx          context.Context
 	fetcher      storage.Getter  // network retrieval interface to fetch chunks
 	putter       storage.Putter  // interface to local storage to save reconstructed chunks
 	addrs        []swarm.Address // all addresses of the intermediate chunk
@@ -44,7 +45,7 @@ type decoder struct {
 	fetchedCnt   atomic.Int32    // count successful retrievals
 	failedCnt    atomic.Int32    // count successful retrievals
 	cancel       func()          // cancel function for RS decoding
-	remove       func()          // callback to remove decoder from decoders cache
+	remove       func(error)     // callback to remove decoder from decoders cache
 	config       Config          // configuration
 	logger       log.Logger
 }
@@ -55,11 +56,12 @@ type Getter interface {
 }
 
 // New returns a decoder object used to retrieve children of an intermediate chunk
-func New(addrs []swarm.Address, shardCnt int, g storage.Getter, p storage.Putter, remove func(), conf Config) Getter {
+func New(addrs []swarm.Address, shardCnt int, g storage.Getter, p storage.Putter, remove func(error), conf Config) Getter {
 	ctx, cancel := context.WithCancel(context.Background())
 	size := len(addrs)
 
 	d := &decoder{
+		ctx:          ctx,
 		fetcher:      g,
 		putter:       p,
 		addrs:        addrs,
@@ -143,7 +145,14 @@ func (g *decoder) fetch(ctx context.Context, i int, waitForRecovery bool) (err e
 		defer cancel()
 
 		g.wg.Add(1)
-		defer g.wg.Done()
+		go func() {
+			select {
+			case <-fctx.Done(): // local context
+			case <-g.ctx.Done(): // global context
+			}
+			cancel()
+			g.wg.Done()
+		}()
 
 		// retrieval
 		ch, err := g.fetcher.Get(fctx, g.addrs[i])
@@ -172,8 +181,9 @@ func (g *decoder) fetch(ctx context.Context, i int, waitForRecovery bool) (err e
 	return waitRecovery(storage.ErrNotFound)
 }
 
-func (g *decoder) prefetch(ctx context.Context) error {
-	defer g.remove()
+func (g *decoder) prefetch(ctx context.Context) (err error) {
+	defer g.remove(err)
+	defer g.cancel()
 
 	run := func(s Strategy) error {
 		if err := g.runStrategy(ctx, s); err != nil {
@@ -183,7 +193,6 @@ func (g *decoder) prefetch(ctx context.Context) error {
 		return g.recover(ctx)
 	}
 
-	var err error
 	for s := g.config.Strategy; s < strategyCnt; s++ {
 
 		err = run(s)
@@ -377,6 +386,6 @@ func (g *decoder) save(ctx context.Context, missing []int) error {
 func (g *decoder) Close() error {
 	g.cancel()
 	g.wg.Wait()
-	g.remove()
+	g.remove(nil)
 	return nil
 }

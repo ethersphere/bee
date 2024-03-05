@@ -123,7 +123,7 @@ func testDecodingRACE(t *testing.T, bufSize, shardCnt, erasureCnt int) {
 		StrategyTimeout: strategyTimeout,
 		Logger:          log.Noop,
 	}
-	g := getter.New(addrs, shardCnt, store, store, func() {}, conf)
+	g := getter.New(addrs, shardCnt, store, store, func(error) {}, conf)
 	defer g.Close()
 	parityCnt := len(buf) - shardCnt
 	q := make(chan error, 1)
@@ -199,7 +199,7 @@ func testDecodingFallback(t *testing.T, s getter.Strategy, strict bool) {
 		FetchTimeout:    strategyTimeout / 2,
 		StrategyTimeout: strategyTimeout,
 	}
-	g := getter.New(addrs, shardCnt, store, store, func() {}, conf)
+	g := getter.New(addrs, shardCnt, store, store, func(error) {}, conf)
 	defer g.Close()
 
 	// launch delayed and erased chunk retrieval
