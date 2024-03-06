@@ -80,10 +80,16 @@ func (g *decoderCache) GetOrCreate(addrs []swarm.Address, shardCnt int) storage.
 		}
 		return d
 	}
-	remove := func() {
+	remove := func(err error) {
 		g.mu.Lock()
 		defer g.mu.Unlock()
-		g.cache[key] = nil
+		if err != nil {
+			// signals that a new getter is needed to reattempt to recover the data
+			delete(g.cache, key)
+		} else {
+			// signals that the chunks were fetched/recovered/cached so a future getter is not needed
+			g.cache[key] = nil
+		}
 	}
 	d = getter.New(addrs, shardCnt, g.fetcher, g.putter, remove, g.config)
 	g.cache[key] = d

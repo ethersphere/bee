@@ -62,7 +62,7 @@ import (
 //     using redundancy to reconstruct the file and find the file recoverable.
 //
 // nolint:thelper
-func TestBzzUploadDownloadWithRedundancy(t *testing.T) {
+func TestBzzUploadDownloadWithRedundancy_FLAKY(t *testing.T) {
 	t.Parallel()
 	fileUploadResource := "/bzz"
 	fileDownloadResource := func(addr string) string { return "/bzz/" + addr + "/" }

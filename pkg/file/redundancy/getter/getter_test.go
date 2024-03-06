@@ -19,12 +19,11 @@ import (
 
 	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/file/redundancy/getter"
-	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/storage"
 	inmem "github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/util/testutil/racedetection"
+	"github.com/ethersphere/bee/pkg/util/testutil"
 	"github.com/klauspost/reedsolomon"
 	"golang.org/x/sync/errgroup"
 )
@@ -96,10 +95,6 @@ func TestGetterFallback(t *testing.T) {
 
 func testDecodingRACE(t *testing.T, bufSize, shardCnt, erasureCnt int) {
 	t.Helper()
-	strategyTimeout := 100 * time.Millisecond
-	if racedetection.On {
-		strategyTimeout *= 2
-	}
 	store := inmem.New()
 	buf := make([][]byte, bufSize)
 	addrs := initData(t, buf, shardCnt, store)
@@ -115,31 +110,13 @@ func testDecodingRACE(t *testing.T, bufSize, shardCnt, erasureCnt int) {
 	if len(addr.Bytes()) == 0 {
 		t.Skip("no data shard erased")
 	}
-	ctx, cancel := context.WithCancel(context.TODO())
-	defer cancel()
-	conf := getter.Config{
-		Strategy:        getter.RACE,
-		FetchTimeout:    2 * strategyTimeout,
-		StrategyTimeout: strategyTimeout,
-		Logger:          log.Noop,
-	}
-	g := getter.New(addrs, shardCnt, store, store, func() {}, conf)
-	defer g.Close()
+
+	g := getter.New(addrs, shardCnt, store, store, func(error) {}, getter.DefaultConfig)
+	testutil.CleanupCloser(t, g)
+
 	parityCnt := len(buf) - shardCnt
-	q := make(chan error, 1)
-	go func() {
-		_, err := g.Get(ctx, addr)
-		q <- err
-	}()
-	err := context.DeadlineExceeded
-	wait := strategyTimeout * 2
-	if racedetection.On {
-		wait *= 2
-	}
-	select {
-	case err = <-q:
-	case <-time.After(wait):
-	}
+	_, err := g.Get(context.Background(), addr)
+
 	switch {
 	case erasureCnt > parityCnt:
 		t.Run("unable to recover", func(t *testing.T) {
@@ -194,12 +171,11 @@ func testDecodingFallback(t *testing.T, s getter.Strategy, strict bool) {
 	// create getter
 	start := time.Now()
 	conf := getter.Config{
-		Strategy:        s,
-		Strict:          strict,
-		FetchTimeout:    strategyTimeout / 2,
-		StrategyTimeout: strategyTimeout,
+		Strategy:     s,
+		Strict:       strict,
+		FetchTimeout: strategyTimeout / 2,
 	}
-	g := getter.New(addrs, shardCnt, store, store, func() {}, conf)
+	g := getter.New(addrs, shardCnt, store, store, func(error) {}, conf)
 	defer g.Close()
 
 	// launch delayed and erased chunk retrieval

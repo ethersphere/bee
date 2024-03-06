@@ -1109,17 +1109,15 @@ func TestJoinerRedundancy(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			strategyTimeout := 100 * time.Millisecond
 			// all data can be read back
 			readCheck := func(t *testing.T, expErr error) {
 				ctx := context.Background()
 
-				strategyTimeoutStr := strategyTimeout.String()
-				decodeTimeoutStr := (10 * strategyTimeout).String()
+				decodeTimeoutStr := time.Second.String()
 				fallback := true
 				s := getter.RACE
 
-				ctx, err := getter.SetConfigInContext(ctx, &s, &fallback, &decodeTimeoutStr, &strategyTimeoutStr, log.Noop)
+				ctx, err := getter.SetConfigInContext(ctx, &s, &fallback, &decodeTimeoutStr, log.Noop)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -1229,7 +1227,7 @@ func TestJoinerRedundancy(t *testing.T) {
 // nolint:thelper
 func TestJoinerRedundancyMultilevel(t *testing.T) {
 	t.Parallel()
-	test := func(t *testing.T, rLevel redundancy.Level, encrypt bool, levels, size int) {
+	test := func(t *testing.T, rLevel redundancy.Level, encrypt bool, size int) {
 		t.Helper()
 		store := mockstorer.NewForgettingStore(inmemchunkstore.New())
 		testutil.CleanupCloser(t, store)
@@ -1249,14 +1247,12 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 		expRead := swarm.ChunkSize
 		buf := make([]byte, expRead)
 		offset := mrand.Intn(size) * expRead
-		canReadRange := func(t *testing.T, s getter.Strategy, fallback bool, levels int, canRead bool) {
+		canReadRange := func(t *testing.T, s getter.Strategy, fallback bool, canRead bool) {
 			ctx := context.Background()
-			strategyTimeout := 100 * time.Millisecond
 
-			strategyTimeoutStr := strategyTimeout.String()
-			decodingTimeoutStr := (2 * strategyTimeout).String()
+			decodingTimeoutStr := (200 * time.Millisecond).String()
 
-			ctx, err := getter.SetConfigInContext(ctx, &s, &fallback, &decodingTimeoutStr, &strategyTimeoutStr, log.Noop)
+			ctx, err := getter.SetConfigInContext(ctx, &s, &fallback, &decodingTimeoutStr, log.Noop)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1295,35 +1291,35 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 		t.Run("NONE w/o fallback CAN retrieve", func(t *testing.T) {
 			store.Record()
 			defer store.Unrecord()
-			canReadRange(t, getter.NONE, false, levels, true)
+			canReadRange(t, getter.NONE, false, true)
 		})
 
 		// do not forget the root chunk
 		store.Unmiss(swarm.NewAddress(addr.Bytes()[:swarm.HashSize]))
 		// after we forget the chunks on the way to the range, we should not be able to retrieve
 		t.Run("NONE w/o fallback CANNOT retrieve", func(t *testing.T) {
-			canReadRange(t, getter.NONE, false, levels, false)
+			canReadRange(t, getter.NONE, false, false)
 		})
 
 		// we lost a data chunk, we cannot recover using DATA only strategy with no fallback
 		t.Run("DATA w/o fallback CANNOT retrieve", func(t *testing.T) {
-			canReadRange(t, getter.DATA, false, levels, false)
+			canReadRange(t, getter.DATA, false, false)
 		})
 
 		if rLevel == 0 {
 			// allowing fallback mode will not help if no redundancy used for upload
 			t.Run("DATA w fallback CANNOT retrieve", func(t *testing.T) {
-				canReadRange(t, getter.DATA, true, levels, false)
+				canReadRange(t, getter.DATA, true, false)
 			})
 			return
 		}
 		// allowing fallback mode will make the range retrievable using erasure decoding
 		t.Run("DATA w fallback CAN retrieve", func(t *testing.T) {
-			canReadRange(t, getter.DATA, true, levels, true)
+			canReadRange(t, getter.DATA, true, true)
 		})
 		// after the reconstructed data is stored, we can retrieve the range using DATA only mode
 		t.Run("after recovery, NONE w/o fallback CAN retrieve", func(t *testing.T) {
-			canReadRange(t, getter.NONE, false, levels, true)
+			canReadRange(t, getter.NONE, false, true)
 		})
 	}
 	r2level := []int{2, 1, 2, 3, 2}
@@ -1353,7 +1349,7 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 						if r2level[rLevel] != levels || encrypt != encryptChunk[rLevel] {
 							t.Skip("skipping to save time")
 						}
-						test(t, rLevel, encrypt, levels, chunkCnt)
+						test(t, rLevel, encrypt, chunkCnt)
 					})
 					switch levels {
 					case 1:
@@ -1364,7 +1360,7 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 						continue
 					}
 					t.Run(fmt.Sprintf("encrypt=%v levels=%d chunks=%d full", encrypt, levels, chunkCnt), func(t *testing.T) {
-						test(t, rLevel, encrypt, levels, chunkCnt)
+						test(t, rLevel, encrypt, chunkCnt)
 					})
 				}
 			}
