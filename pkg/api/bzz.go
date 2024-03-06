@@ -343,10 +343,8 @@ func (s *Service) serveReference(logger log.Logger, address swarm.Address, pathV
 	ls := loadsave.NewReadonly(s.storer.Download(cache))
 	feedDereferenced := false
 
-	strategyTimeout := getter.DefaultStrategyTimeout.String()
-
 	ctx := r.Context()
-	ctx, err := getter.SetConfigInContext(ctx, headers.Strategy, headers.FallbackMode, headers.ChunkRetrievalTimeout, &strategyTimeout, logger)
+	ctx, err := getter.SetConfigInContext(ctx, headers.Strategy, headers.FallbackMode, headers.ChunkRetrievalTimeout, logger)
 	if err != nil {
 		logger.Error(err, err.Error())
 		jsonhttp.BadRequest(w, "could not parse headers")
@@ -537,10 +535,8 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 		cache = *headers.Cache
 	}
 
-	strategyTimeout := getter.DefaultStrategyTimeout.String()
-
 	ctx := r.Context()
-	ctx, err := getter.SetConfigInContext(ctx, headers.Strategy, headers.FallbackMode, headers.ChunkRetrievalTimeout, &strategyTimeout, logger)
+	ctx, err := getter.SetConfigInContext(ctx, headers.Strategy, headers.FallbackMode, headers.ChunkRetrievalTimeout, logger)
 	if err != nil {
 		logger.Error(err, err.Error())
 		jsonhttp.BadRequest(w, "could not parse headers")
