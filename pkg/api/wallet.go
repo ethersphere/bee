@@ -8,12 +8,14 @@ import (
 	"context"
 	"math/big"
 	"net/http"
+	"strings"
 
 	"slices"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/pkg/bigint"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/pkg/sctx"
 	"github.com/ethersphere/bee/pkg/transaction"
 	"github.com/gorilla/mux"
 )
@@ -80,9 +82,15 @@ func (s *Service) walletWithdrawHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	ctx := r.Context()
 	var bzz bool
-	// check if coin is xdai or bzz
+
+	if strings.EqualFold("BZZ", *path.Coin) {
+		bzz = true
+	} else if !strings.EqualFold("xdai", *path.Coin) {
+		logger.Error(nil, "invalid coin type")
+		jsonhttp.BadRequest(w, "only BZZ or XDAI options are accepted")
+		return
+	}
 
 	if !slices.Contains(s.whitelistedWithdrawalAddress, *queries.Address) {
 		logger.Error(nil, "provided address not whitelisted")
@@ -91,7 +99,7 @@ func (s *Service) walletWithdrawHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if bzz {
-		currentBalance, err := s.erc20Service.BalanceOf(ctx, s.ethereumAddress)
+		currentBalance, err := s.erc20Service.BalanceOf(r.Context(), s.ethereumAddress)
 		if err != nil {
 			logger.Error(err, "unable to get balance")
 			jsonhttp.InternalServerError(w, "unable to get balance")
@@ -104,7 +112,7 @@ func (s *Service) walletWithdrawHandler(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 
-		txHash, err := s.erc20Service.Withdraw(ctx, *queries.Address, queries.Amount)
+		txHash, err := s.erc20Service.Withdraw(r.Context(), *queries.Address, queries.Amount)
 		if err != nil {
 			logger.Error(err, "unable to transfer")
 			jsonhttp.InternalServerError(w, "unable to transfer amount")
@@ -128,7 +136,7 @@ func (s *Service) walletWithdrawHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	txHash, err := withdraw(ctx, s.chainBackend, *queries.Address, queries.Amount)
+	txHash, err := withdraw(r.Context(), s.transaction, *queries.Address, queries.Amount)
 	if err != nil {
 		logger.Error(err, "withdraw")
 		jsonhttp.InternalServerError(w, "withdraw")
@@ -138,6 +146,15 @@ func (s *Service) walletWithdrawHandler(w http.ResponseWriter, r *http.Request) 
 	jsonhttp.OK(w, walletTxResponse{TransactionHash: txHash})
 }
 
-func withdraw(context.Context, transaction.Backend, common.Address, *big.Int) (common.Hash, error) {
-	return common.Hash{}, nil
+func withdraw(ctx context.Context, backend transaction.Service, to common.Address, amount *big.Int) (common.Hash, error) {
+	req := &transaction.TxRequest{
+		To:                   &to,
+		GasPrice:             sctx.GetGasPrice(ctx),
+		GasLimit:             sctx.GetGasLimit(ctx),
+		MinEstimatedGasLimit: 500_000,
+		Value:                amount,
+		Description:          "native token withdraw",
+	}
+
+	return backend.Send(ctx, req, transaction.DefaultTipBoostPercent)
 }
