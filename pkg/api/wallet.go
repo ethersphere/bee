@@ -62,7 +62,8 @@ func (s *Service) walletWithdrawHandler(w http.ResponseWriter, r *http.Request) 
 	logger := s.logger.WithName("post_wallet_withdraw").Build()
 
 	queries := struct {
-		Amount *big.Int `map:"amount" validate:"required"`
+		Amount  *big.Int        `map:"amount" validate:"required"`
+		Address *common.Address `map:"address" validate:"required"`
 	}{}
 
 	if response := s.mapStructure(r.URL.Query(), &queries); response != nil {
@@ -71,8 +72,7 @@ func (s *Service) walletWithdrawHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	path := struct {
-		Coin    *string         `map:"coin" validate:"required"`
-		Address *common.Address `map:"address" validate:"required"`
+		Coin *string `map:"coin" validate:"required"`
 	}{}
 
 	if response := s.mapStructure(mux.Vars(r), &path); response != nil {
@@ -84,9 +84,9 @@ func (s *Service) walletWithdrawHandler(w http.ResponseWriter, r *http.Request) 
 	var bzz bool
 	// check if coin is xdai or bzz
 
-	if !slices.Contains(s.whitelistedWithdrawalAddress, *path.Address) {
+	if !slices.Contains(s.whitelistedWithdrawalAddress, *queries.Address) {
 		logger.Error(nil, "provided address not whitelisted")
-		jsonhttp.InternalServerError(w, "provided address not whitelisted")
+		jsonhttp.BadRequest(w, "provided address not whitelisted")
 		return
 	}
 
@@ -104,7 +104,7 @@ func (s *Service) walletWithdrawHandler(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 
-		txHash, err := s.erc20Service.Withdraw(ctx, *path.Address, queries.Amount)
+		txHash, err := s.erc20Service.Withdraw(ctx, *queries.Address, queries.Amount)
 		if err != nil {
 			logger.Error(err, "unable to transfer")
 			jsonhttp.InternalServerError(w, "unable to transfer amount")
@@ -128,7 +128,7 @@ func (s *Service) walletWithdrawHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	txHash, err := withdraw(ctx, s.chainBackend, *path.Address, queries.Amount)
+	txHash, err := withdraw(ctx, s.chainBackend, *queries.Address, queries.Amount)
 	if err != nil {
 		logger.Error(err, "withdraw")
 		jsonhttp.InternalServerError(w, "withdraw")
