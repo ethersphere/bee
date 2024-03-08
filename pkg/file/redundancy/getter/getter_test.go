@@ -23,7 +23,6 @@ import (
 	inmem "github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
 	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/util/testutil"
 	"github.com/klauspost/reedsolomon"
 	"golang.org/x/sync/errgroup"
 )
@@ -112,7 +111,6 @@ func testDecodingRACE(t *testing.T, bufSize, shardCnt, erasureCnt int) {
 	}
 
 	g := getter.New(addrs, shardCnt, store, store, func(error) {}, getter.DefaultConfig)
-	testutil.CleanupCloser(t, g)
 
 	parityCnt := len(buf) - shardCnt
 	_, err := g.Get(context.Background(), addr)
@@ -176,7 +174,6 @@ func testDecodingFallback(t *testing.T, s getter.Strategy, strict bool) {
 		FetchTimeout: strategyTimeout / 2,
 	}
 	g := getter.New(addrs, shardCnt, store, store, func(error) {}, conf)
-	defer g.Close()
 
 	// launch delayed and erased chunk retrieval
 	wg := sync.WaitGroup{}
