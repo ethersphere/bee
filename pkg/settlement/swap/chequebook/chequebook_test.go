@@ -425,40 +425,38 @@ func TestChequebookIssueOutOfFunds(t *testing.T) {
 func TestChequebookWithdraw(t *testing.T) {
 	t.Parallel()
 
-	t.Run("target withdrawal address is owner", func(t *testing.T) {
-		address := common.HexToAddress("0xabcd")
-		ownerAdress := common.HexToAddress("0xfff")
-		balance := big.NewInt(30)
-		withdrawAmount := big.NewInt(20)
-		txHash := common.HexToHash("0xdddd")
-		store := storemock.NewStateStore()
-		chequebookService, err := chequebook.New(
-			transactionmock.New(
-				transactionmock.WithABICallSequence(
-					transactionmock.ABICall(&chequebookABI, address, balance.FillBytes(make([]byte, 32)), "balance"),
-					transactionmock.ABICall(&chequebookABI, address, big.NewInt(0).FillBytes(make([]byte, 32)), "totalPaidOut"),
-				),
-				transactionmock.WithABISend(&chequebookABI, txHash, address, big.NewInt(0), "withdraw", withdrawAmount),
+	address := common.HexToAddress("0xabcd")
+	ownerAdress := common.HexToAddress("0xfff")
+	balance := big.NewInt(30)
+	withdrawAmount := big.NewInt(20)
+	txHash := common.HexToHash("0xdddd")
+	store := storemock.NewStateStore()
+	chequebookService, err := chequebook.New(
+		transactionmock.New(
+			transactionmock.WithABICallSequence(
+				transactionmock.ABICall(&chequebookABI, address, balance.FillBytes(make([]byte, 32)), "balance"),
+				transactionmock.ABICall(&chequebookABI, address, big.NewInt(0).FillBytes(make([]byte, 32)), "totalPaidOut"),
 			),
-			address,
-			ownerAdress,
-			store,
-			&chequeSignerMock{},
-			erc20mock.New(),
-		)
-		if err != nil {
-			t.Fatal(err)
-		}
+			transactionmock.WithABISend(&chequebookABI, txHash, address, big.NewInt(0), "withdraw", withdrawAmount),
+		),
+		address,
+		ownerAdress,
+		store,
+		&chequeSignerMock{},
+		erc20mock.New(),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-		returnedTxHash, err := chequebookService.Withdraw(context.Background(), withdrawAmount)
-		if err != nil {
-			t.Fatal(err)
-		}
+	returnedTxHash, err := chequebookService.Withdraw(context.Background(), withdrawAmount)
+	if err != nil {
+		t.Fatal(err)
+	}
 
-		if txHash != returnedTxHash {
-			t.Fatalf("returned wrong transaction hash. wanted %v, got %v", txHash, returnedTxHash)
-		}
-	})
+	if txHash != returnedTxHash {
+		t.Fatalf("returned wrong transaction hash. wanted %v, got %v", txHash, returnedTxHash)
+	}
 }
 
 func TestChequebookWithdrawInsufficientFunds(t *testing.T) {
