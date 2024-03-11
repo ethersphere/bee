@@ -103,7 +103,7 @@ func (c *erc20Service) Withdraw(ctx context.Context, address common.Address, val
 		To:          &address,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    sctx.GetGasLimit(ctx),
+		GasLimit:    sctx.GetGasLimitWithDefault(ctx, 300_000),
 		Value:       big.NewInt(0),
 		Description: "token withdrawal",
 	}
