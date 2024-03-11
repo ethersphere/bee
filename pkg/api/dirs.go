@@ -276,25 +276,14 @@ func (m *multipartReader) Next() (*FileInfo, error) {
 	if filePath == "" {
 		filePath = part.FormName()
 	}
-	if filePath == "" {
-		return nil, errors.New("filepath missing")
-	}
 
 	fileName := filepath.Base(filePath)
 
 	contentType := part.Header.Get(ContentTypeHeader)
-	if contentType == "" {
-		return nil, errors.New("content-type missing")
-	}
 
 	contentLength := part.Header.Get(ContentLengthHeader)
-	if contentLength == "" {
-		return nil, errors.New("content-length missing")
-	}
-	fileSize, err := strconv.ParseInt(contentLength, 10, 64)
-	if err != nil {
-		return nil, errors.New("invalid file size")
-	}
+
+	fileSize, _ := strconv.ParseInt(contentLength, 10, 64)
 
 	return &FileInfo{
 		Path:        filePath,
