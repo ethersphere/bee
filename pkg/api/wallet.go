@@ -131,7 +131,7 @@ func (s *Service) walletWithdrawHandler(w http.ResponseWriter, r *http.Request) 
 
 	if queries.Amount.Cmp(nativeToken) > 0 {
 		logger.Error(err, "not enough balance")
-		jsonhttp.InternalServerError(w, "not enough balance")
+		jsonhttp.BadRequest(w, "not enough balance")
 		return
 	}
 
