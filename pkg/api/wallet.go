@@ -5,7 +5,6 @@
 package api
 
 import (
-	"context"
 	"math/big"
 	"net/http"
 	"strings"
@@ -136,7 +135,15 @@ func (s *Service) walletWithdrawHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	txHash, err := withdraw(r.Context(), s.transaction, *queries.Address, queries.Amount)
+	req := &transaction.TxRequest{
+		To:          queries.Address,
+		GasPrice:    sctx.GetGasPrice(r.Context()),
+		GasLimit:    sctx.GetGasLimit(r.Context()),
+		Value:       queries.Amount,
+		Description: "native token withdraw",
+	}
+
+	txHash, err := s.transaction.Send(r.Context(), req, transaction.DefaultTipBoostPercent)
 	if err != nil {
 		logger.Error(err, "withdraw")
 		jsonhttp.InternalServerError(w, "withdraw")
@@ -144,17 +151,4 @@ func (s *Service) walletWithdrawHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	jsonhttp.OK(w, walletTxResponse{TransactionHash: txHash})
-}
-
-func withdraw(ctx context.Context, backend transaction.Service, to common.Address, amount *big.Int) (common.Hash, error) {
-	req := &transaction.TxRequest{
-		To:                   &to,
-		GasPrice:             sctx.GetGasPrice(ctx),
-		GasLimit:             sctx.GetGasLimit(ctx),
-		MinEstimatedGasLimit: 500_000,
-		Value:                amount,
-		Description:          "native token withdraw",
-	}
-
-	return backend.Send(ctx, req, transaction.DefaultTipBoostPercent)
 }
