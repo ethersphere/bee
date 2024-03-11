@@ -111,7 +111,7 @@ func (s *Service) walletWithdrawHandler(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 
-		txHash, err := s.erc20Service.Withdraw(r.Context(), *queries.Address, queries.Amount)
+		txHash, err := s.erc20Service.Transfer(r.Context(), *queries.Address, queries.Amount)
 		if err != nil {
 			logger.Error(err, "unable to transfer")
 			jsonhttp.InternalServerError(w, "unable to transfer amount")
