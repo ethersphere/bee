@@ -27,10 +27,6 @@ type walletResponse struct {
 	WalletAddress             common.Address `json:"walletAddress"`             // the address of the bee wallet
 }
 
-type walletTxResponse struct {
-	TransactionHash common.Hash `json:"transactionHash"`
-}
-
 func (s *Service) walletHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("get_wallet").Build()
 
@@ -57,6 +53,10 @@ func (s *Service) walletHandler(w http.ResponseWriter, r *http.Request) {
 		ChequebookContractAddress: s.chequebook.Address(),
 		WalletAddress:             s.ethereumAddress,
 	})
+}
+
+type walletTxResponse struct {
+	TransactionHash common.Hash `json:"transactionHash"`
 }
 
 func (s *Service) walletWithdrawHandler(w http.ResponseWriter, r *http.Request) {
