@@ -105,7 +105,7 @@ func (c *erc20Service) Withdraw(ctx context.Context, address common.Address, val
 		GasPrice:    sctx.GetGasPrice(ctx),
 		GasLimit:    90000,
 		Value:       big.NewInt(0),
-		Description: "token transfer",
+		Description: "token withdrawal",
 	}
 
 	txHash, err := c.transactionService.Send(ctx, request, transaction.DefaultTipBoostPercent)
