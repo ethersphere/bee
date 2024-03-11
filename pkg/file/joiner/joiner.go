@@ -67,9 +67,16 @@ func fingerprint(addrs []swarm.Address) string {
 
 // GetOrCreate returns a decoder for the given chunk address
 func (g *decoderCache) GetOrCreate(addrs []swarm.Address, shardCnt int) storage.Getter {
+
+	// since a recovery decoder is not allowed, simply return the underlying netstore
+	if g.config.Strict && g.config.Strategy == getter.NONE {
+		return g.fetcher
+	}
+
 	if len(addrs) == shardCnt {
 		return g.fetcher
 	}
+
 	key := fingerprint(addrs)
 	g.mu.Lock()
 	defer g.mu.Unlock()

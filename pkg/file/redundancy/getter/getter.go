@@ -25,26 +25,25 @@ var (
 // if retrieves children of an intermediate chunk potentially using erasure decoding
 // it caches sibling chunks if erasure decoding started already
 type decoder struct {
-	fetcher           storage.Getter  // network retrieval interface to fetch chunks
-	putter            storage.Putter  // interface to local storage to save reconstructed chunks
-	addrs             []swarm.Address // all addresses of the intermediate chunk
-	inflight          []atomic.Bool   // locks to protect wait channels and RS buffer
-	cache             map[string]int  // map from chunk address shard position index
-	waits             []chan error    // wait channels for each chunk
-	rsbuf             [][]byte        // RS buffer of data + parity shards for erasure decoding
-	goodRecovery      chan struct{}   // signal channel for successful retrieval of shardCnt chunks
-	badRecovery       chan struct{}   // signals that either the recovery has failed or not allowed to run
-	lastLen           int             // length of the last data chunk in the RS buffer
-	shardCnt          int             // number of data shards
-	parityCnt         int             // number of parity shards
-	wg                sync.WaitGroup  // wait group to wait for all goroutines to finish
-	mu                sync.Mutex      // mutex to protect buffer
-	fetchedCnt        atomic.Int32    // count successful retrievals
-	failedCnt         atomic.Int32    // count successful retrievals
-	remove            func(error)     // callback to remove decoder from decoders cache
-	config            Config          // configuration
-	prefetchTriggered bool            // indicates that prefetch has been triggerd
-	logger            log.Logger
+	fetcher      storage.Getter  // network retrieval interface to fetch chunks
+	putter       storage.Putter  // interface to local storage to save reconstructed chunks
+	addrs        []swarm.Address // all addresses of the intermediate chunk
+	inflight     []atomic.Bool   // locks to protect wait channels and RS buffer
+	cache        map[string]int  // map from chunk address shard position index
+	waits        []chan error    // wait channels for each chunk
+	rsbuf        [][]byte        // RS buffer of data + parity shards for erasure decoding
+	goodRecovery chan struct{}   // signal channel for successful retrieval of shardCnt chunks
+	badRecovery  chan struct{}   // signals that either the recovery has failed or not allowed to run
+	initRecovery chan struct{}   // signals that the recovery has been initialized
+	lastLen      int             // length of the last data chunk in the RS buffer
+	shardCnt     int             // number of data shards
+	parityCnt    int             // number of parity shards
+	mu           sync.Mutex      // mutex to protect buffer
+	fetchedCnt   atomic.Int32    // count successful retrievals
+	failedCnt    atomic.Int32    // count successful retrievals
+	remove       func(error)     // callback to remove decoder from decoders cache
+	config       Config          // configuration
+	logger       log.Logger
 }
 
 // New returns a decoder object used to retrieve children of an intermediate chunk
@@ -61,6 +60,7 @@ func New(addrs []swarm.Address, shardCnt int, g storage.Getter, p storage.Putter
 		rsbuf:        make([][]byte, size),
 		goodRecovery: make(chan struct{}),
 		badRecovery:  make(chan struct{}),
+		initRecovery: make(chan struct{}),
 		remove:       remove,
 		shardCnt:     shardCnt,
 		parityCnt:    size - shardCnt,
@@ -78,15 +78,7 @@ func New(addrs []swarm.Address, shardCnt int, g storage.Getter, p storage.Putter
 		d.waits[i] = make(chan error)
 	}
 
-	// prefetch chunks according to strategy
-	if !conf.Strict || conf.Strategy != NONE {
-		d.prefetchTriggered = true
-		d.wg.Add(1)
-		go func() {
-			defer d.wg.Done()
-			d.prefetch()
-		}()
-	}
+	go d.prefetch()
 
 	return d
 }
@@ -98,7 +90,7 @@ func (g *decoder) Get(ctx context.Context, addr swarm.Address) (swarm.Chunk, err
 	if !ok {
 		return nil, storage.ErrNotFound
 	}
-	err := g.fetch(ctx, i, g.prefetchTriggered)
+	err := g.fetch(ctx, i, true)
 	if err != nil {
 		return nil, err
 	}
@@ -126,20 +118,28 @@ func (g *decoder) fetch(ctx context.Context, i int, waitForRecovery bool) (err e
 		}
 	}
 
+	// recovery has started, wait for result instead of fetching from the network
+	select {
+	case <-g.initRecovery:
+		return waitRecovery(nil)
+	default:
+	}
+
 	// first time
 	if g.fly(i) {
 
 		fctx, cancel := context.WithTimeout(ctx, g.config.FetchTimeout)
 		defer cancel()
 
-		// when the already running the recovery process terminates, any inflight requests can be canceled.
+		// when the recovery is triggered, we can terminate any inflight requests.
 		// we do the extra bool check to not fire an unnecessary goroutine
 		if waitForRecovery {
-			g.wg.Add(1)
 			go func() {
-				defer g.wg.Done()
 				defer cancel()
-				_ = waitRecovery(nil)
+				select {
+				case <-g.initRecovery:
+				case <-fctx.Done():
+				}
 			}()
 		}
 
@@ -176,42 +176,40 @@ func (g *decoder) prefetch() {
 	defer func() {
 		if err != nil {
 			close(g.badRecovery)
+		} else {
+			close(g.goodRecovery)
 		}
 		g.remove(err)
 	}()
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	s := g.config.Strategy
+	for ; s < strategyCnt; s++ {
 
-	run := func(s Strategy) error {
-		if err := g.runStrategy(ctx, s); err != nil {
-			return err
+		err = g.runStrategy(s)
+		if err != nil && s == DATA || s == RACE {
+			g.logger.Debug("failed strategy", "strategy", s)
 		}
 
-		return g.recover(ctx)
+		if err == nil || g.config.Strict {
+			break
+		}
+
 	}
 
-	for s := g.config.Strategy; s < strategyCnt; s++ {
-		err = run(s)
-		if err != nil {
-			if s == DATA || s == RACE {
-				g.logger.Debug("failed recovery", "strategy", s)
-			}
-		}
-		if err == nil {
-			if s > DATA {
-				g.logger.Debug("successful recovery", "strategy", s)
-			}
-			close(g.goodRecovery)
-			return
-		}
-		if g.config.Strict { // only run one strategy
-			return
-		}
+	if err != nil {
+		return
 	}
+
+	close(g.initRecovery)
+
+	err = g.recover()
+	if err == nil && s > DATA {
+		g.logger.Debug("successful recovery", "strategy", s)
+	}
+
 }
 
-func (g *decoder) runStrategy(ctx context.Context, s Strategy) error {
+func (g *decoder) runStrategy(s Strategy) error {
 
 	// across the different strategies, the common goal is to fetch at least as many chunks
 	// as the number of data shards.
@@ -246,34 +244,32 @@ func (g *decoder) runStrategy(ctx context.Context, s Strategy) error {
 
 	c := make(chan error, len(m))
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	for _, i := range m {
-		g.wg.Add(1)
 		go func(i int) {
-			defer g.wg.Done()
 			c <- g.fetch(ctx, i, false)
 		}(i)
 	}
 
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-c:
-			if g.fetchedCnt.Load() >= int32(g.shardCnt) {
-				return nil
-			}
-			if g.failedCnt.Load() > int32(allowedErrs) {
-				return errStrategyFailed
-			}
+	for range c {
+		if g.fetchedCnt.Load() >= int32(g.shardCnt) {
+			return nil
+		}
+		if g.failedCnt.Load() > int32(allowedErrs) {
+			return errStrategyFailed
 		}
 	}
+
+	return nil
 }
 
 // recover wraps the stages of data shard recovery:
 // 1. gather missing data shards
 // 2. decode using Reed-Solomon decoder
 // 3. save reconstructed chunks
-func (g *decoder) recover(ctx context.Context) error {
+func (g *decoder) recover() error {
 	// gather missing shards
 	m := g.missingDataShards()
 	if len(m) == 0 {
@@ -286,7 +282,7 @@ func (g *decoder) recover(ctx context.Context) error {
 	}
 
 	// save chunks
-	return g.save(ctx, m)
+	return g.save(m)
 }
 
 // decode uses Reed-Solomon erasure coding decoder to recover data shards
@@ -359,11 +355,11 @@ func (g *decoder) fly(i int) (success bool) {
 }
 
 // save iterate over reconstructed shards and puts the corresponding chunks to local storage
-func (g *decoder) save(ctx context.Context, missing []int) error {
+func (g *decoder) save(missing []int) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	for _, i := range missing {
-		if err := g.putter.Put(ctx, swarm.NewChunk(g.addrs[i], g.rsbuf[i])); err != nil {
+		if err := g.putter.Put(context.Background(), swarm.NewChunk(g.addrs[i], g.rsbuf[i])); err != nil {
 			return err
 		}
 	}
