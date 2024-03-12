@@ -715,7 +715,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/WalletResponse'
+                $ref: '#/components/schemas/WalletTxResponse'
           description: OK
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
