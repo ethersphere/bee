@@ -193,7 +193,6 @@ func (g *decoder) prefetch() {
 		if err == nil || g.config.Strict {
 			break
 		}
-
 	}
 
 	if err != nil {
