@@ -2,30 +2,30 @@ package dynamicaccess
 
 import (
 	"crypto/ecdsa"
+	"errors"
 
-	Crypto "github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/keystore"
-	KeyStoreMem "github.com/ethersphere/bee/pkg/keystore/mem"
+	"github.com/ethersphere/bee/pkg/crypto"
 )
 
 type DiffieHellman interface {
-	SharedSecret(pubKey, tag string, moment []byte) (string, error)
+	SharedSecret(publicKey *ecdsa.PublicKey, tag string, moment []byte) ([]byte, error) // tag- topic?
 }
+
+var _ DiffieHellman = (*defaultDiffieHellman)(nil)
 
 type defaultDiffieHellman struct {
-	key             *ecdsa.PrivateKey
-	keyStoreService keystore.Service
-	keyStoreEdg     keystore.EDG
+	key *ecdsa.PrivateKey
 }
 
-func (d *defaultDiffieHellman) SharedSecret(pubKey string, tag string, moment []byte) (string, error) {
-	return "", nil
+func (dh *defaultDiffieHellman) SharedSecret(publicKey *ecdsa.PublicKey, tag string, salt []byte) ([]byte, error) {
+	x, _ := publicKey.Curve.ScalarMult(publicKey.X, publicKey.Y, dh.key.D.Bytes())
+	if x == nil {
+		return nil, errors.New("shared secret is point at infinity")
+	}
+	return crypto.LegacyKeccak256(append(x.Bytes(), salt...))
 }
 
 func NewDiffieHellman(key *ecdsa.PrivateKey) DiffieHellman {
-	return &defaultDiffieHellman{
-		key:             key,
-		keyStoreService: KeyStoreMem.New(),
-		keyStoreEdg:     Crypto.EDGSecp256_K1,
-	}
+	return &defaultDiffieHellman{key: key}
+
 }
