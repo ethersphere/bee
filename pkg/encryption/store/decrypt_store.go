@@ -13,7 +13,6 @@ import (
 	"github.com/ethersphere/bee/pkg/file/redundancy"
 	storage "github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
-	"golang.org/x/crypto/sha3"
 )
 
 type decryptingStore struct {
@@ -73,21 +72,13 @@ func DecryptChunkData(chunkData []byte, encryptionKey encryption.Key) ([]byte, e
 }
 
 func decrypt(chunkData []byte, key encryption.Key) ([]byte, []byte, error) {
-	decryptedSpan, err := newSpanEncryption(key).Decrypt(chunkData[:swarm.SpanSize])
+	decryptedSpan, err := encryption.NewSpanEncryption(key).Decrypt(chunkData[:swarm.SpanSize])
 	if err != nil {
 		return nil, nil, err
 	}
-	decryptedData, err := newDataEncryption(key).Decrypt(chunkData[swarm.SpanSize:])
+	decryptedData, err := encryption.NewDataEncryption(key).Decrypt(chunkData[swarm.SpanSize:])
 	if err != nil {
 		return nil, nil, err
 	}
 	return decryptedSpan, decryptedData, nil
-}
-
-func newSpanEncryption(key encryption.Key) encryption.Interface {
-	return encryption.New(key, 0, uint32(swarm.ChunkSize/encryption.KeyLength), sha3.NewLegacyKeccak256)
-}
-
-func newDataEncryption(key encryption.Key) encryption.Interface {
-	return encryption.New(key, int(swarm.ChunkSize), 0, sha3.NewLegacyKeccak256)
 }

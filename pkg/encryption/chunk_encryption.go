@@ -20,21 +20,21 @@ func NewChunkEncrypter() ChunkEncrypter { return &chunkEncrypter{} }
 
 func (c *chunkEncrypter) EncryptChunk(chunkData []byte) (Key, []byte, []byte, error) {
 	key := GenerateRandomKey(KeyLength)
-	encryptedSpan, err := newSpanEncryption(key).Encrypt(chunkData[:8])
+	encryptedSpan, err := NewSpanEncryption(key).Encrypt(chunkData[:8])
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	encryptedData, err := newDataEncryption(key).Encrypt(chunkData[8:])
+	encryptedData, err := NewDataEncryption(key).Encrypt(chunkData[8:])
 	if err != nil {
 		return nil, nil, nil, err
 	}
 	return key, encryptedSpan, encryptedData, nil
 }
 
-func newSpanEncryption(key Key) Interface {
+func NewSpanEncryption(key Key) Interface {
 	return New(key, 0, uint32(swarm.ChunkSize/KeyLength), sha3.NewLegacyKeccak256)
 }
 
-func newDataEncryption(key Key) Interface {
+func NewDataEncryption(key Key) Interface {
 	return New(key, int(swarm.ChunkSize), 0, sha3.NewLegacyKeccak256)
 }
