@@ -85,8 +85,7 @@ func decrypt(chunkData []byte, key encryption.Key) ([]byte, []byte, error) {
 }
 
 func newSpanEncryption(key encryption.Key) encryption.Interface {
-	refSize := int64(swarm.HashSize + encryption.KeyLength)
-	return encryption.New(key, 0, uint32(swarm.ChunkSize/refSize), sha3.NewLegacyKeccak256)
+	return encryption.New(key, 0, uint32(swarm.ChunkSize/encryption.KeyLength), sha3.NewLegacyKeccak256)
 }
 
 func newDataEncryption(key encryption.Key) encryption.Interface {
