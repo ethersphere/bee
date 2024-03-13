@@ -85,9 +85,9 @@ func (s *Service) walletWithdrawHandler(w http.ResponseWriter, r *http.Request) 
 
 	if strings.EqualFold("BZZ", *path.Coin) {
 		bzz = true
-	} else if !strings.EqualFold("xdai", *path.Coin) {
+	} else if !strings.EqualFold("NativeToken", *path.Coin) {
 		logger.Error(nil, "invalid coin type")
-		jsonhttp.BadRequest(w, "only BZZ or XDAI options are accepted")
+		jsonhttp.BadRequest(w, "only BZZ or NativeToken options are accepted")
 		return
 	}
 
@@ -107,7 +107,7 @@ func (s *Service) walletWithdrawHandler(w http.ResponseWriter, r *http.Request) 
 
 		if queries.Amount.Cmp(currentBalance) > 0 {
 			logger.Error(err, "not enough balance")
-			jsonhttp.InternalServerError(w, "not enough balance")
+			jsonhttp.BadRequest(w, "not enough balance")
 			return
 		}
 
@@ -145,8 +145,8 @@ func (s *Service) walletWithdrawHandler(w http.ResponseWriter, r *http.Request) 
 
 	txHash, err := s.transaction.Send(r.Context(), req, transaction.DefaultTipBoostPercent)
 	if err != nil {
-		logger.Error(err, "withdraw")
-		jsonhttp.InternalServerError(w, "withdraw")
+		logger.Error(err, "unable to transfer")
+		jsonhttp.InternalServerError(w, "unable to transfer")
 		return
 	}
 

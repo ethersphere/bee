@@ -132,6 +132,7 @@ type testServerOptions struct {
 	RedistributionAgent *storageincentives.Agent
 	NodeStatus          *status.Service
 	PinIntegrity        api.PinIntegrity
+	WhitelistedAddr     string
 }
 
 func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.Conn, string, *chanStorer) {
@@ -210,7 +211,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		o.BeeMode = api.FullMode
 	}
 
-	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, nil, o.Logger, transaction, o.BatchStore, o.BeeMode, true, true, backend, o.CORSAllowedOrigins, inmemstore.New())
+	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, []string{o.WhitelistedAddr}, o.Logger, transaction, o.BatchStore, o.BeeMode, true, true, backend, o.CORSAllowedOrigins, inmemstore.New())
 	testutil.CleanupCloser(t, s)
 
 	s.SetP2P(o.P2P)
