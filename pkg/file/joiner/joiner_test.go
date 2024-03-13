@@ -88,7 +88,7 @@ func TestJoinerSingleChunk(t *testing.T) {
 	}
 }
 
-// TestJoinerDecryptingStore_NormalChunk verifies the the mock store that uses
+// TestJoinerDecryptingStore_NormalChunk verifies the mock store that uses
 // the decrypting store manages to retrieve a normal chunk which is not encrypted
 func TestJoinerDecryptingStore_NormalChunk(t *testing.T) {
 	t.Parallel()
@@ -1287,7 +1287,7 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 			}
 		}
 
-		// first sanity check and and recover a range
+		// first sanity check and recover a range
 		t.Run("NONE w/o fallback CAN retrieve", func(t *testing.T) {
 			store.Record()
 			defer store.Unrecord()

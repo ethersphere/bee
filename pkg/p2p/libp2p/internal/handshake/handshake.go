@@ -326,7 +326,7 @@ func (s *Service) SetWelcomeMessage(msg string) (err error) {
 	return nil
 }
 
-// GetWelcomeMessage returns the the current handshake welcome message.
+// GetWelcomeMessage returns the current handshake welcome message.
 func (s *Service) GetWelcomeMessage() string {
 	return s.welcomeMessage.Load().(string)
 }
