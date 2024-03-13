@@ -253,7 +253,7 @@ func NewBee(
 	}
 	b.stateStoreCloser = stateStore
 
-	// Check if the the batchstore exists. If not, we can assume it's missing
+	// Check if the batchstore exists. If not, we can assume it's missing
 	// due to a migration or it's a fresh install.
 	batchStoreExists, err := batchStoreExists(stateStore)
 	if err != nil {
