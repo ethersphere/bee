@@ -1,18 +1,55 @@
 package dynamicaccess
 
-type Act interface{}
+import (
+	"encoding/hex"
+
+	"github.com/ethersphere/bee/pkg/manifest"
+	"github.com/ethersphere/bee/pkg/swarm"
+)
+
+type Act interface {
+	Add(lookupKey []byte, encryptedAccessKey []byte) Act
+	Get(lookupKey []byte) []byte
+	Load(lookupKey []byte) manifest.Entry
+	Store(me manifest.Entry)
+}
+
+var _ Act = (*defaultAct)(nil)
 
 type defaultAct struct {
+	container map[string]string
 }
 
-func (a *defaultAct) Add(oldItemKey string, oldRootHash string) (newRootHash string, err error) {
-	return "", nil
+func (act *defaultAct) Add(lookupKey []byte, encryptedAccessKey []byte) Act {
+	act.container[hex.EncodeToString(lookupKey)] = hex.EncodeToString(encryptedAccessKey)
+	return act
 }
 
-func (a *defaultAct) Get(rootKey string) (value string, err error) {
-	return "", nil
+func (act *defaultAct) Get(lookupKey []byte) []byte {
+	if key, ok := act.container[hex.EncodeToString(lookupKey)]; ok {
+		bytes, err := hex.DecodeString(key)
+		if err == nil {
+			return bytes
+		}
+	}
+	return make([]byte, 0)
 }
 
-func NewAct() Container {
-	return &defaultAct{}
+// to manifestEntry
+func (act *defaultAct) Load(lookupKey []byte) manifest.Entry {
+	return manifest.NewEntry(swarm.NewAddress(lookupKey), act.container)
+}
+
+// from manifestEntry
+func (act *defaultAct) Store(me manifest.Entry) {
+	if act.container == nil {
+		act.container = make(map[string]string)
+	}
+	act.container = me.Metadata()
+}
+
+func NewDefaultAct() Act {
+	return &defaultAct{
+		container: make(map[string]string),
+	}
 }
