@@ -86,13 +86,11 @@ func (s *Service) walletWithdrawHandler(w http.ResponseWriter, r *http.Request) 
 	if strings.EqualFold("BZZ", *path.Coin) {
 		bzz = true
 	} else if !strings.EqualFold("NativeToken", *path.Coin) {
-		logger.Error(nil, "invalid coin type")
 		jsonhttp.BadRequest(w, "only BZZ or NativeToken options are accepted")
 		return
 	}
 
 	if !slices.Contains(s.whitelistedWithdrawalAddress, *queries.Address) {
-		logger.Error(nil, "provided address not whitelisted")
 		jsonhttp.BadRequest(w, "provided address not whitelisted")
 		return
 	}
@@ -123,14 +121,12 @@ func (s *Service) walletWithdrawHandler(w http.ResponseWriter, r *http.Request) 
 
 	nativeToken, err := s.chainBackend.BalanceAt(r.Context(), s.ethereumAddress, nil)
 	if err != nil {
-		logger.Debug("unable to acquire balance from the chain backend", "error", err)
-		logger.Error(nil, "unable to acquire balance from the chain backend")
+		logger.Error(err, "unable to acquire balance from the chain backend")
 		jsonhttp.InternalServerError(w, "unable to acquire balance from the chain backend")
 		return
 	}
 
 	if queries.Amount.Cmp(nativeToken) > 0 {
-		logger.Error(err, "not enough balance")
 		jsonhttp.BadRequest(w, "not enough balance")
 		return
 	}

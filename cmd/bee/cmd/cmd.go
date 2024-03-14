@@ -86,7 +86,7 @@ const (
 	optionNameStateStoreCacheCapacity      = "statestore-cache-capacity"
 	optionNameTargetNeighborhood           = "target-neighborhood"
 	optionNameNeighborhoodSuggester        = "neighborhood-suggester"
-	optionNameWhitelistedWithdrawalAddress = "withdraw-address"
+	optionNameWhitelistedWithdrawalAddress = "withdrawal-addresses-whitelist"
 )
 
 // nolint:gochecknoinits
