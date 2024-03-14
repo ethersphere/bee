@@ -287,6 +287,11 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		blockchainRpcEndpoint = swapEndpoint
 	}
 
+	var neighborhoodSuggester string
+	if networkID == chaincfg.Mainnet.NetworkID {
+		neighborhoodSuggester = c.config.GetString(optionNameNeighborhoodSuggester)
+	}
+
 	b, err := node.NewBee(ctx, c.config.GetString(optionNameP2PAddr), signerConfig.publicKey, signerConfig.signer, networkID, logger, signerConfig.libp2pPrivateKey, signerConfig.pssPrivateKey, &node.Options{
 		DataDir:                       c.config.GetString(optionNameDataDir),
 		CacheCapacity:                 c.config.GetUint64(optionNameCacheCapacity),
@@ -339,7 +344,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		EnableStorageIncentives:       c.config.GetBool(optionNameStorageIncentivesEnable),
 		StatestoreCacheCapacity:       c.config.GetUint64(optionNameStateStoreCacheCapacity),
 		TargetNeighborhood:            c.config.GetString(optionNameTargetNeighborhood),
-		NeighborhoodSuggester:         c.config.GetString(optionNameNeighborhoodSuggester),
+		NeighborhoodSuggester:         neighborhoodSuggester,
 	})
 
 	return b, err
