@@ -42,6 +42,9 @@ func (act *ActMock) Store(me manifest.Entry) {
 	act.StoreFunc(me)
 }
 
-func NewActMock() dynamicaccess.Act {
-	return &ActMock{}
+func NewActMock(addFunc func(lookupKey []byte, encryptedAccessKey []byte) dynamicaccess.Act, getFunc func(lookupKey []byte) []byte) dynamicaccess.Act {
+	return &ActMock{
+		AddFunc: addFunc,
+		GetFunc: getFunc,
+	}
 }

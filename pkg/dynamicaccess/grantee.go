@@ -1,6 +1,8 @@
 package dynamicaccess
 
-import "crypto/ecdsa"
+import (
+	"crypto/ecdsa"
+)
 
 type Grantee interface {
 	//? ÁTBESZÉLNI
@@ -9,18 +11,17 @@ type Grantee interface {
 
 	// RevokeList(topic string, removeList []string, addList []string) (string, error)
 	// RevokeGrantees(topic string, removeList []string) (string, error)
-	AddGrantees(addList []ecdsa.PublicKey) ([]ecdsa.PublicKey, error)
-	RemoveGrantees(removeList []ecdsa.PublicKey) ([]ecdsa.PublicKey, error)
-	GetGrantees() []ecdsa.PublicKey
+	AddGrantees(topic string, addList []*ecdsa.PublicKey) error
+	RemoveGrantees(topic string, removeList []*ecdsa.PublicKey) error
+	GetGrantees(topic string) []*ecdsa.PublicKey
 }
 
 type defaultGrantee struct {
-	topic    string            //lint:ignore U1000 Ignore unused struct field
-	grantees []ecdsa.PublicKey // Modified field name to start with an uppercase letter
+	grantees map[string][]*ecdsa.PublicKey // Modified field name to start with an uppercase letter
 }
 
-func (g *defaultGrantee) GetGrantees() []ecdsa.PublicKey {
-	return g.grantees
+func (g *defaultGrantee) GetGrantees(topic string) []*ecdsa.PublicKey {
+	return g.grantees[topic]
 }
 
 // func (g *defaultGrantee) Revoke(topic string) error {
@@ -35,22 +36,22 @@ func (g *defaultGrantee) GetGrantees() []ecdsa.PublicKey {
 // 	return nil
 // }
 
-func (g *defaultGrantee) AddGrantees(addList []ecdsa.PublicKey) ([]ecdsa.PublicKey, error) {
-	g.grantees = append(g.grantees, addList...)
-	return g.grantees, nil
+func (g *defaultGrantee) AddGrantees(topic string, addList []*ecdsa.PublicKey) error {
+	g.grantees[topic] = append(g.grantees[topic], addList...)
+	return nil
 }
 
-func (g *defaultGrantee) RemoveGrantees(removeList []ecdsa.PublicKey) ([]ecdsa.PublicKey, error) {
+func (g *defaultGrantee) RemoveGrantees(topic string, removeList []*ecdsa.PublicKey) error {
 	for _, remove := range removeList {
-		for i, grantee := range g.grantees {
+		for i, grantee := range g.grantees[topic] {
 			if grantee == remove {
-				g.grantees = append(g.grantees[:i], g.grantees[i+1:]...)
+				g.grantees[topic] = append(g.grantees[topic][:i], g.grantees[topic][i+1:]...)
 			}
 		}
 	}
-	return g.grantees, nil
+	return nil
 }
 
 func NewGrantee() Grantee {
-	return &defaultGrantee{}
+	return &defaultGrantee{grantees: make(map[string][]*ecdsa.PublicKey)}
 }
