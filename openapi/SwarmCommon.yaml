@@ -697,12 +697,6 @@ components:
         walletAddress:
           $ref: "#/components/schemas/EthereumAddress"
 
-    WalletTxResponse:
-      type: object
-      properties:
-        transactionHash:
-          $ref: "#/components/schemas/TransactionHash"
-
     RedistributionStatusResponse:
       type: object
       properties:
