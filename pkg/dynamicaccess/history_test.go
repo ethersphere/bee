@@ -11,7 +11,7 @@ import (
 )
 
 func TestHistoryLookup(t *testing.T) {
-	h := pretareTestHistory()
+	h := prepareTestHistory()
 	now := time.Now()
 
 	tests := []struct {
@@ -38,7 +38,7 @@ func TestHistoryLookup(t *testing.T) {
 	}
 }
 
-func pretareTestHistory() dynamicaccess.History {
+func prepareTestHistory() dynamicaccess.History {
 	var (
 		h    = mock.NewHistory()
 		now  = time.Now()
