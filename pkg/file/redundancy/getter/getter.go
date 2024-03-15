@@ -7,7 +7,6 @@ package getter
 import (
 	"context"
 	"errors"
-	"io"
 	"sync"
 	"sync/atomic"
 
@@ -26,7 +25,6 @@ var (
 // if retrieves children of an intermediate chunk potentially using erasure decoding
 // it caches sibling chunks if erasure decoding started already
 type decoder struct {
-	ctx          context.Context
 	fetcher      storage.Getter  // network retrieval interface to fetch chunks
 	putter       storage.Putter  // interface to local storage to save reconstructed chunks
 	addrs        []swarm.Address // all addresses of the intermediate chunk
@@ -36,32 +34,23 @@ type decoder struct {
 	rsbuf        [][]byte        // RS buffer of data + parity shards for erasure decoding
 	goodRecovery chan struct{}   // signal channel for successful retrieval of shardCnt chunks
 	badRecovery  chan struct{}   // signals that either the recovery has failed or not allowed to run
+	initRecovery chan struct{}   // signals that the recovery has been initialized
 	lastLen      int             // length of the last data chunk in the RS buffer
 	shardCnt     int             // number of data shards
 	parityCnt    int             // number of parity shards
-	wg           sync.WaitGroup  // wait group to wait for all goroutines to finish
 	mu           sync.Mutex      // mutex to protect buffer
 	fetchedCnt   atomic.Int32    // count successful retrievals
 	failedCnt    atomic.Int32    // count successful retrievals
-	cancel       func()          // cancel function for RS decoding
 	remove       func(error)     // callback to remove decoder from decoders cache
 	config       Config          // configuration
 	logger       log.Logger
 }
 
-type Getter interface {
-	storage.Getter
-	io.Closer
-}
-
 // New returns a decoder object used to retrieve children of an intermediate chunk
-func New(addrs []swarm.Address, shardCnt int, g storage.Getter, p storage.Putter, remove func(error), conf Config) Getter {
-	// global context is canceled when the Close is called or when the prefetch terminates
-	ctx, cancel := context.WithCancel(context.Background())
+func New(addrs []swarm.Address, shardCnt int, g storage.Getter, p storage.Putter, remove func(error), conf Config) storage.Getter {
 	size := len(addrs)
 
 	d := &decoder{
-		ctx:          ctx,
 		fetcher:      g,
 		putter:       p,
 		addrs:        addrs,
@@ -71,7 +60,7 @@ func New(addrs []swarm.Address, shardCnt int, g storage.Getter, p storage.Putter
 		rsbuf:        make([][]byte, size),
 		goodRecovery: make(chan struct{}),
 		badRecovery:  make(chan struct{}),
-		cancel:       cancel,
+		initRecovery: make(chan struct{}),
 		remove:       remove,
 		shardCnt:     shardCnt,
 		parityCnt:    size - shardCnt,
@@ -89,16 +78,7 @@ func New(addrs []swarm.Address, shardCnt int, g storage.Getter, p storage.Putter
 		d.waits[i] = make(chan error)
 	}
 
-	// prefetch chunks according to strategy
-	if !conf.Strict || conf.Strategy != NONE {
-		d.wg.Add(1)
-		go func() {
-			defer d.wg.Done()
-			_ = d.prefetch(ctx)
-		}()
-	} else { // recovery not allowed
-		close(d.badRecovery)
-	}
+	go d.prefetch()
 
 	return d
 }
@@ -138,21 +118,30 @@ func (g *decoder) fetch(ctx context.Context, i int, waitForRecovery bool) (err e
 		}
 	}
 
+	// recovery has started, wait for result instead of fetching from the network
+	select {
+	case <-g.initRecovery:
+		return waitRecovery(nil)
+	default:
+	}
+
 	// first time
 	if g.fly(i) {
 
 		fctx, cancel := context.WithTimeout(ctx, g.config.FetchTimeout)
 		defer cancel()
 
-		g.wg.Add(1)
-		go func() {
-			select {
-			case <-fctx.Done(): // local context
-			case <-g.ctx.Done(): // global context
-			}
-			cancel()
-			g.wg.Done()
-		}()
+		// when the recovery is triggered, we can terminate any inflight requests.
+		// we do the extra bool check to not fire an unnecessary goroutine
+		if waitForRecovery {
+			go func() {
+				defer cancel()
+				select {
+				case <-g.initRecovery:
+				case <-fctx.Done():
+				}
+			}()
+		}
 
 		// retrieval
 		ch, err := g.fetcher.Get(fctx, g.addrs[i])
@@ -181,47 +170,45 @@ func (g *decoder) fetch(ctx context.Context, i int, waitForRecovery bool) (err e
 	return waitRecovery(storage.ErrNotFound)
 }
 
-func (g *decoder) prefetch(ctx context.Context) (err error) {
-	defer g.remove(err)
-	defer g.cancel()
+func (g *decoder) prefetch() {
 
-	run := func(s Strategy) error {
-		if err := g.runStrategy(ctx, s); err != nil {
-			return err
-		}
-
-		return g.recover(ctx)
-	}
-
-	for s := g.config.Strategy; s < strategyCnt; s++ {
-
-		err = run(s)
+	var err error
+	defer func() {
 		if err != nil {
-			if s == DATA || s == RACE {
-				g.logger.Debug("failed recovery", "strategy", s)
-			}
-		}
-		if err == nil {
-			if s > DATA {
-				g.logger.Debug("successful recovery", "strategy", s)
-			}
+			close(g.badRecovery)
+		} else {
 			close(g.goodRecovery)
-			break
 		}
-		if g.config.Strict { // only run one strategy
+		g.remove(err)
+	}()
+
+	s := g.config.Strategy
+	for ; s < strategyCnt; s++ {
+
+		err = g.runStrategy(s)
+		if err != nil && s == DATA || s == RACE {
+			g.logger.Debug("failed strategy", "strategy", s)
+		}
+
+		if err == nil || g.config.Strict {
 			break
 		}
 	}
 
 	if err != nil {
-		close(g.badRecovery)
-		return err
+		return
 	}
 
-	return err
+	close(g.initRecovery)
+
+	err = g.recover()
+	if err == nil && s > DATA {
+		g.logger.Debug("successful recovery", "strategy", s)
+	}
+
 }
 
-func (g *decoder) runStrategy(ctx context.Context, s Strategy) error {
+func (g *decoder) runStrategy(s Strategy) error {
 
 	// across the different strategies, the common goal is to fetch at least as many chunks
 	// as the number of data shards.
@@ -256,34 +243,32 @@ func (g *decoder) runStrategy(ctx context.Context, s Strategy) error {
 
 	c := make(chan error, len(m))
 
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	for _, i := range m {
-		g.wg.Add(1)
 		go func(i int) {
-			defer g.wg.Done()
 			c <- g.fetch(ctx, i, false)
 		}(i)
 	}
 
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-c:
-			if g.fetchedCnt.Load() >= int32(g.shardCnt) {
-				return nil
-			}
-			if g.failedCnt.Load() > int32(allowedErrs) {
-				return errStrategyFailed
-			}
+	for range c {
+		if g.fetchedCnt.Load() >= int32(g.shardCnt) {
+			return nil
+		}
+		if g.failedCnt.Load() > int32(allowedErrs) {
+			return errStrategyFailed
 		}
 	}
+
+	return nil
 }
 
 // recover wraps the stages of data shard recovery:
 // 1. gather missing data shards
 // 2. decode using Reed-Solomon decoder
 // 3. save reconstructed chunks
-func (g *decoder) recover(ctx context.Context) error {
+func (g *decoder) recover() error {
 	// gather missing shards
 	m := g.missingDataShards()
 	if len(m) == 0 {
@@ -296,7 +281,7 @@ func (g *decoder) recover(ctx context.Context) error {
 	}
 
 	// save chunks
-	return g.save(ctx, m)
+	return g.save(m)
 }
 
 // decode uses Reed-Solomon erasure coding decoder to recover data shards
@@ -369,23 +354,13 @@ func (g *decoder) fly(i int) (success bool) {
 }
 
 // save iterate over reconstructed shards and puts the corresponding chunks to local storage
-func (g *decoder) save(ctx context.Context, missing []int) error {
+func (g *decoder) save(missing []int) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	for _, i := range missing {
-		if err := g.putter.Put(ctx, swarm.NewChunk(g.addrs[i], g.rsbuf[i])); err != nil {
+		if err := g.putter.Put(context.Background(), swarm.NewChunk(g.addrs[i], g.rsbuf[i])); err != nil {
 			return err
 		}
 	}
-	return nil
-}
-
-// Close terminates the prefetch loop, waits for all goroutines to finish and
-// removes the decoder from the cache
-// it implements the io.Closer interface
-func (g *decoder) Close() error {
-	g.cancel()
-	g.wg.Wait()
-	g.remove(nil)
 	return nil
 }
