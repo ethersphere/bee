@@ -345,6 +345,7 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		StatestoreCacheCapacity:       c.config.GetUint64(optionNameStateStoreCacheCapacity),
 		TargetNeighborhood:            c.config.GetString(optionNameTargetNeighborhood),
 		NeighborhoodSuggester:         neighborhoodSuggester,
+		WhitelistedWithdrawalAddress:  c.config.GetStringSlice(optionNameWhitelistedWithdrawalAddress),
 	})
 
 	return b, err

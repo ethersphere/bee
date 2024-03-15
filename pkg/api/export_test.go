@@ -95,6 +95,7 @@ type (
 	PostageStampBucketsResponse       = postageStampBucketsResponse
 	BucketData                        = bucketData
 	WalletResponse                    = walletResponse
+	WalletTxResponse                  = walletTxResponse
 	GetStakeResponse                  = getStakeResponse
 	WithdrawAllStakeResponse          = withdrawAllStakeResponse
 	StatusSnapshotResponse            = statusSnapshotResponse
