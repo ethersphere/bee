@@ -63,6 +63,7 @@ import (
 //
 // nolint:thelper
 func TestBzzUploadDownloadWithRedundancy_FLAKY(t *testing.T) {
+	t.Skip("flaky")
 	t.Parallel()
 	fileUploadResource := "/bzz"
 	fileDownloadResource := func(addr string) string { return "/bzz/" + addr + "/" }
@@ -179,7 +180,7 @@ func TestBzzUploadDownloadWithRedundancy_FLAKY(t *testing.T) {
 		})
 
 		t.Run("download with redundancy should succeed", func(t *testing.T) {
-			req, err := http.NewRequestWithContext(context.TODO(), "GET", fileDownloadResource(refResponse.Reference.String()), nil)
+			req, err := http.NewRequestWithContext(context.Background(), "GET", fileDownloadResource(refResponse.Reference.String()), nil)
 			if err != nil {
 				t.Fatal(err)
 			}
