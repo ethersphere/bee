@@ -689,6 +689,41 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
+  "/wallet/withdraw/{coin}":
+    post:
+      summary: Allows withdrawals of BZZ or xDAI to provided (whitelisted) address
+      tags:
+        - Wallet
+      parameters:
+      - in: query
+        name: amount
+        required: true
+        schema:
+          $ref: "#/components/schemas/BigInt"
+      - in: query
+        name: address
+        required: true
+        schema:
+          $ref: "#/components/schemas/EthereumAddress"
+      - in: path
+        name: coin
+        required: true
+        schema:
+          $ref: "#/components/schemas/SwarmAddress"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WalletTxResponse'
+          description: OK
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+          description: Amount greater than ballance or coin is other than BZZ/xDAI
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
 
   "/transactions":
     get:
@@ -1133,3 +1168,11 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         default:
           description: Default response.
+
+components:
+  schemas:
+    WalletTxResponse:
+      type: object
+      properties:
+        transactionHash:
+          $ref: "#/components/schemas/TransactionHash"

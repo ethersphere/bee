@@ -197,6 +197,8 @@ type Service struct {
 	erc20Service erc20.Service
 	chainID      int64
 
+	whitelistedWithdrawalAddress []common.Address
+
 	preMapHooks map[string]func(v string) (string, error)
 	validate    *validator.Validate
 
@@ -254,6 +256,7 @@ type ExtraOptions struct {
 func New(
 	publicKey, pssPublicKey ecdsa.PublicKey,
 	ethereumAddress common.Address,
+	whitelistedWithdrawalAddress []string,
 	logger log.Logger,
 	transaction transaction.Service,
 	batchStore postage.Storer,
@@ -302,6 +305,10 @@ func New(
 		return name
 	})
 	s.stamperStore = stamperStore
+
+	for _, v := range whitelistedWithdrawalAddress {
+		s.whitelistedWithdrawalAddress = append(s.whitelistedWithdrawalAddress, common.HexToAddress(v))
+	}
 
 	return s
 }
