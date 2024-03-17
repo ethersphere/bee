@@ -7,9 +7,12 @@ package storer
 import (
 	"context"
 	"fmt"
+	"os"
 	"path"
 	"sync"
 	"time"
+
+	"sync/atomic"
 
 	"github.com/ethersphere/bee/pkg/cac"
 	"github.com/ethersphere/bee/pkg/log"
@@ -17,6 +20,7 @@ import (
 	"github.com/ethersphere/bee/pkg/soc"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/storer/internal/chunkstore"
+	pinstore "github.com/ethersphere/bee/pkg/storer/internal/pinning"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -140,4 +144,226 @@ func validateWork(logger log.Logger, store storage.Store, readFn func(context.Co
 	close(iteratateItemsC)
 
 	wg.Wait()
+}
+
+// ValidatePinCollectionChunks collects all chunk addresses that are present in a pin collection but
+// are either invalid or missing altogether.
+func ValidatePinCollectionChunks(ctx context.Context, basePath, pin, location string, opts *Options) error {
+	logger := opts.Logger
+
+	store, err := initStore(basePath, opts)
+	if err != nil {
+		return fmt.Errorf("failed creating levelDB index store: %w", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			logger.Error(err, "failed closing store")
+		}
+	}()
+
+	fs := &dirFS{basedir: path.Join(basePath, sharkyPath)}
+	sharky, err := sharky.New(fs, sharkyNoOfShards, swarm.SocMaxChunkSize)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := sharky.Close(); err != nil {
+			logger.Error(err, "failed closing sharky")
+		}
+	}()
+
+	logger.Info("performing chunk validation")
+
+	pv := PinIntegrity{
+		Store:  store,
+		Sharky: sharky,
+	}
+
+	var (
+		fileName = "address.csv"
+		fileLoc  = "."
+	)
+
+	if location != "" {
+		if path.Ext(location) != "" {
+			fileName = path.Base(location)
+		}
+		fileLoc = path.Dir(location)
+	}
+
+	logger.Info("saving stats", "location", fileLoc, "name", fileName)
+
+	location = path.Join(fileLoc, fileName)
+
+	f, err := os.OpenFile(location, os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return fmt.Errorf("open output file for writing: %w", err)
+	}
+
+	if _, err := f.WriteString("invalid\tmissing\ttotal\taddress\n"); err != nil {
+		return fmt.Errorf("write title: %w", err)
+	}
+
+	defer f.Close()
+
+	var ch = make(chan PinStat)
+	go pv.Check(ctx, logger, pin, ch)
+
+	for st := range ch {
+		report := fmt.Sprintf("%d\t%d\t%d\t%s\n", st.Invalid, st.Missing, st.Total, st.Ref)
+
+		if _, err := f.WriteString(report); err != nil {
+			logger.Error(err, "write report line")
+			break
+		}
+	}
+
+	return nil
+}
+
+type PinIntegrity struct {
+	Store  storage.Store
+	Sharky *sharky.Store
+}
+
+type PinStat struct {
+	Ref                     swarm.Address
+	Total, Missing, Invalid int
+}
+
+func (p *PinIntegrity) Check(ctx context.Context, logger log.Logger, pin string, out chan PinStat) {
+	var stats struct {
+		total, read, invalid atomic.Int32
+	}
+
+	n := time.Now()
+	defer func() {
+		close(out)
+		logger.Info("done", "duration", time.Since(n), "read", stats.read.Load(), "invalid", stats.invalid.Load(), "total", stats.total.Load())
+	}()
+
+	validChunk := func(item *chunkstore.RetrievalIndexItem, buf []byte) bool {
+		stats.total.Add(1)
+
+		if err := p.Sharky.Read(ctx, item.Location, buf); err != nil {
+			stats.read.Add(1)
+			return false
+		}
+
+		ch := swarm.NewChunk(item.Address, buf)
+
+		if cac.Valid(ch) {
+			return true
+		}
+
+		if soc.Valid(ch) {
+			return true
+		}
+
+		stats.invalid.Add(1)
+
+		return false
+	}
+
+	var pins []swarm.Address
+
+	if pin != "" {
+		addr, err := swarm.ParseHexAddress(pin)
+		if err != nil {
+			panic(fmt.Sprintf("parse provided pin: %s", err))
+		}
+		pins = append(pins, addr)
+	} else {
+		var err error
+		pins, err = pinstore.Pins(p.Store)
+		if err != nil {
+			logger.Error(err, "get pins")
+			return
+		}
+	}
+
+	logger.Info("got a total number of pins", "size", len(pins))
+
+	var tcount, tmicrs int64
+	defer func() {
+		dur := float64(tmicrs) / float64(tcount)
+		logger.Info("done iterating pins", "duration", dur)
+	}()
+
+	for _, pin := range pins {
+		var wg sync.WaitGroup
+		var (
+			total, missing, invalid atomic.Int32
+		)
+
+		iteratateItemsC := make(chan *chunkstore.RetrievalIndexItem)
+
+		for i := 0; i < 8; i++ {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				buf := make([]byte, swarm.SocMaxChunkSize)
+				for item := range iteratateItemsC {
+					if ctx.Err() != nil {
+						break
+					}
+					if !validChunk(item, buf[:item.Location.Length]) {
+						invalid.Add(1)
+					}
+				}
+			}()
+		}
+
+		var count, micrs int64
+
+		err := pinstore.IterateCollection(p.Store, pin, func(addr swarm.Address) (bool, error) {
+			n := time.Now()
+
+			defer func() {
+				count++
+				micrs += time.Since(n).Microseconds()
+			}()
+
+			total.Add(1)
+
+			rIdx := &chunkstore.RetrievalIndexItem{Address: addr}
+			if err := p.Store.Get(rIdx); err != nil {
+				missing.Add(1)
+			} else {
+				select {
+				case <-ctx.Done():
+					return true, nil
+				case iteratateItemsC <- rIdx:
+				}
+			}
+
+			return false, nil
+		})
+
+		dur := float64(micrs) / float64(count)
+
+		if err != nil {
+			logger.Error(err, "new iteration", "pin", pin, "duration", dur)
+		} else {
+			logger.Info("new iteration", "pin", pin, "duration", dur)
+		}
+
+		tcount++
+		tmicrs += int64(dur)
+
+		close(iteratateItemsC)
+
+		wg.Wait()
+
+		select {
+		case <-ctx.Done():
+			logger.Info("context done")
+			return
+		case out <- PinStat{
+			Ref:     pin,
+			Total:   int(total.Load()),
+			Missing: int(missing.Load()),
+			Invalid: int(invalid.Load())}:
+		}
+	}
 }

@@ -27,7 +27,6 @@ type ChainConfig struct {
 	RedistributionAddress  common.Address
 	SwapPriceOracleAddress common.Address
 	CurrentFactoryAddress  common.Address
-	LegacyFactoryAddresses []common.Address
 
 	// ABIs.
 	StakingABI        string
@@ -41,16 +40,13 @@ var (
 		NetworkID:              abi.TestnetNetworkID,
 		PostageStampStartBlock: abi.TestnetPostageStampBlockNumber,
 		NativeTokenSymbol:      "ETH",
-		SwarmTokenSymbol:       "gBZZ",
+		SwarmTokenSymbol:       "sBZZ",
 
 		StakingAddress:         common.HexToAddress(abi.TestnetStakingAddress),
 		PostageStampAddress:    common.HexToAddress(abi.TestnetPostageStampAddress),
 		RedistributionAddress:  common.HexToAddress(abi.TestnetRedistributionAddress),
-		SwapPriceOracleAddress: common.HexToAddress("0x0c9de531dcb38b758fe8a2c163444a5e54ee0db2"),
-		CurrentFactoryAddress:  common.HexToAddress("0x73c412512E1cA0be3b89b77aB3466dA6A1B9d273"),
-		LegacyFactoryAddresses: []common.Address{
-			common.HexToAddress("0xf0277caffea72734853b834afc9892461ea18474"),
-		},
+		SwapPriceOracleAddress: common.HexToAddress("0xe821533d30A4250e50812Aa060EEb2E8Ef3D98f6"),
+		CurrentFactoryAddress:  common.HexToAddress("0x0fF044F6bB4F684a5A149B46D7eC03ea659F98A1"),
 
 		StakingABI:        abi.TestnetStakingABI,
 		PostageStampABI:   abi.TestnetPostageStampABI,

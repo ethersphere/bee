@@ -107,6 +107,25 @@ func (t *Tracer) StartSpanFromContext(ctx context.Context, operationName string,
 	return span, loggerWithTraceID(sc, l), WithContext(ctx, sc)
 }
 
+// FollowSpanFromContext starts a new tracing span that is either a root one or
+// follows an existing one from the provided Context. If logger is provided, a new
+// log Entry will be returned with "traceID" log field.
+func (t *Tracer) FollowSpanFromContext(ctx context.Context, operationName string, l log.Logger, opts ...opentracing.StartSpanOption) (opentracing.Span, log.Logger, context.Context) {
+	if t == nil {
+		t = noopTracer
+	}
+
+	var span opentracing.Span
+	if parentContext := FromContext(ctx); parentContext != nil {
+		opts = append(opts, opentracing.FollowsFrom(parentContext))
+		span = t.tracer.StartSpan(operationName, opts...)
+	} else {
+		span = t.tracer.StartSpan(operationName, opts...)
+	}
+	sc := span.Context()
+	return span, loggerWithTraceID(sc, l), WithContext(ctx, sc)
+}
+
 // AddContextHeader adds a tracing span context to provided p2p Headers from
 // the go context. If the tracing span context is not present in go context,
 // ErrContextNotFound is returned.

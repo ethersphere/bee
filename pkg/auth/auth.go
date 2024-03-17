@@ -242,7 +242,7 @@ func (e encrypter) decrypt(data []byte) ([]byte, error) {
 
 func applyPolicies(e *casbin.Enforcer) error {
 	_, err := e.AddPolicies([][]string{
-		{"consumer", "/bytes/*", "GET"},
+		{"consumer", "/bytes/*", "(GET)|(HEAD)"},
 		{"creator", "/bytes", "POST"},
 		{"consumer", "/chunks/*", "GET"},
 		{"creator", "/chunks", "POST"},
@@ -250,7 +250,7 @@ func applyPolicies(e *casbin.Enforcer) error {
 		{"creator", "/bzz/*", "PATCH"},
 		{"creator", "/bzz", "POST"},
 		{"creator", "/bzz?*", "POST"},
-		{"consumer", "/bzz/*/*", "GET"},
+		{"consumer", "/bzz/*/*", "(GET)|(HEAD)"},
 		{"creator", "/tags", "GET"},
 		{"creator", "/tags?*", "GET"},
 		{"creator", "/tags", "POST"},
@@ -291,6 +291,7 @@ func applyPolicies(e *casbin.Enforcer) error {
 		{"maintainer", "/chequebook/address", "GET"},
 		{"maintainer", "/chequebook/balance", "GET"},
 		{"maintainer", "/wallet", "GET"},
+		{"maintainer", "/wallet/withdraw/*", "POST"},
 		{"maintainer", "/chunks/*", "(GET)|(DELETE)"},
 		{"maintainer", "/reservestate", "GET"},
 		{"maintainer", "/chainstate", "GET"},

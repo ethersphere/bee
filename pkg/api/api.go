@@ -33,6 +33,7 @@ import (
 	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
+	"github.com/ethersphere/bee/pkg/file/redundancy"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/p2p"
@@ -69,16 +70,21 @@ import (
 const loggerName = "api"
 
 const (
-	SwarmPinHeader            = "Swarm-Pin"
-	SwarmTagHeader            = "Swarm-Tag"
-	SwarmEncryptHeader        = "Swarm-Encrypt"
-	SwarmIndexDocumentHeader  = "Swarm-Index-Document"
-	SwarmErrorDocumentHeader  = "Swarm-Error-Document"
-	SwarmFeedIndexHeader      = "Swarm-Feed-Index"
-	SwarmFeedIndexNextHeader  = "Swarm-Feed-Index-Next"
-	SwarmCollectionHeader     = "Swarm-Collection"
-	SwarmPostageBatchIdHeader = "Swarm-Postage-Batch-Id"
-	SwarmDeferredUploadHeader = "Swarm-Deferred-Upload"
+	SwarmPinHeader                    = "Swarm-Pin"
+	SwarmTagHeader                    = "Swarm-Tag"
+	SwarmEncryptHeader                = "Swarm-Encrypt"
+	SwarmIndexDocumentHeader          = "Swarm-Index-Document"
+	SwarmErrorDocumentHeader          = "Swarm-Error-Document"
+	SwarmFeedIndexHeader              = "Swarm-Feed-Index"
+	SwarmFeedIndexNextHeader          = "Swarm-Feed-Index-Next"
+	SwarmCollectionHeader             = "Swarm-Collection"
+	SwarmPostageBatchIdHeader         = "Swarm-Postage-Batch-Id"
+	SwarmDeferredUploadHeader         = "Swarm-Deferred-Upload"
+	SwarmRedundancyLevelHeader        = "Swarm-Redundancy-Level"
+	SwarmRedundancyStrategyHeader     = "Swarm-Redundancy-Strategy"
+	SwarmRedundancyFallbackModeHeader = "Swarm-Redundancy-Fallback-Mode"
+	SwarmChunkRetrievalTimeoutHeader  = "Swarm-Chunk-Retrieval-Timeout"
+	SwarmLookAheadBufferSizeHeader    = "Swarm-Lookahead-Buffer-Size"
 
 	ImmutableHeader = "Immutable"
 	GasPriceHeader  = "Gas-Price"
@@ -92,18 +98,6 @@ const (
 	ContentLengthHeader      = "Content-Length"
 	RangeHeader              = "Range"
 	OriginHeader             = "Origin"
-)
-
-// The size of buffer used for prefetching content with Langos.
-// Warning: This value influences the number of chunk requests and chunker join goroutines
-// per file request.
-// Recommended value is 8 or 16 times the io.Copy default buffer value which is 32kB, depending
-// on the file size. Use lookaheadBufferSize() to get the correct buffer size for the request.
-const (
-	smallFileBufferSize = 8 * 32 * 1024
-	largeFileBufferSize = 16 * 32 * 1024
-
-	largeBufferFilesizeThreshold = 10 * 1000000 // ten megs
 )
 
 const (
@@ -135,6 +129,10 @@ type Storer interface {
 	storer.LocalStore
 	storer.RadiusChecker
 	storer.Debugger
+}
+
+type PinIntegrity interface {
+	Check(ctx context.Context, logger log.Logger, pin string, out chan storer.PinStat)
 }
 
 type Service struct {
@@ -180,7 +178,9 @@ type Service struct {
 
 	batchStore   postage.Storer
 	stamperStore storage.Store
-	syncStatus   func() (bool, error)
+	pinIntegrity PinIntegrity
+
+	syncStatus func() (bool, error)
 
 	swap        swap.Interface
 	transaction transaction.Service
@@ -196,6 +196,8 @@ type Service struct {
 	chainBackend transaction.Backend
 	erc20Service erc20.Service
 	chainID      int64
+
+	whitelistedWithdrawalAddress []common.Address
 
 	preMapHooks map[string]func(v string) (string, error)
 	validate    *validator.Validate
@@ -248,11 +250,13 @@ type ExtraOptions struct {
 	Steward         steward.Interface
 	SyncStatus      func() (bool, error)
 	NodeStatus      *status.Service
+	PinIntegrity    PinIntegrity
 }
 
 func New(
 	publicKey, pssPublicKey ecdsa.PublicKey,
 	ethereumAddress common.Address,
+	whitelistedWithdrawalAddress []string,
 	logger log.Logger,
 	transaction transaction.Service,
 	batchStore postage.Storer,
@@ -301,6 +305,10 @@ func New(
 		return name
 	})
 	s.stamperStore = stamperStore
+
+	for _, v := range whitelistedWithdrawalAddress {
+		s.whitelistedWithdrawalAddress = append(s.whitelistedWithdrawalAddress, common.HexToAddress(v))
+	}
 
 	return s
 }
@@ -354,6 +362,8 @@ func (s *Service) Configure(signer crypto.Signer, auth auth.Authenticator, trace
 			return "", err
 		}
 	}
+
+	s.pinIntegrity = e.PinIntegrity
 }
 
 func (s *Service) SetProbe(probe *Probe) {
@@ -610,20 +620,12 @@ func (s *Service) gasConfigMiddleware(handlerName string) func(h http.Handler) h
 	}
 }
 
-func lookaheadBufferSize(size int64) int {
-	if size <= largeBufferFilesizeThreshold {
-		return smallFileBufferSize
-	}
-	return largeFileBufferSize
-}
-
 // corsHandler sets CORS headers to HTTP response if allowed origins are configured.
 func (s *Service) corsHandler(h http.Handler) http.Handler {
 	allowedHeaders := []string{
 		"User-Agent", "Accept", "X-Requested-With", "Access-Control-Request-Headers", "Access-Control-Request-Method", "Accept-Ranges", "Content-Encoding",
 		AuthorizationHeader, AcceptEncodingHeader, ContentTypeHeader, ContentDispositionHeader, RangeHeader, OriginHeader,
-		SwarmTagHeader, SwarmPinHeader, SwarmEncryptHeader, SwarmIndexDocumentHeader, SwarmErrorDocumentHeader, SwarmCollectionHeader, SwarmPostageBatchIdHeader, SwarmDeferredUploadHeader,
-		GasPriceHeader, GasLimitHeader, ImmutableHeader,
+		SwarmTagHeader, SwarmPinHeader, SwarmEncryptHeader, SwarmIndexDocumentHeader, SwarmErrorDocumentHeader, SwarmCollectionHeader, SwarmPostageBatchIdHeader, SwarmDeferredUploadHeader, SwarmRedundancyLevelHeader, SwarmRedundancyStrategyHeader, SwarmRedundancyFallbackModeHeader, SwarmChunkRetrievalTimeoutHeader, SwarmLookAheadBufferSizeHeader, SwarmFeedIndexHeader, SwarmFeedIndexNextHeader, GasPriceHeader, GasLimitHeader, ImmutableHeader,
 	}
 	allowedHeadersStr := strings.Join(allowedHeaders, ", ")
 
@@ -797,7 +799,7 @@ func (p *putterSessionWrapper) Done(ref swarm.Address) error {
 }
 
 func (p *putterSessionWrapper) Cleanup() error {
-	return errors.Join(p.PutterSession.Cleanup(), p.save())
+	return p.PutterSession.Cleanup()
 }
 
 func (s *Service) getStamper(batchID []byte) (postage.Stamper, func() error, error) {
@@ -848,16 +850,16 @@ func (s *Service) newStamperPutter(ctx context.Context, opts putterOptions) (sto
 
 type pipelineFunc func(context.Context, io.Reader) (swarm.Address, error)
 
-func requestPipelineFn(s storage.Putter, encrypt bool) pipelineFunc {
+func requestPipelineFn(s storage.Putter, encrypt bool, rLevel redundancy.Level) pipelineFunc {
 	return func(ctx context.Context, r io.Reader) (swarm.Address, error) {
-		pipe := builder.NewPipelineBuilder(ctx, s, encrypt)
+		pipe := builder.NewPipelineBuilder(ctx, s, encrypt, rLevel)
 		return builder.FeedPipeline(ctx, pipe, r)
 	}
 }
 
-func requestPipelineFactory(ctx context.Context, s storage.Putter, encrypt bool) func() pipeline.Interface {
+func requestPipelineFactory(ctx context.Context, s storage.Putter, encrypt bool, rLevel redundancy.Level) func() pipeline.Interface {
 	return func() pipeline.Interface {
-		return builder.NewPipelineBuilder(ctx, s, encrypt)
+		return builder.NewPipelineBuilder(ctx, s, encrypt, rLevel)
 	}
 }
 

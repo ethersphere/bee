@@ -146,7 +146,6 @@ type Options struct {
 	BootnodeMode                  bool
 	BlockchainRpcEndpoint         string
 	SwapFactoryAddress            string
-	SwapLegacyFactoryAddresses    []string
 	SwapInitialDeposit            string
 	SwapEnable                    bool
 	ChequebookEnable              bool
@@ -172,6 +171,8 @@ type Options struct {
 	EnableStorageIncentives       bool
 	StatestoreCacheCapacity       uint64
 	TargetNeighborhood            string
+	NeighborhoodSuggester         string
+	WhitelistedWithdrawalAddress  []string
 }
 
 const (
@@ -253,7 +254,7 @@ func NewBee(
 	}
 	b.stateStoreCloser = stateStore
 
-	// Check if the the batchstore exists. If not, we can assume it's missing
+	// Check if the batchstore exists. If not, we can assume it's missing
 	// due to a migration or it's a fresh install.
 	batchStoreExists, err := batchStoreExists(stateStore)
 	if err != nil {
@@ -283,9 +284,18 @@ func NewBee(
 
 	if !nonceExists {
 		// mine the overlay
-		if o.TargetNeighborhood != "" {
-			logger.Info("mining an overlay address for the fresh node to target the selected neighborhood", "target", o.TargetNeighborhood)
-			swarmAddress, nonce, err = nbhdutil.MineOverlay(ctx, *pubKey, networkID, o.TargetNeighborhood)
+		targetNeighborhood := o.TargetNeighborhood
+		if o.TargetNeighborhood == "" && o.NeighborhoodSuggester != "" {
+			logger.Info("fetching target neighborhood from suggester", "url", o.NeighborhoodSuggester)
+			targetNeighborhood, err = nbhdutil.FetchNeighborhood(&http.Client{}, o.NeighborhoodSuggester)
+			if err != nil {
+				return nil, fmt.Errorf("neighborhood suggestion: %w", err)
+			}
+		}
+
+		if targetNeighborhood != "" {
+			logger.Info("mining an overlay address for the fresh node to target the selected neighborhood", "target", targetNeighborhood)
+			swarmAddress, nonce, err = nbhdutil.MineOverlay(ctx, *pubKey, networkID, targetNeighborhood)
 			if err != nil {
 				return nil, fmt.Errorf("mine overlay address: %w", err)
 			}
@@ -412,6 +422,7 @@ func NewBee(
 			*publicKey,
 			pssPrivateKey.PublicKey,
 			overlayEthAddress,
+			o.WhitelistedWithdrawalAddress,
 			logger,
 			transactionService,
 			batchStore,
@@ -451,6 +462,7 @@ func NewBee(
 			*publicKey,
 			pssPrivateKey.PublicKey,
 			overlayEthAddress,
+			o.WhitelistedWithdrawalAddress,
 			logger,
 			transactionService,
 			batchStore,
@@ -504,20 +516,9 @@ func NewBee(
 	}
 
 	if o.SwapEnable {
-		chequebookFactory, err = InitChequebookFactory(
-			logger,
-			chainBackend,
-			chainID,
-			transactionService,
-			o.SwapFactoryAddress,
-			o.SwapLegacyFactoryAddresses,
-		)
+		chequebookFactory, err = InitChequebookFactory(logger, chainBackend, chainID, transactionService, o.SwapFactoryAddress)
 		if err != nil {
 			return nil, err
-		}
-
-		if err = chequebookFactory.VerifyBytecode(ctx); err != nil {
-			return nil, fmt.Errorf("factory fail: %w", err)
 		}
 
 		erc20Address, err := chequebookFactory.ERC20Address(ctx)
@@ -754,6 +755,7 @@ func NewBee(
 		RadiusSetter:              kad,
 		WarmupDuration:            o.WarmupTime,
 		Logger:                    logger,
+		Tracer:                    tracer,
 	}
 
 	if o.FullNodeMode && !o.BootnodeMode {
@@ -1069,7 +1071,7 @@ func NewBee(
 	b.resolverCloser = multiResolver
 
 	feedFactory := factory.New(localStore.Download(true))
-	steward := steward.New(localStore, retrieval)
+	steward := steward.New(localStore, retrieval, localStore.Cache())
 
 	extraOpts := api.ExtraOptions{
 		Pingpong:        pingPong,
@@ -1090,11 +1092,12 @@ func NewBee(
 		Steward:         steward,
 		SyncStatus:      syncStatusFn,
 		NodeStatus:      nodeStatus,
+		PinIntegrity:    localStore.PinIntegrity(),
 	}
 
 	if o.APIAddr != "" {
 		if apiService == nil {
-			apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, logger, transactionService, batchStore, beeNodeMode, o.ChequebookEnable, o.SwapEnable, chainBackend, o.CORSAllowedOrigins, stamperStore)
+			apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, o.WhitelistedWithdrawalAddress, logger, transactionService, batchStore, beeNodeMode, o.ChequebookEnable, o.SwapEnable, chainBackend, o.CORSAllowedOrigins, stamperStore)
 			apiService.SetProbe(probe)
 			apiService.SetRedistributionAgent(agent)
 		}

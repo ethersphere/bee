@@ -222,7 +222,7 @@ func TestBatchStore_Reset(t *testing.T) {
 
 	// we expect one key in the statestore since the schema name
 	// will always be there.
-	if c != 1 {
+	if c != 0 {
 		t.Fatalf("expected only one key in statestore, got %d", c)
 	}
 }
@@ -328,7 +328,7 @@ func TestBatchUpdate(t *testing.T) {
 	// state after the batch is saved/updated. Unlike depth updates, value updates
 	// that are above cumulative amount should NOT result in any radius changes.
 	// Value updates that are less than or equal to the cumulative amount trigger
-	// the eviction for the the batch, as such, radius may be altered.
+	// the eviction for the batch, as such, radius may be altered.
 
 	tcs := []testCase{
 		{

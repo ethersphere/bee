@@ -23,7 +23,7 @@ func TestPartialWrites(t *testing.T) {
 	t.Parallel()
 
 	m := inmemchunkstore.New()
-	p := builder.NewPipelineBuilder(context.Background(), m, false)
+	p := builder.NewPipelineBuilder(context.Background(), m, false, 0)
 	_, _ = p.Write([]byte("hello "))
 	_, _ = p.Write([]byte("world"))
 
@@ -41,7 +41,7 @@ func TestHelloWorld(t *testing.T) {
 	t.Parallel()
 
 	m := inmemchunkstore.New()
-	p := builder.NewPipelineBuilder(context.Background(), m, false)
+	p := builder.NewPipelineBuilder(context.Background(), m, false, 0)
 
 	data := []byte("hello world")
 	_, err := p.Write(data)
@@ -64,7 +64,7 @@ func TestEmpty(t *testing.T) {
 	t.Parallel()
 
 	m := inmemchunkstore.New()
-	p := builder.NewPipelineBuilder(context.Background(), m, false)
+	p := builder.NewPipelineBuilder(context.Background(), m, false, 0)
 
 	data := []byte{}
 	_, err := p.Write(data)
@@ -92,7 +92,7 @@ func TestAllVectors(t *testing.T) {
 			t.Parallel()
 
 			m := inmemchunkstore.New()
-			p := builder.NewPipelineBuilder(context.Background(), m, false)
+			p := builder.NewPipelineBuilder(context.Background(), m, false, 0)
 
 			_, err := p.Write(data)
 			if err != nil {
@@ -155,7 +155,7 @@ func benchmarkPipeline(b *testing.B, count int) {
 
 	data := testutil.RandBytes(b, count)
 	m := inmemchunkstore.New()
-	p := builder.NewPipelineBuilder(context.Background(), m, false)
+	p := builder.NewPipelineBuilder(context.Background(), m, false, 0)
 
 	b.StartTimer()
 

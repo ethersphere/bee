@@ -19,6 +19,7 @@ import (
 	"strings"
 
 	"github.com/ethersphere/bee/pkg/file/loadsave"
+	"github.com/ethersphere/bee/pkg/file/redundancy"
 	"github.com/ethersphere/bee/pkg/jsonhttp"
 	"github.com/ethersphere/bee/pkg/log"
 	"github.com/ethersphere/bee/pkg/manifest"
@@ -27,19 +28,25 @@ import (
 	storer "github.com/ethersphere/bee/pkg/storer"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go/ext"
+	olog "github.com/opentracing/opentracing-go/log"
 )
 
 var errEmptyDir = errors.New("no files in root directory")
 
 // dirUploadHandler uploads a directory supplied as a tar in an HTTP request
 func (s *Service) dirUploadHandler(
+	ctx context.Context,
 	logger log.Logger,
+	span opentracing.Span,
 	w http.ResponseWriter,
 	r *http.Request,
 	putter storer.PutterSession,
 	contentTypeString string,
 	encrypt bool,
 	tag uint64,
+	rLevel redundancy.Level,
 ) {
 	if r.Body == http.NoBody {
 		logger.Error(nil, "request has no body")
@@ -64,7 +71,7 @@ func (s *Service) dirUploadHandler(
 	defer r.Body.Close()
 
 	reference, err := storeDir(
-		r.Context(),
+		ctx,
 		encrypt,
 		dReader,
 		logger,
@@ -72,6 +79,7 @@ func (s *Service) dirUploadHandler(
 		s.storer.ChunkStore(),
 		r.Header.Get(SwarmIndexDocumentHeader),
 		r.Header.Get(SwarmErrorDocumentHeader),
+		rLevel,
 	)
 	if err != nil {
 		logger.Debug("store dir failed", "error", err)
@@ -86,6 +94,7 @@ func (s *Service) dirUploadHandler(
 		default:
 			jsonhttp.InternalServerError(w, errDirectoryStore)
 		}
+		ext.LogError(span, err, olog.String("action", "dir.store"))
 		return
 	}
 
@@ -94,11 +103,13 @@ func (s *Service) dirUploadHandler(
 		logger.Debug("store dir failed", "error", err)
 		logger.Error(nil, "store dir failed")
 		jsonhttp.InternalServerError(w, errDirectoryStore)
+		ext.LogError(span, err, olog.String("action", "putter.Done"))
 		return
 	}
 
 	if tag != 0 {
 		w.Header().Set(SwarmTagHeader, fmt.Sprint(tag))
+		span.LogFields(olog.Bool("success", true))
 	}
 	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
 	jsonhttp.Created(w, bzzUploadResponse{
@@ -117,13 +128,14 @@ func storeDir(
 	getter storage.Getter,
 	indexFilename,
 	errorFilename string,
+	rLevel redundancy.Level,
 ) (swarm.Address, error) {
 
 	logger := tracing.NewLoggerWithTraceID(ctx, log)
 	loggerV1 := logger.V(1).Build()
 
-	p := requestPipelineFn(putter, encrypt)
-	ls := loadsave.New(getter, requestPipelineFactory(ctx, putter, encrypt))
+	p := requestPipelineFn(putter, encrypt, rLevel)
+	ls := loadsave.New(getter, putter, requestPipelineFactory(ctx, putter, encrypt, rLevel))
 
 	dirManifest, err := manifest.NewDefaultManifest(ls, encrypt)
 	if err != nil {
@@ -264,25 +276,14 @@ func (m *multipartReader) Next() (*FileInfo, error) {
 	if filePath == "" {
 		filePath = part.FormName()
 	}
-	if filePath == "" {
-		return nil, errors.New("filepath missing")
-	}
 
 	fileName := filepath.Base(filePath)
 
 	contentType := part.Header.Get(ContentTypeHeader)
-	if contentType == "" {
-		return nil, errors.New("content-type missing")
-	}
 
 	contentLength := part.Header.Get(ContentLengthHeader)
-	if contentLength == "" {
-		return nil, errors.New("content-length missing")
-	}
-	fileSize, err := strconv.ParseInt(contentLength, 10, 64)
-	if err != nil {
-		return nil, errors.New("invalid file size")
-	}
+
+	fileSize, _ := strconv.ParseInt(contentLength, 10, 64)
 
 	return &FileInfo{
 		Path:        filePath,

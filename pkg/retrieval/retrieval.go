@@ -28,6 +28,8 @@ import (
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
 	"github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go/ext"
+	olog "github.com/opentracing/opentracing-go/log"
 	"resenje.org/singleflight"
 )
 
@@ -120,7 +122,7 @@ func (s *Service) Protocol() p2p.ProtocolSpec {
 }
 
 const (
-	retrieveChunkTimeout = time.Second * 30
+	RetrieveChunkTimeout = time.Second * 30
 	preemptiveInterval   = time.Second
 	overDraftRefresh     = time.Millisecond * 600
 	skiplistDur          = time.Minute
@@ -151,6 +153,8 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 		s.metrics.RequestDurationTime.Observe(time.Since(requestStartTime).Seconds())
 		s.metrics.RequestAttempts.Observe(float64(totalRetrieveAttempts))
 	}()
+
+	spanCtx := context.WithoutCancel(ctx)
 
 	v, _, err := s.singleflight.Do(ctx, flightRoute, func(ctx context.Context) (swarm.Chunk, error) {
 
@@ -257,10 +261,9 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 				inflight++
 
 				go func() {
-					ctx := tracing.WithContext(context.Background(), tracing.FromContext(ctx)) // todo: replace with `ctx := context.WithoutCancel(ctx)` when go 1.21 is supported to pass all context values
-					span, _, ctx := s.tracer.StartSpanFromContext(ctx, "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: chunkAddr.String()})
+					span, _, ctx := s.tracer.FollowSpanFromContext(spanCtx, "retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: chunkAddr.String()})
 					defer span.Finish()
-					s.retrieveChunk(ctx, quit, chunkAddr, peer, resultC, action, origin)
+					s.retrieveChunk(ctx, quit, chunkAddr, peer, resultC, action, origin, span)
 				}()
 
 			case res := <-resultC:
@@ -294,7 +297,7 @@ func (s *Service) RetrieveChunk(ctx context.Context, chunkAddr, sourcePeerAddr s
 	return v, nil
 }
 
-func (s *Service) retrieveChunk(ctx context.Context, quit chan struct{}, chunkAddr, peer swarm.Address, result chan retrievalResult, action accounting.Action, isOrigin bool) {
+func (s *Service) retrieveChunk(ctx context.Context, quit chan struct{}, chunkAddr, peer swarm.Address, result chan retrievalResult, action accounting.Action, isOrigin bool, span opentracing.Span) {
 
 	var (
 		startTime = time.Now()
@@ -305,7 +308,10 @@ func (s *Service) retrieveChunk(ctx context.Context, quit chan struct{}, chunkAd
 	defer func() {
 		action.Cleanup()
 		if err != nil {
+			ext.LogError(span, err)
 			s.metrics.TotalErrors.Inc()
+		} else {
+			span.LogFields(olog.Bool("success", true))
 		}
 		select {
 		case result <- retrievalResult{err: err, chunk: chunk, peer: peer}:
@@ -314,7 +320,7 @@ func (s *Service) retrieveChunk(ctx context.Context, quit chan struct{}, chunkAd
 		}
 	}()
 
-	ctx, cancel := context.WithTimeout(ctx, retrieveChunkTimeout)
+	ctx, cancel := context.WithTimeout(ctx, RetrieveChunkTimeout)
 	defer cancel()
 
 	stream, err := s.streamer.NewStream(ctx, peer, nil, protocolName, protocolVersion, streamName)
@@ -419,7 +425,7 @@ func (s *Service) closestPeer(addr swarm.Address, skipPeers []swarm.Address, all
 }
 
 func (s *Service) handler(p2pctx context.Context, p p2p.Peer, stream p2p.Stream) (err error) {
-	ctx, cancel := context.WithTimeout(p2pctx, retrieveChunkTimeout)
+	ctx, cancel := context.WithTimeout(p2pctx, RetrieveChunkTimeout)
 	defer cancel()
 
 	w, r := protobuf.NewWriterAndReader(stream)
@@ -446,10 +452,19 @@ func (s *Service) handler(p2pctx context.Context, p p2p.Peer, stream p2p.Stream)
 		return fmt.Errorf("invalid address queried by peer %s", p.Address.String())
 	}
 
-	span, _, ctx := s.tracer.StartSpanFromContext(ctx, "handle-retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: addr.String()})
-	defer span.Finish()
+	var forwarded bool
 
-	forwarded := false
+	span, _, ctx := s.tracer.StartSpanFromContext(ctx, "handle-retrieve-chunk", s.logger, opentracing.Tag{Key: "address", Value: addr.String()})
+	defer func() {
+		if err != nil {
+			ext.LogError(span, err)
+		} else {
+			span.LogFields(olog.Bool("success", true))
+		}
+		span.LogFields(olog.Bool("forwarded", forwarded))
+		span.Finish()
+	}()
+
 	chunk, err := s.storer.Lookup().Get(ctx, addr)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {

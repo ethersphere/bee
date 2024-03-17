@@ -9,9 +9,9 @@ require (
 	github.com/casbin/casbin/v2 v2.35.0
 	github.com/coreos/go-semver v0.3.0
 	github.com/ethereum/go-ethereum v1.13.4
-	github.com/ethersphere/go-price-oracle-abi v0.1.0
-	github.com/ethersphere/go-storage-incentives-abi v0.6.0
-	github.com/ethersphere/go-sw3-abi v0.4.0
+	github.com/ethersphere/go-price-oracle-abi v0.2.0
+	github.com/ethersphere/go-storage-incentives-abi v0.6.2
+	github.com/ethersphere/go-sw3-abi v0.6.5
 	github.com/ethersphere/langos v1.0.0
 	github.com/go-playground/validator/v10 v10.11.1
 	github.com/gogo/protobuf v1.3.2
@@ -24,6 +24,7 @@ require (
 	github.com/hashicorp/golang-lru/v2 v2.0.5
 	github.com/ipfs/go-cid v0.4.1
 	github.com/kardianos/service v1.2.0
+	github.com/klauspost/reedsolomon v1.11.8
 	github.com/libp2p/go-libp2p v0.30.0
 	github.com/multiformats/go-multiaddr v0.11.0
 	github.com/multiformats/go-multiaddr-dns v0.3.1
@@ -105,7 +106,7 @@ require (
 	github.com/jackpal/go-nat-pmp v1.0.2 // indirect
 	github.com/jbenet/go-temp-err-catcher v0.1.0 // indirect
 	github.com/klauspost/compress v1.16.7 // indirect
-	github.com/klauspost/cpuid/v2 v2.2.5 // indirect
+	github.com/klauspost/cpuid/v2 v2.2.6 // indirect
 	github.com/koron/go-ssdp v0.0.4 // indirect
 	github.com/leodido/go-urn v1.2.1 // indirect
 	github.com/libp2p/go-buffer-pool v0.1.0 // indirect
@@ -147,7 +148,7 @@ require (
 	github.com/prometheus/statsd_exporter v0.22.7 // indirect
 	github.com/quic-go/qpack v0.4.0 // indirect
 	github.com/quic-go/qtls-go1-20 v0.3.3 // indirect
-	github.com/quic-go/quic-go v0.38.1 // indirect
+	github.com/quic-go/quic-go v0.38.2 // indirect
 	github.com/quic-go/webtransport-go v0.5.3 // indirect
 	github.com/raulk/go-watchdog v1.3.0 // indirect
 	github.com/shirou/gopsutil v3.21.5+incompatible // indirect

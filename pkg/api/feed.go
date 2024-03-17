@@ -196,7 +196,7 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		logger:         logger,
 	}
 
-	l := loadsave.New(s.storer.ChunkStore(), requestPipelineFactory(r.Context(), putter, false))
+	l := loadsave.New(s.storer.ChunkStore(), s.storer.Cache(), requestPipelineFactory(r.Context(), putter, false, 0))
 	feedManifest, err := manifest.NewDefaultManifest(l, false)
 	if err != nil {
 		logger.Debug("create manifest failed", "error", err)

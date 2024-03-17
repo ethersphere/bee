@@ -11,7 +11,7 @@ env:
   K3S_VERSION: "v1.22.17+k3s1"
   REPLICA: 3
   RUN_TYPE: "PR RUN"
-  SETUP_CONTRACT_IMAGE_TAG: "1.0.4"
+  SETUP_CONTRACT_IMAGE_TAG: "2.0.7"
   BEELOCAL_BRANCH: "main"
   BEEKEEPER_BRANCH: "dependabot/go_modules/github.com/go-git/go-git/v5-5.11.0"
   BEEKEEPER_METRICS_ENABLED: false
@@ -162,6 +162,12 @@ jobs:
       - name: Test staking
         id: stake
         run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks ci-stake
+      - name: Test withdraw
+        id: withdraw
+        run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns --checks ci-withdraw; do echo "waiting for withdraw..."; sleep .3; done'
+      - name: Test redundancy
+        id: redundancy
+        run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks ci-redundancy
       - name: Collect debug artifacts
         if: failure()
         run: |

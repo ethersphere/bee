@@ -31,6 +31,7 @@ import (
 	"github.com/ethersphere/bee/pkg/feeds"
 	"github.com/ethersphere/bee/pkg/file/pipeline"
 	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
+	"github.com/ethersphere/bee/pkg/file/redundancy"
 	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/pkg/log"
 	p2pmock "github.com/ethersphere/bee/pkg/p2p/mock"
@@ -130,6 +131,8 @@ type testServerOptions struct {
 	BeeMode             api.BeeNodeMode
 	RedistributionAgent *storageincentives.Agent
 	NodeStatus          *status.Service
+	PinIntegrity        api.PinIntegrity
+	WhitelistedAddr     string
 }
 
 func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.Conn, string, *chanStorer) {
@@ -200,6 +203,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		SyncStatus:      o.SyncStatus,
 		Staking:         o.StakingContract,
 		NodeStatus:      o.NodeStatus,
+		PinIntegrity:    o.PinIntegrity,
 	}
 
 	// By default bee mode is set to full mode.
@@ -207,7 +211,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		o.BeeMode = api.FullMode
 	}
 
-	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, o.Logger, transaction, o.BatchStore, o.BeeMode, true, true, backend, o.CORSAllowedOrigins, inmemstore.New())
+	s := api.New(o.PublicKey, o.PSSPublicKey, o.EthereumAddress, []string{o.WhitelistedAddr}, o.Logger, transaction, o.BatchStore, o.BeeMode, true, true, backend, o.CORSAllowedOrigins, inmemstore.New())
 	testutil.CleanupCloser(t, s)
 
 	s.SetP2P(o.P2P)
@@ -321,9 +325,9 @@ func request(t *testing.T, client *http.Client, method, resource string, body io
 	return resp
 }
 
-func pipelineFactory(s storage.Putter, encrypt bool) func() pipeline.Interface {
+func pipelineFactory(s storage.Putter, encrypt bool, rLevel redundancy.Level) func() pipeline.Interface {
 	return func() pipeline.Interface {
-		return builder.NewPipelineBuilder(context.Background(), s, encrypt)
+		return builder.NewPipelineBuilder(context.Background(), s, encrypt, rLevel)
 	}
 }
 
@@ -392,7 +396,7 @@ func TestParseName(t *testing.T) {
 		pk, _ := crypto.GenerateSecp256k1Key()
 		signer := crypto.NewDefaultSigner(pk)
 
-		s := api.New(pk.PublicKey, pk.PublicKey, common.Address{}, log, nil, nil, 1, false, false, nil, []string{"*"}, inmemstore.New())
+		s := api.New(pk.PublicKey, pk.PublicKey, common.Address{}, nil, log, nil, nil, 1, false, false, nil, []string{"*"}, inmemstore.New())
 		s.Configure(signer, nil, nil, api.Options{}, api.ExtraOptions{Resolver: tC.res}, 1, nil)
 		s.MountAPI()
 

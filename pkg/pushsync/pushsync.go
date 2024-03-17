@@ -28,6 +28,8 @@ import (
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
 	opentracing "github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go/ext"
+	olog "github.com/opentracing/opentracing-go/log"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -186,8 +188,27 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	chunk := swarm.NewChunk(swarm.NewAddress(ch.Address), ch.Data)
 	chunkAddress := chunk.Address()
 
-	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, opentracing.Tag{Key: "address", Value: chunkAddress.String()})
-	defer span.Finish()
+	span, _, ctx := ps.tracer.StartSpanFromContext(ctx, "pushsync-handler", ps.logger, opentracing.Tag{Key: "address", Value: chunkAddress.String()}, opentracing.Tag{Key: "tagID", Value: chunk.TagID()}, opentracing.Tag{Key: "sender_address", Value: p.Address.String()})
+
+	var (
+		stored bool
+		reason string
+	)
+
+	defer func() {
+		if err != nil {
+			ext.LogError(span, err)
+		} else {
+			var logs []olog.Field
+			logs = append(logs, olog.Bool("success", true))
+			if stored {
+				logs = append(logs, olog.Bool("stored", true))
+				logs = append(logs, olog.String("reason", reason))
+			}
+			span.LogFields(logs...)
+		}
+		span.Finish()
+	}()
 
 	stamp := new(postage.Stamp)
 	err = stamp.UnmarshalBinary(ch.Stamp)
@@ -240,12 +261,14 @@ func (ps *PushSync) handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) 
 	}
 
 	if ps.topologyDriver.IsReachable() && ps.store.IsWithinStorageRadius(chunkAddress) {
+		stored, reason = true, "is within AOR"
 		return store(ctx)
 	}
 
 	receipt, err := ps.pushToClosest(ctx, chunk, false)
 	if err != nil {
 		if errors.Is(err, topology.ErrWantSelf) {
+			stored, reason = true, "want self"
 			return store(ctx)
 		}
 
@@ -344,7 +367,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 			if errors.Is(err, topology.ErrNotFound) {
 				if ps.skipList.PruneExpiresAfter(ch.Address(), overDraftRefresh) == 0 { //no overdraft peers, we have depleted ALL peers
 					if inflight == 0 {
-						if ps.fullNode && ps.topologyDriver.IsReachable() {
+						if ps.fullNode {
 							if cac.Valid(ch) {
 								go ps.unwrap(ch)
 							}
@@ -437,22 +460,25 @@ func (ps *PushSync) closestPeer(chunkAddress swarm.Address, origin bool) (swarm.
 }
 
 func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptResult, peer swarm.Address, ch swarm.Chunk, action accounting.Action) {
-
-	span := tracing.FromContext(parentCtx)
-
 	ctx, cancel := context.WithTimeout(context.Background(), defaultTTL)
 	defer cancel()
-
-	spanInner, _, ctx := ps.tracer.StartSpanFromContext(tracing.WithContext(ctx, span), "push-closest", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
-	defer spanInner.Finish()
 
 	var (
 		err     error
 		receipt *pb.Receipt
-		now     = time.Now()
 	)
 
+	now := time.Now()
+
+	spanInner, _, _ := ps.tracer.FollowSpanFromContext(context.WithoutCancel(parentCtx), "push-chunk-async", ps.logger, opentracing.Tag{Key: "address", Value: ch.Address().String()})
+
 	defer func() {
+		if err != nil {
+			ext.LogError(spanInner, err)
+		} else {
+			spanInner.LogFields(olog.Bool("success", true))
+		}
+		spanInner.Finish()
 		select {
 		case resultChan <- receiptResult{pushTime: now, peer: peer, err: err, receipt: receipt}:
 		case <-parentCtx.Done():
@@ -461,7 +487,9 @@ func (ps *PushSync) push(parentCtx context.Context, resultChan chan<- receiptRes
 
 	defer action.Cleanup()
 
-	receipt, err = ps.pushChunkToPeer(ctx, peer, ch)
+	spanInner.LogFields(olog.String("peer_address", peer.String()))
+
+	receipt, err = ps.pushChunkToPeer(tracing.WithContext(ctx, spanInner.Context()), peer, ch)
 	if err != nil {
 		return
 	}

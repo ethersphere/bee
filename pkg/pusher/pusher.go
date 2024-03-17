@@ -25,6 +25,9 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/ethersphere/bee/pkg/topology"
 	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/opentracing/opentracing-go"
+	"github.com/opentracing/opentracing-go/ext"
+	olog "github.com/opentracing/opentracing-go/log"
 )
 
 // loggerName is the tree path name of the logger for this package.
@@ -34,6 +37,7 @@ type Op struct {
 	Chunk  swarm.Chunk
 	Err    chan error
 	Direct bool
+	Span   opentracing.Span
 }
 
 type OpChan <-chan *Op
@@ -57,6 +61,7 @@ type Service struct {
 	inflight          *inflight
 	attempts          *attempts
 	smuggler          chan OpChan
+	tracer            *tracing.Tracer
 }
 
 const (
@@ -94,6 +99,7 @@ func New(
 		inflight:          newInflight(),
 		attempts:          &attempts{retryCount: retryCount, attempts: make(map[string]int)},
 		smuggler:          make(chan OpChan),
+		tracer:            tracer,
 	}
 	go p.chunksWorker(warmupTime, tracer)
 	return p
@@ -118,28 +124,20 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 	}
 
 	var (
-		cctx, cancel      = context.WithCancel(context.Background())
-		mtx               sync.Mutex
-		wg                sync.WaitGroup
-		span, logger, ctx = tracer.StartSpanFromContext(cctx, "pusher-sync-batch", s.logger)
-		timer             = time.NewTimer(traceDuration)
-		sem               = make(chan struct{}, ConcurrentPushes)
-		cc                = make(chan *Op)
+		ctx, cancel = context.WithCancel(context.Background())
+		sem         = make(chan struct{}, ConcurrentPushes)
+		cc          = make(chan *Op)
 	)
 
 	// inflight.set handles the backpressure for the maximum amount of inflight chunks
 	// and duplicate handling.
-	chunks, unsubscribe := s.storer.SubscribePush(cctx)
+	chunks, unsubscribe := s.storer.SubscribePush(ctx)
 	defer func() {
 		unsubscribe()
 		cancel()
 	}()
 
-	ctxLogger := func() (context.Context, log.Logger) {
-		mtx.Lock()
-		defer mtx.Unlock()
-		return ctx, logger
-	}
+	var wg sync.WaitGroup
 
 	push := func(op *Op) {
 		var (
@@ -168,38 +166,32 @@ func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer)
 		}()
 
 		s.metrics.TotalToPush.Inc()
-		ctx, logger := ctxLogger()
 		startTime := time.Now()
 
-		if op.Direct {
-			err = s.pushDirect(ctx, logger, op)
+		spanCtx := ctx
+		if op.Span != nil {
+			spanCtx = tracing.WithContext(spanCtx, op.Span.Context())
 		} else {
-			doRepeat, err = s.pushDeferred(ctx, logger, op)
+			op.Span = opentracing.NoopTracer{}.StartSpan("noOp")
+		}
+
+		if op.Direct {
+			err = s.pushDirect(spanCtx, s.logger, op)
+		} else {
+			doRepeat, err = s.pushDeferred(spanCtx, s.logger, op)
 		}
 
 		if err != nil {
 			s.metrics.TotalErrors.Inc()
 			s.metrics.ErrorTime.Observe(time.Since(startTime).Seconds())
+			ext.LogError(op.Span, err)
+		} else {
+			op.Span.LogFields(olog.Bool("success", true))
 		}
 
 		s.metrics.SyncTime.Observe(time.Since(startTime).Seconds())
 		s.metrics.TotalSynced.Inc()
 	}
-
-	go func() {
-		for {
-			select {
-			case <-s.quit:
-				return
-			case <-timer.C:
-				// reset the span
-				mtx.Lock()
-				span.Finish()
-				span, logger, ctx = tracer.StartSpanFromContext(cctx, "pusher-sync-batch", s.logger)
-				mtx.Unlock()
-			}
-		}
-	}()
 
 	go func() {
 		for {
@@ -393,6 +385,7 @@ func (s *Service) AddFeed(c <-chan *Op) {
 	go func() {
 		select {
 		case s.smuggler <- c:
+			s.logger.Info("got a chunk being smuggled")
 		case <-s.quit:
 		}
 	}()

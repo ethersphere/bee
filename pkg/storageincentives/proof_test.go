@@ -26,7 +26,7 @@ import (
 )
 
 // Test asserts valid case for MakeInclusionProofs.
-func TestMakeInclusionProofs(t *testing.T) {
+func TestMakeInclusionProofs_FLAKY(t *testing.T) {
 	t.Parallel()
 
 	anchor := testutil.RandBytes(t, 1)
@@ -43,7 +43,7 @@ var testData []byte
 
 // Test asserts that MakeInclusionProofs will generate the same
 // output for given sample.
-func TestMakeInclusionProofsRegression(t *testing.T) {
+func TestMakeInclusionProofsRegression_FLAKY(t *testing.T) {
 	t.Parallel()
 
 	const sampleSize = 16

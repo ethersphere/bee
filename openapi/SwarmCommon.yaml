@@ -839,6 +839,8 @@ components:
           type: integer
         reserveSize:
           type: integer
+        reserveSizeWithinRadius:
+          type: interger
         pullsyncRate:
           type: number
         storageRadius:
@@ -863,6 +865,83 @@ components:
           nullable: false
           items:
             $ref: "#/components/schemas/StatusSnapshotResponse"
+
+    ApiChunkInclusionProof:
+      type: object
+      properties:
+        chunkSpan:
+          minimum: 0
+          type: integer
+        postageProof:
+          $ref: '#/components/schemas/ApiPostageProof'
+        proofSegments:
+          items:
+            type: string
+          nullable: true
+          type: array
+        proofSegments2:
+          items:
+            type: string
+          nullable: true
+          type: array
+        proofSegments3:
+          items:
+            type: string
+          nullable: true
+          type: array
+        proveSegment:
+          type: string
+        proveSegment2:
+          type: string
+        socProof:
+          items:
+            $ref: '#/components/schemas/ApiSOCProof'
+          nullable: true
+          type: array
+
+    ApiChunkInclusionProofs:
+      type: object
+      properties:
+        proof1:
+          $ref: '#/components/schemas/ApiChunkInclusionProof'
+        proof2:
+          $ref: '#/components/schemas/ApiChunkInclusionProof'
+        proofLast:
+          $ref: '#/components/schemas/ApiChunkInclusionProof'
+
+    ApiPostageProof:
+      type: object
+      properties:
+        index:
+          type: string
+        postageId:
+          type: string
+        signature:
+          type: string
+        timeStamp:
+          type: string
+
+    ApiRCHashResponse:
+      type: object
+      properties:
+        duration:
+          type: integer
+        hash:
+          $ref: '#/components/schemas/SwarmAddress'
+        proofs:
+          $ref: '#/components/schemas/ApiChunkInclusionProofs'
+
+    ApiSOCProof:
+      type: object
+      properties:
+        chunkAddr:
+          type: string
+        identifier:
+          type: string
+        signature:
+          type: string
+        signer:
+          type: string
 
   headers:
     SwarmTag:
@@ -934,6 +1013,52 @@ components:
       description: >
         Represents the encrypting state of the file
 
+    SwarmRedundancyLevelParameter:
+      in: header
+      name: swarm-redundancy-level
+      schema:
+        type: integer
+        enum: [0, 1, 2, 3, 4]
+      required: false
+      description: >
+        Add redundancy to the data being uploaded so that downloaders can download it with better UX.
+        0 value is default and does not add any redundancy to the file.
+
+    SwarmRedundancyStrategyParameter:
+      in: header
+      name: swarm-redundancy-strategy
+      schema:
+        type: integer
+        enum: [0, 1, 2, 3]
+      required: false
+      description: >
+        Specify the retrieve strategy on redundant data.
+        The numbers stand for NONE, DATA, PROX and RACE, respectively.
+        Strategy NONE means no prefetching takes place.
+        Strategy DATA means only data chunks are prefetched.
+        Strategy PROX means only chunks that are close to the node are prefetched.
+        Strategy RACE means all chunks are prefetched: n data chunks and k parity chunks. The first n chunks to arrive are used to reconstruct the file.
+        Multiple strategies can be used in a fallback cascade if the swarm redundancy fallback mode is set to true.
+        The default strategy is NONE, DATA, falling back to PROX, falling back to RACE
+
+    SwarmRedundancyFallbackModeParameter:
+      in: header
+      name: swarm-redundancy-fallback-mode
+      schema:
+        type: boolean
+      required: false
+      description: >
+        Specify if the retrieve strategies (chunk prefetching on redundant data) are used in a fallback cascade. The default is true.
+
+    SwarmChunkRetrievalTimeoutParameter:
+      in: header
+      name: swarm-chunk-retrieval-timeout
+      schema:
+        $ref: "#/components/schemas/Duration"
+      required: false
+      description: >
+        Specify the timeout for chunk retrieval. The default is 30 seconds.
+
     ContentTypePreserved:
       in: header
       name: Content-Type
@@ -995,6 +1120,8 @@ components:
       description: "Determines if the download data should be cached on the node. By default the download will be cached"
 
   responses:
+    "200":
+      description: OK.
     "204":
       description: The resource was deleted successfully.
     "400":

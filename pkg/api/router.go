@@ -220,7 +220,7 @@ func (s *Service) mountAPI() {
 
 	handle("/chunks", jsonhttp.MethodHandler{
 		"POST": web.ChainHandlers(
-			jsonhttp.NewMaxBodyBytesHandler(swarm.ChunkWithSpanSize),
+			jsonhttp.NewMaxBodyBytesHandler(swarm.SocMaxChunkSize),
 			web.FinalHandlerFunc(s.chunkUploadHandler),
 		),
 	})
@@ -269,6 +269,9 @@ func (s *Service) mountAPI() {
 			s.contentLengthMetricMiddleware(),
 			s.newTracingHandler("bzz-download"),
 			web.FinalHandlerFunc(s.bzzDownloadHandler),
+		),
+		"HEAD": web.ChainHandlers(
+			web.FinalHandlerFunc(s.bzzHeadHandler),
 		),
 	})
 
@@ -342,14 +345,12 @@ func (s *Service) mountAPI() {
 	if s.Restricted {
 		handle("/auth", jsonhttp.MethodHandler{
 			"POST": web.ChainHandlers(
-				s.newTracingHandler("auth"),
 				jsonhttp.NewMaxBodyBytesHandler(512),
 				web.FinalHandlerFunc(s.authHandler),
 			),
 		})
 		handle("/refresh", jsonhttp.MethodHandler{
 			"POST": web.ChainHandlers(
-				s.newTracingHandler("auth"),
 				jsonhttp.NewMaxBodyBytesHandler(512),
 				web.FinalHandlerFunc(s.refreshHandler),
 			),
@@ -490,6 +491,12 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 			handle("/wallet", jsonhttp.MethodHandler{
 				"GET": http.HandlerFunc(s.walletHandler),
 			})
+			handle("/wallet/withdraw/{coin}", jsonhttp.MethodHandler{
+				"POST": web.ChainHandlers(
+					s.gasConfigMiddleware("wallet withdraw"),
+					web.FinalHandlerFunc(s.walletWithdrawHandler),
+				),
+			})
 		}
 	}
 
@@ -599,6 +606,12 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 	handle("/rchash/{depth}/{anchor1}/{anchor2}", web.ChainHandlers(
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.rchash),
+		}),
+	))
+
+	handle("/check/pin", web.ChainHandlers(
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.pinIntegrityHandler),
 		}),
 	))
 }
