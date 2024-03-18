@@ -13,9 +13,9 @@ import (
 	"github.com/ethereum/go-ethereum/rpc"
 	goens "github.com/wealdtech/go-ens/v3"
 
-	"github.com/ethersphere/bee/pkg/resolver"
-	"github.com/ethersphere/bee/pkg/resolver/client/ens"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/resolver"
+	"github.com/ethersphere/bee/v2/pkg/resolver/client/ens"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 func TestNewENSClient(t *testing.T) {

@@ -10,8 +10,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/swarm"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 type DelayedStore struct {

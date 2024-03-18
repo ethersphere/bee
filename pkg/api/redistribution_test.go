@@ -11,13 +11,13 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	statestore "github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/bee/pkg/storageincentives"
-	"github.com/ethersphere/bee/pkg/transaction/backendmock"
-	"github.com/ethersphere/bee/pkg/transaction/mock"
+	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
+	statestore "github.com/ethersphere/bee/v2/pkg/statestore/mock"
+	"github.com/ethersphere/bee/v2/pkg/storageincentives"
+	"github.com/ethersphere/bee/v2/pkg/transaction/backendmock"
+	"github.com/ethersphere/bee/v2/pkg/transaction/mock"
 )
 
 func TestRedistributionStatus(t *testing.T) {

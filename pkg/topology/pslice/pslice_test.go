@@ -9,9 +9,9 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 
-	"github.com/ethersphere/bee/pkg/topology/pslice"
+	"github.com/ethersphere/bee/v2/pkg/topology/pslice"
 )
 
 // TestShallowestEmpty tests that ShallowestEmpty functionality works correctly.

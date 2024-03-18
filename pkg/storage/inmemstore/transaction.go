@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 )
 
 var (

@@ -9,8 +9,8 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/postage/batchstore/mock"
-	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
+	"github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
+	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
 )
 
 func TestBatchStore(t *testing.T) {

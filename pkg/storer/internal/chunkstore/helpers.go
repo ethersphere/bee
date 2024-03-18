@@ -8,8 +8,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ethersphere/bee/pkg/sharky"
-	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/sharky"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
 )
 
 type LocationResult struct {

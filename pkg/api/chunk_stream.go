@@ -10,13 +10,13 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/cac"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/postage"
-	storage "github.com/ethersphere/bee/pkg/storage"
-	storer "github.com/ethersphere/bee/pkg/storer"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/cac"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	storer "github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/gorilla/websocket"
 )
 

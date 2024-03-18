@@ -11,7 +11,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/bigint"
+	"github.com/ethersphere/bee/v2/pkg/bigint"
 )
 
 func TestMarshaling(t *testing.T) {

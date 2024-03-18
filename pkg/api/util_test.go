@@ -14,8 +14,8 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
 )
 

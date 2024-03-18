@@ -13,14 +13,14 @@ import (
 	"math/big"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/postage"
-	pstoremock "github.com/ethersphere/bee/pkg/postage/batchstore/mock"
-	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/inmemstore"
-	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/util/testutil"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	pstoremock "github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
+	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemstore"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 )
 
 // TestSaveLoad tests the idempotence of saving and loading the postage.Service

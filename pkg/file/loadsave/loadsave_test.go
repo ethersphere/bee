@@ -11,12 +11,12 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/file/loadsave"
-	"github.com/ethersphere/bee/pkg/file/pipeline"
-	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/file/loadsave"
+	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
+	"github.com/ethersphere/bee/v2/pkg/file/pipeline/builder"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 var (

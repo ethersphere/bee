@@ -16,8 +16,8 @@ import (
 	"fmt"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 
 	ma "github.com/multiformats/go-multiaddr"
 )

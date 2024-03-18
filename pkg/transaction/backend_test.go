@@ -12,8 +12,8 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethersphere/bee/pkg/transaction"
-	"github.com/ethersphere/bee/pkg/transaction/backendmock"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
+	"github.com/ethersphere/bee/v2/pkg/transaction/backendmock"
 )
 
 func TestIsSynced(t *testing.T) {

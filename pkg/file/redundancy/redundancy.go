@@ -7,8 +7,8 @@ package redundancy
 import (
 	"fmt"
 
-	"github.com/ethersphere/bee/pkg/file/pipeline"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/klauspost/reedsolomon"
 )
 

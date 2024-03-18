@@ -10,10 +10,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ethersphere/bee/pkg/postage"
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/storageutil"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/storageutil"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 var (

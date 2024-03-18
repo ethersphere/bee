@@ -8,12 +8,12 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/status"
-	"github.com/ethersphere/bee/pkg/topology"
+	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/status"
+	"github.com/ethersphere/bee/v2/pkg/topology"
 )
 
 func TestGetStatus(t *testing.T) {

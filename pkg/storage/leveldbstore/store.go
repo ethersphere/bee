@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/syndtr/goleveldb/leveldb"
 	ldbErrors "github.com/syndtr/goleveldb/leveldb/errors"
 	"github.com/syndtr/goleveldb/leveldb/iterator"

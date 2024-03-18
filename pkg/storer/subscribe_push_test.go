@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
-	storer "github.com/ethersphere/bee/pkg/storer"
-	"github.com/ethersphere/bee/pkg/swarm"
+	chunktesting "github.com/ethersphere/bee/v2/pkg/storage/testing"
+	storer "github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 func TestPushSubscriber(t *testing.T) {

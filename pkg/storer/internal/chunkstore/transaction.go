@@ -11,10 +11,10 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/ethersphere/bee/pkg/sharky"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/leveldbstore"
-	"github.com/ethersphere/bee/pkg/storage/storageutil"
+	"github.com/ethersphere/bee/v2/pkg/sharky"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/leveldbstore"
+	"github.com/ethersphere/bee/v2/pkg/storage/storageutil"
 	"github.com/google/uuid"
 	"github.com/vmihailenco/msgpack/v5"
 )

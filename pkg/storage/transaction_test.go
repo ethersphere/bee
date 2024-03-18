@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 )
 
 func TestTxState(t *testing.T) {

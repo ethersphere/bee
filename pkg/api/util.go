@@ -15,8 +15,8 @@ import (
 	"strings"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/pss"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/pss"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/hashicorp/go-multierror"
 	"github.com/multiformats/go-multiaddr"
 )

@@ -7,9 +7,9 @@ package cache_test
 import (
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/storage/cache"
-	"github.com/ethersphere/bee/pkg/storage/leveldbstore"
-	"github.com/ethersphere/bee/pkg/storage/storagetest"
+	"github.com/ethersphere/bee/v2/pkg/storage/cache"
+	"github.com/ethersphere/bee/v2/pkg/storage/leveldbstore"
+	"github.com/ethersphere/bee/v2/pkg/storage/storagetest"
 )
 
 func TestCache(t *testing.T) {

@@ -4,7 +4,7 @@
 
 package migration
 
-import storage "github.com/ethersphere/bee/pkg/storage"
+import storage "github.com/ethersphere/bee/v2/pkg/storage"
 
 // NewStepsChain returns new StepFn which combines all supplied StepFn
 // into single StepFn.

@@ -7,11 +7,11 @@ package sequence_test
 import (
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/feeds"
-	"github.com/ethersphere/bee/pkg/feeds/sequence"
-	feedstesting "github.com/ethersphere/bee/pkg/feeds/testing"
-	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/feeds"
+	"github.com/ethersphere/bee/v2/pkg/feeds/sequence"
+	feedstesting "github.com/ethersphere/bee/v2/pkg/feeds/testing"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
 )
 
 func TestFinder(t *testing.T) {

@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/storageincentives/redistribution"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/gorilla/mux"
 )
 

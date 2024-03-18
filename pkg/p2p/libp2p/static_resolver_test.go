@@ -8,7 +8,7 @@ import (
 	"net"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/p2p/libp2p"
+	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p"
 	ma "github.com/multiformats/go-multiaddr"
 )
 

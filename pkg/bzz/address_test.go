@@ -8,8 +8,8 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/bzz"
-	"github.com/ethersphere/bee/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/bzz"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
 
 	ma "github.com/multiformats/go-multiaddr"
 )

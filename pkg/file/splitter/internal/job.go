@@ -10,11 +10,11 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ethersphere/bee/pkg/cac"
-	"github.com/ethersphere/bee/pkg/encryption"
-	"github.com/ethersphere/bee/pkg/file"
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/cac"
+	"github.com/ethersphere/bee/v2/pkg/encryption"
+	"github.com/ethersphere/bee/v2/pkg/file"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 // maximum amount of file tree levels this file hasher component can handle

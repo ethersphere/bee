@@ -21,12 +21,12 @@ import (
 	"crypto/rand"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/cac"
-	"github.com/ethersphere/bee/pkg/crypto"
-	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
-	"github.com/ethersphere/bee/pkg/soc"
-	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/util/testutil"
+	"github.com/ethersphere/bee/v2/pkg/cac"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
+	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
+	"github.com/ethersphere/bee/v2/pkg/soc"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 )
 
 // GenerateTestRandomChunk generates a valid content addressed chunk.

@@ -5,9 +5,9 @@
 package migration
 
 import (
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/migration"
-	"github.com/ethersphere/bee/pkg/storer/internal/reserve"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/migration"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
 )
 
 // AfterInitSteps lists all migration steps for localstore IndexStore after the localstore is intiated.

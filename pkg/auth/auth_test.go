@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/auth"
-	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/auth"
+	"github.com/ethersphere/bee/v2/pkg/log"
 )
 
 const (

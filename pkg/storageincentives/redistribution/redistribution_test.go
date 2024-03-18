@@ -15,15 +15,15 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	chaincfg "github.com/ethersphere/bee/pkg/config"
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/sctx"
-	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
-	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/transaction"
-	transactionMock "github.com/ethersphere/bee/pkg/transaction/mock"
-	"github.com/ethersphere/bee/pkg/util/abiutil"
-	"github.com/ethersphere/bee/pkg/util/testutil"
+	chaincfg "github.com/ethersphere/bee/v2/pkg/config"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/sctx"
+	"github.com/ethersphere/bee/v2/pkg/storageincentives/redistribution"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
+	transactionMock "github.com/ethersphere/bee/v2/pkg/transaction/mock"
+	"github.com/ethersphere/bee/v2/pkg/util/abiutil"
+	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 )
 
 var redistributionContractABI = abiutil.MustParseABI(chaincfg.Testnet.RedistributionABI)

@@ -15,12 +15,12 @@ import (
 	"testing"
 	"time"
 
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/storagetest"
-	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
-	"github.com/ethersphere/bee/pkg/storer/internal"
-	"github.com/ethersphere/bee/pkg/storer/internal/upload"
-	"github.com/ethersphere/bee/pkg/swarm"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/storagetest"
+	chunktest "github.com/ethersphere/bee/v2/pkg/storage/testing"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/upload"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
 	"github.com/google/go-cmp/cmp/cmpopts"
 )

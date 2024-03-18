@@ -9,9 +9,9 @@ import (
 	"math/big"
 	"sync"
 
-	storage "github.com/ethersphere/bee/pkg/storage"
-	storer "github.com/ethersphere/bee/pkg/storer"
-	"github.com/ethersphere/bee/pkg/swarm"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	storer "github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 type chunksResponse struct {

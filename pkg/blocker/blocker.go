@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/p2p"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/p2p"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"go.uber.org/atomic"
 )
 

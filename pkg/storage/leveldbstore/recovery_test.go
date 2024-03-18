@@ -11,9 +11,9 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/leveldbstore"
-	"github.com/ethersphere/bee/pkg/storage/storageutil"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/leveldbstore"
+	"github.com/ethersphere/bee/v2/pkg/storage/storageutil"
 	"github.com/google/go-cmp/cmp"
 )
 

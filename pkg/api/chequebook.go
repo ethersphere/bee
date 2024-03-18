@@ -10,13 +10,13 @@ import (
 	"net/http"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/bigint"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/postage/postagecontract"
-	"github.com/ethersphere/bee/pkg/settlement/swap"
-	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
+	"github.com/ethersphere/bee/v2/pkg/bigint"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/postage/postagecontract"
+	"github.com/ethersphere/bee/v2/pkg/settlement/swap"
+	"github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook"
 
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/gorilla/mux"
 )
 

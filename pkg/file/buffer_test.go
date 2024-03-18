@@ -12,9 +12,9 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/file"
-	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/util/testutil"
+	"github.com/ethersphere/bee/v2/pkg/file"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 )
 
 // TestChunkPipe verifies that the reads are correctly buffered for

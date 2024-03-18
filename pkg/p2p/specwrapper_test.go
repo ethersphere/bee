@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/v2/pkg/p2p"
 )
 
 func newTestProtocol(h p2p.HandlerFunc) p2p.ProtocolSpec {

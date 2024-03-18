@@ -8,9 +8,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storer/internal/upload"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/upload"
 )
 
 // step_05 is a migration step that removes all upload items from the store.

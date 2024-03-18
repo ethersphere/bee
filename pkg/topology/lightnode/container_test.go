@@ -10,10 +10,10 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/p2p"
-	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/topology"
-	"github.com/ethersphere/bee/pkg/topology/lightnode"
+	"github.com/ethersphere/bee/v2/pkg/p2p"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/topology"
+	"github.com/ethersphere/bee/v2/pkg/topology/lightnode"
 )
 
 func TestContainer(t *testing.T) {

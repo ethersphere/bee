@@ -13,13 +13,13 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ethersphere/bee/pkg/file/joiner"
-	"github.com/ethersphere/bee/pkg/file/loadsave"
-	"github.com/ethersphere/bee/pkg/manifest"
-	"github.com/ethersphere/bee/pkg/manifest/mantaray"
-	"github.com/ethersphere/bee/pkg/soc"
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/file/joiner"
+	"github.com/ethersphere/bee/v2/pkg/file/loadsave"
+	"github.com/ethersphere/bee/v2/pkg/manifest"
+	"github.com/ethersphere/bee/v2/pkg/manifest/mantaray"
+	"github.com/ethersphere/bee/v2/pkg/soc"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 // Traverser represents service which traverse through address dependent chunks.

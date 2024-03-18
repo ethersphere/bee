@@ -7,8 +7,8 @@ package inmemstore_test
 import (
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/storage/inmemstore"
-	"github.com/ethersphere/bee/pkg/storage/storagetest"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemstore"
+	"github.com/ethersphere/bee/v2/pkg/storage/storagetest"
 )
 
 func TestTxStore(t *testing.T) {

@@ -13,12 +13,12 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/bigint"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/postage/postagecontract"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/ethersphere/bee/v2/pkg/bigint"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/postage/postagecontract"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/tracing"
 	"github.com/gorilla/mux"
 )
 

@@ -8,10 +8,10 @@ import (
 	"encoding/binary"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/bmt"
-	"github.com/ethersphere/bee/pkg/soc"
-	"github.com/ethersphere/bee/pkg/storer"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/bmt"
+	"github.com/ethersphere/bee/v2/pkg/soc"
+	"github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 type ChunkInclusionProofs struct {

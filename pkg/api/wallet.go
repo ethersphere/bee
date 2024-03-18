@@ -12,10 +12,10 @@ import (
 	"slices"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/bigint"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/sctx"
-	"github.com/ethersphere/bee/pkg/transaction"
+	"github.com/ethersphere/bee/v2/pkg/bigint"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/sctx"
+	"github.com/ethersphere/bee/v2/pkg/transaction"
 	"github.com/gorilla/mux"
 )
 

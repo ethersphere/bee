@@ -15,7 +15,7 @@ import (
 	"github.com/ethereum/go-ethereum"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/log"
 )
 
 var ErrTransactionCancelled = errors.New("transaction cancelled")

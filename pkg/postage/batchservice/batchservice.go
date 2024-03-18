@@ -14,9 +14,9 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"golang.org/x/crypto/sha3"
 )
 

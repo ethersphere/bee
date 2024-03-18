@@ -9,10 +9,10 @@ import (
 	"fmt"
 	"slices"
 
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/sharky"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/storageutil"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/sharky"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/storageutil"
 	"github.com/vmihailenco/msgpack/v5"
 )
 

@@ -12,7 +12,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/bmt/reference"
+	"github.com/ethersphere/bee/v2/pkg/bmt/reference"
 
 	"golang.org/x/crypto/sha3"
 )

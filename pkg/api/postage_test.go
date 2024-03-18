@@ -18,19 +18,19 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 
-	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/bigint"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/postage/batchstore/mock"
-	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
-	"github.com/ethersphere/bee/pkg/postage/postagecontract"
-	contractMock "github.com/ethersphere/bee/pkg/postage/postagecontract/mock"
-	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
-	"github.com/ethersphere/bee/pkg/sctx"
-	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
-	"github.com/ethersphere/bee/pkg/transaction/backendmock"
+	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/bigint"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
+	mockpost "github.com/ethersphere/bee/v2/pkg/postage/mock"
+	"github.com/ethersphere/bee/v2/pkg/postage/postagecontract"
+	contractMock "github.com/ethersphere/bee/v2/pkg/postage/postagecontract/mock"
+	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
+	"github.com/ethersphere/bee/v2/pkg/sctx"
+	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
+	"github.com/ethersphere/bee/v2/pkg/transaction/backendmock"
 )
 
 func TestPostageCreateStamp(t *testing.T) {

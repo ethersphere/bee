@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 // Getter is the interface that wraps the basic Get method.

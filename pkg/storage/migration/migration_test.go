@@ -12,11 +12,11 @@ import (
 	"strconv"
 	"testing"
 
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/inmemstore"
-	"github.com/ethersphere/bee/pkg/storage/migration"
-	"github.com/ethersphere/bee/pkg/storage/storagetest"
-	"github.com/ethersphere/bee/pkg/storage/storageutil"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemstore"
+	"github.com/ethersphere/bee/v2/pkg/storage/migration"
+	"github.com/ethersphere/bee/v2/pkg/storage/storagetest"
+	"github.com/ethersphere/bee/v2/pkg/storage/storageutil"
 )
 
 var (

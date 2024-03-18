@@ -7,8 +7,8 @@ package api
 import (
 	"net/http"
 
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/tracing"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/tracing"
 )
 
 func (s *Service) debugStorage(w http.ResponseWriter, r *http.Request) {

@@ -9,9 +9,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/pss"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/pss"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 func TestWrap(t *testing.T) {

@@ -19,8 +19,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
 )
 
 func TestRequest_statusCode(t *testing.T) {

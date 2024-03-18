@@ -7,8 +7,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/p2p/libp2p"
-	"github.com/ethersphere/bee/pkg/p2p/libp2p/internal/handshake"
+	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p"
+	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/handshake"
 )
 
 func TestDynamicWelcomeMessage(t *testing.T) {

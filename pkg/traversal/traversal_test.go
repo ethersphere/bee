@@ -14,15 +14,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/file/loadsave"
-	"github.com/ethersphere/bee/pkg/file/pipeline"
-	"github.com/ethersphere/bee/pkg/file/pipeline/builder"
-	"github.com/ethersphere/bee/pkg/manifest"
-	testingsoc "github.com/ethersphere/bee/pkg/soc/testing"
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
-	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/traversal"
+	"github.com/ethersphere/bee/v2/pkg/file/loadsave"
+	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
+	"github.com/ethersphere/bee/v2/pkg/file/pipeline/builder"
+	"github.com/ethersphere/bee/v2/pkg/manifest"
+	testingsoc "github.com/ethersphere/bee/v2/pkg/soc/testing"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/traversal"
 )
 
 const (

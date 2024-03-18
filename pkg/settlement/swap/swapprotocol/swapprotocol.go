@@ -13,14 +13,14 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/p2p"
-	"github.com/ethersphere/bee/pkg/p2p/protobuf"
-	"github.com/ethersphere/bee/pkg/settlement/swap/chequebook"
-	swap "github.com/ethersphere/bee/pkg/settlement/swap/headers"
-	"github.com/ethersphere/bee/pkg/settlement/swap/priceoracle"
-	"github.com/ethersphere/bee/pkg/settlement/swap/swapprotocol/pb"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/p2p"
+	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook"
+	swap "github.com/ethersphere/bee/v2/pkg/settlement/swap/headers"
+	"github.com/ethersphere/bee/v2/pkg/settlement/swap/priceoracle"
+	"github.com/ethersphere/bee/v2/pkg/settlement/swap/swapprotocol/pb"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 // loggerName is the tree path name of the logger for this package.

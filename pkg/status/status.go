@@ -8,13 +8,13 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/p2p"
-	"github.com/ethersphere/bee/pkg/p2p/protobuf"
-	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/status/internal/pb"
-	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/topology"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/p2p"
+	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/status/internal/pb"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/topology"
 )
 
 // loggerName is the tree path name of the logger for this package.

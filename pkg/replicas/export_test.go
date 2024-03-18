@@ -4,7 +4,7 @@
 
 package replicas
 
-import "github.com/ethersphere/bee/pkg/storage"
+import "github.com/ethersphere/bee/v2/pkg/storage"
 
 var (
 	Signer = signer

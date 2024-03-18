@@ -10,9 +10,9 @@ import (
 	"io"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/encryption/elgamal"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/encryption/elgamal"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 func TestElgamalCorrect(t *testing.T) {

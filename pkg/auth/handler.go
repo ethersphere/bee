@@ -9,7 +9,7 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/ethersphere/bee/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 )
 
 type auth interface {

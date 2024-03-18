@@ -9,13 +9,13 @@ import (
 	"errors"
 	"testing"
 
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
-	"github.com/ethersphere/bee/pkg/storage/inmemstore"
-	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
-	"github.com/ethersphere/bee/pkg/storer/internal/reserve"
-	localmigration "github.com/ethersphere/bee/pkg/storer/migration"
-	"github.com/ethersphere/bee/pkg/swarm"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemstore"
+	chunktest "github.com/ethersphere/bee/v2/pkg/storage/testing"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
+	localmigration "github.com/ethersphere/bee/v2/pkg/storer/migration"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/stretchr/testify/assert"
 )
 

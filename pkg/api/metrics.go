@@ -9,8 +9,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/ethersphere/bee"
-	m "github.com/ethersphere/bee/pkg/metrics"
+	"github.com/ethersphere/bee/v2"
+	m "github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/collectors"
 )

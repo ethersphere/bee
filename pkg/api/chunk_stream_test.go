@@ -10,12 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/api"
-	mockpost "github.com/ethersphere/bee/pkg/postage/mock"
-	"github.com/ethersphere/bee/pkg/spinlock"
-	testingc "github.com/ethersphere/bee/pkg/storage/testing"
-	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/api"
+	mockpost "github.com/ethersphere/bee/v2/pkg/postage/mock"
+	"github.com/ethersphere/bee/v2/pkg/spinlock"
+	testingc "github.com/ethersphere/bee/v2/pkg/storage/testing"
+	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/gorilla/websocket"
 )
 

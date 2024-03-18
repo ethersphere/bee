@@ -8,7 +8,7 @@ import (
 	"encoding/binary"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 func Test_RandAddress(t *testing.T) {

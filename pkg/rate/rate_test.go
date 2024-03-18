@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/rate"
+	"github.com/ethersphere/bee/v2/pkg/rate"
 )
 
 func TestRateFirstBucket(t *testing.T) {

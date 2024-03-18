@@ -9,10 +9,10 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
-	"github.com/ethersphere/bee/pkg/storage/inmemstore"
-	"github.com/ethersphere/bee/pkg/storage/migration"
-	localmigration "github.com/ethersphere/bee/pkg/storer/migration"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemstore"
+	"github.com/ethersphere/bee/v2/pkg/storage/migration"
+	localmigration "github.com/ethersphere/bee/v2/pkg/storer/migration"
 )
 
 func TestPreSteps(t *testing.T) {

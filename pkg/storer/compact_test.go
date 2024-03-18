@@ -10,12 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/postage"
-	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
-	pullerMock "github.com/ethersphere/bee/pkg/puller/mock"
-	chunk "github.com/ethersphere/bee/pkg/storage/testing"
-	storer "github.com/ethersphere/bee/pkg/storer"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
+	pullerMock "github.com/ethersphere/bee/v2/pkg/puller/mock"
+	chunk "github.com/ethersphere/bee/v2/pkg/storage/testing"
+	storer "github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 // TestCompact creates two batches and puts chunks belonging to both batches.

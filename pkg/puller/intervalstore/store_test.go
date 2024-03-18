@@ -20,11 +20,11 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/statestore/leveldb"
-	"github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/util/testutil"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/statestore/leveldb"
+	"github.com/ethersphere/bee/v2/pkg/statestore/mock"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 )
 
 // TestInmemoryStore tests basic functionality of InmemoryStore.

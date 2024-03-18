@@ -7,9 +7,9 @@ package epochs
 import (
 	"context"
 
-	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/feeds"
-	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/feeds"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
 )
 
 var _ feeds.Updater = (*updater)(nil)

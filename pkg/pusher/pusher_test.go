@@ -14,18 +14,18 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 
-	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/pusher"
-	"github.com/ethersphere/bee/pkg/pushsync"
-	pushsyncmock "github.com/ethersphere/bee/pkg/pushsync/mock"
-	"github.com/ethersphere/bee/pkg/spinlock"
-	storage "github.com/ethersphere/bee/pkg/storage"
-	testingc "github.com/ethersphere/bee/pkg/storage/testing"
-	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/topology"
-	"github.com/ethersphere/bee/pkg/util/testutil"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/pusher"
+	"github.com/ethersphere/bee/v2/pkg/pushsync"
+	pushsyncmock "github.com/ethersphere/bee/v2/pkg/pushsync/mock"
+	"github.com/ethersphere/bee/v2/pkg/spinlock"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	testingc "github.com/ethersphere/bee/v2/pkg/storage/testing"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/topology"
+	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 )
 
 // time to wait for received response from pushsync

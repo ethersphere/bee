@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/retrieval"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/retrieval"
 )
 
 const (

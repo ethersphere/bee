@@ -14,13 +14,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storer/internal"
-	"github.com/ethersphere/bee/pkg/storer/internal/chunkstamp"
-	"github.com/ethersphere/bee/pkg/storer/internal/stampindex"
-	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/topology"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstamp"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/stampindex"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/topology"
 )
 
 // loggerName is the tree path name of the logger for this package.

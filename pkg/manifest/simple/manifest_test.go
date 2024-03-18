@@ -9,8 +9,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/manifest/simple"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/manifest/simple"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 func TestNilPath(t *testing.T) {

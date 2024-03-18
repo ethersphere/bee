@@ -11,12 +11,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/pusher"
-	"github.com/ethersphere/bee/pkg/retrieval"
-	storage "github.com/ethersphere/bee/pkg/storage"
-	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
-	storer "github.com/ethersphere/bee/pkg/storer"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/pusher"
+	"github.com/ethersphere/bee/v2/pkg/retrieval"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	chunktesting "github.com/ethersphere/bee/v2/pkg/storage/testing"
+	storer "github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 type testRetrieval struct {

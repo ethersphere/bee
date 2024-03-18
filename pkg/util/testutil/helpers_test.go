@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/util/testutil"
+	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 )
 
 func TestRandBytes(t *testing.T) {

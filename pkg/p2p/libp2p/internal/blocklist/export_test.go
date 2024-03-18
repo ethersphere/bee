@@ -5,7 +5,7 @@
 package blocklist
 
 import (
-	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 )
 
 func NewBlocklistWithCurrentTimeFn(store storage.StateStorer, currentTimeFn currentTimeFn) *Blocklist {

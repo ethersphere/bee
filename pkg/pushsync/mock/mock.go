@@ -7,8 +7,8 @@ package mock
 import (
 	"context"
 
-	"github.com/ethersphere/bee/pkg/pushsync"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/pushsync"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 type mock struct {

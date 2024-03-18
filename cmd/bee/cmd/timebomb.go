@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/ethersphere/bee"
-	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/v2"
+	"github.com/ethersphere/bee/v2/pkg/log"
 )
 
 const (

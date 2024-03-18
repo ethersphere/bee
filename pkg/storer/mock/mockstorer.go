@@ -9,12 +9,12 @@ import (
 	"sync"
 	"time"
 
-	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
-	"github.com/ethersphere/bee/pkg/pusher"
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
-	storer "github.com/ethersphere/bee/pkg/storer"
-	"github.com/ethersphere/bee/pkg/swarm"
+	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
+	"github.com/ethersphere/bee/v2/pkg/pusher"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
+	storer "github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"go.uber.org/atomic"
 )
 

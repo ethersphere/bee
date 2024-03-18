@@ -8,10 +8,10 @@ import (
 	"errors"
 	"net/http"
 
-	"github.com/ethersphere/bee/pkg/accounting"
-	"github.com/ethersphere/bee/pkg/bigint"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/accounting"
+	"github.com/ethersphere/bee/v2/pkg/bigint"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/gorilla/mux"
 )
 

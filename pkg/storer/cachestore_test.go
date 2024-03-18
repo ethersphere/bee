@@ -10,12 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/spinlock"
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/storagetest"
-	chunktesting "github.com/ethersphere/bee/pkg/storage/testing"
-	storer "github.com/ethersphere/bee/pkg/storer"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/spinlock"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/storagetest"
+	chunktesting "github.com/ethersphere/bee/v2/pkg/storage/testing"
+	storer "github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 func testCacheStore(t *testing.T, newStorer func() (*storer.DB, error)) {

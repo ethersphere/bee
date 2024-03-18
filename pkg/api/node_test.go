@@ -7,7 +7,7 @@ package api_test
 import (
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/api"
 )
 
 func TestBeeNodeMode_String(t *testing.T) {
