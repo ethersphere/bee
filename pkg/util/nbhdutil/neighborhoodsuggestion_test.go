@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/util/nbhdutil"
+	"github.com/ethersphere/bee/v2/pkg/util/nbhdutil"
 )
 
 type mockHttpClient struct {

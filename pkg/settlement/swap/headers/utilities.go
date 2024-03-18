@@ -8,7 +8,7 @@ import (
 	"errors"
 	"math/big"
 
-	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/v2/pkg/p2p"
 )
 
 const (

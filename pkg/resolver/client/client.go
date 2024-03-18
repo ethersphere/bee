@@ -5,7 +5,7 @@
 package client
 
 import (
-	"github.com/ethersphere/bee/pkg/resolver"
+	"github.com/ethersphere/bee/v2/pkg/resolver"
 )
 
 // Interface is a resolver client that can connect/disconnect to an external

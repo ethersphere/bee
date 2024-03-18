@@ -4,7 +4,7 @@
 
 package chunkstamp
 
-import "github.com/ethersphere/bee/pkg/swarm"
+import "github.com/ethersphere/bee/v2/pkg/swarm"
 
 type Item = item
 

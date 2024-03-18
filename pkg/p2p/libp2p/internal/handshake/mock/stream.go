@@ -7,7 +7,7 @@ package mock
 import (
 	"bytes"
 
-	"github.com/ethersphere/bee/pkg/p2p"
+	"github.com/ethersphere/bee/v2/pkg/p2p"
 )
 
 type Stream struct {

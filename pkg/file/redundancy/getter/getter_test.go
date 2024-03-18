@@ -17,12 +17,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/cac"
-	"github.com/ethersphere/bee/pkg/file/redundancy/getter"
-	"github.com/ethersphere/bee/pkg/storage"
-	inmem "github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
-	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/cac"
+	"github.com/ethersphere/bee/v2/pkg/file/redundancy/getter"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	inmem "github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
+	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/klauspost/reedsolomon"
 	"golang.org/x/sync/errgroup"
 )
