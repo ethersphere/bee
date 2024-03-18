@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/ethersphere/bee/pkg/pullsync"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/pullsync"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 var _ pullsync.Interface = (*PullSyncMock)(nil)

@@ -6,15 +6,15 @@ package storer_test
 
 import (
 	"context"
-	"github.com/ethersphere/bee/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/postage"
 	"math/rand"
 	"testing"
 	"time"
 
-	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
-	chunk "github.com/ethersphere/bee/pkg/storage/testing"
-	"github.com/ethersphere/bee/pkg/storer"
-	"github.com/ethersphere/bee/pkg/swarm"
+	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
+	chunk "github.com/ethersphere/bee/v2/pkg/storage/testing"
+	"github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
 )
 

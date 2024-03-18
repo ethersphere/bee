@@ -9,13 +9,13 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/metrics"
-	"github.com/ethersphere/bee/pkg/statestore/storeadapter"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/cache"
-	"github.com/ethersphere/bee/pkg/storage/leveldbstore"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/metrics"
+	"github.com/ethersphere/bee/v2/pkg/statestore/storeadapter"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/cache"
+	"github.com/ethersphere/bee/v2/pkg/storage/leveldbstore"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 // InitStateStore will initialize the stateStore with the given path to the

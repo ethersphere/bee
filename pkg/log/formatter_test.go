@@ -383,7 +383,7 @@ func TestPretty(t *testing.T) {
 		exp: `{"Inner":"I am a log.Marshaler"}`,
 	}, {
 		val: (*marshalerTest)(nil),
-		exp: `"<panic: value method github.com/ethersphere/bee/pkg/log.marshalerTest.MarshalLog called using nil *marshalerTest pointer>"`,
+		exp: `"<panic: value method github.com/ethersphere/bee/v2/pkg/log.marshalerTest.MarshalLog called using nil *marshalerTest pointer>"`,
 	}, {
 		val: marshalerPanicTest{"foobar"},
 		exp: `"<panic: marshalerPanicTest>"`,
@@ -395,7 +395,7 @@ func TestPretty(t *testing.T) {
 		exp: `"I am a fmt.Stringer"`,
 	}, {
 		val: (*stringerTest)(nil),
-		exp: `"<panic: value method github.com/ethersphere/bee/pkg/log.stringerTest.String called using nil *stringerTest pointer>"`,
+		exp: `"<panic: value method github.com/ethersphere/bee/v2/pkg/log.stringerTest.String called using nil *stringerTest pointer>"`,
 	}, {
 		val: stringerPanicTest{"foobar"},
 		exp: `"<panic: stringerPanicTest>"`,
@@ -407,7 +407,7 @@ func TestPretty(t *testing.T) {
 		exp: `"I am an error"`,
 	}, {
 		val: (*errorTest)(nil),
-		exp: `"<panic: value method github.com/ethersphere/bee/pkg/log.errorTest.Error called using nil *errorTest pointer>"`,
+		exp: `"<panic: value method github.com/ethersphere/bee/v2/pkg/log.errorTest.Error called using nil *errorTest pointer>"`,
 	}, {
 		val: errorPanicTest{"foobar"},
 		exp: `"<panic: errorPanicTest>"`,

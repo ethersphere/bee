@@ -8,10 +8,10 @@ import (
 	"fmt"
 	"testing"
 
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/storagetest"
-	"github.com/ethersphere/bee/pkg/storer/internal/reserve"
-	"github.com/ethersphere/bee/pkg/swarm"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/storagetest"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 func TestReserveItems(t *testing.T) {

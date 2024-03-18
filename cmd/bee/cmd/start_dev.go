@@ -11,7 +11,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/ethersphere/bee/pkg/node"
+	"github.com/ethersphere/bee/v2/pkg/node"
 	"github.com/kardianos/service"
 	"github.com/spf13/cobra"
 )

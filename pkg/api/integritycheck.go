@@ -7,8 +7,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	storer "github.com/ethersphere/bee/pkg/storer"
-	"github.com/ethersphere/bee/pkg/swarm"
+	storer "github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 type PinIntegrityResponse struct {

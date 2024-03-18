@@ -12,17 +12,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/postage"
-	postagetesting "github.com/ethersphere/bee/pkg/postage/testing"
-	storage "github.com/ethersphere/bee/pkg/storage"
-	chunk "github.com/ethersphere/bee/pkg/storage/testing"
-	"github.com/ethersphere/bee/pkg/storer/internal"
-	"github.com/ethersphere/bee/pkg/storer/internal/chunkstamp"
-	"github.com/ethersphere/bee/pkg/storer/internal/reserve"
-	"github.com/ethersphere/bee/pkg/storer/internal/stampindex"
-	"github.com/ethersphere/bee/pkg/swarm"
-	kademlia "github.com/ethersphere/bee/pkg/topology/mock"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	chunk "github.com/ethersphere/bee/v2/pkg/storage/testing"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstamp"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/stampindex"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	kademlia "github.com/ethersphere/bee/v2/pkg/topology/mock"
 )
 
 func noopCacher(_ context.Context, _ internal.Storage, _ ...swarm.Address) error {

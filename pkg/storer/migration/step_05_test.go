@@ -8,17 +8,17 @@ import (
 	"context"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/node"
-	"github.com/ethersphere/bee/pkg/postage"
-	"github.com/ethersphere/bee/pkg/storage"
-	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
-	"github.com/ethersphere/bee/pkg/storer"
-	"github.com/ethersphere/bee/pkg/storer/internal"
-	"github.com/ethersphere/bee/pkg/storer/internal/upload"
-	localmigration "github.com/ethersphere/bee/pkg/storer/migration"
-	"github.com/ethersphere/bee/pkg/swarm"
-	kademlia "github.com/ethersphere/bee/pkg/topology/mock"
-	"github.com/ethersphere/bee/pkg/util/testutil"
+	"github.com/ethersphere/bee/v2/pkg/node"
+	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	chunktest "github.com/ethersphere/bee/v2/pkg/storage/testing"
+	"github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/upload"
+	localmigration "github.com/ethersphere/bee/v2/pkg/storer/migration"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	kademlia "github.com/ethersphere/bee/v2/pkg/topology/mock"
+	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 )
 
 func Test_Step_05(t *testing.T) {

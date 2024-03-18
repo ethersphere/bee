@@ -18,7 +18,7 @@ import (
 
 	"github.com/casbin/casbin/v2"
 	"github.com/casbin/casbin/v2/model"
-	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/log"
 	"golang.org/x/crypto/bcrypt"
 )
 

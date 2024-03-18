@@ -1,4 +1,4 @@
-module github.com/ethersphere/bee
+module github.com/ethersphere/bee/v2
 
 go 1.21
 

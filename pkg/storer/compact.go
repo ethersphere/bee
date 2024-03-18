@@ -12,9 +12,9 @@ import (
 	"sort"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/sharky"
-	"github.com/ethersphere/bee/pkg/storer/internal/chunkstore"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/sharky"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstore"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 // Compact minimizes sharky disk usage by, using the current sharky locations from the storer,

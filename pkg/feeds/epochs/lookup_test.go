@@ -7,11 +7,11 @@ package epochs_test
 import (
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/feeds"
-	"github.com/ethersphere/bee/pkg/feeds/epochs"
-	feedstesting "github.com/ethersphere/bee/pkg/feeds/testing"
-	storage "github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/feeds"
+	"github.com/ethersphere/bee/v2/pkg/feeds/epochs"
+	feedstesting "github.com/ethersphere/bee/v2/pkg/feeds/testing"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
 )
 
 func TestFinder_FLAKY(t *testing.T) {

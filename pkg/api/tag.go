@@ -11,10 +11,10 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	storage "github.com/ethersphere/bee/pkg/storage"
-	storer "github.com/ethersphere/bee/pkg/storer"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	storer "github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/gorilla/mux"
 )
 

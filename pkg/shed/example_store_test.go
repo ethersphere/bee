@@ -25,10 +25,10 @@ import (
 	"log"
 	"time"
 
-	shed2 "github.com/ethersphere/bee/pkg/shed"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/testing"
-	"github.com/ethersphere/bee/pkg/swarm"
+	shed2 "github.com/ethersphere/bee/v2/pkg/shed"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/testing"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/syndtr/goleveldb/leveldb"
 )
 
