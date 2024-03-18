@@ -14,7 +14,7 @@ func TestMain(m *testing.M) {
 	goleak.VerifyTestMain(
 		m,
 		// pkg/p2p package has some leak issues, we ignore them here as they are not in current scope
-		goleak.IgnoreTopFunction("github.com/ethersphere/bee/pkg/p2p/protobuf.Reader.ReadMsgWithContext"),
-		goleak.IgnoreTopFunction("github.com/ethersphere/bee/pkg/p2p/streamtest.(*record).Read"),
+		goleak.IgnoreTopFunction("github.com/ethersphere/bee/v2/pkg/p2p/protobuf.Reader.ReadMsgWithContext"),
+		goleak.IgnoreTopFunction("github.com/ethersphere/bee/v2/pkg/p2p/streamtest.(*record).Read"),
 	)
 }
