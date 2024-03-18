@@ -7,8 +7,8 @@ package storeadapter
 import (
 	"strings"
 
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/migration"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/migration"
 )
 
 func allSteps() migration.Steps {

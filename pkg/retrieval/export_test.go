@@ -7,8 +7,8 @@ package retrieval
 import (
 	"context"
 
-	"github.com/ethersphere/bee/pkg/p2p"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/p2p"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 func (s *Service) Handler(ctx context.Context, p p2p.Peer, stream p2p.Stream) error {

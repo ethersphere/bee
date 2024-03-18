@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/sharky"
+	"github.com/ethersphere/bee/v2/pkg/sharky"
 	"golang.org/x/sync/errgroup"
 )
 

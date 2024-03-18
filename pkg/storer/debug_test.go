@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	chunktest "github.com/ethersphere/bee/pkg/storage/testing"
-	storer "github.com/ethersphere/bee/pkg/storer"
-	"github.com/ethersphere/bee/pkg/swarm"
+	chunktest "github.com/ethersphere/bee/v2/pkg/storage/testing"
+	storer "github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
 )
 

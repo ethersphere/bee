@@ -381,7 +381,7 @@ func TestLoggerWithCaller(t *testing.T) {
 		}
 	})
 	t.Run("caller=CategoryAll, logCallerFunc=true", func(t *testing.T) {
-		const thisFunc = "github.com/ethersphere/bee/pkg/log.TestLoggerWithCaller.func3"
+		const thisFunc = "github.com/ethersphere/bee/v2/pkg/log.TestLoggerWithCaller.func3"
 
 		logger, bb := newLogger(WithCaller(CategoryAll), WithCallerFunc())
 

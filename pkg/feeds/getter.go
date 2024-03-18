@@ -11,9 +11,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/soc"
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/soc"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 // Lookup is the interface for time based feed lookup

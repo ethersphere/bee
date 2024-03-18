@@ -7,10 +7,10 @@ package leveldb_test
 import (
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/statestore/leveldb"
-	"github.com/ethersphere/bee/pkg/statestore/test"
-	"github.com/ethersphere/bee/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/statestore/leveldb"
+	"github.com/ethersphere/bee/v2/pkg/statestore/test"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 )
 
 func TestPersistentStateStore(t *testing.T) {

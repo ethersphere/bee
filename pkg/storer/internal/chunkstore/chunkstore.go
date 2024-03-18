@@ -11,10 +11,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/sharky"
-	"github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/storageutil"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/sharky"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/storageutil"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"golang.org/x/exp/slices"
 )
 

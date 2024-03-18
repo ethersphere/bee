@@ -11,10 +11,10 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/ethersphere/bee/pkg/file"
-	"github.com/ethersphere/bee/pkg/file/splitter/internal"
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/file"
+	"github.com/ethersphere/bee/v2/pkg/file/splitter/internal"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 // simpleSplitter wraps a non-optimized implementation of file.Splitter

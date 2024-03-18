@@ -7,9 +7,9 @@ package migration
 import (
 	"time"
 
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storer/internal/cache"
-	"github.com/ethersphere/bee/pkg/swarm"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/cache"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 // step_02 migrates the cache to the new format.

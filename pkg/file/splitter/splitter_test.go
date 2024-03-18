@@ -11,11 +11,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/file"
-	"github.com/ethersphere/bee/pkg/file/splitter"
-	"github.com/ethersphere/bee/pkg/storage/inmemchunkstore"
-	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/util/testutil"
+	"github.com/ethersphere/bee/v2/pkg/file"
+	"github.com/ethersphere/bee/v2/pkg/file/splitter"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 	mockbytes "gitlab.com/nolash/go-mockbytes"
 )
 

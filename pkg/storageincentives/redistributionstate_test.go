@@ -11,11 +11,11 @@ import (
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
-	erc20mock "github.com/ethersphere/bee/pkg/settlement/swap/erc20/mock"
-	"github.com/ethersphere/bee/pkg/statestore/mock"
-	"github.com/ethersphere/bee/pkg/swarm"
-	transactionmock "github.com/ethersphere/bee/pkg/transaction/mock"
-	"github.com/ethersphere/bee/pkg/util/testutil"
+	erc20mock "github.com/ethersphere/bee/v2/pkg/settlement/swap/erc20/mock"
+	"github.com/ethersphere/bee/v2/pkg/statestore/mock"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	transactionmock "github.com/ethersphere/bee/v2/pkg/transaction/mock"
+	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 	"github.com/google/go-cmp/cmp"
 )
 

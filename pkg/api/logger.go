@@ -11,8 +11,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/gorilla/mux"
 )
 

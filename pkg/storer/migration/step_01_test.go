@@ -9,8 +9,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/ethersphere/bee/pkg/storage/inmemstore"
-	localmigration "github.com/ethersphere/bee/pkg/storer/migration"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemstore"
+	localmigration "github.com/ethersphere/bee/v2/pkg/storer/migration"
 )
 
 func Test_Step_01(t *testing.T) {

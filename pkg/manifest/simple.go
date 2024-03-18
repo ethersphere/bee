@@ -9,9 +9,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/ethersphere/bee/pkg/file"
-	"github.com/ethersphere/bee/pkg/manifest/simple"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/file"
+	"github.com/ethersphere/bee/v2/pkg/manifest/simple"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 const (

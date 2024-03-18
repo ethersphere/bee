@@ -10,11 +10,11 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	storage "github.com/ethersphere/bee/pkg/storage"
-	"github.com/ethersphere/bee/pkg/storage/inmemstore"
-	"github.com/ethersphere/bee/pkg/storer/internal/cache"
-	localmigration "github.com/ethersphere/bee/pkg/storer/migration"
-	"github.com/ethersphere/bee/pkg/swarm"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemstore"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/cache"
+	localmigration "github.com/ethersphere/bee/v2/pkg/storer/migration"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 type testEntry struct {

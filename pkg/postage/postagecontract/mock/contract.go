@@ -9,7 +9,7 @@ import (
 	"math/big"
 
 	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethersphere/bee/pkg/postage/postagecontract"
+	"github.com/ethersphere/bee/v2/pkg/postage/postagecontract"
 )
 
 type contractMock struct {

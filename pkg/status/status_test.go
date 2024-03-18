@@ -9,14 +9,14 @@ import (
 	"context"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/log"
-	"github.com/ethersphere/bee/pkg/p2p/protobuf"
-	"github.com/ethersphere/bee/pkg/p2p/streamtest"
-	"github.com/ethersphere/bee/pkg/status"
-	"github.com/ethersphere/bee/pkg/status/internal/pb"
-	"github.com/ethersphere/bee/pkg/swarm"
-	"github.com/ethersphere/bee/pkg/topology"
+	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/p2p/protobuf"
+	"github.com/ethersphere/bee/v2/pkg/p2p/streamtest"
+	"github.com/ethersphere/bee/v2/pkg/status"
+	"github.com/ethersphere/bee/v2/pkg/status/internal/pb"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/google/go-cmp/cmp"
 )
 

@@ -10,13 +10,13 @@ import (
 	"hash"
 	"math/big"
 
-	"github.com/ethersphere/bee/pkg/bmt"
-	"github.com/ethersphere/bee/pkg/bmtpool"
-	"github.com/ethersphere/bee/pkg/cac"
-	"github.com/ethersphere/bee/pkg/soc"
-	"github.com/ethersphere/bee/pkg/storageincentives/redistribution"
-	storer "github.com/ethersphere/bee/pkg/storer"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/bmt"
+	"github.com/ethersphere/bee/v2/pkg/bmtpool"
+	"github.com/ethersphere/bee/v2/pkg/cac"
+	"github.com/ethersphere/bee/v2/pkg/soc"
+	"github.com/ethersphere/bee/v2/pkg/storageincentives/redistribution"
+	storer "github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 var errProofCreation = errors.New("reserve commitment hasher: failure in proof creation")

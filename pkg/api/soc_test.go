@@ -13,13 +13,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/api"
-	"github.com/ethersphere/bee/pkg/jsonhttp"
-	"github.com/ethersphere/bee/pkg/jsonhttp/jsonhttptest"
-	testingsoc "github.com/ethersphere/bee/pkg/soc/testing"
-	"github.com/ethersphere/bee/pkg/spinlock"
-	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
+	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
+	testingsoc "github.com/ethersphere/bee/v2/pkg/soc/testing"
+	"github.com/ethersphere/bee/v2/pkg/spinlock"
+	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 // nolint:paralleltest

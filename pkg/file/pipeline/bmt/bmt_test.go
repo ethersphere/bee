@@ -11,9 +11,9 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/file/pipeline"
-	"github.com/ethersphere/bee/pkg/file/pipeline/bmt"
-	mock "github.com/ethersphere/bee/pkg/file/pipeline/mock"
+	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
+	"github.com/ethersphere/bee/v2/pkg/file/pipeline/bmt"
+	mock "github.com/ethersphere/bee/v2/pkg/file/pipeline/mock"
 )
 
 // TestStoreWriter tests that store writer stores the provided data and calls the next chain writer.
