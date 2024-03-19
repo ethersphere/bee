@@ -42,9 +42,9 @@ func prepareTestHistory() dynamicaccess.History {
 	var (
 		h    = mock.NewHistory()
 		now  = time.Now()
-		act1 = dynamicaccess.NewDefaultAct()
-		act2 = dynamicaccess.NewDefaultAct()
-		act3 = dynamicaccess.NewDefaultAct()
+		act1 = dynamicaccess.NewInMemoryAct()
+		act2 = dynamicaccess.NewInMemoryAct()
+		act3 = dynamicaccess.NewInMemoryAct()
 	)
 	act1.Add([]byte("key1"), []byte("value1"))
 	act2.Add([]byte("key1"), []byte("value2"))

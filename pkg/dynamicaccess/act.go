@@ -58,19 +58,19 @@ type Act interface {
 	Store() (swarm.Address, error)
 }
 
-var _ Act = (*defaultAct)(nil)
+var _ Act = (*inMemoryAct)(nil)
 
-// defaultAct is a simple implementation of the Act interface, with in memory storage.
-type defaultAct struct {
+// inMemoryAct is a simple implementation of the Act interface, with in memory storage.
+type inMemoryAct struct {
 	container map[string]string
 }
 
-func (act *defaultAct) Add(key []byte, val []byte) error {
+func (act *inMemoryAct) Add(key []byte, val []byte) error {
 	act.container[hex.EncodeToString(key)] = hex.EncodeToString(val)
 	return nil
 }
 
-func (act *defaultAct) Lookup(key []byte) ([]byte, error) {
+func (act *inMemoryAct) Lookup(key []byte) ([]byte, error) {
 	if key, ok := act.container[hex.EncodeToString(key)]; ok {
 		bytes, err := hex.DecodeString(key)
 		if err != nil {
@@ -81,7 +81,7 @@ func (act *defaultAct) Lookup(key []byte) ([]byte, error) {
 	return make([]byte, 0), nil
 }
 
-func (act *defaultAct) Load(addr swarm.Address) error {
+func (act *inMemoryAct) Load(addr swarm.Address) error {
 	memory := getMemory()
 	me := memory[addr.String()]
 	if me == nil {
@@ -91,7 +91,7 @@ func (act *defaultAct) Load(addr swarm.Address) error {
 	return nil
 }
 
-func (act *defaultAct) Store() (swarm.Address, error) {
+func (act *inMemoryAct) Store() (swarm.Address, error) {
 	// Generate a random swarm.Address
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
@@ -104,8 +104,8 @@ func (act *defaultAct) Store() (swarm.Address, error) {
 	return swarm_ref, nil
 }
 
-func NewDefaultAct() Act {
-	return &defaultAct{
+func NewInMemoryAct() Act {
+	return &inMemoryAct{
 		container: make(map[string]string),
 	}
 }
