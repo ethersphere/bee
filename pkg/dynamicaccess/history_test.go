@@ -32,7 +32,7 @@ func TestHistoryLookup(t *testing.T) {
 	for _, tt := range tests {
 		t.Run("", func(t *testing.T) {
 			actAt, _ := h.Lookup(tt.input)
-			output := actAt.Get([]byte("key1"))
+			output := actAt.Lookup([]byte("key1"))
 			assert.Equal(t, output, hex.EncodeToString([]byte(tt.expected)))
 		})
 	}
