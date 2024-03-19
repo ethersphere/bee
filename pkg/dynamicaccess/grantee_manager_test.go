@@ -22,7 +22,7 @@ func setupAccessLogic(privateKey *ecdsa.PrivateKey) dynamicaccess.AccessLogic {
 }
 
 func TestAdd(t *testing.T) {
-	act := dynamicaccess.NewDefaultAct()
+	act := dynamicaccess.NewInMemoryAct()
 	m := dynamicaccess.NewGranteeManager(setupAccessLogic(getPrivateKey()))
 	pub, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 
