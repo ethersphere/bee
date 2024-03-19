@@ -30,7 +30,7 @@ func (c *defaultController) UploadHandler(ref swarm.Address, publisher *ecdsa.Pu
 	act, _ := c.history.Lookup(0)
 	if act == nil {
 		// new feed
-		act = NewDefaultAct()
+		act = NewInMemoryAct()
 		act = c.granteeManager.Publish(act, *publisher, topic)
 	}
 	//FIXME: check if ACT is consistent with the grantee list

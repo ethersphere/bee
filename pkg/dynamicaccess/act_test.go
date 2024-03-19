@@ -14,7 +14,7 @@ import (
 )
 
 func TestActAddLookup(t *testing.T) {
-	act := dynamicaccess.NewDefaultAct()
+	act := dynamicaccess.NewInMemoryAct()
 	lookupKey := swarm.RandAddress(t).Bytes()
 	encryptedAccesskey := swarm.RandAddress(t).Bytes()
 	err := act.Add(lookupKey, encryptedAccesskey)
@@ -30,7 +30,7 @@ func TestActAddLookup(t *testing.T) {
 
 func TestActStoreLoad(t *testing.T) {
 
-	act := dynamicaccess.NewDefaultAct()
+	act := dynamicaccess.NewInMemoryAct()
 	lookupKey := swarm.RandAddress(t).Bytes()
 	encryptedAccesskey := swarm.RandAddress(t).Bytes()
 	err := act.Add(lookupKey, encryptedAccesskey)
@@ -43,7 +43,7 @@ func TestActStoreLoad(t *testing.T) {
 		t.Error("Store() should not return an error")
 	}
 
-	actualAct := dynamicaccess.NewDefaultAct()
+	actualAct := dynamicaccess.NewInMemoryAct()
 	actualAct.Load(swarm_ref)
 	actualEak, _ := actualAct.Lookup(lookupKey)
 	if !bytes.Equal(actualEak, encryptedAccesskey) {
