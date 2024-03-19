@@ -35,9 +35,9 @@ func TestDecrypt(t *testing.T) {
 	pk := getPrivateKey()
 	ak := encryption.Key([]byte("cica"))
 
-	dh := dynamicaccess.NewDiffieHellman(pk)
-	aek, _ := dh.SharedSecret(&pk.PublicKey, "", []byte{1})
-	e2 := encryption.New(aek, 0, uint32(0), hashFunc)
+	si := dynamicaccess.NewDefaultSession(pk)
+	aek, _ := si.Key(&pk.PublicKey, [][]byte{{1}})
+	e2 := encryption.New(aek[0], 0, uint32(0), hashFunc)
 	peak, _ := e2.Encrypt(ak)
 
 	h := mockTestHistory(nil, peak)
@@ -61,9 +61,9 @@ func TestEncrypt(t *testing.T) {
 	pk := getPrivateKey()
 	ak := encryption.Key([]byte("cica"))
 
-	dh := dynamicaccess.NewDiffieHellman(pk)
-	aek, _ := dh.SharedSecret(&pk.PublicKey, "", []byte{1})
-	e2 := encryption.New(aek, 0, uint32(0), hashFunc)
+	si := dynamicaccess.NewDefaultSession(pk)
+	aek, _ := si.Key(&pk.PublicKey, [][]byte{{1}})
+	e2 := encryption.New(aek[0], 0, uint32(0), hashFunc)
 	peak, _ := e2.Encrypt(ak)
 
 	h := mockTestHistory(nil, peak)

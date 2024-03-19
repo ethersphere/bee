@@ -15,8 +15,8 @@ func setupAccessLogic(privateKey *ecdsa.PrivateKey) dynamicaccess.AccessLogic {
 	// if err != nil {
 	// 	errors.New("error creating private key")
 	// }
-	diffieHellman := dynamicaccess.NewDiffieHellman(privateKey)
-	al := dynamicaccess.NewAccessLogic(diffieHellman)
+	si := dynamicaccess.NewDefaultSession(privateKey)
+	al := dynamicaccess.NewAccessLogic(si)
 
 	return al
 }
