@@ -22,8 +22,8 @@ func mockTestHistory(key, val []byte) dynamicaccess.History {
 	var (
 		h   = mock.NewHistory()
 		now = time.Now()
-		act = mock.NewActMock(nil, func(lookupKey []byte) []byte {
-			return val
+		act = mock.NewActMock(nil, func(lookupKey []byte) ([]byte, error) {
+			return val, nil
 		})
 	)
 	// act.Add(key, val)

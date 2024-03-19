@@ -1,3 +1,7 @@
+// Copyright 2024 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package mock
 
 import (
@@ -6,43 +10,44 @@ import (
 )
 
 type ActMock struct {
-	AddFunc    func(lookupKey []byte, encryptedAccessKey []byte) dynamicaccess.Act
-	LookupFunc func(lookupKey []byte) []byte
-	LoadFunc   func(lookupKey []byte) manifest.Entry
-	StoreFunc  func(me manifest.Entry)
+	AddFunc    func(key []byte, val []byte) error
+	LookupFunc func(key []byte) ([]byte, error)
+	LoadFunc   func(key []byte) (manifest.Entry, error)
+	StoreFunc  func(me manifest.Entry) error
 }
 
 var _ dynamicaccess.Act = (*ActMock)(nil)
 
-func (act *ActMock) Add(lookupKey []byte, encryptedAccessKey []byte) dynamicaccess.Act {
+func (act *ActMock) Add(key []byte, val []byte) error {
 	if act.AddFunc == nil {
-		return act
-	}
-	return act.AddFunc(lookupKey, encryptedAccessKey)
-}
-
-func (act *ActMock) Lookup(lookupKey []byte) []byte {
-	if act.LookupFunc == nil {
-		return make([]byte, 0)
-	}
-	return act.LookupFunc(lookupKey)
-}
-
-func (act *ActMock) Load(lookupKey []byte) manifest.Entry {
-	if act.LoadFunc == nil {
 		return nil
 	}
-	return act.LoadFunc(lookupKey)
+	return act.AddFunc(key, val)
 }
 
-func (act *ActMock) Store(me manifest.Entry) {
+func (act *ActMock) Lookup(key []byte) ([]byte, error) {
+	if act.LookupFunc == nil {
+		return make([]byte, 0), nil
+	}
+	return act.LookupFunc(key)
+}
+
+func (act *ActMock) Load(key []byte) (manifest.Entry, error) {
+	if act.LoadFunc == nil {
+		return nil, nil
+	}
+	return act.LoadFunc(key)
+}
+
+func (act *ActMock) Store(me manifest.Entry) error {
 	if act.StoreFunc == nil {
-		return
+		return nil
 	}
 	act.StoreFunc(me)
+	return nil
 }
 
-func NewActMock(addFunc func(lookupKey []byte, encryptedAccessKey []byte) dynamicaccess.Act, getFunc func(lookupKey []byte) []byte) dynamicaccess.Act {
+func NewActMock(addFunc func(key []byte, val []byte) error, getFunc func(key []byte) ([]byte, error)) dynamicaccess.Act {
 	return &ActMock{
 		AddFunc:    addFunc,
 		LookupFunc: getFunc,
