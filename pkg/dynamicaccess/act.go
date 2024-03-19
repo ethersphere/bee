@@ -5,11 +5,43 @@
 package dynamicaccess
 
 import (
+	"crypto/rand"
 	"encoding/hex"
+	"fmt"
+	"sync"
 
 	"github.com/ethersphere/bee/pkg/manifest"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
+
+var lock = &sync.Mutex{}
+
+type single struct {
+	memoryMock map[string]manifest.Entry
+}
+
+var singleInMemorySwarm *single
+
+func getInMemorySwarm() *single {
+	if singleInMemorySwarm == nil {
+		lock.Lock()
+		defer lock.Unlock()
+		if singleInMemorySwarm == nil {
+			singleInMemorySwarm = &single{
+				memoryMock: make(map[string]manifest.Entry)}
+		}
+	}
+	return singleInMemorySwarm
+}
+
+func getMemory() map[string]manifest.Entry {
+	ch := make(chan *single)
+	go func() {
+		ch <- getInMemorySwarm()
+	}()
+	mem := <-ch
+	return mem.memoryMock
+}
 
 // Act represents an interface for accessing and manipulating data.
 type Act interface {
@@ -19,15 +51,16 @@ type Act interface {
 	// Lookup retrieves the value associated with the given key from the data store.
 	Lookup(key []byte) ([]byte, error)
 
-	// Load retrieves the manifest entry associated with the given key from the data store.
-	Load(key []byte) (manifest.Entry, error)
+	// Load loads the data store from the given address.
+	Load(addr swarm.Address) error
 
-	// Store stores the given manifest entry in the data store.
-	Store(me manifest.Entry) error
+	// Store stores the current state of the data store and returns the address of the ACT.
+	Store() (swarm.Address, error)
 }
 
 var _ Act = (*defaultAct)(nil)
 
+// defaultAct is a simple implementation of the Act interface, with in memory storage.
 type defaultAct struct {
 	container map[string]string
 }
@@ -48,18 +81,27 @@ func (act *defaultAct) Lookup(key []byte) ([]byte, error) {
 	return make([]byte, 0), nil
 }
 
-// to manifestEntry
-func (act *defaultAct) Load(key []byte) (manifest.Entry, error) {
-	return manifest.NewEntry(swarm.NewAddress(key), act.container), nil
-}
-
-// from manifestEntry
-func (act *defaultAct) Store(me manifest.Entry) error {
-	if act.container == nil {
-		act.container = make(map[string]string)
+func (act *defaultAct) Load(addr swarm.Address) error {
+	memory := getMemory()
+	me := memory[addr.String()]
+	if me == nil {
+		return fmt.Errorf("ACT not found at address: %s", addr.String())
 	}
 	act.container = me.Metadata()
 	return nil
+}
+
+func (act *defaultAct) Store() (swarm.Address, error) {
+	// Generate a random swarm.Address
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return swarm.EmptyAddress, fmt.Errorf("failed to generate random address: %w", err)
+	}
+	swarm_ref := swarm.NewAddress(b)
+	mem := getMemory()
+	mem[swarm_ref.String()] = manifest.NewEntry(swarm_ref, act.container)
+
+	return swarm_ref, nil
 }
 
 func NewDefaultAct() Act {
