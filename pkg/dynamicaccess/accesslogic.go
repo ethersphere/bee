@@ -115,7 +115,11 @@ func (al *DefaultAccessLogic) getAccessKeyDecriptionKey(publisher ecdsa.PublicKe
 }
 
 func (al *DefaultAccessLogic) getEncryptedAccessKey(act Act, lookup_key []byte) ([]byte, error) {
-	return act.Lookup(lookup_key), nil
+	val, err := act.Lookup(lookup_key)
+	if err != nil {
+		return []byte{}, err
+	}
+	return val, nil
 }
 
 func (al *DefaultAccessLogic) Get(act Act, encryped_ref swarm.Address, publisher ecdsa.PublicKey, tag string) (swarm.Address, error) {

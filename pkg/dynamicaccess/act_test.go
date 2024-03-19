@@ -1,3 +1,7 @@
+// Copyright 2024 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package dynamicaccess_test
 
 import (
@@ -21,12 +25,12 @@ func TestActAddLookup(t *testing.T) {
 	act := dynamicaccess.NewDefaultAct()
 	lookupKey := swarm.RandAddress(t).Bytes()
 	encryptedAccesskey := swarm.RandAddress(t).Bytes()
-	act2 := act.Add(lookupKey, encryptedAccesskey)
-	if act2 == nil {
-		t.Error("Add() should return an act")
+	err := act.Add(lookupKey, encryptedAccesskey)
+	if err != nil {
+		t.Error("Add() should not return an error")
 	}
 
-	key := act.Lookup(lookupKey)
+	key, _ := act.Lookup(lookupKey)
 	if !bytes.Equal(key, encryptedAccesskey) {
 		t.Errorf("Get() value is not the expected %s != %s", key, encryptedAccesskey)
 	}
@@ -46,12 +50,12 @@ func TestActWithManifest(t *testing.T) {
 	act := dynamicaccess.NewDefaultAct()
 	lookupKey := swarm.RandAddress(t).Bytes()
 	encryptedAccesskey := swarm.RandAddress(t).Bytes()
-	act2 := act.Add(lookupKey, encryptedAccesskey)
-	if act2 == nil {
-		t.Error("Add() should return an act")
+	err = act.Add(lookupKey, encryptedAccesskey)
+	if err != nil {
+		t.Error("Add() should not return an error")
 	}
 
-	actManifEntry := act.Load(lookupKey)
+	actManifEntry, _ := act.Load(lookupKey)
 	if actManifEntry == nil {
 		t.Error("Load() should return a manifest.Entry")
 	}
@@ -73,7 +77,7 @@ func TestActWithManifest(t *testing.T) {
 
 	actualAct := dynamicaccess.NewDefaultAct()
 	actualAct.Store(actualMe)
-	actualEak := actualAct.Lookup(lookupKey)
+	actualEak, _ := actualAct.Lookup(lookupKey)
 	if !bytes.Equal(actualEak, encryptedAccesskey) {
 		t.Errorf("actualAct.Store() value is not the expected %s != %s", actualEak, encryptedAccesskey)
 	}
@@ -89,7 +93,7 @@ func TestActStore(t *testing.T) {
 	me := manifest.NewEntry(swarm.NewAddress(lookupKey), mp)
 	act := dynamicaccess.NewDefaultAct()
 	act.Store(me)
-	eak := act.Lookup(lookupKey)
+	eak, _ := act.Lookup(lookupKey)
 
 	if !bytes.Equal(eak, encryptedAccesskey) {
 		t.Errorf("Store() value is not the expected %s != %s", eak, encryptedAccesskey)
@@ -102,7 +106,7 @@ func TestActLoad(t *testing.T) {
 	lookupKey := swarm.RandAddress(t).Bytes()
 	encryptedAccesskey := swarm.RandAddress(t).Bytes()
 	act.Add(lookupKey, encryptedAccesskey)
-	me := act.Load(lookupKey)
+	me, _ := act.Load(lookupKey)
 
 	eak := me.Metadata()[hex.EncodeToString(lookupKey)]
 
