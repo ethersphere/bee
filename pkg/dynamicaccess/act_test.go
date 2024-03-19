@@ -17,7 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
-func TestActAddGet(t *testing.T) {
+func TestActAddLookup(t *testing.T) {
 	act := dynamicaccess.NewDefaultAct()
 	lookupKey := swarm.RandAddress(t).Bytes()
 	encryptedAccesskey := swarm.RandAddress(t).Bytes()
@@ -26,7 +26,7 @@ func TestActAddGet(t *testing.T) {
 		t.Error("Add() should return an act")
 	}
 
-	key := act.Get(lookupKey)
+	key := act.Lookup(lookupKey)
 	if !bytes.Equal(key, encryptedAccesskey) {
 		t.Errorf("Get() value is not the expected %s != %s", key, encryptedAccesskey)
 	}
@@ -73,7 +73,7 @@ func TestActWithManifest(t *testing.T) {
 
 	actualAct := dynamicaccess.NewDefaultAct()
 	actualAct.Store(actualMe)
-	actualEak := actualAct.Get(lookupKey)
+	actualEak := actualAct.Lookup(lookupKey)
 	if !bytes.Equal(actualEak, encryptedAccesskey) {
 		t.Errorf("actualAct.Store() value is not the expected %s != %s", actualEak, encryptedAccesskey)
 	}
@@ -89,7 +89,7 @@ func TestActStore(t *testing.T) {
 	me := manifest.NewEntry(swarm.NewAddress(lookupKey), mp)
 	act := dynamicaccess.NewDefaultAct()
 	act.Store(me)
-	eak := act.Get(lookupKey)
+	eak := act.Lookup(lookupKey)
 
 	if !bytes.Equal(eak, encryptedAccesskey) {
 		t.Errorf("Store() value is not the expected %s != %s", eak, encryptedAccesskey)

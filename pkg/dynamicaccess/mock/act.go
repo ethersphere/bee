@@ -6,10 +6,10 @@ import (
 )
 
 type ActMock struct {
-	AddFunc   func(lookupKey []byte, encryptedAccessKey []byte) dynamicaccess.Act
-	GetFunc   func(lookupKey []byte) []byte
-	LoadFunc  func(lookupKey []byte) manifest.Entry
-	StoreFunc func(me manifest.Entry)
+	AddFunc    func(lookupKey []byte, encryptedAccessKey []byte) dynamicaccess.Act
+	LookupFunc func(lookupKey []byte) []byte
+	LoadFunc   func(lookupKey []byte) manifest.Entry
+	StoreFunc  func(me manifest.Entry)
 }
 
 var _ dynamicaccess.Act = (*ActMock)(nil)
@@ -21,11 +21,11 @@ func (act *ActMock) Add(lookupKey []byte, encryptedAccessKey []byte) dynamicacce
 	return act.AddFunc(lookupKey, encryptedAccessKey)
 }
 
-func (act *ActMock) Get(lookupKey []byte) []byte {
-	if act.GetFunc == nil {
+func (act *ActMock) Lookup(lookupKey []byte) []byte {
+	if act.LookupFunc == nil {
 		return make([]byte, 0)
 	}
-	return act.GetFunc(lookupKey)
+	return act.LookupFunc(lookupKey)
 }
 
 func (act *ActMock) Load(lookupKey []byte) manifest.Entry {
@@ -44,7 +44,7 @@ func (act *ActMock) Store(me manifest.Entry) {
 
 func NewActMock(addFunc func(lookupKey []byte, encryptedAccessKey []byte) dynamicaccess.Act, getFunc func(lookupKey []byte) []byte) dynamicaccess.Act {
 	return &ActMock{
-		AddFunc: addFunc,
-		GetFunc: getFunc,
+		AddFunc:    addFunc,
+		LookupFunc: getFunc,
 	}
 }
