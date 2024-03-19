@@ -6,14 +6,14 @@ package mock
 
 import (
 	"github.com/ethersphere/bee/pkg/dynamicaccess"
-	"github.com/ethersphere/bee/pkg/manifest"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 type ActMock struct {
 	AddFunc    func(key []byte, val []byte) error
 	LookupFunc func(key []byte) ([]byte, error)
-	LoadFunc   func(key []byte) (manifest.Entry, error)
-	StoreFunc  func(me manifest.Entry) error
+	LoadFunc   func(addr swarm.Address) error
+	StoreFunc  func() (swarm.Address, error)
 }
 
 var _ dynamicaccess.Act = (*ActMock)(nil)
@@ -32,19 +32,18 @@ func (act *ActMock) Lookup(key []byte) ([]byte, error) {
 	return act.LookupFunc(key)
 }
 
-func (act *ActMock) Load(key []byte) (manifest.Entry, error) {
+func (act *ActMock) Load(addr swarm.Address) error {
 	if act.LoadFunc == nil {
-		return nil, nil
-	}
-	return act.LoadFunc(key)
-}
-
-func (act *ActMock) Store(me manifest.Entry) error {
-	if act.StoreFunc == nil {
 		return nil
 	}
-	act.StoreFunc(me)
-	return nil
+	return act.LoadFunc(addr)
+}
+
+func (act *ActMock) Store() (swarm.Address, error) {
+	if act.StoreFunc == nil {
+		return swarm.EmptyAddress, nil
+	}
+	return act.StoreFunc()
 }
 
 func NewActMock(addFunc func(key []byte, val []byte) error, getFunc func(key []byte) ([]byte, error)) dynamicaccess.Act {
