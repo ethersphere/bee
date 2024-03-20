@@ -5,6 +5,7 @@
 package api_test
 
 import (
+	"context"
 	"net/http"
 	"strings"
 	"testing"
@@ -12,7 +13,11 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/api"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
+	"github.com/ethersphere/bee/v2/pkg/log"
 	mockpost "github.com/ethersphere/bee/v2/pkg/postage/mock"
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemstore"
+	storer "github.com/ethersphere/bee/v2/pkg/storer"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
@@ -184,4 +189,53 @@ func TestPinHandlersInvalidInputs(t *testing.T) {
 			})
 		}
 	}
+}
+
+const pinRef = "620fcd78c7ce54da2d1b7cc2274a02e190cbe8fecbc3bd244690ab6517ce8f39"
+
+func TestIntegrityHandler(t *testing.T) {
+
+	t.Parallel()
+
+	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+		testServer, _, _, _ := newTestServer(t, testServerOptions{
+			PinIntegrity: &mockPinIntegrity{
+				Store:  inmemstore.New(),
+				tester: t,
+			},
+		})
+
+		endp := "/pins/check?ref=" + pinRef
+
+		// When probe is not set health endpoint should indicate that node is not healthy
+		jsonhttptest.Request(t, testServer, http.MethodGet, endp, http.StatusOK, jsonhttptest.WithExpectedResponse(nil))
+	})
+
+	t.Run("wrong hash format", func(t *testing.T) {
+		t.Parallel()
+		testServer, _, _, _ := newTestServer(t, testServerOptions{
+			PinIntegrity: &mockPinIntegrity{
+				Store:  inmemstore.New(),
+				tester: t,
+			},
+		})
+
+		endp := "/pins/check?ref=0xbadhash"
+
+		// When probe is not set health endpoint should indicate that node is not healthy
+		jsonhttptest.Request(t, testServer, http.MethodGet, endp, http.StatusBadRequest, jsonhttptest.WithExpectedResponse(nil))
+	})
+}
+
+type mockPinIntegrity struct {
+	tester *testing.T
+	Store  storage.Store
+}
+
+func (p *mockPinIntegrity) Check(ctx context.Context, logger log.Logger, pin string, out chan storer.PinStat) {
+	if pin != pinRef {
+		p.tester.Fatal("bad pin", pin)
+	}
+	close(out)
 }
