@@ -22,11 +22,9 @@ func mockTestHistory(key, val []byte) dynamicaccess.History {
 	var (
 		h   = mock.NewHistory()
 		now = time.Now()
-		act = mock.NewActMock(nil, func(lookupKey []byte) ([]byte, error) {
-			return val, nil
-		})
+		act = dynamicaccess.NewInMemoryAct()
 	)
-	// act.Add(key, val)
+	act.Add(key, val)
 	h.Insert(now.AddDate(-3, 0, 0).Unix(), act)
 	return h
 }
@@ -36,11 +34,11 @@ func TestDecrypt(t *testing.T) {
 	ak := encryption.Key([]byte("cica"))
 
 	si := dynamicaccess.NewDefaultSession(pk)
-	aek, _ := si.Key(&pk.PublicKey, [][]byte{{1}})
-	e2 := encryption.New(aek[0], 0, uint32(0), hashFunc)
+	aek, _ := si.Key(&pk.PublicKey, [][]byte{{0}, {1}})
+	e2 := encryption.New(aek[1], 0, uint32(0), hashFunc)
 	peak, _ := e2.Encrypt(ak)
 
-	h := mockTestHistory(nil, peak)
+	h := mockTestHistory(aek[0], peak)
 	al := setupAccessLogic(pk)
 	gm := dynamicaccess.NewGranteeManager(al)
 	c := dynamicaccess.NewController(h, gm, al)
@@ -62,11 +60,11 @@ func TestEncrypt(t *testing.T) {
 	ak := encryption.Key([]byte("cica"))
 
 	si := dynamicaccess.NewDefaultSession(pk)
-	aek, _ := si.Key(&pk.PublicKey, [][]byte{{1}})
-	e2 := encryption.New(aek[0], 0, uint32(0), hashFunc)
+	aek, _ := si.Key(&pk.PublicKey, [][]byte{{0}, {1}})
+	e2 := encryption.New(aek[1], 0, uint32(0), hashFunc)
 	peak, _ := e2.Encrypt(ak)
 
-	h := mockTestHistory(nil, peak)
+	h := mockTestHistory(aek[0], peak)
 	al := setupAccessLogic(pk)
 	gm := dynamicaccess.NewGranteeManager(al)
 	c := dynamicaccess.NewController(h, gm, al)
