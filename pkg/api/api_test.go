@@ -400,7 +400,6 @@ func TestParseName(t *testing.T) {
 		s.Configure(signer, nil, nil, api.Options{}, api.ExtraOptions{Resolver: tC.res}, 1, nil)
 		s.MountAPI()
 
-		tC := tC
 		t.Run(tC.desc, func(t *testing.T) {
 			t.Parallel()
 
@@ -469,7 +468,6 @@ func TestPostageHeaderError(t *testing.T) {
 	)
 	content := []byte{7: 0} // 8 zeros
 	for _, endpoint := range endpoints {
-		endpoint := endpoint
 		t.Run(endpoint+": empty batch", func(t *testing.T) {
 			t.Parallel()
 
@@ -556,7 +554,7 @@ func TestOptions(t *testing.T) {
 			expectedMethods: "GET, HEAD",
 		},
 	} {
-		tc := tc
+
 		t.Run(tc.endpoint+" options test", func(t *testing.T) {
 			t.Parallel()
 
@@ -573,7 +571,6 @@ func TestPostageDirectAndDeferred(t *testing.T) {
 	t.Parallel()
 
 	for _, endpoint := range []string{"bytes", "bzz", "chunks"} {
-		endpoint := endpoint
 
 		if endpoint != "chunks" {
 			t.Run(endpoint+" deferred", func(t *testing.T) {

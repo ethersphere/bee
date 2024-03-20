@@ -202,7 +202,6 @@ func TestFinderRandomIntervals(t *testing.T, finderf func(storage.Getter, *feeds
 	t.Parallel()
 
 	for j := 0; j < 3; j++ {
-		j := j
 		t.Run(fmt.Sprintf("random intervals %d", j), func(t *testing.T) {
 			t.Parallel()
 

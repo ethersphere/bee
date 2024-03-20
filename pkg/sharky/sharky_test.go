@@ -73,7 +73,7 @@ func TestSingleRetrieval(t *testing.T) {
 				nil,
 			},
 		} {
-			tc := tc
+
 			t.Run(tc.name, func(t *testing.T) {
 				cctx, cancel := context.WithTimeout(ctx, 800*time.Millisecond)
 				defer cancel()
@@ -188,7 +188,7 @@ func TestConcurrency(t *testing.T) {
 		eg, ectx := errgroup.WithContext(ctx)
 		// a number of workers write sequential numbers to sharky
 		for k := 0; k < workers; k++ {
-			k := k
+
 			eg.Go(func() error {
 				<-start
 				buf := make([]byte, 4)
@@ -287,7 +287,7 @@ func TestConcurrency(t *testing.T) {
 		{32, 8, 32},
 		{64, 32, 64},
 	} {
-		c := c
+
 		t.Run(fmt.Sprintf("workers:%d,shards:%d,size:%d", c.workers, c.shards, c.shardSize), func(t *testing.T) {
 			t.Parallel()
 			test(t, c.workers, c.shards, c.shardSize)

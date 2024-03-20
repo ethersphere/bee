@@ -33,7 +33,6 @@ func WithSubscribeResp(chunks []*storer.BinC, err error) Option {
 func WithChunks(chs ...swarm.Chunk) Option {
 	return optionFunc(func(p *ReserveStore) {
 		for _, c := range chs {
-			c := c
 			if c.Stamp() != nil {
 				p.chunks[c.Address().String()+string(c.Stamp().BatchID())] = c
 			} else {
@@ -219,7 +218,6 @@ func (s *ReserveStore) put(_ context.Context, chs ...swarm.Chunk) error {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 	for _, c := range chs {
-		c := c
 		if s.putHook != nil {
 			if err := s.putHook(c); err != nil {
 				return err

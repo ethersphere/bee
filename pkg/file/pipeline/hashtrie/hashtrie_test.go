@@ -135,7 +135,6 @@ func TestLevels(t *testing.T) {
 		},
 	} {
 
-		tc := tc
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 
@@ -312,7 +311,7 @@ func TestRedundancy(t *testing.T) {
 			parities:   116, // // 87 (full ch) + 29 (2 ref)
 		},
 	} {
-		tc := tc
+
 		t.Run(tc.desc, func(t *testing.T) {
 			t.Parallel()
 			subCtx := redundancy.SetLevelInContext(ctx, tc.level)

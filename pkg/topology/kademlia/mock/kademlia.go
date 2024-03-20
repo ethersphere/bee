@@ -21,10 +21,7 @@ type AddrTuple struct {
 
 func WithEachPeerRevCalls(addrs ...AddrTuple) Option {
 	return optionFunc(func(m *Mock) {
-		for _, a := range addrs {
-			a := a
-			m.eachPeerRev = append(m.eachPeerRev, a)
-		}
+		m.eachPeerRev = append(m.eachPeerRev, addrs...)
 	})
 }
 
@@ -90,10 +87,7 @@ func (m *Mock) SetStorageRadius(uint8) {
 func (m *Mock) AddRevPeers(addrs ...AddrTuple) {
 	m.mtx.Lock()
 	defer m.mtx.Unlock()
-	for _, a := range addrs {
-		a := a
-		m.eachPeerRev = append(m.eachPeerRev, a)
-	}
+	m.eachPeerRev = append(m.eachPeerRev, addrs...)
 }
 
 // EachConnectedPeer iterates from closest bin to farthest

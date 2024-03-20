@@ -79,7 +79,7 @@ func TestCORSHeaders(t *testing.T) {
 			wantCORS:       false,
 		},
 	} {
-		tc := tc
+
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 
@@ -156,7 +156,7 @@ func TestCors(t *testing.T) {
 			expectedMethods: "GET, HEAD",
 		},
 	} {
-		tc := tc
+
 		t.Run(tc.endpoint, func(t *testing.T) {
 			t.Parallel()
 
@@ -212,7 +212,7 @@ func TestCorsStatus(t *testing.T) {
 			allowedMethods:    "GET, HEAD",
 		},
 	} {
-		tc := tc
+
 		t.Run(tc.endpoint, func(t *testing.T) {
 			t.Parallel()
 

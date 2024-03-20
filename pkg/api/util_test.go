@@ -499,7 +499,6 @@ func TestMapStructure(t *testing.T) {
 		want: &mapSwarmAddressTest{SwarmAddressVal: swarm.MustParseHexAddress("1234567890abcdef")},
 	}}
 	for _, tc := range tests {
-		tc := tc
 
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()

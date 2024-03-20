@@ -174,7 +174,7 @@ func TestRespond_special(t *testing.T) {
 			wantMessage: "2.4.8.16",
 		},
 	} {
-		tc := tc
+
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 

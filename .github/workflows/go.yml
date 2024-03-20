@@ -70,7 +70,7 @@ jobs:
       uses: golangci/golangci-lint-action@v3
       with:
         skip-cache: false
-        version: v1.54.1
+        version: v1.56.2
     - name: Whitespace check
       run: make check-whitespace
     - name: go mod tidy check

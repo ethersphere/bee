@@ -281,6 +281,7 @@ func TestTxStore(t *testing.T, store storage.TxStore) {
 
 				tx := store.NewTx(storage.NewTxState(ctx))
 
+				// nolint:goconst
 				objects := []*object{
 					{id: "0001" + tCase.name, data: []byte("data1")},
 					{id: "0002" + tCase.name, data: []byte("data2")},
