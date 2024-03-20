@@ -260,6 +260,16 @@ func (c *Cache) ShallowCopy(
 	return nil
 }
 
+// Iterate iterates over entire cache with a call back.
+func IterateCachedChunks(st storage.Store, callBackFunc func(address swarm.Address) error) error {
+	return st.Iterate(storage.Query{
+		Factory: func() storage.Item { return new(cacheEntry) },
+	}, func(r storage.Result) (bool, error) {
+		entry := r.Entry.(*cacheEntry)
+		return false, callBackFunc(entry.Address)
+	})
+}
+
 // RemoveOldest removes the oldest cache entries from the store. The count
 // specifies the number of entries to remove.
 func (c *Cache) RemoveOldest(ctx context.Context, store internal.Storage, chStore storage.ChunkStore, count uint64) error {

@@ -856,6 +856,18 @@ func IterateAllTagItems(st storage.Store, cb func(ti *TagItem) (bool, error)) er
 	)
 }
 
+func IterateAllPushItems(st storage.Store, iterateFn func(addr swarm.Address) (bool, error)) error {
+	return st.Iterate(
+		storage.Query{
+			Factory: func() storage.Item { return new(pushItem) },
+		},
+		func(r storage.Result) (bool, error) {
+			address := r.Entry.(*pushItem).Address
+			return iterateFn(address)
+		},
+	)
+}
+
 // BatchIDForChunk returns the first known batchID for the given chunk address.
 func BatchIDForChunk(st storage.Store, addr swarm.Address) ([]byte, error) {
 	var batchID []byte
