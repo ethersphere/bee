@@ -638,6 +638,30 @@ paths:
         default:
           description: Default response
 
+  "/pins/check":
+    get:
+      summary: Validate pinned chunks integerity
+      tags:
+        - Pinning
+      parameters:
+        - in: query
+          name: ref
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmOnlyReference"
+          required: false
+          description: The number of items to skip before starting to collect the result set.
+      responses:
+        "200":
+          description: List of checked root hash references
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/PinCheckResponse"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+
   "/pss/send/{topic}/{targets}":
     post:
       summary: Send to recipient or target with Postal Service for Swarm

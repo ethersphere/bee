@@ -315,6 +315,12 @@ func (s *Service) mountAPI() {
 		})),
 	)
 
+	handle("/pins/check", web.ChainHandlers(
+		web.FinalHandler(jsonhttp.MethodHandler{
+			"GET": http.HandlerFunc(s.pinIntegrityHandler),
+		}),
+	))
+
 	handle("/pins/{reference}", web.ChainHandlers(
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET":    http.HandlerFunc(s.getPinnedRootHash),
@@ -606,12 +612,6 @@ func (s *Service) mountBusinessDebug(restricted bool) {
 	handle("/rchash/{depth}/{anchor1}/{anchor2}", web.ChainHandlers(
 		web.FinalHandler(jsonhttp.MethodHandler{
 			"GET": http.HandlerFunc(s.rchash),
-		}),
-	))
-
-	handle("/check/pin", web.ChainHandlers(
-		web.FinalHandler(jsonhttp.MethodHandler{
-			"GET": http.HandlerFunc(s.pinIntegrityHandler),
 		}),
 	))
 }

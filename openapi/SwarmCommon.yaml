@@ -602,14 +602,27 @@ components:
         - $ref: "#/components/schemas/SwarmAddress"
         - $ref: "#/components/schemas/SwarmEncryptedReference"
 
+    PinCheckResponse:
+      type: object
+      properties:
+        reference:
+          $ref: "#/components/schemas/SwarmOnlyReference"
+        total:
+          type: integer
+        missing:
+          type: integer
+        invalid:
+          type: integer
+
     SwarmOnlyReferencesList:
       type: object
       properties:
-        references:
+        reference:
           type: array
           nullable: false
           items:
             $ref: "#/components/schemas/SwarmOnlyReference"
+
 
     SwarmReference:
       oneOf:
