@@ -5,8 +5,10 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
@@ -93,6 +95,12 @@ type peersResponse struct {
 	Peers []Peer `json:"peers"`
 }
 
+type BlocklistPeersRequest struct {
+	Address  swarm.Address `json:"address"`
+	Reason   string        `json:"reason"`
+	Duration int           `json:"duration"`
+}
+
 type blockListedPeersResponse struct {
 	Peers []BlockListedPeer `json:"peers"`
 }
@@ -116,6 +124,26 @@ func (s *Service) blocklistedPeersHandler(w http.ResponseWriter, _ *http.Request
 	jsonhttp.OK(w, blockListedPeersResponse{
 		Peers: mapBlockListedPeers(peers),
 	})
+}
+
+func (s *Service) blocklistPeersHandler(w http.ResponseWriter, r *http.Request) {
+	logger := s.logger.WithName("post_blocklist_peers").Build()
+
+	var data BlocklistPeersRequest
+	err := json.NewDecoder(r.Body).Decode(&data)
+	if err != nil {
+		logger.Debug("failed to read body", "error", err)
+		jsonhttp.BadRequest(w, err)
+		return
+	}
+
+	if err := s.p2p.Blocklist(data.Address, time.Duration(data.Duration), data.Reason); err != nil {
+		logger.Debug("blocking peer failed", "error", err)
+		logger.Error(nil, "blocking peer failed")
+		jsonhttp.InternalServerError(w, err.Error())
+		return
+	}
+	jsonhttp.OK(w, nil)
 }
 
 func mapPeers(peers []p2p.Peer) (out []Peer) {

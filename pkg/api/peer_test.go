@@ -5,10 +5,13 @@
 package api_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/api"
@@ -179,6 +182,45 @@ func TestPeer(t *testing.T) {
 			jsonhttptest.WithExpectedJSONResponse(api.PeersResponse{
 				Peers: []api.Peer{{Address: overlay}},
 			}),
+		)
+	})
+}
+
+var errInvalidReason = errors.New("invalid blocklist reason")
+
+func TestBlocklistPeer(t *testing.T) {
+	t.Parallel()
+
+	overlay := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
+	f := func(s swarm.Address, t time.Duration, reason string) error {
+		if reason != "some reason" {
+			return errInvalidReason
+		}
+
+		if  len(s.String()) == 0 {
+			errors.New("invalid blocklist peer")
+		}
+
+		return nil
+	}
+
+	testServer, _, _, _ := newTestServer(t, testServerOptions{
+		DebugAPI: true,
+		P2P:      mock.New(mock.WithBlocklistFunc(f)),
+	})
+
+	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+
+		data, _ := json.Marshal(api.BlocklistPeersRequest{
+			Address:  overlay,
+			Reason:   "some reason",
+			Duration: 10000,
+		})
+		body := bytes.NewReader(data)
+
+		jsonhttptest.Request(t, testServer, http.MethodPost, "/blocklist", http.StatusOK,
+			jsonhttptest.WithRequestBody(body),
 		)
 	})
 }
