@@ -78,7 +78,7 @@ func (act *inMemoryAct) Lookup(key []byte) ([]byte, error) {
 		}
 		return bytes, nil
 	}
-	return make([]byte, 0), nil
+	return nil, fmt.Errorf("key not found")
 }
 
 func (act *inMemoryAct) Load(addr swarm.Address) error {
