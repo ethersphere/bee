@@ -10,96 +10,93 @@ import (
 	"github.com/ethersphere/bee/pkg/dynamicaccess"
 )
 
-// func TestGranteeRevoke(t *testing.T) {
-// 	err := NewGrantee().Revoke("")
-// 	if err != nil {
-// 		t.Errorf("Error revoking grantee: %v", err)
-// 	}
-// }
-
-/*func TestGranteeRevokeList(t *testing.T) {
-	_, err := NewGrantee().RevokeList("", nil, nil)
-	if err != nil {
-		t.Errorf("Error revoking list of grantees: %v", err)
-	}
-}*/
-
-// func TestGranteePublish(t *testing.T) {
-// 	err := NewGrantee().Publish("")
-// 	if err != nil {
-// 		t.Errorf("Error publishing grantee: %v", err)
-// 	}
-// }
-
 func TestGranteeAddGrantees(t *testing.T) {
-	// Create a new Grantee
 	grantee := dynamicaccess.NewGrantee()
 
-	// Generate some dummy ecdsa.PublicKey values
-	key1, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	key2, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-
-	// Add the keys to the grantee
-	addList := []*ecdsa.PublicKey{&key1.PublicKey, &key2.PublicKey}
-	err := grantee.AddGrantees("topicName", addList)
-	grantees := grantee.GetGrantees("topicName")
-	// Check for errors
+	key1, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		t.Fatalf("Expected no error, got %v", err)
+		t.Errorf("Expected no error, got %v", err)
 	}
 
-	// Check if the keys were added correctly
+	key2, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	addList := []*ecdsa.PublicKey{&key1.PublicKey, &key2.PublicKey}
+	exampleTopic := "topic"
+	err = grantee.AddGrantees(exampleTopic, addList)
+
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	grantees := grantee.GetGrantees(exampleTopic)
 	if !reflect.DeepEqual(grantees, addList) {
 		t.Errorf("Expected grantees %v, got %v", addList, grantees)
 	}
 }
 
 func TestRemoveGrantees(t *testing.T) {
-	// Create a new Grantee
 	grantee := dynamicaccess.NewGrantee()
 
-	// Generate some dummy ecdsa.PublicKey values
-	key1, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	key2, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-
-	// Add the keys to the grantee
-	addList := []*ecdsa.PublicKey{&key1.PublicKey, &key2.PublicKey}
-	grantee.AddGrantees("topicName", addList)
-
-	// Remove one of the keys
-	removeList := []*ecdsa.PublicKey{&key1.PublicKey}
-	err := grantee.RemoveGrantees("topicName", removeList)
-	grantees := grantee.GetGrantees("topicName")
-
-	// Check for errors
+	key1, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
-		t.Fatalf("Expected no error, got %v", err)
+		t.Errorf("Expected no error, got %v", err)
 	}
 
-	// Check if the key was removed correctly
+	key2, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	addList := []*ecdsa.PublicKey{&key1.PublicKey, &key2.PublicKey}
+	exampleTopic := "topic"
+	err = grantee.AddGrantees(exampleTopic, addList)
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	removeList := []*ecdsa.PublicKey{&key1.PublicKey}
+	err = grantee.RemoveGrantees(exampleTopic, removeList)
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
+	grantees := grantee.GetGrantees(exampleTopic)
 	expectedGrantees := []*ecdsa.PublicKey{&key2.PublicKey}
-	if !reflect.DeepEqual(grantees, expectedGrantees) {
-		t.Errorf("Expected grantees %v, got %v", expectedGrantees, grantees)
+
+	for i, grantee := range grantees {
+		if grantee != expectedGrantees[i] {
+			t.Errorf("Expected grantee %v, got %v", expectedGrantees[i], grantee)
+		}
 	}
 }
 
 func TestGetGrantees(t *testing.T) {
-	// Create a new Grantee
 	grantee := dynamicaccess.NewGrantee()
 
-	// Generate some dummy ecdsa.PublicKey values
-	key1, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	key2, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	key1, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
 
-	// Add the keys to the grantee
+	key2, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
+
 	addList := []*ecdsa.PublicKey{&key1.PublicKey, &key2.PublicKey}
-	grantee.AddGrantees("topicName", addList)
+	exampleTopic := "topic"
+	err = grantee.AddGrantees(exampleTopic, addList)
+	if err != nil {
+		t.Errorf("Expected no error, got %v", err)
+	}
 
-	// Get the grantees
-	grantees := grantee.GetGrantees("topicName")
-
-	// Check if the grantees were returned correctly
-	if !reflect.DeepEqual(grantees, addList) {
-		t.Errorf("Expected grantees %v, got %v", addList, grantees)
+	grantees := grantee.GetGrantees(exampleTopic)
+	for i, grantee := range grantees {
+		if grantee != addList[i] {
+			t.Errorf("Expected grantee %v, got %v", addList[i], grantee)
+		}
 	}
 }

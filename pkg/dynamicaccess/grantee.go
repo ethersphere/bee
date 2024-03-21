@@ -5,36 +5,21 @@ import (
 )
 
 type Grantee interface {
-	//? ÁTBESZÉLNI
-	// Revoke(topic string) error
-	// Publish(topic string) error
-
-	// RevokeList(topic string, removeList []string, addList []string) (string, error)
-	// RevokeGrantees(topic string, removeList []string) (string, error)
 	AddGrantees(topic string, addList []*ecdsa.PublicKey) error
 	RemoveGrantees(topic string, removeList []*ecdsa.PublicKey) error
 	GetGrantees(topic string) []*ecdsa.PublicKey
 }
 
 type defaultGrantee struct {
-	grantees map[string][]*ecdsa.PublicKey // Modified field name to start with an uppercase letter
+	grantees map[string][]*ecdsa.PublicKey
 }
 
 func (g *defaultGrantee) GetGrantees(topic string) []*ecdsa.PublicKey {
-	return g.grantees[topic]
+	grantees := g.grantees[topic]
+	keys := make([]*ecdsa.PublicKey, len(grantees))
+	copy(keys, grantees)
+	return keys
 }
-
-// func (g *defaultGrantee) Revoke(topic string) error {
-// 	return nil
-// }
-
-// func (g *defaultGrantee) RevokeList(topic string, removeList []string, addList []string) (string, error) {
-// 	return "", nil
-// }
-
-// func (g *defaultGrantee) Publish(topic string) error {
-// 	return nil
-// }
 
 func (g *defaultGrantee) AddGrantees(topic string, addList []*ecdsa.PublicKey) error {
 	g.grantees[topic] = append(g.grantees[topic], addList...)
@@ -44,11 +29,14 @@ func (g *defaultGrantee) AddGrantees(topic string, addList []*ecdsa.PublicKey) e
 func (g *defaultGrantee) RemoveGrantees(topic string, removeList []*ecdsa.PublicKey) error {
 	for _, remove := range removeList {
 		for i, grantee := range g.grantees[topic] {
-			if grantee == remove {
-				g.grantees[topic] = append(g.grantees[topic][:i], g.grantees[topic][i+1:]...)
+			if *grantee == *remove {
+				g.grantees[topic][i] = g.grantees[topic][len(g.grantees[topic])-1]
+				g.grantees[topic] = g.grantees[topic][:len(g.grantees[topic])-1]
 			}
 		}
 	}
+
+	
 	return nil
 }
 
