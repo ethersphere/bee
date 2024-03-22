@@ -24,7 +24,7 @@ func mockTestHistory(key, val []byte) dynamicaccess.History {
 		now = time.Now()
 		act = dynamicaccess.NewInMemoryAct()
 	)
-	act.Add(key, val)
+	act.Add(swarm.EmptyAddress, key, val)
 	h.Insert(now.AddDate(-3, 0, 0).Unix(), act)
 	return h
 }
