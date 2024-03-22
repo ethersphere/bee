@@ -7,6 +7,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/dynamicaccess"
 	"github.com/ethersphere/bee/pkg/dynamicaccess/mock"
+	"github.com/ethersphere/bee/pkg/swarm"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -32,7 +33,7 @@ func TestHistoryLookup(t *testing.T) {
 	for _, tt := range tests {
 		t.Run("", func(t *testing.T) {
 			actAt, _ := h.Lookup(tt.input)
-			output, _ := actAt.Lookup([]byte("key1"))
+			output, _ := actAt.Lookup(swarm.EmptyAddress, []byte("key1"))
 			assert.Equal(t, output, hex.EncodeToString([]byte(tt.expected)))
 		})
 	}
@@ -46,9 +47,9 @@ func prepareTestHistory() dynamicaccess.History {
 		act2 = dynamicaccess.NewInMemoryAct()
 		act3 = dynamicaccess.NewInMemoryAct()
 	)
-	act1.Add([]byte("key1"), []byte("value1"))
-	act2.Add([]byte("key1"), []byte("value2"))
-	act3.Add([]byte("key1"), []byte("value3"))
+	act1.Add(swarm.EmptyAddress, []byte("key1"), []byte("value1"))
+	act2.Add(swarm.EmptyAddress, []byte("key1"), []byte("value2"))
+	act3.Add(swarm.EmptyAddress, []byte("key1"), []byte("value3"))
 
 	h.Insert(now.AddDate(-3, 0, 0).Unix(), act1)
 	h.Insert(now.AddDate(-2, 0, 0).Unix(), act2)
