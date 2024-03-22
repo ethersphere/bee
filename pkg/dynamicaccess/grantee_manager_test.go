@@ -8,21 +8,18 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/dynamicaccess"
+	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 func setupAccessLogic(privateKey *ecdsa.PrivateKey) dynamicaccess.ActLogic {
-	// privateKey, err := crypto.GenerateSecp256k1Key()
-	// if err != nil {
-	// 	errors.New("error creating private key")
-	// }
+	act := dynamicaccess.NewInMemoryAct()
 	si := dynamicaccess.NewDefaultSession(privateKey)
-	al := dynamicaccess.NewLogic(si)
+	al := dynamicaccess.NewLogic(si, act)
 
 	return al
 }
 
 func TestAdd(t *testing.T) {
-	act := dynamicaccess.NewInMemoryAct()
 	m := dynamicaccess.NewGranteeManager(setupAccessLogic(getPrivateKey()))
 	pub, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 
@@ -36,6 +33,6 @@ func TestAdd(t *testing.T) {
 	if err != nil {
 		t.Errorf("Add() returned an error")
 	}
-	m.Publish(act, &pub.PublicKey, "topic")
+	m.Publish(swarm.EmptyAddress, &pub.PublicKey, "topic")
 	fmt.Println("")
 }
