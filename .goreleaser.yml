@@ -15,11 +15,11 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
-      - -X github.com/ethersphere/bee.version={{ .Version }}
-      - -X github.com/ethersphere/bee.commitHash={{ .ShortCommit }}
-      - -X github.com/ethersphere/bee.commitTime={{ .CommitTimestamp }}
-      - -X github.com/ethersphere/bee/pkg/api.Version={{ .Env.BEE_API_VERSION }}
-      - -X github.com/ethersphere/bee/pkg/debugapi.Version={{ .Env.BEE_DEBUG_API_VERSION }}
+      - -X github.com/ethersphere/bee/v2.version={{ .Version }}
+      - -X github.com/ethersphere/bee/v2.commitHash={{ .ShortCommit }}
+      - -X github.com/ethersphere/bee/v2.commitTime={{ .CommitTimestamp }}
+      - -X github.com/ethersphere/bee/v2/pkg/api.Version={{ .Env.BEE_API_VERSION }}
+      - -X github.com/ethersphere/bee/v2/pkg/debugapi.Version={{ .Env.BEE_DEBUG_API_VERSION }}
     env:
       - CGO_ENABLED=0
     goos:
@@ -39,11 +39,11 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
-      - -X github.com/ethersphere/bee.version={{ .Version }}
-      - -X github.com/ethersphere/bee.commitHash={{ .ShortCommit }}
-      - -X github.com/ethersphere/bee.commitTime={{ .CommitTimestamp }}
-      - -X github.com/ethersphere/bee/pkg/api.Version={{ .Env.BEE_API_VERSION }}
-      - -X github.com/ethersphere/bee/pkg/debugapi.Version={{ .Env.BEE_DEBUG_API_VERSION }}
+      - -X github.com/ethersphere/bee/v2.version={{ .Version }}
+      - -X github.com/ethersphere/bee/v2.commitHash={{ .ShortCommit }}
+      - -X github.com/ethersphere/bee/v2.commitTime={{ .CommitTimestamp }}
+      - -X github.com/ethersphere/bee/v2/pkg/api.Version={{ .Env.BEE_API_VERSION }}
+      - -X github.com/ethersphere/bee/v2/pkg/debugapi.Version={{ .Env.BEE_DEBUG_API_VERSION }}
     env:
       - CGO_ENABLED=0
     goos:
@@ -65,11 +65,11 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
-      - -X github.com/ethersphere/bee.version={{ .Version }}
-      - -X github.com/ethersphere/bee.commitHash={{ .ShortCommit }}
-      - -X github.com/ethersphere/bee.commitTime={{ .CommitTimestamp }}
-      - -X github.com/ethersphere/bee/pkg/api.Version={{ .Env.BEE_API_VERSION }}
-      - -X github.com/ethersphere/bee/pkg/debugapi.Version={{ .Env.BEE_DEBUG_API_VERSION }}
+      - -X github.com/ethersphere/bee/v2.version={{ .Version }}
+      - -X github.com/ethersphere/bee/v2.commitHash={{ .ShortCommit }}
+      - -X github.com/ethersphere/bee/v2.commitTime={{ .CommitTimestamp }}
+      - -X github.com/ethersphere/bee/v2/pkg/api.Version={{ .Env.BEE_API_VERSION }}
+      - -X github.com/ethersphere/bee/v2/pkg/debugapi.Version={{ .Env.BEE_DEBUG_API_VERSION }}
     env:
       - CGO_ENABLED=0
     goos:
@@ -85,11 +85,11 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
-      - -X github.com/ethersphere/bee.version={{ .Version }}
-      - -X github.com/ethersphere/bee.commitHash={{ .ShortCommit }}
-      - -X github.com/ethersphere/bee.commitTime={{ .CommitTimestamp }}
-      - -X github.com/ethersphere/bee/pkg/api.Version={{ .Env.BEE_API_VERSION }}
-      - -X github.com/ethersphere/bee/pkg/debugapi.Version={{ .Env.BEE_DEBUG_API_VERSION }}
+      - -X github.com/ethersphere/bee/v2.version={{ .Version }}
+      - -X github.com/ethersphere/bee/v2.commitHash={{ .ShortCommit }}
+      - -X github.com/ethersphere/bee/v2.commitTime={{ .CommitTimestamp }}
+      - -X github.com/ethersphere/bee/v2/pkg/api.Version={{ .Env.BEE_API_VERSION }}
+      - -X github.com/ethersphere/bee/v2/pkg/debugapi.Version={{ .Env.BEE_DEBUG_API_VERSION }}
     env:
       - CGO_ENABLED=0
     goos:
@@ -104,11 +104,11 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
-      - -X github.com/ethersphere/bee.version={{ .Version }}
-      - -X github.com/ethersphere/bee.commitHash={{ .ShortCommit }}
-      - -X github.com/ethersphere/bee.commitTime={{ .CommitTimestamp }}
-      - -X github.com/ethersphere/bee/pkg/api.Version={{ .Env.BEE_API_VERSION }}
-      - -X github.com/ethersphere/bee/pkg/debugapi.Version={{ .Env.BEE_DEBUG_API_VERSION }}
+      - -X github.com/ethersphere/bee/v2.version={{ .Version }}
+      - -X github.com/ethersphere/bee/v2.commitHash={{ .ShortCommit }}
+      - -X github.com/ethersphere/bee/v2.commitTime={{ .CommitTimestamp }}
+      - -X github.com/ethersphere/bee/v2/pkg/api.Version={{ .Env.BEE_API_VERSION }}
+      - -X github.com/ethersphere/bee/v2/pkg/debugapi.Version={{ .Env.BEE_DEBUG_API_VERSION }}
     env:
       - CGO_ENABLED=0
     goos:
