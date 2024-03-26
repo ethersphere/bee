@@ -10,6 +10,8 @@ import (
 	"github.com/ethersphere/bee/pkg/dynamicaccess"
 )
 
+var _ dynamicaccess.GranteeList = (*dynamicaccess.GranteeListStruct)(nil)
+
 func TestGranteeAddGrantees(t *testing.T) {
 	grantee := dynamicaccess.NewGrantee()
 
@@ -25,13 +27,13 @@ func TestGranteeAddGrantees(t *testing.T) {
 
 	addList := []*ecdsa.PublicKey{&key1.PublicKey, &key2.PublicKey}
 	exampleTopic := "topic"
-	err = grantee.AddGrantees(exampleTopic, addList)
+	err = grantee.Add(exampleTopic, addList)
 
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
 
-	grantees := grantee.GetGrantees(exampleTopic)
+	grantees := grantee.Get(exampleTopic)
 	if !reflect.DeepEqual(grantees, addList) {
 		t.Errorf("Expected grantees %v, got %v", addList, grantees)
 	}
@@ -52,18 +54,18 @@ func TestRemoveGrantees(t *testing.T) {
 
 	addList := []*ecdsa.PublicKey{&key1.PublicKey, &key2.PublicKey}
 	exampleTopic := "topic"
-	err = grantee.AddGrantees(exampleTopic, addList)
+	err = grantee.Add(exampleTopic, addList)
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
 
 	removeList := []*ecdsa.PublicKey{&key1.PublicKey}
-	err = grantee.RemoveGrantees(exampleTopic, removeList)
+	err = grantee.Remove(exampleTopic, removeList)
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
 
-	grantees := grantee.GetGrantees(exampleTopic)
+	grantees := grantee.Get(exampleTopic)
 	expectedGrantees := []*ecdsa.PublicKey{&key2.PublicKey}
 
 	for i, grantee := range grantees {
@@ -88,12 +90,12 @@ func TestGetGrantees(t *testing.T) {
 
 	addList := []*ecdsa.PublicKey{&key1.PublicKey, &key2.PublicKey}
 	exampleTopic := "topic"
-	err = grantee.AddGrantees(exampleTopic, addList)
+	err = grantee.Add(exampleTopic, addList)
 	if err != nil {
 		t.Errorf("Expected no error, got %v", err)
 	}
 
-	grantees := grantee.GetGrantees(exampleTopic)
+	grantees := grantee.Get(exampleTopic)
 	for i, grantee := range grantees {
 		if grantee != addList[i] {
 			t.Errorf("Expected grantee %v, got %v", addList[i], grantee)
