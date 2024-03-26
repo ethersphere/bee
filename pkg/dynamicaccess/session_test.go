@@ -52,9 +52,11 @@ func TestSessionKey(t *testing.T) {
 	}
 	si2 := dynamicaccess.NewDefaultSession(key2)
 
-	nonces := make([][]byte, 1)
-	if _, err := io.ReadFull(rand.Reader, nonces[0]); err != nil {
-		t.Fatal(err)
+	nonces := make([][]byte, 2)
+	for i := range nonces {
+		if _, err := io.ReadFull(rand.Reader, nonces[i]); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	keys1, err := si1.Key(&key2.PublicKey, nonces)
@@ -62,6 +64,38 @@ func TestSessionKey(t *testing.T) {
 		t.Fatal(err)
 	}
 	keys2, err := si2.Key(&key1.PublicKey, nonces)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !bytes.Equal(keys1[0], keys2[0]) {
+		t.Fatalf("shared secrets do not match %s, %s", hex.EncodeToString(keys1[0]), hex.EncodeToString(keys2[0]))
+	}
+	if !bytes.Equal(keys1[1], keys2[1]) {
+		t.Fatalf("shared secrets do not match %s, %s", hex.EncodeToString(keys1[0]), hex.EncodeToString(keys2[0]))
+	}
+}
+
+func TestSessionKeyWithoutNonces(t *testing.T) {
+	t.Parallel()
+
+	key1, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	si1 := dynamicaccess.NewDefaultSession(key1)
+
+	key2, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+	si2 := dynamicaccess.NewDefaultSession(key2)
+
+	keys1, err := si1.Key(&key2.PublicKey, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys2, err := si2.Key(&key1.PublicKey, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -81,6 +115,7 @@ func TestSessionKeyFromKeystore(t *testing.T) {
 	password2 := "password2"
 
 	si1 := mock.NewFromKeystore(ks, tag1, password1, mockKeyFunc)
+	// si1 := dynamicaccess.NewFromKeystore(ks, tag1, password1)
 	exists, err := ks.Exists(tag1)
 	if err != nil {
 		t.Fatal(err)
@@ -97,6 +132,7 @@ func TestSessionKeyFromKeystore(t *testing.T) {
 	}
 
 	si2 := mock.NewFromKeystore(ks, tag2, password2, mockKeyFunc)
+	// si2 := dynamicaccess.NewFromKeystore(ks, tag2, password2)
 	exists, err = ks.Exists(tag2)
 	if err != nil {
 		t.Fatal(err)
@@ -113,8 +149,10 @@ func TestSessionKeyFromKeystore(t *testing.T) {
 	}
 
 	nonces := make([][]byte, 1)
-	if _, err := io.ReadFull(rand.Reader, nonces[0]); err != nil {
-		t.Fatal(err)
+	for i := range nonces {
+		if _, err := io.ReadFull(rand.Reader, nonces[i]); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	keys1, err := si1.Key(&key2.PublicKey, nonces)
@@ -129,4 +167,7 @@ func TestSessionKeyFromKeystore(t *testing.T) {
 	if !bytes.Equal(keys1[0], keys2[0]) {
 		t.Fatalf("shared secrets do not match %s, %s", hex.EncodeToString(keys1[0]), hex.EncodeToString(keys2[0]))
 	}
+	// if !bytes.Equal(keys1[1], keys2[1]) {
+	// 	t.Fatalf("shared secrets do not match %s, %s", hex.EncodeToString(keys1[0]), hex.EncodeToString(keys2[0]))
+	// }
 }
