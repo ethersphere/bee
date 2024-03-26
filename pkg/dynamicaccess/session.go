@@ -21,6 +21,9 @@ type session struct {
 }
 
 func (s *session) Key(publicKey *ecdsa.PublicKey, nonces [][]byte) ([][]byte, error) {
+	if publicKey == nil {
+		return nil, errors.New("invalid public key")
+	}
 	x, y := publicKey.Curve.ScalarMult(publicKey.X, publicKey.Y, s.key.D.Bytes())
 	if x == nil || y == nil {
 		return nil, errors.New("shared secret is point at infinity")
