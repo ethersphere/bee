@@ -20,13 +20,13 @@ COMMIT_HASH ?= "$(shell git describe --long --dirty --always --match "" || true)
 CLEAN_COMMIT ?= "$(shell git describe --long --always --match "" || true)"
 COMMIT_TIME ?= "$(shell git show -s --format=%ct $(CLEAN_COMMIT) || true)"
 LDFLAGS ?= -s -w \
--X github.com/ethersphere/bee.version="$(VERSION)" \
--X github.com/ethersphere/bee.commitHash="$(COMMIT_HASH)" \
--X github.com/ethersphere/bee.commitTime="$(COMMIT_TIME)" \
--X github.com/ethersphere/bee/pkg/api.Version="$(BEE_API_VERSION)" \
--X github.com/ethersphere/bee/pkg/api.DebugVersion="$(BEE_DEBUG_API_VERSION)" \
--X github.com/ethersphere/bee/pkg/p2p/libp2p.reachabilityOverridePublic="$(REACHABILITY_OVERRIDE_PUBLIC)" \
--X github.com/ethersphere/bee/pkg/postage/listener.batchFactorOverridePublic="$(BATCHFACTOR_OVERRIDE_PUBLIC)"
+-X github.com/ethersphere/bee/v2.version="$(VERSION)" \
+-X github.com/ethersphere/bee/v2.commitHash="$(COMMIT_HASH)" \
+-X github.com/ethersphere/bee/v2.commitTime="$(COMMIT_TIME)" \
+-X github.com/ethersphere/bee/v2/pkg/api.Version="$(BEE_API_VERSION)" \
+-X github.com/ethersphere/bee/v2/pkg/api.DebugVersion="$(BEE_DEBUG_API_VERSION)" \
+-X github.com/ethersphere/bee/v2/pkg/p2p/libp2p.reachabilityOverridePublic="$(REACHABILITY_OVERRIDE_PUBLIC)" \
+-X github.com/ethersphere/bee/v2/pkg/postage/listener.batchFactorOverridePublic="$(BATCHFACTOR_OVERRIDE_PUBLIC)"
 
 .PHONY: all
 all: build lint test-race binary
