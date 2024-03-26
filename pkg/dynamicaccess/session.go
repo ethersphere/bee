@@ -21,9 +21,13 @@ type session struct {
 }
 
 func (s *session) Key(publicKey *ecdsa.PublicKey, nonces [][]byte) ([][]byte, error) {
-	x, _ := publicKey.Curve.ScalarMult(publicKey.X, publicKey.Y, s.key.D.Bytes())
-	if x == nil {
+	x, y := publicKey.Curve.ScalarMult(publicKey.X, publicKey.Y, s.key.D.Bytes())
+	if x == nil || y == nil {
 		return nil, errors.New("shared secret is point at infinity")
+	}
+
+	if len(nonces) == 0 {
+		return [][]byte{(*x).Bytes()}, nil
 	}
 
 	keys := make([][]byte, 0, len(nonces))
@@ -44,6 +48,7 @@ func NewDefaultSession(key *ecdsa.PrivateKey) Session {
 	}
 }
 
+// Currently implemented only in mock/session.go
 func NewFromKeystore(ks keystore.Service, tag, password string) Session {
 	return nil
 }
