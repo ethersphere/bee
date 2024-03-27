@@ -10,8 +10,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/ethersphere/bee/pkg/sharky"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/sharky"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 var (

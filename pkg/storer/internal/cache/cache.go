@@ -15,7 +15,7 @@ import (
 	"time"
 
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
-	"github.com/ethersphere/bee/v2/pkg/storer/internal"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"resenje.org/multex"
 )

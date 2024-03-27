@@ -14,6 +14,7 @@ import (
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/cache"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	localmigration "github.com/ethersphere/bee/v2/pkg/storer/migration"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )

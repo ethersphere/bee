@@ -7,9 +7,9 @@ package transaction_test
 import (
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/storage/leveldbstore"
-	"github.com/ethersphere/bee/pkg/storage/storagetest"
-	"github.com/ethersphere/bee/pkg/storer/internal/transaction"
+	"github.com/ethersphere/bee/v2/pkg/storage/leveldbstore"
+	"github.com/ethersphere/bee/v2/pkg/storage/storagetest"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 )
 
 func TestCache(t *testing.T) {
