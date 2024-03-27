@@ -7,7 +7,7 @@ import (
 
 	"github.com/ethersphere/bee/pkg/dynamicaccess"
 	"github.com/ethersphere/bee/pkg/dynamicaccess/mock"
-	"github.com/ethersphere/bee/pkg/swarm"
+	kvsmock "github.com/ethersphere/bee/pkg/kvs/mock"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -32,8 +32,8 @@ func TestHistoryLookup(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run("", func(t *testing.T) {
-			actAt, _ := h.Lookup(tt.input)
-			output, _ := actAt.Lookup(swarm.EmptyAddress, []byte("key1"))
+			sAt, _ := h.Lookup(tt.input)
+			output, _ := sAt.Get([]byte("key1"))
 			assert.Equal(t, output, hex.EncodeToString([]byte(tt.expected)))
 		})
 	}
@@ -41,19 +41,19 @@ func TestHistoryLookup(t *testing.T) {
 
 func prepareTestHistory() dynamicaccess.History {
 	var (
-		h    = mock.NewHistory()
-		now  = time.Now()
-		act1 = dynamicaccess.NewInMemoryAct()
-		act2 = dynamicaccess.NewInMemoryAct()
-		act3 = dynamicaccess.NewInMemoryAct()
+		h   = mock.NewHistory()
+		now = time.Now()
+		s1  = kvsmock.New()
+		s2  = kvsmock.New()
+		s3  = kvsmock.New()
 	)
-	act1.Add(swarm.EmptyAddress, []byte("key1"), []byte("value1"))
-	act2.Add(swarm.EmptyAddress, []byte("key1"), []byte("value2"))
-	act3.Add(swarm.EmptyAddress, []byte("key1"), []byte("value3"))
+	s1.Put([]byte("key1"), []byte("value1"))
+	s2.Put([]byte("key1"), []byte("value2"))
+	s3.Put([]byte("key1"), []byte("value3"))
 
-	h.Insert(now.AddDate(-3, 0, 0).Unix(), act1)
-	h.Insert(now.AddDate(-2, 0, 0).Unix(), act2)
-	h.Insert(now.AddDate(-1, 0, 0).Unix(), act3)
+	h.Insert(now.AddDate(-3, 0, 0).Unix(), s1)
+	h.Insert(now.AddDate(-2, 0, 0).Unix(), s2)
+	h.Insert(now.AddDate(-1, 0, 0).Unix(), s3)
 
 	return h
 }

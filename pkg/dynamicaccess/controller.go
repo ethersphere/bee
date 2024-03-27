@@ -3,6 +3,7 @@ package dynamicaccess
 import (
 	"crypto/ecdsa"
 
+	kvsmock "github.com/ethersphere/bee/pkg/kvs/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
@@ -18,29 +19,30 @@ type defaultController struct {
 }
 
 func (c *defaultController) DownloadHandler(timestamp int64, enryptedRef swarm.Address, publisher *ecdsa.PublicKey, tag string) (swarm.Address, error) {
-	_, err := c.history.Lookup(timestamp)
+	kvs, err := c.history.Lookup(timestamp)
 	if err != nil {
 		return swarm.EmptyAddress, err
 	}
-	addr, err := c.accessLogic.DecryptRef(swarm.EmptyAddress, enryptedRef, publisher)
+	addr, err := c.accessLogic.DecryptRef(kvs, enryptedRef, publisher)
 	return addr, err
 }
 
 func (c *defaultController) UploadHandler(ref swarm.Address, publisher *ecdsa.PublicKey, topic string) (swarm.Address, error) {
-	act, err := c.history.Lookup(0)
+	kvs, err := c.history.Lookup(0)
 	if err != nil {
 		return swarm.EmptyAddress, err
 	}
-	var actRef swarm.Address
-	if act == nil {
+	if kvs == nil {
 		// new feed
-		actRef, err = c.granteeManager.Publish(swarm.EmptyAddress, publisher, topic)
+		// TODO: putter session to create kvs
+		kvs = kvsmock.New()
+		_, err = c.granteeManager.Publish(kvs, publisher, topic)
 		if err != nil {
 			return swarm.EmptyAddress, err
 		}
 	}
-	//FIXME: check if ACT is consistent with the grantee list
-	return c.accessLogic.EncryptRef(actRef, publisher, ref)
+	//FIXME: check if kvs is consistent with the grantee list
+	return c.accessLogic.EncryptRef(kvs, publisher, ref)
 }
 
 func NewController(history History, granteeManager GranteeManager, accessLogic ActLogic) Controller {

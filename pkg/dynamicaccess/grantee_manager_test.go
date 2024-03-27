@@ -8,13 +8,12 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/dynamicaccess"
-	"github.com/ethersphere/bee/pkg/swarm"
+	kvsmock "github.com/ethersphere/bee/pkg/kvs/mock"
 )
 
 func setupAccessLogic(privateKey *ecdsa.PrivateKey) dynamicaccess.ActLogic {
-	act := dynamicaccess.NewInMemoryAct()
 	si := dynamicaccess.NewDefaultSession(privateKey)
-	al := dynamicaccess.NewLogic(si, act)
+	al := dynamicaccess.NewLogic(si)
 
 	return al
 }
@@ -33,6 +32,7 @@ func TestAdd(t *testing.T) {
 	if err != nil {
 		t.Errorf("Add() returned an error")
 	}
-	m.Publish(swarm.EmptyAddress, &pub.PublicKey, "topic")
+	s := kvsmock.New()
+	m.Publish(s, &pub.PublicKey, "topic")
 	fmt.Println("")
 }

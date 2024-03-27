@@ -4,6 +4,7 @@ import (
 	"crypto/ecdsa"
 
 	encryption "github.com/ethersphere/bee/pkg/encryption"
+	"github.com/ethersphere/bee/pkg/kvs"
 	"github.com/ethersphere/bee/pkg/swarm"
 	"golang.org/x/crypto/sha3"
 )
@@ -13,7 +14,7 @@ var hashFunc = sha3.NewLegacyKeccak256
 // Read-only interface for the ACT
 type Decryptor interface {
 	// DecryptRef will return a decrypted reference, for given encrypted reference and grantee
-	DecryptRef(rootHash swarm.Address, encryped_ref swarm.Address, publisher *ecdsa.PublicKey) (swarm.Address, error)
+	DecryptRef(storage kvs.KeyValueStore, encryped_ref swarm.Address, publisher *ecdsa.PublicKey) (swarm.Address, error)
 	// Embedding the Session interface
 	Session
 }
@@ -23,28 +24,27 @@ type Control interface {
 	// Embedding the Decryptor interface
 	Decryptor
 	// Adds a new grantee to the ACT
-	AddGrantee(rootHash swarm.Address, publisherPubKey, granteePubKey *ecdsa.PublicKey, accessKey *encryption.Key) (swarm.Address, error)
+	AddGrantee(storage kvs.KeyValueStore, publisherPubKey, granteePubKey *ecdsa.PublicKey, accessKey *encryption.Key) error
 	// Encrypts a Swarm reference for a given grantee
-	EncryptRef(rootHash swarm.Address, grantee *ecdsa.PublicKey, ref swarm.Address) (swarm.Address, error)
+	EncryptRef(storage kvs.KeyValueStore, grantee *ecdsa.PublicKey, ref swarm.Address) error
 }
 
 type ActLogic struct {
 	Session
-	act Act
 }
 
 var _ Decryptor = (*ActLogic)(nil)
 
 // Adds a new publisher to an empty act
-func (al ActLogic) AddPublisher(rootHash swarm.Address, publisher *ecdsa.PublicKey) (swarm.Address, error) {
+func (al ActLogic) AddPublisher(storage kvs.KeyValueStore, publisher *ecdsa.PublicKey) error {
 	accessKey := encryption.GenerateRandomKey(encryption.KeyLength)
 
-	return al.AddGrantee(rootHash, publisher, publisher, &accessKey)
+	return al.AddGrantee(storage, publisher, publisher, &accessKey)
 }
 
 // Encrypts a SWARM reference for a publisher
-func (al ActLogic) EncryptRef(rootHash swarm.Address, publisherPubKey *ecdsa.PublicKey, ref swarm.Address) (swarm.Address, error) {
-	accessKey, err := al.getAccessKey(rootHash, publisherPubKey)
+func (al ActLogic) EncryptRef(storage kvs.KeyValueStore, publisherPubKey *ecdsa.PublicKey, ref swarm.Address) (swarm.Address, error) {
+	accessKey, err := al.getAccessKey(storage, publisherPubKey)
 	if err != nil {
 		return swarm.EmptyAddress, err
 	}
@@ -55,15 +55,15 @@ func (al ActLogic) EncryptRef(rootHash swarm.Address, publisherPubKey *ecdsa.Pub
 }
 
 // Adds a new grantee to the ACT
-func (al ActLogic) AddGrantee(rootHash swarm.Address, publisherPubKey, granteePubKey *ecdsa.PublicKey, accessKeyPointer *encryption.Key) (swarm.Address, error) {
+func (al ActLogic) AddGrantee(storage kvs.KeyValueStore, publisherPubKey, granteePubKey *ecdsa.PublicKey, accessKeyPointer *encryption.Key) error {
 	var accessKey encryption.Key
 	var err error // Declare the "err" variable
 
 	if accessKeyPointer == nil {
 		// Get previously generated access key
-		accessKey, err = al.getAccessKey(rootHash, publisherPubKey)
+		accessKey, err = al.getAccessKey(storage, publisherPubKey)
 		if err != nil {
-			return swarm.EmptyAddress, err
+			return err
 		}
 	} else {
 		// This is a newly created access key, because grantee is publisher (they are the same)
@@ -73,7 +73,7 @@ func (al ActLogic) AddGrantee(rootHash swarm.Address, publisherPubKey, granteePu
 	// Encrypt the access key for the new Grantee
 	keys, err := al.getKeys(granteePubKey)
 	if err != nil {
-		return swarm.EmptyAddress, err
+		return err
 	}
 	lookupKey := keys[0]
 	accessKeyEncryptionKey := keys[1]
@@ -82,15 +82,15 @@ func (al ActLogic) AddGrantee(rootHash swarm.Address, publisherPubKey, granteePu
 	cipher := encryption.New(encryption.Key(accessKeyEncryptionKey), 0, uint32(0), hashFunc)
 	granteeEncryptedAccessKey, err := cipher.Encrypt(accessKey)
 	if err != nil {
-		return swarm.EmptyAddress, err
+		return err
 	}
 
 	// Add the new encrypted access key for the Act
-	return al.act.Add(rootHash, lookupKey, granteeEncryptedAccessKey)
+	return storage.Put(lookupKey, granteeEncryptedAccessKey)
 }
 
 // Will return the access key for a publisher (public key)
-func (al *ActLogic) getAccessKey(rootHash swarm.Address, publisherPubKey *ecdsa.PublicKey) ([]byte, error) {
+func (al *ActLogic) getAccessKey(storage kvs.KeyValueStore, publisherPubKey *ecdsa.PublicKey) ([]byte, error) {
 	keys, err := al.getKeys(publisherPubKey)
 	if err != nil {
 		return nil, err
@@ -99,7 +99,7 @@ func (al *ActLogic) getAccessKey(rootHash swarm.Address, publisherPubKey *ecdsa.
 	publisherAKDecryptionKey := keys[1]
 	// no need to constructor call if value not found in act
 	accessKeyDecryptionCipher := encryption.New(encryption.Key(publisherAKDecryptionKey), 0, uint32(0), hashFunc)
-	encryptedAK, err := al.act.Lookup(rootHash, publisherLookupKey)
+	encryptedAK, err := storage.Get(publisherLookupKey)
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +117,7 @@ func (al *ActLogic) getKeys(publicKey *ecdsa.PublicKey) ([][]byte, error) {
 }
 
 // DecryptRef will return a decrypted reference, for given encrypted reference and grantee
-func (al ActLogic) DecryptRef(rootHash swarm.Address, encryped_ref swarm.Address, grantee *ecdsa.PublicKey) (swarm.Address, error) {
+func (al ActLogic) DecryptRef(storage kvs.KeyValueStore, encryped_ref swarm.Address, grantee *ecdsa.PublicKey) (swarm.Address, error) {
 	keys, err := al.getKeys(grantee)
 	if err != nil {
 		return swarm.EmptyAddress, err
@@ -126,7 +126,7 @@ func (al ActLogic) DecryptRef(rootHash swarm.Address, encryped_ref swarm.Address
 	accessKeyDecryptionKey := keys[1]
 
 	// Lookup encrypted access key from the ACT manifest
-	encryptedAccessKey, err := al.act.Lookup(rootHash, lookupKey)
+	encryptedAccessKey, err := storage.Get(lookupKey)
 	if err != nil {
 		return swarm.EmptyAddress, err
 	}
@@ -148,9 +148,8 @@ func (al ActLogic) DecryptRef(rootHash swarm.Address, encryped_ref swarm.Address
 	return swarm.NewAddress(ref), nil
 }
 
-func NewLogic(S Session, act Act) ActLogic {
+func NewLogic(S Session) ActLogic {
 	return ActLogic{
 		Session: S,
-		act:     act,
 	}
 }
