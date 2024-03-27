@@ -6,31 +6,31 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/dynamicaccess"
 	"github.com/ethersphere/bee/pkg/feeds"
+	"github.com/ethersphere/bee/pkg/kvs"
 	"github.com/ethersphere/bee/pkg/storage"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
 
 type historyMock struct {
-	history map[int64]dynamicaccess.Act
+	history map[int64]kvs.KeyValueStore
 }
 
 func NewHistory() *historyMock {
-	return &historyMock{history: make(map[int64]dynamicaccess.Act)}
+	return &historyMock{history: make(map[int64]kvs.KeyValueStore)}
 }
 
-func (h *historyMock) Add(timestamp int64, act dynamicaccess.Act) error {
+func (h *historyMock) Add(timestamp int64, act kvs.KeyValueStore) error {
 	h.history[timestamp] = act
 	return nil
 }
 
-func (h *historyMock) Insert(timestamp int64, act dynamicaccess.Act) *historyMock {
+func (h *historyMock) Insert(timestamp int64, act kvs.KeyValueStore) *historyMock {
 	h.Add(timestamp, act)
 	return h
 }
 
-func (h *historyMock) Lookup(at int64) (dynamicaccess.Act, error) {
+func (h *historyMock) Lookup(at int64) (kvs.KeyValueStore, error) {
 	keys := []int64{}
 	for k := range h.history {
 		keys = append(keys, k)
@@ -52,7 +52,7 @@ func (h *historyMock) Lookup(at int64) (dynamicaccess.Act, error) {
 	return nil, nil
 }
 
-func (h *historyMock) Get(timestamp int64) (dynamicaccess.Act, error) {
+func (h *historyMock) Get(timestamp int64) (kvs.KeyValueStore, error) {
 	return h.history[timestamp], nil
 }
 
