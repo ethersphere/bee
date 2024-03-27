@@ -24,12 +24,13 @@ func TestStatus(t *testing.T) {
 	t.Parallel()
 
 	want := &pb.Snapshot{
-		BeeMode:         api.FullMode.String(),
-		ReserveSize:     128,
-		PullsyncRate:    64,
-		StorageRadius:   8,
-		BatchCommitment: 1024,
-		IsReachable:     true,
+		BeeMode:          api.FullMode.String(),
+		ReserveSize:      128,
+		PullsyncRate:     64,
+		StorageRadius:    8,
+		BatchCommitment:  1024,
+		NeighborhoodSize: 1,
+		IsReachable:      true,
 	}
 
 	sssMock := &statusSnapshotMock{want}
@@ -96,12 +97,13 @@ func TestStatusLightNode(t *testing.T) {
 	t.Parallel()
 
 	want := &pb.Snapshot{
-		BeeMode:         api.LightMode.String(),
-		ReserveSize:     0,
-		PullsyncRate:    0,
-		StorageRadius:   0,
-		BatchCommitment: 1024,
-		IsReachable:     true,
+		BeeMode:          api.LightMode.String(),
+		ReserveSize:      0,
+		PullsyncRate:     0,
+		StorageRadius:    0,
+		BatchCommitment:  1024,
+		IsReachable:      true,
+		NeighborhoodSize: 1,
 	}
 
 	sssMock := &statusSnapshotMock{&pb.Snapshot{

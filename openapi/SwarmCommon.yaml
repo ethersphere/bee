@@ -735,8 +735,8 @@ components:
           type: integer
         lastSelectedRound:
           type: integer
-        lastSampleDuration:
-          $ref: "#/components/schemas/Duration"
+        lastSampleDurationSeconds:
+          type: number
         block:
           type: integer
         reward:
