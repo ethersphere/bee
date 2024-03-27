@@ -36,7 +36,7 @@ func Test_RefCntSize(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	assert.NoError(t, stepFn(store))
+	assert.NoError(t, stepFn(store)())
 
 	// check if all entries are migrated.
 	for _, entry := range oldItems {

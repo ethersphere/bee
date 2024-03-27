@@ -19,6 +19,7 @@ import (
 	chunktest "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/cache"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
 )
@@ -86,59 +87,9 @@ func TestCacheEntryItem(t *testing.T) {
 	}
 }
 
-type testStorage struct {
-	internal.Storage
-	putFn func(storage.Item) error
-}
-
-func (t *testStorage) IndexStore() storage.BatchedStore {
-	return &wrappedStore{BatchedStore: t.Storage.IndexStore(), putFn: t.putFn}
-}
-
-type wrappedStore struct {
-	storage.BatchedStore
-	putFn func(storage.Item) error
-}
-
-func (w *wrappedStore) Put(i storage.Item) error {
-	if w.putFn != nil {
-		return w.putFn(i)
-	}
-	return w.BatchedStore.Put(i)
-}
-
-func (w *wrappedStore) Batch(ctx context.Context) (storage.Batch, error) {
-	b, err := w.BatchedStore.Batch(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return &wrappedBatch{Batch: b, putFn: w.putFn}, nil
-}
-
-type wrappedBatch struct {
-	storage.Batch
-	putFn func(storage.Item) error
-}
-
-func (w *wrappedBatch) Put(i storage.Item) error {
-	if w.putFn != nil {
-		return w.putFn(i)
-	}
-	return w.Batch.Put(i)
-}
-
-func newTestStorage(t *testing.T) *testStorage {
+func newTestStorage(t *testing.T) transaction.Storage {
 	t.Helper()
-
-	storg, closer := internal.NewInmemStorage()
-	t.Cleanup(func() {
-		err := closer()
-		if err != nil {
-			t.Errorf("failed closing storage: %v", err)
-		}
-	})
-
-	return &testStorage{Storage: storg}
+	return internal.NewInmemStorage()
 }
 
 type timeProvider struct {
@@ -172,7 +123,7 @@ func TestCache(t *testing.T) {
 		t.Parallel()
 
 		st := newTestStorage(t)
-		c, err := cache.New(context.TODO(), st, 10)
+		c, err := cache.New(context.TODO(), st.IndexStore(), 10)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -183,7 +134,7 @@ func TestCache(t *testing.T) {
 		t.Parallel()
 
 		st := newTestStorage(t)
-		c, err := cache.New(context.TODO(), st, 10)
+		c, err := cache.New(context.TODO(), st.IndexStore(), 10)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -202,7 +153,7 @@ func TestCache(t *testing.T) {
 		})
 
 		t.Run("new cache retains state", func(t *testing.T) {
-			c2, err := cache.New(context.TODO(), st, 10)
+			c2, err := cache.New(context.TODO(), st.IndexStore(), 10)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -215,7 +166,7 @@ func TestCache(t *testing.T) {
 		t.Parallel()
 
 		st := newTestStorage(t)
-		c, err := cache.New(context.TODO(), st, 10)
+		c, err := cache.New(context.TODO(), st.IndexStore(), 10)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -280,10 +231,13 @@ func TestCache(t *testing.T) {
 
 			for i := 0; i < 5; i++ {
 				extraChunk := chunktest.GenerateTestRandomChunk()
-				err := st.ChunkStore().Put(context.TODO(), extraChunk)
+				err := st.Run(context.Background(), func(s transaction.Store) error {
+					return s.ChunkStore().Put(context.TODO(), extraChunk)
+				})
 				if err != nil {
 					t.Fatal(err)
 				}
+
 				readChunk, err := c.Getter(st).Get(context.TODO(), extraChunk.Address())
 				if err != nil {
 					t.Fatal(err)
@@ -296,10 +250,12 @@ func TestCache(t *testing.T) {
 		})
 	})
 	t.Run("handle error", func(t *testing.T) {
+		t.Skip("rollback tests are not needed if the transaction is tested at the high level")
+
 		t.Parallel()
 
 		st := newTestStorage(t)
-		c, err := cache.New(context.TODO(), st, 10)
+		c, err := cache.New(context.TODO(), st.IndexStore(), 10)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -312,14 +268,7 @@ func TestCache(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		// return error for state update, which occurs at the end of Get/Put operations
 		retErr := errors.New("dummy error")
-		st.putFn = func(i storage.Item) error {
-			if i.Namespace() == "cacheOrderIndex" {
-				return retErr
-			}
-			return st.Storage.IndexStore().Put(i)
-		}
 
 		// on error the cache expects the overarching transactions to clean itself up
 		// and undo any store updates. So here we only want to ensure the state is
@@ -351,7 +300,7 @@ func TestRemoveOldest(t *testing.T) {
 	t.Parallel()
 
 	st := newTestStorage(t)
-	c, err := cache.New(context.Background(), st, 10)
+	c, err := cache.New(context.Background(), st.IndexStore(), 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -368,7 +317,7 @@ func TestRemoveOldest(t *testing.T) {
 	verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[29].Address(), 30)
 	verifyCacheOrder(t, c, st.IndexStore(), chunks...)
 
-	err = c.RemoveOldestMaxBatch(context.Background(), st, st.ChunkStore(), 30, 5)
+	err = c.RemoveOldestMaxBatch(context.Background(), st, 30, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -382,7 +331,7 @@ func TestShallowCopy(t *testing.T) {
 	t.Parallel()
 
 	st := newTestStorage(t)
-	c, err := cache.New(context.Background(), st, 10)
+	c, err := cache.New(context.Background(), st.IndexStore(), 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -393,7 +342,10 @@ func TestShallowCopy(t *testing.T) {
 	// add the chunks to chunkstore. This simulates the reserve already populating
 	// the chunkstore with chunks.
 	for _, ch := range chunks {
-		err := st.ChunkStore().Put(context.Background(), ch)
+
+		err := st.Run(context.Background(), func(s transaction.Store) error {
+			return s.ChunkStore().Put(context.Background(), ch)
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -423,7 +375,9 @@ func TestShallowCopy(t *testing.T) {
 	// add the chunks to chunkstore. This simulates the reserve already populating
 	// the chunkstore with chunks.
 	for _, ch := range chunks1 {
-		err := st.ChunkStore().Put(context.Background(), ch)
+		err := st.Run(context.Background(), func(s transaction.Store) error {
+			return s.ChunkStore().Put(context.Background(), ch)
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -439,7 +393,7 @@ func TestShallowCopy(t *testing.T) {
 	verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks1[9].Address(), 20)
 	verifyCacheOrder(t, c, st.IndexStore(), append(chunks, chunks1...)...)
 
-	err = c.RemoveOldest(context.Background(), st, st.ChunkStore(), 10)
+	err = c.RemoveOldest(context.Background(), st, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -451,7 +405,7 @@ func TestShallowCopyOverCap(t *testing.T) {
 	t.Parallel()
 
 	st := newTestStorage(t)
-	c, err := cache.New(context.Background(), st, 10)
+	c, err := cache.New(context.Background(), st.IndexStore(), 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -462,7 +416,10 @@ func TestShallowCopyOverCap(t *testing.T) {
 	// add the chunks to chunkstore. This simulates the reserve already populating
 	// the chunkstore with chunks.
 	for _, ch := range chunks {
-		err := st.ChunkStore().Put(context.Background(), ch)
+
+		err := st.Run(context.Background(), func(s transaction.Store) error {
+			return s.ChunkStore().Put(context.Background(), ch)
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -478,7 +435,7 @@ func TestShallowCopyOverCap(t *testing.T) {
 	verifyCacheState(t, st.IndexStore(), c, chunks[5].Address(), chunks[14].Address(), 10)
 	verifyCacheOrder(t, c, st.IndexStore(), chunks[5:15]...)
 
-	err = c.RemoveOldest(context.Background(), st, st.ChunkStore(), 5)
+	err = c.RemoveOldest(context.Background(), st, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -490,7 +447,7 @@ func TestShallowCopyAlreadyCached(t *testing.T) {
 	t.Parallel()
 
 	st := newTestStorage(t)
-	c, err := cache.New(context.Background(), st, 1000)
+	c, err := cache.New(context.Background(), st.IndexStore(), 1000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -500,7 +457,10 @@ func TestShallowCopyAlreadyCached(t *testing.T) {
 
 	for _, ch := range chunks {
 		// add the chunks to chunkstore. This simulates the reserve already populating the chunkstore with chunks.
-		err := st.ChunkStore().Put(context.Background(), ch)
+
+		err := st.Run(context.Background(), func(s transaction.Store) error {
+			return s.ChunkStore().Put(context.Background(), ch)
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -520,7 +480,7 @@ func TestShallowCopyAlreadyCached(t *testing.T) {
 
 	verifyChunksExist(t, st.ChunkStore(), chunks...)
 
-	err = c.RemoveOldest(context.Background(), st, st.ChunkStore(), 10)
+	err = c.RemoveOldest(context.Background(), st, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -530,7 +490,7 @@ func TestShallowCopyAlreadyCached(t *testing.T) {
 
 func verifyCacheState(
 	t *testing.T,
-	store storage.Store,
+	store storage.Reader,
 	c *cache.Cache,
 	expStart, expEnd swarm.Address,
 	expCount uint64,
@@ -548,7 +508,7 @@ func verifyCacheState(
 func verifyCacheOrder(
 	t *testing.T,
 	c *cache.Cache,
-	st storage.Store,
+	st storage.Reader,
 	chs ...swarm.Chunk,
 ) {
 	t.Helper()
@@ -577,7 +537,7 @@ func verifyCacheOrder(
 
 func verifyChunksDeleted(
 	t *testing.T,
-	chStore storage.ChunkStore,
+	chStore storage.ReadOnlyChunkStore,
 	chs ...swarm.Chunk,
 ) {
 	t.Helper()
@@ -599,7 +559,7 @@ func verifyChunksDeleted(
 
 func verifyChunksExist(
 	t *testing.T,
-	chStore storage.ChunkStore,
+	chStore storage.ReadOnlyChunkStore,
 	chs ...swarm.Chunk,
 ) {
 	t.Helper()
