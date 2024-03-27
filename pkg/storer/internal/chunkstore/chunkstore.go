@@ -48,11 +48,11 @@ func Get(ctx context.Context, r storage.Reader, s storage.Sharky, addr swarm.Add
 	if err != nil {
 		return nil, fmt.Errorf("chunk store: failed reading retrievalIndex for address %s: %w", addr, err)
 	}
-	return readChunk(ctx, r, s, rIdx)
+	return readChunk(ctx, s, rIdx)
 }
 
 // helper to read chunk from retrievalIndex.
-func readChunk(ctx context.Context, r storage.Reader, s storage.Sharky, rIdx *RetrievalIndexItem) (swarm.Chunk, error) {
+func readChunk(ctx context.Context, s storage.Sharky, rIdx *RetrievalIndexItem) (swarm.Chunk, error) {
 	buf := make([]byte, rIdx.Location.Length)
 	err := s.Read(ctx, rIdx.Location, buf)
 	if err != nil {
@@ -153,7 +153,7 @@ func Iterate(ctx context.Context, s storage.IndexStore, sh storage.Sharky, fn st
 			Factory: func() storage.Item { return new(RetrievalIndexItem) },
 		},
 		func(r storage.Result) (bool, error) {
-			ch, err := readChunk(ctx, s, sh, r.Entry.(*RetrievalIndexItem))
+			ch, err := readChunk(ctx, sh, r.Entry.(*RetrievalIndexItem))
 			if err != nil {
 				return true, err
 			}
