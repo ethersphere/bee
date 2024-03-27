@@ -1,21 +1,12 @@
-package memory
+package mock
 
 import (
 	"encoding/hex"
 	"sync"
 
+	"github.com/ethersphere/bee/pkg/kvs"
 	"github.com/ethersphere/bee/pkg/swarm"
 )
-
-const (
-	// KvsTypeMemory represents
-	KvsTypeMemory = "Memory"
-)
-
-type MemoryKeyValueStore interface {
-	Get(rootHash swarm.Address, key []byte) ([]byte, error)
-	Put(rootHash swarm.Address, key, value []byte) (swarm.Address, error)
-}
 
 var lock = &sync.Mutex{}
 
@@ -47,21 +38,27 @@ func getMemory() map[string][]byte {
 	return mem.memoryMock
 }
 
-type memoryKeyValueStore struct {
+type mockKeyValueStore struct {
 }
 
-func (m *memoryKeyValueStore) Get(rootHash swarm.Address, key []byte) ([]byte, error) {
+var _ kvs.KeyValueStore = (*mockKeyValueStore)(nil)
+
+func (m *mockKeyValueStore) Get(key []byte) ([]byte, error) {
 	mem := getMemory()
 	val := mem[hex.EncodeToString(key)]
 	return val, nil
 }
 
-func (m *memoryKeyValueStore) Put(rootHash swarm.Address, key []byte, value []byte) (swarm.Address, error) {
+func (m *mockKeyValueStore) Put(key []byte, value []byte) error {
 	mem := getMemory()
 	mem[hex.EncodeToString(key)] = value
-	return swarm.EmptyAddress, nil
+	return nil
 }
 
-func NewMemoryKeyValueStore() (MemoryKeyValueStore, error) {
-	return &memoryKeyValueStore{}, nil
+func (s *mockKeyValueStore) Save() (swarm.Address, error) {
+	return swarm.ZeroAddress, nil
+}
+
+func New() kvs.KeyValueStore {
+	return &mockKeyValueStore{}
 }
