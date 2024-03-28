@@ -3,6 +3,7 @@ package dynamicaccess_test
 import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/rand"
 	"encoding/hex"
 	"math/big"
 	"testing"
@@ -72,6 +73,49 @@ func TestDecryptRef_Success(t *testing.T) {
 	}
 }
 
+func TestDecryptRefWithGrantee_Success(t *testing.T) {
+	id0, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	diffieHellman := dynamicaccess.NewDefaultSession(id0)
+	al := dynamicaccess.NewLogic(diffieHellman)
+
+	s := kvsmock.New()
+	err := al.AddPublisher(s, &id0.PublicKey)
+	if err != nil {
+		t.Errorf("AddPublisher: expected no error, got %v", err)
+	}
+
+	id1, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	err = al.AddGrantee(s, &id0.PublicKey, &id1.PublicKey, nil)
+	if err != nil {
+		t.Errorf("AddNewGrantee: expected no error, got %v", err)
+	}
+
+	byteRef, _ := hex.DecodeString("39a5ea87b141fe44aa609c3327ecd896c0e2122897f5f4bbacf74db1033c5559")
+
+	expectedRef := swarm.NewAddress(byteRef)
+	t.Logf("encryptedRef: %s", expectedRef.String())
+
+	encryptedRef, err := al.EncryptRef(s, &id0.PublicKey, expectedRef)
+	t.Logf("encryptedRef: %s", encryptedRef.String())
+	if err != nil {
+		t.Errorf("There was an error while calling EncryptRef: ")
+		t.Error(err)
+	}
+
+	diffieHellman2 := dynamicaccess.NewDefaultSession(id1)
+	granteeAccessLogic := dynamicaccess.NewLogic(diffieHellman2)
+	acutalRef, err := granteeAccessLogic.DecryptRef(s, encryptedRef, &id0.PublicKey)
+	if err != nil {
+		t.Errorf("There was an error while calling Get: ")
+		t.Error(err)
+	}
+
+	if expectedRef.Compare(acutalRef) != 0 {
+
+		t.Errorf("Get gave back wrong Swarm reference!")
+	}
+}
+
 func TestDecryptRef_Error(t *testing.T) {
 	id0 := generateFixPrivateKey(0)
 
@@ -89,7 +133,7 @@ func TestDecryptRef_Error(t *testing.T) {
 	r, err := al.DecryptRef(s, encryptedRef, nil)
 	if err == nil {
 		t.Logf("r: %s", r.String())
-		t.Errorf("Get should give back encrypted access key not found error!")
+		t.Errorf("Get should return encrypted access key not found error!")
 	}
 }
 
