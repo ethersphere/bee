@@ -12,7 +12,7 @@ var lock = &sync.Mutex{}
 
 type single struct {
 	// TODO string -> []byte ?
-	memoryMock map[string][]byte
+	memoryMock map[string]map[string][]byte
 }
 
 var singleInMemorySwarm *single
@@ -23,13 +23,13 @@ func getInMemorySwarm() *single {
 		defer lock.Unlock()
 		if singleInMemorySwarm == nil {
 			singleInMemorySwarm = &single{
-				memoryMock: make(map[string][]byte)}
+				memoryMock: make(map[string]map[string][]byte)}
 		}
 	}
 	return singleInMemorySwarm
 }
 
-func getMemory() map[string][]byte {
+func getMemory() map[string]map[string][]byte {
 	ch := make(chan *single)
 	go func() {
 		ch <- getInMemorySwarm()
@@ -39,26 +39,34 @@ func getMemory() map[string][]byte {
 }
 
 type mockKeyValueStore struct {
+	address swarm.Address
 }
 
 var _ kvs.KeyValueStore = (*mockKeyValueStore)(nil)
 
 func (m *mockKeyValueStore) Get(key []byte) ([]byte, error) {
 	mem := getMemory()
-	val := mem[hex.EncodeToString(key)]
+	val := mem[m.address.String()][hex.EncodeToString(key)]
 	return val, nil
 }
 
 func (m *mockKeyValueStore) Put(key []byte, value []byte) error {
 	mem := getMemory()
-	mem[hex.EncodeToString(key)] = value
+	if _, ok := mem[m.address.String()]; !ok {
+		mem[m.address.String()] = make(map[string][]byte)
+	}
+	mem[m.address.String()][hex.EncodeToString(key)] = value
 	return nil
 }
 
-func (s *mockKeyValueStore) Save() (swarm.Address, error) {
-	return swarm.ZeroAddress, nil
+func (m *mockKeyValueStore) Save() (swarm.Address, error) {
+	return m.address, nil
 }
 
 func New() kvs.KeyValueStore {
-	return &mockKeyValueStore{}
+	return &mockKeyValueStore{address: swarm.EmptyAddress}
+}
+
+func NewReference(address swarm.Address) kvs.KeyValueStore {
+	return &mockKeyValueStore{address: address}
 }
