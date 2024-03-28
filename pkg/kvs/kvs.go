@@ -1,8 +1,13 @@
+// Copyright 2024 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package kvs
 
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 
 	"github.com/ethersphere/bee/pkg/file"
 	"github.com/ethersphere/bee/pkg/manifest"
@@ -19,6 +24,7 @@ type KeyValueStore interface {
 type keyValueStore struct {
 	manifest manifest.Interface
 	putter   storer.PutterSession
+	putCnt   int
 }
 
 var _ KeyValueStore = (*keyValueStore)(nil)
@@ -34,10 +40,18 @@ func (s *keyValueStore) Get(key []byte) ([]byte, error) {
 }
 
 func (s *keyValueStore) Put(key []byte, value []byte) error {
-	return s.manifest.Add(context.Background(), hex.EncodeToString(key), manifest.NewEntry(swarm.NewAddress(value), map[string]string{}))
+	err := s.manifest.Add(context.Background(), hex.EncodeToString(key), manifest.NewEntry(swarm.NewAddress(value), map[string]string{}))
+	if err != nil {
+		return err
+	}
+	s.putCnt++
+	return nil
 }
 
 func (s *keyValueStore) Save() (swarm.Address, error) {
+	if s.putCnt == 0 {
+		return swarm.ZeroAddress, errors.New("nothing to save")
+	}
 	ref, err := s.manifest.Store(context.Background())
 	if err != nil {
 		return swarm.ZeroAddress, err
@@ -46,6 +60,7 @@ func (s *keyValueStore) Save() (swarm.Address, error) {
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
+	s.putCnt = 0
 	return ref, nil
 }
 

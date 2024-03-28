@@ -5,9 +5,7 @@
 package kvs_test
 
 import (
-	"bytes"
 	"context"
-	"encoding/hex"
 	"testing"
 
 	"github.com/ethersphere/bee/pkg/file"
@@ -19,6 +17,7 @@ import (
 	"github.com/ethersphere/bee/pkg/storage"
 	mockstorer "github.com/ethersphere/bee/pkg/storer/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/stretchr/testify/assert"
 )
 
 var mockStorer = mockstorer.New()
@@ -37,96 +36,134 @@ func keyValuePair(t *testing.T) ([]byte, []byte) {
 	return swarm.RandAddress(t).Bytes(), swarm.RandAddress(t).Bytes()
 }
 
-func TestKvsAddLookup(t *testing.T) {
-	ls := createLs()
+func TestKvs(t *testing.T) {
 
-	putter := mockStorer.DirectUpload()
-	s := kvs.New(ls, putter, swarm.ZeroAddress)
+	s := kvs.New(createLs(), mockStorer.DirectUpload(), swarm.ZeroAddress)
+	key, val := keyValuePair(t)
 
-	lookupKey, encryptedAccesskey := keyValuePair(t)
+	t.Run("Get non-existent key should return error", func(t *testing.T) {
+		_, err := s.Get([]byte{1})
+		assert.Error(t, err)
+	})
 
-	err := s.Put(lookupKey, encryptedAccesskey)
-	if err != nil {
-		t.Errorf("Add() should not return an error: %v", err)
-	}
+	t.Run("Multiple Get with same key, no error", func(t *testing.T) {
+		err := s.Put(key, val)
+		assert.NoError(t, err)
 
-	key, err := s.Get(lookupKey)
-	if err != nil {
-		t.Errorf("Lookup() should not return an error: %v", err)
-	}
+		// get #1
+		v, err := s.Get(key)
+		assert.NoError(t, err)
+		assert.Equal(t, val, v)
+		// get #2
+		v, err = s.Get(key)
+		assert.NoError(t, err)
+		assert.Equal(t, val, v)
+	})
 
-	if !bytes.Equal(key, encryptedAccesskey) {
-		t.Errorf("Get() value is not the expected %s != %s", hex.EncodeToString(key), hex.EncodeToString(encryptedAccesskey))
-	}
+	t.Run("Get should return value equal to put value", func(t *testing.T) {
+		var (
+			key1 []byte = []byte{1}
+			key2 []byte = []byte{2}
+			key3 []byte = []byte{3}
+		)
+		testCases := []struct {
+			name string
+			key  []byte
+			val  []byte
+		}{
+			{
+				name: "Test key = 1",
+				key:  key1,
+				val:  []byte{11},
+			},
+			{
+				name: "Test key = 2",
+				key:  key2,
+				val:  []byte{22},
+			},
+			{
+				name: "Test overwrite key = 1",
+				key:  key1,
+				val:  []byte{111},
+			},
+			{
+				name: "Test key = 3",
+				key:  key3,
+				val:  []byte{33},
+			},
+			{
+				name: "Test key = 3 with same value",
+				key:  key3,
+				val:  []byte{33},
+			},
+			{
+				name: "Test key = 3 with value for key1",
+				key:  key3,
+				val:  []byte{11},
+			},
+		}
 
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				err := s.Put(tc.key, tc.val)
+				assert.NoError(t, err)
+				retVal, err := s.Get(tc.key)
+				assert.NoError(t, err)
+				assert.Equal(t, tc.val, retVal)
+			})
+		}
+	})
 }
 
-func TestKvsAddLookupWithSave(t *testing.T) {
-	ls := createLs()
-	putter := mockStorer.DirectUpload()
-	s1 := kvs.New(ls, putter, swarm.ZeroAddress)
-	lookupKey, encryptedAccesskey := keyValuePair(t)
+func TestKvs_Save(t *testing.T) {
+	key1, val1 := keyValuePair(t)
+	key2, val2 := keyValuePair(t)
+	t.Run("Save empty KVS return error", func(t *testing.T) {
+		s := kvs.New(createLs(), mockStorer.DirectUpload(), swarm.ZeroAddress)
+		_, err := s.Save()
+		assert.Error(t, err)
+	})
+	t.Run("Save not empty KVS return valid swarm address", func(t *testing.T) {
+		s := kvs.New(createLs(), mockStorer.DirectUpload(), swarm.ZeroAddress)
+		s.Put(key1, val1)
+		ref, err := s.Save()
+		assert.NoError(t, err)
+		assert.True(t, ref.IsValidNonEmpty())
+	})
+	t.Run("Save KVS with one item, no error, pre-save value exist", func(t *testing.T) {
+		ls := createLs()
+		putter := mockStorer.DirectUpload()
+		s1 := kvs.New(ls, putter, swarm.ZeroAddress)
 
-	err := s1.Put(lookupKey, encryptedAccesskey)
-	if err != nil {
-		t.Fatalf("Add() should not return an error: %v", err)
-	}
-	ref, err := s1.Save()
-	if err != nil {
-		t.Fatalf("Save() should not return an error: %v", err)
-	}
-	s2 := kvs.New(ls, putter, ref)
-	key, err := s2.Get(lookupKey)
-	if err != nil {
-		t.Fatalf("Lookup() should not return an error: %v", err)
-	}
+		err := s1.Put(key1, val1)
+		assert.NoError(t, err)
 
-	if !bytes.Equal(key, encryptedAccesskey) {
-		t.Errorf("Get() value is not the expected %s != %s", hex.EncodeToString(key), hex.EncodeToString(encryptedAccesskey))
-	}
+		ref, err := s1.Save()
+		assert.NoError(t, err)
 
-}
+		s2 := kvs.New(ls, putter, ref)
+		val, err := s2.Get(key1)
+		assert.NoError(t, err)
+		assert.Equal(t, val1, val)
+	})
+	t.Run("Save KVS and add one item, no error, after-save value exist", func(t *testing.T) {
+		ls := createLs()
+		putter := mockStorer.DirectUpload()
 
-func TestKvsAddSaveAdd(t *testing.T) {
-	ls := createLs()
-	putter := mockStorer.DirectUpload()
-	kvs1 := kvs.New(ls, putter, swarm.ZeroAddress)
-	kvs1key1, kvs1val1 := keyValuePair(t)
+		kvs1 := kvs.New(ls, putter, swarm.ZeroAddress)
 
-	err := kvs1.Put(kvs1key1, kvs1val1)
-	if err != nil {
-		t.Fatalf("Add() should not return an error: %v", err)
-	}
-	ref, err := kvs1.Save()
-	if err != nil {
-		t.Fatalf("Save() should not return an error: %v", err)
-	}
+		err := kvs1.Put(key1, val1)
+		assert.NoError(t, err)
+		ref, err := kvs1.Save()
+		assert.NoError(t, err)
 
-	// New KVS
-	kvs2 := kvs.New(ls, putter, ref)
+		// New KVS
+		kvs2 := kvs.New(ls, putter, ref)
+		err = kvs2.Put(key2, val2)
+		assert.NoError(t, err)
 
-	kvs2key1, kvs2val1 := keyValuePair(t)
-
-	// put after save
-	kvs2.Put(kvs2key1, kvs2val1)
-
-	// get after save
-	kvs2get1, err := kvs2.Get(kvs2key1)
-	if err != nil {
-		t.Fatalf("Lookup() should not return an error: %v", err)
-	}
-	if !bytes.Equal(kvs2get1, kvs2val1) {
-		t.Errorf("Get() value is not the expected %s != %s", hex.EncodeToString(kvs2key1), hex.EncodeToString(kvs2val1))
-	}
-
-	// get before Save
-	kvs2get2, err := kvs2.Get(kvs1key1)
-
-	if err != nil {
-		t.Fatalf("Lookup() should not return an error: %v", err)
-	}
-	if !bytes.Equal(kvs2get2, kvs1val1) {
-		t.Errorf("Get() value is not the expected %s != %s", hex.EncodeToString(kvs2get2), hex.EncodeToString(kvs1val1))
-	}
-
+		val, err := kvs2.Get(key2)
+		assert.NoError(t, err)
+		assert.Equal(t, val2, val)
+	})
 }
