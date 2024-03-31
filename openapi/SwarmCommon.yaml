@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 3.2.6
+  version: 3.2.7
   title: Common Data Types
   description: |
     \*****bzzz*****
@@ -602,14 +602,27 @@ components:
         - $ref: "#/components/schemas/SwarmAddress"
         - $ref: "#/components/schemas/SwarmEncryptedReference"
 
+    PinCheckResponse:
+      type: object
+      properties:
+        reference:
+          $ref: "#/components/schemas/SwarmOnlyReference"
+        total:
+          type: integer
+        missing:
+          type: integer
+        invalid:
+          type: integer
+
     SwarmOnlyReferencesList:
       type: object
       properties:
-        references:
+        reference:
           type: array
           nullable: false
           items:
             $ref: "#/components/schemas/SwarmOnlyReference"
+
 
     SwarmReference:
       oneOf:
