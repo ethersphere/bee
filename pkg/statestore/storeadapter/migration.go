@@ -7,6 +7,7 @@ package storeadapter
 import (
 	"strings"
 
+	"github.com/ethersphere/bee/v2/pkg/puller"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/migration"
 )
@@ -14,12 +15,12 @@ import (
 func allSteps(st storage.Store) migration.Steps {
 	return map[uint64]migration.StepFn{
 		1: epochMigration(st),
-		2: deletePrefix(st, "sync_interval"),
-		3: deletePrefix(st, "sync_interval"),
+		2: deletePrefix(st, puller.IntervalPrefix),
+		3: deletePrefix(st, puller.IntervalPrefix),
 		4: deletePrefix(st, "blocklist"),
 		5: deletePrefix(st, "batchstore"),
-		6: deletePrefix(st, "sync_interval"),
-		7: deletePrefix(st, "sync_interval"),
+		6: deletePrefix(st, puller.IntervalPrefix),
+		7: deletePrefix(st, puller.IntervalPrefix),
 		8: deletePrefix(st, "batchstore"),
 	}
 }
@@ -40,7 +41,7 @@ func epochMigration(s storage.Store) migration.StepFn {
 		var deleteEntries = []string{
 			"statestore_schema",
 			"tags",
-			"sync_interval",
+			puller.IntervalPrefix,
 			"kademlia-counters",
 			"addressbook",
 			"batch",

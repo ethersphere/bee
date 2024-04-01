@@ -20,6 +20,7 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/node"
 	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/puller"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/storer/migration"
@@ -252,14 +253,14 @@ func dbRepairReserve(cmd *cobra.Command) {
 				return errors.New("no data-dir provided")
 			}
 
-			localstorePath := path.Join(dataDir, "localstore")
-
 			logger.Warning("Repair will recreate the reserve entries based on the chunk availability in the chunkstore. The epoch time and bin IDs will be reset.")
+			logger.Warning("The pullsync peer sync intervals are reset so on the next run, the node will perform historical syncing.")
 			logger.Warning("This is a destructive process. If the process is stopped for any reason, the reserve may become corrupted.")
+			logger.Warning("You have another 10 seconds to change your mind and kill this process with CTRL-C...")
 			time.Sleep(10 * time.Second)
 			logger.Warning("proceeding with repair...")
 
-			db, err := storer.New(cmd.Context(), localstorePath, &storer.Options{
+			db, err := storer.New(cmd.Context(), path.Join(dataDir, "localstore"), &storer.Options{
 				Logger:          logger,
 				RadiusSetter:    noopRadiusSetter{},
 				Batchstore:      new(postage.NoOpBatchStore),
@@ -275,7 +276,15 @@ func dbRepairReserve(cmd *cobra.Command) {
 				return fmt.Errorf("repair: %w", err)
 			}
 
-			return nil
+			stateStore, _, err := node.InitStateStore(logger, dataDir, 1000)
+			if err != nil {
+				return fmt.Errorf("new statestore: %w", err)
+			}
+			defer stateStore.Close()
+
+			return stateStore.Iterate(puller.IntervalPrefix, func(key, val []byte) (stop bool, err error) {
+				return false, stateStore.Delete(string(key))
+			})
 		},
 	}
 	c.Flags().String(optionNameDataDir, "", "data directory")

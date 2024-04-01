@@ -36,7 +36,7 @@ var errCursorsLength = errors.New("cursors length mismatch")
 const (
 	DefaultHistRateWindow = time.Minute * 15
 
-	intervalPrefix = "sync_interval"
+	IntervalPrefix = "sync_interval"
 	recalcPeersDur = time.Minute * 5
 
 	maxChunksPerSecond = 1000
@@ -514,19 +514,19 @@ func (p *Puller) getOrCreateInterval(peer swarm.Address, bin uint8) (*intervalst
 }
 
 func peerEpochKey(peer swarm.Address) string {
-	return fmt.Sprintf("%s_epoch_%s", intervalPrefix, peer.ByteString())
+	return fmt.Sprintf("%s_epoch_%s", IntervalPrefix, peer.ByteString())
 }
 
 func peerIntervalKey(peer swarm.Address, bin uint8) string {
-	return fmt.Sprintf("%s_%03d_%s", intervalPrefix, bin, peer.ByteString())
+	return fmt.Sprintf("%s_%03d_%s", IntervalPrefix, bin, peer.ByteString())
 }
 
 func binIntervalKey(bin uint8) string {
-	return fmt.Sprintf("%s_%03d", intervalPrefix, bin)
+	return fmt.Sprintf("%s_%03d", IntervalPrefix, bin)
 }
 
 func addressFromKey(key []byte) swarm.Address {
-	addr := key[len(fmt.Sprintf("%s_%03d_", intervalPrefix, 0)):]
+	addr := key[len(fmt.Sprintf("%s_%03d_", IntervalPrefix, 0)):]
 	return swarm.NewAddress(addr)
 }
 
