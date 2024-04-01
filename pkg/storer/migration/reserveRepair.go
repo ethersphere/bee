@@ -7,7 +7,6 @@ package migration
 import (
 	"context"
 	"errors"
-	"os"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
@@ -18,24 +17,34 @@ import (
 
 // step_03 is a migration step that removes all BinItem entries and migrates
 // ChunkBinItem and BatchRadiusItem entries to use a new BinID field.
-func step_03(
+func ReserveRepairer(
 	st transaction.Storage,
-	chunkType func(swarm.Chunk) swarm.ChunkType,
+	chunkTypeFunc func(swarm.Chunk) swarm.ChunkType,
+	logger log.Logger,
 ) func() error {
 	return func() error {
 		/*
-			STEP 1, remove all of the BinItem entires
-			STEP 2, remove all of the ChunkBinItem entries
-			STEP 3, iterate BatchRadiusItem, get new binID using IncBinID, create new ChunkBinItem and BatchRadiusItem
+			STEP 0:	remove epoch item
+			STEP 1:	remove all of the BinItem entires
+			STEP 2:	remove all of the ChunkBinItem entries
+			STEP 3:	iterate BatchRadiusItem, get new binID using IncBinID,
+					create new ChunkBinItem and BatchRadiusItem if the chunk exists in the chunkstore
+					if the chunk is invalid, it is removed from the chunkstore
 		*/
 
 		rs := reserve.Reserve{}
-		logger := log.NewLogger("migration-step-03", log.WithSink(os.Stdout))
 		logger.Info("starting migration for reconstructing reserve bin IDs, do not interrupt or kill the process...")
 
-		// STEP 1
-
+		// STEP 0
 		err := st.Run(context.Background(), func(s transaction.Store) error {
+			return s.IndexStore().Delete(&reserve.EpochItem{})
+		})
+		if err != nil {
+			return err
+		}
+
+		// STEP 1
+		err = st.Run(context.Background(), func(s transaction.Store) error {
 			for i := uint8(0); i < swarm.MaxBins; i++ {
 				err := s.IndexStore().Delete(&reserve.BinItem{Bin: i})
 				if err != nil {
@@ -66,8 +75,10 @@ func step_03(
 			return err
 		}
 
-		for i := 0; i < len(chunkBinItems); i += 10000 {
-			end := i + 10000
+		batchSize := 1000
+
+		for i := 0; i < len(chunkBinItems); i += batchSize {
+			end := i + batchSize
 			if end > len(chunkBinItems) {
 				end = len(chunkBinItems)
 			}
@@ -107,8 +118,8 @@ func step_03(
 
 		logger.Info("found reserve chunk entries, adding new entries", "total_entries", len(batchRadiusItems))
 
-		batchSize := 10000
 		missingChunks := 0
+		invalidSharkyChunks := 0
 
 		for i := 0; i < len(batchRadiusItems); i += batchSize {
 			end := i + batchSize
@@ -122,21 +133,28 @@ func step_03(
 					if err != nil && !errors.Is(err, storage.ErrNotFound) {
 						return err
 					}
-					hasChunkEntry := err == nil
 
-					if !hasChunkEntry {
+					hasChunk := err == nil
+					chunkType := chunkTypeFunc(chunk)
+
+					if !hasChunk {
 						err = s.IndexStore().Delete(item)
 						if err != nil {
 							return err
 						}
 						missingChunks++
-					} else {
-
-						var newBinID uint64
-						err = st.Run(context.Background(), func(s transaction.Store) error {
-							newBinID, err = rs.IncBinID(s.IndexStore(), item.Bin)
+					} else if chunkType == swarm.ChunkTypeUnspecified {
+						err = s.IndexStore().Delete(item)
+						if err != nil {
 							return err
-						})
+						}
+						err = s.ChunkStore().Delete(context.Background(), item.Address)
+						if err != nil {
+							return err
+						}
+						invalidSharkyChunks++
+					} else {
+						newBinID, err := rs.IncBinID(s.IndexStore(), item.Bin)
 						if err != nil {
 							return err
 						}
@@ -152,7 +170,7 @@ func step_03(
 							Bin:     item.Bin,
 							Address: item.Address,
 							BinID:   newBinID,
-							Type:    chunkType(chunk),
+							Type:    chunkType,
 						})
 						if err != nil {
 							return err
@@ -166,7 +184,29 @@ func step_03(
 			}
 		}
 
-		logger.Info("migrated all chunk entries", "new_size", len(batchRadiusItems)-missingChunks, "missing_chunks", missingChunks)
+		binIds := make(map[uint8]map[uint64]int)
+		err = st.IndexStore().Iterate(
+			storage.Query{
+				Factory: func() storage.Item { return &reserve.BatchRadiusItem{} },
+			},
+			func(res storage.Result) (bool, error) {
+				item := res.Entry.(*reserve.BatchRadiusItem)
+				if _, ok := binIds[item.Bin]; !ok {
+					binIds[item.Bin] = make(map[uint64]int)
+				}
+				binIds[item.Bin][item.BinID]++
+				if binIds[item.Bin][item.BinID] > 1 {
+					return false, errors.New("already used binID")
+				}
+
+				return false, nil
+			},
+		)
+		if err != nil {
+			return err
+		}
+
+		logger.Info("migrated all chunk entries", "new_size", len(batchRadiusItems)-missingChunks, "missing_chunks", missingChunks, "invalid_sharky_chunks", invalidSharkyChunks)
 		return nil
 	}
 }

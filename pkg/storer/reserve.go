@@ -107,6 +107,9 @@ func (db *DB) countWithinRadius(ctx context.Context) (int, error) {
 
 	db.metrics.ReserveSizeWithinRadius.Set(float64(count))
 	db.metrics.ReserveMissingBatch.Set(float64(missing))
+	reserveSizeWithinRadius.Store(uint64(count))
+
+	db.ReserveSizeWithinRadius()
 
 	return count, err
 }

@@ -38,6 +38,8 @@ const (
 
 	intervalPrefix = "sync_interval"
 	recalcPeersDur = time.Minute * 5
+
+	maxChunksPerSecond = 1000
 )
 
 type Options struct {
@@ -100,7 +102,7 @@ func New(
 		blockLister: blockLister,
 		rate:        rate.New(DefaultHistRateWindow),
 		cancel:      func() { /* Noop, since the context is initialized in the Start(). */ },
-		limiter:     ratelimit.NewLimiter(ratelimit.Every(time.Second/4), int(swarm.MaxBins)), // allows for 2 syncs per second, max bins bursts
+		limiter:     ratelimit.NewLimiter(ratelimit.Every(time.Second/maxChunksPerSecond), maxChunksPerSecond),
 	}
 
 	return p
@@ -318,8 +320,6 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 				if start > cursor {
 					return
 				}
-				// rate limit historical syncing
-				_ = p.limiter.Wait(ctx)
 			}
 
 			select {
@@ -352,6 +352,8 @@ func (p *Puller) syncPeerBin(parentCtx context.Context, peer *syncPeer, bin uint
 			if isHistorical {
 				p.metrics.SyncedCounter.WithLabelValues("historical").Add(float64(count))
 				p.rate.Add(count)
+				// rate limit historical syncing
+				_ = p.limiter.WaitN(ctx, count)
 			} else {
 				p.metrics.SyncedCounter.WithLabelValues("live").Add(float64(count))
 			}

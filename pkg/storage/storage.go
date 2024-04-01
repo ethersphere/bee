@@ -10,13 +10,14 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/sharky"
+	"github.com/ethersphere/bee/v2/pkg/soc"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 var (
-	ErrOverwriteNewerChunk       = errors.New("overwriting chunk with newer timestamp")
-	ErrOverwriteOfImmutableBatch = errors.New("overwrite of existing immutable batch")
+	ErrOverwriteNewerChunk = errors.New("overwriting chunk with newer timestamp")
 )
 
 // Result represents the item returned by the read operation, which returns
@@ -282,4 +283,13 @@ type Batch interface {
 type Batcher interface {
 	// Batch returns a new Batch.
 	Batch(context.Context) Batch
+}
+
+func ChunkType(ch swarm.Chunk) swarm.ChunkType {
+	if cac.Valid(ch) {
+		return swarm.ChunkTypeContentAddressed
+	} else if soc.Valid(ch) {
+		return swarm.ChunkTypeSingleOwner
+	}
+	return swarm.ChunkTypeUnspecified
 }

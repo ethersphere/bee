@@ -177,8 +177,6 @@ type Chunk interface {
 	Stamp() Stamp
 	// WithStamp attaches a postage stamp to the chunk.
 	WithStamp(Stamp) Chunk
-	// Radius is the PO above which the batch is preserved.
-	Radius() uint8
 	// Depth returns the batch depth of the stamp - allowed batch size = 2^{depth}.
 	Depth() uint8
 	// BucketDepth returns the bucket depth of the batch of the stamp - always < depth.
@@ -186,7 +184,7 @@ type Chunk interface {
 	// Immutable returns whether the batch is immutable
 	Immutable() bool
 	// WithBatch attaches batch parameters to the chunk.
-	WithBatch(radius, depth, bucketDepth uint8, immutable bool) Chunk
+	WithBatch(depth, bucketDepth uint8, immutable bool) Chunk
 	// Equal checks if the chunk is equal to another.
 	Equal(Chunk) bool
 }
@@ -228,7 +226,6 @@ type chunk struct {
 	sdata       []byte
 	tagID       uint32
 	stamp       Stamp
-	radius      uint8
 	depth       uint8
 	bucketDepth uint8
 	immutable   bool
@@ -251,8 +248,7 @@ func (c *chunk) WithStamp(stamp Stamp) Chunk {
 	return c
 }
 
-func (c *chunk) WithBatch(radius, depth, bucketDepth uint8, immutable bool) Chunk {
-	c.radius = radius
+func (c *chunk) WithBatch(depth, bucketDepth uint8, immutable bool) Chunk {
 	c.depth = depth
 	c.bucketDepth = bucketDepth
 	c.immutable = immutable
@@ -273,10 +269,6 @@ func (c *chunk) TagID() uint32 {
 
 func (c *chunk) Stamp() Stamp {
 	return c.stamp
-}
-
-func (c *chunk) Radius() uint8 {
-	return c.radius
 }
 
 func (c *chunk) Depth() uint8 {

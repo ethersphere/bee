@@ -127,7 +127,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 		prev := binary.BigEndian.Uint64(item.StampTimestamp)
 		curr := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
 		if prev >= curr {
-			return fmt.Errorf("overwrite prev %d cur %d batch %s :%w", prev, curr, hex.EncodeToString(chunk.Stamp().BatchID()), storage.ErrOverwriteNewerChunk)
+			return fmt.Errorf("overwrite prev %d cur %d batch %s: %w", prev, curr, hex.EncodeToString(chunk.Stamp().BatchID()), storage.ErrOverwriteNewerChunk)
 		}
 		// An older and different chunk with the same batchID and stamp index has been previously
 		// saved to the reserve. We must do the below before saving the new chunk:
@@ -179,7 +179,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 		BinID:   binID,
 		Address: chunk.Address(),
 		BatchID: chunk.Stamp().BatchID(),
-		Type:    ChunkType(chunk),
+		Type:    storage.ChunkType(chunk),
 	})
 	if err != nil {
 		return err

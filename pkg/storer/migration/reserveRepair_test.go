@@ -9,6 +9,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/ethersphere/bee/v2/pkg/log"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	chunktest "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal"
@@ -24,9 +25,9 @@ func Test_Step_03(t *testing.T) {
 
 	store := internal.NewInmemStorage()
 	baseAddr := swarm.RandAddress(t)
-	stepFn := localmigration.Step_03(store, func(_ swarm.Chunk) swarm.ChunkType {
+	stepFn := localmigration.ReserveRepairer(store, func(_ swarm.Chunk) swarm.ChunkType {
 		return swarm.ChunkTypeContentAddressed
-	})
+	}, log.Noop)
 
 	var chunksPO = make([][]swarm.Chunk, 5)
 	var chunksPerPO uint64 = 2
@@ -131,4 +132,10 @@ func Test_Step_03(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, cbCount, brCount)
+
+	has, err := store.IndexStore().Has(&reserve.EpochItem{})
+	if has {
+		t.Fatal("epoch item should be deleted")
+	}
+	assert.NoError(t, err)
 }

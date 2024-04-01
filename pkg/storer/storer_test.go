@@ -207,7 +207,7 @@ func assertStorerVersion(t *testing.T, r storage.Reader, sharkyPath string) {
 		t.Fatalf("migration.Version(...): unexpected error: %v", err)
 	}
 
-	expected := migration.LatestVersion(localmigration.AfterInitSteps(sharkyPath, 4, internal.NewInmemStorage()))
+	expected := migration.LatestVersion(localmigration.AfterInitSteps(sharkyPath, 4, internal.NewInmemStorage(), log.Noop))
 	if current != expected {
 		t.Fatalf("storer is not migrated to latest version; got %d, expected %d", current, expected)
 	}

@@ -22,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/storer/migration"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/spf13/cobra"
 )
@@ -46,6 +47,7 @@ func (c *command) initDBCmd() {
 	dbCompactCmd(cmd)
 	dbValidateCmd(cmd)
 	dbValidatePinsCmd(cmd)
+	dbRepairReserve(cmd)
 
 	c.root.AddCommand(cmd)
 }
@@ -227,6 +229,60 @@ func dbValidatePinsCmd(cmd *cobra.Command) {
 	cmd.AddCommand(c)
 }
 
+func dbRepairReserve(cmd *cobra.Command) {
+	c := &cobra.Command{
+		Use:   "repair-reserve",
+		Short: "Repairs the reserve by resetting the binIDs and removes dangling entries.",
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			v, err := cmd.Flags().GetString(optionNameVerbosity)
+			if err != nil {
+				return fmt.Errorf("get verbosity: %w", err)
+			}
+			v = strings.ToLower(v)
+			logger, err := newLogger(cmd, v)
+			if err != nil {
+				return fmt.Errorf("new logger: %w", err)
+			}
+
+			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
+			if err != nil {
+				return fmt.Errorf("get data-dir: %w", err)
+			}
+			if dataDir == "" {
+				return errors.New("no data-dir provided")
+			}
+
+			localstorePath := path.Join(dataDir, "localstore")
+
+			logger.Warning("Repair will recreate the reserve entries based on the chunk availability in the chunkstore. The epoch time and bin IDs will be reset.")
+			logger.Warning("This is a destructive process. If the process is stopped for any reason, the reserve may become corrupted.")
+			time.Sleep(10 * time.Second)
+			logger.Warning("proceeding with repair...")
+
+			db, err := storer.New(cmd.Context(), localstorePath, &storer.Options{
+				Logger:          logger,
+				RadiusSetter:    noopRadiusSetter{},
+				Batchstore:      new(postage.NoOpBatchStore),
+				ReserveCapacity: node.ReserveCapacity,
+			})
+			if err != nil {
+				return fmt.Errorf("localstore: %w", err)
+			}
+			defer db.Close()
+
+			err = migration.ReserveRepairer(db.Storage(), storage.ChunkType, logger)()
+			if err != nil {
+				return fmt.Errorf("repair: %w", err)
+			}
+
+			return nil
+		},
+	}
+	c.Flags().String(optionNameDataDir, "", "data directory")
+	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
+	cmd.AddCommand(c)
+}
+
 func dbValidateCmd(cmd *cobra.Command) {
 	c := &cobra.Command{
 		Use:   "validate",
@@ -257,7 +313,7 @@ func dbValidateCmd(cmd *cobra.Command) {
 
 			localstorePath := path.Join(dataDir, "localstore")
 
-			err = storer.Validate(context.Background(), localstorePath, &storer.Options{
+			err = storer.ValidateRetrievalIndex(context.Background(), localstorePath, &storer.Options{
 				Logger:          logger,
 				RadiusSetter:    noopRadiusSetter{},
 				Batchstore:      new(postage.NoOpBatchStore),
@@ -406,7 +462,7 @@ func dbExportPinningCmd(cmd *cobra.Command) {
 				Logger:          logger,
 				RadiusSetter:    noopRadiusSetter{},
 				Batchstore:      new(postage.NoOpBatchStore),
-				ReserveCapacity: 4_194_304,
+				ReserveCapacity: node.ReserveCapacity,
 			})
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
@@ -598,7 +654,7 @@ func dbImportPinningCmd(cmd *cobra.Command) {
 				Logger:          logger,
 				RadiusSetter:    noopRadiusSetter{},
 				Batchstore:      new(postage.NoOpBatchStore),
-				ReserveCapacity: 4_194_304,
+				ReserveCapacity: node.ReserveCapacity,
 			})
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)

@@ -25,7 +25,40 @@ import (
 )
 
 // Validate ensures that all retrievalIndex chunks are correctly stored in sharky.
-func Validate(ctx context.Context, basePath string, opts *Options) error {
+func ValidateReserve(ctx context.Context, basePath string, opts *Options) error {
+
+	logger := opts.Logger
+
+	store, err := initStore(basePath, opts)
+	if err != nil {
+		return fmt.Errorf("failed creating levelDB index store: %w", err)
+	}
+	defer func() {
+		if err := store.Close(); err != nil {
+			logger.Error(err, "failed closing store")
+		}
+	}()
+
+	sharky, err := sharky.New(&dirFS{basedir: path.Join(basePath, sharkyPath)},
+		sharkyNoOfShards, swarm.SocMaxChunkSize)
+	if err != nil {
+		return err
+	}
+	defer func() {
+		if err := sharky.Close(); err != nil {
+			logger.Error(err, "failed closing sharky")
+		}
+	}()
+
+	logger.Info("performing chunk validation")
+
+	validateWork(logger, store, sharky.Read)
+
+	return nil
+}
+
+// ValidateRetrievalIndex ensures that all retrievalIndex chunks are correctly stored in sharky.
+func ValidateRetrievalIndex(ctx context.Context, basePath string, opts *Options) error {
 
 	logger := opts.Logger
 

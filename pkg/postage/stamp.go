@@ -187,7 +187,7 @@ func ValidStamp(batchStore Storer) ValidStampFn {
 		if err = NewStamp(stamp.BatchID(), stamp.Index(), stamp.Timestamp(), stamp.Sig()).Valid(chunk.Address(), b.Owner, b.Depth, b.BucketDepth, b.Immutable); err != nil {
 			return nil, err
 		}
-		return chunk.WithStamp(stamp).WithBatch(0, b.Depth, b.BucketDepth, b.Immutable), nil // TODO: remove radius arg
+		return chunk.WithStamp(stamp).WithBatch(b.Depth, b.BucketDepth, b.Immutable), nil
 	}
 }
 

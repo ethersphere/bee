@@ -20,6 +20,7 @@ func allSteps(st storage.Store) migration.Steps {
 		5: deletePrefix(st, "batchstore"),
 		6: deletePrefix(st, "sync_interval"),
 		7: deletePrefix(st, "sync_interval"),
+		8: deletePrefix(st, "batchstore"),
 	}
 }
 

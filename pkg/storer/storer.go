@@ -412,7 +412,7 @@ type DB struct {
 
 	metrics             metrics
 	storage             transaction.Storage
-	lock                *multex.Multex
+	multex              *multex.Multex
 	cacheObj            *cache.Cache
 	retrieval           retrieval.Interface
 	pusherFeed          chan *pusher.Op
@@ -483,7 +483,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		return migration.Migrate(
 			s.IndexStore(),
 			"migration",
-			localmigration.AfterInitSteps(sharkyBasePath, sharkyNoOfShards, st),
+			localmigration.AfterInitSteps(sharkyBasePath, sharkyNoOfShards, st, opts.Logger),
 		)
 	})
 	if err != nil {
@@ -504,7 +504,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		logger:     logger,
 		tracer:     opts.Tracer,
 		baseAddr:   opts.Address,
-		lock:       lock,
+		multex:     lock,
 		cacheObj:   cacheObj,
 		retrieval:  noopRetrieval{},
 		pusherFeed: make(chan *pusher.Op),
@@ -645,13 +645,17 @@ func (db *DB) PinIntegrity() *PinIntegrity {
 
 func (db *DB) Lock(strs ...string) func() {
 	for _, s := range strs {
-		db.lock.Lock(s)
+		db.multex.Lock(s)
 	}
 	return func() {
 		for _, s := range strs {
-			db.lock.Unlock(s)
+			db.multex.Unlock(s)
 		}
 	}
+}
+
+func (db *DB) Storage() transaction.Storage {
+	return db.storage
 }
 
 type putterSession struct {

@@ -184,7 +184,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 			have, err = s.store.ReserveHas(a, batchID)
 			if err != nil {
 				s.logger.Debug("storage has", "error", err)
-				continue
+				return 0, 0, err
 			}
 
 			if !have {
@@ -261,7 +261,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 			if err := s.store.ReservePutter().Put(ctx, c); err != nil {
 				// in case of these errors, no new items are added to the storage, so it
 				// is safe to continue with the next chunk
-				if errors.Is(err, storage.ErrOverwriteNewerChunk) || errors.Is(err, storage.ErrOverwriteOfImmutableBatch) {
+				if errors.Is(err, storage.ErrOverwriteNewerChunk) {
 					s.logger.Debug("overwrite newer chunk", "error", err, "peer_address", peer, "chunk", c)
 					chunkErr = errors.Join(chunkErr, err)
 					continue

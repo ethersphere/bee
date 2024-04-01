@@ -185,7 +185,7 @@ const (
 	minPaymentThreshold           = 2 * refreshRate           // minimal accepted payment threshold of full nodes
 	maxPaymentThreshold           = 24 * refreshRate          // maximal accepted payment threshold of full nodes
 	mainnetNetworkID              = uint64(1)                 //
-	ReserveCapacity               = 131072                    // 2^14 chunks
+	ReserveCapacity               = 4194304                   // 2^14 chunks
 	reserveWakeUpDuration         = 5 * time.Minute           // time to wait before waking up reserveWorker
 	reserveTreshold               = ReserveCapacity * 5 / 10
 	reserveMinimumRadius          = 0

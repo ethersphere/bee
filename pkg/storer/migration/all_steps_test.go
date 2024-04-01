@@ -10,6 +10,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
+	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemstore"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
@@ -23,12 +24,12 @@ func TestPreSteps(t *testing.T) {
 
 	store := internal.NewInmemStorage()
 
-	assert.NotEmpty(t, localmigration.AfterInitSteps("", 0, store))
+	assert.NotEmpty(t, localmigration.AfterInitSteps("", 0, store, log.Noop))
 
 	t.Run("version numbers", func(t *testing.T) {
 		t.Parallel()
 
-		err := migration.ValidateVersions(localmigration.AfterInitSteps("", 0, store))
+		err := migration.ValidateVersions(localmigration.AfterInitSteps("", 0, store, log.Noop))
 		assert.NoError(t, err)
 	})
 
@@ -37,7 +38,7 @@ func TestPreSteps(t *testing.T) {
 
 		store := internal.NewInmemStorage()
 		err := store.Run(context.Background(), func(s transaction.Store) error {
-			return migration.Migrate(s.IndexStore(), "migration", localmigration.AfterInitSteps("", 4, store))
+			return migration.Migrate(s.IndexStore(), "migration", localmigration.AfterInitSteps("", 4, store, log.Noop))
 		})
 		assert.NoError(t, err)
 	})
