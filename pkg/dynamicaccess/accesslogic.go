@@ -14,7 +14,7 @@ var hashFunc = sha3.NewLegacyKeccak256
 // Read-only interface for the ACT
 type Decryptor interface {
 	// DecryptRef will return a decrypted reference, for given encrypted reference and grantee
-	DecryptRef(storage kvs.KeyValueStore, encryped_ref swarm.Address, publisher *ecdsa.PublicKey) (swarm.Address, error)
+	DecryptRef(storage kvs.KeyValueStore, encryptedRef swarm.Address, publisher *ecdsa.PublicKey) (swarm.Address, error)
 	// Embedding the Session interface
 	Session
 }
@@ -26,14 +26,14 @@ type Control interface {
 	// Adds a new grantee to the ACT
 	AddGrantee(storage kvs.KeyValueStore, publisherPubKey, granteePubKey *ecdsa.PublicKey, accessKey *encryption.Key) error
 	// Encrypts a Swarm reference for a given grantee
-	EncryptRef(storage kvs.KeyValueStore, grantee *ecdsa.PublicKey, ref swarm.Address) error
+	EncryptRef(storage kvs.KeyValueStore, grantee *ecdsa.PublicKey, ref swarm.Address) (swarm.Address, error)
 }
 
 type ActLogic struct {
 	Session
 }
 
-var _ Decryptor = (*ActLogic)(nil)
+var _ Control = (*ActLogic)(nil)
 
 // Adds a new publisher to an empty act
 func (al ActLogic) AddPublisher(storage kvs.KeyValueStore, publisher *ecdsa.PublicKey) error {
@@ -116,9 +116,9 @@ func (al *ActLogic) getKeys(publicKey *ecdsa.PublicKey) ([][]byte, error) {
 	return al.Session.Key(publicKey, [][]byte{zeroByteArray, oneByteArray})
 }
 
-// DecryptRef will return a decrypted reference, for given encrypted reference and grantee
-func (al ActLogic) DecryptRef(storage kvs.KeyValueStore, encryped_ref swarm.Address, grantee *ecdsa.PublicKey) (swarm.Address, error) {
-	keys, err := al.getKeys(grantee)
+// DecryptRef will return a decrypted reference, for given encrypted reference and publisher
+func (al ActLogic) DecryptRef(storage kvs.KeyValueStore, encryptedRef swarm.Address, publisher *ecdsa.PublicKey) (swarm.Address, error) {
+	keys, err := al.getKeys(publisher)
 	if err != nil {
 		return swarm.EmptyAddress, err
 	}
@@ -140,7 +140,7 @@ func (al ActLogic) DecryptRef(storage kvs.KeyValueStore, encryped_ref swarm.Addr
 
 	// Decrypt reference
 	refCipher := encryption.New(accessKey, 0, uint32(0), hashFunc)
-	ref, err := refCipher.Decrypt(encryped_ref.Bytes())
+	ref, err := refCipher.Decrypt(encryptedRef.Bytes())
 	if err != nil {
 		return swarm.EmptyAddress, err
 	}
