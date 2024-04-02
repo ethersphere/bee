@@ -3,10 +3,11 @@ package dynamicaccess_test
 import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/rand"
 	"encoding/hex"
-	"math/big"
 	"testing"
 
+	"github.com/ethersphere/bee/pkg/crypto"
 	"github.com/ethersphere/bee/pkg/dynamicaccess"
 	kvsmock "github.com/ethersphere/bee/pkg/kvs/mock"
 	"github.com/ethersphere/bee/pkg/swarm"
@@ -14,33 +15,42 @@ import (
 
 // Generates a new test environment with a fix private key
 func setupAccessLogic2() dynamicaccess.ActLogic {
-	privateKey := generateFixPrivateKey(1000)
-	diffieHellman := dynamicaccess.NewDefaultSession(&privateKey)
+	privateKey := getPrivKey(1)
+	diffieHellman := dynamicaccess.NewDefaultSession(privateKey)
 	al := dynamicaccess.NewLogic(diffieHellman)
 
 	return al
 }
 
-// Generates a fixed identity with private and public key. The private key is generated from the input
-func generateFixPrivateKey(input int64) ecdsa.PrivateKey {
-	fixedD := big.NewInt(input)
-	curve := elliptic.P256()
-	x, y := curve.ScalarBaseMult(fixedD.Bytes())
+func getPrivKey(keyNumber int) *ecdsa.PrivateKey {
+	var keyHex string
 
-	privateKey := ecdsa.PrivateKey{
-		PublicKey: ecdsa.PublicKey{
-			Curve: curve,
-			X:     x,
-			Y:     y,
-		},
-		D: fixedD,
+	switch keyNumber {
+	case 0:
+		keyHex = "a786dd84b61485de12146fd9c4c02d87e8fd95f0542765cb7fc3d2e428c0bcfa"
+	case 1:
+		keyHex = "b786dd84b61485de12146fd9c4c02d87e8fd95f0542765cb7fc3d2e428c0bcfb"
+	case 2:
+		keyHex = "c786dd84b61485de12146fd9c4c02d87e8fd95f0542765cb7fc3d2e428c0bcfc"
+	default:
+		panic("Invalid key number")
 	}
 
-	return privateKey
+	data, err := hex.DecodeString(keyHex)
+	if err != nil {
+		panic(err)
+	}
+
+	privKey, err := crypto.DecodeSecp256k1PrivateKey(data)
+	if err != nil {
+		panic(err)
+	}
+
+	return privKey
 }
 
 func TestDecryptRef_Success(t *testing.T) {
-	id0 := generateFixPrivateKey(0)
+	id0 := getPrivKey(0)
 	s := kvsmock.New()
 	al := setupAccessLogic2()
 	err := al.AddPublisher(s, &id0.PublicKey)
@@ -72,8 +82,51 @@ func TestDecryptRef_Success(t *testing.T) {
 	}
 }
 
+func TestDecryptRefWithGrantee_Success(t *testing.T) {
+	id0, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	diffieHellman := dynamicaccess.NewDefaultSession(id0)
+	al := dynamicaccess.NewLogic(diffieHellman)
+
+	s := kvsmock.New()
+	err := al.AddPublisher(s, &id0.PublicKey)
+	if err != nil {
+		t.Errorf("AddPublisher: expected no error, got %v", err)
+	}
+
+	id1, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	err = al.AddGrantee(s, &id0.PublicKey, &id1.PublicKey, nil)
+	if err != nil {
+		t.Errorf("AddNewGrantee: expected no error, got %v", err)
+	}
+
+	byteRef, _ := hex.DecodeString("39a5ea87b141fe44aa609c3327ecd896c0e2122897f5f4bbacf74db1033c5559")
+
+	expectedRef := swarm.NewAddress(byteRef)
+	t.Logf("encryptedRef: %s", expectedRef.String())
+
+	encryptedRef, err := al.EncryptRef(s, &id0.PublicKey, expectedRef)
+	t.Logf("encryptedRef: %s", encryptedRef.String())
+	if err != nil {
+		t.Errorf("There was an error while calling EncryptRef: ")
+		t.Error(err)
+	}
+
+	diffieHellman2 := dynamicaccess.NewDefaultSession(id1)
+	granteeAccessLogic := dynamicaccess.NewLogic(diffieHellman2)
+	acutalRef, err := granteeAccessLogic.DecryptRef(s, encryptedRef, &id0.PublicKey)
+	if err != nil {
+		t.Errorf("There was an error while calling Get: ")
+		t.Error(err)
+	}
+
+	if expectedRef.Compare(acutalRef) != 0 {
+
+		t.Errorf("Get gave back wrong Swarm reference!")
+	}
+}
+
 func TestDecryptRef_Error(t *testing.T) {
-	id0 := generateFixPrivateKey(0)
+	id0 := getPrivKey(0)
 
 	s := kvsmock.New()
 	al := setupAccessLogic2()
@@ -89,13 +142,13 @@ func TestDecryptRef_Error(t *testing.T) {
 	r, err := al.DecryptRef(s, encryptedRef, nil)
 	if err == nil {
 		t.Logf("r: %s", r.String())
-		t.Errorf("Get should give back encrypted access key not found error!")
+		t.Errorf("Get should return encrypted access key not found error!")
 	}
 }
 
 func TestAddPublisher(t *testing.T) {
-	id0 := generateFixPrivateKey(0)
-	savedLookupKey := "bc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a"
+	id0 := getPrivKey(0)
+	savedLookupKey := "b6ee086390c280eeb9824c331a4427596f0c8510d5564bc1b6168d0059a46e2b"
 	s := kvsmock.New()
 
 	al := setupAccessLogic2()
@@ -127,13 +180,13 @@ func TestAddPublisher(t *testing.T) {
 
 func TestAddNewGranteeToContent(t *testing.T) {
 
-	id0 := generateFixPrivateKey(0)
-	id1 := generateFixPrivateKey(1)
-	id2 := generateFixPrivateKey(2)
+	id0 := getPrivKey(0)
+	id1 := getPrivKey(1)
+	id2 := getPrivKey(2)
 
-	publisherLookupKey := "bc36789e7a1e281436464229828f817d6612f7b477d66591ff96a9e064bcc98a"
-	firstAddedGranteeLookupKey := "e221a2abf64357260e8f2c937ee938aed98dce097e537c1a3fd4caf73510dbe4"
-	secondAddedGranteeLookupKey := "8fe8dff7cd15a6a0095c1b25071a5691e7c901fd0b95857a96c0e4659b48716a"
+	publisherLookupKey := "b6ee086390c280eeb9824c331a4427596f0c8510d5564bc1b6168d0059a46e2b"
+	firstAddedGranteeLookupKey := "a13678e81f9d939b9401a3ad7e548d2ceb81c50f8c76424296e83a1ad79c0df0"
+	secondAddedGranteeLookupKey := "d5e9a6499ca74f5b8b958a4b89b7338045b2baa9420e115443a8050e26986564"
 
 	s := kvsmock.New()
 	al := setupAccessLogic2()
