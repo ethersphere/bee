@@ -280,7 +280,7 @@ func (r *Reserve) EvictBatchBin(
 
 		err := r.st.Run(ctx, func(s transaction.Store) error {
 			for _, item := range evicted[i:end] {
-				err = r.removeChunkWithItem(ctx, s, item)
+				err = RemoveChunkWithItem(ctx, s, item)
 				if err != nil {
 					return err
 				}
@@ -311,20 +311,18 @@ func (r *Reserve) removeChunk(
 	if err != nil {
 		return err
 	}
-	return r.removeChunkWithItem(ctx, trx, item)
+	return RemoveChunkWithItem(ctx, trx, item)
 }
 
-func (r *Reserve) removeChunkWithItem(
+func RemoveChunkWithItem(
 	ctx context.Context,
 	trx transaction.Store,
 	item *BatchRadiusItem,
 ) error {
 
-	indexStore := trx.IndexStore()
-
 	var errs error
 
-	stamp, _ := chunkstamp.LoadWithBatchID(indexStore, reserveNamespace, item.Address, item.BatchID)
+	stamp, _ := chunkstamp.LoadWithBatchID(trx.IndexStore(), reserveNamespace, item.Address, item.BatchID)
 	if stamp != nil {
 		errs = errors.Join(
 			stampindex.Delete(

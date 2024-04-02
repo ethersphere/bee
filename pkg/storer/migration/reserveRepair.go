@@ -138,17 +138,13 @@ func ReserveRepairer(
 					chunkType := chunkTypeFunc(chunk)
 
 					if !hasChunk {
-						err = s.IndexStore().Delete(item)
+						err = reserve.RemoveChunkWithItem(context.Background(), s, item)
 						if err != nil {
 							return err
 						}
 						missingChunks++
 					} else if chunkType == swarm.ChunkTypeUnspecified {
-						err = s.IndexStore().Delete(item)
-						if err != nil {
-							return err
-						}
-						err = s.ChunkStore().Delete(context.Background(), item.Address)
+						err = reserve.RemoveChunkWithItem(context.Background(), s, item)
 						if err != nil {
 							return err
 						}
