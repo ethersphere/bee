@@ -49,7 +49,7 @@ require (
 	golang.org/x/sync v0.3.0
 	golang.org/x/sys v0.15.0
 	golang.org/x/term v0.15.0
-	golang.org/x/time v0.3.0
+	golang.org/x/time v0.5.0
 	gopkg.in/yaml.v2 v2.4.0
 	resenje.org/multex v0.1.0
 	resenje.org/singleflight v0.4.0
@@ -147,8 +147,7 @@ require (
 	github.com/prometheus/procfs v0.9.0 // indirect
 	github.com/prometheus/statsd_exporter v0.22.7 // indirect
 	github.com/quic-go/qpack v0.4.0 // indirect
-	github.com/quic-go/qtls-go1-20 v0.3.3 // indirect
-	github.com/quic-go/quic-go v0.38.2 // indirect
+	github.com/quic-go/quic-go v0.42.0 // indirect
 	github.com/quic-go/webtransport-go v0.5.3 // indirect
 	github.com/raulk/go-watchdog v1.3.0 // indirect
 	github.com/shirou/gopsutil v3.21.5+incompatible // indirect
@@ -167,6 +166,7 @@ require (
 	go.opencensus.io v0.24.0 // indirect
 	go.uber.org/dig v1.17.0 // indirect
 	go.uber.org/fx v1.20.0 // indirect
+	go.uber.org/mock v0.4.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.25.0 // indirect
 	golang.org/x/mod v0.12.0 // indirect
