@@ -17,7 +17,7 @@ import (
 )
 
 type statusSnapshotResponse struct {
-	Peer                    string  `json:"peer"`
+	Overlay                 string  `json:"overlay"`
 	Proximity               uint8   `json:"proximity"`
 	BeeMode                 string  `json:"beeMode"`
 	ReserveSize             uint64  `json:"reserveSize"`
@@ -71,7 +71,7 @@ func (s *Service) statusGetHandler(w http.ResponseWriter, _ *http.Request) {
 	}
 
 	jsonhttp.OK(w, statusSnapshotResponse{
-		Peer:                    s.overlay.String(),
+		Overlay:                 s.overlay.String(),
 		BeeMode:                 ss.BeeMode,
 		ReserveSize:             ss.ReserveSize,
 		ReserveSizeWithinRadius: ss.ReserveSizeWithinRadius,
@@ -109,7 +109,7 @@ func (s *Service) statusGetPeersHandler(w http.ResponseWriter, r *http.Request) 
 			defer wg.Done()
 
 			snapshot := statusSnapshotResponse{
-				Peer:      address.String(),
+				Overlay:   address.String(),
 				Proximity: po,
 			}
 
