@@ -72,9 +72,9 @@ func TestEncrypt(t *testing.T) {
 	eref, ref := prepareEncryptedChunkReference(ak)
 
 	key1, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	gm.Add("topic", []*ecdsa.PublicKey{&key1.PublicKey})
+	gm.Add([]*ecdsa.PublicKey{&key1.PublicKey})
 
-	addr, _ := c.UploadHandler(ref, &pk.PublicKey, "topic")
+	addr, _ := c.UploadHandler(ref, &pk.PublicKey)
 	if !addr.Equal(eref) {
 		t.Fatalf("Decrypted chunk address: %s is not the expected: %s", addr, eref)
 	}

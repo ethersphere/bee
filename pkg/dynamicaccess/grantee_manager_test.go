@@ -24,15 +24,15 @@ func TestAdd(t *testing.T) {
 
 	id1, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	id2, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	err := m.Add("topic", []*ecdsa.PublicKey{&id1.PublicKey})
+	err := m.Add([]*ecdsa.PublicKey{&id1.PublicKey})
 	if err != nil {
 		t.Errorf("Add() returned an error")
 	}
-	err = m.Add("topic", []*ecdsa.PublicKey{&id2.PublicKey})
+	err = m.Add([]*ecdsa.PublicKey{&id2.PublicKey})
 	if err != nil {
 		t.Errorf("Add() returned an error")
 	}
 	s := kvsmock.New()
-	m.Publish(s, &pub.PublicKey, "topic")
+	m.Publish(s, &pub.PublicKey)
 	fmt.Println("")
 }

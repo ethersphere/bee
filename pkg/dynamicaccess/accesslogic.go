@@ -76,10 +76,11 @@ func (al ActLogic) AddGrantee(storage kvs.KeyValueStore, publisherPubKey, grante
 		return err
 	}
 	lookupKey := keys[0]
-	accessKeyEncryptionKey := keys[1]
+	// accessKeyDecryptionKey is used for encryption of the access key
+	accessKeyDecryptionKey := keys[1]
 
 	// Encrypt the access key for the new Grantee
-	cipher := encryption.New(encryption.Key(accessKeyEncryptionKey), 0, uint32(0), hashFunc)
+	cipher := encryption.New(encryption.Key(accessKeyDecryptionKey), 0, uint32(0), hashFunc)
 	granteeEncryptedAccessKey, err := cipher.Encrypt(accessKey)
 	if err != nil {
 		return err
