@@ -32,7 +32,7 @@ func TestGetStatus(t *testing.T) {
 			PullsyncRate:            64,
 			StorageRadius:           8,
 			ConnectedPeers:          0,
-			NeighborhoodSize:        0,
+			NeighborhoodSize:        1,
 			BatchCommitment:         1,
 			IsReachable:             true,
 		}
