@@ -9,7 +9,7 @@ import (
 
 type Controller interface {
 	DownloadHandler(timestamp int64, enryptedRef swarm.Address, publisher *ecdsa.PublicKey, tag string) (swarm.Address, error)
-	UploadHandler(ref swarm.Address, publisher *ecdsa.PublicKey, topic string) (swarm.Address, error)
+	UploadHandler(ref swarm.Address, publisher *ecdsa.PublicKey) (swarm.Address, error)
 }
 
 type defaultController struct {
@@ -27,7 +27,7 @@ func (c *defaultController) DownloadHandler(timestamp int64, enryptedRef swarm.A
 	return addr, err
 }
 
-func (c *defaultController) UploadHandler(ref swarm.Address, publisher *ecdsa.PublicKey, topic string) (swarm.Address, error) {
+func (c *defaultController) UploadHandler(ref swarm.Address, publisher *ecdsa.PublicKey) (swarm.Address, error) {
 	kvs, err := c.history.Lookup(0)
 	if err != nil {
 		return swarm.EmptyAddress, err
@@ -36,7 +36,7 @@ func (c *defaultController) UploadHandler(ref swarm.Address, publisher *ecdsa.Pu
 		// new feed
 		// TODO: putter session to create kvs
 		kvs = kvsmock.New()
-		_, err = c.granteeManager.Publish(kvs, publisher, topic)
+		_, err = c.granteeManager.Publish(kvs, publisher)
 		if err != nil {
 			return swarm.EmptyAddress, err
 		}
