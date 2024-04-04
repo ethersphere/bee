@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/dynamicaccess"
-	kvsmock "github.com/ethersphere/bee/pkg/kvs/mock"
+	"github.com/ethersphere/bee/v2/pkg/dynamicaccess"
+	kvsmock "github.com/ethersphere/bee/v2/pkg/kvs/mock"
 )
 
 func setupAccessLogic(privateKey *ecdsa.PrivateKey) dynamicaccess.ActLogic {

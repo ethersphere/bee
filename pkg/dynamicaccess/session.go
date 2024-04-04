@@ -4,8 +4,8 @@ import (
 	"crypto/ecdsa"
 	"errors"
 
-	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/keystore"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/keystore"
 )
 
 // Session represents an interface for a Diffie-Helmann key derivation

@@ -3,9 +3,9 @@ package dynamicaccess
 import (
 	"crypto/ecdsa"
 
-	"github.com/ethersphere/bee/pkg/dynamicaccess/mock"
-	"github.com/ethersphere/bee/pkg/kvs"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/dynamicaccess/mock"
+	"github.com/ethersphere/bee/v2/pkg/kvs"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 type GranteeManager interface {
