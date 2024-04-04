@@ -8,10 +8,10 @@ import (
 	"io"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/dynamicaccess"
-	"github.com/ethersphere/bee/pkg/dynamicaccess/mock"
-	memkeystore "github.com/ethersphere/bee/pkg/keystore/mem"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/dynamicaccess"
+	"github.com/ethersphere/bee/v2/pkg/dynamicaccess/mock"
+	memkeystore "github.com/ethersphere/bee/v2/pkg/keystore/mem"
 )
 
 func mockKeyFunc(publicKey *ecdsa.PublicKey, nonces [][]byte) ([][]byte, error) {

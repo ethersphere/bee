@@ -3,8 +3,8 @@ package dynamicaccess
 import (
 	"crypto/ecdsa"
 
-	kvsmock "github.com/ethersphere/bee/pkg/kvs/mock"
-	"github.com/ethersphere/bee/pkg/swarm"
+	kvsmock "github.com/ethersphere/bee/v2/pkg/kvs/mock"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 type Controller interface {

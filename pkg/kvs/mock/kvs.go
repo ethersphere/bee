@@ -4,8 +4,8 @@ import (
 	"encoding/hex"
 	"sync"
 
-	"github.com/ethersphere/bee/pkg/kvs"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/kvs"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 var lock = &sync.Mutex{}

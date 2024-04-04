@@ -7,10 +7,10 @@ import (
 	"encoding/hex"
 	"testing"
 
-	"github.com/ethersphere/bee/pkg/crypto"
-	"github.com/ethersphere/bee/pkg/dynamicaccess"
-	kvsmock "github.com/ethersphere/bee/pkg/kvs/mock"
-	"github.com/ethersphere/bee/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/dynamicaccess"
+	kvsmock "github.com/ethersphere/bee/v2/pkg/kvs/mock"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 // Generates a new test environment with a fix private key

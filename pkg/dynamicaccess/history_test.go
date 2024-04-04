@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/pkg/dynamicaccess"
-	"github.com/ethersphere/bee/pkg/dynamicaccess/mock"
-	kvsmock "github.com/ethersphere/bee/pkg/kvs/mock"
+	"github.com/ethersphere/bee/v2/pkg/dynamicaccess"
+	"github.com/ethersphere/bee/v2/pkg/dynamicaccess/mock"
+	kvsmock "github.com/ethersphere/bee/v2/pkg/kvs/mock"
 	"github.com/stretchr/testify/assert"
 )
 
