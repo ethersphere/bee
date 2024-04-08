@@ -26,6 +26,7 @@ func TestGetStatus(t *testing.T) {
 
 		mode := api.FullMode
 		ssr := api.StatusSnapshotResponse{
+			Proximity:               256,
 			BeeMode:                 mode.String(),
 			ReserveSize:             128,
 			ReserveSizeWithinRadius: 64,
