@@ -23,7 +23,6 @@ var (
 	ErrInvalidPinCollectionItemSize = errInvalidPinCollectionSize
 	ErrPutterAlreadyClosed          = errPutterAlreadyClosed
 	ErrCollectionRootAddressIsZero  = errCollectionRootAddressIsZero
-	ErrDuplicatePinCollection       = errDuplicatePinCollection
 )
 
 var NewUUID = newUUID
