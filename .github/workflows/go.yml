@@ -67,7 +67,7 @@ jobs:
       if: github.ref != 'refs/heads/master'
       uses: wagoid/commitlint-github-action@v5
     - name: GolangCI-Lint
-      uses: golangci/golangci-lint-action@v3
+      uses: golangci/golangci-lint-action@v4
       with:
         skip-cache: false
         version: v1.54.1
