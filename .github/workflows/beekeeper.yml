@@ -11,7 +11,8 @@ env:
   K3S_VERSION: "v1.22.17+k3s1"
   REPLICA: 3
   RUN_TYPE: "PR RUN"
-  SETUP_CONTRACT_IMAGE_TAG: "2.0.7"
+  SETUP_CONTRACT_IMAGE: "ethersphere/bee-localchain"
+  SETUP_CONTRACT_IMAGE_TAG: "0.7.0"
   BEELOCAL_BRANCH: "main"
   BEEKEEPER_BRANCH: "master"
   BEEKEEPER_METRICS_ENABLED: false
@@ -32,23 +33,23 @@ jobs:
       msg: ${{ steps.commit.outputs.msg }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         if: github.event.action != 'beekeeper'
         with:
           fetch-depth: 0
       - name: Checkout
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         if: github.event.action == 'beekeeper'
         with:
           fetch-depth: 0
           ref: ${{ github.event.client_payload.ref }}
       - name: Setup Go
-        uses: actions/setup-go@v3
+        uses: actions/setup-go@v5
         with:
           cache: false
           go-version-file: go.mod
       - name: Cache Go Modules
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             ~/.cache/go-build
@@ -78,7 +79,7 @@ jobs:
           beekeeper version --log-verbosity 0
           mv ~/.beekeeper.yaml .beekeeper.yaml
           mv ~/.beekeeper/local.yaml local.yaml
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: temp-artifacts
           path: |
@@ -98,13 +99,13 @@ jobs:
     needs: [init]
     steps:
       - name: Cache
-        uses: actions/cache@v3
+        uses: actions/cache@v4
         with:
           path: |
             /tmp/k3s-${{ env.K3S_VERSION }}
           key: k3s-${{ env.K3S_VERSION }}
       - name: "Download Artifact"
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: temp-artifacts
       - name: Unpack artifacts
@@ -193,7 +194,7 @@ jobs:
           echo "Connect to github actions node using"
           echo "sh <(curl -sSf https://lets.tunshell.com/init.sh) L $(echo $KEYS | jq -r .peer2_key) \${TUNSHELL_SECRET} eu.relay.tunshell.com"
           curl -sSf https://lets.tunshell.com/init.sh | sh /dev/stdin T $(echo $KEYS | jq -r .peer1_key) ${{ secrets.TUNSHELL_SECRET }} eu.relay.tunshell.com
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: debug-dump
@@ -206,7 +207,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: "Download Artifact"
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: temp-artifacts
       - name: Unpack artifacts
