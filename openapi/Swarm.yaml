@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  version: 5.2.0
+  version: 6.0.0
   title: Bee API
   description: "A list of the currently provided Interfaces to interact with the swarm, implementing file operations and sending messages"
 
@@ -2051,7 +2051,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/WalletTxResponse'
+                $ref: "SwarmCommon.yaml#/components/schemas/WalletTxResponse"
           description: OK
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
