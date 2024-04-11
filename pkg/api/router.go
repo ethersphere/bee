@@ -585,13 +585,3 @@ func (s *Service) MountAPIs() {
 		web.FinalHandler(router),
 	)
 }
-
-func (s *Service) ListEndpoints() []string {
-	var routes []string
-	s.router.Walk(func(route *mux.Route, router *mux.Router, ancestors []*mux.Route) error {
-		tpl, _ := route.GetPathTemplate()
-		routes = append(routes, tpl)
-		return nil
-	})
-	return routes
-}

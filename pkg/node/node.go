@@ -1028,10 +1028,6 @@ func NewBee(
 
 		go func() {
 			logger.Info("starting api server", "address", apiListener.Addr())
-			routes := apiService.ListEndpoints()
-			for _, r := range routes {
-				logger.Debug("api endpoint registered", "path", r)
-			}
 			if err := apiServer.Serve(apiListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
 				logger.Debug("api server failed to start", "error", err)
 				logger.Error(nil, "api server failed to start")
