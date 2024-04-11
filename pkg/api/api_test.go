@@ -235,13 +235,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		WsPingPeriod:       o.WsPingPeriod,
 		Restricted:         o.Restricted,
 	}, extraOpts, 1, erc20)
-
-	if o.DebugAPI {
-		s.MountTechnicalDebug()
-		s.MountDebug()
-	} else {
-		s.MountAPI()
-	}
+	s.MountAPIs()
 
 	if o.DirectUpload {
 		chanStore = newChanStore(o.Storer.PusherFeed())
@@ -398,7 +392,7 @@ func TestParseName(t *testing.T) {
 
 		s := api.New(pk.PublicKey, pk.PublicKey, common.Address{}, nil, log, nil, nil, 1, false, false, nil, []string{"*"}, inmemstore.New())
 		s.Configure(signer, nil, nil, api.Options{}, api.ExtraOptions{Resolver: tC.res}, 1, nil)
-		s.MountAPI()
+		s.MountAPIs()
 
 		tC := tC
 		t.Run(tC.desc, func(t *testing.T) {
