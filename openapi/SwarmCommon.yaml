@@ -439,10 +439,6 @@ components:
           type: string
           default: "0.0.0"
           description: The default value is set in case the bee binary was not build correctly.
-        debugApiVersion:
-          type: string
-          default: "0.0.0"
-          description: The default value is set in case the bee binary was not build correctly.
 
     PostageBatch:
       type: object
@@ -956,6 +952,11 @@ components:
         signer:
           type: string
 
+    WalletTxResponse:
+      type: object
+      properties:
+        transactionHash:
+          $ref: "#/components/schemas/TransactionHash"
   headers:
     SwarmTag:
       description: "Tag UID"
