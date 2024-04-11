@@ -1013,10 +1013,8 @@ func NewBee(
 		}, extraOpts, chainID, erc20Service)
 
 		apiService.MountAPI()
-		apiService.MountDebug(o.Restricted)
-		if o.Restricted {
-			apiService.MountTechnicalDebug()
-		}
+		apiService.MountDebug()
+		apiService.MountTechnicalDebug()
 
 		apiServer := &http.Server{
 			IdleTimeout:       30 * time.Second,

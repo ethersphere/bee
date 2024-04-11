@@ -42,8 +42,8 @@ func (s *Service) MountTechnicalDebug() {
 	)
 }
 
-func (s *Service) MountDebug(restricted bool) {
-	s.mountBusinessDebug(restricted)
+func (s *Service) MountDebug() {
+	s.mountBusinessDebug()
 
 	s.Handler = web.ChainHandlers(
 		httpaccess.NewHTTPAccessLogHandler(s.logger, s.tracer, "debug api access"),
@@ -105,71 +105,86 @@ func (s *Service) MountAPI() {
 }
 
 func (s *Service) mountTechnicalDebug() {
-	s.router.Handle("/node", jsonhttp.MethodHandler{
+	handle := func(path string, handler http.Handler) {
+		if s.Restricted {
+			handler = web.ChainHandlers(auth.PermissionCheckHandler(s.auth), web.FinalHandler(handler))
+		}
+		s.router.Handle(path, handler)
+		s.router.Handle(rootPath+path, handler)
+	}
+
+	handle("/node", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.nodeGetHandler),
 	})
 
-	s.router.Handle("/addresses", jsonhttp.MethodHandler{
+	handle("/addresses", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.addressesHandler),
 	})
 
-	s.router.Handle("/chainstate", jsonhttp.MethodHandler{
+	handle("/chainstate", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.chainStateHandler),
 	})
 
-	s.router.Handle("/debugstore", jsonhttp.MethodHandler{
+	handle("/debugstore", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
 			httpaccess.NewHTTPAccessSuppressLogHandler(),
 			web.FinalHandlerFunc(s.debugStorage),
 		),
 	})
 
-	s.router.Path("/metrics").Handler(web.ChainHandlers(
+	metricsHandler := web.ChainHandlers(
 		httpaccess.NewHTTPAccessSuppressLogHandler(),
 		web.FinalHandler(promhttp.InstrumentMetricHandler(
 			s.metricsRegistry,
 			promhttp.HandlerFor(s.metricsRegistry, promhttp.HandlerOpts{}),
-		)),
-	))
+		)))
+	if s.Restricted {
+		metricsHandler = web.ChainHandlers(auth.PermissionCheckHandler(s.auth), web.FinalHandler(metricsHandler))
+	}
+	s.router.Path("/metrics").Handler(metricsHandler)
 
-	s.router.Handle("/debug/pprof", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handle("/debug/pprof", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		u := r.URL
 		u.Path += "/"
 		http.Redirect(w, r, u.String(), http.StatusPermanentRedirect)
 	}))
-	s.router.Handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
-	s.router.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
-	s.router.Handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
-	s.router.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
-	s.router.PathPrefix("/debug/pprof/").Handler(http.HandlerFunc(pprof.Index))
+	handle("/debug/pprof/cmdline", http.HandlerFunc(pprof.Cmdline))
+	handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
+	handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
+	handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
+	pprofRootHandlerF := pprof.Index
+	if s.Restricted {
+		pprofRootHandlerF = web.ChainHandlers(auth.PermissionCheckHandler(s.auth), web.FinalHandler(http.HandlerFunc(pprof.Index))).ServeHTTP
+	}
+	s.router.PathPrefix("/debug/pprof/").Handler(http.HandlerFunc(pprofRootHandlerF))
 
-	s.router.Handle("/debug/vars", expvar.Handler())
+	handle("/debug/vars", expvar.Handler())
 
-	s.router.Handle("/loggers", jsonhttp.MethodHandler{
+	handle("/loggers", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
 			httpaccess.NewHTTPAccessSuppressLogHandler(),
 			web.FinalHandlerFunc(s.loggerGetHandler),
 		),
 	})
-	s.router.Handle("/loggers/{exp}", jsonhttp.MethodHandler{
+	handle("/loggers/{exp}", jsonhttp.MethodHandler{
 		"GET": web.ChainHandlers(
 			httpaccess.NewHTTPAccessSuppressLogHandler(),
 			web.FinalHandlerFunc(s.loggerGetHandler),
 		),
 	})
-	s.router.Handle("/loggers/{exp}/{verbosity}", jsonhttp.MethodHandler{
+	handle("/loggers/{exp}/{verbosity}", jsonhttp.MethodHandler{
 		"PUT": web.ChainHandlers(
 			httpaccess.NewHTTPAccessSuppressLogHandler(),
 			web.FinalHandlerFunc(s.loggerSetVerbosityHandler),
 		),
 	})
 
-	s.router.Handle("/readiness", web.ChainHandlers(
+	handle("/readiness", web.ChainHandlers(
 		httpaccess.NewHTTPAccessSuppressLogHandler(),
 		web.FinalHandlerFunc(s.readinessHandler),
 	))
 
-	s.router.Handle("/health", web.ChainHandlers(
+	handle("/health", web.ChainHandlers(
 		httpaccess.NewHTTPAccessSuppressLogHandler(),
 		web.FinalHandlerFunc(s.healthHandler),
 	))
@@ -364,9 +379,9 @@ func (s *Service) mountAPI() {
 	}
 }
 
-func (s *Service) mountBusinessDebug(restricted bool) {
+func (s *Service) mountBusinessDebug() {
 	handle := func(path string, handler http.Handler) {
-		if restricted {
+		if s.Restricted {
 			handler = web.ChainHandlers(auth.PermissionCheckHandler(s.auth), web.FinalHandler(handler))
 		}
 		s.router.Handle(path, handler)
