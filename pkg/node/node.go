@@ -89,7 +89,6 @@ type Bee struct {
 	ctxCancel                context.CancelFunc
 	apiCloser                io.Closer
 	apiServer                *http.Server
-	debugAPIServer           *http.Server
 	resolverCloser           io.Closer
 	errorLogWriter           io.Writer
 	tracerCloser             io.Closer
@@ -127,7 +126,6 @@ type Options struct {
 	DBBlockCacheCapacity          uint64
 	DBDisableSeeksCompaction      bool
 	APIAddr                       string
-	DebugAPIAddr                  string
 	Addr                          string
 	NATAddr                       string
 	EnableWS                      bool
@@ -1150,14 +1148,6 @@ func (b *Bee) Shutdown() error {
 		eg.Go(func() error {
 			if err := b.apiServer.Shutdown(ctx); err != nil {
 				return fmt.Errorf("api server: %w", err)
-			}
-			return nil
-		})
-	}
-	if b.debugAPIServer != nil {
-		eg.Go(func() error {
-			if err := b.debugAPIServer.Shutdown(ctx); err != nil {
-				return fmt.Errorf("debug api server: %w", err)
 			}
 			return nil
 		})
