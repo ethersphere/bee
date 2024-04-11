@@ -57,15 +57,9 @@ func (c *command) initStartDevCmd() (err error) {
 			fmt.Println("Starting in development mode")
 			fmt.Println()
 
-			debugAPIAddr := c.config.GetString(optionNameDebugAPIAddr)
-			if !c.config.GetBool(optionNameDebugAPIEnable) {
-				debugAPIAddr = ""
-			}
-
 			// generate signer in here
 			b, err := node.NewDevBee(logger, &node.DevOptions{
 				APIAddr:                  c.config.GetString(optionNameAPIAddr),
-				DebugAPIAddr:             debugAPIAddr,
 				Logger:                   logger,
 				DBOpenFilesLimit:         c.config.GetUint64(optionNameDBOpenFilesLimit),
 				DBBlockCacheCapacity:     c.config.GetUint64(optionNameDBBlockCacheCapacity),
@@ -140,9 +134,7 @@ func (c *command) initStartDevCmd() (err error) {
 		},
 	}
 
-	cmd.Flags().Bool(optionNameDebugAPIEnable, true, "enable debug HTTP API")
 	cmd.Flags().String(optionNameAPIAddr, ":1633", "HTTP API listen address")
-	cmd.Flags().String(optionNameDebugAPIAddr, ":1635", "debug HTTP API listen address")
 	cmd.Flags().String(optionNameVerbosity, "info", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
 	cmd.Flags().Uint64(optionNameDevReserveCapacity, 4194304, "cache reserve capacity")
 	cmd.Flags().StringSlice(optionCORSAllowedOrigins, []string{}, "origins with CORS headers enabled")
