@@ -402,59 +402,6 @@ func NewBee(
 	}
 	b.stamperStoreCloser = stamperStore
 
-	var debugService *api.Service
-
-	if o.DebugAPIAddr != "" {
-		if o.MutexProfile {
-			_ = runtime.SetMutexProfileFraction(1)
-		}
-
-		if o.BlockProfile {
-			runtime.SetBlockProfileRate(1)
-		}
-
-		debugAPIListener, err := net.Listen("tcp", o.DebugAPIAddr)
-		if err != nil {
-			return nil, fmt.Errorf("debug api listener: %w", err)
-		}
-
-		debugService = api.New(
-			*publicKey,
-			pssPrivateKey.PublicKey,
-			overlayEthAddress,
-			o.WhitelistedWithdrawalAddress,
-			logger,
-			transactionService,
-			batchStore,
-			beeNodeMode,
-			o.ChequebookEnable,
-			o.SwapEnable,
-			chainBackend,
-			o.CORSAllowedOrigins,
-			stamperStore,
-		)
-		debugService.MountTechnicalDebug()
-		debugService.SetProbe(probe)
-
-		debugAPIServer := &http.Server{
-			IdleTimeout:       30 * time.Second,
-			ReadHeaderTimeout: 3 * time.Second,
-			Handler:           debugService,
-			ErrorLog:          stdlog.New(b.errorLogWriter, "", 0),
-		}
-
-		go func() {
-			logger.Info("starting debug server", "address", debugAPIListener.Addr())
-
-			if err := debugAPIServer.Serve(debugAPIListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				logger.Debug("debug api server failed to start", "error", err)
-				logger.Error(nil, "debug api server failed to start")
-			}
-		}()
-
-		b.debugAPIServer = debugAPIServer
-	}
-
 	// Sync the with the given Ethereum backend:
 	isSynced, _, err := transaction.IsSynced(ctx, chainBackend, maxDelay)
 	if err != nil {
@@ -585,8 +532,10 @@ func NewBee(
 
 	var registry *promc.Registry
 
-	if debugService != nil {
-		registry = debugService.MetricsRegistry()
+	var apiService *api.Service
+	if o.APIAddr != "" {
+		apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, o.WhitelistedWithdrawalAddress, logger, transactionService, batchStore, beeNodeMode, o.ChequebookEnable, o.SwapEnable, chainBackend, o.CORSAllowedOrigins, stamperStore)
+		registry = apiService.MetricsRegistry()
 	}
 
 	p2ps, err := libp2p.New(ctx, signer, networkID, swarmAddress, addr, addressbook, stateStore, lightNodes, logger, tracer, libp2p.Options{
@@ -1045,13 +994,19 @@ func NewBee(
 		PinIntegrity:    localStore.PinIntegrity(),
 	}
 
-	var apiService *api.Service
 	if o.APIAddr != "" {
-		apiService = api.New(*publicKey, pssPrivateKey.PublicKey, overlayEthAddress, o.WhitelistedWithdrawalAddress, logger, transactionService, batchStore, beeNodeMode, o.ChequebookEnable, o.SwapEnable, chainBackend, o.CORSAllowedOrigins, stamperStore)
 		apiService.SetProbe(probe)
 		apiService.SetRedistributionAgent(agent)
 		apiService.SetP2P(p2ps)
-		debugService.SetSwarmAddress(&swarmAddress)
+		apiService.SetSwarmAddress(&swarmAddress)
+
+		if o.MutexProfile {
+			_ = runtime.SetMutexProfileFraction(1)
+		}
+
+		if o.BlockProfile {
+			runtime.SetBlockProfileRate(1)
+		}
 
 		apiService.Configure(signer, authenticator, tracer, api.Options{
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
@@ -1134,65 +1089,6 @@ func NewBee(
 		if swapService != nil {
 			apiService.MustRegisterMetrics(swapService.Metrics()...)
 		}
-	}
-
-	if o.DebugAPIAddr != "" {
-		// register metrics from components
-		debugService.MustRegisterMetrics(p2ps.Metrics()...)
-		debugService.MustRegisterMetrics(pingPong.Metrics()...)
-		debugService.MustRegisterMetrics(acc.Metrics()...)
-		debugService.MustRegisterMetrics(localStore.Metrics()...)
-		debugService.MustRegisterMetrics(kad.Metrics()...)
-		debugService.MustRegisterMetrics(saludService.Metrics()...)
-		debugService.MustRegisterMetrics(stateStoreMetrics.Metrics()...)
-
-		if pullerService != nil {
-			debugService.MustRegisterMetrics(pullerService.Metrics()...)
-		}
-
-		if agent != nil {
-			debugService.MustRegisterMetrics(agent.Metrics()...)
-		}
-
-		debugService.MustRegisterMetrics(pushSyncProtocol.Metrics()...)
-		debugService.MustRegisterMetrics(pusherService.Metrics()...)
-		debugService.MustRegisterMetrics(pullSyncProtocol.Metrics()...)
-		debugService.MustRegisterMetrics(retrieval.Metrics()...)
-		debugService.MustRegisterMetrics(lightNodes.Metrics()...)
-		debugService.MustRegisterMetrics(hive.Metrics()...)
-
-		if bs, ok := batchStore.(metrics.Collector); ok {
-			debugService.MustRegisterMetrics(bs.Metrics()...)
-		}
-		if ls, ok := eventListener.(metrics.Collector); ok {
-			debugService.MustRegisterMetrics(ls.Metrics()...)
-		}
-		if pssServiceMetrics, ok := pssService.(metrics.Collector); ok {
-			debugService.MustRegisterMetrics(pssServiceMetrics.Metrics()...)
-		}
-		if swapBackendMetrics, ok := chainBackend.(metrics.Collector); ok {
-			debugService.MustRegisterMetrics(swapBackendMetrics.Metrics()...)
-		}
-		if apiService != nil {
-			debugService.MustRegisterMetrics(apiService.Metrics()...)
-		}
-		if l, ok := logger.(metrics.Collector); ok {
-			debugService.MustRegisterMetrics(l.Metrics()...)
-		}
-		debugService.MustRegisterMetrics(pseudosettleService.Metrics()...)
-		if swapService != nil {
-			debugService.MustRegisterMetrics(swapService.Metrics()...)
-		}
-
-		debugService.Configure(signer, authenticator, tracer, api.Options{
-			CORSAllowedOrigins: o.CORSAllowedOrigins,
-			WsPingPeriod:       60 * time.Second,
-			Restricted:         o.Restricted,
-		}, extraOpts, chainID, erc20Service)
-
-		debugService.SetP2P(p2ps)
-		debugService.SetSwarmAddress(&swarmAddress)
-		debugService.SetRedistributionAgent(agent)
 	}
 
 	if err := kad.Start(ctx); err != nil {
