@@ -26,86 +26,9 @@ const (
 	rootPath   = "/" + apiVersion
 )
 
-func (s *Service) MountTechnicalDebug() {
-	router := mux.NewRouter()
-	router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
-	s.router = router
-
-	s.mountTechnicalDebug()
-
-	s.Handler = web.ChainHandlers(
-		httpaccess.NewHTTPAccessLogHandler(s.logger, s.tracer, "debug api access"),
-		handlers.CompressHandler,
-		s.corsHandler,
-		web.NoCacheHeadersHandler,
-		web.FinalHandler(router),
-	)
-}
-
-func (s *Service) MountDebug() {
-	s.mountBusinessDebug()
-
-	s.Handler = web.ChainHandlers(
-		httpaccess.NewHTTPAccessLogHandler(s.logger, s.tracer, "debug api access"),
-		handlers.CompressHandler,
-		s.corsHandler,
-		web.NoCacheHeadersHandler,
-		web.FinalHandler(s.router),
-	)
-}
-
-func (s *Service) MountAPI() {
-	if s.router == nil {
-		s.router = mux.NewRouter()
-		s.router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
-	}
-
-	s.mountAPI()
-
-	compressHandler := func(h http.Handler) http.Handler {
-		downloadEndpoints := []string{
-			"/bzz",
-			"/bytes",
-			"/chunks",
-			rootPath + "/bzz",
-			rootPath + "/bytes",
-			rootPath + "/chunks",
-		}
-
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Skip compression for GET requests on download endpoints.
-			// This is done in order to preserve Content-Length header in response,
-			// because CompressHandler is always removing it.
-			if r.Method == http.MethodGet {
-				for _, endpoint := range downloadEndpoints {
-					if strings.HasPrefix(r.URL.Path, endpoint) {
-						h.ServeHTTP(w, r)
-						return
-					}
-				}
-			}
-
-			if r.Method == http.MethodHead {
-				h.ServeHTTP(w, r)
-				return
-			}
-
-			handlers.CompressHandler(h).ServeHTTP(w, r)
-		})
-	}
-
-	s.Handler = web.ChainHandlers(
-		httpaccess.NewHTTPAccessLogHandler(s.logger, s.tracer, "api access"),
-		compressHandler,
-		s.responseCodeMetricsHandler,
-		s.pageviewMetricsHandler,
-		s.corsHandler,
-		web.FinalHandler(s.router),
-	)
-}
-
 func (s *Service) mountTechnicalDebug() {
 	handle := func(path string, handler http.Handler) {
+		handler = web.ChainHandlers(web.NoCacheHeadersHandler, web.FinalHandler(handler)) // no-cache for debug endpoints
 		if s.Restricted {
 			handler = web.ChainHandlers(auth.PermissionCheckHandler(s.auth), web.FinalHandler(handler))
 		}
@@ -178,16 +101,6 @@ func (s *Service) mountTechnicalDebug() {
 			web.FinalHandlerFunc(s.loggerSetVerbosityHandler),
 		),
 	})
-
-	handle("/readiness", web.ChainHandlers(
-		httpaccess.NewHTTPAccessSuppressLogHandler(),
-		web.FinalHandlerFunc(s.readinessHandler),
-	))
-
-	handle("/health", web.ChainHandlers(
-		httpaccess.NewHTTPAccessSuppressLogHandler(),
-		web.FinalHandlerFunc(s.healthHandler),
-	))
 }
 
 func (s *Service) mountAPI() {
@@ -381,6 +294,7 @@ func (s *Service) mountAPI() {
 
 func (s *Service) mountBusinessDebug() {
 	handle := func(path string, handler http.Handler) {
+		handler = web.ChainHandlers(web.NoCacheHeadersHandler, web.FinalHandler(handler)) // no-cache for debug endpoints
 		if s.Restricted {
 			handler = web.ChainHandlers(auth.PermissionCheckHandler(s.auth), web.FinalHandler(handler))
 		}
@@ -579,16 +493,6 @@ func (s *Service) mountBusinessDebug() {
 		"GET": http.HandlerFunc(s.accountingInfoHandler),
 	})
 
-	handle("/readiness", web.ChainHandlers(
-		httpaccess.NewHTTPAccessSuppressLogHandler(),
-		web.FinalHandlerFunc(s.readinessHandler),
-	))
-
-	handle("/health", web.ChainHandlers(
-		httpaccess.NewHTTPAccessSuppressLogHandler(),
-		web.FinalHandlerFunc(s.healthHandler),
-	))
-
 	handle("/stake/{amount}", web.ChainHandlers(
 		s.stakingAccessHandler,
 		s.gasConfigMiddleware("deposit stake"),
@@ -629,4 +533,65 @@ func (s *Service) mountBusinessDebug() {
 			"GET": http.HandlerFunc(s.rchash),
 		}),
 	))
+}
+
+func (s *Service) MountAPIs() {
+	router := mux.NewRouter()
+	router.NotFoundHandler = http.HandlerFunc(jsonhttp.NotFoundHandler)
+	s.router = router
+
+	s.mountTechnicalDebug()
+	s.mountAPI()
+	s.mountBusinessDebug()
+
+	compressHandler := func(h http.Handler) http.Handler {
+		downloadEndpoints := []string{
+			"/bzz",
+			"/bytes",
+			"/chunks",
+			rootPath + "/bzz",
+			rootPath + "/bytes",
+			rootPath + "/chunks",
+		}
+
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Skip compression for GET requests on download endpoints.
+			// This is done in order to preserve Content-Length header in response,
+			// because CompressHandler is always removing it.
+			if r.Method == http.MethodGet {
+				for _, endpoint := range downloadEndpoints {
+					if strings.HasPrefix(r.URL.Path, endpoint) {
+						h.ServeHTTP(w, r)
+						return
+					}
+				}
+			}
+
+			if r.Method == http.MethodHead {
+				h.ServeHTTP(w, r)
+				return
+			}
+
+			handlers.CompressHandler(h).ServeHTTP(w, r)
+		})
+	}
+
+	s.Handler = web.ChainHandlers(
+		httpaccess.NewHTTPAccessLogHandler(s.logger, s.tracer, "api access"),
+		compressHandler,
+		s.responseCodeMetricsHandler,
+		s.pageviewMetricsHandler,
+		s.corsHandler,
+		web.FinalHandler(router),
+	)
+}
+
+func (s *Service) ListEndpoints() []string {
+	var routes []string
+	s.router.Walk(func(route *mux.Route, router *mux.Router, ancestors []*mux.Route) error {
+		tpl, _ := route.GetPathTemplate()
+		routes = append(routes, tpl)
+		return nil
+	})
+	return routes
 }
