@@ -43,11 +43,22 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.client_payload.ref }}
-      - name: Setup Go
+      - name: Setup Go for Bekeeper
         uses: actions/setup-go@v5
         with:
           cache: false
-          # go-version: '1.22'
+          go-version: '1.22'
+      - name: Install beekeeper
+        run: |
+          export PATH=$(pwd):$PATH
+          timeout ${TIMEOUT} make beekeeper BEEKEEPER_INSTALL_DIR=$(pwd)
+          beekeeper version --log-verbosity 0
+          mv ~/.beekeeper.yaml .beekeeper.yaml
+          mv ~/.beekeeper/local.yaml local.yaml
+      - name: Setup Go for Bee
+        uses: actions/setup-go@v5
+        with:
+          cache: false
           go-version-file: go.mod
       - name: Cache Go Modules
         uses: actions/cache@v4
@@ -73,35 +84,6 @@ jobs:
           patch pkg/retrieval/retrieval.go .github/patches/retrieval.patch
           make binary
           mv dist/bee bee-1
-      - name: List contents of the current directory
-        run: |
-          echo "Current directory name:"
-          basename "$PWD"
-          echo "Contents of the current directory:"
-          ls -la
-          if [ -d dist ]; then
-            echo "The 'dist' directory exists. Printing contents:"
-            ls -la dist
-          else
-            echo "'dist' directory does not exist."
-          fi
-      - name: Check go.mod exists
-        run: |
-          if [ -f go.mod ]; then
-            echo "go.mod file exists"
-            head -n 1 go.mod
-          else
-            echo "go.mod file does not exist."
-            exit 1
-          fi
-          exit 0
-      - name: Install beekeeper
-        run: |
-          export PATH=$(pwd):$PATH
-          timeout ${TIMEOUT} make beekeeper BEEKEEPER_INSTALL_DIR=$(pwd)
-          beekeeper version --log-verbosity 0
-          mv ~/.beekeeper.yaml .beekeeper.yaml
-          mv ~/.beekeeper/local.yaml local.yaml
       - uses: actions/upload-artifact@v4
         with:
           name: temp-artifacts
