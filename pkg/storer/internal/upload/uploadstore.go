@@ -777,7 +777,7 @@ func ListAllTags(st storage.Reader) ([]TagItem, error) {
 	return tags, nil
 }
 
-func Iterate(ctx context.Context, s transaction.ReadOnlyStore, consumerFn func(chunk swarm.Chunk) (bool, error)) error {
+func IteratePending(ctx context.Context, s transaction.ReadOnlyStore, consumerFn func(chunk swarm.Chunk) (bool, error)) error {
 	return s.IndexStore().Iterate(storage.Query{
 		Factory: func() storage.Item { return &pushItem{} },
 	}, func(r storage.Result) (bool, error) {

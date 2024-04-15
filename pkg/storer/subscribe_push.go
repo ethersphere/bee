@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ethersphere/bee/v2/pkg/storer/internal/upload"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
@@ -37,7 +36,7 @@ func (db *DB) SubscribePush(ctx context.Context) (<-chan swarm.Chunk, func()) {
 
 			var count int
 
-			err := upload.Iterate(ctx, db.storage, func(chunk swarm.Chunk) (bool, error) {
+			err := db.IteratePendingUpload(ctx, db.storage, func(chunk swarm.Chunk) (bool, error) {
 				select {
 				case chunks <- chunk:
 					count++

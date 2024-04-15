@@ -424,7 +424,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			inflight--
 
-			ps.measurePushPeer(result.pushTime, result.err, origin)
+			ps.measurePushPeer(result.pushTime, result.err)
 
 			if result.err == nil {
 				return result.receipt, nil
@@ -558,7 +558,7 @@ func (ps *PushSync) prepareCredit(ctx context.Context, peer swarm.Address, ch sw
 	return creditAction, nil
 }
 
-func (ps *PushSync) measurePushPeer(t time.Time, err error, origin bool) {
+func (ps *PushSync) measurePushPeer(t time.Time, err error) {
 	var status string
 	if err != nil {
 		status = "failure"

@@ -20,6 +20,14 @@ import (
 
 const uploadsLock = "pin-upload-store"
 
+// IteratePendingUpload iterates the chunks that are pending to be uploaded to the network.
+func (db *DB) IteratePendingUpload(ctx context.Context, s transaction.ReadOnlyStore, consumerFn func(chunk swarm.Chunk) (bool, error)) error {
+	unlock := db.Lock(uploadsLock)
+	defer unlock()
+
+	return upload.IteratePending(ctx, s, consumerFn)
+}
+
 // Report implements the storage.PushReporter by wrapping the internal reporter
 // with a transaction.
 func (db *DB) Report(ctx context.Context, chunk swarm.Chunk, state storage.ChunkState) error {

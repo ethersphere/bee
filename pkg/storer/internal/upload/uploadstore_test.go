@@ -897,7 +897,7 @@ func TestIterate(t *testing.T) {
 	ts := newTestStorage(t)
 
 	t.Run("on empty storage does not call the callback fn", func(t *testing.T) {
-		err := upload.Iterate(context.Background(), ts, func(chunk swarm.Chunk) (bool, error) {
+		err := upload.IteratePending(context.Background(), ts, func(chunk swarm.Chunk) (bool, error) {
 			t.Fatal("unexpected call")
 			return false, nil
 		})
@@ -938,7 +938,7 @@ func TestIterate(t *testing.T) {
 
 		var count int
 
-		err = upload.Iterate(context.Background(), ts, func(chunk swarm.Chunk) (bool, error) {
+		err = upload.IteratePending(context.Background(), ts, func(chunk swarm.Chunk) (bool, error) {
 			count++
 			if !chunk.Equal(chunk1) && !chunk.Equal(chunk2) {
 				return true, fmt.Errorf("unknown chunk %s", chunk.Address())
@@ -958,7 +958,7 @@ func TestIterate(t *testing.T) {
 			t.Fatalf("Close(...) error: %v", err)
 		}
 
-		err = upload.Iterate(context.Background(), ts, func(chunk swarm.Chunk) (bool, error) {
+		err = upload.IteratePending(context.Background(), ts, func(chunk swarm.Chunk) (bool, error) {
 			count++
 			if !chunk.Equal(chunk1) && !chunk.Equal(chunk2) {
 				return true, fmt.Errorf("unknown chunk %s", chunk.Address())
@@ -1081,7 +1081,7 @@ func TestCleanup(t *testing.T) {
 		}
 
 		count := 0
-		_ = upload.Iterate(context.Background(), ts, func(chunk swarm.Chunk) (bool, error) {
+		_ = upload.IteratePending(context.Background(), ts, func(chunk swarm.Chunk) (bool, error) {
 			count++
 			return false, nil
 		})
@@ -1130,7 +1130,7 @@ func TestCleanup(t *testing.T) {
 		}
 
 		count := 0
-		_ = upload.Iterate(context.Background(), ts, func(chunk swarm.Chunk) (bool, error) {
+		_ = upload.IteratePending(context.Background(), ts, func(chunk swarm.Chunk) (bool, error) {
 			count++
 			return false, nil
 		})
