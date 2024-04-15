@@ -74,13 +74,18 @@ jobs:
           make binary
           mv dist/bee bee-1
       - name: List contents of the current directory
-        run: ls -la
+        run: |
+          echo "Current directory name:"
+          basename "$PWD"
+          echo "Contents of the current directory:"
+          ls -la
       - name: Check go.mod exists
         run: |
           if [ -f go.mod ]; then
-            echo "go.mod found"
+            echo "go.mod file exists. Printing contents:"
+            cat go.mod
           else
-            echo "go.mod not found"
+            echo "go.mod file does not exist."
             exit 1
           fi
       - name: Install beekeeper
