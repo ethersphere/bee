@@ -47,8 +47,8 @@ jobs:
         uses: actions/setup-go@v5
         with:
           cache: false
-          go-version: '1.22'
-          # go-version-file: go.mod
+          # go-version: '1.22'
+          go-version-file: go.mod
       - name: Cache Go Modules
         uses: actions/cache@v4
         with:
@@ -79,11 +79,17 @@ jobs:
           basename "$PWD"
           echo "Contents of the current directory:"
           ls -la
+          if [ -d dist ]; then
+            echo "The 'dist' directory exists. Printing contents:"
+            ls -la dist
+          else
+            echo "'dist' directory does not exist."
+          fi
       - name: Check go.mod exists
         run: |
           if [ -f go.mod ]; then
-            echo "go.mod file exists. Printing contents:"
-            cat go.mod
+            echo "go.mod file exists"
+            head -n 1 go.mod
           else
             echo "go.mod file does not exist."
             exit 1
