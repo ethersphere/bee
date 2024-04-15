@@ -73,6 +73,16 @@ jobs:
           patch pkg/retrieval/retrieval.go .github/patches/retrieval.patch
           make binary
           mv dist/bee bee-1
+      - name: List contents of the current directory
+        run: ls -la
+      - name: Check go.mod exists
+        run: |
+          if [ -f go.mod ]; then
+            echo "go.mod found"
+          else
+            echo "go.mod not found"
+            exit 1
+          fi
       - name: Install beekeeper
         run: |
           export PATH=$(pwd):$PATH
