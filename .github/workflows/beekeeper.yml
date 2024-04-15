@@ -94,6 +94,7 @@ jobs:
             echo "go.mod file does not exist."
             exit 1
           fi
+          exit 0
       - name: Install beekeeper
         run: |
           export PATH=$(pwd):$PATH
