@@ -621,6 +621,12 @@ func Report(
 
 	err := indexStore.Get(ui)
 	if err != nil {
+		// because of the nature of the feed mechanism of the uploadstore/pusher, a chunk that is in inflight may be sent more than once to the pusher.
+		// this is because the chunks are removed from the queue only when they are synced, not at the start of the upload
+		if errors.Is(err, storage.ErrNotFound) {
+			return nil
+		}
+
 		return fmt.Errorf("failed to read uploadItem %s: %w", ui, err)
 	}
 
