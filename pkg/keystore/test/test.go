@@ -18,7 +18,7 @@ import (
 func Service(t *testing.T, s keystore.Service) {
 	t.Helper()
 
-	exists, err := s.Exists("swarm")
+	exists, err := s.Exists("wallet")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,8 +28,8 @@ func Service(t *testing.T, s keystore.Service) {
 	}
 
 	edg := crypto.EDGSecp256_K1
-	// create a new swarm key
-	k1, created, err := s.Key("swarm", "pass123456", edg)
+	// create a new swarm wallet key
+	k1, created, err := s.Key("wallet", "pass123456", edg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +37,7 @@ func Service(t *testing.T, s keystore.Service) {
 		t.Fatal("key is not created")
 	}
 
-	exists, err = s.Exists("swarm")
+	exists, err = s.Exists("wallet")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +47,7 @@ func Service(t *testing.T, s keystore.Service) {
 	}
 
 	// get swarm key
-	k2, created, err := s.Key("swarm", "pass123456", edg)
+	k2, created, err := s.Key("wallet", "pass123456", edg)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func Service(t *testing.T, s keystore.Service) {
 	}
 
 	// invalid password
-	_, _, err = s.Key("swarm", "invalid password", edg)
+	_, _, err = s.Key("wallet", "invalid password", edg)
 	if !errors.Is(err, keystore.ErrInvalidPassword) {
 		t.Fatal(err)
 	}
