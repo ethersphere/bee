@@ -55,9 +55,10 @@ func testUploadStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 	})
 
 	for _, tc := range []struct {
-		chunks []swarm.Chunk
-		pin    bool
-		fail   bool
+		chunks    []swarm.Chunk
+		pin       bool
+		fail      bool
+		duplicate bool
 	}{
 		{
 			chunks: chunktesting.GenerateTestRandomChunks(10),
@@ -81,6 +82,11 @@ func testUploadStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 		{
 			chunks: chunktesting.GenerateTestRandomChunks(30),
 			pin:    true,
+		},
+		{
+			chunks:    chunktesting.GenerateTestRandomChunks(10),
+			pin:       true,
+			duplicate: true,
 		},
 	} {
 		tc := tc
@@ -125,6 +131,14 @@ func testUploadStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 				err := session.Done(tc.chunks[0].Address())
 				if err != nil {
 					t.Fatalf("session.Done(...): unexpected error: %v", err)
+				}
+
+				// duplicate pin
+				if tc.pin && tc.duplicate {
+					err := session.Done(tc.chunks[0].Address())
+					if err != nil {
+						t.Fatalf("session.Done(...): unexpected error: %v", err)
+					}
 				}
 			}
 			verifySessionInfo(t, lstore.Repo(), tag.TagID, tc.chunks, !tc.fail)

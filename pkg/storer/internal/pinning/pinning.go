@@ -40,8 +40,8 @@ var (
 	// errCollectionRootAddressIsZero is returned if the putter is closed with a zero
 	// swarm.Address. Root reference has to be set.
 	errCollectionRootAddressIsZero = errors.New("pin store: collection root address is zero")
-	// errDuplicatePinCollection is returned when attempted to pin the same file repeatedly
-	errDuplicatePinCollection = errors.New("pin store: duplicate pin collection")
+	// ErrDuplicatePinCollection is returned when attempted to pin the same file repeatedly
+	ErrDuplicatePinCollection = errors.New("pin store: duplicate pin collection")
 )
 
 // creates a new UUID and returns it as a byte slice
@@ -274,8 +274,7 @@ func (c *collectionPutter) Close(st internal.Storage, writer storage.Writer, roo
 	}
 
 	if has {
-		// trigger the Cleanup
-		return errDuplicatePinCollection
+		return ErrDuplicatePinCollection
 	}
 
 	// Save the root pin reference.
