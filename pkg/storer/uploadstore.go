@@ -111,7 +111,11 @@ func (db *DB) Upload(ctx context.Context, pin bool, tagID uint64) (PutterSession
 					uploadPutter.Close(s, b, address),
 					func() error {
 						if pinningPutter != nil {
-							return pinningPutter.Close(s, b, address)
+							pinErr := pinningPutter.Close(s, b, address)
+							if errors.Is(pinErr, pinstore.ErrDuplicatePinCollection) {
+								pinErr = pinningPutter.Cleanup(db)
+							}
+							return pinErr
 						}
 						return nil
 					}(),
