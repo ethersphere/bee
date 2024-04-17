@@ -83,6 +83,18 @@ func (s *Service) Key(name, password string, edg keystore.EDG) (pk *ecdsa.Privat
 	return pk, false, nil
 }
 
+func (s *Service) RenameKey(oldName, newName string) error {
+	oldFilename := s.keyFilename(oldName)
+	newFilename := s.keyFilename(newName)
+
+	err := os.Rename(oldFilename, newFilename)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (s *Service) keyFilename(name string) string {
 	return filepath.Join(s.dir, fmt.Sprintf("%s.key", name))
 }

@@ -81,6 +81,21 @@ func (s *Service) Key(name, password string, edg keystore.EDG) (pk *ecdsa.Privat
 	return k.pk, created, nil
 }
 
+func (s *Service) RenameKey(oldName, newName string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	k, ok := s.m[oldName]
+	if !ok {
+		return fmt.Errorf("key with name %s does not exist", oldName)
+	}
+
+	delete(s.m, oldName)
+	s.m[newName] = k
+
+	return nil
+}
+
 type key struct {
 	pk       *ecdsa.PrivateKey
 	password string

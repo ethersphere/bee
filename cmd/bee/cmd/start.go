@@ -468,6 +468,16 @@ func (c *command) configureSigner(cmd *cobra.Command, logger log.Logger) (config
 			return nil, err
 		}
 	} else {
+		oldSwarmKeyExists, err := keystore.Exists("swarm")
+		if err != nil {
+			return nil, err
+		}
+		if oldSwarmKeyExists {
+			err := keystore.RenameKey("swarm", "wallet")
+			if err != nil {
+				return nil, err
+			}
+		}
 		walletPrivateKey, _, err := keystore.Key("wallet", password, crypto.EDGSecp256_K1)
 		if err != nil {
 			return nil, fmt.Errorf("swarm wallet key: %w", err)

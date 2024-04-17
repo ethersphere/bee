@@ -31,4 +31,6 @@ type Service interface {
 	Exists(name string) (bool, error)
 	// SetKey generates and persists a new private key
 	SetKey(name, password string, edg EDG) (*ecdsa.PrivateKey, error)
+	// RenameKey renames a key
+	RenameKey(oldName, newName string) error
 }
