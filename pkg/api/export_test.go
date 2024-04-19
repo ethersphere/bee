@@ -38,6 +38,8 @@ var (
 	ErrInvalidNameOrAddress             = errInvalidNameOrAddress
 	ErrUnsupportedDevNodeOperation      = errUnsupportedDevNodeOperation
 	ErrOperationSupportedOnlyInFullMode = errOperationSupportedOnlyInFullMode
+	ErrActDownload                      = errActDownload
+	ErrActUpload                        = errActUpload
 )
 
 var (

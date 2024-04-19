@@ -1,6 +1,7 @@
 package dynamicaccess_test
 
 import (
+	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
@@ -14,7 +15,7 @@ import (
 )
 
 // Generates a new test environment with a fix private key
-func setupAccessLogic2() dynamicaccess.ActLogic {
+func setupAccessLogic() dynamicaccess.ActLogic {
 	privateKey := getPrivKey(1)
 	diffieHellman := dynamicaccess.NewDefaultSession(privateKey)
 	al := dynamicaccess.NewLogic(diffieHellman)
@@ -50,10 +51,11 @@ func getPrivKey(keyNumber int) *ecdsa.PrivateKey {
 }
 
 func TestDecryptRef_Success(t *testing.T) {
+	ctx := context.Background()
 	id0 := getPrivKey(0)
 	s := kvsmock.New()
-	al := setupAccessLogic2()
-	err := al.AddPublisher(s, &id0.PublicKey)
+	al := setupAccessLogic()
+	err := al.AddPublisher(ctx, s, &id0.PublicKey)
 	if err != nil {
 		t.Errorf("AddPublisher: expected no error, got %v", err)
 	}
@@ -63,14 +65,14 @@ func TestDecryptRef_Success(t *testing.T) {
 	expectedRef := swarm.NewAddress(byteRef)
 	t.Logf("encryptedRef: %s", expectedRef.String())
 
-	encryptedRef, err := al.EncryptRef(s, &id0.PublicKey, expectedRef)
+	encryptedRef, err := al.EncryptRef(ctx, s, &id0.PublicKey, expectedRef)
 	t.Logf("encryptedRef: %s", encryptedRef.String())
 	if err != nil {
 		t.Errorf("There was an error while calling EncryptRef: ")
 		t.Error(err)
 	}
 
-	acutalRef, err := al.DecryptRef(s, encryptedRef, &id0.PublicKey)
+	acutalRef, err := al.DecryptRef(ctx, s, encryptedRef, &id0.PublicKey)
 	if err != nil {
 		t.Errorf("There was an error while calling Get: ")
 		t.Error(err)
@@ -83,18 +85,19 @@ func TestDecryptRef_Success(t *testing.T) {
 }
 
 func TestDecryptRefWithGrantee_Success(t *testing.T) {
+	ctx := context.Background()
 	id0, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	diffieHellman := dynamicaccess.NewDefaultSession(id0)
 	al := dynamicaccess.NewLogic(diffieHellman)
 
 	s := kvsmock.New()
-	err := al.AddPublisher(s, &id0.PublicKey)
+	err := al.AddPublisher(ctx, s, &id0.PublicKey)
 	if err != nil {
 		t.Errorf("AddPublisher: expected no error, got %v", err)
 	}
 
 	id1, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	err = al.AddGrantee(s, &id0.PublicKey, &id1.PublicKey, nil)
+	err = al.AddGrantee(ctx, s, &id0.PublicKey, &id1.PublicKey, nil)
 	if err != nil {
 		t.Errorf("AddNewGrantee: expected no error, got %v", err)
 	}
@@ -104,7 +107,7 @@ func TestDecryptRefWithGrantee_Success(t *testing.T) {
 	expectedRef := swarm.NewAddress(byteRef)
 	t.Logf("encryptedRef: %s", expectedRef.String())
 
-	encryptedRef, err := al.EncryptRef(s, &id0.PublicKey, expectedRef)
+	encryptedRef, err := al.EncryptRef(ctx, s, &id0.PublicKey, expectedRef)
 	t.Logf("encryptedRef: %s", encryptedRef.String())
 	if err != nil {
 		t.Errorf("There was an error while calling EncryptRef: ")
@@ -113,7 +116,7 @@ func TestDecryptRefWithGrantee_Success(t *testing.T) {
 
 	diffieHellman2 := dynamicaccess.NewDefaultSession(id1)
 	granteeAccessLogic := dynamicaccess.NewLogic(diffieHellman2)
-	acutalRef, err := granteeAccessLogic.DecryptRef(s, encryptedRef, &id0.PublicKey)
+	acutalRef, err := granteeAccessLogic.DecryptRef(ctx, s, encryptedRef, &id0.PublicKey)
 	if err != nil {
 		t.Errorf("There was an error while calling Get: ")
 		t.Error(err)
@@ -128,18 +131,19 @@ func TestDecryptRefWithGrantee_Success(t *testing.T) {
 func TestDecryptRef_Error(t *testing.T) {
 	id0 := getPrivKey(0)
 
+	ctx := context.Background()
 	s := kvsmock.New()
-	al := setupAccessLogic2()
-	err := al.AddPublisher(s, &id0.PublicKey)
+	al := setupAccessLogic()
+	err := al.AddPublisher(ctx, s, &id0.PublicKey)
 	if err != nil {
 		t.Errorf("AddPublisher: expected no error, got %v", err)
 	}
 
 	expectedRef := "39a5ea87b141fe44aa609c3327ecd896c0e2122897f5f4bbacf74db1033c5559"
 
-	encryptedRef, _ := al.EncryptRef(s, &id0.PublicKey, swarm.NewAddress([]byte(expectedRef)))
+	encryptedRef, _ := al.EncryptRef(ctx, s, &id0.PublicKey, swarm.NewAddress([]byte(expectedRef)))
 
-	r, err := al.DecryptRef(s, encryptedRef, nil)
+	r, err := al.DecryptRef(ctx, s, encryptedRef, nil)
 	if err == nil {
 		t.Logf("r: %s", r.String())
 		t.Errorf("Get should return encrypted access key not found error!")
@@ -150,9 +154,10 @@ func TestAddPublisher(t *testing.T) {
 	id0 := getPrivKey(0)
 	savedLookupKey := "b6ee086390c280eeb9824c331a4427596f0c8510d5564bc1b6168d0059a46e2b"
 	s := kvsmock.New()
+	ctx := context.Background()
 
-	al := setupAccessLogic2()
-	err := al.AddPublisher(s, &id0.PublicKey)
+	al := setupAccessLogic()
+	err := al.AddPublisher(ctx, s, &id0.PublicKey)
 	if err != nil {
 		t.Errorf("AddPublisher: expected no error, got %v", err)
 	}
@@ -162,7 +167,7 @@ func TestAddPublisher(t *testing.T) {
 		t.Errorf("DecodeString: expected no error, got %v", err)
 	}
 
-	encryptedAccessKey, err := s.Get(decodedSavedLookupKey)
+	encryptedAccessKey, err := s.Get(ctx, decodedSavedLookupKey)
 	if err != nil {
 		t.Errorf("Lookup: expected no error, got %v", err)
 	}
@@ -183,24 +188,25 @@ func TestAddNewGranteeToContent(t *testing.T) {
 	id0 := getPrivKey(0)
 	id1 := getPrivKey(1)
 	id2 := getPrivKey(2)
+	ctx := context.Background()
 
 	publisherLookupKey := "b6ee086390c280eeb9824c331a4427596f0c8510d5564bc1b6168d0059a46e2b"
 	firstAddedGranteeLookupKey := "a13678e81f9d939b9401a3ad7e548d2ceb81c50f8c76424296e83a1ad79c0df0"
 	secondAddedGranteeLookupKey := "d5e9a6499ca74f5b8b958a4b89b7338045b2baa9420e115443a8050e26986564"
 
 	s := kvsmock.New()
-	al := setupAccessLogic2()
-	err := al.AddPublisher(s, &id0.PublicKey)
+	al := setupAccessLogic()
+	err := al.AddPublisher(ctx, s, &id0.PublicKey)
 	if err != nil {
 		t.Errorf("AddNewGrantee: expected no error, got %v", err)
 	}
 
-	err = al.AddGrantee(s, &id0.PublicKey, &id1.PublicKey, nil)
+	err = al.AddGrantee(ctx, s, &id0.PublicKey, &id1.PublicKey, nil)
 	if err != nil {
 		t.Errorf("AddNewGrantee: expected no error, got %v", err)
 	}
 
-	err = al.AddGrantee(s, &id0.PublicKey, &id2.PublicKey, nil)
+	err = al.AddGrantee(ctx, s, &id0.PublicKey, &id2.PublicKey, nil)
 	if err != nil {
 		t.Errorf("AddNewGrantee: expected no error, got %v", err)
 	}
@@ -209,7 +215,7 @@ func TestAddNewGranteeToContent(t *testing.T) {
 	if err != nil {
 		t.Errorf("AddNewGrantee: expected no error, got %v", err)
 	}
-	result, _ := s.Get(lookupKeyAsByte)
+	result, _ := s.Get(ctx, lookupKeyAsByte)
 	hexEncodedEncryptedAK := hex.EncodeToString(result)
 	if len(hexEncodedEncryptedAK) != 64 {
 		t.Errorf("AddNewGrantee: expected encrypted access key length 64, got %d", len(hexEncodedEncryptedAK))
@@ -219,7 +225,7 @@ func TestAddNewGranteeToContent(t *testing.T) {
 	if err != nil {
 		t.Errorf("AddNewGrantee: expected no error, got %v", err)
 	}
-	result, _ = s.Get(lookupKeyAsByte)
+	result, _ = s.Get(ctx, lookupKeyAsByte)
 	hexEncodedEncryptedAK = hex.EncodeToString(result)
 	if len(hexEncodedEncryptedAK) != 64 {
 		t.Errorf("AddNewGrantee: expected encrypted access key length 64, got %d", len(hexEncodedEncryptedAK))
@@ -229,7 +235,7 @@ func TestAddNewGranteeToContent(t *testing.T) {
 	if err != nil {
 		t.Errorf("AddNewGrantee: expected no error, got %v", err)
 	}
-	result, _ = s.Get(lookupKeyAsByte)
+	result, _ = s.Get(ctx, lookupKeyAsByte)
 	hexEncodedEncryptedAK = hex.EncodeToString(result)
 	if len(hexEncodedEncryptedAK) != 64 {
 		t.Errorf("AddNewGrantee: expected encrypted access key length 64, got %d", len(hexEncodedEncryptedAK))

@@ -1,6 +1,7 @@
 package mock
 
 import (
+	"context"
 	"encoding/hex"
 	"sync"
 
@@ -44,13 +45,13 @@ type mockKeyValueStore struct {
 
 var _ kvs.KeyValueStore = (*mockKeyValueStore)(nil)
 
-func (m *mockKeyValueStore) Get(key []byte) ([]byte, error) {
+func (m *mockKeyValueStore) Get(_ context.Context, key []byte) ([]byte, error) {
 	mem := getMemory()
 	val := mem[m.address.String()][hex.EncodeToString(key)]
 	return val, nil
 }
 
-func (m *mockKeyValueStore) Put(key []byte, value []byte) error {
+func (m *mockKeyValueStore) Put(_ context.Context, key []byte, value []byte) error {
 	mem := getMemory()
 	if _, ok := mem[m.address.String()]; !ok {
 		mem[m.address.String()] = make(map[string][]byte)
@@ -59,7 +60,7 @@ func (m *mockKeyValueStore) Put(key []byte, value []byte) error {
 	return nil
 }
 
-func (m *mockKeyValueStore) Save() (swarm.Address, error) {
+func (m *mockKeyValueStore) Save(ctx context.Context) (swarm.Address, error) {
 	return m.address, nil
 }
 
