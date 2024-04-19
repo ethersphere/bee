@@ -36,27 +36,27 @@ func prepareHistoryFixture(storer api.Storer) (dynamicaccess.History, swarm.Addr
 	ctx := context.Background()
 	ls := loadsave.New(storer.ChunkStore(), storer.Cache(), pipelineFactory(storer.Cache(), false, redundancy.NONE))
 
-	h, _ := dynamicaccess.NewHistory(ls, nil)
+	h, _ := dynamicaccess.NewHistory(ls)
 
 	testActRef1 := swarm.NewAddress([]byte("39a5ea87b141fe44aa609c3327ecd891"))
 	firstTime := time.Date(1994, time.April, 1, 0, 0, 0, 0, time.UTC).Unix()
-	h.Add(ctx, testActRef1, &firstTime)
+	h.Add(ctx, testActRef1, &firstTime, nil)
 
 	testActRef2 := swarm.NewAddress([]byte("39a5ea87b141fe44aa609c3327ecd892"))
 	secondTime := time.Date(2000, time.April, 1, 0, 0, 0, 0, time.UTC).Unix()
-	h.Add(ctx, testActRef2, &secondTime)
+	h.Add(ctx, testActRef2, &secondTime, nil)
 
 	testActRef3 := swarm.NewAddress([]byte("39a5ea87b141fe44aa609c3327ecd893"))
 	thirdTime := time.Date(2015, time.April, 1, 0, 0, 0, 0, time.UTC).Unix()
-	h.Add(ctx, testActRef3, &thirdTime)
+	h.Add(ctx, testActRef3, &thirdTime, nil)
 
 	testActRef4 := swarm.NewAddress([]byte("39a5ea87b141fe44aa609c3327ecd894"))
 	fourthTime := time.Date(2020, time.April, 1, 0, 0, 0, 0, time.UTC).Unix()
-	h.Add(ctx, testActRef4, &fourthTime)
+	h.Add(ctx, testActRef4, &fourthTime, nil)
 
 	testActRef5 := swarm.NewAddress([]byte("39a5ea87b141fe44aa609c3327ecd895"))
 	fifthTime := time.Date(2030, time.April, 1, 0, 0, 0, 0, time.UTC).Unix()
-	h.Add(ctx, testActRef5, &fifthTime)
+	h.Add(ctx, testActRef5, &fifthTime, nil)
 
 	ref, _ := h.Store(ctx)
 	return h, ref
@@ -371,7 +371,7 @@ func TestDacInvalidPath(t *testing.T) {
 // [positive tests] 1., 2.: uploading a file w/ and w/o history address then downloading it and checking the data.
 // [negative test] 3. uploading a file then downloading it with a wrong history address.
 // [negative test] 4. uploading a file to a wrong history address.
-// [negative test] 4. downloading a file to w/o history address.
+// [negative test] 5. downloading a file to w/o history address.
 func TestDacHistory(t *testing.T) {
 	t.Parallel()
 	var (
@@ -552,7 +552,7 @@ func TestDacHistory(t *testing.T) {
 }
 
 // nolint:paralleltest,tparallel
-// TestDacTimestamp doc. comment
+// TestDacTimestamp
 // [positive test] 1.: uploading a file w/ ACT then download it w/ timestamp and check the data.
 // [negative test] 2.: try to download a file w/o timestamp.
 func TestDacTimestamp(t *testing.T) {
@@ -637,7 +637,7 @@ func TestDacTimestamp(t *testing.T) {
 }
 
 // nolint:paralleltest,tparallel
-// TestDacPublisher doc. comment
+// TestDacPublisher
 // [positive test] 1.: uploading a file w/ ACT then download it w/ the publisher address and check the data.
 // [negative test] 2.: expect Bad request when the public key is invalid.
 // [negative test] 3.: try to download a file w/ an incorrect publisher address.

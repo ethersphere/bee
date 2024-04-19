@@ -19,21 +19,21 @@ import (
 var hashFunc = sha3.NewLegacyKeccak256
 
 func getHistoryFixture(ctx context.Context, ls file.LoadSaver, al dynamicaccess.ActLogic, publisher *ecdsa.PublicKey) (swarm.Address, error) {
-	h, err := dynamicaccess.NewHistory(ls, nil)
+	h, err := dynamicaccess.NewHistory(ls)
 	if err != nil {
 		return swarm.ZeroAddress, nil
 	}
 	pk1 := getPrivKey(1)
 	pk2 := getPrivKey(2)
 
-	kvs0 := kvs.New(ls, swarm.ZeroAddress)
+	kvs0, _ := kvs.New(ls)
 	al.AddPublisher(ctx, kvs0, publisher)
 	kvs0Ref, _ := kvs0.Save(ctx)
-	kvs1 := kvs.New(ls, swarm.ZeroAddress)
+	kvs1, _ := kvs.New(ls)
 	al.AddGrantee(ctx, kvs1, publisher, &pk1.PublicKey, nil)
 	al.AddPublisher(ctx, kvs1, publisher)
 	kvs1Ref, _ := kvs1.Save(ctx)
-	kvs2 := kvs.New(ls, swarm.ZeroAddress)
+	kvs2, _ := kvs.New(ls)
 	al.AddGrantee(ctx, kvs2, publisher, &pk2.PublicKey, nil)
 	al.AddPublisher(ctx, kvs2, publisher)
 	kvs2Ref, _ := kvs2.Save(ctx)
@@ -41,9 +41,9 @@ func getHistoryFixture(ctx context.Context, ls file.LoadSaver, al dynamicaccess.
 	secondTime := time.Date(2000, time.April, 1, 0, 0, 0, 0, time.UTC).Unix()
 	thirdTime := time.Date(2015, time.April, 1, 0, 0, 0, 0, time.UTC).Unix()
 
-	h.Add(ctx, kvs0Ref, &thirdTime)
-	h.Add(ctx, kvs1Ref, &firstTime)
-	h.Add(ctx, kvs2Ref, &secondTime)
+	h.Add(ctx, kvs0Ref, &thirdTime, nil)
+	h.Add(ctx, kvs1Ref, &firstTime, nil)
+	h.Add(ctx, kvs2Ref, &secondTime, nil)
 	return h.Store(ctx)
 }
 
@@ -55,9 +55,9 @@ func TestController_NewUploadDownload(t *testing.T) {
 	al := dynamicaccess.NewLogic(diffieHellman)
 	c := dynamicaccess.NewController(ctx, al, mockStorer.ChunkStore(), mockStorer.Cache())
 	ref := swarm.RandAddress(t)
-	_, hRef, encryptedRef, err := c.UploadHandler(ctx, ref, &publisher.PublicKey, nil)
+	_, hRef, encryptedRef, err := c.UploadHandler(ctx, ref, &publisher.PublicKey, swarm.ZeroAddress)
 	assert.NoError(t, err)
-	dref, err := c.DownloadHandler(ctx, time.Now().Unix(), encryptedRef, &publisher.PublicKey, hRef)
+	dref, err := c.DownloadHandler(ctx, encryptedRef, &publisher.PublicKey, hRef, time.Now().Unix())
 	assert.NoError(t, err)
 	assert.Equal(t, ref, dref)
 }
@@ -72,9 +72,9 @@ func TestController_ExistingUploadDownload(t *testing.T) {
 	ref := swarm.RandAddress(t)
 	hRef, err := getHistoryFixture(ctx, ls, al, &publisher.PublicKey)
 	assert.NoError(t, err)
-	_, hRef, encryptedRef, err := c.UploadHandler(ctx, ref, &publisher.PublicKey, &hRef)
+	_, hRef, encryptedRef, err := c.UploadHandler(ctx, ref, &publisher.PublicKey, hRef)
 	assert.NoError(t, err)
-	dref, err := c.DownloadHandler(ctx, time.Now().Unix(), encryptedRef, &publisher.PublicKey, hRef)
+	dref, err := c.DownloadHandler(ctx, encryptedRef, &publisher.PublicKey, hRef, time.Now().Unix())
 	assert.NoError(t, err)
 	assert.Equal(t, ref, dref)
 }

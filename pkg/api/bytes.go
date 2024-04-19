@@ -40,7 +40,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 		Encrypt        bool             `map:"Swarm-Encrypt"`
 		RLevel         redundancy.Level `map:"Swarm-Redundancy-Level"`
 		Act            bool             `map:"Swarm-Act"`
-		HistoryAddress *swarm.Address   `map:"Swarm-Act-History-Address"`
+		HistoryAddress swarm.Address    `map:"Swarm-Act-History-Address"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -161,7 +161,7 @@ func (s *Service) bytesGetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	address := paths.Address
-	if v := getAddressFromContext(r.Context()); !v.Equal(swarm.ZeroAddress) {
+	if v := getAddressFromContext(r.Context()); !v.IsZero() {
 		address = v
 	}
 
@@ -184,7 +184,7 @@ func (s *Service) bytesHeadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	address := paths.Address
-	if v := getAddressFromContext(r.Context()); !v.Equal(swarm.ZeroAddress) {
+	if v := getAddressFromContext(r.Context()); !v.IsZero() {
 		address = v
 	}
 

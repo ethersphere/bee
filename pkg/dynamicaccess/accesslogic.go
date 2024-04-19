@@ -149,8 +149,8 @@ func (al ActLogic) DecryptRef(ctx context.Context, storage kvs.KeyValueStore, en
 	return swarm.NewAddress(ref), nil
 }
 
-func NewLogic(S Session) ActLogic {
+func NewLogic(s Session) ActLogic {
 	return ActLogic{
-		Session: S,
+		Session: s,
 	}
 }

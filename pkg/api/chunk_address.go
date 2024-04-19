@@ -24,7 +24,7 @@ func (s *Service) hasChunkHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	address := paths.Address
-	if v := getAddressFromContext(r.Context()); !v.Equal(swarm.ZeroAddress) {
+	if v := getAddressFromContext(r.Context()); !v.IsZero() {
 		address = v
 	}
 

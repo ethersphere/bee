@@ -72,7 +72,7 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		IsDir          bool             `map:"Swarm-Collection"`
 		RLevel         redundancy.Level `map:"Swarm-Redundancy-Level"`
 		Act            bool             `map:"Swarm-Act"`
-		HistoryAddress *swarm.Address   `map:"Swarm-Act-History-Address"`
+		HistoryAddress swarm.Address    `map:"Swarm-Act-History-Address"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -158,7 +158,7 @@ func (s *Service) fileUploadHandler(
 	tagID uint64,
 	rLevel redundancy.Level,
 	act bool,
-	historyAddress *swarm.Address,
+	historyAddress swarm.Address,
 ) {
 	queries := struct {
 		FileName string `map:"name" validate:"startsnotwith=/"`
@@ -310,7 +310,7 @@ func (s *Service) bzzDownloadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	address := paths.Address
-	if v := getAddressFromContext(r.Context()); !v.Equal(swarm.ZeroAddress) {
+	if v := getAddressFromContext(r.Context()); !v.IsZero() {
 		address = v
 	}
 
@@ -334,7 +334,7 @@ func (s *Service) bzzHeadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	address := paths.Address
-	if v := getAddressFromContext(r.Context()); !v.Equal(swarm.ZeroAddress) {
+	if v := getAddressFromContext(r.Context()); !v.IsZero() {
 		address = v
 	}
 

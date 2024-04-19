@@ -48,7 +48,7 @@ func (s *Service) dirUploadHandler(
 	tag uint64,
 	rLevel redundancy.Level,
 	act bool,
-	historyAddress *swarm.Address,
+	historyAddress swarm.Address,
 ) {
 	if r.Body == http.NoBody {
 		logger.Error(nil, "request has no body")

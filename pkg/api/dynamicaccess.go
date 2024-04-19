@@ -28,6 +28,8 @@ func setAddressInContext(ctx context.Context, address swarm.Address) context.Con
 	return context.WithValue(ctx, addressKey{}, address)
 }
 
+// actDecryptionHandler is a middleware that looks up and decrypts the given address,
+// if the act headers are present
 func (s *Service) actDecryptionHandler() func(h http.Handler) http.Handler {
 	return func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -56,7 +58,7 @@ func (s *Service) actDecryptionHandler() func(h http.Handler) http.Handler {
 				return
 			}
 			ctx := r.Context()
-			reference, err := s.dac.DownloadHandler(ctx, *headers.Timestamp, paths.Address, headers.Publisher, *headers.HistoryAddress)
+			reference, err := s.dac.DownloadHandler(ctx, paths.Address, headers.Publisher, *headers.HistoryAddress, *headers.Timestamp)
 			if err != nil {
 				jsonhttp.InternalServerError(w, errActDownload)
 				return
@@ -67,38 +69,43 @@ func (s *Service) actDecryptionHandler() func(h http.Handler) http.Handler {
 
 }
 
-// TODO: is ctx needed in ctrl upload ?
+// actEncryptionHandler is a middleware that encrypts the given address using the publisher's public key
+// Uploads the encrypted reference, history and kvs to the store
 func (s *Service) actEncryptionHandler(
 	ctx context.Context,
 	logger log.Logger,
 	w http.ResponseWriter,
 	putter storer.PutterSession,
 	reference swarm.Address,
-	historyAddress *swarm.Address,
+	historyRootHash swarm.Address,
 ) (swarm.Address, error) {
 	publisherPublicKey := &s.publicKey
-	kvsReference, historyReference, encryptedReference, err := s.dac.UploadHandler(ctx, reference, publisherPublicKey, historyAddress)
+	storageReference, historyReference, encryptedReference, err := s.dac.UploadHandler(ctx, reference, publisherPublicKey, historyRootHash)
 	if err != nil {
 		logger.Debug("act failed to encrypt reference", "error", err)
 		logger.Error(nil, "act failed to encrypt reference")
 		return swarm.ZeroAddress, err
 	}
-	err = putter.Done(historyReference)
-	if err != nil {
-		logger.Debug("done split history failed", "error", err)
-		logger.Error(nil, "done split history failed")
-		return swarm.ZeroAddress, err
+	// only need to upload history and kvs if a new history is created,
+	// meaning that the publsher uploaded to the history for the first time
+	if !historyReference.Equal(historyRootHash) {
+		err = putter.Done(storageReference)
+		if err != nil {
+			logger.Debug("done split keyvaluestore failed", "error", err)
+			logger.Error(nil, "done split keyvaluestore failed")
+			return swarm.ZeroAddress, err
+		}
+		err = putter.Done(historyReference)
+		if err != nil {
+			logger.Debug("done split history failed", "error", err)
+			logger.Error(nil, "done split history failed")
+			return swarm.ZeroAddress, err
+		}
 	}
 	err = putter.Done(encryptedReference)
 	if err != nil {
 		logger.Debug("done split encrypted reference failed", "error", err)
 		logger.Error(nil, "done split encrypted reference failed")
-		return swarm.ZeroAddress, err
-	}
-	err = putter.Done(kvsReference)
-	if err != nil {
-		logger.Debug("done split kvs reference failed", "error", err)
-		logger.Error(nil, "done split kvs reference failed")
 		return swarm.ZeroAddress, err
 	}
 

@@ -35,11 +35,14 @@ type GranteeManager interface {
 	GetGrantees(ctx context.Context, rootHash swarm.Address) ([]*ecdsa.PublicKey, error)
 }
 
-// TODO: ądd granteeList ref to history metadata to solve inconsistency
+// TODO: add granteeList ref to history metadata to solve inconsistency
 type Controller interface {
 	GranteeManager
-	DownloadHandler(ctx context.Context, timestamp int64, encryptedRef swarm.Address, publisher *ecdsa.PublicKey, historyRootHash swarm.Address) (swarm.Address, error)
-	UploadHandler(ctx context.Context, reference swarm.Address, publisher *ecdsa.PublicKey, historyRootHash *swarm.Address) (swarm.Address, swarm.Address, swarm.Address, error)
+	// DownloadHandler decrypts the encryptedRef using the lookupkey based on the history and timestamp.
+	DownloadHandler(ctx context.Context, encryptedRef swarm.Address, publisher *ecdsa.PublicKey, historyRootHash swarm.Address, timestamp int64) (swarm.Address, error)
+	// TODO: history encryption
+	// UploadHandler encrypts the reference and stores it in the history as the latest update.
+	UploadHandler(ctx context.Context, reference swarm.Address, publisher *ecdsa.PublicKey, historyRootHash swarm.Address) (swarm.Address, swarm.Address, swarm.Address, error)
 }
 
 type controller struct {
@@ -55,57 +58,61 @@ var _ Controller = (*controller)(nil)
 
 func (c *controller) DownloadHandler(
 	ctx context.Context,
-	timestamp int64,
 	encryptedRef swarm.Address,
 	publisher *ecdsa.PublicKey,
 	historyRootHash swarm.Address,
+	timestamp int64,
 ) (swarm.Address, error) {
 	ls := loadsave.New(c.getter, c.putter, requestPipelineFactory(ctx, c.putter, false, redundancy.NONE))
-	history, err := NewHistory(ls, &historyRootHash)
+	history, err := NewHistoryReference(ls, historyRootHash)
+	if err != nil {
+		return swarm.ZeroAddress, err
+	}
+	entry, err := history.Lookup(ctx, timestamp)
+	if err != nil {
+		return swarm.ZeroAddress, err
+	}
+	// TODO: hanlde granteelist ref in mtdt
+	kvs, err := kvs.NewReference(ls, entry.Reference())
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
 
-	kvsRef, err := history.Lookup(ctx, timestamp)
-	if err != nil {
-		return swarm.ZeroAddress, err
-	}
-	kvs := kvs.New(ls, kvsRef)
 	return c.accessLogic.DecryptRef(ctx, kvs, encryptedRef, publisher)
 }
 
-// TODO: review return params: how to get back history ref ?
 func (c *controller) UploadHandler(
 	ctx context.Context,
 	refrefence swarm.Address,
 	publisher *ecdsa.PublicKey,
-	historyRootHash *swarm.Address,
+	historyRootHash swarm.Address,
 ) (swarm.Address, swarm.Address, swarm.Address, error) {
 	ls := loadsave.New(c.getter, c.putter, requestPipelineFactory(ctx, c.putter, false, redundancy.NONE))
-	history, err := NewHistory(ls, historyRootHash)
-	if err != nil {
-		return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, err
-	}
+	historyRef := historyRootHash
+	var (
+		storage    kvs.KeyValueStore
+		storageRef swarm.Address
+	)
 	now := time.Now().Unix()
-	kvsRef, err := history.Lookup(ctx, now)
-	if err != nil {
-		return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, err
-	}
-	kvs := kvs.New(ls, kvsRef)
-	historyRef := swarm.ZeroAddress
-	if historyRootHash != nil {
-		historyRef = *historyRootHash
-	}
-	if kvsRef.Equal(swarm.ZeroAddress) {
-		err = c.accessLogic.AddPublisher(ctx, kvs, publisher)
+	if historyRef.IsZero() {
+		history, err := NewHistory(ls)
 		if err != nil {
 			return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, err
 		}
-		kvsRef, err = kvs.Save(ctx)
+		storage, err = kvs.New(ls)
 		if err != nil {
 			return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, err
 		}
-		err = history.Add(ctx, kvsRef, &now)
+		err = c.accessLogic.AddPublisher(ctx, storage, publisher)
+		if err != nil {
+			return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, err
+		}
+		storageRef, err = storage.Save(ctx)
+		if err != nil {
+			return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, err
+		}
+		// TODO: pass granteelist ref as mtdt
+		err = history.Add(ctx, storageRef, &now, nil)
 		if err != nil {
 			return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, err
 		}
@@ -113,9 +120,25 @@ func (c *controller) UploadHandler(
 		if err != nil {
 			return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, err
 		}
+	} else {
+		history, err := NewHistoryReference(ls, historyRef)
+		if err != nil {
+			return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, err
+		}
+		// TODO: hanlde granteelist ref in mtdt
+		entry, err := history.Lookup(ctx, now)
+		storageRef = entry.Reference()
+		if err != nil {
+			return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, err
+		}
+		storage, err = kvs.NewReference(ls, storageRef)
+		if err != nil {
+			return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, err
+		}
 	}
-	encryptedRef, err := c.accessLogic.EncryptRef(ctx, kvs, publisher, refrefence)
-	return kvsRef, historyRef, encryptedRef, err
+
+	encryptedRef, err := c.accessLogic.EncryptRef(ctx, storage, publisher, refrefence)
+	return storageRef, historyRef, encryptedRef, err
 }
 
 func NewController(ctx context.Context, accessLogic ActLogic, getter storage.Getter, putter storage.Putter) Controller {
