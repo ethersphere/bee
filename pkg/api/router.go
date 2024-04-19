@@ -209,10 +209,12 @@ func (s *Service) mountAPI() {
 		"GET": web.ChainHandlers(
 			s.contentLengthMetricMiddleware(),
 			s.newTracingHandler("bytes-download"),
+			s.actDecryptionHandler(),
 			web.FinalHandlerFunc(s.bytesGetHandler),
 		),
 		"HEAD": web.ChainHandlers(
 			s.newTracingHandler("bytes-head"),
+			s.actDecryptionHandler(),
 			web.FinalHandlerFunc(s.bytesHeadHandler),
 		),
 	})
@@ -230,8 +232,14 @@ func (s *Service) mountAPI() {
 	))
 
 	handle("/chunks/{address}", jsonhttp.MethodHandler{
-		"GET":  http.HandlerFunc(s.chunkGetHandler),
-		"HEAD": http.HandlerFunc(s.hasChunkHandler),
+		"GET": web.ChainHandlers(
+			s.actDecryptionHandler(),
+			web.FinalHandlerFunc(s.chunkGetHandler),
+		),
+		"HEAD": web.ChainHandlers(
+			s.actDecryptionHandler(),
+			web.FinalHandlerFunc(s.hasChunkHandler),
+		),
 	})
 
 	handle("/soc/{owner}/{id}", jsonhttp.MethodHandler{
@@ -267,9 +275,11 @@ func (s *Service) mountAPI() {
 		"GET": web.ChainHandlers(
 			s.contentLengthMetricMiddleware(),
 			s.newTracingHandler("bzz-download"),
+			s.actDecryptionHandler(),
 			web.FinalHandlerFunc(s.bzzDownloadHandler),
 		),
 		"HEAD": web.ChainHandlers(
+			s.actDecryptionHandler(),
 			web.FinalHandlerFunc(s.bzzHeadHandler),
 		),
 	})

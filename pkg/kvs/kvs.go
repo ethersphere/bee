@@ -11,27 +11,24 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/file"
 	"github.com/ethersphere/bee/v2/pkg/manifest"
-	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 type KeyValueStore interface {
-	Get(key []byte) ([]byte, error)
-	Put(key, value []byte) error
-	Save() (swarm.Address, error)
+	Get(ctx context.Context, key []byte) ([]byte, error)
+	Put(ctx context.Context, key, value []byte) error
+	Save(ctx context.Context) (swarm.Address, error)
 }
 
 type keyValueStore struct {
 	manifest manifest.Interface
-	putter   storer.PutterSession
 	putCnt   int
 }
 
 var _ KeyValueStore = (*keyValueStore)(nil)
 
-// TODO: pass context as dep.
-func (s *keyValueStore) Get(key []byte) ([]byte, error) {
-	entry, err := s.manifest.Lookup(context.Background(), hex.EncodeToString(key))
+func (s *keyValueStore) Get(ctx context.Context, key []byte) ([]byte, error) {
+	entry, err := s.manifest.Lookup(ctx, hex.EncodeToString(key))
 	if err != nil {
 		return nil, err
 	}
@@ -39,8 +36,8 @@ func (s *keyValueStore) Get(key []byte) ([]byte, error) {
 	return ref.Bytes(), nil
 }
 
-func (s *keyValueStore) Put(key []byte, value []byte) error {
-	err := s.manifest.Add(context.Background(), hex.EncodeToString(key), manifest.NewEntry(swarm.NewAddress(value), map[string]string{}))
+func (s *keyValueStore) Put(ctx context.Context, key []byte, value []byte) error {
+	err := s.manifest.Add(ctx, hex.EncodeToString(key), manifest.NewEntry(swarm.NewAddress(value), map[string]string{}))
 	if err != nil {
 		return err
 	}
@@ -48,15 +45,11 @@ func (s *keyValueStore) Put(key []byte, value []byte) error {
 	return nil
 }
 
-func (s *keyValueStore) Save() (swarm.Address, error) {
+func (s *keyValueStore) Save(ctx context.Context) (swarm.Address, error) {
 	if s.putCnt == 0 {
 		return swarm.ZeroAddress, errors.New("nothing to save")
 	}
-	ref, err := s.manifest.Store(context.Background())
-	if err != nil {
-		return swarm.ZeroAddress, err
-	}
-	err = s.putter.Done(ref)
+	ref, err := s.manifest.Store(ctx)
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
@@ -64,7 +57,7 @@ func (s *keyValueStore) Save() (swarm.Address, error) {
 	return ref, nil
 }
 
-func New(ls file.LoadSaver, putter storer.PutterSession, rootHash swarm.Address) KeyValueStore {
+func New(ls file.LoadSaver, rootHash swarm.Address) KeyValueStore {
 	var (
 		manif manifest.Interface
 		err   error
@@ -80,6 +73,5 @@ func New(ls file.LoadSaver, putter storer.PutterSession, rootHash swarm.Address)
 
 	return &keyValueStore{
 		manifest: manif,
-		putter:   putter,
 	}
 }

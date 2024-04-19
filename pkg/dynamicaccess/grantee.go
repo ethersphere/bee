@@ -19,7 +19,7 @@ type GranteeList interface {
 	Add(addList []*ecdsa.PublicKey) error
 	Remove(removeList []*ecdsa.PublicKey) error
 	Get() []*ecdsa.PublicKey
-	Save() (swarm.Address, error)
+	Save(ctx context.Context) (swarm.Address, error)
 }
 
 type GranteeListStruct struct {
@@ -78,8 +78,8 @@ func (g *GranteeListStruct) Add(addList []*ecdsa.PublicKey) error {
 	return nil
 }
 
-func (g *GranteeListStruct) Save() (swarm.Address, error) {
-	refBytes, err := g.loadSave.Save(context.Background(), g.grantees)
+func (g *GranteeListStruct) Save(ctx context.Context) (swarm.Address, error) {
+	refBytes, err := g.loadSave.Save(ctx, g.grantees)
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("grantee save error: %w", err)
 	}
@@ -131,4 +131,8 @@ func NewGranteeList(ls file.LoadSaver, putter storer.PutterSession, reference sw
 		loadSave: ls,
 		putter:   putter,
 	}
+}
+
+func (g *GranteeListStruct) Store() (swarm.Address, error) {
+	return swarm.EmptyAddress, nil
 }

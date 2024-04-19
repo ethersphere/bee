@@ -29,6 +29,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/api"
 	"github.com/ethersphere/bee/v2/pkg/config"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/dynamicaccess"
 	"github.com/ethersphere/bee/v2/pkg/feeds/factory"
 	"github.com/ethersphere/bee/v2/pkg/hive"
 	"github.com/ethersphere/bee/v2/pkg/log"
@@ -115,6 +116,7 @@ type Bee struct {
 	shutdownInProgress       bool
 	shutdownMutex            sync.Mutex
 	syncingStopped           *syncutil.Signaler
+	dacCloser                io.Closer
 }
 
 type Options struct {
@@ -196,6 +198,7 @@ func NewBee(
 	logger log.Logger,
 	libp2pPrivateKey,
 	pssPrivateKey *ecdsa.PrivateKey,
+	session dynamicaccess.Session,
 	o *Options,
 ) (b *Bee, err error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
@@ -706,6 +709,14 @@ func NewBee(
 	b.localstoreCloser = localStore
 	evictFn = func(id []byte) error { return localStore.EvictBatch(context.Background(), id) }
 
+	actLogic := dynamicaccess.NewLogic(session)
+	ctrl := dynamicaccess.NewController(ctx, actLogic, localStore.ChunkStore(), localStore.Cache())
+	dac, err := dynamicaccess.NewService(ctrl)
+	if err != nil {
+		return nil, fmt.Errorf("dac service: %w", err)
+	}
+	b.dacCloser = dac
+
 	var (
 		syncErr    atomic.Value
 		syncStatus atomic.Value
@@ -1021,6 +1032,7 @@ func NewBee(
 		Pss:             pssService,
 		FeedFactory:     feedFactory,
 		Post:            post,
+		Dac:             dac,
 		PostageContract: postageStampContractService,
 		Staking:         stakingContract,
 		Steward:         steward,
@@ -1213,6 +1225,7 @@ func (b *Bee) Shutdown() error {
 		c()
 	}
 
+	tryClose(b.dacCloser, "dac")
 	tryClose(b.tracerCloser, "tracer")
 	tryClose(b.topologyCloser, "topology driver")
 	tryClose(b.storageIncetivesCloser, "storage incentives agent")

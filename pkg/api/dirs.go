@@ -47,6 +47,8 @@ func (s *Service) dirUploadHandler(
 	encrypt bool,
 	tag uint64,
 	rLevel redundancy.Level,
+	act bool,
+	historyAddress *swarm.Address,
 ) {
 	if r.Body == http.NoBody {
 		logger.Error(nil, "request has no body")
@@ -98,6 +100,15 @@ func (s *Service) dirUploadHandler(
 		return
 	}
 
+	encryptedReference := reference
+	if act {
+		encryptedReference, err = s.actEncryptionHandler(r.Context(), logger, w, putter, reference, historyAddress)
+		if err != nil {
+			jsonhttp.InternalServerError(w, errActUpload)
+			return
+		}
+	}
+
 	err = putter.Done(reference)
 	if err != nil {
 		logger.Debug("store dir failed", "error", err)
@@ -113,7 +124,7 @@ func (s *Service) dirUploadHandler(
 	}
 	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
 	jsonhttp.Created(w, bzzUploadResponse{
-		Reference: reference,
+		Reference: encryptedReference,
 	})
 }
 

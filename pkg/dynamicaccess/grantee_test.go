@@ -148,19 +148,20 @@ func TestGranteeRemove(t *testing.T) {
 }
 
 func TestGranteeSave(t *testing.T) {
+	ctx := context.Background()
 	keys, err := generateKeyListFixture()
 	if err != nil {
 		t.Errorf("key generation error: %v", err)
 	}
 	t.Run("Save empty grantee list return NO error", func(t *testing.T) {
 		gl := dynamicaccess.NewGranteeList(createLs(), mockStorer.DirectUpload(), swarm.ZeroAddress)
-		_, err := gl.Save()
+		_, err := gl.Save(ctx)
 		assert.NoError(t, err)
 	})
 	t.Run("Save not empty grantee list return valid swarm address", func(t *testing.T) {
 		gl := dynamicaccess.NewGranteeList(createLs(), mockStorer.DirectUpload(), swarm.ZeroAddress)
 		err = gl.Add(keys)
-		ref, err := gl.Save()
+		ref, err := gl.Save(ctx)
 		assert.NoError(t, err)
 		assert.True(t, ref.IsValidNonEmpty())
 	})
@@ -172,7 +173,7 @@ func TestGranteeSave(t *testing.T) {
 		err := gl1.Add(keys)
 		assert.NoError(t, err)
 
-		ref, err := gl1.Save()
+		ref, err := gl1.Save(ctx)
 		assert.NoError(t, err)
 
 		gl2 := dynamicaccess.NewGranteeList(ls, putter, ref)
@@ -188,7 +189,7 @@ func TestGranteeSave(t *testing.T) {
 
 		err := gl1.Add(keys)
 		assert.NoError(t, err)
-		ref, err := gl1.Save()
+		ref, err := gl1.Save(ctx)
 		assert.NoError(t, err)
 
 		// New KVS
