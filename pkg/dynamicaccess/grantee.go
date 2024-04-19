@@ -7,7 +7,6 @@ import (
 	"fmt"
 
 	"github.com/ethersphere/bee/v2/pkg/file"
-	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
@@ -25,7 +24,6 @@ type GranteeList interface {
 type GranteeListStruct struct {
 	grantees []byte
 	loadSave file.LoadSaver
-	putter   storer.PutterSession
 }
 
 var _ GranteeList = (*GranteeListStruct)(nil)
@@ -83,12 +81,8 @@ func (g *GranteeListStruct) Save(ctx context.Context) (swarm.Address, error) {
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("grantee save error: %w", err)
 	}
-	address := swarm.NewAddress(refBytes)
-	err = g.putter.Done(address)
-	if err != nil {
-		return swarm.ZeroAddress, err
-	}
-	return address, nil
+
+	return swarm.NewAddress(refBytes), nil
 }
 
 func (g *GranteeListStruct) Remove(keysToRemove []*ecdsa.PublicKey) error {
@@ -112,16 +106,15 @@ func (g *GranteeListStruct) Remove(keysToRemove []*ecdsa.PublicKey) error {
 	return nil
 }
 
-func NewGranteeList(ls file.LoadSaver, putter storer.PutterSession, reference swarm.Address) GranteeList {
-	var (
-		data []byte
-		err  error
-	)
-	if swarm.ZeroAddress.Equal(reference) || swarm.EmptyAddress.Equal(reference) {
-		data = []byte{}
-	} else {
-		data, err = ls.Load(context.Background(), reference.Bytes())
+func NewGranteeList(ls file.LoadSaver) GranteeList {
+	return &GranteeListStruct{
+		grantees: []byte{},
+		loadSave: ls,
 	}
+}
+
+func NewGranteeListReference(ls file.LoadSaver, reference swarm.Address) GranteeList {
+	data, err := ls.Load(context.Background(), reference.Bytes())
 	if err != nil {
 		return nil
 	}
@@ -129,10 +122,5 @@ func NewGranteeList(ls file.LoadSaver, putter storer.PutterSession, reference sw
 	return &GranteeListStruct{
 		grantees: data,
 		loadSave: ls,
-		putter:   putter,
 	}
-}
-
-func (g *GranteeListStruct) Store() (swarm.Address, error) {
-	return swarm.EmptyAddress, nil
 }

@@ -15,8 +15,8 @@ import (
 )
 
 type History interface {
-	Add(ctx context.Context, ref swarm.Address, timestamp *int64) error
-	Lookup(ctx context.Context, timestamp int64) (swarm.Address, error)
+	Add(ctx context.Context, ref swarm.Address, timestamp *int64, metadata *map[string]string) error
+	Lookup(ctx context.Context, timestamp int64) (manifest.Entry, error)
 	Store(ctx context.Context) (swarm.Address, error)
 }
 
@@ -29,15 +29,8 @@ type history struct {
 	ls       file.LoadSaver
 }
 
-func NewHistory(ls file.LoadSaver, ref *swarm.Address) (*history, error) {
-	var err error
-	var m manifest.Interface
-
-	if ref != nil {
-		m, err = manifest.NewDefaultManifestReference(*ref, ls)
-	} else {
-		m, err = manifest.NewDefaultManifest(ls, false)
-	}
+func NewHistory(ls file.LoadSaver) (History, error) {
+	m, err := manifest.NewDefaultManifest(ls, false)
 	if err != nil {
 		return nil, err
 	}
@@ -50,9 +43,25 @@ func NewHistory(ls file.LoadSaver, ref *swarm.Address) (*history, error) {
 	return &history{manifest: mm, ls: ls}, nil
 }
 
-func (h *history) Add(ctx context.Context, ref swarm.Address, timestamp *int64) error {
-	// Do we need any extra meta/act?
-	meta := map[string]string{}
+func NewHistoryReference(ls file.LoadSaver, ref swarm.Address) (History, error) {
+	m, err := manifest.NewDefaultManifestReference(ref, ls)
+	if err != nil {
+		return nil, err
+	}
+
+	mm, ok := m.(*manifest.MantarayManifest)
+	if !ok {
+		return nil, fmt.Errorf("expected MantarayManifest, got %T", m)
+	}
+
+	return &history{manifest: mm, ls: ls}, nil
+}
+
+func (h *history) Add(ctx context.Context, ref swarm.Address, timestamp *int64, metadata *map[string]string) error {
+	mtdt := map[string]string{}
+	if metadata != nil {
+		mtdt = *metadata
+	}
 	// add timestamps transformed so that the latests timestamp becomes the smallest key
 	var unixTime int64
 	if timestamp != nil {
@@ -62,29 +71,29 @@ func (h *history) Add(ctx context.Context, ref swarm.Address, timestamp *int64) 
 	}
 
 	key := strconv.FormatInt(math.MaxInt64-unixTime, 10)
-	return h.manifest.Add(ctx, key, manifest.NewEntry(ref, meta))
+	return h.manifest.Add(ctx, key, manifest.NewEntry(ref, mtdt))
 }
 
 // Lookup finds the entry for a path or returns error if not found
-func (h *history) Lookup(ctx context.Context, timestamp int64) (swarm.Address, error) {
+func (h *history) Lookup(ctx context.Context, timestamp int64) (manifest.Entry, error) {
 	if timestamp <= 0 {
-		return swarm.ZeroAddress, errors.New("invalid timestamp")
+		return manifest.NewEntry(swarm.ZeroAddress, map[string]string{}), errors.New("invalid timestamp")
 	}
 
 	reversedTimestamp := math.MaxInt64 - timestamp
-	node, err := h.LookupNode(ctx, reversedTimestamp)
+	node, err := h.lookupNode(ctx, reversedTimestamp)
 	if err != nil {
-		return swarm.ZeroAddress, err
+		return manifest.NewEntry(swarm.ZeroAddress, map[string]string{}), err
 	}
 
 	if node != nil {
-		return swarm.NewAddress(node.Entry()), nil
+		return manifest.NewEntry(swarm.NewAddress(node.Entry()), node.Metadata()), nil
 	}
 
-	return swarm.ZeroAddress, nil
+	return manifest.NewEntry(swarm.ZeroAddress, map[string]string{}), nil
 }
 
-func (h *history) LookupNode(ctx context.Context, searchedTimestamp int64) (*mantaray.Node, error) {
+func (h *history) lookupNode(ctx context.Context, searchedTimestamp int64) (*mantaray.Node, error) {
 	// before node's timestamp is the closest one that is less than or equal to the searched timestamp
 	// for instance: 2030, 2020, 1994 -> search for 2021 -> before is 2020
 	var beforeNode *mantaray.Node

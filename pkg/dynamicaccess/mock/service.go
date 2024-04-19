@@ -78,7 +78,7 @@ func WithPublisher(ref string) Option {
 	})
 }
 
-func (m *mockDacService) DownloadHandler(ctx context.Context, timestamp int64, encryptedRef swarm.Address, publisher *ecdsa.PublicKey, historyRootHash swarm.Address) (swarm.Address, error) {
+func (m *mockDacService) DownloadHandler(ctx context.Context, encryptedRef swarm.Address, publisher *ecdsa.PublicKey, historyRootHash swarm.Address, timestamp int64) (swarm.Address, error) {
 	if m.acceptAll {
 		return swarm.ParseHexAddress("36e6c1bbdfee6ac21485d5f970479fd1df458d36df9ef4e8179708ed46da557f")
 	}
@@ -93,14 +93,15 @@ func (m *mockDacService) DownloadHandler(ctx context.Context, timestamp int64, e
 	if !exists {
 		return swarm.ZeroAddress, fmt.Errorf("history not found")
 	}
-	kvsRef, err := h.Lookup(ctx, timestamp)
-	if kvsRef.Equal(swarm.ZeroAddress) || err != nil {
+	entry, err := h.Lookup(ctx, timestamp)
+	kvsRef := entry.Reference()
+	if kvsRef.IsZero() || err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("kvs not found")
 	}
 	return m.refMap[encryptedRef.String()], nil
 }
 
-func (m *mockDacService) UploadHandler(ctx context.Context, reference swarm.Address, publisher *ecdsa.PublicKey, historyRootHash *swarm.Address) (swarm.Address, swarm.Address, swarm.Address, error) {
+func (m *mockDacService) UploadHandler(ctx context.Context, reference swarm.Address, publisher *ecdsa.PublicKey, historyRootHash swarm.Address) (swarm.Address, swarm.Address, swarm.Address, error) {
 	historyRef, _ := swarm.ParseHexAddress("67bdf80a9bbea8eca9c8480e43fdceb485d2d74d5708e45144b8c4adacd13d9c")
 	kvsRef, _ := swarm.ParseHexAddress("3339613565613837623134316665343461613630396333333237656364383934")
 	if m.acceptAll {
@@ -112,22 +113,25 @@ func (m *mockDacService) UploadHandler(ctx context.Context, reference swarm.Addr
 		exists bool
 	)
 	now := time.Now().Unix()
-	if historyRootHash != nil {
-		historyRef = *historyRootHash
+	if !historyRootHash.IsZero() {
+		historyRef = historyRootHash
 		h, exists = m.historyMap[historyRef.String()]
 		if !exists {
 			return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, fmt.Errorf("history not found")
 		}
-		kvsRef, _ = h.Lookup(ctx, now)
+		entry, _ := h.Lookup(ctx, now)
+		kvsRef := entry.Reference()
+		if kvsRef.IsZero() {
+			return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, fmt.Errorf("kvs not found")
+		}
 	} else {
-		h, _ = dynamicaccess.NewHistory(m.ls, nil)
-		h.Add(ctx, kvsRef, &now)
+		h, _ = dynamicaccess.NewHistory(m.ls)
+		// TODO: pass granteelist ref as mtdt
+		h.Add(ctx, kvsRef, &now, nil)
 		historyRef, _ = h.Store(ctx)
 		m.historyMap[historyRef.String()] = h
 	}
-	if kvsRef.Equal(swarm.ZeroAddress) {
-		return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, fmt.Errorf("kvs not found")
-	}
+
 	encryptedRef, _ := m.encrypter.Encrypt(reference.Bytes())
 	m.refMap[(hex.EncodeToString(encryptedRef))] = reference
 	return kvsRef, historyRef, swarm.NewAddress(encryptedRef), nil

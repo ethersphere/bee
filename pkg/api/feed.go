@@ -137,11 +137,11 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	headers := struct {
-		BatchID        []byte         `map:"Swarm-Postage-Batch-Id" validate:"required"`
-		Pin            bool           `map:"Swarm-Pin"`
-		Deferred       *bool          `map:"Swarm-Deferred-Upload"`
-		Act            bool           `map:"Swarm-Act"`
-		HistoryAddress *swarm.Address `map:"Swarm-Act-History-Address"`
+		BatchID        []byte        `map:"Swarm-Postage-Batch-Id" validate:"required"`
+		Pin            bool          `map:"Swarm-Pin"`
+		Deferred       *bool         `map:"Swarm-Deferred-Upload"`
+		Act            bool          `map:"Swarm-Act"`
+		HistoryAddress swarm.Address `map:"Swarm-Act-History-Address"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
