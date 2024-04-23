@@ -5,9 +5,10 @@
 package cmd
 
 import (
+	"fmt"
 	"sort"
 
-	yaml "gopkg.in/yaml.v2"
+	"gopkg.in/yaml.v2"
 
 	"github.com/spf13/cobra"
 )
@@ -36,7 +37,12 @@ func (c *command) initConfigurateOptionsCmd() (err error) {
 				if err != nil {
 					return err
 				}
-				cmd.Println("#", cmd.Flag(k).Usage)
+				f := cmd.Flag(k)
+				if f == nil {
+					return fmt.Errorf("%s is not a valid flag", k)
+				}
+				cmd.Println("#", f.Usage)
+
 				cmd.Print(string(ym))
 			}
 			cmd.Println()
