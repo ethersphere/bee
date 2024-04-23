@@ -25,22 +25,22 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/p2p"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/blocklist"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/breaker"
-	handshake "github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/handshake"
+	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/handshake"
 	"github.com/ethersphere/bee/v2/pkg/p2p/libp2p/internal/reacher"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/ethersphere/bee/v2/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/v2/pkg/tracing"
-	libp2p "github.com/libp2p/go-libp2p"
+	"github.com/libp2p/go-libp2p"
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/event"
 	"github.com/libp2p/go-libp2p/core/host"
-	network "github.com/libp2p/go-libp2p/core/network"
+	"github.com/libp2p/go-libp2p/core/network"
 	libp2ppeer "github.com/libp2p/go-libp2p/core/peer"
 	"github.com/libp2p/go-libp2p/core/peerstore"
-	protocol "github.com/libp2p/go-libp2p/core/protocol"
-	autonat "github.com/libp2p/go-libp2p/p2p/host/autonat"
+	"github.com/libp2p/go-libp2p/core/protocol"
+	"github.com/libp2p/go-libp2p/p2p/host/autonat"
 	basichost "github.com/libp2p/go-libp2p/p2p/host/basic"
 	"github.com/libp2p/go-libp2p/p2p/host/peerstore/pstoremem"
 	rcmgr "github.com/libp2p/go-libp2p/p2p/host/resource-manager"
@@ -695,7 +695,7 @@ func (s *Service) Blocklist(overlay swarm.Address, duration time.Duration, reaso
 }
 
 func buildHostAddress(peerID libp2ppeer.ID) (ma.Multiaddr, error) {
-	return ma.NewMultiaddr(fmt.Sprintf("/p2p/%s", peerID.Pretty()))
+	return ma.NewMultiaddr(fmt.Sprintf("/p2p/%s", peerID.String()))
 }
 
 func buildUnderlayAddress(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) {
