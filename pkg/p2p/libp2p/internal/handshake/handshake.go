@@ -157,7 +157,7 @@ func (s *Service) Handshake(ctx context.Context, stream p2p.Stream, peerMultiadd
 	}
 
 	if s.libp2pID != observedUnderlayAddrInfo.ID {
-		//NOTE eventually we will return error here, but for now we want to gather some statistics
+		// NOTE eventually we will return error here, but for now we want to gather some statistics
 		s.logger.Warning("received peer ID does not match ours", "their", observedUnderlayAddrInfo.ID, "ours", s.libp2pID)
 	}
 
@@ -332,7 +332,7 @@ func (s *Service) GetWelcomeMessage() string {
 }
 
 func buildFullMA(addr ma.Multiaddr, peerID libp2ppeer.ID) (ma.Multiaddr, error) {
-	return ma.NewMultiaddr(fmt.Sprintf("%s/p2p/%s", addr.String(), peerID.Pretty()))
+	return ma.NewMultiaddr(fmt.Sprintf("%s/p2p/%s", addr.String(), peerID.String()))
 }
 
 func (s *Service) parseCheckAck(ack *pb.Ack) (*bzz.Address, error) {
