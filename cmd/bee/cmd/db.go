@@ -260,6 +260,12 @@ func dbRepairReserve(cmd *cobra.Command) {
 			time.Sleep(10 * time.Second)
 			logger.Warning("proceeding with repair...")
 
+			d, err := cmd.Flags().GetDuration(optionNameSleepAfter)
+			if err != nil {
+				logger.Error(err, "getting sleep value failed")
+			}
+			defer func() { time.Sleep(d) }()
+
 			db, err := storer.New(cmd.Context(), path.Join(dataDir, "localstore"), &storer.Options{
 				Logger:          logger,
 				RadiusSetter:    noopRadiusSetter{},
@@ -289,6 +295,7 @@ func dbRepairReserve(cmd *cobra.Command) {
 	}
 	c.Flags().String(optionNameDataDir, "", "data directory")
 	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
+	c.Flags().Duration(optionNameSleepAfter, time.Duration(0), "time to sleep after the operation finished")
 	cmd.AddCommand(c)
 }
 
