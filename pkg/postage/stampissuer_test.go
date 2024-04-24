@@ -27,6 +27,8 @@ import (
 
 // TestStampIssuerMarshalling tests the idempotence  of binary marshal/unmarshal.
 func TestStampIssuerMarshalling(t *testing.T) {
+	t.Parallel()
+
 	want := newTestStampIssuer(t, 1000)
 	buf, err := want.MarshalBinary()
 	if err != nil {

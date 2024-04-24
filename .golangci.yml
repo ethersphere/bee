@@ -72,9 +72,6 @@ issues:
       # temporally disable paralleltest in following packages
     - linters:
         - paralleltest
-      path: pkg/postage
-    - linters:
-        - paralleltest
       path: pkg/log
     - linters:
         - paralleltest

@@ -19,29 +19,13 @@ import (
 
 // TestStamperStamping tests if the stamp created by the stamper is valid.
 func TestStamperStamping(t *testing.T) {
-	privKey, err := crypto.GenerateSecp256k1Key()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	owner, err := crypto.NewEthereumAddress(privKey.PublicKey)
-	if err != nil {
-		t.Fatal(err)
-	}
-	signer := crypto.NewDefaultSigner(privKey)
-	createStamp := func(t *testing.T, stamper postage.Stamper) (swarm.Address, *postage.Stamp) {
-		t.Helper()
-
-		chunkAddr := swarm.RandAddress(t)
-		stamp, err := stamper.Stamp(chunkAddr)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return chunkAddr, stamp
-	}
+	t.Parallel()
 
 	// tests a valid stamp
 	t.Run("valid stamp", func(t *testing.T) {
+		t.Parallel()
+
+		owner, signer := generateOwnerAndSigner(t)
 		st := newTestStampIssuer(t, 1000)
 		stamper := postage.NewStamper(inmemstore.New(), st, signer)
 		chunkAddr, stamp := createStamp(t, stamper)
@@ -52,6 +36,9 @@ func TestStamperStamping(t *testing.T) {
 
 	// tests that Stamps returns with postage.ErrBucketMismatch
 	t.Run("bucket mismatch", func(t *testing.T) {
+		t.Parallel()
+
+		owner, signer := generateOwnerAndSigner(t)
 		st := newTestStampIssuer(t, 1000)
 		stamper := postage.NewStamper(inmemstore.New(), st, signer)
 		chunkAddr, stamp := createStamp(t, stamper)
@@ -64,6 +51,9 @@ func TestStamperStamping(t *testing.T) {
 
 	// tests that Stamps returns with postage.ErrInvalidIndex
 	t.Run("invalid index", func(t *testing.T) {
+		t.Parallel()
+
+		owner, signer := generateOwnerAndSigner(t)
 		st := newTestStampIssuer(t, 1000)
 		stamper := postage.NewStamper(inmemstore.New(), st, signer)
 		// issue 1 stamp
@@ -71,7 +61,7 @@ func TestStamperStamping(t *testing.T) {
 		// issue another 15
 		// collision depth is 8, committed batch depth is 12, bucket volume 2^4
 		for i := 0; i < 14; i++ {
-			_, err = stamper.Stamp(swarm.RandAddressAt(t, chunkAddr, 8))
+			_, err := stamper.Stamp(swarm.RandAddressAt(t, chunkAddr, 8))
 			if err != nil {
 				t.Fatalf("error adding stamp at step %d: %v", i, err)
 			}
@@ -88,6 +78,9 @@ func TestStamperStamping(t *testing.T) {
 	// tests that Stamps returns with postage.ErrBucketFull iff
 	// issuer has the corresponding collision bucket filled]
 	t.Run("bucket full", func(t *testing.T) {
+		t.Parallel()
+
+		_, signer := generateOwnerAndSigner(t)
 		st := postage.NewStampIssuer("", "", newTestStampIssuer(t, 1000).ID(), big.NewInt(3), 12, 8, 1000, true)
 		stamper := postage.NewStamper(inmemstore.New(), st, signer)
 		// issue 1 stamp
@@ -95,18 +88,21 @@ func TestStamperStamping(t *testing.T) {
 		// issue another 15
 		// collision depth is 8, committed batch depth is 12, bucket volume 2^4
 		for i := 0; i < 15; i++ {
-			_, err = stamper.Stamp(swarm.RandAddressAt(t, chunkAddr, 8))
+			_, err := stamper.Stamp(swarm.RandAddressAt(t, chunkAddr, 8))
 			if err != nil {
 				t.Fatalf("error adding stamp at step %d: %v", i, err)
 			}
 		}
 		// the bucket should now be full, not allowing a stamp for the  pivot chunk
-		if _, err = stamper.Stamp(swarm.RandAddressAt(t, chunkAddr, 8)); !errors.Is(err, postage.ErrBucketFull) {
+		if _, err := stamper.Stamp(swarm.RandAddressAt(t, chunkAddr, 8)); !errors.Is(err, postage.ErrBucketFull) {
 			t.Fatalf("expected ErrBucketFull, got %v", err)
 		}
 	})
 
 	t.Run("reuse index but get new timestamp for mutable or immutable batch", func(t *testing.T) {
+		t.Parallel()
+
+		owner, signer := generateOwnerAndSigner(t)
 		st := newTestStampIssuerMutability(t, 1000, false)
 		chunkAddr := swarm.RandAddress(t)
 		bIdx := postage.ToBucket(st.BucketDepth(), chunkAddr)
@@ -136,6 +132,9 @@ func TestStamperStamping(t *testing.T) {
 
 	// tests return with ErrOwnerMismatch
 	t.Run("owner mismatch", func(t *testing.T) {
+		t.Parallel()
+
+		owner, signer := generateOwnerAndSigner(t)
 		owner[0] ^= 0xff // bitflip the owner first byte, this case must come last!
 		st := newTestStampIssuer(t, 1000)
 		stamper := postage.NewStamper(inmemstore.New(), st, signer)
@@ -144,6 +143,35 @@ func TestStamperStamping(t *testing.T) {
 			t.Fatalf("expected ErrOwnerMismatch, got %v", err)
 		}
 	})
+}
+
+func generateOwnerAndSigner(t *testing.T) ([]byte, crypto.Signer) {
+	t.Helper()
+
+	privKey, err := crypto.GenerateSecp256k1Key()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	owner, err := crypto.NewEthereumAddress(privKey.PublicKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	signer := crypto.NewDefaultSigner(privKey)
+
+	return owner, signer
+}
+
+func createStamp(t *testing.T, stamper postage.Stamper) (swarm.Address, *postage.Stamp) {
+	t.Helper()
+
+	chunkAddr := swarm.RandAddress(t)
+	stamp, err := stamper.Stamp(chunkAddr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return chunkAddr, stamp
 }
 
 type testStore struct {

@@ -28,9 +28,13 @@ import (
 var postageStampContractABI = abiutil.MustParseABI(chaincfg.Testnet.PostageStampABI)
 
 func TestCreateBatch(t *testing.T) {
-	defer func(b uint8) {
+	t.Parallel()
+
+	b := postagecontract.BucketDepth
+	t.Cleanup(func() {
 		postagecontract.BucketDepth = b
-	}(postagecontract.BucketDepth)
+	})
+
 	postagecontract.BucketDepth = 9
 	owner := common.HexToAddress("abcd")
 	label := "label"
@@ -40,6 +44,7 @@ func TestCreateBatch(t *testing.T) {
 	initialBalance := big.NewInt(100)
 
 	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
 
 		depth := uint8(10)
 		totalAmount := big.NewInt(102400)
@@ -144,6 +149,8 @@ func TestCreateBatch(t *testing.T) {
 	})
 
 	t.Run("invalid depth", func(t *testing.T) {
+		t.Parallel()
+
 		depth := uint8(9)
 
 		contract := postagecontract.New(
@@ -164,6 +171,8 @@ func TestCreateBatch(t *testing.T) {
 	})
 
 	t.Run("insufficient funds", func(t *testing.T) {
+		t.Parallel()
+
 		depth := uint8(10)
 		totalAmount := big.NewInt(102399)
 
@@ -213,9 +222,13 @@ func newCreateEvent(postageContractAddress common.Address, batchId common.Hash) 
 }
 
 func TestTopUpBatch(t *testing.T) {
-	defer func(b uint8) {
+	t.Parallel()
+
+	b := postagecontract.BucketDepth
+	t.Cleanup(func() {
 		postagecontract.BucketDepth = b
-	}(postagecontract.BucketDepth)
+	})
+
 	postagecontract.BucketDepth = 9
 	owner := common.HexToAddress("abcd")
 	postageStampAddress := common.HexToAddress("ffff")
@@ -224,6 +237,7 @@ func TestTopUpBatch(t *testing.T) {
 	topupBalance := big.NewInt(100)
 
 	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
 
 		totalAmount := big.NewInt(102400)
 		txHashApprove := common.HexToHash("abb0")
@@ -308,6 +322,8 @@ func TestTopUpBatch(t *testing.T) {
 	})
 
 	t.Run("batch doesnt exist", func(t *testing.T) {
+		t.Parallel()
+
 		errNotFound := errors.New("not found")
 		contract := postagecontract.New(
 			owner,
@@ -327,6 +343,8 @@ func TestTopUpBatch(t *testing.T) {
 	})
 
 	t.Run("insufficient funds", func(t *testing.T) {
+		t.Parallel()
+
 		totalAmount := big.NewInt(102399)
 		batch := postagetesting.MustNewBatch(postagetesting.WithOwner(owner.Bytes()))
 		batchStoreMock := postagestoreMock.New(postagestoreMock.WithBatch(batch))
@@ -374,9 +392,13 @@ func newTopUpEvent(postageContractAddress common.Address, batch *postage.Batch) 
 }
 
 func TestDiluteBatch(t *testing.T) {
-	defer func(b uint8) {
+	t.Parallel()
+
+	b := postagecontract.BucketDepth
+	t.Cleanup(func() {
 		postagecontract.BucketDepth = b
-	}(postagecontract.BucketDepth)
+	})
+
 	postagecontract.BucketDepth = 9
 	owner := common.HexToAddress("abcd")
 	postageStampAddress := common.HexToAddress("ffff")
@@ -384,6 +406,7 @@ func TestDiluteBatch(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
 
 		txHashDilute := common.HexToHash("c3a7")
 		batch := postagetesting.MustNewBatch(postagetesting.WithOwner(owner.Bytes()))
@@ -494,6 +517,8 @@ func TestDiluteBatch(t *testing.T) {
 	})
 
 	t.Run("batch doesnt exist", func(t *testing.T) {
+		t.Parallel()
+
 		errNotFound := errors.New("not found")
 		contract := postagecontract.New(
 			owner,
@@ -513,6 +538,8 @@ func TestDiluteBatch(t *testing.T) {
 	})
 
 	t.Run("invalid depth", func(t *testing.T) {
+		t.Parallel()
+
 		batch := postagetesting.MustNewBatch(postagetesting.WithOwner(owner.Bytes()))
 		batch.Depth = uint8(16)
 		batchStoreMock := postagestoreMock.New(postagestoreMock.WithBatch(batch))
@@ -563,6 +590,7 @@ func TestBatchExpirer(t *testing.T) {
 
 	t.Run("ok", func(t *testing.T) {
 		t.Parallel()
+
 		expectedRes := big.NewInt(1)
 		expectedFalseRes := big.NewInt(0)
 		counter := 0
@@ -613,6 +641,7 @@ func TestBatchExpirer(t *testing.T) {
 
 	t.Run("wrong call data for expired batches exist", func(t *testing.T) {
 		t.Parallel()
+
 		expectedCallDataForExpireLimitedBatches, err := postageStampContractABI.Pack("expireLimited", big.NewInt(2))
 		if err != nil {
 			t.Fatal("expected error")
@@ -646,6 +675,7 @@ func TestBatchExpirer(t *testing.T) {
 
 	t.Run("wrong call data for expired limited batches", func(t *testing.T) {
 		t.Parallel()
+
 		expectedCallDataForExpireLimitedBatches, err := postageStampContractABI.Pack("expiredBatchesExist")
 		if err != nil {
 			t.Fatal("expected error")
@@ -700,6 +730,7 @@ func TestBatchExpirer(t *testing.T) {
 
 	t.Run("wrong result for expire limited batches", func(t *testing.T) {
 		t.Parallel()
+
 		expectedRes := big.NewInt(1)
 		expectedFalseRes := big.NewInt(0)
 		counter := 0
@@ -754,6 +785,7 @@ func TestBatchExpirer(t *testing.T) {
 
 	t.Run("wrong result for expired batches exist", func(t *testing.T) {
 		t.Parallel()
+
 		expectedCallDataForExpiredBatches, err := postageStampContractABI.Pack("expiredBatchesExist")
 		if err != nil {
 			t.Fatal(err)
@@ -788,6 +820,7 @@ func TestBatchExpirer(t *testing.T) {
 
 	t.Run("unpack err for expired batches exist", func(t *testing.T) {
 		t.Parallel()
+
 		expectedRes := big.NewInt(1)
 		expectedCallDataForExpiredBatches, err := postageStampContractABI.Pack("expiredBatchesExist")
 		if err != nil {
@@ -824,6 +857,7 @@ func TestBatchExpirer(t *testing.T) {
 
 	t.Run("tx err for expire limited batches", func(t *testing.T) {
 		t.Parallel()
+
 		expectedRes := big.NewInt(1)
 		expectedFalseRes := big.NewInt(0)
 		counter := 0
@@ -873,6 +907,8 @@ func TestBatchExpirer(t *testing.T) {
 }
 
 func TestLookupERC20Address(t *testing.T) {
+	t.Parallel()
+
 	postageStampContractAddress := common.HexToAddress("ffff")
 	erc20Address := common.HexToAddress("ffff")
 
