@@ -12,7 +12,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 )
 
-func TestCache(t *testing.T) {
+func TestCacheTransaction(t *testing.T) {
 	t.Parallel()
 
 	store, err := leveldbstore.New(t.TempDir(), nil)
