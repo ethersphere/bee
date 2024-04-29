@@ -23,6 +23,7 @@ func AfterInitSteps(
 		2: step_02(st),
 		3: ReserveRepairer(st, storage.ChunkType, logger),
 		4: step_04(sharkyPath, sharkyNoOfShards, st),
+		5: step_05(st),
 	}
 }
 

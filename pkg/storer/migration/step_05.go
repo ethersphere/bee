@@ -16,38 +16,41 @@ import (
 )
 
 // step_05 is a migration step that removes all upload items from the store.
-func step_05(st transaction.Storage) error {
-	logger := log.NewLogger("migration-step-05", log.WithSink(os.Stdout))
-	logger.Info("start removing upload items")
+func step_05(st transaction.Storage) func() error {
+	return func() error {
+		logger := log.NewLogger("migration-step-05", log.WithSink(os.Stdout))
+		logger.Info("start removing upload items")
 
-	itemC := make(chan storage.Item)
-	errC := make(chan error)
-	go func() {
-		for item := range itemC {
-			err := st.Run(context.Background(), func(s transaction.Store) error {
-				return s.IndexStore().Delete(item)
-			})
-			if err != nil {
-				errC <- fmt.Errorf("delete upload item: %w", err)
-				return
+		itemC := make(chan storage.Item)
+		errC := make(chan error)
+		go func() {
+			for item := range itemC {
+				err := st.Run(context.Background(), func(s transaction.Store) error {
+					return s.IndexStore().Delete(item)
+				})
+				if err != nil {
+					errC <- fmt.Errorf("delete upload item: %w", err)
+					return
+				}
 			}
-		}
-		close(errC)
-	}()
+			close(errC)
+		}()
 
-	err := upload.IterateAll(st.IndexStore(), func(u storage.Item) (bool, error) {
-		select {
-		case itemC <- u:
-		case err := <-errC:
-			return true, err
+		err := upload.IterateAll(st.IndexStore(), func(u storage.Item) (bool, error) {
+			select {
+			case itemC <- u:
+			case err := <-errC:
+				return true, err
+			}
+			return false, nil
+		})
+		close(itemC)
+		if err != nil {
+			return err
 		}
-		return false, nil
-	})
-	close(itemC)
-	if err != nil {
-		return err
+
+		logger.Info("finished removing upload items")
+		return <-errC
 	}
 
-	logger.Info("finished removing upload items")
-	return <-errC
 }

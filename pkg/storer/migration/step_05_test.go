@@ -98,7 +98,7 @@ func Test_Step_05(t *testing.T) {
 
 	wantCount(t, store.IndexStore(), 10)
 
-	err = localmigration.Step_05(store)
+	err = localmigration.Step_05(store)()
 	if err != nil {
 		t.Fatalf("step 05: %v", err)
 	}

@@ -15,7 +15,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-// step_03 is a migration step that removes all BinItem entries and migrates
+// ReserveRepairer is a migration step that removes all BinItem entries and migrates
 // ChunkBinItem and BatchRadiusItem entries to use a new BinID field.
 func ReserveRepairer(
 	st transaction.Storage,
