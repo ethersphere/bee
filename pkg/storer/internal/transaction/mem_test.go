@@ -10,6 +10,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storage/leveldbstore"
 	"github.com/ethersphere/bee/v2/pkg/storage/storagetest"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
+	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 )
 
 func TestCacheTransaction(t *testing.T) {
@@ -19,6 +20,7 @@ func TestCacheTransaction(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create store failed: %v", err)
 	}
+	testutil.CleanupCloser(t, store)
 
 	cache := transaction.NewMemCache(store)
 	storagetest.TestStore(t, cache)
