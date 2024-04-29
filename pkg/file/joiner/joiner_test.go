@@ -1024,7 +1024,7 @@ func (m *mockPutter) store(cnt int) error {
 }
 
 // nolint:thelper
-func TestJoinerRedundancy(t *testing.T) {
+func TestJoinerRedundancy_FLAKY(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		rLevel       redundancy.Level
