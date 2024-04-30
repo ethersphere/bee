@@ -42,8 +42,8 @@ func (s *Service) MountTechnicalDebug() {
 	)
 }
 
-func (s *Service) MountDebug(restricted bool) {
-	s.mountBusinessDebug(restricted)
+func (s *Service) MountDebug() {
+	s.mountBusinessDebug()
 
 	s.Handler = web.ChainHandlers(
 		httpaccess.NewHTTPAccessLogHandler(s.logger, s.tracer, "debug api access"),
@@ -141,8 +141,12 @@ func (s *Service) mountTechnicalDebug() {
 	s.router.Handle("/debug/pprof/profile", http.HandlerFunc(pprof.Profile))
 	s.router.Handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
 	s.router.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
-	s.router.PathPrefix("/debug/pprof/").Handler(http.HandlerFunc(pprof.Index))
 
+	pprofRootHandlerF := pprof.Index
+	if s.Restricted {
+		pprofRootHandlerF = web.ChainHandlers(auth.PermissionCheckHandler(s.auth), web.FinalHandler(http.HandlerFunc(pprof.Index))).ServeHTTP
+	}
+	s.router.PathPrefix("/debug/pprof/").Handler(http.HandlerFunc(pprofRootHandlerF))
 	s.router.Handle("/debug/vars", expvar.Handler())
 
 	s.router.Handle("/loggers", jsonhttp.MethodHandler{
@@ -364,9 +368,10 @@ func (s *Service) mountAPI() {
 	}
 }
 
-func (s *Service) mountBusinessDebug(restricted bool) {
+func (s *Service) mountBusinessDebug() {
 	handle := func(path string, handler http.Handler) {
-		if restricted {
+		s.logger.Warning("DEPRECATION NOTICE: This endpoint is now part of the main Bee API. The Debug API will be removed in the next release, version [2.2.0]. Update your integrations to use the main Bee API to avoid service disruptions.")
+		if s.Restricted {
 			handler = web.ChainHandlers(auth.PermissionCheckHandler(s.auth), web.FinalHandler(handler))
 		}
 		s.router.Handle(path, handler)

@@ -699,23 +699,23 @@ paths:
         name: amount
         required: true
         schema:
-          $ref: "#/components/schemas/BigInt"
+          $ref: "SwarmCommon.yaml#/components/schemas/BigInt"
       - in: query
         name: address
         required: true
         schema:
-          $ref: "#/components/schemas/EthereumAddress"
+          $ref: "SwarmCommon.yaml#/components/schemas/EthereumAddress"
       - in: path
         name: coin
         required: true
         schema:
-          $ref: "#/components/schemas/SwarmAddress"
+          $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
       responses:
         "200":
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/WalletTxResponse'
+                $ref: 'SwarmCommon.yaml#/components/schemas/WalletTxResponse'
           description: OK
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
@@ -1168,11 +1168,3 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/400"
         default:
           description: Default response.
-
-components:
-  schemas:
-    WalletTxResponse:
-      type: object
-      properties:
-        transactionHash:
-          $ref: "#/components/schemas/TransactionHash"

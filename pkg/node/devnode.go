@@ -405,19 +405,18 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		WsPingPeriod:       60 * time.Second,
 		Restricted:         o.Restricted,
 	}, debugOpts, 1, erc20)
+	apiService.MountTechnicalDebug()
 	apiService.MountAPI()
 	apiService.SetProbe(probe)
 
-	if o.Restricted {
-		apiService.SetP2P(p2ps)
-		apiService.SetSwarmAddress(&swarmAddress)
-		apiService.MountDebug(true)
-	}
+	apiService.SetP2P(p2ps)
+	apiService.SetSwarmAddress(&swarmAddress)
+	apiService.MountDebug()
 
 	if o.DebugAPIAddr != "" {
 		debugApiService.SetP2P(p2ps)
 		debugApiService.SetSwarmAddress(&swarmAddress)
-		debugApiService.MountDebug(false)
+		debugApiService.MountDebug()
 
 		debugApiService.Configure(signer, authenticator, tracer, api.Options{
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
