@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"sync"
 	"testing"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -26,13 +27,16 @@ import (
 )
 
 var postageStampContractABI = abiutil.MustParseABI(chaincfg.Testnet.PostageStampABI)
+var mu sync.Mutex
 
 func TestCreateBatch(t *testing.T) {
 	t.Parallel()
 
+	mu.Lock()
 	b := postagecontract.BucketDepth
 	t.Cleanup(func() {
 		postagecontract.BucketDepth = b
+		mu.Unlock()
 	})
 
 	postagecontract.BucketDepth = 9
@@ -224,9 +228,11 @@ func newCreateEvent(postageContractAddress common.Address, batchId common.Hash) 
 func TestTopUpBatch(t *testing.T) {
 	t.Parallel()
 
+	mu.Lock()
 	b := postagecontract.BucketDepth
 	t.Cleanup(func() {
 		postagecontract.BucketDepth = b
+		mu.Unlock()
 	})
 
 	postagecontract.BucketDepth = 9
@@ -394,9 +400,11 @@ func newTopUpEvent(postageContractAddress common.Address, batch *postage.Batch) 
 func TestDiluteBatch(t *testing.T) {
 	t.Parallel()
 
+	mu.Lock()
 	b := postagecontract.BucketDepth
 	t.Cleanup(func() {
 		postagecontract.BucketDepth = b
+		mu.Unlock()
 	})
 
 	postagecontract.BucketDepth = 9

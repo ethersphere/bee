@@ -252,12 +252,12 @@ func TestBatchServiceCreate_FLAKY(t *testing.T) {
 func TestBatchServiceTopUp(t *testing.T) {
 	t.Parallel()
 
-	testBatch := postagetesting.MustNewBatch()
 	testNormalisedBalance := big.NewInt(2000000000000)
 	testTopUpAmount := big.NewInt(1000)
 	t.Run("expect get error", func(t *testing.T) {
 		t.Parallel()
 
+		testBatch := postagetesting.MustNewBatch()
 		testBatchListener := &mockBatchListener{}
 		svc, _, _ := newTestStoreAndServiceWithListener(
 			t,
@@ -277,6 +277,7 @@ func TestBatchServiceTopUp(t *testing.T) {
 	t.Run("expect update error", func(t *testing.T) {
 		t.Parallel()
 
+		testBatch := postagetesting.MustNewBatch()
 		testBatchListener := &mockBatchListener{}
 		svc, batchStore, _ := newTestStoreAndServiceWithListener(
 			t,
@@ -297,6 +298,7 @@ func TestBatchServiceTopUp(t *testing.T) {
 	t.Run("passes", func(t *testing.T) {
 		t.Parallel()
 
+		testBatch := postagetesting.MustNewBatch()
 		testBatchListener := &mockBatchListener{}
 		svc, batchStore, _ := newTestStoreAndServiceWithListener(
 			t,
@@ -329,6 +331,7 @@ func TestBatchServiceTopUp(t *testing.T) {
 	t.Run("passes without BatchEventListener update", func(t *testing.T) {
 		t.Parallel()
 
+		testBatch := postagetesting.MustNewBatch()
 		testBatchListener := &mockBatchListener{}
 		// create an owner different from the batch owner
 		owner := testutil.RandBytes(t, 32)
@@ -365,11 +368,11 @@ func TestBatchServiceUpdateDepth(t *testing.T) {
 
 	const testNewDepth = 30
 	testNormalisedBalance := big.NewInt(2000000000000)
-	testBatch := postagetesting.MustNewBatch()
 
 	t.Run("expect get error", func(t *testing.T) {
 		t.Parallel()
 
+		testBatch := postagetesting.MustNewBatch()
 		testBatchListener := &mockBatchListener{}
 		svc, _, _ := newTestStoreAndServiceWithListener(
 			t,
@@ -390,6 +393,7 @@ func TestBatchServiceUpdateDepth(t *testing.T) {
 	t.Run("expect put error", func(t *testing.T) {
 		t.Parallel()
 
+		testBatch := postagetesting.MustNewBatch()
 		testBatchListener := &mockBatchListener{}
 		svc, batchStore, _ := newTestStoreAndServiceWithListener(
 			t,
@@ -411,6 +415,7 @@ func TestBatchServiceUpdateDepth(t *testing.T) {
 	t.Run("passes", func(t *testing.T) {
 		t.Parallel()
 
+		testBatch := postagetesting.MustNewBatch()
 		testBatchListener := &mockBatchListener{}
 		svc, batchStore, _ := newTestStoreAndServiceWithListener(
 			t,
@@ -442,6 +447,7 @@ func TestBatchServiceUpdateDepth(t *testing.T) {
 	t.Run("passes without BatchEventListener update", func(t *testing.T) {
 		t.Parallel()
 
+		testBatch := postagetesting.MustNewBatch()
 		testBatchListener := &mockBatchListener{}
 		// create an owner different from the batch owner
 		owner := testutil.RandBytes(t, 32)
