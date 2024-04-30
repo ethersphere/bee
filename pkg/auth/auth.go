@@ -308,6 +308,16 @@ func applyPolicies(e *casbin.Enforcer) error {
 		{"maintainer", "/redistributionstate", "GET"},
 		{"maintainer", "/debugstore", "GET"},
 		{"consumer", "/rchash", "GET"},
+		{"maintainer", "/debug/*", "GET"},
+		{"maintainer", "/metrics", "GET"},
+		{"maintainer", "/node", "GET"},
+		{"maintainer", "/loggers", "GET"},
+		{"maintainer", "/loggers/*", "(GET)|(PUT)"},
+		{"maintainer", "/status", "GET"},
+		{"maintainer", "/status/peers", "GET"},
+		{"maintainer", "/rcash/*", "GET"},
+		{"maintainer", "/batches", "GET"},
+		{"maintainer", "/timesettlements", "GET"},
 	})
 
 	if err != nil {

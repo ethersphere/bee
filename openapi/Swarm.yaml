@@ -1,7 +1,7 @@
 openapi: 3.0.3
 
 info:
-  version: 5.2.0
+  version: 6.0.0
   title: Bee API
   description: "A list of the currently provided Interfaces to interact with the swarm, implementing file operations and sending messages"
 
@@ -930,7 +930,7 @@ paths:
   "/addresses":
     get:
       summary: Get overlay and underlay addresses of the node
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       tags:
         - Connectivity
       responses:
@@ -982,7 +982,7 @@ paths:
   "/balances":
     get:
       summary: Get the balances with all known peers including prepaid services
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       security:
         - bearerAuth: [ ]
       tags:
@@ -1002,7 +1002,7 @@ paths:
   "/balances/{address}":
     get:
       summary: Get the balances with a specific peer including prepaid services
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       security:
         - bearerAuth: [ ]
       tags:
@@ -1031,7 +1031,7 @@ paths:
   "/blocklist":
     get:
       summary: Get a list of blocklisted peers
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       security:
         - bearerAuth: [ ]
       tags:
@@ -1051,7 +1051,7 @@ paths:
   "/consumed":
     get:
       summary: Get the past due consumption balances with all known peers
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       security:
         - bearerAuth: [ ]
       tags:
@@ -1071,7 +1071,7 @@ paths:
   "/consumed/{address}":
     get:
       summary: Get the past due consumption balance with a specific peer
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       security:
         - bearerAuth: [ ]
       tags:
@@ -1100,7 +1100,7 @@ paths:
   "/chequebook/address":
     get:
       summary: Get the address of the chequebook contract used
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       security:
         - bearerAuth: [ ]
       tags:
@@ -1116,7 +1116,7 @@ paths:
   "/chequebook/balance":
     get:
       summary: Get the balance of the chequebook
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       security:
         - bearerAuth: [ ]
       tags:
@@ -1190,7 +1190,7 @@ paths:
   "/connect/{multiAddress}":
     post:
       summary: Connect to address
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       security:
         - bearerAuth: [ ]
       tags:
@@ -1220,7 +1220,7 @@ paths:
   "/reservestate":
     get:
       summary: Get reserve state
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       security:
         - bearerAuth: [ ]
       tags:
@@ -1238,7 +1238,7 @@ paths:
   "/chainstate":
     get:
       summary: Get chain state
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       security:
         - bearerAuth: [ ]
       tags:
@@ -1256,7 +1256,7 @@ paths:
   "/node":
     get:
       summary: Get information about the node
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       tags:
         - Status
       responses:
@@ -1272,7 +1272,7 @@ paths:
   "/peers":
     get:
       summary: Get a list of peers
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       security:
         - bearerAuth: [ ]
       tags:
@@ -1290,7 +1290,7 @@ paths:
   "/peers/{address}":
     delete:
       summary: Remove peer
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       security:
         - bearerAuth: [ ]
       tags:
@@ -1319,7 +1319,7 @@ paths:
   "/pingpong/{address}":
     post:
       summary: Try connection to node
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       security:
         - bearerAuth: [ ]
       tags:
@@ -1350,7 +1350,7 @@ paths:
   "/settlements/{address}":
     get:
       summary: Get amount of sent and received from settlements with a peer
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       security:
         - bearerAuth: [ ]
       tags:
@@ -1379,7 +1379,7 @@ paths:
   "/settlements":
     get:
       summary: Get settlements with all known peers and total amount sent or received
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       security:
         - bearerAuth: [ ]
       tags:
@@ -1399,7 +1399,7 @@ paths:
   "/timesettlements":
     get:
       summary: Get time based settlements with all known peers and total amount sent or received
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       security:
         - bearerAuth: [ ]
       tags:
@@ -1419,7 +1419,7 @@ paths:
   "/topology":
     get:
       summary: Get topology of known network
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       security:
         - bearerAuth: [ ]
       tags:
@@ -1435,7 +1435,7 @@ paths:
   "/welcome-message":
     get:
       summary: Get configured P2P welcome message
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       security:
         - bearerAuth: [ ]
       tags:
@@ -1453,7 +1453,7 @@ paths:
           description: Default response
     post:
       summary: Set P2P welcome message
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       security:
         - bearerAuth: [ ]
       tags:
@@ -1480,7 +1480,7 @@ paths:
   "/chequebook/cashout/{peer-id}":
     get:
       summary: Get last cashout action for the peer
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       security:
         - bearerAuth: [ ]
       parameters:
@@ -1507,7 +1507,7 @@ paths:
           description: Default response
     post:
       summary: Cashout the last cheque for the peer
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       security:
         - bearerAuth: [ ]
       parameters:
@@ -1540,7 +1540,7 @@ paths:
   "/chequebook/cheque/{peer-id}":
     get:
       summary: Get last cheques for the peer
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       security:
         - bearerAuth: [ ]
       parameters:
@@ -1569,7 +1569,7 @@ paths:
   "/chequebook/cheque":
     get:
       summary: Get last cheques for all peers
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       security:
         - bearerAuth: [ ]
       tags:
@@ -1591,7 +1591,7 @@ paths:
   "/chequebook/deposit":
     post:
       summary: Deposit tokens from overlay address into chequebook
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       security:
         - bearerAuth: [ ]
       parameters:
@@ -1621,7 +1621,7 @@ paths:
   "/chequebook/withdraw":
     post:
       summary: Withdraw tokens from the chequebook to the overlay address
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       security:
         - bearerAuth: [ ]
       parameters:
@@ -1651,7 +1651,7 @@ paths:
   "/transactions":
     get:
       summary: Get list of pending transactions
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       tags:
         - Transaction
       responses:
@@ -1669,7 +1669,7 @@ paths:
   "/transactions/{txHash}":
     get:
       summary: Get information about a sent transaction
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       parameters:
         - in: path
           name: txHash
@@ -1694,7 +1694,7 @@ paths:
           description: Default response
     post:
       summary: Rebroadcast existing transaction
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       parameters:
         - in: path
           name: txHash
@@ -1719,7 +1719,7 @@ paths:
           description: Default response
     delete:
       summary: Cancel existing transaction
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       parameters:
         - in: path
           name: txHash
@@ -1747,7 +1747,7 @@ paths:
   "/stamps":
     get:
       summary: Get stamps for this node
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       security:
         - bearerAuth: [ ]
       tags:
@@ -1775,7 +1775,7 @@ paths:
         description: Swarm address of the stamp
     get:
       summary: Get an individual postage batch status
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       security:
         - bearerAuth: [ ]
       tags:
@@ -1804,7 +1804,7 @@ paths:
         description: Swarm address of the stamp
     get:
       summary: Get extended bucket data of a batch
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       security:
         - bearerAuth: [ ]
       tags:
@@ -1831,7 +1831,7 @@ paths:
       description: |
         Be aware, this endpoint creates an on-chain transactions and transfers BZZ from the node's Ethereum account and hence directly manipulates the wallet balance!
 
-        This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
+        This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       tags:
         - Postage Stamps
       parameters:
@@ -1882,7 +1882,7 @@ paths:
       description: |
         Be aware, this endpoint creates on-chain transactions and transfers BZZ from the node's Ethereum account and hence directly manipulates the wallet balance!
 
-        This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
+        This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       tags:
         - Postage Stamps
       parameters:
@@ -1924,7 +1924,7 @@ paths:
       description: |
         Be aware, this endpoint creates on-chain transactions and transfers BZZ from the node's Ethereum account and hence directly manipulates the wallet balance!
 
-        This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
+        This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       tags:
         - Postage Stamps
       parameters:
@@ -1961,7 +1961,7 @@ paths:
   "/batches":
     get:
       summary: Get all globally available batches that were purchased by all nodes.
-      description: This endpoint is available on the main API only if the node is spawned with the `--restricted` flag along with a bearer authentication token.
+      description: This endpoint can be restricted if the node is spawned with the `--restricted` flag.
       security:
         - bearerAuth: [ ]
       tags:
@@ -2014,6 +2014,241 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
+
+  "/accounting":
+    get:
+      summary: Get all accounting associated values with all known peers
+      tags:
+        - Balance
+      responses:
+        "200":
+          description: Own accounting associated values with all known peers
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/PeerAccountingData"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+
+  "/redistributionstate":
+    get:
+      summary: Get current status of node in redistribution game
+      tags:
+        - RedistributionState
+      responses:
+        "200":
+          description: Redistribution status info
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/RedistributionStatusResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+  "/wallet":
+    get:
+      summary: Get wallet balance for BZZ and xDai
+      tags:
+        - Wallet
+      responses:
+        "200":
+          description: Wallet balance info
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/WalletResponse"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+  "/wallet/withdraw/{coin}":
+    post:
+      summary: Allows withdrawals of BZZ or xDAI to provided (whitelisted) address
+      tags:
+        - Wallet
+      parameters:
+      - in: query
+        name: amount
+        required: true
+        schema:
+          $ref: "#/components/schemas/BigInt"
+      - in: query
+        name: address
+        required: true
+        schema:
+          $ref: "#/components/schemas/EthereumAddress"
+      - in: path
+        name: coin
+        required: true
+        schema:
+          $ref: "#/components/schemas/SwarmAddress"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/WalletTxResponse"
+          description: OK
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+          description: Amount greater than ballance or coin is other than BZZ/xDAI
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+
+  "/stake/{amount}":
+    post:
+      summary: Deposit some amount for staking.
+      description: Be aware, this endpoint creates an on-chain transactions and transfers BZZ from the node's Ethereum account and hence directly manipulates the wallet balance.
+      tags:
+        - Staking
+      parameters:
+        - in: path
+          name: amount
+          schema:
+            type: string
+          description: Amount of BZZ added that will be deposited for staking.
+        - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
+      responses:
+        "200":
+          $ref: "SwarmCommon.yaml#/components/schemas/StakeDepositResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+
+  "/stake":
+    get:
+      summary: Get the staked amount.
+      description: This endpoint fetches the staked amount from the blockchain.
+      tags:
+        - Staking
+      responses:
+        "200":
+          $ref: "SwarmCommon.yaml#/components/schemas/GetStakeResponse"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+    delete:
+      summary: Withdraw all staked amount.
+      description: Be aware, this endpoint creates an on-chain transactions and transfers BZZ from the node's Ethereum account and hence directly manipulates the wallet balance.
+      tags:
+        - Staking
+      parameters:
+        - $ref: "SwarmCommon.yaml#/components/parameters/GasPriceParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/GasLimitParameter"
+      responses:
+        "200":
+          $ref: "SwarmCommon.yaml#/components/schemas/WithdrawAllStakeResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+
+  "/loggers":
+    get:
+      summary: Get all available loggers.
+      tags:
+        - Logging
+      responses:
+        "200":
+          description: Returns an array of all available loggers, also represented in short form in a tree.
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/LoggerResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        default:
+            description: Default response
+
+  "/loggers/{exp}":
+    get:
+      summary: Get all available loggers that match the specified expression.
+      parameters:
+        - in: path
+          name: exp
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/LoggerExp"
+          required: true
+          description: Regular expression or a subsystem that matches the logger(s).
+      tags:
+        - Logging
+      responses:
+        "200":
+          description: Returns an array of all available loggers that matches given expression, also represented in short form in a tree.
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/LoggerResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        default:
+          description: Default response
+    put:
+      summary: Set logger(s) verbosity level.
+      parameters:
+        - in: path
+          name: exp
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/LoggerExp"
+          required: true
+          description: Regular expression or a subsystem that matches the logger(s).
+      tags:
+        - Logging
+      responses:
+        "200":
+          description: The verbosity was changed successfully.
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        default:
+          description: Default response
+
+  "/status":
+    get:
+      summary: Get the current status snapshot of this node.
+      tags:
+        - Node Status
+      responses:
+        "200":
+          description: Returns the current node status snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/StatusSnapshotResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        default:
+          description: Default response.
+
+  "/status/peers":
+    get:
+      summary: Get the current status snapshot of this node connected peers.
+      tags:
+        - Node Status
+      responses:
+        "200":
+          description: Returns the status snapshot of this node connected peers
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/StatusResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        default:
+          description: Default response.
 
 components:
   securitySchemes:
