@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"sync"
 	"sync/atomic"
 	"time"
 
@@ -39,10 +38,9 @@ var (
 // part of the reserve but are potentially useful to store for obtaining bandwidth
 // incentives.
 type Cache struct {
-	size      atomic.Int64
-	capacity  int
-	chunkLock *multex.Multex // protects storage ops at chunk level
-	glock     sync.RWMutex   // blocks Get and Put ops while shallow copy is running.
+	size     atomic.Int64
+	capacity int
+	glock    *multex.Multex // blocks Get and Put ops while shallow copy is running.
 }
 
 // New creates a new Cache component with the specified capacity. The store is used
@@ -54,9 +52,8 @@ func New(ctx context.Context, store storage.Reader, capacity uint64) (*Cache, er
 		return nil, fmt.Errorf("failed counting cache entries: %w", err)
 	}
 
-	c := &Cache{capacity: int(capacity)}
+	c := &Cache{capacity: int(capacity), glock: multex.New()}
 	c.size.Store(int64(count))
-	c.chunkLock = multex.New()
 
 	return c, nil
 }
@@ -74,10 +71,8 @@ func (c *Cache) Capacity() uint64 { return uint64(c.capacity) }
 func (c *Cache) Putter(store transaction.Storage) storage.Putter {
 	return storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
 
-		c.chunkLock.Lock(chunk.Address().ByteString())
-		defer c.chunkLock.Unlock(chunk.Address().ByteString())
-		c.glock.RLock()
-		defer c.glock.RUnlock()
+		c.glock.Lock(chunk.Address().ByteString())
+		defer c.glock.Unlock(chunk.Address().ByteString())
 
 		trx, done := store.NewTransaction(ctx)
 		defer done()
@@ -129,10 +124,8 @@ func (c *Cache) Putter(store transaction.Storage) storage.Putter {
 func (c *Cache) Getter(store transaction.Storage) storage.Getter {
 	return storage.GetterFunc(func(ctx context.Context, address swarm.Address) (swarm.Chunk, error) {
 
-		c.chunkLock.Lock(address.ByteString())
-		defer c.chunkLock.Unlock(address.ByteString())
-		c.glock.RLock()
-		defer c.glock.RUnlock()
+		c.glock.Lock(address.ByteString())
+		defer c.glock.Unlock(address.ByteString())
 
 		trx, done := store.NewTransaction(ctx)
 		defer done()
@@ -196,9 +189,6 @@ func (c *Cache) removeOldest(ctx context.Context, st transaction.Storage, count 
 		return nil
 	}
 
-	c.glock.Lock()
-	defer c.glock.Unlock()
-
 	evictItems := make([]*cacheEntry, 0, count)
 	err := st.IndexStore().Iterate(
 		storage.Query{
@@ -232,20 +222,20 @@ func (c *Cache) removeOldest(ctx context.Context, st transaction.Storage, count 
 		items := evictItems[i:end]
 		err := st.Run(ctx, func(s transaction.Store) error {
 			for _, entry := range items {
-				err = s.IndexStore().Delete(entry)
+
+				c.glock.Lock(entry.Address.ByteString())
+				err = errors.Join(
+					s.IndexStore().Delete(entry),
+					s.IndexStore().Delete(&cacheOrderIndex{
+						Address:         entry.Address,
+						AccessTimestamp: entry.AccessTimestamp,
+					}),
+					s.ChunkStore().Delete(ctx, entry.Address),
+				)
+				c.glock.Unlock(entry.Address.ByteString())
+
 				if err != nil {
-					return fmt.Errorf("failed deleting cache entry %s: %w", entry, err)
-				}
-				err = s.IndexStore().Delete(&cacheOrderIndex{
-					Address:         entry.Address,
-					AccessTimestamp: entry.AccessTimestamp,
-				})
-				if err != nil {
-					return fmt.Errorf("failed deleting cache order index %s: %w", entry.Address, err)
-				}
-				err = s.ChunkStore().Delete(ctx, entry.Address)
-				if err != nil {
-					return fmt.Errorf("failed deleting chunk %s from chunkstore: %w", entry.Address, err)
+					return fmt.Errorf("failed deleting cache item: %s: %w", entry.Address, err)
 				}
 			}
 			return nil
@@ -267,8 +257,7 @@ func (c *Cache) ShallowCopy(
 	addrs ...swarm.Address,
 ) (err error) {
 
-	c.glock.Lock()
-	defer c.glock.Unlock()
+	// TODO: add proper mutex locking before usage
 
 	entries := make([]*cacheEntry, 0, len(addrs))
 

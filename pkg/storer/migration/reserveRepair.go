@@ -135,7 +135,6 @@ func ReserveRepairer(
 					}
 
 					hasChunk := err == nil
-					chunkType := chunkTypeFunc(chunk)
 
 					if !hasChunk {
 						err = reserve.RemoveChunkWithItem(context.Background(), s, item)
@@ -143,7 +142,12 @@ func ReserveRepairer(
 							return err
 						}
 						missingChunks++
-					} else if chunkType == swarm.ChunkTypeUnspecified {
+						continue
+					}
+
+					chunkType := chunkTypeFunc(chunk)
+
+					if chunkType == swarm.ChunkTypeUnspecified {
 						err = reserve.RemoveChunkWithItem(context.Background(), s, item)
 						if err != nil {
 							return err
