@@ -271,6 +271,7 @@ func dbRepairReserve(cmd *cobra.Command) {
 				RadiusSetter:    noopRadiusSetter{},
 				Batchstore:      new(postage.NoOpBatchStore),
 				ReserveCapacity: node.ReserveCapacity,
+				CacheCapacity:   1_000_000,
 			})
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
