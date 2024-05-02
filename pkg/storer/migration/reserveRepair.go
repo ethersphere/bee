@@ -84,7 +84,6 @@ func ReserveRepairer(
 			if end > len(chunkBinItems) {
 				end = len(chunkBinItems)
 			}
-
 			err := st.Run(context.Background(), func(s transaction.Store) error {
 				for _, item := range chunkBinItems[i:end] {
 					err := s.IndexStore().Delete(item)
@@ -150,7 +149,6 @@ func ReserveRepairer(
 			for _, item := range batchRadiusItems[i:end] {
 				func(item *reserve.BatchRadiusItem) {
 					eg.Go(func() error {
-
 						return st.Run(context.Background(), func(s transaction.Store) error {
 
 							chunk, err := s.ChunkStore().Get(context.Background(), item.Address)

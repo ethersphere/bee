@@ -284,13 +284,13 @@ func (r *Reserve) EvictBatchBin(
 				if err != nil {
 					return err
 				}
+				evictionCompleted++
 			}
 			return nil
 		})
 		if err != nil {
 			return evictionCompleted, err
 		}
-		evictionCompleted += end - i
 	}
 
 	return evictionCompleted, nil
