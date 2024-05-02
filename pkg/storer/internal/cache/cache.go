@@ -209,25 +209,37 @@ func (c *Cache) RemoveOldest(ctx context.Context, st transaction.Storage, count 
 		return fmt.Errorf("failed iterating over cache order index: %w", err)
 	}
 
-	for _, entry := range evictItems {
-		c.glock.Lock(entry.Address.ByteString())
-		err := st.Run(ctx, func(s transaction.Store) error {
-			return errors.Join(
-				s.IndexStore().Delete(entry),
-				s.IndexStore().Delete(&cacheOrderIndex{
-					Address:         entry.Address,
-					AccessTimestamp: entry.AccessTimestamp,
-				}),
-				s.ChunkStore().Delete(ctx, entry.Address),
-			)
-		})
-		c.glock.Unlock(entry.Address.ByteString())
+	batchCnt := 1000
 
-		if err != nil {
-			return fmt.Errorf("failed deleting cache item: %s: %w", entry.Address, err)
+	for i := 0; i < len(evictItems); i += batchCnt {
+		end := i + batchCnt
+		if end > len(evictItems) {
+			end = len(evictItems)
 		}
 
-		c.size.Add(-1)
+		items := evictItems[i:end]
+
+		for _, item := range items {
+			c.glock.Lock(item.Address.ByteString())
+		}
+
+		_ = st.Run(ctx, func(s transaction.Store) error {
+			for _, item := range items {
+				_ = s.IndexStore().Delete(item)
+				_ = s.IndexStore().Delete(&cacheOrderIndex{
+					Address:         item.Address,
+					AccessTimestamp: item.AccessTimestamp,
+				})
+				_ = s.ChunkStore().Delete(ctx, item.Address)
+			}
+			return nil
+		})
+
+		for _, entry := range items {
+			c.glock.Unlock(entry.Address.ByteString())
+		}
+
+		c.size.Add(-int64(len(items)))
 	}
 
 	return nil
