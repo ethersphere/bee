@@ -20,7 +20,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_Step_03(t *testing.T) {
+func TestReserveRepair(t *testing.T) {
 	t.Parallel()
 
 	store := internal.NewInmemStorage()

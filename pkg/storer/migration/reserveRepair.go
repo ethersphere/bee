@@ -7,12 +7,15 @@ package migration
 import (
 	"context"
 	"errors"
+	"sync"
+	"sync/atomic"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"golang.org/x/sync/errgroup"
 )
 
 // ReserveRepairer is a migration step that removes all BinItem entries and migrates
@@ -32,7 +35,6 @@ func ReserveRepairer(
 					if the chunk is invalid, it is removed from the chunkstore
 		*/
 
-		rs := reserve.Reserve{}
 		logger.Info("starting migration for reconstructing reserve bin IDs, do not interrupt or kill the process...")
 
 		// STEP 0
@@ -118,8 +120,24 @@ func ReserveRepairer(
 
 		logger.Info("found reserve chunk entries, adding new entries", "total_entries", len(batchRadiusItems))
 
-		missingChunks := 0
-		invalidSharkyChunks := 0
+		var missingChunks atomic.Int64
+		var invalidSharkyChunks atomic.Int64
+
+		// 4:19-4:28 - 9 minutes
+		// 4:30-4:36 - 6 minutes
+		// 4:38-4:43 - 5 minutes
+
+		var bins [32]uint64
+		var mtx sync.Mutex
+		newID := func(bin int) uint64 {
+			mtx.Lock()
+			defer mtx.Unlock()
+
+			bins[bin]++
+			return bins[bin]
+		}
+
+		batchSize = 16
 
 		for i := 0; i < len(batchRadiusItems); i += batchSize {
 			end := i + batchSize
@@ -127,63 +145,54 @@ func ReserveRepairer(
 				end = len(batchRadiusItems)
 			}
 
-			err := st.Run(context.Background(), func(s transaction.Store) error {
-				for _, item := range batchRadiusItems[i:end] {
-					chunk, err := s.ChunkStore().Get(context.Background(), item.Address)
-					if err != nil && !errors.Is(err, storage.ErrNotFound) {
-						return err
-					}
+			var eg errgroup.Group
 
-					hasChunk := err == nil
+			for _, item := range batchRadiusItems[i:end] {
+				func(item *reserve.BatchRadiusItem) {
+					eg.Go(func() error {
 
-					if !hasChunk {
-						err = reserve.RemoveChunkWithItem(context.Background(), s, item)
-						if err != nil {
-							return err
-						}
-						missingChunks++
-						continue
-					}
+						return st.Run(context.Background(), func(s transaction.Store) error {
 
-					chunkType := chunkTypeFunc(chunk)
+							chunk, err := s.ChunkStore().Get(context.Background(), item.Address)
+							if err != nil {
+								if errors.Is(err, storage.ErrNotFound) {
+									missingChunks.Add(1)
+									return reserve.RemoveChunkWithItem(context.Background(), s, item)
+								}
+								return err
+							}
 
-					if chunkType == swarm.ChunkTypeUnspecified {
-						err = reserve.RemoveChunkWithItem(context.Background(), s, item)
-						if err != nil {
-							return err
-						}
-						invalidSharkyChunks++
-					} else {
-						newBinID, err := rs.IncBinID(s.IndexStore(), item.Bin)
-						if err != nil {
-							return err
-						}
+							chunkType := chunkTypeFunc(chunk)
+							if chunkType == swarm.ChunkTypeUnspecified {
+								invalidSharkyChunks.Add(1)
+								return reserve.RemoveChunkWithItem(context.Background(), s, item)
+							}
 
-						item.BinID = newBinID
-						err = s.IndexStore().Put(item)
-						if err != nil {
-							return err
-						}
+							item.BinID = newID(int(item.Bin))
+							err = s.IndexStore().Put(item)
+							if err != nil {
+								return err
+							}
 
-						err = s.IndexStore().Put(&reserve.ChunkBinItem{
-							BatchID: item.BatchID,
-							Bin:     item.Bin,
-							Address: item.Address,
-							BinID:   newBinID,
-							Type:    chunkType,
+							return s.IndexStore().Put(&reserve.ChunkBinItem{
+								BatchID: item.BatchID,
+								Bin:     item.Bin,
+								Address: item.Address,
+								BinID:   item.BinID,
+								Type:    chunkType,
+							})
 						})
-						if err != nil {
-							return err
-						}
-					}
-				}
-				return nil
-			})
+					})
+				}(item)
+			}
+
+			err := eg.Wait()
 			if err != nil {
 				return err
 			}
 		}
 
+		// extra test that ensure that a unique binID has been issed to each item.
 		binIds := make(map[uint8]map[uint64]int)
 		err = st.IndexStore().Iterate(
 			storage.Query{
@@ -206,7 +215,7 @@ func ReserveRepairer(
 			return err
 		}
 
-		logger.Info("migrated all chunk entries", "new_size", len(batchRadiusItems)-missingChunks, "missing_chunks", missingChunks, "invalid_sharky_chunks", invalidSharkyChunks)
+		logger.Info("migrated all chunk entries", "new_size", len(batchRadiusItems)-int(missingChunks.Load()), "missing_chunks", missingChunks.Load(), "invalid_sharky_chunks", invalidSharkyChunks.Load())
 		return nil
 	}
 }
