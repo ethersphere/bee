@@ -180,10 +180,6 @@ func (c *Cache) Getter(store transaction.Storage) storage.Getter {
 // RemoveOldest removes the oldest cache entries from the store. The count
 // specifies the number of entries to remove.
 func (c *Cache) RemoveOldest(ctx context.Context, st transaction.Storage, count uint64) error {
-	return c.removeOldest(ctx, st, count, 1000)
-}
-
-func (c *Cache) removeOldest(ctx context.Context, st transaction.Storage, count uint64, batchCnt int) error {
 
 	if count <= 0 {
 		return nil
@@ -213,38 +209,25 @@ func (c *Cache) removeOldest(ctx context.Context, st transaction.Storage, count 
 		return fmt.Errorf("failed iterating over cache order index: %w", err)
 	}
 
-	for i := 0; i < len(evictItems); i += batchCnt {
-		end := i + batchCnt
-		if end > len(evictItems) {
-			end = len(evictItems)
-		}
-
-		items := evictItems[i:end]
+	for _, entry := range evictItems {
+		c.glock.Lock(entry.Address.ByteString())
 		err := st.Run(ctx, func(s transaction.Store) error {
-			for _, entry := range items {
-
-				c.glock.Lock(entry.Address.ByteString())
-				err = errors.Join(
-					s.IndexStore().Delete(entry),
-					s.IndexStore().Delete(&cacheOrderIndex{
-						Address:         entry.Address,
-						AccessTimestamp: entry.AccessTimestamp,
-					}),
-					s.ChunkStore().Delete(ctx, entry.Address),
-				)
-				c.glock.Unlock(entry.Address.ByteString())
-
-				if err != nil {
-					return fmt.Errorf("failed deleting cache item: %s: %w", entry.Address, err)
-				}
-			}
-			return nil
+			return errors.Join(
+				s.IndexStore().Delete(entry),
+				s.IndexStore().Delete(&cacheOrderIndex{
+					Address:         entry.Address,
+					AccessTimestamp: entry.AccessTimestamp,
+				}),
+				s.ChunkStore().Delete(ctx, entry.Address),
+			)
 		})
+		c.glock.Unlock(entry.Address.ByteString())
+
 		if err != nil {
-			return err
+			return fmt.Errorf("failed deleting cache item: %s: %w", entry.Address, err)
 		}
 
-		c.size.Add(-int64(end - i))
+		c.size.Add(-1)
 	}
 
 	return nil

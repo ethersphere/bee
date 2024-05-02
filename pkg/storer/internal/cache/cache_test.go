@@ -249,51 +249,6 @@ func TestCache(t *testing.T) {
 			}
 		})
 	})
-	t.Run("handle error", func(t *testing.T) {
-		t.Skip("rollback tests are not needed if the transaction is tested at the high level")
-
-		t.Parallel()
-
-		st := newTestStorage(t)
-		c, err := cache.New(context.TODO(), st.IndexStore(), 10)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		chunks := chunktest.GenerateTestRandomChunks(5)
-
-		for _, ch := range chunks {
-			err := c.Putter(st).Put(context.TODO(), ch)
-			if err != nil {
-				t.Fatal(err)
-			}
-		}
-		retErr := errors.New("dummy error")
-
-		// on error the cache expects the overarching transactions to clean itself up
-		// and undo any store updates. So here we only want to ensure the state is
-		// reverted to correct one.
-		t.Run("put error handling", func(t *testing.T) {
-			newChunk := chunktest.GenerateTestRandomChunk()
-			err := c.Putter(st).Put(context.TODO(), newChunk)
-			if !errors.Is(err, retErr) {
-				t.Fatalf("expected error %v during put, found %v", retErr, err)
-			}
-
-			// state should be preserved on failure
-			verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[4].Address(), 5)
-		})
-
-		t.Run("get error handling", func(t *testing.T) {
-			_, err := c.Getter(st).Get(context.TODO(), chunks[2].Address())
-			if !errors.Is(err, retErr) {
-				t.Fatalf("expected error %v during get, found %v", retErr, err)
-			}
-
-			// state should be preserved on failure
-			verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[4].Address(), 5)
-		})
-	})
 }
 
 func TestRemoveOldest(t *testing.T) {

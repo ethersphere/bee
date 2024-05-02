@@ -525,7 +525,6 @@ func (u *uploadPutter) Cleanup(st transaction.Storage) error {
 
 	batchCnt := 1000
 	for i := 0; i < len(itemsToDelete); i += batchCnt {
-
 		_ = st.Run(context.Background(), func(s transaction.Store) error {
 			end := i + batchCnt
 			if end > len(itemsToDelete) {

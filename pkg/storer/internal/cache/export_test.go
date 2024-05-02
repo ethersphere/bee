@@ -38,7 +38,7 @@ type CacheState struct {
 }
 
 func (c *Cache) RemoveOldestMaxBatch(ctx context.Context, st transaction.Storage, count uint64, batchCnt int) error {
-	return c.removeOldest(ctx, st, count, batchCnt)
+	return c.RemoveOldest(ctx, st, count)
 }
 
 func (c *Cache) State(store storage.Reader) CacheState {

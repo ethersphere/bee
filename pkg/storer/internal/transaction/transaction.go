@@ -135,6 +135,7 @@ func (s *store) ChunkStore() storage.ReadOnlyChunkStore {
 // Run creates a new transaction and gives the caller access to the transaction
 // in the form of a callback function. After the callback returns, the transaction
 // is committed to the disk. See the NewTransaction method for more details on how transactions operate internally.
+// Calls made to the transaction are NOT thread-safe.
 func (s *store) Run(ctx context.Context, f func(Store) error) error {
 	trx, done := s.NewTransaction(ctx)
 	defer done()

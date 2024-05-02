@@ -37,9 +37,9 @@ func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
 		Putter: putterWithMetrics{
 			storage.PutterFunc(
 				func(ctx context.Context, chunk swarm.Chunk) error {
+					unlock := db.Lock(uploadsLock)
+					defer unlock()
 					return db.storage.Run(ctx, func(s transaction.Store) error {
-						unlock := db.Lock(uploadsLock)
-						defer unlock()
 						return pinningPutter.Put(ctx, s, chunk)
 					})
 				},
