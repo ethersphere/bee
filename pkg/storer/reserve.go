@@ -55,7 +55,7 @@ func (db *DB) startReserveWorkers(
 	go db.reserveWorker(ctx)
 
 	select {
-	case <-time.After(db.opts.warmupDuration):
+	case <-time.After(db.opts.reserveWarmupDuration):
 	case <-db.quit:
 		return
 	}
@@ -123,7 +123,7 @@ func (db *DB) reserveWorker(ctx context.Context) {
 	overCapTrigger, overCapUnsub := db.events.Subscribe(reserveOverCapacity)
 	defer overCapUnsub()
 
-	thresholdTicker := time.NewTicker(db.opts.wakeupDuration)
+	thresholdTicker := time.NewTicker(db.opts.reserveWakeupDuration)
 	defer thresholdTicker.Stop()
 
 	_, _ = db.countWithinRadius(ctx)
@@ -363,7 +363,12 @@ func (db *DB) unreserve(ctx context.Context) (err error) {
 			default:
 			}
 
-			binEvicted, err := db.evictBatch(ctx, b, target-totalEvicted, radius)
+			evict := target - totalEvicted
+			if evict < int(db.opts.reserveMinEvictCount) { // evict at least a min count
+				evict = int(db.opts.reserveMinEvictCount)
+			}
+
+			binEvicted, err := db.evictBatch(ctx, b, evict, radius)
 			// eviction happens in batches, so we need to keep track of the total
 			// number of chunks evicted even if there was an error
 			totalEvicted += binEvicted

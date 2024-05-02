@@ -368,7 +368,6 @@ type Options struct {
 	LdbBlockCacheCapacity     uint64
 	LdbWriteBufferSize        uint64
 	LdbDisableSeeksCompaction bool
-	CacheCapacity             uint64
 	Logger                    log.Logger
 	Tracer                    *tracing.Tracer
 
@@ -381,6 +380,10 @@ type Options struct {
 
 	ReserveCapacity       int
 	ReserveWakeUpDuration time.Duration
+	ReserveMinEvictCount  uint64
+
+	CacheCapacity      uint64
+	CacheMinEvictCount uint64
 }
 
 func defaultOptions() *Options {
@@ -437,8 +440,10 @@ type DB struct {
 }
 
 type workerOpts struct {
-	warmupDuration time.Duration
-	wakeupDuration time.Duration
+	reserveWarmupDuration time.Duration
+	reserveWakeupDuration time.Duration
+	reserveMinEvictCount  uint64
+	cacheMinEvictCount    uint64
 }
 
 // New returns a newly constructed DB object which implements all the above
@@ -520,8 +525,10 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		events:           events.NewSubscriber(),
 		reserveBinEvents: events.NewSubscriber(),
 		opts: workerOpts{
-			warmupDuration: opts.WarmupDuration,
-			wakeupDuration: opts.ReserveWakeUpDuration,
+			reserveWarmupDuration: opts.WarmupDuration,
+			reserveWakeupDuration: opts.ReserveWakeUpDuration,
+			reserveMinEvictCount:  opts.ReserveMinEvictCount,
+			cacheMinEvictCount:    opts.CacheMinEvictCount,
 		},
 		directUploadLimiter: make(chan struct{}, pusher.ConcurrentPushes),
 		pinIntegrity:        pinIntegrity,

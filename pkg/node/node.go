@@ -176,10 +176,10 @@ type Options struct {
 }
 
 const (
-	refreshRate                   = int64(4500000)            // accounting units refreshed per second
+	refreshRate                   = int64(4_500_000)          // accounting units refreshed per second
 	lightFactor                   = 10                        // downscale payment thresholds and their change rate, and refresh rates by this for light nodes
 	lightRefreshRate              = refreshRate / lightFactor // refresh rate used by / for light nodes
-	basePrice                     = 10000                     // minimal price for retrieval and pushsync requests of maximum proximity
+	basePrice                     = 10_000                    // minimal price for retrieval and pushsync requests of maximum proximity
 	postageSyncingStallingTimeout = 10 * time.Minute          //
 	postageSyncingBackoffTimeout  = 5 * time.Second           //
 	minPaymentThreshold           = 2 * refreshRate           // minimal accepted payment threshold of full nodes
@@ -189,6 +189,8 @@ const (
 	reserveWakeUpDuration         = 15 * time.Minute          // time to wait before waking up reserveWorker
 	reserveTreshold               = ReserveCapacity * 5 / 10
 	reserveMinimumRadius          = 0
+	reserveMinEvictCount          = 1_000
+	cacheMinEvictCount            = 10_000
 )
 
 func NewBee(
@@ -750,12 +752,14 @@ func NewBee(
 		WarmupDuration:            o.WarmupTime,
 		Logger:                    logger,
 		Tracer:                    tracer,
+		CacheMinEvictCount:        cacheMinEvictCount,
 	}
 
 	if o.FullNodeMode && !o.BootnodeMode {
 		// configure reserve only for full node
 		lo.ReserveCapacity = ReserveCapacity
 		lo.ReserveWakeUpDuration = reserveWakeUpDuration
+		lo.ReserveMinEvictCount = reserveMinEvictCount
 		lo.RadiusSetter = kad
 	}
 

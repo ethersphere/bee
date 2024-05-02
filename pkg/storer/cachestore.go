@@ -39,7 +39,10 @@ func (db *DB) cacheWorker(ctx context.Context) {
 				continue
 			}
 
-			evict := min(10_000, (size - capc))
+			evict := size - capc
+			if evict < db.opts.cacheMinEvictCount { // evict at least a min count
+				evict = db.opts.cacheMinEvictCount
+			}
 
 			dur := captureDuration(time.Now())
 			err := db.cacheObj.RemoveOldest(ctx, db.storage, evict)
