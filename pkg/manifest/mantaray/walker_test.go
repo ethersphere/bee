@@ -24,9 +24,13 @@ func TestWalkNode(t *testing.T) {
 		{
 			name: "simple",
 			toAdd: [][]byte{
+				[]byte("index.html.backup"),
 				[]byte("index.html"),
-				[]byte("img/1.png"),
+				[]byte("img/test/oho.png"),
+				[]byte("img/test/old/test.png.backup"),
+				[]byte("img/test/old/test.png"),
 				[]byte("img/2.png"),
+				[]byte("img/1.png"),
 				[]byte("robots.txt"),
 			},
 			expected: [][]byte{
@@ -35,7 +39,12 @@ func TestWalkNode(t *testing.T) {
 				[]byte("img/"),
 				[]byte("img/1.png"),
 				[]byte("img/2.png"),
+				[]byte("img/test/o"),
+				[]byte("img/test/oho.png"),
+				[]byte("img/test/old/test.png"),
+				[]byte("img/test/old/test.png.backup"),
 				[]byte("index.html"),
+				[]byte("index.html.backup"),
 				[]byte("robots.txt"),
 			},
 		},
