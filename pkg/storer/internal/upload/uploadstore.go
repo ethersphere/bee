@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstamp"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"golang.org/x/sync/errgroup"
 )
 
 // now returns the current time.Time; used in testing.
@@ -523,24 +524,28 @@ func (u *uploadPutter) Cleanup(st transaction.Storage) error {
 		return fmt.Errorf("failed iterating over push items: %w", err)
 	}
 
-	batchCnt := 1000
-	for i := 0; i < len(itemsToDelete); i += batchCnt {
-		end := i + batchCnt
-		if end > len(itemsToDelete) {
-			end = len(itemsToDelete)
-		}
-		_ = st.Run(context.Background(), func(s transaction.Store) error {
-			for _, pi := range itemsToDelete[i:end] {
-				_ = remove(s, pi.Address, pi.BatchID)
-				_ = s.IndexStore().Delete(pi)
-			}
-			return nil
-		})
+	var eg errgroup.Group
+	eg.SetLimit(8)
+
+	for _, item := range itemsToDelete {
+		func(item *pushItem) {
+			eg.Go(func() error {
+				return st.Run(context.Background(), func(s transaction.Store) error {
+					return errors.Join(
+						remove(s, item.Address, item.BatchID),
+						s.IndexStore().Delete(item),
+					)
+				})
+			})
+		}(item)
 	}
 
-	return st.Run(context.Background(), func(s transaction.Store) error {
-		return s.IndexStore().Delete(&dirtyTagItem{TagID: u.tagID})
-	})
+	return errors.Join(
+		eg.Wait(),
+		st.Run(context.Background(), func(s transaction.Store) error {
+			return s.IndexStore().Delete(&dirtyTagItem{TagID: u.tagID})
+		}),
+	)
 }
 
 // Remove removes all the state associated with the given address and batchID.
@@ -607,7 +612,7 @@ func CleanupDirty(st transaction.Storage) error {
 // Report is the implementation of the PushReporter interface.
 func Report(
 	ctx context.Context,
-	trx transaction.Store,
+	st transaction.Store,
 	chunk swarm.Chunk,
 	state storage.ChunkState,
 ) error {
@@ -616,7 +621,7 @@ func Report(
 		BatchID: chunk.Stamp().BatchID(),
 	}
 
-	indexStore := trx.IndexStore()
+	indexStore := st.IndexStore()
 
 	err := indexStore.Get(ui)
 	if err != nil {
@@ -679,7 +684,7 @@ func Report(
 		return fmt.Errorf("failed deleting chunk stamp %x: %w", pi.BatchID, err)
 	}
 
-	err = trx.ChunkStore().Delete(ctx, chunk.Address())
+	err = st.ChunkStore().Delete(ctx, chunk.Address())
 	if err != nil {
 		return fmt.Errorf("failed deleting chunk %s: %w", chunk.Address(), err)
 	}

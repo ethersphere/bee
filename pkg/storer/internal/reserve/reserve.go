@@ -21,6 +21,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
+	"golang.org/x/sync/errgroup"
 	"resenje.org/multex"
 )
 
@@ -266,34 +267,22 @@ func (r *Reserve) EvictBatchBin(
 		return 0, err
 	}
 
-	batchCnt := 1_000
-	evictionCompleted := 0
-	defer func() {
-		r.size.Add(-int64(evictionCompleted))
-	}()
+	defer r.size.Add(-int64(len(evicted)))
 
-	for i := 0; i < len(evicted); i += batchCnt {
-		end := i + batchCnt
-		if end > len(evicted) {
-			end = len(evicted)
-		}
+	eg, ctx := errgroup.WithContext(ctx)
+	eg.SetLimit(8)
 
-		err := r.st.Run(ctx, func(s transaction.Store) error {
-			for _, item := range evicted[i:end] {
-				err = RemoveChunkWithItem(ctx, s, item)
-				if err != nil {
-					return err
-				}
-				evictionCompleted++
-			}
-			return nil
-		})
-		if err != nil {
-			return evictionCompleted, err
-		}
+	for _, item := range evicted {
+		func(item *BatchRadiusItem) {
+			eg.Go(func() error {
+				return r.st.Run(ctx, func(s transaction.Store) error {
+					return RemoveChunkWithItem(ctx, s, item)
+				})
+			})
+		}(item)
 	}
 
-	return evictionCompleted, nil
+	return len(evicted), eg.Wait()
 }
 
 func (r *Reserve) removeChunk(

@@ -97,7 +97,7 @@ func ReserveRepairer(
 				return err
 			}
 		}
-		logger.Info("removed all bin ids", "total_entries", len(chunkBinItems))
+		logger.Info("removed all chunk bin items", "total_entries", len(chunkBinItems))
 		chunkBinItems = nil
 
 		// STEP 3
@@ -122,10 +122,6 @@ func ReserveRepairer(
 		var missingChunks atomic.Int64
 		var invalidSharkyChunks atomic.Int64
 
-		// 4:19-4:28 - 9 minutes
-		// 4:30-4:36 - 6 minutes
-		// 4:38-4:43 - 5 minutes
-
 		var bins [32]uint64
 		var mtx sync.Mutex
 		newID := func(bin int) uint64 {
@@ -136,58 +132,50 @@ func ReserveRepairer(
 			return bins[bin]
 		}
 
-		batchSize = 16
+		var eg errgroup.Group
+		eg.SetLimit(8)
 
-		for i := 0; i < len(batchRadiusItems); i += batchSize {
-			end := i + batchSize
-			if end > len(batchRadiusItems) {
-				end = len(batchRadiusItems)
-			}
+		for _, item := range batchRadiusItems {
+			func(item *reserve.BatchRadiusItem) {
+				eg.Go(func() error {
+					return st.Run(context.Background(), func(s transaction.Store) error {
 
-			var eg errgroup.Group
-
-			for _, item := range batchRadiusItems[i:end] {
-				func(item *reserve.BatchRadiusItem) {
-					eg.Go(func() error {
-						return st.Run(context.Background(), func(s transaction.Store) error {
-
-							chunk, err := s.ChunkStore().Get(context.Background(), item.Address)
-							if err != nil {
-								if errors.Is(err, storage.ErrNotFound) {
-									missingChunks.Add(1)
-									return reserve.RemoveChunkWithItem(context.Background(), s, item)
-								}
-								return err
-							}
-
-							chunkType := chunkTypeFunc(chunk)
-							if chunkType == swarm.ChunkTypeUnspecified {
-								invalidSharkyChunks.Add(1)
+						chunk, err := s.ChunkStore().Get(context.Background(), item.Address)
+						if err != nil {
+							if errors.Is(err, storage.ErrNotFound) {
+								missingChunks.Add(1)
 								return reserve.RemoveChunkWithItem(context.Background(), s, item)
 							}
+							return err
+						}
 
-							item.BinID = newID(int(item.Bin))
-							err = s.IndexStore().Put(item)
-							if err != nil {
-								return err
-							}
+						chunkType := chunkTypeFunc(chunk)
+						if chunkType == swarm.ChunkTypeUnspecified {
+							invalidSharkyChunks.Add(1)
+							return reserve.RemoveChunkWithItem(context.Background(), s, item)
+						}
 
-							return s.IndexStore().Put(&reserve.ChunkBinItem{
-								BatchID: item.BatchID,
-								Bin:     item.Bin,
-								Address: item.Address,
-								BinID:   item.BinID,
-								Type:    chunkType,
-							})
+						item.BinID = newID(int(item.Bin))
+						err = s.IndexStore().Put(item)
+						if err != nil {
+							return err
+						}
+
+						return s.IndexStore().Put(&reserve.ChunkBinItem{
+							BatchID: item.BatchID,
+							Bin:     item.Bin,
+							Address: item.Address,
+							BinID:   item.BinID,
+							Type:    chunkType,
 						})
 					})
-				}(item)
-			}
+				})
+			}(item)
+		}
 
-			err := eg.Wait()
-			if err != nil {
-				return err
-			}
+		err = eg.Wait()
+		if err != nil {
+			return err
 		}
 
 		// extra test that ensure that a unique binID has been issed to each item.

@@ -84,18 +84,11 @@ type transaction struct {
 // were returned from the storage ops or commit. Safest option is to do a defer call immediately after
 // creating the transaction.
 // Calls made to the transaction are NOT thread-safe.
-// Write operations are stored in memory so that future Read operations return what is currently captured in the transaction.
-// For example, calling chunkstore.Put twice and then chunkstore.Delete once will cause the chunk to be stored with a refCnt of 1.
-// This is important for certain operations like storing the same chunk multiple times in the same transaction with the
-// expectation that the refCnt in the chunkstore correctly responds to number of Put calls.
-// Note that the indexstore iterator returns items based on the snapshot of what's currently stored on the disk, and no
-// write operations to the transaction affect what is returned from the iterator.
 func (s *store) NewTransaction(ctx context.Context) (Transaction, func()) {
 
 	b := s.bstore.Batch(ctx)
 
-	index := NewMemCache(&indexTrx{s.bstore, b, s.metrics})
-
+	index := &indexTrx{s.bstore, b, s.metrics}
 	sharky := &sharkyTrx{s.sharky, s.metrics, nil, nil}
 
 	t := &transaction{

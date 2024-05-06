@@ -14,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/encryption"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/ethersphere/bee/v2/pkg/storage/storageutil"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal"
@@ -243,31 +244,28 @@ func deleteCollectionChunks(ctx context.Context, st transaction.Storage, collect
 		return fmt.Errorf("pin store: failed iterating collection chunks: %w", err)
 	}
 
-	batchCnt := 1000
-	for i := 0; i < len(chunksToDelete); i += batchCnt {
+	eg, ctx := errgroup.WithContext(ctx)
+	eg.SetLimit(8)
 
-		err := st.Run(ctx, func(s transaction.Store) error {
-			end := i + batchCnt
-			if end > len(chunksToDelete) {
-				end = len(chunksToDelete)
-			}
+	for _, item := range chunksToDelete {
+		func(item *pinChunkItem) {
+			eg.Go(func() error {
+				return st.Run(ctx, func(s transaction.Store) error {
+					return errors.Join(
+						s.IndexStore().Delete(item),
+						s.ChunkStore().Delete(ctx, item.Addr),
+					)
+				})
+			})
 
-			for _, chunk := range chunksToDelete[i:end] {
-				err := s.IndexStore().Delete(chunk)
-				if err != nil {
-					return fmt.Errorf("pin store: failed deleting collection chunk: %w", err)
-				}
-				err = s.ChunkStore().Delete(ctx, chunk.Addr)
-				if err != nil {
-					return fmt.Errorf("pin store: failed in tx chunk deletion: %w", err)
-				}
-			}
-			return nil
-		})
-		if err != nil {
-			return fmt.Errorf("pin store: failed tx deleting collection chunks: %w", err)
-		}
+		}(item)
 	}
+
+	err = eg.Wait()
+	if err != nil {
+		return fmt.Errorf("pin store: failed tx deleting collection chunks: %w", err)
+	}
+
 	return nil
 }
 
