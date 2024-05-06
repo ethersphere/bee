@@ -267,14 +267,13 @@ func (r *Reserve) EvictBatchBin(
 		return 0, err
 	}
 
-	defer r.size.Add(-int64(len(evicted)))
-
 	eg, ctx := errgroup.WithContext(ctx)
 	eg.SetLimit(8)
 
 	for _, item := range evicted {
 		func(item *BatchRadiusItem) {
 			eg.Go(func() error {
+				defer r.size.Add(-1)
 				return r.st.Run(ctx, func(s transaction.Store) error {
 					return RemoveChunkWithItem(ctx, s, item)
 				})
