@@ -7,6 +7,7 @@ package storer
 import (
 	"context"
 
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstore"
 	pinstore "github.com/ethersphere/bee/v2/pkg/storer/internal/pinning"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
@@ -18,6 +19,7 @@ import (
 type UploadStat struct {
 	TotalUploaded uint64
 	TotalSynced   uint64
+	PendingUpload uint64
 }
 
 type PinningStat struct {
@@ -83,8 +85,9 @@ func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 	})
 
 	var (
-		uploaded uint64
-		synced   uint64
+		uploaded      uint64
+		synced        uint64
+		pendingUpload uint64
 	)
 	eg.Go(func() error {
 		return upload.IterateAllTagItems(db.storage.IndexStore(), func(ti *upload.TagItem) (bool, error) {
@@ -97,6 +100,19 @@ func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 			}
 			uploaded += ti.Split
 			synced += ti.Synced
+			return false, nil
+		})
+	})
+	eg.Go(func() error {
+		return upload.IterateAll(db.storage.IndexStore(), func(storage.Item) (bool, error) {
+			select {
+			case <-ctx.Done():
+				return true, ctx.Err()
+			case <-db.quit:
+				return true, ErrDBQuit
+			default:
+			}
+			pendingUpload++
 			return false, nil
 		})
 	})
@@ -160,6 +176,7 @@ func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 		Upload: UploadStat{
 			TotalUploaded: uploaded,
 			TotalSynced:   synced,
+			PendingUpload: pendingUpload,
 		},
 		Pinning: PinningStat{
 			TotalCollections: collections,

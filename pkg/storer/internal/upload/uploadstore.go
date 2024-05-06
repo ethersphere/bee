@@ -413,10 +413,7 @@ func (u *uploadPutter) Put(ctx context.Context, st transaction.Store, chunk swar
 	}
 
 	// Check if upload store has already seen this chunk
-	ui := &uploadItem{
-		Address: chunk.Address(),
-		BatchID: chunk.Stamp().BatchID(),
-	}
+	ui := &uploadItem{Address: chunk.Address(), BatchID: chunk.Stamp().BatchID()}
 	switch exists, err := st.IndexStore().Has(ui); {
 	case err != nil:
 		return fmt.Errorf("store has item %q call failed: %w", ui, err)
@@ -428,20 +425,8 @@ func (u *uploadPutter) Put(ctx context.Context, st transaction.Store, chunk swar
 
 	u.split++
 
-	if err := st.ChunkStore().Put(ctx, chunk); err != nil {
-		return fmt.Errorf("chunk store put chunk %q call failed: %w", chunk.Address(), err)
-	}
-
-	if err := chunkstamp.Store(st.IndexStore(), chunkStampNamespace, chunk); err != nil {
-		return fmt.Errorf("associate chunk with stamp %q call failed: %w", chunk.Address(), err)
-	}
-
 	ui.Uploaded = now().UnixNano()
 	ui.TagID = u.tagID
-
-	if err := st.IndexStore().Put(ui); err != nil {
-		return fmt.Errorf("store put item %q call failed: %w", ui, err)
-	}
 
 	pi := &pushItem{
 		Timestamp: ui.Uploaded,
@@ -449,11 +434,13 @@ func (u *uploadPutter) Put(ctx context.Context, st transaction.Store, chunk swar
 		BatchID:   chunk.Stamp().BatchID(),
 		TagID:     u.tagID,
 	}
-	if err := st.IndexStore().Put(pi); err != nil {
-		return fmt.Errorf("store put item %q call failed: %w", pi, err)
-	}
 
-	return nil
+	return errors.Join(
+		st.IndexStore().Put(ui),
+		st.IndexStore().Put(pi),
+		st.ChunkStore().Put(ctx, chunk),
+		chunkstamp.Store(st.IndexStore(), chunkStampNamespace, chunk),
+	)
 }
 
 // Close provides the CloseWithReference interface where the session can be associated
@@ -478,19 +465,12 @@ func (u *uploadPutter) Close(s storage.IndexStore, addr swarm.Address) error {
 		ti.Address = addr.Clone()
 	}
 
-	err = s.Put(ti)
-	if err != nil {
-		return fmt.Errorf("failed storing tag: %w", err)
-	}
-
-	err = s.Delete(&dirtyTagItem{TagID: u.tagID})
-	if err != nil {
-		return fmt.Errorf("failed deleting dirty tag: %w", err)
-	}
-
 	u.closed = true
 
-	return nil
+	return errors.Join(
+		s.Put(ti),
+		s.Delete(&dirtyTagItem{TagID: u.tagID}),
+	)
 }
 
 func (u *uploadPutter) Cleanup(st transaction.Storage) error {
@@ -531,8 +511,11 @@ func (u *uploadPutter) Cleanup(st transaction.Storage) error {
 		func(item *pushItem) {
 			eg.Go(func() error {
 				return st.Run(context.Background(), func(s transaction.Store) error {
+					ui := &uploadItem{Address: item.Address, BatchID: item.BatchID}
 					return errors.Join(
-						remove(s, item.Address, item.BatchID),
+						s.IndexStore().Delete(ui),
+						s.ChunkStore().Delete(context.Background(), item.Address),
+						chunkstamp.Delete(s.IndexStore(), chunkStampNamespace, item.Address, item.BatchID),
 						s.IndexStore().Delete(item),
 					)
 				})
@@ -546,42 +529,6 @@ func (u *uploadPutter) Cleanup(st transaction.Storage) error {
 			return s.IndexStore().Delete(&dirtyTagItem{TagID: u.tagID})
 		}),
 	)
-}
-
-// Remove removes all the state associated with the given address and batchID.
-func remove(st transaction.Store, address swarm.Address, batchID []byte) error {
-	ui := &uploadItem{
-		Address: address,
-		BatchID: batchID,
-	}
-
-	err := st.IndexStore().Get(ui)
-	if err != nil {
-		return fmt.Errorf("failed to read uploadItem %s: %w", ui, err)
-	}
-
-	err = st.IndexStore().Delete(ui)
-	if err != nil {
-		return fmt.Errorf("failed deleting upload item: %w", err)
-	}
-
-	if ui.Synced == 0 {
-		err = st.ChunkStore().Delete(context.Background(), address)
-		if err != nil {
-			return fmt.Errorf("failed deleting chunk: %w", err)
-		}
-
-		stamp, err := chunkstamp.LoadWithBatchID(st.IndexStore(), chunkStampNamespace, address, batchID)
-		if err != nil {
-			return fmt.Errorf("failed getting stamp: %w", err)
-		}
-
-		err = chunkstamp.DeleteWithStamp(st.IndexStore(), chunkStampNamespace, address, stamp)
-		if err != nil {
-			return fmt.Errorf("failed deleting chunk stamp %x: %w", batchID, err)
-		}
-	}
-	return nil
 }
 
 // CleanupDirty does a best-effort cleanup of dirty tags. This is called on startup.
@@ -603,23 +550,16 @@ func CleanupDirty(st transaction.Storage) error {
 	}
 
 	for _, di := range dirtyTags {
-		_ = (&uploadPutter{tagID: di.TagID}).Cleanup(st)
+		err = errors.Join(err, (&uploadPutter{tagID: di.TagID}).Cleanup(st))
 	}
 
-	return nil
+	return err
 }
 
 // Report is the implementation of the PushReporter interface.
-func Report(
-	ctx context.Context,
-	st transaction.Store,
-	chunk swarm.Chunk,
-	state storage.ChunkState,
-) error {
-	ui := &uploadItem{
-		Address: chunk.Address(),
-		BatchID: chunk.Stamp().BatchID(),
-	}
+func Report(ctx context.Context, st transaction.Store, chunk swarm.Chunk, state storage.ChunkState) error {
+
+	ui := &uploadItem{Address: chunk.Address(), BatchID: chunk.Stamp().BatchID()}
 
 	indexStore := st.IndexStore()
 
@@ -634,10 +574,7 @@ func Report(
 		return fmt.Errorf("failed to read uploadItem %s: %w", ui, err)
 	}
 
-	ti := &TagItem{
-		TagID: ui.TagID,
-	}
-
+	ti := &TagItem{TagID: ui.TagID}
 	err = indexStore.Get(ti)
 	if err != nil {
 		return fmt.Errorf("failed getting tag: %w", err)
@@ -674,27 +611,12 @@ func Report(
 		BatchID:   chunk.Stamp().BatchID(),
 	}
 
-	err = indexStore.Delete(pi)
-	if err != nil {
-		return fmt.Errorf("failed deleting pushItem %s: %w", pi, err)
-	}
-
-	err = chunkstamp.Delete(indexStore, chunkStampNamespace, pi.Address, pi.BatchID)
-	if err != nil {
-		return fmt.Errorf("failed deleting chunk stamp %x: %w", pi.BatchID, err)
-	}
-
-	err = st.ChunkStore().Delete(ctx, chunk.Address())
-	if err != nil {
-		return fmt.Errorf("failed deleting chunk %s: %w", chunk.Address(), err)
-	}
-
-	err = indexStore.Delete(ui)
-	if err != nil {
-		return fmt.Errorf("failed deleting uploadItem %s: %w", ui, err)
-	}
-
-	return nil
+	return errors.Join(
+		indexStore.Delete(pi),
+		chunkstamp.Delete(indexStore, chunkStampNamespace, pi.Address, pi.BatchID),
+		st.ChunkStore().Delete(ctx, chunk.Address()),
+		indexStore.Delete(ui),
+	)
 }
 
 var (
@@ -843,9 +765,7 @@ func IterateAll(st storage.Reader, iterateFn func(item storage.Item) (bool, erro
 func IterateAllTagItems(st storage.Reader, cb func(ti *TagItem) (bool, error)) error {
 	return st.Iterate(
 		storage.Query{
-			Factory: func() storage.Item {
-				return new(TagItem)
-			},
+			Factory: func() storage.Item { return new(TagItem) },
 		},
 		func(result storage.Result) (bool, error) {
 			ti := result.Entry.(*TagItem)
