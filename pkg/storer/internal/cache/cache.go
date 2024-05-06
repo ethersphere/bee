@@ -16,6 +16,7 @@ import (
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"golang.org/x/sync/errgroup"
 	"resenje.org/multex"
 )
 
@@ -209,40 +210,30 @@ func (c *Cache) RemoveOldest(ctx context.Context, st transaction.Storage, count 
 		return fmt.Errorf("failed iterating over cache order index: %w", err)
 	}
 
-	batchCnt := 1000
+	eg, ctx := errgroup.WithContext(ctx)
+	eg.SetLimit(8)
 
-	for i := 0; i < len(evictItems); i += batchCnt {
-		end := i + batchCnt
-		if end > len(evictItems) {
-			end = len(evictItems)
-		}
-
-		items := evictItems[i:end]
-
-		for _, item := range items {
-			c.glock.Lock(item.Address.ByteString())
-		}
-
-		_ = st.Run(ctx, func(s transaction.Store) error {
-			for _, item := range items {
-				_ = s.IndexStore().Delete(item)
-				_ = s.IndexStore().Delete(&cacheOrderIndex{
-					Address:         item.Address,
-					AccessTimestamp: item.AccessTimestamp,
+	for _, item := range evictItems {
+		func(item *cacheEntry) {
+			eg.Go(func() error {
+				c.glock.Lock(item.Address.ByteString())
+				defer c.glock.Unlock(item.Address.ByteString())
+				defer c.size.Add(-1)
+				return st.Run(ctx, func(s transaction.Store) error {
+					return errors.Join(
+						s.IndexStore().Delete(item),
+						s.IndexStore().Delete(&cacheOrderIndex{
+							Address:         item.Address,
+							AccessTimestamp: item.AccessTimestamp,
+						}),
+						s.ChunkStore().Delete(ctx, item.Address),
+					)
 				})
-				_ = s.ChunkStore().Delete(ctx, item.Address)
-			}
-			return nil
-		})
-
-		for _, entry := range items {
-			c.glock.Unlock(entry.Address.ByteString())
-		}
-
-		c.size.Add(-int64(len(items)))
+			})
+		}(item)
 	}
 
-	return nil
+	return eg.Wait()
 }
 
 // ShallowCopy creates cache entries with the expectation that the chunk already exists in the chunkstore.
