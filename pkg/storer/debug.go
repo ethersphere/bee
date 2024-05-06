@@ -39,8 +39,9 @@ type ReserveStat struct {
 }
 
 type ChunkStoreStat struct {
-	TotalChunks int
-	SharedSlots int
+	TotalChunks    int
+	SharedSlots    int
+	ReferenceCount int
 }
 
 type Info struct {
@@ -55,13 +56,14 @@ func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 	eg, ctx := errgroup.WithContext(ctx)
 
 	var (
-		totalChunks int
-		sharedSlots int
+		totalChunks  int
+		sharedSlots  int
+		referenceCnt int
 	)
 	eg.Go(func() error {
 		return chunkstore.IterateChunkEntries(
 			db.storage.IndexStore(),
-			func(_ swarm.Address, isShared bool) (bool, error) {
+			func(_ swarm.Address, cnt uint32) (bool, error) {
 				select {
 				case <-ctx.Done():
 					return true, ctx.Err()
@@ -71,7 +73,8 @@ func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 				}
 
 				totalChunks++
-				if isShared {
+				referenceCnt += int(cnt)
+				if cnt > 1 {
 					sharedSlots++
 				}
 				return false, nil
@@ -174,8 +177,9 @@ func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 			Epoch:            epoch,
 		},
 		ChunkStore: ChunkStoreStat{
-			TotalChunks: totalChunks,
-			SharedSlots: sharedSlots,
+			TotalChunks:    totalChunks,
+			SharedSlots:    sharedSlots,
+			ReferenceCount: referenceCnt,
 		},
 	}, nil
 }

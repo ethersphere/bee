@@ -162,7 +162,7 @@ func Iterate(ctx context.Context, s storage.IndexStore, sh storage.Sharky, fn st
 	)
 }
 
-func IterateChunkEntries(st storage.Reader, fn func(swarm.Address, bool) (bool, error)) error {
+func IterateChunkEntries(st storage.Reader, fn func(swarm.Address, uint32) (bool, error)) error {
 	return st.Iterate(
 		storage.Query{
 			Factory: func() storage.Item { return new(RetrievalIndexItem) },
@@ -170,8 +170,7 @@ func IterateChunkEntries(st storage.Reader, fn func(swarm.Address, bool) (bool, 
 		func(r storage.Result) (bool, error) {
 			item := r.Entry.(*RetrievalIndexItem)
 			addr := item.Address
-			isShared := item.RefCnt > 1
-			return fn(addr, isShared)
+			return fn(addr, item.RefCnt)
 		},
 	)
 }

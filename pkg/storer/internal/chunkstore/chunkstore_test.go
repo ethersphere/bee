@@ -195,9 +195,9 @@ func TestChunkStore(t *testing.T) {
 
 	t.Run("iterate chunk entries", func(t *testing.T) {
 		count, shared := 0, 0
-		err := chunkstore.IterateChunkEntries(store, func(_ swarm.Address, isShared bool) (bool, error) {
+		err := chunkstore.IterateChunkEntries(store, func(_ swarm.Address, cnt uint32) (bool, error) {
 			count++
-			if isShared {
+			if cnt > 1 {
 				shared++
 			}
 			return false, nil
