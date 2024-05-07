@@ -6,7 +6,6 @@
 Package transaction provides transaction support for localstore operations.
 All writes to the localstore (both indexstore and chunkstore) must be made using a transaction.
 The transaction must be committed for the writes to be stored on the disk.
-Writes to the transaction are cached in memory so that future Reads return the cached entries, or if not available, entries stored on the disk.
 
 The rules of the transction is as follows:
 

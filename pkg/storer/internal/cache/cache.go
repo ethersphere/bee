@@ -218,8 +218,7 @@ func (c *Cache) RemoveOldest(ctx context.Context, st transaction.Storage, count 
 			eg.Go(func() error {
 				c.glock.Lock(item.Address.ByteString())
 				defer c.glock.Unlock(item.Address.ByteString())
-				defer c.size.Add(-1)
-				return st.Run(ctx, func(s transaction.Store) error {
+				err := st.Run(ctx, func(s transaction.Store) error {
 					return errors.Join(
 						s.IndexStore().Delete(item),
 						s.IndexStore().Delete(&cacheOrderIndex{
@@ -229,6 +228,11 @@ func (c *Cache) RemoveOldest(ctx context.Context, st transaction.Storage, count 
 						s.ChunkStore().Delete(ctx, item.Address),
 					)
 				})
+				if err != nil {
+					return err
+				}
+				c.size.Add(-1)
+				return nil
 			})
 		}(item)
 	}
