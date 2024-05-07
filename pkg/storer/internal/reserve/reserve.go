@@ -242,7 +242,7 @@ func (r *Reserve) EvictBatchBin(
 	r.multx.Lock(string(batchID))
 	defer r.multx.Unlock(string(batchID))
 
-	var evicted []*BatchRadiusItem
+	var evicteditems []*BatchRadiusItem
 
 	if count <= 0 {
 		return 0, nil
@@ -256,7 +256,7 @@ func (r *Reserve) EvictBatchBin(
 		if batchRadius.Bin >= bin {
 			return true, nil
 		}
-		evicted = append(evicted, batchRadius)
+		evicteditems = append(evicteditems, batchRadius)
 		count--
 		if count == 0 {
 			return true, nil
@@ -270,7 +270,9 @@ func (r *Reserve) EvictBatchBin(
 	eg, ctx := errgroup.WithContext(ctx)
 	eg.SetLimit(8)
 
-	for _, item := range evicted {
+	var evicted atomic.Int64
+
+	for _, item := range evicteditems {
 		func(item *BatchRadiusItem) {
 			eg.Go(func() error {
 				err := r.st.Run(ctx, func(s transaction.Store) error {
@@ -279,13 +281,17 @@ func (r *Reserve) EvictBatchBin(
 				if err != nil {
 					return err
 				}
-				r.size.Add(-1)
+				evicted.Add(1)
 				return nil
 			})
 		}(item)
 	}
 
-	return len(evicted), eg.Wait()
+	err = eg.Wait()
+
+	r.size.Add(-evicted.Load())
+
+	return int(evicted.Load()), err
 }
 
 func (r *Reserve) removeChunk(
