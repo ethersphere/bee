@@ -137,7 +137,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 		// 3. Delete ALL old chunk related items from the reserve.
 		// 4. Update the stamp index.
 
-		err := r.removeChunk(ctx, trx, item.ChunkAddress, chunk.Stamp().BatchID())
+		err := removeChunk(ctx, trx, item.ChunkAddress, chunk.Stamp().BatchID(), bin)
 		if err != nil {
 			return fmt.Errorf("failed removing older chunk: %w", err)
 		}
@@ -294,14 +294,15 @@ func (r *Reserve) EvictBatchBin(
 	return int(evicted.Load()), err
 }
 
-func (r *Reserve) removeChunk(
+func removeChunk(
 	ctx context.Context,
 	trx transaction.Store,
 	chunkAddress swarm.Address,
 	batchID []byte,
+	bin uint8,
 ) error {
 	item := &BatchRadiusItem{
-		Bin:     swarm.Proximity(r.baseAddr.Bytes(), chunkAddress.Bytes()),
+		Bin:     bin,
 		BatchID: batchID,
 		Address: chunkAddress,
 	}

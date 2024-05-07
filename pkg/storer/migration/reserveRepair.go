@@ -36,7 +36,7 @@ func ReserveRepairer(
 					if the chunk is invalid, it is removed from the chunkstore
 		*/
 
-		logger.Info("starting migration for reconstructing reserve bin IDs, do not interrupt or kill the process...")
+		logger.Info("starting reserve repair tool, do not interrupt or kill the process...")
 
 		checkBinIDs := func() error {
 			// extra test that ensure that a unique binID has been issed to each item.
@@ -54,6 +54,21 @@ func ReserveRepairer(
 					if binIds[item.Bin][item.BinID] > 1 {
 						return false, fmt.Errorf("binID %d in bin %d already used", item.BinID, item.Bin)
 					}
+
+					bItem := &reserve.BatchRadiusItem{
+						BatchID: item.BatchID,
+						Address: item.Address,
+						Bin:     item.Bin,
+					}
+					err := st.IndexStore().Get(bItem)
+					if err != nil {
+						return false, fmt.Errorf("batch radius item missing: %w", err)
+					}
+
+					if item.BinID != bItem.BinID {
+						return false, fmt.Errorf("binIds do not match")
+					}
+
 					return false, nil
 				},
 			)
@@ -210,7 +225,14 @@ func ReserveRepairer(
 			return err
 		}
 
-		logger.Info("migrated all chunk entries", "new_size", len(batchRadiusItems)-int(missingChunks.Load()), "missing_chunks", missingChunks.Load(), "invalid_sharky_chunks", invalidSharkyChunks.Load())
+		batchRadiusCnt, _ := st.IndexStore().Count(&reserve.BatchRadiusItem{})
+		chunkBinCnt, _ := st.IndexStore().Count(&reserve.ChunkBinItem{})
+
+		if batchRadiusCnt != chunkBinCnt {
+			logger.Warning("index counts do not match")
+		}
+
+		logger.Info("migrated all chunk entries", "new_size", batchRadiusCnt, "missing_chunks", missingChunks.Load(), "invalid_sharky_chunks", invalidSharkyChunks.Load())
 		return nil
 	}
 }
