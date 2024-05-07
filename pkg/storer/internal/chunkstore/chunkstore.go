@@ -71,9 +71,8 @@ func Has(_ context.Context, r storage.Reader, addr swarm.Address) (bool, error) 
 
 func Put(ctx context.Context, s storage.IndexStore, sh storage.Sharky, ch swarm.Chunk) error {
 	var (
-		rIdx  = &RetrievalIndexItem{Address: ch.Address()}
-		loc   sharky.Location
-		found = true
+		rIdx = &RetrievalIndexItem{Address: ch.Address()}
+		loc  sharky.Location
 	)
 	err := s.Get(rIdx)
 	switch {
@@ -86,29 +85,13 @@ func Put(ctx context.Context, s storage.IndexStore, sh storage.Sharky, ch swarm.
 		}
 		rIdx.Location = loc
 		rIdx.Timestamp = uint64(time.Now().Unix())
-		found = false
 	case err != nil:
 		return fmt.Errorf("chunk store: failed to read: %w", err)
 	}
 
 	rIdx.RefCnt++
 
-	err = func() error {
-		err = s.Put(rIdx)
-		if err != nil {
-			return fmt.Errorf("chunk store: failed to update retrievalIndex: %w", err)
-		}
-		return nil
-	}()
-
-	if err != nil && !found {
-		return errors.Join(
-			err,
-			sh.Release(context.Background(), loc),
-		)
-	}
-
-	return nil
+	return s.Put(rIdx)
 }
 
 func Delete(ctx context.Context, s storage.IndexStore, sh storage.Sharky, addr swarm.Address) error {
@@ -131,20 +114,10 @@ func Delete(ctx context.Context, s storage.IndexStore, sh storage.Sharky, addr s
 		return nil
 	}
 
-	// Delete the chunk.
-	err = sh.Release(ctx, rIdx.Location)
-	if err != nil {
-		return fmt.Errorf(
-			"chunk store: failed to release sharky slot %v for address %s: %w",
-			rIdx.Location, rIdx.Address, err,
-		)
-	}
-	err = s.Delete(rIdx)
-	if err != nil {
-		return fmt.Errorf("chunk store: failed to delete retrievalIndex for address %s: %w", addr, err)
-	}
-
-	return nil
+	return errors.Join(
+		sh.Release(ctx, rIdx.Location),
+		s.Delete(rIdx),
+	)
 }
 
 func Iterate(ctx context.Context, s storage.IndexStore, sh storage.Sharky, fn storage.IterateChunkFn) error {

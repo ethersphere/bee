@@ -168,6 +168,7 @@ func (t *transaction) Commit() (err error) {
 	err = t.batch.Commit()
 	h(err)
 	if err != nil {
+		// since the batch commit has failed, we must release the written chunks from sharky.
 		for _, l := range t.sharkyTrx.writtenLocs {
 			if rerr := t.sharkyTrx.sharky.Release(context.TODO(), l); rerr != nil {
 				err = errors.Join(err, fmt.Errorf("failed releasing location during commit rollback %s: %w", l, rerr))
@@ -176,6 +177,7 @@ func (t *transaction) Commit() (err error) {
 		return err
 	}
 
+	// the batch commit was successful, we can now release the accumulated locations from sharky.
 	for _, l := range t.sharkyTrx.releasedLocs {
 		h := handleMetric("sharky_release", t.metrics)
 		rerr := t.sharkyTrx.sharky.Release(context.TODO(), l)
