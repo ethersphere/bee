@@ -7,6 +7,7 @@ package migration
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 
@@ -37,8 +38,34 @@ func ReserveRepairer(
 
 		logger.Info("starting migration for reconstructing reserve bin IDs, do not interrupt or kill the process...")
 
+		checkBinIDs := func() error {
+			// extra test that ensure that a unique binID has been issed to each item.
+			binIds := make(map[uint8]map[uint64]int)
+			return st.IndexStore().Iterate(
+				storage.Query{
+					Factory: func() storage.Item { return &reserve.ChunkBinItem{} },
+				},
+				func(res storage.Result) (bool, error) {
+					item := res.Entry.(*reserve.ChunkBinItem)
+					if _, ok := binIds[item.Bin]; !ok {
+						binIds[item.Bin] = make(map[uint64]int)
+					}
+					binIds[item.Bin][item.BinID]++
+					if binIds[item.Bin][item.BinID] > 1 {
+						return false, fmt.Errorf("binID %d in bin %d already used", item.BinID, item.Bin)
+					}
+					return false, nil
+				},
+			)
+		}
+
+		err := checkBinIDs()
+		if err != nil {
+			logger.Error(err, "check failed")
+		}
+
 		// STEP 0
-		err := st.Run(context.Background(), func(s transaction.Store) error {
+		err = st.Run(context.Background(), func(s transaction.Store) error {
 			return s.IndexStore().Delete(&reserve.EpochItem{})
 		})
 		if err != nil {
@@ -178,25 +205,7 @@ func ReserveRepairer(
 			return err
 		}
 
-		// extra test that ensure that a unique binID has been issed to each item.
-		binIds := make(map[uint8]map[uint64]int)
-		err = st.IndexStore().Iterate(
-			storage.Query{
-				Factory: func() storage.Item { return &reserve.ChunkBinItem{} },
-			},
-			func(res storage.Result) (bool, error) {
-				item := res.Entry.(*reserve.ChunkBinItem)
-				if _, ok := binIds[item.Bin]; !ok {
-					binIds[item.Bin] = make(map[uint64]int)
-				}
-				binIds[item.Bin][item.BinID]++
-				if binIds[item.Bin][item.BinID] > 1 {
-					return false, errors.New("already used binID")
-				}
-
-				return false, nil
-			},
-		)
+		err = checkBinIDs()
 		if err != nil {
 			return err
 		}
