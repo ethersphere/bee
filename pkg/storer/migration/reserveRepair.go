@@ -159,7 +159,7 @@ func ReserveRepairer(
 			return err
 		}
 
-		logger.Info("found reserve chunk entries, adding new entries", "total_entries", len(batchRadiusItems))
+		logger.Info("counted all batch radius entries", "total_entries", len(batchRadiusItems))
 
 		var missingChunks atomic.Int64
 		var invalidSharkyChunks atomic.Int64
