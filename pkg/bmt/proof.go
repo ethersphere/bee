@@ -46,7 +46,8 @@ func (p Prover) Proof(i int) Proof {
 
 	secsize := 2 * p.segmentSize
 	offset := i * secsize
-	section := p.bmt.buffer[offset : offset+secsize]
+	section := make([]byte, secsize)
+	copy(section, p.bmt.buffer[offset:offset+secsize])
 	segment, firstSegmentSister := section[:p.segmentSize], section[p.segmentSize:]
 	if index%2 != 0 {
 		segment, firstSegmentSister = firstSegmentSister, segment
