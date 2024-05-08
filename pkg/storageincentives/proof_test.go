@@ -43,7 +43,7 @@ var testData []byte
 
 // Test asserts that MakeInclusionProofs will generate the same
 // output for given sample.
-func TestMakeInclusionProofsRegression_FLAKY(t *testing.T) {
+func TestMakeInclusionProofsRegression(t *testing.T) {
 	t.Parallel()
 
 	const sampleSize = 16
