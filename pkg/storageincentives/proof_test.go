@@ -121,7 +121,7 @@ func TestMakeInclusionProofsRegression_FLAKY(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if diff := cmp.Diff(proofs, expectedProofs); diff != "" {
+	if diff := cmp.Diff(expectedProofs, proofs); diff != "" {
 		t.Fatalf("unexpected inclusion proofs (-want +have):\n%s", diff)
 	}
 }
