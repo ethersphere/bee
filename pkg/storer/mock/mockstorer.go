@@ -9,7 +9,6 @@ import (
 	"sync"
 	"time"
 
-	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
 	"github.com/ethersphere/bee/v2/pkg/pusher"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
@@ -135,10 +134,6 @@ func (m *mockStorer) ListSessions(offset, limit int) ([]storer.SessionInfo, erro
 		sessions = append(sessions, *v)
 	}
 	return sessions, nil
-}
-
-func (m *mockStorer) BatchHint(_ swarm.Address) ([]byte, error) {
-	return postagetesting.MustNewID(), nil
 }
 
 func (m *mockStorer) DeletePin(_ context.Context, address swarm.Address) error {

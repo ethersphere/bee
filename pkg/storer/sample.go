@@ -177,8 +177,8 @@ func (db *DB) ReserveSample(
 				}
 
 				// Skip chunks if they are not SOC or CAC
-				if chItem.Type != swarm.ChunkTypeSingleOwner &&
-					chItem.Type != swarm.ChunkTypeContentAddressed {
+				if chItem.ChunkType != swarm.ChunkTypeSingleOwner &&
+					chItem.ChunkType != swarm.ChunkTypeContentAddressed {
 					wstat.RogueChunk++
 					continue
 				}
@@ -195,7 +195,7 @@ func (db *DB) ReserveSample(
 				wstat.ChunkLoadDuration += time.Since(chunkLoadStart)
 
 				taddrStart := time.Now()
-				taddr, err := transformedAddress(hasher, chunk, chItem.Type)
+				taddr, err := transformedAddress(hasher, chunk, chItem.ChunkType)
 				if err != nil {
 					return err
 				}

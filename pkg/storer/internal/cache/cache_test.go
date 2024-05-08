@@ -15,9 +15,10 @@ import (
 	"time"
 
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemstore"
 	"github.com/ethersphere/bee/v2/pkg/storage/storagetest"
 	chunktest "github.com/ethersphere/bee/v2/pkg/storage/testing"
-	"github.com/ethersphere/bee/v2/pkg/storer/internal"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/cache"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -85,11 +86,6 @@ func TestCacheEntryItem(t *testing.T) {
 			})
 		})
 	}
-}
-
-func newTestStorage(t *testing.T) transaction.Storage {
-	t.Helper()
-	return internal.NewInmemStorage()
 }
 
 type timeProvider struct {
@@ -247,6 +243,59 @@ func TestCache(t *testing.T) {
 				}
 				verifyCacheState(t, st.IndexStore(), c, state.Head, state.Tail, state.Size)
 			}
+		})
+
+		t.Run("handle error", func(t *testing.T) {
+			t.Parallel()
+
+			st := newTestStorage(t)
+			c, err := cache.New(context.TODO(), st.IndexStore(), 10)
+			if err != nil {
+				t.Fatal(err)
+			}
+
+			chunks := chunktest.GenerateTestRandomChunks(5)
+
+			for _, ch := range chunks {
+				err := c.Putter(st).Put(context.TODO(), ch)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			// return error for state update, which occurs at the end of Get/Put operations
+			retErr := errors.New("dummy error")
+
+			st.indexStore.putFn = func(i storage.Item) error {
+				if i.Namespace() == "cacheOrderIndex" {
+					return retErr
+				}
+
+				return st.indexStore.IndexStore.Put(i)
+			}
+
+			// on error the cache expects the overarching transactions to clean itself up
+			// and undo any store updates. So here we only want to ensure the state is
+			// reverted to correct one.
+			t.Run("put error handling", func(t *testing.T) {
+				newChunk := chunktest.GenerateTestRandomChunk()
+				err := c.Putter(st).Put(context.TODO(), newChunk)
+				if !errors.Is(err, retErr) {
+					t.Fatalf("expected error %v during put, found %v", retErr, err)
+				}
+
+				// state should be preserved on failure
+				verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[4].Address(), 5)
+			})
+
+			t.Run("get error handling", func(t *testing.T) {
+				_, err := c.Getter(st).Get(context.TODO(), chunks[2].Address())
+				if !errors.Is(err, retErr) {
+					t.Fatalf("expected error %v during get, found %v", retErr, err)
+				}
+
+				// state should be preserved on failure
+				verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[4].Address(), 5)
+			})
 		})
 	})
 }
@@ -528,4 +577,55 @@ func verifyChunksExist(
 			t.Fatalf("chunk %s expected to be found but not exists", ch.Address())
 		}
 	}
+}
+
+type inmemStorage struct {
+	indexStore *customIndexStore
+	chunkStore storage.ChunkStore
+}
+
+func newTestStorage(t *testing.T) *inmemStorage {
+	t.Helper()
+
+	ts := &inmemStorage{
+		indexStore: &customIndexStore{inmemstore.New(), nil},
+		chunkStore: inmemchunkstore.New(),
+	}
+
+	return ts
+}
+
+type customIndexStore struct {
+	storage.IndexStore
+	putFn func(storage.Item) error
+}
+
+func (s *customIndexStore) Put(i storage.Item) error {
+	if s.putFn != nil {
+		return s.putFn(i)
+	}
+	return s.IndexStore.Put(i)
+}
+
+func (t *inmemStorage) NewTransaction(ctx context.Context) (transaction.Transaction, func()) {
+	return &inmemTrx{t.indexStore, t.chunkStore}, func() {}
+}
+
+type inmemTrx struct {
+	indexStore storage.IndexStore
+	chunkStore storage.ChunkStore
+}
+
+func (t *inmemStorage) IndexStore() storage.Reader             { return t.indexStore }
+func (t *inmemStorage) ChunkStore() storage.ReadOnlyChunkStore { return t.chunkStore }
+
+func (t *inmemTrx) IndexStore() storage.IndexStore { return t.indexStore }
+func (t *inmemTrx) ChunkStore() storage.ChunkStore { return t.chunkStore }
+func (t *inmemTrx) Commit() error                  { return nil }
+
+func (t *inmemStorage) Close() error { return nil }
+func (t *inmemStorage) Run(ctx context.Context, f func(s transaction.Store) error) error {
+	trx, done := t.NewTransaction(ctx)
+	defer done()
+	return f(trx)
 }

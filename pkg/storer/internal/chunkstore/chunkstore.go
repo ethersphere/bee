@@ -162,8 +162,10 @@ type IterateResult struct {
 func IterateLocations(
 	ctx context.Context,
 	st storage.Reader,
-	locationResultC chan<- LocationResult,
-) {
+) <-chan LocationResult {
+
+	locationResultC := make(chan LocationResult)
+
 	go func() {
 		defer close(locationResultC)
 
@@ -190,6 +192,8 @@ func IterateLocations(
 			}
 		}
 	}()
+
+	return locationResultC
 }
 
 // Iterate iterates over entire retrieval index with a call back.

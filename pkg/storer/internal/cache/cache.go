@@ -253,12 +253,17 @@ func (c *Cache) ShallowCopy(
 
 	defer func() {
 		if err != nil {
-			_ = store.Run(context.Background(), func(s transaction.Store) error {
-				for _, entry := range entries {
-					err = errors.Join(s.ChunkStore().Delete(context.Background(), entry.Address))
-				}
-				return nil
-			})
+			err = errors.Join(err,
+				store.Run(context.Background(), func(s transaction.Store) error {
+					for _, entry := range entries {
+						dErr := s.ChunkStore().Delete(context.Background(), entry.Address)
+						if dErr != nil {
+							return dErr
+						}
+					}
+					return nil
+				}),
+			)
 		}
 	}()
 

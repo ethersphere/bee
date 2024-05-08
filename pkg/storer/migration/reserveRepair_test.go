@@ -45,10 +45,10 @@ func TestReserveRepair(t *testing.T) {
 			cb := &reserve.ChunkBinItem{
 				Bin: uint8(b),
 				// Assign 0 binID to all items to see if migration fixes this
-				BinID:   0,
-				Address: ch.Address(),
-				BatchID: ch.Stamp().BatchID(),
-				Type:    swarm.ChunkTypeContentAddressed,
+				BinID:     0,
+				Address:   ch.Address(),
+				BatchID:   ch.Stamp().BatchID(),
+				ChunkType: swarm.ChunkTypeContentAddressed,
 			}
 			err := store.Run(context.Background(), func(s transaction.Store) error {
 				return s.IndexStore().Put(cb)
@@ -94,7 +94,7 @@ func TestReserveRepair(t *testing.T) {
 		storage.Query{Factory: func() storage.Item { return &reserve.ChunkBinItem{} }},
 		func(res storage.Result) (stop bool, err error) {
 			cb := res.Entry.(*reserve.ChunkBinItem)
-			if cb.Type != swarm.ChunkTypeContentAddressed {
+			if cb.ChunkType != swarm.ChunkTypeContentAddressed {
 				return false, errors.New("chunk type should be content addressed")
 			}
 			binIDs[cb.Bin] = append(binIDs[cb.Bin], cb.BinID)

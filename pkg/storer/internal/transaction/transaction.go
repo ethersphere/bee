@@ -82,6 +82,7 @@ type transaction struct {
 // The callback function must be the final call of the transaction whether or not any errors
 // were returned from the storage ops or commit. Safest option is to do a defer call immediately after
 // creating the transaction.
+// By design, it is best to not batch too many writes to a single transaction, including multiple chunks writes.
 // Calls made to the transaction are NOT thread-safe.
 func (s *store) NewTransaction(ctx context.Context) (Transaction, func()) {
 
@@ -127,6 +128,7 @@ func (s *store) ChunkStore() storage.ReadOnlyChunkStore {
 // Run creates a new transaction and gives the caller access to the transaction
 // in the form of a callback function. After the callback returns, the transaction
 // is committed to the disk. See the NewTransaction method for more details on how transactions operate internally.
+// By design, it is best to not batch too many writes to a single transaction, including multiple chunks writes.
 // Calls made to the transaction are NOT thread-safe.
 func (s *store) Run(ctx context.Context, f func(Store) error) error {
 	trx, done := s.NewTransaction(ctx)
@@ -154,7 +156,7 @@ func (t *transaction) Commit() (err error) {
 		t.metrics.MethodDuration.WithLabelValues("transaction", "success").Observe(time.Since(t.start).Seconds())
 	}()
 
-	defer handleMetric("commit", t.metrics)(err)
+	defer handleMetric("commit", t.metrics)(&err)
 	defer func() {
 		for addr := range t.chunkStore.lockedAddrs {
 			t.chunkStore.globalLocker.Unlock(addr)
@@ -165,7 +167,7 @@ func (t *transaction) Commit() (err error) {
 
 	h := handleMetric("batch_commit", t.metrics)
 	err = t.batch.Commit()
-	h(err)
+	h(&err)
 	if err != nil {
 		// since the batch commit has failed, we must release the written chunks from sharky.
 		for _, l := range t.sharkyTrx.writtenLocs {
@@ -180,7 +182,7 @@ func (t *transaction) Commit() (err error) {
 	for _, l := range t.sharkyTrx.releasedLocs {
 		h := handleMetric("sharky_release", t.metrics)
 		rerr := t.sharkyTrx.sharky.Release(context.TODO(), l)
-		h(rerr)
+		h(&rerr)
 		if rerr != nil {
 			err = errors.Join(err, fmt.Errorf("failed releasing location afer commit %s: %w", l, rerr))
 		}
@@ -211,32 +213,32 @@ type chunkStoreTrx struct {
 }
 
 func (c *chunkStoreTrx) Get(ctx context.Context, addr swarm.Address) (ch swarm.Chunk, err error) {
-	defer handleMetric("chunkstore_get", c.metrics)(err)
+	defer handleMetric("chunkstore_get", c.metrics)(&err)
 	unlock := c.lock(addr)
 	defer unlock()
 	ch, err = chunkstore.Get(ctx, c.indexStore, c.sharkyTrx, addr)
 	return ch, err
 }
 func (c *chunkStoreTrx) Has(ctx context.Context, addr swarm.Address) (_ bool, err error) {
-	defer handleMetric("chunkstore_has", c.metrics)(err)
+	defer handleMetric("chunkstore_has", c.metrics)(&err)
 	unlock := c.lock(addr)
 	defer unlock()
 	return chunkstore.Has(ctx, c.indexStore, addr)
 }
 func (c *chunkStoreTrx) Put(ctx context.Context, ch swarm.Chunk) (err error) {
-	defer handleMetric("chunkstore_put", c.metrics)(err)
+	defer handleMetric("chunkstore_put", c.metrics)(&err)
 	unlock := c.lock(ch.Address())
 	defer unlock()
 	return chunkstore.Put(ctx, c.indexStore, c.sharkyTrx, ch)
 }
 func (c *chunkStoreTrx) Delete(ctx context.Context, addr swarm.Address) (err error) {
-	defer handleMetric("chunkstore_delete", c.metrics)(err)
+	defer handleMetric("chunkstore_delete", c.metrics)(&err)
 	unlock := c.lock(addr)
 	defer unlock()
 	return chunkstore.Delete(ctx, c.indexStore, c.sharkyTrx, addr)
 }
 func (c *chunkStoreTrx) Iterate(ctx context.Context, fn storage.IterateChunkFn) (err error) {
-	defer handleMetric("chunkstore_iterate", c.metrics)(err)
+	defer handleMetric("chunkstore_iterate", c.metrics)(&err)
 	return chunkstore.Iterate(ctx, c.indexStore, c.sharkyTrx, fn)
 }
 
@@ -266,7 +268,7 @@ func (s *indexTrx) Get(i storage.Item) error           { return s.store.Get(i) }
 func (s *indexTrx) Has(k storage.Key) (bool, error)    { return s.store.Has(k) }
 func (s *indexTrx) GetSize(k storage.Key) (int, error) { return s.store.GetSize(k) }
 func (s *indexTrx) Iterate(q storage.Query, f storage.IterateFn) (err error) {
-	defer handleMetric("iterate", s.metrics)(err)
+	defer handleMetric("iterate", s.metrics)(&err)
 	return s.store.Iterate(q, f)
 }
 func (s *indexTrx) Count(k storage.Key) (int, error) { return s.store.Count(k) }
@@ -281,12 +283,12 @@ type sharkyTrx struct {
 }
 
 func (s *sharkyTrx) Read(ctx context.Context, loc sharky.Location, buf []byte) (err error) {
-	defer handleMetric("sharky_read", s.metrics)(err)
+	defer handleMetric("sharky_read", s.metrics)(&err)
 	return s.sharky.Read(ctx, loc, buf)
 }
 
 func (s *sharkyTrx) Write(ctx context.Context, data []byte) (_ sharky.Location, err error) {
-	defer handleMetric("sharky_write", s.metrics)(err)
+	defer handleMetric("sharky_write", s.metrics)(&err)
 	loc, err := s.sharky.Write(ctx, data)
 	if err != nil {
 		return sharky.Location{}, err
@@ -301,10 +303,10 @@ func (s *sharkyTrx) Release(ctx context.Context, loc sharky.Location) error {
 	return nil
 }
 
-func handleMetric(key string, m metrics) func(err error) {
+func handleMetric(key string, m metrics) func(*error) {
 	t := time.Now()
-	return func(err error) {
-		if err != nil {
+	return func(err *error) {
+		if err != nil && *err != nil {
 			m.MethodCalls.WithLabelValues(key, "failure").Inc()
 			m.MethodDuration.WithLabelValues(key, "failure").Observe(time.Since(t).Seconds())
 		} else {

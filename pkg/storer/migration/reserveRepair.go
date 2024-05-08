@@ -150,7 +150,7 @@ func ReserveRepairer(
 		var missingChunks atomic.Int64
 		var invalidSharkyChunks atomic.Int64
 
-		var bins [32]uint64
+		var bins [swarm.MaxBins]uint64
 		var mtx sync.Mutex
 		newID := func(bin int) uint64 {
 			mtx.Lock()
@@ -190,11 +190,11 @@ func ReserveRepairer(
 						}
 
 						return s.IndexStore().Put(&reserve.ChunkBinItem{
-							BatchID: item.BatchID,
-							Bin:     item.Bin,
-							Address: item.Address,
-							BinID:   item.BinID,
-							Type:    chunkType,
+							BatchID:   item.BatchID,
+							Bin:       item.Bin,
+							Address:   item.Address,
+							BinID:     item.BinID,
+							ChunkType: chunkType,
 						})
 					})
 				})
@@ -225,8 +225,15 @@ func ReserveRepairer(
 			return err
 		}
 
-		batchRadiusCnt, _ := st.IndexStore().Count(&reserve.BatchRadiusItem{})
-		chunkBinCnt, _ := st.IndexStore().Count(&reserve.ChunkBinItem{})
+		batchRadiusCnt, err := st.IndexStore().Count(&reserve.BatchRadiusItem{})
+		if err != nil {
+			return err
+		}
+
+		chunkBinCnt, err := st.IndexStore().Count(&reserve.ChunkBinItem{})
+		if err != nil {
+			return err
+		}
 
 		if batchRadiusCnt != chunkBinCnt {
 			return errors.New("index counts do not match")

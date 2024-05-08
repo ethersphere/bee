@@ -169,11 +169,11 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 		}
 
 		err = s.IndexStore().Put(&ChunkBinItem{
-			Bin:     bin,
-			BinID:   binID,
-			Address: chunk.Address(),
-			BatchID: chunk.Stamp().BatchID(),
-			Type:    storage.ChunkType(chunk),
+			Bin:       bin,
+			BinID:     binID,
+			Address:   chunk.Address(),
+			BatchID:   chunk.Stamp().BatchID(),
+			ChunkType: storage.ChunkType(chunk),
 		})
 		if err != nil {
 			return err

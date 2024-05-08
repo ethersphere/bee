@@ -362,8 +362,7 @@ func TestIterateLocations(t *testing.T) {
 	}
 
 	readCount := 0
-	respC := make(chan chunkstore.LocationResult, chunksCount)
-	chunkstore.IterateLocations(ctx, st.IndexStore(), respC)
+	respC := chunkstore.IterateLocations(ctx, st.IndexStore())
 
 	for resp := range respC {
 		assert.NoError(t, resp.Err)
@@ -396,8 +395,7 @@ func TestIterateLocations_Stop(t *testing.T) {
 	}
 
 	readCount := 0
-	respC := make(chan chunkstore.LocationResult)
-	chunkstore.IterateLocations(ctx, st.IndexStore(), respC)
+	respC := chunkstore.IterateLocations(ctx, st.IndexStore())
 
 	for resp := range respC {
 		if resp.Err != nil {

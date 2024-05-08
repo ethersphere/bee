@@ -257,6 +257,7 @@ func dbRepairReserve(cmd *cobra.Command) {
 			logger.Warning("Repair will recreate the reserve entries based on the chunk availability in the chunkstore. The epoch time and bin IDs will be reset.")
 			logger.Warning("The pullsync peer sync intervals are reset so on the next run, the node will perform historical syncing.")
 			logger.Warning("This is a destructive process. If the process is stopped for any reason, the reserve may become corrupted.")
+			logger.Warning("To prevent permanent loss of data, data should be backed up before running the cmd.")
 			logger.Warning("You have another 10 seconds to change your mind and kill this process with CTRL-C...")
 			time.Sleep(10 * time.Second)
 			logger.Warning("proceeding with repair...")

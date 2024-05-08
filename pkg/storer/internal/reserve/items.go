@@ -102,11 +102,11 @@ func (b *BatchRadiusItem) Unmarshal(buf []byte) error {
 // ChunkBinItem allows for iterating on ranges of bin and binIDs for chunks.
 // BinIDs come in handy when syncing the reserve contents with other peers.
 type ChunkBinItem struct {
-	Bin     uint8
-	BinID   uint64
-	Address swarm.Address
-	BatchID []byte
-	Type    swarm.ChunkType
+	Bin       uint8
+	BinID     uint64
+	Address   swarm.Address
+	BatchID   []byte
+	ChunkType swarm.ChunkType
 }
 
 func (c *ChunkBinItem) Namespace() string {
@@ -133,11 +133,11 @@ func (c *ChunkBinItem) Clone() storage.Item {
 		return nil
 	}
 	return &ChunkBinItem{
-		Bin:     c.Bin,
-		BinID:   c.BinID,
-		Address: c.Address.Clone(),
-		BatchID: copyBytes(c.BatchID),
-		Type:    c.Type,
+		Bin:       c.Bin,
+		BinID:     c.BinID,
+		Address:   c.Address.Clone(),
+		BatchID:   copyBytes(c.BatchID),
+		ChunkType: c.ChunkType,
 	}
 }
 
@@ -164,7 +164,7 @@ func (c *ChunkBinItem) Marshal() ([]byte, error) {
 	copy(buf[i:i+swarm.HashSize], c.BatchID)
 	i += swarm.HashSize
 
-	buf[i] = uint8(c.Type)
+	buf[i] = uint8(c.ChunkType)
 
 	return buf, nil
 }
@@ -188,7 +188,7 @@ func (c *ChunkBinItem) Unmarshal(buf []byte) error {
 	c.BatchID = copyBytes(buf[i : i+swarm.HashSize])
 	i += swarm.HashSize
 
-	c.Type = swarm.ChunkType(buf[i])
+	c.ChunkType = swarm.ChunkType(buf[i])
 
 	return nil
 }

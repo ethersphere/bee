@@ -39,7 +39,7 @@ const (
 	IntervalPrefix = "sync_interval"
 	recalcPeersDur = time.Minute * 5
 
-	maxChunksPerSecond = 1000
+	maxChunksPerSecond = 1000 // roughly 4 MB/s
 )
 
 type Options struct {

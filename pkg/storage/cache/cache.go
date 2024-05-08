@@ -38,15 +38,6 @@ func Wrap(store storage.IndexStore, capacity int) (*Cache, error) {
 	return &Cache{store, lru, newMetrics()}, nil
 }
 
-// MustWrap is like Wrap but panics on error.
-func MustWrap(store storage.IndexStore, capacity int) *Cache {
-	c, err := Wrap(store, capacity)
-	if err != nil {
-		panic(err)
-	}
-	return c
-}
-
 // add caches given item.
 func (c *Cache) add(i storage.Item) {
 	b, err := i.Marshal()
