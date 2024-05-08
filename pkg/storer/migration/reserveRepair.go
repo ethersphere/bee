@@ -31,9 +31,10 @@ func ReserveRepairer(
 			STEP 0:	remove epoch item
 			STEP 1:	remove all of the BinItem entires
 			STEP 2:	remove all of the ChunkBinItem entries
-			STEP 3:	iterate BatchRadiusItem, get new binID using IncBinID,
+			STEP 3:	iterate BatchRadiusItem, get new binID
 					create new ChunkBinItem and BatchRadiusItem if the chunk exists in the chunkstore
 					if the chunk is invalid, it is removed from the chunkstore
+			STEP 4: save the latest binID to disk
 		*/
 
 		logger.Info("starting reserve repair tool, do not interrupt or kill the process...")
@@ -54,21 +55,6 @@ func ReserveRepairer(
 					if binIds[item.Bin][item.BinID] > 1 {
 						return false, fmt.Errorf("binID %d in bin %d already used", item.BinID, item.Bin)
 					}
-
-					bItem := &reserve.BatchRadiusItem{
-						BatchID: item.BatchID,
-						Address: item.Address,
-						Bin:     item.Bin,
-					}
-					err := st.IndexStore().Get(bItem)
-					if err != nil {
-						return false, fmt.Errorf("batch radius item missing: %w", err)
-					}
-
-					if item.BinID != bItem.BinID {
-						return false, fmt.Errorf("binIds do not match")
-					}
-
 					return false, nil
 				},
 			)
@@ -220,6 +206,20 @@ func ReserveRepairer(
 			return err
 		}
 
+		// STEP 4
+		err = st.Run(context.Background(), func(s transaction.Store) error {
+			for bin, id := range bins {
+				err := s.IndexStore().Put(&reserve.BinItem{Bin: uint8(bin), BinID: id})
+				if err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+
 		err = checkBinIDs()
 		if err != nil {
 			return err
@@ -229,7 +229,7 @@ func ReserveRepairer(
 		chunkBinCnt, _ := st.IndexStore().Count(&reserve.ChunkBinItem{})
 
 		if batchRadiusCnt != chunkBinCnt {
-			logger.Warning("index counts do not match")
+			return errors.New("index counts do not match")
 		}
 
 		logger.Info("migrated all chunk entries", "new_size", batchRadiusCnt, "missing_chunks", missingChunks.Load(), "invalid_sharky_chunks", invalidSharkyChunks.Load())

@@ -114,6 +114,10 @@ func TestReserveRepair(t *testing.T) {
 		assert.Len(t, binIDs[uint8(b)], 2)
 		for idx, binID := range binIDs[uint8(b)] {
 			assert.Equal(t, uint64(idx+1), binID)
+
+			item := &reserve.BinItem{Bin: uint8(b)}
+			_ = store.IndexStore().Get(item)
+			assert.Equal(t, item.BinID, uint64(2))
 		}
 	}
 
