@@ -10,6 +10,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"runtime"
 
 	"github.com/ethersphere/bee/v2/pkg/encryption"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
@@ -245,7 +246,7 @@ func deleteCollectionChunks(ctx context.Context, st transaction.Storage, collect
 	}
 
 	eg, ctx := errgroup.WithContext(ctx)
-	eg.SetLimit(8)
+	eg.SetLimit(runtime.NumCPU())
 
 	for _, item := range chunksToDelete {
 		func(item *pinChunkItem) {

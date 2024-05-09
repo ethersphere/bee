@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"runtime"
 	"strconv"
 	"sync/atomic"
 	"time"
@@ -257,7 +258,7 @@ func (r *Reserve) EvictBatchBin(
 	}
 
 	eg, ctx := errgroup.WithContext(ctx)
-	eg.SetLimit(8)
+	eg.SetLimit(runtime.NumCPU())
 
 	var evicted atomic.Int64
 

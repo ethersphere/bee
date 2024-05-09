@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"runtime"
 	"strconv"
 	"sync/atomic"
 	"time"
@@ -211,7 +212,7 @@ func (c *Cache) RemoveOldest(ctx context.Context, st transaction.Storage, count 
 	}
 
 	eg, ctx := errgroup.WithContext(ctx)
-	eg.SetLimit(8)
+	eg.SetLimit(runtime.NumCPU())
 
 	for _, item := range evictItems {
 		func(item *cacheEntry) {

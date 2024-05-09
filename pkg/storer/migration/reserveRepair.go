@@ -8,6 +8,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
 	"sync"
 	"sync/atomic"
 
@@ -161,7 +162,7 @@ func ReserveRepairer(
 		}
 
 		var eg errgroup.Group
-		eg.SetLimit(8)
+		eg.SetLimit(runtime.NumCPU())
 
 		for _, item := range batchRadiusItems {
 			func(item *reserve.BatchRadiusItem) {

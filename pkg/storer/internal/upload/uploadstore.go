@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"runtime"
 	"strconv"
 	"time"
 
@@ -505,7 +506,7 @@ func (u *uploadPutter) Cleanup(st transaction.Storage) error {
 	}
 
 	var eg errgroup.Group
-	eg.SetLimit(8)
+	eg.SetLimit(runtime.NumCPU())
 
 	for _, item := range itemsToDelete {
 		func(item *pushItem) {

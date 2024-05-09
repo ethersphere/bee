@@ -204,6 +204,7 @@ func (ct ChunkType) String() string {
 	}
 }
 
+// DO NOT CHANGE ORDER
 const (
 	ChunkTypeUnspecified ChunkType = iota
 	ChunkTypeContentAddressed
