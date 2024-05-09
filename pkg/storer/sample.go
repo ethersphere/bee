@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/bmt"
+	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	chunk "github.com/ethersphere/bee/v2/pkg/storage/testing"
@@ -68,7 +69,7 @@ func MakeSampleUsingChunks(chunks []swarm.Chunk, anchor []byte) (Sample, error) 
 	}
 	items := make([]SampleItem, len(chunks))
 	for i, ch := range chunks {
-		tr, err := transformedAddress(bmt.NewHasher(prefixHasherFactory), ch, swarm.ChunkTypeContentAddressed)
+		tr, err := transformedAddress(bmt.NewHasher(prefixHasherFactory), ch, getChunkType(ch))
 		if err != nil {
 			return Sample{}, err
 		}
@@ -90,6 +91,15 @@ func MakeSampleUsingChunks(chunks []swarm.Chunk, anchor []byte) (Sample, error) 
 
 func newStamp(s swarm.Stamp) *postage.Stamp {
 	return postage.NewStamp(s.BatchID(), s.Index(), s.Timestamp(), s.Sig())
+}
+
+func getChunkType(chunk swarm.Chunk) swarm.ChunkType {
+	if cac.Valid(chunk) {
+		return swarm.ChunkTypeContentAddressed
+	} else if soc.Valid(chunk) {
+		return swarm.ChunkTypeSingleOwner
+	}
+	return swarm.ChunkTypeUnspecified
 }
 
 // ReserveSample generates the sample of reserve storage of a node required for the

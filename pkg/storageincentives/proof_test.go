@@ -43,7 +43,7 @@ var testData []byte
 
 // Test asserts that MakeInclusionProofs will generate the same
 // output for given sample.
-func TestMakeInclusionProofsRegression_FLAKY(t *testing.T) {
+func TestMakeInclusionProofsRegression(t *testing.T) {
 	t.Parallel()
 
 	const sampleSize = 16
@@ -104,7 +104,7 @@ func TestMakeInclusionProofsRegression_FLAKY(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := swarm.MustParseHexAddress("193bbea3dd0656d813c2c1e27b821f141286bbe6ab0dbf8e26fc7dd491e8f921"); !sch.Address().Equal(want) {
+	if want := swarm.MustParseHexAddress("b012904b0c3e6462158b4416556caa888031a79bad46d2ffa7012408c9c38aa8"); !sch.Address().Equal(want) {
 		t.Fatalf("expecting sample chunk address %v, got %v", want, sch.Address())
 	}
 
@@ -121,7 +121,7 @@ func TestMakeInclusionProofsRegression_FLAKY(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if diff := cmp.Diff(proofs, expectedProofs); diff != "" {
+	if diff := cmp.Diff(expectedProofs, proofs); diff != "" {
 		t.Fatalf("unexpected inclusion proofs (-want +have):\n%s", diff)
 	}
 }
