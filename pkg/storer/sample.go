@@ -94,10 +94,10 @@ func newStamp(s swarm.Stamp) *postage.Stamp {
 }
 
 func getChunkType(chunk swarm.Chunk) swarm.ChunkType {
-	if soc.Valid(chunk) {
-		return swarm.ChunkTypeSingleOwner
-	} else if cac.Valid(chunk) {
+	if cac.Valid(chunk) {
 		return swarm.ChunkTypeContentAddressed
+	} else if soc.Valid(chunk) {
+		return swarm.ChunkTypeSingleOwner
 	}
 	return swarm.ChunkTypeUnspecified
 }
