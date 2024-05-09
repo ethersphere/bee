@@ -30,6 +30,7 @@ func TestNewStepsChain(t *testing.T) {
 		// behavior where each should remove only one element from store
 		if i%2 == 0 {
 			stepFn = migration.NewStepOnIndex(
+				store,
 				storage.Query{
 					Factory:      newObjFactory,
 					ItemProperty: storage.QueryItem,
@@ -40,8 +41,8 @@ func TestNewStepsChain(t *testing.T) {
 				}),
 			)
 		} else {
-			stepFn = func(s storage.BatchedStore) error {
-				return s.Delete(&obj{id: valForRemoval})
+			stepFn = func() error {
+				return store.Delete(&obj{id: valForRemoval})
 			}
 		}
 
@@ -49,7 +50,7 @@ func TestNewStepsChain(t *testing.T) {
 	}
 
 	stepFn := migration.NewStepsChain(stepsFn...)
-	if err := stepFn(store); err != nil {
+	if err := stepFn(); err != nil {
 		t.Fatalf("step migration should successed: %v", err)
 	}
 

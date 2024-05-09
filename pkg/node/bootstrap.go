@@ -33,7 +33,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/pricing"
 	"github.com/ethersphere/bee/v2/pkg/retrieval"
 	"github.com/ethersphere/bee/v2/pkg/settlement/pseudosettle"
-	"github.com/ethersphere/bee/v2/pkg/settlement/swap/chequebook"
 	"github.com/ethersphere/bee/v2/pkg/spinlock"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	storer "github.com/ethersphere/bee/v2/pkg/storer"
@@ -42,7 +41,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/topology/kademlia"
 	"github.com/ethersphere/bee/v2/pkg/topology/lightnode"
 	"github.com/ethersphere/bee/v2/pkg/tracing"
-	"github.com/ethersphere/bee/v2/pkg/transaction"
 	"github.com/hashicorp/go-multierror"
 	ma "github.com/multiformats/go-multiaddr"
 )
@@ -65,15 +63,9 @@ func bootstrapNode(
 	addr string,
 	swarmAddress swarm.Address,
 	nonce []byte,
-	chainID int64,
-	overlayEthAddress common.Address,
 	addressbook addressbook.Interface,
 	bootnodes []ma.Multiaddr,
 	lightNodes *lightnode.Container,
-	chequebookService chequebook.Service,
-	chequeStore chequebook.ChequeStore,
-	cashoutService chequebook.CashoutService,
-	transactionService transaction.Service,
 	stateStore storage.StateStorer,
 	signer crypto.Signer,
 	networkID uint64,

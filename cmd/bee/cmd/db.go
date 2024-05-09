@@ -20,8 +20,10 @@ import (
 
 	"github.com/ethersphere/bee/v2/pkg/node"
 	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/puller"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/storer/migration"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/spf13/cobra"
 )
@@ -46,6 +48,7 @@ func (c *command) initDBCmd() {
 	dbCompactCmd(cmd)
 	dbValidateCmd(cmd)
 	dbValidatePinsCmd(cmd)
+	dbRepairReserve(cmd)
 
 	c.root.AddCommand(cmd)
 }
@@ -81,6 +84,7 @@ func dbInfoCmd(cmd *cobra.Command) {
 				RadiusSetter:    noopRadiusSetter{},
 				Batchstore:      new(postage.NoOpBatchStore),
 				ReserveCapacity: node.ReserveCapacity,
+				CacheCapacity:   1_000_000,
 			})
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
@@ -227,6 +231,77 @@ func dbValidatePinsCmd(cmd *cobra.Command) {
 	cmd.AddCommand(c)
 }
 
+func dbRepairReserve(cmd *cobra.Command) {
+	c := &cobra.Command{
+		Use:   "repair-reserve",
+		Short: "Repairs the reserve by resetting the binIDs and removes dangling entries.",
+		RunE: func(cmd *cobra.Command, args []string) (err error) {
+			v, err := cmd.Flags().GetString(optionNameVerbosity)
+			if err != nil {
+				return fmt.Errorf("get verbosity: %w", err)
+			}
+			v = strings.ToLower(v)
+			logger, err := newLogger(cmd, v)
+			if err != nil {
+				return fmt.Errorf("new logger: %w", err)
+			}
+
+			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
+			if err != nil {
+				return fmt.Errorf("get data-dir: %w", err)
+			}
+			if dataDir == "" {
+				return errors.New("no data-dir provided")
+			}
+
+			logger.Warning("Repair will recreate the reserve entries based on the chunk availability in the chunkstore. The epoch time and bin IDs will be reset.")
+			logger.Warning("The pullsync peer sync intervals are reset so on the next run, the node will perform historical syncing.")
+			logger.Warning("This is a destructive process. If the process is stopped for any reason, the reserve may become corrupted.")
+			logger.Warning("To prevent permanent loss of data, data should be backed up before running the cmd.")
+			logger.Warning("You have another 10 seconds to change your mind and kill this process with CTRL-C...")
+			time.Sleep(10 * time.Second)
+			logger.Warning("proceeding with repair...")
+
+			d, err := cmd.Flags().GetDuration(optionNameSleepAfter)
+			if err != nil {
+				logger.Error(err, "getting sleep value failed")
+			}
+			defer func() { time.Sleep(d) }()
+
+			db, err := storer.New(cmd.Context(), path.Join(dataDir, "localstore"), &storer.Options{
+				Logger:          logger,
+				RadiusSetter:    noopRadiusSetter{},
+				Batchstore:      new(postage.NoOpBatchStore),
+				ReserveCapacity: node.ReserveCapacity,
+				CacheCapacity:   1_000_000,
+			})
+			if err != nil {
+				return fmt.Errorf("localstore: %w", err)
+			}
+			defer db.Close()
+
+			err = migration.ReserveRepairer(db.Storage(), storage.ChunkType, logger)()
+			if err != nil {
+				return fmt.Errorf("repair: %w", err)
+			}
+
+			stateStore, _, err := node.InitStateStore(logger, dataDir, 1000)
+			if err != nil {
+				return fmt.Errorf("new statestore: %w", err)
+			}
+			defer stateStore.Close()
+
+			return stateStore.Iterate(puller.IntervalPrefix, func(key, val []byte) (stop bool, err error) {
+				return false, stateStore.Delete(string(key))
+			})
+		},
+	}
+	c.Flags().String(optionNameDataDir, "", "data directory")
+	c.Flags().String(optionNameVerbosity, "info", "verbosity level")
+	c.Flags().Duration(optionNameSleepAfter, time.Duration(0), "time to sleep after the operation finished")
+	cmd.AddCommand(c)
+}
+
 func dbValidateCmd(cmd *cobra.Command) {
 	c := &cobra.Command{
 		Use:   "validate",
@@ -257,7 +332,7 @@ func dbValidateCmd(cmd *cobra.Command) {
 
 			localstorePath := path.Join(dataDir, "localstore")
 
-			err = storer.Validate(context.Background(), localstorePath, &storer.Options{
+			err = storer.ValidateRetrievalIndex(context.Background(), localstorePath, &storer.Options{
 				Logger:          logger,
 				RadiusSetter:    noopRadiusSetter{},
 				Batchstore:      new(postage.NoOpBatchStore),
@@ -325,6 +400,7 @@ func dbExportReserveCmd(cmd *cobra.Command) {
 				RadiusSetter:    noopRadiusSetter{},
 				Batchstore:      new(postage.NoOpBatchStore),
 				ReserveCapacity: node.ReserveCapacity,
+				CacheCapacity:   1_000_000,
 			})
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
@@ -406,7 +482,8 @@ func dbExportPinningCmd(cmd *cobra.Command) {
 				Logger:          logger,
 				RadiusSetter:    noopRadiusSetter{},
 				Batchstore:      new(postage.NoOpBatchStore),
-				ReserveCapacity: 4_194_304,
+				ReserveCapacity: node.ReserveCapacity,
+				CacheCapacity:   1_000_000,
 			})
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
@@ -516,6 +593,7 @@ func dbImportReserveCmd(cmd *cobra.Command) {
 				RadiusSetter:    noopRadiusSetter{},
 				Batchstore:      new(postage.NoOpBatchStore),
 				ReserveCapacity: node.ReserveCapacity,
+				CacheCapacity:   1_000_000,
 			})
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)
@@ -598,7 +676,8 @@ func dbImportPinningCmd(cmd *cobra.Command) {
 				Logger:          logger,
 				RadiusSetter:    noopRadiusSetter{},
 				Batchstore:      new(postage.NoOpBatchStore),
-				ReserveCapacity: 4_194_304,
+				ReserveCapacity: node.ReserveCapacity,
+				CacheCapacity:   1_000_000,
 			})
 			if err != nil {
 				return fmt.Errorf("localstore: %w", err)

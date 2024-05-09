@@ -11,9 +11,8 @@ import (
 
 type metrics struct {
 	SyncWorkerIterCounter prometheus.Counter    // counts the number of syncing iterations
-	SyncWorkerCounter     prometheus.Counter    // count number of syncing jobs
+	SyncWorkerCounter     prometheus.Gauge      // count number of syncing jobs
 	SyncedCounter         prometheus.CounterVec // number of synced chunks
-	SyncWorkerDoneCounter prometheus.Counter    // count number of finished syncing jobs
 	SyncWorkerErrCounter  prometheus.Counter    // count number of errors
 	MaxUintErrCounter     prometheus.Counter    // how many times we got maxuint as topmost
 }
@@ -28,7 +27,7 @@ func newMetrics() metrics {
 			Name:      "worker_iterations",
 			Help:      "Total worker iterations.",
 		}),
-		SyncWorkerCounter: prometheus.NewCounter(prometheus.CounterOpts{
+		SyncWorkerCounter: prometheus.NewGauge(prometheus.GaugeOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,
 			Name:      "worker",
@@ -40,12 +39,6 @@ func newMetrics() metrics {
 			Name:      "synced_chunks",
 			Help:      "Total synced chunks.",
 		}, []string{"type"}),
-		SyncWorkerDoneCounter: prometheus.NewCounter(prometheus.CounterOpts{
-			Namespace: m.Namespace,
-			Subsystem: subsystem,
-			Name:      "worker_done",
-			Help:      "Total worker jobs done.",
-		}),
 		SyncWorkerErrCounter: prometheus.NewCounter(prometheus.CounterOpts{
 			Namespace: m.Namespace,
 			Subsystem: subsystem,

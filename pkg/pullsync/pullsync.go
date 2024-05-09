@@ -12,7 +12,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -27,7 +26,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	storer "github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
-	"resenje.org/multex"
 	"resenje.org/singleflight"
 )
 
@@ -72,7 +70,6 @@ type Syncer struct {
 	validStamp     postage.ValidStampFn
 	intervalsSF    singleflight.Group[string, *collectAddrsResult]
 	syncInProgress atomic.Int32
-	binLock        *multex.Multex
 
 	maxPage uint64
 
@@ -98,7 +95,6 @@ func New(
 		logger:     logger.WithName(loggerName).Register(),
 		quit:       make(chan struct{}),
 		maxPage:    maxPage,
-		binLock:    multex.New(),
 	}
 }
 
@@ -188,7 +184,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 			have, err = s.store.ReserveHas(a, batchID)
 			if err != nil {
 				s.logger.Debug("storage has", "error", err)
-				continue
+				return 0, 0, err
 			}
 
 			if !have {
@@ -261,18 +257,11 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		s.metrics.Delivered.Add(float64(len(chunksToPut)))
 		s.metrics.LastReceived.WithLabelValues(fmt.Sprintf("%d", bin)).Add(float64(len(chunksToPut)))
 
-		// if we have parallel sync workers for the same bin, we need to rate limit them
-		// in order to not overload the storage with unnecessary requests as there is
-		// a chance that the same chunk is being synced by multiple workers.
-		key := strconv.Itoa(int(bin))
-		s.binLock.Lock(key)
-		defer s.binLock.Unlock(key)
-
 		for _, c := range chunksToPut {
 			if err := s.store.ReservePutter().Put(ctx, c); err != nil {
 				// in case of these errors, no new items are added to the storage, so it
 				// is safe to continue with the next chunk
-				if errors.Is(err, storage.ErrOverwriteNewerChunk) || errors.Is(err, storage.ErrOverwriteOfImmutableBatch) {
+				if errors.Is(err, storage.ErrOverwriteNewerChunk) {
 					s.logger.Debug("overwrite newer chunk", "error", err, "peer_address", peer, "chunk", c)
 					chunkErr = errors.Join(chunkErr, err)
 					continue

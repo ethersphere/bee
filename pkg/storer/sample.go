@@ -121,7 +121,7 @@ func (db *DB) ReserveSample(
 	minBatchBalance *big.Int,
 ) (Sample, error) {
 	g, ctx := errgroup.WithContext(ctx)
-	chunkC := make(chan reserve.ChunkItem, 64)
+	chunkC := make(chan *reserve.ChunkBinItem, 64)
 	allStats := &SampleStats{}
 	statsLock := sync.Mutex{}
 	addStats := func(stats SampleStats) {
@@ -149,7 +149,7 @@ func (db *DB) ReserveSample(
 			addStats(stats)
 		}()
 
-		err := db.reserve.IterateChunksItems(db.repo, storageRadius, func(chi reserve.ChunkItem) (bool, error) {
+		err := db.reserve.IterateChunksItems(storageRadius, func(chi *reserve.ChunkBinItem) (bool, error) {
 			select {
 			case chunkC <- chi:
 				stats.TotalIterated++
@@ -187,25 +187,25 @@ func (db *DB) ReserveSample(
 				}
 
 				// Skip chunks if they are not SOC or CAC
-				if chItem.Type != swarm.ChunkTypeSingleOwner &&
-					chItem.Type != swarm.ChunkTypeContentAddressed {
+				if chItem.ChunkType != swarm.ChunkTypeSingleOwner &&
+					chItem.ChunkType != swarm.ChunkTypeContentAddressed {
 					wstat.RogueChunk++
 					continue
 				}
 
 				chunkLoadStart := time.Now()
 
-				chunk, err := db.ChunkStore().Get(ctx, chItem.ChunkAddress)
+				chunk, err := db.ChunkStore().Get(ctx, chItem.Address)
 				if err != nil {
 					wstat.ChunkLoadFailed++
-					db.logger.Debug("failed loading chunk", "chunk_address", chItem.ChunkAddress, "error", err)
+					db.logger.Debug("failed loading chunk", "chunk_address", chItem.Address, "error", err)
 					continue
 				}
 
 				wstat.ChunkLoadDuration += time.Since(chunkLoadStart)
 
 				taddrStart := time.Now()
-				taddr, err := transformedAddress(hasher, chunk, chItem.Type)
+				taddr, err := transformedAddress(hasher, chunk, chItem.ChunkType)
 				if err != nil {
 					return err
 				}
@@ -274,7 +274,7 @@ func (db *DB) ReserveSample(
 		if le(item.TransformedAddress, currentMaxAddr) || len(sampleItems) < SampleSize {
 			start := time.Now()
 
-			stamp, err := chunkstamp.LoadWithBatchID(db.repo.IndexStore(), "reserve", item.ChunkAddress, item.Stamp.BatchID())
+			stamp, err := chunkstamp.LoadWithBatchID(db.storage.IndexStore(), "reserve", item.ChunkAddress, item.Stamp.BatchID())
 			if err != nil {
 				stats.StampLoadFailed++
 				db.logger.Debug("failed loading stamp", "chunk_address", item.ChunkAddress, "error", err)

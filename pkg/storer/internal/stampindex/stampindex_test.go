@@ -5,29 +5,27 @@
 package stampindex_test
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"testing"
 
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/storagetest"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
+
 	chunktest "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/stampindex"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
+	"github.com/stretchr/testify/assert"
 )
 
 // newTestStorage is a helper function that creates a new storage.
-func newTestStorage(t *testing.T) internal.Storage {
+func newTestStorage(t *testing.T) transaction.Storage {
 	t.Helper()
-
-	inmemStorage, closer := internal.NewInmemStorage()
-	t.Cleanup(func() {
-		if err := closer(); err != nil {
-			t.Errorf("failed closing the storage: %v", err)
-		}
-	})
+	inmemStorage := internal.NewInmemStorage()
 	return inmemStorage
 }
 
@@ -126,7 +124,11 @@ func TestStoreLoadDelete(t *testing.T) {
 		ns := fmt.Sprintf("namespace_%d", i)
 		t.Run(ns, func(t *testing.T) {
 			t.Run("store new stamp index", func(t *testing.T) {
-				err := stampindex.Store(ts.IndexStore(), ns, chunk)
+
+				err := ts.Run(context.Background(), func(s transaction.Store) error {
+					return stampindex.Store(s.IndexStore(), ns, chunk)
+
+				})
 				if err != nil {
 					t.Fatalf("Store(...): unexpected error: %v", err)
 				}
@@ -176,7 +178,10 @@ func TestStoreLoadDelete(t *testing.T) {
 			})
 
 			t.Run("delete stored stamp index", func(t *testing.T) {
-				err := stampindex.Delete(ts.IndexStore(), ns, chunk)
+
+				err := ts.Run(context.Background(), func(s transaction.Store) error {
+					return stampindex.Delete(s.IndexStore(), ns, chunk)
+				})
 				if err != nil {
 					t.Fatalf("Delete(...): unexpected error: %v", err)
 				}
@@ -230,21 +235,25 @@ func TestLoadOrStore(t *testing.T) {
 			want.ChunkAddress = chunk.Address()
 			want.ChunkIsImmutable = chunk.Immutable()
 
-			r, w := ts.IndexStore(), ts.IndexStore()
+			trx, done := ts.NewTransaction(context.Background())
 
-			have, loaded, err := stampindex.LoadOrStore(r, w, ns, chunk)
+			have, loaded, err := stampindex.LoadOrStore(trx.IndexStore(), ns, chunk)
 			if err != nil {
 				t.Fatalf("LoadOrStore(...): unexpected error: %v", err)
 			}
 			if loaded {
 				t.Fatalf("LoadOrStore(...): unexpected loaded flag")
 			}
-
 			if diff := cmp.Diff(want, have, cmp.AllowUnexported(stampindex.Item{})); diff != "" {
 				t.Fatalf("Get(...): mismatch (-want +have):\n%s", diff)
 			}
+			assert.NoError(t, trx.Commit())
+			done()
 
-			have, loaded, err = stampindex.LoadOrStore(r, w, ns, chunk)
+			trx, done = ts.NewTransaction(context.Background())
+			defer done()
+
+			have, loaded, err = stampindex.LoadOrStore(trx.IndexStore(), ns, chunk)
 			if err != nil {
 				t.Fatalf("LoadOrStore(...): unexpected error: %v", err)
 			}
@@ -255,6 +264,7 @@ func TestLoadOrStore(t *testing.T) {
 			if diff := cmp.Diff(want, have, cmp.AllowUnexported(stampindex.Item{})); diff != "" {
 				t.Fatalf("Get(...): mismatch (-want +have):\n%s", diff)
 			}
+			assert.NoError(t, trx.Commit())
 
 			cnt := 0
 			err = ts.IndexStore().Iterate(

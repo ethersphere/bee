@@ -40,6 +40,7 @@ func TestStewardship(t *testing.T) {
 				Message: http.StatusText(http.StatusOK),
 				Code:    http.StatusOK,
 			}),
+			jsonhttptest.WithRequestHeader("Swarm-Postage-Batch-Id", "aa"),
 		)
 		if !stewardMock.LastAddress().Equal(addr) {
 			t.Fatalf("\nhave address: %q\nwant address: %q", stewardMock.LastAddress().String(), addr.String())

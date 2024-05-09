@@ -5,14 +5,19 @@
 package storage
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
+
+	"github.com/ethersphere/bee/v2/pkg/cac"
+	"github.com/ethersphere/bee/v2/pkg/sharky"
+	"github.com/ethersphere/bee/v2/pkg/soc"
+	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 var (
-	ErrOverwriteNewerChunk       = errors.New("overwriting chunk with newer timestamp")
-	ErrOverwriteOfImmutableBatch = errors.New("overwrite of existing immutable batch")
+	ErrOverwriteNewerChunk = errors.New("overwriting chunk with newer timestamp")
 )
 
 // Result represents the item returned by the read operation, which returns
@@ -185,8 +190,8 @@ type Writer interface {
 	Delete(Item) error
 }
 
-// BatchedStore is a store that supports batching of Writer method calls.
-type BatchedStore interface {
+// BatchStore is a store that supports batching of Writer method calls.
+type BatchStore interface {
 	Store
 	Batcher
 }
@@ -195,4 +200,96 @@ type BatchedStore interface {
 // the transaction was not committed or rolled back.
 type Recoverer interface {
 	Recover() error
+}
+
+type IndexStore interface {
+	Reader
+	Writer
+}
+
+type Sharky interface {
+	Read(context.Context, sharky.Location, []byte) error
+	Write(context.Context, []byte) (sharky.Location, error)
+	Release(context.Context, sharky.Location) error
+}
+
+type SizeReporter interface {
+	Size() (uint64, error)
+	Capacity() uint64
+}
+
+// Descriptor holds information required for Pull syncing. This struct
+// is provided by subscribing to pull index.
+type Descriptor struct {
+	Address swarm.Address
+	BinID   uint64
+}
+
+func (d *Descriptor) String() string {
+	if d == nil {
+		return ""
+	}
+	return fmt.Sprintf("%s bin id %v", d.Address, d.BinID)
+}
+
+type PullSubscriber interface {
+	SubscribePull(ctx context.Context, bin uint8, since, until uint64) (c <-chan Descriptor, closed <-chan struct{}, stop func())
+}
+
+type PushSubscriber interface {
+	SubscribePush(ctx context.Context) (c <-chan swarm.Chunk, stop func())
+}
+
+type ChunkState = int
+
+const (
+	// ChunkSent is used by the pusher component to notify about successful push of chunk from
+	// the node. A chunk could be retried on failure so, this sent count is maintained to
+	// understand how many attempts were made by the node while pushing. The attempts are
+	// registered only when an actual request was sent from this node.
+	ChunkSent ChunkState = iota
+	// ChunkStored is used by the pusher component to notify that the uploader node is
+	// the closest node and has stored the chunk.
+	ChunkStored
+	// ChunkSynced is used by the pusher component to notify that the chunk is synced to the
+	// network. This is reported when a valid receipt was received after the chunk was
+	// pushed.
+	ChunkSynced
+	ChunkCouldNotSync
+)
+
+// PushReporter is used to report chunk state.
+type PushReporter interface {
+	Report(context.Context, swarm.Chunk, ChunkState) error
+}
+
+// ErrBatchCommitted is returned by Batch.Commit
+// call when a batch has already been committed.
+var ErrBatchCommitted = errors.New("storage: batch has already been committed")
+
+// Batch provides set of operations that are batched.
+type Batch interface {
+	// Put adds a new item to the batch.
+	Put(Item) error
+
+	// Delete adds a new delete operation to the batch.
+	Delete(Item) error
+
+	// Commit commits the batch.
+	Commit() error
+}
+
+// Batcher specifies a constructor for creating new batches.
+type Batcher interface {
+	// Batch returns a new Batch.
+	Batch(context.Context) Batch
+}
+
+func ChunkType(ch swarm.Chunk) swarm.ChunkType {
+	if cac.Valid(ch) {
+		return swarm.ChunkTypeContentAddressed
+	} else if soc.Valid(ch) {
+		return swarm.ChunkTypeSingleOwner
+	}
+	return swarm.ChunkTypeUnspecified
 }

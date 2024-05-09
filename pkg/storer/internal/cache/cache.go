@@ -9,14 +9,15 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"runtime"
 	"strconv"
-	"sync"
 	"sync/atomic"
 	"time"
 
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
-	"github.com/ethersphere/bee/v2/pkg/storer/internal"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"golang.org/x/sync/errgroup"
 	"resenje.org/multex"
 )
 
@@ -39,24 +40,22 @@ var (
 // part of the reserve but are potentially useful to store for obtaining bandwidth
 // incentives.
 type Cache struct {
-	size      atomic.Int64
-	capacity  int
-	chunkLock *multex.Multex // protects storage ops at chunk level
-	glock     sync.RWMutex   // blocks Get and Put ops while shallow copy is running.
+	size     atomic.Int64
+	capacity int
+	glock    *multex.Multex // blocks Get and Put ops while shallow copy is running.
 }
 
 // New creates a new Cache component with the specified capacity. The store is used
 // here only to read the initial state of the cache before shutdown if there was
 // any.
-func New(ctx context.Context, store internal.Storage, capacity uint64) (*Cache, error) {
-	count, err := store.IndexStore().Count(&cacheEntry{})
+func New(ctx context.Context, store storage.Reader, capacity uint64) (*Cache, error) {
+	count, err := store.Count(&cacheEntry{})
 	if err != nil {
 		return nil, fmt.Errorf("failed counting cache entries: %w", err)
 	}
 
-	c := &Cache{capacity: int(capacity)}
+	c := &Cache{capacity: int(capacity), glock: multex.New()}
 	c.size.Store(int64(count))
-	c.chunkLock = multex.New()
 
 	return c, nil
 }
@@ -71,16 +70,17 @@ func (c *Cache) Capacity() uint64 { return uint64(c.capacity) }
 
 // Putter returns a Storage.Putter instance which adds the chunk to the underlying
 // chunkstore and also adds a Cache entry for the chunk.
-func (c *Cache) Putter(store internal.Storage) storage.Putter {
+func (c *Cache) Putter(store transaction.Storage) storage.Putter {
 	return storage.PutterFunc(func(ctx context.Context, chunk swarm.Chunk) error {
 
-		c.chunkLock.Lock(chunk.Address().ByteString())
-		defer c.chunkLock.Unlock(chunk.Address().ByteString())
-		c.glock.RLock()
-		defer c.glock.RUnlock()
+		c.glock.Lock(chunk.Address().ByteString())
+		defer c.glock.Unlock(chunk.Address().ByteString())
+
+		trx, done := store.NewTransaction(ctx)
+		defer done()
 
 		newEntry := &cacheEntry{Address: chunk.Address()}
-		found, err := store.IndexStore().Has(newEntry)
+		found, err := trx.IndexStore().Has(newEntry)
 		if err != nil {
 			return fmt.Errorf("failed checking has cache entry: %w", err)
 		}
@@ -90,18 +90,13 @@ func (c *Cache) Putter(store internal.Storage) storage.Putter {
 			return nil
 		}
 
-		batch, err := store.IndexStore().Batch(ctx)
-		if err != nil {
-			return fmt.Errorf("failed creating batch: %w", err)
-		}
-
 		newEntry.AccessTimestamp = now().UnixNano()
-		err = batch.Put(newEntry)
+		err = trx.IndexStore().Put(newEntry)
 		if err != nil {
 			return fmt.Errorf("failed adding cache entry: %w", err)
 		}
 
-		err = batch.Put(&cacheOrderIndex{
+		err = trx.IndexStore().Put(&cacheOrderIndex{
 			Address:         newEntry.Address,
 			AccessTimestamp: newEntry.AccessTimestamp,
 		})
@@ -109,13 +104,13 @@ func (c *Cache) Putter(store internal.Storage) storage.Putter {
 			return fmt.Errorf("failed adding cache order index: %w", err)
 		}
 
-		if err := batch.Commit(); err != nil {
-			return fmt.Errorf("batch commit: %w", err)
-		}
-
-		err = store.ChunkStore().Put(ctx, chunk)
+		err = trx.ChunkStore().Put(ctx, chunk)
 		if err != nil {
 			return fmt.Errorf("failed adding chunk to chunkstore: %w", err)
+		}
+
+		if err := trx.Commit(); err != nil {
+			return fmt.Errorf("batch commit: %w", err)
 		}
 
 		c.size.Add(1)
@@ -128,23 +123,24 @@ func (c *Cache) Putter(store internal.Storage) storage.Putter {
 // part of cache it will update the cache indexes. If the operation to update the
 // cache indexes fail, we need to fail the operation as this should signal the user
 // of this getter to rollback the operation.
-func (c *Cache) Getter(store internal.Storage) storage.Getter {
+func (c *Cache) Getter(store transaction.Storage) storage.Getter {
 	return storage.GetterFunc(func(ctx context.Context, address swarm.Address) (swarm.Chunk, error) {
 
-		ch, err := store.ChunkStore().Get(ctx, address)
+		c.glock.Lock(address.ByteString())
+		defer c.glock.Unlock(address.ByteString())
+
+		trx, done := store.NewTransaction(ctx)
+		defer done()
+
+		ch, err := trx.ChunkStore().Get(ctx, address)
 		if err != nil {
 			return nil, err
 		}
 
-		c.chunkLock.Lock(address.ByteString())
-		defer c.chunkLock.Unlock(address.ByteString())
-		c.glock.RLock()
-		defer c.glock.RUnlock()
-
 		// check if there is an entry in Cache. As this is the download path, we do
 		// a best-effort operation. So in case of any error we return the chunk.
 		entry := &cacheEntry{Address: address}
-		err = store.IndexStore().Get(entry)
+		err = trx.IndexStore().Get(entry)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
 				return ch, nil
@@ -152,12 +148,7 @@ func (c *Cache) Getter(store internal.Storage) storage.Getter {
 			return nil, fmt.Errorf("unexpected error getting indexstore entry: %w", err)
 		}
 
-		batch, err := store.IndexStore().Batch(ctx)
-		if err != nil {
-			return nil, fmt.Errorf("failed creating batch: %w", err)
-		}
-
-		err = batch.Delete(&cacheOrderIndex{
+		err = trx.IndexStore().Delete(&cacheOrderIndex{
 			Address:         entry.Address,
 			AccessTimestamp: entry.AccessTimestamp,
 		})
@@ -166,7 +157,7 @@ func (c *Cache) Getter(store internal.Storage) storage.Getter {
 		}
 
 		entry.AccessTimestamp = now().UnixNano()
-		err = batch.Put(&cacheOrderIndex{
+		err = trx.IndexStore().Put(&cacheOrderIndex{
 			Address:         entry.Address,
 			AccessTimestamp: entry.AccessTimestamp,
 		})
@@ -174,12 +165,12 @@ func (c *Cache) Getter(store internal.Storage) storage.Getter {
 			return nil, fmt.Errorf("failed adding cache order index: %w", err)
 		}
 
-		err = batch.Put(entry)
+		err = trx.IndexStore().Put(entry)
 		if err != nil {
 			return nil, fmt.Errorf("failed adding cache entry: %w", err)
 		}
 
-		err = batch.Commit()
+		err = trx.Commit()
 		if err != nil {
 			return nil, fmt.Errorf("batch commit: %w", err)
 		}
@@ -188,92 +179,16 @@ func (c *Cache) Getter(store internal.Storage) storage.Getter {
 	})
 }
 
-// ShallowCopy creates cache entries with the expectation that the chunk already exists in the chunkstore.
-func (c *Cache) ShallowCopy(
-	ctx context.Context,
-	store internal.Storage,
-	addrs ...swarm.Address,
-) (err error) {
-
-	c.glock.Lock()
-	defer c.glock.Unlock()
-
-	entries := make([]*cacheEntry, 0, len(addrs))
-
-	defer func() {
-		if err != nil {
-			for _, entry := range entries {
-				err = errors.Join(store.ChunkStore().Delete(context.Background(), entry.Address))
-			}
-		}
-	}()
-
-	for _, addr := range addrs {
-		entry := &cacheEntry{Address: addr, AccessTimestamp: now().UnixNano()}
-		if has, err := store.IndexStore().Has(entry); err == nil && has {
-			// Since the caller has previously referenced the chunk (+1 refCnt), and if the chunk is already referenced
-			// by the cache store (+1 refCnt), then we must decrement the refCnt by one ( -1 refCnt to bring the total to +1).
-			// See https://github.com/ethersphere/bee/issues/4530.
-			_ = store.ChunkStore().Delete(ctx, addr)
-			continue
-		}
-		entries = append(entries, entry)
-	}
-
-	if len(entries) == 0 {
-		return nil
-	}
-
-	//consider only the amount that can fit, the rest should be deleted from the chunkstore.
-	if len(entries) > c.capacity {
-		for _, addr := range entries[:len(entries)-c.capacity] {
-			_ = store.ChunkStore().Delete(ctx, addr.Address)
-		}
-		entries = entries[len(entries)-c.capacity:]
-	}
-
-	batch, err := store.IndexStore().Batch(ctx)
-	if err != nil {
-		return fmt.Errorf("failed creating batch: %w", err)
-	}
-
-	for _, entry := range entries {
-		err = batch.Put(entry)
-		if err != nil {
-			return fmt.Errorf("failed adding entry %s: %w", entry, err)
-		}
-		err = batch.Put(&cacheOrderIndex{
-			Address:         entry.Address,
-			AccessTimestamp: entry.AccessTimestamp,
-		})
-		if err != nil {
-			return fmt.Errorf("failed adding cache order index: %w", err)
-		}
-	}
-
-	if err := batch.Commit(); err != nil {
-		return fmt.Errorf("batch commit: %w", err)
-	}
-
-	c.size.Add(int64(len(entries)))
-
-	return nil
-}
-
 // RemoveOldest removes the oldest cache entries from the store. The count
 // specifies the number of entries to remove.
-func (c *Cache) RemoveOldest(ctx context.Context, store internal.Storage, chStore storage.ChunkStore, count uint64) error {
-	return c.removeOldest(ctx, store, store.ChunkStore(), count, 1000)
-}
-
-func (c *Cache) removeOldest(ctx context.Context, store internal.Storage, chStore storage.ChunkStore, count uint64, batchCnt int) error {
+func (c *Cache) RemoveOldest(ctx context.Context, st transaction.Storage, count uint64) error {
 
 	if count <= 0 {
 		return nil
 	}
 
 	evictItems := make([]*cacheEntry, 0, count)
-	err := store.IndexStore().Iterate(
+	err := st.IndexStore().Iterate(
 		storage.Query{
 			Factory:      func() storage.Item { return &cacheOrderIndex{} },
 			ItemProperty: storage.QueryItemID,
@@ -296,46 +211,108 @@ func (c *Cache) removeOldest(ctx context.Context, store internal.Storage, chStor
 		return fmt.Errorf("failed iterating over cache order index: %w", err)
 	}
 
-	c.glock.Lock()
-	defer c.glock.Unlock()
+	eg, ctx := errgroup.WithContext(ctx)
+	eg.SetLimit(runtime.NumCPU())
 
-	for i := 0; i < len(evictItems); i += batchCnt {
-		end := i + batchCnt
-		if end > len(evictItems) {
-			end = len(evictItems)
-		}
+	for _, item := range evictItems {
+		func(item *cacheEntry) {
+			eg.Go(func() error {
+				c.glock.Lock(item.Address.ByteString())
+				defer c.glock.Unlock(item.Address.ByteString())
+				err := st.Run(ctx, func(s transaction.Store) error {
+					return errors.Join(
+						s.IndexStore().Delete(item),
+						s.IndexStore().Delete(&cacheOrderIndex{
+							Address:         item.Address,
+							AccessTimestamp: item.AccessTimestamp,
+						}),
+						s.ChunkStore().Delete(ctx, item.Address),
+					)
+				})
+				if err != nil {
+					return err
+				}
+				c.size.Add(-1)
+				return nil
+			})
+		}(item)
+	}
 
-		batch, err := store.IndexStore().Batch(ctx)
+	return eg.Wait()
+}
+
+// ShallowCopy creates cache entries with the expectation that the chunk already exists in the chunkstore.
+func (c *Cache) ShallowCopy(
+	ctx context.Context,
+	store transaction.Storage,
+	addrs ...swarm.Address,
+) (err error) {
+
+	// TODO: add proper mutex locking before usage
+
+	entries := make([]*cacheEntry, 0, len(addrs))
+
+	defer func() {
 		if err != nil {
-			return fmt.Errorf("failed creating batch: %w", err)
+			err = errors.Join(err,
+				store.Run(context.Background(), func(s transaction.Store) error {
+					for _, entry := range entries {
+						dErr := s.ChunkStore().Delete(context.Background(), entry.Address)
+						if dErr != nil {
+							return dErr
+						}
+					}
+					return nil
+				}),
+			)
 		}
+	}()
 
-		for _, entry := range evictItems[i:end] {
-			err = batch.Delete(entry)
+	for _, addr := range addrs {
+		entry := &cacheEntry{Address: addr, AccessTimestamp: now().UnixNano()}
+		if has, err := store.IndexStore().Has(entry); err == nil && has {
+			// Since the caller has previously referenced the chunk (+1 refCnt), and if the chunk is already referenced
+			// by the cache store (+1 refCnt), then we must decrement the refCnt by one ( -1 refCnt to bring the total to +1).
+			// See https://github.com/ethersphere/bee/issues/4530.
+			_ = store.Run(ctx, func(s transaction.Store) error { return s.ChunkStore().Delete(ctx, addr) })
+			continue
+		}
+		entries = append(entries, entry)
+	}
+
+	if len(entries) == 0 {
+		return nil
+	}
+
+	//consider only the amount that can fit, the rest should be deleted from the chunkstore.
+	if len(entries) > c.capacity {
+		for _, addr := range entries[:len(entries)-c.capacity] {
+			_ = store.Run(ctx, func(s transaction.Store) error { return s.ChunkStore().Delete(ctx, addr.Address) })
+		}
+		entries = entries[len(entries)-c.capacity:]
+	}
+
+	err = store.Run(ctx, func(s transaction.Store) error {
+		for _, entry := range entries {
+			err = s.IndexStore().Put(entry)
 			if err != nil {
-				return fmt.Errorf("failed deleting cache entry %s: %w", entry, err)
+				return fmt.Errorf("failed adding entry %s: %w", entry, err)
 			}
-			err = batch.Delete(&cacheOrderIndex{
+			err = s.IndexStore().Put(&cacheOrderIndex{
 				Address:         entry.Address,
 				AccessTimestamp: entry.AccessTimestamp,
 			})
 			if err != nil {
-				return fmt.Errorf("failed deleting cache order index %s: %w", entry.Address, err)
-			}
-			err = chStore.Delete(ctx, entry.Address)
-			if err != nil {
-				return fmt.Errorf("failed deleting chunk %s from chunkstore: %w", entry.Address, err)
+				return fmt.Errorf("failed adding cache order index: %w", err)
 			}
 		}
-
-		err = batch.Commit()
-		if err != nil {
-			return err
-		}
-
-		c.size.Add(-int64(end - i))
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 
+	c.size.Add(int64(len(entries)))
 	return nil
 }
 

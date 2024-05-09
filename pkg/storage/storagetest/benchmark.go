@@ -356,7 +356,7 @@ func (w *batchDBWriter) commit(max int) {
 	if w.count >= max {
 		_ = w.batch.Commit()
 		w.count = 0
-		w.batch, _ = w.db.Batch(context.Background())
+		w.batch = w.db.Batch(context.Background())
 	}
 }
 
@@ -380,7 +380,7 @@ func (w *batchDBWriter) Delete(key []byte) {
 }
 
 func newBatchDBWriter(db storage.Batcher) *batchDBWriter {
-	batch, _ := db.Batch(context.Background())
+	batch := db.Batch(context.Background())
 	return &batchDBWriter{
 		db:    db,
 		batch: batch,

@@ -36,6 +36,7 @@ func InitStateStore(logger log.Logger, dataDir string, cacheCapacity uint64) (st
 	if err != nil {
 		return nil, nil, err
 	}
+
 	stateStore, err := storeadapter.NewStateStorerAdapter(caching)
 
 	return stateStore, caching, err

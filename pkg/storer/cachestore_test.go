@@ -6,12 +6,10 @@ package storer_test
 
 import (
 	"context"
-	"errors"
 	"testing"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/spinlock"
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/storagetest"
 	chunktesting "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	storer "github.com/ethersphere/bee/v2/pkg/storer"
@@ -38,32 +36,9 @@ func testCacheStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 				}
 			}
 		})
-
-		t.Run("rollback", func(t *testing.T) {
-			want := errors.New("dummy error")
-			lstore.SetRepoStorePutHook(func(item storage.Item) error {
-				if item.Namespace() == "cacheOrderIndex" {
-					return want
-				}
-				return nil
-			})
-			errChunk := chunktesting.GenerateTestRandomChunk()
-			have := lstore.Cache().Put(context.TODO(), errChunk)
-			if !errors.Is(have, want) {
-				t.Fatalf("unexpected error on cache put: want %v have %v", want, have)
-			}
-			haveChunk, err := lstore.Repo().ChunkStore().Has(context.TODO(), errChunk.Address())
-			if err != nil {
-				t.Fatalf("ChunkStore.Has(...): unexpected error: %v", err)
-			}
-			if haveChunk {
-				t.Fatalf("unexpected chunk state: want false have %t", haveChunk)
-			}
-		})
 	})
 	t.Run("lookup", func(t *testing.T) {
 		t.Run("commit", func(t *testing.T) {
-			lstore.SetRepoStorePutHook(nil)
 			getter := lstore.Lookup()
 			for _, ch := range chunks {
 				have, err := getter.Get(context.TODO(), ch.Address())
@@ -75,32 +50,8 @@ func testCacheStore(t *testing.T, newStorer func() (*storer.DB, error)) {
 				}
 			}
 		})
-		t.Run("rollback", func(t *testing.T) {
-			want := errors.New("dummy error")
-			lstore.SetRepoStorePutHook(func(item storage.Item) error {
-				if item.Namespace() == "cacheOrderIndex" {
-					return want
-				}
-				return nil
-			})
-			// fail access for the first 4 chunks. This will keep the order as is
-			// from the last test.
-			for idx, ch := range chunks {
-				if idx > 4 {
-					break
-				}
-				_, have := lstore.Lookup().Get(context.TODO(), ch.Address())
-				if !errors.Is(have, want) {
-					t.Fatalf("unexpected error in cache get: want %v have %v", want, have)
-				}
-			}
-		})
 	})
 	t.Run("cache chunks beyond capacity", func(t *testing.T) {
-		lstore.SetRepoStorePutHook(nil)
-		// add chunks beyond capacity and verify the correct chunks are removed
-		// from the cache based on last access order
-
 		newChunks := chunktesting.GenerateTestRandomChunks(5)
 		putter := lstore.Cache()
 		for _, ch := range newChunks {

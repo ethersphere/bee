@@ -198,7 +198,7 @@ func (ps *service) Close() error {
 // HandleStampExpiry handles stamp expiry for a given id.
 func (ps *service) HandleStampExpiry(ctx context.Context, id []byte) error {
 
-	exists, err := ps.removeIssuer(ctx, id)
+	exists, err := ps.removeIssuer(id)
 	if err != nil {
 		return err
 	}
@@ -245,7 +245,7 @@ func (ps *service) removeStampItems(ctx context.Context, batchID []byte) error {
 }
 
 // SetExpired removes all expired batches from the stamp issuers.
-func (ps *service) removeIssuer(ctx context.Context, batchID []byte) (bool, error) {
+func (ps *service) removeIssuer(batchID []byte) (bool, error) {
 	ps.mtx.Lock()
 	defer ps.mtx.Unlock()
 

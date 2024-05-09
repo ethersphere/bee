@@ -8,6 +8,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"math"
 	"math/rand"
 	"testing"
 	"time"
@@ -21,32 +22,23 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstamp"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/stampindex"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	kademlia "github.com/ethersphere/bee/v2/pkg/topology/mock"
 )
-
-func noopCacher(_ context.Context, _ internal.Storage, _ ...swarm.Address) error {
-	return nil
-}
 
 func TestReserve(t *testing.T) {
 	t.Parallel()
 
 	baseAddr := swarm.RandAddress(t)
 
-	ts, closer := internal.NewInmemStorage()
-	t.Cleanup(func() {
-		if err := closer(); err != nil {
-			t.Errorf("failed closing the storage: %v", err)
-		}
-	})
+	ts := internal.NewInmemStorage()
 
 	r, err := reserve.New(
 		baseAddr,
-		ts.IndexStore(),
+		ts,
 		0, kademlia.NewTopologyDriver(),
 		log.Noop,
-		noopCacher,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -55,18 +47,15 @@ func TestReserve(t *testing.T) {
 	for b := 0; b < 2; b++ {
 		for i := 1; i < 51; i++ {
 			ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, b)
-			c, err := r.Put(context.Background(), ts, ch)
+			err := r.Put(context.Background(), ch)
 			if err != nil {
 				t.Fatal(err)
-			}
-			if !c {
-				t.Fatal("entered unique chunk")
 			}
 			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: uint8(b), BatchID: ch.Stamp().BatchID(), Address: ch.Address()}, false)
 			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: uint8(b), BinID: uint64(i)}, false)
 			checkChunk(t, ts, ch, false)
 
-			h, err := r.Has(ts.IndexStore(), ch.Address(), ch.Stamp().BatchID())
+			h, err := r.Has(ch.Address(), ch.Stamp().BatchID())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -74,7 +63,7 @@ func TestReserve(t *testing.T) {
 				t.Fatalf("expected chunk addr %s binID %d", ch.Address(), i)
 			}
 
-			chGet, err := r.Get(context.Background(), ts, ch.Address(), ch.Stamp().BatchID())
+			chGet, err := r.Get(context.Background(), ch.Address(), ch.Stamp().BatchID())
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -91,19 +80,13 @@ func TestReserveChunkType(t *testing.T) {
 	ctx := context.Background()
 	baseAddr := swarm.RandAddress(t)
 
-	ts, closer := internal.NewInmemStorage()
-	t.Cleanup(func() {
-		if err := closer(); err != nil {
-			t.Errorf("failed closing the storage: %v", err)
-		}
-	})
+	ts := internal.NewInmemStorage()
 
 	r, err := reserve.New(
 		baseAddr,
-		ts.IndexStore(),
+		ts,
 		0, kademlia.NewTopologyDriver(),
 		log.Noop,
-		noopCacher,
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -119,7 +102,7 @@ func TestReserveChunkType(t *testing.T) {
 			ch = chunk.GenerateTestRandomSoChunk(t, ch)
 			storedChunksSO++
 		}
-		if _, err := r.Put(ctx, ts, ch); err != nil {
+		if err := r.Put(ctx, ch); err != nil {
 			t.Errorf("unexpected error: %v", err)
 		}
 	}
@@ -154,27 +137,13 @@ func TestReplaceOldIndex(t *testing.T) {
 
 	baseAddr := swarm.RandAddress(t)
 
-	ts, closer := internal.NewInmemStorage()
-	t.Cleanup(func() {
-		if err := closer(); err != nil {
-			t.Errorf("failed closing the storage: %v", err)
-		}
-	})
+	ts := internal.NewInmemStorage()
 
 	r, err := reserve.New(
 		baseAddr,
-		ts.IndexStore(),
+		ts,
 		0, kademlia.NewTopologyDriver(),
 		log.Noop,
-		func(ctx context.Context, st internal.Storage, addrs ...swarm.Address) error {
-			for _, addr := range addrs {
-				err := st.ChunkStore().Delete(ctx, addr)
-				if err != nil {
-					return err
-				}
-			}
-			return nil
-		},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -184,12 +153,12 @@ func TestReplaceOldIndex(t *testing.T) {
 	ch1 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 0))
 	ch2 := chunk.GenerateTestRandomChunkAt(t, baseAddr, 0).WithStamp(postagetesting.MustNewFields(batch.ID, 0, 1))
 
-	_, err = r.Put(context.Background(), ts, ch1)
+	err = r.Put(context.Background(), ch1)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	_, err = r.Put(context.Background(), ts, ch2)
+	err = r.Put(context.Background(), ch2)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,12 +187,7 @@ func TestEvict(t *testing.T) {
 
 	baseAddr := swarm.RandAddress(t)
 
-	ts, closer := internal.NewInmemStorage()
-	t.Cleanup(func() {
-		if err := closer(); err != nil {
-			t.Errorf("failed closing the storage: %v", err)
-		}
-	})
+	ts := internal.NewInmemStorage()
 
 	chunksPerBatch := 50
 	var chunks []swarm.Chunk
@@ -232,18 +196,9 @@ func TestEvict(t *testing.T) {
 
 	r, err := reserve.New(
 		baseAddr,
-		ts.IndexStore(),
+		ts,
 		0, kademlia.NewTopologyDriver(),
 		log.Noop,
-		func(ctx context.Context, st internal.Storage, addrs ...swarm.Address) error {
-			for _, addr := range addrs {
-				err := st.ChunkStore().Delete(ctx, addr)
-				if err != nil {
-					return err
-				}
-			}
-			return nil
-		},
 	)
 	if err != nil {
 		t.Fatal(err)
@@ -253,19 +208,16 @@ func TestEvict(t *testing.T) {
 		for b := 0; b < 3; b++ {
 			ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, b).WithStamp(postagetesting.MustNewBatchStamp(batches[b].ID))
 			chunks = append(chunks, ch)
-			c, err := r.Put(context.Background(), ts, ch)
+			err := r.Put(context.Background(), ch)
 			if err != nil {
 				t.Fatal(err)
-			}
-			if !c {
-				t.Fatal("entered unique chunk")
 			}
 		}
 	}
 
 	totalEvicted := 0
 	for i := 0; i < 3; i++ {
-		evicted, err := r.EvictBatchBin(context.Background(), ts, uint8(i), evictBatch.ID)
+		evicted, err := r.EvictBatchBin(context.Background(), evictBatch.ID, math.MaxInt, uint8(i))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -281,7 +233,7 @@ func TestEvict(t *testing.T) {
 	for i, ch := range chunks {
 		binID := i%chunksPerBatch + 1
 		b := swarm.Proximity(baseAddr.Bytes(), ch.Address().Bytes())
-		_, err := r.Get(context.Background(), ts, ch.Address(), ch.Stamp().BatchID())
+		_, err := r.Get(context.Background(), ch.Address(), ch.Stamp().BatchID())
 		if bytes.Equal(ch.Stamp().BatchID(), evictBatch.ID) {
 			if !errors.Is(err, storage.ErrNotFound) {
 				t.Fatalf("got err %v, want %v", err, storage.ErrNotFound)
@@ -300,27 +252,74 @@ func TestEvict(t *testing.T) {
 	}
 }
 
+func TestEvictMaxCount(t *testing.T) {
+	t.Parallel()
+
+	baseAddr := swarm.RandAddress(t)
+
+	ts := internal.NewInmemStorage()
+
+	r, err := reserve.New(
+		baseAddr,
+		ts,
+		0, kademlia.NewTopologyDriver(),
+		log.Noop,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var chunks []swarm.Chunk
+
+	batch := postagetesting.MustNewBatch()
+
+	for b := 0; b < 2; b++ {
+		for i := 0; i < 10; i++ {
+			ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, b).WithStamp(postagetesting.MustNewBatchStamp(batch.ID))
+			chunks = append(chunks, ch)
+			err := r.Put(context.Background(), ch)
+			if err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+
+	evicted, err := r.EvictBatchBin(context.Background(), batch.ID, 10, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if evicted != 10 {
+		t.Fatalf("wanted evicted count 10, got %d", evicted)
+	}
+
+	for i, ch := range chunks {
+		if i < 10 {
+			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: 0, BatchID: ch.Stamp().BatchID(), Address: ch.Address()}, true)
+			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: uint64(i + 1)}, true)
+			checkChunk(t, ts, ch, true)
+		} else {
+			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: 1, BatchID: ch.Stamp().BatchID(), Address: ch.Address()}, false)
+			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 1, BinID: uint64(i - 10 + 1)}, false)
+			checkChunk(t, ts, ch, false)
+		}
+	}
+}
+
 func TestIterate(t *testing.T) {
 	t.Parallel()
 
-	createReserve := func(t *testing.T) (*reserve.Reserve, internal.Storage) {
+	createReserve := func(t *testing.T) *reserve.Reserve {
 		t.Helper()
 
 		baseAddr := swarm.RandAddress(t)
 
-		ts, closer := internal.NewInmemStorage()
-		t.Cleanup(func() {
-			if err := closer(); err != nil {
-				t.Errorf("failed closing the storage: %v", err)
-			}
-		})
+		ts := internal.NewInmemStorage()
 
 		r, err := reserve.New(
 			baseAddr,
-			ts.IndexStore(),
+			ts,
 			0, kademlia.NewTopologyDriver(),
 			log.Noop,
-			noopCacher,
 		)
 		if err != nil {
 			t.Fatal(err)
@@ -329,26 +328,23 @@ func TestIterate(t *testing.T) {
 		for b := 0; b < 3; b++ {
 			for i := 0; i < 10; i++ {
 				ch := chunk.GenerateTestRandomChunkAt(t, baseAddr, b)
-				c, err := r.Put(context.Background(), ts, ch)
+				err := r.Put(context.Background(), ch)
 				if err != nil {
 					t.Fatal(err)
-				}
-				if !c {
-					t.Fatal("entered unique chunk")
 				}
 			}
 		}
 
-		return r, ts
+		return r
 	}
 
 	t.Run("iterate bin", func(t *testing.T) {
 		t.Parallel()
 
-		r, ts := createReserve(t)
+		r := createReserve(t)
 
 		var id uint64 = 1
-		err := r.IterateBin(ts.IndexStore(), 1, 0, func(ch swarm.Address, binID uint64, _ []byte) (bool, error) {
+		err := r.IterateBin(1, 0, func(ch swarm.Address, binID uint64, _ []byte) (bool, error) {
 			if binID != id {
 				t.Fatalf("got %d, want %d", binID, id)
 			}
@@ -366,10 +362,10 @@ func TestIterate(t *testing.T) {
 	t.Run("iterate chunks", func(t *testing.T) {
 		t.Parallel()
 
-		r, ts := createReserve(t)
+		r := createReserve(t)
 
 		count := 0
-		err := r.IterateChunks(ts, 2, func(_ swarm.Chunk) (bool, error) {
+		err := r.IterateChunks(2, func(_ swarm.Chunk) (bool, error) {
 			count++
 			return false, nil
 		})
@@ -384,10 +380,10 @@ func TestIterate(t *testing.T) {
 	t.Run("iterate chunk items", func(t *testing.T) {
 		t.Parallel()
 
-		r, ts := createReserve(t)
+		r := createReserve(t)
 
 		count := 0
-		err := r.IterateChunksItems(ts, 0, func(_ reserve.ChunkItem) (bool, error) {
+		err := r.IterateChunksItems(0, func(_ *reserve.ChunkBinItem) (bool, error) {
 			count++
 			return false, nil
 		})
@@ -402,9 +398,9 @@ func TestIterate(t *testing.T) {
 	t.Run("last bin id", func(t *testing.T) {
 		t.Parallel()
 
-		r, ts := createReserve(t)
+		r := createReserve(t)
 
-		ids, _, err := r.LastBinIDs(ts.IndexStore())
+		ids, _, err := r.LastBinIDs()
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -422,7 +418,7 @@ func TestIterate(t *testing.T) {
 	})
 }
 
-func checkStore(t *testing.T, s storage.Store, k storage.Key, gone bool) {
+func checkStore(t *testing.T, s storage.Reader, k storage.Key, gone bool) {
 	t.Helper()
 	h, err := s.Has(k)
 	if err != nil {
@@ -436,7 +432,7 @@ func checkStore(t *testing.T, s storage.Store, k storage.Key, gone bool) {
 	}
 }
 
-func checkChunk(t *testing.T, s internal.Storage, ch swarm.Chunk, gone bool) {
+func checkChunk(t *testing.T, s transaction.ReadOnlyStore, ch swarm.Chunk, gone bool) {
 	t.Helper()
 	h, err := s.ChunkStore().Has(context.Background(), ch.Address())
 	if err != nil {

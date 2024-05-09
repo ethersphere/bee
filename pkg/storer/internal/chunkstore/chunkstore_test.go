@@ -14,6 +14,8 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/sharky"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
+
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemstore"
 	"github.com/ethersphere/bee/v2/pkg/storage/storagetest"
@@ -21,6 +23,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstore"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/spf13/afero"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestRetrievalIndexItem(t *testing.T) {
@@ -117,22 +120,21 @@ func TestChunkStore(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	st := transaction.NewStorage(sharky, store)
+
 	t.Cleanup(func() {
 		if err := store.Close(); err != nil {
 			t.Errorf("inmem store close failed: %v", err)
 		}
-		if err := sharky.Close(); err != nil {
-			t.Errorf("inmem sharky close failed: %v", err)
-		}
 	})
-
-	st := chunkstore.New(store, sharky)
 
 	testChunks := chunktest.GenerateTestRandomChunks(50)
 
 	t.Run("put chunks", func(t *testing.T) {
 		for _, ch := range testChunks {
-			err := st.Put(context.TODO(), ch)
+			err := st.Run(context.Background(), func(s transaction.Store) error {
+				return s.ChunkStore().Put(context.TODO(), ch)
+			})
 			if err != nil {
 				t.Fatalf("failed putting new chunk: %v", err)
 			}
@@ -143,7 +145,9 @@ func TestChunkStore(t *testing.T) {
 		for idx, ch := range testChunks {
 			// only put duplicates for odd numbered indexes
 			if idx%2 != 0 {
-				err := st.Put(context.TODO(), ch)
+				err := st.Run(context.Background(), func(s transaction.Store) error {
+					return s.ChunkStore().Put(context.TODO(), ch)
+				})
 				if err != nil {
 					t.Fatalf("failed putting new chunk: %v", err)
 				}
@@ -153,7 +157,7 @@ func TestChunkStore(t *testing.T) {
 
 	t.Run("get chunks", func(t *testing.T) {
 		for _, ch := range testChunks {
-			readCh, err := st.Get(context.TODO(), ch.Address())
+			readCh, err := st.ChunkStore().Get(context.TODO(), ch.Address())
 			if err != nil {
 				t.Fatalf("failed getting chunk: %v", err)
 			}
@@ -165,7 +169,7 @@ func TestChunkStore(t *testing.T) {
 
 	t.Run("has chunks", func(t *testing.T) {
 		for _, ch := range testChunks {
-			exists, err := st.Has(context.TODO(), ch.Address())
+			exists, err := st.ChunkStore().Has(context.TODO(), ch.Address())
 			if err != nil {
 				t.Fatalf("failed getting chunk: %v", err)
 			}
@@ -177,7 +181,7 @@ func TestChunkStore(t *testing.T) {
 
 	t.Run("iterate chunks", func(t *testing.T) {
 		count := 0
-		err := st.Iterate(context.TODO(), func(_ swarm.Chunk) (bool, error) {
+		err := chunkstore.Iterate(context.TODO(), store, sharky, func(_ swarm.Chunk) (bool, error) {
 			count++
 			return false, nil
 		})
@@ -191,9 +195,9 @@ func TestChunkStore(t *testing.T) {
 
 	t.Run("iterate chunk entries", func(t *testing.T) {
 		count, shared := 0, 0
-		err := chunkstore.IterateChunkEntries(store, func(_ swarm.Address, isShared bool) (bool, error) {
+		err := chunkstore.IterateChunkEntries(store, func(_ swarm.Address, cnt uint32) (bool, error) {
 			count++
-			if isShared {
+			if cnt > 1 {
 				shared++
 			}
 			return false, nil
@@ -213,7 +217,9 @@ func TestChunkStore(t *testing.T) {
 		for idx, ch := range testChunks {
 			// Delete all even numbered indexes along with 0
 			if idx%2 == 0 {
-				err := st.Delete(context.TODO(), ch.Address())
+				err := st.Run(context.Background(), func(s transaction.Store) error {
+					return s.ChunkStore().Delete(context.TODO(), ch.Address())
+				})
 				if err != nil {
 					t.Fatalf("failed deleting chunk: %v", err)
 				}
@@ -225,11 +231,11 @@ func TestChunkStore(t *testing.T) {
 		for idx, ch := range testChunks {
 			if idx%2 == 0 {
 				// Check even numbered indexes are deleted
-				_, err := st.Get(context.TODO(), ch.Address())
+				_, err := st.ChunkStore().Get(context.TODO(), ch.Address())
 				if !errors.Is(err, storage.ErrNotFound) {
 					t.Fatalf("expected storage not found error found: %v", err)
 				}
-				found, err := st.Has(context.TODO(), ch.Address())
+				found, err := st.ChunkStore().Has(context.TODO(), ch.Address())
 				if err != nil {
 					t.Fatalf("unexpected error in Has: %v", err)
 				}
@@ -238,14 +244,14 @@ func TestChunkStore(t *testing.T) {
 				}
 			} else {
 				// Check rest of the entries are intact
-				readCh, err := st.Get(context.TODO(), ch.Address())
+				readCh, err := st.ChunkStore().Get(context.TODO(), ch.Address())
 				if err != nil {
 					t.Fatalf("failed getting chunk: %v", err)
 				}
 				if !readCh.Equal(ch) {
 					t.Fatal("read chunk doesnt match")
 				}
-				exists, err := st.Has(context.TODO(), ch.Address())
+				exists, err := st.ChunkStore().Has(context.TODO(), ch.Address())
 				if err != nil {
 					t.Fatalf("failed getting chunk: %v", err)
 				}
@@ -258,7 +264,7 @@ func TestChunkStore(t *testing.T) {
 
 	t.Run("iterate chunks after delete", func(t *testing.T) {
 		count := 0
-		err := st.Iterate(context.TODO(), func(_ swarm.Chunk) (bool, error) {
+		err := chunkstore.Iterate(context.TODO(), store, sharky, func(_ swarm.Chunk) (bool, error) {
 			count++
 			return false, nil
 		})
@@ -274,7 +280,9 @@ func TestChunkStore(t *testing.T) {
 	t.Run("delete duplicate chunks", func(t *testing.T) {
 		for idx, ch := range testChunks {
 			if idx%2 != 0 {
-				err := st.Delete(context.TODO(), ch.Address())
+				err := st.Run(context.Background(), func(s transaction.Store) error {
+					return s.ChunkStore().Delete(context.TODO(), ch.Address())
+				})
 				if err != nil {
 					t.Fatalf("failed deleting chunk: %v", err)
 				}
@@ -285,14 +293,14 @@ func TestChunkStore(t *testing.T) {
 	t.Run("check chunks still exists", func(t *testing.T) {
 		for idx, ch := range testChunks {
 			if idx%2 != 0 {
-				readCh, err := st.Get(context.TODO(), ch.Address())
+				readCh, err := st.ChunkStore().Get(context.TODO(), ch.Address())
 				if err != nil {
 					t.Fatalf("failed getting chunk: %v", err)
 				}
 				if !readCh.Equal(ch) {
 					t.Fatal("read chunk doesnt match")
 				}
-				exists, err := st.Has(context.TODO(), ch.Address())
+				exists, err := st.ChunkStore().Has(context.TODO(), ch.Address())
 				if err != nil {
 					t.Fatalf("failed getting chunk: %v", err)
 				}
@@ -306,7 +314,9 @@ func TestChunkStore(t *testing.T) {
 	t.Run("delete duplicate chunks again", func(t *testing.T) {
 		for idx, ch := range testChunks {
 			if idx%2 != 0 {
-				err := st.Delete(context.TODO(), ch.Address())
+				err := st.Run(context.Background(), func(s transaction.Store) error {
+					return s.ChunkStore().Delete(context.TODO(), ch.Address())
+				})
 				if err != nil {
 					t.Fatalf("failed deleting chunk: %v", err)
 				}
@@ -316,7 +326,7 @@ func TestChunkStore(t *testing.T) {
 
 	t.Run("check all are deleted", func(t *testing.T) {
 		count := 0
-		err := st.Iterate(context.TODO(), func(_ swarm.Chunk) (bool, error) {
+		err := chunkstore.Iterate(context.TODO(), store, sharky, func(_ swarm.Chunk) (bool, error) {
 			count++
 			return false, nil
 		})
@@ -334,4 +344,98 @@ func TestChunkStore(t *testing.T) {
 			t.Fatalf("unexpected error during close: %v", err)
 		}
 	})
+}
+
+// TestIterateLocations asserts that all stored chunks
+// are retrievable by sharky using IterateLocations.
+func TestIterateLocations(t *testing.T) {
+	t.Parallel()
+
+	const chunksCount = 50
+
+	st := makeStorage(t)
+	testChunks := chunktest.GenerateTestRandomChunks(chunksCount)
+	ctx := context.Background()
+
+	for _, ch := range testChunks {
+		assert.NoError(t, st.Run(context.Background(), func(s transaction.Store) error { return s.ChunkStore().Put(ctx, ch) }))
+	}
+
+	readCount := 0
+	respC := chunkstore.IterateLocations(ctx, st.IndexStore())
+
+	for resp := range respC {
+		assert.NoError(t, resp.Err)
+
+		buf := make([]byte, resp.Location.Length)
+		assert.NoError(t, st.sharky.Read(ctx, resp.Location, buf))
+
+		assert.True(t, swarm.ContainsChunkWithData(testChunks, buf))
+		readCount++
+	}
+
+	assert.Equal(t, chunksCount, readCount)
+}
+
+// TestIterateLocations_Stop asserts that IterateLocations will
+// stop iteration when context is canceled.
+func TestIterateLocations_Stop(t *testing.T) {
+	t.Parallel()
+
+	const chunksCount = 50
+	const stopReadAt = 10
+
+	st := makeStorage(t)
+	testChunks := chunktest.GenerateTestRandomChunks(chunksCount)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	for _, ch := range testChunks {
+		assert.NoError(t, st.Run(context.Background(), func(s transaction.Store) error { return s.ChunkStore().Put(ctx, ch) }))
+	}
+
+	readCount := 0
+	respC := chunkstore.IterateLocations(ctx, st.IndexStore())
+
+	for resp := range respC {
+		if resp.Err != nil {
+			assert.ErrorIs(t, resp.Err, context.Canceled)
+			break
+		}
+
+		buf := make([]byte, resp.Location.Length)
+		if err := st.sharky.Read(ctx, resp.Location, buf); err != nil {
+			assert.ErrorIs(t, err, context.Canceled)
+			break
+		}
+
+		assert.True(t, swarm.ContainsChunkWithData(testChunks, buf))
+		readCount++
+
+		if readCount == stopReadAt {
+			cancel()
+		}
+	}
+
+	assert.InDelta(t, stopReadAt, readCount, 1)
+}
+
+type chunkStore struct {
+	transaction.Storage
+	sharky *sharky.Store
+}
+
+func makeStorage(t *testing.T) *chunkStore {
+	t.Helper()
+
+	store := inmemstore.New()
+	sharky, err := sharky.New(&memFS{Fs: afero.NewMemMapFs()}, 1, swarm.SocMaxChunkSize)
+	assert.NoError(t, err)
+
+	t.Cleanup(func() {
+		assert.NoError(t, store.Close())
+		assert.NoError(t, sharky.Close())
+	})
+
+	return &chunkStore{transaction.NewStorage(sharky, store), sharky}
 }

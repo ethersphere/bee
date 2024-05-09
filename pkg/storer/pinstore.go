@@ -12,6 +12,7 @@ import (
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal"
 	pinstore "github.com/ethersphere/bee/v2/pkg/storer/internal/pinning"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
@@ -21,8 +22,8 @@ func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
 		pinningPutter internal.PutterCloserWithReference
 		err           error
 	)
-	err = db.Execute(ctx, func(txnRepo internal.Storage) error {
-		pinningPutter, err = pinstore.NewCollection(txnRepo)
+	err = db.storage.Run(ctx, func(store transaction.Store) error {
+		pinningPutter, err = pinstore.NewCollection(store.IndexStore())
 		if err != nil {
 			return fmt.Errorf("pinstore.NewCollection: %w", err)
 		}
@@ -36,8 +37,10 @@ func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
 		Putter: putterWithMetrics{
 			storage.PutterFunc(
 				func(ctx context.Context, chunk swarm.Chunk) error {
-					return db.Execute(ctx, func(s internal.Storage) error {
-						return pinningPutter.Put(ctx, s, s.IndexStore(), chunk)
+					unlock := db.Lock(uploadsLock)
+					defer unlock()
+					return db.storage.Run(ctx, func(s transaction.Store) error {
+						return pinningPutter.Put(ctx, s, chunk)
 					})
 				},
 			),
@@ -45,12 +48,16 @@ func (db *DB) NewCollection(ctx context.Context) (PutterSession, error) {
 			"pinstore",
 		},
 		done: func(address swarm.Address) error {
-			return db.Execute(ctx, func(s internal.Storage) error {
-				return pinningPutter.Close(s, s.IndexStore(), address)
+			unlock := db.Lock(uploadsLock)
+			defer unlock()
+			return db.storage.Run(ctx, func(s transaction.Store) error {
+				return pinningPutter.Close(s.IndexStore(), address)
 			})
 		},
 		cleanup: func() error {
-			return pinningPutter.Cleanup(db)
+			unlock := db.Lock(uploadsLock)
+			defer unlock()
+			return pinningPutter.Cleanup(db.storage)
 		},
 	}, nil
 }
@@ -67,7 +74,10 @@ func (db *DB) DeletePin(ctx context.Context, root swarm.Address) (err error) {
 		}
 	}()
 
-	return pinstore.DeletePin(ctx, db, root)
+	unlock := db.Lock(uploadsLock)
+	defer unlock()
+
+	return pinstore.DeletePin(ctx, db.storage, root)
 }
 
 // Pins is the implementation of the PinStore.Pins method.
@@ -82,7 +92,7 @@ func (db *DB) Pins() (address []swarm.Address, err error) {
 		}
 	}()
 
-	return pinstore.Pins(db.repo.IndexStore())
+	return pinstore.Pins(db.storage.IndexStore())
 }
 
 // HasPin is the implementation of the PinStore.HasPin method.
@@ -97,9 +107,9 @@ func (db *DB) HasPin(root swarm.Address) (has bool, err error) {
 		}
 	}()
 
-	return pinstore.HasPin(db.repo.IndexStore(), root)
+	return pinstore.HasPin(db.storage.IndexStore(), root)
 }
 
 func (db *DB) IteratePinCollection(root swarm.Address, iterateFn func(swarm.Address) (bool, error)) error {
-	return pinstore.IterateCollection(db.repo.IndexStore(), root, iterateFn)
+	return pinstore.IterateCollection(db.storage.IndexStore(), root, iterateFn)
 }

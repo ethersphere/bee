@@ -156,13 +156,6 @@ func TestChunkStore(t *testing.T, st storage.ChunkStore) {
 			t.Fatalf("unexpected no of chunks, exp: %d, found: %d", 25, count)
 		}
 	})
-
-	t.Run("close store", func(t *testing.T) {
-		err := st.Close()
-		if err != nil {
-			t.Fatalf("unexpected error during close: %v", err)
-		}
-	})
 }
 
 func RunChunkStoreBenchmarkTests(b *testing.B, s storage.ChunkStore) {

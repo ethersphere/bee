@@ -9,8 +9,6 @@ import (
 	"errors"
 	"path"
 
-	"github.com/ethersphere/bee/v2/pkg/cac"
-	"github.com/ethersphere/bee/v2/pkg/soc"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
@@ -309,13 +307,4 @@ func copyBytes(src []byte) []byte {
 	dst := make([]byte, len(src))
 	copy(dst, src)
 	return dst
-}
-
-func ChunkType(ch swarm.Chunk) swarm.ChunkType {
-	if cac.Valid(ch) {
-		return swarm.ChunkTypeContentAddressed
-	} else if soc.Valid(ch) {
-		return swarm.ChunkTypeSingleOwner
-	}
-	return swarm.ChunkTypeUnspecified
 }
