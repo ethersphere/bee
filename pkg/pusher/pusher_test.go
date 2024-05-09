@@ -426,7 +426,7 @@ func createPusher(
 
 	radiusFunc := func() (uint8, error) { return radius, nil }
 
-	pusherService := pusher.New(1, storer, radiusFunc, pushSyncService, validStamp, log.Noop, nil, 0, retryCount)
+	pusherService := pusher.New(1, storer, radiusFunc, pushSyncService, validStamp, log.Noop, 0, retryCount)
 	testutil.CleanupCloser(t, pusherService)
 
 	return pusherService

@@ -1024,7 +1024,7 @@ func (m *mockPutter) store(cnt int) error {
 }
 
 // nolint:thelper
-func TestJoinerRedundancy(t *testing.T) {
+func TestJoinerRedundancy_FLAKY(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		rLevel       redundancy.Level
@@ -1229,8 +1229,7 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 	t.Parallel()
 	test := func(t *testing.T, rLevel redundancy.Level, encrypt bool, size int) {
 		t.Helper()
-		store := mockstorer.NewForgettingStore(inmemchunkstore.New())
-		testutil.CleanupCloser(t, store)
+		store := mockstorer.NewForgettingStore(newChunkStore())
 		seed, err := pseudorand.NewSeed()
 		if err != nil {
 			t.Fatal(err)
@@ -1366,4 +1365,71 @@ func TestJoinerRedundancyMultilevel(t *testing.T) {
 			}
 		})
 	}
+}
+
+type chunkStore struct {
+	mu     sync.Mutex
+	chunks map[string]swarm.Chunk
+}
+
+func newChunkStore() *chunkStore {
+	return &chunkStore{
+		chunks: make(map[string]swarm.Chunk),
+	}
+}
+
+func (c *chunkStore) Get(_ context.Context, addr swarm.Address) (swarm.Chunk, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	chunk, ok := c.chunks[addr.ByteString()]
+	if !ok {
+		return nil, storage.ErrNotFound
+	}
+	return chunk, nil
+}
+
+func (c *chunkStore) Put(_ context.Context, ch swarm.Chunk) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.chunks[ch.Address().ByteString()] = swarm.NewChunk(ch.Address(), ch.Data()).WithStamp(ch.Stamp())
+	return nil
+}
+
+func (c *chunkStore) Has(_ context.Context, addr swarm.Address) (bool, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	_, exists := c.chunks[addr.ByteString()]
+
+	return exists, nil
+}
+
+func (c *chunkStore) Delete(_ context.Context, addr swarm.Address) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	delete(c.chunks, addr.ByteString())
+	return nil
+}
+
+func (c *chunkStore) Iterate(_ context.Context, fn storage.IterateChunkFn) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for _, c := range c.chunks {
+		stop, err := fn(c)
+		if err != nil {
+			return err
+		}
+		if stop {
+			return nil
+		}
+	}
+
+	return nil
+}
+
+func (c *chunkStore) Close() error {
+	return nil
 }

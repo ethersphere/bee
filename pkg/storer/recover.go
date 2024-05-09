@@ -51,10 +51,9 @@ func sharkyRecovery(ctx context.Context, sharkyBasePath string, store storage.St
 		}
 	}()
 
-	locationResultC := make(chan chunkstore.LocationResult)
-	chunkstore.IterateLocations(ctx, store, locationResultC)
+	c := chunkstore.IterateLocations(ctx, store)
 
-	if err := addLocations(locationResultC, sharkyRecover); err != nil {
+	if err := addLocations(c, sharkyRecover); err != nil {
 		return closer, err
 	}
 

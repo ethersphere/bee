@@ -19,6 +19,8 @@ import (
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
+
 	m "github.com/ethersphere/bee/v2/pkg/metrics"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/pusher"
@@ -27,9 +29,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/leveldbstore"
 	"github.com/ethersphere/bee/v2/pkg/storage/migration"
-	"github.com/ethersphere/bee/v2/pkg/storer/internal"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/cache"
-	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstore"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/events"
 	pinstore "github.com/ethersphere/bee/v2/pkg/storer/internal/pinning"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
@@ -78,8 +78,6 @@ type UploadStore interface {
 	DeleteSession(tagID uint64) error
 	// ListSessions will list all the Sessions currently being tracked.
 	ListSessions(offset, limit int) ([]SessionInfo, error)
-	// BatchHint will return the batch ID hint for the chunk reference if known.
-	BatchHint(swarm.Address) ([]byte, error)
 }
 
 // PinStore is a logical component of the storer which deals with pinning
@@ -212,7 +210,7 @@ func closer(closers ...io.Closer) io.Closer {
 	})
 }
 
-func initInmemRepository(locker storage.ChunkLocker) (storage.Repository, io.Closer, error) {
+func initInmemRepository() (transaction.Storage, io.Closer, error) {
 	store, err := leveldbstore.New("", nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed creating inmem levelDB index store: %w", err)
@@ -227,10 +225,7 @@ func initInmemRepository(locker storage.ChunkLocker) (storage.Repository, io.Clo
 		return nil, nil, fmt.Errorf("failed creating inmem sharky instance: %w", err)
 	}
 
-	txStore := leveldbstore.NewTxStore(store)
-	txChunkStore := chunkstore.NewTxChunkStore(txStore, sharky)
-
-	return storage.NewRepository(txStore, txChunkStore, locker), closer(store, sharky), nil
+	return transaction.NewStorage(sharky, store), closer(store, sharky), nil
 }
 
 // loggerName is the tree path name of the logger for this package.
@@ -276,15 +271,14 @@ func initStore(basePath string, opts *Options) (*leveldbstore.Store, error) {
 func initDiskRepository(
 	ctx context.Context,
 	basePath string,
-	locker storage.ChunkLocker,
 	opts *Options,
-) (storage.Repository, *PinIntegrity, io.Closer, error) {
+) (transaction.Storage, *PinIntegrity, io.Closer, error) {
 	store, err := initStore(basePath, opts)
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed creating levelDB index store: %w", err)
 	}
 
-	err = migration.Migrate(store, "core-migration", localmigration.BeforeIinitSteps())
+	err = migration.Migrate(store, "core-migration", localmigration.BeforeInitSteps(store))
 	if err != nil {
 		return nil, nil, nil, fmt.Errorf("failed core migration: %w", err)
 	}
@@ -356,35 +350,12 @@ func initDiskRepository(
 		return nil, nil, nil, fmt.Errorf("failed creating sharky instance: %w", err)
 	}
 
-	txStore := leveldbstore.NewTxStore(store)
-	if err := txStore.Recover(); err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to recover index store: %w", err)
-	}
-
-	txChunkStore := chunkstore.NewTxChunkStore(txStore, sharky)
-	if err := txChunkStore.Recover(); err != nil {
-		return nil, nil, nil, fmt.Errorf("failed to recover chunk store: %w", err)
-	}
-
 	pinIntegrity := &PinIntegrity{
 		Store:  store,
 		Sharky: sharky,
 	}
 
-	return storage.NewRepository(txStore, txChunkStore, locker), pinIntegrity, closer(store, sharky, recoveryCloser), nil
-}
-
-func initCache(ctx context.Context, capacity uint64, repo storage.Repository) (*cache.Cache, error) {
-	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-
-	txnRepo, commit, rollback := repo.NewTx(ctx)
-	c, err := cache.New(ctx, txnRepo, capacity)
-	if err != nil {
-		return nil, fmt.Errorf("cache.New: %w", errors.Join(err, rollback()))
-	}
-
-	return c, commit()
+	return transaction.NewStorage(sharky, store), pinIntegrity, closer(store, sharky, recoveryCloser), nil
 }
 
 const lockKeyNewSession string = "new_session"
@@ -397,7 +368,6 @@ type Options struct {
 	LdbBlockCacheCapacity     uint64
 	LdbWriteBufferSize        uint64
 	LdbDisableSeeksCompaction bool
-	CacheCapacity             uint64
 	Logger                    log.Logger
 	Tracer                    *tracing.Tracer
 
@@ -410,6 +380,10 @@ type Options struct {
 
 	ReserveCapacity       int
 	ReserveWakeUpDuration time.Duration
+	ReserveMinEvictCount  uint64
+
+	CacheCapacity      uint64
+	CacheMinEvictCount uint64
 }
 
 func defaultOptions() *Options {
@@ -439,10 +413,9 @@ type DB struct {
 	logger log.Logger
 	tracer *tracing.Tracer
 
-	metrics metrics
-
-	repo                storage.Repository
-	lock                *multex.Multex
+	metrics             metrics
+	storage             transaction.Storage
+	multex              *multex.Multex
 	cacheObj            *cache.Cache
 	retrieval           retrieval.Interface
 	pusherFeed          chan *pusher.Op
@@ -467,18 +440,20 @@ type DB struct {
 }
 
 type workerOpts struct {
-	warmupDuration time.Duration
-	wakeupDuration time.Duration
+	reserveWarmupDuration time.Duration
+	reserveWakeupDuration time.Duration
+	reserveMinEvictCount  uint64
+	cacheMinEvictCount    uint64
 }
 
 // New returns a newly constructed DB object which implements all the above
 // component stores.
 func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	var (
-		repo         storage.Repository
 		err          error
-		dbCloser     io.Closer
 		pinIntegrity *PinIntegrity
+		st           transaction.Storage
+		dbCloser     io.Closer
 	)
 	if opts == nil {
 		opts = defaultOptions()
@@ -492,20 +467,13 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	metrics := newMetrics()
 	opts.LdbStats.CompareAndSwap(nil, &metrics.LevelDBStats)
 
-	locker := func(addr swarm.Address) func() {
-		lock.Lock(addr.ByteString())
-		return func() {
-			lock.Unlock(addr.ByteString())
-		}
-	}
-
 	if dirPath == "" {
-		repo, dbCloser, err = initInmemRepository(locker)
+		st, dbCloser, err = initInmemRepository()
 		if err != nil {
 			return nil, err
 		}
 	} else {
-		repo, pinIntegrity, dbCloser, err = initDiskRepository(ctx, dirPath, locker, opts)
+		st, pinIntegrity, dbCloser, err = initDiskRepository(ctx, dirPath, opts)
 		if err != nil {
 			return nil, err
 		}
@@ -515,16 +483,19 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	if dirPath != "" {
 		sharkyBasePath = path.Join(dirPath, sharkyPath)
 	}
-	err = migration.Migrate(
-		repo.IndexStore(),
-		"migration",
-		localmigration.AfterInitSteps(sharkyBasePath, sharkyNoOfShards, repo.ChunkStore()),
-	)
+
+	err = st.Run(ctx, func(s transaction.Store) error {
+		return migration.Migrate(
+			s.IndexStore(),
+			"migration",
+			localmigration.AfterInitSteps(sharkyBasePath, sharkyNoOfShards, st, opts.Logger),
+		)
+	})
 	if err != nil {
 		return nil, err
 	}
 
-	cacheObj, err := initCache(ctx, opts.CacheCapacity, repo)
+	cacheObj, err := cache.New(ctx, st.IndexStore(), opts.CacheCapacity)
 	if err != nil {
 		return nil, err
 	}
@@ -534,11 +505,11 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	clCtx, clCancel := context.WithCancel(ctx)
 	db := &DB{
 		metrics:    metrics,
+		storage:    st,
 		logger:     logger,
 		tracer:     opts.Tracer,
 		baseAddr:   opts.Address,
-		repo:       repo,
-		lock:       lock,
+		multex:     lock,
 		cacheObj:   cacheObj,
 		retrieval:  noopRetrieval{},
 		pusherFeed: make(chan *pusher.Op),
@@ -554,8 +525,10 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 		events:           events.NewSubscriber(),
 		reserveBinEvents: events.NewSubscriber(),
 		opts: workerOpts{
-			warmupDuration: opts.WarmupDuration,
-			wakeupDuration: opts.ReserveWakeUpDuration,
+			reserveWarmupDuration: opts.WarmupDuration,
+			reserveWakeupDuration: opts.ReserveWakeUpDuration,
+			reserveMinEvictCount:  opts.ReserveMinEvictCount,
+			cacheMinEvictCount:    opts.CacheMinEvictCount,
 		},
 		directUploadLimiter: make(chan struct{}, pusher.ConcurrentPushes),
 		pinIntegrity:        pinIntegrity,
@@ -568,11 +541,10 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	if opts.ReserveCapacity > 0 {
 		rs, err := reserve.New(
 			opts.Address,
-			repo.IndexStore(),
+			st,
 			opts.ReserveCapacity,
 			opts.RadiusSetter,
 			logger,
-			db.CacheShallowCopy,
 		)
 		if err != nil {
 			return nil, err
@@ -587,8 +559,8 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 	// Cleanup any dirty state in upload and pinning stores, this could happen
 	// in case of dirty shutdowns
 	err = errors.Join(
-		upload.CleanupDirty(db),
-		pinstore.CleanupDirty(db),
+		upload.CleanupDirty(db.storage),
+		pinstore.CleanupDirty(db.storage),
 	)
 	if err != nil {
 		return nil, err
@@ -603,7 +575,7 @@ func New(ctx context.Context, dirPath string, opts *Options) (*DB, error) {
 // Metrics returns set of prometheus collectors.
 func (db *DB) Metrics() []prometheus.Collector {
 	collectors := m.PrometheusCollectorsFromFields(db.metrics)
-	if v, ok := db.repo.(m.Collector); ok {
+	if v, ok := db.storage.(m.Collector); ok {
 		collectors = append(collectors, v.Metrics()...)
 	}
 	return collectors
@@ -660,7 +632,7 @@ func (db *DB) SetRetrievalService(r retrieval.Interface) {
 func (db *DB) StartReserveWorker(ctx context.Context, s Syncer, radius func() (uint8, error)) {
 	db.setSyncerOnce.Do(func() {
 		db.syncer = s
-		go db.startReserveWorkers(ctx, db.opts.warmupDuration, db.opts.wakeupDuration, radius)
+		go db.startReserveWorkers(ctx, radius)
 	})
 }
 
@@ -671,20 +643,26 @@ func (noopRetrieval) RetrieveChunk(_ context.Context, _ swarm.Address, _ swarm.A
 }
 
 func (db *DB) ChunkStore() storage.ReadOnlyChunkStore {
-	return db.repo.ChunkStore()
+	return db.storage.ChunkStore()
 }
 
 func (db *DB) PinIntegrity() *PinIntegrity {
 	return db.pinIntegrity
 }
 
-// Execute implements the internal.TxExecutor interface.
-func (db *DB) Execute(ctx context.Context, do func(internal.Storage) error) error {
-	tx, commit, rollback := db.repo.NewTx(ctx)
-	if err := do(tx); err != nil {
-		return errors.Join(err, rollback())
+func (db *DB) Lock(strs ...string) func() {
+	for _, s := range strs {
+		db.multex.Lock(s)
 	}
-	return commit()
+	return func() {
+		for _, s := range strs {
+			db.multex.Unlock(s)
+		}
+	}
+}
+
+func (db *DB) Storage() transaction.Storage {
+	return db.storage
 }
 
 type putterSession struct {

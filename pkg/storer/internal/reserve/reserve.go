@@ -10,28 +10,23 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"sync"
+	"runtime"
+	"strconv"
 	"sync/atomic"
 	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/storage"
-	"github.com/ethersphere/bee/v2/pkg/storer/internal"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstamp"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/stampindex"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
+	"golang.org/x/sync/errgroup"
+	"resenje.org/multex"
 )
 
-// loggerName is the tree path name of the logger for this package.
-const loggerName = "reserve"
 const reserveNamespace = "reserve"
-
-/*
-	pull by 	bin - binID
-	evict by 	bin - batchID
-	sample by 	bin
-*/
 
 type Reserve struct {
 	baseAddr     swarm.Address
@@ -41,176 +36,184 @@ type Reserve struct {
 	capacity int
 	size     atomic.Int64
 	radius   atomic.Uint32
-	cacheCb  func(context.Context, internal.Storage, ...swarm.Address) error
 
-	binMtx sync.Mutex
+	multx *multex.Multex
+	st    transaction.Storage
 }
 
 func New(
 	baseAddr swarm.Address,
-	store storage.Store,
+	st transaction.Storage,
 	capacity int,
 	radiusSetter topology.SetStorageRadiuser,
 	logger log.Logger,
-	cb func(context.Context, internal.Storage, ...swarm.Address) error,
 ) (*Reserve, error) {
 
 	rs := &Reserve{
 		baseAddr:     baseAddr,
+		st:           st,
 		capacity:     capacity,
 		radiusSetter: radiusSetter,
-		logger:       logger.WithName(loggerName).Register(),
-		cacheCb:      cb,
+		logger:       logger.WithName(reserveNamespace).Register(),
+		multx:        multex.New(),
 	}
 
-	rItem := &radiusItem{}
-	err := store.Get(rItem)
-	if err != nil && !errors.Is(err, storage.ErrNotFound) {
-		return nil, err
-	}
-	rs.radius.Store(uint32(rItem.Radius))
-
-	epochItem := &EpochItem{}
-	err = store.Get(epochItem)
-	if err != nil {
-		if errors.Is(err, storage.ErrNotFound) {
-			err := store.Put(&EpochItem{Timestamp: uint64(time.Now().Unix())})
-			if err != nil {
-				return nil, err
-			}
-		} else {
-			return nil, err
+	err := st.Run(context.Background(), func(s transaction.Store) error {
+		rItem := &radiusItem{}
+		err := s.IndexStore().Get(rItem)
+		if err != nil && !errors.Is(err, storage.ErrNotFound) {
+			return err
 		}
-	}
+		rs.radius.Store(uint32(rItem.Radius))
 
-	size, err := store.Count(&BatchRadiusItem{})
-	if err != nil {
-		return nil, err
-	}
-	rs.size.Store(int64(size))
+		epochItem := &EpochItem{}
+		err = s.IndexStore().Get(epochItem)
+		if err != nil {
+			if errors.Is(err, storage.ErrNotFound) {
+				err := s.IndexStore().Put(&EpochItem{Timestamp: uint64(time.Now().Unix())})
+				if err != nil {
+					return err
+				}
+			} else {
+				return err
+			}
+		}
 
-	return rs, nil
+		size, err := s.IndexStore().Count(&BatchRadiusItem{})
+		if err != nil {
+			return err
+		}
+		rs.size.Store(int64(size))
+		return nil
+	})
+
+	return rs, err
 }
 
 // Put stores a new chunk in the reserve and returns if the reserve size should increase.
-func (r *Reserve) Put(ctx context.Context, store internal.Storage, chunk swarm.Chunk) (bool, error) {
-	indexStore := store.IndexStore()
-	chunkStore := store.ChunkStore()
+func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 
-	po := swarm.Proximity(r.baseAddr.Bytes(), chunk.Address().Bytes())
+	// batchID lock, Put vs Eviction
+	r.multx.Lock(string(chunk.Stamp().BatchID()))
+	defer r.multx.Unlock(string(chunk.Stamp().BatchID()))
 
-	has, err := indexStore.Has(&BatchRadiusItem{
-		Bin:     po,
-		Address: chunk.Address(),
-		BatchID: chunk.Stamp().BatchID(),
-	})
+	has, err := r.Has(chunk.Address(), chunk.Stamp().BatchID())
 	if err != nil {
-		return false, err
+		return err
 	}
 	if has {
-		return false, nil
+		return nil
 	}
 
-	storeBatch, err := indexStore.Batch(ctx)
-	if err != nil {
-		return false, err
-	}
+	bin := swarm.Proximity(r.baseAddr.Bytes(), chunk.Address().Bytes())
 
-	newStampIndex := true
+	// bin lock
+	r.multx.Lock(strconv.Itoa(int(bin)))
+	defer r.multx.Unlock(strconv.Itoa(int(bin)))
 
-	item, loaded, err := stampindex.LoadOrStore(indexStore, storeBatch, reserveNamespace, chunk)
-	if err != nil {
-		return false, fmt.Errorf("load or store stamp index for chunk %v has fail: %w", chunk, err)
-	}
-	if loaded {
-		prev := binary.BigEndian.Uint64(item.StampTimestamp)
-		curr := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
-		if prev >= curr {
-			return false, fmt.Errorf("overwrite prev %d cur %d :%w", prev, curr, storage.ErrOverwriteNewerChunk)
-		}
-		// An older and different chunk with the same batchID and stamp index has been previously
-		// saved to the reserve. We must do the below before saving the new chunk:
-		// 1. Delete the old chunk from the chunkstore
-		// 2. Delete the old chunk's stamp data
-		// 3. Delete ALL old chunk related items from the reserve
-		// 4. Update the stamp index
-		newStampIndex = false
+	return r.st.Run(ctx, func(s transaction.Store) error {
 
-		err = r.DeleteChunk(ctx, store, storeBatch, item.ChunkAddress, chunk.Stamp().BatchID())
+		oldItem, loadedStamp, err := stampindex.LoadOrStore(s.IndexStore(), reserveNamespace, chunk)
 		if err != nil {
-			return false, fmt.Errorf("failed removing older chunk: %w", err)
+			return fmt.Errorf("load or store stamp index for chunk %v has fail: %w", chunk, err)
+		}
+		if loadedStamp {
+			prev := binary.BigEndian.Uint64(oldItem.StampTimestamp)
+			curr := binary.BigEndian.Uint64(chunk.Stamp().Timestamp())
+			if prev >= curr {
+				return fmt.Errorf("overwrite prev %d cur %d batch %s: %w", prev, curr, hex.EncodeToString(chunk.Stamp().BatchID()), storage.ErrOverwriteNewerChunk)
+			}
+			// An older and different chunk with the same batchID and stamp index has been previously
+			// saved to the reserve. We must do the below before saving the new chunk:
+			// 1. Delete the old chunk from the chunkstore.
+			// 2. Delete the old chunk's stamp data.
+			// 3. Delete ALL old chunk related items from the reserve.
+			// 4. Update the stamp index.
+
+			err := r.removeChunk(ctx, s, oldItem.ChunkAddress, chunk.Stamp().BatchID())
+			if err != nil {
+				return fmt.Errorf("failed removing older chunk %s: %w", oldItem.ChunkAddress, err)
+			}
+
+			r.logger.Debug(
+				"replacing chunk stamp index",
+				"old_chunk", oldItem.ChunkAddress,
+				"new_chunk", chunk.Address(),
+				"batch_id", hex.EncodeToString(chunk.Stamp().BatchID()),
+			)
+
+			// replace old stamp index.
+			err = stampindex.Store(s.IndexStore(), reserveNamespace, chunk)
+			if err != nil {
+				return fmt.Errorf("failed updating stamp index: %w", err)
+			}
 		}
 
-		r.logger.Debug(
-			"replacing chunk stamp index",
-			"old_chunk", item.ChunkAddress,
-			"new_chunk", chunk.Address(),
-			"batch_id", hex.EncodeToString(chunk.Stamp().BatchID()),
-		)
-
-		err = stampindex.Store(storeBatch, reserveNamespace, chunk)
+		err = chunkstamp.Store(s.IndexStore(), reserveNamespace, chunk)
 		if err != nil {
-			return false, fmt.Errorf("failed updating stamp index: %w", err)
+			return err
 		}
-	}
 
-	err = chunkstamp.Store(storeBatch, reserveNamespace, chunk)
-	if err != nil {
-		return false, err
-	}
+		binID, err := r.IncBinID(s.IndexStore(), bin)
+		if err != nil {
+			return err
+		}
 
-	binID, err := r.IncBinID(indexStore, po)
-	if err != nil {
-		return false, err
-	}
+		err = s.IndexStore().Put(&BatchRadiusItem{
+			Bin:     bin,
+			BinID:   binID,
+			Address: chunk.Address(),
+			BatchID: chunk.Stamp().BatchID(),
+		})
+		if err != nil {
+			return err
+		}
 
-	err = storeBatch.Put(&BatchRadiusItem{
-		Bin:     po,
-		BinID:   binID,
-		Address: chunk.Address(),
-		BatchID: chunk.Stamp().BatchID(),
+		err = s.IndexStore().Put(&ChunkBinItem{
+			Bin:       bin,
+			BinID:     binID,
+			Address:   chunk.Address(),
+			BatchID:   chunk.Stamp().BatchID(),
+			ChunkType: storage.ChunkType(chunk),
+		})
+		if err != nil {
+			return err
+		}
+
+		err = s.ChunkStore().Put(ctx, chunk)
+		if err != nil {
+			return err
+		}
+
+		if !loadedStamp {
+			r.size.Add(1)
+		}
+
+		return nil
 	})
-	if err != nil {
-		return false, err
-	}
-
-	err = storeBatch.Put(&ChunkBinItem{
-		Bin:       po,
-		BinID:     binID,
-		Address:   chunk.Address(),
-		BatchID:   chunk.Stamp().BatchID(),
-		ChunkType: ChunkType(chunk),
-	})
-	if err != nil {
-		return false, err
-	}
-
-	err = chunkStore.Put(ctx, chunk)
-	if err != nil {
-		return false, err
-	}
-
-	return newStampIndex, storeBatch.Commit()
 }
 
-func (r *Reserve) Has(store storage.Store, addr swarm.Address, batchID []byte) (bool, error) {
+func (r *Reserve) Has(addr swarm.Address, batchID []byte) (bool, error) {
 	item := &BatchRadiusItem{Bin: swarm.Proximity(r.baseAddr.Bytes(), addr.Bytes()), BatchID: batchID, Address: addr}
-	return store.Has(item)
+	return r.st.IndexStore().Has(item)
 }
 
-func (r *Reserve) Get(ctx context.Context, storage internal.Storage, addr swarm.Address, batchID []byte) (swarm.Chunk, error) {
+func (r *Reserve) Get(ctx context.Context, addr swarm.Address, batchID []byte) (swarm.Chunk, error) {
+	r.multx.Lock(string(batchID))
+	defer r.multx.Unlock(string(batchID))
+
 	item := &BatchRadiusItem{Bin: swarm.Proximity(r.baseAddr.Bytes(), addr.Bytes()), BatchID: batchID, Address: addr}
-	err := storage.IndexStore().Get(item)
+	err := r.st.IndexStore().Get(item)
 	if err != nil {
 		return nil, err
 	}
 
-	stamp, err := chunkstamp.LoadWithBatchID(storage.IndexStore(), reserveNamespace, addr, item.BatchID)
+	stamp, err := chunkstamp.LoadWithBatchID(r.st.IndexStore(), reserveNamespace, addr, item.BatchID)
 	if err != nil {
 		return nil, err
 	}
 
-	ch, err := storage.ChunkStore().Get(ctx, addr)
+	ch, err := r.st.ChunkStore().Get(ctx, addr)
 	if err != nil {
 		return nil, err
 	}
@@ -218,8 +221,116 @@ func (r *Reserve) Get(ctx context.Context, storage internal.Storage, addr swarm.
 	return ch.WithStamp(stamp), nil
 }
 
-func (r *Reserve) IterateBin(store storage.Store, bin uint8, startBinID uint64, cb func(swarm.Address, uint64, []byte) (bool, error)) error {
-	err := store.Iterate(storage.Query{
+// EvictBatchBin evicts all chunks from bins upto the bin provided.
+func (r *Reserve) EvictBatchBin(
+	ctx context.Context,
+	batchID []byte,
+	count int,
+	bin uint8,
+) (int, error) {
+
+	r.multx.Lock(string(batchID))
+	defer r.multx.Unlock(string(batchID))
+
+	var evicteditems []*BatchRadiusItem
+
+	if count <= 0 {
+		return 0, nil
+	}
+
+	err := r.st.IndexStore().Iterate(storage.Query{
+		Factory: func() storage.Item { return &BatchRadiusItem{} },
+		Prefix:  string(batchID),
+	}, func(res storage.Result) (bool, error) {
+		batchRadius := res.Entry.(*BatchRadiusItem)
+		if batchRadius.Bin >= bin {
+			return true, nil
+		}
+		evicteditems = append(evicteditems, batchRadius)
+		count--
+		if count == 0 {
+			return true, nil
+		}
+		return false, nil
+	})
+	if err != nil {
+		return 0, err
+	}
+
+	eg, ctx := errgroup.WithContext(ctx)
+	eg.SetLimit(runtime.NumCPU())
+
+	var evicted atomic.Int64
+
+	for _, item := range evicteditems {
+		func(item *BatchRadiusItem) {
+			eg.Go(func() error {
+				err := r.st.Run(ctx, func(s transaction.Store) error {
+					return RemoveChunkWithItem(ctx, s, item)
+				})
+				if err != nil {
+					return err
+				}
+				evicted.Add(1)
+				return nil
+			})
+		}(item)
+	}
+
+	err = eg.Wait()
+
+	r.size.Add(-evicted.Load())
+
+	return int(evicted.Load()), err
+}
+
+func (r *Reserve) removeChunk(
+	ctx context.Context,
+	trx transaction.Store,
+	chunkAddress swarm.Address,
+	batchID []byte,
+) error {
+	item := &BatchRadiusItem{
+		Bin:     swarm.Proximity(r.baseAddr.Bytes(), chunkAddress.Bytes()),
+		BatchID: batchID,
+		Address: chunkAddress,
+	}
+	err := trx.IndexStore().Get(item)
+	if err != nil {
+		return err
+	}
+	return RemoveChunkWithItem(ctx, trx, item)
+}
+
+func RemoveChunkWithItem(
+	ctx context.Context,
+	trx transaction.Store,
+	item *BatchRadiusItem,
+) error {
+
+	var errs error
+
+	stamp, _ := chunkstamp.LoadWithBatchID(trx.IndexStore(), reserveNamespace, item.Address, item.BatchID)
+	if stamp != nil {
+		errs = errors.Join(
+			stampindex.Delete(
+				trx.IndexStore(),
+				reserveNamespace,
+				swarm.NewChunk(item.Address, nil).WithStamp(stamp),
+			),
+			chunkstamp.DeleteWithStamp(trx.IndexStore(), reserveNamespace, item.Address, stamp),
+		)
+	}
+
+	return errors.Join(errs,
+		trx.IndexStore().Delete(item),
+		trx.IndexStore().Delete(&ChunkBinItem{Bin: item.Bin, BinID: item.BinID}),
+		trx.ChunkStore().Delete(ctx, item.Address),
+	)
+}
+
+func (r *Reserve) IterateBin(bin uint8, startBinID uint64, cb func(swarm.Address, uint64, []byte) (bool, error)) error {
+	err := r.st.IndexStore().Iterate(storage.Query{
 		Factory:       func() storage.Item { return &ChunkBinItem{} },
 		Prefix:        binIDToString(bin, startBinID),
 		PrefixAtStart: true,
@@ -240,20 +351,20 @@ func (r *Reserve) IterateBin(store storage.Store, bin uint8, startBinID uint64, 
 	return err
 }
 
-func (r *Reserve) IterateChunks(store internal.Storage, startBin uint8, cb func(swarm.Chunk) (bool, error)) error {
-	err := store.IndexStore().Iterate(storage.Query{
+func (r *Reserve) IterateChunks(startBin uint8, cb func(swarm.Chunk) (bool, error)) error {
+	err := r.st.IndexStore().Iterate(storage.Query{
 		Factory:       func() storage.Item { return &ChunkBinItem{} },
 		Prefix:        binIDToString(startBin, 0),
 		PrefixAtStart: true,
 	}, func(res storage.Result) (bool, error) {
 		item := res.Entry.(*ChunkBinItem)
 
-		chunk, err := store.ChunkStore().Get(context.Background(), item.Address)
+		chunk, err := r.st.ChunkStore().Get(context.Background(), item.Address)
 		if err != nil {
 			return false, err
 		}
 
-		stamp, err := chunkstamp.LoadWithBatchID(store.IndexStore(), reserveNamespace, item.Address, item.BatchID)
+		stamp, err := chunkstamp.LoadWithBatchID(r.st.IndexStore(), reserveNamespace, item.Address, item.BatchID)
 		if err != nil {
 			return false, err
 		}
@@ -268,31 +379,15 @@ func (r *Reserve) IterateChunks(store internal.Storage, startBin uint8, cb func(
 	return err
 }
 
-type ChunkItem struct {
-	ChunkAddress swarm.Address
-	BatchID      []byte
-	Type         swarm.ChunkType
-	BinID        uint64
-	Bin          uint8
-}
-
-func (r *Reserve) IterateChunksItems(store internal.Storage, startBin uint8, cb func(ChunkItem) (bool, error)) error {
-	err := store.IndexStore().Iterate(storage.Query{
+func (r *Reserve) IterateChunksItems(startBin uint8, cb func(*ChunkBinItem) (bool, error)) error {
+	err := r.st.IndexStore().Iterate(storage.Query{
 		Factory:       func() storage.Item { return &ChunkBinItem{} },
 		Prefix:        binIDToString(startBin, 0),
 		PrefixAtStart: true,
 	}, func(res storage.Result) (bool, error) {
 		item := res.Entry.(*ChunkBinItem)
 
-		chItem := ChunkItem{
-			ChunkAddress: item.Address,
-			BatchID:      item.BatchID,
-			Type:         item.ChunkType,
-			BinID:        item.BinID,
-			Bin:          item.Bin,
-		}
-
-		stop, err := cb(chItem)
+		stop, err := cb(item)
 		if stop || err != nil {
 			return true, err
 		}
@@ -300,132 +395,6 @@ func (r *Reserve) IterateChunksItems(store internal.Storage, startBin uint8, cb 
 	})
 
 	return err
-}
-
-// EvictBatchBin evicts all chunks from bins upto the bin provided.
-func (r *Reserve) EvictBatchBin(
-	ctx context.Context,
-	txExecutor internal.TxExecutor,
-	bin uint8,
-	batchID []byte,
-) (int, error) {
-
-	var evicted []*BatchRadiusItem
-
-	err := txExecutor.Execute(ctx, func(store internal.Storage) error {
-		return store.IndexStore().Iterate(storage.Query{
-			Factory: func() storage.Item { return &BatchRadiusItem{} },
-			Prefix:  string(batchID),
-		}, func(res storage.Result) (bool, error) {
-			batchRadius := res.Entry.(*BatchRadiusItem)
-			if batchRadius.Bin >= bin {
-				return true, nil
-			}
-			evicted = append(evicted, batchRadius)
-			return false, nil
-		})
-	})
-	if err != nil {
-		return 0, err
-	}
-
-	batchCnt := 1_000
-	evictionCompleted := 0
-
-	for i := 0; i < len(evicted); i += batchCnt {
-		end := i + batchCnt
-		if end > len(evicted) {
-			end = len(evicted)
-		}
-
-		moveToCache := make([]swarm.Address, 0, end-i)
-
-		err := txExecutor.Execute(ctx, func(store internal.Storage) error {
-			batch, err := store.IndexStore().Batch(ctx)
-			if err != nil {
-				return err
-			}
-
-			for _, item := range evicted[i:end] {
-				err = removeChunk(ctx, store, batch, item)
-				if err != nil {
-					return err
-				}
-				moveToCache = append(moveToCache, item.Address)
-			}
-			if err := batch.Commit(); err != nil {
-				return err
-			}
-
-			if err := r.cacheCb(ctx, store, moveToCache...); err != nil {
-				r.logger.Error(err, "evict and move to cache")
-			}
-
-			return nil
-		})
-		if err != nil {
-			return evictionCompleted, err
-		}
-		evictionCompleted += end - i
-	}
-
-	return evictionCompleted, nil
-}
-
-func (r *Reserve) DeleteChunk(
-	ctx context.Context,
-	store internal.Storage,
-	batch storage.Writer,
-	chunkAddress swarm.Address,
-	batchID []byte,
-) error {
-	item := &BatchRadiusItem{
-		Bin:     swarm.Proximity(r.baseAddr.Bytes(), chunkAddress.Bytes()),
-		BatchID: batchID,
-		Address: chunkAddress,
-	}
-	err := store.IndexStore().Get(item)
-	if err != nil {
-		return err
-	}
-	err = removeChunk(ctx, store, batch, item)
-	if err != nil {
-		return err
-	}
-	if err := r.cacheCb(ctx, store, item.Address); err != nil {
-		r.logger.Error(err, "delete and move to cache")
-		return err
-	}
-	return nil
-}
-
-func removeChunk(
-	ctx context.Context,
-	store internal.Storage,
-	batch storage.Writer,
-	item *BatchRadiusItem,
-) error {
-
-	indexStore := store.IndexStore()
-
-	var errs error
-
-	stamp, _ := chunkstamp.LoadWithBatchID(indexStore, reserveNamespace, item.Address, item.BatchID)
-	if stamp != nil {
-		errs = errors.Join(
-			stampindex.Delete(
-				batch,
-				reserveNamespace,
-				swarm.NewChunk(item.Address, nil).WithStamp(stamp),
-			),
-			chunkstamp.DeleteWithStamp(batch, reserveNamespace, item.Address, stamp),
-		)
-	}
-
-	return errors.Join(errs,
-		batch.Delete(&ChunkBinItem{Bin: item.Bin, BinID: item.BinID}),
-		batch.Delete(item),
-	)
 }
 
 func (r *Reserve) Radius() uint8 {
@@ -440,10 +409,6 @@ func (r *Reserve) Capacity() int {
 	return r.capacity
 }
 
-func (r *Reserve) AddSize(diff int) {
-	r.size.Add(int64(diff))
-}
-
 func (r *Reserve) IsWithinCapacity() bool {
 	return int(r.size.Load()) <= r.capacity
 }
@@ -455,18 +420,17 @@ func (r *Reserve) EvictionTarget() int {
 	return int(r.size.Load()) - r.capacity
 }
 
-func (r *Reserve) SetRadius(store storage.Store, rad uint8) error {
+func (r *Reserve) SetRadius(rad uint8) error {
 	r.radius.Store(uint32(rad))
 	r.radiusSetter.SetStorageRadius(rad)
-	return store.Put(&radiusItem{Radius: rad})
+	return r.st.Run(context.Background(), func(s transaction.Store) error {
+		return s.IndexStore().Put(&radiusItem{Radius: rad})
+	})
 }
 
-func (r *Reserve) LastBinIDs(store storage.Store) ([]uint64, uint64, error) {
-	r.binMtx.Lock()
-	defer r.binMtx.Unlock()
-
+func (r *Reserve) LastBinIDs() ([]uint64, uint64, error) {
 	var epoch EpochItem
-	err := store.Get(&epoch)
+	err := r.st.IndexStore().Get(&epoch)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -475,7 +439,7 @@ func (r *Reserve) LastBinIDs(store storage.Store) ([]uint64, uint64, error) {
 
 	for bin := uint8(0); bin < swarm.MaxBins; bin++ {
 		binItem := &BinItem{Bin: bin}
-		err := store.Get(binItem)
+		err := r.st.IndexStore().Get(binItem)
 		if err != nil {
 			if errors.Is(err, storage.ErrNotFound) {
 				ids[bin] = 0
@@ -490,11 +454,7 @@ func (r *Reserve) LastBinIDs(store storage.Store) ([]uint64, uint64, error) {
 	return ids, epoch.Timestamp, nil
 }
 
-// should be called under lock
-func (r *Reserve) IncBinID(store storage.Store, bin uint8) (uint64, error) {
-	r.binMtx.Lock()
-	defer r.binMtx.Unlock()
-
+func (r *Reserve) IncBinID(store storage.IndexStore, bin uint8) (uint64, error) {
 	item := &BinItem{Bin: bin}
 	err := store.Get(item)
 	if err != nil {

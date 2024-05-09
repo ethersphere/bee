@@ -424,7 +424,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 			inflight--
 
-			ps.measurePushPeer(result.pushTime, result.err, origin)
+			ps.measurePushPeer(result.pushTime, result.err)
 
 			if result.err == nil {
 				return result.receipt, nil
@@ -550,11 +550,7 @@ func (ps *PushSync) pushChunkToPeer(ctx context.Context, peer swarm.Address, ch 
 }
 
 func (ps *PushSync) prepareCredit(ctx context.Context, peer swarm.Address, ch swarm.Chunk, origin bool) (accounting.Action, error) {
-
-	creditCtx, cancel := context.WithTimeout(ctx, time.Second)
-	defer cancel()
-
-	creditAction, err := ps.accounting.PrepareCredit(creditCtx, peer, ps.pricer.PeerPrice(peer, ch.Address()), origin)
+	creditAction, err := ps.accounting.PrepareCredit(ctx, peer, ps.pricer.PeerPrice(peer, ch.Address()), origin)
 	if err != nil {
 		return nil, err
 	}
@@ -562,7 +558,7 @@ func (ps *PushSync) prepareCredit(ctx context.Context, peer swarm.Address, ch sw
 	return creditAction, nil
 }
 
-func (ps *PushSync) measurePushPeer(t time.Time, err error, origin bool) {
+func (ps *PushSync) measurePushPeer(t time.Time, err error) {
 	var status string
 	if err != nil {
 		status = "failure"

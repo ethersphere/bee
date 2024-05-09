@@ -5,49 +5,52 @@
 package migration
 
 import (
+	"context"
 	"fmt"
 	"os"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/upload"
 )
 
 // step_05 is a migration step that removes all upload items from the store.
-func step_05(st storage.BatchedStore) error {
-	logger := log.NewLogger("migration-step-05", log.WithSink(os.Stdout))
-	logger.Info("start removing upload items")
+func step_05(st transaction.Storage) func() error {
+	return func() error {
+		logger := log.NewLogger("migration-step-05", log.WithSink(os.Stdout))
+		logger.Info("start removing upload items")
 
-	itemC := make(chan storage.Item)
-	errC := make(chan error)
-	go func() {
-		for item := range itemC {
-			err := st.Delete(item)
-			if err != nil {
-				errC <- fmt.Errorf("delete upload item: %w", err)
-				return
+		itemC := make(chan storage.Item)
+		errC := make(chan error)
+		go func() {
+			for item := range itemC {
+				err := st.Run(context.Background(), func(s transaction.Store) error {
+					return s.IndexStore().Delete(item)
+				})
+				if err != nil {
+					errC <- fmt.Errorf("delete upload item: %w", err)
+					return
+				}
 			}
-		}
-		close(errC)
-	}()
+			close(errC)
+		}()
 
-	go func() {
-		defer close(itemC)
-		err := upload.IterateAll(st, func(u storage.Item) (bool, error) {
-			itemC <- u
+		err := upload.IterateAll(st.IndexStore(), func(u storage.Item) (bool, error) {
+			select {
+			case itemC <- u:
+			case err := <-errC:
+				return true, err
+			}
 			return false, nil
 		})
+		close(itemC)
 		if err != nil {
-			errC <- fmt.Errorf("iterate upload items: %w", err)
-			return
+			return err
 		}
-	}()
 
-	err := <-errC
-	if err != nil {
-		return err
+		logger.Info("finished removing upload items")
+		return <-errC
 	}
 
-	logger.Info("finished removing upload items")
-	return nil
 }

@@ -176,19 +176,21 @@ type Options struct {
 }
 
 const (
-	refreshRate                   = int64(4500000)            // accounting units refreshed per second
+	refreshRate                   = int64(4_500_000)          // accounting units refreshed per second
 	lightFactor                   = 10                        // downscale payment thresholds and their change rate, and refresh rates by this for light nodes
 	lightRefreshRate              = refreshRate / lightFactor // refresh rate used by / for light nodes
-	basePrice                     = 10000                     // minimal price for retrieval and pushsync requests of maximum proximity
+	basePrice                     = 10_000                    // minimal price for retrieval and pushsync requests of maximum proximity
 	postageSyncingStallingTimeout = 10 * time.Minute          //
 	postageSyncingBackoffTimeout  = 5 * time.Second           //
 	minPaymentThreshold           = 2 * refreshRate           // minimal accepted payment threshold of full nodes
 	maxPaymentThreshold           = 24 * refreshRate          // maximal accepted payment threshold of full nodes
 	mainnetNetworkID              = uint64(1)                 //
 	ReserveCapacity               = 4_194_304                 // 2^22 chunks
-	reserveWakeUpDuration         = 30 * time.Minute          // time to wait before waking up reserveWorker
+	reserveWakeUpDuration         = 15 * time.Minute          // time to wait before waking up reserveWorker
 	reserveTreshold               = ReserveCapacity * 5 / 10
 	reserveMinimumRadius          = 0
+	reserveMinEvictCount          = 1_000
+	cacheMinEvictCount            = 10_000
 )
 
 func NewBee(
@@ -615,15 +617,9 @@ func NewBee(
 			addr,
 			swarmAddress,
 			nonce,
-			chainID,
-			overlayEthAddress,
 			addressbook,
 			bootnodes,
 			lightNodes,
-			chequebookService,
-			chequeStore,
-			cashoutService,
-			transactionService,
 			stateStore,
 			signer,
 			networkID,
@@ -764,12 +760,14 @@ func NewBee(
 		WarmupDuration:            o.WarmupTime,
 		Logger:                    logger,
 		Tracer:                    tracer,
+		CacheMinEvictCount:        cacheMinEvictCount,
 	}
 
 	if o.FullNodeMode && !o.BootnodeMode {
 		// configure reserve only for full node
 		lo.ReserveCapacity = ReserveCapacity
 		lo.ReserveWakeUpDuration = reserveWakeUpDuration
+		lo.ReserveMinEvictCount = reserveMinEvictCount
 		lo.RadiusSetter = kad
 	}
 
@@ -973,7 +971,7 @@ func NewBee(
 	retrieval := retrieval.New(swarmAddress, waitNetworkRFunc, localStore, p2ps, kad, logger, acc, pricer, tracer, o.RetrievalCaching)
 	localStore.SetRetrievalService(retrieval)
 
-	pusherService := pusher.New(networkID, localStore, waitNetworkRFunc, pushSyncProtocol, validStamp, logger, tracer, warmupTime, pusher.DefaultRetryCount)
+	pusherService := pusher.New(networkID, localStore, waitNetworkRFunc, pushSyncProtocol, validStamp, logger, warmupTime, pusher.DefaultRetryCount)
 	b.pusherCloser = pusherService
 
 	pusherService.AddFeed(localStore.PusherFeed())
@@ -1024,7 +1022,7 @@ func NewBee(
 	)
 
 	if o.FullNodeMode && !o.BootnodeMode {
-		pullerService = puller.New(stateStore, kad, localStore, pullSyncProtocol, p2ps, logger, puller.Options{})
+		pullerService = puller.New(swarmAddress, stateStore, kad, localStore, pullSyncProtocol, p2ps, logger, puller.Options{})
 		b.pullerCloser = pullerService
 
 		localStore.StartReserveWorker(ctx, pullerService, waitNetworkRFunc)

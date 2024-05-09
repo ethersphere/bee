@@ -15,6 +15,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storage/inmemstore"
 	chunktest "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstore"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	localmigration "github.com/ethersphere/bee/v2/pkg/storer/migration"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/stretchr/testify/assert"
@@ -34,36 +35,40 @@ func Test_Step_04(t *testing.T) {
 	sharkyDir := t.TempDir()
 	sharkyStore, err := sharky.New(&dirFS{basedir: sharkyDir}, 1, swarm.SocMaxChunkSize)
 	assert.NoError(t, err)
-
 	store := inmemstore.New()
-	chStore := chunkstore.New(store, sharkyStore)
-	stepFn := localmigration.Step_04(sharkyDir, 1)
+	storage := transaction.NewStorage(sharkyStore, store)
+
+	stepFn := localmigration.Step_04(sharkyDir, 1, storage)
 
 	chunks := chunktest.GenerateTestRandomChunks(10)
 
 	for _, ch := range chunks {
-		err := chStore.Put(context.Background(), ch)
+		err = storage.Run(context.Background(), func(s transaction.Store) error {
+			return s.ChunkStore().Put(context.Background(), ch)
+		})
 		assert.NoError(t, err)
 	}
 
 	for _, ch := range chunks[:2] {
-		err := store.Delete(&chunkstore.RetrievalIndexItem{Address: ch.Address()})
+		err = storage.Run(context.Background(), func(s transaction.Store) error {
+			return s.IndexStore().Delete(&chunkstore.RetrievalIndexItem{Address: ch.Address()})
+		})
 		assert.NoError(t, err)
 	}
 
-	err = sharkyStore.Close()
+	err = storage.Close()
 	assert.NoError(t, err)
 
-	assert.NoError(t, stepFn(store))
+	assert.NoError(t, stepFn())
 
 	sharkyStore, err = sharky.New(&dirFS{basedir: sharkyDir}, 1, swarm.SocMaxChunkSize)
 	assert.NoError(t, err)
 
-	chStore = chunkstore.New(store, sharkyStore)
+	store2 := transaction.NewStorage(sharkyStore, store)
 
 	// check that the chunks are still there
 	for _, ch := range chunks[2:] {
-		_, err := chStore.Get(context.Background(), ch.Address())
+		_, err := store2.ChunkStore().Get(context.Background(), ch.Address())
 		assert.NoError(t, err)
 	}
 

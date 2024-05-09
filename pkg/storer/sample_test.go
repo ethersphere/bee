@@ -6,10 +6,11 @@ package storer_test
 
 import (
 	"context"
-	"github.com/ethersphere/bee/v2/pkg/postage"
 	"math/rand"
 	"testing"
 	"time"
+
+	"github.com/ethersphere/bee/v2/pkg/postage"
 
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
 	chunk "github.com/ethersphere/bee/v2/pkg/storage/testing"
@@ -26,7 +27,7 @@ func TestReserveSampler(t *testing.T) {
 		var chs []swarm.Chunk
 		for po := 0; po < maxPO; po++ {
 			for i := 0; i < chunkCountPerPO; i++ {
-				ch := chunk.GenerateValidRandomChunkAt(baseAddr, po).WithBatch(0, 3, 2, false)
+				ch := chunk.GenerateValidRandomChunkAt(baseAddr, po).WithBatch(3, 2, false)
 				if rand.Intn(2) == 0 { // 50% chance to wrap CAC into SOC
 					ch = chunk.GenerateTestRandomSoChunk(t, ch)
 				}

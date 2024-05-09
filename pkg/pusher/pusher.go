@@ -61,7 +61,6 @@ type Service struct {
 	inflight          *inflight
 	attempts          *attempts
 	smuggler          chan OpChan
-	tracer            *tracing.Tracer
 }
 
 const (
@@ -82,7 +81,6 @@ func New(
 	pushSyncer pushsync.PushSyncer,
 	validStamp postage.ValidStampFn,
 	logger log.Logger,
-	tracer *tracing.Tracer,
 	warmupTime time.Duration,
 	retryCount int,
 ) *Service {
@@ -99,15 +97,14 @@ func New(
 		inflight:          newInflight(),
 		attempts:          &attempts{retryCount: retryCount, attempts: make(map[string]int)},
 		smuggler:          make(chan OpChan),
-		tracer:            tracer,
 	}
-	go p.chunksWorker(warmupTime, tracer)
+	go p.chunksWorker(warmupTime)
 	return p
 }
 
 // chunksWorker is a loop that keeps looking for chunks that are locally uploaded ( by monitoring pushIndex )
 // and pushes them to the closest peer and get a receipt.
-func (s *Service) chunksWorker(warmupTime time.Duration, tracer *tracing.Tracer) {
+func (s *Service) chunksWorker(warmupTime time.Duration) {
 	defer close(s.chunksWorkerQuitC)
 	select {
 	case <-time.After(warmupTime):

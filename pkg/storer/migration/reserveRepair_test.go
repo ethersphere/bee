@@ -9,31 +9,33 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/ethersphere/bee/v2/pkg/log"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
-	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
-	"github.com/ethersphere/bee/v2/pkg/storage/inmemstore"
 	chunktest "github.com/ethersphere/bee/v2/pkg/storage/testing"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	localmigration "github.com/ethersphere/bee/v2/pkg/storer/migration"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_Step_03(t *testing.T) {
+func TestReserveRepair(t *testing.T) {
 	t.Parallel()
 
-	store := inmemstore.New()
-	chStore := inmemchunkstore.New()
+	store := internal.NewInmemStorage()
 	baseAddr := swarm.RandAddress(t)
-	stepFn := localmigration.Step_03(chStore, func(_ swarm.Chunk) swarm.ChunkType {
+	stepFn := localmigration.ReserveRepairer(store, func(_ swarm.Chunk) swarm.ChunkType {
 		return swarm.ChunkTypeContentAddressed
-	})
+	}, log.Noop)
 
 	var chunksPO = make([][]swarm.Chunk, 5)
 	var chunksPerPO uint64 = 2
 
 	for i := uint8(0); i < swarm.MaxBins; i++ {
-		err := store.Put(&reserve.BinItem{Bin: i, BinID: 10})
+		err := store.Run(context.Background(), func(s transaction.Store) error {
+			return s.IndexStore().Put(&reserve.BinItem{Bin: i, BinID: 10})
+		})
 		assert.NoError(t, err)
 	}
 
@@ -48,7 +50,9 @@ func Test_Step_03(t *testing.T) {
 				BatchID:   ch.Stamp().BatchID(),
 				ChunkType: swarm.ChunkTypeContentAddressed,
 			}
-			err := store.Put(cb)
+			err := store.Run(context.Background(), func(s transaction.Store) error {
+				return s.IndexStore().Put(cb)
+			})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -59,7 +63,9 @@ func Test_Step_03(t *testing.T) {
 				Address: ch.Address(),
 				BinID:   0,
 			}
-			err = store.Put(br)
+			err = store.Run(context.Background(), func(s transaction.Store) error {
+				return s.IndexStore().Put(br)
+			})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -69,7 +75,9 @@ func Test_Step_03(t *testing.T) {
 				continue
 			}
 
-			err = chStore.Put(context.Background(), ch)
+			err = store.Run(context.Background(), func(s transaction.Store) error {
+				return s.ChunkStore().Put(context.Background(), ch)
+			})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -78,11 +86,11 @@ func Test_Step_03(t *testing.T) {
 		}
 	}
 
-	assert.NoError(t, stepFn(store))
+	assert.NoError(t, stepFn())
 
 	binIDs := make(map[uint8][]uint64)
 	cbCount := 0
-	err := store.Iterate(
+	err := store.IndexStore().Iterate(
 		storage.Query{Factory: func() storage.Item { return &reserve.ChunkBinItem{} }},
 		func(res storage.Result) (stop bool, err error) {
 			cb := res.Entry.(*reserve.ChunkBinItem)
@@ -106,11 +114,15 @@ func Test_Step_03(t *testing.T) {
 		assert.Len(t, binIDs[uint8(b)], 2)
 		for idx, binID := range binIDs[uint8(b)] {
 			assert.Equal(t, uint64(idx+1), binID)
+
+			item := &reserve.BinItem{Bin: uint8(b)}
+			_ = store.IndexStore().Get(item)
+			assert.Equal(t, item.BinID, uint64(2))
 		}
 	}
 
 	brCount := 0
-	err = store.Iterate(
+	err = store.IndexStore().Iterate(
 		storage.Query{Factory: func() storage.Item { return &reserve.BatchRadiusItem{} }},
 		func(res storage.Result) (stop bool, err error) {
 			br := res.Entry.(*reserve.BatchRadiusItem)
@@ -124,4 +136,10 @@ func Test_Step_03(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Equal(t, cbCount, brCount)
+
+	has, err := store.IndexStore().Has(&reserve.EpochItem{})
+	if has {
+		t.Fatal("epoch item should be deleted")
+	}
+	assert.NoError(t, err)
 }

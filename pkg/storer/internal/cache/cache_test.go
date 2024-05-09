@@ -15,10 +15,12 @@ import (
 	"time"
 
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemchunkstore"
+	"github.com/ethersphere/bee/v2/pkg/storage/inmemstore"
 	"github.com/ethersphere/bee/v2/pkg/storage/storagetest"
 	chunktest "github.com/ethersphere/bee/v2/pkg/storage/testing"
-	"github.com/ethersphere/bee/v2/pkg/storer/internal"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/cache"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/google/go-cmp/cmp"
 )
@@ -86,61 +88,6 @@ func TestCacheEntryItem(t *testing.T) {
 	}
 }
 
-type testStorage struct {
-	internal.Storage
-	putFn func(storage.Item) error
-}
-
-func (t *testStorage) IndexStore() storage.BatchedStore {
-	return &wrappedStore{BatchedStore: t.Storage.IndexStore(), putFn: t.putFn}
-}
-
-type wrappedStore struct {
-	storage.BatchedStore
-	putFn func(storage.Item) error
-}
-
-func (w *wrappedStore) Put(i storage.Item) error {
-	if w.putFn != nil {
-		return w.putFn(i)
-	}
-	return w.BatchedStore.Put(i)
-}
-
-func (w *wrappedStore) Batch(ctx context.Context) (storage.Batch, error) {
-	b, err := w.BatchedStore.Batch(ctx)
-	if err != nil {
-		return nil, err
-	}
-	return &wrappedBatch{Batch: b, putFn: w.putFn}, nil
-}
-
-type wrappedBatch struct {
-	storage.Batch
-	putFn func(storage.Item) error
-}
-
-func (w *wrappedBatch) Put(i storage.Item) error {
-	if w.putFn != nil {
-		return w.putFn(i)
-	}
-	return w.Batch.Put(i)
-}
-
-func newTestStorage(t *testing.T) *testStorage {
-	t.Helper()
-
-	storg, closer := internal.NewInmemStorage()
-	t.Cleanup(func() {
-		err := closer()
-		if err != nil {
-			t.Errorf("failed closing storage: %v", err)
-		}
-	})
-
-	return &testStorage{Storage: storg}
-}
-
 type timeProvider struct {
 	t   int64
 	mtx sync.Mutex
@@ -172,7 +119,7 @@ func TestCache(t *testing.T) {
 		t.Parallel()
 
 		st := newTestStorage(t)
-		c, err := cache.New(context.TODO(), st, 10)
+		c, err := cache.New(context.TODO(), st.IndexStore(), 10)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -183,7 +130,7 @@ func TestCache(t *testing.T) {
 		t.Parallel()
 
 		st := newTestStorage(t)
-		c, err := cache.New(context.TODO(), st, 10)
+		c, err := cache.New(context.TODO(), st.IndexStore(), 10)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -202,7 +149,7 @@ func TestCache(t *testing.T) {
 		})
 
 		t.Run("new cache retains state", func(t *testing.T) {
-			c2, err := cache.New(context.TODO(), st, 10)
+			c2, err := cache.New(context.TODO(), st.IndexStore(), 10)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -215,7 +162,7 @@ func TestCache(t *testing.T) {
 		t.Parallel()
 
 		st := newTestStorage(t)
-		c, err := cache.New(context.TODO(), st, 10)
+		c, err := cache.New(context.TODO(), st.IndexStore(), 10)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -280,10 +227,13 @@ func TestCache(t *testing.T) {
 
 			for i := 0; i < 5; i++ {
 				extraChunk := chunktest.GenerateTestRandomChunk()
-				err := st.ChunkStore().Put(context.TODO(), extraChunk)
+				err := st.Run(context.Background(), func(s transaction.Store) error {
+					return s.ChunkStore().Put(context.TODO(), extraChunk)
+				})
 				if err != nil {
 					t.Fatal(err)
 				}
+
 				readChunk, err := c.Getter(st).Get(context.TODO(), extraChunk.Address())
 				if err != nil {
 					t.Fatal(err)
@@ -294,55 +244,58 @@ func TestCache(t *testing.T) {
 				verifyCacheState(t, st.IndexStore(), c, state.Head, state.Tail, state.Size)
 			}
 		})
-	})
-	t.Run("handle error", func(t *testing.T) {
-		t.Parallel()
 
-		st := newTestStorage(t)
-		c, err := cache.New(context.TODO(), st, 10)
-		if err != nil {
-			t.Fatal(err)
-		}
+		t.Run("handle error", func(t *testing.T) {
+			t.Parallel()
 
-		chunks := chunktest.GenerateTestRandomChunks(5)
-
-		for _, ch := range chunks {
-			err := c.Putter(st).Put(context.TODO(), ch)
+			st := newTestStorage(t)
+			c, err := cache.New(context.TODO(), st.IndexStore(), 10)
 			if err != nil {
 				t.Fatal(err)
 			}
-		}
-		// return error for state update, which occurs at the end of Get/Put operations
-		retErr := errors.New("dummy error")
-		st.putFn = func(i storage.Item) error {
-			if i.Namespace() == "cacheOrderIndex" {
-				return retErr
+
+			chunks := chunktest.GenerateTestRandomChunks(5)
+
+			for _, ch := range chunks {
+				err := c.Putter(st).Put(context.TODO(), ch)
+				if err != nil {
+					t.Fatal(err)
+				}
 			}
-			return st.Storage.IndexStore().Put(i)
-		}
+			// return error for state update, which occurs at the end of Get/Put operations
+			retErr := errors.New("dummy error")
 
-		// on error the cache expects the overarching transactions to clean itself up
-		// and undo any store updates. So here we only want to ensure the state is
-		// reverted to correct one.
-		t.Run("put error handling", func(t *testing.T) {
-			newChunk := chunktest.GenerateTestRandomChunk()
-			err := c.Putter(st).Put(context.TODO(), newChunk)
-			if !errors.Is(err, retErr) {
-				t.Fatalf("expected error %v during put, found %v", retErr, err)
-			}
+			st.indexStore.putFn = func(i storage.Item) error {
+				if i.Namespace() == "cacheOrderIndex" {
+					return retErr
+				}
 
-			// state should be preserved on failure
-			verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[4].Address(), 5)
-		})
-
-		t.Run("get error handling", func(t *testing.T) {
-			_, err := c.Getter(st).Get(context.TODO(), chunks[2].Address())
-			if !errors.Is(err, retErr) {
-				t.Fatalf("expected error %v during get, found %v", retErr, err)
+				return st.indexStore.IndexStore.Put(i)
 			}
 
-			// state should be preserved on failure
-			verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[4].Address(), 5)
+			// on error the cache expects the overarching transactions to clean itself up
+			// and undo any store updates. So here we only want to ensure the state is
+			// reverted to correct one.
+			t.Run("put error handling", func(t *testing.T) {
+				newChunk := chunktest.GenerateTestRandomChunk()
+				err := c.Putter(st).Put(context.TODO(), newChunk)
+				if !errors.Is(err, retErr) {
+					t.Fatalf("expected error %v during put, found %v", retErr, err)
+				}
+
+				// state should be preserved on failure
+				verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[4].Address(), 5)
+			})
+
+			t.Run("get error handling", func(t *testing.T) {
+				_, err := c.Getter(st).Get(context.TODO(), chunks[2].Address())
+				if !errors.Is(err, retErr) {
+					t.Fatalf("expected error %v during get, found %v", retErr, err)
+				}
+
+				// state should be preserved on failure
+				verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[4].Address(), 5)
+			})
 		})
 	})
 }
@@ -351,7 +304,7 @@ func TestRemoveOldest(t *testing.T) {
 	t.Parallel()
 
 	st := newTestStorage(t)
-	c, err := cache.New(context.Background(), st, 10)
+	c, err := cache.New(context.Background(), st.IndexStore(), 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -368,7 +321,7 @@ func TestRemoveOldest(t *testing.T) {
 	verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks[29].Address(), 30)
 	verifyCacheOrder(t, c, st.IndexStore(), chunks...)
 
-	err = c.RemoveOldestMaxBatch(context.Background(), st, st.ChunkStore(), 30, 5)
+	err = c.RemoveOldestMaxBatch(context.Background(), st, 30, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -382,7 +335,7 @@ func TestShallowCopy(t *testing.T) {
 	t.Parallel()
 
 	st := newTestStorage(t)
-	c, err := cache.New(context.Background(), st, 10)
+	c, err := cache.New(context.Background(), st.IndexStore(), 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -393,7 +346,10 @@ func TestShallowCopy(t *testing.T) {
 	// add the chunks to chunkstore. This simulates the reserve already populating
 	// the chunkstore with chunks.
 	for _, ch := range chunks {
-		err := st.ChunkStore().Put(context.Background(), ch)
+
+		err := st.Run(context.Background(), func(s transaction.Store) error {
+			return s.ChunkStore().Put(context.Background(), ch)
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -423,7 +379,9 @@ func TestShallowCopy(t *testing.T) {
 	// add the chunks to chunkstore. This simulates the reserve already populating
 	// the chunkstore with chunks.
 	for _, ch := range chunks1 {
-		err := st.ChunkStore().Put(context.Background(), ch)
+		err := st.Run(context.Background(), func(s transaction.Store) error {
+			return s.ChunkStore().Put(context.Background(), ch)
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -439,7 +397,7 @@ func TestShallowCopy(t *testing.T) {
 	verifyCacheState(t, st.IndexStore(), c, chunks[0].Address(), chunks1[9].Address(), 20)
 	verifyCacheOrder(t, c, st.IndexStore(), append(chunks, chunks1...)...)
 
-	err = c.RemoveOldest(context.Background(), st, st.ChunkStore(), 10)
+	err = c.RemoveOldest(context.Background(), st, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -451,7 +409,7 @@ func TestShallowCopyOverCap(t *testing.T) {
 	t.Parallel()
 
 	st := newTestStorage(t)
-	c, err := cache.New(context.Background(), st, 10)
+	c, err := cache.New(context.Background(), st.IndexStore(), 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -462,7 +420,10 @@ func TestShallowCopyOverCap(t *testing.T) {
 	// add the chunks to chunkstore. This simulates the reserve already populating
 	// the chunkstore with chunks.
 	for _, ch := range chunks {
-		err := st.ChunkStore().Put(context.Background(), ch)
+
+		err := st.Run(context.Background(), func(s transaction.Store) error {
+			return s.ChunkStore().Put(context.Background(), ch)
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -478,7 +439,7 @@ func TestShallowCopyOverCap(t *testing.T) {
 	verifyCacheState(t, st.IndexStore(), c, chunks[5].Address(), chunks[14].Address(), 10)
 	verifyCacheOrder(t, c, st.IndexStore(), chunks[5:15]...)
 
-	err = c.RemoveOldest(context.Background(), st, st.ChunkStore(), 5)
+	err = c.RemoveOldest(context.Background(), st, 5)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -490,7 +451,7 @@ func TestShallowCopyAlreadyCached(t *testing.T) {
 	t.Parallel()
 
 	st := newTestStorage(t)
-	c, err := cache.New(context.Background(), st, 1000)
+	c, err := cache.New(context.Background(), st.IndexStore(), 1000)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -500,7 +461,10 @@ func TestShallowCopyAlreadyCached(t *testing.T) {
 
 	for _, ch := range chunks {
 		// add the chunks to chunkstore. This simulates the reserve already populating the chunkstore with chunks.
-		err := st.ChunkStore().Put(context.Background(), ch)
+
+		err := st.Run(context.Background(), func(s transaction.Store) error {
+			return s.ChunkStore().Put(context.Background(), ch)
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -520,7 +484,7 @@ func TestShallowCopyAlreadyCached(t *testing.T) {
 
 	verifyChunksExist(t, st.ChunkStore(), chunks...)
 
-	err = c.RemoveOldest(context.Background(), st, st.ChunkStore(), 10)
+	err = c.RemoveOldest(context.Background(), st, 10)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -530,7 +494,7 @@ func TestShallowCopyAlreadyCached(t *testing.T) {
 
 func verifyCacheState(
 	t *testing.T,
-	store storage.Store,
+	store storage.Reader,
 	c *cache.Cache,
 	expStart, expEnd swarm.Address,
 	expCount uint64,
@@ -548,7 +512,7 @@ func verifyCacheState(
 func verifyCacheOrder(
 	t *testing.T,
 	c *cache.Cache,
-	st storage.Store,
+	st storage.Reader,
 	chs ...swarm.Chunk,
 ) {
 	t.Helper()
@@ -577,7 +541,7 @@ func verifyCacheOrder(
 
 func verifyChunksDeleted(
 	t *testing.T,
-	chStore storage.ChunkStore,
+	chStore storage.ReadOnlyChunkStore,
 	chs ...swarm.Chunk,
 ) {
 	t.Helper()
@@ -599,7 +563,7 @@ func verifyChunksDeleted(
 
 func verifyChunksExist(
 	t *testing.T,
-	chStore storage.ChunkStore,
+	chStore storage.ReadOnlyChunkStore,
 	chs ...swarm.Chunk,
 ) {
 	t.Helper()
@@ -613,4 +577,55 @@ func verifyChunksExist(
 			t.Fatalf("chunk %s expected to be found but not exists", ch.Address())
 		}
 	}
+}
+
+type inmemStorage struct {
+	indexStore *customIndexStore
+	chunkStore storage.ChunkStore
+}
+
+func newTestStorage(t *testing.T) *inmemStorage {
+	t.Helper()
+
+	ts := &inmemStorage{
+		indexStore: &customIndexStore{inmemstore.New(), nil},
+		chunkStore: inmemchunkstore.New(),
+	}
+
+	return ts
+}
+
+type customIndexStore struct {
+	storage.IndexStore
+	putFn func(storage.Item) error
+}
+
+func (s *customIndexStore) Put(i storage.Item) error {
+	if s.putFn != nil {
+		return s.putFn(i)
+	}
+	return s.IndexStore.Put(i)
+}
+
+func (t *inmemStorage) NewTransaction(ctx context.Context) (transaction.Transaction, func()) {
+	return &inmemTrx{t.indexStore, t.chunkStore}, func() {}
+}
+
+type inmemTrx struct {
+	indexStore storage.IndexStore
+	chunkStore storage.ChunkStore
+}
+
+func (t *inmemStorage) IndexStore() storage.Reader             { return t.indexStore }
+func (t *inmemStorage) ChunkStore() storage.ReadOnlyChunkStore { return t.chunkStore }
+
+func (t *inmemTrx) IndexStore() storage.IndexStore { return t.indexStore }
+func (t *inmemTrx) ChunkStore() storage.ChunkStore { return t.chunkStore }
+func (t *inmemTrx) Commit() error                  { return nil }
+
+func (t *inmemStorage) Close() error { return nil }
+func (t *inmemStorage) Run(ctx context.Context, f func(s transaction.Store) error) error {
+	trx, done := t.NewTransaction(ctx)
+	defer done()
+	return f(trx)
 }

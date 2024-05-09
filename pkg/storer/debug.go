@@ -7,6 +7,7 @@ package storer
 import (
 	"context"
 
+	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstore"
 	pinstore "github.com/ethersphere/bee/v2/pkg/storer/internal/pinning"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
@@ -18,6 +19,7 @@ import (
 type UploadStat struct {
 	TotalUploaded uint64
 	TotalSynced   uint64
+	PendingUpload uint64
 }
 
 type PinningStat struct {
@@ -39,8 +41,9 @@ type ReserveStat struct {
 }
 
 type ChunkStoreStat struct {
-	TotalChunks int
-	SharedSlots int
+	TotalChunks    int
+	SharedSlots    int
+	ReferenceCount int
 }
 
 type Info struct {
@@ -55,13 +58,14 @@ func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 	eg, ctx := errgroup.WithContext(ctx)
 
 	var (
-		totalChunks int
-		sharedSlots int
+		totalChunks  int
+		sharedSlots  int
+		referenceCnt int
 	)
 	eg.Go(func() error {
 		return chunkstore.IterateChunkEntries(
-			db.repo.IndexStore(),
-			func(_ swarm.Address, isShared bool) (bool, error) {
+			db.storage.IndexStore(),
+			func(_ swarm.Address, cnt uint32) (bool, error) {
 				select {
 				case <-ctx.Done():
 					return true, ctx.Err()
@@ -71,7 +75,8 @@ func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 				}
 
 				totalChunks++
-				if isShared {
+				referenceCnt += int(cnt)
+				if cnt > 1 {
 					sharedSlots++
 				}
 				return false, nil
@@ -80,11 +85,12 @@ func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 	})
 
 	var (
-		uploaded uint64
-		synced   uint64
+		uploaded      uint64
+		synced        uint64
+		pendingUpload uint64
 	)
 	eg.Go(func() error {
-		return upload.IterateAllTagItems(db.repo.IndexStore(), func(ti *upload.TagItem) (bool, error) {
+		return upload.IterateAllTagItems(db.storage.IndexStore(), func(ti *upload.TagItem) (bool, error) {
 			select {
 			case <-ctx.Done():
 				return true, ctx.Err()
@@ -97,6 +103,19 @@ func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 			return false, nil
 		})
 	})
+	eg.Go(func() error {
+		return upload.IterateAll(db.storage.IndexStore(), func(storage.Item) (bool, error) {
+			select {
+			case <-ctx.Done():
+				return true, ctx.Err()
+			case <-db.quit:
+				return true, ErrDBQuit
+			default:
+			}
+			pendingUpload++
+			return false, nil
+		})
+	})
 
 	var (
 		collections int
@@ -104,7 +123,7 @@ func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 	)
 	eg.Go(func() error {
 		return pinstore.IterateCollectionStats(
-			db.repo.IndexStore(),
+			db.storage.IndexStore(),
 			func(stat pinstore.CollectionStat) (bool, error) {
 				select {
 				case <-ctx.Done():
@@ -133,7 +152,7 @@ func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 		reserveCapacity = db.reserve.Capacity()
 		reserveSize = db.reserve.Size()
 		eg.Go(func() error {
-			return db.reserve.IterateChunksItems(db.repo, db.reserve.Radius(), func(ci reserve.ChunkItem) (bool, error) {
+			return db.reserve.IterateChunksItems(db.reserve.Radius(), func(ci *reserve.ChunkBinItem) (bool, error) {
 				reserveSizeWithinRadius++
 				return false, nil
 			})
@@ -157,6 +176,7 @@ func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 		Upload: UploadStat{
 			TotalUploaded: uploaded,
 			TotalSynced:   synced,
+			PendingUpload: pendingUpload,
 		},
 		Pinning: PinningStat{
 			TotalCollections: collections,
@@ -174,8 +194,9 @@ func (db *DB) DebugInfo(ctx context.Context) (Info, error) {
 			Epoch:            epoch,
 		},
 		ChunkStore: ChunkStoreStat{
-			TotalChunks: totalChunks,
-			SharedSlots: sharedSlots,
+			TotalChunks:    totalChunks,
+			SharedSlots:    sharedSlots,
+			ReferenceCount: referenceCnt,
 		},
 	}, nil
 }
