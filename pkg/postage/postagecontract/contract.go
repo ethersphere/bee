@@ -304,7 +304,7 @@ func (c *postageContract) CreateBatch(ctx context.Context, initialBalance *big.I
 	}
 
 	if balance.Cmp(totalAmount) < 0 {
-		err = ErrInsufficientFunds
+		err = fmt.Errorf("insufficient balance. amount %d, balance %d: %w", totalAmount, balance, ErrInsufficientFunds)
 		return
 	}
 
