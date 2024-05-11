@@ -189,7 +189,7 @@ Name tests with a compact name that reflects their scenario. Don't try to specif
 <thead><tr><th>Bad</th><th>Good</th></tr></thead>
 <tbody>
 <tr><td>
-	
+
 ```go
 func TestSomethingBySettingVarToFive(t *testing.T) {
   ...
@@ -197,7 +197,7 @@ func TestSomethingBySettingVarToFive(t *testing.T) {
 ```
 
 </td><td>
-	
+
 ```go
 // TestSomething tests that something works correctly by doing this and that.
 func TestSomething(t *testing.T) {
