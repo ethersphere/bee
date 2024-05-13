@@ -132,7 +132,12 @@ func dbCompactCmd(cmd *cobra.Command) {
 			if err != nil {
 				logger.Error(err, "getting sleep value failed")
 			}
-			defer func() { time.Sleep(d) }()
+			defer func() {
+				if d > 0 {
+					logger.Info("command has finished, sleeping...", "duration", d.String())
+					time.Sleep(d)
+				}
+			}()
 
 			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
 			if err != nil {
@@ -266,7 +271,12 @@ func dbRepairReserve(cmd *cobra.Command) {
 			if err != nil {
 				logger.Error(err, "getting sleep value failed")
 			}
-			defer func() { time.Sleep(d) }()
+			defer func() {
+				if d > 0 {
+					logger.Info("command has finished, sleeping...", "duration", d.String())
+					time.Sleep(d)
+				}
+			}()
 
 			db, err := storer.New(cmd.Context(), path.Join(dataDir, "localstore"), &storer.Options{
 				Logger:          logger,
@@ -781,6 +791,12 @@ func dbNukeCmd(cmd *cobra.Command) {
 			if err != nil {
 				logger.Error(err, "getting sleep value failed")
 			}
+			defer func() {
+				if d > 0 {
+					logger.Info("command has finished, sleeping...", "duration", d.String())
+					time.Sleep(d)
+				}
+			}()
 
 			dataDir, err := cmd.Flags().GetString(optionNameDataDir)
 			if err != nil {
@@ -849,10 +865,6 @@ func dbNukeCmd(cmd *cobra.Command) {
 					return fmt.Errorf("remove stamperstore: %w", err)
 				}
 			}
-
-			logger.Info("nuke finished")
-
-			time.Sleep(d)
 
 			return nil
 		}}
