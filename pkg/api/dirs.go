@@ -102,7 +102,7 @@ func (s *Service) dirUploadHandler(
 
 	encryptedReference := reference
 	if act {
-		encryptedReference, err = s.actEncryptionHandler(r.Context(), logger, w, putter, reference, historyAddress)
+		encryptedReference, err = s.actEncryptionHandler(r.Context(), w, putter, reference, historyAddress)
 		if err != nil {
 			jsonhttp.InternalServerError(w, errActUpload)
 			return

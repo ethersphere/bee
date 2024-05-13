@@ -143,7 +143,7 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	encryptedReference := chunk.Address()
 	if headers.Act {
-		encryptedReference, err = s.actEncryptionHandler(r.Context(), logger, w, putter, chunk.Address(), headers.HistoryAddress)
+		encryptedReference, err = s.actEncryptionHandler(r.Context(), w, putter, chunk.Address(), headers.HistoryAddress)
 		if err != nil {
 			jsonhttp.InternalServerError(w, errActUpload)
 			return

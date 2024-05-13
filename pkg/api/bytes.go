@@ -118,7 +118,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	encryptedReference := reference
 	if headers.Act {
-		encryptedReference, err = s.actEncryptionHandler(r.Context(), logger, w, putter, reference, headers.HistoryAddress)
+		encryptedReference, err = s.actEncryptionHandler(r.Context(), w, putter, reference, headers.HistoryAddress)
 		if err != nil {
 			jsonhttp.InternalServerError(w, errActUpload)
 			return

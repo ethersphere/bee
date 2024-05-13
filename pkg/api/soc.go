@@ -159,7 +159,7 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 
 	encryptedReference := sch.Address()
 	if headers.Act {
-		encryptedReference, err = s.actEncryptionHandler(r.Context(), logger, w, putter, sch.Address(), headers.HistoryAddress)
+		encryptedReference, err = s.actEncryptionHandler(r.Context(), w, putter, sch.Address(), headers.HistoryAddress)
 		if err != nil {
 			jsonhttp.InternalServerError(w, errActUpload)
 			return
