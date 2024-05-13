@@ -11,6 +11,8 @@ import (
 )
 
 var hashFunc = sha3.NewLegacyKeccak256
+var oneByteArray = []byte{1}
+var zeroByteArray = []byte{0}
 
 // Read-only interface for the ACT
 type Decryptor interface {
@@ -50,15 +52,20 @@ func (al ActLogic) EncryptRef(ctx context.Context, storage kvs.KeyValueStore, pu
 		return swarm.ZeroAddress, err
 	}
 	refCipher := encryption.New(accessKey, 0, uint32(0), hashFunc)
-	encryptedRef, _ := refCipher.Encrypt(ref.Bytes())
+	encryptedRef, err := refCipher.Encrypt(ref.Bytes())
+	if err != nil {
+		return swarm.ZeroAddress, err
+	}
 
 	return swarm.NewAddress(encryptedRef), nil
 }
 
 // Adds a new grantee to the ACT
 func (al ActLogic) AddGrantee(ctx context.Context, storage kvs.KeyValueStore, publisherPubKey, granteePubKey *ecdsa.PublicKey, accessKeyPointer *encryption.Key) error {
-	var accessKey encryption.Key
-	var err error // Declare the "err" variable
+	var (
+		accessKey encryption.Key
+		err       error
+	)
 
 	if accessKeyPointer == nil {
 		// Get previously generated access key
@@ -108,9 +115,6 @@ func (al *ActLogic) getAccessKey(ctx context.Context, storage kvs.KeyValueStore,
 
 	return accessKeyDecryptionCipher.Decrypt(encryptedAK)
 }
-
-var oneByteArray = []byte{1}
-var zeroByteArray = []byte{0}
 
 // Generate lookup key and access key decryption key for a given public key
 func (al *ActLogic) getKeys(publicKey *ecdsa.PublicKey) ([][]byte, error) {

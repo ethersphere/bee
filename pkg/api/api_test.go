@@ -102,7 +102,7 @@ type testServerOptions struct {
 	PostageContract    postagecontract.Interface
 	StakingContract    staking.Contract
 	Post               postage.Service
-	Dac                dynamicaccess.Service
+	Dac                dynamicaccess.Controller
 	Steward            steward.Interface
 	WsHeaders          http.Header
 	DirectUpload       bool

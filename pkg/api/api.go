@@ -151,7 +151,7 @@ type Service struct {
 	feedFactory     feeds.Factory
 	signer          crypto.Signer
 	post            postage.Service
-	dac             dynamicaccess.Service
+	dac             dynamicaccess.Controller
 	postageContract postagecontract.Interface
 	probe           *Probe
 	metricsRegistry *prometheus.Registry
@@ -248,7 +248,7 @@ type ExtraOptions struct {
 	Pss             pss.Interface
 	FeedFactory     feeds.Factory
 	Post            postage.Service
-	Dac             dynamicaccess.Service
+	Dac             dynamicaccess.Controller
 	PostageContract postagecontract.Interface
 	Staking         staking.Contract
 	Steward         steward.Interface
