@@ -524,6 +524,7 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 		ChunkRetrievalTimeout *string          `map:"Swarm-Chunk-Retrieval-Timeout"`
 		LookaheadBufferSize   *int             `map:"Swarm-Lookahead-Buffer-Size"`
 		Cache                 *bool            `map:"Swarm-Cache"`
+		BatchID               []byte           `map:"Swarm-Postage-Batch-Id"`
 	}{}
 
 	if response := s.mapStructure(r.Header, &headers); response != nil {
@@ -543,7 +544,31 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 		return
 	}
 
-	reader, l, err := joiner.New(ctx, s.storer.Download(cache), s.storer.Cache(), reference)
+	putter := s.storer.Cache()
+
+	if headers.BatchID != nil {
+		// Creates a direct uploader
+		stampUploadPutter, err := s.newStamperPutter(ctx, putterOptions{
+			BatchID:  headers.BatchID,
+			Deferred: false,
+		})
+		if err != nil {
+			// TODO: error checking see line 109
+			return
+		}
+		defer func() {
+			// waits for any pending uploads
+			if err := stampUploadPutter.Done(swarm.ZeroAddress); err != nil {
+				logger.Error(err, "self repair uploader failed")
+			}
+		}()
+
+		putter = storage.PutterFunc(func(ctx context.Context, c swarm.Chunk) error {
+			return errors.Join(s.storer.Cache().Put(ctx, c), stampUploadPutter.Put(ctx, c))
+		})
+	}
+
+	reader, l, err := joiner.New(ctx, s.storer.Download(cache), putter, reference)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) || errors.Is(err, topology.ErrNotFound) {
 			logger.Debug("api download: not found ", "address", reference, "error", err)
