@@ -16,6 +16,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
+var errNotLegacyPayload = errors.New("feed update is not in the legacy payload structure")
+
 // Lookup is the interface for time based feed lookup
 type Lookup interface {
 	At(ctx context.Context, at int64, after uint64) (chunk swarm.Chunk, currentIndex, nextIndex Index, err error)
@@ -49,19 +51,49 @@ func (f *Getter) Get(ctx context.Context, i Index) (swarm.Chunk, error) {
 	return f.getter.Get(ctx, addr)
 }
 
-// FromChunk parses out the timestamp and the payload
-func FromChunk(ch swarm.Chunk) (uint64, []byte, error) {
+func GetWrappedChunk(ctx context.Context, getter storage.Getter, ch swarm.Chunk) (swarm.Chunk, error) {
+	wc, err := FromChunk(ch)
+	if err != nil {
+		return nil, err
+	}
+	// try to split the timestamp and reference
+	// possible values right now:
+	// unencrypted ref: span+timestamp+ref => 8+8+32=48
+	// encrypted ref: span+timestamp+ref+decryptKey => 8+8+64=80
+	_, ref, err := LegacyPayload(wc)
+	if err != nil {
+		if errors.Is(err, errNotLegacyPayload) {
+			return wc, nil
+		}
+		return nil, err
+	}
+	wc, err = getter.Get(ctx, ref)
+	if err != nil {
+		return nil, err
+	}
+
+	return wc, nil
+}
+
+// FromChunk parses out the wrapped chunk
+func FromChunk(ch swarm.Chunk) (swarm.Chunk, error) {
 	s, err := soc.FromChunk(ch)
 	if err != nil {
-		return 0, nil, err
+		return nil, fmt.Errorf("soc unmarshal: %w", err)
 	}
-	cac := s.WrappedChunk()
-	if len(cac.Data()) < 16 {
-		return 0, nil, errors.New("feed update payload too short")
+	return s.WrappedChunk(), nil
+}
+
+// LegacyPayload returns back the referenced chunk and datetime from the legacy feed payload
+func LegacyPayload(wrappedChunk swarm.Chunk) (uint64, swarm.Address, error) {
+	cacData := wrappedChunk.Data()
+	if !(len(cacData) == 16+swarm.HashSize || len(cacData) == 16+swarm.HashSize*2) {
+		return 0, swarm.ZeroAddress, errNotLegacyPayload
 	}
-	payload := cac.Data()[16:]
-	at := binary.BigEndian.Uint64(cac.Data()[8:16])
-	return at, payload, nil
+	address := swarm.NewAddress(cacData[16:])
+	at := binary.BigEndian.Uint64(cacData[8:16])
+
+	return at, address, nil
 }
 
 // UpdatedAt extracts the time of feed other than update
