@@ -24,13 +24,14 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	mockpost "github.com/ethersphere/bee/v2/pkg/postage/mock"
 	testingsoc "github.com/ethersphere/bee/v2/pkg/soc/testing"
+	testingc "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 const ownerString = "8d3766440f0d7b949a5e32995d09619a7f86e632"
 
-var expReference = swarm.MustParseHexAddress("891a1d1c8436c792d02fc2e8883fef7ab387eaeaacd25aa9f518be7be7856d54")
+var expReference = swarm.MustParseHexAddress("0033153ac8cfb0c343db1795f578c15ed8ef827f3e68ed3c58329900bf0d7276")
 
 func TestFeed_Get(t *testing.T) {
 	t.Parallel()
@@ -44,6 +45,15 @@ func TestFeed_Get(t *testing.T) {
 		}
 		mockStorer = mockstorer.New()
 	)
+	putter, err := mockStorer.Upload(context.Background(), false, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	mockWrappedCh := testingc.FixtureChunk("0033")
+	err = putter.Put(context.Background(), mockWrappedCh)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	t.Run("with at", func(t *testing.T) {
 		t.Parallel()
@@ -61,7 +71,7 @@ func TestFeed_Get(t *testing.T) {
 		)
 
 		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", "12"), http.StatusOK,
-			jsonhttptest.WithExpectedJSONResponse(api.FeedReferenceResponse{Reference: expReference}),
+			jsonhttptest.WithExpectedResponse(mockWrappedCh.Data()),
 			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedIndexHeader, hex.EncodeToString(idBytes)),
 		)
 	})
@@ -83,7 +93,8 @@ func TestFeed_Get(t *testing.T) {
 		)
 
 		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", ""), http.StatusOK,
-			jsonhttptest.WithExpectedJSONResponse(api.FeedReferenceResponse{Reference: expReference}),
+			jsonhttptest.WithExpectedResponse(mockWrappedCh.Data()),
+			jsonhttptest.WithExpectedContentLength(len(mockWrappedCh.Data())),
 			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedIndexHeader, hex.EncodeToString(idBytes)),
 		)
 	})
