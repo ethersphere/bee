@@ -45,10 +45,10 @@ func ReserveRepairer(
 			binIds := make(map[uint8]map[uint64]int)
 			return st.IndexStore().Iterate(
 				storage.Query{
-					Factory: func() storage.Item { return &reserve.ChunkBinItem{} },
+					Factory: func() storage.Item { return &reserve.BatchRadiusItem{} },
 				},
 				func(res storage.Result) (bool, error) {
-					item := res.Entry.(*reserve.ChunkBinItem)
+					item := res.Entry.(*reserve.BatchRadiusItem)
 					if _, ok := binIds[item.Bin]; !ok {
 						binIds[item.Bin] = make(map[uint64]int)
 					}

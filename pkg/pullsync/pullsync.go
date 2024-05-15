@@ -8,6 +8,7 @@ package pullsync
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -466,7 +467,7 @@ func (s *Syncer) processWant(ctx context.Context, o *pb.Offer, w *pb.Want) ([]sw
 			addr := swarm.NewAddress(ch.Address)
 			c, err := s.store.ReserveGet(ctx, addr, ch.BatchID)
 			if err != nil {
-				s.logger.Debug("processing want: unable to find chunk", "chunk_address", addr, "batch_id", ch.BatchID)
+				s.logger.Debug("processing want: unable to find chunk", "chunk_address", addr, "batch_id", hex.EncodeToString(ch.BatchID))
 				chunks = append(chunks, swarm.NewChunk(swarm.ZeroAddress, nil))
 				s.metrics.MissingChunks.Inc()
 				continue
