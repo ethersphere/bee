@@ -67,9 +67,11 @@ func (s *Service) MountAPI() {
 			"/bzz",
 			"/bytes",
 			"/chunks",
+			"/feeds",
 			rootPath + "/bzz",
 			rootPath + "/bytes",
 			rootPath + "/chunks",
+			rootPath + "/feeds",
 		}
 
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
