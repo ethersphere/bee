@@ -297,7 +297,7 @@ func NewUpdater(putter storage.Putter, signer crypto.Signer, topic []byte) (feed
 
 // Update pushes an update to the feed through the chunk stores
 func (u *updater) Update(ctx context.Context, at int64, payload []byte) error {
-	err := u.Put(ctx, &index{u.next}, at, payload)
+	err := u.Put(ctx, &index{u.next}, payload)
 	if err != nil {
 		return err
 	}
