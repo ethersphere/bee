@@ -333,12 +333,16 @@ func getLatestSnapshot(
 		return swarm.ZeroAddress, err
 	}
 
-	_, ref, err := feeds.FromChunk(u)
+	_, ref, err := feeds.LegacyPayload(u)
 	if err != nil {
-		return swarm.ZeroAddress, err
+		wrappedChunk, err := feeds.FromChunk(u)
+		if err != nil {
+			return swarm.ZeroAddress, err
+		}
+		ref = wrappedChunk.Address()
 	}
 
-	return swarm.NewAddress(ref), nil
+	return ref, nil // FIXME root chunk return, use only getWrappedChunk
 }
 
 func batchStoreExists(s storage.StateStorer) (bool, error) {
