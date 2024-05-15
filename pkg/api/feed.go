@@ -5,11 +5,13 @@
 package api
 
 import (
-	"encoding/binary"
+	"bytes"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -20,7 +22,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/manifest/mantaray"
 	"github.com/ethersphere/bee/v2/pkg/manifest/simple"
 	"github.com/ethersphere/bee/v2/pkg/postage"
-	"github.com/ethersphere/bee/v2/pkg/soc"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	storer "github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -93,7 +94,13 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ref, _, err := parseFeedUpdate(ch)
+	wc, err := feeds.GetWrappedChunk(r.Context(), s.storer.ChunkStore(), ch)
+	if err != nil {
+		logger.Error(nil, "wrapped chunk cannot be retrieved")
+		jsonhttp.NotFound(w, "wrapped chunk cannot be retrieved")
+		return
+	}
+	wData := wc.Data()
 	if err != nil {
 		logger.Debug("mapStructure feed update failed", "error", err)
 		logger.Error(nil, "mapStructure feed update failed")
@@ -117,11 +124,12 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	contenL := len(wData)
+	w.Header().Set(ContentLengthHeader, strconv.Itoa(contenL))
 	w.Header().Set(SwarmFeedIndexHeader, hex.EncodeToString(curBytes))
 	w.Header().Set(SwarmFeedIndexNextHeader, hex.EncodeToString(nextBytes))
 	w.Header().Set("Access-Control-Expose-Headers", fmt.Sprintf("%s, %s", SwarmFeedIndexHeader, SwarmFeedIndexNextHeader))
-
-	jsonhttp.OK(w, feedReferenceResponse{Reference: ref})
+	_, _ = io.Copy(w, bytes.NewReader(wData))
 }
 
 func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
@@ -254,23 +262,4 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonhttp.Created(w, feedReferenceResponse{Reference: ref})
-}
-
-func parseFeedUpdate(ch swarm.Chunk) (swarm.Address, int64, error) {
-	s, err := soc.FromChunk(ch)
-	if err != nil {
-		return swarm.ZeroAddress, 0, fmt.Errorf("soc unmarshal: %w", err)
-	}
-
-	update := s.WrappedChunk().Data()
-	// split the timestamp and reference
-	// possible values right now:
-	// unencrypted ref: span+timestamp+ref => 8+8+32=48
-	// encrypted ref: span+timestamp+ref+decryptKey => 8+8+64=80
-	if len(update) != 48 && len(update) != 80 {
-		return swarm.ZeroAddress, 0, errInvalidFeedUpdate
-	}
-	ts := binary.BigEndian.Uint64(update[8:16])
-	ref := swarm.NewAddress(update[16:])
-	return ref, int64(ts), nil
 }
