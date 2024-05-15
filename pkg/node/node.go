@@ -1156,9 +1156,8 @@ func NewBee(
 		apiService.MountAPI()
 		apiService.MountDebug()
 
-		debugService.SetP2P(p2ps)
-		debugService.SetSwarmAddress(&swarmAddress)
-		debugService.SetRedistributionAgent(agent)
+		apiService.SetSwarmAddress(&swarmAddress)
+		apiService.SetRedistributionAgent(agent)
 	}
 
 	if o.DebugAPIAddr != "" {
