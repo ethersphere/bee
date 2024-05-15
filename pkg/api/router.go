@@ -413,9 +413,9 @@ func (s *Service) mountBusinessDebug() {
 		"DELETE": http.HandlerFunc(s.peerDisconnectHandler),
 	})
 
-	handle("/chunks/{address}", jsonhttp.MethodHandler{
-		"GET": http.HandlerFunc(s.hasChunkHandler),
-	})
+	//handle("/chunks/{address}", jsonhttp.MethodHandler{
+	//	"GET": http.HandlerFunc(s.hasChunkHandler),
+	//})
 
 	handle("/topology", jsonhttp.MethodHandler{
 		"GET": http.HandlerFunc(s.topologyHandler),
