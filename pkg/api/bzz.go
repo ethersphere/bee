@@ -384,14 +384,14 @@ FETCH:
 				jsonhttp.NotFound(w, "no update found")
 				return
 			}
-			ref, _, err := parseFeedUpdate(ch)
+			wc, err := feeds.GetWrappedChunk(ctx, s.storer.ChunkStore(), ch)
 			if err != nil {
 				logger.Debug("bzz download: mapStructure feed update failed", "error", err)
 				logger.Error(nil, "bzz download: mapStructure feed update failed")
 				jsonhttp.InternalServerError(w, "mapStructure feed update")
 				return
 			}
-			address = ref
+			address = wc.Address() // FIXME: init manifest with root chunk instead
 			feedDereferenced = true
 			curBytes, err := cur.MarshalBinary()
 			if err != nil {
