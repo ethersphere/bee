@@ -377,7 +377,6 @@ func NewBee(
 		logger.Info("starting with restricted APIs")
 	}
 
-	// set up basic debug api endpoints for debugging and /health endpoint
 	beeNodeMode := api.LightMode
 	if o.FullNodeMode {
 		beeNodeMode = api.FullMode

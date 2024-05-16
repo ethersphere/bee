@@ -34,7 +34,7 @@ func (s *Service) MountTechnicalDebug() {
 	s.mountTechnicalDebug()
 
 	s.Handler = web.ChainHandlers(
-		httpaccess.NewHTTPAccessLogHandler(s.logger, s.tracer, "debug api access"),
+		httpaccess.NewHTTPAccessLogHandler(s.logger, s.tracer, "api access"),
 		handlers.CompressHandler,
 		s.corsHandler,
 		web.NoCacheHeadersHandler,
@@ -46,7 +46,7 @@ func (s *Service) MountDebug() {
 	s.mountBusinessDebug()
 
 	s.Handler = web.ChainHandlers(
-		httpaccess.NewHTTPAccessLogHandler(s.logger, s.tracer, "debug api access"),
+		httpaccess.NewHTTPAccessLogHandler(s.logger, s.tracer, "api access"),
 		handlers.CompressHandler,
 		s.corsHandler,
 		web.NoCacheHeadersHandler,
@@ -370,7 +370,6 @@ func (s *Service) mountAPI() {
 
 func (s *Service) mountBusinessDebug() {
 	handle := func(path string, handler http.Handler) {
-		s.logger.Warning(fmt.Sprintf("DEPRECATION NOTICE: %s endpoint is now part of the main Bee API. The Debug API will be removed in the next release, version [2.2.0]. Update your integrations to use the main Bee API to avoid service disruptions.", path))
 		if s.Restricted {
 			handler = web.ChainHandlers(auth.PermissionCheckHandler(s.auth), web.FinalHandler(handler))
 		}
