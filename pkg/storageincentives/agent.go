@@ -464,14 +464,10 @@ func (a *Agent) makeSample(ctx context.Context, storageRadius uint8) (SampleData
 		return SampleData{}, err
 	}
 
-	falseSampleHash := sampleHash.Bytes()
-	falseSampleHash[0] += 1
-	falseSampleAddress := swarm.NewAddress(falseSampleHash)
-
 	sample := SampleData{
 		Anchor1:            salt,
 		ReserveSampleItems: rSample.Items,
-		ReserveSampleHash:  falseSampleAddress,
+		ReserveSampleHash:  sampleHash,
 		StorageRadius:      storageRadius,
 	}
 
