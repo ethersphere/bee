@@ -1,3 +1,7 @@
+// Copyright 2024 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package dynamicaccess_test
 
 import (
@@ -12,6 +16,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/dynamicaccess"
 	kvsmock "github.com/ethersphere/bee/v2/pkg/kvs/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/stretchr/testify/assert"
 )
 
 // Generates a new test environment with a fix private key
@@ -79,7 +84,6 @@ func TestDecryptRef_Success(t *testing.T) {
 	}
 
 	if expectedRef.Compare(acutalRef) != 0 {
-
 		t.Errorf("Get gave back wrong Swarm reference!")
 	}
 }
@@ -123,7 +127,6 @@ func TestDecryptRefWithGrantee_Success(t *testing.T) {
 	}
 
 	if expectedRef.Compare(acutalRef) != 0 {
-
 		t.Errorf("Get gave back wrong Swarm reference!")
 	}
 }
@@ -135,9 +138,7 @@ func TestDecryptRef_Error(t *testing.T) {
 	s := kvsmock.New()
 	al := setupAccessLogic()
 	err := al.AddPublisher(ctx, s, &id0.PublicKey)
-	if err != nil {
-		t.Errorf("AddPublisher: expected no error, got %v", err)
-	}
+	assert.NoError(t, err)
 
 	expectedRef := "39a5ea87b141fe44aa609c3327ecd896c0e2122897f5f4bbacf74db1033c5559"
 
@@ -158,19 +159,14 @@ func TestAddPublisher(t *testing.T) {
 
 	al := setupAccessLogic()
 	err := al.AddPublisher(ctx, s, &id0.PublicKey)
-	if err != nil {
-		t.Errorf("AddPublisher: expected no error, got %v", err)
-	}
+	assert.NoError(t, err)
 
 	decodedSavedLookupKey, err := hex.DecodeString(savedLookupKey)
-	if err != nil {
-		t.Errorf("DecodeString: expected no error, got %v", err)
-	}
+	assert.NoError(t, err)
 
 	encryptedAccessKey, err := s.Get(ctx, decodedSavedLookupKey)
-	if err != nil {
-		t.Errorf("Lookup: expected no error, got %v", err)
-	}
+	assert.NoError(t, err)
+
 	decodedEncryptedAccessKey := hex.EncodeToString(encryptedAccessKey)
 
 	// A random value is returned so it is only possibly to check the length of the returned value
@@ -184,7 +180,6 @@ func TestAddPublisher(t *testing.T) {
 }
 
 func TestAddNewGranteeToContent(t *testing.T) {
-
 	id0 := getPrivKey(0)
 	id1 := getPrivKey(1)
 	id2 := getPrivKey(2)
@@ -197,24 +192,17 @@ func TestAddNewGranteeToContent(t *testing.T) {
 	s := kvsmock.New()
 	al := setupAccessLogic()
 	err := al.AddPublisher(ctx, s, &id0.PublicKey)
-	if err != nil {
-		t.Errorf("AddNewGrantee: expected no error, got %v", err)
-	}
+	assert.NoError(t, err)
 
 	err = al.AddGrantee(ctx, s, &id0.PublicKey, &id1.PublicKey, nil)
-	if err != nil {
-		t.Errorf("AddNewGrantee: expected no error, got %v", err)
-	}
+	assert.NoError(t, err)
 
 	err = al.AddGrantee(ctx, s, &id0.PublicKey, &id2.PublicKey, nil)
-	if err != nil {
-		t.Errorf("AddNewGrantee: expected no error, got %v", err)
-	}
+	assert.NoError(t, err)
 
 	lookupKeyAsByte, err := hex.DecodeString(publisherLookupKey)
-	if err != nil {
-		t.Errorf("AddNewGrantee: expected no error, got %v", err)
-	}
+	assert.NoError(t, err)
+
 	result, _ := s.Get(ctx, lookupKeyAsByte)
 	hexEncodedEncryptedAK := hex.EncodeToString(result)
 	if len(hexEncodedEncryptedAK) != 64 {
@@ -222,9 +210,8 @@ func TestAddNewGranteeToContent(t *testing.T) {
 	}
 
 	lookupKeyAsByte, err = hex.DecodeString(firstAddedGranteeLookupKey)
-	if err != nil {
-		t.Errorf("AddNewGrantee: expected no error, got %v", err)
-	}
+	assert.NoError(t, err)
+
 	result, _ = s.Get(ctx, lookupKeyAsByte)
 	hexEncodedEncryptedAK = hex.EncodeToString(result)
 	if len(hexEncodedEncryptedAK) != 64 {
@@ -232,9 +219,8 @@ func TestAddNewGranteeToContent(t *testing.T) {
 	}
 
 	lookupKeyAsByte, err = hex.DecodeString(secondAddedGranteeLookupKey)
-	if err != nil {
-		t.Errorf("AddNewGrantee: expected no error, got %v", err)
-	}
+	assert.NoError(t, err)
+
 	result, _ = s.Get(ctx, lookupKeyAsByte)
 	hexEncodedEncryptedAK = hex.EncodeToString(result)
 	if len(hexEncodedEncryptedAK) != 64 {

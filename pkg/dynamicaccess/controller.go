@@ -1,3 +1,7 @@
+// Copyright 2024 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package dynamicaccess
 
 import (
@@ -33,13 +37,13 @@ type Controller interface {
 	io.Closer
 }
 
-type controller struct {
+type ControllerStruct struct {
 	accessLogic ActLogic
 }
 
-var _ Controller = (*controller)(nil)
+var _ Controller = (*ControllerStruct)(nil)
 
-func (c *controller) DownloadHandler(
+func (c *ControllerStruct) DownloadHandler(
 	ctx context.Context,
 	ls file.LoadSaver,
 	encryptedRef swarm.Address,
@@ -63,7 +67,7 @@ func (c *controller) DownloadHandler(
 	return c.accessLogic.DecryptRef(ctx, act, encryptedRef, publisher)
 }
 
-func (c *controller) UploadHandler(
+func (c *ControllerStruct) UploadHandler(
 	ctx context.Context,
 	ls file.LoadSaver,
 	refrefence swarm.Address,
@@ -121,13 +125,13 @@ func (c *controller) UploadHandler(
 	return actRef, historyRef, encryptedRef, err
 }
 
-func NewController(accessLogic ActLogic) Controller {
-	return &controller{
+func NewController(accessLogic ActLogic) *ControllerStruct {
+	return &ControllerStruct{
 		accessLogic: accessLogic,
 	}
 }
 
-func (c *controller) HandleGrantees(
+func (c *ControllerStruct) HandleGrantees(
 	ctx context.Context,
 	ls file.LoadSaver,
 	gls file.LoadSaver,
@@ -261,7 +265,7 @@ func (c *controller) HandleGrantees(
 	return glref, eglref, href, actref, nil
 }
 
-func (c *controller) GetGrantees(ctx context.Context, ls file.LoadSaver, publisher *ecdsa.PublicKey, encryptedglref swarm.Address) ([]*ecdsa.PublicKey, error) {
+func (c *ControllerStruct) GetGrantees(ctx context.Context, ls file.LoadSaver, publisher *ecdsa.PublicKey, encryptedglref swarm.Address) ([]*ecdsa.PublicKey, error) {
 	granteeRef, err := c.decryptRefForPublisher(publisher, encryptedglref)
 	if err != nil {
 		return nil, err
@@ -273,7 +277,7 @@ func (c *controller) GetGrantees(ctx context.Context, ls file.LoadSaver, publish
 	return gl.Get(), nil
 }
 
-func (c *controller) encryptRefForPublisher(publisherPubKey *ecdsa.PublicKey, ref swarm.Address) (swarm.Address, error) {
+func (c *ControllerStruct) encryptRefForPublisher(publisherPubKey *ecdsa.PublicKey, ref swarm.Address) (swarm.Address, error) {
 	keys, err := c.accessLogic.Session.Key(publisherPubKey, [][]byte{oneByteArray})
 	if err != nil {
 		return swarm.ZeroAddress, err
@@ -287,7 +291,7 @@ func (c *controller) encryptRefForPublisher(publisherPubKey *ecdsa.PublicKey, re
 	return swarm.NewAddress(encryptedRef), nil
 }
 
-func (c *controller) decryptRefForPublisher(publisherPubKey *ecdsa.PublicKey, encryptedRef swarm.Address) (swarm.Address, error) {
+func (c *ControllerStruct) decryptRefForPublisher(publisherPubKey *ecdsa.PublicKey, encryptedRef swarm.Address) (swarm.Address, error) {
 	keys, err := c.accessLogic.Session.Key(publisherPubKey, [][]byte{oneByteArray})
 	if err != nil {
 		return swarm.ZeroAddress, err
@@ -308,6 +312,6 @@ func requestPipelineFactory(ctx context.Context, s storage.Putter, encrypt bool,
 }
 
 // TODO: what to do in close ?
-func (s *controller) Close() error {
+func (s *ControllerStruct) Close() error {
 	return nil
 }

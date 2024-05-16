@@ -1,3 +1,7 @@
+// Copyright 2024 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package dynamicaccess
 
 import (
@@ -20,44 +24,47 @@ type History interface {
 	Store(ctx context.Context) (swarm.Address, error)
 }
 
-var _ History = (*history)(nil)
+var _ History = (*HistoryStruct)(nil)
 
-var ErrEndIteration = errors.New("end iteration")
+var (
+	ErrEndIteration   = errors.New("end iteration")
+	ErrUnexpectedType = errors.New("unexpected type")
+)
 
-type history struct {
+type HistoryStruct struct {
 	manifest *manifest.MantarayManifest
 	ls       file.LoadSaver
 }
 
-func NewHistory(ls file.LoadSaver) (History, error) {
+func NewHistory(ls file.LoadSaver) (*HistoryStruct, error) {
 	m, err := manifest.NewDefaultManifest(ls, false)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create default manifest: %w", err)
 	}
 
 	mm, ok := m.(*manifest.MantarayManifest)
 	if !ok {
-		return nil, fmt.Errorf("expected MantarayManifest, got %T", m)
+		return nil, fmt.Errorf("%w: expected MantarayManifest, got %T", ErrUnexpectedType, m)
 	}
 
-	return &history{manifest: mm, ls: ls}, nil
+	return &HistoryStruct{manifest: mm, ls: ls}, nil
 }
 
-func NewHistoryReference(ls file.LoadSaver, ref swarm.Address) (History, error) {
+func NewHistoryReference(ls file.LoadSaver, ref swarm.Address) (*HistoryStruct, error) {
 	m, err := manifest.NewDefaultManifestReference(ref, ls)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to create default manifest: %w", err)
 	}
 
 	mm, ok := m.(*manifest.MantarayManifest)
 	if !ok {
-		return nil, fmt.Errorf("expected MantarayManifest, got %T", m)
+		return nil, fmt.Errorf("%w: expected MantarayManifest, got %T", ErrUnexpectedType, m)
 	}
 
-	return &history{manifest: mm, ls: ls}, nil
+	return &HistoryStruct{manifest: mm, ls: ls}, nil
 }
 
-func (h *history) Add(ctx context.Context, ref swarm.Address, timestamp *int64, metadata *map[string]string) error {
+func (h *HistoryStruct) Add(ctx context.Context, ref swarm.Address, timestamp *int64, metadata *map[string]string) error {
 	mtdt := map[string]string{}
 	if metadata != nil {
 		mtdt = *metadata
@@ -74,10 +81,12 @@ func (h *history) Add(ctx context.Context, ref swarm.Address, timestamp *int64, 
 	return h.manifest.Add(ctx, key, manifest.NewEntry(ref, mtdt))
 }
 
+var ErrInvalidTimestamp = errors.New("invalid timestamp")
+
 // Lookup finds the entry for a path or returns error if not found
-func (h *history) Lookup(ctx context.Context, timestamp int64) (manifest.Entry, error) {
+func (h *HistoryStruct) Lookup(ctx context.Context, timestamp int64) (manifest.Entry, error) {
 	if timestamp <= 0 {
-		return manifest.NewEntry(swarm.ZeroAddress, map[string]string{}), errors.New("invalid timestamp")
+		return manifest.NewEntry(swarm.ZeroAddress, map[string]string{}), ErrInvalidTimestamp
 	}
 
 	reversedTimestamp := math.MaxInt64 - timestamp
@@ -93,7 +102,7 @@ func (h *history) Lookup(ctx context.Context, timestamp int64) (manifest.Entry, 
 	return manifest.NewEntry(swarm.ZeroAddress, map[string]string{}), nil
 }
 
-func (h *history) lookupNode(ctx context.Context, searchedTimestamp int64) (*mantaray.Node, error) {
+func (h *HistoryStruct) lookupNode(ctx context.Context, searchedTimestamp int64) (*mantaray.Node, error) {
 	// before node's timestamp is the closest one that is less than or equal to the searched timestamp
 	// for instance: 2030, 2020, 1994 -> search for 2021 -> before is 2020
 	var beforeNode *mantaray.Node
@@ -134,12 +143,11 @@ func (h *history) lookupNode(ctx context.Context, searchedTimestamp int64) (*man
 	}
 	if afterNode != nil {
 		return afterNode, nil
-
 	}
 	return nil, nil
 }
 
-func (h *history) Store(ctx context.Context) (swarm.Address, error) {
+func (h *HistoryStruct) Store(ctx context.Context) (swarm.Address, error) {
 	return h.manifest.Store(ctx)
 }
 

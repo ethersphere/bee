@@ -1,3 +1,7 @@
+// Copyright 2024 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package mock
 
 import (
@@ -17,7 +21,6 @@ func (s *SessionMock) Key(publicKey *ecdsa.PublicKey, nonces [][]byte) ([][]byte
 		return nil, nil
 	}
 	return s.KeyFunc(publicKey, nonces)
-
 }
 
 func NewSessionMock(key *ecdsa.PrivateKey) *SessionMock {

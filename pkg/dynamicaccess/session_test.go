@@ -1,3 +1,7 @@
+// Copyright 2024 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package dynamicaccess_test
 
 import (
@@ -14,7 +18,7 @@ import (
 	memkeystore "github.com/ethersphere/bee/v2/pkg/keystore/mem"
 )
 
-func mockKeyFunc(publicKey *ecdsa.PublicKey, nonces [][]byte) ([][]byte, error) {
+func mockKeyFunc(*ecdsa.PublicKey, [][]byte) ([][]byte, error) {
 	return [][]byte{{1}}, nil
 }
 
