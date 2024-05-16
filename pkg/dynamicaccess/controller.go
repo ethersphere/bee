@@ -16,17 +16,17 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-type GranteeManager interface {
-	// HandleGrantees manages the grantees for the given publisher, updating the list based on provided public keys to add or remove.
+type Grantees interface {
+	// UpdateHandler manages the grantees for the given publisher, updating the list based on provided public keys to add or remove.
 	// Only the publisher can make changes to the grantee list.
-	HandleGrantees(ctx context.Context, ls file.LoadSaver, gls file.LoadSaver, granteeref swarm.Address, historyref swarm.Address, publisher *ecdsa.PublicKey, addList, removeList []*ecdsa.PublicKey) (swarm.Address, swarm.Address, swarm.Address, swarm.Address, error)
-	// GetGrantees returns the list of grantees for the given publisher.
+	UpdateHandler(ctx context.Context, ls file.LoadSaver, gls file.LoadSaver, granteeref swarm.Address, historyref swarm.Address, publisher *ecdsa.PublicKey, addList, removeList []*ecdsa.PublicKey) (swarm.Address, swarm.Address, swarm.Address, swarm.Address, error)
+	// Get returns the list of grantees for the given publisher.
 	// The list is accessible only by the publisher.
-	GetGrantees(ctx context.Context, ls file.LoadSaver, publisher *ecdsa.PublicKey, encryptedglref swarm.Address) ([]*ecdsa.PublicKey, error)
+	Get(ctx context.Context, ls file.LoadSaver, publisher *ecdsa.PublicKey, encryptedglref swarm.Address) ([]*ecdsa.PublicKey, error)
 }
 
 type Controller interface {
-	GranteeManager
+	Grantees
 	// DownloadHandler decrypts the encryptedRef using the lookupkey based on the history and timestamp.
 	DownloadHandler(ctx context.Context, ls file.LoadSaver, encryptedRef swarm.Address, publisher *ecdsa.PublicKey, historyRootHash swarm.Address, timestamp int64) (swarm.Address, error)
 	// UploadHandler encrypts the reference and stores it in the history as the latest update.
@@ -128,7 +128,7 @@ func NewController(accessLogic ActLogic) *ControllerStruct {
 	}
 }
 
-func (c *ControllerStruct) HandleGrantees(
+func (c *ControllerStruct) UpdateHandler(
 	ctx context.Context,
 	ls file.LoadSaver,
 	gls file.LoadSaver,
@@ -186,7 +186,7 @@ func (c *ControllerStruct) HandleGrantees(
 			return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, err
 		}
 
-		gl, err = NewGranteeListReference(gls, granteeref)
+		gl, err = NewGranteeListReference(ctx, gls, granteeref)
 		if err != nil {
 			return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, err
 		}
@@ -262,12 +262,12 @@ func (c *ControllerStruct) HandleGrantees(
 	return glref, eglref, href, actref, nil
 }
 
-func (c *ControllerStruct) GetGrantees(_ context.Context, ls file.LoadSaver, publisher *ecdsa.PublicKey, encryptedglref swarm.Address) ([]*ecdsa.PublicKey, error) {
+func (c *ControllerStruct) Get(ctx context.Context, ls file.LoadSaver, publisher *ecdsa.PublicKey, encryptedglref swarm.Address) ([]*ecdsa.PublicKey, error) {
 	granteeRef, err := c.decryptRefForPublisher(publisher, encryptedglref)
 	if err != nil {
 		return nil, err
 	}
-	gl, err := NewGranteeListReference(ls, granteeRef)
+	gl, err := NewGranteeListReference(ctx, ls, granteeRef)
 	if err != nil {
 		return nil, err
 	}
