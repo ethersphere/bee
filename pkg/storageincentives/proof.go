@@ -215,5 +215,7 @@ func sampleHash(items []storer.SampleItem) (swarm.Address, error) {
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
-	return ch.Address(), nil
+	falseSampleHash := ch.Address().Bytes()
+	falseSampleHash[20] += 1
+	return swarm.NewAddress(falseSampleHash), nil
 }
