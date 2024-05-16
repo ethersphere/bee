@@ -1,3 +1,7 @@
+// Copyright 2024 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package api
 
 import (
@@ -6,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"time"
@@ -114,7 +119,6 @@ func (s *Service) actDecryptionHandler() func(h http.Handler) http.Handler {
 			h.ServeHTTP(w, r.WithContext(setAddressInContext(ctx, reference)))
 		})
 	}
-
 }
 
 // actEncryptionHandler is a middleware that encrypts the given address using the publisher's public key
@@ -133,7 +137,7 @@ func (s *Service) actEncryptionHandler(
 	if err != nil {
 		logger.Debug("act failed to encrypt reference", "error", err)
 		logger.Error(nil, "act failed to encrypt reference")
-		return swarm.ZeroAddress, err
+		return swarm.ZeroAddress, fmt.Errorf("act failed to encrypt reference: %w", err)
 	}
 	// only need to upload history and kvs if a new history is created,
 	// meaning that the publsher uploaded to the history for the first time
@@ -142,13 +146,13 @@ func (s *Service) actEncryptionHandler(
 		if err != nil {
 			logger.Debug("done split keyvaluestore failed", "error", err)
 			logger.Error(nil, "done split keyvaluestore failed")
-			return swarm.ZeroAddress, err
+			return swarm.ZeroAddress, fmt.Errorf("done split keyvaluestore failed: %w", err)
 		}
 		err = putter.Done(historyReference)
 		if err != nil {
 			logger.Debug("done split history failed", "error", err)
 			logger.Error(nil, "done split history failed")
-			return swarm.ZeroAddress, err
+			return swarm.ZeroAddress, fmt.Errorf("done split history failed: %w", err)
 		}
 	}
 

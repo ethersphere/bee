@@ -1,8 +1,13 @@
+// Copyright 2024 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package dynamicaccess
 
 import (
 	"context"
 	"crypto/ecdsa"
+	"fmt"
 
 	encryption "github.com/ethersphere/bee/v2/pkg/encryption"
 	"github.com/ethersphere/bee/v2/pkg/kvs"
@@ -10,11 +15,14 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
-var hashFunc = sha3.NewLegacyKeccak256
-var oneByteArray = []byte{1}
-var zeroByteArray = []byte{0}
+//nolint:gochecknoglobals
+var (
+	hashFunc      = sha3.NewLegacyKeccak256
+	oneByteArray  = []byte{1}
+	zeroByteArray = []byte{0}
+)
 
-// Read-only interface for the ACT
+// Decryptor is a read-only interface for the ACT.
 type Decryptor interface {
 	// DecryptRef will return a decrypted reference, for given encrypted reference and grantee
 	DecryptRef(ctx context.Context, storage kvs.KeyValueStore, encryptedRef swarm.Address, publisher *ecdsa.PublicKey) (swarm.Address, error)
@@ -22,13 +30,13 @@ type Decryptor interface {
 	Session
 }
 
-// Control interface for the ACT (does write operations)
+// Control interface for the ACT (does write operations).
 type Control interface {
 	// Embedding the Decryptor interface
 	Decryptor
-	// Adds a new grantee to the ACT
+	// AddGrantee adds a new grantee to the ACT
 	AddGrantee(ctx context.Context, storage kvs.KeyValueStore, publisherPubKey, granteePubKey *ecdsa.PublicKey, accessKey *encryption.Key) error
-	// Encrypts a Swarm reference for a given grantee
+	// EncryptRef encrypts a Swarm reference for a given grantee
 	EncryptRef(ctx context.Context, storage kvs.KeyValueStore, grantee *ecdsa.PublicKey, ref swarm.Address) (swarm.Address, error)
 }
 
@@ -38,14 +46,14 @@ type ActLogic struct {
 
 var _ Control = (*ActLogic)(nil)
 
-// Adds a new publisher to an empty act
+// AddPublisher adds a new publisher to an empty act.
 func (al ActLogic) AddPublisher(ctx context.Context, storage kvs.KeyValueStore, publisher *ecdsa.PublicKey) error {
 	accessKey := encryption.GenerateRandomKey(encryption.KeyLength)
 
 	return al.AddGrantee(ctx, storage, publisher, publisher, &accessKey)
 }
 
-// Encrypts a SWARM reference for a publisher
+// EncryptRef encrypts a SWARM reference for a publisher.
 func (al ActLogic) EncryptRef(ctx context.Context, storage kvs.KeyValueStore, publisherPubKey *ecdsa.PublicKey, ref swarm.Address) (swarm.Address, error) {
 	accessKey, err := al.getAccessKey(ctx, storage, publisherPubKey)
 	if err != nil {
@@ -54,13 +62,13 @@ func (al ActLogic) EncryptRef(ctx context.Context, storage kvs.KeyValueStore, pu
 	refCipher := encryption.New(accessKey, 0, uint32(0), hashFunc)
 	encryptedRef, err := refCipher.Encrypt(ref.Bytes())
 	if err != nil {
-		return swarm.ZeroAddress, err
+		return swarm.ZeroAddress, fmt.Errorf("failed to encrypt reference: %w", err)
 	}
 
 	return swarm.NewAddress(encryptedRef), nil
 }
 
-// Adds a new grantee to the ACT
+// AddGrantee adds a new grantee to the ACT.
 func (al ActLogic) AddGrantee(ctx context.Context, storage kvs.KeyValueStore, publisherPubKey, granteePubKey *ecdsa.PublicKey, accessKeyPointer *encryption.Key) error {
 	var (
 		accessKey encryption.Key
@@ -79,61 +87,60 @@ func (al ActLogic) AddGrantee(ctx context.Context, storage kvs.KeyValueStore, pu
 	}
 
 	// Encrypt the access key for the new Grantee
-	keys, err := al.getKeys(granteePubKey)
+	lookupKey, accessKeyDecryptionKey, err := al.getKeys(granteePubKey)
 	if err != nil {
 		return err
 	}
-	lookupKey := keys[0]
-	// accessKeyDecryptionKey is used for encryption of the access key
-	accessKeyDecryptionKey := keys[1]
 
 	// Encrypt the access key for the new Grantee
 	cipher := encryption.New(encryption.Key(accessKeyDecryptionKey), 0, uint32(0), hashFunc)
 	granteeEncryptedAccessKey, err := cipher.Encrypt(accessKey)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to encrypt access key: %w", err)
 	}
 
-	// Add the new encrypted access key for the Act
+	// Add the new encrypted access key to the Act
 	return storage.Put(ctx, lookupKey, granteeEncryptedAccessKey)
 }
 
-// Will return the access key for a publisher (public key)
+// Will return the access key for a publisher (public key).
 func (al *ActLogic) getAccessKey(ctx context.Context, storage kvs.KeyValueStore, publisherPubKey *ecdsa.PublicKey) ([]byte, error) {
-	keys, err := al.getKeys(publisherPubKey)
+	publisherLookupKey, publisherAKDecryptionKey, err := al.getKeys(publisherPubKey)
 	if err != nil {
 		return nil, err
 	}
-	publisherLookupKey := keys[0]
-	publisherAKDecryptionKey := keys[1]
-	// no need to constructor call if value not found in act
+	// no need for constructor call if value not found in act
 	accessKeyDecryptionCipher := encryption.New(encryption.Key(publisherAKDecryptionKey), 0, uint32(0), hashFunc)
 	encryptedAK, err := storage.Get(ctx, publisherLookupKey)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed go get value from KVS: %w", err)
 	}
 
 	return accessKeyDecryptionCipher.Decrypt(encryptedAK)
 }
 
 // Generate lookup key and access key decryption key for a given public key
-func (al *ActLogic) getKeys(publicKey *ecdsa.PublicKey) ([][]byte, error) {
-	return al.Session.Key(publicKey, [][]byte{zeroByteArray, oneByteArray})
+func (al *ActLogic) getKeys(publicKey *ecdsa.PublicKey) ([]byte, []byte, error) {
+	nonces := [][]byte{zeroByteArray, oneByteArray}
+	// keys := make([][]byte, 0, len(nonces))
+	keys, err := al.Session.Key(publicKey, nonces)
+	if keys == nil {
+		return nil, nil, err
+	}
+	return keys[0], keys[1], err
 }
 
 // DecryptRef will return a decrypted reference, for given encrypted reference and publisher
 func (al ActLogic) DecryptRef(ctx context.Context, storage kvs.KeyValueStore, encryptedRef swarm.Address, publisher *ecdsa.PublicKey) (swarm.Address, error) {
-	keys, err := al.getKeys(publisher)
+	lookupKey, accessKeyDecryptionKey, err := al.getKeys(publisher)
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
-	lookupKey := keys[0]
-	accessKeyDecryptionKey := keys[1]
 
 	// Lookup encrypted access key from the ACT manifest
 	encryptedAccessKey, err := storage.Get(ctx, lookupKey)
 	if err != nil {
-		return swarm.ZeroAddress, err
+		return swarm.ZeroAddress, fmt.Errorf("failed to get access key from KVS: %w", err)
 	}
 
 	// Decrypt access key

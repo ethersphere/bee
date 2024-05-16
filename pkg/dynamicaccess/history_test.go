@@ -1,3 +1,7 @@
+// Copyright 2024 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package dynamicaccess_test
 
 import (
@@ -61,27 +65,27 @@ func TestMultiNodeHistoryLookup(t *testing.T) {
 	testActRef1 := swarm.NewAddress([]byte("39a5ea87b141fe44aa609c3327ecd891"))
 	firstTime := time.Date(1994, time.April, 1, 0, 0, 0, 0, time.UTC).Unix()
 	mtdt1 := map[string]string{"firstTime": "1994-04-01"}
-	h.Add(ctx, testActRef1, &firstTime, &mtdt1)
+	_ = h.Add(ctx, testActRef1, &firstTime, &mtdt1)
 
 	testActRef2 := swarm.NewAddress([]byte("39a5ea87b141fe44aa609c3327ecd892"))
 	secondTime := time.Date(2000, time.April, 1, 0, 0, 0, 0, time.UTC).Unix()
 	mtdt2 := map[string]string{"secondTime": "2000-04-01"}
-	h.Add(ctx, testActRef2, &secondTime, &mtdt2)
+	_ = h.Add(ctx, testActRef2, &secondTime, &mtdt2)
 
 	testActRef3 := swarm.NewAddress([]byte("39a5ea87b141fe44aa609c3327ecd893"))
 	thirdTime := time.Date(2015, time.April, 1, 0, 0, 0, 0, time.UTC).Unix()
 	mtdt3 := map[string]string{"thirdTime": "2015-04-01"}
-	h.Add(ctx, testActRef3, &thirdTime, &mtdt3)
+	_ = h.Add(ctx, testActRef3, &thirdTime, &mtdt3)
 
 	testActRef4 := swarm.NewAddress([]byte("39a5ea87b141fe44aa609c3327ecd894"))
 	fourthTime := time.Date(2020, time.April, 1, 0, 0, 0, 0, time.UTC).Unix()
 	mtdt4 := map[string]string{"fourthTime": "2020-04-01"}
-	h.Add(ctx, testActRef4, &fourthTime, &mtdt4)
+	_ = h.Add(ctx, testActRef4, &fourthTime, &mtdt4)
 
 	testActRef5 := swarm.NewAddress([]byte("39a5ea87b141fe44aa609c3327ecd895"))
 	fifthTime := time.Date(2030, time.April, 1, 0, 0, 0, 0, time.UTC).Unix()
 	mtdt5 := map[string]string{"fifthTime": "2030-04-01"}
-	h.Add(ctx, testActRef5, &fifthTime, &mtdt5)
+	_ = h.Add(ctx, testActRef5, &fifthTime, &mtdt5)
 
 	// latest
 	searchedTime := time.Date(1980, time.April, 1, 0, 0, 0, 0, time.UTC).Unix()
@@ -126,7 +130,7 @@ func TestHistoryStore(t *testing.T) {
 	testActRef1 := swarm.NewAddress([]byte("39a5ea87b141fe44aa609c3327ecd891"))
 	firstTime := time.Date(1994, time.April, 1, 0, 0, 0, 0, time.UTC).Unix()
 	mtdt1 := map[string]string{"firstTime": "1994-04-01"}
-	h1.Add(ctx, testActRef1, &firstTime, &mtdt1)
+	_ = h1.Add(ctx, testActRef1, &firstTime, &mtdt1)
 
 	href1, err := h1.Store(ctx)
 	assert.NoError(t, err)
@@ -134,7 +138,7 @@ func TestHistoryStore(t *testing.T) {
 	h2, err := dynamicaccess.NewHistoryReference(ls, href1)
 	assert.NoError(t, err)
 
-	entry1, err := h2.Lookup(ctx, firstTime)
+	entry1, _ := h2.Lookup(ctx, firstTime)
 	actRef1 := entry1.Reference()
 	assert.True(t, actRef1.Equal(testActRef1))
 	assert.True(t, reflect.DeepEqual(mtdt1, entry1.Metadata()))

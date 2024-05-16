@@ -1,9 +1,14 @@
+// Copyright 2024 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package dynamicaccess
 
 import (
 	"context"
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"errors"
 	"fmt"
 
 	"github.com/btcsuite/btcd/btcec/v2"
@@ -76,13 +81,18 @@ func (g *GranteeListStruct) Save(ctx context.Context) (swarm.Address, error) {
 	return swarm.NewAddress(refBytes), nil
 }
 
+var (
+	ErrNothingToRemove = errors.New("nothing to remove")
+	ErrNoGranteeFound  = errors.New("no grantee found")
+)
+
 func (g *GranteeListStruct) Remove(keysToRemove []*ecdsa.PublicKey) error {
 	if len(keysToRemove) == 0 {
-		return fmt.Errorf("nothing to remove")
+		return ErrNothingToRemove
 	}
 
 	if len(g.grantees) == 0 {
-		return fmt.Errorf("no grantee found")
+		return ErrNoGranteeFound
 	}
 	grantees := g.grantees
 
@@ -99,17 +109,17 @@ func (g *GranteeListStruct) Remove(keysToRemove []*ecdsa.PublicKey) error {
 	return nil
 }
 
-func NewGranteeList(ls file.LoadSaver) (GranteeList, error) {
+func NewGranteeList(ls file.LoadSaver) (*GranteeListStruct, error) { // Why is the error necessary?
 	return &GranteeListStruct{
 		grantees: []*ecdsa.PublicKey{},
 		loadSave: ls,
 	}, nil
 }
 
-func NewGranteeListReference(ls file.LoadSaver, reference swarm.Address) (GranteeList, error) {
+func NewGranteeListReference(ls file.LoadSaver, reference swarm.Address) (*GranteeListStruct, error) {
 	data, err := ls.Load(context.Background(), reference.Bytes())
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unable to load reference, %w", err)
 	}
 	grantees := deserialize(data)
 

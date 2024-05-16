@@ -1,8 +1,13 @@
+// Copyright 2024 The Swarm Authors. All rights reserved.
+// Use of this source code is governed by a BSD-style
+// license that can be found in the LICENSE file.
+
 package dynamicaccess
 
 import (
 	"crypto/ecdsa"
 	"errors"
+	"fmt"
 
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/keystore"
@@ -14,19 +19,24 @@ type Session interface {
 	Key(publicKey *ecdsa.PublicKey, nonces [][]byte) ([][]byte, error)
 }
 
-var _ Session = (*session)(nil)
+var _ Session = (*SessionStruct)(nil)
 
-type session struct {
+type SessionStruct struct {
 	key *ecdsa.PrivateKey
 }
 
-func (s *session) Key(publicKey *ecdsa.PublicKey, nonces [][]byte) ([][]byte, error) {
+var (
+	ErrInvalidPublicKey  = errors.New("invalid public key")
+	ErrSecretKeyInfinity = errors.New("shared secret is point at infinity")
+)
+
+func (s *SessionStruct) Key(publicKey *ecdsa.PublicKey, nonces [][]byte) ([][]byte, error) {
 	if publicKey == nil {
-		return nil, errors.New("invalid public key")
+		return nil, ErrInvalidPublicKey
 	}
 	x, y := publicKey.Curve.ScalarMult(publicKey.X, publicKey.Y, s.key.D.Bytes())
 	if x == nil || y == nil {
-		return nil, errors.New("shared secret is point at infinity")
+		return nil, ErrSecretKeyInfinity
 	}
 
 	if len(nonces) == 0 {
@@ -37,7 +47,7 @@ func (s *session) Key(publicKey *ecdsa.PublicKey, nonces [][]byte) ([][]byte, er
 	for _, nonce := range nonces {
 		key, err := crypto.LegacyKeccak256(append(x.Bytes(), nonce...))
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to get Keccak256 hash: %w", err)
 		}
 		keys = append(keys, key)
 	}
@@ -45,13 +55,13 @@ func (s *session) Key(publicKey *ecdsa.PublicKey, nonces [][]byte) ([][]byte, er
 	return keys, nil
 }
 
-func NewDefaultSession(key *ecdsa.PrivateKey) Session {
-	return &session{
+func NewDefaultSession(key *ecdsa.PrivateKey) *SessionStruct {
+	return &SessionStruct{
 		key: key,
 	}
 }
 
 // Currently implemented only in mock/session.go
-func NewFromKeystore(ks keystore.Service, tag, password string) Session {
+func NewFromKeystore(keystore.Service, string, string) Session {
 	return nil
 }
