@@ -169,7 +169,7 @@ func TestGranteeSave(t *testing.T) {
 		t.Errorf("key generation error: %v", err)
 	}
 	t.Run("Create grantee list with invalid reference, expect error", func(t *testing.T) {
-		gl, err := dynamicaccess.NewGranteeListReference(createLs(), swarm.RandAddress(t))
+		gl, err := dynamicaccess.NewGranteeListReference(ctx, createLs(), swarm.RandAddress(t))
 		assert.Error(t, err)
 		assert.Nil(t, gl)
 	})
@@ -195,7 +195,7 @@ func TestGranteeSave(t *testing.T) {
 		ref, err := gl1.Save(ctx)
 		assert.NoError(t, err)
 
-		gl2, _ := dynamicaccess.NewGranteeListReference(ls, ref)
+		gl2, _ := dynamicaccess.NewGranteeListReference(ctx, ls, ref)
 		val := gl2.Get()
 		assert.NoError(t, err)
 		assert.Equal(t, keys, val)
@@ -211,7 +211,7 @@ func TestGranteeSave(t *testing.T) {
 		ref, err := gl1.Save(ctx)
 		assert.NoError(t, err)
 
-		gl2, _ := dynamicaccess.NewGranteeListReference(ls, ref)
+		gl2, _ := dynamicaccess.NewGranteeListReference(ctx, ls, ref)
 		err = gl2.Add(keys2)
 		assert.NoError(t, err)
 

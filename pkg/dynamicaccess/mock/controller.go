@@ -140,7 +140,7 @@ func (m *mockDacService) Close() error {
 	return nil
 }
 
-func (m *mockDacService) HandleGrantees(_ context.Context, ls file.LoadSaver, gls file.LoadSaver, encryptedglref swarm.Address, historyref swarm.Address, publisher *ecdsa.PublicKey, addList []*ecdsa.PublicKey, removeList []*ecdsa.PublicKey) (swarm.Address, swarm.Address, swarm.Address, swarm.Address, error) {
+func (m *mockDacService) UpdateHandler(_ context.Context, ls file.LoadSaver, gls file.LoadSaver, encryptedglref swarm.Address, historyref swarm.Address, publisher *ecdsa.PublicKey, addList []*ecdsa.PublicKey, removeList []*ecdsa.PublicKey) (swarm.Address, swarm.Address, swarm.Address, swarm.Address, error) {
 	historyRef, _ := swarm.ParseHexAddress("67bdf80a9bbea8eca9c8480e43fdceb485d2d74d5708e45144b8c4adacd13d9c")
 	glRef, _ := swarm.ParseHexAddress("3339613565613837623134316665343461613630396333333237656364383934")
 	eglRef, _ := swarm.ParseHexAddress("fc4e9fe978991257b897d987bc4ff13058b66ef45a53189a0b4fe84bb3346396")
@@ -148,7 +148,7 @@ func (m *mockDacService) HandleGrantees(_ context.Context, ls file.LoadSaver, gl
 	return glRef, eglRef, historyRef, actref, nil
 }
 
-func (m *mockDacService) GetGrantees(ctx context.Context, ls file.LoadSaver, publisher *ecdsa.PublicKey, encryptedglref swarm.Address) ([]*ecdsa.PublicKey, error) {
+func (m *mockDacService) Get(ctx context.Context, ls file.LoadSaver, publisher *ecdsa.PublicKey, encryptedglref swarm.Address) ([]*ecdsa.PublicKey, error) {
 	if m.publisher == "" {
 		return nil, fmt.Errorf("granteelist not found")
 	}

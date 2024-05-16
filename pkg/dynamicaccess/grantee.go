@@ -116,8 +116,8 @@ func NewGranteeList(ls file.LoadSaver) (*GranteeListStruct, error) { // Why is t
 	}, nil
 }
 
-func NewGranteeListReference(ls file.LoadSaver, reference swarm.Address) (*GranteeListStruct, error) {
-	data, err := ls.Load(context.Background(), reference.Bytes())
+func NewGranteeListReference(ctx context.Context, ls file.LoadSaver, reference swarm.Address) (*GranteeListStruct, error) {
+	data, err := ls.Load(ctx, reference.Bytes())
 	if err != nil {
 		return nil, fmt.Errorf("unable to load reference, %w", err)
 	}
