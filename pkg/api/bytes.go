@@ -15,7 +15,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/postage"
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/tracing"
 	"github.com/gorilla/mux"
@@ -124,8 +124,7 @@ func (s *Service) bytesUploadHandler(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	// TODO: what should be the root_address ? (eref vs ref)
-	span.SetTag("root_address", reference)
+	span.SetTag("root_address", encryptedReference)
 
 	err = putter.Done(reference)
 	if err != nil {
