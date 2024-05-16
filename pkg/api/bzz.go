@@ -30,8 +30,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/manifest"
 	"github.com/ethersphere/bee/v2/pkg/postage"
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
-	storer "github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/topology"
 	"github.com/ethersphere/bee/v2/pkg/tracing"
@@ -281,9 +281,8 @@ func (s *Service) fileUploadHandler(
 		ext.LogError(span, err, olog.String("action", "putter.Done"))
 		return
 	}
-	// TODO: what should be the root_address ? (eref vs ref)
 	span.LogFields(olog.Bool("success", true))
-	span.SetTag("root_address", manifestReference)
+	span.SetTag("root_address", encryptedReference)
 
 	if tagID != 0 {
 		w.Header().Set(SwarmTagHeader, fmt.Sprint(tagID))
@@ -291,7 +290,7 @@ func (s *Service) fileUploadHandler(
 	}
 	w.Header().Set(ETagHeader, fmt.Sprintf("%q", encryptedReference.String()))
 	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
-	// TODO: do we need to return reference as well ?
+
 	jsonhttp.Created(w, bzzUploadResponse{
 		Reference: encryptedReference,
 	})

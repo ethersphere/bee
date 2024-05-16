@@ -10,18 +10,15 @@ import (
 	"io"
 	"time"
 
-	encryption "github.com/ethersphere/bee/v2/pkg/encryption"
+	"github.com/ethersphere/bee/v2/pkg/encryption"
 	"github.com/ethersphere/bee/v2/pkg/file"
-	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
-	"github.com/ethersphere/bee/v2/pkg/file/pipeline/builder"
-	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
 	"github.com/ethersphere/bee/v2/pkg/kvs"
-	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
 type GranteeManager interface {
-	// TODO: doc
+	// HandleGrantees manages the grantees for the given publisher, updating the list based on provided public keys to add or remove.
+	// Only the publisher can make changes to the grantee list.
 	HandleGrantees(ctx context.Context, ls file.LoadSaver, gls file.LoadSaver, granteeref swarm.Address, historyref swarm.Address, publisher *ecdsa.PublicKey, addList, removeList []*ecdsa.PublicKey) (swarm.Address, swarm.Address, swarm.Address, swarm.Address, error)
 	// GetGrantees returns the list of grantees for the given publisher.
 	// The list is accessible only by the publisher.
@@ -70,7 +67,7 @@ func (c *ControllerStruct) DownloadHandler(
 func (c *ControllerStruct) UploadHandler(
 	ctx context.Context,
 	ls file.LoadSaver,
-	refrefence swarm.Address,
+	reference swarm.Address,
 	publisher *ecdsa.PublicKey,
 	historyRootHash swarm.Address,
 ) (swarm.Address, swarm.Address, swarm.Address, error) {
@@ -121,7 +118,7 @@ func (c *ControllerStruct) UploadHandler(
 		}
 	}
 
-	encryptedRef, err := c.accessLogic.EncryptRef(ctx, storage, publisher, refrefence)
+	encryptedRef, err := c.accessLogic.EncryptRef(ctx, storage, publisher, reference)
 	return actRef, historyRef, encryptedRef, err
 }
 
@@ -265,7 +262,7 @@ func (c *ControllerStruct) HandleGrantees(
 	return glref, eglref, href, actref, nil
 }
 
-func (c *ControllerStruct) GetGrantees(ctx context.Context, ls file.LoadSaver, publisher *ecdsa.PublicKey, encryptedglref swarm.Address) ([]*ecdsa.PublicKey, error) {
+func (c *ControllerStruct) GetGrantees(_ context.Context, ls file.LoadSaver, publisher *ecdsa.PublicKey, encryptedglref swarm.Address) ([]*ecdsa.PublicKey, error) {
 	granteeRef, err := c.decryptRefForPublisher(publisher, encryptedglref)
 	if err != nil {
 		return nil, err
@@ -305,13 +302,7 @@ func (c *ControllerStruct) decryptRefForPublisher(publisherPubKey *ecdsa.PublicK
 	return swarm.NewAddress(ref), nil
 }
 
-func requestPipelineFactory(ctx context.Context, s storage.Putter, encrypt bool, rLevel redundancy.Level) func() pipeline.Interface {
-	return func() pipeline.Interface {
-		return builder.NewPipelineBuilder(ctx, s, encrypt, rLevel)
-	}
-}
-
 // TODO: what to do in close ?
-func (s *ControllerStruct) Close() error {
+func (c *ControllerStruct) Close() error {
 	return nil
 }

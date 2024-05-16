@@ -9,7 +9,7 @@ import (
 	"crypto/ecdsa"
 	"fmt"
 
-	encryption "github.com/ethersphere/bee/v2/pkg/encryption"
+	"github.com/ethersphere/bee/v2/pkg/encryption"
 	"github.com/ethersphere/bee/v2/pkg/kvs"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"golang.org/x/crypto/sha3"
@@ -26,13 +26,11 @@ var (
 type Decryptor interface {
 	// DecryptRef will return a decrypted reference, for given encrypted reference and grantee
 	DecryptRef(ctx context.Context, storage kvs.KeyValueStore, encryptedRef swarm.Address, publisher *ecdsa.PublicKey) (swarm.Address, error)
-	// Embedding the Session interface
 	Session
 }
 
 // Control interface for the ACT (does write operations).
 type Control interface {
-	// Embedding the Decryptor interface
 	Decryptor
 	// AddGrantee adds a new grantee to the ACT
 	AddGrantee(ctx context.Context, storage kvs.KeyValueStore, publisherPubKey, granteePubKey *ecdsa.PublicKey, accessKey *encryption.Key) error
@@ -122,7 +120,6 @@ func (al *ActLogic) getAccessKey(ctx context.Context, storage kvs.KeyValueStore,
 // Generate lookup key and access key decryption key for a given public key
 func (al *ActLogic) getKeys(publicKey *ecdsa.PublicKey) ([]byte, []byte, error) {
 	nonces := [][]byte{zeroByteArray, oneByteArray}
-	// keys := make([][]byte, 0, len(nonces))
 	keys, err := al.Session.Key(publicKey, nonces)
 	if keys == nil {
 		return nil, nil, err
