@@ -251,21 +251,6 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	var (
 		httpClient = &http.Client{
 			Transport: web.RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
-				u, err := url.Parse(ts.URL + r.URL.String())
-				if err != nil {
-					return nil, err
-				}
-				r.URL = u
-				return ts.Client().Transport.RoundTrip(r)
-			}),
-		}
-		conn *websocket.Conn
-		err  error
-	)
-
-	if !o.DebugAPI {
-		httpClient = &http.Client{
-			Transport: web.RoundTripperFunc(func(r *http.Request) (*http.Response, error) {
 				requestURL := r.URL.String()
 				if r.URL.Scheme != "http" {
 					requestURL = ts.URL + r.URL.String()
@@ -285,7 +270,9 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 				return transport.RoundTrip(r)
 			}),
 		}
-	}
+		conn *websocket.Conn
+		err  error
+	)
 
 	if o.WsPath != "" {
 		u := url.URL{Scheme: "ws", Host: ts.Listener.Addr().String(), Path: o.WsPath}
