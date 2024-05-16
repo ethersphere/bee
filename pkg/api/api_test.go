@@ -105,7 +105,6 @@ type testServerOptions struct {
 	Steward            steward.Interface
 	WsHeaders          http.Header
 	Authenticator      auth.Authenticator
-	DebugAPI           bool
 	Restricted         bool
 	DirectUpload       bool
 	Probe              *api.Probe

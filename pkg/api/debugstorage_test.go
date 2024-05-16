@@ -35,8 +35,7 @@ func TestDebugStorage(t *testing.T) {
 		}
 
 		ts, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI: true,
-			Storer:   mockstorer.NewWithDebugInfo(want),
+			Storer: mockstorer.NewWithDebugInfo(want),
 		})
 
 		jsonhttptest.Request(t, ts, http.MethodGet, "/debugstore", http.StatusOK,
