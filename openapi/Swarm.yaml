@@ -167,6 +167,9 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyFallbackModeParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmChunkRetrievalTimeoutParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActTimestamp"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActPublisher"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
       responses:
         "200":
           description: Retrieved content specified by reference
@@ -190,6 +193,9 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
           description: Swarm address of chunk
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActTimestamp"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActPublisher"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
       responses:
         "200":
           description: Chunk exists
@@ -334,6 +340,9 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyFallbackModeParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmChunkRetrievalTimeoutParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActTimestamp"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActPublisher"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
       responses:
         "200":
           description: Ok
@@ -363,6 +372,9 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
           description: Swarm address of chunk
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActTimestamp"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActPublisher"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
       responses:
         "200":
           description: Chunk exists
@@ -1150,6 +1162,9 @@ paths:
             $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
           name: swarm-cache
           required: false
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActTimestamp"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActPublisher"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
       responses:
         "200":
           description: Retrieved chunk content
@@ -1177,6 +1192,9 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
           description: Swarm address of chunk
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActTimestamp"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActPublisher"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
       responses:
         "200":
           description: Chunk exists

@@ -1137,6 +1137,31 @@ components:
       required: false
       description: "Determines if the download data should be cached on the node. By default the download will be cached"
 
+    SwarmActPublisher:
+      in: header
+      name: swarm-act-publisher
+      schema:
+        $ref: "#/components/schemas/PublicKey"
+      required: false
+      description: "ACT content publisher's public key"
+
+    SwarmActHistoryAddress:
+      in: header
+      name: swarm-act-history-address
+      schema:
+        $ref: "#/components/schemas/SwarmAddress"
+      required: false
+      description: "ACT history reference address"
+
+    SwarmActTimestamp:
+      in: header
+      name: swarm-act-timestamp
+      schema:
+        type: integer
+        format: int64
+      required: false
+      description: "ACT history Unix timestamp"
+
   responses:
     "200":
       description: OK.
