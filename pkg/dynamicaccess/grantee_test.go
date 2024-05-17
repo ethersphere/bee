@@ -52,6 +52,7 @@ func generateKeyListFixture() ([]*ecdsa.PublicKey, error) {
 }
 
 func TestGranteeAddGet(t *testing.T) {
+	t.Parallel()
 	gl, _ := dynamicaccess.NewGranteeList(createLs())
 	keys, err := generateKeyListFixture()
 	if err != nil {
@@ -116,6 +117,7 @@ func TestGranteeAddGet(t *testing.T) {
 }
 
 func TestGranteeRemove(t *testing.T) {
+	t.Parallel()
 	gl, _ := dynamicaccess.NewGranteeList(createLs())
 	keys, err := generateKeyListFixture()
 	if err != nil {
@@ -163,6 +165,7 @@ func TestGranteeRemove(t *testing.T) {
 }
 
 func TestGranteeSave(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	keys, err := generateKeyListFixture()
 	if err != nil {

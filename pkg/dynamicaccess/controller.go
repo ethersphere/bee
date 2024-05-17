@@ -86,7 +86,7 @@ func (c *ControllerStruct) UploadHandler(
 		if err != nil {
 			return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, err
 		}
-		err = c.accessLogic.AddPublisher(ctx, storage, publisher)
+		err = c.accessLogic.AddGrantee(ctx, storage, publisher, publisher)
 		if err != nil {
 			return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, err
 		}
@@ -168,7 +168,7 @@ func (c *ControllerStruct) UpdateHandler(
 		if err != nil {
 			return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, err
 		}
-		err = c.accessLogic.AddPublisher(ctx, act, publisher)
+		err = c.accessLogic.AddGrantee(ctx, act, publisher, publisher)
 		if err != nil {
 			return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, err
 		}
@@ -211,7 +211,7 @@ func (c *ControllerStruct) UpdateHandler(
 		if err != nil {
 			return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, err
 		}
-		err = c.accessLogic.AddPublisher(ctx, act, publisher)
+		err = c.accessLogic.AddGrantee(ctx, act, publisher, publisher)
 		if err != nil {
 			return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, err
 		}
@@ -221,7 +221,7 @@ func (c *ControllerStruct) UpdateHandler(
 	}
 
 	for _, grantee := range granteesToAdd {
-		err := c.accessLogic.AddGrantee(ctx, act, publisher, grantee, nil)
+		err := c.accessLogic.AddGrantee(ctx, act, publisher, grantee)
 		if err != nil {
 			return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, err
 		}

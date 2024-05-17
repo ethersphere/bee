@@ -21,6 +21,7 @@ import (
 )
 
 func TestHistoryAdd(t *testing.T) {
+	t.Parallel()
 	h, err := dynamicaccess.NewHistory(nil)
 	assert.NoError(t, err)
 
@@ -33,6 +34,7 @@ func TestHistoryAdd(t *testing.T) {
 }
 
 func TestSingleNodeHistoryLookup(t *testing.T) {
+	t.Parallel()
 	storer := mockstorer.New()
 	ctx := context.Background()
 	ls := loadsave.New(storer.ChunkStore(), storer.Cache(), pipelineFactory(storer.Cache(), false))
@@ -56,6 +58,7 @@ func TestSingleNodeHistoryLookup(t *testing.T) {
 }
 
 func TestMultiNodeHistoryLookup(t *testing.T) {
+	t.Parallel()
 	storer := mockstorer.New()
 	ctx := context.Background()
 	ls := loadsave.New(storer.ChunkStore(), storer.Cache(), pipelineFactory(storer.Cache(), false))
@@ -121,6 +124,7 @@ func TestMultiNodeHistoryLookup(t *testing.T) {
 }
 
 func TestHistoryStore(t *testing.T) {
+	t.Parallel()
 	storer := mockstorer.New()
 	ctx := context.Background()
 	ls := loadsave.New(storer.ChunkStore(), storer.Cache(), pipelineFactory(storer.Cache(), false))

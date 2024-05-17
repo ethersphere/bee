@@ -38,6 +38,7 @@ func keyValuePair(t *testing.T) ([]byte, []byte) {
 }
 
 func TestKvs(t *testing.T) {
+	t.Parallel()
 	s, err := kvs.New(createLs())
 	assert.NoError(t, err)
 
@@ -119,6 +120,7 @@ func TestKvs(t *testing.T) {
 }
 
 func TestKvs_Save(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 
 	key1, val1 := keyValuePair(t)
