@@ -33,7 +33,7 @@ type Decryptor interface {
 type Control interface {
 	Decryptor
 	// AddGrantee adds a new grantee to the ACT
-	AddGrantee(ctx context.Context, storage kvs.KeyValueStore, publisherPubKey, granteePubKey *ecdsa.PublicKey, accessKey *encryption.Key) error
+	AddGrantee(ctx context.Context, storage kvs.KeyValueStore, publisherPubKey, granteePubKey *ecdsa.PublicKey) error
 	// EncryptRef encrypts a Swarm reference for a given grantee
 	EncryptRef(ctx context.Context, storage kvs.KeyValueStore, grantee *ecdsa.PublicKey, ref swarm.Address) (swarm.Address, error)
 }
@@ -43,13 +43,6 @@ type ActLogic struct {
 }
 
 var _ Control = (*ActLogic)(nil)
-
-// AddPublisher adds a new publisher to an empty act.
-func (al ActLogic) AddPublisher(ctx context.Context, storage kvs.KeyValueStore, publisher *ecdsa.PublicKey) error {
-	accessKey := encryption.GenerateRandomKey(encryption.KeyLength)
-
-	return al.AddGrantee(ctx, storage, publisher, publisher, &accessKey)
-}
 
 // EncryptRef encrypts a SWARM reference for a publisher.
 func (al ActLogic) EncryptRef(ctx context.Context, storage kvs.KeyValueStore, publisherPubKey *ecdsa.PublicKey, ref swarm.Address) (swarm.Address, error) {
@@ -67,21 +60,21 @@ func (al ActLogic) EncryptRef(ctx context.Context, storage kvs.KeyValueStore, pu
 }
 
 // AddGrantee adds a new grantee to the ACT.
-func (al ActLogic) AddGrantee(ctx context.Context, storage kvs.KeyValueStore, publisherPubKey, granteePubKey *ecdsa.PublicKey, accessKeyPointer *encryption.Key) error {
+func (al ActLogic) AddGrantee(ctx context.Context, storage kvs.KeyValueStore, publisherPubKey, granteePubKey *ecdsa.PublicKey) error {
 	var (
 		accessKey encryption.Key
 		err       error
 	)
 
-	if accessKeyPointer == nil {
+	// Create new access key because grantee is the publisher
+	if publisherPubKey.Equal(granteePubKey) {
+		accessKey = encryption.GenerateRandomKey(encryption.KeyLength)
+	} else {
 		// Get previously generated access key
 		accessKey, err = al.getAccessKey(ctx, storage, publisherPubKey)
 		if err != nil {
 			return err
 		}
-	} else {
-		// This is a newly created access key, because grantee is publisher (they are the same)
-		accessKey = *accessKeyPointer
 	}
 
 	// Encrypt the access key for the new Grantee

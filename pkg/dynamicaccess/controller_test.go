@@ -32,15 +32,15 @@ func getHistoryFixture(ctx context.Context, ls file.LoadSaver, al dynamicaccess.
 	pk2 := getPrivKey(2)
 
 	kvs0, _ := kvs.New(ls)
-	al.AddPublisher(ctx, kvs0, publisher)
+	al.AddGrantee(ctx, kvs0, publisher, publisher)
 	kvs0Ref, _ := kvs0.Save(ctx)
 	kvs1, _ := kvs.New(ls)
-	al.AddPublisher(ctx, kvs1, publisher)
-	al.AddGrantee(ctx, kvs1, publisher, &pk1.PublicKey, nil)
+	al.AddGrantee(ctx, kvs1, publisher, publisher)
+	al.AddGrantee(ctx, kvs1, publisher, &pk1.PublicKey)
 	kvs1Ref, _ := kvs1.Save(ctx)
 	kvs2, _ := kvs.New(ls)
-	al.AddPublisher(ctx, kvs2, publisher)
-	al.AddGrantee(ctx, kvs2, publisher, &pk2.PublicKey, nil)
+	al.AddGrantee(ctx, kvs2, publisher, publisher)
+	al.AddGrantee(ctx, kvs2, publisher, &pk2.PublicKey)
 	kvs2Ref, _ := kvs2.Save(ctx)
 	firstTime := time.Date(1994, time.April, 1, 0, 0, 0, 0, time.UTC).Unix()
 	secondTime := time.Date(2000, time.April, 1, 0, 0, 0, 0, time.UTC).Unix()
@@ -53,6 +53,7 @@ func getHistoryFixture(ctx context.Context, ls file.LoadSaver, al dynamicaccess.
 }
 
 func TestController_UploadHandler(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	publisher := getPrivKey(0)
 	diffieHellman := dynamicaccess.NewDefaultSession(publisher)
@@ -101,6 +102,7 @@ func TestController_UploadHandler(t *testing.T) {
 }
 
 func TestController_PublisherDownload(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	publisher := getPrivKey(0)
 	diffieHellman := dynamicaccess.NewDefaultSession(publisher)
@@ -122,6 +124,7 @@ func TestController_PublisherDownload(t *testing.T) {
 }
 
 func TestController_GranteeDownload(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	publisher := getPrivKey(0)
 	grantee := getPrivKey(2)
@@ -147,7 +150,8 @@ func TestController_GranteeDownload(t *testing.T) {
 	assert.Equal(t, ref, dref)
 }
 
-func TestController_HandleGrantees(t *testing.T) {
+func TestController_UpdateHandler(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	publisher := getPrivKey(1)
 	diffieHellman := dynamicaccess.NewDefaultSession(publisher)
@@ -223,7 +227,8 @@ func TestController_HandleGrantees(t *testing.T) {
 	})
 }
 
-func TestController_GetGrantees(t *testing.T) {
+func TestController_Get(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	publisher := getPrivKey(1)
 	caller := getPrivKey(0)
