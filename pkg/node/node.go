@@ -17,6 +17,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"os"
 	"path/filepath"
 	"runtime"
 	"sync"
@@ -274,11 +275,24 @@ func NewBee(
 		return nil, fmt.Errorf("compute overlay address: %w", err)
 	}
 
-	if nonceExists && o.TargetNeighborhood != "" {
-		logger.Warning("an overlay has already been created before, skipping targeting the selected neighborhood")
-	}
+	if o.TargetNeighborhood != "" {
+		if nonceExists {
+			logger.Info("Override nonce %d and clean state for neighborhood %s", nonce, o.TargetNeighborhood)
+			logger.Warning("you have another 10 seconds to change your mind and kill this process with CTRL-C...")
+			time.Sleep(10 * time.Second)
 
-	if !nonceExists {
+			const (
+				localstore = "localstore"
+				kademlia   = "kademlia-metrics"
+			)
+			dirsToNuke := []string{localstore, kademlia}
+			for _, dir := range dirsToNuke {
+				err = removeContent(filepath.Join(o.DataDir, dir))
+				if err != nil {
+					return nil, fmt.Errorf("delete %s: %w", dir, err)
+				}
+			}
+		}
 		// mine the overlay
 		targetNeighborhood := o.TargetNeighborhood
 		if o.TargetNeighborhood == "" && o.NeighborhoodSuggester != "" {
@@ -1237,4 +1251,29 @@ func isChainEnabled(o *Options, swapEndpoint string, logger log.Logger) bool {
 
 	logger.Info("starting with an enabled chain backend")
 	return true // all other modes operate require chain enabled
+}
+
+// removeContent removes all files in path. Copied function from cmd/db.go
+func removeContent(path string) error {
+	dir, err := os.Open(path)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer dir.Close()
+
+	subpaths, err := dir.Readdirnames(0)
+	if err != nil {
+		return err
+	}
+
+	for _, sub := range subpaths {
+		err = os.RemoveAll(filepath.Join(path, sub))
+		if err != nil {
+			return err
+		}
+	}
+	return nil
 }
