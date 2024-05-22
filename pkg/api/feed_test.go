@@ -31,7 +31,7 @@ import (
 
 const ownerString = "8d3766440f0d7b949a5e32995d09619a7f86e632"
 
-var expReference = swarm.MustParseHexAddress("0033153ac8cfb0c343db1795f578c15ed8ef827f3e68ed3c58329900bf0d7276")
+var expReference = swarm.MustParseHexAddress("891a1d1c8436c792d02fc2e8883fef7ab387eaeaacd25aa9f518be7be7856d54")
 
 func TestFeed_Get(t *testing.T) {
 	t.Parallel()
@@ -60,7 +60,7 @@ func TestFeed_Get(t *testing.T) {
 
 		var (
 			timestamp       = int64(12121212)
-			ch              = toChunk(t, uint64(timestamp), expReference.Bytes())
+			ch              = toChunk(t, uint64(timestamp), mockWrappedCh.Address().Bytes())
 			look            = newMockLookup(12, 0, ch, nil, &id{}, &id{})
 			factory         = newMockFactory(look)
 			idBytes, _      = (&id{}).MarshalBinary()
@@ -81,7 +81,7 @@ func TestFeed_Get(t *testing.T) {
 
 		var (
 			timestamp  = int64(12121212)
-			ch         = toChunk(t, uint64(timestamp), expReference.Bytes())
+			ch         = toChunk(t, uint64(timestamp), mockWrappedCh.Address().Bytes())
 			look       = newMockLookup(-1, 2, ch, nil, &id{}, &id{})
 			factory    = newMockFactory(look)
 			idBytes, _ = (&id{}).MarshalBinary()
