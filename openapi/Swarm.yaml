@@ -862,9 +862,10 @@ paths:
             "swarm-feed-index-next":
               $ref: "SwarmCommon.yaml#/components/headers/SwarmFeedIndexNext"
           content:
-            application/json:
+            application/octet-stream:
               schema:
-                $ref: "SwarmCommon.yaml#/components/schemas/ReferenceResponse"
+                type: string
+                format: binary
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "401":
