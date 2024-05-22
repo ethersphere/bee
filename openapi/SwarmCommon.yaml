@@ -87,6 +87,36 @@ components:
         ghostBalance:
           $ref: "#/components/schemas/BigInt"
 
+    ActGranteesCreateRequest:
+      type: object
+      properties:
+        grantees:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicKey"
+
+    ActGranteesPatchRequest:
+      type: object
+      properties:
+        add:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicKey"
+          description: List of grantees to add
+        revoke:
+          type: array
+          items:
+            $ref: "#/components/schemas/PublicKey"
+          description: List of grantees to revoke future access from
+
+    ActGranteesOperationResponse:
+      type: object
+      properties:
+        ref:
+          $ref: "#/components/schemas/SwarmEncryptedReference"
+        historyref:
+          $ref: "#/components/schemas/SwarmEncryptedReference"
+
     Balance:
       type: object
       properties:
@@ -973,6 +1003,12 @@ components:
       schema:
         $ref: "#/components/schemas/HexString"
 
+    SwarmActHistoryAddress:
+      description: "Swarm address reference to the new ACT history entry"
+      schema:
+        $ref: "#/components/schemas/SwarmAddress"
+      required: false
+
     ETag:
       description: |
         The RFC7232 ETag header field in a response provides the current entity-
@@ -1132,6 +1168,40 @@ components:
         default: "true"
       required: false
       description: "Determines if the download data should be cached on the node. By default the download will be cached"
+
+    SwarmAct:
+      in: header
+      name: swarm-act
+      schema:
+        type: boolean
+        default: "false"
+      required: false
+      description: "Determines if the uploaded data should be treated as ACT content"
+
+    SwarmActPublisher:
+      in: header
+      name: swarm-act-publisher
+      schema:
+        $ref: "#/components/schemas/PublicKey"
+      required: false
+      description: "ACT content publisher's public key"
+
+    SwarmActHistoryAddress:
+      in: header
+      name: swarm-act-history-address
+      schema:
+        $ref: "#/components/schemas/SwarmAddress"
+      required: false
+      description: "ACT history reference address"
+
+    SwarmActTimestamp:
+      in: header
+      name: swarm-act-timestamp
+      schema:
+        type: integer
+        format: int64
+      required: false
+      description: "ACT history Unix timestamp"
 
   responses:
     "200":

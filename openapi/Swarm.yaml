@@ -109,6 +109,9 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyFallbackModeParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmChunkRetrievalTimeoutParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActTimestamp"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActPublisher"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
       responses:
         "200":
           description: Retrieved content specified by reference
@@ -132,6 +135,9 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
           description: Swarm address of chunk
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActTimestamp"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActPublisher"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
       responses:
         "200":
           description: Chunk exists
@@ -150,6 +156,8 @@ paths:
       parameters:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmAct"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
       requestBody:
         description: Chunk binary data that has to have at least 8 bytes.
         content:
@@ -165,6 +173,8 @@ paths:
               description: Tag UID if it was passed to the request `swarm-tag` header.
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/Uid"
+            "swarm-act-history-address":
+              $ref: "SwarmCommon.yaml#/components/headers/SwarmActHistoryAddress"
           content:
             application/json:
               schema:
@@ -221,6 +231,8 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmDeferredUpload"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyLevelParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmAct"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
       requestBody:
         content:
           multipart/form-data:
@@ -247,6 +259,8 @@ paths:
               $ref: "SwarmCommon.yaml#/components/headers/SwarmTag"
             "etag":
               $ref: "SwarmCommon.yaml#/components/headers/ETag"
+            "swarm-act-history-address":
+              $ref: "SwarmCommon.yaml#/components/headers/SwarmActHistoryAddress"
           content:
             application/json:
               schema:
@@ -276,6 +290,9 @@ paths:
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyFallbackModeParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmChunkRetrievalTimeoutParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActTimestamp"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActPublisher"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
       responses:
         "200":
           description: Ok
@@ -305,6 +322,9 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
           description: Swarm address of chunk
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActTimestamp"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActPublisher"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
       responses:
         "200":
           description: Chunk exists
@@ -691,6 +711,8 @@ paths:
             $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
           name: swarm-postage-batch-id
           required: true
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmAct"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
       requestBody:
         required: true
         description: The SOC binary data is composed of the span (8 bytes) and the at most 4KB payload.
@@ -706,6 +728,9 @@ paths:
             application/json:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/ReferenceResponse"
+          headers:
+            "swarm-act-history-address":
+              $ref: "SwarmCommon.yaml#/components/headers/SwarmActHistoryAddress"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "401":
@@ -743,6 +768,8 @@ paths:
           description: "Feed indexing scheme (default: sequence)"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmAct"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
       responses:
         "201":
           description: Created
@@ -750,6 +777,9 @@ paths:
             application/json:
               schema:
                 $ref: "SwarmCommon.yaml#/components/schemas/ReferenceResponse"
+          headers:
+            "swarm-act-history-address":
+              $ref: "SwarmCommon.yaml#/components/headers/SwarmActHistoryAddress"
         "400":
           $ref: "SwarmCommon.yaml#/components/responses/400"
         "401":
@@ -1084,6 +1114,9 @@ paths:
             $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
           name: swarm-cache
           required: false
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActTimestamp"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActPublisher"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
       responses:
         "200":
           description: Retrieved chunk content
@@ -1111,6 +1144,9 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
           description: Swarm address of chunk
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActTimestamp"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActPublisher"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
       responses:
         "200":
           description: Chunk exists
