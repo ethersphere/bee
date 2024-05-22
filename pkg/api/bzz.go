@@ -391,7 +391,10 @@ FETCH:
 				jsonhttp.InternalServerError(w, "mapStructure feed update")
 				return
 			}
-			address = wc.Address() // FIXME: init manifest with root chunk instead
+			address = wc.Address()
+			// modify ls and init with non-existing wrapped chunk
+			ls = loadsave.NewReadonlyWithRootCh(s.storer.Download(cache), wc)
+
 			feedDereferenced = true
 			curBytes, err := cur.MarshalBinary()
 			if err != nil {

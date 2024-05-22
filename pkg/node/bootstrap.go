@@ -196,10 +196,10 @@ func bootstrapNode(
 	logger.Info("bootstrap: trying to fetch stamps snapshot")
 
 	var (
-		snapshotReference swarm.Address
-		reader            file.Joiner
-		l                 int64
-		eventsJSON        []byte
+		snapshotRootCh swarm.Chunk
+		reader         file.Joiner
+		l              int64
+		eventsJSON     []byte
 	)
 
 	for i := 0; i < getSnapshotRetries; i++ {
@@ -210,7 +210,7 @@ func bootstrapNode(
 		ctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 
-		snapshotReference, err = getLatestSnapshot(ctx, localStore.Download(true), snapshotFeed)
+		snapshotRootCh, err = getLatestSnapshot(ctx, localStore.Download(true), snapshotFeed)
 		if err != nil {
 			logger.Warning("bootstrap: fetching snapshot failed", "error", err)
 			continue
@@ -229,7 +229,7 @@ func bootstrapNode(
 		ctx, cancel := context.WithTimeout(ctx, timeout)
 		defer cancel()
 
-		reader, l, err = joiner.New(ctx, localStore.Download(true), localStore.Cache(), snapshotReference)
+		reader, l, err = joiner.NewWithRootCh(ctx, localStore.Download(true), localStore.Cache(), snapshotRootCh.Address(), snapshotRootCh)
 		if err != nil {
 			logger.Warning("bootstrap: file joiner failed", "error", err)
 			continue
@@ -278,7 +278,7 @@ func getLatestSnapshot(
 	ctx context.Context,
 	st storage.Getter,
 	address swarm.Address,
-) (swarm.Address, error) {
+) (swarm.Chunk, error) {
 	ls := loadsave.NewReadonly(st)
 	feedFactory := factory.New(st)
 
@@ -287,12 +287,12 @@ func getLatestSnapshot(
 		ls,
 	)
 	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("not a manifest: %w", err)
+		return nil, fmt.Errorf("not a manifest: %w", err)
 	}
 
 	e, err := m.Lookup(ctx, "/")
 	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("node lookup: %w", err)
+		return nil, fmt.Errorf("node lookup: %w", err)
 	}
 
 	var (
@@ -303,46 +303,37 @@ func getLatestSnapshot(
 	if e := meta["swarm-feed-owner"]; e != "" {
 		owner, err = hex.DecodeString(e)
 		if err != nil {
-			return swarm.ZeroAddress, err
+			return nil, err
 		}
 	}
 	if e := meta["swarm-feed-topic"]; e != "" {
 		topic, err = hex.DecodeString(e)
 		if err != nil {
-			return swarm.ZeroAddress, err
+			return nil, err
 		}
 	}
 	if e := meta["swarm-feed-type"]; e != "" {
 		err := t.FromString(e)
 		if err != nil {
-			return swarm.ZeroAddress, err
+			return nil, err
 		}
 	}
 	if len(owner) == 0 || len(topic) == 0 {
-		return swarm.ZeroAddress, fmt.Errorf("node lookup: %s", "feed metadata absent")
+		return nil, fmt.Errorf("node lookup: %s", "feed metadata absent")
 	}
 	f := feeds.New(topic, common.BytesToAddress(owner))
 
 	l, err := feedFactory.NewLookup(*t, f)
 	if err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("feed lookup failed: %w", err)
+		return nil, fmt.Errorf("feed lookup failed: %w", err)
 	}
 
 	u, _, _, err := l.At(ctx, time.Now().Unix(), 0)
 	if err != nil {
-		return swarm.ZeroAddress, err
+		return nil, err
 	}
 
-	_, ref, err := feeds.LegacyPayload(u)
-	if err != nil {
-		wrappedChunk, err := feeds.FromChunk(u)
-		if err != nil {
-			return swarm.ZeroAddress, err
-		}
-		ref = wrappedChunk.Address()
-	}
-
-	return ref, nil // FIXME root chunk return, use only getWrappedChunk
+	return feeds.GetWrappedChunk(ctx, st, u)
 }
 
 func batchStoreExists(s storage.StateStorer) (bool, error) {

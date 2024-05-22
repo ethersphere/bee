@@ -103,6 +103,12 @@ func (g *decoderCache) GetOrCreate(addrs []swarm.Address, shardCnt int) storage.
 	return d
 }
 
+// NewWithRoot creates a new Joiner with the already fetched root chunk.
+// A Joiner provides Read, Seek and Size functionalities.
+func NewWithRootCh(ctx context.Context, g storage.Getter, putter storage.Putter, rootAddr swarm.Address, rootChunk swarm.Chunk) (file.Joiner, int64, error) {
+	return new(ctx, g, putter, rootAddr, rootChunk)
+}
+
 // New creates a new Joiner. A Joiner provides Read, Seek and Size functionalities.
 func New(ctx context.Context, g storage.Getter, putter storage.Putter, address swarm.Address) (file.Joiner, int64, error) {
 	// retrieve the root chunk to read the total data length the be retrieved
@@ -116,6 +122,10 @@ func New(ctx context.Context, g storage.Getter, putter storage.Putter, address s
 		return nil, 0, err
 	}
 
+	return new(ctx, g, putter, address, rootChunk)
+}
+
+func new(ctx context.Context, g storage.Getter, putter storage.Putter, address swarm.Address, rootChunk swarm.Chunk) (file.Joiner, int64, error) {
 	chunkData := rootChunk.Data()
 	rootData := chunkData[swarm.SpanSize:]
 	refLength := len(address.Bytes())
