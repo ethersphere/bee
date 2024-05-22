@@ -201,6 +201,9 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/SwarmAddress"
           required: true
           description: Swarm address of chunk
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActTimestamp"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActPublisher"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
       responses:
         "200":
           description: Chunk exists
