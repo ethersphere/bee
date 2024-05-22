@@ -15,6 +15,7 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/api"
+	"github.com/ethersphere/bee/v2/pkg/bmt"
 	"github.com/ethersphere/bee/v2/pkg/feeds"
 	"github.com/ethersphere/bee/v2/pkg/file/loadsave"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
@@ -97,6 +98,49 @@ func TestFeed_Get(t *testing.T) {
 			jsonhttptest.WithExpectedContentLength(len(mockWrappedCh.Data())),
 			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedIndexHeader, hex.EncodeToString(idBytes)),
 		)
+	})
+
+	t.Run("chunk wrapping", func(t *testing.T) {
+		testData := []byte{0, 1, 2, 3, 4, 5, 6, 7, 8}
+		testDataSpan := bmt.LengthToSpan(int64(len(testData)))
+		expectedData := append(testDataSpan, testData...)
+
+		var (
+			ch         = testingsoc.GenerateMockSOC(t, testData).Chunk()
+			look       = newMockLookup(-1, 2, ch, nil, &id{}, &id{})
+			factory    = newMockFactory(look)
+			idBytes, _ = (&id{}).MarshalBinary()
+
+			client, _, _, _ = newTestServer(t, testServerOptions{
+				Storer: mockStorer,
+				Feeds:  factory,
+			})
+		)
+
+		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", ""), http.StatusOK,
+			jsonhttptest.WithExpectedResponse(expectedData),
+			jsonhttptest.WithExpectedContentLength(len(expectedData)),
+			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedIndexHeader, hex.EncodeToString(idBytes)),
+		)
+	})
+
+	t.Run("legacy payload with non existing wrapped chunk", func(t *testing.T) {
+		t.Parallel()
+		wrappedRef := mockWrappedCh.Address().Bytes()
+		wrappedRef[0]++
+
+		var (
+			ch      = toChunk(t, uint64(12121212), wrappedRef)
+			look    = newMockLookup(-1, 2, ch, nil, &id{}, &id{})
+			factory = newMockFactory(look)
+
+			client, _, _, _ = newTestServer(t, testServerOptions{
+				Storer: mockStorer,
+				Feeds:  factory,
+			})
+		)
+
+		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", ""), http.StatusNotFound)
 	})
 }
 
