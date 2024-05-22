@@ -34,8 +34,6 @@ const (
 	feedMetadataEntryType  = "swarm-feed-type"
 )
 
-var errInvalidFeedUpdate = errors.New("invalid feed update")
-
 type feedReferenceResponse struct {
 	Reference swarm.Address `json:"reference"`
 }
