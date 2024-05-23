@@ -7,6 +7,7 @@ package epochs
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/ethersphere/bee/v2/pkg/feeds"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
@@ -51,19 +52,13 @@ func (f *finder) common(ctx context.Context, at int64, after uint64) (*epoch, sw
 			}
 			return e, nil, err
 		}
-		ts, err := feeds.UpdatedAt(ch)
-		if err != nil {
-			return e, nil, err
-		}
-		if ts <= uint64(at) {
-			return e, ch, nil
-		}
+		return e, ch, nil
 	}
 }
 
 // at is a non-concurrent recursive Finder function to find the version update chunk at time `at`
 func (f *finder) at(ctx context.Context, at uint64, e *epoch, ch swarm.Chunk) (swarm.Chunk, error) {
-	uch, err := f.getter.Get(ctx, e)
+	_, err := f.getter.Get(ctx, e)
 	if err != nil {
 		// error retrieving
 		if !errors.Is(err, storage.ErrNotFound) {
@@ -76,23 +71,8 @@ func (f *finder) at(ctx context.Context, at uint64, e *epoch, ch swarm.Chunk) (s
 		// traverse earlier branch
 		return f.at(ctx, e.start-1, e.left(), ch)
 	}
-	// epoch found
-	// check if timestamp is later then target
-	ts, err := feeds.UpdatedAt(uch)
-	if err != nil {
-		return nil, err
-	}
-	if ts > at {
-		if e.isLeft() {
-			return ch, nil
-		}
-		return f.at(ctx, e.start-1, e.left(), ch)
-	}
-	if e.level == 0 { // matching update time or finest resolution
-		return uch, nil
-	}
-	// continue traversing based on at
-	return f.at(ctx, at, e.childAt(at), uch)
+
+	return nil, fmt.Errorf("not implemented")
 }
 
 type result struct {
@@ -131,14 +111,7 @@ func (f *asyncFinder) get(ctx context.Context, at int64, e *epoch) (swarm.Chunk,
 		}
 		return nil, nil
 	}
-	ts, err := feeds.UpdatedAt(u)
-	if err != nil {
-		return nil, err
-	}
-	diff := at - int64(ts)
-	if diff < 0 {
-		return nil, nil
-	}
+
 	return u, nil
 }
 

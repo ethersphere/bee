@@ -95,17 +95,3 @@ func LegacyPayload(wrappedChunk swarm.Chunk) (uint64, swarm.Address, error) {
 
 	return at, address, nil
 }
-
-// UpdatedAt extracts the time of feed other than update
-func UpdatedAt(ch swarm.Chunk) (uint64, error) {
-	d := ch.Data()
-	if len(d) < 113 {
-		return 0, fmt.Errorf("too short: %d", len(d))
-	}
-	// a soc chunk with time information in the wrapped content addressed chunk
-	// 0-32    index,
-	// 65-97   signature,
-	// 98-105  span of wrapped chunk
-	// 105-113 timestamp
-	return binary.BigEndian.Uint64(d[105:113]), nil
-}

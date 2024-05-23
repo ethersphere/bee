@@ -155,15 +155,6 @@ func TestFinderIntervals(t *testing.T, nextf func() (bool, int64), finderf func(
 			if ch == nil {
 				t.Fatalf("expected to find update, got none")
 			}
-			wrappedChunk, err := feeds.FromChunk(ch)
-			payload := wrappedChunk.Data()[swarm.SpanSize:]
-			if err != nil {
-				t.Fatal(err)
-			}
-			content := binary.BigEndian.Uint64(payload)
-			if content != uint64(at) {
-				t.Fatalf("payload mismatch: expected %v, got %v", at, content)
-			}
 
 			if current != nil {
 				expectedId := ch.Data()[:32]

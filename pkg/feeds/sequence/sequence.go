@@ -79,14 +79,6 @@ func (f *finder) At(ctx context.Context, at int64, _ uint64) (ch swarm.Chunk, cu
 			}
 			return ch, current, &index{i}, nil
 		}
-		ts, err := feeds.UpdatedAt(u)
-		if err != nil {
-			return nil, nil, nil, err
-		}
-		// if index is later than the `at` target index, then return previous chunk  and index
-		if ts > uint64(at) {
-			return ch, &index{i - 1}, &index{i}, nil
-		}
 		ch = u
 	}
 }
@@ -265,15 +257,6 @@ func (f *asyncFinder) get(ctx context.Context, at int64, idx uint64) (swarm.Chun
 			return nil, err
 		}
 		// if 'not-found' error, then just silence and return nil chunk
-		return nil, nil
-	}
-	ts, err := feeds.UpdatedAt(u)
-	if err != nil {
-		return nil, err
-	}
-	// this means the update timestamp is later than the pivot time we are looking for
-	// handled as if the update was missing but with no uncertainty due to timeout
-	if at < int64(ts) {
 		return nil, nil
 	}
 	return u, nil
