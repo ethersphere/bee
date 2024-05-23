@@ -76,7 +76,6 @@ func (c *ControllerStruct) UploadHandler(
 		storage kvs.KeyValueStore
 		actRef  swarm.Address
 	)
-	now := time.Now().Unix()
 	if historyRef.IsZero() {
 		history, err := NewHistory(ls)
 		if err != nil {
@@ -94,7 +93,7 @@ func (c *ControllerStruct) UploadHandler(
 		if err != nil {
 			return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, err
 		}
-		err = history.Add(ctx, actRef, &now, nil)
+		err = history.Add(ctx, actRef, nil, nil)
 		if err != nil {
 			return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, err
 		}
@@ -107,12 +106,11 @@ func (c *ControllerStruct) UploadHandler(
 		if err != nil {
 			return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, err
 		}
-		entry, err := history.Lookup(ctx, now)
-		actRef = entry.Reference()
+		entry, err := history.Lookup(ctx, time.Now().Unix())
 		if err != nil {
 			return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, err
 		}
-		storage, err = kvs.NewReference(ls, actRef)
+		storage, err = kvs.NewReference(ls, entry.Reference())
 		if err != nil {
 			return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, err
 		}
@@ -197,15 +195,12 @@ func (c *ControllerStruct) UpdateHandler(
 			return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, err
 		}
 	}
+	granteesToAdd := addList
 	if len(removeList) != 0 {
 		err = gl.Remove(removeList)
 		if err != nil {
 			return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, err
 		}
-	}
-
-	var granteesToAdd []*ecdsa.PublicKey
-	if len(removeList) != 0 || encryptedglref.IsZero() {
 		// generate new access key and new act
 		act, err = kvs.New(ls)
 		if err != nil {
@@ -216,8 +211,6 @@ func (c *ControllerStruct) UpdateHandler(
 			return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, err
 		}
 		granteesToAdd = gl.Get()
-	} else {
-		granteesToAdd = addList
 	}
 
 	for _, grantee := range granteesToAdd {
