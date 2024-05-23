@@ -126,7 +126,9 @@ func TestFeed_Get(t *testing.T) {
 
 	t.Run("legacy payload with non existing wrapped chunk", func(t *testing.T) {
 		t.Parallel()
-		wrappedRef := mockWrappedCh.Address().Bytes()
+
+		wrappedRef := make([]byte, swarm.HashSize)
+		_ = copy(wrappedRef, mockWrappedCh.Address().Bytes())
 		wrappedRef[0]++
 
 		var (
