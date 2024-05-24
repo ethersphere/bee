@@ -15,7 +15,6 @@ import (
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/api"
-	"github.com/ethersphere/bee/v2/pkg/bmt"
 	"github.com/ethersphere/bee/v2/pkg/feeds"
 	"github.com/ethersphere/bee/v2/pkg/file/loadsave"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
@@ -72,7 +71,7 @@ func TestFeed_Get(t *testing.T) {
 		)
 
 		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", "12"), http.StatusOK,
-			jsonhttptest.WithExpectedResponse(mockWrappedCh.Data()),
+			jsonhttptest.WithExpectedResponse(mockWrappedCh.Data()[swarm.SpanSize:]),
 			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedIndexHeader, hex.EncodeToString(idBytes)),
 		)
 	})
@@ -94,16 +93,14 @@ func TestFeed_Get(t *testing.T) {
 		)
 
 		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", ""), http.StatusOK,
-			jsonhttptest.WithExpectedResponse(mockWrappedCh.Data()),
-			jsonhttptest.WithExpectedContentLength(len(mockWrappedCh.Data())),
+			jsonhttptest.WithExpectedResponse(mockWrappedCh.Data()[swarm.SpanSize:]),
+			jsonhttptest.WithExpectedContentLength(len(mockWrappedCh.Data()[swarm.SpanSize:])),
 			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedIndexHeader, hex.EncodeToString(idBytes)),
 		)
 	})
 
 	t.Run("chunk wrapping", func(t *testing.T) {
 		testData := []byte{0, 1, 2, 3, 4, 5, 6, 7, 8}
-		testDataSpan := bmt.LengthToSpan(int64(len(testData)))
-		expectedData := append(testDataSpan, testData...)
 
 		var (
 			ch         = testingsoc.GenerateMockSOC(t, testData).Chunk()
@@ -118,8 +115,8 @@ func TestFeed_Get(t *testing.T) {
 		)
 
 		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", ""), http.StatusOK,
-			jsonhttptest.WithExpectedResponse(expectedData),
-			jsonhttptest.WithExpectedContentLength(len(expectedData)),
+			jsonhttptest.WithExpectedResponse(testData),
+			jsonhttptest.WithExpectedContentLength(len(testData)),
 			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedIndexHeader, hex.EncodeToString(idBytes)),
 		)
 	})

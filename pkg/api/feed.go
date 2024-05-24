@@ -5,13 +5,9 @@
 package api
 
 import (
-	"bytes"
 	"encoding/hex"
 	"errors"
-	"fmt"
-	"io"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -98,7 +94,6 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.NotFound(w, "wrapped chunk cannot be retrieved")
 		return
 	}
-	wData := wc.Data()
 	if err != nil {
 		logger.Debug("mapStructure feed update failed", "error", err)
 		logger.Error(nil, "mapStructure feed update failed")
@@ -122,12 +117,14 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	contenL := len(wData)
-	w.Header().Set(ContentLengthHeader, strconv.Itoa(contenL))
-	w.Header().Set(SwarmFeedIndexHeader, hex.EncodeToString(curBytes))
-	w.Header().Set(SwarmFeedIndexNextHeader, hex.EncodeToString(nextBytes))
-	w.Header().Set("Access-Control-Expose-Headers", fmt.Sprintf("%s, %s", SwarmFeedIndexHeader, SwarmFeedIndexNextHeader))
-	_, _ = io.Copy(w, bytes.NewReader(wData))
+	additionalHeaders := http.Header{
+		ContentTypeHeader:               {"application/octet-stream"},
+		SwarmFeedIndexHeader:            {hex.EncodeToString(curBytes)},
+		SwarmFeedIndexNextHeader:        {hex.EncodeToString(nextBytes)},
+		"Access-Control-Expose-Headers": {SwarmFeedIndexHeader, SwarmFeedIndexNextHeader},
+	}
+
+	s.downloadHandler(logger, w, r, wc.Address(), additionalHeaders, true, false, wc)
 }
 
 func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
