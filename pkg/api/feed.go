@@ -94,12 +94,6 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 		jsonhttp.NotFound(w, "wrapped chunk cannot be retrieved")
 		return
 	}
-	if err != nil {
-		logger.Debug("mapStructure feed update failed", "error", err)
-		logger.Error(nil, "mapStructure feed update failed")
-		jsonhttp.InternalServerError(w, "mapStructure feed update failed")
-		return
-	}
 
 	curBytes, err := cur.MarshalBinary()
 	if err != nil {
