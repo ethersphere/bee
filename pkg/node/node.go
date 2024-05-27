@@ -284,8 +284,9 @@ func NewBee(
 			const (
 				localstore = "localstore"
 				kademlia   = "kademlia-metrics"
+				statestore = "statestore"
 			)
-			dirsToNuke := []string{localstore, kademlia}
+			dirsToNuke := []string{localstore, kademlia, statestore}
 			for _, dir := range dirsToNuke {
 				err = removeContent(filepath.Join(o.DataDir, dir))
 				if err != nil {
