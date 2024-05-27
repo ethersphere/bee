@@ -5,11 +5,13 @@
 package api_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"math/big"
 	"net/http"
 	"testing"
@@ -17,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/api"
 	"github.com/ethersphere/bee/v2/pkg/feeds"
 	"github.com/ethersphere/bee/v2/pkg/file/loadsave"
+	"github.com/ethersphere/bee/v2/pkg/file/splitter"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
 	"github.com/ethersphere/bee/v2/pkg/log"
@@ -27,6 +30,7 @@ import (
 	testingc "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/util/testutil"
 )
 
 const ownerString = "8d3766440f0d7b949a5e32995d09619a7f86e632"
@@ -140,6 +144,41 @@ func TestFeed_Get(t *testing.T) {
 		)
 
 		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", ""), http.StatusNotFound)
+	})
+
+	t.Run("bigger payload than one chunk", func(t *testing.T) {
+		t.Parallel()
+
+		testDataLen := 5000
+		testData := testutil.RandBytesWithSeed(t, testDataLen, 1)
+		s := splitter.NewSimpleSplitter(putter)
+		addr, err := s.Split(context.Background(), io.NopCloser(bytes.NewReader(testData)), int64(testDataLen), false)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// get root ch addr then add wrap it with soc
+		testRootCh, err := mockStorer.ChunkStore().Get(context.Background(), addr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var (
+			ch         = testingsoc.GenerateMockSOCWithSpan(t, testRootCh.Data()).Chunk()
+			look       = newMockLookup(-1, 2, ch, nil, &id{}, &id{})
+			factory    = newMockFactory(look)
+			idBytes, _ = (&id{}).MarshalBinary()
+
+			client, _, _, _ = newTestServer(t, testServerOptions{
+				Storer: mockStorer,
+				Feeds:  factory,
+			})
+		)
+
+		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", ""), http.StatusOK,
+			jsonhttptest.WithExpectedResponse(testData),
+			jsonhttptest.WithExpectedContentLength(testDataLen),
+			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedIndexHeader, hex.EncodeToString(idBytes)),
+		)
 	})
 }
 
