@@ -36,17 +36,35 @@ func (ms MockSOC) Chunk() swarm.Chunk {
 func GenerateMockSOC(t *testing.T, data []byte) *MockSOC {
 	t.Helper()
 
+	ch, err := cac.New(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return generateMockSOC(t, ch)
+}
+
+// GenerateMockSOC generates a valid mocked SOC from given chunk data (span + payload).
+func GenerateMockSOCWithSpan(t *testing.T, data []byte) *MockSOC {
+	t.Helper()
+
+	ch, err := cac.NewWithDataSpan(data)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return generateMockSOC(t, ch)
+}
+
+func generateMockSOC(t *testing.T, ch swarm.Chunk) *MockSOC {
+	t.Helper()
+
 	privKey, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		t.Fatal(err)
 	}
 	signer := crypto.NewDefaultSigner(privKey)
 	owner, err := signer.EthereumAddress()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	ch, err := cac.New(data)
 	if err != nil {
 		t.Fatal(err)
 	}
