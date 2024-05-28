@@ -339,7 +339,7 @@ func (ps *PushSync) pushToClosest(ctx context.Context, ch swarm.Chunk, origin bo
 
 	resultChan := make(chan receiptResult)
 
-	retryC := make(chan struct{}, parallelForwards)
+	retryC := make(chan struct{}, max(1, parallelForwards))
 
 	retry := func() {
 		select {
