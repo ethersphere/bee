@@ -7,7 +7,6 @@ package epochs
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"github.com/ethersphere/bee/v2/pkg/feeds"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
@@ -58,7 +57,7 @@ func (f *finder) common(ctx context.Context, at int64, after uint64) (*epoch, sw
 
 // at is a non-concurrent recursive Finder function to find the version update chunk at time `at`
 func (f *finder) at(ctx context.Context, at uint64, e *epoch, ch swarm.Chunk) (swarm.Chunk, error) {
-	_, err := f.getter.Get(ctx, e)
+	uch, err := f.getter.Get(ctx, e)
 	if err != nil {
 		// error retrieving
 		if !errors.Is(err, storage.ErrNotFound) {
@@ -71,8 +70,20 @@ func (f *finder) at(ctx context.Context, at uint64, e *epoch, ch swarm.Chunk) (s
 		// traverse earlier branch
 		return f.at(ctx, e.start-1, e.left(), ch)
 	}
-
-	return nil, fmt.Errorf("not implemented")
+	// epoch found
+	// check if timestamp is later then target
+	ts := e.length() * e.start
+	if ts > at {
+		if e.isLeft() {
+			return ch, nil
+		}
+		return f.at(ctx, e.start-1, e.left(), ch)
+	}
+	if e.level == 0 { // matching update time or finest resolution
+		return uch, nil
+	}
+	// continue traversing based on at
+	return f.at(ctx, at, e.childAt(at), uch)
 }
 
 type result struct {
