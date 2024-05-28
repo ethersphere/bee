@@ -10,7 +10,7 @@ require (
 	github.com/coreos/go-semver v0.3.0
 	github.com/ethereum/go-ethereum v1.13.4
 	github.com/ethersphere/go-price-oracle-abi v0.2.0
-	github.com/ethersphere/go-storage-incentives-abi v0.8.6-rc5
+	github.com/ethersphere/go-storage-incentives-abi v0.8.6
 	github.com/ethersphere/go-sw3-abi v0.6.5
 	github.com/ethersphere/langos v1.0.0
 	github.com/go-playground/validator/v10 v10.11.1
