@@ -68,13 +68,11 @@ type DevBee struct {
 	pssCloser        io.Closer
 	errorLogWriter   io.Writer
 	apiServer        *http.Server
-	debugAPIServer   *http.Server
 }
 
 type DevOptions struct {
 	Logger                   log.Logger
 	APIAddr                  string
-	DebugAPIAddr             string
 	CORSAllowedOrigins       []string
 	DBOpenFilesLimit         uint64
 	ReserveCapacity          uint64
@@ -193,37 +191,6 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 			probe.SetReady(api.ProbeStatusOK)
 		}
 	}(probe)
-
-	var debugApiService *api.Service
-
-	if o.DebugAPIAddr != "" {
-		debugAPIListener, err := net.Listen("tcp", o.DebugAPIAddr)
-		if err != nil {
-			return nil, fmt.Errorf("debug api listener: %w", err)
-		}
-
-		debugApiService = api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, nil, logger, mockTransaction, batchStore, api.DevMode, true, true, chainBackend, o.CORSAllowedOrigins, inmemstore.New())
-		debugAPIServer := &http.Server{
-			IdleTimeout:       30 * time.Second,
-			ReadHeaderTimeout: 3 * time.Second,
-			Handler:           debugApiService,
-			ErrorLog:          stdlog.New(b.errorLogWriter, "", 0),
-		}
-
-		debugApiService.MountTechnicalDebug()
-		debugApiService.SetProbe(probe)
-
-		go func() {
-			logger.Info("starting debug api server", "address", debugAPIListener.Addr())
-
-			if err := debugAPIServer.Serve(debugAPIListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				logger.Debug("debug api server failed to start", "error", err)
-				logger.Error(nil, "debug api server failed to start")
-			}
-		}()
-
-		b.debugAPIServer = debugAPIServer
-	}
 
 	localStore, err := storer.New(context.Background(), "", &storer.Options{
 		Logger:        logger,
@@ -406,24 +373,12 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		Restricted:         o.Restricted,
 	}, debugOpts, 1, erc20)
 	apiService.MountTechnicalDebug()
+	apiService.MountDebug()
 	apiService.MountAPI()
-	apiService.SetProbe(probe)
 
+	apiService.SetProbe(probe)
 	apiService.SetP2P(p2ps)
 	apiService.SetSwarmAddress(&swarmAddress)
-	apiService.MountDebug()
-
-	if o.DebugAPIAddr != "" {
-		debugApiService.SetP2P(p2ps)
-		debugApiService.SetSwarmAddress(&swarmAddress)
-		debugApiService.MountDebug()
-
-		debugApiService.Configure(signer, authenticator, tracer, api.Options{
-			CORSAllowedOrigins: o.CORSAllowedOrigins,
-			WsPingPeriod:       60 * time.Second,
-			Restricted:         o.Restricted,
-		}, debugOpts, 1, erc20)
-	}
 
 	apiListener, err := net.Listen("tcp", o.APIAddr)
 	if err != nil {
@@ -477,15 +432,6 @@ func (b *DevBee) Shutdown() error {
 			return nil
 		})
 	}
-	if b.debugAPIServer != nil {
-		eg.Go(func() error {
-			if err := b.debugAPIServer.Shutdown(ctx); err != nil {
-				return fmt.Errorf("debug api server: %w", err)
-			}
-			return nil
-		})
-	}
-
 	if err := eg.Wait(); err != nil {
 		mErr = multierror.Append(mErr, err)
 	}

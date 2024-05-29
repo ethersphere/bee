@@ -72,7 +72,7 @@ func TestGetLoggers(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+	client, _, _, _ := newTestServer(t, testServerOptions{})
 	jsonhttptest.Request(t, client, http.MethodGet, "/loggers", http.StatusOK,
 		jsonhttptest.WithUnmarshalJSONResponse(&have),
 	)
@@ -88,7 +88,7 @@ func TestSetLoggerVerbosity(t *testing.T) {
 		api.ReplaceLogSetVerbosityByExp(fn)
 	}(api.LogSetVerbosityByExp)
 
-	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+	client, _, _, _ := newTestServer(t, testServerOptions{})
 
 	type data struct {
 		exp string
@@ -143,7 +143,7 @@ func TestSetLoggerVerbosity(t *testing.T) {
 func Test_loggerGetHandler_invalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+	client, _, _, _ := newTestServer(t, testServerOptions{})
 
 	tests := []struct {
 		name string
@@ -192,7 +192,7 @@ func Test_loggerGetHandler_invalidInputs(t *testing.T) {
 func Test_loggerSetVerbosityHandler_invalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+	client, _, _, _ := newTestServer(t, testServerOptions{})
 
 	tests := []struct {
 		name      string

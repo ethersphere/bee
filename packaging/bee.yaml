@@ -24,10 +24,6 @@ data-dir: /var/lib/bee
 # db-write-buffer-size: 33554432
 ## disables db compactions triggered by seeks
 # db-disable-seeks-compaction: false
-## debug HTTP API listen address (default ":1635")
-debug-api-addr: 127.0.0.1:1635
-## enable debug HTTP API
-debug-api-enable: true
 ## cause the node to start in full mode
 # full-node: false
 ## NAT exposed address

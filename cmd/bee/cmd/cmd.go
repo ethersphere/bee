@@ -34,8 +34,6 @@ const (
 	optionNameP2PAddr                      = "p2p-addr"
 	optionNameNATAddr                      = "nat-addr"
 	optionNameP2PWSEnable                  = "p2p-ws-enable"
-	optionNameDebugAPIEnable               = "debug-api-enable"
-	optionNameDebugAPIAddr                 = "debug-api-addr"
 	optionNameBootnodes                    = "bootnode"
 	optionNameNetworkID                    = "network-id"
 	optionWelcomeMessage                   = "welcome-message"
@@ -256,8 +254,6 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameNATAddr, "", "NAT exposed address")
 	cmd.Flags().Bool(optionNameP2PWSEnable, false, "enable P2P WebSocket transport")
 	cmd.Flags().StringSlice(optionNameBootnodes, []string{""}, "initial nodes to connect to")
-	cmd.Flags().Bool(optionNameDebugAPIEnable, false, "enable debug HTTP API")
-	cmd.Flags().String(optionNameDebugAPIAddr, ":1635", "debug HTTP API listen address")
 	cmd.Flags().Uint64(optionNameNetworkID, chaincfg.Mainnet.NetworkID, "ID of the Swarm network")
 	cmd.Flags().StringSlice(optionCORSAllowedOrigins, []string{}, "origins with CORS headers enabled")
 	cmd.Flags().Bool(optionNameTracingEnabled, false, "enable tracing")

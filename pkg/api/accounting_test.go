@@ -56,7 +56,6 @@ func TestAccountingInfo(t *testing.T) {
 	}
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI:       true,
 		AccountingOpts: []mock.Option{mock.WithPeerAccountingFunc(accountingFunc)},
 	})
 
@@ -112,7 +111,6 @@ func TestAccountingInfoError(t *testing.T) {
 		return nil, wantErr
 	}
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI:       true,
 		AccountingOpts: []mock.Option{mock.WithPeerAccountingFunc(accountingFunc)},
 	})
 

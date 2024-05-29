@@ -73,7 +73,6 @@ func (c *command) initStartCmd() (err error) {
 
 			fmt.Print(beeWelcomeMessage)
 			fmt.Printf("\n\nversion: %v - planned to be supported until %v, please follow https://ethswarm.org/\n\n", bee.Version, endSupportDate())
-			fmt.Printf("DEPRECATION NOTICE:\nThe Debug API is deprecated and will be removed in the next release, version [2.2.0].\nPlease update your integrations to use the main Bee API to avoid service disruptions.\n\n")
 			logger.Info("bee version", "version", bee.Version)
 
 			go startTimeBomb(logger)
@@ -214,11 +213,6 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		}
 	}
 
-	debugAPIAddr := c.config.GetString(optionNameDebugAPIAddr)
-	if !c.config.GetBool(optionNameDebugAPIEnable) {
-		debugAPIAddr = ""
-	}
-
 	signerConfig, err := c.configureSigner(cmd, logger)
 	if err != nil {
 		return nil, err
@@ -301,7 +295,6 @@ func buildBeeNode(ctx context.Context, c *command, cmd *cobra.Command, logger lo
 		DBWriteBufferSize:             c.config.GetUint64(optionNameDBWriteBufferSize),
 		DBDisableSeeksCompaction:      c.config.GetBool(optionNameDBDisableSeeksCompaction),
 		APIAddr:                       c.config.GetString(optionNameAPIAddr),
-		DebugAPIAddr:                  debugAPIAddr,
 		Addr:                          c.config.GetString(optionNameP2PAddr),
 		NATAddr:                       c.config.GetString(optionNameNATAddr),
 		EnableWS:                      c.config.GetBool(optionNameP2PWSEnable),

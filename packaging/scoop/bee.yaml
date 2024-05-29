@@ -14,10 +14,6 @@ config: ./bee.yaml
 data-dir: ./data
 ## cache capacity in chunks, multiply by 4096 to get approximate capacity in bytes
 # cache-capacity: 1000000
-## debug HTTP API listen address (default ":1635")
-# debug-api-addr: 127.0.0.1:1635
-## enable debug HTTP API
-# debug-api-enable: false
 ## cause the node to start in full mode
 # full-node: false
 ## NAT exposed address

@@ -8,7 +8,7 @@ RUN addgroup --system bee --gid 998; \
 
 COPY bee /bee
 
-EXPOSE 1633 1634 1635
+EXPOSE 1633 1634
 USER bee
 WORKDIR /home/bee
 

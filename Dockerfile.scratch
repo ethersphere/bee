@@ -17,7 +17,7 @@ COPY --from=0 /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs
 COPY --from=0 /etc/passwd /etc/passwd
 COPY --from=0 /home /home
 
-EXPOSE 1633 1634 1635
+EXPOSE 1633 1634
 USER bee
 WORKDIR /home/bee
 VOLUME /home/bee/.bee

@@ -19,7 +19,6 @@ builds:
       - -X github.com/ethersphere/bee/v2.commitHash={{ .ShortCommit }}
       - -X github.com/ethersphere/bee/v2.commitTime={{ .CommitTimestamp }}
       - -X github.com/ethersphere/bee/v2/pkg/api.Version={{ .Env.BEE_API_VERSION }}
-      - -X github.com/ethersphere/bee/v2/pkg/debugapi.Version={{ .Env.BEE_DEBUG_API_VERSION }}
     env:
       - CGO_ENABLED=0
     goos:
@@ -43,7 +42,6 @@ builds:
       - -X github.com/ethersphere/bee/v2.commitHash={{ .ShortCommit }}
       - -X github.com/ethersphere/bee/v2.commitTime={{ .CommitTimestamp }}
       - -X github.com/ethersphere/bee/v2/pkg/api.Version={{ .Env.BEE_API_VERSION }}
-      - -X github.com/ethersphere/bee/v2/pkg/debugapi.Version={{ .Env.BEE_DEBUG_API_VERSION }}
     env:
       - CGO_ENABLED=0
     goos:
@@ -69,7 +67,6 @@ builds:
       - -X github.com/ethersphere/bee/v2.commitHash={{ .ShortCommit }}
       - -X github.com/ethersphere/bee/v2.commitTime={{ .CommitTimestamp }}
       - -X github.com/ethersphere/bee/v2/pkg/api.Version={{ .Env.BEE_API_VERSION }}
-      - -X github.com/ethersphere/bee/v2/pkg/debugapi.Version={{ .Env.BEE_DEBUG_API_VERSION }}
     env:
       - CGO_ENABLED=0
     goos:
@@ -89,7 +86,6 @@ builds:
       - -X github.com/ethersphere/bee/v2.commitHash={{ .ShortCommit }}
       - -X github.com/ethersphere/bee/v2.commitTime={{ .CommitTimestamp }}
       - -X github.com/ethersphere/bee/v2/pkg/api.Version={{ .Env.BEE_API_VERSION }}
-      - -X github.com/ethersphere/bee/v2/pkg/debugapi.Version={{ .Env.BEE_DEBUG_API_VERSION }}
     env:
       - CGO_ENABLED=0
     goos:
@@ -108,7 +104,6 @@ builds:
       - -X github.com/ethersphere/bee/v2.commitHash={{ .ShortCommit }}
       - -X github.com/ethersphere/bee/v2.commitTime={{ .CommitTimestamp }}
       - -X github.com/ethersphere/bee/v2/pkg/api.Version={{ .Env.BEE_API_VERSION }}
-      - -X github.com/ethersphere/bee/v2/pkg/debugapi.Version={{ .Env.BEE_DEBUG_API_VERSION }}
     env:
       - CGO_ENABLED=0
     goos:

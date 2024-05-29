@@ -58,7 +58,6 @@ func TestGetStatus(t *testing.T) {
 
 		client, _, _, _ := newTestServer(t, testServerOptions{
 			BeeMode:    mode,
-			DebugAPI:   true,
 			NodeStatus: statusSvc,
 		})
 
@@ -71,8 +70,7 @@ func TestGetStatus(t *testing.T) {
 		t.Parallel()
 
 		client, _, _, _ := newTestServer(t, testServerOptions{
-			BeeMode:  api.DevMode,
-			DebugAPI: true,
+			BeeMode: api.DevMode,
 			NodeStatus: status.NewService(
 				log.Noop,
 				nil,

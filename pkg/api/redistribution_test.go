@@ -36,7 +36,6 @@ func TestRedistributionStatus(t *testing.T) {
 			t.Errorf("redistribution put state: %v", err)
 		}
 		srv, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:    true,
 			StateStorer: store,
 			TransactionOpts: []mock.Option{
 				mock.WithTransactionFeeFunc(func(ctx context.Context, txHash common.Hash) (*big.Int, error) {
@@ -61,7 +60,6 @@ func TestRedistributionStatus(t *testing.T) {
 		t.Parallel()
 
 		srv, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:    true,
 			BeeMode:     api.LightMode,
 			StateStorer: statestore.NewStateStore(),
 			TransactionOpts: []mock.Option{

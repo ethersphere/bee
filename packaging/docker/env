@@ -26,10 +26,6 @@
 # BEE_DB_WRITE_BUFFER_SIZE=33554432
 ## disables db compactions triggered by seeks
 # BEE_DB_DISABLE_SEEKS_COMPACTION=false
-## debug HTTP API listen address (default :1635)
-# BEE_DEBUG_API_ADDR=:1635
-## enable debug HTTP API
-# BEE_DEBUG_API_ENABLE=false
 ## enable global pinning
 ## cause the node to start in full mode
 # BEE_FULL_NODE=false

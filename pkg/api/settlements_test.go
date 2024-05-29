@@ -39,7 +39,6 @@ func TestSettlements(t *testing.T) {
 	}
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI: true,
 		SwapOpts: []mock.Option{mock.WithSettlementsSentFunc(settlementsSentFunc), mock.WithSettlementsRecvFunc(settlementsRecvFunc)},
 	})
 
@@ -90,7 +89,6 @@ func TestSettlementsError(t *testing.T) {
 		return nil, wantErr
 	}
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI: true,
 		SwapOpts: []mock.Option{mock.WithSettlementsSentFunc(settlementsSentFunc)},
 	})
 
@@ -110,7 +108,6 @@ func TestSettlementsPeers(t *testing.T) {
 		return big.NewInt(1000000000000000000), nil
 	}
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI: true,
 		SwapOpts: []mock.Option{mock.WithSettlementSentFunc(settlementSentFunc)},
 	})
 
@@ -138,7 +135,6 @@ func TestSettlementsPeersNoSettlements(t *testing.T) {
 		t.Parallel()
 
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI: true,
 			SwapOpts: []mock.Option{
 				mock.WithSettlementSentFunc(errFunc),
 				mock.WithSettlementRecvFunc(noErrFunc),
@@ -158,7 +154,6 @@ func TestSettlementsPeersNoSettlements(t *testing.T) {
 		t.Parallel()
 
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI: true,
 			SwapOpts: []mock.Option{
 				mock.WithSettlementSentFunc(noErrFunc),
 				mock.WithSettlementRecvFunc(errFunc),
@@ -178,7 +173,7 @@ func TestSettlementsPeersNoSettlements(t *testing.T) {
 func Test_peerSettlementsHandler_invalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+	client, _, _, _ := newTestServer(t, testServerOptions{})
 
 	tests := []struct {
 		name string
@@ -233,7 +228,6 @@ func TestSettlementsPeersError(t *testing.T) {
 		return nil, wantErr
 	}
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI: true,
 		SwapOpts: []mock.Option{mock.WithSettlementSentFunc(settlementSentFunc)},
 	})
 

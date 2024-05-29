@@ -40,7 +40,6 @@ func TestChequebookBalance(t *testing.T) {
 	}
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI: true,
 		ChequebookOpts: []mock.Option{
 			mock.WithChequebookBalanceFunc(chequebookBalanceFunc),
 			mock.WithChequebookAvailableBalanceFunc(chequebookAvailableBalanceFunc),
@@ -71,7 +70,6 @@ func TestChequebookBalanceError(t *testing.T) {
 	}
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI:       true,
 		ChequebookOpts: []mock.Option{mock.WithChequebookBalanceFunc(chequebookBalanceFunc)},
 	})
 
@@ -95,7 +93,6 @@ func TestChequebookAvailableBalanceError(t *testing.T) {
 	}
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI: true,
 		ChequebookOpts: []mock.Option{
 			mock.WithChequebookBalanceFunc(chequebookBalanceFunc),
 			mock.WithChequebookAvailableBalanceFunc(chequebookAvailableBalanceFunc),
@@ -118,7 +115,6 @@ func TestChequebookAddress(t *testing.T) {
 	}
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI:       true,
 		ChequebookOpts: []mock.Option{mock.WithChequebookAddressFunc(chequebookAddressFunc)},
 	})
 
@@ -154,7 +150,6 @@ func TestChequebookWithdraw(t *testing.T) {
 		}
 
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:       true,
 			ChequebookOpts: []mock.Option{mock.WithChequebookWithdrawFunc(chequebookWithdrawFunc)},
 		})
 
@@ -184,7 +179,6 @@ func TestChequebookWithdraw(t *testing.T) {
 		}
 
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:       true,
 			ChequebookOpts: []mock.Option{mock.WithChequebookWithdrawFunc(chequebookWithdrawFunc)},
 		})
 
@@ -218,7 +212,6 @@ func TestChequebookDeposit(t *testing.T) {
 		}
 
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:       true,
 			ChequebookOpts: []mock.Option{mock.WithChequebookDepositFunc(chequebookDepositFunc)},
 		})
 
@@ -249,7 +242,6 @@ func TestChequebookDeposit(t *testing.T) {
 		}
 
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI:       true,
 			ChequebookOpts: []mock.Option{mock.WithChequebookDepositFunc(chequebookDepositFunc)},
 		})
 
@@ -358,7 +350,6 @@ func TestChequebookLastCheques(t *testing.T) {
 	}
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI: true,
 		SwapOpts: []swapmock.Option{swapmock.WithLastReceivedChequesFunc(lastReceivedChequesFunc), swapmock.WithLastSentChequesFunc(lastSentChequesFunc)},
 	})
 
@@ -472,7 +463,6 @@ func TestChequebookLastChequesPeer(t *testing.T) {
 	}
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI: true,
 		SwapOpts: []swapmock.Option{swapmock.WithLastReceivedChequeFunc(lastReceivedChequeFunc), swapmock.WithLastSentChequeFunc(lastSentChequeFunc)},
 	})
 
@@ -512,7 +502,6 @@ func TestChequebookCashout(t *testing.T) {
 	}
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI: true,
 		SwapOpts: []swapmock.Option{swapmock.WithCashChequeFunc(cashChequeFunc)},
 	})
 
@@ -543,7 +532,6 @@ func TestChequebookCashout_CustomGas(t *testing.T) {
 	}
 
 	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		DebugAPI: true,
 		SwapOpts: []swapmock.Option{swapmock.WithCashChequeFunc(cashChequeFunc)},
 	})
 
@@ -619,7 +607,6 @@ func TestChequebookCashoutStatus(t *testing.T) {
 		}
 
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI: true,
 			SwapOpts: []swapmock.Option{swapmock.WithCashoutStatusFunc(cashoutStatusFunc)},
 		})
 
@@ -667,7 +654,6 @@ func TestChequebookCashoutStatus(t *testing.T) {
 		}
 
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI: true,
 			SwapOpts: []swapmock.Option{swapmock.WithCashoutStatusFunc(cashoutStatusFunc)},
 		})
 
@@ -706,7 +692,6 @@ func TestChequebookCashoutStatus(t *testing.T) {
 		}
 
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
-			DebugAPI: true,
 			SwapOpts: []swapmock.Option{swapmock.WithCashoutStatusFunc(cashoutStatusFunc)},
 		})
 
@@ -733,7 +718,7 @@ func TestChequebookCashoutStatus(t *testing.T) {
 func Test_chequebookLastPeerHandler_invalidInputs(t *testing.T) {
 	t.Parallel()
 
-	client, _, _, _ := newTestServer(t, testServerOptions{DebugAPI: true})
+	client, _, _, _ := newTestServer(t, testServerOptions{})
 
 	tests := []struct {
 		name string
