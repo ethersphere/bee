@@ -161,7 +161,6 @@ type Service struct {
 	wsWg sync.WaitGroup // wait for all websockets to close on exit
 	quit chan struct{}
 
-	// from debug API
 	overlay           *swarm.Address
 	publicKey         ecdsa.PublicKey
 	pssPublicKey      ecdsa.PublicKey

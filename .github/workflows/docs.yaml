@@ -40,7 +40,7 @@ jobs:
       if: steps.checkdocs.outputs.build_docs == 'true'
       uses: acud/openapi-dockerized@v1
       with:
-        build-roots: 'openapi/Swarm.yaml openapi/SwarmDebug.yaml'
+        build-roots: 'openapi/Swarm.yaml'
       env:
         AWS_ACCESS_KEY_ID: ${{ secrets.DO_AWS_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY: ${{ secrets.DO_AWS_SECRET_ACCESS_KEY }}

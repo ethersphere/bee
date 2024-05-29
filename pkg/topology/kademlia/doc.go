@@ -10,7 +10,7 @@ A thorough explanation of the logic in the `manage()` forever loop:
 The `manageC` channel gets triggered every time there's a change in the
 information regarding peers we know about. This can be a result of: (1) A peer
 has disconnected from us (2) A peer has been added to the list of
-known peers (from discovery, debugapi, bootnode flag or just because it
+known peers (from discovery, api, bootnode flag or just because it
 was persisted in the address book and the node has been restarted).
 
 So the information has been changed, and potentially upon disconnection,
