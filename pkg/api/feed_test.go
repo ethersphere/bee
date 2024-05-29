@@ -174,11 +174,26 @@ func TestFeed_Get(t *testing.T) {
 			})
 		)
 
-		jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", ""), http.StatusOK,
-			jsonhttptest.WithExpectedResponse(testData),
-			jsonhttptest.WithExpectedContentLength(testDataLen),
-			jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedIndexHeader, hex.EncodeToString(idBytes)),
-		)
+		t.Run("retrieve chunk tree", func(t *testing.T) {
+			t.Parallel()
+
+			jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", ""), http.StatusOK,
+				jsonhttptest.WithExpectedResponse(testData),
+				jsonhttptest.WithExpectedContentLength(testDataLen),
+				jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedIndexHeader, hex.EncodeToString(idBytes)),
+			)
+		})
+
+		t.Run("retrieve only wrapped chunk", func(t *testing.T) {
+			t.Parallel()
+
+			jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", ""), http.StatusOK,
+				jsonhttptest.WithRequestHeader(api.SwarmOnlyWrappedChunk, "true"),
+				jsonhttptest.WithExpectedResponse(testRootCh.Data()),
+				jsonhttptest.WithExpectedContentLength(len(testRootCh.Data())),
+				jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedIndexHeader, hex.EncodeToString(idBytes)),
+			)
+		})
 	})
 }
 
