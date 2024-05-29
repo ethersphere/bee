@@ -25,7 +25,7 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
-type mockDacService struct {
+type mockController struct {
 	historyMap map[string]dynamicaccess.History
 	refMap     map[string]swarm.Address
 	acceptAll  bool
@@ -34,19 +34,19 @@ type mockDacService struct {
 	ls         file.LoadSaver
 }
 
-type optionFunc func(*mockDacService)
+type optionFunc func(*mockController)
 
 // Option is an option passed to a mock dynamicaccess Service.
 type Option interface {
-	apply(*mockDacService)
+	apply(*mockController)
 }
 
-func (f optionFunc) apply(r *mockDacService) { f(r) }
+func (f optionFunc) apply(r *mockController) { f(r) }
 
 // New creates a new mock dynamicaccess service.
 func New(o ...Option) dynamicaccess.Controller {
 	storer := mockstorer.New()
-	m := &mockDacService{
+	m := &mockController{
 		historyMap: make(map[string]dynamicaccess.History),
 		refMap:     make(map[string]swarm.Address),
 		publisher:  "",
@@ -62,23 +62,23 @@ func New(o ...Option) dynamicaccess.Controller {
 
 // WithAcceptAll sets the mock to return fixed references on every call to DownloadHandler.
 func WithAcceptAll() Option {
-	return optionFunc(func(m *mockDacService) { m.acceptAll = true })
+	return optionFunc(func(m *mockController) { m.acceptAll = true })
 }
 
 func WithHistory(h dynamicaccess.History, ref string) Option {
-	return optionFunc(func(m *mockDacService) {
+	return optionFunc(func(m *mockController) {
 		m.historyMap = map[string]dynamicaccess.History{ref: h}
 	})
 }
 
 func WithPublisher(ref string) Option {
-	return optionFunc(func(m *mockDacService) {
+	return optionFunc(func(m *mockController) {
 		m.publisher = ref
 		m.encrypter = encryption.New(encryption.Key(ref), 0, uint32(0), sha3.NewLegacyKeccak256)
 	})
 }
 
-func (m *mockDacService) DownloadHandler(ctx context.Context, ls file.LoadSaver, encryptedRef swarm.Address, publisher *ecdsa.PublicKey, historyRootHash swarm.Address, timestamp int64) (swarm.Address, error) {
+func (m *mockController) DownloadHandler(ctx context.Context, ls file.LoadSaver, encryptedRef swarm.Address, publisher *ecdsa.PublicKey, historyRootHash swarm.Address, timestamp int64) (swarm.Address, error) {
 	if m.acceptAll {
 		return swarm.ParseHexAddress("36e6c1bbdfee6ac21485d5f970479fd1df458d36df9ef4e8179708ed46da557f")
 	}
@@ -101,7 +101,7 @@ func (m *mockDacService) DownloadHandler(ctx context.Context, ls file.LoadSaver,
 	return m.refMap[encryptedRef.String()], nil
 }
 
-func (m *mockDacService) UploadHandler(ctx context.Context, ls file.LoadSaver, reference swarm.Address, publisher *ecdsa.PublicKey, historyRootHash swarm.Address) (swarm.Address, swarm.Address, swarm.Address, error) {
+func (m *mockController) UploadHandler(ctx context.Context, ls file.LoadSaver, reference swarm.Address, publisher *ecdsa.PublicKey, historyRootHash swarm.Address) (swarm.Address, swarm.Address, swarm.Address, error) {
 	historyRef, _ := swarm.ParseHexAddress("67bdf80a9bbea8eca9c8480e43fdceb485d2d74d5708e45144b8c4adacd13d9c")
 	kvsRef, _ := swarm.ParseHexAddress("3339613565613837623134316665343461613630396333333237656364383934")
 	if m.acceptAll {
@@ -136,11 +136,11 @@ func (m *mockDacService) UploadHandler(ctx context.Context, ls file.LoadSaver, r
 	return kvsRef, historyRef, swarm.NewAddress(encryptedRef), nil
 }
 
-func (m *mockDacService) Close() error {
+func (m *mockController) Close() error {
 	return nil
 }
 
-func (m *mockDacService) UpdateHandler(_ context.Context, ls file.LoadSaver, gls file.LoadSaver, encryptedglref swarm.Address, historyref swarm.Address, publisher *ecdsa.PublicKey, addList []*ecdsa.PublicKey, removeList []*ecdsa.PublicKey) (swarm.Address, swarm.Address, swarm.Address, swarm.Address, error) {
+func (m *mockController) UpdateHandler(_ context.Context, ls file.LoadSaver, gls file.LoadSaver, encryptedglref swarm.Address, historyref swarm.Address, publisher *ecdsa.PublicKey, addList []*ecdsa.PublicKey, removeList []*ecdsa.PublicKey) (swarm.Address, swarm.Address, swarm.Address, swarm.Address, error) {
 	historyRef, _ := swarm.ParseHexAddress("67bdf80a9bbea8eca9c8480e43fdceb485d2d74d5708e45144b8c4adacd13d9c")
 	glRef, _ := swarm.ParseHexAddress("3339613565613837623134316665343461613630396333333237656364383934")
 	eglRef, _ := swarm.ParseHexAddress("fc4e9fe978991257b897d987bc4ff13058b66ef45a53189a0b4fe84bb3346396")
@@ -148,7 +148,7 @@ func (m *mockDacService) UpdateHandler(_ context.Context, ls file.LoadSaver, gls
 	return glRef, eglRef, historyRef, actref, nil
 }
 
-func (m *mockDacService) Get(ctx context.Context, ls file.LoadSaver, publisher *ecdsa.PublicKey, encryptedglref swarm.Address) ([]*ecdsa.PublicKey, error) {
+func (m *mockController) Get(ctx context.Context, ls file.LoadSaver, publisher *ecdsa.PublicKey, encryptedglref swarm.Address) ([]*ecdsa.PublicKey, error) {
 	if m.publisher == "" {
 		return nil, fmt.Errorf("granteelist not found")
 	}
@@ -180,4 +180,4 @@ func requestPipelineFactory(ctx context.Context, s storage.Putter, encrypt bool,
 	}
 }
 
-var _ dynamicaccess.Controller = (*mockDacService)(nil)
+var _ dynamicaccess.Controller = (*mockController)(nil)

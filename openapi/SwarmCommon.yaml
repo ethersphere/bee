@@ -879,7 +879,7 @@ components:
         reserveSize:
           type: integer
         reserveSizeWithinRadius:
-          type: interger
+          type: integer
         pullsyncRate:
           type: number
         storageRadius:

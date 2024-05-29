@@ -281,23 +281,23 @@ func (s *Service) actGrantRevokeHandler(w http.ResponseWriter, r *http.Request) 
 	}
 
 	grantees := GranteesPatch{}
-	paresAddlist, err := parseKeys(gpr.Addlist)
+	parsedAddlist, err := parseKeys(gpr.Addlist)
 	if err != nil {
 		logger.Debug("add list key parse failed", "error", err)
 		logger.Error(nil, "add list key parse failed")
 		jsonhttp.InternalServerError(w, "error add list key parsing")
 		return
 	}
-	grantees.Addlist = append(grantees.Addlist, paresAddlist...)
+	grantees.Addlist = append(grantees.Addlist, parsedAddlist...)
 
-	paresRevokelist, err := parseKeys(gpr.Revokelist)
+	parsedRevokelist, err := parseKeys(gpr.Revokelist)
 	if err != nil {
 		logger.Debug("revoke list key parse failed", "error", err)
 		logger.Error(nil, "revoke list key parse failed")
 		jsonhttp.InternalServerError(w, "error revoke list key parsing")
 		return
 	}
-	grantees.Revokelist = append(grantees.Revokelist, paresRevokelist...)
+	grantees.Revokelist = append(grantees.Revokelist, parsedRevokelist...)
 
 	ctx := r.Context()
 	putter, err := s.newStamperPutter(ctx, putterOptions{

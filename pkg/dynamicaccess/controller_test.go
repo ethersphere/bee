@@ -19,6 +19,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/kvs"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/sha3"
 )
 
@@ -206,13 +207,52 @@ func TestController_UpdateHandler(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Len(t, gl.Get(), 2)
 	})
+	t.Run("add and revoke then get from history", func(t *testing.T) {
+		addRevokeList := []*ecdsa.PublicKey{&grantee.PublicKey}
+		ref := swarm.RandAddress(t)
+		_, hRef, encRef, err := c.UploadHandler(ctx, ls, ref, &publisher.PublicKey, swarm.ZeroAddress)
+		require.NoError(t, err)
 
+		// Need to wait a second before each update call so that a new history mantaray fork is created for the new key(timestamp) entry
+		time.Sleep(1 * time.Second)
+		beforeRevokeTS := time.Now().Unix()
+		_, egranteeRef, hrefUpdate1, _, err := c.UpdateHandler(ctx, ls, gls, swarm.ZeroAddress, hRef, &publisher.PublicKey, addRevokeList, nil)
+		require.NoError(t, err)
+
+		time.Sleep(1 * time.Second)
+		granteeRef, _, hrefUpdate2, _, err := c.UpdateHandler(ctx, ls, gls, egranteeRef, hrefUpdate1, &publisher.PublicKey, nil, addRevokeList)
+		require.NoError(t, err)
+
+		gl, err := dynamicaccess.NewGranteeListReference(ctx, ls, granteeRef)
+		require.NoError(t, err)
+		assert.Empty(t, gl.Get())
+		// expect history reference to be different after grantee list update
+		assert.NotEqual(t, hrefUpdate1, hrefUpdate2)
+
+		granteeDH := dynamicaccess.NewDefaultSession(grantee)
+		granteeAl := dynamicaccess.NewLogic(granteeDH)
+		granteeCtrl := dynamicaccess.NewController(granteeAl)
+		// download with grantee shall still work with the timestamp before the revoke
+		decRef, err := granteeCtrl.DownloadHandler(ctx, ls, encRef, &publisher.PublicKey, hrefUpdate2, beforeRevokeTS)
+		require.NoError(t, err)
+		assert.Equal(t, ref, decRef)
+
+		// download with grantee shall NOT work with the latest timestamp
+		decRef, err = granteeCtrl.DownloadHandler(ctx, ls, encRef, &publisher.PublicKey, hrefUpdate2, time.Now().Unix())
+		require.Error(t, err)
+		assert.Equal(t, swarm.ZeroAddress, decRef)
+
+		// publisher shall still be able to download with the timestamp before the revoke
+		decRef, err = c.DownloadHandler(ctx, ls, encRef, &publisher.PublicKey, hrefUpdate2, beforeRevokeTS)
+		require.NoError(t, err)
+		assert.Equal(t, ref, decRef)
+	})
 	t.Run("add twice", func(t *testing.T) {
 		addList := []*ecdsa.PublicKey{&grantee.PublicKey, &grantee.PublicKey}
 		//nolint:ineffassign,staticcheck,wastedassign
 		granteeRef, eglref, _, _, err := c.UpdateHandler(ctx, ls, gls, swarm.ZeroAddress, href, &publisher.PublicKey, addList, nil)
 		granteeRef, _, _, _, _ = c.UpdateHandler(ctx, ls, ls, eglref, href, &publisher.PublicKey, addList, nil)
-		gl, err := dynamicaccess.NewGranteeListReference(ctx, createLs(), granteeRef)
+		gl, err := dynamicaccess.NewGranteeListReference(ctx, ls, granteeRef)
 
 		assert.NoError(t, err)
 		assert.Len(t, gl.Get(), 1)
@@ -220,7 +260,7 @@ func TestController_UpdateHandler(t *testing.T) {
 	t.Run("revoke non-existing", func(t *testing.T) {
 		addList := []*ecdsa.PublicKey{&grantee.PublicKey}
 		granteeRef, _, _, _, _ := c.UpdateHandler(ctx, ls, ls, swarm.ZeroAddress, href, &publisher.PublicKey, addList, nil)
-		gl, err := dynamicaccess.NewGranteeListReference(ctx, createLs(), granteeRef)
+		gl, err := dynamicaccess.NewGranteeListReference(ctx, ls, granteeRef)
 
 		assert.NoError(t, err)
 		assert.Len(t, gl.Get(), 1)
