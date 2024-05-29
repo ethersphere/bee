@@ -188,7 +188,7 @@ func TestFeed_Get(t *testing.T) {
 			t.Parallel()
 
 			jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", ""), http.StatusOK,
-				jsonhttptest.WithRequestHeader(api.SwarmOnlyWrappedChunk, "true"),
+				jsonhttptest.WithRequestHeader(api.SwarmOnlyRootChunk, "true"),
 				jsonhttptest.WithExpectedResponse(testRootCh.Data()),
 				jsonhttptest.WithExpectedContentLength(len(testRootCh.Data())),
 				jsonhttptest.WithExpectedResponseHeader(api.SwarmFeedIndexHeader, hex.EncodeToString(idBytes)),

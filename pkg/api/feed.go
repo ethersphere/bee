@@ -63,7 +63,7 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	headers := struct {
-		OnlyWrappedChunk bool `map:"Swarm-Only-Wrapped-Chunk"`
+		OnlyRootChunk bool `map:"Swarm-Only-Root-Chunk"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -130,7 +130,7 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 		"Access-Control-Expose-Headers": {SwarmFeedIndexHeader, SwarmFeedIndexNextHeader},
 	}
 
-	if headers.OnlyWrappedChunk {
+	if headers.OnlyRootChunk {
 		w.Header().Set(ContentLengthHeader, strconv.Itoa(len(wc.Data())))
 		// include additional headers
 		for name, values := range additionalHeaders {
