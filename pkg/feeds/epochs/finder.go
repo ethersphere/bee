@@ -51,7 +51,10 @@ func (f *finder) common(ctx context.Context, at int64, after uint64) (*epoch, sw
 			}
 			return e, nil, err
 		}
-		return e, ch, nil
+		ts := e.length() * e.start
+		if ts <= uint64(at) {
+			return e, ch, nil
+		}
 	}
 }
 
@@ -122,7 +125,11 @@ func (f *asyncFinder) get(ctx context.Context, at int64, e *epoch) (swarm.Chunk,
 		}
 		return nil, nil
 	}
-
+	ts := e.length() * e.start
+	diff := at - int64(ts)
+	if diff < 0 {
+		return nil, nil
+	}
 	return u, nil
 }
 
