@@ -861,6 +861,8 @@ paths:
               $ref: "SwarmCommon.yaml#/components/headers/SwarmFeedIndex"
             "swarm-feed-index-next":
               $ref: "SwarmCommon.yaml#/components/headers/SwarmFeedIndexNext"
+            "swarm-only-root-chunk":
+              $ref: "SwarmCommon.yaml#/components/headers/SwarmOnlyRootChunk"
           content:
             application/octet-stream:
               schema:

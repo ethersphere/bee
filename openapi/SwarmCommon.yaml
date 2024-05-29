@@ -977,6 +977,11 @@ components:
       schema:
         $ref: "#/components/schemas/HexString"
 
+    SwarmOnlyRootChunk:
+      description: "Returns only the root chunk of the content"
+      schema:
+        type: boolean
+
     ETag:
       description: |
         The RFC7232 ETag header field in a response provides the current entity-
