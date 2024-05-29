@@ -86,6 +86,8 @@ func (c *ControllerStruct) UploadHandler(
 	return actRef, newHistoryRef, encryptedRef, err
 }
 
+// Limitation: If an upadate is called again within a second from the latest upload/update then mantaray save fails with ErrInvalidInput,
+// because the key (timestamp) is already present, hence a new fork is not created
 func (c *ControllerStruct) UpdateHandler(
 	ctx context.Context,
 	ls file.LoadSaver,
@@ -180,12 +182,8 @@ func (c *ControllerStruct) newActWithPublisher(ctx context.Context, ls file.Load
 
 	return act, nil
 }
-func (c *ControllerStruct) getHistoryAndAct(ctx context.Context, ls file.LoadSaver, historyRef swarm.Address, publisher *ecdsa.PublicKey, timestamp int64) (History, kvs.KeyValueStore, error) {
-	var (
-		history History
-		act     kvs.KeyValueStore
-		err     error
-	)
+
+func (c *ControllerStruct) getHistoryAndAct(ctx context.Context, ls file.LoadSaver, historyRef swarm.Address, publisher *ecdsa.PublicKey, timestamp int64) (history History, act kvs.KeyValueStore, err error) {
 	if historyRef.IsZero() {
 		history, err = NewHistory(ls)
 		if err != nil {
@@ -230,11 +228,7 @@ func (c *ControllerStruct) saveHistoryAndAct(ctx context.Context, history Histor
 	return historyRef, actRef, nil
 }
 
-func (c *ControllerStruct) getGranteeList(ctx context.Context, ls file.LoadSaver, encryptedglRef swarm.Address, publisher *ecdsa.PublicKey) (GranteeList, error) {
-	var (
-		gl  GranteeList
-		err error
-	)
+func (c *ControllerStruct) getGranteeList(ctx context.Context, ls file.LoadSaver, encryptedglRef swarm.Address, publisher *ecdsa.PublicKey) (gl GranteeList, err error) {
 	if encryptedglRef.IsZero() {
 		gl, err = NewGranteeList(ls)
 		if err != nil {

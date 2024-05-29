@@ -58,23 +58,23 @@ func (s *keyValueStore) Save(ctx context.Context) (swarm.Address, error) {
 }
 
 func New(ls file.LoadSaver) (KeyValueStore, error) {
-	manif, err := manifest.NewSimpleManifest(ls)
+	m, err := manifest.NewSimpleManifest(ls)
 	if err != nil {
 		return nil, err
 	}
 
 	return &keyValueStore{
-		manifest: manif,
+		manifest: m,
 	}, nil
 }
 
-func NewReference(ls file.LoadSaver, rootHash swarm.Address) (KeyValueStore, error) {
-	manif, err := manifest.NewSimpleManifestReference(rootHash, ls)
+func NewReference(ls file.LoadSaver, ref swarm.Address) (KeyValueStore, error) {
+	m, err := manifest.NewSimpleManifestReference(ref, ls)
 	if err != nil {
 		return nil, err
 	}
 
 	return &keyValueStore{
-		manifest: manif,
+		manifest: m,
 	}, nil
 }
