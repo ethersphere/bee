@@ -5,9 +5,13 @@
 package api
 
 import (
+	"bytes"
 	"encoding/hex"
 	"errors"
+	"io"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
@@ -56,6 +60,14 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	if queries.At == 0 {
 		queries.At = time.Now().Unix()
+	}
+
+	headers := struct {
+		OnlyWrappedChunk bool `map:"Swarm-Only-Wrapped-Chunk"`
+	}{}
+	if response := s.mapStructure(r.Header, &headers); response != nil {
+		response("invalid header params", logger, w)
+		return
 	}
 
 	f := feeds.New(paths.Topic, paths.Owner)
@@ -116,6 +128,16 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 		SwarmFeedIndexHeader:            {hex.EncodeToString(curBytes)},
 		SwarmFeedIndexNextHeader:        {hex.EncodeToString(nextBytes)},
 		"Access-Control-Expose-Headers": {SwarmFeedIndexHeader, SwarmFeedIndexNextHeader},
+	}
+
+	if headers.OnlyWrappedChunk {
+		w.Header().Set(ContentLengthHeader, strconv.Itoa(len(wc.Data())))
+		// include additional headers
+		for name, values := range additionalHeaders {
+			w.Header().Set(name, strings.Join(values, "; "))
+		}
+		_, _ = io.Copy(w, bytes.NewReader(wc.Data()))
+		return
 	}
 
 	s.downloadHandler(logger, w, r, wc.Address(), additionalHeaders, true, false, wc)
