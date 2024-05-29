@@ -104,6 +104,8 @@ func TestFeed_Get(t *testing.T) {
 	})
 
 	t.Run("chunk wrapping", func(t *testing.T) {
+		t.Parallel()
+
 		testData := []byte{0, 1, 2, 3, 4, 5, 6, 7, 8}
 
 		var (
@@ -175,8 +177,6 @@ func TestFeed_Get(t *testing.T) {
 		)
 
 		t.Run("retrieve chunk tree", func(t *testing.T) {
-			t.Parallel()
-
 			jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", ""), http.StatusOK,
 				jsonhttptest.WithExpectedResponse(testData),
 				jsonhttptest.WithExpectedContentLength(testDataLen),
@@ -185,8 +185,6 @@ func TestFeed_Get(t *testing.T) {
 		})
 
 		t.Run("retrieve only wrapped chunk", func(t *testing.T) {
-			t.Parallel()
-
 			jsonhttptest.Request(t, client, http.MethodGet, feedResource(ownerString, "aabbcc", ""), http.StatusOK,
 				jsonhttptest.WithRequestHeader(api.SwarmOnlyRootChunk, "true"),
 				jsonhttptest.WithExpectedResponse(testRootCh.Data()),
