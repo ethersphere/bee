@@ -76,9 +76,6 @@ const (
 	optionNameStaticNodes                  = "static-nodes"
 	optionNameAllowPrivateCIDRs            = "allow-private-cidrs"
 	optionNameSleepAfter                   = "sleep-after"
-	optionNameRestrictedAPI                = "restricted"
-	optionNameTokenEncryptionKey           = "token-encryption-key"
-	optionNameAdminPasswordHash            = "admin-password"
 	optionNameUsePostageSnapshot           = "use-postage-snapshot"
 	optionNameStorageIncentivesEnable      = "storage-incentives-enable"
 	optionNameStateStoreCacheCapacity      = "statestore-cache-capacity"
@@ -139,10 +136,6 @@ func newCommand(opts ...option) (c *command, err error) {
 	}
 
 	if err := c.initStartDevCmd(); err != nil {
-		return nil, err
-	}
-
-	if err := c.initHasherCmd(); err != nil {
 		return nil, err
 	}
 
@@ -293,9 +286,6 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().Bool(optionNamePProfMutex, false, "enable pprof mutex profile")
 	cmd.Flags().StringSlice(optionNameStaticNodes, []string{}, "protect nodes from getting kicked out on bootnode")
 	cmd.Flags().Bool(optionNameAllowPrivateCIDRs, false, "allow to advertise private CIDRs to the public network")
-	cmd.Flags().Bool(optionNameRestrictedAPI, false, "enable permission check on the http APIs")
-	cmd.Flags().String(optionNameTokenEncryptionKey, "", "admin username to get the security token")
-	cmd.Flags().String(optionNameAdminPasswordHash, "", "bcrypt hash of the admin password to get the security token")
 	cmd.Flags().Bool(optionNameUsePostageSnapshot, false, "bootstrap node using postage snapshot from the network")
 	cmd.Flags().Bool(optionNameStorageIncentivesEnable, true, "enable storage incentives feature")
 	cmd.Flags().Uint64(optionNameStateStoreCacheCapacity, 100_000, "lru memory caching capacity in number of statestore entries")

@@ -11,7 +11,6 @@ import (
 	"net/http/pprof"
 	"strings"
 
-	"github.com/ethersphere/bee/v2/pkg/auth"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/log/httpaccess"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -142,11 +141,7 @@ func (s *Service) mountTechnicalDebug() {
 	s.router.Handle("/debug/pprof/symbol", http.HandlerFunc(pprof.Symbol))
 	s.router.Handle("/debug/pprof/trace", http.HandlerFunc(pprof.Trace))
 
-	pprofRootHandlerF := pprof.Index
-	if s.Restricted {
-		pprofRootHandlerF = web.ChainHandlers(auth.PermissionCheckHandler(s.auth), web.FinalHandler(http.HandlerFunc(pprof.Index))).ServeHTTP
-	}
-	s.router.PathPrefix("/debug/pprof/").Handler(http.HandlerFunc(pprofRootHandlerF))
+	s.router.PathPrefix("/debug/pprof/").Handler(http.HandlerFunc(pprof.Index))
 	s.router.Handle("/debug/vars", expvar.Handler())
 
 	s.router.Handle("/loggers", jsonhttp.MethodHandler{
@@ -351,28 +346,10 @@ func (s *Service) mountAPI() {
 		httpaccess.NewHTTPAccessSuppressLogHandler(),
 		web.FinalHandlerFunc(s.healthHandler),
 	))
-
-	if s.Restricted {
-		handle("/auth", jsonhttp.MethodHandler{
-			"POST": web.ChainHandlers(
-				jsonhttp.NewMaxBodyBytesHandler(512),
-				web.FinalHandlerFunc(s.authHandler),
-			),
-		})
-		handle("/refresh", jsonhttp.MethodHandler{
-			"POST": web.ChainHandlers(
-				jsonhttp.NewMaxBodyBytesHandler(512),
-				web.FinalHandlerFunc(s.refreshHandler),
-			),
-		})
-	}
 }
 
 func (s *Service) mountBusinessDebug() {
 	handle := func(path string, handler http.Handler) {
-		if s.Restricted {
-			handler = web.ChainHandlers(auth.PermissionCheckHandler(s.auth), web.FinalHandler(handler))
-		}
 		s.router.Handle(path, handler)
 		s.router.Handle(rootPath+path, handler)
 	}
