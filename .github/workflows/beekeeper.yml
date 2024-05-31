@@ -154,9 +154,6 @@ jobs:
       - name: Test manifest
         id: manifest
         run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks=ci-manifest
-      - name: Test authenticate
-        id: authenticate
-        run: timeout ${TIMEOUT} bash -c 'until beekeeper check --cluster-name local-dns --checks ci-authenticate; do echo "waiting for auth..."; sleep .3; done'
       - name: Test postage stamps
         id: postage-stamps
         run: timeout ${TIMEOUT} beekeeper check --cluster-name local-dns --checks ci-postage

@@ -18,8 +18,6 @@ type (
 	TagRequest            = tagRequest
 	ListTagsResponse      = listTagsResponse
 	IsRetrievableResponse = isRetrievableResponse
-	SecurityTokenResponse = securityTokenRsp
-	SecurityTokenRequest  = securityTokenReq
 )
 
 var (

@@ -25,8 +25,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	accountingmock "github.com/ethersphere/bee/v2/pkg/accounting/mock"
 	"github.com/ethersphere/bee/v2/pkg/api"
-	"github.com/ethersphere/bee/v2/pkg/auth"
-	mockauth "github.com/ethersphere/bee/v2/pkg/auth/mock"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/feeds"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
@@ -104,8 +102,6 @@ type testServerOptions struct {
 	Post               postage.Service
 	Steward            steward.Interface
 	WsHeaders          http.Header
-	Authenticator      auth.Authenticator
-	Restricted         bool
 	DirectUpload       bool
 	Probe              *api.Probe
 
@@ -157,13 +153,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	if o.SyncStatus == nil {
 		o.SyncStatus = func() (bool, error) { return true, nil }
 	}
-	if o.Authenticator == nil {
-		o.Authenticator = &mockauth.Auth{
-			EnforceFunc: func(_, _, _ string) (bool, error) {
-				return true, nil
-			},
-		}
-	}
+
 	var chanStore *chanStorer
 
 	topologyDriver := topologymock.NewTopologyDriver(o.TopologyOpts...)
@@ -229,10 +219,9 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	})
 	testutil.CleanupCloser(t, tracerCloser)
 
-	s.Configure(signer, o.Authenticator, noOpTracer, api.Options{
+	s.Configure(signer, noOpTracer, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
 		WsPingPeriod:       o.WsPingPeriod,
-		Restricted:         o.Restricted,
 	}, extraOpts, 1, erc20)
 
 	s.MountTechnicalDebug()
@@ -380,7 +369,7 @@ func TestParseName(t *testing.T) {
 		signer := crypto.NewDefaultSigner(pk)
 
 		s := api.New(pk.PublicKey, pk.PublicKey, common.Address{}, nil, log, nil, nil, 1, false, false, nil, []string{"*"}, inmemstore.New())
-		s.Configure(signer, nil, nil, api.Options{}, api.ExtraOptions{Resolver: tC.res}, 1, nil)
+		s.Configure(signer, nil, api.Options{}, api.ExtraOptions{Resolver: tC.res}, 1, nil)
 		s.MountAPI()
 
 		tC := tC

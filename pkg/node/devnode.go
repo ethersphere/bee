@@ -19,7 +19,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	mockAccounting "github.com/ethersphere/bee/v2/pkg/accounting/mock"
 	"github.com/ethersphere/bee/v2/pkg/api"
-	"github.com/ethersphere/bee/v2/pkg/auth"
 	"github.com/ethersphere/bee/v2/pkg/bzz"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/feeds/factory"
@@ -79,9 +78,6 @@ type DevOptions struct {
 	DBWriteBufferSize        uint64
 	DBBlockCacheCapacity     uint64
 	DBDisableSeeksCompaction bool
-	Restricted               bool
-	TokenEncryptionKey       string
-	AdminPasswordHash        string
 }
 
 // NewDevBee starts the bee instance in 'development' mode
@@ -137,15 +133,6 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 	overlayEthAddress, err := signer.EthereumAddress()
 	if err != nil {
 		return nil, fmt.Errorf("blockchain address: %w", err)
-	}
-
-	var authenticator auth.Authenticator
-
-	if o.Restricted {
-		if authenticator, err = auth.New(o.TokenEncryptionKey, o.AdminPasswordHash, logger); err != nil {
-			return nil, fmt.Errorf("authenticator: %w", err)
-		}
-		logger.Info("starting with restricted APIs")
 	}
 
 	var mockTransaction = transactionmock.New(transactionmock.WithPendingTransactionsFunc(func() ([]common.Hash, error) {
@@ -367,10 +354,9 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 
 	apiService := api.New(mockKey.PublicKey, mockKey.PublicKey, overlayEthAddress, nil, logger, mockTransaction, batchStore, api.DevMode, true, true, chainBackend, o.CORSAllowedOrigins, inmemstore.New())
 
-	apiService.Configure(signer, authenticator, tracer, api.Options{
+	apiService.Configure(signer, tracer, api.Options{
 		CORSAllowedOrigins: o.CORSAllowedOrigins,
 		WsPingPeriod:       60 * time.Second,
-		Restricted:         o.Restricted,
 	}, debugOpts, 1, erc20)
 	apiService.MountTechnicalDebug()
 	apiService.MountDebug()
