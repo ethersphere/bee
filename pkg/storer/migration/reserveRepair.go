@@ -69,7 +69,7 @@ func ReserveRepairer(
 
 		err := checkBinIDs()
 		if err != nil {
-			logger.Error(err, "check failed")
+			logger.Info("pre-repair check failed", "error", err)
 		}
 
 		// STEP 0
