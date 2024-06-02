@@ -162,9 +162,11 @@ func ReserveRepairer(
 		}
 
 		var eg errgroup.Group
-		eg.SetLimit(runtime.NumCPU())
 
-		logger.Info("parallel workers", "count", runtime.NumCPU())
+		p := runtime.NumCPU()
+		eg.SetLimit(p)
+
+		logger.Info("parallel workers", "count", p)
 
 		for _, item := range batchRadiusItems {
 			func(item *reserve.BatchRadiusItem) {
