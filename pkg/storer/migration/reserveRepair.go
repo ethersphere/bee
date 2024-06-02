@@ -18,7 +18,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"golang.org/x/sync/errgroup"
-	"resenje.org/multex"
 )
 
 // ReserveRepairer is a migration step that removes all BinItem entries and migrates
@@ -165,14 +164,11 @@ func ReserveRepairer(
 		var eg errgroup.Group
 		eg.SetLimit(runtime.NumCPU())
 
-		locker := multex.New()
+		logger.Info("parallel workers", "count", runtime.NumCPU())
 
 		for _, item := range batchRadiusItems {
 			func(item *reserve.BatchRadiusItem) {
 				eg.Go(func() error {
-
-					locker.Lock(item.ID())
-					defer locker.Unlock(item.ID())
 
 					return st.Run(context.Background(), func(s transaction.Store) error {
 
