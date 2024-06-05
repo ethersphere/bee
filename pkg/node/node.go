@@ -274,9 +274,18 @@ func NewBee(
 		return nil, fmt.Errorf("compute overlay address: %w", err)
 	}
 
-	if o.TargetNeighborhood != "" {
+	targetNeighborhood := o.TargetNeighborhood
+	if targetNeighborhood == "" && o.NeighborhoodSuggester != "" {
+		logger.Info("fetching target neighborhood from suggester", "url", o.NeighborhoodSuggester)
+		targetNeighborhood, err = nbhdutil.FetchNeighborhood(&http.Client{}, o.NeighborhoodSuggester)
+		if err != nil {
+			return nil, fmt.Errorf("neighborhood suggestion: %w", err)
+		}
+	}
+
+	if targetNeighborhood != "" {
 		if nonceExists {
-			logger.Info("Override nonce %d and clean state for neighborhood %s", nonce, o.TargetNeighborhood)
+			logger.Info("Override nonce %d and clean state for neighborhood %s", nonce, targetNeighborhood)
 			logger.Warning("you have another 10 seconds to change your mind and kill this process with CTRL-C...")
 			time.Sleep(10 * time.Second)
 
@@ -294,21 +303,10 @@ func NewBee(
 			}
 		}
 		// mine the overlay
-		targetNeighborhood := o.TargetNeighborhood
-		if o.TargetNeighborhood == "" && o.NeighborhoodSuggester != "" {
-			logger.Info("fetching target neighborhood from suggester", "url", o.NeighborhoodSuggester)
-			targetNeighborhood, err = nbhdutil.FetchNeighborhood(&http.Client{}, o.NeighborhoodSuggester)
-			if err != nil {
-				return nil, fmt.Errorf("neighborhood suggestion: %w", err)
-			}
-		}
-
-		if targetNeighborhood != "" {
-			logger.Info("mining an overlay address for the fresh node to target the selected neighborhood", "target", targetNeighborhood)
-			swarmAddress, nonce, err = nbhdutil.MineOverlay(ctx, *pubKey, networkID, targetNeighborhood)
-			if err != nil {
-				return nil, fmt.Errorf("mine overlay address: %w", err)
-			}
+		logger.Info("mining an overlay address for the fresh node to target the selected neighborhood", "target", targetNeighborhood)
+		swarmAddress, nonce, err = nbhdutil.MineOverlay(ctx, *pubKey, networkID, targetNeighborhood)
+		if err != nil {
+			return nil, fmt.Errorf("mine overlay address: %w", err)
 		}
 
 		err = setOverlay(stateStore, swarmAddress, nonce)
