@@ -283,32 +283,51 @@ func NewBee(
 		}
 	}
 
+	// set overlay if nonce is not saved or mine
 	if targetNeighborhood != "" {
-		if nonceExists {
-			logger.Info("Override nonce %d and clean state for neighborhood %s", nonce, targetNeighborhood)
-			logger.Warning("you have another 10 seconds to change your mind and kill this process with CTRL-C...")
-			time.Sleep(10 * time.Second)
+		neighborhood, err := swarm.ParseBitStrAddress(targetNeighborhood)
+		if err != nil {
+			return nil, fmt.Errorf("invalid neighborhood. %s", targetNeighborhood)
+		}
 
-			const (
-				localstore = "localstore"
-				kademlia   = "kademlia-metrics"
-				statestore = "statestore"
-			)
-			dirsToNuke := []string{localstore, kademlia, statestore}
-			for _, dir := range dirsToNuke {
-				err = ioutil.RemoveContent(filepath.Join(o.DataDir, dir))
-				if err != nil {
-					return nil, fmt.Errorf("delete %s: %w", dir, err)
+		if swarm.Proximity(swarmAddress.Bytes(), neighborhood.Bytes()) < uint8(len(targetNeighborhood)) {
+			if nonceExists {
+				logger.Info("Override nonce %d and clean state for neighborhood %s", nonce, targetNeighborhood)
+				logger.Warning("you have another 10 seconds to change your mind and kill this process with CTRL-C...")
+				time.Sleep(10 * time.Second)
+
+				const (
+					localstore = "localstore"
+					kademlia   = "kademlia-metrics"
+					statestore = "statestore"
+				)
+				dirsToNuke := []string{localstore, kademlia, statestore}
+				for _, dir := range dirsToNuke {
+					err = ioutil.RemoveContent(filepath.Join(o.DataDir, dir))
+					if err != nil {
+						return nil, fmt.Errorf("delete %s: %w", dir, err)
+					}
 				}
 			}
-		}
-		// mine the overlay
-		logger.Info("mining an overlay address for the fresh node to target the selected neighborhood", "target", targetNeighborhood)
-		swarmAddress, nonce, err = nbhdutil.MineOverlay(ctx, *pubKey, networkID, targetNeighborhood)
-		if err != nil {
-			return nil, fmt.Errorf("mine overlay address: %w", err)
-		}
 
+			// mine the overlay
+			logger.Info("mining an overlay address for the fresh node to target the selected neighborhood", "target", targetNeighborhood)
+			swarmAddress, nonce, err = nbhdutil.MineOverlay(ctx, *pubKey, networkID, targetNeighborhood)
+			if err != nil {
+				return nil, fmt.Errorf("mine overlay address: %w", err)
+			}
+
+			err = setOverlay(stateStore, swarmAddress, nonce)
+			if err != nil {
+				return nil, fmt.Errorf("statestore: save new overlay: %w", err)
+			}
+		} else if !nonceExists {
+			err = setOverlay(stateStore, swarmAddress, nonce)
+			if err != nil {
+				return nil, fmt.Errorf("statestore: save new overlay: %w", err)
+			}
+		}
+	} else if targetNeighborhood == "" && !nonceExists {
 		err = setOverlay(stateStore, swarmAddress, nonce)
 		if err != nil {
 			return nil, fmt.Errorf("statestore: save new overlay: %w", err)
