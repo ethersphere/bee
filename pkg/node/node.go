@@ -17,7 +17,6 @@ import (
 	"math/big"
 	"net"
 	"net/http"
-	"os"
 	"path/filepath"
 	"runtime"
 	"sync"
@@ -288,7 +287,7 @@ func NewBee(
 			)
 			dirsToNuke := []string{localstore, kademlia, statestore}
 			for _, dir := range dirsToNuke {
-				err = removeContent(filepath.Join(o.DataDir, dir))
+				err = ioutil.RemoveContent(filepath.Join(o.DataDir, dir))
 				if err != nil {
 					return nil, fmt.Errorf("delete %s: %w", dir, err)
 				}
@@ -1252,29 +1251,4 @@ func isChainEnabled(o *Options, swapEndpoint string, logger log.Logger) bool {
 
 	logger.Info("starting with an enabled chain backend")
 	return true // all other modes operate require chain enabled
-}
-
-// removeContent removes all files in path. Copied function from cmd/db.go
-func removeContent(path string) error {
-	dir, err := os.Open(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return err
-	}
-	defer dir.Close()
-
-	subpaths, err := dir.Readdirnames(0)
-	if err != nil {
-		return err
-	}
-
-	for _, sub := range subpaths {
-		err = os.RemoveAll(filepath.Join(path, sub))
-		if err != nil {
-			return err
-		}
-	}
-	return nil
 }
