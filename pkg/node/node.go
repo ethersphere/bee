@@ -321,21 +321,12 @@ func NewBee(
 			if err != nil {
 				return nil, fmt.Errorf("statestore: save new overlay: %w", err)
 			}
-		} else if !nonceExists {
-			err = setOverlay(stateStore, swarmAddress, nonce)
-			if err != nil {
-				return nil, fmt.Errorf("statestore: save new overlay: %w", err)
-			}
-		}
-	} else if targetNeighborhood == "" && !nonceExists {
-		err = setOverlay(stateStore, swarmAddress, nonce)
-		if err != nil {
-			return nil, fmt.Errorf("statestore: save new overlay: %w", err)
 		}
 	}
 
 	logger.Info("using overlay address", "address", swarmAddress)
 
+	// this will set overlay if it was not set before
 	if err = checkOverlay(stateStore, swarmAddress); err != nil {
 		return nil, fmt.Errorf("check overlay address: %w", err)
 	}
