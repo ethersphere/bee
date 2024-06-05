@@ -287,7 +287,6 @@ func NewBee(
 		}
 	}
 
-	// set overlay if nonce is not saved or mine
 	if targetNeighborhood != "" {
 		neighborhood, err := swarm.ParseBitStrAddress(targetNeighborhood)
 		if err != nil {
