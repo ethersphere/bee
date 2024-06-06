@@ -275,7 +275,7 @@ func NewBee(
 	}
 
 	targetNeighborhood := o.TargetNeighborhood
-	if targetNeighborhood == "" && o.NeighborhoodSuggester != "" {
+	if targetNeighborhood == "" && !nonceExists && o.NeighborhoodSuggester != "" {
 		logger.Info("fetching target neighborhood from suggester", "url", o.NeighborhoodSuggester)
 		targetNeighborhood, err = nbhdutil.FetchNeighborhood(&http.Client{}, o.NeighborhoodSuggester)
 		if err != nil {
