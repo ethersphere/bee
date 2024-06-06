@@ -67,7 +67,7 @@ func (ls *loadSave) Load(ctx context.Context, ref []byte) ([]byte, error) {
 		}
 		j = joiner
 	} else {
-		joiner, _, err := joiner.NewWithRootCh(ctx, ls.getter, ls.putter, swarm.NewAddress(ref), ls.rootCh)
+		joiner, _, err := joiner.NewJoiner(ctx, ls.getter, ls.putter, swarm.NewAddress(ref), ls.rootCh)
 		if err != nil {
 			return nil, err
 		}
