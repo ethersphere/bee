@@ -134,7 +134,7 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set(ContentLengthHeader, strconv.Itoa(len(wc.Data())))
 		// include additional headers
 		for name, values := range additionalHeaders {
-			w.Header().Set(name, strings.Join(values, "; "))
+			w.Header().Set(name, strings.Join(values, ", "))
 		}
 		_, _ = io.Copy(w, bytes.NewReader(wc.Data()))
 		return
