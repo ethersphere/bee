@@ -17,11 +17,11 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	mockAccounting "github.com/ethersphere/bee/v2/pkg/accounting/mock"
 	"github.com/ethersphere/bee/v2/pkg/api"
 	"github.com/ethersphere/bee/v2/pkg/bzz"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
-	"github.com/ethersphere/bee/v2/pkg/dynamicaccess"
 	"github.com/ethersphere/bee/v2/pkg/feeds/factory"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	mockP2P "github.com/ethersphere/bee/v2/pkg/p2p/mock"
@@ -61,14 +61,14 @@ import (
 )
 
 type DevBee struct {
-	tracerCloser     io.Closer
-	stateStoreCloser io.Closer
-	localstoreCloser io.Closer
-	apiCloser        io.Closer
-	pssCloser        io.Closer
-	dacCloser        io.Closer
-	errorLogWriter   io.Writer
-	apiServer        *http.Server
+	tracerCloser        io.Closer
+	stateStoreCloser    io.Closer
+	localstoreCloser    io.Closer
+	apiCloser           io.Closer
+	pssCloser           io.Closer
+	accesscontrolCloser io.Closer
+	errorLogWriter      io.Writer
+	apiServer           *http.Server
 }
 
 type DevOptions struct {
@@ -190,10 +190,10 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 	}
 	b.localstoreCloser = localStore
 
-	session := dynamicaccess.NewDefaultSession(mockKey)
-	actLogic := dynamicaccess.NewLogic(session)
-	dac := dynamicaccess.NewController(actLogic)
-	b.dacCloser = dac
+	session := accesscontrol.NewDefaultSession(mockKey)
+	actLogic := accesscontrol.NewLogic(session)
+	accesscontrol := accesscontrol.NewController(actLogic)
+	b.accesscontrolCloser = accesscontrol
 
 	pssService := pss.New(mockKey, logger)
 	b.pssCloser = pssService
@@ -344,7 +344,7 @@ func NewDevBee(logger log.Logger, o *DevOptions) (b *DevBee, err error) {
 		Pss:             pssService,
 		FeedFactory:     mockFeeds,
 		Post:            post,
-		Dac:             dac,
+		AccessControl:   accesscontrol,
 		PostageContract: postageContract,
 		Staking:         mockStaking,
 		Steward:         mockSteward,
@@ -431,7 +431,7 @@ func (b *DevBee) Shutdown() error {
 	}
 
 	tryClose(b.pssCloser, "pss")
-	tryClose(b.dacCloser, "dac")
+	tryClose(b.accesscontrolCloser, "accesscontrol")
 	tryClose(b.tracerCloser, "tracer")
 	tryClose(b.stateStoreCloser, "statestore")
 	tryClose(b.localstoreCloser, ioutil.DataPathLocalstore)

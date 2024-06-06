@@ -2,24 +2,26 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
+//nolint:ireturn
 package kvs_test
 
 import (
 	"context"
 	"testing"
 
+	"github.com/ethersphere/bee/v2/pkg/accesscontrol/kvs"
 	"github.com/ethersphere/bee/v2/pkg/file"
 	"github.com/ethersphere/bee/v2/pkg/file/loadsave"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline/builder"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
-	"github.com/ethersphere/bee/v2/pkg/kvs"
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	mockstorer "github.com/ethersphere/bee/v2/pkg/storer/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/stretchr/testify/assert"
 )
 
+//nolint:gochecknoglobals
 var mockStorer = mockstorer.New()
 
 func requestPipelineFactory(ctx context.Context, s storage.Putter, encrypt bool, rLevel redundancy.Level) func() pipeline.Interface {
@@ -66,9 +68,9 @@ func TestKvs(t *testing.T) {
 
 	t.Run("Get should return value equal to put value", func(t *testing.T) {
 		var (
-			key1 []byte = []byte{1}
-			key2 []byte = []byte{2}
-			key3 []byte = []byte{3}
+			key1 = []byte{1}
+			key2 = []byte{2}
+			key3 = []byte{3}
 		)
 		testCases := []struct {
 			name string

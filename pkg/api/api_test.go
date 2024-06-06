@@ -23,11 +23,11 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
+	mockac "github.com/ethersphere/bee/v2/pkg/accesscontrol/mock"
 	accountingmock "github.com/ethersphere/bee/v2/pkg/accounting/mock"
 	"github.com/ethersphere/bee/v2/pkg/api"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
-	"github.com/ethersphere/bee/v2/pkg/dynamicaccess"
-	mockdac "github.com/ethersphere/bee/v2/pkg/dynamicaccess/mock"
 	"github.com/ethersphere/bee/v2/pkg/feeds"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline/builder"
@@ -102,7 +102,7 @@ type testServerOptions struct {
 	PostageContract    postagecontract.Interface
 	StakingContract    staking.Contract
 	Post               postage.Service
-	Dac                dynamicaccess.Controller
+	AccessControl      accesscontrol.Controller
 	Steward            steward.Interface
 	WsHeaders          http.Header
 	DirectUpload       bool
@@ -150,8 +150,8 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 	if o.Post == nil {
 		o.Post = mockpost.New()
 	}
-	if o.Dac == nil {
-		o.Dac = mockdac.New()
+	if o.AccessControl == nil {
+		o.AccessControl = mockac.New()
 	}
 	if o.BatchStore == nil {
 		o.BatchStore = mockbatchstore.New(mockbatchstore.WithAcceptAllExistsFunc()) // default is with accept-all Exists() func
@@ -193,7 +193,7 @@ func newTestServer(t *testing.T, o testServerOptions) (*http.Client, *websocket.
 		Pss:             o.Pss,
 		FeedFactory:     o.Feeds,
 		Post:            o.Post,
-		Dac:             o.Dac,
+		AccessControl:   o.AccessControl,
 		PostageContract: o.PostageContract,
 		Steward:         o.Steward,
 		SyncStatus:      o.SyncStatus,

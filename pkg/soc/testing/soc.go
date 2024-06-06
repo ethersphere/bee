@@ -72,7 +72,7 @@ func GenerateMockSOC(t *testing.T, data []byte) *MockSOC {
 	}
 }
 
-// GenerateMockSOC generates a valid mocked SOC from given data and key.
+// GenerateMockSOCWithKey generates a valid mocked SOC from given data and key.
 func GenerateMockSOCWithKey(t *testing.T, data []byte, privKey *ecdsa.PrivateKey) *MockSOC {
 	t.Helper()
 

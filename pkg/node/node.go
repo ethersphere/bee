@@ -24,12 +24,12 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/accounting"
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
 	"github.com/ethersphere/bee/v2/pkg/api"
 	"github.com/ethersphere/bee/v2/pkg/config"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
-	"github.com/ethersphere/bee/v2/pkg/dynamicaccess"
 	"github.com/ethersphere/bee/v2/pkg/feeds/factory"
 	"github.com/ethersphere/bee/v2/pkg/hive"
 	"github.com/ethersphere/bee/v2/pkg/log"
@@ -116,7 +116,7 @@ type Bee struct {
 	shutdownInProgress       bool
 	shutdownMutex            sync.Mutex
 	syncingStopped           *syncutil.Signaler
-	dacCloser                io.Closer
+	accesscontrolCloser      io.Closer
 }
 
 type Options struct {
@@ -199,7 +199,7 @@ func NewBee(
 	logger log.Logger,
 	libp2pPrivateKey,
 	pssPrivateKey *ecdsa.PrivateKey,
-	session dynamicaccess.Session,
+	session accesscontrol.Session,
 	o *Options,
 ) (b *Bee, err error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
@@ -735,9 +735,9 @@ func NewBee(
 	b.localstoreCloser = localStore
 	evictFn = func(id []byte) error { return localStore.EvictBatch(context.Background(), id) }
 
-	actLogic := dynamicaccess.NewLogic(session)
-	dac := dynamicaccess.NewController(actLogic)
-	b.dacCloser = dac
+	actLogic := accesscontrol.NewLogic(session)
+	accesscontrol := accesscontrol.NewController(actLogic)
+	b.accesscontrolCloser = accesscontrol
 
 	var (
 		syncErr    atomic.Value
@@ -1069,7 +1069,7 @@ func NewBee(
 		Pss:             pssService,
 		FeedFactory:     feedFactory,
 		Post:            post,
-		Dac:             dac,
+		AccessControl:   accesscontrol,
 		PostageContract: postageStampContractService,
 		Staking:         stakingContract,
 		Steward:         steward,
@@ -1262,7 +1262,7 @@ func (b *Bee) Shutdown() error {
 		c()
 	}
 
-	tryClose(b.dacCloser, "dac")
+	tryClose(b.accesscontrolCloser, "accesscontrol")
 	tryClose(b.tracerCloser, "tracer")
 	tryClose(b.topologyCloser, "topology driver")
 	tryClose(b.storageIncetivesCloser, "storage incentives agent")
