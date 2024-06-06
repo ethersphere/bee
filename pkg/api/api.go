@@ -75,6 +75,7 @@ const (
 	SwarmEncryptHeader                = "Swarm-Encrypt"
 	SwarmIndexDocumentHeader          = "Swarm-Index-Document"
 	SwarmErrorDocumentHeader          = "Swarm-Error-Document"
+	SwarmSocSignature                 = "Swarm-Soc-Signature"
 	SwarmFeedIndexHeader              = "Swarm-Feed-Index"
 	SwarmFeedIndexNextHeader          = "Swarm-Feed-Index-Next"
 	SwarmOnlyRootChunk                = "Swarm-Only-Root-Chunk"

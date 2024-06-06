@@ -552,7 +552,7 @@ func (s *Service) downloadHandler(logger log.Logger, w http.ResponseWriter, r *h
 		l      int64
 	)
 	if rootCh != nil {
-		reader, l, err = joiner.NewWithRootCh(ctx, s.storer.Download(cache), s.storer.Cache(), reference, rootCh)
+		reader, l, err = joiner.NewJoiner(ctx, s.storer.Download(cache), s.storer.Cache(), reference, rootCh)
 	} else {
 		reader, l, err = joiner.New(ctx, s.storer.Download(cache), s.storer.Cache(), reference)
 	}

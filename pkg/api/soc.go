@@ -5,9 +5,13 @@
 package api
 
 import (
+	"bytes"
+	"encoding/hex"
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
+	"strings"
 
 	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
@@ -172,4 +176,60 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jsonhttp.Created(w, chunkAddressResponse{Reference: sch.Address()})
+}
+
+func (s *Service) socGetHandler(w http.ResponseWriter, r *http.Request) {
+	logger := s.logger.WithName("get_soc").Build()
+
+	paths := struct {
+		Owner []byte `map:"owner" validate:"required"`
+		ID    []byte `map:"id" validate:"required"`
+	}{}
+	if response := s.mapStructure(mux.Vars(r), &paths); response != nil {
+		response("invalid path params", logger, w)
+		return
+	}
+
+	headers := struct {
+		OnlyRootChunk bool `map:"Swarm-Only-Root-Chunk"`
+	}{}
+	if response := s.mapStructure(r.Header, &headers); response != nil {
+		response("invalid header params", logger, w)
+		return
+	}
+
+	address, err := soc.CreateAddress(paths.ID, paths.Owner)
+	if err != nil {
+		jsonhttp.BadRequest(w, "soc address cannot be created")
+	}
+
+	sch, err := s.storer.ChunkStore().Get(r.Context(), address)
+	if err != nil {
+		jsonhttp.NotFound(w, "requested chunk cannot be retrievable")
+	}
+	socCh, err := soc.FromChunk(sch)
+	if err != nil {
+		jsonhttp.InternalServerError(w, "chunk is not a single owner chunk")
+	}
+
+	sig := socCh.Signature()
+	wc := socCh.WrappedChunk()
+
+	additionalHeaders := http.Header{
+		ContentTypeHeader:               {"application/octet-stream"},
+		SwarmSocSignature:               {hex.EncodeToString(sig)},
+		"Access-Control-Expose-Headers": {SwarmSocSignature},
+	}
+
+	if headers.OnlyRootChunk {
+		w.Header().Set(ContentLengthHeader, strconv.Itoa(len(wc.Data())))
+		// include additional headers
+		for name, values := range additionalHeaders {
+			w.Header().Set(name, strings.Join(values, ", "))
+		}
+		_, _ = io.Copy(w, bytes.NewReader(wc.Data()))
+		return
+	}
+
+	s.downloadHandler(logger, w, r, wc.Address(), additionalHeaders, true, false, wc)
 }
