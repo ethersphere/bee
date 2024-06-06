@@ -264,9 +264,9 @@ func (s *Service) fileUploadHandler(
 	}
 	logger.Debug("store", "manifest_reference", manifestReference)
 
-	encryptedReference := manifestReference
+	reference := manifestReference
 	if act {
-		encryptedReference, err = s.actEncryptionHandler(r.Context(), w, putter, manifestReference, historyAddress)
+		reference, err = s.actEncryptionHandler(r.Context(), w, putter, reference, historyAddress)
 		if err != nil {
 			jsonhttp.InternalServerError(w, errActUpload)
 			return
@@ -275,24 +275,24 @@ func (s *Service) fileUploadHandler(
 
 	err = putter.Done(manifestReference)
 	if err != nil {
-		logger.Debug("done split failed", "error", err)
+		logger.Debug("done split failed", "reference", manifestReference, "error", err)
 		logger.Error(nil, "done split failed")
 		jsonhttp.InternalServerError(w, "done split failed")
 		ext.LogError(span, err, olog.String("action", "putter.Done"))
 		return
 	}
 	span.LogFields(olog.Bool("success", true))
-	span.SetTag("root_address", encryptedReference)
+	span.SetTag("root_address", reference)
 
 	if tagID != 0 {
 		w.Header().Set(SwarmTagHeader, fmt.Sprint(tagID))
 		span.SetTag("tagID", tagID)
 	}
-	w.Header().Set(ETagHeader, fmt.Sprintf("%q", encryptedReference.String()))
+	w.Header().Set(ETagHeader, fmt.Sprintf("%q", reference.String()))
 	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
 
 	jsonhttp.Created(w, bzzUploadResponse{
-		Reference: encryptedReference,
+		Reference: reference,
 	})
 }
 

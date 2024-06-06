@@ -141,9 +141,9 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	encryptedReference := chunk.Address()
+	reference := chunk.Address()
 	if headers.Act {
-		encryptedReference, err = s.actEncryptionHandler(r.Context(), w, putter, chunk.Address(), headers.HistoryAddress)
+		reference, err = s.actEncryptionHandler(r.Context(), w, putter, reference, headers.HistoryAddress)
 		if err != nil {
 			jsonhttp.InternalServerError(w, errActUpload)
 			return
@@ -176,7 +176,7 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
-	jsonhttp.Created(w, chunkAddressResponse{Reference: encryptedReference})
+	jsonhttp.Created(w, chunkAddressResponse{Reference: reference})
 }
 
 func (s *Service) chunkGetHandler(w http.ResponseWriter, r *http.Request) {

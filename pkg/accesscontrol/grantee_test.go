@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package dynamicaccess_test
+package accesscontrol_test
 
 import (
 	"context"
@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/btcsuite/btcd/btcec/v2"
-	"github.com/ethersphere/bee/v2/pkg/dynamicaccess"
+	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/file"
 	"github.com/ethersphere/bee/v2/pkg/file/loadsave"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
@@ -53,7 +53,7 @@ func generateKeyListFixture() ([]*ecdsa.PublicKey, error) {
 
 func TestGranteeAddGet(t *testing.T) {
 	t.Parallel()
-	gl, _ := dynamicaccess.NewGranteeList(createLs())
+	gl := accesscontrol.NewGranteeList(createLs())
 	keys, err := generateKeyListFixture()
 	if err != nil {
 		t.Errorf("key generation error: %v", err)
@@ -66,10 +66,10 @@ func TestGranteeAddGet(t *testing.T) {
 
 	t.Run("Get should return value equal to put value", func(t *testing.T) {
 		var (
-			keys2, _                    = generateKeyListFixture()
-			addList1 []*ecdsa.PublicKey = []*ecdsa.PublicKey{keys[0]}
-			addList2 []*ecdsa.PublicKey = []*ecdsa.PublicKey{keys[1], keys[2]}
-			addList3 []*ecdsa.PublicKey = keys2
+			keys2, _ = generateKeyListFixture()
+			addList1 = []*ecdsa.PublicKey{keys[0]}
+			addList2 = []*ecdsa.PublicKey{keys[1], keys[2]}
+			addList3 = keys2
 		)
 		testCases := []struct {
 			name string
@@ -118,7 +118,7 @@ func TestGranteeAddGet(t *testing.T) {
 
 func TestGranteeRemove(t *testing.T) {
 	t.Parallel()
-	gl, _ := dynamicaccess.NewGranteeList(createLs())
+	gl := accesscontrol.NewGranteeList(createLs())
 	keys, err := generateKeyListFixture()
 	if err != nil {
 		t.Errorf("key generation error: %v", err)
@@ -172,17 +172,17 @@ func TestGranteeSave(t *testing.T) {
 		t.Errorf("key generation error: %v", err)
 	}
 	t.Run("Create grantee list with invalid reference, expect error", func(t *testing.T) {
-		gl, err := dynamicaccess.NewGranteeListReference(ctx, createLs(), swarm.RandAddress(t))
+		gl, err := accesscontrol.NewGranteeListReference(ctx, createLs(), swarm.RandAddress(t))
 		assert.Error(t, err)
 		assert.Nil(t, gl)
 	})
 	t.Run("Save empty grantee list return NO error", func(t *testing.T) {
-		gl, _ := dynamicaccess.NewGranteeList(createLs())
+		gl := accesscontrol.NewGranteeList(createLs())
 		_, err := gl.Save(ctx)
 		assert.NoError(t, err)
 	})
 	t.Run("Save not empty grantee list return valid swarm address", func(t *testing.T) {
-		gl, _ := dynamicaccess.NewGranteeList(createLs())
+		gl := accesscontrol.NewGranteeList(createLs())
 		err = gl.Add(keys)
 		ref, err := gl.Save(ctx)
 		assert.NoError(t, err)
@@ -190,7 +190,7 @@ func TestGranteeSave(t *testing.T) {
 	})
 	t.Run("Save grantee list with one item, no error, pre-save value exist", func(t *testing.T) {
 		ls := createLs()
-		gl1, _ := dynamicaccess.NewGranteeList(ls)
+		gl1 := accesscontrol.NewGranteeList(ls)
 
 		err := gl1.Add(keys)
 		assert.NoError(t, err)
@@ -198,7 +198,7 @@ func TestGranteeSave(t *testing.T) {
 		ref, err := gl1.Save(ctx)
 		assert.NoError(t, err)
 
-		gl2, _ := dynamicaccess.NewGranteeListReference(ctx, ls, ref)
+		gl2, _ := accesscontrol.NewGranteeListReference(ctx, ls, ref)
 		val := gl2.Get()
 		assert.NoError(t, err)
 		assert.Equal(t, keys, val)
@@ -207,14 +207,14 @@ func TestGranteeSave(t *testing.T) {
 		ls := createLs()
 		keys2, _ := generateKeyListFixture()
 
-		gl1, _ := dynamicaccess.NewGranteeList(ls)
+		gl1 := accesscontrol.NewGranteeList(ls)
 
 		err := gl1.Add(keys)
 		assert.NoError(t, err)
 		ref, err := gl1.Save(ctx)
 		assert.NoError(t, err)
 
-		gl2, _ := dynamicaccess.NewGranteeListReference(ctx, ls, ref)
+		gl2, _ := accesscontrol.NewGranteeListReference(ctx, ls, ref)
 		err = gl2.Add(keys2)
 		assert.NoError(t, err)
 
@@ -224,7 +224,7 @@ func TestGranteeSave(t *testing.T) {
 }
 
 func TestGranteeRemoveTwo(t *testing.T) {
-	gl, _ := dynamicaccess.NewGranteeList(createLs())
+	gl := accesscontrol.NewGranteeList(createLs())
 	keys, err := generateKeyListFixture()
 	if err != nil {
 		t.Errorf("key generation error: %v", err)

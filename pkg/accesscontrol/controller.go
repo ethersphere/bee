@@ -2,20 +2,24 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package dynamicaccess
+// Package accesscontrol provides functionalities needed
+// for managing access control on Swarm
+package accesscontrol
 
 import (
 	"context"
 	"crypto/ecdsa"
+	"fmt"
 	"io"
 	"time"
 
+	"github.com/ethersphere/bee/v2/pkg/accesscontrol/kvs"
 	"github.com/ethersphere/bee/v2/pkg/encryption"
 	"github.com/ethersphere/bee/v2/pkg/file"
-	"github.com/ethersphere/bee/v2/pkg/kvs"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
+// Grantees represents an interface for managing and retrieving grantees for a publisher.
 type Grantees interface {
 	// UpdateHandler manages the grantees for the given publisher, updating the list based on provided public keys to add or remove.
 	// Only the publisher can make changes to the grantee list.
@@ -25,6 +29,8 @@ type Grantees interface {
 	Get(ctx context.Context, ls file.LoadSaver, publisher *ecdsa.PublicKey, encryptedglRef swarm.Address) ([]*ecdsa.PublicKey, error)
 }
 
+// Controller the interface for managing access control on Swarm.
+// It provides methods for handling downloads, uploads and updates for grantee lists and references.
 type Controller interface {
 	Grantees
 	// DownloadHandler decrypts the encryptedRef using the lookupkey based on the history and timestamp.
@@ -34,18 +40,21 @@ type Controller interface {
 	io.Closer
 }
 
+// ControllerStruct represents a controller for access control logic.
 type ControllerStruct struct {
-	accessLogic ActLogic
+	access ActLogic
 }
 
 var _ Controller = (*ControllerStruct)(nil)
 
-func NewController(accessLogic ActLogic) *ControllerStruct {
+// NewController creates a new access controller with the given access logic.
+func NewController(access ActLogic) *ControllerStruct {
 	return &ControllerStruct{
-		accessLogic: accessLogic,
+		access: access,
 	}
 }
 
+// DownloadHandler decrypts the encryptedRef using the lookupkey based on the history and timestamp.
 func (c *ControllerStruct) DownloadHandler(
 	ctx context.Context,
 	ls file.LoadSaver,
@@ -59,9 +68,10 @@ func (c *ControllerStruct) DownloadHandler(
 		return swarm.ZeroAddress, err
 	}
 
-	return c.accessLogic.DecryptRef(ctx, act, encryptedRef, publisher)
+	return c.access.DecryptRef(ctx, act, encryptedRef, publisher)
 }
 
+// UploadHandler encrypts the reference and stores it in the history as the latest update.
 func (c *ControllerStruct) UploadHandler(
 	ctx context.Context,
 	ls file.LoadSaver,
@@ -82,12 +92,14 @@ func (c *ControllerStruct) UploadHandler(
 		}
 	}
 
-	encryptedRef, err := c.accessLogic.EncryptRef(ctx, act, publisher, reference)
+	encryptedRef, err := c.access.EncryptRef(ctx, act, publisher, reference)
 	return actRef, newHistoryRef, encryptedRef, err
 }
 
+// UpdateHandler manages the grantees for the given publisher, updating the list based on provided public keys to add or remove.
+// Only the publisher can make changes to the grantee list.
 // Limitation: If an upadate is called again within a second from the latest upload/update then mantaray save fails with ErrInvalidInput,
-// because the key (timestamp) is already present, hence a new fork is not created
+// because the key (timestamp) is already present, hence a new fork is not created.
 func (c *ControllerStruct) UpdateHandler(
 	ctx context.Context,
 	ls file.LoadSaver,
@@ -130,7 +142,7 @@ func (c *ControllerStruct) UpdateHandler(
 	}
 
 	for _, grantee := range granteesToAdd {
-		err := c.accessLogic.AddGrantee(ctx, act, publisher, grantee)
+		err := c.access.AddGrantee(ctx, act, publisher, grantee)
 		if err != nil {
 			return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, err
 		}
@@ -162,6 +174,8 @@ func (c *ControllerStruct) UpdateHandler(
 	return granteeRef, egranteeRef, hRef, actRef, nil
 }
 
+// Get returns the list of grantees for the given publisher.
+// The list is accessible only by the publisher.
 func (c *ControllerStruct) Get(ctx context.Context, ls file.LoadSaver, publisher *ecdsa.PublicKey, encryptedglRef swarm.Address) ([]*ecdsa.PublicKey, error) {
 	gl, err := c.getGranteeList(ctx, ls, encryptedglRef, publisher)
 	if err != nil {
@@ -175,7 +189,7 @@ func (c *ControllerStruct) newActWithPublisher(ctx context.Context, ls file.Load
 	if err != nil {
 		return nil, err
 	}
-	err = c.accessLogic.AddGrantee(ctx, act, publisher, publisher)
+	err = c.access.AddGrantee(ctx, act, publisher, publisher)
 	if err != nil {
 		return nil, err
 	}
@@ -230,10 +244,7 @@ func (c *ControllerStruct) saveHistoryAndAct(ctx context.Context, history Histor
 
 func (c *ControllerStruct) getGranteeList(ctx context.Context, ls file.LoadSaver, encryptedglRef swarm.Address, publisher *ecdsa.PublicKey) (gl GranteeList, err error) {
 	if encryptedglRef.IsZero() {
-		gl, err = NewGranteeList(ls)
-		if err != nil {
-			return nil, err
-		}
+		gl = NewGranteeList(ls)
 	} else {
 		granteeref, err := c.decryptRefForPublisher(publisher, encryptedglRef)
 		if err != nil {
@@ -250,34 +261,34 @@ func (c *ControllerStruct) getGranteeList(ctx context.Context, ls file.LoadSaver
 }
 
 func (c *ControllerStruct) encryptRefForPublisher(publisherPubKey *ecdsa.PublicKey, ref swarm.Address) (swarm.Address, error) {
-	keys, err := c.accessLogic.Session.Key(publisherPubKey, [][]byte{oneByteArray})
+	keys, err := c.access.Session.Key(publisherPubKey, [][]byte{oneByteArray})
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
 	refCipher := encryption.New(keys[0], 0, uint32(0), hashFunc)
 	encryptedRef, err := refCipher.Encrypt(ref.Bytes())
 	if err != nil {
-		return swarm.ZeroAddress, err
+		return swarm.ZeroAddress, fmt.Errorf("failed to encrypt reference: %w", err)
 	}
 
 	return swarm.NewAddress(encryptedRef), nil
 }
 
 func (c *ControllerStruct) decryptRefForPublisher(publisherPubKey *ecdsa.PublicKey, encryptedRef swarm.Address) (swarm.Address, error) {
-	keys, err := c.accessLogic.Session.Key(publisherPubKey, [][]byte{oneByteArray})
+	keys, err := c.access.Session.Key(publisherPubKey, [][]byte{oneByteArray})
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
 	refCipher := encryption.New(keys[0], 0, uint32(0), hashFunc)
 	ref, err := refCipher.Decrypt(encryptedRef.Bytes())
 	if err != nil {
-		return swarm.ZeroAddress, err
+		return swarm.ZeroAddress, fmt.Errorf("failed to decrypt reference: %w", err)
 	}
 
 	return swarm.NewAddress(ref), nil
 }
 
-// TODO: what to do in close ?
+// Close simply returns nil
 func (c *ControllerStruct) Close() error {
 	return nil
 }

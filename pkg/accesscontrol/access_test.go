@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package dynamicaccess_test
+package accesscontrol_test
 
 import (
 	"context"
@@ -12,18 +12,18 @@ import (
 	"encoding/hex"
 	"testing"
 
+	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
+	kvsmock "github.com/ethersphere/bee/v2/pkg/accesscontrol/kvs/mock"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
-	"github.com/ethersphere/bee/v2/pkg/dynamicaccess"
-	kvsmock "github.com/ethersphere/bee/v2/pkg/kvs/mock"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/stretchr/testify/assert"
 )
 
-// Generates a new test environment with a fix private key
-func setupAccessLogic() dynamicaccess.ActLogic {
+// Generates a new test environment with a fix private key.
+func setupAccessLogic() accesscontrol.ActLogic {
 	privateKey := getPrivKey(1)
-	diffieHellman := dynamicaccess.NewDefaultSession(privateKey)
-	al := dynamicaccess.NewLogic(diffieHellman)
+	diffieHellman := accesscontrol.NewDefaultSession(privateKey)
+	al := accesscontrol.NewLogic(diffieHellman)
 
 	return al
 }
@@ -87,8 +87,8 @@ func TestDecryptRefWithGrantee_Success(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	id0, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
-	diffieHellman := dynamicaccess.NewDefaultSession(id0)
-	al := dynamicaccess.NewLogic(diffieHellman)
+	diffieHellman := accesscontrol.NewDefaultSession(id0)
+	al := accesscontrol.NewLogic(diffieHellman)
 
 	s := kvsmock.New()
 	err := al.AddGrantee(ctx, s, &id0.PublicKey, &id0.PublicKey)
@@ -111,8 +111,8 @@ func TestDecryptRefWithGrantee_Success(t *testing.T) {
 		t.Fatalf("There was an error while calling EncryptRef: %v", err)
 	}
 
-	diffieHellman2 := dynamicaccess.NewDefaultSession(id1)
-	granteeAccessLogic := dynamicaccess.NewLogic(diffieHellman2)
+	diffieHellman2 := accesscontrol.NewDefaultSession(id1)
+	granteeAccessLogic := accesscontrol.NewLogic(diffieHellman2)
 	actualRef, err := granteeAccessLogic.DecryptRef(ctx, s, encryptedRef, &id0.PublicKey)
 	if err != nil {
 		t.Fatalf("There was an error while calling Get: %v", err)
@@ -139,8 +139,7 @@ func TestDecryptRef_Error(t *testing.T) {
 
 	r, err := al.DecryptRef(ctx, s, encryptedRef, nil)
 	if err == nil {
-		t.Logf("r: %s", r.String())
-		t.Fatalf("Get should return encrypted access key not found error!")
+		t.Fatalf("Get should return error but got reference: %v", r)
 	}
 }
 
@@ -167,9 +166,6 @@ func TestAddPublisher(t *testing.T) {
 	// We know the lookup key because the generated private key is fixed
 	if len(decodedEncryptedAccessKey) != 64 {
 		t.Fatalf("AddGrantee: expected encrypted access key length 64, got %d", len(decodedEncryptedAccessKey))
-	}
-	if s == nil {
-		t.Fatalf("AddGrantee: expected act, got nil")
 	}
 }
 

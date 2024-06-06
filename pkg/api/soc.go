@@ -157,9 +157,9 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	encryptedReference := sch.Address()
+	reference := sch.Address()
 	if headers.Act {
-		encryptedReference, err = s.actEncryptionHandler(r.Context(), w, putter, sch.Address(), headers.HistoryAddress)
+		reference, err = s.actEncryptionHandler(r.Context(), w, putter, reference, headers.HistoryAddress)
 		if err != nil {
 			jsonhttp.InternalServerError(w, errActUpload)
 			return
@@ -182,5 +182,5 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonhttp.Created(w, socPostResponse{Reference: encryptedReference})
+	jsonhttp.Created(w, socPostResponse{Reference: reference})
 }

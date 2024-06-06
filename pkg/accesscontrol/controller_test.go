@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style
 // license that can be found in the LICENSE file.
 
-package dynamicaccess_test
+package accesscontrol_test
 
 import (
 	"context"
@@ -11,12 +11,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethersphere/bee/v2/pkg/dynamicaccess"
+	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
+	"github.com/ethersphere/bee/v2/pkg/accesscontrol/kvs"
 	encryption "github.com/ethersphere/bee/v2/pkg/encryption"
 	"github.com/ethersphere/bee/v2/pkg/file"
 	"github.com/ethersphere/bee/v2/pkg/file/loadsave"
 	"github.com/ethersphere/bee/v2/pkg/file/redundancy"
-	"github.com/ethersphere/bee/v2/pkg/kvs"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -24,8 +24,8 @@ import (
 )
 
 //nolint:errcheck,gosec,wrapcheck
-func getHistoryFixture(ctx context.Context, ls file.LoadSaver, al dynamicaccess.ActLogic, publisher *ecdsa.PublicKey) (swarm.Address, error) {
-	h, err := dynamicaccess.NewHistory(ls)
+func getHistoryFixture(ctx context.Context, ls file.LoadSaver, al accesscontrol.ActLogic, publisher *ecdsa.PublicKey) (swarm.Address, error) {
+	h, err := accesscontrol.NewHistory(ls)
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
@@ -57,9 +57,9 @@ func TestController_UploadHandler(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	publisher := getPrivKey(0)
-	diffieHellman := dynamicaccess.NewDefaultSession(publisher)
-	al := dynamicaccess.NewLogic(diffieHellman)
-	c := dynamicaccess.NewController(al)
+	diffieHellman := accesscontrol.NewDefaultSession(publisher)
+	al := accesscontrol.NewLogic(diffieHellman)
+	c := accesscontrol.NewController(al)
 	ls := createLs()
 
 	t.Run("New upload", func(t *testing.T) {
@@ -67,7 +67,7 @@ func TestController_UploadHandler(t *testing.T) {
 		_, hRef, encRef, err := c.UploadHandler(ctx, ls, ref, &publisher.PublicKey, swarm.ZeroAddress)
 		assert.NoError(t, err)
 
-		h, _ := dynamicaccess.NewHistoryReference(ls, hRef)
+		h, _ := accesscontrol.NewHistoryReference(ls, hRef)
 		entry, _ := h.Lookup(ctx, time.Now().Unix())
 		actRef := entry.Reference()
 		act, _ := kvs.NewReference(ls, actRef)
@@ -84,20 +84,20 @@ func TestController_UploadHandler(t *testing.T) {
 		assert.NoError(t, err)
 		_, hRef2, encRef, err := c.UploadHandler(ctx, ls, ref, &publisher.PublicKey, hRef1)
 		assert.NoError(t, err)
-		h, err := dynamicaccess.NewHistoryReference(ls, hRef2)
+		h, err := accesscontrol.NewHistoryReference(ls, hRef2)
 		assert.NoError(t, err)
 		hRef2, err = h.Store(ctx)
 		assert.NoError(t, err)
 		assert.True(t, hRef1.Equal(hRef2))
 
-		h, _ = dynamicaccess.NewHistoryReference(ls, hRef2)
+		h, _ = accesscontrol.NewHistoryReference(ls, hRef2)
 		entry, _ := h.Lookup(ctx, time.Now().Unix())
 		actRef := entry.Reference()
 		act, _ := kvs.NewReference(ls, actRef)
 		expRef, err := al.EncryptRef(ctx, act, &publisher.PublicKey, ref)
 
 		assert.NoError(t, err)
-		assert.Equal(t, encRef, expRef)
+		assert.Equal(t, expRef, encRef)
 		assert.NotEqual(t, hRef2, swarm.ZeroAddress)
 	})
 }
@@ -106,13 +106,13 @@ func TestController_PublisherDownload(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	publisher := getPrivKey(0)
-	diffieHellman := dynamicaccess.NewDefaultSession(publisher)
-	al := dynamicaccess.NewLogic(diffieHellman)
-	c := dynamicaccess.NewController(al)
+	diffieHellman := accesscontrol.NewDefaultSession(publisher)
+	al := accesscontrol.NewLogic(diffieHellman)
+	c := accesscontrol.NewController(al)
 	ls := createLs()
 	ref := swarm.RandAddress(t)
 	href, _ := getHistoryFixture(ctx, ls, al, &publisher.PublicKey)
-	h, _ := dynamicaccess.NewHistoryReference(ls, href)
+	h, _ := accesscontrol.NewHistoryReference(ls, href)
 	entry, _ := h.Lookup(ctx, time.Now().Unix())
 	actRef := entry.Reference()
 	act, _ := kvs.NewReference(ls, actRef)
@@ -129,16 +129,16 @@ func TestController_GranteeDownload(t *testing.T) {
 	ctx := context.Background()
 	publisher := getPrivKey(0)
 	grantee := getPrivKey(2)
-	publisherDH := dynamicaccess.NewDefaultSession(publisher)
-	publisherAL := dynamicaccess.NewLogic(publisherDH)
+	publisherDH := accesscontrol.NewDefaultSession(publisher)
+	publisherAL := accesscontrol.NewLogic(publisherDH)
 
-	diffieHellman := dynamicaccess.NewDefaultSession(grantee)
-	al := dynamicaccess.NewLogic(diffieHellman)
+	diffieHellman := accesscontrol.NewDefaultSession(grantee)
+	al := accesscontrol.NewLogic(diffieHellman)
 	ls := createLs()
-	c := dynamicaccess.NewController(al)
+	c := accesscontrol.NewController(al)
 	ref := swarm.RandAddress(t)
 	href, _ := getHistoryFixture(ctx, ls, publisherAL, &publisher.PublicKey)
-	h, _ := dynamicaccess.NewHistoryReference(ls, href)
+	h, _ := accesscontrol.NewHistoryReference(ls, href)
 	ts := time.Date(2001, time.April, 1, 0, 0, 0, 0, time.UTC).Unix()
 	entry, _ := h.Lookup(ctx, ts)
 	actRef := entry.Reference()
@@ -155,13 +155,13 @@ func TestController_UpdateHandler(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	publisher := getPrivKey(1)
-	diffieHellman := dynamicaccess.NewDefaultSession(publisher)
-	al := dynamicaccess.NewLogic(diffieHellman)
+	diffieHellman := accesscontrol.NewDefaultSession(publisher)
+	al := accesscontrol.NewLogic(diffieHellman)
 	keys, _ := al.Session.Key(&publisher.PublicKey, [][]byte{{1}})
 	refCipher := encryption.New(keys[0], 0, uint32(0), sha3.NewLegacyKeccak256)
 	ls := createLs()
 	gls := loadsave.New(mockStorer.ChunkStore(), mockStorer.Cache(), requestPipelineFactory(context.Background(), mockStorer.Cache(), true, redundancy.NONE))
-	c := dynamicaccess.NewController(al)
+	c := accesscontrol.NewController(al)
 	href, _ := getHistoryFixture(ctx, ls, al, &publisher.PublicKey)
 
 	grantee1 := getPrivKey(0)
@@ -172,7 +172,7 @@ func TestController_UpdateHandler(t *testing.T) {
 		granteeRef, _, _, _, err := c.UpdateHandler(ctx, ls, ls, swarm.ZeroAddress, swarm.ZeroAddress, &publisher.PublicKey, addList, nil)
 		assert.NoError(t, err)
 
-		gl, err := dynamicaccess.NewGranteeListReference(ctx, ls, granteeRef)
+		gl, err := accesscontrol.NewGranteeListReference(ctx, ls, granteeRef)
 
 		assert.NoError(t, err)
 		assert.Len(t, gl.Get(), 1)
@@ -182,27 +182,27 @@ func TestController_UpdateHandler(t *testing.T) {
 		granteeRef, eglref, _, _, err := c.UpdateHandler(ctx, ls, gls, swarm.ZeroAddress, href, &publisher.PublicKey, addList, nil)
 		assert.NoError(t, err)
 
-		gl, err := dynamicaccess.NewGranteeListReference(ctx, ls, granteeRef)
+		gl, err := accesscontrol.NewGranteeListReference(ctx, ls, granteeRef)
 
 		assert.NoError(t, err)
 		assert.Len(t, gl.Get(), 1)
 
 		addList = []*ecdsa.PublicKey{&getPrivKey(0).PublicKey}
 		granteeRef, _, _, _, _ = c.UpdateHandler(ctx, ls, ls, eglref, href, &publisher.PublicKey, addList, nil)
-		gl, err = dynamicaccess.NewGranteeListReference(ctx, ls, granteeRef)
+		gl, err = accesscontrol.NewGranteeListReference(ctx, ls, granteeRef)
 		assert.NoError(t, err)
 		assert.Len(t, gl.Get(), 2)
 	})
 	t.Run("add and revoke", func(t *testing.T) {
 		addList := []*ecdsa.PublicKey{&grantee.PublicKey}
 		revokeList := []*ecdsa.PublicKey{&grantee1.PublicKey}
-		gl, _ := dynamicaccess.NewGranteeList(ls)
+		gl := accesscontrol.NewGranteeList(ls)
 		_ = gl.Add([]*ecdsa.PublicKey{&publisher.PublicKey, &grantee1.PublicKey})
 		granteeRef, _ := gl.Save(ctx)
 		eglref, _ := refCipher.Encrypt(granteeRef.Bytes())
 
 		granteeRef, _, _, _, _ = c.UpdateHandler(ctx, ls, gls, swarm.NewAddress(eglref), href, &publisher.PublicKey, addList, revokeList)
-		gl, err := dynamicaccess.NewGranteeListReference(ctx, ls, granteeRef)
+		gl, err := accesscontrol.NewGranteeListReference(ctx, ls, granteeRef)
 
 		assert.NoError(t, err)
 		assert.Len(t, gl.Get(), 2)
@@ -223,15 +223,15 @@ func TestController_UpdateHandler(t *testing.T) {
 		granteeRef, _, hrefUpdate2, _, err := c.UpdateHandler(ctx, ls, gls, egranteeRef, hrefUpdate1, &publisher.PublicKey, nil, addRevokeList)
 		require.NoError(t, err)
 
-		gl, err := dynamicaccess.NewGranteeListReference(ctx, ls, granteeRef)
+		gl, err := accesscontrol.NewGranteeListReference(ctx, ls, granteeRef)
 		require.NoError(t, err)
 		assert.Empty(t, gl.Get())
 		// expect history reference to be different after grantee list update
 		assert.NotEqual(t, hrefUpdate1, hrefUpdate2)
 
-		granteeDH := dynamicaccess.NewDefaultSession(grantee)
-		granteeAl := dynamicaccess.NewLogic(granteeDH)
-		granteeCtrl := dynamicaccess.NewController(granteeAl)
+		granteeDH := accesscontrol.NewDefaultSession(grantee)
+		granteeAl := accesscontrol.NewLogic(granteeDH)
+		granteeCtrl := accesscontrol.NewController(granteeAl)
 		// download with grantee shall still work with the timestamp before the revoke
 		decRef, err := granteeCtrl.DownloadHandler(ctx, ls, encRef, &publisher.PublicKey, hrefUpdate2, beforeRevokeTS)
 		require.NoError(t, err)
@@ -252,7 +252,7 @@ func TestController_UpdateHandler(t *testing.T) {
 		//nolint:ineffassign,staticcheck,wastedassign
 		granteeRef, eglref, _, _, err := c.UpdateHandler(ctx, ls, gls, swarm.ZeroAddress, href, &publisher.PublicKey, addList, nil)
 		granteeRef, _, _, _, _ = c.UpdateHandler(ctx, ls, ls, eglref, href, &publisher.PublicKey, addList, nil)
-		gl, err := dynamicaccess.NewGranteeListReference(ctx, ls, granteeRef)
+		gl, err := accesscontrol.NewGranteeListReference(ctx, ls, granteeRef)
 
 		assert.NoError(t, err)
 		assert.Len(t, gl.Get(), 1)
@@ -260,7 +260,7 @@ func TestController_UpdateHandler(t *testing.T) {
 	t.Run("revoke non-existing", func(t *testing.T) {
 		addList := []*ecdsa.PublicKey{&grantee.PublicKey}
 		granteeRef, _, _, _, _ := c.UpdateHandler(ctx, ls, ls, swarm.ZeroAddress, href, &publisher.PublicKey, addList, nil)
-		gl, err := dynamicaccess.NewGranteeListReference(ctx, ls, granteeRef)
+		gl, err := accesscontrol.NewGranteeListReference(ctx, ls, granteeRef)
 
 		assert.NoError(t, err)
 		assert.Len(t, gl.Get(), 1)
@@ -273,14 +273,14 @@ func TestController_Get(t *testing.T) {
 	publisher := getPrivKey(1)
 	caller := getPrivKey(0)
 	grantee := getPrivKey(2)
-	diffieHellman1 := dynamicaccess.NewDefaultSession(publisher)
-	diffieHellman2 := dynamicaccess.NewDefaultSession(caller)
-	al1 := dynamicaccess.NewLogic(diffieHellman1)
-	al2 := dynamicaccess.NewLogic(diffieHellman2)
+	diffieHellman1 := accesscontrol.NewDefaultSession(publisher)
+	diffieHellman2 := accesscontrol.NewDefaultSession(caller)
+	al1 := accesscontrol.NewLogic(diffieHellman1)
+	al2 := accesscontrol.NewLogic(diffieHellman2)
 	ls := createLs()
 	gls := loadsave.New(mockStorer.ChunkStore(), mockStorer.Cache(), requestPipelineFactory(context.Background(), mockStorer.Cache(), true, redundancy.NONE))
-	c1 := dynamicaccess.NewController(al1)
-	c2 := dynamicaccess.NewController(al2)
+	c1 := accesscontrol.NewController(al1)
+	c2 := accesscontrol.NewController(al2)
 
 	t.Run("get by publisher", func(t *testing.T) {
 		addList := []*ecdsa.PublicKey{&grantee.PublicKey}
@@ -290,7 +290,7 @@ func TestController_Get(t *testing.T) {
 		assert.NoError(t, err)
 		assert.True(t, reflect.DeepEqual(grantees, addList))
 
-		gl, _ := dynamicaccess.NewGranteeListReference(ctx, ls, granteeRef)
+		gl, _ := accesscontrol.NewGranteeListReference(ctx, ls, granteeRef)
 		assert.True(t, reflect.DeepEqual(gl.Get(), addList))
 	})
 	t.Run("get by non-publisher", func(t *testing.T) {

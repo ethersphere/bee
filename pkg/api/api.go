@@ -27,10 +27,10 @@ import (
 	"unicode/utf8"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/accounting"
 	"github.com/ethersphere/bee/v2/pkg/auth"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
-	"github.com/ethersphere/bee/v2/pkg/dynamicaccess"
 	"github.com/ethersphere/bee/v2/pkg/feeds"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline/builder"
@@ -154,7 +154,7 @@ type Service struct {
 	feedFactory     feeds.Factory
 	signer          crypto.Signer
 	post            postage.Service
-	dac             dynamicaccess.Controller
+	accesscontrol   accesscontrol.Controller
 	postageContract postagecontract.Interface
 	probe           *Probe
 	metricsRegistry *prometheus.Registry
@@ -253,7 +253,7 @@ type ExtraOptions struct {
 	Pss             pss.Interface
 	FeedFactory     feeds.Factory
 	Post            postage.Service
-	Dac             dynamicaccess.Controller
+	AccessControl   accesscontrol.Controller
 	PostageContract postagecontract.Interface
 	Staking         staking.Contract
 	Steward         steward.Interface
@@ -337,7 +337,7 @@ func (s *Service) Configure(signer crypto.Signer, auth auth.Authenticator, trace
 	s.pss = e.Pss
 	s.feedFactory = e.FeedFactory
 	s.post = e.Post
-	s.dac = e.Dac
+	s.accesscontrol = e.AccessControl
 	s.postageContract = e.PostageContract
 	s.steward = e.Steward
 	s.stakingContract = e.Staking
