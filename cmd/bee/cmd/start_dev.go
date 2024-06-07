@@ -57,15 +57,9 @@ func (c *command) initStartDevCmd() (err error) {
 			fmt.Println("Starting in development mode")
 			fmt.Println()
 
-			debugAPIAddr := c.config.GetString(optionNameDebugAPIAddr)
-			if !c.config.GetBool(optionNameDebugAPIEnable) {
-				debugAPIAddr = ""
-			}
-
 			// generate signer in here
 			b, err := node.NewDevBee(logger, &node.DevOptions{
 				APIAddr:                  c.config.GetString(optionNameAPIAddr),
-				DebugAPIAddr:             debugAPIAddr,
 				Logger:                   logger,
 				DBOpenFilesLimit:         c.config.GetUint64(optionNameDBOpenFilesLimit),
 				DBBlockCacheCapacity:     c.config.GetUint64(optionNameDBBlockCacheCapacity),
@@ -73,9 +67,6 @@ func (c *command) initStartDevCmd() (err error) {
 				DBDisableSeeksCompaction: c.config.GetBool(optionNameDBDisableSeeksCompaction),
 				CORSAllowedOrigins:       c.config.GetStringSlice(optionCORSAllowedOrigins),
 				ReserveCapacity:          c.config.GetUint64(optionNameDevReserveCapacity),
-				Restricted:               c.config.GetBool(optionNameRestrictedAPI),
-				TokenEncryptionKey:       c.config.GetString(optionNameTokenEncryptionKey),
-				AdminPasswordHash:        c.config.GetString(optionNameAdminPasswordHash),
 			})
 			if err != nil {
 				return err
@@ -140,9 +131,7 @@ func (c *command) initStartDevCmd() (err error) {
 		},
 	}
 
-	cmd.Flags().Bool(optionNameDebugAPIEnable, true, "enable debug HTTP API")
 	cmd.Flags().String(optionNameAPIAddr, ":1633", "HTTP API listen address")
-	cmd.Flags().String(optionNameDebugAPIAddr, ":1635", "debug HTTP API listen address")
 	cmd.Flags().String(optionNameVerbosity, "info", "log verbosity level 0=silent, 1=error, 2=warn, 3=info, 4=debug, 5=trace")
 	cmd.Flags().Uint64(optionNameDevReserveCapacity, 4194304, "cache reserve capacity")
 	cmd.Flags().StringSlice(optionCORSAllowedOrigins, []string{}, "origins with CORS headers enabled")
@@ -150,9 +139,6 @@ func (c *command) initStartDevCmd() (err error) {
 	cmd.Flags().Uint64(optionNameDBBlockCacheCapacity, 32*1024*1024, "size of block cache of the database in bytes")
 	cmd.Flags().Uint64(optionNameDBWriteBufferSize, 32*1024*1024, "size of the database write buffer in bytes")
 	cmd.Flags().Bool(optionNameDBDisableSeeksCompaction, false, "disables db compactions triggered by seeks")
-	cmd.Flags().Bool(optionNameRestrictedAPI, false, "enable permission check on the http APIs")
-	cmd.Flags().String(optionNameTokenEncryptionKey, "", "security token encryption hash")
-	cmd.Flags().String(optionNameAdminPasswordHash, "$2a$10$Maw2HUQjcUINtqdnasOs1ee5MtQl7jxnkv2GqCGfbytAiCElzcbYC", "bcrypt hash of the admin password to get the security token")
 
 	c.root.AddCommand(cmd)
 	return nil

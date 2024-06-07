@@ -11,7 +11,6 @@ import (
 	"crypto/ecdsa"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -29,7 +28,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/accounting"
-	"github.com/ethersphere/bee/v2/pkg/auth"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/feeds"
 	"github.com/ethersphere/bee/v2/pkg/file/pipeline"
@@ -143,7 +141,6 @@ type PinIntegrity interface {
 }
 
 type Service struct {
-	auth            auth.Authenticator
 	storer          Storer
 	resolver        resolver.Interface
 	pss             pss.Interface
@@ -169,7 +166,6 @@ type Service struct {
 	wsWg sync.WaitGroup // wait for all websockets to close on exit
 	quit chan struct{}
 
-	// from debug API
 	overlay           *swarm.Address
 	publicKey         ecdsa.PublicKey
 	pssPublicKey      ecdsa.PublicKey
@@ -236,7 +232,6 @@ func (s *Service) SetRedistributionAgent(redistributionAgent *storageincentives.
 type Options struct {
 	CORSAllowedOrigins []string
 	WsPingPeriod       time.Duration
-	Restricted         bool
 }
 
 type ExtraOptions struct {
@@ -323,8 +318,7 @@ func New(
 }
 
 // Configure will create a and initialize a new API service.
-func (s *Service) Configure(signer crypto.Signer, auth auth.Authenticator, tracer *tracing.Tracer, o Options, e ExtraOptions, chainID int64, erc20 erc20.Service) {
-	s.auth = auth
+func (s *Service) Configure(signer crypto.Signer, tracer *tracing.Tracer, o Options, e ExtraOptions, chainID int64, erc20 erc20.Service) {
 	s.signer = signer
 	s.Options = o
 	s.tracer = tracer
@@ -438,119 +432,6 @@ func (s *Service) resolveNameOrAddress(str string) (swarm.Address, error) {
 	}
 
 	return swarm.ZeroAddress, fmt.Errorf("%w: %w", errInvalidNameOrAddress, err)
-}
-
-type securityTokenRsp struct {
-	Key string `json:"key"`
-}
-
-type securityTokenReq struct {
-	Role   string `json:"role"`
-	Expiry int    `json:"expiry"` // duration in seconds
-}
-
-func (s *Service) authHandler(w http.ResponseWriter, r *http.Request) {
-	_, pass, ok := r.BasicAuth()
-
-	if !ok {
-		s.logger.Error(nil, "auth handler: missing basic auth")
-		w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
-		jsonhttp.Unauthorized(w, "Unauthorized")
-		return
-	}
-
-	if !s.auth.Authorize(pass) {
-		s.logger.Error(nil, "auth handler: unauthorized")
-		w.Header().Set("WWW-Authenticate", `Basic realm="Restricted"`)
-		jsonhttp.Unauthorized(w, "Unauthorized")
-		return
-	}
-
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		s.logger.Debug("auth handler: read request body failed", "error", err)
-		s.logger.Error(nil, "auth handler: read request body failed")
-		jsonhttp.BadRequest(w, "Read request body")
-		return
-	}
-
-	var payload securityTokenReq
-	if err = json.Unmarshal(body, &payload); err != nil {
-		s.logger.Debug("auth handler: unmarshal request body failed", "error", err)
-		s.logger.Error(nil, "auth handler: unmarshal request body failed")
-		jsonhttp.BadRequest(w, "Unmarshal json body")
-		return
-	}
-
-	key, err := s.auth.GenerateKey(payload.Role, time.Duration(payload.Expiry)*time.Second)
-	if errors.Is(err, auth.ErrExpiry) {
-		s.logger.Debug("auth handler: generate key failed", "error", err)
-		s.logger.Error(nil, "auth handler: generate key failed")
-		jsonhttp.BadRequest(w, "Expiry duration must be a positive number")
-		return
-	}
-	if err != nil {
-		s.logger.Debug("auth handler: add auth token failed", "error", err)
-		s.logger.Error(nil, "auth handler: add auth token failed")
-		jsonhttp.InternalServerError(w, "Error generating authorization token")
-		return
-	}
-
-	jsonhttp.Created(w, securityTokenRsp{
-		Key: key,
-	})
-}
-
-func (s *Service) refreshHandler(w http.ResponseWriter, r *http.Request) {
-	reqToken := r.Header.Get(AuthorizationHeader)
-	if !strings.HasPrefix(reqToken, "Bearer ") {
-		jsonhttp.Forbidden(w, "Missing bearer token")
-		return
-	}
-
-	keys := strings.Split(reqToken, "Bearer ")
-
-	if len(keys) != 2 || strings.Trim(keys[1], " ") == "" {
-		jsonhttp.Forbidden(w, "Missing security token")
-		return
-	}
-
-	authToken := keys[1]
-
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		s.logger.Debug("auth handler: read request body failed", "error", err)
-		s.logger.Error(nil, "auth handler: read request body failed")
-		jsonhttp.BadRequest(w, "Read request body")
-		return
-	}
-
-	var payload securityTokenReq
-	if err = json.Unmarshal(body, &payload); err != nil {
-		s.logger.Debug("auth handler: unmarshal request body failed", "error", err)
-		s.logger.Error(nil, "auth handler: unmarshal request body failed")
-		jsonhttp.BadRequest(w, "Unmarshal json body")
-		return
-	}
-
-	key, err := s.auth.RefreshKey(authToken, time.Duration(payload.Expiry)*time.Second)
-	if errors.Is(err, auth.ErrTokenExpired) {
-		s.logger.Debug("auth handler: refresh key failed", "error", err)
-		s.logger.Error(nil, "auth handler: refresh key failed")
-		jsonhttp.BadRequest(w, "Token expired")
-		return
-	}
-
-	if err != nil {
-		s.logger.Debug("auth handler: refresh token failed", "error", err)
-		s.logger.Error(nil, "auth handler: refresh token failed")
-		jsonhttp.InternalServerError(w, "Error refreshing authorization token")
-		return
-	}
-
-	jsonhttp.Created(w, securityTokenRsp{
-		Key: key,
-	})
 }
 
 func (s *Service) newTracingHandler(spanName string) func(h http.Handler) http.Handler {
@@ -801,15 +682,11 @@ func (p *putterSessionWrapper) Put(ctx context.Context, chunk swarm.Chunk) error
 }
 
 func (p *putterSessionWrapper) Done(ref swarm.Address) error {
-	err := p.PutterSession.Done(ref)
-	if err != nil {
-		return err
-	}
-	return p.save()
+	return errors.Join(p.PutterSession.Done(ref), p.save())
 }
 
 func (p *putterSessionWrapper) Cleanup() error {
-	return p.PutterSession.Cleanup()
+	return errors.Join(p.PutterSession.Cleanup(), p.save())
 }
 
 func (s *Service) getStamper(batchID []byte) (postage.Stamper, func() error, error) {

@@ -43,7 +43,7 @@ docker-compose pull && docker-compose up -d
 ## Running multiple Bee nodes
 It is easy to run multiple bee nodes with docker compose by adding more services to `docker-compose.yaml`
 To do so, open `docker-compose.yaml`, copy lines 4-54 and past this after line 54 (whole bee-1 section).
-In the copied lines, replace all occurrences of `bee-1` with `bee-2` and adjust the `API_ADDR` and `P2P_ADDR` and `DEBUG_API_ADDR` to respectively `1733`, `1734` and `127.0.0.1:1735`
+In the copied lines, replace all occurrences of `bee-1` with `bee-2` and adjust the `API_ADDR` and `P2P_ADDR` to respectively `1733`, `1734.`
 Lastly, add your newly configured services under `volumes` (last lines), such that it looks like:
 ```yaml
 volumes:
