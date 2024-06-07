@@ -1,6 +1,6 @@
 openapi: 3.0.3
 info:
-  version: 3.2.7
+  version: 3.2.8
   title: Common Data Types
   description: |
     \*****bzzz*****
@@ -466,10 +466,6 @@ components:
         version:
           type: string
         apiVersion:
-          type: string
-          default: "0.0.0"
-          description: The default value is set in case the bee binary was not build correctly.
-        debugApiVersion:
           type: string
           default: "0.0.0"
           description: The default value is set in case the bee binary was not build correctly.

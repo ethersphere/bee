@@ -28,7 +28,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/accounting"
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
 	"github.com/ethersphere/bee/v2/pkg/api"
-	"github.com/ethersphere/bee/v2/pkg/auth"
 	"github.com/ethersphere/bee/v2/pkg/config"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/feeds/factory"
@@ -90,7 +89,6 @@ type Bee struct {
 	ctxCancel                context.CancelFunc
 	apiCloser                io.Closer
 	apiServer                *http.Server
-	debugAPIServer           *http.Server
 	resolverCloser           io.Closer
 	errorLogWriter           io.Writer
 	tracerCloser             io.Closer
@@ -129,7 +127,6 @@ type Options struct {
 	DBBlockCacheCapacity          uint64
 	DBDisableSeeksCompaction      bool
 	APIAddr                       string
-	DebugAPIAddr                  string
 	Addr                          string
 	NATAddr                       string
 	EnableWS                      bool
@@ -166,9 +163,6 @@ type Options struct {
 	MutexProfile                  bool
 	StaticNodes                   []swarm.Address
 	AllowPrivateCIDRs             bool
-	Restricted                    bool
-	TokenEncryptionKey            string
-	AdminPasswordHash             string
 	UsePostageSnapshot            bool
 	EnableStorageIncentives       bool
 	StatestoreCacheCapacity       uint64
@@ -373,16 +367,6 @@ func NewBee(
 	b.transactionCloser = tracerCloser
 	b.transactionMonitorCloser = transactionMonitor
 
-	var authenticator auth.Authenticator
-
-	if o.Restricted {
-		if authenticator, err = auth.New(o.TokenEncryptionKey, o.AdminPasswordHash, logger); err != nil {
-			return nil, fmt.Errorf("authenticator: %w", err)
-		}
-		logger.Info("starting with restricted APIs")
-	}
-
-	// set up basic debug api endpoints for debugging and /health endpoint
 	beeNodeMode := api.LightMode
 	if o.FullNodeMode {
 		beeNodeMode = api.FullMode
@@ -408,59 +392,6 @@ func NewBee(
 	b.stamperStoreCloser = stamperStore
 
 	var apiService *api.Service
-	var debugService *api.Service
-
-	if o.DebugAPIAddr != "" {
-		if o.MutexProfile {
-			_ = runtime.SetMutexProfileFraction(1)
-		}
-
-		if o.BlockProfile {
-			runtime.SetBlockProfileRate(1)
-		}
-
-		debugAPIListener, err := net.Listen("tcp", o.DebugAPIAddr)
-		if err != nil {
-			return nil, fmt.Errorf("debug api listener: %w", err)
-		}
-
-		debugService = api.New(
-			*publicKey,
-			pssPrivateKey.PublicKey,
-			overlayEthAddress,
-			o.WhitelistedWithdrawalAddress,
-			logger,
-			transactionService,
-			batchStore,
-			beeNodeMode,
-			o.ChequebookEnable,
-			o.SwapEnable,
-			chainBackend,
-			o.CORSAllowedOrigins,
-			stamperStore,
-		)
-		debugService.Restricted = o.Restricted
-		debugService.MountTechnicalDebug()
-		debugService.SetProbe(probe)
-
-		debugAPIServer := &http.Server{
-			IdleTimeout:       30 * time.Second,
-			ReadHeaderTimeout: 3 * time.Second,
-			Handler:           debugService,
-			ErrorLog:          stdlog.New(b.errorLogWriter, "", 0),
-		}
-
-		go func() {
-			logger.Info("starting debug server", "address", debugAPIListener.Addr())
-
-			if err := debugAPIServer.Serve(debugAPIListener); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				logger.Debug("debug api server failed to start", "error", err)
-				logger.Error(nil, "debug api server failed to start")
-			}
-		}()
-
-		b.debugAPIServer = debugAPIServer
-	}
 
 	if o.APIAddr != "" {
 		if o.MutexProfile {
@@ -490,7 +421,6 @@ func NewBee(
 			o.CORSAllowedOrigins,
 			stamperStore,
 		)
-		apiService.Restricted = o.Restricted
 		apiService.MountTechnicalDebug()
 		apiService.SetProbe(probe)
 
@@ -638,9 +568,7 @@ func NewBee(
 
 	var registry *promc.Registry
 
-	if debugService != nil {
-		registry = debugService.MetricsRegistry()
-	} else if apiService != nil {
+	if apiService != nil {
 		registry = apiService.MetricsRegistry()
 	}
 
@@ -1155,77 +1083,16 @@ func NewBee(
 			apiService.MustRegisterMetrics(swapService.Metrics()...)
 		}
 
-		apiService.Configure(signer, authenticator, tracer, api.Options{
+		apiService.Configure(signer, tracer, api.Options{
 			CORSAllowedOrigins: o.CORSAllowedOrigins,
 			WsPingPeriod:       60 * time.Second,
-			Restricted:         o.Restricted,
 		}, extraOpts, chainID, erc20Service)
 
-		apiService.MountAPI()
 		apiService.MountDebug()
+		apiService.MountAPI()
 
 		apiService.SetSwarmAddress(&swarmAddress)
 		apiService.SetRedistributionAgent(agent)
-	}
-
-	if o.DebugAPIAddr != "" {
-		// register metrics from components
-		debugService.MustRegisterMetrics(p2ps.Metrics()...)
-		debugService.MustRegisterMetrics(pingPong.Metrics()...)
-		debugService.MustRegisterMetrics(acc.Metrics()...)
-		debugService.MustRegisterMetrics(localStore.Metrics()...)
-		debugService.MustRegisterMetrics(kad.Metrics()...)
-		debugService.MustRegisterMetrics(saludService.Metrics()...)
-		debugService.MustRegisterMetrics(stateStoreMetrics.Metrics()...)
-
-		if pullerService != nil {
-			debugService.MustRegisterMetrics(pullerService.Metrics()...)
-		}
-
-		if agent != nil {
-			debugService.MustRegisterMetrics(agent.Metrics()...)
-		}
-
-		debugService.MustRegisterMetrics(pushSyncProtocol.Metrics()...)
-		debugService.MustRegisterMetrics(pusherService.Metrics()...)
-		debugService.MustRegisterMetrics(pullSyncProtocol.Metrics()...)
-		debugService.MustRegisterMetrics(retrieval.Metrics()...)
-		debugService.MustRegisterMetrics(lightNodes.Metrics()...)
-		debugService.MustRegisterMetrics(hive.Metrics()...)
-
-		if bs, ok := batchStore.(metrics.Collector); ok {
-			debugService.MustRegisterMetrics(bs.Metrics()...)
-		}
-		if ls, ok := eventListener.(metrics.Collector); ok {
-			debugService.MustRegisterMetrics(ls.Metrics()...)
-		}
-		if pssServiceMetrics, ok := pssService.(metrics.Collector); ok {
-			debugService.MustRegisterMetrics(pssServiceMetrics.Metrics()...)
-		}
-		if swapBackendMetrics, ok := chainBackend.(metrics.Collector); ok {
-			debugService.MustRegisterMetrics(swapBackendMetrics.Metrics()...)
-		}
-		if apiService != nil {
-			debugService.MustRegisterMetrics(apiService.Metrics()...)
-		}
-		if l, ok := logger.(metrics.Collector); ok {
-			debugService.MustRegisterMetrics(l.Metrics()...)
-		}
-		debugService.MustRegisterMetrics(pseudosettleService.Metrics()...)
-		if swapService != nil {
-			debugService.MustRegisterMetrics(swapService.Metrics()...)
-		}
-
-		debugService.Configure(signer, authenticator, tracer, api.Options{
-			CORSAllowedOrigins: o.CORSAllowedOrigins,
-			WsPingPeriod:       60 * time.Second,
-			Restricted:         o.Restricted,
-		}, extraOpts, chainID, erc20Service)
-
-		debugService.SetP2P(p2ps)
-		debugService.SetSwarmAddress(&swarmAddress)
-		debugService.MountDebug()
-		debugService.SetRedistributionAgent(agent)
 	}
 
 	if err := kad.Start(ctx); err != nil {
@@ -1291,15 +1158,6 @@ func (b *Bee) Shutdown() error {
 			return nil
 		})
 	}
-	if b.debugAPIServer != nil {
-		eg.Go(func() error {
-			if err := b.debugAPIServer.Shutdown(ctx); err != nil {
-				return fmt.Errorf("debug api server: %w", err)
-			}
-			return nil
-		})
-	}
-
 	if err := eg.Wait(); err != nil {
 		mErr = multierror.Append(mErr, err)
 	}
