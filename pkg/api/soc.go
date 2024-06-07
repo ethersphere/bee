@@ -200,16 +200,23 @@ func (s *Service) socGetHandler(w http.ResponseWriter, r *http.Request) {
 
 	address, err := soc.CreateAddress(paths.ID, paths.Owner)
 	if err != nil {
+		logger.Error(err, "soc address cannot be created")
 		jsonhttp.BadRequest(w, "soc address cannot be created")
+		return
 	}
 
-	sch, err := s.storer.ChunkStore().Get(r.Context(), address)
+	getter := s.storer.Download(true)
+	sch, err := getter.Get(r.Context(), address)
 	if err != nil {
-		jsonhttp.NotFound(w, "requested chunk cannot be retrievable")
+		logger.Error(err, "soc retrieval has been failed")
+		jsonhttp.NotFound(w, "requested chunk cannot be retrieved")
+		return
 	}
 	socCh, err := soc.FromChunk(sch)
 	if err != nil {
+		logger.Error(err, "chunk is not a signle owner chunk")
 		jsonhttp.InternalServerError(w, "chunk is not a single owner chunk")
+		return
 	}
 
 	sig := socCh.Signature()
