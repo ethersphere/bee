@@ -167,6 +167,7 @@ type Options struct {
 	TargetNeighborhood            string
 	NeighborhoodSuggester         string
 	WhitelistedWithdrawalAddress  []string
+	TrxDebugMode                  bool
 }
 
 const (

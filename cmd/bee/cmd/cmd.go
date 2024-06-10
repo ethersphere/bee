@@ -82,6 +82,7 @@ const (
 	optionNameTargetNeighborhood           = "target-neighborhood"
 	optionNameNeighborhoodSuggester        = "neighborhood-suggester"
 	optionNameWhitelistedWithdrawalAddress = "withdrawal-addresses-whitelist"
+	optionNameTransactionDebugMode         = "transaction-debug-mode"
 )
 
 // nolint:gochecknoinits
@@ -292,6 +293,7 @@ func (c *command) setAllFlags(cmd *cobra.Command) {
 	cmd.Flags().String(optionNameTargetNeighborhood, "", "neighborhood to target in binary format (ex: 111111001) for mining the initial overlay")
 	cmd.Flags().String(optionNameNeighborhoodSuggester, "https://api.swarmscan.io/v1/network/neighborhoods/suggestion", "suggester for target neighborhood")
 	cmd.Flags().StringSlice(optionNameWhitelistedWithdrawalAddress, []string{}, "withdrawal target addresses")
+	cmd.Flags().Bool(optionNameTransactionDebugMode, false, "skips the gas estimate step for contract transactions")
 }
 
 func newLogger(cmd *cobra.Command, verbosity string) (log.Logger, error) {
