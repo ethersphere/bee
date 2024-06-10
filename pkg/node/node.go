@@ -248,16 +248,6 @@ func NewBee(
 	if err != nil {
 		return nil, err
 	}
-	b.stateStoreCloser = stateStore
-
-	// Check if the batchstore exists. If not, we can assume it's missing
-	// due to a migration or it's a fresh install.
-	batchStoreExists, err := batchStoreExists(stateStore)
-	if err != nil {
-		return nil, fmt.Errorf("batchstore: exists: %w", err)
-	}
-
-	addressbook := addressbook.New(stateStore)
 
 	pubKey, err := signer.PublicKey()
 	if err != nil {
@@ -290,8 +280,15 @@ func NewBee(
 		}
 
 		if swarm.Proximity(swarmAddress.Bytes(), neighborhood.Bytes()) < uint8(len(targetNeighborhood)) {
+			// mine the overlay
+			logger.Info("mining an overlay address for the fresh node to target the selected neighborhood", "target", targetNeighborhood)
+			newSwarmAddress, newNonce, err := nbhdutil.MineOverlay(ctx, *pubKey, networkID, targetNeighborhood)
+			if err != nil {
+				return nil, fmt.Errorf("mine overlay address: %w", err)
+			}
+
 			if nonceExists {
-				logger.Info("Override nonce %d and clean state for neighborhood %s", nonce, targetNeighborhood)
+				logger.Info("Override nonce %d to %d and clean state for neighborhood %s", nonce, newNonce, targetNeighborhood)
 				logger.Warning("you have another 10 seconds to change your mind and kill this process with CTRL-C...")
 				time.Sleep(10 * time.Second)
 
@@ -302,18 +299,19 @@ func NewBee(
 				)
 				dirsToNuke := []string{localstore, kademlia, statestore}
 				for _, dir := range dirsToNuke {
-					err = ioutil.RemoveContent(filepath.Join(o.DataDir, dir))
+					err := ioutil.RemoveContent(filepath.Join(o.DataDir, dir))
 					if err != nil {
 						return nil, fmt.Errorf("delete %s: %w", dir, err)
 					}
 				}
 			}
 
-			// mine the overlay
-			logger.Info("mining an overlay address for the fresh node to target the selected neighborhood", "target", targetNeighborhood)
-			swarmAddress, nonce, err = nbhdutil.MineOverlay(ctx, *pubKey, networkID, targetNeighborhood)
+			// reinit states variables
+			swarmAddress = newSwarmAddress
+			nonce = newNonce
+			stateStore, stateStoreMetrics, err = InitStateStore(logger, o.DataDir, o.StatestoreCacheCapacity)
 			if err != nil {
-				return nil, fmt.Errorf("mine overlay address: %w", err)
+				return nil, err
 			}
 
 			err = setOverlay(stateStore, swarmAddress, nonce)
@@ -322,6 +320,16 @@ func NewBee(
 			}
 		}
 	}
+
+	b.stateStoreCloser = stateStore
+	// Check if the batchstore exists. If not, we can assume it's missing
+	// due to a migration or it's a fresh install.
+	batchStoreExists, err := batchStoreExists(stateStore)
+	if err != nil {
+		return nil, fmt.Errorf("batchstore: exists: %w", err)
+	}
+
+	addressbook := addressbook.New(stateStore)
 
 	logger.Info("using overlay address", "address", swarmAddress)
 
