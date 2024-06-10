@@ -31,6 +31,135 @@ servers:
         description: Service port provided in bee node config
 
 paths:
+  "/grantee":
+    post:
+      summary: "Create grantee list"
+      tags:
+        - ACT
+      parameters:
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
+          name: swarm-postage-batch-id
+          required: true
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
+          name: swarm-tag
+          required: false
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
+          name: swarm-pin
+          required: false
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmDeferredUpload"
+          name: swarm-deferred-upload
+          required: false
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
+          name: swarm-act-history-address
+          required: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "SwarmCommon.yaml#/components/schemas/ActGranteesCreateRequest"
+      responses:
+        "201":
+          description: Ok
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/ActGranteesOperationResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+
+  "/grantee/{reference}":
+    get:
+      summary: "Get grantee list"
+      tags:
+        - ACT
+      parameters:
+        - in: path
+          name: reference
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmEncryptedReference"
+          required: true
+          description: Grantee list reference
+      responses:
+        "200":
+          description: Ok
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "SwarmCommon.yaml#/components/schemas/PublicKey"
+        "404":
+          $ref: "SwarmCommon.yaml#/components/responses/404"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+    patch:
+      summary: "Update grantee list"
+      description: "Add or remove grantees from an existing grantee list"
+      tags:
+        - ACT
+      parameters:
+        - in: path
+          name: reference
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/SwarmEncryptedReference"
+          required: true
+          description: Grantee list reference
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmActHistoryAddress"
+          name: swarm-act-history-address
+          required: true
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
+          name: swarm-postage-batch-id
+          required: true
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmTagParameter"
+          name: swarm-tag
+          required: false
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
+          name: swarm-pin
+          required: false
+        - in: header
+          schema:
+            $ref: "SwarmCommon.yaml#/components/parameters/SwarmDeferredUpload"
+          name: swarm-deferred-upload
+          required: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "SwarmCommon.yaml#/components/schemas/ActGranteesPatchRequest"
+      responses:
+        "200":
+          description: Ok
+          content:
+            application/json:
+              schema:
+                $ref: "SwarmCommon.yaml#/components/schemas/ActGranteesOperationResponse"
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+
   "/bytes":
     post:
       summary: "Upload data"
