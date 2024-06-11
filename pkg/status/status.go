@@ -124,7 +124,7 @@ func (s *Service) LocalSnapshot() (*Snapshot, error) {
 		PullsyncRate:            syncRate,
 		StorageRadius:           uint32(storageRadius),
 		ConnectedPeers:          connectedPeers,
-		NeighborhoodSize:        neighborhoodSize,
+		NeighborhoodSize:        neighborhoodSize + 1, // include self
 		BatchCommitment:         commitment,
 		IsReachable:             s.topologyDriver.IsReachable(),
 	}, nil
