@@ -201,7 +201,9 @@ func (s *StateStorerAdapter) Nuke() error {
 func (s *StateStorerAdapter) ClearForHopping() error {
 	var (
 		prefixesToPreserve = []string{
-			"swap_chequebook",
+			"swap_chequebook", // to not redeploy chequebook contract
+			"batchstore",      // avoid unnecessary syncing
+			"transaction",     // to not resync blockchain transactions
 		}
 		keys []string
 		err  error
