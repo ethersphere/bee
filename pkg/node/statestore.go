@@ -21,7 +21,7 @@ import (
 // InitStateStore will initialize the stateStore with the given path to the
 // data directory. When given an empty directory path, the function will instead
 // initialize an in-memory state store that will not be persisted.
-func InitStateStore(logger log.Logger, dataDir string, cacheCapacity uint64) (storage.StateStorer, metrics.Collector, error) {
+func InitStateStore(logger log.Logger, dataDir string, cacheCapacity uint64) (storage.StateStorerManager, metrics.Collector, error) {
 	if dataDir == "" {
 		logger.Warning("using in-mem state store, no node state will be persisted")
 	} else {
