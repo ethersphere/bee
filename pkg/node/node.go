@@ -295,25 +295,20 @@ func NewBee(
 				const (
 					localstore = "localstore"
 					kademlia   = "kademlia-metrics"
-					statestore = "statestore"
 				)
-				dirsToNuke := []string{localstore, kademlia, statestore}
+				dirsToNuke := []string{localstore, kademlia}
 				for _, dir := range dirsToNuke {
 					err := ioutil.RemoveContent(filepath.Join(o.DataDir, dir))
 					if err != nil {
 						return nil, fmt.Errorf("delete %s: %w", dir, err)
 					}
 				}
+
+				stateStore.ClearForHopping()
 			}
 
-			// reinit states variables
 			swarmAddress = newSwarmAddress
 			nonce = newNonce
-			stateStore, stateStoreMetrics, err = InitStateStore(logger, o.DataDir, o.StatestoreCacheCapacity)
-			if err != nil {
-				return nil, err
-			}
-
 			err = setOverlay(stateStore, swarmAddress, nonce)
 			if err != nil {
 				return nil, fmt.Errorf("statestore: save new overlay: %w", err)
