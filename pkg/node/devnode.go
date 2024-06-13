@@ -425,7 +425,7 @@ func (b *DevBee) Shutdown() error {
 	tryClose(b.pssCloser, "pss")
 	tryClose(b.tracerCloser, "tracer")
 	tryClose(b.stateStoreCloser, "statestore")
-	tryClose(b.localstoreCloser, "localstore")
+	tryClose(b.localstoreCloser, ioutil.DataPathLocalstore)
 
 	return mErr
 }

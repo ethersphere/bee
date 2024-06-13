@@ -292,11 +292,7 @@ func NewBee(
 				logger.Warning("you have another 10 seconds to change your mind and kill this process with CTRL-C...")
 				time.Sleep(10 * time.Second)
 
-				const (
-					localstore = "localstore"
-					kademlia   = "kademlia-metrics"
-				)
-				dirsToNuke := []string{localstore, kademlia}
+				dirsToNuke := []string{ioutil.DataPathLocalstore, ioutil.DataPathKademlia}
 				for _, dir := range dirsToNuke {
 					err := ioutil.RemoveContent(filepath.Join(o.DataDir, dir))
 					if err != nil {
@@ -698,7 +694,7 @@ func NewBee(
 
 	if o.DataDir != "" {
 		logger.Info("using datadir", "path", o.DataDir)
-		path = filepath.Join(o.DataDir, "localstore")
+		path = filepath.Join(o.DataDir, ioutil.DataPathLocalstore)
 	}
 
 	lo := &storer.Options{

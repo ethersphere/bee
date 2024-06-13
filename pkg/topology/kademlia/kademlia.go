@@ -26,6 +26,7 @@ import (
 	im "github.com/ethersphere/bee/v2/pkg/topology/kademlia/internal/metrics"
 	"github.com/ethersphere/bee/v2/pkg/topology/kademlia/internal/waitnext"
 	"github.com/ethersphere/bee/v2/pkg/topology/pslice"
+	"github.com/ethersphere/bee/v2/pkg/util/ioutil"
 	ma "github.com/multiformats/go-multiaddr"
 	"golang.org/x/sync/errgroup"
 )
@@ -209,7 +210,7 @@ func New(
 	if o.DataDir == "" {
 		logger.Warning("using in-mem store for kademlia metrics, no state will be persisted")
 	} else {
-		o.DataDir = filepath.Join(o.DataDir, "kademlia-metrics")
+		o.DataDir = filepath.Join(o.DataDir, ioutil.DataPathKademlia)
 	}
 	sdb, err := shed.NewDB(o.DataDir, nil)
 	if err != nil {
