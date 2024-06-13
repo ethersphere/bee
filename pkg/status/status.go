@@ -22,7 +22,7 @@ const loggerName = "status"
 
 const (
 	protocolName    = "status"
-	protocolVersion = "1.1.0"
+	protocolVersion = "1.1.1"
 	streamName      = "status"
 )
 
