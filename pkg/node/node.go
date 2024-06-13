@@ -304,7 +304,9 @@ func NewBee(
 					}
 				}
 
-				stateStore.ClearForHopping()
+				if err := stateStore.ClearForHopping(); err != nil {
+					return nil, fmt.Errorf("clearing stateStore %w", err)
+				}
 			}
 
 			swarmAddress = newSwarmAddress
