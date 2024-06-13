@@ -10,6 +10,12 @@ import (
 	"path/filepath"
 )
 
+// DB folders paths from bee datadir
+const (
+	DataPathLocalstore = "localstore"
+	DataPathKademlia   = "kademlia-metrics"
+)
+
 // The WriterFunc type is an adapter to allow the use of
 // ordinary functions as io.Writer Write method. If f is
 // a function with the appropriate signature, WriterFunc(f)
