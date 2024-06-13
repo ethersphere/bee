@@ -25,6 +25,8 @@ var (
 	ErrUnexpectedType = errors.New("unexpected type")
 	// ErrInvalidTimestamp indicates that the timestamp given to Lookup is invalid.
 	ErrInvalidTimestamp = errors.New("invalid timestamp")
+	// ErrNotFound is returned when an Entry is not found in the history.
+	ErrNotFound = errors.New("access control: not found")
 )
 
 // History represents the interface for managing access control history.
@@ -39,20 +41,26 @@ type History interface {
 
 var _ History = (*HistoryStruct)(nil)
 
+// manifestInterface extends the `manifest.Interface` interface and adds a `Root` method.
+type manifestInterface interface {
+	manifest.Interface
+	Root() *mantaray.Node
+}
+
 // HistoryStruct represents an access control histroy with a mantaray-based manifest.
 type HistoryStruct struct {
-	manifest *manifest.MantarayManifest
+	manifest manifestInterface
 	ls       file.LoadSaver
 }
 
 // NewHistory creates a new history with a mantaray-based manifest.
 func NewHistory(ls file.LoadSaver) (*HistoryStruct, error) {
-	m, err := manifest.NewDefaultManifest(ls, false)
+	m, err := manifest.NewMantarayManifest(ls, false)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create default manifest: %w", err)
+		return nil, fmt.Errorf("failed to create mantaray manifest: %w", err)
 	}
 
-	mm, ok := m.(*manifest.MantarayManifest)
+	mm, ok := m.(manifestInterface)
 	if !ok {
 		return nil, fmt.Errorf("%w: expected MantarayManifest, got %T", ErrUnexpectedType, m)
 	}
@@ -62,12 +70,12 @@ func NewHistory(ls file.LoadSaver) (*HistoryStruct, error) {
 
 // NewHistoryReference loads a history with a mantaray-based manifest.
 func NewHistoryReference(ls file.LoadSaver, ref swarm.Address) (*HistoryStruct, error) {
-	m, err := manifest.NewDefaultManifestReference(ref, ls)
+	m, err := manifest.NewMantarayManifestReference(ref, ls)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create default manifest reference: %w", err)
+		return nil, fmt.Errorf("failed to create mantaray manifest reference: %w", err)
 	}
 
-	mm, ok := m.(*manifest.MantarayManifest)
+	mm, ok := m.(manifestInterface)
 	if !ok {
 		return nil, fmt.Errorf("%w: expected MantarayManifest, got %T", ErrUnexpectedType, m)
 	}
@@ -105,14 +113,19 @@ func (h *HistoryStruct) Lookup(ctx context.Context, timestamp int64) (manifest.E
 	reversedTimestamp := math.MaxInt64 - timestamp
 	node, err := h.lookupNode(ctx, reversedTimestamp)
 	if err != nil {
-		return manifest.NewEntry(swarm.ZeroAddress, map[string]string{}), err
+		switch {
+		case errors.Is(err, manifest.ErrNotFound):
+			return manifest.NewEntry(swarm.ZeroAddress, map[string]string{}), ErrNotFound
+		default:
+			return manifest.NewEntry(swarm.ZeroAddress, map[string]string{}), err
+		}
 	}
 
 	if node != nil {
 		return manifest.NewEntry(swarm.NewAddress(node.Entry()), node.Metadata()), nil
 	}
 
-	return manifest.NewEntry(swarm.ZeroAddress, map[string]string{}), nil
+	return manifest.NewEntry(swarm.ZeroAddress, map[string]string{}), ErrNotFound
 }
 
 func (h *HistoryStruct) lookupNode(ctx context.Context, searchedTimestamp int64) (*mantaray.Node, error) {

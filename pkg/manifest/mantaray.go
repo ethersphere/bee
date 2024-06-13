@@ -20,7 +20,7 @@ const (
 	ManifestMantarayContentType = "application/bzz-manifest-mantaray+octet-stream"
 )
 
-type MantarayManifest struct {
+type mantarayManifest struct {
 	trie *mantaray.Node
 
 	ls file.LoadSaver
@@ -31,7 +31,7 @@ func NewMantarayManifest(
 	ls file.LoadSaver,
 	encrypted bool,
 ) (Interface, error) {
-	mm := &MantarayManifest{
+	mm := &mantarayManifest{
 		trie: mantaray.New(),
 		ls:   ls,
 	}
@@ -48,28 +48,28 @@ func NewMantarayManifestReference(
 	reference swarm.Address,
 	ls file.LoadSaver,
 ) (Interface, error) {
-	return &MantarayManifest{
+	return &mantarayManifest{
 		trie: mantaray.NewNodeRef(reference.Bytes()),
 		ls:   ls,
 	}, nil
 }
 
-func (m *MantarayManifest) Root() *mantaray.Node {
+func (m *mantarayManifest) Root() *mantaray.Node {
 	return m.trie
 }
 
-func (m *MantarayManifest) Type() string {
+func (m *mantarayManifest) Type() string {
 	return ManifestMantarayContentType
 }
 
-func (m *MantarayManifest) Add(ctx context.Context, path string, entry Entry) error {
+func (m *mantarayManifest) Add(ctx context.Context, path string, entry Entry) error {
 	p := []byte(path)
 	e := entry.Reference().Bytes()
 
 	return m.trie.Add(ctx, p, e, entry.Metadata(), m.ls)
 }
 
-func (m *MantarayManifest) Remove(ctx context.Context, path string) error {
+func (m *mantarayManifest) Remove(ctx context.Context, path string) error {
 	p := []byte(path)
 
 	err := m.trie.Remove(ctx, p, m.ls)
@@ -83,7 +83,7 @@ func (m *MantarayManifest) Remove(ctx context.Context, path string) error {
 	return nil
 }
 
-func (m *MantarayManifest) Lookup(ctx context.Context, path string) (Entry, error) {
+func (m *mantarayManifest) Lookup(ctx context.Context, path string) (Entry, error) {
 	p := []byte(path)
 
 	node, err := m.trie.LookupNode(ctx, p, m.ls)
@@ -104,13 +104,13 @@ func (m *MantarayManifest) Lookup(ctx context.Context, path string) (Entry, erro
 	return entry, nil
 }
 
-func (m *MantarayManifest) HasPrefix(ctx context.Context, prefix string) (bool, error) {
+func (m *mantarayManifest) HasPrefix(ctx context.Context, prefix string) (bool, error) {
 	p := []byte(prefix)
 
 	return m.trie.HasPrefix(ctx, p, m.ls)
 }
 
-func (m *MantarayManifest) Store(ctx context.Context, storeSizeFn ...StoreSizeFunc) (swarm.Address, error) {
+func (m *mantarayManifest) Store(ctx context.Context, storeSizeFn ...StoreSizeFunc) (swarm.Address, error) {
 	var ls mantaray.LoadSaver
 	if len(storeSizeFn) > 0 {
 		ls = &mantarayLoadSaver{
@@ -131,7 +131,7 @@ func (m *MantarayManifest) Store(ctx context.Context, storeSizeFn ...StoreSizeFu
 	return address, nil
 }
 
-func (m *MantarayManifest) IterateAddresses(ctx context.Context, fn swarm.AddressIterFunc) error {
+func (m *mantarayManifest) IterateAddresses(ctx context.Context, fn swarm.AddressIterFunc) error {
 	reference := swarm.NewAddress(m.trie.Reference())
 
 	if swarm.ZeroAddress.Equal(reference) {

@@ -22,6 +22,8 @@ import (
 var (
 	// ErrNothingToSave indicates that no new key-value pair was added to the store.
 	ErrNothingToSave = errors.New("nothing to save")
+	// ErrNotFound is returned when an Entry is not found in the storage.
+	ErrNotFound = errors.New("kvs entry not found")
 )
 
 // KeyValueStore represents a key-value store.
@@ -45,7 +47,12 @@ var _ KeyValueStore = (*keyValueStore)(nil)
 func (s *keyValueStore) Get(ctx context.Context, key []byte) ([]byte, error) {
 	entry, err := s.manifest.Lookup(ctx, hex.EncodeToString(key))
 	if err != nil {
-		return nil, fmt.Errorf("failed to get value from manifest %w", err)
+		switch {
+		case errors.Is(err, manifest.ErrNotFound):
+			return nil, ErrNotFound
+		default:
+			return nil, fmt.Errorf("failed to get value from manifest %w", err)
+		}
 	}
 	ref := entry.Reference()
 	return ref.Bytes(), nil

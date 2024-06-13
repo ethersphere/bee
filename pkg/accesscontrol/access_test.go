@@ -10,6 +10,7 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/hex"
+	"fmt"
 	"testing"
 
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
@@ -18,6 +19,20 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/stretchr/testify/assert"
 )
+
+func assertNoError(t *testing.T, msg string, err error) {
+	t.Helper()
+	if err != nil {
+		assert.FailNowf(t, err.Error(), msg)
+	}
+}
+
+func assertError(t *testing.T, msg string, err error) {
+	t.Helper()
+	if err == nil {
+		assert.FailNowf(t, fmt.Sprintf("Expected %s error, got nil", msg), "")
+	}
+}
 
 // Generates a new test environment with a fix private key.
 func setupAccessLogic() accesscontrol.ActLogic {
@@ -55,91 +70,67 @@ func getPrivKey(keyNumber int) *ecdsa.PrivateKey {
 	return privKey
 }
 
-func TestDecryptRef_Success(t *testing.T) {
+func TestDecryptRef_Publisher(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	id1 := getPrivKey(1)
 	s := kvsmock.New()
 	al := setupAccessLogic()
 	err := al.AddGrantee(ctx, s, &id1.PublicKey, &id1.PublicKey)
-	if err != nil {
-		t.Fatalf("AddGrantee: expected no error, got %v", err)
-	}
+	assertNoError(t, "AddGrantee", err)
 
-	byteRef, _ := hex.DecodeString("39a5ea87b141fe44aa609c3327ecd896c0e2122897f5f4bbacf74db1033c5559")
+	byteRef, err := hex.DecodeString("39a5ea87b141fe44aa609c3327ecd896c0e2122897f5f4bbacf74db1033c5559")
+	assertNoError(t, "DecodeString", err)
 	expectedRef := swarm.NewAddress(byteRef)
 	encryptedRef, err := al.EncryptRef(ctx, s, &id1.PublicKey, expectedRef)
-	if err != nil {
-		t.Fatalf("There was an error while calling EncryptRef: %v", err)
-	}
+	assertNoError(t, "al encryptref", err)
 
-	actualRef, err := al.DecryptRef(ctx, s, encryptedRef, &id1.PublicKey)
-	if err != nil {
-		t.Fatalf("There was an error while calling Get: %v", err)
-	}
+	t.Run("decrypt success", func(t *testing.T) {
+		actualRef, err := al.DecryptRef(ctx, s, encryptedRef, &id1.PublicKey)
+		assertNoError(t, "decrypt ref", err)
 
-	if !expectedRef.Equal(actualRef) {
-		t.Fatalf("DecryptRef gave back wrong Swarm reference! Expedted: %v, actual: %v", expectedRef, actualRef)
-	}
+		if !expectedRef.Equal(actualRef) {
+			assert.FailNowf(t, fmt.Sprintf("DecryptRef gave back wrong Swarm reference! Expedted: %v, actual: %v", expectedRef, actualRef), "")
+		}
+	})
+	t.Run("decrypt with nil publisher", func(t *testing.T) {
+		_, err = al.DecryptRef(ctx, s, encryptedRef, nil)
+		assertError(t, "al decryptref", err)
+	})
 }
 
 func TestDecryptRefWithGrantee_Success(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
-	id0, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	id0, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	assertNoError(t, "GenerateKey", err)
 	diffieHellman := accesscontrol.NewDefaultSession(id0)
 	al := accesscontrol.NewLogic(diffieHellman)
 
 	s := kvsmock.New()
-	err := al.AddGrantee(ctx, s, &id0.PublicKey, &id0.PublicKey)
-	if err != nil {
-		t.Fatalf("AddGrantee: expected no error, got %v", err)
-	}
+	err = al.AddGrantee(ctx, s, &id0.PublicKey, &id0.PublicKey)
+	assertNoError(t, "AddGrantee publisher", err)
 
-	id1, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	id1, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	assertNoError(t, "GenerateKey", err)
 	err = al.AddGrantee(ctx, s, &id0.PublicKey, &id1.PublicKey)
-	if err != nil {
-		t.Fatalf("AddNewGrantee: expected no error, got %v", err)
-	}
+	assertNoError(t, "AddGrantee id1", err)
 
-	byteRef, _ := hex.DecodeString("39a5ea87b141fe44aa609c3327ecd896c0e2122897f5f4bbacf74db1033c5559")
+	byteRef, err := hex.DecodeString("39a5ea87b141fe44aa609c3327ecd896c0e2122897f5f4bbacf74db1033c5559")
+	assertNoError(t, "DecodeString", err)
 
 	expectedRef := swarm.NewAddress(byteRef)
 
 	encryptedRef, err := al.EncryptRef(ctx, s, &id0.PublicKey, expectedRef)
-	if err != nil {
-		t.Fatalf("There was an error while calling EncryptRef: %v", err)
-	}
+	assertNoError(t, "al encryptref", err)
 
 	diffieHellman2 := accesscontrol.NewDefaultSession(id1)
 	granteeAccessLogic := accesscontrol.NewLogic(diffieHellman2)
 	actualRef, err := granteeAccessLogic.DecryptRef(ctx, s, encryptedRef, &id0.PublicKey)
-	if err != nil {
-		t.Fatalf("There was an error while calling Get: %v", err)
-	}
+	assertNoError(t, "grantee al decryptref", err)
 
 	if !expectedRef.Equal(actualRef) {
-		t.Fatalf("DecryptRef gave back wrong Swarm reference! Expedted: %v, actual: %v", expectedRef, actualRef)
-	}
-}
-
-func TestDecryptRef_Error(t *testing.T) {
-	t.Parallel()
-	id0 := getPrivKey(0)
-
-	ctx := context.Background()
-	s := kvsmock.New()
-	al := setupAccessLogic()
-	err := al.AddGrantee(ctx, s, &id0.PublicKey, &id0.PublicKey)
-	assert.NoError(t, err)
-
-	expectedRef := "39a5ea87b141fe44aa609c3327ecd896c0e2122897f5f4bbacf74db1033c5559"
-
-	encryptedRef, _ := al.EncryptRef(ctx, s, &id0.PublicKey, swarm.NewAddress([]byte(expectedRef)))
-
-	r, err := al.DecryptRef(ctx, s, encryptedRef, nil)
-	if err == nil {
-		t.Fatalf("Get should return error but got reference: %v", r)
+		assert.FailNowf(t, fmt.Sprintf("DecryptRef gave back wrong Swarm reference! Expedted: %v, actual: %v", expectedRef, actualRef), "")
 	}
 }
 
@@ -152,20 +143,20 @@ func TestAddPublisher(t *testing.T) {
 
 	al := setupAccessLogic()
 	err := al.AddGrantee(ctx, s, &id0.PublicKey, &id0.PublicKey)
-	assert.NoError(t, err)
+	assertNoError(t, "AddGrantee", err)
 
 	decodedSavedLookupKey, err := hex.DecodeString(savedLookupKey)
-	assert.NoError(t, err)
+	assertNoError(t, "decode LookupKey", err)
 
 	encryptedAccessKey, err := s.Get(ctx, decodedSavedLookupKey)
-	assert.NoError(t, err)
+	assertNoError(t, "kvs Get accesskey", err)
 
 	decodedEncryptedAccessKey := hex.EncodeToString(encryptedAccessKey)
 
 	// A random value is returned, so it is only possible to check the length of the returned value
 	// We know the lookup key because the generated private key is fixed
 	if len(decodedEncryptedAccessKey) != 64 {
-		t.Fatalf("AddGrantee: expected encrypted access key length 64, got %d", len(decodedEncryptedAccessKey))
+		assert.FailNowf(t, fmt.Sprintf("AddGrantee: expected encrypted access key length 64, got %d", len(decodedEncryptedAccessKey)), "")
 	}
 }
 
@@ -183,38 +174,41 @@ func TestAddNewGranteeToContent(t *testing.T) {
 	s := kvsmock.New()
 	al := setupAccessLogic()
 	err := al.AddGrantee(ctx, s, &id0.PublicKey, &id0.PublicKey)
-	assert.NoError(t, err)
+	assertNoError(t, "AddGrantee id0", err)
 
 	err = al.AddGrantee(ctx, s, &id0.PublicKey, &id1.PublicKey)
-	assert.NoError(t, err)
+	assertNoError(t, "AddGrantee id1", err)
 
 	err = al.AddGrantee(ctx, s, &id0.PublicKey, &id2.PublicKey)
-	assert.NoError(t, err)
+	assertNoError(t, "AddGrantee id2", err)
 
 	lookupKeyAsByte, err := hex.DecodeString(publisherLookupKey)
-	assert.NoError(t, err)
+	assertNoError(t, "publisher lookupkey DecodeString", err)
 
-	result, _ := s.Get(ctx, lookupKeyAsByte)
+	result, err := s.Get(ctx, lookupKeyAsByte)
+	assertNoError(t, "1st kvs get", err)
 	hexEncodedEncryptedAK := hex.EncodeToString(result)
 	if len(hexEncodedEncryptedAK) != 64 {
-		t.Fatalf("AddNewGrantee: expected encrypted access key length 64, got %d", len(hexEncodedEncryptedAK))
+		assert.FailNowf(t, fmt.Sprintf("AddNewGrantee: expected encrypted access key length 64, got %d", len(hexEncodedEncryptedAK)), "")
 	}
 
 	lookupKeyAsByte, err = hex.DecodeString(firstAddedGranteeLookupKey)
-	assert.NoError(t, err)
+	assertNoError(t, "1st lookupkey DecodeString", err)
 
-	result, _ = s.Get(ctx, lookupKeyAsByte)
+	result, err = s.Get(ctx, lookupKeyAsByte)
+	assertNoError(t, "2nd kvs get", err)
 	hexEncodedEncryptedAK = hex.EncodeToString(result)
 	if len(hexEncodedEncryptedAK) != 64 {
-		t.Fatalf("AddNewGrantee: expected encrypted access key length 64, got %d", len(hexEncodedEncryptedAK))
+		assert.FailNowf(t, fmt.Sprintf("AddNewGrantee: expected encrypted access key length 64, got %d", len(hexEncodedEncryptedAK)), "")
 	}
 
 	lookupKeyAsByte, err = hex.DecodeString(secondAddedGranteeLookupKey)
-	assert.NoError(t, err)
+	assertNoError(t, "2nd lookupkey DecodeString", err)
 
-	result, _ = s.Get(ctx, lookupKeyAsByte)
+	result, err = s.Get(ctx, lookupKeyAsByte)
+	assertNoError(t, "3rd kvs get", err)
 	hexEncodedEncryptedAK = hex.EncodeToString(result)
 	if len(hexEncodedEncryptedAK) != 64 {
-		t.Fatalf("AddNewGrantee: expected encrypted access key length 64, got %d", len(hexEncodedEncryptedAK))
+		assert.FailNowf(t, fmt.Sprintf("AddNewGrantee: expected encrypted access key length 64, got %d", len(hexEncodedEncryptedAK)), "")
 	}
 }

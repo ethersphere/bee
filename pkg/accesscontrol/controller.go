@@ -29,7 +29,7 @@ type Grantees interface {
 	Get(ctx context.Context, ls file.LoadSaver, publisher *ecdsa.PublicKey, encryptedglRef swarm.Address) ([]*ecdsa.PublicKey, error)
 }
 
-// Controller the interface for managing access control on Swarm.
+// Controller represents an interface for managing access control on Swarm.
 // It provides methods for handling downloads, uploads and updates for grantee lists and references.
 type Controller interface {
 	Grantees
@@ -265,7 +265,7 @@ func (c *ControllerStruct) encryptRefForPublisher(publisherPubKey *ecdsa.PublicK
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
-	refCipher := encryption.New(keys[0], 0, uint32(0), hashFunc)
+	refCipher := encryption.New(keys[0], 0, 0, hashFunc)
 	encryptedRef, err := refCipher.Encrypt(ref.Bytes())
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("failed to encrypt reference: %w", err)
@@ -279,7 +279,7 @@ func (c *ControllerStruct) decryptRefForPublisher(publisherPubKey *ecdsa.PublicK
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
-	refCipher := encryption.New(keys[0], 0, uint32(0), hashFunc)
+	refCipher := encryption.New(keys[0], 0, 0, hashFunc)
 	ref, err := refCipher.Decrypt(encryptedRef.Bytes())
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("failed to decrypt reference: %w", err)

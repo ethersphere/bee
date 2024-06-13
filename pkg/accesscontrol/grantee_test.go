@@ -55,22 +55,21 @@ func TestGranteeAddGet(t *testing.T) {
 	t.Parallel()
 	gl := accesscontrol.NewGranteeList(createLs())
 	keys, err := generateKeyListFixture()
-	if err != nil {
-		t.Errorf("key generation error: %v", err)
-	}
+	assertNoError(t, "key generation", err)
 
-	t.Run("Get empty grantee list should return error", func(t *testing.T) {
+	t.Run("Get empty grantee list should return", func(t *testing.T) {
 		val := gl.Get()
 		assert.Empty(t, val)
 	})
 
 	t.Run("Get should return value equal to put value", func(t *testing.T) {
 		var (
-			keys2, _ = generateKeyListFixture()
-			addList1 = []*ecdsa.PublicKey{keys[0]}
-			addList2 = []*ecdsa.PublicKey{keys[1], keys[2]}
-			addList3 = keys2
+			keys2, err = generateKeyListFixture()
+			addList1   = []*ecdsa.PublicKey{keys[0]}
+			addList2   = []*ecdsa.PublicKey{keys[1], keys[2]}
+			addList3   = keys2
 		)
+		assertNoError(t, "key generation", err)
 		testCases := []struct {
 			name string
 			list []*ecdsa.PublicKey
@@ -102,9 +101,9 @@ func TestGranteeAddGet(t *testing.T) {
 			t.Run(tc.name, func(t *testing.T) {
 				err := gl.Add(tc.list)
 				if tc.list == nil {
-					assert.Error(t, err)
+					assertError(t, "granteelist add", err)
 				} else {
-					assert.NoError(t, err)
+					assertNoError(t, "granteelist add", err)
 					if tc.name != "Test list = duplicate1" {
 						expList = append(expList, tc.list...)
 					}
@@ -120,45 +119,43 @@ func TestGranteeRemove(t *testing.T) {
 	t.Parallel()
 	gl := accesscontrol.NewGranteeList(createLs())
 	keys, err := generateKeyListFixture()
-	if err != nil {
-		t.Errorf("key generation error: %v", err)
-	}
+	assertNoError(t, "key generation", err)
 
-	t.Run("Add should NOT return error", func(t *testing.T) {
+	t.Run("Add should NOT return", func(t *testing.T) {
 		err := gl.Add(keys)
-		assert.NoError(t, err)
+		assertNoError(t, "granteelist add", err)
 		retVal := gl.Get()
 		assert.Equal(t, keys, retVal)
 	})
 	removeList1 := []*ecdsa.PublicKey{keys[0]}
 	removeList2 := []*ecdsa.PublicKey{keys[2], keys[1]}
-	t.Run("Remove the first item should return NO error", func(t *testing.T) {
+	t.Run("Remove the first item should return NO", func(t *testing.T) {
 		err := gl.Remove(removeList1)
-		assert.NoError(t, err)
+		assertNoError(t, "granteelist remove", err)
 		retVal := gl.Get()
 		assert.Equal(t, removeList2, retVal)
 	})
-	t.Run("Remove non-existent item should return NO error", func(t *testing.T) {
+	t.Run("Remove non-existent item should return NO", func(t *testing.T) {
 		err := gl.Remove(removeList1)
-		assert.NoError(t, err)
+		assertNoError(t, "granteelist remove", err)
 		retVal := gl.Get()
 		assert.Equal(t, removeList2, retVal)
 	})
-	t.Run("Remove second and third item should return NO error", func(t *testing.T) {
+	t.Run("Remove second and third item should return NO", func(t *testing.T) {
 		err := gl.Remove(removeList2)
-		assert.NoError(t, err)
+		assertNoError(t, "granteelist remove", err)
 		retVal := gl.Get()
 		assert.Empty(t, retVal)
 	})
-	t.Run("Remove from empty grantee list should return error", func(t *testing.T) {
+	t.Run("Remove from empty grantee list should return", func(t *testing.T) {
 		err := gl.Remove(removeList1)
-		assert.Error(t, err)
+		assertError(t, "remove from empty grantee list", err)
 		retVal := gl.Get()
 		assert.Empty(t, retVal)
 	})
-	t.Run("Remove empty remove list should return error", func(t *testing.T) {
+	t.Run("Remove empty remove list should return", func(t *testing.T) {
 		err := gl.Remove(nil)
-		assert.Error(t, err)
+		assertError(t, "remove empty list", err)
 		retVal := gl.Get()
 		assert.Empty(t, retVal)
 	})
@@ -168,24 +165,24 @@ func TestGranteeSave(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()
 	keys, err := generateKeyListFixture()
-	if err != nil {
-		t.Errorf("key generation error: %v", err)
-	}
-	t.Run("Create grantee list with invalid reference, expect error", func(t *testing.T) {
+	assertNoError(t, "key generation", err)
+
+	t.Run("Create grantee list with invalid reference, expect", func(t *testing.T) {
 		gl, err := accesscontrol.NewGranteeListReference(ctx, createLs(), swarm.RandAddress(t))
-		assert.Error(t, err)
+		assertError(t, "create grantee list ref", err)
 		assert.Nil(t, gl)
 	})
-	t.Run("Save empty grantee list return NO error", func(t *testing.T) {
+	t.Run("Save empty grantee list return NO", func(t *testing.T) {
 		gl := accesscontrol.NewGranteeList(createLs())
 		_, err := gl.Save(ctx)
-		assert.NoError(t, err)
+		assertNoError(t, "granteelist save", err)
 	})
 	t.Run("Save not empty grantee list return valid swarm address", func(t *testing.T) {
 		gl := accesscontrol.NewGranteeList(createLs())
 		err = gl.Add(keys)
+		assertNoError(t, "granteelist add", err)
 		ref, err := gl.Save(ctx)
-		assert.NoError(t, err)
+		assertNoError(t, "granteelist save", err)
 		assert.True(t, ref.IsValidNonEmpty())
 	})
 	t.Run("Save grantee list with one item, no error, pre-save value exist", func(t *testing.T) {
@@ -193,30 +190,34 @@ func TestGranteeSave(t *testing.T) {
 		gl1 := accesscontrol.NewGranteeList(ls)
 
 		err := gl1.Add(keys)
-		assert.NoError(t, err)
+		assertNoError(t, "granteelist add", err)
 
 		ref, err := gl1.Save(ctx)
-		assert.NoError(t, err)
+		assertNoError(t, "1st granteelist save", err)
 
-		gl2, _ := accesscontrol.NewGranteeListReference(ctx, ls, ref)
+		gl2, err := accesscontrol.NewGranteeListReference(ctx, ls, ref)
+		assertNoError(t, "create grantee list ref", err)
 		val := gl2.Get()
-		assert.NoError(t, err)
+		assertNoError(t, "2nd granteelist save", err)
 		assert.Equal(t, keys, val)
 	})
 	t.Run("Save grantee list and add one item, no error, after-save value exist", func(t *testing.T) {
 		ls := createLs()
-		keys2, _ := generateKeyListFixture()
+		keys2, err := generateKeyListFixture()
+		assertNoError(t, "key generation", err)
 
 		gl1 := accesscontrol.NewGranteeList(ls)
 
-		err := gl1.Add(keys)
-		assert.NoError(t, err)
-		ref, err := gl1.Save(ctx)
-		assert.NoError(t, err)
+		err = gl1.Add(keys)
+		assertNoError(t, "granteelist1 add", err)
 
-		gl2, _ := accesscontrol.NewGranteeListReference(ctx, ls, ref)
+		ref, err := gl1.Save(ctx)
+		assertNoError(t, "granteelist1 save", err)
+
+		gl2, err := accesscontrol.NewGranteeListReference(ctx, ls, ref)
+		assertNoError(t, "create grantee list ref", err)
 		err = gl2.Add(keys2)
-		assert.NoError(t, err)
+		assertNoError(t, "create grantee list ref", err)
 
 		val := gl2.Get()
 		assert.Equal(t, append(keys, keys2...), val)
@@ -226,11 +227,11 @@ func TestGranteeSave(t *testing.T) {
 func TestGranteeRemoveTwo(t *testing.T) {
 	gl := accesscontrol.NewGranteeList(createLs())
 	keys, err := generateKeyListFixture()
-	if err != nil {
-		t.Errorf("key generation error: %v", err)
-	}
-	_ = gl.Add([]*ecdsa.PublicKey{keys[0]})
-	_ = gl.Add([]*ecdsa.PublicKey{keys[0]})
+	assertNoError(t, "key generation", err)
+	err = gl.Add([]*ecdsa.PublicKey{keys[0]})
+	assertNoError(t, "1st granteelist add", err)
+	err = gl.Add([]*ecdsa.PublicKey{keys[0]})
+	assertNoError(t, "2nd granteelist add", err)
 	err = gl.Remove([]*ecdsa.PublicKey{keys[0]})
-	assert.NoError(t, err)
+	assertNoError(t, "granteelist remove", err)
 }

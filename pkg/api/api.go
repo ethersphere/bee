@@ -123,6 +123,7 @@ var (
 	errOperationSupportedOnlyInFullMode = errors.New("operation is supported only in full mode")
 	errActDownload                      = errors.New("act download failed")
 	errActUpload                        = errors.New("act upload failed")
+	errActGranteeList                   = errors.New("failed to create or update grantee list")
 
 	batchIdOrStampSig = fmt.Sprintf("Either '%s' or '%s' header must be set in the request", SwarmPostageStampHeader, SwarmPostageBatchIdHeader)
 )

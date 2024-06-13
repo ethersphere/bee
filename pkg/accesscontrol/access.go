@@ -7,6 +7,7 @@ package accesscontrol
 import (
 	"context"
 	"crypto/ecdsa"
+	"errors"
 	"fmt"
 
 	"github.com/ethersphere/bee/v2/pkg/accesscontrol/kvs"
@@ -51,7 +52,7 @@ func (al ActLogic) EncryptRef(ctx context.Context, storage kvs.KeyValueStore, pu
 	if err != nil {
 		return swarm.ZeroAddress, err
 	}
-	refCipher := encryption.New(accessKey, 0, uint32(0), hashFunc)
+	refCipher := encryption.New(accessKey, 0, 0, hashFunc)
 	encryptedRef, err := refCipher.Encrypt(ref.Bytes())
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("failed to encrypt reference: %w", err)
@@ -84,7 +85,7 @@ func (al ActLogic) AddGrantee(ctx context.Context, storage kvs.KeyValueStore, pu
 	}
 
 	// Encrypt the access key for the new Grantee.
-	cipher := encryption.New(encryption.Key(accessKeyDecryptionKey), 0, uint32(0), hashFunc)
+	cipher := encryption.New(encryption.Key(accessKeyDecryptionKey), 0, 0, hashFunc)
 	granteeEncryptedAccessKey, err := cipher.Encrypt(accessKey)
 	if err != nil {
 		return fmt.Errorf("failed to encrypt access key: %w", err)
@@ -106,10 +107,15 @@ func (al *ActLogic) getAccessKey(ctx context.Context, storage kvs.KeyValueStore,
 		return nil, err
 	}
 	// no need for constructor call if value not found in act.
-	accessKeyDecryptionCipher := encryption.New(encryption.Key(publisherAKDecryptionKey), 0, uint32(0), hashFunc)
+	accessKeyDecryptionCipher := encryption.New(encryption.Key(publisherAKDecryptionKey), 0, 0, hashFunc)
 	encryptedAK, err := storage.Get(ctx, publisherLookupKey)
 	if err != nil {
-		return nil, fmt.Errorf("failed go get value from KVS: %w", err)
+		switch {
+		case errors.Is(err, kvs.ErrNotFound):
+			return nil, ErrNotFound
+		default:
+			return nil, fmt.Errorf("failed go get value from KVS: %w", err)
+		}
 	}
 
 	accessKey, err := accessKeyDecryptionCipher.Decrypt(encryptedAK)
@@ -137,7 +143,7 @@ func (al ActLogic) DecryptRef(ctx context.Context, storage kvs.KeyValueStore, en
 		return swarm.ZeroAddress, err
 	}
 
-	refCipher := encryption.New(accessKey, 0, uint32(0), hashFunc)
+	refCipher := encryption.New(accessKey, 0, 0, hashFunc)
 	ref, err := refCipher.Decrypt(encryptedRef.Bytes())
 	if err != nil {
 		return swarm.ZeroAddress, fmt.Errorf("failed to decrypt reference: %w", err)

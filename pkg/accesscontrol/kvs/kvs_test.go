@@ -128,22 +128,26 @@ func TestKvs_Save(t *testing.T) {
 	key1, val1 := keyValuePair(t)
 	key2, val2 := keyValuePair(t)
 	t.Run("Save empty KVS return error", func(t *testing.T) {
-		s, _ := kvs.New(createLs())
-		_, err := s.Save(ctx)
-		assert.Error(t, err)
+		s, err := kvs.New(createLs())
+		assert.NoError(t, err)
+		_, err = s.Save(ctx)
+		assert.ErrorIs(t, err, kvs.ErrNothingToSave)
 	})
 	t.Run("Save not empty KVS return valid swarm address", func(t *testing.T) {
-		s, _ := kvs.New(createLs())
-		_ = s.Put(ctx, key1, val1)
+		s, err := kvs.New(createLs())
+		assert.NoError(t, err)
+		err = s.Put(ctx, key1, val1)
+		assert.NoError(t, err)
 		ref, err := s.Save(ctx)
 		assert.NoError(t, err)
 		assert.True(t, ref.IsValidNonEmpty())
 	})
 	t.Run("Save KVS with one item, no error, pre-save value exist", func(t *testing.T) {
 		ls := createLs()
-		s1, _ := kvs.New(ls)
+		s1, err := kvs.New(ls)
+		assert.NoError(t, err)
 
-		err := s1.Put(ctx, key1, val1)
+		err = s1.Put(ctx, key1, val1)
 		assert.NoError(t, err)
 
 		ref, err := s1.Save(ctx)
@@ -159,9 +163,10 @@ func TestKvs_Save(t *testing.T) {
 	t.Run("Save KVS and add one item, no error, after-save value exist", func(t *testing.T) {
 		ls := createLs()
 
-		kvs1, _ := kvs.New(ls)
+		kvs1, err := kvs.New(ls)
+		assert.NoError(t, err)
 
-		err := kvs1.Put(ctx, key1, val1)
+		err = kvs1.Put(ctx, key1, val1)
 		assert.NoError(t, err)
 		ref, err := kvs1.Save(ctx)
 		assert.NoError(t, err)

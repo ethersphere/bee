@@ -17,7 +17,6 @@ import (
 var lock = &sync.Mutex{}
 
 type single struct {
-	// TODO string -> []byte ?
 	memoryMock map[string]map[string][]byte
 }
 

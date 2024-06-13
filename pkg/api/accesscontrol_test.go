@@ -63,8 +63,6 @@ func prepareHistoryFixture(storer api.Storer) (accesscontrol.History, swarm.Addr
 	return h, ref
 }
 
-// TODO: test tag, pin, deferred, stamp
-// TODO: feed test
 // nolint:paralleltest,tparallel
 // TestAccessLogicEachEndpointWithAct [positive tests]:
 // On each endpoint: upload w/ "Swarm-Act" header then download and check the decrypted data
@@ -310,13 +308,13 @@ func TestAccessLogicWithoutAct(t *testing.T) {
 			jsonhttptest.WithExpectedResponseHeader(api.ETagHeader, fmt.Sprintf("%q", rootHash)),
 		)
 
-		jsonhttptest.Request(t, client, http.MethodGet, fileDownloadResource(rootHash), http.StatusInternalServerError,
+		jsonhttptest.Request(t, client, http.MethodGet, fileDownloadResource(rootHash), http.StatusNotFound,
 			jsonhttptest.WithRequestHeader(api.SwarmActTimestampHeader, strconv.FormatInt(now, 10)),
 			jsonhttptest.WithRequestHeader(api.SwarmActHistoryAddressHeader, fixtureHref.String()),
 			jsonhttptest.WithRequestHeader(api.SwarmActPublisherHeader, publisher),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: api.ErrActDownload.Error(),
-				Code:    http.StatusInternalServerError,
+				Message: "act or history entry not found",
+				Code:    http.StatusNotFound,
 			}),
 			jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "application/json; charset=utf-8"),
 		)
@@ -497,13 +495,13 @@ func TestAccessLogicHistory(t *testing.T) {
 			jsonhttptest.WithExpectedResponseHeader(api.ETagHeader, fmt.Sprintf("%q", encryptedRef)),
 		)
 
-		jsonhttptest.Request(t, client, http.MethodGet, fileDownloadResource(encryptedRef), http.StatusInternalServerError,
+		jsonhttptest.Request(t, client, http.MethodGet, fileDownloadResource(encryptedRef), http.StatusNotFound,
 			jsonhttptest.WithRequestHeader(api.SwarmActTimestampHeader, strconv.FormatInt(now, 10)),
 			jsonhttptest.WithRequestHeader(api.SwarmActHistoryAddressHeader, "fc4e9fe978991257b897d987bc4ff13058b66ef45a53189a0b4fe84bb3346396"),
 			jsonhttptest.WithRequestHeader(api.SwarmActPublisherHeader, publisher),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: api.ErrActDownload.Error(),
-				Code:    http.StatusInternalServerError,
+				Message: "act or history entry not found",
+				Code:    http.StatusNotFound,
 			}),
 			jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "application/json; charset=utf-8"),
 		)
@@ -519,14 +517,14 @@ func TestAccessLogicHistory(t *testing.T) {
 		})
 		testfile := "testfile1"
 
-		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource+"?name="+fileName, http.StatusInternalServerError,
+		jsonhttptest.Request(t, client, http.MethodPost, fileUploadResource+"?name="+fileName, http.StatusNotFound,
 			jsonhttptest.WithRequestHeader(api.SwarmActHeader, "true"),
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
 			jsonhttptest.WithRequestHeader(api.SwarmActHistoryAddressHeader, fixtureHref.String()),
 			jsonhttptest.WithRequestBody(strings.NewReader(testfile)),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: api.ErrActUpload.Error(),
-				Code:    http.StatusInternalServerError,
+				Message: "act or history entry not found",
+				Code:    http.StatusNotFound,
 			}),
 			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "text/html; charset=utf-8"),
 		)
@@ -629,6 +627,30 @@ func TestAccessLogicTimestamp(t *testing.T) {
 			jsonhttptest.WithRequestHeader(api.SwarmActHistoryAddressHeader, fixtureHref.String()),
 			jsonhttptest.WithRequestHeader(api.SwarmActPublisherHeader, publisher),
 			jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "application/json; charset=utf-8"),
+		)
+	})
+	t.Run("download-w/-invalid-timestamp", func(t *testing.T) {
+		client, _, _, _ := newTestServer(t, testServerOptions{
+			Storer:        storerMock,
+			Logger:        logger,
+			Post:          mockpost.New(mockpost.WithAcceptAll()),
+			PublicKey:     pk.PublicKey,
+			AccessControl: mockac.New(mockac.WithHistory(h, fixtureHref.String())),
+		})
+		var (
+			invalidTime  = int64(-1)
+			encryptedRef = "c611199e1b3674d6bf89a83e518bd16896bf5315109b4a23dcb4682a02d17b97"
+		)
+
+		jsonhttptest.Request(t, client, http.MethodGet, fileDownloadResource(encryptedRef), http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.SwarmActTimestampHeader, strconv.FormatInt(invalidTime, 10)),
+			jsonhttptest.WithRequestHeader(api.SwarmActHistoryAddressHeader, fixtureHref.String()),
+			jsonhttptest.WithRequestHeader(api.SwarmActPublisherHeader, publisher),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Code:    http.StatusBadRequest,
+				Message: accesscontrol.ErrInvalidTimestamp.Error(),
+			}),
+			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "text/html; charset=utf-8"),
 		)
 	})
 }
@@ -768,16 +790,42 @@ func TestAccessLogicPublisher(t *testing.T) {
 			AccessControl: mockac.New(mockac.WithHistory(h, fixtureHref.String()), mockac.WithPublisher(publisher)),
 		})
 
-		jsonhttptest.Request(t, client, http.MethodGet, fileDownloadResource(encryptedRef), http.StatusInternalServerError,
+		jsonhttptest.Request(t, client, http.MethodGet, fileDownloadResource(encryptedRef), http.StatusBadRequest,
 			jsonhttptest.WithRequestHeader(api.SwarmActTimestampHeader, strconv.FormatInt(now, 10)),
 			jsonhttptest.WithRequestHeader(api.SwarmActHistoryAddressHeader, fixtureHref.String()),
 			jsonhttptest.WithRequestHeader(api.SwarmActPublisherHeader, downloader),
 			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
-				Message: api.ErrActDownload.Error(),
-				Code:    http.StatusInternalServerError,
+				Message: accesscontrol.ErrInvalidPublicKey.Error(),
+				Code:    http.StatusBadRequest,
 			}),
 			jsonhttptest.WithExpectedResponseHeader(api.ContentTypeHeader, "application/json; charset=utf-8"),
 		)
+	})
+
+	t.Run("re-upload-with-invalid-publickey", func(t *testing.T) {
+		var (
+			downloader = "03c712a7e29bc792ac8d8ae49793d28d5bda27ed70f0d90697b2fb456c0a168bd2"
+			testfile   = "testfile1"
+		)
+		downloaderClient, _, _, _ := newTestServer(t, testServerOptions{
+			Storer:        storerMock,
+			Logger:        logger,
+			Post:          mockpost.New(mockpost.WithAcceptAll()),
+			PublicKey:     pk.PublicKey,
+			AccessControl: mockac.New(mockac.WithPublisher(downloader)),
+		})
+
+		jsonhttptest.Request(t, downloaderClient, http.MethodPost, fileUploadResource+"?name="+fileName, http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.SwarmActHeader, "true"),
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestBody(strings.NewReader(testfile)),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Code:    http.StatusBadRequest,
+				Message: "invalid public key",
+			}),
+			jsonhttptest.WithRequestHeader(api.ContentTypeHeader, "text/html; charset=utf-8"),
+		)
+
 	})
 
 	t.Run("download-w/o-publisher", func(t *testing.T) {
@@ -871,6 +919,49 @@ func TestAccessLogicGrantees(t *testing.T) {
 			jsonhttptest.WithJSONRequestBody(body),
 		)
 	})
+	t.Run("add-revoke-grantees-wrong-history", func(t *testing.T) {
+		body := api.GranteesPatchRequest{
+			Addlist:    []string{"02ab7473879005929d10ce7d4f626412dad9fe56b0a6622038931d26bd79abf0a4"},
+			Revokelist: []string{"02ab7473879005929d10ce7d4f626412dad9fe56b0a6622038931d26bd79abf0a4"},
+		}
+		jsonhttptest.Request(t, client, http.MethodPatch, "/grantee/"+addr.String(), http.StatusNotFound,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestHeader(api.SwarmActHistoryAddressHeader, swarm.EmptyAddress.String()),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "act or history entry not found",
+				Code:    http.StatusNotFound,
+			}),
+			jsonhttptest.WithJSONRequestBody(body),
+		)
+	})
+	t.Run("invlaid-add-grantees", func(t *testing.T) {
+		body := api.GranteesPatchRequest{
+			Addlist: []string{"random-string"},
+		}
+		jsonhttptest.Request(t, client, http.MethodPatch, "/grantee/"+addr.String(), http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestHeader(api.SwarmActHistoryAddressHeader, addr.String()),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "invalid add list",
+				Code:    http.StatusBadRequest,
+			}),
+			jsonhttptest.WithJSONRequestBody(body),
+		)
+	})
+	t.Run("invlaid-revoke-grantees", func(t *testing.T) {
+		body := api.GranteesPatchRequest{
+			Revokelist: []string{"random-string"},
+		}
+		jsonhttptest.Request(t, client, http.MethodPatch, "/grantee/"+addr.String(), http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestHeader(api.SwarmActHistoryAddressHeader, addr.String()),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "invalid revoke list",
+				Code:    http.StatusBadRequest,
+			}),
+			jsonhttptest.WithJSONRequestBody(body),
+		)
+	})
 	t.Run("add-revoke-grantees-empty-body", func(t *testing.T) {
 		jsonhttptest.Request(t, client, http.MethodPatch, "/grantee/"+addr.String(), http.StatusBadRequest,
 			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
@@ -931,6 +1022,20 @@ func TestAccessLogicGrantees(t *testing.T) {
 				Message: "could not validate request",
 				Code:    http.StatusBadRequest,
 			}),
+		)
+	})
+	t.Run("create-granteelist-invalid-body", func(t *testing.T) {
+		body := api.GranteesPostRequest{
+			GranteeList: []string{"random-string"},
+		}
+		jsonhttptest.Request(t, client, http.MethodPost, "/grantee", http.StatusBadRequest,
+			jsonhttptest.WithRequestHeader(api.SwarmPostageBatchIdHeader, batchOkStr),
+			jsonhttptest.WithRequestBody(bytes.NewReader(nil)),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "invalid grantee list",
+				Code:    http.StatusBadRequest,
+			}),
+			jsonhttptest.WithJSONRequestBody(body),
 		)
 	})
 }

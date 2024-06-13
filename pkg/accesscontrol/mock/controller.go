@@ -54,7 +54,7 @@ func New(o ...Option) accesscontrol.Controller {
 		historyMap: make(map[string]accesscontrol.History),
 		refMap:     make(map[string]swarm.Address),
 		publisher:  "",
-		encrypter:  encryption.New(encryption.Key("b6ee086390c280eeb9824c331a4427596f0c8510d5564bc1b6168d0059a46e2b"), 0, uint32(0), sha3.NewLegacyKeccak256),
+		encrypter:  encryption.New(encryption.Key("b6ee086390c280eeb9824c331a4427596f0c8510d5564bc1b6168d0059a46e2b"), 0, 0, sha3.NewLegacyKeccak256),
 		ls:         loadsave.New(storer.ChunkStore(), storer.Cache(), requestPipelineFactory(context.Background(), storer.Cache(), false, redundancy.NONE)),
 	}
 	for _, v := range o {
@@ -80,7 +80,7 @@ func WithHistory(h accesscontrol.History, ref string) Option {
 func WithPublisher(ref string) Option {
 	return optionFunc(func(m *mockController) {
 		m.publisher = ref
-		m.encrypter = encryption.New(encryption.Key(ref), 0, uint32(0), sha3.NewLegacyKeccak256)
+		m.encrypter = encryption.New(encryption.Key(ref), 0, 0, sha3.NewLegacyKeccak256)
 	})
 }
 
@@ -92,17 +92,20 @@ func (m *mockController) DownloadHandler(ctx context.Context, ls file.LoadSaver,
 	publicKeyBytes := crypto.EncodeSecp256k1PublicKey(publisher)
 	p := hex.EncodeToString(publicKeyBytes)
 	if m.publisher != "" && m.publisher != p {
-		return swarm.ZeroAddress, fmt.Errorf("incorrect publisher")
+		return swarm.ZeroAddress, accesscontrol.ErrInvalidPublicKey
 	}
 
 	h, exists := m.historyMap[historyRootHash.String()]
 	if !exists {
-		return swarm.ZeroAddress, fmt.Errorf("history not found")
+		return swarm.ZeroAddress, accesscontrol.ErrNotFound
 	}
 	entry, err := h.Lookup(ctx, timestamp)
+	if err != nil {
+		return swarm.ZeroAddress, err
+	}
 	kvsRef := entry.Reference()
-	if kvsRef.IsZero() || err != nil {
-		return swarm.ZeroAddress, fmt.Errorf("kvs not found")
+	if kvsRef.IsZero() {
+		return swarm.ZeroAddress, err
 	}
 	return m.refMap[encryptedRef.String()], nil
 }
@@ -118,14 +121,24 @@ func (m *mockController) UploadHandler(ctx context.Context, ls file.LoadSaver, r
 		h      accesscontrol.History
 		exists bool
 	)
+
+	publicKeyBytes := crypto.EncodeSecp256k1PublicKey(publisher)
+	p := hex.EncodeToString(publicKeyBytes)
+	if m.publisher != "" && m.publisher != p {
+		return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, accesscontrol.ErrInvalidPublicKey
+	}
+
 	now := time.Now().Unix()
 	if !historyRootHash.IsZero() {
 		historyRef = historyRootHash
 		h, exists = m.historyMap[historyRef.String()]
 		if !exists {
-			return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, fmt.Errorf("history not found")
+			return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, accesscontrol.ErrNotFound
 		}
-		entry, _ := h.Lookup(ctx, now)
+		entry, err := h.Lookup(ctx, now)
+		if err != nil {
+			return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, err
+		}
 		kvsRef := entry.Reference()
 		if kvsRef.IsZero() {
 			return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, fmt.Errorf("kvs not found")
@@ -147,6 +160,9 @@ func (m *mockController) Close() error {
 }
 
 func (m *mockController) UpdateHandler(_ context.Context, ls file.LoadSaver, gls file.LoadSaver, encryptedglref swarm.Address, historyref swarm.Address, publisher *ecdsa.PublicKey, addList []*ecdsa.PublicKey, removeList []*ecdsa.PublicKey) (swarm.Address, swarm.Address, swarm.Address, swarm.Address, error) {
+	if historyref.Equal(swarm.EmptyAddress) || encryptedglref.Equal(swarm.EmptyAddress) {
+		return swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, swarm.ZeroAddress, accesscontrol.ErrNotFound
+	}
 	historyRef, _ := swarm.ParseHexAddress("67bdf80a9bbea8eca9c8480e43fdceb485d2d74d5708e45144b8c4adacd13d9c")
 	glRef, _ := swarm.ParseHexAddress("3339613565613837623134316665343461613630396333333237656364383934")
 	eglRef, _ := swarm.ParseHexAddress("fc4e9fe978991257b897d987bc4ff13058b66ef45a53189a0b4fe84bb3346396")
