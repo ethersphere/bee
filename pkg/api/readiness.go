@@ -4,12 +4,29 @@
 
 package api
 
-import "net/http"
+import (
+	"net/http"
+
+	"github.com/ethersphere/bee"
+	"github.com/ethersphere/bee/pkg/jsonhttp"
+)
+
+type ReadyStatusResponse healthStatusResponse
 
 func (s *Service) readinessHandler(w http.ResponseWriter, _ *http.Request) {
 	if s.probe.Ready() == ProbeStatusOK {
-		w.WriteHeader(http.StatusOK)
+		jsonhttp.OK(w, ReadyStatusResponse{
+			Status:          "ready",
+			Version:         bee.Version,
+			APIVersion:      Version,
+			DebugAPIVersion: DebugVersion,
+		})
 	} else {
-		w.WriteHeader(http.StatusBadRequest)
+		jsonhttp.BadRequest(w, ReadyStatusResponse{
+			Status:          "notReady",
+			Version:         bee.Version,
+			APIVersion:      Version,
+			DebugAPIVersion: DebugVersion,
+		})
 	}
 }
