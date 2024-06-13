@@ -849,7 +849,7 @@ components:
         reserveSize:
           type: integer
         reserveSizeWithinRadius:
-          type: interger
+          type: integer
         pullsyncRate:
           type: number
         storageRadius:
@@ -865,6 +865,8 @@ components:
           type: integer
         isReachable:
           type: boolean
+        lastSyncedBlock:
+          type: integer  
 
     StatusResponse:
       type: object

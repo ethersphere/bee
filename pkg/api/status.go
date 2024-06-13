@@ -29,6 +29,7 @@ type statusSnapshotResponse struct {
 	RequestFailed           bool    `json:"requestFailed,omitempty"`
 	BatchCommitment         uint64  `json:"batchCommitment"`
 	IsReachable             bool    `json:"isReachable"`
+	LastSyncedBlock         uint64  `json:"lastSyncedBlock"`
 }
 
 type statusResponse struct {
@@ -81,6 +82,7 @@ func (s *Service) statusGetHandler(w http.ResponseWriter, _ *http.Request) {
 		NeighborhoodSize:        ss.NeighborhoodSize,
 		BatchCommitment:         ss.BatchCommitment,
 		IsReachable:             ss.IsReachable,
+		LastSyncedBlock:         ss.LastSyncedBlock,
 	})
 }
 
@@ -127,6 +129,7 @@ func (s *Service) statusGetPeersHandler(w http.ResponseWriter, r *http.Request) 
 				snapshot.NeighborhoodSize = ss.NeighborhoodSize
 				snapshot.BatchCommitment = ss.BatchCommitment
 				snapshot.IsReachable = ss.IsReachable
+				snapshot.LastSyncedBlock = ss.LastSyncedBlock
 			}
 
 			mu.Lock()
