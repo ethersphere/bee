@@ -866,7 +866,7 @@ components:
         isReachable:
           type: boolean
         lastSyncedBlock:
-          type: integer  
+          type: integer
 
     StatusResponse:
       type: object
