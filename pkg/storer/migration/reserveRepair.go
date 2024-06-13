@@ -56,6 +56,12 @@ func ReserveRepairer(
 					if binIds[item.Bin][item.BinID] > 1 {
 						return false, fmt.Errorf("binID %d in bin %d already used", item.BinID, item.Bin)
 					}
+
+					err := st.IndexStore().Get(&reserve.ChunkBinItem{Bin: item.Bin, BinID: item.BinID})
+					if err != nil {
+						return false, fmt.Errorf("check failed: chunkBinItem, bin %d, binID %d: %w", item.Bin, item.BinID, err)
+					}
+
 					return false, nil
 				},
 			)
@@ -63,7 +69,7 @@ func ReserveRepairer(
 
 		err := checkBinIDs()
 		if err != nil {
-			logger.Error(err, "check failed")
+			logger.Info("pre-repair check failed", "error", err)
 		}
 
 		// STEP 0
@@ -162,11 +168,16 @@ func ReserveRepairer(
 		}
 
 		var eg errgroup.Group
-		eg.SetLimit(runtime.NumCPU())
+
+		p := runtime.NumCPU()
+		eg.SetLimit(p)
+
+		logger.Info("parallel workers", "count", p)
 
 		for _, item := range batchRadiusItems {
 			func(item *reserve.BatchRadiusItem) {
 				eg.Go(func() error {
+
 					return st.Run(context.Background(), func(s transaction.Store) error {
 
 						chunk, err := s.ChunkStore().Get(context.Background(), item.Address)
@@ -236,11 +247,12 @@ func ReserveRepairer(
 			return err
 		}
 
+		logger.Info("migrated all chunk entries", "new_size", batchRadiusCnt, "missing_chunks", missingChunks.Load(), "invalid_sharky_chunks", invalidSharkyChunks.Load())
+
 		if batchRadiusCnt != chunkBinCnt {
-			return errors.New("index counts do not match")
+			return fmt.Errorf("index counts do not match, %d vs %d", batchRadiusCnt, chunkBinCnt)
 		}
 
-		logger.Info("migrated all chunk entries", "new_size", batchRadiusCnt, "missing_chunks", missingChunks.Load(), "invalid_sharky_chunks", invalidSharkyChunks.Load())
 		return nil
 	}
 }

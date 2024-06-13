@@ -30,6 +30,7 @@ func TestStatus(t *testing.T) {
 		PullsyncRate:    64,
 		StorageRadius:   8,
 		BatchCommitment: 1024,
+    NeighborhoodSize: 1,
 		IsReachable:     true,
 		LastSyncedBlock: 6092500,
 	}
@@ -104,6 +105,7 @@ func TestStatusLightNode(t *testing.T) {
 		StorageRadius:   0,
 		BatchCommitment: 1024,
 		IsReachable:     true,
+    NeighborhoodSize: 1,
 		LastSyncedBlock: 6092500,
 	}
 

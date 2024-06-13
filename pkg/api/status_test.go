@@ -27,13 +27,14 @@ func TestGetStatus(t *testing.T) {
 
 		mode := api.FullMode
 		ssr := api.StatusSnapshotResponse{
+			Proximity:               256,
 			BeeMode:                 mode.String(),
 			ReserveSize:             128,
 			ReserveSizeWithinRadius: 64,
 			PullsyncRate:            64,
 			StorageRadius:           8,
 			ConnectedPeers:          0,
-			NeighborhoodSize:        0,
+			NeighborhoodSize:        1,
 			BatchCommitment:         1,
 			IsReachable:             true,
 			LastSyncedBlock:         6092500,
