@@ -5,10 +5,14 @@
 package api_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/api"
@@ -193,6 +197,47 @@ func TestBlocklistedPeers(t *testing.T) {
 		jsonhttptest.WithExpectedJSONResponse(api.BlockedListedPeersResponse{
 			Peers: []api.BlockListedPeer{{Peer: api.Peer{Address: overlay}, Duration: 0}},
 		}),
+	)
+}
+
+func TestBlocklistPeer(t *testing.T) {
+	t.Parallel()
+
+	overlay := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
+	duration := 5 * time.Second
+	reason := "test reason"
+
+	request := api.BlocklistPeersRequest{
+		Address:  overlay,
+		Duration: duration,
+		Reason:   reason,
+	}
+
+	payload, err := json.Marshal(&request)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	testServer, _, _, _ := newTestServer(t, testServerOptions{
+		P2P: mock.New(mock.WithBlocklistFunc(func(s swarm.Address, t time.Duration, r string) error {
+			if r != reason {
+				return fmt.Errorf("expected reason %s, got %s", reason, r)
+			}
+
+			if !s.Equal(overlay) {
+				return fmt.Errorf("expected address %s, got %s", overlay, s)
+			}
+
+			if t != duration {
+				return fmt.Errorf("expected duration %s, got %s", duration, t)
+			}
+
+			return nil
+		})),
+	})
+
+	jsonhttptest.Request(t, testServer, http.MethodPost, "/blocklist", http.StatusOK,
+		jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
 	)
 }
 
