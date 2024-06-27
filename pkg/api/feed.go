@@ -22,6 +22,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/manifest/mantaray"
 	"github.com/ethersphere/bee/v2/pkg/manifest/simple"
 	"github.com/ethersphere/bee/v2/pkg/postage"
+	"github.com/ethersphere/bee/v2/pkg/soc"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
 	storer "github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -123,11 +124,20 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	socCh, err := soc.FromChunk(ch)
+	if err != nil {
+		logger.Error(nil, "wrapped chunk cannot be retrieved")
+		jsonhttp.NotFound(w, "wrapped chunk cannot be retrieved")
+		return
+	}
+	sig := socCh.Signature()
+
 	additionalHeaders := http.Header{
 		ContentTypeHeader:               {"application/octet-stream"},
 		SwarmFeedIndexHeader:            {hex.EncodeToString(curBytes)},
 		SwarmFeedIndexNextHeader:        {hex.EncodeToString(nextBytes)},
-		"Access-Control-Expose-Headers": {SwarmFeedIndexHeader, SwarmFeedIndexNextHeader},
+		SwarmSocSignature:               {hex.EncodeToString(sig)},
+		"Access-Control-Expose-Headers": {SwarmFeedIndexHeader, SwarmFeedIndexNextHeader, SwarmSocSignature},
 	}
 
 	if headers.OnlyRootChunk {
