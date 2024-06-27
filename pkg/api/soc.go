@@ -224,8 +224,8 @@ func (s *Service) socGetHandler(w http.ResponseWriter, r *http.Request) {
 
 	additionalHeaders := http.Header{
 		ContentTypeHeader:               {"application/octet-stream"},
-		SwarmSocSignature:               {hex.EncodeToString(sig)},
-		"Access-Control-Expose-Headers": {SwarmSocSignature},
+		SwarmSocSignatureHeader:         {hex.EncodeToString(sig)},
+		"Access-Control-Expose-Headers": {SwarmSocSignatureHeader},
 	}
 
 	if headers.OnlyRootChunk {

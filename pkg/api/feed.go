@@ -136,8 +136,8 @@ func (s *Service) feedGetHandler(w http.ResponseWriter, r *http.Request) {
 		ContentTypeHeader:               {"application/octet-stream"},
 		SwarmFeedIndexHeader:            {hex.EncodeToString(curBytes)},
 		SwarmFeedIndexNextHeader:        {hex.EncodeToString(nextBytes)},
-		SwarmSocSignature:               {hex.EncodeToString(sig)},
-		"Access-Control-Expose-Headers": {SwarmFeedIndexHeader, SwarmFeedIndexNextHeader, SwarmSocSignature},
+		SwarmSocSignatureHeader:         {hex.EncodeToString(sig)},
+		"Access-Control-Expose-Headers": {SwarmFeedIndexHeader, SwarmFeedIndexNextHeader, SwarmSocSignatureHeader},
 	}
 
 	if headers.OnlyRootChunk {
