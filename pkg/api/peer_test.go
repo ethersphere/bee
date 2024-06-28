@@ -204,41 +204,111 @@ func TestBlocklistPeer(t *testing.T) {
 	t.Parallel()
 
 	overlay := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
+	invalidOverlay := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")
 	duration := 5 * time.Second
 	reason := "test reason"
 
-	request := api.BlocklistPeersRequest{
-		Address:  overlay,
-		Duration: duration,
-		Reason:   reason,
-	}
+	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
 
-	payload, err := json.Marshal(&request)
-	if err != nil {
-		t.Fatal(err)
-	}
+		request := api.BlocklistPeersRequest{
+			Address:  overlay,
+			Duration: duration,
+			Reason:   reason,
+		}
 
-	testServer, _, _, _ := newTestServer(t, testServerOptions{
-		P2P: mock.New(mock.WithBlocklistFunc(func(s swarm.Address, t time.Duration, r string) error {
-			if r != reason {
-				return fmt.Errorf("expected reason %s, got %s", reason, r)
-			}
+		payload, err := json.Marshal(&request)
+		if err != nil {
+			t.Fatal(err)
+		}
 
-			if !s.Equal(overlay) {
-				return fmt.Errorf("expected address %s, got %s", overlay, s)
-			}
+		testServer, _, _, _ := newTestServer(t, testServerOptions{
+			P2P: mock.New(mock.WithBlocklistFunc(func(s swarm.Address, t time.Duration, r string) error {
+				if r != reason {
+					return fmt.Errorf("expected reason %s, got %s", reason, r)
+				}
 
-			if t != duration {
-				return fmt.Errorf("expected duration %s, got %s", duration, t)
-			}
+				if !s.Equal(overlay) {
+					return fmt.Errorf("expected address %s, got %s", overlay, s)
+				}
 
-			return nil
-		})),
+				if t != duration {
+					return fmt.Errorf("expected duration %s, got %s", duration, t)
+				}
+
+				return nil
+			})),
+		})
+
+		jsonhttptest.Request(t, testServer, http.MethodPost, "/blocklist", http.StatusOK,
+			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "OK",
+				Code:    http.StatusOK,
+			}),
+		)
 	})
 
-	jsonhttptest.Request(t, testServer, http.MethodPost, "/blocklist", http.StatusOK,
-		jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
-	)
+	t.Run("address not found", func(t *testing.T) {
+		t.Parallel()
+
+		request := api.BlocklistPeersRequest{
+			Address:  invalidOverlay,
+			Duration: duration,
+			Reason:   reason,
+		}
+
+		payload, err := json.Marshal(&request)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		testServer, _, _, _ := newTestServer(t, testServerOptions{
+			P2P: mock.New(mock.WithBlocklistFunc(func(s swarm.Address, t time.Duration, r string) error {
+				if s.Equal(invalidOverlay) {
+					return p2p.ErrPeerNotFound
+				}
+				return nil
+			})),
+		})
+
+		jsonhttptest.Request(t, testServer, http.MethodPost, "/blocklist", http.StatusNotFound,
+			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: p2p.ErrPeerNotFound.Error(),
+				Code:    http.StatusNotFound,
+			}),
+		)
+	})
+
+	t.Run("other error", func(t *testing.T) {
+		t.Parallel()
+
+		request := api.BlocklistPeersRequest{
+			Address:  overlay,
+			Duration: duration,
+			Reason:   reason,
+		}
+
+		payload, err := json.Marshal(&request)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		testServer, _, _, _ := newTestServer(t, testServerOptions{
+			P2P: mock.New(mock.WithBlocklistFunc(func(s swarm.Address, t time.Duration, r string) error {
+				return errors.New("some internal error")
+			})),
+		})
+
+		jsonhttptest.Request(t, testServer, http.MethodPost, "/blocklist", http.StatusInternalServerError,
+			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "some internal error",
+				Code:    http.StatusInternalServerError,
+			}),
+		)
+	})
 }
 
 func TestBlocklistedPeersErr(t *testing.T) {
