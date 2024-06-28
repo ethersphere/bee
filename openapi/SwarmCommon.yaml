@@ -340,7 +340,7 @@ components:
       type: object
       properties:
         address:
-          $ref: "#/components/schemas/SwarmAddress"        
+          $ref: "#/components/schemas/SwarmAddress"
         reason:
           type: string
         duration:
