@@ -1012,7 +1012,7 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
           description: Default response
-          
+
   "/consumed":
     get:
       summary: Get the past due consumption balances with all known peers
