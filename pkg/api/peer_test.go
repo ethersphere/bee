@@ -211,7 +211,7 @@ func TestBlocklistPeer(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		t.Parallel()
 
-		request := api.BlocklistPeersRequest{
+		request := api.BlocklistPeerRequest{
 			Address:  overlay,
 			Duration: duration,
 			Reason:   reason,
@@ -252,7 +252,7 @@ func TestBlocklistPeer(t *testing.T) {
 	t.Run("address not found", func(t *testing.T) {
 		t.Parallel()
 
-		request := api.BlocklistPeersRequest{
+		request := api.BlocklistPeerRequest{
 			Address:  notFoundOverlay,
 			Duration: duration,
 			Reason:   reason,
@@ -284,7 +284,7 @@ func TestBlocklistPeer(t *testing.T) {
 	t.Run("other error", func(t *testing.T) {
 		t.Parallel()
 
-		request := api.BlocklistPeersRequest{
+		request := api.BlocklistPeerRequest{
 			Address:  overlay,
 			Duration: duration,
 			Reason:   reason,
@@ -323,7 +323,7 @@ func TestBlocklistPeer(t *testing.T) {
 	t.Run("peer address not valid", func(t *testing.T) {
 		t.Parallel()
 
-		payload, err := json.Marshal(&api.BlocklistPeersRequest{})
+		payload, err := json.Marshal(&api.BlocklistPeerRequest{})
 		if err != nil {
 			t.Fatal(err)
 		}

@@ -996,7 +996,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "SwarmCommon.yaml#/components/schemas/BlocklistPeersRequest"
+              $ref: "SwarmCommon.yaml#/components/schemas/BlocklistPeerRequest"
       responses:
         "200":
           description: Peer successfully blocklisted

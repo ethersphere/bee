@@ -336,7 +336,7 @@ components:
           duration:
             type: integer
 
-    BlocklistRequest:
+    BlocklistPeerRequest:
       type: object
       properties:
         address:

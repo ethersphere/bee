@@ -120,16 +120,16 @@ func (s *Service) blocklistedPeersHandler(w http.ResponseWriter, _ *http.Request
 	})
 }
 
-type BlocklistPeersRequest struct {
+type BlocklistPeerRequest struct {
 	Address  swarm.Address `json:"address"`
 	Duration time.Duration `json:"duration"`
 	Reason   string        `json:"reason"`
 }
 
-func (s *Service) blocklistPeersHandler(w http.ResponseWriter, r *http.Request) {
+func (s *Service) blocklistPeerHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithValues("post_blocklist").Build()
 
-	var payload BlocklistPeersRequest
+	var payload BlocklistPeerRequest
 	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
 		logger.Debug("failed to read body", "error", err)
 		logger.Error(nil, "failed to read body")
