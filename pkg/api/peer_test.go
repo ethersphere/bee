@@ -204,7 +204,7 @@ func TestBlocklistPeer(t *testing.T) {
 	t.Parallel()
 
 	overlay := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
-	invalidOverlay := swarm.MustParseHexAddress("0000000000000000000000000000000000000000000000000000000000000000")
+	notFoundOverlay := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59a")
 	duration := 5 * time.Second
 	reason := "test reason"
 
@@ -253,7 +253,7 @@ func TestBlocklistPeer(t *testing.T) {
 		t.Parallel()
 
 		request := api.BlocklistPeersRequest{
-			Address:  invalidOverlay,
+			Address:  notFoundOverlay,
 			Duration: duration,
 			Reason:   reason,
 		}
@@ -265,7 +265,7 @@ func TestBlocklistPeer(t *testing.T) {
 
 		testServer, _, _, _ := newTestServer(t, testServerOptions{
 			P2P: mock.New(mock.WithBlocklistFunc(func(s swarm.Address, t time.Duration, r string) error {
-				if s.Equal(invalidOverlay) {
+				if s.Equal(notFoundOverlay) {
 					return p2p.ErrPeerNotFound
 				}
 				return nil
@@ -307,6 +307,31 @@ func TestBlocklistPeer(t *testing.T) {
 				Message: "some internal error",
 				Code:    http.StatusInternalServerError,
 			}),
+		)
+	})
+
+	t.Run("failed to read body", func(t *testing.T) {
+		t.Parallel()
+
+		testServer, _, _, _ := newTestServer(t, testServerOptions{})
+
+		jsonhttptest.Request(t, testServer, http.MethodPost, "/blocklist", http.StatusBadRequest,
+			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
+		)
+	})
+
+	t.Run("peer address not valid", func(t *testing.T) {
+		t.Parallel()
+
+		payload, err := json.Marshal(&api.BlocklistPeersRequest{})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		testServer, _, _, _ := newTestServer(t, testServerOptions{})
+
+		jsonhttptest.Request(t, testServer, http.MethodPost, "/blocklist", http.StatusBadRequest,
+			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
 		)
 	})
 }

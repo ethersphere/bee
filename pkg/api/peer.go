@@ -121,7 +121,7 @@ func (s *Service) blocklistedPeersHandler(w http.ResponseWriter, _ *http.Request
 }
 
 type BlocklistPeersRequest struct {
-	Address  swarm.Address `json:"address" validate:"required"`
+	Address  swarm.Address `json:"address"`
 	Duration time.Duration `json:"duration"`
 	Reason   string        `json:"reason"`
 }
@@ -137,10 +137,11 @@ func (s *Service) blocklistPeersHandler(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	if err := s.validate.Struct(&payload); err != nil {
-		logger.Debug("validation failed", "error", err)
-		logger.Error(nil, "validation failed")
-		jsonhttp.BadRequest(w, err)
+	// TODO: create custom validator for swarm.Address
+	if !payload.Address.IsValidNonEmpty() {
+		logger.Debug("peer address is not valid")
+		logger.Error(nil, "peer address is not valid")
+		jsonhttp.BadRequest(w, "peer address is not valid")
 		return
 	}
 
