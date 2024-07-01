@@ -32,4 +32,12 @@ type StateStorer interface {
 type StateStorerCleaner interface {
 	// Nuke the store so that only the bare essential entries are left.
 	Nuke() error
+	// ClearForHopping removes all data not required in a new neighborhood
+	ClearForHopping() error
+}
+
+// StateStorerManager defines all external methods of the state storage
+type StateStorerManager interface {
+	StateStorer
+	StateStorerCleaner
 }
