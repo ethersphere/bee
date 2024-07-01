@@ -1081,7 +1081,7 @@ components:
       required: false
       description: >
         Specify the timeout for chunk retrieval. The default is 30 seconds.
-    
+
     SwarmOnlyRootChunkParameter:
       in: header
       name: swarm-only-root-chunk
