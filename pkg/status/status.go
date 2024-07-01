@@ -22,7 +22,7 @@ const loggerName = "status"
 
 const (
 	protocolName    = "status"
-	protocolVersion = "1.1.0"
+	protocolVersion = "1.1.1"
 	streamName      = "status"
 )
 
@@ -55,7 +55,7 @@ type Service struct {
 	beeMode    string
 	reserve    Reserve
 	sync       SyncReporter
-	commitment postage.CommitmentGetter
+	chainState postage.ChainStateGetter
 }
 
 // NewService creates a new status service.
@@ -64,7 +64,7 @@ func NewService(
 	streamer p2p.Streamer,
 	topology topologyDriver,
 	beeMode string,
-	commitment postage.CommitmentGetter,
+	chainState postage.ChainStateGetter,
 	reserve Reserve,
 ) *Service {
 	return &Service{
@@ -72,7 +72,7 @@ func NewService(
 		streamer:       streamer,
 		topologyDriver: topology,
 		beeMode:        beeMode,
-		commitment:     commitment,
+		chainState:     chainState,
 		reserve:        reserve,
 	}
 }
@@ -98,7 +98,7 @@ func (s *Service) LocalSnapshot() (*Snapshot, error) {
 		syncRate = s.sync.SyncRate()
 	}
 
-	commitment, err := s.commitment.Commitment()
+	commitment, err := s.chainState.Commitment()
 	if err != nil {
 		return nil, fmt.Errorf("batchstore commitment: %w", err)
 	}
@@ -127,6 +127,7 @@ func (s *Service) LocalSnapshot() (*Snapshot, error) {
 		NeighborhoodSize:        neighborhoodSize + 1, // include self
 		BatchCommitment:         commitment,
 		IsReachable:             s.topologyDriver.IsReachable(),
+		LastSyncedBlock:         s.chainState.GetChainState().Block,
 	}, nil
 }
 
@@ -150,7 +151,6 @@ func (s *Service) PeerSnapshot(ctx context.Context, peer swarm.Address) (*Snapsh
 	if err := r.ReadMsgWithContext(ctx, ss); err != nil {
 		return nil, fmt.Errorf("read message failed: %w", err)
 	}
-
 	return (*Snapshot)(ss), nil
 }
 
