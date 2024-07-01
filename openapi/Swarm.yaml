@@ -743,12 +743,12 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/HexString"
           required: true
           description: Signature
-        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
         - in: header
           schema:
             $ref: "SwarmCommon.yaml#/components/parameters/SwarmPostageBatchId"
           name: swarm-postage-batch-id
           required: true
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmPinParameter"
       requestBody:
         required: true
         description: The SOC binary data is composed of the span (8 bytes) and the at most 4KB payload.
@@ -770,6 +770,47 @@ paths:
           $ref: "SwarmCommon.yaml#/components/responses/401"
         "402":
           $ref: "SwarmCommon.yaml#/components/responses/402"
+        "500":
+          $ref: "SwarmCommon.yaml#/components/responses/500"
+        default:
+          description: Default response
+    get:
+      summary: Resolve Single Owner Chunk data
+      tags:
+        - Single owner chunk
+      parameters:
+        - in: path
+          name: owner
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/EthereumAddress"
+          required: true
+          description: Ethereum address of the Owner of the SOC
+        - in: path
+          name: id
+          schema:
+            $ref: "SwarmCommon.yaml#/components/schemas/HexString"
+          required: true
+          description: Arbitrary identifier of the related data
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmOnlyRootChunkParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyFallbackModeParameter"
+        - $ref: "SwarmCommon.yaml#/components/parameters/SwarmChunkRetrievalTimeoutParameter"
+      responses:
+        "200":
+          description: Related Single Owner Chunk data
+          headers:
+            "swarm-soc-signature":
+              $ref: "SwarmCommon.yaml#/components/headers/SwarmSocSignature"
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "SwarmCommon.yaml#/components/responses/400"
+        "401":
+          $ref: "SwarmCommon.yaml#/components/responses/401"
         "500":
           $ref: "SwarmCommon.yaml#/components/responses/500"
         default:
@@ -853,6 +894,7 @@ paths:
             $ref: "SwarmCommon.yaml#/components/schemas/FeedType"
           required: false
           description: "Feed indexing scheme (default: sequence)"
+        - $ref: "SwarmCommon.yaml#/components/headers/SwarmOnlyRootChunkParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmCache"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyStrategyParameter"
         - $ref: "SwarmCommon.yaml#/components/parameters/SwarmRedundancyFallbackModeParameter"
@@ -861,12 +903,12 @@ paths:
         "200":
           description: Latest feed update
           headers:
+            "swarm-soc-signature":
+              $ref: "SwarmCommon.yaml#/components/headers/SwarmSocSignature"
             "swarm-feed-index":
               $ref: "SwarmCommon.yaml#/components/headers/SwarmFeedIndex"
             "swarm-feed-index-next":
               $ref: "SwarmCommon.yaml#/components/headers/SwarmFeedIndexNext"
-            "swarm-only-root-chunk":
-              $ref: "SwarmCommon.yaml#/components/headers/SwarmOnlyRootChunk"
           content:
             application/octet-stream:
               schema:
