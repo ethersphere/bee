@@ -336,6 +336,16 @@ components:
           duration:
             type: integer
 
+    BlocklistPeerRequest:
+      type: object
+      properties:
+        address:
+          $ref: "#/components/schemas/SwarmAddress"
+        reason:
+          type: string
+        duration:
+          type: integer
+
     PssRecipient:
       type: string
 

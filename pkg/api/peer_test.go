@@ -5,10 +5,14 @@
 package api_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"testing"
+	"time"
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/api"
@@ -194,6 +198,142 @@ func TestBlocklistedPeers(t *testing.T) {
 			Peers: []api.BlockListedPeer{{Peer: api.Peer{Address: overlay}, Duration: 0}},
 		}),
 	)
+}
+
+func TestBlocklistPeer(t *testing.T) {
+	t.Parallel()
+
+	overlay := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59c")
+	notFoundOverlay := swarm.MustParseHexAddress("ca1e9f3938cc1425c6061b96ad9eb93e134dfe8734ad490164ef20af9d1cf59a")
+	duration := 5 * time.Second
+	reason := "test reason"
+
+	t.Run("ok", func(t *testing.T) {
+		t.Parallel()
+
+		request := api.BlocklistPeerRequest{
+			Address:  overlay,
+			Duration: duration,
+			Reason:   reason,
+		}
+
+		payload, err := json.Marshal(&request)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		testServer, _, _, _ := newTestServer(t, testServerOptions{
+			P2P: mock.New(mock.WithBlocklistFunc(func(s swarm.Address, t time.Duration, r string) error {
+				if r != reason {
+					return fmt.Errorf("expected reason %s, got %s", reason, r)
+				}
+
+				if !s.Equal(overlay) {
+					return fmt.Errorf("expected address %s, got %s", overlay, s)
+				}
+
+				if t != duration {
+					return fmt.Errorf("expected duration %s, got %s", duration, t)
+				}
+
+				return nil
+			})),
+		})
+
+		jsonhttptest.Request(t, testServer, http.MethodPost, "/blocklist", http.StatusOK,
+			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "OK",
+				Code:    http.StatusOK,
+			}),
+		)
+	})
+
+	t.Run("address not found", func(t *testing.T) {
+		t.Parallel()
+
+		request := api.BlocklistPeerRequest{
+			Address:  notFoundOverlay,
+			Duration: duration,
+			Reason:   reason,
+		}
+
+		payload, err := json.Marshal(&request)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		testServer, _, _, _ := newTestServer(t, testServerOptions{
+			P2P: mock.New(mock.WithBlocklistFunc(func(s swarm.Address, t time.Duration, r string) error {
+				if s.Equal(notFoundOverlay) {
+					return p2p.ErrPeerNotFound
+				}
+				return nil
+			})),
+		})
+
+		jsonhttptest.Request(t, testServer, http.MethodPost, "/blocklist", http.StatusNotFound,
+			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: p2p.ErrPeerNotFound.Error(),
+				Code:    http.StatusNotFound,
+			}),
+		)
+	})
+
+	t.Run("other error", func(t *testing.T) {
+		t.Parallel()
+
+		request := api.BlocklistPeerRequest{
+			Address:  overlay,
+			Duration: duration,
+			Reason:   reason,
+		}
+
+		payload, err := json.Marshal(&request)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		testServer, _, _, _ := newTestServer(t, testServerOptions{
+			P2P: mock.New(mock.WithBlocklistFunc(func(s swarm.Address, t time.Duration, r string) error {
+				return errors.New("some internal error")
+			})),
+		})
+
+		jsonhttptest.Request(t, testServer, http.MethodPost, "/blocklist", http.StatusInternalServerError,
+			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
+			jsonhttptest.WithExpectedJSONResponse(jsonhttp.StatusResponse{
+				Message: "some internal error",
+				Code:    http.StatusInternalServerError,
+			}),
+		)
+	})
+
+	t.Run("failed to read body", func(t *testing.T) {
+		t.Parallel()
+
+		testServer, _, _, _ := newTestServer(t, testServerOptions{})
+
+		jsonhttptest.Request(t, testServer, http.MethodPost, "/blocklist", http.StatusBadRequest,
+			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
+		)
+	})
+
+	t.Run("peer address not valid", func(t *testing.T) {
+		t.Parallel()
+
+		payload, err := json.Marshal(&api.BlocklistPeerRequest{})
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		testServer, _, _, _ := newTestServer(t, testServerOptions{})
+
+		jsonhttptest.Request(t, testServer, http.MethodPost, "/blocklist", http.StatusBadRequest,
+			jsonhttptest.WithRequestBody(bytes.NewReader(payload)),
+		)
+	})
 }
 
 func TestBlocklistedPeersErr(t *testing.T) {

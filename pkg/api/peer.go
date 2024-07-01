@@ -5,8 +5,10 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/p2p"
@@ -116,6 +118,48 @@ func (s *Service) blocklistedPeersHandler(w http.ResponseWriter, _ *http.Request
 	jsonhttp.OK(w, blockListedPeersResponse{
 		Peers: mapBlockListedPeers(peers),
 	})
+}
+
+type BlocklistPeerRequest struct {
+	Address  swarm.Address `json:"address"`
+	Duration time.Duration `json:"duration"`
+	Reason   string        `json:"reason"`
+}
+
+func (s *Service) blocklistPeerHandler(w http.ResponseWriter, r *http.Request) {
+	logger := s.logger.WithValues("post_blocklist").Build()
+
+	var payload BlocklistPeerRequest
+	if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+		logger.Debug("failed to read body", "error", err)
+		logger.Error(nil, "failed to read body")
+		jsonhttp.BadRequest(w, err)
+		return
+	}
+
+	// TODO: create custom validator for swarm.Address using go-playground/validator and use it here to validate the struct.
+	// Validator should be initialized in the service constructor of mocks as well.
+	if !payload.Address.IsValidNonEmpty() {
+		logger.Debug("peer address is not valid")
+		logger.Error(nil, "peer address is not valid")
+		jsonhttp.BadRequest(w, "peer address is not valid")
+		return
+	}
+
+	// TODO: possible to extend Blocklist method to return actual Duration value in jsonhttp response
+	if err := s.p2p.Blocklist(payload.Address, payload.Duration, payload.Reason); err != nil {
+		logger.Debug("blocklist peer failed", "peer_address", payload.Address, "error", err)
+		if errors.Is(err, p2p.ErrPeerNotFound) {
+			logger.Error(nil, "peer not found")
+			jsonhttp.NotFound(w, "peer not found")
+			return
+		}
+		logger.Error(nil, "blocklist peer failed", "peer_address", payload.Address)
+		jsonhttp.InternalServerError(w, err)
+		return
+	}
+
+	jsonhttp.OK(w, nil)
 }
 
 func mapPeers(peers []p2p.Peer) (out []Peer) {
