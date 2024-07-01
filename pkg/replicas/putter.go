@@ -31,9 +31,9 @@ func NewPutter(p storage.Putter) storage.Putter {
 // Put makes the getter satisfy the storage.Getter interface
 func (p *putter) Put(ctx context.Context, ch swarm.Chunk) (err error) {
 	rlevel := redundancy.GetLevelFromContext(ctx)
-	errs := []error{p.putter.Put(ctx, ch)}
+	errs := []error{}
 	if rlevel == 0 {
-		return errs[0]
+		return nil
 	}
 
 	rr := newReplicator(ch.Address(), rlevel)
