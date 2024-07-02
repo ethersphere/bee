@@ -264,7 +264,7 @@ func (db *DB) EvictBatch(ctx context.Context, batchID []byte) error {
 	return nil
 }
 
-func (db *DB) ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte) (ch swarm.Chunk, err error) {
+func (db *DB) ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte, batchHash []byte) (ch swarm.Chunk, err error) {
 	dur := captureDuration(time.Now())
 	defer func() {
 		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "ReserveGet").Observe(dur())
@@ -276,10 +276,10 @@ func (db *DB) ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte
 		}
 	}()
 
-	return db.reserve.Get(ctx, addr, batchID)
+	return db.reserve.Get(ctx, addr, batchID, batchHash)
 }
 
-func (db *DB) ReserveHas(addr swarm.Address, batchID []byte) (has bool, err error) {
+func (db *DB) ReserveHas(addr swarm.Address, batchID []byte, batchHash []byte) (has bool, err error) {
 	dur := captureDuration(time.Now())
 	defer func() {
 		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "ReserveHas").Observe(dur())
@@ -291,7 +291,7 @@ func (db *DB) ReserveHas(addr swarm.Address, batchID []byte) (has bool, err erro
 		}
 	}()
 
-	return db.reserve.Has(addr, batchID)
+	return db.reserve.Has(addr, batchID, batchHash)
 }
 
 // ReservePutter returns a Putter for inserting chunks into the reserve.
@@ -434,9 +434,10 @@ func (db *DB) IsWithinStorageRadius(addr swarm.Address) bool {
 
 // BinC is the result returned from the SubscribeBin channel that contains the chunk address and the binID
 type BinC struct {
-	Address swarm.Address
-	BinID   uint64
-	BatchID []byte
+	Address   swarm.Address
+	BinID     uint64
+	BatchID   []byte
+	BatchHash []byte
 }
 
 // SubscribeBin returns a channel that feeds all the chunks in the reserve from a certain bin between a start and end binIDs.
@@ -455,9 +456,9 @@ func (db *DB) SubscribeBin(ctx context.Context, bin uint8, start uint64) (<-chan
 
 		for {
 
-			err := db.reserve.IterateBin(bin, start, func(a swarm.Address, binID uint64, batchID []byte) (bool, error) {
+			err := db.reserve.IterateBin(bin, start, func(a swarm.Address, binID uint64, batchID, batchHash []byte) (bool, error) {
 				select {
-				case out <- &BinC{Address: a, BinID: binID, BatchID: batchID}:
+				case out <- &BinC{Address: a, BinID: binID, BatchID: batchID, BatchHash: batchHash}:
 					start = binID + 1
 				case <-done:
 					return true, nil

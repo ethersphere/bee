@@ -23,6 +23,7 @@ message Get {
 message Chunk {
   bytes Address = 1;
   bytes BatchID = 2;
+  bytes BatchHash = 3;
 }
 
 message Offer {

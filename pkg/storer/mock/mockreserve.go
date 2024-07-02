@@ -9,8 +9,8 @@ import (
 	"math/big"
 	"sync"
 
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
-	storer "github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
@@ -35,7 +35,8 @@ func WithChunks(chs ...swarm.Chunk) Option {
 		for _, c := range chs {
 			c := c
 			if c.Stamp() != nil {
-				p.chunks[c.Address().String()+string(c.Stamp().BatchID())] = c
+				batchHash, _ := c.Stamp().Hash()
+				p.chunks[c.Address().String()+string(c.Stamp().BatchID())+string(batchHash)] = c
 			} else {
 				p.chunks[c.Address().String()] = c
 			}
@@ -153,7 +154,7 @@ func (s *ReserveStore) SubscribeBin(ctx context.Context, bin uint8, start uint64
 	go func() {
 		for _, c := range r.chunks {
 			select {
-			case out <- &storer.BinC{Address: c.Address, BatchID: c.BatchID, BinID: c.BinID}:
+			case out <- &storer.BinC{Address: c.Address, BatchID: c.BatchID, BinID: c.BinID, BatchHash: c.BatchHash}:
 			case <-ctx.Done():
 				select {
 				case errC <- ctx.Err():
@@ -189,13 +190,13 @@ func (s *ReserveStore) SetCalls() int {
 }
 
 // Get chunks.
-func (s *ReserveStore) ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte) (swarm.Chunk, error) {
+func (s *ReserveStore) ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte, batchHash []byte) (swarm.Chunk, error) {
 	if s.evilAddr.Equal(addr) {
 		//inject the malicious chunk instead
 		return s.evilChunk, nil
 	}
 
-	if v, ok := s.chunks[addr.String()+string(batchID)]; ok {
+	if v, ok := s.chunks[addr.String()+string(batchID)+string(batchHash)]; ok {
 		return v, nil
 	}
 
@@ -225,14 +226,18 @@ func (s *ReserveStore) put(_ context.Context, chs ...swarm.Chunk) error {
 				return err
 			}
 		}
-		s.chunks[c.Address().String()+string(c.Stamp().BatchID())] = c
+		batchHash, err := c.Stamp().Hash()
+		if err != nil {
+			return err
+		}
+		s.chunks[c.Address().String()+string(c.Stamp().BatchID())+string(batchHash)] = c
 	}
 	return nil
 }
 
 // Has chunks.
-func (s *ReserveStore) ReserveHas(addr swarm.Address, batchID []byte) (bool, error) {
-	if _, ok := s.chunks[addr.String()+string(batchID)]; !ok {
+func (s *ReserveStore) ReserveHas(addr swarm.Address, batchID []byte, batchHash []byte) (bool, error) {
+	if _, ok := s.chunks[addr.String()+string(batchID)+string(batchHash)]; !ok {
 		return false, nil
 	}
 	return true, nil
