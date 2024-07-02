@@ -20,6 +20,8 @@ import (
 
 // TestStampMarshalling tests the idempotence  of binary marshal/unmarshals for Stamps.
 func TestStampMarshalling(t *testing.T) {
+	t.Parallel()
+
 	sExp := postagetesting.MustNewStamp()
 	buf, _ := sExp.MarshalBinary()
 	if len(buf) != postage.StampSize {
@@ -34,6 +36,8 @@ func TestStampMarshalling(t *testing.T) {
 
 // TestStampMarshalling tests the idempotence  of binary marshal/unmarshals for Stamps.
 func TestStampJsonMarshalling(t *testing.T) {
+	t.Parallel()
+
 	sExp := postagetesting.MustNewStamp()
 
 	b, err := json.Marshal(sExp)
@@ -69,6 +73,8 @@ func compareStamps(t *testing.T, s1, s2 *postage.Stamp) {
 
 // TestStampIndexMarshalling tests the idempotence of stamp index serialisation.
 func TestStampIndexMarshalling(t *testing.T) {
+	t.Parallel()
+
 	var (
 		expBucket uint32 = 11789
 		expIndex  uint32 = 199999
@@ -84,6 +90,8 @@ func TestStampIndexMarshalling(t *testing.T) {
 }
 
 func TestValidStamp(t *testing.T) {
+	t.Parallel()
+
 	privKey, err := crypto.GenerateSecp256k1Key()
 	if err != nil {
 		t.Fatal(err)
