@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/cac"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 
@@ -30,8 +31,10 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	logger := s.logger.WithName("post_chunk").Build()
 
 	headers := struct {
-		BatchID  []byte `map:"Swarm-Postage-Batch-Id" validate:"required"`
-		SwarmTag uint64 `map:"Swarm-Tag"`
+		BatchID        []byte        `map:"Swarm-Postage-Batch-Id" validate:"required"`
+		SwarmTag       uint64        `map:"Swarm-Tag"`
+		Act            bool          `map:"Swarm-Act"`
+		HistoryAddress swarm.Address `map:"Swarm-Act-History-Address"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -139,6 +142,26 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	reference := chunk.Address()
+	if headers.Act {
+		reference, err = s.actEncryptionHandler(r.Context(), w, putter, reference, headers.HistoryAddress)
+		if err != nil {
+			logger.Debug("access control upload failed", "error", err)
+			logger.Error(nil, "access control upload failed")
+			switch {
+			case errors.Is(err, accesscontrol.ErrNotFound):
+				jsonhttp.NotFound(w, "act or history entry not found")
+			case errors.Is(err, accesscontrol.ErrInvalidPublicKey) || errors.Is(err, accesscontrol.ErrSecretKeyInfinity):
+				jsonhttp.BadRequest(w, "invalid public key")
+			case errors.Is(err, accesscontrol.ErrUnexpectedType):
+				jsonhttp.BadRequest(w, "failed to create history")
+			default:
+				jsonhttp.InternalServerError(w, errActUpload)
+			}
+			return
+		}
+	}
+
 	err = putter.Put(r.Context(), chunk)
 	if err != nil {
 		logger.Debug("chunk upload: write chunk failed", "chunk_address", chunk.Address(), "error", err)
@@ -165,7 +188,7 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
-	jsonhttp.Created(w, chunkAddressResponse{Reference: chunk.Address()})
+	jsonhttp.Created(w, chunkAddressResponse{Reference: reference})
 }
 
 func (s *Service) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
@@ -192,15 +215,20 @@ func (s *Service) chunkGetHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	chunk, err := s.storer.Download(cache).Get(r.Context(), paths.Address)
+	address := paths.Address
+	if v := getAddressFromContext(r.Context()); !v.IsZero() {
+		address = v
+	}
+
+	chunk, err := s.storer.Download(cache).Get(r.Context(), address)
 	if err != nil {
 		if errors.Is(err, storage.ErrNotFound) {
-			loggerV1.Debug("chunk not found", "address", paths.Address)
+			loggerV1.Debug("chunk not found", "address", address)
 			jsonhttp.NotFound(w, "chunk not found")
 			return
 
 		}
-		logger.Debug("read chunk failed", "chunk_address", paths.Address, "error", err)
+		logger.Debug("read chunk failed", "chunk_address", address, "error", err)
 		logger.Error(nil, "read chunk failed")
 		jsonhttp.InternalServerError(w, "read chunk failed")
 		return

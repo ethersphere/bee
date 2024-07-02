@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/accounting"
 	"github.com/ethersphere/bee/v2/pkg/addressbook"
 	"github.com/ethersphere/bee/v2/pkg/api"
@@ -115,6 +116,7 @@ type Bee struct {
 	shutdownInProgress       bool
 	shutdownMutex            sync.Mutex
 	syncingStopped           *syncutil.Signaler
+	accesscontrolCloser      io.Closer
 }
 
 type Options struct {
@@ -196,6 +198,7 @@ func NewBee(
 	logger log.Logger,
 	libp2pPrivateKey,
 	pssPrivateKey *ecdsa.PrivateKey,
+	session accesscontrol.Session,
 	o *Options,
 ) (b *Bee, err error) {
 	tracer, tracerCloser, err := tracing.NewTracer(&tracing.Options{
@@ -706,6 +709,10 @@ func NewBee(
 	b.localstoreCloser = localStore
 	evictFn = func(id []byte) error { return localStore.EvictBatch(context.Background(), id) }
 
+	actLogic := accesscontrol.NewLogic(session)
+	accesscontrol := accesscontrol.NewController(actLogic)
+	b.accesscontrolCloser = accesscontrol
+
 	var (
 		syncErr    atomic.Value
 		syncStatus atomic.Value
@@ -1021,6 +1028,7 @@ func NewBee(
 		Pss:             pssService,
 		FeedFactory:     feedFactory,
 		Post:            post,
+		AccessControl:   accesscontrol,
 		PostageContract: postageStampContractService,
 		Staking:         stakingContract,
 		Steward:         steward,
@@ -1213,6 +1221,7 @@ func (b *Bee) Shutdown() error {
 		c()
 	}
 
+	tryClose(b.accesscontrolCloser, "accesscontrol")
 	tryClose(b.tracerCloser, "tracer")
 	tryClose(b.topologyCloser, "topology driver")
 	tryClose(b.storageIncetivesCloser, "storage incentives agent")

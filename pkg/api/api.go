@@ -26,6 +26,7 @@ import (
 	"unicode/utf8"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/accounting"
 	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/feeds"
@@ -83,6 +84,10 @@ const (
 	SwarmRedundancyFallbackModeHeader = "Swarm-Redundancy-Fallback-Mode"
 	SwarmChunkRetrievalTimeoutHeader  = "Swarm-Chunk-Retrieval-Timeout"
 	SwarmLookAheadBufferSizeHeader    = "Swarm-Lookahead-Buffer-Size"
+	SwarmActHeader                    = "Swarm-Act"
+	SwarmActTimestampHeader           = "Swarm-Act-Timestamp"
+	SwarmActPublisherHeader           = "Swarm-Act-Publisher"
+	SwarmActHistoryAddressHeader      = "Swarm-Act-History-Address"
 
 	ImmutableHeader = "Immutable"
 	GasPriceHeader  = "Gas-Price"
@@ -115,6 +120,9 @@ var (
 	errBatchUnusable                    = errors.New("batch not usable")
 	errUnsupportedDevNodeOperation      = errors.New("operation not supported in dev mode")
 	errOperationSupportedOnlyInFullMode = errors.New("operation is supported only in full mode")
+	errActDownload                      = errors.New("act download failed")
+	errActUpload                        = errors.New("act upload failed")
+	errActGranteeList                   = errors.New("failed to create or update grantee list")
 )
 
 // Storer interface provides the functionality required from the local storage
@@ -144,6 +152,7 @@ type Service struct {
 	feedFactory     feeds.Factory
 	signer          crypto.Signer
 	post            postage.Service
+	accesscontrol   accesscontrol.Controller
 	postageContract postagecontract.Interface
 	probe           *Probe
 	metricsRegistry *prometheus.Registry
@@ -240,6 +249,7 @@ type ExtraOptions struct {
 	Pss             pss.Interface
 	FeedFactory     feeds.Factory
 	Post            postage.Service
+	AccessControl   accesscontrol.Controller
 	PostageContract postagecontract.Interface
 	Staking         staking.Contract
 	Steward         steward.Interface
@@ -322,6 +332,7 @@ func (s *Service) Configure(signer crypto.Signer, tracer *tracing.Tracer, o Opti
 	s.pss = e.Pss
 	s.feedFactory = e.FeedFactory
 	s.post = e.Post
+	s.accesscontrol = e.AccessControl
 	s.postageContract = e.PostageContract
 	s.steward = e.Steward
 	s.stakingContract = e.Staking

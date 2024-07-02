@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethersphere/bee/v2/pkg/accesscontrol"
 	"github.com/ethersphere/bee/v2/pkg/feeds"
 	"github.com/ethersphere/bee/v2/pkg/file/loadsave"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
@@ -21,8 +22,8 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/manifest/simple"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/soc"
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
-	storer "github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/gorilla/mux"
 )
@@ -137,9 +138,11 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	headers := struct {
-		BatchID  []byte `map:"Swarm-Postage-Batch-Id" validate:"required"`
-		Pin      bool   `map:"Swarm-Pin"`
-		Deferred *bool  `map:"Swarm-Deferred-Upload"`
+		BatchID        []byte        `map:"Swarm-Postage-Batch-Id" validate:"required"`
+		Pin            bool          `map:"Swarm-Pin"`
+		Deferred       *bool         `map:"Swarm-Deferred-Upload"`
+		Act            bool          `map:"Swarm-Act"`
+		HistoryAddress swarm.Address `map:"Swarm-Act-History-Address"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
@@ -245,6 +248,26 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	encryptedReference := ref
+	if headers.Act {
+		encryptedReference, err = s.actEncryptionHandler(r.Context(), w, putter, ref, headers.HistoryAddress)
+		if err != nil {
+			logger.Debug("access control upload failed", "error", err)
+			logger.Error(nil, "access control upload failed")
+			switch {
+			case errors.Is(err, accesscontrol.ErrNotFound):
+				jsonhttp.NotFound(w, "act or history entry not found")
+			case errors.Is(err, accesscontrol.ErrInvalidPublicKey) || errors.Is(err, accesscontrol.ErrSecretKeyInfinity):
+				jsonhttp.BadRequest(w, "invalid public key")
+			case errors.Is(err, accesscontrol.ErrUnexpectedType):
+				jsonhttp.BadRequest(w, "failed to create history")
+			default:
+				jsonhttp.InternalServerError(w, errActUpload)
+			}
+			return
+		}
+	}
+
 	err = putter.Done(ref)
 	if err != nil {
 		logger.Debug("done split failed", "error", err)
@@ -253,7 +276,7 @@ func (s *Service) feedPostHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jsonhttp.Created(w, feedReferenceResponse{Reference: ref})
+	jsonhttp.Created(w, feedReferenceResponse{Reference: encryptedReference})
 }
 
 func parseFeedUpdate(ch swarm.Chunk) (swarm.Address, int64, error) {
