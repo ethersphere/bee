@@ -37,9 +37,9 @@ jobs:
         run: |
           echo "BEE_API_VERSION=$(grep '^  version:' openapi/Swarm.yaml | awk '{print $2}')" >> $GITHUB_ENV
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@v5
+        uses: goreleaser/goreleaser-action@v6
         with:
-          version: latest
+          version: '~> v2'
           args: release --clean --timeout 1h
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
