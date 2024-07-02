@@ -975,6 +975,11 @@ components:
       schema:
         $ref: "#/components/schemas/HexString"
 
+    SwarmSocSignature:
+      description: "Attached digital signature of the Single Owner Chunk"
+      schema:
+        $ref: "#/components/schemas/HexString"
+
     ETag:
       description: |
         The RFC7232 ETag header field in a response provides the current entity-
@@ -1074,6 +1079,14 @@ components:
       required: false
       description: >
         Specify the timeout for chunk retrieval. The default is 30 seconds.
+
+    SwarmOnlyRootChunkParameter:
+      in: header
+      name: swarm-only-root-chunk
+      schema:
+        type: boolean
+      required: false
+      description: "Returns only the root chunk of the content"
 
     ContentTypePreserved:
       in: header

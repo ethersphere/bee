@@ -107,7 +107,7 @@ func NewUpdate(f *Feed, idx Index, timestamp int64, payload, sig []byte) (swarm.
 	if err != nil {
 		return nil, fmt.Errorf("update: %w", err)
 	}
-	cac, err := toChunk(uint64(timestamp), payload)
+	cac, err := toChunk(payload)
 	if err != nil {
 		return nil, fmt.Errorf("toChunk: %w", err)
 	}
