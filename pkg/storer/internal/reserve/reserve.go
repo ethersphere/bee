@@ -128,14 +128,14 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 			if prev >= curr {
 				return fmt.Errorf("overwrite prev %d cur %d batch %s: %w", prev, curr, hex.EncodeToString(chunk.Stamp().BatchID()), storage.ErrOverwriteNewerChunk)
 			}
-			// An older and different chunk with the same batchID and stamp index has been previously
+			// An older (same or different) chunk with the same batchID and stamp index has been previously
 			// saved to the reserve. We must do the below before saving the new chunk:
 			// 1. Delete the old chunk from the chunkstore.
 			// 2. Delete the old chunk's stamp data.
 			// 3. Delete ALL old chunk related items from the reserve.
 			// 4. Update the stamp index.
 
-			err := r.removeChunk(ctx, s, oldItem.ChunkAddress, chunk.Stamp().BatchID(), batchHash)
+			err = r.removeChunk(ctx, s, oldItem.ChunkAddress, chunk.Stamp().BatchID(), oldItem.StampHash)
 			if err != nil {
 				return fmt.Errorf("failed removing older chunk %s: %w", oldItem.ChunkAddress, err)
 			}

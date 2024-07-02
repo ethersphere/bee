@@ -176,7 +176,7 @@ func TestReplaceOldIndex(t *testing.T) {
 	checkChunk(t, ts, ch1, true)
 
 	// Chunk 2 must be stored
-	ch2BatchHash, err := ch1.Stamp().Hash()
+	ch2BatchHash, err := ch2.Stamp().Hash()
 	if err != nil {
 		t.Fatal(err)
 	}

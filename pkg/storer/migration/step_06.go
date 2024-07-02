@@ -13,26 +13,31 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstamp"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/stampindex"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-// step_06 is a migration step that adds a batchHash to all BatchRadiusItems and ChunkBinItems.
+// step_06 is a migration step that adds a batchHash to all BatchRadiusItems, ChunkBinItems and StampIndexItems.
 func step_06(st transaction.Storage) func() error {
 	return func() error {
 		logger := log.NewLogger("migration-step-06", log.WithSink(os.Stdout))
-		logger.Info("start adding batchHash to BatchRadiusItems and ChunkBinItems")
+		logger.Info("start adding batchHash to BatchRadiusItems, ChunkBinItems and StampIndexItems")
 		err := st.Run(context.Background(), func(s transaction.Store) error {
 			err := addBatchHash(s.IndexStore(), &reserve.BatchRadiusItem{})
 			if err != nil {
 				return err
 			}
-			return addBatchHash(s.IndexStore(), &reserve.ChunkBinItem{})
+			err = addBatchHash(s.IndexStore(), &reserve.ChunkBinItem{})
+			if err != nil {
+				return err
+			}
+			return addBatchHash(s.IndexStore(), &stampindex.Item{})
 		})
 		if err != nil {
 			return err
 		}
-		logger.Info("finished migrating BatchRadiusItems and ChunkBinItems")
+		logger.Info("finished migrating items")
 		return nil
 	}
 }
@@ -56,6 +61,10 @@ func addBatchHash(st storage.IndexStore, fact storage.Item) error {
 		case *reserve.BatchRadiusItem:
 			item := res.Entry.(*reserve.BatchRadiusItem)
 			addr = item.Address
+			batchID = item.BatchID
+		case *stampindex.Item:
+			item := res.Entry.(*stampindex.Item)
+			addr = item.ChunkAddress
 			batchID = item.BatchID
 		default:
 			return true, fmt.Errorf("unsupported item type: %T", t)
@@ -84,6 +93,10 @@ func addBatchHash(st storage.IndexStore, fact storage.Item) error {
 				return true, fmt.Errorf("delete old batch radius item: %w", err)
 			}
 			item.BatchHash = hash
+			err = st.Put(item)
+		case *stampindex.Item:
+			item := res.Entry.(*stampindex.Item)
+			item.StampHash = hash
 			err = st.Put(item)
 		}
 		if err != nil {

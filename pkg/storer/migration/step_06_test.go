@@ -15,6 +15,7 @@ import (
 	chunktest "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/chunkstamp"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
+	"github.com/ethersphere/bee/v2/pkg/storer/internal/stampindex"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	localmigration "github.com/ethersphere/bee/v2/pkg/storer/migration"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -63,6 +64,20 @@ func Test_Step_06(t *testing.T) {
 				return err
 			}
 
+			sIdxItem := &stampindex.Item{
+				BatchID:          ch.Stamp().BatchID(),
+				StampIndex:       ch.Stamp().Index(),
+				StampHash:        nil, // existing items don't have stamp hash
+				StampTimestamp:   ch.Stamp().Timestamp(),
+				ChunkAddress:     ch.Address(),
+				ChunkIsImmutable: false,
+			}
+			sIdxItem.SetNamespace("reserve")
+			err = s.IndexStore().Put(sIdxItem)
+			if err != nil {
+				return err
+			}
+
 			err = chunkstamp.Store(s.IndexStore(), "reserve", ch)
 			if err != nil {
 				return err
@@ -71,45 +86,37 @@ func Test_Step_06(t *testing.T) {
 		return nil
 	})
 	require.NoError(t, err)
-
-	var count int
-	err = store.IndexStore().Iterate(storage.Query{
-		Factory: func() storage.Item { return &reserve.BatchRadiusItem{} },
-	}, func(result storage.Result) (bool, error) {
-		item := result.Entry.(*reserve.BatchRadiusItem)
-		assert.True(t, bytes.Equal(item.BatchHash, swarm.EmptyAddress.Bytes()))
-		count++
-		return false, nil
-	})
-	require.NoError(t, err)
-	assert.Equal(t, 10, count)
-
-	count = 0
-	err = store.IndexStore().Iterate(storage.Query{
-		Factory: func() storage.Item { return &reserve.ChunkBinItem{} },
-	}, func(result storage.Result) (bool, error) {
-		item := result.Entry.(*reserve.ChunkBinItem)
-		assert.True(t, bytes.Equal(item.BatchHash, swarm.EmptyAddress.Bytes()))
-		count++
-		return false, nil
-	})
-	require.NoError(t, err)
-	assert.Equal(t, 10, count)
+	checkItems(t, store.IndexStore(), false, 10, &reserve.BatchRadiusItem{})
+	checkItems(t, store.IndexStore(), false, 10, &reserve.ChunkBinItem{})
+	checkItems(t, store.IndexStore(), false, 10, &stampindex.Item{})
 
 	err = localmigration.Step_06(store)()
 	require.NoError(t, err)
 
-	count = 0
-	err = store.IndexStore().Iterate(storage.Query{
-		Factory: func() storage.Item { return &reserve.BatchRadiusItem{} },
+	checkItems(t, store.IndexStore(), true, 10, &reserve.BatchRadiusItem{})
+	checkItems(t, store.IndexStore(), true, 10, &reserve.ChunkBinItem{})
+	checkItems(t, store.IndexStore(), true, 10, &stampindex.Item{})
+}
+
+func checkItems(t *testing.T, s storage.Reader, wantStampHash bool, wantCount int, fact storage.Item) {
+	count := 0
+	err := s.Iterate(storage.Query{
+		Factory: func() storage.Item { return fact },
 	}, func(result storage.Result) (bool, error) {
-		item := result.Entry.(*reserve.BatchRadiusItem)
-		assert.False(t, bytes.Equal(item.BatchHash, swarm.EmptyAddress.Bytes()))
+		var stampHash []byte
+		switch result.Entry.(type) {
+		case *reserve.ChunkBinItem:
+			stampHash = result.Entry.(*reserve.ChunkBinItem).BatchHash
+		case *reserve.BatchRadiusItem:
+			stampHash = result.Entry.(*reserve.BatchRadiusItem).BatchHash
+		case *stampindex.Item:
+			stampHash = result.Entry.(*stampindex.Item).StampHash
+		}
+		eq := bytes.Equal(stampHash, swarm.EmptyAddress.Bytes())
+		assert.Equal(t, wantStampHash, !eq)
 		count++
 		return false, nil
 	})
 	require.NoError(t, err)
-
-	// previous items with old ID format should be deleted and replaced by new.
-	assert.Equal(t, 10, count)
+	assert.Equal(t, wantCount, count)
 }
