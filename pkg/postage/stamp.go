@@ -91,7 +91,11 @@ func (s *Stamp) Clone() swarm.Stamp {
 // Hash returns the hash of the stamp.
 func (s *Stamp) Hash() ([]byte, error) {
 	hasher := swarm.NewHasher()
-	_, err := hasher.Write(s.batchID)
+	b, err := s.MarshalBinary()
+	if err != nil {
+		return nil, err
+	}
+	_, err = hasher.Write(b)
 	if err != nil {
 		return nil, err
 	}
