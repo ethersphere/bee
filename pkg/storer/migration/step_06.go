@@ -22,13 +22,18 @@ func step_06(st transaction.Storage) func() error {
 	return func() error {
 		logger := log.NewLogger("migration-step-06", log.WithSink(os.Stdout))
 		logger.Info("start adding batchHash to BatchRadiusItems and ChunkBinItems")
-		return st.Run(context.Background(), func(s transaction.Store) error {
+		err := st.Run(context.Background(), func(s transaction.Store) error {
 			err := addBatchHash(s.IndexStore(), &reserve.BatchRadiusItem{})
 			if err != nil {
 				return err
 			}
 			return addBatchHash(s.IndexStore(), &reserve.ChunkBinItem{})
 		})
+		if err != nil {
+			return err
+		}
+		logger.Info("finished migrating BatchRadiusItems and ChunkBinItems")
+		return nil
 	}
 }
 
