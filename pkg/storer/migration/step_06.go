@@ -18,21 +18,21 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
-// step_06 is a migration step that adds a batchHash to all BatchRadiusItems, ChunkBinItems and StampIndexItems.
+// step_06 is a migration step that adds a stampHash to all BatchRadiusItems, ChunkBinItems and StampIndexItems.
 func step_06(st transaction.Storage) func() error {
 	return func() error {
 		logger := log.NewLogger("migration-step-06", log.WithSink(os.Stdout))
-		logger.Info("start adding batchHash to BatchRadiusItems, ChunkBinItems and StampIndexItems")
+		logger.Info("start adding stampHash to BatchRadiusItems, ChunkBinItems and StampIndexItems")
 		err := st.Run(context.Background(), func(s transaction.Store) error {
-			err := addBatchHash(s.IndexStore(), &reserve.BatchRadiusItem{})
+			err := addStampHash(s.IndexStore(), &reserve.BatchRadiusItem{})
 			if err != nil {
 				return err
 			}
-			err = addBatchHash(s.IndexStore(), &reserve.ChunkBinItem{})
+			err = addStampHash(s.IndexStore(), &reserve.ChunkBinItem{})
 			if err != nil {
 				return err
 			}
-			return addBatchHash(s.IndexStore(), &stampindex.Item{})
+			return addStampHash(s.IndexStore(), &stampindex.Item{})
 		})
 		if err != nil {
 			return err
@@ -42,9 +42,9 @@ func step_06(st transaction.Storage) func() error {
 	}
 }
 
-// addBatchHash adds a batchHash to a storage item.
+// addStampHash adds a stampHash to a storage item.
 // only BatchRadiusItem and ChunkBinItem are supported.
-func addBatchHash(st storage.IndexStore, fact storage.Item) error {
+func addStampHash(st storage.IndexStore, fact storage.Item) error {
 	return st.Iterate(storage.Query{
 		Factory: func() storage.Item { return fact },
 	}, func(res storage.Result) (bool, error) {
@@ -82,7 +82,7 @@ func addBatchHash(st storage.IndexStore, fact storage.Item) error {
 		switch res.Entry.(type) {
 		case *reserve.ChunkBinItem:
 			item := res.Entry.(*reserve.ChunkBinItem)
-			item.BatchHash = hash
+			item.StampHash = hash
 			err = st.Put(item)
 		case *reserve.BatchRadiusItem:
 			item := res.Entry.(*reserve.BatchRadiusItem)
@@ -92,7 +92,7 @@ func addBatchHash(st storage.IndexStore, fact storage.Item) error {
 			if err != nil {
 				return true, fmt.Errorf("delete old batch radius item: %w", err)
 			}
-			item.BatchHash = hash
+			item.StampHash = hash
 			err = st.Put(item)
 		case *stampindex.Item:
 			item := res.Entry.(*stampindex.Item)

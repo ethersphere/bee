@@ -51,14 +51,14 @@ func TestReserve(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			batchHash, err := ch.Stamp().Hash()
+			stampHash, err := ch.Stamp().Hash()
 			if err != nil {
 				t.Fatal(err)
 			}
-			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: uint8(b), BatchID: ch.Stamp().BatchID(), Address: ch.Address(), BatchHash: batchHash}, false)
-			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: uint8(b), BinID: uint64(i), BatchHash: batchHash}, false)
+			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: uint8(b), BatchID: ch.Stamp().BatchID(), Address: ch.Address(), StampHash: stampHash}, false)
+			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: uint8(b), BinID: uint64(i), StampHash: stampHash}, false)
 			checkChunk(t, ts, ch, false)
-			h, err := r.Has(ch.Address(), ch.Stamp().BatchID(), batchHash)
+			h, err := r.Has(ch.Address(), ch.Stamp().BatchID(), stampHash)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -66,7 +66,7 @@ func TestReserve(t *testing.T) {
 				t.Fatalf("expected chunk addr %s binID %d", ch.Address(), i)
 			}
 
-			chGet, err := r.Get(context.Background(), ch.Address(), ch.Stamp().BatchID(), batchHash)
+			chGet, err := r.Get(context.Background(), ch.Address(), ch.Stamp().BatchID(), stampHash)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -167,21 +167,21 @@ func TestReplaceOldIndex(t *testing.T) {
 	}
 
 	// Chunk 1 must be gone
-	ch1BatchHash, err := ch1.Stamp().Hash()
+	ch1StampHash, err := ch1.Stamp().Hash()
 	if err != nil {
 		t.Fatal(err)
 	}
-	checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: 0, BatchID: ch1.Stamp().BatchID(), Address: ch1.Address(), BatchHash: ch1BatchHash}, true)
-	checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: 1, BatchHash: ch1BatchHash}, true)
+	checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: 0, BatchID: ch1.Stamp().BatchID(), Address: ch1.Address(), StampHash: ch1StampHash}, true)
+	checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: 1, StampHash: ch1StampHash}, true)
 	checkChunk(t, ts, ch1, true)
 
 	// Chunk 2 must be stored
-	ch2BatchHash, err := ch2.Stamp().Hash()
+	ch2StampHash, err := ch2.Stamp().Hash()
 	if err != nil {
 		t.Fatal(err)
 	}
-	checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: 0, BatchID: ch2.Stamp().BatchID(), Address: ch2.Address(), BatchHash: ch2BatchHash}, false)
-	checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: 2, BatchHash: ch2BatchHash}, false)
+	checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: 0, BatchID: ch2.Stamp().BatchID(), Address: ch2.Address(), StampHash: ch2StampHash}, false)
+	checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: 2, StampHash: ch2StampHash}, false)
 	checkChunk(t, ts, ch2, false)
 
 	item, err := stampindex.Load(ts.IndexStore(), "reserve", ch2)
@@ -244,24 +244,24 @@ func TestEvict(t *testing.T) {
 	for i, ch := range chunks {
 		binID := i%chunksPerBatch + 1
 		b := swarm.Proximity(baseAddr.Bytes(), ch.Address().Bytes())
-		batchHash, err := ch.Stamp().Hash()
+		stampHash, err := ch.Stamp().Hash()
 		if err != nil {
 			t.Fatal(err)
 		}
-		_, err = r.Get(context.Background(), ch.Address(), ch.Stamp().BatchID(), batchHash)
+		_, err = r.Get(context.Background(), ch.Address(), ch.Stamp().BatchID(), stampHash)
 		if bytes.Equal(ch.Stamp().BatchID(), evictBatch.ID) {
 			if !errors.Is(err, storage.ErrNotFound) {
 				t.Fatalf("got err %v, want %v", err, storage.ErrNotFound)
 			}
-			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: b, BatchID: ch.Stamp().BatchID(), Address: ch.Address(), BatchHash: batchHash}, true)
-			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: b, BinID: uint64(binID), BatchHash: batchHash}, true)
+			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: b, BatchID: ch.Stamp().BatchID(), Address: ch.Address(), StampHash: stampHash}, true)
+			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: b, BinID: uint64(binID), StampHash: stampHash}, true)
 			checkChunk(t, ts, ch, true)
 		} else {
 			if err != nil {
 				t.Fatal(err)
 			}
-			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: b, BatchID: ch.Stamp().BatchID(), Address: ch.Address(), BatchHash: batchHash}, false)
-			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: b, BinID: uint64(binID), BatchHash: batchHash}, false)
+			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: b, BatchID: ch.Stamp().BatchID(), Address: ch.Address(), StampHash: stampHash}, false)
+			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: b, BinID: uint64(binID), StampHash: stampHash}, false)
 			checkChunk(t, ts, ch, false)
 		}
 	}
@@ -308,17 +308,17 @@ func TestEvictMaxCount(t *testing.T) {
 	}
 
 	for i, ch := range chunks {
-		batchHash, err := ch.Stamp().Hash()
+		stampHash, err := ch.Stamp().Hash()
 		if err != nil {
 			t.Fatal(err)
 		}
 		if i < 10 {
-			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: 0, BatchID: ch.Stamp().BatchID(), Address: ch.Address(), BatchHash: batchHash}, true)
-			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: uint64(i + 1), BatchHash: batchHash}, true)
+			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: 0, BatchID: ch.Stamp().BatchID(), Address: ch.Address(), StampHash: stampHash}, true)
+			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 0, BinID: uint64(i + 1), StampHash: stampHash}, true)
 			checkChunk(t, ts, ch, true)
 		} else {
-			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: 1, BatchID: ch.Stamp().BatchID(), Address: ch.Address(), BatchHash: batchHash}, false)
-			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 1, BinID: uint64(i - 10 + 1), BatchHash: batchHash}, false)
+			checkStore(t, ts.IndexStore(), &reserve.BatchRadiusItem{Bin: 1, BatchID: ch.Stamp().BatchID(), Address: ch.Address(), StampHash: stampHash}, false)
+			checkStore(t, ts.IndexStore(), &reserve.ChunkBinItem{Bin: 1, BinID: uint64(i - 10 + 1), StampHash: stampHash}, false)
 			checkChunk(t, ts, ch, false)
 		}
 	}

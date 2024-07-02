@@ -42,7 +42,7 @@ func TestReserveRepair(t *testing.T) {
 	for b := 0; b < 5; b++ {
 		for i := uint64(0); i < chunksPerPO; i++ {
 			ch := chunktest.GenerateTestRandomChunkAt(t, baseAddr, b)
-			batchHash, err := ch.Stamp().Hash()
+			stampHash, err := ch.Stamp().Hash()
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -53,7 +53,7 @@ func TestReserveRepair(t *testing.T) {
 				Address:   ch.Address(),
 				BatchID:   ch.Stamp().BatchID(),
 				ChunkType: swarm.ChunkTypeContentAddressed,
-				BatchHash: batchHash,
+				StampHash: stampHash,
 			}
 			err = store.Run(context.Background(), func(s transaction.Store) error {
 				return s.IndexStore().Put(cb)
@@ -67,7 +67,7 @@ func TestReserveRepair(t *testing.T) {
 				Bin:       uint8(b),
 				Address:   ch.Address(),
 				BinID:     0,
-				BatchHash: batchHash,
+				StampHash: stampHash,
 			}
 			err = store.Run(context.Background(), func(s transaction.Store) error {
 				return s.IndexStore().Put(br)

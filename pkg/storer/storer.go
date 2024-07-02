@@ -151,8 +151,8 @@ type ReserveIterator interface {
 // ReserveStore is a logical component of the storer that deals with reserve
 // content. It will implement all the core functionality required for the protocols.
 type ReserveStore interface {
-	ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte, batchHash []byte) (swarm.Chunk, error)
-	ReserveHas(addr swarm.Address, batchID []byte, batchHash []byte) (bool, error)
+	ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte, stampHash []byte) (swarm.Chunk, error)
+	ReserveHas(addr swarm.Address, batchID []byte, stampHash []byte) (bool, error)
 	ReservePutter() storage.Putter
 	SubscribeBin(ctx context.Context, bin uint8, start uint64) (<-chan *BinC, func(), <-chan error)
 	ReserveLastBinIDs() ([]uint64, uint64, error)

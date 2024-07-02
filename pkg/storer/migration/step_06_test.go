@@ -47,7 +47,7 @@ func Test_Step_06(t *testing.T) {
 			err := s.IndexStore().Put(&reserve.BatchRadiusItem{
 				Bin:       uint8(i),
 				BatchID:   ch.Stamp().BatchID(),
-				BatchHash: nil, // exiting items don't have a batchHash
+				StampHash: nil, // exiting items don't have a stampHash
 				Address:   ch.Address(),
 			})
 			if err != nil {
@@ -58,7 +58,7 @@ func Test_Step_06(t *testing.T) {
 				Bin:       uint8(i),
 				Address:   ch.Address(),
 				BatchID:   ch.Stamp().BatchID(),
-				BatchHash: nil, // existing items don't have a batchHash
+				StampHash: nil, // existing items don't have a stampHash
 			})
 			if err != nil {
 				return err
@@ -106,9 +106,9 @@ func checkItems(t *testing.T, s storage.Reader, wantStampHash bool, wantCount in
 		var stampHash []byte
 		switch result.Entry.(type) {
 		case *reserve.ChunkBinItem:
-			stampHash = result.Entry.(*reserve.ChunkBinItem).BatchHash
+			stampHash = result.Entry.(*reserve.ChunkBinItem).StampHash
 		case *reserve.BatchRadiusItem:
-			stampHash = result.Entry.(*reserve.BatchRadiusItem).BatchHash
+			stampHash = result.Entry.(*reserve.BatchRadiusItem).StampHash
 		case *stampindex.Item:
 			stampHash = result.Entry.(*stampindex.Item).StampHash
 		}

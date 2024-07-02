@@ -92,11 +92,11 @@ func TestCompact(t *testing.T) {
 	}
 
 	for _, ch := range chunks {
-		batchHash, err := ch.Stamp().Hash()
+		stampHash, err := ch.Stamp().Hash()
 		if err != nil {
 			t.Fatal(err)
 		}
-		has, err := st.ReserveHas(ch.Address(), ch.Stamp().BatchID(), batchHash)
+		has, err := st.ReserveHas(ch.Address(), ch.Stamp().BatchID(), stampHash)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -178,11 +178,11 @@ func TestCompactNoEvictions(t *testing.T) {
 	}
 
 	for _, ch := range chunks {
-		batchHash, err := ch.Stamp().Hash()
+		stampHash, err := ch.Stamp().Hash()
 		if err != nil {
 			t.Fatal(err)
 		}
-		has, err := st.ReserveHas(ch.Address(), ch.Stamp().BatchID(), batchHash)
+		has, err := st.ReserveHas(ch.Address(), ch.Stamp().BatchID(), stampHash)
 		if err != nil {
 			t.Fatal(err)
 		}

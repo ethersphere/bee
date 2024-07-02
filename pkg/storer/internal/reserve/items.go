@@ -23,7 +23,7 @@ var (
 type BatchRadiusItem struct {
 	Bin       uint8
 	BatchID   []byte
-	BatchHash []byte
+	StampHash []byte
 	Address   swarm.Address
 	BinID     uint64
 }
@@ -32,9 +32,9 @@ func (b *BatchRadiusItem) Namespace() string {
 	return "batchRadius"
 }
 
-// batchID/bin/ChunkAddr/batchHash
+// batchID/bin/ChunkAddr/stampHash
 func (b *BatchRadiusItem) ID() string {
-	return string(b.BatchID) + string(b.Bin) + b.Address.ByteString() + string(b.BatchHash)
+	return string(b.BatchID) + string(b.Bin) + b.Address.ByteString() + string(b.StampHash)
 }
 
 func (b *BatchRadiusItem) String() string {
@@ -50,7 +50,7 @@ func (b *BatchRadiusItem) Clone() storage.Item {
 		BatchID:   copyBytes(b.BatchID),
 		Address:   b.Address.Clone(),
 		BinID:     b.BinID,
-		BatchHash: copyBytes(b.BatchHash),
+		StampHash: copyBytes(b.StampHash),
 	}
 }
 
@@ -75,7 +75,7 @@ func (b *BatchRadiusItem) Marshal() ([]byte, error) {
 	copy(buf[i:i+swarm.HashSize], b.Address.Bytes())
 	i += swarm.HashSize
 
-	copy(buf[i:i+swarm.HashSize], b.BatchHash)
+	copy(buf[i:i+swarm.HashSize], b.StampHash)
 	i += swarm.HashSize
 
 	binary.BigEndian.PutUint64(buf[i:i+8], b.BinID)
@@ -99,7 +99,7 @@ func (b *BatchRadiusItem) Unmarshal(buf []byte) error {
 	b.Address = swarm.NewAddress(buf[i : i+swarm.HashSize]).Clone()
 	i += swarm.HashSize
 
-	b.BatchHash = copyBytes(buf[i : i+swarm.HashSize])
+	b.StampHash = copyBytes(buf[i : i+swarm.HashSize])
 	i += swarm.HashSize
 
 	b.BinID = binary.BigEndian.Uint64(buf[i : i+8])
@@ -114,7 +114,7 @@ type ChunkBinItem struct {
 	BinID     uint64
 	Address   swarm.Address
 	BatchID   []byte
-	BatchHash []byte
+	StampHash []byte
 	ChunkType swarm.ChunkType
 }
 
@@ -146,7 +146,7 @@ func (c *ChunkBinItem) Clone() storage.Item {
 		BinID:     c.BinID,
 		Address:   c.Address.Clone(),
 		BatchID:   copyBytes(c.BatchID),
-		BatchHash: copyBytes(c.BatchHash),
+		StampHash: copyBytes(c.StampHash),
 		ChunkType: c.ChunkType,
 	}
 }
@@ -174,7 +174,7 @@ func (c *ChunkBinItem) Marshal() ([]byte, error) {
 	copy(buf[i:i+swarm.HashSize], c.BatchID)
 	i += swarm.HashSize
 
-	copy(buf[i:i+swarm.HashSize], c.BatchHash)
+	copy(buf[i:i+swarm.HashSize], c.StampHash)
 	i += swarm.HashSize
 
 	buf[i] = uint8(c.ChunkType)
@@ -201,7 +201,7 @@ func (c *ChunkBinItem) Unmarshal(buf []byte) error {
 	c.BatchID = copyBytes(buf[i : i+swarm.HashSize])
 	i += swarm.HashSize
 
-	c.BatchHash = copyBytes(buf[i : i+swarm.HashSize])
+	c.StampHash = copyBytes(buf[i : i+swarm.HashSize])
 	i += swarm.HashSize
 
 	c.ChunkType = swarm.ChunkType(buf[i])

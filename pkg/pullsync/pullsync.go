@@ -170,7 +170,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 
 		addr := offer.Chunks[i].Address
 		batchID := offer.Chunks[i].BatchID
-		batchHash := offer.Chunks[i].BatchHash
+		stampHash := offer.Chunks[i].StampHash
 		if len(addr) != swarm.HashSize {
 			return 0, 0, fmt.Errorf("inconsistent hash length")
 		}
@@ -183,7 +183,7 @@ func (s *Syncer) Sync(ctx context.Context, peer swarm.Address, bin uint8, start 
 		}
 		s.metrics.Offered.Inc()
 		if s.store.IsWithinStorageRadius(a) {
-			have, err = s.store.ReserveHas(a, batchID, batchHash)
+			have, err = s.store.ReserveHas(a, batchID, stampHash)
 			if err != nil {
 				s.logger.Debug("storage has", "error", err)
 				return 0, 0, err
@@ -378,7 +378,7 @@ func (s *Syncer) makeOffer(ctx context.Context, rn pb.Get) (*pb.Offer, error) {
 	o.Topmost = top
 	o.Chunks = make([]*pb.Chunk, 0, len(addrs))
 	for _, v := range addrs {
-		o.Chunks = append(o.Chunks, &pb.Chunk{Address: v.Address.Bytes(), BatchID: v.BatchID, BatchHash: v.BatchHash})
+		o.Chunks = append(o.Chunks, &pb.Chunk{Address: v.Address.Bytes(), BatchID: v.BatchID, StampHash: v.StampHash})
 	}
 	return o, nil
 }
@@ -420,7 +420,7 @@ func (s *Syncer) collectAddrs(ctx context.Context, bin uint8, start uint64) ([]*
 					break LOOP // The stream has been closed.
 				}
 
-				chs = append(chs, &storer.BinC{Address: c.Address, BatchID: c.BatchID, BatchHash: c.BatchHash})
+				chs = append(chs, &storer.BinC{Address: c.Address, BatchID: c.BatchID, StampHash: c.StampHash})
 				if c.BinID > topmost {
 					topmost = c.BinID
 				}
@@ -466,7 +466,7 @@ func (s *Syncer) processWant(ctx context.Context, o *pb.Offer, w *pb.Want) ([]sw
 		if bv.Get(i) {
 			ch := o.Chunks[i]
 			addr := swarm.NewAddress(ch.Address)
-			c, err := s.store.ReserveGet(ctx, addr, ch.BatchID, ch.BatchHash)
+			c, err := s.store.ReserveGet(ctx, addr, ch.BatchID, ch.StampHash)
 			if err != nil {
 				s.logger.Debug("processing want: unable to find chunk", "chunk_address", addr, "batch_id", hex.EncodeToString(ch.BatchID))
 				chunks = append(chunks, swarm.NewChunk(swarm.ZeroAddress, nil))

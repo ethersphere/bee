@@ -97,12 +97,12 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 	r.multx.Lock(string(chunk.Stamp().BatchID()))
 	defer r.multx.Unlock(string(chunk.Stamp().BatchID()))
 
-	batchHash, err := chunk.Stamp().Hash()
+	stampHash, err := chunk.Stamp().Hash()
 	if err != nil {
 		return err
 	}
 
-	has, err := r.Has(chunk.Address(), chunk.Stamp().BatchID(), batchHash)
+	has, err := r.Has(chunk.Address(), chunk.Stamp().BatchID(), stampHash)
 	if err != nil {
 		return err
 	}
@@ -168,7 +168,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 			BinID:     binID,
 			Address:   chunk.Address(),
 			BatchID:   chunk.Stamp().BatchID(),
-			BatchHash: batchHash,
+			StampHash: stampHash,
 		})
 		if err != nil {
 			return err
@@ -180,7 +180,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 			Address:   chunk.Address(),
 			BatchID:   chunk.Stamp().BatchID(),
 			ChunkType: storage.ChunkType(chunk),
-			BatchHash: batchHash,
+			StampHash: stampHash,
 		})
 		if err != nil {
 			return err
@@ -199,16 +199,16 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 	})
 }
 
-func (r *Reserve) Has(addr swarm.Address, batchID []byte, batchHash []byte) (bool, error) {
-	item := &BatchRadiusItem{Bin: swarm.Proximity(r.baseAddr.Bytes(), addr.Bytes()), BatchID: batchID, Address: addr, BatchHash: batchHash}
+func (r *Reserve) Has(addr swarm.Address, batchID []byte, stampHash []byte) (bool, error) {
+	item := &BatchRadiusItem{Bin: swarm.Proximity(r.baseAddr.Bytes(), addr.Bytes()), BatchID: batchID, Address: addr, StampHash: stampHash}
 	return r.st.IndexStore().Has(item)
 }
 
-func (r *Reserve) Get(ctx context.Context, addr swarm.Address, batchID []byte, batchHash []byte) (swarm.Chunk, error) {
+func (r *Reserve) Get(ctx context.Context, addr swarm.Address, batchID []byte, stampHash []byte) (swarm.Chunk, error) {
 	r.multx.Lock(string(batchID))
 	defer r.multx.Unlock(string(batchID))
 
-	item := &BatchRadiusItem{Bin: swarm.Proximity(r.baseAddr.Bytes(), addr.Bytes()), BatchID: batchID, Address: addr, BatchHash: batchHash}
+	item := &BatchRadiusItem{Bin: swarm.Proximity(r.baseAddr.Bytes(), addr.Bytes()), BatchID: batchID, Address: addr, StampHash: stampHash}
 	err := r.st.IndexStore().Get(item)
 	if err != nil {
 		return nil, err
@@ -295,13 +295,13 @@ func (r *Reserve) removeChunk(
 	trx transaction.Store,
 	chunkAddress swarm.Address,
 	batchID []byte,
-	batchHash []byte,
+	stampHash []byte,
 ) error {
 	item := &BatchRadiusItem{
 		Bin:       swarm.Proximity(r.baseAddr.Bytes(), chunkAddress.Bytes()),
 		BatchID:   batchID,
 		Address:   chunkAddress,
-		BatchHash: batchHash,
+		StampHash: stampHash,
 	}
 	err := trx.IndexStore().Get(item)
 	if err != nil {
@@ -348,7 +348,7 @@ func (r *Reserve) IterateBin(bin uint8, startBinID uint64, cb func(swarm.Address
 			return true, nil
 		}
 
-		stop, err := cb(item.Address, item.BinID, item.BatchID, item.BatchHash)
+		stop, err := cb(item.Address, item.BinID, item.BatchID, item.StampHash)
 		if stop || err != nil {
 			return true, err
 		}

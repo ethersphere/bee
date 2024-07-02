@@ -264,7 +264,7 @@ func (db *DB) EvictBatch(ctx context.Context, batchID []byte) error {
 	return nil
 }
 
-func (db *DB) ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte, batchHash []byte) (ch swarm.Chunk, err error) {
+func (db *DB) ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte, stampHash []byte) (ch swarm.Chunk, err error) {
 	dur := captureDuration(time.Now())
 	defer func() {
 		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "ReserveGet").Observe(dur())
@@ -276,10 +276,10 @@ func (db *DB) ReserveGet(ctx context.Context, addr swarm.Address, batchID []byte
 		}
 	}()
 
-	return db.reserve.Get(ctx, addr, batchID, batchHash)
+	return db.reserve.Get(ctx, addr, batchID, stampHash)
 }
 
-func (db *DB) ReserveHas(addr swarm.Address, batchID []byte, batchHash []byte) (has bool, err error) {
+func (db *DB) ReserveHas(addr swarm.Address, batchID []byte, stampHash []byte) (has bool, err error) {
 	dur := captureDuration(time.Now())
 	defer func() {
 		db.metrics.MethodCallsDuration.WithLabelValues("reserve", "ReserveHas").Observe(dur())
@@ -291,7 +291,7 @@ func (db *DB) ReserveHas(addr swarm.Address, batchID []byte, batchHash []byte) (
 		}
 	}()
 
-	return db.reserve.Has(addr, batchID, batchHash)
+	return db.reserve.Has(addr, batchID, stampHash)
 }
 
 // ReservePutter returns a Putter for inserting chunks into the reserve.
@@ -437,7 +437,7 @@ type BinC struct {
 	Address   swarm.Address
 	BinID     uint64
 	BatchID   []byte
-	BatchHash []byte
+	StampHash []byte
 }
 
 // SubscribeBin returns a channel that feeds all the chunks in the reserve from a certain bin between a start and end binIDs.
@@ -456,9 +456,9 @@ func (db *DB) SubscribeBin(ctx context.Context, bin uint8, start uint64) (<-chan
 
 		for {
 
-			err := db.reserve.IterateBin(bin, start, func(a swarm.Address, binID uint64, batchID, batchHash []byte) (bool, error) {
+			err := db.reserve.IterateBin(bin, start, func(a swarm.Address, binID uint64, batchID, stampHash []byte) (bool, error) {
 				select {
-				case out <- &BinC{Address: a, BinID: binID, BatchID: batchID, BatchHash: batchHash}:
+				case out <- &BinC{Address: a, BinID: binID, BatchID: batchID, StampHash: stampHash}:
 					start = binID + 1
 				case <-done:
 					return true, nil

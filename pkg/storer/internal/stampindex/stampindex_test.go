@@ -10,7 +10,7 @@ import (
 	"fmt"
 	"testing"
 
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/storagetest"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 
