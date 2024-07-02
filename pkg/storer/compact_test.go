@@ -14,7 +14,7 @@ import (
 	postagetesting "github.com/ethersphere/bee/v2/pkg/postage/testing"
 	pullerMock "github.com/ethersphere/bee/v2/pkg/puller/mock"
 	chunk "github.com/ethersphere/bee/v2/pkg/storage/testing"
-	storer "github.com/ethersphere/bee/v2/pkg/storer"
+	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
@@ -92,7 +92,11 @@ func TestCompact(t *testing.T) {
 	}
 
 	for _, ch := range chunks {
-		has, err := st.ReserveHas(ch.Address(), ch.Stamp().BatchID())
+		batchHash, err := ch.Stamp().Hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+		has, err := st.ReserveHas(ch.Address(), ch.Stamp().BatchID(), batchHash)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -174,7 +178,11 @@ func TestCompactNoEvictions(t *testing.T) {
 	}
 
 	for _, ch := range chunks {
-		has, err := st.ReserveHas(ch.Address(), ch.Stamp().BatchID())
+		batchHash, err := ch.Stamp().Hash()
+		if err != nil {
+			t.Fatal(err)
+		}
+		has, err := st.ReserveHas(ch.Address(), ch.Stamp().BatchID(), batchHash)
 		if err != nil {
 			t.Fatal(err)
 		}

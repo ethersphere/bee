@@ -9,7 +9,7 @@ import (
 	"errors"
 	"path"
 
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
 
@@ -21,19 +21,20 @@ var (
 // BatchRadiusItem allows iteration of the chunks with respect to bin and batchID.
 // Used for batch evictions of certain bins.
 type BatchRadiusItem struct {
-	Bin     uint8
-	BatchID []byte
-	Address swarm.Address
-	BinID   uint64
+	Bin       uint8
+	BatchID   []byte
+	BatchHash []byte
+	Address   swarm.Address
+	BinID     uint64
 }
 
 func (b *BatchRadiusItem) Namespace() string {
 	return "batchRadius"
 }
 
-// batchID/bin/ChunkAddr
+// batchID/bin/ChunkAddr/batchHash
 func (b *BatchRadiusItem) ID() string {
-	return string(b.BatchID) + string(b.Bin) + b.Address.ByteString()
+	return string(b.BatchID) + string(b.Bin) + b.Address.ByteString() + string(b.BatchHash)
 }
 
 func (b *BatchRadiusItem) String() string {
@@ -45,14 +46,15 @@ func (b *BatchRadiusItem) Clone() storage.Item {
 		return nil
 	}
 	return &BatchRadiusItem{
-		Bin:     b.Bin,
-		BatchID: copyBytes(b.BatchID),
-		Address: b.Address.Clone(),
-		BinID:   b.BinID,
+		Bin:       b.Bin,
+		BatchID:   copyBytes(b.BatchID),
+		Address:   b.Address.Clone(),
+		BinID:     b.BinID,
+		BatchHash: copyBytes(b.BatchHash),
 	}
 }
 
-const batchRadiusItemSize = 1 + swarm.HashSize + swarm.HashSize + 8
+const batchRadiusItemSize = 1 + swarm.HashSize + swarm.HashSize + swarm.HashSize + 8
 
 func (b *BatchRadiusItem) Marshal() ([]byte, error) {
 
@@ -71,6 +73,9 @@ func (b *BatchRadiusItem) Marshal() ([]byte, error) {
 	i += swarm.HashSize
 
 	copy(buf[i:i+swarm.HashSize], b.Address.Bytes())
+	i += swarm.HashSize
+
+	copy(buf[i:i+swarm.HashSize], b.BatchHash)
 	i += swarm.HashSize
 
 	binary.BigEndian.PutUint64(buf[i:i+8], b.BinID)
@@ -94,6 +99,9 @@ func (b *BatchRadiusItem) Unmarshal(buf []byte) error {
 	b.Address = swarm.NewAddress(buf[i : i+swarm.HashSize]).Clone()
 	i += swarm.HashSize
 
+	b.BatchHash = copyBytes(buf[i : i+swarm.HashSize])
+	i += swarm.HashSize
+
 	b.BinID = binary.BigEndian.Uint64(buf[i : i+8])
 
 	return nil
@@ -106,6 +114,7 @@ type ChunkBinItem struct {
 	BinID     uint64
 	Address   swarm.Address
 	BatchID   []byte
+	BatchHash []byte
 	ChunkType swarm.ChunkType
 }
 
@@ -137,11 +146,12 @@ func (c *ChunkBinItem) Clone() storage.Item {
 		BinID:     c.BinID,
 		Address:   c.Address.Clone(),
 		BatchID:   copyBytes(c.BatchID),
+		BatchHash: copyBytes(c.BatchHash),
 		ChunkType: c.ChunkType,
 	}
 }
 
-const chunkBinItemSize = 1 + 8 + swarm.HashSize + swarm.HashSize + 1
+const chunkBinItemSize = 1 + 8 + swarm.HashSize + swarm.HashSize + +swarm.HashSize + 1
 
 func (c *ChunkBinItem) Marshal() ([]byte, error) {
 
@@ -162,6 +172,9 @@ func (c *ChunkBinItem) Marshal() ([]byte, error) {
 	i += swarm.HashSize
 
 	copy(buf[i:i+swarm.HashSize], c.BatchID)
+	i += swarm.HashSize
+
+	copy(buf[i:i+swarm.HashSize], c.BatchHash)
 	i += swarm.HashSize
 
 	buf[i] = uint8(c.ChunkType)
@@ -186,6 +199,9 @@ func (c *ChunkBinItem) Unmarshal(buf []byte) error {
 	i += swarm.HashSize
 
 	c.BatchID = copyBytes(buf[i : i+swarm.HashSize])
+	i += swarm.HashSize
+
+	c.BatchHash = copyBytes(buf[i : i+swarm.HashSize])
 	i += swarm.HashSize
 
 	c.ChunkType = swarm.ChunkType(buf[i])

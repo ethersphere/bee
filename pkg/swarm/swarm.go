@@ -218,6 +218,7 @@ type Stamp interface {
 	Sig() []byte
 	Timestamp() []byte
 	Clone() Stamp
+	Hash() ([]byte, error)
 	encoding.BinaryMarshaler
 	encoding.BinaryUnmarshaler
 }

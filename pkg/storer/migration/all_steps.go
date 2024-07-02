@@ -6,7 +6,7 @@ package migration
 
 import (
 	"github.com/ethersphere/bee/v2/pkg/log"
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storage/migration"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 )
@@ -24,6 +24,7 @@ func AfterInitSteps(
 		3: ReserveRepairer(st, storage.ChunkType, logger),
 		4: step_04(sharkyPath, sharkyNoOfShards, st),
 		5: step_05(st),
+		6: step_06(st),
 	}
 }
 

@@ -97,7 +97,12 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 	r.multx.Lock(string(chunk.Stamp().BatchID()))
 	defer r.multx.Unlock(string(chunk.Stamp().BatchID()))
 
-	has, err := r.Has(chunk.Address(), chunk.Stamp().BatchID())
+	batchHash, err := chunk.Stamp().Hash()
+	if err != nil {
+		return err
+	}
+
+	has, err := r.Has(chunk.Address(), chunk.Stamp().BatchID(), batchHash)
 	if err != nil {
 		return err
 	}
@@ -130,7 +135,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 			// 3. Delete ALL old chunk related items from the reserve.
 			// 4. Update the stamp index.
 
-			err := r.removeChunk(ctx, s, oldItem.ChunkAddress, chunk.Stamp().BatchID())
+			err := r.removeChunk(ctx, s, oldItem.ChunkAddress, chunk.Stamp().BatchID(), batchHash)
 			if err != nil {
 				return fmt.Errorf("failed removing older chunk %s: %w", oldItem.ChunkAddress, err)
 			}
@@ -158,12 +163,12 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 		if err != nil {
 			return err
 		}
-
 		err = s.IndexStore().Put(&BatchRadiusItem{
-			Bin:     bin,
-			BinID:   binID,
-			Address: chunk.Address(),
-			BatchID: chunk.Stamp().BatchID(),
+			Bin:       bin,
+			BinID:     binID,
+			Address:   chunk.Address(),
+			BatchID:   chunk.Stamp().BatchID(),
+			BatchHash: batchHash,
 		})
 		if err != nil {
 			return err
@@ -175,6 +180,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 			Address:   chunk.Address(),
 			BatchID:   chunk.Stamp().BatchID(),
 			ChunkType: storage.ChunkType(chunk),
+			BatchHash: batchHash,
 		})
 		if err != nil {
 			return err
@@ -193,16 +199,16 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 	})
 }
 
-func (r *Reserve) Has(addr swarm.Address, batchID []byte) (bool, error) {
-	item := &BatchRadiusItem{Bin: swarm.Proximity(r.baseAddr.Bytes(), addr.Bytes()), BatchID: batchID, Address: addr}
+func (r *Reserve) Has(addr swarm.Address, batchID []byte, batchHash []byte) (bool, error) {
+	item := &BatchRadiusItem{Bin: swarm.Proximity(r.baseAddr.Bytes(), addr.Bytes()), BatchID: batchID, Address: addr, BatchHash: batchHash}
 	return r.st.IndexStore().Has(item)
 }
 
-func (r *Reserve) Get(ctx context.Context, addr swarm.Address, batchID []byte) (swarm.Chunk, error) {
+func (r *Reserve) Get(ctx context.Context, addr swarm.Address, batchID []byte, batchHash []byte) (swarm.Chunk, error) {
 	r.multx.Lock(string(batchID))
 	defer r.multx.Unlock(string(batchID))
 
-	item := &BatchRadiusItem{Bin: swarm.Proximity(r.baseAddr.Bytes(), addr.Bytes()), BatchID: batchID, Address: addr}
+	item := &BatchRadiusItem{Bin: swarm.Proximity(r.baseAddr.Bytes(), addr.Bytes()), BatchID: batchID, Address: addr, BatchHash: batchHash}
 	err := r.st.IndexStore().Get(item)
 	if err != nil {
 		return nil, err
@@ -289,11 +295,13 @@ func (r *Reserve) removeChunk(
 	trx transaction.Store,
 	chunkAddress swarm.Address,
 	batchID []byte,
+	batchHash []byte,
 ) error {
 	item := &BatchRadiusItem{
-		Bin:     swarm.Proximity(r.baseAddr.Bytes(), chunkAddress.Bytes()),
-		BatchID: batchID,
-		Address: chunkAddress,
+		Bin:       swarm.Proximity(r.baseAddr.Bytes(), chunkAddress.Bytes()),
+		BatchID:   batchID,
+		Address:   chunkAddress,
+		BatchHash: batchHash,
 	}
 	err := trx.IndexStore().Get(item)
 	if err != nil {
@@ -329,7 +337,7 @@ func RemoveChunkWithItem(
 	)
 }
 
-func (r *Reserve) IterateBin(bin uint8, startBinID uint64, cb func(swarm.Address, uint64, []byte) (bool, error)) error {
+func (r *Reserve) IterateBin(bin uint8, startBinID uint64, cb func(swarm.Address, uint64, []byte, []byte) (bool, error)) error {
 	err := r.st.IndexStore().Iterate(storage.Query{
 		Factory:       func() storage.Item { return &ChunkBinItem{} },
 		Prefix:        binIDToString(bin, startBinID),
@@ -340,7 +348,7 @@ func (r *Reserve) IterateBin(bin uint8, startBinID uint64, cb func(swarm.Address
 			return true, nil
 		}
 
-		stop, err := cb(item.Address, item.BinID, item.BatchID)
+		stop, err := cb(item.Address, item.BinID, item.BatchID, item.BatchHash)
 		if stop || err != nil {
 			return true, err
 		}
