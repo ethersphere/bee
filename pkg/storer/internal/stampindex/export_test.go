@@ -19,6 +19,7 @@ func NewItemWithValues(batchTimestamp []byte, chunkAddress swarm.Address, chunkI
 		namespace:  []byte("test_namespace"),
 		BatchID:    []byte{swarm.HashSize - 1: 9},
 		StampIndex: []byte{swarm.StampIndexSize - 1: 9},
+		StampHash:  []byte{swarm.HashSize - 1: 9},
 
 		StampTimestamp:   batchTimestamp,
 		ChunkAddress:     chunkAddress,

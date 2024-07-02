@@ -793,7 +793,7 @@ func TestItemMarshalAndUnmarshal(t *testing.T, test *ItemMarshalAndUnmarshalTest
 
 	want, have := test.Item, item2
 	if !cmp.Equal(want, have, test.CmpOpts...) {
-		t.Errorf("Marshal/Unmarshal mismatch (-want +have):\n%s", cmp.Diff(want, have))
+		t.Errorf("Marshal/Unmarshal mismatch (-want +have):\n%s", cmp.Diff(want, have, test.CmpOpts...))
 	}
 }
 

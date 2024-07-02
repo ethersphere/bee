@@ -99,6 +99,7 @@ func Test_Step_06(t *testing.T) {
 }
 
 func checkItems(t *testing.T, s storage.Reader, wantStampHash bool, wantCount int, fact storage.Item) {
+	t.Helper()
 	count := 0
 	err := s.Iterate(storage.Query{
 		Factory: func() storage.Item { return fact },
