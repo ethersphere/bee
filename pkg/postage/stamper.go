@@ -5,6 +5,7 @@
 package postage
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 
@@ -74,8 +75,33 @@ func (st *stamper) Stamp(addr swarm.Address) (*Stamp, error) {
 		return nil, err
 	}
 	sig, err := st.signer.Sign(toSign)
+	fmt.Printf("\nStamp signature created!! %x", sig)
 	if err != nil {
 		return nil, err
 	}
 	return NewStamp(st.issuer.data.BatchID, item.BatchIndex, item.BatchTimestamp, sig), nil
+}
+
+type presignedStamper struct {
+	stamp *Stamp
+	owner []byte
+}
+
+func NewPresignedStamper(stamp *Stamp, owner []byte) Stamper {
+	return &presignedStamper{stamp, owner}
+}
+
+func (st *presignedStamper) Stamp(addr swarm.Address) (*Stamp, error) {
+	// check stored stamp is against the chunk address
+	// Recover the public key from the signature
+	signerAddr, err := RecoverBatchOwner(addr, st.stamp)
+	if err != nil {
+		return nil, err
+	}
+
+	if !bytes.Equal(st.owner, signerAddr) {
+		return nil, fmt.Errorf("signature recovery is invalid for stamp")
+	}
+
+	return st.stamp, nil
 }
