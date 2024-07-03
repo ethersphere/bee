@@ -176,7 +176,6 @@ func (c *ChunkBinItem) Marshal() ([]byte, error) {
 	i += 1
 
 	copy(buf[i:i+swarm.HashSize], c.StampHash)
-	i += swarm.HashSize
 	return buf, nil
 }
 
@@ -203,8 +202,6 @@ func (c *ChunkBinItem) Unmarshal(buf []byte) error {
 	i += 1
 
 	c.StampHash = copyBytes(buf[i : i+swarm.HashSize])
-	i += swarm.HashSize
-
 	return nil
 }
 

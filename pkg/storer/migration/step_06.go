@@ -184,7 +184,6 @@ func (b *OldBatchRadiusItem) Unmarshal(buf []byte) error {
 	i += swarm.HashSize
 
 	b.BinID = binary.BigEndian.Uint64(buf[i : i+8])
-	i += 8
 	b.StampHash = swarm.EmptyAddress.Bytes()
 	return nil
 }
