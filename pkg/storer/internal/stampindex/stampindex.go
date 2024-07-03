@@ -60,8 +60,12 @@ func (i Item) Namespace() string {
 	return "stampIndex"
 }
 
-func (i *Item) SetNamespace(ns string) {
-	i.namespace = []byte(ns)
+func (i Item) GetNamespace() []byte {
+	return i.namespace
+}
+
+func (i *Item) SetNamespace(ns []byte) {
+	i.namespace = ns
 }
 
 // Marshal implements the storage.Item interface.
@@ -75,7 +79,7 @@ func (i Item) Marshal() ([]byte, error) {
 		return nil, errStampItemMarshalBatchIndexInvalid
 	}
 
-	buf := make([]byte, 8+len(i.namespace)+swarm.HashSize+swarm.StampIndexSize+swarm.StampTimestampSize+swarm.HashSize+swarm.HashSize+1)
+	buf := make([]byte, 8+len(i.namespace)+swarm.HashSize+swarm.StampIndexSize+swarm.StampTimestampSize+swarm.HashSize+1+swarm.HashSize)
 
 	l := 0
 	binary.LittleEndian.PutUint64(buf[l:l+8], uint64(len(i.namespace)))
@@ -83,8 +87,6 @@ func (i Item) Marshal() ([]byte, error) {
 	copy(buf[l:l+len(i.namespace)], i.namespace)
 	l += len(i.namespace)
 	copy(buf[l:l+swarm.HashSize], i.BatchID)
-	l += swarm.HashSize
-	copy(buf[l:l+swarm.HashSize], i.StampHash)
 	l += swarm.HashSize
 	copy(buf[l:l+swarm.StampIndexSize], i.StampIndex)
 	l += swarm.StampIndexSize
@@ -96,6 +98,8 @@ func (i Item) Marshal() ([]byte, error) {
 	if i.ChunkIsImmutable {
 		buf[l] = '1'
 	}
+	l += 1
+	copy(buf[l:l+swarm.HashSize], i.StampHash)
 	return buf, nil
 }
 
@@ -115,8 +119,6 @@ func (i *Item) Unmarshal(bytes []byte) error {
 	l += nsLen
 	ni.BatchID = append(make([]byte, 0, swarm.HashSize), bytes[l:l+swarm.HashSize]...)
 	l += swarm.HashSize
-	ni.StampHash = append(make([]byte, 0, swarm.HashSize), bytes[l:l+swarm.HashSize]...)
-	l += swarm.HashSize
 	ni.StampIndex = append(make([]byte, 0, swarm.StampIndexSize), bytes[l:l+swarm.StampIndexSize]...)
 	l += swarm.StampIndexSize
 	ni.StampTimestamp = append(make([]byte, 0, swarm.StampTimestampSize), bytes[l:l+swarm.StampTimestampSize]...)
@@ -131,6 +133,8 @@ func (i *Item) Unmarshal(bytes []byte) error {
 	default:
 		return errStampItemUnmarshalChunkImmutableInvalid
 	}
+	l += 1
+	ni.StampHash = append(make([]byte, 0, swarm.HashSize), bytes[l:l+swarm.HashSize]...)
 	*i = *ni
 	return nil
 }

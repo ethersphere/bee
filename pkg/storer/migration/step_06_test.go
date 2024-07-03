@@ -44,35 +44,38 @@ func Test_Step_06(t *testing.T) {
 
 	err = store.Run(ctx, func(s transaction.Store) error {
 		for i, ch := range chunks {
-			err := s.IndexStore().Put(&reserve.BatchRadiusItem{
-				Bin:       uint8(i),
-				BatchID:   ch.Stamp().BatchID(),
-				StampHash: nil, // exiting items don't have a stampHash
-				Address:   ch.Address(),
+			err := s.IndexStore().Put(&localmigration.OldBatchRadiusItem{
+				BatchRadiusItem: &reserve.BatchRadiusItem{
+					Bin:     uint8(i),
+					BatchID: ch.Stamp().BatchID(),
+					Address: ch.Address(),
+				},
 			})
 			if err != nil {
 				return err
 			}
 
-			err = s.IndexStore().Put(&reserve.ChunkBinItem{
-				Bin:       uint8(i),
-				Address:   ch.Address(),
-				BatchID:   ch.Stamp().BatchID(),
-				StampHash: nil, // existing items don't have a stampHash
+			err = s.IndexStore().Put(&localmigration.OldChunkBinItem{
+				ChunkBinItem: &reserve.ChunkBinItem{
+					Bin:     uint8(i),
+					Address: ch.Address(),
+					BatchID: ch.Stamp().BatchID(),
+				},
 			})
 			if err != nil {
 				return err
 			}
 
-			sIdxItem := &stampindex.Item{
-				BatchID:          ch.Stamp().BatchID(),
-				StampIndex:       ch.Stamp().Index(),
-				StampHash:        nil, // existing items don't have stamp hash
-				StampTimestamp:   ch.Stamp().Timestamp(),
-				ChunkAddress:     ch.Address(),
-				ChunkIsImmutable: false,
+			sIdxItem := &localmigration.OldStampIndexItem{
+				Item: &stampindex.Item{
+					BatchID:          ch.Stamp().BatchID(),
+					StampIndex:       ch.Stamp().Index(),
+					StampTimestamp:   ch.Stamp().Timestamp(),
+					ChunkAddress:     ch.Address(),
+					ChunkIsImmutable: false,
+				},
 			}
-			sIdxItem.SetNamespace("reserve")
+			sIdxItem.SetNamespace([]byte("reserve"))
 			err = s.IndexStore().Put(sIdxItem)
 			if err != nil {
 				return err
@@ -86,9 +89,9 @@ func Test_Step_06(t *testing.T) {
 		return nil
 	})
 	require.NoError(t, err)
-	checkItems(t, store.IndexStore(), false, 10, &reserve.BatchRadiusItem{})
-	checkItems(t, store.IndexStore(), false, 10, &reserve.ChunkBinItem{})
-	checkItems(t, store.IndexStore(), false, 10, &stampindex.Item{})
+	checkItems(t, store.IndexStore(), false, 10, &localmigration.OldBatchRadiusItem{BatchRadiusItem: &reserve.BatchRadiusItem{}})
+	checkItems(t, store.IndexStore(), false, 10, &localmigration.OldChunkBinItem{ChunkBinItem: &reserve.ChunkBinItem{}})
+	checkItems(t, store.IndexStore(), false, 10, &localmigration.OldStampIndexItem{Item: &stampindex.Item{}})
 
 	err = localmigration.Step_06(store)()
 	require.NoError(t, err)
@@ -106,6 +109,12 @@ func checkItems(t *testing.T, s storage.Reader, wantStampHash bool, wantCount in
 	}, func(result storage.Result) (bool, error) {
 		var stampHash []byte
 		switch result.Entry.(type) {
+		case *localmigration.OldBatchRadiusItem:
+			stampHash = result.Entry.(*localmigration.OldBatchRadiusItem).StampHash
+		case *localmigration.OldChunkBinItem:
+			stampHash = result.Entry.(*localmigration.OldChunkBinItem).StampHash
+		case *localmigration.OldStampIndexItem:
+			stampHash = result.Entry.(*localmigration.OldStampIndexItem).StampHash
 		case *reserve.ChunkBinItem:
 			stampHash = result.Entry.(*reserve.ChunkBinItem).StampHash
 		case *reserve.BatchRadiusItem:
@@ -115,6 +124,9 @@ func checkItems(t *testing.T, s storage.Reader, wantStampHash bool, wantCount in
 		}
 		eq := bytes.Equal(stampHash, swarm.EmptyAddress.Bytes())
 		assert.Equal(t, wantStampHash, !eq)
+		if wantStampHash == eq {
+			return false, nil
+		}
 		count++
 		return false, nil
 	})

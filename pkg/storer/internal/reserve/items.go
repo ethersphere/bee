@@ -54,7 +54,7 @@ func (b *BatchRadiusItem) Clone() storage.Item {
 	}
 }
 
-const batchRadiusItemSize = 1 + swarm.HashSize + swarm.HashSize + swarm.HashSize + 8
+const batchRadiusItemSize = 1 + swarm.HashSize + swarm.HashSize + 8 + swarm.HashSize
 
 func (b *BatchRadiusItem) Marshal() ([]byte, error) {
 
@@ -75,11 +75,10 @@ func (b *BatchRadiusItem) Marshal() ([]byte, error) {
 	copy(buf[i:i+swarm.HashSize], b.Address.Bytes())
 	i += swarm.HashSize
 
-	copy(buf[i:i+swarm.HashSize], b.StampHash)
-	i += swarm.HashSize
-
 	binary.BigEndian.PutUint64(buf[i:i+8], b.BinID)
+	i += 8
 
+	copy(buf[i:i+swarm.HashSize], b.StampHash)
 	return buf, nil
 }
 
@@ -99,11 +98,10 @@ func (b *BatchRadiusItem) Unmarshal(buf []byte) error {
 	b.Address = swarm.NewAddress(buf[i : i+swarm.HashSize]).Clone()
 	i += swarm.HashSize
 
-	b.StampHash = copyBytes(buf[i : i+swarm.HashSize])
-	i += swarm.HashSize
-
 	b.BinID = binary.BigEndian.Uint64(buf[i : i+8])
+	i += 8
 
+	b.StampHash = copyBytes(buf[i : i+swarm.HashSize])
 	return nil
 }
 
@@ -151,7 +149,7 @@ func (c *ChunkBinItem) Clone() storage.Item {
 	}
 }
 
-const chunkBinItemSize = 1 + 8 + swarm.HashSize + swarm.HashSize + +swarm.HashSize + 1
+const chunkBinItemSize = 1 + 8 + swarm.HashSize + swarm.HashSize + 1 + swarm.HashSize
 
 func (c *ChunkBinItem) Marshal() ([]byte, error) {
 
@@ -174,11 +172,11 @@ func (c *ChunkBinItem) Marshal() ([]byte, error) {
 	copy(buf[i:i+swarm.HashSize], c.BatchID)
 	i += swarm.HashSize
 
+	buf[i] = uint8(c.ChunkType)
+	i += 1
+
 	copy(buf[i:i+swarm.HashSize], c.StampHash)
 	i += swarm.HashSize
-
-	buf[i] = uint8(c.ChunkType)
-
 	return buf, nil
 }
 
@@ -201,10 +199,11 @@ func (c *ChunkBinItem) Unmarshal(buf []byte) error {
 	c.BatchID = copyBytes(buf[i : i+swarm.HashSize])
 	i += swarm.HashSize
 
+	c.ChunkType = swarm.ChunkType(buf[i])
+	i += 1
+
 	c.StampHash = copyBytes(buf[i : i+swarm.HashSize])
 	i += swarm.HashSize
-
-	c.ChunkType = swarm.ChunkType(buf[i])
 
 	return nil
 }
