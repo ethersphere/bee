@@ -27,17 +27,12 @@ func step_06(st transaction.Storage) func() error {
 		logger := log.NewLogger("migration-step-06", log.WithSink(os.Stdout))
 		logger.Info("start adding stampHash to BatchRadiusItems, ChunkBinItems and StampIndexItems")
 		err := st.Run(context.Background(), func(s transaction.Store) error {
-			err := addStampHash(s.IndexStore(), &OldBatchRadiusItem{&reserve.BatchRadiusItem{}})
+			err := addStampHashToBatchRadiusAndChunkBinItems(st)
 			if err != nil {
-				return fmt.Errorf("batch radius migration: %w", err)
+				return fmt.Errorf("batch radius and chunk bin item migration: %w", err)
 			}
-			logger.Info("done migrating batch radius items")
-			err = addStampHash(s.IndexStore(), &OldChunkBinItem{&reserve.ChunkBinItem{}})
-			if err != nil {
-				return fmt.Errorf("chunk bin migration: %w", err)
-			}
-			logger.Info("done migrating chunk bin items")
-			err = addStampHash(s.IndexStore(), &OldStampIndexItem{&stampindex.Item{}})
+			logger.Info("done migrating batch radius and chunk bin items")
+			err = addStampHashToStampIndexItems(st)
 			if err != nil {
 				return fmt.Errorf("stamp index migration: %w", err)
 			}
@@ -52,89 +47,139 @@ func step_06(st transaction.Storage) func() error {
 	}
 }
 
-// addStampHash adds a stampHash to a storage item.
-// only BatchRadiusItem and ChunkBinItem are supported.
-func addStampHash(st storage.IndexStore, fact storage.Item) error {
-	return st.Iterate(storage.Query{
-		Factory: func() storage.Item { return fact },
-	}, func(res storage.Result) (bool, error) {
-		var (
-			addr    swarm.Address
-			batchID []byte
-		)
+func addStampHashToBatchRadiusAndChunkBinItems(st transaction.Storage) error {
+	itemC := make(chan *OldBatchRadiusItem)
+	errC := make(chan error)
 
-		switch t := res.Entry.(type) {
-		case *OldChunkBinItem:
-			item := res.Entry.(*OldChunkBinItem)
-			addr = item.Address
-			batchID = item.BatchID
-		case *OldBatchRadiusItem:
-			item := res.Entry.(*OldBatchRadiusItem)
-			addr = item.Address
-			batchID = item.BatchID
-		case *OldStampIndexItem:
-			item := res.Entry.(*OldStampIndexItem)
-			addr = item.ChunkAddress
-			batchID = item.BatchID
-		default:
-			return true, fmt.Errorf("unsupported item type: %T", t)
-		}
+	go func() {
+		for oldBatchRadiusItem := range itemC {
+			err := st.Run(context.Background(), func(s transaction.Store) error {
+				idxStore := s.IndexStore()
+				stamp, err := chunkstamp.LoadWithBatchID(idxStore, "reserve", oldBatchRadiusItem.Address, oldBatchRadiusItem.BatchID)
+				if err != nil {
+					return err
+				}
+				stampHash, err := stamp.Hash()
+				if err != nil {
+					return err
+				}
 
-		stamp, err := chunkstamp.LoadWithBatchID(st, "reserve", addr, batchID)
-		if err != nil {
-			return true, fmt.Errorf("load chunkstamp: %w", err)
-		}
-		hash, err := stamp.Hash()
-		if err != nil {
-			return true, fmt.Errorf("hash stamp: %w", err)
-		}
+				// Since the ID format has changed, we should delete the old item and put a new one with the new ID format.
+				err = idxStore.Delete(oldBatchRadiusItem)
+				if err != nil {
+					return err
+				}
+				err = idxStore.Put(&reserve.BatchRadiusItem{
+					Bin:       oldBatchRadiusItem.Bin,
+					BatchID:   oldBatchRadiusItem.BatchID,
+					StampHash: stampHash,
+					Address:   oldBatchRadiusItem.Address,
+					BinID:     oldBatchRadiusItem.BinID,
+				})
+				if err != nil {
+					return err
+				}
 
-		switch res.Entry.(type) {
-		case *OldChunkBinItem:
-			item := res.Entry.(*OldChunkBinItem)
-			newItem := &reserve.ChunkBinItem{
-				Bin:       item.Bin,
-				BinID:     item.BinID,
-				Address:   item.Address,
-				BatchID:   item.BatchID,
-				StampHash: hash,
-				ChunkType: item.ChunkType,
-			}
-			err = st.Put(newItem) // replaces old item with same id.
-		case *OldBatchRadiusItem:
-			item := res.Entry.(*OldBatchRadiusItem)
+				oldChunkBinItem := &OldChunkBinItem{&reserve.ChunkBinItem{
+					Bin:   oldBatchRadiusItem.Bin,
+					BinID: oldBatchRadiusItem.BinID,
+				}}
+				err = idxStore.Get(oldChunkBinItem)
+				if err != nil {
+					return err
+				}
 
-			// Since the ID format has changed, we should delete the old item and put a new one with the new ID format.
-			err = st.Delete(item)
+				// same id. Will replace.
+				return idxStore.Put(&reserve.ChunkBinItem{
+					Bin:       oldChunkBinItem.Bin,
+					BinID:     oldChunkBinItem.BinID,
+					Address:   oldChunkBinItem.Address,
+					BatchID:   oldChunkBinItem.BatchID,
+					StampHash: stampHash,
+					ChunkType: oldChunkBinItem.ChunkType,
+				})
+			})
 			if err != nil {
-				return true, fmt.Errorf("delete old batch radius item: %w", err)
+				errC <- err
+				return
 			}
-			newItem := &reserve.BatchRadiusItem{
-				Bin:       item.Bin,
-				BatchID:   item.BatchID,
-				StampHash: hash,
-				Address:   item.Address,
-				BinID:     item.BinID,
-			}
-			err = st.Put(newItem)
-		case *OldStampIndexItem:
-			item := res.Entry.(*OldStampIndexItem)
-			newItem := &stampindex.Item{
-				BatchID:          item.BatchID,
-				StampIndex:       item.StampIndex,
-				StampHash:        hash,
-				StampTimestamp:   item.StampIndex,
-				ChunkAddress:     item.ChunkAddress,
-				ChunkIsImmutable: item.ChunkIsImmutable,
-			}
-			newItem.SetNamespace(item.GetNamespace())
-			err = st.Put(newItem) // replaces old item with same id.
 		}
-		if err != nil {
-			return true, fmt.Errorf("put item: %w", err)
+		close(errC)
+	}()
+
+	err := st.IndexStore().Iterate(storage.Query{
+		Factory: func() storage.Item { return &OldBatchRadiusItem{&reserve.BatchRadiusItem{}} },
+	}, func(result storage.Result) (bool, error) {
+		item := result.Entry.(*OldBatchRadiusItem)
+		select {
+		case itemC <- item:
+		case err := <-errC:
+			return true, err
 		}
 		return false, nil
 	})
+	close(itemC)
+	if err != nil {
+		return err
+	}
+
+	return <-errC
+}
+
+func addStampHashToStampIndexItems(st transaction.Storage) error {
+	itemC := make(chan *OldStampIndexItem)
+	errC := make(chan error)
+
+	go func() {
+		for oldStampIndexItem := range itemC {
+			err := st.Run(context.Background(), func(s transaction.Store) error {
+				idxStore := s.IndexStore()
+				stamp, err := chunkstamp.LoadWithBatchID(idxStore, string(oldStampIndexItem.GetNamespace()), oldStampIndexItem.ChunkAddress, oldStampIndexItem.BatchID)
+				if err != nil {
+					return err
+				}
+				stampHash, err := stamp.Hash()
+				if err != nil {
+					return err
+				}
+
+				// same id. Will replace.
+				item := &stampindex.Item{
+					BatchID:          oldStampIndexItem.BatchID,
+					StampIndex:       oldStampIndexItem.StampIndex,
+					StampHash:        stampHash,
+					StampTimestamp:   oldStampIndexItem.StampIndex,
+					ChunkAddress:     oldStampIndexItem.ChunkAddress,
+					ChunkIsImmutable: oldStampIndexItem.ChunkIsImmutable,
+				}
+				item.SetNamespace(oldStampIndexItem.GetNamespace())
+				return idxStore.Put(item)
+			})
+			if err != nil {
+				errC <- err
+				return
+			}
+		}
+		close(errC)
+	}()
+
+	err := st.IndexStore().Iterate(storage.Query{
+		Factory: func() storage.Item { return &OldStampIndexItem{&stampindex.Item{}} },
+	}, func(result storage.Result) (bool, error) {
+		item := result.Entry.(*OldStampIndexItem)
+		select {
+		case itemC <- item:
+		case err := <-errC:
+			return true, err
+		}
+		return false, nil
+	})
+	close(itemC)
+	if err != nil {
+		return err
+	}
+
+	return <-errC
 }
 
 type OldChunkBinItem struct {
