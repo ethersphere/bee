@@ -26,22 +26,17 @@ func step_06(st transaction.Storage) func() error {
 	return func() error {
 		logger := log.NewLogger("migration-step-06", log.WithSink(os.Stdout))
 		logger.Info("start adding stampHash to BatchRadiusItems, ChunkBinItems and StampIndexItems")
-		err := st.Run(context.Background(), func(s transaction.Store) error {
-			err := addStampHashToBatchRadiusAndChunkBinItems(st)
-			if err != nil {
-				return fmt.Errorf("batch radius and chunk bin item migration: %w", err)
-			}
-			logger.Info("done migrating batch radius and chunk bin items")
-			err = addStampHashToStampIndexItems(st)
-			if err != nil {
-				return fmt.Errorf("stamp index migration: %w", err)
-			}
-			logger.Info("done migrating stamp index items")
-			return nil
-		})
+
+		err := addStampHashToBatchRadiusAndChunkBinItems(st)
 		if err != nil {
-			return err
+			return fmt.Errorf("batch radius and chunk bin item migration: %w", err)
 		}
+		logger.Info("done migrating batch radius and chunk bin items")
+		err = addStampHashToStampIndexItems(st)
+		if err != nil {
+			return fmt.Errorf("stamp index migration: %w", err)
+		}
+		logger.Info("done migrating stamp index items")
 		logger.Info("finished migrating items")
 		return nil
 	}
