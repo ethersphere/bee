@@ -116,7 +116,7 @@ func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs) (comm
 
 // Commit submits the obfusHash hash by sending a transaction to the blockchain.
 func (c *contract) Commit(ctx context.Context, obfusHash []byte, round uint64) (common.Hash, error) {
-	callData, err := c.incentivesContractABI.Pack("commit", common.BytesToHash(obfusHash), common.BytesToHash(c.overlay.Bytes()), round)
+	callData, err := c.incentivesContractABI.Pack("commit", common.BytesToHash(obfusHash), round)
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -131,7 +131,7 @@ func (c *contract) Commit(ctx context.Context, obfusHash []byte, round uint64) (
 	}
 	txHash, err := c.sendAndWait(ctx, request, 50)
 	if err != nil {
-		return txHash, fmt.Errorf("commit: obfusHash %v overlay %v: %w", common.BytesToHash(obfusHash), common.BytesToHash(c.overlay.Bytes()), err)
+		return txHash, fmt.Errorf("commit: obfusHash %v: %w", common.BytesToHash(obfusHash), err)
 	}
 
 	return txHash, nil
@@ -139,7 +139,7 @@ func (c *contract) Commit(ctx context.Context, obfusHash []byte, round uint64) (
 
 // Reveal submits the storageDepth, reserveCommitmentHash and RandomNonce in a transaction to blockchain.
 func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommitmentHash []byte, RandomNonce []byte) (common.Hash, error) {
-	callData, err := c.incentivesContractABI.Pack("reveal", common.BytesToHash(c.overlay.Bytes()), storageDepth, common.BytesToHash(reserveCommitmentHash), common.BytesToHash(RandomNonce))
+	callData, err := c.incentivesContractABI.Pack("reveal", storageDepth, common.BytesToHash(reserveCommitmentHash), common.BytesToHash(RandomNonce))
 	if err != nil {
 		return common.Hash{}, err
 	}

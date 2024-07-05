@@ -155,7 +155,7 @@ func (c *contract) sendTransaction(ctx context.Context, callData []byte, desc st
 }
 
 func (c *contract) sendDepositStakeTransaction(ctx context.Context, owner common.Address, stakedAmount *big.Int, nonce common.Hash) (*types.Receipt, error) {
-	callData, err := c.stakingContractABI.Pack("depositStake", owner, nonce, stakedAmount)
+	callData, err := c.stakingContractABI.Pack("manageStake", nonce, stakedAmount)
 	if err != nil {
 		return nil, err
 	}
@@ -171,7 +171,7 @@ func (c *contract) sendDepositStakeTransaction(ctx context.Context, owner common
 func (c *contract) getStake(ctx context.Context, overlay swarm.Address) (*big.Int, error) {
 	var overlayAddr [32]byte
 	copy(overlayAddr[:], overlay.Bytes())
-	callData, err := c.stakingContractABI.Pack("stakeOfOverlay", overlayAddr)
+	callData, err := c.stakingContractABI.Pack("stakeOfAddress", overlayAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -183,7 +183,7 @@ func (c *contract) getStake(ctx context.Context, overlay swarm.Address) (*big.In
 		return nil, fmt.Errorf("get stake: overlayAddress %d: %w", overlay, err)
 	}
 
-	results, err := c.stakingContractABI.Unpack("stakeOfOverlay", result)
+	results, err := c.stakingContractABI.Unpack("stakeOfAddress", result)
 	if err != nil {
 		return nil, err
 	}
@@ -300,7 +300,7 @@ func (c *contract) withdrawFromStake(ctx context.Context, stakedAmount *big.Int)
 	var overlayAddr [32]byte
 	copy(overlayAddr[:], c.overlay.Bytes())
 
-	callData, err := c.stakingContractABI.Pack("withdrawFromStake", overlayAddr, stakedAmount)
+	callData, err := c.stakingContractABI.Pack("withdrawFromStake", stakedAmount)
 	if err != nil {
 		return nil, err
 	}

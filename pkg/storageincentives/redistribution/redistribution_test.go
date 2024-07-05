@@ -267,7 +267,7 @@ func TestRedistribution(t *testing.T) {
 		var obfus [32]byte
 		testobfus := common.Hex2Bytes("hash")
 		copy(obfus[:], testobfus)
-		expectedCallData, err := redistributionContractABI.Pack("commit", obfus, common.BytesToHash(owner.Bytes()), uint64(0))
+		expectedCallData, err := redistributionContractABI.Pack("commit", obfus, uint64(0))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -310,7 +310,7 @@ func TestRedistribution(t *testing.T) {
 		randomNonce := common.BytesToHash(common.Hex2Bytes("nonce"))
 		depth := uint8(10)
 
-		expectedCallData, err := redistributionContractABI.Pack("reveal", common.BytesToHash(owner.Bytes()), depth, reserveCommitmentHash, randomNonce)
+		expectedCallData, err := redistributionContractABI.Pack("reveal", depth, reserveCommitmentHash, randomNonce)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -402,7 +402,7 @@ func TestRedistribution(t *testing.T) {
 	t.Run("invalid call data", func(t *testing.T) {
 		t.Parallel()
 
-		expectedCallData, err := redistributionContractABI.Pack("commit", common.BytesToHash(common.Hex2Bytes("some hash")), common.BytesToHash(common.Hex2Bytes("some address")), uint64(0))
+		expectedCallData, err := redistributionContractABI.Pack("commit", common.BytesToHash(common.Hex2Bytes("some hash")), uint64(0))
 		if err != nil {
 			t.Fatal(err)
 		}
