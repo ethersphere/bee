@@ -154,7 +154,7 @@ func (c *contract) sendTransaction(ctx context.Context, callData []byte, desc st
 	return receipt, nil
 }
 
-func (c *contract) sendDepositStakeTransaction(ctx context.Context, owner common.Address, stakedAmount *big.Int, nonce common.Hash) (*types.Receipt, error) {
+func (c *contract) sendDepositStakeTransaction(ctx context.Context, stakedAmount *big.Int, nonce common.Hash) (*types.Receipt, error) {
 	callData, err := c.stakingContractABI.Pack("manageStake", nonce, stakedAmount)
 	if err != nil {
 		return nil, err
@@ -221,7 +221,7 @@ func (c *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) (com
 		return common.Hash{}, err
 	}
 
-	receipt, err := c.sendDepositStakeTransaction(ctx, c.owner, stakedAmount, c.overlayNonce)
+	receipt, err := c.sendDepositStakeTransaction(ctx, stakedAmount, c.overlayNonce)
 	if err != nil {
 		return common.Hash{}, err
 	}
