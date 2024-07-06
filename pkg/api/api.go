@@ -113,7 +113,6 @@ var (
 	errDirectoryStore                   = errors.New("could not store directory")
 	errFileStore                        = errors.New("could not store file")
 	errInvalidPostageBatch              = errors.New("invalid postage batch id")
-	errInvalidPostageStamp              = errors.New("invalid postage stamp")
 	errBatchUnusable                    = errors.New("batch not usable")
 	errUnsupportedDevNodeOperation      = errors.New("operation not supported in dev mode")
 	errOperationSupportedOnlyInFullMode = errors.New("operation is supported only in full mode")
