@@ -7,13 +7,19 @@ package api_test
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/binary"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
 	"testing"
 	"time"
 
+	"github.com/ethereum/go-ethereum/crypto"
+	ethcrypto "github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
+	"github.com/ethersphere/bee/v2/pkg/postage"
 	mockbatchstore "github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
 	mockpost "github.com/ethersphere/bee/v2/pkg/postage/mock"
 	"github.com/ethersphere/bee/v2/pkg/spinlock"
@@ -267,5 +273,51 @@ func TestChunkDirectUpload(t *testing.T) {
 			Message: api.ErrUnsupportedDevNodeOperation.Error(),
 			Code:    http.StatusBadRequest,
 		}),
+	)
+}
+
+// // TestPreSignedUpload tests that chunk can be uploaded with pre-signed postage stamp
+func TestPreSignedUpload(t *testing.T) {
+	t.Parallel()
+
+	var (
+		chunksEndpoint  = "/chunks"
+		chunk           = testingc.GenerateTestRandomChunk()
+		storerMock      = mockstorer.New()
+		batchStore      = mockbatchstore.New()
+		client, _, _, _ = newTestServer(t, testServerOptions{
+			Storer:     storerMock,
+			BatchStore: batchStore,
+		})
+	)
+
+	// generate random postage batch and stamp
+	privateKey, _ := crypto.GenerateKey()
+	batchId := make([]byte, 32)
+	owner := crypto.PubkeyToAddress(privateKey.PublicKey)
+	_, _ = rand.Read(batchId)
+	_ = batchStore.Save(&postage.Batch{
+		ID:    batchId,
+		Owner: owner.Bytes(),
+	})
+	index := make([]byte, 8)
+	copy(index[:4], chunk.Address().Bytes()[:4])
+	timestamp := make([]byte, 8)
+	binary.BigEndian.PutUint64(timestamp, uint64(time.Now().UnixNano()))
+	toSign, _ := postage.ToSignDigest(chunk.Address().Bytes(), batchId, index, timestamp)
+	signer := ethcrypto.NewDefaultSigner(privateKey)
+	signature, _ := signer.Sign(toSign)
+	stamp := make([]byte, 113)
+	copy(stamp[:32], batchId)
+	copy(stamp[32:40], index)
+	copy(stamp[40:48], timestamp)
+	copy(stamp[48:], signature)
+
+	// read off inserted chunk
+	go func() { <-storerMock.PusherFeed() }()
+
+	jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusCreated,
+		jsonhttptest.WithRequestHeader(api.SwarmPostageStampHeader, hex.EncodeToString(stamp)),
+		jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 	)
 }
