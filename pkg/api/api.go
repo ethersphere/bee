@@ -734,7 +734,7 @@ func (s *Service) newStampedPutter(ctx context.Context, opts putterOptions, stam
 
 	storedBatch, err := s.batchStore.Get(stamp.BatchID())
 	if err != nil {
-		return nil, fmt.Errorf("get batch from batchstore: %w", err)
+		return nil, errInvalidPostageBatch
 	}
 
 	var session storer.PutterSession

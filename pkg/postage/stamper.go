@@ -75,7 +75,6 @@ func (st *stamper) Stamp(addr swarm.Address) (*Stamp, error) {
 		return nil, err
 	}
 	sig, err := st.signer.Sign(toSign)
-	fmt.Printf("\nStamp signature created!! %x", sig)
 	if err != nil {
 		return nil, err
 	}
@@ -100,7 +99,7 @@ func (st *presignedStamper) Stamp(addr swarm.Address) (*Stamp, error) {
 	}
 
 	if !bytes.Equal(st.owner, signerAddr) {
-		return nil, fmt.Errorf("signature recovery is invalid for stamp")
+		return nil, ErrInvalidBatchSignature
 	}
 
 	return st.stamp, nil
