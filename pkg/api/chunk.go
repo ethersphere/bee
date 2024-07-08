@@ -73,7 +73,6 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	deferred := tag != 0
 
 	var putter storer.PutterSession
-	logger.Debug("heeeeejjjjjj", "headers", headers)
 	if len(headers.StampSig) != 0 {
 		stamp := postage.Stamp{}
 		if err := stamp.UnmarshalBinary(headers.StampSig); err != nil {
@@ -121,11 +120,9 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		logger:         logger,
 	}
 
-	logger.Debug("hello1")
 	data, err := io.ReadAll(r.Body)
 	if err != nil {
 		if jsonhttp.HandleBodyReadError(err, ow) {
-			logger.Debug("hello2")
 			return
 		}
 		logger.Debug("chunk upload: read chunk data failed", "error", err)
@@ -142,7 +139,6 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	chunk, err := cac.NewWithDataSpan(data)
-	logger.Debug("hello3", "error", err)
 	if err != nil {
 		// not a valid cac chunk. Check if it's a replica soc chunk.
 		logger.Debug("chunk upload: create chunk failed", "error", err)
@@ -171,9 +167,7 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	logger.Debug("hello4")
 	err = putter.Put(r.Context(), chunk)
-	logger.Debug("hello5", "error", err)
 	if err != nil {
 		logger.Debug("chunk upload: write chunk failed", "chunk_address", chunk.Address(), "error", err)
 		logger.Error(nil, "chunk upload: write chunk failed")
@@ -188,9 +182,7 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	logger.Debug("hello6", "error", err)
 	err = putter.Done(swarm.ZeroAddress)
-	logger.Debug("hello7", "error", err)
 	if err != nil {
 		logger.Debug("done split failed", "error", err)
 		logger.Error(nil, "done split failed")
@@ -203,7 +195,6 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Access-Control-Expose-Headers", SwarmTagHeader)
-	logger.Debug("hello8", "error", err)
 	jsonhttp.Created(w, chunkAddressResponse{Reference: chunk.Address()})
 }
 
