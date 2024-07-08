@@ -116,6 +116,8 @@ var (
 	errBatchUnusable                    = errors.New("batch not usable")
 	errUnsupportedDevNodeOperation      = errors.New("operation not supported in dev mode")
 	errOperationSupportedOnlyInFullMode = errors.New("operation is supported only in full mode")
+
+	batchIdOrStampSig = fmt.Sprintf("Either '%s' or '%s' header must be set in the request", SwarmPostageStampHeader, SwarmPostageBatchIdHeader)
 )
 
 // Storer interface provides the functionality required from the local storage

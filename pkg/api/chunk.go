@@ -60,9 +60,8 @@ func (s *Service) chunkUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if len(headers.BatchID) == 0 && len(headers.StampSig) == 0 {
-		errorMsg := fmt.Sprintf("Either '%s' or '%s' header must be set in the request", SwarmPostageStampHeader, SwarmPostageBatchIdHeader)
-		logger.Error(nil, errorMsg)
-		jsonhttp.BadRequest(w, errorMsg)
+		logger.Error(nil, batchIdOrStampSig)
+		jsonhttp.BadRequest(w, batchIdOrStampSig)
 		return
 	}
 
