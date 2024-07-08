@@ -13,7 +13,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/sctx"
-	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
 
@@ -29,7 +28,7 @@ type Contract interface {
 }
 
 type contract struct {
-	overlay                   swarm.Address
+	owner                     common.Address
 	logger                    log.Logger
 	txService                 transaction.Service
 	incentivesContractAddress common.Address
@@ -37,14 +36,14 @@ type contract struct {
 }
 
 func New(
-	overlay swarm.Address,
+	owner common.Address,
 	logger log.Logger,
 	txService transaction.Service,
 	incentivesContractAddress common.Address,
 	incentivesContractABI abi.ABI,
 ) Contract {
 	return &contract{
-		overlay:                   overlay,
+		owner:                     owner,
 		logger:                    logger.WithName(loggerName).Register(),
 		txService:                 txService,
 		incentivesContractAddress: incentivesContractAddress,
@@ -54,14 +53,14 @@ func New(
 
 // IsPlaying checks if the overlay is participating in the upcoming round.
 func (c *contract) IsPlaying(ctx context.Context, depth uint8) (bool, error) {
-	callData, err := c.incentivesContractABI.Pack("isParticipatingInUpcomingRound", common.BytesToHash(c.overlay.Bytes()), depth)
+	callData, err := c.incentivesContractABI.Pack("isParticipatingInUpcomingRound", c.owner, depth)
 	if err != nil {
 		return false, err
 	}
 
 	result, err := c.callTx(ctx, callData)
 	if err != nil {
-		return false, fmt.Errorf("IsPlaying: overlay %v depth %d: %w", common.BytesToHash(c.overlay.Bytes()), depth, err)
+		return false, fmt.Errorf("IsPlaying: owner %v depth %d: %w", c.owner, depth, err)
 	}
 
 	results, err := c.incentivesContractABI.Unpack("isParticipatingInUpcomingRound", result)
@@ -74,14 +73,14 @@ func (c *contract) IsPlaying(ctx context.Context, depth uint8) (bool, error) {
 
 // IsWinner checks if the overlay is winner by sending a transaction to blockchain.
 func (c *contract) IsWinner(ctx context.Context) (isWinner bool, err error) {
-	callData, err := c.incentivesContractABI.Pack("isWinner", common.BytesToHash(c.overlay.Bytes()))
+	callData, err := c.incentivesContractABI.Pack("isWinner", common.BytesToHash(c.owner.Bytes()))
 	if err != nil {
 		return false, err
 	}
 
 	result, err := c.callTx(ctx, callData)
 	if err != nil {
-		return false, fmt.Errorf("IsWinner: overlay %v : %w", common.BytesToHash(c.overlay.Bytes()), err)
+		return false, fmt.Errorf("IsWinner: overlay %v : %w", common.BytesToHash(c.owner.Bytes()), err)
 	}
 
 	results, err := c.incentivesContractABI.Unpack("isWinner", result)

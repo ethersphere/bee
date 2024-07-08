@@ -19,7 +19,6 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/sctx"
 	"github.com/ethersphere/bee/v2/pkg/storageincentives/redistribution"
-	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 	transactionMock "github.com/ethersphere/bee/v2/pkg/transaction/mock"
 	"github.com/ethersphere/bee/v2/pkg/util/abiutil"
@@ -63,7 +62,7 @@ func TestRedistribution(t *testing.T) {
 
 	ctx := context.Background()
 	ctx = sctx.SetGasPrice(ctx, big.NewInt(100))
-	owner := swarm.MustParseHexAddress("f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b")
+	owner := common.HexToAddress("abcd")
 	redistributionContractAddress := common.HexToAddress("ffff")
 	//nonce := common.BytesToHash(make([]byte, 32))
 	txHashDeposited := common.HexToHash("c3a7")
