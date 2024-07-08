@@ -7,8 +7,6 @@ package api_test
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
-	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -16,8 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/ethereum/go-ethereum/crypto"
-	ethcrypto "github.com/ethersphere/bee/v2/pkg/crypto"
+	"github.com/ethersphere/bee/v2/pkg/crypto"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	mockbatchstore "github.com/ethersphere/bee/v2/pkg/postage/batchstore/mock"
@@ -28,6 +25,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/api"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp"
 	"github.com/ethersphere/bee/v2/pkg/jsonhttp/jsonhttptest"
+	testingpostage "github.com/ethersphere/bee/v2/pkg/postage/testing"
 	testingc "github.com/ethersphere/bee/v2/pkg/storage/testing"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 )
@@ -292,32 +290,21 @@ func TestPreSignedUpload(t *testing.T) {
 	)
 
 	// generate random postage batch and stamp
-	privateKey, _ := crypto.GenerateKey()
-	batchId := make([]byte, 32)
-	owner := crypto.PubkeyToAddress(privateKey.PublicKey)
-	_, _ = rand.Read(batchId)
+	key, _ := crypto.GenerateSecp256k1Key()
+	signer := crypto.NewDefaultSigner(key)
+	owner, _ := signer.EthereumAddress()
+	stamp := testingpostage.MustNewValidStamp(signer, chunk.Address())
 	_ = batchStore.Save(&postage.Batch{
-		ID:    batchId,
+		ID:    stamp.BatchID(),
 		Owner: owner.Bytes(),
 	})
-	index := make([]byte, 8)
-	copy(index[:4], chunk.Address().Bytes()[:4])
-	timestamp := make([]byte, 8)
-	binary.BigEndian.PutUint64(timestamp, uint64(time.Now().UnixNano()))
-	toSign, _ := postage.ToSignDigest(chunk.Address().Bytes(), batchId, index, timestamp)
-	signer := ethcrypto.NewDefaultSigner(privateKey)
-	signature, _ := signer.Sign(toSign)
-	stamp := make([]byte, 113)
-	copy(stamp[:32], batchId)
-	copy(stamp[32:40], index)
-	copy(stamp[40:48], timestamp)
-	copy(stamp[48:], signature)
+	stampBytes, _ := stamp.MarshalBinary()
 
 	// read off inserted chunk
 	go func() { <-storerMock.PusherFeed() }()
 
 	jsonhttptest.Request(t, client, http.MethodPost, chunksEndpoint, http.StatusCreated,
-		jsonhttptest.WithRequestHeader(api.SwarmPostageStampHeader, hex.EncodeToString(stamp)),
+		jsonhttptest.WithRequestHeader(api.SwarmPostageStampHeader, hex.EncodeToString(stampBytes)),
 		jsonhttptest.WithRequestBody(bytes.NewReader(chunk.Data())),
 	)
 }
