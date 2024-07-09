@@ -68,7 +68,7 @@ func New(
 
 	var gasLimit uint64
 	if setGasLimit {
-		gasLimit = 1_000_000
+		gasLimit = transaction.DefaultGasLimit
 	}
 
 	return &contract{
