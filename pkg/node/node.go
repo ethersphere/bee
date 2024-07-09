@@ -273,6 +273,7 @@ func NewBee(
 		}
 	}
 
+	var changedOverlay bool
 	if targetNeighborhood != "" {
 		neighborhood, err := swarm.ParseBitStrAddress(targetNeighborhood)
 		if err != nil {
@@ -311,6 +312,7 @@ func NewBee(
 			if err != nil {
 				return nil, fmt.Errorf("statestore: save new overlay: %w", err)
 			}
+			changedOverlay = true
 		}
 	}
 
@@ -965,6 +967,21 @@ func NewBee(
 	}
 
 	stakingContract := staking.New(overlayEthAddress, stakingContractAddress, abiutil.MustParseABI(chainCfg.StakingABI), bzzTokenAddress, transactionService, common.BytesToHash(nonce))
+
+	if chainEnabled && changedOverlay {
+		stake, err := stakingContract.GetStake(ctx)
+		if err != nil {
+			return nil, errors.New("getting stake balance")
+		}
+		if stake.Cmp(big.NewInt(0)) > 0 {
+			logger.Debug("changing overlay address in staking contract")
+			tx, err := stakingContract.ChangeStakeOverlay(ctx, common.BytesToHash(nonce))
+			if err != nil {
+				return nil, fmt.Errorf("cannot change staking overlay address: %v", err.Error())
+			}
+			logger.Info("overlay address changed in staking contract", "transaction", tx)
+		}
+	}
 
 	var (
 		pullerService *puller.Puller
