@@ -13,7 +13,7 @@ import (
 	"sync/atomic"
 
 	"github.com/ethersphere/bee/v2/pkg/log"
-	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	"github.com/ethersphere/bee/v2/pkg/storage"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/reserve"
 	"github.com/ethersphere/bee/v2/pkg/storer/internal/transaction"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
@@ -206,6 +206,7 @@ func ReserveRepairer(
 							Bin:       item.Bin,
 							Address:   item.Address,
 							BinID:     item.BinID,
+							StampHash: item.StampHash,
 							ChunkType: chunkType,
 						})
 					})

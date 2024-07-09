@@ -140,7 +140,7 @@ func (r *Reserve) Put(ctx context.Context, chunk swarm.Chunk) error {
 				return fmt.Errorf("failed removing older chunk %s: %w", oldItem.ChunkAddress, err)
 			}
 
-			r.logger.Debug(
+			r.logger.Warning(
 				"replacing chunk stamp index",
 				"old_chunk", oldItem.ChunkAddress,
 				"new_chunk", chunk.Address(),
