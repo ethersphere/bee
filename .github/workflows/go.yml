@@ -63,9 +63,9 @@ jobs:
       with:
         cache: false
         go-version-file: go.mod
-#    - name: Commit linting
-#      if: github.ref != 'refs/heads/master'
-#      uses: wagoid/commitlint-github-action@v5
+    - name: Commit linting
+      if: github.ref != 'refs/heads/master'
+      uses: wagoid/commitlint-github-action@v5
     - name: GolangCI-Lint
       uses: golangci/golangci-lint-action@v4
       with:
