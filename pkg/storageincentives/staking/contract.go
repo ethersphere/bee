@@ -226,6 +226,7 @@ func (c *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) (com
 
 // ChangeStakeOverlay only changes the overlay address used in the redistribution game.
 func (c *contract) ChangeStakeOverlay(ctx context.Context, nonce common.Hash) (common.Hash, error) {
+	c.overlayNonce = nonce
 	receipt, err := c.sendDepositStakeTransaction(ctx, new(big.Int), c.overlayNonce)
 	if err != nil {
 		return common.Hash{}, err
