@@ -14,6 +14,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/postage"
 	"github.com/ethersphere/bee/v2/pkg/soc"
 	storage "github.com/ethersphere/bee/v2/pkg/storage"
+	storer "github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/gorilla/mux"
 )
@@ -43,17 +44,25 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	headers := struct {
-		BatchID []byte `map:"Swarm-Postage-Batch-Id" validate:"required"`
-		Pin     bool   `map:"Swarm-Pin"`
+		BatchID  []byte `map:"Swarm-Postage-Batch-Id"`
+		StampSig []byte `map:"Swarm-Postage-Stamp"`
+		Pin      bool   `map:"Swarm-Pin"`
 	}{}
 	if response := s.mapStructure(r.Header, &headers); response != nil {
 		response("invalid header params", logger, w)
 		return
 	}
 
+	if len(headers.BatchID) == 0 && len(headers.StampSig) == 0 {
+		logger.Error(nil, batchIdOrStampSig)
+		jsonhttp.BadRequest(w, batchIdOrStampSig)
+		return
+	}
+
 	// if pinning header is set we do a deferred upload, else we do a direct upload
 	var (
 		tag uint64
+		err error
 	)
 	if headers.Pin {
 		session, err := s.storer.NewSession()
@@ -71,12 +80,33 @@ func (s *Service) socUploadHandler(w http.ResponseWriter, r *http.Request) {
 		tag = session.TagID
 	}
 
-	putter, err := s.newStamperPutter(r.Context(), putterOptions{
-		BatchID:  headers.BatchID,
-		TagID:    tag,
-		Pin:      headers.Pin,
-		Deferred: headers.Pin,
-	})
+	deferred := tag != 0
+
+	var putter storer.PutterSession
+	if len(headers.StampSig) != 0 {
+		stamp := postage.Stamp{}
+		if err := stamp.UnmarshalBinary(headers.StampSig); err != nil {
+			errorMsg := "Stamp deserialization failure"
+			logger.Debug(errorMsg, "error", err)
+			logger.Error(nil, errorMsg)
+			jsonhttp.BadRequest(w, errorMsg)
+			return
+		}
+
+		putter, err = s.newStampedPutter(r.Context(), putterOptions{
+			BatchID:  stamp.BatchID(),
+			TagID:    tag,
+			Pin:      headers.Pin,
+			Deferred: deferred,
+		}, &stamp)
+	} else {
+		putter, err = s.newStamperPutter(r.Context(), putterOptions{
+			BatchID:  headers.BatchID,
+			TagID:    tag,
+			Pin:      headers.Pin,
+			Deferred: deferred,
+		})
+	}
 	if err != nil {
 		logger.Debug("get putter failed", "error", err)
 		logger.Error(nil, "get putter failed")
