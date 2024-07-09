@@ -85,6 +85,10 @@ func TestPutter(t *testing.T) {
 			defer store.Close()
 			p := replicas.NewPutter(store)
 
+			// original chunk
+			if err := store.Put(ctx, ch); err != nil {
+				t.Fatalf("expected no error. got %v", err)
+			}
 			if err := p.Put(ctx, ch); err != nil {
 				t.Fatalf("expected no error. got %v", err)
 			}

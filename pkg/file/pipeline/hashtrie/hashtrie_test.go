@@ -376,7 +376,7 @@ func TestRedundancy(t *testing.T) {
 			if expectedParities != parity {
 				t.Fatalf("want parity %d got %d", expectedParities, parity)
 			}
-			if tc.level.GetReplicaCount()+1 != int(replicaChunkCounter.replicaCount.Load()) { // +1 is the original chunk
+			if tc.level.GetReplicaCount() != int(replicaChunkCounter.replicaCount.Load()) {
 				t.Fatalf("unexpected number of replicas: want %d. Got: %d", tc.level.GetReplicaCount(), int(replicaChunkCounter.replicaCount.Load()))
 			}
 		})

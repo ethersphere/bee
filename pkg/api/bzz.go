@@ -83,6 +83,8 @@ func (s *Service) bzzUploadHandler(w http.ResponseWriter, r *http.Request) {
 		deferred = defaultUploadMethod(headers.Deferred)
 	)
 
+	ctx = redundancy.SetLevelInContext(ctx, headers.RLevel)
+
 	if deferred || headers.Pin {
 		tag, err = s.getOrCreateSessionID(headers.SwarmTag)
 		if err != nil {
