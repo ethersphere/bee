@@ -53,6 +53,7 @@ type contract struct {
 	bzzTokenAddress        common.Address
 	transactionService     transaction.Service
 	overlayNonce           common.Hash
+	gasLimit               uint64
 }
 
 func New(
@@ -62,7 +63,14 @@ func New(
 	bzzTokenAddress common.Address,
 	transactionService transaction.Service,
 	nonce common.Hash,
+	setGasLimit bool,
 ) Contract {
+
+	var gasLimit uint64
+	if setGasLimit {
+		gasLimit = 1_000_000
+	}
+
 	return &contract{
 		owner:                  owner,
 		stakingContractAddress: stakingContractAddress,
@@ -70,6 +78,7 @@ func New(
 		bzzTokenAddress:        bzzTokenAddress,
 		transactionService:     transactionService,
 		overlayNonce:           nonce,
+		gasLimit:               gasLimit,
 	}
 }
 
@@ -119,7 +128,7 @@ func (c *contract) sendTransaction(ctx context.Context, callData []byte, desc st
 		To:          &c.stakingContractAddress,
 		Data:        callData,
 		GasPrice:    sctx.GetGasPrice(ctx),
-		GasLimit:    sctx.GetGasLimit(ctx),
+		GasLimit:    max(sctx.GetGasLimit(ctx), c.gasLimit),
 		Value:       big.NewInt(0),
 		Description: desc,
 	}

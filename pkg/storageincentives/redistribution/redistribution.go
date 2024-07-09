@@ -33,6 +33,7 @@ type contract struct {
 	txService                 transaction.Service
 	incentivesContractAddress common.Address
 	incentivesContractABI     abi.ABI
+	gasLimit                  uint64
 }
 
 func New(
@@ -41,13 +42,21 @@ func New(
 	txService transaction.Service,
 	incentivesContractAddress common.Address,
 	incentivesContractABI abi.ABI,
+	setGasLimit bool,
 ) Contract {
+
+	var gasLimit uint64
+	if setGasLimit {
+		gasLimit = 1_000_000
+	}
+
 	return &contract{
 		owner:                     owner,
 		logger:                    logger.WithName(loggerName).Register(),
 		txService:                 txService,
 		incentivesContractAddress: incentivesContractAddress,
 		incentivesContractABI:     incentivesContractABI,
+		gasLimit:                  gasLimit,
 	}
 }
 
@@ -100,7 +109,7 @@ func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs) (comm
 		To:                   &c.incentivesContractAddress,
 		Data:                 callData,
 		GasPrice:             sctx.GetGasPrice(ctx),
-		GasLimit:             sctx.GetGasLimit(ctx),
+		GasLimit:             max(sctx.GetGasLimit(ctx), c.gasLimit),
 		MinEstimatedGasLimit: 500_000,
 		Value:                big.NewInt(0),
 		Description:          "claim win transaction",
@@ -123,7 +132,7 @@ func (c *contract) Commit(ctx context.Context, obfusHash []byte, round uint64) (
 		To:                   &c.incentivesContractAddress,
 		Data:                 callData,
 		GasPrice:             sctx.GetGasPrice(ctx),
-		GasLimit:             sctx.GetGasLimit(ctx),
+		GasLimit:             max(sctx.GetGasLimit(ctx), c.gasLimit),
 		MinEstimatedGasLimit: 500_000,
 		Value:                big.NewInt(0),
 		Description:          "commit transaction",
@@ -146,7 +155,7 @@ func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommit
 		To:                   &c.incentivesContractAddress,
 		Data:                 callData,
 		GasPrice:             sctx.GetGasPrice(ctx),
-		GasLimit:             sctx.GetGasLimit(ctx),
+		GasLimit:             max(sctx.GetGasLimit(ctx), c.gasLimit),
 		MinEstimatedGasLimit: 500_000,
 		Value:                big.NewInt(0),
 		Description:          "reveal transaction",

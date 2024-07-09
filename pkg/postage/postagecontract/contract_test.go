@@ -122,6 +122,7 @@ func TestCreateBatch(t *testing.T) {
 			postageMock,
 			postagestoreMock.New(),
 			true,
+			false,
 		)
 
 		_, returnedID, err := contract.CreateBatch(ctx, initialBalance, depth, false, label)
@@ -155,6 +156,7 @@ func TestCreateBatch(t *testing.T) {
 			postageMock.New(),
 			postagestoreMock.New(),
 			true,
+			false,
 		)
 
 		_, _, err := contract.CreateBatch(ctx, initialBalance, depth, false, label)
@@ -183,6 +185,7 @@ func TestCreateBatch(t *testing.T) {
 			postageMock.New(),
 			postagestoreMock.New(),
 			true,
+			false,
 		)
 
 		_, _, err := contract.CreateBatch(ctx, initialBalance, depth, false, label)
@@ -290,6 +293,7 @@ func TestTopUpBatch(t *testing.T) {
 			postageMock,
 			batchStoreMock,
 			true,
+			false,
 		)
 
 		_, err = contract.TopUpBatch(ctx, batch.ID, topupBalance)
@@ -318,6 +322,7 @@ func TestTopUpBatch(t *testing.T) {
 			postageMock.New(),
 			postagestoreMock.New(postagestoreMock.WithGetErr(errNotFound, 0)),
 			true,
+			false,
 		)
 
 		_, err := contract.TopUpBatch(ctx, postagetesting.MustNewID(), topupBalance)
@@ -347,6 +352,7 @@ func TestTopUpBatch(t *testing.T) {
 			postageMock.New(),
 			batchStoreMock,
 			true,
+			false,
 		)
 
 		_, err := contract.TopUpBatch(ctx, batch.ID, topupBalance)
@@ -476,6 +482,7 @@ func TestDiluteBatch(t *testing.T) {
 			postageMock,
 			batchStoreMock,
 			true,
+			false,
 		)
 
 		_, err = contract.DiluteBatch(ctx, batch.ID, newDepth)
@@ -504,6 +511,7 @@ func TestDiluteBatch(t *testing.T) {
 			postageMock.New(),
 			postagestoreMock.New(postagestoreMock.WithGetErr(errNotFound, 0)),
 			true,
+			false,
 		)
 
 		_, err := contract.DiluteBatch(ctx, postagetesting.MustNewID(), uint8(17))
@@ -526,6 +534,7 @@ func TestDiluteBatch(t *testing.T) {
 			postageMock.New(),
 			batchStoreMock,
 			true,
+			false,
 		)
 
 		_, err := contract.DiluteBatch(ctx, batch.ID, batch.Depth-1)
@@ -602,6 +611,7 @@ func TestBatchExpirer(t *testing.T) {
 			postageMock,
 			postagestoreMock.New(),
 			true,
+			false,
 		)
 
 		err = contract.ExpireBatches(ctx)
@@ -635,6 +645,7 @@ func TestBatchExpirer(t *testing.T) {
 			postageMock,
 			postagestoreMock.New(),
 			true,
+			false,
 		)
 
 		err = contract.ExpireBatches(ctx)
@@ -668,6 +679,7 @@ func TestBatchExpirer(t *testing.T) {
 			postageMock,
 			postagestoreMock.New(),
 			true,
+			false,
 		)
 
 		err = contract.ExpireBatches(ctx)
@@ -744,6 +756,7 @@ func TestBatchExpirer(t *testing.T) {
 			postageMock,
 			postagestoreMock.New(),
 			true,
+			false,
 		)
 
 		err = contract.ExpireBatches(ctx)
@@ -778,6 +791,7 @@ func TestBatchExpirer(t *testing.T) {
 			postageMock,
 			postagestoreMock.New(),
 			true,
+			false,
 		)
 
 		err = contract.ExpireBatches(ctx)
@@ -814,6 +828,7 @@ func TestBatchExpirer(t *testing.T) {
 			postageMock,
 			postagestoreMock.New(),
 			true,
+			false,
 		)
 
 		err = contract.ExpireBatches(ctx)
@@ -863,6 +878,7 @@ func TestBatchExpirer(t *testing.T) {
 			postageMock,
 			postagestoreMock.New(),
 			true,
+			false,
 		)
 
 		err = contract.ExpireBatches(ctx)
