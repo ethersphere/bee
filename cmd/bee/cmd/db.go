@@ -25,6 +25,7 @@ import (
 	"github.com/ethersphere/bee/v2/pkg/storer"
 	"github.com/ethersphere/bee/v2/pkg/storer/migration"
 	"github.com/ethersphere/bee/v2/pkg/swarm"
+	"github.com/ethersphere/bee/v2/pkg/util/ioutil"
 	"github.com/spf13/cobra"
 )
 
@@ -159,7 +160,7 @@ func dbCompactCmd(cmd *cobra.Command) {
 			time.Sleep(10 * time.Second)
 			logger.Warning("proceeding with database compaction...")
 
-			localstorePath := path.Join(dataDir, "localstore")
+			localstorePath := path.Join(dataDir, ioutil.DataPathLocalstore)
 
 			err = storer.Compact(context.Background(), localstorePath, &storer.Options{
 				Logger:          logger,
@@ -214,7 +215,7 @@ func dbValidatePinsCmd(cmd *cobra.Command) {
 				return fmt.Errorf("read location option: %w", err)
 			}
 
-			localstorePath := path.Join(dataDir, "localstore")
+			localstorePath := path.Join(dataDir, ioutil.DataPathLocalstore)
 
 			err = storer.ValidatePinCollectionChunks(context.Background(), localstorePath, providedPin, outputLoc, &storer.Options{
 				Logger:          logger,
@@ -340,7 +341,7 @@ func dbValidateCmd(cmd *cobra.Command) {
 			logger.Warning("    Progress logged at Info level.")
 			logger.Warning("    SOC chunks logged at Debug level.")
 
-			localstorePath := path.Join(dataDir, "localstore")
+			localstorePath := path.Join(dataDir, ioutil.DataPathLocalstore)
 
 			err = storer.ValidateRetrievalIndex(context.Background(), localstorePath, &storer.Options{
 				Logger:          logger,
@@ -768,8 +769,8 @@ func dbNukeCmd(cmd *cobra.Command) {
 		optionNameForgetOverlay = "forget-overlay"
 		optionNameForgetStamps  = "forget-stamps"
 
-		localstore   = "localstore"
-		kademlia     = "kademlia-metrics"
+		localstore   = ioutil.DataPathLocalstore
+		kademlia     = ioutil.DataPathKademlia
 		statestore   = "statestore"
 		stamperstore = "stamperstore"
 	)
