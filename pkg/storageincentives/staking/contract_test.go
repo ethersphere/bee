@@ -34,7 +34,6 @@ func TestDepositStake(t *testing.T) {
 	nonce := common.BytesToHash(make([]byte, 32))
 	txHashDeposited := common.HexToHash("c3a7")
 	stakedAmount := big.NewInt(100000000000000000)
-	addr := swarm.MustParseHexAddress("f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b")
 	txHashApprove := common.HexToHash("abb0")
 
 	t.Run("ok", func(t *testing.T) {
@@ -42,13 +41,12 @@ func TestDepositStake(t *testing.T) {
 
 		totalAmount := big.NewInt(100000000000000000)
 		prevStake := big.NewInt(0)
-		expectedCallData, err := stakingContractABI.Pack("depositStake", common.BytesToHash(owner.Bytes()), nonce, stakedAmount)
+		expectedCallData, err := stakingContractABI.Pack("manageStake", nonce, stakedAmount)
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		contract := staking.New(
-			addr,
 			owner,
 			stakingContractAddress,
 			stakingContractABI,
@@ -59,7 +57,7 @@ func TestDepositStake(t *testing.T) {
 						return txHashApprove, nil
 					}
 					if *request.To == stakingContractAddress {
-						if !bytes.Equal(expectedCallData[:100], request.Data[:100]) {
+						if !bytes.Equal(expectedCallData[:80], request.Data[:80]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
 						}
 						return txHashDeposited, nil
@@ -103,13 +101,12 @@ func TestDepositStake(t *testing.T) {
 
 		totalAmount := big.NewInt(100000000000000000)
 		prevStake := big.NewInt(2)
-		expectedCallData, err := stakingContractABI.Pack("depositStake", common.BytesToHash(owner.Bytes()), nonce, big.NewInt(100000000000000000))
+		expectedCallData, err := stakingContractABI.Pack("manageStake", nonce, big.NewInt(100000000000000000))
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		contract := staking.New(
-			addr,
 			owner,
 			stakingContractAddress,
 			stakingContractABI,
@@ -120,7 +117,7 @@ func TestDepositStake(t *testing.T) {
 						return txHashApprove, nil
 					}
 					if *request.To == stakingContractAddress {
-						if !bytes.Equal(expectedCallData[:100], request.Data[:100]) {
+						if !bytes.Equal(expectedCallData[:80], request.Data[:80]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
 						}
 						return txHashDeposited, nil
@@ -173,7 +170,6 @@ func TestDepositStake(t *testing.T) {
 		prevStake := big.NewInt(0)
 
 		contract := staking.New(
-			addr,
 			owner,
 			stakingContractAddress,
 			stakingContractABI,
@@ -205,7 +201,6 @@ func TestDepositStake(t *testing.T) {
 		prevStake := big.NewInt(0)
 
 		contract := staking.New(
-			addr,
 			owner,
 			stakingContractAddress,
 			stakingContractABI,
@@ -237,7 +232,6 @@ func TestDepositStake(t *testing.T) {
 		prevStake := big.NewInt(0)
 
 		contract := staking.New(
-			addr,
 			owner,
 			stakingContractAddress,
 			stakingContractABI,
@@ -269,7 +263,6 @@ func TestDepositStake(t *testing.T) {
 		prevStake := big.NewInt(0)
 
 		contract := staking.New(
-			addr,
 			owner,
 			stakingContractAddress,
 			stakingContractABI,
@@ -312,7 +305,6 @@ func TestDepositStake(t *testing.T) {
 		}
 
 		contract := staking.New(
-			addr,
 			owner,
 			stakingContractAddress,
 			stakingContractABI,
@@ -360,7 +352,6 @@ func TestDepositStake(t *testing.T) {
 		}
 
 		contract := staking.New(
-			addr,
 			owner,
 			stakingContractAddress,
 			stakingContractABI,
@@ -371,7 +362,7 @@ func TestDepositStake(t *testing.T) {
 						return txHashApprove, nil
 					}
 					if *request.To == stakingContractAddress {
-						if !bytes.Equal(expectedCallData[:100], request.Data[:100]) {
+						if !bytes.Equal(expectedCallData[:80], request.Data[:80]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
 						}
 						return txHashDeposited, nil
@@ -421,7 +412,6 @@ func TestDepositStake(t *testing.T) {
 		}
 
 		contract := staking.New(
-			addr,
 			owner,
 			stakingContractAddress,
 			stakingContractABI,
@@ -432,7 +422,7 @@ func TestDepositStake(t *testing.T) {
 						return txHashApprove, nil
 					}
 					if *request.To == stakingContractAddress {
-						if !bytes.Equal(expectedCallData[:100], request.Data[:100]) {
+						if !bytes.Equal(expectedCallData[:80], request.Data[:80]) {
 							return common.Hash{}, fmt.Errorf("got wrong call data. wanted %x, got %x", expectedCallData, request.Data)
 						}
 						return txHashDeposited, nil
@@ -473,7 +463,6 @@ func TestDepositStake(t *testing.T) {
 		t.Parallel()
 
 		contract := staking.New(
-			addr,
 			owner,
 			stakingContractAddress,
 			stakingContractABI,
@@ -504,19 +493,17 @@ func TestGetStake(t *testing.T) {
 	stakingAddress := common.HexToAddress("ffff")
 	bzzTokenAddress := common.HexToAddress("eeee")
 	nonce := common.BytesToHash(make([]byte, 32))
-	addr := swarm.MustParseHexAddress("f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b")
 
 	t.Run("ok", func(t *testing.T) {
 		t.Parallel()
 
 		prevStake := big.NewInt(0)
-		expectedCallData, err := stakingContractABI.Pack("stakeOfOverlay", common.BytesToHash(addr.Bytes()))
+		expectedCallData, err := stakingContractABI.Pack("stakeOfAddress", owner)
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		contract := staking.New(
-			addr,
 			owner,
 			stakingAddress,
 			stakingContractABI,
@@ -546,13 +533,12 @@ func TestGetStake(t *testing.T) {
 
 	t.Run("error with unpacking", func(t *testing.T) {
 		t.Parallel()
-		expectedCallData, err := stakingContractABI.Pack("stakeOfOverlay", common.BytesToHash(addr.Bytes()))
+		expectedCallData, err := stakingContractABI.Pack("stakeOfAddress", owner)
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		contract := staking.New(
-			addr,
 			owner,
 			stakingAddress,
 			stakingContractABI,
@@ -580,14 +566,15 @@ func TestGetStake(t *testing.T) {
 	t.Run("with invalid call data", func(t *testing.T) {
 		t.Parallel()
 
+		addr := swarm.MustParseHexAddress("f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b")
+
 		prevStake := big.NewInt(0)
-		expectedCallData, err := stakingContractABI.Pack("stakeOfOverlay", common.BytesToHash(owner.Bytes()))
+		expectedCallData, err := stakingContractABI.Pack("stakeOfAddress", common.BytesToHash(addr.Bytes()))
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		contract := staking.New(
-			addr,
 			owner,
 			stakingAddress,
 			stakingContractABI,
@@ -616,7 +603,6 @@ func TestGetStake(t *testing.T) {
 		t.Parallel()
 
 		contract := staking.New(
-			addr,
 			owner,
 			stakingAddress,
 			stakingContractABI,
@@ -645,7 +631,6 @@ func TestWithdrawStake(t *testing.T) {
 	bzzTokenAddress := common.HexToAddress("eeee")
 	nonce := common.BytesToHash(make([]byte, 32))
 	stakedAmount := big.NewInt(100000000000000000)
-	addr := swarm.MustParseHexAddress("f30c0aa7e9e2a0ef4c9b1b750ebfeaeb7c7c24da700bb089da19a46e3677824b")
 	txHashApprove := common.HexToHash("abb0")
 
 	t.Run("ok", func(t *testing.T) {
@@ -658,18 +643,17 @@ func TestWithdrawStake(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		expectedCallDataForWithdraw, err := stakingContractABI.Pack("withdrawFromStake", common.BytesToHash(addr.Bytes()), stakedAmount)
+		expectedCallDataForWithdraw, err := stakingContractABI.Pack("withdrawFromStake", stakedAmount)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		expectedCallDataForGetStake, err := stakingContractABI.Pack("stakeOfOverlay", common.BytesToHash(addr.Bytes()))
+		expectedCallDataForGetStake, err := stakingContractABI.Pack("stakeOfAddress", owner)
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		contract := staking.New(
-			addr,
 			owner,
 			stakingContractAddress,
 			stakingContractABI,
@@ -731,7 +715,6 @@ func TestWithdrawStake(t *testing.T) {
 		}
 
 		contract := staking.New(
-			addr,
 			owner,
 			stakingContractAddress,
 			stakingContractABI,
@@ -766,13 +749,12 @@ func TestWithdrawStake(t *testing.T) {
 
 		invalidStakedAmount := big.NewInt(0)
 
-		expectedCallDataForGetStake, err := stakingContractABI.Pack("stakeOfOverlay", common.BytesToHash(addr.Bytes()))
+		expectedCallDataForGetStake, err := stakingContractABI.Pack("stakeOfAddress", owner)
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		contract := staking.New(
-			addr,
 			owner,
 			stakingContractAddress,
 			stakingContractABI,
@@ -801,16 +783,16 @@ func TestWithdrawStake(t *testing.T) {
 
 	t.Run("invalid call data", func(t *testing.T) {
 		t.Parallel()
-		_, err := stakingContractABI.Pack("paused", addr)
+		_, err := stakingContractABI.Pack("paused", owner)
 		if err == nil {
 			t.Fatal(err)
 		}
-		_, err = stakingContractABI.Pack("withdrawFromStake", stakedAmount)
+		_, err = stakingContractABI.Pack("withdrawFromStake", owner, stakedAmount)
 		if err == nil {
 			t.Fatal(err)
 		}
 
-		_, err = stakingContractABI.Pack("stakeOfOverlay", stakedAmount)
+		_, err = stakingContractABI.Pack("stakeOfAddress", stakedAmount)
 		if err == nil {
 			t.Fatal(err)
 		}
@@ -826,18 +808,17 @@ func TestWithdrawStake(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		expectedCallDataForWithdraw, err := stakingContractABI.Pack("withdrawFromStake", common.BytesToHash(addr.Bytes()), stakedAmount)
+		expectedCallDataForWithdraw, err := stakingContractABI.Pack("withdrawFromStake", stakedAmount)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		expectedCallDataForGetStake, err := stakingContractABI.Pack("stakeOfOverlay", common.BytesToHash(addr.Bytes()))
+		expectedCallDataForGetStake, err := stakingContractABI.Pack("stakeOfAddress", owner)
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		contract := staking.New(
-			addr,
 			owner,
 			stakingContractAddress,
 			stakingContractABI,
@@ -899,18 +880,17 @@ func TestWithdrawStake(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		expectedCallDataForGetStake, err := stakingContractABI.Pack("stakeOfOverlay", common.BytesToHash(addr.Bytes()))
+		expectedCallDataForGetStake, err := stakingContractABI.Pack("stakeOfAddress", owner)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		expectedCallDataForWithdraw, err := stakingContractABI.Pack("withdrawFromStake", common.BytesToHash(addr.Bytes()), stakedAmount)
+		expectedCallDataForWithdraw, err := stakingContractABI.Pack("withdrawFromStake", stakedAmount)
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		contract := staking.New(
-			addr,
 			owner,
 			stakingContractAddress,
 			stakingContractABI,
@@ -970,7 +950,6 @@ func TestWithdrawStake(t *testing.T) {
 		}
 
 		contract := staking.New(
-			addr,
 			owner,
 			stakingContractAddress,
 			stakingContractABI,
@@ -1003,13 +982,12 @@ func TestWithdrawStake(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		expectedCallDataForGetStake, err := stakingContractABI.Pack("stakeOfOverlay", common.BytesToHash(addr.Bytes()))
+		expectedCallDataForGetStake, err := stakingContractABI.Pack("stakeOfAddress", owner)
 		if err != nil {
 			t.Fatal(err)
 		}
 
 		contract := staking.New(
-			addr,
 			owner,
 			stakingContractAddress,
 			stakingContractABI,
