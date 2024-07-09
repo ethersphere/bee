@@ -13,7 +13,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethersphere/bee/v2/pkg/log"
 	"github.com/ethersphere/bee/v2/pkg/sctx"
-	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 )
 
@@ -29,7 +28,7 @@ type Contract interface {
 }
 
 type contract struct {
-	overlay                   swarm.Address
+	owner                     common.Address
 	logger                    log.Logger
 	txService                 transaction.Service
 	incentivesContractAddress common.Address
@@ -37,14 +36,14 @@ type contract struct {
 }
 
 func New(
-	overlay swarm.Address,
+	owner common.Address,
 	logger log.Logger,
 	txService transaction.Service,
 	incentivesContractAddress common.Address,
 	incentivesContractABI abi.ABI,
 ) Contract {
 	return &contract{
-		overlay:                   overlay,
+		owner:                     owner,
 		logger:                    logger.WithName(loggerName).Register(),
 		txService:                 txService,
 		incentivesContractAddress: incentivesContractAddress,
@@ -54,14 +53,14 @@ func New(
 
 // IsPlaying checks if the overlay is participating in the upcoming round.
 func (c *contract) IsPlaying(ctx context.Context, depth uint8) (bool, error) {
-	callData, err := c.incentivesContractABI.Pack("isParticipatingInUpcomingRound", common.BytesToHash(c.overlay.Bytes()), depth)
+	callData, err := c.incentivesContractABI.Pack("isParticipatingInUpcomingRound", c.owner, depth)
 	if err != nil {
 		return false, err
 	}
 
 	result, err := c.callTx(ctx, callData)
 	if err != nil {
-		return false, fmt.Errorf("IsPlaying: overlay %v depth %d: %w", common.BytesToHash(c.overlay.Bytes()), depth, err)
+		return false, fmt.Errorf("IsPlaying: owner %v depth %d: %w", c.owner, depth, err)
 	}
 
 	results, err := c.incentivesContractABI.Unpack("isParticipatingInUpcomingRound", result)
@@ -74,14 +73,14 @@ func (c *contract) IsPlaying(ctx context.Context, depth uint8) (bool, error) {
 
 // IsWinner checks if the overlay is winner by sending a transaction to blockchain.
 func (c *contract) IsWinner(ctx context.Context) (isWinner bool, err error) {
-	callData, err := c.incentivesContractABI.Pack("isWinner", common.BytesToHash(c.overlay.Bytes()))
+	callData, err := c.incentivesContractABI.Pack("isWinner", common.BytesToHash(c.owner.Bytes()))
 	if err != nil {
 		return false, err
 	}
 
 	result, err := c.callTx(ctx, callData)
 	if err != nil {
-		return false, fmt.Errorf("IsWinner: overlay %v : %w", common.BytesToHash(c.overlay.Bytes()), err)
+		return false, fmt.Errorf("IsWinner: overlay %v : %w", common.BytesToHash(c.owner.Bytes()), err)
 	}
 
 	results, err := c.incentivesContractABI.Unpack("isWinner", result)
@@ -116,7 +115,7 @@ func (c *contract) Claim(ctx context.Context, proofs ChunkInclusionProofs) (comm
 
 // Commit submits the obfusHash hash by sending a transaction to the blockchain.
 func (c *contract) Commit(ctx context.Context, obfusHash []byte, round uint64) (common.Hash, error) {
-	callData, err := c.incentivesContractABI.Pack("commit", common.BytesToHash(obfusHash), common.BytesToHash(c.overlay.Bytes()), round)
+	callData, err := c.incentivesContractABI.Pack("commit", common.BytesToHash(obfusHash), round)
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -131,7 +130,7 @@ func (c *contract) Commit(ctx context.Context, obfusHash []byte, round uint64) (
 	}
 	txHash, err := c.sendAndWait(ctx, request, 50)
 	if err != nil {
-		return txHash, fmt.Errorf("commit: obfusHash %v overlay %v: %w", common.BytesToHash(obfusHash), common.BytesToHash(c.overlay.Bytes()), err)
+		return txHash, fmt.Errorf("commit: obfusHash %v: %w", common.BytesToHash(obfusHash), err)
 	}
 
 	return txHash, nil
@@ -139,7 +138,7 @@ func (c *contract) Commit(ctx context.Context, obfusHash []byte, round uint64) (
 
 // Reveal submits the storageDepth, reserveCommitmentHash and RandomNonce in a transaction to blockchain.
 func (c *contract) Reveal(ctx context.Context, storageDepth uint8, reserveCommitmentHash []byte, RandomNonce []byte) (common.Hash, error) {
-	callData, err := c.incentivesContractABI.Pack("reveal", common.BytesToHash(c.overlay.Bytes()), storageDepth, common.BytesToHash(reserveCommitmentHash), common.BytesToHash(RandomNonce))
+	callData, err := c.incentivesContractABI.Pack("reveal", storageDepth, common.BytesToHash(reserveCommitmentHash), common.BytesToHash(RandomNonce))
 	if err != nil {
 		return common.Hash{}, err
 	}

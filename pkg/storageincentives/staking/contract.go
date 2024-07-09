@@ -14,7 +14,6 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/ethersphere/bee/v2/pkg/sctx"
-	"github.com/ethersphere/bee/v2/pkg/swarm"
 	"github.com/ethersphere/bee/v2/pkg/transaction"
 	"github.com/ethersphere/bee/v2/pkg/util/abiutil"
 	"github.com/ethersphere/go-sw3-abi/sw3abi"
@@ -48,7 +47,6 @@ type RedistributionStatuser interface {
 }
 
 type contract struct {
-	overlay                swarm.Address
 	owner                  common.Address
 	stakingContractAddress common.Address
 	stakingContractABI     abi.ABI
@@ -58,7 +56,6 @@ type contract struct {
 }
 
 func New(
-	overlay swarm.Address,
 	owner common.Address,
 	stakingContractAddress common.Address,
 	stakingContractABI abi.ABI,
@@ -67,7 +64,6 @@ func New(
 	nonce common.Hash,
 ) Contract {
 	return &contract{
-		overlay:                overlay,
 		owner:                  owner,
 		stakingContractAddress: stakingContractAddress,
 		stakingContractABI:     stakingContractABI,
@@ -154,8 +150,8 @@ func (c *contract) sendTransaction(ctx context.Context, callData []byte, desc st
 	return receipt, nil
 }
 
-func (c *contract) sendDepositStakeTransaction(ctx context.Context, owner common.Address, stakedAmount *big.Int, nonce common.Hash) (*types.Receipt, error) {
-	callData, err := c.stakingContractABI.Pack("depositStake", owner, nonce, stakedAmount)
+func (c *contract) sendDepositStakeTransaction(ctx context.Context, stakedAmount *big.Int, nonce common.Hash) (*types.Receipt, error) {
+	callData, err := c.stakingContractABI.Pack("manageStake", nonce, stakedAmount)
 	if err != nil {
 		return nil, err
 	}
@@ -168,10 +164,8 @@ func (c *contract) sendDepositStakeTransaction(ctx context.Context, owner common
 	return receipt, nil
 }
 
-func (c *contract) getStake(ctx context.Context, overlay swarm.Address) (*big.Int, error) {
-	var overlayAddr [32]byte
-	copy(overlayAddr[:], overlay.Bytes())
-	callData, err := c.stakingContractABI.Pack("stakeOfOverlay", overlayAddr)
+func (c *contract) getStake(ctx context.Context) (*big.Int, error) {
+	callData, err := c.stakingContractABI.Pack("stakeOfAddress", c.owner)
 	if err != nil {
 		return nil, err
 	}
@@ -180,10 +174,10 @@ func (c *contract) getStake(ctx context.Context, overlay swarm.Address) (*big.In
 		Data: callData,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("get stake: overlayAddress %d: %w", overlay, err)
+		return nil, fmt.Errorf("get stake: %w", err)
 	}
 
-	results, err := c.stakingContractABI.Unpack("stakeOfOverlay", result)
+	results, err := c.stakingContractABI.Unpack("stakeOfAddress", result)
 	if err != nil {
 		return nil, err
 	}
@@ -221,7 +215,7 @@ func (c *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) (com
 		return common.Hash{}, err
 	}
 
-	receipt, err := c.sendDepositStakeTransaction(ctx, c.owner, stakedAmount, c.overlayNonce)
+	receipt, err := c.sendDepositStakeTransaction(ctx, stakedAmount, c.overlayNonce)
 	if err != nil {
 		return common.Hash{}, err
 	}
@@ -230,7 +224,7 @@ func (c *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) (com
 }
 
 func (c *contract) GetStake(ctx context.Context) (*big.Int, error) {
-	stakedAmount, err := c.getStake(ctx, c.overlay)
+	stakedAmount, err := c.getStake(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("staking contract: failed to get stake: %w", err)
 	}
@@ -272,7 +266,7 @@ func (c *contract) WithdrawAllStake(ctx context.Context) (txHash common.Hash, er
 		return common.Hash{}, ErrNotPaused
 	}
 
-	stakedAmount, err := c.getStake(ctx, c.overlay)
+	stakedAmount, err := c.getStake(ctx)
 	if err != nil {
 		return
 	}
@@ -297,10 +291,7 @@ func (c *contract) WithdrawAllStake(ctx context.Context) (txHash common.Hash, er
 }
 
 func (c *contract) withdrawFromStake(ctx context.Context, stakedAmount *big.Int) (*types.Receipt, error) {
-	var overlayAddr [32]byte
-	copy(overlayAddr[:], c.overlay.Bytes())
-
-	callData, err := c.stakingContractABI.Pack("withdrawFromStake", overlayAddr, stakedAmount)
+	callData, err := c.stakingContractABI.Pack("withdrawFromStake", stakedAmount)
 	if err != nil {
 		return nil, err
 	}
@@ -340,10 +331,7 @@ func (c *contract) paused(ctx context.Context) (bool, error) {
 }
 
 func (c *contract) IsOverlayFrozen(ctx context.Context, block uint64) (bool, error) {
-
-	var overlayAddr [32]byte
-	copy(overlayAddr[:], c.overlay.Bytes())
-	callData, err := c.stakingContractABI.Pack("lastUpdatedBlockNumberOfOverlay", overlayAddr)
+	callData, err := c.stakingContractABI.Pack("lastUpdatedBlockNumberOfAddress", c.owner)
 	if err != nil {
 		return false, err
 	}
