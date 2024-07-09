@@ -1116,6 +1116,20 @@ components:
       schema:
         $ref: "#/components/schemas/SwarmAddress"
 
+    SwarmPostageStamp:
+      in: header
+      name: swarm-postage-stamp
+      description: |
+        Postage stamp for the corresponding chunk in the request. \
+        It is required if Swarm-Postage-Batch-Id header is missing \
+        It consists of: \
+        - batch ID - 0:32 bytes \
+        - postage index (bucket and bucket index) - 32:40 bytes \
+        - timestamp - 40:48 bytes \
+        - signature - 48:113 bytes
+      schema:
+        $ref: "#/components/schemas/HexString"
+
     SwarmDeferredUpload:
       in: header
       name: swarm-deferred-upload
