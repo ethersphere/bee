@@ -1,5 +1,7 @@
 project_name: bee
 
+version: 2
+
 release:
   prerelease: auto
 
