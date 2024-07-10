@@ -23,6 +23,10 @@ func (s *stakingContractMock) DepositStake(ctx context.Context, stakedAmount *bi
 	return s.depositStake(ctx, stakedAmount)
 }
 
+func (s *stakingContractMock) ChangeStakeOverlay(_ context.Context, h common.Hash) (common.Hash, error) {
+	return h, nil
+}
+
 func (s *stakingContractMock) GetStake(ctx context.Context) (*big.Int, error) {
 	return s.getStake(ctx)
 }

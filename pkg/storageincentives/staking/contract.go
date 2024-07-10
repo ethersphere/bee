@@ -37,6 +37,7 @@ var (
 
 type Contract interface {
 	DepositStake(ctx context.Context, stakedAmount *big.Int) (common.Hash, error)
+	ChangeStakeOverlay(ctx context.Context, nonce common.Hash) (common.Hash, error)
 	GetStake(ctx context.Context) (*big.Int, error)
 	WithdrawAllStake(ctx context.Context) (common.Hash, error)
 	RedistributionStatuser
@@ -216,6 +217,17 @@ func (c *contract) DepositStake(ctx context.Context, stakedAmount *big.Int) (com
 	}
 
 	receipt, err := c.sendDepositStakeTransaction(ctx, stakedAmount, c.overlayNonce)
+	if err != nil {
+		return common.Hash{}, err
+	}
+
+	return receipt.TxHash, nil
+}
+
+// ChangeStakeOverlay only changes the overlay address used in the redistribution game.
+func (c *contract) ChangeStakeOverlay(ctx context.Context, nonce common.Hash) (common.Hash, error) {
+	c.overlayNonce = nonce
+	receipt, err := c.sendDepositStakeTransaction(ctx, new(big.Int), c.overlayNonce)
 	if err != nil {
 		return common.Hash{}, err
 	}
