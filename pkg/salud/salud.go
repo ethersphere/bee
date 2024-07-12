@@ -222,7 +222,7 @@ func (s *service) salud(mode string, minPeersPerbin int, durPercentile float64, 
 	}
 
 	selfHealth := true
-	if s.reserve.StorageRadius() != networkRadius {
+	if nHoodRadius == networkRadius && s.reserve.StorageRadius() != networkRadius {
 		selfHealth = false
 		s.logger.Warning("node is unhealthy due to storage radius discrepency", "self_radius", s.reserve.StorageRadius(), "network_radius", networkRadius)
 	}
