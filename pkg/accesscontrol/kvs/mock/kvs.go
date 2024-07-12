@@ -15,6 +15,7 @@ import (
 )
 
 var lock = &sync.Mutex{}
+var lockGetPut = &sync.Mutex{}
 
 type single struct {
 	memoryMock map[string]map[string][]byte
@@ -51,12 +52,16 @@ type mockKeyValueStore struct {
 var _ kvs.KeyValueStore = (*mockKeyValueStore)(nil)
 
 func (m *mockKeyValueStore) Get(_ context.Context, key []byte) ([]byte, error) {
+	lockGetPut.Lock()
+	defer lockGetPut.Unlock()
 	mem := getMemory()
 	val := mem[m.address.String()][hex.EncodeToString(key)]
 	return val, nil
 }
 
 func (m *mockKeyValueStore) Put(_ context.Context, key []byte, value []byte) error {
+	lockGetPut.Lock()
+	defer lockGetPut.Unlock()
 	mem := getMemory()
 	if _, ok := mem[m.address.String()]; !ok {
 		mem[m.address.String()] = make(map[string][]byte)
