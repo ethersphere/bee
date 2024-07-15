@@ -109,7 +109,7 @@ func TestHandlerRateLimit(t *testing.T) {
 	}
 }
 
-func TestBroadcastPeers_FLAKY(t *testing.T) {
+func TestBroadcastPeers(t *testing.T) {
 	t.Parallel()
 
 	logger := log.Noop
